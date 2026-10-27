@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { ORDER_ACCESS_STATUS, assertOrderAccess } from '@/lib/rbac';
+import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
 import { atomicClaim, isLockActive, lockConfig, ownershipSnapshot } from '@/lib/order-locks';
 import { logAudit } from '@/lib/audit';
 import { apiError } from '@/lib/api-error';
@@ -218,7 +219,9 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     if (!can(user, 'orders.release')) {
       return NextResponse.json({ error: 'Forbidden: missing required permission orders.release' }, { status: 403 });
     }
-    const access = await assertOrderAccess(id, user, { companyId, storeId });
+    // Giving back the order she holds — the work door (order-work-door.ts).
+    // The claim-by-id above keeps the old door: taking is the pull's job.
+    const access = await assertOrderAccess(id, user, { companyId, storeId }, ORDER_WORK_DOOR);
     if (!access.allowed) return NextResponse.json({ error: 'Order not found', errorAr: ORDER_NOT_FOUND }, { status: 404 });
 
     const order = access.order;

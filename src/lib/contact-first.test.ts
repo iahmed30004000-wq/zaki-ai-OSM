@@ -175,6 +175,9 @@ describe('the screen says it before she presses, not after', () => {
   it('and the pull panel opens the order the refusal names', () => {
     const q = stripComments(repoFile('src/components/confirmation/PullPanel.tsx'));
     expect(q).toMatch(/data\.refusal\?\.code === 'UNTOUCHED_ORDER' && data\.refusal\.orderId/);
-    expect(q).toMatch(/href=\{`\/orders\/\$\{data\.refusal\.orderId\}`\}/);
+    // On her own desk, where the order window opens through the work door — not
+    // «الطلبات», which asks «عرض الطلبات» (see the-pull-panel.test.tsx for the press).
+    expect(q).toMatch(/href=\{`\/confirmation\/mine\?open=\$\{encodeURIComponent\(data\.refusal\.orderId\)\}`\}/);
+    expect(q, 'رجع الرابط لشاشة الطلبات').not.toMatch(/href=\{`\/orders\/\$\{data\.refusal\.orderId\}`\}/);
   });
 });

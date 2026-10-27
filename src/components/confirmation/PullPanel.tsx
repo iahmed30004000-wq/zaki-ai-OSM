@@ -167,10 +167,16 @@ export function PullPanel({
         so the agent was told to do something on an order she could not
         open, and the only exit was the ninety-business-minute release.
         This is the door.
+
+        AND IT OPENS ON HER OWN DESK. It pointed at `/orders/<id>` — the
+        «الطلبات» screen, which asks `orders.view` — so an agent kept off
+        that list was sent to a page that refused her, about an order she
+        holds. «طلباتي» opens the same order window from `?open=`, through
+        the door that admits the order she holds (order-work-door.ts).
       */}
       {!error && data.refusal?.code === 'UNTOUCHED_ORDER' && data.refusal.orderId && (
         <a
-          href={`/orders/${data.refusal.orderId}`}
+          href={`/confirmation/mine?open=${encodeURIComponent(data.refusal.orderId)}`}
           className="mt-2 inline-flex min-h-11 items-center font-bold underline"
         >
           افتح الطلب {data.refusal.orderNumber ?? ''} وسجّل محاولة

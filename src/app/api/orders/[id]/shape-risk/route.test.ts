@@ -25,6 +25,7 @@ vi.mock('@/lib/rbac', () => ({
 }));
 
 import { GET } from './route';
+import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
 
 const ORDER = {
   id: 'o1',
@@ -113,7 +114,9 @@ describe('GET /api/orders/:id/shape-risk', () => {
 
   it('opens the order through the reader’s own envelope before it counts anything', async () => {
     await call();
-    expect(assertOrderReadable).toHaveBeenCalledWith('o1', { id: 'u1' }, { companyId: 'c1', storeId: 's1' }, 'orders.view');
+    // The door the order window opens it through — the work door, which admits
+    // the order she holds without «عرض الطلبات» (order-work-door.ts).
+    expect(assertOrderReadable).toHaveBeenCalledWith('o1', { id: 'u1' }, { companyId: 'c1', storeId: 's1' }, ORDER_WORK_DOOR);
   });
 
   it('an order outside the reader’s envelope gets nothing — not even its product or region', async () => {

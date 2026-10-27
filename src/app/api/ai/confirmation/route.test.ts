@@ -35,9 +35,12 @@ vi.mock('@/lib/db', () => ({ db }));
 vi.mock('@/lib/ai-rate', () => ({ tooManyAiCalls: () => null }));
 vi.mock('@/lib/geo-context', () => ({ requireContext: (...a: unknown[]) => requireContext(...a) }));
 vi.mock('@/lib/authorization', () => ({ requirePermission: (...a: unknown[]) => requirePermission(...a) }));
-// The person's order envelope — the same one the order window reads through.
-const { orderVisibilityWhere } = vi.hoisted(() => ({ orderVisibilityWhere: vi.fn() }));
-vi.mock('@/lib/rbac', () => ({ orderVisibilityWhere: (...a: unknown[]) => orderVisibilityWhere(...a) }));
+// The person's order envelope — the same one the order window reads through,
+// which is the WORK door's now (`orderWorkWhere`: her envelope OR the order she
+// holds). What it lets through is `the-order-she-holds.test.ts`'s question;
+// this file asks that the route uses it and nothing else.
+const { orderWorkWhere } = vi.hoisted(() => ({ orderWorkWhere: vi.fn() }));
+vi.mock('@/lib/rbac', () => ({ orderWorkWhere: (...a: unknown[]) => orderWorkWhere(...a) }));
 /*
  * `describeRoute` is new: the route now asks WHERE the call would go
  * before deciding what to put in the payload, because this assistant is
@@ -81,7 +84,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   requireContext.mockResolvedValue({ user: { id: 'u1' }, companyId: 'c1', storeId: 's1' });
   requirePermission.mockResolvedValue(undefined);
-  orderVisibilityWhere.mockReturnValue({});
+  orderWorkWhere.mockReturnValue({});
   db.order.findFirst.mockResolvedValue(order);
   db.order.findMany.mockResolvedValue([]);
   customerHistory.mockResolvedValue([]);
@@ -173,16 +176,16 @@ describe('what it refuses', () => {
     });
   });
 
-  it('and only one THIS person may open — her own envelope, as the order window asks', async () => {
-    const mine = { OR: [{ claimedById: 'u1' }, { assignedToId: 'u1' }] };
-    orderVisibilityWhere.mockReturnValue(mine);
+  it('and only one THIS person may open — the work door’s envelope, as the order window asks', async () => {
+    const mine = { OR: [{ OR: [{ assignedToId: 'u1' }] }, { claimedById: 'u1' }] };
+    orderWorkWhere.mockReturnValue(mine);
     await ask();
-    expect(orderVisibilityWhere).toHaveBeenCalledWith({ id: 'u1' });
+    expect(orderWorkWhere).toHaveBeenCalledWith({ id: 'u1' });
     expect(db.order.findFirst.mock.calls[0][0].where.AND).toEqual([mine]);
   });
 
   it('an order that moved to a colleague is not found, and the model is not asked', async () => {
-    orderVisibilityWhere.mockReturnValue({ OR: [{ claimedById: 'u1' }] });
+    orderWorkWhere.mockReturnValue({ claimedById: 'u1' });
     db.order.findFirst.mockResolvedValue(null);
     expect((await ask()).status).toBe(404);
     expect(aiChat).not.toHaveBeenCalled();

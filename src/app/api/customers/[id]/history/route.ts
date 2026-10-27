@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { inStore } from '@/lib/store-filter';
 import { requireContext } from '@/lib/geo-context';
-import { can, getPermissionScope } from '@/lib/authorization';
+import { getPermissionScope } from '@/lib/authorization';
 import { assertOrderReadable } from '@/lib/rbac';
+import { ORDER_WORK_DOOR, mayEnterOrderWorkDoor } from '@/lib/order-work-door';
 import { apiErrorResponse } from '@/lib/api-error';
 import { customerRisk } from '@/lib/customer-risk';
 import { deriveCoreState, type StateSource } from '@/lib/order-state';
@@ -35,6 +36,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
      *     customers this person brought in, as the customers list counts it;
      *   • from an order (every button passes `?exclude=<that order>`): the
      *     order must be one this person can open, and this its customer.
+     *     «Can open» is the work door's answer (order-work-door.ts), so the
+     *     agent holding the order reads its customer without «عرض الطلبات».
      */
     const exclude = new URL(req.url).searchParams.get('exclude');
     const book = getPermissionScope(user, 'customers.view');
@@ -47,8 +50,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     } else if (book) {
       allowed = true;
     }
-    if (!allowed && exclude && can(user, 'orders.view')) {
-      const access = await assertOrderReadable(exclude, user, { companyId, storeId }, 'orders.view');
+    if (!allowed && exclude && mayEnterOrderWorkDoor(user)) {
+      const access = await assertOrderReadable(exclude, user, { companyId, storeId }, ORDER_WORK_DOOR);
       if (access.allowed) {
         const theirs = await db.order.findFirst({ where: { id: exclude, customerId: id }, select: { id: true } });
         allowed = !!theirs;

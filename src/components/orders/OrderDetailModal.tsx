@@ -315,6 +315,9 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
         // when the previous lock had already expired and RiSaveLine never appears
         lockExpiresAt: lock.lockExpiresAt ?? prev.lockExpiresAt,
       }));
+    } else if (lock.error) {
+      // The door's refusal, in its words, where the other answers of this window are.
+      setActionFeedback({ type: 'error', text: lock.error });
     }
   };
 
@@ -841,6 +844,7 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
         <CustomerHistoryModal
           customerId={order.customer.id}
           orderId={order.id}
+          holderId={userCan(currentUser, 'confirmation.work') ? currentUser?.id ?? null : null}
           onClose={() => setHistoryOpen(false)}
         />
       )}

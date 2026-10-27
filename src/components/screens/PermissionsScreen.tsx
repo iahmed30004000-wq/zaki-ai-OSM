@@ -536,6 +536,53 @@ export function PermissionsScreen() {
               </div>
             )}
 
+            {/*
+              ── «طلباتي» DOES NOT NEED «عرض الطلبات» ──
+
+              The order an agent holds opens through its own door
+              (order-work-door.ts): `confirmation.work` is enough to open it,
+              call, edit, confirm and give it back. «عرض الطلبات» is the
+              «الطلبات» LIST, and both editors default it to «كل الشركة» — so
+              the owner ticked a whole company's orders to let an agent work
+              one. Said here, beside the tick that used to be the only way.
+            */}
+            {draft['confirmation.work'] && (
+              <p className="text-xs text-[var(--sys-muted-foreground)]">
+                {ar
+                  ? '«طلباتي» بتشتغل بلا «عرض الطلبات» — الموظف بيفتح ويعدّل ويأكّد بس الطلب اللي بين إيديه.'
+                  : '«My orders» works without «View orders» — the agent opens, edits and confirms only the order in their hands.'}
+              </p>
+            )}
+
+            {/*
+              ── AND A PULL WITH NO DESK TO LAND ON ──
+
+              `confirmation.pull` takes an order from the pool; the desk it
+              lands on, «طلباتي», and the door it is worked through both ask
+              `confirmation.work`. Without it the order is hers and she cannot
+              see it — until the ninety-minute release takes it back.
+            */}
+            {draft['confirmation.pull'] && !draft['confirmation.work'] && (
+              <div className="rounded-lg bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)] px-4 py-3 space-y-1.5">
+                <p className="flex items-start gap-2 text-xs font-bold text-[var(--sys-warning)]">
+                  <RiAlertLine className="w-4 h-4 shrink-0 mt-px" />
+                  <span>
+                    {ar
+                      ? 'هالدور بيسحب طلبات وما رح تظهر على مكتبه — ولا بيقدر يشتغل عليها'
+                      : 'This role pulls orders that will not appear on its desk — and cannot work them'}
+                  </span>
+                </p>
+                <p className="flex items-start gap-2 text-xs text-[var(--sys-heading)]">
+                  <RiToolsLine className="w-4 h-4 shrink-0 mt-px text-[var(--sys-warning)]" />
+                  <span>
+                    {ar
+                      ? 'فعّل «العمل على طلباتي والمؤجلة»'
+                      : 'Enable «Work own and postponed orders»'}
+                  </span>
+                </p>
+              </div>
+            )}
+
             <div className="space-y-2">
               {visibleModules.map((m) => {
                 const open = openModules[m.module] ?? false;

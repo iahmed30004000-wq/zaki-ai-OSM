@@ -135,6 +135,14 @@ const needsContact = (order: { _count: { contactAttempts: number } }) =>
   order._count.contactAttempts === 0;
 
 /**
+ * An order id from the address bar, or nothing. It goes into a request path,
+ * so only the shape an id has is let through — never a slash or a dot.
+ */
+const ORDER_ID_SHAPE = /^[A-Za-z0-9-]{1,64}$/;
+const askedOrderId = (value: string | null): string | null =>
+  value && ORDER_ID_SHAPE.test(value) ? value : null;
+
+/**
  * WHERE THE ORDER CAME FROM, IN THE WORDS THE AGENT USES.
  *
  * The card never said. And it decides what she can do about bad data: an
@@ -194,12 +202,25 @@ export function ConfirmationMineScreen() {
    */
   const canPull = userCan(currentUser, 'confirmation.pull');
   const queue = useQueue(canPull);
+  // Her id, for the customer's history: one of its orders she holds opens here too (OrderLink).
+  const holderId = userCan(currentUser, 'confirmation.work') ? currentUser?.id ?? null : null;
   const [data, setData] = useState<MineResponse | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogState>(null);
-  const [openOrderId, setOpenOrderId] = useState<string | null>(null);
+  /**
+   * `?open=<id>` — THE ORDER SHE HOLDS, OPENED ON HER OWN DESK.
+   *
+   * The pull panel's «افتح الطلب … وسجّل محاولة» lands here, and so does an
+   * order number she holds on the postponed tab or in a customer's history.
+   * The first pointed at `/orders/<id>` — the «الطلبات» screen, which asks
+   * `orders.view`, a key an agent may now work without — and the other two
+   * were plain text for her. Read once, as the desk is drawn; the window
+   * below is the same one «افتح وعدّل» opens, and its door decides.
+   */
+  const asked = useSearchParams();
+  const [openOrderId, setOpenOrderId] = useState<string | null>(() => askedOrderId(asked.get('open')));
   // Searching her own desk, not the whole store: she has a customer on the
   // phone reading out a number, and scrolling for it is the slow way.
   const [findOpen, setFindOpen] = useState('');
@@ -229,7 +250,7 @@ export function ConfirmationMineScreen() {
    */
   // `?tab=postponed` — the old «الطلبات المؤجلة» address, a notification about a postponed
   // order that came due, and the supervisor-only page's redirect all land on the fourth tab.
-  const askedTab = useSearchParams().get('tab');
+  const askedTab = asked.get('tab');
   const [tab, setTab] = useState<'work' | 'noAnswer' | 'done' | 'postponed'>(askedTab === 'postponed' ? 'postponed' : 'work');
 
   /**
@@ -601,6 +622,7 @@ export function ConfirmationMineScreen() {
                     customerId={order.customer.id}
                     orderId={order.id}
                     previousOrders={order.previousOrders}
+                    holderId={holderId}
                   />
                   {order.risk && (
                     <span className={`text-xs px-2 py-0.5 rounded-md border ${RISK_LABEL[order.risk.tier].cls}`}>
@@ -985,6 +1007,7 @@ export function ConfirmationMineScreen() {
                         customerId={order.customer.id}
                         orderId={order.id}
                         previousOrders={order.previousOrders}
+                        holderId={holderId}
                       />
                     </span></>
                 ) },

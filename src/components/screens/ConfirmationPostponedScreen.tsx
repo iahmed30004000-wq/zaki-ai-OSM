@@ -208,8 +208,16 @@ export function ConfirmationPostponedScreen({ embedded = false }: { embedded?: b
               key: 'order',
               label: 'الطلب',
               primary: true,
+              // A list with no «whose hands» facet is an agent's own: the server
+              // scopes it to her claims, behind `confirmation.work`. So without
+              // «عرض الطلبات» each number opens the order on her desk instead.
               render: (o) => (
-                <OrderLink id={o.id} number={o.orderNumber} className="font-medium text-[var(--sys-heading)]" />
+                <OrderLink
+                  id={o.id}
+                  number={o.orderNumber}
+                  opensOnHerDesk={!facts.agents}
+                  className="font-medium text-[var(--sys-heading)]"
+                />
               ),
             },
             {

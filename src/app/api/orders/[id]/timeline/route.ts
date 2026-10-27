@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { ORDER_ACCESS_STATUS, assertOrderReadable } from '@/lib/rbac';
+import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
 import { apiErrorResponse } from '@/lib/api-error';
 import { orderTimeline } from '@/lib/order-timeline';
 import { deriveCoreState, getZone, type StateSource } from '@/lib/order-state';
@@ -17,7 +18,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const { id } = await params;
     const { user, companyId, storeId } = await requireContext();
 
-    const access = await assertOrderReadable(id, user, { companyId, storeId }, 'orders.view');
+    // The order window's history — open to the order she holds (order-work-door.ts).
+    const access = await assertOrderReadable(id, user, { companyId, storeId }, ORDER_WORK_DOOR);
     if (!access.allowed) {
       return NextResponse.json({ error: 'Order not found', errorAr: ORDER_NOT_FOUND }, { status: ORDER_ACCESS_STATUS[access.reason] });
     }

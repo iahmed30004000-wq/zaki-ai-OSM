@@ -143,8 +143,12 @@ describe('every link of this shape lands on a page that exists', () => {
   it('and the sweep really sees the three known links, so it cannot pass by looking at nothing', () => {
     const hits = sources().filter((f) => /href=\{`\/orders\/\$\{/.test(f.src));
     const names = hits.map((f) => f.rel.split('/').pop());
+    // `PullPanel.tsx` was one of the three: its «افتح الطلب … وسجّل محاولة»
+    // opens the order on her own desk now (`/confirmation/mine?open=`), because
+    // `/orders/<id>` asks «عرض الطلبات» and the agent may work without it.
+    // `OrderLink.tsx` — the one link every order number on a screen uses — stands in its place.
     expect(names).toEqual(
-      expect.arrayContaining(['PullPanel.tsx', 'MatchingScreen.tsx', 'WhatsAppInboxScreen.tsx'])
+      expect.arrayContaining(['OrderLink.tsx', 'MatchingScreen.tsx', 'WhatsAppInboxScreen.tsx'])
     );
   });
 
