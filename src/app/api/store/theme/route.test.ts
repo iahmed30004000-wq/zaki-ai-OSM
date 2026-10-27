@@ -333,5 +333,8 @@ describe('a published look reaches the store’s cached landing pages at once', 
     db.store.findFirst.mockResolvedValue({ ...STORE, theme: DRAFT, themePrevious: LIVE });
     expect((await PUT()).status).toBe(200);
     expect(revalidatePath).not.toHaveBeenCalled();
+    // The refresh DID run and fail, both times — or this would be a publish that never tried.
+    expect(refreshLandingPages).toHaveBeenCalledTimes(2);
+    expect(db.landingPage.findMany).toHaveBeenCalledTimes(2);
   });
 });

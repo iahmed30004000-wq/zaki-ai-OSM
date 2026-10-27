@@ -162,6 +162,8 @@ describe('the note', () => {
 
   it('NEGATIVE: open from the start, it is not focused — the page does not jump to the form or report «بدء الطلب»', () => {
     draw({ checkout: shop({ required: ['note'] }) });
+    // It IS on the screen — or «not focused» would be true of a note that was never drawn.
+    expect(field('notes')).not.toBeNull();
     expect(document.activeElement).not.toBe(field('notes'));
     expect(document.activeElement).toBe(document.body);
     expect(initiated()).toHaveLength(0);

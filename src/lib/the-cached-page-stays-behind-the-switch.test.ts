@@ -127,6 +127,8 @@ describe('a change the seller makes', () => {
   it('NEGATIVE: by store, a read that fails rebuilds nothing and never fails the publish', async () => {
     findMany.mockRejectedValue(new Error('db down'));
     await expect(refreshLandingPages({ storeId: 's1', companyId: 'c1' })).resolves.toBeUndefined();
+    // It was the store's read that failed, not some other one.
+    expect(findMany).toHaveBeenCalledWith({ where: { storeId: 's1', companyId: 'c1' }, select: { slug: true } });
     expect(revalidatePath).not.toHaveBeenCalled();
   });
 });
