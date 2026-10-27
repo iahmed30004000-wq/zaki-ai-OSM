@@ -52,6 +52,9 @@ beforeEach(() => {
   requirePermission.mockResolvedValue(undefined);
   db.store.findFirst.mockResolvedValue({ ...STORE });
   db.store.update.mockResolvedValue({});
+  // A store with no landing pages, unless a test says otherwise — a publish here then refreshes nothing, rather
+  // than leaning on the refresher swallowing a lookup that answered nothing at all.
+  db.landingPage.findMany.mockResolvedValue([]);
 });
 
 describe('which store gets painted', () => {
