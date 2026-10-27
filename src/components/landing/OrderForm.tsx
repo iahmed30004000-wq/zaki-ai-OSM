@@ -7,13 +7,17 @@ import { ORDER_PLACED } from '@/lib/order-placed-event';
 import { leaveFor } from '@/lib/leave-for';
 import { RiWhatsappLine } from '@/components/storefront/icons';
 import { useTracking } from '@/components/tracking/GlobalTrackingProvider';
+// Types only: the values live beside zod, and this form ships on every landing page.
+import type { CheckoutField, PageCheckout } from '@/lib/store-theme';
 
 /**
  * Trusted Native Order Form — rendered by Zaki AI itself on the public
  * landing page (BELOW the sandboxed iframe holding the uploaded HTML).
  *
  * Security contract:
- *  - sends ONLY: full_name, phone, address, city, offerId, notes (+ honeypot)
+ *  - sends ONLY: full_name, phone, address, city, offerId, notes, the
+ *    campaign code (+ honeypot and time stamp) — and alt_phone when the page
+ *    hands in its store's «الدفع» (`checkout`), whose fields include it
  *  - NEVER sends companyId / productId / price / quantity / freeQuantity /
  *    status / userId — the server derives everything from slug + offerId.
  *  - offers & prices arrive as server-rendered props straight from the DB.
@@ -168,6 +172,43 @@ interface OrderFormProps {
     upsellLook?: 'card' | 'banner' | 'compact';
     crossSellLook?: 'list' | 'cards';
   };
+  /**
+   * THE STORE'S «الدفع», for a landing page — worked out on the server by `checkoutForPage` and handed in as plain
+   * data. With it: the fields in the shop's order, «هاتف بديل» among them, the «*» the shop asked for, its words and
+   * its colour on the confirm button, and its line on the thank-you screen. Without it (a product page inside the
+   * shop) the form is exactly the one it always was.
+   */
+  checkout?: PageCheckout;
+}
+
+/**
+ * The form as it always was, for a door that hands in no checkout: no second number, the note folded, the four a
+ * parcel needs marked.
+ */
+const AS_IT_ALWAYS_WAS: { fields: readonly CheckoutField[]; required: readonly CheckoutField[] } = {
+  fields: ['name', 'phone', 'address', 'region', 'note'],
+  required: ['name', 'phone', 'address', 'region'],
+};
+
+/** What the confirm button says when nobody said otherwise — the form block's own default. */
+const DEFAULT_SUBMIT = 'تأكيد الطلب';
+
+/**
+ * THE CONFIRM BUTTON'S WORDS: the page's own, unless the page kept the default and the shop wrote its own in «الدفع».
+ *
+ * Every block page stores «تأكيد الطلب» — it is the form block's default — so «this page chose nothing» can only be
+ * read as that string or a blank. A seller who typed other words on the page keeps them. Never blank.
+ */
+export function submitWords(pageLabel: string | undefined, shopText: string | undefined): string {
+  const page = pageLabel?.trim() ?? '';
+  const shop = shopText?.trim() ?? '';
+  if (shop && (page === '' || page === DEFAULT_SUBMIT)) return shop;
+  return page || DEFAULT_SUBMIT;
+}
+
+/** The line under the thank-you title: the page's «صفحة الشكر» block, then the shop's «رسالة ما بعد الطلب», then ours. */
+export function thanksLine(pageMessage: string | undefined, shopMessage: string | undefined): string {
+  return pageMessage?.trim() || shopMessage?.trim() || 'سنتواصل معك قريبًا لتأكيد الطلب.';
 }
 
 const WHATSAPP_GREEN = '#25D366';
@@ -245,7 +286,7 @@ type FormState = 'idle' | 'loading' | 'success' | 'error';
 const packs = (n: number) => (n === 1 ? 'عبوة' : n === 2 ? 'عبوتان' : n <= 10 ? `${n} عبوات` : `${n} عبوة`);
 const fmt = (n: number) => `${Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
 
-export function OrderForm({ slug, productName, basePrice, currency, offers, recommendations, regions, phonePlaceholder, externalSelectedOfferId, showOfferPicker = true, formStyle = 'card', offerStyle = 'cards', dir = 'rtl', whatsapp, endpoint, thankYou, afterOrderWhatsapp, submitLabel, afterOrderLook }: OrderFormProps) {
+export function OrderForm({ slug, productName, basePrice, currency, offers, recommendations, regions, phonePlaceholder, externalSelectedOfferId, showOfferPicker = true, formStyle = 'card', offerStyle = 'cards', dir = 'rtl', whatsapp, endpoint, thankYou, afterOrderWhatsapp, submitLabel, afterOrderLook, checkout }: OrderFormProps) {
   const orderEndpoint = endpoint || `/api/public/landing-pages/${encodeURIComponent(slug)}/orders`;
   const [state, setState] = useState<FormState>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -383,19 +424,22 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
   // The options are THIS store's country regions, server-rendered. There is
   // no hard-coded country here: a Jordanian store shows Jordanian regions.
   /**
-   * THE SHORTEST CHECKOUT THESE FIELDS ALLOW — and the field list is
-   * UNCHANGED.
+   * THE SHORTEST CHECKOUT THESE FIELDS ALLOW.
    *
-   * «أقصر إتمام ممكن بالحقول الموجودة (الحقول ما تتغيّر)». Four of the five
-   * are required and stay; the fifth is «ملاحظات», optional, and it was a
-   * three-row textarea with a placeholder reading «(اختياري)» — a whole
-   * field's worth of screen, on a phone, between the address and the only
-   * button that matters, that almost nobody fills.
+   * «أقصر إتمام ممكن بالحقول الموجودة (الحقول ما تتغيّر)». The note is
+   * optional, and it was a three-row textarea with a placeholder reading
+   * «(اختياري)» — a whole field's worth of screen, on a phone, between the
+   * address and the only button that matters, that almost nobody fills.
    *
    * So it is folded behind one line of text. Nothing is removed: the same
    * `name="notes"` textarea, the same 500-character limit, one tap away for
    * the visitor who has something to say. A collapsed optional field is a
    * shorter form; a deleted one is a different form.
+   *
+   * WHICH FIELDS, IN WHAT ORDER, WITH WHICH «*», IS THE SHOP'S — «مش مربوط
+   * بصفحة الهبوط». A landing page hands in its store's «الدفع», and the
+   * order, the marks and «هاتف بديل» come from there. The note stays folded
+   * unless the shop made it required; then it is open from the start.
    */
   const [notesOpen, setNotesOpen] = useState(false);
   const [cityOpen, setCityOpen] = useState(false);
@@ -415,6 +459,9 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
     const data = {
       full_name: String(fd.get('full_name') || '').trim(),
       phone: String(fd.get('phone') || '').trim(),
+      // The second number, only from a form that asks for it. Blank is an answer, never a refusal: the door keeps it
+      // optional whatever the shop's tab says, and so does this form.
+      ...(checkout ? { alt_phone: String(fd.get('alt_phone') || '').trim() } : {}),
       address: String(fd.get('address') || '').trim(),
       city: cityValue,
       offerId: selectedOffer,
@@ -683,6 +730,227 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
     ) : null;
   const hasOffers = offers.length > 0;
 
+  // ─── The fields: the shop's «الدفع» when the page handed it in, the form as it always was when not ───
+  const fields: readonly CheckoutField[] = checkout?.fields ?? AS_IT_ALWAYS_WAS.fields;
+  const marked = new Set<CheckoutField>(checkout?.required ?? AS_IT_ALWAYS_WAS.required);
+  const star = (f: CheckoutField) =>
+    marked.has(f) ? <> <span className="text-[var(--store-accent,#b8256e)]">*</span></> : null;
+  // «الاسم والهاتف جنب بعض» in the compact look — while they ARE next to each other. A shop that put another field
+  // between them gets two full rows rather than two half fields each standing alone.
+  const half =
+    formStyle === 'compact' && Math.abs(fields.indexOf('name') - fields.indexOf('phone')) === 1 ? 'lp-half' : undefined;
+  const words = submitWords(submitLabel, checkout?.submitText);
+
+  const fieldBlock = (f: CheckoutField): React.ReactNode => {
+    switch (f) {
+      case 'name':
+        return (
+          <div className={half}>
+            <label htmlFor="zf-full_name" className={labelCls}>
+              الاسم الكامل{star('name')}
+            </label>
+            <input
+              id="zf-full_name"
+              name="full_name"
+              type="text"
+              required
+              minLength={2}
+              maxLength={80}
+              autoComplete="name"
+              placeholder="اكتب اسمك الكامل"
+              className={inputCls}
+              disabled={state === 'loading'}
+            />
+            <FieldError k='full_name' />
+          </div>
+        );
+      case 'phone':
+        return (
+          <div className={half}>
+            <label htmlFor="zf-phone" className={labelCls}>
+              رقم الهاتف{star('phone')}
+            </label>
+            <input
+              id="zf-phone"
+              name="phone"
+              type="tel"
+              required
+              minLength={7}
+              maxLength={20}
+              inputMode="tel"
+              autoComplete="tel"
+              placeholder={phonePlaceholder || '07xxxxxxxx'}
+              dir="ltr"
+              className={`${inputCls} text-start`}
+              disabled={state === 'loading'}
+            />
+            <FieldError k='phone' />
+          </div>
+        );
+      case 'altPhone':
+        /*
+         * «هاتف بديل» — a second number for the confirmation call to try. Marked when the shop marked it and never
+         * refused when blank: `aria-required` says it to a screen reader the way «*» says it on the screen, and
+         * nothing in the browser or at the door turns that into a refusal (the door keeps it optional on purpose).
+         * Not `autoComplete="tel"`, or the browser fills the customer's own number in twice.
+         */
+        return (
+          <div>
+            <label htmlFor="zf-alt_phone" className={labelCls}>
+              رقم هاتف بديل{marked.has('altPhone') ? star('altPhone') : ' (اختياري)'}
+            </label>
+            <input
+              id="zf-alt_phone"
+              name="alt_phone"
+              type="tel"
+              maxLength={25}
+              inputMode="tel"
+              autoComplete="off"
+              aria-required={marked.has('altPhone') || undefined}
+              placeholder={phonePlaceholder || '07xxxxxxxx'}
+              dir="ltr"
+              className={`${inputCls} text-start`}
+              disabled={state === 'loading'}
+            />
+            <FieldError k="alt_phone" />
+          </div>
+        );
+      case 'address':
+        return (
+          <div>
+            <label htmlFor="zf-address" className={labelCls}>
+              العنوان{star('address')}
+            </label>
+            <input
+              id="zf-address"
+              name="address"
+              type="text"
+              required
+              minLength={5}
+              maxLength={200}
+              autoComplete="street-address"
+              placeholder="المنطقة، الشارع، أقرب علامة مميزة"
+              className={inputCls}
+              disabled={state === 'loading'}
+            />
+            <FieldError k="address" />
+          </div>
+        );
+      case 'region':
+        // المدينة / الولاية — the country's own regions, searchable. Moved as one block: the list hangs off it.
+        return (
+          <div className="relative">
+            <label htmlFor="zf-city" className={labelCls}>
+              المدينة / الولاية{star('region')}
+            </label>
+            <button
+              type="button"
+              id="zf-city"
+              onClick={() => { setCityOpen((o) => !o); }}
+              className={`${inputCls} flex items-center justify-between text-start ${cityValue ? '' : 'text-[#9aa4b2]'}`}
+              disabled={state === 'loading'}
+              aria-haspopup="listbox"
+              aria-expanded={cityOpen}
+            >
+              <span className="truncate">{cityValue || 'اختر المدينة أو الولاية'}</span>
+              <svg className="h-4 w-4 shrink-0 text-[#697586]" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.72-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" /></svg>
+            </button>
+            <FieldError k="city" />
+            {cityOpen && (
+              <div className="absolute inset-x-0 top-full z-30 mt-1 max-h-72 overflow-hidden rounded-xl border border-[#e3e8ef] bg-white shadow-lg">
+                <div className="relative border-b border-[#e3e8ef]">
+                  {/* LOGICAL, NOT PHYSICAL. `right-3` put this icon at the
+                      start of a right-to-left page and on top of the typed
+                      text in a left-to-right one — and the shop's language
+                      is the seller's to choose. The sibling list below has
+                      always used `text-start`; this was the line it was
+                      never applied to. */}
+                  <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9aa4b2]" />
+                  <input
+                    type="text"
+                    autoFocus
+                    value={cityQuery}
+                    onChange={(e) => setCityQuery(e.target.value)}
+                    placeholder="ابحث عن المحافظة أو المدينة…"
+                    className="w-full border-0 px-4 py-3 ps-9 text-sm focus:outline-none"
+                  />
+                </div>
+                <div className="max-h-56 overflow-y-auto">
+                  {cityOptions.map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => { setCityValue(name); setCityOpen(false); setCityQuery(''); setFieldErrors((fe) => { const n = { ...fe }; delete n.city; return n; }); }}
+                      className={`block w-full px-4 py-2 text-start text-sm hover:bg-[#f8fafc] ${cityValue === name ? 'bg-[#fdf2f7] font-semibold text-[var(--store-accent,#b8256e)]' : 'text-[#364152]'}`}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                  {cityOptions.length === 0 && (
+                    <p className="px-4 py-6 text-center text-xs text-[#9aa4b2]">لا توجد نتائج مطابقة</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      case 'note': {
+        /*
+         * ملاحظات — folded until it is wanted, unless the shop made it required: then it is open from the start,
+         * marked, and NOT focused. Focus on arrival would scroll every visitor down to the form, open the phone's
+         * keyboard and report «بدء الطلب» to the ad accounts before anybody touched anything. A note the visitor
+         * opened with a tap is still focused: they asked for it.
+         */
+        const noteRequired = marked.has('note');
+        return noteRequired || notesOpen ? (
+          <div>
+            <label htmlFor="zf-notes" className={labelCls}>
+              ملاحظات{star('note')}
+            </label>
+            <textarea
+              id="zf-notes"
+              name="notes"
+              rows={3}
+              maxLength={500}
+              autoFocus={!noteRequired}
+              aria-required={noteRequired || undefined}
+              placeholder="أي تفاصيل إضافية"
+              className={`${inputCls} resize-none`}
+              disabled={state === 'loading'}
+            />
+            {checkout && <FieldError k="notes" />}
+          </div>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => setNotesOpen(true)}
+              /* A plain underline and nothing finer.
+                 A dotted decoration style and an offset step were tried
+                 here, and each would have been the product's ONLY use of
+                 that utility — while the first-load stylesheet has eleven
+                 bytes of headroom under its ratchet. A dotted rule under
+                 one link is not worth a step of that budget.
+                 THE TWO NAMES ARE NOT WRITTEN OUT ON PURPOSE: Tailwind's
+                 scanner reads prose as well as markup, so a comment
+                 naming a utility puts that utility back in the sheet.
+                 This exact comment, with the names in it, is what pushed
+                 the build 50 bytes over the cap after they were removed
+                 from the className. */
+              className="text-start text-sm font-semibold text-[var(--store-accent,#b8256e)] underline"
+            >
+              + إضافة ملاحظة (اختياري)
+            </button>
+            {/* A refusal about a folded field is still said, under the line that opens it. */}
+            {checkout && <FieldError k="notes" />}
+          </>
+        );
+      }
+      default:
+        return null;
+    }
+  };
+
   return (
     <section
       id="zaki-order-form"
@@ -745,7 +1013,7 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
                 </p>
               )}
               <p className="mt-2 whitespace-pre-line text-xs text-[#697586]">
-                {thankYou?.message?.trim() || 'سنتواصل معك قريبًا لتأكيد الطلب.'}
+                {thanksLine(thankYou?.message, checkout?.thanksMessage)}
               </p>
 
               {/*
@@ -1047,162 +1315,11 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
                 </div>
               )}
 
-              {/* الاسم الكامل */}
-              <div className={formStyle === 'compact' ? 'lp-half' : undefined}>
-                <label htmlFor="zf-full_name" className={labelCls}>
-                  الاسم الكامل <span className="text-[var(--store-accent,#b8256e)]">*</span>
-                </label>
-                <input
-                  id="zf-full_name"
-                  name="full_name"
-                  type="text"
-                  required
-                  minLength={2}
-                  maxLength={80}
-                  autoComplete="name"
-                  placeholder="اكتب اسمك الكامل"
-                  className={inputCls}
-                  disabled={state === 'loading'}
-                />
-                <FieldError k='full_name' />
-              </div>
-
-              {/* رقم الهاتف */}
-              <div className={formStyle === 'compact' ? 'lp-half' : undefined}>
-                <label htmlFor="zf-phone" className={labelCls}>
-                  رقم الهاتف <span className="text-[var(--store-accent,#b8256e)]">*</span>
-                </label>
-                <input
-                  id="zf-phone"
-                  name="phone"
-                  type="tel"
-                  required
-                  minLength={7}
-                  maxLength={20}
-                  inputMode="tel"
-                  autoComplete="tel"
-                  placeholder={phonePlaceholder || '07xxxxxxxx'}
-                  dir="ltr"
-                  className={`${inputCls} text-start`}
-                  disabled={state === 'loading'}
-                />
-                <FieldError k='phone' />
-              </div>
-
-              {/* العنوان */}
-              <div>
-                <label htmlFor="zf-address" className={labelCls}>
-                  العنوان <span className="text-[var(--store-accent,#b8256e)]">*</span>
-                </label>
-                <input
-                  id="zf-address"
-                  name="address"
-                  type="text"
-                  required
-                  minLength={5}
-                  maxLength={200}
-                  autoComplete="street-address"
-                  placeholder="المنطقة، الشارع، أقرب علامة مميزة"
-                  className={inputCls}
-                  disabled={state === 'loading'}
-                />
-                <FieldError k="address" />
-              </div>
-
-              {/* المدينة / الولاية — searchable Syrian locations */}
-              <div className="relative">
-                <label htmlFor="zf-city" className={labelCls}>
-                  المدينة / الولاية <span className="text-[var(--store-accent,#b8256e)]">*</span>
-                </label>
-                <button
-                  type="button"
-                  id="zf-city"
-                  onClick={() => { setCityOpen((o) => !o); }}
-                  className={`${inputCls} flex items-center justify-between text-start ${cityValue ? '' : 'text-[#9aa4b2]'}`}
-                  disabled={state === 'loading'}
-                  aria-haspopup="listbox"
-                  aria-expanded={cityOpen}
-                >
-                  <span className="truncate">{cityValue || 'اختر المدينة أو الولاية'}</span>
-                  <svg className="h-4 w-4 shrink-0 text-[#697586]" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.72-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" /></svg>
-                </button>
-                <FieldError k="city" />
-                {cityOpen && (
-                  <div className="absolute inset-x-0 top-full z-30 mt-1 max-h-72 overflow-hidden rounded-xl border border-[#e3e8ef] bg-white shadow-lg">
-                    <div className="relative border-b border-[#e3e8ef]">
-                      {/* LOGICAL, NOT PHYSICAL. `right-3` put this icon at the
-                          start of a right-to-left page and on top of the typed
-                          text in a left-to-right one — and the shop's language
-                          is the seller's to choose. The sibling list below has
-                          always used `text-start`; this was the line it was
-                          never applied to. */}
-                      <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9aa4b2]" />
-                      <input
-                        type="text"
-                        autoFocus
-                        value={cityQuery}
-                        onChange={(e) => setCityQuery(e.target.value)}
-                        placeholder="ابحث عن المحافظة أو المدينة…"
-                        className="w-full border-0 px-4 py-3 ps-9 text-sm focus:outline-none"
-                      />
-                    </div>
-                    <div className="max-h-56 overflow-y-auto">
-                      {cityOptions.map((name) => (
-                        <button
-                          key={name}
-                          type="button"
-                          onClick={() => { setCityValue(name); setCityOpen(false); setCityQuery(''); setFieldErrors((fe) => { const n = { ...fe }; delete n.city; return n; }); }}
-                          className={`block w-full px-4 py-2 text-start text-sm hover:bg-[#f8fafc] ${cityValue === name ? 'bg-[#fdf2f7] font-semibold text-[var(--store-accent,#b8256e)]' : 'text-[#364152]'}`}
-                        >
-                          {name}
-                        </button>
-                      ))}
-                      {cityOptions.length === 0 && (
-                        <p className="px-4 py-6 text-center text-xs text-[#9aa4b2]">لا توجد نتائج مطابقة</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* ملاحظات — optional, and folded until it is wanted */}
-              {notesOpen ? (
-                <div>
-                  <label htmlFor="zf-notes" className={labelCls}>
-                    ملاحظات
-                  </label>
-                  <textarea
-                    id="zf-notes"
-                    name="notes"
-                    rows={3}
-                    maxLength={500}
-                    autoFocus
-                    placeholder="أي تفاصيل إضافية"
-                    className={`${inputCls} resize-none`}
-                    disabled={state === 'loading'}
-                  />
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setNotesOpen(true)}
-                  /* A plain underline and nothing finer.
-                     A dotted decoration style and an offset step were tried
-                     here, and each would have been the product's ONLY use of
-                     that utility — while the first-load stylesheet has eleven
-                     bytes of headroom under its ratchet. A dotted rule under
-                     one link is not worth a step of that budget.
-                     THE TWO NAMES ARE NOT WRITTEN OUT ON PURPOSE: Tailwind's
-                     scanner reads prose as well as markup, so a comment
-                     naming a utility puts that utility back in the sheet.
-                     This exact comment, with the names in it, is what pushed
-                     the build 50 bytes over the cap after they were removed
-                     from the className. */
-                  className="text-start text-sm font-semibold text-[var(--store-accent,#b8256e)] underline"
-                >
-                  + إضافة ملاحظة (اختياري)
-                </button>
-              )}
+              {/* The fields, in the shop's order (or the form's own, for a door that hands in no checkout). A fragment
+                  each, never a wrapper: the compact look is a grid over the form's own children. */}
+              {fields.map((f) => (
+                <React.Fragment key={f}>{fieldBlock(f)}</React.Fragment>
+              ))}
 
               {/* Honeypot — hidden from humans */}
               {/* Bot honeypot. It used to hide at `left: -9999px`, which in
@@ -1232,6 +1349,10 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
                 type="submit"
                 disabled={state === 'loading' || (!hasOffers && false) || (hasOffers && !selectedOffer)}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--store-accent,#b8256e)] px-5 py-4 text-base font-bold text-[var(--store-accent-text,#ffffff)] shadow-sm transition hover:bg-[var(--store-accent-dark,#a01f5f)] disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.99]"
+                // The shop's «لون زر التأكيد» — on THIS button alone, as the three variables its classes already read
+                // (colour, measured ink, pressed shade). The band above and the offer cards keep the page's accent.
+                // No colour set: no style at all, and the button is the page's as before.
+                style={checkout?.buttonVars ? (checkout.buttonVars as React.CSSProperties) : undefined}
               >
                 {state === 'loading' ? (
                   <>
@@ -1241,7 +1362,7 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
                 ) : (
                   <>
                     <ShoppingBag className="h-5 w-5" />
-                    {submitLabel?.trim() || 'تأكيد الطلب'}{offer ? ` — ${fmt(offer.price)} ${currency}` : ''}
+                    {words}{offer ? ` — ${fmt(offer.price)} ${currency}` : ''}
                   </>
                 )}
               </button>
@@ -1253,7 +1374,7 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
                 </p>
               )}
               <p className="text-center text-[11px] text-[#697586]">
-                بالضغط على «{submitLabel?.trim() || 'تأكيد الطلب'}»، سيتواصل معك فريقنا لتأكيد الطلب والتوصيل. الدفع عند الاستلام.
+                بالضغط على «{words}»، سيتواصل معك فريقنا لتأكيد الطلب والتوصيل. الدفع عند الاستلام.
               </p>
             </form>
           )}

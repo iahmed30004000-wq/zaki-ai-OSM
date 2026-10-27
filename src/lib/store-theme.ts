@@ -533,6 +533,60 @@ export function requiredCheckoutFields(theme: StoreTheme): CheckoutField[] {
   return CHECKOUT_FIELDS.filter((f) => chosen.has(f));
 }
 
+/**
+ * WHAT A LANDING PAGE'S ORDER FORM TAKES FROM ITS STORE'S «الدفع».
+ *
+ * «مش مربوط بصفحة الهبوط». The tab saved five settings and the shop's cart
+ * checkout read three of them; every landing page drew its own fields, its
+ * own button and its own thank-you line, so a seller who set the tab saw it
+ * change nothing on the pages that sell.
+ *
+ * Read from the store's LIVE theme — the one a visitor's page is painted
+ * from. Never the page's own theme, which is a look and holds no checkout,
+ * and never the draft, which nobody has published.
+ *
+ * PLAIN DATA, DECIDED HERE. The form is a client component: importing this
+ * module into it would put zod on every landing page. So the answers are
+ * worked out on the server and handed over; the form imports their type.
+ *
+ *   · `fields` and `required` — the same two questions the cart checkout
+ *     asks, through the same two functions above.
+ *   · `submitText` and `thanksMessage` — trimmed, '' when the seller wrote
+ *     none. `thanksMessage` is the store's `afterOrderMessage` under another
+ *     name, because in the form `afterOrderMessage()` is already the
+ *     WhatsApp text and one name for two things is how they get swapped.
+ *   · `buttonColor` — #rrggbb, or null for «مثل اللون الأساسي». With it,
+ *     `buttonVars`: the three variables the confirm button paints itself
+ *     from, derived by the palette that derives the page's own — so the ink
+ *     on a yellow button is measured, not assumed to be white.
+ */
+export interface PageCheckout {
+  fields: CheckoutField[];
+  required: CheckoutField[];
+  submitText: string;
+  buttonColor: string | null;
+  buttonVars: Record<string, string> | null;
+  thanksMessage: string;
+}
+
+/** The three the confirm button reads. The header band and the offer cards keep the page's own. */
+const BUTTON_VARS = ['--store-accent', '--store-accent-text', '--store-accent-dark'] as const;
+
+export function checkoutForPage(theme: StoreTheme): PageCheckout {
+  const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
+  const colour = text(theme.checkout?.buttonColor);
+  const buttonColor = hex.safeParse(colour).success ? colour : null;
+  const vars = buttonColor ? paletteVars(paletteFor({ ...DEFAULT_THEME, accent: buttonColor })) : null;
+  return {
+    fields: checkoutOrder(theme),
+    required: requiredCheckoutFields(theme),
+    submitText: text(theme.checkout?.submitText),
+    buttonColor,
+    buttonVars: vars ? Object.fromEntries(BUTTON_VARS.map((name) => [name, vars[name]])) : null,
+    thanksMessage: text(theme.checkout?.afterOrderMessage),
+  };
+}
+
 /** The fields a page may depart from its store on. */
 const LANDING_THEME_KEYS = Object.keys(landingThemeSchema.shape) as (keyof LandingTheme)[];
 

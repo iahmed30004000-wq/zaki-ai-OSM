@@ -20,7 +20,7 @@ import { familyOf, trustRow } from '@/lib/selling-blocks';
 import { whatsappHref } from '@/lib/store-contact';
 import { sellingFacts } from '@/lib/selling-facts';
 import { paletteFor, paletteVars, DEFAULT_THEME } from '@/lib/landing-theme';
-import { parseStoreTheme, themeForPage, wearsShopChrome } from '@/lib/store-theme';
+import { checkoutForPage, parseStoreTheme, themeForPage, wearsShopChrome } from '@/lib/store-theme';
 import { directionOf } from '@/lib/store-languages';
 import { loadStoreFonts } from '@/lib/fonts/load-store-fonts';
 import { PageBlocks } from '@/components/landing/blocks/PageBlocks';
@@ -323,6 +323,15 @@ export async function LandingPageView({ target }: { target: LandingPageTarget })
   // The look of the order form is the form block's choice.
   const formBlock = sections.find((s) => s.type === 'form' && s.enabled);
   const formChoices = formBlock && formBlock.type === 'form' ? formBlock : undefined;
+  /*
+   * WHAT THE FORM ASKS FOR IS THE STORE'S «الدفع» — «مش مربوط بصفحة الهبوط».
+   *
+   * The fields and their order, the «*» marks, the confirm button's words and colour, the line after the order: set
+   * once on the store, on every page it sells through. Read from the store's LIVE theme — the one a visitor's page
+   * is painted from — never this page's own theme (a look, with no checkout in it) and never the store's draft. A
+   * preview shows the page's draft beside the store's published checkout, which is what a visitor would get.
+   */
+  const checkout = checkoutForPage(parseStoreTheme(lp.store?.theme));
 
   const orderForm = (
     <LandingFormBridge
@@ -376,6 +385,7 @@ export async function LandingPageView({ target }: { target: LandingPageTarget })
         formStyle={formChoices?.formStyle}
         offerStyle={formChoices?.offerStyle}
         thankYou={thankYou}
+        checkout={checkout}
       />
     </LandingFormBridge>
   );

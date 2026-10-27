@@ -9,17 +9,27 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * a cart it does not have.
  */
 
-const { db, requireContext, requirePermission, logAudit } = vi.hoisted(() => ({
-  db: { store: { findFirst: vi.fn(), update: vi.fn() } },
+const { db, requireContext, requirePermission, logAudit, refreshLandingPages, revalidatePath } = vi.hoisted(() => ({
+  db: { store: { findFirst: vi.fn(), update: vi.fn() }, landingPage: { findMany: vi.fn() } },
   requireContext: vi.fn(),
   requirePermission: vi.fn(),
   logAudit: vi.fn(),
+  refreshLandingPages: vi.fn(),
+  revalidatePath: vi.fn(),
 }));
 
 vi.mock('@/lib/db', () => ({ db }));
 vi.mock('@/lib/geo-context', () => ({ requireContext: (...a: unknown[]) => requireContext(...a) }));
 vi.mock('@/lib/authorization', () => ({ requirePermission: (...a: unknown[]) => requirePermission(...a) }));
 vi.mock('@/lib/audit', () => ({ logAudit: (...a: unknown[]) => logAudit(...a) }));
+vi.mock('next/cache', () => ({ revalidatePath }));
+// A spy around the REAL refresher: the calls can be counted, and its never-throws promise is the one being tested,
+// not a stand-in's.
+vi.mock('@/lib/landing-cache', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/landing-cache')>();
+  refreshLandingPages.mockImplementation(real.refreshLandingPages);
+  return { refreshLandingPages };
+});
 
 import { GET, PATCH, POST, PUT } from './route';
 import { DEFAULT_STORE_THEME } from '@/lib/store-theme';
@@ -256,5 +266,72 @@ describe('one step back', () => {
     expect((await (await GET()).json()).canRevert).toBe(false);
     db.store.findFirst.mockResolvedValue({ ...STORE, theme: LIVE, themePrevious: BEFORE });
     expect((await (await GET()).json()).canRevert).toBe(true);
+  });
+});
+
+/**
+ * «مش مربوط بصفحة الهبوط» — AND WHEN IT IS, A CACHED PAGE MUST NOT LAG A MINUTE BEHIND IT.
+ *
+ * Every landing page of the store now asks its order form's fields, its confirm button and its after-order line of
+ * the store's «الدفع». A cached page (`LP_PAGE_CACHE=1`) was built from the old one, so a publish and a step back
+ * rebuild that store's pages at once. A draft does not: no visitor is ever shown a draft.
+ */
+describe('a published look reaches the store’s cached landing pages at once', () => {
+  const LIVE = JSON.stringify({ ...DEFAULT_STORE_THEME, accent: '#111111' });
+  const DRAFT = JSON.stringify({
+    ...DEFAULT_STORE_THEME,
+    checkout: { ...DEFAULT_STORE_THEME.checkout!, submitText: 'احجز علبتك الآن' },
+  });
+
+  beforeEach(() => {
+    db.landingPage.findMany.mockResolvedValue([{ slug: 'kamaa' }, { slug: 'sidr-honey' }]);
+  });
+
+  it('publishing rebuilds every page of this store, after the publish is written', async () => {
+    db.store.findFirst.mockResolvedValue({ ...STORE, theme: LIVE, themeDraft: DRAFT });
+    expect((await POST()).status).toBe(200);
+    expect(refreshLandingPages).toHaveBeenCalledTimes(1);
+    expect(refreshLandingPages).toHaveBeenCalledWith({ storeId: 'store-1', companyId: 'c1' });
+    expect(db.landingPage.findMany.mock.calls[0][0].where).toEqual({ storeId: 'store-1', companyId: 'c1' });
+    expect(revalidatePath.mock.calls.map((c) => c[0])).toEqual(['/lp-cached/kamaa', '/lp-cached/sidr-honey']);
+    // After the write, or a visit in between would rebuild the page from the look being replaced.
+    expect(db.store.update.mock.invocationCallOrder[0]).toBeLessThan(refreshLandingPages.mock.invocationCallOrder[0]);
+  });
+
+  it('and so does a step back, which is a publish', async () => {
+    db.store.findFirst.mockResolvedValue({ ...STORE, theme: DRAFT, themePrevious: LIVE });
+    expect((await PUT()).status).toBe(200);
+    expect(refreshLandingPages).toHaveBeenCalledTimes(1);
+    expect(refreshLandingPages).toHaveBeenCalledWith({ storeId: 'store-1', companyId: 'c1' });
+    expect(db.store.update.mock.invocationCallOrder[0]).toBeLessThan(refreshLandingPages.mock.invocationCallOrder[0]);
+  });
+
+  it('NEGATIVE: saving a draft rebuilds nothing — a visitor never sees a draft', async () => {
+    const res = await patch(JSON.parse(DRAFT));
+    expect(res.status).toBe(200);
+    expect(db.store.update).toHaveBeenCalledTimes(1);
+    expect(refreshLandingPages).not.toHaveBeenCalled();
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE: nor does a publish or a step back that was refused', async () => {
+    db.store.findFirst.mockResolvedValue({ ...STORE, theme: LIVE, themeDraft: LIVE });
+    expect((await POST()).status).toBe(409);
+    db.store.findFirst.mockResolvedValue({ ...STORE, theme: LIVE, themePrevious: null });
+    expect((await PUT()).status).toBe(409);
+    expect(refreshLandingPages).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE: a refresh that fails never fails the publish — the new look is already live', async () => {
+    db.landingPage.findMany.mockRejectedValue(new Error('db down'));
+    db.store.findFirst.mockResolvedValue({ ...STORE, theme: LIVE, themeDraft: DRAFT });
+    const published = await POST();
+    expect(published.status).toBe(200);
+    expect(db.store.update.mock.calls[0][0].data.theme).toBe(DRAFT);
+    expect(logAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'STORE_THEME_PUBLISHED' }));
+
+    db.store.findFirst.mockResolvedValue({ ...STORE, theme: DRAFT, themePrevious: LIVE });
+    expect((await PUT()).status).toBe(200);
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 });

@@ -336,7 +336,7 @@ export function StoreThemeScreen() {
 
   /** The one act a customer feels, and the only one that asks first. */
   async function publish() {
-    if (!confirm('سينتقل شكل المتجر إلى هذه المسوّدة ويراه كل زبون الآن. متابعة؟')) return;
+    if (!confirm('سينتقل شكل المتجر إلى هذه المسوّدة ويراه كل زبون الآن — ومعه نماذج الطلب بصفحات الهبوط: ترتيب الحقول وزر التأكيد ورسالة ما بعد الطلب. متابعة؟')) return;
     setPublishing(true);
     setMsg(null);
     try {

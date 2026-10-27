@@ -336,15 +336,17 @@ describe('the checkout is as short as these fields allow', () => {
   const form = () => stripComments(repoFile('src/components/landing/OrderForm.tsx'));
 
   /**
-   * THE FIELD LIST IS UNCHANGED, WHICH IS HALF THE REQUIREMENT.
+   * NO FIELD IS LOST, WHICH IS HALF THE REQUIREMENT.
    *
    * «أقصر إتمام ممكن بالحقول الموجودة (الحقول ما تتغيّر)». The server
    * derives everything else from the slug and the offer id, and a field
    * removed here would be a field the order no longer carries — so what
-   * the page sends is pinned by name.
+   * the page sends is pinned by name. The one addition is the store's own
+   * «هاتف بديل», asked only when the page hands in its store's «الدفع»
+   * (the-form-follows-the-stores-checkout.test.tsx).
    */
-  it('still sends exactly the five fields and the honeypot', () => {
-    for (const name of ['full_name', 'phone', 'address', 'notes', 'website']) {
+  it('still sends the five fields and the honeypot — and the shop’s second number', () => {
+    for (const name of ['full_name', 'phone', 'address', 'notes', 'website', 'alt_phone']) {
       expect(form(), `الحقل «${name}» اختفى من النموذج`).toContain(`name="${name}"`);
     }
     // The city is a listbox over the country's own regions, not a text field.

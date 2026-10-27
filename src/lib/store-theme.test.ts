@@ -1,13 +1,14 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_THEME } from './landing-theme';
+import { DEFAULT_THEME, paletteFor, readableOn } from './landing-theme';
 import {
   CHECKOUT_FIELDS,
   COLOR_VAR,
   DEFAULT_STORE_THEME,
   MANDATORY_CHECKOUT_FIELDS,
   cartBarApplies,
+  checkoutForPage,
   checkoutOrder,
   headingFont,
   menuFont,
@@ -118,6 +119,83 @@ describe('the checkout cannot be configured into a broken order', () => {
     const theme = of({ checkout: { ...DEFAULT_STORE_THEME.checkout!, required: ['name'] } });
     expect(requiredCheckoutFields(theme)).toContain('region');
     expect(requiredCheckoutFields(theme)).toContain('address');
+  });
+});
+
+/**
+ * «مش مربوط بصفحة الهبوط» — WHAT A LANDING PAGE'S ORDER FORM TAKES FROM ITS STORE.
+ *
+ * One resolver, run on the server, handing the form plain answers. These hold what it answers when the seller never
+ * opened «الدفع», what it does with what they typed, and that a colour which is not one never reaches a button.
+ */
+describe('checkoutForPage — the store’s «الدفع», for a landing page', () => {
+  const withCheckout = (over: Partial<NonNullable<StoreTheme['checkout']>>) =>
+    of({ checkout: { ...DEFAULT_STORE_THEME.checkout!, ...over } });
+
+  it('a store that never opened the tab hands over the whole order, and only the four are required', () => {
+    const c = checkoutForPage(DEFAULT_STORE_THEME);
+    expect(c.fields).toEqual(['name', 'phone', 'altPhone', 'region', 'address', 'note']);
+    expect(c.required).toEqual(['name', 'phone', 'region', 'address']);
+    expect(c).toMatchObject({ submitText: '', buttonColor: null, buttonVars: null, thanksMessage: '' });
+    // And a theme stored before the checkout existed reads the same way.
+    expect(checkoutForPage(parseStoreTheme(JSON.stringify(DEFAULT_THEME)))).toEqual(c);
+  });
+
+  it('the four a parcel needs stay required whatever was saved, and the shop’s own are added', () => {
+    const c = checkoutForPage(withCheckout({ required: ['note'] }));
+    for (const f of MANDATORY_CHECKOUT_FIELDS) expect(c.required, f).toContain(f);
+    expect(c.required).toContain('note');
+    expect(c.required).not.toContain('altPhone');
+    expect(checkoutForPage(withCheckout({ required: [] })).required).toEqual(['name', 'phone', 'region', 'address']);
+  });
+
+  it('reads the seller’s own order and words off the stored theme', () => {
+    const mine = ['phone', 'name', 'region', 'address', 'note', 'altPhone'];
+    const stored = JSON.stringify({
+      ...DEFAULT_STORE_THEME,
+      checkout: {
+        fieldOrder: mine,
+        required: ['altPhone'],
+        submitText: '  احجز علبتك الآن  ',
+        buttonColor: '#ffd400',
+        afterOrderMessage: ' وصلنا طلبك — بنتصل فيك اليوم. ',
+      },
+    });
+    const c = checkoutForPage(parseStoreTheme(stored));
+    expect(c.fields).toEqual(mine);
+    expect(c.required).toEqual(['name', 'phone', 'altPhone', 'region', 'address']);
+    expect(c.submitText).toBe('احجز علبتك الآن');
+    expect(c.thanksMessage).toBe('وصلنا طلبك — بنتصل فيك اليوم.');
+    expect(c.buttonColor).toBe('#ffd400');
+  });
+
+  it('a valid colour brings its own measured ink and its own pressed shade — the three the button reads', () => {
+    const c = checkoutForPage(withCheckout({ buttonColor: '#ffd400' }));
+    expect(c.buttonVars).toEqual({
+      '--store-accent': '#ffd400',
+      '--store-accent-text': readableOn('#ffd400'),
+      '--store-accent-dark': paletteFor({ ...DEFAULT_THEME, accent: '#ffd400' }).accentDark,
+    });
+    // Measured, not assumed: ink on a yellow, where the house accent takes paper.
+    expect(c.buttonVars!['--store-accent-text']).not.toBe(readableOn(DEFAULT_THEME.accent));
+    expect(c.buttonVars!['--store-accent-dark']).not.toBe('#ffd400');
+    // And nothing else of the palette rides along: the band and the cards keep the page's own.
+    expect(Object.keys(c.buttonVars!).sort()).toEqual(['--store-accent', '--store-accent-dark', '--store-accent-text']);
+  });
+
+  it('NEGATIVE: a colour that is not #rrggbb is no colour — the button keeps the page’s', () => {
+    for (const bad of ['red', '#fff', 'ffd400', '#ffd40', '#ffd4000', '#ggd400', 'url(x)', '', '   ']) {
+      const c = checkoutForPage(withCheckout({ buttonColor: bad }));
+      expect(c.buttonColor, bad).toBeNull();
+      expect(c.buttonVars, bad).toBeNull();
+    }
+    expect(checkoutForPage(withCheckout({ buttonColor: undefined })).buttonVars).toBeNull();
+  });
+
+  it('NEGATIVE: whitespace is not words — it falls back like an empty field', () => {
+    const c = checkoutForPage(withCheckout({ submitText: '   ', afterOrderMessage: '\n\t ' }));
+    expect(c.submitText).toBe('');
+    expect(c.thanksMessage).toBe('');
   });
 });
 
