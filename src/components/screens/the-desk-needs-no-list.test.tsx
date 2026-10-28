@@ -36,8 +36,9 @@ vi.mock('@/context/AppContext', () => ({
 
 import { PermissionsScreen } from './PermissionsScreen';
 
-const NO_LIST = /«طلباتي» بتشتغل بلا «عرض الطلبات»/;
+const NO_LIST = /«طلباتي» ما بدها «عرض الطلبات»/;
 const NO_DESK = /ما رح تظهر على مكتبه/;
+const CANNOT_WORK = /ولا بيقدر يشتغل عليها/;
 const FIX = /فعّل «العمل على طلباتي والمؤجلة»/;
 const ROLE_NAME = 'موظّف تأكيد';
 
@@ -91,6 +92,16 @@ describe('a role that pulls with no desk to pull onto', () => {
     expect(screen.queryByText(FIX), 'قال المشكلة وما قال الحلّ').not.toBeNull();
     // It does not work «طلباتي», so the line about «طلباتي» is not its line.
     expect(screen.queryByText(NO_LIST)).toBeNull();
+    // With «عرض الطلبات» the pulled order still opens from the list: saying it cannot be worked would be false.
+    expect(screen.queryByText(CANNOT_WORK), 'قال إنه ما بيقدر يشتغل عليها وهو بيفتحها من القائمة').toBeNull();
+  });
+
+  it('and without «عرض الطلبات» it is told it cannot work them either', async () => {
+    roleHolding('confirmation.pull');
+    render(<PermissionsScreen />);
+    await openTheRole();
+    expect(screen.queryByText(NO_DESK), 'ما حذّر').not.toBeNull();
+    expect(screen.queryByText(CANNOT_WORK), 'ما قال إنه ما بيقدر يشتغل عليها').not.toBeNull();
   });
 });
 

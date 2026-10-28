@@ -375,7 +375,8 @@ const ALLOWED: Record<string, string[]> = {
 
 /** Where the door is defined — not callers of it. */
 const HOME = ['src/lib/rbac.ts', 'src/lib/order-work-door.ts'];
-const USES = /\bORDER_WORK_DOOR\b|\borderWorkWhere\s*\(|\bmayEnterOrderWorkDoor\s*\(|\bheldOrderWhere\s*\(/;
+// The literal too: a door written by its string instead of the constant is still a door.
+const USES = /\bORDER_WORK_DOOR\b|\borderWorkWhere\s*\(|\bmayEnterOrderWorkDoor\s*\(|\bheldOrderWhere\s*\(|door:the-order-she-holds/;
 
 const root = process.cwd();
 function sourceFiles(): string[] {

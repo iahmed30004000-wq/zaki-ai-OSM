@@ -549,8 +549,8 @@ export function PermissionsScreen() {
             {draft['confirmation.work'] && (
               <p className="text-xs text-[var(--sys-muted-foreground)]">
                 {ar
-                  ? '«طلباتي» بتشتغل بلا «عرض الطلبات» — الموظف بيفتح ويعدّل ويأكّد بس الطلب اللي بين إيديه.'
-                  : '«My orders» works without «View orders» — the agent opens, edits and confirms only the order in their hands.'}
+                  ? '«طلباتي» ما بدها «عرض الطلبات»: الطلب اللي بين إيدين الموظف بينفتح ويشتغل عليه حتى لو «عرض الطلبات» مطفية.'
+                  : '«My orders» does not need «View orders»: the order in the agent’s hands opens and can be worked even with «View orders» off.'}
               </p>
             )}
 
@@ -567,9 +567,10 @@ export function PermissionsScreen() {
                 <p className="flex items-start gap-2 text-xs font-bold text-[var(--sys-warning)]">
                   <RiAlertLine className="w-4 h-4 shrink-0 mt-px" />
                   <span>
+                    {/* With «عرض الطلبات» the pulled order still opens from the list, so only a role without it is told it cannot work them. */}
                     {ar
-                      ? 'هالدور بيسحب طلبات وما رح تظهر على مكتبه — ولا بيقدر يشتغل عليها'
-                      : 'This role pulls orders that will not appear on its desk — and cannot work them'}
+                      ? `هالدور بيسحب طلبات وما رح تظهر على مكتبه${draft['orders.view'] ? '' : ' — ولا بيقدر يشتغل عليها'}`
+                      : `This role pulls orders that will not appear on its desk${draft['orders.view'] ? '' : ' — and cannot work them'}`}
                   </span>
                 </p>
                 <p className="flex items-start gap-2 text-xs text-[var(--sys-heading)]">
