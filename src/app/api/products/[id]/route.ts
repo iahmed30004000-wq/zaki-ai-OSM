@@ -13,6 +13,7 @@ import { parseHistory, rememberSlug, slugify, uniqueSlug } from '@/lib/slug';
 import { can, authorize } from '@/lib/authorization';
 import { requireContext } from '@/lib/geo-context';
 import { BASE_PRICE_NOT_A_NUMBER, readBasePrice } from '@/lib/product-base-price';
+import { baseBelowActiveOffersRefusal } from '@/lib/offers';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -122,7 +123,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const { user, companyId, storeId } = await requireContext();
+    const { user, companyId, storeId, country } = await requireContext();
 
     const body = await req.json();
     const { name, nameEn, sku, description, descriptionEn, basePrice, status, sourceType, categoryId, attributes } = body;
@@ -179,6 +180,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       const priceAuth = authorize(user, 'products.change_price', existing);
       if (!priceAuth.allowed) {
         return NextResponse.json({ error: 'Forbidden: products.change_price', errorAr: 'تغيير السعر ليس من صلاحيّاتك. اطلبها من مدير النظام إن كانت من عملك.' }, { status: 403 });
+      }
+    }
+
+    /*
+     * «العرض ما بصير يكون اكثر من السعر الاساسي» — AND THE BASE PRICE IS THE LINE ITSELF.
+     *
+     * Lowering it lowers every offer's line at once, so a price that would leave a live offer above its line is
+     * refused here, naming the offer, its price and the new line — after the price authority, so somebody who may
+     * not change the price is told that first, and before anything is written. A raise, an unchanged price and a
+     * zero pass without a question; the reasons are beside `baseBelowActiveOffersRefusal`.
+     */
+    if (nextBasePrice !== undefined) {
+      const belowAnOffer = await baseBelowActiveOffersRefusal(db, existing, nextBasePrice, country.minorUnit);
+      if (belowAnOffer) {
+        return NextResponse.json({ error: belowAnOffer, code: 'BASE_BELOW_ACTIVE_OFFER' }, { status: 409 });
       }
     }
 

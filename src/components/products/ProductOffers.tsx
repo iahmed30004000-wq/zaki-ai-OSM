@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { onTheWire } from '@/lib/typed-box';
+import { onTheWire, typedFigure } from '@/lib/typed-box';
+import { offerCeiling } from '@/lib/offer-ceiling';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -53,6 +54,12 @@ interface Offer {
   isDefault: boolean;
   sortOrder: number;
   status: string;
+  /**
+   * The most this bundle may cost, and whether it costs more — worked out by the door (`GET /api/offers`) with the
+   * function the doors refuse with. Printed as sent: the screen does no arithmetic of its own on a stored row.
+   */
+  maxPrice?: number | null;
+  aboveBase?: boolean;
 }
 
 /**
@@ -104,30 +111,48 @@ type Draft = Omit<Partial<Offer>, 'quantity' | 'freeQuantity' | 'sellingPrice'> 
 };
 
 export function ProductOffers({
-  productId, basePrice, currency, canManage = true,
+  productId, basePrice, currency, canManage = true, canChangePrice = false,
 }: {
   productId: string;
   basePrice: number;
   currency: string;
   canManage?: boolean;
+  /** `products.change_price` — whether «تعديل المنتج» is a door this person can use to write a base price. */
+  canChangePrice?: boolean;
 }) {
   const [offers, setOffers] = useState<Offer[] | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
   const confirm = useConfirm();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  /*
+   * THE STORE'S OWN DECIMALS, FROM THE DOOR THAT WILL MEASURE THE OFFER.
+   *
+   * The line an offer must stay under is rounded by the store's currency, and the door rounds it with the store's
+   * own setting. The table of currencies is only a default for that setting, so until the door has answered it is
+   * the stand-in — and afterwards the hint, the generator and every figure on this card round the way the door does.
+   */
+  const [storeUnit, setStoreUnit] = useState<number | null>(null);
+  const unit = storeUnit ?? minorUnitFor(currency) ?? 2;
 
   const load = useCallback(async () => {
     try {
       const d = await crmApi(`/api/offers?productId=${encodeURIComponent(productId)}`);
       setOffers(d.offers || []);
+      if (typeof d.minorUnit === 'number') setStoreUnit(d.minorUnit);
     } catch (e: any) {
       setMsg({ ok: false, text: e.message || 'تعذر تحميل العروض' });
       setOffers([]);
     }
   }, [productId]);
 
-  useEffect(() => { void load(); }, [load]);
+  /*
+   * AND AGAIN WHEN THE BASE PRICE MOVES. Each row's «أغلى من السعر الأساسي» is the door's answer for the base price it
+   * read, and «تعديل المنتج» on this same page changes that price without unmounting this card. Without a new read,
+   * a raise that fixes «3 بـ80» would leave the flag up, and the owner would think the fix failed. `basePrice` sits
+   * on this effect, not on `load`: a callback may not list what it does not read, an effect may.
+   */
+  useEffect(() => { void load(); }, [load, basePrice]);
 
   async function save() {
     if (!draft?.name?.trim()) return;
@@ -218,7 +243,15 @@ export function ProductOffers({
     }
   }
 
-  /** Three tiers from the base price, so a new product is sellable in one click. */
+  /**
+   * Three tiers from the base price, so a new product is sellable in one click.
+   *
+   * AND NO TIER ABOVE ITS LINE — the owner's rule, «العرض ما بصير يكون اكثر من السعر الاساسي». The multipliers round
+   * to whole units, and a base price with a fraction rounds UP past its own line: 12.5 made a first tier of 13,
+   * which the door refuses now, and the button would have stopped at its first offer with two still to write. So
+   * each tier is capped at `offerCeiling` — the function the door measures it with, at the store's own decimals. A
+   * whole base price is untouched by the cap: 25 still makes 25, 45 and 63.
+   */
   async function generate() {
     setBusy(true);
     setMsg(null);
@@ -229,6 +262,8 @@ export function ProductOffers({
         { n: 3, free: 1, mult: 2.5, label: 'ثلاث قطع + واحدة هدية' },
       ];
       for (const [i, t] of tiers.entries()) {
+        const proposed = Math.round(basePrice * t.mult);
+        const line = offerCeiling(basePrice, t.n, unit);
         await crmApi('/api/offers', {
           method: 'POST',
           body: JSON.stringify({
@@ -236,7 +271,7 @@ export function ProductOffers({
             name: t.label,
             quantity: t.n,
             freeQuantity: t.free,
-            sellingPrice: Math.round(basePrice * t.mult),
+            sellingPrice: line === null ? proposed : Math.min(proposed, line),
             // NO «was» PRICE. It used to be generated here as
             // `basePrice × (quantity + free)` — arithmetic about a price the
             // shop may never have charged — and the comment beside it called
@@ -290,7 +325,7 @@ export function ProductOffers({
     if (m) void applyMove(m);
   }
 
-  const money = (n: number) => moneyText(Number(n), currency, minorUnitFor(currency) ?? 2);
+  const money = (n: number) => moneyText(Number(n), currency, unit);
 
   return (
     <Card>
@@ -452,6 +487,16 @@ export function ProductOffers({
                         </span>
                       )}
                     </p>
+                    {/* AN OFFER SAVED ABOVE ITS LINE BEFORE THE RULE EXISTED. It stays on sale exactly as it is — the
+                        owner decides each one — so the row says so, with the line the DOOR worked out. On a line of
+                        its own, because the name beside the star already truncates on a phone. */}
+                    {o.aboveBase && typeof o.maxPrice === 'number' && (
+                      <p className="mt-1 text-xs leading-relaxed">
+                        <span className="rounded-md bg-[var(--sys-destructive-soft)] px-1.5 py-0.5 font-bold text-[var(--sys-destructive)]">
+                          أغلى من السعر الأساسي — الحدّ <bdi className="tabular-nums">{money(o.maxPrice)}</bdi>
+                        </span>
+                      </p>
+                    )}
                   </div>
 
                   {canManage && (
@@ -545,16 +590,26 @@ export function ProductOffers({
                 value={draft.freeQuantity}
                 onChange={(e) => setDraft({ ...draft, freeQuantity: e.target.value })}
               />
-              <Input
-                label={`السعر (${currency})`}
-                name="sellingPrice"
-                type="number" min="0" step="0.01" dir="ltr"
-                // The base price as a SUGGESTION the seller reads, not a
-                // value the form saves behind their back.
-                placeholder={basePrice > 0 ? `سعر القطعة ${basePrice}` : 'مطلوب'}
-                value={draft.sellingPrice}
-                onChange={(e) => setDraft({ ...draft, sellingPrice: e.target.value })}
-              />
+              {/* One cell of the grid: the box, and under it the line it must stay under. */}
+              <div className="min-w-0">
+                <Input
+                  label={`السعر (${currency})`}
+                  name="sellingPrice"
+                  type="number" min="0" step="0.01" dir="ltr"
+                  // The base price as a SUGGESTION the seller reads, not a
+                  // value the form saves behind their back.
+                  placeholder={basePrice > 0 ? `سعر القطعة ${basePrice}` : 'مطلوب'}
+                  value={draft.sellingPrice}
+                  onChange={(e) => setDraft({ ...draft, sellingPrice: e.target.value })}
+                />
+                <CeilingHint
+                  basePrice={basePrice}
+                  pieces={typedFigure(draft.quantity)}
+                  currency={currency}
+                  unit={unit}
+                  canChangePrice={canChangePrice}
+                />
+              </div>
               <Input
                 label="السعر قبل الخصم"
                 type="number" min="0" step="0.01" dir="ltr"
@@ -662,6 +717,54 @@ export function ProductOffers({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/* ───────────────────────────── the line under the price box ───────────────────────────── */
+
+/**
+ * «العرض ما بصير يكون اكثر من السعر الاساسي» — SAID UNDER THE BOX, BEFORE THE DOOR HAS TO SAY IT.
+ *
+ * Worked out with `offerCeiling`, the function the door refuses with, from the quantity being typed — so the figure
+ * here is the door's figure and not a second copy of the rule. Three sentences for three cases:
+ *
+ *   · a quantity typed → the line, and the arithmetic that makes it, so the seller can check it;
+ *   · the quantity box empty → the rule with no number. An empty box is the door's default to fill, and printing
+ *     «1» here would put that default back in the browser, which this form refuses to do (see its placeholders);
+ *   · no base price yet → no line at all, and the door that writes one is named only for somebody who holds
+ *     `products.change_price` — for anybody else «تعديل المنتج» would end in a refusal.
+ */
+function CeilingHint({
+  basePrice, pieces, currency, unit, canChangePrice,
+}: {
+  basePrice: number;
+  /** What the quantity box holds, as a number — or nothing. */
+  pieces: number | undefined;
+  currency: string;
+  unit: number;
+  canChangePrice: boolean;
+}) {
+  const look = 'mt-1 text-xs leading-relaxed text-[var(--sys-muted-foreground)]';
+  if (!(basePrice > 0)) {
+    return (
+      <p className={look}>
+        ما في سعر أساسي لهذا المنتج لسّا، فما في حدّ أعلى لسعر العرض لحدّ ما ينكتب السعر الأساسي.
+        {canChangePrice ? ' اكتبه من «تعديل المنتج» فوق.' : ' بيكتبه اللي معه صلاحية «تغيير أسعار المنتجات».'}
+      </p>
+    );
+  }
+  const whole = pieces !== undefined && Number.isInteger(pieces) && pieces >= 1 ? pieces : null;
+  const line = whole === null ? null : offerCeiling(basePrice, whole, unit);
+  if (whole === null || line === null) {
+    return (
+      <p className={look}>سعر العرض ما بيزيد عن السعر الأساسي × عدد القطع المدفوعة. القطع المجانية ما بتنحسب.</p>
+    );
+  }
+  return (
+    <p className={look}>
+      أعلى سعر لهذا العرض: <bdi className="font-semibold tabular-nums">{moneyText(line, currency, unit)}</bdi> —{' '}
+      <bdi>{whole}</bdi> × السعر الأساسي <bdi>{basePrice}</bdi>. القطع المجانية ما بتنحسب.
+    </p>
   );
 }
 

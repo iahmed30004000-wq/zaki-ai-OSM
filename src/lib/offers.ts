@@ -3,7 +3,8 @@ import { count, money } from './numeric-input';
 import { omittedMeansOmitted } from './zod-patch';
 import { evidencedWasPrices, struckThroughPrice } from './price-honesty';
 // `money.ts` imports nothing from here, so the one money rule stays a leaf.
-import { allocateDiscount, roundMinor } from './money';
+import { allocateDiscount, moneyText, roundMinor } from './money';
+import { offerAboveBase, paidPieces } from './offer-ceiling';
 import type { Prisma } from '@prisma/client';
 import type { db } from './db';
 
@@ -252,6 +253,167 @@ export function offerPatchSchema(existing: {
 export type OfferInput = z.infer<typeof offerInputSchema>;
 
 type Tx = Prisma.TransactionClient | typeof db;
+
+/* ─────────────── «العرض ما بصير يكون اكثر من السعر الاساسي» ─────────────── */
+
+/**
+ * THE CEILING'S REFUSAL, WRITTEN ONCE FOR EVERY DOOR THAT WRITES AN OFFER'S PRICE.
+ *
+ * The arithmetic is `offer-ceiling.ts`, which the offers screen draws its hint with. What lives here is what a door
+ * ANSWERS: the owner's own sentence, a code a caller can recognise it by, and the line itself as `maxPrice`. The
+ * sentence is the one he confirmed on 28/10, word for word, with the real figures in it:
+ *
+ *   create   «لا يمكنك إنشاء العرض: السعر 80 أعلى من السعر الأساسي لـ3 قطع (75)»
+ *   edit     «لا يمكنك تعديل العرض: السعر 80 أعلى من السعر الأساسي لـ3 قطع (75)»
+ *
+ * The figures go through `moneyText` at the store's own decimals and without a code, so a dinar store reads
+ * «السعر 80.000 … (75.000)» — the shape every other figure on its screens has — and a currency with no decimals reads
+ * exactly the sentence above. The pieces are counted the way Arabic counts them; see `forPieces`.
+ *
+ * NOT A ZOD ISSUE, deliberately. `offerInputSchema` and `offerPatchSchema` are read directly by `offers.test.ts` and
+ * `the-offer-after-the-order.test.ts` and know nothing about the product, so they stay exactly as they are; and a
+ * refusal filed under the path `sellingPrice` would
+ * reach the screen as «سعر البيع: …» — `zod-message.ts` puts the box's label in front — which is a sentence about a
+ * box, not about the rule.
+ */
+export const OFFER_ABOVE_BASE = 'OFFER_ABOVE_BASE';
+
+export interface OfferAboveBaseRefusal {
+  error: string;
+  code: typeof OFFER_ABOVE_BASE;
+  /** The line, rounded by the store's currency: the most this bundle may cost. */
+  maxPrice: number;
+}
+
+/** A figure in one of these sentences: the store's decimals, grouped, western digits, and no code. */
+const figure = (value: number, minorUnit: number) => moneyText(value, null, minorUnit);
+
+/**
+ * «لـ3 قطع» — THE PAID PIECES A LINE IS FOR, AS THE OWNER'S SENTENCE SAYS THEM.
+ *
+ * «لـ1 قطع» and «لـ2 قطع» read as a sentence a machine put together. Arabic says one piece and two pieces with no
+ * digit at all, takes the plural from three to ten, and the singular from eleven (100 and 200 too). Kept local, like
+ * `offersCountAr` and `arabicDays`: this is the one noun this file counts.
+ */
+function forPieces(pieces: number): string {
+  if (pieces === 1) return 'لقطعة واحدة';
+  if (pieces === 2) return 'لقطعتين';
+  const lastTwo = pieces % 100;
+  return lastTwo >= 3 && lastTwo <= 10 ? `لـ${pieces} قطع` : `لـ${pieces} قطعة`;
+}
+
+/** The owner's sentence, with the verb of the door that refuses. */
+function refusalAt(
+  door: 'إنشاء' | 'تعديل',
+  offer: { sellingPrice: number; quantity: number },
+  basePrice: number,
+  minorUnit: number
+): OfferAboveBaseRefusal | null {
+  const maxPrice = offerAboveBase(offer, basePrice, minorUnit);
+  if (maxPrice === null) return null;
+  return {
+    error:
+      `لا يمكنك ${door} العرض: السعر ${figure(offer.sellingPrice, minorUnit)} أعلى من السعر الأساسي ` +
+      `${forPieces(paidPieces(offer.quantity))} (${figure(maxPrice, minorUnit)})`,
+    code: OFFER_ABOVE_BASE,
+    maxPrice,
+  };
+}
+
+/** The create door's refusal — `POST /api/offers`. */
+export function offerAboveBaseRefusal(
+  offer: { sellingPrice: number; quantity: number },
+  basePrice: number,
+  minorUnit: number
+): OfferAboveBaseRefusal | null {
+  return refusalAt('إنشاء', offer, basePrice, minorUnit);
+}
+
+/**
+ * THE SAME LINE ON AN EDIT — MEASURED FOR WHAT THE EDIT DOES, NOT FOR WHAT THE ROW ALREADY WAS.
+ *
+ * Offers stored above the line before the rule existed stay on sale, unchanged, and the screen flags them. So an
+ * edit is refused only when IT moves the offer against the line:
+ *
+ *   · the price or the quantity really changes — compared rounded, against the stored row — and the row the edit
+ *     will leave is above the line. `{ quantity: 1 }` alone on «3 بـ60» is 60 for ONE piece, so the stored row fills
+ *     in what the edit leaves out, exactly as `offerPatchSchema` does for the discount;
+ *   · a stopped offer is switched back ON while it is above the line — that is putting it back on sale.
+ *
+ * Everything else passes: the order, the star, the name, the ending, the «was» price, and switching it OFF. The
+ * «تعديل» form sends the price and the quantity on EVERY save, so a rule keyed on their presence would refuse
+ * renaming an old offer, or changing its ending, until somebody repriced it; and a drag sends one PATCH per moved
+ * row with nothing holding them together, so one refusal there would leave the list half reordered.
+ *
+ * Every refusal here is the edit door's one sentence, a switch back on included: it is this door, and the price and
+ * the line it names are the reason the switch is refused.
+ */
+export function offerEditAboveBaseRefusal(
+  stored: { sellingPrice: number; quantity: number; status: string },
+  edit: { sellingPrice?: number; quantity?: number; status?: string },
+  basePrice: number,
+  minorUnit: number
+): OfferAboveBaseRefusal | null {
+  const repriced =
+    edit.sellingPrice !== undefined &&
+    roundMinor(edit.sellingPrice, minorUnit) !== roundMinor(stored.sellingPrice, minorUnit);
+  const resized = edit.quantity !== undefined && edit.quantity !== stored.quantity;
+  const backOnSale = edit.status === 'ACTIVE' && stored.status !== 'ACTIVE';
+  if (!repriced && !resized && !backOnSale) return null;
+
+  // The row the edit will leave: the stored figures fill in what the request does not carry.
+  const after = {
+    sellingPrice: edit.sellingPrice ?? stored.sellingPrice,
+    quantity: edit.quantity ?? stored.quantity,
+  };
+  return refusalAt('تعديل', after, basePrice, minorUnit);
+}
+
+/**
+ * THE OTHER WAY INTO THE SAME LINE — A BASE PRICE THAT COMES DOWN UNDER A LIVE OFFER.
+ *
+ * The line IS the base price, so lowering the base price lowers every offer's line at once, and a rule held only at
+ * the offer doors would be undone from the product page by typing one number. So the product door asks here before
+ * it writes, and the sentence names each offer it would leave above the line: the offer, its price, the new line.
+ *
+ *   · only when the line comes DOWN — a first base price, or a lower one. A raise lifts every line, so it cannot put
+ *     an offer above one; an old offer still above after a raise was above before it, and is already flagged.
+ *   · every ACTIVE offer of the product, ended or not, the one after the order included. A stopped offer is not on
+ *     sale and is measured when it is switched back on; an ended one returns the moment its ending is moved, which
+ *     the offer door lets through.
+ *   · a base price of 0 is «not priced yet» and draws no line at all.
+ *
+ * The query lives here and not in the route: `one-calculator.test.ts` sweeps the tree for a second `offer.findMany`
+ * by product and ACTIVE status, and is right to. This one asks a different question from `activeOffersFor`, and
+ * keeping the two side by side is how they stay apart.
+ */
+export async function baseBelowActiveOffersRefusal(
+  tx: Tx,
+  product: { id: string; companyId: string; basePrice: number },
+  nextBasePrice: number,
+  minorUnit: number
+): Promise<string | null> {
+  const lineComesDown = nextBasePrice > 0 && (!(product.basePrice > 0) || nextBasePrice < product.basePrice);
+  if (!lineComesDown) return null;
+
+  const live = await tx.offer.findMany({
+    where: { companyId: product.companyId, productId: product.id, status: 'ACTIVE' },
+    orderBy: [{ sortOrder: 'asc' }, { quantity: 'asc' }],
+    select: { name: true, quantity: true, sellingPrice: true },
+  });
+  const above = live.flatMap((o) => {
+    const maxPrice = offerAboveBase(o, nextBasePrice, minorUnit);
+    if (maxPrice === null) return [];
+    return [
+      `العرض «${o.name}» سعره ${figure(o.sellingPrice, minorUnit)} أعلى من السعر الأساسي الجديد ` +
+        `${forPieces(paidPieces(o.quantity))} (${figure(maxPrice, minorUnit)})`,
+    ];
+  });
+  if (above.length === 0) return null;
+  // ONE sentence, however many offers: the new price, then each offer it would leave above its line — its name, its
+  // price and its new line — in the shape of the offer doors' own sentence.
+  return `لا يمكنك تغيير السعر الأساسي إلى ${figure(nextBasePrice, minorUnit)}: ${above.join('، و')}`;
+}
 
 /**
  * Exactly one default per product.

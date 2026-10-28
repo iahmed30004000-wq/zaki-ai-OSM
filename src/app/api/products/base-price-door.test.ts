@@ -18,6 +18,8 @@ const { db, requireContext, requirePermission, getPermissionScope, can, authoriz
   db: {
     product: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), findMany: vi.fn() },
     category: { findFirst: vi.fn() },
+    // The edit door now asks for the product's live offers before it lowers a base price — see the last section.
+    offer: { findMany: vi.fn() },
   },
   requireContext: vi.fn(),
   requirePermission: vi.fn(),
@@ -82,7 +84,15 @@ const STORED = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  requireContext.mockResolvedValue({ user: { id: 'admin', name: 'مدير' }, companyId: 'c1', storeId: 's1' });
+  requireContext.mockResolvedValue({
+    user: { id: 'admin', name: 'مدير' },
+    companyId: 'c1',
+    storeId: 's1',
+    // The store's currency, which rounds an offer's line when the base price moves.
+    country: { currencyCode: 'USD', minorUnit: 2 },
+  });
+  // No offers unless a case gives the product some: the cases above are about the price box, not the line.
+  db.offer.findMany.mockResolvedValue([]);
   requirePermission.mockResolvedValue(undefined);
   getPermissionScope.mockReturnValue({ scope: 'ALL_COMPANY' });
   can.mockReturnValue(true);
@@ -306,5 +316,141 @@ describe('a price written in another notation reaches neither door', () => {
     const res = await post({ ...sound, basePrice: '5e-1' });
     expect(res.status).toBe(200);
     expect(created().basePrice).toBe(0.5);
+  });
+});
+
+/**
+ * «العرض ما بصير يكون اكثر من السعر الاساسي» — AND THE BASE PRICE IS THE LINE ITSELF.
+ *
+ * Lowering it lowers every offer's line at once, so this door refuses a price that would leave a live offer above
+ * its line. The stored product is priced at 120 (`STORED`). The mock reads the `where` it is handed, so an offer the
+ * door did not ask for is an offer the door never sees — which is what makes «only stopped offers pass» a fact
+ * about the query and not about the fixture.
+ */
+type ShelfOffer = {
+  companyId: string;
+  productId: string;
+  name: string;
+  quantity: number;
+  sellingPrice: number;
+  status: string;
+};
+const onShelf = (over: Partial<ShelfOffer>): ShelfOffer => ({
+  companyId: 'c1',
+  productId: 'p1',
+  name: 'قطعة',
+  quantity: 1,
+  sellingPrice: 100,
+  status: 'ACTIVE',
+  ...over,
+});
+function offersOf(rows: ShelfOffer[]) {
+  db.offer.findMany.mockImplementation(async ({ where }: { where: Record<string, unknown> }) =>
+    rows
+      .filter((o) => Object.entries(where).every(([k, v]) => o[k as keyof ShelfOffer] === v))
+      .map(({ name, quantity, sellingPrice }) => ({ name, quantity, sellingPrice }))
+  );
+}
+
+describe('the base price is the line every offer stays under', () => {
+  beforeEach(() => {
+    db.product.findFirst.mockResolvedValue(STORED);
+  });
+
+  it('NEGATIVE: lowering it under a live offer answers 409, naming the offer, its price and the new line', async () => {
+    // «قطعتان» at 230 is under 2 × 120 = 240 today; at 99.99 its line is 2 × 99.99 = 199.98.
+    offersOf([onShelf({ name: 'قطعتان', quantity: 2, sellingPrice: 230 })]);
+    const res = await patch({ basePrice: 99.99 });
+    const { error, code } = await res.json();
+    // One sentence: the offer, its price and its new line, at the store's two places.
+    expect(error).toBe(
+      'لا يمكنك تغيير السعر الأساسي إلى 99.99: العرض «قطعتان» سعره 230.00 أعلى من السعر الأساسي الجديد لقطعتين (199.98)'
+    );
+    expect(code).toBe('BASE_BELOW_ACTIVE_OFFER');
+    expect(res.status).toBe(409);
+    expect(db.product.update).not.toHaveBeenCalled();
+    expect(logAudit).not.toHaveBeenCalled();
+  });
+
+  it('and it asks for THIS product’s ACTIVE offers, and nothing wider', async () => {
+    await patch({ basePrice: 99.99 });
+    expect(db.offer.findMany).toHaveBeenCalledTimes(1);
+    expect(db.offer.findMany.mock.calls[0][0].where).toEqual({ companyId: 'c1', productId: 'p1', status: 'ACTIVE' });
+  });
+
+  it('and names every offer it would leave above the line — and only those', async () => {
+    offersOf([
+      onShelf({ name: 'قطعة', quantity: 1, sellingPrice: 110 }),
+      onShelf({ name: 'ثلاث قطع', quantity: 3, sellingPrice: 330 }),
+      // 190 for two is under 2 × 100 = 200, so it is not this refusal's business.
+      onShelf({ name: 'قطعتان', quantity: 2, sellingPrice: 190 }),
+    ]);
+    const res = await patch({ basePrice: 100 });
+    const { error } = await res.json();
+    expect(res.status).toBe(409);
+    // Still one sentence: each offer it would leave above its line, joined, and the one under its line not named.
+    expect(error).toBe(
+      'لا يمكنك تغيير السعر الأساسي إلى 100.00: ' +
+        'العرض «قطعة» سعره 110.00 أعلى من السعر الأساسي الجديد لقطعة واحدة (100.00)، ' +
+        'والعرض «ثلاث قطع» سعره 330.00 أعلى من السعر الأساسي الجديد لـ3 قطع (300.00)'
+    );
+    expect(error).not.toContain('قطعتان');
+  });
+
+  it('passes when the only offers above the new line are STOPPED — they are not on sale', async () => {
+    offersOf([onShelf({ name: 'قديم', quantity: 1, sellingPrice: 115, status: 'INACTIVE' })]);
+    const res = await patch({ basePrice: 99.99 });
+    expect(res.status).toBe(200);
+    expect(updated().basePrice).toBe(99.99);
+  });
+
+  it('passes a lowering every live offer still fits under — on the line included', async () => {
+    offersOf([onShelf({ name: 'قطعتان', quantity: 2, sellingPrice: 200 })]);
+    const res = await patch({ basePrice: 100 });
+    expect(res.status).toBe(200);
+    expect(updated().basePrice).toBe(100);
+  });
+
+  it('passes a RAISE without asking — a higher line cannot put an offer above it', async () => {
+    // Even an old offer that was above the line before and is still above it after: it is flagged already, and a
+    // raise is a step toward it. Refusing the step would keep the shop further from the rule, not closer.
+    offersOf([onShelf({ name: 'قطعة', quantity: 1, sellingPrice: 130 })]);
+    const res = await patch({ basePrice: 125 });
+    expect(res.status).toBe(200);
+    expect(updated().basePrice).toBe(125);
+    expect(db.offer.findMany).not.toHaveBeenCalled();
+  });
+
+  it('passes a zero — «not priced yet» draws no line at all', async () => {
+    offersOf([onShelf({ name: 'قطعة', quantity: 1, sellingPrice: 130 })]);
+    const res = await patch({ basePrice: 0 });
+    expect(res.status).toBe(200);
+    expect(db.offer.findMany).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE: and a FIRST base price under a live offer is refused too — the line appears with it', async () => {
+    db.product.findFirst.mockResolvedValue({ ...STORED, basePrice: 0 });
+    offersOf([onShelf({ name: 'ثلاث قطع', quantity: 3, sellingPrice: 75 })]);
+    const res = await patch({ basePrice: 20 });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe(
+      'لا يمكنك تغيير السعر الأساسي إلى 20.00: العرض «ثلاث قطع» سعره 75.00 أعلى من السعر الأساسي الجديد لـ3 قطع (60.00)'
+    );
+    expect(db.product.update).not.toHaveBeenCalled();
+  });
+
+  it('and an edit that resends the stored price is no price change — an old offer above the line does not block it', async () => {
+    offersOf([onShelf({ name: 'قطعة', quantity: 1, sellingPrice: 130 })]);
+    const res = await patch({ status: 'INACTIVE', basePrice: STORED.basePrice });
+    expect(res.status).toBe(200);
+    expect(db.offer.findMany).not.toHaveBeenCalled();
+  });
+
+  it('and somebody without the price authority is told THAT first — the offers are not even read', async () => {
+    authorize.mockImplementation((_u: unknown, key: string) => ({ allowed: key !== 'products.change_price' }));
+    offersOf([onShelf({ name: 'قطعتان', quantity: 2, sellingPrice: 230 })]);
+    const res = await patch({ basePrice: 99.99 });
+    expect(res.status).toBe(403);
+    expect(db.offer.findMany).not.toHaveBeenCalled();
   });
 });
