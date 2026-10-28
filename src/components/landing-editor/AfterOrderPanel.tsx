@@ -111,6 +111,40 @@ function bundleName(pieces: number): string {
  */
 const ARABIC = /[؀-ۿ]/;
 const sentenceOf = <T,>(e: unknown, otherwise: T): string | T => (e instanceof Error && ARABIC.test(e.message) ? e.message : otherwise);
+const TRY_AGAIN = 'ما زبط — جرّب كمان مرة.';
+
+/**
+ * The panel's own words when the server's fresh answer is not the one a press was drawn from: `unsent` — it changed
+ * before anything went out, so nothing did; `after` — it changed while a write's reply was lost, under that reply's
+ * sentence, so the seller reads the line and does not press again on the panel's word.
+ */
+const MOVED = {
+  unsent: 'العرض تغيّر وما انبعت إشي — هاد وضعه هلّق.',
+  after: 'بس العرض تغيّر — هاد وضعه هلّق.',
+} as const;
+
+/**
+ * THE ONE PRESS AN ANSWER DRAWS, AND THE ROW IT WRITES TO — `id` is the bundle's, or the product's for a create.
+ *
+ * One function answers both questions: which button is on the screen, and, at the press, whether the server's fresh
+ * answer would still draw that very button for that very row. So the two can never disagree. The counts are the
+ * door's one-flagged-bundle rule (`clearOtherPostOrderOffers`, run by every write here): a create only while no
+ * bundle is flagged, an edit only of the one that is. `null` is nothing to press — no permission to manage offers,
+ * no product, or two flagged.
+ */
+type Press = { act: 'create' | 'stop' | 'resume' | 'unend'; id: string };
+
+function pressOf(a: AfterOrderAnswer | null): Press | null {
+  if (!a?.canManage || !a.productId) return null;
+  if (a.offer) return a.flaggedCount === 1 ? { act: 'stop', id: a.offer.id } : null;
+  if (a.why === 'NONE') return a.flaggedCount === 0 ? { act: 'create', id: a.productId } : null;
+  if (!a.flagged || a.flaggedCount !== 1) return null;
+  if (a.why === 'STOPPED') return { act: 'resume', id: a.flagged.id };
+  if (a.why === 'ENDED') return { act: 'unend', id: a.flagged.id };
+  return null;
+}
+
+const samePress = (a: Press | null, b: Press) => a !== null && a.act === b.act && a.id === b.id;
 
 /** The upsell line: the server's answer in one sentence. The figures are printed as sent, at the store's decimals. */
 function upsellLine(a: AfterOrderAnswer, currency: string): string {
@@ -150,14 +184,22 @@ export function AfterOrderPanel({
   const [busy, setBusy] = useState(false);
   /** The door's refusal, word for word. */
   const [refusal, setRefusal] = useState<string | null>(null);
+  /** Set when the fresh answer at a press was not the one its button was drawn from — see `MOVED`. */
+  const [moved, setMoved] = useState<keyof typeof MOVED | null>(null);
+
+  /** The answer, asked again. Throws when the server could not say; each caller decides what an unknown means. */
+  const fetchAnswer = useCallback(async () => {
+    const d = await apiJson<AfterOrderAnswer>(`/api/landing-pages/${ctx.pageId}/after-order`);
+    return d && (d.offer || d.why) ? d : null;
+  }, [ctx.pageId]);
 
   const readAnswer = useCallback(
     async (alive: () => boolean = () => true) => {
       if (!ctx.pageId) return;
       try {
-        const d = await apiJson<AfterOrderAnswer>(`/api/landing-pages/${ctx.pageId}/after-order`);
+        const d = await fetchAnswer();
         if (!alive()) return;
-        setAnswer(d && (d.offer || d.why) ? d : null);
+        setAnswer(d);
         setAnswerError(null);
       } catch (e) {
         if (!alive()) return;
@@ -165,7 +207,7 @@ export function AfterOrderPanel({
         setAnswerError(sentenceOf(e, null));
       }
     },
-    [ctx.pageId]
+    [ctx.pageId, fetchAnswer]
   );
 
   useEffect(() => {
@@ -182,31 +224,67 @@ export function AfterOrderPanel({
   }, [ctx.pageId, readAnswer]);
 
   /**
-   * One write through the offers' own doors, then the answer read again — the line after a press is the server's,
-   * never a guess. A refusal is the door's sentence, word for word, and changes nothing else: nothing was written.
+   * One write through the offers' own doors, between two reads of the server's answer.
+   *
+   * BEFORE IT, THE ANSWER IS ASKED AGAIN. The one on the screen may be old: another editor tab, the product's offers
+   * screen this panel's own link opens in a new tab, a write of this panel whose reply was lost. And every write here
+   * runs the door's one-flagged-bundle rule, so a write drawn from an old answer strips the flag off whichever bundle
+   * is flagged NOW, and that bundle goes on the page at its cheap after-order price (RV251). So the write goes out
+   * only while the fresh answer still draws this very press for this very row; otherwise the fresh answer is shown,
+   * with a word saying nothing went out. A server that cannot say means nothing is written; the next press asks again.
+   *
+   * AFTER IT, THE ANSWER IS ASKED AGAIN TOO — even when the write failed. A refusal is the door's sentence, word for
+   * word, and a refused write changed nothing. But a reply that never came (the 15-second timeout, a proxy's 502, a
+   * phone off the network) is not «nothing was written»: the create may have landed. Read again, it shows as on and
+   * its form is gone, instead of standing there inviting a second one.
    *
    * Never `postOrderOffer: false`. Taking the flag off would not switch the offer off — it would hand its cheap
    * after-order price to the page as an ordinary bundle (`liveOfferWhere`). Off is `status`, and only `status`.
    */
-  async function send(url: string, method: 'POST' | 'PATCH', body: Record<string, unknown>) {
+  async function send(drawn: Press, url: string, method: 'POST' | 'PATCH', body: Record<string, unknown>) {
     setBusy(true);
     setRefusal(null);
+    setMoved(null);
     try {
-      await apiJson(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    } catch (e) {
-      setRefusal(sentenceOf(e, 'ما زبط — جرّب كمان مرة.'));
+      let fresh: AfterOrderAnswer | null;
+      try {
+        fresh = await fetchAnswer();
+      } catch (e) {
+        setRefusal(sentenceOf(e, TRY_AGAIN));
+        return;
+      }
+      setAnswer(fresh);
+      setAnswerError(null);
+      if (!samePress(pressOf(fresh), drawn)) {
+        setMoved('unsent');
+        return;
+      }
+
+      try {
+        await apiJson(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      } catch (e) {
+        const sentence = sentenceOf(e, TRY_AGAIN);
+        try {
+          const after = await fetchAnswer();
+          setAnswer(after);
+          setAnswerError(null);
+          if (!samePress(pressOf(after), drawn)) setMoved('after');
+        } catch {
+          // Still no answer: the last one stays on the screen, and the next press asks before it writes anything.
+        }
+        setRefusal(sentence);
+        return;
+      }
+      await readAnswer();
+    } finally {
       setBusy(false);
-      return;
     }
-    await readAnswer();
-    setBusy(false);
   }
 
   const count = Number(pieces);
   const canCreate = Number.isInteger(count) && count >= 1 && price.trim() !== '' && Number.isFinite(Number(price));
-  // The row each control acts on, out of the answer — the live bundle, or the flagged one that is off.
-  const liveId = answer?.offer?.id ?? null;
-  const flaggedId = answer?.flagged?.id ?? null;
+  // The press this answer draws, and the row it writes to — the same function asks again at the press.
+  const press = pressOf(answer);
   const productId = answer?.productId ?? null;
 
   const number = s.whatsappNumber.trim() || ctx.storePhone || '';
@@ -235,26 +313,26 @@ export function AfterOrderPanel({
       </div>
       {/*
         ON, OFF AND BACK ON, WITHOUT LEAVING THE PAGE — for whoever may manage offers; the doors ask for that
-        permission themselves. Each control writes only where the door's one-flagged-bundle rule has nothing to strip:
-        a new bundle while none is flagged, the one flagged bundle's own switch otherwise, and nothing while two are.
+        permission themselves. The one press `pressOf` draws: a new bundle while none is flagged, the one flagged
+        bundle's own switch otherwise, and nothing while two are. At the press `send` asks the server again first.
       */}
       {answer?.canManage && productId && (
         <div className="space-y-1.5">
           {answer.flaggedCount > 1 ? (
             <p className="text-xs text-[var(--sys-warning)]">في أكتر من عرض معلّم «بعد الطلب» لهالمنتج — رتّبهم من «عروض المنتج» أول.</p>
-          ) : liveId ? (
-            <button type="button" className={`${LINK} disabled:opacity-50`} disabled={busy} onClick={() => send(`/api/offers/${liveId}`, 'PATCH', { status: 'INACTIVE' })}>
+          ) : press?.act === 'stop' ? (
+            <button type="button" className={`${LINK} disabled:opacity-50`} disabled={busy} onClick={() => send(press, `/api/offers/${press.id}`, 'PATCH', { status: 'INACTIVE' })}>
               أوقفه
             </button>
-          ) : flaggedId && answer.why === 'STOPPED' ? (
-            <button type="button" className={`${LINK} disabled:opacity-50`} disabled={busy} onClick={() => send(`/api/offers/${flaggedId}`, 'PATCH', { status: 'ACTIVE' })}>
+          ) : press?.act === 'resume' ? (
+            <button type="button" className={`${LINK} disabled:opacity-50`} disabled={busy} onClick={() => send(press, `/api/offers/${press.id}`, 'PATCH', { status: 'ACTIVE' })}>
               رجّعه يشتغل
             </button>
-          ) : flaggedId && answer.why === 'ENDED' ? (
-            <button type="button" className={`${LINK} disabled:opacity-50`} disabled={busy} onClick={() => send(`/api/offers/${flaggedId}`, 'PATCH', { endsAt: null })}>
+          ) : press?.act === 'unend' ? (
+            <button type="button" className={`${LINK} disabled:opacity-50`} disabled={busy} onClick={() => send(press, `/api/offers/${press.id}`, 'PATCH', { endsAt: null })}>
               رجّعه يشتغل بلا تاريخ نهاية
             </button>
-          ) : answer.why === 'NONE' ? (
+          ) : press?.act === 'create' ? (
             <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--sys-foreground)]">
               <label className="flex items-center gap-1.5">
                 كم قطعة
@@ -269,8 +347,8 @@ export function AfterOrderPanel({
                 className={`${LINK} disabled:opacity-50`}
                 disabled={busy || !canCreate}
                 onClick={() =>
-                  send('/api/offers', 'POST', {
-                    productId,
+                  send(press, '/api/offers', 'POST', {
+                    productId: press.id,
                     name: bundleName(count),
                     quantity: count,
                     sellingPrice: Number(price),
@@ -285,6 +363,11 @@ export function AfterOrderPanel({
           {refusal && (
             <p role="alert" className="text-xs font-semibold text-[var(--sys-destructive)]">
               {refusal}
+            </p>
+          )}
+          {moved && (
+            <p role="status" className="text-xs text-[var(--sys-warning)]">
+              {MOVED[moved]}
             </p>
           )}
           <p className="text-xs text-[var(--sys-muted-foreground)]">بيظهر للزبون بشاشة الشكر بس، وما بينختار قبل الطلب.</p>

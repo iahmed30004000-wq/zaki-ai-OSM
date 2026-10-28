@@ -50,13 +50,18 @@ const stopped = (over: Answer = {}) => base({ why: 'STOPPED', flagged: { id: 'po
 const ended = (over: Answer = {}) => base({ why: 'ENDED', flagged: { id: 'po', name: 'قطعة كمان' }, flaggedCount: 1, ...over });
 
 /**
- * The network: the after-order read answers `answers` in turn (the last one repeats), the suggestions answer an
- * empty list, and every write is recorded — refused with `refuse` when it is set.
+ * The network: the after-order read answers `answers` in turn (the last one repeats; an Error is a read the server
+ * could not answer), the suggestions answer an empty list, and every write is recorded — and then thrown with
+ * `refuse` when it is set. A recorded write that throws is also how a reply that never came is played: whether it
+ * landed is what the next answer in `answers` says.
  */
-let answers: Answer[] = [];
+let answers: (Answer | Error)[] = [];
 let refuse: string | null = null;
 let writes: { url: string; method: string; body: Record<string, unknown> }[] = [];
+const RECS = '/api/landing-pages/lp1/recommendations';
 const reads = () => apiJson.mock.calls.filter(([url]) => url === READ).length;
+/** What reached the network, in order: `read` for this page's answer, the method and the url for a write. */
+const trail = () => apiJson.mock.calls.filter(([url]) => url !== RECS).map(([url, init]) => (init?.method ? `${init.method} ${url}` : 'read'));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -70,8 +75,12 @@ beforeEach(() => {
       if (refuse) throw new Error(refuse);
       return { success: true };
     }
-    if (url === READ) return structuredClone(answers[Math.min(served++, answers.length - 1)]);
-    if (url === '/api/landing-pages/lp1/recommendations') return { recommendations: [] };
+    if (url === READ) {
+      const next = answers[Math.min(served++, answers.length - 1)];
+      if (next instanceof Error) throw next;
+      return structuredClone(next);
+    }
+    if (url === RECS) return { recommendations: [] };
     throw new Error(`unexpected read ${url}`);
   });
 });
@@ -82,6 +91,22 @@ async function open(currency = 'JOD') {
   await waitFor(() => expect(reads()).toBe(1));
   await act(async () => {});
 }
+
+async function press(name: string) {
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name }));
+  });
+}
+
+async function createWith(pieces: string, price: string) {
+  fireEvent.change(screen.getByLabelText('كم قطعة'), { target: { value: pieces } });
+  fireEvent.change(screen.getByLabelText('بكم'), { target: { value: price } });
+  await press('شغّل العرض');
+}
+
+/** The panel's own words when the fresh answer is not the one the press was drawn from. */
+const UNSENT = 'العرض تغيّر وما انبعت إشي — هاد وضعه هلّق.';
+const AFTER = 'بس العرض تغيّر — هاد وضعه هلّق.';
 
 describe('the line is the server’s answer for this page', () => {
   it('it asks the page’s own door, and never counts the product’s offers by itself again', async () => {
@@ -154,16 +179,8 @@ describe('the line is the server’s answer for this page', () => {
 });
 
 describe('switching it on from the page', () => {
-  async function createWith(pieces: string, price: string) {
-    fireEvent.change(screen.getByLabelText('كم قطعة'), { target: { value: pieces } });
-    fireEvent.change(screen.getByLabelText('بكم'), { target: { value: price } });
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'شغّل العرض' }));
-    });
-  }
-
-  it('«كم قطعة 1، بكم 10» posts exactly the bundle to the offers door, then reads the answer again', async () => {
-    answers = [base(), on()];
+  it('«كم قطعة 1، بكم 10» asks the server first, posts exactly the bundle to the offers door, then reads it again', async () => {
+    answers = [base(), base(), on()];
     await open();
     expect((screen.getByLabelText('كم قطعة') as HTMLInputElement).value).toBe('1');
     await createWith('1', '10');
@@ -174,8 +191,9 @@ describe('switching it on from the page', () => {
         body: { productId: 'p1', name: 'قطعة كمان', quantity: 1, sellingPrice: 10, postOrderOffer: true },
       },
     ]);
-    expect(reads()).toBe(2);
+    expect(trail()).toEqual(['read', 'read', 'POST /api/offers', 'read']);
     expect(await screen.findByText('شغّال: قطعة كمان — 1 قطعة بـ10.000 JOD')).toBeTruthy();
+    expect(screen.queryByRole('status')).toBeNull();
   });
 
   it.each([
@@ -206,6 +224,8 @@ describe('switching it on from the page', () => {
     refuse = 'HTTP 502';
     await createWith('1', '10');
     expect(screen.getByRole('alert').textContent).toBe('ما زبط — جرّب كمان مرة.');
+    // Read again, the answer is the same one: nothing landed, so the panel adds nothing of its own.
+    expect(screen.queryByText(AFTER)).toBeNull();
   });
 
   it.each([
@@ -216,30 +236,29 @@ describe('switching it on from the page', () => {
     refuse = sentence;
     await createWith('1', '15');
     expect(screen.getByRole('alert').textContent).toBe(sentence);
-    // The line is still the one the server gave, the boxes keep what was typed, and nothing was read again.
+    // The line is still the one the server gave, the boxes keep what was typed, the button is still there to fix
+    // the price and press again, one write went out, and the panel added no word of its own.
     expect(screen.getByText('مطفي — ما في عرض بعد الطلب لـ«كريم مرطّب للوجه»')).toBeTruthy();
+    expect((screen.getByLabelText('كم قطعة') as HTMLInputElement).value).toBe('1');
     expect((screen.getByLabelText('بكم') as HTMLInputElement).value).toBe('15');
-    expect(reads()).toBe(1);
+    expect((screen.getByRole('button', { name: 'شغّل العرض' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(writes).toHaveLength(1);
+    expect(screen.queryByRole('status')).toBeNull();
   });
 });
 
 describe('off and back on — the one flagged bundle’s own switch, and nothing else', () => {
-  async function press(name: string) {
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name }));
-    });
-  }
-
   it('«أوقفه» sends exactly { status: INACTIVE } to that bundle, and the line follows the server', async () => {
-    answers = [on(), stopped()];
+    answers = [on(), on(), stopped()];
     await open();
     await press('أوقفه');
     expect(writes).toEqual([{ url: '/api/offers/po', method: 'PATCH', body: { status: 'INACTIVE' } }]);
+    expect(trail()).toEqual(['read', 'read', 'PATCH /api/offers/po', 'read']);
     expect(await screen.findByText('مطفي — العرض «قطعة كمان» موقّف')).toBeTruthy();
   });
 
   it('«رجّعه يشتغل» sends exactly { status: ACTIVE }', async () => {
-    answers = [stopped(), on()];
+    answers = [stopped(), stopped(), on()];
     await open();
     await press('رجّعه يشتغل');
     expect(writes).toEqual([{ url: '/api/offers/po', method: 'PATCH', body: { status: 'ACTIVE' } }]);
@@ -247,7 +266,7 @@ describe('off and back on — the one flagged bundle’s own switch, and nothing
   });
 
   it('a finished one comes back by losing its ending — exactly { endsAt: null }', async () => {
-    answers = [ended(), on()];
+    answers = [ended(), ended(), on()];
     await open();
     await press('رجّعه يشتغل بلا تاريخ نهاية');
     expect(writes).toEqual([{ url: '/api/offers/po', method: 'PATCH', body: { endsAt: null } }]);
@@ -273,7 +292,11 @@ describe('off and back on — the one flagged bundle’s own switch, and nothing
     refuse = sentence;
     await press('أوقفه');
     expect(screen.getByRole('alert').textContent).toBe(sentence);
-    expect(reads()).toBe(1);
+    // Refused, so nothing moved: the same line, the same button, one write, and no word of the panel's own.
+    expect(screen.getByText('شغّال: قطعة كمان — 3 قطعة + 1 مجاناً بـ30.000 JOD')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'أوقفه' })).toBeTruthy();
+    expect(writes).toHaveLength(1);
+    expect(screen.queryByRole('status')).toBeNull();
   });
 
   it('NEGATIVE: two flagged bundles — no write at all, any press would un-flag the other one', async () => {
@@ -281,6 +304,117 @@ describe('off and back on — the one flagged bundle’s own switch, and nothing
     await open();
     expect(screen.getByText(/في أكتر من عرض معلّم «بعد الطلب»/)).toBeTruthy();
     for (const name of ['أوقفه', 'رجّعه يشتغل', 'شغّل العرض']) expect(screen.queryByRole('button', { name })).toBeNull();
+  });
+});
+
+/**
+ * THE ANSWER ON THE SCREEN MAY BE OLD — another editor tab, the product's offers screen the panel's own link opens in a
+ * new tab, a write of the panel whose reply was lost. Every write runs the door's one-flagged-bundle rule, so a write
+ * drawn from an old answer strips the flag off whichever bundle is flagged now, and that bundle goes on the page at its
+ * cheap after-order price. So a press asks again first, and sends nothing when the fresh answer would not draw it.
+ */
+describe('a press asks the server first — the answer on the screen may be old', () => {
+  const y = { ...LIVE, id: 'y', name: 'قطعتين كمان', quantity: 2, price: 18 };
+  const moved: [string, Answer, Answer, string, string][] = [
+    ['another tab switched it on', base(), on(), 'شغّل العرض', 'شغّال: قطعة كمان — 1 قطعة بـ10.000 JOD'],
+    ['the page’s product changed', base(), base({ productId: 'p2', productName: 'صابون الغار' }), 'شغّل العرض', 'مطفي — ما في عرض بعد الطلب لـ«صابون الغار»'],
+    ['another bundle was flagged in the offers tab', stopped(), on({ offer: y, flagged: { id: 'y', name: y.name } }), 'رجّعه يشتغل', 'شغّال: قطعتين كمان — 2 قطعة بـ18.000 JOD'],
+    ['a second bundle was flagged', on(), on({ flaggedCount: 2 }), 'أوقفه', 'في أكتر من عرض معلّم «بعد الطلب» لهالمنتج — رتّبهم من «عروض المنتج» أول.'],
+    ['the finished one was stopped', ended(), stopped(), 'رجّعه يشتغل بلا تاريخ نهاية', 'مطفي — العرض «قطعة كمان» موقّف'],
+  ];
+
+  it.each(moved)('NEGATIVE: %s — nothing is sent, and the line is the fresh answer', async (_what, drawn, fresh, button, line) => {
+    answers = [drawn, fresh];
+    await open();
+    if (button === 'شغّل العرض') fireEvent.change(screen.getByLabelText('بكم'), { target: { value: '10' } });
+    await press(button);
+    expect(writes).toEqual([]);
+    expect(trail()).toEqual(['read', 'read']);
+    expect(await screen.findByText(line)).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toBe(UNSENT);
+  });
+
+  it('NEGATIVE: the permission to manage offers went since the panel opened — nothing is sent, and the controls go', async () => {
+    answers = [on(), on({ canManage: false })];
+    await open();
+    await press('أوقفه');
+    expect(writes).toEqual([]);
+    expect(screen.getByText('شغّال: قطعة كمان — 1 قطعة بـ10.000 JOD')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'أوقفه' })).toBeNull();
+  });
+
+  it('the same press for the same row still goes — the bundle’s price moved elsewhere, «أوقفه» stops that bundle', async () => {
+    answers = [on(), on({ offer: { ...LIVE, price: 12 } }), stopped()];
+    await open();
+    await press('أوقفه');
+    expect(writes).toEqual([{ url: '/api/offers/po', method: 'PATCH', body: { status: 'INACTIVE' } }]);
+    expect(await screen.findByText('مطفي — العرض «قطعة كمان» موقّف')).toBeTruthy();
+  });
+
+  it.each([
+    [new Error('HTTP 502'), 'ما زبط — جرّب كمان مرة.'],
+    [new Error('لا تملك صلاحية «عرض العروض». اطلبها من مدير النظام إن كانت من عملك.'), 'لا تملك صلاحية «عرض العروض». اطلبها من مدير النظام إن كانت من عملك.'],
+  ])('NEGATIVE: when the server cannot say, nothing is sent; the line and the button stay, and the next press asks again (%#)', async (silent, shown) => {
+    answers = [stopped(), silent, stopped(), on()];
+    await open();
+    await press('رجّعه يشتغل');
+    expect(writes).toEqual([]);
+    expect(screen.getByRole('alert').textContent).toBe(shown);
+    expect(screen.getByText('مطفي — العرض «قطعة كمان» موقّف')).toBeTruthy();
+    await press('رجّعه يشتغل');
+    expect(writes).toEqual([{ url: '/api/offers/po', method: 'PATCH', body: { status: 'ACTIVE' } }]);
+    expect(await screen.findByText('شغّال: قطعة كمان — 1 قطعة بـ10.000 JOD')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
+/**
+ * A REPLY THAT NEVER CAME IS NOT «NOTHING WAS WRITTEN» — the 15-second timeout, a proxy's 502, a phone off the
+ * network: the write may have landed. The panel used to leave the create form standing under «جرّب كمان مرة»; the
+ * second press flagged a second bundle, the door stripped the flag off the first, and the first went on the page as
+ * an ordinary bundle at its after-order price. Now the answer is read again, and a create that landed shows as on.
+ */
+describe('a reply that never came is read again', () => {
+  it.each([
+    ['HTTP 502', 'ما زبط — جرّب كمان مرة.'],
+    ['انتهت مهلة الطلب. تحقق من الاتصال وحاول مجدداً.', 'انتهت مهلة الطلب. تحقق من الاتصال وحاول مجدداً.'],
+  ])('the create landed, its reply did not («%s»): the line says «شغّال», the form is gone, one POST', async (lost, shown) => {
+    answers = [base(), base(), on()];
+    await open();
+    refuse = lost;
+    await createWith('1', '10');
+    expect(await screen.findByText('شغّال: قطعة كمان — 1 قطعة بـ10.000 JOD')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'شغّل العرض' })).toBeNull();
+    expect(screen.queryByLabelText('كم قطعة')).toBeNull();
+    expect(screen.getByRole('alert').textContent).toBe(shown);
+    expect(screen.getByRole('status').textContent).toBe(AFTER);
+    expect(trail()).toEqual(['read', 'read', 'POST /api/offers', 'read']);
+  });
+
+  it('«أوقفه» landed, its reply did not: the line says «موقّف», and the button on the screen is «رجّعه يشتغل»', async () => {
+    answers = [on(), on(), stopped()];
+    await open();
+    refuse = 'HTTP 504';
+    await press('أوقفه');
+    expect(await screen.findByText('مطفي — العرض «قطعة كمان» موقّف')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'أوقفه' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'رجّعه يشتغل' })).toBeTruthy();
+    expect(writes).toHaveLength(1);
+  });
+
+  it('NEGATIVE: the reply lost and the server still silent — the old line stays, and the next press finds it on and sends nothing', async () => {
+    answers = [base(), base(), new Error('Failed to fetch'), on()];
+    await open();
+    refuse = 'Failed to fetch';
+    await createWith('1', '10');
+    expect(screen.getByRole('alert').textContent).toBe('ما زبط — جرّب كمان مرة.');
+    expect(screen.getByText('مطفي — ما في عرض بعد الطلب لـ«كريم مرطّب للوجه»')).toBeTruthy();
+    // The seller does what the panel says and presses again: this time the server answers, and the offer is on.
+    refuse = null;
+    await press('شغّل العرض');
+    expect(writes).toHaveLength(1);
+    expect(await screen.findByText('شغّال: قطعة كمان — 1 قطعة بـ10.000 JOD')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toBe(UNSENT);
   });
 });
 
@@ -311,7 +445,8 @@ describe('the flag is never taken off from here', () => {
   });
 
   it('and a seller pressing off and on in a row sends neither the flag nor its absence', async () => {
-    answers = [on(), stopped(), on()];
+    // Each press is read before and after: open · before off · after off · before on · after on.
+    answers = [on(), on(), stopped(), stopped(), on()];
     await open();
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'أوقفه' })));
     await act(async () => fireEvent.click(await screen.findByRole('button', { name: 'رجّعه يشتغل' })));
