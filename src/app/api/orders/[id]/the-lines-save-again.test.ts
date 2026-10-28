@@ -59,6 +59,7 @@ const { fake, requireContext, logAudit, notify } = vi.hoisted(() => {
   /** A `where` read the way Prisma reads it, for the few shapes this door sends. */
   const matches = (row: Row, where: Row): boolean =>
     Object.entries(where).every(([key, want]) => {
+      if (key === 'AND') return (want as Row[]).every((w) => matches(row, w));
       if (key === 'OR') return (want as Row[]).some((w) => matches(row, w));
       if (want !== null && typeof want === 'object') {
         for (const op of Object.keys(want)) {
@@ -81,16 +82,47 @@ const { fake, requireContext, logAudit, notify } = vi.hoisted(() => {
 
   type Answer = (args: Row) => unknown;
 
+  /**
+   * THE WINDOW'S READ — `GET` names its relations, and the lines are the only
+   * one this fake holds. The rest answer empty: nobody has called, nothing is
+   * attached, no commission. A relation the route starts asking for that is
+   * not on this list is named, not answered.
+   */
+  const WINDOW: Record<string, (asked: Row) => unknown> = {
+    // The fake keeps the lines in the order they were written, which is the
+    // order `createdAt: 'asc'` hands them over in.
+    items: (asked) => fake.lines.map((l) => pick(l, asked.select)),
+    _count: () => ({ contactAttempts: fake.attempts, deliveryAttempts: 0 }),
+    addOns: () => [], commissions: () => [], claimHistory: () => [], callLogs: () => [],
+    activities: () => [], telegramMessages: () => [],
+    customer: () => null, product: () => null, offer: () => null, region: () => null,
+    deliveryProvider: () => null, landingPage: () => null, moderator: () => null,
+    claimer: () => null, owner: () => null, lockHolder: () => null, signer: () => null,
+  };
+
   const answers = (who: 'db' | 'tx'): Record<string, Record<string, Answer>> => ({
     order: {
       findUnique: (args) => {
-        // The access check asks for the bare row and nothing else. A fake that
-        // answered an include would hand the route exactly the relation the
-        // real one never had.
-        if (args.include || args.select) {
-          throw new Error(`fake db: ${who}.order.findUnique asked for relations — only the bare row is held`);
+        // The access check asks for the bare row and nothing else, and gets
+        // nothing else: no `items` key unless a read NAMES the lines, which is
+        // what the real one does. A fake that slipped the relation into the
+        // bare row would hand the route exactly what it never had.
+        if (args.select) throw new Error(`fake db: ${who}.order.findUnique with a select is not modelled`);
+        if (args.where?.id !== fake.order.id) return null;
+        if (!args.include) return { ...fake.order };
+        const row: Row = { ...fake.order };
+        for (const [key, asked] of Object.entries(args.include as Row)) {
+          const answer = WINDOW[key];
+          if (!answer) throw new Error(`fake db: ${who}.order.findUnique asked for «${key}», which this fake does not hold`);
+          row[key] = answer(asked === true ? {} : (asked as Row));
         }
-        return args.where?.id === fake.order.id ? { ...fake.order } : null;
+        return row;
+      },
+      // The window's access check: the order, inside this company and store,
+      // and inside the reader's own envelope — evaluated, not waved through.
+      findFirst: ({ where, select, include }) => {
+        if (select || include) throw new Error(`fake db: ${who}.order.findFirst with relations is not modelled`);
+        return matches(fake.order, where) ? { ...fake.order } : null;
       },
       updateMany: ({ where, data }) => {
         if (where.id !== fake.order.id || where.version !== fake.order.version) return { count: 0 };
@@ -132,6 +164,13 @@ const { fake, requireContext, logAudit, notify } = vi.hoisted(() => {
     },
     // The order is in no shipping batch, so nothing on it is sealed.
     shippingBatch: { findFirst: () => null },
+    // Nothing has come back to the shelf: the window's «closing» card reads this.
+    returnReceipt: {
+      count: ({ where }) => {
+        if (where.orderId !== fake.order.id) throw new Error('fake db: receipts of another order');
+        return 0;
+      },
+    },
     orderContactAttempt: {
       count: ({ where }) => (where.orderId === fake.order.id ? fake.attempts : 0),
     },
@@ -212,7 +251,7 @@ vi.mock('@/lib/pii-alert', () => ({ noteCustomersHandedOut: vi.fn() }));
 // `authorization.ts` imports this one name; the engine itself is the real one.
 vi.mock('@/lib/auth', () => ({ requireAuth: vi.fn() }));
 
-import { PATCH } from './route';
+import { GET, PATCH } from './route';
 import { CONTACT_FIRST_MESSAGE } from '@/lib/confirmation-queue';
 
 const COMPANY = 'company-0001';
@@ -324,15 +363,15 @@ const CARD_BODY = {
 };
 const LINES_ONLY = { items: CARD_BODY.items };
 
-const as = (user: Row) =>
-  requireContext.mockResolvedValue({
-    user,
-    companyId: COMPANY,
-    storeId: STORE,
-    countryId: 'country-jo',
-    // JOD: three decimals, which is why 5.956 below is a figure and not a rounding accident.
-    country: { id: 'country-jo', code: 'JO', currencyCode: 'JOD', minorUnit: 3, allowNegativeStock: false },
-  });
+// JOD: three decimals, which is why 5.956 below is a figure and not a rounding accident.
+const JOD = { id: 'country-jo', code: 'JO', currencyCode: 'JOD', minorUnit: 3, allowNegativeStock: false };
+// Two decimals, and a store that prices in dollars.
+const USD = { id: 'country-iq', code: 'IQ', currencyCode: 'USD', minorUnit: 2, allowNegativeStock: false };
+// No minor unit at all: every share is a whole pound, so every remainder is rounded.
+const SYP = { id: 'country-sy', code: 'SY', currencyCode: 'SYP', minorUnit: 0, allowNegativeStock: false };
+
+const as = (user: Row, country: Row = JOD) =>
+  requireContext.mockResolvedValue({ user, companyId: COMPANY, storeId: STORE, countryId: country.id, country });
 
 const save = async (body: Row) => {
   const res = await PATCH(
@@ -345,6 +384,44 @@ const save = async (body: Row) => {
   );
   return { status: res.status, body: (await res.json()) as Row };
 };
+
+/** The order as the window opens it — the real `GET`, over the same fake. */
+const openWindow = async (): Promise<Row> => {
+  const res = await GET(new Request(`http://localhost/api/orders/${ORDER_ID}`), {
+    params: Promise.resolve({ id: ORDER_ID }),
+  });
+  const body = (await res.json()) as Row;
+  expect(res.status, why(body)).toBe(200);
+  return body.order as Row;
+};
+
+/**
+ * WHAT THE CARD SENDS FOR AN EDITOR NOBODY TOUCHED — `OrderLinesCard`,
+ * `openForm()` then `save()`, line for line: each price box opens on the
+ * characters of its line's `beforeDiscount`, the discount box on the order's
+ * `discountAmount`, the note box on its note; `save()` sends the boxes'
+ * characters, the discount as a number and the trimmed note or null. `note`
+ * is the one box a test types into. The card's own file holds the same
+ * mapping against the rendered boxes (`order-lines-stored-total.test.tsx`).
+ */
+const untouched = (order: Row, note?: string): Row => ({
+  expectedVersion: order.version,
+  items: (order.items as Row[]).map((l) => ({
+    productId: l.productId,
+    quantity: l.quantity,
+    unitPrice: String(Number(l.beforeDiscount)),
+  })),
+  discountAmount: Number(String(order.discountAmount ?? 0)),
+  customerNotes: (note ?? order.customerNotes ?? '').trim() || null,
+});
+
+/** The money a save can move: what is collected, the discount, and every line after its share. */
+const money = () => ({
+  totalAmount: fake.order.totalAmount,
+  discountAmount: fake.order.discountAmount,
+  lineTotals: fake.lines.map((l) => l.lineTotal),
+  discountShares: fake.lines.map((l) => l.discountShare),
+});
 
 const lineOf = (productId: string) => fake.lines.find((l) => l.productId === productId);
 const WRITES = new Set(['create', 'createMany', 'update', 'updateMany', 'upsert', 'delete', 'deleteMany']);
@@ -523,5 +600,257 @@ describe('Ⅱ · the lines wait for a contact attempt, like every other field', 
       'انعدّت محاولات الاتصال لحدا مش حامل الطلب'
     ).toEqual([]);
     expect(fake.lines.map((l) => l.productId)).toEqual([CREAM, DROPS]);
+  });
+});
+
+/*
+ * ═══════════════════════════════════════════════════════════════════════
+ * AND PRESSING «حفظ» AGAIN MOVES NO MONEY.
+ *
+ * Once the save stopped crashing, every press of it took the order's
+ * discount off a second time. The editor opened each price box on the
+ * stored `lineTotal` — the line AFTER its share of the discount — and the
+ * door reads `items[].unitPrice` as the line BEFORE it, then spreads the
+ * discount again: 64.200, then 57.400, then 50.600. Shipment creation
+ * rebuilds the courier's COD from these lines, so what was lost is what the
+ * courier collects.
+ *
+ * Every save below is the round trip a person makes: the window opens the
+ * order through the real `GET`, the card's untouched boxes go back through
+ * the real `PATCH`, and the window opens it again.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+describe('Ⅲ · a save with nothing touched moves no money — and neither does the one after it', () => {
+  beforeEach(() => {
+    fake.attempts = 1;
+  });
+
+  it('JOD, the worked example: 64.200 on the first save, and 64.200 on each untouched press after it', async () => {
+    as(AGENT, JOD);
+    const first = await save(CARD_BODY);
+    expect(first.status, why(first.body)).toBe(200);
+    const saved = money();
+    expect(saved).toEqual({
+      totalAmount: 64.2,
+      discountAmount: 6.8,
+      lineTotals: [54.044, 7.656],
+      discountShares: [5.956, 0.844],
+    });
+
+    for (const press of [2, 3]) {
+      const order = await openWindow();
+      // What each line cost before the discount: 54.044 + 5.956 and 7.656 + 0.844.
+      // Soft, so a wrong figure still goes through the door and the money it moved is reported too.
+      expect.soft(
+        (order.items as Row[]).map((l) => l.beforeDiscount),
+        `الضغطة ${press}: الشبّاك ما قال سعر السطر قبل الخصم`
+      ).toEqual([60, 8.5]);
+      const res = await save(untouched(order));
+      expect(res.status, why(res.body)).toBe(200);
+      // 57.400 on the second press and 50.600 on the third, before.
+      expect(money(), `الضغطة ${press} حرّكت المصاري`).toEqual(saved);
+    }
+    expect(fake.order.version, 'ما انحفظ تلات مرات').toBe(10);
+  });
+
+  it('USD: 30.00 − 3.00 + 4.00 = 31.00, saved untouched and then with only a note — 31.00 both times', async () => {
+    as(AGENT, USD);
+    fake.order = {
+      ...storedOrder(), countryId: USD.id,
+      quantity: 3, freeQuantity: 0, sellingPrice: 30, discountAmount: 3, shippingCost: 4, totalAmount: 31,
+    };
+    // 19.99 and 10.01, the three dollars shared by value: 2.00 and 1.00.
+    fake.lines = [
+      line({ id: 'line-cream-usd', productId: CREAM, productName: 'كريم', quantity: 2, freeQuantity: 0, unitPrice: 9.995, discountShare: 2, lineTotal: 17.99 }),
+      line({ id: 'line-drops-usd', productId: DROPS, productName: 'قطرة', quantity: 1, freeQuantity: 0, unitPrice: 10.01, discountShare: 1, lineTotal: 9.01 }),
+    ];
+    const stored = money();
+
+    let order = await openWindow();
+    expect.soft((order.items as Row[]).map((l) => l.beforeDiscount)).toEqual([19.99, 10.01]);
+    let res = await save(untouched(order));
+    expect(res.status, why(res.body)).toBe(200);
+    expect(money(), 'الحفظ بلا لمس حرّك المصاري').toEqual(stored);
+
+    order = await openWindow();
+    res = await save(untouched(order, 'الزبون بدّه التوصيل بعد الساعة خمسة'));
+    expect(res.status, why(res.body)).toBe(200);
+    // 28.00 before: the three dollars off again, for a note.
+    expect(money(), 'ملاحظة لحالها حرّكت المصاري').toEqual(stored);
+    expect(fake.order.customerNotes).toBe('الزبون بدّه التوصيل بعد الساعة خمسة');
+  });
+
+  it('SYP, with no minor unit: 90500, pressed twice — 90500 each time, where it became 81000', async () => {
+    as(AGENT, SYP);
+    fake.order = {
+      ...storedOrder(), countryId: SYP.id,
+      quantity: 4, freeQuantity: 0, sellingPrice: 95500, discountAmount: 9500, shippingCost: 4500, totalAmount: 90500,
+    };
+    // 70000 and 25500 share the 9500 by value: 6963.35 → 6963, 2536.65 → 2537.
+    fake.lines = [
+      line({ id: 'line-cream-syp', productId: CREAM, productName: 'كريم', quantity: 3, freeQuantity: 0, unitPrice: 23333.333, discountShare: 6963, lineTotal: 63037 }),
+      line({ id: 'line-soap-syp', productId: SOAP, productName: 'صابون', quantity: 1, freeQuantity: 0, unitPrice: 25500, discountShare: 2537, lineTotal: 22963 }),
+    ];
+    const stored = money();
+
+    for (const press of [1, 2]) {
+      const order = await openWindow();
+      expect.soft((order.items as Row[]).map((l) => l.beforeDiscount)).toEqual([70000, 25500]);
+      const res = await save(untouched(order));
+      expect(res.status, why(res.body)).toBe(200);
+      expect(money(), `الضغطة ${press} حرّكت المصاري`).toEqual(stored);
+    }
+  });
+
+  it.each([
+    {
+      label: 'USD, 10.00 with 6.00 off',
+      country: USD,
+      order: { quantity: 1, sellingPrice: 10, discountAmount: 6, shippingCost: 0, totalAmount: 4 },
+      row: { quantity: 1, unitPrice: 10, discountShare: 6, lineTotal: 4 },
+      opensAt: 10,
+    },
+    {
+      label: 'JOD, the card file’s own 3 × 14 with all 42 off',
+      country: JOD,
+      order: { quantity: 3, sellingPrice: 42, discountAmount: 42, shippingCost: 2.5, totalAmount: 2.5 },
+      row: { quantity: 3, unitPrice: 14, discountShare: 42, lineTotal: 0 },
+      opensAt: 42,
+    },
+  ])('$label: a discount over half the goods no longer locks the order — the note saves, the money stays', async ({ country, order: columns, row, opensAt }) => {
+    as(AGENT, country);
+    fake.order = { ...storedOrder(), countryId: country.id, freeQuantity: 0, ...columns };
+    fake.lines = [line({ id: 'line-soap-half', productId: SOAP, productName: 'صابون', freeQuantity: 0, ...row })];
+    const stored = money();
+
+    const order = await openWindow();
+    expect.soft((order.items as Row[]).map((l) => l.beforeDiscount)).toEqual([opensAt]);
+    const res = await save(untouched(order, 'رح يدفع كاش'));
+    // It was 400 «الخصم لا يمكن أن يتجاوز إجمالي قيمة الطلب»: the line after the discount, against the discount.
+    expect(res.status, why(res.body)).toBe(200);
+    expect(money()).toEqual(stored);
+    expect(fake.order.customerNotes).toBe('رح يدفع كاش');
+  });
+});
+
+describe('Ⅳ · a win-back order is born with its discount, and the agent’s first note does not take it again', () => {
+  it('50 with 5 off is 45, and a note leaves it 45 — it wrote 40', async () => {
+    as(AGENT, JOD);
+    fake.attempts = 1;
+    // As `POST /api/confirmation/winback` writes it, then pulled by the agent: born NEW, 5 off, the share on the line.
+    fake.order = {
+      ...storedOrder(), orderNumber: 'ORD-2026-0061', status: 'NEW', confirmationStatus: 'NEW',
+      quantity: 2, freeQuantity: 0, sellingPrice: 50, discountAmount: 5, shippingCost: 0, totalAmount: 45,
+    };
+    fake.lines = [
+      line({ id: 'line-cream-wb', productId: CREAM, productName: 'كريم', quantity: 2, freeQuantity: 0, unitPrice: 25, discountShare: 5, lineTotal: 45 }),
+    ];
+    const stored = money();
+
+    const order = await openWindow();
+    expect.soft((order.items as Row[]).map((l) => l.beforeDiscount)).toEqual([50]);
+    const res = await save(untouched(order, 'بدها ياه قبل الخميس'));
+    expect(res.status, why(res.body)).toBe(200);
+    expect(money(), 'الملاحظة أخدت خصم الاسترجاع مرّة تانية').toEqual(stored);
+    expect(fake.order.customerNotes).toBe('بدها ياه قبل الخميس');
+  });
+});
+
+describe('Ⅴ · an offer’s reduction is already inside the price — the save does not ask for it back', () => {
+  it('the storefront’s 3 كريم for 25 with the offer’s 3 off: 22 stays 22, pressed twice', async () => {
+    as(AGENT, JOD);
+    fake.attempts = 1;
+    /*
+     * As `createPublicOrder` writes it: the offer's 3 spread into the line's
+     * share, `lineTotal` 22, and NOTHING on `discountAmount` — the order has
+     * no discount of its own, so the discount box opens on 0. Adding the
+     * share back would make the box 25 beside a 0, and ask her for the 3 she
+     * was promised off.
+     */
+    fake.order = {
+      ...storedOrder(), quantity: 3, freeQuantity: 1, sellingPrice: 22, discountAmount: 0, shippingCost: 0, totalAmount: 22,
+    };
+    fake.lines = [
+      line({ id: 'line-cream-offer', productId: CREAM, productName: 'كريم', quantity: 3, freeQuantity: 1, unitPrice: 8.333, discountShare: 3, lineTotal: 22 }),
+    ];
+
+    for (const press of [1, 2]) {
+      const order = await openWindow();
+      expect.soft((order.items as Row[]).map((l) => l.beforeDiscount), `الضغطة ${press}`).toEqual([22]);
+      const res = await save(untouched(order));
+      expect(res.status, why(res.body)).toBe(200);
+      expect({
+        totalAmount: fake.order.totalAmount,
+        discountAmount: fake.order.discountAmount,
+        lineTotals: fake.lines.map((l) => l.lineTotal),
+        gifts: fake.lines.map((l) => l.freeQuantity),
+      }, `الضغطة ${press} حرّكت المصاري`).toEqual({ totalAmount: 22, discountAmount: 0, lineTotals: [22], gifts: [1] });
+    }
+    // The reduction now lives inside the price, where the box showed it — and stays there.
+    expect(fake.lines[0].discountShare).toBe(0);
+  });
+});
+
+/*
+ * ═══════════════════════════════════════════════════════════════════════
+ * ONE PRODUCT ON TWO LINES CARRIES ONE GIFT.
+ *
+ * The gift was carried by a Map keyed on the product, built from the stored
+ * rows in whatever order the database returned them — so the LAST row of a
+ * product decided, and every new line of that product got it. The cart
+ * keeps (product, offer) as a line's identity, both doors accept a product
+ * twice, and «أضف منتجاً آخر» can pick one already on the order. The
+ * reservation, the picking list, the waybill and the draw at delivery all
+ * read quantity + freeQuantity, so a doubled gift is a unit off the shelf
+ * for nothing, and a lost one is a promise broken at the door.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+describe('Ⅵ · one product on two lines carries ONE gift, whichever row comes back last', () => {
+  beforeEach(() => {
+    as(AGENT, JOD);
+    fake.attempts = 1;
+    fake.order = { ...storedOrder(), quantity: 4, freeQuantity: 1, sellingPrice: 48, discountAmount: 0, shippingCost: 2.5, totalAmount: 50.5 };
+  });
+
+  const threePlusOne = () =>
+    line({ id: 'line-cream-3p1', productId: CREAM, productName: 'كريم', quantity: 3, freeQuantity: 1, unitPrice: 12, lineTotal: 36 });
+  const oneAlone = () =>
+    line({ id: 'line-cream-1', productId: CREAM, productName: 'كريم', quantity: 1, freeQuantity: 0, unitPrice: 12, lineTotal: 12 });
+  const giftsOf = (productId: string) =>
+    fake.lines.filter((l) => l.productId === productId).reduce((sum, l) => sum + l.freeQuantity, 0);
+
+  it.each([
+    { label: '3+1 then 1+0 — the order that LOST the gift (0 + 0)', rows: () => [threePlusOne(), oneAlone()] },
+    { label: '1+0 then 3+1 — the order that DOUBLED it (1 + 1)', rows: () => [oneAlone(), threePlusOne()] },
+  ])('$label: saved untouched, كريم still carries one gift', async ({ rows }) => {
+    fake.lines = rows();
+    // The card's untouched body for these rows. No discount on the order, so
+    // each box holds the line's total as stored — the gift is all that is tested.
+    const res = await save({
+      items: fake.lines.map((l) => ({ productId: l.productId, quantity: l.quantity, unitPrice: String(l.lineTotal) })),
+      discountAmount: 0,
+      customerNotes: null,
+    });
+    expect(res.status, why(res.body)).toBe(200);
+    expect(fake.lines.every((l) => l.addedStage === 'EDIT'), 'ما انكتبت الأسطر الجديدة').toBe(true);
+    expect(giftsOf(CREAM), 'هدايا كريم مش وحدة').toBe(1);
+    // Given once, to the product's first line on the screen; its other line starts at none.
+    expect(fake.lines.map((l) => l.freeQuantity)).toEqual([1, 0]);
+  });
+
+  it('and «أضف منتجاً آخر» putting كريم again beside 3+1 adds a كريم — not a second gift', async () => {
+    fake.order = { ...fake.order, quantity: 3, sellingPrice: 36, totalAmount: 38.5 };
+    fake.lines = [threePlusOne()];
+    const res = await save({
+      items: [
+        { productId: CREAM, quantity: 3, unitPrice: '36' },
+        { productId: CREAM, quantity: 1, unitPrice: '12' },
+      ],
+      discountAmount: 0,
+      customerNotes: null,
+    });
+    expect(res.status, why(res.body)).toBe(200);
+    expect(fake.lines.map((l) => [l.quantity, l.freeQuantity])).toEqual([[3, 1], [1, 0]]);
+    expect(giftsOf(CREAM), 'كريم أخد هديّة تانية').toBe(1);
   });
 });

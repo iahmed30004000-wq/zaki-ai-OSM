@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { count, money as amount } from '@/lib/numeric-input';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
-import { computeCod } from '@/lib/money';
+import { computeCod, totalsBeforeDiscount } from '@/lib/money';
 import { hasEverShipped, hasLeftWarehouse, assertCancellable, deriveCoreState, getZone, type StateSource } from '@/lib/order-state';
 import { releaseOrderLines } from '@/lib/reservation';
 import { consumeOrderStock } from '@/lib/stock-consumption';
@@ -405,6 +405,24 @@ export async function GET(
       minorUnit: country.minorUnit,
     });
 
+    /*
+     * WHAT EACH LINE COST BEFORE THE DISCOUNT, SAID BY THE SERVER.
+     *
+     * The lines editor sends each price box back as `items[].unitPrice`, and
+     * the PATCH below reads that as the line BEFORE the order's discount and
+     * spreads the discount again. The box opened on `lineTotal`, which is
+     * after it, so a save with nothing touched took the discount twice. The
+     * figure goes out beside the stored columns, so the card puts a number
+     * in the box instead of adding two of them — see `totalsBeforeDiscount`
+     * for why it is not always `lineTotal + discountShare`.
+     */
+    const beforeDiscount = totalsBeforeDiscount(
+      order.items ?? [],
+      Number(order.discountAmount ?? 0),
+      country.minorUnit
+    );
+    const items = (order.items ?? []).map((line, i) => ({ ...line, beforeDiscount: beforeDiscount[i] }));
+
     // Decimal never leaves as a Decimal: the browser would receive a string
     // and `money()` would render it as NaN.
     const commission = Number(
@@ -424,7 +442,7 @@ export async function GET(
     return NextResponse.json({
       // Cost, profit and other people's commission only to those whose screens show money — see order-projection.ts.
       order: projectOrder(
-        { ...order, state, zone: getZone(state), commission: maySeeOrderCost(user) ? commission : undefined, closing },
+        { ...order, items, state, zone: getZone(state), commission: maySeeOrderCost(user) ? commission : undefined, closing },
         user,
       ),
       // The store's own currency, so the detail screen shows the same money
@@ -1298,14 +1316,32 @@ export async function PATCH(
          * row in its FAKE_ORDER branch and says so beside its customer read.
          * Inside the transaction and before the delete, so what is carried is
          * what the rows held at the moment they are replaced.
+         *
+         * ONE PRODUCT, ONE GIFT — HOWEVER MANY LINES CARRY IT. A Map built
+         * straight from the rows let the LAST stored row of a product decide,
+         * in whatever order the database returned them, and handed that
+         * figure to every new line of the product: كريم 3+1 beside كريم 1+0
+         * came back 0+0 or 1+1, and a second كريم added beside 3+1 got a gift
+         * of its own. The cart keeps (product, offer) as a line's identity,
+         * both doors accept a product twice, and «أضف منتجاً آخر» can pick one
+         * already on the order — and the reservation, the picking list, the
+         * waybill and the draw at delivery all read quantity + freeQuantity.
+         * So the product's gifts are SUMMED, and the sum goes once, to its
+         * first line in the set that was sent; its other lines start at none.
          */
         const storedLines = await tx.orderItem.findMany({
           where: { orderId: id },
           select: { productId: true, freeQuantity: true },
         });
-        const giftByProduct = new Map<string, number>(
-          storedLines.map((it): [string, number] => [it.productId, it.freeQuantity])
-        );
+        const giftByProduct = new Map<string, number>();
+        for (const it of storedLines) {
+          giftByProduct.set(it.productId, (giftByProduct.get(it.productId) ?? 0) + it.freeQuantity);
+        }
+        const gifts = nextLines.map((line) => {
+          const gift = giftByProduct.get(line.productId) ?? 0;
+          giftByProduct.delete(line.productId);
+          return gift;
+        });
         await tx.orderItem.deleteMany({ where: { orderId: id } });
         await tx.orderItem.createMany({
           data: nextLines.map((line, i) => ({
@@ -1314,7 +1350,7 @@ export async function PATCH(
             productId: line.productId,
             productName: lineProducts.get(line.productId)?.name ?? '',
             quantity: line.quantity,
-            freeQuantity: giftByProduct.get(line.productId) ?? 0,
+            freeQuantity: gifts[i],
             unitPrice: line.quantity > 0 ? line.unitPrice / line.quantity : line.unitPrice,
             discountShare: lineMoney!.discountShares[i] ?? 0,
             lineTotal: lineMoney!.lineTotals[i] ?? 0,
