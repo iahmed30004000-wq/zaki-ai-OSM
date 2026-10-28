@@ -96,7 +96,12 @@ const CONTEXT = {
   user: { id: 'u1', role: 'OPS', name: 'سامر' },
   companyId: 'c1',
   storeId: 's1',
+  // The store's currency: both doors round an offer's line («العرض ما بصير يكون اكثر من السعر الاساسي») by it.
+  country: { currencyCode: 'JOD', minorUnit: 3 },
 };
+
+/** The stored offer as the edit door reads it — with its product's base price, the 20 of `PRODUCT`. */
+const asStored = (row: object) => ({ ...row, product: { basePrice: PRODUCT.basePrice } });
 
 /** Every non-GET body the screen sent, in order. */
 let sent: { url: string; method: string; body: any }[] = [];
@@ -111,7 +116,7 @@ beforeEach(() => {
   requireContext.mockResolvedValue(CONTEXT);
   requirePermission.mockResolvedValue(undefined);
   db.product.findFirst.mockResolvedValue(PRODUCT);
-  db.offer.findFirst.mockResolvedValue({ ...STORED });
+  db.offer.findFirst.mockResolvedValue(asStored(STORED));
   db.offer.create.mockImplementation(async ({ data }: any) => ({ id: 'offer-new', ...data }));
   db.offer.update.mockImplementation(async ({ data }: any) => ({ ...STORED, ...data }));
   db.offer.updateMany.mockResolvedValue({ count: 0 });
@@ -167,7 +172,7 @@ async function editBodyFor(
   stored: typeof STORED = STORED
 ) {
   const user = userEvent.setup();
-  db.offer.findFirst.mockResolvedValue({ ...stored });
+  db.offer.findFirst.mockResolvedValue(asStored(stored));
   db.offer.update.mockImplementation(async ({ data }: any) => ({ ...stored, ...data }));
   screenApi.mockImplementation(async (path: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET';
@@ -259,18 +264,24 @@ describe('POST /api/offers — the offers form’s own body, at the real door', 
     expect(createdOffer().sellingPrice).toBe(0);
   });
 
+  /*
+   * THE PRICE HERE WAS 36, AND THE OWNER'S RULE OF 28/10 REFUSES IT. «العرض ما بصير يكون اكثر من السعر الاساسي»:
+   * an empty quantity box is ONE piece at the door, and one piece at a base price of 20 may cost 20 at most. This
+   * case is about the defaults, not the price, so it is priced under the line now — and 36 has a case of its own
+   * just below, as the refusal it has become.
+   */
   it('empty quantity and free-quantity take THE COLUMN’s defaults, not the browser’s', async () => {
     const { body } = await newOfferBodyFor(async (user) => {
-      await user.type(box('السعر (JOD)'), '36');
+      await user.type(box('السعر (JOD)'), '18');
     });
-    expect(body.sellingPrice).toBe('36');
+    expect(body.sellingPrice).toBe('18');
     expect(Object.prototype.hasOwnProperty.call(body, 'quantity')).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(body, 'freeQuantity')).toBe(false);
 
     const res = await atTheCreateDoor({ ...body, productId: PRODUCT_ID });
     expect(res.status).toBe(200);
     const saved = createdOffer();
-    expect(saved.sellingPrice).toBe(36);
+    expect(saved.sellingPrice).toBe(18);
     /*
      * ONE COPY OF EACH DEFAULT, and this is where it lives: `offerFields`
      * reads `count(999, 1).default(1)` and `count(999).default(0)` over
@@ -282,6 +293,33 @@ describe('POST /api/offers — the offers form’s own body, at the real door', 
     expect(saved.discount).toBe(0);
     expect(saved.deliveryIncluded).toBe(true);
     expect(saved.status).toBe('ACTIVE');
+  });
+
+  it('NEGATIVE: and the 36 this case used to save is refused — one piece, base 20, nothing written', async () => {
+    const { body } = await newOfferBodyFor(async (user) => {
+      await user.type(box('السعر (JOD)'), '36');
+    });
+    expect(body.sellingPrice).toBe('36');
+
+    const res = await atTheCreateDoor({ ...body, productId: PRODUCT_ID });
+    const answer = await res.json();
+    // The sentence first, because it is what the seller reads: the price, the line, and the figure to type.
+    expect(answer.error).toContain('سعر العرض (36)');
+    expect(answer.error).toContain('(1 × 20 = 20)');
+    expect(answer.error).toContain('اكتب 20 أو أقلّ');
+    expect(answer).toMatchObject({ code: 'OFFER_ABOVE_BASE', maxPrice: 20 });
+    expect(res.status).toBe(400);
+    expect(db.offer.create).not.toHaveBeenCalled();
+    expect(logAudit).not.toHaveBeenCalled();
+  });
+
+  it('and THAT SENTENCE IS DRAWN ON THE SCREEN through the message the form already had', async () => {
+    refuseWith = 'سعر العرض (36) أعلى من السعر الأساسي لنفس عدد القطع (1 × 20 = 20) — اكتب 20 أو أقلّ. القطع المجانية ما بتنحسب.';
+    await newOfferBodyFor(async (user) => {
+      await user.type(box('السعر (JOD)'), '36');
+    });
+    await waitFor(() => expect(screen.getByText(/اكتب 20 أو أقلّ/)).toBeTruthy());
+    expect(screen.getByText(/اكتب 20 أو أقلّ/).className).toContain('destructive');
   });
 
   it('a TYPED ZERO price is accepted as zero, so a free bundle stays sayable', async () => {
@@ -417,5 +455,42 @@ describe('PATCH /api/offers/[id] — an edit, at the real door', () => {
     // half a fix.
     await waitFor(() => expect(screen.getByText(/يساوي سعر العرض/)).toBeTruthy());
     expect(screen.getByText(/يساوي سعر العرض/).className).toContain('destructive');
+  });
+
+  /**
+   * AN OFFER SAVED ABOVE ITS LINE BEFORE THE RULE — one piece at 36, where the base price of 20 draws a line of 20.
+   *
+   * It stays on sale, and it must stay EDITABLE: the «تعديل» form sends the price, the quantity and the status on
+   * every save, so a door that refused whenever those keys were present would refuse renaming it, or changing its
+   * ending, until somebody repriced it. What the door measures is what the edit CHANGES.
+   */
+  const ABOVE_ITS_LINE = { ...STORED, name: 'قطعة', quantity: 1, sellingPrice: 36, discount: 0 };
+
+  it('opening «تعديل» on one stored above its line and changing ONLY the name saves — the real body, the real door', async () => {
+    const { body } = await editBodyFor(async (user) => {
+      await user.clear(screen.getByLabelText('اسم العرض'));
+      await user.type(screen.getByLabelText('اسم العرض'), 'قطعة — السعر القديم');
+    }, ABOVE_ITS_LINE);
+    // The form sent the figures it was opened on, untouched — the price and the quantity are ON the wire.
+    expect(body.sellingPrice).toBe('36');
+    expect(body.quantity).toBe('1');
+    expect(body.status).toBe('ACTIVE');
+
+    const res = await atTheEditDoor(body);
+    expect(res.status).toBe(200);
+    expect(updatedOffer().name).toBe('قطعة — السعر القديم');
+    expect(updatedOffer().sellingPrice).toBe(36);
+  });
+
+  it('NEGATIVE: but the same form with the price moved, and still above the line, is refused', async () => {
+    const { body } = await editBodyFor(async (user) => {
+      await user.clear(box('السعر (JOD)'));
+      await user.type(box('السعر (JOD)'), '30');
+    }, ABOVE_ITS_LINE);
+
+    const res = await atTheEditDoor(body);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ code: 'OFFER_ABOVE_BASE', maxPrice: 20 });
+    expect(db.offer.update).not.toHaveBeenCalled();
   });
 });

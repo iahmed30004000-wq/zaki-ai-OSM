@@ -4,6 +4,7 @@ import { omittedMeansOmitted } from './zod-patch';
 import { evidencedWasPrices, struckThroughPrice } from './price-honesty';
 // `money.ts` imports nothing from here, so the one money rule stays a leaf.
 import { allocateDiscount, roundMinor } from './money';
+import { offerAboveBase, paidPieces } from './offer-ceiling';
 import type { Prisma } from '@prisma/client';
 import type { db } from './db';
 
@@ -252,6 +253,138 @@ export function offerPatchSchema(existing: {
 export type OfferInput = z.infer<typeof offerInputSchema>;
 
 type Tx = Prisma.TransactionClient | typeof db;
+
+/* ─────────────── «العرض ما بصير يكون اكثر من السعر الاساسي» ─────────────── */
+
+/**
+ * THE CEILING'S REFUSAL, WRITTEN ONCE FOR EVERY DOOR THAT WRITES AN OFFER'S PRICE.
+ *
+ * The arithmetic is `offer-ceiling.ts`, which the offers screen draws its hint with. What lives here is what a door
+ * ANSWERS: one sentence naming the price, the line and the figure to type instead; a code a caller can recognise it
+ * by; and the line itself as `maxPrice`.
+ *
+ * NOT A ZOD ISSUE, deliberately. `offerInputSchema` and `offerPatchSchema` are read directly by `offers.test.ts` and
+ * `the-offer-after-the-order.test.ts` and know nothing about the product, so they stay exactly as they are; and a
+ * refusal filed under the path `sellingPrice` would
+ * reach the screen as «سعر البيع: …» — `zod-message.ts` puts the box's label in front — which is a sentence about a
+ * box, not about the rule.
+ */
+export const OFFER_ABOVE_BASE = 'OFFER_ABOVE_BASE';
+
+export interface OfferAboveBaseRefusal {
+  error: string;
+  code: typeof OFFER_ABOVE_BASE;
+  /** The line, rounded by the store's currency: the most this bundle may cost. */
+  maxPrice: number;
+}
+
+/** «(3 × 25 = 75)» — the line, written the way a person checks it. */
+const lineOf = (pieces: number, basePrice: number, maxPrice: number) => `(${pieces} × ${basePrice} = ${maxPrice})`;
+
+export function offerAboveBaseRefusal(
+  offer: { sellingPrice: number; quantity: number },
+  basePrice: number,
+  minorUnit: number
+): OfferAboveBaseRefusal | null {
+  const maxPrice = offerAboveBase(offer, basePrice, minorUnit);
+  if (maxPrice === null) return null;
+  return {
+    error:
+      `سعر العرض (${roundMinor(offer.sellingPrice, minorUnit)}) أعلى من السعر الأساسي لنفس عدد القطع ` +
+      `${lineOf(paidPieces(offer.quantity), basePrice, maxPrice)} — اكتب ${maxPrice} أو أقلّ. القطع المجانية ما بتنحسب.`,
+    code: OFFER_ABOVE_BASE,
+    maxPrice,
+  };
+}
+
+/**
+ * THE SAME LINE ON AN EDIT — MEASURED FOR WHAT THE EDIT DOES, NOT FOR WHAT THE ROW ALREADY WAS.
+ *
+ * Offers stored above the line before the rule existed stay on sale, unchanged, and the screen flags them. So an
+ * edit is refused only when IT moves the offer against the line:
+ *
+ *   · the price or the quantity really changes — compared rounded, against the stored row — and the row the edit
+ *     will leave is above the line. `{ quantity: 1 }` alone on «3 بـ60» is 60 for ONE piece, so the stored row fills
+ *     in what the edit leaves out, exactly as `offerPatchSchema` does for the discount;
+ *   · a stopped offer is switched back ON while it is above the line — that is putting it back on sale.
+ *
+ * Everything else passes: the order, the star, the name, the ending, the «was» price, and switching it OFF. The
+ * «تعديل» form sends the price and the quantity on EVERY save, so a rule keyed on their presence would refuse
+ * renaming an old offer, or changing its ending, until somebody repriced it; and a drag sends one PATCH per moved
+ * row with nothing holding them together, so one refusal there would leave the list half reordered.
+ */
+export function offerEditAboveBaseRefusal(
+  stored: { sellingPrice: number; quantity: number; status: string },
+  edit: { sellingPrice?: number; quantity?: number; status?: string },
+  basePrice: number,
+  minorUnit: number
+): OfferAboveBaseRefusal | null {
+  const repriced =
+    edit.sellingPrice !== undefined &&
+    roundMinor(edit.sellingPrice, minorUnit) !== roundMinor(stored.sellingPrice, minorUnit);
+  const resized = edit.quantity !== undefined && edit.quantity !== stored.quantity;
+  const backOnSale = edit.status === 'ACTIVE' && stored.status !== 'ACTIVE';
+  if (!repriced && !resized && !backOnSale) return null;
+
+  const after = {
+    sellingPrice: edit.sellingPrice ?? stored.sellingPrice,
+    quantity: edit.quantity ?? stored.quantity,
+  };
+  const refusal = offerAboveBaseRefusal(after, basePrice, minorUnit);
+  if (!refusal || repriced || resized) return refusal;
+  // Only switched back on: the seller pressed the eye, not the price box, so the sentence says what the eye did.
+  return {
+    ...refusal,
+    error:
+      `ما بيرجع هالعرض للبيع وسعره (${roundMinor(after.sellingPrice, minorUnit)}) أعلى من السعر الأساسي لنفس عدد القطع ` +
+      `${lineOf(paidPieces(after.quantity), basePrice, refusal.maxPrice)} — عدّل سعره لـ ${refusal.maxPrice} أو أقلّ أوّلاً، وبعدين شغّله.`,
+  };
+}
+
+/**
+ * THE OTHER WAY INTO THE SAME LINE — A BASE PRICE THAT COMES DOWN UNDER A LIVE OFFER.
+ *
+ * The line IS the base price, so lowering the base price lowers every offer's line at once, and a rule held only at
+ * the offer doors would be undone from the product page by typing one number. So the product door asks here before
+ * it writes, and the sentence names each offer it would leave above the line: the offer, its price, the new line.
+ *
+ *   · only when the line comes DOWN — a first base price, or a lower one. A raise lifts every line, so it cannot put
+ *     an offer above one; an old offer still above after a raise was above before it, and is already flagged.
+ *   · every ACTIVE offer of the product, ended or not, the one after the order included. A stopped offer is not on
+ *     sale and is measured when it is switched back on; an ended one returns the moment its ending is moved, which
+ *     the offer door lets through.
+ *   · a base price of 0 is «not priced yet» and draws no line at all.
+ *
+ * The query lives here and not in the route: `one-calculator.test.ts` sweeps the tree for a second `offer.findMany`
+ * by product and ACTIVE status, and is right to. This one asks a different question from `activeOffersFor`, and
+ * keeping the two side by side is how they stay apart.
+ */
+export async function baseBelowActiveOffersRefusal(
+  tx: Tx,
+  product: { id: string; companyId: string; basePrice: number },
+  nextBasePrice: number,
+  minorUnit: number
+): Promise<string | null> {
+  const lineComesDown = nextBasePrice > 0 && (!(product.basePrice > 0) || nextBasePrice < product.basePrice);
+  if (!lineComesDown) return null;
+
+  const live = await tx.offer.findMany({
+    where: { companyId: product.companyId, productId: product.id, status: 'ACTIVE' },
+    orderBy: [{ sortOrder: 'asc' }, { quantity: 'asc' }],
+    select: { name: true, quantity: true, sellingPrice: true },
+  });
+  const above = live.flatMap((o) => {
+    const maxPrice = offerAboveBase(o, nextBasePrice, minorUnit);
+    if (maxPrice === null) return [];
+    const line = lineOf(paidPieces(o.quantity), nextBasePrice, maxPrice);
+    return [`عرض «${o.name}» سعره ${roundMinor(o.sellingPrice, minorUnit)} والحدّ الجديد ${line}`];
+  });
+  if (above.length === 0) return null;
+  return (
+    `ما بينفع يصير السعر الأساسي ${nextBasePrice}: ${above.join('، و')}. ` +
+    (above.length === 1 ? 'عدّل سعر العرض أو أوقفه أوّلاً.' : 'عدّل أسعار هالعروض أو أوقفها أوّلاً.')
+  );
+}
 
 /**
  * Exactly one default per product.

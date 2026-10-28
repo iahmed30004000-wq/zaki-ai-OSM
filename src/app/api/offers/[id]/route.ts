@@ -5,7 +5,7 @@ import { requireContext } from '@/lib/geo-context';
 import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
-import { offerPatchSchema, clearOtherDefaults, clearOtherPostOrderOffers } from '@/lib/offers';
+import { offerPatchSchema, clearOtherDefaults, clearOtherPostOrderOffers, offerEditAboveBaseRefusal } from '@/lib/offers';
 import { zodMessage } from '@/lib/zod-message';
 
 interface Ctx {
@@ -23,12 +23,18 @@ interface Ctx {
 
 export async function PATCH(req: Request, ctx: Ctx) {
   try {
-    const { user, companyId, storeId } = await requireContext();
+    const { user, companyId, storeId, country } = await requireContext();
     await requirePermission('offers.manage');
     const { id } = await ctx.params;
 
-    const existing = await db.offer.findFirst({ where: { id, companyId, product: { storeId: storeId ?? '' } } });
-    if (!existing) return NextResponse.json({ error: 'العرض غير موجود' }, { status: 404 });
+    // With its product's base price: the line this offer must stay under is that price × its paid pieces.
+    const found = await db.offer.findFirst({
+      where: { id, companyId, product: { storeId: storeId ?? '' } },
+      include: { product: { select: { basePrice: true } } },
+    });
+    if (!found) return NextResponse.json({ error: 'العرض غير موجود' }, { status: 404 });
+    // The offer's own row, without the product, is what the rules read and what the audit log keeps.
+    const { product, ...existing } = found;
 
     // The stored row, so a partial edit is measured against the offer it
     // WILL be: `{ discount: 30 }` alone says nothing about the price it has
@@ -42,6 +48,11 @@ export async function PATCH(req: Request, ctx: Ctx) {
       );
     }
     const input = parsed.data;
+
+    // «العرض ما بصير يكون اكثر من السعر الاساسي» — refused only for what THIS edit changes. Renaming an old offer,
+    // moving it, starring it, moving its ending or switching it off always passes. See `offerEditAboveBaseRefusal`.
+    const aboveBase = offerEditAboveBaseRefusal(existing, input, product.basePrice, country.minorUnit);
+    if (aboveBase) return NextResponse.json(aboveBase, { status: 400 });
 
     /**
      * WHAT THE EDITOR SENT, AND NOTHING ELSE.
