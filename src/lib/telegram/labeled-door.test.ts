@@ -209,6 +209,7 @@ vi.mock('@/lib/authorization', () => ({ requirePermission: vi.fn(async () => und
 import { processStoredMessage } from './inbound';
 import { createTelegramOrder } from './order-creation';
 import { reviewReasonText } from './review-reasons';
+import { labeledText, readLabeledOrder } from './labeled-order';
 import { codForOrder } from '../delivery-fees';
 import { POST as RETRY } from '@/app/api/telegram/messages/[id]/retry/route';
 
@@ -1065,5 +1066,73 @@ describe('«تجاهل» is taken back by «إعادة المعالجة»', () =
     const id = arrive(sample(), { sourceId: 'src-B', processingStatus: 'IGNORED' });
     expect((await retry(id)).status).toBe(404);
     expect(state.orders).toEqual([]);
+  });
+});
+
+describe('«تعديل وترحيل» — a held message, corrected by hand, is read by this same door', () => {
+  /** The fields as the form holds them, from the sample message. */
+  const fieldsOf = (text: string) => {
+    const read = readLabeledOrder(text);
+    if (!read.claimed) throw new Error('not claimed');
+    return read.fields as Parameters<typeof labeledText>[0];
+  };
+  /** What `/correct` does to the row: the text becomes the eight fields written back. The door is then asked as for any message. */
+  const correct = (id: string, over: Partial<Parameters<typeof labeledText>[0]>) => {
+    messageRow(id).text = labeledText({ ...fieldsOf(messageRow(id).text), ...over });
+  };
+
+  it('a message held for its product becomes an order, on the SAME message row, once the product is corrected', async () => {
+    const id = arrive(sample({ 'إسم المنتج': 'شي ما إله وجود' }));
+    expect(await processStoredMessage(id)).toEqual({ status: 'NEEDS_REVIEW', reason: 'PRODUCT_NOT_FOUND' });
+    nothingWritten();
+
+    correct(id, { product: 'ماء الكمأ الأصلي' });
+    const done = await processStoredMessage(id);
+    expect(done.status).toBe('PROCESSED');
+    expect(state.orders).toHaveLength(1);
+    expect(messageRow(id)).toMatchObject({ processingStatus: 'PROCESSED', orderId: state.orders[0].id, reviewReason: null });
+  });
+
+  it('a message held for a number that is no number becomes an order once the number is fixed', async () => {
+    const id = arrive(sample({ 'رقم الهاتف': '12' }));
+    expect(await processStoredMessage(id)).toEqual({ status: 'NEEDS_REVIEW', reason: 'INVALID_PHONE:12' });
+    correct(id, { phone: '0933620102' });
+    expect((await processStoredMessage(id)).status).toBe('PROCESSED');
+    expect(state.customers[0].phone).toBe('933620102');
+  });
+
+  it('a message that was no order at all (not in the format) can be pushed on by typing the eight fields', async () => {
+    const id = arrive('طلب جديد من أبو أحمد', { processingStatus: 'IGNORED', reviewReason: 'NOT_IN_FORMAT' });
+    messageRow(id).text = labeledText(fieldsOf(sample()));
+    expect((await processStoredMessage(id)).status).toBe('PROCESSED');
+    expect(state.orders).toHaveLength(1);
+  });
+
+  it('a correction is not a way around a rule: a wrong price is still held, with the new reason, and nothing is written', async () => {
+    const id = arrive(sample({ 'السعر': '30' }));
+    await processStoredMessage(id);
+    correct(id, { price: '31' });
+    const again = await processStoredMessage(id);
+    expect(again.status).toBe('NEEDS_REVIEW');
+    expect(String((again as { reason?: string }).reason)).toMatch(/^PRICE_MISMATCH:/);
+    nothingWritten();
+  });
+
+  it('nor around the blacklist', async () => {
+    state.blocks = [{ companyId: 'c1', phone: '933620102' }];
+    const id = arrive(sample({ 'رقم الهاتف': '12' }));
+    await processStoredMessage(id);
+    correct(id, { phone: '0933620102' });
+    expect(await processStoredMessage(id)).toEqual({ status: 'NEEDS_REVIEW', reason: 'CUSTOMER_BLOCKED' });
+    nothingWritten();
+  });
+
+  it('pressing it twice makes one order', async () => {
+    const id = arrive(sample({ 'رقم الهاتف': '12' }));
+    await processStoredMessage(id);
+    correct(id, { phone: '0933620102' });
+    await processStoredMessage(id);
+    await processStoredMessage(id);
+    expect(state.orders).toHaveLength(1);
   });
 });

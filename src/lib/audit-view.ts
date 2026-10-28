@@ -65,7 +65,7 @@ const ACTION_AR: Record<string, string> = {
   SALARY_PAID: 'صرف راتب', EXPENSE_RECORDED: 'تسجيل مصروف', STOCK_RECEIVED: 'استلام مخزون', STOCK_RECOUNTED: 'إعادة جرد مخزون',
   STOCK_OPENING_COUNTED: 'جرد افتتاحي للمخزون', SYSTEM_TOKEN_CREATED: 'إنشاء مفتاح نظام', SYSTEM_TOKEN_REVOKED: 'إلغاء مفتاح نظام',
   CUSTOMER_BLOCKED: 'حظر عميل', CUSTOMER_BLOCK_RELEASED: 'رفع حظر عميل', CUSTOMER_BULK_VIEW: 'اطّلاع جماعي على عملاء',
-  SETTINGS_UPDATED: 'تعديل إعدادات', JOB_RUN_MANUAL: 'تشغيل مهمة يدوياً',
+  SETTINGS_UPDATED: 'تعديل إعدادات', JOB_RUN_MANUAL: 'تشغيل مهمة يدوياً', TELEGRAM_MESSAGE_CORRECTED: 'تعديل رسالة تلجرام يدوياً',
 };
 
 const looksLikeCode = (s: string) => /^[A-Z][A-Z0-9_]*$/.test(s);

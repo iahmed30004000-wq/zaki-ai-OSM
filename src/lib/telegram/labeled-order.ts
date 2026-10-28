@@ -74,6 +74,23 @@ const FOLDED = new Map(LABELS.map((l) => [foldLabel(l.label), l.field]));
 /** The labels' own text, for the screen's one-line rule. */
 export const LABEL_TEXTS = LABELS.map((l) => l.label);
 
+/** What each of the eight fields is called by the label the seller writes — the dialog's own words. */
+export const LABEL_OF = Object.fromEntries(LABELS.filter((l) => l.field).map((l) => [l.field, l.label])) as Record<LabeledField, string>;
+
+/**
+ * THE EIGHT FIELDS BACK INTO A MESSAGE — what «تعديل وترحيل» stores when a person corrects a held message by hand.
+ *
+ * One line per label, in the owner's order and without the order number (which is dropped anyway), each value on ONE line
+ * (a person typed it into a box; a line break in it would be a stray line). The result is read by `readLabeledOrder`
+ * like any message, so a corrected message goes through every rule a sent one does: nothing a person types here skips the
+ * offer, the price, the duplicate or the blacklist.
+ */
+export function labeledText(fields: LabeledFields): string {
+  return LABELS.filter((l) => l.field)
+    .map((l) => `${l.label}: ${String(fields[l.field as LabeledField] ?? '').replace(/\s+/g, ' ').trim()}`)
+    .join('\n');
+}
+
 /** Why a claimed message is refused. Each has its Arabic sentence, and its field, in `review-reasons.ts`. */
 export type LabeledRefusal =
   | 'REPEATED_ORDER_NUMBER'

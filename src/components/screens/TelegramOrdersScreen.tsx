@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { RiArrowGoBackLine, RiEqualizer2Line, RiRefreshLine } from '@remixicon/react';
+import { RiArrowGoBackLine, RiEditLine, RiEqualizer2Line, RiRefreshLine } from '@remixicon/react';
 import { Button } from '@/components/ui/Button';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -22,6 +22,7 @@ import { arDateTime } from '@/lib/format';
 import { usePagedList, type PagedRead, type Paging } from '@/hooks/usePagedList';
 import { reviewReason, reviewReasonText, type ReasonField } from '@/lib/telegram/review-reasons';
 import type { MessageColumns } from '@/lib/telegram/labeled-order';
+import { TelegramCorrectDialog } from './TelegramCorrectDialog';
 
 /**
  * «طلبات تلجرام» — THE MESSAGES, IN THE ORDER OF HIS LABELS.
@@ -35,6 +36,8 @@ import type { MessageColumns } from '@/lib/telegram/labeled-order';
  *   · the tabs say how many are in each, counted under the same store scope as the list, and «للمراجعة» opens first;
  *   · «إعادة المعالجة» is offered only where pressing it can change the answer; a reason in the text itself says
  *     «صحّح الرسالة وابعتها من جديد» instead. «تجاهل» asks first, and «إعادة المعالجة» takes it back;
+ *   · «تعديل وترحيل» (29/10) opens the eight fields of a held or set-aside message, writes them back as a message and reads
+ *     it through the same door: it becomes an order, or the form says the new reason;
  *   · the message as it arrived is folded under «نص الرسالة», closed until asked for;
  *   · the offer's text is tied to a real offer: once the order exists the cell shows «مربوط بالعرض: …», and the phone is
  *     drawn as the seller wrote it (every form is accepted; a number that fails the store's rule waits here, named).
@@ -111,6 +114,9 @@ const mayRetry = (m: Message) =>
   m.processingStatus === 'IGNORED' ||
   (m.processingStatus === 'NEEDS_REVIEW' && reviewReason(m.reviewReason)?.retry === true);
 
+/** «تعديل وترحيل»: any message with no order yet that a person has already looked at — held, failed or set aside. */
+const mayCorrect = (m: Message) => !m.order && ['NEEDS_REVIEW', 'FAILED', 'IGNORED'].includes(m.processingStatus);
+
 const mayIgnore = (m: Message) => !m.order && ['NEEDS_REVIEW', 'FAILED', 'PENDING'].includes(m.processingStatus);
 
 export function TelegramOrdersScreen() {
@@ -128,6 +134,7 @@ function TelegramOrdersList({ canManage }: { canManage: boolean }) {
   const [search, setSearch] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [bot, setBot] = useState<'on' | 'off' | 'unknown' | null>(null);
+  const [correcting, setCorrecting] = useState<Message | null>(null);
 
   const list = usePagedList<Message, Facts>({
     url: '/api/telegram/messages',
@@ -247,6 +254,11 @@ function TelegramOrdersList({ canManage }: { canManage: boolean }) {
 
   const actions = (m: Message) => (
     <div className="flex flex-wrap items-center gap-2">
+      {canManage && mayCorrect(m) && (
+        <Button size="sm" variant="outline" disabled={busyId === m.id} onClick={() => setCorrecting(m)}>
+          <RiEditLine className="w-4 h-4 ml-1" /> تعديل وترحيل
+        </Button>
+      )}
       {canManage && mayRetry(m) && (
         <Button size="sm" variant="outline" disabled={busyId === m.id} onClick={() => retry(m)}>
           <RiArrowGoBackLine className="icon-mirror w-4 h-4 ml-1" /> إعادة المعالجة
@@ -355,6 +367,17 @@ function TelegramOrdersList({ canManage }: { canManage: boolean }) {
           notice={(m) => reasonLine(m, 'text-xs text-[var(--sys-destructive)]')}
           actions={actions}
           empty={empty}
+        />
+      )}
+
+      {correcting && (
+        <TelegramCorrectDialog
+          target={{ id: correcting.id, reading: correcting.reading, createdAt: correcting.createdAt, reason: reasonOf(correcting) }}
+          onClose={() => setCorrecting(null)}
+          onSaved={async (became) => {
+            if (became) toast.done('صارت طلب');
+            await list.reload();
+          }}
         />
       )}
 
