@@ -14,7 +14,7 @@ import { REJECTION_REASON_AR } from '@/lib/confirmation-workflow';
 import { RiLoader4Line, RiPhoneLine, RiPriceTag3Line, RiSettings3Line } from '@remixicon/react';
 import { usePagedList, type PagedRead, type Paging } from '@/hooks/usePagedList';
 import { ruleSentence, type WinbackRule } from '@/lib/winback';
-import { DEFAULT_VIEW, PERIODS, PERIOD_AR, VIEWS, VIEW_AR, type View } from '@/lib/winback-filters';
+import { DEFAULT_VIEW, PERIODS, PERIOD_AR, SHIPPING_KINDS, SHIPPING_KIND_AR, VIEWS, VIEW_AR, type View } from '@/lib/winback-filters';
 import type { WinbackFacts } from '@/lib/winback-list';
 import { OrderLink } from '@/components/orders/OrderLink';
 
@@ -40,6 +40,13 @@ import { OrderLink } from '@/components/orders/OrderLink';
  * other, sees the discount on it, and calls. The rejected order stays
  * rejected, so «أين نخسر الطلبات» still counts the loss and this gets a
  * conversion rate of its own.
+ *
+ * «هل بيعرض الملغي قبل الشحن وبعد ؟ … خليه يجري ع ال 2» (28/10). It did not —
+ * a parcel that left was refused whatever became of it. Now a parcel that
+ * shipped and came back, once the desk has received it, is on the same list
+ * under the same rule; its row is named a return, dated by its receipt, and
+ * «الشحن» splits the list in two. The owner's switch turns the second kind off,
+ * and then every sentence on this screen is the one it printed before.
  */
 
 interface Row {
@@ -53,6 +60,10 @@ interface Row {
   rejectionReason: string | null;
   rejectionNote: string | null;
   rejectedAt: string | null;
+  /** «مرتجع بعد الشحن …», in words, for a parcel that left and came back; null for every other order. */
+  returnLabel: string | null;
+  /** When the desk received it back — the date a return cools from. */
+  returnReceivedAt: string | null;
   verdict:
     | { eligible: true; dueAt: string; maxDiscount: number }
     | { eligible: false; code: string; reason: string; dueAt?: string };
@@ -83,23 +94,25 @@ export function WinbackScreen({ embedded = false }: { embedded?: boolean } = {})
   const [reason, setReason] = useState('all');
   const [product, setProduct] = useState('all');
   const [period, setPeriod] = useState('all');
+  const [shipping, setShipping] = useState('all');
   const [offering, setOffering] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
 
   const list = usePagedList<Row, Extra>({
     url: '/api/confirmation/winback',
-    params: { q: search.trim() || undefined, view, reason, product, period },
+    params: { q: search.trim() || undefined, view, reason, product, period, shipping },
     read,
   });
 
   const activeCount =
-    [reason, product, period].filter((v) => v !== 'all').length + (search.trim() ? 1 : 0) + (view !== DEFAULT_VIEW ? 1 : 0);
+    [reason, product, period, shipping].filter((v) => v !== 'all').length + (search.trim() ? 1 : 0) + (view !== DEFAULT_VIEW ? 1 : 0);
   const reset = () => {
     setSearch('');
     setView(DEFAULT_VIEW);
     setReason('all');
     setProduct('all');
     setPeriod('all');
+    setShipping('all');
   };
 
   async function offer(r: Row) {
@@ -108,8 +121,9 @@ export function WinbackScreen({ embedded = false }: { embedded?: boolean } = {})
     const answer = await ask({
       title: `اعرض على ${r.customer.fullName} من جديد؟`,
       body:
-        `${r.product ?? '—'} · ${r.quantity} × ${r.sellingPrice}. أُلغي بسبب «${reasonAr(r.rejectionReason)}».\n` +
-        `يُنشأ طلبٌ جديد بالخصم ويدخل الطابور العاديّ — والطلب القديم يبقى ملغى كما هو.\n` +
+        `${r.product ?? '—'} · ${r.quantity} × ${r.sellingPrice}. ` +
+        (r.returnLabel ? `${r.returnLabel}، واستلمه المستودع.\n` : `أُلغي بسبب «${reasonAr(r.rejectionReason)}».\n`) +
+        `يُنشأ طلبٌ جديد بالخصم ويدخل الطابور العاديّ — والطلب القديم يبقى ${r.returnLabel ? 'مرتجعاً' : 'ملغى'} كما هو.\n` +
         `أقصى خصمٍ مسموح: ${max}${r.discountAmount ? ` (محسومٌ عليه ${r.discountAmount} سابقاً، وهو داخلٌ في الحساب)` : ''}.`,
       confirmLabel: 'اعرضه',
       input: { label: 'قيمة الخصم', placeholder: String(max) },
@@ -164,6 +178,17 @@ export function WinbackScreen({ embedded = false }: { embedded?: boolean } = {})
       onChange: (v) => setView(v as View),
       options: VIEWS.map((v) => ({ value: v, label: `${VIEW_AR[v]} (${facts.views[v]})` })),
     },
+    // Second, beside the view: the owner's own split of the list — «قبل الشحن وبعد».
+    {
+      key: 'shipping',
+      label: 'الشحن',
+      value: shipping,
+      onChange: setShipping,
+      options: [
+        { value: 'all', label: 'الكل' },
+        ...SHIPPING_KINDS.map((s) => ({ value: s, label: `${SHIPPING_KIND_AR[s]} (${facts.shipping[s]})` })),
+      ],
+    },
     {
       key: 'reason',
       label: 'سبب الإلغاء',
@@ -196,7 +221,10 @@ export function WinbackScreen({ embedded = false }: { embedded?: boolean } = {})
     },
   ];
 
-  const explain = `طلباتٌ أُلغيت لسببٍ يزول بالوقت أو بالسعر، ومضى على إلغائها ${rule.coolingDays} يوماً على الأقلّ. العرضُ يُنشئ طلباً جديداً في الطابور، والقديمُ يبقى ملغى.`;
+  // Both kinds while the owner's switch is on; off, the sentence the screen always printed.
+  const explain = rule.afterShipping
+    ? `طلباتٌ أُلغيت لسببٍ يزول بالوقت أو بالسعر قبل أن تُشحن، أو شُحنت ثمّ رجعت واستلمها المستودع، ومضى على الإلغاء أو الاستلام ${rule.coolingDays} يوماً على الأقلّ. العرضُ يُنشئ طلباً جديداً في الطابور، والقديمُ يبقى كما هو.`
+    : `طلباتٌ أُلغيت لسببٍ يزول بالوقت أو بالسعر، ومضى على إلغائها ${rule.coolingDays} يوماً على الأقلّ. العرضُ يُنشئ طلباً جديداً في الطابور، والقديمُ يبقى ملغى.`;
 
   return (
     <div className="space-y-4">
@@ -264,7 +292,11 @@ export function WinbackScreen({ embedded = false }: { embedded?: boolean } = {})
           ) : (
             <EmptyState
               title="لا طلبَ جاهزاً لمحاولةٍ ثانية"
-              why={`يُعرض هنا ما أُلغي بالأسباب التي تحدّدها القاعدة أعلاه، بعد ${rule.coolingDays} يوماً، ولم يُعرض عليه من قبل، ولم يُشحن.`}
+              why={
+                rule.afterShipping
+                  ? `يُعرض هنا ما أُلغي قبل الشحن بالأسباب التي تحدّدها القاعدة أعلاه، وما شُحن ثمّ رجع واستلمه المستودع — بعد ${rule.coolingDays} يوماً، ولم يُعرض عليه من قبل.`
+                  : `يُعرض هنا ما أُلغي بالأسباب التي تحدّدها القاعدة أعلاه، بعد ${rule.coolingDays} يوماً، ولم يُعرض عليه من قبل، ولم يُشحن.`
+              }
             />
           )}
         </div>
@@ -277,9 +309,16 @@ export function WinbackScreen({ embedded = false }: { embedded?: boolean } = {})
             <header className="flex flex-wrap items-center gap-2">
               <OrderLink id={r.id} number={r.orderNumber} className="font-semibold text-[var(--sys-heading)]" />
               <span className="text-xs px-2 py-0.5 rounded-md bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 text-[var(--sys-warning)]">
-                {reasonAr(r.rejectionReason)}
+                {r.returnLabel ?? reasonAr(r.rejectionReason)}
               </span>
-              <span className="mr-auto text-xs text-[var(--sys-muted-foreground)]">أُلغي {day(r.rejectedAt)}</span>
+              {/* A return is dated by the desk's receipt — the day its cooling counts from — not by a cancellation it never had. */}
+              <span className="mr-auto text-xs text-[var(--sys-muted-foreground)]">
+                {r.returnLabel
+                  ? r.returnReceivedAt
+                    ? `استلمه المستودع ${day(r.returnReceivedAt)}`
+                    : 'لم يستلمه المستودع بعد'
+                  : `أُلغي ${day(r.rejectedAt)}`}
+              </span>
             </header>
 
             <p className="text-sm text-[var(--sys-heading)]">
