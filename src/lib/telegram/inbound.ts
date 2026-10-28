@@ -16,8 +16,9 @@ import { findOrCreateCustomer } from '../customer-identity';
 import { isBlocked } from '../blacklist';
 import { normalizePhoneNumber } from '../phone';
 import { resolveProductText } from './product-text';
-import { parseTelegramOrderMessage } from './parser';
-import { createTelegramOrder } from './order-creation';
+import { parseTelegramOrderMessage, readLineRoleOrder } from './parser';
+import { createTelegramOrder, parseAdvertisedPrice } from './order-creation';
+import { findTwinOrder } from './twin';
 
 const RECENT_MESSAGE_WINDOW_MS = 24 * 60 * 60 * 1000; // ignore stale updates
 
@@ -178,6 +179,22 @@ export async function processStoredMessage(messageId: string): Promise<StoredPro
   }
 
   const companyId = message.companyId;
+
+  // ── To a person, with the reason (server-side validation never trusts message content for
+  //    companyId/productId/price/status/total) ──
+  const review: (reason: string) => Promise<StoredProcessingResult> = async (reason) => {
+    await db.telegramMessage.update({
+      where: { id: message.id },
+      data: { processingStatus: 'NEEDS_REVIEW', reviewReason: reason, processedAt: new Date() },
+    });
+    return { status: 'NEEDS_REVIEW', reason };
+  };
+
+  // ── His seven lines: a message in that shape is read by its own rules and never falls back (T1) ──
+  if (readLineRoleOrder(message.text ?? '').claimed) {
+    return processLineRoleMessage(message, review);
+  }
+
   const parsed = parseTelegramOrderMessage(message.text ?? '');
 
   // Persist the extracted commercial page name (source) for dashboard display
@@ -194,16 +211,6 @@ export async function processStoredMessage(messageId: string): Promise<StoredPro
     });
     return { status: 'IGNORED' };
   }
-
-  // ── Field validation (server-side; never trusts message content for
-  //    companyId/productId/price/status/total) ──
-  const review: (reason: string) => Promise<StoredProcessingResult> = async (reason) => {
-    await db.telegramMessage.update({
-      where: { id: message.id },
-      data: { processingStatus: 'NEEDS_REVIEW', reviewReason: reason, processedAt: new Date() },
-    });
-    return { status: 'NEEDS_REVIEW', reason };
-  };
 
   const customerName = parsed.customerName?.trim();
   if (!customerName || customerName.length < 2) return review('MISSING_CUSTOMER_NAME');
@@ -283,6 +290,7 @@ export async function processStoredMessage(messageId: string): Promise<StoredPro
     notes: parsed.notes,
     priceText: parsed.priceText,
     pageName: sourcePageName,
+    linkMessageId: message.id,
     telegram: {
       messageId: message.messageId,
       chatId: message.chatId,
@@ -292,13 +300,135 @@ export async function processStoredMessage(messageId: string): Promise<StoredPro
   });
 
   if (!created.ok) {
+    if (created.reason === 'ALREADY_LINKED') return linkedElsewhere(message.id);
     return review(created.reason!);
   }
 
-  await db.telegramMessage.update({
-    where: { id: message.id },
-    data: { processingStatus: 'PROCESSED', orderId: created.orderId!, processedAt: new Date(), reviewReason: null },
+  // The message was linked to its order inside the order's own transaction.
+  return { status: 'PROCESSED', orderId: created.orderId! };
+}
+
+/**
+ * Two presses of «إعادة المعالجة» at the same moment: the other one made the order and linked this message to it first.
+ * That is not a failure to show anybody — the message IS processed, by the order the other press made.
+ */
+async function linkedElsewhere(messageRowId: string): Promise<StoredProcessingResult> {
+  const linked = await db.telegramMessage.findUnique({ where: { id: messageRowId }, select: { orderId: true } });
+  return { status: 'PROCESSED', orderId: linked?.orderId ?? undefined };
+}
+
+/** The message fields the seven-line door reads — the stored row, never the payload. */
+interface StoredMessage {
+  id: string;
+  companyId: string;
+  sourceId: string | null;
+  text: string | null;
+  createdAt: Date;
+  messageId: string;
+  chatId: string;
+  threadId: number | null;
+  threadName: string | null;
+}
+
+/**
+ * THE SEVEN-LINE DOOR (T1–T10).
+ *
+ * Every refusal comes before anything is written, in this order: the store → lines 2 to 7 (the catalogue and the price
+ * ceiling included) → the duplicate → the blacklist → the customer → the order. A message refused at any step leaves no
+ * customer and no order behind.
+ *
+ * The money is the existing door's: the TOTAL from line 7 goes to `createTelegramOrder` as plain digits, and from there
+ * `parseAdvertisedPrice` → total ÷ quantity → `computeCod`, unchanged. «توصيل مجاني» sets this order's
+ * `priceIncludesDelivery` exactly as an offer's `deliveryIncluded` does, through the same `priceIncludesDeliveryFor`.
+ */
+async function processLineRoleMessage(
+  message: StoredMessage,
+  review: (reason: string) => Promise<StoredProcessingResult>
+): Promise<StoredProcessingResult> {
+  const companyId = message.companyId;
+
+  // 1 — the store, from the source the message came through (never from the text), and the country it is read against.
+  const source = message.sourceId
+    ? await db.telegramSource.findUnique({
+        where: { id: message.sourceId },
+        select: {
+          storeId: true,
+          store: { select: { country: { select: { code: true, name: true, currencyCode: true, minorUnit: true } } } },
+        },
+      })
+    : null;
+  const storeId = source?.storeId ?? null;
+  const country = source?.store?.country ?? null;
+  if (!storeId || !country) return review('NO_STORE');
+
+  // 2 — lines 2 to 7.
+  const reading = readLineRoleOrder(message.text ?? '', { country, receivedAt: message.createdAt });
+  if (!reading.claimed) return review('LINE_COUNT');
+  if (!reading.ok) return review(reading.reason);
+  const { lines, offer, place } = reading;
+
+  // Line 6 — THIS store's active products only (T5). Another store's shelf, or a guess, is never an order.
+  const shelf = await db.product.findMany({
+    where: { companyId, storeId, status: 'ACTIVE' },
+    select: { id: true, name: true, nameEn: true, sku: true, basePrice: true, image: true },
+  });
+  const match = resolveProductText(lines.product, shelf);
+  if (match.kind === 'ambiguous') return review('AMBIGUOUS_PRODUCT');
+  if (match.kind === 'none') return review('PRODUCT_NOT_FOUND');
+  if (match.how === 'fuzzy') return review('PRODUCT_GUESSED');
+
+  // Line 7 — the creator's own reader and its 100,000 ceiling, asked now, before a customer is written.
+  if (parseAdvertisedPrice(offer.priceText, country.minorUnit) === null) return review('MISSING_PRICE');
+
+  // 3 — the same reference at the same time already made an order.
+  const twin = await findTwinOrder({
+    companyId,
+    storeId,
+    messageRowId: message.id,
+    receivedAt: message.createdAt,
+    ref: lines.ref,
+    orderedAt: lines.orderedAt,
+  });
+  if (twin) return review('DUPLICATE_REF');
+
+  // 4 — the blacklist, company-wide, on the number as written (a + kept).
+  if (await isBlocked(db, companyId, lines.phone, country.code)) return review('CUSTOMER_BLOCKED');
+
+  // 5 — the customer, the shared way: found by this store's phone, or made.
+  const customer = await findOrCreateCustomer(db, {
+    companyId,
+    storeId,
+    phone: normalizePhoneNumber(lines.phone, country.code),
+    rawPhone: lines.phone.slice(0, 20),
+    fullName: lines.customer.slice(0, 80),
+    address: place.slice(0, 200),
+    city: place.slice(0, 60),
   });
 
-  return { status: 'PROCESSED', orderId: created.orderId! };
+  // 6 — the order, through the one door and its one calculator. Line 1 and line 2 go to the internal notes only (T3, T8).
+  const created = await createTelegramOrder({
+    companyId,
+    storeId,
+    customer,
+    product: match.product,
+    quantity: offer.quantity,
+    address: place.slice(0, 200),
+    governorate: place,
+    priceText: offer.priceText,
+    deliveryIncluded: offer.deliveryIncluded || undefined,
+    sourceNote: `مرجع المصدر: ${lines.ref.slice(0, 40)} · وقت الطلب بالمصدر: ${lines.orderedAt} · العرض: ${lines.offer}`,
+    linkMessageId: message.id,
+    telegram: {
+      messageId: message.messageId,
+      chatId: message.chatId,
+      threadId: message.threadId ?? null,
+      chatTitle: message.threadName ?? undefined,
+    },
+  });
+
+  if (!created.ok) {
+    if (created.reason === 'ALREADY_LINKED') return linkedElsewhere(message.id);
+    return review(created.reason);
+  }
+  return { status: 'PROCESSED', orderId: created.orderId };
 }
