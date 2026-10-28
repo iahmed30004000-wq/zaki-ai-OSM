@@ -114,9 +114,11 @@ export function buildPublicOrderSchema(locale: OrderLocale) {
      * about it, so «هاتف بديل» could be ordered and even marked required on
      * the checkout tab and no public door could send one.
      *
-     * Optional whatever the shop's settings say: the phone above is the
-     * identity, and refusing an order because a second number is missing
-     * loses a sale over a field that exists to help us reach somebody.
+     * Optional HERE whatever the shop's settings say, and its format rules
+     * are these: the phone above is the identity. When the shop ticked it
+     * «إلزامي» (and left it on the form), the door refuses a blank one AFTER
+     * this schema, from the store's own «الدفع» — `createPublicOrder` and
+     * `checkout-words.ts` — so one schema serves every shop.
      */
     alt_phone: z
       .string()

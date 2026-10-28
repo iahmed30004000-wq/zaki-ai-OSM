@@ -5,6 +5,7 @@ import { rateLimit, getClientIp } from '@/lib/rate-limit';
 import { getStorefront } from '@/lib/storefront';
 import { createPublicOrder, type SellingSurface } from '@/lib/public-order';
 import { resolveCampaign } from '@/lib/campaigns-server';
+import { checkoutRules } from '@/lib/store-theme';
 
 /**
  * Public order intake from a storefront.
@@ -120,6 +121,8 @@ export async function POST(req: Request, ctx: Ctx) {
       products: [product],
       landingPage: null,
       campaignId,
+      // What the store's «الدفع» requires — from the LIVE theme `getStorefront` read, the one the form was drawn from.
+      checkout: checkoutRules(store.theme),
       source: 'Store',
       // Per product, not per store: a customer buying a second thing from
       // the same shop minutes later is not a duplicate submission.

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { LAYOUT_SLOTS, effectiveVariant } from './layout-slots';
 import { DEFAULT_FAMILY, FAMILY_IDS, familyById, familyOfSkin, type FamilyId } from './store-families';
+import type { CheckoutRules } from './checkout-words';
 import {
   DEFAULT_THEME,
   STATE_COLORS,
@@ -302,6 +303,14 @@ export const storeCheckoutSchema = z.object({
   fieldOrder: z.array(z.enum(CHECKOUT_FIELDS)).max(CHECKOUT_FIELDS.length).default([...CHECKOUT_FIELDS]),
   /** Beyond the four that are always required. */
   required: z.array(z.enum(CHECKOUT_FIELDS)).max(CHECKOUT_FIELDS.length).default([]),
+  /**
+   * «شو الي يظهر بالشيك اوت» — the fields the seller took off the form.
+   *
+   * Stored as the seller left it and READ through `hiddenCheckoutFields`, which drops the four a parcel needs: a
+   * stored hidden 'phone' (an old template, a hand-edited file) is ignored, never obeyed. A theme saved before this
+   * existed has no key, which reads as «nothing hidden» — every form exactly as it was.
+   */
+  hidden: z.array(z.enum(CHECKOUT_FIELDS)).max(CHECKOUT_FIELDS.length).default([]),
   submitText: z.string().trim().max(40).default(''),
   buttonColor: hex.optional(),
   afterOrderMessage: z.string().trim().max(300).default(''),
@@ -526,20 +535,59 @@ export function checkoutOrder(theme: StoreTheme): CheckoutField[] {
   return ordered;
 }
 
-/** Which checkout fields are required — the four that always are, plus the shop's. */
-export function requiredCheckoutFields(theme: StoreTheme): CheckoutField[] {
-  const chosen = new Set<CheckoutField>(theme.checkout?.required ?? []);
-  for (const f of MANDATORY_CHECKOUT_FIELDS) chosen.add(f);
-  return CHECKOUT_FIELDS.filter((f) => chosen.has(f));
+/**
+ * The fields this shop took off its forms — never one of the four a parcel needs, whatever was stored.
+ *
+ * The settings list still shows every field, in `checkoutOrder`; this is what a FORM leaves out.
+ */
+export function hiddenCheckoutFields(theme: StoreTheme): CheckoutField[] {
+  const stored = new Set<CheckoutField>(theme.checkout?.hidden ?? []);
+  return CHECKOUT_FIELDS.filter((f) => stored.has(f) && !MANDATORY_CHECKOUT_FIELDS.includes(f));
+}
+
+/** What a form draws: the shop's order, without the fields it hid. */
+export function visibleCheckoutFields(theme: StoreTheme): CheckoutField[] {
+  const hidden = new Set(hiddenCheckoutFields(theme));
+  return checkoutOrder(theme).filter((f) => !hidden.has(f));
 }
 
 /**
- * WHAT A LANDING PAGE'S ORDER FORM TAKES FROM ITS STORE'S «الدفع».
+ * Which checkout fields are required — the four that always are, plus the shop's own that it left ON the form.
+ *
+ * A hidden field is never required: nobody can fill a field that is not drawn, and a door that demanded one would
+ * refuse every order. The seller's tick is kept in the stored list either way; it simply asks nothing while hidden.
+ */
+export function requiredCheckoutFields(theme: StoreTheme): CheckoutField[] {
+  const hidden = new Set(hiddenCheckoutFields(theme));
+  const chosen = new Set<CheckoutField>(theme.checkout?.required ?? []);
+  for (const f of MANDATORY_CHECKOUT_FIELDS) chosen.add(f);
+  return CHECKOUT_FIELDS.filter((f) => chosen.has(f) && !hidden.has(f));
+}
+
+/**
+ * WHAT A PUBLIC DOOR ENFORCES — «إلزامي» meant at the door, not only drawn as «*».
+ *
+ * The owner was asked, 28/10, whether a field marked «إلزامي» and left blank should refuse the order or be accepted
+ * as before, and answered for refusing it. So every public door hands `createPublicOrder` these, resolved by the ROUTE
+ * from the store's LIVE theme (never the draft): the four a parcel needs — which keep the door's own checks and
+ * words — plus what the seller ticked and left visible.
+ *
+ * `null` when there is no theme to read: the door then asks nothing beyond the four, exactly as before. The shape
+ * lives in `checkout-words.ts`, beside the sentences: the order engine takes it from there, never from this module.
+ */
+export function checkoutRules(theme: StoreTheme | null | undefined): CheckoutRules | null {
+  return theme ? { required: requiredCheckoutFields(theme) } : null;
+}
+
+/**
+ * WHAT EVERY PUBLIC ORDER FORM TAKES FROM ITS STORE'S «الدفع».
  *
  * «مش مربوط بصفحة الهبوط». The tab saved five settings and the shop's cart
  * checkout read three of them; every landing page drew its own fields, its
  * own button and its own thank-you line, so a seller who set the tab saw it
- * change nothing on the pages that sell.
+ * change nothing on the pages that sell. Now the landing page, the store's
+ * front, the product pages inside the shop and the cart all take this one
+ * answer.
  *
  * Read from the store's LIVE theme — the one a visitor's page is painted
  * from. Never the page's own theme, which is a look and holds no checkout,
@@ -549,8 +597,9 @@ export function requiredCheckoutFields(theme: StoreTheme): CheckoutField[] {
  * module into it would put zod on every landing page. So the answers are
  * worked out on the server and handed over; the form imports their type.
  *
- *   · `fields` and `required` — the same two questions the cart checkout
- *     asks, through the same two functions above.
+ *   · `fields` and `required` — what the form draws, in the shop's order
+ *     and without the fields it hid, and which of those it marks; the
+ *     same answers every public form and every public door take.
  *   · `submitText` and `thanksMessage` — trimmed, '' when the seller wrote
  *     none. `thanksMessage` is the store's `afterOrderMessage` under another
  *     name, because in the form `afterOrderMessage()` is already the
@@ -572,13 +621,15 @@ export interface PageCheckout {
 /** The three the confirm button reads. The header band and the offer cards keep the page's own. */
 const BUTTON_VARS = ['--store-accent', '--store-accent-text', '--store-accent-dark'] as const;
 
-export function checkoutForPage(theme: StoreTheme): PageCheckout {
+export function checkoutForPage(stored: StoreTheme | null | undefined): PageCheckout {
+  // No theme to read is the house theme: every field, the four marked, no words or colour of the shop's own.
+  const theme = stored ?? DEFAULT_STORE_THEME;
   const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
   const colour = text(theme.checkout?.buttonColor);
   const buttonColor = hex.safeParse(colour).success ? colour : null;
   const vars = buttonColor ? paletteVars(paletteFor({ ...DEFAULT_THEME, accent: buttonColor })) : null;
   return {
-    fields: checkoutOrder(theme),
+    fields: visibleCheckoutFields(theme),
     required: requiredCheckoutFields(theme),
     submitText: text(theme.checkout?.submitText),
     buttonColor,

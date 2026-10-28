@@ -102,9 +102,35 @@ describe('الطلب لا يرى البنية ولا المظهر', () => {
   const orderRoute = stripComments(repoFile('src/app/api/public/landing-pages/[slug]/orders/route.ts'));
 
   it('the public order route loads no sections, no theme and no builder mode', () => {
-    for (const field of ['sections', 'theme', 'builderMode', 'contentDraft']) {
+    for (const field of ['sections', 'builderMode', 'contentDraft']) {
       expect(orderRoute, field).not.toContain(field);
     }
+    /*
+     * ONE EXCEPTION, NAMED AND NO WIDER: the STORE's «الدفع».
+     *
+     * The owner, asked 28/10 whether a field the shop made «إلزامي» and the visitor left blank refuses the order,
+     * answered «انطيني الصلاحية شو الي يظهر بالشيك اوت الي بينطلب والترتيب دراخ اند دروب» — refuse it. Those settings
+     * live in the store's theme column, so the door reads that column for them and for nothing else: through
+     * `checkoutRules`, which answers only which fields are required. Never the PAGE's own theme, never a palette, a
+     * structure or a skin — installing a template writes none of «الدفع» (every-template.test.ts), so switching a
+     * look still cannot reach an order. Everything below is that one read, and then the old rule over the rest.
+     */
+    const ONE_READ = [
+      "import { checkoutRules, parseStoreTheme } from '@/lib/store-theme';",
+      'checkout: checkoutRules(parseStoreTheme(lp.store.theme)),',
+    ];
+    let rest = orderRoute;
+    for (const line of ONE_READ) {
+      expect(rest, line).toContain(line);
+      rest = rest.split(line).join('');
+    }
+    // The column is selected on the STORE, never on the page.
+    const storeAt = rest.indexOf('store: {');
+    expect(storeAt, 'ما في قراءة للمتجر').toBeGreaterThan(-1);
+    const storeSelect = rest.slice(storeAt, rest.indexOf('},\n      },', storeAt));
+    expect(storeSelect).toMatch(/theme: true/);
+    rest = rest.slice(0, storeAt) + storeSelect.replace(/theme: true,?/, '') + rest.slice(storeAt + storeSelect.length);
+    expect(rest, 'الطلب صار يقرأ شي تاني من المظهر').not.toMatch(/theme/i);
   });
 
   it('and takes its price from the product, never from the page', () => {

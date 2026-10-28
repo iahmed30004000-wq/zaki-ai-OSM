@@ -10,6 +10,9 @@ import {
   cartBarApplies,
   checkoutForPage,
   checkoutOrder,
+  checkoutRules,
+  hiddenCheckoutFields,
+  visibleCheckoutFields,
   headingFont,
   menuFont,
   parseStoreTheme,
@@ -198,6 +201,71 @@ describe('checkoutForPage — the store’s «الدفع», for a landing page',
     expect(c.thanksMessage).toBe('');
   });
 });
+
+/**
+ * «شو الي يظهر بالشيك اوت الي بينطلب والترتيب» — the owner, 28/10.
+ *
+ * Three answers per field: its place, whether it shows, whether it is required. The settings list keeps every field
+ * in the shop's order; a FORM draws the ones that show; a DOOR requires the four plus what was ticked and shown.
+ */
+describe('«يظهر» — what a form draws, and what it may require', () => {
+  const withCheckout = (over: Partial<NonNullable<StoreTheme['checkout']>>) =>
+    of({ checkout: { ...DEFAULT_STORE_THEME.checkout!, ...over } });
+
+  it('a theme saved before «يظهر» existed — every field shows, exactly as before', () => {
+    const old = parseStoreTheme(
+      JSON.stringify({ ...DEFAULT_THEME, checkout: { fieldOrder: ['phone', 'name'], required: ['note'], submitText: '' } })
+    );
+    expect(old.checkout?.hidden).toEqual([]);
+    expect(hiddenCheckoutFields(old)).toEqual([]);
+    expect(visibleCheckoutFields(old)).toEqual(checkoutOrder(old));
+    expect(checkoutForPage(old).fields).toEqual(['phone', 'name', 'altPhone', 'region', 'address', 'note']);
+    expect(requiredCheckoutFields(old)).toEqual(['name', 'phone', 'region', 'address', 'note']);
+  });
+
+  it('a hidden field is not drawn — and the settings list still has it, in its place', () => {
+    const t = withCheckout({ fieldOrder: ['phone', 'note', 'name', 'altPhone', 'region', 'address'], hidden: ['note'] });
+    expect(checkoutOrder(t)).toEqual(['phone', 'note', 'name', 'altPhone', 'region', 'address']);
+    expect(visibleCheckoutFields(t)).toEqual(['phone', 'name', 'altPhone', 'region', 'address']);
+    expect(checkoutForPage(t).fields).toEqual(visibleCheckoutFields(t));
+  });
+
+  it('a hidden field is never required, whatever its tick — and shown again, the tick counts again', () => {
+    const hiddenAndTicked = withCheckout({ required: ['altPhone', 'note'], hidden: ['altPhone'] });
+    expect(requiredCheckoutFields(hiddenAndTicked)).toEqual(['name', 'phone', 'region', 'address', 'note']);
+    expect(checkoutForPage(hiddenAndTicked).required).not.toContain('altPhone');
+    expect(checkoutRules(hiddenAndTicked)!.required).not.toContain('altPhone');
+    expect(requiredCheckoutFields(withCheckout({ required: ['altPhone', 'note'] }))).toContain('altPhone');
+  });
+
+  it('NEGATIVE: the four a parcel needs can never be hidden — a stored hidden «phone» is ignored, never obeyed', () => {
+    const t = withCheckout({ hidden: ['name', 'phone', 'region', 'address', 'altPhone'] });
+    expect(hiddenCheckoutFields(t)).toEqual(['altPhone']);
+    for (const f of MANDATORY_CHECKOUT_FIELDS) {
+      expect(visibleCheckoutFields(t), f).toContain(f);
+      expect(requiredCheckoutFields(t), f).toContain(f);
+    }
+    // And a stored value the schema never had is dropped by the parse, not carried to a form.
+    const parsed = parseStoreTheme(storedRow(t, { hidden: ['phone', 'nonsense'] }));
+    expect(hiddenCheckoutFields(parsed)).toEqual([]);
+  });
+
+  it('what a door enforces is the same answer — and no theme to read is no rule beyond the four', () => {
+    expect(checkoutRules(withCheckout({ required: ['note'] }))).toEqual({
+      required: ['name', 'phone', 'region', 'address', 'note'],
+    });
+    expect(checkoutRules(null)).toBeNull();
+    expect(checkoutRules(undefined)).toBeNull();
+    // A form with no theme gets the house answer, never a crash.
+    expect(checkoutForPage(undefined)).toEqual(checkoutForPage(DEFAULT_STORE_THEME));
+    expect(checkoutForPage(null).fields).toEqual([...CHECKOUT_FIELDS]);
+  });
+});
+
+/** A theme as a store row holds it: the checkout part replaced by what the row says, whatever it says. */
+function storedRow(t: StoreTheme, checkout: Record<string, unknown>): string {
+  return JSON.stringify({ ...t, checkout: { ...t.checkout, ...checkout } });
+}
 
 describe('the bottom cart bar belongs to a shop that has a cart', () => {
   it('does not apply to a Single Product store', () => {

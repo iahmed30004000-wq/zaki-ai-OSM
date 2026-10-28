@@ -6,6 +6,7 @@ import { getStorefront } from '@/lib/storefront';
 import { createPublicOrder, type SellingSurface } from '@/lib/public-order';
 import { resolveCampaign } from '@/lib/campaigns-server';
 import { MAX_CART_LINES } from '@/lib/cart';
+import { checkoutRules } from '@/lib/store-theme';
 
 /**
  * A BASKET, FROM A SHOP THAT SELLS MORE THAN ONE THING.
@@ -151,6 +152,8 @@ export async function POST(req: Request, ctx: Ctx) {
       products,
       landingPage: null,
       campaignId,
+      // What the store's «الدفع» requires — from the LIVE theme `getStorefront` read, the one the checkout was drawn from.
+      checkout: checkoutRules(store.theme),
       source: 'Store',
       /**
        * PER STORE, not per product.
