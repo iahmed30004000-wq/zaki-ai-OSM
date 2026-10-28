@@ -1,6 +1,10 @@
 /**
  * POST /api/telegram/messages/[id]/retry — reprocess a NEEDS_REVIEW/FAILED
  * message. Idempotent: already-processed messages are never re-ordered.
+ *
+ * An IGNORED message is accepted too: «تجاهل» is a person's press, and this is
+ * how it is taken back. The message is read again exactly as if it had just
+ * arrived — it may become an order, go to review, or be ignored again.
  */
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
@@ -25,7 +29,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       // Idempotent success — nothing to do
       return NextResponse.json({ success: true, status: 'PROCESSED', orderId: message.orderId });
     }
-    if (!['NEEDS_REVIEW', 'FAILED', 'PENDING'].includes(message.processingStatus)) {
+    if (!['NEEDS_REVIEW', 'FAILED', 'PENDING', 'IGNORED'].includes(message.processingStatus)) {
       return NextResponse.json({ error: 'لا يمكن إعادة معالجة هذه الرسالة' }, { status: 409 });
     }
 
