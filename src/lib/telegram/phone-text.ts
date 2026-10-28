@@ -13,9 +13,12 @@ import { canonicalPhone, isValidPhoneFor, ruleFor } from '../phone-rules';
  * or a foreign one as `+` + digits. `isValidPhoneFor`, `canonicalPhone` (the customer's key and the blacklist's key) read
  * that form identically — so nothing here invents a second idea of what a phone is, and `phone-rules.ts` is untouched.
  *
- * A number that still does not pass `isValidPhoneFor` after all this («12», «123», five digits) is not guessed at: the
- * reading says `valid: false`, and the door sends the message to a person naming the phone. Only a value with no digit at
- * all (or only zeros, which `canonicalPhone` reads as nothing) is no phone: `null`.
+ * A number that still does not pass `isValidPhoneFor` after all this is not guessed at: the reading says `valid: false`.
+ * It is still ACCEPTED when it has at least `MIN_PHONE_DIGITS` digits (the owner, 29/10, from two real messages one digit
+ * short: «اريده يكون يقبل كل الارقام») — the order is made with the number as written, and the order's notes say it does
+ * not fit the country's shape, so the confirmation call is the check. Below that («12», «123», five digits) it is no number
+ * anybody can ring, and the door holds the message for a person. Only a value with no digit at all (or only zeros, which
+ * `canonicalPhone` reads as nothing) is no phone: `null`.
  *
  * PURE. No I/O.
  */
@@ -25,9 +28,14 @@ export interface PhoneReading {
   primary: string;
   /** Whether `primary` passes the store country's own rule (`isValidPhoneFor`). */
   valid: boolean;
+  /** Whether the order may be made with it: it passes the rule, or it is long enough to be a number someone could ring. */
+  accepted: boolean;
   /** Any other numbers in the line, cleaned and without the primary — the customer's second phone, and the notes. */
   others: string[];
 }
+
+/** The fewest digits a value needs to be taken as a phone number when it does not fit the country's shape. */
+export const MIN_PHONE_DIGITS = 6;
 
 const BIDI = /[\u200e\u200f\u202a-\u202e\u2066-\u2069\u061c]/g;
 
@@ -123,7 +131,8 @@ export function readPhoneText(value: string, countryCode?: string | null): Phone
   const primary = numbers.find(valid) ?? [...numbers].sort((a, b) => digitsOf(b).length - digitsOf(a).length)[0];
   // A stub of the line («12») beside a real number is not a second number worth keeping.
   const others = numbers.filter((n) => n !== primary && (valid(n) || digitsOf(n).length >= 7));
-  return { primary, valid: valid(primary), others };
+  const fits = valid(primary);
+  return { primary, valid: fits, accepted: fits || digitsOf(primary).length >= MIN_PHONE_DIGITS, others };
 }
 
 /**

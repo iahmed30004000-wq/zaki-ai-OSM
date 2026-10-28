@@ -40,7 +40,12 @@ import { readPhoneText, type PhoneReading } from './phone-text';
  *
  * «رقم الهاتف» is read leniently (`phone-text.ts`): every way of writing the Syrian code, every script of digits, two
  * numbers in a line. A message is never refused for the SHAPE of its phone; a number that still fails the store country's
- * rule is `INVALID_PHONE` (the owner: a number like «12» waits for a person), and a value with no digit is `MISSING_PHONE`.
+ * rule is still taken when it has `MIN_PHONE_DIGITS` digits (the owner, 29/10: «يقبل كل الارقام»); a stub like «12» is
+ * `INVALID_PHONE` and waits for a person, and a value with no digit is `MISSING_PHONE`.
+ *
+ * «عنوان العميل» is taken whole, whatever it says (the owner, 29/10: «يقبل كل العناوين … طلبات تنزل باسم سوريا بس»): the
+ * store's own country word is dropped when something else is left, and kept when it is all there is; another country's word
+ * is no refusal either — the address stays as written and the confirmation call decides.
  */
 
 /** The eight fields an order is made from, in the order the door judges them. */
@@ -270,11 +275,12 @@ export function readLabeledOrder(text: string, store?: LabeledStore): LabeledRea
 
   const phone = readPhoneText(fields.phone, store?.country.code);
   if (!phone) return refused('MISSING_PHONE');
-  if (!phone.valid) return refused('INVALID_PHONE');
+  if (!phone.accepted) return refused('INVALID_PHONE');
 
+  // Every address is an address. The country word comes off only when a place is left; «سوريا» alone, another country's
+  // word and a line that names no place at all stay exactly as the seller wrote them.
   const where = store ? placeOf(fields.address, store.country) : { place: fields.address };
-  if ('refusal' in where) return refused(where.refusal);
-  if (!where.place) return refused('MISSING_ADDRESS');
+  const place = 'place' in where && where.place ? where.place : fields.address;
 
   const price = readPrice(fields.price);
   if (!price) return refused('MISSING_PRICE');
@@ -287,7 +293,7 @@ export function readLabeledOrder(text: string, store?: LabeledStore): LabeledRea
   const quantity = /^\d{1,5}$/.test(fields.quantity) ? Number(fields.quantity) : NaN;
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > MAX_QUANTITY) return refused('INVALID_QUANTITY');
 
-  return { claimed: true, ok: true, fields, place: where.place, priceText: price.priceText, quantity, phone };
+  return { claimed: true, ok: true, fields, place, priceText: price.priceText, quantity, phone };
 }
 
 /** What the «طلبات تلجرام» columns show for one message: the fields as it wrote them, when it claims the format. */
