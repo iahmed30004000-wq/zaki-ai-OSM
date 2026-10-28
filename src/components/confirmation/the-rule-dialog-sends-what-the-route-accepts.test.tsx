@@ -5,7 +5,7 @@ import React from 'react';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { stripComments } from '@/lib/guard-source';
-import { DEFAULT_WINBACK_RULE, type WinbackRule } from '@/lib/winback';
+import { DEFAULT_WINBACK_RULE, validateWinbackRule, type WinbackRule } from '@/lib/winback';
 
 /**
  * «عدّل القاعدة» — THE FORM THE OWNER TURNS HIS RULE WITH.
@@ -30,6 +30,7 @@ import { WinbackRuleDialog } from './WinbackRuleDialog';
 
 const STORED: WinbackRule = {
   reasons: ['PRICE_TOO_HIGH', 'FOUND_CHEAPER_ELSEWHERE', 'CUSTOMER_CHANGED_MIND', 'NO_ANSWER_3_ATTEMPTS'],
+  afterShipping: true,
   coolingDays: 14,
   lookbackDays: 120,
   maxDiscountShare: 0.25,
@@ -38,6 +39,8 @@ const STORED: WinbackRule = {
 const COOLING = 'المهلة بعد الإلغاء (أيام)';
 const LOOKBACK = 'أبعد طلب نقرؤه (أيام)';
 const PERCENT = 'أقصى خصم (٪ من السعر)';
+/** The owner's switch, 28/10: «قبل الشحن وبعد». */
+const AFTER = 'يشمل المرتجع بعد الشحن';
 
 let onClose: Mock<() => void>;
 let onSaved: Mock<(rule: WinbackRule) => Promise<void>>;
@@ -53,6 +56,7 @@ beforeEach(() => {
     return {
       rule: {
         reasons: sent.reasons,
+        afterShipping: sent.afterShipping,
         coolingDays: sent.coolingDays,
         lookbackDays: sent.lookbackDays,
         maxDiscountShare: sent.maxDiscountPercent / 100,
@@ -115,7 +119,7 @@ describe('opening it', () => {
   });
 
   it('and a stored rule that is not the default opens as itself', () => {
-    open({ reasons: ['OTHER', 'PRICE_TOO_HIGH'], coolingDays: 3, lookbackDays: 45, maxDiscountShare: 0.1 });
+    open({ reasons: ['OTHER', 'PRICE_TOO_HIGH'], afterShipping: true, coolingDays: 3, lookbackDays: 45, maxDiscountShare: 0.1 });
     expect(box(COOLING).value).toBe('3');
     expect(box(LOOKBACK).value).toBe('45');
     expect(box(PERCENT).value).toBe('10');
@@ -126,9 +130,14 @@ describe('opening it', () => {
 });
 
 describe('what it offers, and what it will not', () => {
-  it('— seven reasons to tick, exactly: the four, and the three at his own risk', () => {
+  /**
+   * REWRITTEN ON 28/10: this counted EVERY tick in the form as a reason. The form has one more now, the
+   * owner's switch «يشمل المرتجع بعد الشحن» — outside the reasons, before them — so the reasons are counted
+   * where they live, in their own group, and the switch is the only tick outside it.
+   */
+  it('— seven reasons to tick, exactly: the four, and the three at his own risk — and the switch, outside them', () => {
     open();
-    const names = screen.getAllByRole('checkbox').map((c) => c.closest('label')?.textContent);
+    const names = within(screen.getByRole('group')).getAllByRole('checkbox').map((c) => c.closest('label')?.textContent);
     expect(names).toEqual([
       'السعر مرتفع',
       'وجدها أرخص عند غيرنا',
@@ -138,6 +147,8 @@ describe('what it offers, and what it will not', () => {
       'خارج نطاق التغطية',
       'سبب آخر',
     ]);
+    const outside = screen.getAllByRole('checkbox').filter((c) => !c.closest('fieldset'));
+    expect(outside.map((c) => c.closest('label')?.textContent)).toEqual([AFTER]);
   });
 
   it('and the four nobody may be rung for have no box — a duplicate, a wrong number, a fake order, an entry error', () => {
@@ -147,11 +158,17 @@ describe('what it offers, and what it will not', () => {
     }
   });
 
-  it('and says so in a sentence, with the three structural refusals beside them — so «why is there no tick» has an answer', () => {
+  /**
+   * REWRITTEN ON 28/10, DELIBERATELY. The first refusal this sentence named was «الطلب الذي شُحن (إرجاعٌ له
+   * حسابه)» — any shipped parcel, which the owner's ruling took out of «never». What no setting reaches now is
+   * a parcel that left and is NOT back, or is back and nobody received it.
+   */
+  it('and says so in a sentence, with the structural refusals beside them — so «why is there no tick» has an answer', () => {
     open();
     const sentence = screen.getByText(/لا يتغيّر بأيّ إعداد/).textContent!;
-    for (const part of ['الطلب الذي شُحن', 'ما عُرض عليه من قبل', 'محاولةُ الاسترجاع نفسُها']) expect(sentence, part).toContain(part);
+    for (const part of ['ما شُحن ولم يرجع', 'رجع ولم يستلمه المستودع', 'ما عُرض عليه من قبل', 'محاولةُ الاسترجاع نفسُها']) expect(sentence, part).toContain(part);
     for (const never of ['طلب مكرّر', 'رقم خاطئ', 'طلب وهميّ', 'خطأ إدخال من المُعدِّل']) expect(sentence, never).toContain(never);
+    expect(sentence, 'ما زال يقول إنّ كلّ ما شُحن ممنوع').not.toContain('الطلب الذي شُحن');
   });
 
   it('and the three at his own risk are introduced as his responsibility', () => {
@@ -176,7 +193,9 @@ describe('saving a rule', () => {
     expect(init.method).toBe('PUT');
     expect(init.headers).toEqual({ 'Content-Type': 'application/json' });
     const body = sent();
-    expect(Object.keys(body).sort()).toEqual(['coolingDays', 'lookbackDays', 'maxDiscountPercent', 'reasons']);
+    // REWRITTEN ON 28/10: one more key, the switch, sent every time — on or off, never left to a default.
+    expect(Object.keys(body).sort()).toEqual(['afterShipping', 'coolingDays', 'lookbackDays', 'maxDiscountPercent', 'reasons']);
+    expect(body.afterShipping).toBe(true);
     expect(body.coolingDays).toBe(10);
     expect(body.lookbackDays).toBe(90);
     expect(body.maxDiscountPercent).toBe(12.5);
@@ -209,6 +228,7 @@ describe('saving a rule', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(sent()).toEqual({
       reasons: STORED.reasons,
+      afterShipping: true,
       coolingDays: 14,
       lookbackDays: 120,
       maxDiscountPercent: 25,
@@ -371,9 +391,68 @@ describe('while it is saving', () => {
   });
 });
 
+/**
+ * «يشمل المرتجع بعد الشحن» — THE OWNER'S SWITCH (28/10). A real tick, beside its sentence, sent every time,
+ * and the route's own judge accepts what it sends: «the checkbox is sent and accepted».
+ */
+describe('the switch for a parcel that came back', () => {
+  const tick = () => screen.getByRole('checkbox', { name: AFTER }) as HTMLInputElement;
+
+  it('— opens as stored: on, and off', () => {
+    open();
+    expect(tick().checked).toBe(true);
+    cleanup();
+    open({ ...STORED, afterShipping: false });
+    expect(tick().checked).toBe(false);
+  });
+
+  it('and says what it lets in — a parcel received back, not held to the reasons below, cooling from the receipt', () => {
+    open();
+    expect(screen.getByText(/ما شُحن ثمّ رجع واستلمه المستودع/).textContent).toContain('من يوم الاستلام');
+  });
+
+  it('and unticked, it is sent as false — and the route’s judge accepts exactly that body, as a rule that is off', async () => {
+    open();
+    fireEvent.click(tick());
+    expect(tick().checked).toBe(false);
+    save();
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    const body = sent();
+    expect(body.afterShipping).toBe(false);
+    const judged = validateWinbackRule(body);
+    expect(judged.ok).toBe(true);
+    expect(judged.ok && judged.rule.afterShipping).toBe(false);
+    expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ afterShipping: false }));
+  });
+
+  it('and ticked again, true — accepted as on', async () => {
+    open({ ...STORED, afterShipping: false });
+    fireEvent.click(tick());
+    save();
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(sent().afterShipping).toBe(true);
+    const judged = validateWinbackRule(sent());
+    expect(judged.ok && judged.rule.afterShipping).toBe(true);
+  });
+
+  it('and «القيم الأصلية» puts it back on — the owner asked for both', () => {
+    open({ ...STORED, afterShipping: false });
+    fireEvent.click(screen.getByRole('button', { name: 'القيم الأصلية' }));
+    expect(tick().checked).toBe(true);
+  });
+
+  it('and reopened, it shows what is stored, not a tick that was changed and abandoned', () => {
+    const view = open();
+    fireEvent.click(tick());
+    view.rerender(<WinbackRuleDialog rule={STORED} isOpen={false} onClose={onClose} onSaved={onSaved} />);
+    view.rerender(<WinbackRuleDialog rule={STORED} isOpen onClose={onClose} onSaved={onSaved} />);
+    expect(tick().checked).toBe(true);
+  });
+});
+
 describe('the two other buttons', () => {
   it('— «القيم الأصلية» fills the form with the shop’s original rule and sends nothing', () => {
-    open({ reasons: ['OTHER'], coolingDays: 3, lookbackDays: 45, maxDiscountShare: 0.1 });
+    open({ reasons: ['OTHER'], afterShipping: true, coolingDays: 3, lookbackDays: 45, maxDiscountShare: 0.1 });
     fireEvent.click(screen.getByRole('button', { name: 'القيم الأصلية' }));
     expect(box(COOLING).value).toBe(String(DEFAULT_WINBACK_RULE.coolingDays));
     expect(box(LOOKBACK).value).toBe(String(DEFAULT_WINBACK_RULE.lookbackDays));

@@ -78,6 +78,7 @@ describe('who may change it', () => {
 });
 
 describe('what a good rule does', () => {
+  /** REWRITTEN ON 28/10: what is saved carries the switch — on, when the body leaves it out. */
   it('— is saved under the `winback` key of THIS company’s settings, the percent as the share the arithmetic reads', async () => {
     const res = await put(good);
     expect(res.status).toBe(200);
@@ -85,6 +86,7 @@ describe('what a good rule does', () => {
     expect(updateCompanySettings.mock.calls[0].slice(0, 2)).toEqual(['c-42', 'winback']);
     const saved = {
       reasons: ['PRICE_TOO_HIGH', 'OTHER'],
+      afterShipping: true,
       coolingDays: 10,
       lookbackDays: 90,
       maxDiscountShare: 0.125,
@@ -137,6 +139,23 @@ describe('what a good rule does', () => {
     expect((await res.json()).rule.reasons).toEqual(['PRICE_TOO_HIGH', 'CUSTOMER_CHANGED_MIND', 'OTHER']);
   });
 
+  it('and «يشمل المرتجع بعد الشحن» switched off is saved off — and read back off by the next save', async () => {
+    const res = await put({ ...good, afterShipping: false });
+    expect(res.status).toBe(200);
+    expect((await res.json()).rule.afterShipping).toBe(false);
+    expect(JSON.parse(stored!).winback.afterShipping).toBe(false);
+    // The stored «off» is what the next save says it was.
+    await put({ ...good, afterShipping: true });
+    expect(logAudit.mock.calls[1][0].previousData).toMatchObject({ afterShipping: false });
+    expect(logAudit.mock.calls[1][0].newData).toMatchObject({ afterShipping: true });
+  });
+
+  it('and a rule stored before the switch existed reads as on — what «what it was» says', async () => {
+    stored = JSON.stringify({ winback: { coolingDays: 30 } });
+    await put(good);
+    expect(logAudit.mock.calls[0][0].previousData).toMatchObject({ afterShipping: true, coolingDays: 30 });
+  });
+
   it('and the edges of every bound are accepted', async () => {
     for (const body of [
       { ...good, coolingDays: 1, lookbackDays: 30 },
@@ -165,6 +184,10 @@ describe('what is refused, and never clamped', () => {
     ['«500%»', { ...good, maxDiscountPercent: 500 }, 'MAX_DISCOUNT'],
     ['a negative discount', { ...good, maxDiscountPercent: -1 }, 'MAX_DISCOUNT'],
     ['a field nobody asked for', { ...good, companyId: 'c2' }, 'UNKNOWN_FIELD'],
+    ['a field nobody asked for, beside the switch', { ...good, afterShipping: true, shipped: true }, 'UNKNOWN_FIELD'],
+    ['a switch that is the word «true»', { ...good, afterShipping: 'true' }, 'AFTER_SHIPPING'],
+    ['a switch that is a one', { ...good, afterShipping: 1 }, 'AFTER_SHIPPING'],
+    ['a switch that is nothing', { ...good, afterShipping: null }, 'AFTER_SHIPPING'],
     ['a body that is not a rule', [1, 2], 'BAD_BODY'],
     ['a body that is not JSON', '{nope', 'BAD_BODY'],
     ['no body', 'null', 'BAD_BODY'],
@@ -175,6 +198,13 @@ describe('what is refused, and never clamped', () => {
     expect(json.code).toBe(code);
     expect(json.errorAr.length).toBeGreaterThan(5);
     expect(json.error).toBe(json.errorAr);
+    nothingWritten();
+  });
+
+  it('and a switch that is not a yes or a no is refused in his language, naming it', async () => {
+    const res = await put({ ...good, afterShipping: 'yes' });
+    expect(res.status).toBe(400);
+    expect((await res.json()).errorAr).toBe('يشمل المرتجع بعد الشحن: نعم أو لا فقط');
     nothingWritten();
   });
 

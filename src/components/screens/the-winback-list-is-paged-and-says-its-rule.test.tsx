@@ -68,7 +68,16 @@ const FACTS = {
     { name: 'حقيبة', count: 3 },
   ],
   periods: { '7': 2, '30': 6, '90': 12 },
+  shipping: { before: 9, after: 3 },
 };
+
+/** The two sentences the rule prints — the owner's switch on (the default since 28/10), and off. */
+const SENTENCE_ON =
+  'ملغى قبل الشحن أو مرتجع بعده · لم يُعرض عليه من قبل · سبب الإلغاء قبل الشحن: السعر مرتفع، وجدها أرخص عند غيرنا، غيّر رأيه، أُغلق بعد ثلاث محاولات بلا ردّ · بعد 14 يوماً من الإلغاء أو استلام المرتجع · من طلباتِ آخر 120 يوماً · خصمٌ حتى 25٪';
+const SENTENCE_OFF =
+  'ملغى · لم يُشحن · لم يُعرض عليه من قبل · السبب: السعر مرتفع، وجدها أرخص عند غيرنا، غيّر رأيه، أُغلق بعد ثلاث محاولات بلا ردّ · بعد 14 يوماً من الإلغاء · من طلباتِ آخر 120 يوماً · خصمٌ حتى 25٪';
+/** Wherever the rule's sentence starts, whichever of the two it is. */
+const RULE_LINE = /^ملغى (?:قبل الشحن|·)/;
 
 /** What the route says right now — a saved rule changes it before the screen asks again. */
 let rule: WinbackRule;
@@ -102,6 +111,7 @@ beforeEach(() => {
       const body = JSON.parse(String(init.body));
       rule = {
         reasons: body.reasons,
+        afterShipping: body.afterShipping,
         coolingDays: body.coolingDays,
         lookbackDays: body.lookbackDays,
         maxDiscountShare: body.maxDiscountPercent / 100,
@@ -166,31 +176,51 @@ describe('opening it', () => {
 });
 
 describe('the rule, printed on the screen', () => {
-  it('— the default rule, in one sentence, from what the server says it is applying', async () => {
+  /**
+   * REWRITTEN ON 28/10, DELIBERATELY. This held the default sentence to «ملغى · لم يُشحن · …» — the rule
+   * before the owner asked «هل بيعرض الملغي قبل الشحن وبعد ؟». The default says both kinds now; the old
+   * sentence, word for word, is what his switch OFF prints (the next claim).
+   */
+  it('— the default rule, in one sentence, from what the server says it is applying: both kinds', async () => {
     await draw();
-    const sentence = screen.getByText(/^ملغى · لم يُشحن/).textContent!;
-    expect(sentence).toBe(
-      'ملغى · لم يُشحن · لم يُعرض عليه من قبل · السبب: السعر مرتفع، وجدها أرخص عند غيرنا، غيّر رأيه، أُغلق بعد ثلاث محاولات بلا ردّ · بعد 14 يوماً من الإلغاء · من طلباتِ آخر 120 يوماً · خصمٌ حتى 25٪'
-    );
+    const sentence = screen.getByText(RULE_LINE).textContent!;
+    expect(sentence).toBe(SENTENCE_ON);
+  });
+
+  it('and with the owner’s switch off, the sentence the screen was built on — exactly', async () => {
+    rule = { ...rule, afterShipping: false };
+    await draw();
+    expect(screen.getByText(RULE_LINE).textContent).toBe(SENTENCE_OFF);
   });
 
   it('and the owner’s own rule, the moment it is stored: ten days, ninety, an eighth, one reason', async () => {
-    rule = { reasons: ['PRICE_TOO_HIGH'], coolingDays: 10, lookbackDays: 90, maxDiscountShare: 0.125 };
+    rule = { reasons: ['PRICE_TOO_HIGH'], afterShipping: true, coolingDays: 10, lookbackDays: 90, maxDiscountShare: 0.125 };
     await draw();
-    const sentence = screen.getByText(/^ملغى · لم يُشحن/).textContent!;
-    expect(sentence).toContain('السبب: السعر مرتفع ·');
-    expect(sentence).toContain('بعد 10 يوماً من الإلغاء');
+    const sentence = screen.getByText(RULE_LINE).textContent!;
+    expect(sentence).toContain('سبب الإلغاء قبل الشحن: السعر مرتفع ·');
+    expect(sentence).toContain('بعد 10 يوماً من الإلغاء أو استلام المرتجع');
     expect(sentence).toContain('من طلباتِ آخر 90 يوماً');
     expect(sentence).toContain('خصمٌ حتى 12.5٪');
     expect(sentence).not.toContain('14');
     expect(sentence).not.toContain('120');
   });
 
-  it('and the line under the title carries the same cooling, not a number of its own', async () => {
+  /** REWRITTEN ON 28/10: the line names both kinds now, with the same cooling; off, it is the line it was. */
+  it('and the line under the title carries the same cooling, not a number of its own — for both kinds', async () => {
     rule = { ...rule, coolingDays: 10, lookbackDays: 90 };
     await draw();
-    expect(screen.getByTestId('note').textContent).toContain('ومضى على إلغائها 10 يوماً على الأقلّ');
-    expect(screen.getByTestId('note').textContent).not.toContain('14');
+    const note = screen.getByTestId('note').textContent!;
+    expect(note).toContain('أو شُحنت ثمّ رجعت واستلمها المستودع');
+    expect(note).toContain('ومضى على الإلغاء أو الاستلام 10 يوماً على الأقلّ');
+    expect(note).not.toContain('14');
+  });
+
+  it('and with the switch off, the line it always printed', async () => {
+    rule = { ...rule, afterShipping: false, coolingDays: 10 };
+    await draw();
+    expect(screen.getByTestId('note').textContent).toBe(
+      'طلباتٌ أُلغيت لسببٍ يزول بالوقت أو بالسعر، ومضى على إلغائها 10 يوماً على الأقلّ. العرضُ يُنشئ طلباً جديداً في الطابور، والقديمُ يبقى ملغى.'
+    );
   });
 
   it('and «عدّل القاعدة» is offered to the one who may change it', async () => {
@@ -201,7 +231,7 @@ describe('the rule, printed on the screen', () => {
   it('and NOT to anyone else — a supervisor reads the rule, she does not write it; no form is drawn for her either', async () => {
     canEdit = false;
     await draw();
-    expect(screen.getByText(/^ملغى · لم يُشحن/)).toBeTruthy();
+    expect(screen.getByText(RULE_LINE)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'عدّل القاعدة' })).toBeNull();
     expect(screen.queryByText('قاعدة استرجاع الملغى')).toBeNull();
     expect(screen.queryByRole('checkbox')).toBeNull();
@@ -231,8 +261,18 @@ describe('saving a new rule', () => {
     await waitFor(() => expect(toast.done).toHaveBeenCalledWith('حُفظت القاعدة — والقائمة تقرأ بها من الآن'));
     expect(puts()).toHaveLength(1);
     await waitFor(() => expect(screen.queryByText('قاعدة استرجاع الملغى')).toBeNull());
-    await waitFor(() => expect(screen.getByText(/^ملغى · لم يُشحن/).textContent).toContain('بعد 10 يوماً من الإلغاء'));
+    await waitFor(() => expect(screen.getByText(RULE_LINE).textContent).toContain('بعد 10 يوماً من الإلغاء'));
     expect(screen.getByTestId('note').textContent).toContain('10 يوماً');
+  });
+
+  it('and the switch the owner unticks is what the route is sent, and the screen prints the sentence of before', async () => {
+    await draw();
+    fireEvent.click(screen.getByRole('button', { name: 'عدّل القاعدة' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'يشمل المرتجع بعد الشحن' }));
+    fireEvent.click(screen.getByRole('button', { name: 'احفظ القاعدة' }));
+    await waitFor(() => expect(toast.done).toHaveBeenCalled());
+    expect(JSON.parse(String((puts()[0][1] as RequestInit).body)).afterShipping).toBe(false);
+    await waitFor(() => expect(screen.getByText(RULE_LINE).textContent).toBe(SENTENCE_OFF));
   });
 
   it('and the list starts again from page one, on the work — a rule moves orders between the views', async () => {
@@ -270,13 +310,17 @@ describe('saving a new rule', () => {
 });
 
 describe('the toolbar', () => {
-  it('— a search box that says what it searches, and four dropdowns, each with the server’s number beside the word', async () => {
+  /** REWRITTEN ON 28/10: five dropdowns, not four — «الشحن» splits the list «قبل الشحن وبعد», second, beside the view. */
+  it('— a search box that says what it searches, and five dropdowns, each with the server’s number beside the word', async () => {
     await draw();
     expect(search().placeholder).toBe('بحث برقم الطلب أو اسم العميل أو هاتفه أو المنتج…');
     expect(options('الحالة')).toEqual(['جاهز للاتصال (12)', 'ما زال في المهلة (5)', 'مستثنى من القاعدة (30)']);
+    expect(options('الشحن')).toEqual(['الكل', 'قبل الشحن (9)', 'بعد الشحن (3)']);
     expect(options('سبب الإلغاء')).toEqual(['كل الأسباب', 'السعر مرتفع (8)', 'غيّر رأيه (4)']);
     expect(options('المنتج')).toEqual(['كل المنتجات', 'ساعة (6)', 'حقيبة (3)']);
     expect(options('تاريخ الإلغاء')).toEqual(['أيّ وقت', 'آخر 7 أيام (2)', 'آخر 30 يوماً (6)', 'آخر 90 يوماً (12)']);
+    const order = screen.getAllByRole('combobox').map((c) => c.closest('div')?.querySelector('label')?.textContent);
+    expect(order.slice(0, 2)).toEqual(['الحالة', 'الشحن']);
   });
 
   it('and the view it opens on is the first, selected', async () => {
@@ -313,6 +357,26 @@ describe('choosing', () => {
     choose('تاريخ الإلغاء', '30');
     await waitFor(() => expect(lastAsked().get('period')).toBe('30'));
     expect(lastAsked().toString()).toBe(new URLSearchParams({ period: '30', product: 'ساعة', reason: 'PRICE_TOO_HIGH', view: 'ready', page: '1', limit: '25' }).toString());
+  });
+
+  it('and «الشحن» is asked for by its word — «بعد الشحن» is `after` — and «الكل» is not sent at all', async () => {
+    await draw();
+    choose('الشحن', 'after');
+    await waitFor(() => expect(lastAsked().get('shipping')).toBe('after'));
+    expect(lastAsked().toString()).toBe('shipping=after&view=ready&page=1&limit=25');
+    choose('الشحن', 'before');
+    await waitFor(() => expect(lastAsked().get('shipping')).toBe('before'));
+    choose('الشحن', 'all');
+    await waitFor(() => expect(lastAsked().has('shipping')).toBe(false));
+  });
+
+  it('and «إعادة تعيين» counts «الشحن» too, and puts it back to «الكل»', async () => {
+    await draw();
+    choose('الشحن', 'after');
+    const reset = await screen.findByRole('button', { name: 'إعادة تعيين (1)' });
+    fireEvent.click(reset);
+    await waitFor(() => expect(lastAsked().toString()).toBe('view=ready&page=1&limit=25'));
+    expect((screen.getByLabelText('الشحن') as HTMLSelectElement).value).toBe('all');
   });
 
   it('and a change starts again at page one, from wherever the reader was', async () => {
@@ -422,10 +486,11 @@ describe('a row', () => {
     expect(screen.getByText('أُلغي —')).toBeTruthy();
   });
 
+  // The refusal below is the server's ALREADY_SHIPPED in its 28/10 words: «شُحن ثمّ عاد — هذا إرجاع» is no longer a refusal.
   it('and one that can be offered has the button and the ceiling; one that cannot has the sentence that says why, and no button', async () => {
     rowsOf = () => [
       row('OK'),
-      row('SH', { verdict: { eligible: false, code: 'ALREADY_SHIPPED', reason: 'شُحن ثمّ عاد — هذا إرجاع، وله حسابه الخاصّ' } }),
+      row('SH', { verdict: { eligible: false, code: 'ALREADY_SHIPPED', reason: 'شُحن ولم يرجع إلينا — ما زال عند شركة الشحن أو عند العميل' } }),
     ];
     await draw();
     const ok = screen.getByText('ORD-OK').closest('article')!;
@@ -433,7 +498,36 @@ describe('a row', () => {
     expect(ok.textContent).toContain('أقصى خصم');
     const shipped = screen.getByText('ORD-SH').closest('article')!;
     expect(within(shipped).queryByRole('button')).toBeNull();
-    expect(within(shipped).getByText('شُحن ثمّ عاد — هذا إرجاع، وله حسابه الخاصّ')).toBeTruthy();
+    expect(within(shipped).getByText('شُحن ولم يرجع إلينا — ما زال عند شركة الشحن أو عند العميل')).toBeTruthy();
+  });
+
+  /** «قبل الشحن وبعد» — a parcel that came back is named a return in words and dated by the desk's receipt. */
+  it('and a parcel that came back says so, in words, dated by its receipt — never «بلا سبب», never «أُلغي»', async () => {
+    rowsOf = () => [
+      row('RT', { rejectionReason: null, rejectedAt: null, returnLabel: 'مرتجع بعد الشحن — العميل رفض', returnReceivedAt: '2026-10-01T09:00:00.000Z' }),
+    ];
+    await draw();
+    const card = screen.getByText('ORD-RT').closest('article')!;
+    expect(within(card).getByText('مرتجع بعد الشحن — العميل رفض')).toBeTruthy();
+    expect(within(card).getByText('استلمه المستودع 2026-10-01')).toBeTruthy();
+    expect(within(card).queryByText('بلا سبب')).toBeNull();
+    expect(card.textContent).not.toContain('أُلغي');
+    expect(within(card).getByRole('button', { name: 'اعرضه من جديد' })).toBeTruthy();
+  });
+
+  it('and one the desk has not received says that instead of a date, with the refusal beside it and no button', async () => {
+    rowsOf = () => [
+      row('RN', {
+        rejectionReason: null, rejectedAt: null, returnLabel: 'مرتجع بعد الشحن', returnReceivedAt: null,
+        verdict: { eligible: false, code: 'RETURN_NOT_RECEIVED', reason: 'رجع ولم يستلمه المستودع بعد، أو أُغلق كخسارة ولن يعود' },
+      }),
+    ];
+    await draw();
+    const card = screen.getByText('ORD-RN').closest('article')!;
+    expect(within(card).getByText('مرتجع بعد الشحن')).toBeTruthy();
+    expect(within(card).getByText('لم يستلمه المستودع بعد')).toBeTruthy();
+    expect(card.querySelector('footer')!.textContent).toBe('رجع ولم يستلمه المستودع بعد، أو أُغلق كخسارة ولن يعود');
+    expect(within(card).queryByRole('button')).toBeNull();
   });
 
   it('and one still cooling says WHEN it becomes ready — and that is the only code that does', async () => {
@@ -462,6 +556,19 @@ describe('«اعرضه من جديد»', () => {
     expect(arg.body).toContain('محسومٌ عليه 5 سابقاً');
     expect(arg.input).toEqual({ label: 'قيمة الخصم', placeholder: '7.5' });
     expect(arg.confirmLabel).toBe('اعرضه');
+  });
+
+  it('and on a parcel that came back it says it is a return, received — and that the old order stays a return', async () => {
+    rowsOf = () => [row('RT', { rejectionReason: null, returnLabel: 'مرتجع بعد الشحن — العميل رفض', returnReceivedAt: '2026-10-01T09:00:00.000Z' })];
+    await draw();
+    press();
+    await waitFor(() => expect(ask).toHaveBeenCalledTimes(1));
+    const body = ask.mock.calls[0][0].body as string;
+    expect(body).toContain('مرتجع بعد الشحن — العميل رفض، واستلمه المستودع.');
+    expect(body).toContain('والطلب القديم يبقى مرتجعاً كما هو');
+    expect(body).not.toContain('أُلغي بسبب');
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    expect(JSON.parse((posts()[0][1] as RequestInit).body as string)).toEqual({ orderId: 'RT', discount: 10 });
   });
 
   it('and an answer within the ceiling is sent for THAT order, and the reader stays on the page they are on', async () => {
@@ -562,15 +669,33 @@ describe('«اعرضه من جديد»', () => {
 });
 
 describe('when nothing is there', () => {
-  it('— an empty list with nothing chosen says what the screen is for, in the OWNER’S days, not fourteen', async () => {
+  /**
+   * REWRITTEN ON 28/10: the sentence ended «…ولم يُعرض عليه من قبل، ولم يُشحن» — the rule before the owner
+   * ruled for both kinds. It names both now, in the owner's days; the switch off prints the old one (next).
+   */
+  it('— an empty list with nothing chosen says what the screen is for, both kinds, in the OWNER’S days, not fourteen', async () => {
     total = 0;
     rule = { ...rule, coolingDays: 10 };
     await draw();
     expect(screen.getByText('لا طلبَ جاهزاً لمحاولةٍ ثانية')).toBeTruthy();
-    expect(screen.getByText(/تحدّدها القاعدة أعلاه، بعد 10 يوماً،/)).toBeTruthy();
+    expect(
+      screen.getByText(
+        'يُعرض هنا ما أُلغي قبل الشحن بالأسباب التي تحدّدها القاعدة أعلاه، وما شُحن ثمّ رجع واستلمه المستودع — بعد 10 يوماً، ولم يُعرض عليه من قبل.'
+      )
+    ).toBeTruthy();
     expect(screen.queryByText(/بعد 14 يوماً،/)).toBeNull();
+    expect(screen.queryByText(/ولم يُشحن/)).toBeNull();
     expect(screen.queryByText('لا طلبات بهذه الشروط')).toBeNull();
     expect(pagerSentence(false)).toBeNull(); // no page bar over nothing
+  });
+
+  it('and with the switch off, the sentence it always said — «ولم يُشحن» included', async () => {
+    total = 0;
+    rule = { ...rule, afterShipping: false, coolingDays: 10 };
+    await draw();
+    expect(
+      screen.getByText('يُعرض هنا ما أُلغي بالأسباب التي تحدّدها القاعدة أعلاه، بعد 10 يوماً، ولم يُعرض عليه من قبل، ولم يُشحن.')
+    ).toBeTruthy();
   });
 
   it('and an empty list BECAUSE of what was chosen says that, and offers the way out', async () => {

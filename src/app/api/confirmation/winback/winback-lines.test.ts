@@ -288,6 +288,55 @@ describe('the win-back order carries the goods of the order it is winning back',
 });
 
 /**
+ * AND A PARCEL THAT CAME BACK IS RAISED THROUGH THE SAME DOOR (28/10).
+ *
+ * «قبل الشحن وبعد». The order it wins back is the same goods: refused at the door instead of on the phone,
+ * counted back in by the desk. Its lines are its own `OrderItem` rows, the money is `computeCod`'s, and the
+ * order and its lines are one write — exactly as for a cancellation, which is what is held here.
+ */
+describe('a parcel that came back carries the same goods, through the same door', () => {
+  const returned = {
+    ...source,
+    confirmationStatus: 'CONFIRMED',
+    rejectionReason: null,
+    shippedAt: new Date(Date.now() - 45 * 86_400_000),
+    shippingStatus: 'RETURNED',
+    returnReason: 'CUSTOMER_REFUSED',
+    deliveryFailureReason: null,
+    returnReceipt: { inspectedAt: new Date(Date.now() - 20 * 86_400_000) },
+  };
+
+  beforeEach(() => {
+    db.order.findFirst.mockResolvedValue(returned);
+    db.orderStatusLog.findFirst.mockResolvedValue(null);
+  });
+
+  it('writes a line per line of the original, inside the order’s transaction, and the same money', async () => {
+    const res = await offer(5);
+    expect(res.status, JSON.stringify(await res.clone().json())).toBe(200);
+    expect(db.orderItem.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { orderId: SOURCE_ID } }));
+    expect(writtenLines()).toEqual([
+      expect.objectContaining({ orderId: 'new-order', productId: 'prod-1', quantity: 3, freeQuantity: 0, unitPrice: 12, discountShare: 5, lineTotal: 31, addedStage: 'INTAKE' }),
+    ]);
+    expect(writtenOrder()).toMatchObject({ sellingPrice: 36, discountAmount: 5, totalAmount: 31, confirmationStatus: 'NEW', shippingStatus: 'NOT_READY' });
+    expect(db.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('and with no lines of its own, the same fallback: the product columns, the unit price divided once', async () => {
+    db.orderItem.findMany.mockResolvedValue([]);
+    expect((await offer(0)).status).toBe(200);
+    expect(writtenLines()).toEqual([expect.objectContaining({ productId: 'prod-1', quantity: 3, unitPrice: 12 })]);
+    expect(writtenOrder().totalAmount).toBe(36);
+  });
+
+  it('and nothing is held off the shelf for it either — the offer enters at NEW', async () => {
+    await offer(5);
+    for (const line of writtenLines()) expect(line.reservedQty).toBeUndefined();
+    expect(db.orderItem.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+/**
  * THE SAME ORDER AT THE WAREHOUSE DOOR — the before and the after, run.
  */
 describe('a win-back order reaching assertReadyToShip', () => {

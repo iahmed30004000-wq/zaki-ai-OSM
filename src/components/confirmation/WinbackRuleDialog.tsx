@@ -20,15 +20,19 @@ import {
 /**
  * «عدّل القاعدة» — THE OWNER'S RULE FOR THE LOST ORDERS, IN A FORM.
  *
- * «شو القاعدة تبعو لاني ممكن اعدلها». Four things, each a real control with its
- * label and its limit beside it: which reasons are worth a second call, how
- * long to wait, how far back to look, how much of the price may be given away.
+ * «شو القاعدة تبعو لاني ممكن اعدلها». Five things, each a real control with its
+ * label and its limit beside it: whether a parcel that shipped and came back is
+ * read too (one tick, «يشمل المرتجع بعد الشحن», on — the owner asked for both on
+ * 28/10), which reasons are worth a second call, how long to wait, how far back
+ * to look, how much of the price may be given away.
  *
- * What the form does NOT offer is as much the point as what it does. A shipped
- * parcel, an order that was already offered, a second chance, and a duplicate, a
- * wrong number, a fake order or an entry error are never called for, whatever is
- * typed here — and the form says so in a sentence rather than leaving the owner
- * to wonder why «طلب مكرّر» has no tick beside it.
+ * What the form does NOT offer is as much the point as what it does. A parcel
+ * that left and is not back, or is back and nobody received it, an order that
+ * was already offered, a second chance, and a duplicate, a wrong number, a fake
+ * order or an entry error are never called for, whatever is typed here — and the
+ * form says so in a sentence rather than leaving the owner to wonder why «طلب
+ * مكرّر» has no tick beside it. (That sentence said «الطلب الذي شُحن» until the
+ * owner ruled the returns in; what it cannot reach now is what is not back.)
  *
  * The same judge runs here and on the server (`validateWinbackRule`): the form
  * refuses what the route would refuse, in the same words, before it is sent —
@@ -46,6 +50,7 @@ export function WinbackRuleDialog({
   onSaved: (rule: WinbackRule) => void | Promise<void>;
 }) {
   const [reasons, setReasons] = useState<string[]>([...rule.reasons]);
+  const [afterShipping, setAfterShipping] = useState(rule.afterShipping === true);
   const [cooling, setCooling] = useState(String(rule.coolingDays));
   const [lookback, setLookback] = useState(String(rule.lookbackDays));
   const [percent, setPercent] = useState(String(Math.round(rule.maxDiscountShare * 10_000) / 100));
@@ -54,6 +59,7 @@ export function WinbackRuleDialog({
 
   const fill = (r: WinbackRule) => {
     setReasons([...r.reasons]);
+    setAfterShipping(r.afterShipping === true);
     setCooling(String(r.coolingDays));
     setLookback(String(r.lookbackDays));
     setPercent(String(Math.round(r.maxDiscountShare * 10_000) / 100));
@@ -88,7 +94,7 @@ export function WinbackRuleDialog({
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    const body = { reasons, coolingDays: num(cooling), lookbackDays: num(lookback), maxDiscountPercent: num(percent) };
+    const body = { reasons, afterShipping, coolingDays: num(cooling), lookbackDays: num(lookback), maxDiscountPercent: num(percent) };
     const judged = validateWinbackRule(body);
     if (!judged.ok) {
       setError(judged.errorAr);
@@ -121,8 +127,19 @@ export function WinbackRuleDialog({
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="قاعدة استرجاع الملغى" subtitle="تحكم بمَن يظهر في القائمة، وبكم يُسمح بالخصم">
       <form onSubmit={save} className="space-y-4">
+        {/* The kind first, as the sentence on the screen reads: which orders, and only then for which reasons. */}
+        <div className="space-y-1">
+          <label className="flex min-h-11 items-center gap-2 text-sm text-[var(--sys-foreground)] md:min-h-0">
+            <input type="checkbox" checked={afterShipping} onChange={(e) => setAfterShipping(e.target.checked)} />
+            يشمل المرتجع بعد الشحن
+          </label>
+          <p className="text-xs text-[var(--sys-muted-foreground)]">
+            ما شُحن ثمّ رجع واستلمه المستودع — لا تحدّه الأسباب أدناه، وتُحسب مهلته من يوم الاستلام.
+          </p>
+        </div>
+
         <fieldset className="space-y-1">
-          <legend className="mb-1 text-xs font-semibold text-[var(--sys-heading)]">الأسباب التي نتّصل لأجلها</legend>
+          <legend className="mb-1 text-xs font-semibold text-[var(--sys-heading)]">الأسباب التي نتّصل لأجلها — للملغى قبل الشحن</legend>
           {WINBACK_REASONS.map(box)}
           <p className="pt-2 text-xs text-[var(--sys-muted-foreground)]">
             وهذه ثلاثةٌ على مسؤوليتك — الأصل أنّ العميل فيها قال كلمته فلا يُعاد عليه:
@@ -158,7 +175,7 @@ export function WinbackRuleDialog({
         </div>
 
         <p className="rounded-lg bg-[var(--sys-surface)] p-3 text-xs leading-6 text-[var(--sys-muted-foreground)]">
-          لا يتغيّر بأيّ إعداد: الطلب الذي شُحن (إرجاعٌ له حسابه) · ما عُرض عليه من قبل · محاولةُ الاسترجاع نفسُها ·
+          لا يتغيّر بأيّ إعداد: ما شُحن ولم يرجع، أو رجع ولم يستلمه المستودع · ما عُرض عليه من قبل · محاولةُ الاسترجاع نفسُها ·
           ولا يُتَّصل لأجل{' '}
           {NEVER_WINBACK_REASONS.map((r) => REJECTION_REASON_AR[r] ?? r).join(' ولا ')}.
         </p>

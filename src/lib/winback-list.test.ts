@@ -4,8 +4,9 @@ import {
   LOST_STATUSES,
   winbackVerdict,
   type WinbackRule,
+  type WinbackSource,
 } from './winback';
-import { PERIODS, VIEWS, baseWhere, periodWhere, productWhere, reasonWhere, viewWhere, type View } from './winback-filters';
+import { PERIODS, SHIPPING_KINDS, VIEWS, baseWhere, periodWhere, productWhere, reasonWhere, shippingWhere, viewWhere, type View } from './winback-filters';
 import { PRODUCT_OPTIONS, readWinbackPage, winbackFacts } from './winback-list';
 
 /**
@@ -14,42 +15,61 @@ import { PRODUCT_OPTIONS, readWinbackPage, winbackFacts } from './winback-list';
  * A fake that records what it was asked can only say «the scope was in the
  * question». This one holds rows and evaluates the `where` it is handed — the
  * same small evaluator as `winback-filters.test.ts`, which throws on anything it
- * does not know — so the claims are about ANSWERS: that the numbers beside the
- * options are the numbers of rows that appear, that the three views add up to
- * everything the rule reads, and that a page is the right rows in the right order.
+ * does not know and answers an empty column the way the database does — so the
+ * claims are about ANSWERS: that the numbers beside the options are the numbers
+ * of rows that appear, that the three views add up to everything the rule reads,
+ * and that a page is the right rows in the right order.
  */
 
 const NOW = new Date('2026-10-21T12:00:00.000Z');
 const DAY = 86_400_000;
 const ago = (days: number) => new Date(NOW.getTime() - days * DAY);
 const RULE = DEFAULT_WINBACK_RULE;
+const OFF: WinbackRule = { ...RULE, afterShipping: false };
 
 type Any = Record<string, any>;
+type Tri = boolean | null;
+const all3 = (xs: Tri[]): Tri => (xs.includes(false) ? false : xs.includes(null) ? null : true);
+const any3 = (xs: Tri[]): Tri => (xs.includes(true) ? true : xs.includes(null) ? null : false);
+const not3 = (x: Tri): Tri => (x === null ? null : !x);
 
-function matches(where: Any, row: Any): boolean {
-  return Object.entries(where).every(([key, cond]) => {
-    if (key === 'AND') return (cond as Any[]).every((w) => matches(w, row));
-    if (key === 'OR') return (cond as Any[]).some((w) => matches(w, row));
-    if (key === 'NOT') return !matches(cond as Any, row);
-    const value = row[key];
-    if (cond === null) return value === null;
-    if (cond instanceof Date || typeof cond !== 'object') {
-      return cond instanceof Date ? value instanceof Date && value.getTime() === cond.getTime() : value === cond;
-    }
-    return Object.entries(cond as Any).every(([op, arg]) => {
-      if (op === 'some') return (value as Any[]).some((child) => matches(arg as Any, child));
-      if (op === 'in') return (arg as unknown[]).includes(value);
-      if (!(value instanceof Date)) return false;
-      const a = value.getTime();
-      const b = (arg as Date).getTime();
-      if (op === 'gt') return a > b;
-      if (op === 'gte') return a >= b;
-      if (op === 'lte') return a <= b;
-      if (op === 'lt') return a < b;
-      throw new Error(`the evaluator does not know «${op}»`);
-    });
-  });
+/** Three-valued, as the database answers: a comparison with an empty column is unknown, and only TRUE is a match. */
+function evaluate(where: Any, row: Any): Tri {
+  return all3(
+    Object.entries(where).map(([key, cond]): Tri => {
+      if (key === 'AND') return all3((cond as Any[]).map((w) => evaluate(w, row)));
+      if (key === 'OR') return any3((cond as Any[]).map((w) => evaluate(w, row)));
+      if (key === 'NOT') return not3(evaluate(cond as Any, row));
+      const value = row[key];
+      if (cond === null) return value === null;
+      if (cond instanceof Date || typeof cond !== 'object') {
+        if (value === null) return null;
+        return cond instanceof Date ? value instanceof Date && value.getTime() === cond.getTime() : value === cond;
+      }
+      return all3(
+        Object.entries(cond as Any).map(([op, arg]): Tri => {
+          if (op === 'some') return (value as Any[]).some((child) => evaluate(arg as Any, child) === true);
+          if (op === 'is') return arg === null ? value === null : value !== null && evaluate(arg as Any, value) === true;
+          if (op === 'isNot' && arg === null) return value !== null;
+          if (op === 'not' && arg === null) return value !== null;
+          if (op === 'isNot' || op === 'not') throw new Error(`the evaluator does not know «${op}» with a value`);
+          if (value === null) return null;
+          if (op === 'in') return (arg as unknown[]).includes(value);
+          if (op === 'notIn') return !(arg as unknown[]).includes(value);
+          if (!(value instanceof Date)) throw new Error(`the evaluator compares dates only, not «${op}» on ${typeof value}`);
+          const a = value.getTime();
+          const b = (arg as Date).getTime();
+          if (op === 'gt') return a > b;
+          if (op === 'gte') return a >= b;
+          if (op === 'lte') return a <= b;
+          if (op === 'lt') return a < b;
+          throw new Error(`the evaluator does not know «${op}»`);
+        })
+      );
+    })
+  );
 }
+const matches = (where: Any, row: Any): boolean => evaluate(where, row) === true;
 
 interface Row {
   id: string;
@@ -58,6 +78,8 @@ interface Row {
   confirmationStatus: string;
   createdAt: Date;
   shippedAt: Date | null;
+  shippingStatus: string;
+  returnReceipt: { inspectedAt: Date } | null;
   replacedBy: { orderNumber: string } | null;
   replacesOrderId: string | null;
   rejectionReason: string | null;
@@ -76,6 +98,8 @@ const row = (over: Partial<Row> & { closedDaysAgo?: number | null } = {}): Row =
     confirmationStatus: 'REJECTED',
     createdAt: ago(40),
     shippedAt: null,
+    shippingStatus: 'NOT_READY',
+    returnReceipt: null,
     replacedBy: null,
     replacesOrderId: null,
     rejectionReason: 'PRICE_TOO_HIGH',
@@ -84,6 +108,19 @@ const row = (over: Partial<Row> & { closedDaysAgo?: number | null } = {}): Row =
     ...rest,
   };
 };
+
+/** A parcel refused at the door, as the courier feed and the desk leave it: CONFIRMED, no reason, no loss logged. */
+const back = (over: Partial<Row> & { closedDaysAgo?: number | null } = {}): Row =>
+  row({
+    confirmationStatus: 'CONFIRMED',
+    rejectionReason: null,
+    closedDaysAgo: null,
+    createdAt: ago(70),
+    shippedAt: ago(60),
+    shippingStatus: 'RETURNED',
+    returnReceipt: { inspectedAt: ago(30) },
+    ...over,
+  });
 
 /** A database of these rows that answers `count`, `findMany` and `groupBy` by evaluating the `where` it is given. */
 function dbOf(rows: Row[]) {
@@ -249,7 +286,111 @@ describe('the numbers beside the options are the rows that appear', () => {
       (await readWinbackPage(db, { base: base(), viewClause: viewWhere('ready', RULE, NOW), clauses: [clause], page: 1, limit: 100, select: {} })).total;
     for (const g of f.reasons) expect(await rowsFor(reasonWhere(g.reason)), g.reason).toBe(g.count);
     for (const g of f.products) expect(await rowsFor(productWhere(g.name)), g.name).toBe(g.count);
-    for (const p of PERIODS) expect(await rowsFor(periodWhere(p, NOW)), p).toBe(f.periods[p]);
+    for (const p of PERIODS) expect(await rowsFor(periodWhere(p, NOW, RULE)), p).toBe(f.periods[p]);
+    for (const k of SHIPPING_KINDS) expect(await rowsFor(shippingWhere(k)), k).toBe(f.shipping[k]);
+  });
+});
+
+/**
+ * «قبل الشحن وبعد» — THE SAME SHOP, WITH PARCELS THAT CAME BACK IN IT (28/10).
+ *
+ * `shop()` above is left exactly as it was, and every number held over it still holds: the before-shipping
+ * half did not move. These are the returns beside it — CONFIRMED, as a parcel refused at the door is, with
+ * no reason and no loss in the log — each landing where the owner's ruling says it must.
+ */
+function returns(): Row[] {
+  return [
+    // The work: received three weeks and a month ago.
+    back({ returnReceipt: { inspectedAt: ago(20) } }),
+    back({ returnReceipt: { inspectedAt: ago(30) }, productNameSnapshot: 'كريم' }),
+    // Still cooling: received three days ago.
+    back({ returnReceipt: { inspectedAt: ago(3) } }),
+    // Refused: nobody received it (at the desk, or written off), a duplicate, already offered.
+    back({ returnReceipt: null }),
+    back({ rejectionReason: 'DUPLICATE_ORDER' }),
+    back({ replacedBy: { orderNumber: 'ORD-77' } }),
+    // No lost order at all: on the road, delivered in part (its refused units counted in), delivered.
+    back({ shippingStatus: 'FAILED_DELIVERY', returnReceipt: null }),
+    back({ shippingStatus: 'PARTIALLY_DELIVERED' }),
+    back({ shippingStatus: 'DELIVERED', returnReceipt: null }),
+    // Too old: made before the look-back, received last month.
+    back({ createdAt: ago(200) }),
+  ];
+}
+
+describe('and with parcels that came back beside the lost ones', () => {
+  it('— the views count the returns where the rule puts them, and the page shows exactly those rows', async () => {
+    const rows = [...shop(), ...returns()];
+    const facts = await winbackFacts(dbOf(rows), { base: base(), view: 'ready', rule: RULE, now: NOW });
+    expect(facts.views).toEqual({ ready: 9 + 2, cooling: 2 + 1, skipped: 6 + 3 });
+    for (const view of VIEWS) {
+      const page = await readWinbackPage(dbOf(rows), { base: base(), viewClause: viewWhere(view, RULE, NOW), clauses: [], page: 1, limit: 100, select: {} });
+      expect(page.total, view).toBe(facts.views[view]);
+      expect(page.rows, view).toHaveLength(facts.views[view]);
+    }
+  });
+
+  it('and the three views still add up to everything the rule reads — and the not-back and the too old are in no number', async () => {
+    const rows = [...shop(), ...returns()];
+    const facts = await winbackFacts(dbOf(rows), { base: base(), view: 'ready', rule: RULE, now: NOW });
+    const read = rows.filter((r) => matches(base(), r as unknown as Any)).length;
+    expect(facts.views.ready + facts.views.cooling + facts.views.skipped).toBe(read);
+    expect(read).toBe(17 + 6);
+  });
+
+  it('and «الشحن» splits each view in two that add up to it — counted inside the open view', async () => {
+    const rows = [...shop(), ...returns()];
+    const expected: Record<View, { before: number; after: number }> = {
+      ready: { before: 9, after: 2 },
+      cooling: { before: 2, after: 1 },
+      // The shop's own shipped-and-lost order is «after» too: it left, whatever became of it.
+      skipped: { before: 5, after: 1 + 3 },
+    };
+    for (const view of VIEWS) {
+      const f = await winbackFacts(dbOf(rows), { base: base(), view, rule: RULE, now: NOW });
+      expect(f.shipping, view).toEqual(expected[view]);
+      expect(f.shipping.before + f.shipping.after, view).toBe(f.views[view]);
+    }
+  });
+
+  it('and a period counts a return by the day the desk received it', async () => {
+    const f = await winbackFacts(dbOf([...shop(), ...returns()]), { base: base(), view: 'ready', rule: RULE, now: NOW });
+    // The shop's nine (0 · 5 · 9, as above) and the two returns received 20 and 30 days ago.
+    expect(f.periods).toEqual({ '7': 0, '30': 5 + 2, '90': 9 + 2 });
+  });
+
+  it('and with nothing else chosen, every option’s number is still exactly the rows its choice brings', async () => {
+    const db = dbOf([...shop(), ...returns()]);
+    for (const view of VIEWS) {
+      const f = await winbackFacts(db, { base: base(), view, rule: RULE, now: NOW });
+      const rowsFor = async (clause: Any) =>
+        (await readWinbackPage(db, { base: base(), viewClause: viewWhere(view, RULE, NOW), clauses: [clause], page: 1, limit: 100, select: {} })).total;
+      for (const g of f.reasons) expect(await rowsFor(reasonWhere(g.reason)), `${view} ${g.reason}`).toBe(g.count);
+      for (const g of f.products) expect(await rowsFor(productWhere(g.name)), `${view} ${g.name}`).toBe(g.count);
+      for (const p of PERIODS) expect(await rowsFor(periodWhere(p, NOW, RULE)), `${view} ${p}`).toBe(f.periods[p]);
+      for (const k of SHIPPING_KINDS) expect(await rowsFor(shippingWhere(k)), `${view} ${k}`).toBe(f.shipping[k]);
+    }
+  });
+
+  it('and with the owner’s switch off, it is the shop of before: the returns are in no number, and «بعد الشحن» is the one that left and was lost', async () => {
+    const rows = [...shop(), ...returns()];
+    const facts = await winbackFacts(dbOf(rows), { base: base(OFF), view: 'skipped', rule: OFF, now: NOW });
+    expect(facts.views).toEqual({ ready: 9, cooling: 2, skipped: 6 });
+    expect(facts.shipping).toEqual({ before: 5, after: 1 });
+  });
+
+  it('and every row on every page is where the verdict puts it — returns included, the switch on and off', async () => {
+    const rows = [...shop(), ...returns()];
+    for (const rule of [RULE, OFF]) {
+      for (const view of VIEWS) {
+        const page = await readWinbackPage<Row>(dbOf(rows), { base: base(rule), viewClause: viewWhere(view, rule, NOW), clauses: [], page: 1, limit: 100, select: {} });
+        for (const r of page.rows) {
+          const v = winbackVerdict(sourceOf(r), NOW, rule);
+          const said: View = v.eligible ? 'ready' : v.code === 'COOLING' ? 'cooling' : 'skipped';
+          expect(said, `${r.id} in «${view}» (${rule.afterShipping ? 'on' : 'off'})`).toBe(view);
+        }
+      }
+    }
   });
 });
 
@@ -308,17 +449,20 @@ describe('a page', () => {
     for (const view of VIEWS) {
       const page = await pageOf(rows, { viewClause: viewWhere(view, RULE, NOW), limit: 100 });
       for (const r of page.rows) {
-        const last = r.statusLogs.filter((l) => (LOST_STATUSES as readonly string[]).includes(l.newValue ?? '')).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
-        const v = winbackVerdict(
-          {
-            confirmationStatus: r.confirmationStatus, rejectionReason: r.rejectionReason, rejectedAt: last?.createdAt ?? null, shippedAt: r.shippedAt,
-            replacedByOrderNumber: r.replacedBy?.orderNumber ?? null, replacesOrderNumber: r.replacesOrderId ? 'ORD-X' : null, sellingPrice: 100, discountAmount: 0, createdAt: r.createdAt,
-          },
-          NOW
-        );
+        const v = winbackVerdict(sourceOf(r), NOW);
         const said: View = v.eligible ? 'ready' : v.code === 'COOLING' ? 'cooling' : 'skipped';
         expect(said, `${r.id} in «${view}»`).toBe(view);
       }
     }
   });
 });
+
+/** What the route hands the verdict for a row: the LAST loss in the log, and the desk's receipt. */
+function sourceOf(r: Row): WinbackSource {
+  const last = r.statusLogs.filter((l) => (LOST_STATUSES as readonly string[]).includes(l.newValue ?? '')).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+  return {
+    confirmationStatus: r.confirmationStatus, rejectionReason: r.rejectionReason, rejectedAt: last?.createdAt ?? null, shippedAt: r.shippedAt,
+    shippingStatus: r.shippingStatus, returnReceivedAt: r.returnReceipt?.inspectedAt ?? null,
+    replacedByOrderNumber: r.replacedBy?.orderNumber ?? null, replacesOrderNumber: r.replacesOrderId ? 'ORD-X' : null, sellingPrice: 100, discountAmount: 0, createdAt: r.createdAt,
+  };
+}
