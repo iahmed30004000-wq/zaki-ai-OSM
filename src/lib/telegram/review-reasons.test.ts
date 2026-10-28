@@ -100,11 +100,11 @@ describe('what a person reads', () => {
   });
 
   it('offers «إعادة المعالجة» only where it can change the answer', () => {
-    // The catalogue, the store, the blacklist, the store's currency and a failure may change; the text never does.
-    for (const code of ['PRODUCT_NOT_FOUND', 'AMBIGUOUS_PRODUCT', 'PRODUCT_GUESSED', 'NO_STORE', 'CUSTOMER_BLOCKED', 'CURRENCY_MISMATCH', 'CREATION_FAILED', 'OFFER_NOT_FOUND', 'OFFER_AMBIGUOUS', 'PRICE_MISMATCH', 'QUANTITY_NOT_OFFER']) {
+    // The catalogue, the store, the blacklist, the store's currency, a failure and the rules for a phone and an address may change; the text never does.
+    for (const code of ['PRODUCT_NOT_FOUND', 'AMBIGUOUS_PRODUCT', 'PRODUCT_GUESSED', 'NO_STORE', 'CUSTOMER_BLOCKED', 'CURRENCY_MISMATCH', 'CREATION_FAILED', 'OFFER_NOT_FOUND', 'OFFER_AMBIGUOUS', 'PRICE_MISMATCH', 'QUANTITY_NOT_OFFER', 'INVALID_PHONE', 'COUNTRY_MISMATCH', 'MISSING_ADDRESS']) {
       expect(reviewReason(code)?.retry, code).toBe(true);
     }
-    for (const code of ['MISSING_PHONE', 'REPEATED_PRICE', 'STRAY_LINE', 'BAD_DATE', 'INVALID_PHONE', 'INVALID_QUANTITY', 'MISSING_PRICE', 'DUPLICATE_ORDER', 'NOT_IN_FORMAT']) {
+    for (const code of ['MISSING_PHONE', 'REPEATED_PRICE', 'STRAY_LINE', 'BAD_DATE', 'INVALID_QUANTITY', 'MISSING_PRICE', 'DUPLICATE_ORDER', 'NOT_IN_FORMAT']) {
       expect(reviewReason(code)?.retry, code).toBe(false);
     }
   });

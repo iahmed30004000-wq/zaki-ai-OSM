@@ -47,7 +47,9 @@ export const REVIEW_REASONS = {
   MISSING_ORDERED_AT: { field: 'orderedAt', text: 'ناقص: تاريخ الطلب', retry: false },
   MISSING_CUSTOMER_NAME: { field: 'customer', text: 'ناقص: إسم العميل', retry: false },
   MISSING_PHONE: { field: 'phone', text: 'ناقص: رقم الهاتف', retry: false },
-  MISSING_ADDRESS: { field: 'address', text: 'ناقص: عنوان العميل', retry: false },
+  // MISSING_ADDRESS, INVALID_PHONE and COUNTRY_MISMATCH can be pressed again: on 29/10 the rules behind them were loosened
+  // («يقبل كل الارقام وكل العناوين»), so a message held for them before may now be an order.
+  MISSING_ADDRESS: { field: 'address', text: 'ناقص: عنوان العميل', retry: true },
   MISSING_PRODUCT: { field: 'product', text: 'ناقص: إسم المنتج', retry: false },
   MISSING_OFFER_NAME: { field: 'offer', text: 'ناقص: إسم العرض', retry: false },
   MISSING_PRICE: { field: 'priceQuantity', text: 'ناقص: السعر — أو مش رقم صالح', retry: false },
@@ -55,9 +57,9 @@ export const REVIEW_REASONS = {
   BAD_DATE: { field: 'orderedAt', text: 'تاريخ الطلب لازم يكون مثل 2026-10-28 15:40:01', retry: false },
   SOURCE_TIME_OFF: { field: 'orderedAt', text: 'تاريخ الطلب بعيد عن وقت وصول الرسالة', retry: false },
   INVALID_CUSTOMER_NAME: { field: 'customer', text: 'إسم العميل مش صالح — حرفين عالأقل وبلا أرقام', retry: false },
-  INVALID_PHONE: { field: 'phone', text: 'رقم الهاتف مش صالح', retry: false, withDetail: (d) => `رقم الهاتف مش صالح: ${d}` },
+  INVALID_PHONE: { field: 'phone', text: 'رقم الهاتف مش صالح', retry: true, withDetail: (d) => `رقم الهاتف مش صالح: ${d}` },
   CUSTOMER_BLOCKED: { field: 'phone', text: 'الرقم بقائمة الحظر', retry: true },
-  COUNTRY_MISMATCH: { field: 'address', text: 'البلد بالعنوان مش بلد المتجر', retry: false },
+  COUNTRY_MISMATCH: { field: 'address', text: 'البلد بالعنوان مش بلد المتجر', retry: true },
   PRODUCT_NOT_FOUND: { field: 'product', text: 'المنتج مش موجود', retry: true },
   AMBIGUOUS_PRODUCT: { field: 'product', text: 'الاسم بيطابق أكتر من منتج', retry: true },
   PRODUCT_GUESSED: { field: 'product', text: 'المنتج تخمين — ما منعمل طلب على تخمين', retry: true },

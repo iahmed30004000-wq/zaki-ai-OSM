@@ -163,6 +163,27 @@ describe('the address', () => {
   });
 });
 
+describe('every address is an address (29/10)', () => {
+  it.each([
+    ['سوريا', 'سوريا'],
+    ['سورية', 'سورية'],
+    ['سوريا سوريا', 'سوريا'],
+    ['الأردن عمان', 'الأردن عمان'],
+    ['عمان الأردن', 'عمان الأردن'],
+    ['سلام اهلا', 'سلام اهلا'],
+  ])('«%s» is taken as «%s», no refusal', (address, place) => {
+    expect(readLabeledOrder(text({ 'عنوان العميل': address }), store)).toMatchObject({ claimed: true, ok: true, place });
+  });
+
+  it('the country word still comes off when a place is left', () => {
+    expect(readLabeledOrder(text({ 'عنوان العميل': 'سوريا دمشق' }), store)).toMatchObject({ ok: true, place: 'دمشق' });
+  });
+
+  it('an address with no value is still a missing field', () => {
+    expect(readLabeledOrder(text({ 'عنوان العميل': '' }), store)).toMatchObject({ ok: false, reason: 'MISSING_ADDRESS' });
+  });
+});
+
 describe('the price', () => {
   it.each([
     ['25', '25'],

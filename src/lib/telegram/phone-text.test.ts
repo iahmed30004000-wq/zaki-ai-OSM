@@ -194,7 +194,11 @@ describe('the labeled reader never refuses a message for how the number is writt
     expect(readLabeledOrder(message('0933620102\nشكراً'), store)).toMatchObject({ ok: false, reason: 'STRAY_LINE' });
   });
 
-  it.each([['12'], ['123'], ['12345'], ['ab12']])('«%s» → INVALID_PHONE, the fields kept for the screen', (written) => {
+  it.each([['+96398101968'], ['+963096061306'], ['09336201'], ['123456']])('«%s» does not fit the shape but is taken: accepted, valid false', (written) => {
+    expect(readLabeledOrder(message(written), store)).toMatchObject({ claimed: true, ok: true, phone: { valid: false, accepted: true } });
+  });
+
+  it.each([['12'], ['123'], ['12345'], ['ab12'], ['+963 12']])('«%s» → INVALID_PHONE, the fields kept for the screen', (written) => {
     expect(readLabeledOrder(message(written), store)).toMatchObject({ claimed: true, ok: false, reason: 'INVALID_PHONE', fields: { phone: written } });
   });
 

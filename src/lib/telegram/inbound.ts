@@ -243,8 +243,10 @@ interface StoredMessage {
  * (PRICE_MISMATCH) and never the money; «الكمية» is the product's pieces: 1 or the offer's paid pieces is ONE offer, a whole
  * multiple k is k offers, anything else is QUANTITY_NOT_OFFER. No offer found = no order.
  *
- * THE PHONE IS READ LENIENTLY (`phone-text.ts`): no message is refused for how its number is written; only a number that
- * still fails the store country's rule is held (INVALID_PHONE, with the number as written), and no digit at all is missing.
+ * THE PHONE AND THE ADDRESS ARE TAKEN LENIENTLY (`phone-text.ts`, `labeled-order.ts`): no message is refused for how its number
+ * is written, for a number a digit short (6 digits or more is taken, and the order's notes say it does not fit the country's
+ * shape), or for what its address says («سوريا» alone, another country's word). Only a stub of a number is held (INVALID_PHONE,
+ * with the number as written), and no digit at all is missing.
  */
 async function processLabeledMessage(
   message: StoredMessage,
@@ -366,6 +368,7 @@ async function processLabeledMessage(
       `وقت الطلب بالمصدر: ${fields.orderedAt}`,
       `العرض: ${line.offer?.name ?? ''}`.slice(0, 120),
       phone.others.length ? `أرقام أخرى: ${phone.others.join(' ، ')}` : null,
+      phone.valid ? null : `تنبيه: رقم الهاتف ما بيطابق شكل أرقام البلد (كما انكتب: ${fields.phone.slice(0, 40)}) — تأكدوا منه بالاتصال`,
     ]
       .filter(Boolean)
       .join(' · '),

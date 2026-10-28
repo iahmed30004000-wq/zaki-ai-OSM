@@ -697,6 +697,12 @@ describe('the same message in other shapes is still the same order', () => {
     ['no country word', 'حماة', 'region-hama', 'حماة'],
     ['a place the table does not know', 'سوريا مصياف', null, 'مصياف'],
     ['two words, the country at the end', 'حماه السقيلبية سوريا', 'region-hama', 'حماه السقيلبية'],
+    ['the country and nothing else (29/10: «طلبات تنزل باسم سوريا بس»)', 'سوريا', null, 'سوريا'],
+    ['the country twice', 'سوريا سوريا', null, 'سوريا'],
+    ['another country: kept as written, no refusal', 'الأردن عمان', null, 'الأردن عمان'],
+    ['another country at the end', 'عمان الأردن', null, 'عمان الأردن'],
+    ['words that name no place', 'سلام اهلا', null, 'سلام اهلا'],
+    ['a village the table does not know', 'الرقة الكرمة', null, 'الرقة الكرمة'],
   ])('the place — %s', async (_what, address, region, written) => {
     const { order } = await orderOf(sample({ 'عنوان العميل': address }));
     expect(order.regionId).toBe(region);
@@ -777,7 +783,6 @@ describe('the phone — every way of writing it is accepted; only a number that 
     ['123', '123'],
     ['five digits', '12345'],
     ['letters around digits', 'ab12'],
-    ['a Syrian number one digit short', '09336201'],
     ['a stub with the code', '+963 12'],
   ])('«%s» is no phone → review INVALID_PHONE with the number as written, and NOTHING is written', async (_what, value) => {
     const id = arrive(phoneOf(value));
@@ -785,6 +790,32 @@ describe('the phone — every way of writing it is accepted; only a number that 
     nothingWritten();
     expect(messageRow(id)).toMatchObject({ processingStatus: 'NEEDS_REVIEW', reviewReason: `INVALID_PHONE:${value}` });
     expect(reviewReasonText(messageRow(id).reviewReason)).toBe(`رقم الهاتف مش صالح: ${value}`);
+  });
+
+  it.each([
+    ['his first real message: +963 and 8 digits', '+96398101968', '98101968'],
+    ['his second: +963, a trunk zero and 8 digits', '+963096061306', '96061306'],
+    ['a Syrian mobile one digit short', '09336201', '9336201'],
+    ['six digits, the floor', '123456', '123456'],
+  ])('«%s» is not Syrian-shaped but is a number: the order is made, and its notes say to check it', async (_what, value, stored) => {
+    const id = arrive(phoneOf(value));
+    expect((await processStoredMessage(id)).status).toBe('PROCESSED');
+    expect(state.orders).toHaveLength(1);
+    expect(state.customers[0].phone).toBe(stored);
+    expect(state.orders[0].internalNotes).toContain('رقم الهاتف ما بيطابق شكل أرقام البلد');
+    expect(state.orders[0].internalNotes).toContain(value);
+  });
+
+  it('a number that fits the country carries no such note', async () => {
+    await processStoredMessage(arrive(phoneOf('0933620102')));
+    expect(state.orders[0].internalNotes).not.toContain('ما بيطابق');
+  });
+
+  it('a blocked number is blocked in its short form too, before anything is written', async () => {
+    state.blocks = [{ companyId: 'c1', phone: '98101968' }];
+    const id = arrive(phoneOf('+96398101968'));
+    expect(await processStoredMessage(id)).toEqual({ status: 'NEEDS_REVIEW', reason: 'CUSTOMER_BLOCKED' });
+    nothingWritten();
   });
 
   it('a stub with a real number beside it is not refused — the real number is the phone', async () => {
@@ -870,9 +901,6 @@ describe('a message that claims the format and is wrong goes to review — namin
     ['a name with a digit', 'INVALID_CUSTOMER_NAME', sample({ 'إسم العميل': 'محمد 7' })],
     ['a phone with letters and no digit at all', 'MISSING_PHONE', sample({ 'رقم الهاتف': 'سوريا حماه' })],
     ['a phone of nothing but zeros', 'MISSING_PHONE', sample({ 'رقم الهاتف': '0000' })],
-    ['another country', 'COUNTRY_MISMATCH', sample({ 'عنوان العميل': 'الأردن عمان' })],
-    ['another country at the end', 'COUNTRY_MISMATCH', sample({ 'عنوان العميل': 'عمان الأردن' })],
-    ['the country and nothing else', 'MISSING_ADDRESS', sample({ 'عنوان العميل': 'سوريا' })],
     ['a product nobody sells', 'PRODUCT_NOT_FOUND', sample({ 'إسم المنتج': 'شي ما إله وجود' })],
     ['a product guessed from one shared word', 'PRODUCT_GUESSED', sample({ 'إسم المنتج': 'ماء الورد الأصلي' })],
     ['a price that is words', 'MISSING_PRICE', sample({ 'السعر': 'خمسة وعشرين' })],
