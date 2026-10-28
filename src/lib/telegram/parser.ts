@@ -289,7 +289,7 @@ function extractFreeForm(text: string, phone: string): {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /** Direction marks a phone keyboard or a copy from another app leaves inside a line: LRM, RLM, the embeddings, the isolates, ALM. */
-const BIDI_MARKS = /[‎‏‪-‮⁦-⁩؜]/g;
+export const BIDI_MARKS = /[‎‏‪-‮⁦-⁩؜]/g;
 
 /** «2026-10-28 15:40:01», «2026/10/28», «2026-10-28 15:40» — a date, maybe a time, and nothing else on the line. */
 const DATE_TIME_LINE = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/;
@@ -351,8 +351,8 @@ export type LineRoleReading =
   | { claimed: true; ok: true; lineCount: number; lines: LineRoleLines; place: string; offer: LineRoleOffer };
 
 /** Line 2 may say a time up to a week before the message arrived and up to a day after it — wide enough for any time zone. */
-const SOURCE_TIME_BEFORE_MS = 7 * 24 * 60 * 60 * 1000;
-const SOURCE_TIME_AFTER_MS = 24 * 60 * 60 * 1000;
+export const SOURCE_TIME_BEFORE_MS = 7 * 24 * 60 * 60 * 1000;
+export const SOURCE_TIME_AFTER_MS = 24 * 60 * 60 * 1000;
 
 /** The text as lines: marks gone, digits Latin, split on line breaks ONLY (never on ؛ or ;), trimmed, the blank ones dropped. */
 function plainLines(text: string): string[] {
@@ -363,7 +363,7 @@ function plainLines(text: string): string[] {
 }
 
 /** Line 2 as a moment (the wall-clock time read as UTC, which the wide windows make safe), or null when it is no real date. */
-function sourceTime(line: string): number | null {
+export function sourceTime(line: string): number | null {
   const m = DATE_TIME_LINE.exec(line);
   if (!m) return null;
   const part = (v: string | undefined) => (v === undefined ? 0 : Number(v));
@@ -381,18 +381,18 @@ function sourceTime(line: string): number | null {
 }
 
 /** Line 3: a name — two letters at least, no digit, eighty characters at most. */
-function isCustomerName(line: string): boolean {
+export function isCustomerName(line: string): boolean {
   return line.length <= 80 && !/\d/.test(line) && (line.match(/\p{L}/gu) ?? []).length >= 2;
 }
 
 /** Line 4 holds only what a phone is written with. */
-const PHONE_LINE = /^\+?[\d\s\-()]+$/;
+export const PHONE_LINE = /^\+?[\d\s\-()]+$/;
 
 /**
  * The country words a governorate line may open with: the geo migration's own list (20260919203204), with Syria's
  * spellings. Compared through `sameArabicName`, so «الاردن» is «الأردن» and «سوريه» is «سورية».
  */
-const COUNTRY_WORDS: ReadonlyArray<{ code: string; words: readonly string[] }> = [
+export const COUNTRY_WORDS: ReadonlyArray<{ code: string; words: readonly string[] }> = [
   { code: 'SY', words: ['سوريا', 'سورية', 'syria'] },
   { code: 'JO', words: ['الأردن', 'jordan'] },
   { code: 'EG', words: ['مصر', 'egypt'] },
@@ -404,8 +404,8 @@ const COUNTRY_WORDS: ReadonlyArray<{ code: string; words: readonly string[] }> =
 ];
 
 /** What may stand between the country word and the place: a space, a dash, a comma of either script, a slash. */
-const PLACE_GAP = '[\\s\\-–—،,/|]+';
-const PLACE_WORD = '[^\\s\\-–—،,/|]+';
+export const PLACE_GAP = '[\\s\\-–—،,/|]+';
+export const PLACE_WORD = '[^\\s\\-–—،,/|]+';
 
 /** Line 5 without a leading word naming the store's own country — or the refusal, when the word names another one (T6). */
 function placeOf(line: string, country: LineRoleStore['country']): { place: string } | { refusal: 'COUNTRY_MISMATCH' } {
@@ -433,7 +433,7 @@ const PIECES_TWO = new RegExp(`^(?:ال)?(?:قطعتين|قطعتان|حبتين
 const PIECES_ONE = new RegExp(`^(?:ال)?(?:قطعه|حبه|علبه)(?: (?:ال)?واحده)?${NOT_A_LETTER}`, 'u');
 const CONNECTOR = new RegExp(`^(?:ب ?سعر|ب)${NOT_A_LETTER}`, 'u');
 /** Each currency the line may name, by the code `Country.currencyCode` carries. A symbol is compared, never converted. */
-const CURRENCY_WORDS: ReadonlyArray<{ code: string; pattern: string }> = [
+export const CURRENCY_WORDS: ReadonlyArray<{ code: string; pattern: string }> = [
   { code: 'USD', pattern: '\\$|usd|دولار(?: امريكي)?' },
   { code: 'SYP', pattern: 'ل\\.? ?س\\.?|ليره(?: سوريه)?|syp' },
   { code: 'JOD', pattern: 'د\\.? ?ا\\.?|دينار(?: اردني)?|jod' },

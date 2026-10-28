@@ -7,16 +7,16 @@
  *   · `facts` is the count of each tab, grouped under the SAME store scope and the same search as the list — so a tab
  *     that says 5 shows 5. The old tiles counted the whole company, and «تم الإنشاء» read a key nothing wrote;
  *   · `pagination.total` is the chosen tab's count from that same grouping, so the two cannot disagree;
- *   · each message carries `reading`: the columns of the screen, read from the stored text by the same pure readers the
+ *   · each message carries `reading`: the columns of the screen, read from the stored text by the same pure reader the
  *     door uses (`readMessageColumns`) — no column in the database, and nothing the raw text did not already say;
- *   · a message held as DUPLICATE_REF carries `twin`, the order the same reference already made.
+ *   · a message held as DUPLICATE_ORDER carries `twin`, the order the same customer already made at the same time.
  */
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { can, requirePermission } from '@/lib/authorization';
 import { telegramStoreWhere } from '@/lib/telegram/store-scope';
-import { readLineRoleOrder, readMessageColumns } from '@/lib/telegram/parser';
+import { readLabeledOrder, readMessageColumns } from '@/lib/telegram/labeled-order';
 import { findTwinOrder } from '@/lib/telegram/twin';
 import { toLatinDigits } from '@/lib/latin-digits';
 import { apiErrorResponse } from '@/lib/api-error';
@@ -95,7 +95,7 @@ export async function GET(req: Request) {
         reviewReason: true,
         pageName: true,
         createdAt: true,
-        source: { select: { chatTitle: true, topicName: true, storeId: true } },
+        source: { select: { chatTitle: true, topicName: true, storeId: true, store: { select: { country: { select: { code: true } } } } } },
         order: { select: { id: true, orderNumber: true } },
       },
     });
@@ -104,16 +104,17 @@ export async function GET(req: Request) {
       rows.map(async ({ source, ...m }) => {
         const reading = readMessageColumns(m.text ?? '');
         let twin: { id: string; orderNumber: string } | null = null;
-        if (m.processingStatus === 'NEEDS_REVIEW' && m.reviewReason === 'DUPLICATE_REF' && source?.storeId) {
-          const lines = readLineRoleOrder(m.text ?? '');
-          if (lines.claimed && lines.lines.ref && lines.lines.orderedAt) {
+        if (m.processingStatus === 'NEEDS_REVIEW' && m.reviewReason === 'DUPLICATE_ORDER' && source?.storeId) {
+          const labeled = readLabeledOrder(m.text ?? '');
+          if (labeled.claimed && source.store?.country) {
             twin = await findTwinOrder({
               companyId,
               storeId: source.storeId,
               messageRowId: m.id,
               receivedAt: m.createdAt,
-              ref: lines.lines.ref,
-              orderedAt: lines.lines.orderedAt,
+              orderedAt: labeled.fields.orderedAt ?? '',
+              phone: labeled.fields.phone ?? '',
+              countryCode: source.store.country.code,
             });
           }
         }

@@ -1322,7 +1322,7 @@
   "src/components/screens/TelegramOrdersScreen.tsx": {
     "buttons": 4,
     "inputs": 0,
-    "columns": 11,
+    "columns": 12,
     "cards": 0,
     "modals": 0,
     "icons": 3,
