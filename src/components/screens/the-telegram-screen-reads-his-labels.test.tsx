@@ -4,12 +4,13 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import React from 'react';
 
 /**
- * «قم بتحسين واجهة طلبات تلجرام لانها معجوقة» — THE SCREEN, RENDERED FOR REAL.
+ * «قم بتحسين واجهة طلبات تلجرام لانها معجوقة» then «أريده يسحب الطلبات بهذه الصيغة» — THE SCREEN, RENDERED FOR REAL.
  *
- * What it owes beyond drawing: his line order in the columns; tabs whose counts are the server's and whose active count
- * is the list's own total; the reason in Arabic, naming the line; «إعادة المعالجة» only where it can change the answer,
- * and the list read again after it; «تجاهل» that asks first; the message folded until asked for; a card per message on
- * a phone; and the bot's status read when the screen opens and on «تحديث», never on a tab.
+ * What it owes beyond drawing: the columns of his labels, in his order; tabs whose counts are the server's and whose
+ * active count is the list's own total; the reason in Arabic, naming the field; the message that is not in the format
+ * under «متجاهلة»; «إعادة المعالجة» only where it can change the answer, and the list read again after it; «تجاهل» that
+ * asks first; the message folded until asked for; a card per message on a phone; and the bot's status read when the
+ * screen opens and on «تحديث», never on a tab.
  */
 
 const { api, toast, confirm, user } = vi.hoisted(() => ({
@@ -26,17 +27,30 @@ vi.mock('@/components/ui/Confirm', () => ({ useConfirm: () => confirm }));
 
 import { TelegramOrdersScreen } from './TelegramOrdersScreen';
 
-const LINES = {
-  format: 'lines',
-  lineCount: 7,
-  orderedAt: '2026-10-28 15:40:01',
-  customer: 'محمد',
-  phone: '0932323642',
-  governorate: 'سوريا حماه',
+const READING = {
+  claimed: true,
+  orderedAt: '2026-10-28 17:45:32',
+  customer: 'محمد عيد أطليبي',
+  phone: '0933620102',
+  address: 'دمشق سوريا',
   product: 'ماء الكمأ الأصلي',
-  offer: 'القطعة ب 15 $ + توصيل مجاني',
+  offer: 'قطعتين + قطعة هدية ( عدد 3 ) =25 $ + توصيل مجاني',
+  price: '25',
+  quantity: '1',
 };
-const TEXT = ['26818', LINES.orderedAt, LINES.customer, LINES.phone, LINES.governorate, LINES.product, LINES.offer].join('\n');
+const TEXT = [
+  ['رقم الطلب', '26842'],
+  ['تاريخ الطلب', READING.orderedAt],
+  ['إسم العميل', READING.customer],
+  ['رقم الهاتف', READING.phone],
+  ['عنوان العميل', READING.address],
+  ['إسم المنتج', READING.product],
+  ['إسم العرض', READING.offer],
+  ['السعر', READING.price],
+  ['الكمية', READING.quantity],
+]
+  .map(([label, value]) => `${label}: ${value}`)
+  .join('\n');
 
 const message = (id: string, over: Record<string, unknown> = {}) => ({
   id,
@@ -48,10 +62,10 @@ const message = (id: string, over: Record<string, unknown> = {}) => ({
   processingStatus: 'NEEDS_REVIEW',
   reviewReason: 'PRODUCT_NOT_FOUND',
   pageName: null,
-  createdAt: '2026-10-28T12:40:05.000Z',
+  createdAt: '2026-10-28T14:45:40.000Z',
   source: { chatTitle: 'طلبات الصفحة', topicName: null },
   order: null,
-  reading: LINES,
+  reading: READING,
   twin: null,
   ...over,
 });
@@ -91,7 +105,7 @@ afterEach(() => cleanup());
 
 const draw = async () => {
   render(<TelegramOrdersScreen />);
-  await screen.findAllByText('محمد');
+  await screen.findAllByText(READING.customer);
 };
 const desk = () => screen.getByRole('table');
 const cards = () => within(document.querySelector('ul')!).getAllByRole('listitem');
@@ -113,13 +127,17 @@ describe('opening it', () => {
     render(<TelegramOrdersScreen />);
     expect(screen.getByRole('status', { name: 'جارٍ التحميل' })).toBeTruthy();
     release();
-    await screen.findAllByText('محمد');
+    await screen.findAllByText(READING.customer);
     expect(screen.queryByRole('status', { name: 'جارٍ التحميل' })).toBeNull();
   });
 
-  it('— prints the rule, one line', async () => {
+  it('— prints the rule, one line: the nine labels, with the order number marked as ignored', async () => {
     await draw();
-    expect(screen.getByText(/^سطر لكل معلومة: 1 مرجع \(يُتجاهل\) · 2 تاريخ الطلب · 3 العميل · 4 الهاتف · 5 المحافظة · 6 المنتج · 7 العرض\./)).toBeTruthy();
+    expect(
+      screen.getByText(
+        /^الرسالة لازم تكون بهالعناوين، سطر لكل معلومة: رقم الطلب \(يُتجاهل\) · تاريخ الطلب · إسم العميل · رقم الهاتف · عنوان العميل · إسم المنتج · إسم العرض · السعر · الكمية\. غير هيك ما بتصير طلب\./
+      )
+    ).toBeTruthy();
   });
 
   it('— and to somebody who may not read the messages, says so and asks nothing', () => {
@@ -131,23 +149,41 @@ describe('opening it', () => {
 });
 
 describe('his columns, in his order', () => {
-  it('— the headings are his seven lines from 2 to 7, then the state', async () => {
+  it('— the headings are what his labels say, price and quantity together, then the state; no order-number column', async () => {
     await draw();
     const heads = within(desk()).getAllByRole('columnheader').map((th) => th.textContent);
-    expect(heads).toEqual(['تاريخ الطلب', 'العميل', 'الهاتف', 'المحافظة', 'المنتج', 'العرض', 'الحالة', '']);
+    expect(heads).toEqual(['تاريخ الطلب', 'العميل', 'الهاتف', 'العنوان', 'المنتج', 'العرض', 'السعر × الكمية', 'الحالة', '']);
+    expect(heads.join(' ')).not.toMatch(/رقم الطلب|مرجع/);
   });
 
-  it('— and the row is his message, line by line', async () => {
+  it('— and the row is his message, label by label', async () => {
     await draw();
     const cells = within(within(desk()).getAllByRole('row')[1]).getAllByRole('cell').map((td) => td.textContent);
-    expect(cells.slice(0, 6)).toEqual([LINES.orderedAt, LINES.customer, LINES.phone, LINES.governorate, LINES.product, LINES.offer]);
+    expect(cells.slice(0, 7)).toEqual([READING.orderedAt, READING.customer, READING.phone, READING.address, READING.product, READING.offer, '25 × 1']);
   });
 
-  it('— a message with no date line says when it arrived instead', async () => {
-    rows = [message('m1', { reading: { format: 'labels', customer: 'سامر', phone: '0933444555' } })];
+  it('— the order number is nowhere on the row (it is only inside the folded message text)', async () => {
+    await draw();
+    const row = within(desk()).getAllByRole('row')[1];
+    const shown = [...row.querySelectorAll('td')]
+      .filter((td) => !td.querySelector('details'))
+      .map((td) => td.textContent)
+      .join(' ');
+    expect(shown).not.toContain('26842');
+  });
+
+  it('— a message that is not in the format says when it arrived, shows dashes, and names why', async () => {
+    rows = [message('m1', { processingStatus: 'IGNORED', reviewReason: 'NOT_IN_FORMAT', reading: { claimed: false }, text: 'سلام' })];
     render(<TelegramOrdersScreen />);
-    await screen.findAllByText('سامر');
+    await screen.findAllByText('الرسالة مش بصيغة الطلب');
     expect(within(desk()).getAllByText(/^وصلت /).length).toBeGreaterThan(0);
+    expect(within(desk()).getAllByText('—').length).toBeGreaterThanOrEqual(6);
+  });
+
+  it('— a message a person ignored by hand keeps no stale reason on the row', async () => {
+    rows = [message('m1', { processingStatus: 'IGNORED', reviewReason: 'INVALID_PHONE' })];
+    await draw();
+    expect(screen.queryByText('رقم الهاتف مش صالح')).toBeNull();
   });
 });
 
@@ -171,6 +207,16 @@ describe('the tabs', () => {
     expect(statusReads()).toBe(1);
   });
 
+  it('— the «متجاهلة» tab holds the messages that are not in the format, and its count is the list’s total', async () => {
+    rows = [message('m1', { processingStatus: 'IGNORED', reviewReason: 'NOT_IN_FORMAT', reading: { claimed: false }, text: 'سلام' })];
+    render(<TelegramOrdersScreen />);
+    await screen.findAllByText('الرسالة مش بصيغة الطلب');
+    fireEvent.click(screen.getByRole('tab', { name: /متجاهلة/ }));
+    await waitFor(() => expect(gets().at(-1)!.toString()).toBe('tab=ignored&page=1&limit=25'));
+    await screen.findAllByText('الرسالة مش بصيغة الطلب');
+    expect(screen.getByText((_, el) => el?.tagName === 'SPAN' && el.textContent === 'عرض 1 من 4 رسالة')).toBeTruthy();
+  });
+
   it('— «تحديث» reads the bot and the page again', async () => {
     await draw();
     const before = gets().length;
@@ -180,19 +226,26 @@ describe('the tabs', () => {
   });
 });
 
-describe('why a message waits — in Arabic, naming the line', () => {
-  it('— the reason names the line, and the cell of that line is the one marked', async () => {
+describe('why a message waits — in Arabic, naming the field', () => {
+  it('— the reason names the field, and the cell of that field is the one marked', async () => {
     rows = [message('m1', { reviewReason: 'INVALID_PHONE' }), message('m2', { reviewReason: 'PRODUCT_NOT_FOUND' })];
     await draw();
-    expect(screen.getAllByText('السطر 4: رقم الهاتف مش صالح').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('السطر 6: المنتج مش موجود').length).toBeGreaterThan(0);
-    // The same column in two rows: marked where its line failed, plain where it did not — and the same mark both times.
+    expect(screen.getAllByText('رقم الهاتف مش صالح').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('المنتج مش موجود').length).toBeGreaterThan(0);
+    // The same column in two rows: marked where its field failed, plain where it did not — and the same mark both times.
     const [phoneRow, productRow] = within(desk()).getAllByRole('row').slice(1);
-    const phoneFailed = within(phoneRow).getByText(LINES.phone);
-    const phoneFine = within(productRow).getByText(LINES.phone);
-    const productFailed = within(productRow).getByText(LINES.product);
+    const phoneFailed = within(phoneRow).getByText(READING.phone);
+    const phoneFine = within(productRow).getByText(READING.phone);
+    const productFailed = within(productRow).getByText(READING.product);
     expect(phoneFailed.className).not.toBe(phoneFine.className);
     expect(phoneFailed.className).toBe(productFailed.className);
+  });
+
+  it('— the price and the quantity are one cell, marked for either', async () => {
+    rows = [message('m1', { reviewReason: 'INVALID_QUANTITY' }), message('m2', { reviewReason: 'PRODUCT_NOT_FOUND' })];
+    await draw();
+    const [bad, fine] = within(desk()).getAllByRole('row').slice(1);
+    expect(within(bad).getByText('25 × 1').className).not.toBe(within(fine).getByText('25 × 1').className);
   });
 
   it('— no code in English reaches the screen, whatever the door wrote', async () => {
@@ -201,18 +254,19 @@ describe('why a message waits — in Arabic, naming the line', () => {
       message('m2', { reviewReason: 'CUSTOMER_BLOCKED' }),
       message('m3', { reviewReason: 'SOMETHING_NOBODY_WROTE' }),
       message('m4', { processingStatus: 'FAILED', reviewReason: null }),
-      message('m5', { reviewReason: 'LINE_COUNT', reading: { format: 'lines', lineCount: 6, orderedAt: LINES.orderedAt } }),
+      message('m5', { reviewReason: 'MISSING_PHONE', reading: { claimed: true, orderedAt: READING.orderedAt } }),
     ];
     await draw();
+    await screen.findAllByText('ناقص: رقم الهاتف');
     expect(document.body.textContent).not.toMatch(/\b[A-Z][A-Z_]{3,}\b/);
     expect(screen.getAllByText('المجموعة مش مربوطة بمتجر').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('السطر 4: الرقم بقائمة الحظر').length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/^عدد أسطر الرسالة 6، والمطلوب 7/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('الرقم بقائمة الحظر').length).toBeGreaterThan(0);
   });
 
   it('— a duplicate links the order its twin already made', async () => {
-    rows = [message('m1', { reviewReason: 'DUPLICATE_REF', twin: { id: 'o1', orderNumber: 'SY-2026-0001' } })];
+    rows = [message('m1', { reviewReason: 'DUPLICATE_ORDER', twin: { id: 'o1', orderNumber: 'SY-2026-0001' } })];
     await draw();
+    expect(screen.getAllByText('نفس الزبون والمنتج والوقت صار طلب').length).toBeGreaterThan(0);
     expect(screen.getAllByText('SY-2026-0001').length).toBeGreaterThan(0);
   });
 });
@@ -224,11 +278,11 @@ describe('the actions on a row', () => {
     fireEvent.click(within(desk()).getByRole('button', { name: /إعادة المعالجة/ }));
     await waitFor(() => expect(posts('/m1/retry')).toHaveLength(1));
     await waitFor(() => expect(gets().length).toBe(before + 1));
-    expect(toast.failed).toHaveBeenCalledWith('السطر 6: المنتج مش موجود');
+    expect(toast.failed).toHaveBeenCalledWith('المنتج مش موجود');
   });
 
   it('— and where it cannot, the row says what will', async () => {
-    rows = [message('m1', { reviewReason: 'OFFER_UNREADABLE' })];
+    rows = [message('m1', { reviewReason: 'MISSING_PHONE' })];
     await draw();
     expect(within(desk()).queryByRole('button', { name: /إعادة المعالجة/ })).toBeNull();
     expect(within(desk()).getByText('صحّح الرسالة وابعتها من جديد')).toBeTruthy();
@@ -280,21 +334,21 @@ describe('the message as it arrived', () => {
       expect(fold.open).toBe(false);
       expect(fold.querySelector('summary')!.textContent).toBe('نص الرسالة');
     }
-    expect(folds[0].textContent).toContain('26818');
+    expect(folds[0].textContent).toContain('رقم الطلب: 26842');
     expect(folds[0].textContent).toContain('من: طلبات الصفحة · بلا موضوع · أبو أحمد · وصلت');
   });
 });
 
 describe('on a phone', () => {
-  it('— one card per message: the reason first, then the date and the name, then his lines, then the actions', async () => {
+  it('— one card per message: the reason first, then the date and the name, then his labels, then the actions', async () => {
     rows = [message('m1'), message('m2', { reviewReason: 'INVALID_PHONE' })];
     await draw();
     expect(cards()).toHaveLength(2);
     const card = cards()[1];
-    expect(card.firstElementChild!.textContent).toBe('السطر 4: رقم الهاتف مش صالح');
-    expect(card.children[1].textContent).toContain(LINES.orderedAt);
-    expect(card.children[1].textContent).toContain(LINES.customer);
-    expect(within(card).getAllByRole('term').map((dt) => dt.textContent)).toEqual(['الهاتف', 'المحافظة', 'المنتج', 'العرض', 'الحالة']);
+    expect(card.firstElementChild!.textContent).toBe('رقم الهاتف مش صالح');
+    expect(card.children[1].textContent).toContain(READING.orderedAt);
+    expect(card.children[1].textContent).toContain(READING.customer);
+    expect(within(card).getAllByRole('term').map((dt) => dt.textContent)).toEqual(['الهاتف', 'العنوان', 'المنتج', 'العرض', 'السعر × الكمية', 'الحالة']);
     expect(within(card).getByRole('button', { name: 'تجاهل' })).toBeTruthy();
     expect(within(card).getByText('نص الرسالة')).toBeTruthy();
   });
