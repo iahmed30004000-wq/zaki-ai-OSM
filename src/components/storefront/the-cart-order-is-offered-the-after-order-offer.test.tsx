@@ -355,6 +355,8 @@ describe('a basket order, end to end: checkout → thank-you page → «آه، �
     render(
       <CheckoutForm slug="main" minorUnit={3} fields={['name', 'phone']} required={['name', 'phone']} regions={[]} submitText="أرسل الطلب" />
     );
+    // What the customer reads beside the button, the moment before the thank-you page.
+    expect(screen.getByText('14.000 JOD'), 'صفحة الدفع ما طبعت المطلوب بمنازل المتجر').toBeTruthy();
     fireEvent.change(document.getElementById('co-name')!, { target: { value: 'سلمى الأحمد' } });
     fireEvent.change(document.getElementById('co-phone')!, { target: { value: '0790000064' } });
     fireEvent.click(screen.getByRole('button', { name: 'أرسل الطلب' }));
