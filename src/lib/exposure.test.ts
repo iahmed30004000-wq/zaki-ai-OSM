@@ -159,6 +159,20 @@ describe('what the browser is allowed to remember', () => {
       'a shopper’s own «شوهد مؤخراً» — product ids, one key per shop. Never sent anywhere except to ask what those products are, never stored against a person, and nothing in it names one',
     'storefront/useCart.ts':
       'a shopper’s basket — product ids, offer ids and counts, one key per shop. No price, because a price in a browser is a price a browser can edit; and no name, phone or address, which is what the test below proves rather than what this line promises',
+    /*
+     * THE BASKET'S ANSWER, FOR ITS THANK-YOU PAGE (RV250).
+     *
+     * The add-on token is in it, and that is the point of the entry rather
+     * than an accident of it: the token is the customer's own thirty-minute
+     * capability for their own order, which the landing form has always held
+     * in memory on the same screen. The basket's thank-you screen is another
+     * page, so the answer crosses one navigation — in session storage, this
+     * tab only, never in the link — and is removed once the card is answered
+     * or its window has passed. What the entry holds is pinned, key by key,
+     * in `the-cart-order-is-offered-the-after-order-offer.test.tsx`.
+     */
+    'storefront/after-order-handoff.ts':
+      'the basket’s order answer for its own thank-you page — the reference, the add-on token, the server’s one offer after the order, its window, the currency and when it arrived. Session storage, one key per order, gone once the card is answered or the window has passed; no name, phone or address',
   };
 
   it('writes to storage only in the places that were thought about', () => {

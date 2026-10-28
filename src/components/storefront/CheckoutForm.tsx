@@ -8,6 +8,7 @@ import { cartToOrderItems } from '@/lib/cart';
 import { moneyText } from '@/lib/money';
 import { shopFetch } from '@/lib/storefront-fetch';
 import { useTracking } from '@/components/tracking/GlobalTrackingProvider';
+import { keepAfterOrder } from './after-order-handoff';
 import { useCart } from './useCart';
 
 /**
@@ -31,6 +32,12 @@ import { useCart } from './useCart';
  * thank-you page: that page only echoes a reference and must not look the
  * order up, so it has no amount to report. The engine drops a second send
  * for the same order, and skips a pixel the server reports for.
+ *
+ * AND «العرض بعد الطلب» GOES WITH THE CUSTOMER, IN THIS TAB. The door answers
+ * with the one offer after the order and the signed token that may add it,
+ * exactly as it answers the landing form. That answer is kept for the
+ * thank-you page in session storage (`after-order-handoff`) before leaving
+ * for it — never in the link, which carries the reference and nothing else.
  *
  * The honeypot is `website`, checked server-side and never stored. It is
  * hidden from sight AND from screen readers, and it is not focusable: a
@@ -109,6 +116,8 @@ export function CheckoutForm({
             currency: typeof body.currency === 'string' ? body.currency : null,
           });
         } catch { /* tracking is non-fatal */ }
+        // The offer after the order and its token, for the thank-you page — in this tab, never in the link below.
+        keepAfterOrder(body);
         router.push(`/s/${slug}/thanks?o=${encodeURIComponent(String(body.orderNumber))}`);
         return;
       }
