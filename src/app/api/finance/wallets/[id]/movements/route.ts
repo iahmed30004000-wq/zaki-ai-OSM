@@ -9,6 +9,7 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { MOVEMENT_CATEGORIES, recordMovement, reverseMovement, walletBalance } from '@/lib/wallets';
 import { zodMessage } from '@/lib/zod-message';
+import { handMovementRefusal } from '@/lib/hand-movement-rules';
 
 /**
  * Wallet movements.
@@ -100,6 +101,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (!parsed.success) {
       return NextResponse.json({ error: zodMessage(parsed.error) }, { status: 400 });
     }
+
+    /*
+     * WHAT A PERSON MAY TYPE. A courier's collection has two doors of its own (the receipt of an approved
+     * statement, «استلمت منه») and a transfer has one; typing them here wrote the same money a second time
+     * when the statement was approved. Each remaining category also runs in one direction only where it can.
+     * The rule is lib/hand-movement-rules, which the dialog reads to offer only these pairs.
+     */
+    const refused = handMovementRefusal(parsed.data.category, parsed.data.direction);
+    if (refused) return NextResponse.json(refused, { status: 409 });
 
     const movement = await recordMovement(db, {
       companyId,
