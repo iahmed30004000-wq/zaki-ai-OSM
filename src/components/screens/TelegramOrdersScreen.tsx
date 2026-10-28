@@ -35,7 +35,9 @@ import type { MessageColumns } from '@/lib/telegram/labeled-order';
  *   · the tabs say how many are in each, counted under the same store scope as the list, and «للمراجعة» opens first;
  *   · «إعادة المعالجة» is offered only where pressing it can change the answer; a reason in the text itself says
  *     «صحّح الرسالة وابعتها من جديد» instead. «تجاهل» asks first, and «إعادة المعالجة» takes it back;
- *   · the message as it arrived is folded under «نص الرسالة», closed until asked for.
+ *   · the message as it arrived is folded under «نص الرسالة», closed until asked for;
+ *   · the offer's text is tied to a real offer: once the order exists the cell shows «مربوط بالعرض: …», and the phone is
+ *     drawn as the seller wrote it (every form is accepted; a number that fails the store's rule waits here, named).
  *
  * The bot's status asks Telegram twice, so it is read when the screen opens and on «تحديث» — never on a tab, a search or
  * a page.
@@ -53,7 +55,7 @@ interface Message {
   pageName: string | null;
   createdAt: string;
   source: { chatTitle: string | null; topicName: string | null } | null;
-  order: { id: string; orderNumber: string } | null;
+  order: { id: string; orderNumber: string; offer: { name: string } | null } | null;
   reading: MessageColumns;
   twin: { id: string; orderNumber: string } | null;
 }
@@ -223,7 +225,14 @@ function TelegramOrdersList({ canManage }: { canManage: boolean }) {
     { key: 'phone', label: 'الهاتف', render: (m) => <span dir="ltr">{value(m, 'phone')}</span> },
     { key: 'address', label: 'العنوان', render: (m) => value(m, 'address') },
     { key: 'product', label: 'المنتج', render: (m) => value(m, 'product') },
-    { key: 'offer', label: 'العرض', render: (m) => value(m, 'offer') },
+    { key: 'offer', label: 'العرض',
+      render: (m) => (
+        <div className="space-y-0.5">
+          {value(m, 'offer')}
+          {/* The offer the text was tied to — the one the order was priced from. */}
+          {m.order?.offer && <p className="text-xs font-semibold text-[var(--sys-primary)]">مربوط بالعرض: {m.order.offer.name}</p>}
+        </div>
+      ) },
     { key: 'priceQuantity', label: 'السعر × الكمية', render: (m) => <span dir="ltr">{value(m, 'priceQuantity')}</span> },
     { key: 'state', label: 'الحالة',
       render: (m) => (

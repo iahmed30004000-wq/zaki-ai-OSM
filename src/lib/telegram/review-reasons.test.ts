@@ -14,8 +14,9 @@ const door = stripComments(repoFile('src/lib/telegram/inbound.ts'));
 const reader = stripComments(repoFile('src/lib/telegram/labeled-order.ts'));
 const creator = stripComments(repoFile('src/lib/telegram/order-creation.ts'));
 
-// `review('…')` sends a message to a person; `ignore('…')` sets it aside. Both write a code a person may read.
-const reviewed = [...door.matchAll(/(?:review|ignore)\('([A-Z_]+)'\)/g)].map((m) => m[1]);
+// `review('…')` sends a message to a person; `ignore('…')` sets it aside. Both write a code a person may read — and a code
+// that carries a detail is written as a template, `review(`PRICE_MISMATCH:${…}`)`: the code before the colon is the one.
+const reviewed = [...door.matchAll(/(?:review|ignore)\((?:'([A-Z_]+)'\)|`([A-Z_]+):)/g)].map((m) => m[1] ?? m[2]);
 const refusals = (() => {
   const union = reader.slice(reader.indexOf('export type LabeledRefusal'));
   return [...union.slice(0, union.indexOf(';')).matchAll(/'([A-Z_]+)'/g)].map((m) => m[1]);
@@ -31,6 +32,7 @@ describe('the codes the door writes', () => {
   it('are found at all — a sweep over nothing proves nothing', () => {
     expect(reviewed.length).toBeGreaterThanOrEqual(8);
     expect(refusals.length).toBeGreaterThanOrEqual(25);
+    expect(reviewed).toEqual(expect.arrayContaining(['OFFER_NOT_FOUND', 'OFFER_AMBIGUOUS', 'QUANTITY_NOT_OFFER', 'PRICE_MISMATCH']));
     expect(refusals).toContain('MISSING_PHONE');
     expect(created).toContain('NO_SYSTEM_ACTOR');
     expect(written).toEqual(
@@ -69,8 +71,23 @@ describe('what a person reads', () => {
     expect(reviewReasonText('DUPLICATE_ORDER')).toBe('نفس الزبون والمنتج والوقت صار طلب');
   });
 
+  it('says the phone as the seller wrote it, and the price the offer really costs', () => {
+    expect(reviewReasonText('INVALID_PHONE:12')).toBe('رقم الهاتف مش صالح: 12');
+    expect(reviewReasonText('INVALID_PHONE')).toBe('رقم الهاتف مش صالح');
+    expect(reviewReasonText('PRICE_MISMATCH:25.00')).toBe('السعر المكتوب مش سعر العرض (25.00)');
+    expect(reviewReasonText('OFFER_NOT_FOUND')).toBe('ما لقيت عرض بهالاسم عند المنتج');
+    expect(reviewReasonText('OFFER_AMBIGUOUS')).toBe('أكتر من عرض بنفس الاسم');
+    expect(reviewReasonText('QUANTITY_NOT_OFFER')).toBe('الكمية ما بتطابق قطع العرض');
+    // A detail on a code that takes none changes nothing, and a code nobody wrote is still said in Arabic.
+    expect(reviewReasonText('NO_STORE:x')).toBe('المجموعة مش مربوطة بمتجر');
+    expect(reviewReasonText('SOMETHING_NEW:x')).toBe('سبب ما منعرفه');
+  });
+
   it('marks the cell the field lives in', () => {
     expect(reviewReason('INVALID_PHONE')?.field).toBe('phone');
+    expect(reviewReason('INVALID_PHONE:12')?.field).toBe('phone');
+    expect(reviewReason('OFFER_NOT_FOUND')?.field).toBe('offer');
+    expect(reviewReason('PRICE_MISMATCH:25.00')?.field).toBe('priceQuantity');
     expect(reviewReason('MISSING_QUANTITY')?.field).toBe('priceQuantity');
     expect(reviewReason('PRODUCT_NOT_FOUND')?.field).toBe('product');
     expect(reviewReason('NO_STORE')?.field).toBeUndefined();
@@ -84,7 +101,7 @@ describe('what a person reads', () => {
 
   it('offers «إعادة المعالجة» only where it can change the answer', () => {
     // The catalogue, the store, the blacklist, the store's currency and a failure may change; the text never does.
-    for (const code of ['PRODUCT_NOT_FOUND', 'AMBIGUOUS_PRODUCT', 'PRODUCT_GUESSED', 'NO_STORE', 'CUSTOMER_BLOCKED', 'CURRENCY_MISMATCH', 'CREATION_FAILED']) {
+    for (const code of ['PRODUCT_NOT_FOUND', 'AMBIGUOUS_PRODUCT', 'PRODUCT_GUESSED', 'NO_STORE', 'CUSTOMER_BLOCKED', 'CURRENCY_MISMATCH', 'CREATION_FAILED', 'OFFER_NOT_FOUND', 'OFFER_AMBIGUOUS', 'PRICE_MISMATCH', 'QUANTITY_NOT_OFFER']) {
       expect(reviewReason(code)?.retry, code).toBe(true);
     }
     for (const code of ['MISSING_PHONE', 'REPEATED_PRICE', 'STRAY_LINE', 'BAD_DATE', 'INVALID_PHONE', 'INVALID_QUANTITY', 'MISSING_PRICE', 'DUPLICATE_ORDER', 'NOT_IN_FORMAT']) {

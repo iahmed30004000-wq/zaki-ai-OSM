@@ -9,6 +9,7 @@
  *   · `pagination.total` is the chosen tab's count from that same grouping, so the two cannot disagree;
  *   · each message carries `reading`: the columns of the screen, read from the stored text by the same pure reader the
  *     door uses (`readMessageColumns`) — no column in the database, and nothing the raw text did not already say;
+ *   · an order made from a message carries the offer it was bound to (`order.offer.name`): the text is tied to a real offer;
  *   · a message held as DUPLICATE_ORDER carries `twin`, the order the same customer already made at the same time.
  */
 import { NextResponse } from 'next/server';
@@ -96,7 +97,7 @@ export async function GET(req: Request) {
         pageName: true,
         createdAt: true,
         source: { select: { chatTitle: true, topicName: true, storeId: true, store: { select: { country: { select: { code: true } } } } } },
-        order: { select: { id: true, orderNumber: true } },
+        order: { select: { id: true, orderNumber: true, offer: { select: { name: true } } } },
       },
     });
 

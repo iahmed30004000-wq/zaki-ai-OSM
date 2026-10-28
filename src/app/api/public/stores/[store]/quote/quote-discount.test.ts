@@ -369,11 +369,9 @@ function callArgs(src: string, at: number): string {
  * this list.
  */
 const NO_OFFER_BOUND: Record<string, string> = {
-  // The advertised TOTAL parsed out of the Telegram message
-  // (`parseAdvertisedPrice`), never an offer. `sellingPrice: price` is
-  // written from that same figure.
-  'src/lib/telegram/order-creation.ts':
-    'the price is the operator’s advertised total, parsed from the message; no offer is bound',
+  // `src/lib/telegram/order-creation.ts` was here, for «the price is the operator's advertised total; no offer is bound».
+  // It left on 29/10: the message's «إسم العرض» is now bound to a real offer (28/10: «نص العرض مربوط بالعرض») and
+  // `priceTelegramLine` passes `discount: basketDiscount([line])` to `computeCod`, as the storefront door does.
   // `const price = p.finalPrice || product.basePrice` — a human-confirmed
   // figure or the product's base price, and the confirm payload carries no
   // `offerId` at all. This file's OTHER `computeCod` call — the preview that

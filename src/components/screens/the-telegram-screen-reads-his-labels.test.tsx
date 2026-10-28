@@ -241,6 +241,55 @@ describe('why a message waits — in Arabic, naming the field', () => {
     expect(phoneFailed.className).toBe(productFailed.className);
   });
 
+  it('— a number that is no number says which one, as the seller wrote it, and the phone cell is the one marked', async () => {
+    rows = [
+      message('m1', { reviewReason: 'INVALID_PHONE:12', reading: { ...READING, phone: '12' } }),
+      message('m2', { reviewReason: 'PRODUCT_NOT_FOUND' }),
+    ];
+    await draw();
+    expect(screen.getAllByText('رقم الهاتف مش صالح: 12').length).toBeGreaterThan(0);
+    const [phoneRow, productRow] = within(desk()).getAllByRole('row').slice(1);
+    expect(within(phoneRow).getByText('12').className).not.toBe(within(productRow).getByText(READING.phone).className);
+  });
+
+  it('— the offer’s reasons name the offer cell and the price: the sentence the owner asked for, with the price the offer costs', async () => {
+    rows = [
+      message('m1', { reviewReason: 'OFFER_NOT_FOUND' }),
+      message('m2', { reviewReason: 'OFFER_AMBIGUOUS' }),
+      message('m3', { reviewReason: 'PRICE_MISMATCH:25.00' }),
+      message('m4', { reviewReason: 'QUANTITY_NOT_OFFER' }),
+    ];
+    await draw();
+    for (const sentence of [
+      'ما لقيت عرض بهالاسم عند المنتج',
+      'أكتر من عرض بنفس الاسم',
+      'السعر المكتوب مش سعر العرض (25.00)',
+      'الكمية ما بتطابق قطع العرض',
+    ]) {
+      expect(screen.getAllByText(sentence).length, sentence).toBeGreaterThan(0);
+    }
+    const [notFound, , mismatch] = within(desk()).getAllByRole('row').slice(1);
+    // The offer cell is marked for the offer's reason; the price × quantity cell for the price's.
+    expect(within(notFound).getByText(READING.offer).className).not.toBe(within(mismatch).getByText(READING.offer).className);
+    expect(within(mismatch).getByText('25 × 1').className).not.toBe(within(notFound).getByText('25 × 1').className);
+    expect(document.body.textContent).not.toMatch(/[A-Z][A-Z_]{3,}/);
+  });
+
+  it('— an order made from a message shows the offer it was tied to', async () => {
+    rows = [
+      message('m1', {
+        processingStatus: 'PROCESSED',
+        reviewReason: null,
+        order: { id: 'o1', orderNumber: 'SY-1', offer: { name: 'قطعتين + قطعة هدية ( عدد 3 )' } },
+      }),
+      message('m2', { processingStatus: 'PROCESSED', reviewReason: null, order: { id: 'o2', orderNumber: 'SY-2', offer: null } }),
+    ];
+    await draw();
+    expect(screen.getAllByText('مربوط بالعرض: قطعتين + قطعة هدية ( عدد 3 )').length).toBeGreaterThan(0);
+    // An order whose offer is gone (SetNull) draws no line, rather than an empty one.
+    expect(screen.getAllByText(/^مربوط بالعرض:/).length).toBe(screen.getAllByText('مربوط بالعرض: قطعتين + قطعة هدية ( عدد 3 )').length);
+  });
+
   it('— the price and the quantity are one cell, marked for either', async () => {
     rows = [message('m1', { reviewReason: 'INVALID_QUANTITY' }), message('m2', { reviewReason: 'PRODUCT_NOT_FOUND' })];
     await draw();

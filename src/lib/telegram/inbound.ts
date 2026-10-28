@@ -15,9 +15,13 @@ import { db } from '../db';
 import { findOrCreateCustomer } from '../customer-identity';
 import { isBlocked } from '../blacklist';
 import { normalizePhoneNumber } from '../phone';
+import { isValidPhoneFor } from '../phone-rules';
+import { activeOffersFor } from '../offers';
+import { resolvePublicLines } from '../public-order';
 import { resolveProductText } from './product-text';
 import { readLabeledOrder } from './labeled-order';
-import { createTelegramOrder, parseAdvertisedPrice } from './order-creation';
+import { createTelegramOrder, parseAdvertisedPrice, priceTelegramLine } from './order-creation';
+import { currenciesIn, matchOfferText, offersForQuantity } from './offer-text';
 import { findTwinOrder } from './twin';
 
 const RECENT_MESSAGE_WINDOW_MS = 24 * 60 * 60 * 1000; // ignore stale updates
@@ -233,9 +237,14 @@ interface StoredMessage {
  * and the price ceiling included) → the duplicate → the blacklist → the customer → the order. A message refused at any
  * step leaves no customer and no order behind.
  *
- * The money is the existing Telegram door's, untouched: «السعر» is the order's TOTAL and goes to `createTelegramOrder`
- * as plain digits, and from there total ÷ quantity (unrounded) → `computeCod`. «الكمية» is pieces of the product.
- * «إسم العرض» is text only: it goes to the internal notes and binds no offer. The store's own delivery policy governs.
+ * THE OFFER IS BOUND (28/10: «نص العرض مربوط بالعرض»). «إسم العرض» is matched to ONE active offer of THIS product; the
+ * order is then priced by the storefront door's own functions over that offer row (`resolvePublicLines`, `basketDiscount`,
+ * `computeCod`): the offer's price, its gift units, its `deliveryIncluded`. «السعر» is a claim checked against that price
+ * (PRICE_MISMATCH) and never the money; «الكمية» is the product's pieces: 1 or the offer's paid pieces is ONE offer, a whole
+ * multiple k is k offers, anything else is QUANTITY_NOT_OFFER. No offer found = no order.
+ *
+ * THE PHONE IS READ LENIENTLY (`phone-text.ts`): no message is refused for how its number is written; only a number that
+ * still fails the store country's rule is held (INVALID_PHONE, with the number as written), and no digit at all is missing.
  */
 async function processLabeledMessage(
   message: StoredMessage,
@@ -265,8 +274,9 @@ async function processLabeledMessage(
   // 2 — the fields, each by the rule of its label.
   const reading = readLabeledOrder(text, { country, receivedAt: message.createdAt });
   if (!reading.claimed) return ignore('NOT_IN_FORMAT');
-  if (!reading.ok) return review(reading.reason);
-  const { fields, place, quantity, priceText } = reading;
+  // A phone that fails the store country's rule says which one, as the seller wrote it (the cell is marked on the screen).
+  if (!reading.ok) return review(reading.reason === 'INVALID_PHONE' ? `INVALID_PHONE:${(reading.fields.phone ?? '').slice(0, 40)}` : reading.reason);
+  const { fields, place, quantity, priceText, phone } = reading;
 
   // The product — THIS store's active products only. Another store's shelf, or a guess, is never an order.
   const products = await db.product.findMany({
@@ -282,7 +292,32 @@ async function processLabeledMessage(
   const product = resolved.product;
 
   // The price is the creator's own reader and its 100,000 ceiling, asked now, before a customer is written.
-  if (parseAdvertisedPrice(priceText, country.minorUnit) === null) return review('MISSING_PRICE');
+  const written = parseAdvertisedPrice(priceText, country.minorUnit);
+  if (written === null) return review('MISSING_PRICE');
+
+  // The offer: a currency in its text must be the store's own (never converted), then ONE active offer of this product.
+  const storeCurrency = country.currencyCode.trim().toUpperCase();
+  if (currenciesIn(fields.offer).some((code) => code !== storeCurrency)) return review('CURRENCY_MISMATCH');
+  const offers = await activeOffersFor(db, companyId, product.id, country.minorUnit);
+  const matched = matchOfferText(fields.offer, offers);
+  if (matched.kind === 'ambiguous') return review('OFFER_AMBIGUOUS');
+  if (matched.kind === 'none') return review('OFFER_NOT_FOUND');
+
+  // «الكمية» is pieces of the product: 1 or the offer's paid pieces = one offer, k × those = k offers, else not an offer.
+  const bundles = offersForQuantity(quantity, matched.offer.quantity);
+  if (bundles === null) return review('QUANTITY_NOT_OFFER');
+
+  // The line, priced from the offer ROW by the storefront door's own function — and the written price must be its total.
+  const priced = await resolvePublicLines(
+    companyId,
+    [product],
+    [{ productId: product.id, offerId: matched.offer.id, count: bundles }],
+    country.minorUnit
+  );
+  if (!priced.ok) return review('OFFER_NOT_FOUND');
+  const line = priced.lines[0];
+  const expected = priceTelegramLine(line, country.minorUnit).cod;
+  if (written !== expected) return review(`PRICE_MISMATCH:${expected.toFixed(country.minorUnit)}`);
 
   // 3 — the same customer, the same time and the same product already made an order.
   const twin = await findTwinOrder({
@@ -297,33 +332,43 @@ async function processLabeledMessage(
   });
   if (twin) return review('DUPLICATE_ORDER');
 
-  // 4 — the blacklist, company-wide, on the number as written (a + kept).
+  // 4 — the blacklist, company-wide, on every number of the line: as written, and cleaned (a + kept).
   // Held for review rather than dropped: a human should see that a blocked number tried again, and decide.
-  if (await isBlocked(db, companyId, fields.phone, country.code)) return review('CUSTOMER_BLOCKED');
+  for (const number of [fields.phone, phone.primary, ...phone.others]) {
+    if (await isBlocked(db, companyId, number, country.code)) return review('CUSTOMER_BLOCKED');
+  }
 
-  // 5 — the customer, the shared way: found by this store's phone, or made.
+  // 5 — the customer, the shared way: found by this store's phone, or made. A second valid number is the second phone.
+  const second = phone.others.find((n) => isValidPhoneFor(country.code, n));
   const customer = await findOrCreateCustomer(db, {
     companyId,
     storeId,
-    phone: normalizePhoneNumber(fields.phone, country.code),
-    rawPhone: fields.phone.slice(0, 20),
+    phone: normalizePhoneNumber(phone.primary, country.code),
+    rawPhone: phone.primary.slice(0, 20),
+    altPhone: second ? normalizePhoneNumber(second, country.code) : null,
     fullName: fields.customer.slice(0, 80),
     address: place.slice(0, 200),
     city: place.slice(0, 60),
   });
 
-  // 6 — the order, through the one door and its one calculator. The source time and the offer's name go to the internal
-  // notes only; the order number was dropped by the reader and is nowhere.
+  // 6 — the order, through the one door and its one calculator. The source time, the offer's name and any other numbers
+  // go to the internal notes only; the order number was dropped by the reader and is nowhere.
   const created = await createTelegramOrder({
     companyId,
     storeId,
     customer,
     product,
-    quantity,
+    line,
     address: place.slice(0, 200),
     governorate: place,
     priceText,
-    sourceNote: `وقت الطلب بالمصدر: ${fields.orderedAt} · العرض: ${fields.offer.slice(0, 120)}`,
+    sourceNote: [
+      `وقت الطلب بالمصدر: ${fields.orderedAt}`,
+      `العرض: ${line.offer?.name ?? ''}`.slice(0, 120),
+      phone.others.length ? `أرقام أخرى: ${phone.others.join(' ، ')}` : null,
+    ]
+      .filter(Boolean)
+      .join(' · '),
     linkMessageId: message.id,
     telegram: {
       messageId: message.messageId,
