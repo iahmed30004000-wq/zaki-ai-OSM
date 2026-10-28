@@ -6,8 +6,8 @@ import {
 } from './post-order-offer-copy';
 import { updateCompanySettings } from './company-settings';
 import { computeCod } from './money';
-import { postOrderOfferFor } from './offers';
-import type { OfferView } from './offers';
+import { postOrderOfferFor, postOrderOfferStateFor } from './offers';
+import type { OfferView, PostOrderOfferOff, PostOrderOfferState } from './offers';
 
 /*
  * The words are a leaf of their own (`post-order-offer-copy.ts`) so a
@@ -486,4 +486,46 @@ export async function addPostOrderOffer(params: {
     newTotal: Number(written.updated.totalAmount),
     currency: written.updated.currency,
   };
+}
+
+/**
+ * «بقلي انو الخدمة غير مفعلة لما اجي اعملها من صفحة الهبوط» — WHAT THIS PAGE'S THANK-YOU SCREEN WILL OFFER.
+ *
+ * The question the landing editor's «بعد الطلب» panel asks, answered for ONE page the way an order through that page
+ * is answered: the page's own product, the page's own store's currency, and `postOrderOfferStateFor` — whose offer
+ * is `postOrderOfferFor`'s, the function `createPublicOrder` hands the thank-you screen its offer from.
+ *
+ * The page is read exactly as `GET /api/landing-pages/[id]` reads it — its id, the company and the selected store —
+ * so a page of another store or another company is not found here either, and none of its offers is read.
+ *
+ * `null` is «no such page», which the route answers with a 404. A page with no product is an answer and not a 404:
+ * the editor opens it, and the sentence says the offer hangs off the page's product.
+ */
+export interface AfterOrderOfPage extends Omit<PostOrderOfferState, 'why'> {
+  productId: string | null;
+  productName: string | null;
+  why: 'NO_PRODUCT' | PostOrderOfferOff | null;
+  /** The decimals of the page's store — what every figure in `offer` was rounded by, so the panel prints them so. */
+  minorUnit: number;
+}
+
+export async function afterOrderOfPage(
+  page: { id: string; companyId: string; storeId: string },
+  now: Date = new Date()
+): Promise<AfterOrderOfPage | null> {
+  const lp = await db.landingPage.findFirst({
+    where: { id: page.id, companyId: page.companyId, storeId: page.storeId },
+    select: {
+      product: { select: { id: true, name: true } },
+      store: { select: { country: { select: { minorUnit: true } } } },
+    },
+  });
+  if (!lp?.store) return null;
+
+  const minorUnit = lp.store.country.minorUnit;
+  if (!lp.product) {
+    return { productId: null, productName: null, offer: null, why: 'NO_PRODUCT', flagged: null, flaggedCount: 0, minorUnit };
+  }
+  const state = await postOrderOfferStateFor(db, page.companyId, lp.product.id, minorUnit, now);
+  return { productId: lp.product.id, productName: lp.product.name, ...state, minorUnit };
 }
