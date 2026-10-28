@@ -456,8 +456,9 @@ export function ProductDetailScreen() {
           productId={productId}
           basePrice={product.basePrice ?? 0}
           currency={currencyCode}
-          // The key the price box of «تعديل المنتج» is checked against (api/products/[id]).
-          canChangePrice={userCan(currentUser, 'products.change_price')}
+          // Both keys the price box of «تعديل المنتج» needs: the button shows for products.edit only, and
+          // api/products/[id] checks products.edit before products.change_price.
+          canChangePrice={canManage && userCan(currentUser, 'products.change_price')}
         />
 
         {/* The latest orders on this product — from its own door (this card read `product.orders`, which was never sent). */}

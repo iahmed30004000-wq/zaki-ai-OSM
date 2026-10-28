@@ -165,6 +165,42 @@ describe('a row saved above its line before the rule', () => {
     await waitFor(() => expect(screen.getByText('ثلاث قطع')).toBeTruthy());
     expect(screen.queryByText(/أغلى من السعر الأساسي/)).toBeNull();
   });
+
+  /*
+   * THE FLAG FOLLOWS A BASE PRICE EDITED ON THE SAME PAGE. «تعديل المنتج» saves the new price and the product screen
+   * re-renders this card in place — it is not unmounted — so the list must be read again, or the flag stays the
+   * door's answer for the old price.
+   */
+  const reads = () =>
+    screenApi.mock.calls.filter(([, init]) => ((init as RequestInit | undefined)?.method ?? 'GET') === 'GET').length;
+
+  it('a new base price reads the list again: the door now answers «not above», and the flag goes', async () => {
+    let rows = [row('offer-1', 'ثلاث قطع', { aboveBase: true, maxPrice: 75 })];
+    screenApi.mockImplementation(async (_path: string, init?: RequestInit) =>
+      (init?.method ?? 'GET') === 'GET' ? { offers: rows, minorUnit: 3 } : { success: true }
+    );
+    const { rerender } = render(<ProductOffers productId={PRODUCT_ID} basePrice={25} currency="JOD" />);
+    await waitFor(() => expect(screen.getByText(/أغلى من السعر الأساسي/)).toBeTruthy());
+    expect(reads()).toBe(1);
+
+    // The raise that fixes «3 بـ80»: at a base of 30 its line is 90, and the door says so.
+    rows = [row('offer-1', 'ثلاث قطع', { aboveBase: false, maxPrice: 90 })];
+    rerender(<ProductOffers productId={PRODUCT_ID} basePrice={30} currency="JOD" />);
+    await waitFor(() => expect(reads()).toBe(2));
+    await waitFor(() => expect(screen.queryByText(/أغلى من السعر الأساسي/)).toBeNull());
+    expect(screen.getByText('ثلاث قطع')).toBeTruthy();
+  });
+
+  it('NEGATIVE: re-rendered at the SAME base price, it asks the door nothing new — and the flag stays', async () => {
+    serve([row('offer-1', 'ثلاث قطع', { aboveBase: true, maxPrice: 75 })]);
+    const { rerender } = render(<ProductOffers productId={PRODUCT_ID} basePrice={25} currency="JOD" />);
+    await waitFor(() => expect(screen.getByText(/أغلى من السعر الأساسي/)).toBeTruthy());
+
+    rerender(<ProductOffers productId={PRODUCT_ID} basePrice={25} currency="JOD" />);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(reads()).toBe(1);
+    expect(screen.getByText(/أغلى من السعر الأساسي/)).toBeTruthy();
+  });
 });
 
 describe('«توليد سريع» writes nothing the door refuses', () => {

@@ -146,7 +146,13 @@ export function ProductOffers({
     }
   }, [productId]);
 
-  useEffect(() => { void load(); }, [load]);
+  /*
+   * AND AGAIN WHEN THE BASE PRICE MOVES. Each row's «أغلى من السعر الأساسي» is the door's answer for the base price it
+   * read, and «تعديل المنتج» on this same page changes that price without unmounting this card. Without a new read,
+   * a raise that fixes «3 بـ80» would leave the flag up, and the owner would think the fix failed. `basePrice` sits
+   * on this effect, not on `load`: a callback may not list what it does not read, an effect may.
+   */
+  useEffect(() => { void load(); }, [load, basePrice]);
 
   async function save() {
     if (!draft?.name?.trim()) return;

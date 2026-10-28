@@ -38,17 +38,27 @@ function codeUnder(dir: string, ext: RegExp): string[] {
 /**
  * EVERY SHAPE AN OFFER IS WRITTEN IN.
  *
- *   · the client's own verbs on the table — `tx.offer.update(`, `prisma.offer.createMany(` …
+ *   · the client's own verbs on the table, whatever follows the verb — `tx.offer.update(`,
+ *     `prisma.offer.createMany(`, and Prisma's `createManyAndReturn(` / `updateManyAndReturn(` …
  *   · a write NESTED in another row's — a product created with `offers: { create: […] }`, an order with
- *     `offer: { connectOrCreate: … }` — which names no `offer.` verb at all;
- *   · raw SQL on the table, which names no model at all.
+ *     `offer: { connectOrCreate: … }` — which names no `offer.` verb at all. The verb need not come first, and need
+ *     not carry a value: `offers: { deleteMany: {}, create: rows }` and `offers: { set: [], create }` write too. Only
+ *     a key of the nested object itself counts: an earlier key's `{ … }` is skipped whole (up to four levels of
+ *     braces), so a `create` inside it is not taken for one;
+ *   · raw SQL on the table, which names no model at all — the table quoted or not, with its schema or without
+ *     (`UPDATE "public"."offers"`).
  *
  * A delete is not here: it removes a price, it cannot write one above its line.
  */
+/** A `{ … }` with up to `depth` more levels of braces inside it — what a pattern can skip without counting. */
+const braces = (depth: number): string => (depth === 0 ? '\\{[^{}]*\\}' : `\\{(?:[^{}]|${braces(depth - 1)})*\\}`);
+const NESTED_WRITE = new RegExp(
+  `\\boffers?\\s*:\\s*\\{(?:[^{}]|${braces(3)})*?\\b(?:create|createMany|connectOrCreate|update|updateMany|upsert)\\s*[:,}]`
+);
 const OFFER_WRITES: RegExp[] = [
-  /\boffer\s*\.\s*(?:create|createMany|update|updateMany|upsert)\s*\(/,
-  /\boffers?\s*:\s*\{\s*(?:create|createMany|connectOrCreate|update|updateMany|upsert)\b/,
-  /\b(?:INSERT\s+INTO|UPDATE)\s+"?offers"?(?![\w"])/i,
+  /\boffer\s*\.\s*(?:create|update|upsert)\w*\s*\(/,
+  NESTED_WRITE,
+  /\b(?:INSERT\s+INTO|UPDATE)\s+(?:"?public"?\s*\.\s*)?"?offers"?(?![\w"])/i,
 ];
 const writesAnOffer = (src: string) => {
   const code = stripComments(src);
@@ -117,6 +127,14 @@ describe('the detector bites — every shape, and none of the prose', () => {
     ['nested in an order', 'await tx.order.create({ data: { offer: { connectOrCreate: { where, create } } } })'],
     ['raw SQL', 'await db.$executeRaw`UPDATE "offers" SET "sellingPrice" = ${p} WHERE id = ${id}`'],
     ['raw SQL, unquoted', "await db.$executeRawUnsafe('INSERT INTO offers (id) VALUES ($1)', id)"],
+    // The shapes the first version of this detector let through — each one a write it reported as nothing.
+    ['a verb with a suffix — many, and returned', 'await tx.offer.createManyAndReturn({ data: rows })'],
+    ['an update with a suffix', 'await db.offer.updateManyAndReturn({ where: { productId }, data })'],
+    ['nested, after another key', 'await db.product.update({ where, data: { offers: { deleteMany: {}, create: [{ sellingPrice: 99 }] } } })'],
+    ['nested, after a key with braces of its own', 'offers: { deleteMany: { where: { status: { in: s } } }, upsert: [] }'],
+    ['nested, a verb with no value, after another key', 'await db.product.update({ where, data: { offers: { set: [], create } } })'],
+    ['raw SQL, with its schema', 'await db.$executeRaw`UPDATE "public"."offers" SET "sellingPrice" = ${p}`'],
+    ['raw SQL, with its schema, unquoted', "await db.$executeRawUnsafe('INSERT INTO public.offers (id) VALUES ($1)', id)"],
   ])('%s is a write', (_shape, src) => {
     expect(writesAnOffer(src)).toBe(true);
   });
@@ -127,6 +145,9 @@ describe('the detector bites — every shape, and none of the prose', () => {
     ['a count through a relation', 'include: { _count: { select: { offers: true } } }'],
     ['another table', 'await db.$executeRaw`UPDATE "offer_events" SET x = 1`'],
     ['a comment that quotes a write', '/* await tx.offer.update({ data }) */\n// db.offer.create({})'],
+    // And the wider patterns stay as narrow as the shapes: a nested read is not a write.
+    ['a nested read whose fields only begin with a verb', 'include: { offers: { where: { status: "ACTIVE" }, select: { createdAt: true, updatedAt: true } } }'],
+    ['a verb inside an earlier key of a nested read', 'include: { offers: { where: { create: 1 }, take: 1 } }'],
   ])('NEGATIVE: %s is not', (_shape, src) => {
     expect(writesAnOffer(src)).toBe(false);
   });
