@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
+import { moneyText } from '@/lib/money';
 import { whatsappButtonStyle } from '@/components/landing/OrderForm';
 import { RiWhatsappLine } from '@/components/storefront/icons';
 
@@ -13,6 +14,13 @@ import { RiWhatsappLine } from '@/components/storefront/icons';
  * places, and nothing in the page editor pointed at any of them. This panel says whether each is on, and links to
  * where it is set. And the WhatsApp button after the order is set right here: on/off, its words, the message, the
  * number, and whether WhatsApp opens by itself.
+ *
+ * AND THE «زيد علبة» OFFER IS SWITCHED ON RIGHT HERE TOO. «بقلي انو الخدمة غير مفعلة لما اجي اعملها من صفحة الهبوط»:
+ * its line used to count the product's offers by itself, by a field an offer does not have, so a stopped bundle read
+ * «شغّال» — and when the line did say «مطفي», all it offered was a link away. The line is now the server's answer for
+ * THIS page (`GET /api/landing-pages/[id]/after-order`, the function the order door itself asks), and whoever may
+ * manage offers turns it on, off or back on from here, through the offers' own two doors, which refuse in their own
+ * words. The figures are the server's, printed at the store's decimals; nothing here adds, cuts or rounds a price.
  */
 
 export interface AfterOrderSection {
@@ -64,6 +72,58 @@ export interface AfterOrderContext {
   productId?: string | null;
   pageId?: string | null;
   storePhone?: string | null;
+  /** The page's currency — the code the editor already prices its preview in. */
+  currency?: string | null;
+}
+
+/**
+ * `GET /api/landing-pages/[id]/after-order`: what this page's thank-you screen will offer, or why it offers nothing.
+ * `offer` is the order door's own view of the bundle — `price` is what the customer is charged, `listPrice` the
+ * bundle before its own reduction — and `minorUnit` is the store's decimals those two were rounded by.
+ */
+interface AfterOrderAnswer {
+  productId: string | null;
+  productName: string | null;
+  offer: { id: string; name: string; quantity: number; freeQuantity: number; price: number; listPrice: number | null } | null;
+  why: 'NO_PRODUCT' | 'NONE' | 'STOPPED' | 'ENDED' | null;
+  flagged: { id: string; name: string } | null;
+  /** Writes are drawn only while this is 0 (a create) or 1 (an edit of that row) — see `postOrderOfferStateFor`. */
+  flaggedCount: number;
+  minorUnit: number;
+  canManage: boolean;
+}
+
+/**
+ * The new bundle's name, from its pieces: «قطعة كمان» · «قطعتين كمان» · «3 قطع كمان» · «11 قطعة كمان». The seller types
+ * two numbers and no name, so the name says the pieces the way Arabic counts them — the plural from three to ten, the
+ * singular from eleven, and by the last two digits past a hundred, as `forPieces` in `offers.ts` counts them.
+ */
+function bundleName(pieces: number): string {
+  if (pieces === 1) return 'قطعة كمان';
+  if (pieces === 2) return 'قطعتين كمان';
+  const lastTwo = pieces % 100;
+  return lastTwo >= 3 && lastTwo <= 10 ? `${pieces} قطع كمان` : `${pieces} قطعة كمان`;
+}
+
+/**
+ * The server's own sentence, when it wrote one. Every door this panel knocks on refuses in Arabic, so a message with
+ * no Arabic in it is a crash talking (`HTTP 502`), not a reason — and the panel says its own words instead.
+ */
+const ARABIC = /[؀-ۿ]/;
+const sentenceOf = <T,>(e: unknown, otherwise: T): string | T => (e instanceof Error && ARABIC.test(e.message) ? e.message : otherwise);
+
+/** The upsell line: the server's answer in one sentence. The figures are printed as sent, at the store's decimals. */
+function upsellLine(a: AfterOrderAnswer, currency: string): string {
+  if (a.offer) {
+    const o = a.offer;
+    const gift = o.freeQuantity > 0 ? ` + ${o.freeQuantity} مجاناً` : '';
+    const was = o.listPrice === null ? '' : ` بدل ${moneyText(o.listPrice, null, a.minorUnit)}`;
+    return `شغّال: ${o.name} — ${o.quantity} قطعة${gift} بـ${moneyText(o.price, currency, a.minorUnit)}${was}`;
+  }
+  if (a.why === 'NO_PRODUCT') return 'الصفحة ما إلها منتج — العرض بينحط على منتج الصفحة';
+  if (a.why === 'STOPPED') return `مطفي — العرض «${a.flagged?.name ?? ''}» موقّف`;
+  if (a.why === 'ENDED') return `مطفي — العرض «${a.flagged?.name ?? ''}» خلص`;
+  return `مطفي — ما في عرض بعد الطلب لـ«${a.productName ?? ''}»`;
 }
 
 const ROW = 'flex items-start justify-between gap-2 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-2.5';
@@ -79,16 +139,38 @@ export function AfterOrderPanel({
   patch: (fields: Record<string, unknown>) => void;
   ctx: AfterOrderContext;
 }) {
-  const [upsell, setUpsell] = useState<number | null>(null);
+  /** The server's answer for this page; null while it is not known. */
+  const [answer, setAnswer] = useState<AfterOrderAnswer | null>(null);
+  /** Why it is not known, in the server's own words — a missing permission included. */
+  const [answerError, setAnswerError] = useState<string | null>(null);
   const [crossSell, setCrossSell] = useState<number | null>(null);
+  // A new after-order bundle's two boxes, as typed. The door checks them; the panel only sends them.
+  const [pieces, setPieces] = useState('1');
+  const [price, setPrice] = useState('');
+  const [busy, setBusy] = useState(false);
+  /** The door's refusal, word for word. */
+  const [refusal, setRefusal] = useState<string | null>(null);
+
+  const readAnswer = useCallback(
+    async (alive: () => boolean = () => true) => {
+      if (!ctx.pageId) return;
+      try {
+        const d = await apiJson<AfterOrderAnswer>(`/api/landing-pages/${ctx.pageId}/after-order`);
+        if (!alive()) return;
+        setAnswer(d && (d.offer || d.why) ? d : null);
+        setAnswerError(null);
+      } catch (e) {
+        if (!alive()) return;
+        setAnswer(null);
+        setAnswerError(sentenceOf(e, null));
+      }
+    },
+    [ctx.pageId]
+  );
 
   useEffect(() => {
     let live = true;
-    if (ctx.productId) {
-      apiJson<{ offers?: { postOrderOffer?: boolean; isActive?: boolean }[] }>(`/api/offers?productId=${encodeURIComponent(ctx.productId)}`)
-        .then((d) => live && setUpsell((d.offers ?? []).filter((o) => o.postOrderOffer && o.isActive !== false).length))
-        .catch(() => live && setUpsell(null));
-    }
+    void readAnswer(() => live);
     if (ctx.pageId) {
       apiJson<{ recommendations?: unknown[] }>(`/api/landing-pages/${ctx.pageId}/recommendations`)
         .then((d) => live && setCrossSell((d.recommendations ?? []).length))
@@ -97,7 +179,35 @@ export function AfterOrderPanel({
     return () => {
       live = false;
     };
-  }, [ctx.productId, ctx.pageId]);
+  }, [ctx.pageId, readAnswer]);
+
+  /**
+   * One write through the offers' own doors, then the answer read again — the line after a press is the server's,
+   * never a guess. A refusal is the door's sentence, word for word, and changes nothing else: nothing was written.
+   *
+   * Never `postOrderOffer: false`. Taking the flag off would not switch the offer off — it would hand its cheap
+   * after-order price to the page as an ordinary bundle (`liveOfferWhere`). Off is `status`, and only `status`.
+   */
+  async function send(url: string, method: 'POST' | 'PATCH', body: Record<string, unknown>) {
+    setBusy(true);
+    setRefusal(null);
+    try {
+      await apiJson(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    } catch (e) {
+      setRefusal(sentenceOf(e, 'ما زبط — جرّب كمان مرة.'));
+      setBusy(false);
+      return;
+    }
+    await readAnswer();
+    setBusy(false);
+  }
+
+  const count = Number(pieces);
+  const canCreate = Number.isInteger(count) && count >= 1 && price.trim() !== '' && Number.isFinite(Number(price));
+  // The row each control acts on, out of the answer — the live bundle, or the flagged one that is off.
+  const liveId = answer?.offer?.id ?? null;
+  const flaggedId = answer?.flagged?.id ?? null;
+  const productId = answer?.productId ?? null;
 
   const number = s.whatsappNumber.trim() || ctx.storePhone || '';
   const when = s.whatsappWhen ?? 'now';
@@ -114,7 +224,7 @@ export function AfterOrderPanel({
         <div className="min-w-0 text-xs">
           <p className="font-semibold text-[var(--sys-heading)]">عرض «زيد علبة» (أب سيل)</p>
           <p className="text-[var(--sys-muted-foreground)]">
-            {upsell === null ? 'من عروض المنتج' : upsell > 0 ? `شغّال — ${upsell} عرض` : 'مطفي — ما في عرض بعد الطلب'}
+            {answer ? upsellLine(answer, ctx.currency ?? '') : (answerError ?? 'من عروض المنتج')}
           </p>
         </div>
         {ctx.productId && (
@@ -123,6 +233,63 @@ export function AfterOrderPanel({
           </a>
         )}
       </div>
+      {/*
+        ON, OFF AND BACK ON, WITHOUT LEAVING THE PAGE — for whoever may manage offers; the doors ask for that
+        permission themselves. Each control writes only where the door's one-flagged-bundle rule has nothing to strip:
+        a new bundle while none is flagged, the one flagged bundle's own switch otherwise, and nothing while two are.
+      */}
+      {answer?.canManage && productId && (
+        <div className="space-y-1.5">
+          {answer.flaggedCount > 1 ? (
+            <p className="text-xs text-[var(--sys-warning)]">في أكتر من عرض معلّم «بعد الطلب» لهالمنتج — رتّبهم من «عروض المنتج» أول.</p>
+          ) : liveId ? (
+            <button type="button" className={`${LINK} disabled:opacity-50`} disabled={busy} onClick={() => send(`/api/offers/${liveId}`, 'PATCH', { status: 'INACTIVE' })}>
+              أوقفه
+            </button>
+          ) : flaggedId && answer.why === 'STOPPED' ? (
+            <button type="button" className={`${LINK} disabled:opacity-50`} disabled={busy} onClick={() => send(`/api/offers/${flaggedId}`, 'PATCH', { status: 'ACTIVE' })}>
+              رجّعه يشتغل
+            </button>
+          ) : flaggedId && answer.why === 'ENDED' ? (
+            <button type="button" className={`${LINK} disabled:opacity-50`} disabled={busy} onClick={() => send(`/api/offers/${flaggedId}`, 'PATCH', { endsAt: null })}>
+              رجّعه يشتغل بلا تاريخ نهاية
+            </button>
+          ) : answer.why === 'NONE' ? (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--sys-foreground)]">
+              <label className="flex items-center gap-1.5">
+                كم قطعة
+                <input type="number" min={1} max={999} step={1} className={`${FIELD} w-20`} value={pieces} onChange={(e) => setPieces(e.target.value)} />
+              </label>
+              <label className="flex items-center gap-1.5">
+                بكم
+                <input type="number" min={0} step="any" className={`${FIELD} w-20`} value={price} onChange={(e) => setPrice(e.target.value)} />
+              </label>
+              <button
+                type="button"
+                className={`${LINK} disabled:opacity-50`}
+                disabled={busy || !canCreate}
+                onClick={() =>
+                  send('/api/offers', 'POST', {
+                    productId,
+                    name: bundleName(count),
+                    quantity: count,
+                    sellingPrice: Number(price),
+                    postOrderOffer: true,
+                  })
+                }
+              >
+                شغّل العرض
+              </button>
+            </div>
+          ) : null}
+          {refusal && (
+            <p role="alert" className="text-xs font-semibold text-[var(--sys-destructive)]">
+              {refusal}
+            </p>
+          )}
+          <p className="text-xs text-[var(--sys-muted-foreground)]">بيظهر للزبون بشاشة الشكر بس، وما بينختار قبل الطلب.</p>
+        </div>
+      )}
       <div className={ROW}>
         <div className="min-w-0 text-xs">
           <p className="font-semibold text-[var(--sys-heading)]">منتجات مقترحة (كروس سيل)</p>
