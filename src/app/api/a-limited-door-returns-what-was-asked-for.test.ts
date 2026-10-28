@@ -38,7 +38,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { db, requireContext, requireCompanyTenant, requirePermission, getCompanyAnalytics } = vi.hoisted(() => ({
   db: {
     appDelivery: { findMany: vi.fn(), count: vi.fn() },
-    telegramMessage: { findMany: vi.fn() },
+    // `groupBy` counts the tabs under the list's own scope; the list's size is still `findMany`'s `take`.
+    telegramMessage: { findMany: vi.fn(), groupBy: vi.fn() },
     landingPage: { findMany: vi.fn(), count: vi.fn() },
     order: { findMany: vi.fn() },
   },
@@ -88,6 +89,7 @@ beforeEach(() => {
   db.appDelivery.findMany.mockResolvedValue([]);
   db.appDelivery.count.mockResolvedValue(0);
   db.telegramMessage.findMany.mockResolvedValue([]);
+  db.telegramMessage.groupBy.mockResolvedValue([]);
   db.landingPage.findMany.mockResolvedValue([]);
   db.landingPage.count.mockResolvedValue(44);
   db.order.findMany.mockResolvedValue([]);

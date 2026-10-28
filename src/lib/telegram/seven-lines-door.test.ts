@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * The owner, 28/10: «قم بتحسين واجهة طلبات تلجرام … وخلي تنسيق الطلبات اللي جاية من التلجرام يكون هيك».
  */
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- a fake table row: every test reads its own fields
 type Row = Record<string, any>;
 
 const { db, state, gate } = vi.hoisted(() => {
@@ -182,9 +183,15 @@ const { db, state, gate } = vi.hoisted(() => {
 vi.mock('@/lib/db', () => ({ db }));
 vi.mock('@/lib/notify', () => ({ notify: vi.fn() }));
 vi.mock('@/lib/audit', () => ({ logAudit: vi.fn() }));
+// The retry door's caller: a manager of store A.
+vi.mock('@/lib/geo-context', () => ({
+  requireContext: vi.fn(async () => ({ user: { id: 'u1' }, companyId: 'c1', storeId: 'store-A' })),
+}));
+vi.mock('@/lib/authorization', () => ({ requirePermission: vi.fn(async () => undefined), can: () => true }));
 
 import { processStoredMessage } from './inbound';
 import { codForOrder } from '../delivery-fees';
+import { POST as RETRY } from '@/app/api/telegram/messages/[id]/retry/route';
 
 const SAMPLE = ['26818', '2026-10-28 15:40:01', 'محمد', '0932323642', 'سوريا حماه', 'ماء الكمأ الأصلي', 'القطعة ب 15 $ + توصيل مجاني'];
 const sample = (over: Partial<Record<number, string>> = {}) => SAMPLE.map((l, i) => over[i + 1] ?? l).join('\n');
@@ -514,5 +521,24 @@ describe('a message with labels keeps the path it had', () => {
     const id = arrive(['الاسم: أحمد', 'الهاتف: 0933444555', 'العنوان: عرفات', 'المنتج: ماء الكمأ الأصلي', 'الكمية: 2', 'السعر: 30 $ + توصيل مجاني'].join('\n'));
     expect((await processStoredMessage(id)).status).toBe('PROCESSED');
     expect(state.orders[0]).toMatchObject({ quantity: 2, totalAmount: 30, priceIncludesDelivery: false });
+  });
+});
+
+describe('«تجاهل» is taken back by «إعادة المعالجة»', () => {
+  const retry = (id: string) => RETRY(new Request('http://localhost', { method: 'POST' }), { params: Promise.resolve({ id }) });
+
+  it('an IGNORED message is read again, through the retry door, and becomes the order it always was', async () => {
+    const id = arrive(sample(), { processingStatus: 'IGNORED', processedAt: ARRIVED });
+    const res = await retry(id);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ success: true, status: 'PROCESSED', orderId: state.orders[0].id });
+    expect(state.orders).toHaveLength(1);
+    expect(messageRow(id).processingStatus).toBe('PROCESSED');
+  });
+
+  it('and another store’s ignored message is not found by this store’s retry', async () => {
+    const id = arrive(sample(), { sourceId: 'src-B', processingStatus: 'IGNORED' });
+    expect((await retry(id)).status).toBe(404);
+    expect(state.orders).toEqual([]);
   });
 });
