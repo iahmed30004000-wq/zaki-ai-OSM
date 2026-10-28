@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { count, money as amount } from '@/lib/numeric-input';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
-import { computeCod } from '@/lib/money';
+import { computeCod, totalsBeforeDiscount } from '@/lib/money';
 import { hasEverShipped, hasLeftWarehouse, assertCancellable, deriveCoreState, getZone, type StateSource } from '@/lib/order-state';
 import { releaseOrderLines } from '@/lib/reservation';
 import { consumeOrderStock } from '@/lib/stock-consumption';
@@ -407,6 +407,24 @@ export async function GET(
       minorUnit: country.minorUnit,
     });
 
+    /*
+     * WHAT EACH LINE COST BEFORE THE DISCOUNT, SAID BY THE SERVER.
+     *
+     * The lines editor sends each price box back as `items[].unitPrice`, and
+     * the PATCH below reads that as the line BEFORE the order's discount and
+     * spreads the discount again. The box opened on `lineTotal`, which is
+     * after it, so a save with nothing touched took the discount twice. The
+     * figure goes out beside the stored columns, so the card puts a number
+     * in the box instead of adding two of them — see `totalsBeforeDiscount`
+     * for why it is not always `lineTotal + discountShare`.
+     */
+    const beforeDiscount = totalsBeforeDiscount(
+      order.items ?? [],
+      Number(order.discountAmount ?? 0),
+      country.minorUnit
+    );
+    const items = (order.items ?? []).map((line, i) => ({ ...line, beforeDiscount: beforeDiscount[i] }));
+
     // Decimal never leaves as a Decimal: the browser would receive a string
     // and `money()` would render it as NaN.
     const commission = Number(
@@ -426,7 +444,7 @@ export async function GET(
     return NextResponse.json({
       // Cost, profit and other people's commission only to those whose screens show money — see order-projection.ts.
       order: projectOrder(
-        { ...order, state, zone: getZone(state), commission: maySeeOrderCost(user) ? commission : undefined, closing },
+        { ...order, items, state, zone: getZone(state), commission: maySeeOrderCost(user) ? commission : undefined, closing },
         user,
       ),
       // The store's own currency, so the detail screen shows the same money
@@ -963,7 +981,16 @@ export async function PATCH(
      * ═══════════════════════════════════════════════════════════════════
      */
     if (!viaRequest && existing.claimedById === user.id) {
-      const asked = CHANGEABLE_FIELDS.filter(
+      /*
+       * `items` COUNTS HERE TOO — the same word the terminal check below adds,
+       * for the same reason: the lines are the product, the quantity and the
+       * price, said for more than one line. The seal and the reason rule
+       * already count them. Without it a PATCH carrying only `items` replaced
+       * the lines before the holder had tried to reach the customer; the
+       * crash in the lines write hid that, and mending the crash alone would
+       * have opened it.
+       */
+      const asked = [...CHANGEABLE_FIELDS, 'items' as const].filter(
         (f) => (data as Record<string, unknown>)[f] !== undefined
       );
       if (asked.length > 0) {
@@ -1283,13 +1310,41 @@ export async function PATCH(
          * afresh would be inventing one; keeping what the order already
          * had is the honest answer, and a line for a product that was not
          * on the order before starts at none.
+         *
+         * READ HERE, NOT OFF `existing`. That is the row `assertOrderAccess`
+         * loaded — the order's own columns and no relations — so
+         * `existing.items` was undefined, `.map` threw inside this
+         * transaction, and every lines save since 21/10 rolled back as
+         * «حدث خطأ داخلي», at every scope. The confirmation door met the same
+         * row in its FAKE_ORDER branch and says so beside its customer read.
+         * Inside the transaction and before the delete, so what is carried is
+         * what the rows held at the moment they are replaced.
+         *
+         * ONE PRODUCT, ONE GIFT — HOWEVER MANY LINES CARRY IT. A Map built
+         * straight from the rows let the LAST stored row of a product decide,
+         * in whatever order the database returned them, and handed that
+         * figure to every new line of the product: كريم 3+1 beside كريم 1+0
+         * came back 0+0 or 1+1, and a second كريم added beside 3+1 got a gift
+         * of its own. The cart keeps (product, offer) as a line's identity,
+         * both doors accept a product twice, and «أضف منتجاً آخر» can pick one
+         * already on the order — and the reservation, the picking list, the
+         * waybill and the draw at delivery all read quantity + freeQuantity.
+         * So the product's gifts are SUMMED, and the sum goes once, to its
+         * first line in the set that was sent; its other lines start at none.
          */
-        const giftByProduct = new Map<string, number>(
-          existing.items.map((it: { productId: string; freeQuantity: number | null }) => [
-            it.productId,
-            it.freeQuantity ?? 0,
-          ])
-        );
+        const storedLines = await tx.orderItem.findMany({
+          where: { orderId: id },
+          select: { productId: true, freeQuantity: true },
+        });
+        const giftByProduct = new Map<string, number>();
+        for (const it of storedLines) {
+          giftByProduct.set(it.productId, (giftByProduct.get(it.productId) ?? 0) + it.freeQuantity);
+        }
+        const gifts = nextLines.map((line) => {
+          const gift = giftByProduct.get(line.productId) ?? 0;
+          giftByProduct.delete(line.productId);
+          return gift;
+        });
         await tx.orderItem.deleteMany({ where: { orderId: id } });
         await tx.orderItem.createMany({
           data: nextLines.map((line, i) => ({
@@ -1298,7 +1353,7 @@ export async function PATCH(
             productId: line.productId,
             productName: lineProducts.get(line.productId)?.name ?? '',
             quantity: line.quantity,
-            freeQuantity: giftByProduct.get(line.productId) ?? 0,
+            freeQuantity: gifts[i],
             unitPrice: line.quantity > 0 ? line.unitPrice / line.quantity : line.unitPrice,
             discountShare: lineMoney!.discountShares[i] ?? 0,
             lineTotal: lineMoney!.lineTotals[i] ?? 0,

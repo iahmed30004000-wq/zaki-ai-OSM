@@ -428,6 +428,9 @@ describe('D3 + D4 — the order screen’s card, saved line and request body', (
     unitPrice: '20' as unknown as number,
     discountShare: '0' as unknown as number,
     lineTotal: '40' as unknown as number,
+    // What the box opens on: the line before the order's discount, as `GET /api/orders/[id]` states it
+    // (`totalsBeforeDiscount`). No discount here, so it is the stored 40.
+    beforeDiscount: 40,
   };
   const ORDER = {
     id: 'o1',

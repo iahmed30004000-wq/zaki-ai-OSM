@@ -37,6 +37,13 @@ interface Line {
   unitPrice: number;
   discountShare: number;
   lineTotal: number;
+  /**
+   * What the line cost BEFORE the order's discount — the figure its price
+   * box opens on, because that is what the door reads the box as. The
+   * server sends it (`GET /api/orders/[id]`, `totalsBeforeDiscount`); this
+   * card never adds the share back itself.
+   */
+  beforeDiscount: number;
 }
 
 interface Props {
@@ -143,37 +150,36 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
         quantity: l.quantity,
         /*
          * The editor works in line totals, as the API does — and it opens on
-         * THE STORED TOTAL, never on a reconstruction of it.
+         * THE LINE BEFORE THE ORDER'S DISCOUNT, as the server states it,
+         * never on a reconstruction of it.
          *
-         * `OrderItem.lineTotal` is `numeric NOT NULL` with no default, so a
-         * line always has a total. `Number()` is only the parse of the
-         * string a Prisma `Decimal` becomes on the wire (this route converts
-         * `commission` and nothing else), which means the only falsy value
-         * it can produce is a REAL 0 — a giveaway line, or a line an order
-         * discount took to zero. `allocateDiscount` clamps the discount to
-         * the subtotal, so a `discountAmount` that meets a one-line order's
-         * subtotal writes `lineTotal` 0; and `items[].unitPrice` on the
-         * PATCH schema is `min(0)` with the price box `min={0}`, so a clerk
-         * can type 0 outright. There was never anything to fall back TO.
+         * IT OPENED ON `lineTotal`, WHICH IS AFTER THE DISCOUNT. `save()`
+         * posts this figure as `items[].unitPrice`, the door reads that as
+         * the line BEFORE the discount, and spreads the discount box over the
+         * lines again — so every press of حفظ with nothing touched took the
+         * discount off once more: 64.200, then 57.400, then 50.600. And once
+         * the discount was more than the lines left after it, the door
+         * refused the save outright, so not even a note could be kept.
          *
-         * `|| Number(l.unitPrice) * l.quantity` did not merely mis-display
-         * those lines: `save()` posts this figure as `unitPrice`, so opening
-         * the editor on a 3 × 14 line worth 0 and pressing حفظ wrote 42 onto
-         * the order. And the multiplication had to go on its own account
-         * too — a line total is money, money is computed in `computeCod`
-         * alone, and the stored `unitPrice` is itself `lineTotal / quantity`
-         * rounded to two places (see `settlement.ts`), so the product is not
-         * even a faithful copy: 3 × 16.67 reads 50.01 against a stored 50.
+         * `beforeDiscount` comes from `GET /api/orders/[id]`
+         * (`totalsBeforeDiscount`): `lineTotal + discountShare` when the
+         * shares are the order's own discount, and the line total as it
+         * stands when they are an offer's reduction the order does not carry
+         * as a discount of its own. The card adds nothing: a line total is
+         * money, money is computed on the server, and a second opinion about
+         * it here is how two numbers start disagreeing. That rule is also why
+         * `|| Number(l.unitPrice) * l.quantity` stays gone — the stored
+         * `unitPrice` is rounded, so 3 × 16.67 reads 50.01 against a stored
+         * 50, and a 0 is a real 0, never a gap to fill.
          *
          * `String(…)` and not `Number(…)` SINCE THE EDITOR'S PRICE BOX HOLDS
          * CHARACTERS. It had to, so that «I cleared this box» could be said
          * at all — `Number('')` is `0` and the box was redrawing a cleared
-         * price as a free line. The stored total is still the only thing the
-         * box opens on; only its notation changed, and `Number(l.lineTotal)`
-         * is still the parse of the string a Prisma `Decimal` becomes on the
-         * wire, now written back as the digits a person would have typed.
+         * price as a free line. `Number()` here is only the parse of what
+         * came over the wire, written back as the digits a person would have
+         * typed.
          */
-        price: String(Number(l.lineTotal)),
+        price: String(Number(l.beforeDiscount)),
         /*
          * AND THE EDITOR TREATS IT AS AGREED. A quantity change never
          * rewrites a saved total; the editor names the base price beside it
@@ -220,12 +226,19 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
 
     if (draft.length > 1) {
       // Only a refusal if the lines are what changed; a discount edit on a
-      // multi-line order is still sayable.
+      // multi-line order is still sayable. The price is compared with the
+      // figure its box opened on, in the same notation, so an untouched box
+      // reads as untouched.
       const linesTouched =
         draft.length !== (order.items?.length ?? 1) ||
         draft.some((l, i) => {
           const was = order.items?.[i];
-          return !was || was.productId !== l.productId || was.quantity !== l.quantity || String(was.lineTotal) !== String(l.price ?? '');
+          return (
+            !was ||
+            was.productId !== l.productId ||
+            was.quantity !== l.quantity ||
+            String(Number(was.beforeDiscount)) !== String(l.price ?? '')
+          );
         });
       if (linesTouched) {
         return {
@@ -258,13 +271,19 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
        * RV45 rather than half-built.
        */
       /*
-       * `lineTotal` is a STORED column, read — not `unitPrice × quantity`
+       * THE FIGURE THE BOX OPENED ON, READ — not `unitPrice × quantity`
        * computed here. «No money arithmetic in a screen» is a rule in this
        * product, and the first version of this comparison broke it (the
        * frontend-invariants guard caught it). A second opinion about a
        * total in a card is how two numbers start disagreeing.
+       *
+       * And the SAME figure the box opened on: this read `was.lineTotal`,
+       * which is the line after the discount while the box now holds it
+       * before — and which arrives as a string, so `!==` against a number
+       * called every confirmed one-line save a price change, a note alone
+       * included. Both sides are now one server figure, parsed alike.
        */
-      const totalWas = was ? was.lineTotal : order.totalAmount;
+      const totalWas = was ? Number(was.beforeDiscount) : order.totalAmount;
       if (line.price !== undefined && Number(line.price) !== totalWas) {
         return {
           ok: false,
@@ -431,6 +450,14 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
               className={inputClass}
             />
           </label>
+          {/*
+            Said, because the price box above now holds a different figure
+            from the line in the list: the line before the discount, which is
+            what the save reads it as.
+          */}
+          <p className="text-xs text-[var(--sys-muted)]">
+            سعر كل سطر هنا قبل الخصم، والخصم يُوزَّع على الأسطر عند الحفظ.
+          </p>
 
           <label className="block">
             <span className="block text-xs font-medium text-[var(--sys-muted-foreground)] mb-1">ملاحظات الطلب</span>

@@ -93,6 +93,42 @@ export function allocateDiscount(lines: MoneyLine[], discount: number, minorUnit
   return shares;
 }
 
+/**
+ * WHAT EACH LINE COST BEFORE THE ORDER'S OWN DISCOUNT — the figure the lines
+ * editor opens its price box on.
+ *
+ * `PATCH /api/orders/[id]` reads `items[].unitPrice` as a line's total
+ * BEFORE the discount and spreads `discountAmount` over the lines again. The
+ * editor opened on the stored `lineTotal`, which is AFTER it, so every press
+ * of «حفظ» with nothing touched took the discount off once more: 64.200,
+ * then 57.400, then 50.600.
+ *
+ * `lineTotal + discountShare` is exact, not a reconstruction: `computeCod`
+ * writes `lineTotal` as `roundMinor(value − share)` with both in the
+ * currency's minor unit, so adding the share back returns the value it was
+ * cut from.
+ *
+ * ONLY WHEN THE SHARES ARE THE ORDER'S OWN DISCOUNT — when they add up to
+ * `discountAmount`, which is how every lines save and the win-back write
+ * them. `POST /api/orders`, the storefront and `/api/v1`
+ * spread an OFFER's reduction into the shares and leave `discountAmount` at
+ * 0; adding those back would ask the customer for the reduction she was
+ * quoted. There the line total stands — the price she agreed to — and the
+ * discount box beside it opens on 0. Shares that are neither are lines the
+ * single-field edit left behind when it moved the discount without
+ * rewriting them; no figure is exact for those, and they stand as stored.
+ */
+export function totalsBeforeDiscount(
+  lines: ReadonlyArray<{ lineTotal: unknown; discountShare: unknown }>,
+  orderDiscount: number,
+  minorUnit: number
+): number[] {
+  const shares = lines.map((l) => roundMinor(Number(l.discountShare), minorUnit));
+  const spread = roundMinor(shares.reduce((sum, s) => sum + s, 0), minorUnit);
+  const theOrdersOwn = spread === roundMinor(Math.max(0, orderDiscount), minorUnit);
+  return lines.map((l, i) => roundMinor(Number(l.lineTotal) + (theOrdersOwn ? shares[i] : 0), minorUnit));
+}
+
 /** The COD contract. Every screen and service calls this one function. */
 export function computeCod(input: CodInput): CodBreakdown {
   const { lines, minorUnit } = input;

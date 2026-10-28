@@ -115,7 +115,17 @@ describe('and an edit does not throw the gift away', () => {
      */
     const src = edit();
     expect(src, 'التعديل لسّا بيمسح الهديّة').toMatch(/giftByProduct/);
-    expect(src).toMatch(/freeQuantity: giftByProduct\.get\(line\.productId\) \?\? 0/);
+    /*
+     * Per PRODUCT, summed, and given once. `giftByProduct.get(…) ?? 0` on
+     * every new line let the last stored row of a product decide and copied
+     * it onto each line of it — a gift lost or doubled by row order. What the
+     * rows hold is added up, the product's first line gets the sum, and the
+     * key goes so its other lines start at none. The behaviour itself is
+     * held in `[id]/the-lines-save-again.test.ts` (Ⅵ).
+     */
+    expect(src).toMatch(/\(giftByProduct\.get\(it\.productId\) \?\? 0\) \+ it\.freeQuantity/);
+    expect(src, 'الهديّة بتنعطى لكل سطر من المنتج').toMatch(/giftByProduct\.delete\(line\.productId\)/);
+    expect(src).toMatch(/freeQuantity: gifts\[i\]/);
   });
 
   it('and it is carried, never re-derived — this door binds no offer', () => {
