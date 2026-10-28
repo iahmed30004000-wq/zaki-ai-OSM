@@ -123,7 +123,7 @@ export async function dispatchBatch(input: {
       id: true,
       batchNumber: true,
       provider: {
-        select: { id: true, code: true, adapterCode: true, apiEnabled: true, apiConfig: true, apiCredentials: true, companyId: true, storeId: true },
+        select: { id: true, name: true, code: true, adapterCode: true, apiEnabled: true, apiConfig: true, apiCredentials: true, companyId: true, storeId: true },
       },
     },
   });

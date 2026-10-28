@@ -33,7 +33,7 @@ export interface LogesTechsConfig {
   baseUrl?: string;
   email: string;
   password: string;
-  /** Their numeric company id, used in the guest-scoped paths. */
+  /** Their numeric company id: the guest-scoped paths, the pacing key, and the `company-id` header on every request. */
   companyId: number;
   /** Ids their account was set up with; sent as-is. */
   serviceTypeId?: number;
@@ -46,6 +46,8 @@ export interface LogesTechsConfig {
   fetchImpl?: typeof fetch;
   /** Milliseconds before a request is abandoned. See DEFAULT_TIMEOUT_MS. */
   timeoutMs?: number;
+  /** The courier's own display name («الباشا»), so a refusal reads as «الباشا رفض: …». */
+  courierName?: string;
 }
 
 const DEFAULT_BASE = 'https://apisv2.logestechs.com/api';
@@ -92,6 +94,30 @@ export const DEFAULT_TIMEOUT_MS = 30_000;
  * minutes; a late CREATE is the one that must wait.
  */
 export const STATUS_TIMEOUT_MS = 10_000;
+
+/**
+ * THE TENANT HEADER — INFERRED, NOT DOCUMENTED.
+ *
+ * LogesTechs is one server for many courier companies (every answer carries a "companyId"), and a create by e-mail
+ * cannot know which company the e-mail belongs to unless the request says so. Their API document lists NO request
+ * headers at all; this one is inferred from their own refusal («رقم تعريف الشركة غير صحيح» on every create while the
+ * configured id only reached two guest paths) and from how their platform family names the tenant. It is sent on every
+ * call, and is harmless where the server ignores it. The proof is the first real dispatch, not this file.
+ */
+export const COMPANY_HEADER = 'company-id';
+
+/**
+ * A REFUSAL WE CAN ASK QUESTIONS OF.
+ *
+ * `message` is the sentence a screen shows; `said` is the courier's own words, trimmed and with any credential
+ * scrubbed out; `status` is the HTTP code. The request body is never part of any of them.
+ */
+export class CourierRefusal extends Error {
+  constructor(message: string, readonly status: number, readonly said: string) {
+    super(message);
+    this.name = 'CourierRefusal';
+  }
+}
 
 /**
  * A TIMED-OUT WRITE IS NOT A FAILED WRITE.
@@ -199,6 +225,40 @@ export class LogesTechsAdapter implements CourierAdapter {
     return { email: this.config.email, password: this.config.password };
   }
 
+  /**
+   * The courier's words with the account's own secrets taken out. A server that answers 400 by echoing the request it
+   * was sent would otherwise carry the password into a screen, an audit row and a log line.
+   */
+  private scrub(text: string): string {
+    let out = text;
+    for (const secret of [this.config.password, this.config.email]) {
+      if (!secret || secret.length < 3) continue;
+      // Once as written, once as it looks inside a JSON string.
+      for (const form of new Set([secret, JSON.stringify(secret).slice(1, -1)])) out = out.split(form).join('***');
+    }
+    return out;
+  }
+
+  /**
+   * A refusal as a sentence: `{"error":"…"}` becomes «الباشا رفض: … (400)»; any other body stays «LogesTechs 400: …».
+   */
+  private refusal(status: number, text: string): CourierRefusal {
+    let said = '';
+    try {
+      const parsed: unknown = JSON.parse(text);
+      const error = parsed && typeof parsed === 'object' ? (parsed as { error?: unknown }).error : undefined;
+      if (typeof error === 'string' && error.trim()) said = this.scrub(error).trim().slice(0, 300);
+    } catch {
+      /* not JSON — the plain form below */
+    }
+    if (said) {
+      const who = this.config.courierName?.trim();
+      return new CourierRefusal(`${who ? `${who} رفض` : 'الشركة رفضت'}: ${said} (${status})`, status, said);
+    }
+    const plain = this.scrub(text).slice(0, 300);
+    return new CourierRefusal(`LogesTechs ${status}: ${plain}`, status, plain.trim());
+  }
+
   private async call<T>(path: string, init: RequestInit, timeoutMs: number = this.timeoutMs): Promise<T> {
     /*
      * The caller's own signal is kept, not replaced: a request cancelled
@@ -212,7 +272,7 @@ export class LogesTechsAdapter implements CourierAdapter {
     try {
       res = await this.http(`${this.base}${path}`, {
         ...init,
-        headers: { 'Content-Type': 'application/json', ...(init.headers ?? {}) },
+        headers: { 'Content-Type': 'application/json', [COMPANY_HEADER]: String(this.config.companyId), ...(init.headers ?? {}) },
         signal,
       });
     } catch (e) {
@@ -246,7 +306,7 @@ export class LogesTechsAdapter implements CourierAdapter {
       throw e;
     }
     if (!res.ok) {
-      throw new Error(`LogesTechs ${res.status}: ${text.slice(0, 300)}`);
+      throw this.refusal(res.status, text);
     }
     return (text ? JSON.parse(text) : {}) as T;
   }

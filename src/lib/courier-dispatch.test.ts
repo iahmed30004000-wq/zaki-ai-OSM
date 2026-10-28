@@ -23,6 +23,7 @@ vi.mock('./audit', () => ({ logAudit: (...a: unknown[]) => logAudit(...a) }));
 
 import { dispatchBatch } from './courier-dispatch';
 import { markOutcomeUnknown } from './couriers/types';
+import { groupDispatchReasons } from './dispatch-reason';
 
 /**
  * Handing orders to the courier and taking back the barcode.
@@ -403,5 +404,111 @@ describe('a region with no courier id', () => {
     ]);
     await dispatchBatch(input);
     expect(createShipment.mock.calls[0][0].customer.altPhone).toBe('0988777666');
+  });
+});
+
+/**
+ * BATCH-2026-0003: THIRTY-FIVE REFUSED, ONE WITHOUT A CODE — AND THE SECOND PRESS.
+ *
+ * «رُحّل 0 · تُخطّي 1 · فشل 35», each failure the courier's own sentence. The batch stays in «قيد التجميع», the button
+ * stays, and pressing it again after the fix must send ONLY what was never sent: an order with a barcode is not sent
+ * twice, and one whose claim is held (a timeout — the parcel may exist) is not sent at all.
+ */
+describe('the batch that failed thirty-five of thirty-six, and the second press', () => {
+  const REFUSAL = 'الباشا رفض: رقم تعريف الشركة غير صحيح (400)';
+  const many = (n: number, over: (i: number) => Record<string, unknown> = () => ({})) =>
+    Array.from({ length: n }, (_, i) =>
+      order({ id: `o${i + 1}`, orderNumber: `ORD-2026-${String(i + 1).padStart(4, '0')}`, regionId: 'r-dam', ...over(i) }),
+    );
+
+  beforeEach(() => {
+    adapterFor.mockReturnValue({ code: 'LOGESTECHS', automated: true, needsCourierCityId: true, createShipment });
+    db.deliveryFee.findMany.mockResolvedValue([{ regionId: 'r-dam', courierCityId: 445053 }]);
+    // Every claim is won unless a test says otherwise (the claim is keyed by the order id in the first value).
+    db.$queryRaw.mockImplementation(async (frags: string[], id: string) =>
+      frags.join(' ').includes('UPDATE') ? [{ id }] : [{ tracking: null }],
+    );
+  });
+
+  it('35 refused + 1 with no code: the summary, and the reasons the screen will group', async () => {
+    db.order.findMany.mockResolvedValue([
+      ...many(35),
+      order({ id: 'o-sw', orderNumber: 'ORD-2026-0508', regionId: 'r-sw', region: { name: 'السويداء' } }),
+    ]);
+    createShipment.mockRejectedValue(new Error(REFUSAL));
+    const res = await dispatchBatch(input);
+
+    expect({ sent: res.sent, skipped: res.skipped, failed: res.failed }).toEqual({ sent: 0, skipped: 1, failed: 35 });
+    const groups = groupDispatchReasons(res.outcomes);
+    expect(groups.map((g) => [g.count, g.reason])).toEqual([
+      [35, REFUSAL],
+      [1, expect.stringContaining('السويداء: لا رمز لها عند الشركة بعد')],
+    ]);
+    expect(groups[0].orderNumbers).toHaveLength(35);
+    // Every refusal released its claim: the second press can send them.
+    expect(db.$executeRaw).toHaveBeenCalledTimes(35);
+  });
+
+  it('the second press after the fix sends only the unsent — a sent one and a held one are left alone', async () => {
+    db.order.findMany.mockResolvedValue([
+      order({ id: 'sent', orderNumber: 'ORD-A', regionId: 'r-dam', trackingNumber: 'KSA-OLD' }),
+      order({ id: 'held', orderNumber: 'ORD-B', regionId: 'r-dam' }),
+      order({ id: 'fresh-1', orderNumber: 'ORD-C', regionId: 'r-dam' }),
+      order({ id: 'fresh-2', orderNumber: 'ORD-D', regionId: 'r-dam' }),
+    ]);
+    // `held` lost its claim — an earlier send timed out and is still holding it, with no barcode yet.
+    db.$queryRaw.mockImplementation(async (frags: string[], id: string) => {
+      const sql = frags.join(' ');
+      if (sql.includes('UPDATE')) return id === 'held' ? [] : [{ id }];
+      return [{ tracking: null }];
+    });
+    createShipment
+      .mockResolvedValueOnce({ trackingNumber: 'KSA-NEW-1' })
+      .mockResolvedValueOnce({ trackingNumber: 'KSA-NEW-2' });
+
+    const res = await dispatchBatch(input);
+
+    expect(createShipment, 'أُرسل أكثر من الطلبين غير المرسلين').toHaveBeenCalledTimes(2);
+    expect(createShipment.mock.calls.map((c) => c[0].orderId)).toEqual(['fresh-1', 'fresh-2']);
+    const by = Object.fromEntries(res.outcomes.map((o) => [o.orderId, o]));
+    expect(by.sent).toMatchObject({ ok: false, skipped: 'ALREADY_SENT' });
+    expect(by.held).toMatchObject({ ok: false, skipped: 'SEND_IN_FLIGHT' });
+    expect(res.sent).toBe(2);
+    // The barcode that was already there is never written over.
+    const written = db.order.updateMany.mock.calls.map((c) => c[0].where.id);
+    expect(written).toEqual(['fresh-1', 'fresh-2']);
+    for (const call of db.order.updateMany.mock.calls) expect(call[0].where).toMatchObject({ trackingNumber: null });
+  });
+
+  it('an order that timed out on the first press is not sent again on the second — its claim is held', async () => {
+    db.order.findMany.mockResolvedValue(many(1));
+    createShipment.mockRejectedValueOnce(markOutcomeUnknown(new Error('LOGESTECHS_TIMEOUT: لم تردّ')));
+    await dispatchBatch(input);
+    expect(db.$executeRaw, 'فُكَّ الحجز بعد صمت').not.toHaveBeenCalled();
+
+    // Second press: the row still carries the claim, so the database refuses it a second time.
+    createShipment.mockClear();
+    db.$queryRaw.mockImplementation(async (frags: string[]) => (frags.join(' ').includes('UPDATE') ? [] : [{ tracking: null }]));
+    const res = await dispatchBatch(input);
+    expect(createShipment).not.toHaveBeenCalled();
+    expect(res.outcomes[0].skipped).toBe('SEND_IN_FLIGHT');
+  });
+
+  it('the courier’s display name reaches the adapter, so a refusal can say «الباشا رفض»', async () => {
+    db.shippingBatch.findFirst.mockResolvedValue({
+      id: 'b1', batchNumber: 'BATCH-2026-0003',
+      provider: { id: 'p1', name: 'الباشا', code: 'BASHA', apiEnabled: true, companyId: 'c1', storeId: 's1' },
+    });
+    db.order.findMany.mockResolvedValue([]);
+    await dispatchBatch(input);
+    expect(db.shippingBatch.findFirst.mock.calls[0][0].select.provider.select).toMatchObject({ name: true });
+    expect(adapterFor.mock.calls[0][0]).toMatchObject({ name: 'الباشا', code: 'BASHA' });
+  });
+
+  it('a batch with nothing refused has no reason groups at all', async () => {
+    db.order.findMany.mockResolvedValue(many(2));
+    createShipment.mockResolvedValueOnce({ trackingNumber: 'K1' }).mockResolvedValueOnce({ trackingNumber: 'K2' });
+    const res = await dispatchBatch(input);
+    expect(groupDispatchReasons(res.outcomes)).toEqual([]);
   });
 });

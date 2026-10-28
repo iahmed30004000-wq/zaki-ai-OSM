@@ -102,7 +102,19 @@ export async function openWaybills(req: WaybillRequest, mode: 'print' | 'pdf' | 
   }
 }
 
-/** "SY-0012 (لم يُؤكَّد)، SY-0013 (بلا شركة شحن)" — for a dialog body. */
+/**
+ * "SY-0012 (لم يُؤكَّد)، SY-0013 (بلا شركة شحن)" — for a dialog body.
+ *
+ * A reason shared by more than three orders is said once with its count and the first three numbers, so thirty-five
+ * orders waiting for their courier's barcode are one line in the dialog and not a wall.
+ */
 export function describeRefused(refused: { orderNumber: string; reason: string }[]): string {
-  return refused.map((r) => `${r.orderNumber} (${r.reason})`).join('، ');
+  const byReason = new Map<string, string[]>();
+  for (const r of refused) byReason.set(r.reason, [...(byReason.get(r.reason) ?? []), r.orderNumber]);
+  const parts: string[] = [];
+  for (const [reason, numbers] of byReason) {
+    if (numbers.length <= 3) parts.push(...numbers.map((n) => `${n} (${reason})`));
+    else parts.push(`${numbers.length} طلب (${reason}): ${numbers.slice(0, 3).join('، ')}…`);
+  }
+  return parts.join('، ');
 }

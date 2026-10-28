@@ -1,6 +1,6 @@
 'use client';
 
-import { dispatchReasonAr } from '@/lib/dispatch-reason';
+import { DispatchResult } from '@/components/ops/DispatchResult';
 import React, { useCallback, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import type { DispatchSummary } from '@/lib/courier-dispatch';
@@ -287,41 +287,10 @@ export function ShippingBatchesScreen() {
                 {b.notes && <p className="text-xs text-[var(--sys-muted-foreground)]">{b.notes}</p>}
 
                 {result?.batchId === b.id && (
-                  <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-2.5 space-y-1">
-                    <p className="text-xs font-bold text-[var(--sys-heading)]">
-                      رُحّل {result.summary.sent}
-                      {result.summary.skipped > 0 && ` · تُخطّي ${result.summary.skipped}`}
-                      {result.summary.failed > 0 && ` · فشل ${result.summary.failed}`}
-                    </p>
-                    {result.summary.outcomes
-                      .filter((o) => !o.ok)
-                      .map((o) => (
-                        <p
-                          key={o.orderId}
-                          /*
-                           * «Maybe it was sent» is not the same news as «it
-                           * failed», and the difference is a second parcel
-                           * at the customer's door. It is coloured as the
-                           * warning it is, not left in the grey list where
-                           * the eye reads it as one more failure to retry.
-                           */
-                          className={
-                            o.outcomeUnknown
-                              ? 'text-xs font-bold text-[var(--sys-warning)]'
-                              : 'text-xs text-[var(--sys-muted-foreground)]'
-                          }
-                        >
-                          <span className="font-mono" dir="ltr">{o.orderNumber}</span>
-                          {' — '}
-                          {dispatchReasonAr(o)}
-                        </p>
-                      ))}
-                    {result.summary.outcomes.filter((o) => o.ok).length > 0 && (
-                      <p className="text-xs text-[var(--sys-success)]">
-                        الباركودات محفوظة على الطلبات — تظهر على البوليصة وتُتابَع بها الحالة.
-                      </p>
-                    )}
-                  </div>
+                  <DispatchResult
+                    summary={result.summary}
+                    savedNote="الباركودات محفوظة على الطلبات — تظهر على البوليصة وتُتابَع بها الحالة."
+                  />
                 )}
 
                 <div className="flex flex-wrap gap-1.5 pt-1">

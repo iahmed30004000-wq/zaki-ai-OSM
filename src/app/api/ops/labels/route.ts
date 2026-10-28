@@ -6,7 +6,7 @@ import { can, requirePermission } from '@/lib/authorization';
 import { redactCustomerForWarehouse } from '@/lib/operations';
 import { apiErrorResponse } from '@/lib/api-error';
 import { signLabelBatch } from '@/lib/labels';
-import { printRefusal } from '@/lib/waybill';
+import { COURIER_KIND_SELECT, printRefusal, WAITING_FOR_BARCODE } from '@/lib/waybill';
 import { zodMessage } from '@/lib/zod-message';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 
@@ -102,7 +102,10 @@ export async function POST(req: Request) {
     // than were ticked without a word.
     const rows = await db.order.findMany({
       where: batchId ? { shippingBatchId: batchId, companyId, storeId } : { id: { in: orderIds }, companyId, storeId },
-      select: { id: true, orderNumber: true, confirmationStatus: true, shippingStatus: true, deliveryProviderId: true },
+      select: {
+        id: true, orderNumber: true, confirmationStatus: true, shippingStatus: true, deliveryProviderId: true,
+        trackingNumber: true, deliveryProvider: { select: COURIER_KIND_SELECT },
+      },
     });
     if (rows.length === 0) return NextResponse.json({ error: 'لا توجد طلبات صالحة' }, { status: 404 });
 
@@ -114,7 +117,12 @@ export async function POST(req: Request) {
     });
     if (printable.length === 0) {
       return NextResponse.json(
-        { error: 'لا يُطبع إلا طلب مؤكَّد له شركة شحن', code: 'NOTHING_PRINTABLE', refused },
+        {
+          // All of them waiting for the courier's barcode is a different news from «not confirmed».
+          error: refused.every((r) => r.reason === WAITING_FOR_BARCODE) ? WAITING_FOR_BARCODE : 'لا يُطبع إلا طلب مؤكَّد له شركة شحن',
+          code: 'NOTHING_PRINTABLE',
+          refused,
+        },
         { status: 409 }
       );
     }

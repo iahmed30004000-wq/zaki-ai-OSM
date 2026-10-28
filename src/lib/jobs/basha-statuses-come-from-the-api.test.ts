@@ -146,3 +146,17 @@ describe('when the courier is not there', () => {
     expect(recordMiss).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('the status question carries the company id too', () => {
+  it('every barcode is asked with company-id = the account’s own id, through the adapter the job builds', async () => {
+    ordersTable([parcel(1), parcel(2)]);
+    const headers: Record<string, string>[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+      headers.push(init.headers as Record<string, string>);
+      return new Response(JSON.stringify({ status: 'SCANNED_BY_DRIVER_AND_IN_CAR' }));
+    }));
+    await syncCourierStatus.run(ctx);
+    expect(headers).toHaveLength(2);
+    for (const h of headers) expect(h['company-id']).toBe('744');
+  });
+});
