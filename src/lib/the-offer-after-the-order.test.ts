@@ -598,6 +598,17 @@ describe('«لا سعر ولا كمية على السلك» — the public door'
 
 describe('«بيظهر بعد الطلب، مرة وحدة، وبيختفي إذا رفضه» — the screen', () => {
   const form = () => stripComments(repoFile('src/components/landing/OrderForm.tsx'));
+  /*
+   * THE CARD LEFT THE FORM, AND THESE CLAIMS WENT WITH IT.
+   *
+   * `ThankYouOfferCard` is the one card every door draws — the landing form
+   * and the basket's thank-you page (RV250) — so its markup, its request and
+   * its refusal live there now. Each claim below reads the file that holds
+   * the thing it is about: the form for WHETHER the card is drawn, the
+   * countdown and the header's total; the card for what it prints, what it
+   * sends and what a refusal does. Not one claim was dropped or loosened.
+   */
+  const card = () => stripComments(repoFile('src/components/landing/ThankYouOfferCard.tsx'));
 
   it('draws the offer only when the SERVER sent one', () => {
     // `null` is a real answer — the seller set none — and draws nothing.
@@ -615,18 +626,19 @@ describe('«بيظهر بعد الطلب، مرة وحدة، وبيختفي إذ
      * printed 25 for a bundle the cart door priced at 22.
      */
     const src = form();
-    expect(src).toContain('fmt(postOrder.offer.price)');
-    expect(src).toContain('fmt(postOrder.offer.listPrice)');
+    expect(card()).toContain('fmt(postOrder.offer.price)');
+    expect(card()).toContain('fmt(postOrder.offer.listPrice)');
     // The window is STATED from the server's own number. A countdown exists only when the seller chose «عدّاد»
     // («شريط … أو عدّاد», 26/10), and it counts that same number of minutes — the page invents no deadline of its own.
-    expect(src).toContain('{postOrder.windowMinutes} دقيقة');
+    expect(card()).toContain('{postOrder.windowMinutes} دقيقة');
     expect(src.match(/setInterval/g) ?? [], 'عدّاد غير العدّاد الوحيد').toHaveLength(1);
+    expect(card().match(/setInterval/g) ?? [], 'البطاقة صار عندها عدّاد لحالها').toHaveLength(0);
     expect(src).toContain("look.banner === 'countdown' && offersFrom !== null && postOrder.windowMinutes > 0");
     expect(src).toContain('postOrder.windowMinutes * 60_000');
   });
 
   it('and the two answers the owner wrote are the two buttons', () => {
-    const src = form();
+    const src = card();
     expect(src).toContain('آه، زيدها لطلبي');
     expect(src).toContain('لا شكراً');
   });
@@ -638,29 +650,36 @@ describe('«بيظهر بعد الطلب، مرة وحدة، وبيختفي إذ
      * at the wrong four hundred characters entirely — which is how a
      * mutation inside a refusal handler once went unnoticed in this file.
      */
-    const src = form();
+    const src = card();
     const at = src.indexOf('setPostOrderRefused(true)');
     expect(at, 'ما في طريقة يرفض').toBeGreaterThan(0);
     const around = src.slice(at - 300, at + 300);
     expect(around, 'الرفض بيكلّم السيرفر').not.toContain('fetch(');
     expect(around, 'الرفض بيعدّل الإجمالي').not.toContain('setTotals');
+    expect(around, 'الرفض بيعدّل الإجمالي').not.toContain('onTotal');
+    // And «لا شكراً» presses exactly that function.
+    expect(src).toContain('onClick={refusePostOrderOffer}');
   });
 
   it('and the new total is the server’s, after the add', () => {
-    const src = form();
-    expect(src).toContain("if (typeof json?.newTotal === 'number') setTotals({ total: json.newTotal });");
+    // The card hands the server's number to its door, and the form prints it.
+    expect(card()).toContain("if (typeof json?.newTotal === 'number') onTotal(json.newTotal);");
+    expect(form()).toContain('onTotal: (total) => setTotals({ total })');
+    // The recommendation add-on, which is still the form's own, does the same.
+    expect(form()).toContain("if (typeof json?.newTotal === 'number') setTotals({ total: json.newTotal });");
     // The header prints `totals.total` once there is one — the server's
     // answer after the add, not a sum this component kept.
-    expect(src).toContain("state === 'success' && totals ? totals.total");
+    expect(form()).toContain("state === 'success' && totals ? totals.total");
   });
 
   it('and a refusal shows the server’s sentence and closes the card', () => {
-    const src = form();
+    const src = card();
     expect(src).toContain("setPostOrderState('gone')");
     expect(src).toContain('setPostOrderMsg(json?.error');
     // No map of codes to Arabic kept in the page: the server that made the
     // decision supplies the words for it.
-    expect(src, 'الصفحة بتترجم أكواد الرفض بحالها').not.toContain('WINDOW_PASSED');
+    expect(src, 'البطاقة بتترجم أكواد الرفض بحالها').not.toContain('WINDOW_PASSED');
+    expect(form(), 'الصفحة بتترجم أكواد الرفض بحالها').not.toContain('WINDOW_PASSED');
   });
 
   it('and saying no to the bundle does not withdraw the recommendation list', () => {

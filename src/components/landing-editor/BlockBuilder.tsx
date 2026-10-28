@@ -714,7 +714,7 @@ export function BlockBuilder(props: Props) {
 
                 {openId === s.id && (
                   <div className="space-y-2 border-t border-[var(--sys-border)] bg-[var(--sys-surface)] p-3">
-                    <SectionFields section={s} patch={(f) => patch(s.id, f)} onUpload={props.onUpload} ctx={{ productId: props.productId, pageId: props.pageId, storePhone: props.store?.phone ?? null }} />
+                    <SectionFields section={s} patch={(f) => patch(s.id, f)} onUpload={props.onUpload} ctx={{ productId: props.productId, pageId: props.pageId, storePhone: props.store?.phone ?? null, currency: props.currency }} />
 
                   </div>
                 )}

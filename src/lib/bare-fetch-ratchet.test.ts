@@ -42,7 +42,11 @@ const root = process.cwd();
  * recommendation add-on have always been bare for this reason; they are
  * invisible to the counter below only because their URL is assembled from
  * a prop, and «the one that happens to match the regex» is not a rule.
- * The post-order offer's door is spelled out, so it is listed.
+ * The post-order offer's door is spelled out, so it is listed — under
+ * `ThankYouOfferCard`, the one card every door draws (the landing form and
+ * the basket's thank-you page). The call MOVED there with its reason; it
+ * was not added: `OrderForm` holds none of its own now, and the count across
+ * the two files is the one call it always was.
  */
 /*
  * EACH EXCEPTION CARRIES ITS OWN REASON, as a string the file must still
@@ -56,7 +60,7 @@ const root = process.cwd();
  */
 const DELIBERATE = new Map<string, { n: number; because: string }>([
   ['src/components/orders/OrderDetailModal.tsx', { n: 1, because: 'keepalive: true' }],
-  ['src/components/landing/OrderForm.tsx', { n: 1, because: "credentials: 'omit'" }],
+  ['src/components/landing/ThankYouOfferCard.tsx', { n: 1, because: "credentials: 'omit'" }],
 ]);
 
 /** What is left to move, file by file. Every number here may only fall. */

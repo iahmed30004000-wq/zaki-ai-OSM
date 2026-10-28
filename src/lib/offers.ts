@@ -663,6 +663,72 @@ export async function postOrderOfferFor(
 }
 
 /**
+ * «بقلي انو الخدمة غير مفعلة» — WHAT THE PAGE EDITOR IS TOLD ABOUT THE OFFER AFTER THE ORDER, AND WHY IT IS OFF.
+ *
+ * The «بعد الطلب» panel in the landing editor used to answer this by itself, from `GET /api/offers`: a bundle
+ * counted as «شغّال» when `postOrderOffer && isActive !== false`. An offer has no `isActive` — it has `status` — so a
+ * stopped or a finished bundle read «شغّال» while the thank-you screen, which asks `postOrderOfferFor`, showed
+ * nothing. Two rules for one question, and the seller was answered by the one that decides nothing.
+ *
+ * So `offer` here IS `postOrderOfferFor`'s answer, asked the way the order door asks it, in the same currency, and
+ * nothing below decides «on» a second time. What this adds is the sentence for a null: the product's flagged rows,
+ * in the door's own order (`sortOrder`, then `quantity`), and the first of them says why the door passed it over:
+ *
+ *   no flagged row at all       NONE
+ *   status other than ACTIVE    STOPPED   switched off — on the offers screen, or from the panel
+ *   ACTIVE                      ENDED     the door asks for ACTIVE and for an ending still ahead, nothing else,
+ *                                         so an ACTIVE row it did not return is one whose `endsAt` has passed
+ *
+ * A row switched on between the two reads would read ENDED for one answer, and the next read says «شغّال».
+ *
+ * `flagged` is the row a button acts on: the live one when there is one, otherwise the one that decided `why`.
+ *
+ * `flaggedCount` is for the buttons, not for the sentence. `clearOtherPostOrderOffers` keeps one flagged bundle per
+ * product, and EVERY write that leaves a row flagged runs it — the create, and any edit of a flagged row, «أوقفه»
+ * included. With no other flagged row it strips nothing. With one, it strips the flag off that one, which becomes an
+ * ordinary bundle at its cheap after-order price (RV251). So the panel writes only where the count makes that strip
+ * a no-op: a create at 0, an edit of the one row at 1.
+ */
+export type PostOrderOfferOff = 'NONE' | 'STOPPED' | 'ENDED';
+
+export interface PostOrderOfferState {
+  /** What the thank-you screen offers — `postOrderOfferFor`'s answer, as it is. */
+  offer: OfferView | null;
+  /** Null exactly when `offer` is there. */
+  why: PostOrderOfferOff | null;
+  flagged: { id: string; name: string; endsAt: Date | null } | null;
+  flaggedCount: number;
+}
+
+export async function postOrderOfferStateFor(
+  tx: Tx,
+  companyId: string,
+  productId: string,
+  /** The order's own currency, exactly as `postOrderOfferFor` is handed it. */
+  minorUnit: number,
+  now: Date = new Date()
+): Promise<PostOrderOfferState> {
+  const offer = await postOrderOfferFor(tx, companyId, productId, minorUnit, now);
+  const rows = await tx.offer.findMany({
+    where: { companyId, productId, postOrderOffer: true },
+    orderBy: [{ sortOrder: 'asc' }, { quantity: 'asc' }],
+    select: { id: true, name: true, status: true, endsAt: true },
+  });
+
+  if (offer) {
+    return { offer, why: null, flagged: { id: offer.id, name: offer.name, endsAt: offer.endsAt }, flaggedCount: rows.length };
+  }
+  const first = rows[0];
+  if (!first) return { offer: null, why: 'NONE', flagged: null, flaggedCount: 0 };
+  return {
+    offer: null,
+    why: first.status === 'ACTIVE' ? 'ENDED' : 'STOPPED',
+    flagged: { id: first.id, name: first.name, endsAt: first.endsAt },
+    flaggedCount: rows.length,
+  };
+}
+
+/**
  * The shape every public surface renders an offer in.
  *
  * `price` is the bundle's total — never a unit price. Every caller that
