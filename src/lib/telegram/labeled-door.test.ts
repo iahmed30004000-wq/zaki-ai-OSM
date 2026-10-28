@@ -8,7 +8,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * the same `codForOrder` the shipments route calls, with a delivery fee the order never saw.
  *
  * The owner, 28/10: «أريده يسحب الطلبات بهذه الصيغة … ولازم يكون مكتوب بهذي الصيغة عشان يرتفع كطلب جديد» and
- * «لا الكمية يعني قطعتين فقط ولا تربطها بالعرض بل اربطها بقطع المنتج نفسو».
+ * «لا الكمية يعني قطعتين فقط ولا تربطها بالعرض بل اربطها بقطع المنتج نفسو» — and then: «اريد التنسيق يقبل كل انواع الارقام
+ * والمفتاح السوري … واريد كمان يكون نص العرض مربوط بالعرض» («اذا الرقم غير صالح مثل 12 خلي الطلب بخانة المراجعة»).
+ * So the offer is a REAL offer of the product, priced by the storefront door's own functions, and the phone is read leniently.
  */
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- a fake table row: every test reads its own fields
@@ -24,6 +26,7 @@ const { db, state, gate } = vi.hoisted(() => {
     orders: [] as Row[],
     items: [] as Row[],
     regions: [] as Row[],
+    offers: [] as Row[],
     storePolicy: false,
     country: { id: 'country-sy', code: 'SY', name: 'سوريا', currencyCode: 'USD', minorUnit: 2, orderPrefix: 'SY' },
     seq: 0,
@@ -137,7 +140,19 @@ const { db, state, gate } = vi.hoisted(() => {
       }),
     },
     region: { findMany: vi.fn(async () => state.regions) },
+    // `activeOffersFor`'s own query, answered by the same predicate it sends: this product's, ACTIVE, not the post-order one,
+    // and not finished. `evidencedWasPrices` asks the orders for delivered prices; none here.
+    offer: {
+      findMany: vi.fn(async ({ where }: Row) =>
+        state.offers
+          .filter((o) => o.companyId === where.companyId && o.productId === where.productId)
+          .filter((o) => o.status === where.status && o.postOrderOffer === where.postOrderOffer)
+          .filter((o) => o.endsAt === null || o.endsAt > new Date())
+          .map((o) => ({ ...o }))
+      ),
+    },
     order: {
+      groupBy: vi.fn(async () => []),
       findFirst: vi.fn(async () => null),
       create: vi.fn(async () => {
         throw new Error('an order is written inside a transaction or not at all');
@@ -192,6 +207,8 @@ vi.mock('@/lib/authorization', () => ({ requirePermission: vi.fn(async () => und
 
 
 import { processStoredMessage } from './inbound';
+import { createTelegramOrder } from './order-creation';
+import { reviewReasonText } from './review-reasons';
 import { codForOrder } from '../delivery-fees';
 import { POST as RETRY } from '@/app/api/telegram/messages/[id]/retry/route';
 
@@ -213,6 +230,23 @@ const sample = (over: Record<string, string | null> = {}) =>
     .map(([label, value]) => `${label}: ${over[label] ?? value}`)
     .join('\n');
 const ARRIVED = new Date('2026-10-28T14:45:40Z');
+
+/** An offer row as the table holds it. Delivery is included unless said otherwise, as the form's own default has it. */
+const offerRow = (over: Row): Row => ({
+  companyId: 'c1',
+  status: 'ACTIVE',
+  postOrderOffer: false,
+  endsAt: null,
+  discount: 0,
+  compareAtPrice: null,
+  isDefault: false,
+  deliveryIncluded: true,
+  freeQuantity: 0,
+  sortOrder: 0,
+  ...over,
+});
+/** HIS offer: two paid pieces and one gift, 25 — «قطعتين + قطعة هدية ( عدد 3 )». */
+const BUNDLE = 'قطعتين + قطعة هدية ( عدد 3 )';
 
 let messageSeq = 0;
 /** A stored message, as the webhook leaves it: PENDING, from store A's group unless said otherwise. */
@@ -260,6 +294,15 @@ beforeEach(() => {
       { id: 'region-homs', name: 'حمص' },
       { id: 'region-damascus', name: 'دمشق' },
     ],
+    // The catalogue of offers: his bundle on both products and on the other store's, a single piece at 15 that does NOT
+    // include delivery, and three pieces for 10 (a price that does not divide).
+    offers: [
+      offerRow({ id: 'of-bundle', productId: 'prod-kamaa', name: BUNDLE, quantity: 2, freeQuantity: 1, sellingPrice: 25 }),
+      offerRow({ id: 'of-single', productId: 'prod-kamaa', name: 'قطعة واحدة', quantity: 1, sellingPrice: 15, deliveryIncluded: false, sortOrder: 1 }),
+      offerRow({ id: 'of-three', productId: 'prod-kamaa', name: 'ثلاث قطع', quantity: 3, sellingPrice: 10, sortOrder: 2 }),
+      offerRow({ id: 'of-bundle-honey', productId: 'prod-honey', name: BUNDLE, quantity: 2, freeQuantity: 1, sellingPrice: 25 }),
+      offerRow({ id: 'of-bundle-b', productId: 'prod-kamaa-b', name: BUNDLE, quantity: 2, freeQuantity: 1, sellingPrice: 25 }),
+    ],
     storePolicy: false,
     country: { id: 'country-sy', code: 'SY', name: 'سوريا', currencyCode: 'USD', minorUnit: 2, orderPrefix: 'SY' },
     seq: 0,
@@ -284,7 +327,7 @@ const fresh = () => {
   state.items = [];
 };
 
-describe('his sample becomes exactly one order', () => {
+describe('his sample becomes exactly one order — bound to his offer', () => {
   it('— the customer, the order, its line and its notes, field by field', async () => {
     const id = arrive(sample());
     const result = await processStoredMessage(id);
@@ -298,27 +341,28 @@ describe('his sample becomes exactly one order', () => {
     expect(state.customers).toEqual([
       expect.objectContaining({ storeId: 'store-A', phone: '933620102', rawPhone: '0933620102', fullName: 'محمد عيد أطليبي', address: 'دمشق', city: 'دمشق' }),
     ]);
+    // «الكمية: 1» is ONE offer: two paid pieces and the gift, 25 for all of it, the delivery the offer promises.
     expect(order).toMatchObject({
       storeId: 'store-A',
       customerId: state.customers[0].id,
       productId: 'prod-kamaa',
       regionId: 'region-damascus',
-      quantity: 1,
+      offerId: 'of-bundle',
+      quantity: 2,
+      freeQuantity: 1,
       sellingPrice: 25,
       totalAmount: 25,
       shippingCost: 0,
-      // «توصيل مجاني» in the offer's name is text: the store's own policy (off here) governs.
-      priceIncludesDelivery: false,
+      priceIncludesDelivery: true,
       currency: 'USD',
       status: 'NEW',
       source: 'Telegram',
     });
-    expect(order.internalNotes).toContain('وقت الطلب بالمصدر: 2026-10-28 17:45:32 · العرض: قطعتين + قطعة هدية ( عدد 3 ) =25 $ + توصيل مجاني');
-    // The offer is text only: no offer row is bound, no gift unit is written.
-    expect(order.offerId).toBeUndefined();
-    expect(order.freeQuantity).toBeUndefined();
-    expect(state.items).toEqual([expect.objectContaining({ productId: 'prod-kamaa', quantity: 1, unitPrice: 25, lineTotal: 25 })]);
-    expect(state.items[0].freeQuantity).toBeUndefined();
+    expect(order.internalNotes).toContain(`وقت الطلب بالمصدر: 2026-10-28 17:45:32 · العرض: ${BUNDLE}`);
+    // The line carries the gift: 2 + 1 = 3 pieces leave the shelf, and only the 2 are in the money.
+    expect(state.items).toEqual([
+      expect.objectContaining({ productId: 'prod-kamaa', quantity: 2, freeQuantity: 1, unitPrice: 12.5, discountShare: 0, lineTotal: 25 }),
+    ]);
     // Order.createdAt stays the database's: the date line is only kept as text.
     expect(order).not.toHaveProperty('createdAt');
 
@@ -345,7 +389,7 @@ describe('his sample becomes exactly one order', () => {
   });
 });
 
-describe('the money — «السعر» is the TOTAL, «الكمية» is pieces of the product', () => {
+describe('the money — the OFFER’s price, gift and delivery; «السعر» is checked against them and never moves them', () => {
   const FEE = 3;
   /** What the courier is asked for when the batch is made: the shipments route's own function, on the stored line. */
   const atShipment = (minorUnit = 2) => {
@@ -358,39 +402,98 @@ describe('the money — «السعر» is the TOTAL, «الكمية» is pieces 
       minorUnit,
     }).cod;
   };
+  /** The single piece at 15 whose delivery is NOT included — so the store's own policy is the one speaking. */
+  const single = (over: Record<string, string>) => sample({ 'إسم العرض': 'قطعة واحدة', 'السعر': '15', ...over });
 
-  it('quantity 1, price 25 → one piece, a total of 25', async () => {
+  it('quantity 1, price 25 → his bundle once: 2 paid + 1 gift, a total of 25, delivery included by the offer', async () => {
     await processStoredMessage(arrive(sample()));
-    expect(state.orders[0]).toMatchObject({ quantity: 1, totalAmount: 25, sellingPrice: 25 });
-    expect(state.items[0]).toMatchObject({ quantity: 1, unitPrice: 25, lineTotal: 25 });
-    expect(atShipment()).toBe(28);
+    expect(state.orders[0]).toMatchObject({ quantity: 2, freeQuantity: 1, totalAmount: 25, sellingPrice: 25, priceIncludesDelivery: true });
+    expect(state.items[0]).toMatchObject({ quantity: 2, freeQuantity: 1, unitPrice: 12.5, lineTotal: 25 });
+    // The offer includes delivery, so the courier collects the 25 and not 25 + the fee.
+    expect(atShipment()).toBe(25);
   });
 
-  it('quantity 2, price 25 → two pieces for 25: 12.5 a piece, unrounded — never 2 × 25 and never 12', async () => {
+  it('quantity 2 is the bundle’s own paid pieces: still ONE offer, not two pieces for 25', async () => {
     await processStoredMessage(arrive(sample({ 'الكمية': '2' })));
-    expect(state.orders[0]).toMatchObject({ quantity: 2, totalAmount: 25, sellingPrice: 12.5 });
-    expect(state.items[0]).toMatchObject({ quantity: 2, unitPrice: 12.5, lineTotal: 25 });
-    expect(atShipment()).toBe(28);
+    expect(state.orders).toHaveLength(1);
+    expect(state.orders[0]).toMatchObject({ quantity: 2, freeQuantity: 1, totalAmount: 25 });
   });
 
-  it('quantity 3, price 10 → 10 over three pieces, written back as exactly 10 (no fils lost)', async () => {
-    await processStoredMessage(arrive(sample({ 'الكمية': '3', 'السعر': '10' })));
-    expect(state.orders[0]).toMatchObject({ quantity: 3, totalAmount: 10 });
-    expect(state.items[0]).toMatchObject({ quantity: 3, lineTotal: 10 });
+  it('quantity 4 is TWO offers: 4 paid + 2 gift pieces for 50 — the price must say 50', async () => {
+    await processStoredMessage(arrive(sample({ 'الكمية': '4', 'السعر': '50' })));
+    expect(state.orders[0]).toMatchObject({ offerId: 'of-bundle', quantity: 4, freeQuantity: 2, totalAmount: 50, sellingPrice: 50 });
+    expect(state.items[0]).toMatchObject({ quantity: 4, freeQuantity: 2, unitPrice: 12.5, lineTotal: 50 });
+  });
+
+  it('quantity 4 with the price of ONE offer is a price that is not the offer’s — and nothing is written', async () => {
+    const id = arrive(sample({ 'الكمية': '4', 'السعر': '25' }));
+    expect(await processStoredMessage(id)).toEqual({ status: 'NEEDS_REVIEW', reason: 'PRICE_MISMATCH:50.00' });
+    nothingWritten();
   });
 
   it.each([
-    // [store policy, the order's price includes delivery, at creation, at the shipment]
-    [false, false, 25, 28],
-    [true, true, 25, 25],
-  ])('store includes delivery: %s → %s · %s at creation · %s at the shipment', async (policy, includes, created, shipped) => {
+    ['30 for the offer that costs 25', { 'السعر': '30' }, 'PRICE_MISMATCH:25.00'],
+    ['20 for the offer that costs 25', { 'السعر': '20' }, 'PRICE_MISMATCH:25.00'],
+    ['the figure in the offer’s own text (99) does not set the price', { 'إسم العرض': `${BUNDLE} = 99 $`, 'السعر': '99' }, 'PRICE_MISMATCH:25.00'],
+  ])('%s → review, nothing written', async (_what, over, reason) => {
+    const id = arrive(sample(over));
+    expect(await processStoredMessage(id)).toEqual({ status: 'NEEDS_REVIEW', reason });
+    nothingWritten();
+    expect(messageRow(id).reviewReason).toBe(reason);
+  });
+
+  it.each(['3', '5', '7'])('quantity %s is not a whole number of offers → QUANTITY_NOT_OFFER, nothing written', async (quantity) => {
+    const id = arrive(sample({ 'الكمية': quantity }));
+    expect(await processStoredMessage(id)).toEqual({ status: 'NEEDS_REVIEW', reason: 'QUANTITY_NOT_OFFER' });
+    nothingWritten();
+  });
+
+  it('a single piece at 15: quantity 3 is three offers → 3 pieces, 45, no gift', async () => {
+    await processStoredMessage(arrive(single({ 'الكمية': '3', 'السعر': '45' })));
+    expect(state.orders[0]).toMatchObject({ offerId: 'of-single', quantity: 3, freeQuantity: 0, totalAmount: 45 });
+    expect(state.items[0]).toMatchObject({ quantity: 3, freeQuantity: 0, unitPrice: 15, lineTotal: 45 });
+  });
+
+  it('three pieces for 10: the unit price stays unrounded and the total is written back as exactly 10 (no fils lost)', async () => {
+    await processStoredMessage(arrive(sample({ 'إسم العرض': 'ثلاث قطع', 'السعر': '10', 'الكمية': '3' })));
+    expect(state.orders[0]).toMatchObject({ quantity: 3, totalAmount: 10 });
+    expect(state.items[0]).toMatchObject({ quantity: 3, lineTotal: 10 });
+    expect(state.items[0].unitPrice).toBeCloseTo(10 / 3, 12);
+  });
+
+  it('an offer’s own reduction is taken ONCE, as the storefront takes it: 25 with a discount of 3 is 22', async () => {
+    state.offers.push(offerRow({ id: 'of-disc', productId: 'prod-kamaa', name: 'عرض الخصم', quantity: 2, sellingPrice: 25, discount: 3 }));
+    const wrong = arrive(sample({ 'إسم العرض': 'عرض الخصم', 'السعر': '25' }));
+    expect(await processStoredMessage(wrong)).toEqual({ status: 'NEEDS_REVIEW', reason: 'PRICE_MISMATCH:22.00' });
+    nothingWritten();
+    const id = arrive(sample({ 'إسم العرض': 'عرض الخصم', 'السعر': '22', 'تاريخ الطلب': '2026-10-28 18:00:00' }));
+    expect(await processStoredMessage(id)).toMatchObject({ status: 'PROCESSED' });
+    expect(state.orders[0]).toMatchObject({ offerId: 'of-disc', totalAmount: 22 });
+    expect(state.items[0]).toMatchObject({ discountShare: 3, lineTotal: 22, unitPrice: 12.5 });
+  });
+
+  it.each([
+    // [store policy, the order's price includes delivery, at creation, at the shipment] — for an offer that does NOT include it
+    [false, false, 15, 18],
+    [true, true, 15, 15],
+  ])('an offer without delivery under a store policy of %s → %s · %s at creation · %s at the shipment', async (policy, includes, created, shipped) => {
     state.storePolicy = policy;
-    await processStoredMessage(arrive(sample()));
+    await processStoredMessage(arrive(single({})));
     expect(state.orders[0].priceIncludesDelivery).toBe(includes);
     expect(state.orders[0].totalAmount).toBe(created);
     expect(atShipment()).toBe(shipped);
     // Nothing here ever writes the store's own setting.
     expect(state.storeWrites).toBe(0);
+  });
+
+  it('and an offer that includes delivery turns it on in a store that does not — never the other way', async () => {
+    state.storePolicy = false;
+    await processStoredMessage(arrive(sample()));
+    expect(state.orders[0].priceIncludesDelivery).toBe(true);
+    fresh();
+    state.storePolicy = true;
+    await processStoredMessage(arrive(single({})));
+    expect(state.orders[0].priceIncludesDelivery).toBe(true);
   });
 
   it.each(['25 $', '$25', '25 دولار', '25.00', '25'])('the price «%s» is 25', async (price) => {
@@ -400,13 +503,14 @@ describe('the money — «السعر» is the TOTAL, «الكمية» is pieces 
     expect(state.orders[0].totalAmount).toBe(25);
   });
 
-  it('a dinar keeps its three decimals: 14.255 for two pieces on a Jordanian store', async () => {
+  it('a dinar keeps its three decimals: 14.255 for the offer of two pieces on a Jordanian store', async () => {
     state.country = { id: 'country-jo', code: 'JO', name: 'الأردن', currencyCode: 'JOD', minorUnit: 3, orderPrefix: 'JO' };
     state.regions = [{ id: 'region-amman', name: 'عمّان' }];
+    state.offers.push(offerRow({ id: 'of-jod', productId: 'prod-kamaa', name: 'قطعتين بالدينار', quantity: 2, sellingPrice: 14.255, deliveryIncluded: false }));
     await processStoredMessage(
-      arrive(sample({ 'رقم الهاتف': '0791234567', 'عنوان العميل': 'الأردن عمان', 'السعر': '14.255', 'الكمية': '2' }))
+      arrive(sample({ 'رقم الهاتف': '0791234567', 'عنوان العميل': 'الأردن عمان', 'إسم العرض': 'قطعتين بالدينار', 'السعر': '14.255', 'الكمية': '2' }))
     );
-    expect(state.orders[0]).toMatchObject({ quantity: 2, totalAmount: 14.255, currency: 'JOD', regionId: 'region-amman' });
+    expect(state.orders[0]).toMatchObject({ offerId: 'of-jod', quantity: 2, totalAmount: 14.255, currency: 'JOD', regionId: 'region-amman' });
     expect(state.items[0]).toMatchObject({ unitPrice: 7.1275, lineTotal: 14.255 });
     expect(atShipment(3)).toBe(17.255);
   });
@@ -418,10 +522,114 @@ describe('the money — «السعر» is the TOTAL, «الكمية» is pieces 
     nothingWritten();
   });
 
-  it('the offer’s name is text: any figure, gift or currency inside it moves nothing', async () => {
-    await processStoredMessage(arrive(sample({ 'إسم العرض': '3 قطع + 2 هدية = 99 ل.س + توصيل مجاني' })));
-    expect(state.orders[0]).toMatchObject({ quantity: 1, totalAmount: 25, priceIncludesDelivery: false });
-    expect(state.orders[0].internalNotes).toContain('العرض: 3 قطع + 2 هدية = 99 ل.س + توصيل مجاني');
+  it('the gift is stock: 3 pieces for one bundle, 6 for two — paid + gift, as the storefront reserves them', async () => {
+    await processStoredMessage(arrive(sample()));
+    await processStoredMessage(arrive(sample({ 'الكمية': '4', 'السعر': '50', 'تاريخ الطلب': '2026-10-28 18:00:00' })));
+    const pieces = state.items.map((i) => i.quantity + i.freeQuantity);
+    expect(pieces).toEqual([3, 6]);
+  });
+});
+
+describe('«إسم العرض» is tied to ONE real offer of this product', () => {
+  const offerOf = (text: string, extra: Record<string, string> = {}) => sample({ 'إسم العرض': text, ...extra });
+
+  it.each([
+    ['the offer’s name exactly', BUNDLE],
+    ['his full text, the name contained in it', 'قطعتين + قطعة هدية ( عدد 3 ) =25 $ + توصيل مجاني'],
+    ['no brackets, no plus', 'قطعتين قطعة هدية عدد 3'],
+    ['Arabic-Indic digits and another spelling', 'قطعتين + قطعه هديه ( عدد ٣ )'],
+    ['the name inside a longer sentence', 'عرض اليوم: قطعتين + قطعة هدية ( عدد 3 ) فقط'],
+  ])('found — %s', async (_what, text) => {
+    fresh();
+    expect((await processStoredMessage(arrive(offerOf(text)))).status).toBe('PROCESSED');
+    expect(state.orders[0].offerId).toBe('of-bundle');
+  });
+
+  it('the name is matched word for word: «قطعة» alone is not inside «قطعتين»', async () => {
+    state.offers.push(offerRow({ id: 'of-word', productId: 'prod-kamaa', name: 'قطعة', quantity: 1, sellingPrice: 9 }));
+    const id = arrive(offerOf('قطعتين فقط'));
+    expect(await processStoredMessage(id)).toEqual({ status: 'NEEDS_REVIEW', reason: 'OFFER_NOT_FOUND' });
+  });
+
+  it('of two offers that both stand inside the text, the longer name wins when it holds the shorter', async () => {
+    state.offers.push(offerRow({ id: 'of-short', productId: 'prod-kamaa', name: 'قطعتين', quantity: 2, sellingPrice: 18 }));
+    expect((await processStoredMessage(arrive(sample()))).status).toBe('PROCESSED');
+    expect(state.orders[0].offerId).toBe('of-bundle');
+  });
+
+  it('two offers with the same name are ambiguous — nothing is chosen and nothing is written', async () => {
+    state.offers.push(offerRow({ id: 'of-twin', productId: 'prod-kamaa', name: BUNDLE, quantity: 2, freeQuantity: 1, sellingPrice: 30 }));
+    const id = arrive(sample());
+    expect(await processStoredMessage(id)).toEqual({ status: 'NEEDS_REVIEW', reason: 'OFFER_AMBIGUOUS' });
+    nothingWritten();
+    expect(messageRow(id)).toMatchObject({ processingStatus: 'NEEDS_REVIEW', reviewReason: 'OFFER_AMBIGUOUS' });
+  });
+
+  it('two different offers inside the text, neither holding the other, are ambiguous too', async () => {
+    state.offers.push(offerRow({ id: 'of-a', productId: 'prod-kamaa', name: 'هدية مجانية', quantity: 1, sellingPrice: 5 }));
+    expect(await processStoredMessage(arrive(offerOf(`${BUNDLE} هدية مجانية`)))).toEqual({ status: 'NEEDS_REVIEW', reason: 'OFFER_AMBIGUOUS' });
+  });
+
+  it('a name no offer of the product has → OFFER_NOT_FOUND, and the order is NOT created', async () => {
+    const id = arrive(offerOf('أربع قطع مع علبة'));
+    expect(await processStoredMessage(id)).toEqual({ status: 'NEEDS_REVIEW', reason: 'OFFER_NOT_FOUND' });
+    nothingWritten();
+  });
+
+  it('a product with no offers at all → OFFER_NOT_FOUND (the text is tied to a real offer or there is no order)', async () => {
+    state.offers = [];
+    expect(await processStoredMessage(arrive(sample()))).toEqual({ status: 'NEEDS_REVIEW', reason: 'OFFER_NOT_FOUND' });
+    nothingWritten();
+  });
+
+  it('another PRODUCT’s offer of the same name is not this product’s', async () => {
+    state.offers = state.offers.filter((o) => o.id !== 'of-bundle');
+    // `of-bundle-honey` carries the same name but belongs to the honey.
+    expect(await processStoredMessage(arrive(sample()))).toMatchObject({ reason: 'OFFER_NOT_FOUND' });
+  });
+
+  it.each([
+    ['inactive', { status: 'INACTIVE' }],
+    ['finished', { endsAt: new Date('2026-10-01T00:00:00Z') }],
+    ['the one shown after the order', { postOrderOffer: true }],
+  ])('an offer that is %s is not for sale at any door → OFFER_NOT_FOUND', async (_what, over) => {
+    Object.assign(state.offers.find((o) => o.id === 'of-bundle')!, over);
+    expect(await processStoredMessage(arrive(sample()))).toMatchObject({ reason: 'OFFER_NOT_FOUND' });
+    nothingWritten();
+  });
+
+  it('a currency in the offer’s text other than the store’s → CURRENCY_MISMATCH, never converted', async () => {
+    const id = arrive(offerOf(`${BUNDLE} = 99 ل.س`));
+    expect(await processStoredMessage(id)).toEqual({ status: 'NEEDS_REVIEW', reason: 'CURRENCY_MISMATCH' });
+    nothingWritten();
+  });
+
+  it('and the store’s own currency in the offer’s text is fine, like no currency at all', async () => {
+    expect((await processStoredMessage(arrive(offerOf(`${BUNDLE} = 25 دولار`)))).status).toBe('PROCESSED');
+    expect((await processStoredMessage(arrive(offerOf(BUNDLE, { 'تاريخ الطلب': '2026-10-28 18:00:00' })))).status).toBe('PROCESSED');
+  });
+
+  it('creating the order directly with a price that is not the offer’s still writes the OFFER’s total', async () => {
+    const line = {
+      product: state.products[0] as never,
+      offer: { id: 'of-bundle', name: BUNDLE, deliveryIncluded: true } as never,
+      quantity: 2,
+      freeQuantity: 1,
+      unitPrice: 12.5,
+      offerDiscount: 0,
+    };
+    const created = await createTelegramOrder({
+      companyId: 'c1',
+      storeId: 'store-A',
+      customer: { id: 'cu-x', firstOrderDate: null, totalOrders: 0 },
+      product: state.products[0] as never,
+      line,
+      address: 'دمشق',
+      priceText: '99',
+      telegram: { messageId: '1', chatId: '-100', threadId: null },
+    });
+    expect(created.ok).toBe(true);
+    expect(state.orders[0]).toMatchObject({ totalAmount: 25, sellingPrice: 25, freeQuantity: 1 });
   });
 });
 
@@ -436,7 +644,7 @@ describe('the same message in other shapes is still the same order', () => {
     const reversed = [...SAMPLE].reverse().map(([l, v]) => `${l}: ${v}`).join('\n');
     const { result, order } = await orderOf(reversed);
     expect(result.status).toBe('PROCESSED');
-    expect(order).toMatchObject({ quantity: 1, totalAmount: 25, productId: 'prod-kamaa' });
+    expect(order).toMatchObject({ quantity: 2, freeQuantity: 1, totalAmount: 25, productId: 'prod-kamaa' });
   });
 
   it('«اسم» for «إسم», «الكميه» for «الكمية», a colon with spaces or the wide colon, a tashkeel on a label', async () => {
@@ -446,13 +654,13 @@ describe('the same message in other shapes is still the same order', () => {
       'رَقْم الهاتف:0933620102',
       'عنوان العميل :دمشق',
       'اسم المنتج: ماء الكمأ الأصلي',
-      'اسم العرض: قطعة',
-      'السعر: 25',
+      'اسم العرض: قطعة واحدة',
+      'السعر: 15',
       'الكميه: 1',
     ].join('\n');
     const { result, order } = await orderOf(text);
     expect(result.status).toBe('PROCESSED');
-    expect(order).toMatchObject({ quantity: 1, totalAmount: 25 });
+    expect(order).toMatchObject({ offerId: 'of-single', quantity: 1, freeQuantity: 0, totalAmount: 15 });
     expect(state.customers[0].fullName).toBe('محمد');
   });
 
@@ -493,6 +701,129 @@ describe('the same message in other shapes is still the same order', () => {
     const { order } = await orderOf(sample({ 'عنوان العميل': address }));
     expect(order.regionId).toBe(region);
     expect(state.customers[0]).toMatchObject({ address: written, city: written });
+  });
+});
+
+describe('the phone — every way of writing it is accepted; only a number that is no number waits for a person', () => {
+  const phoneOf = (value: string, extra: Record<string, string> = {}) => sample({ 'رقم الهاتف': value, ...extra });
+
+  it.each([
+    ['the owner’s spaced +963', '+963 933 620 102'],
+    ['00963', '00963933620102'],
+    ['963 with no marker', '963933620102'],
+    ['0963', '0963933620102'],
+    ['the local 09', '0933620102'],
+    ['the local 9 (nine digits)', '933620102'],
+    ['Arabic-Indic digits', '٠٩٣٣٦٢٠١٠٢'],
+    ['Persian digits', '۰۹۳۳۶۲۰۱۰۲'],
+    ['dashes inside', '0933-620-102'],
+    ['dots inside', '0933.620.102'],
+    ['the code in brackets', '(+963) 933620102'],
+    ['the trunk zero kept after the code', '+963 0933620102'],
+    ['a word before it', 'واتساب: 0933 620 102'],
+    ['a word after it', '0933620102 واتساب'],
+    ['spaced dashes in one number', '0933 - 620 - 102'],
+    ['the code with spaces and Arabic digits', '+٩٦٣ ٩٣٣ ٦٢٠ ١٠٢'],
+  ])('%s → one customer, 933620102, and an order', async (_what, value) => {
+    fresh();
+    const id = arrive(phoneOf(value));
+    expect(await processStoredMessage(id)).toMatchObject({ status: 'PROCESSED' });
+    expect(state.customers).toHaveLength(1);
+    expect(state.customers[0].phone).toBe('933620102');
+    expect(state.orders).toHaveLength(1);
+  });
+
+  it('a landline (11 + 7 digits) is a phone too', async () => {
+    await processStoredMessage(arrive(phoneOf('011 1234567')));
+    expect(state.customers[0].phone).toBe('111234567');
+    expect(state.orders).toHaveLength(1);
+  });
+
+  it('a foreign line keeps its own code, as a Syrian store has always taken it', async () => {
+    await processStoredMessage(arrive(phoneOf('+90 532 123 45 67')));
+    expect(state.customers[0].phone).toBe('905321234567');
+    expect(state.orders).toHaveLength(1);
+  });
+
+  it.each([
+    ['dash', '0933620102 - 0944123456'],
+    ['slash', '0933620102 / 0944123456'],
+    ['the Arabic comma', '0933620102، 0944123456'],
+    ['«و»', '0933620102 و 0944123456'],
+    ['a new line', ['0933620102', '0944123456'].join(String.fromCharCode(10))],
+    ['a plus that opens the second', '0933620102 +963944123456'],
+  ])('two numbers (%s) → the first is the phone, the second the customer’s other phone, and the notes say so', async (_what, value) => {
+    fresh();
+    await processStoredMessage(arrive(phoneOf(value)));
+    expect(state.orders).toHaveLength(1);
+    expect(state.customers[0]).toMatchObject({ phone: '933620102', altPhone: '944123456' });
+    expect(state.orders[0].internalNotes).toContain('أرقام أخرى: 0944123456');
+  });
+
+  it('a stub before the real number is not the phone: the first VALID number is', async () => {
+    await processStoredMessage(arrive(phoneOf('12 و 0933620102')));
+    expect(state.customers[0].phone).toBe('933620102');
+    expect(state.orders).toHaveLength(1);
+  });
+
+  it('the same number written twice is one number, not a second phone', async () => {
+    await processStoredMessage(arrive(phoneOf('0933620102 / +963 933 620 102')));
+    expect(state.customers[0].altPhone).toBeNull();
+    expect(state.orders[0].internalNotes).not.toContain('أرقام أخرى');
+  });
+
+  it.each([
+    ['12', '12'],
+    ['123', '123'],
+    ['five digits', '12345'],
+    ['letters around digits', 'ab12'],
+    ['a Syrian number one digit short', '09336201'],
+    ['a stub with the code', '+963 12'],
+  ])('«%s» is no phone → review INVALID_PHONE with the number as written, and NOTHING is written', async (_what, value) => {
+    const id = arrive(phoneOf(value));
+    expect(await processStoredMessage(id)).toEqual({ status: 'NEEDS_REVIEW', reason: `INVALID_PHONE:${value}` });
+    nothingWritten();
+    expect(messageRow(id)).toMatchObject({ processingStatus: 'NEEDS_REVIEW', reviewReason: `INVALID_PHONE:${value}` });
+    expect(reviewReasonText(messageRow(id).reviewReason)).toBe(`رقم الهاتف مش صالح: ${value}`);
+  });
+
+  it('a stub with a real number beside it is not refused — the real number is the phone', async () => {
+    expect((await processStoredMessage(arrive(phoneOf('12 - 0933620102')))).status).toBe('PROCESSED');
+  });
+
+  it('no digit at all is a missing field, as ever', async () => {
+    const id = arrive(phoneOf('واتساب فقط'));
+    expect(await processStoredMessage(id)).toEqual({ status: 'NEEDS_REVIEW', reason: 'MISSING_PHONE' });
+    nothingWritten();
+  });
+
+  it.each([
+    ['+963 933 620 102'],
+    ['00963933620102'],
+    ['٠٩٣٣٦٢٠١٠٢'],
+    ['(+963) 933620102'],
+    ['0963933620102'],
+    ['واتساب 0933-620-102'],
+  ])('a blocked number is blocked however it is written (%s) — refused before any write', async (value) => {
+    state.blocks = [{ companyId: 'c1', phone: '933620102' }];
+    fresh();
+    const id = arrive(phoneOf(value));
+    expect(await processStoredMessage(id)).toEqual({ status: 'NEEDS_REVIEW', reason: 'CUSTOMER_BLOCKED' });
+    nothingWritten();
+    expect(db.customer.create).not.toHaveBeenCalled();
+  });
+
+  it('and a blocked number is blocked when it is the SECOND one in the line', async () => {
+    state.blocks = [{ companyId: 'c1', phone: '933620102' }];
+    const id = arrive(phoneOf('0944123456 - 0933620102'));
+    expect(await processStoredMessage(id)).toEqual({ status: 'NEEDS_REVIEW', reason: 'CUSTOMER_BLOCKED' });
+    nothingWritten();
+  });
+
+  it('the same customer written two ways is one customer and one duplicate', async () => {
+    await processStoredMessage(arrive(phoneOf('0933620102')));
+    expect(await processStoredMessage(arrive(phoneOf('00963 933 620 102')))).toEqual({ status: 'NEEDS_REVIEW', reason: 'DUPLICATE_ORDER' });
+    expect(state.customers).toHaveLength(1);
   });
 });
 
@@ -537,8 +868,8 @@ describe('a message that claims the format and is wrong goes to review — namin
     ['a date that is no date', 'BAD_DATE', sample({ 'تاريخ الطلب': '2026-02-30 15:40:01' })],
     ['a date a month away', 'SOURCE_TIME_OFF', sample({ 'تاريخ الطلب': '2026-09-28 15:40:01' })],
     ['a name with a digit', 'INVALID_CUSTOMER_NAME', sample({ 'إسم العميل': 'محمد 7' })],
-    ['a phone with letters', 'INVALID_PHONE', sample({ 'رقم الهاتف': 'سوريا حماه' })],
-    ['a phone of the wrong length', 'INVALID_PHONE', sample({ 'رقم الهاتف': '09336201' })],
+    ['a phone with letters and no digit at all', 'MISSING_PHONE', sample({ 'رقم الهاتف': 'سوريا حماه' })],
+    ['a phone of nothing but zeros', 'MISSING_PHONE', sample({ 'رقم الهاتف': '0000' })],
     ['another country', 'COUNTRY_MISMATCH', sample({ 'عنوان العميل': 'الأردن عمان' })],
     ['another country at the end', 'COUNTRY_MISMATCH', sample({ 'عنوان العميل': 'عمان الأردن' })],
     ['the country and nothing else', 'MISSING_ADDRESS', sample({ 'عنوان العميل': 'سوريا' })],

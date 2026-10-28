@@ -1,5 +1,5 @@
 import { db } from '../db';
-import { normalizePhoneNumber } from '../phone';
+import { phoneKeyOf } from './phone-text';
 import { readLabeledOrder } from './labeled-order';
 import { typed } from '../text-search';
 
@@ -8,7 +8,7 @@ import { typed } from '../text-search';
  *
  * There is no order number any more (the owner: «تجاهل رقم الطلب»), so a message is the same order posted twice when
  * three things agree: «تاريخ الطلب» (the order's time at the source, to the second), the customer's phone (as the store
- * stores it, so «0932323642» and «+963 932 323 642» are one number) and the product it resolved to. The second copy must
+ * stores it, so «0932323642», «+963 932 323 642» and «00963932323642» are one number) and the product it resolved to. The second copy must
  * not become a second parcel and a second collection.
  *
  * Read from this store's PROCESSED messages of the last seven days whose text holds the date, then each of them is read
@@ -52,12 +52,12 @@ export async function findTwinOrder(input: {
     take: 50,
     select: { text: true, order: { select: { id: true, orderNumber: true, productId: true } } },
   });
-  const phone = normalizePhoneNumber(input.phone, input.countryCode);
+  const phone = phoneKeyOf(input.phone, input.countryCode);
   for (const candidate of candidates) {
     const earlier = readLabeledOrder(candidate.text ?? '');
     if (!earlier.claimed || !earlier.ok || !candidate.order) continue;
     if (earlier.fields.orderedAt !== input.orderedAt) continue;
-    if (normalizePhoneNumber(earlier.fields.phone, input.countryCode) !== phone) continue;
+    if (phoneKeyOf(earlier.fields.phone, input.countryCode) !== phone) continue;
     if (input.productId && candidate.order.productId !== input.productId) continue;
     return { id: candidate.order.id, orderNumber: candidate.order.orderNumber };
   }

@@ -161,6 +161,15 @@ describe('each message carries its columns, read from its own text', () => {
     expect(m.twin).toBeNull();
   });
 
+  it('asks the order for the offer it was tied to, and hands the name through', async () => {
+    db.telegramMessage.findMany.mockResolvedValue([
+      row({ processingStatus: 'PROCESSED', reviewReason: null, order: { id: 'o1', orderNumber: 'SY-1', offer: { name: 'قطعتين + قطعة هدية ( عدد 3 )' } } }),
+    ]);
+    const [m] = (await get('?tab=orders')).messages;
+    expect(listArgs().select.order).toEqual({ select: { id: true, orderNumber: true, offer: { select: { name: true } } } });
+    expect(m.order.offer.name).toBe('قطعتين + قطعة هدية ( عدد 3 )');
+  });
+
   it('a message that is not in the format has no columns', async () => {
     db.telegramMessage.findMany.mockResolvedValue([row({ text: 'السلام عليكم', processingStatus: 'IGNORED', reviewReason: 'NOT_IN_FORMAT' })]);
     const [m] = (await get('?tab=ignored')).messages;

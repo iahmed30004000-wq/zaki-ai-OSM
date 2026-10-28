@@ -1,12 +1,10 @@
 import { toLatinDigits } from '../latin-digits';
 import { normalizeArabic } from '../order-parser';
-import { isValidPhoneFor } from '../phone-rules';
 import { sameArabicName } from '../address';
 import {
   BIDI_MARKS,
   COUNTRY_WORDS,
   CURRENCY_WORDS,
-  PHONE_LINE,
   PLACE_GAP,
   PLACE_WORD,
   SOURCE_TIME_AFTER_MS,
@@ -14,6 +12,7 @@ import {
   isCustomerName,
   sourceTime,
 } from './parser';
+import { readPhoneText, type PhoneReading } from './phone-text';
 
 /**
  * THE ONLY MESSAGE THAT BECOMES AN ORDER — NINE LABELS, ONE PER LINE.
@@ -35,8 +34,13 @@ import {
  *
  * ── WHAT THE MONEY IS ──
  * «السعر» is the TOTAL of the order and «الكمية» is the number of PIECES of the product (the owner: «الكمية يعني قطعتين
- * فقط ولا تربطها بالعرض بل اربطها بقطع المنتج نفسو»). «إسم العرض» is text only — kept in the notes and drawn on the
- * screen, bound to no offer. Whatever the price and the quantity mean for the money is `createTelegramOrder`'s, unchanged.
+ * فقط ولا تربطها بالعرض بل اربطها بقطع المنتج نفسو»). «إسم العرض» names one of the product's offers — the door binds it
+ * (`offer-text.ts`); this reader only hands the text over. Whatever the price and the quantity mean for the money is the
+ * door's and `createTelegramOrder`'s.
+ *
+ * «رقم الهاتف» is read leniently (`phone-text.ts`): every way of writing the Syrian code, every script of digits, two
+ * numbers in a line. A message is never refused for the SHAPE of its phone; a number that still fails the store country's
+ * rule is `INVALID_PHONE` (the owner: a number like «12» waits for a person), and a value with no digit is `MISSING_PHONE`.
  */
 
 /** The eight fields an order is made from, in the order the door judges them. */
@@ -129,6 +133,8 @@ export type LabeledReading =
       priceText: string;
       /** «الكمية» — pieces of the product. */
       quantity: number;
+      /** «رقم الهاتف», cleaned: the number the customer is made from, and any others in the line. */
+      phone: PhoneReading;
     };
 
 const MAX_TEXT_LENGTH = 4000;
@@ -143,6 +149,9 @@ interface Scan {
   /** A line that belongs to no label, or to a label that takes one line only. */
   stray: boolean;
 }
+
+/** A line under «رقم الهاتف» that is another number: digits and what numbers are written with, and at least one digit. */
+const PHONE_CONTINUATION = /^(?=.*\d)[+\d\s().\-–—/،,]+$/;
 
 /** The text as lines, label by label. A value is everything after the first colon; only the address may run on. */
 function scan(text: string): Scan {
@@ -172,6 +181,9 @@ function scan(text: string): Scan {
     if (current === 'address') {
       // The address is the one value that may run onto the next line.
       out.values.address = `${out.values.address ?? ''} ${line}`.trim();
+    } else if (current === 'phone' && PHONE_CONTINUATION.test(line)) {
+      // A second number on the next line (28/10: «او سطر جديد»): only a line made of what a number is written with.
+      out.values.phone = `${out.values.phone ?? ''} / ${line}`.trim();
     } else {
       out.stray = true;
     }
@@ -256,9 +268,9 @@ export function readLabeledOrder(text: string, store?: LabeledStore): LabeledRea
 
   if (!isCustomerName(fields.customer)) return refused('INVALID_CUSTOMER_NAME');
 
-  const digits = fields.phone.replace(/\D/g, '').length;
-  const phoneOk = PHONE_LINE.test(fields.phone) && (store ? isValidPhoneFor(store.country.code, fields.phone) : digits >= 7 && digits <= 15);
-  if (!phoneOk) return refused('INVALID_PHONE');
+  const phone = readPhoneText(fields.phone, store?.country.code);
+  if (!phone) return refused('MISSING_PHONE');
+  if (!phone.valid) return refused('INVALID_PHONE');
 
   const where = store ? placeOf(fields.address, store.country) : { place: fields.address };
   if ('refusal' in where) return refused(where.refusal);
@@ -275,7 +287,7 @@ export function readLabeledOrder(text: string, store?: LabeledStore): LabeledRea
   const quantity = /^\d{1,5}$/.test(fields.quantity) ? Number(fields.quantity) : NaN;
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > MAX_QUANTITY) return refused('INVALID_QUANTITY');
 
-  return { claimed: true, ok: true, fields, place: where.place, priceText: price.priceText, quantity };
+  return { claimed: true, ok: true, fields, place: where.place, priceText: price.priceText, quantity, phone };
 }
 
 /** What the «طلبات تلجرام» columns show for one message: the fields as it wrote them, when it claims the format. */

@@ -25,6 +25,11 @@ export interface ReviewReason {
   field?: ReasonField;
   /** Whether running the same text again may give another answer. */
   retry: boolean;
+  /**
+   * How a stored `CODE:detail` reads. The door writes the detail only where the sentence is useless without it — the number
+   * as the seller wrote it, the price the offer really costs — and the code before the colon is what everything else keys on.
+   */
+  withDetail?: (detail: string) => string;
 }
 
 export const REVIEW_REASONS = {
@@ -50,13 +55,17 @@ export const REVIEW_REASONS = {
   BAD_DATE: { field: 'orderedAt', text: 'تاريخ الطلب لازم يكون مثل 2026-10-28 15:40:01', retry: false },
   SOURCE_TIME_OFF: { field: 'orderedAt', text: 'تاريخ الطلب بعيد عن وقت وصول الرسالة', retry: false },
   INVALID_CUSTOMER_NAME: { field: 'customer', text: 'إسم العميل مش صالح — حرفين عالأقل وبلا أرقام', retry: false },
-  INVALID_PHONE: { field: 'phone', text: 'رقم الهاتف مش صالح', retry: false },
+  INVALID_PHONE: { field: 'phone', text: 'رقم الهاتف مش صالح', retry: false, withDetail: (d) => `رقم الهاتف مش صالح: ${d}` },
   CUSTOMER_BLOCKED: { field: 'phone', text: 'الرقم بقائمة الحظر', retry: true },
   COUNTRY_MISMATCH: { field: 'address', text: 'البلد بالعنوان مش بلد المتجر', retry: false },
   PRODUCT_NOT_FOUND: { field: 'product', text: 'المنتج مش موجود', retry: true },
   AMBIGUOUS_PRODUCT: { field: 'product', text: 'الاسم بيطابق أكتر من منتج', retry: true },
   PRODUCT_GUESSED: { field: 'product', text: 'المنتج تخمين — ما منعمل طلب على تخمين', retry: true },
   INVALID_QUANTITY: { field: 'priceQuantity', text: 'الكمية لازم تكون رقم صحيح من 1 لـ1000', retry: false },
+  OFFER_NOT_FOUND: { field: 'offer', text: 'ما لقيت عرض بهالاسم عند المنتج', retry: true },
+  OFFER_AMBIGUOUS: { field: 'offer', text: 'أكتر من عرض بنفس الاسم', retry: true },
+  PRICE_MISMATCH: { field: 'priceQuantity', text: 'السعر المكتوب مش سعر العرض', retry: true, withDetail: (d) => `السعر المكتوب مش سعر العرض (${d})` },
+  QUANTITY_NOT_OFFER: { field: 'priceQuantity', text: 'الكمية ما بتطابق قطع العرض', retry: true },
   CURRENCY_MISMATCH: { field: 'priceQuantity', text: 'عملة السعر غير عملة المتجر — ما منحوّل', retry: true },
   DUPLICATE_ORDER: { text: 'نفس الزبون والمنتج والوقت صار طلب', retry: false },
   NO_STORE: { text: 'المجموعة مش مربوطة بمتجر', retry: true },
@@ -71,12 +80,21 @@ export type ReviewReasonCode = keyof typeof REVIEW_REASONS;
 /** A code no version of the door wrote — still said in Arabic, and a press is allowed: it costs nothing to ask again. */
 const UNKNOWN: ReviewReason = { text: 'سبب ما منعرفه', retry: true };
 
-export function reviewReason(code: string | null | undefined): ReviewReason | null {
-  if (!code) return null;
-  return (REVIEW_REASONS as Record<string, ReviewReason>)[code] ?? UNKNOWN;
+/** `PRICE_MISMATCH:25.00` → the code and its detail. A code without a colon has no detail. */
+function split(stored: string): { code: string; detail: string } {
+  const at = stored.indexOf(':');
+  return at < 0 ? { code: stored, detail: '' } : { code: stored.slice(0, at), detail: stored.slice(at + 1).trim() };
 }
 
-/** The sentence for a stored code, or '' when there is none. */
+export function reviewReason(code: string | null | undefined): ReviewReason | null {
+  if (!code) return null;
+  return (REVIEW_REASONS as Record<string, ReviewReason>)[split(code).code] ?? UNKNOWN;
+}
+
+/** The sentence for a stored code, or '' when there is none. A code that carries a detail says it. */
 export function reviewReasonText(code: string | null | undefined): string {
-  return reviewReason(code)?.text ?? '';
+  const reason = reviewReason(code);
+  if (!reason || !code) return '';
+  const { detail } = split(code);
+  return detail && reason.withDetail ? reason.withDetail(detail) : reason.text;
 }

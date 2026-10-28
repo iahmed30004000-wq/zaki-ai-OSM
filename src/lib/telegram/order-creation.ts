@@ -1,14 +1,22 @@
 /**
  * TELEGRAM ORDER CREATION SERVICE
  *
- * Mirrors the existing order-creation transaction (POST /api/orders) so
- * Telegram orders obey the exact same business rules: server-set price
- * (product.basePrice), server-set statuses, sequential order number with
- * P2002 retry, customer counters, activity timeline, status log, and the
+ * Mirrors the existing order-creation transaction (POST /api/orders and the
+ * storefront door) so Telegram orders obey the exact same business rules:
+ * server-set price, server-set statuses, sequential order number with P2002
+ * retry, customer counters, activity timeline, status log, and the
  * claimable-queue workflow entry point.
  *
+ * THE MONEY IS THE OFFER'S (28/10: «نص العرض مربوط بالعرض»). The door binds the
+ * message's «إسم العرض» to one active offer of the product and hands this
+ * function the line `resolvePublicLines` priced from that offer row: paid
+ * pieces, gift units, unit price, the offer's reduction. The total, the line
+ * totals and the discount share come from the one calculator over that line
+ * (`priceTelegramLine`), exactly as `createPublicOrder` does — the price the
+ * seller WROTE is checked against it by the door and written nowhere as money.
+ *
  * The Telegram caller can NEVER influence price, status, total, or
- * companyId — only the extracted quantity/notes, already validated.
+ * companyId.
  */
 import { toLatinDigits } from '../latin-digits';
 import { priceIncludesDeliveryFor } from '../delivery-fees';
@@ -18,6 +26,7 @@ import { logAudit } from '../audit';
 import { resolveRegionId } from '@/lib/regions';
 import { orderRefFields } from '../order-ref';
 import { computeCod, roundMinor } from '../money';
+import { basketDiscount, type ResolvedLine } from '../public-order';
 
 export interface CreateTelegramOrderInput {
   companyId: string;
@@ -25,18 +34,22 @@ export interface CreateTelegramOrderInput {
   storeId: string | null;
   customer: { id: string; firstOrderDate: Date | null; totalOrders: number };
   product: { id: string; name: string; image: string | null; basePrice: number };
-  quantity: number;
+  /**
+   * WHAT WAS ORDERED, priced by the server from the offer row the message named: paid pieces, gift units, the unit price
+   * before the offer's own reduction, and the reduction. Never built from the message's text.
+   */
+  line: ResolvedLine;
   address: string;
   governorate?: string;
   notes?: string;
-  /** السعر كما ورد في الرسالة — audit فقط، لا يُستخدم سعرًا نهائيًا */
+  /** السعر كما ورد في الرسالة — audit فقط، لا يُستخدم سعرًا نهائيًا: السعر من العرض */
   priceText?: string;
   /** اسم الصفحة التجارية من الرسالة = المصدر في Orders (غير مجموعة تيليجرام) */
   pageName?: string;
   /**
-   * The message said «توصيل مجاني» / «التوصيل مجاني» / «شامل التوصيل»: THIS order's price includes delivery, exactly as
-   * an offer's `deliveryIncluded` does — handed to the same `priceIncludesDeliveryFor`, which only ever turns it ON.
-   * Absent, the store's own policy decides, as it always did. Nothing here writes the store.
+   * Turns delivery-inclusive ON for this order, as an offer's `deliveryIncluded` does — the same `priceIncludesDeliveryFor`,
+   * which only ever turns it ON. The bound offer's own `deliveryIncluded` is read from `line.offer` regardless of this.
+   * Absent, the store's own policy decides. Nothing here writes the store.
    */
   deliveryIncluded?: boolean;
   /** «مرجع المصدر: … · وقت الطلب بالمصدر: … · العرض: …» — kept in the internal notes and nowhere else. */
@@ -58,7 +71,7 @@ export type CreateTelegramOrderResult =
   | { ok: true; orderId: string; orderNumber: string }
   | {
       ok: false;
-      reason: 'NO_SYSTEM_ACTOR' | 'CREATION_FAILED' | 'PRODUCT_NOT_FOUND' | 'MISSING_PRICE' | 'NO_STORE' | 'ALREADY_LINKED';
+      reason: 'NO_SYSTEM_ACTOR' | 'CREATION_FAILED' | 'PRODUCT_NOT_FOUND' | 'NO_STORE' | 'ALREADY_LINKED';
     };
 
 /** Thrown inside the transaction when the message already has its order — so this one is rolled back, not kept. */
@@ -116,11 +129,29 @@ async function resolveSystemActor(companyId: string) {
   });
 }
 
+/**
+ * WHAT THIS LINE COSTS — the one calculator, over the line the offer priced.
+ *
+ * `createPublicOrder` calls `computeCod` over `resolvePublicLines`' lines with `basketDiscount(lines)`; this is the same
+ * call for the one line of a Telegram order. The door asks it BEFORE any customer is written (the written price must equal
+ * `.cod`), and `createTelegramOrder` asks it again to write the order, so the two cannot differ. Gift units are real stock at
+ * zero price: they never enter the money, only the stock and the cost of goods.
+ */
+export function priceTelegramLine(line: ResolvedLine, minorUnit: number) {
+  return computeCod({
+    lines: [{ quantity: line.quantity, unitPrice: line.unitPrice, freeQuantity: line.freeQuantity }],
+    discount: basketDiscount([line]),
+    minorUnit,
+  });
+}
+
 export async function createTelegramOrder(input: CreateTelegramOrderInput): Promise<CreateTelegramOrderResult> {
   const actor = await resolveSystemActor(input.companyId);
   if (!actor) return { ok: false, reason: 'NO_SYSTEM_ACTOR' };
 
-  const { companyId, storeId, customer, product, quantity, address, notes, priceText, pageName, telegram } = input;
+  const { companyId, storeId, customer, product, line, address, notes, priceText, pageName, telegram } = input;
+  const quantity = line.quantity;
+  const freeQuantity = line.freeQuantity;
 
   if (!storeId) return { ok: false, reason: 'NO_STORE' };
   const store = await db.store.findFirst({
@@ -129,75 +160,31 @@ export async function createTelegramOrder(input: CreateTelegramOrderInput): Prom
   });
   if (!store) return { ok: false, reason: 'NO_STORE' };
 
-  /**
-   * PRICING (business rule): the Telegram message price is the TOTAL ORDER
-   * AMOUNT (for the whole quantity), NOT a unit price. The server validates
-   * it (numeric, finite, > 0, sane upper bound) — never trusts raw text.
-   *   - valid price   → totalAmount = telegram price (DB basePrice ignored)
-   *   -               → sellingPrice (unit) = totalAmount / quantity
-   *   - missing/invalid price → NEEDS_REVIEW (MISSING_PRICE), never silent
-   *     fallback to DB.
-   * totalAmount is NEVER multiplied by quantity anywhere else.
-   */
-  const parsedTotal = parseAdvertisedPrice(priceText, store.country.minorUnit);
-  if (parsedTotal === null) {
-    return { ok: false, reason: 'MISSING_PRICE' };
-  }
-  const totalAmount = parsedTotal;
-  const shipCost = 0;
-  /*
-   * Unit price derived server-side: total / quantity (quantity already
-   * validated ≥ 1 — no division by zero possible), and DELIBERATELY NOT
-   * ROUNDED.
-   *
-   * «العرض ع ٣ بـ١٠ بنحصّل ع ١٠» — the advertised total is what the customer
-   * pays, and the unit price is a derived figure that exists so the line can
-   * be priced. Rounding it first is what broke that: 10.000 JOD over three
-   * pieces became 3.333 a piece, and `computeCod` then multiplied back to
-   * 9.999. The shop lost a fils to arithmetic nobody asked for, and the
-   * first edit through the orders PATCH moved the stored total down to match.
-   *
-   * Unrounded, the division carries its own precision and the PRODUCT is
-   * what gets rounded: 3 × (10/3) is 10.000000000000002, which `roundMinor`
-   * returns as exactly 10. The hair is gone — not absorbed by anybody.
-   *
-   * This is also what `resolvePublicLines` already does for an offer, whose price
-   * is likewise the total for its own quantity. One rule at every door.
-   */
-  const price = totalAmount / quantity;
-
   const productRow = await db.product.findFirst({
     where: { id: product.id, companyId },
     include: { batches: { where: { companyId }, orderBy: { productionDate: 'desc' }, take: 1 } },
   });
   if (!productRow) return { ok: false, reason: 'PRODUCT_NOT_FOUND' };
 
-  // `order.totalAmount` stores the Telegram total as-is.
-  //
-  // This note used to say the orders PATCH «recomputes total on later edits
-  // via its own formula». It does not, and has not since the PATCH was moved
-  // onto `computeCod` — it calls the same function this does. The sentence
-  // outlived the thing it described, which is the worst kind of comment:
-  // it sends the next reader to fix what is already fixed, and it reads as
-  // permission for a second formula.
-  //
-  // ONE COD function (contract PART 5). Telegram orders carry no fee yet.
-  const money = computeCod({
-    lines: [{ quantity, unitPrice: price }],
-    deliveryFee: shipCost,
-    minorUnit: store.country.minorUnit,
-  });
+  // ONE COD function (contract PART 5), over the offer's line. The total is what it says — the message's «السعر» is a
+  // claim the door has already checked against this very figure, and it is only an audit note on the order.
+  const money = priceTelegramLine(line, store.country.minorUnit);
+  const totalAmount = money.cod;
 
+  // The gift is a real unit in the box: the goods cost what the paid pieces AND the gift cost (as `createPublicOrder`).
   const unitCost = productRow.batches[0]?.costPerUnit || 0;
-  const estimatedCostOfGoods = roundMinor(unitCost * quantity, store.country.minorUnit);
+  const estimatedCostOfGoods = roundMinor(unitCost * (quantity + freeQuantity), store.country.minorUnit);
   const now = new Date();
 
   try {
     // The delivery fee is keyed on the region, so bind it at intake.
     const resolvedRegionId = await resolveRegionId(db, store.countryId, input.governorate ?? address);
-    // The store's pricing policy — the same rule every other door follows; the message's «توصيل مجاني» turns it on
-    // for this order the way an offer's `deliveryIncluded` does, and can never turn it off.
-    const priceIncludesDelivery = await priceIncludesDeliveryFor(store.id, input.deliveryIncluded);
+    // The store's pricing policy — the same rule every other door follows; the offer's `deliveryIncluded` turns it on
+    // for this order, as at the storefront, and can never turn it off.
+    const priceIncludesDelivery = await priceIncludesDeliveryFor(
+      store.id,
+      line.offer?.deliveryIncluded === true || input.deliveryIncluded === true ? true : undefined
+    );
 
     const order = await db.$transaction(async (tx) => {
       let created: any = null;
@@ -214,8 +201,10 @@ export async function createTelegramOrder(input: CreateTelegramOrderInput): Prom
               customerId: customer.id,
               productId: productRow.id,
               quantity,
-              sellingPrice: price,
-              shippingCost: shipCost,
+              freeQuantity,
+              offerId: line.offer?.id ?? null,
+              sellingPrice: money.lineTotals[0] ?? money.subtotal,
+              shippingCost: 0,
               priceIncludesDelivery,
               totalAmount,
               currency: store.country.currencyCode,
@@ -264,8 +253,7 @@ export async function createTelegramOrder(input: CreateTelegramOrderInput): Prom
         if (linked.count !== 1) throw new MessageAlreadyLinked();
       }
 
-      // Order line: the Telegram price is the order TOTAL, so the unit price
-      // is derived once here and never multiplied again.
+      // Order line: the offer's, gift units included (real stock at zero price), the reduction as its discount share.
       await tx.orderItem.create({
         data: {
           companyId,
@@ -273,7 +261,9 @@ export async function createTelegramOrder(input: CreateTelegramOrderInput): Prom
           productId: productRow.id,
           productName: productRow.name,
           quantity,
-          unitPrice: money.subtotal / quantity,
+          freeQuantity,
+          unitPrice: line.unitPrice,
+          discountShare: money.discountShares[0] ?? 0,
           lineTotal: money.lineTotals[0] ?? money.subtotal,
           addedStage: 'INTAKE',
         },
