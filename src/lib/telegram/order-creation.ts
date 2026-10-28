@@ -33,6 +33,19 @@ export interface CreateTelegramOrderInput {
   priceText?: string;
   /** اسم الصفحة التجارية من الرسالة = المصدر في Orders (غير مجموعة تيليجرام) */
   pageName?: string;
+  /**
+   * The message said «توصيل مجاني» / «التوصيل مجاني» / «شامل التوصيل»: THIS order's price includes delivery, exactly as
+   * an offer's `deliveryIncluded` does — handed to the same `priceIncludesDeliveryFor`, which only ever turns it ON.
+   * Absent, the store's own policy decides, as it always did. Nothing here writes the store.
+   */
+  deliveryIncluded?: boolean;
+  /** «مرجع المصدر: … · وقت الطلب بالمصدر: … · العرض: …» — kept in the internal notes and nowhere else. */
+  sourceNote?: string;
+  /**
+   * The TelegramMessage row this order is made from. Linked INSIDE the order's transaction, and only while it has no
+   * order: two presses of «إعادة المعالجة» at the same moment make one order, and the second one rolls back.
+   */
+  linkMessageId?: string;
   telegram: {
     messageId: string;
     chatId: string;
@@ -43,7 +56,13 @@ export interface CreateTelegramOrderInput {
 
 export type CreateTelegramOrderResult =
   | { ok: true; orderId: string; orderNumber: string }
-  | { ok: false; reason: 'NO_SYSTEM_ACTOR' | 'CREATION_FAILED' | 'PRODUCT_NOT_FOUND' | 'MISSING_PRICE' | 'NO_STORE' };
+  | {
+      ok: false;
+      reason: 'NO_SYSTEM_ACTOR' | 'CREATION_FAILED' | 'PRODUCT_NOT_FOUND' | 'MISSING_PRICE' | 'NO_STORE' | 'ALREADY_LINKED';
+    };
+
+/** Thrown inside the transaction when the message already has its order — so this one is rolled back, not kept. */
+class MessageAlreadyLinked extends Error {}
 
 /** Sane upper bound for a Telegram-provided order total. */
 const MAX_UNIT_PRICE = 100_000;
@@ -176,8 +195,9 @@ export async function createTelegramOrder(input: CreateTelegramOrderInput): Prom
   try {
     // The delivery fee is keyed on the region, so bind it at intake.
     const resolvedRegionId = await resolveRegionId(db, store.countryId, input.governorate ?? address);
-    // The store's pricing policy — the same rule every other door follows.
-    const priceIncludesDelivery = await priceIncludesDeliveryFor(store.id);
+    // The store's pricing policy — the same rule every other door follows; the message's «توصيل مجاني» turns it on
+    // for this order the way an offer's `deliveryIncluded` does, and can never turn it off.
+    const priceIncludesDelivery = await priceIncludesDeliveryFor(store.id, input.deliveryIncluded);
 
     const order = await db.$transaction(async (tx) => {
       let created: any = null;
@@ -221,6 +241,7 @@ export async function createTelegramOrder(input: CreateTelegramOrderInput): Prom
                 `Telegram: chat ${telegram.chatId}${telegram.threadId ? ` topic ${telegram.threadId}` : ''} msg ${telegram.messageId}`,
                 pageName?.trim() ? `page: ${pageName.trim().slice(0, 60)}` : null,
                 priceText?.trim() ? `advertised total price: ${priceText.trim().slice(0, 30)}` : null,
+                input.sourceNote?.trim() ? input.sourceNote.trim().slice(0, 300) : null,
                 telegram.chatTitle ? `group: ${telegram.chatTitle.slice(0, 60)}` : null,
               ].filter(Boolean).join(' | '),
             },
@@ -232,6 +253,16 @@ export async function createTelegramOrder(input: CreateTelegramOrderInput): Prom
         }
       }
       if (!created) throw new Error('Failed to generate a unique order number');
+
+      // One message, one order. The row lock taken here makes a second, simultaneous press wait; when it reads the row
+      // again the order is already set, it touches nothing, and its whole transaction — its order included — rolls back.
+      if (input.linkMessageId) {
+        const linked = await tx.telegramMessage.updateMany({
+          where: { id: input.linkMessageId, orderId: null },
+          data: { orderId: created.id, processingStatus: 'PROCESSED', processedAt: now, reviewReason: null },
+        });
+        if (linked.count !== 1) throw new MessageAlreadyLinked();
+      }
 
       // Order line: the Telegram price is the order TOTAL, so the unit price
       // is derived once here and never multiplied again.
@@ -319,6 +350,7 @@ export async function createTelegramOrder(input: CreateTelegramOrderInput): Prom
 
     return { ok: true, orderId: order.id, orderNumber: (order as any).orderNumber };
   } catch (e) {
+    if (e instanceof MessageAlreadyLinked) return { ok: false, reason: 'ALREADY_LINKED' };
     console.error('[telegram] order creation failed:', (e as Error)?.name || 'unknown');
     return { ok: false, reason: 'CREATION_FAILED' };
   }
