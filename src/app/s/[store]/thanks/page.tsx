@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { getStorefront } from '@/lib/storefront';
 import { StorefrontShell } from '@/components/storefront/StorefrontShell';
+import { CartThankYouOffer } from '@/components/storefront/CartThankYouOffer';
 import { LandingTrackingPixels } from '@/components/tracking/LandingTrackingPixels';
 import { getTrackingPixelsForPage } from '@/lib/tracking/tracking-config';
 import { publicTitle, storeIcons } from '@/lib/public-metadata';
@@ -30,6 +31,13 @@ import { checkoutForPage } from '@/lib/store-theme';
  * component the rest of the public side uses, never a second script. The
  * sale itself was reported by the checkout, which had the server's amount;
  * this page has only a reference it may not look up.
+ *
+ * AND «العرض بعد الطلب» IS THE CUSTOMER'S OWN, FROM THEIR OWN TAB.
+ * `CartThankYouOffer` reads what the checkout kept in this tab's session
+ * storage for THIS reference — the offer, its window and the signed token —
+ * and draws the same card every other door draws. The page still asks
+ * nothing about the reference: a reference typed into the address bar finds
+ * no entry in the tab, and the page is exactly the page it was.
  */
 export const dynamic = 'force-dynamic';
 
@@ -106,6 +114,7 @@ export default async function ThanksPage({ params, searchParams }: Props) {
           <Link href={`/s/${store.slug}`}>العودة إلى المتجر</Link>
         </p>
       </article>
+      {reference && <CartThankYouOffer reference={reference} />}
     </StorefrontShell>
   );
 }

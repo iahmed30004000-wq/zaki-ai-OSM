@@ -11,6 +11,8 @@ import { useTracking } from '@/components/tracking/GlobalTrackingProvider';
 import type { CheckoutField, PageCheckout } from '@/lib/store-theme';
 // Plain data, no zod: the door's own «اكتب …» sentences, asked here before anything is sent, and the form's defaults.
 import { DEFAULT_SUBMIT, DEFAULT_THANKS, NEW_REQUIRED_FIELD, blankRequired, refusesUndrawn } from '@/lib/checkout-words';
+// «العرض بعد الطلب»: one card for every door — this form, and the basket's thank-you page.
+import { ThankYouOfferCard, usePostOrderOffer, type PostOrderOfferView } from './ThankYouOfferCard';
 
 /**
  * Trusted Native Order Form — rendered by Zaki AI itself on the public
@@ -58,25 +60,8 @@ export interface RecommendationView {
   pageUrl?: string | null;
 }
 
-/**
- * THE ONE OFFER SHOWN AFTER THE ORDER, exactly as the server sends it.
- *
- * It arrives in the order-creation RESPONSE rather than as a prop, and that
- * is the point: the offer and its price are read from the product's own
- * offers at the moment the order exists, by the same `toOfferView` that
- * priced the bundles on this page. Nothing here is computed — `price` is
- * what the customer will be charged and `listPrice` is the bundle before its
- * own reduction, so «15 بدل 25» is two numbers printed, never a subtraction
- * performed in a browser.
- */
-export interface PostOrderOfferView {
-  id: string;
-  name: string;
-  quantity: number;
-  freeQuantity: number;
-  price: number;
-  listPrice: number | null;
-}
+/** The one offer shown after the order, as the server sends it — its type lives with its card now. */
+export type { PostOrderOfferView };
 
 interface OrderFormProps {
   slug: string;
@@ -333,19 +318,6 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
   const [postOrder, setPostOrder] = useState<{ offer: PostOrderOfferView | null; windowMinutes: number }>(
     { offer: null, windowMinutes: 0 }
   );
-  /** idle → adding → added, or `gone` when the server says the door is shut. */
-  const [postOrderState, setPostOrderState] = useState<'idle' | 'adding' | 'added' | 'gone'>('idle');
-  /**
-   * «لا شكرًا» for THIS offer, kept apart from `offerRefused` below.
-   *
-   * Two different things are being refused — the seller's after-order bundle
-   * and the page's recommendation list — and one flag for both would mean
-   * saying no to one silently withdrew the other. A customer who declines
-   * the bundle has not declined anything else.
-   */
-  const [postOrderRefused, setPostOrderRefused] = useState(false);
-  /** The server's own sentence when it refuses. Never a code read in here. */
-  const [postOrderMsg, setPostOrderMsg] = useState<string | null>(null);
   const [selectedOffer, setSelectedOffer] = useState<string>(
     offers.find((o) => o.isDefault)?.id || offers[0]?.id || ''
   );
@@ -428,6 +400,20 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
     window.dispatchEvent(new Event(ORDER_PLACED));
   }, [state]);
   const [totals, setTotals] = useState<{ total: number } | null>(null);
+  /*
+   * «آه، زيدها لطلبي» / «لا شكراً» — the answer, its one request and its Purchase are the shared card's
+   * (`ThankYouOfferCard`), the same card the basket's thank-you page draws. What stays here is this form's own:
+   * whether the card is on the screen (the look, the countdown, «ورا بعض») and the header that prints the
+   * server's new total.
+   */
+  const postOrderAnswer = usePostOrderOffer({
+    orderNumber: result.orderNumber,
+    addonToken: result.addonToken,
+    offer: postOrder.offer,
+    currency,
+    onTotal: (total) => setTotals({ total }),
+  });
+  const { postOrderState, postOrderRefused } = postOrderAnswer;
 
   const offer = useMemo(() => offers.find((o) => o.id === selectedOffer) || offers[0], [offers, selectedOffer]);
   const originalPrice = useMemo(() => (offer ? Number((basePrice * offer.quantity).toFixed(2)) : basePrice), [basePrice, offer]);
@@ -546,9 +532,7 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
           windowMinutes:
             typeof json?.postOrderWindowMinutes === 'number' ? json.postOrderWindowMinutes : 0,
         });
-        setPostOrderState('idle');
-        setPostOrderRefused(false);
-        setPostOrderMsg(null);
+        postOrderAnswer.resetPostOrderOffer();
         setOffersFrom(Date.now());
           // Purchase — ONLY after the server confirms a real order, with the
           // SERVER-AUTHORITATIVE total/currency from the response.
@@ -577,73 +561,6 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
     } catch {
       setErrorMsg('تعذر الاتصال بالسيرفر، تحقق من الإنترنت وأعد المحاولة');
       setState('error');
-    }
-  }
-
-  /**
-   * «آه، زيدها لطلبي» — one press, one request, and no figure on the wire.
-   *
-   * The body is the signed add-on token and the offer's id. The server
-   * re-reads the offer through `postOrderOfferWhere`, prices it with the
-   * same function that priced this page, checks the four gates and adds ONE
-   * add-on to the SAME order. What comes back is the new total, which is the
-   * only number this screen is allowed to print as one.
-   *
-   * A refusal is not an error here — it is the rule answering. The server
-   * sends the Arabic sentence and a `reason`, and the one decision this
-   * screen makes with it is whether the offer is still worth showing:
-   * `ALREADY_ADDED`, `NOT_NEW`, `WINDOW_PASSED`, `OFFER_GONE` and
-   * `NOT_IN_ORDER` all mean «stop offering it», so the card closes and the
-   * sentence stays. Nothing about the order is undone, because nothing about
-   * the order was done.
-   */
-  async function addPostOrderOffer() {
-    const offer = postOrder.offer;
-    if (!offer || !result.addonToken || !result.orderNumber) return;
-    setPostOrderState('adding');
-    setPostOrderMsg(null);
-    try {
-      const res = await fetch(
-        `/api/public/orders/${encodeURIComponent(result.orderNumber)}/post-order-offer`,
-        {
-          method: 'POST',
-          credentials: 'omit',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: result.addonToken, offerId: offer.id }),
-        }
-      );
-      const json = await res.json().catch(() => null);
-      if (res.ok) {
-        setPostOrderState('added');
-        // The server's total, never a sum worked out in here.
-        if (typeof json?.newTotal === 'number') setTotals({ total: json.newTotal });
-        /*
-         * The added amount, not the new total. Purchase already fired with
-         * the opening figure and the ad platforms SUM the events they
-         * receive, so re-sending the whole total would count the first
-         * order twice — the same rule the recommendation add-on follows
-         * below, and for the same measured reason.
-         */
-        const added = json?.addOn;
-        if (added && typeof added.total === 'number') {
-          try {
-            trackEvent('Purchase', {
-              orderId: `${result.orderNumber}:${offer.id}`,
-              value: added.total,
-              currency: typeof json.currency === 'string' ? json.currency : currency,
-              contentName: typeof added.productName === 'string' ? added.productName : undefined,
-            });
-          } catch { /* tracking is non-fatal */ }
-        }
-      } else {
-        setPostOrderState('gone');
-        setPostOrderMsg(json?.error || 'تعذر إضافة العرض');
-      }
-    } catch {
-      // A connection that failed is not the rule saying no: the offer stays
-      // on the screen so the customer can try again.
-      setPostOrderState('idle');
-      setPostOrderMsg('تعذر الاتصال، حاول مرة أخرى');
     }
   }
 
@@ -1076,22 +993,8 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
               {waAfter && (waWhen !== 'end' || waFloating) && waButton}
 
               {/*
-                ═══════════════════════════════════════════════════════════
-                «وصلنا طلبك!» → «زيد علبة كمان؟ 15 بدل 25»
-
-                ONE offer, the one the seller flagged on this product, at
-                the price the server computed. Every number drawn below
-                came off the response: `price` is what the customer will be
-                charged and `listPrice` is the bundle before its own
-                reduction, so «بدل 25» is a figure printed and never a
-                subtraction done in a browser.
-
-                HONEST COPY, which the brief asks for by name. There is no
-                invented scarcity here: the only urgency stated is the real
-                window the server will enforce, in the minutes the
-                company's own setting holds, and it is stated only when the
-                server sent one. No «آخر قطعة», no fabricated countdown.
-                ═══════════════════════════════════════════════════════════
+                «وصلنا طلبك!» → «زيد علبة كمان؟ 15 بدل 25» — the card is `ThankYouOfferCard`, one for every door;
+                its note says why every figure on it is the server's.
               */}
               {/* «شريط: مبروك، حابين نهديك عرض — أو عدّاد». Only while there is something to offer. */}
               {look.banner !== 'none' && (showUpsell || showCrossSell) && (look.banner === 'congrats' || clock) && (
@@ -1107,69 +1010,13 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
                 <p className="lp-after-banner">انتهت مهلة الإضافة على هذا الطلب — حكي معنا وبنزيدها لك.</p>
               )}
               {showUpsell && postOrder.offer && (
-                <div className="lp-upsell mt-6 rounded-xl border border-[var(--store-accent,#b8256e)] bg-white p-4 text-center" data-look={look.upsell}>
-                  <p className="lp-upsell-title text-sm font-bold text-[#121926]">
-                    {postOrderState === 'added' ? 'تمت الإضافة إلى طلبك ✅' : `${postOrder.offer.name} — زيدها لطلبك؟`}
-                  </p>
-                  <p className="lp-upsell-price mt-2 text-lg font-bold text-[var(--store-accent,#b8256e)]" dir="ltr">
-                    {fmt(postOrder.offer.price)} {currency}
-                    {postOrder.offer.listPrice !== null && (
-                      <span className="ms-2 text-sm font-semibold text-[#9aa4b2] line-through">
-                        {fmt(postOrder.offer.listPrice)} {currency}
-                      </span>
-                    )}
-                  </p>
-                  <p className="lp-upsell-note mt-1 text-xs text-[#697586]">
-                    {postOrder.offer.quantity} قطعة
-                    {postOrder.offer.freeQuantity > 0 && ` + ${postOrder.offer.freeQuantity} مجاناً`}
-                    {' — تدفعها عند الاستلام مع طلبك، بدون توصيل إضافي.'}
-                  </p>
-
-                  {postOrderState === 'added' ? (
-                    <p className="mt-3 text-xs font-semibold text-[#00c853]">
-                      صار على نفس الطلب — ما في طلب ثاني ولا توصيل ثاني.
-                    </p>
-                  ) : postOrderState === 'gone' ? null : (
-                    <div className="lp-upsell-actions mt-4 flex flex-col gap-2">
-                      <button
-                        type="button"
-                        onClick={addPostOrderOffer}
-                        disabled={postOrderState === 'adding'}
-                        className="lp-upsell-yes inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--store-accent,#b8256e)] px-5 py-3 text-sm font-bold text-white transition hover:bg-[var(--store-accent-dark,#a01f5f)] disabled:opacity-60 active:scale-95"
-                      >
-                        {postOrderState === 'adding' ? <Loader2 className="h-4 w-4 animate-spin" /> : 'آه، زيدها لطلبي'}
-                      </button>
-                      {/*
-                        A WAY TO SAY NO, AND TO BE BELIEVED.
-
-                        It hides the offer and touches nothing else: the
-                        order was placed before this card appeared, so
-                        refusing has nothing to undo. The server agrees —
-                        there is no «decline» endpoint, because there is no
-                        state a refusal would have to write.
-                      */}
-                      <button
-                        type="button"
-                        onClick={() => setPostOrderRefused(true)}
-                        className="text-xs font-semibold text-[#697586] underline hover:text-[#364152]"
-                      >
-                        لا شكراً
-                      </button>
-                    </div>
-                  )}
-
-                  {postOrderMsg && (
-                    <p className="mt-3 text-xs text-rose-600">{postOrderMsg}</p>
-                  )}
-
-                  {postOrderState === 'idle' && postOrder.windowMinutes > 0 && look.banner !== 'countdown' && (
-                    // The real rule, in the server's own number. It is the
-                    // window `postOrderGate` will measure, not a decoration.
-                    <p className="mt-3 text-[11px] text-[#9aa4b2]">
-                      تقدر تزيدها خلال {postOrder.windowMinutes} دقيقة من وقت الطلب، وقبل ما نتواصل معك.
-                    </p>
-                  )}
-                </div>
+                <ThankYouOfferCard
+                  postOrder={{ offer: postOrder.offer, windowMinutes: postOrder.windowMinutes }}
+                  answer={postOrderAnswer}
+                  look={look}
+                  currency={currency}
+                  fmt={fmt}
+                />
               )}
 
               {/* Post-order upsells */}
