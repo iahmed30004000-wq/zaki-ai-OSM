@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { moneyText } from '@/lib/money';
 import { ThankYouOfferCard, usePostOrderOffer } from '@/components/landing/ThankYouOfferCard';
 import { forgetAfterOrder, readAfterOrder, type AfterOrderEntry } from './after-order-handoff';
 
@@ -19,16 +20,15 @@ import { forgetAfterOrder, readAfterOrder, type AfterOrderEntry } from './after-
  *
  * Below the shop's own page, not inside it: `.sf-page` styles every paragraph in it as reading text, and the
  * card's price and its refusal would lose their colour and size.
+ *
+ * EVERY FIGURE GOES THROUGH THE ONE DOOR MONEY IS PRINTED BY — `moneyText`, in the shop's own decimals, which the
+ * checkout kept beside the currency. It is how the checkout printed «المطلوب عند الاستلام» a moment earlier, so a
+ * dinar shop reads «14.000 JOD» there and «10.000 JOD» here, and «10.125» stays «10.125». The first version printed
+ * the new total by hand beside the code — «24 JOD» — and `money-goes-through-one-door.test.ts` said so.
  */
 
 /** No form block here, so the card as it always was. */
 const DEFAULT_LOOK = { upsell: 'card', banner: 'none' } as const;
-
-/**
- * A figure as the server sent it. The server has already rounded it in the order's own currency; this only never
- * drops a digit it came with — a dinar has three, and «10.125» must not print as «10.13».
- */
-const figure = (n: number) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 3 });
 
 export function CartThankYouOffer({ reference }: { reference: string }) {
   const [entry, setEntry] = useState<AfterOrderEntry | null>(null);
@@ -52,6 +52,8 @@ export function CartThankYouOffer({ reference }: { reference: string }) {
   }, [entry, answered]);
 
   if (!entry || postOrderRefused) return null;
+  // The card writes the code after each figure itself, so its figures come bare.
+  const fmt = (n: number) => moneyText(n, null, entry.minorUnit);
   return (
     // The landing form's own column, and the room the shop's page leaves under itself.
     <section aria-label="العرض بعد الطلب" className="mx-auto w-full max-w-md px-5" style={{ paddingBottom: 48 }}>
@@ -60,12 +62,12 @@ export function CartThankYouOffer({ reference }: { reference: string }) {
         answer={answer}
         look={DEFAULT_LOOK}
         currency={entry.currency}
-        fmt={figure}
+        fmt={fmt}
       />
       {newTotal !== null && (
         // The server's total after the add — the only number this page prints as one.
         <p role="status" className="text-center text-sm font-bold" style={{ marginTop: 12 }}>
-          تم تحديث الإجمالي بعد الإضافة: <bdi dir="ltr">{figure(newTotal)} {entry.currency}</bdi> — تدفعه عند الاستلام
+          تم تحديث الإجمالي بعد الإضافة: <bdi dir="ltr">{moneyText(newTotal, entry.currency, entry.minorUnit)}</bdi> — تدفعه عند الاستلام
         </p>
       )}
     </section>

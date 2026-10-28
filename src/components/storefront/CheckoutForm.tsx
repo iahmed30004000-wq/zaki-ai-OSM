@@ -37,7 +37,9 @@ import { useCart } from './useCart';
  * with the one offer after the order and the signed token that may add it,
  * exactly as it answers the landing form. That answer is kept for the
  * thank-you page in session storage (`after-order-handoff`) before leaving
- * for it — never in the link, which carries the reference and nothing else.
+ * for it — never in the link, which carries the reference and nothing else —
+ * and beside its currency the shop's decimals, the `minorUnit` this page
+ * prints «المطلوب عند الاستلام» with.
  *
  * The honeypot is `website`, checked server-side and never stored. It is
  * hidden from sight AND from screen readers, and it is not focusable: a
@@ -116,8 +118,9 @@ export function CheckoutForm({
             currency: typeof body.currency === 'string' ? body.currency : null,
           });
         } catch { /* tracking is non-fatal */ }
-        // The offer after the order and its token, for the thank-you page — in this tab, never in the link below.
-        keepAfterOrder(body);
+        // The offer after the order and its token, for the thank-you page — in this tab, never in the link below —
+        // with this shop's decimals, so that page prints its figures as this one printed the total.
+        keepAfterOrder(body, minorUnit);
         router.push(`/s/${slug}/thanks?o=${encodeURIComponent(String(body.orderNumber))}`);
         return;
       }

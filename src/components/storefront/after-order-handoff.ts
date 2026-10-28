@@ -25,10 +25,20 @@ import type { PostOrderOfferView } from '@/components/landing/ThankYouOfferCard'
  *
  * WHAT IS KEPT is what the card needs and nothing more: the reference, the
  * token, the server's offer (its id, name, pieces and two prices), the
- * window, the currency, and when the answer arrived by THIS tab's clock —
- * the window is measured on the same clock it was started on. No name, no
- * phone, no address: the customer typed those into a form and they stay in
- * the request that carried them.
+ * window, the currency and its decimals, and when the answer arrived by THIS
+ * tab's clock — the window is measured on the same clock it was started on.
+ * No name, no phone, no address: the customer typed those into a form and
+ * they stay in the request that carried them.
+ *
+ * THE CURRENCY TRAVELS WITH ITS DECIMALS, because «a code without its
+ * decimals is half an answer» (`money-decimals.test.ts`). The thank-you page
+ * prints every figure through `moneyText`, the one door money is printed
+ * by, and that door needs the shop's minor unit — the very one the checkout
+ * printed «المطلوب عند الاستلام» with a moment earlier, already in its hands.
+ * Without it the first version printed the new total by hand: «24 JOD» under
+ * a checkout that had just said «14.000 JOD». It is a number about the
+ * currency, not about anybody, and it saves the thank-you page a question to
+ * the database about a shop it has already been told.
  *
  * EVERY TOUCH IS IN A `try`. Private mode, storage switched off, a quota —
  * the order is placed either way, and the thank-you page is then exactly the
@@ -49,12 +59,16 @@ export interface AfterOrderEntry {
   offer: PostOrderOfferView;
   windowMinutes: number;
   currency: string;
+  /** The currency's decimals: the shop's own, the ones its checkout printed the total with. */
+  minorUnit: number;
   /** When the door answered, by this tab's clock. */
   at: number;
 }
 
 const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const isText = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
+/** A currency's decimals as a country may hold them — a whole number from 0 to 4 (`geo-schemas`). */
+const isMinorUnit = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 4;
 
 /** The offer as the card draws it, or null when the shape is not that. */
 function offerFrom(raw: unknown): PostOrderOfferView | null {
@@ -78,28 +92,33 @@ function offerFrom(raw: unknown): PostOrderOfferView | null {
  *
  * Null when there is nothing for the thank-you page to draw: no offer (the
  * seller set none on the head product — a real answer), no token (the card
- * could not add without it), no window, no currency. Keeping a token there is
- * no use for is keeping it for nothing.
+ * could not add without it), no window, no currency, no decimals to print it
+ * in. Keeping a token there is no use for is keeping it for nothing.
+ *
+ * `minorUnit` is the checkout's own, not the door's: the answer names the
+ * currency, the shop's page knows its decimals.
  */
-export function afterOrderFrom(answer: unknown, now: number): AfterOrderEntry | null {
+export function afterOrderFrom(answer: unknown, minorUnit: number, now: number): AfterOrderEntry | null {
   const a = (answer ?? null) as Record<string, unknown> | null;
   if (!a || typeof a !== 'object') return null;
   const offer = offerFrom(a.postOrderOffer);
   if (!offer || !isText(a.orderNumber) || !isText(a.addonToken) || !isText(a.currency)) return null;
   if (!isNumber(a.postOrderWindowMinutes) || a.postOrderWindowMinutes <= 0) return null;
+  if (!isMinorUnit(minorUnit)) return null;
   return {
     orderNumber: a.orderNumber,
     addonToken: a.addonToken,
     offer,
     windowMinutes: a.postOrderWindowMinutes,
     currency: a.currency,
+    minorUnit,
     at: now,
   };
 }
 
 /** Kept for the thank-you page, before the checkout leaves for it. */
-export function keepAfterOrder(answer: unknown, now: number = Date.now()): void {
-  const entry = afterOrderFrom(answer, now);
+export function keepAfterOrder(answer: unknown, minorUnit: number, now: number = Date.now()): void {
+  const entry = afterOrderFrom(answer, minorUnit, now);
   if (!entry) return;
   try {
     sessionStorage.setItem(afterOrderKey(entry.orderNumber), JSON.stringify(entry));
@@ -121,8 +140,9 @@ export function forgetAfterOrder(orderNumber: string): void {
  * THE ENTRY FOR THIS PAGE'S REFERENCE, AND ONLY FOR IT.
  *
  * Read under the reference's own key, and then the entry must name that same
- * order: anything else — nothing kept, a corrupt value, another order's
- * answer, storage that throws — reads as nothing, and the page draws no card.
+ * order: anything else — nothing kept, a corrupt value (decimals no currency
+ * has among them), another order's answer, storage that throws — reads as
+ * nothing, and the page draws no card.
  *
  * A window that has passed is forgotten and reads as nothing too: the server
  * would refuse the offer, and a card the server will refuse is a promise
@@ -147,6 +167,7 @@ export function readAfterOrder(reference: string, now: number = Date.now()): Aft
   const offer = offerFrom(raw.offer);
   if (!offer || raw.orderNumber !== reference || !isText(raw.addonToken) || !isText(raw.currency)) return null;
   if (!isNumber(raw.windowMinutes) || raw.windowMinutes <= 0 || !isNumber(raw.at)) return null;
+  if (!isMinorUnit(raw.minorUnit)) return null;
   if (now - raw.at > raw.windowMinutes * 60_000) {
     forgetAfterOrder(reference);
     return null;
@@ -157,6 +178,7 @@ export function readAfterOrder(reference: string, now: number = Date.now()): Aft
     offer,
     windowMinutes: raw.windowMinutes,
     currency: raw.currency,
+    minorUnit: raw.minorUnit,
     at: raw.at,
   };
 }

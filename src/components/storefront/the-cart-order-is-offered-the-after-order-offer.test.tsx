@@ -53,7 +53,7 @@ vi.mock('next/link', () => ({
 
 import { CheckoutForm } from './CheckoutForm';
 import { CartThankYouOffer } from './CartThankYouOffer';
-import { afterOrderKey } from './after-order-handoff';
+import { afterOrderFrom, afterOrderKey } from './after-order-handoff';
 import Thanks from '@/app/s/[store]/thanks/page';
 import { POST_ORDER_REFUSAL_AR } from '@/lib/post-order-offer-copy';
 import { repoFile, stripComments } from '@/lib/guard-source';
@@ -75,8 +75,11 @@ const DOOR_ANSWER = {
   recommendations: [],
 };
 
-/** Exactly what the thank-you page may be handed, and nothing else. */
-const ENTRY = { orderNumber: N, addonToken: TOKEN, offer: OFFER, windowMinutes: 15, currency: 'JOD', at: T0 };
+/**
+ * Exactly what the thank-you page may be handed, and nothing else. `minorUnit` is the checkout's own (3, a dinar's):
+ * the door names the currency, the shop's page knows its decimals, and the thank-you page prints with both.
+ */
+const ENTRY = { orderNumber: N, addonToken: TOKEN, offer: OFFER, windowMinutes: 15, currency: 'JOD', minorUnit: 3, at: T0 };
 const keep = (entry: unknown, key = afterOrderKey(N)) => sessionStorage.setItem(key, JSON.stringify(entry));
 
 beforeEach(() => {
@@ -94,9 +97,9 @@ afterEach(() => {
 
 describe('the checkout keeps the door’s answer for the thank-you page — in this tab, never in the link', () => {
   const answer = (ok: boolean, body: unknown) => shopFetch.mockResolvedValue({ ok, json: async () => body });
-  const order = async () => {
+  const order = async (minorUnit = 3) => {
     render(
-      <CheckoutForm slug="main" minorUnit={3} fields={['name', 'phone']} required={['name', 'phone']} regions={[]} submitText="أرسل الطلب" />
+      <CheckoutForm slug="main" minorUnit={minorUnit} fields={['name', 'phone']} required={['name', 'phone']} regions={[]} submitText="أرسل الطلب" />
     );
     fireEvent.change(document.getElementById('co-name')!, { target: { value: 'سلمى الأحمد' } });
     fireEvent.change(document.getElementById('co-phone')!, { target: { value: '0790000064' } });
@@ -121,6 +124,20 @@ describe('the checkout keeps the door’s answer for the thank-you page — in t
     expect(stored).not.toContain('0790000064');
     // The basket's own sale is reported once, as before — the kept answer adds no event.
     expect(trackEvent.mock.calls).toEqual([['Purchase', { orderId: N, value: 14, currency: 'JOD' }]]);
+  });
+
+  it('the decimals kept are the shop’s own: a two-decimal shop keeps 2, not a dinar’s 3', async () => {
+    answer(true, { ...DOOR_ANSWER, currency: 'USD' });
+    await order(2);
+    await waitFor(() => expect(push).toHaveBeenCalledWith(`/s/main/thanks?o=${N}`));
+    expect(JSON.parse(sessionStorage.getItem(afterOrderKey(N))!)).toStrictEqual({ ...ENTRY, currency: 'USD', minorUnit: 2 });
+  });
+
+  it('NEGATIVE: decimals no currency has are not kept — no entry, and the thank-you page is as it always was', () => {
+    expect(afterOrderFrom(DOOR_ANSWER, 3, T0), 'المدخل الصحيح ما انبنى').toStrictEqual(ENTRY);
+    for (const bad of [5, -1, 2.5, Number.NaN, '3']) {
+      expect(afterOrderFrom(DOOR_ANSWER, bad as number, T0), `انحفظ مدخل بمنازل ${String(bad)}`).toBeNull();
+    }
   });
 
   it('NEGATIVE: an order whose product has no offer after it keeps nothing — there is no card to draw', async () => {
@@ -172,7 +189,8 @@ describe('the thank-you page draws the same card, only for its own reference', (
     await page();
     expect(card()?.getAttribute('data-look')).toBe('card');
     expect(screen.getByText('قطعة كمان — زيدها لطلبك؟')).toBeTruthy();
-    expect(card()!.querySelector('.lp-upsell-price')!.textContent).toBe('10 JOD14 JOD');
+    // In the shop's decimals, as its checkout printed «14.000 JOD» a moment before.
+    expect(card()!.querySelector('.lp-upsell-price')!.textContent).toBe('10.000 JOD14.000 JOD');
     expect(screen.getByRole('button', { name: 'آه، زيدها لطلبي' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'لا شكراً' })).toBeTruthy();
     expect(screen.getByText(/تقدر تزيدها خلال 15 دقيقة من وقت الطلب/)).toBeTruthy();
@@ -205,6 +223,20 @@ describe('the thank-you page draws the same card, only for its own reference', (
     keep({ ...ENTRY, orderNumber: other }); // under THIS reference's key, naming another order
     await page(N);
     expect(card(), 'المفتاح طابق والطلب لأ — وانرسمت').toBeNull();
+  });
+
+  it('NEGATIVE: an entry without decimals a currency can have — nothing drawn', async () => {
+    for (const minorUnit of [undefined, 5, -1, 2.5, '3']) {
+      cleanup();
+      keep({ ...ENTRY, minorUnit });
+      await page();
+      expect(card(), `انرسمت البطاقة بمنازل ${String(minorUnit)}`).toBeNull();
+    }
+    // …and the same entry with the shop's decimals is drawn: the refusal above is the decimals', nothing else's.
+    cleanup();
+    keep(ENTRY);
+    await page();
+    expect(card()).not.toBeNull();
   });
 
   it('NEGATIVE: storage that throws — nothing drawn, nothing broken', async () => {
@@ -246,7 +278,7 @@ describe('the thank-you page draws the same card, only for its own reference', (
     await page();
     fireEvent.click(screen.getByRole('button', { name: 'آه، زيدها لطلبي' }));
     await screen.findByText('تمت الإضافة إلى طلبك ✅');
-    expect(screen.getByRole('status').textContent).toContain('24 JOD');
+    expect(screen.getByRole('status').textContent).toBe('تم تحديث الإجمالي بعد الإضافة: 24.000 JOD — تدفعه عند الاستلام');
     expect(screen.queryByRole('button', { name: 'آه، زيدها لطلبي' }), 'الزر ضل بعد الإضافة').toBeNull();
     expect(trackEvent.mock.calls).toEqual([
       ['Purchase', { orderId: `${N}:${OFFER.id}`, value: 11, currency: 'JOD', contentName: 'كريم' }],
@@ -296,10 +328,22 @@ describe('the thank-you page draws the same card, only for its own reference', (
     keep({ ...ENTRY, offer: { ...OFFER, price: 10.125, listPrice: 14.5 } });
     addAnswers(200, { success: true, orderNumber: N, newTotal: 24.125, currency: 'JOD', addOn: { id: 'a1', productName: 'كريم', quantity: 1, price: 10.125, total: 10.125 } });
     await page();
-    expect(card()!.querySelector('.lp-upsell-price')!.textContent).toBe('10.125 JOD14.5 JOD');
+    expect(card()!.querySelector('.lp-upsell-price')!.textContent).toBe('10.125 JOD14.500 JOD');
     fireEvent.click(screen.getByRole('button', { name: 'آه، زيدها لطلبي' }));
     await screen.findByText('تمت الإضافة إلى طلبك ✅');
     expect(screen.getByRole('status').textContent).toContain('24.125 JOD');
+  });
+
+  it('and a two-decimal shop prints two — the decimals are the shop’s, never this page’s habit', async () => {
+    // The new total (3105.25) is the server's alone: no sum of the figures on this card makes it.
+    keep({ ...ENTRY, currency: 'USD', minorUnit: 2, offer: { ...OFFER, price: 1250.5, listPrice: 1400 } });
+    addAnswers(200, { success: true, orderNumber: N, newTotal: 3105.25, currency: 'USD', addOn: { id: 'a1', productName: 'كريم', quantity: 1, price: 1250.5, total: 1250.5 } });
+    await page();
+    // Grouped and padded by the one door money is printed by, the code after the figure.
+    expect(card()!.querySelector('.lp-upsell-price')!.textContent).toBe('1,250.50 USD1,400.00 USD');
+    fireEvent.click(screen.getByRole('button', { name: 'آه، زيدها لطلبي' }));
+    await screen.findByText('تمت الإضافة إلى طلبك ✅');
+    expect(screen.getByRole('status').textContent).toBe('تم تحديث الإجمالي بعد الإضافة: 3,105.25 USD — تدفعه عند الاستلام');
   });
 });
 
@@ -329,7 +373,8 @@ describe('a basket order, end to end: checkout → thank-you page → «آه، �
     ));
     fireEvent.click(screen.getByRole('button', { name: 'آه، زيدها لطلبي' }));
     await screen.findByText('تمت الإضافة إلى طلبك ✅');
-    expect(screen.getByRole('status').textContent).toContain('24 JOD');
+    // The checkout's «14.000 JOD», then this page's «24.000 JOD» — one shop, one way of printing money.
+    expect(screen.getByRole('status').textContent).toContain('24.000 JOD');
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe(`/api/public/orders/${N}/post-order-offer`);
     // The basket's sale (14) and the addition (10) — two Purchases, never the whole 24 a second time.
     expect(trackEvent.mock.calls.map((c) => c[1])).toEqual([

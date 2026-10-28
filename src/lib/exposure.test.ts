@@ -172,7 +172,7 @@ describe('what the browser is allowed to remember', () => {
      * in `the-cart-order-is-offered-the-after-order-offer.test.tsx`.
      */
     'storefront/after-order-handoff.ts':
-      'the basket’s order answer for its own thank-you page — the reference, the add-on token, the server’s one offer after the order, its window, the currency and when it arrived. Session storage, one key per order, gone once the card is answered or the window has passed; no name, phone or address',
+      'the basket’s order answer for its own thank-you page — the reference, the add-on token, the server’s one offer after the order, its window, the currency and its decimals, and when it arrived. Session storage, one key per order, gone once the card is answered or the window has passed; no name, phone or address',
   };
 
   it('writes to storage only in the places that were thought about', () => {
