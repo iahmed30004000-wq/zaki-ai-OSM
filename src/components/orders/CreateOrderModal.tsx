@@ -109,13 +109,19 @@ export function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateOrderModa
    *
    * Only while the form is still untouched: a line the person has already
    * chosen is never overwritten by a list arriving late.
+   *
+   * AND IT WAITS FOR THE CURRENCY'S DECIMALS as well as the list. A line
+   * with no offer opens at the base price, which is rounded to the store's
+   * minor unit, and that unit arrives with the regions — so seeding before
+   * it would open the line empty.
    */
   useEffect(() => {
-    if (!isOpen || products.length === 0) return;
+    if (!isOpen || products.length === 0 || !currency) return;
+    const minorUnit = currency.minorUnit;
     setLines((current) =>
-      current.length === 1 && !current[0].productId ? [newLine(products[0])] : current
+      current.length === 1 && !current[0].productId ? [newLine(products[0], minorUnit)] : current
     );
-  }, [isOpen, products]);
+  }, [isOpen, products, currency]);
 
   const loadFormData = async () => {
     try {

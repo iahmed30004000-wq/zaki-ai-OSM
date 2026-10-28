@@ -509,6 +509,49 @@ describe('POST /api/orders — the quick-order form’s own body, at the real do
     );
   });
 
+  /**
+   * A SECOND PIECE IS CHARGED FOR.
+   *
+   * The box holds the line's TOTAL, and the quantity buttons never touched
+   * it: 14 for one piece, + pressed, and the order went out at 14 for two.
+   * The box now follows the quantity (`atBasePrice`, see
+   * `the-line-price-follows-the-quantity.test.tsx`). The door is not
+   * touched — it takes the total it is sent, as it always has, which is why
+   * the same click with the old body still stores 14.
+   */
+  it('a SECOND PIECE goes out as 28, and the door stores 28 at 14 a piece', async () => {
+    const body = await orderBodyFor(async (user) => {
+      await user.click(screen.getByRole('button', { name: 'زد الكمية' }));
+      await waitFor(() => expect(priceBox().value).toBe('28'));
+    });
+    expect(body.items[0]).toEqual({ productId: PRODUCT.id, offerId: null, quantity: 2, unitPrice: '28' });
+    // The same four keys as ever: the editor's own bookkeeping never leaves the screen.
+    expect(Object.keys(body.items[0]).sort()).toEqual(['offerId', 'productId', 'quantity', 'unitPrice']);
+    expect(body.items[0]).not.toHaveProperty('pricing');
+
+    const res = await atTheOrdersDoor(body);
+    expect(res.status).toBe(200);
+    expect(createdOrder().quantity).toBe(2);
+    expect(createdOrder().sellingPrice).toBe(28);
+    expect(createdLines()[0].unitPrice).toBe(14);
+    expect(createdOrder().totalAmount).toBe(
+      computeCod({ lines: [{ quantity: 2, unitPrice: 14 }], minorUnit: 2 }).cod
+    );
+  });
+
+  it('and THE SAME CLICK before this change charged two pieces as one', async () => {
+    const body = await orderBodyFor(async (user) => {
+      await user.click(screen.getByRole('button', { name: 'زد الكمية' }));
+    });
+    // `'14'` is what the box used to hold for two pieces. Same door, same
+    // quantity — the door stores what it is given, so the fix is the body.
+    const old = await atTheOrdersDoor({ ...body, items: [{ ...body.items[0], unitPrice: '14' }] });
+    expect(old.status).toBe(200);
+    expect(createdOrder().quantity).toBe(2);
+    expect(createdOrder().sellingPrice).toBe(14);
+    expect(createdLines()[0].unitPrice).toBe(7);
+  });
+
   it('and a cleared box can be RETYPED — it used to redraw as 0 and read «020»', async () => {
     const user = userEvent.setup();
     render(<CreateOrderModal isOpen onClose={() => {}} onSuccess={() => {}} />);
