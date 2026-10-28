@@ -354,13 +354,17 @@ export function LandingPageEditorScreen() {
       // prices from. This asked a per-page route that no longer exists, the
       // 404 was swallowed, and the preview never showed an offer while the
       // published page did.
+      //
+      // And never the offer after the order: the published page withholds it
+      // (`liveOfferWhere`), so a preview that let it be picked drew a page
+      // that does not exist — the cheap «زيد علبة» price as the first order's.
       if (page.productId) {
         try {
           const off = await crmApi(`/api/offers?productId=${encodeURIComponent(page.productId)}`);
           setPreviewData((pd) => pd ? {
             ...pd,
             offers: (off.offers || [])
-              .filter((o: any) => o.status === 'ACTIVE')
+              .filter((o: any) => o.status === 'ACTIVE' && !o.postOrderOffer)
               .map((o: any) => ({ id: o.id, name: o.name, quantity: o.quantity, freeQuantity: o.freeQuantity, price: o.sellingPrice, isDefault: o.isDefault })),
           } : pd);
         } catch {}
