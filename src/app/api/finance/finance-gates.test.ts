@@ -9,7 +9,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { db, requireContext, requirePermission, logAudit, recordMovement, markPayableForOrders, receiptGap, runMatching, blockingClosing, walletBalance } =
   vi.hoisted(() => ({
     db: {
-      courierStatement: { findFirst: vi.fn(), update: vi.fn() },
+      // `updateMany` is the conditional claim the approval and a new receipt now take first (approvedAt: null).
+      courierStatement: { findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
       statementReceipt: { create: vi.fn(), aggregate: vi.fn(), findFirst: vi.fn() },
       wallet: { findFirst: vi.fn() },
       // Approving a statement now also closes the deliveries it reports.
@@ -21,7 +22,7 @@ const { db, requireContext, requirePermission, logAudit, recordMovement, markPay
       inventoryMovement: { findFirst: vi.fn(), create: vi.fn() },
       productionBatch: { findMany: vi.fn(), update: vi.fn() },
       dailyClosing: { findFirst: vi.fn(), findUnique: vi.fn(), upsert: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
-      walletMovement: { findFirst: vi.fn() },
+      walletMovement: { findFirst: vi.fn(), findMany: vi.fn() },
       $transaction: vi.fn(async (fn: any) => fn(db)),
     },
     requireContext: vi.fn(),
@@ -81,6 +82,8 @@ beforeEach(() => {
   });
   requirePermission.mockResolvedValue({});
   db.courierStatement.update.mockResolvedValue({ id: ID, status: 'APPROVED' });
+  db.courierStatement.updateMany.mockResolvedValue({ count: 1 });
+  db.walletMovement.findMany.mockResolvedValue([]);
   db.order.updateMany.mockResolvedValue({ count: 0 });
   markPayableForOrders.mockResolvedValue(0);
   // The approval recomputes the book balance; by default nothing moved
@@ -488,7 +491,12 @@ describe('recording a receipt', () => {
     // still says nobody has paid.
     expect(db.$transaction).toHaveBeenCalledTimes(1);
     expect(db.statementReceipt.create).toHaveBeenCalledTimes(1);
-    expect(db.courierStatement.update).toHaveBeenCalledWith({ where: { id: ID }, data: { status: 'RECEIPTED' } });
+    // The status is written as a conditional claim now (only a statement still unapproved takes it), so the
+    // assertion names the condition that used to be absent.
+    expect(db.courierStatement.updateMany).toHaveBeenCalledWith({
+      where: { id: ID, companyId: 'c1', approvedAt: null, status: { not: 'APPROVED' } },
+      data: { status: 'RECEIPTED' },
+    });
   });
 
   it('uses the caller’s id as the row’s own, so the database enforces it', async () => {

@@ -212,10 +212,22 @@ describe('the reasons are the rule’s', () => {
     nothingMade();
   });
 
-  it('and a shipped parcel, an order already offered and a second chance stay refused under any rule', async () => {
-    stored.rule = { reasons: ['PRICE_TOO_HIGH', 'OTHER', 'CUSTOMER_DOES_NOT_WANT_PRODUCT', 'OUT_OF_SERVICE_AREA'], coolingDays: 1, maxDiscountShare: 0.5 };
+  /**
+   * REWRITTEN ON 28/10, DELIBERATELY. This read «a shipped parcel … stay[s] refused under any rule» and
+   * pressed on a parcel that had merely shipped. After the owner's «قبل الشحن وبعد», what stays refused under
+   * any rule is a parcel that left and is NOT back — on the road, or with the customer in whole or in part —
+   * each one pressed here, with the widest rule the owner can store.
+   */
+  it('and a parcel that left and is not back, an order already offered and a second chance stay refused under any rule', async () => {
+    stored.rule = { reasons: ['PRICE_TOO_HIGH', 'OTHER', 'CUSTOMER_DOES_NOT_WANT_PRODUCT', 'OUT_OF_SERVICE_AREA'], afterShipping: true, coolingDays: 1, maxDiscountShare: 0.5 };
     db.order.findFirst.mockResolvedValue(source({ shippedAt: new Date() }));
     expect(await refusal(await offer(1))).toMatchObject({ status: 409, code: 'ALREADY_SHIPPED' });
+    for (const shippingStatus of ['SHIPPED', 'FAILED_DELIVERY', 'RETURN_REQUESTED', 'PARTIALLY_DELIVERED', 'DELIVERED']) {
+      db.order.findFirst.mockResolvedValue(
+        source({ shippedAt: new Date(Date.now() - 30 * DAY), shippingStatus, returnReceipt: { inspectedAt: new Date(Date.now() - 20 * DAY) } })
+      );
+      expect(await refusal(await offer(1)), shippingStatus).toMatchObject({ status: 409, code: 'ALREADY_SHIPPED' });
+    }
     db.order.findFirst.mockResolvedValue(source({ replacedBy: { orderNumber: 'ORD-9' } }));
     expect(await refusal(await offer(1))).toMatchObject({ status: 409, code: 'ALREADY_OFFERED' });
     db.order.findFirst.mockResolvedValue(source({ replaces: { orderNumber: 'ORD-1' } }));
@@ -237,6 +249,143 @@ describe('the look-back is the rule’s — and now the offer has one', () => {
     db.order.findFirst.mockResolvedValue(source({ createdAt: new Date(Date.now() - 200 * DAY) }));
     stored.rule = { lookbackDays: 365 };
     expect((await offer(5)).status).toBe(200);
+  });
+});
+
+/**
+ * «هل بيعرض الملغي قبل الشحن وبعد ؟ … خليه يجري ع ال 2» — THE OFFER ON A PARCEL THAT CAME BACK (28/10).
+ *
+ * The same ORD-2026-0052 (3 × 12, subtotal 36), refused at the door instead of on the phone: CONFIRMED, no
+ * rejection reason, no loss in the status log — shipped, RETURNED, and counted in by the desk twenty days ago.
+ */
+describe('a parcel that came back', () => {
+  const RECEIVED = new Date(Date.now() - 20 * DAY);
+  const returned = (over: Record<string, unknown> = {}) =>
+    source({
+      confirmationStatus: 'CONFIRMED',
+      rejectionReason: null,
+      shippedAt: new Date(Date.now() - 45 * DAY),
+      shippingStatus: 'RETURNED',
+      returnReason: 'CUSTOMER_REFUSED',
+      deliveryFailureReason: null,
+      returnReceipt: { inspectedAt: RECEIVED },
+      ...over,
+    });
+  const written = () => db.order.create.mock.calls[0][0].data as Record<string, unknown>;
+
+  beforeEach(() => {
+    db.order.findFirst.mockResolvedValue(returned());
+    // A return has no loss in the log; its cooling is the receipt's.
+    db.orderStatusLog.findFirst.mockResolvedValue(null);
+  });
+
+  it('— raises the new order exactly as a cancellation does: the discount, the lines copied, NEW in the pool, the money through the one door', async () => {
+    const res = await offer(9);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ success: true, order: { id: 'new-order', orderNumber: 'ORD-2026-0057' } });
+    expect(written()).toMatchObject({
+      replacesOrderId: SOURCE_ID,
+      customerId: 'cust-1',
+      sellingPrice: 36,
+      discountAmount: 9,
+      totalAmount: 27,
+      confirmationStatus: 'NEW',
+      shippingStatus: 'NOT_READY',
+    });
+    expect(db.orderItem.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { orderId: SOURCE_ID } }));
+    const lines = db.orderItem.createMany.mock.calls[0][0].data as Record<string, unknown>[];
+    expect(lines).toEqual([expect.objectContaining({ orderId: 'new-order', productId: 'prod-1', quantity: 3, unitPrice: 12, discountShare: 9, lineTotal: 27 })]);
+    expect(db.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('and under the same ceiling: a quarter of 36 — 9 is allowed, 9.01 is refused and names it', async () => {
+    const r = await refusal(await offer(9.01));
+    expect(r).toMatchObject({ status: 400, code: 'DISCOUNT_TOO_LARGE', maxDiscount: 9 });
+    nothingMade();
+    stored.rule = { maxDiscountShare: 0.1 };
+    expect(await refusal(await offer(3.61))).toMatchObject({ status: 400, maxDiscount: 3.6 });
+  });
+
+  it('and its note names it a return, in words, where the rejection code went — never «(null)»', async () => {
+    await offer(5);
+    const note = String(written().internalNotes);
+    expect(note).toBe('محاولةُ استرجاع لـORD-2026-0052 (مرتجع بعد الشحن — العميل رفض) بخصم 5');
+    expect(note).not.toContain('null');
+    const said = db.orderNote.create.mock.calls[0][0].data.body as string;
+    expect(said).not.toContain('null');
+  });
+
+  it('and with no reason recorded for the return, «مرتجع بعد الشحن» alone — and a write-off’s prose is never copied', async () => {
+    db.order.findFirst.mockResolvedValue(returned({ returnReason: null }));
+    await offer(5);
+    expect(String(written().internalNotes)).toContain('(مرتجع بعد الشحن)');
+    db.order.create.mockClear();
+    db.order.findFirst.mockResolvedValue(returned({ returnReason: 'سحب من أرامكس وإصدار طلب بديل لـ سمسا' }));
+    await offer(5);
+    expect(String(written().internalNotes)).toContain('(مرتجع بعد الشحن)');
+    expect(String(written().internalNotes)).not.toContain('أرامكس');
+  });
+
+  it('and a lost order’s note is as it always was — the rejection code', async () => {
+    db.order.findFirst.mockResolvedValue(source());
+    db.orderStatusLog.findFirst.mockResolvedValue({ createdAt: new Date(Date.now() - 40 * DAY) });
+    await offer(5);
+    expect(String(written().internalNotes)).toBe('محاولةُ استرجاع لـORD-2026-0052 (PRICE_TOO_HIGH) بخصم 5');
+  });
+
+  it('— a write-off (RETURNED, never received) is refused, in words, and nothing is made', async () => {
+    db.order.findFirst.mockResolvedValue(returned({ returnReceipt: null, returnReason: 'أُغلق كخسارة — لم تُستلم البضاعة. ضاع' }));
+    const r = await refusal(await offer(1));
+    expect(r).toMatchObject({ status: 409, code: 'RETURN_NOT_RECEIVED' });
+    expect(r.error).toContain('لم يستلمه المستودع');
+    nothingMade();
+  });
+
+  it('— the owner’s switch off refuses it in his words; on again, it is made', async () => {
+    stored.rule = { afterShipping: false };
+    const r = await refusal(await offer(1));
+    expect(r).toMatchObject({ status: 409, code: 'AFTER_SHIPPING_OFF', error: 'المرتجع بعد الشحن غير مشمول في القاعدة' });
+    nothingMade();
+    stored.rule = { afterShipping: true };
+    expect((await offer(1)).status).toBe(200);
+  });
+
+  it('— cools from the receipt: thirteen days after it is refused, fourteen is made — whatever the log says', async () => {
+    db.order.findFirst.mockResolvedValue(returned({ returnReceipt: { inspectedAt: new Date(Date.now() - 13 * DAY) } }));
+    // An old loss in the log does not shorten it: the receipt is the date.
+    db.orderStatusLog.findFirst.mockResolvedValue({ createdAt: new Date(Date.now() - 90 * DAY) });
+    expect(await refusal(await offer(1))).toMatchObject({ status: 409, code: 'COOLING' });
+    nothingMade();
+    db.order.findFirst.mockResolvedValue(returned({ returnReceipt: { inspectedAt: new Date(Date.now() - 14 * DAY - 1000) } }));
+    expect((await offer(1)).status).toBe(200);
+  });
+
+  it('— a receipt with damaged or missing units is still offered: the new order ships new goods', async () => {
+    db.order.findFirst.mockResolvedValue(returned({ returnReceipt: { inspectedAt: RECEIVED, damagedQty: 2, missingQty: 1, receivedQty: 0 } }));
+    expect((await offer(5)).status).toBe(200);
+  });
+
+  it('— a duplicate is refused after it came back too', async () => {
+    db.order.findFirst.mockResolvedValue(returned({ rejectionReason: 'DUPLICATE_ORDER' }));
+    expect(await refusal(await offer(1))).toMatchObject({ status: 409, code: 'REASON_NOT_WINBACK' });
+    nothingMade();
+  });
+
+  it('— an order made before the look-back is too old, though it came back last week', async () => {
+    db.order.findFirst.mockResolvedValue(
+      returned({ createdAt: new Date(Date.now() - 200 * DAY), returnReceipt: { inspectedAt: new Date(Date.now() - 15 * DAY) } })
+    );
+    expect(await refusal(await offer(1))).toMatchObject({ status: 409, code: 'TOO_OLD' });
+    nothingMade();
+  });
+
+  it('and the offer asks the receipt of the order it names, beside the two links it always read', async () => {
+    await offer(1);
+    expect(db.order.findFirst.mock.calls[0][0].include).toEqual({
+      replacedBy: { select: { orderNumber: true } },
+      replaces: { select: { orderNumber: true } },
+      returnReceipt: { select: { inspectedAt: true } },
+    });
   });
 });
 

@@ -1,12 +1,22 @@
 import { NextResponse } from 'next/server';
+import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
+import { logAudit } from '@/lib/audit';
+import { receiptGap } from '@/lib/settlement';
+import { receiptEditRefusal } from '@/lib/settlement-gates';
+import { zodMessage } from '@/lib/zod-message';
 import { readStoredFile } from '@/lib/storage';
 import {
   ALLOWED_PROOF_MIMES,
+  MAX_PROOF_BYTES,
+  describeProof,
   proofDispositionHeader,
+  revisedProofKey,
+  writeProofFile,
   type ProofMime,
 } from '@/lib/settlement-proof';
 
@@ -115,6 +125,125 @@ export async function GET(
         'Cache-Control': 'private, no-store',
         'X-Content-Type-Options': 'nosniff',
       },
+    });
+  } catch (error) {
+    return apiErrorResponse(error);
+  }
+}
+
+/**
+ * PUT /api/finance/statements/:id/receipts/:receiptId/proof — change the paper until «اعتماد».
+ *
+ * «الاثبات اقدر اغيرو لغاية قبل ما اضغط زر اعتماد». A saved receipt and its proof used to be fixed — the only
+ * way out was to undo the whole statement. This replaces the proof (or adds one to a receipt that had none)
+ * while the statement is still unapproved, and refuses once it is: the same sentence as a new receipt.
+ *
+ * The body is the POST's `proof` object and it is judged by the same `describeProof`, so a bad file is refused
+ * in the same words. The file goes under a NEW key and the old one is left on disk — the audit row names it —
+ * and the five proof columns move together (`statement_receipts_proof_all_or_none`).
+ *
+ * NO WALLET MOVEMENT, EVER: a proof is paper, and the money is written at approval. The conditional write on
+ * the statement is the same `approvedAt: null` claim the approval and the receipt use, taken inside the
+ * transaction, so a change racing an approval is refused rather than half-applied.
+ */
+const replaceSchema = z.object({
+  name: z.string().trim().max(120).optional(),
+  fileName: z.string().trim().max(255),
+  content: z
+    .string()
+    .min(1)
+    .max(Math.ceil((MAX_PROOF_BYTES * 4) / 3) + 1024),
+});
+
+class StatementClosed extends Error {}
+
+export async function PUT(
+  req: Request,
+  { params }: { params: Promise<{ id: string; receiptId: string }> }
+) {
+  try {
+    const { id, receiptId } = await params;
+    const { user, companyId, storeId, country } = await requireContext();
+    await requirePermission('settlement.upload');
+
+    const receipt = await db.statementReceipt.findFirst({
+      where: { id: receiptId, companyId, statementId: id, statement: { companyId, storeId } },
+      select: {
+        id: true, proofKey: true, proofName: true, proofMime: true, proofHash: true,
+        statement: { select: { status: true, approvedAt: true } },
+      },
+    });
+    if (!receipt) return NextResponse.json({ error: 'الإيصال غير موجود' }, { status: 404 });
+    const closed = receiptEditRefusal(receipt.statement);
+    if (closed) return NextResponse.json(closed, { status: 409 });
+
+    const parsed = replaceSchema.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) {
+      return NextResponse.json({ error: zodMessage(parsed.error) }, { status: 400 });
+    }
+
+    // Judged before anything is written, exactly as the receipt route judges it.
+    let bytes: Buffer;
+    try {
+      bytes = Buffer.from(parsed.data.content, 'base64');
+    } catch {
+      return NextResponse.json({ error: 'تعذّر قراءة الملف', code: 'BAD_PROOF' }, { status: 400 });
+    }
+    let facts: ReturnType<typeof describeProof>;
+    try {
+      facts = describeProof(bytes, parsed.data.fileName, parsed.data.name);
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : 'تعذّر قبول الملف', code: 'BAD_PROOF' },
+        { status: 400 }
+      );
+    }
+    const newKey = revisedProofKey(companyId, id, receiptId, facts.mime, randomUUID());
+
+    try {
+      await db.$transaction(async (tx) => {
+        const open = await tx.courierStatement.updateMany({
+          where: { id, companyId, storeId, approvedAt: null, status: { not: 'APPROVED' } },
+          data: { updatedAt: new Date() },
+        });
+        if (open.count !== 1) throw new StatementClosed();
+
+        const written = await tx.statementReceipt.updateMany({
+          where: { id: receiptId, companyId, statementId: id },
+          data: {
+            proofKey: newKey,
+            proofName: facts.name,
+            proofMime: facts.mime,
+            proofSize: facts.sizeBytes,
+            proofHash: facts.hash,
+          },
+        });
+        if (written.count !== 1) throw new StatementClosed();
+        // The row first, the file second: a failed write rolls the row back, so no receipt points at a missing file.
+        await writeProofFile(newKey, bytes);
+      });
+    } catch (e) {
+      if (e instanceof StatementClosed) {
+        return NextResponse.json(receiptEditRefusal({ status: 'APPROVED' }), { status: 409 });
+      }
+      throw e;
+    }
+
+    await logAudit({
+      companyId, userId: user.id, action: 'STATEMENT_RECEIPT_PROOF_CHANGED',
+      entity: 'CourierStatement', entityId: id,
+      previousData: {
+        receiptId,
+        proof: receipt.proofKey
+          ? { key: receipt.proofKey, name: receipt.proofName, mime: receipt.proofMime, hash: receipt.proofHash }
+          : null,
+      },
+      newData: { receiptId, proof: { key: newKey, name: facts.name, mime: facts.mime, hash: facts.hash } },
+    });
+
+    return NextResponse.json({
+      receipt: { id: receiptId, proof: { name: facts.name, mime: facts.mime, size: facts.sizeBytes } },
+      gap: await receiptGap(db, id, country.minorUnit),
     });
   } catch (error) {
     return apiErrorResponse(error);

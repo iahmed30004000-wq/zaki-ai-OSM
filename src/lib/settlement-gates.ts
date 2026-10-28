@@ -130,3 +130,75 @@ export function undoImportRefusal(s: { status: string; approvedAt?: Date | strin
   }
   return null;
 }
+
+/**
+ * May a statement's receipts still be changed — added, their proof replaced, or one removed?
+ *
+ * Until it is APPROVED, and for the same reason as the undo: before approval a receipt is a record of what
+ * arrived and nothing has been written from it. After it the wallet holds that money, and a correction is a
+ * reversing entry. One sentence for all three doors, so the receipt, its proof and its removal refuse alike.
+ */
+export function receiptEditRefusal(s: { status: string; approvedAt?: Date | string | null }): Refusal | null {
+  if (isApproved(s)) {
+    return { code: 'ALREADY_APPROVED', error: 'الكشف معتمد — أي تصحيح يكون بقيد عكسي' };
+  }
+  return null;
+}
+
+/** An order of a hand collection, as far as a statement could name it. */
+export interface CollectOrderRef {
+  orderNumber: string;
+  merchantRef?: string | null;
+  trackingNumber?: string | null;
+  deliveryProviderId?: string | null;
+}
+
+/** A statement line that might name one of those orders, with the statement it sits on. */
+export interface NamingLine {
+  merchantRef: string | null;
+  barcode: string | null;
+  statement: { reference: string; status: string; approvedAt?: Date | string | null; deliveryProviderId: string };
+}
+
+/**
+ * Does any statement already speak for these orders? Then «استلمت منه» must not book their money again.
+ *
+ * A line names an order by our reference (that names one order whoever carries it) or by the courier's
+ * barcode WITHIN THAT COURIER (a barcode is only unique per company that issued it). On an unapproved
+ * statement the money will be written when it is approved; on an approved one it already was — a
+ * MISMATCHED line included, whose difference is settled by the statement and not by a second collection.
+ * A sweep row «MISSING_IN_STATEMENT» is not a line and never reaches here.
+ *
+ * Returns null when no statement names any of them; otherwise one sentence per order and the code of the
+ * graver case (an approved statement).
+ */
+export function statementNamingRefusal(
+  orders: CollectOrderRef[],
+  lines: NamingLine[]
+): { code: string; error: string; orders: string[] } | null {
+  const sentences: string[] = [];
+  const named: string[] = [];
+  let approved = false;
+  for (const o of orders) {
+    const hits = lines.filter(
+      (l) =>
+        (!!o.merchantRef && l.merchantRef === o.merchantRef) ||
+        (!!o.trackingNumber && l.barcode === o.trackingNumber && l.statement.deliveryProviderId === o.deliveryProviderId)
+    );
+    if (hits.length === 0) continue;
+    const done = hits.find((h) => isApproved(h.statement));
+    named.push(o.orderNumber);
+    if (done) {
+      approved = true;
+      sentences.push(`مصاري الطلب ${o.orderNumber} دخلت مع كشف ${done.statement.reference}`);
+    } else {
+      sentences.push(`الطلب ${o.orderNumber} بكشف ما انعتمد بعد — مصاريه بتنسجّل لما ينعتمد الكشف`);
+    }
+  }
+  if (sentences.length === 0) return null;
+  return {
+    code: approved ? 'IN_APPROVED_STATEMENT' : 'ON_UNAPPROVED_STATEMENT',
+    error: sentences.join(' · '),
+    orders: named,
+  };
+}

@@ -2,11 +2,14 @@ import type { Prisma } from '@prisma/client';
 import type { db as Db } from './db';
 import {
   PERIODS,
+  SHIPPING_KINDS,
   VIEWS,
   WINBACK_ORDER_BY,
   periodWhere,
+  shippingWhere,
   viewWhere,
   type Period,
+  type ShippingKind,
   type View,
 } from './winback-filters';
 import type { WinbackRule } from './winback';
@@ -60,6 +63,8 @@ export interface WinbackFacts {
   products: { name: string; count: number }[];
   /** Inside the current view: how many were cancelled within each period. */
   periods: Record<Period, number>;
+  /** Inside the current view: how many never left, and how many did — the two add up to the view. */
+  shipping: Record<ShippingKind, number>;
 }
 
 /** How many products the dropdown names — a shop with two hundred is not helped by a list of two hundred. */
@@ -69,9 +74,10 @@ export const PRODUCT_OPTIONS = 30;
  * The numbers beside the options.
  *
  * The VIEWS are counted over everything the rule reads, so «جاهز (23)» and
- * «مستثنى (41)» are both on the screen whichever is open. The reasons, products
- * and periods are counted inside the view that is open: under «جاهز» the reason
- * list holds only the reasons the rule calls for, and «السعر مرتفع (9)» is nine
+ * «مستثنى (41)» are both on the screen whichever is open. The reasons, products,
+ * periods and the two sides of «الشحن» are counted inside the view that is open:
+ * under «جاهز» the reason list holds only the reasons the rule calls for, and
+ * «السعر مرتفع (9)» is nine
  * rows of what is on screen — not nine of a hundred that are somewhere else.
  *
  * Not narrowed by the other dropdowns: «last 7 days (3)» is how many of THIS
@@ -85,16 +91,15 @@ export async function winbackFacts(
   const inView = (view: View): Where => ({ ...input.base, AND: [viewWhere(view, input.rule, input.now)] });
   const current = inView(input.view);
 
-  const [views, byReason, byProduct, periods] = await Promise.all([
+  // The view AND one more clause, both: spreading `current` and giving `AND` a new list would REPLACE the view's clause.
+  const inViewAnd = (clause: Where): Where => ({ ...input.base, AND: [viewWhere(input.view, input.rule, input.now), clause] });
+
+  const [views, byReason, byProduct, periods, shipping] = await Promise.all([
     Promise.all(VIEWS.map((v) => db.order.count({ where: inView(v) }))),
     db.order.groupBy({ by: ['rejectionReason'], where: current, _count: { _all: true } }),
     db.order.groupBy({ by: ['productNameSnapshot'], where: current, _count: { _all: true } }),
-    // The view AND the period, both: spreading `current` and giving `AND` a new list would REPLACE the view's clause.
-    Promise.all(
-      PERIODS.map((p) =>
-        db.order.count({ where: { ...input.base, AND: [viewWhere(input.view, input.rule, input.now), periodWhere(p, input.now)] } })
-      )
-    ),
+    Promise.all(PERIODS.map((p) => db.order.count({ where: inViewAnd(periodWhere(p, input.now, input.rule)) }))),
+    Promise.all(SHIPPING_KINDS.map((k) => db.order.count({ where: inViewAnd(shippingWhere(k)) }))),
   ]);
 
   return {
@@ -109,5 +114,6 @@ export async function winbackFacts(
       .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'ar'))
       .slice(0, PRODUCT_OPTIONS),
     periods: Object.fromEntries(PERIODS.map((p, i) => [p, periods[i]])) as Record<Period, number>,
+    shipping: Object.fromEntries(SHIPPING_KINDS.map((k, i) => [k, shipping[i]])) as Record<ShippingKind, number>,
   };
 }

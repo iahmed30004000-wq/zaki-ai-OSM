@@ -81,6 +81,28 @@ describe('a blocked phone is blocked at every door that takes a new order', () =
       expect(checked, `${door.checkedIn}: الفحص بعد الإنشاء`).toBeLessThan(created);
     }
   });
+
+  /*
+   * EVERY CREATE, NOT THE FIRST ONE.
+   *
+   * The check above compares the FIRST check with the FIRST create, and the Telegram door now has two: the labeled
+   * path and the seven-line one. A second create with no check of its own in front of it would pass that comparison on
+   * the strength of the first path's check. So each `await createTelegramOrder(` must have an `isBlocked(` between it
+   * and the create before it.
+   */
+  it('and in the Telegram door, EVERY create has a check of its own in front of it', () => {
+    const src = stripComments(repoFile('src/lib/telegram/inbound.ts'));
+    const creates = [...src.matchAll(/await createTelegramOrder\(/g)].map((m) => m.index!);
+    const checks = [...src.matchAll(/isBlocked\s*\(\s*\w/g)].map((m) => m.index!);
+    expect(creates.length, 'الباب لم يعد يُنشئ طلباً؟').toBeGreaterThanOrEqual(2);
+    creates.forEach((at, i) => {
+      const since = i === 0 ? 0 : creates[i - 1];
+      expect(
+        checks.some((c) => c > since && c < at),
+        `الإنشاء رقم ${i + 1} في inbound.ts بلا فحص قائمة الحظر قبله`
+      ).toBe(true);
+    });
+  });
 });
 
 describe('what a blocked visitor is told', () => {

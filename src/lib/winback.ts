@@ -1,4 +1,5 @@
 import { REJECTION_REASONS, REJECTION_REASON_AR } from './confirmation-workflow';
+import { DELIVERY_FAILURE_REASON_LABELS, RETURN_REASON_LABELS } from './shipping-workflow';
 
 /**
  * A SECOND CALL, WEEKS LATER, WITH SOMETHING NEW TO SAY.
@@ -25,10 +26,28 @@ import { REJECTION_REASONS, REJECTION_REASON_AR } from './confirmation-workflow'
  *   «أخرى» we do not know. A blanket re-approach on the one code that means
  *   «none of these» is a guess, and it would be the largest bucket.
  *
- * AND NEVER AFTER IT SHIPPED. A parcel that went out and came back is a
- * return: it has a courier fee against it, goods that travelled, and a
- * customer who saw the thing and sent it away. That is a different
- * conversation, and it is not this one.
+ * AND AFTER IT SHIPPED TOO — SINCE 28/10, BY THE OWNER'S RULING.
+ *
+ * This paragraph used to argue the opposite: «a parcel that went out and
+ * came back is a return: it has a courier fee against it, goods that
+ * travelled, and a customer who saw the thing and sent it away. That is a
+ * different conversation, and it is not this one.» The owner read the rule
+ * on «ملغاة سابقاً» and asked «هل بيعرض الملغي قبل الشحن وبعد ؟ اذا اه تمام
+ * اذا لأ خليه يجري ع ال 2». It did not; now it runs on both, under one rule,
+ * with one switch he may turn off («يشمل المرتجع بعد الشحن» — on, because
+ * he asked for both).
+ *
+ * What survives of the old argument is the word BACK. A parcel that left is
+ * never cancelled in this system — it comes back, and it is back when the
+ * counting desk receives it (`ReturnReceipt`). So the second kind is exactly
+ * that: shipped, RETURNED, received. Not one still on the road
+ * (FAILED_DELIVERY, RETURN_REQUESTED) — it may yet be delivered, and a
+ * second order then is a double order; not a partial delivery — he took
+ * part of it; not a return nobody received, nor one written off as a loss —
+ * nobody knows whether the goods are in his hands, which is the reason a
+ * duplicate is never rung either. Its cooling counts from the receipt. The
+ * confirmation reasons do not gate it (the courier records none), but the
+ * four nobody may ring still refuse it.
  *
  * Its listing and its offer are both gated on `confirmation.supervise`,
  * because the discount is money and an agent does not set it alone.
@@ -107,9 +126,13 @@ export const WINBACK_LOOKBACK_DAYS = 120;
  * «could I change fourteen days?» was «ask somebody to change the code».
  *
  * What he may turn: which reasons are worth a second call (the four, and three
- * more at his own risk), how long to wait, how far back to look, how much of the
- * price may be given away. What he may NOT: a shipped parcel is a return and
- * never a lost call; an order that was already offered is never offered again
+ * more at his own risk), whether a parcel that shipped and came back is read at
+ * all («يشمل المرتجع بعد الشحن», since 28/10), how long to wait, how far back to
+ * look, how much of the price may be given away. What he may NOT: a parcel that
+ * left and is not back — on the road, delivered in whole or in part, returned
+ * and never received — is no lost call under any setting (this line read «a
+ * shipped parcel is a return and never a lost call» until he ruled for the ones
+ * that came back); an order that was already offered is never offered again
  * («من قال لا مرّتين قال لا»); a second chance is never itself a first one; and
  * a duplicate, a wrong number, a fake order or an entry error has nobody to
  * ring. Those are not settings — they are what makes the screen safe to leave
@@ -121,9 +144,14 @@ export const WINBACK_LOOKBACK_DAYS = 120;
  * both.
  */
 export interface WinbackRule {
-  /** The rejection reasons a second call is made for — always some of `SELECTABLE_WINBACK_REASONS`. */
+  /** The rejection reasons a second call is made for — always some of `SELECTABLE_WINBACK_REASONS`. They gate an order lost BEFORE it shipped. */
   reasons: readonly string[];
-  /** Days between the cancellation and the call. */
+  /**
+   * Whether a parcel that shipped and came back (RETURNED, and received by the desk) is a lost sale too.
+   * On unless the owner turns it off: he asked for both («قبل الشحن وبعد», 28/10).
+   */
+  afterShipping: boolean;
+  /** Days between the cancellation — or the return's receipt — and the call. */
   coolingDays: number;
   /** Orders created longer ago than this are not read at all. */
   lookbackDays: number;
@@ -133,6 +161,7 @@ export interface WinbackRule {
 
 export const DEFAULT_WINBACK_RULE: WinbackRule = {
   reasons: WINBACK_REASONS,
+  afterShipping: true,
   coolingDays: WINBACK_COOLING_DAYS,
   lookbackDays: WINBACK_LOOKBACK_DAYS,
   maxDiscountShare: WINBACK_MAX_DISCOUNT_SHARE,
@@ -154,7 +183,9 @@ const clampInt = (n: unknown, lo: number, hi: number, fallback: number): number 
  * would take the screen down: a reason that is not one of the seven is dropped,
  * an empty list falls back to the four, a number out of its bounds is clamped,
  * and a look-back no longer than the cooling (which would admit no order at
- * all) is lifted to a week past it.
+ * all) is lifted to a week past it. The switch is read only when it is a real
+ * yes or no; a rule stored before it existed has none, and reads as on — what
+ * the owner asked for.
  */
 export function parseWinbackRule(raw: unknown): WinbackRule {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
@@ -169,6 +200,7 @@ export function parseWinbackRule(raw: unknown): WinbackRule {
       : DEFAULT_WINBACK_RULE.maxDiscountShare;
   return {
     reasons: chosen.length > 0 ? chosen : [...DEFAULT_WINBACK_RULE.reasons],
+    afterShipping: typeof o.afterShipping === 'boolean' ? o.afterShipping : DEFAULT_WINBACK_RULE.afterShipping,
     coolingDays: cooling,
     lookbackDays: lookback > cooling ? lookback : Math.min(WINBACK_BOUNDS.lookbackDays.max, cooling + 7),
     maxDiscountShare: share,
@@ -187,12 +219,16 @@ export type WinbackRuleInput =
  * had set what he typed. Every refusal names the field and the limit, in Arabic.
  * The discount arrives as a PERCENT, because that is what a person types, and
  * leaves as the share the arithmetic reads.
+ *
+ * The switch is a yes or a no and nothing else: «"true"» or a 1 is refused by
+ * name. Left out, it is on — a form from before the switch existed saves what
+ * the owner asked for rather than turning off what he never saw.
  */
 export function validateWinbackRule(input: unknown): WinbackRuleInput {
   const refuse = (code: string, errorAr: string): WinbackRuleInput => ({ ok: false, code, errorAr });
   if (!input || typeof input !== 'object' || Array.isArray(input)) return refuse('BAD_BODY', 'الطلب غير صالح');
   const o = input as Record<string, unknown>;
-  const known = new Set(['reasons', 'coolingDays', 'lookbackDays', 'maxDiscountPercent']);
+  const known = new Set(['reasons', 'afterShipping', 'coolingDays', 'lookbackDays', 'maxDiscountPercent']);
   const stray = Object.keys(o).find((k) => !known.has(k));
   if (stray) return refuse('UNKNOWN_FIELD', `حقلٌ غير معروف: ${stray}`);
 
@@ -203,8 +239,11 @@ export function validateWinbackRule(input: unknown): WinbackRuleInput {
     const label = typeof bad === 'string' ? (REJECTION_REASON_AR[bad] ?? bad) : String(bad);
     return refuse('REASONS', `«${label}» لا يمكن الاتصال لأجله بأيّ إعداد`);
   }
+  if (o.afterShipping !== undefined && typeof o.afterShipping !== 'boolean') {
+    return refuse('AFTER_SHIPPING', 'يشمل المرتجع بعد الشحن: نعم أو لا فقط');
+  }
 
-  const whole = (v: unknown, name: string, b: { min: number; max: number }, code: string): number | WinbackRuleInput => {
+  const whole =(v: unknown, name: string, b: { min: number; max: number }, code: string): number | WinbackRuleInput => {
     if (typeof v !== 'number' || !Number.isInteger(v) || v < b.min || v > b.max) return refuse(code, `${name}: رقمٌ صحيحٌ من ${b.min} إلى ${b.max}`);
     return v;
   };
@@ -223,6 +262,7 @@ export function validateWinbackRule(input: unknown): WinbackRuleInput {
     ok: true,
     rule: {
       reasons: SELECTABLE_WINBACK_REASONS.filter((r) => (o.reasons as string[]).includes(r)),
+      afterShipping: o.afterShipping === undefined ? DEFAULT_WINBACK_RULE.afterShipping : (o.afterShipping as boolean),
       coolingDays: cooling,
       lookbackDays: lookback,
       maxDiscountShare: Math.round(pct * 100) / 10_000,
@@ -230,11 +270,38 @@ export function validateWinbackRule(input: unknown): WinbackRuleInput {
   };
 }
 
-/** The rule in one line — what is printed on the screen, so it never looks arbitrary. */
+/**
+ * The rule in one line — what is printed on the screen, so it never looks arbitrary.
+ *
+ * Both kinds while the switch is on, and the reasons said to be the before-shipping
+ * kind's, because that is the only kind they gate. Off, the sentence is the one the
+ * screen printed before 28/10, word for word — the switch puts back what it takes.
+ */
 export function ruleSentence(rule: WinbackRule): string {
   const reasons = rule.reasons.map((r) => REJECTION_REASON_AR[r] ?? r).join('، ');
   const pct = Math.round(rule.maxDiscountShare * 10_000) / 100;
-  return `ملغى · لم يُشحن · لم يُعرض عليه من قبل · السبب: ${reasons} · بعد ${rule.coolingDays} يوماً من الإلغاء · من طلباتِ آخر ${rule.lookbackDays} يوماً · خصمٌ حتى ${pct}٪`;
+  if (rule.afterShipping !== true) {
+    return `ملغى · لم يُشحن · لم يُعرض عليه من قبل · السبب: ${reasons} · بعد ${rule.coolingDays} يوماً من الإلغاء · من طلباتِ آخر ${rule.lookbackDays} يوماً · خصمٌ حتى ${pct}٪`;
+  }
+  return `ملغى قبل الشحن أو مرتجع بعده · لم يُعرض عليه من قبل · سبب الإلغاء قبل الشحن: ${reasons} · بعد ${rule.coolingDays} يوماً من الإلغاء أو استلام المرتجع · من طلباتِ آخر ${rule.lookbackDays} يوماً · خصمٌ حتى ${pct}٪`;
+}
+
+/**
+ * WHAT A PARCEL THAT CAME BACK IS CALLED — on its row, and in the new order's note.
+ *
+ * The return's own reason in words when one was recorded as a code (`returnReason`
+ * first, then why the delivery failed), through the labels the shipping screens use.
+ * Never a raw code, and never a sentence somebody typed: the courier transfer and the
+ * write-off both write prose into `returnReason`, and prose is not a label.
+ */
+export const AFTER_SHIPPING_AR = 'مرتجع بعد الشحن';
+
+const labelOf = (table: Record<string, { ar: string }>, code: string | null | undefined): string | null =>
+  code && Object.prototype.hasOwnProperty.call(table, code) ? table[code].ar : null;
+
+export function returnLabel(o: { returnReason?: string | null; deliveryFailureReason?: string | null }): string {
+  const said = labelOf(RETURN_REASON_LABELS, o.returnReason) ?? labelOf(DELIVERY_FAILURE_REASON_LABELS, o.deliveryFailureReason);
+  return said ? `${AFTER_SHIPPING_AR} — ${said}` : AFTER_SHIPPING_AR;
 }
 
 export interface WinbackSource {
@@ -242,8 +309,22 @@ export interface WinbackSource {
   rejectionReason: string | null;
   /** When it was closed. Null falls back to nothing — an order with no date is not due. */
   rejectedAt: Date | string | null;
-  /** Anything non-null means the parcel left; this is a return, not a lost call. */
+  /**
+   * Anything non-null means the parcel left. From then on only a parcel that is BACK
+   * (`shippingStatus` RETURNED, and received by the desk) is a lost sale; one still out is not.
+   */
   shippedAt: Date | string | null;
+  /**
+   * Where the parcel is now. Read only once it shipped: RETURNED is the one state in
+   * which it came back. Optional, like `createdAt`: a caller that does not know it
+   * gets the refusal every shipped order got before 28/10.
+   */
+  shippingStatus?: string | null;
+  /**
+   * When the counting desk received it back — `ReturnReceipt.inspectedAt`, and the
+   * moment a returned order's cooling counts from. Null while nobody has.
+   */
+  returnReceivedAt?: Date | string | null;
   /** The replacement it already has. A customer asked twice has answered twice. */
   replacedByOrderNumber: string | null;
   /**
@@ -296,16 +377,41 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
  */
 export const LOST_STATUSES: readonly string[] = ['REJECTED', 'CANCELLED'];
 
+/**
+ * A PARCEL THAT LEFT AND CAME BACK — shipped, and RETURNED. Received or not is the
+ * verdict's next question, not this one: the row is named a return either way.
+ * `winback-filters.ts` writes the same two conditions for the database.
+ */
+export const returnedAfterShipping = (o: Pick<WinbackSource, 'shippedAt' | 'shippingStatus'>): boolean =>
+  !!asDate(o.shippedAt) && o.shippingStatus === 'RETURNED';
+
 export function winbackVerdict(order: WinbackSource, now: Date, rule: WinbackRule = DEFAULT_WINBACK_RULE): WinbackVerdict {
-  if (!LOST_STATUSES.includes(order.confirmationStatus)) {
+  const back = returnedAfterShipping(order);
+  if (!back && !LOST_STATUSES.includes(order.confirmationStatus)) {
     return { eligible: false, code: 'NOT_REJECTED', reason: 'هذا الطلب ليس ملغى' };
   }
+
+  /**
+   * AFTER IT SHIPPED, ONLY WHAT IS BACK — «قبل الشحن وبعد», 28/10.
+   *
+   * This was one refusal for every parcel that ever left: «شُحن ثمّ عاد — هذا إرجاع،
+   * وله حسابه الخاصّ». The owner ruled the ones that came back in, so the refusal
+   * is now three, each saying which part is missing: it is not back (on the road,
+   * or with the customer in whole or in part — a second order for a parcel that may
+   * yet be delivered is a double order); it is back but nobody received it (waiting
+   * at the desk, or written off as a loss — nobody knows whose hands the goods are
+   * in); or it is back and received, and the owner has switched the kind off.
+   */
   if (asDate(order.shippedAt)) {
-    return {
-      eligible: false,
-      code: 'ALREADY_SHIPPED',
-      reason: 'شُحن ثمّ عاد — هذا إرجاع، وله حسابه الخاصّ',
-    };
+    if (!back) {
+      return { eligible: false, code: 'ALREADY_SHIPPED', reason: 'شُحن ولم يرجع إلينا — ما زال عند شركة الشحن أو عند العميل' };
+    }
+    if (!asDate(order.returnReceivedAt ?? null)) {
+      return { eligible: false, code: 'RETURN_NOT_RECEIVED', reason: 'رجع ولم يستلمه المستودع بعد، أو أُغلق كخسارة ولن يعود' };
+    }
+    if (rule.afterShipping !== true) {
+      return { eligible: false, code: 'AFTER_SHIPPING_OFF', reason: 'المرتجع بعد الشحن غير مشمول في القاعدة' };
+    }
   }
   if (order.replacedByOrderNumber) {
     return {
@@ -343,7 +449,10 @@ export function winbackVerdict(order: WinbackSource, now: Date, rule: WinbackRul
   // The four nobody may turn on are refused HERE too, not only by the editor and the reader of the stored rule:
   // a rule built by hand, or stored before a reason was classified, still cannot ring somebody who has the parcel.
   const neverCalled = !!reason && (NEVER_WINBACK_REASONS as readonly string[]).includes(reason);
-  if (!reason || neverCalled || !rule.reasons.includes(reason)) {
+  // A return is not gated by the rule's reasons — the courier's feed records none, so gating it would show
+  // nothing — but a return whose order was once marked a duplicate, a wrong number, a fake or an entry error
+  // has nobody to ring after it came back either.
+  if (back ? neverCalled : !reason || neverCalled || !rule.reasons.includes(reason)) {
     return {
       eligible: false,
       code: 'REASON_NOT_WINBACK',
@@ -351,14 +460,17 @@ export function winbackVerdict(order: WinbackSource, now: Date, rule: WinbackRul
     };
   }
 
-  const closed = asDate(order.rejectedAt);
+  // The moment it was lost: the last loss in the log, or — for a parcel that came back — the desk's receipt.
+  const closed = asDate(back ? (order.returnReceivedAt ?? null) : order.rejectedAt);
   if (!closed) {
     return { eligible: false, code: 'NO_DATE', reason: 'لا تاريخَ لإلغائه — لا يمكن حساب المهلة' };
   }
 
   // Too old to be worth a call. The list has always read this far back and no
   // further; the OFFER now refuses the same, so a request that names an order
-  // the screen would never have listed is turned away alike.
+  // the screen would never have listed is turned away alike. By when the ORDER
+  // was made, for both kinds: a parcel ordered five months ago that came back
+  // yesterday is as old as its order, exactly as a cancellation is.
   const made = asDate(order.createdAt ?? null);
   if (made && now.getTime() - made.getTime() > rule.lookbackDays * 86_400_000) {
     return { eligible: false, code: 'TOO_OLD', reason: `أقدم من ${rule.lookbackDays} يوماً — فات وقتُ الاتصال` };

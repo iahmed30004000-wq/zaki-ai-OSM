@@ -53,9 +53,15 @@ const verdict = (over: Partial<WinbackSource>, r?: WinbackRule) => winbackVerdic
 const code = (v: ReturnType<typeof winbackVerdict>) => (v.eligible ? 'ELIGIBLE' : v.code);
 
 describe('the defaults are the old constants', () => {
-  it('— fourteen days, a hundred and twenty back, a quarter of the price, and the four reasons', () => {
+  /**
+   * REWRITTEN ON 28/10: the defaults gained ONE key, `afterShipping: true` — the owner asked for the
+   * lost orders «قبل الشحن وبعد», so the shop that never opens the editor gets both. Every number is
+   * the constant it was.
+   */
+  it('— fourteen days, a hundred and twenty back, a quarter of the price, the four reasons, and returns after shipping', () => {
     expect(DEFAULT_WINBACK_RULE).toEqual({
       reasons: ['PRICE_TOO_HIGH', 'FOUND_CHEAPER_ELSEWHERE', 'CUSTOMER_CHANGED_MIND', 'NO_ANSWER_3_ATTEMPTS'],
+      afterShipping: true,
       coolingDays: 14,
       lookbackDays: 120,
       maxDiscountShare: 0.25,
@@ -80,6 +86,11 @@ describe('the defaults are the old constants', () => {
       { rejectedAt: ago(14) },
       { discountAmount: 20 },
       { discountAmount: 40 },
+      // A parcel that came back: received, not received, still cooling from its receipt, not back at all.
+      { confirmationStatus: 'CONFIRMED', shippedAt: ago(50), shippingStatus: 'RETURNED', returnReceivedAt: ago(30) },
+      { confirmationStatus: 'CONFIRMED', shippedAt: ago(50), shippingStatus: 'RETURNED', returnReceivedAt: null },
+      { confirmationStatus: 'CONFIRMED', shippedAt: ago(50), shippingStatus: 'RETURNED', returnReceivedAt: ago(3) },
+      { shippedAt: ago(50), shippingStatus: 'PARTIALLY_DELIVERED', returnReceivedAt: ago(30) },
     ];
     for (const c of cases) {
       expect(JSON.stringify(verdict(c, DEFAULT_WINBACK_RULE)), JSON.stringify(c)).toBe(JSON.stringify(verdict(c)));
@@ -121,12 +132,40 @@ describe('the reasons', () => {
     expect(code(verdict({ rejectionReason: null }, rule({ reasons: SELECTABLE_WINBACK_REASONS })))).toBe('REASON_NOT_WINBACK');
   });
 
-  it('and the other refusals stand whatever reasons are listed — shipped, offered, a second chance, not rejected', () => {
+  it('and the other refusals stand whatever reasons are listed — shipped and not back, back and not received, offered, a second chance, not rejected', () => {
     const wide = rule({ reasons: SELECTABLE_WINBACK_REASONS });
     expect(code(verdict({ shippedAt: ago(40) }, wide))).toBe('ALREADY_SHIPPED');
+    expect(code(verdict({ shippedAt: ago(40), shippingStatus: 'RETURN_REQUESTED' }, wide))).toBe('ALREADY_SHIPPED');
+    expect(code(verdict({ shippedAt: ago(40), shippingStatus: 'RETURNED', returnReceivedAt: null }, wide))).toBe('RETURN_NOT_RECEIVED');
     expect(code(verdict({ replacedByOrderNumber: 'ORD-9' }, wide))).toBe('ALREADY_OFFERED');
     expect(code(verdict({ replacesOrderNumber: 'ORD-1' }, wide))).toBe('ALREADY_A_SECOND_CHANCE');
     expect(code(verdict({ confirmationStatus: 'CONFIRMED' }, wide))).toBe('NOT_REJECTED');
+  });
+});
+
+describe('the switch «يشمل المرتجع بعد الشحن»', () => {
+  const back: Partial<WinbackSource> = { confirmationStatus: 'CONFIRMED', rejectionReason: null, shippedAt: ago(50), shippingStatus: 'RETURNED', returnReceivedAt: ago(30) };
+
+  it('— on, a parcel that came back is called; off, it is refused in words and nothing before shipping moves', () => {
+    expect(code(verdict(back, rule({ afterShipping: true })))).toBe('ELIGIBLE');
+    expect(code(verdict(back, rule({ afterShipping: false })))).toBe('AFTER_SHIPPING_OFF');
+    for (const over of [{}, { rejectedAt: ago(3) }, { rejectionReason: 'OTHER' }, { replacedByOrderNumber: 'ORD-9' }] as Partial<WinbackSource>[]) {
+      expect(code(verdict(over, rule({ afterShipping: false }))), JSON.stringify(over)).toBe(code(verdict(over, rule({ afterShipping: true }))));
+    }
+  });
+
+  it('and everything else in the rule applies to a return alike: the cooling, the look-back, the ceiling', () => {
+    expect(code(verdict({ ...back, returnReceivedAt: ago(29) }, rule({ coolingDays: 30 })))).toBe('COOLING');
+    expect(code(verdict({ ...back, returnReceivedAt: ago(30) }, rule({ coolingDays: 30 })))).toBe('ELIGIBLE');
+    expect(code(verdict({ ...back, createdAt: ago(61) }, rule({ lookbackDays: 60 })))).toBe('TOO_OLD');
+    const v = verdict({ ...back, sellingPrice: 100 }, rule({ maxDiscountShare: 0.4 }));
+    expect(v.eligible && v.maxDiscount).toBe(40);
+  });
+
+  /** Only a real true turns it on: a rule built by hand with no switch is read as off, the refusal every return got before. */
+  it('and a hand-built rule without the switch does not let a return in', () => {
+    const { afterShipping: _gone, ...noSwitch } = DEFAULT_WINBACK_RULE;
+    expect(code(winbackVerdict({ ...base, ...back }, NOW, noSwitch as WinbackRule))).toBe('AFTER_SHIPPING_OFF');
   });
 });
 
@@ -237,19 +276,58 @@ describe('a stored rule is read leniently', () => {
     expect(parseWinbackRule({ coolingDays: 90, lookbackDays: 30 }).lookbackDays).toBe(97);
     expect(parseWinbackRule({ coolingDays: 90, lookbackDays: 90 }).lookbackDays).toBeGreaterThan(90);
   });
+
+  it('and the switch: a rule stored before it existed reads as on — what the owner asked for', () => {
+    expect(parseWinbackRule({ coolingDays: 30 }).afterShipping).toBe(true);
+    expect(parseWinbackRule(undefined).afterShipping).toBe(true);
+  });
+
+  it('and a stored «off» is respected — and so is a stored «on»', () => {
+    expect(parseWinbackRule({ afterShipping: false }).afterShipping).toBe(false);
+    expect(parseWinbackRule({ afterShipping: true }).afterShipping).toBe(true);
+    // The rest of a stored rule is read as it always was beside it.
+    expect(parseWinbackRule({ afterShipping: false, coolingDays: 30 })).toMatchObject({ afterShipping: false, coolingDays: 30, lookbackDays: 120 });
+  });
+
+  it.each([['the word «false»', 'false'], ['a zero', 0], ['a one', 1], ['nothing', null], ['a list', [false]]])(
+    'and %s is not a yes or a no — it reads as on, never as off',
+    (_what, stored) => {
+      expect(parseWinbackRule({ afterShipping: stored }).afterShipping).toBe(true);
+    }
+  );
 });
 
 describe('a typed rule is judged — refused with a sentence, never clamped', () => {
   const ok = { reasons: ['PRICE_TOO_HIGH', 'OTHER'], coolingDays: 10, lookbackDays: 90, maxDiscountPercent: 12.5 };
   const refuse = (over: Record<string, unknown>) => validateWinbackRule({ ...ok, ...over });
 
+  /** REWRITTEN ON 28/10: the rule that comes back carries the switch — on, when the form did not send one. */
   it('— a good rule comes back as the rule, the percent as the share the arithmetic reads', () => {
     const r = validateWinbackRule(ok);
     expect(r).toEqual({
       ok: true,
-      rule: { reasons: ['PRICE_TOO_HIGH', 'OTHER'], coolingDays: 10, lookbackDays: 90, maxDiscountShare: 0.125 },
+      rule: { reasons: ['PRICE_TOO_HIGH', 'OTHER'], afterShipping: true, coolingDays: 10, lookbackDays: 90, maxDiscountShare: 0.125 },
     });
   });
+
+  it('and the switch comes back as it was sent: off is off, on is on', () => {
+    const off = refuse({ afterShipping: false });
+    expect(off.ok && off.rule.afterShipping).toBe(false);
+    const on = refuse({ afterShipping: true });
+    expect(on.ok && on.rule.afterShipping).toBe(true);
+  });
+
+  it.each([['the word «true»', 'true'], ['a one', 1], ['a zero', 0], ['nothing', null], ['a word', 'نعم']])(
+    'and a switch sent as %s is refused by name, in Arabic — never read as a yes',
+    (_what, value) => {
+      const r = refuse({ afterShipping: value });
+      expect(r.ok).toBe(false);
+      if (!r.ok) {
+        expect(r.code).toBe('AFTER_SHIPPING');
+        expect(r.errorAr).toBe('يشمل المرتجع بعد الشحن: نعم أو لا فقط');
+      }
+    }
+  );
 
   it('and the percent is kept to two decimals — what is stored is what the sentence prints, not a share the screen would round for him', () => {
     const r = refuse({ maxDiscountPercent: 12.346 });
@@ -322,11 +400,28 @@ describe('a typed rule is judged — refused with a sentence, never clamped', ()
 });
 
 describe('the rule in a sentence', () => {
-  it('— the defaults read as the rule the screen was built on', () => {
+  /**
+   * REWRITTEN ON 28/10, DELIBERATELY. This asserted that the default sentence says «لم يُشحن» — the
+   * rule as it stood before the owner asked «هل بيعرض الملغي قبل الشحن وبعد ؟». The default now says both
+   * kinds; «لم يُشحن» is what the sentence says with his switch OFF, word for word, below.
+   */
+  it('— the defaults read as both kinds, and say which kind the reasons are for', () => {
     const s = ruleSentence(DEFAULT_WINBACK_RULE);
+    expect(s).toBe(
+      'ملغى قبل الشحن أو مرتجع بعده · لم يُعرض عليه من قبل · سبب الإلغاء قبل الشحن: السعر مرتفع، وجدها أرخص عند غيرنا، غيّر رأيه، أُغلق بعد ثلاث محاولات بلا ردّ · بعد 14 يوماً من الإلغاء أو استلام المرتجع · من طلباتِ آخر 120 يوماً · خصمٌ حتى 25٪'
+    );
+    expect(s).not.toContain('لم يُشحن');
+  });
+
+  it('and with the switch off it is the sentence the screen was built on, exactly', () => {
+    const s = ruleSentence(rule({ afterShipping: false }));
+    expect(s).toBe(
+      'ملغى · لم يُشحن · لم يُعرض عليه من قبل · السبب: السعر مرتفع، وجدها أرخص عند غيرنا، غيّر رأيه، أُغلق بعد ثلاث محاولات بلا ردّ · بعد 14 يوماً من الإلغاء · من طلباتِ آخر 120 يوماً · خصمٌ حتى 25٪'
+    );
     for (const part of ['ملغى', 'لم يُشحن', 'لم يُعرض عليه من قبل', 'السعر مرتفع', 'وجدها أرخص عند غيرنا', 'غيّر رأيه', 'أُغلق بعد ثلاث محاولات بلا ردّ', 'بعد 14 يوماً', 'آخر 120 يوماً', 'حتى 25٪']) {
       expect(s, part).toContain(part);
     }
+    expect(s).not.toContain('مرتجع');
   });
 
   it('and it follows what the owner set — it can never say fourteen while the list says ten', () => {

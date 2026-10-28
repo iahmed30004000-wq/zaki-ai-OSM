@@ -41,7 +41,7 @@
   },
   "src/components/confirmation/WinbackRuleDialog.tsx": {
     "buttons": 3,
-    "inputs": 4,
+    "inputs": 5,
     "columns": 0,
     "cards": 0,
     "modals": 1,
@@ -920,11 +920,11 @@
     "tabs": 0
   },
   "src/components/screens/finance/CollectionScreen.tsx": {
-    "buttons": 10,
-    "inputs": 10,
+    "buttons": 13,
+    "inputs": 11,
     "columns": 7,
     "cards": 0,
-    "modals": 2,
+    "modals": 3,
     "icons": 6,
     "links": 2,
     "tabs": 0
@@ -1340,13 +1340,13 @@
     "tabs": 0
   },
   "src/components/screens/TelegramOrdersScreen.tsx": {
-    "buttons": 3,
-    "inputs": 1,
-    "columns": 12,
-    "cards": 3,
+    "buttons": 4,
+    "inputs": 0,
+    "columns": 11,
+    "cards": 0,
     "modals": 0,
     "icons": 3,
-    "links": 2,
+    "links": 1,
     "tabs": 0
   },
   "src/components/screens/TelegramSettingsScreen.tsx": {
@@ -1502,7 +1502,7 @@
   "src/components/screens/WinbackScreen.tsx": {
     "buttons": 2,
     "inputs": 0,
-    "columns": 4,
+    "columns": 5,
     "cards": 0,
     "modals": 0,
     "icons": 5,

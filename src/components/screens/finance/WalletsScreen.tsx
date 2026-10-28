@@ -11,6 +11,7 @@ import { useToast } from '@/components/ui/Toast';
 import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { arDateTime } from '@/lib/format';
+import { COURIER_MONEY_HINT, handCategoriesFor } from '@/lib/hand-movement-rules';
 
 /**
  * /finance/wallets — balances and the movement ledger. A recorded movement is
@@ -634,7 +635,11 @@ function RecordDialog({
             <button
               key={d}
               type="button"
-              onClick={() => setDirection(d)}
+              onClick={() => {
+                setDirection(d);
+                // The pair must stay one the door accepts: «مصروف» runs out only.
+                if (!handCategoriesFor(d).includes(category)) setCategory(handCategoriesFor(d)[0]);
+              }}
               className={`flex-1 h-11 md:h-10 rounded-lg border text-sm font-medium ${
                 direction === d
                   ? d === 'IN'
@@ -682,12 +687,12 @@ function RecordDialog({
             className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm bg-[var(--sys-card)]"
           >
             {Object.entries(CATEGORY_AR)
-              .filter(([key]) => key !== 'TRANSFER_IN' && key !== 'TRANSFER_OUT')
+              .filter(([key]) => handCategoriesFor(direction).includes(key))
               .map(([key, label]) => (
                 <option key={key} value={key}>{label}</option>
               ))}
           </select>
-          <span className="block text-xs text-[var(--sys-muted)] mt-1">التحويلات تُسجَّل من شاشة التحويلات لا من هنا.</span>
+          <span className="block text-xs text-[var(--sys-muted)] mt-1">{COURIER_MONEY_HINT} التحويلات من شاشة التحويلات.</span>
         </label>
 
         <label className="block">

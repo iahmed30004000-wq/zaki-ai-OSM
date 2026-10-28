@@ -74,17 +74,34 @@ beforeEach(() => {
 });
 
 describe('what it asks for', () => {
-  it('— with nothing chosen: this company, this store, the lost words, the look-back, 25 from the start', async () => {
+  /**
+   * REWRITTEN ON 28/10: «the lost words» became «the lost words OR a parcel that left and came back» —
+   * the owner's «قبل الشحن وبعد», on by default. The switch off asks exactly what this asked before (next).
+   */
+  it('— with nothing chosen: this company, this store, the lost words or a return, the look-back, 25 from the start', async () => {
     const res = await get();
     expect(res.status).toBe(200);
     const w = asked().where;
-    expect(w).toMatchObject({ companyId: 'c1', storeId: 's1', confirmationStatus: { in: ['REJECTED', 'CANCELLED'] } });
+    expect(w).toMatchObject({ companyId: 'c1', storeId: 's1' });
+    expect(w.OR).toEqual([
+      { confirmationStatus: { in: ['REJECTED', 'CANCELLED'] } },
+      { shippingStatus: 'RETURNED', shippedAt: { not: null } },
+    ]);
     expect(w.createdAt.gte.getTime()).toBeGreaterThan(Date.now() - 121 * DAY);
     expect(w.createdAt.gte.getTime()).toBeLessThan(Date.now() - 119 * DAY);
     expect(asked()).toMatchObject({ skip: 0, take: 25 });
     expect(asked().orderBy).toEqual([{ createdAt: 'asc' }, { id: 'asc' }]);
     // One view, the work: the view's clause alone is ANDed on.
     expect(w.AND).toHaveLength(1);
+  });
+
+  it('and with the owner’s switch off, it asks exactly what it asked before — the lost words, and no return', async () => {
+    storeRule({ afterShipping: false });
+    await get();
+    const w = asked().where;
+    expect(w).toMatchObject({ companyId: 'c1', storeId: 's1', confirmationStatus: { in: ['REJECTED', 'CANCELLED'] } });
+    expect(w).not.toHaveProperty('OR');
+    expect(JSON.stringify(w)).not.toContain('returnReceipt');
   });
 
   it('and only a supervisor reads it — the permission is asked by name, and a refusal is a 403 with nothing read', async () => {
@@ -113,6 +130,7 @@ describe('what it refuses', () => {
     ['view=everything', 'العرض غير معروف: everything'],
     ['reason=BOREDOM', 'سبب الإلغاء غير معروف: BOREDOM'],
     ['period=365', 'المدّة غير معروف: 365'],
+    ['shipping=later', 'الشحن غير معروف: later'],
   ])('— %s: 400, in Arabic, and nothing was read', async (query, arabic) => {
     const res = await get(query);
     expect(res.status).toBe(400);
@@ -122,15 +140,24 @@ describe('what it refuses', () => {
 });
 
 describe('the rule it reads', () => {
+  /** REWRITTEN ON 28/10: the defaults carry the switch, on. */
   it('— with nothing stored, the defaults — and the response says so, with whether this person may change it', async () => {
     const body = await (await get()).json();
     expect(body.rule).toEqual({
       reasons: ['PRICE_TOO_HIGH', 'FOUND_CHEAPER_ELSEWHERE', 'CUSTOMER_CHANGED_MIND', 'NO_ANSWER_3_ATTEMPTS'],
+      afterShipping: true,
       coolingDays: 14,
       lookbackDays: 120,
       maxDiscountShare: 0.25,
     });
     expect(body.canEditRule).toBe(false);
+  });
+
+  it('and a stored «off» is what the response says, and what the question asks', async () => {
+    storeRule({ afterShipping: false, coolingDays: 20 });
+    const body = await (await get()).json();
+    expect(body.rule).toMatchObject({ afterShipping: false, coolingDays: 20 });
+    expect(asked().where).not.toHaveProperty('OR');
   });
 
   it('and «can edit» is the settings permission, asked of the person — not the supervisor’s', async () => {
@@ -149,17 +176,20 @@ describe('the rule it reads', () => {
   });
 
   it('and the cooling the QUERY draws is the rule’s own — thirty days moves the line the «ready» view is cut at', async () => {
-    /** Every cutoff the question draws on a log row's date, found wherever it sits in the question. */
-    const cutoffs = (node: unknown): Date[] => {
+    /** Every cutoff the question draws on a date, by its operator, found wherever it sits in the question. */
+    const cutoffs = (node: unknown, op: string): Date[] => {
       if (node instanceof Date || node === null || typeof node !== 'object') return [];
-      return Object.entries(node as Record<string, unknown>).flatMap(([key, value]) => (key === 'gt' && value instanceof Date ? [value] : cutoffs(value)));
+      return Object.entries(node as Record<string, unknown>).flatMap(([key, value]) => (key === op && value instanceof Date ? [value] : cutoffs(value, op)));
     };
     storeRule({ coolingDays: 30 });
     await get();
-    const cut = cutoffs(asked().where.AND[0]);
-    expect(cut).toHaveLength(1);
-    expect(cut[0].getTime()).toBeGreaterThan(Date.now() - 31 * DAY);
-    expect(cut[0].getTime()).toBeLessThan(Date.now() - 29 * DAY);
+    // The loss's line (`gt`, under a NOT) and — since 28/10 — the receipt's (`lte`): both at thirty days.
+    const cut = [...cutoffs(asked().where.AND[0], 'gt'), ...cutoffs(asked().where.AND[0], 'lte')];
+    expect(cut).toHaveLength(2);
+    for (const c of cut) {
+      expect(c.getTime()).toBeGreaterThan(Date.now() - 31 * DAY);
+      expect(c.getTime()).toBeLessThan(Date.now() - 29 * DAY);
+    }
   });
 
   it('and a broken settings document is the default, not a 500', async () => {
@@ -208,16 +238,99 @@ describe('the page', () => {
     expect(asked().skip).toBe(50);
   });
 
+  /** REWRITTEN ON 28/10: one more set of numbers, the two sides of «الشحن». */
   it('and the numbers beside the options come back with it, over the same scope', async () => {
     const body = await (await get()).json();
-    expect(Object.keys(body.facts)).toEqual(['views', 'reasons', 'products', 'periods']);
+    expect(Object.keys(body.facts)).toEqual(['views', 'reasons', 'products', 'periods', 'shipping']);
     expect(Object.keys(body.facts.views)).toEqual(['ready', 'cooling', 'skipped']);
+    expect(Object.keys(body.facts.shipping)).toEqual(['before', 'after']);
     for (const [arg] of db.order.count.mock.calls) expect((arg as { where: Record<string, unknown> }).where).toMatchObject({ companyId: 'c1', storeId: 's1' });
   });
 
+  /** REWRITTEN ON 28/10: what was applied gained `shipping`. */
   it('and it says what was applied, so the screen can show what the list is', async () => {
     const body = await (await get('view=cooling&q=سارة')).json();
-    expect(body.applied).toEqual({ view: 'cooling', reason: null, product: null, period: null, q: 'سارة' });
+    expect(body.applied).toEqual({ view: 'cooling', reason: null, product: null, period: null, shipping: null, q: 'سارة' });
+    const after = await (await get('shipping=after')).json();
+    expect(after.applied.shipping).toBe('after');
+    expect(asked().where.AND).toContainEqual({ shippedAt: { not: null } });
+  });
+});
+
+/**
+ * «قبل الشحن وبعد» — A PARCEL THAT CAME BACK, ON ITS ROW (28/10).
+ *
+ * As the courier feed and the desk leave one: CONFIRMED, no rejection reason, no loss in the log — RETURNED,
+ * with the receipt's date. The row must say it is a return, in words, dated by the receipt, and be judged by it.
+ */
+describe('a parcel that came back, on its row', () => {
+  const returned = (over: Record<string, unknown> = {}) =>
+    order({
+      id: 'r1',
+      confirmationStatus: 'CONFIRMED',
+      rejectionReason: null,
+      shippedAt: new Date(Date.now() - 45 * DAY),
+      shippingStatus: 'RETURNED',
+      returnReason: 'CUSTOMER_REFUSED',
+      deliveryFailureReason: null,
+      returnReceipt: { inspectedAt: new Date(Date.now() - 20 * DAY) },
+      ...over,
+    });
+
+  it('— asks for where the parcel is, why it came back and when the desk received it', async () => {
+    await get();
+    expect(db.order.findMany.mock.calls.at(-1)![0].select).toMatchObject({
+      shippingStatus: true, returnReason: true, deliveryFailureReason: true,
+      returnReceipt: { select: { inspectedAt: true } },
+    });
+  });
+
+  it('— is named a return in words, dated by its receipt, and offered with the ceiling of its price', async () => {
+    db.order.findMany.mockResolvedValue([returned({ sellingPrice: 40 })]);
+    db.order.count.mockResolvedValue(1);
+    const body = await (await get()).json();
+    const r = body.rows[0];
+    expect(r.returnLabel).toBe('مرتجع بعد الشحن — العميل رفض');
+    expect(new Date(r.returnReceivedAt).getTime()).toBeLessThan(Date.now() - 19 * DAY);
+    expect(r.verdict).toMatchObject({ eligible: true, maxDiscount: 10 });
+    // Its cooling ran from the receipt: due fourteen days after it, not after a loss it never had.
+    expect(new Date(r.verdict.dueAt).getTime() - new Date(r.returnReceivedAt).getTime()).toBe(14 * DAY);
+  });
+
+  it('and one received a few days ago is still cooling — from the receipt', async () => {
+    db.order.findMany.mockResolvedValue([returned({ returnReceipt: { inspectedAt: new Date(Date.now() - 3 * DAY) } })]);
+    db.order.count.mockResolvedValue(1);
+    const body = await (await get('view=cooling')).json();
+    expect(body.rows[0].verdict).toMatchObject({ eligible: false, code: 'COOLING' });
+  });
+
+  it('and a written-off parcel is named a return and nothing more — the prose of the write-off never leaves the server', async () => {
+    const prose = 'أُغلق كخسارة — لم تُستلم البضاعة. ضاع عند المندوب';
+    db.order.findMany.mockResolvedValue([returned({ returnReceipt: null, returnReason: prose })]);
+    db.order.count.mockResolvedValue(1);
+    const res = await get('view=skipped');
+    const text = await res.clone().text();
+    const body = await res.json();
+    expect(body.rows[0].returnLabel).toBe('مرتجع بعد الشحن');
+    expect(body.rows[0].verdict).toMatchObject({ eligible: false, code: 'RETURN_NOT_RECEIVED' });
+    expect(body.rows[0]).not.toHaveProperty('returnReason');
+    expect(text).not.toContain('ضاع عند المندوب');
+  });
+
+  it('and a lost order is not a return: no label, and the receipt it does not have is null', async () => {
+    db.order.findMany.mockResolvedValue([order()]);
+    db.order.count.mockResolvedValue(1);
+    db.orderStatusLog.findMany.mockResolvedValue([{ orderId: 'o1', createdAt: new Date(Date.now() - 40 * DAY) }]);
+    const body = await (await get()).json();
+    expect(body.rows[0]).toMatchObject({ returnLabel: null, returnReceivedAt: null, verdict: { eligible: true } });
+  });
+
+  it('and with the owner’s switch off, the same row is refused in his words', async () => {
+    storeRule({ afterShipping: false });
+    db.order.findMany.mockResolvedValue([returned({ confirmationStatus: 'REJECTED', rejectionReason: 'PRICE_TOO_HIGH' })]);
+    db.order.count.mockResolvedValue(1);
+    const body = await (await get('view=skipped')).json();
+    expect(body.rows[0].verdict).toMatchObject({ eligible: false, code: 'AFTER_SHIPPING_OFF', reason: 'المرتجع بعد الشحن غير مشمول في القاعدة' });
   });
 });
 

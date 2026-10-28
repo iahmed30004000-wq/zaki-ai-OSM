@@ -227,6 +227,24 @@ export function proofStorageKey(
 }
 
 /**
+ * WHERE A REPLACEMENT LIVES — a NEW key, so the paper it replaces stays on disk.
+ *
+ * `proofStorageKey` is one key per receipt, which is right for the first upload and wrong for a change: a
+ * proof swapped before approval would overwrite the very file the audit row has to point at. The revision is
+ * chosen by the server (never by the caller) and joins the receipt id, so the key is still built only from
+ * ids the server holds and the uploaded name still never reaches a path.
+ */
+export function revisedProofKey(
+  companyId: string,
+  statementId: string,
+  receiptId: string,
+  mime: ProofMime,
+  revision: string
+): string {
+  return `companies/${companyId}/settlement/${statementId}/receipts/${receiptId}-${revision}.${EXT[mime]}`;
+}
+
+/**
  * Removes a proof's file when its receipt is gone (an import taken back). Best effort by design: the rows
  * are already deleted, and a file nobody references costs disk, while an error here must not undo the cancel.
  */

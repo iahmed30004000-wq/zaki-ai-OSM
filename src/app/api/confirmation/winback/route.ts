@@ -8,7 +8,9 @@ import { zodMessage } from '@/lib/zod-message';
 import { logAudit } from '@/lib/audit';
 import { computeCod } from '@/lib/money';
 import { orderRefFields } from '@/lib/order-ref';
-import { maxWinbackDiscount, LOST_STATUSES, winbackVerdict, type WinbackSource } from '@/lib/winback';
+import {
+  maxWinbackDiscount, LOST_STATUSES, returnedAfterShipping, returnLabel, winbackVerdict, type WinbackSource,
+} from '@/lib/winback';
 import { winbackRule } from '@/lib/winback-rule';
 import { baseWhere, winbackFilters } from '@/lib/winback-filters';
 import { readWinbackPage, winbackFacts } from '@/lib/winback-list';
@@ -37,6 +39,12 @@ import { noteCustomersHandedOut } from '@/lib/pii-alert';
  * AND ONCE IS ONCE, enforced by the database rather than by this file:
  * `replacesOrderId` is `@unique`, so a second offer on the same rejected
  * order cannot be written even by two people pressing at the same moment.
+ *
+ * AND A PARCEL THAT CAME BACK IS OFFERED THE SAME WAY (28/10). The owner asked
+ * for the lost orders «قبل الشحن وبعد»: a return the desk received is read by
+ * the same verdict, held to the same ceiling, and raised as the same new order
+ * through the same door below — only its note names it a return instead of
+ * printing a rejection code it does not have.
  */
 
 const offerSchema = z.object({
@@ -58,7 +66,8 @@ const offerSchema = z.object({
  *   ?view=ready|cooling|skipped   the work (default) · the ones still cooling · the refused
  *   ?reason=<code>                why it was cancelled
  *   ?product=<name>               which product
- *   ?period=7|30|90               cancelled within the last N days
+ *   ?period=7|30|90               cancelled — or the return received — within the last N days
+ *   ?shipping=before|after        lost before it shipped · shipped (and came back, for the work)
  *   ?q=                           order number, reference, name, phone, product
  *   ?page= ?limit=                25 a page, 100 at most
  *
@@ -91,6 +100,9 @@ export async function GET(req: Request) {
           id: true, orderNumber: true, confirmationStatus: true, rejectionReason: true,
           rejectionNote: true, shippedAt: true, sellingPrice: true, discountAmount: true,
           quantity: true, currency: true, productNameSnapshot: true, createdAt: true,
+          // Whether a parcel that left came back, why, and when the desk received it.
+          shippingStatus: true, returnReason: true, deliveryFailureReason: true,
+          returnReceipt: { select: { inspectedAt: true } },
           customer: { select: { fullName: true, phone: true } },
           replacedBy: { select: { orderNumber: true } },
           // Whether this order is itself somebody's second chance.
@@ -141,6 +153,8 @@ export async function GET(req: Request) {
         rejectionReason: o.rejectionReason,
         rejectedAt: rejectedAt.get(o.id) ?? null,
         shippedAt: o.shippedAt,
+        shippingStatus: o.shippingStatus,
+        returnReceivedAt: o.returnReceipt?.inspectedAt ?? null,
         replacedByOrderNumber: o.replacedBy?.orderNumber ?? null,
         replacesOrderNumber: o.replaces?.orderNumber ?? null,
         sellingPrice: Number(o.sellingPrice ?? 0),
@@ -162,6 +176,10 @@ export async function GET(req: Request) {
         rejectionReason: o.rejectionReason,
         rejectionNote: o.rejectionNote,
         rejectedAt: rejectedAt.get(o.id) ?? null,
+        // A parcel that came back is named a return, in words — never the courier's code, never the prose a
+        // write-off or a transfer typed into `returnReason` (which is why that column is not sent at all).
+        returnLabel: returnedAfterShipping(source) ? returnLabel(o) : null,
+        returnReceivedAt: o.returnReceipt?.inspectedAt ?? null,
         verdict,
       };
     });
@@ -203,6 +221,8 @@ export async function POST(req: Request) {
       include: {
         replacedBy: { select: { orderNumber: true } },
         replaces: { select: { orderNumber: true } },
+        // A parcel that came back is offered only once the desk has received it — and cools from that day.
+        returnReceipt: { select: { inspectedAt: true } },
       },
     });
     if (!order) return NextResponse.json({ error: 'الطلب غير موجود' }, { status: 404 });
@@ -215,24 +235,26 @@ export async function POST(req: Request) {
 
     // The same verdict the list drew, re-taken here. A row that was eligible
     // when the screen loaded may not be when the button is pressed.
-    const verdict = winbackVerdict(
-      {
-        confirmationStatus: order.confirmationStatus,
-        rejectionReason: order.rejectionReason,
-        rejectedAt: lastRejection?.createdAt ?? null,
-        shippedAt: order.shippedAt,
-        replacedByOrderNumber: order.replacedBy?.orderNumber ?? null,
-        replacesOrderNumber: order.replaces?.orderNumber ?? null,
-        sellingPrice: Number(order.sellingPrice ?? 0),
-        discountAmount: Number(order.discountAmount ?? 0),
-        createdAt: order.createdAt,
-      },
-      new Date(),
-      rule
-    );
+    const source: WinbackSource = {
+      confirmationStatus: order.confirmationStatus,
+      rejectionReason: order.rejectionReason,
+      rejectedAt: lastRejection?.createdAt ?? null,
+      shippedAt: order.shippedAt,
+      shippingStatus: order.shippingStatus,
+      returnReceivedAt: order.returnReceipt?.inspectedAt ?? null,
+      replacedByOrderNumber: order.replacedBy?.orderNumber ?? null,
+      replacesOrderNumber: order.replaces?.orderNumber ?? null,
+      sellingPrice: Number(order.sellingPrice ?? 0),
+      discountAmount: Number(order.discountAmount ?? 0),
+      createdAt: order.createdAt,
+    };
+    const verdict = winbackVerdict(source, new Date(), rule);
     if (!verdict.eligible) {
       return NextResponse.json({ error: verdict.reason, code: verdict.code }, { status: 409 });
     }
+    // What the new order's note says it is winning back: the rejection code it always printed, or — for a parcel
+    // that came back, which has no rejection code and printed «(null)» — the return, in words.
+    const lostAs = returnedAfterShipping(source) ? returnLabel(order) : order.rejectionReason;
 
     const ceiling = maxWinbackDiscount(
       {
@@ -395,7 +417,7 @@ export async function POST(req: Request) {
           settlementStatus: 'NOT_APPLICABLE',
           source: order.source,
           customerNotes: order.customerNotes,
-          internalNotes: `محاولةُ استرجاع لـ${order.orderNumber} (${order.rejectionReason}) بخصم ${discount}${note ? ` — ${note}` : ''}`,
+          internalNotes: `محاولةُ استرجاع لـ${order.orderNumber} (${lostAs}) بخصم ${discount}${note ? ` — ${note}` : ''}`,
           version: 1,
         },
         select: { id: true, orderNumber: true },

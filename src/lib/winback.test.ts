@@ -2,8 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { REJECTION_REASONS } from './confirmation-workflow';
 import { repoFile, stripComments } from './guard-source';
 import {
+  AFTER_SHIPPING_AR,
+  DEFAULT_WINBACK_RULE,
   maxWinbackDiscount,
+  NEVER_WINBACK_REASONS,
   NOT_WINBACK_AR,
+  returnLabel,
+  returnedAfterShipping,
   WINBACK_COOLING_DAYS,
   WINBACK_MAX_DISCOUNT_SHARE,
   WINBACK_REASONS,
@@ -133,11 +138,23 @@ describe('and the other four gates', () => {
     if (!v.eligible) expect(v.code).toBe('NOT_REJECTED');
   });
 
-  /** A parcel that went out and came back is a return, with its own bill. */
-  it('refuses one that already shipped', () => {
-    const v = winbackVerdict({ ...base, shippedAt: new Date('2026-09-01') }, NOW);
-    expect(v.eligible, 'يعرض خصماً على شحنةٍ رجعت').toBe(false);
-    if (!v.eligible) expect(v.code).toBe('ALREADY_SHIPPED');
+  /**
+   * REWRITTEN ON 28/10, DELIBERATELY. This read «A parcel that went out and came
+   * back is a return, with its own bill» and asserted that ANY shipped order was
+   * refused — the argument the owner overruled («قبل الشحن وبعد»). What is still
+   * refused is a parcel that left and is not back: on the road, or with the
+   * customer in whole or in part. A caller that does not say where the parcel is
+   * gets that refusal too, which is what every caller got before.
+   */
+  it('refuses one that shipped and is not back — wherever it is, and whatever it was', () => {
+    for (const shippingStatus of [undefined, 'SHIPPED', 'OUT_FOR_DELIVERY', 'FAILED_DELIVERY', 'RETURN_REQUESTED', 'DELIVERED', 'PARTIALLY_DELIVERED']) {
+      const v = winbackVerdict({ ...base, shippedAt: new Date('2026-09-01'), shippingStatus }, NOW);
+      expect(v.eligible, `يعرض خصماً على طردٍ لم يرجع (${shippingStatus})`).toBe(false);
+      if (!v.eligible) {
+        expect(v.code, String(shippingStatus)).toBe('ALREADY_SHIPPED');
+        expect(v.reason).toBe('شُحن ولم يرجع إلينا — ما زال عند شركة الشحن أو عند العميل');
+      }
+    }
   });
 
   /**
@@ -199,6 +216,180 @@ describe('and the other four gates', () => {
   });
 });
 
+/**
+ * «هل بيعرض الملغي قبل الشحن وبعد ؟ اذا اه تمام اذا لأ خليه يجري ع ال 2» — 28/10.
+ *
+ * It did not. A parcel that shipped and came back is a lost sale too now, under
+ * the same rule — and only when it is BACK: RETURNED, and received by the desk.
+ * The order a refused parcel leaves behind is CONFIRMED, with no rejection reason
+ * (the courier records none), so that is the fixture, not a lost one dressed up.
+ */
+describe('and after it shipped — a parcel that came back', () => {
+  const SHIPPED = new Date(NOW.getTime() - 50 * DAY);
+  const returned: WinbackSource = {
+    confirmationStatus: 'CONFIRMED',
+    rejectionReason: null,
+    rejectedAt: null,
+    shippedAt: SHIPPED,
+    shippingStatus: 'RETURNED',
+    returnReceivedAt: long,
+    replacedByOrderNumber: null,
+    replacesOrderNumber: null,
+    sellingPrice: 100,
+    discountAmount: 0,
+    createdAt: new Date(NOW.getTime() - 60 * DAY),
+  };
+  const code = (v: ReturnType<typeof winbackVerdict>) => (v.eligible ? 'ELIGIBLE' : v.code);
+
+  it('— back, received and cooled: eligible, with the ceiling a lost order of the same price gets', () => {
+    const v = winbackVerdict(returned, NOW);
+    expect(v.eligible, 'المرتجع المستلَم لا يُعرض').toBe(true);
+    if (v.eligible) {
+      expect(v.maxDiscount).toBe(25);
+      expect(v.maxDiscount).toBe(maxWinbackDiscount(returned));
+      const lost = winbackVerdict(base, NOW);
+      expect(lost.eligible && lost.maxDiscount).toBe(v.maxDiscount);
+    }
+    // The discount already given still counts against it, as it does for a cancellation.
+    const discounted = winbackVerdict({ ...returned, sellingPrice: 80, discountAmount: 5 }, NOW);
+    expect(discounted.eligible && discounted.maxDiscount).toBe(15);
+  });
+
+  it('and whatever the confirmation said of it — a CONFIRMED parcel refused at the door, or one marked lost after it left', () => {
+    for (const confirmationStatus of ['CONFIRMED', 'REJECTED', 'CANCELLED']) {
+      expect(code(winbackVerdict({ ...returned, confirmationStatus }, NOW)), confirmationStatus).toBe('ELIGIBLE');
+    }
+  });
+
+  it('and the rule’s reasons do not gate it: no reason, or one the rule does not list, is still called', () => {
+    expect(code(winbackVerdict({ ...returned, rejectionReason: null }, NOW))).toBe('ELIGIBLE');
+    expect(code(winbackVerdict({ ...returned, rejectionReason: 'OTHER' }, NOW))).toBe('ELIGIBLE');
+    expect(code(winbackVerdict({ ...returned, rejectionReason: 'CUSTOMER_DOES_NOT_WANT_PRODUCT' }, NOW))).toBe('ELIGIBLE');
+    // …even under a rule that lists only one reason — and the same order lost BEFORE shipping is refused by it.
+    const narrow = { ...DEFAULT_WINBACK_RULE, reasons: ['PRICE_TOO_HIGH'] };
+    expect(code(winbackVerdict({ ...returned, rejectionReason: 'OTHER' }, NOW, narrow))).toBe('ELIGIBLE');
+    expect(code(winbackVerdict({ ...base, rejectionReason: 'OTHER' }, NOW, narrow))).toBe('REASON_NOT_WINBACK');
+  });
+
+  it.each([...NEVER_WINBACK_REASONS])('but «%s» is refused after it came back too — there is still nobody to ring', (reason) => {
+    const v = winbackVerdict({ ...returned, rejectionReason: reason }, NOW);
+    expect(code(v)).toBe('REASON_NOT_WINBACK');
+    if (!v.eligible) expect(v.reason).toBe(NOT_WINBACK_AR[reason]);
+  });
+
+  it('and a duplicate in particular, in its own words', () => {
+    const v = winbackVerdict({ ...returned, rejectionReason: 'DUPLICATE_ORDER' }, NOW);
+    expect(!v.eligible && v.reason).toBe('مكرَّر — البضاعة عنده أصلاً');
+  });
+
+  it('— NOT received: waiting at the desk, or written off as a loss, is refused with words that say so', () => {
+    for (const confirmationStatus of ['CONFIRMED', 'REJECTED']) {
+      const v = winbackVerdict({ ...returned, confirmationStatus, returnReceivedAt: null }, NOW);
+      expect(code(v), confirmationStatus).toBe('RETURN_NOT_RECEIVED');
+      if (!v.eligible) {
+        expect(v.reason).toContain('لم يستلمه المستودع');
+        expect(v.reason).toContain('أُغلق كخسارة');
+      }
+    }
+    // A missing date is no date: the field left out is not a receipt either.
+    expect(code(winbackVerdict({ ...returned, returnReceivedAt: undefined }, NOW))).toBe('RETURN_NOT_RECEIVED');
+    expect(code(winbackVerdict({ ...returned, returnReceivedAt: 'not a date' }, NOW))).toBe('RETURN_NOT_RECEIVED');
+  });
+
+  /**
+   * NOT BACK. A partial delivery carries a receipt — the refused units are counted in — and stays
+   * PARTIALLY_DELIVERED: he took part of it. FAILED_DELIVERY and RETURN_REQUESTED may yet be delivered.
+   * Each is refused WITH a receipt beside it, so the receipt alone is shown not to be what lets one in.
+   */
+  it.each(['FAILED_DELIVERY', 'RETURN_REQUESTED', 'PARTIALLY_DELIVERED', 'DELIVERED', 'SHIPPED', 'OUT_FOR_DELIVERY'])(
+    '— %s, even with a receipt, is not back: refused',
+    (shippingStatus) => {
+      for (const confirmationStatus of ['REJECTED', 'CANCELLED']) {
+        expect(code(winbackVerdict({ ...returned, confirmationStatus, shippingStatus }, NOW)), confirmationStatus).toBe('ALREADY_SHIPPED');
+      }
+      // And one that was never lost at confirmation is no lost order at all.
+      expect(code(winbackVerdict({ ...returned, shippingStatus }, NOW))).toBe('NOT_REJECTED');
+    }
+  );
+
+  it('— the owner’s switch off: refused, in his words, and the same order back on when it is on', () => {
+    const off = { ...DEFAULT_WINBACK_RULE, afterShipping: false };
+    const v = winbackVerdict(returned, NOW, off);
+    expect(code(v)).toBe('AFTER_SHIPPING_OFF');
+    expect(!v.eligible && v.reason).toBe('المرتجع بعد الشحن غير مشمول في القاعدة');
+    expect(code(winbackVerdict(returned, NOW, { ...off, afterShipping: true }))).toBe('ELIGIBLE');
+    // And the switch touches nothing before shipping.
+    expect(code(winbackVerdict(base, NOW, off))).toBe('ELIGIBLE');
+  });
+
+  it('— already offered, or itself a second chance: refused as before', () => {
+    expect(code(winbackVerdict({ ...returned, replacedByOrderNumber: 'SY-0099' }, NOW))).toBe('ALREADY_OFFERED');
+    expect(code(winbackVerdict({ ...returned, replacesOrderNumber: 'SY-0007' }, NOW))).toBe('ALREADY_A_SECOND_CHANCE');
+  });
+
+  /**
+   * A COURIER-TRANSFER REPLACEMENT THAT CAME BACK is refused here as «itself a second chance». It is not one —
+   * it is the first sale, re-shipped — but `createReplacement` leaves nothing on the row that tells it from a
+   * win-back: both are linked by `replacesOrderId` alone. Pinned as it stands, and listed as outside this change.
+   */
+  it('— and a transfer replacement that came back cannot be told from a win-back one, so it is refused alike', () => {
+    expect(code(winbackVerdict({ ...returned, replacesOrderNumber: 'SY-0007' }, NOW))).toBe('ALREADY_A_SECOND_CHANCE');
+  });
+
+  it('— too old: made before the look-back, returned yesterday — by when the ORDER was made, as a cancellation is', () => {
+    const v = winbackVerdict(
+      { ...returned, createdAt: new Date(NOW.getTime() - 121 * DAY), returnReceivedAt: new Date(NOW.getTime() - DAY) },
+      NOW
+    );
+    expect(code(v)).toBe('TOO_OLD');
+  });
+
+  it('— the cooling counts from the RECEIPT, on the same strict line: exactly fourteen days is due, a second short is not', () => {
+    const exactly = new Date(NOW.getTime() - WINBACK_COOLING_DAYS * DAY);
+    expect(code(winbackVerdict({ ...returned, returnReceivedAt: exactly }, NOW))).toBe('ELIGIBLE');
+    const short = new Date(exactly.getTime() + 1000);
+    const v = winbackVerdict({ ...returned, returnReceivedAt: short }, NOW);
+    expect(code(v)).toBe('COOLING');
+    if (!v.eligible) {
+      expect(v.dueAt?.getTime()).toBe(short.getTime() + WINBACK_COOLING_DAYS * DAY);
+      expect(v.reason).toBe(`ما زال في مهلة الـ${WINBACK_COOLING_DAYS} يوماً`);
+    }
+  });
+
+  it('and NOT from the day it shipped, nor from an old loss in the log', () => {
+    const fresh = new Date(NOW.getTime() - 3 * DAY);
+    const v = winbackVerdict({ ...returned, shippedAt: new Date(NOW.getTime() - 40 * DAY), rejectedAt: long, returnReceivedAt: fresh }, NOW);
+    expect(code(v)).toBe('COOLING');
+    if (!v.eligible) expect(v.dueAt?.getTime()).toBe(fresh.getTime() + WINBACK_COOLING_DAYS * DAY);
+  });
+
+  it('— and a parcel RETURNED that never left (cancelled at the pickup) is read as before shipping, as it always was', () => {
+    expect(returnedAfterShipping({ shippedAt: null, shippingStatus: 'RETURNED' })).toBe(false);
+    expect(code(winbackVerdict({ ...base, shippingStatus: 'RETURNED', returnReceivedAt: long }, NOW))).toBe('ELIGIBLE');
+    expect(code(winbackVerdict({ ...base, shippingStatus: 'RETURNED', rejectionReason: 'OTHER' }, NOW))).toBe('REASON_NOT_WINBACK');
+    expect(code(winbackVerdict({ ...returned, shippedAt: null }, NOW))).toBe('NOT_REJECTED');
+  });
+});
+
+describe('a parcel that came back is named in words', () => {
+  it('— the return’s own reason, from the labels the shipping screens use', () => {
+    expect(AFTER_SHIPPING_AR).toBe('مرتجع بعد الشحن');
+    expect(returnLabel({ returnReason: 'CUSTOMER_REFUSED' })).toBe('مرتجع بعد الشحن — العميل رفض');
+    expect(returnLabel({ returnReason: 'DAMAGED_PRODUCT', deliveryFailureReason: 'PHONE_UNREACHABLE' })).toBe('مرتجع بعد الشحن — منتج تالف');
+  });
+
+  it('and why the delivery failed, when the return itself says nothing', () => {
+    expect(returnLabel({ returnReason: null, deliveryFailureReason: 'PHONE_UNREACHABLE' })).toBe('مرتجع بعد الشحن — الهاتف لا يرد');
+  });
+
+  it('and never the prose a write-off or a transfer typed, never a code nobody labelled — just the return', () => {
+    for (const prose of ['أُغلق كخسارة — لم تُستلم البضاعة. ضاع عند المندوب', 'سحب من أرامكس وإصدار طلب بديل لـ سمسا', 'SOMETHING_NEW', 'constructor', '__proto__']) {
+      expect(returnLabel({ returnReason: prose }), prose).toBe('مرتجع بعد الشحن');
+    }
+    expect(returnLabel({})).toBe('مرتجع بعد الشحن');
+  });
+});
+
 describe('the discount has a ceiling, and it counts what was already given', () => {
   it('a quarter of the price', () => {
     expect(WINBACK_MAX_DISCOUNT_SHARE).toBe(0.25);
@@ -257,6 +448,21 @@ describe('the offer raises a new order and leaves the loss where it is', () => {
     const src = route();
     expect((src.match(/replaces: \{ select: \{ orderNumber: true \} \}/g) ?? []).length).toBe(2);
     expect((src.match(/replacesOrderNumber:/g) ?? []).length).toBe(2);
+  });
+
+  /**
+   * And both doors read where the parcel is and whether the desk has it — or a parcel that came back reads as
+   * «not back» for ever in one of them, and the list offers what the button refuses (or the reverse).
+   */
+  it('and both read the parcel’s state and its receipt, the one the verdict cools a return from', () => {
+    const src = route();
+    const at = src.indexOf('export async function POST');
+    // Each half on its own: the whole file passing with one of them missing is how a door goes blind.
+    for (const [half, body] of [['القائمة', src.slice(0, at)], ['العرض', src.slice(at)]] as const) {
+      expect(body, `${half}: لا يقرأ الاستلام`).toContain('returnReceipt: { select: { inspectedAt: true } }');
+      expect(body, `${half}: لا يمرّر حالة الشحن`).toMatch(/shippingStatus: o(?:rder)?\.shippingStatus,/);
+      expect(body, `${half}: لا يمرّر يوم الاستلام`).toMatch(/returnReceivedAt: o(?:rder)?\.returnReceipt\?\.inspectedAt \?\? null,/);
+    }
   });
 
   /** A row eligible when the screen loaded may not be when the button lands. */

@@ -9,12 +9,14 @@ import { saveWinbackRule, winbackRule } from '@/lib/winback-rule';
 /**
  * PUT /api/confirmation/winback/rule — the owner's rule for «استرجاع الملغى».
  *
- * «شو القاعدة تبعو لاني ممكن اعدلها». Four things may be turned, all within
+ * «شو القاعدة تبعو لاني ممكن اعدلها». Five things may be turned, all within
  * bounds (`WINBACK_BOUNDS`): which reasons are worth a second call (the four the
- * screen was built for, and three more at the owner's own risk), how long to
- * wait, how far back to look, how much of the price may be given away. Nothing
- * else is read from the body — `.strict()` in spirit: a field this route does not
- * know is a refusal, so a form that still sends one finds out.
+ * screen was built for, and three more at the owner's own risk), whether a
+ * parcel that shipped and came back is read too («يشمل المرتجع بعد الشحن», a
+ * yes or a no, on when it is left out — 28/10), how long to wait, how far back
+ * to look, how much of the price may be given away. Nothing else is read from
+ * the body — `.strict()` in spirit: a field this route does not know is a
+ * refusal, so a form that still sends one finds out.
  *
  * WHO. `settings.manage` — the owner and the admin. A supervisor works the list
  * and reads the rule on the screen; changing how much money may be given away is
@@ -29,10 +31,12 @@ import { saveWinbackRule, winbackRule } from '@/lib/winback-rule';
  * WRITTEN DOWN. Who changed it, from what, to what — it decides how much of the
  * company's money a discount may give away.
  *
- * NOT WHAT IS ALWAYS REFUSED. A shipped parcel, an order already offered, a
- * second chance, a duplicate, a wrong number, a fake order, an entry error: no
- * value of this rule reaches any of them, and `winbackVerdict` applies every one
- * of those whatever is stored here.
+ * NOT WHAT IS ALWAYS REFUSED. A parcel that left and is not back (or is back and
+ * nobody received it), an order already offered, a second chance, a duplicate,
+ * a wrong number, a fake order, an entry error: no value of this rule reaches
+ * any of them, and `winbackVerdict` applies every one of those whatever is
+ * stored here. (The first of them read «a shipped parcel» until 28/10, when the
+ * owner ruled the ones that came back in, behind the switch above.)
  */
 export async function PUT(req: Request) {
   try {
