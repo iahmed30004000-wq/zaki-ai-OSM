@@ -362,9 +362,10 @@ describe('the base price is the line every offer stays under', () => {
     offersOf([onShelf({ name: 'قطعتان', quantity: 2, sellingPrice: 230 })]);
     const res = await patch({ basePrice: 99.99 });
     const { error, code } = await res.json();
-    expect(error).toContain('«قطعتان» سعره 230');
-    expect(error).toContain('(2 × 99.99 = 199.98)');
-    expect(error).toContain('عدّل سعر العرض أو أوقفه');
+    // One sentence: the offer, its price and its new line, at the store's two places.
+    expect(error).toBe(
+      'لا يمكنك تغيير السعر الأساسي إلى 99.99: العرض «قطعتان» سعره 230.00 أعلى من السعر الأساسي الجديد لقطعتين (199.98)'
+    );
     expect(code).toBe('BASE_BELOW_ACTIVE_OFFER');
     expect(res.status).toBe(409);
     expect(db.product.update).not.toHaveBeenCalled();
@@ -387,10 +388,13 @@ describe('the base price is the line every offer stays under', () => {
     const res = await patch({ basePrice: 100 });
     const { error } = await res.json();
     expect(res.status).toBe(409);
-    expect(error).toContain('«قطعة» سعره 110');
-    expect(error).toContain('«ثلاث قطع» سعره 330');
+    // Still one sentence: each offer it would leave above its line, joined, and the one under its line not named.
+    expect(error).toBe(
+      'لا يمكنك تغيير السعر الأساسي إلى 100.00: ' +
+        'العرض «قطعة» سعره 110.00 أعلى من السعر الأساسي الجديد لقطعة واحدة (100.00)، ' +
+        'والعرض «ثلاث قطع» سعره 330.00 أعلى من السعر الأساسي الجديد لـ3 قطع (300.00)'
+    );
     expect(error).not.toContain('قطعتان');
-    expect(error).toContain('عدّل أسعار هالعروض أو أوقفها');
   });
 
   it('passes when the only offers above the new line are STOPPED — they are not on sale', async () => {
@@ -429,7 +433,9 @@ describe('the base price is the line every offer stays under', () => {
     offersOf([onShelf({ name: 'ثلاث قطع', quantity: 3, sellingPrice: 75 })]);
     const res = await patch({ basePrice: 20 });
     expect(res.status).toBe(409);
-    expect((await res.json()).error).toContain('(3 × 20 = 60)');
+    expect((await res.json()).error).toBe(
+      'لا يمكنك تغيير السعر الأساسي إلى 20.00: العرض «ثلاث قطع» سعره 75.00 أعلى من السعر الأساسي الجديد لـ3 قطع (60.00)'
+    );
     expect(db.product.update).not.toHaveBeenCalled();
   });
 

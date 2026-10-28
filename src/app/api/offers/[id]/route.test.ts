@@ -209,9 +209,12 @@ describe('an edit that moves an offer against its line', () => {
   it('refuses a price above the line, says what the line is, and writes nothing', async () => {
     const res = await patch({ sellingPrice: 80 });
     const body = await res.json();
-    expect(body.error).toContain('(3 × 25 = 75)');
-    expect(body.error).toContain('اكتب 75 أو أقلّ');
-    expect(body).toMatchObject({ code: 'OFFER_ABOVE_BASE', maxPrice: 75 });
+    // The owner's edit sentence (28/10), with the real figures at the store's three places.
+    expect(body).toEqual({
+      error: 'لا يمكنك تعديل العرض: السعر 80.000 أعلى من السعر الأساسي لـ3 قطع (75.000)',
+      code: 'OFFER_ABOVE_BASE',
+      maxPrice: 75,
+    });
     expect(res.status).toBe(400);
     expect(db.offer.update).not.toHaveBeenCalled();
     expect(logAudit).not.toHaveBeenCalled();
@@ -220,7 +223,7 @@ describe('an edit that moves an offer against its line', () => {
   it('refuses a quantity sent ALONE when the stored price is above the line it leaves — 60 for one piece', async () => {
     const res = await patch({ quantity: 1 });
     const body = await res.json();
-    expect(body.error).toContain('(1 × 25 = 25)');
+    expect(body.error).toBe('لا يمكنك تعديل العرض: السعر 60.000 أعلى من السعر الأساسي لقطعة واحدة (25.000)');
     expect(body.maxPrice).toBe(25);
     expect(res.status).toBe(400);
     expect(db.offer.update).not.toHaveBeenCalled();
@@ -289,9 +292,12 @@ describe('an offer stored ABOVE its line before the rule existed — «ثلاث 
     db.offer.findFirst.mockResolvedValue(asStored({ ...VIOLATOR, status: 'INACTIVE' }, 25));
     const res = await patch({ status: 'ACTIVE' });
     const body = await res.json();
-    expect(body.error).toContain('ما بيرجع هالعرض للبيع');
-    expect(body.error).toContain('(3 × 25 = 75)');
-    expect(body).toMatchObject({ code: 'OFFER_ABOVE_BASE', maxPrice: 75 });
+    // The edit door's one sentence: the price it would go back on sale at, and the line it is above.
+    expect(body).toEqual({
+      error: 'لا يمكنك تعديل العرض: السعر 80.000 أعلى من السعر الأساسي لـ3 قطع (75.000)',
+      code: 'OFFER_ABOVE_BASE',
+      maxPrice: 75,
+    });
     expect(res.status).toBe(400);
     expect(db.offer.update).not.toHaveBeenCalled();
   });

@@ -94,15 +94,44 @@ describe('an offer above its line', () => {
 });
 
 describe('what a door answers', () => {
-  it('names the price, the line as a person checks it, and the figure to type instead', () => {
-    const refusal = offerAboveBaseRefusal({ sellingPrice: 80, quantity: 3 }, 25, 2);
-    expect(refusal).not.toBeNull();
-    expect(refusal!.error).toContain('سعر العرض (80)');
-    expect(refusal!.error).toContain('(3 × 25 = 75)');
-    expect(refusal!.error).toContain('اكتب 75 أو أقلّ');
-    expect(refusal!.error).toContain('القطع المجانية ما بتنحسب');
-    expect(refusal!.code).toBe(OFFER_ABOVE_BASE);
-    expect(refusal!.maxPrice).toBe(75);
+  it('the owner’s own sentence (28/10), word for word — in a currency with no decimals it is exactly his', () => {
+    expect(offerAboveBaseRefusal({ sellingPrice: 80, quantity: 3 }, 25, 0)).toEqual({
+      error: 'لا يمكنك إنشاء العرض: السعر 80 أعلى من السعر الأساسي لـ3 قطع (75)',
+      code: OFFER_ABOVE_BASE,
+      maxPrice: 75,
+    });
+    const stored = { sellingPrice: 60, quantity: 3, status: 'ACTIVE' };
+    expect(offerEditAboveBaseRefusal(stored, { sellingPrice: 80 }, 25, 0)?.error).toBe(
+      'لا يمكنك تعديل العرض: السعر 80 أعلى من السعر الأساسي لـ3 قطع (75)'
+    );
+  });
+
+  it('and its figures are written for the store’s currency — three places in dinars, grouped past a thousand', () => {
+    expect(offerAboveBaseRefusal({ sellingPrice: 80, quantity: 3 }, 25, 3)?.error).toBe(
+      'لا يمكنك إنشاء العرض: السعر 80.000 أعلى من السعر الأساسي لـ3 قطع (75.000)'
+    );
+    expect(offerAboveBaseRefusal({ sellingPrice: 2500, quantity: 2 }, 1200, 2)?.error).toBe(
+      'لا يمكنك إنشاء العرض: السعر 2,500.00 أعلى من السعر الأساسي لقطعتين (2,400.00)'
+    );
+  });
+
+  it('«3 + 1 هدية بـ80» names the line of the 3 PAID pieces — the gift does not raise it to 100', () => {
+    // A stored row, gift and all, as the door hands it over.
+    const giftOnTop = { quantity: 3, freeQuantity: 1, sellingPrice: 80 };
+    expect(offerAboveBaseRefusal(giftOnTop, 25, 0)?.error).toBe(
+      'لا يمكنك إنشاء العرض: السعر 80 أعلى من السعر الأساسي لـ3 قطع (75)'
+    );
+  });
+
+  it('and counts the pieces the way Arabic counts them — one, two, three to ten, eleven and up', () => {
+    const said = (quantity: number) => offerAboveBaseRefusal({ sellingPrice: 1_000_000, quantity }, 1, 0)?.error;
+    expect(said(1)).toContain('السعر الأساسي لقطعة واحدة (1)');
+    expect(said(2)).toContain('السعر الأساسي لقطعتين (2)');
+    expect(said(3)).toContain('السعر الأساسي لـ3 قطع (3)');
+    expect(said(10)).toContain('السعر الأساسي لـ10 قطع (10)');
+    expect(said(11)).toContain('السعر الأساسي لـ11 قطعة (11)');
+    expect(said(100)).toContain('السعر الأساسي لـ100 قطعة (100)');
+    expect(said(103)).toContain('السعر الأساسي لـ103 قطع (103)');
   });
 
   it('and answers nothing for an offer on or under its line', () => {
@@ -134,11 +163,10 @@ describe('what an edit is measured for', () => {
     expect(offerEditAboveBaseRefusal(under, { quantity: 1 }, 25, 2)?.maxPrice).toBe(25);
   });
 
-  it('switching a stopped one back on is measured, and the sentence says what the eye did', () => {
+  it('switching a stopped one back on is measured, and refused with the edit door’s sentence', () => {
     const stopped = { ...ABOVE, status: 'INACTIVE' };
     const refusal = offerEditAboveBaseRefusal(stopped, { status: 'ACTIVE' }, 25, 2);
-    expect(refusal?.error).toContain('ما بيرجع هالعرض للبيع');
-    expect(refusal?.error).toContain('(3 × 25 = 75)');
+    expect(refusal?.error).toBe('لا يمكنك تعديل العرض: السعر 80.00 أعلى من السعر الأساسي لـ3 قطع (75.00)');
     expect(offerEditAboveBaseRefusal(stopped, { status: 'INACTIVE' }, 25, 2)).toBeNull();
   });
 });

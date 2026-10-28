@@ -3,7 +3,7 @@ import { count, money } from './numeric-input';
 import { omittedMeansOmitted } from './zod-patch';
 import { evidencedWasPrices, struckThroughPrice } from './price-honesty';
 // `money.ts` imports nothing from here, so the one money rule stays a leaf.
-import { allocateDiscount, roundMinor } from './money';
+import { allocateDiscount, moneyText, roundMinor } from './money';
 import { offerAboveBase, paidPieces } from './offer-ceiling';
 import type { Prisma } from '@prisma/client';
 import type { db } from './db';
@@ -260,8 +260,15 @@ type Tx = Prisma.TransactionClient | typeof db;
  * THE CEILING'S REFUSAL, WRITTEN ONCE FOR EVERY DOOR THAT WRITES AN OFFER'S PRICE.
  *
  * The arithmetic is `offer-ceiling.ts`, which the offers screen draws its hint with. What lives here is what a door
- * ANSWERS: one sentence naming the price, the line and the figure to type instead; a code a caller can recognise it
- * by; and the line itself as `maxPrice`.
+ * ANSWERS: the owner's own sentence, a code a caller can recognise it by, and the line itself as `maxPrice`. The
+ * sentence is the one he confirmed on 28/10, word for word, with the real figures in it:
+ *
+ *   create   «لا يمكنك إنشاء العرض: السعر 80 أعلى من السعر الأساسي لـ3 قطع (75)»
+ *   edit     «لا يمكنك تعديل العرض: السعر 80 أعلى من السعر الأساسي لـ3 قطع (75)»
+ *
+ * The figures go through `moneyText` at the store's own decimals and without a code, so a dinar store reads
+ * «السعر 80.000 … (75.000)» — the shape every other figure on its screens has — and a currency with no decimals reads
+ * exactly the sentence above. The pieces are counted the way Arabic counts them; see `forPieces`.
  *
  * NOT A ZOD ISSUE, deliberately. `offerInputSchema` and `offerPatchSchema` are read directly by `offers.test.ts` and
  * `the-offer-after-the-order.test.ts` and know nothing about the product, so they stay exactly as they are; and a
@@ -278,10 +285,26 @@ export interface OfferAboveBaseRefusal {
   maxPrice: number;
 }
 
-/** «(3 × 25 = 75)» — the line, written the way a person checks it. */
-const lineOf = (pieces: number, basePrice: number, maxPrice: number) => `(${pieces} × ${basePrice} = ${maxPrice})`;
+/** A figure in one of these sentences: the store's decimals, grouped, western digits, and no code. */
+const figure = (value: number, minorUnit: number) => moneyText(value, null, minorUnit);
 
-export function offerAboveBaseRefusal(
+/**
+ * «لـ3 قطع» — THE PAID PIECES A LINE IS FOR, AS THE OWNER'S SENTENCE SAYS THEM.
+ *
+ * «لـ1 قطع» and «لـ2 قطع» read as a sentence a machine put together. Arabic says one piece and two pieces with no
+ * digit at all, takes the plural from three to ten, and the singular from eleven (100 and 200 too). Kept local, like
+ * `offersCountAr` and `arabicDays`: this is the one noun this file counts.
+ */
+function forPieces(pieces: number): string {
+  if (pieces === 1) return 'لقطعة واحدة';
+  if (pieces === 2) return 'لقطعتين';
+  const lastTwo = pieces % 100;
+  return lastTwo >= 3 && lastTwo <= 10 ? `لـ${pieces} قطع` : `لـ${pieces} قطعة`;
+}
+
+/** The owner's sentence, with the verb of the door that refuses. */
+function refusalAt(
+  door: 'إنشاء' | 'تعديل',
   offer: { sellingPrice: number; quantity: number },
   basePrice: number,
   minorUnit: number
@@ -290,11 +313,20 @@ export function offerAboveBaseRefusal(
   if (maxPrice === null) return null;
   return {
     error:
-      `سعر العرض (${roundMinor(offer.sellingPrice, minorUnit)}) أعلى من السعر الأساسي لنفس عدد القطع ` +
-      `${lineOf(paidPieces(offer.quantity), basePrice, maxPrice)} — اكتب ${maxPrice} أو أقلّ. القطع المجانية ما بتنحسب.`,
+      `لا يمكنك ${door} العرض: السعر ${figure(offer.sellingPrice, minorUnit)} أعلى من السعر الأساسي ` +
+      `${forPieces(paidPieces(offer.quantity))} (${figure(maxPrice, minorUnit)})`,
     code: OFFER_ABOVE_BASE,
     maxPrice,
   };
+}
+
+/** The create door's refusal — `POST /api/offers`. */
+export function offerAboveBaseRefusal(
+  offer: { sellingPrice: number; quantity: number },
+  basePrice: number,
+  minorUnit: number
+): OfferAboveBaseRefusal | null {
+  return refusalAt('إنشاء', offer, basePrice, minorUnit);
 }
 
 /**
@@ -312,6 +344,9 @@ export function offerAboveBaseRefusal(
  * «تعديل» form sends the price and the quantity on EVERY save, so a rule keyed on their presence would refuse
  * renaming an old offer, or changing its ending, until somebody repriced it; and a drag sends one PATCH per moved
  * row with nothing holding them together, so one refusal there would leave the list half reordered.
+ *
+ * Every refusal here is the edit door's one sentence, a switch back on included: it is this door, and the price and
+ * the line it names are the reason the switch is refused.
  */
 export function offerEditAboveBaseRefusal(
   stored: { sellingPrice: number; quantity: number; status: string },
@@ -326,19 +361,12 @@ export function offerEditAboveBaseRefusal(
   const backOnSale = edit.status === 'ACTIVE' && stored.status !== 'ACTIVE';
   if (!repriced && !resized && !backOnSale) return null;
 
+  // The row the edit will leave: the stored figures fill in what the request does not carry.
   const after = {
     sellingPrice: edit.sellingPrice ?? stored.sellingPrice,
     quantity: edit.quantity ?? stored.quantity,
   };
-  const refusal = offerAboveBaseRefusal(after, basePrice, minorUnit);
-  if (!refusal || repriced || resized) return refusal;
-  // Only switched back on: the seller pressed the eye, not the price box, so the sentence says what the eye did.
-  return {
-    ...refusal,
-    error:
-      `ما بيرجع هالعرض للبيع وسعره (${roundMinor(after.sellingPrice, minorUnit)}) أعلى من السعر الأساسي لنفس عدد القطع ` +
-      `${lineOf(paidPieces(after.quantity), basePrice, refusal.maxPrice)} — عدّل سعره لـ ${refusal.maxPrice} أو أقلّ أوّلاً، وبعدين شغّله.`,
-  };
+  return refusalAt('تعديل', after, basePrice, minorUnit);
 }
 
 /**
@@ -376,14 +404,15 @@ export async function baseBelowActiveOffersRefusal(
   const above = live.flatMap((o) => {
     const maxPrice = offerAboveBase(o, nextBasePrice, minorUnit);
     if (maxPrice === null) return [];
-    const line = lineOf(paidPieces(o.quantity), nextBasePrice, maxPrice);
-    return [`عرض «${o.name}» سعره ${roundMinor(o.sellingPrice, minorUnit)} والحدّ الجديد ${line}`];
+    return [
+      `العرض «${o.name}» سعره ${figure(o.sellingPrice, minorUnit)} أعلى من السعر الأساسي الجديد ` +
+        `${forPieces(paidPieces(o.quantity))} (${figure(maxPrice, minorUnit)})`,
+    ];
   });
   if (above.length === 0) return null;
-  return (
-    `ما بينفع يصير السعر الأساسي ${nextBasePrice}: ${above.join('، و')}. ` +
-    (above.length === 1 ? 'عدّل سعر العرض أو أوقفه أوّلاً.' : 'عدّل أسعار هالعروض أو أوقفها أوّلاً.')
-  );
+  // ONE sentence, however many offers: the new price, then each offer it would leave above its line — its name, its
+  // price and its new line — in the shape of the offer doors' own sentence.
+  return `لا يمكنك تغيير السعر الأساسي إلى ${figure(nextBasePrice, minorUnit)}: ${above.join('، و')}`;
 }
 
 /**

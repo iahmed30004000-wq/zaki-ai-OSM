@@ -62,16 +62,23 @@ describe('creating a bundle above its line', () => {
   it('NEGATIVE: «3 بـ80» at a base of 25 is refused with the line, and NOTHING is written', async () => {
     const res = await post({ quantity: 3, sellingPrice: 80 });
     const body = await res.json();
-    // The sentence first: it is what the seller reads, and the figures in it are the ones to check.
-    expect(body.error).toContain('سعر العرض (80)');
-    expect(body.error).toContain('(3 × 25 = 75)');
-    expect(body.error).toContain('اكتب 75 أو أقلّ');
-    expect(body).toMatchObject({ code: 'OFFER_ABOVE_BASE', maxPrice: 75 });
+    // The sentence first: the owner's own words (28/10), with the real figures at the store's three places.
+    expect(body).toEqual({
+      error: 'لا يمكنك إنشاء العرض: السعر 80.000 أعلى من السعر الأساسي لـ3 قطع (75.000)',
+      code: 'OFFER_ABOVE_BASE',
+      maxPrice: 75,
+    });
     expect(res.status).toBe(400);
     expect(db.$transaction).not.toHaveBeenCalled();
     expect(db.offer.create).not.toHaveBeenCalled();
     expect(logAudit).not.toHaveBeenCalled();
     expect(refreshLandingPages).not.toHaveBeenCalled();
+  });
+
+  it('«3 بـ60» at a base of 25 — 20 a piece, under its line of 75 — is written as typed', async () => {
+    const res = await post({ quantity: 3, sellingPrice: 60 });
+    expect(res.status).toBe(200);
+    expect(created()).toMatchObject({ quantity: 3, sellingPrice: 60 });
   });
 
   it('on the line it is written as typed — and audited, and the page rebuilt, as every offer is', async () => {
@@ -84,7 +91,10 @@ describe('creating a bundle above its line', () => {
   });
 
   it('a gift rides on top of the line: «3 + 1 هدية» may cost what three pieces cost — 75, not 80', async () => {
-    expect((await post({ quantity: 3, freeQuantity: 1, sellingPrice: 80 })).status).toBe(400);
+    const refused = await post({ quantity: 3, freeQuantity: 1, sellingPrice: 80 });
+    expect(refused.status).toBe(400);
+    // The line is for the 3 PAID pieces: the gift does not raise it to 4 × 25 = 100.
+    expect((await refused.json()).error).toBe('لا يمكنك إنشاء العرض: السعر 80.000 أعلى من السعر الأساسي لـ3 قطع (75.000)');
     expect(db.offer.create).not.toHaveBeenCalled();
     expect((await post({ quantity: 3, freeQuantity: 1, sellingPrice: 75 })).status).toBe(200);
     expect(created().freeQuantity).toBe(1);

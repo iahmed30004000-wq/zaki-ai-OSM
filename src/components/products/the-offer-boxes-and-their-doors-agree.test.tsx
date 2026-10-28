@@ -303,23 +303,33 @@ describe('POST /api/offers — the offers form’s own body, at the real door', 
 
     const res = await atTheCreateDoor({ ...body, productId: PRODUCT_ID });
     const answer = await res.json();
-    // The sentence first, because it is what the seller reads: the price, the line, and the figure to type.
-    expect(answer.error).toContain('سعر العرض (36)');
-    expect(answer.error).toContain('(1 × 20 = 20)');
-    expect(answer.error).toContain('اكتب 20 أو أقلّ');
+    // The sentence first, because it is what the seller reads: the owner's own words, at the store's three places.
+    expect(answer.error).toBe('لا يمكنك إنشاء العرض: السعر 36.000 أعلى من السعر الأساسي لقطعة واحدة (20.000)');
     expect(answer).toMatchObject({ code: 'OFFER_ABOVE_BASE', maxPrice: 20 });
     expect(res.status).toBe(400);
     expect(db.offer.create).not.toHaveBeenCalled();
     expect(logAudit).not.toHaveBeenCalled();
   });
 
-  it('and THAT SENTENCE IS DRAWN ON THE SCREEN through the message the form already had', async () => {
-    refuseWith = 'سعر العرض (36) أعلى من السعر الأساسي لنفس عدد القطع (1 × 20 = 20) — اكتب 20 أو أقلّ. القطع المجانية ما بتنحسب.';
+  it('and THE DOOR’S OWN SENTENCE is what the screen draws, through the message the form already had', async () => {
+    // What the real door answers for this click — not a copy typed into the test, which would pass whatever the door
+    // said.
+    const { body } = await newOfferBodyFor(async (user) => {
+      await user.type(box('السعر (JOD)'), '36');
+    });
+    const door = await (await atTheCreateDoor({ ...body, productId: PRODUCT_ID })).json();
+    expect(door.code).toBe('OFFER_ABOVE_BASE');
+
+    // The same click again, and this time the screen is told exactly that.
+    cleanup();
+    sent = [];
+    refuseWith = door.error;
     await newOfferBodyFor(async (user) => {
       await user.type(box('السعر (JOD)'), '36');
     });
-    await waitFor(() => expect(screen.getByText(/اكتب 20 أو أقلّ/)).toBeTruthy());
-    expect(screen.getByText(/اكتب 20 أو أقلّ/).className).toContain('destructive');
+    const drawn = await screen.findByText(door.error);
+    expect(drawn.textContent).toBe(door.error);
+    expect(drawn.className).toContain('destructive');
   });
 
   it('a TYPED ZERO price is accepted as zero, so a free bundle stays sayable', async () => {
@@ -490,7 +500,11 @@ describe('PATCH /api/offers/[id] — an edit, at the real door', () => {
 
     const res = await atTheEditDoor(body);
     expect(res.status).toBe(400);
-    expect(await res.json()).toMatchObject({ code: 'OFFER_ABOVE_BASE', maxPrice: 20 });
+    expect(await res.json()).toEqual({
+      error: 'لا يمكنك تعديل العرض: السعر 30.000 أعلى من السعر الأساسي لقطعة واحدة (20.000)',
+      code: 'OFFER_ABOVE_BASE',
+      maxPrice: 20,
+    });
     expect(db.offer.update).not.toHaveBeenCalled();
   });
 });
