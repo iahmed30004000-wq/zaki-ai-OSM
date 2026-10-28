@@ -103,11 +103,17 @@ describe('the editor panel', () => {
   });
 
   it('says whether the upsell and the suggestions are on, and links to where they are set', async () => {
+    // The upsell line is the page's own answer now — see the-offer-after-the-order-is-switched-on-from-the-page.test.tsx.
     apiJson.mockImplementation(async (url: string) =>
-      url.startsWith('/api/offers') ? { offers: [{ postOrderOffer: true, isActive: true }, { postOrderOffer: false }] } : { recommendations: [{}, {}] }
+      url === '/api/landing-pages/lp1/after-order'
+        ? {
+            productId: 'p1', productName: 'ماء الكمأ', why: null, flagged: { id: 'po1', name: 'قطعة كمان' }, flaggedCount: 1, minorUnit: 2, canManage: false,
+            offer: { id: 'po1', name: 'قطعة كمان', quantity: 1, freeQuantity: 0, price: 10, listPrice: null },
+          }
+        : { recommendations: [{}, {}] }
     );
-    render(<AfterOrderPanel section={section} patch={vi.fn()} ctx={{ productId: 'p1', pageId: 'lp1', storePhone: null }} />);
-    await waitFor(() => expect(screen.getByText(/شغّال — 1 عرض/)).toBeTruthy());
+    render(<AfterOrderPanel section={section} patch={vi.fn()} ctx={{ productId: 'p1', pageId: 'lp1', storePhone: null, currency: 'USD' }} />);
+    await waitFor(() => expect(screen.getByText('شغّال: قطعة كمان — 1 قطعة بـ10.00 USD')).toBeTruthy());
     expect(screen.getByText('2 منتج')).toBeTruthy();
     expect((screen.getByRole('link', { name: 'عروض المنتج' }) as HTMLAnchorElement).getAttribute('href')).toBe('/products/p1#offers');
     expect((screen.getByRole('link', { name: 'المنتجات المقترحة' }) as HTMLAnchorElement).getAttribute('href')).toBe('/store/landing-pages/lp1#recommendations');

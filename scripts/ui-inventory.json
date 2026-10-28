@@ -170,8 +170,8 @@
     "tabs": 0
   },
   "src/components/landing-editor/AfterOrderPanel.tsx": {
-    "buttons": 2,
-    "inputs": 11,
+    "buttons": 6,
+    "inputs": 13,
     "columns": 0,
     "cards": 0,
     "modals": 0,
