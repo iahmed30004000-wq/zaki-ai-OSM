@@ -37,6 +37,8 @@ import {
 import { MANUAL_SOURCES, REVIEW_SOURCE_LABEL } from '@/lib/reviews';
 import type { SellingFamily } from '@/lib/selling-blocks';
 import { lookForType } from '@/lib/block-look';
+// Where the form's fields come from — a link to the store's «الدفع» for whoever may open it, words for anybody else.
+import { StoreCheckoutNote } from './StoreCheckoutNote';
 
 /**
  * The block builder.
@@ -454,7 +456,8 @@ export function BlockBuilder(props: Props) {
             />
           </div>
           <p className="-mt-3 mb-4 text-xs leading-relaxed text-[var(--sys-muted)]">
-            كل باقي الألوان — الزر، السعر، الشارات، الحدود — تُشتق من هذا اللون، فلا يمكن أن تتنافر.
+            كل باقي الألوان — الأزرار، السعر، الشارات، الحدود — تُشتق من هذا اللون، فلا يمكن أن تتنافر. ما عدا زر
+            تأكيد الطلب: إذا المتجر اختار له لون بتبويب «الدفع»، بياخد هاللون.
           </p>
 
           <label className="mb-1.5 block text-xs font-semibold text-[var(--sys-heading)]">الطابع</label>
@@ -1495,6 +1498,7 @@ function SectionFields({
           <Field label="العنوان" value={s.title} onChange={(v) => patch({ title: v })} />
           <Field label="سطر تحته" value={s.subtitle} onChange={(v) => patch({ subtitle: v })} />
           <Field label="نص زر التأكيد (السعر بيطلع بعده)" value={s.submitLabel} onChange={(v) => patch({ submitLabel: v })} placeholder="تأكيد الطلب" />
+          <StoreCheckoutNote />
           <div className="space-y-1">
             <span className="block text-xs font-semibold text-[var(--sys-heading)]">شكل النموذج</span>
             <div className="flex gap-1 rounded-md bg-[var(--sys-surface-strong)] p-0.5">

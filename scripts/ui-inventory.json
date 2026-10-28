@@ -229,6 +229,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/landing-editor/StoreCheckoutNote.tsx": {
+    "buttons": 0,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 0,
+    "links": 1,
+    "tabs": 0
+  },
   "src/components/landing-editor/StoreThemePreview.tsx": {
     "buttons": 1,
     "inputs": 0,
@@ -1300,12 +1310,12 @@
     "tabs": 0
   },
   "src/components/screens/StoreThemeScreen.tsx": {
-    "buttons": 14,
-    "inputs": 25,
+    "buttons": 15,
+    "inputs": 26,
     "columns": 22,
     "cards": 0,
     "modals": 0,
-    "icons": 14,
+    "icons": 15,
     "links": 3,
     "tabs": 0
   },

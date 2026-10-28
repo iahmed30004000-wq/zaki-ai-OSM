@@ -30,6 +30,7 @@ import Thanks, { generateMetadata as thanksMeta } from './[store]/thanks/page';
 import Track, { generateMetadata as trackMeta } from './[store]/track/page';
 import { WHAT_HAPPENS_NEXT_AR } from '@/lib/order-tracking';
 import { repoFile, stripComments } from '@/lib/guard-source';
+import { DEFAULT_STORE_THEME } from '@/lib/store-theme';
 
 const store = {
   id: 's1',
@@ -111,6 +112,36 @@ describe('the thank-you page', () => {
     const link = parts.find((p) => p.includes('/track'));
     expect(link).toBe('/s/sehha/track');
     expect(link).not.toContain('ORD-77');
+  });
+
+  /**
+   * «رسالة ما بعد الطلب» — the shop's «الدفع», from its LIVE theme. The basket's thank-you page says it too, where it
+   * used to say only its own line; a shop that wrote none keeps that line.
+   */
+  it('says the shop’s «رسالة ما بعد الطلب» when it wrote one, in place of its own line', async () => {
+    getStorefront.mockResolvedValue({
+      ...store,
+      theme: {
+        ...DEFAULT_STORE_THEME,
+        checkout: { ...DEFAULT_STORE_THEME.checkout!, afterOrderMessage: '  وصلنا طلبك — بنتصل فيك اليوم.  ' },
+      },
+    });
+    const text = textOf(await thanks({ o: 'ORD-77' })).join(' ');
+    expect(text).toContain('وصلنا طلبك — بنتصل فيك اليوم.');
+    expect(text).not.toContain('تم استلام طلبك');
+    // Everything else the page promises is still there.
+    expect(text).toContain('ORD-77');
+    for (const line of WHAT_HAPPENS_NEXT_AR) expect(text).toContain(line);
+  });
+
+  it('NEGATIVE: a shop that wrote none — or only spaces — keeps the line the page always had', async () => {
+    for (const afterOrderMessage of ['', '   ']) {
+      getStorefront.mockResolvedValue({
+        ...store,
+        theme: { ...DEFAULT_STORE_THEME, checkout: { ...DEFAULT_STORE_THEME.checkout!, afterOrderMessage } },
+      });
+      expect(textOf(await thanks()).join(' ')).toContain('تم استلام طلبك');
+    }
   });
 
   /** One promise, written once, on both screens. */

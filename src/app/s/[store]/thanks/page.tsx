@@ -7,6 +7,7 @@ import { LandingTrackingPixels } from '@/components/tracking/LandingTrackingPixe
 import { getTrackingPixelsForPage } from '@/lib/tracking/tracking-config';
 import { publicTitle, storeIcons } from '@/lib/public-metadata';
 import { WHAT_HAPPENS_NEXT_AR } from '@/lib/order-tracking';
+import { checkoutForPage } from '@/lib/store-theme';
 
 /**
  * THE ORDER WENT THROUGH.
@@ -65,12 +66,15 @@ export default async function ThanksPage({ params, searchParams }: Props) {
     storeId: store.id,
     countryId: store.countryId,
   });
+  // «رسالة ما بعد الطلب» from the shop's «الدفع» (its LIVE theme) — the line its landing forms say too. None set:
+  // the line this page always had.
+  const thanks = checkoutForPage(store.theme).thanksMessage || 'تم استلام طلبك';
 
   return (
     <StorefrontShell store={store} back={{ href: `/s/${store.slug}`, label: store.name }}>
       <LandingTrackingPixels page="PUBLIC" pixels={pixels} viewContent={null} />
       <article className="sf-page">
-        <h1>تم استلام طلبك</h1>
+        <h1>{thanks}</h1>
 
         {reference && (
           <p

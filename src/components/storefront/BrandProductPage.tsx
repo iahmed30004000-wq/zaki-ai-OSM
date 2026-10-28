@@ -11,6 +11,7 @@ import { brandSections, type BrandContent } from '@/lib/store-brand-template';
 import { BRAND_PAGE_SHEET } from './styles';
 import type { StorefrontProduct } from '@/lib/storefront';
 import type { OfferView } from '@/lib/offers';
+import type { PageCheckout } from '@/lib/store-theme';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -100,6 +101,11 @@ export function BrandProductPage({
   deliveryDays,
   /** The shop's own returns page, when it has one. */
   returns,
+  /**
+   * The shop's «الدفع» for the order form — the fields it shows and their order, its marks, its button. Worked out
+   * by the route from the store's LIVE theme and handed in, like the endpoint: the page decides none of it.
+   */
+  checkout,
 }: {
   shop: BrandPageShop;
   product: StorefrontProduct & { gallery: string[] };
@@ -117,6 +123,7 @@ export function BrandProductPage({
   series: (StorefrontProduct & { gallery?: string[] })[];
   deliveryDays: number | null;
   returns: { href: string; label: string } | null;
+  checkout?: PageCheckout;
 }) {
   const show = new Set(brandSections(content));
   const money = (n: number) => moneyText(n, shop.currency, shop.minorUnit);
@@ -348,6 +355,7 @@ export function BrandProductPage({
             dir={shop.dir}
             whatsapp={shop.supportPhone}
             endpoint={endpoint}
+            checkout={checkout}
           />
         </LandingFormBridge>
         <p className="lp-sub">رح نتصل فيك نأكّد الطلب قبل ما نشحنه</p>

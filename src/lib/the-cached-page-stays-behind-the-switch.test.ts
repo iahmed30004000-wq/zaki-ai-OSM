@@ -111,6 +111,26 @@ describe('a change the seller makes', () => {
     findMany.mockRejectedValue(new Error('db down'));
     await expect(refreshLandingPages({ pageId: 'lp1' })).resolves.toBeUndefined();
   });
+
+  /*
+   * BY STORE — what a store publishes reaches every page it sells through: the order form asks what «الدفع» says,
+   * and the page wears the store's family. Inside the company, so a store id alone can never name another tenant's
+   * pages.
+   */
+  it('rebuilds every page of a store, read inside its company', async () => {
+    findMany.mockResolvedValueOnce([{ slug: 'kamaa' }, { slug: 'sidr-honey' }]);
+    await refreshLandingPages({ storeId: 's1', companyId: 'c1' });
+    expect(findMany.mock.calls[0][0]).toEqual({ where: { storeId: 's1', companyId: 'c1' }, select: { slug: true } });
+    expect(revalidatePath.mock.calls.map((c) => c[0])).toEqual(['/lp-cached/kamaa', '/lp-cached/sidr-honey']);
+  });
+
+  it('NEGATIVE: by store, a read that fails rebuilds nothing and never fails the publish', async () => {
+    findMany.mockRejectedValue(new Error('db down'));
+    await expect(refreshLandingPages({ storeId: 's1', companyId: 'c1' })).resolves.toBeUndefined();
+    // It was the store's read that failed, not some other one.
+    expect(findMany).toHaveBeenCalledWith({ where: { storeId: 's1', companyId: 'c1' }, select: { slug: true } });
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
 });
 
 describe('every save that changes what a page shows rebuilds it', () => {
@@ -122,6 +142,7 @@ describe('every save that changes what a page shows rebuilds it', () => {
     ['src/app/api/products/[id]/route.ts', 1],
     ['src/app/api/landing-pages/[id]/recommendations/route.ts', 1],
     ['src/app/api/landing-pages/[id]/recommendations/[recId]/route.ts', 2],
+    ['src/app/api/store/theme/route.ts', 2], // the store's publish and its step back — never the draft
   ])('%s refreshes the cached page (%i)', async (file, times) => {
     const { repoFile, stripComments } = await import('./guard-source');
     const calls = stripComments(repoFile(file)).match(/await refreshLandingPages\(/g) ?? [];

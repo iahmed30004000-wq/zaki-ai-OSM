@@ -12,7 +12,7 @@ import { LandingPageView } from '@/components/landing/LandingPageView';
 import Link from 'next/link';
 import { RecentlyViewed } from '@/components/storefront/RecentlyViewed';
 import { ProductCard } from '@/components/storefront/ProductCard';
-import { familyOf, layoutOf } from '@/lib/store-theme';
+import { checkoutForPage, familyOf, layoutOf } from '@/lib/store-theme';
 import { bestSellers, boughtTogether } from '@/lib/store-facts';
 import { BrandProductPage } from '@/components/storefront/BrandProductPage';
 import { brandContent } from '@/lib/store-brand-template';
@@ -236,6 +236,10 @@ export default async function StorefrontProductPage({ params, searchParams }: Pr
     countryId: store.countryId,
   });
 
+  // What the order form asks for is the shop's «الدفع», from its LIVE theme — the same answer its landing pages,
+  // its cart and the door behind this form take.
+  const checkout = checkoutForPage(store.theme);
+
   /**
    * ═══════════════════════════════════════════════════════════════════════
    * «علامة» DRAWS THIS PAGE FROM THE PRODUCT'S FIELDS.
@@ -324,6 +328,7 @@ export default async function StorefrontProductPage({ params, searchParams }: Pr
           regions={regions}
           phonePlaceholder={ruleFor(store.countryCode)?.example}
           endpoint={`/api/public/stores/${store.slug}/products/${product.sku}/orders`}
+          checkout={checkout}
           series={siblings}
           deliveryDays={eta ? eta.slowDays : null}
           returns={returnsLink}
@@ -503,6 +508,7 @@ export default async function StorefrontProductPage({ params, searchParams }: Pr
               // Same number the header's WhatsApp button uses.
               whatsapp={store.supportPhone}
               endpoint={`/api/public/stores/${store.slug}/products/${product.sku}/orders`}
+              checkout={checkout}
             />
           </LandingFormBridge>
         </section>

@@ -19,6 +19,8 @@ import {
   mapZodFieldErrors,
   ORDER_VALIDATION_ERROR_BODY,
 } from './landing-order-schema';
+// Plain rules and plain sentences — never `store-theme`: the engine that decides money sees nothing of the look.
+import { blankRequired, type CheckoutRules } from './checkout-words';
 
 /**
  * TAKING AN ORDER FROM A STRANGER.
@@ -255,6 +257,15 @@ export interface SellingSurface {
   deviceClass?: 'mobile' | 'tablet' | 'desktop' | null;
   /** Title and message of the new-order notification. */
   notice: { title: string; message: (orderNumber: string) => string };
+  /**
+   * WHAT THIS SHOP'S «الدفع» REQUIRES, AS THE DOOR ENFORCES IT.
+   *
+   * Resolved by the ROUTE from the store's LIVE theme (`checkoutRules`), never from the browser and never from the
+   * draft. The four a parcel needs keep the schema's own checks; what this adds is the second number and the note,
+   * when the seller ticked «إلزامي» and left them visible. Absent or null — a door that names none — asks nothing
+   * beyond the four, exactly as before.
+   */
+  checkout?: CheckoutRules | null;
 }
 
 export type IntakeResult =
@@ -304,6 +315,20 @@ export async function createPublicOrder(
   // Honeypot filled → bot. Generic rejection.
   if (v.website && v.website.length > 0) {
     return { ok: false, status: 400, body: { error: 'تعذر إرسال الطلب' } };
+  }
+
+  /*
+   * «إلزامي» IS MEANT AT THE DOOR — the owner's answer, 28/10, to «refuse, or take it as before?».
+   *
+   * A second number or a note the shop requires, left blank, is refused HERE: after the schema and before anything
+   * is written — no customer, no order, no activity, no event, no notification, and not the one-order-per-phone
+   * slot either, so the visitor who fills it in and presses again is not told the order was already received. The
+   * same sentence the form says under the field (`checkout-words.ts`). A field the shop hid is never required, and
+   * a value sent for one by an older page is taken as before.
+   */
+  const blank = blankRequired(surface.checkout?.required ?? [], v);
+  if (blank) {
+    return { ok: false, status: 400, body: { ...ORDER_VALIDATION_ERROR_BODY, fieldErrors: blank } };
   }
 
   const normalizedPhone = normalizePhoneNumber(v.phone, store.country.code);

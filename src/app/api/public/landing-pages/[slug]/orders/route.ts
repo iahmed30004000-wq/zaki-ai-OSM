@@ -5,6 +5,7 @@ import { rateLimit, getClientIp } from '@/lib/rate-limit';
 import { LANDING_PAGE_SOURCE } from '@/lib/landing-pages';
 import { createPublicOrder, type SellingSurface } from '@/lib/public-order';
 import { resolveCampaign } from '@/lib/campaigns-server';
+import { checkoutRules, parseStoreTheme } from '@/lib/store-theme';
 
 /**
  * Public order intake from a landing page.
@@ -94,6 +95,8 @@ export async function POST(req: Request, ctx: Ctx) {
             id: true,
             countryId: true,
             country: { select: { code: true, currencyCode: true, orderPrefix: true, minorUnit: true } },
+            // The LIVE theme — what the page's form was drawn from — for what its «الدفع» requires. Never the draft.
+            theme: true,
           },
         },
       },
@@ -117,7 +120,9 @@ export async function POST(req: Request, ctx: Ctx) {
     const surface: SellingSurface = {
       deviceClass: deviceClassOf(req.headers.get('user-agent')),
       companyId: lp.company.id, // server-derived — NEVER from the browser
-      store: lp.store,
+      store: { id: lp.store.id, countryId: lp.store.countryId, country: lp.store.country },
+      // What the store's «الدفع» requires, from its LIVE theme — the same answer the page's form was drawn from.
+      checkout: checkoutRules(parseStoreTheme(lp.store.theme)),
       campaignId,
       products: [lp.product],
       landingPage: { id: lp.id, name: lp.name, slug: lp.slug },

@@ -5,6 +5,7 @@ import { requirePermission } from '@/lib/authorization';
 import { logAudit } from '@/lib/audit';
 import { apiErrorResponse } from '@/lib/api-error';
 import { zodMessage } from '@/lib/zod-message';
+import { refreshLandingPages } from '@/lib/landing-cache';
 import { cartBarApplies, parseStoreTheme, storeThemeSchema } from '@/lib/store-theme';
 
 /**
@@ -146,6 +147,9 @@ export async function POST() {
       where: { id: store.id },
       data: { theme: draft, themePrevious: store.theme, themePublishedAt: new Date() },
     });
+    // Every landing page of this store just changed too — its order form asks what «الدفع» says, and wears the
+    // store's family. The cached ones are rebuilt now, not in a minute. Never throws: the publish above is written.
+    await refreshLandingPages({ storeId: store.id, companyId });
 
     await logAudit({
       companyId, userId: user.id, action: 'STORE_THEME_PUBLISHED',
@@ -194,6 +198,8 @@ export async function PUT() {
         themePublishedAt: new Date(),
       },
     });
+    // A step back is a publish, so the store's landing pages are rebuilt with it — the same as above.
+    await refreshLandingPages({ storeId: store.id, companyId });
 
     await logAudit({
       companyId, userId: user.id, action: 'STORE_THEME_REVERTED',

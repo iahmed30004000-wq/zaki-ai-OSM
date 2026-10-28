@@ -164,8 +164,59 @@ describe('the checkout asks what the shop asks', () => {
    */
   it('takes its fields from the shop’s own settings', () => {
     const page = src('src/app/s/[store]/checkout/page.tsx');
-    expect(page).toContain('checkoutOrder(theme)');
-    expect(page).toContain('requiredCheckoutFields(theme)');
+    // The one resolver every public form and every public door take — `checkoutOrder` and `requiredCheckoutFields`
+    // behind it, and what the shop hid taken off.
+    expect(page).toContain('checkoutForPage(theme)');
+    expect(page).toContain('fields={checkout.fields}');
+    expect(page).toContain('required={checkout.required}');
+  });
+
+  /** The form the page draws, as the page hands it over (the form itself is stubbed in this file). */
+  const formProps = async () => {
+    const tree = await CheckoutPage({ params: Promise.resolve({ store: 'sehha' }) });
+    const find = (node: unknown): Record<string, unknown> | null => {
+      if (!node || typeof node !== 'object') return null;
+      if (Array.isArray(node)) {
+        for (const n of node) {
+          const hit = find(n);
+          if (hit) return hit;
+        }
+        return null;
+      }
+      const el = node as { type?: unknown; props?: Record<string, unknown> };
+      if (el.props && 'fields' in el.props && 'required' in el.props) return el.props;
+      return el.props ? find(el.props.children) : null;
+    };
+    return find(tree)!;
+  };
+  const withCheckout = (checkout: Record<string, unknown>) =>
+    getStorefront.mockResolvedValue(
+      store({ theme: { ...DEFAULT_STORE_THEME, checkout: { ...DEFAULT_STORE_THEME.checkout!, ...checkout } } })
+    );
+
+  it('a field the shop hid is not handed to the form at all — and asks nothing while hidden', async () => {
+    withCheckout({ hidden: ['altPhone', 'note'], required: ['altPhone'] });
+    const props = await formProps();
+    expect(props.fields).toEqual(['name', 'phone', 'region', 'address']);
+    expect(props.required).toEqual(['name', 'phone', 'region', 'address']);
+  });
+
+  it('NEGATIVE: nothing hidden — every field, in the shop’s order, and its ticks', async () => {
+    withCheckout({ fieldOrder: ['phone', 'name', 'note', 'region', 'address', 'altPhone'], required: ['note'] });
+    const props = await formProps();
+    expect(props.fields).toEqual(['phone', 'name', 'note', 'region', 'address', 'altPhone']);
+    expect(props.required).toEqual(['name', 'phone', 'region', 'address', 'note']);
+  });
+
+  it('and the button wears the shop’s «لون زر التأكيد» and words — or its own, when none are set', async () => {
+    withCheckout({ buttonColor: '#ffd400', submitText: 'احجز الآن' });
+    const props = await formProps();
+    expect((props.buttonVars as Record<string, string>)['--store-accent']).toBe('#ffd400');
+    expect(props.submitText).toBe('احجز الآن');
+    withCheckout({});
+    const plain = await formProps();
+    expect(plain.buttonVars).toBeNull();
+    expect(plain.submitText).toBe('أرسل الطلب');
   });
 
   it('and the form invents none of its own', () => {

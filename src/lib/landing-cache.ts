@@ -12,9 +12,17 @@ import { CACHED_LANDING_PREFIX } from './landing-cache-path';
  *
  * Harmless with the switch off: it refreshes a route nobody is being served from. Never throws — a refresh that fails
  * leaves the minute-long refresh to do the job, and must not fail the seller's save.
+ *
+ * BY STORE, for what a store decides on every page it sells through: its published look — the order form's fields,
+ * its confirm button and its after-order line come from the store's «الدفع», and the page's family from its
+ * template. Inside the company, like the product's, so a store id can never reach another tenant's pages.
  */
 export async function refreshLandingPages(
-  where: { pageId: string } | { productId: string; companyId: string } | { slugs: string[] }
+  where:
+    | { pageId: string }
+    | { productId: string; companyId: string }
+    | { storeId: string; companyId: string }
+    | { slugs: string[] }
 ): Promise<void> {
   try {
     const slugs =
@@ -22,7 +30,12 @@ export async function refreshLandingPages(
         ? where.slugs
         : (
             await db.landingPage.findMany({
-              where: 'pageId' in where ? { id: where.pageId } : { productId: where.productId, companyId: where.companyId },
+              where:
+                'pageId' in where
+                  ? { id: where.pageId }
+                  : 'storeId' in where
+                    ? { storeId: where.storeId, companyId: where.companyId }
+                    : { productId: where.productId, companyId: where.companyId },
               select: { slug: true },
             })
           ).map((p) => p.slug);
