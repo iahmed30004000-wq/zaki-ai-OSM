@@ -89,12 +89,12 @@ const { db, store, denied, grants, context } = vi.hoisted(() => {
     context: { user: { id: 'u1' }, companyId: 'c1', storeId: 's1', country: { currencyCode: 'USD', minorUnit: 2 } },
     db: {
       landingPage: {
+        // As a database would: only what the `where` names constrains the row — a read that forgets the store finds
+        // the page of any store, and the 404 below for another store's page has to come from the query itself.
         findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
           const p = store.page;
           if (!p) return null;
-          return p.id === where.id && p.companyId === where.companyId && p.storeId === where.storeId
-            ? { product: p.product, store: p.store }
-            : null;
+          return matches(p, where) ? { product: p.product, store: p.store } : null;
         }),
       },
       offer: { findMany },
