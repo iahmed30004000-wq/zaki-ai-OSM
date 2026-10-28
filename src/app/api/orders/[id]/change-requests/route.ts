@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { assertOrderAccess, assertOrderReadable } from '@/lib/rbac';
+import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { addBusinessMinutes } from '@/lib/business-calendar';
@@ -81,7 +82,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const { id } = await params;
     const { user, companyId, storeId, country } = await requireContext();
 
-    const access = await assertOrderAccess(id, user, { companyId, storeId }, 'orders.view');
+    // «طلب تعديل» on an order she holds — from «أكّدتها» or from its window —
+    // through the work door (order-work-door.ts). Reading the list of requests
+    // keeps the old door: no screen asks it.
+    const access = await assertOrderAccess(id, user, { companyId, storeId }, ORDER_WORK_DOOR);
     if (!access.allowed) return NextResponse.json({ error: 'Order not found', errorAr: ORDER_NOT_FOUND }, { status: 404 });
     const order = access.order;
 

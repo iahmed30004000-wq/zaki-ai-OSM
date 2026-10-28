@@ -5,6 +5,8 @@ import { apiJson } from '@/lib/api-client';
 import { arDateShort } from '@/lib/format';
 import { RiArrowLeftRightLine, RiLoader4Line, RiUserFollowLine, RiUserUnfollowLine } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
+import { useApp } from '@/context/AppContext';
+import { userCan } from '@/lib/can';
 
 /**
  * Whose hands the order is in.
@@ -45,6 +47,16 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
 
   const holder = order.claimer ?? order.owner ?? null;
   const heldByMe = holder?.id === currentUserId;
+  /*
+   * GIVING BACK WHAT SHE HOLDS FOLLOWS ITS OWN KEY.
+   *
+   * Both buttons rode on `mayTransfer`, which the transfer door answers — and
+   * that door still asks «عرض الطلبات». An agent working without it holds an
+   * order the release door now admits her to (`DELETE …/claim`, the work
+   * door), and the button to do it was not drawn.
+   */
+  const { currentUser } = useApp();
+  const mayRelease = mayTransfer || (heldByMe && userCan(currentUser, 'orders.release'));
 
   useEffect(() => {
     setOpen(null);
@@ -116,7 +128,7 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
           )}
         </div>
 
-        {holder && mayTransfer && (
+        {holder && mayRelease && (
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => { setOpen(open === 'release' ? null : 'release'); }}
@@ -125,6 +137,7 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
               <RiUserUnfollowLine className="w-4 h-4" />
               سحبه منه
             </button>
+            {mayTransfer && (
             <button
               onClick={() => { setOpen(open === 'transfer' ? null : 'transfer'); }}
               disabled={candidates.length === 0}
@@ -134,6 +147,7 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
               <RiArrowLeftRightLine className="icon-mirror w-4 h-4" />
               تحويل لزميل
             </button>
+            )}
           </div>
         )}
       </div>

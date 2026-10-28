@@ -86,8 +86,13 @@ COPY --from=builder --chown=nextjs:nodejs /app/src ./src
 COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json ./tsconfig.json
 
-# Writable uploads directory for local product image storage
-RUN mkdir -p /app/uploads && chown -R nextjs:nodejs /app/uploads
+# The two folders the app writes to, owned by the user that runs it:
+# uploads (product, landing and font files, payment proofs) and backups
+# (`daily-backup` writes `./backups`). /app itself is root's — WORKDIR made
+# it — so without the second folder here the nightly job's mkdir fails with
+# «permission denied» every night. Each needs a persistent volume in Coolify,
+# or a deploy deletes what it holds.
+RUN mkdir -p /app/uploads /app/backups && chown -R nextjs:nodejs /app/uploads /app/backups
 
 # Copy entrypoint
 COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh

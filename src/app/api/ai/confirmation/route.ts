@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { requirePermission } from '@/lib/authorization';
-import { orderVisibilityWhere } from '@/lib/rbac';
+import { orderWorkWhere } from '@/lib/rbac';
 import { apiErrorResponse } from '@/lib/api-error';
 import { zodMessage } from '@/lib/zod-message';
 import { AiNotConfigured, aiChat, describeRoute } from '@/lib/ai-provider';
@@ -47,8 +47,12 @@ export async function POST(req: Request) {
     // reads it through. An agent whose orders are «المسندة إليّ» sent the id
     // of an order that had moved to a colleague, and got its customer's
     // history and risk from here while the window answered «not found».
+    //
+    // The window reads through the WORK door now (order-work-door.ts), so this
+    // does too: the order she holds, without «عرض الطلبات» — and still not a
+    // colleague's. The payload below is the same either way.
     const order = await db.order.findFirst({
-      where: { id: parsed.data.orderId, companyId, storeId, AND: [orderVisibilityWhere(user)] },
+      where: { id: parsed.data.orderId, companyId, storeId, AND: [orderWorkWhere(user)] },
       select: {
         id: true, orderNumber: true, totalAmount: true, currency: true,
         confirmationStatus: true, shippingStatus: true, claimedById: true,

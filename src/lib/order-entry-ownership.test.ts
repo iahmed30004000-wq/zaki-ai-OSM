@@ -25,7 +25,7 @@ vi.mock('./authorization', () => ({
     u.__scope ? { scope: u.__scope } : null,
 }));
 
-const { orderVisibilityWhere, orderListWhere } = await import('./rbac');
+const { orderVisibilityWhere, orderListWhere, orderWorkWhere } = await import('./rbac');
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -127,6 +127,23 @@ describe('every list goes through the one filter', () => {
   it('and the single-order read still uses the envelope that has the pool', () => {
     const src = stripComments(repoFile('src/lib/rbac.ts'));
     expect(src).toMatch(/AND: \[\{ id: orderId, companyId: scope\.companyId, storeId: scope\.storeId \}, orderVisibilityWhere\(user\)\]/);
+  });
+
+  it('and so does the work door the order window reads through — the order she holds joins it, the pool does not leave', () => {
+    /*
+     * The second door (`order-work-door.ts`) asks the same id in the same
+     * company and store, AND `orderWorkWhere` — which is this very envelope
+     * OR the order she holds. Narrowing it would 404 the pull exactly as
+     * narrowing `orderVisibilityWhere` would.
+     */
+    const src = stripComments(repoFile('src/lib/rbac.ts'));
+    expect(src).toMatch(/AND: \[\{ id: orderId, companyId: scope\.companyId, storeId: scope\.storeId \}, orderWorkWhere\(user\)\]/);
+    const envelope = orderWorkWhere(user('ASSIGNED')) as { OR: Record<string, unknown>[] };
+    // Dates flattened: the pool branch carries `lte: new Date()`, a millisecond apart on each call.
+    const shape = (v: unknown) =>
+      JSON.stringify(v, (_k, x) => (typeof x === 'string' && !Number.isNaN(Date.parse(x)) ? '<when>' : x));
+    expect(shape(envelope.OR[0]), 'بابُ العمل لم يعد يحمل غلافَ القراءة كاملاً').toBe(shape(orderVisibilityWhere(user('ASSIGNED'))));
+    expect(poolBranch(envelope.OR[0]), 'بابُ العمل فقدَ الطابور').toBeTruthy();
   });
 });
 

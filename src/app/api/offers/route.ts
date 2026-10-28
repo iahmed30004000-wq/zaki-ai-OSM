@@ -7,7 +7,8 @@ import { inStore } from '@/lib/store-filter';
 import { requireContext } from '@/lib/geo-context';
 import { logAudit } from '@/lib/audit';
 import { requirePermission } from '@/lib/authorization';
-import { offerInputSchema, clearOtherDefaults, clearOtherPostOrderOffers } from '@/lib/offers';
+import { offerInputSchema, clearOtherDefaults, clearOtherPostOrderOffers, offerAboveBaseRefusal } from '@/lib/offers';
+import { offerAboveBase, offerCeiling } from '@/lib/offer-ceiling';
 import { zodMessage } from '@/lib/zod-message';
 
 /**
@@ -21,7 +22,7 @@ import { zodMessage } from '@/lib/zod-message';
 
 export async function GET(req: Request) {
   try {
-    const { companyId, storeId } = await requireContext();
+    const { companyId, storeId, country } = await requireContext();
     await requirePermission('offers.view');
 
     const productId = new URL(req.url).searchParams.get('productId')?.trim() || undefined;
@@ -44,7 +45,24 @@ export async function GET(req: Request) {
         : [{ createdAt: 'desc' }],
     });
 
-    return NextResponse.json({ offers });
+    /*
+     * EACH ROW CARRIES ITS OWN LINE — «العرض ما بصير يكون اكثر من السعر الاساسي».
+     *
+     * `maxPrice` is the most the bundle may cost (its paid pieces × its product's base price, rounded by this
+     * store's currency) and `aboveBase` says whether it costs more. Both are worked out HERE, by the function the
+     * two write doors refuse with, so the screen prints the server's figure and does no arithmetic of its own on a
+     * stored row. An offer saved before the rule existed stays on sale exactly as it is; these two fields are how
+     * the screen flags it. `minorUnit` is the store's own, so the hint the screen draws for a box being typed is
+     * rounded the way this door will round it.
+     */
+    return NextResponse.json({
+      offers: offers.map((o) => ({
+        ...o,
+        maxPrice: offerCeiling(o.product.basePrice, o.quantity, country.minorUnit),
+        aboveBase: offerAboveBase(o, o.product.basePrice, country.minorUnit) !== null,
+      })),
+      minorUnit: country.minorUnit,
+    });
   } catch (error: any) {
     return apiErrorResponse(error);
   }
@@ -52,7 +70,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const { user, companyId, storeId } = await requireContext();
+    const { user, companyId, storeId, country } = await requireContext();
     await requirePermission('offers.manage');
 
     const parsed = offerInputSchema.extend({ productId: z.string().min(10).max(64) })
@@ -72,6 +90,12 @@ export async function POST(req: Request) {
     if (!product) {
       return NextResponse.json({ error: 'المنتج غير موجود في شركتك' }, { status: 404 });
     }
+
+    // «العرض ما بصير يكون اكثر من السعر الاساسي». Measured against the product just read — a product of another
+    // store has already answered 404 above, so its base price is never quoted to this caller — and before the
+    // transaction, so a refused bundle leaves no row, no audit entry and no rebuilt page behind it.
+    const aboveBase = offerAboveBaseRefusal(input, product.basePrice, country.minorUnit);
+    if (aboveBase) return NextResponse.json(aboveBase, { status: 400 });
 
     const offer = await db.$transaction(async (tx) => {
       const created = await tx.offer.create({

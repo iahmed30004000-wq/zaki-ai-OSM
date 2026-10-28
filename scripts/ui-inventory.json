@@ -386,7 +386,7 @@
     "cards": 0,
     "modals": 0,
     "icons": 0,
-    "links": 1,
+    "links": 2,
     "tabs": 0
   },
   "src/components/orders/OrderNotes.tsx": {
@@ -430,7 +430,7 @@
     "tabs": 0
   },
   "src/components/orders/ProductLinesEditor.tsx": {
-    "buttons": 4,
+    "buttons": 5,
     "inputs": 3,
     "columns": 0,
     "cards": 0,
@@ -1125,7 +1125,7 @@
     "columns": 0,
     "cards": 3,
     "modals": 3,
-    "icons": 17,
+    "icons": 19,
     "links": 0,
     "tabs": 0
   },

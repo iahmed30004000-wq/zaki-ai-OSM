@@ -154,7 +154,7 @@ describe.each([
     expect((pullButton() as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('the untouched-order refusal carries a link to the order it means', async () => {
+  it('the untouched-order refusal carries a link to the order it means — on her own desk', async () => {
     pool = {
       ...POOL,
       canPull: false,
@@ -162,7 +162,13 @@ describe.each([
     };
     render(<Harness compact={compact} />);
     const link = await screen.findByRole('link', { name: /افتح الطلب ORD-77/ });
-    expect(link.getAttribute('href')).toBe('/orders/o-77');
+    /*
+     * «طلباتي», with the order in its window — not `/orders/o-77`, which is
+     * the «الطلبات» screen and asks «عرض الطلبات»: an agent working without
+     * that key was sent to a page that refused her, about an order she holds.
+     */
+    expect(link.getAttribute('href')).toBe('/confirmation/mine?open=o-77');
+    expect(link.getAttribute('href'), 'رجع الرابط لشاشة الطلبات').not.toMatch(/^\/orders\//);
   });
 
   it('and says, separately, how many wait on a date — they are not «for you»', async () => {

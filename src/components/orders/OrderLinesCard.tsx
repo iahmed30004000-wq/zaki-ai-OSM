@@ -180,6 +180,12 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
          * typed.
          */
         price: String(Number(l.beforeDiscount)),
+        /*
+         * AND THE EDITOR TREATS IT AS AGREED. A quantity change never
+         * rewrites a saved total; the editor names the base price beside it
+         * and a person chooses (see `DraftLine.pricing`).
+         */
+        pricing: 'saved' as const,
       }))
     );
     setError(null);

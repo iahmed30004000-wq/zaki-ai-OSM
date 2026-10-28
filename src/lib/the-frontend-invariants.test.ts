@@ -231,7 +231,7 @@ const RENDERS_ONLY: Record<string, string> = {
   'src/components/performance/LandingAnalyticsTab.tsx':
     'نِسَبُ التحويل والتسليم من الخادم؛ ×1000÷10 كتابةُ كسرٍ بخانةٍ عشرية',
   'src/components/products/ProductOffers.tsx':
-    'سعرُ القطعة عرضٌ مشتقٌّ للمقارنة، والسعرُ المقترَحُ بمضاعفٍ اقتراحٌ يكتبه البائع ويعدّله',
+    'سعرُ القطعة عرضٌ مشتقٌّ للمقارنة، والسعرُ المقترَحُ بمضاعفٍ اقتراحٌ يكتبه البائع ويعدّله — وسقفُه وسقفُ التلميح من offerCeiling، الدالّةِ نفسِها التي يرفض بها الخادم، وسقفُ العرض المحفوظ يأتي من الخادم كما هو',
   'src/components/screens/confirmation/AssistantDialog.tsx':
     'نسبةُ الإرجاع من الخادم، والضربُ في مئة كتابةٌ لا قياس',
   'src/components/screens/ConfirmationMineScreen.tsx':

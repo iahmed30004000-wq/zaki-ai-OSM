@@ -5,6 +5,9 @@ import { apiJson } from '@/lib/api-client';
 import { fillTemplate, whatsappLink, type FillContext, type MessageTemplate } from '@/lib/message-templates';
 import { RiChat3Line, RiMessage3Line, RiPhoneLine } from '@remixicon/react';
 
+/** Does a refusal already speak to her? (the Arabic block, as `api-error.ts` asks it) */
+const ARABIC = /[؀-ۿ]/;
+
 /**
  * CALL, SMS, WHATSAPP — from the row the parcel is on.
  *
@@ -75,6 +78,8 @@ export function ContactButtons({
 }) {
   const [templates, setTemplates] = useState<MessageTemplate[] | null>(null);
   const [open, setOpen] = useState<'SMS' | 'WHATSAPP' | null>(null);
+  /** The log refused this press — said beside the strip, see `noteContact`. */
+  const [notLogged, setNotLogged] = useState<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -118,6 +123,11 @@ export function ContactButtons({
    * written after; a refusal (a role the owner has not given
    * `orders.contact_log`) or a dropped connection must not stop somebody
    * ringing a customer.
+   *
+   * BUT A REFUSED LINE IS SAID, NOT SWALLOWED. On «طلباتي» this line is what
+   * unlocks «تأكيد» and «تأجيل», and a refusal (403, 404) used to vanish: she
+   * rang, saw nothing wrong, and the buttons stayed shut. The server's own
+   * Arabic goes beside the strip; an English one is not shown to her.
    */
   const noteContact = (method: 'PHONE' | 'SMS' | 'WHATSAPP', result: 'OPENED' | 'MESSAGE_SENT') => {
     onContacted?.(method);
@@ -126,9 +136,13 @@ export function ContactButtons({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contactMethod: method, result }),
-    }).catch(() => {
-      /* the call matters more than its line in the log */
-    });
+    })
+      .then(() => setNotLogged(null))
+      .catch((e: unknown) => {
+        // The call matters more than its line in the log — but she is told the line is missing.
+        const why = e instanceof Error && ARABIC.test(e.message) ? e.message : null;
+        setNotLogged(why ? `ما انسجّلت المحاولة على الطلب — ${why}` : 'ما انسجّلت المحاولة على الطلب.');
+      });
   };
 
   /**
@@ -222,6 +236,12 @@ export function ContactButtons({
         <RiChat3Line className="w-4 h-4" />
         {!compact && 'واتساب'}
       </button>
+
+      {notLogged && (
+        <span role="alert" className="text-xs text-[var(--sys-destructive)]">
+          {notLogged}
+        </span>
+      )}
 
       {open && (
         <>

@@ -19,6 +19,8 @@ import { Money } from '@/components/ui/Money';
 interface HistoryOrder {
   id: string;
   orderNumber: string;
+  /** Who holds it now — the route already sends it; see `holderId` below. */
+  claimedById?: string | null;
   createdAt: string;
   state: string;
   totalAmount: number;
@@ -42,18 +44,27 @@ const RISK: Record<string, { text: string; cls: string }> = {
   HIGH: { text: 'خطورة عالية', cls: 'bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)] border-[var(--sys-destructive-border)]' },
 };
 
+/**
+ * `holderId` — the viewer, when she works the orders she holds
+ * (`confirmation.work`). One of this customer's other orders that she holds
+ * then opens on her desk even without «عرض الطلبات» (see `OrderLink`);
+ * every other number stays as `OrderLink` decides.
+ */
+type Holder = { holderId?: string | null };
+
 /** Small counter button: "سجل 3". Renders nothing distracting at zero. */
 export function CustomerHistoryButton({
   customerId,
   orderId,
   previousOrders,
   label = 'السجل',
+  holderId,
 }: {
   customerId: string;
   orderId?: string;
   previousOrders: number;
   label?: string;
-}) {
+} & Holder) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -75,7 +86,9 @@ export function CustomerHistoryButton({
         <span className="tabular-nums" dir="ltr">{previousOrders}</span>
       </button>
 
-      {open && <CustomerHistoryModal customerId={customerId} orderId={orderId} onClose={() => setOpen(false)} />}
+      {open && (
+        <CustomerHistoryModal customerId={customerId} orderId={orderId} holderId={holderId} onClose={() => setOpen(false)} />
+      )}
     </>
   );
 }
@@ -84,11 +97,12 @@ export function CustomerHistoryModal({
   customerId,
   orderId,
   onClose,
+  holderId,
 }: {
   customerId: string;
   orderId?: string;
   onClose: () => void;
-}) {
+} & Holder) {
   const [history, setHistory] = useState<HistoryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -137,7 +151,12 @@ export function CustomerHistoryModal({
           {history?.orders.map((o) => (
             <article key={o.id} className="border border-[var(--sys-border)] rounded-lg p-3">
               <header className="flex flex-wrap items-center gap-2 text-sm">
-                <OrderLink id={o.id} number={o.orderNumber} className="font-medium text-[var(--sys-heading)]" />
+                <OrderLink
+                  id={o.id}
+                  number={o.orderNumber}
+                  opensOnHerDesk={!!holderId && o.claimedById === holderId}
+                  className="font-medium text-[var(--sys-heading)]"
+                />
                 <OrderStateBadge state={o.state} />
                 <span className="text-xs text-[var(--sys-muted-foreground)]" dir="ltr">
                   {arDate(o.createdAt)}

@@ -187,6 +187,30 @@ describe('the command it runs', () => {
     expect(repoFile('docker-compose.yml')).toContain('postgres:16-alpine');
   });
 
+  /**
+   * AND THE FOLDER IT WRITES TO CAN BE WRITTEN.
+   *
+   * The job writes `./backups` and the server runs from /app as `nextjs`.
+   * /app belongs to root, so the job's `mkdir` was refused — measured on
+   * 28/10 in the local container built from this file on 21/10: the app's
+   * user could not create a file in /app, and there was no /app/backups. The image makes the folder and
+   * gives it to that user before switching to it, as it does for uploads.
+   */
+  it('and the folder it writes to exists in the image, owned by the user that runs the job', () => {
+    expect(repoFile('src/lib/backup.ts')).toContain("process.env.BACKUP_DIR || './backups'");
+    const lines = repoFile('Dockerfile')
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => !l.startsWith('#'));
+    const runtime = lines.slice(lines.findIndex((l) => /^FROM\s+base\s+AS\s+runner/.test(l)));
+    expect(runtime.some((l) => /^WORKDIR\s+\/app$/.test(l)), 'الخدمة ما عادت بتشتغل من /app').toBe(true);
+    const switched = runtime.findIndex((l) => /^USER\s+nextjs$/.test(l));
+    expect(switched, 'صورة التشغيل ما بتتحوّل لمستخدم التطبيق').toBeGreaterThan(0);
+    const made = runtime.slice(0, switched).find((l) => /^RUN\s+mkdir\s+-p\b.*\s\/app\/backups(\s|$)/.test(l));
+    expect(made, 'الصورة ما بتعمل مجلد النسخ الاحتياطية').toBeTruthy();
+    expect(made, 'مجلد النسخ مش لمستخدم التطبيق').toMatch(/chown\s+-R\s+nextjs:nodejs\s.*\/app\/backups(\s|$)/);
+  });
+
   /** The job is in the scheduler that already exists, not in a second timer. */
   it('runs from the scheduler, and throws rather than reporting a quiet zero', () => {
     const defs = stripComments(repoFile('src/lib/jobs/definitions.ts'));
