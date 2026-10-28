@@ -960,7 +960,16 @@ export async function PATCH(
      * ═══════════════════════════════════════════════════════════════════
      */
     if (!viaRequest && existing.claimedById === user.id) {
-      const asked = CHANGEABLE_FIELDS.filter(
+      /*
+       * `items` COUNTS HERE TOO — the same word the terminal check below adds,
+       * for the same reason: the lines are the product, the quantity and the
+       * price, said for more than one line. The seal and the reason rule
+       * already count them. Without it a PATCH carrying only `items` replaced
+       * the lines before the holder had tried to reach the customer; the
+       * crash in the lines write hid that, and mending the crash alone would
+       * have opened it.
+       */
+      const asked = [...CHANGEABLE_FIELDS, 'items' as const].filter(
         (f) => (data as Record<string, unknown>)[f] !== undefined
       );
       if (asked.length > 0) {
@@ -1280,12 +1289,22 @@ export async function PATCH(
          * afresh would be inventing one; keeping what the order already
          * had is the honest answer, and a line for a product that was not
          * on the order before starts at none.
+         *
+         * READ HERE, NOT OFF `existing`. That is the row `assertOrderAccess`
+         * loaded — the order's own columns and no relations — so
+         * `existing.items` was undefined, `.map` threw inside this
+         * transaction, and every lines save since 21/10 rolled back as
+         * «حدث خطأ داخلي», at every scope. The confirmation door met the same
+         * row in its FAKE_ORDER branch and says so beside its customer read.
+         * Inside the transaction and before the delete, so what is carried is
+         * what the rows held at the moment they are replaced.
          */
+        const storedLines = await tx.orderItem.findMany({
+          where: { orderId: id },
+          select: { productId: true, freeQuantity: true },
+        });
         const giftByProduct = new Map<string, number>(
-          existing.items.map((it: { productId: string; freeQuantity: number | null }) => [
-            it.productId,
-            it.freeQuantity ?? 0,
-          ])
+          storedLines.map((it): [string, number] => [it.productId, it.freeQuantity])
         );
         await tx.orderItem.deleteMany({ where: { orderId: id } });
         await tx.orderItem.createMany({
