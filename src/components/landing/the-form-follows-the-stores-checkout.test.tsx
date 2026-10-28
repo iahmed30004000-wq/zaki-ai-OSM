@@ -1,23 +1,29 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 import { DEFAULT_STORE_THEME, checkoutForPage, type StoreTheme } from '@/lib/store-theme';
 import { DEFAULT_THEME, paletteFor, readableOn } from '@/lib/landing-theme';
 import { lookPartReason } from '@/lib/block-look';
 import { repoFile, stripComments } from '@/lib/guard-source';
+import { newSection } from '@/lib/landing-sections';
+import { DEFAULT_SUBMIT, DEFAULT_THANKS } from '@/lib/checkout-words';
+import { AppProvider } from '@/context/AppContext';
+import { StoreCheckoutNote } from '@/components/landing-editor/StoreCheckoutNote';
+import { OrderCta } from './blocks/OrderCta';
 
 /**
  * «مش مربوط بصفحة الهبوط» — the owner, over a screenshot of «القالب والألوان» ← «الدفع».
  *
  * The tab saved the field order, which fields are required, the confirm button's words and colour, and the line
  * after the order. The shop's cart checkout read three of them; every landing page drew its own form and read none.
- * Now a landing page hands its order form the store's «الدفع», resolved on the server — and a door that hands in
- * nothing (a product page inside the shop) gets the form exactly as it always was.
+ * Now every public door hands its order form the store's «الدفع», resolved on the server — and the form, handed
+ * nothing, is exactly the one it always was.
  *
- * What does NOT change, on purpose: nothing refuses an order over a blank «هاتف بديل» or «ملاحظة». The «*» is the
- * shop's request, said to the visitor; refusing the order over it is a change to order creation that waits for the
- * owner's written word.
+ * And «إلزامي» is meant: the owner, asked 28/10 whether a blank required field refuses the order or is taken as
+ * before, answered «انطيني الصلاحية شو الي يظهر بالشيك اوت الي بينطلب والترتيب دراخ اند دروب» — refuse it. So a
+ * blank required «هاتف بديل» or «ملاحظة» is asked for under its field before anything is sent (the door refuses it
+ * too — public-order-asks-what-the-shop-asks.test.ts), and a field the shop hid is neither drawn nor sent.
  */
 
 const { trackEvent } = vi.hoisted(() => ({ trackEvent: vi.fn() }));
@@ -170,15 +176,209 @@ describe('the note', () => {
   });
 });
 
-describe('a blank «هاتف بديل» or «ملاحظة» refuses nothing', () => {
-  it('NEGATIVE: both required, both blank — the order is still sent, with both empty', async () => {
+/**
+ * A1 — «اطلب الآن» carried the visitor to the NAME field, which was the first field until the shop could order them.
+ * A shop that put the phone first had every visitor dropped into its second box. The form marks its first field and
+ * the button reads the mark.
+ */
+describe('«اطلب الآن» lands in the first field the shop put on the form', () => {
+  let restore: () => void = () => {};
+  beforeEach(() => {
+    // jsdom draws nothing, so it has no scrolling to do — the button calls it, and it is given a no-op.
+    const had = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = vi.fn();
+    restore = () => {
+      Element.prototype.scrollIntoView = had;
+    };
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    restore();
+  });
+
+  const page = (props: Partial<React.ComponentProps<typeof OrderForm>> = {}) =>
+    render(
+      <>
+        <OrderCta className="lp-cta">اطلب الآن</OrderCta>
+        <OrderForm
+          slug="kamaa" productName="ماء الكمأ" basePrice={20} currency="USD" offers={offers} recommendations={[]}
+          regions={['دمشق', 'حلب']} {...props}
+        />
+      </>
+    );
+  /** The press, and the 450ms the button waits for the scroll before it focuses. */
+  const press = () => {
+    fireEvent.click(screen.getByRole('link', { name: 'اطلب الآن' }));
+    act(() => {
+      vi.advanceTimersByTime(450);
+    });
+  };
+  const PHONE_FIRST = ['phone', 'name', 'region', 'address', 'altPhone', 'note'] as const;
+
+  it('the phone first — the phone field is focused, and it is the one field marked', () => {
+    page({ checkout: shop({ fieldOrder: [...PHONE_FIRST] }) });
+    expect(document.querySelectorAll('[data-zf-first]')).toHaveLength(1);
+    press();
+    expect(document.activeElement).toBe(document.getElementById('zf-phone'));
+  });
+
+  it('NEGATIVE: the shop’s default order — the name field, as it always was', () => {
+    page({ checkout: shop() });
+    press();
+    expect(document.activeElement).toBe(document.getElementById('zf-full_name'));
+  });
+
+  it('the city first — its button; the second number first — its box', () => {
+    page({ checkout: shop({ fieldOrder: ['region', 'name', 'phone', 'address', 'altPhone', 'note'] }) });
+    press();
+    expect(document.activeElement).toBe(document.getElementById('zf-city'));
+    cleanup();
+    page({ checkout: shop({ fieldOrder: ['altPhone', 'name', 'phone', 'region', 'address', 'note'] }) });
+    press();
+    expect(document.activeElement).toBe(document.getElementById('zf-alt_phone'));
+  });
+
+  it('a folded note first — the line that opens it; a required one — its box', () => {
+    page({ checkout: shop({ fieldOrder: ['note', 'name', 'phone', 'region', 'address', 'altPhone'] }) });
+    press();
+    expect(document.activeElement).toBe(foldLine());
+    cleanup();
+    page({ checkout: shop({ fieldOrder: ['note', 'name', 'phone', 'region', 'address', 'altPhone'], required: ['note'] }) });
+    press();
+    expect(document.activeElement).toBe(field('notes'));
+  });
+
+  it('NEGATIVE: a form with no mark (a page older than the mark) — the name field, the old answer', () => {
+    page({ checkout: shop({ fieldOrder: [...PHONE_FIRST] }) });
+    document.querySelector('[data-zf-first]')!.removeAttribute('data-zf-first');
+    press();
+    expect(document.activeElement).toBe(document.getElementById('zf-full_name'));
+  });
+
+  it('and with no JavaScript the link still lands on the form', () => {
+    page({ checkout: shop({ fieldOrder: [...PHONE_FIRST] }) });
+    expect(screen.getByRole('link', { name: 'اطلب الآن' }).getAttribute('href')).toBe('#zf-full_name');
+  });
+});
+
+describe('a blank «هاتف بديل» or «ملاحظة» the shop requires is asked for before anything is sent', () => {
+  it('both required, both blank — no request, and the door’s own sentence under each field', async () => {
     answer(200, placed);
     draw({ checkout: shop({ required: ['altPhone', 'note'] }) });
+    fill();
+    const reportedBefore = trackEvent.mock.calls.length;
+    send();
+    expect(await screen.findByText('اكتب رقم هاتف بديل')).toBeTruthy();
+    expect(field('alt_phone')!.parentElement!.textContent).toContain('اكتب رقم هاتف بديل');
+    expect(field('notes')!.parentElement!.textContent).toContain('اكتب ملاحظتك');
+    expect(sent, 'انبعت طلب فيه خانة إلزامية فاضية').toHaveLength(0);
+    // And nothing reported for the refusal: no focus invented, so no «بدء الطلب», and no «الشراء».
+    expect(trackEvent.mock.calls.length, 'الرفض بعت حدث للإعلانات').toBe(reportedBefore);
+    expect(trackEvent.mock.calls.filter((c) => c[0] === 'Purchase')).toHaveLength(0);
+    // The field is brought into view, never focused — focus is the event the ad accounts read.
+    expect(document.activeElement).not.toBe(field('alt_phone'));
+    // The form is still the form — the visitor fills it in and presses again.
+    expect(submitButton().disabled).toBe(false);
+  });
+
+  it('whitespace is blank too', async () => {
+    answer(200, placed);
+    draw({ checkout: shop({ required: ['altPhone'] }) });
+    fill();
+    fireEvent.change(field('alt_phone')!, { target: { value: '   ' } });
+    send();
+    expect(await screen.findByText('اكتب رقم هاتف بديل')).toBeTruthy();
+    expect(sent).toHaveLength(0);
+  });
+
+  it('and once they are filled in, the same press sends the order with them', async () => {
+    answer(200, placed);
+    draw({ checkout: shop({ required: ['altPhone', 'note'] }) });
+    fill();
+    send();
+    await screen.findByText('اكتب ملاحظتك');
+    fireEvent.change(field('alt_phone')!, { target: { value: '0933111222' } });
+    fireEvent.change(field('notes')!, { target: { value: 'بعد العصر' } });
+    send();
+    await screen.findByText(/ORD-2026-0701/);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ alt_phone: '0933111222', notes: 'بعد العصر' });
+  });
+
+  it('NEGATIVE: neither required — both blank, and the order is sent as before, with both empty', async () => {
+    answer(200, placed);
+    draw({ checkout: shop() });
     fill();
     send();
     await screen.findByText(/ORD-2026-0701/);
     expect(sent).toHaveLength(1);
     expect(sent[0]).toMatchObject({ alt_phone: '', notes: '' });
+    expect(screen.queryByText('اكتب رقم هاتف بديل')).toBeNull();
+  });
+});
+
+describe('a field the shop hid is neither drawn nor sent', () => {
+  it('the second number and the note, hidden — not on the form, and no key for either in the order', async () => {
+    answer(200, placed);
+    draw({ checkout: shop({ hidden: ['altPhone', 'note'] }) });
+    expect(onScreen()).toEqual(['name', 'phone', 'region', 'address']);
+    expect(field('alt_phone')).toBeNull();
+    expect(foldLine(), 'الملاحظة المخفية لسا إلها سطر').toBeNull();
+    fill();
+    send();
+    await screen.findByText(/ORD-2026-0701/);
+    expect(Object.keys(sent[0]).sort()).toEqual(
+      ['address', 'campaign', 'city', 'full_name', 'offerId', 'phone', 'ts', 'website']
+    );
+  });
+
+  it('and hidden-and-ticked asks nothing — the order goes out', async () => {
+    answer(200, placed);
+    draw({ checkout: shop({ hidden: ['altPhone'], required: ['altPhone'] }) });
+    fill();
+    send();
+    await screen.findByText(/ORD-2026-0701/);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).not.toHaveProperty('alt_phone');
+  });
+
+  it('NEGATIVE: the four a parcel needs cannot be hidden — a stored hidden «phone» is drawn and sent', async () => {
+    answer(200, placed);
+    draw({ checkout: shop({ hidden: ['phone', 'name', 'region', 'address'] }) });
+    expect(onScreen()).toEqual(['name', 'phone', 'altPhone', 'region', 'address']);
+    fill();
+    send();
+    await screen.findByText(/ORD-2026-0701/);
+    expect(sent[0]).toMatchObject({ full_name: 'سلمى الأحمد', phone: '0999999999', city: 'دمشق' });
+  });
+});
+
+describe('a refusal about a field this page does not draw — the page is older than the shop’s «الدفع»', () => {
+  const NEWER = {
+    error: 'يرجى التأكد من صحة بيانات الطلب.',
+    fieldErrors: { alt_phone: 'اكتب رقم هاتف بديل' },
+  };
+
+  it('says to reload, near the button — the visitor cannot fill a field that is not there', async () => {
+    answer(400, NEWER);
+    // Drawn when the second number was hidden; the shop has since shown it and made it required.
+    draw({ checkout: shop({ hidden: ['altPhone'] }) });
+    fill();
+    send();
+    const line = await screen.findByText('صار في خانة مطلوبة جديدة — حدّث الصفحة وعيد الطلب');
+    expect(follows(line, submitButton()), 'السطر مش جنب الزر').toBe(true);
+    expect(screen.queryByText('يرجى التأكد من صحة بيانات الطلب.')).toBeNull();
+  });
+
+  it('NEGATIVE: a refusal about a field the page DOES draw is said under that field, and the page needs no reload', async () => {
+    answer(400, NEWER);
+    draw({ checkout: shop() });
+    fill();
+    send();
+    await screen.findByText('يرجى التأكد من صحة بيانات الطلب.');
+    expect(field('alt_phone')!.parentElement!.textContent).toContain('اكتب رقم هاتف بديل');
+    expect(screen.queryByText('صار في خانة مطلوبة جديدة — حدّث الصفحة وعيد الطلب')).toBeNull();
   });
 });
 
@@ -192,6 +392,8 @@ describe('the door’s own refusals are said under their fields', () => {
     answer(400, refused);
     draw({ checkout: shop({ required: ['note'] }) });
     fill();
+    // The required note is written — or the form would ask for it and send nothing.
+    fireEvent.change(field('notes')!, { target: { value: 'قرب الجامع' } });
     send();
     await screen.findByText('رقم الهاتف طويل جدًا.');
     expect(field('alt_phone')!.parentElement!.textContent).toContain('رقم الهاتف طويل جدًا.');
@@ -339,6 +541,37 @@ describe('the line after the order — the page’s «صفحة الشكر», the
     expect(screen.getByText('تم تسجيل طلبك بنجاح')).toBeTruthy();
   });
 
+  /*
+   * A3 — every «صفحة الشكر» block is born holding the default message, so a page that has the block and never
+   * touched it was answering for the shop. The default counts as «nothing written», the same rule as the button.
+   */
+  it('a page whose «صفحة الشكر» block still holds the default message says the shop’s line', async () => {
+    expect(thanksLine(DEFAULT_THANKS, 'وصلنا طلبك — بنتصل فيك اليوم.')).toBe('وصلنا طلبك — بنتصل فيك اليوم.');
+    expect(thanksLine(` ${DEFAULT_THANKS} `, 'وصلنا طلبك — بنتصل فيك اليوم.')).toBe('وصلنا طلبك — بنتصل فيك اليوم.');
+    // And with no shop line the default is still said, never a blank.
+    expect(thanksLine(DEFAULT_THANKS, '')).toBe(DEFAULT_THANKS);
+
+    answer(200, placed);
+    const block = newSection('thankyou');
+    if (block.type !== 'thankyou') throw new Error('not a thank-you block');
+    draw({
+      checkout: shop({ afterOrderMessage: 'وصلنا طلبك — بنتصل فيك اليوم.' }),
+      thankYou: { title: block.title, message: block.message },
+    });
+    fill();
+    send();
+    await screen.findByText(/ORD-2026-0701/);
+    expect(screen.getByText('وصلنا طلبك — بنتصل فيك اليوم.')).toBeTruthy();
+    expect(screen.queryByText(DEFAULT_THANKS)).toBeNull();
+  });
+
+  it('and the two defaults are the blocks’ own — one sentence each, never two copies drifting apart', () => {
+    const thanks = newSection('thankyou');
+    const form = newSection('form');
+    expect(thanks.type === 'thankyou' && thanks.message).toBe(DEFAULT_THANKS);
+    expect(form.type === 'form' && form.submitLabel).toBe(DEFAULT_SUBMIT);
+  });
+
   it('NEGATIVE: a page whose own thank-you block has words keeps them', async () => {
     answer(200, placed);
     draw({
@@ -395,13 +628,54 @@ describe('the page hands the form its store’s LIVE «الدفع»', () => {
 });
 
 describe('the seller is told where these come from', () => {
-  it('the page editor links to «الدفع» under the button’s words', () => {
+  it('the page editor says it under the button’s words', () => {
     const builder = stripComments(repoFile('src/components/landing-editor/BlockBuilder.tsx'));
     const at = builder.indexOf('نص زر التأكيد (السعر بيطلع بعده)');
     expect(at).toBeGreaterThan(-1);
-    const below = builder.slice(at, at + 1200);
-    expect(below).toContain('href="/store?tab=front&amp;sec=look"');
-    expect(below).toContain('«الدفع»');
+    expect(builder.slice(at, at + 300)).toContain('<StoreCheckoutNote />');
+  });
+
+  /**
+   * A4 — the tab's name is a LINK only for whoever may open «القالب والألوان», by the same answer the store's tab
+   * strip is drawn from; anybody else reads plain words instead of a door that answers «لا تملك صلاحية».
+   */
+  const person = (permissions: string[], status = 'ACTIVE') =>
+    ({ id: 'u1', email: 'a@b.c', name: 'سلمى', role: 'MANAGER', status, companyId: 'c1', permissions }) as never;
+  const note = (user: unknown) =>
+    render(
+      <AppProvider initialUser={user as never}>
+        <StoreCheckoutNote />
+      </AppProvider>
+    );
+  /** The note's link, if it drew one — and it may only ever point at «القالب والألوان». */
+  const link = () => {
+    const a = document.querySelector('a');
+    if (a) expect(a.getAttribute('href')).toBe('/store?tab=front&sec=look');
+    return a;
+  };
+
+  it('a link to «القالب والألوان» for whoever may open it — «storefront.view» or «storefront.manage»', () => {
+    note(person(['storefront.view']));
+    expect(link()?.textContent).toBe('«القالب والألوان»');
+    expect(link()?.getAttribute('target')).toBe('_blank');
+    cleanup();
+    note(person(['storefront.manage']));
+    expect(link()).not.toBeNull();
+  });
+
+  it('NEGATIVE: plain words for anybody the panel would refuse — no permission, a paused account, nobody signed in', () => {
+    for (const user of [person(['landing_pages.edit']), person(['storefront.view'], 'SUSPENDED'), null]) {
+      note(user);
+      expect(link(), JSON.stringify(user)).toBeNull();
+      expect(screen.getByText(/«الدفع»/).textContent).toContain('«القالب والألوان»');
+      cleanup();
+    }
+  });
+
+  it('and outside the dashboard’s provider it says the words, and does not fall over', () => {
+    render(<StoreCheckoutNote />);
+    expect(link()).toBeNull();
+    expect(screen.getByText(/«القالب والألوان»/)).toBeTruthy();
   });
 
   it('and the look panel no longer says the order button is the page’s colour alone', () => {

@@ -21,7 +21,7 @@ export function FormPlaceholder() {
     >
       <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--store-accent)' }}>نموذج الطلب</p>
       <p style={{ fontSize: 11.5, color: 'var(--store-muted)', marginTop: 4 }}>
-        الاسم، الهاتف، المحافظة، العنوان — يظهر كاملاً في الصفحة المنشورة
+        حقول «الدفع» تبع المتجر وبترتيبه — بتطلع كاملة بالصفحة المنشورة
       </p>
     </div>
   );

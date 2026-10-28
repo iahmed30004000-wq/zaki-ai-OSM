@@ -37,6 +37,8 @@ import {
 import { MANUAL_SOURCES, REVIEW_SOURCE_LABEL } from '@/lib/reviews';
 import type { SellingFamily } from '@/lib/selling-blocks';
 import { lookForType } from '@/lib/block-look';
+// Where the form's fields come from — a link to the store's «الدفع» for whoever may open it, words for anybody else.
+import { StoreCheckoutNote } from './StoreCheckoutNote';
 
 /**
  * The block builder.
@@ -454,8 +456,8 @@ export function BlockBuilder(props: Props) {
             />
           </div>
           <p className="-mt-3 mb-4 text-xs leading-relaxed text-[var(--sys-muted)]">
-            كل باقي الألوان — الأزرار، السعر، الشارات، الحدود — تُشتق من هذا اللون، فلا يمكن أن تتنافر. إلا زر تأكيد
-            الطلب: إذا اختار له المتجر لوناً في «الدفع»، بياخد ذاك اللون.
+            كل باقي الألوان — الأزرار، السعر، الشارات، الحدود — تُشتق من هذا اللون، فلا يمكن أن تتنافر. ما عدا زر
+            تأكيد الطلب: إذا المتجر اختار له لون بتبويب «الدفع»، بياخد هاللون.
           </p>
 
           <label className="mb-1.5 block text-xs font-semibold text-[var(--sys-heading)]">الطابع</label>
@@ -1496,15 +1498,7 @@ function SectionFields({
           <Field label="العنوان" value={s.title} onChange={(v) => patch({ title: v })} />
           <Field label="سطر تحته" value={s.subtitle} onChange={(v) => patch({ subtitle: v })} />
           <Field label="نص زر التأكيد (السعر بيطلع بعده)" value={s.submitLabel} onChange={(v) => patch({ submitLabel: v })} placeholder="تأكيد الطلب" />
-          {/* The store's «الدفع» answers these for every page the store sells through — a LINK to it, never a second
-              copy of its controls here. A new tab, so the page being edited is not left half-saved. */}
-          <p className="rounded-lg bg-[var(--sys-surface)] p-2 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
-            ترتيب الحقول وعلامة «إلزامي» ولون زر التأكيد بتيجي من تبويب «الدفع» بـ{' '}
-            <a href="/store?tab=front&amp;sec=look" target="_blank" rel="noopener noreferrer" className="font-bold text-[var(--sys-primary)] hover:underline">
-              «القالب والألوان»
-            </a>
-            . وإذا تركت النص هون «تأكيد الطلب»، الزر بياخد نص المتجر من هناك (إذا كاتبه).
-          </p>
+          <StoreCheckoutNote />
           <div className="space-y-1">
             <span className="block text-xs font-semibold text-[var(--sys-heading)]">شكل النموذج</span>
             <div className="flex gap-1 rounded-md bg-[var(--sys-surface-strong)] p-0.5">

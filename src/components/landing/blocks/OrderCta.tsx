@@ -7,9 +7,14 @@ import React from 'react';
  *
  * A plain `#anchor` lands on the TOP of the form card — its coloured header,
  * the product name, the price — and the visitor still has to find the first
- * field and tap it. So this scrolls to the name input itself and focuses it:
+ * field and tap it. So this scrolls to the form's FIRST field and focuses it:
  * one tap, the cursor is in the box, and on a phone the keyboard is already
- * up. The anchor href stays as the fallback for a browser with no JS.
+ * up.
+ *
+ * The first field is the shop's to choose («الدفع» orders them), so the form
+ * marks it (`data-zf-first`) and this reads the mark. The name field — the
+ * first one until the shop could order them — is the answer when nothing is
+ * marked, and the anchor href stays as the fallback for a browser with no JS.
  */
 export function OrderCta({
   className,
@@ -26,7 +31,8 @@ export function OrderCta({
   [key: `data-${string}`]: string | undefined;
 }) {
   function go(e: React.MouseEvent<HTMLAnchorElement>) {
-    const field = document.getElementById('zf-full_name');
+    const field =
+      document.querySelector<HTMLElement>('#zaki-order-form [data-zf-first]') ?? document.getElementById('zf-full_name');
     if (!field) return; // let the href do its job
     e.preventDefault();
     field.scrollIntoView({ behavior: 'smooth', block: 'center' });

@@ -7,15 +7,16 @@ import { CheckoutForm } from '@/components/storefront/CheckoutForm';
 import { LandingTrackingPixels } from '@/components/tracking/LandingTrackingPixels';
 import { getTrackingPixelsForPage } from '@/lib/tracking/tracking-config';
 import { publicTitle, storeIcons } from '@/lib/public-metadata';
-import { cartBarApplies, checkoutOrder, requiredCheckoutFields } from '@/lib/store-theme';
+import { cartBarApplies, checkoutForPage } from '@/lib/store-theme';
 import { WHAT_HAPPENS_NEXT_AR } from '@/lib/order-tracking';
 
 /**
  * ONE PAGE, NO ACCOUNT, NO EMAIL, NO PASSWORD.
  *
- * THE FIELDS COME FROM THE SHOP. Their order and which are required are
- * `checkoutOrder` and `requiredCheckoutFields` — the seller's own checkout
- * tab, already built and already stored. A list written here would be a
+ * THE FIELDS COME FROM THE SHOP. Which show, in what order, which are
+ * required, the button's words and its colour are `checkoutForPage` — the
+ * seller's own «الدفع», read from the LIVE theme, the same one answer every
+ * public form and every public door take. A list written here would be a
  * second answer to «what does this shop ask for», and the tab would stop
  * meaning anything the day the two drifted.
  *
@@ -60,8 +61,7 @@ export default async function CheckoutPage({ params }: Props) {
   ]);
 
   const theme = store.theme;
-  const fields = checkoutOrder(theme);
-  const required = requiredCheckoutFields(theme);
+  const checkout = checkoutForPage(theme);
 
   return (
     <StorefrontShell store={store} back={{ href: `/s/${store.slug}/cart`, label: 'السلة' }}>
@@ -76,10 +76,11 @@ export default async function CheckoutPage({ params }: Props) {
         <CheckoutForm
           slug={store.slug}
           minorUnit={country?.minorUnit ?? 2}
-          fields={fields}
-          required={required}
+          fields={checkout.fields}
+          required={checkout.required}
           regions={regions.map((r) => r.name)}
-          submitText={theme.checkout?.submitText?.trim() || 'أرسل الطلب'}
+          submitText={checkout.submitText || 'أرسل الطلب'}
+          buttonVars={checkout.buttonVars}
         />
       </article>
     </StorefrontShell>

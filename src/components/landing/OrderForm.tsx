@@ -9,15 +9,18 @@ import { RiWhatsappLine } from '@/components/storefront/icons';
 import { useTracking } from '@/components/tracking/GlobalTrackingProvider';
 // Types only: the values live beside zod, and this form ships on every landing page.
 import type { CheckoutField, PageCheckout } from '@/lib/store-theme';
+// Plain data, no zod: the door's own «اكتب …» sentences, asked here before anything is sent, and the form's defaults.
+import { DEFAULT_SUBMIT, DEFAULT_THANKS, NEW_REQUIRED_FIELD, blankRequired, refusesUndrawn } from '@/lib/checkout-words';
 
 /**
  * Trusted Native Order Form — rendered by Zaki AI itself on the public
  * landing page (BELOW the sandboxed iframe holding the uploaded HTML).
  *
  * Security contract:
- *  - sends ONLY: full_name, phone, address, city, offerId, notes, the
- *    campaign code (+ honeypot and time stamp) — and alt_phone when the page
- *    hands in its store's «الدفع» (`checkout`), whose fields include it
+ *  - sends ONLY: full_name, phone, address, city, offerId, the campaign code
+ *    (+ honeypot and time stamp), and the two the shop's «الدفع» may draw —
+ *    alt_phone and notes — only when this form draws them: a field the shop
+ *    hid is neither drawn nor sent
  *  - NEVER sends companyId / productId / price / quantity / freeQuantity /
  *    status / userId — the server derives everything from slug + offerId.
  *  - offers & prices arrive as server-rendered props straight from the DB.
@@ -173,10 +176,11 @@ interface OrderFormProps {
     crossSellLook?: 'list' | 'cards';
   };
   /**
-   * THE STORE'S «الدفع», for a landing page — worked out on the server by `checkoutForPage` and handed in as plain
-   * data. With it: the fields in the shop's order, «هاتف بديل» among them, the «*» the shop asked for, its words and
-   * its colour on the confirm button, and its line on the thank-you screen. Without it (a product page inside the
-   * shop) the form is exactly the one it always was.
+   * THE STORE'S «الدفع» — worked out on the server by `checkoutForPage` from the store's LIVE theme and handed in as
+   * plain data, by every public door that draws this form: a landing page, a store's front, a product page inside
+   * the shop. With it: the fields the shop shows, in its order, «هاتف بديل» among them unless hidden, the «*» it
+   * asked for (and «اكتب …» before sending when one is left blank), its words and its colour on the confirm button,
+   * and its line on the thank-you screen. Without it the form is exactly the one it always was.
    */
   checkout?: PageCheckout;
 }
@@ -189,9 +193,6 @@ const AS_IT_ALWAYS_WAS: { fields: readonly CheckoutField[]; required: readonly C
   fields: ['name', 'phone', 'address', 'region', 'note'],
   required: ['name', 'phone', 'address', 'region'],
 };
-
-/** What the confirm button says when nobody said otherwise — the form block's own default. */
-const DEFAULT_SUBMIT = 'تأكيد الطلب';
 
 /**
  * THE CONFIRM BUTTON'S WORDS: the page's own, unless the page kept the default and the shop wrote its own in «الدفع».
@@ -206,9 +207,17 @@ export function submitWords(pageLabel: string | undefined, shopText: string | un
   return page || DEFAULT_SUBMIT;
 }
 
-/** The line under the thank-you title: the page's «صفحة الشكر» block, then the shop's «رسالة ما بعد الطلب», then ours. */
+/**
+ * The line under the thank-you title: the page's «صفحة الشكر» block, then the shop's «رسالة ما بعد الطلب», then ours.
+ *
+ * The same rule as `submitWords`: every «صفحة الشكر» block is born holding the default message, so «this page wrote
+ * nothing» reads as that sentence or a blank — and then the shop's line shows. Words the seller typed on the page win.
+ */
 export function thanksLine(pageMessage: string | undefined, shopMessage: string | undefined): string {
-  return pageMessage?.trim() || shopMessage?.trim() || 'سنتواصل معك قريبًا لتأكيد الطلب.';
+  const page = pageMessage?.trim() ?? '';
+  const shop = shopMessage?.trim() ?? '';
+  if (shop && (page === '' || page === DEFAULT_THANKS)) return shop;
+  return page || DEFAULT_THANKS;
 }
 
 const WHATSAPP_GREEN = '#25D366';
@@ -288,6 +297,10 @@ const fmt = (n: number) => `${Number(n).toLocaleString('en-US', { maximumFractio
 
 export function OrderForm({ slug, productName, basePrice, currency, offers, recommendations, regions, phonePlaceholder, externalSelectedOfferId, showOfferPicker = true, formStyle = 'card', offerStyle = 'cards', dir = 'rtl', whatsapp, endpoint, thankYou, afterOrderWhatsapp, submitLabel, afterOrderLook, checkout }: OrderFormProps) {
   const orderEndpoint = endpoint || `/api/public/landing-pages/${encodeURIComponent(slug)}/orders`;
+  // ─── The fields: the shop's «الدفع» when the page handed it in, the form as it always was when not ───
+  // What is drawn is what is sent: a field the shop hid is not in `fields`, so it is neither drawn nor sent.
+  const fields: readonly CheckoutField[] = checkout?.fields ?? AS_IT_ALWAYS_WAS.fields;
+  const marked = new Set<CheckoutField>(checkout?.required ?? AS_IT_ALWAYS_WAS.required);
   const [state, setState] = useState<FormState>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -437,9 +450,10 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
    * shorter form; a deleted one is a different form.
    *
    * WHICH FIELDS, IN WHAT ORDER, WITH WHICH «*», IS THE SHOP'S — «مش مربوط
-   * بصفحة الهبوط». A landing page hands in its store's «الدفع», and the
-   * order, the marks and «هاتف بديل» come from there. The note stays folded
-   * unless the shop made it required; then it is open from the start.
+   * بصفحة الهبوط». Every public door hands in its store's «الدفع», and the
+   * order, the marks, «هاتف بديل» and what is left off come from there. The
+   * note stays folded unless the shop made it required; then it is open from
+   * the start.
    */
   const [notesOpen, setNotesOpen] = useState(false);
   const [cityOpen, setCityOpen] = useState(false);
@@ -456,16 +470,16 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
     const form = e.currentTarget;
     const fd = new FormData(form);
 
+    const drawn = new Set(fields);
     const data = {
       full_name: String(fd.get('full_name') || '').trim(),
       phone: String(fd.get('phone') || '').trim(),
-      // The second number, only from a form that asks for it. Blank is an answer, never a refusal: the door keeps it
-      // optional whatever the shop's tab says, and so does this form.
-      ...(checkout ? { alt_phone: String(fd.get('alt_phone') || '').trim() } : {}),
+      // The second number and the note, only from a form that draws them: a field the shop hid is not sent at all.
+      ...(drawn.has('altPhone') ? { alt_phone: String(fd.get('alt_phone') || '').trim() } : {}),
       address: String(fd.get('address') || '').trim(),
       city: cityValue,
       offerId: selectedOffer,
-      notes: String(fd.get('notes') || '').trim(),
+      ...(drawn.has('note') ? { notes: String(fd.get('notes') || '').trim() } : {}),
       // honeypot (hidden from humans — bots may fill it)
 
       website: String(fd.get('website') || ''),
@@ -490,6 +504,27 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
 
       campaign: campaignCode(),
     };
+
+    /*
+     * «إلزامي» ASKED BEFORE ANYTHING IS SENT — the door's own sentence, under the field, and no request at all.
+     *
+     * The door refuses the same blank (`createPublicOrder`), so this is the visitor hearing it a round trip sooner,
+     * not a second rule. Nothing is reported to the ad accounts for it: «بدء الطلب» already went out on the first
+     * focus, as it does for any visitor, and no refusal sends anything — the door's refusals never did either. The
+     * field is brought into view, never focused: a focus is an event, and this must not invent one.
+     */
+    const blank = checkout ? blankRequired(checkout.required, data) : null;
+    if (blank) {
+      setErrorMsg(null);
+      setFieldErrors(blank);
+      setState('error');
+      try {
+        // The first of them as the visitor meets them, top to bottom.
+        const first = Array.from(form.querySelectorAll<HTMLElement>('[name]')).find((el) => blank[el.getAttribute('name') ?? '']);
+        first?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+      } catch { /* bringing it into view is a courtesy */ }
+      return;
+    }
 
     setState('loading');
     setErrorMsg(null);
@@ -730,11 +765,18 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
     ) : null;
   const hasOffers = offers.length > 0;
 
-  // ─── The fields: the shop's «الدفع» when the page handed it in, the form as it always was when not ───
-  const fields: readonly CheckoutField[] = checkout?.fields ?? AS_IT_ALWAYS_WAS.fields;
-  const marked = new Set<CheckoutField>(checkout?.required ?? AS_IT_ALWAYS_WAS.required);
   const star = (f: CheckoutField) =>
     marked.has(f) ? <> <span className="text-[var(--store-accent,#b8256e)]">*</span></> : null;
+  // A refusal about a field this form does not draw — see the error line by the button.
+  const undrawnRefusal = refusesUndrawn(fieldErrors, fields);
+  /*
+   * THE FIRST FIELD, FOR «اطلب الآن».
+   *
+   * The page's buttons carried the visitor to the NAME field, which was the first field until the shop could order
+   * them. Whatever is first now carries the mark, on the control a visitor would type in or tap — the input, the
+   * note's box, the city's button, or the line that opens a folded note — and `OrderCta` focuses that.
+   */
+  const firstMark = (f: CheckoutField) => (fields[0] === f ? '' : undefined);
   // «الاسم والهاتف جنب بعض» in the compact look — while they ARE next to each other. A shop that put another field
   // between them gets two full rows rather than two half fields each standing alone.
   const half =
@@ -752,6 +794,7 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
             <input
               id="zf-full_name"
               name="full_name"
+              data-zf-first={firstMark('name')}
               type="text"
               required
               minLength={2}
@@ -773,6 +816,7 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
             <input
               id="zf-phone"
               name="phone"
+              data-zf-first={firstMark('phone')}
               type="tel"
               required
               minLength={7}
@@ -789,10 +833,10 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
         );
       case 'altPhone':
         /*
-         * «هاتف بديل» — a second number for the confirmation call to try. Marked when the shop marked it and never
-         * refused when blank: `aria-required` says it to a screen reader the way «*» says it on the screen, and
-         * nothing in the browser or at the door turns that into a refusal (the door keeps it optional on purpose).
-         * Not `autoComplete="tel"`, or the browser fills the customer's own number in twice.
+         * «هاتف بديل» — a second number for the confirmation call to try. Marked when the shop marked it, and then
+         * asked for: a blank one is refused before sending with the door's own «اكتب …», and by the door itself.
+         * `aria-required` says it to a screen reader the way «*» says it on the screen. Not `autoComplete="tel"`, or
+         * the browser fills the customer's own number in twice.
          */
         return (
           <div>
@@ -802,6 +846,7 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
             <input
               id="zf-alt_phone"
               name="alt_phone"
+              data-zf-first={firstMark('altPhone')}
               type="tel"
               maxLength={25}
               inputMode="tel"
@@ -824,6 +869,7 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
             <input
               id="zf-address"
               name="address"
+              data-zf-first={firstMark('address')}
               type="text"
               required
               minLength={5}
@@ -846,6 +892,7 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
             <button
               type="button"
               id="zf-city"
+              data-zf-first={firstMark('region')}
               onClick={() => { setCityOpen((o) => !o); }}
               className={`${inputCls} flex items-center justify-between text-start ${cityValue ? '' : 'text-[#9aa4b2]'}`}
               disabled={state === 'loading'}
@@ -910,6 +957,7 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
             <textarea
               id="zf-notes"
               name="notes"
+              data-zf-first={firstMark('note')}
               rows={3}
               maxLength={500}
               autoFocus={!noteRequired}
@@ -924,6 +972,7 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
           <>
             <button
               type="button"
+              data-zf-first={firstMark('note')}
               onClick={() => setNotesOpen(true)}
               /* A plain underline and nothing finer.
                  A dotted decoration style and an offset step were tried
@@ -1336,11 +1385,12 @@ export function OrderForm({ slug, productName, basePrice, currency, offers, reco
                 <input id="zf-website" name="website" type="text" tabIndex={-1} autoComplete="off" />
               </div>
 
-              {/* Error */}
-              {state === 'error' && errorMsg && (
+              {/* Error — and when the door refused a field this page does not draw (the page is older than the shop's
+                  «الدفع»), the one thing the visitor can do about it: reload. */}
+              {state === 'error' && (undrawnRefusal || errorMsg) && (
                 <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-700">
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>{errorMsg}</span>
+                  <span>{undrawnRefusal ? NEW_REQUIRED_FIELD : errorMsg}</span>
                 </div>
               )}
 

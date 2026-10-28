@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { CheckoutField } from '@/lib/store-theme';
+import { CHECKOUT_WIRE, NEW_REQUIRED_FIELD, blankRequired, refusesUndrawn } from '@/lib/checkout-words';
 import { cartToOrderItems } from '@/lib/cart';
 import { moneyText } from '@/lib/money';
 import { shopFetch } from '@/lib/storefront-fetch';
@@ -12,11 +13,13 @@ import { useCart } from './useCart';
 /**
  * ONE PAGE, NO ACCOUNT, THE PHONE IS THE IDENTITY.
  *
- * THE FIELDS ARE THE SELLER'S, NOT THIS FILE'S. Their order and which of
- * them are required come from `checkoutOrder` and `requiredCheckoutFields`
- * — the shop's own checkout tab. A list hard-coded here would be a second
- * answer to «what does this shop ask for», and the tab would quietly stop
- * meaning anything.
+ * THE FIELDS ARE THE SELLER'S, NOT THIS FILE'S. Which of them show, in what
+ * order, which are required, the button's words and its colour come from
+ * `checkoutForPage` — the shop's own «الدفع», the one answer every public
+ * form takes. A list hard-coded here would be a second answer to «what does
+ * this shop ask for», and the tab would quietly stop meaning anything. A
+ * field the shop hid is not drawn, so it is never sent; a required one left
+ * blank is refused here before sending, with the door's own «اكتب …».
  *
  * AND THE SUMMARY IS THE SERVER'S. The amount beside the button is the
  * quote, which is the same resolver and the same `computeCod` the order
@@ -43,15 +46,8 @@ const LABEL: Record<CheckoutField, string> = {
   note: 'ملاحظة للمندوب',
 };
 
-/** What each field is called when the order is sent. */
-const WIRE: Record<CheckoutField, string> = {
-  name: 'full_name',
-  phone: 'phone',
-  altPhone: 'alt_phone',
-  region: 'city',
-  address: 'address',
-  note: 'notes',
-};
+/** What each field is called when the order is sent — the one mapping the door's refusals use too. */
+const WIRE = CHECKOUT_WIRE;
 
 export function CheckoutForm({
   slug,
@@ -60,6 +56,7 @@ export function CheckoutForm({
   required,
   regions,
   submitText,
+  buttonVars,
 }: {
   slug: string;
   minorUnit: number;
@@ -67,6 +64,8 @@ export function CheckoutForm({
   required: CheckoutField[];
   regions: string[];
   submitText: string;
+  /** «لون زر التأكيد» from «الدفع»: the three variables the button paints from, or null for the shop's own accent. */
+  buttonVars?: Record<string, string> | null;
 }) {
   const router = useRouter();
   const cart = useCart(slug);
@@ -81,6 +80,14 @@ export function CheckoutForm({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (busy || !cart.quote) return;
+    // «إلزامي», asked before sending: the door's own sentence under the field, and no request. Nothing is reported —
+    // the sale is reported only once the door says it is an order, exactly as for the door's own refusals.
+    const blank = blankRequired(required, values);
+    if (blank) {
+      setError(null);
+      setFieldErrors(blank);
+      return;
+    }
     setBusy(true);
     setError(null);
     setFieldErrors({});
@@ -115,6 +122,8 @@ export function CheckoutForm({
       setBusy(false);
     }
   }
+
+  const undrawnRefusal = refusesUndrawn(fieldErrors, fields);
 
   const box: React.CSSProperties = {
     background: 'var(--store-page)',
@@ -205,9 +214,10 @@ export function CheckoutForm({
         style={{ position: 'absolute', left: '-9999px', width: 1, height: 1 }}
       />
 
-      {error && (
+      {/* A refusal about a field this page does not draw: the page is older than the shop's «الدفع» — reload. */}
+      {(undrawnRefusal || error) && (
         <p role="alert" className="text-sm font-medium" style={{ color: 'var(--store-danger)' }}>
-          {error}
+          {undrawnRefusal ? NEW_REQUIRED_FIELD : error}
         </p>
       )}
 
@@ -234,6 +244,9 @@ export function CheckoutForm({
           disabled={busy || !cart.quote}
           className="w-full px-5 py-3.5 text-base font-bold disabled:opacity-60"
           style={{
+            // The shop's «لون زر التأكيد», on this button alone: the variables it paints from, set on it — the
+            // colour, its measured ink and its pressed shade. None set: the shop's own accent, as before.
+            ...((buttonVars ?? {}) as React.CSSProperties),
             background: 'var(--store-accent)',
             color: 'var(--store-accent-text)',
             borderRadius: 'var(--store-radius)',
