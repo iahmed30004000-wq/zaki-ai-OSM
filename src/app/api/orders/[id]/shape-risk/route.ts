@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { ORDER_ACCESS_STATUS, assertOrderReadable } from '@/lib/rbac';
+import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
 import { ORDER_NOT_FOUND } from '@/lib/order-refusals';
 import { apiErrorResponse } from '@/lib/api-error';
 import { DELIVERED_SHIPPING, RETURNED_SHIPPING } from '@/lib/order-state';
@@ -59,7 +60,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const { user, companyId, storeId } = await requireContext();
     // The order through the same envelope the window opened it with: an agent
     // asked about orders outside her own by id, and got this card for any of them.
-    const access = await assertOrderReadable(id, user, { companyId, storeId }, 'orders.view');
+    // The window opens through the work door now, so this card does too.
+    const access = await assertOrderReadable(id, user, { companyId, storeId }, ORDER_WORK_DOOR);
     if (!access.allowed) {
       return NextResponse.json({ error: ORDER_NOT_FOUND, errorAr: ORDER_NOT_FOUND }, { status: ORDER_ACCESS_STATUS[access.reason] });
     }

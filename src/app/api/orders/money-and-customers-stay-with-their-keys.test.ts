@@ -66,6 +66,7 @@ import { GET as readHistory } from '@/app/api/customers/[id]/history/route';
 import { POST as addCustomer } from '@/app/api/customers/route';
 import { GET as listBatches } from '@/app/api/shipping-batches/route';
 import { GET as readBatch } from '@/app/api/shipping-batches/[id]/route';
+import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
 
 const person = (keys: string[], scopes?: Record<string, string>): Who => ({ id: 'me', role: 'CUSTOM', status: 'ACTIVE', keys, scopes });
 const AGENT = person(['orders.view'], { 'orders.view': 'ASSIGNED' });
@@ -236,6 +237,36 @@ describe('a customer’s history', () => {
     as(AGENT);
     assertOrderReadable.mockResolvedValue({ allowed: false, reason: 'NOT_ASSIGNED' });
     expect((await readHistory(new Request('http://x/api/customers/cu1/history?exclude=o1'), params('cu1'))).status).toBe(403);
+  });
+
+  /*
+   * «عرض الطلبات» UNTICKED, «العمل على طلباتي» TICKED — the owner's case.
+   *
+   * The door asked `can(user, 'orders.view')` before it would even look at
+   * the order, so the agent holding it got «سجلّ العميل ليس من صلاحيّاتك» on
+   * her own customer. It asks the work door now: either key in, and the
+   * door's own answer — her order, not a colleague's — decides.
+   */
+  const HOLDER = person(['confirmation.work', 'customers.view_basic']);
+
+  it('the agent holding the order opens its customer through the work door', async () => {
+    as(HOLDER);
+    db.order.findFirst.mockResolvedValue({ id: 'o1' });
+    const ok = await readHistory(new Request('http://x/api/customers/cu1/history?exclude=o1'), params('cu1'));
+    expect(ok.status).toBe(200);
+    expect(assertOrderReadable).toHaveBeenCalledWith('o1', HOLDER, { companyId: 'c1', storeId: 's1' }, ORDER_WORK_DOOR);
+  });
+
+  it('NEGATIVE: a colleague’s order does not open its customer for her — the door said no', async () => {
+    as(HOLDER);
+    assertOrderReadable.mockResolvedValue({ allowed: false, reason: 'NOT_FOUND' });
+    expect((await readHistory(new Request('http://x/api/customers/cu1/history?exclude=o2'), params('cu1'))).status).toBe(403);
+  });
+
+  it('NEGATIVE: and with neither key the order is not even asked about', async () => {
+    as(person(['customers.view_basic']));
+    expect((await readHistory(new Request('http://x/api/customers/cu1/history?exclude=o1'), params('cu1'))).status).toBe(403);
+    expect(assertOrderReadable).not.toHaveBeenCalled();
   });
 
   it('the address book: ALL opens any, OWN only customers this person brought in', async () => {

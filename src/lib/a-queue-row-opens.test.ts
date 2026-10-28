@@ -97,6 +97,7 @@ vi.mock('./authorization', () => ({
 }));
 
 const { assertOrderReadable, orderVisibilityWhere } = await import('./rbac');
+const { ORDER_WORK_DOOR } = await import('./order-work-door');
 
 const agent = { id: 'a1', role: 'CONFIRMATION_AGENT', status: 'ACTIVE' } as unknown as SessionUser;
 const manager = { id: 'm1', role: 'MANAGER', status: 'ACTIVE' } as unknown as SessionUser;
@@ -126,6 +127,27 @@ describe('what an agent may read', () => {
     expect(shape(where.AND[1])).toBe(shape(orderVisibilityWhere(agent)));
   });
 
+  it('and through the work door: the same id, AND that same envelope — pool and all — OR the order she holds', async () => {
+    /*
+     * The order window reads through `ORDER_WORK_DOOR` now. It must still be
+     * this one query, and still carry the envelope above whole: an agent with
+     * «المسندة إليه» opens exactly what she opened before, plus nothing but
+     * the order she holds (`the-order-she-holds.test.ts` asks the rest).
+     */
+    findFirst.mockResolvedValue({ id: 'o1' });
+    await assertOrderReadable('o1', agent, scope, ORDER_WORK_DOOR);
+
+    const where = findFirst.mock.calls[0][0].where;
+    expect(findFirst).toHaveBeenCalledTimes(1);
+    expect(where.AND[0]).toEqual({ id: 'o1', companyId: 'c1', storeId: 's1' });
+    const shape = (v: unknown) =>
+      JSON.stringify(v, (_k, x) => (typeof x === 'string' && !Number.isNaN(Date.parse(x)) ? '<when>' : x));
+    const door = where.AND[1] as { OR: unknown[] };
+    expect(door.OR).toHaveLength(2);
+    expect(shape(door.OR[0])).toBe(shape(orderVisibilityWhere(agent)));
+    expect(door.OR[1]).toEqual({ claimedById: 'a1' });
+  });
+
   it('and the envelope it uses still carries the claimable queue', () => {
     const envelope = orderVisibilityWhere(agent) as { OR: Record<string, unknown>[] };
     const claimable = envelope.OR.find((branch) => branch.confirmationStatus === 'NEW');
@@ -150,6 +172,12 @@ describe('what an agent may read', () => {
   it('and a company-wide role is narrowed by nothing but its tenant', async () => {
     findFirst.mockResolvedValue({ id: 'o1' });
     await assertOrderReadable('o1', manager, scope);
+    expect(findFirst.mock.calls[0][0].where.AND[1]).toEqual({});
+  });
+
+  it('— through the work door too', async () => {
+    findFirst.mockResolvedValue({ id: 'o1' });
+    await assertOrderReadable('o1', manager, scope, ORDER_WORK_DOOR);
     expect(findFirst.mock.calls[0][0].where.AND[1]).toEqual({});
   });
 });

@@ -18,6 +18,7 @@ import { ROLE_PERMISSIONS } from '@/types/auth';
  * Re-exported here for backward compatibility — do not re-implement.
  */
 import { can as _can, requirePermission as _requirePermission, getPermissionScope } from './authorization';
+import { ORDER_WORK_DOOR, mayEnterOrderWorkDoor, type OrderWorkDoor } from './order-work-door';
 export const can: (user: SessionUser, permission: Permission) => boolean = _can;
 export const requirePermission: (permission: Permission) => Promise<SessionUser> = _requirePermission;
 
@@ -204,6 +205,89 @@ export function applyQueueFilter(
   }
 }
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * THE HOLDER RULE — THE ORDER SHE HOLDS IS AN ORDER SHE MAY WORK.
+ *
+ * `confirmation.work` is «العمل على طلباتي والمؤجلة», and «طلباتي» is
+ * exactly this: `claimedById` = her (`/api/confirmation/mine`). Granted by
+ * the key, never by a role name, and with no pool branch — an order nobody
+ * holds is reached by pulling it, not by its id.
+ *
+ * It is NOT part of the three envelopes above, on purpose: a list never
+ * widens or narrows because of it. Only the work door asks it — see
+ * `order-work-door.ts` and `orderWorkWhere` below.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+export function heldOrderWhere(user: SessionUser): { claimedById: string } | null {
+  // The engine's own `can` (string keys): the confirmation keys are newer
+  // than the `Permission` union the re-export above is typed with.
+  return _can(user, 'confirmation.work') ? { claimedById: user.id } : null;
+}
+
+/**
+ * WHAT OPENS THROUGH THE WORK DOOR: today's envelope, OR the order she holds.
+ *
+ *   «كل الشركة»                   → {} — the tenant and the store alone, as today
+ *   «المسندة إليه» / «طلباتي المنشأة» → that envelope, unchanged, OR the held order
+ *   no orders.view, or a scope orders do not have (CATEGORY, SPECIFIC, or one
+ *   added after this was written) → the held order alone
+ *   neither                        → nothing
+ *
+ * The scopes are named one by one rather than «anything but ALL_COMPANY», so
+ * a scope nobody thought about here opens nothing through it.
+ */
+export function orderWorkWhere(user: SessionUser): Record<string, unknown> {
+  const view = getPermissionScope(user, 'orders.view');
+  if (view?.scope === 'ALL_COMPANY') return {};
+
+  const branches: Record<string, unknown>[] = [];
+  if (view?.scope === 'ASSIGNED' || view?.scope === 'OWN') branches.push(orderVisibilityWhere(user));
+  const held = heldOrderWhere(user);
+  if (held) branches.push(held);
+
+  if (branches.length === 0) return { id: '__no_access__' };
+  return branches.length === 1 ? branches[0] : { OR: branches };
+}
+
+/** The door's entry check, thrown the way the old door throws its own. */
+function enterOrderWorkDoor(user: SessionUser): void {
+  if (!mayEnterOrderWorkDoor(user)) {
+    throw new Error('Forbidden: missing required permission orders.view');
+  }
+}
+
+/**
+ * Today's write rule for the orders.view scope — and NOTHING for a scope it
+ * does not name. `assertOrderAccess` below falls through to «allowed» for
+ * CATEGORY and SPECIFIC; this door does not copy that.
+ */
+type Ownership = {
+  assignedToId?: string | null;
+  claimedById?: string | null;
+  currentOwnerId?: string | null;
+  moderatorId?: string | null;
+};
+
+function viewScopeReaches(user: SessionUser, order: Ownership): boolean {
+  const view = getPermissionScope(user, 'orders.view');
+  switch (view?.scope) {
+    case 'ALL_COMPANY':
+      return true;
+    case 'ASSIGNED':
+      return (
+        order.assignedToId === user.id ||
+        order.claimedById === user.id ||
+        order.currentOwnerId === user.id ||
+        order.moderatorId === user.id
+      );
+    case 'OWN':
+      return order.moderatorId === user.id;
+    default:
+      return false;
+  }
+}
+
 /** Does this user see all orders company-wide (vs. only their own)? */
 // ─────────────────────────────────────────────────────
 // Order-scoped authorization (DB-verified)
@@ -219,13 +303,18 @@ export type OrderAccessResult =
  * 2. Belongs to the user's company (multi-tenant isolation)
  * 3. Belongs to the selected store (geo context) — otherwise NOT_FOUND
  * 4. Role-specific assignment (agents only see their own)
+ *
+ * `ORDER_WORK_DOOR` in place of the permission is the other door: the same
+ * three checks, then the order she holds (`heldOrderWhere`) OR today's scope
+ * rule — see `workableOrder`. Everything below it is unchanged.
  */
 export async function assertOrderAccess(
   orderId: string,
   user: SessionUser,
   scope: { companyId: string; storeId: string },
-  permission?: Permission
+  permission?: Permission | OrderWorkDoor
 ): Promise<OrderAccessResult> {
+  if (permission === ORDER_WORK_DOOR) return workableOrder(orderId, user, scope);
   if (permission && !can(user, permission)) {
     throw new Error(`Forbidden: missing required permission ${permission}`);
   }
@@ -253,6 +342,30 @@ export async function assertOrderAccess(
   }
 
   return { allowed: true, order };
+}
+
+/**
+ * THE WORK DOOR, BEFORE A WRITE.
+ *
+ * Tenant and store first, exactly as above — an order she holds in another
+ * store opens only once she stands in that store. Then the holder rule,
+ * then today's scope rule with every scope it does not name refused.
+ */
+async function workableOrder(
+  orderId: string,
+  user: SessionUser,
+  scope: { companyId: string; storeId: string }
+): Promise<OrderAccessResult> {
+  enterOrderWorkDoor(user);
+
+  const order = await db.order.findUnique({ where: { id: orderId } });
+  if (!order) return { allowed: false, reason: 'NOT_FOUND' };
+  if (order.companyId !== scope.companyId) return { allowed: false, reason: 'WRONG_COMPANY' };
+  if (order.storeId !== scope.storeId) return { allowed: false, reason: 'NOT_FOUND' };
+
+  if (heldOrderWhere(user) && order.claimedById === user.id) return { allowed: true, order };
+  if (viewScopeReaches(user, order)) return { allowed: true, order };
+  return { allowed: false, reason: 'NOT_ASSIGNED' };
 }
 
 /**
@@ -292,13 +405,17 @@ export const ORDER_ACCESS_STATUS = {
  * This does not re-state the envelope; it USES it, in one query, so the
  * list and the detail cannot drift again. Writes keep asking about
  * assignment — reading a parcel you may pick up is not owning it.
+ *
+ * With `ORDER_WORK_DOOR` the envelope is `orderWorkWhere` — this one, OR
+ * the order she holds — in the same single query.
  */
 export async function assertOrderReadable(
   orderId: string,
   user: SessionUser,
   scope: { companyId: string; storeId: string },
-  permission?: Permission
+  permission?: Permission | OrderWorkDoor
 ): Promise<OrderAccessResult> {
+  if (permission === ORDER_WORK_DOOR) return readableToWork(orderId, user, scope);
   if (permission && !can(user, permission)) {
     throw new Error(`Forbidden: missing required permission ${permission}`);
   }
@@ -310,6 +427,23 @@ export async function assertOrderReadable(
   });
   // Absent, another company's, another store's, or another person's work:
   // all one answer, because telling them apart is the leak.
+  if (!order) return { allowed: false, reason: 'NOT_FOUND' };
+  return { allowed: true, order };
+}
+
+/** The work door, before a read: the same one query, with the door's envelope. */
+async function readableToWork(
+  orderId: string,
+  user: SessionUser,
+  scope: { companyId: string; storeId: string }
+): Promise<OrderAccessResult> {
+  enterOrderWorkDoor(user);
+
+  const order = await db.order.findFirst({
+    where: {
+      AND: [{ id: orderId, companyId: scope.companyId, storeId: scope.storeId }, orderWorkWhere(user)],
+    },
+  });
   if (!order) return { allowed: false, reason: 'NOT_FOUND' };
   return { allowed: true, order };
 }

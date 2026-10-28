@@ -10,6 +10,7 @@ import { hasEverShipped, hasLeftWarehouse, assertCancellable, deriveCoreState, g
 import { releaseOrderLines } from '@/lib/reservation';
 import { consumeOrderStock } from '@/lib/stock-consumption';
 import { ORDER_ACCESS_STATUS, assertOrderAccess, assertOrderReadable, applyQueueFilter } from '@/lib/rbac';
+import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
 import { logAudit } from '@/lib/audit';
 import { normalizePhoneNumber } from '@/lib/phone';
 import { ordersWhere } from '@/lib/order-filters';
@@ -241,7 +242,8 @@ export async function GET(
     // ── Phase S: role-scoped access (same envelope as the list API) ──
     // Self-scoped roles may only read orders assigned/claimed/created by them
     // or claimable queue items — never another employee's private orders.
-    const access = await assertOrderReadable(id, user, { companyId, storeId }, 'orders.view');
+    // And the order she holds, through the work door (order-work-door.ts).
+    const access = await assertOrderReadable(id, user, { companyId, storeId }, ORDER_WORK_DOOR);
     if (!access.allowed) {
       return NextResponse.json({ error: 'Order not found', errorAr: ORDER_NOT_FOUND }, { status: ORDER_ACCESS_STATUS[access.reason] });
     }
@@ -511,7 +513,8 @@ export async function PATCH(
     // ── Authorization chain: visibility/assignment (RBAC engine) → canonical
     // orders.edit permission with scope evaluation (ASSIGNED scope enforces
     // own-assignment, so no separate any/own check is needed) ──
-    const access = await assertOrderAccess(id, user, { companyId, storeId }, 'orders.view');
+    // The work door: the order she holds opens without «عرض الطلبات».
+    const access = await assertOrderAccess(id, user, { companyId, storeId }, ORDER_WORK_DOOR);
     if (!access.allowed) {
       return NextResponse.json({ error: 'Order not found or not assigned to you', errorAr: ORDER_NOT_FOUND }, { status: ORDER_ACCESS_STATUS[access.reason] });
     }

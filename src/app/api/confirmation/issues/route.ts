@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { requirePermission } from '@/lib/authorization';
 import { assertOrderAccess } from '@/lib/rbac';
+import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
 import { apiErrorResponse } from '@/lib/api-error';
 import { createNotification } from '@/lib/notification';
 import { logAudit } from '@/lib/audit';
@@ -94,7 +95,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: zodMessage(parsed.error) }, { status: 400 });
     }
 
-    const access = await assertOrderAccess(parsed.data.orderId, user, { companyId, storeId }, 'orders.view');
+    // «إدخال إشكال» on the order she holds, from her own desk — the work door
+    // (order-work-door.ts). A moderator holds no `confirmation.work`, so his
+    // reach here is his orders.view scope, exactly as before.
+    const access = await assertOrderAccess(parsed.data.orderId, user, { companyId, storeId }, ORDER_WORK_DOOR);
     if (!access.allowed) return NextResponse.json({ error: 'الطلب غير موجود' }, { status: 404 });
     const order = access.order;
 

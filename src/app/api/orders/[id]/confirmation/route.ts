@@ -3,6 +3,7 @@ import { notify } from '@/lib/notify';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { ORDER_ACCESS_STATUS, assertOrderAccess } from '@/lib/rbac';
+import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
 import { AlreadyBlocked, blockPhone } from '@/lib/blacklist';
 import { CONFIRMATION_STATUSES, CONFIRMATION_STATUS_AR, FOLLOW_UP_REASONS, REJECTION_REASONS, isValidTransition, type ConfirmationStatus } from '@/lib/confirmation-workflow';
 import { logAudit } from '@/lib/audit';
@@ -50,8 +51,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const { id } = await params;
     const { user, companyId, storeId, country } = await requireContext();
 
-    // Confirmation status authority (scope evaluated against the loaded order)
-    const access = await assertOrderAccess(id, user, { companyId, storeId }, 'orders.view');
+    // Confirmation status authority (scope evaluated against the loaded order).
+    // The work door: the order she holds is decided without «عرض الطلبات».
+    const access = await assertOrderAccess(id, user, { companyId, storeId }, ORDER_WORK_DOOR);
     if (!access.allowed) {
       return NextResponse.json({ error: 'الطلب غير موجود أو ليس بين يديك' }, { status: ORDER_ACCESS_STATUS[access.reason] });
     }

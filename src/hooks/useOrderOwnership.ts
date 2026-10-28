@@ -138,17 +138,19 @@ export function useOrderOwnership(orderId: string | null) {
   );
 
   /** Acquire edit lock, then start heartbeat while editing.
-   *  Returns the server-assigned expiry so callers can update local order state. */
+   *  Returns the server-assigned expiry so callers can update local order state,
+   *  and, when it was refused, the sentence to show (`error`). */
   const acquireLock = useCallback(
-    async (orderId: string): Promise<{ ok: boolean; lockExpiresAt?: string | null }> => {
+    async (orderId: string): Promise<{ ok: boolean; lockExpiresAt?: string | null; error?: string }> => {
       setActionLoading('lock');
       setMessage(null);
       try {
         const res = await apiFetch(`/api/orders/${orderId}/lock`, { method: 'POST' });
         const data = await res.json().catch(() => ({}));
         if (res.status === 423 || res.status === 409) {
-          setMessage({ type: 'error', text: data.errorAr || data.error || t.editingBy });
-          return { ok: false };
+          const text = data.errorAr || data.error || t.editingBy;
+          setMessage({ type: 'error', text });
+          return { ok: false, error: text };
         }
         if (res.ok) {
           setInEditMode(true);
@@ -157,11 +159,21 @@ export function useOrderOwnership(orderId: string | null) {
           startHeartbeat();
           return { ok: true, lockExpiresAt: data.lockExpiresAt ?? null };
         }
-        return { ok: false };
+        /*
+         * A REFUSAL (403, 404) USED TO RETURN `{ ok: false }` AND NOTHING ELSE.
+         *
+         * The card opened its form anyway, the save failed later, and the
+         * reason — «الطلب غير موجود», «لا تملك صلاحية تعديل الطلبات» — was
+         * never on screen. The door's own Arabic is handed back now; a
+         * refusal with none still says, in Arabic, that the edit did not open.
+         */
+        const text: string = data.errorAr || 'تعذّر فتح الطلب للتعديل.';
+        setMessage({ type: 'error', text });
+        return { ok: false, error: text };
       } catch (e) {
         console.error('acquireLock failed:', e);
         setMessage({ type: 'error', text: t.actionError });
-        return { ok: false };
+        return { ok: false, error: t.actionError };
       } finally {
         setActionLoading(null);
       }
