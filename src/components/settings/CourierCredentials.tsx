@@ -216,9 +216,11 @@ export function CourierCredentials({ providerId }: { providerId: string }) {
         </p>
       )}
 
-      {status.hasCredentials && status.readable && (
-        <p className="flex items-center gap-2 text-xs text-[var(--sys-success)]">
-          <RiShieldCheckLine className="h-4 w-4" /> الحساب سليم — الشحنات تُنشأ آلياً.
+      {/* Only what is KNOWN: the account is saved and can be read back. Whether the courier accepts it is what the
+          test above answers; this line never asked them, so it never says «سليم» or «تُنشأ آلياً». */}
+      {status.hasCredentials && status.readable && !test && (
+        <p className="flex items-center gap-2 text-xs text-[var(--sys-muted-foreground)]">
+          <RiShieldCheckLine className="h-4 w-4" /> الحساب محفوظ ومشفّر — لم يُفحص مع الشركة بعد.
         </p>
       )}
 

@@ -8,6 +8,7 @@ import { RiAlertLine, RiLoader4Line, RiMagicLine, RiSaveLine } from '@remixicon/
 import { useToast } from '@/components/ui/Toast';
 import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { placeNote, type CourierPlaces } from '@/lib/courier-place-note';
 
 /**
  * ONE COURIER'S FEES — a row per region: the fee, the late threshold in
@@ -85,6 +86,8 @@ export function CourierFees({
   const [saved, setSaved] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
+  // The names in the courier's own list, so a typed code can say which place it is. Null = we hold no list for them.
+  const [places, setPlaces] = useState<CourierPlaces | null>(null);
   // Changing an existing fee needs a written reason; this holds the request
   // until the dialog collects one, instead of a browser prompt.
   const [reasonFor, setReasonFor] = useState<{ regionId: string; regionName: string } | null>(null);
@@ -103,6 +106,15 @@ export function CourierFees({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    let alive = true;
+    apiJson<{ places?: CourierPlaces | null }>(`/api/settings/delivery-fees/places?courier=${courierId}`)
+      .then((res) => { if (alive) setPlaces(res.places ?? null); })
+      // The hint is a courtesy: without it the box is the plain box it always was.
+      .catch(() => { if (alive) setPlaces(null); });
+    return () => { alive = false; };
+  }, [courierId]);
 
   // A different courier is a different set of fees: keeping the typed
   // drafts would show one courier's unsaved numbers under another's name.
@@ -343,22 +355,33 @@ export function CourierFees({
               label: 'رمزها عند الشركة',
               // Their id, typed from THEIR list (the villages sheet they send) — never invented. Saved with the row's
               // «تحديث». An empty box is the warning it always was: without it their API refuses the shipment.
-              render: (r) => (
-                <input
-                  value={draftFor(r.id).courierCityId}
-                  onChange={(e) => setField(r.id, { courierCityId: e.target.value })}
-                  aria-label={`رمز ${r.name} عند الشركة`}
-                  placeholder="بلا رمز"
-                  title="رمز هذه المحافظة لدى الشركة، من قائمة مناطقهم — بدونه لا تُنشأ الشحنة آلياً."
-                  type="number"
-                  min={1}
-                  step={1}
-                  dir="ltr"
-                  className={`h-11 w-28 rounded-lg border bg-[var(--sys-card)] px-2 text-sm md:h-10 ${
-                    draftFor(r.id).courierCityId ? 'border-[var(--sys-border-input)]' : 'border-[var(--sys-warning)]'
-                  }`}
-                />
-              ),
+              render: (r) => {
+                const note = placeNote(draftFor(r.id).courierCityId, places);
+                return (
+                  <div>
+                    <input
+                      value={draftFor(r.id).courierCityId}
+                      onChange={(e) => setField(r.id, { courierCityId: e.target.value })}
+                      aria-label={`رمز ${r.name} عند الشركة`}
+                      placeholder="بلا رمز"
+                      title="رمز هذه المحافظة لدى الشركة، من قائمة مناطقهم — بدونه لا تُنشأ الشحنة آلياً."
+                      type="number"
+                      min={1}
+                      step={1}
+                      dir="ltr"
+                      className={`h-11 w-28 rounded-lg border bg-[var(--sys-card)] px-2 text-sm md:h-10 ${
+                        draftFor(r.id).courierCityId ? 'border-[var(--sys-border-input)]' : 'border-[var(--sys-warning)]'
+                      }`}
+                    />
+                    {/* Which place the number is — and a warning, never a block, when it is a Region Id. */}
+                    {note && (
+                      <p className={note.kind === 'region' ? 'text-xs text-[var(--sys-warning)]' : 'text-xs text-[var(--sys-muted-foreground)]'}>
+                        {note.text}
+                      </p>
+                    )}
+                  </div>
+                );
+              },
             },
           ]}
           actions={(r) => (
