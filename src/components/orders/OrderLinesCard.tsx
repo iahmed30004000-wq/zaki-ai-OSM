@@ -174,6 +174,12 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
          * wire, now written back as the digits a person would have typed.
          */
         price: String(Number(l.lineTotal)),
+        /*
+         * AND THE EDITOR TREATS IT AS AGREED. A quantity change never
+         * rewrites a saved total; the editor names the base price beside it
+         * and a person chooses (see `DraftLine.pricing`).
+         */
+        pricing: 'saved' as const,
       }))
     );
     setError(null);

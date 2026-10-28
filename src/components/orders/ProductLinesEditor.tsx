@@ -4,6 +4,7 @@ import React from 'react';
 import { onTheWire, typedFigure } from '@/lib/typed-box';
 import { ProductPicker } from '@/components/ui/ProductPicker';
 import { amount, type Currency } from '@/lib/format';
+import { atBasePrice } from '@/lib/line-price';
 import { RiAddCircleLine, RiDeleteBinLine, RiSubtractLine } from '@remixicon/react';
 
 /**
@@ -17,6 +18,23 @@ import { RiAddCircleLine, RiDeleteBinLine, RiSubtractLine } from '@remixicon/rea
  * A line's price box holds the TOTAL for that line's quantity, which is the
  * meaning the API has always given it — showing a per-unit price here and a
  * line total there would be two numbers for one field.
+ */
+
+/**
+ * THE BOX FOLLOWS THE CATALOGUE UNTIL A PERSON WRITES IN IT.
+ *
+ * It opened at the base price of ONE piece and never moved: a product at 25,
+ * changed to two pieces, still said 25, and the order was saved at 25. Now a
+ * line that nobody has written in follows its quantity — the offer's price
+ * while an offer is chosen, otherwise the base price for the paid quantity.
+ * A figure a person typed is theirs, and so is a figure an order was saved
+ * with: a quantity change never rewrites either, and the line under the box
+ * says what the base price would be, with a button to take it.
+ *
+ * The multiplication is `atBasePrice` in `src/lib/line-price.ts`, rounded to
+ * the currency's minor unit the way `computeCod` rounds a line, and held
+ * equal to it by a test. It fills a box; the door still takes what the box
+ * sends, and the COD is still the server's.
  */
 
 /**
@@ -101,7 +119,23 @@ export interface DraftLine {
    * leaves the key off the request without a caller having to know why.
    */
   price: string | undefined;
+  /**
+   * WHO WROTE THE FIGURE IN THE BOX, which decides whether a quantity change
+   * may rewrite it.
+   *
+   *   · `follows` — the catalogue did (an offer's price, or the base price
+   *     for the paid quantity). A quantity change computes it again.
+   *   · `typed` — a person did. A quantity change leaves it alone.
+   *   · `saved` — it is the total a stored order was saved with, agreed with
+   *     the customer. Never rewritten; its first quantity change makes it
+   *     `typed`, so the line under the box offers the base price.
+   *
+   * Never sent: both hosts build the request from named fields.
+   */
+  pricing: LinePricing;
 }
+
+export type LinePricing = 'follows' | 'typed' | 'saved';
 
 interface ProductOption {
   id: string;
@@ -126,20 +160,135 @@ interface ProductOption {
  * line — a real order line at no charge, which the door is obliged to
  * accept because `min(0)` and a giveaway line is legitimate.
  *
- * So the price is the offer's, or the product's own base price, or the box
- * is EMPTY. There is no third number in this file: the only figures it can
- * put in a box came from the catalogue.
+ * So the price is the offer's, or the product's own base price for the paid
+ * quantity, or the box is EMPTY. There is no third number in this file: the
+ * only figures it can put in a box came from the catalogue.
+ *
+ * A BASE PRICE OF 0 IS AN EMPTY BOX TOO. It is the column's default and
+ * means «not set yet», and it opened the line at `0` — the same free line,
+ * reached through the catalogue instead of through a missing product. And
+ * without the currency's minor unit there is nothing to round to, so the box
+ * waits empty rather than guess one (`atBasePrice`).
  */
-export function newLine(product?: ProductOption): DraftLine {
+export function newLine(product?: ProductOption, minorUnit?: number | null): DraftLine {
+  return { key: Math.random().toString(36).slice(2), ...fromCatalogue(product?.id ?? '', product, minorUnit) };
+}
+
+/** A figure as the characters the box will hold, or an empty box. */
+function inTheBox(figure: number | undefined): string | undefined {
+  return figure === undefined ? undefined : String(figure);
+}
+
+/** A line set from the catalogue: the product's first offer, or its base price for one piece. */
+function fromCatalogue(
+  productId: string,
+  product: ProductOption | undefined,
+  minorUnit: number | null | undefined
+): Omit<DraftLine, 'key'> {
   const offer = product?.offers?.[0];
-  const seed = offer?.sellingPrice ?? product?.basePrice;
+  if (offer) {
+    return { productId, offerId: offer.id, quantity: offer.quantity, price: String(offer.sellingPrice), pricing: 'follows' };
+  }
   return {
-    key: Math.random().toString(36).slice(2),
-    productId: product?.id ?? '',
-    offerId: offer?.id ?? null,
-    quantity: offer?.quantity ?? 1,
-    price: seed === undefined ? undefined : String(seed),
+    productId,
+    offerId: null,
+    quantity: 1,
+    price: inTheBox(atBasePrice(product?.basePrice, 1, minorUnit)),
+    pricing: 'follows',
   };
+}
+
+/*
+ * WHAT EACH CONTROL DOES TO A LINE — written once, as plain functions, so a
+ * test can hold every rule without drawing the form.
+ *
+ * None of them multiplies anything. Every figure they put in a box is the
+ * offer's own price or `atBasePrice`, which rounds the way `computeCod`
+ * rounds a line. `quantity` is always the PAID quantity: a gift is the
+ * door's, worked out from the offer (`offer-gift.ts`), and is never priced.
+ */
+
+/**
+ * − / + / the quantity box. The offer goes, as it always has: a bundle of
+ * three is not a bundle once it is four. A line that follows takes the base
+ * price for the new quantity; a typed or saved figure is never rewritten,
+ * and a saved one becomes typed, so the line under the box speaks.
+ */
+export function withQuantity(
+  line: DraftLine,
+  quantity: number,
+  product: ProductOption | undefined,
+  minorUnit: number | null | undefined
+): DraftLine {
+  if (quantity === line.quantity) return line;
+  if (line.pricing === 'follows') {
+    return { ...line, quantity, offerId: null, price: inTheBox(atBasePrice(product?.basePrice, quantity, minorUnit)) };
+  }
+  return { ...line, quantity, offerId: null, pricing: 'typed' };
+}
+
+/** The price box itself: what was typed, as typed — and from now on it is the person's. */
+export function withTypedPrice(line: DraftLine, raw: string): DraftLine {
+  return { ...line, price: onTheWire(raw), offerId: null, pricing: 'typed' };
+}
+
+/**
+ * Picking a product adopts its first offer — that is the offer's job — or
+ * its base price for one piece, and the line follows again. Even after
+ * typing: choosing a product is choosing its price, in plain view.
+ */
+export function withProduct(
+  line: DraftLine,
+  productId: string,
+  product: ProductOption | undefined,
+  minorUnit: number | null | undefined
+): DraftLine {
+  return { ...line, ...fromCatalogue(productId, product, minorUnit) };
+}
+
+/**
+ * An offer fixes the quantity and the price of its line, and the line
+ * follows it. «بلا عرض» lets the offer go: a following line then takes the
+ * base price for the quantity it has, so «3 بـ60» does not stay 60.
+ */
+export function withOffer(
+  line: DraftLine,
+  offerId: string,
+  product: ProductOption | undefined,
+  minorUnit: number | null | undefined
+): DraftLine {
+  const offer = product?.offers?.find((o) => o.id === offerId);
+  if (offer) {
+    return { ...line, offerId: offer.id, quantity: offer.quantity, price: String(offer.sellingPrice), pricing: 'follows' };
+  }
+  if (line.pricing !== 'follows') return { ...line, offerId: null };
+  return { ...line, offerId: null, price: inTheBox(atBasePrice(product?.basePrice, line.quantity, minorUnit)) };
+}
+
+/** «رجّعه للسعر الأساسي»: the base price for this quantity, and the line follows again. */
+export function backToBase(
+  line: DraftLine,
+  product: ProductOption | undefined,
+  minorUnit: number | null | undefined
+): DraftLine {
+  const figure = atBasePrice(product?.basePrice, line.quantity, minorUnit);
+  return figure === undefined ? line : { ...line, price: String(figure), offerId: null, pricing: 'follows' };
+}
+
+/**
+ * The figure the line under the box names — only on a typed line, only when
+ * the base price is known, and only when it differs from what the box holds.
+ * A saved line opens silent even when its stored total differs (a discount
+ * share, an old price): that total was agreed, and nobody has touched it.
+ */
+export function baseHint(
+  line: DraftLine,
+  product: ProductOption | undefined,
+  minorUnit: number | null | undefined
+): number | undefined {
+  if (line.pricing !== 'typed') return undefined;
+  const figure = atBasePrice(product?.basePrice, line.quantity, minorUnit);
+  return figure === undefined || typedFigure(line.price) === figure ? undefined : figure;
 }
 
 export function ProductLinesEditor({
@@ -156,36 +305,24 @@ export function ProductLinesEditor({
   disabled?: boolean;
 }) {
   const productOf = (id: string) => products.find((p) => p.id === id);
+  /** This store's decimals, or nothing while they load — never an assumed two. */
+  const minorUnit = currency?.minorUnit;
 
-  function patch(key: string, next: Partial<DraftLine>) {
-    onChange(lines.map((l) => (l.key === key ? { ...l, ...next } : l)));
+  function update(key: string, change: (line: DraftLine) => DraftLine) {
+    onChange(lines.map((l) => (l.key === key ? change(l) : l)));
   }
 
   /** Picking a product adopts its first offer — that is the offer's job. */
   function pickProduct(key: string, productId: string) {
-    const product = productOf(productId);
-    const offer = product?.offers?.[0];
     // Same rule as `newLine`: a catalogue figure, or an empty box. The
     // trailing `?? 0` here put a free line under a product that has neither
     // an offer nor a base price.
-    const seed = offer?.sellingPrice ?? product?.basePrice;
-    patch(key, {
-      productId,
-      offerId: offer?.id ?? null,
-      quantity: offer?.quantity ?? 1,
-      price: seed === undefined ? undefined : String(seed),
-    });
+    update(key, (l) => withProduct(l, productId, productOf(productId), minorUnit));
   }
 
   /** An offer fixes the quantity and the price of its line. */
   function pickOffer(key: string, offerId: string) {
-    const line = lines.find((l) => l.key === key);
-    const offer = productOf(line?.productId ?? '')?.offers?.find((o) => o.id === offerId);
-    if (!offer) {
-      patch(key, { offerId: null });
-      return;
-    }
-    patch(key, { offerId, quantity: offer.quantity, price: String(offer.sellingPrice) });
+    update(key, (l) => withOffer(l, offerId, productOf(l.productId), minorUnit));
   }
 
   const total = goodsTotal(lines);
@@ -200,6 +337,8 @@ export function ProductLinesEditor({
         const lockedByOffer = !!line.offerId;
         /** The figure this line's box holds, or nothing — never an invented 0. */
         const lineFigure = typedFigure(line.price);
+        /** The base price for this quantity, named only when a person's figure differs from it. */
+        const hint = baseHint(line, product, minorUnit);
 
         return (
           <div key={line.key} className="rounded-lg border border-[var(--sys-border)] p-2.5 space-y-2">
@@ -254,7 +393,7 @@ export function ProductLinesEditor({
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => patch(line.key, { quantity: Math.max(1, line.quantity - 1), offerId: null })}
+                  onClick={() => update(line.key, (l) => withQuantity(l, Math.max(1, l.quantity - 1), product, minorUnit))}
                   aria-label="أنقص الكمية"
                   title="أنقص الكمية"
                   disabled={disabled || lockedByOffer}
@@ -265,13 +404,15 @@ export function ProductLinesEditor({
                 <input
                   type="number" min={1} dir="ltr"
                   value={line.quantity}
-                  onChange={(e) => patch(line.key, { quantity: Math.max(1, Number(e.target.value) || 1), offerId: null })}
+                  onChange={(e) =>
+                    update(line.key, (l) => withQuantity(l, Math.max(1, Number(e.target.value) || 1), product, minorUnit))
+                  }
                   disabled={disabled || lockedByOffer}
                   className={`${inputClass} w-16 text-center`}
                 />
                 <button
                   type="button"
-                  onClick={() => patch(line.key, { quantity: line.quantity + 1, offerId: null })}
+                  onClick={() => update(line.key, (l) => withQuantity(l, l.quantity + 1, product, minorUnit))}
                   aria-label="زد الكمية"
                   title="زد الكمية"
                   disabled={disabled || lockedByOffer}
@@ -289,7 +430,7 @@ export function ProductLinesEditor({
                   // a cleared box as `0`, so «14» cleared and retyped as
                   // «20» came out «120».
                   value={line.price ?? ''}
-                  onChange={(e) => patch(line.key, { price: onTheWire(e.target.value), offerId: null })}
+                  onChange={(e) => update(line.key, (l) => withTypedPrice(l, e.target.value))}
                   disabled={disabled || lockedByOffer}
                   placeholder="سعر السطر"
                   className={inputClass}
@@ -302,6 +443,24 @@ export function ProductLinesEditor({
                 {lineFigure === undefined ? '—' : amount(lineFigure, currency)}
               </span>
             </div>
+
+            {hint !== undefined && (
+              <div className="flex flex-wrap items-center gap-2">
+                {/* A person's figure is never rewritten behind their back, so
+                    the base price is said beside it, one press away. */}
+                <p className="text-xs text-[var(--sys-muted)]">
+                  مكتوب بإيدك — بالسعر الأساسي: <span dir="ltr">{amount(hint, currency)}</span>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => update(line.key, (l) => backToBase(l, product, minorUnit))}
+                  disabled={disabled}
+                  className="h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border)] text-xs font-medium text-[var(--sys-muted-foreground)] hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)] disabled:opacity-40"
+                >
+                  رجّعه للسعر الأساسي
+                </button>
+              </div>
+            )}
 
             {lockedByOffer && (
               <p className="text-xs text-[var(--sys-muted)]">
