@@ -1,5 +1,6 @@
 import { db } from '../db';
 import { readLineRoleOrder } from './parser';
+import { typed } from '../text-search';
 
 /**
  * THE ORDER THIS REFERENCE ALREADY MADE (T4).
@@ -38,7 +39,7 @@ export async function findTwinOrder(input: {
       orderId: { not: null },
       createdAt: { gte: new Date(input.receivedAt.getTime() - TWIN_WINDOW_MS) },
       source: { storeId: input.storeId },
-      OR: [...new Set([latin, keypad])].map((needle) => ({ text: { contains: needle } })),
+      OR: [...new Set([latin, keypad])].map((needle) => ({ text: typed(needle) })),
     },
     orderBy: { createdAt: 'asc' },
     take: 50,
