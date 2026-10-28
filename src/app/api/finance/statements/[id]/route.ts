@@ -12,6 +12,7 @@ import { recordMovement } from '@/lib/wallets';
 import { markPayableForOrders } from '@/lib/commission';
 import { zodMessage } from '@/lib/zod-message';
 import { removeProofFile } from '@/lib/settlement-proof';
+import { POSSIBLE_DOUBLE_SENTENCE, findPossibleDoubles, handWindowStart, type HandMovement } from '@/lib/possible-double';
 
 /**
  * One statement.
@@ -28,7 +29,26 @@ import { removeProofFile } from '@/lib/settlement-proof';
 const patchSchema = z.object({
   gapExplanation: z.string().trim().min(5).max(500).optional(),
   approve: z.boolean().optional(),
+  /**
+   * The person has seen the hand-entered rows that look like the same money and says they are not
+   * (or has decided to keep both). Never sent by a screen on its own: only by «اعتمد هيك».
+   */
+  confirmPossibleDouble: z.boolean().optional(),
 });
+
+/** A stop inside the approval transaction: the whole transaction rolls back and this is the answer. */
+class ApprovalStopped extends Error {
+  constructor(readonly status: number, readonly body: Record<string, unknown>) {
+    super(String(body.code ?? body.error ?? 'approval stopped'));
+  }
+}
+
+/** Hand entries that look like the same money as a receipt — shown to the person before anything is written. */
+class PossibleDouble extends Error {
+  constructor(readonly rows: (HandMovement & { wallet: string; currencyCode: string })[]) {
+    super('POSSIBLE_DOUBLE');
+  }
+}
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -122,20 +142,104 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     });
     if (refusal) return NextResponse.json({ ...refusal, gap }, { status: 409 });
 
-    const approved = await db.$transaction(async (tx) => {
-      const row = await tx.courierStatement.update({
-        where: { id },
+    const approvedAt = new Date();
+    // The hand rows the person has just said are NOT the same money — kept for the audit row.
+    let confirmedDoubles: string[] = [];
+
+    let approved;
+    try {
+      approved = await db.$transaction(async (tx) => {
+      /**
+       * ONE APPROVAL, HOWEVER MANY PRESSES.
+       *
+       * `isApproved` above is read OUTSIDE this transaction, so two presses (or one retry) in flight both pass
+       * it. The stamp is therefore taken here as a conditional write — only a row that is still unapproved is
+       * claimed — and exactly one claim can win: the second waits on the row, re-reads it as approved, finds
+       * count 0 and rolls the whole transaction back before a single movement is written.
+       *
+       * The claim comes FIRST, and what the money is built from is read AFTER it: a receipt racing this
+       * approval either landed before the claim (and is read here) or is refused by its own conditional write.
+       */
+      const claimed = await tx.courierStatement.updateMany({
+        where: { id, companyId, approvedAt: null, status: { not: 'APPROVED' } },
         data: {
           status: 'APPROVED',
           approvedById: user.id,
-          approvedAt: new Date(),
+          approvedAt,
           gapExplanation: explanation ?? null,
         },
       });
+      if (claimed.count !== 1) {
+        throw new ApprovalStopped(409, { error: 'الكشف معتمد مسبقاً', code: 'ALREADY_APPROVED' });
+      }
+
+      const inside = await tx.courierStatement.findFirst({
+        where: { id, companyId, storeId },
+        include: {
+          receipts: true,
+          matches: { select: { orderId: true, result: true, statementAmount: true, statementFee: true } },
+        },
+      });
+      if (!inside) throw new ApprovalStopped(404, { error: 'الكشف غير موجود' });
+      const { receipts, matches, ...row } = inside;
+
+      // The gates once more, on what this transaction itself read: a receipt deleted a moment ago must not
+      // leave an approval standing on a receipt that is no longer there.
+      const gapInside = await receiptGap(tx, id, country.minorUnit);
+      const refusedInside = approvalRefusal({
+        status: statement.status,
+        approvedAt: null,
+        receipts: receipts.length,
+        matches: matches.length,
+        gap: gapInside,
+        explanation,
+      });
+      if (refusedInside) throw new ApprovalStopped(409, { ...refusedInside, gap: gapInside });
+
+      /**
+       * A HAND ENTRY OF THE SAME MONEY.
+       *
+       * The wallet below gets one IN per receipt. If a person already typed that collection in by hand, it is
+       * about to be there twice — so the approval stops, shows the rows, and goes on only when the request
+       * carries `confirmPossibleDouble`. Hand-entered = no reference (the statement, a hand collection, a
+       * transfer, a payout and a payslip all carry one); a reversed row, and a reversal, never count.
+       */
+      const handRows = await tx.walletMovement.findMany({
+        where: {
+          companyId,
+          walletId: { in: [...new Set(receipts.map((r) => r.walletId))] },
+          direction: 'IN',
+          referenceType: null,
+          reversalOfId: null,
+          reversedBy: null,
+          createdAt: { gte: handWindowStart(approvedAt) },
+        },
+        select: {
+          id: true, walletId: true, amount: true, party: true, note: true, createdAt: true, createdById: true,
+          wallet: { select: { name: true, currencyCode: true, country: { select: { minorUnit: true } } } },
+        },
+      });
+      const doubles = findPossibleDoubles(
+        receipts.map((r) => ({ walletId: r.walletId, amount: Number(r.amount) })),
+        handRows.map((m) => ({
+          id: m.id, walletId: m.walletId, amount: Number(m.amount), minorUnit: m.wallet.country.minorUnit,
+          party: m.party, note: m.note, createdAt: m.createdAt, createdById: m.createdById,
+        })),
+        approvedAt
+      );
+      if (doubles.length > 0 && !parsed.data.confirmPossibleDouble) {
+        throw new PossibleDouble(
+          doubles.map((d) => {
+            const wallet = handRows.find((m) => m.id === d.id)!.wallet;
+            return { ...d, wallet: wallet.name, currencyCode: wallet.currencyCode };
+          })
+        );
+      }
+      confirmedDoubles = doubles.map((d) => d.id);
 
       // The money moves HERE and nowhere earlier: one wallet movement per
       // receipt, each carrying the wallet it actually landed in.
-      for (const receipt of statement.receipts) {
+      for (const receipt of receipts) {
         await recordMovement(tx, {
           companyId,
           walletId: receipt.walletId,
@@ -151,7 +255,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       }
 
       // Settled orders make their commission payable — not before.
-      const matched = statement.matches.filter((m) => m.result === 'MATCHED' && m.orderId);
+      const matched = matches.filter((m) => m.result === 'MATCHED' && m.orderId);
       const settledOrderIds = matched.map((m) => m.orderId as string);
       await markPayableForOrders(tx, companyId, settledOrderIds);
       if (settledOrderIds.length > 0) {
@@ -316,13 +420,38 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         });
       }
 
-      return { row, deliveredCount: inFlight.length };
-    });
+      return { row, deliveredCount: inFlight.length, receiptCount: receipts.length };
+      }, { timeout: 30_000 });
+    } catch (e) {
+      if (e instanceof ApprovalStopped) return NextResponse.json(e.body, { status: e.status });
+      if (e instanceof PossibleDouble) {
+        const actorIds = [...new Set(e.rows.map((r) => r.createdById))];
+        const actors = await db.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true } });
+        const nameOf = new Map(actors.map((a) => [a.id, a.name]));
+        return NextResponse.json(
+          {
+            code: 'POSSIBLE_DOUBLE',
+            error: POSSIBLE_DOUBLE_SENTENCE,
+            rows: e.rows.map((r) => ({
+              id: r.id, wallet: r.wallet, currencyCode: r.currencyCode, date: r.createdAt, amount: r.amount,
+              party: r.party, note: r.note, by: nameOf.get(r.createdById) ?? null,
+            })),
+          },
+          { status: 409 }
+        );
+      }
+      throw e;
+    }
 
     await logAudit({
       companyId, userId: user.id, action: 'STATEMENT_APPROVED',
       entity: 'CourierStatement', entityId: id,
-      newData: { gap: gap.gap, explanation: explanation ?? null, receipts: statement.receipts.length },
+      newData: {
+        gap: gap.gap, explanation: explanation ?? null, receipts: approved.receiptCount,
+        // Said by the person, on the screen: the hand rows listed were NOT the same money. Written here so
+        // the approval itself carries the answer.
+        ...(confirmedDoubles.length > 0 ? { confirmedPossibleDouble: true, handRows: confirmedDoubles } : {}),
+      },
     });
 
     return NextResponse.json({
