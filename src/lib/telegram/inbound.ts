@@ -368,7 +368,7 @@ async function processLabeledMessage(
       `وقت الطلب بالمصدر: ${fields.orderedAt}`,
       `العرض: ${line.offer?.name ?? ''}`.slice(0, 120),
       phone.others.length ? `أرقام أخرى: ${phone.others.join(' ، ')}` : null,
-      phone.valid ? null : `⚠ رقم الهاتف ما بيطابق شكل أرقام البلد (كما انكتب: ${fields.phone.slice(0, 40)}) — تأكدوا منه بالاتصال`,
+      phone.valid ? null : `تنبيه: رقم الهاتف ما بيطابق شكل أرقام البلد (كما انكتب: ${fields.phone.slice(0, 40)}) — تأكدوا منه بالاتصال`,
     ]
       .filter(Boolean)
       .join(' · '),
