@@ -1310,12 +1310,12 @@
     "tabs": 0
   },
   "src/components/screens/StoreThemeScreen.tsx": {
-    "buttons": 14,
-    "inputs": 25,
+    "buttons": 15,
+    "inputs": 26,
     "columns": 22,
     "cards": 0,
     "modals": 0,
-    "icons": 14,
+    "icons": 15,
     "links": 3,
     "tabs": 0
   },

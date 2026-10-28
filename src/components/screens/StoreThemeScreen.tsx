@@ -8,12 +8,26 @@ import type { SampleProduct } from '@/components/store/SkinPreview';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
 import { apiJson } from '@/lib/api-client';
-import { FONTS, MOODS, isValidHex } from '@/lib/landing-theme';
+import { DEFAULT_THEME, FONTS, MOODS, isValidHex } from '@/lib/landing-theme';
 import {
   CHECKOUT_FIELDS, DEFAULT_STORE_THEME, MANDATORY_CHECKOUT_FIELDS,
-  checkoutOrder, type CheckoutField, type StoreTheme,
+  checkoutOrder, hiddenCheckoutFields, type CheckoutField, type StoreTheme,
 } from '@/lib/store-theme';
-import { RiArrowGoBackLine, RiBankCardLine, RiCheckLine, RiDownload2Line, RiExternalLinkLine, RiImageLine, RiLayoutBottomLine, RiLayoutGridLine, RiLayoutTopLine, RiLoader4Line, RiPaletteLine, RiShoppingBagLine, RiTreeLine, RiUpload2Line } from '@remixicon/react';
+import { DEFAULT_SUBMIT as DEFAULT_SUBMIT_WORDS, DEFAULT_THANKS as DEFAULT_THANKS_LINE } from '@/lib/checkout-words';
+import { orderAfterDrag, reorderWithinGroup } from '@/lib/nav-arrangement';
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type Announcements,
+} from '@dnd-kit/core';
+import { restrictToParentElement, restrictToVerticalAxis } from '@dnd-kit/modifiers';
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { RiArrowGoBackLine, RiBankCardLine, RiCheckLine, RiDownload2Line, RiDraggable, RiExternalLinkLine, RiImageLine, RiLayoutBottomLine, RiLayoutGridLine, RiLayoutTopLine, RiLoader4Line, RiPaletteLine, RiShoppingBagLine, RiTreeLine, RiUpload2Line } from '@remixicon/react';
 import { PanelHeader } from '@/components/store-admin/PanelHeader';
 import { TemplateGallery } from '@/components/ui/TemplateGallery';
 import { useStoreCurrency } from '@/context/StoreCurrency';
@@ -336,7 +350,7 @@ export function StoreThemeScreen() {
 
   /** The one act a customer feels, and the only one that asks first. */
   async function publish() {
-    if (!confirm('سينتقل شكل المتجر إلى هذه المسوّدة ويراه كل زبون الآن — ومعه نماذج الطلب بصفحات الهبوط: ترتيب الحقول وزر التأكيد ورسالة ما بعد الطلب. متابعة؟')) return;
+    if (!confirm('سينتقل شكل المتجر إلى هذه المسوّدة ويراه كل زبون الآن — ومعه كل نماذج الطلب: الحقول اللي بتظهر وترتيبها وإلزامها، وزر التأكيد، ورسالة ما بعد الطلب. متابعة؟')) return;
     setPublishing(true);
     setMsg(null);
     try {
@@ -983,63 +997,12 @@ export function StoreThemeScreen() {
       {tab === 'checkout' && (
         <div className="space-y-4">
           <div className={CARD}>
-            <p className="mb-1 text-sm font-bold text-[var(--sys-heading)]">ترتيب الحقول وإلزامها</p>
+            <p className="mb-1 text-sm font-bold text-[var(--sys-heading)]">حقول نموذج الطلب</p>
             <p className="mb-3 text-xs text-[var(--sys-muted)]">
-              الاسم والهاتف والمحافظة والعنوان إلزامية دائماً: بدونها لا تُسعَّر الشحنة ولا تصل.
+              اسحب الحقل لترتيبه. الاسم والهاتف والمحافظة والعنوان ظاهرة وإلزامية دائماً: بدونها ما بتتسعّر الشحنة ولا بتوصل.
             </p>
-            <div className="space-y-1.5">
-              {checkoutOrder(theme).map((field, i, arr) => {
-                const mandatory = MANDATORY_CHECKOUT_FIELDS.includes(field);
-                const required = mandatory || (theme.checkout?.required ?? []).includes(field);
-                return (
-                  <div key={field} className="flex items-center gap-2 rounded-lg border border-[var(--sys-border)] px-2.5 py-1.5">
-                    <span className="flex-1 text-xs font-medium text-[var(--sys-foreground)]">{CHECKOUT_LABEL[field]}</span>
-                    <label className="flex items-center gap-1.5 text-xs text-[var(--sys-muted-foreground)]">
-                      <input
-                        type="checkbox"
-                        checked={required}
-                        disabled={mandatory}
-                        onChange={(e) => {
-                          const set = new Set(theme.checkout?.required ?? []);
-                          if (e.target.checked) set.add(field); else set.delete(field);
-                          setPart('checkout', { required: [...set] });
-                        }}
-                        className="h-3.5 w-3.5 accent-[var(--sys-primary)] disabled:opacity-50 tap-safe"
-                      />
-                      إلزامي{mandatory && ' (دائماً)'}
-                    </label>
-                    <div className="flex gap-0.5">
-                      <button
-                        type="button"
-                        disabled={i === 0}
-                        onClick={() => {
-                          const next = [...arr];
-                          [next[i - 1], next[i]] = [next[i], next[i - 1]];
-                          setPart('checkout', { fieldOrder: next });
-                        }}
-                        className="rounded-lg px-1.5 text-xs text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface-strong)] disabled:opacity-30"
-                        aria-label="حرّكه لأعلى"
-                      >
-                        ↑
-                      </button>
-                      <button
-                        type="button"
-                        disabled={i === arr.length - 1}
-                        onClick={() => {
-                          const next = [...arr];
-                          [next[i + 1], next[i]] = [next[i], next[i + 1]];
-                          setPart('checkout', { fieldOrder: next });
-                        }}
-                        className="rounded-lg px-1.5 text-xs text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface-strong)] disabled:opacity-30"
-                        aria-label="حرّكه لأسفل"
-                      >
-                        ↓
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            {/* Every change here is a DRAFT change like the rest of this screen — «انشر» puts it in front of visitors. */}
+            <CheckoutFields theme={theme} onChange={(patch) => setPart('checkout', patch)} />
           </div>
 
           <div className={CARD}>
@@ -1048,18 +1011,30 @@ export function StoreThemeScreen() {
                 <span className={LABEL}>نص زر التأكيد</span>
                 <Input
                   maxLength={40}
-                  placeholder="اطلب الآن — الدفع عند الاستلام"
+                  placeholder={DEFAULT_SUBMIT_WORDS}
                   value={theme.checkout?.submitText ?? ''}
                   onChange={(e) => setPart('checkout', { submitText: e.target.value })}
                 />
+                {/* What a blank one really shows — the placeholder is that, and never an example that appears nowhere. */}
+                <span className={HINT}>
+                  فاضي: صفحات الهبوط والمنتجات بتكتب «{DEFAULT_SUBMIT_WORDS}» (أو نص الصفحة إذا غيّرته)، والسلة بتكتب «أرسل الطلب».
+                </span>
               </label>
               <label className="block">
                 <span className={LABEL}>لون زر التأكيد</span>
                 <div className="flex items-center gap-2">
+                  {/* No colour set: the swatch is the shop's primary — which is what the button wears then — never
+                      a white that no button shows. */}
                   <input
                     type="color"
                     aria-label="لون زر التأكيد"
-                    value={theme.checkout?.buttonColor && isValidHex(theme.checkout.buttonColor) ? theme.checkout.buttonColor : '#ffffff'}
+                    value={
+                      theme.checkout?.buttonColor && isValidHex(theme.checkout.buttonColor)
+                        ? theme.checkout.buttonColor
+                        : isValidHex(theme.accent)
+                          ? theme.accent
+                          : DEFAULT_THEME.accent
+                    }
                     onChange={(e) => setPart('checkout', { buttonColor: e.target.value })}
                     className="h-11 md:h-10 w-12 cursor-pointer rounded-lg border border-[var(--sys-border)]"
                   />
@@ -1078,10 +1053,14 @@ export function StoreThemeScreen() {
               <span className={LABEL}>رسالة ما بعد الطلب</span>
               <Input
                 maxLength={300}
-                placeholder="وصلنا طلبك — سنتصل بك خلال ساعات لتأكيده."
+                placeholder={DEFAULT_THANKS_LINE}
                 value={theme.checkout?.afterOrderMessage ?? ''}
                 onChange={(e) => setPart('checkout', { afterOrderMessage: e.target.value })}
               />
+              <span className={HINT}>
+                فاضي: النموذج بيكتب «{DEFAULT_THANKS_LINE}» وصفحة الشكر بالسلة «تم استلام طلبك». وصفحة هبوط كاتبة رسالة شكر
+                إلها بتضل على رسالتها.
+              </span>
             </label>
           </div>
         </div>
@@ -1201,5 +1180,215 @@ export function StoreThemeScreen() {
         </div>
       </div>
     </div>
+  );
+}
+
+/* ───────────────────────────── «الدفع»: what the form shows, what it requires, in what order ───────────────────────────── */
+
+type CheckoutPatch = Partial<NonNullable<StoreTheme['checkout']>>;
+
+/** What a screen reader is told before it picks a field up. */
+const CHECKOUT_DRAG_HELP = {
+  draggable: 'لتغيير ترتيب هذا الحقل: اضغط مسافة لتمسكه، ثم السهم لأعلى أو لأسفل، ثم مسافة لتفلته. اضغط Esc للإلغاء.',
+};
+
+/**
+ * «انطيني الصلاحية شو الي يظهر بالشيك اوت الي بينطلب والترتيب دراخ اند دروب» — the owner, 28/10.
+ *
+ * Three answers per field, and all three are the DRAFT's, like every other control on this screen: they reach a
+ * visitor when «انشر» is pressed, never before.
+ *
+ *   · THE ORDER, by drag and drop — the pattern `MenuOrderCard` and the offers list already answer, with the same two
+ *     promises: `@dnd-kit` with a keyboard sensor and Arabic announcements (Space to pick a field up, ↑ ↓ to move it,
+ *     Space to put it down, Esc to cancel), and a drag that starts ONLY from the grip, which alone refuses the
+ *     browser's scroll gesture. The ↑ ↓ buttons stay — the path a thumb, a keyboard and a screen reader reach on the
+ *     first day — and both go through the one move (`reorderWithinGroup`), so they cannot disagree.
+ *   · «يظهر» — a field taken off every form. Hiding one also clears its «إلزامي»: a hidden field asks nothing, and
+ *     the door would refuse every order over a field nobody can see (`requiredCheckoutFields` says the same).
+ *   · «إلزامي» — refused at the door when left blank, and said under the field before sending. Not offered while
+ *     the field is hidden.
+ *
+ * The four a parcel needs are shown and required ALWAYS: both boxes ticked and locked, with the reason written above.
+ */
+function CheckoutFields({ theme, onChange }: { theme: StoreTheme; onChange: (patch: CheckoutPatch) => void }) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+  const order = checkoutOrder(theme);
+  const hidden = new Set(hiddenCheckoutFields(theme));
+  const ticked = new Set<CheckoutField>(theme.checkout?.required ?? []);
+
+  const reorder = (next: string[] | null) => {
+    if (next) onChange({ fieldOrder: next as CheckoutField[] });
+  };
+  const show = (field: CheckoutField, on: boolean) => {
+    const nextHidden = new Set(hidden);
+    if (on) nextHidden.delete(field);
+    else nextHidden.add(field);
+    const patch: CheckoutPatch = {
+      hidden: CHECKOUT_FIELDS.filter((f) => nextHidden.has(f) && !MANDATORY_CHECKOUT_FIELDS.includes(f)),
+    };
+    if (!on) patch.required = CHECKOUT_FIELDS.filter((f) => ticked.has(f) && f !== field);
+    onChange(patch);
+  };
+  const tick = (field: CheckoutField, on: boolean) => {
+    const next = new Set(ticked);
+    if (on) next.add(field);
+    else next.delete(field);
+    onChange({ required: CHECKOUT_FIELDS.filter((f) => next.has(f)) });
+  };
+
+  const nameOf = (id: string | number) => CHECKOUT_LABEL[id as CheckoutField] ?? '';
+  const announcements: Announcements = {
+    onDragStart: ({ active }) => `أمسكتَ «${nameOf(active.id)}».`,
+    onDragOver: ({ active, over }) =>
+      over && over.id !== active.id ? `«${nameOf(active.id)}» فوق «${nameOf(over.id)}».` : undefined,
+    onDragEnd: ({ active, over }) =>
+      over && over.id !== active.id
+        ? `أُفلت «${nameOf(active.id)}» مكان «${nameOf(over.id)}».`
+        : `أُفلت «${nameOf(active.id)}» في مكانه.`,
+    onDragCancel: ({ active }) => `أُلغي تحريك «${nameOf(active.id)}».`,
+  };
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      // The vertical axis is locked and the row kept inside its list, so a hand that drifts sideways does not lose it.
+      modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+      onDragEnd={(end) => reorder(orderAfterDrag(order, order, end))}
+      accessibility={{ announcements, screenReaderInstructions: CHECKOUT_DRAG_HELP }}
+    >
+      <SortableContext items={order} strategy={verticalListSortingStrategy}>
+        <ul className="space-y-1.5">
+          {order.map((field, i) => {
+            const mandatory = MANDATORY_CHECKOUT_FIELDS.includes(field);
+            const shown = !hidden.has(field);
+            return (
+              <CheckoutFieldRow
+                key={field}
+                field={field}
+                first={i === 0}
+                last={i === order.length - 1}
+                mandatory={mandatory}
+                shown={shown}
+                required={mandatory || (shown && ticked.has(field))}
+                onMove={(by) => reorder(reorderWithinGroup(order, order, i, i + by))}
+                onShow={(on) => show(field, on)}
+                onRequire={(on) => tick(field, on)}
+              />
+            );
+          })}
+        </ul>
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+/**
+ * ONE FIELD: ITS GRIP, ITS NAME, ITS TWO BOXES AND THE TWO ARROWS IT ALWAYS HAD.
+ *
+ * The grip is the ONLY thing that starts a drag (`useSortable`'s listeners are on it and nowhere else) and it alone
+ * carries the no-scroll touch rule, so a thumb anywhere else on the row scrolls the page. The row's look while it is
+ * carried is INLINE — lifted, a little transparent, above its neighbours — because the stylesheet is capped to the
+ * byte and a drag state is not worth a utility nothing else uses.
+ */
+function CheckoutFieldRow({
+  field, first, last, mandatory, shown, required, onMove, onShow, onRequire,
+}: {
+  field: CheckoutField;
+  first: boolean;
+  last: boolean;
+  mandatory: boolean;
+  shown: boolean;
+  required: boolean;
+  onMove: (by: -1 | 1) => void;
+  onShow: (on: boolean) => void;
+  onRequire: (on: boolean) => void;
+}) {
+  const name = CHECKOUT_LABEL[field];
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
+    id: field,
+    // The library announces the grip as «sortable» unless told otherwise — one English word in an Arabic sentence.
+    attributes: { roleDescription: 'مقبض ترتيب' },
+  });
+  return (
+    <li
+      ref={setNodeRef}
+      className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--sys-border)] px-2.5 py-1.5"
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        ...(isDragging
+          ? { position: 'relative', zIndex: 1, opacity: 0.85, background: 'var(--sys-card)', boxShadow: 'var(--sys-shadow-overlay)' }
+          : null),
+      }}
+    >
+      <button
+        type="button"
+        ref={setActivatorNodeRef}
+        {...attributes}
+        {...listeners}
+        aria-label={`اسحب «${name}» لتغيير ترتيبه`}
+        title="اسحب لتغيير الترتيب"
+        style={{ touchAction: 'none', cursor: isDragging ? 'grabbing' : 'grab' }}
+        className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 rounded-lg p-1.5 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-primary-soft)] hover:text-[var(--sys-primary)]"
+      >
+        <RiDraggable className="h-4 w-4" />
+      </button>
+      <span
+        className={
+          shown
+            ? 'flex-1 text-xs font-medium text-[var(--sys-foreground)]'
+            : 'flex-1 text-xs font-medium text-[var(--sys-muted)] line-through'
+        }
+      >
+        {name}
+      </span>
+      {/* The label is the hit area — a checkbox draws nothing around itself — and the box keeps its own size. */}
+      <label className="flex min-h-11 items-center gap-1.5 text-xs text-[var(--sys-muted-foreground)] md:min-h-0">
+        <input
+          type="checkbox"
+          checked={shown}
+          disabled={mandatory}
+          onChange={(e) => onShow(e.target.checked)}
+          aria-label={`«${name}» يظهر بالنموذج`}
+          className="h-3.5 w-3.5 accent-[var(--sys-primary)] disabled:opacity-50"
+        />
+        يظهر{mandatory && ' (دائماً)'}
+      </label>
+      <label className="flex min-h-11 items-center gap-1.5 text-xs text-[var(--sys-muted-foreground)] md:min-h-0">
+        <input
+          type="checkbox"
+          checked={required}
+          disabled={mandatory || !shown}
+          onChange={(e) => onRequire(e.target.checked)}
+          aria-label={`«${name}» إلزامي`}
+          className="h-3.5 w-3.5 accent-[var(--sys-primary)] disabled:opacity-50"
+        />
+        إلزامي{mandatory && ' (دائماً)'}
+      </label>
+      <div className="flex gap-0.5">
+        <button
+          type="button"
+          disabled={first}
+          onClick={() => onMove(-1)}
+          aria-label={`ارفع «${name}»`}
+          className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 rounded-lg px-1.5 text-xs text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface-strong)] disabled:opacity-30"
+        >
+          ↑
+        </button>
+        <button
+          type="button"
+          disabled={last}
+          onClick={() => onMove(1)}
+          aria-label={`انزّل «${name}»`}
+          className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 rounded-lg px-1.5 text-xs text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface-strong)] disabled:opacity-30"
+        >
+          ↓
+        </button>
+      </div>
+    </li>
   );
 }
