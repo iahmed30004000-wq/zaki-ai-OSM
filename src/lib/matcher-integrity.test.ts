@@ -297,6 +297,61 @@ describe('9 · an order named twice', () => {
   });
 });
 
+describe('9 · a line that only DISAGREED claims nothing (review of #57, 29/10)', () => {
+  it('a wrong first line for an order does not stop the courier’s right second line from matching it', async () => {
+    db.statementLine.findMany.mockResolvedValue([line({ id: 'l1', amount: 10 }), line({ id: 'l2', amount: 12 })]);
+    db.order.findFirst.mockResolvedValue(orderRow({}));
+
+    const outcome = await runMatching(db as never, scope);
+
+    const [first, second] = created();
+    expect(first).toMatchObject({ statementLineId: 'l1', result: 'MISMATCHED' });
+    expect(second).toMatchObject({ statementLineId: 'l2', result: 'MATCHED', note: null });
+    expect(outcome).toMatchObject({ matched: 1, mismatched: 1 });
+  });
+
+  it('but once a line has MATCHED the order, a later line for it is still the same parcel claimed twice', async () => {
+    db.statementLine.findMany.mockResolvedValue([line({ id: 'l1', amount: 12 }), line({ id: 'l2', amount: 12 })]);
+    db.order.findFirst.mockResolvedValue(orderRow({}));
+    await runMatching(db as never, scope);
+    expect(created()[1]).toMatchObject({ result: 'MISMATCHED' });
+    expect(created()[1].note).toContain(SAME_FILE_NOTE);
+  });
+
+  it('a kept row that only disagreed (no answer) holds no claim: a new right line for its order matches', async () => {
+    db.statementLine.findMany.mockResolvedValue([line({ id: 'l2', amount: 12 })]);
+    db.settlementMatch.findMany.mockImplementation(async (args: any) =>
+      args.where.statementId === 'st1' && !args.where.orderId
+        ? [{ statementLineId: 'l1', orderId: 'o1', result: 'MISMATCHED', resolution: 'OURS_STANDS' }]
+        : []
+    );
+    db.order.findFirst.mockResolvedValue(orderRow({ id: 'o1' }));
+    await runMatching(db as never, scope);
+    expect(created()[0]).toMatchObject({ statementLineId: 'l2', result: 'MATCHED' });
+  });
+
+  it('while a kept row decided «اعتُمد رقم الشركة» settles the order at approval, so a new line for it is flagged', async () => {
+    db.statementLine.findMany.mockResolvedValue([line({ id: 'l2', amount: 12 })]);
+    db.settlementMatch.findMany.mockImplementation(async (args: any) =>
+      args.where.statementId === 'st1' && !args.where.orderId
+        ? [{ statementLineId: 'l1', orderId: 'o1', result: 'MISMATCHED', resolution: 'ACCEPTED_COURIER' }]
+        : []
+    );
+    db.order.findFirst.mockResolvedValue(orderRow({ id: 'o1' }));
+    await runMatching(db as never, scope);
+    expect(created()[0]).toMatchObject({ result: 'MISMATCHED' });
+    expect(created()[0].note).toContain(SAME_FILE_NOTE);
+  });
+
+  it('another statement counts only when its row took the order: matched cleanly, or accepted', async () => {
+    db.statementLine.findMany.mockResolvedValue([line()]);
+    db.order.findFirst.mockResolvedValue(orderRow({}));
+    await runMatching(db as never, scope);
+    const call = db.settlementMatch.findMany.mock.calls.find((c) => c[0].where.orderId)!;
+    expect(call[0].where.OR).toEqual([{ result: 'MATCHED' }, { resolution: 'ACCEPTED_COURIER' }]);
+  });
+});
+
 describe('the reasons, as a rule', () => {
   const none = { settlementStatus: 'PENDING', claimedByAnotherLine: false, otherStatements: [], openRequests: [] };
 

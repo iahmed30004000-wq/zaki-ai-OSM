@@ -764,16 +764,23 @@ export async function runMatching(
   });
   const kept = await tx.settlementMatch.findMany({
     where: { statementId },
-    select: { statementLineId: true, orderId: true, result: true },
+    select: { statementLineId: true, orderId: true, result: true, resolution: true },
   });
 
   const outcome: MatchOutcome = { matched: 0, mismatched: 0, feeMismatched: 0, missingInSystem: 0, missingInStatement: 0 };
   // Orders a line (or a kept answer) already holds: the sweep skips them, and a second line naming one is flagged.
   const matchedOrderIds = new Set<string>();
+  // The orders a line really CLAIMS: matched cleanly, or decided «اعتُمد رقم الشركة» (an accepted figure settles the order at approval).
+  // A line that only disagreed (MISMATCHED, nobody's answer yet) claims nothing: the courier's later, right line for the same
+  // order must still be able to match — otherwise the order could never be settled (review of #57, 29/10).
+  const claimedOrderIds = new Set<string>();
   const keptLineIds = new Set<string>();
   for (const k of kept) {
     if (k.statementLineId) keptLineIds.add(k.statementLineId);
-    if (k.orderId) matchedOrderIds.add(k.orderId);
+    if (k.orderId) {
+      matchedOrderIds.add(k.orderId);
+      if (k.result === 'MATCHED' || k.resolution === 'ACCEPTED_COURIER') claimedOrderIds.add(k.orderId);
+    }
     if (k.result === 'MATCHED') outcome.matched++;
     else if (k.result === 'MISMATCHED') outcome.mismatched++;
     else if (k.result === 'MISSING_IN_SYSTEM') outcome.missingInSystem++;
@@ -904,6 +911,8 @@ export async function runMatching(
         orderId: { in: namedIds },
         statementId: { not: statementId },
         statementLineId: { not: null },
+        // Only a row that really took the order (clean, or decided by a person) counts: a line that merely disagreed did not.
+        OR: [{ result: 'MATCHED' }, { resolution: 'ACCEPTED_COURIER' }],
         statement: {
           OR: [{ approvedAt: { not: null } }, ...(statement.createdAt ? [{ createdAt: { lt: statement.createdAt } }] : [])],
         },
@@ -934,7 +943,7 @@ export async function runMatching(
     }
 
     // The first line to name an order keeps its verdict; a later one is the same parcel claimed twice.
-    const claimedByAnotherLine = matchedOrderIds.has(order.id);
+    const claimedByAnotherLine = claimedOrderIds.has(order.id);
     matchedOrderIds.add(order.id);
     // Rounded by the minor unit inside the rule itself, so the matcher and
     // the screen cannot round the same figure two different ways.
@@ -981,8 +990,10 @@ export async function runMatching(
         note: notes.length > 0 ? notes.join(' · ') : null,
       },
     });
-    if (clean) outcome.matched++;
-    else {
+    if (clean) {
+      outcome.matched++;
+      claimedOrderIds.add(order.id);
+    } else {
       outcome.mismatched++;
       if (feeWrong) outcome.feeMismatched++;
     }
