@@ -45,7 +45,7 @@ const code = (rel: string) => stripComments(repoFile(rel));
 describe('every door that raises an order for a customer flags a repeat', () => {
   it.each(Object.entries(DOORS))('%s', (_name, file) => {
     // The CALL, with a customer and the order it just wrote — not the import line.
-    expect(code(file)).toMatch(/await flagRecentTwins\(\s*db,\s*\{[^}]*orderId:\s*order\.id[^}]*customerId:\s*customer\.id/s);
+    expect(code(file)).toMatch(/await flagRecentTwins\(\s*db,\s*\{[^}]*orderId:\s*order\.id[^}]*customerId:\s*customer\.id/);
   });
 
   it('and AFTER the order is saved, never inside the transaction that writes it', () => {
