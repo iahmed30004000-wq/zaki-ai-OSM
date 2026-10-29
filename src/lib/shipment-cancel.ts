@@ -120,10 +120,17 @@ export function leavesTheShipment(opts: { fromTrolley: boolean }): Record<string
   };
 }
 
-/** The columns a HELD parcel loses: only the trolley and its settlement — the label, the company and the goods stay. */
+/**
+ * The columns a HELD parcel loses: only the trolley and its settlement — the label, the company and the goods stay.
+ *
+ * AND ITS SHIPPING STATUS STAYS WHERE IT IS. A parcel on a trolley is READY_FOR_PICKUP — the box is packed — and that
+ * status IS the fact `isPacked` reads. Sending it back to READY_FOR_SHIPPING (as this once did) erased that fact when
+ * the parcel had no printed waybill yet: a later cancel, a second hold or a void then saw an unpacked order and counted
+ * the units back on the shelf with nobody's word. The held parcel is found again by the shipment list, which reads
+ * «READY_FOR_PICKUP, no trolley, a hold date» as a packed parcel waiting for a new trolley.
+ */
 export function leavesTheTrolley(): Record<string, unknown> {
   return {
-    shippingStatus: 'READY_FOR_SHIPPING',
     settlementStatus: 'NOT_APPLICABLE',
     shippingBatchId: null,
     deliveryAssignedAt: null,

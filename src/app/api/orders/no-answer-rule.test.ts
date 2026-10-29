@@ -56,6 +56,7 @@ beforeEach(() => {
   db.orderContactAttempt.findFirst.mockResolvedValue({ attemptNumber: 1 });
   db.orderContactAttempt.create.mockResolvedValue({ id: 'a1', attemptNumber: 2 });
   db.orderItem.updateMany.mockResolvedValue({ count: 0 });
+  db.$transaction.mockImplementation(async (fn: any) => fn(db));
   endOrder.mockResolvedValue({ ok: true, orderNumber: 'ORD-1', attested: false, tookOff: false, courierCancelled: false });
 });
 
@@ -90,6 +91,40 @@ describe('no-answer counter', () => {
     expect(call.data).not.toHaveProperty('moderatorCommission');
     // The order itself is not written by this door any more.
     expect(db.order.update).not.toHaveBeenCalled();
+  });
+
+  it('sends the announcement only AFTER the attempt’s transaction committed — never from inside it', async () => {
+    db.orderContactAttempt.count.mockResolvedValue(3);
+    const order: string[] = [];
+    const afterCommit = vi.fn(async () => {
+      order.push('announce');
+    });
+    endOrder.mockResolvedValue({ ok: true, orderNumber: 'ORD-1', attested: false, tookOff: false, courierCancelled: false, afterCommit });
+    db.$transaction.mockImplementation(async (fn: any) => {
+      const out = await fn(db);
+      order.push('commit');
+      return out;
+    });
+
+    await POST(attempt('NO_ANSWER'), params);
+
+    expect(order, 'أُعلن قبل الـcommit').toEqual(['commit', 'announce']);
+    expect(afterCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it('and not at all when the transaction fails', async () => {
+    db.orderContactAttempt.count.mockResolvedValue(3);
+    const afterCommit = vi.fn(async () => undefined);
+    endOrder.mockResolvedValue({ ok: true, orderNumber: 'ORD-1', attested: false, tookOff: false, courierCancelled: false, afterCommit });
+    db.$transaction.mockImplementation(async (fn: any) => {
+      await fn(db);
+      throw new Error('commit failed');
+    });
+
+    const res = await POST(attempt('NO_ANSWER'), params);
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(afterCommit, 'أُعلن إلغاء لمعاملة انلغت').not.toHaveBeenCalled();
   });
 
   it('says it did NOT close when the helper refused (the order moved on in the same instant)', async () => {

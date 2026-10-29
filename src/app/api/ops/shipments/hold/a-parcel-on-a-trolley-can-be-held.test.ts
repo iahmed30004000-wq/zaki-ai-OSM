@@ -203,3 +203,47 @@ describe('an approved «أجّل الطلب» request is carried out HERE, as a 
     expect(requirePermission).toHaveBeenCalledWith('ops.ship');
   });
 });
+
+/**
+ * A POSTPONED PACKED PARCEL COMES BACK TO THE LIST — AND STAYS PACKED.
+ *
+ * Its status stays READY_FOR_PICKUP (that status is the fact «the box is
+ * packed»), so the shipment list and the batch creation must know a packed
+ * parcel with a hold date and no trolley, or the postponed parcel is lost.
+ */
+describe('a held packed parcel is found again', () => {
+  const packedOffTrolley = (over: Record<string, unknown> = {}) =>
+    stored({ shippingBatchId: null, shippingStatus: 'READY_FOR_PICKUP', labelPrintedAt: null, shipHoldUntil: NEXT_WEEK, ...over });
+
+  it('releasing its hold keeps a date (now), so the list still offers it', async () => {
+    db.order.findFirst.mockResolvedValue(packedOffTrolley());
+    db.order.update.mockResolvedValue({ id: ORDER_ID, orderNumber: 'SY-5', shipHoldUntil: new Date(), shipHoldReason: null });
+
+    await press({ release: true });
+
+    const data = db.order.update.mock.calls[0][0].data;
+    expect(data.shipHoldUntil, 'مُحي تاريخ طرد معبّأ فضاع من القائمة').toBeInstanceOf(Date);
+    expect(data.shipHoldReason).toBeNull();
+  });
+
+  it('NEGATIVE: an ordinary held order still has its date erased on release', async () => {
+    db.order.findFirst.mockResolvedValue(
+      stored({ shippingBatchId: null, shippingStatus: 'READY_FOR_SHIPPING', labelPrintedAt: null, shipHoldUntil: NEXT_WEEK })
+    );
+    db.order.update.mockResolvedValue({ id: ORDER_ID, orderNumber: 'SY-5', shipHoldUntil: null, shipHoldReason: null });
+
+    await press({ release: true });
+
+    expect(db.order.update.mock.calls[0][0].data.shipHoldUntil).toBeNull();
+  });
+
+  it('a second hold of it keeps the units reserved: nothing released', async () => {
+    db.order.findFirst.mockResolvedValue(packedOffTrolley());
+    db.order.update.mockResolvedValue({ id: ORDER_ID, orderNumber: 'SY-5', shipHoldUntil: NEXT_WEEK, shipHoldReason: null });
+
+    const res = await press({ until: NEXT_WEEK.toISOString() });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(releaseOrderLines, 'رجعت قطع طرد معبّأ بالتأجيل الثاني').not.toHaveBeenCalled();
+  });
+});

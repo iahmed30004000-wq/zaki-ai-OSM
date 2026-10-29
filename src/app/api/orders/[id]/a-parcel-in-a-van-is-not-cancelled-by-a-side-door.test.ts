@@ -248,3 +248,62 @@ describe('an ending travels alone', () => {
     expect(db.order.updateMany).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * AN ENDING ASKS THE SAME OF WHOEVER PRESSES IT, WHICHEVER FIELD NAMES IT.
+ *
+ * `shippingStatus: 'CANCELLED'` alone needs only `orders.edit` and
+ * `orders.change_status` at the PATCH's own checks, and it used to write one
+ * column. It now ends the order — CANCELLED, the reservation released, the
+ * customer counted, System 7 told — which at the confirmation door takes
+ * `orders.unlock` and a written reason. A weaker pair at this door was a
+ * cancellation by a role that could not cancel anywhere else.
+ */
+describe('an ending needs the unlock key and a written reason', () => {
+  it.each(ENDINGS)('%s: %s without orders.unlock is refused — and nothing is written', async (field, value) => {
+    can.mockImplementation((_u: unknown, key: string) => key !== 'orders.unlock');
+
+    const res = await patch({ [field]: value });
+
+    expect(res.status, JSON.stringify(res.body)).toBeGreaterThanOrEqual(403 - 0);
+    expect([403, 409]).toContain(res.status);
+    expect(db.order.updateMany, 'كُتب إلغاء بلا مفتاح').not.toHaveBeenCalled();
+    expect(db.$transaction).not.toHaveBeenCalled();
+    expect(db.customer.update).not.toHaveBeenCalled();
+  });
+
+  it('the shipping field alone — the one the older checks let through — is a plain 403', async () => {
+    can.mockImplementation((_u: unknown, key: string) => key !== 'orders.unlock');
+
+    const res = await patch({ shippingStatus: 'CANCELLED' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('UNLOCK_REQUIRED');
+  });
+
+  it.each(ENDINGS)('%s: %s with the key but no reason (or a few letters) is refused', async (field, value) => {
+    const none = await patch({ [field]: value, reason: '' });
+    const short = await patch({ [field]: value, reason: 'لا' });
+
+    expect(none.status).toBe(400);
+    expect(short.status).toBe(400);
+    expect(short.body.code).toBe('REASON_REQUIRED');
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE: with the key and a reason it goes through', async () => {
+    db.order.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await patch({ shippingStatus: 'CANCELLED' });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+  });
+
+  it('NEGATIVE: a change that ends nothing does not ask for the key', async () => {
+    can.mockImplementation((_u: unknown, key: string) => key !== 'orders.unlock');
+
+    const res = await patch({ shippingStatus: 'SHIPPED' });
+
+    expect(res.body.code).not.toBe('UNLOCK_REQUIRED');
+  });
+});

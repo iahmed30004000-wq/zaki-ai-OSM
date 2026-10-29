@@ -135,7 +135,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // The third no-answer closes the order under its OWN reason, in the same
     // transaction as the attempt, and releases the reservation. It is not a
     // customer rejection and must never be reported as one.
-    const { attempt, autoClosed, noAnswerCount } = await db.$transaction(async (tx) => {
+    const { attempt, autoClosed, noAnswerCount, announce } = await db.$transaction(async (tx) => {
       const created = await tx.orderContactAttempt.create({
         data: {
           companyId,            // from session — never client
@@ -207,10 +207,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         });
         // A refusal (the order moved on in the same instant) leaves the attempt
         // recorded and the order alone; the next attempt asks again.
-        return { attempt: created, autoClosed: closed.ok, noAnswerCount: noAnswers };
+        //
+        // The announcement for System 7 is NOT sent from in here: this transaction
+        // has not committed, and a cancellation told to an installed app that is
+        // then rolled back is a customer written to about an order that is still open.
+        return {
+          attempt: created,
+          autoClosed: closed.ok,
+          noAnswerCount: noAnswers,
+          announce: closed.ok ? closed.afterCommit : undefined,
+        };
       }
-      return { attempt: created, autoClosed: false, noAnswerCount: noAnswers };
+      return { attempt: created, autoClosed: false, noAnswerCount: noAnswers, announce: undefined };
     });
+    // The transaction has committed: only now does anybody hear the order closed.
+    await announce?.();
 
     await logAudit({
       companyId, userId: user.id, action: 'CONTACT_ATTEMPT_RECORDED',

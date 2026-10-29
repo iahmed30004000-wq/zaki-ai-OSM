@@ -13,7 +13,7 @@ import { batchStatusOf } from '@/lib/order-cancel';
 import { zodMessage } from '@/lib/zod-message';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { orderSearchOr } from '@/lib/order-filters';
-import { BATCHABLE_SHIPPING, whyNotBatchable } from '@/lib/batching-guard';
+import { BATCHABLE_SHIPPING, HELD_PACKED_PARCEL, WAITING_FOR_A_TROLLEY, whyNotBatchable } from '@/lib/batching-guard';
 
 /**
  * Shipment creation.
@@ -78,12 +78,23 @@ export async function GET(req: Request) {
         companyId,
         storeId,
         confirmationStatus: 'CONFIRMED',
-        shippingStatus: { in: ['NOT_READY', 'PACKING', 'READY_FOR_SHIPPING'] },
         // Held back by hand: the customer asked for it not to go out yet.
         // A hold with no date is open-ended and only ends when released.
-        ...(held === 'only'
-          ? { shipHoldUntil: { not: null } }
-          : { OR: [{ shipHoldUntil: null }, { shipHoldUntil: { lte: new Date() } }] }),
+        //
+        // TWO KINDS OF PARCEL WAIT FOR A TROLLEY, as two branches: one not yet packed, and one PACKED (still
+        // READY_FOR_PICKUP) that «أجّل الشحن» took off a trolley. The second keeps its status, because that status
+        // is the fact «the box is packed»; its hold date is what tells it from one an agent handed back.
+        // «المؤجَّلة»: every branch below is held, and the column says so at the top too.
+        ...(held === 'only' ? { shipHoldUntil: { not: null } } : {}),
+        OR: [
+          {
+            shippingStatus: { in: [...WAITING_FOR_A_TROLLEY] },
+            ...(held === 'only'
+              ? { shipHoldUntil: { not: null } }
+              : { OR: [{ shipHoldUntil: null }, { shipHoldUntil: { lte: new Date() } }] }),
+          },
+          held === 'only' ? HELD_PACKED_PARCEL : { ...HELD_PACKED_PARCEL, shipHoldUntil: { lte: new Date() } },
+        ],
         ...(regionId ? { regionId } : {}),
         ...(productId ? { items: { some: { productId } } } : {}),
         // ANDed as its own clause, not spread: the where above already has
@@ -191,7 +202,7 @@ export async function GET(req: Request) {
         companyId,
         storeId,
         confirmationStatus: 'CONFIRMED',
-        shippingStatus: { in: ['NOT_READY', 'PACKING', 'READY_FOR_SHIPPING'] },
+        OR: [{ shippingStatus: { in: [...WAITING_FOR_A_TROLLEY] } }, HELD_PACKED_PARCEL],
         shipHoldUntil: { not: null },
       },
     });
@@ -237,7 +248,7 @@ export async function POST(req: Request) {
       select: {
         id: true, orderNumber: true, companyId: true, storeId: true, customerId: true, regionId: true,
         confirmationStatus: true, shippingStatus: true, shippedAt: true, priceIncludesDelivery: true,
-        deliveryProviderId: true, version: true, shippingBatchId: true, labelPrintedAt: true,
+        deliveryProviderId: true, version: true, shippingBatchId: true, labelPrintedAt: true, shipHoldUntil: true,
         items: { select: { quantity: true, freeQuantity: true, reservedQty: true, unitPrice: true, discountShare: true } },
         // The upsell the customer accepted. Without it, the snapshot below
         // rebuilt the total from the lines alone and the add-on was never
@@ -336,7 +347,8 @@ export async function POST(req: Request) {
               id: order.id,
               version: order.version,
               shippingBatchId: null,
-              shippingStatus: { in: [...BATCHABLE_SHIPPING] },
+              // A packed parcel that «أجّل الشحن» took off a trolley is batchable again: only with its hold date.
+              shippingStatus: { in: [...BATCHABLE_SHIPPING, ...(order.shipHoldUntil ? ['READY_FOR_PICKUP'] : [])] },
             },
             data: {
               shippingBatchId: created.id,

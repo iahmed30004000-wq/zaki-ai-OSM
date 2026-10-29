@@ -264,7 +264,13 @@ export async function POST(req: Request) {
       const row = await tx.order.update({
         where: { id: order.id, version: order.version },
         data: release
-          ? { shipHoldUntil: null, shipHoldReason: null, version: { increment: 1 } }
+          ? {
+              // A PACKED parcel (still READY_FOR_PICKUP, off its trolley) is found again by the shipment list
+              // through its hold date, so releasing it moves the date to now instead of erasing it.
+              shipHoldUntil: order.shippingStatus === 'READY_FOR_PICKUP' && !order.shippingBatchId ? new Date() : null,
+              shipHoldReason: null,
+              version: { increment: 1 },
+            }
           : {
               shipHoldUntil: new Date(until as string),
               shipHoldReason: reason?.trim() || null,

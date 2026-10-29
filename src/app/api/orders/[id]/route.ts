@@ -628,6 +628,13 @@ export async function PATCH(
      * The ONE exception is the override that already exists next door:
      * `orders.unlock` («تجاوز أقفال التحرير») with a reason in writing,
      * which is recorded the same way.
+     *
+     * AN ENDING IS HELD TO THE SAME PAIR WHICHEVER FIELD NAMES IT. The check
+     * below covers `status` and `confirmationStatus`; `shippingStatus:
+     * 'CANCELLED'` alone is not among them, and it now ends the order through
+     * `endOrder` (see further down). So the ending block asks for
+     * `orders.unlock` and a written reason itself — a weaker pair here would be
+     * a cancellation by a role that cannot cancel anywhere else.
      * ═══════════════════════════════════════════════════════════════════
      */
     if (changingCombined || changingConfirmation) {
@@ -722,6 +729,28 @@ export async function PATCH(
       ((confirmationStatus === 'CANCELLED' || confirmationStatus === 'REJECTED') &&
         confirmationStatus !== existing.confirmationStatus);
     if (endsByCombined || endsBySeparate) {
+      /*
+       * THE KEY AND THE REASON THE ORDINARY DOOR ASKS — NOT A WEAKER PAIR.
+       *
+       * `shippingStatus: 'CANCELLED'` alone needs only `orders.edit` and
+       * `orders.change_status` at the checks above, and it used to write one
+       * column. It now ends the order — CANCELLED, the reservation released,
+       * the customer counted, System 7 told — which at the confirmation door
+       * takes `orders.unlock` and a written reason. An ending is one act
+       * whichever field names it, so it asks the same of whoever presses it.
+       */
+      if (!can(user, 'orders.unlock')) {
+        return NextResponse.json(
+          { errorAr: 'الإلغاء للمدير وحده.', code: 'UNLOCK_REQUIRED' },
+          { status: 403 }
+        );
+      }
+      if (!editReason || editReason.trim().length < MIN_REASON) {
+        return NextResponse.json(
+          { errorAr: 'الإلغاء بيحتاج سبباً مكتوباً — خمسة أحرف على الأقل.', code: 'REASON_REQUIRED' },
+          { status: 400 }
+        );
+      }
       const alsoEditing = [
         customerName, customerPhone, customerAltPhone, customerAddress, regionId, sellingPrice, quantity,
         discountAmount, shippingCost, productId, items, channelId, moderatorId, internalNotes, customerNotes,

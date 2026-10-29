@@ -112,6 +112,15 @@ export type EndOutcome =
       tookOff: boolean;
       /** True when the company confirmed the parcel's cancellation. */
       courierCancelled: boolean;
+      /**
+       * The audit row and the event for System 7 — to be run AFTER the commit.
+       * Without `tx` the helper runs it itself, once; with `tx` (the caller's
+       * transaction is still open, and may yet roll back) it does NOT, and the
+       * caller runs it when the transaction has committed. An announcement that
+       * goes out of a transaction that is then undone is a customer told about
+       * a cancellation that never happened.
+       */
+      afterCommit: () => Promise<void>;
     }
   | {
       ok: false;
@@ -347,39 +356,46 @@ export async function endOrder(input: EndOrderInput): Promise<EndOutcome> {
     });
   if (!wrote) return movedOn(input, o, remote);
 
-  if (verdict.needsAttestation) {
-    await logAudit({
-      companyId: input.companyId, userId: input.by.id, action: 'PARCEL_ATTESTED_IN_HAND',
-      entity: 'Order', entityId: o.id,
-      newData: { said: ATTESTATION_AR, door: input.door, by: input.by.name ?? null },
-    });
-  }
-
-  // Tell the installed apps, after the commit and never able to undo it.
-  // A rejection is not announced (it never was): only an order CANCELLED.
-  if (input.kind === 'CANCEL' && target === 'CANCELLED') {
-    if (o.shippingStatus !== 'NOT_READY') {
-      // It had a shipping life: the shipping golden payload, never REJECTED in it.
-      await emitAppEvent(input.companyId, 'order.cancelled', {
-        orderId: o.id,
-        orderNumber: o.orderNumber,
-        shippingStatus: 'CANCELLED',
-        previousStatus: o.shippingStatus,
-        total: Number(o.totalAmount),
-        currency: o.currency,
-        trackingNumber: o.trackingNumber ?? null,
-      });
-    } else {
-      await emitAppEvent(input.companyId, 'order.cancelled', {
-        orderId: o.id,
-        orderNumber: o.orderNumber,
-        confirmationStatus: 'CANCELLED',
-        previousStatus: o.confirmationStatus,
-        total: Number(o.totalAmount),
-        currency: o.currency,
+  let announced = false;
+  const afterCommit = async (): Promise<void> => {
+    if (announced) return;
+    announced = true;
+    if (verdict.needsAttestation) {
+      await logAudit({
+        companyId: input.companyId, userId: input.by.id, action: 'PARCEL_ATTESTED_IN_HAND',
+        entity: 'Order', entityId: o.id,
+        newData: { said: ATTESTATION_AR, door: input.door, by: input.by.name ?? null },
       });
     }
-  }
+
+    // Tell the installed apps, after the commit and never able to undo it.
+    // A rejection is not announced (it never was): only an order CANCELLED.
+    if (input.kind === 'CANCEL' && target === 'CANCELLED') {
+      if (o.shippingStatus !== 'NOT_READY') {
+        // It had a shipping life: the shipping golden payload, never REJECTED in it.
+        await emitAppEvent(input.companyId, 'order.cancelled', {
+          orderId: o.id,
+          orderNumber: o.orderNumber,
+          shippingStatus: 'CANCELLED',
+          previousStatus: o.shippingStatus,
+          total: Number(o.totalAmount),
+          currency: o.currency,
+          trackingNumber: o.trackingNumber ?? null,
+        });
+      } else {
+        await emitAppEvent(input.companyId, 'order.cancelled', {
+          orderId: o.id,
+          orderNumber: o.orderNumber,
+          confirmationStatus: 'CANCELLED',
+          previousStatus: o.confirmationStatus,
+          total: Number(o.totalAmount),
+          currency: o.currency,
+        });
+      }
+    }
+  };
+  // Inside the caller's transaction nothing is announced yet: it may still roll back.
+  if (!input.tx) await afterCommit();
 
   return {
     ok: true,
@@ -387,6 +403,7 @@ export async function endOrder(input: EndOrderInput): Promise<EndOutcome> {
     attested: verdict.needsAttestation,
     tookOff: fromTrolley,
     courierCancelled: remote.kind === 'CANCELLED',
+    afterCommit,
   };
 }
 
@@ -495,7 +512,8 @@ export async function holdFromTrolley(input: HoldFromTrolleyInput): Promise<Hold
     ...leavesTheTrolley(),
     // The company's waybill is gone with the cancel above; the next send makes a new one.
     // A number typed by hand for a courier nobody calls stays: it is on the label that stays.
-    ...(remote.kind === 'CANCELLED' ? { trackingNumber: null, courierSendStartedAt: null } : {}),
+    // The waybill on the box carries THEIR barcode, which is cancelled: it goes too (reprinted with the next send).
+    ...(remote.kind === 'CANCELLED' ? { trackingNumber: null, courierSendStartedAt: null, labelPrintedAt: null } : {}),
     shipHoldUntil: input.until,
     shipHoldReason: input.reason,
     version: { increment: 1 },
@@ -505,16 +523,6 @@ export async function holdFromTrolley(input: HoldFromTrolleyInput): Promise<Hold
     .$transaction(async (tx) => {
       const res = await tx.order.updateMany({ where: stillAsRead(o, input.companyId), data });
       if (res.count !== 1) throw new OrderMovedOn();
-      if (o.shippingStatus !== 'READY_FOR_SHIPPING') {
-        await tx.orderStatusLog.create({
-          data: {
-            companyId: input.companyId, orderId: o.id, statusType: 'SHIPPING',
-            previousValue: o.shippingStatus, newValue: 'READY_FOR_SHIPPING',
-            changedById: input.by.id, changedByRole: input.by.role,
-            note: 'أُخرج من الدفعة بالتأجيل',
-          },
-        });
-      }
       await tx.orderActivity.create({
         data: {
           companyId: input.companyId, orderId: o.id, userId: input.by.id,

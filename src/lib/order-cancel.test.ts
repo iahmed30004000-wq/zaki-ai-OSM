@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CourierRefusal } from './couriers/logestechs';
 import { markOutcomeUnknown } from './couriers/types';
 import { ATTESTATION_AR } from './shipment-cancel';
+import { assertVoidable } from './order-state';
+import { holdReservation } from './shipment-hold';
 import { readContract, validate } from './apps/contract';
 
 /**
@@ -549,12 +551,13 @@ describe('«أجّل الشحن» — a hold takes the parcel off the trolley an
     const data = written().data;
     expect(data).toMatchObject({
       shippingBatchId: null,
-      shippingStatus: 'READY_FOR_SHIPPING',
       settlementStatus: 'NOT_APPLICABLE',
       shipHoldUntil: new Date('2026-11-05T00:00:00Z'),
       shipHoldReason: 'الزبون مسافر',
     });
     // The box is not opened: the label, the courier and the confirmation stay.
+    // And the status stays what it was: READY_FOR_PICKUP IS the fact «the box is packed».
+    expect(data, 'رجّع حالة الطرد لما قبل التعبئة').not.toHaveProperty('shippingStatus');
     expect(data).not.toHaveProperty('labelPrintedAt');
     expect(data).not.toHaveProperty('deliveryProviderId');
     expect(data, 'محا رقماً مكتوباً على بوليصة باقية').not.toHaveProperty('trackingNumber');
@@ -583,6 +586,8 @@ describe('«أجّل الشحن» — a hold takes the parcel off the trolley an
     expect(adapter.cancelShipment).toHaveBeenCalledWith('ALB-77812');
     expect(written().data).toMatchObject({ trackingNumber: null, courierSendStartedAt: null });
     expect(written().where).toMatchObject({ trackingNumber: 'ALB-77812' });
+    // The waybill on the box carries THEIR barcode, which is cancelled now: it goes too, so nobody ships behind a dead one.
+    expect(written().data.labelPrintedAt).toBeNull();
   });
 
   it('a number typed by hand for a courier nobody calls stays — it is on the label that stays', async () => {
@@ -635,5 +640,135 @@ describe('the trolley’s status is something every door must ask for', () => {
     expect(await batchStatusOf(db, null)).toBeNull();
     expect(db.shippingBatch.findFirst).not.toHaveBeenCalled();
     expect(await batchStatusOf(db, 'b1')).toBe('READY');
+  });
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * A HELD PARCEL IS STILL A PACKED PARCEL.
+ *
+ * The hold took a parcel off its trolley and put its status back to
+ * READY_FOR_SHIPPING. A parcel on a trolley is READY_FOR_PICKUP whether or not
+ * its waybill was printed, so one with no waybill yet came off the trolley
+ * looking UNPACKED — and the next cancel, the second hold or a void freed its
+ * units with nobody's word. These run the sequence: hold, then whatever comes.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+describe('hold, then cancel — the box does not become unpacked in between', () => {
+  const hold = (over: Partial<HoldFromTrolleyInput> = {}): HoldFromTrolleyInput => ({
+    orderId: 'o1', companyId: 'c1', storeId: 's1', by: BY, until: new Date('2026-11-05T00:00:00Z'), reason: 'الزبون مسافر',
+    ...over,
+  });
+
+  /** The row after the hold's own write has been applied to it. */
+  const afterTheHold = async (before: Record<string, unknown>) => {
+    db.order.findFirst.mockResolvedValue(before);
+    await holdFromTrolley(hold());
+    const { version: _v, ...columns } = written().data;
+    void _v;
+    db.order.updateMany.mockClear();
+    return { ...before, ...columns, shippingBatch: null, version: 8 } as Record<string, unknown>;
+  };
+
+  // On a trolley, packed, and NO waybill printed yet — the case that leaked.
+  const unlabelled = () => packed({ labelPrintedAt: null });
+
+  it('a cancel after the hold still asks for the word — and releases nothing without it', async () => {
+    const held = await afterTheHold(unlabelled());
+    db.order.findFirst.mockResolvedValue(held);
+
+    const out = await endOrder(input());
+
+    expect(out).toMatchObject({ ok: false, status: 409, code: 'ATTESTATION_REQUIRED' });
+    expect(releaseOrderLines, 'رجعت قطع طرد معبّأ بلا تصريح بعد التأجيل').not.toHaveBeenCalled();
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('with the word, it goes through', async () => {
+    const held = await afterTheHold(unlabelled());
+    db.order.findFirst.mockResolvedValue(held);
+
+    expect(await endOrder(input({ parcelInHand: true }))).toMatchObject({ ok: true, attested: true });
+    expect(releaseOrderLines).toHaveBeenCalledTimes(1);
+  });
+
+  it('a SECOND hold (the hold door, no trolley now) still keeps the units reserved', async () => {
+    const held = await afterTheHold(unlabelled());
+
+    expect(holdReservation(held as never).releases).toBe(false);
+  });
+
+  it('a void is still refused for it', async () => {
+    const held = await afterTheHold(unlabelled());
+
+    expect(assertVoidable(held as never).allowed).toBe(false);
+  });
+
+  it('holding twice does not unpack it either', async () => {
+    const once = await afterTheHold(unlabelled());
+    // The hold door's second hold goes through the unbatched path; what it reads is the status.
+    expect(once.shippingStatus).toBe('READY_FOR_PICKUP');
+    expect(once.shippingBatchId).toBeNull();
+    expect(once.shipHoldUntil).toEqual(new Date('2026-11-05T00:00:00Z'));
+  });
+
+  it('NEGATIVE: an order that was never packed is still cancelled without being asked', async () => {
+    db.order.findFirst.mockResolvedValue(plain({ shipHoldUntil: new Date() }));
+
+    expect(await endOrder(input())).toMatchObject({ ok: true, attested: false });
+  });
+});
+
+describe('the announcement waits for the commit when the caller holds the transaction', () => {
+  const tx = () => ({
+    order: { updateMany: vi.fn(async () => ({ count: 1 })) },
+    orderStatusLog: { create: vi.fn(async () => ({})) },
+    orderActivity: { create: vi.fn(async () => ({})) },
+    orderNote: { create: vi.fn(async () => ({})) },
+    customer: { update: vi.fn(async () => ({})) },
+    orderChangeRequest: { updateMany: vi.fn() },
+  });
+
+  it('inside a caller’s transaction: NOTHING is sent from in there — it may still roll back', async () => {
+    db.order.findFirst.mockResolvedValue(plain({ confirmationStatus: 'IN_PROGRESS' }));
+
+    const out = await endOrder(input({ door: 'CONTACT_AUTO_CLOSE', tx: tx() as never }));
+
+    expect(out.ok).toBe(true);
+    expect(emitAppEvent, 'أُعلن إلغاء من معاملة لم تُنجَز بعد').not.toHaveBeenCalled();
+    expect(logAudit).not.toHaveBeenCalled();
+  });
+
+  it('and the caller sends it when the transaction has committed — once, however often it is asked', async () => {
+    db.order.findFirst.mockResolvedValue(plain({ confirmationStatus: 'IN_PROGRESS' }));
+
+    const out = await endOrder(input({ door: 'CONTACT_AUTO_CLOSE', tx: tx() as never }));
+    if (!out.ok) throw new Error('expected ok');
+    await out.afterCommit();
+    await out.afterCommit();
+
+    expect(emitAppEvent).toHaveBeenCalledTimes(1);
+    expect(emitAppEvent.mock.calls[0][1]).toBe('order.cancelled');
+  });
+
+  it('a rolled-back transaction never announces: the caller has nothing to call', async () => {
+    db.order.findFirst.mockResolvedValue(plain({ confirmationStatus: 'IN_PROGRESS' }));
+    const refusing = tx();
+    refusing.order.updateMany.mockResolvedValue({ count: 0 });
+
+    const out = await endOrder(input({ door: 'CONTACT_AUTO_CLOSE', tx: refusing as never }));
+
+    expect(out.ok).toBe(false);
+    expect(emitAppEvent).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE: with no transaction of the caller’s the helper still announces by itself, once, and the returned call adds nothing', async () => {
+    db.order.findFirst.mockResolvedValue(plain());
+
+    const out = await endOrder(input());
+    if (!out.ok) throw new Error('expected ok');
+    await out.afterCommit();
+
+    expect(emitAppEvent).toHaveBeenCalledTimes(1);
   });
 });
