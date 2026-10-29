@@ -33,6 +33,10 @@ import { expandApproved, mayApply, strayFields } from '@/lib/change-request-appl
 import { zodMessage } from '@/lib/zod-message';
 import { ORDER_NOT_FOUND, ORDER_VERSION_MISSING } from '@/lib/order-refusals';
 
+/** Why a quantity or a product is not changed in place for an order whose goods are reserved. */
+const RESERVED_GOODS_EDIT_AR =
+  'تعديل الكمية أو المنتج لطلب محجوز بيحتاج إلغاء الطلب وإنشاء جديد — لسا ما في تعديل بمكانو.';
+
 /** Legacy combined status whitelist (mirrors the UI status config) */
 const ALLOWED_COMBINED_STATUSES = [
   'NEW', 'CONTACTING', 'NO_ANSWER', 'POSTPONED', 'CONFIRMED', 'REJECTED', 'CANCELLED',
@@ -968,6 +972,34 @@ export async function PATCH(
      * composes the message and refuses; the same request, sent back with
      * `courierNotified`, applies and records who told them.
      */
+    /*
+     * ── AN APPROVED CHANGE OF QUANTITY OR PRODUCT IS NOT MADE IN PLACE ON A RESERVED ORDER (28/10, a TEMPORARY ruling) ──
+     *
+     * The owner: «اي قرار بعد الان اتخذو دون الرجوع الي». This door writes the order's own
+     * columns for a quantity or a product and does not touch its LINES (`OrderItem`) or the
+     * units reserved against them — so the shelf keeps counting the OLD goods and the next
+     * sale can be oversold. `items` was already refused for a reserved order
+     * (`LINES_COMMITTED` below); the single-line shorthand was not. The request stays as it
+     * is (approved, not applied), and the answer says what to do. An address, a phone, a
+     * note or a discount carry no goods, so they are made in place as before. Remove this
+     * the day the lines and the reservation follow the edit (RV in the backlog).
+     */
+    const asksForOtherGoods =
+      (quantity !== undefined && quantity !== existing.quantity) ||
+      (productId !== undefined && productId !== existing.productId);
+    if (viaRequest && asksForOtherGoods) {
+      const reservedLine = await db.orderItem.findFirst({
+        where: { orderId: id, reservedQty: { gt: 0 } },
+        select: { id: true },
+      });
+      if (reservedLine) {
+        return NextResponse.json(
+          { error: RESERVED_GOODS_EDIT_AR, errorAr: RESERVED_GOODS_EDIT_AR, code: 'RESERVED_GOODS_EDIT' },
+          { status: 409 }
+        );
+      }
+    }
+
     const sealedAsked = viaRequest && courierTold ? [] : sealedFieldsIn(data as Record<string, unknown>);
     if (sealedAsked.length > 0) {
       const batch = await db.shippingBatch.findFirst({

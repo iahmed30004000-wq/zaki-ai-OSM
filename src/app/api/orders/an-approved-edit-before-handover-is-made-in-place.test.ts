@@ -9,6 +9,8 @@ const { db, requireContext, authorize, can, logAudit, adapterFor } = vi.hoisted(
     customer: { update: vi.fn() },
     orderNote: { create: vi.fn(async () => ({})) },
     orderAddOn: { findMany: vi.fn(async () => []) },
+    orderItem: { findFirst: vi.fn() },
+    product: { findFirst: vi.fn() },
     deliveryProvider: { findFirst: vi.fn() },
     orderStatusLog: { create: vi.fn() },
     orderActivity: { create: vi.fn() },
@@ -58,6 +60,17 @@ import { PATCH } from './[id]/route';
  * Every claim has its negative: a direct edit with no decision is still
  * refused, a pressed trolley still owes the courier a message, and an order
  * with no waybill has nothing to reprint.
+ *
+ * (old → new, review of #68) The first version of this file asserted that a QUANTITY
+ * edit on a packed parcel is made in place (200, the order's `quantity` written,
+ * the waybill cleared). That pinned a half-edit: this door writes the order's columns and
+ * leaves its lines and the units reserved against them, so the shelf keeps counting
+ * the OLD goods and the next sale can be oversold — and #68 opened that road for a
+ * labelled parcel while closing `reorder`, the one door that made a replacement with a
+ * correct reservation. The owner's temporary ruling: a quantity or a product is NOT
+ * made in place on a reserved order; the request stays approved-and-unapplied and the
+ * answer says to cancel and create a new one. An address, a phone, a note or a discount
+ * carry no goods and are still made in place.
  * ═══════════════════════════════════════════════════════════════════════
  */
 
@@ -114,6 +127,8 @@ beforeEach(() => {
   db.orderActivity.create.mockResolvedValue({});
   db.orderChangeRequest.findFirst.mockResolvedValue(approved());
   db.orderChangeRequest.updateMany.mockResolvedValue({ count: 1 });
+  // A confirmed, packed parcel has its goods reserved.
+  db.orderItem.findFirst.mockResolvedValue({ id: 'line-1' });
   db.deliveryProvider.findFirst.mockResolvedValue({ name: 'أرامكس', phone: '0700000000' });
   adapterFor.mockReturnValue({ automated: false, code: 'MANUAL', name: 'يدوي' });
 });
@@ -145,13 +160,13 @@ describe('an approved edit on a parcel the company has not taken', () => {
     expect(JSON.parse(stale.metadata)).toMatchObject({ fields: ['customerAddress'], requestId: REQUEST_ID });
   });
 
-  it('a GOODS edit (the quantity) is made in place too, with the waybill reprinted', async () => {
-    db.orderChangeRequest.findFirst.mockResolvedValue(approved({ changes: { quantity: { from: 1, to: 2 } } }));
+  it('a DISCOUNT (carries no goods) is made in place too, with the waybill reprinted', async () => {
+    db.orderChangeRequest.findFirst.mockResolvedValue(approved({ changes: { discountAmount: { from: 0, to: 2 } } }));
 
     const res = await patch({ expectedVersion: 3, changeRequestId: REQUEST_ID });
 
     expect(res.status, await res.clone().text()).toBe(200);
-    expect(written().data.quantity).toBe(2);
+    expect(written().data.discountAmount).toBe(2);
     expect(written().data.labelPrintedAt).toBeNull();
     expect(activities().some((a: any) => a.action === 'LABEL_STALE_REPRINT')).toBe(true);
   });
@@ -184,6 +199,86 @@ describe('an approved edit on a parcel the company has not taken', () => {
     expect(res.status).toBe(409);
     expect((await res.json()).code).toBe('ORDER_SEALED');
     expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('a quantity or a product is NOT made in place on a reserved order (temporary ruling)', () => {
+  const SENTENCE = 'تعديل الكمية أو المنتج لطلب محجوز بيحتاج إلغاء الطلب وإنشاء جديد — لسا ما في تعديل بمكانو.';
+
+  it('a quantity: refused with the sentence, and NOTHING is written or applied', async () => {
+    db.orderChangeRequest.findFirst.mockResolvedValue(approved({ changes: { quantity: { from: 1, to: 2 } } }));
+
+    const res = await patch({ expectedVersion: 3, changeRequestId: REQUEST_ID });
+
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.code).toBe('RESERVED_GOODS_EDIT');
+    expect(body.error).toBe(SENTENCE);
+    expect(db.order.updateMany, 'انكتبت كمية جديدة والحجز على القديمة').not.toHaveBeenCalled();
+    expect(db.customer.update).not.toHaveBeenCalled();
+    // The request stays as it is: approved, not applied.
+    expect(db.orderChangeRequest.updateMany).not.toHaveBeenCalled();
+    expect(activities().some((a: any) => a.action === 'LABEL_STALE_REPRINT')).toBe(false);
+  });
+
+  it('a product: refused the same way', async () => {
+    db.orderChangeRequest.findFirst.mockResolvedValue(
+      approved({ changes: { productId: { from: 'p1', to: '3f9a1c52-7b1e-4a2d-8c6f-0d5e8a4b1c37' } } })
+    );
+
+    const res = await patch({ expectedVersion: 3, changeRequestId: REQUEST_ID });
+
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('RESERVED_GOODS_EDIT');
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('is decided BEFORE the company is asked anything: a barcode is not cancelled for an edit that will not happen', async () => {
+    ORDER = { ...ORDER, trackingNumber: 'LG-9', courierSendStartedAt: new Date() };
+    db.order.findUnique.mockResolvedValue(ORDER);
+    const cancelShipment = vi.fn(async () => undefined);
+    adapterFor.mockReturnValue({ automated: true, code: 'LOGESTECHS', name: 'LogesTechs', cancelShipment });
+    db.orderChangeRequest.findFirst.mockResolvedValue(approved({ changes: { quantity: { from: 1, to: 3 } } }));
+
+    const res = await patch({ expectedVersion: 3, changeRequestId: REQUEST_ID });
+
+    expect(res.status).toBe(409);
+    expect(cancelShipment).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE: an address is still made in place on the same reserved order', async () => {
+    const res = await patch({ expectedVersion: 3, changeRequestId: REQUEST_ID });
+
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect(db.customer.update).toHaveBeenCalled();
+    expect(db.orderItem.findFirst, 'سأل عن الحجز لتعديل ما فيه بضاعة').not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE: a phone and a note are made in place too', async () => {
+    db.orderChangeRequest.findFirst.mockResolvedValue(approved({ changes: { customerNotes: { from: '', to: 'قبل الظهر' } } }));
+
+    const res = await patch({ expectedVersion: 3, changeRequestId: REQUEST_ID });
+
+    expect(res.status, await res.clone().text()).toBe(200);
+  });
+
+  it('NEGATIVE: an order with no reservation (not yet confirmed) changes its quantity in place as before', async () => {
+    db.orderItem.findFirst.mockResolvedValue(null);
+    db.orderChangeRequest.findFirst.mockResolvedValue(approved({ changes: { quantity: { from: 1, to: 2 } } }));
+
+    const res = await patch({ expectedVersion: 3, changeRequestId: REQUEST_ID });
+
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect(written().data.quantity).toBe(2);
+    expect(db.orderItem.findFirst.mock.calls[0][0].where).toMatchObject({ orderId: ORDER_ID, reservedQty: { gt: 0 } });
+  });
+
+  it('NEGATIVE: a quantity the request leaves as it is asks for nothing', async () => {
+    db.orderChangeRequest.findFirst.mockResolvedValue(approved({ changes: { quantity: { from: 1, to: 1 }, customerAddress: { to: 'شارع جديد' } } }));
+
+    const res = await patch({ expectedVersion: 3, changeRequestId: REQUEST_ID });
+
+    expect(res.status, await res.clone().text()).toBe(200);
   });
 });
 

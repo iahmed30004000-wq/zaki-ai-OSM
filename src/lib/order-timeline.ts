@@ -137,7 +137,7 @@ const ACTIVITY_AR: Record<string, string> = {
   COURIER_TOLD_TO_CANCEL: 'إبلاغ الشركة بإلغاء الطرد',
   TAKEN_OFF_BATCH: 'أُخرج من الدفعة',
   LABEL_STALE_REPRINT: 'بوليصة الطرد لم تعد تطابق الطلب — تُطبع من جديد',
-  PARCEL_ATTESTED_IN_HAND: 'أكّد أن الطرد بين يديه وأعاد قطعه للرف',
+  PARCEL_ATTESTED_IN_HAND: 'أكّد أن الطرد بين يديه',
   COURIER_CANCELLED_ORDER_MOVED: 'ألغت الشركة الطرد وتغيّر الطلب قبل الحفظ',
   // «طلبات لم يذكرها أي كشف»: what a person decided about it, on the order itself.
   ...NOT_MENTIONED_ACTIVITY_AR,

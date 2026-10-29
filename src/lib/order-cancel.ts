@@ -3,6 +3,8 @@ import { db } from './db';
 import { logAudit } from './audit';
 import { emitAppEvent } from './apps/events';
 import { releaseOrderLines } from './reservation';
+import { resolveDeliveryFee } from './delivery-fees';
+import { roundMinor } from './money';
 import { SHIPPING_GONE } from './order-state';
 import {
   ATTESTATION_AR,
@@ -195,6 +197,8 @@ const ORDER_SELECT = {
   deliveryProviderId: true,
   trackingNumber: true,
   courierSendStartedAt: true,
+  regionId: true,
+  deliveryFee: true,
   totalAmount: true,
   currency: true,
   customerId: true,
@@ -630,6 +634,8 @@ export interface MoveBeforeHandoverInput {
   to: { id: string; name: string };
   /** The new company's open trolley, or null for an agent (he takes it by hand). */
   toBatchId: string | null;
+  /** The country's smallest unit — the fee is compared in it, so 3-place currencies do not lose a fils. */
+  minorUnit: number;
   note: string | null;
   /** «الطرد بين يديّ — أتلفتُ بوليصته القديمة…» — required when the waybill is printed. */
   parcelInHand?: boolean;
@@ -641,7 +647,12 @@ export type MoveOutcome =
   | { ok: false; status: number; code: string; error: string; attestation?: string };
 
 export const HANDED_NOW_AR = 'الطرد انسلّم للشركة للتو — التحويل الآن بيصير بطلب بديل. حدّث الصفحة وجرّب من جديد.';
-export const TARGET_CLOSED_AR = 'الدفعة اللي بدك تحط الطرد فيها انسلّمت للتو — افتح دفعة جديدة للشركة وأعد التحويل.';
+export const TARGET_CLOSED_AR = 'الدفعة الجديدة انغلقت — جرّب دفعة تانية.';
+
+/** The new company charges another fee than the order carries: the customer's total would change, and a transfer never does that. */
+export const feeDiffersAr = (now: string, was: string) =>
+  `أجرة الشركة الجديدة غير أجرة الطلب (${now} بدل ${was}) — أجّل الطلب وضعه بدفعتها ليتحسب من جديد.`;
+export const NO_FEE_FOR_REGION_AR = 'الشركة الجديدة ما إلها أجرة لهالمحافظة — أجّل الطلب وضعه بدفعتها بعد ما تنضاف الأجرة.';
 export const MOVED_FROM_AR = 'الطرد تغيّر مكانه أثناء العمل عليه — حدّث الصفحة وجرّب من جديد.';
 
 /**
@@ -655,6 +666,10 @@ export const MOVED_FROM_AR = 'الطرد تغيّر مكانه أثناء الع
  *
  *   ASKS    `cancelVerdict` — the same gate as every cancel door: a pressed
  *           trolley is the company's now, and an unreadable one is refused.
+ *   KEEPS   the customer's total: the NEW company's fee for the order's region must
+ *           equal the fee the order carries (in the currency's smallest unit), or the
+ *           move is refused — before any call to the old company. A transfer never
+ *           re-prices; «أجّل ثم ضعه بدفعة» is the door that does (`resolveDeliveryFee`).
  *   WANTS   a person's word when the waybill is printed: it names the old
  *           company and its barcode, so it is destroyed, not carried over.
  *   TELLS   the old company, for a barcode it already holds (outside any
@@ -697,6 +712,51 @@ export async function moveBeforeHandover(input: MoveBeforeHandoverInput): Promis
       error: WAYBILL_ATTESTATION_NEEDED_AR,
       attestation: WAYBILL_ATTESTATION_AR,
     };
+  }
+
+  /*
+   * THE CUSTOMER'S TOTAL DOES NOT CHANGE (the owner: «اي قرار بعد الان اتخذو دون الرجوع الي»).
+   *
+   * The fee on the order is a snapshot of the OLD company's table, and the COD was
+   * priced with it. Moving the order to a company that charges another fee would
+   * leave a total that no table explains; re-pricing it here would change what the
+   * customer pays on a transfer nobody asked to re-price. So an equal fee passes and
+   * anything else is refused — and it is asked FIRST, before the old company is told
+   * to cancel a parcel for a move that will not happen.
+   */
+  const newFee = await resolveDeliveryFee(db, {
+    deliveryProviderId: input.to.id,
+    regionId: o.regionId ?? null,
+    minorUnit: input.minorUnit,
+  });
+  if (newFee.source === 'NONE') {
+    return { ok: false, status: 409, code: 'NO_FEE_ROW', error: NO_FEE_FOR_REGION_AR };
+  }
+  const was = roundMinor(Number(o.deliveryFee ?? 0), input.minorUnit);
+  if (newFee.fee !== was) {
+    return {
+      ok: false,
+      status: 409,
+      code: 'FEE_DIFFERS',
+      error: feeDiffersAr(newFee.fee.toFixed(input.minorUnit), was.toFixed(input.minorUnit)),
+    };
+  }
+
+  /*
+   * THE NEW TROLLEY IS READ BEFORE THE OLD COMPANY IS TOLD ANYTHING. Cancelling a
+   * parcel at the old company and only then finding the new trolley already pressed
+   * leaves the company with nothing and the order with a dead barcode. The write
+   * below still takes the trolley's lock (the read can be overtaken); this makes the
+   * ordinary case — a trolley that closed a minute ago — fail before it costs anything.
+   */
+  if (input.toBatchId) {
+    const target = await db.shippingBatch.findFirst({
+      where: { id: input.toBatchId, companyId: input.companyId, deliveryProviderId: input.to.id },
+      select: { status: true },
+    });
+    if (!target || target.status !== 'READY') {
+      return { ok: false, status: 409, code: 'TARGET_BATCH_CLOSED', error: TARGET_CLOSED_AR };
+    }
   }
 
   const released = await releaseCourierParcel(

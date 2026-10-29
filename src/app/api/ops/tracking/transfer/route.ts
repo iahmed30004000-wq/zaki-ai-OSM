@@ -135,6 +135,13 @@ export async function POST(req: Request) {
      * printed waybill is torn up on a person's word.
      */
     if (plan.mode === 'REBATCH') {
+      /*
+       * THIS ONE TAKES A PARCEL OFF A TROLLEY AND CANCELS A WAYBILL AT THE COMPANY — the
+       * packing table's work. The sister doors (`hold`, `stand-down`) ask `ops.ship` for the
+       * same acts; `ops.track` alone (the tracking desk) does not reach it. The move AFTER
+       * the handover keeps the permission it always had.
+       */
+      await requirePermission('ops.ship');
       const moved = await moveBeforeHandover({
         orderId: order.id,
         companyId,
@@ -144,6 +151,7 @@ export async function POST(req: Request) {
         fromName: from!.name,
         to: { id: to.id, name: to.name },
         toBatchId: openBatch?.id ?? null,
+        minorUnit: country.minorUnit,
         note: parsed.data.note ?? null,
         parcelInHand: parsed.data.parcelInHand === true,
       });

@@ -1,15 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CourierRefusal } from '@/lib/couriers/logestechs';
 
-const { db, requireContext, createReplacement, logAudit, releaseOrderLines, adapterFor, emitAppEvent } = vi.hoisted(() => ({
+const { db, requireContext, requirePermission, createReplacement, logAudit, releaseOrderLines, adapterFor, emitAppEvent } = vi.hoisted(() => ({
   db: {
     order: { findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     deliveryProvider: { findFirst: vi.fn() },
     shippingBatch: { findFirst: vi.fn(), updateMany: vi.fn() },
+    deliveryFee: { findFirst: vi.fn() },
     orderActivity: { create: vi.fn() },
     $transaction: vi.fn(),
   },
   requireContext: vi.fn(),
+  requirePermission: vi.fn(),
   createReplacement: vi.fn(),
   logAudit: vi.fn(),
   releaseOrderLines: vi.fn(),
@@ -19,7 +21,7 @@ const { db, requireContext, createReplacement, logAudit, releaseOrderLines, adap
 
 vi.mock('@/lib/db', () => ({ db }));
 vi.mock('@/lib/geo-context', () => ({ requireContext: (...a: unknown[]) => requireContext(...a) }));
-vi.mock('@/lib/authorization', () => ({ requirePermission: vi.fn() }));
+vi.mock('@/lib/authorization', () => ({ requirePermission: (...a: unknown[]) => requirePermission(...a) }));
 vi.mock('@/lib/audit', () => ({ logAudit: (...a: unknown[]) => logAudit(...a) }));
 vi.mock('@/lib/replacement-order', () => ({ createReplacement: (...a: unknown[]) => createReplacement(...a) }));
 vi.mock('@/lib/reservation', () => ({ releaseOrderLines: (...a: unknown[]) => releaseOrderLines(...a) }));
@@ -53,7 +55,7 @@ const stored = (over: Record<string, unknown> = {}) => ({
   id: ORDER_ID, orderNumber: 'SY-1', version: 5, confirmationStatus: 'CONFIRMED',
   shippingStatus: 'READY_FOR_PICKUP', shippedAt: null, labelPrintedAt: null,
   shippingBatchId: 'old-batch', deliveryProviderId: 'co1', trackingNumber: null, courierSendStartedAt: null,
-  totalAmount: 25, currency: 'JOD', customerId: 'cu1',
+  totalAmount: 25, currency: 'JOD', customerId: 'cu1', regionId: 'r1', deliveryFee: 3,
   deliveryProvider: { id: 'co1', name: 'أرامكس', kind: 'COMPANY' },
   replacedBy: null,
   shippingBatch: { status: 'READY', batchNumber: 'B-1' },
@@ -85,7 +87,10 @@ beforeEach(() => {
   // The route reads the new courier, the helper reads the old one's account: both are a manual company.
   db.deliveryProvider.findFirst.mockResolvedValue({ id: TO, name: 'شركة أخرى', kind: 'COMPANY', code: 'X', adapterCode: null, apiEnabled: false });
   adapterFor.mockReturnValue({ automated: false, code: 'MANUAL', name: 'يدوي' });
-  db.shippingBatch.findFirst.mockResolvedValue({ id: 'open-batch', batchNumber: 'B-9' });
+  db.shippingBatch.findFirst.mockResolvedValue({ id: 'open-batch', batchNumber: 'B-9', status: 'READY' });
+  // The new company charges what the order already carries.
+  db.deliveryFee.findFirst.mockResolvedValue({ fee: 3, lateThresholdDays: 5, returnFee: 1 });
+  requirePermission.mockResolvedValue(undefined);
   db.shippingBatch.updateMany.mockResolvedValue({ count: 1 });
   db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn(db));
   db.order.update.mockResolvedValue({});
@@ -259,6 +264,183 @@ describe('a parcel the company never took — the same order moves', () => {
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('HANDED_OVER');
     expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('the customer’s total does not change — the new company’s fee must equal the order’s', () => {
+  const api = (cancelShipment: () => Promise<void>) => ({
+    automated: true, code: 'LOGESTECHS', name: 'LogesTechs', cancelShipment: vi.fn(cancelShipment),
+  });
+
+  it('an equal fee passes, and the order’s fee and total are not written', async () => {
+    db.order.findFirst.mockResolvedValue(stored());
+
+    const res = await transfer();
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(written().data).not.toHaveProperty('deliveryFee');
+    expect(written().data).not.toHaveProperty('totalAmount');
+    // It asked the NEW company's table, for the order's region.
+    expect(db.deliveryFee.findFirst.mock.calls[0][0].where).toMatchObject({ deliveryProviderId: TO, regionId: 'r1', isActive: true });
+  });
+
+  it('a different fee is refused with both figures, before the old company is called and before any write', async () => {
+    db.order.findFirst.mockResolvedValue(stored({ trackingNumber: 'LG-5', courierSendStartedAt: new Date() }));
+    const adapter = api(async () => undefined);
+    adapterFor.mockReturnValue(adapter);
+    db.deliveryFee.findFirst.mockResolvedValue({ fee: 4, lateThresholdDays: 5, returnFee: 1 });
+
+    const res = await transfer();
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('FEE_DIFFERS');
+    expect(res.body.error).toContain('4.00 بدل 3.00');
+    expect(res.body.error).toContain('أجّل الطلب');
+    expect(adapter.cancelShipment, 'انلغى طرد الشركة القديمة لتحويل ما رح يصير').not.toHaveBeenCalled();
+    expect(db.shippingBatch.updateMany).not.toHaveBeenCalled();
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('a region the new company has no fee for is refused', async () => {
+    db.order.findFirst.mockResolvedValue(stored());
+    db.deliveryFee.findFirst.mockResolvedValue(null);
+
+    const res = await transfer();
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('NO_FEE_ROW');
+    expect(res.body.error).toContain('ما إلها أجرة');
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('an order with no region has no fee to match: refused', async () => {
+    db.order.findFirst.mockResolvedValue(stored({ regionId: null }));
+    db.deliveryFee.findFirst.mockResolvedValue({ fee: 3, lateThresholdDays: 5, returnFee: 1 });
+
+    const res = await transfer();
+
+    expect(res.body.code).toBe('NO_FEE_ROW');
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('a dinar fee is compared at THREE places: 2.500 equals 2.500, 2.501 does not', async () => {
+    requireContext.mockResolvedValue({
+      user: { id: 'u1', name: 'م', role: 'DELIVERY_MANAGER' },
+      companyId: 'c1', storeId: 's1',
+      country: { orderPrefix: 'JO', minorUnit: 3, allowNegativeStock: false },
+    });
+    db.order.findFirst.mockResolvedValue(stored({ deliveryFee: 2.5 }));
+    db.deliveryFee.findFirst.mockResolvedValue({ fee: '2.500', lateThresholdDays: 5, returnFee: 0 });
+    expect((await transfer()).status).toBe(200);
+
+    db.order.updateMany.mockClear();
+    db.deliveryFee.findFirst.mockResolvedValue({ fee: '2.501', lateThresholdDays: 5, returnFee: 0 });
+    const res = await transfer();
+    expect(res.body.code).toBe('FEE_DIFFERS');
+    expect(res.body.error).toContain('2.501 بدل 2.500');
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('binary noise in the stored fee is not a difference (0.1 + 0.2 is 0.3)', async () => {
+    db.order.findFirst.mockResolvedValue(stored({ deliveryFee: 0.1 + 0.2 }));
+    db.deliveryFee.findFirst.mockResolvedValue({ fee: 0.3, lateThresholdDays: 5, returnFee: 0 });
+
+    expect((await transfer()).status).toBe(200);
+  });
+
+  it('NEGATIVE: the replacement road (the company holds it) never asks this question', async () => {
+    db.order.findFirst.mockResolvedValue(
+      stored({ shippingStatus: 'SHIPPED', shippedAt: new Date(), shippingBatch: { status: 'SHIPPED', batchNumber: 'B-1' } })
+    );
+    db.deliveryFee.findFirst.mockResolvedValue({ fee: 9, lateThresholdDays: 5, returnFee: 1 });
+
+    const res = await transfer();
+
+    expect(res.body.mode).toBe('REPLACE');
+    expect(createReplacement).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the new trolley is read BEFORE the old company is told anything', () => {
+  it('a trolley that closed a minute ago is refused with its own sentence, and the old company is not called', async () => {
+    db.order.findFirst.mockResolvedValue(stored({ trackingNumber: 'LG-5', courierSendStartedAt: new Date() }));
+    const cancelShipment = vi.fn(async () => undefined);
+    adapterFor.mockReturnValue({ automated: true, code: 'LOGESTECHS', name: 'LogesTechs', cancelShipment });
+    // The route finds it open; by the time the helper reads it, it was pressed.
+    db.shippingBatch.findFirst
+      .mockResolvedValueOnce({ id: 'open-batch', batchNumber: 'B-9', status: 'READY' })
+      .mockResolvedValueOnce({ status: 'SHIPPED' });
+
+    const res = await transfer();
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('TARGET_BATCH_CLOSED');
+    expect(res.body.error).toBe('الدفعة الجديدة انغلقت — جرّب دفعة تانية.');
+    expect(res.body.error).not.toContain('الطلب تغيّر');
+    expect(cancelShipment, 'انلغى طرد الشركة القديمة ثم تبيّن إنو الدفعة مسكّرة').not.toHaveBeenCalled();
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('a trolley that vanished is the same refusal', async () => {
+    db.order.findFirst.mockResolvedValue(stored());
+    db.shippingBatch.findFirst
+      .mockResolvedValueOnce({ id: 'open-batch', batchNumber: 'B-9', status: 'READY' })
+      .mockResolvedValueOnce(null);
+
+    const res = await transfer();
+
+    expect(res.body.code).toBe('TARGET_BATCH_CLOSED');
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('and one that closes AFTER the read still ends at the lock, with the same sentence', async () => {
+    db.order.findFirst.mockResolvedValue(stored());
+    db.shippingBatch.updateMany.mockResolvedValue({ count: 0 });
+
+    const res = await transfer();
+
+    expect(res.body.code).toBe('TARGET_BATCH_CLOSED');
+    expect(res.body.error).toBe('الدفعة الجديدة انغلقت — جرّب دفعة تانية.');
+  });
+});
+
+describe('who may move a parcel off a trolley', () => {
+  it('asks for ops.ship, like hold and stand-down — and refuses the tracking desk alone, writing nothing', async () => {
+    db.order.findFirst.mockResolvedValue(stored({ trackingNumber: 'LG-5', courierSendStartedAt: new Date() }));
+    const cancelShipment = vi.fn(async () => undefined);
+    adapterFor.mockReturnValue({ automated: true, code: 'LOGESTECHS', name: 'LogesTechs', cancelShipment });
+    requirePermission.mockImplementation(async (key: string) => {
+      if (key === 'ops.ship') throw new Error('Forbidden: missing required permission ops.ship');
+    });
+
+    const res = await transfer();
+
+    expect(res.status).toBe(403);
+    expect(requirePermission.mock.calls.map((c: unknown[]) => c[0])).toEqual(expect.arrayContaining(['ops.track', 'ops.ship']));
+    expect(cancelShipment).not.toHaveBeenCalled();
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE: someone who holds both moves it', async () => {
+    db.order.findFirst.mockResolvedValue(stored());
+
+    expect((await transfer()).status).toBe(200);
+    expect(requirePermission.mock.calls.map((c: unknown[]) => c[0])).toContain('ops.ship');
+  });
+
+  it('NEGATIVE: the move AFTER the handover keeps its permission — the tracking desk alone still does it', async () => {
+    db.order.findFirst.mockResolvedValue(
+      stored({ shippingStatus: 'SHIPPED', shippedAt: new Date(), shippingBatch: { status: 'SHIPPED', batchNumber: 'B-1' } })
+    );
+    requirePermission.mockImplementation(async (key: string) => {
+      if (key === 'ops.ship') throw new Error('Forbidden: missing required permission ops.ship');
+    });
+
+    const res = await transfer();
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.mode).toBe('REPLACE');
+    expect(requirePermission.mock.calls.map((c: unknown[]) => c[0])).not.toContain('ops.ship');
   });
 });
 
