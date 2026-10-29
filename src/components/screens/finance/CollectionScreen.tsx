@@ -156,6 +156,9 @@ export function CollectionScreen() {
    * before it is drawn: that screen, and the permission to follow a parcel it works from.
    */
   const pointsToManual = userCan(currentUser, 'ops.track') && mayOpen('/finance/matching');
+  // The press that moves the courier's money into a wallet has a key of its own (PR-9): the button is drawn only for
+  // whoever the door would let through, so no one is offered a press that ends in a refusal.
+  const mayApprove = userCan(currentUser, 'settlement.approve');
   const [rows, setRows] = useState<StatementRow[] | null>(null);
   const [providers, setProviders] = useState<{ id: string; name: string }[]>([]);
   const [wallets, setWallets] = useState<{ id: string; name: string; currencyCode: string }[]>([]);
@@ -570,14 +573,16 @@ export function CollectionScreen() {
                           تفسير الفرق
                         </button>
                       )}
-                      <button
-                        disabled={!!refusal || busy === s.id}
-                        title={refusal?.error ?? 'اعتماد الكشف — عندها تُسجَّل حركة المحفظة'}
-                        onClick={() => void approve(s)}
-                        className="text-xs font-medium text-[var(--sys-success)] hover:underline disabled:text-[var(--sys-border-strong)] disabled:no-underline"
-                      >
-                        اعتماد
-                      </button>
+                      {mayApprove && (
+                        <button
+                          disabled={!!refusal || busy === s.id}
+                          title={refusal?.error ?? 'اعتماد الكشف — عندها تُسجَّل حركة المحفظة'}
+                          onClick={() => void approve(s)}
+                          className="text-xs font-medium text-[var(--sys-success)] hover:underline disabled:text-[var(--sys-border-strong)] disabled:no-underline"
+                        >
+                          اعتماد
+                        </button>
+                      )}
                     </>
                   )}
                 </span>

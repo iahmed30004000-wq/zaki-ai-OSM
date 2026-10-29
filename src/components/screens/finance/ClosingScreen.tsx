@@ -8,6 +8,8 @@ import { RiAlertLine, RiLoader4Line, RiLockLine, RiWallet3Line } from '@remixico
 import { useToast } from '@/components/ui/Toast';
 import { Money } from '@/components/ui/Money';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { useApp } from '@/context/AppContext';
+import { userCan } from '@/lib/can';
 
 /**
  * /finance/closing — count each wallet at the end of the day against its book
@@ -41,6 +43,10 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 export function ClosingScreen() {
   const toast = useToast();
+  const { currentUser } = useApp();
+  // The screen opens on the cash box's VIEW key (PR-9); each press below is drawn only for the key its door asks.
+  const mayCount = userCan(currentUser, 'finance.cashbox');
+  const mayApprove = userCan(currentUser, 'finance.closing_approve');
   const [date, setDate] = useState(today());
   const [rows, setRows] = useState<Row[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -125,6 +131,7 @@ export function ClosingScreen() {
                     </span>
                   ) : (
                     <>
+                      {mayCount && (
                       <button
                         disabled={!!r.blockedBy}
                         onClick={() => setCountFor(r)}
@@ -132,7 +139,8 @@ export function ClosingScreen() {
                       >
                         {r.closing ? 'تعديل الجرد' : 'تسجيل الجرد'}
                       </button>
-                      {r.closing && (
+                      )}
+                      {r.closing && mayApprove && (
                         <button
                           disabled={busy === r.walletId}
                           title="يعتمده شخص غير من سجّل الحركات أو الجرد"

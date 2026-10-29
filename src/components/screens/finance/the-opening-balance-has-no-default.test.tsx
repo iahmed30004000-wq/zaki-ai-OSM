@@ -63,6 +63,9 @@ vi.mock('@/lib/audit', () => ({ logAudit: (...a: unknown[]) => logAudit(...a) })
 
 /* ── the screen's dependencies ─────────────────────────────────────────── */
 
+vi.mock('@/context/AppContext', () => ({
+  useApp: () => ({ currentUser: { id: 'u1', status: 'ACTIVE', role: 'COMPANY_ADMIN', permissions: ['finance.cashbox_view', 'finance.cashbox', 'finance.wallets_manage'] } }),
+}));
 vi.mock('next/navigation', () => ({ usePathname: () => '/finance/wallets', useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('next/link', () => ({
   default: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,

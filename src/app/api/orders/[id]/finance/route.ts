@@ -16,6 +16,8 @@ import { commissionCostForOrders } from '@/lib/commission';
 import { ORDER_NOT_FOUND } from '@/lib/order-refusals';
 import { STATUS_VALUE_AR } from '@/lib/order-timeline';
 import { money as moneyInput } from '@/lib/numeric-input';
+import { maySeeOrderCost, projectOrder } from '@/lib/order-projection';
+import { settlementSightOfOrderFinance } from '@/lib/order-finance-sight';
 
 const D = (v: any) => new Prisma.Decimal(v ?? 0);
 const toMoney = (v: any) => (v === null || v === undefined ? null : new Prisma.Decimal(v));
@@ -122,7 +124,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       },
     });
 
-    return NextResponse.json({ finance: order });
+    /*
+     * THE COST AND THE PROFIT ARE THE FINANCE KEY'S (PR-9). A holder of `settlement.view` alone still gets the snapshot —
+     * the customer's bill, what was settled, what was refunded, the cash side of the ledger — but not the shop's margin on
+     * the order: the same line `projectOrder` draws on every other read of an order.
+     */
+    return NextResponse.json({ finance: maySeeOrderCost(user) ? order : settlementSightOfOrderFinance(order) });
   } catch (error) {
     const { body, status } = apiError(error);
     return NextResponse.json(body, { status });
@@ -162,7 +169,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     // ── Permission model (Section: roles) ──
     const isFinanceAuth = can(user, 'finance.create') || can(user, 'finance.update');
-    const isSettlementAuth = can(user, 'settlement.review') || can(user, 'finance.update');
+    // The settlement statuses are the APPROVAL's key since PR-9 (the migration gave it to every holder of settlement.review).
+    const isSettlementAuth = can(user, 'settlement.approve') || can(user, 'finance.update');
     if (!isFinanceAuth && !isSettlementAuth) {
       return NextResponse.json({ error: 'Forbidden: no financial authority', errorAr: 'لا تملك صلاحية على أرقام المال في الطلب.' }, { status: 403 });
     }
@@ -425,7 +433,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     });
 
     const fresh = await db.order.findUnique({ where: { id } });
-    return NextResponse.json({ success: true, order: fresh });
+    // The whole row, cost and profit included, goes only to whoever may read them (a settlement authority without the
+    // finance key edits the status and gets back the order as every other read hands it out).
+    return NextResponse.json({ success: true, order: fresh ? projectOrder(fresh as Record<string, unknown>, user) : fresh });
   } catch (error) {
     const { body, status } = apiError(error);
     return NextResponse.json(body, { status });

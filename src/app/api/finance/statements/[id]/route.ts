@@ -218,9 +218,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   try {
     const { id } = await params;
     const { user, companyId, storeId, country } = await requireContext();
-    await requirePermission('settlement.review');
 
-    const parsed = patchSchema.safeParse(await req.json().catch(() => null));
+    /*
+     * TWO ACTS, TWO KEYS (perm-plan PR-9).
+     *
+     * Writing the explanation of a gap is the reviewer's (`settlement.review`). PRESSING «اعتماد» is the act that moves
+     * the courier's money into a wallet, and it has a box of its own (`settlement.approve`) so the owner can let a
+     * person match the lines without letting her approve. The body is read first only to learn which act this is; a body
+     * that is not JSON, or that does not ask to approve, is the reviewer's door as it always was, and is judged below.
+     * The migration 20261030150000_finance_split_keys gave the approval to every holder of `settlement.review`.
+     */
+    const raw: unknown = await req.json().catch(() => null);
+    const wantsApproval = typeof raw === 'object' && raw !== null && (raw as { approve?: unknown }).approve === true;
+    await requirePermission(wantsApproval ? 'settlement.approve' : 'settlement.review');
+
+    const parsed = patchSchema.safeParse(raw);
     if (!parsed.success) {
       return NextResponse.json({ error: zodMessage(parsed.error) }, { status: 400 });
     }

@@ -18,7 +18,7 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 vi.mock('@/context/AppContext', () => ({
-  useApp: () => ({ currentUser: { id: 'u1', status: 'ACTIVE', role: 'COMPANY_ADMIN', permissions: ['settlement.upload'] } }),
+  useApp: () => ({ currentUser: { id: 'u1', status: 'ACTIVE', role: 'COMPANY_ADMIN', permissions: ['settlement.upload', 'settlement.approve'] } }),
 }));
 vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>التحصيل</h1> }));
 vi.mock('@/components/ui/Confirm', () => ({ useConfirm: () => confirm, useAsk: () => async () => null }));

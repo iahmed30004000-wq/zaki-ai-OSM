@@ -198,8 +198,11 @@ describe('the door', () => {
     const route = stripComments(repoFile('src/app/api/finance/wallets/[id]/opening-count/route.ts'));
     expect(route).toContain("requirePermission('finance.cashbox')");
     const keys = [...ALL_CATALOG_KEYS].filter((k) => k.startsWith('finance.'));
+    // PR-9 split the cash box on purpose (migration 20261030150000_finance_split_keys grants each new key): the view, the
+    // wallets' management and the closing's approval. The opening count itself still asks the one it always asked.
     expect(keys.sort(), 'مفتاح صلاحية جديد يحتاج منحاً').toEqual([
-      'finance.cashbox', 'finance.create', 'finance.update', 'finance.view',
+      'finance.cashbox', 'finance.cashbox_view', 'finance.closing_approve', 'finance.create', 'finance.update', 'finance.view',
+      'finance.wallets_manage',
     ]);
   });
 

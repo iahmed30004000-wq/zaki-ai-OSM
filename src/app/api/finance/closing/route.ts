@@ -41,7 +41,7 @@ function dayOf(value: string) {
 export async function GET(req: Request) {
   try {
     const { companyId, storeId } = await requireContext();
-    await requirePermission('finance.cashbox');
+    await requirePermission('finance.cashbox_view');
 
     const dateParam = new URL(req.url).searchParams.get('date') ?? new Date().toISOString().slice(0, 10);
     const date = dayOf(dateParam);
@@ -168,7 +168,9 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
   try {
     const { user, companyId, storeId } = await requireContext();
-    await requirePermission('finance.cashbox');
+    // Approving a closing is its own key (PR-9). The separation of duties below (whoever recorded the day's movements
+    // or the count may not approve) is untouched.
+    await requirePermission('finance.closing_approve');
 
     const parsed = approveSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {

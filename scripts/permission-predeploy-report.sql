@@ -78,7 +78,13 @@ WITH req(action, needs) AS (VALUES
   ('orders.note','orders.view'),
   ('orders.request_change','orders.view'),
   ('orders.rating_link','orders.view'),
-  ('control.blacklist_manage','control.blacklist')
+  ('control.blacklist_manage','control.blacklist'),
+  -- PR-9. finance.cashbox needs finance.cashbox_view, which the migration 20261030150000 gives to every holder of it: so
+  -- before that migration has run the pair is not reported (every cashier would be), after it, it is.
+  ('finance.cashbox','finance.cashbox_view'),
+  ('finance.wallets_manage','finance.cashbox_view'),
+  ('finance.closing_approve','finance.cashbox_view'),
+  ('settlement.approve','settlement.view')
 )
 SELECT 'role_permissions' AS "table", r."name" AS "role", r."companyId", q.action, q.needs
 FROM "role_permissions" rp
@@ -87,6 +93,8 @@ JOIN req q ON q.action = rp."permission"
 WHERE NOT EXISTS (
   SELECT 1 FROM "role_permissions" v WHERE v."roleId" = rp."roleId" AND v."permission" = q.needs
 )
+  AND (q.action <> 'finance.cashbox' OR EXISTS (
+    SELECT 1 FROM "_prisma_migrations" m WHERE m."migration_name" = '20261030150000_finance_split_keys' AND m."finished_at" IS NOT NULL))
 UNION ALL
 SELECT 'role_permission_defaults', r."name", r."companyId", q.action, q.needs
 FROM "role_permission_defaults" rp
@@ -95,6 +103,8 @@ JOIN req q ON q.action = rp."permission"
 WHERE NOT EXISTS (
   SELECT 1 FROM "role_permission_defaults" v WHERE v."roleId" = rp."roleId" AND v."permission" = q.needs
 )
+  AND (q.action <> 'finance.cashbox' OR EXISTS (
+    SELECT 1 FROM "_prisma_migrations" m WHERE m."migration_name" = '20261030150000_finance_split_keys' AND m."finished_at" IS NOT NULL))
 ORDER BY 1, 2, 4;
 
 -- ═══════════════════════════════════════════════════════════════════════
@@ -130,6 +140,29 @@ CROSS JOIN LATERAL unnest(CASE rp."permission"
   WHEN 'orders.view' THEN ARRAY['orders.note', 'orders.request_change', 'orders.rating_link']
   WHEN 'confirmation.work' THEN ARRAY['orders.note', 'orders.request_change']
   WHEN 'control.blacklist' THEN ARRAY['control.blacklist_manage']
+  ELSE ARRAY[]::text[]
+END) AS k
+GROUP BY k, r."id", r."name", r."companyId"
+ORDER BY 1, 3 NULLS FIRST, 2;
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- AND THE FOURTH QUESTION (PR-9, the cash box and the statement approval): WHICH ROLES WILL THE MIGRATION
+-- 20261030150000_finance_split_keys GIVE EACH OF THE FOUR BOXES TO, AND WILL THE BOX SIT WITHOUT ITS SCREEN KEY?
+-- Every role that holds the key the box's door asked before (src/lib/finance-split-keys.ts FINANCE_SPLIT_KEYS_FROM, the
+-- same list the migration reads). `without_its_view` = the role would hold the box but not the screen key it sits behind:
+-- only settlement.approve can be that (a role that reviews matches without holding settlement.view — the view boxes of
+-- the cash come from the same key as the actions). Such a role keeps its approval on the day; the owner ticks the view
+-- for it or unticks the approval. Read-only, same as above.
+-- ═══════════════════════════════════════════════════════════════════════
+SELECT k AS "box", r."name" AS "role", r."companyId",
+       (k = 'settlement.approve' AND NOT EXISTS (
+         SELECT 1 FROM "role_permissions" v WHERE v."roleId" = r."id" AND v."permission" = 'settlement.view'
+       )) AS "without_its_view"
+FROM "role_permissions" rp
+JOIN "roles" r ON r."id" = rp."roleId"
+CROSS JOIN LATERAL unnest(CASE rp."permission"
+  WHEN 'finance.cashbox' THEN ARRAY['finance.cashbox_view', 'finance.wallets_manage', 'finance.closing_approve']
+  WHEN 'settlement.review' THEN ARRAY['settlement.approve']
   ELSE ARRAY[]::text[]
 END) AS k
 GROUP BY k, r."id", r."name", r."companyId"

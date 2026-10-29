@@ -154,6 +154,20 @@ describe('the money owed, on somebody else’s card', () => {
     expect(body.owed).toEqual([{ currencyCode: 'SYP', amount: 500, entries: ['e1'] }]);
   });
 
+  // PR-9: `finance.view` used to open this too. It is the shop's money, not a colleague's pay — payroll's alone, as on the profile.
+  it('NEGATIVE: is NOT on it for the finance key — with the team key, and the ledger is not asked', async () => {
+    can.mockImplementation((_u: unknown, k: string) => k === 'team.monitor' || k === 'finance.view');
+    const body = await (await card(OTHER)).json();
+    expect(body.owed).toBeNull();
+    expect(owedTo).not.toHaveBeenCalled();
+    expect(body.score).toBeTruthy();
+  });
+
+  it('NEGATIVE: and the finance key does not even open the card without the team key', async () => {
+    can.mockImplementation((_u: unknown, k: string) => k === 'finance.view');
+    expect((await card(OTHER)).status).toBe(403);
+  });
+
   it('and always on my own', async () => {
     db.user.findFirst.mockResolvedValue({ id: ME, name: 'سارة', role: 'CONFIRMATION_AGENT', commissionCurrency: null });
     scoreRole.mockResolvedValue([ROW(ME, 71, 2)]);

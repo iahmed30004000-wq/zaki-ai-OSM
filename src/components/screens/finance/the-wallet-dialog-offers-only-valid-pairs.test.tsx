@@ -12,6 +12,9 @@ import { handCategoriesFor, handMovementRefusal } from '@/lib/hand-movement-rule
  * valid, and one short line under the box says where courier money is recorded.
  */
 
+vi.mock('@/context/AppContext', () => ({
+  useApp: () => ({ currentUser: { id: 'u1', status: 'ACTIVE', role: 'COMPANY_ADMIN', permissions: ['finance.cashbox_view', 'finance.cashbox', 'finance.wallets_manage'] } }),
+}));
 vi.mock('next/navigation', () => ({ usePathname: () => '/finance/wallets', useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('next/link', () => ({ default: ({ children }: { children: React.ReactNode }) => <span>{children}</span> }));
 vi.mock('@/components/ui/Confirm', () => ({ useConfirm: () => vi.fn(async () => true), useTell: () => vi.fn() }));

@@ -50,7 +50,7 @@ import { StoreCurrencyProvider } from '@/context/StoreCurrency';
 const A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
-const GATHERER = { id: 'u1', status: 'ACTIVE', role: 'MANAGER', permissions: ['ops.track', 'finance.cashbox', 'settlement.upload'] };
+const GATHERER = { id: 'u1', status: 'ACTIVE', role: 'MANAGER', permissions: ['ops.track', 'finance.cashbox', 'settlement.upload', 'settlement.approve'] };
 const CASHIER = { id: 'u2', status: 'ACTIVE', role: 'MANAGER', permissions: ['ops.track', 'finance.cashbox'] };
 
 const parcel = (ref: string, over: Record<string, unknown> = {}) => ({
