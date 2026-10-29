@@ -325,6 +325,11 @@ export interface WinbackSource {
    * moment a returned order's cooling counts from. Null while nobody has.
    */
   returnReceivedAt?: Date | string | null;
+  /**
+   * The desk's receipt says no unit came back: a zero count, or a write-off (`nothingCameBack`). The order is
+   * closed and there is no parcel to resell, so it is never a win-back call, whatever date the receipt carries.
+   */
+  returnNothingCameBack?: boolean;
   /** The replacement it already has. A customer asked twice has answered twice. */
   replacedByOrderNumber: string | null;
   /**
@@ -406,7 +411,7 @@ export function winbackVerdict(order: WinbackSource, now: Date, rule: WinbackRul
     if (!back) {
       return { eligible: false, code: 'ALREADY_SHIPPED', reason: 'شُحن ولم يرجع إلينا — ما زال عند شركة الشحن أو عند العميل' };
     }
-    if (!asDate(order.returnReceivedAt ?? null)) {
+    if (!asDate(order.returnReceivedAt ?? null) || order.returnNothingCameBack === true) {
       return { eligible: false, code: 'RETURN_NOT_RECEIVED', reason: 'رجع ولم يستلمه المستودع بعد، أو أُغلق كخسارة ولن يعود' };
     }
     if (rule.afterShipping !== true) {

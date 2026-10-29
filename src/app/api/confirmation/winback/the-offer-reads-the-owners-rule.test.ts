@@ -384,7 +384,8 @@ describe('a parcel that came back', () => {
     expect(db.order.findFirst.mock.calls[0][0].include).toEqual({
       replacedBy: { select: { orderNumber: true } },
       replaces: { select: { orderNumber: true } },
-      returnReceipt: { select: { inspectedAt: true } },
+      // (and the three counts: a receipt that says nothing came back is not a return received)
+      returnReceipt: { select: { inspectedAt: true, receivedQty: true, damagedQty: true, missingQty: true } },
     });
   });
 });

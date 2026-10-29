@@ -50,6 +50,8 @@ const { db, requireContext, requirePermission, logAudit } = vi.hoisted(() => ({
     orderAddOn: { aggregate: async () => ({ _sum: { reservedQty: 0 } }), findMany: async () => [], update: async () => ({}), updateMany: async () => ({ count: 0 }) },
     orderItem: { updateMany: vi.fn() },
     orderActivity: { create: vi.fn() },
+    // The write-off door now writes the closing receipt after the shelf is drawn (it is never reached on a short shelf).
+    returnReceipt: { create: async () => ({ id: 'rr1' }) },
     inventoryMovement: { findFirst: vi.fn(), create: vi.fn() },
     productionBatch: {
       findMany: vi.fn(),

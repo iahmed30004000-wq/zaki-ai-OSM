@@ -113,7 +113,7 @@ export async function GET(req: Request) {
           deliveryProvider: { select: { id: true, name: true, kind: true } },
           // whether the counting desk received it, and with a fee or not —
           // the half of «where it ended up» the order's own columns lack
-          returnReceipt: { select: { courierFeeCharged: true } },
+          returnReceipt: { select: { courierFeeCharged: true, receivedQty: true, damagedQty: true, missingQty: true } },
         },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,

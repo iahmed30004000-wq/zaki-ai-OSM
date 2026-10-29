@@ -96,7 +96,8 @@ describe('the dashboard\'s counts add up to every order', () => {
       { confirmationStatus: 'POSTPONED', shippingStatus: 'NOT_READY', settlementStatus: 'NOT_APPLICABLE', rejectionReason: null, _count: { _all: 1 } },
     ]);
     // of the 7 returned: 4 counted with no fee, 1 with a fee, 2 not counted yet
-    const count = vi.fn(async ({ where }: any) => (where.returnReceipt.is.courierFeeCharged ? 1 : 4));
+    // (the dashboard now also asks «how many of those say nothing came back» — none of these do)
+    const count = vi.fn(async ({ where }: any) => (where.returnReceipt.is.receivedQty === 0 ? 0 : where.returnReceipt.is.courierFeeCharged ? 1 : 4));
     const r = await countOutcomes({ order: { groupBy, count } }, { companyId: 'c1', storeId: 's1' });
     const by = Object.fromEntries(r.outcomes.map((x) => [x.key, x.count]));
     expect(r.total).toBe(20);
@@ -113,5 +114,62 @@ describe('the dashboard\'s counts add up to every order', () => {
     ]);
     const r = await countOutcomes({ order: { groupBy, count: vi.fn() } }, { companyId: 'c1' });
     expect(r.outcomes.map((x) => x.key)).toEqual(OUTCOMES.filter((k) => k === 'SHIPPED' || k === 'POSTPONED'));
+  });
+});
+
+describe('a parcel written off as lost reads «مفقود بعد الشحن — خسارة = مغلق»', () => {
+  const returned = { confirmationStatus: 'CONFIRMED', shippingStatus: 'RETURNED', settlementStatus: 'NOT_APPLICABLE' };
+  const receipt = (over: Partial<NonNullable<OutcomeSource['returnReceipt']>> = {}) => ({
+    courierFeeCharged: false, receivedQty: 0, damagedQty: 0, missingQty: 4, ...over,
+  });
+
+  it('is read from the receipt\'s shape: nothing received, nothing damaged, some missing, no fee', () => {
+    const outcome = orderOutcome({ ...returned, returnReceipt: receipt() });
+    expect(outcome).toBe('LOST_AFTER_SHIPPING_CLOSED');
+    expect(OUTCOME_LABEL_AR[outcome]).toBe('مفقود بعد الشحن — خسارة = مغلق');
+    expect(OUTCOME_CLOSED[outcome]).toBe(true);
+  });
+
+  it('is said for a parcel still marked as waiting for its return, once the receipt is there', () => {
+    expect(orderOutcome({ ...returned, shippingStatus: 'RETURN_REQUESTED', returnReceipt: receipt() })).toBe('LOST_AFTER_SHIPPING_CLOSED');
+  });
+
+  it('NEGATIVE: one unit received, or one broken, is a return that came back', () => {
+    expect(orderOutcome({ ...returned, returnReceipt: receipt({ receivedQty: 1, missingQty: 3 }) })).toBe('RETURNED_NO_FEE_CLOSED');
+    expect(orderOutcome({ ...returned, returnReceipt: receipt({ damagedQty: 1, missingQty: 3 }) })).toBe('RETURNED_NO_FEE_CLOSED');
+  });
+
+  it('NEGATIVE: a receipt that expected nothing (missing 0) is not a loss', () => {
+    expect(orderOutcome({ ...returned, returnReceipt: receipt({ missingQty: 0 }) })).toBe('RETURNED_NO_FEE_CLOSED');
+  });
+
+  it('NEGATIVE: a courier fee charged keeps its own word — the fee is money, the shape is not', () => {
+    expect(orderOutcome({ ...returned, returnReceipt: receipt({ courierFeeCharged: true }) })).toBe('RETURNED_FEE_CLOSED');
+  });
+
+  it('NEGATIVE: a caller that did not select the counts reads exactly what it read before', () => {
+    expect(orderOutcome({ ...returned, returnReceipt: { courierFeeCharged: false } })).toBe('RETURNED_NO_FEE_CLOSED');
+  });
+
+  it('NEGATIVE: with no receipt it is still a return nobody has counted — the word that holds the order OPEN', () => {
+    expect(orderOutcome({ ...returned, returnReceipt: null })).toBe('RETURN_AWAITING');
+    expect(OUTCOME_CLOSED.RETURN_AWAITING).toBe(false);
+  });
+
+  it('the dashboard counts it apart, and the outcomes still add up to every order', async () => {
+    const groupBy = vi.fn().mockResolvedValue([
+      { confirmationStatus: 'CONFIRMED', shippingStatus: 'RETURNED', settlementStatus: 'NOT_APPLICABLE', rejectionReason: null, _count: { _all: 9 } },
+    ]);
+    // of the 9: 3 written off, 2 counted with no fee, 1 with a fee, 3 not counted yet
+    const count = vi.fn(async ({ where }: any) => {
+      const is = where.returnReceipt.is;
+      if (is.receivedQty === 0) return 3;
+      return is.courierFeeCharged ? 1 : 5; // «no fee» includes the 3 written off
+    });
+    const r = await countOutcomes({ order: { groupBy, count } }, { companyId: 'c1', storeId: 's1' });
+    const by = Object.fromEntries(r.outcomes.map((x) => [x.key, x.count]));
+    expect(by).toEqual({ LOST_AFTER_SHIPPING_CLOSED: 3, RETURNED_NO_FEE_CLOSED: 2, RETURNED_FEE_CLOSED: 1, RETURN_AWAITING: 3 });
+    expect(r.outcomes.reduce((s, x) => s + x.count, 0)).toBe(r.total);
+    expect(r.outcomes.find((x) => x.key === 'LOST_AFTER_SHIPPING_CLOSED')).toMatchObject({ closed: true, label: 'مفقود بعد الشحن — خسارة = مغلق' });
   });
 });

@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { closingStages } from './order-closing';
 import { CONFIRMATION_REFUSED } from './order-state';
+import { nothingCameBack, receiptNothingCameBackWhere } from './written-off';
 
 /**
  * WHERE AN ORDER ENDED UP, IN THE OWNER'S WORDS.
@@ -35,6 +36,7 @@ export const OUTCOMES = [
   'RETURNED_NO_FEE_CLOSED',
   'RETURNED_FEE_CLOSED',
   'RETURN_AWAITING',
+  'LOST_AFTER_SHIPPING_CLOSED',
   'CANCELLED_BEFORE_SHIPPING',
   'CANCELLED_DUPLICATE',
   'POSTPONED',
@@ -51,6 +53,7 @@ export const OUTCOME_LABEL_AR: Record<Outcome, string> = {
   RETURNED_NO_FEE_CLOSED: 'مرتجع بدون رسوم = مغلق',
   RETURNED_FEE_CLOSED: 'مرتجع برسوم = مغلق',
   RETURN_AWAITING: 'مرتجع — بانتظار الاستلام',
+  LOST_AFTER_SHIPPING_CLOSED: 'مفقود بعد الشحن — خسارة = مغلق',
   CANCELLED_BEFORE_SHIPPING: 'ملغي قبل الشحن',
   CANCELLED_DUPLICATE: 'ملغي مكرر',
   POSTPONED: 'مؤجل',
@@ -67,6 +70,7 @@ export const OUTCOME_CLOSED: Record<Outcome, boolean> = {
   RETURNED_NO_FEE_CLOSED: true,
   RETURNED_FEE_CLOSED: true,
   RETURN_AWAITING: false,
+  LOST_AFTER_SHIPPING_CLOSED: true,
   CANCELLED_BEFORE_SHIPPING: true,
   CANCELLED_DUPLICATE: true,
   POSTPONED: false,
@@ -79,7 +83,7 @@ export interface OutcomeSource {
   settlementStatus: string;
   rejectionReason?: string | null;
   /** The counting desk's receipt, when there is one. */
-  returnReceipt?: { courierFeeCharged: boolean } | null;
+  returnReceipt?: { courierFeeCharged: boolean; receivedQty?: number; damagedQty?: number; missingQty?: number } | null;
 }
 
 const IN_TRANSIT = ['READY_FOR_PICKUP', 'SHIPPED', 'OUT_FOR_DELIVERY'];
@@ -101,7 +105,13 @@ export function orderOutcome(o: OutcomeSource): Outcome {
   if (o.shippingStatus === 'PARTIALLY_DELIVERED') return closed ? 'PARTIAL_CLOSED' : 'PARTIAL_OPEN';
   if (COMING_BACK.includes(o.shippingStatus)) {
     if (!o.returnReceipt) return 'RETURN_AWAITING';
-    return o.returnReceipt.courierFeeCharged ? 'RETURNED_FEE_CLOSED' : 'RETURNED_NO_FEE_CLOSED';
+    const r = o.returnReceipt;
+    // No unit came back and nobody was charged (a write-off, or a zero count at the desk): a loss, and closed.
+    if (!r.courierFeeCharged && r.receivedQty !== undefined && r.damagedQty !== undefined && r.missingQty !== undefined
+      && nothingCameBack({ receivedQty: r.receivedQty, damagedQty: r.damagedQty, missingQty: r.missingQty })) {
+      return 'LOST_AFTER_SHIPPING_CLOSED';
+    }
+    return r.courierFeeCharged ? 'RETURNED_FEE_CLOSED' : 'RETURNED_NO_FEE_CLOSED';
   }
   if (IN_TRANSIT.includes(o.shippingStatus)) return 'SHIPPED';
   if (o.confirmationStatus === 'POSTPONED') return 'POSTPONED';
@@ -160,12 +170,16 @@ export async function countOutcomes(
     };
     if (COMING_BACK.includes(g.shippingStatus) || g.shippingStatus === 'PARTIALLY_DELIVERED') {
       const where = { ...base, ...src };
-      const [noFee, fee] = await Promise.all([
+      // Three questions about the receipt, each row in exactly one: nothing came back and no fee (a loss), no fee, a fee.
+      const [lostCount, noFeeAll, fee] = await Promise.all([
+        db.order.count({ where: { ...where, returnReceipt: { is: { courierFeeCharged: false, ...receiptNothingCameBackWhere() } } } }),
         db.order.count({ where: { ...where, returnReceipt: { is: { courierFeeCharged: false } } } }),
         db.order.count({ where: { ...where, returnReceipt: { is: { courierFeeCharged: true } } } }),
       ]);
-      const none = n - noFee - fee;
+      const noFee = noFeeAll - lostCount;
+      const none = n - noFeeAll - fee;
       if (none) add(orderOutcome({ ...src, returnReceipt: null }), none);
+      if (lostCount) add(orderOutcome({ ...src, returnReceipt: { courierFeeCharged: false, receivedQty: 0, damagedQty: 0, missingQty: 1 } }), lostCount);
       if (noFee) add(orderOutcome({ ...src, returnReceipt: { courierFeeCharged: false } }), noFee);
       if (fee) add(orderOutcome({ ...src, returnReceipt: { courierFeeCharged: true } }), fee);
     } else {
