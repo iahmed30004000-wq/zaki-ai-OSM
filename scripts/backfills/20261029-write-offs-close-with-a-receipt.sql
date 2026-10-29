@@ -27,10 +27,18 @@
 -- touched: the write-off consumed it the day it happened. updatedAt and
 -- version are not bumped, so no age-based alert is reset by it.
 --
--- WHO RUNS IT, AND WHEN: the owner. It writes to the production database, so it
--- is applied on his word — `prisma db execute --file migration.sql` and then
--- `prisma migrate resolve --applied 20261029010000_write_off_closes_with_a_receipt`
--- — or by the container's `prisma migrate deploy` on the Redeploy he presses.
+-- THIS IS A MANUAL SCRIPT, NOT A MIGRATION. It lives in scripts/backfills/ on purpose:
+-- nothing in prisma/migrations/ may write production data, because the container
+-- runs `prisma migrate deploy` on every start. Nothing runs this file by itself.
+--
+-- WHO RUNS IT, AND WHEN: the owner, by his own press. It writes to the production
+-- database. Steps:
+--   1. Run the two read-only counts below. The first is how many orders get a receipt.
+--   2. Look at the number. If it is not what you expect, stop.
+--   3. Run it:   npx prisma db execute --file scripts/backfills/20261029-write-offs-close-with-a-receipt.sql
+--      (safe to run again: a second run finds nothing left to do).
+--   4. To undo it: the .rollback.sql file next to this one.
+-- No `prisma migrate resolve` is needed: it is not in the migrations table.
 --
 -- HOW MANY ORDERS IT WILL TOUCH (read-only; run it first):
 --   SELECT count(*) AS will_get_a_receipt

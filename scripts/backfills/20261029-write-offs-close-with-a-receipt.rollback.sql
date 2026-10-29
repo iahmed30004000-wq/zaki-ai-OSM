@@ -1,5 +1,5 @@
--- Rollback for 20261029010000_write_off_closes_with_a_receipt.
--- Removes only the receipts that migration wrote (ids starting with 'wo-backfill-'),
+-- Rollback for scripts/backfills/20261029-write-offs-close-with-a-receipt.sql (run by the owner, the same way).
+-- Removes only the receipts that script wrote (ids starting with 'wo-backfill-'),
 -- and puts returnedAt back to empty only where it still holds that receipt's day.
 -- A receipt the desk wrote or completed since then has another id and stays.
 -- A parcel that turned up and was completed at the desk had its receipt rewritten
@@ -14,4 +14,3 @@ WHERE r."orderId" = o."id"
   AND o."returnedAt" = r."inspectedAt";
 DELETE FROM "return_receipts"
 WHERE "id" LIKE 'wo-backfill-%' AND "receivedQty" = 0 AND "damagedQty" = 0;
-DELETE FROM "_prisma_migrations" WHERE "migration_name" = '20261029010000_write_off_closes_with_a_receipt';

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { expectedBackTotal } from './partial-delivery';
@@ -13,8 +13,10 @@ import { LOSS_RECEIPT_NOTE, SETTLEMENT_WITH_MONEY, nothingCameBack } from './wri
  * evidence — the file run inside a rolled-back transaction on a copy — is the owner's step before he applies it.
  */
 
-const DIR = path.join(process.cwd(), 'prisma', 'migrations', '20261029010000_write_off_closes_with_a_receipt');
-const raw = readFileSync(path.join(DIR, 'migration.sql'), 'utf8');
+const DIR = path.join(process.cwd(), 'scripts', 'backfills');
+const SCRIPT = '20261029-write-offs-close-with-a-receipt.sql';
+const ROLLBACK = '20261029-write-offs-close-with-a-receipt.rollback.sql';
+const raw = readFileSync(path.join(DIR, SCRIPT), 'utf8');
 const code = (text: string) =>
   text
     .split('\n')
@@ -26,6 +28,33 @@ const statements = code(raw)
   .filter(Boolean);
 const insert = statements.find((s) => s.startsWith('INSERT INTO "return_receipts"'))!;
 const updates = statements.filter((s) => s.startsWith('UPDATE "orders"'));
+
+describe('it is a script the owner runs, never a migration the container runs', () => {
+  /** Every file under prisma/migrations/, however deep, with its text. */
+  const migrationFiles = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? migrationFiles(path.join(dir, e.name)) : [path.join(dir, e.name)]));
+
+  it('lives under scripts/backfills/, with its rollback beside it', () => {
+    expect(existsSync(path.join(DIR, SCRIPT))).toBe(true);
+    expect(existsSync(path.join(DIR, ROLLBACK))).toBe(true);
+  });
+
+  it('NEGATIVE: no file in prisma/migrations/ is named for it or mentions it — `migrate deploy` runs that folder on every start', () => {
+    const root = path.join(process.cwd(), 'prisma', 'migrations');
+    const files = migrationFiles(root);
+    expect(files.length).toBeGreaterThan(10); // the walk is not vacuous
+    for (const f of files) {
+      expect(path.relative(root, f), 'a file named for the write-off backfill').not.toMatch(/write_off|write-off|wo-backfill/i);
+      expect(readFileSync(f, 'utf8'), f).not.toMatch(/wo-backfill-|WRITTEN_OFF_AS_LOSS/);
+    }
+  });
+
+  it('says so in its own head, and tells the owner how to run it', () => {
+    expect(raw).toContain('THIS IS A MANUAL SCRIPT, NOT A MIGRATION');
+    expect(raw).toContain('npx prisma db execute --file scripts/backfills/20261029-write-offs-close-with-a-receipt.sql');
+    expect(raw).toContain('HOW MANY ORDERS IT WILL TOUCH (read-only; run it first)');
+  });
+});
 
 describe('the file only adds, and says so', () => {
   it('is one insert and two updates — nothing is deleted, dropped, truncated or altered', () => {
@@ -41,11 +70,12 @@ describe('the file only adds, and says so', () => {
 
   it('every receipt it writes is tagged, so the rollback finds those and nothing else', () => {
     expect(insert).toContain(`'wo-backfill-' || gen_random_uuid()::text`);
-    const rollback = code(readFileSync(path.join(DIR, 'rollback.sql'), 'utf8'));
+    const rollback = code(readFileSync(path.join(DIR, ROLLBACK), 'utf8'));
     expect(rollback.match(/'wo-backfill-%'/g)!.length).toBe(2);
     // it only removes a receipt that still says nothing came back: one the desk completed holds real units and stays
     expect(rollback).toMatch(/DELETE FROM "return_receipts"\s+WHERE "id" LIKE 'wo-backfill-%' AND "receivedQty" = 0 AND "damagedQty" = 0;/);
-    expect(rollback).toContain(`DELETE FROM "_prisma_migrations" WHERE "migration_name" = '20261029010000_write_off_closes_with_a_receipt'`);
+    // it is not a migration, so there is no migrations-table row to take back
+    expect(rollback).not.toContain('_prisma_migrations');
   });
 
   it('writes the receipt the door writes: received 0, damaged 0, missing = expected, no fee, the loss note', () => {
