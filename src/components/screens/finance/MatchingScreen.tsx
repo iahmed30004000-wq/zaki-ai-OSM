@@ -14,6 +14,7 @@ import { BulkDecide } from '@/components/screens/finance/BulkDecide';
 import { DifferencesByPerson } from '@/components/screens/finance/DifferencesByPerson';
 import { NotMentionedActions } from '@/components/screens/finance/NotMentionedActions';
 import { LinkLineDialog } from '@/components/screens/finance/LinkLineDialog';
+import { SwapDialog } from '@/components/screens/finance/SwapDialog';
 import { mayCorrectStatus } from '@/lib/not-mentioned';
 import { useToast } from '@/components/ui/Toast';
 import { Rows, type Column } from '@/components/ui/Rows';
@@ -262,6 +263,7 @@ export function MatchingScreen() {
           <Queue
             title="فرق في المبلغ"
             resolvable
+            swappable={mayReview && !closed}
             locked={closed}
             reason
             statementId={selected}
@@ -315,6 +317,7 @@ function Queue({
   hint,
   currency,
   resolvable,
+  swappable,
   reason,
   unmentioned,
   linkable,
@@ -330,6 +333,8 @@ function Queue({
   currency: string;
   /** A difference in money: two figures, and the person says which one stands. Only «فرق في المبلغ». */
   resolvable?: boolean;
+  /** The courier handed the box to another customer: «كان من طرد طلب آخر». Only a line with money and no answer yet. */
+  swappable?: boolean;
   /** Show the company's own reason: its status word and its whole row. */
   reason?: boolean;
   /** Orders no statement names: no company figure, so the order's outcome word and three actions on the order. */
@@ -481,6 +486,30 @@ function Queue({
                 onResolved={() => onResolved?.()}
               />
             ),
+          },
+        ]
+      : []),
+    ...(swappable && statementId
+      ? [
+          {
+            key: 'swap',
+            label: 'تبديل طرد',
+            render: (m: Match) => {
+              const stated = num(m.statementAmount);
+              if (!m.order || m.resolution || m.matchedBy === 'MANUAL' || !stated || stated <= 0) {
+                return <span className="text-[var(--sys-muted)]">—</span>;
+              }
+              return (
+                <SwapDialog
+                  statementId={statementId}
+                  matchId={m.id}
+                  reference={m.statementLine?.barcode ?? m.statementLine?.merchantRef ?? null}
+                  amount={stated}
+                  currency={currency}
+                  onDone={() => onResolved?.()}
+                />
+              );
+            },
           },
         ]
       : []),

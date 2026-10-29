@@ -45,10 +45,14 @@ const SRC = join(process.cwd(), 'src');
  *     shipping life, and the confirmation one otherwise — never REJECTED.
  *   · `app/api/shipping-batches/[id]/route.ts` — `order.shipped`, one per parcel, when the press of
  *     «إغلاق الشحنة — سُلّمت للشركة» hands the trolley over (it stamped the parcels and told nobody).
+ *   · `lib/parcel-swap-events.ts` — `order.delivered` for the sale a parcel swap records and `order.returned` for
+ *     the box's order, after the commit (29/10). Never `order.created`; `replacesOrderNumber` is an optional
+ *     field inside `data`, which the contract allows.
  */
 const ALLOWED = [
   'lib/public-order.ts',
   'lib/order-cancel.ts',
+  'lib/parcel-swap-events.ts',
   'app/api/orders/[id]/confirmation/route.ts',
   'app/api/orders/[id]/shipping/route.ts',
   'app/api/shipping-batches/[id]/route.ts',
@@ -106,7 +110,7 @@ describe('every place an app event is announced from', () => {
     expect(all.length, 'لم يُعثَر على أيّ نداء — المسح لا يمسح').toBeGreaterThanOrEqual(3);
   });
 
-  it('and they are exactly the five the contract was written for (the three it began with, and the two that announce a cancel and a handover)', () => {
+  it('and they are exactly the six the contract was written for (the three it began with, and the three that announce a cancel, a handover and a parcel swap)', () => {
     const files = [...new Set(all.map((s) => s.file))].sort();
     expect(
       files,

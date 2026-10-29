@@ -1002,7 +1002,7 @@
   "src/components/screens/finance/MatchingScreen.tsx": {
     "buttons": 2,
     "inputs": 1,
-    "columns": 14,
+    "columns": 15,
     "cards": 0,
     "modals": 0,
     "icons": 3,
@@ -1017,6 +1017,16 @@
     "modals": 0,
     "icons": 4,
     "links": 1,
+    "tabs": 0
+  },
+  "src/components/screens/finance/SwapDialog.tsx": {
+    "buttons": 5,
+    "inputs": 3,
+    "columns": 0,
+    "cards": 0,
+    "modals": 1,
+    "icons": 3,
+    "links": 0,
     "tabs": 0
   },
   "src/components/screens/finance/TransfersScreen.tsx": {
