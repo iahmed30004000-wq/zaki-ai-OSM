@@ -453,8 +453,9 @@ describe('Ⅶ · the start route', () => {
     expect(start, 'الحالةُ تُكتَبُ في سجلِّ التدقيق').not.toMatch(/newData: \{[^}]*state/);
   });
 
-  it('and is gated on settings.edit', () => {
-    expect(start).toMatch(/requirePermission\('settings\.edit'\)/);
+  it('and is gated on settings.manage — the same key as pasting the same token (RV169), not settings.edit', () => {
+    expect(start).toMatch(/requirePermission\('settings\.manage'\)/);
+    expect(start).not.toMatch(/requirePermission\('settings\.edit'\)/);
   });
 });
 

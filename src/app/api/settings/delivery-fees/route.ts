@@ -87,7 +87,7 @@ export async function GET(req: Request) {
 export async function PUT(req: Request) {
   try {
     const { user, companyId, countryId } = await requireContext();
-    await requirePermission('settings.edit');
+    await requirePermission('settings.delivery_fees');
 
     const parsed = upsertSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {

@@ -87,7 +87,7 @@ export async function GET(req: Request) {
   try {
     const { companyId, storeId } = await requireContext();
     const wantsSample = new URL(req.url).searchParams.get('sample') === '1';
-    if (wantsSample) await requirePermission('settings.manage');
+    if (wantsSample) await requirePermission('settings.messages');
 
     return NextResponse.json({
       templates: await templatesFor(companyId),
@@ -104,7 +104,7 @@ export async function GET(req: Request) {
 export async function PUT(req: Request) {
   try {
     const { user, companyId } = await requireContext();
-    await requirePermission('settings.manage');
+    await requirePermission('settings.messages');
 
     const parsed = schema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {

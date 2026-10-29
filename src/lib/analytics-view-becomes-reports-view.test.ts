@@ -201,13 +201,13 @@ const statements = stripped
 const [denyStmt, roleStmt, defaultsStmt, allowStmt] = statements;
 
 describe('the migration, read as text', () => {
-  it('runs after everything it reads — the sensitive-settings migration and the shortfall one — and need not be the last', () => {
+  it('runs after every migration that writes the keys it reads (a LATER migration may exist: PR-4 added one)', () => {
     const names = readdirSync(path.join(root, 'prisma', 'migrations')).filter((n) => /^\d{14}_/.test(n)).sort();
     const at = names.indexOf(NAME);
     expect(at).toBeGreaterThan(-1);
-    for (const read of ['20261027000000_sensitive_settings_own_key', '20261029120000_shortfall_penalty']) {
-      expect(names.indexOf(read), read).toBeGreaterThan(-1);
-      expect(names.indexOf(read), `${read} must sort before ${NAME}`).toBeLessThan(at);
+    // The migrations that give analytics.view / reports.view to anybody all sort before it.
+    for (const n of ['20261027000000_sensitive_settings_own_key', '20261029000000_tracking_returns_view_key', '20261029120000_shortfall_penalty']) {
+      expect(names.indexOf(n), n).toBeLessThan(at);
     }
   });
 

@@ -389,7 +389,7 @@ export function OrdersScreen() {
   const canCreate = userCan(currentUser, 'orders.create');
   const canImport = userCan(currentUser, 'orders.import');
   // The migration door writes confirmed, shipped orders with a past date — the owner's, as the door itself insists.
-  const canMigrate = canImport && userCan(currentUser, 'settings.manage');
+  const canMigrate = canImport && userCan(currentUser, 'orders.migrate');
   /*
    * «+ أنشئ» IN CTRL+K ARRIVES AS `?new=…` AND OPENS THE SAME THREE FORMS THE THREE BUTTONS IN THE HEADER OPEN — for whoever those
    * buttons are drawn for, and nobody else: a handler is passed only where its button is.

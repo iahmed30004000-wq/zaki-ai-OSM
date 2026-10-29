@@ -161,9 +161,12 @@ describe('the rule it reads', () => {
   });
 
   it('and «can edit» is the settings permission, asked of the person — not the supervisor’s', async () => {
-    can.mockImplementation((_u: unknown, perm: string) => perm === 'settings.manage');
+    // PR-4: the rule is edited with its own box (offers.rules), not with the sensitive-settings key.
+    can.mockImplementation((_u: unknown, perm: string) => perm === 'offers.rules');
     expect((await (await get()).json()).canEditRule).toBe(true);
-    expect(can).toHaveBeenCalledWith(user, 'settings.manage');
+    expect(can).toHaveBeenCalledWith(user, 'offers.rules');
+    can.mockImplementation((_u: unknown, perm: string) => perm === 'settings.manage');
+    expect((await (await get()).json()).canEditRule, 'NEGATIVE: the old key no longer offers the editor').toBe(false);
   });
 
   it('and a stored rule is what is applied: a 30-day look-back moves the line the list reads from', async () => {

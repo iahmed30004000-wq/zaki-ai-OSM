@@ -55,6 +55,12 @@ export const PERMISSION_MODULES: CatalogModule[] = [
        * does not import.
        */
       { key: 'orders.import', requires: 'orders.create', ar: 'استيراد طلبات', en: 'Import orders' },
+      /*
+       * The door that writes CONFIRMED, SHIPPED orders with a date in the past. It asked for orders.import AND the
+       * sensitive-settings box — a key that has nothing to do with orders — so it is its own box now. It needs
+       * the import button it sits behind, and it is meant for the owner.
+       */
+      { key: 'orders.migrate', requires: 'orders.import', ar: 'ترحيل طلبات سابقة من ملفات (للمالك)', en: 'Migrate past orders from files (owner)' },
       /**
        * Recording what happened on a call had no permission of its own: the
        * contact-attempts door took `orders.edit` OR `orders.claim`, and the
@@ -103,6 +109,8 @@ export const PERMISSION_MODULES: CatalogModule[] = [
     items: [
       { key: 'offers.view', ar: 'عرض العروض', en: 'View offers' },
       { key: 'offers.manage', requires: 'offers.view', ar: 'إدارة العروض', en: 'Manage offers' },
+      // The two rules that decide how much a discount may give away: the window after an order, and who may be won back.
+      { key: 'offers.rules', requires: 'settings.view', ar: 'تعديل قواعد العروض — نافذة ما بعد الطلب وقاعدة استعادة العملاء', en: 'Edit offer rules — the post-order window and the win-back rule' },
     ],
   },
   {
@@ -190,9 +198,20 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       {
         key: 'settings.manage',
         requires: 'settings.view',
-        ar: 'إعدادات النظام الحسّاسة — مفاتيح شركات الشحن والإعلانات والذكاء، وتشغيل المهام المجدولة',
-        en: 'Sensitive system settings — courier, ad-account and AI credentials, and running scheduled jobs',
+        ar: 'إعدادات النظام الحسّاسة — مفاتيح شركات الشحن وحسابات الإعلانات ومزوّد الذكاء',
+        en: 'Sensitive system settings — courier, ad-account and AI credentials',
       },
+      /*
+       * THE DOORS THAT USED TO HIDE BEHIND settings.manage / settings.edit, EACH WITH ITS OWN BOX.
+       *
+       * Nobody who passed yesterday is stopped on the deploy: the migration
+       * 20261029150000_settings_split_keys gave each box to exactly the roles and people who passed that door,
+       * and carried every «منع». From then on the owner unticks one box without touching the others.
+       */
+      { key: 'settings.jobs', requires: 'settings.view', ar: 'تشغيل المهام المجدولة وإعادة تفعيلها', en: 'Run and re-enable scheduled jobs' },
+      { key: 'settings.messages', requires: 'settings.view', ar: 'تعديل قوالب الرسائل ومعاينتها على طلب حقيقي', en: 'Edit message templates and preview them on a real order' },
+      { key: 'settings.delivery_fees', requires: 'settings.view', ar: 'تعديل أجور التوصيل لكل شركة ومحافظة', en: 'Edit delivery fees per courier and region' },
+      { key: 'settings.tracking', requires: 'settings.view', ar: 'تعديل بكسلات الإعلانات وتحويلاتها ورمز الربط من الخادم', en: 'Edit ad pixels, their conversions and the server-side token' },
     ],
   },
   {
@@ -231,7 +250,8 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       // the key that lets somebody see their TEAM's — a different decision,
       // and one the owner grants deliberately.
       { key: 'team.monitor', ar: 'متابعة أداء الفريق', en: 'Monitor team performance' },
-
+      // The thresholds the team's scores are judged by — reading the scores is team.monitor.
+      { key: 'team.settings', requires: 'settings.view', ar: 'تعديل عتبات أداء الفريق', en: 'Edit team performance thresholds' },
     ],
   },
   {
@@ -248,6 +268,14 @@ export const PERMISSION_MODULES: CatalogModule[] = [
     ],
   },
   {
+    module: 'commission',
+    items: [
+      // Reading the rules AND where every agent stands in the running period: the second is other people's numbers.
+      { key: 'commission.view', opens: ['العمولات'], ar: 'عرض قواعد العمولة وتقدّم الفريق في الفترة الجارية', en: 'View commission rules and the team progress in the running period' },
+      { key: 'commission.manage', requires: 'commission.view', ar: 'إضافة قواعد العمولة وإنهاؤها', en: 'Add and end commission rules' },
+    ],
+  },
+  {
     module: 'penalties',
     items: [
       // Seeing what the system PROPOSED is not deciding it. Two keys,
@@ -256,6 +284,8 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       // would hand the second to everybody who needed the first.
       { key: 'penalties.view', opens: ['خصومات الموظفين'], ar: 'عرض الخصومات المقترحة', en: 'View proposed deductions' },
       { key: 'penalties.decide', requires: 'penalties.view', ar: 'اعتماد الخصومات أو إلغاؤها', en: 'Apply or waive deductions' },
+      // The rule that PROPOSES a deduction (how much per minute late, the cap) — not the decision on one person's.
+      { key: 'penalties.rules', requires: 'settings.view', ar: 'تعديل قواعد الخصومات', en: 'Edit deduction rules' },
     ],
   },
   {
@@ -470,6 +500,7 @@ export const MODULE_LABELS: Record<string, { ar: string; en: string }> = {
   control: { ar: 'الرقابة', en: 'Control' },
   team: { ar: 'الفريق', en: 'Team' },
   payroll: { ar: 'الرواتب', en: 'Payroll' },
+  commission: { ar: 'العمولات', en: 'Commission' },
   penalties: { ar: 'الخصومات', en: 'Deductions' },
   growth: { ar: 'النمو', en: 'Growth' },
   apps: { ar: 'التطبيقات', en: 'Apps' },

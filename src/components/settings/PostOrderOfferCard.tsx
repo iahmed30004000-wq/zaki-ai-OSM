@@ -34,8 +34,8 @@ const FIELD =
 
 export function PostOrderOfferCard() {
   const toast = useToast();
-  // The window is «الإعدادات الحسّاسة»: seen by whoever opens the page, changed by whoever holds that key.
-  const canManage = useCan('settings.manage');
+  // The window is «تعديل قواعد العروض»: seen by whoever opens the page, changed by whoever holds that key.
+  const canManage = useCan('offers.rules');
   const [settings, setSettings] = useState<PostOrderOfferSettings | null>(null);
   const [defaults, setDefaults] = useState<PostOrderOfferSettings | null>(null);
   const [fixed, setFixed] = useState<string[]>([]);
@@ -150,7 +150,7 @@ export function PostOrderOfferCard() {
           </span>
         </label>
 
-        {!canManage && <p className="text-xs text-[var(--sys-muted)]">قراءة فقط — التعديل لمن عنده «الإعدادات الحسّاسة».</p>}
+        {!canManage && <p className="text-xs text-[var(--sys-muted)]">قراءة فقط — التعديل لمن عنده «تعديل قواعد العروض».</p>}
         {canManage && (
         <div className="flex items-center gap-2">
           <Button size="sm" onClick={save} disabled={busy}>

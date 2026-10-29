@@ -102,6 +102,8 @@ export function CommissionSettingsScreen() {
   // server asks for the same key, so a hidden button is not the guard.
   const { currentUser } = useApp();
   const canPay = userCan(currentUser, 'finance.create');
+  // Writing a rule decides what people are paid: its own box, and the page opening does not carry it.
+  const canManage = userCan(currentUser, 'commission.manage');
   const [totals, setTotals] = useState<Totals[] | null>(null);
   // Whether the volume each person is paid on reflects their work or the
   // calendar. Read from the same response as the money, so the two cannot
@@ -160,12 +162,14 @@ export function CommissionSettingsScreen() {
       <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--sys-border)]">
           <h2 className="text-sm font-medium text-[var(--sys-heading)]">قواعد العمولة</h2>
-          <button
-            onClick={() => setNewOpen(true)}
-            className="h-11 md:h-8 px-3 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5"
-          >
-            <RiAddCircleLine className="w-4 h-4" /> قاعدة جديدة
-          </button>
+          {canManage && (
+            <button
+              onClick={() => setNewOpen(true)}
+              className="h-11 md:h-8 px-3 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5"
+            >
+              <RiAddCircleLine className="w-4 h-4" /> قاعدة جديدة
+            </button>
+          )}
         </div>
 
         {/* A store with no rule in force earns nobody anything. That is
@@ -271,7 +275,7 @@ export function CommissionSettingsScreen() {
               },
             ]}
             actions={(r) =>
-              r.effectiveTo || !r.isActive ? null : (
+              r.effectiveTo || !r.isActive || !canManage ? null : (
                 <button onClick={() => setEndFor(r)} className="text-xs text-[var(--sys-primary)] hover:underline">
                   إنهاء العمل بها
                 </button>
@@ -281,7 +285,7 @@ export function CommissionSettingsScreen() {
               <EmptyState
                 title="لا قواعد عمولة بعد"
                 why="بلا قاعدةٍ لا تُحتسب عمولةٌ لأحد، مهما سُلِّم من طلبات. أضِف واحدةً من الزرّ أعلاه."
-                action={{ label: 'أضف أول قاعدة', onClick: () => setNewOpen(true) }}
+                action={canManage ? { label: 'أضف أول قاعدة', onClick: () => setNewOpen(true) } : undefined}
               />
             }
           />

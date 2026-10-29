@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 /**
  * «شو القاعدة تبعو لاني ممكن اعدلها» — THE DOOR THE OWNER EDITS IT THROUGH.
  *
- * What the route owes: that only whoever holds `settings.manage` may change how
+ * What the route owes: that only whoever holds `offers.rules` may change how
  * much of the company's money a discount can give away (a supervisor works the
  * list and reads the rule; she does not write it), that a rule outside its bounds
  * is REFUSED with a sentence rather than quietly clamped, that only the `winback`
@@ -62,14 +62,15 @@ const nothingWritten = () => {
 };
 
 describe('who may change it', () => {
-  it('— settings.manage, and nothing else: asked by name, before anything is read', async () => {
+  it('— offers.rules (split from settings.manage in PR-4), and nothing else: asked by name, before anything is read', async () => {
     await put(good);
-    expect(requirePermission).toHaveBeenCalledWith('settings.manage');
+    expect(requirePermission).toHaveBeenCalledWith('offers.rules');
+    expect(requirePermission).not.toHaveBeenCalledWith('settings.manage');
     expect(requirePermission.mock.invocationCallOrder[0]).toBeLessThan(db.company.findUnique.mock.invocationCallOrder[0]);
   });
 
   it('and a supervisor, who works the list, is turned away: 403, nothing read, nothing saved, nothing written down', async () => {
-    requirePermission.mockRejectedValue(new Error('Forbidden: missing required permission settings.manage'));
+    requirePermission.mockRejectedValue(new Error('Forbidden: missing required permission offers.rules'));
     const res = await put(good);
     expect(res.status).toBe(403);
     expect(db.company.findUnique).not.toHaveBeenCalled();
