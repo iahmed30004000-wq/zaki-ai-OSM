@@ -78,6 +78,8 @@ interface OrderRow {
    * and only the first can have an entry issue opened on it.
    */
   source: string | null;
+  /** The address this order goes to; the customer's own is the fallback. */
+  deliveryAddress?: string | null;
   moderatorId: string | null;
   moderator: { id: string; name: string } | null;
   createdBy: { id: string; name: string } | null;
@@ -645,7 +647,7 @@ export function ConfirmationMineScreen() {
 
                 <div className="text-sm text-[var(--sys-foreground)]">
                   {order.customer.fullName} · <span dir="ltr">{order.customer.rawPhone}</span> · {order.customer.city}
-                  <p className="text-xs text-[var(--sys-muted-foreground)] mt-1">{order.customer.address}</p>
+                  <p className="text-xs text-[var(--sys-muted-foreground)] mt-1">{order.deliveryAddress ?? order.customer.address}</p>
                 </div>
 
                 <ul className="text-xs text-[var(--sys-muted-foreground)] space-y-0.5">

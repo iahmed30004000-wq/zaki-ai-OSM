@@ -26,7 +26,7 @@ vi.mock('./meta-capi', async (orig) => ({
 }));
 
 import { deliverConversion } from './emit';
-import { customerPhoneFacts } from './hash';
+import { buildUserData, customerPhoneFacts } from './hash';
 
 const sha = (v: string) => crypto.createHash('sha256').update(v, 'utf8').digest('hex');
 
@@ -107,6 +107,22 @@ describe('customerPhoneFacts', () => {
 
   it('marks a whole foreign number as international', () => {
     expect(customerPhoneFacts('962791234567', 'SY')).toMatchObject({ phone: '962791234567', phoneInternational: true });
+  });
+
+  it('a foreign number written with a plus and spaces is hashed as its digits (the non-digits go, the letter D does not)', () => {
+    expect(customerPhoneFacts('+962 79 123 4567', 'SY')).toMatchObject({ phone: '962791234567', phoneInternational: true });
+    expect(buildUserData(customerPhoneFacts('+962 79 123 4567', 'SY')).ph).toEqual([sha('962791234567')]);
+    // The same digits typed plainly give the same fingerprint.
+    expect(buildUserData(customerPhoneFacts('962791234567', 'SY')).ph).toEqual(buildUserData(customerPhoneFacts('+962 79 123 4567', 'SY')).ph);
+  });
+
+  it('buildUserData given a whole international phone with a plus and spaces hashes its digits only', () => {
+    expect(buildUserData({ phone: '+962 79 123 4567', phoneInternational: true }).ph).toEqual([sha('962791234567')]);
+    expect(buildUserData({ phone: '00962-79-123-4567', phoneInternational: true }).ph).toEqual([sha('962791234567')]);
+  });
+
+  it('a national number with spaces and dashes is hashed with the stores own code', () => {
+    expect(buildUserData(customerPhoneFacts('944 123-456', 'SY')).ph).toEqual([sha('963944123456')]);
   });
 
   it('NEGATIVE: a country with no rule, or no phone, is passed through untouched', () => {

@@ -184,7 +184,7 @@ export function customerPhoneFacts(
   const country = /^[a-z]{2}$/.test(code) ? code : null;
   const rule = ruleFor(orderCountryCode);
   if (!rule || !phone) return { phone: phone ?? null, country };
-  const digits = toLatinDigits(String(phone)).replace(/D/g, '');
+  const digits = toLatinDigits(String(phone)).replace(/\D/g, '');
   if (isForeignNumber(digits, rule)) return { phone: digits, country, phoneInternational: true };
   return { phone: digits, country, phoneCountryCode: rule.dialCode };
 }
@@ -203,7 +203,7 @@ export function buildUserData(facts: CustomerFacts): UserData {
 
   const ph = hashed(
     facts.phoneInternational
-      ? String(facts.phone ?? '').replace(/D+/g, '').replace(/^0+/, '') || null
+      ? String(facts.phone ?? '').replace(/\D+/g, '').replace(/^0+/, '') || null
       : normalizePhone(facts.phone, facts.phoneCountryCode ?? '962')
   );
   if (ph) out.ph = [ph];

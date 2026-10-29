@@ -76,6 +76,8 @@ const ORDER_SELECT = {
   moderator: { select: { id: true, name: true } },
   createdBy: { select: { id: true, name: true } },
   channel: { select: { id: true, name: true } },
+  // The street THIS order goes to, when the visitor typed one other than the customer row's — shown before it.
+  deliveryAddress: true,
   customer: { select: { id: true, fullName: true, phone: true, rawPhone: true, city: true, address: true, totalOrders: true } },
   items: { select: { id: true, productName: true, quantity: true, freeQuantity: true, lineTotal: true, reservedQty: true } },
   // What the customer added on the thank-you screen. The total on the card already carries it, so a card that

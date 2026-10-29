@@ -58,6 +58,8 @@ export async function POST(req: Request) {
         confirmationStatus: true, shippingStatus: true, claimedById: true,
         shippedAt: true, labelPrintedAt: true,
         customerNotes: true,
+        // Read only to know whether an address EXISTS (below); its text is never put in the payload.
+        deliveryAddress: true,
         customer: { select: { id: true, fullName: true, address: true, city: true } },
         items: { select: { productName: true, quantity: true, freeQuantity: true } },
       },
@@ -110,7 +112,7 @@ export async function POST(req: Request) {
         // The address itself is not sent: what the agent needs to know is
         // whether one is missing, and an address in the payload is customer
         // data travelling for no reason.
-        hasAddress: !!order.customer?.address?.trim(),
+        hasAddress: !!(order.deliveryAddress ?? order.customer?.address)?.trim(),
         /*
          * The notes are the seller's own words about this order, and the
          * person is often in them — «البيت جنب مدرسة فلان» is an address

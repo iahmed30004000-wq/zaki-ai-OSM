@@ -41,6 +41,8 @@ export async function POST() {
       select: {
         id: true, orderNumber: true, merchantRef: true, totalAmount: true, currency: true,
         confirmationStatus: true, createdAt: true,
+        // The street THIS order goes to — see the same select in `mine`.
+        deliveryAddress: true,
         customer: { select: { id: true, fullName: true, phone: true, rawPhone: true, city: true, address: true } },
         items: { select: { id: true, productName: true, quantity: true, freeQuantity: true, lineTotal: true } },
         // The customer's own additions after the order — see the same select in `mine`.
