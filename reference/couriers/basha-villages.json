@@ -2209,7 +2209,7 @@
  },
  {
   "villageId": 741590,
-  "villageName": "المدينة الصناعية الشيخ نجار ",
+  "villageName": "المدينة الصناعية الشيخ نجار",
   "cityId": 570321,
   "cityName": "المدينة الصناعية الشيخ نجار",
   "regionId": 2994,
@@ -2515,7 +2515,7 @@
   "villageId": 910149,
   "villageName": "تل عرن",
   "cityId": 683201,
-  "cityName": "تل عرن ",
+  "cityName": "تل عرن",
   "regionId": 3525,
   "regionName": "ريف حلب"
  },
@@ -3051,7 +3051,7 @@
   "villageId": 910159,
   "villageName": "كفر جنة",
   "cityId": 683194,
-  "cityName": "كفر جنة ",
+  "cityName": "كفر جنة",
   "regionId": 3525,
   "regionName": "ريف حلب"
  },
@@ -3270,5 +3270,421 @@
   "cityName": "وادي قنديل",
   "regionId": 2998,
   "regionName": "اللاذقية"
+ },
+ {
+  "villageId": 731511,
+  "villageName": "عريقة",
+  "cityId": 566119,
+  "cityName": "منطقة شهبا",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731500,
+  "villageName": "العانات",
+  "cityId": 566118,
+  "cityName": "منطقة صلخد",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731534,
+  "villageName": "العانات",
+  "cityId": 566121,
+  "cityName": "منطقة ملح",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731505,
+  "villageName": "الدويرة",
+  "cityId": 566118,
+  "cityName": "منطقة صلخد",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731531,
+  "villageName": "الغيضة",
+  "cityId": 566121,
+  "cityName": "منطقة ملح",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731503,
+  "villageName": "الغيضة",
+  "cityId": 566118,
+  "cityName": "منطقة صلخد",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731501,
+  "villageName": "الهويا",
+  "cityId": 566118,
+  "cityName": "منطقة صلخد",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731533,
+  "villageName": "الهويا",
+  "cityId": 566121,
+  "cityName": "منطقة ملح",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731532,
+  "villageName": "الجنينة",
+  "cityId": 566121,
+  "cityName": "منطقة ملح",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731502,
+  "villageName": "الجنينة",
+  "cityId": 566118,
+  "cityName": "منطقة صلخد",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731506,
+  "villageName": "الجرينة",
+  "cityId": 566118,
+  "cityName": "منطقة صلخد",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731490,
+  "villageName": "حي الكوم",
+  "cityId": 566117,
+  "cityName": "مدينة السويداء",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731489,
+  "villageName": "حي المقوس",
+  "cityId": 566117,
+  "cityName": "مدينة السويداء",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731499,
+  "villageName": "المشنف",
+  "cityId": 566118,
+  "cityName": "منطقة صلخد",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731535,
+  "villageName": "المشنف",
+  "cityId": 566121,
+  "cityName": "منطقة ملح",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731491,
+  "villageName": "حي المزرعة",
+  "cityId": 566117,
+  "cityName": "مدينة السويداء",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731504,
+  "villageName": "الملح",
+  "cityId": 566118,
+  "cityName": "منطقة صلخد",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731530,
+  "villageName": "ملح",
+  "cityId": 566121,
+  "cityName": "منطقة ملح",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731522,
+  "villageName": "القريا",
+  "cityId": 566120,
+  "cityName": "منطقة القريا",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731536,
+  "villageName": "القريا",
+  "cityId": 566121,
+  "cityName": "منطقة ملح",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731498,
+  "villageName": "القريا",
+  "cityId": 566118,
+  "cityName": "منطقة صلخد",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731508,
+  "villageName": "الطليسية",
+  "cityId": 566118,
+  "cityName": "منطقة صلخد",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731514,
+  "villageName": "الثعلة",
+  "cityId": 566119,
+  "cityName": "منطقة شهبا",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731507,
+  "villageName": "الطيرة",
+  "cityId": 566118,
+  "cityName": "منطقة صلخد",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731509,
+  "villageName": "الطربا",
+  "cityId": 566118,
+  "cityName": "منطقة صلخد",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 1282216,
+  "villageName": "عمان",
+  "cityId": 947365,
+  "cityName": "عمان",
+  "regionId": 4005,
+  "regionName": "عمان"
+ },
+ {
+  "villageId": 588546,
+  "villageName": "السويداء",
+  "cityId": 445153,
+  "cityName": "السويداء",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731488,
+  "villageName": "السويداء",
+  "cityId": 566117,
+  "cityName": "مدينة السويداء",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731523,
+  "villageName": "بكا",
+  "cityId": 566120,
+  "cityName": "منطقة القريا",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731524,
+  "villageName": "بوسان",
+  "cityId": 566120,
+  "cityName": "منطقة القريا",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731525,
+  "villageName": "بريكة",
+  "cityId": 566120,
+  "cityName": "منطقة القريا",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 1282278,
+  "villageName": "منطقة دير الزور",
+  "cityId": 949550,
+  "cityName": "منطقة دير الزور",
+  "regionId": 3736,
+  "regionName": "دير الزور"
+ },
+ {
+  "villageId": 731526,
+  "villageName": "بكا الشرقية",
+  "cityId": 566120,
+  "cityName": "منطقة القريا",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731520,
+  "villageName": "أم حوران الشرقية",
+  "cityId": 566119,
+  "cityName": "منطقة شهبا",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731513,
+  "villageName": "مردك",
+  "cityId": 566119,
+  "cityName": "منطقة شهبا",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731528,
+  "villageName": "بكا الشمالية",
+  "cityId": 566120,
+  "cityName": "منطقة القريا",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731496,
+  "villageName": "حي طريق قنوات القديمة",
+  "cityId": 566117,
+  "cityName": "مدينة السويداء",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731512,
+  "villageName": "سليم",
+  "cityId": 566119,
+  "cityName": "منطقة شهبا",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731497,
+  "villageName": "صلخد",
+  "cityId": 566118,
+  "cityName": "منطقة صلخد",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731510,
+  "villageName": "شهبا",
+  "cityId": 566119,
+  "cityName": "منطقة شهبا",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731529,
+  "villageName": "بكا الجنوبية",
+  "cityId": 566120,
+  "cityName": "منطقة القريا",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731495,
+  "villageName": "حي طريق الكفر",
+  "cityId": 566117,
+  "cityName": "مدينة السويداء",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731493,
+  "villageName": "حي طريق دمشق",
+  "cityId": 566117,
+  "cityName": "مدينة السويداء",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731492,
+  "villageName": "حي طريق قنوات",
+  "cityId": 566117,
+  "cityName": "مدينة السويداء",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731494,
+  "villageName": "حي طريق صلخد",
+  "cityId": 566117,
+  "cityName": "مدينة السويداء",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731519,
+  "villageName": "أم العمد",
+  "cityId": 566119,
+  "cityName": "منطقة شهبا",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731515,
+  "villageName": "أم الرمان",
+  "cityId": 566119,
+  "cityName": "منطقة شهبا",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731516,
+  "villageName": "أم الزيتون",
+  "cityId": 566119,
+  "cityName": "منطقة شهبا",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731517,
+  "villageName": "أم ضبيب",
+  "cityId": 566119,
+  "cityName": "منطقة شهبا",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731518,
+  "villageName": "أم حوران",
+  "cityId": 566119,
+  "cityName": "منطقة شهبا",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731527,
+  "villageName": "بكا الغربية",
+  "cityId": 566120,
+  "cityName": "منطقة القريا",
+  "regionId": 3003,
+  "regionName": "السويداء"
+ },
+ {
+  "villageId": 731521,
+  "villageName": "أم حوران الغربية",
+  "cityId": 566119,
+  "cityName": "منطقة شهبا",
+  "regionId": 3003,
+  "regionName": "السويداء"
  }
 ]

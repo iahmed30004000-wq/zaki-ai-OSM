@@ -25,3 +25,39 @@ export function dispatchReasonAr(o: Pick<DispatchOutcome, 'skipped' | 'regionNam
       return o.error ?? '';
   }
 }
+
+/**
+ * THE FAILED ORDERS OF A DISPATCH, ONE LINE PER REASON.
+ *
+ * Thirty-five orders refused for the same reason used to be thirty-five lines that filled the page. They are grouped
+ * by the sentence itself (and by whether the outcome is unknown — «maybe it was sent» is different news), the larger
+ * group first; a tie keeps the order the reasons first appeared in. Written once, here, for both screens.
+ */
+export interface DispatchReasonGroup {
+  reason: string;
+  count: number;
+  orderNumbers: string[];
+  /** The courier may have created the parcel and never said so — shown as the warning it is. */
+  outcomeUnknown: boolean;
+}
+
+export function groupDispatchReasons(
+  outcomes: Pick<DispatchOutcome, 'ok' | 'orderNumber' | 'skipped' | 'regionName' | 'error' | 'outcomeUnknown'>[],
+): DispatchReasonGroup[] {
+  const groups = new Map<string, DispatchReasonGroup>();
+  for (const o of outcomes) {
+    if (o.ok) continue;
+    const reason = dispatchReasonAr(o);
+    const unknown = o.outcomeUnknown === true;
+    const key = `${unknown ? 'U' : 'K'}|${reason}`;
+    const hit = groups.get(key);
+    if (hit) {
+      hit.count += 1;
+      hit.orderNumbers.push(o.orderNumber);
+    } else {
+      groups.set(key, { reason, count: 1, orderNumbers: [o.orderNumber], outcomeUnknown: unknown });
+    }
+  }
+  // Array.prototype.sort is stable: equal counts keep their first-seen order.
+  return [...groups.values()].sort((a, b) => b.count - a.count);
+}

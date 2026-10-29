@@ -15,7 +15,7 @@ import { userCan } from '@/lib/can';
 import { useLabelSize } from '@/components/labels/LabelSize';
 import { BLOCKED_WAYBILLS, describeRefused, openWaybills, WaybillError } from '@/components/labels/openWaybills';
 import type { DispatchSummary } from '@/lib/courier-dispatch';
-import { dispatchReasonAr } from '@/lib/dispatch-reason';
+import { DispatchResult } from '@/components/ops/DispatchResult';
 import { useToast } from '@/components/ui/Toast';
 import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -344,7 +344,7 @@ ${describeRefused(out.refused)}`,
    * printed before dispatch has our reference where the courier's barcode
    * goes (`courierCode` falls back to it), so the warehouse was handed a
    * label the courier cannot scan — and reached for the courier's own label,
-   * which has no QR of ours. The same door and the same body the batches
+   * which has no QR of ours. The print door now refuses such an order. The same door and the same body the batches
    * screen uses; the answer is shown per order, with the same sentences.
    */
   const dispatchJustMade = async () => {
@@ -369,7 +369,7 @@ ${describeRefused(out.refused)}`,
    * WHAT THE BANNER OFFERS, FROM WHAT CAME BACK FOR THIS BATCH.
    * An answer for an earlier batch is not this one's. «رحّل» stays while any
    * order is still without their barcode — a retry is safe, the door skips
-   * what already went — and the print says «بلا باركود الشركة» while none has one.
+   * what already went — and the print waits while none has a barcode.
    */
   const shown = dispatched && dispatched.batchId === justMade ? dispatched.summary : null;
   const unsent = shown ? shown.outcomes.filter((o) => !o.ok && o.skipped !== 'ALREADY_SENT').length : 0;
@@ -444,12 +444,16 @@ ${describeRefused(out.refused)}`,
             </>
           )}
           {justMade && mayPrint ? (
-            <>
-              {' — '}
-              <button type="button" onClick={printJustMade} disabled={printing} className="font-bold underline disabled:opacity-50">
-                {printing ? 'جارٍ التجهيز…' : noBarcodeYet ? 'اطبع بلا باركود الشركة' : 'اطبع البوالص'}
-              </button>
-            </>
+            /* The door refuses an order that has no barcode from its courier (it would print our reference twice). So
+               while none has one, there is nothing to print, and the line above says what to press first. */
+            noBarcodeYet ? null : (
+              <>
+                {' — '}
+                <button type="button" onClick={printJustMade} disabled={printing} className="font-bold underline disabled:opacity-50">
+                  {printing ? 'جارٍ التجهيز…' : 'اطبع البوالص'}
+                </button>
+              </>
+            )
           ) : (
             labelsStep && (
               <>
@@ -465,38 +469,14 @@ ${describeRefused(out.refused)}`,
 
       {offerSend && !shown && (
         <p className="text-xs text-[var(--sys-muted-foreground)]">
-          رحّل أولاً، ثم اطبع: تخرج البوليصة وعليها باركود الشركة بجانب رمزنا. ما يُطبع قبل الترحيل لا يحمل إلا رمزنا.
+          رحّل أولاً، ثم اطبع: تخرج البوليصة وعليها باركود الشركة بجانب رمزنا. طلب بلا باركود الشركة لا يُطبع.
         </p>
       )}
       {shown && (
-        <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-2.5 space-y-1">
-          <p className="text-xs font-bold text-[var(--sys-heading)]">
-            رُحّل {shown.sent}
-            {shown.skipped > 0 && ` · تُخطّي ${shown.skipped}`}
-            {shown.failed > 0 && ` · فشل ${shown.failed}`}
-          </p>
-          {shown.outcomes
-            .filter((o) => !o.ok)
-            .map((o) => (
-              <p
-                key={o.orderId}
-                className={
-                  o.outcomeUnknown
-                    ? 'text-xs font-bold text-[var(--sys-warning)]'
-                    : 'text-xs text-[var(--sys-muted-foreground)]'
-                }
-              >
-                <span className="font-mono" dir="ltr">{o.orderNumber}</span>
-                {' — '}
-                {dispatchReasonAr(o)}
-              </p>
-            ))}
-          {shown.sent > 0 && (
-            <p className="text-xs text-[var(--sys-success)]">
-              الباركودات محفوظة على الطلبات — اطبع الآن فتظهر على البوليصة بجانب رمزنا.
-            </p>
-          )}
-        </div>
+        <DispatchResult
+          summary={shown}
+          savedNote="الباركودات محفوظة على الطلبات — اطبع الآن فتظهر على البوليصة بجانب رمزنا."
+        />
       )}
 
       {exceptions.length > 0 && (

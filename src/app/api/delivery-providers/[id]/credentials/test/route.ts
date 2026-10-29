@@ -6,18 +6,21 @@ import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { decryptJson } from '@/lib/secrets';
-import { logesTechsFromCredentials, type LogesTechsCredentials } from '@/lib/couriers/logestechs';
+import { CourierRefusal, logesTechsFromCredentials, type LogesTechsCredentials } from '@/lib/couriers/logestechs';
 
 /**
  * POST — does the saved account actually work?
  *
  * "Saved" and "works" are different facts, and the screen could only report
- * the first. A typo in the password sits there looking fine until the first
- * real batch fails at dispatch, in front of parcels already packed.
+ * the first.
  *
  * It asks the courier something harmless and read-only — their city list —
  * and reports whether the answer came back. It creates nothing, cancels
  * nothing and costs nothing.
+ *
+ * WHAT IT PROVES, EXACTLY. The city list carries the company id (the `company-id` header, like every call) and no
+ * password, so a good answer proves the network path and the company id — and NOT the password. The password is
+ * first proven by the first dispatch. The message says so; it never says «الحساب يعمل».
  *
  * The password is never read by the caller. It is decrypted here, used for
  * one request, and the response says only whether it was accepted.
@@ -67,26 +70,26 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     const started = Date.now();
     let result: { ok: boolean; reason: string; message: string };
     try {
-      // Their city search: read-only, and the one call that proves both the
-      // login and the network path in a single round trip.
+      // Their city search: read-only. It carries the company id and no password, so it proves the company id and the
+      // network path — the password is proven at the first dispatch.
       const cityId = await adapter.findCityId('عمان');
-      result = cityId
-        ? { ok: true, reason: 'OK', message: `الحساب يعمل — استجابت الشركة خلال ${Date.now() - started}ms.` }
-        : {
-            ok: true,
-            reason: 'OK_NO_MATCH',
-            message: `الحساب يعمل — استجابت الشركة خلال ${Date.now() - started}ms (لم تُطابق مدينة الاختبار، وهذا لا يعنينا).`,
-          };
+      const took = Date.now() - started;
+      result = {
+        ok: true,
+        reason: cityId ? 'OK' : 'OK_NO_MATCH',
+        message: `وصلنا للشركة خلال ${took}ms ورقم الشركة مقبول. كلمة المرور تُفحص عند أول ترحيل.`,
+      };
     } catch (e) {
       const raw = e instanceof Error ? e.message : String(e);
-      // Their errors are English and shaped for a developer. Say what the
-      // person can act on, and keep their words for the audit row.
-      const rejected = /401|403|unauthor|invalid|credential|password/i.test(raw);
+      // Their own words, trimmed — the adapter has already taken the account's secrets out of them, and the request
+      // body is never part of them. Blaming the user name and password for every 4xx sent people to retype a right
+      // password; the city list carries none.
+      const refused = e instanceof CourierRefusal;
       result = {
         ok: false,
-        reason: rejected ? 'REJECTED' : 'UNREACHABLE',
-        message: rejected
-          ? 'الشركة رفضت الحساب — راجع اسم المستخدم وكلمة المرور ورقم الشركة.'
+        reason: refused ? 'REFUSED' : 'UNREACHABLE',
+        message: refused
+          ? `ردّت الشركة برفض (${e.status})${e.said ? `: ${e.said.slice(0, 200)}` : ''}`
           : 'تعذّر الوصول إلى الشركة — قد تكون خدمتهم متوقفة أو الشبكة محجوبة.',
       };
       await logAudit({

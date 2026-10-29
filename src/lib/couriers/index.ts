@@ -32,6 +32,8 @@ export function registerAdapter(adapter: CourierAdapter): void {
 /** What the registry needs to know about a courier to pick its adapter. */
 export interface ProviderLike {
   code: string;
+  /** Its display name, so the adapter's refusals read «الباشا رفض: …». */
+  name?: string | null;
   apiEnabled?: boolean;
   /** Which integration it runs on. Falls back to its own code. */
   adapterCode?: string | null;
@@ -76,6 +78,7 @@ export function adapterFor(provider: ProviderLike | null | undefined): CourierAd
     return new LogesTechsAdapter({
       ...base.config,
       companyId,
+      ...(provider.name?.trim() ? { courierName: provider.name.trim() } : {}),
       ...(Number.isFinite(Number(config.serviceTypeId)) ? { serviceTypeId: Number(config.serviceTypeId) } : {}),
       ...(Number.isFinite(Number(config.vehicleTypeId)) ? { vehicleTypeId: Number(config.vehicleTypeId) } : {}),
       ...(Number.isFinite(Number(config.originCityId))

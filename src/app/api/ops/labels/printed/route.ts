@@ -5,7 +5,7 @@ import { requireContext } from '@/lib/geo-context';
 import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { verifyLabelBatch } from '@/lib/labels';
-import { printRefusal } from '@/lib/waybill';
+import { COURIER_KIND_SELECT, printRefusal } from '@/lib/waybill';
 import { logAudit } from '@/lib/audit';
 
 /**
@@ -55,7 +55,10 @@ export async function POST(req: Request) {
         storeId,
         ...(batch.batchId ? { shippingBatchId: batch.batchId } : {}),
       },
-      select: { id: true, confirmationStatus: true, shippingStatus: true, deliveryProviderId: true },
+      select: {
+        id: true, confirmationStatus: true, shippingStatus: true, deliveryProviderId: true,
+        trackingNumber: true, deliveryProvider: { select: COURIER_KIND_SELECT },
+      },
     });
     const printable = orders.filter((o) => !printRefusal(o)).map((o) => o.id);
     if (printable.length === 0) return NextResponse.json({ stamped: 0 });

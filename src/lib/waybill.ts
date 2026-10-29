@@ -6,6 +6,7 @@ import { formatMoney } from './money';
 import { placeLine } from './address';
 import type { LabelBatch } from './labels';
 import type { LabelView } from './label-sheet';
+import { isAutomated, type ProviderLike } from './couriers';
 
 /**
  * WHAT GOES ON A WAYBILL, AND WHICH ORDERS MAY HAVE ONE.
@@ -14,6 +15,14 @@ import type { LabelView } from './label-sheet';
  * same two questions — may this order be printed, and what does its label
  * say — so they ask this file, once.
  */
+
+/**
+ * What the print door needs to know about a courier to tell «sent by API» from «sent by hand». Read here and decrypted
+ * nowhere but inside `adapterFor`; it never reaches a label, a CSV or a response.
+ */
+export const COURIER_KIND_SELECT = {
+  name: true, code: true, adapterCode: true, apiEnabled: true, apiConfig: true, apiCredentials: true,
+} satisfies Prisma.DeliveryProviderSelect;
 
 /** Everything a label reads, and nothing it does not. */
 export const WAYBILL_SELECT = {
@@ -37,7 +46,7 @@ export const WAYBILL_SELECT = {
   customerNotes: true,
   customer: { select: { fullName: true, phone: true, rawPhone: true, altPhone: true, city: true, address: true } },
   region: { select: { name: true } },
-  deliveryProvider: { select: { name: true } },
+  deliveryProvider: { select: COURIER_KIND_SELECT },
   items: { select: { productName: true, quantity: true, freeQuantity: true, unitPrice: true, discountShare: true } },
   // The upsell accepted on the thank-you page. It used to be missing from
   // the label, so the packer never put it in the box.
@@ -45,6 +54,15 @@ export const WAYBILL_SELECT = {
 } satisfies Prisma.OrderSelect;
 
 export type WaybillOrder = Prisma.OrderGetPayload<{ select: typeof WAYBILL_SELECT }>;
+
+/**
+ * The sentence the print door gives an order that has not been sent to its courier yet.
+ *
+ * «باركود الشحنة و ال QR تبعنا ضروري يظهر بالبوليصة»: the label draws the courier's barcode in the Code128 and our order
+ * number in the QR. Printed BEFORE the courier answered, it carried our reference twice and no courier barcode — a label
+ * the courier cannot scan, so the warehouse reached for the courier's own, which has no QR of ours.
+ */
+export const WAITING_FOR_BARCODE = 'رحّل الطلب للشركة أول، عشان يطلع باركود الشحنة على البوليصة';
 
 const FINISHED = ['DELIVERED', 'PARTIALLY_DELIVERED', 'RETURNED', 'CANCELLED'];
 
@@ -61,12 +79,17 @@ export function printRefusal(order: {
   confirmationStatus: string;
   shippingStatus: string;
   deliveryProviderId: string | null;
+  /** With `deliveryProvider`: decides whether the courier's barcode is still owed. Left out, the order prints as before. */
+  trackingNumber?: string | null;
+  deliveryProvider?: ProviderLike | null;
 }): string | null {
   if (order.confirmationStatus !== 'CONFIRMED') return 'لم يُؤكَّد';
   if (FINISHED.includes(order.shippingStatus)) return 'مُغلق';
   // A waybill names the courier and carries its barcode; without one there
   // is no delivery fee either, so the amount printed could not be right.
   if (!order.deliveryProviderId) return 'بلا شركة شحن';
+  // A courier we send to by API answers with the barcode the label must carry. A manual courier has none to wait for.
+  if (!order.trackingNumber && order.deliveryProvider && isAutomated(order.deliveryProvider)) return WAITING_FOR_BARCODE;
   return null;
 }
 

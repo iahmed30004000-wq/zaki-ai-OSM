@@ -181,11 +181,13 @@ describe('a courier sent to by API', () => {
     });
   });
 
-  it('offers «رحّل» first, says why, and names the print that would come out without their barcode', async () => {
+  it('offers «رحّل» first and says why — and no print, because the door would refuse an order with no barcode of theirs', async () => {
     await ship();
     expect(screen.getByRole('button', { name: 'رحّل إلى الشركة واجلب الباركود' })).toBeTruthy();
-    expect(screen.getByText(/ما يُطبع قبل الترحيل لا يحمل إلا رمزنا/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'اطبع بلا باركود الشركة' })).toBeTruthy();
+    expect(screen.getByText(/طلب بلا باركود الشركة لا يُطبع/)).toBeTruthy();
+    // The print used to be offered "without their barcode"; the waybill must carry it beside our QR.
+    expect(screen.queryByRole('button', { name: /اطبع/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'اطبع بلا باركود الشركة' })).toBeNull();
   });
 
   it('sends the batch just made through the batches door, then shows each order and offers the plain print', async () => {
@@ -219,7 +221,7 @@ describe('a courier sent to by API', () => {
     expect(screen.getByRole('button', { name: 'اطبع البوالص' })).toBeTruthy();
   });
 
-  it('when nothing went, the print still says it has no barcode of theirs, and the retry stays', async () => {
+  it('when nothing went, there is still nothing to print, and the retry stays', async () => {
     const noneSent = { sent: 0, skipped: 0, failed: 1, outcomes: [{ orderId: '1', orderNumber: 'ORD-1', ok: false, error: 'رقم الهاتف غير صالح' }] };
     const base = apiJson.getMockImplementation()!;
     apiJson.mockImplementation(async (url: string, init?: RequestInit) =>
@@ -231,8 +233,27 @@ describe('a courier sent to by API', () => {
     });
     await screen.findByText(/رُحّل 0/, undefined, WAIT);
     expect(screen.getByText(/رقم الهاتف غير صالح/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'اطبع بلا باركود الشركة' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /اطبع/ })).toBeNull();
     expect(screen.getByRole('button', { name: 'أعد ترحيل الباقي (1)' })).toBeTruthy();
+  });
+
+  it('the answer is the shared grouped box: one line per reason with its count, the order numbers closed behind a button', async () => {
+    const refused = Array.from({ length: 3 }, (_, i) => ({
+      orderId: `r${i}`, orderNumber: `ORD-R${i}`, ok: false, error: 'الباشا رفض: رقم تعريف الشركة غير صحيح (400)',
+    }));
+    const answer = { sent: 0, skipped: 0, failed: 3, outcomes: refused };
+    const base = apiJson.getMockImplementation()!;
+    apiJson.mockImplementation(async (url: string, init?: RequestInit) =>
+      init?.method === 'POST' && url.endsWith('/dispatch') ? answer : base(url, init),
+    );
+    await ship();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'رحّل إلى الشركة واجلب الباركود' }));
+    });
+    expect(await screen.findByText('3 طلب — الباشا رفض: رقم تعريف الشركة غير صحيح (400)', undefined, WAIT)).toBeTruthy();
+    expect(screen.queryByText('ORD-R0')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'اعرض الطلبات (3)' }));
+    expect(screen.getByText('ORD-R0')).toBeTruthy();
   });
 
   it('an answer still on its way for the first batch does not land on a second one made meanwhile', async () => {
