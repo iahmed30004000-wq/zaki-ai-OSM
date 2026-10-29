@@ -297,7 +297,7 @@ export function ProductOffers({
    * ONE MOVE, FOR THE GRIP AND FOR THE ARROWS — `lib/offer-order.ts` says what it is; this puts it on the screen and on the server.
    *
    * It shows the new order AT ONCE (a drop that waited for the server would snap back and then forward), writes only the offers
-   * whose stored number changed — one `PATCH { sortOrder }` each, the edit this screen has always sent — and then reads the list
+   * whose stored number changed — in ONE `PATCH /api/offers`, all or none — and then reads the list
    * back: the server's own order is the truth, after a success and after a failure alike. A write that failed says so, and the
    * list reads back as it really is rather than as it was drawn.
    */
@@ -308,9 +308,10 @@ export function ProductOffers({
     setBusy(true);
     setMsg(null);
     try {
-      await Promise.all(
-        m.writes.map((w) => crmApi(`/api/offers/${w.id}`, { method: 'PATCH', body: JSON.stringify({ sortOrder: w.sortOrder }) }))
-      );
+      // One request, one transaction on the server: every offer holds its new place or none does.
+      if (m.writes.length > 0) {
+        await crmApi('/api/offers', { method: 'PATCH', body: JSON.stringify({ productId, order: m.writes }) });
+      }
     } catch (e: any) {
       setMsg({ ok: false, text: e.message || 'تعذر حفظ الترتيب' });
     } finally {

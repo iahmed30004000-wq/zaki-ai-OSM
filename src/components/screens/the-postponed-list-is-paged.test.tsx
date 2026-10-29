@@ -350,3 +350,19 @@ describe('drawn inside another screen (`embedded`)', () => {
   });
 });
 
+
+describe('the reason column speaks Arabic', () => {
+  it('prints the Arabic label of a follow-up reason, never the code', async () => {
+    rowsOf = () => [row('R1', { followUpReason: 'NO_ANSWER' })];
+    await draw();
+    expect(screen.getAllByText('لا يرد — إعادة المحاولة لاحقاً').length).toBeGreaterThan(0);
+    expect(screen.queryByText('NO_ANSWER')).toBeNull();
+  });
+
+  it('and a code nobody labelled reads «سبب آخر», not the raw code', async () => {
+    rowsOf = () => [row('R2', { followUpReason: 'CUSTOMER_BUSY' })];
+    await draw();
+    expect(screen.queryByText('CUSTOMER_BUSY')).toBeNull();
+    expect(screen.getAllByText('سبب آخر').length).toBeGreaterThan(0);
+  });
+});
