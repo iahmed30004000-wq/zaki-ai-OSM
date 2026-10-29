@@ -511,7 +511,7 @@ export function UsersScreen() {
                 )}
                 <Button size="sm" variant="outline" loading={actionLoading} onClick={() => handleAction('forceLogout')}>
                   <RiLogoutBoxLine className="icon-mirror w-4 h-4 ml-1 rtl:ml-0 rtl:mr-1" />
-                  إنهاء الجلسات (Force Logout)
+                  إنهاء كل الجلسات
                 </Button>
               </div>
               <p className="text-xs text-[var(--sys-muted-foreground)]">

@@ -225,3 +225,19 @@ describe('the extra action gates the count', () => {
     expect(screen.getByText('سليم')).toBeTruthy();
   });
 });
+
+describe('the reason column speaks Arabic', () => {
+  it('prints the Arabic label of a return reason, never the code', async () => {
+    apiJson.mockResolvedValue(answer([{ ...PARTIAL_ROW, returnReason: 'CUSTOMER_REFUSED' }]));
+    render(<ReturnsScreen />);
+    await waitFor(() => screen.getAllByText('العميل رفض'));
+    expect(screen.queryByText('CUSTOMER_REFUSED')).toBeNull();
+  });
+
+  it('and a code nobody labelled reads «أخرى», not the raw code', async () => {
+    apiJson.mockResolvedValue(answer([{ ...PARTIAL_ROW, returnReason: 'SOME_NEW_CODE' }]));
+    render(<ReturnsScreen />);
+    await waitFor(() => screen.getAllByText('أخرى'));
+    expect(screen.queryByText('SOME_NEW_CODE')).toBeNull();
+  });
+});

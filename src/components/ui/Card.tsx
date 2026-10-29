@@ -102,7 +102,12 @@ export function CardContent({
   children: React.ReactNode;
   className?: string;
 }) {
-  return <div className={clsx('p-6', className)}>{children}</div>;
+  // The default padding steps aside when the caller states its own. Both
+  // the default and the caller's used to reach the element, and in the built
+  // stylesheet the larger one wins — so a table card that asked for no
+  // padding still got twenty-four pixels.
+  const owns = /(^|\s)p-(\d|\[)/.test(className ?? '');
+  return <div className={clsx(!owns && 'p-6', className)}>{children}</div>;
 }
 
 /**

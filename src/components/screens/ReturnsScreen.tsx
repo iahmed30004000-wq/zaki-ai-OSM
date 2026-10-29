@@ -18,6 +18,7 @@ import { ListToolbar, withChosen, type ToolbarFilter } from '@/components/ui/Lis
 import { usePagedList, type PagedRead, type Paging } from '@/hooks/usePagedList';
 import { arDate } from '@/lib/format';
 import { arabicDays } from '@/lib/transit';
+import { RETURN_REASON_LABELS } from '@/lib/shipping-workflow';
 import { AGES, AGE_AR, DEFAULT_VIEW, RETURN_STATUSES, STATUS_AR, VIEWS, VIEW_AR, type View } from '@/lib/returns-filters';
 import type { ReturnsFacts } from '@/lib/returns-list';
 
@@ -276,7 +277,7 @@ export function ReturnsScreen() {
                     },
                     { key: 'customer', label: 'العميل', primary: true, render: (r) => r.customer.fullName },
                     { key: 'courier', label: 'شركة الشحن', render: (r) => r.deliveryProvider?.name ?? '—' },
-                    { key: 'reason', label: 'السبب', render: (r) => r.returnReason ?? '—' },
+                    { key: 'reason', label: 'السبب', render: (r) => (r.returnReason ? (RETURN_REASON_LABELS[r.returnReason]?.ar ?? 'أخرى') : '—') },
                     { key: 'since', label: 'المدّة', render: (r) => since((r as PendingRow).daysWaited) },
                     // NOT «المشحون». This column has always been what is coming
                     // BACK — the parcel less whatever the customer kept — and

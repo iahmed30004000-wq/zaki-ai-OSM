@@ -13,7 +13,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { db, logAudit, refreshLandingPages } = vi.hoisted(() => ({
   db: {
-    offer: { findMany: vi.fn(), create: vi.fn(), updateMany: vi.fn() },
+    offer: { findMany: vi.fn(), create: vi.fn(), updateMany: vi.fn(), update: vi.fn() },
     product: { findFirst: vi.fn() },
     $transaction: vi.fn(),
   },
@@ -34,7 +34,7 @@ vi.mock('@/lib/geo-context', () => ({
 }));
 vi.mock('@/lib/authorization', () => ({ requirePermission: async () => undefined }));
 
-import { GET, POST } from './route';
+import { GET, PATCH, POST } from './route';
 
 const PRODUCT = { id: 'prod-aaaaaaaaaa', companyId: 'c1', storeId: 's1', name: 'كريم', basePrice: 25 };
 
@@ -159,5 +159,95 @@ describe('the list carries each row’s line, worked out by the door', () => {
 
   it('and the store’s own decimals travel with the list, for the hint the screen draws', async () => {
     expect((await list()).minorUnit).toBe(3);
+  });
+});
+
+/**
+ * RE-ORDERING IS ONE REQUEST, ALL OR NONE.
+ *
+ * The drag used to send a `PATCH /api/offers/:id` per moved offer, side by side; one failure left the server holding half
+ * of the old order and half of the new. `PATCH /api/offers` writes the whole move in one transaction. The transaction here
+ * is a real rollback in miniature: it keeps a copy of the stored numbers and puts them back if the callback throws.
+ */
+describe('PATCH /api/offers — the order of a product’s offers', () => {
+  const A = 'offer-aaaaaaaaaa';
+  const B = 'offer-bbbbbbbbbb';
+  const C = 'offer-cccccccccc';
+  let stored: Record<string, number>;
+  let failOn: string | null;
+
+  const reorder = (body: unknown) =>
+    PATCH(
+      new Request('http://localhost/api/offers', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+    );
+  const move = [
+    { id: A, sortOrder: 2 },
+    { id: B, sortOrder: 0 },
+    { id: C, sortOrder: 1 },
+  ];
+
+  beforeEach(() => {
+    stored = { [A]: 0, [B]: 1, [C]: 2 };
+    failOn = null;
+    db.offer.findMany.mockImplementation(async ({ where }: { where: { id: { in: string[] } } }) =>
+      where.id.in.filter((id) => id in stored).map((id) => ({ id, sortOrder: stored[id] }))
+    );
+    db.offer.update.mockImplementation(async ({ where, data }: { where: { id: string }; data: { sortOrder: number } }) => {
+      if (where.id === failOn) throw new Error('the write failed');
+      stored[where.id] = data.sortOrder;
+      return { id: where.id, ...data };
+    });
+    db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      const before = { ...stored };
+      try {
+        return await fn({ offer: db.offer });
+      } catch (e) {
+        stored = before; // the rollback
+        throw e;
+      }
+    });
+  });
+
+  it('writes every new place in ONE transaction, with one audit line and one rebuild of the pages', async () => {
+    const res = await reorder({ productId: PRODUCT.id, order: move });
+    expect(res.status).toBe(200);
+    expect(stored).toEqual({ [A]: 2, [B]: 0, [C]: 1 });
+    expect(db.$transaction).toHaveBeenCalledTimes(1);
+    expect(logAudit).toHaveBeenCalledTimes(1);
+    expect(logAudit.mock.calls[0][0]).toMatchObject({ action: 'OFFER_REORDERED', entityId: PRODUCT.id });
+    expect(refreshLandingPages).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes ONLY sortOrder — never a price, a quantity or a flag', async () => {
+    await reorder({ productId: PRODUCT.id, order: move, sellingPrice: 1, quantity: 99 });
+    for (const [arg] of db.offer.update.mock.calls) expect(Object.keys(arg.data)).toEqual(['sortOrder']);
+  });
+
+  it('a write that fails rolls the whole move back — the server never holds half of each order', async () => {
+    failOn = C; // the third write throws, after the first two have gone through
+    const res = await reorder({ productId: PRODUCT.id, order: move });
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(stored, 'بقي نصف الترتيب الجديد').toEqual({ [A]: 0, [B]: 1, [C]: 2 });
+    expect(logAudit).not.toHaveBeenCalled();
+    expect(refreshLandingPages).not.toHaveBeenCalled();
+  });
+
+  it('an id that is not an offer of this product answers 404 and writes nothing', async () => {
+    const res = await reorder({ productId: PRODUCT.id, order: [...move, { id: 'offer-of-another-store', sortOrder: 3 }] });
+    expect(res.status).toBe(404);
+    expect(db.offer.update).not.toHaveBeenCalled();
+    expect(db.offer.findMany.mock.calls[0][0].where).toMatchObject({ companyId: 'c1', productId: PRODUCT.id, product: { storeId: 's1' } });
+  });
+
+  it('refuses a repeated id and an empty or malformed list', async () => {
+    expect((await reorder({ productId: PRODUCT.id, order: [move[0], move[0]] })).status).toBe(400);
+    expect((await reorder({ productId: PRODUCT.id, order: [] })).status).toBe(400);
+    expect((await reorder({ productId: PRODUCT.id, order: [{ id: A, sortOrder: -1 }] })).status).toBe(400);
+    expect((await reorder({ order: move })).status).toBe(400);
+    expect(db.offer.update).not.toHaveBeenCalled();
   });
 });
