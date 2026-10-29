@@ -7,7 +7,7 @@ import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { computeCod, totalsBeforeDiscount } from '@/lib/money';
 import { hasEverShipped, hasLeftWarehouse, deriveCoreState, getZone, type StateSource } from '@/lib/order-state';
-import { endOrder } from '@/lib/order-cancel';
+import { endOrder, releaseCourierParcel } from '@/lib/order-cancel';
 import { consumeOrderStock } from '@/lib/stock-consumption';
 import { ORDER_ACCESS_STATUS, assertOrderAccess, assertOrderReadable, applyQueueFilter } from '@/lib/rbac';
 import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
@@ -27,10 +27,15 @@ import { TERMINAL_CONFIRMATION_STATUSES } from '@/lib/confirmation-workflow';
 import { CONTACT_FIRST_MESSAGE, needsContactFirst } from '@/lib/confirmation-queue';
 
 import { orderSeal, sealedFieldsIn, sealMessage, handedToCourier } from '@/lib/order-seal';
+import { UNKNOWN_BATCH_AR } from '@/lib/shipment-cancel';
 import { courierActionAr, courierActionFor, courierMessage, sealedAmong } from '@/lib/courier-change';
 import { expandApproved, mayApply, strayFields } from '@/lib/change-request-apply';
 import { zodMessage } from '@/lib/zod-message';
 import { ORDER_NOT_FOUND, ORDER_VERSION_MISSING } from '@/lib/order-refusals';
+
+/** Why a quantity or a product is not changed in place for an order whose goods are reserved. */
+const RESERVED_GOODS_EDIT_AR =
+  'تعديل الكمية أو المنتج لطلب محجوز بيحتاج إلغاء الطلب وإنشاء جديد — لسا ما في تعديل بمكانو.';
 
 /** Legacy combined status whitelist (mirrors the UI status config) */
 const ALLOWED_COMBINED_STATUSES = [
@@ -967,6 +972,34 @@ export async function PATCH(
      * composes the message and refuses; the same request, sent back with
      * `courierNotified`, applies and records who told them.
      */
+    /*
+     * ── AN APPROVED CHANGE OF QUANTITY OR PRODUCT IS NOT MADE IN PLACE ON A RESERVED ORDER (28/10, a TEMPORARY ruling) ──
+     *
+     * The owner: «اي قرار بعد الان اتخذو دون الرجوع الي». This door writes the order's own
+     * columns for a quantity or a product and does not touch its LINES (`OrderItem`) or the
+     * units reserved against them — so the shelf keeps counting the OLD goods and the next
+     * sale can be oversold. `items` was already refused for a reserved order
+     * (`LINES_COMMITTED` below); the single-line shorthand was not. The request stays as it
+     * is (approved, not applied), and the answer says what to do. An address, a phone, a
+     * note or a discount carry no goods, so they are made in place as before. Remove this
+     * the day the lines and the reservation follow the edit (RV in the backlog).
+     */
+    const asksForOtherGoods =
+      (quantity !== undefined && quantity !== existing.quantity) ||
+      (productId !== undefined && productId !== existing.productId);
+    if (viaRequest && asksForOtherGoods) {
+      const reservedLine = await db.orderItem.findFirst({
+        where: { orderId: id, reservedQty: { gt: 0 } },
+        select: { id: true },
+      });
+      if (reservedLine) {
+        return NextResponse.json(
+          { error: RESERVED_GOODS_EDIT_AR, errorAr: RESERVED_GOODS_EDIT_AR, code: 'RESERVED_GOODS_EDIT' },
+          { status: 409 }
+        );
+      }
+    }
+
     const sealedAsked = viaRequest && courierTold ? [] : sealedFieldsIn(data as Record<string, unknown>);
     if (sealedAsked.length > 0) {
       const batch = await db.shippingBatch.findFirst({
@@ -981,7 +1014,25 @@ export async function PATCH(
         shippedAt: (existing as { shippedAt?: Date | null }).shippedAt ?? null,
         labelPrintedAt: (existing as { labelPrintedAt?: Date | null }).labelPrintedAt ?? null,
       });
-      if (seal.sealed) {
+      /*
+       * AN APPROVED EDIT ON A PARCEL THE COMPANY HAS NOT TAKEN IS MADE IN PLACE (28/10).
+       *
+       * The printed waybill used to seal an approved request too, and the answer was
+       * «tell the courier» — for a box still on our own floor, with no courier to tell.
+       * The owner ruled it the other way: until «إغلاق الشحنة — سُلّمت للشركة» the
+       * approved edit is made on the SAME order and the waybill is printed again.
+       * `seal.sealed` with the trolley not pressed is exactly the LABELLED reason; the
+       * edit goes through below, and the stale waybill is reset after this block. A
+       * DIRECT edit (no request) still gets the old refusal — it never had a decision.
+       */
+      const madeInPlace =
+        !!viaRequest &&
+        !handedToCourier({
+          shippingStatus: existing.shippingStatus,
+          shippedAt: (existing as { shippedAt?: Date | null }).shippedAt ?? null,
+          batchStatus: batch?.status ?? null,
+        });
+      if (seal.sealed && !madeInPlace) {
         /**
          * A REQUEST GETS THE MESSAGE. A DIRECT EDIT GETS THE OLD REFUSAL.
          *
@@ -1032,6 +1083,41 @@ export async function PATCH(
           { status: 409 }
         );
       }
+    }
+
+    /*
+     * ── THE EDIT WAS MADE IN PLACE: THE OLD WAYBILL IS STALE, AND SO IS THE COMPANY'S COPY ──
+     *
+     * Reached by an APPROVED request that changes what the driver reads (the
+     * address, the goods, the price, the fee) on a parcel that was not handed
+     * over. Two things stop agreeing with the order, and both are put right in
+     * THIS write rather than left for somebody to remember:
+     *
+     *   · the printed waybill: it is cleared, so the label list offers it again
+     *     and the next print shows the order as it is now («تنعاد طباعة البوليصة»);
+     *   · a parcel the company already has a barcode for: the company is asked to
+     *     cancel it first (outside the transaction, a clear yes or nothing), and
+     *     the barcode and the send claim go with it — the next dispatch makes a
+     *     new one from the new order.
+     *
+     * Both are the same helpers the hold and the transfer use, not copies.
+     */
+    let letTheCompanyGo = false;
+    const changedForTheDriver = sealedFieldsIn(data as Record<string, unknown>);
+    const row = existing as { labelPrintedAt?: Date | null; trackingNumber?: string | null; courierSendStartedAt?: Date | null; shippedAt?: Date | null };
+    if (viaRequest && changedForTheDriver.length > 0 && (row.labelPrintedAt || row.trackingNumber || row.courierSendStartedAt)) {
+      const batchRow = existing.shippingBatchId
+        ? await db.shippingBatch.findFirst({ where: { id: existing.shippingBatchId, companyId }, select: { status: true } })
+        : null;
+      // A batch named but unreadable is not assumed open.
+      if (existing.shippingBatchId && !batchRow) {
+        return NextResponse.json({ error: UNKNOWN_BATCH_AR, errorAr: UNKNOWN_BATCH_AR, code: 'UNKNOWN_BATCH' }, { status: 409 });
+      }
+      letTheCompanyGo = !handedToCourier({
+        shippingStatus: existing.shippingStatus,
+        shippedAt: row.shippedAt ?? null,
+        batchStatus: batchRow?.status ?? null,
+      });
     }
 
     /*
@@ -1383,12 +1469,44 @@ export async function PATCH(
     // The write + side effects (stock deduction, customer counters) + logs are
     // one transaction so a lost race can never half-apply them.
     const previousSettlementStatus = existing.settlementStatus;
+    /*
+     * THE COMPANY IS ASKED LAST — after every refusal above — and OUTSIDE the transaction.
+     * (See the comment at `letTheCompanyGo`.) Only a clear yes clears the barcode.
+     */
+    let courierLetGo: { courier: string | null; barcode: string } | null = null;
+    if (letTheCompanyGo) {
+      const released = await releaseCourierParcel({
+        companyId,
+        deliveryProviderId: existing.deliveryProviderId ?? null,
+        trackingNumber: row.trackingNumber ?? null,
+        courierSendStartedAt: row.courierSendStartedAt ?? null,
+      });
+      if (!released.ok) {
+        return NextResponse.json({ error: released.error, errorAr: released.error, code: released.code }, { status: released.status });
+      }
+      Object.assign(updateData, released.cleared);
+      if (released.remote.kind === 'CANCELLED') courierLetGo = { courier: released.remote.courier, barcode: released.remote.barcode };
+      // The waybill on the box says the old order: it is cleared, and printed again.
+      if (row.labelPrintedAt) updateData.labelPrintedAt = null;
+    }
+    const waybillReset = letTheCompanyGo && !!row.labelPrintedAt;
     await db.$transaction(async (tx) => {
       const saved = await tx.order.updateMany({
         where: { id, version: expectedVersion },
         data: { ...updateData, version: { increment: 1 } },
       });
       if (saved.count !== 1) {
+        // The company already said yes to the cancel: never silent about that.
+        if (courierLetGo) {
+          await db.orderActivity
+            .create({
+              data: {
+                companyId, orderId: id, userId: user.id, action: 'COURIER_CANCELLED_ORDER_MOVED',
+                metadata: JSON.stringify({ barcode: courierLetGo.barcode, courier: courierLetGo.courier, door: 'EDIT' }),
+              },
+            })
+            .catch(() => undefined);
+        }
         throw new Error('VERSION_CONFLICT: This order was updated by another user. Please refresh before saving.');
       }
 
@@ -1666,6 +1784,19 @@ export async function PATCH(
               // The timeline is what the next person reads on the order
               // itself; the audit log is where nobody looks until it matters.
               ...(editReason ? { reason: editReason } : {}),
+            }),
+          },
+        });
+      }
+      if (waybillReset) {
+        // Said on the order itself: the waybill on the box no longer matches it, and a new one is to be printed.
+        await tx.orderActivity.create({
+          data: {
+            companyId, orderId: id, userId: user.id, action: 'LABEL_STALE_REPRINT',
+            metadata: JSON.stringify({
+              fields: sealedFieldsIn(data as Record<string, unknown>),
+              courierCancelled: courierLetGo !== null,
+              requestId: viaRequest?.id ?? null,
             }),
           },
         });

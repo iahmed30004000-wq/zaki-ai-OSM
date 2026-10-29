@@ -1,5 +1,4 @@
 import type { ShippingStatus } from './shipping-workflow';
-import { handedToCourier } from './order-seal';
 
 /**
  * Moving a parcel to a different courier.
@@ -10,18 +9,28 @@ import { handedToCourier } from './order-seal';
  * will eventually claim it. Overwriting the provider would silently detach
  * an order from the shipment that still holds it.
  *
- * So there are exactly two moves:
+ * So there are exactly three moves:
  *
  *   DIRECT   — only away from a مندوب (AGENT). He is immediate and local:
  *              the moment you hand the parcel on you have it back from him,
  *              so his leg is closed as received and the order re-dispatches
  *              with no replacement and no new number.
  *
- *   REPLACE  — away from a COMPANY, to anyone. The company's leg is closed
- *              as taken back, and a REPLACEMENT order is raised that starts
- *              in preparation and is assigned from scratch. The original
- *              keeps its history, its barcode and its place in whatever
- *              statement the company sends.
+ *   REBATCH  — away from a COMPANY that has NOT YET TAKEN the parcel (its
+ *              trolley was never pressed with «إغلاق الشحنة — سُلّمت
+ *              للشركة»). The box is on our floor: the company has nothing of
+ *              ours to take back and nothing to put in a statement. So it is
+ *              the SAME order, with the same number, taken off the old
+ *              trolley and put on the new company's — no replacement, no
+ *              cancel-and-reorder. A printed waybill carries the old
+ *              company's name, so it goes only on a person's word that it was
+ *              destroyed. (The owner, 28/10: «قبل التسليم: نفس الطلب».)
+ *
+ *   REPLACE  — away from a COMPANY that HAS the parcel, to anyone. The
+ *              company's leg is closed as taken back, and a REPLACEMENT order
+ *              is raised that starts in preparation and is assigned from
+ *              scratch. The original keeps its history, its barcode and its
+ *              place in whatever statement the company sends.
  */
 
 export type ProviderKind = 'COMPANY' | 'AGENT';
@@ -32,12 +41,12 @@ export interface TransferParty {
   kind: ProviderKind;
 }
 
-export type TransferMode = 'DIRECT' | 'REPLACE';
+export type TransferMode = 'DIRECT' | 'REBATCH' | 'REPLACE';
 
 export interface TransferPlan {
   mode: TransferMode;
   /** What happens to the leg the parcel is leaving. */
-  closeAs: 'RECEIVED_FROM_AGENT' | 'TAKEN_BACK_FROM_COMPANY';
+  closeAs: 'RECEIVED_FROM_AGENT' | 'OFF_OUR_TROLLEY' | 'TAKEN_BACK_FROM_COMPANY';
   /** Status the ORIGINAL order ends at. */
   originalStatus: ShippingStatus;
   /** Status the order being dispatched starts from. */
@@ -85,6 +94,16 @@ export function planTransfer(input: {
   from: TransferParty | null;
   to: TransferParty;
   shippingStatus: string;
+  /**
+   * Has the company TAKEN the parcel — `handedToCourier`, computed by the
+   * caller. REQUIRED, with no default: `READY_FOR_PICKUP` is the status of an
+   * agent's parcel all day and of a company's parcel that is still on OUR
+   * trolley, so the status alone cannot tell a replacement from a re-batch.
+   * Guessing «taken» here raised a second live order for the same goods and
+   * reserved them twice (the measured bug, #59); guessing «not taken» would
+   * tell a company it holds nothing while it does. Neither guess is offered.
+   */
+  handedOver: boolean;
 }): TransferPlan {
   const { from, to } = input;
   const status = input.shippingStatus as ShippingStatus;
@@ -120,8 +139,20 @@ export function planTransfer(input: {
     };
   }
 
-  // Leaving a company — to another company or to an agent, it makes no
-  // difference: the parcel has to physically come back first.
+  // Leaving a company that never took it: the box is still here. The same
+  // order moves trolleys — nothing is closed, nothing is raised.
+  if (!input.handedOver) {
+    return {
+      mode: 'REBATCH',
+      closeAs: 'OFF_OUR_TROLLEY',
+      originalStatus: 'READY_FOR_PICKUP',
+      nextStatus: 'READY_FOR_PICKUP',
+      reason: `نقل من ${from.name} إلى ${to.name} قبل التسليم — نفس الطلب`,
+    };
+  }
+
+  // Leaving a company that HAS it — to another company or to an agent, it
+  // makes no difference: the parcel has to physically come back first.
   return {
     mode: 'REPLACE',
     closeAs: 'TAKEN_BACK_FROM_COMPANY',
@@ -129,32 +160,4 @@ export function planTransfer(input: {
     nextStatus: 'READY_FOR_SHIPPING',
     reason: `سحب من ${from.name} وإصدار طلب بديل لـ ${to.name}`,
   };
-}
-
-/**
- * A REPLACEMENT IS FOR A PARCEL THE COMPANY HOLDS — NOT ONE STILL ON OUR TROLLEY.
- *
- * `planTransfer` accepts READY_FOR_PICKUP because an agent's parcel is that
- * status the whole time. For a COMPANY's parcel the same status also means
- * «packed, on our trolley, the company has not come yet». Moving that one
- * with REPLACE raised a second live order for the same goods and reserved
- * them twice, while the first one stayed in its batch under its own barcode.
- *
- * Nothing is lost by refusing: before the handover the company has nothing
- * of ours to take back, and the move that fits is a re-batch of the same
- * order, which is a later change. Until then the answer is no.
- *
- * Asked after `planTransfer`, so every other refusal keeps its own words and
- * the existing rules of that function are untouched.
- */
-export function assertCompanyHoldsIt(
-  plan: TransferPlan,
-  order: { shippingStatus: string; shippedAt?: Date | string | null; batchStatus?: string | null }
-): void {
-  if (plan.mode !== 'REPLACE') return;
-  if (handedToCourier(order)) return;
-  throw new TransferRefused(
-    'STILL_ON_OUR_TROLLEY',
-    'الطرد لسّا عندنا وما انسلّم للشركة — ما بينسحب منها ببديل. التحويل ببديل بيصير بعد التسليم بس.'
-  );
 }

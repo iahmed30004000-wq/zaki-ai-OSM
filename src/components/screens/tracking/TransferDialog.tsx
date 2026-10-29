@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { apiJson } from '@/lib/api-client';
+import { apiFetch, apiJson } from '@/lib/api-client';
+import { useAsk } from '@/components/ui/Confirm';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Select } from '@/components/ui/Input';
 import { RiAlertLine, RiEBike2Line, RiTruckLine } from '@remixicon/react';
@@ -11,9 +12,11 @@ import { RiAlertLine, RiEBike2Line, RiTruckLine } from '@remixicon/react';
  *
  * The screen states the consequence before you commit, because the two moves
  * are not equivalent: away from a مندوب the same order simply changes hands,
- * away from a company the parcel is recalled and a REPLACEMENT order is
- * raised that re-enters preparation. The server decides which applies; this
- * only has to say so plainly first.
+ * away from a company that has TAKEN the parcel it is recalled and a REPLACEMENT
+ * order is raised that re-enters preparation; away from a company that has not
+ * (its trolley was never pressed) it is the SAME order, moved to the new
+ * company's trolley. The server decides which applies; this only has to say so
+ * plainly first.
  */
 
 interface Provider {
@@ -41,6 +44,7 @@ export function TransferDialog({
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const ask = useAsk();
 
   useEffect(() => {
     apiJson<{ providers: Provider[] }>('/api/ops/references')
@@ -64,11 +68,34 @@ export function TransferDialog({
           setSaving(true);
           setError(null);
           try {
-            const res = await apiJson<{ message: string }>('/api/ops/tracking/transfer', {
-              method: 'POST',
-              body: JSON.stringify({ orderId: order.id, toProviderId: target, note: note.trim() || undefined }),
-            });
-            onDone(res.message);
+            // A printed waybill names the old company: it goes only on this person's word that it was destroyed.
+            const send = async (parcelInHand: boolean): Promise<void> => {
+              const res = await apiFetch('/api/ops/tracking/transfer', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  orderId: order.id,
+                  toProviderId: target,
+                  note: note.trim() || undefined,
+                  ...(parcelInHand ? { parcelInHand: true } : {}),
+                }),
+              });
+              const body = await res.json().catch(() => ({}));
+              if (!res.ok && body?.code === 'ATTESTATION_REQUIRED') {
+                const said = await ask({
+                  title: `الطرد ${order.orderNumber} مطبوعة بوليصته`,
+                  body: `${body.attestation ?? ''}`,
+                  confirmLabel: 'أؤكد',
+                  tone: 'danger',
+                  input: { label: 'اكتب «أؤكد» بنفسك', required: true, maxLength: 20 },
+                });
+                if (said?.trim() === 'أؤكد') await send(true);
+                return;
+              }
+              if (!res.ok) throw new Error(body?.errorAr || body?.error || 'تعذر التحويل');
+              onDone(String(body.message ?? ''));
+            };
+            await send(false);
           } catch (err) {
             setError(err instanceof Error ? err.message : 'تعذر التحويل');
           } finally {
@@ -93,9 +120,10 @@ export function TransferDialog({
             <span className="flex gap-2">
               <RiAlertLine className="w-4 h-4 shrink-0 mt-0.5" />
               <span>
-                لا يمكن تبديل شركة الشحن بعد الإسناد. سيُطلب <b>إرجاع الشحنة</b> من الشركة الحالية،
-                ويُنشأ <b>طلب بديل</b> يدخل تجهيز الشحنة ليُسنَد من جديد. الطلب الأصلي يبقى بسجله
-                وباركوده لأنه سيظهر في كشف الشركة.
+                قبل ما تُسلَّم الدفعة للشركة الحالية: <b>نفس الطلب</b> بنفس رقمه ينتقل لدفعة الجهة
+                الجديدة، بلا طلب بديل، وبوليصته القديمة (لو انطبعت) بتنطبع من جديد. وبعد التسليم: سيُطلب{' '}
+                <b>إرجاع الشحنة</b> من الشركة، ويُنشأ <b>طلب بديل</b> يدخل تجهيز الشحنة ليُسنَد من جديد؛
+                والأصلي يبقى بسجله وباركوده لأنه سيظهر في كشف الشركة.
               </span>
             </span>
           )}
@@ -147,7 +175,7 @@ export function TransferDialog({
             disabled={saving || !target}
             className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
           >
-            {saving ? 'جارٍ التحويل…' : fromAgent ? 'استلام وتحويل' : 'سحب وإصدار بديل'}
+            {saving ? 'جارٍ التحويل…' : fromAgent ? 'استلام وتحويل' : 'تحويل الشحنة'}
           </button>
         </div>
       </form>

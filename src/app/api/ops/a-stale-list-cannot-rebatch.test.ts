@@ -19,7 +19,7 @@ const { db, requireContext, can, authorize, assertOrderAccess, shipmentBlocks, r
   db: {
     deliveryProvider: { findFirst: vi.fn() },
     order: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
-    shippingBatch: { findFirst: vi.fn(), count: vi.fn(), create: vi.fn() },
+    shippingBatch: { findFirst: vi.fn(), count: vi.fn(), create: vi.fn(), updateMany: vi.fn() },
     orderStatusLog: { create: vi.fn() },
     orderActivity: { create: vi.fn() },
     user: { findUnique: vi.fn() },
@@ -94,6 +94,8 @@ beforeEach(() => {
   resolveDeliveryFee.mockResolvedValue({ fee: 3, lateThresholdDays: 5, returnFee: 0, source: 'TABLE' });
   db.shippingBatch.findFirst.mockResolvedValue(null);
   db.shippingBatch.count.mockResolvedValue(0);
+  // (RV300, 28/10) `assign_batch` now takes the trolley's lock inside its write; by default the trolley is still being filled.
+  db.shippingBatch.updateMany.mockResolvedValue({ count: 1 });
   db.shippingBatch.create.mockResolvedValue({ id: BATCH_ID, batchNumber: 'BATCH-1' });
   db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn(db));
   db.order.update.mockResolvedValue({});
@@ -247,6 +249,47 @@ describe('assign_batch on the shipping door', () => {
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(db.order.updateMany.mock.calls[0][0].where).toMatchObject({ id: ORDER_ID, version: 4 });
     expect(db.order.updateMany.mock.calls[0][0].data.shippingBatchId).toBe(BATCH_ID);
+  });
+
+  it('takes the trolley’s lock IN the write, only while it is still READY — before it touches the order', async () => {
+    const res = await assign({});
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const lock = db.shippingBatch.updateMany.mock.calls[0][0];
+    expect(lock.where).toMatchObject({ id: BATCH_ID, companyId: 'c1', status: 'READY' });
+    expect(db.shippingBatch.updateMany.mock.invocationCallOrder[0]).toBeLessThan(db.order.updateMany.mock.invocationCallOrder[0]);
+  });
+
+  it('RV300: the press landed between the look and the write — the order is NOT added to a trolley that left', async () => {
+    db.shippingBatch.updateMany.mockResolvedValue({ count: 0 });
+
+    const res = await assign({});
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('BATCH_CLOSED_FOR_INTAKE');
+    expect(db.order.updateMany, 'انكتب الطلب على دفعة سُلّمت').not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE: the other actions never touch a trolley’s lock', async () => {
+    assertOrderAccess.mockResolvedValue({
+      allowed: true,
+      order: { id: ORDER_ID, companyId: 'c1', storeId: 's1', version: 4, orderNumber: 'SY-1', confirmationStatus: 'CONFIRMED', shippingStatus: 'READY_FOR_PICKUP', shippedAt: null, lockedById: null, lockExpiresAt: null, deliveryProviderId: null },
+    });
+    db.deliveryProvider.findFirst.mockResolvedValue({ id: PROVIDER, name: 'أ' });
+    db.order.updateMany.mockResolvedValue({ count: 1 });
+    db.order.findUnique.mockResolvedValue({ id: ORDER_ID });
+
+    const res = await shippingDoor(
+      new Request('http://localhost/x', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'assign_provider', deliveryProviderId: PROVIDER, expectedVersion: 4 }),
+      }),
+      { params: Promise.resolve({ id: ORDER_ID }) }
+    );
+
+    expect(res.status).toBe(200);
+    expect(db.shippingBatch.updateMany).not.toHaveBeenCalled();
   });
 
   it('and pressing it again on the same batch is not a refusal', async () => {

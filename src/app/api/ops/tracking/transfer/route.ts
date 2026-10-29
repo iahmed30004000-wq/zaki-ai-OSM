@@ -6,7 +6,9 @@ import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { orderRefFields } from '@/lib/order-ref';
-import { assertCompanyHoldsIt, planTransfer, requiresOpenBatch, TransferRefused, type TransferParty } from '@/lib/courier-transfer';
+import { planTransfer, requiresOpenBatch, TransferRefused, type TransferParty } from '@/lib/courier-transfer';
+import { handedToCourier } from '@/lib/order-seal';
+import { moveBeforeHandover } from '@/lib/order-cancel';
 import { createReplacement, type ReplacementSource } from '@/lib/replacement-order';
 import { ACTIVITY_ROLE } from '@/lib/superseded';
 import { zodMessage } from '@/lib/zod-message';
@@ -15,16 +17,24 @@ import { zodMessage } from '@/lib/zod-message';
  * POST /api/ops/tracking/transfer — move a parcel to another courier.
  *
  * The rules live in src/lib/courier-transfer.ts. Away from a مندوب it is one
- * move; away from a company the parcel is taken back and a REPLACEMENT order
- * is raised, because the original is physically with that company under
- * their barcode and will appear in their statement. Overwriting the provider
- * would quietly detach the order from the shipment that still holds it.
+ * move; away from a company that has TAKEN the parcel it is taken back and
+ * a REPLACEMENT order is raised, because the original is physically with that
+ * company under their barcode and will appear in their statement.
+ * Overwriting the provider would quietly detach the order from the shipment
+ * that still holds it.
+ *
+ * AND BEFORE THE COMPANY TOOK IT, NOTHING IS REPLACED. Until «إغلاق الشحنة —
+ * سُلّمت للشركة» the box is on our floor: the SAME order moves to the new
+ * company's trolley, with its number, its lines and its reservation, and a
+ * printed waybill goes only on the word of the person who destroyed it.
  */
 
 const schema = z.object({
   orderId: z.string().uuid(),
   toProviderId: z.string().uuid(),
   note: z.string().trim().max(300).optional(),
+  /** «الطرد بين يديّ — أتلفتُ بوليصته القديمة…» — needed only when the old waybill is printed. */
+  parcelInHand: z.boolean().optional(),
 });
 
 export async function POST(req: Request) {
@@ -75,11 +85,16 @@ export async function POST(req: Request) {
 
     let plan;
     try {
-      plan = planTransfer({ from, to: target, shippingStatus: order.shippingStatus });
-      assertCompanyHoldsIt(plan, {
+      plan = planTransfer({
+        from,
+        to: target,
         shippingStatus: order.shippingStatus,
-        shippedAt: order.shippedAt,
-        batchStatus: order.shippingBatch?.status ?? null,
+        // Has the company TAKEN it — the press of its trolley, or a parcel that left on its own.
+        handedOver: handedToCourier({
+          shippingStatus: order.shippingStatus,
+          shippedAt: order.shippedAt,
+          batchStatus: order.shippingBatch?.status ?? null,
+        }),
       });
     } catch (e) {
       if (e instanceof TransferRefused) {
@@ -109,6 +124,58 @@ export async function POST(req: Request) {
           { status: 409 }
         );
       }
+    }
+
+    /**
+     * THE COMPANY NEVER TOOK IT: THE SAME ORDER MOVES, NOTHING IS RAISED.
+     *
+     * No replacement, no new number, no second reservation — the helper
+     * writes one conditional update (see `moveBeforeHandover`). The old
+     * company is told to cancel a parcel it already has a barcode for, and a
+     * printed waybill is torn up on a person's word.
+     */
+    if (plan.mode === 'REBATCH') {
+      /*
+       * THIS ONE TAKES A PARCEL OFF A TROLLEY AND CANCELS A WAYBILL AT THE COMPANY — the
+       * packing table's work. The sister doors (`hold`, `stand-down`) ask `ops.ship` for the
+       * same acts; `ops.track` alone (the tracking desk) does not reach it. The move AFTER
+       * the handover keeps the permission it always had.
+       */
+      await requirePermission('ops.ship');
+      const moved = await moveBeforeHandover({
+        orderId: order.id,
+        companyId,
+        storeId,
+        by: { id: user.id, name: user.name, role: user.role },
+        fromProviderId: from!.id,
+        fromName: from!.name,
+        to: { id: to.id, name: to.name },
+        toBatchId: openBatch?.id ?? null,
+        minorUnit: country.minorUnit,
+        note: parsed.data.note ?? null,
+        parcelInHand: parsed.data.parcelInHand === true,
+      });
+      if (!moved.ok) {
+        return NextResponse.json(
+          { error: moved.error, code: moved.code, ...(moved.attestation ? { attestation: moved.attestation } : {}) },
+          { status: moved.status }
+        );
+      }
+      await logAudit({
+        companyId, userId: user.id, action: 'COURIER_TRANSFERRED',
+        entity: 'Order', entityId: order.id,
+        previousData: { provider: from?.name, shippingStatus: order.shippingStatus },
+        newData: { mode: plan.mode, to: to.name, replacement: null, note: parsed.data.note ?? null, courierCancelled: moved.courierCancelled },
+      });
+      return NextResponse.json({
+        mode: plan.mode,
+        orderNumber: order.orderNumber,
+        replacement: null,
+        message:
+          `${order.orderNumber} انتقل من ${from?.name} إلى ${to.name} — نفس الطلب ونفس الرقم، بلا طلب بديل.` +
+          `${moved.courierCancelled ? ` وألغينا الطرد عند ${from?.name}.` : ''}` +
+          `${moved.waybillReset ? ' بوليصته القديمة بطلت، اطبع له بوليصة جديدة.' : ''}`,
+      });
     }
 
     const runTransfer = (attempt: number) =>

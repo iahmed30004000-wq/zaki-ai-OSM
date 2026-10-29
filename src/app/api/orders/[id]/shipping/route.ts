@@ -5,7 +5,7 @@ import { zodMessage } from '@/lib/zod-message';
 import { SHIPPING_STATUS_AR } from '@/lib/shipping-workflow';
 import { notify } from '@/lib/notify';
 import { db } from '@/lib/db';
-import { SEALED_BATCH_STATUSES } from '@/lib/order-seal';
+import { SEALED_BATCH_STATUSES, handedToCourier } from '@/lib/order-seal';
 import { requireContext } from '@/lib/geo-context';
 import { consumeOrderStock } from '@/lib/stock-consumption';
 import { emitAppEvent, type AppEvent } from '@/lib/apps/events';
@@ -13,6 +13,7 @@ import { queueConversions } from '@/lib/conversions/emit';
 import { ORDER_ACCESS_STATUS, assertOrderAccess } from '@/lib/rbac';
 import {
   isValidShippingTransition, canEnterShipping, STATUS_TIMESTAMP,
+  beforeHandoverReturn, RETURN_BEFORE_HANDOVER_AR,
   DELIVERY_FAILURE_REASONS, RETURN_REASONS, SHIPPING_STATUSES, attemptForShippingStatus,
   type ShippingStatus,
 } from '@/lib/shipping-workflow';
@@ -190,6 +191,29 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           if (!gate.allowed) {
             return NextResponse.json(
               { error: gate.message, errorAr: gate.message, code: gate.code },
+              { status: 409 }
+            );
+          }
+        }
+
+        /*
+         * ── NO RETURN FOR A PARCEL THE COMPANY NEVER TOOK (28/10, marked in shipping-workflow) ──
+         *
+         * READY_FOR_PICKUP → RETURN_REQUESTED made a fake return for a box on
+         * our own floor. It is out of the table, and asked HERE as well, before
+         * the table, so the override with a note cannot bring it back. The
+         * answer names the three doors that fit: cancel · hold · move to another
+         * company as the same order.
+         */
+        if (beforeHandoverReturn(from, newShippingStatus)) {
+          const handed = handedToCourier({
+            shippingStatus: order.shippingStatus,
+            shippedAt: order.shippedAt,
+            batchStatus: await batchStatusOf(db, order.shippingBatchId),
+          });
+          if (!handed) {
+            return NextResponse.json(
+              { error: RETURN_BEFORE_HANDOVER_AR, errorAr: RETURN_BEFORE_HANDOVER_AR, code: 'NO_RETURN_BEFORE_HANDOVER' },
               { status: 409 }
             );
           }
@@ -459,7 +483,29 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // available to somebody else.
     let consumption: { taken: number; short: number; alreadyDone: boolean } | null = null;
 
+    /*
+     * THE TROLLEY MUST STILL BE BEING FILLED AT THE MOMENT OF THE WRITE (RV300).
+     *
+     * `assign_batch` checked the batch's status when it READ it, and the press of
+     * «إغلاق الشحنة — سُلّمت للشركة» can land in between: the order joined a
+     * trolley that had just left, and the manifest the driver took did not
+     * list it. The press takes the batch row's lock before it reads its members,
+     * so taking the same lock here, conditional on READY, is enough: either this
+     * write is in before the press (and the press sees the order), or the press
+     * is in first and this finds nothing.
+     */
+    const intake = { closed: false };
     const saved = await db.$transaction(async (tx) => {
+      if (action === 'assign_batch') {
+        const open = await tx.shippingBatch.updateMany({
+          where: { id: String(updateData.shippingBatchId), companyId, status: 'READY' },
+          data: { status: 'READY' },
+        });
+        if (open.count !== 1) {
+          intake.closed = true;
+          return { count: 0 };
+        }
+      }
       const res = await tx.order.updateMany({
         where: { id, companyId, version: expectedVersion },
         data: updateData,
@@ -501,6 +547,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return res;
     });
 
+    if (intake.closed) {
+      const closed = 'الدفعة سلِّمت لشركة الشحن للتو ولم تعد تستقبل طلبات. أنشئ دفعة جديدة.';
+      return NextResponse.json(
+        { error: closed, errorAr: closed, code: 'BATCH_CLOSED_FOR_INTAKE' },
+        { status: 409 }
+      );
+    }
     if (saved.count !== 1) {
       return NextResponse.json(
         {

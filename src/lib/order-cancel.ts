@@ -3,10 +3,14 @@ import { db } from './db';
 import { logAudit } from './audit';
 import { emitAppEvent } from './apps/events';
 import { releaseOrderLines } from './reservation';
+import { resolveDeliveryFee } from './delivery-fees';
+import { roundMinor } from './money';
 import { SHIPPING_GONE } from './order-state';
 import {
   ATTESTATION_AR,
   ATTESTATION_NEEDED_AR,
+  WAYBILL_ATTESTATION_AR,
+  WAYBILL_ATTESTATION_NEEDED_AR,
   cancelVerdict,
   leavesTheShipment,
   leavesTheTrolley,
@@ -193,6 +197,8 @@ const ORDER_SELECT = {
   deliveryProviderId: true,
   trackingNumber: true,
   courierSendStartedAt: true,
+  regionId: true,
+  deliveryFee: true,
   totalAmount: true,
   currency: true,
   customerId: true,
@@ -561,4 +567,293 @@ export async function holdFromTrolley(input: HoldFromTrolleyInput): Promise<Hold
   }
 
   return { ok: true, orderNumber: o.orderNumber, courierCancelled: remote.kind === 'CANCELLED' };
+}
+
+/**
+ * LET GO OF THE COMPANY'S COPY OF THE PARCEL — before the order changes under it.
+ *
+ * A parcel sent by API exists twice. Anything that changes what the company
+ * was told (who carries it, what is in the box, what he collects) while its
+ * waybill is alive leaves THEM holding the old parcel. So the company is asked
+ * to cancel first — outside any transaction, and only a clear yes lets the
+ * caller clear the barcode and the claim in its own conditional write. A
+ * manual company, or no barcode at all, needs nothing.
+ */
+export type ParcelReleased =
+  | {
+      ok: true;
+      remote: RemoteCancel;
+      courierCancelled: boolean;
+      /** The columns to add to the caller's write so our copy agrees with theirs. */
+      cleared: Record<string, unknown>;
+    }
+  | { ok: false; status: number; code: string; error: string };
+
+export async function releaseCourierParcel(
+  o: {
+    companyId: string;
+    deliveryProviderId: string | null;
+    trackingNumber: string | null;
+    courierSendStartedAt: Date | string | null;
+  },
+  inject?: { adapter?: CourierAdapter; courierName?: string | null }
+): Promise<ParcelReleased> {
+  const remote = await cancelAtCourier(
+    {
+      companyId: o.companyId,
+      deliveryProviderId: o.deliveryProviderId,
+      trackingNumber: o.trackingNumber,
+      courierSendStartedAt: o.courierSendStartedAt,
+    },
+    inject
+  );
+  const refusal = remoteRefusal(remote);
+  if (refusal && !refusal.ok) return { ok: false, status: refusal.status, code: refusal.code, error: refusal.error };
+  return {
+    ok: true,
+    remote,
+    courierCancelled: remote.kind === 'CANCELLED',
+    cleared: remote.kind === 'CANCELLED' ? { trackingNumber: null, courierSendStartedAt: null } : {},
+  };
+}
+
+class TargetTrolleyClosed extends Error {
+  constructor() {
+    super('TARGET_TROLLEY_CLOSED');
+  }
+}
+
+export interface MoveBeforeHandoverInput {
+  orderId: string;
+  companyId: string;
+  storeId?: string | null;
+  by: { id: string; name?: string | null; role: string };
+  /** The company or agent the parcel was assigned to when the person looked. A different one now means someone else moved it. */
+  fromProviderId: string;
+  fromName: string | null;
+  to: { id: string; name: string };
+  /** The new company's open trolley, or null for an agent (he takes it by hand). */
+  toBatchId: string | null;
+  /** The country's smallest unit — the fee is compared in it, so 3-place currencies do not lose a fils. */
+  minorUnit: number;
+  note: string | null;
+  /** «الطرد بين يديّ — أتلفتُ بوليصته القديمة…» — required when the waybill is printed. */
+  parcelInHand?: boolean;
+  inject?: { adapter?: CourierAdapter; courierName?: string | null };
+}
+
+export type MoveOutcome =
+  | { ok: true; orderNumber: string; courierCancelled: boolean; waybillReset: boolean }
+  | { ok: false; status: number; code: string; error: string; attestation?: string };
+
+export const HANDED_NOW_AR = 'الطرد انسلّم للشركة للتو — التحويل الآن بيصير بطلب بديل. حدّث الصفحة وجرّب من جديد.';
+export const TARGET_CLOSED_AR = 'الدفعة الجديدة انغلقت — جرّب دفعة تانية.';
+
+/** The new company charges another fee than the order carries: the customer's total would change, and a transfer never does that. */
+export const feeDiffersAr = (now: string, was: string) =>
+  `أجرة الشركة الجديدة غير أجرة الطلب (${now} بدل ${was}) — أجّل الطلب وضعه بدفعتها ليتحسب من جديد.`;
+export const NO_FEE_FOR_REGION_AR = 'الشركة الجديدة ما إلها أجرة لهالمحافظة — أجّل الطلب وضعه بدفعتها بعد ما تنضاف الأجرة.';
+export const MOVED_FROM_AR = 'الطرد تغيّر مكانه أثناء العمل عليه — حدّث الصفحة وجرّب من جديد.';
+
+/**
+ * A PARCEL THAT THE COMPANY NEVER TOOK MOVES TO ANOTHER COMPANY AS THE SAME ORDER.
+ *
+ * (The owner, 28/10: «قبل التسليم: نفس الطلب».) Until «إغلاق الشحنة — سُلّمت
+ * للشركة» the box is on our floor, so «transfer» is not a recall and not a
+ * replacement: the order keeps its id, its number, its lines and the units
+ * reserved under its name — nothing is raised and nothing counted back. What
+ * changes is who carries it and which trolley it is on.
+ *
+ *   ASKS    `cancelVerdict` — the same gate as every cancel door: a pressed
+ *           trolley is the company's now, and an unreadable one is refused.
+ *   KEEPS   the customer's total: the NEW company's fee for the order's region must
+ *           equal the fee the order carries (in the currency's smallest unit), or the
+ *           move is refused — before any call to the old company. A transfer never
+ *           re-prices; «أجّل ثم ضعه بدفعة» is the door that does (`resolveDeliveryFee`).
+ *   WANTS   a person's word when the waybill is printed: it names the old
+ *           company and its barcode, so it is destroyed, not carried over.
+ *   TELLS   the old company, for a barcode it already holds (outside any
+ *           transaction; only a clear yes lets the order change).
+ *   WRITES  ONE conditional update (version, trolley, barcode, claim — a press
+ *           or a dispatch that lands first makes it find nothing), after a lock
+ *           on the NEW trolley so a press of it cannot miss this parcel.
+ */
+export async function moveBeforeHandover(input: MoveBeforeHandoverInput): Promise<MoveOutcome> {
+  const o = await db.order.findFirst({
+    where: { id: input.orderId, companyId: input.companyId, ...(input.storeId ? { storeId: input.storeId } : {}) },
+    select: ORDER_SELECT,
+  });
+  if (!o) return { ok: false, status: 404, code: 'NOT_FOUND', error: 'الطلب غير موجود' };
+  if (o.deliveryProviderId !== input.fromProviderId) return { ok: false, status: 409, code: 'ORDER_MOVED_ON', error: MOVED_FROM_AR };
+
+  const verdict = cancelVerdict({
+    confirmationStatus: o.confirmationStatus,
+    shippingStatus: o.shippingStatus,
+    shippedAt: o.shippedAt,
+    labelPrintedAt: o.labelPrintedAt,
+    shippingBatchId: o.shippingBatchId,
+    batchStatus: o.shippingBatch?.status ?? null,
+  });
+  if (!verdict.allowed) {
+    return {
+      ok: false,
+      status: 409,
+      code: verdict.code === 'UNKNOWN_BATCH' ? 'UNKNOWN_BATCH' : 'HANDED_OVER',
+      error: verdict.code === 'UNKNOWN_BATCH' ? verdict.message : HANDED_NOW_AR,
+    };
+  }
+
+  const waybill = !!o.labelPrintedAt;
+  if (waybill && input.parcelInHand !== true) {
+    return {
+      ok: false,
+      status: 409,
+      code: 'ATTESTATION_REQUIRED',
+      error: WAYBILL_ATTESTATION_NEEDED_AR,
+      attestation: WAYBILL_ATTESTATION_AR,
+    };
+  }
+
+  /*
+   * THE CUSTOMER'S TOTAL DOES NOT CHANGE (the owner: «اي قرار بعد الان اتخذو دون الرجوع الي»).
+   *
+   * The fee on the order is a snapshot of the OLD company's table, and the COD was
+   * priced with it. Moving the order to a company that charges another fee would
+   * leave a total that no table explains; re-pricing it here would change what the
+   * customer pays on a transfer nobody asked to re-price. So an equal fee passes and
+   * anything else is refused — and it is asked FIRST, before the old company is told
+   * to cancel a parcel for a move that will not happen.
+   */
+  const newFee = await resolveDeliveryFee(db, {
+    deliveryProviderId: input.to.id,
+    regionId: o.regionId ?? null,
+    minorUnit: input.minorUnit,
+  });
+  if (newFee.source === 'NONE') {
+    return { ok: false, status: 409, code: 'NO_FEE_ROW', error: NO_FEE_FOR_REGION_AR };
+  }
+  const was = roundMinor(Number(o.deliveryFee ?? 0), input.minorUnit);
+  if (newFee.fee !== was) {
+    return {
+      ok: false,
+      status: 409,
+      code: 'FEE_DIFFERS',
+      error: feeDiffersAr(newFee.fee.toFixed(input.minorUnit), was.toFixed(input.minorUnit)),
+    };
+  }
+
+  /*
+   * THE NEW TROLLEY IS READ BEFORE THE OLD COMPANY IS TOLD ANYTHING. Cancelling a
+   * parcel at the old company and only then finding the new trolley already pressed
+   * leaves the company with nothing and the order with a dead barcode. The write
+   * below still takes the trolley's lock (the read can be overtaken); this makes the
+   * ordinary case — a trolley that closed a minute ago — fail before it costs anything.
+   */
+  if (input.toBatchId) {
+    const target = await db.shippingBatch.findFirst({
+      where: { id: input.toBatchId, companyId: input.companyId, deliveryProviderId: input.to.id },
+      select: { status: true },
+    });
+    if (!target || target.status !== 'READY') {
+      return { ok: false, status: 409, code: 'TARGET_BATCH_CLOSED', error: TARGET_CLOSED_AR };
+    }
+  }
+
+  const released = await releaseCourierParcel(
+    {
+      companyId: input.companyId,
+      deliveryProviderId: o.deliveryProviderId,
+      trackingNumber: o.trackingNumber,
+      courierSendStartedAt: o.courierSendStartedAt,
+    },
+    input.inject
+  );
+  if (!released.ok) return released;
+  const remote = released.remote;
+
+  const data = {
+    deliveryProviderId: input.to.id,
+    shippingBatchId: input.toBatchId,
+    deliveryAssignedAt: new Date(),
+    deliveryAssignedById: input.by.id,
+    // The old company's barcode and claim are not ours to carry to the new one.
+    trackingNumber: null,
+    courierSendStartedAt: null,
+    // The waybill on the box names the old company: it is stale, printed again for the new one.
+    labelPrintedAt: null,
+    version: { increment: 1 },
+  };
+
+  const wrote = await db
+    .$transaction(async (tx) => {
+      if (input.toBatchId) {
+        // Take the new trolley's row lock first (the press takes it first too), and only while it is still being filled.
+        const open = await tx.shippingBatch.updateMany({
+          where: { id: input.toBatchId, companyId: input.companyId, deliveryProviderId: input.to.id, status: 'READY' },
+          data: { status: 'READY' },
+        });
+        if (open.count !== 1) throw new TargetTrolleyClosed();
+      }
+      const res = await tx.order.updateMany({ where: stillAsRead(o, input.companyId), data });
+      if (res.count !== 1) throw new OrderMovedOn();
+
+      await tx.orderActivity.create({
+        data: {
+          companyId: input.companyId, orderId: o.id, userId: input.by.id,
+          action: 'COURIER_TRANSFERRED',
+          newStatus: o.shippingStatus,
+          // mode REBATCH, never REPLACE: nothing was replaced, so `isSuperseded` must not read this.
+          metadata: JSON.stringify({
+            mode: 'REBATCH',
+            from: input.fromName,
+            to: input.to.name,
+            note: input.note,
+            ...takenOffFrom({
+              shippingStatus: o.shippingStatus,
+              labelPrintedAt: o.labelPrintedAt,
+              trackingNumber: o.trackingNumber,
+              deliveryProviderId: o.deliveryProviderId,
+              batchNumber: o.shippingBatch?.batchNumber ?? null,
+              courierName: input.fromName,
+            }),
+            courierCancelled: remote.kind === 'CANCELLED',
+            // The same order, the same units: nothing is counted back and nothing is reserved twice.
+            stock: 'KEPT',
+          }),
+        },
+      });
+      if (waybill) {
+        await tx.orderActivity.create({
+          data: {
+            companyId: input.companyId, orderId: o.id, userId: input.by.id,
+            action: 'PARCEL_ATTESTED_IN_HAND',
+            metadata: JSON.stringify({ said: WAYBILL_ATTESTATION_AR, by: input.by.name ?? null, kind: 'WAYBILL' }),
+          },
+        });
+      }
+      return true as const;
+    })
+    .catch((e: unknown) => {
+      if (e instanceof OrderMovedOn || e instanceof TargetTrolleyClosed) return e;
+      throw e;
+    });
+
+  if (wrote !== true) {
+    // The company may already have said yes to the cancel: never silent about that.
+    const lost = await movedOn({ ...input, door: 'TRANSFER' }, o, remote);
+    if (wrote instanceof TargetTrolleyClosed && remote.kind !== 'CANCELLED') {
+      return { ok: false, status: 409, code: 'TARGET_BATCH_CLOSED', error: TARGET_CLOSED_AR };
+    }
+    return lost.ok ? { ok: false, status: 409, code: 'ORDER_MOVED_ON', error: MOVED_AR } : lost;
+  }
+
+  if (waybill) {
+    await logAudit({
+      companyId: input.companyId, userId: input.by.id, action: 'PARCEL_ATTESTED_IN_HAND',
+      entity: 'Order', entityId: o.id,
+      newData: { said: WAYBILL_ATTESTATION_AR, door: 'TRANSFER', by: input.by.name ?? null },
+    });
+  }
+
+  return { ok: true, orderNumber: o.orderNumber, courierCancelled: remote.kind === 'CANCELLED', waybillReset: waybill };
 }

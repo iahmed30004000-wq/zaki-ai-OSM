@@ -20,11 +20,23 @@ export const SHIPPING_TRANSITIONS: Record<ShippingStatus, ShippingStatus[]> = {
   NOT_READY: ['READY_FOR_SHIPPING'],
   READY_FOR_SHIPPING: ['PACKING'],
   PACKING: ['READY_FOR_PICKUP'],
-  // A parcel can be labelled, handed over, and then cancelled by the
-  // customer before it ever moves. Without a way back from here the only
-  // route was to mark it SHIPPED and then failed — recording a journey that
-  // never happened, and dating the stock movement to it.
-  READY_FOR_PICKUP: ['SHIPPED', 'RETURN_REQUESTED'],
+  /*
+   * ── REMOVED 28/10 (PR «قبل التسليم»): READY_FOR_PICKUP → RETURN_REQUESTED ──
+   *
+   * It was added so a labelled parcel that never moved could be «returned»
+   * without faking a journey. But a parcel on our own floor has nothing to
+   * return: nobody has it, so the status produced a FAKE RETURN that sat on the
+   * returns desk, in the tracking alerts and in the customer's return rate for a
+   * box that never left the building.
+   *
+   * What fits before «إغلاق الشحنة — سُلّمت للشركة» is the owner's M6 ruling:
+   * cancel it (`endOrder`), hold it (`holdFromTrolley`), or move it to another
+   * company as the same order (`moveBeforeHandover`). `beforeHandoverReturn`
+   * below answers anybody still asking for the old transition, with those three.
+   * The transition is MARKED here and not silently dropped; nothing else in the
+   * state table changed.
+   */
+  READY_FOR_PICKUP: ['SHIPPED'],
   SHIPPED: ['OUT_FOR_DELIVERY'],
   // A partial delivery is reached at the door, like a whole one.
   OUT_FOR_DELIVERY: ['DELIVERED', 'PARTIALLY_DELIVERED', 'FAILED_DELIVERY'],
@@ -37,6 +49,21 @@ export const SHIPPING_TRANSITIONS: Record<ShippingStatus, ShippingStatus[]> = {
   PARTIALLY_DELIVERED: [],
   CANCELLED: [],              // terminal
 };
+
+/** What anybody asking for the removed transition is told: the three doors that exist instead. */
+export const RETURN_BEFORE_HANDOVER_AR =
+  'الطرد لسّا عندنا وما انسلّم للشركة — ما في شي يرجع. ألغِ الطلب، أو أجّل شحنه، أو حوّله لشركة تانية (بيضل نفس الطلب).';
+
+/**
+ * Is this the removed READY_FOR_PICKUP → RETURN_REQUESTED?
+ *
+ * Asked BEFORE the transition table, because the table is the thing that was
+ * changed and the override with a note (`orders.unlock`) walks past it: an
+ * override must not bring the fake return back.
+ */
+export function beforeHandoverReturn(from: string, to: string): boolean {
+  return from === 'READY_FOR_PICKUP' && to === 'RETURN_REQUESTED';
+}
 
 export function isValidShippingTransition(from: string, to: string): boolean {
   const list = SHIPPING_TRANSITIONS[from as ShippingStatus];
