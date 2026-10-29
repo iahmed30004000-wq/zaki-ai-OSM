@@ -97,11 +97,11 @@ async function returnsByProduct(where: Record<string, unknown>): Promise<Product
 /**
  * THE ANSWER BOTH BOARDS READ — and nothing else decides who may ask.
  *
- * The dashboard (`/api/analytics`, key `dashboard.view`) and the performance
- * board (`/api/analytics/performance`, key `reports.view`) read the same
- * builder and the same projection; each route asks its OWN key before calling
- * this, so a 403 at one door never depends on the other screen's key. The
- * rate window is per door (`rateKey`) so two open boards do not share one.
+ * The dashboard (`/api/analytics`) and the performance board
+ * (`/api/analytics/performance`) read the same builder and the same
+ * projection; each route asks `reports.view` itself BEFORE calling this (never
+ * `dashboard.view`, which nearly every role holds). The rate window is per door
+ * (`rateKey`) so two open boards do not share one.
  */
 export async function answerAnalytics(
   req: Request,

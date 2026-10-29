@@ -354,9 +354,9 @@ export function catalogItem(key: string): CatalogItem | undefined {
  * lose a working door without anything saying so.
  *
  * `analytics.view` («عرض التحليلات») joined on 29/10: nothing asks it any more
- * (the dashboard's doors ask `dashboard.view`, the reports and growth doors
+ * (the dashboard's numbers, the reports and the growth doors ask
  * `reports.view`), and the migration 20261029130000_analytics_view_becomes_
- * reports_view gave its holders those two. Its old rows stay in the database,
+ * reports_view gave its holders that one. Its old rows stay in the database,
  * inert, and go the next time the owner saves that role. `categories.view`
  * will retire one day, but a route still asks it.
  */

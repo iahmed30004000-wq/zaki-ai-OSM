@@ -27,11 +27,10 @@ export const LEGACY_ALIAS: Readonly<Record<string, string>> = {
    * passed for a holder of the other, so the dashboard's API, the performance
    * board and the campaigns all answered to two boxes at once, and a «منع» on
    * the one did nothing while the other stood. The key is retired (see
-   * RETIRED_KEYS); the dashboard's two doors ask `dashboard.view`, every
-   * report and growth door asks `reports.view` alone. The migration
-   * 20261029130000_analytics_view_becomes_reports_view gave `reports.view`
-   * and `dashboard.view` to every role and person who held it, so nobody lost
-   * a door on the day. Only a catalog key that is NOT a real box may stand on
+   * RETIRED_KEYS); the dashboard's numbers, every report and every growth door
+   * ask `reports.view` alone. The migration
+   * 20261029130000_analytics_view_becomes_reports_view gave `reports.view` to
+   * every role and person who held it, so nobody lost a door on the day. Only a catalog key that is NOT a real box may stand on
    * the left of this table.
    */
   /*

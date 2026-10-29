@@ -8,11 +8,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * The owner's rule, 28/10: «اي قرار بعد الان اتخذو دون الرجوع الي».
  *
  * `LEGACY_ALIAS` made «عرض التحليلات» and «عرض التقارير» one door with two
- * names. Now the dashboard's two doors ask `dashboard.view`, every report,
- * board and growth door asks `reports.view` alone, and the performance board
- * has its own answer (`/api/analytics/performance`). The migration
- * 20261029130000_analytics_view_becomes_reports_view makes sure NOBODY LOSES A
- * DOOR on the day.
+ * names. Now the dashboard's numbers, every report, board and growth door ask
+ * `reports.view` alone — NEVER `dashboard.view`, which nearly every role holds
+ * (the owner's ruling after the independent review of #82: no widening) — and
+ * the performance board has its own answer (`/api/analytics/performance`). The
+ * migration 20261029130000_analytics_view_becomes_reports_view makes sure
+ * NOBODY LOSES A DOOR on the day.
  *
  * ⚠️ There is no database in CI, so the migration is read here as TEXT, and its
  * RULES are replayed over fixture people by `migrate()` below — a row-by-row
@@ -43,6 +44,7 @@ import type { SessionUser } from '@/types/auth';
 
 import { GET as dashboardApi } from '@/app/api/analytics/route';
 import { GET as performanceApi } from '@/app/api/analytics/performance/route';
+import { GET as lossApi } from '@/app/api/analytics/loss/route';
 
 const root = process.cwd();
 const read = (p: string) => readFileSync(path.join(root, p), 'utf8');
@@ -69,16 +71,29 @@ describe('the two answers, each at its own door', () => {
   });
   const ask = (get: (r: Request) => Promise<Response>) => get(new Request('http://x/api/analytics'));
 
-  it('the dashboard answers «عرض لوحة التحكم» and nothing else', async () => {
-    asking(['dashboard.view']);
+  it('the dashboard’s numbers answer «عرض التقارير» — on both of its doors', async () => {
+    asking(['reports.view']);
     expect((await ask(dashboardApi)).status).toBe(200);
     expect(answer).toHaveBeenCalledTimes(1);
+    expect(answer.mock.calls[0][2]).toBe('analytics');
   });
 
-  it('NEGATIVE: «عرض التقارير» alone no longer opens the dashboard’s API, and the retired key opens nothing', async () => {
-    for (const keys of [['reports.view'], ['analytics.view'], ['reports.view', 'analytics.view'], []]) {
+  it('NEGATIVE: «عرض لوحة التحكم» alone opens NOTHING of the numbers — the role that holds only the screen key stays at 403, as today', async () => {
+    // CONFIRMATION_AGENT, FOLLOW_UP_AGENT, WAREHOUSE: the dashboard screen, and no company figures.
+    for (const keys of [['dashboard.view'], ['dashboard.view', 'orders.view'], ['dashboard.view', 'finance.view']]) {
+      asking(keys);
+      expect((await ask(dashboardApi)).status, `numbers: ${keys.join(',')}`).toBe(403);
+      expect((await ask(lossApi)).status, `loss: ${keys.join(',')}`).toBe(403);
+    }
+    expect(answer).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE: the retired key opens nothing, alone or beside the screen key', async () => {
+    for (const keys of [['analytics.view'], ['analytics.view', 'dashboard.view'], []]) {
       asking(keys);
       expect((await ask(dashboardApi)).status, keys.join(',')).toBe(403);
+      expect((await ask(lossApi)).status, `loss: ${keys.join(',')}`).toBe(403);
+      expect((await ask(performanceApi)).status, `board: ${keys.join(',')}`).toBe(403);
     }
     expect(answer).not.toHaveBeenCalled();
   });
@@ -91,11 +106,9 @@ describe('the two answers, each at its own door', () => {
     expect(answer.mock.calls[0][2]).toBe('analytics-performance');
   });
 
-  it('NEGATIVE: the dashboard key alone does not open the board’s API, and neither does the retired key', async () => {
-    for (const keys of [['dashboard.view'], ['analytics.view'], []]) {
-      asking(keys);
-      expect((await ask(performanceApi)).status, keys.join(',')).toBe(403);
-    }
+  it('NEGATIVE: the dashboard key alone does not open the board’s API', async () => {
+    asking(['dashboard.view']);
+    expect((await ask(performanceApi)).status).toBe(403);
     expect(answer).not.toHaveBeenCalled();
   });
 
@@ -114,8 +127,8 @@ describe('the two answers, each at its own door', () => {
 
 describe('every door that used to answer to two names answers to one', () => {
   const DOORS: Record<string, string> = {
-    'src/app/api/analytics/route.ts': 'dashboard.view',
-    'src/app/api/analytics/loss/route.ts': 'dashboard.view',
+    'src/app/api/analytics/route.ts': 'reports.view',
+    'src/app/api/analytics/loss/route.ts': 'reports.view',
     'src/app/api/analytics/performance/route.ts': 'reports.view',
     'src/app/api/settings/channels/performance/route.ts': 'reports.view',
     'src/app/api/growth/attribution/route.ts': 'reports.view',
@@ -135,6 +148,7 @@ describe('every door that used to answer to two names answers to one', () => {
       const src = code(file);
       expect(src).toContain(file.includes('grades') ? `can(user, '${key}')` : `requirePermission('${key}')`);
       expect(src, 'the retired key is asked by nothing').not.toContain('analytics.view');
+      expect(src, 'the screen key (held by nearly every role) opens none of the numbers').not.toContain("'dashboard.view'");
       // NEGATIVE: no OR-chain on the entry gate (R7): a `.catch` that asks a second key
       for (const line of src.split('\n').filter((l) => l.includes(`requirePermission('${key}')`))) {
         expect(line, line.trim()).not.toContain('.catch');
@@ -200,20 +214,25 @@ describe('the migration, read as text', () => {
       expect(s).toMatch(/ON CONFLICT \("(roleId|userId)", "permission"\) DO NOTHING$/);
       expect(s, 'tagged, so the rollback finds them and nothing else').toContain(`'av2rv-' || gen_random_uuid()::text`);
       expect(s, 'granted FROM the retired key').toContain(`'analytics.view'`);
-      expect(s, 'to both of the keys that replace it').toContain(`(VALUES ('reports.view'), ('dashboard.view'))`);
+      expect(s, 'to the one key that replaces it').toContain(`'reports.view'`);
     }
   });
 
-  it('writes the keys in all three places a grant lives — the role, its baseline, the person (a «منع» and a «سماح»)', () => {
+  it('writes the key in all three places a grant lives — the role, its baseline, the person (a «منع» and a «سماح»)', () => {
     const into = statements.map((s) => s.match(/^INSERT INTO "(\w+)"/)?.[1]);
     expect(into).toEqual(['user_permissions', 'role_permissions', 'role_permission_defaults', 'user_permissions']);
     expect(denyStmt).toContain(`'DENY'`);
     expect(allowStmt).toContain(`'ALLOW'`);
   });
 
-  it('touches nothing but these three keys — above all not settings.manage (the sensitive-settings migration is done)', () => {
+  it('NEGATIVE: grants NOTHING on dashboard.view — that key opens the screen and nearly every role holds it', () => {
+    expect(stripped).not.toContain('dashboard.view');
+    expect(stripped).not.toContain('VALUES');
+  });
+
+  it('touches nothing but these two keys — above all not settings.manage (the sensitive-settings migration is done)', () => {
     const literals = new Set([...stripped.matchAll(/'([a-z_]+\.[a-z_]+)'/g)].map((m) => m[1]));
-    expect([...literals].sort()).toEqual(['analytics.view', 'dashboard.view', 'reports.view']);
+    expect([...literals].sort()).toEqual(['analytics.view', 'reports.view']);
     expect(stripped).not.toContain('settings.');
   });
 
@@ -226,19 +245,17 @@ describe('the migration, read as text', () => {
   });
 
   it('the «منع» is carried only where it would otherwise be a gain', () => {
-    // 1. the role holds analytics.view; 2. and not the target; 3. and no other way in through reports.view.
     expect(denyStmt).toContain(`d."permission" = 'analytics.view'`);
     expect(denyStmt).toContain(`d."effect" = 'DENY'`);
-    expect(denyStmt).toMatch(/AND EXISTS \([\s\S]*?rp\."permission" = 'analytics\.view'/);
-    expect(denyStmt).toMatch(/AND NOT EXISTS \([\s\S]*?rp\."permission" = t\."perm"/);
-    // a person whose role holds reports.view and who is not denied it passed yesterday through it
-    expect(denyStmt).toMatch(/AND NOT \(\s*EXISTS \([\s\S]*?rp\."permission" = 'reports\.view'[\s\S]*?AND NOT EXISTS \([\s\S]*?x\."effect" = 'DENY'/);
-    // and neither a personal «سماح» on reports.view
+    // 1. the role holds analytics.view; 2. and did NOT hold reports.view already (that person passed through it).
+    expect(denyStmt).toMatch(/AND EXISTS \(\s*SELECT 1 FROM "role_permissions" rp JOIN "roles" r ON r\."id" = rp\."roleId"\s*WHERE rp\."permission" = 'analytics\.view'/);
+    expect(denyStmt).toMatch(/AND NOT EXISTS \(\s*SELECT 1 FROM "role_permissions" rp JOIN "roles" r ON r\."id" = rp\."roleId"\s*WHERE rp\."permission" = 'reports\.view'/);
+    // 3. and no own «سماح» on reports.view
     expect(denyStmt).toMatch(/NOT EXISTS \([\s\S]*?x\."permission" = 'reports\.view' AND x\."effect" = 'ALLOW'/);
   });
 
   it('the «سماح» is written only where the person’s role does not hold the key — no stray exception', () => {
-    expect(allowStmt).toMatch(/AND NOT EXISTS \(\s*SELECT 1 FROM "role_permissions" rp JOIN "roles" r ON r\."id" = rp\."roleId"\s*WHERE rp\."permission" = t\."perm"/);
+    expect(allowStmt).toMatch(/AND NOT EXISTS \(\s*SELECT 1 FROM "role_permissions" rp JOIN "roles" r ON r\."id" = rp\."roleId"\s*WHERE rp\."permission" = 'reports\.view'/);
     expect(allowStmt).toContain(`a."permission" = 'analytics.view'`);
     expect(allowStmt).toContain(`a."effect" = 'ALLOW'`);
   });
@@ -246,8 +263,8 @@ describe('the migration, read as text', () => {
   it('reads a person’s role the way the engine reads it — the roleId, else the system template named like the role', () => {
     const lookup = `((u."roleId" IS NOT NULL AND r."id" = u."roleId")`;
     const template = `(u."roleId" IS NULL AND r."companyId" IS NULL AND r."name" = u."role")`;
-    expect(denyStmt.split(lookup)).toHaveLength(4); // three role questions
-    expect(denyStmt.split(template)).toHaveLength(4);
+    expect(denyStmt.split(lookup)).toHaveLength(3); // two role questions
+    expect(denyStmt.split(template)).toHaveLength(3);
     expect(allowStmt).toContain(lookup);
     expect(allowStmt).toContain(template);
   });
@@ -290,7 +307,6 @@ interface Db {
   userPerms: UserRow[];
 }
 
-const TARGETS = ['reports.view', 'dashboard.view'] as const;
 const TAG = 'av2rv-';
 let seq = 0;
 const mint = () => `${TAG}${++seq}`;
@@ -312,12 +328,9 @@ function carryDeny(db: Db): UserRow[] {
     const u = db.users.find((p) => p.id === d.userId)!;
     if (u.role === 'SUPER_ADMIN') continue;
     if (!roleHolds(db, u, 'analytics.view')) continue;
-    for (const t of TARGETS) {
-      if (roleHolds(db, u, t)) continue;
-      if (roleHolds(db, u, 'reports.view') && !own(db, u, 'reports.view', 'DENY')) continue;
-      if (own(db, u, 'reports.view', 'ALLOW')) continue;
-      out.push({ id: mint(), userId: u.id, permission: t, effect: 'DENY', scope: null, scopeIds: null });
-    }
+    if (roleHolds(db, u, 'reports.view')) continue;
+    if (own(db, u, 'reports.view', 'ALLOW')) continue;
+    out.push({ id: mint(), userId: u.id, permission: 'reports.view', effect: 'DENY', scope: null, scopeIds: null });
   }
   return out;
 }
@@ -325,17 +338,15 @@ function carryDeny(db: Db): UserRow[] {
 const carryRows = (rows: RoleRow[]): RoleRow[] =>
   rows
     .filter((r) => r.permission === 'analytics.view')
-    .flatMap((r) => TARGETS.map((t) => ({ id: mint(), roleId: r.roleId, permission: t, scope: r.scope, scopeIds: r.scopeIds })));
+    .map((r) => ({ id: mint(), roleId: r.roleId, permission: 'reports.view', scope: r.scope, scopeIds: r.scopeIds }));
 /** Statement 4 — reads the roles AFTER statement 2. */
 function carryAllow(db: Db): UserRow[] {
   const out: UserRow[] = [];
   for (const a of db.userPerms.filter((x) => x.permission === 'analytics.view' && x.effect === 'ALLOW')) {
     const u = db.users.find((p) => p.id === a.userId)!;
     if (u.role === 'SUPER_ADMIN') continue;
-    for (const t of TARGETS) {
-      if (roleHolds(db, u, t)) continue;
-      out.push({ id: mint(), userId: u.id, permission: t, effect: 'ALLOW', scope: a.scope, scopeIds: a.scopeIds });
-    }
+    if (roleHolds(db, u, 'reports.view')) continue;
+    out.push({ id: mint(), userId: u.id, permission: 'reports.view', effect: 'ALLOW', scope: a.scope, scopeIds: a.scopeIds });
   }
   return out;
 }
@@ -390,22 +401,20 @@ interface Fixture {
   role?: string;
   deny?: string[];
   allow?: string[];
-  /** a reports.view-only door the plan accepts losing: the dashboard's API, which no screen of theirs calls */
-  noDashboardApi?: true;
-  /** the owner's own «منع» that begins to count — the one deliberate change */
-  nowCounts?: ('reports' | 'dashboard')[];
+  /** the owner's own «منع» on reports.view that begins to count — the one deliberate change */
+  nowCounts?: true;
 }
 const PEOPLE: Fixture[] = [
   { id: 'p_a', roleId: 'r_a' },
   { id: 'p_a_denyA', roleId: 'r_a', deny: ['analytics.view'] },
-  { id: 'p_a_denyR', roleId: 'r_a', deny: ['reports.view'], nowCounts: ['reports'] },
-  { id: 'p_a_denyD', roleId: 'r_a', deny: ['dashboard.view'], nowCounts: ['dashboard'] },
+  { id: 'p_a_denyR', roleId: 'r_a', deny: ['reports.view'], nowCounts: true },
+  { id: 'p_a_denyD', roleId: 'r_a', deny: ['dashboard.view'] },
   { id: 'p_a_denyA_allowR', roleId: 'r_a', deny: ['analytics.view'], allow: ['reports.view'] },
   { id: 'p_ar', roleId: 'r_ar' },
   { id: 'p_ar_denyA', roleId: 'r_ar', deny: ['analytics.view'] },
-  { id: 'p_ar_denyR', roleId: 'r_ar', deny: ['reports.view'], nowCounts: ['reports'] },
+  { id: 'p_ar_denyR', roleId: 'r_ar', deny: ['reports.view'], nowCounts: true },
   { id: 'p_ar_denyA_denyR', roleId: 'r_ar', deny: ['analytics.view', 'reports.view'] },
-  { id: 'p_r', roleId: 'r_r', noDashboardApi: true },
+  { id: 'p_r', roleId: 'r_r' },
   { id: 'p_r_denyR', roleId: 'r_r', deny: ['reports.view'] },
   { id: 'p_ad', roleId: 'r_ad' },
   { id: 'p_ad_denyA', roleId: 'r_ad', deny: ['analytics.view'] },
@@ -416,7 +425,7 @@ const PEOPLE: Fixture[] = [
   { id: 'p_sa', roleId: null, role: 'SUPER_ADMIN', allow: ['analytics.view'], deny: ['reports.view'] },
   { id: 'p_tmod', roleId: null, role: 'MODERATOR' },
   { id: 'p_tmod_denyA', roleId: null, role: 'MODERATOR', deny: ['analytics.view'] },
-  { id: 'p_tacc', roleId: null, role: 'ACCOUNTANT', noDashboardApi: true },
+  { id: 'p_tacc', roleId: null, role: 'ACCOUNTANT' },
 ];
 const users: Person[] = PEOPLE.map((p) => ({ id: p.id, role: p.role ?? 'MANAGER', roleId: p.roleId }));
 const userPerms: UserRow[] = PEOPLE.flatMap((p) => [
@@ -443,17 +452,20 @@ async function doors(db: Db, p: Person) {
   const g = await computeEffectiveGrants(p as never, source);
   const has = (k: string) => g.fullAccess || g.grants[k] !== undefined;
   return {
-    /** What the OLD doors answered: analytics.view or reports.view, each through the alias. */
+    /** What the OLD doors answered: analytics.view or reports.view, each through the alias — numbers, board, growth alike. */
     old: has('analytics.view') || has('reports.view'),
+    /** What every one of those doors asks NOW. */
     reports: has('reports.view'),
+    /** The dashboard screen's own key: it opens the screen and, since the owner's ruling, none of the numbers. */
     dashboard: has('dashboard.view'),
   };
 }
 
 describe('the rules, replayed over the fixture people with the real engine', () => {
   const AFTER = migrate(BEFORE);
+  const who = (id: string) => users.find((u) => u.id === id)!;
 
-  it('NOBODY GAINS A REPORTS DOOR: whoever passes the report and growth doors today passed them yesterday', async () => {
+  it('NOBODY GAINS A DOOR: whoever passes the number, report and growth doors today passed them yesterday', async () => {
     const gained: string[] = [];
     for (const p of users) {
       const was = await doors(BEFORE, p);
@@ -463,61 +475,51 @@ describe('the rules, replayed over the fixture people with the real engine', () 
     expect(gained).toEqual([]);
   });
 
-  it('NOBODY LOSES A REPORTS DOOR — except where the owner’s own «منع» on reports.view begins to count', async () => {
+  it('NEGATIVE: holding the dashboard screen’s key alone brings no door — before or after', async () => {
+    expect(await doors(BEFORE, who('p_d'))).toEqual({ old: false, reports: false, dashboard: true });
+    expect(await doors(AFTER, who('p_d'))).toEqual({ old: false, reports: false, dashboard: true });
+    // denied analytics.view, with a role that held analytics.view AND the screen key: still out of the doors
+    expect(await doors(AFTER, who('p_ad_denyA'))).toEqual({ old: false, reports: false, dashboard: true });
+  });
+
+  it('NOBODY LOSES A DOOR — except where the owner’s own «منع» on reports.view begins to count', async () => {
     const lost: string[] = [];
     for (const p of users) {
       const was = await doors(BEFORE, p);
       const is = await doors(AFTER, p);
       if (was.old && !is.reports) lost.push(p.id);
     }
-    expect(lost.sort()).toEqual(PEOPLE.filter((f) => f.nowCounts?.includes('reports')).map((f) => f.id).sort());
+    expect(lost.sort()).toEqual(PEOPLE.filter((f) => f.nowCounts).map((f) => f.id).sort());
     expect(lost).toEqual(expect.arrayContaining(['p_a_denyR', 'p_ar_denyR']));
   });
 
-  it('NOBODY LOSES THE DASHBOARD’S API — except an own «منع» on dashboard.view, and the reports-only roles the plan accepts', async () => {
-    const lost: string[] = [];
-    for (const p of users) {
-      const was = await doors(BEFORE, p);
-      const is = await doors(AFTER, p);
-      if (was.old && !is.dashboard) lost.push(p.id);
-    }
-    const expected = PEOPLE.filter((f) => f.nowCounts?.includes('dashboard') || f.noDashboardApi).map((f) => f.id);
-    expect(lost.sort()).toEqual(expected.sort());
+  it('a «منع» on dashboard.view changes nothing about the doors — it was never one of them', async () => {
+    expect((await doors(AFTER, who('p_a_denyD'))).reports).toBe(true);
   });
 
-  it('the one with ONLY analytics.view (the inventory’s case) keeps both doors', async () => {
-    const was = await doors(BEFORE, users.find((u) => u.id === 'p_a')!);
-    const is = await doors(AFTER, users.find((u) => u.id === 'p_a')!);
-    expect(was).toEqual({ old: true, reports: false, dashboard: false });
-    expect(is).toEqual({ old: true, reports: true, dashboard: true });
+  it('the one with ONLY analytics.view (the inventory’s case) keeps the doors — and gains no dashboard screen', async () => {
+    expect(await doors(BEFORE, who('p_a'))).toEqual({ old: true, reports: false, dashboard: false });
+    expect(await doors(AFTER, who('p_a'))).toEqual({ old: true, reports: true, dashboard: false });
     // …and so does the person who held it through their OWN «سماح», with a role that gives nothing
-    expect((await doors(AFTER, users.find((u) => u.id === 'p_n_allowA')!))).toMatchObject({ reports: true, dashboard: true });
+    expect(await doors(AFTER, who('p_n_allowA'))).toEqual({ old: true, reports: true, dashboard: false });
   });
 
-  it('the dashboard API is gained only by people who hold dashboard.view — never by anyone else', async () => {
-    for (const p of users) {
-      const was = await doors(BEFORE, p);
-      const is = await doors(AFTER, p);
-      if (is.dashboard && !was.old) {
-        expect(was.dashboard, `${p.id} passes /api/analytics without holding the dashboard`).toBe(true);
-      }
-    }
-  });
-
-  it('a person denied «عرض التحليلات» with no other way in stays out of BOTH doors', async () => {
-    for (const id of ['p_a_denyA', 'p_ar_denyA_denyR']) {
-      const is = await doors(AFTER, users.find((u) => u.id === id)!);
-      expect(is, id).toMatchObject({ reports: false, dashboard: false });
+  it('a person denied «عرض التحليلات» with no other way in stays out', async () => {
+    for (const id of ['p_a_denyA', 'p_ar_denyA_denyR', 'p_ad_denyA', 'p_tmod_denyA']) {
+      expect((await doors(AFTER, who(id))).reports, id).toBe(false);
     }
   });
 
   it('a person denied «عرض التحليلات» who passed through reports.view keeps passing', async () => {
-    for (const id of ['p_ar_denyA', 'p_a_denyA_allowR', 'p_tmod_denyA']) {
-      const is = await doors(AFTER, users.find((u) => u.id === id)!);
-      expect(is.dashboard, id).toBe(true);
+    for (const id of ['p_ar_denyA', 'p_a_denyA_allowR']) {
+      expect((await doors(AFTER, who(id))).reports, id).toBe(true);
     }
-    expect((await doors(AFTER, users.find((u) => u.id === 'p_ar_denyA')!)).reports).toBe(true);
-    expect((await doors(AFTER, users.find((u) => u.id === 'p_a_denyA_allowR')!)).reports).toBe(true);
+  });
+
+  it('the reports-only roles lose nothing now (the dashboard’s numbers stay on their key)', async () => {
+    for (const id of ['p_r', 'p_tacc']) {
+      expect((await doors(AFTER, who(id))).reports, id).toBe(true);
+    }
   });
 
   it('NEGATIVE: carried in the wrong order the migration GAINS doors — the step-4 bug this order avoids', async () => {
@@ -537,6 +539,13 @@ describe('the rules, replayed over the fixture people with the real engine', () 
     expect(rows).toEqual([]);
   });
 
+  it('writes nothing on dashboard.view, anywhere', () => {
+    for (const key of ['rolePerms', 'defaults', 'userPerms'] as const) {
+      const added = AFTER[key].slice(BEFORE[key].length);
+      expect(added.filter((r) => r.permission !== 'reports.view'), key).toEqual([]);
+    }
+  });
+
   it('is additive: every row that was there is still there, unchanged, and every new row is tagged', () => {
     for (const key of ['rolePerms', 'defaults', 'userPerms'] as const) {
       for (const row of BEFORE[key]) expect(AFTER[key], `${key} ${row.id}`).toContainEqual(row);
@@ -551,20 +560,23 @@ describe('the rules, replayed over the fixture people with the real engine', () 
     for (const key of ['rolePerms', 'defaults', 'userPerms'] as const) expect(again[key].length, key).toBe(AFTER[key].length);
   });
 
-  it('puts the keys in the baseline too, so «إرجاع للافتراضي» does not take the doors away again', () => {
+  it('puts the key in the baseline too, so «إرجاع للافتراضي» does not take the doors away again', () => {
     for (const roleId of ['r_a', 'r_ar', 'r_ad', 't_mod']) {
-      for (const t of TARGETS) expect(AFTER.defaults.some((d) => d.roleId === roleId && d.permission === t), `${roleId} ${t}`).toBe(true);
+      expect(AFTER.defaults.some((d) => d.roleId === roleId && d.permission === 'reports.view'), roleId).toBe(true);
     }
     // NEGATIVE: and a role that never held analytics.view gets nothing it did not have
     expect(AFTER.defaults.filter((d) => d.roleId === 'r_r').map((d) => d.permission)).toEqual(['reports.view']);
+    expect(AFTER.defaults.filter((d) => d.roleId === 'r_d').map((d) => d.permission)).toEqual(['dashboard.view']);
     expect(AFTER.rolePerms.filter((d) => d.roleId === 'r_n')).toEqual([]);
   });
 
   it('a role that already held the key keeps its own row; no redundant exception is left for a role that has the key', () => {
     expect(AFTER.rolePerms.filter((r) => r.roleId === 'r_ar' && r.permission === 'reports.view')).toHaveLength(1);
     expect(AFTER.rolePerms.find((r) => r.roleId === 'r_ar' && r.permission === 'reports.view')!.id).toBe('rp_r_ar_reports.view');
-    // p_d_allowA: the role holds dashboard.view already → only reports.view is written for the person
+    // p_d_allowA: the role holds only the screen key, so the person gets the «سماح» on reports.view
     const mine = AFTER.userPerms.filter((x) => x.userId === 'p_d_allowA' && x.id.startsWith(TAG)).map((x) => x.permission);
     expect(mine).toEqual(['reports.view']);
+    // p_ar has the key by role and no exception: nothing written for the person
+    expect(AFTER.userPerms.filter((x) => x.userId === 'p_ar' && x.id.startsWith(TAG))).toEqual([]);
   });
 });

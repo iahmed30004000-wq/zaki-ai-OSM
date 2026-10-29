@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 /**
@@ -85,8 +85,11 @@ describe('the dashboard', () => {
   it('REFUSED: says it, and draws none of the tiles', async () => {
     apiFetch.mockResolvedValue(json(403, { error: 'Forbidden', errorAr: 'لا تملك صلاحية «عرض لوحة التحكم». اطلبها من مدير النظام.' }));
     render(<DashboardScreen />);
-    expect(await screen.findByText('لا تملك صلاحية «عرض لوحة التحكم»')).toBeTruthy();
-    expect(screen.getByText('لا تملك صلاحية «عرض لوحة التحكم». اطلبها من مدير النظام.')).toBeTruthy();
+    // The key that refused is «عرض التقارير» (the dashboard screen's own key opens none of the numbers).
+    expect(await screen.findByText('لا تملك صلاحية «عرض التقارير»')).toBeTruthy();
+    expect(screen.getByText('أرقام لوحة التحكم تُقرأ بصلاحية «عرض التقارير». اطلبها من مدير النظام.')).toBeTruthy();
+    // a refusal has no «إعادة المحاولة»: trying again cannot change the key
+    expect(screen.queryByText('إعادة المحاولة')).toBeNull();
     // none of the tiles that would have said «٠»
     expect(screen.queryByText('الأكثر طلباً')).toBeNull();
     expect(screen.queryByText('الأكثر توصيلاً')).toBeNull();
@@ -97,21 +100,35 @@ describe('the dashboard', () => {
     apiFetch.mockResolvedValue(json(500, { error: 'x', errorAr: 'حدث خطأ داخلي. أعد المحاولة.' }));
     render(<DashboardScreen />);
     expect(await screen.findByText('تعذّر تحميل أرقام لوحة التحكم')).toBeTruthy();
-    expect(screen.queryByText('لا تملك صلاحية «عرض لوحة التحكم»')).toBeNull();
+    expect(screen.queryByText('لا تملك صلاحية «عرض التقارير»')).toBeNull();
     expect(screen.queryByText('الأكثر طلباً')).toBeNull();
   });
 
+  it('NETWORK DOWN: the catch says it too — no zeros — and «إعادة المحاولة» asks again and draws the tiles when it works', async () => {
+    apiFetch.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    render(<DashboardScreen />);
+    expect(await screen.findByText('تعذّر تحميل أرقام لوحة التحكم')).toBeTruthy();
+    // an English browser message is never shown: the Arabic sentence stands in
+    expect(screen.getByText('تعذّر الاتصال. تحقق من الشبكة وأعد المحاولة.')).toBeTruthy();
+    expect(screen.queryByText('Failed to fetch')).toBeNull();
+    expect(screen.queryByText('الأكثر طلباً')).toBeNull();
+    apiFetch.mockResolvedValue(json(200, GOOD));
+    fireEvent.click(screen.getByText('إعادة المحاولة'));
+    await waitFor(() => expect(screen.getByText('الأكثر طلباً')).toBeTruthy());
+  });
+
   it('an answer without a body still says something (the fallback sentence)', async () => {
-    apiFetch.mockResolvedValue(new Response('', { status: 403 }));
+    apiFetch.mockResolvedValue(new Response('', { status: 502 }));
     render(<DashboardScreen />);
     expect(await screen.findByText('تعذّر تحميل أرقام لوحة التحكم. أعد المحاولة بعد قليل.')).toBeTruthy();
+    expect(screen.getByText('إعادة المحاولة')).toBeTruthy();
   });
 
   it('ALLOWED: draws the tiles, and no refusal', async () => {
     apiFetch.mockResolvedValue(json(200, GOOD));
     render(<DashboardScreen />);
     await waitFor(() => expect(screen.getByText('الأكثر طلباً')).toBeTruthy());
-    expect(screen.queryByText('لا تملك صلاحية «عرض لوحة التحكم»')).toBeNull();
+    expect(screen.queryByText('لا تملك صلاحية «عرض التقارير»')).toBeNull();
   });
 });
 
@@ -120,7 +137,8 @@ describe('the performance board', () => {
     apiFetch.mockResolvedValue(json(403, { error: 'Forbidden', errorAr: 'لا تملك صلاحية «عرض التقارير».' }));
     render(<PerformanceScreen />);
     expect(await screen.findByText('لا تملك صلاحية «عرض التقارير»')).toBeTruthy();
-    expect(screen.getByText('لا تملك صلاحية «عرض التقارير».')).toBeTruthy();
+    expect(screen.getByText('أرقام لوحة الأداء تُقرأ بصلاحية «عرض التقارير». اطلبها من مدير النظام.')).toBeTruthy();
+    expect(screen.queryByText('إعادة المحاولة')).toBeNull();
     const asked = apiFetch.mock.calls.map((c) => String(c[0]));
     expect(asked.some((u) => u.startsWith('/api/analytics/performance?'))).toBe(true);
     expect(asked.some((u) => /^\/api\/analytics\?/.test(u))).toBe(false);
@@ -131,6 +149,16 @@ describe('the performance board', () => {
     render(<PerformanceScreen />);
     expect(await screen.findByText('تعذّر تحميل أرقام لوحة الأداء')).toBeTruthy();
     expect(screen.queryByText('لا تملك صلاحية «عرض التقارير»')).toBeNull();
+  });
+
+  it('NETWORK DOWN: says the numbers did not come, with «إعادة المحاولة» — no zeros', async () => {
+    apiFetch.mockRejectedValue(new Error('انتهت مهلة الطلب. تحقق من الاتصال وحاول مجدداً.'));
+    render(<PerformanceScreen />);
+    expect(await screen.findByText('تعذّر تحميل أرقام لوحة الأداء')).toBeTruthy();
+    // an Arabic message from apiFetch (timeout) is shown as it is
+    expect(screen.getByText('انتهت مهلة الطلب. تحقق من الاتصال وحاول مجدداً.')).toBeTruthy();
+    expect(screen.getByText('إعادة المحاولة')).toBeTruthy();
+    expect(screen.queryByText('الأكثر طلباً')).toBeNull();
   });
 
   it('ALLOWED: draws the board, and no refusal', async () => {

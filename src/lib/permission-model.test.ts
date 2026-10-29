@@ -119,8 +119,8 @@ describe('the keys the catalog stops offering', () => {
      * is still asked by a route today: naming it would delete the row from
      * the first role the owner saves, and everybody on that role would lose a
      * working door with nothing saying so. `analytics.view` went on 29/10:
-     * nothing asks it (the dashboard's doors ask `dashboard.view`, the report
-     * and growth doors `reports.view`), and a migration gave its holders both.
+     * nothing asks it (the dashboard's numbers, the report and growth doors
+     * ask `reports.view`), and a migration gave its holders that key.
      */
     expect(RETIRED_KEYS).toEqual(['analytics.view']);
     expect(ALL_CATALOG_KEYS.has('analytics.view')).toBe(false);

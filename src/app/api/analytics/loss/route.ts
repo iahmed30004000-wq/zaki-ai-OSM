@@ -39,7 +39,7 @@ const MAX_ROWS = 5000;
 export async function GET(req: Request) {
   try {
     const { user, companyId, storeId } = await requireContext();
-    await requirePermission('dashboard.view');
+    await requirePermission('reports.view');
 
     const { searchParams } = new URL(req.url);
     const filter: DateFilter = {

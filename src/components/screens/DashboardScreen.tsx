@@ -90,6 +90,10 @@ export function DashboardScreen() {
       }
     } catch (e) {
       console.error(e);
+      // A dropped connection is not «٠ طلب»: say the numbers did not come (status 0 = no answer at all).
+      if (seq === loadAnalyticsSeq.current) {
+        setRefusal({ status: 0, said: e instanceof Error && /[\u0600-\u06FF]/.test(e.message) ? e.message : 'تعذّر الاتصال. تحقق من الشبكة وأعد المحاولة.' });
+      }
     } finally {
       // Only the latest request may clear the shared loading flag
       if (seq === loadAnalyticsSeq.current) setLoading(false);
@@ -321,8 +325,9 @@ export function DashboardScreen() {
         <Card>
           <CardContent>
             <EmptyState
-              title={refusal.status === 403 ? 'لا تملك صلاحية «عرض لوحة التحكم»' : 'تعذّر تحميل أرقام لوحة التحكم'}
-              why={refusal.said}
+              title={refusal.status === 403 ? 'لا تملك صلاحية «عرض التقارير»' : 'تعذّر تحميل أرقام لوحة التحكم'}
+              why={refusal.status === 403 ? 'أرقام لوحة التحكم تُقرأ بصلاحية «عرض التقارير». اطلبها من مدير النظام.' : refusal.said}
+              action={refusal.status === 403 ? undefined : { label: 'إعادة المحاولة', onClick: () => void loadAnalytics() }}
             />
           </CardContent>
         </Card>
