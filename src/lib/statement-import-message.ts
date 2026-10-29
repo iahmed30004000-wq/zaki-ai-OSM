@@ -16,9 +16,17 @@ export interface ImportedStatement {
   total: number;
   currencyCode?: string;
   minorUnit?: number;
+  /** Lines the company named and wrote no money against: kept as 0. */
+  blankLines?: number;
+  /** Status words the phrase table does not hold, as written. */
+  unknownWords?: string[];
 }
 
 export function importedSentence(res: ImportedStatement): string {
   const total = moneyText(res.total, res.currencyCode ?? null, res.minorUnit ?? 2);
-  return `تم استيراد ${res.rows} سطراً بإجمالي ${total}`;
+  let sentence = `تم استيراد ${res.rows} سطراً بإجمالي ${total}`;
+  // Said once, in the same breath: nothing was dropped, and these are the lines to look at.
+  if (res.blankLines) sentence += ` — منها ${res.blankLines} سطراً بلا مبلغ حُفظت صفراً`;
+  if (res.unknownWords?.length) sentence += ` — كلمات من الشركة لا نعرفها بعد: ${res.unknownWords.map((w) => `«${w}»`).join('، ')}`;
+  return sentence;
 }

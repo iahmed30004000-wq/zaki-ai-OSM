@@ -318,12 +318,18 @@ describe('an unreadable money cell refuses the file, naming the row and the cell
     expect(rows[0]).toMatchObject({ amount: 9, collected: null, fee: null });
   });
 
-  it('and a line with no money stated at all is still dropped, quietly and on purpose', () => {
-    const { rows, error } = parseStatementRows(HEADER, [['BC1', '15133', '', '', '', 'قيد التوصيل']]);
+  /*
+   * REWRITTEN (كلمات الشركة والأصفار). It said «a line with no money stated at all is still dropped, quietly
+   * and on purpose», and pinned `rows` to []. That was the silence this file is about: the courier DID name
+   * the parcel, and dropping the line made the sweep report it as one no statement mentions. The line is now
+   * kept at 0 and flagged, so the person sees that the company listed it and wrote no figure.
+   */
+  it('and a line with no money stated at all is KEPT as zero and flagged, not dropped', () => {
+    const { rows, error, blankLines } = parseStatementRows(HEADER, [['BC1', '15133', '', '', '', 'قيد التوصيل']]);
     expect(error).toBeUndefined();
-    // Nothing was lost: the courier said nothing about this parcel's money,
-    // and MISSING_IN_STATEMENT is the word for a parcel no line names.
-    expect(rows).toEqual([]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ amount: 0, collected: null, fee: null, amountBlank: true, barcode: 'BC1' });
+    expect(blankLines).toBe(1);
   });
 
   it('and the refusal reaches through `parseStatement`, from a CSV as uploaded', () => {

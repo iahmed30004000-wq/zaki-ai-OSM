@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DIFFERENCE_RESULTS,
   differencesByPerson,
   isDifference,
+  isNotMentioned,
   isOpen,
   MIN_SETTLED_ORDERS,
+  MISSING_RESULTS,
   RESOLUTIONS,
   RESOLUTION_AR,
   RESOLUTION_MEANING,
@@ -31,10 +34,39 @@ describe('which rows are a question at all', () => {
     expect(isOpen(m({ result: 'MATCHED' }))).toBe(false);
   });
 
-  it('a mismatch, a parcel they left out, and one we do not have are all questions', () => {
-    for (const result of ['MISMATCHED', 'MISSING_IN_STATEMENT', 'MISSING_IN_SYSTEM']) {
-      expect(isDifference({ result }), result).toBe(true);
+  /*
+   * REWRITTEN (كلمات الشركة والأصفار). It said «a mismatch, a parcel they left out, and one we do not have
+   * are all questions» and pinned all three as differences. Only the first is a difference in MONEY: the
+   * other two have ONE figure each, so «رقمنا / رقمهم» has nothing to choose between, and counting them
+   * put a parcel nobody had paid for in the per-person tally as a discount somebody gave. They are lists of
+   * things to chase or to link, answered on the order (see not-mentioned.test.ts).
+   */
+  it('only a mismatch is a difference in money — a parcel one side lacks is not', () => {
+    expect(isDifference({ result: 'MISMATCHED' })).toBe(true);
+    for (const result of ['MISSING_IN_STATEMENT', 'MISSING_IN_SYSTEM']) {
+      expect(isDifference({ result }), result).toBe(false);
+      expect(isOpen({ result, resolution: null }), `${result} is never an open question at approval`).toBe(false);
     }
+  });
+
+  it('and the two missing kinds are named apart, so a gate cannot count them by accident', () => {
+    expect(DIFFERENCE_RESULTS).toEqual(['MISMATCHED']);
+    expect([...MISSING_RESULTS]).toEqual(['MISSING_IN_STATEMENT', 'MISSING_IN_SYSTEM']);
+    expect(isNotMentioned({ result: 'MISSING_IN_STATEMENT' })).toBe(true);
+    expect(isNotMentioned({ result: 'MISSING_IN_SYSTEM' })).toBe(false);
+    expect(isNotMentioned({ result: 'MISMATCHED' })).toBe(false);
+  });
+
+  it('the count of what is still undecided leaves the missing rows out', () => {
+    const rows = [
+      { result: 'MATCHED', resolution: null },
+      { result: 'MISMATCHED', resolution: null },
+      { result: 'MISMATCHED', resolution: 'OURS_STANDS' },
+      { result: 'MISSING_IN_STATEMENT', resolution: null },
+      { result: 'MISSING_IN_STATEMENT', resolution: null },
+      { result: 'MISSING_IN_SYSTEM', resolution: null },
+    ];
+    expect(rows.filter(isOpen)).toHaveLength(1);
   });
 
   it('and a question stops being open once it is answered, not before', () => {

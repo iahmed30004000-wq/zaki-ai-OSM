@@ -152,6 +152,8 @@ export async function POST(req: Request) {
     const read = parseStatement(fileBytes);
     if (read.error) return NextResponse.json({ error: read.error, code: 'UNREADABLE_FILE' }, { status: 400 });
     const { rows } = read;
+    const blankLines = read.blankLines ?? 0;
+    const words = read.words ?? { byOutcome: {}, unknown: [] };
     /*
      * THE TOTAL IS ROUNDED ONCE, HERE, AND EVERYTHING BELOW READS THAT ONE NUMBER.
      *
@@ -199,11 +201,18 @@ export async function POST(req: Request) {
     await logAudit({
       companyId, userId: user.id, action: 'STATEMENT_IMPORTED',
       entity: 'CourierStatement', entityId: statement.id,
-      newData: { reference: input.reference, courier: provider.name, rows: rows.length, total, fileHash: hash },
+      newData: {
+        reference: input.reference, courier: provider.name, rows: rows.length, total, fileHash: hash,
+        // The lines the company named and wrote no money against (kept as 0), and the status words nobody has met.
+        blankLines, unknownWords: words.unknown,
+      },
     });
 
     return NextResponse.json(
-      { statement, rows: rows.length, total, currencyCode: country.currencyCode, minorUnit: country.minorUnit },
+      {
+        statement, rows: rows.length, total, currencyCode: country.currencyCode, minorUnit: country.minorUnit,
+        blankLines, unknownWords: words.unknown,
+      },
       { status: 201 }
     );
   } catch (error) {

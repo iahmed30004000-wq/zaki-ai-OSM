@@ -8,6 +8,7 @@ import { logAudit } from '@/lib/audit';
 import { zodMessage } from '@/lib/zod-message';
 import {
   isDifference,
+  MISSING_RESULTS,
   RESOLUTIONS,
   RESOLUTION_AR,
   shortfall,
@@ -82,8 +83,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // A clean match has nothing to answer. Recording a reason on one would
     // put it in the count of differences and in somebody's statistics.
     if (!isDifference(match)) {
+      /*
+       * A parcel one side does not have has ONE figure, so there is nothing to choose between: «رقمنا /
+       * رقمهم» is offered only on «فرق في المبلغ». It is answered on the order («طلبات لم يذكرها أي كشف»)
+       * or by linking the line to an order, and it is never counted as a difference in money.
+       */
+      const missing = (MISSING_RESULTS as readonly string[]).includes(match.result);
       return NextResponse.json(
-        { error: 'هذا السطر مطابق — لا فرق فيه يُبتّ', code: 'NOT_A_DIFFERENCE' },
+        {
+          error: missing
+            ? 'هذا السطر طرف واحد فقط — لا رقمين يُختار بينهما. «رقمنا / رقمهم» لسطر «فرق في المبلغ» وحده'
+            : 'هذا السطر مطابق — لا فرق فيه يُبتّ',
+          code: 'NOT_A_DIFFERENCE',
+        },
         { status: 409 }
       );
     }
