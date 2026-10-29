@@ -120,6 +120,8 @@ describe('and the statement is the only writer of it', () => {
 
   /** Closing an order is still only for the ones still on their way. */
   it('while the status promotion stays in-flight only', () => {
-    expect(statement()).toContain("shippingStatus: { in: ['SHIPPED', 'OUT_FOR_DELIVERY', 'READY_FOR_PICKUP'] }");
+    // 29/10: a FAILED_DELIVERY order the courier's statement paid for is delivered too; a returned one never is.
+    expect(statement()).toContain("const IN_FLIGHT_PROMOTED_BY_STATEMENT = ['SHIPPED', 'OUT_FOR_DELIVERY', 'READY_FOR_PICKUP', 'FAILED_DELIVERY'] as const;");
+    expect(statement()).toContain('shippingStatus: { in: [...IN_FLIGHT_PROMOTED_BY_STATEMENT] }');
   });
 });
