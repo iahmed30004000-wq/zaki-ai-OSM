@@ -201,9 +201,14 @@ const statements = stripped
 const [denyStmt, roleStmt, defaultsStmt, allowStmt] = statements;
 
 describe('the migration, read as text', () => {
-  it('is the newest one, so it runs after everything it reads', () => {
+  it('runs after everything it reads — the sensitive-settings migration and the shortfall one — and need not be the last', () => {
     const names = readdirSync(path.join(root, 'prisma', 'migrations')).filter((n) => /^\d{14}_/.test(n)).sort();
-    expect(names[names.length - 1]).toBe(NAME);
+    const at = names.indexOf(NAME);
+    expect(at).toBeGreaterThan(-1);
+    for (const read of ['20261027000000_sensitive_settings_own_key', '20261029120000_shortfall_penalty']) {
+      expect(names.indexOf(read), read).toBeGreaterThan(-1);
+      expect(names.indexOf(read), `${read} must sort before ${NAME}`).toBeLessThan(at);
+    }
   });
 
   it('only adds rows — nothing is changed, removed or altered — four statements, each stepping aside for a row already there', () => {
