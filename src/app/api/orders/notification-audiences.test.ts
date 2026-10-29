@@ -29,6 +29,8 @@ const { db, requireContext, assertOrderAccess, can, createNotification } = vi.ho
     orderStatusLog: { create: vi.fn() },
     orderActivity: { create: vi.fn() },
     orderItem: { create: vi.fn() },
+    // Ending an order counts the customer's cancellation (`endOrder`, the one helper every cancel door uses).
+    customer: { update: vi.fn(async () => ({})) },
     /*
      * The holder has already rung the customer. These tests are about WHO
      * gets told when a decision is made, not about the rule that a holder
@@ -134,6 +136,11 @@ beforeEach(() => {
 describe('a confirmation outcome', () => {
   it('goes to this store\'s supervisors and the order\'s moderator, not to the agent who decided it', async () => {
     assertOrderAccess.mockResolvedValue({ allowed: true, order: order() });
+    // What `endOrder` reads: the order as it is now, with its trolley (none).
+    db.order.findFirst.mockResolvedValue({
+      ...order(), labelPrintedAt: null, shippingBatchId: null, deliveryProviderId: null, trackingNumber: null,
+      courierSendStartedAt: null, totalAmount: 10, currency: 'JOD', customerId: 'cust-1', shippingBatch: null,
+    });
     const res = await confirmationPOST(
       post({ action: 'reject', rejectionReason: 'PRICE_TOO_HIGH', expectedVersion: 1 }),
       params

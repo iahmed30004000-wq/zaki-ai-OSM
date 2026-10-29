@@ -97,6 +97,8 @@ const { fake, requireContext, logAudit, notify } = vi.hoisted(() => {
     activities: () => [], telegramMessages: () => [],
     customer: () => null, product: () => null, offer: () => null, region: () => null,
     deliveryProvider: () => null, landingPage: () => null, moderator: () => null,
+    // The window also reads the trolley's status now (to tell «with the courier» from «only labelled»).
+    shippingBatch: () => null,
     claimer: () => null, owner: () => null, lockHolder: () => null, signer: () => null,
   };
 

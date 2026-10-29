@@ -43,7 +43,7 @@ export interface DispatchOutcome {
   ok: boolean;
   /** The courier's barcode — our tracking number from now on. */
   trackingNumber?: string;
-  skipped?: 'ALREADY_SENT' | 'NOT_AUTOMATED' | 'NO_PROVIDER' | 'SEND_IN_FLIGHT' | 'NO_COURIER_CITY';
+  skipped?: 'ALREADY_SENT' | 'NOT_AUTOMATED' | 'NO_PROVIDER' | 'SEND_IN_FLIGHT' | 'NO_COURIER_CITY' | 'LEFT_THE_BATCH';
   /** With NO_COURIER_CITY: the governorate the courier has no id for yet. */
   regionName?: string | null;
   /**
@@ -65,21 +65,43 @@ export interface DispatchOutcome {
  * Raw SQL, deliberately: `updateMany` returns a count and not the row, and
  * this needs the conditional update and its result in a single round trip.
  */
-async function claimForSend(orderId: string): Promise<'CLAIMED' | 'ALREADY_SENT' | 'SEND_IN_FLIGHT'> {
+async function claimForSend(orderId: string, batchId: string): Promise<'CLAIMED' | 'ALREADY_SENT' | 'SEND_IN_FLIGHT' | 'LEFT_THE_BATCH'> {
+  /*
+   * THE CLAIM REPEATS WHAT MADE THE ORDER SENDABLE.
+   *
+   * The loop reads the batch's orders once, then claims them one at a time,
+   * seconds apart. In between, a person may cancel one (it leaves the
+   * trolley and its waybill goes), postpone it, or the press may hand the
+   * whole batch over. A claim that checked only the barcode would then send
+   * a dead order — a parcel at the company for an order nobody wants. So the
+   * same statement requires: still on THIS trolley, still waiting for
+   * pickup, still confirmed, and not yet shipped.
+   */
   const won = await db.$queryRaw<{ id: string }[]>`
     UPDATE "orders"
        SET "courier_send_started_at" = now()
      WHERE "id" = ${orderId}
        AND "trackingNumber" IS NULL
        AND "courier_send_started_at" IS NULL
+       AND "shippingBatchId" = ${batchId}
+       AND "shippingStatus" = 'READY_FOR_PICKUP'
+       AND "confirmationStatus" = 'CONFIRMED'
+       AND "shippedAt" IS NULL
     RETURNING "id"`;
   if (won.length > 0) return 'CLAIMED';
 
-  // Lost, and the two reasons are different news: one parcel exists, or one
-  // is mid-flight and nobody yet knows.
-  const [row] = await db.$queryRaw<{ tracking: string | null }[]>`
-    SELECT "trackingNumber" AS tracking FROM "orders" WHERE "id" = ${orderId}`;
-  return row?.tracking ? 'ALREADY_SENT' : 'SEND_IN_FLIGHT';
+  // Lost, and the reasons are different news: one parcel exists, one is
+  // mid-flight and nobody yet knows, or the order is no longer this
+  // trolley's to send.
+  const [row] = await db.$queryRaw<{ tracking: string | null; claimed: Date | null; batch: string | null; shipping: string; confirmation: string; shipped: Date | null }[]>`
+    SELECT "trackingNumber" AS tracking, "courier_send_started_at" AS claimed, "shippingBatchId" AS batch,
+           "shippingStatus" AS shipping, "confirmationStatus" AS confirmation, "shippedAt" AS shipped
+      FROM "orders" WHERE "id" = ${orderId}`;
+  if (row?.tracking) return 'ALREADY_SENT';
+  const left =
+    row?.batch !== undefined &&
+    (row.batch !== batchId || row.shipping !== 'READY_FOR_PICKUP' || row.confirmation !== 'CONFIRMED' || !!row.shipped);
+  return left ? 'LEFT_THE_BATCH' : 'SEND_IN_FLIGHT';
 }
 
 /**
@@ -225,7 +247,7 @@ export async function dispatchBatch(input: {
      * first. Everything above is a decision we can make from our own data;
      * this is the last moment before somebody else's system is involved.
      */
-    const claim = await claimForSend(order.id);
+    const claim = await claimForSend(order.id, batch.id);
     if (claim !== 'CLAIMED') {
       outcomes.push({ orderId: order.id, orderNumber: order.orderNumber, ok: false, skipped: claim });
       continue;

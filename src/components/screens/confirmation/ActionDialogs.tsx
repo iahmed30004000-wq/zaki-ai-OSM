@@ -285,15 +285,19 @@ export function ChangeRequestDialog({
   open,
   orderNumber,
   busy,
-  hasLeftWarehouse = false,
+  handedToCourier = false,
   onClose,
   onSubmit,
 }: {
   open: boolean;
   orderNumber: string;
   busy?: boolean;
-  /** The parcel is with the courier — what that rules out is shown, not hidden. */
-  hasLeftWarehouse?: boolean;
+  /**
+   * The courier has taken the parcel («إغلاق الشحنة — سُلّمت للشركة» was
+   * pressed) — what that rules out is shown, not hidden. A printed waybill is
+   * NOT this: until the press, cancelling and postponing are still ours.
+   */
+  handedToCourier?: boolean;
   onClose: () => void;
   onSubmit: (value: ChangeRequestValue) => void;
 }) {
@@ -316,7 +320,7 @@ export function ChangeRequestDialog({
    * hook, one fetch, the whole catalogue: see hooks/useProducts.
    */
   const { products, loading: productsLoading } = useProducts();
-  const blockedPostpone = refusalFor('POSTPONE', { hasLeftWarehouse });
+  const blockedPostpone = refusalFor('POSTPONE', { handedToCourier });
   /**
    * THE GOVERNORATES, FOR THE ONE FIELD THAT IS A CHOICE.
    *
@@ -339,7 +343,7 @@ export function ChangeRequestDialog({
         {/* WHAT YOU ARE ASKING FOR — first, because it decides the rest. */}
         <div className="grid grid-cols-3 gap-1 rounded-lg bg-[var(--sys-surface-strong)] p-0.5">
           {CHANGE_INTENTS.map((k) => {
-            const blocked = refusalFor(k, { hasLeftWarehouse });
+            const blocked = refusalFor(k, { handedToCourier });
             return (
               <button
                 key={k}
@@ -359,7 +363,7 @@ export function ChangeRequestDialog({
           })}
         </div>
 
-        {hasLeftWarehouse && intent !== 'POSTPONE' && (
+        {handedToCourier && intent !== 'POSTPONE' && (
           <p className="text-xs text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg p-2">
             الطرد عند شركة الشحن — يُنفَّذ برسالةٍ إليهم بعد الموافقة، لا بتعديلٍ عندنا.
           </p>

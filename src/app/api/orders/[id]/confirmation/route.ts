@@ -9,8 +9,8 @@ import { CONFIRMATION_STATUSES, CONFIRMATION_STATUS_AR, FOLLOW_UP_REASONS, REJEC
 import { logAudit } from '@/lib/audit';
 import { apiError } from '@/lib/api-error';
 import { can, authorize } from '@/lib/authorization';
-import { assertCancellable, type StateSource } from '@/lib/order-state';
-import { releaseOrderLines, reserveOrderLines } from '@/lib/reservation';
+import { endOrder } from '@/lib/order-cancel';
+import { reserveOrderLines } from '@/lib/reservation';
 import { emitAppEvent } from '@/lib/apps/events';
 import { queueConversions } from '@/lib/conversions/emit';
 import { needsContactFirst, CONTACT_FIRST_MESSAGE } from '@/lib/confirmation-queue';
@@ -87,11 +87,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const body = await req.json();
     const {
       action, result, note, nextFollowUpAt, followUpReason, preferredTime,
-      rejectionReason, rejectionNote, expectedVersion,
+      rejectionReason, rejectionNote, expectedVersion, parcelInHand,
     } = body as {
       action?: string; result?: string; contactMethod?: string; note?: string;
       nextFollowUpAt?: string; followUpReason?: string; preferredTime?: string;
       rejectionReason?: string; rejectionNote?: string; expectedVersion?: number;
+      /** «الطرد بين يديّ…» — a person's word that a packed parcel's box was opened. */
+      parcelInHand?: boolean;
     };
 
     if (!action) return NextResponse.json({ error: 'لم يُحدَّد الإجراء' }, { status: 400 });
@@ -177,17 +179,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       }
       case 'reject': {
         target = 'REJECTED';
-        // The same line «cancel» draws below. A reject writes the same dead
-        // end and drops the same reservation, so with the override
-        // (orders.unlock) it freed the units of a parcel already labelled or
-        // sitting in a batch's van. One question, asked at both doors.
-        const rejectable = assertCancellable(order as StateSource);
-        if (!rejectable.allowed) {
-          return NextResponse.json(
-            { error: rejectable.message, errorAr: rejectable.message, code: rejectable.code },
-            { status: 409 }
-          );
-        }
+        // The same question «cancel» asks below, answered by the same helper
+        // (`endOrder`, further down): a reject writes the same dead end and
+        // drops the same reservation, so with the override (orders.unlock) it
+        // could free the units of a parcel already labelled or on a trolley.
         if (!rejectionReason || !(REJECTION_REASONS as readonly string[]).includes(rejectionReason)) {
           return NextResponse.json({ error: 'اختر سبب الرفض من القائمة' }, { status: 400 });
         }
@@ -217,15 +212,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         if (!can(user, 'orders.unlock')) {
           return NextResponse.json({ error: 'الإلغاء للمدير وحده' }, { status: 403 });
         }
-        // No cancellation after SHIPPED — it becomes a cancel request and
-        // ends as RETURNED with a reason (contract invariant 4).
-        const cancellable = assertCancellable(order as StateSource);
-        if (!cancellable.allowed) {
-          return NextResponse.json(
-            { error: cancellable.message, errorAr: cancellable.message, code: cancellable.code },
-            { status: 409 }
-          );
-        }
+        // The gate is `endOrder`'s, below: until the press of «إغلاق الشحنة —
+        // سُلّمت للشركة» the order is still ours; after it a cancel is a request
+        // that tells the company (contract invariant 4, as moved by M6).
         if (!note || note.trim().length < 5) {
           return NextResponse.json({ error: 'الإلغاء يحتاج سبباً — خمسة أحرف على الأقل' }, { status: 400 });
         }
@@ -323,45 +312,81 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     updateData.version = { increment: 1 };
 
-    const updated = await db.$transaction(async (tx) => {
-      const res = await tx.order.updateMany({
-        where: { id, companyId, ...versionGuard },
-        data: updateData,
+    /**
+     * AN ORDER THAT ENDS GOES THROUGH THE ONE HELPER.
+     *
+     * Reject and cancel are the same ending (and the same reservation
+     * release), so they ask the same gate, take the parcel off a trolley,
+     * count the customer's cancellation and — for a cancel — tell System 7,
+     * exactly as the stand-down, the shipping screen and the PATCH do.
+     */
+    if (target === 'REJECTED' || target === 'CANCELLED') {
+      const { version: _next, ...columns } = updateData;
+      void _next;
+      const ended = await endOrder({
+        orderId: id,
+        companyId,
+        storeId: null,
+        by: { id: user.id, name: user.name, role: user.role },
+        door: 'CONFIRMATION',
+        kind: 'CANCEL',
+        endAs: target,
+        data: columns,
+        logNote: note?.trim() || rejectionReason || null,
+        noteBody: null,
+        expectedVersion,
+        parcelInHand: parcelInHand === true,
       });
-      if (res.count !== 1) {
-        throw new Error('VERSION_CONFLICT: This order was updated by another user. Please refresh before saving.');
-      }
-
-      // ── Reservation follows the decision, inside THIS transaction ──
-      // Confirming reserves every line; rejecting or cancelling releases
-      // them, so stock is never held by a dead order.
-      if (target === 'CONFIRMED') {
-        await reserveOrderLines(tx, id, { allowNegativeStock: country.allowNegativeStock });
-      } else if (target === 'REJECTED' || target === 'CANCELLED') {
-        await releaseOrderLines(tx, id);
-      }
-
-      // ── Logs: StatusLog (always on transition) + Activity ──
-      if (target && target !== from) {
-        await tx.orderStatusLog.create({
-          data: {
-            companyId, orderId: id, statusType: 'CONFIRMATION',
-            previousValue: from, newValue: target,
-            changedById: user.id, changedByRole: user.role,
-            note: note?.trim() || rejectionReason || null,
+      if (!ended.ok) {
+        return NextResponse.json(
+          {
+            error: ended.error,
+            errorAr: ended.error,
+            code: ended.code,
+            ...(ended.attestation ? { attestation: ended.attestation } : {}),
           },
-        });
-        await tx.orderActivity.create({
-          data: {
-            companyId, orderId: id, userId: user.id,
-            action: 'STATUS_CHANGED', previousStatus: from, newStatus: target,
-            metadata: JSON.stringify({ by: user.name, role: user.role, workflow: 'CONFIRMATION' }),
-          },
-        });
+          { status: ended.status }
+        );
       }
-      return res;
-    });
-    void updated;
+    } else {
+      await db.$transaction(async (tx) => {
+        const res = await tx.order.updateMany({
+          where: { id, companyId, ...versionGuard },
+          data: updateData,
+        });
+        if (res.count !== 1) {
+          throw new Error('VERSION_CONFLICT: This order was updated by another user. Please refresh before saving.');
+        }
+
+        // ── Reservation follows the decision, inside THIS transaction ──
+        // Confirming reserves every line. Rejecting or cancelling releases
+        // them — in `endOrder`, in its own transaction, so stock is never
+        // held by a dead order.
+        if (target === 'CONFIRMED') {
+          await reserveOrderLines(tx, id, { allowNegativeStock: country.allowNegativeStock });
+        }
+
+        // ── Logs: StatusLog (always on transition) + Activity ──
+        if (target && target !== from) {
+          await tx.orderStatusLog.create({
+            data: {
+              companyId, orderId: id, statusType: 'CONFIRMATION',
+              previousValue: from, newValue: target,
+              changedById: user.id, changedByRole: user.role,
+              note: note?.trim() || rejectionReason || null,
+            },
+          });
+          await tx.orderActivity.create({
+            data: {
+              companyId, orderId: id, userId: user.id,
+              action: 'STATUS_CHANGED', previousStatus: from, newStatus: target,
+              metadata: JSON.stringify({ by: user.name, role: user.role, workflow: 'CONFIRMATION' }),
+            },
+          });
+        }
+        return res;
+      });
+    }
     await logAudit({
       companyId, userId: user.id,
       action: target === 'CONFIRMED' ? 'ORDER_CONFIRMED' : target === 'REJECTED' ? 'ORDER_REJECTED' : 'CONFIRMATION_WORKFLOW_ACTION',
@@ -434,8 +459,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // Tell the installed apps, after the commit. Confirming is when a lead
     // becomes an order somebody will act on, which is the moment most
     // integrations actually care about.
-    if (target === 'CONFIRMED' || target === 'CANCELLED') {
-      await emitAppEvent(companyId, target === 'CONFIRMED' ? 'order.confirmed' : 'order.cancelled', {
+    if (target === 'CONFIRMED') {
+      // A cancellation is announced by `endOrder`, from the one place every
+      // cancel door goes through — never twice, and never from here.
+      await emitAppEvent(companyId, 'order.confirmed', {
         orderId: id,
         orderNumber: fresh?.orderNumber ?? null,
         confirmationStatus: target,

@@ -36,32 +36,46 @@ describe('standing a shipment down', () => {
    * order that is not going anywhere is stock the next customer is told we do
    * not have.
    */
-  it('releases the reservation in the transaction that stops the order', () => {
+  /*
+   * (old → new, M6 28/10) The route released the reservation itself, in its own
+   * transaction. Every door that ends an order now goes through ONE helper,
+   * `endOrder` (src/lib/order-cancel.ts), which releases in the transaction it
+   * writes the ending in — see the-state-invariants.test.ts and
+   * order-cancel.test.ts. What this holds is that the route hands BOTH outcomes
+   * to it, from one call that cannot drift, and releases nothing on its own.
+   */
+  it('hands the order to the one helper, which releases the reservation in the transaction that stops it', () => {
     const src = route();
-    const tx = src.slice(src.indexOf('db.$transaction'), src.indexOf('await logAudit'));
-    expect(tx, 'الحجز يبقى على طلبٍ لا يذهب إلى أحد').toContain('releaseOrderLines(tx, order.id)');
+    expect(src, 'الحجز يبقى على طلبٍ لا يذهب إلى أحد').toMatch(/await endOrder\(\{/);
     // One call, covering both outcomes — not one per branch that can drift.
-    expect((src.match(/releaseOrderLines\(/g) ?? []).length).toBe(1);
+    expect((src.match(/endOrder\(/g) ?? []).length).toBe(1);
+    // And no second, private release: the route's own would free packed goods without anybody's word.
+    expect(src).not.toMatch(/releaseOrderLines/);
+    expect(stripComments(repoFile('src/lib/order-cancel.ts'))).toMatch(/releaseOrderLines\(tx, o\.id\)/);
   });
 
   it('and does it for the postpone as much as the cancel', () => {
     const src = route();
-    // The release sits after the branch, so neither outcome can skip it.
-    expect(src.indexOf('releaseOrderLines(tx')).toBeGreaterThan(src.indexOf("auditAction = 'SHIPMENT_STOOD_DOWN_CANCELLED'"));
+    // Both outcomes reach the same call: the kind is chosen from the outcome, not by two code paths.
+    expect(src).toMatch(/kind: outcome === 'POSTPONE' \? 'FOLLOW_UP' : 'CANCEL'/);
+    expect(src.indexOf('await endOrder(')).toBeGreaterThan(src.indexOf("auditAction = 'SHIPMENT_STOOD_DOWN_CANCELLED'"));
   });
 
   /** Once it is with the courier this is a return, not a decision. */
-  it('refuses after the parcel has left the warehouse', () => {
+  it('refuses after the courier has taken the parcel', () => {
     // The SHAPE, not the presence: a disabled `if (false)` leaves every one
     // of these strings in the file, and a first version of this test passed
     // against exactly that.
-    expect(route(), 'حارس الشحنة الخارجة معطَّل').toMatch(
-      /if \(!cancellable\.allowed\) \{/
-    );
+    //
+    // (old → new, M6) «after the parcel has left the warehouse» was the printed
+    // waybill; it is the press of «إغلاق الشحنة — سُلّمت للشركة» now, asked of
+    // `cancelVerdict` with the trolley's status read (`batchStatusOf`).
+    expect(route(), 'حارس الشحنة الخارجة معطَّل').toMatch(/if \(!gate\.allowed\) \{/);
+    expect(route(), 'الحارس لا يقرأ حالة العربة').toMatch(/batchStatus: await batchStatusOf\(db, order\.shippingBatchId\)/);
     expect(route(), 'حارس «مؤكَّد فقط» معطَّل').toMatch(
       /if \(order\.confirmationStatus !== 'CONFIRMED'\) \{/
     );
-    expect(route(), 'بلا حماية من تعديل متزامن').toContain('version: order.version');
+    expect(route(), 'بلا حماية من تعديل متزامن').toContain('expectedVersion: order.version');
   });
 
   /**
@@ -121,8 +135,13 @@ describe('standing a shipment down', () => {
 
   it('is written down — a status log, a note and an audit row', () => {
     const src = route();
-    expect(src).toContain('orderStatusLog.create');
-    expect(src).toContain('orderNote.create');
+    // The log and the note are the helper's writes (one transaction, one place); the route
+    // names what they say, and the audit row stays here.
+    expect(src).toMatch(/logNote: noteBody/);
+    expect(src).toMatch(/noteBody: viaRequest \?/);
     expect(src).toMatch(/action: auditAction/);
+    const helper = stripComments(repoFile('src/lib/order-cancel.ts'));
+    expect(helper).toContain('orderStatusLog.create');
+    expect(helper).toContain('orderNote.create');
   });
 });

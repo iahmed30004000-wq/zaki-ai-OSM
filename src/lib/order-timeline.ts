@@ -135,6 +135,9 @@ const ACTIVITY_AR: Record<string, string> = {
   COURIER_TRANSFERRED: 'تحويل بين شركات الشحن',
   COURIER_SEND_CLEARED: 'فكّ إرسال عالق للشركة',
   COURIER_TOLD_TO_CANCEL: 'إبلاغ الشركة بإلغاء الطرد',
+  TAKEN_OFF_BATCH: 'أُخرج من الدفعة',
+  PARCEL_ATTESTED_IN_HAND: 'أكّد أن الطرد بين يديه وأعاد قطعه للرف',
+  COURIER_CANCELLED_ORDER_MOVED: 'ألغت الشركة الطرد وتغيّر الطلب قبل الحفظ',
   // «طلبات لم يذكرها أي كشف»: what a person decided about it, on the order itself.
   ...NOT_MENTIONED_ACTIVITY_AR,
 };

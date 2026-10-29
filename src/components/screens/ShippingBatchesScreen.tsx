@@ -45,10 +45,26 @@ interface Batch {
   _count: { orders: number };
 }
 
+/** One parcel on an open trolley — only what a decision about it needs. */
+interface Parcel {
+  id: string;
+  orderNumber: string;
+  trackingNumber: string | null;
+  customer: { fullName?: string | null; city?: string | null } | null;
+}
+
+/** How a parcel leaves the open trolley. */
+type Leave = 'CANCEL' | 'FOLLOW_UP' | 'HOLD';
+
+/** A date a number of days ahead, as the doors read it. Outside the component: the clock is not part of how it draws. */
+function daysFromNow(days: number): string {
+  return new Date(Date.now() + days * 86_400_000).toISOString();
+}
+
 const STATUS: Record<string, { ar: string; cls: string }> = {
   READY: { ar: 'قيد التجميع', cls: 'bg-[var(--sys-surface)] text-[var(--sys-muted-foreground)] border-[var(--sys-border)]' },
   SHIPPED: { ar: 'سُلّمت للشركة', cls: 'bg-[var(--sys-warning-soft)] text-[var(--sys-warning)] border-[var(--sys-warning)]' },
-  CLOSED: { ar: 'مغلقة', cls: 'bg-[var(--sys-surface)] text-[var(--sys-muted-foreground)] border-[var(--sys-border)]' },
+  CLOSED: { ar: 'مُنتهية', cls: 'bg-[var(--sys-surface)] text-[var(--sys-muted-foreground)] border-[var(--sys-border)]' },
 };
 
 export function ShippingBatchesScreen() {
@@ -68,6 +84,8 @@ export function ShippingBatchesScreen() {
   // endpoint also returns names and phones, and a verification screen has no
   // business keeping those anywhere, in memory or otherwise.
   const [verify, setVerify] = useState<{ batch: Batch; refs: Set<string>; seen: Set<string> } | null>(null);
+  // The open trolley's parcels, shown only while somebody is deciding about them.
+  const [parcels, setParcels] = useState<{ batchId: string; rows: Parcel[] } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -179,6 +197,117 @@ export function ShippingBatchesScreen() {
   }
 
   /**
+   * THE PARCELS OF AN OPEN TROLLEY — AND THREE WAYS TO TAKE ONE OFF IT.
+   *
+   * Until «إغلاق الشحنة — سُلّمت للشركة» a parcel is still ours (M6): the
+   * customer can still say «ألغِ» or «مش هالأسبوع», and the person standing
+   * at the trolley is the one who can act. These are the doors that already
+   * exist — the stand-down for cancelling and for sending back to the
+   * confirmation desk, the hold for «not this week» — pressed from where the
+   * parcel is, instead of a screen the packing table never opens.
+   */
+  async function loadParcels(batchId: string) {
+    setBusy(batchId);
+    try {
+      const data = await apiJson<{ batch: { orders: Parcel[] } }>(`/api/shipping-batches/${batchId}`);
+      setParcels({ batchId, rows: data.batch.orders });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'تعذر قراءة طرود الدفعة');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function toggleParcels(batch: Batch) {
+    if (parcels?.batchId === batch.id) {
+      setParcels(null);
+      return;
+    }
+    await loadParcels(batch.id);
+  }
+
+  async function leave(batchId: string, o: Parcel, how: Leave, parcelInHand = false, typedBefore?: string) {
+    const typed =
+      typedBefore ??
+      (await ask({
+        title:
+          how === 'CANCEL'
+            ? `ألغِ ${o.orderNumber}؟`
+            : how === 'FOLLOW_UP'
+              ? `أعِد ${o.orderNumber} للمتابعة؟`
+              : `أجّل شحن ${o.orderNumber}؟`,
+        body:
+          how === 'CANCEL'
+            ? 'يخرج الطرد من الدفعة ويُلغى الطلب. وإن كانت بوليصته مطبوعة سنسألك إن كان الطرد بين يديك.'
+            : how === 'FOLLOW_UP'
+              ? 'يخرج الطرد من الدفعة ويعود الطلب لفريق التأكيد ليكلّموا الزبون من جديد.'
+              : 'يخرج الطرد من الدفعة ويبقى الطلب مؤكَّداً، وتبقى بضاعته وبوليصته محفوظتين.',
+        confirmLabel: 'نفِّذ',
+        tone: how === 'CANCEL' ? 'danger' : undefined,
+        input:
+          how === 'CANCEL'
+            ? { label: 'سبب الإلغاء', required: true, multiline: true, maxLength: 300 }
+            : { label: 'بعد كم يوم؟ (من 1 إلى 30)', required: true, initial: '3', maxLength: 2 },
+      }));
+    if (typed === null) return;
+
+    const days = Number(typed);
+    if (how !== 'CANCEL' && !(Number.isInteger(days) && days >= 1 && days <= 30)) {
+      toast.failed('اكتب عدد أيام من 1 إلى 30');
+      return;
+    }
+    const until = how === 'CANCEL' ? '' : daysFromNow(days);
+
+    setBusy(o.id);
+    try {
+      const res =
+        how === 'HOLD'
+          ? await apiFetch('/api/ops/shipments/hold', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ orderId: o.id, until }),
+            })
+          : await apiFetch('/api/ops/shipments/stand-down', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(
+                how === 'CANCEL'
+                  ? { orderId: o.id, outcome: 'CANCEL', reason: 'OTHER', note: typed, ...(parcelInHand ? { parcelInHand: true } : {}) }
+                  : { orderId: o.id, outcome: 'POSTPONE', until, ...(parcelInHand ? { parcelInHand: true } : {}) }
+              ),
+            });
+      const body = await res.json().catch(() => ({}));
+      // A packed parcel: the units come back on this person's word, by name.
+      if (!res.ok && body?.code === 'ATTESTATION_REQUIRED') {
+        setBusy(null);
+        const said = await ask({
+          title: `الطرد ${o.orderNumber} مطبوعة بوليصته`,
+          body: `${body.attestation ?? ''}`,
+          confirmLabel: 'أؤكد',
+          tone: 'danger',
+          input: { label: 'اكتب «أؤكد» بنفسك', required: true, maxLength: 20 },
+        });
+        if (said?.trim() === 'أؤكد') await leave(batchId, o, how, true, typed);
+        return;
+      }
+      if (!res.ok) throw new Error(body?.errorAr || body?.error || 'تعذّر التنفيذ');
+      toast.done(
+        how === 'CANCEL'
+          ? `أُلغي ${o.orderNumber} وخرج من الدفعة`
+          : how === 'FOLLOW_UP'
+            ? `${o.orderNumber} عاد للمتابعة وخرج من الدفعة`
+            : `${o.orderNumber} مؤجَّل وخرج من الدفعة`
+      );
+      await load();
+      await loadParcels(batchId);
+    } catch (e) {
+      toast.failed(e instanceof Error ? e.message : 'تعذّر التنفيذ');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
    * THE PARCEL IN YOUR HAND, AND THE BATCH ON THE FLOOR.
    *
    * A courier takes twenty parcels and signs for twenty. The one that was
@@ -263,7 +392,7 @@ export function ShippingBatchesScreen() {
   return (
     <div className="max-w-4xl space-y-4">
       <PageHeader title="دفعات الشحن"
-          description="ما يتسلّمه المندوب دفعةً واحدة — تُجمَّع، تُسلَّم، ثم تُغلق بعد التسوية."
+          description="ما يتسلّمه المندوب دفعةً واحدة — تُجمَّع، تُسلَّم، ثم تنتهي بعد التسوية."
         />
 
       <div className="flex flex-wrap items-center gap-1.5">
@@ -271,7 +400,7 @@ export function ShippingBatchesScreen() {
           ['all', `الكل (${total})`],
           ['READY', `قيد التجميع (${counts.READY})`],
           ['SHIPPED', `سُلّمت (${counts.SHIPPED})`],
-          ['CLOSED', `مغلقة (${counts.CLOSED})`],
+          ['CLOSED', `مُنتهية (${counts.CLOSED})`],
         ] as const).map(([key, label]) => (
           <button
             key={key}
@@ -340,6 +469,44 @@ export function ShippingBatchesScreen() {
                 </div>
 
                 {b.notes && <p className="text-xs text-[var(--sys-muted-foreground)]">{b.notes}</p>}
+
+                {b.status === 'READY' && b._count.orders > 0 && (
+                  <button
+                    onClick={() => void toggleParcels(b)}
+                    disabled={busy === b.id}
+                    className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1.5 disabled:opacity-40"
+                  >
+                    {parcels?.batchId === b.id ? 'أخفِ الطرود' : 'طرود الدفعة — ألغِ أو أجّل قبل التسليم'}
+                  </button>
+                )}
+
+                {parcels?.batchId === b.id && (
+                  <ul className="divide-y divide-[var(--sys-border)] rounded-lg border border-[var(--sys-border)]">
+                    {parcels.rows.map((o) => (
+                      <li key={o.id} className="flex flex-wrap items-center gap-2 p-2">
+                        <span className="font-bold text-[var(--sys-heading)] text-xs" dir="ltr">{o.orderNumber}</span>
+                        {o.customer?.fullName && (
+                          <span className="text-xs text-[var(--sys-muted-foreground)]">{o.customer.fullName}</span>
+                        )}
+                        {o.trackingNumber && (
+                          <span className="text-xs text-[var(--sys-muted)]" dir="ltr">{o.trackingNumber}</span>
+                        )}
+                        <span className="ms-auto flex flex-wrap gap-1.5">
+                          {([['CANCEL', 'ألغِ'], ['FOLLOW_UP', 'أعِده للمتابعة'], ['HOLD', 'أجّل الشحن']] as const).map(([how, label]) => (
+                            <button
+                              key={how}
+                              onClick={() => void leave(b.id, o, how)}
+                              disabled={busy === o.id}
+                              className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] disabled:opacity-40"
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
 
                 {result?.batchId === b.id && (
                   <DispatchResult
@@ -423,11 +590,12 @@ export function ShippingBatchesScreen() {
                   {b.status === 'READY' && (
                     <button
                       onClick={() => setStatus(b, 'SHIPPED')}
-                      disabled={busy === b.id}
+                      disabled={busy === b.id || b._count.orders === 0}
+                      title={b._count.orders === 0 ? 'الدفعة فاضية — ما في طرد يتسلّم للشركة' : 'بعد هالضغطة ما بيصير تلغي ولا تؤجّل طرداً من الدفعة — يصير طلب تغيير يُبلَّغ للشركة'}
                       className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] font-medium inline-flex items-center gap-1.5 disabled:opacity-50"
                     >
                       <RiSendPlaneLine className="icon-mirror w-4 h-4" />
-                      سُلّمت للشركة
+                      إغلاق الشحنة — سُلّمت للشركة
                     </button>
                   )}
 
@@ -438,7 +606,7 @@ export function ShippingBatchesScreen() {
                       className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-heading)] inline-flex items-center gap-1.5 disabled:opacity-50"
                     >
                       <RiLockLine className="w-4 h-4" />
-                      أغلق الدفعة
+                      أنهِ الدفعة بعد التسوية
                     </button>
                   )}
                 </div>

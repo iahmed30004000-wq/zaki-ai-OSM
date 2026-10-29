@@ -19,8 +19,26 @@ import { hasEverShipped } from './order-state';
 /** Statuses an order may still be in when it is first put on a trolley. */
 export const BATCHABLE_SHIPPING = ['NOT_READY', 'PACKING', 'READY_FOR_SHIPPING'] as const;
 
+/** The statuses the shipment list offers: orders not yet packed. */
+export const WAITING_FOR_A_TROLLEY = BATCHABLE_SHIPPING;
+
+/**
+ * A PACKED PARCEL WAITING FOR A NEW TROLLEY (`where`).
+ *
+ * «أجّل الشحن» on a parcel that is already on a trolley takes it off and keeps the box as it is — status
+ * READY_FOR_PICKUP, label, goods. Without a hold date such a parcel is one an agent handed back to us and the shipment
+ * list has never offered it; with one, it is a postponed parcel that must come back to the list on its day.
+ */
+export const HELD_PACKED_PARCEL = {
+  shippingStatus: 'READY_FOR_PICKUP',
+  shippingBatchId: null,
+  shipHoldUntil: { not: null },
+} as const;
+
 export interface BatchingFacts {
   shippingBatchId?: string | null;
+  /** Set when the parcel was postponed: the only way a READY_FOR_PICKUP parcel is batchable again. */
+  shipHoldUntil?: Date | string | null;
   shippingStatus: string;
   shippedAt?: Date | string | null;
   labelPrintedAt?: Date | string | null;
@@ -46,7 +64,8 @@ function left(order: BatchingFacts): boolean {
 export function whyNotBatchable(order: BatchingFacts): string | null {
   if (order.shippingBatchId) return ALREADY_BATCHED_AR;
   if (left(order)) return ALREADY_LEFT_AR;
-  if (!(BATCHABLE_SHIPPING as readonly string[]).includes(order.shippingStatus)) return MOVED_ON_AR;
+  const heldPacked = order.shippingStatus === 'READY_FOR_PICKUP' && !!order.shipHoldUntil;
+  if (!heldPacked && !(BATCHABLE_SHIPPING as readonly string[]).includes(order.shippingStatus)) return MOVED_ON_AR;
   return null;
 }
 
