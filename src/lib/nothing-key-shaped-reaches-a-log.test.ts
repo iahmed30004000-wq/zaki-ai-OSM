@@ -108,3 +108,60 @@ describe('when a vendor quotes the request back', () => {
     expect(said).toContain('credit balance');
   });
 });
+
+/**
+ * A GATEWAY'S KEY HAS NO SHAPE, SO THE PATTERNS ABOVE CANNOT SEE IT.
+ *
+ * `gw.…` or a bare token: nothing in the regexes recognises it. The key this
+ * call carried is known, so it is removed by its exact value — in the three
+ * spellings an echo takes — and from the WHOLE text before the message is cut
+ * to 300 characters (a key straddling the cut would otherwise survive as a
+ * prefix that no longer equals it).
+ */
+describe('a compatible server that quotes a key with no recognisable shape', () => {
+  const GW = 'gw.test-LEAKMARKER-9f8e7d6c5b';
+
+  beforeEach(async () => {
+    const { encryptSecret } = await import('./secrets');
+    db.company.findUnique.mockResolvedValue({ settings: JSON.stringify({ ai: { provider: 'OPENAI_COMPATIBLE' } }) });
+    readSystemSetting.mockResolvedValue({
+      provider: 'OPENAI_COMPATIBLE',
+      compat: { baseUrl: 'https://models.example.com/v1', model: 'glm-4.6' },
+      keys: { OPENAI_COMPATIBLE: { enc: encryptSecret(GW), url: 'https://models.example.com/v1' } },
+    });
+  });
+
+  it('the exact value never reaches the thrown message', async () => {
+    const said = await thrownFor(`{"error":"invalid token ${GW} for this route"}`);
+    expect(said).toContain('AI_HTTP_401');
+    expect(said).not.toContain('LEAKMARKER');
+    expect(said).not.toContain(GW);
+  });
+
+  it('nor the JSON-escaped or the URL-encoded spelling of it', async () => {
+    const odd = 'gw.test-LEAKMARKER"9f8e/7d6c5b';
+    const { encryptSecret } = await import('./secrets');
+    readSystemSetting.mockResolvedValue({
+      provider: 'OPENAI_COMPATIBLE',
+      compat: { baseUrl: 'https://models.example.com/v1', model: 'glm-4.6' },
+      keys: { OPENAI_COMPATIBLE: { enc: encryptSecret(odd), url: 'https://models.example.com/v1' } },
+    });
+    const said = await thrownFor(`json: ${JSON.stringify({ k: odd })} url: ?k=${encodeURIComponent(odd)}`);
+    expect(said).not.toContain('LEAKMARKER');
+  });
+
+  it('a key placed across character 300 is removed before the message is cut', async () => {
+    // 295 characters of padding, then the key: the cut at 300 would have kept
+    // only its first five characters — which no exact match would find.
+    const said = await thrownFor(`${'x'.repeat(295)}${GW} and more after it`);
+    expect(said).not.toContain('gw.te');
+    expect(said).not.toContain('LEAKMARKER');
+    expect(said.split('|')[2].length).toBeLessThanOrEqual(300);
+  });
+
+  it('and it is still cut to 300 characters', async () => {
+    const said = await thrownFor('y'.repeat(5000));
+    expect(said.split('|')[2].length).toBe(300);
+  });
+});
+

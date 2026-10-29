@@ -235,11 +235,14 @@ export function AssistantsTable({
                 };
                 const actual = routes[a.promptJob];
                 const vendorLabel = providers.find((p) => p.id === actual?.provider)?.label ?? actual?.provider;
-                // LOCAL needs an address, not a key; everyone else needs a key.
+                // LOCAL needs an address, not a key; everyone else needs a key,
+                // and a compatible server needs its address as well.
                 const unreachable = actual
                   ? actual.provider === 'LOCAL'
                     ? !actual.baseUrl
-                    : actual.keyFrom === 'none'
+                    : actual.provider === 'OPENAI_COMPATIBLE'
+                      ? !actual.baseUrl || actual.keyFrom === 'none'
+                      : actual.keyFrom === 'none'
                   : false;
                 return (
                   <span className="flex flex-col gap-1">
@@ -278,7 +281,7 @@ export function AssistantsTable({
                         بيروح على: {vendorLabel} · {actual.model}
                         {unreachable ? (
                           <span className="text-[var(--sys-warning)]">
-                            {' '}— {actual.provider === 'LOCAL' ? 'بلا عنوان' : 'بلا مفتاح'}
+                            {' '}— {actual.provider === 'LOCAL' || (actual.provider === 'OPENAI_COMPATIBLE' && !actual.baseUrl) ? 'بلا عنوان' : 'بلا مفتاح'}
                           </span>
                         ) : null}
                       </span>

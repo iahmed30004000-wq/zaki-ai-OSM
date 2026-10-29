@@ -32,7 +32,7 @@ const schema = z.object({
    * uses, because a local model with nowhere to send the request saves
    * cleanly and fails at the moment somebody asks a question.
    */
-  provider: z.enum(['OPENROUTER', 'OPENAI', 'ANTHROPIC', 'LOCAL']).optional(),
+  provider: z.enum(['OPENROUTER', 'OPENAI', 'ANTHROPIC', 'LOCAL', 'OPENAI_COMPATIBLE']).optional(),
   model: z.string().trim().max(120).optional(),
   /**
    * The company's own wording per AI job — the house prompt is the 'house'
@@ -132,6 +132,22 @@ export async function PUT(req: Request) {
     if (parsed.data.provider === 'LOCAL') {
       const { localBaseUrl } = await systemAi();
       if (!localBaseUrl) {
+        return NextResponse.json(
+          { error: 'اكتب عنوان الخادم الذي يشغّل النموذج قبل اختياره مزوّداً.', code: 'ENDPOINT_REQUIRED' },
+          { status: 400 }
+        );
+      }
+    }
+
+    /*
+     * The compatible server's address is the installation's too, and a
+     * company that picks it with none saved gets a setting that saves and
+     * then fails at the first question. This route never takes an address or
+     * a key for it — the schema above has no such field.
+     */
+    if (parsed.data.provider === 'OPENAI_COMPATIBLE') {
+      const { compat } = await systemAi();
+      if (!compat.baseUrl) {
         return NextResponse.json(
           { error: 'اكتب عنوان الخادم الذي يشغّل النموذج قبل اختياره مزوّداً.', code: 'ENDPOINT_REQUIRED' },
           { status: 400 }
