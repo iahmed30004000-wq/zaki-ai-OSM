@@ -30,9 +30,12 @@ interface ModalProps {
    * THE BUTTONS THAT END THE DIALOG, DRAWN OUTSIDE THE PART THAT SCROLLS.
    *
    * A form tall enough to scroll used to carry its «حفظ» at the very bottom
-   * of the scrolling body, so on a phone — keyboard open, half the screen
-   * gone — the one button the person came for was the last thing to reach.
-   * Put here, the row stays where the thumb is. A submit button that lives
+   * of the scrolling body, so the one button the person came for was the
+   * last thing to reach. Put here, the row stays at the foot of the dialog
+   * while the body scrolls. (This does not follow the on-screen keyboard:
+   * the dialog's height is the visible screen without it, so the keyboard
+   * can still cover the foot; that needs the viewport to resize for it.)
+   * A submit button that lives
    * out here belongs to a form inside the body through `form="…"`, and
    * pressing Enter in a field still submits it.
    */
