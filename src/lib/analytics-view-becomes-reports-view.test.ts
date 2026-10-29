@@ -201,9 +201,14 @@ const statements = stripped
 const [denyStmt, roleStmt, defaultsStmt, allowStmt] = statements;
 
 describe('the migration, read as text', () => {
-  it('is the newest one, so it runs after everything it reads', () => {
+  it('runs after every migration that writes the keys it reads (a LATER migration may exist: PR-4 added one)', () => {
     const names = readdirSync(path.join(root, 'prisma', 'migrations')).filter((n) => /^\d{14}_/.test(n)).sort();
-    expect(names[names.length - 1]).toBe(NAME);
+    const at = names.indexOf(NAME);
+    expect(at).toBeGreaterThan(-1);
+    // The migrations that give analytics.view / reports.view to anybody all sort before it.
+    for (const n of ['20261027000000_sensitive_settings_own_key', '20261029000000_tracking_returns_view_key', '20261029120000_shortfall_penalty']) {
+      expect(names.indexOf(n), n).toBeLessThan(at);
+    }
   });
 
   it('only adds rows — nothing is changed, removed or altered — four statements, each stepping aside for a row already there', () => {
