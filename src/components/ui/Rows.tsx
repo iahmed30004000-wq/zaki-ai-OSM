@@ -75,6 +75,16 @@ export interface Column<T> {
   hideOnPhone?: boolean;
   /** Numbers read right-aligned in a table and inline on a card. */
   align?: 'start' | 'end';
+  /**
+   * A value that is not a figure: buttons, a list, a sentence.
+   *
+   * On a card every field is a label and a value on ONE line, which is right
+   * for «٣» and wrong for two decisions and a comments link, or a list of
+   * receipts: they are squeezed into whatever the label left over and wrap
+   * into a column a thumb cannot aim at. `wide` puts the label above and the
+   * value under it at the full width of the card. A table is unchanged.
+   */
+  wide?: boolean;
   className?: string;
 }
 
@@ -333,7 +343,16 @@ export function Rows<T>({ columns, rows, keyOf, onRowClick, empty, actions, sele
 
             {(titles.length > 0 || selection) && (
               <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2 border-b border-[var(--sys-border)] pb-1.5">
-                <span className="flex items-center gap-2">
+                {/*
+                  A TITLE THAT CANNOT BREAK MUST NOT PUSH THE CARD WIDER.
+                  A statement's file name, a barcode, a reference is one
+                  unbroken string, and in a flex line with no `min-w-0` its
+                  width is the string's: it pushed the status chip off the
+                  card and the page sideways. The line wraps, the box may
+                  shrink below its content, and the string breaks where it
+                  has to rather than overflowing.
+                */}
+                <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                   {selection && selection.canSelect(row) && (
                     /**
                      * A 44px TARGET AROUND A 20px BOX.
@@ -362,7 +381,7 @@ export function Rows<T>({ columns, rows, keyOf, onRowClick, empty, actions, sele
                     </label>
                   )}
                   {titles.map((c) => (
-                    <span key={c.key} className="text-sm font-semibold text-[var(--sys-heading)]">
+                    <span key={c.key} className="min-w-0 break-words text-sm font-semibold text-[var(--sys-heading)]">
                       {c.render(row)}
                     </span>
                   ))}
@@ -372,11 +391,11 @@ export function Rows<T>({ columns, rows, keyOf, onRowClick, empty, actions, sele
 
             <dl className="space-y-1">
               {details.map((c) => (
-                <div key={c.key} className="flex items-baseline justify-between gap-3">
+                <div key={c.key} className={c.wide ? 'flex flex-col gap-1' : 'flex items-baseline justify-between gap-3'}>
                   {/* Every field says what it is. A bare number on a card is
                       a number somebody has to count columns to identify. */}
                   <dt className="shrink-0 text-xs text-[var(--sys-muted-foreground)]">{c.label}</dt>
-                  <dd className={`min-w-0 text-xs text-[var(--sys-foreground)] ${c.className ?? ''}`}>
+                  <dd className={`min-w-0 break-words text-xs text-[var(--sys-foreground)] ${c.className ?? ''}`}>
                     {c.render(row)}
                   </dd>
                 </div>
@@ -384,7 +403,11 @@ export function Rows<T>({ columns, rows, keyOf, onRowClick, empty, actions, sele
             </dl>
 
             {actions && (
-              <div className="mt-2 flex flex-wrap gap-2 border-t border-[var(--sys-border)] pt-2">{actions(row)}</div>
+              // `card-acts` is in system.css: under a finger its buttons and
+              // links are 44px tall, whatever the caller drew them as.
+              <div className="card-acts mt-2 flex flex-wrap gap-2 border-t border-[var(--sys-border)] pt-2">
+                {actions(row)}
+              </div>
             )}
           </li>
           );

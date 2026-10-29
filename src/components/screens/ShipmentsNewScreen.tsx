@@ -8,6 +8,7 @@ import { ATTESTATION_AR } from '@/lib/shipment-cancel';
 import { CustomerHistoryButton } from '@/components/orders/CustomerHistory';
 import { OrderLink } from '@/components/orders/OrderLink';
 import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { BulkBar } from '@/components/shell/BulkBar';
 import { RiAlertLine, RiArrowGoBackLine, RiCloseCircleLine, RiLoader4Line, RiPauseCircleLine, RiTruckLine } from '@remixicon/react';
 import { RejectDialog } from '@/components/screens/confirmation/ActionDialogs';
 import { DelayShipmentDialog, type DelayChoice } from '@/components/ops/DelayShipmentDialog';
@@ -436,22 +437,39 @@ ${describeRefused(out.refused)}`,
           value={filters.q}
           onChange={(v) => setFilters({ ...filters, q: v })}
         />
-        <div className="grid gap-3 md:grid-cols-5">
+        <div className="grid gap-3 md:grid-cols-4">
         <Select label="شركة الشحن (للشحنة)" value={filters.courier} onChange={(v) => setFilters({ ...filters, courier: v })} options={providers.map((p) => ({ value: p.id, label: p.name }))} />
         <Select label="المحافظة" value={filters.region} onChange={(v) => setFilters({ ...filters, region: v })} options={regions.map((r) => ({ value: r.id, label: r.name }))} />
         <DateField label="من" value={filters.from} onChange={(v) => setFilters({ ...filters, from: v })} />
         <DateField label="إلى" value={filters.to} onChange={(v) => setFilters({ ...filters, to: v })} />
-        <div className="self-end">
-          <button
-            onClick={create}
-            disabled={busy || selectedCount === 0}
-            className="w-full h-11 md:h-10 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
-          >
-            {busy ? 'جارٍ الإنشاء…' : `إنشاء شحنة (${selectedCount})`}
-          </button>
-        </div>
         </div>
       </div>
+
+      {/*
+        «إنشاء شحنة» WHERE THE THUMB IS, NOT AT THE TOP OF A FORM.
+        The button used to be the last cell of the filter grid. On a phone the
+        grid is one column, so the button was 450px down the page and the
+        orders it ships were below it: a worker ticked parcels far down the
+        list and the only thing that ships them was back at the top. While
+        anything is ticked the bar owns the bottom of the phone; on a desk it
+        stands under the filters. The courier stays in the filters, drawn from
+        the first moment — it is the choice the shipment cannot do without.
+      */}
+      <BulkBar show={selectedCount > 0}>
+        <span className="me-auto text-xs font-semibold text-[var(--sys-primary)]">
+          محدَّد: {selectedCount} طلب
+        </span>
+        {!filters.courier && (
+          <span className="w-full text-xs text-[var(--sys-muted-foreground)]">اختر شركة الشحن من الأعلى أولاً.</span>
+        )}
+        <button
+          onClick={create}
+          disabled={busy || selectedCount === 0}
+          className="flex-1 md:flex-none h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
+        >
+          {busy ? 'جارٍ الإنشاء…' : `إنشاء شحنة (${selectedCount})`}
+        </button>
+      </BulkBar>
 
       {error && <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>}
       {done && (

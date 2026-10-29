@@ -37,7 +37,7 @@ import { FILTERABLE_STATES, STATE_LABEL_AR } from '@/lib/order-state';
  */
 const STATUS_FILTER_OPTIONS: readonly string[] = [...FILTERABLE_STATES, 'CLOSED'];
 const STATUS_FILTER_LABELS: Record<string, string> = { ...STATE_LABEL_AR, CLOSED: 'مغلق' };
-import { RiAddCircleLine, RiArrowGoBackLine, RiArrowLeftSLine, RiArrowRightSLine, RiDownload2Line, RiEBike2Line, RiMagicLine, RiPrinterLine, RiSearchLine, RiTimerLine, RiTruckLine, RiUploadCloud2Line } from '@remixicon/react';
+import { RiAddCircleLine, RiArrowGoBackLine, RiArrowLeftSLine, RiArrowRightSLine, RiCloseLine, RiDownload2Line, RiEBike2Line, RiMagicLine, RiPrinterLine, RiSearchLine, RiTimerLine, RiTruckLine, RiUploadCloud2Line } from '@remixicon/react';
 import { Money } from '@/components/ui/Money';
 import { arDateTime } from '@/lib/format';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -700,20 +700,34 @@ export function OrdersScreen() {
             scrolling four screens up to act on them is why nobody did. */}
         <BulkBar show={selected.size > 0} done={batchDone}>
           <>
-            <span className="text-xs font-semibold text-[var(--sys-primary)]">
+            {/*
+              TWO ROWS ON A PHONE, NOT THREE OR FOUR.
+              The bar held the count, the paper size, four buttons and the
+              cancel at one weight, and at 44px each they wrapped into a
+              strip of about 190px that covered the bottom of the list. Now
+              the count and the way out are the first row, and the one thing
+              this bar is for — the labels — is the second, beside a fold
+              that names what it holds. Nothing is removed: the paper, the
+              PDF and the export are one tap away, and the paper still sits
+              beside the button that uses it.
+            */}
+            <span className="me-auto text-xs font-semibold text-[var(--sys-primary)]">
               محدَّد: {selected.size} طلب
             </span>
-            {/* The paper sits beside the button that uses it, so nobody
-                prints thirty labels before discovering the size. */}
-            <LabelSizePicker compact className="ms-auto flex items-center" />
+            <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())} title="إلغاء التحديد">
+              <RiCloseLine className="w-4 h-4" />
+            </Button>
             {/* Shown only to whoever may print: the server refuses anyone
                 else, and a button that always answers 403 is a broken one. */}
             {canPrint && (
-              <>
-                <Button size="sm" variant="outline" onClick={() => void handlePrintLabels('print')} loading={printing}>
-                  <RiPrinterLine className="w-4 h-4" />
-                  طباعة البوالص
-                </Button>
+              <Button size="sm" onClick={() => void handlePrintLabels('print')} loading={printing} className="flex-1 md:flex-none">
+                <RiPrinterLine className="w-4 h-4" />
+                طباعة البوالص
+              </Button>
+            )}
+            <AdvancedGroup label="المزيد" holds="مقاس الورق · PDF · تصدير" className="self-start">
+              <LabelSizePicker compact className="flex flex-wrap items-center gap-2" />
+              {canPrint && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -724,17 +738,14 @@ export function OrdersScreen() {
                   <RiDownload2Line className="w-4 h-4" />
                   PDF
                 </Button>
-              </>
-            )}
-            {canExport && (
-            <Button size="sm" variant="outline" onClick={handleExportSelected}>
-              <RiDownload2Line className="w-4 h-4" />
-              تصدير المحدَّد
-            </Button>
-            )}
-            <Button size="sm" variant="outline" onClick={() => setSelected(new Set())}>
-              إلغاء التحديد
-            </Button>
+              )}
+              {canExport && (
+                <Button size="sm" variant="outline" onClick={handleExportSelected}>
+                  <RiDownload2Line className="w-4 h-4" />
+                  تصدير المحدَّد
+                </Button>
+              )}
+            </AdvancedGroup>
           </>
         </BulkBar>
 
@@ -756,13 +767,17 @@ export function OrdersScreen() {
           */}
           <div>
             <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 border-b border-[var(--sys-border)] bg-[var(--sys-surface)] text-xs text-[var(--sys-muted-foreground)]">
-              <input
-                type="checkbox"
-                checked={allOnPageSelected}
-                onChange={toggleAll}
-                aria-label="تحديد كل الطلبات في هذه الصفحة"
-                className="w-4 h-4 accent-[var(--sys-primary)] cursor-pointer"
-              />
+              {/* A 16px box is a 44px target on a phone: the label carries the
+                  hit area (a checkbox draws no pseudo-element of its own). */}
+              <label className="tap-safe flex shrink-0">
+                <input
+                  type="checkbox"
+                  checked={allOnPageSelected}
+                  onChange={toggleAll}
+                  aria-label="تحديد كل الطلبات في هذه الصفحة"
+                  className="w-4 h-4 accent-[var(--sys-primary)] cursor-pointer"
+                />
+              </label>
               {orders.length > 0 && (
                 <span className="tabular-nums">
                   عرض {firstOnPage}–{lastOnPage} من أصل {pagination.total} طلب
@@ -862,7 +877,16 @@ export function OrdersScreen() {
                       fit beside them goes to a second line instead of taking their room. From `lg` it never wraps.
                     */}
                     <div className="flex flex-wrap lg:flex-nowrap items-start gap-3">
-                      <span onClick={(e) => e.stopPropagation()} className="pt-1 shrink-0">
+                      {/*
+                        A MISSED TICK OPENED THE ORDER.
+                        The box is 16px and the row is a button, so on a phone
+                        a thumb that landed beside the box opened the order
+                        sheet instead. The label is the target — pressing a
+                        label presses the box inside it — and `tap-safe` grows
+                        it to 44px without moving anything (a checkbox cannot
+                        grow its own).
+                      */}
+                      <label onClick={(e) => e.stopPropagation()} className="tap-safe flex pt-1 shrink-0">
                         <input
                           type="checkbox"
                           checked={selected.has(order.id)}
@@ -870,7 +894,7 @@ export function OrdersScreen() {
                           aria-label={`تحديد الطلب ${order.orderNumber}`}
                           className="w-4 h-4 accent-[var(--sys-primary)] cursor-pointer"
                         />
-                      </span>
+                      </label>
 
                       <ProductThumb
                         src={order.productImageSnapshot || order.product?.image}

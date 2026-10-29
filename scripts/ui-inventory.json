@@ -1195,7 +1195,7 @@
     "columns": 0,
     "cards": 1,
     "modals": 0,
-    "icons": 17,
+    "icons": 18,
     "links": 0,
     "tabs": 0
   },
@@ -1490,7 +1490,7 @@
     "tabs": 0
   },
   "src/components/screens/TrackingScreen.tsx": {
-    "buttons": 14,
+    "buttons": 15,
     "inputs": 0,
     "columns": 15,
     "cards": 0,

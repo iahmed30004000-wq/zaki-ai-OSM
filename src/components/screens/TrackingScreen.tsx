@@ -12,6 +12,7 @@ import { DeliverDialog } from '@/components/screens/tracking/DeliverDialog';
 import { WriteOffDialog } from '@/components/screens/tracking/WriteOffDialog';
 import { apiJson } from '@/lib/api-client';
 import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { BulkBar } from '@/components/shell/BulkBar';
 import { Rows, type RowTone } from '@/components/ui/Rows';
 import { RiAlertLine, RiChat1Line, RiCheckLine, RiCloseLine, RiEBike2Line, RiEyeLine, RiHandCoinLine, RiLoader4Line, RiTimerLine, RiTruckLine } from '@remixicon/react';
 import { ALERT_AR, ALERT_CONFIRM_AR, type TrackingAlertKind } from '@/lib/tracking-alert';
@@ -405,6 +406,8 @@ export function TrackingScreen() {
   const visible = rows;
   // The boxes are for whoever may act on the money (the collect door's own key); the rows themselves are the door's.
   const collectable = access.collect ? visible.filter(canCollect) : [];
+  /** «اختر الكل»: every collectable parcel on THIS page — the strip offers it before a tick, the bar after. */
+  const pickAll = () => setSelected(Object.fromEntries(collectable.map((o) => [o.id, true])));
   /** Every owed parcel the question matches — counted by the server over the whole list, not over this page. */
   const collectOwed = facts?.tasks.COLLECT ?? 0;
 
@@ -579,9 +582,15 @@ export function TrackingScreen() {
           held none, and a bar saying «nothing to collect» hid fourteen
           delivered parcels. «اعرضها» asks the server for exactly them. */}
       {access.collect && collectOwed > 0 && (
-        <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-3 flex flex-wrap items-center gap-3">
+        <div
+          className={`bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-3 flex flex-wrap items-center gap-3 ${
+            // Once rows are ticked the bar below is where the work is. On a desk it takes this strip's place, so the
+            // list does not drop by a bar's height under the pointer; on a phone this stays, so it does not jump up.
+            chosen.length > 0 ? 'md:hidden' : ''
+          }`}
+        >
           <span className="text-xs text-[var(--sys-muted-foreground)]">
-            {chosen.length > 0 ? `مختار ${chosen.length} طلب · صافي ${netOfChosen}` : `${collectOwed} مسلَّم بانتظار التحصيل${openTask !== 'COLLECT' ? ' —' : ''}`}
+            {`${collectOwed} مسلَّم بانتظار التحصيل${openTask !== 'COLLECT' && chosen.length === 0 ? ' —' : ''}`}
           </span>
           {openTask !== 'COLLECT' && chosen.length === 0 && (
             <button
@@ -591,33 +600,50 @@ export function TrackingScreen() {
               اعرضها
             </button>
           )}
-          {collectable.length > 0 && (
+          {collectable.length > 0 && chosen.length === 0 && (
             <button
-              onClick={() => setSelected(Object.fromEntries(collectable.map((o) => [o.id, true])))}
-              className="text-xs text-[var(--sys-primary)] hover:underline"
+              onClick={pickAll}
+              className="min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline"
             >
               اختر الكل
             </button>
           )}
-          {chosen.length > 0 && (
-            <>
-              <button onClick={() => setSelected({})} className="text-xs text-[var(--sys-muted-foreground)] hover:underline">
-                إلغاء الاختيار
-              </button>
-              {mixedCouriers && (
-                <span role="alert" className="text-xs text-[var(--sys-destructive)]">اختر طرود شركة وحدة</span>
-              )}
-              <button
-                onClick={() => setCollecting(true)}
-                disabled={mixedCouriers}
-                className="h-11 md:h-8 px-3 rounded-lg bg-[var(--sys-success)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5 mr-auto disabled:opacity-50"
-              >
-                <RiHandCoinLine className="w-4 h-4" /> استلمت منه
-              </button>
-            </>
-          )}
         </div>
       )}
+
+      {/*
+        «استلمت منه» WHERE THE THUMB IS.
+        The rows are ticked far down a list of cards, and the button that
+        records them used to sit in the strip above it, off the screen by then.
+        The bar owns the bottom of the phone while something is ticked; on a
+        desk it stands where the strip was.
+      */}
+      <BulkBar show={access.collect && chosen.length > 0}>
+        <span className="me-auto text-xs font-semibold text-[var(--sys-primary)]">
+          {`مختار ${chosen.length} طلب · صافي ${netOfChosen}`}
+        </span>
+        {collectable.length > chosen.length && (
+          <button onClick={pickAll} className="min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline">
+            اختر الكل
+          </button>
+        )}
+        <button
+          onClick={() => setSelected({})}
+          className="min-h-11 md:min-h-0 text-xs text-[var(--sys-muted-foreground)] hover:underline"
+        >
+          إلغاء الاختيار
+        </button>
+        {mixedCouriers && (
+          <span role="alert" className="w-full text-xs text-[var(--sys-destructive)]">اختر طرود شركة وحدة</span>
+        )}
+        <button
+          onClick={() => setCollecting(true)}
+          disabled={mixedCouriers}
+          className="h-11 md:h-8 px-3 rounded-lg bg-[var(--sys-success)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-50"
+        >
+          <RiHandCoinLine className="w-4 h-4" /> استلمت منه
+        </button>
+      </BulkBar>
 
       {!extra ? (
         <div className="flex items-center justify-center gap-2 text-[var(--sys-muted-foreground)] text-sm py-16">

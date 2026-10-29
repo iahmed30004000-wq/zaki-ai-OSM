@@ -19,6 +19,7 @@ import { ListToolbar, withChosen, type ToolbarFilter } from '@/components/ui/Lis
 import { Money } from '@/components/ui/Money';
 import { Pager } from '@/components/ui/Pager';
 import { Rows } from '@/components/ui/Rows';
+import { BulkBar } from '@/components/shell/BulkBar';
 import { OrderLink } from '@/components/orders/OrderLink';
 import { FULL_SIGHT, NO_SIGHT, statesOffered, type TrackingSight } from '@/lib/tracking-sight';
 
@@ -170,9 +171,9 @@ const NEXT_AR: Record<Step, string> = {
 };
 
 const GREEN =
-  'h-11 md:h-8 px-3 rounded-lg bg-[var(--sys-success)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-50';
+  'h-11 md:h-8 flex-1 md:flex-none justify-center px-3 rounded-lg bg-[var(--sys-success)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-50';
 const RED =
-  'h-11 md:h-8 px-3 rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)] text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-50';
+  'h-11 md:h-8 flex-1 md:flex-none justify-center px-3 rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)] text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-50';
 
 interface Failure {
   ref: string;
@@ -419,17 +420,21 @@ export function ManualMatching() {
       )}
 
       {(atDoor.length > 0 || owed.length > 0 || owedNoPermission) && (
-        <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-3 flex flex-wrap items-center gap-3">
-          <span className="text-xs text-[var(--sys-muted-foreground)]">
-            {chosen.length === 0 ? 'علّم الطلبات التي تريد تسجيلها.' : `مختار ${chosen.length} طلب`}
-          </span>
+        <div
+          className={`bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-3 flex flex-wrap items-center gap-3 ${
+            // Once rows are ticked the bar below is where the work is. On a desk it takes this strip's place, so the
+            // list does not drop by a bar's height under the pointer; on a phone this stays, so it does not jump up.
+            chosen.length > 0 ? 'md:hidden' : ''
+          }`}
+        >
+          <span className="text-xs text-[var(--sys-muted-foreground)]">علّم الطلبات التي تريد تسجيلها.</span>
           {chosen.length === 0 && atDoor.length > 0 && (
-            <button onClick={() => pick(atDoor)} className="text-xs text-[var(--sys-primary)] hover:underline">
+            <button onClick={() => pick(atDoor)} className="min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline">
               اختر كل ما بانتظار التسليم ({atDoor.length}){here}
             </button>
           )}
           {chosen.length === 0 && owed.length > 0 && (
-            <button onClick={() => pick(owed)} className="text-xs text-[var(--sys-primary)] hover:underline">
+            <button onClick={() => pick(owed)} className="min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline">
               اختر كل ما بانتظار التحصيل ({owed.length}){here}
             </button>
           )}
@@ -438,38 +443,48 @@ export function ManualMatching() {
               استلام المبلغ يحتاج صلاحية الصندوق، فلا مربع على الطلبات المسلَّمة.
             </span>
           )}
-          {chosen.length > 0 && (
-            <button onClick={() => setSelected({})} className="text-xs text-[var(--sys-muted-foreground)] hover:underline">
-              إلغاء الاختيار
-            </button>
-          )}
-          {problem && <span className="text-xs text-[var(--sys-destructive)]">{problem}</span>}
-          {/* A problem only ever belongs to a mixed choice (no step) or to money (one courier, one currency). */}
-          {step === 'DELIVER' && (
-            <span className="flex items-center gap-2 mr-auto">
-              <button onClick={() => void settle('NONE')} disabled={working} className={RED}>
-                <RiCloseLine className="w-4 h-4" aria-hidden /> رجعت ({chosen.length})
-              </button>
-              <button onClick={() => void settle('ALL')} disabled={working} className={GREEN}>
-                {working ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiCheckLine className="w-4 h-4" aria-hidden />}
-                تم تسليمها ({chosen.length})
-              </button>
-            </span>
-          )}
-          {!problem && step === 'COLLECT' && (
-            <span className="flex items-center gap-2 mr-auto">
-              {mayGather && (
-                <button onClick={() => setGatheringFor(choiceKey)} className={GREEN}>
-                  <RiFileList3Line className="w-4 h-4" aria-hidden /> مطابق يدوي ({chosen.length})
-                </button>
-              )}
-              <button onClick={() => setCollectingFor(choiceKey)} className={GREEN}>
-                <RiHandCoinLine className="w-4 h-4" aria-hidden /> استلمت منه ({chosen.length})
-              </button>
-            </span>
-          )}
         </div>
       )}
+
+      {/*
+        THE BUTTONS THAT RECORD THE TICKED PARCELS, WHERE THE THUMB IS.
+        Parcels are ticked far down a list of cards, and the strip that
+        recorded them sat above the list — off the screen by then, so the
+        person scrolled back up and lost the place. While anything is ticked
+        the bar owns the bottom of the phone; on a desk it stands where the
+        strip was. Same buttons, same doors, same names.
+      */}
+      <BulkBar show={chosen.length > 0}>
+        <span className="me-auto text-xs font-semibold text-[var(--sys-primary)]">مختار {chosen.length} طلب</span>
+        <button onClick={() => setSelected({})} className="min-h-11 md:min-h-0 text-xs text-[var(--sys-muted-foreground)] hover:underline">
+          إلغاء الاختيار
+        </button>
+        {problem && <span className="w-full text-xs text-[var(--sys-destructive)]">{problem}</span>}
+        {/* A problem only ever belongs to a mixed choice (no step) or to money (one courier, one currency). */}
+        {step === 'DELIVER' && (
+          <span className="flex grow items-center justify-end gap-2">
+            <button onClick={() => void settle('NONE')} disabled={working} className={RED}>
+              <RiCloseLine className="w-4 h-4" aria-hidden /> رجعت ({chosen.length})
+            </button>
+            <button onClick={() => void settle('ALL')} disabled={working} className={GREEN}>
+              {working ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiCheckLine className="w-4 h-4" aria-hidden />}
+              تم تسليمها ({chosen.length})
+            </button>
+          </span>
+        )}
+        {!problem && step === 'COLLECT' && (
+          <span className="flex grow items-center justify-end gap-2">
+            {mayGather && (
+              <button onClick={() => setGatheringFor(choiceKey)} className={GREEN}>
+                <RiFileList3Line className="w-4 h-4" aria-hidden /> مطابق يدوي ({chosen.length})
+              </button>
+            )}
+            <button onClick={() => setCollectingFor(choiceKey)} className={GREEN}>
+              <RiHandCoinLine className="w-4 h-4" aria-hidden /> استلمت منه ({chosen.length})
+            </button>
+          </span>
+        )}
+      </BulkBar>
 
       {!extra ? (
         // A first answer that failed is already said above; a spinner that never stops would unsay it.
