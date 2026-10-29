@@ -209,6 +209,9 @@ export function ConfirmationMineScreen() {
    * 403 to anyone else, so for them nothing is asked and nothing is drawn.
    */
   const canPull = userCan(currentUser, 'confirmation.pull');
+  // «إدخال إشكال» is its own box (`confirmation.raise_issue`, PR-7) — the agent's desk had the button for years and the
+  // door asked for the issues LIST she was never given.
+  const canRaiseIssue = userCan(currentUser, 'confirmation.raise_issue');
   const queue = useQueue(canPull);
   // Her id, for the customer's history: one of its orders she holds opens here too (OrderLink).
   const holderId = userCan(currentUser, 'confirmation.work') ? currentUser?.id ?? null : null;
@@ -899,9 +902,11 @@ export function ConfirmationMineScreen() {
                     and what to do instead.
                   */}
                   {order.moderatorId ? (
+                  canRaiseIssue && (
                   <Action onClick={() => setDialog({ kind: 'issue', order })} busy={busyId === order.id} icon={<RiAlertLine className="w-4 h-4" />}>
                     إدخال إشكال
                   </Action>
+                  )
                   ) : (
                     <span className="w-full text-xs leading-relaxed text-[var(--sys-warning)]">
                       طلب من المتجر — ما في مودريتور يصلّحه.

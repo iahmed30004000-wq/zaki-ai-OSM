@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { apiJson } from '@/lib/api-client';
-import { changeFieldLabel } from '@/lib/change-request-fields';
+import { changeFieldLabel, PRICE_KEY_REQUIRED_AR } from '@/lib/change-request-fields';
 import { RiAlertLine, RiArrowLeftLine, RiCheckLine, RiCloseLine, RiLoader4Line } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
 import { arDateTime } from '@/lib/format';
@@ -37,6 +37,8 @@ interface RequestRow {
   requestedRole?: string | null;
   createdAt: string;
   order?: { orderNumber: string } | null;
+  /** The request moves a figure and the reader lacks the price key (the server says; it also refuses the press). */
+  needsPriceKey?: boolean;
 }
 
 
@@ -149,6 +151,13 @@ export function ChangeRequestReview({
           </>
         )}
 
+        {row?.needsPriceKey && (
+          <p className="flex items-start gap-1.5 text-xs text-[var(--sys-muted-foreground)]">
+            <RiAlertLine className="w-4 h-4 text-[var(--sys-warning)] shrink-0 mt-0.5" />
+            {PRICE_KEY_REQUIRED_AR} الرفض متاح.
+          </p>
+        )}
+
         {error && (
           <p className="text-xs text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-2.5">{error}</p>
         )}
@@ -167,7 +176,12 @@ export function ChangeRequestReview({
             {busy === 'REJECTED' ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiCloseLine className="w-4 h-4" />}
             رفض
           </Button>
-          <Button size="sm" onClick={() => decide('APPROVED')} disabled={!!busy || !row}>
+          <Button
+            size="sm"
+            onClick={() => decide('APPROVED')}
+            disabled={!!busy || !row || row.needsPriceKey === true}
+            title={row?.needsPriceKey ? PRICE_KEY_REQUIRED_AR : undefined}
+          >
             {busy === 'APPROVED' ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiCheckLine className="w-4 h-4" />}
             موافقة
           </Button>

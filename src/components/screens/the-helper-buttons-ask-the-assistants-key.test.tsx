@@ -105,11 +105,25 @@ describe('«مساعدة» on a confirmation card', () => {
   });
 
   it('NEGATIVE: is not drawn without the box — and the rest of the card is (the work stays)', async () => {
-    holding('confirmation.work');
+    // OLD → NEW (PR-7): + `confirmation.raise_issue`. «إدخال إشكال» is its own box now and the migration gives it to the
+    // confirmation agent (D14), so the agent of this card is the person AFTER the deploy. Without it the button is gone — that
+    // is `the-confirmation-split-keeps-every-door.test.ts`.
+    holding('confirmation.work', 'confirmation.raise_issue');
     render(<ConfirmationMineScreen />);
     await screen.findByText('JO-1');
     expect(screen.queryByRole('button', { name: /مساعدة/ }), 'زرٌّ لا يُجاب').toBeNull();
     expect(screen.getByRole('button', { name: /إدخال إشكال/ })).toBeTruthy();
+  });
+
+  it('PR-7 — «إدخال إشكال» has a box of its own: drawn with it, NOT drawn without it (and the store-order sentence is not drawn in its place)', async () => {
+    holding('confirmation.work');
+    render(<ConfirmationMineScreen />);
+    await screen.findByText('JO-1');
+    expect(screen.queryByRole('button', { name: /إدخال إشكال/ }), 'زرٌّ لا يُجاب').toBeNull();
+    // the card is for a moderator-entered order: telling her «طلب من المتجر» would be a lie
+    expect(screen.queryByText(/طلب من المتجر/)).toBeNull();
+    // and the rest of the desk is untouched
+    expect(screen.getAllByRole('button', { name: /تأكيد|ألغِ/ }).length).toBeGreaterThan(0);
   });
 });
 

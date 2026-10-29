@@ -73,12 +73,14 @@ interface Extra {
   facts: WinbackFacts;
   rule: WinbackRule;
   canEditRule: boolean;
+  /** The offer's own box. Absent from an older server: the door itself still asks. */
+  canOffer: boolean;
 }
 
 /** Module-level, so the hook's loader keeps one identity — see `usePagedList`. */
 const read = (body: unknown): PagedRead<Row, Extra> => {
-  const b = body as { rows: Row[]; pagination: Paging; facts: WinbackFacts; rule: WinbackRule; canEditRule: boolean };
-  return { rows: b.rows, pagination: b.pagination, extra: { facts: b.facts, rule: b.rule, canEditRule: b.canEditRule } };
+  const b = body as { rows: Row[]; pagination: Paging; facts: WinbackFacts; rule: WinbackRule; canEditRule: boolean; canOffer?: boolean };
+  return { rows: b.rows, pagination: b.pagination, extra: { facts: b.facts, rule: b.rule, canEditRule: b.canEditRule, canOffer: b.canOffer !== false } };
 };
 
 const reasonAr = (code: string | null) => (code ? (REJECTION_REASON_AR[code] ?? code) : 'بلا سبب');
@@ -169,7 +171,7 @@ export function WinbackScreen({ embedded = false }: { embedded?: boolean } = {})
     );
   }
 
-  const { facts, rule, canEditRule } = extra;
+  const { facts, rule, canEditRule, canOffer } = extra;
   const filters: ToolbarFilter[] = [
     {
       key: 'view',
@@ -339,6 +341,7 @@ export function WinbackScreen({ embedded = false }: { embedded?: boolean } = {})
             <footer className="flex flex-wrap items-center gap-2 pt-2 border-t border-[var(--sys-border)]">
               {r.verdict.eligible ? (
                 <>
+                  {canOffer && (
                   <button
                     onClick={() => void offer(r)}
                     disabled={offering === r.id}
@@ -351,6 +354,7 @@ export function WinbackScreen({ embedded = false }: { embedded?: boolean } = {})
                     )}
                     اعرضه من جديد
                   </button>
+                  )}
                   <span className="inline-flex items-center gap-1 text-xs text-[var(--sys-muted-foreground)]">
                     <RiPriceTag3Line className="w-4 h-4" aria-hidden />
                     أقصى خصم <Money value={r.verdict.maxDiscount} />

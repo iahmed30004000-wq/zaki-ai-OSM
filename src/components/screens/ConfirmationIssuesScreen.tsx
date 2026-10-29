@@ -11,6 +11,8 @@ import { useToast } from '@/components/ui/Toast';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { OrderLink } from '@/components/orders/OrderLink';
+import { useApp } from '@/context/AppContext';
+import { userCan } from '@/lib/can';
 
 /**
  * /confirmation/issues — entry issues on moderator-entered orders only.
@@ -94,6 +96,11 @@ const FIELD_LABEL: Record<keyof Draft, string> = {
 export function ConfirmationIssuesScreen() {
   const patchOrder = useOrderPatch();
   const toast = useToast();
+  // «صحّح البيانات» is the correction's own box and the void is `orders.cancel` (PR-7): the list alone opens neither. The
+  // correction saves the order FIRST and closes the issue second, so a button the close would refuse must not be there.
+  const { currentUser } = useApp();
+  const canCorrect = userCan(currentUser, 'confirmation.issues_correct');
+  const canVoid = userCan(currentUser, 'orders.cancel');
   const [issues, setIssues] = useState<Issue[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -415,6 +422,7 @@ export function ConfirmationIssuesScreen() {
 
             {!isEditing && !isVoiding && (
               <footer className="flex gap-2 pt-2 border-t border-[var(--sys-border)]">
+                {canCorrect && (
                 <button
                   onClick={() => openCorrection(issue)}
                   className="min-h-11 md:min-h-0 inline-flex items-center px-3 py-1.5 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5"
@@ -422,6 +430,8 @@ export function ConfirmationIssuesScreen() {
                   <RiPencilLine className="w-4 h-4" />
                   صحّح البيانات
                 </button>
+                )}
+                {canVoid && (
                 <button
                   onClick={() => { setVoiding(issue.id); setVoidReason(''); setError(null); }}
                   className="min-h-11 md:min-h-0 inline-flex items-center px-3 py-1.5 rounded-lg border border-[var(--sys-border)] text-xs text-[var(--sys-muted-foreground)] hover:text-[var(--sys-destructive)] inline-flex items-center gap-1.5"
@@ -429,6 +439,7 @@ export function ConfirmationIssuesScreen() {
                   <RiForbidLine className="w-4 h-4" />
                   إبطال الطلب (المالك فقط)
                 </button>
+                )}
               </footer>
             )}
           </article>

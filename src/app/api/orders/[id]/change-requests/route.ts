@@ -10,10 +10,10 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { addBusinessMinutes } from '@/lib/business-calendar';
 import { zodMessage } from '@/lib/zod-message';
-import { CHANGEABLE_FIELDS, withFrom } from '@/lib/change-request-fields';
+import { CHANGEABLE_FIELDS, touchesMoney, withFrom } from '@/lib/change-request-fields';
 import { CHANGE_INTENTS, INTENT_AR, INTENT_ASK_AR, carryOut, missingFor, type ChangeIntent } from '@/lib/change-request-intent';
 import { createNotification } from '@/lib/notification';
-import { deciderFor, mayDecide, SUPERVISOR_ROLES } from '@/lib/change-request-routing';
+import { deciderFor, mayDecide } from '@/lib/change-request-routing';
 import { orderSeal, handedToCourier } from '@/lib/order-seal';
 import { ORDER_NOT_FOUND } from '@/lib/order-refusals';
 
@@ -232,6 +232,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       // floor is the warehouse's to answer. `batch` is already loaded
       // above for the seal.
       handedToCourier: handed,
+    }, {
+      // A request that moves a figure is only decided by itself when its raiser holds `orders.change_price` too (PR-7):
+      // otherwise it waits for somebody who does, exactly like a request raised by somebody who may not decide.
+      money: touchesMoney(parsed.data.changes),
     });
     /*
      * THE LINE DEPENDS ON WHAT IS ASKED (M6).
@@ -304,12 +308,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           ? await createNotification({ ...notice, audience: { userIds: [decider.userId] } })
           : 0;
       if (!told) {
-        // Everyone who may decide it — the same set mayDecide lets through,
-        // the permission AND the supervising roles, so nobody who can answer
-        // a request is left unaware of it.
+        // Everyone who may decide it — `control.change_requests` and nothing else (PR-7): the four role names that were
+        // also told are the ones the migration gave the key to, and a name nobody can be unticked from is not an audience.
         await createNotification({
           ...notice,
-          audience: { permission: 'control.change_requests', roles: SUPERVISOR_ROLES },
+          audience: { permission: 'control.change_requests' },
         });
       }
     });

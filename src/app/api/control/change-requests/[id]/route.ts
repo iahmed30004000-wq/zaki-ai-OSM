@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { mayDecide } from '@/lib/change-request-routing';
+import { touchesMoney } from '@/lib/change-request-fields';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { zodMessage } from '@/lib/zod-message';
@@ -80,13 +81,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         shippedAt: request.order.shippedAt,
         batchStatus: request.order.shippingBatch?.status ?? null,
       }),
+    }, {
+      // APPROVING a request that moves a price, a discount, a quantity or a product needs `orders.change_price` too (PR-7).
+      // Rejecting never does: refusing a figure changes none.
+      money: parsed.data.decision === 'APPROVED' && touchesMoney(request.changes),
     });
     if (!routing.allowed) {
       return NextResponse.json(
         {
           error: routing.reason,
           errorAr: routing.reason,
-          code: 'NOT_THE_DECIDER',
+          code: routing.code ?? 'NOT_THE_DECIDER',
           decider: routing.decider,
         },
         { status: 403 }

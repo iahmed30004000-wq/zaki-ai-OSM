@@ -78,7 +78,11 @@ WITH req(action, needs) AS (VALUES
   ('orders.note','orders.view'),
   ('orders.request_change','orders.view'),
   ('orders.rating_link','orders.view'),
-  ('control.blacklist_manage','control.blacklist')
+  ('control.blacklist_manage','control.blacklist'),
+  ('confirmation.winback','confirmation.supervise'),
+  ('confirmation.reassign','confirmation.supervise'),
+  ('confirmation.issues_correct','confirmation.issues'),
+  ('control.change_requests','control.change_requests_view')
 )
 SELECT 'role_permissions' AS "table", r."name" AS "role", r."companyId", q.action, q.needs
 FROM "role_permissions" rp
@@ -134,3 +138,38 @@ CROSS JOIN LATERAL unnest(CASE rp."permission"
 END) AS k
 GROUP BY k, r."id", r."name", r."companyId"
 ORDER BY 1, 3 NULLS FIRST, 2;
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- AND THE FOURTH QUESTION (PR-7, the confirmation and change-request doors): WHICH ROLES WILL THE MIGRATION
+-- 20261030140000_confirmation_split_keys GIVE EACH BOX TO? Every role that holds any key the box's door asked before
+-- (src/lib/confirmation-split-keys.ts CONFIRMATION_SPLIT_KEYS_FROM, the same list the migration reads). A role listed here
+-- keeps its action on the day; the owner unticks the box from the roles that should not have it afterwards.
+--
+-- orders.change_price is listed only for a role WITHOUT orders.edit: those roles hold it as an "action without its view" on
+-- purpose — they decide change requests today, and a request that moves a figure now needs the key. Read-only, same as above.
+-- ═══════════════════════════════════════════════════════════════════════
+SELECT k AS "box", r."name" AS "role", r."companyId", array_agg(DISTINCT rp."permission" ORDER BY rp."permission") AS "through"
+FROM "role_permissions" rp
+JOIN "roles" r ON r."id" = rp."roleId"
+CROSS JOIN LATERAL unnest(CASE rp."permission"
+  WHEN 'confirmation.supervise' THEN ARRAY['confirmation.winback', 'confirmation.reassign']
+  WHEN 'confirmation.issues' THEN ARRAY['confirmation.issues_correct', 'confirmation.raise_issue']
+  WHEN 'control.change_requests' THEN ARRAY['control.change_requests_view', 'orders.change_price']
+  WHEN 'ops.ship' THEN ARRAY['ops.decide_changes', 'orders.change_price']
+  WHEN 'confirmation.pull' THEN ARRAY['orders.change_price']
+  WHEN 'confirmation.work' THEN ARRAY['orders.change_price']
+  WHEN 'orders.claim' THEN ARRAY['orders.change_price']
+  WHEN 'customers.view' THEN ARRAY['customers.view_basic']
+  ELSE ARRAY[]::text[]
+END) AS k
+WHERE k <> 'orders.change_price'
+   OR NOT EXISTS (SELECT 1 FROM "role_permissions" e WHERE e."roleId" = r."id" AND e."permission" = 'orders.edit')
+GROUP BY k, r."id", r."name", r."companyId"
+ORDER BY 1, 3 NULLS FIRST, 2;
+
+-- The people who pass a door BY NAME and get its key from the migration: how many there are per role.
+SELECT u."role" AS "role", count(*) AS "people"
+FROM "users" u
+WHERE u."role" IN ('SUPER_ADMIN', 'COMPANY_ADMIN', 'MANAGER', 'CONFIRMATION_SUPERVISOR', 'WAREHOUSE', 'CONFIRMATION_AGENT')
+GROUP BY u."role"
+ORDER BY 1;

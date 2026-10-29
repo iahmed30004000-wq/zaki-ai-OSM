@@ -39,6 +39,8 @@ interface Row {
   postponeCount: number;
   followUpReason: string | null;
   actionable: boolean;
+  /** Hers, or she holds the box for a colleague's (`confirmation.reassign`). Absent from an older server: the door itself still asks. */
+  mayHandBack?: boolean;
   customer: { fullName: string; phone: string; city: string };
   claimer: { id: string; name: string } | null;
 }
@@ -278,7 +280,7 @@ export function ConfirmationPostponedScreen({ embedded = false }: { embedded?: b
               key: 'queue',
               label: 'إلى الطابور',
               render: (o) =>
-                o.actionable ? (
+                o.actionable && o.mayHandBack !== false ? (
                   <button
                     type="button"
                     onClick={() => void toQueue(o)}
