@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
-import { FAMILIES, MIN_SAMPLE, allFindings } from '@/lib/intelligence';
+import { FAMILIES, MIN_SAMPLE, runDetectors } from '@/lib/intelligence';
 
 /**
  * GET /api/growth/intelligence — what is bleeding, and what to do.
@@ -24,11 +24,13 @@ export async function GET() {
       currency: country.currencyCode,
     };
 
-    const findings = await allFindings(db, scope);
+    const { findings, skipped } = await runDetectors(db, scope);
     const totalOrders = await db.order.count({ where: { companyId, storeId } });
 
     return NextResponse.json({
       findings,
+      // Detectors that threw and were left out, by name. Empty when all ran.
+      skipped,
       totalOrders,
       minSample: MIN_SAMPLE,
       counts: {

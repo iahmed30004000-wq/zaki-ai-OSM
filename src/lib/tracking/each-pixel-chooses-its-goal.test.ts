@@ -50,8 +50,16 @@ describe('a pixel whose goal is a lead', () => {
     expect(events).not.toContain('Purchase');
   });
 
-  it('still hears its lead when the company sends Purchase from the server — that switch is about purchases only', () => {
-    expect(run([px({ orderEvent: 'Lead', purchaseOnServer: true })])).toContain('Lead');
+  it('still hears its lead when the company sends only a Purchase from the server — that is a different event, so the pixel is not flagged', () => {
+    expect(run([px({ orderEvent: 'Lead' })])).toContain('Lead');
+  });
+
+  it('stands down when the server sends the LEAD itself at confirmation (ط34) — flagged, the browser sends neither', () => {
+    const events = run([px({ orderEvent: 'Lead', purchaseOnServer: true })]);
+    expect(events).not.toContain('Lead');
+    expect(events).not.toContain('Purchase');
+    // And only the order event: the earlier moments still arrive.
+    expect(events).toEqual(expect.arrayContaining(['PageView', 'ViewContent', 'InitiateCheckout']));
   });
 
   it('NEGATIVE: a second pixel on its defaults still gets the Purchase', () => {

@@ -129,6 +129,14 @@ export async function verifyPreviewToken(token: string): Promise<{ lpId: string 
 }
 
 /**
+ * HOW LONG AN ADD-ON LINK LIVES, in minutes — the one number.
+ *
+ * The seller's own window (`postOrderOfferSettings`) may be set up to a day, but the link the thank-you screen holds
+ * dies here, so the window the screen is TOLD is `Math.min(window, ADDON_TOKEN_MINUTES)`.
+ */
+export const ADDON_TOKEN_MINUTES = 30;
+
+/**
  * Short-lived signed ADD-ON token: issued once right after a public order is
  * created and handed to the success screen. It is the ONLY proof that this
  * anonymous visitor owns the just-created order — knowing the orderNumber
@@ -139,7 +147,7 @@ export async function signAddonToken(payload: { orderId: string; orderNumber: st
   return new SignJWT({ kind: 'lp_addon', orderId: payload.orderId, orderNumber: payload.orderNumber })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('30m')
+    .setExpirationTime(`${ADDON_TOKEN_MINUTES}m`)
     .sign(jwtSecret());
 }
 

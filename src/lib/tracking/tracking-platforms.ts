@@ -148,21 +148,44 @@ const tiktokAdapter: TrackingAdapter = {
         };
       };
       for (const m of ttq.methods) ttq.setAndDefer(ttq, m);
-      ttq.load = function (id: string) {
-        const url = `${TIKTOK_SCRIPT_SRC}?sdkid=${encodeURIComponent(id)}&lib=ttq`;
-        loadScript(url);
+      /*
+       * THE OFFICIAL REGISTRY, which this stub used to leave out.
+       *
+       * TikTok's own snippet keeps one queue PER PIXEL (`ttq._i[id]`) and hands it back through `ttq.instance(id)`;
+       * without them every `ttq.track` went to one shared queue, so with two pixels on a page each one received
+       * every event of the other (a purchase counted twice on each). `load` registers the pixel's queue, and
+       * `instance` wraps it with the deferred methods until the real SDK takes over.
+       */
+      ttq.instance = function (id: string) {
+        const queue = (ttq._i && ttq._i[id]) || [];
+        for (const m of ttq.methods) ttq.setAndDefer(queue, m);
+        return queue;
+      };
+      ttq.load = function (id: string, options?: unknown) {
+        ttq._i = ttq._i || {};
+        ttq._i[id] = [];
+        ttq._i[id]._u = TIKTOK_SCRIPT_SRC;
+        ttq._t = ttq._t || {};
+        ttq._t[id] = +new Date();
+        ttq._o = ttq._o || {};
+        ttq._o[id] = options || {};
+        loadScript(`${TIKTOK_SCRIPT_SRC}?sdkid=${encodeURIComponent(id)}&lib=ttq`);
       };
     }
+    // No `ttq.page()` here: the engine sends the page view itself, once, through `track` below. Calling it as well
+    // counted every visit twice.
     w.ttq.load(pixelId);
-    w.ttq.page();
   },
-  track(event, payload) {
+  track(event, payload, pixelId) {
     const name = TIKTOK_EVENTS[event];
     if (!name) return;
     const w = window as any;
-    if (!w.ttq?.track) return;
+    if (!w.ttq?.instance) return;
     try {
-      w.ttq.track(name, tiktokParams(payload));
+      // This pixel's own queue: an event for one pixel never reaches another on the page.
+      const pixel = w.ttq.instance(pixelId);
+      if (event === 'PageView') pixel.page();
+      else pixel.track(name, tiktokParams(payload));
     } catch {
       /* tracking is non-fatal */
     }

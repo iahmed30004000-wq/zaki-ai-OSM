@@ -28,15 +28,15 @@ import { TONE_DOT, TONE_TEXT } from '@/components/ui/StatusChip';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 
 const PERIODS = [
-  { key: 'today', ar: 'اليوم', en: 'Today' },
-  { key: '7d', ar: '7 أيام', en: '7 Days' },
-  { key: '30d', ar: '30 يوم', en: '30 Days' },
-  { key: 'month', ar: 'هذا الشهر', en: 'This Month' },
-  { key: 'all', ar: 'الكل', en: 'All' },
+  { key: 'today', ar: 'اليوم' },
+  { key: '7d', ar: '7 أيام' },
+  { key: '30d', ar: '30 يوم' },
+  { key: 'month', ar: 'هذا الشهر' },
+  { key: 'all', ar: 'الكل' },
 ] as const;
 
 export function DashboardScreen() {
-  const { t, locale, isRtl, currentUser } = useApp();
+  const { t, isRtl, currentUser } = useApp();
 
   /**
    * A LINK IS A PROMISE THAT CLICKING LEADS SOMEWHERE.
@@ -294,7 +294,7 @@ export function DashboardScreen() {
     tint: string;
     text: string;
   }[] = [
-    { icon: RiShoppingBagLine, label: locale === 'ar' ? 'الأكثر طلباً' : 'Most Requested', name: analytics?.rankings?.mostRequested?.name, id: analytics?.rankings?.mostRequested?.id, value: `${analytics?.rankings?.mostRequested?.totalOrders ?? 0} ${locale === 'ar' ? 'طلب' : 'orders'}`, tint: 'bg-[var(--sys-surface)] border-[var(--sys-primary-soft)]', text: 'text-[var(--sys-primary)]' },
+    { icon: RiShoppingBagLine, label: 'الأكثر طلباً', name: analytics?.rankings?.mostRequested?.name, id: analytics?.rankings?.mostRequested?.id, value: `${analytics?.rankings?.mostRequested?.totalOrders ?? 0} طلب`, tint: 'bg-[var(--sys-surface)] border-[var(--sys-primary-soft)]', text: 'text-[var(--sys-primary)]' },
     /**
      * «الأكثر ربحاً» ONLY WHERE A PROFIT WAS ACTUALLY MEASURED.
      *
@@ -310,10 +310,10 @@ export function DashboardScreen() {
      */
     // A product's profit is money: without «عرض المالية» the tile is not drawn at all.
     ...(!canFinance ? [] : [profitStated
-      ? { icon: RiWallet3Line, label: locale === 'ar' ? 'الأكثر ربحاً' : 'Most Profitable', name: analytics?.rankings?.mostProfitable?.name, id: analytics?.rankings?.mostProfitable?.id, value: fmt(analytics?.rankings?.mostProfitable?.netProfit ?? 0), tint: 'bg-[var(--sys-success-soft)]', text: 'text-[var(--sys-success)]' }
-      : { icon: RiWallet3Line, label: locale === 'ar' ? 'الأكثر ربحاً' : 'Most Profitable', name: undefined, value: locale === 'ar' ? 'كلفة البضاعة غير مسجَّلة' : 'No recorded cost', tint: 'bg-[var(--sys-surface)] border-[var(--sys-border)]', text: 'text-[var(--sys-muted-foreground)]' }]),
-    { icon: RiTruckLine, label: locale === 'ar' ? 'الأكثر توصيلاً' : 'Most Delivered', name: analytics?.rankings?.mostDelivered?.name, id: analytics?.rankings?.mostDelivered?.id, value: `${analytics?.rankings?.mostDelivered?.deliveredOrders ?? 0} ${locale === 'ar' ? 'توصيل' : 'delivered'}`, tint: 'bg-[var(--sys-warning-soft)] border-[var(--sys-warning)]/30', text: 'text-[var(--sys-warning)]' },
-    { icon: RiCloseCircleLine, label: locale === 'ar' ? 'الأكثر رفضاً' : 'Highest Rejections', name: analytics?.rankings?.highestRejection?.name, id: analytics?.rankings?.highestRejection?.id, value: `${analytics?.rankings?.highestRejection?.rejectedOrders ?? 0} ${locale === 'ar' ? 'رفض' : 'rejected'}`, tint: 'bg-[var(--sys-destructive-soft)] border-[var(--sys-destructive-border)]', text: 'text-[var(--sys-destructive)]' },
+      ? { icon: RiWallet3Line, label: 'الأكثر ربحاً', name: analytics?.rankings?.mostProfitable?.name, id: analytics?.rankings?.mostProfitable?.id, value: fmt(analytics?.rankings?.mostProfitable?.netProfit ?? 0), tint: 'bg-[var(--sys-success-soft)]', text: 'text-[var(--sys-success)]' }
+      : { icon: RiWallet3Line, label: 'الأكثر ربحاً', name: undefined, value: 'كلفة البضاعة غير مسجَّلة', tint: 'bg-[var(--sys-surface)] border-[var(--sys-border)]', text: 'text-[var(--sys-muted-foreground)]' }]),
+    { icon: RiTruckLine, label: 'الأكثر توصيلاً', name: analytics?.rankings?.mostDelivered?.name, id: analytics?.rankings?.mostDelivered?.id, value: `${analytics?.rankings?.mostDelivered?.deliveredOrders ?? 0} توصيل`, tint: 'bg-[var(--sys-warning-soft)] border-[var(--sys-warning)]/30', text: 'text-[var(--sys-warning)]' },
+    { icon: RiCloseCircleLine, label: 'الأكثر رفضاً', name: analytics?.rankings?.highestRejection?.name, id: analytics?.rankings?.highestRejection?.id, value: `${analytics?.rankings?.highestRejection?.rejectedOrders ?? 0} رفض`, tint: 'bg-[var(--sys-destructive-soft)] border-[var(--sys-destructive-border)]', text: 'text-[var(--sys-destructive)]' },
   ];
 
   // The numbers were refused or failed and there is nothing earlier to show: say so,
@@ -340,9 +340,7 @@ export function DashboardScreen() {
       <div className="space-y-6">
         {/* ─── Header ─── */}
         <PageHeader title={t.dashboard}
-            description={locale === 'ar'
-                ? 'متابعة المبيعات والتكاليف وأداء الفريق والأرباح الحقيقية — لحظة بلحظة'
-                : 'Real-time sales, cost analysis, team performance & real net profit'}
+            description="متابعة المبيعات والتكاليف وأداء الفريق والأرباح الحقيقية — لحظة بلحظة"
             actions={
               <><div className="flex min-w-0 items-center gap-2 flex-wrap">
             {/* Period selector */}
@@ -357,7 +355,7 @@ export function DashboardScreen() {
                     period === p.key ? 'bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] font-bold shadow-raised' : 'hover:bg-[var(--sys-surface)]'
                   }`}
                 >
-                  {locale === 'ar' ? p.ar : p.en}
+                  {p.ar}
                 </button>
               ))}
             </div>
@@ -468,7 +466,7 @@ export function DashboardScreen() {
               title={t.deliveredRevenue}
               rule="مجموع المحصَّل فعلاً للطلبات اللي انحصّلت، زائد إجمالي الطلبات الموصَّلة اللي ما انسجّل إلها تحصيل. الموصَّل وحده، وبالمدّة المختارة فوق."
               value={fmt(fin.deliveredRevenue)}
-              subtitle={`${counts.delivered} ${locale === 'ar' ? 'طلب موصّل' : 'delivered orders'}`}
+              subtitle={`${counts.delivered} طلب موصّل`}
               icon={RiArrowUpCircleLine}
               previous={prev.deliveredRevenue}
               goodWhen="rising"
@@ -570,11 +568,11 @@ export function DashboardScreen() {
         {analytics?.outcomes?.outcomes?.length > 0 && (
           <Card>
             <CardHeader
-              title={locale === 'ar' ? 'حالات الطلبات — كل التاريخ' : 'Order outcomes — all time'}
+              title="حالات الطلبات — كل التاريخ"
               action={
                 mayOpen('/orders') ? (
                   <Link href="/orders?state=CLOSED" className="tap-safe text-xs text-[var(--sys-primary)] font-medium hover:underline">
-                    {locale === 'ar' ? 'الطلبات المغلقة' : 'Closed orders'}
+                    الطلبات المغلقة
                   </Link>
                 ) : undefined
               }
@@ -590,7 +588,7 @@ export function DashboardScreen() {
                 </li>
               ))}
               <li className="flex items-center justify-between px-4 py-2.5 text-sm bg-[var(--sys-surface)]">
-                <span className="font-semibold">{locale === 'ar' ? 'المجموع' : 'Total'}</span>
+                <span className="font-semibold">المجموع</span>
                 <span className="font-black tabular-nums">{analytics.outcomes.total.toLocaleString('en-US')}</span>
               </li>
             </ul>
@@ -604,13 +602,13 @@ export function DashboardScreen() {
               title={
                 <span className="flex items-center gap-2">
                   <RiFireLine className="w-4 h-4 text-[var(--sys-destructive)]" />
-                  {locale === 'ar' ? 'ترتيب المنتجات والأرباح' : 'Product Rankings & Profit'}
+                  ترتيب المنتجات والأرباح
                 </span>
               }
               action={
                 mayOpen('/products') ? (
                   <Link href="/products" className="tap-safe inline-flex items-center gap-1 text-xs text-[var(--sys-destructive)] font-medium hover:underline">
-                    {locale === 'ar' ? 'المنتجات' : 'View Products'}
+                    المنتجات
                     {/* The same arrow, from the same set, mirrored the same way
                         as the one at line 219 — not the character ←, whose
                         weight and size are whatever the device's font says. */}
@@ -678,7 +676,7 @@ export function DashboardScreen() {
                    would land on «لا تملك صلاحية لهذه الشاشة». */
                 mayOpen('/admin/users') ? (
                   <Link href="/admin/users" className="tap-safe inline-flex items-center gap-1 text-xs text-[var(--sys-destructive)] font-medium hover:underline">
-                    {locale === 'ar' ? 'الفريق' : 'View Team'}
+                    الفريق
                     <RiArrowRightLine className="icon-mirror h-4 w-4" aria-hidden />
                   </Link>
                 ) : undefined
@@ -705,8 +703,8 @@ export function DashboardScreen() {
                           <PersonNameLink id={mod.id} name={mod.name} />
                         </p>
                         <p className="text-xs text-[var(--sys-muted)]">
-                          {mod.totalOrders} {locale === 'ar' ? 'طلب' : 'orders'} • {mod.confirmedOrders}{' '}
-                          {locale === 'ar' ? 'مؤكد' : 'confirmed'}
+                          {mod.totalOrders} طلب • {mod.confirmedOrders}{' '}
+                          مؤكد
                         </p>
                       </div>
                     </div>

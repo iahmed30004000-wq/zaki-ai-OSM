@@ -89,18 +89,32 @@ export function isValueSource(v: unknown): v is ValueSource {
  */
 export const BROWSER_PIXEL_EVENTS = ['PageView', 'ViewContent', 'InitiateCheckout', 'Purchase'] as const;
 
-export function collidesWithBrowserPixel(eventName: string, trigger?: string): boolean {
-  // `Purchase` at confirmation REPLACES the browser's: the page stands down for that pixel, so Meta counts one.
-  if (replacesBrowserPurchase(eventName, trigger)) return false;
-  return (BROWSER_PIXEL_EVENTS as readonly string[]).includes(eventName.trim());
+/** What a pixel's own browser reports an order as: its `orderEvent` — Purchase unless the seller set it to Lead. */
+export type PixelOrderEvent = 'Purchase' | 'Lead';
+
+/** A pixel row's order event as the type: anything but «Lead» is the default, Purchase. */
+export function orderEventOf(pixel: { orderEvent?: string | null }): PixelOrderEvent {
+  return pixel.orderEvent === 'Lead' ? 'Lead' : 'Purchase';
+}
+
+export function collidesWithBrowserPixel(eventName: string, trigger?: string, orderEvent: PixelOrderEvent = 'Purchase'): boolean {
+  // The order event at confirmation REPLACES the browser's: the page stands down for that pixel, so Meta counts one.
+  if (replacesBrowserPurchase(eventName, trigger, orderEvent)) return false;
+  /*
+   * THE BROWSER'S EVENTS ARE THE PIXEL'S OWN. A pixel set to report orders as leads sends `Lead` at the submit and no
+   * `Purchase` at all: a server conversion named «Lead» doubles it (and went unwarned), and one named «Purchase»
+   * doubles nothing.
+   */
+  const browser = [...BROWSER_PIXEL_EVENTS.filter((e) => e !== 'Purchase'), orderEvent] as string[];
+  return browser.includes(eventName.trim());
 }
 
 /**
  * «الشراء بيتحقق لما يتم تأكيد الطلب»: a server conversion named `Purchase` on the confirmation is the one
  * combination that takes the browser's Purchase place instead of doubling it.
  */
-export function replacesBrowserPurchase(eventName: string, trigger?: string): boolean {
-  return eventName.trim() === 'Purchase' && trigger === 'order.confirmed';
+export function replacesBrowserPurchase(eventName: string, trigger?: string, orderEvent: PixelOrderEvent = 'Purchase'): boolean {
+  return eventName.trim() === orderEvent && trigger === 'order.confirmed';
 }
 
 /**
@@ -142,13 +156,17 @@ export function isTooOldForMeta(eventTime: Date, now = new Date()): boolean {
 }
 
 /**
- * The event id: stable, and the same one the browser would have produced.
+ * The event id: stable across retries of the SAME delivery.
  *
  * Meta deduplicates on `event_name` + `event_id`. Deriving it from the
  * conversion and the order rather than randomly means a row that is somehow
  * sent twice — a retry that actually succeeded the first time, two workers,
  * a restored backup — is still counted once on Meta's side, not only on
  * ours.
+ *
+ * NOT the id the browser sends: the browser pixel passes no event id at all, so Meta cannot join a browser event to
+ * this one. That is why a pixel's order event is sent from ONE side only — the browser stands down for a pixel the
+ * server covers (`pixelsWithServerPurchase`) — and not "deduplicated" afterwards.
  */
 export function conversionEventId(conversionId: string, orderId: string): string {
   return `${conversionId.slice(0, 8)}.${orderId}`;

@@ -146,7 +146,8 @@ export function PostOrderOfferCard() {
           <span className="mt-0.5 block text-xs text-[var(--sys-muted)]">
             <RiTimerLine className="inline h-4 w-4 align-text-bottom" /> بعدها يرفض السيرفر
             الإضافة ويخبر الزبون أن يحكي معكم. الافتراضي{' '}
-            {defaults ? defaults.windowMinutes : 15} دقيقة، والمدى من دقيقة إلى يوم.
+            {defaults ? defaults.windowMinutes : 15} دقيقة، والمدى من دقيقة إلى يوم. رابط الإضافة نفسه يعيش 30 دقيقة
+            على الأكثر، فأي مهلة أطول تُعتبر 30.
           </span>
         </label>
 

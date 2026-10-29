@@ -77,6 +77,7 @@ const ID = (i: number) => `offer-${i}-aaaaaaaa`;
 let stored: Row[];
 let patches: Array<{ id: string; sortOrder: number }>;
 let gets: number;
+let requests: number;
 let gate: Promise<void> | null;
 let failOn: ((nth: number) => boolean) | null;
 
@@ -87,6 +88,7 @@ function serve(rows: Row[]) {
   stored = rows;
   patches = [];
   gets = 0;
+  requests = 0;
   gate = null;
   failOn = null;
   screenApi.mockImplementation(async (path: string, init?: RequestInit) => {
@@ -95,13 +97,17 @@ function serve(rows: Row[]) {
       gets++;
       return { offers: JSON.parse(JSON.stringify(readBack(stored))) };
     }
-    if (method === 'PATCH') {
-      const id = path.split('/').pop() as string;
-      const body = JSON.parse(String(init?.body));
-      patches.push({ id, sortOrder: body.sortOrder });
+    // ONE request for the whole move, applied ALL OR NONE like the server's transaction: a refusal leaves every offer where it was.
+    if (method === 'PATCH' && path === '/api/offers') {
+      const body = JSON.parse(String(init?.body)) as { productId: string; order: Array<{ id: string; sortOrder: number }> };
+      requests++;
+      body.order.forEach((w) => patches.push({ id: w.id, sortOrder: w.sortOrder }));
       if (gate) await gate;
       if (failOn?.(patches.length)) throw new Error('رفضَ الخادمُ الكتابة');
-      stored = stored.map((o) => (o.id === id ? { ...o, ...body } : o));
+      stored = stored.map((o) => {
+        const w = body.order.find((x) => x.id === o.id);
+        return w ? { ...o, sortOrder: w.sortOrder } : o;
+      });
       return { success: true };
     }
     return {};
@@ -246,7 +252,9 @@ describe('the arrows go through the one move', () => {
     await press('لأسفل', 0);
     expect(await screen.findByText('رفضَ الخادمُ الكتابة')).toBeTruthy();
     await until(() => expect(gets).toBe(2));
-    // The first write went through and the second did not: the server holds a tie, and the list shows the server's order.
+    // The move is ONE request, all or none: the server refused it, so it holds the OLD order (not half of each) and the list shows that.
+    expect(requests, 'الحركة انقسمت إلى أكثر من طلب').toBe(1);
+    expect(shown()).toEqual([NAMES[0], NAMES[1], NAMES[2], NAMES[3]]);
     expect(shown()).toEqual(readBack(stored).map((o) => o.name));
     expect((within(rowsOf()[0]).getByLabelText('لأسفل') as HTMLButtonElement).disabled, 'القائمة بقيت مقفلة بعد الفشل').toBe(false);
   });
@@ -497,8 +505,9 @@ describe('and the wiring is the one that holds the rules', () => {
     expect(s).toContain('moveOffer(offers, i, i + dir)');
     expect(s).toContain('moveAfterDrag(offers, end)');
     expect(s, 'عاد التبديل القديم').not.toMatch(/stringify\(\{ sortOrder: [ij] \}\)/);
-    // The only place a reorder is written: the offers that CHANGED, one `PATCH { sortOrder }` each.
-    expect(s.match(/m\.writes\.map/g)).toHaveLength(1);
+    // The only place a reorder is written: the offers that CHANGED, in ONE `PATCH /api/offers` — never a request per offer.
+    expect(s.match(/order: m\.writes/g)).toHaveLength(1);
+    expect(s, 'عاد طلب لكل عرض').not.toMatch(/m\.writes\.map/);
   });
 
   it('and without the permission the frame draws nothing of its own — and the row is the plain one', () => {

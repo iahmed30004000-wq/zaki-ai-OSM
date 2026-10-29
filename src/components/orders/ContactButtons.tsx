@@ -177,8 +177,20 @@ export function ContactButtons({
     setOpen(null);
   };
 
+  /**
+   * A THUMB IS 44 PIXELS; A MOUSE IS HAPPY WITH 28.
+   *
+   * Call, SMS and WhatsApp sat 4px apart as 28px squares (32px tall in the
+   * full strip) beside 44px buttons — and a press on the wrong neighbour
+   * dials a customer by mistake and writes a line in the contact log for
+   * it. So a phone gets the 44px height and the desk keeps the compact size
+   * a table cell has room for. The compact width is the old 28 under a 44
+   * minimum that the desk takes away again, which keeps this inside the
+   * utilities the stylesheet already carries. In the full strip the three
+   * share the row on a phone instead of bunching at one end of it.
+   */
   const btn = `inline-flex items-center justify-center rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] hover:border-[var(--sys-primary)]/50 transition-colors ${
-    compact ? 'h-7 w-7' : 'h-8 px-2 gap-1 text-xs'
+    compact ? 'h-11 w-7 min-w-11 md:h-7 md:min-w-0' : 'h-11 md:h-8 px-2 gap-1 text-xs flex-1 md:flex-none'
   }`;
 
   // Turned off means written but not offered — a template kept for next
@@ -188,7 +200,10 @@ export function ContactButtons({
   );
 
   return (
-    <div className="relative inline-flex items-center gap-1" ref={box}>
+    <div
+      className={compact ? 'relative inline-flex items-center gap-1' : 'relative flex md:inline-flex items-center gap-2'}
+      ref={box}
+    >
       {/* A dialler is handed digits, not a formatted number: "+962 6 000
           0000" is how a person reads it, and some phones refuse it as a
           tel: target. The leading + is kept; everything decorative goes. */}

@@ -8,6 +8,7 @@ import { logAudit } from '@/lib/audit';
 import { shipmentBlocks } from '@/lib/operations';
 import { codForOrder, resolveDeliveryFee } from '@/lib/delivery-fees';
 import { assertReadyToShip, type StateSource } from '@/lib/order-state';
+import { guardLines } from '@/lib/reservation';
 import { cancelVerdict } from '@/lib/shipment-cancel';
 import { batchStatusOf } from '@/lib/order-cancel';
 import { zodMessage } from '@/lib/zod-message';
@@ -118,7 +119,7 @@ export async function GET(req: Request) {
         labelPrintedAt: true, shippingBatchId: true,
         customer: { select: { id: true, fullName: true, phone: true, city: true, totalOrders: true } },
         region: { select: { id: true, name: true } },
-        items: { select: { productName: true, quantity: true, freeQuantity: true, unitPrice: true, discountShare: true, reservedQty: true } },
+        items: { select: { productName: true, quantity: true, freeQuantity: true, unitPrice: true, discountShare: true, lineTotal: true, reservedQty: true } },
         addOns: { select: { quantity: true, price: true } },
       },
     });
@@ -249,11 +250,11 @@ export async function POST(req: Request) {
         id: true, orderNumber: true, companyId: true, storeId: true, customerId: true, regionId: true,
         confirmationStatus: true, shippingStatus: true, shippedAt: true, priceIncludesDelivery: true,
         deliveryProviderId: true, version: true, shippingBatchId: true, labelPrintedAt: true, shipHoldUntil: true,
-        items: { select: { quantity: true, freeQuantity: true, reservedQty: true, unitPrice: true, discountShare: true } },
+        items: { select: { quantity: true, freeQuantity: true, reservedQty: true, unitPrice: true, discountShare: true, lineTotal: true } },
         // The upsell the customer accepted. Without it, the snapshot below
         // rebuilt the total from the lines alone and the add-on was never
-        // collected.
-        addOns: { select: { quantity: true, price: true } },
+        // collected. Its `reservedQty` is what the readiness check below asks of it.
+        addOns: { select: { quantity: true, price: true, reservedQty: true } },
       },
     });
 
@@ -267,7 +268,8 @@ export async function POST(req: Request) {
       const moved = whyNotBatchable(order);
       if (moved) reasons.push(moved);
 
-      const ready = assertReadyToShip(order as StateSource, order.items);
+      // The lines AND the add-ons: an add-on nobody reserved holds the parcel back like a line that is short.
+      const ready = assertReadyToShip(order as StateSource, guardLines(order.items, order.addOns));
       if (!ready.allowed) reasons.push(ready.message ?? 'غير جاهز للشحن');
 
       const blocks = await shipmentBlocks(

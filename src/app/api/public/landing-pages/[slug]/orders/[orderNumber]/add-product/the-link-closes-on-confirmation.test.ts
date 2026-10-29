@@ -10,8 +10,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { db, tx } = vi.hoisted(() => {
   const tx = {
-    orderAddOn: { create: vi.fn(async () => ({ id: 'a1', productName: 'شامبو', price: 11, quantity: 1 })) },
-    order: { update: vi.fn(async () => ({ orderNumber: 'ORD-1', totalAmount: 25 })) },
+    orderAddOn: {
+      create: vi.fn(async () => ({ id: 'a1', productName: 'شامبو', price: 11, quantity: 1 })),
+      // The same suggestion already on the order — none, unless a test says so.
+      findFirst: vi.fn(async (): Promise<unknown> => null),
+    },
+    order: {
+      update: vi.fn(async () => ({ orderNumber: 'ORD-1', totalAmount: 25 })),
+      // The order as the lock now shows it: still new, nobody has called.
+      findFirst: vi.fn(async (): Promise<unknown> => ({
+        status: 'NEW', confirmationStatus: 'NEW', createdAt: new Date(Date.now() - 2 * 60_000), totalAmount: 25,
+        _count: { contactAttempts: 0 },
+      })),
+    },
     landingPage: { update: vi.fn(async () => ({})) },
     orderActivity: { create: vi.fn(async () => ({})) },
   };

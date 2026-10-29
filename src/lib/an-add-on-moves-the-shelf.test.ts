@@ -109,7 +109,7 @@ describe('reserving the order at confirmation', () => {
     tx.orderAddOn.findMany.mockResolvedValue([{ quantity: 2, reservedQty: 0 }] as never);
     expect(await orderLinesForGuard(tx as never, 'o1')).toEqual([
       { quantity: 1, freeQuantity: 0, reservedQty: 1 },
-      { quantity: 2, freeQuantity: 0, reservedQty: 0 },
+      { quantity: 2, freeQuantity: 0, reservedQty: 0, addOn: true },
     ]);
   });
 });

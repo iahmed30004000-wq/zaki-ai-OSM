@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import { toLatinDigits } from '../latin-digits';
+import { isForeignNumber, ruleFor } from '../phone-rules';
 
 /**
  * TURNING A CUSTOMER INTO SOMETHING META CAN MATCH BUT NOT READ.
@@ -159,6 +161,32 @@ export interface CustomerFacts {
   fbp?: string | null;
   /** Defaults to Jordan; a store elsewhere passes its own. */
   phoneCountryCode?: string;
+  /** The phone already carries its own country code (a foreign number kept whole): hashed as its digits, nothing added. */
+  phoneInternational?: boolean;
+}
+
+/**
+ * THE PHONE AND THE COUNTRY OF AN ORDER'S CUSTOMER, in the shape `buildUserData` wants — from the ORDER's country.
+ *
+ * `deliverConversion` passed neither the phone's country code nor the order's country. The phone then fell back to
+ * Jordan's 962 (a Syrian 0944123456, stored as 944123456, was hashed as 962944123456) and the country came from
+ * `Customer.country`, which no door ever sets, so it was «EG» on every row of every store. Meta matched nothing.
+ *
+ * The store's country gives the dial code (`ruleFor`) and the lowercase code. A number that is not the store's own but
+ * a whole foreign number (stored with its code since RV136) is passed as its digits and not prefixed a second time.
+ * A country with no rule keeps the old reading rather than a guess.
+ */
+export function customerPhoneFacts(
+  phone: string | null | undefined,
+  orderCountryCode: string | null | undefined
+): Pick<CustomerFacts, 'phone' | 'country' | 'phoneCountryCode' | 'phoneInternational'> {
+  const code = String(orderCountryCode ?? '').trim().toLowerCase();
+  const country = /^[a-z]{2}$/.test(code) ? code : null;
+  const rule = ruleFor(orderCountryCode);
+  if (!rule || !phone) return { phone: phone ?? null, country };
+  const digits = toLatinDigits(String(phone)).replace(/\D/g, '');
+  if (isForeignNumber(digits, rule)) return { phone: digits, country, phoneInternational: true };
+  return { phone: digits, country, phoneCountryCode: rule.dialCode };
 }
 
 /**
@@ -173,7 +201,11 @@ export function buildUserData(facts: CustomerFacts): UserData {
   const out: UserData = {};
   const one = (v: string | null) => (v ? [v] : undefined);
 
-  const ph = hashed(normalizePhone(facts.phone, facts.phoneCountryCode ?? '962'));
+  const ph = hashed(
+    facts.phoneInternational
+      ? String(facts.phone ?? '').replace(/\D+/g, '').replace(/^0+/, '') || null
+      : normalizePhone(facts.phone, facts.phoneCountryCode ?? '962')
+  );
   if (ph) out.ph = [ph];
 
   const { fn, ln } = splitName(facts.fullName);

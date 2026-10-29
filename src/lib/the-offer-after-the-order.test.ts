@@ -811,7 +811,9 @@ describe('«العرض لازم يكون على منتجٍ في الطلب»', (
       price: 15,
       total: 15,
     });
-    expect(dbMock.order.update.mock.calls[0][0].data).toEqual({
+    // The first UPDATE is the row lock (it moves `version` and nothing else); the money is the second.
+    expect(dbMock.order.update.mock.calls[0][0].data).toEqual({ version: { increment: 1 } });
+    expect(dbMock.order.update.mock.calls[1][0].data).toEqual({
       totalAmount: { increment: 15 },
     });
   });

@@ -45,6 +45,8 @@ const { db, requireContext, requirePermission, activeBlock, logAudit, notify, no
       orderItem: { createMany: vi.fn() },
       orderActivity: { create: vi.fn() },
       orderStatusLog: { create: vi.fn() },
+      // The highest order number, asked as a NUMBER in SQL (ط41); see the answer in `beforeEach`.
+      $queryRaw: vi.fn(),
       $transaction: vi.fn(),
     },
     requireContext: vi.fn(),
@@ -140,6 +142,8 @@ beforeEach(() => {
   db.customerBlock.findFirst.mockResolvedValue(null);
   db.order.findMany.mockResolvedValue([]);
   db.order.findFirst.mockResolvedValue(null);
+  // No numbered orders yet — what `order.findFirst: null` said before the number was read as a number.
+  db.$queryRaw.mockResolvedValue([{ highest: null }]);
   db.product.findMany.mockResolvedValue([
     { id: PRODUCT_ID, name: PRODUCT, nameEn: null, sku: 'SKU-1', basePrice: 14, image: null, batches: [] },
   ]);
