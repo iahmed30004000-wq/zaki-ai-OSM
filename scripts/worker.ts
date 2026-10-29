@@ -42,7 +42,8 @@ import {
   runJob,
   type JobDefinition,
 } from '../src/lib/jobs/runner';
-import { isDue, scheduleAr } from '../src/lib/jobs/schedule';
+import { scheduleAr } from '../src/lib/jobs/schedule';
+import { newTickState, tick } from '../src/lib/jobs/tick';
 import { alertAboutJob, shouldAlertOnFailure } from '../src/lib/jobs/alerts';
 import { bootAlarms } from '../src/lib/boot-alarms';
 
@@ -131,16 +132,21 @@ async function main() {
   for (const job of jobs) log(`   ${job.name} ${scheduleAr(job)} — ${job.description}`);
 
   /**
-   * When a FAILING job may be tried again — backoff only, held in memory
-   * because it is about this process's patience with a provider that is
-   * down, not about the schedule.
+   * What the loop remembers: when a FAILING job may be tried again (backoff
+   * only — this process's patience with a provider that is down), and when a
+   * job found NOT due is next worth asking about.
    *
    * Whether a job is DUE is asked of the run log in the database instead of
    * a variable starting at zero. That variable meant every deploy re-ran
    * every job: the idempotent ones shrugged and the ones that message a
    * person messaged them twice.
+   *
+   * And a job that was found not due is not asked about again until the
+   * moment it could become due (see `src/lib/jobs/tick.ts`). Asking fourteen
+   * jobs two questions every second was 28 queries a second to learn that
+   * nothing had changed.
    */
-  const retryAfter = new Map<string, number>();
+  const state = newTickState();
   let stopping = false;
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
@@ -152,24 +158,7 @@ async function main() {
   }
 
   while (!stopping) {
-    const now = Date.now();
-    for (const job of jobs) {
-      if (stopping) break;
-      if ((retryAfter.get(job.name) ?? 0) > now) continue;
-
-      // Parked after too many consecutive failures. It stays parked until
-      // a person presses "try again" on the jobs screen — retrying for ever
-      // hammers a provider that is plainly not coming back, and buries every
-      // other job's history under four thousand identical errors.
-      if (await isParked(job.name)) continue;
-
-      const last = await lastRun(job.name);
-      if (!isDue(job, last?.startedAt ?? null, new Date())) continue;
-
-      const wait = await attempt(job);
-      // Only a failure parks it; a success leaves the schedule to decide.
-      if (wait > 0) retryAfter.set(job.name, Date.now() + wait * 1000);
-    }
+    await tick(jobs, state, { isParked, lastRun, attempt, now: Date.now }, () => stopping);
     await new Promise((r) => setTimeout(r, 1000));
   }
 

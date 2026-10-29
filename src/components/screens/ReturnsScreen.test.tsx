@@ -101,7 +101,9 @@ const answer = (rows: unknown[]) => ({
 const openDialog = async (row: unknown) => {
   apiJson.mockResolvedValue(answer([row]));
   render(<ReturnsScreen />);
-  const receive = await waitFor(() => screen.getAllByRole('button', { name: 'استلام' })[0]);
+  // The first test of the file pays for the first render, and the default 1 s of `waitFor` is too short under a parallel
+  // full run (RV103). The wait is longer; what is asserted is not.
+  const receive = await waitFor(() => screen.getAllByRole('button', { name: 'استلام' })[0], { timeout: 4000 });
   await userEvent.click(receive);
   return screen.getByText('استلام مرتجع');
 };
