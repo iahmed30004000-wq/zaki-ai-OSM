@@ -428,7 +428,7 @@ export async function addPostOrderOffer(params: {
         windowMinutes,
         now
       );
-      if (!again.allowed) return { gate: again.reason } as const;
+      if (!again.allowed) return { kind: 'gate' as const, reason: again.reason };
     }
 
     const addOn = await tx.orderAddOn.create({
@@ -499,11 +499,11 @@ export async function addPostOrderOffer(params: {
       },
     });
 
-    return { addOn, updated };
+    return { kind: 'added' as const, addOn, updated };
   });
 
   if (!written) return refuse('ALREADY_ADDED');
-  if ('gate' in written) return refuse(written.gate);
+  if (written.kind === 'gate') return refuse(written.reason);
 
   return {
     ok: true,

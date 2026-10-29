@@ -242,12 +242,12 @@ export async function POST(req: Request, ctx: Ctx) {
         windowMinutes,
         new Date()
       );
-      if (!regate.allowed) return { refused: regate.reason } as const;
+      if (!regate.allowed) return { kind: 'refused' as const, reason: regate.reason };
       // The same suggestion twice is ONE add-on: the repeat is answered with what is already on the order.
       const existing = await tx.orderAddOn.findFirst({
         where: { orderId: order.id, productId: rec.product.id, landingPageId: order.landingPage!.id, offerId: null },
       });
-      if (existing) return { existing, total: Number(now?.totalAmount ?? order.totalAmount) } as const;
+      if (existing) return { kind: 'existing' as const, existing, total: Number(now?.totalAmount ?? order.totalAmount) };
 
       const addOn = await tx.orderAddOn.create({
         data: {
@@ -289,13 +289,13 @@ export async function POST(req: Request, ctx: Ctx) {
           }),
         },
       });
-      return { addOn, order: updated };
+      return { kind: 'added' as const, addOn, order: updated };
     });
 
-    if ('refused' in result) {
-      return NextResponse.json({ error: POST_ORDER_REFUSAL_AR[result.refused], code: result.refused }, { status: 409, headers: CORS });
+    if (result.kind === 'refused') {
+      return NextResponse.json({ error: POST_ORDER_REFUSAL_AR[result.reason], code: result.reason }, { status: 409, headers: CORS });
     }
-    if ('existing' in result) {
+    if (result.kind === 'existing') {
       return NextResponse.json(
         {
           success: true,

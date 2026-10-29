@@ -22,7 +22,7 @@ const { db, tx, order } = vi.hoisted(() => {
   const tx = {
     calls,
     orderAddOn: {
-      findFirst: vi.fn(async (): Promise<unknown> => null),
+      findFirst: vi.fn(async (_args?: unknown): Promise<unknown> => null),
       create: vi.fn(async () => { calls.push('create'); return { id: 'a1', productName: 'شامبو', price: 11, quantity: 1 }; }),
     },
     order: {
