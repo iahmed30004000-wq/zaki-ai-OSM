@@ -4,10 +4,10 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { inStore } from '@/lib/store-filter';
 import { requireContext } from '@/lib/geo-context';
-import { requirePermission } from '@/lib/authorization';
+import { can, requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
-import { MOVEMENT_CATEGORIES, recordMovement, reverseMovement, walletBalance } from '@/lib/wallets';
+import { ExpenseRefused, MOVEMENT_CATEGORIES, recordMovement, reverseMovement, walletBalance } from '@/lib/wallets';
 import { zodMessage } from '@/lib/zod-message';
 import { handMovementRefusal } from '@/lib/hand-movement-rules';
 
@@ -152,25 +152,44 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
 
     try {
-      const reversal = await reverseMovement(db, {
-        companyId,
-        // The wallet the caller was authorised for, not one the body names.
-        walletId: id,
-        movementId: parsed.data.movementId,
-        reason: parsed.data.reason,
-        createdById: user.id,
-      });
+      /*
+       * ONE TRANSACTION. The money of an EXPENSE coming back also cancels the expense (it left the profit only
+       * when the reversal was made from the expense list), and the mark and the reversing entry are one fact: a
+       * mark with no reversal, or a reversal with the expense still counted, is the fault this closes.
+       * Cancelling an expense is a finance edit, so a cashier who may reverse a movement does not by that alone.
+       */
+      const reversal = await db.$transaction((tx) =>
+        reverseMovement(tx, {
+          companyId,
+          // The wallet the caller was authorised for, not one the body names.
+          walletId: id,
+          movementId: parsed.data.movementId,
+          reason: parsed.data.reason,
+          createdById: user.id,
+          mayCancelExpense: can(user, 'finance.update'),
+        })
+      );
       await logAudit({
         companyId, userId: user.id, action: 'WALLET_MOVEMENT_REVERSED',
         entity: 'WalletMovement', entityId: reversal.id,
         previousData: { original: parsed.data.movementId },
         newData: { reason: parsed.data.reason },
       });
+      if (reversal.referenceType === 'EXPENSE') {
+        await logAudit({
+          companyId, userId: user.id, action: 'EXPENSE_VOIDED',
+          entity: 'Expense', entityId: reversal.referenceId ?? reversal.id,
+          newData: { reason: parsed.data.reason, moneyReturned: true, reversalId: reversal.id },
+        });
+      }
       return NextResponse.json(
         { reversal, balance: await walletBalance(db, id, wallet.country.minorUnit) },
         { status: 201 }
       );
     } catch (e) {
+      if (e instanceof ExpenseRefused) {
+        return NextResponse.json({ error: e.message, code: e.code }, { status: e.code === 'NOT_ALLOWED' ? 403 : 409 });
+      }
       return NextResponse.json({ error: e instanceof Error ? e.message : 'تعذر القيد العكسي' }, { status: 409 });
     }
   } catch (error) {
