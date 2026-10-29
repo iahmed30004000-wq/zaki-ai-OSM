@@ -12,6 +12,21 @@ export interface CatalogItem {
   en: string;
   /** Scopes selectable in the matrix for this key (omit = ALL_COMPANY only). */
   scopes?: ScopeValue[];
+  /**
+   * THE KEY THAT OPENS THE SCREEN THIS ONE'S CONTROL SITS ON.
+   *
+   * An action without it is a box that is ticked and does nothing: the person
+   * cannot reach the button. Ticking the action ticks this too; unticking
+   * this unticks the action; and the server refuses to SAVE the combination
+   * (`ORPHAN_ACTION`). `null` = standalone on purpose (has its own form or
+   * door, shows no list) and says so in `note`. Absent = nothing is required
+   * (a view, or a visibility key).
+   */
+  requires?: string | null;
+  /** The Arabic line printed under the checkbox (a standalone action says why it needs nothing). */
+  note?: string;
+  /** The screens this key opens, by their menu names. Printed as a hint under the checkbox. */
+  opens?: string[];
 }
 
 export interface CatalogModule {
@@ -22,14 +37,14 @@ export interface CatalogModule {
 export const PERMISSION_MODULES: CatalogModule[] = [
   {
     module: 'dashboard',
-    items: [{ key: 'dashboard.view', ar: 'عرض لوحة التحكم', en: 'View dashboard' }],
+    items: [{ key: 'dashboard.view', opens: ['لوحة التحكم'], ar: 'عرض لوحة التحكم', en: 'View dashboard' }],
   },
   {
     module: 'orders',
     items: [
-      { key: 'orders.view', ar: 'عرض الطلبات', en: 'View orders', scopes: ['ALL_COMPANY', 'OWN', 'ASSIGNED'] },
-      { key: 'orders.edit', ar: 'تعديل الطلبات', en: 'Edit orders', scopes: ['ALL_COMPANY', 'OWN', 'ASSIGNED'] },
-      { key: 'orders.create', ar: 'إنشاء طلبات', en: 'Create orders' },
+      { key: 'orders.view', opens: ['الطلبات'], ar: 'عرض الطلبات', en: 'View orders', scopes: ['ALL_COMPANY', 'OWN', 'ASSIGNED'] },
+      { key: 'orders.edit', requires: 'orders.view', ar: 'تعديل الطلبات', en: 'Edit orders', scopes: ['ALL_COMPANY', 'OWN', 'ASSIGNED'] },
+      { key: 'orders.create', requires: null, note: 'إنشاء الطلب له نموذجه الخاص — ما بيحتاج «عرض الطلبات».', ar: 'إنشاء طلبات', en: 'Create orders' },
       /**
        * SEPARATE FROM `orders.create`, BECAUSE A FILE IS NOT A ROW.
        *
@@ -39,46 +54,46 @@ export const PERMISSION_MODULES: CatalogModule[] = [
        * owner's rule is that a confirmation agent types orders by hand and
        * does not import.
        */
-      { key: 'orders.import', ar: 'استيراد طلبات', en: 'Import orders' },
+      { key: 'orders.import', requires: 'orders.create', ar: 'استيراد طلبات', en: 'Import orders' },
       /**
        * Recording what happened on a call had no permission of its own: the
        * contact-attempts door took `orders.edit` OR `orders.claim`, and the
        * `contact_result` action rode on `orders.confirm`. Three different
        * permissions, none of them about the telephone.
        */
-      { key: 'orders.contact_log', ar: 'تسجيل نتيجة الاتصال', en: 'Log contact result' },
+      { key: 'orders.contact_log', requires: 'orders.view', ar: 'تسجيل نتيجة الاتصال', en: 'Log contact result' },
       /**
        * The arrows in the order window. They had no permission at all, and
        * they walked the READ envelope — which carries the unclaimed queue.
        * So one order opened was a door onto the whole pool, the pool C2 had
        * just taken out of the agent's list.
        */
-      { key: 'orders.navigate', ar: 'التنقّل بين الطلبات (السابق واللاحق)', en: 'Navigate between orders' },
-      { key: 'orders.assign', ar: 'إسناد الطلبات', en: 'Assign orders' },
-      { key: 'orders.claim', ar: 'استلام الطلبات', en: 'Claim orders' },
-      { key: 'orders.release', ar: 'تحرير الطلبات', en: 'Release orders' },
-      { key: 'orders.unlock', ar: 'تجاوز أقفال التحرير', en: 'Override edit locks' },
-      { key: 'orders.confirm', ar: 'تغيير حالة التأكيد', en: 'Change confirmation status' },
-      { key: 'orders.change_status', ar: 'تغيير حالة الشحن', en: 'Change shipping status' },
+      { key: 'orders.navigate', requires: 'orders.view', ar: 'التنقّل بين الطلبات (السابق واللاحق)', en: 'Navigate between orders' },
+      { key: 'orders.assign', requires: 'orders.view', ar: 'إسناد الطلبات', en: 'Assign orders' },
+      { key: 'orders.claim', requires: 'orders.view', ar: 'استلام الطلبات', en: 'Claim orders' },
+      { key: 'orders.release', requires: 'orders.view', ar: 'تحرير الطلبات', en: 'Release orders' },
+      { key: 'orders.unlock', requires: 'orders.view', ar: 'تجاوز أقفال التحرير', en: 'Override edit locks' },
+      { key: 'orders.confirm', requires: 'orders.view', ar: 'تغيير حالة التأكيد', en: 'Change confirmation status' },
+      { key: 'orders.change_status', requires: 'orders.view', ar: 'تغيير حالة الشحن', en: 'Change shipping status' },
     ],
   },
   {
     module: 'customers',
     items: [
-      { key: 'customers.view', ar: 'عرض العملاء', en: 'View customers', scopes: ['ALL_COMPANY', 'OWN'] },
-      { key: 'customers.view_basic', ar: 'عرض بيانات العميل الأساسية', en: 'View basic customer info', scopes: ['ALL_COMPANY', 'OWN'] },
-      { key: 'customers.create', ar: 'إنشاء عملاء', en: 'Create customers' },
+      { key: 'customers.view', requires: 'customers.view_basic', ar: 'عرض العملاء', en: 'View customers', scopes: ['ALL_COMPANY', 'OWN'] },
+      { key: 'customers.view_basic', opens: ['العملاء'], ar: 'عرض بيانات العميل الأساسية', en: 'View basic customer info', scopes: ['ALL_COMPANY', 'OWN'] },
+      { key: 'customers.create', requires: null, note: 'إضافة العميل لها نموذجها الخاص — ما بتحتاج «عرض العملاء».', ar: 'إنشاء عملاء', en: 'Create customers' },
     ],
   },
   {
     module: 'products',
     items: [
-      { key: 'products.view', ar: 'عرض المنتجات', en: 'View products', scopes: ['ALL_COMPANY', 'CATEGORY', 'SPECIFIC'] },
-      { key: 'products.edit', ar: 'تعديل المنتجات', en: 'Edit products', scopes: ['ALL_COMPANY', 'CATEGORY', 'SPECIFIC'] },
-      { key: 'products.create', ar: 'إنشاء منتجات', en: 'Create products' },
-      { key: 'products.delete', ar: 'حذف منتجات', en: 'Delete products' },
-      { key: 'products.change_price', ar: 'تغيير أسعار المنتجات', en: 'Change product prices' },
-      { key: 'products.upload_images', ar: 'رفع صور المنتجات', en: 'Upload product images' },
+      { key: 'products.view', opens: ['المنتجات'], ar: 'عرض المنتجات', en: 'View products', scopes: ['ALL_COMPANY', 'CATEGORY', 'SPECIFIC'] },
+      { key: 'products.edit', requires: 'products.view', ar: 'تعديل المنتجات', en: 'Edit products', scopes: ['ALL_COMPANY', 'CATEGORY', 'SPECIFIC'] },
+      { key: 'products.create', requires: 'products.view', ar: 'إنشاء منتجات', en: 'Create products' },
+      { key: 'products.delete', requires: 'products.view', ar: 'حذف منتجات', en: 'Delete products' },
+      { key: 'products.change_price', requires: 'products.view', ar: 'تغيير أسعار المنتجات', en: 'Change product prices' },
+      { key: 'products.upload_images', requires: 'products.view', ar: 'رفع صور المنتجات', en: 'Upload product images' },
       // Reading the category list, which the permission scope pickers need.
       { key: 'categories.view', ar: 'عرض التصنيفات', en: 'View categories' },
     ],
@@ -87,45 +102,45 @@ export const PERMISSION_MODULES: CatalogModule[] = [
     module: 'offers',
     items: [
       { key: 'offers.view', ar: 'عرض العروض', en: 'View offers' },
-      { key: 'offers.manage', ar: 'إدارة العروض', en: 'Manage offers' },
+      { key: 'offers.manage', requires: 'offers.view', ar: 'إدارة العروض', en: 'Manage offers' },
     ],
   },
   {
     module: 'inventory',
     items: [
-      { key: 'inventory.view', ar: 'عرض المخزون', en: 'View inventory' },
-      { key: 'inventory.adjust', ar: 'تعديل المخزون', en: 'Adjust inventory' },
+      { key: 'inventory.view', opens: ['أرصدة المخزون', 'حركات المخزون'], ar: 'عرض المخزون', en: 'View inventory' },
+      { key: 'inventory.adjust', requires: 'inventory.view', ar: 'تعديل المخزون', en: 'Adjust inventory' },
     ],
   },
   {
     module: 'production',
     items: [
-      { key: 'production.view', ar: 'عرض الإنتاج', en: 'View production' },
-      { key: 'production.manage', ar: 'إدارة الإنتاج', en: 'Manage production' },
+      { key: 'production.view', opens: ['تشغيلات الإنتاج'], ar: 'عرض الإنتاج', en: 'View production' },
+      { key: 'production.manage', requires: 'production.view', ar: 'إدارة الإنتاج', en: 'Manage production' },
     ],
   },
   {
     module: 'finance',
     items: [
-      { key: 'finance.view', ar: 'عرض المالية', en: 'View finance' },
-      { key: 'finance.create', ar: 'إنشاء معاملات مالية', en: 'Create financial transactions' },
-      { key: 'finance.update', ar: 'تعديل السجلات المالية', en: 'Update financial records' },
-      { key: 'finance.cashbox', ar: 'إدارة الصناديق النقدية', en: 'Manage cashboxes' },
+      { key: 'finance.view', opens: ['الأرباح'], ar: 'عرض المالية', en: 'View finance' },
+      { key: 'finance.create', requires: 'finance.view', ar: 'إنشاء معاملات مالية', en: 'Create financial transactions' },
+      { key: 'finance.update', requires: 'finance.view', ar: 'تعديل السجلات المالية', en: 'Update financial records' },
+      { key: 'finance.cashbox', opens: ['الإغلاق اليومي', 'المحافظ والحركات', 'التحويلات'], ar: 'إدارة الصناديق النقدية', en: 'Manage cashboxes' },
     ],
   },
   {
     module: 'settlement',
     items: [
-      { key: 'settlement.view', ar: 'عرض التسويات (وصفوف التحصيل ومبالغها في المتابعة)', en: 'View settlements (and the collection rows and their figures in tracking)' },
-      { key: 'settlement.upload', ar: 'رفع تقارير الشحن', en: 'Upload shipping reports' },
-      { key: 'settlement.review', ar: 'مراجعة المطابقات', en: 'Review reconciliations' },
+      { key: 'settlement.view', opens: ['عهدة المندوبين', 'التحصيل والكشوف'], ar: 'عرض التسويات (وصفوف التحصيل ومبالغها في المتابعة)', en: 'View settlements (and the collection rows and their figures in tracking)' },
+      { key: 'settlement.upload', requires: 'settlement.view', ar: 'رفع تقارير الشحن', en: 'Upload shipping reports' },
+      { key: 'settlement.review', opens: ['المطابقة'], requires: 'settlement.view', ar: 'مراجعة المطابقات', en: 'Review reconciliations' },
     ],
   },
   {
     module: 'reports',
     items: [
       { key: 'reports.view', ar: 'عرض التقارير', en: 'View reports' },
-      { key: 'reports.export', ar: 'تصدير التقارير', en: 'Export reports' },
+      { key: 'reports.export', requires: 'orders.view', ar: 'تصدير التقارير', en: 'Export reports' },
       { key: 'analytics.view', ar: 'عرض التحليلات', en: 'View analytics' },
       // Says what it opens: the in-screen assistants (confirmation, picking,
       // landing pages, AI order entry) answer to the key of the work they sit
@@ -137,25 +152,25 @@ export const PERMISSION_MODULES: CatalogModule[] = [
   {
     module: 'users',
     items: [
-      { key: 'users.view', ar: 'عرض المستخدمين', en: 'View users' },
-      { key: 'users.create', ar: 'إنشاء مستخدمين', en: 'Create users' },
-      { key: 'users.edit', ar: 'تعديل المستخدمين', en: 'Edit users' },
+      { key: 'users.view', opens: ['الموظفين'], ar: 'عرض المستخدمين', en: 'View users' },
+      { key: 'users.create', requires: 'users.view', ar: 'إنشاء مستخدمين', en: 'Create users' },
+      { key: 'users.edit', requires: 'users.view', ar: 'تعديل المستخدمين', en: 'Edit users' },
     ],
   },
   {
     module: 'roles',
     items: [
-      { key: 'roles.view', ar: 'عرض الأدوار والصلاحيات', en: 'View roles & permissions' },
-      { key: 'roles.create', ar: 'إنشاء أدوار', en: 'Create roles' },
-      { key: 'roles.edit', ar: 'تعديل الأدوار والصلاحيات', en: 'Edit roles & permissions' },
-      { key: 'roles.delete', ar: 'حذف أدوار', en: 'Delete roles' },
+      { key: 'roles.view', opens: ['الصلاحيات'], ar: 'عرض الأدوار والصلاحيات', en: 'View roles & permissions' },
+      { key: 'roles.create', requires: 'roles.view', ar: 'إنشاء أدوار', en: 'Create roles' },
+      { key: 'roles.edit', requires: 'roles.view', ar: 'تعديل الأدوار والصلاحيات', en: 'Edit roles & permissions' },
+      { key: 'roles.delete', requires: 'roles.view', ar: 'حذف أدوار', en: 'Delete roles' },
     ],
   },
   {
     module: 'settings',
     items: [
       { key: 'settings.view', ar: 'عرض الإعدادات', en: 'View settings' },
-      { key: 'settings.edit', ar: 'تعديل إعدادات النظام', en: 'Edit system settings' },
+      { key: 'settings.edit', requires: 'settings.view', ar: 'تعديل إعدادات النظام', en: 'Edit system settings' },
       /*
        * THE LABEL IS WHAT SOMEBODY GRANTS BY, so it has to name the whole
        * authority — not the first door it was written for.
@@ -175,6 +190,7 @@ export const PERMISSION_MODULES: CatalogModule[] = [
        */
       {
         key: 'settings.manage',
+        requires: 'settings.view',
         ar: 'إعدادات النظام الحسّاسة — مفاتيح شركات الشحن والإعلانات والذكاء، وتشغيل المهام المجدولة',
         en: 'Sensitive system settings — courier, ad-account and AI credentials, and running scheduled jobs',
       },
@@ -183,20 +199,20 @@ export const PERMISSION_MODULES: CatalogModule[] = [
   {
     module: 'confirmation',
     items: [
-      { key: 'confirmation.pull', ar: 'سحب الطلب التالي', en: 'Pull next order' },
-      { key: 'confirmation.work', ar: 'العمل على طلباتي والمؤجلة', en: 'Work own and postponed orders' },
-      { key: 'confirmation.supervise', ar: 'الإشراف على التأكيد (عرض القائمة)', en: 'Supervise confirmation (list view)' },
-      { key: 'confirmation.issues', ar: 'إشكالات الإدخال', en: 'Entry issues' },
+      { key: 'confirmation.pull', requires: 'confirmation.work', ar: 'سحب الطلب التالي', en: 'Pull next order' },
+      { key: 'confirmation.work', opens: ['طلباتي'], ar: 'العمل على طلباتي والمؤجلة', en: 'Work own and postponed orders' },
+      { key: 'confirmation.supervise', opens: ['الطلبات الجديدة', 'المتابعة'], ar: 'الإشراف على التأكيد (عرض القائمة)', en: 'Supervise confirmation (list view)' },
+      { key: 'confirmation.issues', opens: ['الإشكالات'], ar: 'إشكالات الإدخال', en: 'Entry issues' },
     ],
   },
   {
     module: 'ops',
     items: [
-      { key: 'ops.prepare', ar: 'التجهيز', en: 'Preparation' },
-      { key: 'ops.ship', ar: 'إنشاء الشحنات', en: 'Create shipments' },
+      { key: 'ops.prepare', opens: ['التجهيز'], ar: 'التجهيز', en: 'Preparation' },
+      { key: 'ops.ship', opens: ['إنشاء شحنة', 'دفعات الشحن'], ar: 'إنشاء الشحنات', en: 'Create shipments' },
       { key: 'ops.labels', ar: 'البوالص', en: 'Labels' },
-      { key: 'ops.track', ar: 'متابعة الشحن', en: 'Tracking' },
-      { key: 'ops.returns', ar: 'المرتجعات', en: 'Returns' },
+      { key: 'ops.track', opens: ['متابعة الشحن', 'دفعات الشحن'], ar: 'متابعة الشحن', en: 'Tracking' },
+      { key: 'ops.returns', opens: ['المرتجعات'], ar: 'المرتجعات', en: 'Returns' },
       // Seeing the return rows on «متابعة الشحن» — NOT receiving the stock, which stays «المرتجعات» above.
       { key: 'ops.returns_view', ar: 'عرض المرتجعات في المتابعة (بلا استلام)', en: 'See return rows in tracking (no receiving)' },
     ],
@@ -204,9 +220,9 @@ export const PERMISSION_MODULES: CatalogModule[] = [
   {
     module: 'control',
     items: [
-      { key: 'control.change_requests', ar: 'طلبات التعديل', en: 'Change requests' },
-      { key: 'control.discount_alerts', ar: 'تنبيهات الخصم', en: 'Discount alerts' },
-      { key: 'control.blacklist', ar: 'القائمة السوداء', en: 'Blacklist' },
+      { key: 'control.change_requests', opens: ['طلبات التعديل'], ar: 'طلبات التعديل', en: 'Change requests' },
+      { key: 'control.discount_alerts', opens: ['تنبيهات الخصم'], ar: 'تنبيهات الخصم', en: 'Discount alerts' },
+      { key: 'control.blacklist', opens: ['القائمة السوداء'], ar: 'القائمة السوداء', en: 'Blacklist' },
     ],
   },
   {
@@ -229,7 +245,7 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       // Setting a salary and paying it are one authority, because the
       // payslip snapshots the salary AT payment: whoever can hand the money
       // over can already decide the amount at the moment of handing it.
-      { key: 'payroll.pay', ar: 'تحديد الرواتب وصرفها', en: 'Set and pay salaries' },
+      { key: 'payroll.pay', requires: 'payroll.view', ar: 'تحديد الرواتب وصرفها', en: 'Set and pay salaries' },
     ],
   },
   {
@@ -239,29 +255,29 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       // because reading a list of other people's lateness and taking money
       // off somebody are not the same authority — and one key for both
       // would hand the second to everybody who needed the first.
-      { key: 'penalties.view', ar: 'عرض الخصومات المقترحة', en: 'View proposed deductions' },
-      { key: 'penalties.decide', ar: 'اعتماد الخصومات أو إلغاؤها', en: 'Apply or waive deductions' },
+      { key: 'penalties.view', opens: ['خصومات الموظفين'], ar: 'عرض الخصومات المقترحة', en: 'View proposed deductions' },
+      { key: 'penalties.decide', requires: 'penalties.view', ar: 'اعتماد الخصومات أو إلغاؤها', en: 'Apply or waive deductions' },
     ],
   },
   {
     module: 'growth',
-    items: [{ key: 'growth.intelligence', ar: 'مركز الذكاء', en: 'Business intelligence' }],
+    items: [{ key: 'growth.intelligence', opens: ['مركز الذكاء', 'منصّة التجريب'], ar: 'مركز الذكاء', en: 'Business intelligence' }],
   },
   {
     module: 'apps',
     items: [
-      { key: 'apps.view', ar: 'عرض التطبيقات', en: 'View apps' },
+      { key: 'apps.view', opens: ['متجر التطبيقات', 'التطبيقات المثبتة'], ar: 'عرض التطبيقات', en: 'View apps' },
       // Installing an app connects the company to something outside it, and
       // registering one hands out a signing secret. Both are a separate
       // authority from looking at the shelf.
-      { key: 'apps.manage', ar: 'تثبيت وتسجيل التطبيقات', en: 'Install & register apps' },
+      { key: 'apps.manage', requires: 'apps.view', ar: 'تثبيت وتسجيل التطبيقات', en: 'Install & register apps' },
     ],
   },
   {
     module: 'geo',
     items: [
-      { key: 'geo.view', ar: 'عرض البلدان والمتاجر', en: 'View countries & stores' },
-      { key: 'geo.manage', ar: 'إدارة البلدان والمتاجر والمناطق', en: 'Manage countries, stores & regions' },
+      { key: 'geo.view', opens: ['البلدان والمتاجر'], ar: 'عرض البلدان والمتاجر', en: 'View countries & stores' },
+      { key: 'geo.manage', requires: 'geo.view', ar: 'إدارة البلدان والمتاجر والمناطق', en: 'Manage countries, stores & regions' },
     ],
   },
   {
@@ -271,46 +287,46 @@ export const PERMISSION_MODULES: CatalogModule[] = [
     // being able to open or close a store.
     module: 'storefront',
     items: [
-      { key: 'storefront.view', ar: 'عرض واجهة المتجر', en: 'View storefront' },
-      { key: 'storefront.manage', ar: 'تصميم واجهة المتجر ومحتواها', en: 'Design storefront & content' },
+      { key: 'storefront.view', opens: ['المتجر'], ar: 'عرض واجهة المتجر', en: 'View storefront' },
+      { key: 'storefront.manage', requires: 'storefront.view', ar: 'تصميم واجهة المتجر ومحتواها', en: 'Design storefront & content' },
       // Releasing to customers is a different authority from designing: a
       // shop can have somebody who prepares and somebody who decides it goes
       // out. Saving a draft never needs this.
-      { key: 'storefront.publish', ar: 'نشر واجهة المتجر', en: 'Publish the storefront' },
+      { key: 'storefront.publish', requires: 'storefront.view', ar: 'نشر واجهة المتجر', en: 'Publish the storefront' },
       // A domain points the outside world at this shop, and a wrong one
       // takes the shop off the air. Its own authority, like apps.manage.
-      { key: 'storefront.domain', ar: 'ربط نطاق المتجر', en: 'Connect the store domain' },
+      { key: 'storefront.domain', requires: 'storefront.view', ar: 'ربط نطاق المتجر', en: 'Connect the store domain' },
     ],
   },
   {
     module: 'landing_pages',
     items: [
-      { key: 'landing_pages.view', ar: 'عرض صفحات الهبوط', en: 'View landing pages' },
-      { key: 'landing_pages.create', ar: 'إنشاء صفحات هبوط', en: 'Create landing pages' },
-      { key: 'landing_pages.edit', ar: 'تعديل صفحات الهبوط', en: 'Edit landing pages' },
-      { key: 'landing_pages.delete', ar: 'حذف صفحات هبوط', en: 'Delete landing pages' },
-      { key: 'landing_pages.publish', ar: 'نشر / إلغاء نشر صفحات الهبوط', en: 'Publish / unpublish landing pages' },
+      { key: 'landing_pages.view', opens: ['صفحات الهبوط'], ar: 'عرض صفحات الهبوط', en: 'View landing pages' },
+      { key: 'landing_pages.create', requires: 'landing_pages.view', ar: 'إنشاء صفحات هبوط', en: 'Create landing pages' },
+      { key: 'landing_pages.edit', requires: 'landing_pages.view', ar: 'تعديل صفحات الهبوط', en: 'Edit landing pages' },
+      { key: 'landing_pages.delete', requires: 'landing_pages.view', ar: 'حذف صفحات هبوط', en: 'Delete landing pages' },
+      { key: 'landing_pages.publish', requires: 'landing_pages.view', ar: 'نشر / إلغاء نشر صفحات الهبوط', en: 'Publish / unpublish landing pages' },
     ],
   },
   {
     module: 'whatsapp',
     items: [
-      { key: 'whatsapp.view', ar: 'عرض صندوق واتساب', en: 'View WhatsApp inbox' },
-      { key: 'whatsapp.send', ar: 'إرسال رسائل واتساب', en: 'Send WhatsApp messages' },
-      { key: 'whatsapp.manage', ar: 'إدارة إعدادات واتساب', en: 'Manage WhatsApp settings' },
-      { key: 'whatsapp.assign', ar: 'إسناد محادثات واتساب', en: 'Assign WhatsApp conversations' },
+      { key: 'whatsapp.view', opens: ['صندوق الواتساب'], ar: 'عرض صندوق واتساب', en: 'View WhatsApp inbox' },
+      { key: 'whatsapp.send', requires: 'whatsapp.view', ar: 'إرسال رسائل واتساب', en: 'Send WhatsApp messages' },
+      { key: 'whatsapp.manage', requires: 'whatsapp.view', ar: 'إدارة إعدادات واتساب', en: 'Manage WhatsApp settings' },
+      { key: 'whatsapp.assign', requires: 'whatsapp.view', ar: 'إسناد محادثات واتساب', en: 'Assign WhatsApp conversations' },
     ],
   },
   {
     module: 'telegram',
     items: [
-      { key: 'telegram.view', ar: 'عرض طلبات تيليجرام', en: 'View Telegram integration' },
-      { key: 'telegram.manage', ar: 'إدارة ربط تيليجرام', en: 'Manage Telegram integration' },
+      { key: 'telegram.view', opens: ['طلبات تلجرام'], ar: 'عرض طلبات تيليجرام', en: 'View Telegram integration' },
+      { key: 'telegram.manage', requires: 'telegram.view', ar: 'إدارة ربط تيليجرام', en: 'Manage Telegram integration' },
     ],
   },
   {
     module: 'audit',
-    items: [{ key: 'audit.view', ar: 'عرض سجل التدقيق', en: 'View audit logs' }],
+    items: [{ key: 'audit.view', opens: ['سجل التدقيق'], ar: 'عرض سجل التدقيق', en: 'View audit logs' }],
   },
 ];
 
@@ -328,13 +344,114 @@ export function catalogItem(key: string): CatalogItem | undefined {
   return undefined;
 }
 
+/**
+ * KEYS THE CATALOG HAS STOPPED OFFERING.
+ *
+ * ⚠️ EMPTY ON PURPOSE, until the key it names is checked by nothing.
+ *
+ * A key listed here is stripped from every role and every exception list on
+ * its next save (`withoutRetired`, at every door). `analytics.view` and
+ * `categories.view` will retire one day, but today a route still asks each
+ * of them: naming one early would delete the row from the first role the
+ * owner saves, and everybody on that role would lose a working door without
+ * anything saying so. A key joins this list in the SAME change that removes
+ * the last check of it, and leaves `PERMISSION_MODULES` in that change too.
+ */
+export const RETIRED_KEYS: readonly string[] = [];
+
+export function isRetiredKey(key: string): boolean {
+  return RETIRED_KEYS.includes(key);
+}
+
+/**
+ * The rows without the retired keys. A row that is not even an object with a
+ * string `permission` is KEPT, so the validation behind it still refuses it:
+ * stripping must never turn a malformed save into a silent one.
+ */
+export function withoutRetired<T>(rows: readonly T[], retired: readonly string[] = RETIRED_KEYS): T[] {
+  if (retired.length === 0) return [...rows];
+  return rows.filter((r) => {
+    const p = (r as { permission?: unknown } | null | undefined)?.permission;
+    return !(typeof p === 'string' && retired.includes(p));
+  });
+}
+
+/** The keys a key needs, nearest first: orders.import -> [orders.create]. A cycle ends the walk. */
+export function requiredChain(key: string): string[] {
+  const out: string[] = [];
+  let at = catalogItem(key)?.requires ?? null;
+  while (at && !out.includes(at) && at !== key) {
+    out.push(at);
+    at = catalogItem(at)?.requires ?? null;
+  }
+  return out;
+}
+
+/** Every key that needs this one, directly or through another: unticking it takes all of them off. */
+export function dependentsOf(key: string): string[] {
+  const out: string[] = [];
+  for (const m of PERMISSION_MODULES) {
+    for (const i of m.items) {
+      if (i.key !== key && requiredChain(i.key).includes(key)) out.push(i.key);
+    }
+  }
+  return out;
+}
+
+export interface OrphanPair {
+  action: string;
+  view: string;
+}
+
+/**
+ * Held actions whose screen key is not held. PRESENCE ONLY: the scope is not
+ * compared, because actions with no scopes of their own sit at «كل الشركة»
+ * next to a view that is «طلباتي» or «المسندة» in the shipped templates.
+ */
+export function orphanPairs(held: Iterable<string>): OrphanPair[] {
+  const has = new Set(held);
+  const out: OrphanPair[] = [];
+  for (const m of PERMISSION_MODULES) {
+    for (const i of m.items) {
+      if (i.requires && has.has(i.key) && !has.has(i.requires)) out.push({ action: i.key, view: i.requires });
+    }
+  }
+  return out;
+}
+
+/** The orphans `after` has that `before` did not: the ones a save would ADD. */
+export function newOrphans(before: Iterable<string>, after: Iterable<string>): OrphanPair[] {
+  const was = new Set(orphanPairs(before).map((p) => `${p.action}>${p.view}`));
+  return orphanPairs(after).filter((p) => !was.has(`${p.action}>${p.view}`));
+}
+
+/**
+ * The grant a required key gets when ticking an action pulls it in: the
+ * action's own scope if the key offers it (with its ids), otherwise «كل
+ * الشركة» — which every action works with and needs no ids.
+ */
+export function viewGrantFor(
+  viewKey: string,
+  from: { scope: ScopeValue; scopeIds: string[] }
+): { scope: ScopeValue; scopeIds: string[] } {
+  const offered = catalogItem(viewKey)?.scopes;
+  if (offered && offered.includes(from.scope)) return { scope: from.scope, scopeIds: [...from.scopeIds] };
+  return { scope: 'ALL_COMPANY', scopeIds: [] };
+}
+
+/**
+ * Visibility-tier coverage: holding the broader view tier covers the narrower one
+ * (customers.view ⊇ customers.view_basic). Here, with no imports, so the server's
+ * granting doors and the browser's exceptions editor read the SAME table.
+ */
+export const TIER_COVERAGE: Readonly<Record<string, string>> = { 'customers.view_basic': 'customers.view' };
+
 /** Module display labels (ar/en) used in the permission matrix. */
 export const MODULE_LABELS: Record<string, { ar: string; en: string }> = {
   dashboard: { ar: 'لوحة التحكم', en: 'Dashboard' },
   orders: { ar: 'الطلبات', en: 'Orders' },
   customers: { ar: 'العملاء', en: 'Customers' },
   products: { ar: 'المنتجات', en: 'Products' },
-  categories: { ar: 'الفئات', en: 'Categories' },
   offers: { ar: 'العروض', en: 'Offers' },
   inventory: { ar: 'المخزون', en: 'Inventory' },
   production: { ar: 'الإنتاج', en: 'Production' },
@@ -365,6 +482,6 @@ export const SCOPE_LABELS: Record<ScopeValue, { ar: string; en: string }> = {
   ALL_COMPANY: { ar: 'كل الشركة', en: 'Whole company' },
   OWN: { ar: 'طلباتي المنشأة', en: 'Own created' },
   ASSIGNED: { ar: 'المسندة إليه', en: 'Assigned to self' },
-  CATEGORY: { ar: 'فئات محددة', en: 'Specific categories' },
+  CATEGORY: { ar: 'تصنيفات محددة', en: 'Specific categories' },
   SPECIFIC: { ar: 'منتجات محددة', en: 'Specific products' },
 };

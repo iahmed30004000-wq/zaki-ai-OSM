@@ -8,6 +8,7 @@ import { ROLE_LABELS } from '@/types/auth';
 import { RiAddCircleLine, RiLoader4Line, RiShieldKeyholeLine } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
 import { Money } from '@/components/ui/Money';
+import { useCan } from '@/hooks/useCan';
 
 /**
  * THE RULES THAT PROPOSE A DEDUCTION.
@@ -44,6 +45,8 @@ const FIELD =
 
 export function PenaltyRulesCard() {
   const toast = useToast();
+  // Adding a rule and switching one are «الإعدادات الحسّاسة»: the rules are seen by whoever opens the page.
+  const canManage = useCan('settings.manage');
   const [kinds, setKinds] = useState<Kind[]>([]);
   const [roles, setRoles] = useState<string[]>([]);
   const [rules, setRules] = useState<Rule[] | null>(null);
@@ -158,6 +161,7 @@ export function PenaltyRulesCard() {
                   <span className="tabular-nums">{r.periodCap}</span>
                 )}
               </span>
+              {canManage && (
               <button
                 type="button"
                 disabled={busy}
@@ -166,10 +170,13 @@ export function PenaltyRulesCard() {
               >
                 {r.isActive ? 'أوقفها' : 'شغّلها'}
               </button>
+              )}
             </div>
           );
         })}
 
+        {!canManage && <p className="text-xs text-[var(--sys-muted)]">قراءة فقط — التعديل لمن عنده «الإعدادات الحسّاسة».</p>}
+        {canManage && (
         <div className="rounded-lg border border-[var(--sys-border)] p-2.5">
           <div className="flex flex-wrap items-end gap-2">
             <label className="block">
@@ -249,6 +256,7 @@ export function PenaltyRulesCard() {
             </p>
           )}
         </div>
+        )}
 
         {error && <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-xs text-[var(--sys-destructive)]">{error}</p>}
       </CardContent>

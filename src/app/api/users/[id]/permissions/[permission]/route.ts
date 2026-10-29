@@ -3,7 +3,8 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { db } from '@/lib/db';
 import { requirePermission } from '@/lib/authorization';
 import { logAudit } from '@/lib/audit';
-import { canActOnUser, denyRemovalRefusal, loadPermissionTarget, superAdminOverrideGuard } from '@/lib/user-permissions';
+import { catalogItem, dependentsOf, isRetiredKey } from '@/lib/permission-catalog';
+import { canActOnUser, denyRemovalRefusal, loadPermissionTarget, orphanResponse, overrideOrphanRefusal, superAdminOverrideGuard } from '@/lib/user-permissions';
 
 /**
  * DELETE /api/users/:id/permissions/:permission — remove a single override row
@@ -41,9 +42,27 @@ export async function DELETE(
       return NextResponse.json({ error: 'لا يوجد استثناء لهذه الصلاحية' }, { status: 404 });
     }
     // Deleting a DENY hands the key back: it asked nothing before.
-    if (existing.effect === 'DENY') {
+    // (A retired key is nothing to lift: nothing asks it, so there is no door to hand back.)
+    if (existing.effect === 'DENY' && !isRetiredKey(existing.permission)) {
       const refusal = denyRemovalRefusal(admin, [existing.permission]);
       if (refusal) return NextResponse.json({ error: refusal }, { status: 403 });
+    }
+
+    /*
+     * AND THE ONE DOOR THE LIST-REPLACING PUT DOES NOT GUARD.
+     *
+     * Removing a row can leave an action without its screen key, just as
+     * writing one can: lifting an ALLOW on a view the role does not give, or a
+     * «منع» on an action whose view is still denied. The same rule as the PUT —
+     * only what this removal ADDS is refused. It reads the rows only when this
+     * row could matter (an ALLOW somebody else needs, or a «منع» on an action).
+     */
+    const couldMatter =
+      existing.effect === 'ALLOW' ? dependentsOf(existing.permission).length > 0 : !!catalogItem(existing.permission)?.requires;
+    if (couldMatter) {
+      const rows = await db.userPermission.findMany({ where: { userId: id } });
+      const orphan = await overrideOrphanRefusal(target, rows, rows.filter((r) => r.permission !== existing.permission));
+      if (orphan) return orphanResponse(orphan);
     }
 
     await db.$transaction([

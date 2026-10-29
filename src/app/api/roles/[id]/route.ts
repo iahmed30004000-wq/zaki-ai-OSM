@@ -3,9 +3,12 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { db } from '@/lib/db';
 import { requirePermission } from '@/lib/authorization';
 import { logAudit } from '@/lib/audit';
-import { PERMISSION_MODULES } from '@/lib/permission-catalog';
+import { PERMISSION_MODULES, withoutRetired } from '@/lib/permission-catalog';
 import { isReservedRoleName, isPrivilegedRoleName, normalizeRoleName } from '@/lib/role-names';
-import { granterHoldsAll, canConferRole, roleScopeRefusal } from '@/lib/user-permissions';
+import {
+  granterHoldsAll, canConferRole, roleScopeRefusal, newOrphanRefusal, orphanResponse,
+  StalePermissionsError, roleVersionIsCurrent, staleResponse,
+} from '@/lib/user-permissions';
 
 const ALLOWED_KEYS: Set<string> = new Set(
   PERMISSION_MODULES.flatMap((m) => m.items.map((i) => i.key))
@@ -75,7 +78,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const { id } = await params;
     const body = await req.json();
     const name: unknown = body?.name;
-    const permissions: PermInput[] | undefined = Array.isArray(body?.permissions) ? body.permissions : undefined;
+    // A key the catalog has stopped offering is dropped before anything judges the list (none is retired yet).
+    // A rename-only save (no list) stays possible.
+    const permissions: PermInput[] | undefined = Array.isArray(body?.permissions) ? withoutRetired(body.permissions as PermInput[]) : undefined;
 
     // Policy: system roles are editable only by COMPANY_ADMIN / SUPER_ADMIN.
     const adminCanEditSystem = admin.role === 'SUPER_ADMIN' || admin.role === 'COMPANY_ADMIN';
@@ -104,6 +109,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (permissions) {
       const invalid = validatePermissions(permissions);
       if (invalid) return invalid;
+      // Only an orphan this save ADDS is refused — the role's own old ones (5 shipped templates hold one) still save.
+      const orphan = newOrphanRefusal(permissions.map((p) => p.permission), role.permissions.map((p) => p.permission));
+      if (orphan) return orphanResponse(orphan);
       // Granter-must-hold: the actor may never place a key (or a stronger
       // scope) into ANY role — their own role or someone else's — that they
       // do not themselves hold. Blocks self-escalation via the role matrix
@@ -128,6 +136,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       // for what is NEW in this save; a row already on the role is not re-judged.
       const scopeRefusal = await roleScopeRefusal(role.companyId ?? admin.companyId ?? null, permissions, role.permissions);
       if (scopeRefusal) return NextResponse.json({ error: scopeRefusal }, { status: 400 });
+      // The list REPLACES the stored one: it is saved only over the version it was read from.
+      if (!roleVersionIsCurrent(body?.version, role.updatedAt)) return staleResponse();
     }
     if (name !== undefined && (typeof name !== 'string' || !name.trim())) {
       return NextResponse.json({ error: 'اسم الدور غير صالح' }, { status: 400 });
@@ -140,6 +150,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const updated = await db.$transaction(async (tx) => {
       if (permissions) {
+        // Taken in the same transaction that writes: two saves of one version cannot both win.
+        const claimed = await tx.role.updateMany({ where: { id, updatedAt: role.updatedAt }, data: { updatedAt: new Date() } });
+        if (claimed.count !== 1) throw new StalePermissionsError();
         await tx.rolePermission.deleteMany({ where: { roleId: id } });
         if (permissions.length) {
           await tx.rolePermission.createMany({
@@ -177,6 +190,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     return NextResponse.json({ success: true, role: updated });
   } catch (error: unknown) {
+    if (error instanceof StalePermissionsError) return staleResponse();
     return apiErrorResponse(error);
   }
 }

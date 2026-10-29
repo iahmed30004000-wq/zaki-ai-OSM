@@ -14,7 +14,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { db, actor, canActOnUser, held } = vi.hoisted(() => ({
   db: {
-    user: { findUnique: vi.fn(), update: vi.fn() },
+    // updateMany: the exceptions door claims the user's version in the transaction that writes (RV171).
+    user: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     role: { findFirst: vi.fn(), findUnique: vi.fn() },
     company: { findMany: vi.fn() },
     // The payload the exception door answers with reads the role's rows.
@@ -57,6 +58,7 @@ beforeEach(() => {
     status: 'ACTIVE', companyId: 'c1', phone: null, assignedBy: null, permissionsVersion: 1,
   });
   db.user.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: 'admin2', ...data }));
+  db.user.updateMany.mockResolvedValue({ count: 1 });
   db.$transaction.mockImplementation(async (ops: unknown) => (Array.isArray(ops) ? ops : null));
 });
 
@@ -110,6 +112,8 @@ describe('removing one exception', () => {
 
   beforeEach(() => {
     db.user.findUnique.mockResolvedValue({ id: 'agent', companyId: 'c1', role: 'CONFIRMATION_AGENT', name: 'ليلى', email: 'l@x', roleId: 'r-agent', permissionsVersion: 1 });
+    // The door now reads the person's exceptions when removing one could matter (it never removed an orphan before).
+    db.userPermission.findMany.mockResolvedValue([{ permission: 'finance.view', effect: 'ALLOW', scope: 'ALL_COMPANY', scopeIds: null }]);
   });
 
   it('a «منع» on a key the actor lacks stays — removing it would hand the key back', async () => {
@@ -142,7 +146,8 @@ describe('removing one exception', () => {
 
 describe('replacing the exceptions wholesale', () => {
   const replace = (overrides: unknown[]) =>
-    replaceOverrides(new Request('http://x', { method: 'PUT', body: JSON.stringify({ overrides }) }), { params: Promise.resolve({ id: 'agent' }) });
+    // `version`: the list replaces the stored one, so it is saved over the version it was read at (the person's is 1).
+    replaceOverrides(new Request('http://x', { method: 'PUT', body: JSON.stringify({ overrides, version: 1 }) }), { params: Promise.resolve({ id: 'agent' }) });
 
   beforeEach(() => {
     db.user.findUnique.mockResolvedValue({ id: 'agent', companyId: 'c1', role: 'CONFIRMATION_AGENT', name: 'ليلى', email: 'l@x', roleId: 'r-agent', permissionsVersion: 1 });

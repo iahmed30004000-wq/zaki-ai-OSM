@@ -3,9 +3,9 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { db } from '@/lib/db';
 import { requirePermission } from '@/lib/authorization';
 import { logAudit } from '@/lib/audit';
-import { PERMISSION_MODULES } from '@/lib/permission-catalog';
+import { PERMISSION_MODULES, withoutRetired } from '@/lib/permission-catalog';
 import { isReservedRoleName } from '@/lib/role-names';
-import { granterHoldsAll, roleScopeRefusal } from '@/lib/user-permissions';
+import { granterHoldsAll, newOrphanRefusal, orphanResponse, roleScopeRefusal } from '@/lib/user-permissions';
 
 // Allowed canonical keys — built from the UI catalog (single source of truth).
 const ALLOWED_KEYS: Set<string> = new Set(
@@ -56,6 +56,8 @@ export async function GET() {
         name: r.name,
         isSystem: r.isSystem,
         createdAt: r.createdAt,
+        // The version a save is made over (the role editor sends it back; the door refuses a stale one).
+        updatedAt: r.updatedAt,
         usersCount: countMap.get(r.id) ?? 0,
         permissionsCount: r.permissions.length,
         permissions: r.permissions.map((p) => ({
@@ -81,7 +83,8 @@ export async function POST(req: Request) {
     const body = await req.json();
     const name: unknown = body?.name;
     const requestedCompanyId: unknown = body?.companyId;
-    const permissions: PermInput[] = Array.isArray(body?.permissions) ? body.permissions : [];
+    // A key the catalog has stopped offering is dropped before anything judges the list (none is retired yet).
+    const permissions: PermInput[] = withoutRetired(Array.isArray(body?.permissions) ? (body.permissions as PermInput[]) : []);
 
     if (typeof name !== 'string' || !name.trim()) {
       return NextResponse.json({ error: 'اسم الدور مطلوب' }, { status: 400 });
@@ -110,6 +113,10 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: `نطاق غير صالح للصلاحية: ${p.permission}` }, { status: 400 });
       }
     }
+
+    // A new role is all NEW: an action without the key that opens its screen is refused.
+    const orphan = newOrphanRefusal(permissions.map((p) => p.permission));
+    if (orphan) return orphanResponse(orphan);
 
     // Granter-must-hold (same rule as PATCH): a created role must never carry
     // keys/scope-strengths the actor does not hold — the role could otherwise

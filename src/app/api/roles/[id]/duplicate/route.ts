@@ -3,7 +3,8 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { db } from '@/lib/db';
 import { requirePermission } from '@/lib/authorization';
 import { logAudit } from '@/lib/audit';
-import { canConferRole } from '@/lib/user-permissions';
+import { withoutRetired } from '@/lib/permission-catalog';
+import { canConferRole, newOrphanRefusal, orphanResponse } from '@/lib/user-permissions';
 
 /**
  * POST /api/roles/:id/duplicate — copy a role (name + ' (نسخة)') with its full
@@ -35,6 +36,12 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: conferral.error }, { status: conferral.status });
     }
 
+    // The copy carries the source's rows, minus any key the catalog has stopped offering (none yet). Judged against
+    // the source: a template's own old orphan is copied as it is, but stripping a key must never leave a NEW one.
+    const rows = withoutRetired(source.permissions);
+    const orphan = newOrphanRefusal(rows.map((p) => p.permission), source.permissions.map((p) => p.permission));
+    if (orphan) return orphanResponse(orphan);
+
     const targetCompanyId = admin.companyId ?? source.companyId;
     let newName = `${source.name} (نسخة)`;
     // Ensure name uniqueness within the tenant.
@@ -50,7 +57,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
           name: newName,
           isSystem: false,
           permissions: {
-            create: source.permissions.map((p) => ({
+            create: rows.map((p) => ({
               permission: p.permission,
               scope: p.scope,
               scopeIds: p.scopeIds ?? undefined,
@@ -59,7 +66,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
           // The copy was issued with what it was copied from — that is its
           // baseline, not whatever the source role drifts to afterwards.
           defaults: {
-            create: source.permissions.map((p) => ({
+            create: rows.map((p) => ({
               permission: p.permission,
               scope: p.scope,
               scopeIds: p.scopeIds ?? undefined,

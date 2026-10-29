@@ -8,6 +8,7 @@ import { arDateTime } from '@/lib/format';
 import { copyText } from '@/lib/clipboard';
 import { RiAlertLine, RiCheckLine, RiExchangeLine, RiFileCopyLine, RiLoader4Line, RiRefreshLine } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
+import { useCan } from '@/hooks/useCan';
 
 /**
  * The address the courier pushes statuses to.
@@ -32,6 +33,8 @@ interface Status {
 export function CourierWebhook({ providerId }: { providerId: string }) {
   const ask = useConfirm();
   const toast = useToast();
+  // Minting and stopping the link are «الإعدادات الحسّاسة».
+  const canManage = useCan('settings.manage');
   const [status, setStatus] = useState<Status | null>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -138,6 +141,7 @@ export function CourierWebhook({ providerId }: { providerId: string }) {
             )}
           </p>
         </div>
+        {canManage && (
         <div className="flex flex-wrap items-center gap-1.5">
           <Button size="sm" variant="outline" onClick={mint} disabled={busy}>
             {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiRefreshLine className="h-4 w-4" />}
@@ -149,6 +153,7 @@ export function CourierWebhook({ providerId }: { providerId: string }) {
             </Button>
           )}
         </div>
+        )}
       </div>
 
       {/* Shown once. Reloading this screen will not bring it back. */}

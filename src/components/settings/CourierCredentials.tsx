@@ -9,6 +9,7 @@ import { arDateTime } from '@/lib/format';
 import { RiCheckLine, RiCloseCircleLine, RiDeleteBinLine, RiKey2Line, RiLoader4Line, RiPlug2Line, RiShieldCheckLine, RiShieldFlashLine } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/Confirm';
+import { useCan } from '@/hooks/useCan';
 
 /**
  * Where a courier account is entered — and the only place it is.
@@ -48,6 +49,8 @@ const BLANK = {
 };
 
 export function CourierCredentials({ providerId }: { providerId: string }) {
+  // The account, its test and its removal are «الإعدادات الحسّاسة»; the card opens on «عرض الإعدادات».
+  const canManage = useCan('settings.manage');
   const toast = useToast();
   const confirm = useConfirm();
   const [status, setStatus] = useState<Status | null>(null);
@@ -160,16 +163,18 @@ export function CourierCredentials({ providerId }: { providerId: string }) {
         <div className="flex shrink-0 items-center gap-2">
           {/* "Saved" is not "works". A typo sits there looking fine until the
               first real batch fails with the parcels already packed. */}
-          {status.hasCredentials && (
+          {canManage && status.hasCredentials && (
             <Button size="sm" variant="outline" onClick={runTest} disabled={testing}>
               {testing ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiPlug2Line className="h-4 w-4" />}
               اختبر الاتصال
             </Button>
           )}
+          {canManage && (
           <Button size="sm" variant="outline" onClick={() => setOpen(true)} disabled={!status.encryptionAvailable}>
             <RiKey2Line className="h-4 w-4" /> {status.hasCredentials ? 'تغيير الحساب' : 'إدخال الحساب'}
           </Button>
-          {status.hasCredentials && (
+          )}
+          {canManage && status.hasCredentials && (
             <button aria-label="حذف الحساب"
               type="button"
               onClick={clear}

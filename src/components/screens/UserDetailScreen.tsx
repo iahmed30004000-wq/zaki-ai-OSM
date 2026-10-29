@@ -20,9 +20,12 @@ import {
   PERMISSION_MODULES,
   MODULE_LABELS,
   SCOPE_LABELS,
+  TIER_COVERAGE,
   catalogItem,
+  isRetiredKey,
   type ScopeValue,
 } from '@/lib/permission-catalog';
+import { planOverride, removalBlock, type PlanRow } from '@/lib/override-plan';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
@@ -668,7 +671,7 @@ interface EffectiveRow {
 const PRODUCT_SEARCH_DEBOUNCE_MS = 350;
 
 function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: boolean }) {
-  const { locale } = useApp();
+  const { locale, currentUser } = useApp();
   const ar = locale === 'ar';
 
   const [payload, setPayload] = useState<PermsPayload | null>(null);
@@ -676,6 +679,8 @@ function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: 
   const [flash, setFlash] = useState<string | null>(null);
   const [tableSearch, setTableSearch] = useState('');
   const [removing, setRemoving] = useState<string | null>(null);
+  // Why an exception was NOT removed (it would leave an action without its screen key).
+  const [removeNotice, setRemoveNotice] = useState<string | null>(null);
 
   // Add/edit-override modal state
   const [modalOpen, setModalOpen] = useState(false);
@@ -729,6 +734,41 @@ function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: 
   );
   const isFullAccess = payload?.effective.fullAccess ?? false;
 
+  /*
+   * WHAT THE PERSON HOLDS FROM THE ROLE, before any exception: the role's own
+   * keys, and the effective keys no exception touches (the template's, for an
+   * account with no role row of its own). The plan lays the exceptions over it
+   * the way the engine does.
+   */
+  const baseKeys = useMemo(() => {
+    if (!payload) return new Set<string>();
+    const touched = new Set(payload.overrides.map((o) => o.permission));
+    return new Set<string>([
+      ...Object.keys(payload.roleGrants),
+      ...Object.keys(payload.effective.grants).filter((k) => !touched.has(k)),
+    ]);
+  }, [payload]);
+
+  // Every OTHER exception as stored, ready to be sent back with this one (a retired key is let go).
+  const storedRows = useMemo<PlanRow[]>(
+    () =>
+      (payload?.overrides ?? [])
+        .filter((o) => !isRetiredKey(o.permission))
+        .map((o) => ({
+          permission: o.permission,
+          effect: o.effect === 'DENY' ? ('DENY' as const) : ('ALLOW' as const),
+          ...(o.effect === 'ALLOW' && o.scope ? { scope: o.scope } : {}),
+          ...(Array.isArray(o.scopeIds) && o.scopeIds.length > 0 ? { scopeIds: o.scopeIds as string[] } : {}),
+        })),
+    [payload],
+  );
+
+  // Whether the person at the keyboard can grant a key: holds it, or the broader tier that covers it.
+  const canGrant = useCallback(
+    (key: string) => userCan(currentUser, key) || (TIER_COVERAGE[key] ? userCan(currentUser, TIER_COVERAGE[key]) : false),
+    [currentUser],
+  );
+
   // ── Effective-permission table rows: roleGrants ∪ overrides ∪ effective ──
   const rows = useMemo<EffectiveRow[]>(() => {
     if (!payload) return [];
@@ -767,6 +807,7 @@ function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: 
 
   // ── Modal helpers ──
   function openAddModal() {
+    setRemoveNotice(null);
     setDraftKey('');
     setPickQuery('');
     setDraftEffect('ALLOW');
@@ -820,7 +861,7 @@ function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: 
         return r.json();
       })
       .then((d) => setCategories(d.categories ?? []))
-      .catch(() => setCategoriesError(ar ? 'تعذر تحميل الفئات' : 'Failed to load categories'));
+      .catch(() => setCategoriesError(ar ? 'تعذر تحميل التصنيفات' : 'Failed to load categories'));
   }, [modalOpen, draftEffect, draftScope, categories.length, categoriesError, ar]);
 
   // Debounced product search for SPECIFIC scope
@@ -848,6 +889,20 @@ function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: 
     };
   }, [productQuery, modalOpen, draftEffect, draftScope, ar]);
 
+  // The list that will be sent, and what it adds beside the one exception the person is making.
+  const plan = useMemo(
+    () =>
+      draftKey
+        ? planOverride({
+            baseKeys,
+            others: storedRows,
+            draft: { key: draftKey, effect: draftEffect, scope: draftScope, scopeIds: draftScopeIds },
+            canGrant,
+          })
+        : null,
+    [draftKey, draftEffect, draftScope, draftScopeIds, baseKeys, storedRows, canGrant],
+  );
+
   async function saveOverride() {
     if (!payload) return;
     if (!draftKey) {
@@ -857,7 +912,7 @@ function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: 
     if (draftEffect === 'ALLOW' && (draftScope === 'CATEGORY' || draftScope === 'SPECIFIC') && draftScopeIds.length === 0) {
       setModalError(
         draftScope === 'CATEGORY'
-          ? (ar ? 'اختر فئة واحدة على الأقل' : 'Pick at least one category')
+          ? (ar ? 'اختر تصنيفًا واحدًا على الأقل' : 'Pick at least one category')
           : (ar ? 'اختر منتجًا واحدًا على الأقل' : 'Pick at least one product')
       );
       return;
@@ -865,35 +920,22 @@ function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: 
     setSaving(true);
     setModalError(null);
     try {
-      const isScoped = draftEffect === 'ALLOW' && (draftScope === 'CATEGORY' || draftScope === 'SPECIFIC');
-      // Full replacement payload: keep every other override verbatim + this one
-      const overrides = [
-        ...payload.overrides
-          .filter((o) => o.permission !== draftKey)
-          .map((o) => ({
-            permission: o.permission,
-            effect: o.effect,
-            ...(o.effect === 'ALLOW' && o.scope ? { scope: o.scope } : {}),
-            ...(Array.isArray(o.scopeIds) && o.scopeIds.length > 0 ? { scopeIds: o.scopeIds as string[] } : {}),
-          })),
-        {
-          permission: draftKey,
-          effect: draftEffect,
-          ...(draftEffect === 'ALLOW' ? { scope: draftScope } : {}),
-          ...(isScoped ? { scopeIds: draftScopeIds } : {}),
-        },
-      ];
+      // Full replacement payload: every other override + this one + what this one pulls with it (the plan),
+      // over the version the page was read at — a list that is out of date is refused with 409.
+      if (!plan || plan.blocked) return;
       const res = await fetch(`/api/users/${userId}/permissions`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ overrides }),
+        body: JSON.stringify({ overrides: plan.list, version: payload.permissionsVersion }),
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
+        // Changed since this page was read: read it again, so the next try carries the current version.
+        if (res.status === 409) await loadPerms();
         throw new Error(d.error || (ar ? 'فشل حفظ الاستثناءات' : 'Failed to save overrides'));
       }
       setModalOpen(false);
-      showFlash(ar ? 'تم حفظ الاستثناءات بنجاح' : 'Overrides saved successfully');
+      showFlash(plan.notes.length ? `تم حفظ الاستثناءات — ${plan.notes.join(' ')}` : 'تم حفظ الاستثناءات بنجاح');
       await loadPerms();
     } catch (e: any) {
       setModalError(e.message);
@@ -903,6 +945,13 @@ function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: 
   }
 
   async function removeOverride(permission: string) {
+    // Taking this one away must not leave an action without its screen key: say so, and change nothing.
+    const block = removalBlock({ baseKeys, rows: storedRows, removing: permission });
+    if (block) {
+      setRemoveNotice(block);
+      return;
+    }
+    setRemoveNotice(null);
     setRemoving(permission);
     try {
       const res = await fetch(`/api/users/${userId}/permissions/${encodeURIComponent(permission)}`, {
@@ -1059,6 +1108,12 @@ function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: 
             </div>
           )}
 
+          {removeNotice && (
+            <div role="status" className="mb-3 rounded-lg bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)] text-[var(--sys-warning)] text-xs px-3 py-2">
+              {removeNotice}
+            </div>
+          )}
+
           {payload && isFullAccess && (
             <p className="text-xs text-[var(--sys-muted-foreground)]">
               {ar ? 'لا توجد استثناءات — حساب SUPER_ADMIN وصول كامل.' : 'No overrides — SUPER_ADMIN has central full access.'}
@@ -1188,6 +1243,19 @@ function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: 
             hasOverride={(key) => overridesMap.has(key)}
           />
 
+          {/* What the chosen key is, and what choosing it brings with it — said BEFORE the press */}
+          {draftKey && catalogItem(draftKey)?.note && (
+            <p className="text-xs text-[var(--sys-muted)]">{catalogItem(draftKey)?.note}</p>
+          )}
+          {plan && plan.notes.length > 0 && (
+            <div role="status" className="space-y-0.5">
+              {plan.notes.map((n) => (
+                <p key={n} className="text-xs text-[var(--sys-warning)]">{n}</p>
+              ))}
+            </div>
+          )}
+          {plan?.blocked && <p role="alert" className="text-xs text-[var(--sys-destructive)]">{plan.blocked}</p>}
+
           {/* Scope — only meaningful for ALLOW (DENY blocks regardless of scope);
               hidden behind the advanced toggle for ordinary permission changes */}
           {draftEffect === 'ALLOW' && advancedScopes && (
@@ -1206,7 +1274,7 @@ function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: 
                 <div className="rounded-lg bg-[var(--sys-surface)] border border-[var(--sys-border)] p-3">
                   {categoriesError && <p className="text-xs text-[var(--sys-destructive)]">{categoriesError}</p>}
                   {!categoriesError && categories.length === 0 && (
-                    <p className="text-xs text-[var(--sys-muted)]">لا فئاتِ منتجاتٍ بعد — وبلا فئةٍ لا يمكن حصرُ هذا الموظّف في جزءٍ من الكتالوج. تُعرَّف من «المنتجات ← الفئات».</p>
+                    <p className="text-xs text-[var(--sys-muted)]">لا تصنيفات منتجات بعد — وبلا تصنيف لا يمكن حصر هذا الموظف في جزء من الكتالوج. تُعرَّف من «المنتجات ← التصنيفات».</p>
                   )}
                   {categories.length > 0 && (
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
@@ -1284,7 +1352,7 @@ function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: 
             <Button variant="outline" onClick={() => setModalOpen(false)}>
               {ar ? 'إلغاء' : 'Cancel'}
             </Button>
-            <Button onClick={saveOverride} loading={saving} disabled={!draftKey}>
+            <Button onClick={saveOverride} loading={saving} disabled={!draftKey || !!plan?.blocked}>
               {ar ? 'حفظ' : 'Save'}
             </Button>
           </div>

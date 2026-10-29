@@ -7,6 +7,7 @@ import { apiJson } from '@/lib/api-client';
 import type { PerformanceSettings } from '@/lib/performance-settings';
 import { RiCheckLine, RiDashboard3Line, RiLoader4Line, RiLockLine } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
+import { useCan } from '@/hooks/useCan';
 
 /**
  * THE BARS — AND THE WEIGHTS, SHOWN AND LOCKED.
@@ -35,6 +36,8 @@ const FIELD =
 
 export function PerformanceSettingsCard() {
   const toast = useToast();
+  // The thresholds are «الإعدادات الحسّاسة»: seen by whoever opens the page, changed by whoever holds that key.
+  const canManage = useCan('settings.manage');
   const [settings, setSettings] = useState<PerformanceSettings | null>(null);
   const [weights, setWeights] = useState<Weight[]>([]);
   const [busy, setBusy] = useState(false);
@@ -111,6 +114,7 @@ export function PerformanceSettingsCard() {
                 type="number"
                 min={0}
                 max={100}
+                disabled={!canManage}
                 value={Math.round(settings.deliveryRateBar * 100)}
                 onChange={(e) => patch({ deliveryRateBar: Number(e.target.value) / 100 })}
                 className={FIELD}
@@ -127,6 +131,7 @@ export function PerformanceSettingsCard() {
                 type="number"
                 min={0}
                 max={100}
+                disabled={!canManage}
                 value={Math.round(settings.issuesRateBar * 100)}
                 onChange={(e) => patch({ issuesRateBar: Number(e.target.value) / 100 })}
                 className={FIELD}
@@ -142,6 +147,7 @@ export function PerformanceSettingsCard() {
               type="number"
               min={1}
               max={1000}
+              disabled={!canManage}
               value={settings.minSample}
               onChange={(e) => patch({ minSample: Number(e.target.value) })}
               className={FIELD}
@@ -154,6 +160,7 @@ export function PerformanceSettingsCard() {
           <label className="block">
             <span className="mb-1 block text-xs font-semibold text-[var(--sys-foreground)]">فترة القياس</span>
             <select
+              disabled={!canManage}
               value={settings.period}
               onChange={(e) => patch({ period: e.target.value as PerformanceSettings['period'] })}
               className={FIELD}
@@ -165,6 +172,8 @@ export function PerformanceSettingsCard() {
           </label>
         </div>
 
+        {!canManage && <p className="text-xs text-[var(--sys-muted)]">قراءة فقط — التعديل لمن عنده «الإعدادات الحسّاسة».</p>}
+        {canManage && (
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" onClick={save} disabled={busy}>
             {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiDashboard3Line className="h-4 w-4" />}
@@ -176,6 +185,7 @@ export function PerformanceSettingsCard() {
             </span>
           )}
         </div>
+        )}
 
         {error && (
           <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-xs text-[var(--sys-destructive)]">{error}</p>
