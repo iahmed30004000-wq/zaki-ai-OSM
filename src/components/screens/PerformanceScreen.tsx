@@ -10,6 +10,7 @@ import { TeamPerformanceTable } from '@/components/performance/TeamPerformanceTa
 import { AttributionTable, type AttributionRow } from '@/components/performance/AttributionTable';
 import { LandingAnalyticsTab } from '@/components/performance/LandingAnalyticsTab';
 import { userCan } from '@/lib/can';
+import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { ScoreBoard } from '@/components/performance/ScoreBoard';
 import { findRoute, routeLabel } from '@/lib/route-registry';
 import { RiAlertLine, RiCopperCoinLine, RiEBike2Line, RiInboxUnarchiveLine, RiTrophyLine, RiTruckLine } from '@remixicon/react';
@@ -133,10 +134,6 @@ export function PerformanceScreen() {
   const dateQuery = range.from && range.to ? `startDate=${range.from}&endDate=${range.to}` : 'period=all';
 
   useEffect(() => {
-    loadData();
-  }, [dateQuery]);
-
-  useEffect(() => {
     setTeam(null);
     // The team endpoint's totals belong to the TEAM table. They were being
     // put into `attrTotals`, which is the attribution tables' state, while
@@ -203,6 +200,9 @@ export function PerformanceScreen() {
       setLoading(false);
     }
   };
+  // Loads on mount, when the dates move, and again when the person comes back to the screen:
+  // a board left open all day must not go on saying this morning's numbers.
+  useLiveRefresh(loadData, { key: dateQuery });
 
   /**
    * THE VITALS THE SERVER SENT, AND THE VERDICT ON THE COST DATA.
