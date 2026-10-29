@@ -27,7 +27,17 @@ import { POST as IGNORE } from './[id]/ignore/route';
 import { telegramStoreWhere } from '@/lib/telegram/store-scope';
 import { logAudit } from '@/lib/audit';
 
-const SAMPLE = ['26818', '2026-10-28 15:40:01', 'محمد', '0932323642', 'سوريا حماه', 'ماء الكمأ الأصلي', 'القطعة ب 15 $ + توصيل مجاني'].join('\n');
+const SAMPLE = [
+  'رقم الطلب: 26842',
+  'تاريخ الطلب: 2026-10-28 17:45:32',
+  'إسم العميل: محمد عيد أطليبي',
+  'رقم الهاتف: 0933620102',
+  'عنوان العميل: دمشق سوريا',
+  'إسم المنتج: ماء الكمأ الأصلي',
+  'إسم العرض: قطعتين + قطعة هدية ( عدد 3 ) =25 $ + توصيل مجاني',
+  'السعر: 25',
+  'الكمية: 1',
+].join('\n');
 const GROUPED = [
   { processingStatus: 'NEEDS_REVIEW', _count: { _all: 3 } },
   { processingStatus: 'FAILED', _count: { _all: 1 } },
@@ -47,7 +57,7 @@ const row = (over: Record<string, unknown> = {}) => ({
   reviewReason: 'PRODUCT_NOT_FOUND',
   pageName: null,
   createdAt: new Date('2026-10-28T12:40:05Z'),
-  source: { chatTitle: 'طلبات الصفحة', topicName: null, storeId: 'store-A' },
+  source: { chatTitle: 'طلبات الصفحة', topicName: null, storeId: 'store-A', store: { country: { code: 'SY' } } },
   order: null,
   ...over,
 });
@@ -132,27 +142,45 @@ describe('the search', () => {
 });
 
 describe('each message carries its columns, read from its own text', () => {
-  it('his format: the seven lines, as written — and the source’s store does not leave the server', async () => {
+  it('his format: the fields as written, with no order number — and the source’s store does not leave the server', async () => {
     db.telegramMessage.findMany.mockResolvedValue([row()]);
     const [m] = (await get()).messages;
     expect(m.reading).toEqual({
-      format: 'lines',
-      lineCount: 7,
-      orderedAt: '2026-10-28 15:40:01',
-      customer: 'محمد',
-      phone: '0932323642',
-      governorate: 'سوريا حماه',
+      claimed: true,
+      orderedAt: '2026-10-28 17:45:32',
+      customer: 'محمد عيد أطليبي',
+      phone: '0933620102',
+      address: 'دمشق سوريا',
       product: 'ماء الكمأ الأصلي',
-      offer: 'القطعة ب 15 $ + توصيل مجاني',
+      offer: 'قطعتين + قطعة هدية ( عدد 3 ) =25 $ + توصيل مجاني',
+      price: '25',
+      quantity: '1',
     });
+    expect(m.reading).not.toHaveProperty('orderNumber');
     expect(m.source).toEqual({ chatTitle: 'طلبات الصفحة', topicName: null });
     expect(m.twin).toBeNull();
   });
 
+  it('asks the order for the offer it was tied to, and hands the name through', async () => {
+    db.telegramMessage.findMany.mockResolvedValue([
+      row({ processingStatus: 'PROCESSED', reviewReason: null, order: { id: 'o1', orderNumber: 'SY-1', offer: { name: 'قطعتين + قطعة هدية ( عدد 3 )' } } }),
+    ]);
+    const [m] = (await get('?tab=orders')).messages;
+    expect(listArgs().select.order).toEqual({ select: { id: true, orderNumber: true, offer: { select: { name: true } } } });
+    expect(m.order.offer.name).toBe('قطعتين + قطعة هدية ( عدد 3 )');
+  });
+
+  it('a message that is not in the format has no columns', async () => {
+    db.telegramMessage.findMany.mockResolvedValue([row({ text: 'السلام عليكم', processingStatus: 'IGNORED', reviewReason: 'NOT_IN_FORMAT' })]);
+    const [m] = (await get('?tab=ignored')).messages;
+    expect(m.reading).toEqual({ claimed: false });
+    expect(m.reviewReason).toBe('NOT_IN_FORMAT');
+  });
+
   it('a duplicate names the order its twin already made', async () => {
     db.telegramMessage.findMany
-      .mockResolvedValueOnce([row({ reviewReason: 'DUPLICATE_REF' })])
-      .mockResolvedValueOnce([{ text: SAMPLE, order: { id: 'o1', orderNumber: 'SY-2026-0001' } }]);
+      .mockResolvedValueOnce([row({ reviewReason: 'DUPLICATE_ORDER' })])
+      .mockResolvedValueOnce([{ text: SAMPLE, order: { id: 'o1', orderNumber: 'SY-2026-0001', productId: 'prod-kamaa' } }]);
     const [m] = (await get()).messages;
     expect(m.twin).toEqual({ id: 'o1', orderNumber: 'SY-2026-0001' });
     // Asked of THIS store's processed messages, and never of itself.
@@ -161,6 +189,12 @@ describe('each message carries its columns, read from its own text', () => {
       processingStatus: 'PROCESSED',
       source: { storeId: 'store-A' },
     });
+  });
+
+  it('and a row held for any other reason asks nothing more', async () => {
+    db.telegramMessage.findMany.mockResolvedValue([row({ reviewReason: 'INVALID_PHONE' })]);
+    await get();
+    expect(db.telegramMessage.findMany).toHaveBeenCalledTimes(1);
   });
 });
 

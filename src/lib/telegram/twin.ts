@@ -1,17 +1,18 @@
 import { db } from '../db';
-import { readLineRoleOrder } from './parser';
+import { phoneKeyOf } from './phone-text';
+import { readLabeledOrder } from './labeled-order';
 import { typed } from '../text-search';
 
 /**
- * THE ORDER THIS REFERENCE ALREADY MADE (T4).
+ * THE ORDER THIS CUSTOMER ALREADY MADE AT THIS TIME FOR THIS PRODUCT.
  *
- * Line 1 alone is not trusted: it may number a page of his sheet rather than an order. Line 1 AND line 2 together — the
- * same reference at the same second — is the same order posted twice, and the second one must not become a second
- * parcel and a second collection.
+ * There is no order number any more (the owner: «تجاهل رقم الطلب»), so a message is the same order posted twice when
+ * three things agree: «تاريخ الطلب» (the order's time at the source, to the second), the customer's phone (as the store
+ * stores it, so «0932323642», «+963 932 323 642» and «00963932323642» are one number) and the product it resolved to. The second copy must
+ * not become a second parcel and a second collection.
  *
- * Read from this store's PROCESSED messages of the last seven days whose text holds line 2, then each of them is read
- * again with the same reader, so the key is compared exactly as the door read it. Nothing is dropped, no index is added,
- * and `Order.externalRef` (the systems door's) is not touched.
+ * Read from this store's PROCESSED messages of the last seven days whose text holds the date, then each of them is read
+ * again with the same reader, so the key is compared exactly as the door read it. Nothing is dropped, no index is added.
  *
  * What it cannot see: an order staff typed by hand, and two copies that arrive in the same second (both find nothing
  * processed yet). The second is closed one step later by the message link inside the order's transaction.
@@ -25,10 +26,16 @@ export async function findTwinOrder(input: {
   messageRowId: string;
   /** When it reached us: the window is counted back from here, so a retry later gets the same answer. */
   receivedAt: Date;
-  ref: string;
+  /** «تاريخ الطلب» as the reader gives it (Latin digits). */
   orderedAt: string;
+  /** «رقم الهاتف» as written. */
+  phone: string;
+  /** The store's country: a foreign number keeps its own code when it is normalised. */
+  countryCode: string;
+  /** The product the message resolved to. Absent when the caller only wants to show the order (the screen). */
+  productId?: string;
 }): Promise<{ id: string; orderNumber: string } | null> {
-  // Line 2 as the reader gives it (Latin digits), and as an Arabic keypad would have typed the same date.
+  // The date as the reader gives it (Latin digits), and as an Arabic keypad would have typed the same date.
   const latin = input.orderedAt;
   const keypad = latin.replace(/[0-9]/g, (d) => String.fromCharCode(0x0660 + Number(d)));
   const candidates = await db.telegramMessage.findMany({
@@ -43,12 +50,16 @@ export async function findTwinOrder(input: {
     },
     orderBy: { createdAt: 'asc' },
     take: 50,
-    select: { text: true, order: { select: { id: true, orderNumber: true } } },
+    select: { text: true, order: { select: { id: true, orderNumber: true, productId: true } } },
   });
+  const phone = phoneKeyOf(input.phone, input.countryCode);
   for (const candidate of candidates) {
-    const earlier = readLineRoleOrder(candidate.text ?? '');
-    if (!earlier.claimed || !candidate.order) continue;
-    if (earlier.lines.ref === input.ref && earlier.lines.orderedAt === input.orderedAt) return candidate.order;
+    const earlier = readLabeledOrder(candidate.text ?? '');
+    if (!earlier.claimed || !earlier.ok || !candidate.order) continue;
+    if (earlier.fields.orderedAt !== input.orderedAt) continue;
+    if (phoneKeyOf(earlier.fields.phone, input.countryCode) !== phone) continue;
+    if (input.productId && candidate.order.productId !== input.productId) continue;
+    return { id: candidate.order.id, orderNumber: candidate.order.orderNumber };
   }
   return null;
 }

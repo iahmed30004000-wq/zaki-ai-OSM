@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { RiArrowGoBackLine, RiEqualizer2Line, RiRefreshLine } from '@remixicon/react';
+import { RiArrowGoBackLine, RiEditLine, RiEqualizer2Line, RiRefreshLine } from '@remixicon/react';
 import { Button } from '@/components/ui/Button';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -20,27 +20,27 @@ import { userCan } from '@/lib/can';
 import { apiJson } from '@/lib/api-client';
 import { arDateTime } from '@/lib/format';
 import { usePagedList, type PagedRead, type Paging } from '@/hooks/usePagedList';
-import { reviewReason, reviewReasonText } from '@/lib/telegram/review-reasons';
-import type { MessageColumns } from '@/lib/telegram/parser';
+import { reviewReason, reviewReasonText, type ReasonField } from '@/lib/telegram/review-reasons';
+import type { MessageColumns } from '@/lib/telegram/labeled-order';
+import { TelegramCorrectDialog } from './TelegramCorrectDialog';
 
 /**
- * «طلبات تلجرام» — THE MESSAGES, IN HIS LINE ORDER (T11).
+ * «طلبات تلجرام» — THE MESSAGES, IN THE ORDER OF HIS LABELS.
  *
- * The owner, 28/10: «قم بتحسين واجهة طلبات تلجرام لانها معجوقة». It was a connection card, four tiles that could not be
- * pressed, a dropdown, and one row per message with the whole text squeezed onto a single line — and not one field of the
- * message on it. Now:
+ * The owner, 28/10: «أريده يسحب الطلبات بهذه الصيغة»: nine labels, one per line. The columns are what the labels say,
+ * read on the server by the same reader the door uses: تاريخ الطلب · العميل · الهاتف · العنوان · المنتج · العرض ·
+ * السعر × الكمية, then الحالة. «رقم الطلب» is dropped by the reader and has no column. Then:
  *
- *   · the columns are his seven lines, read on the server by the same reader the door uses: تاريخ الطلب · العميل · الهاتف ·
- *     المحافظة · المنتج · العرض, then الحالة. A labeled message fills the same columns. The line that failed is marked,
- *     and the reason names it;
+ *   · a message that is not in the format is set aside under «متجاهلة» with «الرسالة مش بصيغة الطلب»; one that claims
+ *     the format and is wrong waits under «للمراجعة», and the reason names the field — whose cell is marked;
  *   · the tabs say how many are in each, counted under the same store scope as the list, and «للمراجعة» opens first;
  *   · «إعادة المعالجة» is offered only where pressing it can change the answer; a reason in the text itself says
  *     «صحّح الرسالة وابعتها من جديد» instead. «تجاهل» asks first, and «إعادة المعالجة» takes it back;
- *   · the message as it arrived is folded under «نص الرسالة», closed until asked for.
- *
- * NOTHING WAS REMOVED; each piece moved. The four tiles are the tab counts. The status dropdown is the tabs. The
- * connection card is the chip beside the title. The group, topic, page and time columns are in the fold. The «إجراء»
- * column is the row's own actions.
+ *   · «تعديل وترحيل» (29/10) opens the eight fields of a held or set-aside message, writes them back as a message and reads
+ *     it through the same door: it becomes an order, or the form says the new reason;
+ *   · the message as it arrived is folded under «نص الرسالة», closed until asked for;
+ *   · the offer's text is tied to a real offer: once the order exists the cell shows «مربوط بالعرض: …», and the phone is
+ *     drawn as the seller wrote it (every form is accepted; a number that fails the store's rule waits here, named).
  *
  * The bot's status asks Telegram twice, so it is read when the screen opens and on «تحديث» — never on a tab, a search or
  * a page.
@@ -58,7 +58,7 @@ interface Message {
   pageName: string | null;
   createdAt: string;
   source: { chatTitle: string | null; topicName: string | null } | null;
-  order: { id: string; orderNumber: string } | null;
+  order: { id: string; orderNumber: string; offer: { name: string } | null } | null;
   reading: MessageColumns;
   twin: { id: string; orderNumber: string } | null;
 }
@@ -71,7 +71,7 @@ interface Facts {
 }
 
 type Tab = keyof Facts;
-type Field = 'orderedAt' | 'customer' | 'phone' | 'governorate' | 'product' | 'offer';
+type Field = ReasonField;
 
 /** Module-level, so the hook's loader keeps one identity — see `usePagedList`. */
 const read = (body: unknown): PagedRead<Message, Facts> => {
@@ -95,26 +95,17 @@ const STATE: Record<string, { label: string; tone: 'neutral' | 'good' | 'warn' |
   PENDING: { label: 'قيد المعالجة', tone: 'neutral' },
 };
 
-/** The column each line of his format fills. */
-const FIELD_OF_LINE: Record<number, Field> = { 2: 'orderedAt', 3: 'customer', 4: 'phone', 5: 'governorate', 6: 'product', 7: 'offer' };
-
 const waiting = (m: Message) => m.processingStatus === 'NEEDS_REVIEW' || m.processingStatus === 'FAILED';
 
-/** Why the row waits, in Arabic — the stored reason, or for a failure that wrote none, the failure itself. */
-const reasonOf = (m: Message) =>
-  waiting(m)
-    ? reviewReasonText(m.reviewReason ?? (m.processingStatus === 'FAILED' ? 'PROCESSING_ERROR' : null), {
-        lines: m.reading.format === 'lines',
-        lineCount: m.reading.lineCount,
-      })
-    : '';
-
-/** The cell of the line that failed, so the eye lands on it. */
-const failingField = (m: Message): Field | null => {
-  if (m.processingStatus !== 'NEEDS_REVIEW') return null;
-  const line = reviewReason(m.reviewReason)?.line;
-  return line ? FIELD_OF_LINE[line] ?? null : null;
+/** Why the row waits (or was set aside), in Arabic — the stored reason, or for a failure that wrote none, the failure itself. */
+const reasonOf = (m: Message) => {
+  if (m.processingStatus === 'IGNORED') return m.reviewReason === 'NOT_IN_FORMAT' ? reviewReasonText(m.reviewReason) : '';
+  return waiting(m) ? reviewReasonText(m.reviewReason ?? (m.processingStatus === 'FAILED' ? 'PROCESSING_ERROR' : null)) : '';
 };
+
+/** The cell the reason is about, so the eye lands on it. */
+const failingField = (m: Message): Field | null =>
+  m.processingStatus === 'NEEDS_REVIEW' ? reviewReason(m.reviewReason)?.field ?? null : null;
 
 /** «إعادة المعالجة» where pressing it may change the answer: not for a reason that lives in the text, which never changes. */
 const mayRetry = (m: Message) =>
@@ -122,6 +113,9 @@ const mayRetry = (m: Message) =>
   m.processingStatus === 'PENDING' ||
   m.processingStatus === 'IGNORED' ||
   (m.processingStatus === 'NEEDS_REVIEW' && reviewReason(m.reviewReason)?.retry === true);
+
+/** «تعديل وترحيل»: any message with no order yet that a person has already looked at — held, failed or set aside. */
+const mayCorrect = (m: Message) => !m.order && ['NEEDS_REVIEW', 'FAILED', 'IGNORED'].includes(m.processingStatus);
 
 const mayIgnore = (m: Message) => !m.order && ['NEEDS_REVIEW', 'FAILED', 'PENDING'].includes(m.processingStatus);
 
@@ -140,6 +134,7 @@ function TelegramOrdersList({ canManage }: { canManage: boolean }) {
   const [search, setSearch] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [bot, setBot] = useState<'on' | 'off' | 'unknown' | null>(null);
+  const [correcting, setCorrecting] = useState<Message | null>(null);
 
   const list = usePagedList<Message, Facts>({
     url: '/api/telegram/messages',
@@ -171,7 +166,7 @@ function TelegramOrdersList({ canManage }: { canManage: boolean }) {
       const r = await apiJson<{ status: string; reason?: string }>(`/api/telegram/messages/${m.id}/retry`, { method: 'POST' });
       if (r.status === 'PROCESSED') toast.done('صارت طلب');
       else if (r.status === 'IGNORED') toast.done('ما فيها طلب — انحطّت بالمتجاهلة');
-      else toast.failed(reviewReasonText(r.reason, { lines: m.reading.format === 'lines' }) || 'لسا ما صارت طلب');
+      else toast.failed(reviewReasonText(r.reason) || 'لسا ما صارت طلب');
     } catch (e) {
       toast.failed(e instanceof Error ? e.message : 'ما زبطت إعادة المعالجة');
     } finally {
@@ -201,7 +196,8 @@ function TelegramOrdersList({ canManage }: { canManage: boolean }) {
   };
 
   const value = (m: Message, field: Field) => {
-    const text = m.reading[field];
+    const { price, quantity } = m.reading;
+    const text = field === 'priceQuantity' ? (price || quantity ? `${price || '—'} × ${quantity || '—'}` : undefined) : m.reading[field];
     if (!text) return <span className="text-[var(--sys-muted)]">—</span>;
     return failingField(m) === field ? <span className="font-semibold text-[var(--sys-destructive)]">{text}</span> : text;
   };
@@ -234,9 +230,17 @@ function TelegramOrdersList({ canManage }: { canManage: boolean }) {
         ) },
     { key: 'customer', label: 'العميل', primary: true, render: (m) => value(m, 'customer') },
     { key: 'phone', label: 'الهاتف', render: (m) => <span dir="ltr">{value(m, 'phone')}</span> },
-    { key: 'governorate', label: 'المحافظة', render: (m) => value(m, 'governorate') },
+    { key: 'address', label: 'العنوان', render: (m) => value(m, 'address') },
     { key: 'product', label: 'المنتج', render: (m) => value(m, 'product') },
-    { key: 'offer', label: 'العرض', render: (m) => value(m, 'offer') },
+    { key: 'offer', label: 'العرض',
+      render: (m) => (
+        <div className="space-y-0.5">
+          {value(m, 'offer')}
+          {/* The offer the text was tied to — the one the order was priced from. */}
+          {m.order?.offer && <p className="text-xs font-semibold text-[var(--sys-primary)]">مربوط بالعرض: {m.order.offer.name}</p>}
+        </div>
+      ) },
+    { key: 'priceQuantity', label: 'السعر × الكمية', render: (m) => <span dir="ltr">{value(m, 'priceQuantity')}</span> },
     { key: 'state', label: 'الحالة',
       render: (m) => (
         <div className="space-y-1">
@@ -250,6 +254,11 @@ function TelegramOrdersList({ canManage }: { canManage: boolean }) {
 
   const actions = (m: Message) => (
     <div className="flex flex-wrap items-center gap-2">
+      {canManage && mayCorrect(m) && (
+        <Button size="sm" variant="outline" disabled={busyId === m.id} onClick={() => setCorrecting(m)}>
+          <RiEditLine className="w-4 h-4 ml-1" /> تعديل وترحيل
+        </Button>
+      )}
       {canManage && mayRetry(m) && (
         <Button size="sm" variant="outline" disabled={busyId === m.id} onClick={() => retry(m)}>
           <RiArrowGoBackLine className="icon-mirror w-4 h-4 ml-1" /> إعادة المعالجة
@@ -305,7 +314,7 @@ function TelegramOrdersList({ canManage }: { canManage: boolean }) {
     <div className="p-6 space-y-6 max-w-6xl mx-auto" dir="rtl">
       <PageHeader
         title="طلبات تلجرام"
-        description="رسائل مجموعات تلجرام المربوطة بتصير طلبات لحالها، واللي ما انقرأ بيستنّى هون للمراجعة."
+        description="الرسالة المكتوبة بصيغة الطلب بتصير طلب لحالها، واللي فيها غلط بتستنّى هون للمراجعة."
         actions={
           <div className="flex items-center gap-2">
             {canManage && (
@@ -327,7 +336,7 @@ function TelegramOrdersList({ canManage }: { canManage: boolean }) {
       </PageHeader>
 
       <p className="text-sm text-[var(--sys-muted-foreground)]">
-        سطر لكل معلومة: 1 مرجع (يُتجاهل) · 2 تاريخ الطلب · 3 العميل · 4 الهاتف · 5 المحافظة · 6 المنتج · 7 العرض. الرسائل بالعناوين (الاسم: …) بتنقرأ متل قبل.
+        الرسالة لازم تكون بهالعناوين، سطر لكل معلومة: رقم الطلب (يُتجاهل) · تاريخ الطلب · إسم العميل · رقم الهاتف · عنوان العميل · إسم المنتج · إسم العرض · السعر · الكمية. غير هيك ما بتصير طلب.
       </p>
 
       <Tabs tabs={TABS.map((t) => ({ ...t, count: facts?.[t.key] }))} value={tab} onChange={(k) => setTab(k as Tab)} />
@@ -358,6 +367,17 @@ function TelegramOrdersList({ canManage }: { canManage: boolean }) {
           notice={(m) => reasonLine(m, 'text-xs text-[var(--sys-destructive)]')}
           actions={actions}
           empty={empty}
+        />
+      )}
+
+      {correcting && (
+        <TelegramCorrectDialog
+          target={{ id: correcting.id, reading: correcting.reading, createdAt: correcting.createdAt, reason: reasonOf(correcting) }}
+          onClose={() => setCorrecting(null)}
+          onSaved={async (became) => {
+            if (became) toast.done('صارت طلب');
+            await list.reload();
+          }}
         />
       )}
 

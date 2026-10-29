@@ -115,20 +115,28 @@ describe('every door divides the same way', () => {
     expect(src).toMatch(/allocateDiscount\(/);
   });
 
-  it('and the Telegram door does not either', () => {
+  it('and the Telegram door does not either — its unit price is the offer’s, unrounded, from the storefront’s own function', () => {
+    // 29/10: the message's offer text is bound to a real offer (28/10: «نص العرض مربوط بالعرض»), so the unit price is no longer
+    // `total / quantity` computed here: it is `ResolvedLine.unitPrice` from `resolvePublicLines`, the line asserted above.
     const src = stripComments(repoFile('src/lib/telegram/order-creation.ts'));
-    expect(src).toContain('const price = totalAmount / quantity;');
+    expect(src).not.toContain('const price = totalAmount / quantity;');
+    expect(src).toContain('unitPrice: line.unitPrice');
+    expect(src).not.toMatch(/unitPrice: roundMinor/);
     expect(src).not.toMatch(/const price = roundMinor/);
     expect(src).not.toMatch(/const price = Number\(\(totalAmount/);
+    const door = stripComments(repoFile('src/lib/telegram/inbound.ts'));
+    expect(door).toMatch(/resolvePublicLines\(/);
   });
 
   it('while the money that is WRITTEN is still rounded by the currency', () => {
     // Not rounding the unit price is not «stop rounding». The cost of goods,
     // the add-on's total and every stored figure still go through
     // `roundMinor` — it is the derived intermediate that must keep its
-    // precision until the multiplication is done.
+    // precision until the multiplication is done. The WRITTEN price is read by the currency's own places, in the door.
     const src = stripComments(repoFile('src/lib/telegram/order-creation.ts'));
     expect(src).toMatch(/estimatedCostOfGoods = roundMinor\(/);
-    expect(src).toContain('parseAdvertisedPrice(priceText, store.country.minorUnit)');
+    expect(src).toMatch(/minorUnit: store\.country\.minorUnit|priceTelegramLine\(line, store\.country\.minorUnit\)/);
+    const door = stripComments(repoFile('src/lib/telegram/inbound.ts'));
+    expect(door).toContain('parseAdvertisedPrice(priceText, country.minorUnit)');
   });
 });

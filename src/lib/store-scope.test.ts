@@ -85,7 +85,7 @@ describe('createTelegramOrder — store required', () => {
       storeId: null,
       customer: { id: 'cu1', firstOrderDate: null, totalOrders: 0 },
       product: { id: 'p1', name: 'x', image: null, basePrice: 10 },
-      quantity: 1,
+      line: { product: { id: 'p1', name: 'x', image: null, basePrice: 10 }, offer: null, quantity: 1, freeQuantity: 0, unitPrice: 20, offerDiscount: 0 },
       address: 'addr',
       priceText: '20',
       telegram: { messageId: '1', chatId: '-100', threadId: null },

@@ -1329,13 +1329,23 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/screens/TelegramCorrectDialog.tsx": {
+    "buttons": 2,
+    "inputs": 1,
+    "columns": 0,
+    "cards": 0,
+    "modals": 1,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/screens/TelegramOrdersScreen.tsx": {
-    "buttons": 4,
+    "buttons": 5,
     "inputs": 0,
-    "columns": 11,
+    "columns": 12,
     "cards": 0,
     "modals": 0,
-    "icons": 3,
+    "icons": 4,
     "links": 1,
     "tabs": 0
   },
