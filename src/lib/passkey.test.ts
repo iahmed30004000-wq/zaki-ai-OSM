@@ -372,7 +372,7 @@ describe('the shape of the thing', () => {
   it('and guessing is limited on both axes', () => {
     const src = assertRoute();
     expect(src).toMatch(/rateLimit\(`passkey:user:/);
-    expect(src).toMatch(/rateLimit\(`passkey:ip:/);
+    expect(src).toMatch(/rateLimitByIp\('passkey:ip', ip,/);
   });
 
   /** Adding a way in must not be something a stolen session can do alone. */

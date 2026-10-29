@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { db } from '@/lib/db';
 import { verifyPassword, verifyDeviceToken } from '@/lib/auth';
-import { rateLimit, getClientIp } from '@/lib/rate-limit';
+import { rateLimit, rateLimitByIp, getClientIp } from '@/lib/rate-limit';
 import { logAudit } from '@/lib/audit';
 import { UserStatus } from '@/types/auth';
 import { issueSession } from '@/lib/sign-in';
@@ -23,7 +23,7 @@ export async function POST(req: Request) {
 
     // Brute-force protection: 8 attempts / 5 min per IP+email, 20 per IP
     const rlUser = rateLimit(`login:user:${ip}:${email}`, 8, 5 * 60 * 1000);
-    const rlIp = rateLimit(`login:ip:${ip}`, 20, 5 * 60 * 1000);
+    const rlIp = rateLimitByIp('login:ip', ip, 20, 5 * 60 * 1000);
     if (!rlUser.allowed || !rlIp.allowed) {
       return NextResponse.json(
         { error: `محاولات دخول كثيرة. أعد المحاولة بعد ${Math.max(rlUser.retryAfterSec, rlIp.retryAfterSec)} ثانية` },

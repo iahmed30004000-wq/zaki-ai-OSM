@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { readChallenge } from '@/lib/two-factor-challenge';
 import { TwoFactorRefused, checkSecondFactor } from '@/lib/two-factor';
-import { rateLimit, getClientIp } from '@/lib/rate-limit';
+import { rateLimit, rateLimitByIp, getClientIp } from '@/lib/rate-limit';
 import { issueSession } from '@/lib/sign-in';
 import { logAudit } from '@/lib/audit';
 import type { UserStatus } from '@/types/auth';
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     }
 
     const rlUser = rateLimit(`2fa:verify:user:${ticket.userId}`, 6, 5 * 60 * 1000);
-    const rlIp = rateLimit(`2fa:verify:ip:${ip}`, 30, 5 * 60 * 1000);
+    const rlIp = rateLimitByIp('2fa:verify:ip', ip, 30, 5 * 60 * 1000);
     if (!rlUser.allowed || !rlIp.allowed) {
       return NextResponse.json(
         { error: `محاولات كثيرة. أعد المحاولة بعد ${Math.max(rlUser.retryAfterSec, rlIp.retryAfterSec)} ثانية` },

@@ -44,6 +44,7 @@ import {
 } from '../src/lib/jobs/runner';
 import { isDue, scheduleAr } from '../src/lib/jobs/schedule';
 import { alertAboutJob, shouldAlertOnFailure } from '../src/lib/jobs/alerts';
+import { bootAlarms } from '../src/lib/boot-alarms';
 
 const args = process.argv.slice(2);
 const once = args.includes('--once');
@@ -122,6 +123,9 @@ async function main() {
     await db.$disconnect();
     return;
   }
+
+  // Printed on every start, beside the line a deployer reads first. See boot-alarms.ts.
+  for (const alarm of bootAlarms(process.env)) console.error(`[${stamp()}] تنبيه إقلاع: ${alarm}`);
 
   log(`بدأ المجدول — ${jobs.length} مهمة`);
   for (const job of jobs) log(`   ${job.name} ${scheduleAr(job)} — ${job.description}`);

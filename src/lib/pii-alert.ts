@@ -89,21 +89,35 @@ export interface ContactBearingRow {
   phone?: string | null;
 }
 
+/**
+ * WHO A ROW IS ABOUT, when the row says. Rows that say nothing cannot be
+ * recognised on a second read and are reported separately.
+ */
+function identityOf(row: ContactBearingRow): string | null {
+  return row.customerId ?? row.customer?.id ?? row.customer?.phone ?? row.phone ?? null;
+}
+
 /** People, not rows: twenty orders from one customer are one person's details. */
 export function distinctCustomers(rows: ReadonlyArray<ContactBearingRow>): number {
   const seen = new Set<string>();
-  rows.forEach((row, i) => {
-    seen.add(
-      row.customerId ??
-        row.customer?.id ??
-        row.customer?.phone ??
-        row.phone ??
-        // Nothing in the row identifies the person, so it cannot be
-        // de-duplicated and counts once on its own.
-        `#${i}`
-    );
+  const { anonymous } = tellApart(rows);
+  rows.forEach((row) => {
+    const id = identityOf(row);
+    if (id !== null) seen.add(id);
   });
-  return seen.size;
+  return seen.size + anonymous;
+}
+
+/** The people a list names (once each) and how many rows named nobody. */
+export function tellApart(rows: ReadonlyArray<ContactBearingRow>): { ids: string[]; anonymous: number } {
+  const ids = new Set<string>();
+  let anonymous = 0;
+  for (const row of rows) {
+    const id = identityOf(row);
+    if (id === null) anonymous += 1;
+    else ids.add(id);
+  }
+  return { ids: [...ids], anonymous };
 }
 
 /**
@@ -133,10 +147,13 @@ export async function noteCustomersHandedOut(input: {
   where: string;
   rows: ReadonlyArray<ContactBearingRow>;
 }): Promise<void> {
-  const records = distinctCustomers(input.rows);
-  if (records === 0) return;
+  const { ids, anonymous } = tellApart(input.rows);
+  if (ids.length + anonymous === 0) return;
 
-  const seen = noteCustomerAccess(`pii:${input.user.id}`, records);
+  // A person read again inside the window is not a new person. The
+  // 300-row shipment screen alone reloads after every postponement, and
+  // counting it fresh each time pushed an ordinary shift over the line.
+  const seen = noteCustomerAccess(`pii:${input.user.id}`, anonymous, { ids });
   if (!seen.crossed) return;
 
   await announceBulkCustomerView({

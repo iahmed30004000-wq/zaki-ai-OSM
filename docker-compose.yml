@@ -38,6 +38,15 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-salesflow_user}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@salesflow-db:5432/${POSTGRES_DB:-salesflow}?schema=public&connection_limit=10&pool_timeout=20
       # REQUIRED — provide in your shell / .env before running docker compose up
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required (openssl rand -base64 32)}
+      # REQUIRED — encrypts courier / app / 2FA secrets at rest. Without it every
+      # account is locked out (2FA fails closed) and no courier password can be saved.
+      # Generate ONCE and keep it: changing it makes stored secrets unreadable.
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?APP_ENCRYPTION_KEY is required (openssl rand -hex 32)}
+      # Set to true ONLY behind a reverse proxy you control (Coolify/Traefik). Rate limits
+      # then use the address that proxy appended to X-Forwarded-For (TRUST_PROXY_HOPS = how
+      # many proxies of yours sit in front, default 1). Empty = forwarded headers ignored.
+      TRUST_PROXY: ${TRUST_PROXY:-}
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-meta-llama/llama-3.3-70b-instruct:free}
 

@@ -350,7 +350,7 @@ describe('the doors', () => {
   it('throttles the verify door by user and by address', () => {
     const route = stripComments(repoFile('src/app/api/auth/2fa/verify/route.ts'));
     expect(route).toMatch(/rateLimit\(`2fa:verify:user:/);
-    expect(route).toMatch(/rateLimit\(`2fa:verify:ip:/);
+    expect(route).toMatch(/rateLimitByIp\('2fa:verify:ip', ip,/);
   });
 
   /** A ticket is ten minutes long; a suspension inside them must still bite. */

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -38,6 +38,7 @@ let dir: string | null = null;
 function plant(name: string, body: string): string {
   dir ??= mkdtempSync(path.join(tmpdir(), 'scan-'));
   const file = path.join(dir, name);
+  mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, body, 'utf8');
   return file;
 }
@@ -202,5 +203,161 @@ describe('and the tree that ships is clean', () => {
     const { code, out } = scan();
     expect(code, out).toBe(0);
     expect(out).toContain('Secret scan clean');
+  });
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * THE GAPS THE REVIEWS FOUND IN THE SCANNER ITSELF (RV19 – RV24, C2).
+ *
+ * A guard is only as good as the shapes it has been watched failing on.
+ * Each test below plants one shape the scanner used to wave through and
+ * requires it to be reported — and, beside it, one look-alike it must
+ * still leave alone, so the fix is not just «shout at more».
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+describe('RV19 — a neighbour on the same line cannot excuse a secret', () => {
+  // Assembled, as above: the literal must never exist in this tracked file.
+  const KEY = ['sk', '-', 'Qp7RtY2vLm9XbNc4KdEf8Ghj'].join('');
+
+  it('a real key followed by a «test» comment is still a finding', () => {
+    const { code, out } = scan(plant('client.ts', `const k = '${KEY}'; // test-only, remove later\n`));
+    expect(code, out).toBe(1);
+    expect(out).toContain('OpenAI key');
+  });
+
+  it('a real key on the same line as an example.com address is still a finding', () => {
+    const { code, out } = scan(plant('client.ts', `fetch('https://example.com/v1', { key: '${KEY}' });\n`));
+    expect(code, out).toBe(1);
+  });
+
+  it('two keys on one line, the first a fixture: the second is reported', () => {
+    const real = ['sk', '-', 'Zx8CvBn3MaSd6FgHj9KlQw2E'].join('');
+    // The first key says what it is in its own text, the second does not.
+    const fixture = ['sk', '-', 'test', '-', 'Qp7RtY2vLm9XbNc4KdEf8Ghj'].join('');
+    const { code, out } = scan(plant('client.ts', `const a = '${fixture}', b = '${real}';\n`));
+    expect(code, out).toBe(1);
+    expect(scan(plant('client2.ts', `const a = '${fixture}';\n`)).code).toBe(0);
+  });
+
+  it('but a value that says what it is, in its own text, is still let through', () => {
+    const fixture = ['sk', '-', 'test', '-', 'Qp7RtY2vLm9XbNc4KdEf8Ghj'].join('');
+    const { code, out } = scan(plant('client.ts', `const k = '${fixture}';\n`));
+    expect(code, out).toBe(0);
+  });
+
+  it('and a signature published as an example is not a key', () => {
+    const sig = 'a247d08e21565cfba9892352002c8d22cf8bf3a2790185101508df467f7633c0';
+    const { code, out } = scan(plant('delivery.json', `{ "signature_example": "sha256=${sig}" }\n`));
+    expect(code, out).toBe(0);
+  });
+
+  it('while thirty-two bare hex characters in source are still reported', () => {
+    const { code, out } = scan(plant('config.ts', `const id = 'a247d08e21565cfba9892352002c8d22';\n`));
+    expect(code, out).toBe(1);
+    expect(out).toContain('Meta App Secret');
+  });
+});
+
+describe('RV20 — a JSON key is a name with a quote after it', () => {
+  it('"password": "value" is a finding', () => {
+    const { code, out } = scan(plant('settings.json', '{ "password": "Mubarak2026" }\n'));
+    expect(code, out).toBe(1);
+    expect(out).toContain('Password literal');
+  });
+
+  it('and so are the other names, single-quoted too', () => {
+    for (const name of ['apiKey', 'client_secret', 'access_token']) {
+      const { code, out } = scan(plant('settings.json', `{ '${name}': 'Mubarak2026' }\n`));
+      expect(code, `${name}: ${out}`).toBe(1);
+    }
+  });
+
+  it('a JSON field that holds a label is not', () => {
+    const { code, out } = scan(plant('labels.json', '{ "password": "كلمة المرور" }\n'));
+    expect(code, out).toBe(0);
+  });
+});
+
+describe('RV22 — a Dockerfile speaks NAME=value too', () => {
+  it('ENV with a real-looking value is a finding', () => {
+    const { code, out } = scan(plant('Dockerfile', 'FROM node:24-alpine\nENV DB_PASSWORD=Mubarak2026\n'));
+    expect(code, out).toBe(1);
+    expect(out).toContain('Dockerfile:2');
+  });
+
+  it('ARG with one is too', () => {
+    const { code, out } = scan(plant('Dockerfile', 'ARG NPM_TOKEN=Mubarak2026abc\n'));
+    expect(code, out).toBe(1);
+  });
+
+  it('a placeholder and an ordinary ENV are not', () => {
+    const body = ['ENV JWT_SECRET=build-time-placeholder-secret-value', 'ENV NODE_ENV=production', 'ENV PORT=3000'].join('\n');
+    const { code, out } = scan(plant('Dockerfile', `${body}\n`));
+    expect(code, out).toBe(0);
+  });
+
+  it('and the real Dockerfile passes', () => {
+    const { code, out } = scan('Dockerfile');
+    expect(code, out).toBe(0);
+  });
+});
+
+describe('RV23 — «not-used» no longer excuses a value', () => {
+  it('a value that merely contains it is judged like any other', () => {
+    const yaml = 'services:\n  db:\n    environment:\n      POSTGRES_PASSWORD: Mubarak2026-not-used\n';
+    const { code, out } = scan(plant('docker-compose.yml', yaml));
+    expect(code, out).toBe(1);
+  });
+
+  it('the CI build secret is written as a placeholder instead', () => {
+    const { code, out } = scan('.github/workflows/ci.yml');
+    expect(code, out).toBe(0);
+  });
+});
+
+describe('RV24 — only the YAML that keeps secret-shaped lines is read as such', () => {
+  it('a Kubernetes-style file with ordinary words is left alone', () => {
+    const { code, out } = scan(
+      plant('deploy/service.yaml', ['spec:', '  imagePullSecret: my-registry-cred', '  apiKey: header', '  token: bearer-header'].join('\n') + '\n')
+    );
+    expect(code, out).toBe(0);
+  });
+
+  it('a CI workflow is still read, and a real value in it is a finding', () => {
+    const { code, out } = scan(plant('.github/workflows/ci.yml', 'env:\n  JWT_SECRET: Mubarak2026Real\n'));
+    expect(code, out).toBe(1);
+  });
+});
+
+describe('C2 — an OpenAI-style key with dashes in it', () => {
+  it('sk-proj-… is a finding, in a test file too', () => {
+    const key = ['sk', '-', 'proj', '-', 'Ab3dEf9hJk2mNp4qRs7tUvWx1yZ'].join('');
+    const { code, out } = scan(plant('fixture-data.test.ts', `const k = '${key}';\n`));
+    expect(code, out).toBe(1);
+    expect(out).toContain('OpenAI-style key');
+  });
+
+  it('so is an OpenRouter key, with underscores and an inner dash', () => {
+    const key = ['sk', '-', 'or', '-', 'v1', '-', 'f3a9c2d4e6b8a0c1d2e3f4a5b6c7d8e9'].join('');
+    const { code, out } = scan(plant('openrouter.ts', `const k = '${key}';\n`));
+    expect(code, out).toBe(1);
+  });
+
+  it('a kebab-case word that happens to end in «sk» is not (the left boundary)', () => {
+    const { code, out } = scan(
+      plant('notes.ts', "const a = 'risk-assessment-and-mitigation-plan-2026'; const b = 'task-force-assessment-document-v2';\n")
+    );
+    expect(code, out).toBe(0);
+  });
+
+  it('and a long sk- slug with no digit in it is not', () => {
+    const { code, out } = scan(plant('notes.ts', "const css = 'sk-the-quick-brown-fox-jumps-over-the-lazy-dog';\n"));
+    expect(code, out).toBe(0);
+  });
+
+  it('a short one is not either', () => {
+    const { code, out } = scan(plant('notes.ts', "const css = 'sk-a-1';\n"));
+    expect(code, out).toBe(0);
   });
 });
