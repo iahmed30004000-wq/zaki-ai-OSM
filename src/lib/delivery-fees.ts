@@ -46,6 +46,27 @@ export interface OrderLineLike {
   unitPrice: number | Prisma.Decimal;
   freeQuantity?: number;
   discountShare?: number | Prisma.Decimal;
+  /** What the line was written at, after its discount. When present it settles a unit price that was rounded. */
+  lineTotal?: number | Prisma.Decimal | null;
+}
+
+/**
+ * WHAT ONE LINE CAME TO BEFORE THE ORDER'S DISCOUNT — the stored figure when the unit price is a rounded copy of it.
+ *
+ * «٣ بـ 25» is a unit price of 8.33333…, stored as 8.333: multiplied back, three of them are 24.999, and the courier
+ * was told to collect a fil less than the customer was quoted (the order's own total, written when the order was
+ * taken, says 25). `lineTotal + discountShare` is the value the line was written at, so it is used — but ONLY when it
+ * lies within the rounding the unit price could have lost (half a minor unit per piece): a stored figure that is
+ * far from `quantity × unitPrice` is a line that was edited or imported some other way, and that case keeps the
+ * multiplication it always had. No new arithmetic: the value is handed to the same `computeCod`.
+ */
+function lineValue(l: OrderLineLike, minorUnit: number): { quantity: number; unitPrice: number } {
+  const quantity = l.quantity;
+  const unitPrice = Number(l.unitPrice);
+  if (l.lineTotal == null || !(quantity > 0)) return { quantity, unitPrice };
+  const stored = roundMinor(Number(l.lineTotal) + Number(l.discountShare ?? 0), minorUnit);
+  const band = (quantity * 0.5) / 10 ** minorUnit;
+  return Math.abs(stored - quantity * unitPrice) <= band + 1e-9 ? { quantity: 1, unitPrice: stored } : { quantity, unitPrice };
 }
 
 /**
@@ -63,8 +84,7 @@ export function codForOrder(params: {
   const discount = params.lines.reduce((sum, l) => sum + Number(l.discountShare ?? 0), 0);
   return computeCod({
     lines: params.lines.map((l) => ({
-      quantity: l.quantity,
-      unitPrice: Number(l.unitPrice),
+      ...lineValue(l, params.minorUnit),
       freeQuantity: l.freeQuantity,
     })),
     discount,

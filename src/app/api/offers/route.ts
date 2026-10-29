@@ -138,3 +138,67 @@ export async function POST(req: Request) {
     return apiErrorResponse(error);
   }
 }
+
+/**
+ * PATCH /api/offers — put a product's offers in a new order, ALL OR NONE.
+ *
+ * The screen used to send one `PATCH /api/offers/:id { sortOrder }` per offer that moved, side by side. If one of them
+ * failed the others had landed, and the list the server held was half of the old order and half of the new — read back by
+ * the next person to open the product. Here the whole move is one request, one transaction and one audit line: either every
+ * offer holds its new place or none does.
+ *
+ * Only `sortOrder` is written — no price, no quantity, no default flag — so none of the money rules the other doors guard
+ * is in play. Every id must be an offer of THIS product in THIS store; one that is not answers 404 and nothing is written.
+ */
+const reorderSchema = z.object({
+  productId: z.string().min(10).max(64),
+  order: z
+    .array(z.object({ id: z.string().min(10).max(64), sortOrder: z.number().int().min(0).max(100000) }))
+    .min(1)
+    .max(200),
+});
+
+export async function PATCH(req: Request) {
+  try {
+    const { user, companyId, storeId } = await requireContext();
+    await requirePermission('offers.manage');
+
+    const parsed = reorderSchema.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) return NextResponse.json({ error: zodMessage(parsed.error) }, { status: 400 });
+    const { productId, order } = parsed.data;
+
+    const ids = order.map((o) => o.id);
+    if (new Set(ids).size !== ids.length) {
+      return NextResponse.json({ error: 'العرض مكرّر في الترتيب' }, { status: 400 });
+    }
+
+    const found = await db.offer.findMany({
+      where: { id: { in: ids }, companyId, productId, product: { storeId: storeId ?? '' } },
+      select: { id: true, sortOrder: true },
+    });
+    if (found.length !== ids.length) {
+      return NextResponse.json({ error: 'العرض غير موجود' }, { status: 404 });
+    }
+
+    await db.$transaction(async (tx) => {
+      for (const o of order) {
+        await tx.offer.update({ where: { id: o.id }, data: { sortOrder: o.sortOrder } });
+      }
+    });
+
+    await logAudit({
+      companyId,
+      userId: user.id,
+      action: 'OFFER_REORDERED',
+      entity: 'Product',
+      entityId: productId,
+      previousData: { order: found.map((o) => ({ id: o.id, sortOrder: o.sortOrder })) },
+      newData: { order },
+    });
+
+    await refreshLandingPages({ productId, companyId });
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    return apiErrorResponse(error);
+  }
+}

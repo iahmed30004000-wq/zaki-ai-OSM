@@ -28,11 +28,13 @@ import { PullPanel, useQueue } from '@/components/confirmation/PullPanel';
 import { ConfirmationPostponedScreen } from '@/components/screens/ConfirmationPostponedScreen';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
+import { AI_ASSIST_KEY } from '@/lib/ai-assistants';
 import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { arDate } from '@/lib/format';
 import { Money } from '@/components/ui/Money';
 import { cardTone, noAnswerWords } from '@/lib/no-answer-tone';
+import { POST_ORDER_ADDITION_AR } from '@/lib/post-order-offer-copy';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 
 /**
@@ -77,12 +79,16 @@ interface OrderRow {
    * and only the first can have an entry issue opened on it.
    */
   source: string | null;
+  /** The address this order goes to; the customer's own is the fallback. */
+  deliveryAddress?: string | null;
   moderatorId: string | null;
   moderator: { id: string; name: string } | null;
   createdBy: { id: string; name: string } | null;
   channel: { id: string; name: string } | null;
   customer: { id: string; fullName: string; phone: string; rawPhone: string; city: string; address: string };
   items: { id: string; productName: string; quantity: number; freeQuantity: number; lineTotal: number }[];
+  /** What the customer added after ordering — absent on a response from before this field existed. */
+  addOns?: { id: string; productName: string; quantity: number; total: number }[];
   _count: { contactAttempts: number; notes: number };
   risk?: RiskInfo | null;
   changeRequests?: { id: string }[];
@@ -191,6 +197,8 @@ export function ConfirmationMineScreen() {
    */
   const { currentUser } = useApp();
   const canLogContact = userCan(currentUser, 'orders.contact_log');
+  // «مساعدة» is the confirmation assistant: it needs the assistants' box besides the desk (PR-5).
+  const canAskAssistant = userCan(currentUser, AI_ASSIST_KEY);
   /**
    * «اسحب الطلب التالي» IS HERE, NOT ON ANOTHER SCREEN.
    *
@@ -642,7 +650,7 @@ export function ConfirmationMineScreen() {
 
                 <div className="text-sm text-[var(--sys-foreground)]">
                   {order.customer.fullName} · <span dir="ltr">{order.customer.rawPhone}</span> · {order.customer.city}
-                  <p className="text-xs text-[var(--sys-muted-foreground)] mt-1">{order.customer.address}</p>
+                  <p className="text-xs text-[var(--sys-muted-foreground)] mt-1">{order.deliveryAddress ?? order.customer.address}</p>
                 </div>
 
                 <ul className="text-xs text-[var(--sys-muted-foreground)] space-y-0.5">
@@ -650,6 +658,11 @@ export function ConfirmationMineScreen() {
                     <li key={it.id}>
                       {it.productName} × {it.quantity}
                       {it.freeQuantity > 0 && ` (+${it.freeQuantity} هدية)`}
+                    </li>
+                  ))}
+                  {order.addOns?.map((a) => (
+                    <li key={a.id}>
+                      {POST_ORDER_ADDITION_AR}: {a.productName} ×{a.quantity} ({a.total})
                     </li>
                   ))}
                 </ul>
@@ -902,9 +915,11 @@ export function ConfirmationMineScreen() {
                   {/* Reads this order and this customer's history, and says
                       what it would open with. It changes nothing — every
                       button that does is on either side of it. */}
+                  {canAskAssistant && (
                   <Action onClick={() => setDialog({ kind: 'assist', order })} icon={<RiSparkling2Line className="w-4 h-4" />}>
                     مساعدة
                   </Action>
+                  )}
                 </footer>
                 )}
               </article>

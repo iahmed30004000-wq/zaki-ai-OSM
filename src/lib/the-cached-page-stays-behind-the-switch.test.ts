@@ -137,7 +137,7 @@ describe('every save that changes what a page shows rebuilds it', () => {
   it.each([
     ['src/app/api/landing-pages/[id]/content/route.ts', 2], // publish, revert
     ['src/app/api/landing-pages/[id]/route.ts', 2], // settings (slug, published, product), delete
-    ['src/app/api/offers/route.ts', 1],
+    ['src/app/api/offers/route.ts', 2],  // create, reorder
     ['src/app/api/offers/[id]/route.ts', 3], // edit, retire, delete
     ['src/app/api/products/[id]/route.ts', 1],
     ['src/app/api/landing-pages/[id]/recommendations/route.ts', 1],

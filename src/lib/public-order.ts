@@ -9,8 +9,9 @@ import { computeCod, roundMinor } from './money';
 import { productCost } from './product-cost';
 import { matchRegion } from './regions';
 import { NEUTRAL_REFUSAL, isBlocked } from './blacklist';
-import { rateLimit } from './rate-limit';
-import { signAddonToken } from './landing-pages';
+import { rateLimit, releaseRateLimit } from './rate-limit';
+import { ADDON_TOKEN_MINUTES, signAddonToken } from './landing-pages';
+import { toLatinDigits } from './latin-digits';
 import { emitAppEvent } from './apps/events';
 import { notify } from './notify';
 import { flagRecentTwins } from './recent-twin-order';
@@ -284,6 +285,29 @@ export async function createPublicOrder(
   surface: SellingSurface,
   raw: unknown
 ): Promise<IntakeResult> {
+  /*
+   * THE SLOT IS GIVEN BACK WHEN NOTHING WAS SAVED.
+   *
+   * The one-order-per-phone slot is taken before the customer and the order are written, and a write that threw (a
+   * 500) used to leave it taken: the customer pressed «اطلب» again and was told «تم استلام طلبك» about an order that
+   * does not exist. `held` carries the slot's key out of the intake; if the intake throws before the order was
+   * saved, the slot is released and the second press is a real second try. Once saved it is never released — that
+   * is the case the slot is for.
+   */
+  const held: { key: string | null; saved: boolean } = { key: null, saved: false };
+  try {
+    return await takeOrder(surface, raw, held);
+  } catch (e) {
+    if (held.key && !held.saved) releaseRateLimit(held.key);
+    throw e;
+  }
+}
+
+async function takeOrder(
+  surface: SellingSurface,
+  raw: unknown,
+  held: { key: string | null; saved: boolean }
+): Promise<IntakeResult> {
   const { companyId, store } = surface;
   const principalProduct = surface.products[0];
   if (!principalProduct) {
@@ -365,6 +389,28 @@ export async function createPublicOrder(
   }
   const lines = resolved.lines;
 
+  /*
+   * AN ORDER WORTH NOTHING IS NOT AN ORDER — refused before anything is taken.
+   *
+   * A product at 0 with no offer, or an offer at 0, used to create an order for 0: a parcel that ships and a
+   * courier who collects nothing. The same `computeCod` that will charge the order is asked what the goods come
+   * to (it is pure, so asking early writes nothing), and a basket whose goods come to nothing is told the product is
+   * not available. Asked before the blacklist, the phone slot and the customer, so the refusal costs the visitor
+   * nothing and leaves no customer row behind. Gift units never reach it: they are free lines inside a paid one.
+   */
+  const money = computeCod({
+    lines: lines.map((l) => ({
+      quantity: l.quantity,
+      unitPrice: l.unitPrice,
+      freeQuantity: l.freeQuantity,
+    })),
+    discount: basketDiscount(lines),
+    minorUnit: store.country.minorUnit,
+  });
+  if (money.subtotal <= 0) {
+    return { ok: false, status: 400, body: { error: 'هذا المنتج غير متاح للطلب حاليًا' } };
+  }
+
   // ─── Blacklist, company-wide ───
   // The message says nothing: telling somebody they are blacklisted invites
   // them to try another number, and tells them which one is burned. The RAW
@@ -377,6 +423,8 @@ export async function createPublicOrder(
 
   // ─── Duplicate-submission protection (per phone, per door) ───
   const dup = rateLimit(`pub_order_dup:${surface.dedupeScope}:${normalizedPhone}`, 1, 5 * 60_000);
+  // The slot this request now holds — given back by `createPublicOrder` if the order is never saved.
+  if (dup.allowed) held.key = `pub_order_dup:${surface.dedupeScope}:${normalizedPhone}`;
   if (!dup.allowed) {
     return {
       ok: false,
@@ -391,7 +439,8 @@ export async function createPublicOrder(
     companyId,
     storeId: store.id,
     phone: normalizedPhone,
-    rawPhone: v.phone,
+    // Latin digits: the phone is typed on an Arabic keyboard, and «٠٧٩١٢٣٤٥٦٧» reached the courier as it was typed.
+    rawPhone: toLatinDigits(v.phone),
     fullName: v.full_name,
     // Stored when given; the phone above stays the identity.
     altPhone: v.alt_phone ? normalizePhoneNumber(v.alt_phone, store.country.code) : null,
@@ -460,15 +509,7 @@ export async function createPublicOrder(
   // this one did not, so the same offer cost two different amounts
   // depending on which door the customer came through, and the courier
   // collected the undiscounted figure. See `basketDiscount`.
-  const money = computeCod({
-    lines: lines.map((l) => ({
-      quantity: l.quantity,
-      unitPrice: l.unitPrice,
-      freeQuantity: l.freeQuantity,
-    })),
-    discount: basketDiscount(lines),
-    minorUnit: store.country.minorUnit,
-  });
+  // The one `computeCod` answer was asked above, before anything was written.
   const totalAmount = money.cod;
 
   /**
@@ -528,12 +569,33 @@ export async function createPublicOrder(
     select: { id: true },
   });
 
-  const order = await db.$transaction(async (tx) => {
-    let created: Awaited<ReturnType<typeof tx.order.create>> | null = null;
-    for (let attempt = 0; attempt < 5; attempt++) {
-      try {
+  /*
+   * THE NUMBER'S RETRY LIVES OUTSIDE THE TRANSACTION.
+   *
+   * Two orders taking the same number race, and the loser gets a P2002 on the insert. On Postgres a failed statement
+   * aborts the whole transaction, so a retry INSIDE it could not even run — every later statement answered «current
+   * transaction is aborted». The loop is out here instead: a collision rolls the transaction back and the whole of
+   * it runs again with the next attempt, like `ops/tracking/transfer`.
+   */
+  let placed: Awaited<ReturnType<typeof createOrderOnce>> | null = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      placed = await createOrderOnce(attempt);
+      break;
+    } catch (e: unknown) {
+      if ((e as { code?: string })?.code === 'P2002' && attempt < 4) continue;
+      throw e;
+    }
+  }
+  if (!placed) throw new Error('Failed to generate a unique order number');
+  const order = placed;
+  // From here the order exists: nothing below may give the phone slot back.
+  held.saved = true;
+
+  async function createOrderOnce(attempt: number) {
+    return db.$transaction(async (tx) => {
         const refs = await orderRefFields(tx, companyId, store.country.orderPrefix, attempt);
-        created = await tx.order.create({
+        const created = await tx.order.create({
           data: {
             companyId,
             countryId: store.countryId,
@@ -574,15 +636,12 @@ export async function createPublicOrder(
             offerId: head.offer?.id ?? null,
             customerNotes: v.notes || null,
             internalNotes: null,
+            // WHERE THIS PARCEL GOES, as the visitor typed it. The customer row keeps one address (the first they
+            // ever gave), and a returning customer who types a new street used to have the waybill printed with the
+            // old one. The order keeps its own; readers take it before the customer's.
+            deliveryAddress: v.address,
           },
         });
-        break;
-      } catch (e: unknown) {
-        if ((e as { code?: string })?.code === 'P2002' && attempt < 4) continue;
-        throw e;
-      }
-    }
-    if (!created) throw new Error('Failed to generate a unique order number');
 
     // Every line, gift units included: they consume stock and show in COGS.
     // `createMany` rather than a loop — one statement, and a basket that
@@ -635,6 +694,11 @@ export async function createPublicOrder(
             unitPrice: l.unitPrice,
           })),
           createdBy: 'public visitor',
+          // What was typed, when it is not what the customer row already says — so whoever opens the order can see
+          // the returning customer gave a different name or city this time.
+          ...(customer!.fullName !== v.full_name || customer!.city !== v.city
+            ? { typed: { name: v.full_name, city: v.city } }
+            : {}),
         }),
       },
     });
@@ -647,7 +711,8 @@ export async function createPublicOrder(
     }
 
     return created;
-  });
+    });
+  }
 
   // Same customer, same product, minutes apart: a flag on the history for the person who calls — never a refusal.
   // After the commit and never able to fail it (the five-minute limiter above refuses a second SUBMISSION; this notes
@@ -711,13 +776,27 @@ export async function createPublicOrder(
   // Server-provided upsells for the success screen. A storefront has no
   // recommendation list of its own yet, so it simply offers none — better
   // than inventing a suggestion nobody configured.
-  const recommendations = surface.landingPage
-    ? await db.landingPageRecommendation.findMany({
-        where: { landingPageId: surface.landingPage.id, isActive: true, product: { status: 'ACTIVE' } },
-        orderBy: { sortOrder: 'asc' },
-        select: { id: true, product: { select: { id: true, name: true, basePrice: true, image: true } } },
-      })
-    : [];
+  //
+  // Never fatal, and never free: a failed read is an empty list (the order is already saved, and a thank-you screen
+  // that fails to load is a customer who does not know their order was taken), and a suggestion with no name or no
+  // price is not offered — `add-product` would refuse it anyway, and a card that always fails teaches nothing.
+  let recommendations: {
+    id: string;
+    product: { id: string; name: string; basePrice: number; image: string | null } | null;
+  }[] = [];
+  try {
+    recommendations = surface.landingPage
+      ? await db.landingPageRecommendation.findMany({
+          where: { landingPageId: surface.landingPage.id, isActive: true, product: { status: 'ACTIVE' } },
+          orderBy: { sortOrder: 'asc' },
+          select: { id: true, product: { select: { id: true, name: true, basePrice: true, image: true } } },
+        })
+      : [];
+    recommendations = recommendations.filter((r) => !!r.product?.name && (r.product?.basePrice ?? 0) > 0);
+  } catch (e) {
+    console.error('Recommendations lookup failed (non-fatal):', e);
+    recommendations = [];
+  }
 
   /*
    * ─── THE OFFER AFTER THE ORDER ───
@@ -752,8 +831,20 @@ export async function createPublicOrder(
       head.product.id,
       store.country.minorUnit
     );
-    if (postOrderOffer) {
-      postOrderWindowMinutes = (await postOrderOfferSettings(companyId)).windowMinutes;
+    /*
+     * THE WINDOW THE SCREEN IS TOLD IS THE ONE THAT CLOSES FIRST.
+     *
+     * Two clocks stand on an add-on: the seller's window (`postOrderOfferSettings`, up to a day) and the link's own
+     * life (`ADDON_TOKEN_MINUTES`, thirty). The screen was told the first, so a seller who set sixty had a counter
+     * running for an hour on a link that died at thirty. Told the smaller, and told it whenever ANY add-on can be
+     * taken here — a recommendation counts as much as the offer, and it used to get the default fifteen whatever
+     * the seller had set.
+     */
+    if (postOrderOffer || recommendations.length > 0) {
+      postOrderWindowMinutes = Math.min(
+        (await postOrderOfferSettings(companyId)).windowMinutes,
+        ADDON_TOKEN_MINUTES
+      );
     }
   } catch (e) {
     console.error('Post-order offer lookup failed (non-fatal):', e);

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { apiErrorResponse } from '@/lib/api-error';
 import { requireContext } from '@/lib/geo-context';
-import { getPermissionScope } from '@/lib/authorization';
+import { can, getPermissionScope } from '@/lib/authorization';
 import { rateLimit } from '@/lib/rate-limit';
 import {
   AiEndpointMissing,
@@ -53,7 +53,9 @@ export async function POST() {
   try {
     const { user, companyId, storeId } = await requireContext();
 
-    if (!getPermissionScope(user, 'orders.view')) {
+    // The numbers are the person's own scope of `orders.view`, and the sentence is the assistants' — both keys, or neither
+    // (PR-5: «لخّصلي اليوم» was offered to everybody who could open the box, and wakes a model on every press).
+    if (!getPermissionScope(user, 'orders.view') || !can(user, 'ai.assist')) {
       return NextResponse.json({ error: 'لا صلاحية' }, { status: 403 });
     }
 

@@ -22,6 +22,7 @@ import {
   TrackingScope,
 } from './tracking-types';
 import { validateTrackingPixelId } from './tracking-validation';
+import { orderEventOf } from '@/lib/conversions/types';
 
 /**
  * EVERY COLUMN OF A PIXEL THAT MAY LEAVE THE SERVER.
@@ -99,12 +100,21 @@ export async function pixelsWithServerPurchase(companyId: string): Promise<Set<s
         companyId,
         enabled: true,
         trigger: 'order.confirmed',
-        eventName: 'Purchase',
+        // The two names a pixel reports an order as; which one is THIS pixel's is decided below, per row.
+        eventName: { in: ['Purchase', 'Lead'] },
         pixel: { enabled: true, capiToken: { not: null } },
       },
-      select: { pixelId: true },
+      select: { pixelId: true, eventName: true, pixel: { select: { orderEvent: true } } },
     });
-    return new Set(rows.map((r) => r.pixelId));
+    /*
+     * COVERED = the server's event IS the pixel's order event. A pixel that reports orders as leads sends `Lead` from
+     * the browser, so a server «Lead» at confirmation covers it and a server «Purchase» does not (the browser still
+     * has its Lead to send, and it is a different event); the reverse holds for a pixel on the default. Matching the
+     * NAME to the pixel's own goal is what stops the browser and the server counting one order twice.
+     */
+    return new Set(
+      rows.filter((r) => r.eventName === orderEventOf(r.pixel ?? {})).map((r) => r.pixelId)
+    );
   } catch {
     return new Set();
   }

@@ -1,7 +1,7 @@
 import { db } from '../db';
 import { decryptSecret } from '../secrets';
 import { BACKOFF, MAX_ATTEMPTS } from '../apps/events';
-import { buildUserData, matchQuality } from './hash';
+import { buildUserData, customerPhoneFacts, matchQuality } from './hash';
 import { sendEvents, explainCapiError, CapiError, type CapiEvent } from './meta-capi';
 import {
   conversionEventId, isTooOldForMeta, META_EVENT_MAX_AGE_DAYS, salesPageOf,
@@ -175,7 +175,10 @@ export async function deliverConversion(deliveryId: string): Promise<boolean> {
           id: true, orderNumber: true, totalAmount: true, collectedAmount: true,
           currency: true, createdAt: true, confirmedAt: true, deliveredAt: true,
           productId: true, landingPageId: true, landingPage: { select: { slug: true } },
-          customer: { select: { id: true, fullName: true, phone: true, rawPhone: true, city: true, country: true } },
+          // The ORDER's country decides the phone's dial code and the country Meta is told. `Customer.country` is
+          // «EG» on every row (the column default, never set by any door), so it is not read.
+          country: { select: { code: true } },
+          customer: { select: { id: true, fullName: true, phone: true, rawPhone: true, city: true } },
         },
       },
     },
@@ -226,11 +229,11 @@ export async function deliverConversion(deliveryId: string): Promise<boolean> {
   const userData = buildUserData({
     // rawPhone is how the customer wrote it; phone is already digits. Either
     // normalises to the same fingerprint, and preferring the stored digits
-    // avoids a display format ever reaching the hash.
-    phone: c.phone || c.rawPhone,
+    // avoids a display format ever reaching the hash. The dial code and the
+    // country come from the ORDER's country — see `customerPhoneFacts`.
+    ...customerPhoneFacts(c.phone || c.rawPhone, order.country?.code),
     fullName: c.fullName,
     city: c.city,
-    country: c.country,
     externalId: c.id,
   });
 

@@ -147,8 +147,9 @@ export interface TrackingPixelView {
   /**
    * THIS PIXEL'S PURCHASE COMES FROM THE SERVER, AT CONFIRMATION.
    *
-   * True when the company has an enabled conversion named `Purchase` on «تأكّد الطلب» that this pixel can
-   * actually send (the pixel is on and holds its token). The browser then does NOT send Purchase to it — at
+   * True when the company has an enabled conversion on «تأكّد الطلب» named like THIS PIXEL'S order event (`Purchase`,
+   * or `Lead` for a pixel whose `orderEvent` is Lead) that the pixel can
+   * actually send (the pixel is on and holds its token). The browser then does NOT send the order event to it — at
    * the form's submit, or for an add-on — because Meta would count the submission and the confirmation as
    * two purchases. Absent/false: the browser sends Purchase as it always did. Set by the server, never by
    * the client.

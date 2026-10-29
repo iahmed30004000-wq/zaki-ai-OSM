@@ -75,17 +75,29 @@ describe('the browser engine', () => {
 describe('which pixels the server covers', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('asks for exactly the conversions that WILL be sent: on, named Purchase, on the confirmation, on a pixel that is on and holds its token', async () => {
-    db.customConversion.findMany.mockResolvedValue([{ pixelId: 'p1' }]);
+  it('asks for exactly the conversions that WILL be sent: on, named like a pixel order event, on the confirmation, on a pixel that is on and holds its token', async () => {
+    db.customConversion.findMany.mockResolvedValue([{ pixelId: 'p1', eventName: 'Purchase', pixel: { orderEvent: 'Purchase' } }]);
     const set = await pixelsWithServerPurchase('co');
     expect([...set]).toEqual(['p1']);
     expect(db.customConversion.findMany.mock.calls[0][0].where).toEqual({
       companyId: 'co',
       enabled: true,
       trigger: 'order.confirmed',
-      eventName: 'Purchase',
+      // CHANGED (ط34): was `eventName: 'Purchase'`. The name that covers a pixel is ITS order event, so both names are
+      // read and the row is kept only when the name equals that pixel's own goal (the next tests).
+      eventName: { in: ['Purchase', 'Lead'] },
       pixel: { enabled: true, capiToken: { not: null } },
     });
+  });
+
+  it('a pixel that reports orders as leads is covered by a server LEAD at confirmation, and not by a server Purchase', async () => {
+    db.customConversion.findMany.mockResolvedValue([
+      { pixelId: 'lead-with-lead', eventName: 'Lead', pixel: { orderEvent: 'Lead' } },
+      { pixelId: 'lead-with-purchase', eventName: 'Purchase', pixel: { orderEvent: 'Lead' } },
+      { pixelId: 'plain-with-lead', eventName: 'Lead', pixel: { orderEvent: 'Purchase' } },
+      { pixelId: 'plain-with-purchase', eventName: 'Purchase', pixel: { orderEvent: 'Purchase' } },
+    ]);
+    expect([...(await pixelsWithServerPurchase('co'))].sort()).toEqual(['lead-with-lead', 'plain-with-purchase']);
   });
 
   it('NEGATIVE: if it cannot be read, nothing is covered — the browser keeps sending Purchase', async () => {
@@ -96,7 +108,7 @@ describe('which pixels the server covers', () => {
   it('flags only the pixel the conversion belongs to, and leaves the others unflagged', async () => {
     const row = (id: string) => ({ id, platform: 'META', name: id, pixelId: '123456789012345', scope: 'GLOBAL', enabled: true, storeId: null, countryId: null });
     db.trackingPixel.findMany.mockResolvedValue([row('p1'), row('p2')]);
-    db.customConversion.findMany.mockResolvedValue([{ pixelId: 'p2' }]);
+    db.customConversion.findMany.mockResolvedValue([{ pixelId: 'p2', eventName: 'Purchase', pixel: { orderEvent: 'Purchase' } }]);
     const views = await getCompanyTrackingPixels('co');
     expect(views.find((v) => v.id === 'p1')?.purchaseOnServer).toBeUndefined();
     expect(views.find((v) => v.id === 'p2')?.purchaseOnServer).toBe(true);

@@ -883,6 +883,11 @@ export async function PATCH(
     if (customerNotes !== undefined) {
       updateData.customerNotes = customerNotes;
     }
+    // A corrected address is the PARCEL's too: the waybill and the courier read the order's own address before the
+    // customer row's, so leaving the order's copy untouched would print the old street under the new one.
+    if (customerAddress !== undefined) {
+      updateData.deliveryAddress = customerAddress;
+    }
     if (postponedUntil !== undefined) {
       updateData.postponedUntil = postponedUntil ? new Date(postponedUntil) : null;
     }

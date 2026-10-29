@@ -254,6 +254,9 @@ const AGENT = person('u1', 'CONFIRMATION_AGENT', {
   'customers.view_basic': 'ALL_COMPANY',
   'products.view': 'ALL_COMPANY',
   'ai.use': 'ALL_COMPANY',
+  // OLD → NEW (PR-5): the confirmation assistant asks the desk key AND «المساعدون الأذكياء». The migration gives the shipped
+  // agent both, so this fixture is the agent as shipped; without it the door answered 403 before it ever asked about the ORDER.
+  'ai.assist': 'ALL_COMPANY',
   'confirmation.pull': 'ALL_COMPANY',
   'confirmation.work': 'ALL_COMPANY',
   'confirmation.issues': 'ALL_COMPANY',

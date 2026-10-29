@@ -388,6 +388,17 @@ export async function addPostOrderOffer(params: {
 
   const written = await db.$transaction(async (tx) => {
     /*
+     * THE ORDER'S ROW IS LOCKED FIRST — two presses at the same moment add once.
+     *
+     * Both read the order and the count above, both passed, and both wrote: the total grew by the bundle twice (20
+     * became 50 with the offer at 15). An UPDATE holds the row until the transaction ends, so the second press waits
+     * here and then reads the order AS IT IS NOW — the add-on the first one wrote, and any confirmation or call that
+     * landed meanwhile. `version` moves with the lock, so a staff member saving from a copy older than this add-on
+     * is told the order changed instead of overwriting it.
+     */
+    await tx.order.update({ where: { id: order.id }, data: { version: { increment: 1 } }, select: { id: true } });
+
+    /*
      * «مرة وحدة» UNDER THE TRANSACTION TOO.
      *
      * The count above is read before the gates and is what produces the
@@ -399,6 +410,26 @@ export async function addPostOrderOffer(params: {
       where: { orderId: order.id, offerId: { not: null } },
     });
     if (already > 0) return null;
+
+    // And the gates again, on the row as the lock now shows it: the first read is the honest sentence, this is the race.
+    const latest = await tx.order.findFirst({
+      where: { id: order.id },
+      select: { status: true, confirmationStatus: true, createdAt: true, _count: { select: { contactAttempts: true } } },
+    });
+    if (latest) {
+      const again = postOrderGate(
+        {
+          status: latest.status,
+          confirmationStatus: latest.confirmationStatus,
+          createdAt: latest.createdAt,
+          contactAttempts: latest._count.contactAttempts,
+          postOrderAddOns: 0,
+        },
+        windowMinutes,
+        now
+      );
+      if (!again.allowed) return { kind: 'gate' as const, reason: again.reason };
+    }
 
     const addOn = await tx.orderAddOn.create({
       data: {
@@ -468,10 +499,11 @@ export async function addPostOrderOffer(params: {
       },
     });
 
-    return { addOn, updated };
+    return { kind: 'added' as const, addOn, updated };
   });
 
   if (!written) return refuse('ALREADY_ADDED');
+  if (written.kind === 'gate') return refuse(written.reason);
 
   return {
     ok: true,

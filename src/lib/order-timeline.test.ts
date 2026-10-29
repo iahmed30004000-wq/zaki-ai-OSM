@@ -83,7 +83,7 @@ describe('orderTimeline', () => {
 
     const [event] = await orderTimeline(db as never, 'o1');
     expect(event.title).toBe('إنشاء الطلب');
-    expect(event.detail).toBe('المصدر: اسرار الجمال · طريقة الإدخال: AI_PASTE · أدخله: مودريتور');
+    expect(event.detail).toBe('المصدر: اسرار الجمال · طريقة الإدخال: لصق نص بالذكاء · أدخله: مودريتور');
     expect(event.detail).not.toContain('{');
     expect(event.detail).not.toContain('"');
   });
@@ -143,5 +143,70 @@ describe('orderTimeline', () => {
 
   it('is empty, not broken, for an order with no events', async () => {
     await expect(orderTimeline(db as never, 'o1')).resolves.toEqual([]);
+  });
+});
+
+describe('ط25 — what the customer added after ordering is on the history, in words', () => {
+  /** The column is TEXT: every real row arrives as a JSON string, not as an object. */
+  const stored = (obj: unknown) => JSON.stringify(obj);
+
+  it('the entry has an Arabic title and says what, how many, how much and from which offer', async () => {
+    db.orderActivity.findMany.mockResolvedValue([
+      {
+        id: 'a1', createdAt: at('2026-09-02T10:00:00Z'), action: 'UPSELL_ADDED', userId: null,
+        metadata: stored({ source: 'post-order offer', addOnId: 'x', offerName: 'علبة كمان', product: 'شامبو', quantity: 1, total: 15, windowMinutes: 15 }),
+      },
+    ]);
+    const [event] = await orderTimeline(db as never, 'o1');
+    expect(event.title).toBe('زيادة بعد الطلب');
+    expect(event.detail).toBe('المصدر: عرض بعد الطلب · العرض: علبة كمان · المنتج: شامبو · الكمية: 1 · المجموع: 15');
+    // Nothing internal leaks: the add-on id and the window have no label, so they are dropped.
+    expect(event.detail).not.toContain('addOnId');
+    expect(event.detail).not.toContain('windowMinutes');
+  });
+
+  it('an add-on from the recommendation list reads in Arabic too (its source was English)', async () => {
+    db.orderActivity.findMany.mockResolvedValue([
+      { id: 'a2', createdAt: at('2026-09-02T10:00:00Z'), action: 'UPSELL_ADDED', userId: null,
+        metadata: stored({ source: 'Landing Page', product: 'شامبو', quantity: 1, price: 11, landingPage: 'صفحة الصيف' }) },
+    ]);
+    const [event] = await orderTimeline(db as never, 'o1');
+    expect(event.detail).toBe('المصدر: صفحة هبوط · المنتج: شامبو · الكمية: 1 · الصفحة: صفحة الصيف');
+  });
+
+  it('a call outcome is a word, not a code, and the caller and notes show', async () => {
+    db.orderActivity.findMany.mockResolvedValue([
+      { id: 'a3', createdAt: at('2026-09-02T10:00:00Z'), action: 'CALL_MADE', userId: 'u1',
+        metadata: stored({ callResult: 'NO_ANSWER', notes: 'مشغول', caller: 'سارة' }) },
+    ]);
+    const [event] = await orderTimeline(db as never, 'o1');
+    expect(event.detail).toBe('نتيجة الاتصال: لم يرد · ملاحظات: مشغول · المتصل: سارة');
+  });
+
+  it('NEGATIVE: JSON that is broken shows no details and breaks nothing', async () => {
+    db.orderActivity.findMany.mockResolvedValue([
+      { id: 'a4', createdAt: at('2026-09-02T10:00:00Z'), action: 'ORDER_UPDATED', userId: 'u1', metadata: '{not json' },
+    ]);
+    const [event] = await orderTimeline(db as never, 'o1');
+    expect(event.title).toBe('تعديل بيانات الطلب');
+    expect(event.detail).toBeNull();
+  });
+
+  it('NEGATIVE: a key nobody wrote a label for is not shown, and an unknown value is shown as it is', async () => {
+    db.orderActivity.findMany.mockResolvedValue([
+      { id: 'a5', createdAt: at('2026-09-02T10:00:00Z'), action: 'ORDER_CREATED', userId: null,
+        metadata: stored({ source: 'متجر الورد', secretFlag: 'x', lines: [{ product: 'a' }], createdBy: 'public visitor' }) },
+    ]);
+    const [event] = await orderTimeline(db as never, 'o1');
+    expect(event.detail).toBe('المصدر: متجر الورد · أدخله: زائر');
+  });
+
+  it('NEGATIVE: an activity with no metadata at all has no details', async () => {
+    db.orderActivity.findMany.mockResolvedValue([
+      { id: 'a6', createdAt: at('2026-09-02T10:00:00Z'), action: 'UPSELL_ADDED', userId: null, metadata: null },
+    ]);
+    const [event] = await orderTimeline(db as never, 'o1');
+    expect(event.title).toBe('زيادة بعد الطلب');
+    expect(event.detail).toBeNull();
   });
 });

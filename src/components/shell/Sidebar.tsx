@@ -331,7 +331,12 @@ export function Sidebar({
       >
         {/* A minimum, like the header beside it (Header.tsx): the wordmark is shorter than 72px, so this
             draws exactly as before, and the stylesheet carries one height rule for both instead of two. */}
-        <div className="rail-center relative flex items-center gap-2 min-h-[72px] px-5 border-b border-[var(--sys-border)] shrink-0">
+        {/* And it is as tall as the header is: when the header wraps to a second row the two borders
+            used to part company. The header writes its height; 72 stays until it has. */}
+        <div
+          className="rail-center relative flex items-center gap-2 min-h-[72px] px-5 border-b border-[var(--sys-border)] shrink-0"
+          style={{ minHeight: 'var(--sys-header-h, 72px)' }}
+        >
           {/* The theme's own mood, in one of the three places it is allowed:
               above the menu, where the wordmark is — and not one pixel of it
               behind a figure. It draws nothing unless the person's level is

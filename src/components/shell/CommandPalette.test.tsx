@@ -59,7 +59,8 @@ const SUMMARY = {
     { key: 'today', label: 'طلبات اليوم', count: 6, rule: 'أُنشئت اليوم في هذا المتجر', href: '/orders' },
     { key: 'postponed', label: 'مؤجّلة', count: 2, rule: 'حالتها «مؤجّل»', href: '/orders?state=POSTPONED' },
   ],
-  may: { pull: true, people: true, wide: true },
+  // `today` (PR-5): the server says «لخّصلي اليوم» is for this account — it holds orders.view AND the assistants' key.
+  may: { pull: true, people: true, wide: true, today: true },
 };
 
 beforeEach(() => {
@@ -442,6 +443,30 @@ describe('«اسحب» from the palette is the pull screen’s own door', () => 
   it('and goes to «طلباتي» when the pull was granted', async () => {
     await pressPull();
     expect(push).toHaveBeenCalledWith('/confirmation/mine');
+  });
+});
+
+describe('«لخّصلي اليوم» is offered only to who the server said it answers (PR-5)', () => {
+  async function openedWith(may: Record<string, unknown>) {
+    fetchMock.mockImplementation(async () => ({ ok: true, status: 200, json: async () => ({ ...SUMMARY, may }) }));
+    open();
+    await act(async () => undefined);
+    await act(async () => undefined);
+  }
+
+  it('is there when `today` is true', async () => {
+    await openedWith({ pull: false, people: false, wide: false, today: true });
+    expect(screen.queryByText('لخّصلي اليوم')).toBeTruthy();
+  });
+
+  it('NEGATIVE: is not there when `today` is false — a button that only answers «لا صلاحية»', async () => {
+    await openedWith({ pull: true, people: true, wide: true, today: false });
+    expect(screen.queryByText('لخّصلي اليوم'), 'عرضٌ لمن لا يُجاب').toBeNull();
+  });
+
+  it('NEGATIVE: is not there in an older answer that never said (absent is not «yes»)', async () => {
+    await openedWith({ pull: true, people: true, wide: true });
+    expect(screen.queryByText('لخّصلي اليوم')).toBeNull();
   });
 });
 

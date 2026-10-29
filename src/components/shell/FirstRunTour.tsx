@@ -160,6 +160,10 @@ export function FirstRunTour() {
   useEffect(() => {
     if (!currentUser || currentUser.tourDoneAt) return;
     if (skippedThisSession(currentUser.id)) return;
+    // A dialog that is already open at first paint would sit UNDER the veil
+    // (the Modal is z-50, the veil z-60) and could not be pressed. The tour
+    // waits for the next visit rather than burying somebody's open work.
+    if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
     const here = STEPS.filter((s) => {
       const el = document.querySelector(`[data-tour="${s.anchor}"]`);
       return el !== null && isShown(el);
@@ -180,7 +184,15 @@ export function FirstRunTour() {
   useEffect(() => {
     if (!open || !current) return;
     const el = document.querySelector(`[data-tour="${current.anchor}"]`);
-    if (!el) return;
+    if (!el) {
+      // The thing this step points at left the page between two steps. A card
+      // (and a veil) drawn against nothing teaches nothing and swallows every
+      // press, so the walk moves on, or ends, instead.
+      setRect(null);
+      if (step + 1 < plan.length) setStep(step + 1);
+      else setOpen(false);
+      return;
+    }
     setRect(el.getBoundingClientRect());
     const onMove = () => setRect(el.getBoundingClientRect());
     window.addEventListener('resize', onMove);
@@ -189,7 +201,7 @@ export function FirstRunTour() {
       window.removeEventListener('resize', onMove);
       window.removeEventListener('scroll', onMove, true);
     };
-  }, [open, step, current]);
+  }, [open, step, current, plan.length]);
 
   /** Writes the dismissal to the row, and never throws at the person. */
   const dismissForever = useCallback(async () => {
@@ -232,10 +244,38 @@ export function FirstRunTour() {
   useEffect(() => {
     skipRef.current = skip;
   });
+  const cardRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') skipRef.current();
+      if (e.key === 'Escape') {
+        skipRef.current();
+        return;
+      }
+      /**
+       * TAB STAYS INSIDE THE CARD.
+       *
+       * The veil swallows the pointer, but the keyboard walked straight past
+       * it: the third Tab landed on a link in the dimmed page behind, which a
+       * person reading the tour cannot see. The card's own controls are the
+       * only stops, and the last one wraps to the first.
+       */
+      if (e.key !== 'Tab' || !cardRef.current) return;
+      const stops = [
+        ...cardRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])'),
+      ];
+      if (stops.length === 0) return;
+      const here = document.activeElement as HTMLElement | null;
+      const first = stops[0];
+      const last = stops[stops.length - 1];
+      const inside = !!here && cardRef.current.contains(here) && here !== cardRef.current;
+      if (e.shiftKey && (!inside || here === first)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (!inside || here === last)) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -243,7 +283,6 @@ export function FirstRunTour() {
 
   // Focus goes into the card when a step opens, so Tab/Enter work on the
   // buttons it shows and not on the dimmed page behind it.
-  const cardRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (open && rect) cardRef.current?.focus();
   }, [open, step, rect === null]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -252,64 +291,73 @@ export function FirstRunTour() {
 
   return (
     <div dir="rtl" data-testid="first-run-tour">
-      {/* A dim veil, under the card and above the page: the tour interrupts
+      {/* THE VEIL IS DRAWN WITH THE CARD, NEVER WITHOUT IT.
+          The card needs a measured anchor and the veil did not, so for the
+          moment between «the tour opened» and «its anchor was measured» — or
+          for good, when the anchor vanished — the screen was dimmed, every
+          press was swallowed and there was nothing to press. Both come
+          together or neither does.
+
+          A dim veil, under the card and above the page: the tour interrupts
           on purpose, and an interrupting card that competes with a bright
           page behind it is read as one more widget. Pointer-events stay on
-          the veil so a stray click dismisses nothing — the buttons decide. */}
-      <div className="fixed inset-0 z-[60] bg-[var(--sys-background)]/60" aria-hidden />
-
-      {/* Same z as the veil: the card comes later in the DOM, so it paints
-          above it. Both classes already ship elsewhere, so the tour adds no
-          CSS rule (the 94.04 KB first-load ceiling in quality-gates.test.ts). */}
+          the veil so a stray click dismisses nothing — the buttons decide.
+          The card comes later in the DOM at the same layer, so it paints
+          above the veil. Both classes already ship elsewhere, so the tour
+          adds no CSS rule (the 94.04 KB first-load ceiling in
+          quality-gates.test.ts). */}
       {rect && (
-        <div
-          ref={cardRef}
-          tabIndex={-1}
-          role="dialog"
-          aria-label="الجولة الأولى"
-          style={{ top: place(rect).top, left: place(rect).left }}
-          className="fixed z-[60] w-[320px] outline-none rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-4 shadow-raised"
-        >
-          <div className="flex items-start gap-3">
-            <current.icon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--sys-primary)]" aria-hidden />
-            <p className="text-sm leading-relaxed text-[var(--sys-heading)]">{current.text}</p>
+        <>
+          <div className="fixed inset-0 z-[60] bg-[var(--sys-background)]/60" aria-hidden />
+          <div
+            ref={cardRef}
+            tabIndex={-1}
+            role="dialog"
+            aria-label="الجولة الأولى"
+            style={{ top: place(rect).top, left: place(rect).left }}
+            className="fixed z-[60] w-[320px] outline-none rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-4 shadow-raised"
+          >
+            <div className="flex items-start gap-3">
+              <current.icon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--sys-primary)]" aria-hidden />
+              <p className="text-sm leading-relaxed text-[var(--sys-heading)]">{current.text}</p>
+            </div>
+
+            <p className="mt-3 text-xs text-[var(--sys-muted-foreground)] tabular-nums">
+              خطوة {step + 1} من {plan.length}
+            </p>
+
+            <div className="mt-3 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={skip}
+                className="h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border)] text-xs font-medium text-[var(--sys-muted-foreground)] hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)]"
+              >
+                تخطّي
+              </button>
+              <button
+                type="button"
+                onClick={next}
+                disabled={busy}
+                className="inline-flex h-11 md:h-10 items-center gap-1 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-medium disabled:opacity-50"
+              >
+                {step + 1 < plan.length ? 'التالي' : 'خلصت'}
+                <RiArrowLeftLine className="icon-mirror h-4 w-4" aria-hidden />
+              </button>
+            </div>
+
+            {step === 0 && (
+              <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-[var(--sys-muted-foreground)]">
+                <input
+                  type="checkbox"
+                  checked={neverAgain}
+                  onChange={(e) => setNeverAgain(e.target.checked)}
+                  className="h-4 w-4 rounded-sm border-[var(--sys-border)]"
+                />
+                ما بدي أشرح مرة ثانية
+              </label>
+            )}
           </div>
-
-          <p className="mt-3 text-xs text-[var(--sys-muted-foreground)] tabular-nums">
-            خطوة {step + 1} من {plan.length}
-          </p>
-
-          <div className="mt-3 flex items-center justify-between gap-2">
-            <button
-              type="button"
-              onClick={skip}
-              className="h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border)] text-xs font-medium text-[var(--sys-muted-foreground)] hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)]"
-            >
-              تخطّي
-            </button>
-            <button
-              type="button"
-              onClick={next}
-              disabled={busy}
-              className="inline-flex h-11 md:h-10 items-center gap-1 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-medium disabled:opacity-50"
-            >
-              {step + 1 < plan.length ? 'التالي' : 'خلصت'}
-              <RiArrowLeftLine className="icon-mirror h-4 w-4" aria-hidden />
-            </button>
-          </div>
-
-          {step === 0 && (
-            <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-[var(--sys-muted-foreground)]">
-              <input
-                type="checkbox"
-                checked={neverAgain}
-                onChange={(e) => setNeverAgain(e.target.checked)}
-                className="h-4 w-4 rounded-sm border-[var(--sys-border)]"
-              />
-              ما بدي أشرح مرة ثانية
-            </label>
-          )}
-        </div>
+        </>
       )}
     </div>
   );

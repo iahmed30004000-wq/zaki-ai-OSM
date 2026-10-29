@@ -34,6 +34,31 @@ export function Header({
 }) {
   const logout = () => signOut('manual');
 
+  /**
+   * THE BAR SAYS HOW TALL IT IS, SO NOTHING HAS TO GUESS.
+   *
+   * It grows when its group wraps (see below), which made every «the screen
+   * minus 72» wrong by the extra row: the WhatsApp inbox ran past the bottom
+   * of the window, and the side menu's head line stopped meeting this bar's
+   * border. The height is written once, on the document, where both read it;
+   * each keeps its old 72 as the fallback until this has measured.
+   */
+  const bar = React.useRef<HTMLElement>(null);
+  React.useEffect(() => {
+    const el = bar.current;
+    if (!el) return;
+    const root = document.documentElement;
+    const publish = () => root.style.setProperty('--sys-header-h', `${el.offsetHeight}px`);
+    publish();
+    if (typeof ResizeObserver === 'undefined') return;
+    const watch = new ResizeObserver(publish);
+    watch.observe(el);
+    return () => {
+      watch.disconnect();
+      root.style.removeProperty('--sys-header-h');
+    };
+  }, []);
+
   /*
    * AT LEAST 72px TALL, NEVER EXACTLY 72px.
    *
@@ -49,7 +74,7 @@ export function Header({
    * down instead of covering it. `py-2` keeps the wrapped rows off the bar's own border.
    */
   return (
-    <header className="sticky top-0 z-30 min-h-[72px] py-2 bg-[var(--sys-card)] border-b border-[var(--sys-border)] flex items-center gap-3 px-4 md:px-6">
+    <header ref={bar} className="sticky top-0 z-30 min-h-[72px] py-2 bg-[var(--sys-card)] border-b border-[var(--sys-border)] flex items-center gap-3 px-4 md:px-6">
       <button
         onClick={onMenuClick}
         className="md:hidden flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-[var(--sys-surface)]"

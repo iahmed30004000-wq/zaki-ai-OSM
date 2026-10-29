@@ -101,7 +101,9 @@ const answer = (rows: unknown[]) => ({
 const openDialog = async (row: unknown) => {
   apiJson.mockResolvedValue(answer([row]));
   render(<ReturnsScreen />);
-  const receive = await waitFor(() => screen.getAllByRole('button', { name: 'استلام' })[0]);
+  // The first test of the file pays for the first render, and the default 1 s of `waitFor` is too short under a parallel
+  // full run (RV103). The wait is longer; what is asserted is not.
+  const receive = await waitFor(() => screen.getAllByRole('button', { name: 'استلام' })[0], { timeout: 4000 });
   await userEvent.click(receive);
   return screen.getByText('استلام مرتجع');
 };
@@ -223,5 +225,30 @@ describe('the extra action gates the count', () => {
     expect(screen.queryByText(/هل رجعت القطع/)).toBeNull();
     // Straight to the count, as it always was.
     expect(screen.getByText('سليم')).toBeTruthy();
+  });
+});
+
+describe('the reason column speaks Arabic', () => {
+  it('prints the Arabic label of a return reason, never the code', async () => {
+    apiJson.mockResolvedValue(answer([{ ...PARTIAL_ROW, returnReason: 'CUSTOMER_REFUSED' }]));
+    render(<ReturnsScreen />);
+    await waitFor(() => screen.getAllByText('العميل رفض'));
+    expect(screen.queryByText('CUSTOMER_REFUSED')).toBeNull();
+  });
+
+  it('and a code nobody labelled reads «أخرى», not the raw code', async () => {
+    apiJson.mockResolvedValue(answer([{ ...PARTIAL_ROW, returnReason: 'SOME_NEW_CODE' }]));
+    render(<ReturnsScreen />);
+    await waitFor(() => screen.getAllByText('أخرى'));
+    expect(screen.queryByText('SOME_NEW_CODE')).toBeNull();
+  });
+});
+
+describe('a reason somebody wrote is shown as written', () => {
+  it('shows a free Arabic sentence untouched, not «أخرى»', async () => {
+    apiJson.mockResolvedValue(answer([{ ...PARTIAL_ROW, returnReason: 'أُغلق كخسارة — لم تُستلم البضاعة. ضاعت في الطريق' }]));
+    render(<ReturnsScreen />);
+    await waitFor(() => screen.getAllByText('أُغلق كخسارة — لم تُستلم البضاعة. ضاعت في الطريق'));
+    expect(screen.queryByText('أخرى')).toBeNull();
   });
 });

@@ -33,8 +33,14 @@ import { flagRecentTwins } from '@/lib/recent-twin-order';
  * mode 2: { parsed, confirm: true } -> create customer + order from confirmed fields
  */
 
-/** Why the model did not read the text, when it did not. */
-export type AiSkipped = 'NOT_LOCAL' | 'NOT_CONFIGURED' | 'FAILED' | null;
+/**
+ * Why the model did not read the text, when it did not.
+ *
+ * `NO_PERMISSION` — this person does not hold «المساعدين الأذكياء داخل الشاشات» (`ai.assist`). The model is not asked at
+ * all: not a refusal after the call, a call that never starts, so the pasted text (a customer's name, phone and address)
+ * goes nowhere. The deterministic parser reads it, exactly as it does on the day no model is configured.
+ */
+export type AiSkipped = 'NO_PERMISSION' | 'NOT_LOCAL' | 'NOT_CONFIGURED' | 'FAILED' | null;
 
 /**
  * THE OFFER WHOSE BUNDLE IS EXACTLY THIS MANY PIECES.
@@ -608,8 +614,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'الصق نص الطلب أولاً' }, { status: 400 });
     }
 
-    // Try AI first, fallback to deterministic parser
-    const attempt = await aiAssistedParse(companyId, text);
+    // Try AI first — for the person who holds the assistants' key — and fall back to the deterministic parser.
+    // Without `ai.assist` the model is never asked (see `AiSkipped`): the order is entered all the same, by the rules.
+    const attempt: Awaited<ReturnType<typeof aiAssistedParse>> = can(user, 'ai.assist')
+      ? await aiAssistedParse(companyId, text)
+      : { parsed: null, skipped: 'NO_PERMISSION' };
     const aiSkipped = attempt.skipped;
     let parsed = attempt.parsed;
     let engine = 'ai';
