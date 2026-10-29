@@ -78,7 +78,7 @@ export function sightWhere(sight: TrackingSight): Prisma.OrderWhereInput | null 
 
 /** The row without the courier's money. */
 export function withoutMoney<T extends object>(row: T): Omit<T, MoneyField> {
-  const out: Record<string, unknown> = { ...row };
+  const out = { ...row } as Record<string, unknown>;
   for (const f of MONEY_FIELDS) delete out[f];
   return out as Omit<T, MoneyField>;
 }
