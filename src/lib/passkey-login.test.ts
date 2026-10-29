@@ -100,7 +100,7 @@ describe('signing in with a fingerprint alone', () => {
 
   it('is rate limited by address before anyone is named, and by account after', () => {
     const src = login();
-    expect(src).toMatch(/rateLimit\(`passkey-login:\$\{ip\}`/);
+    expect(src).toMatch(/rateLimitByIp\('passkey-login', ip,/);
     expect(src).toMatch(/rateLimit\(`passkey:user:\$\{credential\.userId\}`/);
   });
 });
