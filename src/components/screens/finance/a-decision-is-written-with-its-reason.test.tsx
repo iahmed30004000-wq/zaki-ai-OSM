@@ -60,7 +60,7 @@ describe('the explanation', () => {
     type('تفسير القرار', 'خصم');
     fireEvent.click(screen.getByRole('button', { name: /اعتُمد رقم الشركة/ }));
 
-    expect(await screen.findByText('اكتب تفسير القرار — 5 أحرف على الأقل')).toBeTruthy();
+    expect(await screen.findByText('اكتب تفسيراً واضحاً: 5 أحرف على الأقل، منها 3 حروف أو أرقام')).toBeTruthy();
     expect(api).not.toHaveBeenCalled();
   });
 
@@ -80,7 +80,7 @@ describe('the explanation', () => {
   it('«قيد المراجعة» needs the explanation too', async () => {
     render(<DifferenceActions {...props()} />);
     fireEvent.click(screen.getByRole('button', { name: 'قيد المراجعة' }));
-    expect(await screen.findByText('اكتب تفسير القرار — 5 أحرف على الأقل')).toBeTruthy();
+    expect(await screen.findByText('اكتب تفسيراً واضحاً: 5 أحرف على الأقل، منها 3 حروف أو أرقام')).toBeTruthy();
     expect(api).not.toHaveBeenCalled();
     type('تفسير القرار', 'ننتظر الشركة');
     fireEvent.click(screen.getByRole('button', { name: 'قيد المراجعة' }));
@@ -186,7 +186,7 @@ describe('بتّ جماعي', () => {
     expect(screen.getByText(/«مؤجلة» — 2 أسطر/)).toBeTruthy();
     expect(screen.queryByText(/تم توصيلها/)).toBeNull();
 
-    fireEvent.change(screen.getByPlaceholderText('اكتب تفسير القرار — 5 أحرف على الأقل'), { target: { value: 'ننتظر كشف الشركة' } });
+    fireEvent.change(screen.getByPlaceholderText('اكتب تفسيراً واضحاً: 5 أحرف على الأقل، منها 3 حروف أو أرقام'), { target: { value: 'ننتظر كشف الشركة' } });
     fireEvent.click(screen.getByRole('button', { name: 'بتّ الأسطر' }));
 
     await waitFor(() => expect(onDone).toHaveBeenCalled());
@@ -201,9 +201,9 @@ describe('بتّ جماعي', () => {
 
   it('four characters never leave the browser', async () => {
     render(<BulkDecide statementId="s1" onDone={vi.fn()} rows={rows(['a', 'K', 'مؤجلة', false], ['b', 'K', 'مؤجلة', false])} />);
-    fireEvent.change(screen.getByPlaceholderText('اكتب تفسير القرار — 5 أحرف على الأقل'), { target: { value: 'خصم' } });
+    fireEvent.change(screen.getByPlaceholderText('اكتب تفسيراً واضحاً: 5 أحرف على الأقل، منها 3 حروف أو أرقام'), { target: { value: 'خصم' } });
     fireEvent.click(screen.getByRole('button', { name: 'بتّ الأسطر' }));
-    expect(await screen.findByText('اكتب تفسير القرار — 5 أحرف على الأقل')).toBeTruthy();
+    expect(await screen.findByText('اكتب تفسيراً واضحاً: 5 أحرف على الأقل، منها 3 حروف أو أرقام')).toBeTruthy();
     expect(api).not.toHaveBeenCalled();
   });
 
@@ -211,7 +211,7 @@ describe('بتّ جماعي', () => {
     api.mockRejectedValue(new Error('لا يصحّ هذا البتّ على 1 سطراً — لم يُحفظ شيء'));
     const onDone = vi.fn();
     render(<BulkDecide statementId="s1" onDone={onDone} rows={rows(['a', 'K', 'مؤجلة', false], ['b', 'K', 'مؤجلة', false])} />);
-    fireEvent.change(screen.getByPlaceholderText('اكتب تفسير القرار — 5 أحرف على الأقل'), { target: { value: 'ننتظر كشف الشركة' } });
+    fireEvent.change(screen.getByPlaceholderText('اكتب تفسيراً واضحاً: 5 أحرف على الأقل، منها 3 حروف أو أرقام'), { target: { value: 'ننتظر كشف الشركة' } });
     fireEvent.click(screen.getByRole('button', { name: 'بتّ الأسطر' }));
     expect(await screen.findByText(/لم يُحفظ شيء/)).toBeTruthy();
     expect(onDone).not.toHaveBeenCalled();

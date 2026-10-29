@@ -480,6 +480,66 @@ describe('one approval, however many presses — the decisions are carried out o
   });
 });
 
+describe('two accepted rows for one order (old data, answered before the door refused it)', () => {
+  it('do not hang the approval: the order is settled ONCE, with one activity, and no empty list of names', async () => {
+    putOrders(order('o1'));
+    state.reads = [statement([accepted('o1', { id: 'm-a' }), accepted('o1', { id: 'm-b' })])];
+
+    const res = await approve();
+
+    expect(res.status).toBe(200);
+    expect(settled()).toEqual(['o1']);
+    expect(db.order.updateMany).toHaveBeenCalledTimes(1);
+    expect(db.order.updateMany.mock.calls[0][0].where.id).toEqual({ in: ['o1'] });
+    expect(db.orderActivity.create.mock.calls.filter((c) => c[0].data.action === 'SETTLEMENT_DECISION_APPLIED')).toHaveLength(1);
+    expect(state.orders.get('o1')!.collectedAmount).toBe(18);
+  });
+
+  it('and when an order really did change, the 409 still names it (never an empty list)', async () => {
+    putOrders(order('o1', { settlementStatus: 'SETTLED' }));
+    state.reads = [statement([accepted('o1', { id: 'm-a' }), accepted('o1', { id: 'm-b' })])];
+
+    const res = await approve();
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.code).toBe('ORDERS_CHANGED');
+    expect(body.orders).toEqual(['JO-o1']);
+  });
+});
+
+describe('a decision carried out must carry a real reason', () => {
+  it.each([null, '', 'خصم', '.....', '\u0640\u0640\u0640\u0640\u0640', '\u200B\u200B\u200B\u200B\u200B'])(
+    'a row answered with %j stops the approval, names the order, and settles nothing',
+    async (resolutionNote) => {
+      putOrders(order('o1'), order('o2'));
+      state.reads = [statement([accepted('o1', { resolutionNote }), accepted('o2')])];
+
+      const res = await approve();
+      const body = await res.json();
+
+      expect(res.status).toBe(409);
+      expect(body.code).toBe('DECISION_WITHOUT_REASON');
+      expect(body.orders).toEqual(['JO-o1']);
+      expect(settled()).toEqual([]);
+      expect(db.order.updateMany).not.toHaveBeenCalled();
+      expect(markPayableForOrders).not.toHaveBeenCalled();
+    }
+  );
+
+  it('a short real reason is enough', async () => {
+    putOrders(order('o1'));
+    state.reads = [statement([accepted('o1', { resolutionNote: 'خطأ بالرقم' })])];
+    expect((await approve()).status).toBe(200);
+  });
+
+  it('«رقمنا» is not carried out, so its reason is not asked at approval', async () => {
+    putOrders(order('o1'));
+    state.reads = [statement([row('o1', { resolution: 'OURS_STANDS', resolutionNote: null })])];
+    expect((await approve()).status).toBe(200);
+  });
+});
+
 describe('the audit row says what the approval settled', () => {
   it('the clean rows plus the answered ones, and the claims it left open', async () => {
     putOrders(order('o1'), order('o2'), order('o3'));

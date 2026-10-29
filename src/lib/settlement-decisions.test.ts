@@ -6,6 +6,7 @@ import {
   DECISION_AR,
   DECISION_MATRIX,
   DELIVERED_STATES,
+  EXPLANATION_SENTENCE,
   IN_FLIGHT,
   MIN_EXPLANATION,
   claimOf,
@@ -62,6 +63,41 @@ describe('the explanation is five characters at least', () => {
     expect(explanationOf('  اتفقن  ')).toBe('اتفقن');
     expect(explanationOf('خصمٌ ما')).toBe('خصمٌ ما');
     expect(explanationOf('  اتفقنا  ')).toBe('اتفقنا');
+  });
+
+  it('five characters that are not a reason are refused: dots, stretch marks, zero-width and direction marks', () => {
+    const empty = [
+      '.....',
+      '؟؟؟؟؟؟',
+      '\u0640\u0640\u0640\u0640\u0640',
+      '\u200B\u200B\u200B\u200B\u200B',
+      '\u200E\u200E\u200E\u200E\u200E',
+      '\u200F\u200B\u200E\u200B\u200F',
+      '---  ---',
+      '..اب..', // two real letters in a frame of dots
+      'ـَـَـَـَـَ', // stretch marks with vowel marks
+    ];
+    for (const text of empty) expect(explanationOf(text), JSON.stringify(text)).toBeNull();
+  });
+
+  it('…while a short real reason passes: «خطأ بالرقم», three letters among dots, digits alone', () => {
+    expect(explanationOf('خطأ بالرقم')).toBe('خطأ بالرقم');
+    expect(explanationOf('..اتف..')).toBe('..اتف..');
+    expect(explanationOf('a.b.c')).toBe('a.b.c');
+    expect(explanationOf('٣٥٠ د')).not.toBeNull(); // Arabic-Indic digits are digits
+    expect(explanationOf('12 345')).toBe('12 345');
+    // Invisible marks around a real reason do not hurt it.
+    expect(explanationOf('\u200Eخطأ بالرقم\u200E')).not.toBeNull();
+  });
+
+  it('four raw characters stay refused — the five-character floor still stands under the new rule', () => {
+    expect(explanationOf('خطأ ب')).not.toBeNull(); // 5 raw, 4 real: passes both floors
+    expect(explanationOf('خطأب')).toBeNull(); // 4 raw
+    expect(explanationOf('خطأ')).toBeNull();
+  });
+
+  it('the sentence tells both floors, in plain Arabic and western digits', () => {
+    expect(EXPLANATION_SENTENCE).toBe('اكتب تفسيراً واضحاً: 5 أحرف على الأقل، منها 3 حروف أو أرقام');
   });
 
   it('the bulk press has a ceiling, so one request is not a whole statement', () => {

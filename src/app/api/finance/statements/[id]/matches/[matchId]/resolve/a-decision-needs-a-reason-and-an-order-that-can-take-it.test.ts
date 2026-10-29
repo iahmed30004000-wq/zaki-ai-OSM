@@ -86,7 +86,17 @@ describe('the explanation is five characters at least', () => {
     expect(db.settlementMatch.update).not.toHaveBeenCalled();
   });
 
-  it('exactly five are taken, stored on the row with the person, and copied to the order’s internal notes', async () => {
+  it('five characters that carry no reason are refused too: dots, stretch marks, zero-width and direction marks', async () => {
+    for (const note of ['.....', '\u0640\u0640\u0640\u0640\u0640', '\u200B\u200B\u200B\u200B\u200B', '\u200E\u200E\u200E\u200E\u200E']) {
+      expect((await call('ACCEPTED_COURIER', note)).status, JSON.stringify(note)).toBe(400);
+    }
+    expect(db.settlementMatch.update).not.toHaveBeenCalled();
+    expect(db.orderNote.create).not.toHaveBeenCalled();
+    // …and a short real reason passes.
+    expect((await call('ACCEPTED_COURIER', 'خطأ بالرقم')).status).toBe(200);
+  });
+
+  it('exactly five, stored on the row with the person, and copied to the order’s internal notes', async () => {
     const res = await call('ACCEPTED_COURIER', ' اتفقن ');
     expect(res.status).toBe(200);
     expect(db.settlementMatch.update).toHaveBeenCalledWith(

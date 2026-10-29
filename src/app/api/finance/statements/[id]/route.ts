@@ -15,6 +15,7 @@ import { isNotMentioned } from '@/lib/settlement-difference';
 import { NOT_MENTIONED_ACTIVITY } from '@/lib/not-mentioned';
 import { approvalRefusal, isApproved, undoImportRefusal } from '@/lib/settlement-gates';
 import { roundMinor } from '@/lib/money';
+import { explanationOf } from '@/lib/decision-words';
 import { recordMovement } from '@/lib/wallets';
 import { markPayableForOrders } from '@/lib/commission';
 import { zodMessage } from '@/lib/zod-message';
@@ -429,7 +430,18 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         (m, i, all) => all.findIndex((o) => o.orderId === m.orderId) === i
       );
       const settledOrderIds = settling.map((m) => m.orderId as string);
-      const acceptedIds = accepted.filter((m) => settledOrderIds.includes(m.orderId as string)).map((m) => m.orderId as string);
+      // An order two accepted rows name (an old statement, answered before the door refused it) is one order.
+      const acceptedIds = [...new Set(accepted.filter((m) => settledOrderIds.includes(m.orderId as string)).map((m) => m.orderId as string))];
+      // A decision carried out must carry a real reason: one answered before the rule existed, or written around it, stops
+      // the approval and is named — the person writes it again at the row.
+      const unreasoned = settling.filter((m) => acceptedIds.includes(m.orderId as string) && !explanationOf(m.resolutionNote));
+      if (unreasoned.length > 0) {
+        throw new ApprovalStopped(409, {
+          code: 'DECISION_WITHOUT_REASON',
+          error: `بتٌّ بلا تفسير واضح: ${unreasoned.map((m) => m.order?.orderNumber ?? m.orderId).join('، ')}. اكتب التفسير من جديد في سطره ثم اعتمد.`,
+          orders: unreasoned.map((m) => m.order?.orderNumber ?? m.orderId),
+        });
+      }
       const cleanIds = settledOrderIds.filter((oid) => !acceptedIds.includes(oid));
       // A line of zero against a parcel coming back is the only line an order in that state may be accepted at.
       const zeroLineIds = accepted.filter((m) => Number(m.statementAmount) === 0).map((m) => m.orderId as string);
@@ -645,7 +657,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
        * order left as a claim on the company shows the claim, so the next person who opens it knows it is waiting
        * for a settlement statement and not forgotten.
        */
-      for (const m of accepted) {
+      // `settling` holds one row per order, so an order answered twice gets one sentence.
+      for (const m of settling) {
         if (!acceptedIds.includes(m.orderId as string)) continue;
         await tx.orderActivity.create({
           data: {

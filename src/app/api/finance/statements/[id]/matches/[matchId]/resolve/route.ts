@@ -11,7 +11,7 @@ import {
   DECISIONS,
   DECISION_AR,
   EXPLANATION_SENTENCE,
-  MIN_EXPLANATION,
+  explanationOf,
   decisionData,
   decisionMatrix,
   decisionNoteBody,
@@ -58,7 +58,7 @@ import {
  */
 const schema = z.object({
   resolution: z.enum(DECISIONS),
-  note: z.string().trim().min(MIN_EXPLANATION, EXPLANATION_SENTENCE).max(500),
+  note: z.string().trim().max(500).refine((s) => explanationOf(s) !== null, EXPLANATION_SENTENCE),
 });
 
 /** A stop inside the transaction: it rolls back and this is the answer. */

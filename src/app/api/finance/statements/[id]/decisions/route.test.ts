@@ -103,6 +103,77 @@ describe('one answer for a group of lines with the same word', () => {
   });
 });
 
+describe('two chosen lines for ONE order (the company names a parcel twice)', () => {
+  const twice = () => put([mkRow(0), mkRow(1, { orderId: 'o0', order: { orderNumber: 'ORD-0' } })]);
+
+  it('«اعتُمد رقم الشركة»: the first holds the order, the SECOND is refused by name with the single door’s sentence — nothing is saved', async () => {
+    twice();
+    const res = await call({ matchIds: ids(2), resolution: 'ACCEPTED_COURIER', note: 'خصم متفق عليه' });
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.code).toBe('DECISION_NOT_ALLOWED');
+    // Only the second is named; the first is not a refusal.
+    expect(body.refused).toEqual([{ matchId: ids(9)[1], order: 'ORD-0', why: 'الطلب محجوز بسطر آخر' }]);
+    expect(db.settlementMatch.update).not.toHaveBeenCalled();
+  });
+
+  it('…and pressing again for the first line alone goes through', async () => {
+    twice();
+    const res = await call({ matchIds: [ids(2)[0]], resolution: 'ACCEPTED_COURIER', note: 'خصم متفق عليه' });
+    expect(res.status).toBe(200);
+    expect(db.settlementMatch.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('the order of the press decides which is first: the line sent first holds it', async () => {
+    twice();
+    const res = await call({ matchIds: [ids(2)[1], ids(2)[0]], resolution: 'ACCEPTED_COURIER', note: 'خصم متفق عليه' });
+    expect((await res.json()).refused).toEqual([{ matchId: ids(9)[0], order: 'ORD-0', why: 'الطلب محجوز بسطر آخر' }]);
+  });
+
+  it('«رقمنا» and «قيد المراجعة» hold nothing, as at the single door: both lines may take them', async () => {
+    twice();
+    expect((await call({ matchIds: ids(2), resolution: 'UNDER_REVIEW', note: 'ننتظر الشركة' })).status).toBe(200);
+  });
+});
+
+describe('the explanation is a reason, not five characters', () => {
+  it.each(['.....', '\u0640\u0640\u0640\u0640\u0640', '\u200B\u200B\u200B\u200B\u200B', '\u200E\u200E\u200E\u200E\u200E'])(
+    'refuses %j',
+    async (note) => {
+      expect((await call({ matchIds: ids(3), resolution: 'UNDER_REVIEW', note })).status).toBe(400);
+      expect(db.$transaction).not.toHaveBeenCalled();
+    }
+  );
+
+  it('and a short real reason passes', async () => {
+    expect((await call({ matchIds: ids(3), resolution: 'UNDER_REVIEW', note: 'خطأ بالرقم' })).status).toBe(200);
+  });
+});
+
+describe('the store’s fence — a statement of another store is not found and none of its rows is touched', () => {
+  it('asks for the statement WITH the store, and answers 404 for one that belongs to another', async () => {
+    db.courierStatement.findFirst.mockImplementation(async (a: { where: { storeId: string } }) =>
+      a.where.storeId === 's1' ? { reference: 'ST-1', approvedAt: null } : null
+    );
+    requireContext.mockResolvedValue({ user: { id: 'u1' }, companyId: 'c1', storeId: 's2', country: { minorUnit: 3 } });
+
+    const res = await call({ matchIds: ids(3), resolution: 'UNDER_REVIEW', note: 'ننتظر الشركة' });
+
+    expect(res.status).toBe(404);
+    expect(db.courierStatement.findFirst.mock.calls[0][0].where).toMatchObject({ id: 'st1', companyId: 'c1', storeId: 's2' });
+    expect(db.settlementMatch.findMany).not.toHaveBeenCalled();
+    expect(db.settlementMatch.update).not.toHaveBeenCalled();
+    expect(db.orderNote.create).not.toHaveBeenCalled();
+    expect(logAudit).not.toHaveBeenCalled();
+  });
+
+  it('and the orders it reads for the matrix are the store’s own', async () => {
+    await call({ matchIds: ids(3), resolution: 'UNDER_REVIEW', note: 'ننتظر الشركة' });
+    expect(db.order.findMany.mock.calls[0][0].where).toMatchObject({ companyId: 'c1', storeId: 's1' });
+  });
+});
+
 describe('the lines must carry the same word', () => {
   it('a line with another word refuses the whole press — nothing is saved', async () => {
     put([mkRow(0), mkRow(1, { statementLine: { status: 'تم توصيلها' } })]);

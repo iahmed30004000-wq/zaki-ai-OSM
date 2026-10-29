@@ -12,7 +12,8 @@ import {
   DECISIONS,
   DECISION_AR,
   EXPLANATION_SENTENCE,
-  MIN_EXPLANATION,
+  WHY,
+  explanationOf,
   decisionData,
   decisionMatrix,
   decisionNoteBody,
@@ -42,7 +43,7 @@ import {
 const schema = z.object({
   matchIds: z.array(z.string().uuid()).min(1).max(BULK_LIMIT),
   resolution: z.enum(DECISIONS),
-  note: z.string().trim().min(MIN_EXPLANATION, EXPLANATION_SENTENCE).max(500),
+  note: z.string().trim().max(500).refine((s) => explanationOf(s) !== null, EXPLANATION_SENTENCE),
 });
 
 class BulkRefused extends Error {
@@ -109,8 +110,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           approvedAt: statement.approvedAt,
         })),
       });
-      const refused = rows.flatMap((r) => {
+      /*
+       * TWO CHOSEN LINES FOR ONE ORDER (the company’s file names a parcel twice): the first holds it, the second is
+       * refused with the sentence the single door gives — «محجوز بسطر آخر». The single door does this by reading the
+       * first row’s answer; here nothing is written yet, so the press itself keeps the list. Only «اعتُمد رقم
+       * الشركة» holds an order; the other two sayings hold nothing, as at the single door.
+       */
+      const held = new Set<string>();
+      const refused = ids.flatMap((rowId) => {
+        const r = rows.find((x) => x.id === rowId)!;
         const verdict = decisionMatrix(facts.get(r.id)!)[resolution];
+        if (verdict.allowed && resolution === 'ACCEPTED_COURIER' && r.orderId) {
+          if (held.has(r.orderId)) return [{ matchId: r.id, order: r.order?.orderNumber ?? null, why: WHY.heldElsewhere }];
+          held.add(r.orderId);
+        }
         return verdict.allowed ? [] : [{ matchId: r.id, order: r.order?.orderNumber ?? null, why: verdict.why }];
       });
       if (refused.length > 0) {
