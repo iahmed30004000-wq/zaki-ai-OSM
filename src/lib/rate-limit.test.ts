@@ -145,6 +145,12 @@ describe('the sign-in doors do not hand a stranger a switch', () => {
     expect(rateLimitByIp('t-unknown', UNKNOWN_IP, 20, window5).allowed).toBe(true);
   });
 
+  it('the ceiling is five times, not more: a hundred a window for the sign-in door, so one password cannot be sprayed over many emails', () => {
+    expect(UNKNOWN_IP_FACTOR).toBe(5);
+    const results = Array.from({ length: 101 }, () => rateLimitByIp('t-spray', UNKNOWN_IP, 20, window5));
+    expect(results.filter((r) => r.allowed)).toHaveLength(100);
+  });
+
   it('but a flood on the unknown address is still stopped, at the looser ceiling', () => {
     const ceiling = 20 * UNKNOWN_IP_FACTOR;
     let refusedAt = 0;

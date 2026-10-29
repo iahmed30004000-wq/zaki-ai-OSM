@@ -56,7 +56,7 @@ export const UNKNOWN_IP = 'local';
  * How many times looser a PER-ADDRESS bucket is when the address is
  * unknown. See `rateLimitByIp`.
  */
-export const UNKNOWN_IP_FACTOR = 25;
+export const UNKNOWN_IP_FACTOR = 5;
 
 /**
  * A bucket per address, for the doors a STAFF MEMBER walks through to sign in.
