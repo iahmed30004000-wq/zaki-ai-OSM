@@ -368,6 +368,9 @@ const ALLOWED: Record<string, string[]> = {
   'src/app/api/orders/[id]/claim/route.ts': ['DELETE'],
   'src/app/api/orders/[id]/change-requests/route.ts': ['POST'],
   'src/app/api/orders/[id]/shape-risk/route.ts': ['GET'],
+  // The repeat-order notice in the same window, over the same envelope as shape-risk: requireContext + assertOrderReadable,
+  // then one read of this company's history for this order. It answers with order NUMBERS only (no ids, names or phones).
+  'src/app/api/orders/[id]/duplicate-suspect/route.ts': ['GET'],
   'src/app/api/confirmation/issues/route.ts': ['POST'],
   'src/app/api/customers/[id]/history/route.ts': ['GET'],
   'src/app/api/ai/confirmation/route.ts': ['POST'],
