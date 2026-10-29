@@ -288,7 +288,6 @@ export async function assembleDraft(
     where,
     select: {
       id: true, fileHash: true, approvedAt: true, status: true, currencyCode: true,
-      deliveryProvider: { select: { name: true } },
       _count: { select: { receipts: true } },
     },
   });
@@ -305,6 +304,9 @@ export async function assembleDraft(
   if (statement._count.receipts > 0) {
     throw new ManualRefused(409, { code: 'HAS_RECEIPT', error: HAS_RECEIPT_SENTENCE });
   }
+
+  // The relation to the company is on the order, not on the statement: the name is read by its own id.
+  const courier = await tx.deliveryProvider.findFirst({ where: { id: peek.deliveryProviderId, companyId: p.companyId }, select: { name: true } });
 
   const { lines, total } = await totalOfLines(tx, statement.id, p.minorUnit);
   if (lines === 0) throw new ManualRefused(409, { code: 'NO_LINES', error: 'المسوّدة فارغة — أضف طلبات أولاً' });
@@ -342,7 +344,7 @@ export async function assembleDraft(
   return {
     statementId: statement.id,
     reference: p.reference.trim(),
-    courier: statement.deliveryProvider.name,
+    courier: courier?.name ?? '',
     currencyCode: statement.currencyCode,
     lines,
     total,

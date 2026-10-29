@@ -51,7 +51,6 @@ function ok(row: Row, where: Row): boolean {
 const statementView = (s: Row) => ({
   ...s,
   _count: { receipts: world.receipts.filter((r) => r.statementId === s.id).length },
-  deliveryProvider: { name: s.courierName ?? 'الباشا' },
 });
 
 const tx = {
@@ -96,10 +95,14 @@ const tx = {
       Object.assign(world.lines.find((l) => l.id === where.id)!, data);
     }),
   },
+  // The courier's name is read by its own id (the statement has no relation to it).
+  deliveryProvider: {
+    findFirst: vi.fn(async ({ where }: { where: Row }) => ({ name: where.id === 'cB' ? 'أمان' : 'الباشا' })),
+  },
   settlementMatch: {
     findMany: vi.fn(async ({ where }: { where: Row }) =>
       world.matches
-        .map((m) => ({ ...m, statement: world.statements.find((s) => s.id === m.statementId) }))
+        .map((m): Row => ({ ...m, statement: world.statements.find((s) => s.id === m.statementId) }))
         .filter((m) => where.orderId.in.includes(m.orderId) && (!where.statementId || m.statementId !== where.statementId.not))
     ),
   },
@@ -423,7 +426,6 @@ describe('press 2 — gathering', () => {
     world.orders = [jod(7, { deliveryProviderId: 'cB', deliveryProvider: { id: 'cB', name: 'أمان' } })];
     await add([{ orderId: 'o7' }]);
     const b = world.statements[world.statements.length - 1];
-    b.courierName = 'أمان';
     await expect(gather(b.id, 'كشف الأحد')).resolves.toMatchObject({ reference: 'كشف الأحد' });
     expect(a.fileHash).not.toBe(b.fileHash);
   });

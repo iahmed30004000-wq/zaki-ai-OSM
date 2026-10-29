@@ -9,7 +9,7 @@ import { Prisma } from '@prisma/client';
  */
 
 const { db, requireContext, requirePermission, logAudit, addOrdersToDraft, assembleDraft } = vi.hoisted(() => ({
-  db: { $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn({ tx: true })) },
+  db: { $transaction: vi.fn(async (fn: (tx: unknown) => unknown, _options?: unknown) => fn({ tx: true })) },
   requireContext: vi.fn(),
   requirePermission: vi.fn(),
   logAudit: vi.fn(),
