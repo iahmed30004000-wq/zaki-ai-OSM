@@ -26,6 +26,17 @@ interface ModalProps {
    * handler and a second focus trap — and one of the two always lags.
    */
   side?: 'center' | 'end' | 'bottom';
+  /**
+   * THE BUTTONS THAT END THE DIALOG, DRAWN OUTSIDE THE PART THAT SCROLLS.
+   *
+   * A form tall enough to scroll used to carry its «حفظ» at the very bottom
+   * of the scrolling body, so on a phone — keyboard open, half the screen
+   * gone — the one button the person came for was the last thing to reach.
+   * Put here, the row stays where the thumb is. A submit button that lives
+   * out here belongs to a form inside the body through `form="…"`, and
+   * pressing Enter in a field still submits it.
+   */
+  footer?: React.ReactNode;
 }
 
 export function Modal({
@@ -36,6 +47,7 @@ export function Modal({
   children,
   maxWidth = 'lg',
   side = 'center',
+  footer,
 }: ModalProps) {
   const panel = React.useRef<HTMLDivElement>(null);
 
@@ -208,7 +220,9 @@ export function Modal({
         // at 50% — a token that is a LIGHT colour in two of the three
         // themes, so the wash meant to push the page back barely dimmed it.
         'fixed inset-0 z-50 flex bg-[var(--sys-background)]/60 backdrop-blur-xs animate-in fade-in duration-200',
-        side === 'center' && 'items-center justify-center p-4',
+        // A phone gets a sheet from the bottom edge, where the thumb already
+        // is, and a desk keeps the centred dialog with its margin.
+        side === 'center' && 'items-end justify-center sm:items-center sm:p-4',
         side === 'end' && 'items-stretch justify-start',
         side === 'bottom' && 'items-end justify-center'
       )}
@@ -231,7 +245,14 @@ export function Modal({
         aria-label={title}
         className={clsx(
           'relative z-10 flex w-full flex-col overflow-hidden bg-[var(--sys-card)] shadow-raised',
-          side === 'center' && clsx('max-h-[90vh] rounded-lg', widthStyles[maxWidth]),
+          // `dvh`, not `vh`: on a phone `vh` is the height with the browser's
+          // bars tucked away, so a 90vh dialog reached under the toolbar while
+          // it was showing — and the button at its foot went with it.
+          side === 'center' &&
+            clsx(
+              'max-h-[90dvh] rounded-t-lg sm:rounded-lg pb-[env(safe-area-inset-bottom)]',
+              widthStyles[maxWidth]
+            ),
           // A record read BESIDE the list it was found in: closing it
           // returns you to your place in that list. Full height on a desk,
           // and on a phone it is simply the screen.
@@ -240,7 +261,7 @@ export function Modal({
           side === 'bottom' && 'pb-[env(safe-area-inset-bottom)]'
         )}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--sys-border)] bg-[var(--sys-surface)]">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-[var(--sys-border)] bg-[var(--sys-surface)]">
           <div>
             <h3 className="text-lg font-semibold text-[var(--sys-heading)]">{title}</h3>
             {subtitle && <p className="text-xs text-[var(--sys-muted-foreground)] mt-0.5">{subtitle}</p>}
@@ -253,7 +274,16 @@ export function Modal({
             <RiCloseLine className="w-5 h-5" />
           </button>
         </div>
-        <div className="p-6 overflow-y-auto flex-1">{children}</div>
+        {/* 16px of margin on a phone, 24 from `sm`: at 375 the old 24 on each
+            side plus the card inside it left 23% of the width for content. */}
+        <div data-modal-body className="p-4 sm:p-6 overflow-y-auto flex-1">
+          {children}
+        </div>
+        {footer && (
+          <div className="shrink-0 border-t border-[var(--sys-border)] bg-[var(--sys-surface)] px-4 sm:px-6 py-3">
+            {footer}
+          </div>
+        )}
       </div>
     </div>,
     host

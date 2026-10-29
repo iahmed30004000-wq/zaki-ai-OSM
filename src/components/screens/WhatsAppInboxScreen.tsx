@@ -299,7 +299,9 @@ export function WhatsAppInboxScreen() {
 
   return (
     <>
-      <div className="flex flex-col h-[calc(100vh-72px)]">
+      {/* The window minus the header AS IT IS: the bar grows when it wraps, so a fixed 72 left the inbox
+          taller than the window by the extra row and the page scrolled under it. */}
+      <div className="flex flex-col" style={{ height: 'calc(100dvh - var(--sys-header-h, 72px))' }}>
         {/* Header */}
         <PageHeader title={routeLabel('/growth/whatsapp/inbox')}
             description="صندوق وارد مشترك لكل الموظفين — WhatsApp Business Cloud API"

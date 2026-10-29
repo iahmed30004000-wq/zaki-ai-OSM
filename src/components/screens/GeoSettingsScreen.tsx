@@ -278,7 +278,9 @@ export function GeoSettingsScreen() {
                     <RiStore2Line className="w-4 h-4 text-[var(--sys-muted-foreground)]" />
                   )}
                 </span>
-                <div className="flex-1 min-w-0">
+                {/* A floor, not zero: on a flex-wrap row a name that may shrink to nothing is never the item
+                    that wraps, so the buttons beside it took the whole line and left it a sliver. */}
+                <div className="flex-1 min-w-[150px]">
                   <p className="text-sm font-medium text-[var(--sys-heading)]">{s.name}</p>
                   <p className="text-xs text-[var(--sys-muted-foreground)]" dir="ltr">
                     /{s.slug} · {storeTypeLabel(s.type)}
