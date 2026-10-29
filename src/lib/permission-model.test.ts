@@ -98,7 +98,8 @@ describe('the catalog names what each action needs', () => {
 
   it('says why when an action needs nothing: a standalone action carries its note', () => {
     const standalone = items.filter((i) => i.requires === null);
-    expect(standalone.map((i) => i.key).sort()).toEqual(['customers.create', 'orders.create']);
+    // ai.assist (PR-5): no screen and no list of its own — it is held WITH the key of the work the helper sits in (R4).
+    expect(standalone.map((i) => i.key).sort()).toEqual(['ai.assist', 'customers.create', 'orders.create']);
     for (const i of standalone) expect((i.note ?? '').trim().length, `${i.key} بلا ملاحظة`).toBeGreaterThan(10);
   });
 

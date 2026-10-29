@@ -303,8 +303,10 @@ describe('والمسح نفسه يسقط حين يجب أن يسقط', () => {
  * nothing, and that is the commonest way a guard like this is faked.
  */
 
-const { db, requireContext, requirePermission, logAudit, notify, findOrCreateCustomer, productCost, resolveRegionId, orderRefFields, activeBlock, activeOffersFor } =
+const { db, requireContext, requirePermission, logAudit, notify, findOrCreateCustomer, productCost, resolveRegionId, orderRefFields, activeBlock, activeOffersFor, assistKey } =
   vi.hoisted(() => ({
+    /** Does the person at the keyboard hold «المساعدون الأذكياء» (`ai.assist`)? PR-5: without it the model is never asked. */
+    assistKey: { held: true },
     db: {
       product: { findFirst: vi.fn(), findMany: vi.fn() },
       /*
@@ -374,7 +376,7 @@ vi.mock('@/lib/authorization', () => ({
    * one of them has always asserted. `order-entry-ownership.test.ts`
    * owns the rule itself.
    */
-  can: () => false, requirePermission: (...a: unknown[]) => requirePermission(...a) }));
+  can: (_user: unknown, key: string) => key === 'ai.assist' && assistKey.held, requirePermission: (...a: unknown[]) => requirePermission(...a) }));
 vi.mock('@/lib/audit', () => ({ logAudit: (...a: unknown[]) => logAudit(...a) }));
 vi.mock('@/lib/notify', () => ({ notify: (...a: unknown[]) => notify(...a) }));
 vi.mock('@/lib/customer-identity', () => ({ findOrCreateCustomer: (...a: unknown[]) => findOrCreateCustomer(...a) }));
@@ -396,6 +398,9 @@ const post = (body: unknown) =>
 beforeEach(() => {
   vi.resetAllMocks();
   calledHosts = [];
+  // OLD → NEW (PR-5): `can` used to be `() => false` for everything; the AI step now asks for `ai.assist`, so the default
+  // person holds it, and the tests below that take it away say so.
+  assistKey.held = true;
 
   /*
    * المفتاحُ موجودٌ عن قصدٍ — وهو الآنَ شاهدٌ أقوى ممّا كان.
@@ -578,6 +583,38 @@ describe('ai-intake — الوضعُ الذي يسأل النموذج لا يك�
     expect(body.engine).toBe('deterministic');
     expect(db.order.create).not.toHaveBeenCalled();
     delete process.env.APP_ENCRYPTION_KEY;
+  });
+
+  it('وبلا مفتاح «المساعدون الأذكياء» لا يسأل نموذجاً أصلاً — يقرأ المحلّل الحتمي ويقول لماذا (PR-5)', async () => {
+    assistKey.held = false;
+    const res = await post({ text: 'اسمي سامر ورقمي 0999111222 وبدي منتج واحد' });
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(calledHosts, 'خرج نداءٌ وفيه بياناتُ زبون من حسابٍ بلا مفتاح').toEqual([]);
+    expect(body.engine).toBe('deterministic');
+    expect(body.aiSkipped).toBe('NO_PERMISSION');
+    // The order is still entered by the rules: the name and the phone were read.
+    expect(body.parsed.phone).toBe('0999111222');
+    expect(db.order.create).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE: والمفتاح وحده لا يكسر القاعدة المحلّية — يُسأل النموذج المحلّي فقط، وغيره يُرفض (localOnly باقٍ)', async () => {
+    assistKey.held = true;
+    db.systemSetting.findUnique.mockResolvedValue(null);
+    const body = await (await post({ text: 'اسمي سامر ورقمي 0999111222 وبدي منتج واحد' })).json();
+    expect(calledHosts).toEqual([]);
+    expect(body.aiSkipped).toBe('NOT_LOCAL');
+  });
+
+  it('وبلا المفتاح يبقى وضع الحفظ يعمل (الإدخال لا يتوقّف) ولا يسأل أيضاً', async () => {
+    assistKey.held = false;
+    const res = await post({
+      confirm: true,
+      parsed: { customerName: 'سامر الأحمد', phone: '0999111222', address: 'شارع', governorate: 'حلب', productId: 'p1xxxxxxxxxx', quantity: 2, finalPrice: 200 },
+    });
+    expect(res.status).toBe(200);
+    expect(db.order.create).toHaveBeenCalledTimes(1);
+    expect(calledHosts).toEqual([]);
   });
 
   it('ولا يكتب شيئاً وهو يسأل', async () => {

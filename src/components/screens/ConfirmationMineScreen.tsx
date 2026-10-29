@@ -28,6 +28,7 @@ import { PullPanel, useQueue } from '@/components/confirmation/PullPanel';
 import { ConfirmationPostponedScreen } from '@/components/screens/ConfirmationPostponedScreen';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
+import { AI_ASSIST_KEY } from '@/lib/ai-assistants';
 import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { arDate } from '@/lib/format';
@@ -191,6 +192,8 @@ export function ConfirmationMineScreen() {
    */
   const { currentUser } = useApp();
   const canLogContact = userCan(currentUser, 'orders.contact_log');
+  // «مساعدة» is the confirmation assistant: it needs the assistants' box besides the desk (PR-5).
+  const canAskAssistant = userCan(currentUser, AI_ASSIST_KEY);
   /**
    * «اسحب الطلب التالي» IS HERE, NOT ON ANOTHER SCREEN.
    *
@@ -902,9 +905,11 @@ export function ConfirmationMineScreen() {
                   {/* Reads this order and this customer's history, and says
                       what it would open with. It changes nothing — every
                       button that does is on either side of it. */}
+                  {canAskAssistant && (
                   <Action onClick={() => setDialog({ kind: 'assist', order })} icon={<RiSparkling2Line className="w-4 h-4" />}>
                     مساعدة
                   </Action>
+                  )}
                 </footer>
                 )}
               </article>

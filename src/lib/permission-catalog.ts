@@ -149,11 +149,24 @@ export const PERMISSION_MODULES: CatalogModule[] = [
     items: [
       { key: 'reports.view', ar: 'عرض التقارير', en: 'View reports' },
       { key: 'reports.export', requires: 'orders.view', ar: 'تصدير التقارير', en: 'Export reports' },
-      // Says what it opens: the in-screen assistants (confirmation, picking,
-      // landing pages, AI order entry) answer to the key of the work they sit
-      // in, so «منع» on this one turns off the bubble, the assistant page and
-      // «اسأل الذكاء» — not those.
+      // Says what it opens: the bubble, the assistant page and «اسأل الذكاء». The helpers INSIDE the screens are the next
+      // box, so «منع» on this one does not turn them off, and the other way round.
       { key: 'ai.use', ar: 'المساعد العام — الفقاعة وصفحة المساعد وسؤال الأرقام', en: 'General assistant — bubble, assistant page, ask the numbers' },
+      /*
+       * THE HELPERS INSIDE THE SCREENS, ON A BOX OF THEIR OWN (perm-plan PR-5).
+       *
+       * Confirmation, picking, the landing-page writer, the AI step of order entry and «لخّصلي اليوم» used to answer to the
+       * key of the work they sit in, so the owner could not give a person the work and keep her away from the model.
+       * Each now asks that key AND this one. It opens nothing alone (standalone on purpose: it has no screen and no
+       * list), and the migration 20261030120000_ai_assist_key gave it to everybody who passed one of those doors.
+       */
+      {
+        key: 'ai.assist',
+        requires: null,
+        note: 'المساعدين داخل الشاشات بتشتغل لمن عنده هذا المفتاح ومفتاح الشغل نفسه — بدونه بتضل الشاشة تشتغل بلا ذكاء.',
+        ar: 'المساعدون الأذكياء داخل الشاشات — التأكيد والتجهيز وكتابة صفحات الهبوط والإدخال بالذكاء و«لخّصلي اليوم»',
+        en: 'In-screen smart assistants — confirmation, picking, landing-page writer, AI order entry and "summarise my day"',
+      },
     ],
   },
   {

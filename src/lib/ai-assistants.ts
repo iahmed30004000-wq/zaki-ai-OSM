@@ -21,6 +21,24 @@
  * for, and a suggestion is not an instruction.
  */
 
+/**
+ * «المساعدين الأذكياء داخل الشاشات» — THE KEY OF THE IN-SCREEN ASSISTANTS (perm-plan PR-5).
+ *
+ * Held IN ADDITION to the key of the work (`AssistantDef.needs`): the confirmation assistant needs `confirmation.work`
+ * AND this, the picking assistant `ops.prepare` AND this, the landing-page writer `landing_pages.edit` AND this, the
+ * AI step of order entry `orders.create` AND this, «لخّصلي اليوم» `orders.view` AND this. It never opens anything on
+ * its own, so it can only take a door away, never add one — which is why the migration that introduced it hands it to
+ * everybody who passed one of those doors the day before (`AI_ASSIST_FROM`).
+ */
+export const AI_ASSIST_KEY = 'ai.assist';
+
+/**
+ * The keys whose holders reached an AI helper BEFORE `ai.assist` existed — one per door above. The migration
+ * 20261030120000_ai_assist_key reads exactly this list (a test compares the SQL with it), and the in-code fallback
+ * for a person with no stored role applies it too.
+ */
+export const AI_ASSIST_FROM = ['confirmation.work', 'ops.prepare', 'landing_pages.edit', 'orders.create', 'orders.view'] as const;
+
 /** A kind of fact an assistant may be given. */
 export const AI_SCOPES = ['orders', 'finance', 'inventory', 'campaigns', 'team', 'customer'] as const;
 export type AiScope = (typeof AI_SCOPES)[number];
@@ -59,8 +77,17 @@ export interface AssistantDef {
    * a decision rather than a job description.
    */
   optionalScopes?: AiScope[];
-  /** The permission the person asking must hold. */
+  /** The permission the person asking must hold — the key of the work the assistant sits in. */
   needs: string;
+  /**
+   * THE SECOND KEY, FOR AN ASSISTANT THAT SITS INSIDE A SCREEN: `AI_ASSIST_KEY`.
+   *
+   * The asker must hold BOTH `needs` AND `gate`. Until PR-5 the in-screen assistants answered to the key of the work
+   * alone, so the owner could not give a confirmation agent the confirmation desk and keep her away from the model
+   * (and the money a call costs): turning the model off meant taking the work off. An assistant with no `gate`
+   * (the intelligence centre) answers to `ai.use` at its own door and is not one of these.
+   */
+  gate?: string;
   /** May a customer's phone or address be in its payload? */
   pii: boolean;
   note: string;
@@ -87,6 +114,7 @@ export const ASSISTANTS: AssistantDef[] = [
     promptJob: 'landing_copy',
     scopes: [],
     needs: 'landing_pages.edit',
+    gate: AI_ASSIST_KEY,
     pii: false,
     note: 'يقترح نصوص الخانات ويكتب لا شيء — تُحفظ مسوّدةً وتراجعها أنت قبل النشر.',
   },
@@ -101,6 +129,7 @@ export const ASSISTANTS: AssistantDef[] = [
     // else — no database read, so nothing of the business can leak into it.
     scopes: [],
     needs: 'orders.create',
+    gate: AI_ASSIST_KEY,
     pii: true,
     note: 'يقرأ النص الملصوق فقط، ولا يقرأ من قاعدة البيانات شيئاً. مخرجه حقول تُراجَع قبل الحفظ، ولا يحفظ طلباً بنفسه.',
   },
@@ -112,6 +141,7 @@ export const ASSISTANTS: AssistantDef[] = [
     promptJob: 'confirmation',
     scopes: ['customer'],
     needs: 'confirmation.work',
+    gate: AI_ASSIST_KEY,
     pii: true,
     note: 'يقرأ الطلب المفتوح وسجل صاحبه فقط. يقترح ما يُقال وينبّه على الخطورة ويصيغ الرسالة — ولا يغيّر حالة ولا سعراً ولا كمية ولا خصماً.',
   },
@@ -123,6 +153,7 @@ export const ASSISTANTS: AssistantDef[] = [
     promptJob: 'picking',
     scopes: ['inventory'],
     needs: 'ops.prepare',
+    gate: AI_ASSIST_KEY,
     // The warehouse packs boxes. A name, a phone and an address in that
     // payload would be customer data sitting where it is not needed — and
     // the one place it is guaranteed nobody is accountable for it.

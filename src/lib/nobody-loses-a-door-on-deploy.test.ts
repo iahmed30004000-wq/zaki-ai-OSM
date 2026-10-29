@@ -164,3 +164,38 @@ describe('the ten settings boxes', () => {
     }
   });
 });
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * THE HELPERS' BOX (PR-5) — ai.assist, GRANTED THROUGH A SNAPSHOT TOO.
+ *
+ * 20261030120000_ai_assist_key reads one source table (`sp5_src`), not a key next to each INSERT, so the first block of this
+ * file cannot see it either. Here: the five sources are exactly the keys the five helpers asked before, the box lands in
+ * both tables, and it is written to run twice. The full replay is `the-assistants-box-keeps-every-door.test.ts`.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+describe('ai.assist', () => {
+  const sql = readFileSync(path.join(MIGRATIONS, '20261030120000_ai_assist_key', 'migration.sql'), 'utf8')
+    .split('\n')
+    .filter((l) => !l.trim().startsWith('--'))
+    .join('\n');
+
+  it('is in the catalog, so the owner can tick it', () => {
+    expect(ALL_CATALOG_KEYS.has('ai.assist')).toBe(true);
+  });
+
+  it('is granted FROM each key one of the five helpers asked before', () => {
+    for (const source of ['confirmation.work', 'ops.prepare', 'landing_pages.edit', 'orders.create', 'orders.view']) {
+      expect(sql, `ai.assist مش مأخوذ من ${source} — من يمرّ بالمساعد رح يخسره`).toContain(`('${source}')`);
+    }
+  });
+
+  it('lands in BOTH tables, carries the «منع» across, and runs twice without changing anything', () => {
+    expect(sql).toContain('INSERT INTO "role_permission_defaults"');
+    expect(sql).toContain('INSERT INTO "role_permissions"');
+    expect(sql).toContain(`'DENY'`);
+    for (const s of sql.split(/;\s*\n/).filter((x) => x.trim().startsWith('INSERT INTO'))) {
+      expect(s).toMatch(/ON CONFLICT[\s\S]*DO NOTHING/);
+    }
+  });
+});

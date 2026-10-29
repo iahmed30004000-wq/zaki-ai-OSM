@@ -13,6 +13,7 @@ import { Rows } from '@/components/ui/Rows';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { MissionDone, NextStepButton } from '@/components/ui/NextStep';
 import { userCan } from '@/lib/can';
+import { AI_ASSIST_KEY } from '@/lib/ai-assistants';
 
 /**
  * /ops/preparation — grouped BY PRODUCT, collapsible. Orders, required,
@@ -73,6 +74,8 @@ export function PreparationScreen() {
   const { currentUser } = useApp();
   const mayOpenOrder = userCan(currentUser, 'orders.view');
   const mayCancel = userCan(currentUser, 'orders.unlock');
+  // The suggested round is the assistants' box (PR-5): without it the list below is the whole screen, and it is whole.
+  const mayAskAssistant = userCan(currentUser, AI_ASSIST_KEY);
 
   const load = useCallback(async () => {
     try {
@@ -105,7 +108,7 @@ export function PreparationScreen() {
         </span>
       </div>
 
-      {data.groups.length > 0 && <PickingAssistant />}
+      {data.groups.length > 0 && mayAskAssistant && <PickingAssistant />}
 
       {data.groups.length === 0 ? (
         <MissionDone why="لا توجد طلبات مؤكدة بانتظار التجهيز." />
