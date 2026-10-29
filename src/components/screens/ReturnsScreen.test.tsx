@@ -241,3 +241,12 @@ describe('the reason column speaks Arabic', () => {
     expect(screen.queryByText('SOME_NEW_CODE')).toBeNull();
   });
 });
+
+describe('a reason somebody wrote is shown as written', () => {
+  it('shows a free Arabic sentence untouched, not «أخرى»', async () => {
+    apiJson.mockResolvedValue(answer([{ ...PARTIAL_ROW, returnReason: 'أُغلق كخسارة — لم تُستلم البضاعة. ضاعت في الطريق' }]));
+    render(<ReturnsScreen />);
+    await waitFor(() => screen.getAllByText('أُغلق كخسارة — لم تُستلم البضاعة. ضاعت في الطريق'));
+    expect(screen.queryByText('أخرى')).toBeNull();
+  });
+});

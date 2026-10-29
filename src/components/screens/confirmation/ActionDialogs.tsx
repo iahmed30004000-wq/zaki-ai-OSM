@@ -8,6 +8,7 @@ import { ProductPicker } from '@/components/ui/ProductPicker';
 import { useProducts } from '@/hooks/useProducts';
 import { useRegions } from '@/hooks/useRegions';
 import { Modal } from '@/components/ui/Modal';
+import { POSTPONE_REASONS } from '@/lib/postpone-reasons';
 
 /**
  * Dialogs for the confirmation screen: a date picker for postponing, and
@@ -59,13 +60,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-export const POSTPONE_REASONS = [
-  { value: 'CUSTOMER_REQUESTED_CALLBACK', label: 'العميل طلب معاودة الاتصال' },
-  { value: 'POSTPONED', label: 'العميل طلب التأجيل' },
-  { value: 'NO_ANSWER', label: 'لا يرد — إعادة المحاولة لاحقاً' },
-  { value: 'FAILED_CONFIRMATION', label: 'تعذر التأكيد' },
-  { value: 'OTHER', label: 'سبب آخر' },
-] as const;
+export { POSTPONE_REASONS };
 
 const PREFERRED_TIMES = ['صباحاً (9-12)', 'ظهراً (12-3)', 'عصراً (3-6)', 'مساءً (6-9)'] as const;
 

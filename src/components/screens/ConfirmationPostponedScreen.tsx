@@ -13,7 +13,7 @@ import { usePagedList, type PagedRead, type Paging } from '@/hooks/usePagedList'
 import { KINDS, KIND_AR, TIMES, TIMES_AR, WHENS, whenLabel } from '@/lib/postponed-filters';
 import type { PostponedFacts } from '@/lib/postponed-list';
 import { OrderLink } from '@/components/orders/OrderLink';
-import { POSTPONE_REASONS } from '@/components/screens/confirmation/ActionDialogs';
+import { POSTPONE_REASONS } from '@/lib/postpone-reasons';
 
 /**
  * /confirmation/postponed — order, customer, due date, days remaining,

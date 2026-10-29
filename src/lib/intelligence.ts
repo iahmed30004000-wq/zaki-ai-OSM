@@ -551,8 +551,8 @@ export async function staleStatements(tx: Tx, scope: Scope, now = new Date()): P
    * the filter every other money read spells `{ store: { isTest: false } }`
    * has nothing to stand on here. This query used to spread it anyway, and
    * Prisma answered at RUNTIME with «Unknown argument `store`» — which took
-   * the whole of GET /api/growth/intelligence down, because `allFindings`
-   * awaits its eleven finders together. Nothing caught it until the dev
+   * the whole of GET /api/growth/intelligence down, because the eleven
+   * finders were awaited together in one Promise.all (each now runs on its own, see runDetectors). Nothing caught it until the dev
    * server was run and the dashboard loaded:
    *
    *   · TypeScript does not check a SPREAD for excess properties, so
