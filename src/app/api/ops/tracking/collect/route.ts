@@ -222,10 +222,10 @@ export async function POST(req: Request) {
        */
       const refs = orders.map((o) => o.merchantRef).filter((r): r is string => !!r);
       const barcodes = orders.map((o) => o.trackingNumber).filter((b): b is string => !!b);
-      const lines =
+      const readLines = () =>
         refs.length + barcodes.length === 0
-          ? []
-          : await tx.statementLine.findMany({
+          ? Promise.resolve([])
+          : tx.statementLine.findMany({
               where: {
                 statement: { companyId, storeId },
                 OR: [
@@ -239,6 +239,7 @@ export async function POST(req: Request) {
                 statement: { select: { reference: true, status: true, approvedAt: true, deliveryProviderId: true } },
               },
             });
+      const lines = await readLines();
       /**
        * AND A LINE A PERSON TIED TO THE ORDER BY HAND.
        *
@@ -276,7 +277,9 @@ export async function POST(req: Request) {
       // The claim holds the orders' rows, and a link takes the same row before it reads the order's state.
       // So a link that committed while this press waited is visible HERE, and one that has not yet read the
       // order will find it settled: asked again after the claim, the two cannot both succeed.
-      const lateCover = statementNamingRefusal(orders, lines, await tiedLines());
+      // The statements' own lines are read again too: a «مطابق يدوي» that added this order to a draft while this
+      // press waited on the row is visible now (review of #67, 29/10), so the two cannot both book the money.
+      const lateCover = statementNamingRefusal(orders, await readLines(), await tiedLines());
       if (lateCover) throw new CollectStopped(lateCover);
 
       const movement = await recordMovement(tx, {
