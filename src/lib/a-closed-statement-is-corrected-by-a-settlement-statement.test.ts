@@ -57,6 +57,7 @@ describe('the lines the approval waits for', () => {
     { name: 'a line no order carries, nobody linked or parked', row: { result: 'MISSING_IN_SYSTEM', orderId: null }, open: true },
     { name: 'a line no order carries, parked with its reason', row: { result: 'MISSING_IN_SYSTEM', orderId: null, resolution: 'UNDER_REVIEW' }, open: false },
     { name: 'a line a person tied to an order and it matched', row: { result: 'MATCHED', orderId: 'o2' }, open: false },
+    { name: 'a line no order carried that now HAS an order (tied) — linked is never open, whatever word the row still wears', row: { result: 'MISSING_IN_SYSTEM', orderId: 'o9' }, open: false },
     { name: 'a clean match', row: { result: 'MATCHED', orderId: 'o3' }, open: false },
     { name: 'a parcel no statement names (the sweep) — a list to chase on the ORDER, not a line of this statement', row: { result: 'MISSING_IN_STATEMENT', orderId: 'o4' }, open: false },
   ];
