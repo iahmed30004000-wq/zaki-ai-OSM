@@ -19,8 +19,8 @@ import { NextResponse } from 'next/server';
 import { db } from './db';
 import { ROLE_PERMISSIONS, SessionUser, UserRole } from '../types/auth';
 import { getPermissionScope } from './authorization';
-import { legacyEffectiveKeys, catalogExtensionKeys, computeEffectiveGrants } from './permissions-core';
-import { catalogItem } from './permission-catalog';
+import { legacyEffectiveKeys, catalogExtensionKeys, computeEffectiveGrants, dbGrantSource, type GrantSource, type UserOverrideRow } from './permissions-core';
+import { catalogItem, newOrphans, TIER_COVERAGE } from './permission-catalog';
 
 /** Shape of the target user needed by the permission override routes. */
 export interface PermissionTargetUser {
@@ -113,7 +113,7 @@ export const OPERATIONAL_KEYS: ReadonlySet<string> = new Set([
  * carries the narrower tier to someone when you hold the broader one is a
  * downgrade, not an escalation. Every granting door reads it the same way.
  */
-const COVERAGE: Record<string, string> = { 'customers.view_basic': 'customers.view' };
+const COVERAGE = TIER_COVERAGE;
 
 /** How this person holds a key — directly, or through the broader tier that covers it. */
 export function heldOrCovered(actor: SessionUser, key: string) {
@@ -237,6 +237,88 @@ export async function roleScopeRefusal(
     if (foreign > 0) return `نطاق «${keyLabel(g.permission)}» يحتوي أصنافاً أو منتجات من شركة أخرى`;
   }
   return null;
+}
+
+/**
+ * AN ACTION WITHOUT THE KEY THAT OPENS ITS SCREEN — judged only where the save ADDS it.
+ *
+ * «تعديل الطلبات» ticked with «عرض الطلبات» not: the box is on and the person
+ * can never reach the button. The catalog says which key each action needs
+ * (`requires`); this refuses a save that leaves a pair NEW, with the 400 the
+ * screens show (`ORPHAN_ACTION`).
+ *
+ * `before` = what is stored. A pair already there is NOT refused: five of the
+ * shipped templates hold «عرض العملاء» without «عرض بيانات العميل الأساسية»,
+ * nine people stand on them, and the owner could never save any of those
+ * roles again if the old pair were judged too. Presence only — a scope is not
+ * compared. No exemption for anyone: it is the shape of the matrix, not
+ * authority. Returns the Arabic refusal, or null.
+ */
+/**
+ * A SAVE FROM A SCREEN THAT IS OUT OF DATE.
+ *
+ * The role editor and the exceptions editor replace the whole list. Opened
+ * before somebody else's change — a colleague's, or a data migration's like the
+ * one that split the sensitive settings off — and saved after it, they
+ * quietly wrote the old list over the new one. Both screens now send the
+ * version they read (a role's `updatedAt`, a person's `permissionsVersion`),
+ * the door refuses a save that does not carry the CURRENT one, and the refusal
+ * is a 409 the screen turns into «حدّث الصفحة».
+ */
+export const STALE_PERMISSIONS_MESSAGE = 'تغيّرت الصلاحيات من وقت ما فتحت الشاشة — حدّث الصفحة وأعد تعديلك';
+
+export class StalePermissionsError extends Error {
+  constructor() {
+    super(STALE_PERMISSIONS_MESSAGE);
+    this.name = 'StalePermissionsError';
+  }
+}
+
+export function staleResponse(): NextResponse {
+  return NextResponse.json({ error: STALE_PERMISSIONS_MESSAGE, code: 'STALE_VERSION' }, { status: 409 });
+}
+
+/** Is the version the screen sent the role's current one? A missing or unreadable version is stale. */
+export function roleVersionIsCurrent(sent: unknown, current: Date): boolean {
+  if (typeof sent !== 'string') return false;
+  const at = Date.parse(sent);
+  return Number.isFinite(at) && at === current.getTime();
+}
+
+/** Is the version the screen sent the person's current `permissionsVersion`? A missing one is stale. */
+export function userVersionIsCurrent(sent: unknown, current: number): boolean {
+  return typeof sent === 'number' && Number.isInteger(sent) && sent === current;
+}
+
+/** The 400 every door answers an orphan with: the sentence, and a code the screens can tell it by. */
+export function orphanResponse(message: string): NextResponse {
+  return NextResponse.json({ error: message, code: 'ORPHAN_ACTION' }, { status: 400 });
+}
+
+export function newOrphanRefusal(after: Iterable<string>, before: Iterable<string> = []): string | null {
+  const fresh = newOrphans(before, after)[0];
+  return fresh ? `لازم «${keyLabel(fresh.view)}» مع «${keyLabel(fresh.action)}»` : null;
+}
+
+/**
+ * The same rule for a PERSON'S exceptions, read from what they would END UP
+ * holding: the role's rows with the exceptions on top, by the engine itself.
+ * So a «منع» on a view whose actions still come from the role is an orphan
+ * too, and the exceptions list must deny those actions with it.
+ */
+export async function overrideOrphanRefusal(
+  target: { id: string; role: string; roleId: string | null },
+  beforeRows: UserOverrideRow[],
+  afterRows: UserOverrideRow[]
+): Promise<string | null> {
+  const roleRows = await dbGrantSource.roleRows(target);
+  const source = (rows: UserOverrideRow[]): GrantSource => ({ roleRows: async () => roleRows, overrideRows: async () => rows });
+  const [was, will] = await Promise.all([
+    computeEffectiveGrants(target, source(beforeRows)),
+    computeEffectiveGrants(target, source(afterRows)),
+  ]);
+  if (will.fullAccess) return null;
+  return newOrphanRefusal(Object.keys(will.grants), Object.keys(was.grants));
 }
 
 /**

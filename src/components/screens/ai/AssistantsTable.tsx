@@ -6,6 +6,7 @@ import {
 } from '@/lib/ai-assistants';
 import { RiAlertLine, RiShieldCheckLine, RiShieldCrossLine, RiToolsLine } from '@remixicon/react';
 import { Rows } from '@/components/ui/Rows';
+import { useCan } from '@/hooks/useCan';
 import { EmptyState } from '@/components/ui/EmptyState';
 
 /**
@@ -54,7 +55,9 @@ function ModelPicker({
   fallbackLabel,
   onChange,
   label,
+  disabled,
 }: {
+  disabled?: boolean;
   value: string | undefined;
   models: string[];
   fallbackLabel: string;
@@ -67,6 +70,7 @@ function ModelPicker({
   return (
     <span className="flex flex-col gap-1">
       <select
+        disabled={disabled}
         value={typing ? '__other__' : (value ?? '')}
         onChange={(e) => {
           if (e.target.value === '__other__') {
@@ -90,6 +94,7 @@ function ModelPicker({
       </select>
       {typing && (
         <input
+          disabled={disabled}
           value={value ?? ''}
           onChange={(e) => onChange(e.target.value || undefined)}
           placeholder="اسم النموذج كما عند المزوّد"
@@ -134,6 +139,8 @@ export function AssistantsTable({
 }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // Routing an assistant and opening a scope to the intelligence are «الإعدادات الحسّاسة» (the door of /api/settings/ai).
+  const canManage = useCan('settings.manage');
 
   async function toggle(scope: AiScope) {
     const next = enabled.includes(scope) ? enabled.filter((s) => s !== scope) : [...enabled, scope];
@@ -244,6 +251,7 @@ export function AssistantsTable({
                 return (
                   <span className="flex flex-col gap-1">
                     <select
+                      disabled={!canManage}
                       value={mine.provider ?? ''}
                       onChange={(e) => set({ provider: e.target.value || undefined })}
                       className="h-11 md:h-8 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-2 text-xs"
@@ -263,6 +271,7 @@ export function AssistantsTable({
                           : fallback.model
                       }
                       onChange={(model) => set({ model })}
+                      disabled={!canManage}
                       label={`نموذج ${a.label}`}
                     />
                     {/*
@@ -334,7 +343,7 @@ export function AssistantsTable({
               <input
                 type="checkbox"
                 checked={enabled.includes(scope)}
-                disabled={busy}
+                disabled={busy || !canManage}
                 onChange={() => void toggle(scope)}
                 className="h-5 w-5 mt-0.5"
               />

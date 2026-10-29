@@ -25,6 +25,7 @@ import { join } from 'node:path';
 import { PERMISSION_MODULES } from '../src/lib/permission-catalog';
 import { db } from '../src/lib/db';
 import { ALL_ROUTES } from '../src/lib/route-registry';
+import { LEGACY_ALIAS } from '../src/lib/permission-aliases';
 
 const SRC = join(process.cwd(), 'src');
 
@@ -65,9 +66,10 @@ for (const route of ALL_ROUTES) {
 }
 
 // A legacy key that aliases onto a canonical one keeps that one alive.
-const auth = readFileSync(join(SRC, 'lib', 'authorization.ts'), 'utf8');
-for (const match of auth.matchAll(/['"]([a-z_]+\.[a-z_]+)['"]\s*:\s*['"]([a-z_]+\.[a-z_]+)['"]/g)) {
-  if (enforced.has(match[1])) enforced.add(match[2]);
+// The table lives in permission-aliases.ts (it moved out of authorization.ts, which now holds none),
+// so it is READ from there, not scraped from the old file: scraping it found nothing and called live keys dead.
+for (const [legacy, canonical] of Object.entries(LEGACY_ALIAS)) {
+  if (enforced.has(legacy)) enforced.add(canonical);
 }
 
 const catalogued = new Map<string, string>();

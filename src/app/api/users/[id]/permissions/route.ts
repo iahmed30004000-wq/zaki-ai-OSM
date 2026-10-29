@@ -3,7 +3,7 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { db } from '@/lib/db';
 import { requirePermission } from '@/lib/authorization';
 import { computeEffectiveGrants } from '@/lib/permissions-core';
-import { ALL_CATALOG_KEYS, catalogItem } from '@/lib/permission-catalog';
+import { ALL_CATALOG_KEYS, catalogItem, isRetiredKey, withoutRetired } from '@/lib/permission-catalog';
 import { logAudit } from '@/lib/audit';
 import {
   PERMISSION_TARGET_SELECT,
@@ -12,7 +12,12 @@ import {
   heldOrCovered,
   keyLabel,
   loadPermissionTarget,
+  overrideOrphanRefusal,
+  orphanResponse,
+  StalePermissionsError,
+  staleResponse,
   superAdminOverrideGuard,
+  userVersionIsCurrent,
   PermissionTargetUser,
 } from '@/lib/user-permissions';
 
@@ -184,7 +189,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     if (!acting.ok) return NextResponse.json({ error: acting.error }, { status: acting.status });
 
     const body = await req.json().catch(() => null);
-    const validated = validateOverrideInputs(body?.overrides);
+    // A key the catalog has stopped offering is dropped before the list is judged (none is retired yet).
+    const validated = validateOverrideInputs(Array.isArray(body?.overrides) ? withoutRetired(body.overrides as unknown[]) : body?.overrides);
     if (!validated.ok) return validated.response;
     const parsed = validated.parsed;
 
@@ -237,13 +243,32 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
     // A DENY that this replacement drops gives the key back — a grant, held
     // to the same rule as an ALLOW (denyRemovalRefusal).
+    // (A retired key is nothing to lift: nothing asks it, so dropping its «منع» hands back no door.)
     const droppedDenies = beforeRows
-      .filter((r) => r.effect === 'DENY' && after.get(r.permission)?.effect !== 'DENY')
+      .filter((r) => r.effect === 'DENY' && !isRetiredKey(r.permission) && after.get(r.permission)?.effect !== 'DENY')
       .map((r) => r.permission);
     const denyRefusal = denyRemovalRefusal(admin, droppedDenies);
     if (denyRefusal) return NextResponse.json({ error: denyRefusal }, { status: 403 });
 
+    // The list REPLACES the stored one: it is saved only over the version it was read from.
+    if (!userVersionIsCurrent(body?.version, target.permissionsVersion)) return staleResponse();
+
+    // What the person would END UP holding must not gain an action without its screen key.
+    // Only a NEW orphan is refused — the ones already there (the shipped templates') keep working.
+    const orphan = await overrideOrphanRefusal(
+      target,
+      beforeRows,
+      parsed.map((o) => ({ permission: o.permission, effect: o.effect, scope: o.scope, scopeIds: o.scopeIds })),
+    );
+    if (orphan) return orphanResponse(orphan);
+
     await db.$transaction(async (tx) => {
+      // First, and in the same transaction: two saves of one version cannot both win.
+      const claimed = await tx.user.updateMany({
+        where: { id: target.id, permissionsVersion: target.permissionsVersion },
+        data: { permissionsVersion: { increment: 1 } },
+      });
+      if (claimed.count !== 1) throw new StalePermissionsError();
       await tx.userPermission.deleteMany({ where: { userId: target.id } });
       if (parsed.length) {
         await tx.userPermission.createMany({
@@ -257,11 +282,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
           })),
         });
       }
-      // Invalidate cached grants — the target recomputes on their next request.
-      await tx.user.update({
-        where: { id: target.id },
-        data: { permissionsVersion: { increment: 1 } },
-      });
+      // (permissionsVersion was bumped by the claim above — the target recomputes on their next request.)
     });
 
     // ── Audit per changed permission (old vs new effect/scope comparison) ──
@@ -337,6 +358,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     });
     return NextResponse.json(await buildPermissionsPayload(fresh as PermissionTargetUser));
   } catch (error: unknown) {
+    if (error instanceof StalePermissionsError) return staleResponse();
     return apiErrorResponse(error);
   }
 }

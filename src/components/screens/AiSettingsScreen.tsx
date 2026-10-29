@@ -11,6 +11,7 @@ import { RiAlertLine, RiArrowDownSLine, RiArrowGoBackLine, RiCheckLine, RiKey2Li
 import { PageHeader } from '@/components/ui/PageHeader';
 import { arDate } from '@/lib/format';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
+import { useCan } from '@/hooks/useCan';
 
 /**
  * THE AI, AND EVERY WORD THE SYSTEM SAYS TO IT.
@@ -82,6 +83,8 @@ interface Settings {
 }
 
 export function AiSettingsScreen() {
+  // Saving the provider, the routing and the prompts is «الإعدادات الحسّاسة» (PUT /api/settings/ai); the page opens on «عرض الإعدادات».
+  const canManage = useCan('settings.manage');
   const [settings, setSettings] = useState<Settings | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [jobs, setJobs] = useState<AiJob[]>([]);
@@ -412,6 +415,7 @@ export function AiSettingsScreen() {
           </label>
           <select
             id="ai-provider"
+            disabled={!canManage}
             value={settings.provider}
             onChange={(e) => {
               const p = providers.find((x) => x.id === e.target.value);
@@ -756,10 +760,14 @@ export function AiSettingsScreen() {
         and no way to keep them is the shape of the original defect.
       */}
       <div className="flex items-center gap-2">
+        {canManage ? (
         <Button onClick={save} disabled={busy}>
           {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiCheckLine className="h-4 w-4" />}
           احفظ الإعدادات والنصوص
         </Button>
+        ) : (
+          <span className="text-xs text-[var(--sys-muted)]">قراءة فقط — التعديل لمن عنده «الإعدادات الحسّاسة».</span>
+        )}
         {msg && (
           <span className={`text-xs font-medium ${msg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>{msg.text}</span>
         )}

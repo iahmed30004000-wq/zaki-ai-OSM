@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { apiJson } from '@/lib/api-client';
 import { Input } from '@/components/ui/Input';
 import { useConfirm } from '@/components/ui/Confirm';
+import { useCan } from '@/hooks/useCan';
 import { RiAlertLine, RiArrowDownSLine, RiDeleteBinLine, RiExternalLinkLine, RiLoader4Line, RiLoginBoxLine, RiMegaphoneLine, RiPencilLine, RiPlugLine } from '@remixicon/react';
 import { arDateTime } from '@/lib/format';
 import { isMadeUpAccountId, isManualAccount } from '@/lib/ads/manual';
@@ -90,6 +91,8 @@ export function AdAccountsCard({ storeName }: { storeName?: string }) {
   const [manualName, setManualName] = useState('');
   const [manualId, setManualId] = useState('');
   const confirm = useConfirm();
+  // Connecting, switching and removing an ad account are «الإعدادات الحسّاسة»; the list is read with «عرض الإعدادات».
+  const canManage = useCan('settings.manage');
 
   const active = useMemo(
     () => platforms.find((p) => p.platform === chosen) ?? platforms[0] ?? null,
@@ -287,6 +290,7 @@ export function AdAccountsCard({ storeName }: { storeName?: string }) {
                     {a.lastSyncAt && ` · آخر سحب ${arDateTime(a.lastSyncAt)}`}
                   </p>
                 </div>
+                {canManage && (
                 <div className="flex shrink-0 items-center">
                   {/* The other way across: a connected account can be made manual
                       without losing its campaigns — the token goes, they stay. */}
@@ -307,6 +311,7 @@ export function AdAccountsCard({ storeName }: { storeName?: string }) {
                     <RiDeleteBinLine className="h-4 w-4" />
                   </button>
                 </div>
+                )}
               </div>
 
               {/* The platform's own words, not a summary of them. A seller who
@@ -323,7 +328,8 @@ export function AdAccountsCard({ storeName }: { storeName?: string }) {
         </div>
       ) : null}
 
-      {active && (
+      {active && !canManage && <p className="text-xs text-[var(--sys-muted)]">قراءة فقط — التعديل لمن عنده «الإعدادات الحسّاسة».</p>}
+      {active && canManage && (
         <div className="space-y-2 rounded-lg bg-[var(--sys-surface)] p-3">
           {/* Tabs rather than a dropdown: three platforms fit, and a seller
               should see that TikTok is possible without opening anything. */}

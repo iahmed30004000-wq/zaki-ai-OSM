@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { apiJson } from '@/lib/api-client';
 import { RiCheckLine, RiLoader4Line, RiLockLine, RiTimerLine } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
+import { useCan } from '@/hooks/useCan';
 
 /**
  * «العرض بعد الطلب» — THE WINDOW, AND THE WHOLE RULE BESIDE IT.
@@ -33,6 +34,8 @@ const FIELD =
 
 export function PostOrderOfferCard() {
   const toast = useToast();
+  // The window is «الإعدادات الحسّاسة»: seen by whoever opens the page, changed by whoever holds that key.
+  const canManage = useCan('settings.manage');
   const [settings, setSettings] = useState<PostOrderOfferSettings | null>(null);
   const [defaults, setDefaults] = useState<PostOrderOfferSettings | null>(null);
   const [fixed, setFixed] = useState<string[]>([]);
@@ -125,6 +128,7 @@ export function PostOrderOfferCard() {
               type="number"
               min={1}
               max={1440}
+              disabled={!canManage}
               value={settings.windowMinutes}
               onChange={(e) =>
                 // The box's own characters, or nothing: `Number('') || 15`
@@ -146,6 +150,8 @@ export function PostOrderOfferCard() {
           </span>
         </label>
 
+        {!canManage && <p className="text-xs text-[var(--sys-muted)]">قراءة فقط — التعديل لمن عنده «الإعدادات الحسّاسة».</p>}
+        {canManage && (
         <div className="flex items-center gap-2">
           <Button size="sm" onClick={save} disabled={busy}>
             {busy ? (
@@ -157,6 +163,7 @@ export function PostOrderOfferCard() {
           </Button>
           {saved && <span className="text-xs font-medium text-[var(--sys-success)]">تم الحفظ</span>}
         </div>
+        )}
       </CardContent>
     </Card>
   );

@@ -15,6 +15,10 @@ const { apiJson } = vi.hoisted(() => ({ apiJson: vi.fn() }));
 vi.mock('@/lib/api-client', () => ({ apiJson: (...a: unknown[]) => apiJson(...a) }));
 vi.mock('@/components/ui/Confirm', () => ({ useConfirm: () => vi.fn() }));
 vi.mock('@/components/ui/Toast', () => ({ useToast: () => ({ failed: vi.fn(), success: vi.fn() }) }));
+// The buttons ask «الإعدادات الحسّاسة» (RV168): these tests are about what they DO, so the person holds the key.
+vi.mock('@/context/AppContext', () => ({
+  useApp: () => ({ currentUser: { id: 'u0', role: 'COMPANY_ADMIN', permissions: ['settings.manage'], status: 'ACTIVE' } }),
+}));
 
 import { CourierCredentials } from './CourierCredentials';
 

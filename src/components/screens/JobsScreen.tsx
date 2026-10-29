@@ -9,6 +9,7 @@ import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { arDateTime } from '@/lib/format';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
+import { useCan } from '@/hooks/useCan';
 
 /**
  * /admin/jobs — is anything quietly not running?
@@ -63,6 +64,8 @@ function ago(iso: string | null): string {
 }
 
 export function JobsScreen() {
+  // Running a job by hand is «الإعدادات الحسّاسة» — the page opens on «عرض الإعدادات», so the buttons ask their own door's key.
+  const canManage = useCan('settings.manage');
   const [data, setData] = useState<{ jobs: JobRow[]; recent: RunRow[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -114,7 +117,7 @@ export function JobsScreen() {
         server-side, one at a time, and a failure in one does not stop the
         rest.
       */}
-      {data && data.jobs.length > 0 && (
+      {canManage && data && data.jobs.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-3">
           <p className="text-xs text-[var(--sys-muted-foreground)]">
             بعد توقّف المجدول، تشغيلُها واحدةً واحدةً اثنتا عشرة ضغطة — وبترتيبٍ يهمّ.
@@ -212,6 +215,7 @@ export function JobsScreen() {
                     )}
                   </div>
 
+                  {canManage && (
                   <button
                     disabled={running === job.name}
                     onClick={async () => {
@@ -236,8 +240,9 @@ export function JobsScreen() {
                     {running === job.name ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiPlayLine className="w-4 h-4" />}
                     شغّلها الآن
                   </button>
+                  )}
 
-                  {job.parked && (
+                  {canManage && job.parked && (
                     <button
                       disabled={running === job.name}
                       onClick={async () => {

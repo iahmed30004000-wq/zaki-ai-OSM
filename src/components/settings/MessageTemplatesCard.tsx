@@ -12,6 +12,7 @@ import {
 } from '@/lib/message-templates';
 import { RiAddCircleLine, RiArrowDownSLine, RiCheckLine, RiDeleteBinLine, RiLoader4Line, RiMessage3Line } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
+import { useCan } from '@/hooks/useCan';
 
 /**
  * THE SENTENCES SENT TO CUSTOMERS, FILED BY THE MOMENT THEY BELONG TO.
@@ -50,6 +51,9 @@ const NO_SAMPLE = 'لا طلبات في هذا المتجر بعد، فلا مع
 
 export function MessageTemplatesCard() {
   const toast = useToast();
+  // The templates are edited with «الإعدادات الحسّاسة», and the preview on a real order is read with it too
+  // (`?sample=1` is refused without it — which used to draw a red box for everybody else).
+  const canManage = useCan('settings.manage');
   const [data, setData] = useState<Loaded | null>(null);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [busy, setBusy] = useState(false);
@@ -60,6 +64,7 @@ export function MessageTemplatesCard() {
   const boxes = useRef<Record<string, HTMLTextAreaElement | null>>({});
 
   const load = useCallback(async () => {
+    if (!canManage) return;
     try {
       const d = await apiJson<Loaded>('/api/settings/messages?sample=1');
       setData(d);
@@ -67,12 +72,15 @@ export function MessageTemplatesCard() {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'تعذر التحميل');
     }
-  }, []);
+  }, [canManage]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  if (!canManage) {
+    return <p className="text-xs text-[var(--sys-muted)]">قوالب الرسائل تتعدّل لمن عنده «الإعدادات الحسّاسة».</p>;
+  }
   if (error && !data) {
     return <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-xs text-[var(--sys-destructive)]">{error}</p>;
   }

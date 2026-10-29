@@ -17,6 +17,7 @@ import { arDate } from '@/lib/format';
 import { userCan } from '@/lib/can';
 import {
   PERMISSION_MODULES, MODULE_LABELS, SCOPE_LABELS,
+  catalogItem, dependentsOf, isRetiredKey, newOrphans, requiredChain, viewGrantFor,
   type ScopeValue, type CatalogItem,
 } from '@/lib/permission-catalog';
 import { RiAddCircleLine, RiAlertLine, RiArrowDownSLine, RiArrowGoBackLine, RiArrowUpSLine, RiCloseLine, RiDeleteBinLine, RiFileCopyLine, RiGroupLine, RiKey2Line, RiPencilLine, RiSearchLine, RiShieldCheckLine, RiToolsLine } from '@remixicon/react';
@@ -30,6 +31,8 @@ interface RoleRow {
   name: string;
   isSystem: boolean;
   createdAt: string;
+  /** The version a save is made over — sent back, and the door refuses a stale one (RV171). */
+  updatedAt: string;
   usersCount: number;
   permissionsCount: number;
   permissions: RolePerm[];
@@ -63,6 +66,10 @@ export function PermissionsScreen() {
   const [defaultsAvailable, setDefaultsAvailable] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [restoredFlash, setRestoredFlash] = useState(false);
+  // The views «إرجاع للافتراضي» had to add because their actions came back without them.
+  const [restoredAdded, setRestoredAdded] = useState<string[]>([]);
+  // What the last tick pulled in or took off, said under the row that was clicked.
+  const [cascade, setCascade] = useState<{ at: string; text: string } | null>(null);
 
   // Delete state
   const [deletingRole, setDeletingRole] = useState<RoleRow | null>(null);
@@ -74,6 +81,8 @@ export function PermissionsScreen() {
   const [duplicatingRole, setDuplicatingRole] = useState<RoleRow | null>(null);
   const [duplicateName, setDuplicateName] = useState('');
   const [duplicating, setDuplicating] = useState(false);
+  // Drawn INSIDE the duplicate window: it used to go to the delete window's line, which is not on screen.
+  const [duplicateError, setDuplicateError] = useState<string | null>(null);
 
   // Scope pickers
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
@@ -116,6 +125,8 @@ export function PermissionsScreen() {
   function openCreate() {
     setDefaultsAvailable(false);
     setRestoredFlash(false);
+    setRestoredAdded([]);
+    setCascade(null);
     setEditingRole(null);
     setName('');
     setDraft({});
@@ -127,6 +138,8 @@ export function PermissionsScreen() {
 
   function openEdit(role: RoleRow) {
     setRestoredFlash(false);
+    setRestoredAdded([]);
+    setCascade(null);
     setDefaultsAvailable(false);
     fetch(`/api/roles/${role.id}/default`)
       .then((r) => (r.ok ? r.json() : null))
@@ -134,8 +147,10 @@ export function PermissionsScreen() {
       .catch(() => setDefaultsAvailable(false));
     setEditingRole(role);
     setName(role.name);
+    // Opening changes NOTHING: an old pair (an action without its screen key) stays as it is until the person touches it.
     const d: Record<string, DraftPerm> = {};
     for (const p of role.permissions) {
+      if (isRetiredKey(p.permission)) continue;
       d[p.permission] = {
         scope: (p.scope as ScopeValue) || 'ALL_COMPANY',
         scopeIds: Array.isArray(p.scopeIds) ? (p.scopeIds as string[]) : [],
@@ -148,13 +163,34 @@ export function PermissionsScreen() {
     setEditorOpen(true);
   }
 
+  /**
+   * A TICK AND WHAT IT NEEDS, TOGETHER.
+   *
+   * An action ticked without the key that opens its screen is a box that is
+   * on and does nothing — the person can never reach the button. So ticking
+   * an action ticks its screen key too, and unticking a screen key unticks
+   * the actions that need it, and the line under the row says which, so
+   * nothing changes behind the person's back. Worked out from the draft in
+   * the click (not inside a state updater, which React runs twice).
+   */
   function togglePerm(item: CatalogItem) {
-    setDraft((prev) => {
-      const next = { ...prev };
-      if (next[item.key]) delete next[item.key];
-      else next[item.key] = { scope: 'ALL_COMPANY', scopeIds: [] };
-      return next;
-    });
+    const next = { ...draft };
+    const name = (k: string) => `«${catalogItem(k)?.ar ?? k}»`;
+    if (next[item.key]) {
+      delete next[item.key];
+      const gone = dependentsOf(item.key).filter((k) => next[k]);
+      for (const k of gone) delete next[k];
+      const shown = gone.slice(0, 3).map(name).join('، ');
+      const more = gone.length > 3 ? ` و${gone.length - 3} غيرها` : '';
+      setCascade(gone.length ? { at: item.key, text: `انشالت معها ${shown}${more} — ما بتشتغل بدون ${name(item.key)}.` } : null);
+    } else {
+      next[item.key] = { scope: 'ALL_COMPANY', scopeIds: [] };
+      const added = requiredChain(item.key).filter((k) => !next[k]);
+      for (const k of added) next[k] = viewGrantFor(k, next[item.key]);
+      const shown = added.map((k) => `${name(k)}${(catalogItem(k)?.scopes?.length ?? 0) > 1 ? ` (${SCOPE_LABELS[next[k].scope].ar})` : ''}`).join('، ');
+      setCascade(added.length ? { at: item.key, text: `انضافت معها ${shown} — ما بتشتغل بدونها.` } : null);
+    }
+    setDraft(next);
   }
 
   function setScope(key: string, scope: ScopeValue) {
@@ -219,9 +255,28 @@ export function PermissionsScreen() {
       }
       const d: Record<string, DraftPerm> = {};
       for (const p of data.permissions as RolePerm[]) {
+        if (isRetiredKey(p.permission)) continue;
         d[p.permission] = { scope: (p.scope as ScopeValue) || 'ALL_COMPANY', scopeIds: [] };
       }
+      /*
+       * The door refuses a save that ADDS an action without its screen key,
+       * and a shipped matrix can hold such a pair the role does not have now.
+       * So the views those actions need are added here, and said — a pair the
+       * role already has is left as it is (it is not new, and saves fine).
+       */
+      const stored = editingRole.permissions.map((p) => p.permission);
+      const added: string[] = [];
+      for (let round = 0; round < 8; round++) {
+        const fresh = newOrphans(stored, Object.keys(d));
+        if (fresh.length === 0) break;
+        for (const o of fresh) {
+          d[o.view] = viewGrantFor(o.view, d[o.action]);
+          added.push(o.view);
+        }
+      }
       setDraft(d);
+      setCascade(null);
+      setRestoredAdded(added);
       setRestoredFlash(true);
     } catch (e: any) {
       setEditorError(e.message);
@@ -247,10 +302,13 @@ export function PermissionsScreen() {
       const res = await fetch(url, {
         method: editingRole ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editingRole ? { name, permissions } : { name, permissions }),
+        // A save replaces the whole list, so it goes over the version it was read from (a stale one is refused with 409).
+        body: JSON.stringify(editingRole ? { name, permissions, version: editingRole.updatedAt } : { name, permissions }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
+        // Somebody changed this role since it was opened: read it again, so the next opening carries the new version.
+        if (res.status === 409) await loadRoles();
         throw new Error(data.error || data.errorAr || (ar ? 'فشل الحفظ' : 'Save failed'));
       }
       setEditorOpen(false);
@@ -265,6 +323,7 @@ export function PermissionsScreen() {
   }
 
   function openDuplicate(role: RoleRow) {
+    setDuplicateError(null);
     setDuplicatingRole(role);
     setDuplicateName(`${role.name} (نسخة)`);
   }
@@ -272,6 +331,7 @@ export function PermissionsScreen() {
   async function confirmDuplicate() {
     if (!duplicatingRole) return;
     setDuplicating(true);
+    setDuplicateError(null);
     try {
       const res = await fetch(`/api/roles/${duplicatingRole.id}/duplicate`, { method: 'POST' });
       if (!res.ok) {
@@ -281,8 +341,8 @@ export function PermissionsScreen() {
       setDuplicatingRole(null);
       await loadRoles();
     } catch (e: any) {
-      setDeleteError(e.message);
-      setDuplicatingRole(null);
+      // Stays open and says why — a refusal here used to vanish with the window.
+      setDuplicateError(e.message);
     } finally {
       setDuplicating(false);
     }
@@ -496,6 +556,11 @@ export function PermissionsScreen() {
                 {ar
                   ? 'تم تحميل الصلاحيات الافتراضية للدور — لن تُطبّق حتى تضغط حفظ التغييرات.'
                   : 'The role defaults are loaded — nothing changes until you press Save.'}
+                {restoredAdded.length > 0 && (
+                  <span className="block mt-1">
+                    {`انضافت للافتراضي ${[...new Set(restoredAdded)].map((k) => `«${catalogItem(k)?.ar ?? k}»`).join('، ')} — في صلاحيات فيه ما بتشتغل بدونها.`}
+                  </span>
+                )}
               </div>
             )}
 
@@ -637,11 +702,26 @@ export function PermissionsScreen() {
                                 )}
                               </div>
 
+                              {/* What the last tick pulled in or took off, under the row that was clicked */}
+                              {cascade?.at === item.key && (
+                                <p role="status" className="mt-1 ms-6 text-xs text-[var(--sys-warning)]">{cascade.text}</p>
+                              )}
+                              {/* An old pair the person has not touched: said, never fixed behind their back */}
+                              {d && item.requires && !draft[item.requires] && (
+                                <p className="mt-1 ms-6 text-xs text-[var(--sys-warning)]">
+                                  {`بتحتاج «${catalogItem(item.requires)?.ar ?? item.requires}» — مش مفعّلة.`}
+                                </p>
+                              )}
+                              {item.note && <p className="mt-1 ms-6 text-xs text-[var(--sys-muted)]">{item.note}</p>}
+                              {item.opens && item.opens.length > 0 && (
+                                <p className="mt-1 ms-6 text-xs text-[var(--sys-muted)]">{`بتفتح: ${item.opens.join(' · ')}`}</p>
+                              )}
+
                               {/* CATEGORY scope → category checkboxes */}
                               {d && d.scope === 'CATEGORY' && (
                                 <div className="mt-2 ms-6 rounded-lg bg-[var(--sys-surface)] border border-[var(--sys-border)] p-3">
                                   {categories.length === 0 ? (
-                                    <p className="text-xs text-[var(--sys-muted)]">لا فئاتِ منتجاتٍ بعد — وبلا فئةٍ لا معنى لصلاحيةٍ محصورةٍ بفئة. تُعرَّف من «المنتجات ← الفئات».</p>
+                                    <p className="text-xs text-[var(--sys-muted)]">لا تصنيفات منتجات بعد — وبلا تصنيف لا معنى لصلاحية محصورة بتصنيف. تُعرَّف من «المنتجات ← التصنيفات».</p>
                                   ) : (
                                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                                       {categories.map((c) => (
@@ -786,6 +866,7 @@ export function PermissionsScreen() {
               value={duplicateName}
               onChange={(e) => setDuplicateName(e.target.value)}
             />
+            {duplicateError && <p className="text-xs text-[var(--sys-destructive)]">{duplicateError}</p>}
             <div className="flex items-center justify-end gap-2">
               <Button variant="outline" onClick={() => setDuplicatingRole(null)}>{ar ? 'إلغاء' : 'Cancel'}</Button>
               <Button onClick={confirmDuplicate} loading={duplicating}>{ar ? 'نسخ' : 'Duplicate'}</Button>
