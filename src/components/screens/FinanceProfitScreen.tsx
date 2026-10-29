@@ -16,6 +16,7 @@ import { routeLabel } from '@/lib/route-registry';
 import { arDate } from '@/lib/format';
 import { apiJson } from '@/lib/api-client';
 import { userCan } from '@/lib/can';
+import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { ZERO_SUMMARY, type ProfitSummary } from '@/lib/profit-summary';
 import { RiAddCircleLine, RiArrowRightDownLine, RiArrowUpCircleLine, RiFileList3Line, RiMoneyDollarCircleLine } from '@remixicon/react';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -246,9 +247,8 @@ export function FinanceProfitScreen() {
     }
   };
 
-  useEffect(() => {
-    loadFinance();
-  }, []);
+  // A screen left open stays true: it reads again when the person comes back to it (and on first open).
+  useLiveRefresh(loadFinance);
 
   /** The wallet the money leaves, and what the server said if it refused. */
   const [walletId, setWalletId] = useState('');
