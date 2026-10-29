@@ -26,7 +26,7 @@ const { db, requireContext, assertOrderAccess, can, createNotification } = vi.ho
   requireContext: vi.fn(),
   assertOrderAccess: vi.fn(),
   can: vi.fn<(...a: unknown[]) => boolean>(),
-  createNotification: vi.fn(async () => 1),
+  createNotification: vi.fn(async (..._a: unknown[]) => 1),
 }));
 
 vi.mock('@/lib/db', () => ({ db }));
