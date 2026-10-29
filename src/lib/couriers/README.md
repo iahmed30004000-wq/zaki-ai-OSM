@@ -29,8 +29,11 @@ machine in `shipping-workflow.ts`, never by writing the column directly.
 
 `logestechs.ts`, against their API documentation (v. 9-6-2026).
 Base `https://apisv2.logestechs.com/api`. Authentication is the account email
-and password in each request body, not a token, so the credentials live in
-the environment and never in a database row.
+and password in each request body, not a token, so we have to be able to send
+them back: they are stored in `DeliveryProvider.apiCredentials`, encrypted at
+rest (AES-256-GCM, key `APP_ENCRYPTION_KEY` from the environment only), written
+through `/api/delivery-providers/[id]/credentials` and never returned by any
+endpoint. Without the key, saving is refused rather than stored in the clear.
 
 | What | Their endpoint |
 |---|---|
