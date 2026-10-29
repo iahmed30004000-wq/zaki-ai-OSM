@@ -26,6 +26,8 @@ import {
 import { removeProofFile } from '@/lib/settlement-proof';
 import { SWAP_BLOCKS_UNDO_AR, swapTiedToLine } from '@/lib/superseded';
 import { POSSIBLE_DOUBLE_SENTENCE, findPossibleDoubles, handWindowStart, type HandMovement } from '@/lib/possible-double';
+import { ON_THE_COMPANY, proposeShortfalls, type ShortfallCharge } from '@/lib/shortfall';
+import { notify } from '@/lib/notify';
 
 /**
  * One statement.
@@ -48,6 +50,12 @@ const patchSchema = z.object({
    * (or has decided to keep both). Never sent by a screen on its own: only by «اعتمد هيك».
    */
   confirmPossibleDouble: z.boolean().optional(),
+  /**
+   * «من يتحمّل الفرق؟» — for each short line the door could not name, the approver's answer: an employee's id, or
+   * `COMPANY` (the loss stays on the company). Keyed by the match row. Sent only after the approval has answered
+   * SHORTFALL_UNNAMED with the lines; a line the door already named ignores it.
+   */
+  shortfallPeople: z.record(z.string().uuid(), z.union([z.string().uuid(), z.literal(ON_THE_COMPANY)])).optional(),
 });
 
 /** The in-flight states a matched line promotes to «مُسلَّم» when the statement is approved. */
@@ -328,7 +336,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           matches: {
             select: {
               id: true, orderId: true, result: true, resolution: true, resolutionNote: true, resolvedById: true,
-              statementAmount: true, statementFee: true, expectedAmount: true,
+              statementAmount: true, statementFee: true, expectedAmount: true, expectedFee: true,
               // What the company already paid on a claim for this order: the part of its gross that an EARLIER approved
               // statement settled (settlement-decisions). Empty for nearly every order.
               order: {
@@ -673,6 +681,60 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       }
 
       /**
+       * THE SHORTFALL — WHO CARRIES WHAT THE COMPANY PAID LESS.
+       *
+       * A line answered «اعتُمد رقم الشركة» whose figure came in LOWER than ours is money the company will not
+       * send. Whoever followed the parcel carries it unless the owner or the accountant accepts the explanation, so
+       * a PROPOSED «فرق تحصيل» is written here, in the approval's own transaction and nowhere else (lib/shortfall).
+       * It moves no money: a deduction is a person's decision, or payday's default (lib/payroll). A line the door
+       * cannot name stops the approval until the approver names a person or says «على الشركة»; the whole
+       * transaction — the wallet movements, the settled orders — rolls back with it.
+       */
+      const shortfall = await proposeShortfalls(
+        tx,
+        {
+          companyId, storeId, approverId: user.id,
+          statement: { id, reference: statement.reference, currencyCode: statement.currencyCode, importedAt: statement.createdAt },
+          fallbackDeliveredAt: deliveredAt,
+          minorUnit: country.minorUnit,
+          naming: parsed.data.shortfallPeople,
+        },
+        settling
+          .filter((m) => acceptedIds.includes(m.orderId as string))
+          .map((m) => ({
+            matchId: m.id,
+            orderId: m.orderId as string,
+            orderNumber: m.order?.orderNumber ?? (m.orderId as string),
+            expectedAmount: m.expectedAmount,
+            expectedFee: m.expectedFee,
+            statementAmount: m.statementAmount,
+            statementFee: m.statementFee,
+            // An order that an earlier approved statement left as a claim: this line pays the rest of it.
+            claimPayment: (m.order?.settlementMatches?.length ?? 0) > 0,
+            explanation: explanationOf(m.resolutionNote),
+          }))
+      );
+      if (shortfall.stop) {
+        const body =
+          shortfall.stop.code === 'SHORTFALL_UNNAMED'
+            ? {
+                code: 'SHORTFALL_UNNAMED',
+                error:
+                  'سطور مقبولة برقم الشركة وهو أقل من رقمنا، ولا موظف مسجَّل لتسليمها: ' +
+                  shortfall.stop.lines.map((l) => l.orderNumber).join('، ') +
+                  '. سمِّ موظفاً لكل سطر أو اختر «على الشركة» ثم اعتمد.',
+                lines: shortfall.stop.lines,
+                candidates: shortfall.stop.candidates,
+              }
+            : {
+                code: 'SHORTFALL_BAD_PERSON',
+                error: 'اختيار غير مقبول: ' + shortfall.stop.lines.map((l) => `${l.orderNumber} — ${l.why}`).join('؛ '),
+                lines: shortfall.stop.lines,
+              };
+        throw new ApprovalStopped(409, body);
+      }
+
+      /**
        * WHAT THE DECISIONS DID, WRITTEN ON THE ORDERS THEY DID IT TO — in the name of the person approving.
        *
        * A clean row needs no sentence of its own (the delivery above and the audit row below say it). A row a
@@ -724,6 +786,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         settledCount: settledOrderIds.length,
         acceptedCount: acceptedIds.length,
         claimCount: claims.length,
+        shortfalls: shortfall.charges,
+        shortfallsOnCompany: shortfall.onCompany.length,
       };
       }, { timeout: 30_000 });
     } catch (e) {
@@ -762,11 +826,29 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         gap: gap.gap, explanation: explanation ?? null, receipts: approved.receiptCount,
         // What the approval settled: the clean rows plus the answered ones, and the claims it left open.
         settled: approved.settledCount, acceptedByDecision: approved.acceptedCount, claimsOpened: approved.claimCount,
+        // The «فرق تحصيل» the approval proposed (each a PROPOSED row waiting for a decision), and the lines the
+        // approver left on the company.
+        shortfalls: approved.shortfalls.map((c: ShortfallCharge) => ({ penaltyId: c.penaltyId, employeeId: c.userId, amount: c.amount, currency: c.currencyCode })),
+        shortfallsOnCompany: approved.shortfallsOnCompany,
         // Said by the person, on the screen: the hand rows listed were NOT the same money. Written here so
         // the approval itself carries the answer.
         ...(confirmedDoubles.length > 0 ? { confirmedPossibleDouble: true, handRows: confirmedDoubles } : {}),
       },
     });
+
+    // Each employee hears of it once the approval is committed — never from a transaction that might roll back.
+    for (const c of approved.shortfalls) {
+      notify({
+        companyId,
+        storeId,
+        audience: { userIds: [c.userId] },
+        actorId: user.id,
+        title: 'فرق تحصيل عليك — بانتظار القرار',
+        message: `طلب ${c.orderNumber} · كشف ${statement.reference}: دفعت الشركة أقل من المتوقَّع بمقدار ${c.amount} ${c.currencyCode}. إن كان عندك تفسير فاحكِ مع المحاسب أو المالك.`,
+        type: 'SYSTEM_ALERT',
+        link: '/control/penalties',
+      });
+    }
 
     return NextResponse.json({
       statement: approved.row,

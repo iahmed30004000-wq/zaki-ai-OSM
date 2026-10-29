@@ -1019,6 +1019,16 @@
     "links": 1,
     "tabs": 0
   },
+  "src/components/screens/finance/ShortfallPeopleDialog.tsx": {
+    "buttons": 2,
+    "inputs": 1,
+    "columns": 0,
+    "cards": 0,
+    "modals": 1,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/screens/finance/SwapDialog.tsx": {
     "buttons": 5,
     "inputs": 3,
@@ -1180,12 +1190,12 @@
     "tabs": 0
   },
   "src/components/screens/PenaltiesScreen.tsx": {
-    "buttons": 6,
-    "inputs": 1,
+    "buttons": 7,
+    "inputs": 2,
     "columns": 3,
     "cards": 0,
     "modals": 1,
-    "icons": 4,
+    "icons": 5,
     "links": 0,
     "tabs": 0
   },
@@ -1520,8 +1530,8 @@
     "tabs": 0
   },
   "src/components/screens/users/UserSalary.tsx": {
-    "buttons": 4,
-    "inputs": 4,
+    "buttons": 5,
+    "inputs": 6,
     "columns": 0,
     "cards": 0,
     "modals": 1,

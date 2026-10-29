@@ -25,6 +25,11 @@ import { importedSentence, type ImportedStatement } from '@/lib/statement-import
 import { STATEMENT_CLOSED_SENTENCE, approvalRefusal, isApproved, rematchRefusal } from '@/lib/settlement-gates';
 import { useConfirm } from '@/components/ui/Confirm';
 import { AssembleStatementDialog } from '@/components/screens/finance/AssembleStatementDialog';
+import {
+  ShortfallPeopleDialog,
+  type ShortfallPerson,
+  type UnnamedShortfall,
+} from '@/components/screens/finance/ShortfallPeopleDialog';
 import { receiptsInStatementCurrency } from '@/lib/receipt-conversion';
 import { minorUnitFor } from '@/lib/currencies';
 
@@ -163,7 +168,9 @@ export function CollectionScreen() {
   const [assembleFor, setAssembleFor] = useState<StatementRow | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   // The hand rows the server found when asked to approve: shown with «اعتمد هيك» / «رجوع», never auto-confirmed.
-  const [doubleFor, setDoubleFor] = useState<{ statement: StatementRow; sentence: string; rows: HandRow[] } | null>(null);
+  const [doubleFor, setDoubleFor] = useState<{ statement: StatementRow; sentence: string; rows: HandRow[]; people?: Record<string, string> } | null>(null);
+  // The short lines the door could not name, shown with «من يتحمّل الفرق؟» until the approver answers for each.
+  const [namingFor, setNamingFor] = useState<{ statement: StatementRow; sentence: string; lines: UnnamedShortfall[]; candidates: ShortfallPerson[]; confirmed: boolean } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -204,26 +211,43 @@ export function CollectionScreen() {
    * When a hand entry of the same money is already in the wallet the server answers POSSIBLE_DOUBLE with the
    * rows. They are shown here; only «اعتمد هيك» sends the approval again with the confirmation.
    */
-  async function approve(s: StatementRow, confirmed = false) {
+  async function approve(s: StatementRow, confirmed = false, people?: Record<string, string>) {
     setBusy(s.id);
     setError(null);
     setDone(null);
     try {
       const res = await apiFetch(`/api/finance/statements/${s.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ approve: true, ...(confirmed ? { confirmPossibleDouble: true } : {}) }),
+        body: JSON.stringify({
+          approve: true,
+          ...(confirmed ? { confirmPossibleDouble: true } : {}),
+          // «من يتحمّل الفرق؟»: the approver's answer for the short lines the door could not name.
+          ...(people ? { shortfallPeople: people } : {}),
+        }),
       });
-      const data = (await res.json().catch(() => ({}))) as { code?: string; error?: string; errorAr?: string; rows?: HandRow[] };
+      const data = (await res.json().catch(() => ({}))) as {
+        code?: string; error?: string; errorAr?: string; rows?: HandRow[];
+        lines?: UnnamedShortfall[]; candidates?: ShortfallPerson[];
+      };
       if (res.status === 409 && data.code === 'POSSIBLE_DOUBLE') {
-        setDoubleFor({ statement: s, sentence: data.error ?? '', rows: data.rows ?? [] });
+        setNamingFor(null);
+        setDoubleFor({ statement: s, sentence: data.error ?? '', rows: data.rows ?? [], people });
+        return;
+      }
+      if (res.status === 409 && data.code === 'SHORTFALL_UNNAMED') {
+        // `confirmed` is kept: someone who already said the hand rows are not the same money is not asked again.
+        setDoubleFor(null);
+        setNamingFor({ statement: s, sentence: data.error ?? '', lines: data.lines ?? [], candidates: data.candidates ?? [], confirmed });
         return;
       }
       if (!res.ok) throw new Error(data.errorAr || data.error || `HTTP ${res.status}`);
       setDoubleFor(null);
+      setNamingFor(null);
       setDone('اعتُمد الكشف وسُجِّلت حركة المحفظة');
       await load();
     } catch (e) {
       setDoubleFor(null);
+      setNamingFor(null);
       setError(e instanceof Error ? e.message : 'تعذر التنفيذ');
     } finally {
       setBusy(null);
@@ -604,7 +628,18 @@ export function CollectionScreen() {
           rows={doubleFor.rows}
           busy={busy === doubleFor.statement.id}
           onClose={() => setDoubleFor(null)}
-          onConfirm={() => void approve(doubleFor.statement, true)}
+          onConfirm={() => void approve(doubleFor.statement, true, doubleFor.people)}
+        />
+      )}
+
+      {namingFor && (
+        <ShortfallPeopleDialog
+          sentence={namingFor.sentence}
+          lines={namingFor.lines}
+          candidates={namingFor.candidates}
+          busy={busy === namingFor.statement.id}
+          onClose={() => setNamingFor(null)}
+          onConfirm={(people) => void approve(namingFor.statement, namingFor.confirmed, people)}
         />
       )}
 

@@ -6,8 +6,10 @@ import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { zodMessage } from '@/lib/zod-message';
 import { logAudit } from '@/lib/audit';
-import { applyPenalty, reversePenalty, waivePenalty, PenaltyRefused } from '@/lib/penalty-service';
-import { PENALTY_KINDS, PENALTY_STATUSES } from '@/lib/penalties';
+import { applyPenalty, retargetShortfall, reversePenalty, waivePenalty, PenaltyRefused } from '@/lib/penalty-service';
+import { PENALTY_KINDS, PENALTY_STATUSES, SHORTFALL_KIND_INFO } from '@/lib/penalties';
+import { NEVER_CHARGED_ROLES } from '@/lib/shortfall';
+import { notify } from '@/lib/notify';
 
 /**
  * GET/POST /api/team/penalties — what the system proposed, and what a
@@ -28,6 +30,10 @@ const REFUSAL_AR: Record<string, string> = {
   ALREADY_PAID: 'سُوّي هذا الخصم مع صرفية سابقة — تصحيحه حركة جديدة لا تعديل للماضي',
   NO_RULE: 'لا قاعدة خصم سارية',
   ESTIMATED: 'وقت الوصول مُقدَّر لا مُسجَّل — لا يُخصم عليه',
+  SELF_DECISION: 'لا تقرّر في خصمٍ عليك أنت — يقرّره غيرك',
+  NOT_SHORTFALL: 'التحويل لموظف آخر لفرق التحصيل وحده',
+  BAD_TARGET: 'اختر موظفاً فعّالاً غير المالك والمدراء وغيرك وغير الحالي',
+  CHANGED: 'الخصم تغيّر هلّق — حدّث الصفحة',
 };
 
 export async function GET(req: Request) {
@@ -36,6 +42,19 @@ export async function GET(req: Request) {
     await requirePermission('penalties.view');
 
     const q = new URL(req.url).searchParams;
+
+    // The people a «فرق تحصيل» may be moved to — read by the one who decides, for the «حوّل» box. A roster is not
+    // what supervision needs, so it takes the deciding key too.
+    if (q.get('people') === '1') {
+      await requirePermission('penalties.decide');
+      const people = await db.user.findMany({
+        where: { companyId, status: 'ACTIVE', role: { notIn: [...NEVER_CHARGED_ROLES] } },
+        select: { id: true, name: true, role: true },
+        orderBy: { name: 'asc' },
+      });
+      return NextResponse.json({ people });
+    }
+
     const status = q.get('status');
     const userId = q.get('userId');
 
@@ -52,13 +71,15 @@ export async function GET(req: Request) {
         id: true, kind: true, occurredOn: true, units: true, chargedUnits: true,
         amount: true, currencyCode: true, status: true, note: true, decisionNote: true,
         decidedAt: true, payslipId: true, reversesId: true,
+        // A «فرق تحصيل» says which statement line it is about; the others have none.
+        settlementMatchId: true,
         user: { select: { id: true, name: true, role: true } },
         decidedById: true,
       },
     });
 
     return NextResponse.json({
-      kinds: PENALTY_KINDS,
+      kinds: [...PENALTY_KINDS, SHORTFALL_KIND_INFO],
       penalties: rows.map((r) => ({ ...r, amount: Number(r.amount) })),
     });
   } catch (error) {
@@ -66,11 +87,15 @@ export async function GET(req: Request) {
   }
 }
 
-const schema = z.object({
-  penaltyId: z.string().uuid(),
-  action: z.enum(['apply', 'waive', 'reverse']),
-  note: z.string().trim().max(500).optional(),
-});
+const schema = z
+  .object({
+    penaltyId: z.string().uuid(),
+    action: z.enum(['apply', 'waive', 'reverse', 'retarget']),
+    note: z.string().trim().max(500).optional(),
+    /** `retarget` only: the person the «فرق تحصيل» really belongs to. */
+    userId: z.string().uuid().optional(),
+  })
+  .refine((v) => v.action !== 'retarget' || !!v.userId, { message: 'حدّد الموظف المسؤول', path: ['userId'] });
 
 export async function POST(req: Request) {
   try {
@@ -91,10 +116,19 @@ export async function POST(req: Request) {
     if (!target) return NextResponse.json({ error: REFUSAL_AR.NOT_FOUND }, { status: 404 });
 
     const input = { penaltyId: target.id, decidedById: user.id, note: parsed.data.note };
+    let movedTo: string | null = null;
     try {
-      const run =
-        parsed.data.action === 'apply' ? applyPenalty : parsed.data.action === 'waive' ? waivePenalty : reversePenalty;
-      await db.$transaction((tx) => run(tx, input));
+      if (parsed.data.action === 'retarget') {
+        // The old row is waived «ليس المسؤول» and a new PROPOSED one is written, in one transaction.
+        const moved = await db.$transaction((tx) =>
+          retargetShortfall(tx, { ...input, companyId, toUserId: parsed.data.userId! })
+        );
+        movedTo = moved.userId;
+      } else {
+        const run =
+          parsed.data.action === 'apply' ? applyPenalty : parsed.data.action === 'waive' ? waivePenalty : reversePenalty;
+        await db.$transaction((tx) => run(tx, input));
+      }
     } catch (e) {
       if (e instanceof PenaltyRefused) {
         return NextResponse.json({ error: REFUSAL_AR[e.reason] ?? e.reason, code: e.reason }, { status: 409 });
@@ -115,8 +149,23 @@ export async function POST(req: Request) {
         amount: Number(target.amount),
         currency: target.currencyCode,
         reason: parsed.data.note ?? null,
+        ...(movedTo ? { movedTo } : {}),
       },
     });
+
+    if (movedTo) {
+      // The person it now belongs to hears of it, like the first one did at the approval.
+      notify({
+        companyId,
+        storeId,
+        audience: { userIds: [movedTo] },
+        actorId: user.id,
+        title: 'فرق تحصيل عليك — بانتظار القرار',
+        message: `${target.currencyCode} ${Number(target.amount)} — حُوّل إليك لأنك من سلّم الطرد. إن كان عندك تفسير فاحكِ مع المحاسب أو المالك.`,
+        type: 'SYSTEM_ALERT',
+        link: '/control/penalties',
+      });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (error) {

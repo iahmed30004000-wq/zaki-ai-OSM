@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { db, attendance } = vi.hoisted(() => ({
   db: {
     penaltyRule: { findMany: vi.fn() },
-    penalty: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
+    penalty: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), updateMany: vi.fn() },
   },
   attendance: vi.fn(),
 }));
@@ -125,7 +125,7 @@ describe('proposing', () => {
   it('writes nothing by itself', async () => {
     await proposePenalties(db as never, SCOPE, PEOPLE);
     expect(db.penalty.create).not.toHaveBeenCalled();
-    expect(db.penalty.update).not.toHaveBeenCalled();
+    expect(db.penalty.updateMany).not.toHaveBeenCalled();
   });
 
   it('and what it writes is PROPOSED, never applied', async () => {
@@ -163,9 +163,9 @@ describe('deciding', () => {
 
   it('applying stamps who decided it — money never moves anonymously', async () => {
     db.penalty.findUnique.mockResolvedValue(PROPOSED);
-    db.penalty.update.mockResolvedValue({});
+    db.penalty.updateMany.mockResolvedValue({ count: 1 });
     await applyPenalty(db as never, { penaltyId: 'p1', decidedById: 'boss' });
-    expect(db.penalty.update.mock.calls[0][0].data).toMatchObject({ status: 'APPLIED', decidedById: 'boss' });
+    expect(db.penalty.updateMany.mock.calls[0][0].data).toMatchObject({ status: 'APPLIED', decidedById: 'boss' });
   });
 
   it('applying twice is refused', async () => {
@@ -194,9 +194,9 @@ describe('deciding', () => {
 
   it('waiving with one is allowed', async () => {
     db.penalty.findUnique.mockResolvedValue(PROPOSED);
-    db.penalty.update.mockResolvedValue({});
+    db.penalty.updateMany.mockResolvedValue({ count: 1 });
     await waivePenalty(db as never, { penaltyId: 'p1', decidedById: 'boss', note: 'كان في عزاء' });
-    expect(db.penalty.update.mock.calls[0][0].data).toMatchObject({ status: 'WAIVED', decisionNote: 'كان في عزاء' });
+    expect(db.penalty.updateMany.mock.calls[0][0].data).toMatchObject({ status: 'WAIVED', decisionNote: 'كان في عزاء' });
   });
 });
 
@@ -209,7 +209,7 @@ describe('undoing money that was taken', () => {
 
   it('writes a linked opposite row, and deletes nothing', async () => {
     db.penalty.findUnique.mockResolvedValue(APPLIED);
-    db.penalty.update.mockResolvedValue({});
+    db.penalty.updateMany.mockResolvedValue({ count: 1 });
     db.penalty.create.mockResolvedValue({});
     await reversePenalty(db as never, { penaltyId: 'p1', decidedById: 'boss', note: 'خطأ في القياس' });
 
@@ -218,7 +218,7 @@ describe('undoing money that was taken', () => {
     expect(written.amount).toBe(-60);
     expect(written.status).toBe('REVERSED');
     // The original stays, marked.
-    expect(db.penalty.update.mock.calls[0][0].data.status).toBe('REVERSED');
+    expect(db.penalty.updateMany.mock.calls[0][0].data.status).toBe('REVERSED');
   });
 
   it('needs a reason', async () => {

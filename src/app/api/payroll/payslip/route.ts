@@ -7,6 +7,8 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { zodMessage } from '@/lib/zod-message';
 import { logAudit } from '@/lib/audit';
 import { paySalary, previewPayslip, PayrollRefused } from '@/lib/payroll';
+import { MIN_CONVERT_RATE } from '@/lib/currencies';
+import { readTypedFigure } from '@/lib/numeric-input';
 import { currentSpan } from '@/lib/commission-period';
 import { owedTo } from '@/lib/commission-payout';
 
@@ -36,6 +38,16 @@ function periodOf(param: string | null): { start: Date; end: Date } {
   return { start, end };
 }
 
+/**
+ * The conversion of deductions in ANOTHER currency, as the payer typed it: the currency, and the salary's currency
+ * for one unit of it. Both or neither — a rate with no currency (or the reverse) is refused, not guessed.
+ */
+const convertSchema = z.object({
+  currencyCode: z.string().trim().toUpperCase().length(3),
+  // Not below what the rate column holds (six decimals): a smaller rate turns a deduction into nothing.
+  rate: z.number().min(MIN_CONVERT_RATE, 'السعر صغير جداً — الخصم بيطلع صفر').max(1_000_000),
+});
+
 export async function GET(req: Request) {
   try {
     const { companyId, storeId } = await requireContext();
@@ -47,13 +59,20 @@ export async function GET(req: Request) {
 
     const period = periodOf(q.get('period'));
 
+    // `convertCurrency` + `convertRate`: draw the slip as it would be with the deductions of that currency converted.
+    const wantsConvert = q.get('convertCurrency') !== null || q.get('convertRate') !== null;
+    const convert = wantsConvert
+      ? convertSchema.safeParse({ currencyCode: q.get('convertCurrency'), rate: readTypedFigure(q.get('convertRate')) })
+      : null;
+    if (convert && !convert.success) return NextResponse.json({ error: 'اكتب العملة وسعر تحويلها' }, { status: 400 });
+
     const already = await db.payslip.findFirst({
       where: { companyId, userId, periodStart: period.start },
       select: { id: true, netAmount: true, createdAt: true },
     });
 
     try {
-      const preview = await previewPayslip(db, { companyId, storeId, userId });
+      const preview = await previewPayslip(db, { companyId, storeId, userId, convert: convert?.success ? convert.data : null });
       // What they are owed in commission is SHOWN beside the wage, and paid
       // by its own button: a commission not yet payable must not hold up a
       // salary that is due today.
@@ -90,6 +109,8 @@ const schema = z.object({
   userId: z.string().uuid(),
   walletId: z.string().uuid(),
   exchangeRate: z.number().positive().max(1_000_000),
+  /** Deductions in another currency than the salary's, and the rate the payer wrote for them. */
+  convert: convertSchema.optional(),
   period: z.string().regex(/^\d{4}-\d{2}$/).optional(),
   note: z.string().trim().max(300).optional(),
 });
@@ -118,6 +139,7 @@ export async function POST(req: Request) {
           periodStart: period.start,
           periodEnd: period.end,
           exchangeRate: parsed.data.exchangeRate,
+          convert: parsed.data.convert ?? null,
           note: parsed.data.note ?? null,
           createdById: user.id,
         })
@@ -139,6 +161,9 @@ export async function POST(req: Request) {
           paid: result.paidAmount,
           paidCurrency: result.paidCurrency,
           rate: parsed.data.exchangeRate,
+          // The «فرق تحصيل» nobody had decided, applied by this payment in the payer's name.
+          appliedUndecided: result.appliedUndecided ?? 0,
+          ...(parsed.data.convert ? { convertedFrom: parsed.data.convert.currencyCode, convertRate: parsed.data.convert.rate } : {}),
         },
       });
 

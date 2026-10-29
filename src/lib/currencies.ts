@@ -39,6 +39,12 @@ export const CURRENCIES: CurrencyOption[] = [
   { code: 'EUR', ar: 'يورو', minorUnit: 2 },
 ];
 
+/**
+ * The smallest rate a payer may write to turn one currency into another: what a rate column holds (six decimals).
+ * Below it the rate would be USED as written and STORED as something else, and a deduction could turn into nothing.
+ */
+export const MIN_CONVERT_RATE = 0.000001;
+
 /** The official decimals for a code, or null for one not on the list. */
 export function minorUnitFor(code: string): number | null {
   const c = CURRENCIES.find((x) => x.code === code.trim().toUpperCase());

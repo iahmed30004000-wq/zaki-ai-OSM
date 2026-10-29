@@ -2802,6 +2802,8 @@ model SettlementMatch {
   statement     CourierStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
   statementLine StatementLine?   @relation(fields: [statementLineId], references: [id], onDelete: SetNull)
   order         Order?           @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  /// The «فرق تحصيل» charged to an employee because of this line; at most one is live (penalties_one_live_per_match).
+  penalties     Penalty[]
 
   @@index([companyId, statementId, result])
   @@index([companyId, resolution])
@@ -2985,10 +2987,18 @@ model PenaltyRule {
  */
 /// ALSO HELD BY THE DATABASE: `penalties_one_live_per_day` —
 /// UNIQUE (company_id, user_id, kind, occurred_on) WHERE status IN
-/// ('PROPOSED','APPLIED'), in the migration `20260925230000_penalties`.
+/// ('PROPOSED','APPLIED') AND settlement_match_id IS NULL, created in the
+/// migration `20260925230000_penalties` and narrowed by
+/// `20261029120000_shortfall_penalty`.
 /// It is what makes `propose-penalties` safe to run twice, and partial so a
 /// REVERSED or WAIVED charge leaves the day free for a corrected one.
 /// `recordProposals` swallows the violation on purpose — see penalty-service.
+/// The clause on `settlement_match_id` is why a collection shortfall is not
+/// held by it: two short orders delivered on one day are two differences, and
+/// the day rule would have refused the second. A shortfall is held by its own
+/// index, `penalties_one_live_per_match`: UNIQUE (settlement_match_id) WHERE
+/// status IN ('PROPOSED','APPLIED') AND settlement_match_id IS NOT NULL — one
+/// live charge per difference, so a second approval press cannot charge twice.
 model Penalty {
   id           String    @id @default(uuid())
   companyId    String    @map("company_id")
@@ -3018,19 +3028,25 @@ model Penalty {
   reversesId   String?   @unique @map("reverses_id")
   /// The payslip that settled it. Null while it is still owed.
   payslipId    String?   @map("payslip_id")
+  /// The line of a courier statement this charge is about. Set only on a
+  /// «فرق تحصيل» (kind SHORTFALL), written by the approval of the statement;
+  /// null on every charge a rule measured (lateness, absence, …).
+  settlementMatchId String? @map("settlement_match_id")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
-  company    Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  user       User         @relation(fields: [userId], references: [id], onDelete: Restrict)
-  rule       PenaltyRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
-  payslip    Payslip?     @relation(fields: [payslipId], references: [id], onDelete: Restrict)
-  reverses   Penalty?     @relation("PenaltyReversal", fields: [reversesId], references: [id], onDelete: Restrict)
-  reversedBy Penalty?     @relation("PenaltyReversal")
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user            User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  rule            PenaltyRule?     @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  payslip         Payslip?         @relation(fields: [payslipId], references: [id], onDelete: Restrict)
+  reverses        Penalty?         @relation("PenaltyReversal", fields: [reversesId], references: [id], onDelete: Restrict)
+  reversedBy      Penalty?         @relation("PenaltyReversal")
+  settlementMatch SettlementMatch? @relation(fields: [settlementMatchId], references: [id], onDelete: Restrict)
 
   @@index([companyId, userId, status])
   @@index([companyId, status, occurredOn])
   @@index([payslipId])
+  @@index([settlementMatchId])
   @@map("penalties")
 }
 
@@ -3064,6 +3080,13 @@ model Payslip {
   paidAmount   Decimal  @map("paid_amount") @db.Decimal(14, 3)
   paidCurrency String   @map("paid_currency")
   exchangeRate Decimal  @map("exchange_rate") @db.Decimal(14, 6)
+  /// Deductions in ANOTHER currency than the salary's, converted at payment at a rate the payer typed.
+  /// `settledAmount` is what they came to in THEIR OWN currency (`settledCurrency`); `settledRate` is the
+  /// salary currency per one unit of it. All three are null when nothing was converted. Stored and never
+  /// recalculated, like `exchangeRate`: a month already paid reads the same next year.
+  settledAmount   Decimal? @map("settled_amount") @db.Decimal(14, 3)
+  settledCurrency String?  @map("settled_currency")
+  settledRate     Decimal? @map("settled_rate") @db.Decimal(14, 6)
   note         String?
   createdById  String   @map("created_by_id")
   createdAt    DateTime @default(now()) @map("created_at")

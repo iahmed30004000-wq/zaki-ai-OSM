@@ -50,7 +50,10 @@ beforeEach(() => {
   db.penalty.findMany.mockResolvedValue([]);
   db.payslip.findFirst.mockResolvedValue(null);
   db.payslip.create.mockResolvedValue({ id: 'slip1' });
-  db.penalty.updateMany.mockResolvedValue({ count: 0 });
+  // A stamping takes the rows it is asked for (the payment now refuses when it takes FEWER — see «a deduction
+  // reversed between the preview and the payment» below). Was `{ count: 0 }`, which a count check cannot tell
+  // from every deduction having been reversed.
+  db.penalty.updateMany.mockImplementation(async ({ where }: { where: { id: { in: string[] } } }) => ({ count: where.id.in.length }));
   checkWallet.mockResolvedValue({ walletId: 'w1', currencyCode: 'EGP', minorUnit: 2, paidAmount: 5000 });
 });
 

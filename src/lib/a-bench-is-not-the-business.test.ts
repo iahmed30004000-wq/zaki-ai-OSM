@@ -187,6 +187,7 @@ const ID_SCOPED: Record<string, Excuse> = {
   'lib/product-cost.ts': { reason: 'مقيَّد بـ productId — ومنتجُ المنصّة صفُّه الخاصّ', sites: 2 },
   'lib/receiving.ts': { reason: 'مقيَّد بـ productId، أو عدُّ ترقيمٍ لتوليدِ رقمٍ فريد', sites: 2 },
   'lib/settlement.ts': { reason: 'مقيَّد بمراجعَ مُسمّاة من كشف', sites: 1 },
+  'lib/shortfall.ts': { reason: 'مقيَّد بـ id: { in } لطلباتِ سطورِ كشفٍ مُسمّاة — يقرأ حالةَ الطلب لا رقمَ متجر', sites: 1 },
   'lib/v1/product-figures.ts': { reason: 'مقيَّد بـ productId: { in } — منتجاتٌ قرأها الكتالوجُ أصلاً بـ realStoresOnly', sites: 1 },
 };
 

@@ -4,6 +4,7 @@ import { attendance } from './attendance';
 import { shiftCalendar, type PersonShift } from './employee-shift';
 import type { BusinessCalendar } from './business-calendar';
 import { chargeFor, mayMove, ruleFor, type PenaltyStatus, type RuleRow } from './penalties';
+import { NOT_THE_ONE_AR, SHORTFALL_KIND, mayCarryShortfall } from './shortfall';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -26,7 +27,11 @@ export class PenaltyRefused extends Error {
       | 'BAD_TRANSITION'
       | 'REASON_REQUIRED'
       | 'ALREADY_PAID'
-      | 'ESTIMATED',
+      | 'ESTIMATED'
+      | 'SELF_DECISION'
+      | 'NOT_SHORTFALL'
+      | 'BAD_TARGET'
+      | 'CHANGED',
     message?: string
   ) {
     super(message ?? reason);
@@ -200,6 +205,21 @@ export async function recordProposals(tx: Tx, scope: ProposeScope, proposals: Pr
   return written;
 }
 
+/**
+ * THE WRITE THAT DECIDES — CONDITIONAL ON WHAT WAS READ.
+ *
+ * Every decision first READS the row, checks it may move, then writes. Between the two a payment can stamp the row
+ * with its payslip, or another person can decide it: an unconditional `update` would then write WAIVED over a
+ * deduction the salary has already taken (or APPLIED over one somebody waived). So the write itself carries the
+ * state it expects and the payslip it expects to be absent, and exactly one row must answer. Anything else — the
+ * state moved, a payslip stamped it — refuses with `CHANGED` and writes nothing: the caller's transaction rolls back
+ * whatever came before it.
+ */
+async function moveFrom(tx: Tx, row: { id: string; status: string }, data: Prisma.PenaltyUpdateManyMutationInput) {
+  const done = await tx.penalty.updateMany({ where: { id: row.id, status: row.status, payslipId: null }, data });
+  if (done.count !== 1) throw new PenaltyRefused('CHANGED');
+}
+
 export interface Decision {
   penaltyId: string;
   decidedById: string;
@@ -217,16 +237,17 @@ export async function applyPenalty(tx: Tx, input: Decision) {
   const row = await tx.penalty.findUnique({ where: { id: input.penaltyId } });
   if (!row) throw new PenaltyRefused('NOT_FOUND');
   if (!mayMove(row.status, 'APPLIED')) throw new PenaltyRefused('BAD_TRANSITION');
+  // Nobody decides a deduction taken from themselves: not to apply it and not to wave it away.
+  if (row.userId === input.decidedById) throw new PenaltyRefused('SELF_DECISION');
 
-  return tx.penalty.update({
-    where: { id: row.id },
-    data: {
-      status: 'APPLIED',
-      decidedById: input.decidedById,
-      decidedAt: new Date(),
-      decisionNote: input.note ?? null,
-    },
-  });
+  const data = {
+    status: 'APPLIED',
+    decidedById: input.decidedById,
+    decidedAt: new Date(),
+    decisionNote: input.note ?? null,
+  };
+  await moveFrom(tx, row, data);
+  return { ...row, ...data };
 }
 
 /**
@@ -241,16 +262,16 @@ export async function waivePenalty(tx: Tx, input: Decision) {
   if (!row) throw new PenaltyRefused('NOT_FOUND');
   if (!mayMove(row.status, 'WAIVED')) throw new PenaltyRefused('BAD_TRANSITION');
   if (!input.note?.trim()) throw new PenaltyRefused('REASON_REQUIRED');
+  if (row.userId === input.decidedById) throw new PenaltyRefused('SELF_DECISION');
 
-  return tx.penalty.update({
-    where: { id: row.id },
-    data: {
-      status: 'WAIVED',
-      decidedById: input.decidedById,
-      decidedAt: new Date(),
-      decisionNote: input.note.trim(),
-    },
-  });
+  const data = {
+    status: 'WAIVED',
+    decidedById: input.decidedById,
+    decidedAt: new Date(),
+    decisionNote: input.note.trim(),
+  };
+  await moveFrom(tx, row, data);
+  return { ...row, ...data };
 }
 
 /**
@@ -269,12 +290,10 @@ export async function reversePenalty(tx: Tx, input: Decision) {
   if (!mayMove(row.status, 'REVERSED')) throw new PenaltyRefused('BAD_TRANSITION');
   if (!input.note?.trim()) throw new PenaltyRefused('REASON_REQUIRED');
   if (row.payslipId) throw new PenaltyRefused('ALREADY_PAID');
+  if (row.userId === input.decidedById) throw new PenaltyRefused('SELF_DECISION');
 
   const now = new Date();
-  await tx.penalty.update({
-    where: { id: row.id },
-    data: { status: 'REVERSED', decidedById: input.decidedById, decidedAt: now, decisionNote: input.note.trim() },
-  });
+  await moveFrom(tx, row, { status: 'REVERSED', decidedById: input.decidedById, decidedAt: now, decisionNote: input.note.trim() });
 
   return tx.penalty.create({
     data: {
@@ -295,6 +314,58 @@ export async function reversePenalty(tx: Tx, input: Decision) {
       decidedAt: now,
       decisionNote: input.note.trim(),
       reversesId: row.id,
+    },
+  });
+}
+
+export interface Retarget extends Decision {
+  /** The company: a person from another company is not a person this penalty can be moved to. */
+  companyId: string;
+  toUserId: string;
+}
+
+/**
+ * MOVE A «فرق تحصيل» TO THE PERSON WHO REALLY COLLECTED THE PARCEL.
+ *
+ * The door can name the wrong one (two people share a phone, a colleague pressed it for another). The charge is
+ * never edited to another name — that would rewrite who was accused. It is WAIVED «ليس المسؤول», which says it
+ * was a mistake and whose, and a NEW PROPOSED row for the same line, amount and day is written for the other
+ * person. Both in one transaction, the old one first: the database allows one live charge per line.
+ *
+ * Only a shortfall, only while it is still PROPOSED, never onto oneself, never onto the owner or a manager.
+ */
+export async function retargetShortfall(tx: Tx, input: Retarget) {
+  const row = await tx.penalty.findUnique({ where: { id: input.penaltyId } });
+  if (!row || row.companyId !== input.companyId) throw new PenaltyRefused('NOT_FOUND');
+  if (row.kind !== SHORTFALL_KIND || !row.settlementMatchId) throw new PenaltyRefused('NOT_SHORTFALL');
+  if (!mayMove(row.status, 'WAIVED')) throw new PenaltyRefused('BAD_TRANSITION');
+  if (row.userId === input.decidedById) throw new PenaltyRefused('SELF_DECISION');
+  if (input.toUserId === row.userId) throw new PenaltyRefused('BAD_TARGET');
+
+  const target = await tx.user.findFirst({
+    where: { id: input.toUserId, companyId: input.companyId, status: 'ACTIVE' },
+    select: { id: true, role: true },
+  });
+  if (!target || !mayCarryShortfall(target.role) || target.id === input.decidedById) throw new PenaltyRefused('BAD_TARGET');
+
+  const now = new Date();
+  await moveFrom(tx, row, { status: 'WAIVED', decidedById: input.decidedById, decidedAt: now, decisionNote: NOT_THE_ONE_AR });
+
+  return tx.penalty.create({
+    data: {
+      companyId: row.companyId,
+      storeId: row.storeId,
+      userId: target.id,
+      ruleId: null,
+      kind: row.kind,
+      occurredOn: row.occurredOn,
+      units: row.units,
+      chargedUnits: row.chargedUnits,
+      amount: row.amount,
+      currencyCode: row.currencyCode,
+      status: 'PROPOSED',
+      note: row.note,
+      settlementMatchId: row.settlementMatchId,
     },
   });
 }
