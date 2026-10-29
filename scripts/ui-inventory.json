@@ -359,6 +359,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/orders/DuplicateSuspectNotice.tsx": {
+    "buttons": 0,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 1,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/orders/ImportOrdersDialog.tsx": {
     "buttons": 4,
     "inputs": 1,

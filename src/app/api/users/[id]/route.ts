@@ -294,6 +294,29 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         updateData.commissionCurrency = raw || null;
       }
 
+      /*
+       * NOT YOUR OWN SHIFT, unless you may already move pay (RV159).
+       *
+       * `updateContact` is exempt from `canActOnUser` on purpose — correcting a colleague's phone is not power over
+       * them — and that exemption also covered the person themselves: whoever holds «تعديل المستخدمين» could set
+       * their own start time and rest days, and lateness and the deduction built on it are counted from exactly
+       * those. So a CHANGE to one's own schedule asks for the key that already guards what the business pays a
+       * person (`payroll.pay`, the same one the salary and the commission currency below ask for). No new key.
+       *
+       * A save that sends the values the account already has is not a change: the shift card posts both fields
+       * together, and an employee correcting their own phone must not be refused for a shift they did not touch.
+       */
+      if (target.id === admin.id && ('shiftStart' in body || 'shiftEnd' in body || 'restDays' in body)) {
+        const moves =
+          ('shiftStart' in body && parseHhMm(body.shiftStart) !== (target.shiftStart ?? null)) ||
+          ('shiftEnd' in body && parseHhMm(body.shiftEnd) !== (target.shiftEnd ?? null)) ||
+          ('restDays' in body && parseRestDays(body.restDays) !== (target.restDays ?? null));
+        if (moves && !can(admin, 'payroll.pay')) {
+          const refusal = 'ما بتقدر تغيّر دوامك بنفسك — الدوام بيحدد التأخير والخصم، وبيغيّره حدا ثاني.';
+          return NextResponse.json({ error: refusal, errorAr: refusal, code: 'OWN_SHIFT' }, { status: 403 });
+        }
+      }
+
       // WHEN THIS PERSON STARTS, AND WHEN THEY HAND OVER.
       //
       // Lateness was measured against the COUNTRY's hours, so somebody

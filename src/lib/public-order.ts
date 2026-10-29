@@ -13,6 +13,7 @@ import { rateLimit } from './rate-limit';
 import { signAddonToken } from './landing-pages';
 import { emitAppEvent } from './apps/events';
 import { notify } from './notify';
+import { flagRecentTwins } from './recent-twin-order';
 import { queueConversions } from './conversions/emit';
 import {
   buildPublicOrderSchema,
@@ -646,6 +647,18 @@ export async function createPublicOrder(
     }
 
     return created;
+  });
+
+  // Same customer, same product, minutes apart: a flag on the history for the person who calls — never a refusal.
+  // After the commit and never able to fail it (the five-minute limiter above refuses a second SUBMISSION; this notes
+  // a second ORDER the limiter let through, such as the same product asked for again after the window).
+  await flagRecentTwins(db, {
+    companyId,
+    orderId: order.id,
+    customerId: customer.id,
+    productIds: lines.map((l) => l.product.id),
+    at: order.createdAt,
+    userId: null,
   });
 
   // The same announcement every other new order makes, through the one

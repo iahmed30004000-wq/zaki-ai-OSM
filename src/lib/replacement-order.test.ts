@@ -433,3 +433,50 @@ describe('the button under the courier message', () => {
     expect(queue).toMatch(/\/reorder`/);
   });
 });
+
+/**
+ * RV8 — WHO ENTERED THE REPLACEMENT.
+ *
+ * `createdById` is "the staff account that ENTERED this order". A replacement used to carry the sale's people and
+ * leave this empty, so a derived order had no creator. It is the person who pressed the button — said by the caller —
+ * and NEVER the original's creator, which is a fact about the old order's work.
+ */
+describe('the replacement names who raised it', () => {
+  it('createdById is what the caller says', async () => {
+    const { tx, created } = fakeTx();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await createReplacement(tx as any, { ...plan, createdById: 'u-presser' });
+    expect(created[0].createdById).toBe('u-presser');
+  });
+
+  it('and never the original’s creator, even when the original has one', async () => {
+    const { tx, created } = fakeTx();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const original = { ...ORDER, createdById: 'u-original' } as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await createReplacement(tx as any, { ...plan, order: original, createdById: 'u-presser' });
+    expect(created[0].createdById).toBe('u-presser');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await createReplacement(tx as any, { ...plan, order: original });
+    expect('createdById' in created[1], 'نُسخ مُنشئ الطلب الأصلي').toBe(false);
+  });
+
+  it('the caller that says nothing writes nothing — no invented creator', async () => {
+    const { tx, created } = fakeTx();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await createReplacement(tx as any, plan);
+    expect('createdById' in created[0]).toBe(false);
+  });
+
+  it('and every caller in the repository says who it is', () => {
+    expect(stripComments(repoFile('src/app/api/orders/[id]/reorder/route.ts'))).toMatch(/createdById: user\.id/);
+    expect(stripComments(repoFile('src/app/api/ops/tracking/transfer/route.ts'))).toMatch(/createdById: user\.id/);
+    expect(stripComments(repoFile('src/lib/parcel-swap.ts'))).toMatch(/createdById: p\.user\.id/);
+  });
+
+  it('and the box path writes it too', () => {
+    const src = stripComments(repoFile('src/lib/replacement-order.ts'));
+    const box = src.slice(src.indexOf('async function createBoxReplacement'), src.indexOf('export async function reshapeToBox'));
+    expect(box).toMatch(/\.\.\.\(plan\.createdById \? \{ createdById: plan\.createdById \} : \{\}\)/);
+  });
+});

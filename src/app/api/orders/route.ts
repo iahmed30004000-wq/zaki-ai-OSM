@@ -24,6 +24,7 @@ import { zodMessage } from '@/lib/zod-message';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { giftUnits } from '@/lib/offer-gift';
 import { projectOrder } from '@/lib/order-projection';
+import { flagRecentTwins } from '@/lib/recent-twin-order';
 
 export async function GET(req: Request) {
   try {
@@ -737,6 +738,16 @@ export async function POST(req: Request) {
       entity: 'Order',
       entityId: order.id,
       newData: order,
+    });
+
+    // Same customer, same product, minutes apart: a flag on the history for the person who calls — never a refusal.
+    await flagRecentTwins(db, {
+      companyId,
+      orderId: order.id,
+      customerId: customer.id,
+      productIds,
+      at: order.createdAt,
+      userId: user.id,
     });
 
     // Tell the people who see new orders through to confirmation — the

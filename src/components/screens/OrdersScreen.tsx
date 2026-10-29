@@ -387,7 +387,9 @@ export function OrdersScreen() {
    */
   const canExport = userCan(currentUser, 'reports.export');
   const canCreate = userCan(currentUser, 'orders.create');
-  const canImport = userCan(currentUser, 'orders.import');
+  // BOTH keys, as the door asks: `GET` and `POST /api/orders/import` and every row it sends through `POST /api/orders`
+  // want `orders.create` besides. A grant of the first without the second opened a dialog that refused every row (RV98).
+  const canImport = userCan(currentUser, 'orders.import') && userCan(currentUser, 'orders.create');
   // The migration door writes confirmed, shipped orders with a past date — the owner's, as the door itself insists.
   const canMigrate = canImport && userCan(currentUser, 'orders.migrate');
   /*
