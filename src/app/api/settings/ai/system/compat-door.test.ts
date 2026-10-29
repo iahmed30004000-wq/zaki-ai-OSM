@@ -154,6 +154,18 @@ describe('the key is bound to its address', () => {
     await refused({ provider: 'OPENAI_COMPATIBLE' }, 'ENDPOINT_REQUIRED');
   });
 
+  it('a key that finds no address inside the save is a 400 in words, not a 500', async () => {
+    // The checks above pass; the row lock then finds the address gone.
+    systemAi.mockResolvedValue(state({ compat: { baseUrl: URL1, host: 'models.example.com', model: 'glm-4.6' } }));
+    saveSystemAi.mockRejectedValue(new Error('COMPAT_ENDPOINT_REQUIRED'));
+    const res = await put({ providerKeys: { OPENAI_COMPATIBLE: KEY } });
+    const json = await res.json();
+    expect(res.status).toBe(400);
+    expect(json.code).toBe('ENDPOINT_REQUIRED');
+    expect(json.error).toContain('عنوان الخادم');
+    expect(logAudit).not.toHaveBeenCalled();
+  });
+
   it('the same address again needs no new key', async () => {
     systemAi.mockResolvedValue(state({ compat: { baseUrl: URL1, host: 'models.example.com', model: 'glm-4.6' } }));
     const res = await put({ compatBaseUrl: 'https://models.example.com/v1/', compatModel: 'glm-4.7' });

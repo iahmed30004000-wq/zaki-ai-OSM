@@ -343,6 +343,14 @@ describe('the screen’s answer to «is there a key?»', () => {
     expect(s.providerKeys.OPENAI_COMPATIBLE).toBe(false);
   });
 
+  it('RV37: a local model needs no key, so it is never reported as keyless — even beside an OpenRouter env key', async () => {
+    process.env.OPENROUTER_API_KEY = 'sk-or-test-env-key';
+    withCompany({ provider: 'LOCAL' });
+    expect((await aiSettings('c1')).hasKey).toBe(true);
+    delete process.env.OPENROUTER_API_KEY;
+    expect((await aiSettings('c1')).hasKey).toBe(true);
+  });
+
   it('RV37: the environment key counts for OpenRouter only', async () => {
     process.env.OPENROUTER_API_KEY = 'sk-or-test-env-key';
     withCompany({ provider: 'ANTHROPIC' });
@@ -359,6 +367,13 @@ describe('the answer', () => {
     const text = await aiChat({ companyId: 'c1', system: 's', user: 'u', json: true });
     expect(text).toBe('{"a":1}');
     expect(() => JSON.parse(text)).not.toThrow();
+  });
+
+  it('a gateway that returns the content as an array of parts is handed back untouched, not crashed on', async () => {
+    withSystem(configured());
+    const parts = [{ type: 'text', text: '<think>x</think>{"a":1}' }];
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ choices: [{ message: { content: parts } }] }) });
+    await expect(aiChat({ companyId: 'c1', system: 's', user: 'u' })).resolves.toBe(parts);
   });
 
   it('the same content from OpenAI is returned unchanged', async () => {

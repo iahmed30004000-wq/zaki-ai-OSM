@@ -229,6 +229,15 @@ export async function PUT(req: Request) {
     try {
       saved = await saveSystemAi({ ...parsed.data, localBaseUrl, compatBaseUrl, compatModel }, user.id);
     } catch (e) {
+      if (e instanceof Error && e.message === 'COMPAT_ENDPOINT_REQUIRED') {
+        // Thrown inside the row lock when a key arrives with no address to be
+        // bound to. The checks above catch it first; this is the same answer
+        // if the document changed between them and the write.
+        return NextResponse.json(
+          { error: 'اكتب عنوان الخادم أولاً — المفتاح يُحفظ مع عنوانه.', code: 'ENDPOINT_REQUIRED' },
+          { status: 400 }
+        );
+      }
       if (e instanceof Error && e.message === 'ENCRYPTION_KEY_MISSING') {
         // Refusing is the safe failure: a key stored in the clear is worse
         // than no AI at all.

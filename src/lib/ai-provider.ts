@@ -573,7 +573,9 @@ export async function aiSettings(companyId: string): Promise<AiSettings> {
      */
     hasKey:
       provider !== 'OPENAI_COMPATIBLE' &&
-      (!!ai.apiKeyEncrypted || !!ai.keys?.[provider] || (provider === 'OPENROUTER' && !!process.env.OPENROUTER_API_KEY)),
+      // A local model needs no key at all, so it is never «بلا مفتاح».
+      (provider === 'LOCAL' ||
+        !!ai.apiKeyEncrypted || !!ai.keys?.[provider] || (provider === 'OPENROUTER' && !!process.env.OPENROUTER_API_KEY)),
     // WHICH vendors this company has a key for — a yes or a no, never a
     // fragment of the key itself.
     providerKeys: Object.fromEntries(
@@ -1294,11 +1296,15 @@ export async function aiChat(req: ChatRequest): Promise<string> {
     });
     if (!res.ok) throw await vendorError(res, route.model, key);
     const data = await res.json();
-    const content: string = data?.choices?.[0]?.message?.content ?? '';
+    const content = data?.choices?.[0]?.message?.content ?? '';
     // A reasoning model behind a server with no reasoning parser answers with
     // its thinking in front of the answer, and `JSON.parse` of that fails.
-    // Only the compatible server, only one leading block.
-    return route.provider === 'OPENAI_COMPATIBLE' ? content.replace(/^\s*<think>[\s\S]*?<\/think>\s*/, '') : content;
+    // Only the compatible server, only one leading block — and only when the
+    // content IS text: a gateway may return an array of parts, which has no
+    // `replace` and is handed back untouched as every other vendor's is.
+    return route.provider === 'OPENAI_COMPATIBLE' && typeof content === 'string'
+      ? content.replace(/^\s*<think>[\s\S]*?<\/think>\s*/, '')
+      : content;
   } finally {
     clearTimeout(timer);
   }
