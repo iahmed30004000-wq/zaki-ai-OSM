@@ -3,12 +3,14 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { useApp } from '@/context/AppContext';
-import { apiJson } from '@/lib/api-client';
+import { apiFetch, apiJson, saidBy } from '@/lib/api-client';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { DateRange } from '@/components/ui/DateRange';
 import { TeamPerformanceTable } from '@/components/performance/TeamPerformanceTable';
 import { AttributionTable, type AttributionRow } from '@/components/performance/AttributionTable';
 import { LandingAnalyticsTab } from '@/components/performance/LandingAnalyticsTab';
 import { userCan } from '@/lib/can';
+import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { ScoreBoard } from '@/components/performance/ScoreBoard';
 import { findRoute, routeLabel } from '@/lib/route-registry';
 import { RiAlertLine, RiCopperCoinLine, RiEBike2Line, RiInboxUnarchiveLine, RiTrophyLine, RiTruckLine } from '@remixicon/react';
@@ -104,6 +106,8 @@ export function PerformanceScreen() {
   const [range, setRange] = useState(lastThirtyDays);
   const [analytics, setAnalytics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  /** Why the numbers did not come: a refusal or a failure, said — never drawn as zeros. */
+  const [refusal, setRefusal] = useState<{ status: number; said: string } | null>(null);
   // Who is doing the work, and how well. The endpoints behind these were
   // built and never connected: this screen was a second copy of the
   // dashboard's analytics, and neither answered "which agent" or
@@ -128,10 +132,6 @@ export function PerformanceScreen() {
 
   /** Empty dates mean "the whole window"; the server clamps it to 90 days. */
   const dateQuery = range.from && range.to ? `startDate=${range.from}&endDate=${range.to}` : 'period=all';
-
-  useEffect(() => {
-    loadData();
-  }, [dateQuery]);
 
   useEffect(() => {
     setTeam(null);
@@ -181,17 +181,28 @@ export function PerformanceScreen() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/analytics?${dateQuery}`);
+      // Its OWN door (`reports.view`) — not the dashboard's: a person who may open this board
+      // and not the dashboard (a bookkeeper) reads the same numbers here.
+      const res = await apiFetch(`/api/analytics/performance?${dateQuery}`);
       if (res.ok) {
         const data = await res.json();
+        setRefusal(null);
         setAnalytics(data);
+      } else {
+        if (res.status === 403) setAnalytics(null);
+        setRefusal({ status: res.status, said: await saidBy(res, 'تعذّر تحميل أرقام لوحة الأداء. أعد المحاولة بعد قليل.') });
       }
     } catch (e) {
       console.error(e);
+      // A dropped connection is not «٠ طلب»: say the numbers did not come (status 0 = no answer at all).
+      setRefusal({ status: 0, said: e instanceof Error && /[\u0600-\u06FF]/.test(e.message) ? e.message : 'تعذّر الاتصال. تحقق من الشبكة وأعد المحاولة.' });
     } finally {
       setLoading(false);
     }
   };
+  // Loads on mount, when the dates move, and again when the person comes back to the screen:
+  // a board left open all day must not go on saying this morning's numbers.
+  useLiveRefresh(loadData, { key: dateQuery });
 
   /**
    * THE VITALS THE SERVER SENT, AND THE VERDICT ON THE COST DATA.
@@ -229,6 +240,25 @@ export function PerformanceScreen() {
           | undefined,
       }
     : null;
+
+  // Refused or failed with nothing earlier to show: say so, rather than drawing «٠» under every
+  // table as if the shop had sold nothing in this window.
+  if (refusal && !analytics) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title={routeLabel('/growth/performance')} />
+        <Card>
+          <CardContent>
+            <EmptyState
+              title={refusal.status === 403 ? 'لا تملك صلاحية «عرض التقارير»' : 'تعذّر تحميل أرقام لوحة الأداء'}
+              why={refusal.status === 403 ? 'أرقام لوحة الأداء تُقرأ بصلاحية «عرض التقارير». اطلبها من مدير النظام.' : refusal.said}
+              action={refusal.status === 403 ? undefined : { label: 'إعادة المحاولة', onClick: () => void loadData() }}
+            />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <>

@@ -20,8 +20,8 @@ import { importRemoteCampaigns } from '@/lib/ads/import';
  * than `/sync`'s — something like `campaigns.manage`.
  *
  * There is no such permission, and `POST /api/growth/campaigns` — typing a
- * campaign in by hand, the identical act — is gated on `reports.view` with
- * an `analytics.view` fallback. Inventing a permission so that the fast way
+ * campaign in by hand, the identical act — is gated on `reports.view`
+ * alone. Inventing a permission so that the fast way
  * is harder than the slow way would be INVENTING POLICY, which is not this
  * route's to invent. Import is the create form done in bulk, so it asks for
  * exactly what the create form asks for.
@@ -40,7 +40,7 @@ import { importRemoteCampaigns } from '@/lib/ads/import';
 export async function POST() {
   try {
     const { user, companyId, storeId } = await requireContext();
-    await requirePermission('reports.view').catch(async () => requirePermission('analytics.view'));
+    await requirePermission('reports.view');
 
     const limit = rateLimit(`campaigns:import:${companyId}:${storeId ?? 'all'}`, 4, 5 * 60 * 1000);
     if (!limit.allowed) {

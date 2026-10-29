@@ -73,16 +73,14 @@ describe('the server and the screen', () => {
     expect(can(user, 'settings.edit')).toBe(true);
   });
 
-  it('only the one alias went: «analytics.view» still reaches «reports.view» (not part of this ruling)', () => {
-    expect(LEGACY_ALIAS['analytics.view']).toBe('reports.view');
-    expect(can(onServer(['reports.view']), 'analytics.view')).toBe(true);
+  it('the second alias went too (29/10): «reports.view» no longer opens a check of «analytics.view»', () => {
+    expect(LEGACY_ALIAS['analytics.view']).toBeUndefined();
+    expect(can(onServer(['reports.view']), 'analytics.view')).toBe(false);
   });
 
-  it('no real box stands on the left of the alias table except the one still waiting for the owner', () => {
+  it('no real box stands on the left of the alias table at all — a box that lies', () => {
     const realBoxesAliased = Object.keys(LEGACY_ALIAS).filter((k) => ALL_CATALOG_KEYS.has(k));
-    expect(realBoxesAliased).not.toContain('settings.manage');
-    // analytics.view is retired in the plan but not yet approved; anything new here is a box that lies.
-    expect(realBoxesAliased.every((k) => k === 'analytics.view')).toBe(true);
+    expect(realBoxesAliased).toEqual([]);
   });
 });
 

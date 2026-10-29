@@ -202,13 +202,19 @@ describe('a refusal from the door', () => {
 });
 
 describe('removing an exception', () => {
-  const removeButtonOf = (key: string) => {
+  // WAITS for the row: the heading «استثناءات المستخدم» is drawn before the rows are, and a one-shot
+  // lookup lost that race under load (CI, #82) — «Unable to find audit.view» with the screen still filling.
+  const removeButtonOf = async (key: string) => {
     // The key also stands in the effective table above; the row to press is the one that carries «إزالة».
-    const row = screen
-      .getAllByText(key, { selector: 'p' })
-      .map((p) => p.closest('li'))
-      .find((li): li is HTMLLIElement => !!li && within(li).queryByRole('button', { name: /إزالة/ }) !== null);
-    return within(row as HTMLElement).getByRole('button', { name: /إزالة/ });
+    const row = await waitFor(() => {
+      const li = screen
+        .getAllByText(key, { selector: 'p' })
+        .map((p) => p.closest('li'))
+        .find((li): li is HTMLLIElement => !!li && within(li).queryByRole('button', { name: /إزالة/ }) !== null);
+      if (!li) throw new Error(`no removable row for ${key}`);
+      return li;
+    });
+    return within(row).getByRole('button', { name: /إزالة/ });
   };
 
   it('one that an action still depends on is NOT removed — the screen says what to do first and sends nothing', async () => {
@@ -217,7 +223,7 @@ describe('removing an exception', () => {
     render(<UserDetailScreen />);
     const user = userEvent.setup();
     await screen.findByText('استثناءات المستخدم');
-    await user.click(removeButtonOf('orders.view'));
+    await user.click(await removeButtonOf('orders.view'));
 
     const note = await screen.findByRole('status');
     expect(note.textContent).toContain('ما بينشال «عرض الطلبات» لحاله');
@@ -231,7 +237,7 @@ describe('removing an exception', () => {
     render(<UserDetailScreen />);
     const user = userEvent.setup();
     await screen.findByText('استثناءات المستخدم');
-    await user.click(removeButtonOf('audit.view'));
+    await user.click(await removeButtonOf('audit.view'));
 
     await waitFor(() => expect(net.calls.some((c) => c.method === 'DELETE')).toBe(true));
     expect(net.calls.find((c) => c.method === 'DELETE')!.url).toBe('/api/users/u2/permissions/audit.view');

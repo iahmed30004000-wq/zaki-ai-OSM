@@ -95,7 +95,6 @@ const DEBT = new Map<string, number>([
   ['src/components/screens/ai/AssistantsTable.tsx', 1],
   ['src/components/screens/LandingPageDetailScreen.tsx', 1],
   ['src/components/screens/LandingPageEditorScreen.tsx', 1],
-  ['src/components/screens/PerformanceScreen.tsx', 1],
   ['src/components/screens/ProfileScreen.tsx', 1],
   // The all-stores screen: everything through apiJson except the
   // context switch, which must stay a bare fetch + full navigation

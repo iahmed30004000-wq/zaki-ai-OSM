@@ -35,9 +35,8 @@ import {
  *
  * TWO GATES, TWO DIFFERENT QUESTIONS, AND NEITHER IS A 403.
  *
- *   May this caller see how the catalogue PERFORMS? `reports.view` or
- *   `analytics.view` — the pair the performance and landing screens already
- *   use. Without it the row still answers the readiness question, because a
+ *   May this caller see how the catalogue PERFORMS? `reports.view` — the
+ *   key the performance and landing screens already use. Without it the row still answers the readiness question, because a
  *   missing price and a missing image are catalogue facts the products list
  *   already shows this caller in its own columns. The score half is then
  *   absent, not zeroed, and the row SAYS it is absent.
@@ -88,7 +87,7 @@ export async function GET(req: Request) {
       .filter(Boolean);
     const ids = [...new Set(asked)].slice(0, MAX_IDS);
 
-    const showSales = can(user, 'reports.view') || can(user, 'analytics.view');
+    const showSales = can(user, 'reports.view');
     const showCost = maySeeCost(user);
 
     // The same bounded window every report in this system uses for «الكل»:

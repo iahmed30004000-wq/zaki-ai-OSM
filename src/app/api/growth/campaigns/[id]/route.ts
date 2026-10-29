@@ -27,7 +27,7 @@ interface Ctx {
 export async function PATCH(req: Request, ctx: Ctx) {
   try {
     const { user, companyId, storeId } = await requireContext();
-    await requirePermission('reports.view').catch(async () => requirePermission('analytics.view'));
+    await requirePermission('reports.view');
     const { id } = await ctx.params;
 
     const existing = await db.campaign.findFirst({
@@ -217,7 +217,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
 export async function DELETE(_req: Request, ctx: Ctx) {
   try {
     const { user, companyId, storeId } = await requireContext();
-    await requirePermission('reports.view').catch(async () => requirePermission('analytics.view'));
+    await requirePermission('reports.view');
     const { id } = await ctx.params;
 
     const existing = await db.campaign.findFirst({

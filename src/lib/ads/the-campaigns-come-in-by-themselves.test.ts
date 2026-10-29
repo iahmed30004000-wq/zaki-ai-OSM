@@ -430,9 +430,14 @@ describe('Ⅶ · the door', () => {
      * harder than the slow way would be inventing policy.
      */
     const create = stripComments(read('src/app/api/growth/campaigns/route.ts'));
-    const gate = /requirePermission\('reports\.view'\)\.catch\(async \(\) => requirePermission\('analytics\.view'\)\)/;
+    // 29/10: «عرض التحليلات» retired — both doors ask «عرض التقارير» alone, with no fallback.
+    const gate = /requirePermission\('reports\.view'\);/;
     expect(route, 'بوّابةٌ تختلفُ عن بابِ الإنشاء').toMatch(gate);
     expect(create).toMatch(gate);
+    for (const src of [route, create]) {
+      expect(src).not.toContain('analytics.view');
+      expect(src).not.toContain('.catch(async () => requirePermission');
+    }
   });
 
   it('and is rate limited, because it talks to three third parties', () => {
