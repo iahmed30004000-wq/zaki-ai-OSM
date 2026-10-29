@@ -439,7 +439,7 @@ describe('the statement is the delivery proof', () => {
     expect(res.status).toBe(200);
     const written = db.order.update.mock.calls[0][0].data;
     expect(written).toMatchObject({ shippingStatus: 'DELIVERED', collectedAmount: 50 });
-    expect(db.customer.update.mock.calls[0][0].data.deliveredOrders).toEqual({ increment: 1 });
+    expect((db.customer.update.mock.calls[0] as unknown as [{ data: Record<string, unknown> }])[0].data.deliveredOrders).toEqual({ increment: 1 });
     expect(db.orderActivity.create.mock.calls[0][0].data.action).toBe('DELIVERED_BY_STATEMENT');
   });
 
