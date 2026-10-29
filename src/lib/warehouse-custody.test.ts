@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { assertCancellable, assertVoidable, hasLeftWarehouse, type StateSource } from './order-state';
-import { isValidShippingTransition } from './shipping-workflow';
+import { beforeHandoverReturn, isValidShippingTransition, RETURN_BEFORE_HANDOVER_AR } from './shipping-workflow';
 import { cancelVerdict } from './shipment-cancel';
 
 /**
@@ -138,11 +138,29 @@ describe('the CANCEL line (M6) — the press of «إغلاق الشحنة — س
 });
 
 describe('the way back', () => {
-  it('a labelled parcel that never moved can be returned without faking a journey', () => {
-    // Otherwise the only route was to mark it SHIPPED and then failed —
-    // recording a delivery attempt that never happened, and dating the
-    // stock movement to it.
-    expect(isValidShippingTransition('READY_FOR_PICKUP', 'RETURN_REQUESTED')).toBe(true);
+  /*
+   * (old → new, 28/10 «قبل التسليم: نفس الطلب») The first case said «a labelled parcel
+   * that never moved can be returned without faking a journey», and asserted
+   * READY_FOR_PICKUP → RETURN_REQUESTED is VALID. It is now INVALID, and the reason is
+   * the owner's M6 line: a parcel the company never took has nothing to return. The
+   * transition made a fake return — on the returns desk, in the tracking alerts, in the
+   * customer's return rate — for a box that never left the building. The three things
+   * that fit before the handover are cancel, hold and move to another company as the
+   * same order; the refusal says so. The other two cases below are unchanged.
+   */
+  it('a parcel on our own floor has nothing to return: the transition is REMOVED, and marked', () => {
+    expect(isValidShippingTransition('READY_FOR_PICKUP', 'RETURN_REQUESTED')).toBe(false);
+    expect(beforeHandoverReturn('READY_FOR_PICKUP', 'RETURN_REQUESTED')).toBe(true);
+    expect(RETURN_BEFORE_HANDOVER_AR).toContain('ألغِ الطلب');
+    expect(RETURN_BEFORE_HANDOVER_AR).toContain('أجّل شحنه');
+    expect(RETURN_BEFORE_HANDOVER_AR).toContain('حوّله لشركة تانية');
+  });
+
+  it('NEGATIVE: nothing else was removed — the parcel still goes out, and the ones in transit still come back', () => {
+    expect(isValidShippingTransition('READY_FOR_PICKUP', 'SHIPPED')).toBe(true);
+    expect(isValidShippingTransition('FAILED_DELIVERY', 'RETURN_REQUESTED')).toBe(true);
+    expect(beforeHandoverReturn('FAILED_DELIVERY', 'RETURN_REQUESTED')).toBe(false);
+    expect(beforeHandoverReturn('READY_FOR_PICKUP', 'SHIPPED')).toBe(false);
   });
 
   it('still cannot jump straight to delivered from the shelf', () => {

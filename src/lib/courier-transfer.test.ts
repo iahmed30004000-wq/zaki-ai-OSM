@@ -3,8 +3,15 @@ import { planTransfer, TransferRefused, type TransferParty, requiresOpenBatch } 
 
 /**
  * The transfer rules, exactly as the business states them: you may move a
- * parcel away from a مندوب directly, and away from a company only by taking
- * it back and raising a replacement.
+ * parcel away from a مندوب directly; away from a company that HAS the parcel
+ * only by taking it back and raising a replacement; and away from a company
+ * that never took it (28/10, «قبل التسليم: نفس الطلب») it is the same order on
+ * the new company's trolley.
+ *
+ * (old → new) `planTransfer` now takes `handedOver`, REQUIRED. Every case
+ * below that was about a company holding the parcel passes `true` — the
+ * helper's default — so their claims are unchanged; the new block asserts the
+ * case that used to be a bug (a replacement for a parcel still on our trolley).
  */
 
 const agent: TransferParty = { id: 'ag1', name: 'أبو علي', kind: 'AGENT' };
@@ -12,8 +19,8 @@ const agent2: TransferParty = { id: 'ag2', name: 'سامر', kind: 'AGENT' };
 const aramex: TransferParty = { id: 'co1', name: 'أرامكس', kind: 'COMPANY' };
 const other: TransferParty = { id: 'co2', name: 'شركة أخرى', kind: 'COMPANY' };
 
-const plan = (from: TransferParty | null, to: TransferParty, shippingStatus = 'SHIPPED') =>
-  planTransfer({ from, to, shippingStatus });
+const plan = (from: TransferParty | null, to: TransferParty, shippingStatus = 'SHIPPED', handedOver = true) =>
+  planTransfer({ from, to, shippingStatus, handedOver });
 
 describe('away from a مندوب — immediate, no replacement', () => {
   it('goes straight to a company, keeping the same order', () => {
@@ -42,6 +49,44 @@ describe('away from a company — take it back, raise a replacement', () => {
 
   it('starts the replacement in preparation, to be assigned from scratch', () => {
     expect(plan(aramex, other).nextStatus).toBe('READY_FOR_SHIPPING');
+  });
+});
+
+describe('away from a company that never took the parcel — the SAME order', () => {
+  const rebatch = (from: TransferParty = aramex, to: TransferParty = other) => plan(from, to, 'READY_FOR_PICKUP', false);
+
+  it('is a re-batch, not a replacement — nothing is closed and the status does not move', () => {
+    const result = rebatch();
+    expect(result.mode).toBe('REBATCH');
+    expect(result.closeAs).toBe('OFF_OUR_TROLLEY');
+    expect(result.originalStatus).toBe('READY_FOR_PICKUP');
+    expect(result.nextStatus).toBe('READY_FOR_PICKUP');
+  });
+
+  it('is the same for a move to a مندوب', () => {
+    expect(rebatch(aramex, agent).mode).toBe('REBATCH');
+  });
+
+  it('NEGATIVE: the same parcel, once the company has it, is a replacement as before', () => {
+    expect(plan(aramex, other, 'READY_FOR_PICKUP', true).mode).toBe('REPLACE');
+    expect(plan(aramex, other, 'SHIPPED', true).mode).toBe('REPLACE');
+  });
+
+  it('NEGATIVE: away from a مندوب it is direct whether or not a trolley is involved', () => {
+    expect(plan(agent, aramex, 'READY_FOR_PICKUP', false).mode).toBe('DIRECT');
+    expect(plan(agent, aramex, 'READY_FOR_PICKUP', true).mode).toBe('DIRECT');
+  });
+
+  it('keeps every refusal it had: same courier, nobody holding it, a journey that ended', () => {
+    expect(() => plan(aramex, aramex, 'READY_FOR_PICKUP', false)).toThrow(/مُسنَد لهذه الجهة/);
+    expect(() => plan(null, aramex, 'READY_FOR_PICKUP', false)).toThrow(TransferRefused);
+    expect(() => plan(aramex, other, 'DELIVERED', false)).toThrow(/قبل انتهاء رحلة الطرد/);
+  });
+
+  it('does not offer a re-batch for a parcel that is not even packed yet', () => {
+    for (const status of ['NOT_READY', 'READY_FOR_SHIPPING', 'PACKING']) {
+      expect(() => plan(aramex, other, status, false), status).toThrow(TransferRefused);
+    }
   });
 });
 

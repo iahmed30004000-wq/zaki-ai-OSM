@@ -31,6 +31,18 @@ import { handedToCourier } from './order-seal';
  */
 export const ATTESTATION_AR = 'الطرد بين يديّ — فككتُه وأعدتُ قطعه للرف وأتلفتُ بوليصته';
 
+/**
+ * What a person says before a LABELLED parcel is moved to another company.
+ *
+ * Not the sentence above: the goods stay packed under the same order and
+ * reserved, nothing goes back on the shelf. What is being said is only that the
+ * old waybill — with the old company's name and barcode on it — has been
+ * destroyed, so it cannot ride on a box that now belongs to somebody else.
+ */
+export const WAYBILL_ATTESTATION_AR = 'الطرد بين يديّ — أتلفتُ بوليصته القديمة وسأطبع له بوليصة جديدة';
+export const WAYBILL_ATTESTATION_NEEDED_AR =
+  'الطرد مطبوعة بوليصته — أتلف البوليصة القديمة وعلّم «الطرد بين يديّ» قبل ما تنقله لجهة تانية، وبتنطبع له بوليصة جديدة.';
+
 /** What the order needs to answer «may it still be cancelled?». Every field is required: a caller that cannot say is refused. */
 export interface CancelFacts {
   confirmationStatus: string;

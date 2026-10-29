@@ -27,6 +27,17 @@
  * state had nothing of its own to say: its customer sentence was byte-
  * identical to SHIPPED's.
  *
+ * (28/10, «قبل التسليم: نفس الطلب»: that holds only AFTER the company has the
+ * parcel. Before the press of «إغلاق الشحنة — سُلّمت للشركة» there is no
+ * shipment holding it and no statement to match, so the move is `REBATCH`: the
+ * SAME order, the same number, the same reservation, on the new company's
+ * trolley. `moveBeforeHandover` in order-cancel.ts.)
+ *
+ * A TRANSITION REMOVED, and marked here as well as where it was: SHIPPING
+ * `READY_FOR_PICKUP → RETURN_REQUESTED` (shipping-workflow.ts). A parcel on our
+ * own floor has nothing to return; the transition only made fake returns. The
+ * three doors that fit before the handover are cancel, hold and move.
+ *
  * `NEEDS_REVIEW` — the review EXISTS, one door earlier and better. A doubtful
  * intake is held as a MESSAGE (`telegram/inbound.ts`, `processingStatus:
  * 'NEEDS_REVIEW'` with a `reviewReason`, its own screen, filters and a retry)

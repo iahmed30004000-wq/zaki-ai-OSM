@@ -142,6 +142,30 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       labelPrintedAt: order.labelPrintedAt,
     });
     const sealedAsked = sealedFieldsIn(expanded.fields);
+    /*
+     * BEFORE THE COMPANY TOOK THE PARCEL THERE IS NOTHING TO CANCEL AND REORDER (28/10).
+     *
+     * A printed waybill seals an order (`orderSeal`), and a goods change on a sealed order
+     * used to land here — which closed the parcel as RETURN_REQUESTED, a return for a box
+     * that never left our floor, and raised a second order for the same goods. The owner's
+     * ruling: until «إغلاق الشحنة — سُلّمت للشركة» an approved goods edit is made on the
+     * SAME order and its waybill is printed again. That is the apply door's work, so this
+     * door answers it by name instead of making a replacement.
+     */
+    const handed = handedToCourier({
+      shippingStatus: order.shippingStatus,
+      shippedAt: order.shippedAt,
+      batchStatus: batch?.status ?? null,
+    });
+    if (!handed) {
+      return NextResponse.json(
+        {
+          error: 'الطرد ما انسلّم للشركة بعد — التعديل بيتطبّق على نفس الطلب وبتنعاد طباعة بوليصته، بلا طلب بديل. طبّقه من زرّ التطبيق.',
+          code: 'NOT_A_REORDER',
+        },
+        { status: 409 }
+      );
+    }
     if (!seal.sealed || courierActionFor(sealedAsked) !== 'CANCEL_AND_REORDER') {
       return NextResponse.json(
         {
