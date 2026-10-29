@@ -116,7 +116,7 @@ export const PERMISSION_MODULES: CatalogModule[] = [
   {
     module: 'settlement',
     items: [
-      { key: 'settlement.view', ar: 'عرض التسويات', en: 'View settlements' },
+      { key: 'settlement.view', ar: 'عرض التسويات (وصفوف التحصيل ومبالغها في المتابعة)', en: 'View settlements (and the collection rows and their figures in tracking)' },
       { key: 'settlement.upload', ar: 'رفع تقارير الشحن', en: 'Upload shipping reports' },
       { key: 'settlement.review', ar: 'مراجعة المطابقات', en: 'Review reconciliations' },
     ],
@@ -197,6 +197,8 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       { key: 'ops.labels', ar: 'البوالص', en: 'Labels' },
       { key: 'ops.track', ar: 'متابعة الشحن', en: 'Tracking' },
       { key: 'ops.returns', ar: 'المرتجعات', en: 'Returns' },
+      // Seeing the return rows on «متابعة الشحن» — NOT receiving the stock, which stays «المرتجعات» above.
+      { key: 'ops.returns_view', ar: 'عرض المرتجعات في المتابعة (بلا استلام)', en: 'See return rows in tracking (no receiving)' },
     ],
   },
   {

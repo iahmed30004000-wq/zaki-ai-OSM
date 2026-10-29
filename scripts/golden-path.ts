@@ -230,6 +230,8 @@ const NEEDED_GRANTS = [
   'finance.create',
   'finance.cashbox',
   'ops.returns',
+  // The walk reads the follow-up list by every state, returned ones included.
+  'ops.returns_view',
   'ops.ship',
   'ops.track',
 ];
