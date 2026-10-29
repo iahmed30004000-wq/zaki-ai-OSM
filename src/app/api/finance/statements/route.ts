@@ -7,6 +7,7 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { fileHash, parseStatement, receiptGap } from '@/lib/settlement';
 import { isManualDraftHash, isManualHash } from '@/lib/manual-statement-rules';
+import { openLineWhere } from '@/lib/statement-open-lines';
 import { roundMinor } from '@/lib/money';
 import { zodMessage } from '@/lib/zod-message';
 
@@ -76,6 +77,20 @@ export async function GET() {
       },
     });
 
+    /*
+     * THE LINES STILL A QUESTION, per statement, by the SAME rule the approval counts (`statement-open-lines`): the
+     * counter beside each statement and the gate on its approval button cannot disagree, because they read one
+     * function. One grouped read for the page, not one per statement.
+     */
+    const openRows = statements.length === 0
+      ? []
+      : await db.settlementMatch.groupBy({
+          by: ['statementId'],
+          where: { companyId, statementId: { in: statements.map((s) => s.id) }, ...openLineWhere() },
+          _count: { _all: true },
+        });
+    const openOf = new Map(openRows.map((r): [string, number] => [r.statementId, r._count._all]));
+
     return NextResponse.json({
       statements: await Promise.all(
         statements.map(async (s) => ({
@@ -96,7 +111,7 @@ export async function GET() {
           createdAt: s.createdAt,
           periodFrom: s.periodFrom,
           periodTo: s.periodTo,
-          counts: s._count,
+          counts: { ...s._count, openLines: openOf.get(s.id) ?? 0 },
           receipts: s.receipts.map((r) => ({
             id: r.id,
             amount: Number(r.amount),

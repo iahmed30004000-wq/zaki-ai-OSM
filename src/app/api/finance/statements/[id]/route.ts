@@ -13,7 +13,8 @@ import { COURIER_OUTCOME_AR, readCourierWord } from '@/lib/courier-words';
 import { OUTCOME_LABEL_AR, orderOutcome } from '@/lib/order-outcome';
 import { isNotMentioned } from '@/lib/settlement-difference';
 import { NOT_MENTIONED_ACTIVITY } from '@/lib/not-mentioned';
-import { approvalRefusal, isApproved, undoImportRefusal } from '@/lib/settlement-gates';
+import { approvalRefusal, closedStatementRefusal, isApproved, undoImportRefusal } from '@/lib/settlement-gates';
+import { countOpenLines } from '@/lib/statement-open-lines';
 import { roundMinor } from '@/lib/money';
 import { explanationOf } from '@/lib/decision-words';
 import { recordMovement } from '@/lib/wallets';
@@ -35,7 +36,8 @@ import { POSSIBLE_DOUBLE_SENTENCE, findPossibleDoubles, handWindowStart, type Ha
  * APPROVAL is the gate the whole contract hangs on: no fund movement exists
  * before it, and commission becomes payable only after it. Approving with an
  * unexplained gap between what the courier claimed and what arrived is
- * refused.
+ * refused. So is approving while a line is still a question nobody answered (`statement-open-lines`): after the
+ * approval the statement is closed for good, and the correction is a settlement statement.
  */
 
 const patchSchema = z.object({
@@ -229,7 +231,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     // write MATCHED over APPROVED, and this gate then let the money through
     // a second time. See lib/settlement-gates.
     if (isApproved(statement)) {
-      return NextResponse.json({ error: 'الكشف معتمد مسبقاً', code: 'ALREADY_APPROVED' }, { status: 409 });
+      // Pressing «اعتماد» again is the approval's own answer; writing an explanation onto a closed statement is an
+      // edit, and a closed statement answers every edit with the one sentence (settlement-gates).
+      return parsed.data.approve
+        ? NextResponse.json({ error: 'الكشف معتمد مسبقاً', code: 'ALREADY_APPROVED' }, { status: 409 })
+        : NextResponse.json(closedStatementRefusal(), { status: 409 });
     }
     // An open manual draft has no reference yet and its total is still moving: it is gathered first.
     if (isManualDraftHash(statement.fileHash)) {
@@ -237,10 +243,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
 
     if (parsed.data.gapExplanation && !parsed.data.approve) {
-      const updated = await db.courierStatement.update({
-        where: { id },
+      // Written ONLY while the statement is still open: the check above was a read, this is the write that says it again.
+      const written = await db.courierStatement.updateMany({
+        where: { id, companyId, storeId, approvedAt: null, status: { not: 'APPROVED' } },
         data: { gapExplanation: parsed.data.gapExplanation },
       });
+      if (written.count !== 1) return NextResponse.json(closedStatementRefusal(), { status: 409 });
+      const updated = { ...statement, gapExplanation: parsed.data.gapExplanation };
       await logAudit({
         companyId, userId: user.id, action: 'STATEMENT_GAP_EXPLAINED',
         entity: 'CourierStatement', entityId: id, newData: { explanation: parsed.data.gapExplanation },
@@ -261,6 +270,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       approvedAt: statement.approvedAt,
       receipts: statement.receipts.length,
       matches: statement.matches.length,
+      openLines: countOpenLines(statement.matches),
       gap,
       explanation,
     });
@@ -345,10 +355,22 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         approvedAt: null,
         receipts: receipts.length,
         matches: matches.length,
+        // Counted on the rows THIS transaction read, after the claim (and after a manual statement's re-match): the
+        // rows nobody can change any more, because the statement is held.
+        openLines: countOpenLines(matches),
         gap: gapInside,
         explanation,
       });
-      if (refusedInside) throw new ApprovalStopped(409, { ...refusedInside, gap: gapInside });
+      if (refusedInside) {
+        // A manual statement was matched again inside this transaction, and the refusal rolls that back: the person
+        // has not seen what the re-run found, so the sentence says where to look.
+        const rematched = refusedInside.code === 'OPEN_LINES' && isManualHash(statement.fileHash);
+        throw new ApprovalStopped(409, {
+          ...refusedInside,
+          ...(rematched ? { error: `${refusedInside.error}. الاعتماد أعاد مطابقة هذا الكشف اليدوي فوجد ما تغيّر — اضغط «مطابقة» لتراه` } : {}),
+          gap: gapInside,
+        });
+      }
 
       /**
        * A HAND ENTRY OF THE SAME MONEY.
@@ -766,7 +788,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
  * Before approval nothing financial exists: the lines, the receipts (and their proof files) and the match
  * rows are all derived, and no wallet movement, order change or payable commission has been written from
  * them. So the statement goes with all of it, and the file can be imported again. After approval the money
- * moved and this refuses (`undoImportRefusal`) — a correction is then a reversing entry.
+ * moved and this refuses (`undoImportRefusal`) with the one sentence a closed statement gives: the correction is
+ * then a settlement statement.
  *
  * The act is kept: the audit log is append-only and records which file, how many lines, the total, and each
  * receipt that went with it (amount, currency, wallet, proof name), and by whom.
@@ -826,7 +849,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     }
     if (removed === 0) {
       return NextResponse.json(
-        { code: 'ALREADY_APPROVED', error: 'اعتُمد الكشف للتو — لم يعد يُلغى. أيّ تصحيح الآن يكون بقيد عكسي.' },
+        closedStatementRefusal(),
         { status: 409 }
       );
     }

@@ -11,7 +11,7 @@ import React from 'react';
  *    never confirms by itself.
  * 2. «الاثبات اقدر اغيرو لغاية قبل ما اضغط زر اعتماد»: each receipt offers «غيّر الإثبات» (a real file input)
  *    and «احذف الإيصال» (asks first) while the statement is unapproved; after approval both are gone and the
- *    line «الكشف معتمد — التصحيح بقيد عكسي» takes their place.
+ *    line «الكشف مغلق نهائياً — التصحيح بكشف تسوية» takes their place.
  */
 const { api, fetchApi, confirm } = vi.hoisted(() => ({ api: vi.fn(), fetchApi: vi.fn(), confirm: vi.fn() }));
 vi.mock('@/lib/api-client', () => ({ apiJson: (...a: unknown[]) => api(...a), apiFetch: (...a: unknown[]) => fetchApi(...a) }));
@@ -71,7 +71,7 @@ describe('the receipts of an unapproved statement', () => {
       expect(input.accept).toContain('application/pdf');
     }
     expect(screen.getAllByRole('button', { name: 'احذف الإيصال' }).length).toBeGreaterThanOrEqual(2);
-    expect(screen.queryByText('الكشف معتمد — التصحيح بقيد عكسي')).toBeNull();
+    expect(screen.queryByText('الكشف مغلق نهائياً — التصحيح بكشف تسوية')).toBeNull();
   });
 
   it('«احذف الإيصال» asks first, and a no deletes nothing', async () => {
@@ -109,9 +109,10 @@ describe('after approval', () => {
     statements = [statement({ status: 'APPROVED', approvedAt: '2026-10-28T12:00:00Z' })];
   });
 
-  it('both controls are gone and the line says the correction is a reversing entry', async () => {
+  // (Was «…الكشف معتمد — التصحيح بقيد عكسي». The lock gives the closed statement one sentence, on the screen and at every door.)
+  it('both controls are gone and the line says the statement is closed for good — the correction is a settlement statement', async () => {
     render(<CollectionScreen />);
-    expect((await screen.findAllByText('الكشف معتمد — التصحيح بقيد عكسي')).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('الكشف مغلق نهائياً — التصحيح بكشف تسوية')).length).toBeGreaterThan(0);
     expect(screen.queryByText('غيّر الإثبات')).toBeNull();
     expect(screen.queryByRole('button', { name: 'احذف الإيصال' })).toBeNull();
     expect(document.querySelectorAll('li input[type="file"]')).toHaveLength(0);

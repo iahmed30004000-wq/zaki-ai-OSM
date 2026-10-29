@@ -5,7 +5,7 @@ import { claimingRowWhere, MANUAL_MATCH } from './match-integrity';
 import { accrueForOrder } from './commission';
 import { consumeOrderStock } from './stock-consumption';
 import { releaseOrderLines } from './reservation';
-import { isApproved } from './settlement-gates';
+import { STATEMENT_CLOSED_SENTENCE, isApproved } from './settlement-gates';
 import { isManualDraftHash, isManualHash } from './manual-statement-rules';
 import { expectedAmountFor, judgeLine, SETTLEMENT_ORDER_SELECT } from './settlement';
 import { COMING_BACK, IN_FLIGHT, stateGroup } from './settlement-decisions';
@@ -61,7 +61,7 @@ type Tx = Prisma.TransactionClient;
 export const SWAP_WHY = {
   notFound: 'الكشف أو سطره غير موجود',
   orderNotFound: 'الطلب غير موجود',
-  approved: 'الكشف معتمد — التصحيح بعد الاعتماد يكون بكشف تسوية',
+  approved: STATEMENT_CLOSED_SENTENCE,
   manual: 'هذا كشف يدوي — التبديل لسطور كشف الشركة فقط',
   notAMoneyLine: 'التبديل على سطر «فرق في المبلغ» له طلب، ولم يُربط يدوياً',
   decided: 'للسطر بتّ مكتوب — لا يُبدَّل بعده',
@@ -639,7 +639,7 @@ export async function recordParcelSwap(tx: Tx, p: SwapInput): Promise<SwapResult
       if (!row.statementLine) continue;
       const v = judgeLine({ order: ownerFacts, line: row.statementLine, minorUnit: p.minorUnit, integrity: clean, openClaim: null });
       await tx.settlementMatch.updateMany({
-        where: { id: row.id, statementId: p.statementId, resolution: null },
+        where: { id: row.id, statementId: p.statementId, resolution: null, statement: { approvedAt: null } },
         data: {
           result: v.result,
           expectedAmount: v.expected,

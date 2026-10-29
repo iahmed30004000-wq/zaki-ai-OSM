@@ -40,6 +40,12 @@ export interface StatementState {
   /** How many match rows matching produced. */
   matches: number;
   /**
+   * How many lines are still a question nobody answered (`statement-open-lines`). The approval closes the statement
+   * for good, so it waits for them. Both callers (the route and the screen) always pass it; a caller with no match
+   * rows to count may leave it out, and it reads as none.
+   */
+  openLines?: number;
+  /**
    * The gap between claimed and received, whether it needs a reason, and how
    * many receipts could not be expressed in the statement's currency at all.
    */
@@ -60,6 +66,31 @@ export function isApproved(s: { status: string; approvedAt?: Date | string | nul
 }
 
 /**
+ * THE ONE SENTENCE A CLOSED STATEMENT ANSWERS WITH — from every door that would change it.
+ *
+ * After the approval the statement is closed for good: its money is in the wallet and the orders it settled are
+ * settled. A decision, a link, a swap, a new matching, a receipt, a proof, a removal — every door that would touch
+ * it answers with this sentence, said here once. The way back is a settlement statement, which goes through the
+ * same approval door as any other (a manual statement with a reference); a wrong MOVEMENT is still reversed from
+ * the wallet, as ever.
+ */
+export const STATEMENT_CLOSED_SENTENCE = 'الكشف مغلق نهائياً — التصحيح بكشف تسوية';
+
+/** The refusal itself. The code stays `ALREADY_APPROVED`: it is what the screens already read. */
+export function closedStatementRefusal(): Refusal {
+  return { code: 'ALREADY_APPROVED', error: STATEMENT_CLOSED_SENTENCE };
+}
+
+/**
+ * May this statement still be changed by a door? Not once it is APPROVED. Every door that edits a statement asks
+ * THIS, and then repeats it in the write itself (`approvedAt: null`), so an approval that lands between the two
+ * still stops it.
+ */
+export function editRefusal(s: { status: string; approvedAt?: Date | string | null }): Refusal | null {
+  return isApproved(s) ? closedStatementRefusal() : null;
+}
+
+/**
  * May matching run again on this statement?
  *
  * Re-running it on an unapproved statement is normal and wanted: the operator
@@ -68,13 +99,7 @@ export function isApproved(s: { status: string; approvedAt?: Date | string | nul
  * whose commission became payable — and it used to reopen the approval itself.
  */
 export function rematchRefusal(s: { status: string; approvedAt?: Date | string | null }): Refusal | null {
-  if (isApproved(s)) {
-    return {
-      code: 'ALREADY_APPROVED',
-      error: 'الكشف معتمد — لا تُعاد مطابقته. أيّ تصحيح بعد الاعتماد يكون بقيد عكسي.',
-    };
-  }
-  return null;
+  return editRefusal(s);
 }
 
 /**
@@ -112,7 +137,20 @@ export function approvalRefusal(s: StatementState): Refusal | null {
   if (s.matches === 0) {
     return { code: 'MATCHING_REQUIRED', error: 'شغّل المطابقة قبل الاعتماد' };
   }
+  /**
+   * THE LAST GATE, AND THE ONE THAT MAKES THE CLOSING FAIR: after the approval nothing in the statement can be
+   * answered any more, so every line that is a question is answered before it. Only those lines count
+   * (`statement-open-lines`) — a line decided, or tied to an order, does not hold the approval back.
+   */
+  if ((s.openLines ?? 0) > 0) {
+    return { code: 'OPEN_LINES', error: openLinesSentence(s.openLines as number) };
+  }
   return null;
+}
+
+/** The sentence on the approval button, and in the server's answer, while lines are still unanswered. */
+export function openLinesSentence(n: number): string {
+  return `بقي ${n} سطر بلا بتّ أو ربط — ابتّ فيها قبل الاعتماد، فالكشف بعده يُغلق نهائياً`;
 }
 
 /**
@@ -125,10 +163,7 @@ export function approvalRefusal(s: StatementState): Refusal | null {
  * correction is a reversing entry, as it always was.
  */
 export function undoImportRefusal(s: { status: string; approvedAt?: Date | string | null }): Refusal | null {
-  if (isApproved(s)) {
-    return { code: 'ALREADY_APPROVED', error: 'الكشف معتمد — لا يُلغى. أيّ تصحيح بعد الاعتماد يكون بقيد عكسي.' };
-  }
-  return null;
+  return editRefusal(s);
 }
 
 /**
@@ -139,10 +174,7 @@ export function undoImportRefusal(s: { status: string; approvedAt?: Date | strin
  * reversing entry. One sentence for all three doors, so the receipt, its proof and its removal refuse alike.
  */
 export function receiptEditRefusal(s: { status: string; approvedAt?: Date | string | null }): Refusal | null {
-  if (isApproved(s)) {
-    return { code: 'ALREADY_APPROVED', error: 'الكشف معتمد — أي تصحيح يكون بقيد عكسي' };
-  }
-  return null;
+  return editRefusal(s);
 }
 
 /** An order of a hand collection, as far as a statement could name it. */

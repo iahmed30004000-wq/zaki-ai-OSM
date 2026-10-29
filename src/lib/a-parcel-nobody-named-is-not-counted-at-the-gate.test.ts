@@ -13,6 +13,11 @@ import { differencesByPerson } from './settlement-difference';
  *
  * Each place that could count it is held here: by behaviour where there is any to run, by source where the
  * rule lives in a query.
+ *
+ * AMENDED BY THE LOCK (a statement is closed for good once approved): a MISSING_IN_SYSTEM line that nobody tied to
+ * an order or parked IS a question the approval waits for — counted by `statement-open-lines`, not by the gate's own
+ * source, which still reads one number. MISSING_IN_STATEMENT (a parcel no statement names) is still counted by
+ * nothing here. See a-closed-statement-is-corrected-by-a-settlement-statement.test.ts.
  */
 
 const code = (path: string) => stripComments(repoFile(path));

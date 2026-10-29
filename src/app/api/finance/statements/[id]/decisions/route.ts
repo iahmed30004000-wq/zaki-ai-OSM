@@ -7,6 +7,7 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { zodMessage } from '@/lib/zod-message';
 import { isDifference, shortfall } from '@/lib/settlement-difference';
+import { closedStatementRefusal, isApproved } from '@/lib/settlement-gates';
 import {
   BULK_LIMIT,
   DECISIONS,
@@ -38,7 +39,8 @@ import {
  *   · the explanation is the single door's: five characters at least, copied to each order's internal notes.
  *
  * One row refused refuses the whole press and names the row and the sentence, so nothing is half-decided.
- * Like the single door it moves no money and settles nothing: the approval carries the answers out.
+ * Like the single door it moves no money and settles nothing: the approval carries the answers out — and, like
+ * the single door, it answers a closed statement with the one sentence of a closed statement.
  */
 const schema = z.object({
   matchIds: z.array(z.string().uuid()).min(1).max(BULK_LIMIT),
@@ -72,9 +74,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       await tx.$queryRaw`SELECT "id" FROM "courier_statements" WHERE "id" = ${id} FOR UPDATE`;
       const statement = await tx.courierStatement.findFirst({
         where: { id, companyId, storeId },
-        select: { reference: true, approvedAt: true },
+        select: { reference: true, status: true, approvedAt: true },
       });
       if (!statement) throw new BulkRefused(404, { error: 'الكشف غير موجود', code: 'NOT_FOUND' });
+      // A closed statement takes no answer, one or many: the same sentence every door of it gives.
+      if (isApproved(statement)) throw new BulkRefused(409, { ...closedStatementRefusal() });
 
       const rows = await tx.settlementMatch.findMany({
         where: { id: { in: ids }, statementId: id, companyId },
@@ -136,11 +140,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
       const at = new Date();
       for (const r of rows) {
-        await tx.settlementMatch.update({
-          where: { id: r.id },
+        // Each write says it again: an open statement, and the row still the row that was read. One that fails
+        // rolls back the whole press — nothing is half-decided.
+        const written = await tx.settlementMatch.updateMany({
+          where: { id: r.id, statementId: id, companyId, result: r.result, statement: { approvedAt: null } },
           data: decisionData({ resolution, note, userId: user.id, at }),
-          select: { id: true },
         });
+        if (written.count !== 1) {
+          throw new BulkRefused(409, { error: 'تغيّر سطر قبل لحظات — حدّث الصفحة وأعد المحاولة', code: 'CHANGED' });
+        }
         if (r.orderId) {
           const gap = shortfall(
             {

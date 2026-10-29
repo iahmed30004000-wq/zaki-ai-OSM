@@ -1002,7 +1002,7 @@
   "src/components/screens/finance/MatchingScreen.tsx": {
     "buttons": 2,
     "inputs": 1,
-    "columns": 15,
+    "columns": 16,
     "cards": 0,
     "modals": 0,
     "icons": 3,

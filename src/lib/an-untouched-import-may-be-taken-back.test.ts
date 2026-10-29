@@ -16,6 +16,7 @@ describe('undoImportRefusal', () => {
   it('NEGATIVE: an approved statement — by stamp or by status — is never taken back, and says why', () => {
     expect(undoImportRefusal({ status: 'MATCHED', approvedAt: '2026-10-24T00:00:00Z' })?.code).toBe('ALREADY_APPROVED');
     expect(undoImportRefusal({ status: 'APPROVED', approvedAt: null })?.code).toBe('ALREADY_APPROVED');
-    expect(undoImportRefusal({ status: 'APPROVED' })?.error).toContain('قيد عكسي');
+    // (Was: toContain('قيد عكسي'). The lock gives every door of a closed statement one sentence — the way back is a settlement statement.)
+    expect(undoImportRefusal({ status: 'APPROVED' })?.error).toBe('الكشف مغلق نهائياً — التصحيح بكشف تسوية');
   });
 });

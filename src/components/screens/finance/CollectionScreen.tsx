@@ -22,7 +22,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { NextStepButton } from '@/components/ui/NextStep';
 import { Money } from '@/components/ui/Money';
 import { importedSentence, type ImportedStatement } from '@/lib/statement-import-message';
-import { approvalRefusal, isApproved, rematchRefusal } from '@/lib/settlement-gates';
+import { STATEMENT_CLOSED_SENTENCE, approvalRefusal, isApproved, rematchRefusal } from '@/lib/settlement-gates';
 import { useConfirm } from '@/components/ui/Confirm';
 import { AssembleStatementDialog } from '@/components/screens/finance/AssembleStatementDialog';
 import { receiptsInStatementCurrency } from '@/lib/receipt-conversion';
@@ -63,7 +63,8 @@ interface StatementRow {
   currencyCode: string;
   totalAmount: number;
   createdAt: string;
-  counts: { lines: number; receipts: number; matches: number };
+  /** `openLines`: the lines still a question nobody answered — the same count the approval waits for. */
+  counts: { lines: number; receipts: number; matches: number; openLines?: number };
   receipts: ReceiptRow[];
   gap: Gap;
 }
@@ -405,6 +406,7 @@ export function CollectionScreen() {
                 render: (s) => (
                   <span className="text-xs text-[var(--sys-muted-foreground)] tabular-nums">
                     {s.counts.lines} سطر · {s.counts.receipts} إيصال · {s.counts.matches} مطابقة
+                    {!isApproved(s) && (s.counts.openLines ?? 0) > 0 && ` · ${s.counts.openLines} بلا بتّ`}
                   </span>
                 ),
               },
@@ -475,7 +477,7 @@ export function CollectionScreen() {
                       ))}
                     </ul>
                     {isApproved(s) && (
-                      <p className="mt-1 text-xs text-[var(--sys-muted-foreground)]">الكشف معتمد — التصحيح بقيد عكسي</p>
+                      <p className="mt-1 text-xs text-[var(--sys-muted-foreground)]">{STATEMENT_CLOSED_SENTENCE}</p>
                     )}
                     </>
                   ),
@@ -493,12 +495,14 @@ export function CollectionScreen() {
                 approvedAt: s.approvedAt,
                 receipts: s.counts.receipts,
                 matches: s.counts.matches,
+                // The same count the server waits for (`statement-open-lines`): the button greys out for the reason it would refuse.
+                openLines: s.counts.openLines ?? 0,
                 gap: s.gap,
                 explanation: s.gap.explained ? 'explained' : null,
               });
               const noRematch = rematchRefusal(s);
               return isApproved(s) ? (
-                <span className="text-xs text-[var(--sys-success)] inline-flex items-center gap-1">
+                <span className="text-xs text-[var(--sys-success)] inline-flex items-center gap-1" title={STATEMENT_CLOSED_SENTENCE}>
                   <RiCheckboxCircleLine className="w-4 h-4" /> معتمد
                 </span>
               ) : (

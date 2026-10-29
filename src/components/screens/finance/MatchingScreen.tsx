@@ -21,7 +21,8 @@ import { Rows, type Column } from '@/components/ui/Rows';
 import { Money } from '@/components/ui/Money';
 import { Tabs } from '@/components/ui/Tabs';
 import { ManualMatching } from '@/components/screens/finance/ManualMatching';
-import { isApproved } from '@/lib/settlement-gates';
+import { STATEMENT_CLOSED_SENTENCE, isApproved } from '@/lib/settlement-gates';
+import { countOpenLines } from '@/lib/statement-open-lines';
 
 /**
  * /finance/matching — the outcome of matching, read as four queues: agreed,
@@ -46,6 +47,8 @@ interface Match {
   id: string;
   result: 'MATCHED' | 'MISMATCHED' | 'MISSING_IN_SYSTEM' | 'MISSING_IN_STATEMENT';
   matchedBy: string | null;
+  /** The order the line is tied to, or null for a line no order carries. */
+  orderId?: string | null;
   expectedAmount: string | number | null;
   statementAmount: string | number | null;
   difference: string | number | null;
@@ -88,7 +91,7 @@ interface StatementRow {
   /** An open manual draft has nothing to match yet: it is gathered on the collection screen first. */
   draft?: boolean;
   currencyCode: string;
-  counts: { lines: number; receipts: number; matches: number };
+  counts: { lines: number; receipts: number; matches: number; openLines?: number };
 }
 
 const num = (v: string | number | null | undefined) => (v === null || v === undefined ? null : Number(v));
@@ -145,7 +148,7 @@ export function MatchingScreen() {
   const closed = statement ? isApproved(statement) : false;
   const noReceipt = (statement?.counts.receipts ?? 0) === 0;
   const whyNot = closed
-    ? 'الكشف معتمد — لا تُعاد مطابقته. أيّ تصحيح بعد الاعتماد يكون بقيد عكسي.'
+    ? STATEMENT_CLOSED_SENTENCE
     : noReceipt
       ? 'سجّل إيصال الاستلام أولاً'
       : 'إعادة تشغيل المطابقة';
@@ -194,7 +197,7 @@ export function MatchingScreen() {
             <option value="">اختر كشفاً…</option>
             {(statements ?? []).map((s) => (
               <option key={s.id} value={s.id}>
-                {s.reference} — {s.counts.matches} مطابقة
+                {s.reference} — {s.counts.matches} مطابقة{!isApproved(s) && (s.counts.openLines ?? 0) > 0 ? ` · ${s.counts.openLines} بلا بتّ` : ''}
               </option>
             ))}
           </select>
@@ -222,8 +225,8 @@ export function MatchingScreen() {
 
       {closed && (
         <p className="text-xs text-[var(--sys-muted-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3">
-          هذا الكشف معتمد ومالُه في المحفظة — تُقرأ نتيجتُه هنا ولا تُعاد مطابقتُه. أيّ تصحيح بعد
-          الاعتماد يكون بقيد عكسي على المحفظة، لا بإعادة حساب الكشف.
+          {STATEMENT_CLOSED_SENTENCE}. مالُه في المحفظة وتُقرأ نتيجتُه هنا فقط: لا بتّ ولا ربط ولا إعادة مطابقة.
+          كشف التسوية كشفٌ يدويّ بمرجعه، يبدأ من «يدوي — بلا كشف» ويُجمَّع ويُعتمد في «التحصيل والكشوف».
         </p>
       )}
 
@@ -271,18 +274,20 @@ export function MatchingScreen() {
             tone="rose"
             currency={statement?.currencyCode ?? ''}
             rows={queue('MISMATCHED')}
-            hint="راجع الطلب نفسه: تسليم جزئي غير مسجَّل، أو أجرة توصيل أعلى من المتفق عليه. التصحيح يكون على الطلب أو بقيد عكسي — لا بتعديل الكشف."
+            hint="راجع الطلب نفسه: تسليم جزئي غير مسجَّل، أو أجرة توصيل أعلى من المتفق عليه. التصحيح يكون على الطلب، وبعد الاعتماد بكشف تسوية — لا بتعديل الكشف."
           />
           <Queue
             title="في الكشف وليس عندنا"
             reason
             linkable={mayReview && !closed}
+            parkable={mayReview}
+            locked={closed}
             statementId={selected}
             onResolved={() => void load(selected!)}
             tone="amber"
             currency={statement?.currencyCode ?? ''}
             rows={queue('MISSING_IN_SYSTEM')}
-            hint="مرجع لا يقابله طلب في هذا المتجر — غالباً كشف شركة أخرى أو مرجع مكتوب خطأً. لا رقمين هنا يُختار بينهما؛ اقرأ سبب الشركة بكلامها، أو اربط السطر بطلبه: بهاتف الزبون أو برقم طلبنا."
+            hint="مرجع لا يقابله طلب في هذا المتجر — غالباً كشف شركة أخرى أو مرجع مكتوب خطأً. لا رقمين هنا يُختار بينهما؛ اقرأ سبب الشركة بكلامها، أو اربط السطر بطلبه: بهاتف الزبون أو برقم طلبنا. وإن لم يكن لنا فاكتب سببه وقل «قيد المراجعة» ليتابع الاعتماد."
           />
           <Queue
             title="طلبات لم يذكرها أي كشف"
@@ -321,6 +326,7 @@ function Queue({
   reason,
   unmentioned,
   linkable,
+  parkable,
   canUnlock,
   locked,
   statementId,
@@ -341,14 +347,18 @@ function Queue({
   unmentioned?: boolean;
   /** A line with no order of ours: a person may tie it to one by hand (never after approval). */
   linkable?: boolean;
+  /** A line no order carries may be parked with its reason — the answer that lets the approval go on without it. */
+  parkable?: boolean;
   /** May this person correct a delivered order's status (the door the third action leads to)? */
   canUnlock?: boolean;
-  /** The statement is approved: an answer is read, no longer changed. */
+  /** The statement is closed for good: an answer is read, no longer changed. */
   locked?: boolean;
   statementId?: string | null;
   onResolved?: () => void;
 }) {
   const [open, setOpen] = useState(rows.length > 0 && tone !== 'emerald');
+  // The lines of this queue still a question — by the same rule the approval counts (`statement-open-lines`).
+  const unanswered = resolvable || parkable ? countOpenLines(rows) : 0;
 
   const columns: Column<Match>[] = [
     {
@@ -513,6 +523,28 @@ function Queue({
           },
         ]
       : []),
+    // A line no order of ours carries may also be parked with its reason; a closed statement shows the sentence instead.
+    ...(parkable && statementId
+      ? [
+          {
+            key: 'park',
+            label: 'ليس لنا',
+            render: (m: Match) => (
+              <DifferenceActions
+                statementId={statementId}
+                matchId={m.id}
+                orderId={null}
+                orderNumber={null}
+                resolution={m.resolution}
+                resolutionNote={m.resolutionNote}
+                locked={locked}
+                parkOnly
+                onResolved={() => onResolved?.()}
+              />
+            ),
+          },
+        ]
+      : []),
     // A line no order of ours carries: a person ties it to its order by hand.
     ...(linkable && statementId
       ? [
@@ -585,6 +617,7 @@ function Queue({
         <span className="flex items-center gap-2">
           <span className={`text-xs px-2 py-1 rounded-full border ${TONE[tone]}`}>{rows.length}</span>
           <span className="text-sm font-medium text-[var(--sys-heading)]">{title}</span>
+          {!locked && unanswered > 0 && <span className="text-xs text-[var(--sys-warning)]">{unanswered} بلا بتّ</span>}
         </span>
         <span className="text-xs text-[var(--sys-muted)]">{open ? 'إخفاء' : 'عرض'}</span>
       </button>

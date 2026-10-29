@@ -208,9 +208,11 @@ describe('the example: an order of 20.000 and a line of 18.000', () => {
     expect(JSON.parse(act.metadata)).toMatchObject({ remaining: 2, decidedBy: 'u-decider' });
   });
 
-  it('«قيد المراجعة» and a row nobody answered settle nothing, and write no amount', async () => {
+  // (Was «…and a row nobody answered…» with an unanswered row beside it. The lock makes the approval wait for an unanswered
+  // difference — it is refused now, and the test of that refusal is in a-closed-statement-is-corrected-by-a-settlement-statement.)
+  it('«قيد المراجعة» settles nothing, and writes no amount', async () => {
     putOrders(order('o1'), order('o2'));
-    state.reads = [statement([row('o1', { resolution: 'UNDER_REVIEW', resolutionNote: 'ننتظر الشركة' }), row('o2')])];
+    state.reads = [statement([row('o1', { resolution: 'UNDER_REVIEW', resolutionNote: 'ننتظر الشركة' }), row('o2', { resolution: 'UNDER_REVIEW', resolutionNote: 'ننتظر ردّ الشركة' })])];
 
     expect((await approve()).status).toBe(200);
     expect(settled()).toEqual([]);
@@ -225,7 +227,8 @@ describe('the example: an order of 20.000 and a line of 18.000', () => {
         row('o1', { result: 'MATCHED', expectedAmount: 20, statementAmount: 20 }),
         accepted('o2'),
         row('o3', { resolution: 'OURS_STANDS', resolutionNote: 'نطالب بالفرق' }),
-        row('o4'),
+        // (Was an unanswered row; the approval waits for those now. Parked, it settles nothing — the same assertion.)
+        row('o4', { resolution: 'UNDER_REVIEW', resolutionNote: 'ننتظر ردّ الشركة' }),
       ]),
     ];
 
