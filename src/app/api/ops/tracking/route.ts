@@ -5,7 +5,8 @@ import { requireContext } from '@/lib/geo-context';
 import { ruleFor } from '@/lib/phone-rules';
 import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
-import { transitStatus } from '@/lib/transit';
+import { transitOf } from '@/lib/transit';
+import { expectsBarcode } from '@/lib/tracking-priority';
 import { expectedAmountFor, SETTLEMENT_ORDER_SELECT } from '@/lib/settlement';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { readLimit, readPage } from '@/lib/numeric-input';
@@ -130,11 +131,13 @@ export async function GET(req: Request) {
             // not show and cannot compute `expectedCollection` without.
             ...SETTLEMENT_ORDER_SELECT,
             settlementStatus: true, shippedAt: true, outForDeliveryAt: true,
+            // The journey's end — the clock stops at either, and the row is judged by the same rule the list was.
+            deliveredAt: true, returnedAt: true,
             deliveryFailureReason: true, currency: true, regionId: true,
             deliveryProviderId: true,
             customer: { select: { fullName: true, phone: true, city: true } },
             region: { select: { id: true, name: true } },
-            deliveryProvider: { select: { id: true, name: true, kind: true } },
+            deliveryProvider: { select: { id: true, name: true, kind: true, apiEnabled: true, adapterCode: true } },
             _count: { select: { deliveryAttempts: true, notes: true } },
           },
     })
@@ -211,16 +214,22 @@ export async function GET(req: Request) {
        * as an absence — and «late» is how an operator decides to chase a
        * parcel.
        *
-       * `transitStatus` still receives `0` for the unpriced lane, and that
+       * `transitOf` still receives `0` for the unpriced lane, and that
        * is not a fallback sneaking back in: it reads `0` as «no threshold»
        * and an unpriced lane has none either, so both are «never late».
        * What differs is only what the screen is allowed to SAY about it,
        * which is why the row carries the null and the rule does not.
        */
       const threshold = thresholdOf.get(`${o.deliveryProviderId}|${o.regionId}`) ?? null;
-      const transit = transitStatus(o.shippedAt, threshold ?? 0);
+      // The company carries the two fields that decide whether it owes a barcode; the wire gets the answer, not the fields.
+      const company = order.deliveryProvider;
+      // The SAME function the list judged this parcel with — a page's rows and the chips above them cannot disagree.
+      const transit = transitOf(o, threshold ?? 0);
       return {
         ...o,
+        // The company, without the two fields that only decide whether it owes a barcode.
+        deliveryProvider: company && { id: company.id, name: company.name, kind: company.kind },
+        barcodeExpected: expectsBarcode(company),
         daysInTransit: transit.days,
         lateThresholdDays: threshold,
         late: transit.late,
@@ -284,6 +293,7 @@ export async function GET(req: Request) {
          * own last write is the honest approximation.
          */
         alert: trackingAlert({
+          inFlight: transit.inFlight,
           confirmationStatus: o.confirmationStatus,
           cancelledAt: cancelledAt.get(o.id) ?? o.updatedAt,
           changeAppliedAt: changedAt.get(o.id) ?? null,

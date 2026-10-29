@@ -169,7 +169,8 @@ describe('the door answers with counts and nothing else', () => {
   it('and lateness is the courier’s own threshold, per region', () => {
     const src = route();
     expect(src).toContain('lateThresholdDays: true');
-    expect(src).toMatch(/if \(!threshold \|\| threshold <= 0\) return false;/);
+    // The rule lives in `transitOf` (the tracking screen's own), and no threshold on file is «0»: never late.
+    expect(src).toMatch(/transitOf\(o, daysFor\.get\(`\$\{o\.deliveryProviderId\}:\$\{o\.regionId\}`\) \?\? 0, now\)\.late/);
   });
 
   /** A held parcel is not waiting for anybody until its day comes. */

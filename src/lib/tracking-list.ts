@@ -2,9 +2,9 @@ import type { Prisma } from '@prisma/client';
 import type { db as Db } from './db';
 import { AGES, ageOf, daysWaitedOf, type Age } from './age-piles';
 import { DEAD_CONFIRMATION, TRACKING_ACK_ACTION, trackingAlert, type TrackingAlert } from './tracking-alert';
-import { MATCHES, byUrgency, type ConditionKey, type TrackingFacts } from './tracking-priority';
+import { MATCHES, byUrgency, expectsBarcode, matchesChip, notLate, type ChipKey, type ConditionKey, type TrackingFacts } from './tracking-priority';
 import { NOBODY, TASKS } from './tracking-filters';
-import { transitStatus } from './transit';
+import { transitOf } from './transit';
 
 /**
  * THE PARCELS UNDER FOLLOW-UP — ALL OF THEM, READ ONCE, AND EVERY NUMBER COUNTED OVER THE SAME ROWS.
@@ -58,6 +58,9 @@ export const LEAN_SELECT = {
   settlementStatus: true,
   trackingNumber: true,
   shippedAt: true,
+  // The journey's end: either date stops the clock, and a parcel that ended is neither late nor unbarcoded nor an alert.
+  deliveredAt: true,
+  returnedAt: true,
   deliveryProviderId: true,
   regionId: true,
   // An alert is about the ORDER: it may be dead while its parcel still moves.
@@ -71,6 +74,8 @@ export interface LeanParcel {
   settlementStatus: string;
   trackingNumber: string | null;
   shippedAt: Date | null;
+  deliveredAt: Date | null;
+  returnedAt: Date | null;
   deliveryProviderId: string | null;
   regionId: string | null;
   confirmationStatus: string;
@@ -91,6 +96,8 @@ export interface TrackingListFacts {
   tasks: Record<ConditionKey, number>;
   /** Of L1: how many are past their region's threshold — the badge. */
   lateCount: number;
+  /** Of L1: how many are on the road and inside their time — the «غير متأخرة» chip. */
+  notLate: number;
   /** Over L0, biggest first; «none» is a parcel with no company on it. */
   couriers: { id: string; name: string; count: number }[];
   /** Over L0, biggest first; «none» is a parcel with no governorate. */
@@ -126,7 +133,7 @@ export async function readTrackingList(
     /** Scope + the state + the search, built by the door: the one question the database is asked. */
     where: Where;
     now: Date;
-    task: ConditionKey | null;
+    task: ChipKey | null;
     courier: string | null;
     region: string | null;
     age: Age | null;
@@ -142,6 +149,13 @@ export async function readTrackingList(
   })) as unknown as LeanParcel[];
   const capped = read.length > LEAN_CAP;
   const l0 = capped ? read.slice(0, LEAN_CAP) : read;
+
+  // ── the companies: their names for the dropdown, and whether each owes us a barcode (an API company does; a manual one never gave one) ──
+  const providerIds = [...new Set(l0.map((o) => o.deliveryProviderId).filter((v): v is string => !!v))];
+  const providers = providerIds.length
+    ? await db.deliveryProvider.findMany({ where: { id: { in: providerIds } }, select: { id: true, name: true, apiEnabled: true, adapterCode: true } })
+    : [];
+  const providerOf = new Map(providers.map((p) => [p.id, p]));
 
   // ── the lateness: one lookup per (courier, governorate) pair, as the door has always done it ──
   const pairs = [...new Set(l0.filter((o) => o.deliveryProviderId && o.regionId).map((o) => `${o.deliveryProviderId}|${o.regionId}`))];
@@ -199,8 +213,10 @@ export async function readTrackingList(
 
   const judged: Judged[] = l0.map((o) => {
     const threshold = thresholdOf.get(`${o.deliveryProviderId}|${o.regionId}`) ?? null;
-    const transit = transitStatus(o.shippedAt, threshold ?? 0, input.now);
+    // The same answer the page's rows are drawn from: the clock stops at the delivery or the return.
+    const transit = transitOf(o, threshold ?? 0, input.now);
     const alert = trackingAlert({
+      inFlight: transit.inFlight,
       confirmationStatus: o.confirmationStatus,
       // A cancelled order with no surviving status log still announces itself — its own last write is the honest approximation.
       cancelledAt: cancelledAt.get(o.id) ?? o.updatedAt,
@@ -215,6 +231,9 @@ export async function readTrackingList(
       trackingNumber: o.trackingNumber,
       daysInTransit: transit.days,
       late: transit.late,
+      deliveredAt: o.deliveredAt,
+      returnedAt: o.returnedAt,
+      barcodeExpected: expectsBarcode(o.deliveryProviderId ? providerOf.get(o.deliveryProviderId) : null),
       alert: alert && { kind: alert.kind, acknowledged: alert.acknowledged },
     };
   });
@@ -227,9 +246,7 @@ export async function readTrackingList(
 
   const names = async <T extends { id: string; name: string }>(ids: string[], lookup: (ids: string[]) => Promise<T[]>) =>
     new Map((ids.length ? await lookup(ids) : []).map((r) => [r.id, r.name]));
-  const courierNames = await names([...courierCounts.keys()].filter((k): k is string => !!k), (ids) =>
-    db.deliveryProvider.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })
-  );
+  const courierNames = new Map(providers.map((p) => [p.id, p.name]));
   const regionNames = await names([...regionCounts.keys()].filter((k): k is string => !!k), (ids) =>
     db.region.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })
   );
@@ -250,7 +267,7 @@ export async function readTrackingList(
   const tasks = Object.fromEntries(TASKS.map((k) => [k, l1.filter(MATCHES[k]).length])) as Record<ConditionKey, number>;
 
   // ── L2: the chip, then worst first — `Array.sort` is stable, so equal urgency keeps the database's order, oldest first ──
-  const l2 = (input.task === null ? l1 : l1.filter(MATCHES[input.task])).slice().sort(byUrgency);
+  const l2 = (input.task === null ? l1 : l1.filter(matchesChip(input.task))).slice().sort(byUrgency);
 
   const totalPages = Math.max(1, Math.ceil(l2.length / input.limit));
   const page = Math.min(Math.max(input.page, 1), totalPages);
@@ -265,6 +282,7 @@ export async function readTrackingList(
       total: l1.length,
       tasks,
       lateCount: l1.filter((j) => j.late).length,
+      notLate: l1.filter(notLate).length,
       couriers: ranked(courierCounts, (id) => courierNames.get(id) ?? '—', NO_COURIER_AR),
       regions: ranked(regionCounts, (id) => regionNames.get(id) ?? '—', NO_REGION_AR),
       ages,

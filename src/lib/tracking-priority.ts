@@ -1,5 +1,6 @@
 import type { HealthTone } from './health';
 import type { TrackingAlertKind } from './tracking-alert';
+import { isInFlight } from './transit';
 
 /**
  * WHY THIS PARCEL IS IN FRONT OF YOU, IN ONE WORD.
@@ -143,7 +144,23 @@ export interface TrackingFacts {
   daysInTransit: number | null;
   late: boolean;
   alert?: { kind: TrackingAlertKind; acknowledged: boolean } | null;
+  /** When it arrived / came back. Either one ends the journey: from then on nothing here is «late», «unbarcoded» or an alert. */
+  deliveredAt?: Date | string | null;
+  returnedAt?: Date | string | null;
+  /**
+   * Whether this parcel's company hands out a barcode at all — an API company does (`apiEnabled` with an adapter); a
+   * manual one is matched on the order number and has none to miss. Left out it is taken as «yes», the way every row
+   * was judged before this was known; the list and the door always say it.
+   */
+  barcodeExpected?: boolean;
 }
+
+/** A company that creates the waybill through its API and so owes us a barcode. A manual company or an agent does not. */
+export const expectsBarcode = (company: { apiEnabled?: boolean | null; adapterCode?: string | null } | null | undefined): boolean =>
+  !!company && !!company.apiEnabled && !!company.adapterCode;
+
+/** Still on its way — the only parcels the clock, the barcode and the alerts are about. */
+const onItsWay = (row: TrackingFacts): boolean => isInFlight(row);
 
 /** A live alert is one nobody has said they saw yet. */
 const shouting = (row: TrackingFacts, kind: TrackingAlertKind): boolean =>
@@ -159,14 +176,17 @@ const shouting = (row: TrackingFacts, kind: TrackingAlertKind): boolean =>
  * the chips, and in rank order by `trackingUrgency`.
  */
 export const MATCHES: Record<ConditionKey, (row: TrackingFacts) => boolean> = {
-  CANCELLED: (row) => shouting(row, 'CANCELLED'),
-  CHANGED: (row) => shouting(row, 'CHANGED'),
+  CANCELLED: (row) => onItsWay(row) && shouting(row, 'CANCELLED'),
+  CHANGED: (row) => onItsWay(row) && shouting(row, 'CHANGED'),
   FAILED: (row) => row.shippingStatus === 'FAILED_DELIVERY',
   RETURNING: (row) => row.shippingStatus === 'RETURN_REQUESTED',
-  LATE: (row) => row.late,
-  // Shipped with no barcode. A parcel still waiting to be picked up has not
-  // been given one yet, which is not the same fault.
-  NO_BARCODE: (row) => !row.trackingNumber && row.shippingStatus !== 'READY_FOR_PICKUP',
+  // Late is a thing a parcel on the road can be. One that arrived is not, however long it took.
+  LATE: (row) => onItsWay(row) && row.late,
+  // Shipped with no barcode, by a company that is supposed to give one. A parcel
+  // still waiting to be picked up has not been given one yet, which is not the
+  // same fault; a manual company never gives one; and one that arrived is past it.
+  NO_BARCODE: (row) =>
+    onItsWay(row) && !row.trackingNumber && row.shippingStatus !== 'READY_FOR_PICKUP' && row.barcodeExpected !== false,
   // Only a delivered parcel owes anything, and only once. A returned one
   // owes nothing; one still in transit has not been collected yet. A partial
   // delivery owes money too — the customer took some lines and paid for them
@@ -174,6 +194,26 @@ export const MATCHES: Record<ConditionKey, (row: TrackingFacts) => boolean> = {
   COLLECT: (row) =>
     ['DELIVERED', 'PARTIALLY_DELIVERED'].includes(row.shippingStatus) && row.settlementStatus !== 'SETTLED',
 };
+
+/**
+ * THE CHIP THAT IS NOT A FAULT: «غير متأخرة».
+ *
+ * Most of what the screen calls late is import debt (a sheet's shipped parcels with no barcode and a date from long ago),
+ * which only a statement or the door can close. The people working the board need the other half to be one press away:
+ * what is on the road and still inside its time. It is a chip and nothing else — never a rank, so it can never be the
+ * reason a row is in front of you (`URGENCIES`, `trackingUrgency` and the chips' counts do not know it).
+ */
+export const NOT_LATE = 'NOT_LATE' as const;
+export type ChipKey = ConditionKey | typeof NOT_LATE;
+export const NOT_LATE_FACTS = {
+  label: 'غير متأخرة',
+  why: 'في الطريق وما تجاوزت مهلة محافظتها.',
+  tone: 'unknown' as HealthTone,
+};
+export const notLate = (row: TrackingFacts): boolean => onItsWay(row) && !row.late;
+
+/** The predicate behind any chip — the seven conditions, or «غير متأخرة». */
+export const matchesChip = (key: ChipKey): ((row: TrackingFacts) => boolean) => (key === NOT_LATE ? notLate : MATCHES[key]);
 
 /** In rank order, so the worst true thing is found first. */
 const IN_RANK_ORDER: ConditionKey[] = (URGENCIES.filter((k) => k !== 'NONE') as ConditionKey[]).sort(
@@ -188,6 +228,22 @@ export function trackingUrgency(row: TrackingFacts): UrgencyKey {
 
 /** The exact predicate the collect button and the checkbox both ask. */
 export const canCollect = MATCHES.COLLECT;
+
+const timeOf = (v: Date | string | null | undefined): number | null => {
+  if (!v) return null;
+  const t = new Date(v).getTime();
+  return Number.isNaN(t) ? null : t;
+};
+
+/** Oldest delivery first; one with no delivery date (the import) after those that have one. */
+function byDelivered(a: TrackingFacts, b: TrackingFacts): number {
+  const ta = timeOf(a.deliveredAt);
+  const tb = timeOf(b.deliveredAt);
+  if (ta === tb) return 0;
+  if (ta === null) return 1;
+  if (tb === null) return -1;
+  return ta - tb;
+}
 
 /**
  * WORST FIRST, AND WITHIN THAT, LONGEST WAITING FIRST.
@@ -204,6 +260,10 @@ export const canCollect = MATCHES.COLLECT;
 export function byUrgency(a: TrackingFacts, b: TrackingFacts): number {
   const byRank = URGENCY[trackingUrgency(a)].rank - URGENCY[trackingUrgency(b)].rank;
   if (byRank !== 0) return byRank;
+
+  // Money waiting is worked in the order it became owed: the longest-delivered first. Its days-in-transit stops at the
+  // delivery, so it says how long the trip took — not how long the cash has been waiting.
+  if (URGENCY[trackingUrgency(a)].rank === URGENCY.COLLECT.rank) return byDelivered(a, b);
 
   const da = a.daysInTransit;
   const db = b.daysInTransit;

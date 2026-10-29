@@ -355,15 +355,63 @@ describe('the pages', () => {
   });
 });
 
+describe('«غير متأخرة» — the chip that is not a fault', () => {
+  it('— is drawn with the server’s number, asks the server for NOT_LATE, and is not drawn when nobody is in it', async () => {
+    facts = { ...FACTS, notLate: 9 } as typeof FACTS;
+    await draw();
+    expect(chip(/غير متأخرة 9/)).toBeTruthy();
+    // The late chip is a different chip: «متأخرة 11» must not be found inside «غير متأخرة».
+    expect(chip(/^متأخرة 11$/)).toBeTruthy();
+    fireEvent.click(chip(/غير متأخرة 9/)!);
+    await waitFor(() => expect(lastAsked().get('task')).toBe('NOT_LATE'));
+    cleanup();
+    facts = { ...FACTS, notLate: 0 } as typeof FACTS;
+    await draw();
+    expect(chip(/غير متأخرة/)).toBeNull();
+  });
+});
+
 describe('collecting by hand, on the page that is shown', () => {
   const collectable = (id: string) => parcel(id, { shippingStatus: 'DELIVERED', settlementStatus: 'PENDING_COLLECTION', collectionStatus: 'PENDING_COLLECTION' });
 
-  it('— the bar counts the parcels of THIS page that are owed, and «اختر الكل» takes those', async () => {
+  it('— the bar says the SERVER’S total of owed parcels, and «اختر الكل» takes the ones on THIS page', async () => {
     rowsOf = (page) => [collectable(`C${page}a`), collectable(`C${page}b`), parcel(`S${page}`)];
     await draw();
-    expect(screen.getByText('2 طلب مسلَّم بانتظار التحصيل اليدوي')).toBeTruthy();
+    // FACTS.tasks.COLLECT is 7: the page holds two of them, and the bar still says seven.
+    expect(screen.getByText('7 مسلَّم بانتظار التحصيل —')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'اختر الكل' }));
     expect(screen.getByText(/مختار 2 طلب · صافي 75/)).toBeTruthy();
+  });
+
+  it('— and the bar is there when this page holds none of them: money waits LAST in a worst-first list, so page one rarely does', async () => {
+    rowsOf = (page) => [parcel(`S${page}a`), parcel(`S${page}b`)];
+    await draw();
+    expect(screen.getByText('7 مسلَّم بانتظار التحصيل —')).toBeTruthy();
+    // Nothing on the page to tick, so no «اختر الكل» — but the way to them is one press.
+    expect(screen.queryByRole('button', { name: 'اختر الكل' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'اعرضها' }));
+    await waitFor(() => expect(lastAsked().get('task')).toBe('COLLECT'));
+  });
+
+  it('— the number does not move with the page: turning to page two says the same seven', async () => {
+    rowsOf = (page) => [parcel(`S${page}`)];
+    await draw();
+    fireEvent.click(screen.getByRole('button', { name: 'الصفحة التالية' }));
+    await waitFor(() => expect(lastAsked().get('page')).toBe('2'));
+    expect(screen.getByText('7 مسلَّم بانتظار التحصيل —')).toBeTruthy();
+  });
+
+  it('— with the owed chip already pressed the link to it is gone, and with nothing owed the bar is not drawn', async () => {
+    rowsOf = (page) => [collectable(`C${page}a`)];
+    await draw();
+    fireEvent.click(chip(/بانتظار التحصيل 7/)!);
+    await waitFor(() => expect(lastAsked().get('task')).toBe('COLLECT'));
+    expect(screen.getByText('7 مسلَّم بانتظار التحصيل')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'اعرضها' })).toBeNull();
+    cleanup();
+    facts = { ...FACTS, tasks: { ...NO_TASKS, LATE: 11 } };
+    await draw();
+    expect(screen.queryByText(/مسلَّم بانتظار التحصيل/)).toBeNull();
   });
 
   it('and a new question starts a new selection — what was ticked was on a page that is not on screen any more', async () => {
