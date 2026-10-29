@@ -15,6 +15,9 @@ import {
   LinkRefused,
   MIN_QUERY,
   OTHER_COURIER_WARNING,
+  OTHER_COURIER_NOT_EXACT_SENTENCE,
+  APPROVED_WHILE_LINKING_SENTENCE,
+  isOurNumber,
   OTHER_STORE_SENTENCE,
   NOT_SHIPPED_SENTENCE,
   candidatesHeader,
@@ -24,9 +27,16 @@ import {
 } from './hand-link';
 import { HAND_COLLECTED_NOTE, MANUAL_MATCH, SAME_FILE_NOTE } from './match-integrity';
 
-type Row = Record<string, unknown>;
+type Row = Record<string, any>;
 
-/** The few `where` shapes the link writes: equality, { in }, { not }, { equals }, and OR / AND lists. */
+const OPERATORS = ['in', 'notIn', 'not', 'equals', 'isNot', 'contains', 'lt', 'gt'];
+
+/**
+ * The `where` shapes the link writes, APPLIED: equality (null meaning absent), { in, notIn, not, equals, isNot,
+ * contains, lt }, OR / AND lists, and a relation filter that recurses into the related row. A text search really
+ * narrows (`contains` ignores case, as `typed()` asks), so a result is the database's answer to the query, not a
+ * mock that was told the answer.
+ */
 function fits(row: Row, where: Row): boolean {
   return Object.entries(where).every(([key, want]) => {
     if (key === 'OR') return (want as Row[]).some((w) => fits(row, w));
@@ -34,14 +44,20 @@ function fits(row: Row, where: Row): boolean {
     const have = row[key];
     if (want !== null && typeof want === 'object' && !(want instanceof Date)) {
       const w = want as Row;
+      if (!Object.keys(w).some((k) => OPERATORS.includes(k))) {
+        // a relation filter: look inside the related row (a missing relation fits nothing)
+        return have !== null && typeof have === 'object' ? fits(have as Row, w) : false;
+      }
       if ('in' in w) return (w.in as unknown[]).includes(have);
       if ('notIn' in w) return !(w.notIn as unknown[]).includes(have);
-      if ('isNot' in w) return have != w.isNot;
-      if ('not' in w) return have !== w.not;
-      if ('equals' in w) return String(have).toLowerCase() === String(w.equals).toLowerCase();
-      return true; // a nested relation filter or a text search: the fake does not narrow on it
+      if ('isNot' in w) return (have ?? null) !== w.isNot;
+      if ('not' in w) return (have ?? null) !== w.not;
+      if ('equals' in w) return String(have ?? '').toLowerCase() === String(w.equals).toLowerCase();
+      if ('contains' in w) return String(have ?? '').toLowerCase().includes(String(w.contains).toLowerCase());
+      if ('lt' in w) return have < w.lt;
+      return true;
     }
-    return have === want;
+    return (have ?? null) === want;
   });
 }
 
@@ -53,10 +69,12 @@ function order(over: Row = {}): Row {
     id: 'o1', companyId: 'c1', orderNumber: 'ORD-1', merchantRef: 'REF-1', storeId: 's1', deliveryProviderId: 'dp1',
     settlementStatus: 'PENDING', confirmationStatus: 'CONFIRMED', shippingStatus: 'DELIVERED',
     shippedAt: new Date('2026-10-20T00:00:00Z'), labelPrintedAt: null, createdAt: new Date('2026-10-18T00:00:00Z'),
+    trackingNumber: null,
     totalAmount: total, collectedAmount: null, deliveryFee: 0, priceIncludesDelivery: false,
     returnReceipt: null, addOns: [],
     items: [{ quantity: 1, freeQuantity: 0, unitPrice: total, discountShare: 0, lineTotal: total, deliveredQty: null }],
-    customer: { id: 'cu1', fullName: 'سارة', phone: '0790000001' },
+    // Stored the way the product stores a phone: the trunk zero dropped.
+    customer: { id: 'cu1', fullName: 'سارة', phone: '790000001', rawPhone: '0790000001' },
     ...over,
   };
 }
@@ -68,6 +86,8 @@ interface World {
   requests: Row[];
   notes: Row[];
 }
+
+const request = (over: Row = {}): Row => ({ companyId: 'c1', orderId: 'o1', intent: 'CANCEL', status: 'PENDING', appliedAt: null, ...over });
 
 function makeWorld(over: Partial<World> = {}): World {
   return {
@@ -87,30 +107,29 @@ function makeWorld(over: Partial<World> = {}): World {
 function makeTx(w: World) {
   const counts: Record<string, number> = {};
   const hit = (k: string) => { counts[k] = (counts[k] ?? 0) + 1; };
+  // A match row as the database sees it: with the statement it sits on, for a relation filter.
+  const seen = (m: Row): Row => ({ ...m, statement: m.statementId === 'st1' ? w.statement : (m.statementRow as Row) ?? { reference: 'ST-2', approvedAt: null } });
   const tx = {
     counts,
+    locks: [] as string[],
+    $queryRaw: vi.fn(async (strings: TemplateStringsArray) => { tx.locks.push(strings.join('?')); return []; }),
     courierStatement: {
       findFirst: vi.fn(async ({ where }: { where: Row }) => (fits(w.statement, where) ? w.statement : null)),
     },
     settlementMatch: {
-      findFirst: vi.fn(async ({ where }: { where: Row }) => w.matches.find((m) => fits(m, where)) ?? null),
+      findFirst: vi.fn(async ({ where }: { where: Row }) => w.matches.find((m) => fits(seen(m), where)) ?? null),
       findMany: vi.fn(async ({ where }: { where: Row }) =>
-        w.matches
-          .filter((m) => fits(m, where))
-          .map((m) => ({
-            ...m,
-            statement: m.statementId === 'st1' ? w.statement : (m.statementRow as Row) ?? { reference: 'ST-2', approvedAt: null },
-          }))
+        w.matches.filter((m) => fits(seen(m), where)).map((m) => seen(m))
       ),
       updateMany: vi.fn(async ({ where, data }: { where: Row; data: Row }) => {
         hit('match.updateMany');
-        const rows = w.matches.filter((m) => fits(m, where));
+        const rows = w.matches.filter((m) => fits(seen(m), where));
         for (const r of rows) Object.assign(r, data);
         return { count: rows.length };
       }),
       deleteMany: vi.fn(async ({ where }: { where: Row }) => {
         hit('match.deleteMany');
-        const keep = w.matches.filter((m) => !fits(m, where));
+        const keep = w.matches.filter((m) => !fits(seen(m), where));
         const n = w.matches.length - keep.length;
         w.matches.splice(0, w.matches.length, ...keep);
         return { count: n };
@@ -122,7 +141,7 @@ function makeTx(w: World) {
       count: vi.fn(async ({ where }: { where: Row }) => w.orders.filter((o) => fits(o, where)).length),
     },
     orderChangeRequest: {
-      findMany: vi.fn(async ({ where }: { where: Row }) => w.requests.filter((r) => fits(r, { orderId: where.orderId }))),
+      findMany: vi.fn(async ({ where }: { where: Row }) => w.requests.filter((r) => fits(r, where))),
     },
     orderNote: { create: vi.fn(async ({ data }: { data: Row }) => { hit('note.create'); w.notes.push(data); return data; }) },
   };
@@ -188,11 +207,30 @@ describe('a successful link writes the matcher’s own verdict onto the line’s
   });
 
   it('an open cancel request makes it MISMATCHED with the reason, even when the figures agree', async () => {
-    w.requests = [{ orderId: 'o1', intent: 'CANCEL' }];
+    w.requests = [request()];
     const r = await link(makeTx(w));
     expect(r.result).toBe('MISMATCHED');
     expect(r.difference).toBe(0);
     expect(r.note).toContain('عليه طلب إلغاء مفتوح');
+  });
+
+  it('a request approved and not yet carried out is open too — a postponement says so in its own words', async () => {
+    w.requests = [request({ intent: 'POSTPONE', status: 'APPROVED', appliedAt: null })];
+    const r = await link(makeTx(w));
+    expect(r.result).toBe('MISMATCHED');
+    expect(r.note).toContain('عليه طلب تأجيل مفتوح');
+  });
+
+  it('but a request already carried out, a rejected one and one of another order are not open: MATCHED', async () => {
+    w.requests = [
+      request({ status: 'APPROVED', appliedAt: new Date('2026-10-25T00:00:00Z') }),
+      request({ status: 'REJECTED' }),
+      request({ orderId: 'o-other' }),
+      request({ intent: 'EDIT_ITEMS' }),
+    ];
+    const r = await link(makeTx(w));
+    expect(r.result).toBe('MATCHED');
+    expect(r.note).toBeNull();
   });
 
   it('removes the order’s «لم يذكره أي كشف» row of this statement, and leaves other statements’ rows', async () => {
@@ -308,6 +346,56 @@ describe('what a link refuses', () => {
     expect(e.body.code).toBe('NOT_LINKABLE');
     expect(tx.counts['note.create']).toBeUndefined();
   });
+
+  it('THE WRITE ITSELF refuses a row somebody linked after it was read: the stale read passes, the write does not', async () => {
+    const tx = makeTx(w);
+    const stale = { ...w.matches[0] };
+    // Between the read and the write another person links the line…
+    Object.assign(w.matches[0], { orderId: 'o9', result: 'MATCHED', matchedBy: MANUAL_MATCH });
+    // …and this person's read, taken a moment earlier, still saw it open.
+    tx.settlementMatch.findFirst.mockResolvedValueOnce(stale);
+    const e = await refusedWith(link(tx));
+    expect(e.body.code).toBe('NOT_LINKABLE');
+    // Nothing of the other person's link was overwritten.
+    expect(w.matches[0]).toMatchObject({ orderId: 'o9', matchedBy: MANUAL_MATCH });
+    expect(tx.counts['note.create']).toBeUndefined();
+  });
+
+  it('and the write is asked as one the database can refuse: still MISSING_IN_SYSTEM, still no order, statement open', async () => {
+    const tx = makeTx(w);
+    await link(tx);
+    expect(tx.settlementMatch.updateMany.mock.calls[0][0].where).toEqual({
+      id: 'm1', statementId: 'st1', result: 'MISSING_IN_SYSTEM', orderId: null, statement: { approvedAt: null },
+    });
+  });
+});
+
+describe('an approval that lands while the link is being made', () => {
+  it('the statement’s row is locked before it is read, and the order’s before the order is', async () => {
+    const tx = makeTx(w);
+    await link(tx);
+    expect(tx.locks).toHaveLength(2);
+    expect(tx.locks[0]).toContain('courier_statements');
+    expect(tx.locks[0]).toContain('FOR UPDATE');
+    expect(tx.locks[1]).toContain('"orders"');
+    expect(tx.locks[1]).toContain('FOR UPDATE');
+    expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(tx.courierStatement.findFirst.mock.invocationCallOrder[0]);
+    expect(tx.$queryRaw.mock.invocationCallOrder[1]).toBeLessThan(tx.order.findFirst.mock.invocationCallOrder[0]);
+  });
+
+  it('is refused by the write with «الكشف انعتمد — حدّث», though the statement looked open when it was read', async () => {
+    const tx = makeTx(w);
+    // The first read (the check) sees it open; the approval commits; the write finds it approved.
+    const open = { ...w.statement };
+    tx.courierStatement.findFirst.mockImplementationOnce(async () => open);
+    Object.assign(w.statement, { status: 'APPROVED', approvedAt: new Date('2026-10-29T10:00:00Z') });
+
+    const e = await refusedWith(link(tx));
+    expect(e.body).toEqual({ error: APPROVED_WHILE_LINKING_SENTENCE, code: 'ALREADY_APPROVED' });
+    expect(w.matches[0]).toMatchObject({ result: 'MISSING_IN_SYSTEM', orderId: null });
+    expect(tx.counts['note.create']).toBeUndefined();
+    expect(tx.counts['match.deleteMany']).toBeUndefined();
+  });
 });
 
 describe('only a row that took the order reserves it', () => {
@@ -340,15 +428,36 @@ describe('the courier of the order', () => {
   });
 
   it('another courier’s order is refused until the person has read the warning', async () => {
-    const e = await refusedWith(link(makeTx(w)));
+    const e = await refusedWith(link(makeTx(w), { query: 'ORD-1' }));
     expect(e.body).toMatchObject({ code: 'OTHER_COURIER', error: OTHER_COURIER_WARNING });
     expect(w.matches[0].orderId).toBeNull();
   });
 
   it('and linked with the warning accepted, saying so', async () => {
-    const r = await link(makeTx(w), { acceptOtherCourier: true });
+    const r = await link(makeTx(w), { acceptOtherCourier: true, query: 'ORD-1' });
     expect(r.otherCourier).toBe(true);
     expect(w.matches[0]).toMatchObject({ orderId: 'o1', matchedBy: MANUAL_MATCH });
+  });
+
+  it('OUR number, exactly — the merchant reference too, in any case', async () => {
+    expect((await link(makeTx(w), { acceptOtherCourier: true, query: ' ref-1 ' })).otherCourier).toBe(true);
+  });
+
+  it('but the warning cannot be clicked through for an order the search would not have offered', async () => {
+    for (const query of ['0790000001', 'ORD', 'ORD-12', '', undefined]) {
+      w = makeWorld();
+      w.orders = [order({ deliveryProviderId: 'dp2' })];
+      const tx = makeTx(w);
+      const e = await refusedWith(link(tx, { acceptOtherCourier: true, query }));
+      expect(e.body, String(query)).toMatchObject({ code: 'OTHER_COURIER_NOT_EXACT', error: OTHER_COURIER_NOT_EXACT_SENTENCE });
+      expect(tx.counts['match.updateMany']).toBeUndefined();
+      expect(w.matches[0].orderId).toBeNull();
+    }
+  });
+
+  it('and an order of the statement’s own courier needs no number at all', async () => {
+    w.orders = [order()];
+    expect((await link(makeTx(w), { query: undefined })).otherCourier).toBe(false);
   });
 });
 
@@ -424,7 +533,7 @@ describe('the search', () => {
       order({ id: 'b', orderNumber: 'B', totalAmount: 41 }),
       order({ id: 'c', orderNumber: 'C', totalAmount: 33 }),
     ];
-    const r = await search(makeTx(w), 'ORD');
+    const r = await search(makeTx(w), '0790000001');
     expect(r.candidates.map((c) => [c.orderNumber, c.distance])).toEqual([['B', 1], ['C', 7], ['A', 20]]);
     expect(r.candidates[0].expected).toBe(41);
   });
@@ -435,7 +544,7 @@ describe('the search', () => {
       order({ id: 'a', orderNumber: 'A', totalAmount: 20, settlementStatus: 'SETTLED' }),
       order({ id: 'b', orderNumber: 'B', totalAmount: 99 }),
     ];
-    const r = await search(makeTx(w), 'ORD');
+    const r = await search(makeTx(w), '0790000001');
     expect(r.candidates.map((c) => c.orderNumber)).toEqual(['B', 'A']);
     expect(r.candidates[1].blockedBy).toContain(HAND_COLLECTED_NOTE);
     expect(r.candidates[0].blockedBy).toEqual([]);
@@ -444,7 +553,7 @@ describe('the search', () => {
   it('marks an order already matched in this statement and one not yet shipped', async () => {
     w.orders = [order({ id: 'a', orderNumber: 'A' }), order({ id: 'b', orderNumber: 'B', shippingStatus: 'PACKING', shippedAt: null })];
     w.matches.push({ id: 'm2', companyId: 'c1', statementId: 'st1', statementLineId: 'l2', orderId: 'a', result: 'MATCHED', matchedBy: 'BARCODE', resolution: null });
-    const r = await search(makeTx(w), 'ORD');
+    const r = await search(makeTx(w), '0790000001');
     const by = Object.fromEntries(r.candidates.map((c) => [c.orderNumber, c.blockedBy]));
     expect(by.A).toEqual([SAME_FILE_NOTE]);
     expect(by.B).toEqual([NOT_SHIPPED_SENTENCE]);
@@ -452,12 +561,62 @@ describe('the search', () => {
 
   it('returns at most a screenful', async () => {
     w.orders = Array.from({ length: 40 }, (_, i) => order({ id: `o${i}`, orderNumber: `N${String(i).padStart(2, '0')}` }));
-    expect((await search(makeTx(w), 'ORD')).candidates).toHaveLength(CANDIDATE_LIMIT);
+    expect((await search(makeTx(w), '0790000001')).candidates).toHaveLength(CANDIDATE_LIMIT);
   });
 
   it('refuses a row that is not an unlinked «في الكشف وليس عندنا»', async () => {
     w.matches[0].result = 'MATCHED';
     expect((await refusedWith(search(makeTx(w), 'ORD-1'))).body.code).toBe('NOT_LINKABLE');
+  });
+});
+
+describe('the search really narrows by what was typed', () => {
+  const two = () => [
+    order({ id: 'a', orderNumber: 'A-100', merchantRef: 'RA', customer: { id: 'c1', fullName: 'سارة خالد', phone: '790000001', rawPhone: '0790000001' } }),
+    order({ id: 'b', orderNumber: 'B-200', merchantRef: 'RB', customer: { id: 'c2', fullName: 'ليلى حسن', phone: '795550002', rawPhone: '0795550002' } }),
+  ];
+  const ids = async (q: string) => (await search(makeTx(w), q)).candidates.map((c) => c.id);
+
+  it('by the phone as the customer writes it (trunk zero) or as it is stored', async () => {
+    w.orders = two();
+    expect(await ids('0790000001')).toEqual(['a']);
+    expect(await ids('790000001')).toEqual(['a']);
+    expect(await ids('0795550002')).toEqual(['b']);
+  });
+
+  it('by a part of the name, in any case', async () => {
+    w.orders = two();
+    expect(await ids('ليلى')).toEqual(['b']);
+    expect(await ids('خالد')).toEqual(['a']);
+  });
+
+  it('by our order number or the merchant reference, in any case', async () => {
+    w.orders = two();
+    expect(await ids('b-200')).toEqual(['b']);
+    expect(await ids('RA-')).toEqual([]);
+  });
+
+  it('and something nobody has finds nothing, with the header saying so', async () => {
+    w.orders = two();
+    const r = await search(makeTx(w), '0000000');
+    expect(r.candidates).toEqual([]);
+    expect(r.header).toBe('لا طلبات لهذا البحث');
+  });
+
+  it('the header counts what the SEARCH found, not every order in scope', async () => {
+    w.orders = two();
+    const r = await search(makeTx(w), '0790000001');
+    expect(r.counts.total).toBe(1);
+  });
+
+  it('isOurNumber: exact, trimmed, any case, never a part', () => {
+    const o = { orderNumber: 'ORD-1', merchantRef: 'ref-1' };
+    expect(isOurNumber(o, 'ord-1')).toBe(true);
+    expect(isOurNumber(o, ' REF-1 ')).toBe(true);
+    expect(isOurNumber(o, 'ORD')).toBe(false);
+    expect(isOurNumber(o, '')).toBe(false);
+    expect(isOurNumber(o, undefined)).toBe(false);
+    expect(isOurNumber({ orderNumber: 'X', merchantRef: null }, '')).toBe(false);
   });
 });
 

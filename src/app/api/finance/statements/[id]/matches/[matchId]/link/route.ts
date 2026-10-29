@@ -38,6 +38,8 @@ const linkSchema = z.object({
   orderId: z.string().min(1),
   /** The person read the warning that this order is with another courier and went on. */
   acceptOtherCourier: z.boolean().optional(),
+  /** What the person typed to find the order. An order of another courier is linked only by OUR number, exactly. */
+  query: z.string().max(200).optional(),
 });
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string; matchId: string }> }) {
@@ -83,6 +85,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           userId: user.id,
           minorUnit: country.minorUnit,
           acceptOtherCourier: parsed.data.acceptOtherCourier === true,
+          query: parsed.data.query,
         }),
       { timeout: 30_000 }
     );

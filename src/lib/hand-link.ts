@@ -38,6 +38,21 @@ const CANDIDATE_READ = 50;
 
 export const OTHER_STORE_SENTENCE = 'هذا الطلب من متجر آخر — لا يُربط بكشف هذا المتجر';
 export const NOT_SHIPPED_SENTENCE = 'هذا الطلب لم يخرج من المخزن — لا يُربط بسطر في كشف شركة الشحن';
+/**
+ * OUR number, exactly: the order number or the merchant reference, ignoring case. The ONE road to an order the
+ * statement's courier does not carry — read by the search (as a query) and again by the link (in JS), so the
+ * warning cannot be clicked through for an order the search would never have offered.
+ */
+export function isOurNumber(order: { orderNumber: string; merchantRef: string | null }, query: string | undefined | null): boolean {
+  const q = (query ?? '').trim().toLowerCase();
+  if (q.length === 0) return false;
+  return order.orderNumber.toLowerCase() === q || (order.merchantRef ?? '').toLowerCase() === q;
+}
+
+export const OTHER_COURIER_NOT_EXACT_SENTENCE =
+  'طلب شركة شحن أخرى يُربط برقم طلبنا بالضبط فقط — اكتب رقم الطلب كاملاً وابحث';
+export const APPROVED_WHILE_LINKING_SENTENCE = 'الكشف انعتمد — حدّث';
+
 export const OTHER_COURIER_WARNING = 'هذا الطلب مع شركة شحن أخرى غير صاحبة الكشف — اربطه فقط إن كنت متأكداً أن السطر له';
 
 /** A stop that carries its own answer: the transaction rolls back and the route sends this. */
@@ -321,8 +336,14 @@ export async function linkLineToOrder(
     minorUnit: number;
     /** The person saw the other-courier warning and went on. */
     acceptOtherCourier: boolean;
+    /** What the person typed to find the order: another courier's order must be OUR number, exactly. */
+    query?: string;
   }
 ): Promise<LinkResult> {
+  // The statement's row is locked before anything is read, so an approval cannot slip in between the check
+  // that it is open and the write: it either finished first (and is refused below) or waits for this to commit
+  // (and then reads the link). The same lock the approval's own claim takes.
+  await tx.$queryRaw`SELECT "id" FROM "courier_statements" WHERE "id" = ${p.statementId} FOR UPDATE`;
   const statement = await tx.courierStatement.findFirst({
     where: { id: p.statementId, companyId: p.companyId, storeId: p.storeId },
     select: { id: true, status: true, approvedAt: true, reference: true, deliveryProviderId: true },
@@ -345,6 +366,9 @@ export async function linkLineToOrder(
     throw new LinkRefused(409, { error: 'هذا السطر ليس من «في الكشف وليس عندنا»، أو رُبط بطلب من قبل', code: 'NOT_LINKABLE' });
   }
 
+  // The order's row too: a hand collection claims it, and between its check and its claim this cannot slip a
+  // link in — whichever takes the row second sees what the first did.
+  await tx.$queryRaw`SELECT "id" FROM "orders" WHERE "id" = ${p.orderId} FOR UPDATE`;
   const order = await tx.order.findFirst({
     where: { id: p.orderId, companyId: p.companyId },
     select: ORDER_FACTS,
@@ -354,6 +378,10 @@ export async function linkLineToOrder(
   if (!hasLeftWarehouse(order)) throw new LinkRefused(409, { error: NOT_SHIPPED_SENTENCE, code: 'NOT_SHIPPED' });
 
   const otherCourier = order.deliveryProviderId !== statement.deliveryProviderId;
+  if (otherCourier && !isOurNumber(order, p.query)) {
+    // The warning cannot be clicked through for an order the search would not have offered.
+    throw new LinkRefused(409, { error: OTHER_COURIER_NOT_EXACT_SENTENCE, code: 'OTHER_COURIER_NOT_EXACT' });
+  }
   if (otherCourier && !p.acceptOtherCourier) {
     throw new LinkRefused(409, { error: OTHER_COURIER_WARNING, code: 'OTHER_COURIER' });
   }
@@ -384,7 +412,8 @@ export async function linkLineToOrder(
 
   // Claimed on the row's own state, so two people pressing at once cannot both link the one line.
   const claimed = await tx.settlementMatch.updateMany({
-    where: { id: match.id, statementId: p.statementId, result: 'MISSING_IN_SYSTEM', orderId: null },
+    // An open statement, and the row still unlinked: the write itself says so, not only the reads before it.
+    where: { id: match.id, statementId: p.statementId, result: 'MISSING_IN_SYSTEM', orderId: null, statement: { approvedAt: null } },
     data: {
       orderId: order.id,
       result: v.result,
@@ -399,6 +428,13 @@ export async function linkLineToOrder(
     },
   });
   if (claimed.count !== 1) {
+    const now = await tx.courierStatement.findFirst({
+      where: { id: p.statementId, companyId: p.companyId },
+      select: { status: true, approvedAt: true },
+    });
+    if (now && isApproved(now)) {
+      throw new LinkRefused(409, { error: APPROVED_WHILE_LINKING_SENTENCE, code: 'ALREADY_APPROVED' });
+    }
     throw new LinkRefused(409, { error: 'رُبط هذا السطر قبل لحظات', code: 'NOT_LINKABLE' });
   }
 

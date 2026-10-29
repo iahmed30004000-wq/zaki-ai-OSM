@@ -147,6 +147,8 @@ export function receiptEditRefusal(s: { status: string; approvedAt?: Date | stri
 
 /** An order of a hand collection, as far as a statement could name it. */
 export interface CollectOrderRef {
+  /** Needed to find the lines a person tied to this order by hand (they carry no reference of the order's). */
+  id?: string;
   orderNumber: string;
   merchantRef?: string | null;
   trackingNumber?: string | null;
@@ -161,30 +163,44 @@ export interface NamingLine {
 }
 
 /**
+ * A line a person tied to an order by hand («اربطه بطلب»). It carries NEITHER of the order's references — that
+ * is why it was tied by hand — so the order is found through the match row that holds the link.
+ */
+export interface LinkedLine {
+  orderId: string | null;
+  statement: NamingLine['statement'];
+}
+
+/**
  * Does any statement already speak for these orders? Then «استلمت منه» must not book their money again.
  *
  * A line names an order by our reference (that names one order whoever carries it) or by the courier's
  * barcode WITHIN THAT COURIER (a barcode is only unique per company that issued it). On an unapproved
  * statement the money will be written when it is approved; on an approved one it already was — a
  * MISMATCHED line included, whose difference is settled by the statement and not by a second collection.
- * A sweep row «MISSING_IN_STATEMENT» is not a line and never reaches here.
+ * A sweep row «MISSING_IN_STATEMENT» is not a line and never reaches here. A line tied to the order by a person
+ * speaks for it the same way, whatever it says: `links` are those, found by the order's id.
  *
  * Returns null when no statement names any of them; otherwise one sentence per order and the code of the
  * graver case (an approved statement).
  */
 export function statementNamingRefusal(
   orders: CollectOrderRef[],
-  lines: NamingLine[]
+  lines: NamingLine[],
+  links: LinkedLine[] = []
 ): { code: string; error: string; orders: string[] } | null {
   const sentences: string[] = [];
   const named: string[] = [];
   let approved = false;
   for (const o of orders) {
-    const hits = lines.filter(
-      (l) =>
-        (!!o.merchantRef && l.merchantRef === o.merchantRef) ||
-        (!!o.trackingNumber && l.barcode === o.trackingNumber && l.statement.deliveryProviderId === o.deliveryProviderId)
-    );
+    const hits: { statement: NamingLine['statement'] }[] = [
+      ...lines.filter(
+        (l) =>
+          (!!o.merchantRef && l.merchantRef === o.merchantRef) ||
+          (!!o.trackingNumber && l.barcode === o.trackingNumber && l.statement.deliveryProviderId === o.deliveryProviderId)
+      ),
+      ...links.filter((l) => !!o.id && l.orderId === o.id),
+    ];
     if (hits.length === 0) continue;
     const done = hits.find((h) => isApproved(h.statement));
     named.push(o.orderNumber);

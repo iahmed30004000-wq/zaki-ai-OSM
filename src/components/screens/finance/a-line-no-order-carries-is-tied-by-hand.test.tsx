@@ -147,7 +147,7 @@ describe('the dialog', () => {
     await waitFor(() => expect(api.mock.calls.some((c) => (c[1] as RequestInit | undefined)?.method === 'POST')).toBe(true));
     const post = api.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'POST')!;
     expect(post[0]).toBe('/api/finance/statements/s1/matches/nosys/link');
-    expect(JSON.parse((post[1] as RequestInit).body as string)).toEqual({ orderId: 'a', acceptOtherCourier: false });
+    expect(JSON.parse((post[1] as RequestInit).body as string)).toEqual({ orderId: 'a', acceptOtherCourier: false, query: '0790000001' });
   });
 
   it('an order of another courier is sent with the acknowledgement the warning asked for', async () => {
@@ -156,7 +156,7 @@ describe('the dialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'اربطه بالطلب ORD-C' }));
     await waitFor(() => expect(api.mock.calls.some((c) => (c[1] as RequestInit | undefined)?.method === 'POST')).toBe(true));
     const post = api.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'POST')!;
-    expect(JSON.parse((post[1] as RequestInit).body as string)).toEqual({ orderId: 'c', acceptOtherCourier: true });
+    expect(JSON.parse((post[1] as RequestInit).body as string)).toEqual({ orderId: 'c', acceptOtherCourier: true, query: '0790000001' });
   });
 
   it('says nothing is chosen until an order is picked', async () => {

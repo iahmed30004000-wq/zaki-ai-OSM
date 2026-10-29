@@ -109,6 +109,11 @@ describe('the link', () => {
     );
   });
 
+  it('passes what the person typed, so an order of another courier can be checked against it', async () => {
+    await post({ orderId: 'o1', acceptOtherCourier: true, query: 'ORD-77' });
+    expect(linkLineToOrder.mock.calls[0][1]).toMatchObject({ acceptOtherCourier: true, query: 'ORD-77' });
+  });
+
   it('passes the other-courier acceptance only when the body says exactly true', async () => {
     await post({ orderId: 'o1', acceptOtherCourier: true });
     expect(linkLineToOrder.mock.calls[0][1].acceptOtherCourier).toBe(true);

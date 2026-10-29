@@ -36,6 +36,8 @@ export function LinkLineDialog({ statementId, matchId, reference, amount, curren
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [found, setFound] = useState<CandidateSearch | null>(null);
+  // What was searched (not what is being typed now): the server checks an order of another courier against it.
+  const [searched, setSearched] = useState('');
   const [picked, setPicked] = useState<LinkCandidate | null>(null);
   const [searching, setSearching] = useState(false);
   const [linking, setLinking] = useState(false);
@@ -49,6 +51,7 @@ export function LinkLineDialog({ statementId, matchId, reference, amount, curren
     setPicked(null);
     try {
       setFound(await apiJson<CandidateSearch>(`${base}?q=${encodeURIComponent(query.trim())}`));
+      setSearched(query.trim());
     } catch (e) {
       setError(e instanceof Error ? e.message : 'تعذّر البحث');
     } finally {
@@ -64,7 +67,7 @@ export function LinkLineDialog({ statementId, matchId, reference, amount, curren
       const res = await apiJson<{ message: string; linked: { result: string } }>(base, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: picked.id, acceptOtherCourier: picked.otherCourier }),
+        body: JSON.stringify({ orderId: picked.id, acceptOtherCourier: picked.otherCourier, query: searched }),
       });
       if (res.linked.result === 'MATCHED') toast.done(res.message);
       else toast.warn(res.message);

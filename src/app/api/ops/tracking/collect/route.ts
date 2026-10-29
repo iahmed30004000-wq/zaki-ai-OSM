@@ -259,7 +259,23 @@ export async function POST(req: Request) {
                 statement: { select: { reference: true, status: true, approvedAt: true, deliveryProviderId: true } },
               },
             });
-      const covered = statementNamingRefusal(orders, lines);
+      /**
+       * AND A LINE A PERSON TIED TO THE ORDER BY HAND.
+       *
+       * «اربطه بطلب» ties a line whose reference named nothing of ours, so that line carries neither the
+       * order's reference nor its barcode and the read above cannot see it. It is found through the match row
+       * that holds the link: any row of any statement that has a line and this order. Without it a linked
+       * order could be collected here and then paid again when the statement is approved.
+       */
+      const tiedLines = () =>
+        tx.settlementMatch.findMany({
+          where: { companyId, orderId: { in: orders.map((o) => o.id) }, statementLineId: { not: null } },
+          select: {
+            orderId: true,
+            statement: { select: { reference: true, status: true, approvedAt: true, deliveryProviderId: true } },
+          },
+        });
+      const covered = statementNamingRefusal(orders, lines, await tiedLines());
       if (covered) throw new CollectStopped(covered);
 
       /**
@@ -277,6 +293,11 @@ export async function POST(req: Request) {
       if (claimed.count !== orders.length) {
         throw new CollectStopped({ code: 'ALREADY_SETTLED', error: 'انحصّل من قبل — حدّث الصفحة' });
       }
+      // The claim holds the orders' rows, and a link takes the same row before it reads the order's state.
+      // So a link that committed while this press waited is visible HERE, and one that has not yet read the
+      // order will find it settled: asked again after the claim, the two cannot both succeed.
+      const lateCover = statementNamingRefusal(orders, lines, await tiedLines());
+      if (lateCover) throw new CollectStopped(lateCover);
 
       const movement = await recordMovement(tx, {
         companyId,

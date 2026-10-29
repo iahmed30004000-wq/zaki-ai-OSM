@@ -1022,10 +1022,23 @@ export async function runMatching(
         statementId: { not: statementId },
         statementLineId: { not: null },
         // Only a row that really took the order (clean, or decided by a person) counts: a line that merely disagreed did not.
-        OR: [{ result: 'MATCHED' }, { resolution: 'ACCEPTED_COURIER' }],
-        statement: {
-          OR: [{ approvedAt: { not: null } }, ...(statement.createdAt ? [{ createdAt: { lt: statement.createdAt } }] : [])],
-        },
+        //
+        // And which statement it sits on: an approved one, or one imported before this one — EXCEPT a link a person
+        // made by hand. That is a decision about this very order, so it holds it against every other statement,
+        // older ones included: the older statement, matched again later, must see it.
+        OR: [
+          {
+            AND: [
+              { OR: [{ result: 'MATCHED' }, { resolution: 'ACCEPTED_COURIER' }] },
+              {
+                statement: {
+                  OR: [{ approvedAt: { not: null } }, ...(statement.createdAt ? [{ createdAt: { lt: statement.createdAt } }] : [])],
+                },
+              },
+            ],
+          },
+          { matchedBy: MANUAL_MATCH, OR: [{ result: 'MATCHED' }, { resolution: 'ACCEPTED_COURIER' }] },
+        ],
       },
       select: { orderId: true, statement: { select: { reference: true, approvedAt: true } } },
     });
