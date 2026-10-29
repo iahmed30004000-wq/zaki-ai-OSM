@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React, { useEffect } from 'react';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -178,7 +178,9 @@ describe('an action does not take the page away', () => {
   it('— deleting a picture reloads the product UNDER the page: no spinner, and no card below is unmounted and mounted again', async () => {
     current = productWith([image(1), image(2)]);
     await draw();
-    expect(mounts.stock).toBe(1);
+    // `mounts.stock` is counted in a mount EFFECT, and effects are flushed after the paint: `draw()` has seen the name, not
+    // necessarily the effect (RV157/RV93 — it read 0 under a loaded machine). Waited for, not assumed.
+    await waitFor(() => expect(mounts.stock).toBe(1));
     const reads = () => fetchMock.mock.calls.filter((c) => !(c[1] as RequestInit | undefined)?.method).length;
     const before = reads();
 
@@ -204,6 +206,8 @@ describe('an action does not take the page away', () => {
 
     release();
     await waitFor(() => expect(screen.queryByText('كبّر الصورة 2')).toBeNull());
+    // Let every pending effect run first: «still one mount» must be read AFTER the page has had its chance to remount, not before.
+    await act(async () => {});
     expect(mounts.stock, 'الكرتُ تحتَ المعرضِ اندثر وانبنى من جديد').toBe(1);
     expect(document.querySelector('.animate-spin')).toBeNull();
   });

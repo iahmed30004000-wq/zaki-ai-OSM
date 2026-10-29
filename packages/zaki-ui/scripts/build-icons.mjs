@@ -13,6 +13,10 @@
  * and nobody sees it for a year.
  *
  * Run: node packages/zaki-ui/scripts/build-icons.mjs
+ *
+ * ZAKI_UI_ICONS_OUT=<folder> writes the two files THERE instead of beside the
+ * package. A test that wants to know whether the build still produces what is
+ * committed must not rewrite what is committed while other tests read it (RV38).
  */
 import { writeFileSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -23,6 +27,8 @@ import * as Remix from '@remixicon/react';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PKG = resolve(HERE, '..');
+/** Where the two files are written. Beside the package unless asked otherwise. */
+const OUT = process.env.ZAKI_UI_ICONS_OUT ? resolve(process.env.ZAKI_UI_ICONS_OUT) : PKG;
 
 /**
  * THE SET, AS THE OWNER NAMED IT — five groups, and the Remix face chosen
@@ -139,7 +145,7 @@ const sprite = [
   '',
 ].join('\n');
 
-writeFileSync(join(PKG, 'icons.svg'), sprite, 'utf8');
+writeFileSync(join(OUT, 'icons.svg'), sprite, 'utf8');
 
 const index = {
   name: 'zaki-ui icons',
@@ -156,7 +162,7 @@ const index = {
   ),
   missing,
 };
-writeFileSync(join(PKG, 'icons.json'), JSON.stringify(index, null, 2) + '\n', 'utf8');
+writeFileSync(join(OUT, 'icons.json'), JSON.stringify(index, null, 2) + '\n', 'utf8');
 
 console.log(`icons.svg + icons.json — ${built.length} symbols, ${Math.round(sprite.length / 1024)} KB`);
 if (missing.length) {

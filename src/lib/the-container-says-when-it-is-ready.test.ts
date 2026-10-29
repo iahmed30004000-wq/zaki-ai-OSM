@@ -117,6 +117,35 @@ describe('the image says whether it is ready', () => {
     }
   });
 
+  it('and the route it probes asks neither the database nor the worker — the process alone', () => {
+    /*
+     * RV185. The probe used to be `/api/health`, which answers 503 when the
+     * database is unreachable and was cached from a query. A database that
+     * was merely SLOW then failed three checks in a row, the container
+     * became «unhealthy», and the proxy stopped sending visitors to a
+     * website that was perfectly alive: the monitoring manufactured the
+     * outage. The database question has its own door (`/api/health`, for
+     * the uptime monitor and Coolify's own setting); the container asks
+     * only «is the process answering?».
+     *
+     * A RULE and not a path: whichever route the HEALTHCHECK names may not
+     * import the database, the heartbeat, the health cache, or anything
+     * under `@/lib/jobs`.
+     */
+    const [health] = instructions().filter((i) => i.keyword === 'HEALTHCHECK');
+    const path = /https?:\/\/[^/\s]+(\/[^\s"']*)/
+      .exec(health.rest)![1]
+      .replace(/\?.*$/, '')
+      .replace(/\/$/, '');
+    expect(path, 'فحص الحاوية رجع لمسار فيه قاعدة بيانات').not.toBe('/api/health');
+    const file = join('src', 'app', path, 'route.ts');
+    expect(existsSync(join(process.cwd(), file)), `${file} مش موجود`).toBe(true);
+    const src = stripComments(repoFile(file));
+    for (const dependency of ['@/lib/db', '@/lib/jobs', './cached', '../cached', 'prisma', 'heartbeat']) {
+      expect(src, `فحص الحاوية بيستورد ${dependency} — يعني بيسأل القاعدة أو العامل`).not.toContain(dependency);
+    }
+  });
+
   it('carries no bare CMD beside an ENTRYPOINT that ignores its arguments', () => {
     /*
      * THE ORIGINAL DEFECT, AS A RULE.
