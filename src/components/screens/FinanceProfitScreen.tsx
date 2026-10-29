@@ -15,6 +15,7 @@ import { routeLabel } from '@/lib/route-registry';
 // Arabic column in an Arabic table.
 import { arDate } from '@/lib/format';
 import { apiJson } from '@/lib/api-client';
+import { userCan } from '@/lib/can';
 import { ZERO_SUMMARY, type ProfitSummary } from '@/lib/profit-summary';
 import { RiAddCircleLine, RiArrowRightDownLine, RiArrowUpCircleLine, RiFileList3Line, RiMoneyDollarCircleLine } from '@remixicon/react';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -206,7 +207,7 @@ function SpendByType({
 }
 
 export function FinanceProfitScreen() {
-  const { t } = useApp();
+  const { t, currentUser } = useApp();
   const [data, setData] = useState<any>(null);
   // Per-product profit, from the endpoint that had no screen.
   const [profitability, setProfitability] = useState<any[] | null>(null);
@@ -260,6 +261,37 @@ export function FinanceProfitScreen() {
       .then((d: { wallets: { id: string; name: string; currencyCode: string }[] }) => setWallets(d.wallets ?? []))
       .catch(() => setWallets([]));
   }, [expenseModalOpen, wallets.length]);
+
+  /*
+   * CANCELLING AN EXPENSE (not deleting it). Its money goes back to the wallet it left and it leaves the profit;
+   * the row stays on the list, marked «ملغى». The door asks «تعديل المالية», and so does the button.
+   */
+  const mayCancel = userCan(currentUser, 'finance.update');
+  const [cancelling, setCancelling] = useState<any>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [cancelBusy, setCancelBusy] = useState(false);
+
+  const handleCancelExpense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cancelling) return;
+    setCancelBusy(true);
+    setCancelError(null);
+    try {
+      await apiJson('/api/finance', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expenseId: cancelling.id, reason: cancelReason }),
+      });
+      setCancelling(null);
+      setCancelReason('');
+      loadFinance();
+    } catch (err) {
+      setCancelError(err instanceof Error ? err.message : 'تعذّر إلغاء المصروف');
+    } finally {
+      setCancelBusy(false);
+    }
+  };
 
   const handleRecordExpense = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -409,7 +441,12 @@ export function FinanceProfitScreen() {
                   { key: 'c0', label: "التاريخ", primary: true,
                     render: (e: any) => (arDate(e.expenseDate)) },
                   { key: 'c1', label: "البند", primary: true,
-                    render: (e: any) => (e.title) },
+                    render: (e: any) => (
+                  <>
+                    {e.title}
+                    {e.voidedAt && <> <Badge variant="danger">ملغى</Badge></>}
+                  </>
+                ) },
                   /* The stored value is an enum — MARKETING, PACKAGING — and
                      this printed it raw: Latin capitals in a right-to-left
                      Arabic table whose own form offers «تسويق وإعلانات» for
@@ -426,7 +463,14 @@ export function FinanceProfitScreen() {
                   <><Money value={e.amount} currency={data?.currency} /></>
                 ) },
                   { key: 'c4', label: "ملاحظات",
-                    render: (e: any) => (e.notes || '—') },
+                    render: (e: any) => (e.voidedAt ? `أُلغي: ${e.voidReason ?? '—'}` : e.notes || '—') },
+                  { key: 'c5', label: "إجراء",
+                    render: (e: any) =>
+                      mayCancel && !e.voidedAt ? (
+                        <Button type="button" size="sm" variant="outline" onClick={() => { setCancelError(null); setCancelling(e); }}>
+                          إلغاء المصروف
+                        </Button>
+                      ) : null },
                 ]}
                 empty={
                   <EmptyState title="لا مصاريف مسجَّلة في هذه الفترة" why="المصروف يُخصم مباشرةً من صافي الربح. سجّله وقتَ حدوثه، لا في آخر الشهر." />
@@ -479,7 +523,7 @@ export function FinanceProfitScreen() {
         isOpen={expenseModalOpen}
         onClose={() => setExpenseModalOpen(false)}
         title="مصروف جديد"
-        subtitle="يُخصم مباشرة من صافي ربح الشركة"
+        subtitle="يُخصم مباشرة من صافي ربح هذا المتجر"
       >
         <form onSubmit={handleRecordExpense} className="space-y-4">
           <Input
@@ -565,6 +609,38 @@ export function FinanceProfitScreen() {
             </Button>
             <Button type="submit" loading={modalLoading}>
               احفظ المصروف
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Cancel an expense: the money returns to its wallet, the profit stops counting it. */}
+      <Modal
+        isOpen={!!cancelling}
+        onClose={() => setCancelling(null)}
+        title="إلغاء مصروف"
+        subtitle="يرجع المبلغ إلى محفظته ويخرج المصروف من الربح — ويبقى في السجل مكتوباً «ملغى»"
+      >
+        <form onSubmit={handleCancelExpense} className="space-y-4">
+          <p className="text-sm text-[var(--sys-heading)]">{cancelling?.title}</p>
+          <Textarea
+            label="سبب الإلغاء *"
+            rows={2}
+            value={cancelReason}
+            onChange={(e) => setCancelReason(e.target.value)}
+            required
+          />
+          {cancelError && (
+            <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-xs text-[var(--sys-destructive)]">
+              {cancelError}
+            </p>
+          )}
+          <div className="flex justify-end space-x-2 pt-2">
+            <Button type="button" variant="outline" onClick={() => setCancelling(null)}>
+              {t.cancel}
+            </Button>
+            <Button type="submit" variant="danger" loading={cancelBusy}>
+              ألغِ المصروف
             </Button>
           </div>
         </form>

@@ -1173,12 +1173,28 @@ model Expense {
   movementId  String?  @map("movement_id")
   createdById String?
   createdAt   DateTime @default(now())
+  /// WHICH STORE BORE THIS EXPENSE. Every new expense carries the store it was
+  /// recorded in, and a store's profit subtracts its own expenses only.
+  ///
+  /// NULL = written before the column existed. A null row is read exactly as it
+  /// was before (it counts against every store, the way it always did) until the
+  /// owner runs scripts/backfills/20261029-expenses-get-their-store.sql — no
+  /// migration fills it, so no store's profit moves on deploy.
+  storeId     String?  @map("store_id")
+  /// CANCELLED, NEVER DELETED. A cancelled expense stays on the list — marked —
+  /// and leaves every profit figure. Set in the same transaction that returns its
+  /// money to the wallet (src/lib/wallets.ts reverseMovement, src/lib/expense-void.ts).
+  voidedAt    DateTime? @map("voided_at")
+  voidReason  String?   @map("void_reason")
+  voidedById  String?   @map("voided_by_id")
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   wallet  Wallet? @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  store   Store?  @relation(fields: [storeId], references: [id], onDelete: Restrict)
 
   @@index([companyId, category])
   @@index([walletId])
+  @@index([companyId, storeId, expenseDate])
   @@map("expenses")
 }
 
@@ -2145,6 +2161,7 @@ model Store {
   adAccounts        AdAccount[]
   trackingPixels    TrackingPixel[]
   wallets           Wallet[]
+  expenses          Expense[]
   products          Product[]
   customers         Customer[]
   notifications     Notification[]

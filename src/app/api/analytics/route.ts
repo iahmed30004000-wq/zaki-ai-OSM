@@ -6,6 +6,7 @@ import { can, requirePermission } from '@/lib/authorization';
 import { getCompanyAnalytics, reportRange, previousRange, DateFilter } from '@/lib/analytics';
 import { rateLimit } from '@/lib/rate-limit';
 import { db } from '@/lib/db';
+import { expensesOf } from '@/lib/expense-scope';
 import { countOutcomes } from '@/lib/order-outcome';
 import { DELIVERED_SHIPPING, rateOf, whereDelivered } from '@/lib/order-state';
 import {
@@ -170,12 +171,12 @@ export async function GET(req: Request) {
         db.order.count({ where: { ...windowWhere, ...whereDelivered() } }),
         db.order.count({ where: { ...windowWhere, ...whereDelivered(), estimatedCostOfGoods: { gt: 0 } } }),
 
-        // Expenses have no per-order denominator — they are company-wide
-        // rows — so they are not a coverage share. An empty table is still a
+        // Expenses have no per-order denominator, so they are not a coverage
+        // share. An empty table is still a
         // hole in the net profit, and the screen says so rather than
         // subtracting zero and calling the result net.
         db.expense.count({
-          where: { companyId, ...(start && end ? { expenseDate: { gte: start, lte: end } } : {}) },
+          where: { ...expensesOf(companyId, storeId), ...(start && end ? { expenseDate: { gte: start, lte: end } } : {}) },
         }),
 
         /**
