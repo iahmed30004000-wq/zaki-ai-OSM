@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { addOrdersToDraft, assembleDraft, ManualRefused } from './manual-statement';
 import { collectTotalRefusal } from './settlement-gates';
+import { receiptGap } from './settlement';
 import { manualFileHash, MANUAL_DRAFT_PREFIX } from './manual-statement-rules';
 
 /**
@@ -482,5 +483,49 @@ describe('press 2 — gathering', () => {
   it('but a negative line inside a positive total is fine: a statement nets, as a settlement does', async () => {
     const draft = await draftWith([{ orderId: 'o1', amount: -1.5 }, { orderId: 'o2', amount: 17.5 }]);
     await expect(gather(draft.id, 'X1')).resolves.toMatchObject({ total: 16 });
+  });
+});
+
+describe('two currencies — a dollar receipt closes a dinar statement at the rate that was typed', () => {
+  /** The gap as the existing door works it out, for a manual statement of 35.000 JOD. */
+  const gapOf = (receipts: { amount: number; currencyCode: string; exchangeRate: number | null }[]) =>
+    receiptGap(
+      {
+        courierStatement: { findUnique: async () => ({ totalAmount: 35, currencyCode: 'JOD', gapExplanation: null }) },
+        statementReceipt: { findMany: async () => receipts },
+      } as never,
+      'st-1',
+      3
+    );
+
+  it('49.35 USD at 1.41 per dinar is 35.000 JOD: no gap, nothing to explain', async () => {
+    const g = await gapOf([{ amount: 49.35, currencyCode: 'USD', exchangeRate: 1.41 }]);
+    expect(g).toMatchObject({ claimed: 35, received: 35, gap: 0, needsExplanation: false, unconvertible: 0 });
+  });
+
+  it('half in dinars and half in dollars add up in the statement’s own currency, to the fils', async () => {
+    const g = await gapOf([
+      { amount: 20, currencyCode: 'JOD', exchangeRate: null },
+      { amount: 21.15, currencyCode: 'USD', exchangeRate: 1.41 },
+    ]);
+    expect(g).toMatchObject({ received: 35, gap: 0 });
+  });
+
+  it('the same receipt with the rate upside down leaves a gap that must be explained', async () => {
+    const g = await gapOf([{ amount: 49.35, currencyCode: 'USD', exchangeRate: 0.709 }]);
+    expect(g).toMatchObject({ received: 69.605, gap: 34.605, needsExplanation: true });
+  });
+
+  it('a receipt in another currency with no usable rate is counted apart — never added to the total at par', async () => {
+    const none = await gapOf([{ amount: 49.35, currencyCode: 'USD', exchangeRate: null }]);
+    expect(none).toMatchObject({ received: 0, unconvertible: 1 });
+    // A rate under the floor is stored as zero by the column, which is no rate at all.
+    const zero = await gapOf([{ amount: 49.35, currencyCode: 'USD', exchangeRate: 0 }]);
+    expect(zero).toMatchObject({ received: 0, unconvertible: 1 });
+  });
+
+  it('the smallest rate the floor allows is still a rate, and it converts', async () => {
+    const g = await gapOf([{ amount: 0.000035, currencyCode: 'USD', exchangeRate: 0.000001 }]);
+    expect(g).toMatchObject({ received: 35, gap: 0 });
   });
 });

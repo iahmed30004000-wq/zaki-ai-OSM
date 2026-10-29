@@ -521,38 +521,36 @@ export function CollectionScreen() {
                     </button>
                   )}
                   {!s.draft && (
-                    <button onClick={() => setReceiptFor(s)} className="text-xs text-[var(--sys-primary)] hover:underline">
-                      إيصال استلام
-                    </button>
-                  )}
-                  {!s.draft && (
-                  <button
-                    disabled={s.counts.receipts === 0 || !!noRematch || busy === s.id}
-                    title={noRematch?.error ?? (s.counts.receipts === 0 ? 'سجّل إيصال الاستلام أولاً' : 'شغّل المطابقة')}
-                    onClick={() =>
-                      act(s.id, 'تمت المطابقة', () =>
-                        apiJson(`/api/finance/statements/${s.id}/match`, { method: 'POST' })
-                      )
-                    }
-                    className="text-xs text-[var(--sys-primary)] hover:underline disabled:text-[var(--sys-border-strong)] disabled:no-underline"
-                  >
-                    مطابقة
-                  </button>
-                  )}
-                  {!s.draft && s.gap.needsExplanation && !s.gap.explained && (
-                    <button onClick={() => setExplainFor(s)} className="text-xs text-[var(--sys-warning)] hover:underline">
-                      تفسير الفرق
-                    </button>
-                  )}
-                  {!s.draft && (
-                  <button
-                    disabled={!!refusal || busy === s.id}
-                    title={refusal?.error ?? 'اعتماد الكشف — عندها تُسجَّل حركة المحفظة'}
-                    onClick={() => void approve(s)}
-                    className="text-xs font-medium text-[var(--sys-success)] hover:underline disabled:text-[var(--sys-border-strong)] disabled:no-underline"
-                  >
-                    اعتماد
-                  </button>
+                    <>
+                      <button onClick={() => setReceiptFor(s)} className="text-xs text-[var(--sys-primary)] hover:underline">
+                        إيصال استلام
+                      </button>
+                      <button
+                        disabled={s.counts.receipts === 0 || !!noRematch || busy === s.id}
+                        title={noRematch?.error ?? (s.counts.receipts === 0 ? 'سجّل إيصال الاستلام أولاً' : 'شغّل المطابقة')}
+                        onClick={() =>
+                          act(s.id, 'تمت المطابقة', () =>
+                            apiJson(`/api/finance/statements/${s.id}/match`, { method: 'POST' })
+                          )
+                        }
+                        className="text-xs text-[var(--sys-primary)] hover:underline disabled:text-[var(--sys-border-strong)] disabled:no-underline"
+                      >
+                        مطابقة
+                      </button>
+                      {s.gap.needsExplanation && !s.gap.explained && (
+                        <button onClick={() => setExplainFor(s)} className="text-xs text-[var(--sys-warning)] hover:underline">
+                          تفسير الفرق
+                        </button>
+                      )}
+                      <button
+                        disabled={!!refusal || busy === s.id}
+                        title={refusal?.error ?? 'اعتماد الكشف — عندها تُسجَّل حركة المحفظة'}
+                        onClick={() => void approve(s)}
+                        className="text-xs font-medium text-[var(--sys-success)] hover:underline disabled:text-[var(--sys-border-strong)] disabled:no-underline"
+                      >
+                        اعتماد
+                      </button>
+                    </>
                   )}
                 </span>
               );

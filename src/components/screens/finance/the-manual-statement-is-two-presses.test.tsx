@@ -43,6 +43,7 @@ vi.mock('@/components/screens/tracking/CollectDialog', () => ({
 
 import { ManualMatching } from './ManualMatching';
 import { CollectionScreen } from './CollectionScreen';
+import { MatchingScreen } from './MatchingScreen';
 import { addedSentence } from './ManualStatementDialog';
 import { StoreCurrencyProvider } from '@/context/StoreCurrency';
 
@@ -317,6 +318,21 @@ describe('«تجميع» — on the draft and nowhere else', () => {
     expect(api.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'DELETE')![0]).toBe('/api/finance/statements/s1');
   });
 
+});
+
+describe('the matching screen offers a statement to match, not a draft', () => {
+  it('an open draft has nothing to match yet, so it is not in the list of statements — a gathered one is', async () => {
+    user.current = { id: 'u3', status: 'ACTIVE', role: 'ACCOUNTANT', permissions: ['settlement.review'] };
+    statements = [
+      statement({ id: 'd1', draft: true }),
+      statement({ id: 'g1', draft: false, reference: 'كشف الأحد', counts: { lines: 2, receipts: 1, matches: 2 } }),
+    ];
+    render(<MatchingScreen />);
+    const picker = (await screen.findByLabelText('الكشف')) as HTMLSelectElement;
+    await waitFor(() => expect([...picker.options].some((o) => o.textContent?.includes('كشف الأحد'))).toBe(true));
+    expect([...picker.options].map((o) => o.textContent)).not.toContain('مسوّدة كشف يدوي — 0 مطابقة');
+    expect([...picker.options].some((o) => o.textContent?.includes('مسوّدة'))).toBe(false);
+  });
 });
 
 /* ───────────────────────── the receipt, in another currency ───────────────────────── */
