@@ -66,14 +66,20 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     });
     if (!batch) return NextResponse.json({ error: 'الدفعة غير موجودة' }, { status: 404 });
 
-    // A batch is a list of parcels, and every parcel carries a person.
+    // What the response will actually carry: without the address-book key the
+    // phone is gone from every parcel.
+    const orders = batch.orders.map((o) => ({ ...o, customer: redactCustomerForWarehouse(o.customer, maySeeContact) }));
+
+    // A batch is a list of parcels, and every parcel carries a person — but
+    // only those whose contact details LEFT count towards the harvest alarm.
+    // It used to count the rows before the phone was taken off, so a
+    // warehouse worker who was never shown a phone was still tallied as
+    // having read every customer in the batch.
     await noteCustomersHandedOut({
-      companyId, storeId, user, where: 'دفعة شحن', rows: batch.orders,
+      companyId, storeId, user, where: 'دفعة شحن', rows: orders.map((o) => o.customer).filter((c) => c.phone),
     });
 
-    return NextResponse.json({
-      batch: { ...batch, orders: batch.orders.map((o) => ({ ...o, customer: redactCustomerForWarehouse(o.customer, maySeeContact) })) },
-    });
+    return NextResponse.json({ batch: { ...batch, orders } });
   } catch (error) {
     return apiErrorResponse(error);
   }

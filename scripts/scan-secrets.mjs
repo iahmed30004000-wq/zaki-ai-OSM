@@ -35,6 +35,11 @@ import { execFileSync } from 'node:child_process';
 /**
  * Values that are obviously not real. A scanner that cries at every test
  * fixture gets switched off, and then it protects nothing.
+ *
+ * AN ALLOW-LIST ENTRY EXCUSES THE TEXT A PATTERN MATCHED, NOT THE LINE IT
+ * SITS ON (see the loop at the bottom). It used to excuse the whole line,
+ * so a real key followed by `// test-only`, or sharing a line with an
+ * `example.com` URL, was waved through by its neighbour.
  */
 const ALLOW_PATTERNS = [
   /test-/i,
@@ -46,7 +51,6 @@ const ALLOW_PATTERNS = [
   /xxx+/,
   /DEMO#/,
   /\bfake\b/i,
-  /not-used/i,               // «…-not-used-in-production» — a value that says what it is
   /<[A-Z_]{3,}>/,          // <DB_PASSWORD> — a named placeholder
   /\$\{[A-Za-z_]/,          // ${POSTGRES_PASSWORD} — shell or compose interpolation
   /process\.env\./,         // read from the environment, which is the point
@@ -77,6 +81,19 @@ const IS_TEST = /\.test\.[tj]sx?$|\/__tests__\/|\.spec\.[tj]sx?$/;
 const PATTERNS = [
   { name: 'OpenAI key', scope: 'all', re: /sk-[A-Za-z0-9]{20,}/ },
   { name: 'Anthropic key', scope: 'all', re: /sk-ant-[A-Za-z0-9_-]{20,}/ },
+  /**
+   * AN OPENAI-STYLE KEY WITH DASHES IN IT — `sk-proj-…`, `sk-svcacct-…`,
+   * `sk-or-v1-…` (OpenRouter). The first pattern wants twenty letters or
+   * digits in a row, and every one of these breaks the run at the dash, so
+   * they walked past it.
+   *
+   * The LEFT BOUNDARY is what keeps this honest: without it `sk-` is the
+   * tail of `risk-`, `task-` and `desk-`, and a kebab-case word of
+   * twenty letters is not a key. With it the `sk` must start a token. The
+   * lookahead asks for a digit too — every real key has one, a slug rarely
+   * does.
+   */
+  { name: 'OpenAI-style key (dashed)', scope: 'all', re: /(?<![A-Za-z0-9_-])sk-(?=[A-Za-z0-9_-]{20,})(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)+/ },
   { name: 'Long-lived FB token', scope: 'all', re: /EAAG[A-Za-z0-9]{20,}/ },
   { name: 'GitHub token', scope: 'all', re: /gh[pousr]_[A-Za-z0-9]{30,}/ },
   { name: 'AWS access key', scope: 'all', re: /AKIA[0-9A-Z]{16}/ },
@@ -113,9 +130,16 @@ const PATTERNS = [
     // `[A-Za-z0-9_]*` and not `[A-Za-z_][A-Za-z0-9_]*`: the second demands a
     // character BEFORE the keyword, so `API_KEY=…` and a bare `PASSWORD=…`
     // — the likeliest shape of this very accident — walked straight past.
-    re: /^\s*(?:-\s*)?[A-Za-z0-9_]*(?:PASSWORD|PASSWD|SECRET|API_?KEY|TOKEN)\s*[:=]\s*(?!['"`$<#\s])[^\s#]{6,}\s*$/i,
+    re: /^\s*(?:-\s*)?(?:(?:ENV|ARG)\s+)?[A-Za-z0-9_]*(?:PASSWORD|PASSWD|SECRET|API_?KEY|TOKEN)\s*[:=]\s*(?!['"`$<#\s])[^\s#]{6,}\s*$/i,
   },
-  { name: 'Meta App Secret', scope: 'src', re: /[0-9a-f]{32}(?![0-9a-f])/ },
+  /**
+   * `(?<!sha256=…)`: the value of a signature header is the output of an
+   * HMAC, published on purpose so a receiver can check its own code against
+   * it (`contracts/oms-app-events.v1/` has one). It used to pass only
+   * because the line also said «example»; judged by its own text it is
+   * thirty-two hex characters like any other.
+   */
+  { name: 'Meta App Secret', scope: 'src', re: /(?<!sha256=[0-9a-f]{0,32})[0-9a-f]{32}(?![0-9a-f])/ },
   /**
    * The one this repository actually leaked: a password written as a
    * literal. Read it left to right —
@@ -128,7 +152,7 @@ const PATTERNS = [
   {
     name: 'Password literal',
     scope: 'src',
-    re: /\b[A-Za-z_]*(?:PASSWORD|PASSWD|SECRET|API_?KEY|TOKEN)\s*[=:]\s*['"`](?!https?:|\$\{|<)(?=[^'"`]*(?:[A-Za-z0-9][^'"`]*){6})[^'"`\s]{6,}['"`]/i,
+    re: /\b[A-Za-z_]*(?:PASSWORD|PASSWD|SECRET|API_?KEY|TOKEN)['"`]?\s*[=:]\s*['"`](?!https?:|\$\{|<)(?=[^'"`]*(?:[A-Za-z0-9][^'"`]*){6})[^'"`\s]{6,}['"`]/i,
   },
   /**
    * And the same credential outside code: prose that tells the reader what
@@ -151,7 +175,21 @@ const PATTERNS = [
 const IS_DOC = /\.(md|markdown|txt|rst|adoc)$/i;
 
 /** Where `NAME=value` and `NAME: value` are the file's own grammar. */
-const IS_ENV = /(^|\/)\.env(\.|$)|\.(env|ini|conf|cfg|properties|ya?ml|tf|tfvars)$|(^|\/)(docker-)?compose[^/]*\.ya?ml$/i;
+/*
+ * WHICH FILES SPEAK `NAME=value` AS THEIR OWN GRAMMAR.
+ *
+ * YAML is no longer taken wholesale (it was: every `.yml`). A Kubernetes
+ * manifest or an OpenAPI file is YAML where `apiKey: header` and
+ * `imagePullSecret: my-registry-cred` are ordinary words, and the first
+ * one added to the repository would have shouted at them. Only the YAML
+ * this repository really keeps secret-shaped lines in is named: compose
+ * files and the CI workflows.
+ *
+ * A Dockerfile is added: `ENV NAME=value` is exactly this shape, and
+ * `ENV DB_PASSWORD=real` there passed unseen.
+ */
+const IS_ENV =
+  /(^|\/)\.env(\.|$)|\.(env|ini|conf|cfg|properties|tf|tfvars)$|(^|\/)(docker-)?compose[^/]*\.ya?ml$|(^|\/)\.github\/workflows\/[^/]+\.ya?ml$|(^|\/)Dockerfile[^/]*$/i;
 
 /** An ALL_CAPS value is the NAME of an environment variable, not its value. */
 const ENV_NAME_VALUE = /['"`][A-Z][A-Z0-9_]{4,}['"`]/;
@@ -169,6 +207,23 @@ const argv = process.argv.slice(2);
 const files = (argv.length ? argv : trackedFiles()).filter(
   (f) => !SKIP_EXT.test(f) && !SKIP_FILES.has(f.replace(/\\/g, '/').split('/').pop())
 );
+
+/**
+ * Does this line hold a match that nothing excuses?
+ *
+ * Every occurrence is judged on its own, by the text it matched: a line
+ * with two keys, one of them a fixture, still reports the other.
+ */
+function hasUnexcusedMatch(re, line) {
+  const all = new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g');
+  for (const m of line.matchAll(all)) {
+    const text = m[0];
+    if (ALLOW_PATTERNS.some((a) => a.test(text))) continue;
+    if (ENV_NAME_VALUE.test(text)) continue;
+    return true;
+  }
+  return false;
+}
 
 let findings = 0;
 for (const file of files) {
@@ -194,13 +249,11 @@ for (const file of files) {
   const isEnv = IS_ENV.test(unix);
 
   content.split('\n').forEach((line, i) => {
-    if (ALLOW_PATTERNS.some((a) => a.test(line))) return;
-    if (ENV_NAME_VALUE.test(line)) return;
     for (const p of PATTERNS) {
       if (p.scope === 'src' && isTest) continue;
       if (p.scope === 'docs' && !isDoc) continue;
       if (p.scope === 'env' && !isEnv) continue;
-      if (p.re.test(line)) {
+      if (hasUnexcusedMatch(p.re, line)) {
         // The finding names the place, never the value — printing it here
         // would put the secret in the CI log, which is the one place it
         // would then live forever.

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
-import { rateLimit, getClientIp } from '@/lib/rate-limit';
+import { rateLimit, rateLimitByIp, getClientIp } from '@/lib/rate-limit';
 import { issueSession } from '@/lib/sign-in';
 import type { UserStatus } from '@/types/auth';
 import {
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
      * per-account limit lives in the branch below, once the signature has
      * named an account.
      */
-    const rl = rateLimit(`passkey-login:${ip}`, 20, 5 * 60 * 1000);
+    const rl = rateLimitByIp('passkey-login', ip, 20, 5 * 60 * 1000);
     if (!rl.allowed) {
       return NextResponse.json(
         { error: `محاولات كثيرة. أعد المحاولة بعد ${rl.retryAfterSec} ثانية` },

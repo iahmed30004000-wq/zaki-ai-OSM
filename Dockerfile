@@ -34,7 +34,7 @@ COPY . .
 
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
-ENV JWT_SECRET=build-time-secret-not-used-in-production
+ENV JWT_SECRET=build-time-placeholder-secret-value
 
 # prisma generate + next build (via package.json build script)
 RUN npm run build

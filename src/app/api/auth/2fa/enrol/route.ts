@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { readChallenge } from '@/lib/two-factor-challenge';
 import { TwoFactorRefused, completeEnrolment } from '@/lib/two-factor';
-import { rateLimit, getClientIp } from '@/lib/rate-limit';
+import { rateLimitByIp, getClientIp } from '@/lib/rate-limit';
 import { logAudit } from '@/lib/audit';
 
 /**
@@ -19,7 +19,7 @@ import { logAudit } from '@/lib/audit';
 export async function POST(req: Request) {
   try {
     const ip = getClientIp(req);
-    const rl = rateLimit(`2fa:enrol:${ip}`, 12, 5 * 60 * 1000);
+    const rl = rateLimitByIp('2fa:enrol', ip, 12, 5 * 60 * 1000);
     if (!rl.allowed) {
       return NextResponse.json({ error: 'محاولات كثيرة — انتظر قليلاً' }, { status: 429 });
     }

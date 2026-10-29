@@ -9,3 +9,18 @@ uploads
 prisma/dev.db
 tests
 npm-debug.log*
+
+# Private or local-only files. All of these are git-ignored, and a CLEAN
+# checkout (CI, Coolify) never has them — but a `docker build .` on a
+# working machine sends the whole directory, and .next/standalone then
+# traces what it finds into the image. Kept in step with .gitignore by
+# src/lib/dockerignore-matches-gitignore.test.ts.
+HANDOVER-*.md
+tmp*.mjs
+tmp*.cjs
+backups/
+fonts-local/
+.claude/
+.next-verify/
+.next-measure/
+**/*.local.json

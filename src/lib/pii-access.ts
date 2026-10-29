@@ -36,8 +36,19 @@
  */
 
 export interface AccessWindow {
-  /** PII records handed to this person since the window opened. */
+  /**
+   * PII records handed to this person since the window opened: the people
+   * that could be told apart (`seen`) plus the rows that could not.
+   */
   records: number;
+  /**
+   * WHO, when the rows say who. Reading the same hundred customers again is
+   * not reading a hundred more people, and a screen that reloads after
+   * every action (postpone a parcel, press back, type in the search box)
+   * did exactly that to a plain counter: the third reload of one list
+   * crossed the alarm without anybody new being seen.
+   */
+  seen?: Set<string>;
   /** When the tally resets. */
   resetAt: number;
   /** The crossing has already been announced for this window. */
@@ -57,6 +68,13 @@ export const BULK_VIEW_RECORDS = 500;
 export const BULK_VIEW_WINDOW_MS = 15 * 60 * 1000;
 
 const windows = new Map<string, AccessWindow>();
+
+/**
+ * The most identities one window remembers. Past it the person has long
+ * since crossed the threshold; the cap only stops a runaway reader from
+ * growing the set without bound.
+ */
+const MAX_REMEMBERED = 10_000;
 
 // Same housekeeping as the rate limiter beside it: expired windows are
 // dropped so a long-running process does not grow a key per person per day.
@@ -80,6 +98,10 @@ export interface AccessResult {
  * Count PII records handed to somebody, and say whether this is the
  * moment it stopped looking like ordinary work.
  *
+ * `records` is how many rows could NOT be told apart (they count every
+ * time). `opts.ids` names the ones that could — a customer id or phone —
+ * and each of those counts once per window however often it is read again.
+ *
  * `now` and `store` are injectable so the behaviour can be tested without
  * a clock and without leaking state between tests.
  */
@@ -91,6 +113,7 @@ export function noteCustomerAccess(
     windowMs?: number;
     now?: number;
     store?: Map<string, AccessWindow>;
+    ids?: ReadonlyArray<string>;
   } = {}
 ): AccessResult {
   const threshold = opts.threshold ?? BULK_VIEW_RECORDS;
@@ -108,6 +131,15 @@ export function noteCustomerAccess(
       ? { records: 0, resetAt: now + windowMs, announced: false }
       : current;
 
+  if (opts.ids && opts.ids.length > 0) {
+    const seen = (window.seen ??= new Set<string>());
+    // What is new to this window — and nothing else — is what is added.
+    // `records` is the anonymous tally plus the people, so the two parts
+    // are kept apart: the people from the set, the rest from the counter.
+    const anonymous = window.records - seen.size;
+    for (const id of opts.ids) if (seen.size < MAX_REMEMBERED) seen.add(id);
+    window.records = anonymous + seen.size;
+  }
   window.records += add;
   const crossed = !window.announced && window.records >= threshold;
   if (crossed) window.announced = true;

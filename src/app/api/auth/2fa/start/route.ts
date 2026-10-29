@@ -3,7 +3,7 @@ import QRCode from 'qrcode';
 import { db } from '@/lib/db';
 import { readChallenge } from '@/lib/two-factor-challenge';
 import { TwoFactorRefused, beginEnrolment } from '@/lib/two-factor';
-import { rateLimit, getClientIp } from '@/lib/rate-limit';
+import { rateLimitByIp, getClientIp } from '@/lib/rate-limit';
 
 /**
  * POST /api/auth/2fa/start — hand out a secret to scan.
@@ -17,7 +17,7 @@ import { rateLimit, getClientIp } from '@/lib/rate-limit';
 export async function POST(req: Request) {
   try {
     const ip = getClientIp(req);
-    const rl = rateLimit(`2fa:start:${ip}`, 10, 5 * 60 * 1000);
+    const rl = rateLimitByIp('2fa:start', ip, 10, 5 * 60 * 1000);
     if (!rl.allowed) {
       return NextResponse.json({ error: 'محاولات كثيرة — انتظر قليلاً' }, { status: 429 });
     }

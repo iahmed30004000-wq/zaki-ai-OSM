@@ -71,7 +71,7 @@ jobs:
         run: npm run build
         env:
           NODE_ENV: production
-          JWT_SECRET: build-time-secret-not-used-in-production
+          JWT_SECRET: build-time-placeholder-secret-value
 
       # ── The payload budget, measured on the build that just happened ──
       #

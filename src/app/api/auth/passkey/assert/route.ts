@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
-import { getClientIp, rateLimit } from '@/lib/rate-limit';
+import { getClientIp, rateLimit, rateLimitByIp } from '@/lib/rate-limit';
 import { readChallenge } from '@/lib/two-factor-challenge';
 import { issueSession } from '@/lib/sign-in';
 import type { UserStatus } from '@/types/auth';
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
      * per user alone lets one address grind through every account.
      */
     const rlUser = rateLimit(`passkey:user:${ticket.userId}`, 10, 5 * 60 * 1000);
-    const rlIp = rateLimit(`passkey:ip:${ip}`, 30, 5 * 60 * 1000);
+    const rlIp = rateLimitByIp('passkey:ip', ip, 30, 5 * 60 * 1000);
     if (!rlUser.allowed || !rlIp.allowed) {
       return NextResponse.json(
         { error: `محاولات كثيرة. أعد المحاولة بعد ${Math.max(rlUser.retryAfterSec, rlIp.retryAfterSec)} ثانية` },
