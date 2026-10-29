@@ -4,7 +4,7 @@ import type { CourierEvent } from './types';
 
 vi.mock('../db', () => {
   const tx = {
-    order: { update: vi.fn() },
+    order: { updateMany: vi.fn() },
     orderActivity: { create: vi.fn() },
     orderChangeRequest: { updateMany: vi.fn() },
   };
@@ -20,7 +20,7 @@ const { db } = (await import('../db')) as unknown as {
   db: {
     $transaction: ReturnType<typeof vi.fn>;
     __tx: {
-      order: { update: ReturnType<typeof vi.fn> };
+      order: { updateMany: ReturnType<typeof vi.fn> };
       orderActivity: { create: ReturnType<typeof vi.fn> };
       orderChangeRequest: { updateMany: ReturnType<typeof vi.fn> };
     };
@@ -36,13 +36,17 @@ const event = (over: Partial<CourierEvent> = {}): CourierEvent => ({
   ...over,
 });
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  // The compare-and-set write: one row changed, as it does when nothing moved under the poll.
+  db.__tx.order.updateMany.mockResolvedValue({ count: 1 });
+});
 
 describe('applyCourierEvent — the one gate both the poll and the webhook pass', () => {
   it('applies a status the courier is allowed to assert', async () => {
     const out = await applyCourierEvent({ order, event: event(), courierName: 'باشا', source: 'POLL' });
     expect(out).toBe('APPLIED');
-    expect(db.__tx.order.update).toHaveBeenCalledOnce();
+    expect(db.__tx.order.updateMany).toHaveBeenCalledOnce();
   });
 
   it('records HOW it learned, so a push and a poll are told apart', async () => {
@@ -63,7 +67,7 @@ describe('applyCourierEvent — the one gate both the poll and the webhook pass'
         source: 'WEBHOOK',
       });
       expect(out).toBe('NOT_AUTO_APPLICABLE');
-      expect(db.__tx.order.update).not.toHaveBeenCalled();
+      expect(db.__tx.order.updateMany).not.toHaveBeenCalled();
     }
   );
 
@@ -75,7 +79,7 @@ describe('applyCourierEvent — the one gate both the poll and the webhook pass'
       source: 'WEBHOOK',
     });
     expect(out).toBe('NO_CHANGE');
-    expect(db.__tx.order.update).not.toHaveBeenCalled();
+    expect(db.__tx.order.updateMany).not.toHaveBeenCalled();
   });
 
   it('refuses a code it does not recognise rather than guessing', async () => {
@@ -86,7 +90,7 @@ describe('applyCourierEvent — the one gate both the poll and the webhook pass'
       source: 'WEBHOOK',
     });
     expect(out).toBe('UNKNOWN_STATUS');
-    expect(db.__tx.order.update).not.toHaveBeenCalled();
+    expect(db.__tx.order.updateMany).not.toHaveBeenCalled();
   });
 
   it('refuses a move the transition machine forbids (delivered → shipped)', async () => {
@@ -97,7 +101,7 @@ describe('applyCourierEvent — the one gate both the poll and the webhook pass'
       source: 'WEBHOOK',
     });
     expect(out).toBe('INVALID_TRANSITION');
-    expect(db.__tx.order.update).not.toHaveBeenCalled();
+    expect(db.__tx.order.updateMany).not.toHaveBeenCalled();
   });
 
   /**

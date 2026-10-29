@@ -6,6 +6,7 @@ import { requireContext } from '@/lib/geo-context';
 import { logAudit } from '@/lib/audit';
 import { can } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
+import { courierCityGaps } from '@/lib/courier-city-gaps';
 
 /**
  * GET  /api/shipping-batches — company-scoped list (with order counts)
@@ -43,8 +44,15 @@ export async function GET(req: Request) {
       }),
     ]);
 
+    // A WARNING BEFORE THE PRESS (RV166): the parcels of an open trolley that the courier has no city id for.
+    const gaps = await courierCityGaps({
+      companyId,
+      storeId,
+      batches: batches.map((b) => ({ id: b.id, status: b.status, deliveryProviderId: b.deliveryProviderId })),
+    });
+
     return NextResponse.json({
-      batches,
+      batches: batches.map((b) => ({ ...b, courierCityGap: gaps.get(b.id) ?? null })),
       pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
     });
   } catch (error) {
