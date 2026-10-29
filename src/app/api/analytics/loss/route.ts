@@ -6,6 +6,7 @@ import { can, requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { reportRange, type DateFilter } from '@/lib/analytics';
 import { summariseLoss, type LossRow } from '@/lib/loss-analysis';
+import { notSuperseded } from '@/lib/superseded';
 
 /**
  * GET /api/analytics/loss — why orders died, and which of it cost money.
@@ -56,6 +57,23 @@ export async function GET(req: Request) {
       companyId,
       ...(storeId ? { storeId } : {}),
       ...(createdAt ? { createdAt } : {}),
+      /*
+       * AN ORDER THAT WAS REPLACED IS NOT A LOSS.
+       *
+       * A parcel taken back from a courier company, or cancelled at the
+       * courier for a change to the goods, ends as a return with a reason —
+       * and the reorder door writes `CUSTOMER_REQUEST` on it, which the
+       * classification below reads as «قرارُ العميل». The customer decided
+       * nothing: the sale went on in the replacement, which is counted (and
+       * counted as a loss if IT fails). Leaving the old one in blamed the
+       * customer for our own re-routing and charged the wasted leg's fees to
+       * a failure that did not happen.
+       *
+       * Only the three reasons in `superseded.ts` count: a LOSS WON BACK by
+       * the win-back also carries a link to its replacement, and it is still
+       * a loss.
+       */
+      ...notSuperseded,
       OR: [
         { rejectionReason: { not: null } },
         { deliveryFailureReason: { not: null } },

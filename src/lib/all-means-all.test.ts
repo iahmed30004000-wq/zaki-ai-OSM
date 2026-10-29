@@ -39,6 +39,7 @@ vi.mock('@/lib/authorization', () => ({
 }));
 
 import { getCompanyAnalytics, getDateRange, reportRange } from './analytics';
+import { notSuperseded } from './superseded';
 import { GET as lossDoor } from '@/app/api/analytics/loss/route';
 
 beforeEach(() => {
@@ -79,7 +80,10 @@ describe('reportRange — what «الكل» means on the dashboard', () => {
 describe('the engine counts the whole history only when asked by name', () => {
   it('handed reportRange under «الكل» (the dashboard), it sends no date condition', async () => {
     await getCompanyAnalytics({ companyId: 'c1', storeId: 's1' }, { period: 'all' }, reportRange({ period: 'all' }));
-    expect(engineWhere()).toEqual({ companyId: 'c1', storeId: 's1' });
+    // No date condition. The one clause beside the company and the store is
+    // the replaced-order exclusion every count carries (superseded.ts) — the
+    // date window is what this test is about.
+    expect(engineWhere()).toEqual({ companyId: 'c1', storeId: 's1', ...notSuperseded });
   });
 
   it('called without a window (finance, profitability, the AI summaries), «الكل» is still the 90-day window', async () => {

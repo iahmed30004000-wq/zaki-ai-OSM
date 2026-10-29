@@ -8,6 +8,7 @@ import { logAudit } from '@/lib/audit';
 import { orderRefFields } from '@/lib/order-ref';
 import { planTransfer, requiresOpenBatch, TransferRefused, type TransferParty } from '@/lib/courier-transfer';
 import { createReplacement, type ReplacementSource } from '@/lib/replacement-order';
+import { ACTIVITY_ROLE } from '@/lib/superseded';
 import { zodMessage } from '@/lib/zod-message';
 
 /**
@@ -163,15 +164,21 @@ export async function POST(req: Request) {
         internalNotes: `بديل عن ${order.orderNumber}: ${plan.reason}`,
       });
 
-      for (const [orderId, note] of [
-        [order.id, `سُحب من ${from?.name} — صدر البديل ${replacement.orderNumber}`],
-        [replacement.id, `بديل عن ${order.orderNumber} — ليُسنَد إلى ${to.name}`],
+      /*
+       * WHICH SIDE OF THE PAIR EACH COPY IS WRITTEN ON. Both orders carry the
+       * same word so neither reads without the other; the role is what lets
+       * `isSuperseded` tell the order that was replaced from the one that
+       * replaced it (src/lib/superseded.ts).
+       */
+      for (const [orderId, note, role] of [
+        [order.id, `سُحب من ${from?.name} — صدر البديل ${replacement.orderNumber}`, ACTIVITY_ROLE.original],
+        [replacement.id, `بديل عن ${order.orderNumber} — ليُسنَد إلى ${to.name}`, ACTIVITY_ROLE.replacement],
       ] as const) {
         await tx.orderActivity.create({
           data: {
             companyId, orderId, userId: user.id,
             action: 'COURIER_TRANSFERRED',
-            metadata: JSON.stringify({ mode: plan.mode, from: from?.name, to: to.name, note }),
+            metadata: JSON.stringify({ mode: plan.mode, role, from: from?.name, to: to.name, note }),
           },
         });
       }
