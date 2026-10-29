@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { tooManyAiCalls } from '@/lib/ai-rate';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
-import { requirePermission } from '@/lib/authorization';
+import { requireAssistant } from '@/lib/require-assistant';
 import { apiErrorResponse } from '@/lib/api-error';
 import { AiNotConfigured, aiChat } from '@/lib/ai-provider';
 import { preparationGroups } from '@/lib/operations';
@@ -24,7 +24,7 @@ export async function POST() {
   try {
     const { user, companyId, storeId, country } = await requireContext();
     const assistant = assistantByKey('picking')!;
-    await requirePermission(assistant.needs);
+    await requireAssistant(assistant);
     const limited = tooManyAiCalls('picking', companyId, user.id);
     if (limited) return limited;
 

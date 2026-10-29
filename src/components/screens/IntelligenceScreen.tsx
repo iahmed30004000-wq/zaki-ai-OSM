@@ -8,6 +8,7 @@ import { ScreenTitle } from '@/components/shell/ScreenTitle';
 import { Tabs } from '@/components/ui/Tabs';
 import { RiAlertLine, RiCheckboxCircleLine, RiEyeLine, RiLightbulbLine, RiLoader4Line } from '@remixicon/react';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
+import { useCan } from '@/hooks/useCan';
 
 /**
  * /growth/intelligence — what is bleeding, and what to do about it.
@@ -64,6 +65,8 @@ const TONE: Record<string, { border: string; chip: string; label: string }> = {
 };
 
 export function IntelligenceScreen() {
+  // «اسأل الذكاء» answers at `/api/growth/intelligence/ask`, which asks `ai.use`: without it the box was drawn to be refused.
+  const mayAsk = useCan('ai.use');
   const [data, setData] = useState<Payload | null>(null);
   const [error, setError] = useState<string | null>(null);
   /**
@@ -195,7 +198,7 @@ export function IntelligenceScreen() {
           </div>
         </>
       )}
-      <AskAi />
+      {mayAsk && <AskAi />}
     </div>
   );
 }

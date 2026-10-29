@@ -185,7 +185,7 @@ export function AssistantsTable({
             { key: 'c1', label: "لمن", primary: true,
               render: (a) => (
                   <>{a.who}
-                  <span className="mt-0.5 block text-xs text-[var(--sys-muted)]" dir="ltr">{a.needs}</span></>
+                  <span className="mt-0.5 block text-xs text-[var(--sys-muted)]" dir="ltr">{a.gate ? `${a.needs} + ${a.gate}` : a.needs}</span></>
                 ) },
             { key: 'c2', label: "يقرأ",
               render: (a) => (

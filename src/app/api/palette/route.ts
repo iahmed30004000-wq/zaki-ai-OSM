@@ -48,6 +48,11 @@ async function capabilities(user: Parameters<typeof readsTheWholeStore>[0]) {
     /** The whole store's numbers, or this desk's. */
     wide: readsTheWholeStore(user),
     /**
+     * «لخّصلي اليوم» — the same two keys its door asks (`/api/palette/today`: the numbers on `orders.view`, the sentence on
+     * `ai.assist`), so the box offers it to exactly the people it will answer.
+     */
+    today: !!getPermissionScope(user, 'orders.view') && can(user, 'ai.assist'),
+    /**
      * «+ أنشئ» — the forms this account may be taken to, drawn here and not in the box: the screen must be one it may open AND the
      * permission must be the one the form's own button is behind (`palette-create.ts`). The box carries no list of its own.
      */

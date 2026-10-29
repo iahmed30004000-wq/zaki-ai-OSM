@@ -102,7 +102,7 @@ interface ParseResult {
    * the extractor refuses any model that is not on the owner's own machine,
    * because the pasted text carries the customer's name, phone and address.
    */
-  aiSkipped?: 'NOT_LOCAL' | 'NOT_CONFIGURED' | 'FAILED' | null;
+  aiSkipped?: 'NO_PERMISSION' | 'NOT_LOCAL' | 'NOT_CONFIGURED' | 'FAILED' | null;
 }
 
 export function AiOrderModal({ isOpen, onClose, onSuccess }: AiOrderModalProps) {
@@ -349,6 +349,16 @@ export function AiOrderModal({ isOpen, onClose, onSuccess }: AiOrderModalProps) 
               nobody knows why. Built like the duplicate-customer note above
               it so the two read as one kind of message.
             */}
+            {/*
+              WITHOUT THE ASSISTANTS' KEY the model was never asked — said here, where the seller is looking, so the plain
+              reading is not mistaken for a broken one. The order is entered all the same.
+            */}
+            {result.aiSkipped === 'NO_PERMISSION' && (
+              <div className="p-2.5 bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/40 text-[var(--sys-warning)] text-xs rounded-lg">
+                <RiErrorWarningLine className="me-1 inline-block h-4 w-4 align-text-bottom" aria-hidden />
+                حسابك ما عنده مفتاح «المساعدون الأذكياء»، فقُرئ النص بالقواعد. تقدر تعدّل الحقول وتحفظ الطلب عادي.
+              </div>
+            )}
             {result.aiSkipped === 'NOT_LOCAL' && (
               <div className="p-2.5 bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/40 text-[var(--sys-warning)] text-xs rounded-lg">
                 <RiErrorWarningLine className="me-1 inline-block h-4 w-4 align-text-bottom" aria-hidden />
