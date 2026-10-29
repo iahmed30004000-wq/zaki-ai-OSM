@@ -5,6 +5,7 @@ import { SHIPPING_STATUS_AR } from './shipping-workflow';
 import { CONFIRMATION_STATUS_AR } from './confirmation-workflow';
 import { NOT_MENTIONED_ACTIVITY_AR } from './not-mentioned';
 import { SWAP_ACTION } from './superseded';
+import { COURIER_SAID, courierSaidTitle } from './couriers/courier-said';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -135,6 +136,8 @@ const ACTIVITY_AR: Record<string, string> = {
   PARTIAL_DELIVERY: 'تسليم جزئي',
   COURIER_ASSIGNED: 'إسناد شركة شحن',
   COURIER_TRANSFERRED: 'تحويل بين شركات الشحن',
+  // What the courier's own feed moved (it used to show here as the raw English code).
+  COURIER_STATUS_SYNCED: 'الشركة حدّثت حالة الطرد',
   COURIER_SEND_CLEARED: 'فكّ إرسال عالق للشركة',
   COURIER_TOLD_TO_CANCEL: 'إبلاغ الشركة بإلغاء الطرد',
   TAKEN_OFF_BATCH: 'أُخرج من الدفعة',
@@ -314,7 +317,8 @@ export async function orderTimeline(tx: Tx, orderId: string): Promise<TimelineEv
         id: `ac_${row.id}`,
         kind: 'ACTIVITY' as const,
         at: row.createdAt,
-        title: ar(ACTIVITY_AR, row.action),
+        // The courier's own word is the line itself: its metadata is stored as a string, which the table below cannot read.
+        title: row.action === COURIER_SAID ? courierSaidTitle(row.metadata) : ar(ACTIVITY_AR, row.action),
         detail: readableMetadata(row.metadata),
         actorId: row.userId,
         actorName: row.userId ? nameOf.get(row.userId) ?? null : null,
