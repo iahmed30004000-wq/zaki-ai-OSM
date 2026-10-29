@@ -31,6 +31,12 @@ import { useMayOpen } from '@/hooks/useMayOpen';
  * and the number opens there instead of being text. A plain anchor, not
  * next/link's: the desk reads the address once, as it is drawn. Anything
  * the screen does not vouch for stays text, as before.
+ *
+ * ── AND IT IS DRAWN AS SOMETHING TO PRESS ──
+ *
+ * A link was marked only on hover, which a phone does not have: the number
+ * looked like the text it replaced, so nobody pressed it («انقر ع الطلب يدخلني»).
+ * It is underlined at rest; text stays plain.
  */
 export function OrderLink({
   id,
@@ -52,14 +58,14 @@ export function OrderLink({
   const mayOpen = useMayOpen();
   if (mayOpen('/orders')) {
     return (
-      <Link href={`/orders/${id}`} className={`${className} hover:underline`} dir="ltr">
+      <Link href={`/orders/${id}`} className={`${className} underline`} dir="ltr">
         {number}
       </Link>
     );
   }
   if (opensOnHerDesk) {
     return (
-      <a href={`/confirmation/mine?open=${encodeURIComponent(id)}`} className={`${className} hover:underline`} dir="ltr">
+      <a href={`/confirmation/mine?open=${encodeURIComponent(id)}`} className={`${className} underline`} dir="ltr">
         {number}
       </a>
     );

@@ -8,6 +8,8 @@ import { OrderLink } from './OrderLink';
 import { arDate } from '@/lib/format';
 import { RiHistoryLine, RiLoader4Line, RiShieldFlashLine } from '@remixicon/react';
 import { Money } from '@/components/ui/Money';
+import { useApp } from '@/context/AppContext';
+import { userCan } from '@/lib/can';
 
 /**
  * "Has this customer ordered before?" — a small counter next to the order
@@ -62,7 +64,12 @@ export function CustomerHistoryButton({
 }: {
   customerId: string;
   orderId?: string;
-  previousOrders: number;
+  /**
+   * Optional: a list whose rows do not carry the customer's order count
+   * (postponed, win-back) offers the same button WITHOUT a number rather than
+   * a made-up zero — «0» would say «عميل جديد» of a customer nobody counted.
+   */
+  previousOrders?: number;
   label?: string;
 } & Holder) {
   const [open, setOpen] = useState(false);
@@ -74,16 +81,22 @@ export function CustomerHistoryButton({
           e.stopPropagation();
           setOpen(true);
         }}
-        title={previousOrders > 0 ? `${previousOrders} طلب سابق لهذا العميل` : 'عميل جديد — لا طلبات سابقة'}
+        title={
+          previousOrders === undefined
+            ? 'طلبات هذا العميل السابقة'
+            : previousOrders > 0
+              ? `${previousOrders} طلب سابق لهذا العميل`
+              : 'عميل جديد — لا طلبات سابقة'
+        }
         className={`min-h-11 md:min-h-0 inline-flex items-center inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs ${
-          previousOrders > 0
+          previousOrders === undefined || previousOrders > 0
             ? 'bg-[var(--sys-surface)] border-[var(--sys-border)] text-[var(--sys-foreground)] hover:border-[var(--sys-primary)]'
             : 'bg-[var(--sys-card)] border-[var(--sys-border)] text-[var(--sys-muted)] hover:border-[var(--sys-primary)]'
         }`}
       >
         <RiHistoryLine className="w-4 h-4" />
         {label}
-        <span className="tabular-nums" dir="ltr">{previousOrders}</span>
+        {previousOrders !== undefined && <span className="tabular-nums" dir="ltr">{previousOrders}</span>}
       </button>
 
       {open && (
@@ -180,3 +193,21 @@ export function CustomerHistoryModal({
   );
 }
 
+
+/**
+ * THE SAME BUTTON, DRAWN ONLY FOR WHOEVER THE DOOR WILL ANSWER.
+ *
+ * `GET /api/customers/:id/history` opens for the address book's key
+ * (`customers.view`) or, from an order, for the person who works it
+ * (`confirmation.work` — the work door in `order-work-door.ts`). Anyone else
+ * got «سجلّ العميل ليس من صلاحيّاتك» after pressing a button that promised a
+ * list, so on the lists that did not have this button until now it is not
+ * drawn for them. The door still decides on its own; this only decides whether
+ * to offer. It needs the order too, because that is what the work door reads.
+ */
+export function CustomerHistoryOffer(props: React.ComponentProps<typeof CustomerHistoryButton>) {
+  const { currentUser } = useApp();
+  if (!props.orderId) return null;
+  if (!userCan(currentUser, 'customers.view') && !userCan(currentUser, 'confirmation.work')) return null;
+  return <CustomerHistoryButton {...props} />;
+}

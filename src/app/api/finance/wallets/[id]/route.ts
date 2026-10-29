@@ -84,7 +84,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   try {
     const { id } = await params;
     const { user, companyId } = await requireContext();
-    await requirePermission('finance.cashbox');
+    await requirePermission('finance.wallets_manage');
 
     const wallet = await db.wallet.findFirst({
       where: { id, companyId },
@@ -132,7 +132,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   try {
     const { id } = await params;
     const { user, companyId } = await requireContext();
-    await requirePermission('finance.cashbox');
+    await requirePermission('finance.wallets_manage');
 
     const wallet = await db.wallet.findFirst({
       where: { id, companyId },

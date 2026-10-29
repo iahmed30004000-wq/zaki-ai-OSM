@@ -147,9 +147,22 @@ export function PreparationScreen() {
                     key: 'order',
                     label: 'الطلب',
                     primary: true,
-                    render: (l) => (
-                      <span className="font-medium text-[var(--sys-heading)]" dir="ltr">{l.orderNumber}</span>
-                    ),
+                    // The number opens the order's own panel (the same one the
+                    // pencil opens), to whoever holds «عرض الطلبات»; for anyone
+                    // else it stays the text it always was.
+                    render: (l) =>
+                      mayOpenOrder ? (
+                        <button
+                          type="button"
+                          onClick={() => setOpenOrderId(l.orderId)}
+                          className="min-h-11 md:min-h-0 font-medium text-[var(--sys-heading)] underline"
+                          dir="ltr"
+                        >
+                          {l.orderNumber}
+                        </button>
+                      ) : (
+                        <span className="font-medium text-[var(--sys-heading)]" dir="ltr">{l.orderNumber}</span>
+                      ),
                   },
                   { key: 'customer', label: 'العميل', primary: true, render: (l) => l.customerName },
                   { key: 'region', label: 'المحافظة', render: (l) => l.regionName ?? '—' },

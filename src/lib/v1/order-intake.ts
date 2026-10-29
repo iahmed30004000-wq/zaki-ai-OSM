@@ -15,6 +15,7 @@ import { realStoresOnly } from '../test-store';
 import { encryptSecret, encryptionAvailable } from '../secrets';
 import { logAudit } from '../audit';
 import { notify } from '../notify';
+import { flagRecentTwins } from '../recent-twin-order';
 import { V1_CODE, V1Fault } from './door';
 import type { SystemCaller } from './system-token';
 
@@ -597,6 +598,16 @@ export async function createSystemOrder(
     // redacts any key matching /token/i inside the object anyway, and the
     // id is not the secret.
     newData: { system: caller.system, tokenId: caller.tokenId, orderNumber: order.orderNumber },
+  });
+
+  // Same customer, same product, minutes apart: a flag on the history for the person who calls — never a refusal.
+  await flagRecentTwins(db, {
+    companyId,
+    orderId: order.id,
+    customerId: customer.id,
+    productIds: lines.map((l) => l.productId),
+    at: order.createdAt,
+    userId: null,
   });
 
   // The same announcement every other new order makes, through the one

@@ -53,7 +53,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   try {
     const { id } = await params;
     const { companyId, storeId } = await requireContext();
-    await requirePermission('finance.cashbox');
+    // READING the ledger is the cash box's view key (PR-9); recording and reversing stay on the cash actions' key.
+    await requirePermission('finance.cashbox_view');
 
     const wallet = await walletOf(id, companyId, storeId);
     if (!wallet) return NextResponse.json({ error: 'المحفظة غير موجودة' }, { status: 404 });

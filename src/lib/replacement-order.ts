@@ -93,9 +93,11 @@ export interface ReplacementSource {
  *   · `ctwaClidEnc`, `psidEnc` — sealed, and written by the systems door
  *     alone (the-attribution-invariants.test.ts holds that).
  *   · `externalRef` — the OTHER system's name for the old order.
- *   · `createdById`, `claimedById`, `currentOwnerId` — who entered it, who
- *     holds its confirmation and who handles it now are all facts about the
- *     old order's work; the replacement enters at preparation.
+ *   · `createdById` (the OLD one's), `claimedById`, `currentOwnerId` — who
+ *     entered it, who holds its confirmation and who handles it now are all
+ *     facts about the old order's work; the replacement enters at preparation.
+ *     The replacement's OWN creator is the person who pressed the button, and
+ *     the caller says so (`ReplacementPlan.createdById`, RV8) — never copied.
  *   · `confirmedAt` — a replacement is created after its own confirmation
  *     time would be, and a confirmation-speed report must not read a
  *     negative.
@@ -130,6 +132,12 @@ export interface ReplacementPlan {
   attempt: number;
   minorUnit: number;
   allowNegativeStock: boolean;
+  /**
+   * The staff account that pressed the button — written as the replacement's `createdById` ("the account that ENTERED
+   * this order"). Optional only so an old caller keeps compiling; every caller in this repository passes it. Absent
+   * writes nothing, as before: the creator of the ORIGINAL is never copied onto the replacement.
+   */
+  createdById?: string | null;
   /** Where the replacement starts life — the caller's decision, not this one's. */
   shippingStatus: string;
   deliveryProviderId?: string | null;
@@ -398,6 +406,7 @@ async function createBoxReplacement(tx: Prisma.TransactionClient, plan: Replacem
       replacesOrderId: order.id,
       customerId: order.customerId,
       currency: order.currency,
+      ...(plan.createdById ? { createdById: plan.createdById } : {}),
       ...sale,
       ...boxOrderColumns(box, read, plan.deliveryProviderId ?? null),
       source: order.source,
@@ -535,6 +544,7 @@ export async function createReplacement(
       priceIncludesDelivery: order.priceIncludesDelivery ?? undefined,
       productNameSnapshot: order.productNameSnapshot,
       productImageSnapshot: order.productImageSnapshot,
+      ...(plan.createdById ? { createdById: plan.createdById } : {}),
       // The sale's name: moderator, confirmer, assignee, campaign, page.
       ...carriedSale(order),
       // Cost of goods follows the count: the same units at the same average.

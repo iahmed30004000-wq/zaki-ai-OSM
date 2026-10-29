@@ -37,7 +37,7 @@ const createSchema = z.object({
 export async function GET() {
   try {
     const { companyId } = await requireContext();
-    await requirePermission('finance.cashbox');
+    await requirePermission('finance.cashbox_view');
 
     const transfers = await db.walletTransfer.findMany({
       where: { companyId },

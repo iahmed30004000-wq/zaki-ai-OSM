@@ -549,6 +549,7 @@ export async function recordParcelSwap(tx: Tx, p: SwapInput): Promise<SwapResult
         })
       : await createReplacement(tx, {
           companyId: p.companyId,
+          createdById: p.user.id,
           order: x as unknown as ReplacementSource,
           orderPrefix: p.orderPrefix,
           attempt: p.attempt,

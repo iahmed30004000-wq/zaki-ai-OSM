@@ -144,9 +144,21 @@ export const PERMISSION_MODULES: CatalogModule[] = [
     module: 'finance',
     items: [
       { key: 'finance.view', opens: ['الأرباح'], ar: 'عرض المالية', en: 'View finance' },
-      { key: 'finance.create', requires: 'finance.view', ar: 'إنشاء معاملات مالية', en: 'Create financial transactions' },
+      // D12 (PR-9): the expense and the withdrawal from a wallet stay on this one key. Only the NAME says so now.
+      { key: 'finance.create', requires: 'finance.view', ar: 'تسجيل المصروفات وسحبها من المحفظة ودفع العمولات', en: 'Record expenses (withdrawn from a wallet) and pay commissions' },
       { key: 'finance.update', requires: 'finance.view', ar: 'تعديل السجلات المالية', en: 'Update financial records' },
-      { key: 'finance.cashbox', opens: ['الإغلاق اليومي', 'المحافظ والحركات', 'التحويلات'], ar: 'إدارة الصناديق النقدية', en: 'Manage cashboxes' },
+      /*
+       * THE CASH BOX, IN FOUR KEYS (perm-plan PR-9, migration 20261030150000_finance_split_keys).
+       *
+       * «إدارة الصناديق النقدية» opened the three screens AND created, renamed and deleted wallets AND approved a daily
+       * closing. The owner could not give a cashier the movements and keep the wallets and the closing's approval away
+       * from her. The migration gave the view, the wallets and the closing's approval to every role and person who held
+       * the old key, so nobody lost a door on the day. From then on one tick moves one door.
+       */
+      { key: 'finance.cashbox_view', opens: ['الإغلاق اليومي', 'المحافظ والحركات', 'التحويلات'], ar: 'عرض الصناديق والمحافظ والحركات والإغلاق', en: 'See the wallets, the movements, the transfers and the closings' },
+      { key: 'finance.cashbox', requires: 'finance.cashbox_view', ar: 'تسجيل حركات الصندوق والتحويلات وعدّ الإغلاق واستلام نقد المندوب', en: 'Record cash movements, transfers, closing counts and take a courier’s cash' },
+      { key: 'finance.wallets_manage', requires: 'finance.cashbox_view', ar: 'إنشاء المحافظ وتعديل أسمائها وإيقافها وحذفها', en: 'Create, rename, stop and delete wallets' },
+      { key: 'finance.closing_approve', requires: 'finance.cashbox_view', ar: 'اعتماد الإغلاق اليومي', en: 'Approve a daily closing' },
     ],
   },
   {
@@ -155,6 +167,8 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       { key: 'settlement.view', opens: ['عهدة المندوبين', 'التحصيل والكشوف'], ar: 'عرض التسويات (وصفوف التحصيل ومبالغها في المتابعة)', en: 'View settlements (and the collection rows and their figures in tracking)' },
       { key: 'settlement.upload', requires: 'settlement.view', ar: 'رفع تقارير الشحن', en: 'Upload shipping reports' },
       { key: 'settlement.review', opens: ['المطابقة'], requires: 'settlement.view', ar: 'مراجعة المطابقات', en: 'Review reconciliations' },
+      // PR-9: the approval — the press that moves a courier's money into a wallet — left «مراجعة المطابقات» for a box of its own.
+      { key: 'settlement.approve', requires: 'settlement.view', ar: 'اعتماد كشف شركة الشحن (يُدخل المال إلى المحفظة)', en: 'Approve a courier statement (moves the money into a wallet)' },
     ],
   },
   {

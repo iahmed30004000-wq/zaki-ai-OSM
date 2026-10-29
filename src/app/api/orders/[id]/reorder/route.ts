@@ -215,6 +215,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
         const replacement = await createReplacement(tx, {
           companyId,
+          createdById: user.id,
           order: order as unknown as ReplacementSource,
           orderPrefix: country.orderPrefix,
           attempt,

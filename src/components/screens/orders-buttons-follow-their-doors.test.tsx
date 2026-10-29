@@ -85,12 +85,18 @@ function visit(search: string) {
   nav.params = new URLSearchParams(search);
 }
 
-const BUTTONS = {
-  'تصدير CSV': 'reports.export',
-  'استيراد طلبات': 'orders.import',
-  'إدخال بالذكاء الاصطناعي': 'orders.create',
-  'إدخال طلب سريع': 'orders.create',
-} as const;
+/*
+ * The keys each button's own door asks for. «استيراد طلبات» asks for TWO since RV98: GET and POST /api/orders/import, and
+ * every row it sends through POST /api/orders, want orders.create besides the import grant. It was drawn for
+ * orders.import alone, and a custom account holding only that opened a dialog that refused every row.
+ */
+const BUTTONS: Record<string, readonly string[]> = {
+  'تصدير CSV': ['reports.export'],
+  'استيراد طلبات': ['orders.import', 'orders.create'],
+  'إدخال بالذكاء الاصطناعي': ['orders.create'],
+  'إدخال طلب سريع': ['orders.create'],
+};
+const holds = (granted: readonly string[], keys: readonly string[]) => keys.every((k) => granted.includes(k));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -115,18 +121,27 @@ describe('the buttons on «الطلبات»', () => {
     }
   });
 
-  it('and each appears when, and only when, its own permission is held', () => {
-    for (const [label, permission] of Object.entries(BUTTONS)) {
+  it('and «استيراد طلبات» is absent for each of its two keys alone — the dialog would refuse every row', () => {
+    for (const only of ['orders.import', 'orders.create']) {
       cleanup();
-      signedInWith('orders.view', permission);
+      signedInWith('orders.view', only);
+      render(<OrdersScreen />);
+      expect(screen.queryByText('استيراد طلبات'), `ظهر مع ${only} وحده`).toBeNull();
+    }
+  });
+
+  it('and each appears when, and only when, ALL the permissions its own door asks for are held', () => {
+    for (const [label, permissions] of Object.entries(BUTTONS)) {
+      cleanup();
+      signedInWith('orders.view', ...permissions);
       render(<OrdersScreen />);
 
-      expect(screen.queryByText(label), `${label} مخفيّ مع إنّه معه ${permission}`).not.toBeNull();
+      expect(screen.queryByText(label), `${label} مخفيّ مع إنّه معه ${permissions.join(' + ')}`).not.toBeNull();
 
-      // And nothing else came with it.
-      for (const [other, otherPermission] of Object.entries(BUTTONS)) {
-        if (otherPermission === permission) continue;
-        expect(screen.queryByText(other), `${other} ظهر مع ${permission}`).toBeNull();
+      // And nothing else came with it that those keys do not open.
+      for (const [other, otherPermissions] of Object.entries(BUTTONS)) {
+        if (holds(permissions, otherPermissions)) continue;
+        expect(screen.queryByText(other), `${other} ظهر مع ${permissions.join(' + ')}`).toBeNull();
       }
     }
   });
@@ -161,16 +176,16 @@ describe('the buttons on «الطلبات»', () => {
  */
 describe('the box (Ctrl+K) opens the forms the buttons open', () => {
   const FORMS = {
-    order: { testid: 'form-order', permission: 'orders.create' },
-    'ai-order': { testid: 'form-ai-order', permission: 'orders.create' },
-    'import-orders': { testid: 'form-import-orders', permission: 'orders.import' },
+    order: { testid: 'form-order', permission: ['orders.create'] },
+    'ai-order': { testid: 'form-ai-order', permission: ['orders.create'] },
+    'import-orders': { testid: 'form-import-orders', permission: ['orders.import', 'orders.create'] },
   } as const;
   const openNow = () => Object.values(FORMS).filter((f) => screen.queryByTestId(f.testid)).map((f) => f.testid);
 
   it('— each word opens its own form, and only that one, for someone who has its button', () => {
     for (const [word, form] of Object.entries(FORMS)) {
       cleanup();
-      signedInWith('orders.view', form.permission);
+      signedInWith('orders.view', ...form.permission);
       visit(`?new=${word}`);
       render(<OrdersScreen />);
       expect(openNow(), word).toEqual([form.testid]);
@@ -197,8 +212,13 @@ describe('the box (Ctrl+K) opens the forms the buttons open', () => {
     }
   });
 
-  it('— the import is behind its own key: «orders.create» alone does not open it, and «orders.import» alone does not open the others', () => {
+  it('— the import is behind both its keys: «orders.create» alone does not open it, and «orders.import» alone opens nothing', () => {
     signedInWith('orders.view', 'orders.create');
+    visit('?new=import-orders');
+    render(<OrdersScreen />);
+    expect(openNow()).toEqual([]);
+    cleanup();
+    signedInWith('orders.view', 'orders.import');
     visit('?new=import-orders');
     render(<OrdersScreen />);
     expect(openNow()).toEqual([]);

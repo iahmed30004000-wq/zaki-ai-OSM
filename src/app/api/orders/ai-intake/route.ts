@@ -25,6 +25,7 @@ import { zodMessage } from '@/lib/zod-message';
 import { AiEndpointMissing, AiNotConfigured, AiNotLocal, aiChat, aiSettings } from '@/lib/ai-provider';
 import { resolvePrompt } from '@/lib/ai-prompts';
 import { projectOrder } from '@/lib/order-projection';
+import { flagRecentTwins } from '@/lib/recent-twin-order';
 import { responsibleModerator, MODERATOR_FORBIDDEN_AR } from '@/lib/responsible-moderator';
 
 /**
@@ -586,6 +587,16 @@ export async function POST(req: Request) {
         entity: 'Order',
         entityId: order.id,
         newData: order,
+      });
+
+      // Same customer, same product, minutes apart: a flag on the history for the person who calls — never a refusal.
+      await flagRecentTwins(db, {
+        companyId,
+        orderId: order.id,
+        customerId: customer.id,
+        productIds: [product.id],
+        at: order.createdAt,
+        userId: user.id,
       });
 
       // Same audience as every other new order: this store's confirmation

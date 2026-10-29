@@ -389,7 +389,12 @@ export function ProductLinesEditor({
               </select>
             )}
 
-            <div className="flex items-center gap-2">
+            {/* THE PRICE BOX KEEPS ITS WIDTH ON A PHONE. One unwrapped row left it
+                what the quantity stepper and the line figure did not take —
+                about forty pixels at 360, a box too small to read the figure
+                being edited. It wraps instead: the stepper on one line, the
+                price box and the line figure on the next. */}
+            <div className="flex flex-wrap items-center gap-2">
               <div className="flex items-center gap-1">
                 <button
                   type="button"
@@ -422,7 +427,7 @@ export function ProductLinesEditor({
                 </button>
               </div>
 
-              <label className="flex-1">
+              <label className="flex-1 min-w-[150px]">
                 <input
                   type="number" min={0} step="0.01" dir="ltr"
                   // THE BOX HOLDS WHAT WAS TYPED, including nothing at all.

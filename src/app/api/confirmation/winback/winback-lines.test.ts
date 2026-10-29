@@ -294,6 +294,28 @@ describe('the win-back order carries the goods of the order it is winning back',
  * counted back in by the desk. Its lines are its own `OrderItem` rows, the money is `computeCod`'s, and the
  * order and its lines are one write — exactly as for a cancellation, which is what is held here.
  */
+/**
+ * RV8 — WHO ENTERED THE WIN-BACK ORDER.
+ *
+ * `createdById` is "the staff account that ENTERED this order". The win-back copied `moderatorId` and left the column
+ * empty, so a derived order had no creator at all. It is the person who made the offer — and never the original's
+ * creator, which is a fact about the old order's work.
+ */
+describe('the win-back order names who made the offer', () => {
+  it('createdById is the supervisor who pressed it', async () => {
+    const res = await offer(5);
+    expect(res.status).toBe(200);
+    expect(writtenOrder().createdById).toBe('u-sup');
+  });
+
+  it('and not the creator of the order being won back', async () => {
+    db.order.findFirst.mockResolvedValue({ ...source, createdById: 'someone-else' });
+    await offer(5);
+    expect(writtenOrder().createdById).toBe('u-sup');
+    expect(writtenOrder().createdById).not.toBe('someone-else');
+  });
+});
+
 describe('a parcel that came back carries the same goods, through the same door', () => {
   const returned = {
     ...source,

@@ -25,6 +25,7 @@ import { ROLE_PERMISSIONS, UserRole } from '../types/auth';
 import { AI_ASSIST_FROM, AI_ASSIST_KEY } from './ai-assistants';
 import { ORDER_ACTION_KEYS_FROM } from './order-action-keys';
 import { CONFIRMATION_SPLIT_KEYS_FROM, rolesThatPassedByName } from './confirmation-split-keys';
+import { FINANCE_SPLIT_KEYS_FROM } from './finance-split-keys';
 
 export type Scope = 'ALL_COMPANY' | 'OWN' | 'ASSIGNED' | 'CATEGORY' | 'SPECIFIC';
 
@@ -301,6 +302,11 @@ export async function computeEffectiveGrants(
         grants[rule.key] = { scope: 'ALL_COMPANY' };
       }
     }
+    // The cash box's and the statement approval's boxes (PR-9): whoever passed the door through the old key keeps it.
+    for (const { key, from } of FINANCE_SPLIT_KEYS_FROM) {
+      if (grants[key] || denied.has(key)) continue;
+      if (from.some((k) => grants[k])) grants[key] = { scope: 'ALL_COMPANY' };
+    }
   }
 
   return { fullAccess: false, grants };
@@ -336,6 +342,8 @@ export function legacyEffectiveKeys(role: UserRole): string[] {
     if (rule.unless && keys.has(rule.unless)) continue;
     if (rule.from.some((k) => keys.has(k)) || rolesThatPassedByName(rule).includes(role)) keys.add(rule.key);
   }
+  // And the cash box's and the statement approval's (PR-9).
+  for (const { key, from } of FINANCE_SPLIT_KEYS_FROM) if (from.some((k) => keys.has(k))) keys.add(key);
   return [...keys];
 }
 

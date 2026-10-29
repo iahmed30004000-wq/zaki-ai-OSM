@@ -5,6 +5,7 @@ import React, { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { SHIPPING_STATUS_AR } from '@/lib/shipping-workflow';
 import { ContactButtons } from '@/components/orders/ContactButtons';
+import { OrderLink } from '@/components/orders/OrderLink';
 import { TransferDialog } from '@/components/screens/tracking/TransferDialog';
 import { CollectDialog } from '@/components/screens/tracking/CollectDialog';
 import { DeliverDialog } from '@/components/screens/tracking/DeliverDialog';
@@ -715,9 +716,7 @@ export function TrackingScreen() {
               primary: true,
               render: (o) => (
                 <>
-                  <span dir="ltr" className="font-medium text-[var(--sys-heading)]">
-                    {o.merchantRef ?? o.orderNumber}
-                  </span>
+                  <OrderLink id={o.id} number={o.merchantRef ?? o.orderNumber} className="font-medium text-[var(--sys-heading)]" />
                   {/*
                     WHY THIS ROW IS IN FRONT OF YOU, BESIDE ITS NAME.
                     The list is sorted by this, so the chip is also what

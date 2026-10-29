@@ -359,6 +359,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/orders/DuplicateSuspectNotice.tsx": {
+    "buttons": 0,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 1,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/orders/ImportOrdersDialog.tsx": {
     "buttons": 4,
     "inputs": 1,
@@ -840,7 +850,7 @@
     "tabs": 0
   },
   "src/components/screens/ConfirmationMineScreen.tsx": {
-    "buttons": 8,
+    "buttons": 9,
     "inputs": 3,
     "columns": 4,
     "cards": 0,
@@ -906,7 +916,7 @@
     "cards": 0,
     "modals": 0,
     "icons": 2,
-    "links": 1,
+    "links": 0,
     "tabs": 0
   },
   "src/components/screens/finance/AssembleStatementDialog.tsx": {
@@ -1220,7 +1230,7 @@
     "tabs": 0
   },
   "src/components/screens/PreparationScreen.tsx": {
-    "buttons": 4,
+    "buttons": 5,
     "inputs": 0,
     "columns": 5,
     "cards": 0,
