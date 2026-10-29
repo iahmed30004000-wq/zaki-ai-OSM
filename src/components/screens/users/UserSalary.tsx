@@ -29,7 +29,11 @@ interface Preview {
   net: number;
   carriedOver: number;
   penaltyIds: string[];
+  /** «فرق تحصيل» nobody decided yet: paying applies it, in the payer's name. */
+  undecided?: { id: string; amount: number; currencyCode: string }[];
   otherCurrency: { currencyCode: string; amount: number }[];
+  /** What was converted at the typed rate; null when nothing was. */
+  converted?: { currencyCode: string; rate: number; amount: number; inSalaryCurrency: number } | null;
 }
 
 interface Data {
@@ -87,6 +91,10 @@ export function UserSalary({
   const [walletId, setWalletId] = useState('');
   const [rate, setRate] = useState('1');
   const [payError, setPayError] = useState<string | null>(null);
+  // Deductions in ANOTHER currency than the salary's turn into it at a rate written here, at payment.
+  const [convCode, setConvCode] = useState('');
+  const [convRate, setConvRate] = useState('');
+  const [convApplied, setConvApplied] = useState(false);
 
   const current = `${amount}|${currency.toUpperCase()}`;
   const changed = current !== saved;
@@ -123,10 +131,33 @@ export function UserSalary({
       const slip = await apiJson<Data>(`/api/payroll/payslip?userId=${userId}`);
       setData(slip);
       setWallets(slip.wallets ?? []);
+      setConvCode(slip.preview.otherCurrency[0]?.currencyCode ?? '');
+      setConvRate('');
+      setConvApplied(false);
     } catch (e) {
       setPayError(e instanceof Error ? e.message : 'تعذّر التحميل');
     }
   }, [userId]);
+
+  /** Draw the slip again with the other currency's deductions converted at the rate typed. */
+  const applyConversion = async () => {
+    if (!convCode || !(Number(convRate) > 0)) return;
+    setPayError(null);
+    try {
+      const slip = await apiJson<Data>(
+        `/api/payroll/payslip?userId=${userId}&convertCurrency=${encodeURIComponent(convCode)}&convertRate=${encodeURIComponent(convRate)}`
+      );
+      setData(slip);
+      setConvApplied(true);
+    } catch (e) {
+      setPayError(e instanceof Error ? e.message : 'تعذّر الحساب');
+    }
+  };
+
+  // The currencies whose deductions can be converted: the ones waiting, and the one already converted (so its rate can be changed).
+  const convOptions = data
+    ? [...new Set([...data.preview.otherCurrency.map((o) => o.currencyCode), ...(data.preview.converted ? [data.preview.converted.currencyCode] : [])])]
+    : [];
 
   const wallet = wallets.find((w) => w.id === walletId);
   // Same currency both sides needs no rate, and offering one there is how a
@@ -162,7 +193,12 @@ export function UserSalary({
       await apiJson('/api/payroll/payslip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, walletId, exchangeRate: effectiveRate }),
+        body: JSON.stringify({
+          userId,
+          walletId,
+          exchangeRate: effectiveRate,
+          ...(convApplied && convCode && Number(convRate) > 0 ? { convert: { currencyCode: convCode, rate: Number(convRate) } } : {}),
+        }),
       });
       setPaying(false);
       setMsg({ ok: true, text: 'صُرف الراتب.' });
@@ -262,6 +298,21 @@ export function UserSalary({
               <div className="divide-y divide-[var(--sys-border)] rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-3">
                 <Line label="الراتب" value={`${data.preview.salary} ${data.preview.currencyCode}`} />
                 <Line label="خصومات مطروحة" value={`− ${data.preview.penaltyTotal}`} />
+                {/* A «فرق تحصيل» nobody decided: it comes out of this payment unless it is waived first. */}
+                {(data.preview.undecided ?? []).map((u) => (
+                  <Line
+                    key={u.id}
+                    label="لم يُعتمد تفسيره — سيُخصم"
+                    value={`${u.amount} ${u.currencyCode}`}
+                    warn
+                  />
+                ))}
+                {data.preview.converted && (
+                  <Line
+                    label={`خصومات ${data.preview.converted.currencyCode} حُوّلت بسعر ${data.preview.converted.rate}`}
+                    value={`${data.preview.converted.amount} ← ${data.preview.converted.inSalaryCurrency} ${data.preview.currencyCode}`}
+                  />
+                )}
                 <Line label="الصافي" value={`${data.preview.net} ${data.preview.currencyCode}`} strong />
                 {data.preview.carriedOver > 0 && (
                   <Line
@@ -279,6 +330,53 @@ export function UserSalary({
                   />
                 ))}
               </div>
+
+              {convOptions.length > 0 && (
+                <div className="flex flex-wrap items-end gap-2">
+                  <label className="block">
+                    <span className="mb-0.5 block text-xs text-[var(--sys-muted-foreground)]">حوّل خصومات عملة</span>
+                    <select
+                      value={convCode}
+                      onChange={(e) => {
+                        setConvCode(e.target.value);
+                        setConvApplied(false);
+                      }}
+                      className={`${FIELD} w-28`}
+                    >
+                      {convOptions.map((code) => (
+                        <option key={code} value={code}>
+                          {code}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="mb-0.5 block text-xs text-[var(--sys-muted-foreground)]">
+                      {data.preview.currencyCode} لكل 1 {convCode || '؟'}
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.000001"
+                      value={convRate}
+                      onChange={(e) => {
+                        setConvRate(e.target.value);
+                        setConvApplied(false);
+                      }}
+                      className={`${FIELD} w-28`}
+                      dir="ltr"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={!convCode || !(Number(convRate) > 0)}
+                    onClick={applyConversion}
+                    className="h-11 md:h-10 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-3 text-xs text-[var(--sys-foreground)] disabled:opacity-50"
+                  >
+                    طبّق السعر
+                  </button>
+                </div>
+              )}
 
               {data.commission.length > 0 && (
                 <p className="text-xs text-[var(--sys-muted-foreground)]">

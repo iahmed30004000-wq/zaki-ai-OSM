@@ -56,7 +56,20 @@ const { db, requireContext, requirePermission, logAudit, recordMovement, receipt
       }),
     },
     walletMovement: { findMany: vi.fn(async () => []) },
-    user: { findMany: vi.fn(async () => []) },
+    // The person at the door: every order here was delivered by the same employee, so a short line has someone to
+    // name (the shortfall rule, lib/shortfall) and these tests stay about what they were written for. (Was
+    // `findMany: async () => []` with no door at all.)
+    user: {
+      findMany: vi.fn(async ({ where }: { where: { id?: { in: string[] } } }) =>
+        where.id?.in.includes('u-door') ? [{ id: 'u-door', name: 'موظف التسليم', role: 'FOLLOW_UP_AGENT' }] : []
+      ),
+    },
+    deliveryAttempt: {
+      findMany: vi.fn(async ({ where }: { where: { orderId: { in: string[] } } }) =>
+        where.orderId.in.map((orderId) => ({ orderId, deliveryAgentId: 'u-door' }))
+      ),
+    },
+    penalty: { findMany: vi.fn(async () => []), create: vi.fn(async () => ({ id: 'pen-1' })) },
     order: {
       updateMany: vi.fn(async ({ where, data }: { where: Record<string, any>; data: { settlementStatus?: string } }) => {
         const hit = [...state.orders.values()].filter((o) => matchesWhere(o, where));

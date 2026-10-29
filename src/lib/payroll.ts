@@ -1,7 +1,9 @@
 import type { Prisma } from '@prisma/client';
 import { db } from './db';
 import { roundMinor } from './money';
+import { minorUnitFor } from './currencies';
 import { checkWallet, recordSpend } from './pay-from-wallet';
+import { SHORTFALL_KIND, UNDECIDED_AT_PAYDAY_AR } from './shortfall';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -23,6 +25,19 @@ type Tx = Prisma.TransactionClient | typeof db;
  *   THE SALARY IS A SNAPSHOT. Read from the employee later, last March
  *   would be rewritten every time somebody gets a rise — and a payslip that
  *   changes is not a record of anything.
+ *
+ * AND A «فرق تحصيل» THAT NOBODY DECIDED IS APPLIED HERE. A collection
+ * shortfall is proposed at the approval of a statement and waits for the
+ * owner or the accountant. If payday arrives first, the deduction is the
+ * default: the payslip lists it as «لم يُعتمد تفسيره — سيُخصم» and paying
+ * applies it in the PAYER's name (never in the name of the person it is taken
+ * from). Only that kind — a late minute or an absence is still a person's
+ * decision and waits for one.
+ *
+ * ROUNDING IS THE SALARY CURRENCY'S, NOT TWO PLACES. A dinar has three: 0.125
+ * taken from a salary of 300 leaves 299.875, and rounding it to two places
+ * paid 299.88: a fils that nobody can find. A currency of two places rounds
+ * exactly as it always did.
  */
 
 export type PayrollRefusal =
@@ -31,7 +46,9 @@ export type PayrollRefusal =
   | 'WALLET_NOT_FOUND'
   | 'BAD_RATE'
   | 'NOTHING_OWED'
-  | 'CURRENCY_MISMATCH';
+  | 'CURRENCY_MISMATCH'
+  | 'SELF_DECISION'
+  | 'DEDUCTIONS_CHANGED';
 
 const REFUSAL_AR: Record<PayrollRefusal, string> = {
   NO_SALARY: 'لا راتب مسجّل لهذا الموظف',
@@ -40,12 +57,21 @@ const REFUSAL_AR: Record<PayrollRefusal, string> = {
   BAD_RATE: 'سعر الصرف يجب أن يكون أكبر من صفر',
   NOTHING_OWED: 'لا شيء يُصرف',
   CURRENCY_MISMATCH: 'خصمٌ بعملة غير عملة الراتب — لا يُطرح منه',
+  SELF_DECISION: 'فرق تحصيل عليك لم يُقرَّر بعد — لا تصرف راتبك وتطبّقه على نفسك، يصرفه غيرك',
+  DEDUCTIONS_CHANGED: 'تغيّرت الخصومات أثناء الصرف (أُلغي خصم أو أُرجع) — أعد فتح الصرف وراجع الأرقام',
 };
 
 export class PayrollRefused extends Error {
   constructor(public reason: PayrollRefusal) {
     super(REFUSAL_AR[reason]);
   }
+}
+
+/** Deductions in ANOTHER currency, turned into the salary's at a rate the payer typed. */
+export interface PayslipConvert {
+  currencyCode: string;
+  /** The salary's currency for ONE unit of `currencyCode`. */
+  rate: number;
 }
 
 export interface PayslipPreview {
@@ -59,9 +85,19 @@ export interface PayslipPreview {
   carriedOver: number;
   /** The deductions being settled, oldest first. */
   penaltyIds: string[];
-  /** Applied deductions in another currency, which are never netted here. */
+  /**
+   * Of those, the «فرق تحصيل» nobody decided yet. They are listed on the payslip as «لم يُعتمد تفسيره — سيُخصم»
+   * and paying applies them in the payer's name.
+   */
+  undecided: { id: string; amount: number; currencyCode: string }[];
+  /** Applied deductions in another currency, which are not netted unless the payer typed a rate for that currency. */
   otherCurrency: { currencyCode: string; amount: number }[];
+  /** What was converted and at what rate; null when nothing was. */
+  converted: { currencyCode: string; rate: number; amount: number; inSalaryCurrency: number } | null;
 }
+
+/** The decimals of a currency's smallest unit: the table's own, two where the table does not know the code. */
+const minorOf = (code: string): number => minorUnitFor(code) ?? 2;
 
 /**
  * What this month would pay, before anybody commits to it.
@@ -72,7 +108,7 @@ export interface PayslipPreview {
  */
 export async function previewPayslip(
   tx: Tx,
-  params: { companyId: string; storeId: string; userId: string }
+  params: { companyId: string; storeId: string; userId: string; convert?: PayslipConvert | null }
 ): Promise<PayslipPreview> {
   const person = await tx.user.findFirst({
     where: { id: params.userId, companyId: params.companyId },
@@ -87,50 +123,79 @@ export async function previewPayslip(
   const currencyCode = person.salaryCurrency ?? person.commissionCurrency ?? null;
   if (!currencyCode) throw new PayrollRefused('NO_SALARY');
 
-  const salary = roundMinor(Number(person.salaryAmount), 2);
+  // The decimals of THIS currency: a dinar has three, a dollar two.
+  const minor = minorOf(currencyCode);
+  const salary = roundMinor(Number(person.salaryAmount), minor);
+
+  // A typed rate that is not a rate is refused, not ignored: a conversion that silently did not happen would pay
+  // a person the full wage on top of a deduction they were told was taken.
+  if (params.convert && !(params.convert.rate > 0)) throw new PayrollRefused('BAD_RATE');
+  const convert = params.convert && params.convert.currencyCode !== currencyCode ? params.convert : null;
 
   const penalties = await tx.penalty.findMany({
     where: {
       companyId: params.companyId,
       userId: params.userId,
-      status: 'APPLIED',
       payslipId: null,
+      // Decided deductions, and the one kind that payday decides when nobody did.
+      OR: [{ status: 'APPLIED' }, { status: 'PROPOSED', kind: SHORTFALL_KIND }],
     },
     orderBy: { occurredOn: 'asc' },
-    select: { id: true, amount: true, currencyCode: true },
+    select: { id: true, amount: true, currencyCode: true, status: true },
   });
 
-  const mine = penalties.filter((p) => p.currencyCode === currencyCode);
+  const counted: { id: string; own: number; inSalary: number; foreign: boolean; undecided: boolean; currencyCode: string }[] = [];
   const others = new Map<string, number>();
   for (const p of penalties) {
-    if (p.currencyCode === currencyCode) continue;
-    others.set(p.currencyCode, (others.get(p.currencyCode) ?? 0) + Number(p.amount));
+    const own = Number(p.amount);
+    const undecided = p.status === 'PROPOSED';
+    if (p.currencyCode === currencyCode) {
+      counted.push({ id: p.id, own, inSalary: own, foreign: false, undecided, currencyCode: p.currencyCode });
+    } else if (convert && p.currencyCode === convert.currencyCode) {
+      // Each row on its own, rounded by the SALARY's decimals: a row is settled whole or waits whole, so what
+      // is settled must be a figure of the salary's own unit.
+      counted.push({ id: p.id, own, inSalary: roundMinor(own * convert.rate, minor), foreign: true, undecided, currencyCode: p.currencyCode });
+    } else {
+      others.set(p.currencyCode, (others.get(p.currencyCode) ?? 0) + own);
+    }
   }
 
   // Oldest first, until the salary runs out.
   let taken = 0;
-  const penaltyIds: string[] = [];
+  const settled: typeof counted = [];
   let carriedOver = 0;
-  for (const p of mine) {
-    const amount = Number(p.amount);
-    if (taken + amount <= salary) {
-      taken = roundMinor(taken + amount, 2);
-      penaltyIds.push(p.id);
+  for (const p of counted) {
+    if (taken + p.inSalary <= salary) {
+      taken = roundMinor(taken + p.inSalary, minor);
+      settled.push(p);
     } else {
       // Not split across two payslips: half a deduction settled is a row
       // nobody can explain. It waits whole.
-      carriedOver = roundMinor(carriedOver + amount, 2);
+      carriedOver = roundMinor(carriedOver + p.inSalary, minor);
     }
   }
+
+  const foreignSettled = settled.filter((p) => p.foreign);
 
   return {
     salary,
     currencyCode,
     penaltyTotal: taken,
-    net: roundMinor(salary - taken, 2),
+    net: roundMinor(salary - taken, minor),
     carriedOver,
-    penaltyIds,
-    otherCurrency: [...others.entries()].map(([currencyCode, amount]) => ({ currencyCode, amount })),
+    penaltyIds: settled.map((p) => p.id),
+    undecided: settled.filter((p) => p.undecided).map((p) => ({ id: p.id, amount: p.own, currencyCode: p.currencyCode })),
+    otherCurrency: [...others.entries()].map(([code, amount]) => ({ currencyCode: code, amount })),
+    converted:
+      convert && foreignSettled.length > 0
+        ? {
+            currencyCode: convert.currencyCode,
+            rate: convert.rate,
+            // A column of three decimals: the sum is cut to what the column holds, not to float dust.
+            amount: roundMinor(foreignSettled.reduce((sum, p) => sum + p.own, 0), 3),
+            inSalaryCurrency: roundMinor(foreignSettled.reduce((sum, p) => sum + p.inSalary, 0), minor),
+          }
+        : null,
   };
 }
 
@@ -142,6 +207,8 @@ export interface PayInput {
   periodStart: Date;
   periodEnd: Date;
   exchangeRate: number;
+  /** Deductions in another currency than the salary's, and the rate the payer wrote for them. */
+  convert?: PayslipConvert | null;
   note?: string | null;
   createdById: string;
 }
@@ -155,7 +222,12 @@ export interface PayslipResult {
   currencyCode: string;
   paidAmount: number;
   paidCurrency: string;
+  /** How many «فرق تحصيل» nobody had decided were applied by this payment. */
+  appliedUndecided: number;
 }
+
+/** Written on a deduction the payment applied because nobody had decided it. */
+export const APPLIED_AT_PAYDAY_NOTE = `${UNDECIDED_AT_PAYDAY_AR} — طُبّق عند صرف الراتب`;
 
 /**
  * Pay one period's salary, net of what fits.
@@ -167,6 +239,9 @@ export interface PayslipResult {
  */
 export async function paySalary(tx: Tx, input: PayInput): Promise<PayslipResult> {
   const preview = await previewPayslip(tx, input);
+
+  // The payer decides the «فرق تحصيل» nobody decided. Nobody decides one taken from themselves.
+  if (preview.undecided.length > 0 && input.createdById === input.userId) throw new PayrollRefused('SELF_DECISION');
 
   // One payslip per person per period start. The database says so too;
   // this says it in Arabic before the constraint says it in Latin.
@@ -204,18 +279,46 @@ export async function paySalary(tx: Tx, input: PayInput): Promise<PayslipResult>
       paidAmount: wallet.paidAmount,
       paidCurrency: wallet.currencyCode,
       exchangeRate: input.exchangeRate,
+      // The conversion the payer typed, stored with the payslip and never recalculated.
+      settledAmount: preview.converted?.amount ?? null,
+      settledCurrency: preview.converted?.currencyCode ?? null,
+      settledRate: preview.converted?.rate ?? null,
       note: input.note ?? null,
       createdById: input.createdById,
     },
   });
 
   if (preview.penaltyIds.length > 0) {
-    // Stamped, not deleted: the deduction stays in the record and now says
-    // which payslip took it.
-    await tx.penalty.updateMany({
-      where: { id: { in: preview.penaltyIds }, payslipId: null },
-      data: { payslipId: payslip.id },
-    });
+    const undecidedIds = preview.undecided.map((u) => u.id);
+    const decidedIds = preview.penaltyIds.filter((id) => !undecidedIds.includes(id));
+
+    if (undecidedIds.length > 0) {
+      // Applied in the PAYER's name, in the same write that stamps the payslip on them. A row waived (or
+      // moved to someone else) since the preview was drawn is no longer PROPOSED, the count falls short and the
+      // payment stops before any money has left.
+      const applied = await tx.penalty.updateMany({
+        where: { id: { in: undecidedIds }, status: 'PROPOSED', payslipId: null },
+        data: {
+          status: 'APPLIED',
+          decidedById: input.createdById,
+          decidedAt: new Date(),
+          decisionNote: APPLIED_AT_PAYDAY_NOTE,
+          payslipId: payslip.id,
+        },
+      });
+      if (applied.count !== undecidedIds.length) throw new PayrollRefused('DEDUCTIONS_CHANGED');
+    }
+
+    if (decidedIds.length > 0) {
+      // Stamped, not deleted: the deduction stays in the record and now says
+      // which payslip took it. Only a deduction still APPLIED and still free: one reversed since the preview
+      // must not be taken, and the count says so.
+      const stamped = await tx.penalty.updateMany({
+        where: { id: { in: decidedIds }, status: 'APPLIED', payslipId: null },
+        data: { payslipId: payslip.id },
+      });
+      if (stamped.count !== decidedIds.length) throw new PayrollRefused('DEDUCTIONS_CHANGED');
+    }
   }
 
   const person = await tx.user.findFirst({ where: { id: input.userId }, select: { name: true } });
@@ -252,5 +355,6 @@ export async function paySalary(tx: Tx, input: PayInput): Promise<PayslipResult>
     currencyCode: preview.currencyCode,
     paidAmount: wallet.paidAmount,
     paidCurrency: wallet.currencyCode,
+    appliedUndecided: preview.undecided.length,
   };
 }

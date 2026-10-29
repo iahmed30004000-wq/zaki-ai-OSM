@@ -53,12 +53,23 @@ function partialUniqueIndexes(): { name: string; migration: string }[] {
     } catch {
       continue; // migration_lock.toml and the like
     }
+    /*
+     * IN THE ORDER THE FILE SAYS THEM. A migration may drop an index and create it again under the same name
+     * (a partial index cannot be altered, only replaced — `20261029120000_shortfall_penalty` narrows
+     * `penalties_one_live_per_day` that way), so all the creates first and all the drops after would delete
+     * the very index the file just made.
+     */
+    const events: { at: number; name: string; create: boolean; partial: boolean }[] = [];
     const re = /CREATE UNIQUE INDEX(?:\s+IF NOT EXISTS)?\s+"([^"]+)"([\s\S]{0,400}?);/g;
     for (const m of sql.matchAll(re)) {
-      if (/\bWHERE\b/i.test(m[2])) live.set(m[1], dir);
+      events.push({ at: m.index ?? 0, name: m[1], create: true, partial: /\bWHERE\b/i.test(m[2]) });
     }
     for (const m of sql.matchAll(/DROP INDEX(?:\s+IF EXISTS)?\s+"([^"]+)"/g)) {
-      live.delete(m[1]);
+      events.push({ at: m.index ?? 0, name: m[1], create: false, partial: false });
+    }
+    for (const e of events.sort((a, b) => a.at - b.at)) {
+      if (!e.create) live.delete(e.name);
+      else if (e.partial) live.set(e.name, dir);
     }
   }
   return [...live].map(([name, migration]) => ({ name, migration }));

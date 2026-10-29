@@ -61,6 +61,21 @@ export const PENALTY_KINDS: PenaltyKind[] = [
 
 export const PENALTY_KEYS = PENALTY_KINDS.map((k) => k.key);
 
+/**
+ * «فرق تحصيل» — a kind that NO RULE measures, which is why it is not in `PENALTY_KINDS`.
+ *
+ * Every kind above is a count (minutes, days, orders) multiplied by a rule's price, and the settings screen
+ * offers a rule per kind. A collection shortfall is a sum of money that a courier statement already measured:
+ * there is nothing to price, and a «rule» for it would be a second way to invent the number. It is written only
+ * by the approval of a statement (see lib/shortfall) and listed beside the others wherever deductions are read.
+ */
+export const SHORTFALL_KIND_INFO: PenaltyKind = {
+  key: 'SHORTFALL',
+  ar: 'فرق تحصيل',
+  unitAr: 'طلب',
+  sourceAr: 'طلب سلّمه الموظف فدفعت الشركة عنه أقل من المتوقَّع، واعتُمد رقم الشركة.',
+};
+
 /** PROPOSED → APPLIED | WAIVED; APPLIED → REVERSED. Nothing else. */
 export const PENALTY_STATUSES = ['PROPOSED', 'APPLIED', 'WAIVED', 'REVERSED'] as const;
 export type PenaltyStatus = (typeof PENALTY_STATUSES)[number];

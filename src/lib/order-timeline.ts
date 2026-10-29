@@ -146,6 +146,9 @@ const ACTIVITY_AR: Record<string, string> = {
   // «فرق في المبلغ»: what the approval did with the answer a person gave, in that person's name.
   SETTLEMENT_DECISION_APPLIED: 'سُوّي الطلب برقم الشركة بعد بتّ مكتوب',
   SETTLEMENT_CLAIM_OPENED: 'بقي الطلب مطالبة على الشركة بالباقي',
+  // «فرق تحصيل»: the company paid less than expected and the approval accepted its figure.
+  SHORTFALL_PROPOSED: 'دفعت الشركة أقل من المتوقَّع — فرق تحصيل بانتظار قرار المالك أو المحاسب',
+  SHORTFALL_ON_COMPANY: 'دفعت الشركة أقل من المتوقَّع — الفرق على الشركة',
   // «طلبات لم يذكرها أي كشف»: what a person decided about it, on the order itself.
   ...NOT_MENTIONED_ACTIVITY_AR,
 };
