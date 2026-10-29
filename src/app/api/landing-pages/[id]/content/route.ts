@@ -17,6 +17,7 @@ import {
 import { landingThemeSchema } from '@/lib/landing-theme';
 import { offerEndings } from '@/lib/offers';
 import { countdownRefusalIn, landingSectionsSchema, stampManualReviews } from '@/lib/landing-sections';
+import { sectionsRefusal } from '@/lib/landing-sections-refusal';
 import { draftState, publishContent, revertContent, saveContent, type PageContent } from '@/lib/landing-draft';
 
 interface Ctx {
@@ -104,7 +105,8 @@ export async function PUT(req: Request, ctx: Ctx) {
       // place a malformed block can be stopped.
       const sections = landingSectionsSchema.safeParse(parsed.data.sections ?? []);
       if (!sections.success) {
-        return NextResponse.json({ error: 'أقسام الصفحة غير صالحة' }, { status: 400 });
+        // Which section and which field — not «the page is invalid» over forty sections.
+        return NextResponse.json({ error: sectionsRefusal(sections.error, parsed.data.sections) }, { status: 400 });
       }
 
       /**

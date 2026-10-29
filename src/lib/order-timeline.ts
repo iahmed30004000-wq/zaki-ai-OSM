@@ -5,6 +5,7 @@ import { SHIPPING_STATUS_AR } from './shipping-workflow';
 import { CONFIRMATION_STATUS_AR } from './confirmation-workflow';
 import { NOT_MENTIONED_ACTIVITY_AR } from './not-mentioned';
 import { SWAP_ACTION } from './superseded';
+import { POST_ORDER_ADDITION_AR } from './post-order-offer-copy';
 import { COURIER_SAID, courierSaidTitle } from './couriers/courier-said';
 
 type Tx = Prisma.TransactionClient | typeof db;
@@ -127,6 +128,8 @@ const ISSUE_REASON_AR: Record<string, string> = {
 const ACTIVITY_AR: Record<string, string> = {
   ORDER_CREATED: 'إنشاء الطلب',
   ORDER_UPDATED: 'تعديل بيانات الطلب',
+  // What the customer added on the thank-you screen: the same words the order dialog and the confirmation card use.
+  UPSELL_ADDED: POST_ORDER_ADDITION_AR,
   CUSTOMER_UPDATED: 'تعديل بيانات العميل',
   MODERATOR_ASSIGNED: 'إسناد مودريتور',
   CALL_MADE: 'اتصال بالعميل',
@@ -166,6 +169,18 @@ const METADATA_AR: Record<string, string> = {
   updatedBy: 'عدّله', callResult: 'نتيجة الاتصال', notes: 'ملاحظات',
   caller: 'المتصل', role: 'الدور', fields: 'الحقول',
   feeBefore: 'الأجرة قبل', feeAfter: 'الأجرة بعد', feeReason: 'السبب',
+  // The addition after the order: what was added, how many, for how much, from which offer.
+  product: 'المنتج', quantity: 'الكمية', total: 'المجموع', offerName: 'العرض', landingPage: 'الصفحة',
+};
+
+/**
+ * The stored VALUES that are English words or codes, in Arabic. A value nobody wrote a word for is shown as it is
+ * (a store's own name is a source too), never blanked: a change that happened must stay visible.
+ */
+const VALUE_AR: Record<string, Record<string, string>> = {
+  source: { 'Landing Page': 'صفحة هبوط', 'post-order offer': 'عرض بعد الطلب', 'public visitor': 'زائر' },
+  intakeMethod: { AI_PASTE: 'لصق نص بالذكاء', MANUAL: 'يدوي', IMPORT: 'استيراد' },
+  createdBy: { 'public visitor': 'زائر' },
 };
 
 const FIELD_AR: Record<string, string> = {
@@ -180,16 +195,33 @@ const FIELD_AR: Record<string, string> = {
  * key nobody meant to show.
  */
 function readableMetadata(metadata: unknown): string | null {
-  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+  /*
+   * THE COLUMN IS TEXT. `OrderActivity.metadata` is a JSON string, and this read only an object — so every real
+   * row (all of them strings) came out as «no details» and the whole table above was dead code. Parsed here, inside
+   * a try: a row that is not JSON shows no details and breaks nothing.
+   */
+  let data: unknown = metadata;
+  if (typeof data === 'string') {
+    try {
+      data = JSON.parse(data);
+    } catch {
+      return null;
+    }
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
   const parts: string[] = [];
-  for (const [key, raw] of Object.entries(metadata as Record<string, unknown>)) {
+  for (const [key, raw] of Object.entries(data as Record<string, unknown>)) {
     const label = METADATA_AR[key];
     if (!label || raw === null || raw === undefined || raw === '') continue;
+    // An object under a labelled key (a nested record) is not a sentence: dropped rather than printed as [object Object].
+    if (typeof raw === 'object' && !Array.isArray(raw)) continue;
     const value = Array.isArray(raw)
       ? raw.map((v) => (typeof v === 'string' ? ar(FIELD_AR, v) : String(v))).join('، ')
       : typeof raw === 'boolean'
         ? (raw ? 'نعم' : 'لا')
-        : String(raw);
+        : key === 'callResult'
+          ? ar(CONTACT_RESULT_AR, String(raw))
+          : (VALUE_AR[key]?.[String(raw)] ?? String(raw));
     if (value.trim()) parts.push(`${label}: ${value}`);
   }
   return parts.length ? parts.join(' · ') : null;

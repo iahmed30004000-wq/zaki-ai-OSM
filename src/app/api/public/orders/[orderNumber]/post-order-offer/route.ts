@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { rateLimit } from '@/lib/rate-limit';
+import { rateLimit, getClientIp, UNKNOWN_IP } from '@/lib/rate-limit';
 import { verifyAddonToken } from '@/lib/landing-pages';
 import { ORDER_NUMBER_RE } from '@/lib/order-ref';
 import { zodMessage } from '@/lib/zod-message';
@@ -75,20 +75,23 @@ export async function POST(req: Request, ctx: Ctx) {
     }
 
     /*
-     * ONE PRESS IS THE WHOLE FEATURE, SO THE LIMIT IS TIGHT.
+     * A COARSE COUNTER PER ADDRESS BEFORE THE TOKEN — and only for an address we can tell apart.
      *
-     * The offer may be taken once per order and `postOrderGate` enforces
-     * that from the row — this is about the cost of being told so. Three
-     * attempts in the window covers a double-press and a flaky connection;
-     * a script probing offer ids against one order gets a 429 instead of a
-     * free oracle. Keyed on the order, because a token is bound to one.
+     * The order's own counter used to stand here, keyed on the number in the URL, which is the one thing a stranger
+     * can know: three requests with no token spent the real customer's three, and the customer was refused on
+     * their own order. That counter now waits for the token (below). This one limits an address grinding at the
+     * door; where the address is unknown every visitor shares one bucket, and a switch any stranger can pull is
+     * worse than no limit, so it is skipped there.
      */
-    const rl = rateLimit(`post_order_offer:${decoded}`, 3, 30 * 60_000);
-    if (!rl.allowed) {
-      return NextResponse.json(
-        { error: `محاولات كثيرة. أعد المحاولة بعد ${rl.retryAfterSec} ثانية` },
-        { status: 429, headers: { ...CORS, 'Retry-After': String(rl.retryAfterSec) } }
-      );
+    const ip = getClientIp(req);
+    if (ip !== UNKNOWN_IP) {
+      const byIp = rateLimit(`post_order_offer_ip:${ip}`, 30, 10 * 60_000);
+      if (!byIp.allowed) {
+        return NextResponse.json(
+          { error: `محاولات كثيرة. أعد المحاولة بعد ${byIp.retryAfterSec} ثانية` },
+          { status: 429, headers: { ...CORS, 'Retry-After': String(byIp.retryAfterSec) } }
+        );
+      }
     }
 
     const contentLength = parseInt(req.headers.get('content-length') || '0', 10);
@@ -136,6 +139,24 @@ export async function POST(req: Request, ctx: Ctx) {
       return NextResponse.json(
         { error: 'رابط الإضافة غير صالح أو منتهي الصلاحية' },
         { status: 401, headers: CORS }
+      );
+    }
+
+    /*
+     * ONE PRESS IS THE WHOLE FEATURE, SO THE LIMIT IS TIGHT.
+     *
+     * The offer may be taken once per order and `postOrderGate` enforces
+     * that from the row — this is about the cost of being told so. Three
+     * attempts in the window covers a double-press and a flaky connection;
+     * a script probing offer ids against one order gets a 429 instead of a
+     * free oracle. Keyed on the order the TOKEN proves, so only its owner
+     * can spend it.
+     */
+    const rl = rateLimit(`post_order_offer:${tok.orderId}`, 3, 30 * 60_000);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: `محاولات كثيرة. أعد المحاولة بعد ${rl.retryAfterSec} ثانية` },
+        { status: 429, headers: { ...CORS, 'Retry-After': String(rl.retryAfterSec) } }
       );
     }
 

@@ -161,6 +161,9 @@ const { db, state, gate } = vi.hoisted(() => {
     orderItem: { create: vi.fn() },
     orderActivity: { create: vi.fn(async () => ({})) },
     orderStatusLog: { create: vi.fn(async () => ({})) },
+    // The highest order number, asked as a NUMBER in SQL (ط41). This double has no numbered orders, exactly as its
+    // `order.findFirst` above answered `null` before: the first number is 0001.
+    $queryRaw: vi.fn(async () => [{ highest: null }]),
     $transaction: vi.fn(async (fn: (tx: Row) => Promise<unknown>) => {
       // What a transaction writes is kept only if it returns: a throw rolls its order and its line back.
       const orders: Row[] = [];

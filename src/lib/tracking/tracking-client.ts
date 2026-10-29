@@ -135,16 +135,25 @@ export class TrackingEngine {
       // The seller's own switches for this pixel: a view or a started form it was told not to report.
       if (event === 'ViewContent' && pixel.sendViewContent === false) continue;
       if (event === 'InitiateCheckout' && pixel.sendInitiateCheckout === false) continue;
-      // The server sends this pixel's Purchase when the order is CONFIRMED; the browser must not send a second.
-      // Only a Purchase: a pixel reporting orders as leads still hears its lead from the browser.
+      // The server sends this pixel's ORDER event when the order is CONFIRMED — Purchase, or Lead for a pixel set to
+      // report orders as leads (`pixelsWithServerPurchase` flags a pixel only when the conversion's name IS that
+      // pixel's own order event). The browser must not send a second one. Only the order event: a server Purchase
+      // does not stand in for the lead a Lead pixel sends, so that pixel is not flagged and still hears it.
       const reported: TrackingEventName = event === 'Purchase' && pixel.orderEvent === 'Lead' ? 'Lead' : event;
-      if (reported === 'Purchase' && pixel.purchaseOnServer) continue;
+      if (event === 'Purchase' && pixel.purchaseOnServer) continue;
       // Purchase is once per order; ViewContent once per PRODUCT, so moving
       // from one product page to the next is a second view, not a repeat.
       const scope = event === 'ViewContent'
         ? (safe.content_ids as string[])[0]
         : (safe.order_id as string | undefined);
-      const key = trackingEventKey(pixel.platform, pixel.pixelId, reported, scope);
+      /*
+       * SNAPCHAT HAS NO PER-PIXEL CALL. `snaptr('track', …)` goes to every Snap pixel on the page, so an event
+       * dispatched once per pixel reached each of them once per pixel: two Snap pixels counted every purchase twice.
+       * The key for Snap carries no pixel number, so the event goes out ONCE per page. The limit is real and is said
+       * here: two Snap pixels cannot be told apart, so a per-pixel switch (a view the seller turned off on one of
+       * them) cannot be honoured between them — the other pixel's event still reaches both.
+       */
+      const key = trackingEventKey(pixel.platform, pixel.platform === 'SNAPCHAT' ? '*' : pixel.pixelId, reported, scope);
       if (this.fired.has(key)) continue; // dedupe — never double-fire
       this.fired.add(key);
       // A pixel registered after the page started (a later navigation) is

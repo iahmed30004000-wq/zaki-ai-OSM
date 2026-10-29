@@ -91,6 +91,8 @@ export interface OrderSnapshot {
   customerNotes: string | null;
   /** The governorate it ships to — what the delivery fee is keyed on. */
   regionId: string | null;
+  /** The address this order goes to, when it has its own — the «before» of an address change is THIS one. */
+  deliveryAddress?: string | null;
   customer: {
     fullName: string;
     phone: string;
@@ -105,7 +107,7 @@ function current(order: OrderSnapshot, field: ChangeableField): ChangeValue {
     case 'customerName': return order.customer.fullName;
     case 'customerPhone': return order.customer.phone;
     case 'customerAltPhone': return order.customer.altPhone;
-    case 'customerAddress': return order.customer.address;
+    case 'customerAddress': return order.deliveryAddress ?? order.customer.address;
     case 'regionId': return order.regionId ?? null;
     case 'quantity': return order.quantity;
     case 'productId': return order.productId;

@@ -127,6 +127,27 @@ export interface DispatchSummary {
 }
 
 /**
+ * HOW MANY PIECES THE DRIVER CARRIES: every line, gifts included, and every add-on the customer took after ordering.
+ *
+ * It read the order's head (`quantity + freeQuantity`), which describes ONE line — the largest — so a basket of
+ * three products announced the pieces of one of them, and an add-on was never counted at all. An order with no lines
+ * (one that predates them) still has its head to go on.
+ */
+export function piecesInParcel(order: {
+  quantity?: number | null;
+  freeQuantity?: number | null;
+  items?: { quantity: number; freeQuantity: number }[] | null;
+  addOns?: { quantity: number }[] | null;
+}): number {
+  const lines = order.items ?? [];
+  const added = (order.addOns ?? []).reduce((n, a) => n + a.quantity, 0);
+  const counted = lines.length > 0
+    ? lines.reduce((n, l) => n + l.quantity + l.freeQuantity, 0) + added
+    : (order.quantity ?? 1) + (order.freeQuantity ?? 0) + added;
+  return Math.max(1, counted);
+}
+
+/**
  * Send a batch's orders to their courier and record what came back.
  *
  * `orderIds` narrows it to a retry of the ones that failed; omitted, the
@@ -189,6 +210,11 @@ export async function dispatchBatch(input: {
       id: true, orderNumber: true, merchantRef: true, trackingNumber: true,
       totalAmount: true, currency: true, quantity: true, freeQuantity: true,
       customerNotes: true, deliveryProviderId: true,
+      // The parcel's own address, when the visitor typed one that differs from the customer row's.
+      deliveryAddress: true,
+      // The pieces in the box are the LINES and the customer's additions — not the head line the row summarises.
+      items: { select: { quantity: true, freeQuantity: true } },
+      addOns: { select: { quantity: true } },
       customer: { select: { fullName: true, rawPhone: true, phone: true, altPhone: true, address: true } },
       regionId: true,
       region: { select: { name: true } },
@@ -279,10 +305,11 @@ export async function dispatchBatch(input: {
           altPhone: order.customer?.altPhone
             ? formatPhoneNumber(order.customer.altPhone, order.store?.country?.code)
             : null,
-          address: order.customer?.address ?? '',
+          // This parcel's address before the customer's: a returning customer who typed a new street gets it there.
+          address: order.deliveryAddress ?? order.customer?.address ?? '',
           regionName: order.region?.name ?? null,
         },
-        pieces: Math.max(1, (order.quantity ?? 1) + (order.freeQuantity ?? 0)),
+        pieces: piecesInParcel(order),
         note: order.customerNotes ?? null,
       });
 
