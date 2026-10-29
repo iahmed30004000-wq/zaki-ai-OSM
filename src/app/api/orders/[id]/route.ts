@@ -32,6 +32,7 @@ import { courierActionAr, courierActionFor, courierMessage, sealedAmong } from '
 import { expandApproved, mayApply, strayFields } from '@/lib/change-request-apply';
 import { zodMessage } from '@/lib/zod-message';
 import { ORDER_NOT_FOUND, ORDER_VERSION_MISSING } from '@/lib/order-refusals';
+import { PRICE_FORBIDDEN_AR, priceFieldsChanged, storedLinesOf } from '@/lib/order-price-gate';
 
 /** Why a quantity or a product is not changed in place for an order whose goods are reserved. */
 const RESERVED_GOODS_EDIT_AR =
@@ -586,6 +587,59 @@ export async function PATCH(
       );
     }
 
+    /*
+     * ═══════════════════════════════════════════════════════════════════
+     * THE PRICE IS ITS OWN KEY — `orders.change_price` (perm-plan PR-6).
+     *
+     * The price, the discount and a line's price used to ride on `orders.edit`: whoever could fix an address could also
+     * fix the figure the customer pays. They are asked separately now, with the scope `orders.edit` had (the migration
+     * copied it), and ONLY when the request really moves one — the lines card posts every price box back on every save,
+     * so a person without the key can still change a quantity or a note (`priceFieldsChanged` says what counts).
+     *
+     * An approved change request is the authority here, as it is for `orders.edit` above: who may DECIDE a price change
+     * is the change-request desk's question, not this door's.
+     *
+     * The people who hold the key cost nothing: `authorize` is a lookup, and the lines and the catalogue are read only
+     * for somebody who does not.
+     * ═══════════════════════════════════════════════════════════════════
+     */
+    if (!viaRequest && (sellingPrice !== undefined || discountAmount !== undefined || items !== undefined)) {
+      const priceAuth = authorize(user, 'orders.change_price', existing);
+      if (!priceAuth.allowed) {
+        const lineRows =
+          items !== undefined
+            ? await db.orderItem.findMany({
+                where: { orderId: id, companyId },
+                select: { productId: true, quantity: true, lineTotal: true, discountShare: true },
+              })
+            : [];
+        const discountNow = Number(existing.discountAmount ?? 0);
+        const storedLines = storedLinesOf(lineRows, discountNow, country.minorUnit);
+        const unseen = (items ?? []).map((l) => l.productId).filter((pid) => !storedLines.some((l) => l.productId === pid));
+        const catalogue = unseen.length
+          ? await db.product.findMany({ where: { id: { in: unseen }, companyId }, select: { id: true, basePrice: true } })
+          : [];
+        const moved = priceFieldsChanged(
+          { sellingPrice, quantity, discountAmount, items },
+          {
+            stored: { sellingPrice: Number(existing.sellingPrice ?? 0), quantity: Number(existing.quantity ?? 0), discountAmount: discountNow },
+            lines: storedLines,
+            catalogPrice: (pid) => {
+              const row = catalogue.find((c) => c.id === pid);
+              return row && Number(row.basePrice) > 0 ? Number(row.basePrice) : null;
+            },
+            minorUnit: country.minorUnit,
+          }
+        );
+        if (moved.length > 0) {
+          return NextResponse.json(
+            { error: PRICE_FORBIDDEN_AR, errorAr: PRICE_FORBIDDEN_AR, code: 'PRICE_FORBIDDEN', fields: moved },
+            { status: 403 }
+          );
+        }
+      }
+    }
+
     // ── Editing-lock enforcement: an ACTIVE foreign lock blocks edits ──
     const lockActive =
       existing.lockedById &&
@@ -741,12 +795,13 @@ export async function PATCH(
        * `orders.change_status` at the checks above, and it used to write one
        * column. It now ends the order — CANCELLED, the reservation released,
        * the customer counted, System 7 told — which at the confirmation door
-       * takes `orders.unlock` and a written reason. An ending is one act
-       * whichever field names it, so it asks the same of whoever presses it.
+       * takes `orders.cancel` and a written reason (the key moved off `orders.unlock` with PR-6; the migration gave it
+       * to every holder of the old one). An ending is one act whichever field names it, so it asks the same of whoever
+       * presses it.
        */
-      if (!can(user, 'orders.unlock')) {
+      if (!can(user, 'orders.cancel')) {
         return NextResponse.json(
-          { errorAr: 'الإلغاء للمدير وحده.', code: 'UNLOCK_REQUIRED' },
+          { errorAr: 'الإلغاء للمدير وحده.', code: 'CANCEL_REQUIRED' },
           { status: 403 }
         );
       }
@@ -938,7 +993,7 @@ export async function PATCH(
     // Shipping and delivery cost belong to the shipping authority, not to
     // whoever may edit the order. The agent on the phone fixes a wrong
     // address; she does not decide what the parcel costs to send.
-    if (shippingCost !== undefined && !can(user, 'orders.change_status')) {
+    if (shippingCost !== undefined && !can(user, 'orders.change_fee')) {
       return NextResponse.json(
         {
           error: 'لا تملك صلاحية تعديل الشحن والتوصيل',

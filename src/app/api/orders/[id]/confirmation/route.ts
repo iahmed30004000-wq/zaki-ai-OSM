@@ -210,8 +210,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         break;
       }
       case 'cancel': {
-        // Authorized cancellation — SUPER_ADMIN override style
-        if (!can(user, 'orders.unlock')) {
+        // Cancelling has a key of its own (PR-6): `orders.cancel`, given by the migration to everybody who held
+        // `orders.unlock` — the key it used to ride on — so nobody lost it and nobody gained it.
+        if (!can(user, 'orders.cancel')) {
           return NextResponse.json({ error: 'الإلغاء للمدير وحده' }, { status: 403 });
         }
         // The gate is `endOrder`'s, below: until the press of «إغلاق الشحنة —

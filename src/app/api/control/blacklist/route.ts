@@ -106,7 +106,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const { user, companyId } = await requireContext();
-    await requirePermission('control.blacklist');
+    // Blocking a number has a key of its own (PR-6): seeing the list is `control.blacklist`, changing it is this one.
+    await requirePermission('control.blacklist_manage');
 
     const parsed = blockSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
@@ -146,7 +147,7 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
   try {
     const { user, companyId } = await requireContext();
-    await requirePermission('control.blacklist');
+    await requirePermission('control.blacklist_manage');
 
     const parsed = releaseSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {

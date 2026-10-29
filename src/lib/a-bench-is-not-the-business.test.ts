@@ -174,7 +174,8 @@ const ID_SCOPED: Record<string, Excuse> = {
   'app/api/control/blacklist/route.ts': { reason: 'مقيَّد بأرقام هواتف مُسمّاة — سؤالٌ عن عميلٍ بعينه', sites: 1 },
   'app/api/finance/statements/[id]/route.ts': { reason: 'مقيَّد بـ settledOrderIds — سطورُ كشفٍ بعينه', sites: 2 },
   'app/api/geo/countries/[id]/route.ts': { reason: 'عدٌّ ليُعرَفَ هل يُحذَفُ بلد — ليس رقماً يُعرَض', sites: 1 },
-  'app/api/orders/[id]/route.ts': { reason: 'مقيَّد بـ orderId واحد — إضافاتُ طلبٍ بعينه', sites: 1 },
+  // old → new (PR-6): 1 → 2. The second is the price gate's read of THIS order's lines (`orderId` + `companyId`), asked only of a person who lacks `orders.change_price`.
+  'app/api/orders/[id]/route.ts': { reason: 'مقيَّد بـ orderId واحد — إضافاتُ طلبٍ بعينه وسطورُه (بوابة السعر)', sites: 2 },
   'app/api/orders/import/migrate/route.ts': { reason: 'مقيَّد بأرقام طلباتٍ مُسمّاة من الملف — هل الرقم محجوز لطلبٍ آخر', sites: 1 },
   'app/api/whatsapp/conversations/[id]/route.ts': { reason: 'مقيَّد بـ customerId واحد — محادثةٌ بعينها', sites: 1 },
   'lib/commission-metrics.ts': { reason: 'مقيَّد بـ orderId: { in } ومستخدمٍ واحد', sites: 1 },

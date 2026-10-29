@@ -272,7 +272,10 @@ const person = (id: string, name: string, role: string, scope: 'ASSIGNED' | 'ALL
   status: 'ACTIVE',
   companyId: COMPANY,
   permissions: [] as string[],
-  effectiveGrants: { fullAccess: false, grants: { 'orders.view': { scope }, 'orders.edit': { scope } } },
+  // OLD → NEW (PR-6): the price is its own key, and the migration gives it — at the SAME scope — to everybody who held
+  // orders.edit. This fixture is the person AFTER the migration; without the key the lines card (which posts every price
+  // box on every save) would be asked "did the price move?" and answered by the door, not by the thing under test.
+  effectiveGrants: { fullAccess: false, grants: { 'orders.view': { scope }, 'orders.edit': { scope }, 'orders.change_price': { scope } } },
 });
 /** Works the orders the queue handed her. */
 const AGENT = person('agent-reem-01', 'ريم', 'CONFIRMATION_AGENT', 'ASSIGNED');

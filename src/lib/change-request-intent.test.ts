@@ -205,7 +205,9 @@ describe('the wiring', () => {
     // The card is drawn for a confirmed order, and it carries the dialog
     // with the parcel's position — not a link that opens an edit form the
     // seal will refuse.
-    expect(src).toMatch(/order\.confirmationStatus === 'CONFIRMED' && \(/);
+    // (old → new, PR-6) …and only for who may raise one: `orders.request_change` is a key of its own now.
+    expect(src).toMatch(/order\.confirmationStatus === 'CONFIRMED' && mayRequestChange && \(/);
+    expect(src).toContain("userCan(currentUser, 'orders.request_change')");
     // (old → new, M6) The dialog was told `hasLeftWarehouse` (the printed waybill);
     // it is told whether the courier has TAKEN the parcel.
     expect(src).toMatch(/handedToCourier=\{handedOver\}/);

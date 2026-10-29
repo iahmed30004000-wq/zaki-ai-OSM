@@ -14,7 +14,7 @@ import { zodMessage } from '@/lib/zod-message';
  *
  * correct → the moderator fixed the data; the order goes back to the shared
  *           queue with its original created_at.
- * void    → owner only (orders.unlock), and refused for any order that ever
+ * void    → owner only (orders.cancel), and refused for any order that ever
  *           reached shipping. VOID releases the reservation in the same
  *           transaction; it never deletes anything.
  */
@@ -44,7 +44,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
 
     if (parsed.data.action === 'void') {
-      if (!can(user, 'orders.unlock')) {
+      if (!can(user, 'orders.cancel')) {
         return NextResponse.json({ error: 'الإبطال متاح للمالك فقط' }, { status: 403 });
       }
       const voidable = assertVoidable(issue.order as StateSource);
