@@ -92,7 +92,8 @@ describe('eight empty lists offer the first step', () => {
     expect(orders).toMatch(/:\s*canCreate\s*\?\s*\{ label: 'أنشئ أول طلب'/);
     // A stopped wallet has its «حركة جديدة» disabled; the first step is simply absent for it.
     const wallets = stripComments(repoFile('src/components/screens/finance/WalletsScreen.tsx'));
-    expect(wallets).toContain("wallet?.isActive ? { label: 'سجّل أول حركة'");
+    // PR-9: the first step is also absent for a person who may only SEE the cash box (the header's button is hidden for her too).
+    expect(wallets).toContain("wallet?.isActive && mayCash ? { label: 'سجّل أول حركة'");
   });
 
   it('and the new batch is named by ONE function, used by the header and by the empty list', () => {

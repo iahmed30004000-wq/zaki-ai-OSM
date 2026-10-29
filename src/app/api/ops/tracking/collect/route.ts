@@ -10,6 +10,7 @@ import { markPayableForOrders } from '@/lib/commission';
 import { roundMinor } from '@/lib/money';
 import { zodMessage } from '@/lib/zod-message';
 import { expectedAmountFor, SETTLEMENT_ORDER_SELECT } from '@/lib/settlement';
+import { inStoreOrShared } from '@/lib/store-filter';
 import { collectTotalRefusal, statementNamingRefusal } from '@/lib/settlement-gates';
 
 /**
@@ -55,7 +56,7 @@ export async function POST(req: Request) {
     // This store's wallet or one not placed yet — never another store's: the money goes into the drawer of the
     // store whose orders these are (the orders are read with `storeId` below).
     const wallet = await db.wallet.findFirst({
-      where: { id: parsed.data.walletId, companyId, isActive: true, OR: [{ storeId }, { storeId: null }] },
+      where: { id: parsed.data.walletId, isActive: true, ...inStoreOrShared(companyId, storeId) },
       select: { id: true, name: true, currencyCode: true },
     });
     if (!wallet) return NextResponse.json({ error: 'المحفظة غير موجودة' }, { status: 404 });

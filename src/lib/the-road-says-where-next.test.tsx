@@ -168,7 +168,7 @@ describe('what the screen draws', () => {
     here.path = '/finance/matching';
     render(
       <HubTabs
-        groups={menuFor('settlement.view', 'settlement.review', 'settlement.upload', 'finance.cashbox', 'finance.view')}
+        groups={menuFor('settlement.view', 'settlement.review', 'settlement.upload', 'finance.cashbox_view', 'finance.cashbox', 'finance.view')}
       />
     );
     const nav = screen.getByRole('navigation', { name: 'أقسام المال' });

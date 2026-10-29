@@ -77,9 +77,10 @@ export async function GET(req: Request) {
     //
     // Their own, always. Somebody else's is PAY, and «مراقبة الفريق» — the
     // key that opens a colleague's card for their scores — is not a key to
-    // what the business owes them: that is payroll's (as on the profile,
-    // users/[id]/profile `maySeePay`) or finance's.
-    const maySeeOwed = own || can(user, 'payroll.view') || can(user, 'finance.view');
+    // what the business owes them: that is payroll's alone, exactly as on the
+    // profile (users/[id]/profile `maySeePay`). `finance.view` is the shop's
+    // money, not a colleague's pay (PR-9: it used to open this too).
+    const maySeeOwed = own || can(user, 'payroll.view');
     const owed = maySeeOwed ? await owedTo(db, { companyId, userId: person.id }).catch(() => null) : null;
 
     return NextResponse.json({

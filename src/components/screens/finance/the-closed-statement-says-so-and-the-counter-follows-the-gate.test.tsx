@@ -21,7 +21,7 @@ vi.mock('next/navigation', () => ({
 }));
 vi.mock('@/context/AppContext', () => ({
   useApp: () => ({
-    currentUser: { id: 'u1', status: 'ACTIVE', role: 'ACCOUNTANT', permissions: ['settlement.review', 'settlement.upload'] },
+    currentUser: { id: 'u1', status: 'ACTIVE', role: 'ACCOUNTANT', permissions: ['settlement.review', 'settlement.upload', 'settlement.approve'] },
   }),
 }));
 vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>المطابقة</h1> }));

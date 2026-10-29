@@ -24,6 +24,7 @@ import { db } from './db';
 import { ROLE_PERMISSIONS, UserRole } from '../types/auth';
 import { AI_ASSIST_FROM, AI_ASSIST_KEY } from './ai-assistants';
 import { ORDER_ACTION_KEYS_FROM } from './order-action-keys';
+import { FINANCE_SPLIT_KEYS_FROM } from './finance-split-keys';
 
 export type Scope = 'ALL_COMPANY' | 'OWN' | 'ASSIGNED' | 'CATEGORY' | 'SPECIFIC';
 
@@ -287,6 +288,11 @@ export async function computeEffectiveGrants(
       if (!src) continue;
       grants[key] = copyScope ? { scope: grants[src].scope, scopeIds: grants[src].scopeIds ?? null } : { scope: 'ALL_COMPANY' };
     }
+    // The cash box's and the statement approval's boxes (PR-9): whoever passed the door through the old key keeps it.
+    for (const { key, from } of FINANCE_SPLIT_KEYS_FROM) {
+      if (grants[key] || denied.has(key)) continue;
+      if (from.some((k) => grants[k])) grants[key] = { scope: 'ALL_COMPANY' };
+    }
   }
 
   return { fullAccess: false, grants };
@@ -316,6 +322,8 @@ export function legacyEffectiveKeys(role: UserRole): string[] {
   if (AI_ASSIST_FROM.some((k) => keys.has(k))) keys.add(AI_ASSIST_KEY);
   // And the order actions' boxes (PR-6): the baseline of a legacy role carries them for the roles that held the old keys.
   for (const { key, from } of ORDER_ACTION_KEYS_FROM) if (from.some((k) => keys.has(k))) keys.add(key);
+  // And the cash box's and the statement approval's (PR-9).
+  for (const { key, from } of FINANCE_SPLIT_KEYS_FROM) if (from.some((k) => keys.has(k))) keys.add(key);
   return [...keys];
 }
 

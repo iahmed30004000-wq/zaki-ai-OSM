@@ -11,6 +11,8 @@ import { useToast } from '@/components/ui/Toast';
 import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { arDateTime } from '@/lib/format';
+import { useApp } from '@/context/AppContext';
+import { userCan } from '@/lib/can';
 import { COURIER_MONEY_HINT, OWN_LEDGER, OWN_LEDGER_HINT, handCategoriesFor, ownLedgerCategories } from '@/lib/hand-movement-rules';
 
 /**
@@ -67,6 +69,11 @@ const CATEGORY_AR: Record<string, string> = {
 };
 
 export function WalletsScreen() {
+  const { currentUser } = useApp();
+  // The screen opens on the cash box's VIEW key (PR-9). Managing the wallets and recording the cash are two keys of their
+  // own, and a control is drawn only for the key its door asks — so nobody is offered a press that ends in a refusal.
+  const mayManage = userCan(currentUser, 'finance.wallets_manage');
+  const mayCash = userCan(currentUser, 'finance.cashbox');
   const ask = useConfirm();
   const toast = useToast();
   const [wallets, setWallets] = useState<WalletRow[] | null>(null);
@@ -177,12 +184,14 @@ export function WalletsScreen() {
           المحفظة تتبع متجراً واحداً وتحمل عملته. حركاتها سجل دائم: ما مرّ بها مبلغ يُوقَف
           ولا يُحذف — ولا يُحذف فعلياً إلا ما لم يمرّ به شيء.
         </p>
+        {mayManage && (
         <button
           onClick={() => setCreating(true)}
           className="h-11 md:h-10 px-3 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5 shrink-0"
         >
           <RiAddCircleLine className="w-4 h-4" /> محفظة جديدة
         </button>
+        )}
       </div>
 
       {!wallets ? (
@@ -194,7 +203,7 @@ export function WalletsScreen() {
           icon={RiWallet3Line}
           title="لا محافظ بعد"
           why="المحفظة هي مكان النقد: رصيدها هو ما في الصندوق. أنشئ واحدة ليُسجَّل عليها الداخل والخارج."
-          action={{ label: 'أنشئ أول محفظة', onClick: () => setCreating(true) }}
+          action={mayManage ? { label: 'أنشئ أول محفظة', onClick: () => setCreating(true) } : undefined}
         />
       ) : (
         <>
@@ -280,7 +289,7 @@ export function WalletsScreen() {
                         «أعِد تشغيلها»: «record» is disabled until it runs, so the
                         way out must not sit under a fold that says «إيقاف». It
                         is drawn here, beside the balance, and only while stopped. */}
-                    {!wallet.isActive && (
+                    {!wallet.isActive && mayManage && (
                       <button
                         onClick={() => patchWallet({ isActive: true }, 'أُعيد تشغيل المحفظة')}
                         disabled={busy}
@@ -289,6 +298,7 @@ export function WalletsScreen() {
                         <RiShutDownLine className="w-4 h-4" /> أعِد تشغيلها
                       </button>
                     )}
+                    {mayManage && (
                     <AdvancedGroup key={wallet.id} holds={wallet.isActive ? 'تعديل الاسم · إيقاف · حذف' : 'تعديل الاسم · حذف'}>
                     <button
                       onClick={() => { setRenaming(true); setNewName(wallet.name); }}
@@ -316,11 +326,12 @@ export function WalletsScreen() {
                       <RiDeleteBinLine className="w-4 h-4" />
                     </button>
                     </AdvancedGroup>
+                    )}
                     {/* Offered only while it is still true. A wallet that has
                         started moving is reconciled by the daily closing, and
                         the server refuses this outright — so showing the button
                         there would be an invitation to a red error. */}
-                    {wallet.movements === 0 && !wallet.openingCount && (
+                    {wallet.movements === 0 && !wallet.openingCount && mayCash && (
                       <button
                         onClick={() => setCountOpen(true)}
                         disabled={busy}
@@ -333,6 +344,7 @@ export function WalletsScreen() {
                     <span className="mx-1 h-5 w-px bg-[var(--sys-border)]" />
                   </>
                 )}
+                {mayCash && (
                 <button
                   disabled={!wallet?.isActive}
                   onClick={() => setRecordOpen(true)}
@@ -340,6 +352,7 @@ export function WalletsScreen() {
                 >
                   <RiAddCircleLine className="w-4 h-4" /> حركة جديدة
                 </button>
+                )}
               </span>
             </div>
 
@@ -380,7 +393,7 @@ export function WalletsScreen() {
                     title="لا حركاتٍ على هذه المحفظة"
                     why="كلُّ تحصيلٍ وصرفٍ وتحويلٍ يكتب حركةً هنا. فراغُها يعني أنّ المحفظة لم يمرّ بها مال بعد."
                     // The header's button is disabled for a stopped wallet; so is this one — absent, rather.
-                    action={wallet?.isActive ? { label: 'سجّل أول حركة', onClick: () => setRecordOpen(true) } : undefined}
+                    action={wallet?.isActive && mayCash ? { label: 'سجّل أول حركة', onClick: () => setRecordOpen(true) } : undefined}
                   />
                 }
                 actions={(m) => (
@@ -388,7 +401,7 @@ export function WalletsScreen() {
                           <span className="text-xs text-[var(--sys-muted)]">عُكِست</span>
                         ) : m.isReversal ? (
                           <span className="text-xs text-[var(--sys-muted)]">قيد عكسي</span>
-                        ) : (
+                        ) : !mayCash ? null : (
                           <button
                             onClick={() => setReverseFor(m)}
                             className="text-xs text-[var(--sys-primary)] hover:underline inline-flex items-center gap-1"
