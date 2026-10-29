@@ -119,8 +119,9 @@ export async function POST(req: Request) {
      *
      * The movement is written once, in the name of `orders[0]`'s courier. Orders of two couriers in one request
      * book both couriers' money under the first one's name — the second courier's cash is then nobody's on the
-     * wallet statement, and the agent-custody report cannot tell who handed over what. The screen groups by
-     * courier, but an API client (or a stale screen) does not. A null courier is its own group: a parcel with
+     * wallet statement, and the agent-custody report cannot tell who handed over what. Both screens refuse a
+     * mixed selection before the press (manual matching's `readChoice`, the tracking screen's button), but an API
+     * client or a stale screen does not. A null courier is its own group: a parcel with
      * no courier named is not the first courier's.
      */
     const couriers = new Set(orders.map((o) => o.deliveryProviderId ?? null));
