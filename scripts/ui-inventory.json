@@ -962,10 +962,20 @@
   "src/components/screens/finance/MatchingScreen.tsx": {
     "buttons": 2,
     "inputs": 1,
-    "columns": 10,
+    "columns": 13,
     "cards": 0,
     "modals": 0,
     "icons": 3,
+    "links": 1,
+    "tabs": 0
+  },
+  "src/components/screens/finance/NotMentionedActions.tsx": {
+    "buttons": 1,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 4,
     "links": 1,
     "tabs": 0
   },

@@ -3,6 +3,7 @@ import { db } from './db';
 import { STATE_LABEL_AR } from './order-state';
 import { SHIPPING_STATUS_AR } from './shipping-workflow';
 import { CONFIRMATION_STATUS_AR } from './confirmation-workflow';
+import { NOT_MENTIONED_ACTIVITY_AR } from './not-mentioned';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -132,6 +133,8 @@ const ACTIVITY_AR: Record<string, string> = {
   PARTIAL_DELIVERY: 'تسليم جزئي',
   COURIER_ASSIGNED: 'إسناد شركة شحن',
   COURIER_TRANSFERRED: 'تحويل بين شركات الشحن',
+  // «طلبات لم يذكرها أي كشف»: what a person decided about it, on the order itself.
+  ...NOT_MENTIONED_ACTIVITY_AR,
 };
 
 const ar = (table: Record<string, string>, key: string | null | undefined): string =>

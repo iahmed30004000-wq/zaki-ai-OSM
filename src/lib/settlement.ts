@@ -10,7 +10,8 @@ import { leftWarehouseWhere } from './order-state';
 // column is read through it, brackets and Arabic digits and all.
 import { readStatementFigure } from './numeric-input';
 import { receiptsInStatementCurrency } from './receipt-conversion';
-import { MANUAL_MATCH, integrityNotes, openRequestWhere, type OtherStatement } from './match-integrity';
+import { MANUAL_MATCH, ZERO_LINE_NOTE, integrityNotes, openRequestWhere, type OtherStatement } from './match-integrity';
+import { courierWordNote, isNoMoneyCell, readCourierWord, tallyCourierWords, type CourierWordTally } from './courier-words';
 import { looksLikeXlsx, readXlsxRows } from './xlsx-reader';
 
 type Tx = Prisma.TransactionClient | typeof db;
@@ -55,6 +56,11 @@ export interface ParsedStatementRow {
   fee: number | null;
   status: string | null;
   rawRow: string;
+  /**
+   * The courier wrote NO figure on this line (an empty cell, a dash, «لا يوجد»), so the amount above is a
+   * zero we put there, not one they stated. Kept, not dropped: they did name the parcel.
+   */
+  amountBlank: boolean;
 }
 
 type HeaderField = 'merchantRef' | 'barcode' | 'net' | 'collected' | 'fee' | 'status' | 'notes';
@@ -121,17 +127,21 @@ function columnIndex(header: string[], field: HeaderField): number {
  * THE WHOLE LINE in silence. A courier's parcel then simply was not in the
  * statement, and the sweep reported it as one they never mentioned.
  *
- *   ''            → `null`         absent. The column is not in the file, or
+ *   '' / '-' / 'لا يوجد'
+ *                 → `null`         absent. The column is not in the file, or
  *                                  the courier said nothing about this
- *                                  figure. Nothing was lost, so nothing is
- *                                  refused.
+ *                                  figure (an empty cell, a dash, the words
+ *                                  for «none» — `isNoMoneyCell`). Nothing was
+ *                                  lost, so nothing is refused. A line with
+ *                                  NO figure at all is kept as 0 and flagged.
  *   a figure      → the number     including a negative one.
  *   anything else → `UNREADABLE`   named, and the caller refuses.
  */
 const UNREADABLE = Symbol('خانة مال لا تُقرأ');
 
 function readMoneyCell(text: string): number | null | typeof UNREADABLE {
-  if (text === '') return null;
+  // Empty, a dash, or the words for «none»: the courier stated no figure here. Absent, not unreadable.
+  if (isNoMoneyCell(text)) return null;
   const value = readStatementFigure(text);
   return value === null ? UNREADABLE : value;
 }
@@ -179,11 +189,19 @@ export function splitCsvLine(line: string): string[] {
   return out;
 }
 
+/** What reading a statement file gives back: the lines, their total, and what the import should tell the person. */
+export interface ParsedStatement {
+  rows: ParsedStatementRow[];
+  total: number;
+  error?: string;
+  /** Lines the courier named but wrote no money against: kept as 0 and flagged. */
+  blankLines?: number;
+  /** The courier's status words, counted — and the ones the phrase table does not hold. */
+  words?: CourierWordTally;
+}
+
 /** Turns a header row plus data rows into statement lines. */
-export function parseStatementRows(
-  header: string[],
-  dataRows: string[][]
-): { rows: ParsedStatementRow[]; total: number; error?: string } {
+export function parseStatementRows(header: string[], dataRows: string[][]): ParsedStatement {
   const idx = {
     merchantRef: columnIndex(header, 'merchantRef'),
     barcode: columnIndex(header, 'barcode'),
@@ -267,26 +285,44 @@ export function parseStatementRows(
     // already states in words that it returns a negative expectation as it
     // stands rather than flooring it at zero. Clamping here would be the
     // same silence the strip had, wearing a `Math.max`.
-    const amount = net ?? (collected !== null && fee !== null ? collected - fee : collected);
-    // Null is ABSENT, never unreadable — an unreadable cell refused the file
-    // above. A line the courier wrote no money against carries none, and the
-    // sweep's MISSING_IN_STATEMENT is the word for a parcel no line names.
-    if (amount === null) continue;
+    const stated = net ?? (collected !== null && fee !== null ? collected - fee : collected);
 
-    const explicitRef = at(cells, idx.merchantRef);
+    const merchantRef = at(cells, idx.merchantRef) || refFromNotes(at(cells, idx.notes));
+    const barcode = at(cells, idx.barcode) || null;
+    /**
+     * A LINE WITH NO MONEY IS KEPT AS ZERO, AND SAYS SO.
+     *
+     * Null is ABSENT, never unreadable — an unreadable cell refused the file above. This used to `continue`
+     * on it, and the parcel the courier DID name was then missing from the record: the sweep reported it as
+     * one no statement mentions, and «وصفر … يحطو بالملاحظات» — the zero lines the owner asked about — had
+     * nowhere to be seen. The line is kept at 0 with `amountBlank`, so a person sees that the company
+     * listed the parcel and wrote no figure, beside what it wrote instead (`rawRow`, the notes cell, the
+     * status word).
+     *
+     * A zero adds nothing to the total, so the claim `receiptGap` is measured against does not move.
+     * A row that names NO parcel (no reference, no barcode) and carries no money is a heading or a blank
+     * footer, and is still skipped: there is nothing for it to be matched to.
+     */
+    if (stated === null && !merchantRef && !barcode) continue;
     rows.push({
-      merchantRef: explicitRef || refFromNotes(at(cells, idx.notes)),
-      barcode: at(cells, idx.barcode) || null,
-      amount,
+      merchantRef,
+      barcode,
+      amount: stated ?? 0,
       collected,
       fee,
       status: at(cells, idx.status) || null,
       rawRow: cells.join(' | ').slice(0, 500),
+      amountBlank: stated === null,
     });
   }
 
   const total = rows.reduce((sum, r) => sum + r.amount, 0);
-  return { rows, total };
+  return {
+    rows,
+    total,
+    blankLines: rows.filter((r) => r.amountBlank).length,
+    words: tallyCourierWords(rows.map((r) => r.status)),
+  };
 }
 
 /**
@@ -297,9 +333,7 @@ export function parseStatementRows(
  * no reference, barcode or notes to read a reference from — there would be
  * nothing to match against.
  */
-export function parseStatement(
-  content: string | Buffer | Uint8Array
-): { rows: ParsedStatementRow[]; total: number; error?: string } {
+export function parseStatement(content: string | Buffer | Uint8Array): ParsedStatement {
   if (typeof content !== 'string' && looksLikeXlsx(content)) {
     let sheet: string[][];
     try {
@@ -930,12 +964,21 @@ export async function runMatching(
 
   // PASS 2: the verdict on each line.
   for (const { line, order, byBarcode: matchedByBarcode } of resolved) {
+    /**
+     * THE COMPANY'S OWN WORD, read here the way the import read it: one function, one table
+     * (`courier-words`). It is written beside a row that needs a person — never a reason to change a verdict:
+     * what the company SAID about the parcel is a thing to read, and the money is still measured by the
+     * figure and nothing else.
+     */
+    const wordNote = courierWordNote(readCourierWord(line.status));
+    const zeroLine = Number(line.amount) === 0;
+
     if (!order) {
       await tx.settlementMatch.create({
         data: {
           companyId, statementId, statementLineId: line.id,
           result: 'MISSING_IN_SYSTEM', statementAmount: line.amount,
-          note: 'لا يوجد طلب بهذا الباركود أو المرجع',
+          note: ['لا يوجد طلب بهذا الباركود أو المرجع', ...(zeroLine ? [ZERO_LINE_NOTE] : []), ...(wordNote ? [wordNote] : [])].join(' · '),
         },
       });
       outcome.missingInSystem++;
@@ -973,6 +1016,8 @@ export async function runMatching(
     const notes = [
       ...(feeWrong && difference === 0 ? [`أجرة التوصيل ${statedFee} بدل ${expectedFee}`] : []),
       ...reasons,
+      // A clean row says nothing more; one a person must look at also says what the company wrote.
+      ...(clean ? [] : [...(zeroLine ? [ZERO_LINE_NOTE] : []), ...(wordNote ? [wordNote] : [])]),
     ];
 
     await tx.settlementMatch.create({

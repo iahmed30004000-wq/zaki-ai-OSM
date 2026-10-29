@@ -42,7 +42,7 @@ export async function GET() {
     >`
       SELECT COALESCE(o."confirmedById", o."moderatorId") AS "personId",
              COUNT(DISTINCT o.id) AS "settledOrders",
-             COUNT(*) FILTER (WHERE m.result <> 'MATCHED') AS "differences",
+             COUNT(*) FILTER (WHERE m.result = 'MISMATCHED') AS "differences",
              COUNT(*) FILTER (WHERE m.resolution = 'ACCEPTED_COURIER') AS "accepted",
              COALESCE(SUM(
                CASE WHEN m.resolution = 'ACCEPTED_COURIER'
@@ -53,6 +53,8 @@ export async function GET() {
       JOIN orders o ON o.id = m."orderId"
       WHERE m."companyId" = ${companyId}
         AND o."storeId" = ${storeId}
+        -- A parcel no statement names reached no statement: it is neither a difference nor a settled order.
+        AND m.result IN ('MATCHED', 'MISMATCHED')
       GROUP BY 1
     `;
 
