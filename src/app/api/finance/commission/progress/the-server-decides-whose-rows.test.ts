@@ -40,7 +40,9 @@ const RULE = {
   appliesToUserId: null, appliesToRole: 'MODERATOR', productId: null, minOrders: null,
 };
 
-const get = (qs = '') => GET(new Request(`http://localhost/api/finance/commission/progress${qs}`));
+// the handler takes no argument any more (it ignores the query string); the tests still send one, to prove that
+const handler = GET as unknown as (req: Request) => Promise<Response>;
+const get = (qs = '') => handler(new Request(`http://localhost/api/finance/commission/progress${qs}`));
 const ids = async (res: Response) => ((await res.json()).rows as Array<{ userId: string }>).map((r) => r.userId).sort();
 
 beforeEach(() => {

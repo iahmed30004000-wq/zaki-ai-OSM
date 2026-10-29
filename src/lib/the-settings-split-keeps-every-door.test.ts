@@ -10,7 +10,7 @@ import { describe, expect, it, vi } from 'vitest';
  * commission.view · commission.manage · settings.delivery_fees · settings.tracking · orders.migrate.
  * Before this change each of those doors asked for settings.manage / settings.edit / settings.view (the
  * migration of past orders: orders.import AND settings.manage). The migration
- * 20261029140000_settings_split_keys gives each box to exactly the roles and people who passed that door.
+ * 20261029150000_settings_split_keys gives each box to exactly the roles and people who passed that door.
  *
  * ⚠️ WHAT THIS FILE IS, SAID PLAINLY. There is no database in CI, so the SQL cannot be run here. Two things are
  * done instead, and neither is the SQL running:
@@ -33,7 +33,7 @@ import { computeEffectiveGrants, legacyEffectiveKeys, SPLIT_FROM_SETTINGS, type 
 import { ALL_ROUTES } from './route-registry';
 import type { SessionUser } from '@/types/auth';
 
-const DIR = path.join(process.cwd(), 'prisma', 'migrations', '20261029140000_settings_split_keys');
+const DIR = path.join(process.cwd(), 'prisma', 'migrations', '20261029150000_settings_split_keys');
 const sql = readFileSync(path.join(DIR, 'migration.sql'), 'utf8');
 const rollback = readFileSync(path.join(DIR, 'rollback.sql'), 'utf8');
 /** The statements, comments dropped. */
@@ -215,7 +215,7 @@ describe('the SQL, read as text', () => {
     const deletes = body.match(/DELETE FROM "\w+"\s+WHERE[^;]+;/g) ?? [];
     expect(deletes).toHaveLength(4);
     for (const d of deletes.slice(0, 3)) expect(d).toContain(`"id" LIKE 'sp4-%'`);
-    expect(deletes[3]).toContain(`'20261029140000_settings_split_keys'`);
+    expect(deletes[3]).toContain(`'20261029150000_settings_split_keys'`);
     expect(new Set(deletes.slice(0, 3).map((d) => d.match(/FROM "(\w+)"/)![1]))).toEqual(new Set(grantTables));
   });
 });

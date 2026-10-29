@@ -112,7 +112,7 @@ describe('the three new order permissions', () => {
  * ═══════════════════════════════════════════════════════════════════════
  * THE TEN SETTINGS BOXES (PR-4) — THE SAME RULE, FOR KEYS GRANTED THROUGH A SNAPSHOT.
  *
- * 20261029140000_settings_split_keys does not write each key's name next to its INSERT: it takes one gate table
+ * 20261029150000_settings_split_keys does not write each key's name next to its INSERT: it takes one gate table
  * («this box ← that key») and every INSERT reads it. So the checks above, which look for a statement naming both the
  * key and its source, cannot see it. The checks below read the gate table itself — and the full replay of the people
  * it touches is in `the-settings-split-keeps-every-door.test.ts`.
@@ -131,7 +131,7 @@ describe('the ten settings boxes', () => {
     'settings.tracking': ['settings.edit'],
     'orders.migrate': ['orders.import', 'settings.manage'],
   };
-  const sql = readFileSync(path.join(MIGRATIONS, '20261029140000_settings_split_keys', 'migration.sql'), 'utf8')
+  const sql = readFileSync(path.join(MIGRATIONS, '20261029150000_settings_split_keys', 'migration.sql'), 'utf8')
     .split('\n')
     .filter((l) => !l.trim().startsWith('--'))
     .join('\n');

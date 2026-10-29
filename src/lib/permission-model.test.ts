@@ -57,7 +57,7 @@ const EXPECTED: ReadonlyArray<readonly [string, string]> = [
   ['landing_pages.create', 'landing_pages.view'], ['landing_pages.edit', 'landing_pages.view'],
   ['landing_pages.delete', 'landing_pages.view'], ['landing_pages.publish', 'landing_pages.view'],
   ['apps.manage', 'apps.view'],
-  // PR-4: the settings doors that got a box each (migration 20261029140000_settings_split_keys). 47 -> 56.
+  // PR-4: the settings doors that got a box each (migration 20261029150000_settings_split_keys). 47 -> 56.
   ['orders.migrate', 'orders.import'], ['offers.rules', 'settings.view'], ['settings.jobs', 'settings.view'],
   ['settings.messages', 'settings.view'], ['settings.delivery_fees', 'settings.view'], ['settings.tracking', 'settings.view'],
   ['penalties.rules', 'settings.view'], ['team.settings', 'settings.view'], ['commission.manage', 'commission.view'],

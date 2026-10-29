@@ -29,7 +29,7 @@ export type Scope = 'ALL_COMPANY' | 'OWN' | 'ASSIGNED' | 'CATEGORY' | 'SPECIFIC'
  * THE BOXES SPLIT OFF THE SETTINGS KEYS (PR-4), AND THE KEY EACH DOOR ASKED BEFORE.
  *
  * `[newKey, sourceKey]`: whoever held the source yesterday holds the new box today. The migration
- * 20261029140000_settings_split_keys writes it into the database from the same list (a test reads the SQL
+ * 20261029150000_settings_split_keys writes it into the database from the same list (a test reads the SQL
  * and this table side by side), and the in-code fallback below applies it to a person with no stored role.
  * The one door that asked for TWO keys (orders.migrate: orders.import AND settings.manage) is not a row here.
  */

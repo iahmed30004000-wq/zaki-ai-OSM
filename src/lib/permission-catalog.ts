@@ -205,7 +205,7 @@ export const PERMISSION_MODULES: CatalogModule[] = [
        * THE DOORS THAT USED TO HIDE BEHIND settings.manage / settings.edit, EACH WITH ITS OWN BOX.
        *
        * Nobody who passed yesterday is stopped on the deploy: the migration
-       * 20261029140000_settings_split_keys gave each box to exactly the roles and people who passed that door,
+       * 20261029150000_settings_split_keys gave each box to exactly the roles and people who passed that door,
        * and carried every «منع». From then on the owner unticks one box without touching the others.
        */
       { key: 'settings.jobs', requires: 'settings.view', ar: 'تشغيل المهام المجدولة وإعادة تفعيلها', en: 'Run and re-enable scheduled jobs' },
