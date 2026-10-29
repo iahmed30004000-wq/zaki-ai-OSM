@@ -50,6 +50,76 @@ export interface ReplacementSource {
   estimatedCostOfGoods: number;
   source: string;
   customerNotes: string | null;
+  /**
+   * WHO SOLD IT AND WHERE IT CAME FROM — all optional, all nullable.
+   *
+   * Optional because the callers hand over the whole order row and a test
+   * hands over a short one; nullable because an order raised in the shop
+   * has no campaign and an imported one has no confirmer. A missing value
+   * is copied as a missing value, never invented.
+   */
+  channelId?: string | null;
+  campaignId?: string | null;
+  landingPageId?: string | null;
+  deviceClass?: string | null;
+  adId?: string | null;
+  adSourceType?: string | null;
+  refCode?: string | null;
+  refCodeAt?: Date | null;
+  touchAt?: Date | null;
+  pageId?: string | null;
+  wabaId?: string | null;
+  conversationRef?: string | null;
+  confirmedById?: string | null;
+  assignedToId?: string | null;
+  assignedAt?: Date | null;
+}
+
+/**
+ * THE COLUMNS THAT SAY WHO SOLD IT AND WHERE THE CUSTOMER CAME FROM.
+ *
+ * The replacement is the same sale in a new order, so it keeps the sale's
+ * name on it. Without these the campaign that paid for the click, the page
+ * the customer ordered from and the person who confirmed it were all left on
+ * the old order — which ends as a return — and the order that finally
+ * delivers belonged to nobody.
+ *
+ * ONLY NAMES, NEVER AMOUNTS. Not one of these is a price, a fee, a discount
+ * or a commission; the figures are built from the lines below by the one COD
+ * function, as before.
+ *
+ * AND WHAT IS LEFT BEHIND ON PURPOSE:
+ *
+ *   · `ctwaClidEnc`, `psidEnc` — sealed, and written by the systems door
+ *     alone (the-attribution-invariants.test.ts holds that).
+ *   · `externalRef` — the OTHER system's name for the old order.
+ *   · `createdById`, `claimedById`, `currentOwnerId` — who entered it, who
+ *     holds its confirmation and who handles it now are all facts about the
+ *     old order's work; the replacement enters at preparation.
+ *   · `confirmedAt` — a replacement is created after its own confirmation
+ *     time would be, and a confirmation-speed report must not read a
+ *     negative.
+ *   · `moderatorCommission` — a legacy money column.
+ */
+export function carriedSale(order: ReplacementSource) {
+  return {
+    channelId: order.channelId ?? null,
+    campaignId: order.campaignId ?? null,
+    landingPageId: order.landingPageId ?? null,
+    deviceClass: order.deviceClass ?? null,
+    adId: order.adId ?? null,
+    adSourceType: order.adSourceType ?? null,
+    refCode: order.refCode ?? null,
+    refCodeAt: order.refCodeAt ?? null,
+    touchAt: order.touchAt ?? null,
+    pageId: order.pageId ?? null,
+    wabaId: order.wabaId ?? null,
+    conversationRef: order.conversationRef ?? null,
+    moderatorId: order.moderatorId,
+    confirmedById: order.confirmedById ?? null,
+    assignedToId: order.assignedToId ?? null,
+    assignedAt: order.assignedAt ?? null,
+  };
 }
 
 export interface ReplacementPlan {
@@ -160,7 +230,8 @@ export async function createReplacement(
       priceIncludesDelivery: order.priceIncludesDelivery ?? undefined,
       productNameSnapshot: order.productNameSnapshot,
       productImageSnapshot: order.productImageSnapshot,
-      moderatorId: order.moderatorId,
+      // The sale's name: moderator, confirmer, assignee, campaign, page.
+      ...carriedSale(order),
       // Cost of goods follows the count: the same units at the same average.
       // Rounded by the currency — `plan.minorUnit` is the same one the
       // money above was computed with.

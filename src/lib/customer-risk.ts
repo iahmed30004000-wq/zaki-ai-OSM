@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { db } from './db';
+import { notSuperseded } from './superseded';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -98,6 +99,7 @@ export async function customerHistory(
     where: {
       companyId,
       ...whose,
+      ...notSuperseded,
       ...(opts.exceptOrderId ? { id: { not: opts.exceptOrderId } } : {}),
     },
     select: {
@@ -116,13 +118,25 @@ export async function customerRisk(tx: Tx, companyId: string, customerId: string
   const since = new Date(now.getTime() - SIX_MONTHS_MS);
   const whose = await samePerson(tx, companyId, customerId);
 
+  /*
+   * A REPLACED ORDER IS NOT A RETURN BY THE CUSTOMER.
+   *
+   * When a parcel is taken back from a courier company, or its goods are
+   * changed after the waybill printed, the old order ends as a return and a
+   * replacement carries the sale on. Counting the old one made a customer
+   * whose parcel merely changed hands look like one who had refused it —
+   * and the reorder even stamps `CUSTOMER_REQUEST` on it. The sale is the
+   * replacement; the old order is left out of both windows, numerator and
+   * denominator. A replacement that is then refused counts, as any order.
+   * (`notSuperseded` is the one definition — a won-back LOSS is not in it.)
+   */
   const [sixMonths, lastTen] = await Promise.all([
     tx.order.findMany({
-      where: { companyId, ...whose, createdAt: { gte: since } },
+      where: { companyId, ...whose, ...notSuperseded, createdAt: { gte: since } },
       select: { shippingStatus: true, returnedAt: true, createdAt: true },
     }),
     tx.order.findMany({
-      where: { companyId, ...whose },
+      where: { companyId, ...whose, ...notSuperseded },
       orderBy: { createdAt: 'desc' },
       take: 10,
       select: { shippingStatus: true, returnedAt: true, createdAt: true },

@@ -1,6 +1,7 @@
 import { db } from './db';
 import { localDay, DEVICE_LABEL, type DeviceClass } from './landing-views';
 import { pageVerdict, type Verdict } from './page-verdict';
+import { notSuperseded } from './superseded';
 
 /**
  * LANDING PAGE ANALYTICS FOR ONE DATE WINDOW — views, orders, conversion;
@@ -81,7 +82,8 @@ export async function landingAnalytics(scope: {
     storeId,
     day: { gte: asDateColumn(localDay(start)), lte: asDateColumn(localDay(end)) },
   };
-  const orderWhere = { companyId, storeId, landingPageId: { not: null }, createdAt: { gte: start, lte: end } };
+  // A replaced order is left out: the replacement carries its page and campaign now, and both would count the one sale.
+  const orderWhere = { companyId, storeId, landingPageId: { not: null }, createdAt: { gte: start, lte: end }, ...notSuperseded };
 
   const first = await db.landingPageView.findFirst({
     where: { companyId, storeId },
@@ -260,7 +262,7 @@ export async function pageNumbersFor(scope: {
   // page would be reported as having CLEARED the floors it never reached.
   for (const id of pageIds) out.set(id, { visitors: 0, orders: 0, delivered: 0, collected: 0 });
 
-  const base = { companyId, storeId, landingPageId: { in: pageIds } };
+  const base = { companyId, storeId, landingPageId: { in: pageIds }, ...notSuperseded };
   const window = { createdAt: { gte: start, lte: end } };
 
   const [views, orders, delivered, collected] = await Promise.all([

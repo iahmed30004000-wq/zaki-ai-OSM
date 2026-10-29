@@ -5,6 +5,7 @@ import { db } from '@/lib/db';
 import { requireCompanyTenant } from '@/lib/auth';
 import { requirePermission } from '@/lib/authorization';
 import { commissionByUserForOrders } from '@/lib/commission';
+import { notSuperseded } from '@/lib/superseded';
 
 export async function GET() {
   try {
@@ -18,6 +19,9 @@ export async function GET() {
       },
       include: {
         assignedOrders: {
+          // A replaced order is not a second order of hers: the replacement
+          // carries her name now (src/lib/superseded.ts).
+          where: notSuperseded,
           select: {
             id: true,
             orderNumber: true,
