@@ -803,21 +803,28 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     // The guard is repeated in the delete itself, so an approval that lands a moment after the check above
     // still stops it: nothing is removed unless the row is STILL unapproved. Lines, receipts and matches
     // follow the statement (onDelete: Cascade).
+    //
+    // AND THE STATEMENT'S ROW IS LOCKED FIRST, the way a parcel swap locks it, and only THEN read. A swap takes the
+    // lock and never edits the row, so a delete that had already begun would finish on its old picture of the
+    // swap rows (a subquery in a delete's own filter is not looked at again once the lock is granted) and throw
+    // the file away from under the sale. Locking before the read puts the two in a line: whichever comes second
+    // reads what the first left.
     const removed = await db.$transaction(async (tx) => {
-      const live = await tx.courierStatement.deleteMany({
-        // …and no swap landed on it a moment ago: the refusal above holds against a press that raced it.
-        where: { id, companyId, storeId, approvedAt: null, status: { not: 'APPROVED' }, matches: { none: swapTiedToLine } },
-      });
-      return live.count;
-    });
-    if (removed === 0) {
-      const swapped = await db.courierStatement.findFirst({
+      await tx.$queryRaw`SELECT "id" FROM "courier_statements" WHERE "id" = ${id} FOR UPDATE`;
+      const swapped = await tx.courierStatement.findFirst({
         where: { id, companyId, storeId },
         select: { matches: { where: swapTiedToLine, select: { id: true }, take: 1 } },
       });
-      if ((swapped?.matches ?? []).length > 0) {
-        return NextResponse.json({ code: 'SWAP_ON_STATEMENT', error: SWAP_BLOCKS_UNDO_AR }, { status: 409 });
-      }
+      if ((swapped?.matches ?? []).length > 0) return 'SWAPPED' as const;
+      const live = await tx.courierStatement.deleteMany({
+        where: { id, companyId, storeId, approvedAt: null, status: { not: 'APPROVED' } },
+      });
+      return live.count;
+    });
+    if (removed === 'SWAPPED') {
+      return NextResponse.json({ code: 'SWAP_ON_STATEMENT', error: SWAP_BLOCKS_UNDO_AR }, { status: 409 });
+    }
+    if (removed === 0) {
       return NextResponse.json(
         { code: 'ALREADY_APPROVED', error: 'اعتُمد الكشف للتو — لم يعد يُلغى. أيّ تصحيح الآن يكون بقيد عكسي.' },
         { status: 409 }

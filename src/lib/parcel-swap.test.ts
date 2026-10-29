@@ -152,6 +152,10 @@ interface World {
   moved: Set<string>;
   /** Runs when a new order is written — the moment another press can land. */
   onCreate?: () => void;
+  /** The thank-you-page upsell rows (OrderAddOn), by order. */
+  addOns: Row[];
+  /** Runs ONCE just before the conditional update of that order — a press that lands after the read and before the write. */
+  beforeOrderUpdate?: Record<string, () => void>;
 }
 
 let seq = 0;
@@ -169,7 +173,7 @@ function makeTx(w: World) {
       const r = w.orders.find((x) => x.replacesOrderId === o.id);
       return r ? { ...r, addOns: [] } : null;
     })(),
-    addOns: [],
+    addOns: w.addOns.filter((a) => a.orderId === o.id),
     moderator: w.users.find((u) => u.id === o.moderatorId) ?? null,
     confirmer: w.users.find((u) => u.id === o.confirmedById) ?? null,
     changeRequests: w.requests.filter((r) => r.orderId === o.id),
@@ -204,6 +208,11 @@ function makeTx(w: World) {
         w.orders.map(enrich).filter((o) => fits(o, where)).slice(0, take ?? 1000)
       ),
       updateMany: vi.fn(async ({ where, data }: { where: Row; data: Row }) => {
+        const hook = w.beforeOrderUpdate?.[where.id as string];
+        if (hook) {
+          delete w.beforeOrderUpdate![where.id as string];
+          hook();
+        }
         const rows = w.orders.filter((r) => fits(enrich(r), where) && !w.moved.has(r.id));
         for (const r of rows) applyData(r, data);
         if (rows.length) wrote('order.updateMany');
@@ -358,6 +367,7 @@ function makeWorld(over: Partial<World> = {}): World {
     locks: [],
     writes: [],
     moved: new Set<string>(),
+    addOns: [],
     ...over,
   };
 }
@@ -964,7 +974,7 @@ describe('the price of the box — through the one COD function, in the currency
 
 describe('the verdicts the dialog and the door share', () => {
   const statement = { storeId: 's1', currencyCode: 'JOD', deliveryProviderId: 'dp1' };
-  const y = { shippingStatus: 'SHIPPED', settlementStatus: 'NOT_APPLICABLE', returnReceipt: null, storeId: 's1', currency: 'JOD', deliveryProviderId: 'dp1' };
+  const y = { shippingStatus: 'SHIPPED', settlementStatus: 'NOT_APPLICABLE', returnReceipt: null, addOns: [], storeId: 's1', currency: 'JOD', deliveryProviderId: 'dp1' };
 
   it('a box that can be swapped has no blocker', () => {
     expect(boxBlockers(y as any, { statement, cancelAsked: true })).toEqual([]);
@@ -1117,5 +1127,145 @@ describe('a press that lands while the swap is being written', () => {
     expect(e.body.code).toBe('PRICE_DRIFT');
     expect(e.body.error).toBe(SWAP_WHY.priceDrift);
     expect(W.customers.find((c) => c.id === 'cuA')!.deliveredOrders).toBe(0);
+  });
+});
+
+
+/* ═════════════════════════════ A BOX WITH AN ADD-ON ═════════════════════════════ */
+
+describe('a box with an add-on is refused whole, before any write', () => {
+  const upsell = { id: 'a1', orderId: 'y', productId: 'p9', productName: 'غطاء', quantity: 1, price: 5, reservedQty: 1 };
+
+  it('Y = two pieces + an upsell piece: the whole box went, the sale would draw 2 — so nothing is recorded', async () => {
+    W.addOns.push(upsell);
+    const e = await refusal(run());
+    expect(e.body.code).toBe('BOX_HAS_ADD_ONS');
+    expect(e.body.error).toBe(SWAP_WHY.boxHasAddOns);
+    expect(W.writes).toEqual([]);
+    expect(W.consumed).toEqual([]);
+    expect(W.released).toEqual([]);
+  });
+
+  it('without the upsell the same swap goes through (the add-on is the only difference)', async () => {
+    const r = await run();
+    expect(r.stock.consumed).toBe(2);
+  });
+
+  it('the dialog says so up front', async () => {
+    W.addOns.push(upsell);
+    const r = await findSwapCandidates(makeTx(W) as any, {
+      companyId: 'c1', storeId: 's1', statementId: 'st1', matchId: 'mY', query: 'JO-2026-0001', minorUnit: 3,
+    });
+    expect(r.box.blockedBy).toContain(SWAP_WHY.boxHasAddOns);
+  });
+
+  it("an upsell on the customer's own order is read and does not matter: the sale is built from the box alone", async () => {
+    W.addOns.push({ ...upsell, id: 'a2', orderId: 'x' });
+    const r = await run();
+    expect(orderOf(r.sale.id).totalAmount).toBe(40);
+    expect(W.consumed).toEqual([{ orderId: r.sale.id, taken: 2 }]);
+  });
+
+  it('the sentence is Arabic', () => {
+    expect(SWAP_WHY.boxHasAddOns).not.toMatch(/[A-Za-z]/);
+  });
+});
+
+/* ═════════════════════════════ A CLAIM LEFT OPEN ON THE COMPANY ═════════════════════════════ */
+
+describe('an order with an open claim on the company is refused — a settlement statement would pay it twice', () => {
+  const claim = (orderId: string, statementId = 'st2'): Row => ({
+    id: `c-${orderId}`, companyId: 'c1', statementId, statementLineId: 'lc', orderId, result: 'MISMATCHED', resolution: 'OURS_STANDS',
+  });
+
+  it("on the customer's order: X was answered «رقمنا» earlier", async () => {
+    W.matches.push(claim('x'));
+    const e = await refusal(run());
+    expect(e.body.code).toBe('OPEN_CLAIM');
+    expect(e.body.error).toBe(SWAP_WHY.openClaim);
+    expect(W.writes).toEqual([]);
+  });
+
+  it("on the box's order", async () => {
+    W.matches.push(claim('y'));
+    expect((await refusal(run())).body.code).toBe('OPEN_CLAIM');
+    expect(W.writes).toEqual([]);
+  });
+
+  it('on THIS statement too — a decision not yet carried out is still a claim', async () => {
+    W.matches.push(claim('x', 'st1'));
+    expect((await refusal(run())).body.code).toBe('OPEN_CLAIM');
+  });
+
+  it('a row answered the other way is not a claim (it is a different refusal: it holds the order)', async () => {
+    W.matches.push({ ...claim('x'), resolution: 'ACCEPTED_COURIER' });
+    expect((await refusal(run())).body.code).toBe('CLAIMED_ELSEWHERE');
+  });
+
+  it('the search greys that customer with the sentence', async () => {
+    W.matches.push(claim('x'));
+    const r = await findSwapCandidates(makeTx(W) as any, {
+      companyId: 'c1', storeId: 's1', statementId: 'st1', matchId: 'mY', query: 'JO-2026-0001', minorUnit: 3,
+    });
+    expect(r.candidates[0].blockedBy).toContain(SWAP_WHY.openClaim);
+  });
+
+  it('the sentence is Arabic', () => {
+    expect(SWAP_WHY.openClaim).not.toMatch(/[A-Za-z]/);
+  });
+});
+
+/* ═════════════════════════════ EACH CONDITION OF EACH CLAIM, ON ITS OWN ═════════════════════════════ */
+
+/*
+ * The tests above play a press that lands by making a write find nothing (`moved`). That proves the code stops when a
+ * claim comes back empty — not that each condition INSIDE the claim is there. These change the row itself between
+ * the read and the write, so only the one condition that notices it can stop the swap: take that condition out and
+ * the swap goes through, and the test goes red.
+ */
+describe('every condition of every claim, one at a time', () => {
+  const stopsOn = async (code: string) => {
+    const e = await refusal(run());
+    expect(e.body.code).toBe(code);
+  };
+
+  it('Y moved on a version', async () => {
+    W.beforeOrderUpdate = { y: () => { orderOf('y').version += 1; } };
+    await stopsOn('ORDER_MOVED');
+  });
+
+  it('Y left the road (a door delivered it)', async () => {
+    W.beforeOrderUpdate = { y: () => { orderOf('y').shippingStatus = 'DELIVERED'; } };
+    await stopsOn('ORDER_MOVED');
+  });
+
+  it('Y was settled by hand', async () => {
+    W.beforeOrderUpdate = { y: () => { orderOf('y').settlementStatus = 'SETTLED'; } };
+    await stopsOn('ORDER_MOVED');
+  });
+
+  it('X moved on a version', async () => {
+    W.beforeOrderUpdate = { x: () => { orderOf('x').version += 1; } };
+    await stopsOn('ORDER_MOVED');
+  });
+
+  it('X was delivered by a door', async () => {
+    W.beforeOrderUpdate = { x: () => { orderOf('x').shippingStatus = 'DELIVERED'; } };
+    await stopsOn('ORDER_MOVED');
+  });
+
+  it('X was settled by hand', async () => {
+    W.beforeOrderUpdate = { x: () => { orderOf('x').settlementStatus = 'SETTLED'; } };
+    await stopsOn('ORDER_MOVED');
+  });
+
+  it('the line was tied to another order in the meantime', async () => {
+    W.onCreate = () => { W.matches[0].orderId = 'someone-else'; };
+    await stopsOn('ORDER_MOVED');
+  });
+
+  it('the line stopped being a difference in the meantime', async () => {
+    W.onCreate = () => { W.matches[0].result = 'MATCHED'; };
+    await stopsOn('ORDER_MOVED');
   });
 });

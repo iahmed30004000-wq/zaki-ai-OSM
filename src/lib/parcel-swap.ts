@@ -80,6 +80,8 @@ export const SWAP_WHY = {
   settled: 'الطلب مُسوّى أصلاً (حُصّل يدوياً أو بكشف)',
   claimedElsewhere: 'الطلب محجوز بكشف آخر',
   claimedHere: 'الطلب محجوز بسطر آخر من هذا الكشف',
+  openClaim: 'على الطلب مطالبة مفتوحة على الشركة — سكّرها أول',
+  boxHasAddOns: 'طلب الصندوق فيه إضافات — ما بيصير نسجّل تبديلو من هون',
   replaced: 'للطلب بديل خرج من المخزن — لا تبديل فوقه',
   moved: 'تغيّر وضع طلب أثناء العمل — حدّث الصفحة وأعد',
   priceDrift: 'تعذّر بناء سعر البديل مطابقاً لسطر الكشف — لم يُكتب شيء',
@@ -181,7 +183,7 @@ export interface Blocker {
  * WHY THIS ORDER'S BOX CANNOT BE SWAPPED — pure, so the dialog says it before the press and the door after it.
  */
 export function boxBlockers(
-  y: Pick<SwapOrder, 'shippingStatus' | 'settlementStatus' | 'returnReceipt' | 'storeId' | 'currency' | 'deliveryProviderId'>,
+  y: Pick<SwapOrder, 'shippingStatus' | 'settlementStatus' | 'returnReceipt' | 'storeId' | 'currency' | 'deliveryProviderId' | 'addOns'>,
   ctx: SwapContext
 ): Blocker[] {
   const out: Blocker[] = [];
@@ -194,6 +196,9 @@ export function boxBlockers(
   if (y.currency !== ctx.statement.currencyCode) out.push({ code: 'OTHER_CURRENCY', error: SWAP_WHY.otherCurrency });
   if (y.deliveryProviderId !== ctx.statement.deliveryProviderId) out.push({ code: 'OTHER_COURIER', error: SWAP_WHY.otherCourier });
   if (!ctx.cancelAsked) out.push({ code: 'BOX_NOT_CANCELLED', error: SWAP_WHY.boxNotCancelled });
+  // The upsell leaves in the same box and is drawn from stock with it; the sale is built from the lines alone, so a
+  // box with an add-on would release more than the sale draws. Refused whole, before any write.
+  if (y.addOns.length > 0) out.push({ code: 'BOX_HAS_ADD_ONS', error: SWAP_WHY.boxHasAddOns });
   return out;
 }
 
@@ -419,6 +424,12 @@ export async function recordParcelSwap(tx: Tx, p: SwapInput): Promise<SwapResult
     },
     select: { orderId: true, statementId: true, statement: { select: { reference: true } } },
   });
+  // A claim on the company («رقمنا هو المعتمد») left open on either order: the sale is paid by this line, and a later
+  // settlement statement would pay the claim again. Any statement, approved or not.
+  const claims = await tx.settlementMatch.count({
+    where: { companyId: p.companyId, orderId: { in: [x.id, y.id] }, resolution: 'OURS_STANDS' },
+  });
+  if (claims > 0) return refuse(409, 'OPEN_CLAIM', SWAP_WHY.openClaim);
   const elsewhere = holders.filter((h) => h.statementId !== p.statementId);
   if (elsewhere.length > 0) {
     const refs = [...new Set(elsewhere.map((h) => h.statement.reference))].join('، ');
@@ -808,6 +819,13 @@ export async function findSwapCandidates(
         select: { orderId: true },
       })
     : [];
+  const claimed = rows.length
+    ? await tx.settlementMatch.findMany({
+        where: { companyId: p.companyId, orderId: { in: rows.map((r) => r.id) }, resolution: 'OURS_STANDS' },
+        select: { orderId: true },
+      })
+    : [];
+  const claimIds = new Set(claimed.map((h) => h.orderId));
   const heldIds = new Set(held.map((h) => h.orderId));
 
   const candidates = rows.map((o): SwapCandidate => {
@@ -819,6 +837,7 @@ export async function findSwapCandidates(
     }
     const blockedBy = ownerBlockers(o, y, ctx).map((b) => b.error);
     if (heldIds.has(o.id)) blockedBy.push(SWAP_WHY.claimedElsewhere);
+    if (claimIds.has(o.id)) blockedBy.push(SWAP_WHY.openClaim);
     return {
       id: o.id,
       orderNumber: o.orderNumber,

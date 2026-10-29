@@ -8,10 +8,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * draws stock before the approval — so a statement that carries one is no longer untouched, and the file cannot be
  * thrown away from under the sale it made.
  *
- * The refusal is also the filter of the delete itself, so it holds against a swap that lands a moment after the check.
+ * The statement's row is locked (FOR UPDATE, as a swap locks it) before the swap rows are read, so a swap and a delete that meet are put in a line: the second one reads what the first left.
  */
-const { db, requireContext, requirePermission, logAudit, removeProofFile } = vi.hoisted(() => ({
+const { db, requireContext, requirePermission, logAudit, removeProofFile, calls } = vi.hoisted(() => ({
   db: { courierStatement: { findFirst: vi.fn(), deleteMany: vi.fn() }, $transaction: vi.fn() },
+  calls: [] as string[],
   requireContext: vi.fn(),
   requirePermission: vi.fn(),
   logAudit: vi.fn(),
@@ -44,9 +45,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   requireContext.mockResolvedValue({ user: { id: 'u1' }, companyId: 'co', storeId: 'st' });
   requirePermission.mockResolvedValue(undefined);
-  db.courierStatement.findFirst.mockResolvedValue(row());
-  db.courierStatement.deleteMany.mockResolvedValue({ count: 1 });
-  db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn({ courierStatement: db.courierStatement }));
+  calls.length = 0;
+  db.courierStatement.findFirst.mockImplementation(async () => { calls.push('read'); return row(); });
+  db.courierStatement.deleteMany.mockImplementation(async () => { calls.push('delete'); return { count: 1 }; });
+  db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+    calls.push('begin');
+    return fn({ courierStatement: db.courierStatement, $queryRaw: vi.fn(async (...a: unknown[]) => { calls.push('lock:' + String((a[0] as string[]).join('?'))); return []; }) });
+  });
 });
 
 describe('an import that carries a parcel swap', () => {
@@ -68,28 +73,43 @@ describe('an import that carries a parcel swap', () => {
     expect(SWAP_BLOCKS_UNDO_AR).not.toMatch(/[A-Za-z]/);
   });
 
-  it('the delete itself repeats it: no swap on the statement at the moment of the write', async () => {
+  it('the statement row is locked BEFORE the swap rows are read and before anything is deleted', async () => {
     await del();
-    expect(db.courierStatement.deleteMany.mock.calls[0][0].where).toMatchObject({
-      approvedAt: null, status: { not: 'APPROVED' }, matches: { none: swapTiedToLine },
-    });
+    // [outer read, begin, lock, read of the swap rows, delete]
+    const lock = calls.findIndex((c) => c.startsWith('lock:'));
+    const inside = calls.indexOf('read', calls.indexOf('begin'));
+    expect(lock).toBeGreaterThan(calls.indexOf('begin'));
+    expect(inside).toBeGreaterThan(lock);
+    expect(calls.indexOf('delete')).toBeGreaterThan(inside);
+    // the same lock a swap takes: FOR UPDATE on the statement row
+    expect(calls[lock]).toContain('courier_statements');
+    expect(calls[lock]).toContain('FOR UPDATE');
   });
 
-  it('a swap that landed between the check and the delete is told as a swap, not as an approval', async () => {
-    db.courierStatement.deleteMany.mockResolvedValue({ count: 0 });
-    db.courierStatement.findFirst.mockResolvedValueOnce(row()).mockResolvedValueOnce({ matches: [{ id: 'm1' }] });
+  it('a swap that committed after the first read but before the lock is granted is seen, and nothing is deleted', async () => {
+    db.courierStatement.findFirst
+      .mockImplementationOnce(async () => { calls.push('read'); return row(); })
+      .mockImplementationOnce(async () => { calls.push('read'); return { matches: [{ id: 'm1' }] }; });
     const res = await del();
     expect(res.status).toBe(409);
     expect((await res.json()).code).toBe('SWAP_ON_STATEMENT');
+    expect(db.courierStatement.deleteMany).not.toHaveBeenCalled();
     expect(logAudit).not.toHaveBeenCalled();
+    expect(removeProofFile).not.toHaveBeenCalled();
   });
 
-  it('and a delete that finds nothing for another reason is still told as an approval', async () => {
-    db.courierStatement.deleteMany.mockResolvedValue({ count: 0 });
-    db.courierStatement.findFirst.mockResolvedValueOnce(row()).mockResolvedValueOnce({ matches: [] });
+  it('a delete that finds nothing for another reason is still told as an approval', async () => {
+    db.courierStatement.deleteMany.mockImplementation(async () => { calls.push('delete'); return { count: 0 }; });
     const res = await del();
     expect(res.status).toBe(409);
     expect((await res.json()).code).toBe('ALREADY_APPROVED');
+  });
+
+  it('the delete keeps its own guard: unapproved, in THIS store', async () => {
+    await del();
+    expect(db.courierStatement.deleteMany.mock.calls[0][0].where).toMatchObject({
+      id: 's1', companyId: 'co', storeId: 'st', approvedAt: null, status: { not: 'APPROVED' },
+    });
   });
 
   it('a statement with no swap on it is taken back as ever', async () => {
