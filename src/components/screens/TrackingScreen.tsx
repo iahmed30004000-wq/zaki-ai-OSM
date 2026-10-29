@@ -505,6 +505,12 @@ export function TrackingScreen() {
    * by the minor unit before sending.
    */
   const netOfChosen = chosen.reduce((sum, o) => sum + Number(o.expectedCollection ?? 0), 0);
+  /*
+   * ONE COURIER PER «استلمت منه» — the same rule as the manual-matching screen (`readChoice`) and the door
+   * (`MIXED_COURIER`). «اختر الكل» ticks every courier's parcels, so without this the press went to the server and
+   * came back 409 inside the dialog. A parcel with no courier named is its own group, as at the door.
+   */
+  const mixedCouriers = new Set(chosen.map((o) => o.deliveryProvider?.id ?? 'none')).size > 1;
 
   return (
     <div className="max-w-6xl space-y-3">
@@ -597,9 +603,13 @@ export function TrackingScreen() {
               <button onClick={() => setSelected({})} className="text-xs text-[var(--sys-muted-foreground)] hover:underline">
                 إلغاء الاختيار
               </button>
+              {mixedCouriers && (
+                <span role="alert" className="text-xs text-[var(--sys-destructive)]">اختر طرود شركة وحدة</span>
+              )}
               <button
                 onClick={() => setCollecting(true)}
-                className="h-11 md:h-8 px-3 rounded-lg bg-[var(--sys-success)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5 mr-auto"
+                disabled={mixedCouriers}
+                className="h-11 md:h-8 px-3 rounded-lg bg-[var(--sys-success)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5 mr-auto disabled:opacity-50"
               >
                 <RiHandCoinLine className="w-4 h-4" /> استلمت منه
               </button>
