@@ -4,7 +4,7 @@ import { requireContext } from '@/lib/geo-context';
 import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { AI_PROVIDERS, saveSystemAi, systemAi } from '@/lib/ai-provider';
-import { allowedHosts, parseLocalEndpoint } from '@/lib/ai-endpoint';
+import { allowedHosts, parseCompatEndpoint, parseCompatModel, parseLocalEndpoint } from '@/lib/ai-endpoint';
 import { logAudit } from '@/lib/audit';
 import { zodMessage } from '@/lib/zod-message';
 
@@ -41,7 +41,7 @@ const schema = z.object({
    * Absent now means «leave it alone». «المزوّد» is the one place that
    * sets the default, and saving an account is saving an account.
    */
-  provider: z.enum(['OPENROUTER', 'OPENAI', 'ANTHROPIC', 'LOCAL']).optional(),
+  provider: z.enum(['OPENROUTER', 'OPENAI', 'ANTHROPIC', 'LOCAL', 'OPENAI_COMPATIBLE']).optional(),
   model: z.string().trim().max(120).optional(),
   /** A key per vendor: a value sets it, null clears it, absent leaves it. */
   providerKeys: z.record(z.string(), z.string().trim().min(8).max(400).nullable()).optional(),
@@ -51,6 +51,14 @@ const schema = z.object({
    * NETWORK it is on, which is a rule with reasons, not a pattern.
    */
   localBaseUrl: z.string().trim().max(300).nullable().optional(),
+  /**
+   * The address of an OpenAI-compatible server on the internet. Validated by
+   * `parseCompatEndpoint`, which takes no allowlist: it is always an outside
+   * party, and nothing in the environment can widen what it accepts.
+   */
+  compatBaseUrl: z.string().trim().max(300).nullable().optional(),
+  /** The name that server answers to. Validated by `parseCompatModel`. */
+  compatModel: z.string().trim().max(120).nullable().optional(),
 });
 
 /**
@@ -127,9 +135,89 @@ export async function PUT(req: Request) {
       }
     }
 
+    /*
+     * THE COMPATIBLE SERVER — checked before anything is written.
+     *
+     * Three things travel together and each can be refused on its own:
+     *   the address (`parseCompatEndpoint`: https, a public name, no IP);
+     *   the model name (letters and digits, never the shape of a key);
+     *   and the key, which is bound to the address it is saved for.
+     * A key left behind after the address changed would be sent to the new
+     * host by the next call, so a changed address with no new key is refused
+     * instead of saved with nothing to talk to it.
+     */
+    const before = await systemAi();
+    let compatBaseUrl: string | null | undefined;
+    if (parsed.data.compatBaseUrl !== undefined) {
+      if (parsed.data.compatBaseUrl === null || parsed.data.compatBaseUrl === '') {
+        compatBaseUrl = null;
+      } else {
+        const checked = parseCompatEndpoint(parsed.data.compatBaseUrl);
+        if (!checked.ok) {
+          return NextResponse.json({ error: checked.message, code: checked.code }, { status: 400 });
+        }
+        compatBaseUrl = checked.url;
+      }
+    }
+
+    let compatModel: string | null | undefined;
+    if (parsed.data.compatModel !== undefined) {
+      if (parsed.data.compatModel === null || parsed.data.compatModel === '') {
+        compatModel = null;
+      } else {
+        const checked = parseCompatModel(parsed.data.compatModel);
+        if (!checked.ok) {
+          return NextResponse.json({ error: checked.message, code: checked.code }, { status: 400 });
+        }
+        // A key pasted into the model box is still a key. The shape check
+        // catches the usual ones; this catches the exact value.
+        const pasted = Object.values(parsed.data.providerKeys ?? {}).filter((v): v is string => !!v);
+        if (pasted.includes(checked.model)) {
+          return NextResponse.json(
+            { error: 'هذا مفتاح لا اسم نموذج — الصقه في خانة المفتاح.', code: 'MODEL_INVALID' },
+            { status: 400 }
+          );
+        }
+        compatModel = checked.model;
+      }
+    }
+
+    const effectiveCompatUrl = compatBaseUrl === undefined ? before.compat.baseUrl : compatBaseUrl;
+    const effectiveCompatModel = compatModel === undefined ? before.compat.model : compatModel;
+    if (effectiveCompatUrl && !effectiveCompatModel) {
+      return NextResponse.json(
+        { error: 'اكتب اسم النموذج كما يعرّفه خادمك.', code: 'MODEL_REQUIRED' },
+        { status: 400 }
+      );
+    }
+    if (parsed.data.provider === 'OPENAI_COMPATIBLE' && !effectiveCompatUrl) {
+      return NextResponse.json(
+        { error: 'اكتب عنوان الخادم الذي يشغّل النموذج قبل اختياره مزوّداً.', code: 'ENDPOINT_REQUIRED' },
+        { status: 400 }
+      );
+    }
+    // A new address is a new place for the key to go. It must come with a key
+    // of its own — the old one is deleted with the old address.
+    const addressChanged = compatBaseUrl !== undefined && compatBaseUrl !== null && compatBaseUrl !== before.compat.baseUrl;
+    if (addressChanged && !parsed.data.providerKeys?.OPENAI_COMPATIBLE) {
+      return NextResponse.json(
+        {
+          error: 'عنوان جديد يلزمه مفتاح جديد — الصق مفتاح هذا الخادم، فالمفتاح القديم لا يُرسَل إلى عنوان غيره.',
+          code: 'KEY_REQUIRED_FOR_NEW_URL',
+        },
+        { status: 400 }
+      );
+    }
+    // A key with no address to bind to has nowhere it could ever be sent.
+    if (parsed.data.providerKeys?.OPENAI_COMPATIBLE && !effectiveCompatUrl) {
+      return NextResponse.json(
+        { error: 'اكتب عنوان الخادم أولاً — المفتاح يُحفظ مع عنوانه.', code: 'ENDPOINT_REQUIRED' },
+        { status: 400 }
+      );
+    }
+
     // A local model with nowhere to send the request saves cleanly and then
     // fails at the moment somebody asks a question. Said now instead.
-    const before = await systemAi();
     if (parsed.data.provider === 'LOCAL' && !(localBaseUrl ?? before.localBaseUrl)) {
       return NextResponse.json(
         { error: 'اكتب عنوان الخادم الذي يشغّل النموذج قبل اختياره مزوّداً.', code: 'ENDPOINT_REQUIRED' },
@@ -139,8 +227,17 @@ export async function PUT(req: Request) {
 
     let saved;
     try {
-      saved = await saveSystemAi({ ...parsed.data, localBaseUrl }, user.id);
+      saved = await saveSystemAi({ ...parsed.data, localBaseUrl, compatBaseUrl, compatModel }, user.id);
     } catch (e) {
+      if (e instanceof Error && e.message === 'COMPAT_ENDPOINT_REQUIRED') {
+        // Thrown inside the row lock when a key arrives with no address to be
+        // bound to. The checks above catch it first; this is the same answer
+        // if the document changed between them and the write.
+        return NextResponse.json(
+          { error: 'اكتب عنوان الخادم أولاً — المفتاح يُحفظ مع عنوانه.', code: 'ENDPOINT_REQUIRED' },
+          { status: 400 }
+        );
+      }
       if (e instanceof Error && e.message === 'ENCRYPTION_KEY_MISSING') {
         // Refusing is the safe failure: a key stored in the clear is worse
         // than no AI at all.
@@ -166,6 +263,8 @@ export async function PUT(req: Request) {
         provider: before.provider,
         model: before.model,
         localBaseUrl: before.localBaseUrl,
+        compatBaseUrl: before.compat.baseUrl,
+        compatModel: before.compat.model,
         // WHICH vendors held a key, never any part of one.
         configured: Object.entries(before.providerKeys).filter(([, v]) => v.configured).map(([k]) => k),
       },
@@ -173,6 +272,8 @@ export async function PUT(req: Request) {
         provider: saved.provider,
         model: saved.model,
         localBaseUrl: saved.localBaseUrl,
+        compatBaseUrl: saved.compat.baseUrl,
+        compatModel: saved.compat.model,
         configured: Object.entries(saved.providerKeys).filter(([, v]) => v.configured).map(([k]) => k),
         // That keys moved, and for which vendors. Never their values.
         keysTouched: Object.keys(parsed.data.providerKeys ?? {}),

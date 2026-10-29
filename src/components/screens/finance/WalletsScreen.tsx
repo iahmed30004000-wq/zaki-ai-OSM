@@ -52,6 +52,8 @@ interface Movement {
   createdByName: string | null;
   isReversal: boolean;
   wasReversed: boolean;
+  /** What wrote it: «EXPENSE» is a movement of an expense, whose reversal also cancels the expense. */
+  referenceType?: string | null;
 }
 
 const CATEGORY_AR: Record<string, string> = {
@@ -770,6 +772,13 @@ function ReverseDialog({
           ({movement.direction === 'IN' ? 'صادر' : 'وارد'}) مرتبطاً بالحركة الأصلية.
           القيد الأصلي لا يُحذف ولا يُعدَّل.
         </p>
+
+        {movement.referenceType === 'EXPENSE' && (
+          <p className="text-sm text-[var(--sys-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3">
+            هذه حركة مصروف: عكسها يُلغي المصروف من الربح أيضاً، ويبقى في سجل المصاريف مكتوباً «ملغى».
+            يحتاج صلاحية «تعديل المالية».
+          </p>
+        )}
 
         <label className="block">
           <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">سبب القيد العكسي (إلزامي)</span>

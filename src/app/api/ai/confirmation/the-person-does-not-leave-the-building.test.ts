@@ -144,6 +144,21 @@ describe('on a vendor that is not ours', () => {
   });
 });
 
+describe('on an OpenAI-compatible server — an outside party, whatever its address says', () => {
+  beforeEach(() => {
+    describeRoute.mockResolvedValue({ provider: 'OPENAI_COMPATIBLE', model: 'glm-4.6', keyFrom: 'system', baseUrl: 'models.example.com' });
+  });
+
+  it('the name and the notes are absent from the payload, and it says it redacted', async () => {
+    await ask();
+    const sent = sentToModel();
+    expect(sent, 'اسم الزبون راح لخادم متوافق مع OpenAI').not.toContain('سامر');
+    expect(sent, 'ملاحظات البائع راحت لخادم متوافق مع OpenAI').not.toContain('مدرسة الشامل');
+    expect(sent).toContain('hasNotes');
+    expect(aiChat.mock.calls[0][0].piiSafe).toBe(true);
+  });
+});
+
 describe('on the owner’s own server', () => {
   beforeEach(() => {
     describeRoute.mockResolvedValue({ provider: 'LOCAL', model: 'llama3.1:8b', keyFrom: 'none', baseUrl: 'http://127.0.0.1:11434' });

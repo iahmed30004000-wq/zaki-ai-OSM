@@ -36,8 +36,8 @@ const FIELD =
 
 export function PerformanceSettingsCard() {
   const toast = useToast();
-  // The thresholds are «الإعدادات الحسّاسة»: seen by whoever opens the page, changed by whoever holds that key.
-  const canManage = useCan('settings.manage');
+  // The thresholds are «تعديل عتبات أداء الفريق»: seen by whoever opens the page, changed by whoever holds that key.
+  const canManage = useCan('team.settings');
   const [settings, setSettings] = useState<PerformanceSettings | null>(null);
   const [weights, setWeights] = useState<Weight[]>([]);
   const [busy, setBusy] = useState(false);
@@ -172,7 +172,7 @@ export function PerformanceSettingsCard() {
           </label>
         </div>
 
-        {!canManage && <p className="text-xs text-[var(--sys-muted)]">قراءة فقط — التعديل لمن عنده «الإعدادات الحسّاسة».</p>}
+        {!canManage && <p className="text-xs text-[var(--sys-muted)]">قراءة فقط — التعديل لمن عنده «تعديل عتبات أداء الفريق».</p>}
         {canManage && (
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" onClick={save} disabled={busy}>

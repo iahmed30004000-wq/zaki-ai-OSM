@@ -1,6 +1,7 @@
 import { db } from '../db';
 import { isAutoApplicable, type CourierEvent } from './types';
-import { isValidShippingTransition, STATUS_TIMESTAMP } from '../shipping-workflow';
+import { COURIER_SAID, courierSaidWord } from './courier-said';
+import { isValidShippingTransition, SHIPPING_STATUS_AR, STATUS_TIMESTAMP } from '../shipping-workflow';
 
 /**
  * ONE PLACE WHERE A COURIER'S WORD CHANGES AN ORDER.
@@ -15,7 +16,9 @@ import { isValidShippingTransition, STATUS_TIMESTAMP } from '../shipping-workflo
  * The order of the guards matters:
  *   1. Can a machine assert this at all? DELIVERED, RETURNED,
  *      PARTIALLY_DELIVERED and CANCELLED move money or reverse it, and only
- *      the person at the door knows which. They wait for a human.
+ *      the person at the door knows which. They wait for a human — and
+ *      FAILED_DELIVERY waits with them (see NOTE_ONLY below). Their word is
+ *      kept as a line on the order's timeline, never as a status.
  *   2. Is it news? The same status arriving twice is not a change, and a
  *      webhook retried three times must not write three activity rows.
  *   3. Is the move legal? The transition machine decides, never the feed.
@@ -51,6 +54,17 @@ export interface ApplyTarget {
 
 const FEED_STAMPS = new Set(['shippedAt', 'outForDeliveryAt', 'failedAt']);
 
+/**
+ * A FEED NEVER WRITES «FAILED» EITHER.
+ *
+ * LogesTechs says «مؤجلة» (POSTPONED_DELIVERY) for a delivery put off — often because the customer asked for it. The
+ * map turns that into FAILED_DELIVERY, and a failed delivery is not a harmless label here: it is a pending return on
+ * the returns desk, it counts against the customer's risk (two in sixty days read HIGH and ask for prepayment), and
+ * it is a dead end for the polling itself (FAILED can only go back out through SHIPPED). The courier's word is kept
+ * as a note; the person at the door, who knows whether the attempt failed, writes the status.
+ */
+const NOTE_ONLY = new Set<string>(['FAILED_DELIVERY']);
+
 export async function applyCourierEvent(input: {
   order: ApplyTarget;
   event: CourierEvent;
@@ -61,7 +75,10 @@ export async function applyCourierEvent(input: {
   const { order, event, courierName, source } = input;
 
   if (event.status === null) return 'UNKNOWN_STATUS';
-  if (!isAutoApplicable(event)) return 'NOT_AUTO_APPLICABLE';
+  if (!isAutoApplicable(event) || NOTE_ONLY.has(event.status)) {
+    await keepWhatTheCourierSaid(input);
+    return 'NOT_AUTO_APPLICABLE';
+  }
   if (event.status === order.shippingStatus) return 'NO_CHANGE';
   if (!isValidShippingTransition(order.shippingStatus, event.status)) return 'INVALID_TRANSITION';
 
@@ -69,11 +86,21 @@ export async function applyCourierEvent(input: {
   const stamp =
     field && FEED_STAMPS.has(field) && (order as unknown as Record<string, unknown>)[field] === null ? { [field]: new Date() } : {};
 
-  await db.$transaction(async (tx) => {
-    await tx.order.update({
-      where: { id: order.id },
+  const moved = await db.$transaction(async (tx) => {
+    /*
+     * COMPARE-AND-SET ON THE STATUS THE DECISION WAS MADE FROM.
+     *
+     * The poll reads an order, then spends seconds to minutes asking the courier before it gets here. Updating by id
+     * alone let a late answer overwrite what the door or a statement wrote in between — a parcel delivered at the door
+     * walked back to «خرج للتوصيل» with its delivery time and its stock already taken. Now the write happens only if
+     * the order is still in the status we read; otherwise nothing is written, no activity row and no flag, and the
+     * next sweep asks again from the truth.
+     */
+    const changed = await tx.order.updateMany({
+      where: { id: order.id, shippingStatus: order.shippingStatus },
       data: { shippingStatus: event.status!, version: { increment: 1 }, ...stamp },
     });
+    if (changed.count === 0) return false;
     await tx.orderActivity.create({
       data: {
         companyId: order.companyId,
@@ -106,7 +133,60 @@ export async function applyCourierEvent(input: {
       where: { orderId: order.id, status: 'PENDING', changedDuringReview: false },
       data: { changedDuringReview: true },
     });
+    return true;
   });
 
-  return 'APPLIED';
+  return moved ? 'APPLIED' : 'NO_CHANGE';
+}
+
+/**
+ * KEEP THE COURIER'S WORD AS A LINE ON THE ORDER — AND NOTHING ELSE (RV144).
+ *
+ * One `orderActivity` row, no status, no amount, no timestamp. The same word twice in a row (a poll asks every two
+ * minutes) is one line, not a column of them. A note that cannot be written never stops the sweep: the parcels behind
+ * it still need their turn, and the word comes again in two minutes.
+ */
+async function keepWhatTheCourierSaid(input: {
+  order: ApplyTarget;
+  event: CourierEvent;
+  courierName: string;
+  source: 'POLL' | 'WEBHOOK';
+}): Promise<void> {
+  const { order, event, courierName, source } = input;
+  if (event.status === null || event.status === order.shippingStatus) return;
+  try {
+    const last = await db.orderActivity.findFirst({
+      where: { orderId: order.id, action: COURIER_SAID },
+      orderBy: { createdAt: 'desc' },
+      select: { newStatus: true, metadata: true },
+    });
+    if (last && last.newStatus === event.status && rawStatusOf(last.metadata) === event.rawStatus) return;
+    await db.orderActivity.create({
+      data: {
+        companyId: order.companyId,
+        orderId: order.id,
+        userId: null, // the courier's feed, not a person
+        action: COURIER_SAID,
+        previousStatus: order.shippingStatus,
+        newStatus: event.status,
+        metadata: JSON.stringify({
+          courier: courierName,
+          rawStatus: event.rawStatus,
+          courierSaid: courierSaidWord(event.note, SHIPPING_STATUS_AR[event.status]),
+          via: source,
+        }),
+      },
+    });
+  } catch {
+    /* see above: best effort */
+  }
+}
+
+function rawStatusOf(metadata: string | null): string | null {
+  try {
+    const parsed = metadata ? JSON.parse(metadata) : null;
+    return parsed && typeof parsed.rawStatus === 'string' ? parsed.rawStatus : null;
+  } catch {
+    return null;
+  }
 }

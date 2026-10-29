@@ -45,8 +45,8 @@ const FIELD =
 
 export function PenaltyRulesCard() {
   const toast = useToast();
-  // Adding a rule and switching one are «الإعدادات الحسّاسة»: the rules are seen by whoever opens the page.
-  const canManage = useCan('settings.manage');
+  // Adding a rule and switching one are «تعديل قواعد الخصومات»: the rules are seen by whoever opens the page.
+  const canManage = useCan('penalties.rules');
   const [kinds, setKinds] = useState<Kind[]>([]);
   const [roles, setRoles] = useState<string[]>([]);
   const [rules, setRules] = useState<Rule[] | null>(null);
@@ -175,7 +175,7 @@ export function PenaltyRulesCard() {
           );
         })}
 
-        {!canManage && <p className="text-xs text-[var(--sys-muted)]">قراءة فقط — التعديل لمن عنده «الإعدادات الحسّاسة».</p>}
+        {!canManage && <p className="text-xs text-[var(--sys-muted)]">قراءة فقط — التعديل لمن عنده «تعديل قواعد الخصومات».</p>}
         {canManage && (
         <div className="rounded-lg border border-[var(--sys-border)] p-2.5">
           <div className="flex flex-wrap items-end gap-2">

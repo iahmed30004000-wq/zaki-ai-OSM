@@ -118,22 +118,25 @@ EXPOSE 3000
 # and start the new one, and it cannot wait for «ready» because it was
 # never told what ready means.
 #
-# `/api/health` is the route written for this (src/app/api/health/route.ts):
-# no session, nothing interpolated into the body, one indexed query at most
-# once per five seconds, 200 while the app can do its job and 503 only when
-# the database is unreachable. A late worker deliberately does NOT turn it
-# red — restarting the website does not fix the worker, and a probe that
-# restarts the wrong process manufactures the outage it was added to catch.
+# `/api/health/live` is the route written for this (src/app/api/health/live/
+# route.ts): no session, nothing read, nothing interpolated into the body. It
+# answers 200 while the PROCESS can answer, and nothing else — not the
+# database, not the worker. The container's check asks «should this process
+# be restarted or pulled from rotation?», and a slow or briefly unreachable
+# database is not a reason for either: three slow answers in a row turned a
+# database that was merely slow into a website that was down. The database
+# question has its own door, `/api/health` (503 when the database is
+# unreachable), which the uptime monitor and Coolify's own health-check
+# setting (docs/ops/DEPLOY.md) ask from outside. A late worker likewise
+# stays out of both: restarting the website does not fix the worker.
 #
 # --start-period=120s: the entrypoint runs `prisma migrate deploy` before
 #   the server listens, and on a server that is also building an image that
 #   is the slowest part of the start. Nothing inside this window counts as
 #   a failure.
-# --interval=30s with the route's own 5-second cache: at most one database
-#   query every 30 seconds, which is cheaper than the uptime monitor
-#   already polling the same URL.
+# --interval=30s: one in-memory answer every 30 seconds, no query.
 # --retries=3: a single refused connection during a long migration or a
 #   brief database blip is not a dead container. Three in a row is.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 CMD wget -qO- http://127.0.0.1:3000/api/health >/dev/null 2>&1 || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 CMD wget -qO- http://127.0.0.1:3000/api/health/live >/dev/null 2>&1 || exit 1
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

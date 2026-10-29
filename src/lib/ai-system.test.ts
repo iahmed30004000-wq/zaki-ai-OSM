@@ -326,6 +326,14 @@ describe('the shape of the thing', () => {
     expect(src).toMatch(/parseLocalEndpoint\(parsed\.data\.localBaseUrl, allowedHosts\(\)\)/);
   });
 
+  it('and the address of a compatible server is checked by a rule that takes no allowlist', () => {
+    const src = stripComments(repoFile('src/app/api/settings/ai/system/route.ts'));
+    expect(src).toMatch(/parseCompatEndpoint\(parsed\.data\.compatBaseUrl\)/);
+    expect(src).not.toMatch(/parseCompatEndpoint\([^)]*allowedHosts/);
+    // And the model name is checked too, beside the key it must not be.
+    expect(src).toMatch(/parseCompatModel\(parsed\.data\.compatModel\)/);
+  });
+
   it('and only a system administrator may write them', () => {
     const src = stripComments(repoFile('src/app/api/settings/ai/system/route.ts'));
     // The exact comparison, not merely the word: `if (role)` mentions

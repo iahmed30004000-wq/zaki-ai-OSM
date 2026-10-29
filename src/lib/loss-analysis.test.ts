@@ -274,7 +274,11 @@ describe('the money on the report is an invoice, not an estimate', () => {
   });
 
   it('and is gated like every other figure on that screen', () => {
-    expect(route()).toContain("requirePermission('analytics.view')");
+    // «عرض التقارير» (29/10) — the same key as the numbers above it; «analytics.view» is retired,
+    // and «dashboard.view» (held by nearly every role) would widen who reads the company's figures.
+    expect(route()).toContain("requirePermission('reports.view')");
+    expect(route()).not.toContain('dashboard.view');
+    expect(route()).not.toContain('analytics.view');
   });
 });
 

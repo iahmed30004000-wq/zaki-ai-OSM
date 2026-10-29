@@ -14,15 +14,15 @@ import { typed } from '@/lib/text-search';
 export async function GET(req: Request) {
   try {
     await requirePermission('whatsapp.view');
-    const { companyId } = await requireCompanyTenant();
+    // Once: this door is polled every few seconds, and each call re-reads the user,
+    // the role and the grants (RV182/RV183).
+    const { companyId, user } = await requireCompanyTenant();
     const { searchParams } = new URL(req.url);
 
     const status = searchParams.get('status') === 'CLOSED' ? 'CLOSED' : 'OPEN';
     const assigned = searchParams.get('assigned')?.trim() || '';
     const q = searchParams.get('q')?.trim() || '';
     const cursor = searchParams.get('cursor')?.trim() || '';
-
-    const { user } = await requireCompanyTenant();
     const where: any = { companyId, status };
     if (assigned === 'me') where.assignedUserId = user.id;
     else if (assigned === 'unassigned') where.assignedUserId = null;

@@ -51,7 +51,7 @@ export async function GET() {
 export async function PUT(req: Request) {
   try {
     const { user, companyId } = await requireContext();
-    await requirePermission('settings.manage');
+    await requirePermission('offers.rules');
 
     const before = await postOrderOfferSettings(companyId);
     // Parsed, clamped and narrowed by the settings module: anything that is

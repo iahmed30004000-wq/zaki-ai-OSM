@@ -89,7 +89,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const { user, companyId } = await requireContext();
-    await requirePermission('settings.manage');
+    await requirePermission('settings.jobs');
 
     const parsed = runSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {

@@ -671,7 +671,7 @@
   },
   "src/components/screens/AiSettingsScreen.tsx": {
     "buttons": 8,
-    "inputs": 4,
+    "inputs": 6,
     "columns": 0,
     "cards": 0,
     "modals": 0,
@@ -893,7 +893,7 @@
     "buttons": 3,
     "inputs": 0,
     "columns": 5,
-    "cards": 3,
+    "cards": 4,
     "modals": 0,
     "icons": 6,
     "links": 3,
@@ -1060,11 +1060,11 @@
     "tabs": 0
   },
   "src/components/screens/FinanceProfitScreen.tsx": {
-    "buttons": 3,
-    "inputs": 6,
-    "columns": 5,
+    "buttons": 6,
+    "inputs": 7,
+    "columns": 6,
     "cards": 4,
-    "modals": 1,
+    "modals": 2,
     "icons": 1,
     "links": 0,
     "tabs": 0
@@ -1203,7 +1203,7 @@
     "buttons": 1,
     "inputs": 0,
     "columns": 12,
-    "cards": 5,
+    "cards": 6,
     "modals": 0,
     "icons": 7,
     "links": 0,

@@ -45,7 +45,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   try {
     const { id } = await params;
     const { user, companyId } = await requireCompanyTenant();
-    await requirePermission('settings.edit');
+    await requirePermission('settings.tracking');
 
     const pixel = await db.trackingPixel.findFirst({ where: { id, companyId } });
     if (!pixel) return NextResponse.json({ error: 'Pixel not found', errorAr: 'البكسل غير موجود. أعد تحميل الصفحة.' }, { status: 404 });
@@ -164,7 +164,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   try {
     const { id } = await params;
     const { user, companyId } = await requireCompanyTenant();
-    await requirePermission('settings.edit');
+    await requirePermission('settings.tracking');
 
     const pixel = await db.trackingPixel.findFirst({ where: { id, companyId } });
     if (!pixel) return NextResponse.json({ error: 'Pixel not found', errorAr: 'البكسل غير موجود. أعد تحميل الصفحة.' }, { status: 404 });

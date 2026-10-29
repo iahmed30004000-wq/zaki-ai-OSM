@@ -4,6 +4,7 @@ import { db } from './db';
 import { codForOrder, resolveDeliveryFee } from './delivery-fees';
 import { formatMoney } from './money';
 import { placeLine } from './address';
+import { formatPhoneNumber } from './phone';
 import type { LabelBatch } from './labels';
 import type { LabelView } from './label-sheet';
 import { isAutomated, type ProviderLike } from './couriers';
@@ -154,8 +155,20 @@ async function qrSvg(value: string): Promise<string> {
   return QRCode.toString(value, { type: 'svg', errorCorrectionLevel: 'M', margin: 4 });
 }
 
+/**
+ * THE SECOND NUMBER, AS A DRIVER DIALS IT.
+ *
+ * The storefront stores the second number canonical, its trunk zero stripped («0988777666» becomes «988777666»), and
+ * there is no as-typed copy of it. The label printed it as stored, so the second line read a number nobody can dial.
+ * It is written back in the store country's form — the same call the dispatch makes for the courier's API — and a
+ * number already typed with its zero comes out unchanged. A store with no known country leaves it as it is.
+ */
+export function altPhoneForLabel(altPhone: string | null | undefined, countryCode?: string | null): string {
+  return altPhone ? formatPhoneNumber(altPhone, countryCode) : '';
+}
+
 /** One order, as its label shows it. */
-export async function toLabelView(order: WaybillOrder, minorUnit: number): Promise<LabelView> {
+export async function toLabelView(order: WaybillOrder, minorUnit: number, countryCode?: string | null): Promise<LabelView> {
   const ref = order.merchantRef ?? order.orderNumber;
   const c = order.customer;
   const cod = await waybillCod(order, minorUnit);
@@ -165,7 +178,7 @@ export async function toLabelView(order: WaybillOrder, minorUnit: number): Promi
     ref,
     courierCode: order.trackingNumber || ref,
     name: c.fullName,
-    phones: [c.rawPhone || c.phone, c.altPhone ?? ''].filter(Boolean),
+    phones: [c.rawPhone || c.phone, altPhoneForLabel(c.altPhone, countryCode)].filter(Boolean),
     place: placeLine(order.region?.name, c.city, order.deliveryAddress ?? c.address),
     items: [
       ...order.items.map((i) => ({ name: i.productName, qty: i.quantity + i.freeQuantity })),

@@ -3,6 +3,9 @@ import {
   allowedHosts,
   chatCompletionsUrl,
   classifyHost,
+  looksLikeSecret,
+  parseCompatEndpoint,
+  parseCompatModel,
   parseLocalEndpoint,
 } from './ai-endpoint';
 
@@ -221,5 +224,176 @@ describe('chatCompletionsUrl', () => {
 
   it('is not confused by a trailing slash', () => {
     expect(chatCompletionsUrl('http://localhost:11434/')).toBe('http://localhost:11434/v1/chat/completions');
+  });
+});
+
+/**
+ * THE ADDRESS OF A SERVER ON THE INTERNET THAT THE SERVER ITSELF WILL DIAL.
+ *
+ * `parseLocalEndpoint` accepts what is private and refuses the rest.
+ * `parseCompatEndpoint` has the opposite problem — it must accept only a
+ * public NAME — and `classifyHost` answers `public` for anything it does not
+ * recognise, so a validator written as «refuse private» would let through
+ * exactly the spellings nobody thought of. Every refusal below is a way
+ * somebody would try, and each has its own assertion that it IS refused.
+ */
+const codeOf = (raw: string | null | undefined) => {
+  const r = parseCompatEndpoint(raw);
+  expect(r.ok, String(raw)).toBe(false);
+  return r.ok ? null : r.code;
+};
+
+describe('parseCompatEndpoint — what is accepted', () => {
+  it('a public https name, with the query and fragment dropped and no trailing slash', () => {
+    const r = parseCompatEndpoint('https://models.example.com/v1/?token=x#frag');
+    expect(r).toEqual({ ok: true, url: 'https://models.example.com/v1', host: 'models.example.com' });
+  });
+
+  it('keeps a port and a nested path', () => {
+    const r = parseCompatEndpoint('https://glm.example.org:8443/api/paas/v4');
+    expect(r.ok && r.url).toBe('https://glm.example.org:8443/api/paas/v4');
+  });
+
+  it('chatCompletionsUrl turns it into the chat endpoint', () => {
+    const r = parseCompatEndpoint('https://models.example.com/v1');
+    expect(r.ok && chatCompletionsUrl(r.url)).toBe('https://models.example.com/v1/chat/completions');
+  });
+});
+
+describe('parseCompatEndpoint — the scheme and the credentials', () => {
+  it('empty and malformed', () => {
+    expect(codeOf('')).toBe('EMPTY');
+    expect(codeOf(null)).toBe('EMPTY');
+    expect(codeOf('models.example.com/v1')).toBe('MALFORMED');
+    expect(codeOf('https://')).toBe('MALFORMED');
+  });
+
+  it('http is refused — the key rides on this request', () => {
+    expect(codeOf('http://models.example.com/v1')).toBe('NOT_HTTPS');
+    expect(codeOf('ftp://models.example.com/v1')).toBe('NOT_HTTPS');
+    expect(codeOf('file:///etc/passwd')).toBe('NOT_HTTPS');
+  });
+
+  it('a user and password inside the address are refused', () => {
+    expect(codeOf('https://user:pass@models.example.com/v1')).toBe('CREDENTIALS');
+    expect(codeOf('https://user@models.example.com/v1')).toBe('CREDENTIALS');
+  });
+});
+
+describe('parseCompatEndpoint — every IP literal, in every spelling', () => {
+  it('loopback is refused as the private network it is', () => {
+    expect(codeOf('https://127.0.0.1/v1')).toBe('PRIVATE');
+    expect(codeOf('https://[::1]/v1')).toBe('PRIVATE');
+    expect(codeOf('https://localhost/v1')).toBe('PRIVATE');
+  });
+
+  it('the cloud metadata address is named for what it is', () => {
+    expect(codeOf('https://169.254.169.254/latest/meta-data')).toBe('METADATA');
+    expect(codeOf('https://[::ffff:a9fe:a9fe]/')).toBe('METADATA');
+  });
+
+  it('the private ranges', () => {
+    for (const h of ['10.0.0.5', '192.168.1.2', '172.16.0.1', '100.64.0.1']) {
+      expect(codeOf(`https://${h}/v1`), h).toBe('PRIVATE');
+    }
+  });
+
+  it('the same loopback address written as hexadecimal or as one decimal number', () => {
+    // WHATWG rewrites both to 127.0.0.1 before this function sees a host.
+    expect(codeOf('https://0x7f000001/v1')).toBe('PRIVATE');
+    expect(codeOf('https://2130706433/v1')).toBe('PRIVATE');
+    expect(codeOf('https://127.1/v1')).toBe('PRIVATE');
+  });
+
+  it('and the addresses classifyHost would have called «public» and let in', () => {
+    // Each of these is a reason the accepting branch cannot be «not private».
+    for (const h of ['0.0.0.0', '[::]', '[::7f00:1]', '[64:ff9b::7f00:1]', '255.255.255.255', '240.0.0.1', '8.8.8.8', '[2606:4700::1111]']) {
+      expect(parseCompatEndpoint(`https://${h}/v1`).ok, h).toBe(false);
+    }
+    expect(codeOf('https://8.8.8.8/v1')).toBe('IP_LITERAL');
+  });
+});
+
+describe('parseCompatEndpoint — a name must look like a public name', () => {
+  it('a trailing dot is not accepted', () => {
+    expect(codeOf('https://localhost./v1')).toBe('BAD_HOST');
+    expect(codeOf('https://models.example.com./v1')).toBe('BAD_HOST');
+  });
+
+  it('a single word — a Docker service name — is not accepted', () => {
+    expect(codeOf('https://salesflow-db/v1')).toBe('BAD_HOST');
+    expect(codeOf('https://salesflow-postgres:5432/v1')).toBe('BAD_HOST');
+    expect(codeOf('https://ollama/v1')).toBe('BAD_HOST');
+  });
+
+  it('an ending that is not letters is not accepted', () => {
+    // A numeric ending makes the URL parser read an IPv4 address and fail.
+    expect(parseCompatEndpoint('https://models.example.123/v1').ok).toBe(false);
+    expect(codeOf('https://models.e/v1')).toBe('BAD_HOST');
+    expect(codeOf('https://models.example.c0m/v1')).toBe('BAD_HOST');
+  });
+
+  it('the endings that exist only on a private network', () => {
+    for (const h of ['box.local', 'gpu.internal', 'router.lan', 'a.b.corp', 'srv.home.arpa', 'x.localhost', 'a.test', 'a.invalid', 'a.example', 'nas.home', 'a.intranet', 'a.localdomain']) {
+      expect(parseCompatEndpoint(`https://${h}/v1`).ok, h).toBe(false);
+    }
+    expect(codeOf('https://box.lan/v1')).toBe('RESERVED_HOST');
+  });
+
+  it('an environment allowlist cannot widen it — the function takes none', () => {
+    const before = process.env.AI_LOCAL_ALLOWED_HOSTS;
+    process.env.AI_LOCAL_ALLOWED_HOSTS = 'box.local,10.0.0.5,models.internal';
+    try {
+      expect(allowedHosts()).toContain('box.local');
+      expect(parseCompatEndpoint('https://box.local/v1').ok).toBe(false);
+      expect(parseCompatEndpoint('https://10.0.0.5/v1').ok).toBe(false);
+      expect(parseCompatEndpoint('https://models.internal/v1').ok).toBe(false);
+      expect(parseCompatEndpoint.length).toBe(1);
+    } finally {
+      if (before === undefined) delete process.env.AI_LOCAL_ALLOWED_HOSTS;
+      else process.env.AI_LOCAL_ALLOWED_HOSTS = before;
+    }
+  });
+
+  it('a token in the path is refused — it would be stored and shown in the clear', () => {
+    expect(codeOf('https://models.example.com/sk-test-3f9a2b7c-1d4e-4b8a-9c0d-aaaaaaaaaaaa/v1')).toBe('PATH_SECRET');
+    expect(codeOf('https://models.example.com/v1/Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MA')).toBe('PATH_SECRET');
+    expect(parseCompatEndpoint('https://models.example.com/compatible-mode/v1').ok).toBe(true);
+  });
+});
+
+describe('parseCompatModel and looksLikeSecret', () => {
+  it('real model names are accepted', () => {
+    for (const m of ['glm-4.6', 'Qwen/Qwen2.5-72B-Instruct', 'meta-llama/llama-3.3-70b-instruct:free', 'claude-haiku-4-5-20251001', 'mistral-small-latest']) {
+      expect(parseCompatModel(m), m).toEqual({ ok: true, model: m });
+    }
+  });
+
+  it('empty is refused', () => {
+    expect(parseCompatModel('  ').ok).toBe(false);
+    expect(parseCompatModel(null).ok).toBe(false);
+  });
+
+  it('characters outside the pattern, spaces and 121 characters are refused', () => {
+    for (const m of ['glm 4.6', 'glm;rm', 'نموذج', 'a'.repeat(121), 'glm<script>', 'glm\\n4']) {
+      expect(parseCompatModel(m).ok, m).toBe(false);
+    }
+  });
+
+  it('the shape of a key is refused, in whichever format it comes', () => {
+    for (const m of [
+      'sk-test-aaaa1111-bbbb2222-cccc3333',
+      'gw.test-LEAKMARKER-9f8e7d6c5b',
+      'key_test_abcdef',
+      'Bearer-abc',
+      'ghp_abcdefghijklmnop',
+      'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6',
+      '3f9a2b7c-1d4e-4b8a-9c0d-5e6f7a8b9c0d',
+    ]) {
+      const r = parseCompatModel(m);
+      expect(r.ok, m).toBe(false);
+      expect(r.ok ? '' : r.code).toBe('MODEL_INVALID');
+    }
+    expect(looksLikeSecret('glm-4.6')).toBe(false);
   });
 });

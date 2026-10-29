@@ -57,8 +57,10 @@ describe('the menu', () => {
   it('NEGATIVE: keeps the board as a line for somebody who can open it but not the dashboard', () => {
     const bookkeeper = userWith(['reports.view']);
     expect(pathsOf(menuNav(bookkeeper, can))).toContain('/growth/performance');
-    const analyst = userWith(['analytics.view']);
-    expect(pathsOf(menuNav(analyst, can))).toContain('/growth/performance');
+    // NEGATIVE (29/10): the retired «عرض التحليلات» opens nothing any more — the migration gave its holders reports.view.
+    const retired = userWith(['analytics.view']);
+    expect(pathsOf(menuNav(retired, can))).not.toContain('/growth/performance');
+    expect(canAccessRoute(retired, findRoute('/growth/performance')!, can)).toBe(false);
   });
 
   it('and offers it to nobody who may not open it, with or without the dashboard', () => {

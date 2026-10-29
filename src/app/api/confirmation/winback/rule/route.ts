@@ -18,7 +18,7 @@ import { saveWinbackRule, winbackRule } from '@/lib/winback-rule';
  * the body — `.strict()` in spirit: a field this route does not know is a
  * refusal, so a form that still sends one finds out.
  *
- * WHO. `settings.manage` — the owner and the admin. A supervisor works the list
+ * WHO. `offers.rules` — held by the owner and the admin on the day it was split from `settings.manage`. A supervisor works the list
  * and reads the rule on the screen; changing how much money may be given away is
  * not a supervisor's decision (the offer's own ceiling, `confirmation.supervise`,
  * is what she works under).
@@ -41,7 +41,7 @@ import { saveWinbackRule, winbackRule } from '@/lib/winback-rule';
 export async function PUT(req: Request) {
   try {
     const { user, companyId } = await requireContext();
-    await requirePermission('settings.manage');
+    await requirePermission('offers.rules');
 
     const parsed = validateWinbackRule(await req.json().catch(() => null));
     if (!parsed.ok) return NextResponse.json({ error: parsed.errorAr, errorAr: parsed.errorAr, code: parsed.code }, { status: 400 });
