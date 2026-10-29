@@ -18,7 +18,7 @@ const { logAudit, createNotification } = vi.hoisted(() => ({ logAudit: vi.fn(), 
 vi.mock('./audit', () => ({ logAudit }));
 vi.mock('./notification', () => ({ createNotification }));
 
-import { noteCustomersHandedOut } from './pii-alert';
+import { noteCustomersHandedOut, type ContactBearingRow } from './pii-alert';
 
 const NOW = 1_800_000_000_000;
 let store: Map<string, AccessWindow>;
@@ -81,7 +81,7 @@ describe('noteCustomerAccess with names', () => {
 describe('noteCustomersHandedOut, the door every list goes through', () => {
   const user = { id: 'u1', name: 'موظف', email: 'e@example.com' } as never;
   const rows = (n: number, from = 0) => Array.from({ length: n }, (_, i) => ({ customerId: `c${from + i}`, phone: `07${from + i}` }));
-  const hand = (r: ReturnType<typeof rows>) => noteCustomersHandedOut({ companyId: 'co', storeId: null, user, where: 'اختبار', rows: r });
+  const hand = (r: ReadonlyArray<ContactBearingRow>) => noteCustomersHandedOut({ companyId: 'co', storeId: null, user, where: 'اختبار', rows: r });
 
   it('reloading the same 300-row list ten times raises no alarm', async () => {
     const list = rows(300);
