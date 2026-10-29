@@ -17,7 +17,7 @@ import { ALERT_AR, ALERT_CONFIRM_AR, type TrackingAlertKind } from '@/lib/tracki
 import { useAsk, useConfirm } from '@/components/ui/Confirm';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { HealthChip } from '@/components/ui/HealthChip';
-import { URGENCY, canCollect, trackingUrgency, type ConditionKey } from '@/lib/tracking-priority';
+import { NOT_LATE, NOT_LATE_FACTS, URGENCY, canCollect, trackingUrgency, type ChipKey } from '@/lib/tracking-priority';
 import { Money } from '@/components/ui/Money';
 import { Pager } from '@/components/ui/Pager';
 import { NextStepButton } from '@/components/ui/NextStep';
@@ -26,6 +26,7 @@ import { usePagedList, type PagedRead, type Paging } from '@/hooks/usePagedList'
 import { AGES, AGE_AR } from '@/lib/age-piles';
 import { EVERY_STATUS, TASKS } from '@/lib/tracking-filters';
 import type { TrackingListFacts } from '@/lib/tracking-list';
+import { FULL_SIGHT, NO_SIGHT, statesOffered, type TrackingSight } from '@/lib/tracking-sight';
 
 /**
  * /ops/tracking — search by order, reference, barcode, customer or phone.
@@ -47,7 +48,8 @@ interface Row {
   merchantRef: string | null;
   trackingNumber: string | null;
   shippingStatus: string;
-  collectionStatus: string;
+  /** The courier's money is taken off the row for whoever may not see it (`access.money`). */
+  collectionStatus?: string;
   daysInTransit: number | null;
   /**
    * The region's late threshold in days, or `null` when this courier has no
@@ -56,6 +58,11 @@ interface Row {
    */
   lateThresholdDays: number | null;
   late: boolean;
+  /** When it arrived / came back — the server stops the clock there, and the row's reason is judged by it. */
+  deliveredAt?: string | null;
+  returnedAt?: string | null;
+  /** Whether this company hands out a barcode at all; a manual one does not, so it cannot be missing one. */
+  barcodeExpected?: boolean;
   totalAmount: number;
   currency: string;
   deliveryFailureReason: string | null;
@@ -83,12 +90,15 @@ interface Extra {
   dialCode: string | null;
   /** The read hit its bound: this is the first of a bigger list. */
   capped: boolean;
+  /** Which level of the screen this person holds. The door decides; this only says what to draw. */
+  access: TrackingSight;
 }
 
 /** Module-level, so the hook's loader keeps one identity — see `usePagedList`. */
 const read = (body: unknown): PagedRead<Row, Extra> => {
-  const b = body as { orders: Row[]; pagination: Paging; facts: TrackingListFacts; lateCount: number; dialCode?: string | null; capped?: boolean };
-  return { rows: b.orders, pagination: b.pagination, extra: { facts: b.facts, lateCount: b.lateCount, dialCode: b.dialCode ?? null, capped: !!b.capped } };
+  const b = body as { orders: Row[]; pagination: Paging; facts: TrackingListFacts; lateCount: number; dialCode?: string | null; capped?: boolean; access?: TrackingSight };
+  // The door always says; an answer that does not is read as the whole screen, since drawing less would hide work, and the door is what refuses.
+  return { rows: b.orders, pagination: b.pagination, extra: { facts: b.facts, lateCount: b.lateCount, dialCode: b.dialCode ?? null, capped: !!b.capped, access: b.access ?? FULL_SIGHT } };
 };
 
 /**
@@ -154,7 +164,7 @@ const STATUS_LABEL: Record<string, string> = SHIPPING_STATUS_AR;
  * The filter is «الكل» or one of the conditions, and the conditions are named
  * in one place so a chip cannot drift from the rank that sorts the list.
  */
-type TaskFilter = 'all' | ConditionKey;
+type TaskFilter = 'all' | ChipKey;
 
 /** A chip's colour, from the same four tones the whole product judges with. */
 const TASK_TONE: Record<string, string> = {
@@ -323,6 +333,8 @@ export function TrackingScreen() {
     read,
   });
   const { extra, rows, pagination } = list;
+  /** Until the first answer says what this person holds, nothing of the other level is offered. */
+  const access = extra?.access ?? NO_SIGHT;
 
   /**
    * THE WORK WAITING, FROM ONE DEFINITION OF EACH CONDITION.
@@ -372,7 +384,14 @@ export function TrackingScreen() {
    * drawn (seven greyed-out targets is most of a phone screen saying "nothing here").
    */
   const facts = extra?.facts;
-  const tasks = facts ? TASKS.map((key) => ({ key, count: facts.tasks[key] })).filter((t) => t.count > 0) : [];
+  const tasks: { key: ChipKey; count: number }[] = facts
+    ? [
+        ...TASKS.map((key) => ({ key, count: facts.tasks[key] })),
+        // «غير متأخرة» is the only chip that is not a fault: what is on the road and inside its time.
+        { key: NOT_LATE, count: facts.notLate },
+      ].filter((t) => t.count > 0)
+    : [];
+  const chipFacts = (key: ChipKey) => (key === NOT_LATE ? NOT_LATE_FACTS : URGENCY[key]);
 
   // A filter on a condition that no longer holds for any parcel is a dead end: its chip is gone, so the list reads as
   // empty with nothing highlighted to press back out of. Acknowledging the last alert does exactly that — so the
@@ -383,7 +402,10 @@ export function TrackingScreen() {
   // The rows are the page: already filtered by the chip, and worst first, by the server — see `byUrgency` for why
   // the oldest-shipped-first order is kept as the tiebreak.
   const visible = rows;
-  const collectable = visible.filter(canCollect);
+  // The boxes are for whoever may act on the money (the collect door's own key); the rows themselves are the door's.
+  const collectable = access.collect ? visible.filter(canCollect) : [];
+  /** Every owed parcel the question matches — counted by the server over the whole list, not over this page. */
+  const collectOwed = facts?.tasks.COLLECT ?? 0;
 
   /** What narrows the list beyond the state it opens on: the word, the dropdowns, the chip. */
   const narrowing = [courier, region, age].filter((v) => v !== 'all').length + (term.trim() ? 1 : 0) + (task !== 'all' ? 1 : 0);
@@ -411,8 +433,9 @@ export function TrackingScreen() {
       // THE DEFAULT SAYS WHAT IT ACTUALLY FETCHES. It used to say «قيد الشحن» and ask the door for in-flight only, so
       // «بانتظار التحصيل» — the chip below, and the «استلمت منه» button behind it — never had a single row to draw.
       options: [
-        { value: '', label: 'قيد الشحن وبانتظار التحصيل' },
-        ...Object.entries(STATUS_LABEL).map(([k, v]) => ({ value: k, label: v })),
+        { value: '', label: access.money ? 'قيد الشحن وبانتظار التحصيل' : 'قيد الشحن' },
+        // Only the states the door would answer: a delivered or returned parcel is another level's rows.
+        ...statesOffered(Object.keys(STATUS_LABEL), access).map((k) => ({ value: k, label: STATUS_LABEL[k] })),
         { value: EVERY_STATUS, label: 'الكل' },
       ],
     },
@@ -526,14 +549,14 @@ export function TrackingScreen() {
             <button
               key={t.key}
               onClick={() => { setTask(t.key); setSelected({}); }}
-              title={URGENCY[t.key].why}
+              title={chipFacts(t.key).why}
               className={`min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1 rounded-full border ${
                 openTask === t.key
                   ? 'bg-[var(--sys-heading)] text-[var(--sys-primary-foreground)] border-[var(--sys-heading)]'
-                  : TASK_TONE[URGENCY[t.key].tone]
+                  : TASK_TONE[chipFacts(t.key).tone]
               }`}
             >
-              {URGENCY[t.key].label} {t.count}
+              {chipFacts(t.key).label} {t.count}
             </button>
           ))}
         </div>
@@ -541,20 +564,34 @@ export function TrackingScreen() {
 
       {/* Manual settlement: a مندوب — and any company that sends no file —
           has no statement to import, so collection is done by naming the
-          orders here. Only delivered, unsettled ones can be chosen. */}
-      {collectable.length > 0 && (
+          orders here. Only delivered, unsettled ones can be chosen.
+
+          THE NUMBER IS THE SERVER'S, NOT THIS PAGE'S. The bar counted the
+          owed parcels on the page it held, and the list is worst-first with
+          money waiting LAST — so on a board of late parcels the first page
+          held none, and a bar saying «nothing to collect» hid fourteen
+          delivered parcels. «اعرضها» asks the server for exactly them. */}
+      {access.collect && collectOwed > 0 && (
         <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-3 flex flex-wrap items-center gap-3">
           <span className="text-xs text-[var(--sys-muted-foreground)]">
-            {chosen.length > 0
-              ? `مختار ${chosen.length} طلب · صافي ${netOfChosen}`
-              : `${collectable.length} طلب مسلَّم بانتظار التحصيل اليدوي`}
+            {chosen.length > 0 ? `مختار ${chosen.length} طلب · صافي ${netOfChosen}` : `${collectOwed} مسلَّم بانتظار التحصيل${openTask !== 'COLLECT' ? ' —' : ''}`}
           </span>
-          <button
-            onClick={() => setSelected(Object.fromEntries(collectable.map((o) => [o.id, true])))}
-            className="text-xs text-[var(--sys-primary)] hover:underline"
-          >
-            اختر الكل
-          </button>
+          {openTask !== 'COLLECT' && chosen.length === 0 && (
+            <button
+              onClick={() => { setTask('COLLECT'); setSelected({}); }}
+              className="min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline"
+            >
+              اعرضها
+            </button>
+          )}
+          {collectable.length > 0 && (
+            <button
+              onClick={() => setSelected(Object.fromEntries(collectable.map((o) => [o.id, true])))}
+              className="text-xs text-[var(--sys-primary)] hover:underline"
+            >
+              اختر الكل
+            </button>
+          )}
           {chosen.length > 0 && (
             <>
               <button onClick={() => setSelected({})} className="text-xs text-[var(--sys-muted-foreground)] hover:underline">
@@ -585,7 +622,7 @@ export function TrackingScreen() {
               why={
                 openTask === 'all'
                   ? 'لا شحنة تطابق البحث أو الحالة المختارة أعلاه. وسّع البحث أو اختر «الكل» في الحالة.'
-                  : `لا شحنة ${URGENCY[openTask].label} الآن. اضغط «الكل» لترى كل ما هو قيد الشحن.`
+                  : `لا شحنة ${chipFacts(openTask).label} الآن. اضغط «الكل» لترى كل ما هو قيد الشحن.`
               }
             />
           }
@@ -652,11 +689,15 @@ export function TrackingScreen() {
               </div>
             )
           }
-          selection={{
-            canSelect: canCollect,
-            isSelected: (o) => !!selected[o.id],
-            onToggle: (o, next) => setSelected((sel) => ({ ...sel, [o.id]: next })),
-          }}
+          selection={
+            access.collect
+              ? {
+                  canSelect: canCollect,
+                  isSelected: (o) => !!selected[o.id],
+                  onToggle: (o, next) => setSelected((sel) => ({ ...sel, [o.id]: next })),
+                }
+              : undefined
+          }
           columns={[
             {
               key: 'ref',
@@ -829,16 +870,21 @@ export function TrackingScreen() {
                 </span>
               ),
             },
-            {
-              key: 'collection',
-              label: 'حالة التحصيل',
-              // Measured: the same single value on 91% of rows. What actually
-              // varies is whether money is waiting, and that is now the
-              // «بانتظار التحصيل» chip, the row's own rank, and the collect
-              // bar above the list.
-              hideOnPhone: true,
-              render: (o) => COLLECTION_LABEL[o.collectionStatus] ?? o.collectionStatus,
-            },
+            // The column is the courier's money — without the level that sees it there is nothing in it to read.
+            ...(access.money
+              ? [
+                  {
+                    key: 'collection',
+                    label: 'حالة التحصيل',
+                    // Measured: the same single value on 91% of rows. What actually
+                    // varies is whether money is waiting, and that is now the
+                    // «بانتظار التحصيل» chip, the row's own rank, and the collect
+                    // bar above the list.
+                    hideOnPhone: true,
+                    render: (o: Row) => COLLECTION_LABEL[o.collectionStatus ?? ''] ?? o.collectionStatus,
+                  },
+                ]
+              : []),
             {
               key: 'amount',
               label: 'المبلغ',

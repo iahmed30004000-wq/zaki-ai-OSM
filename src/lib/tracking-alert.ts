@@ -52,6 +52,12 @@ export interface AlertSource {
   changeAppliedAt: Date | string | null;
   /** The most recent acknowledgement on this order, whatever it was for. */
   acknowledgedAt: Date | string | null;
+  /**
+   * Whether the parcel is still on its way. An alert is about a parcel that MOVES while the order is dead or rewritten;
+   * one that has arrived or come back has nothing left to stop or re-read. Left out, it is taken as «on its way», which
+   * is what every caller before this knew.
+   */
+  inFlight?: boolean;
 }
 
 const at = (v: Date | string | null | undefined): Date | null => {
@@ -68,6 +74,7 @@ const at = (v: Date | string | null | undefined): Date | null => {
  * nobody reads.
  */
 export function trackingAlert(order: AlertSource): TrackingAlert | null {
+  if (order.inFlight === false) return null;
   const ack = at(order.acknowledgedAt);
   const seen = (when: Date) => !!ack && ack.getTime() >= when.getTime();
 

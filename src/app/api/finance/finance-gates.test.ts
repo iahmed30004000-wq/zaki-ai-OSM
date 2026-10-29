@@ -415,11 +415,37 @@ describe('the statement is the delivery proof', () => {
     expect(db.order.findMany.mock.calls[0][0].where.id).toEqual({ in: [] });
   });
 
-  it('only ever CLOSES orders still in flight', async () => {
+  /**
+   * OLD → NEW (matcher integrity): the list gains FAILED_DELIVERY. A parcel marked failed that the courier then
+   * delivered and paid for matched at the collected amount, was settled, and stayed «فشل التوصيل» for ever.
+   * RETURN_REQUESTED and RETURNED are NOT in the list: a parcel coming back is not promoted to delivered.
+   */
+  it('only ever CLOSES orders still on the road — a failed attempt included, a return never', async () => {
     await approveWith([{ orderId: 'o1', result: 'MATCHED', statementAmount: 50 }], []);
-    expect(db.order.findMany.mock.calls[0][0].where.shippingStatus).toEqual({
-      in: ['SHIPPED', 'OUT_FOR_DELIVERY', 'READY_FOR_PICKUP'],
+    const asked = db.order.findMany.mock.calls[0][0].where.shippingStatus;
+    expect(asked).toEqual({
+      in: ['SHIPPED', 'OUT_FOR_DELIVERY', 'READY_FOR_PICKUP', 'FAILED_DELIVERY'],
     });
+    expect(asked.in).not.toContain('RETURN_REQUESTED');
+    expect(asked.in).not.toContain('RETURNED');
+    expect(asked.in).not.toContain('DELIVERED');
+  });
+
+  it('promotes a FAILED_DELIVERY order that the statement paid for: delivered, dated, counted out of stock', async () => {
+    const res = await approveWith(
+      [{ orderId: 'o7', result: 'MATCHED', statementAmount: 47.5, statementFee: 2.5 }],
+      [{ id: 'o7', orderNumber: 'SY-7', customerId: 'cu7' } as never]
+    );
+    expect(res.status).toBe(200);
+    const written = db.order.update.mock.calls[0][0].data;
+    expect(written).toMatchObject({ shippingStatus: 'DELIVERED', collectedAmount: 50 });
+    expect((db.customer.update.mock.calls[0] as unknown as [{ data: Record<string, unknown> }])[0].data.deliveredOrders).toEqual({ increment: 1 });
+    expect(db.orderActivity.create.mock.calls[0][0].data.action).toBe('DELIVERED_BY_STATEMENT');
+  });
+
+  it('and never promotes an order the statement did not MATCH, whatever its state', async () => {
+    await approveWith([{ orderId: 'o7', result: 'MISMATCHED', statementAmount: 10 }], []);
+    expect(db.order.findMany.mock.calls[0][0].where.id).toEqual({ in: [] });
   });
 
   /**

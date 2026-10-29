@@ -125,6 +125,14 @@ describe('the two outcomes that are not halved', () => {
     expect(out.completion.halves.map((h: { key: string }) => h.key)).toEqual(['MONEY']);
   });
 
+  it('and a whole delivery says what is EXPECTED, never that it was collected — delivering is not collecting', async () => {
+    db.orderItem.findMany.mockResolvedValue([{ id: I1, quantity: 3, freeQuantity: 0 }]);
+    const out = await (await POST(post({ orderId: ORDER, outcome: 'ALL' }))).json();
+    expect(out.message).toContain('المتوقَّع');
+    expect(out.message).toContain('بانتظار التحصيل');
+    expect(out.message).not.toContain('حُصِّل');
+  });
+
   it('a whole refusal has one half, and it is the goods', async () => {
     db.orderItem.findMany.mockResolvedValue([{ id: I1, quantity: 3, freeQuantity: 0 }]);
     const out = await (await POST(post({ orderId: ORDER, outcome: 'NONE' }))).json();

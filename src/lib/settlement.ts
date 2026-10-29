@@ -10,6 +10,7 @@ import { leftWarehouseWhere } from './order-state';
 // column is read through it, brackets and Arabic digits and all.
 import { readStatementFigure } from './numeric-input';
 import { receiptsInStatementCurrency } from './receipt-conversion';
+import { MANUAL_MATCH, integrityNotes, openRequestWhere, type OtherStatement } from './match-integrity';
 import { looksLikeXlsx, readXlsxRows } from './xlsx-reader';
 
 type Tx = Prisma.TransactionClient | typeof db;
@@ -704,7 +705,12 @@ export interface MatchOutcome {
   missingInStatement: number;
   /** The sweep hit its cap, so «not listed» is not the whole answer. */
   sweepTruncated?: boolean;
+  /** Rows from an earlier run that a person decided or made by hand, left as they were. */
+  kept?: number;
 }
+
+/** An order as the matcher reads it: what the money is built from, plus its id and settlement state. */
+type ResolvedOrder = Prisma.OrderGetPayload<{ select: { id: true; settlementStatus: true } & typeof SETTLEMENT_ORDER_SELECT }>;
 
 /**
  * How many delivered orders the «did the courier leave one out» sweep will
@@ -724,20 +730,69 @@ export async function runMatching(
 ): Promise<MatchOutcome> {
   const { companyId, storeId, statementId, minorUnit } = params;
 
-  const lines = await tx.statementLine.findMany({ where: { statementId } });
+  // File order, so "the first line that names an order" means the same thing on every run.
+  const lines = await tx.statementLine.findMany({
+    where: { statementId },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  });
   const statement = await tx.courierStatement.findFirst({
     where: { id: statementId, companyId },
-    select: { id: true, deliveryProviderId: true, periodFrom: true, periodTo: true },
+    select: { id: true, deliveryProviderId: true, periodFrom: true, periodTo: true, createdAt: true },
   });
   if (!statement) throw new Error('Statement not found');
 
-  // Start clean: matching may be re-run after the operator fixes data.
-  await tx.settlementMatch.deleteMany({ where: { statementId } });
+  /**
+   * MATCHING AGAIN KEEPS THE ANSWERS.
+   *
+   * This deleted every row of the statement, so pressing «تشغيل المطابقة» a second time — which the screen
+   * invites after fixing a barcode — threw away each explanation a person had written («اعتُمد رقم الشركة»,
+   * «رقمنا») and every link made by hand, and rebuilt the rows as if nobody had ever looked.
+   *
+   * Only what the machine wrote and nobody has answered is rebuilt: an automatic row with no resolution. A row a
+   * person decided (resolution set) and a row a person made (matchedBy MANUAL) stay exactly as they are, and
+   * their lines and orders are not matched a second time below.
+   *
+   * `matchedBy` is null on the sweep and on the unmatched rows, and SQL's `<>` drops NULL — so the null case is
+   * named, or those rows would never be rebuilt and would pile up.
+   */
+  await tx.settlementMatch.deleteMany({
+    where: {
+      statementId,
+      resolution: null,
+      OR: [{ matchedBy: null }, { matchedBy: { not: MANUAL_MATCH } }],
+    },
+  });
+  const kept = await tx.settlementMatch.findMany({
+    where: { statementId },
+    select: { statementLineId: true, orderId: true, result: true, resolution: true },
+  });
 
   const outcome: MatchOutcome = { matched: 0, mismatched: 0, feeMismatched: 0, missingInSystem: 0, missingInStatement: 0 };
+  // Orders a line (or a kept answer) already holds: the sweep skips them, and a second line naming one is flagged.
   const matchedOrderIds = new Set<string>();
+  // The orders a line really CLAIMS: matched cleanly, or decided «اعتُمد رقم الشركة» (an accepted figure settles the order at approval).
+  // A line that only disagreed (MISMATCHED, nobody's answer yet) claims nothing: the courier's later, right line for the same
+  // order must still be able to match — otherwise the order could never be settled (review of #57, 29/10).
+  const claimedOrderIds = new Set<string>();
+  const keptLineIds = new Set<string>();
+  for (const k of kept) {
+    if (k.statementLineId) keptLineIds.add(k.statementLineId);
+    if (k.orderId) {
+      matchedOrderIds.add(k.orderId);
+      if (k.result === 'MATCHED' || k.resolution === 'ACCEPTED_COURIER') claimedOrderIds.add(k.orderId);
+    }
+    if (k.result === 'MATCHED') outcome.matched++;
+    else if (k.result === 'MISMATCHED') outcome.mismatched++;
+    else if (k.result === 'MISSING_IN_SYSTEM') outcome.missingInSystem++;
+    else if (k.result === 'MISSING_IN_STATEMENT') outcome.missingInStatement++;
+  }
+  if (kept.length > 0) outcome.kept = kept.length;
 
+  // PASS 1: which order does each line name? Asked first, for every line, so the questions about those orders
+  // (open requests, other statements) are one query each rather than one per line.
+  const resolved: { line: (typeof lines)[number]; order: ResolvedOrder | null; byBarcode: boolean }[] = [];
   for (const line of lines) {
+    if (keptLineIds.has(line.id)) continue;
     // The key is the SHIPMENT BARCODE: the courier assigns it when the order
     // is handed to them — over the API for an integrated company — and it is
     // stored on the order as their reference, separate from our own order
@@ -777,7 +832,7 @@ export async function runMatching(
             deliveryProviderId: statement.deliveryProviderId,
             trackingNumber: line.barcode,
           },
-          select: { id: true, ...SETTLEMENT_ORDER_SELECT },
+          select: { id: true, settlementStatus: true, ...SETTLEMENT_ORDER_SELECT },
         })
       : null;
     const matchedByBarcode = byBarcode !== null;
@@ -821,10 +876,60 @@ export async function runMatching(
               merchantRef: line.merchantRef,
               ...leftWarehouseWhere(),
             },
-            select: { id: true, ...SETTLEMENT_ORDER_SELECT },
+            select: { id: true, settlementStatus: true, ...SETTLEMENT_ORDER_SELECT },
           })
         : null);
 
+    resolved.push({ line, order, byBarcode: matchedByBarcode });
+  }
+
+  // The questions about the orders the lines named, each asked once for all of them.
+  const namedIds = [...new Set(resolved.flatMap((r) => (r.order ? [r.order.id] : [])))];
+
+  // A cancel or a postponement asked for and not carried out: the parcel may not be what the line describes.
+  const requestsOf = new Map<string, string[]>();
+  if (namedIds.length > 0) {
+    const open = await tx.orderChangeRequest.findMany({
+      where: { companyId, orderId: { in: namedIds }, ...openRequestWhere() },
+      select: { orderId: true, intent: true },
+    });
+    for (const r of open) requestsOf.set(r.orderId, [...(requestsOf.get(r.orderId) ?? []), r.intent]);
+  }
+
+  /**
+   * OTHER STATEMENTS THAT NAME THE ORDER.
+   *
+   * Only the ones that count against THIS run: an approved one (its money moved), or one imported before this one.
+   * A rule of "any other statement" would flag in both directions — matching A would flag B's order and matching B
+   * would flag A's — and the first to be re-run would lose its answers for no fault of its own.
+   */
+  const elsewhereOf = new Map<string, OtherStatement[]>();
+  if (namedIds.length > 0) {
+    const others = await tx.settlementMatch.findMany({
+      where: {
+        companyId,
+        orderId: { in: namedIds },
+        statementId: { not: statementId },
+        statementLineId: { not: null },
+        // Only a row that really took the order (clean, or decided by a person) counts: a line that merely disagreed did not.
+        OR: [{ result: 'MATCHED' }, { resolution: 'ACCEPTED_COURIER' }],
+        statement: {
+          OR: [{ approvedAt: { not: null } }, ...(statement.createdAt ? [{ createdAt: { lt: statement.createdAt } }] : [])],
+        },
+      },
+      select: { orderId: true, statement: { select: { reference: true, approvedAt: true } } },
+    });
+    for (const o of others) {
+      if (!o.orderId) continue;
+      elsewhereOf.set(o.orderId, [
+        ...(elsewhereOf.get(o.orderId) ?? []),
+        { reference: o.statement.reference, approved: o.statement.approvedAt != null },
+      ]);
+    }
+  }
+
+  // PASS 2: the verdict on each line.
+  for (const { line, order, byBarcode: matchedByBarcode } of resolved) {
     if (!order) {
       await tx.settlementMatch.create({
         data: {
@@ -837,6 +942,8 @@ export async function runMatching(
       continue;
     }
 
+    // The first line to name an order keeps its verdict; a later one is the same parcel claimed twice.
+    const claimedByAnotherLine = claimedOrderIds.has(order.id);
     matchedOrderIds.add(order.id);
     // Rounded by the minor unit inside the rule itself, so the matcher and
     // the screen cannot round the same figure two different ways.
@@ -855,10 +962,23 @@ export async function runMatching(
     // A returned parcel is charged no fee, so its fee is not compared.
     const feeWrong = feeDifference !== null && feeDifference !== 0 && expected > 0;
 
+    // An order that must not be matched by itself: the figures may agree to the fils and it is still a person's call.
+    const reasons = integrityNotes({
+      settlementStatus: order.settlementStatus,
+      claimedByAnotherLine,
+      otherStatements: elsewhereOf.get(order.id) ?? [],
+      openRequests: requestsOf.get(order.id) ?? [],
+    });
+    const clean = difference === 0 && !feeWrong && reasons.length === 0;
+    const notes = [
+      ...(feeWrong && difference === 0 ? [`أجرة التوصيل ${statedFee} بدل ${expectedFee}`] : []),
+      ...reasons,
+    ];
+
     await tx.settlementMatch.create({
       data: {
         companyId, statementId, statementLineId: line.id, orderId: order.id,
-        result: difference === 0 && !feeWrong ? 'MATCHED' : 'MISMATCHED',
+        result: clean ? 'MATCHED' : 'MISMATCHED',
         // Record which key actually found it, not which one the line carries.
         matchedBy: matchedByBarcode ? 'BARCODE' : 'MERCHANT_REF',
         expectedAmount: expected,
@@ -867,13 +987,13 @@ export async function runMatching(
         expectedFee,
         statementFee: statedFee,
         feeDifference,
-        note: feeWrong && difference === 0
-          ? `أجرة التوصيل ${statedFee} بدل ${expectedFee}`
-          : null,
+        note: notes.length > 0 ? notes.join(' · ') : null,
       },
     });
-    if (difference === 0 && !feeWrong) outcome.matched++;
-    else {
+    if (clean) {
+      outcome.matched++;
+      claimedOrderIds.add(order.id);
+    } else {
       outcome.mismatched++;
       if (feeWrong) outcome.feeMismatched++;
     }

@@ -7,6 +7,7 @@ import { POSTPONE_LEAD_DAYS, awaitingConfirmationCount, waitingCount } from '@/l
 import { postponedScope } from '@/lib/postponed-list';
 import { whenWhere } from '@/lib/postponed-filters';
 import { kindsFor, type WorkItem, type WorkKey } from '@/lib/my-work';
+import { transitOf } from '@/lib/transit';
 
 /**
  * GET /api/me/work — what is waiting for THIS person. Counts, never lists.
@@ -139,21 +140,20 @@ export async function GET() {
           ...scope,
           shippingStatus: { in: ['SHIPPED', 'OUT_FOR_DELIVERY'] },
           shippedAt: { not: null },
+          // A parcel that arrived or came back has no clock: it cannot be late.
+          deliveredAt: null,
+          returnedAt: null,
         },
-        select: { shippedAt: true, regionId: true, deliveryProviderId: true },
+        select: { shippedAt: true, regionId: true, deliveryProviderId: true, shippingStatus: true, deliveredAt: true, returnedAt: true },
         take: 2000,
       });
 
-      const now = Date.now();
-      counts.LATE_SHIPMENTS = flying.filter((o) => {
-        const key = `${o.deliveryProviderId}:${o.regionId}`;
-        const threshold = daysFor.get(key);
-        // No threshold on file is not «late»: it is «we never said». Guessing
-        // one would put a red number on a screen nobody can act on.
-        if (!threshold || threshold <= 0) return false;
-        const days = Math.floor((now - new Date(o.shippedAt as Date).getTime()) / 86_400_000);
-        return days > threshold;
-      }).length;
+      // No threshold on file is not «late»: it is «we never said». Guessing one would put a red number on a screen
+      // nobody can act on. The count is the tracking screen's own rule — `transitOf` — not a second copy of it.
+      const now = new Date();
+      counts.LATE_SHIPMENTS = flying.filter(
+        (o) => transitOf(o, daysFor.get(`${o.deliveryProviderId}:${o.regionId}`) ?? 0, now).late
+      ).length;
     }
 
     const items: WorkItem[] = kinds.map((k) => ({

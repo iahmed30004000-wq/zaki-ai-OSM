@@ -34,9 +34,81 @@ export function lateLabel(daysSinceShipping: number): string {
   return `متأخرة ${arabicDays(daysSinceShipping)} من تاريخ الشحن`;
 }
 
-/** Days a shipment has been in transit, and whether that passes the region's threshold. */
-export function transitStatus(shippedAt: Date | string | null, lateThresholdDays: number, now = new Date()) {
+/**
+ * WHICH STATES ARE A PARCEL STILL ON ITS WAY.
+ *
+ * The follow-up screen's own list of «في الطريق»: out with the courier, waiting for him, or coming back. A parcel that
+ * arrived (DELIVERED, PARTIALLY_DELIVERED), came back (RETURNED) or never left (NOT_READY, PACKING…) is not on the
+ * road, so no clock runs for it and nothing is «late» about it.
+ */
+export const IN_FLIGHT_STATUSES: readonly string[] = [
+  'SHIPPED',
+  'OUT_FOR_DELIVERY',
+  'READY_FOR_PICKUP',
+  'FAILED_DELIVERY',
+  'RETURN_REQUESTED',
+];
+
+/** What says whether the journey is over. */
+export interface JourneyFacts {
+  shippingStatus: string;
+  deliveredAt?: Date | string | null;
+  returnedAt?: Date | string | null;
+}
+
+const asTime = (v: Date | string | null | undefined): number | null => {
+  if (!v) return null;
+  const t = new Date(v).getTime();
+  return Number.isNaN(t) ? null : t;
+};
+
+/**
+ * ON ITS WAY — by the state AND by the dates.
+ *
+ * A delivery or a return date ends the journey whatever the state says, and a state outside the road's states means
+ * it is not on it whatever the dates say. Both, because the sheet import left states with no dates.
+ */
+export function isInFlight(o: JourneyFacts): boolean {
+  return IN_FLIGHT_STATUSES.includes(o.shippingStatus) && asTime(o.deliveredAt) === null && asTime(o.returnedAt) === null;
+}
+
+/**
+ * Days a shipment has been in transit, and whether that passes the region's threshold.
+ *
+ * THE CLOCK STOPS WHEN THE JOURNEY ENDS. `endedAt` is the delivery or the return date: days are counted up to it, and
+ * never below zero (a date before the shipping date is a typo, not a negative journey). A parcel whose journey ended is
+ * never late — it arrived; how long it took is a fact, not a fault to chase.
+ */
+export function transitStatus(
+  shippedAt: Date | string | null,
+  lateThresholdDays: number,
+  now = new Date(),
+  endedAt: Date | string | null = null
+) {
   if (!shippedAt) return { days: null as number | null, late: false };
-  const days = Math.floor((now.getTime() - new Date(shippedAt).getTime()) / (24 * 60 * 60 * 1000));
-  return { days, late: lateThresholdDays > 0 && days > lateThresholdDays };
+  const ended = asTime(endedAt);
+  const until = ended === null ? now.getTime() : Math.min(now.getTime(), ended);
+  const days = Math.max(0, Math.floor((until - new Date(shippedAt).getTime()) / (24 * 60 * 60 * 1000)));
+  return { days, late: ended === null && lateThresholdDays > 0 && days > lateThresholdDays };
+}
+
+/**
+ * THE ONE ANSWER TO «HOW LONG, AND IS IT LATE» FOR ANY ORDER — the list, the page and the day's card all ask this.
+ *
+ *   on its way                         → days since it shipped, late when past the lane's threshold
+ *   ended with a delivery/return date  → days up to that date, never late
+ *   ended with no date (the import)    → no days at all: counting to today would invent a journey, never late
+ */
+export function transitOf(
+  o: JourneyFacts & { shippedAt: Date | string | null },
+  lateThresholdDays: number,
+  now = new Date()
+): { days: number | null; late: boolean; inFlight: boolean } {
+  const inFlight = isInFlight(o);
+  // Both dates can exist (a partial delivery that sends some back): the journey ended at the first of them.
+  const ends = [asTime(o.deliveredAt), asTime(o.returnedAt)].filter((t): t is number => t !== null);
+  const endedAt = ends.length ? new Date(Math.min(...ends)) : null;
+  if (!inFlight && endedAt === null) return { days: null, late: false, inFlight };
+  const t = transitStatus(o.shippedAt, lateThresholdDays, now, endedAt);
+  return { days: t.days, late: inFlight && t.late, inFlight };
 }
