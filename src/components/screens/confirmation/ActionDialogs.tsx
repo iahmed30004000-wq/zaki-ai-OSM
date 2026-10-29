@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { PICKABLE_REJECTION_REASONS, REJECTION_REASON_AR } from '@/lib/confirmation-workflow';
 import { CHANGE_INTENTS, INTENT_AR, refusalFor, type ChangeIntent } from '@/lib/change-request-intent';
 import { CHANGEABLE_FIELDS, CHANGE_FIELD_AR } from '@/lib/change-request-fields';
@@ -9,6 +9,7 @@ import { useProducts } from '@/hooks/useProducts';
 import { useRegions } from '@/hooks/useRegions';
 import { Modal } from '@/components/ui/Modal';
 import { POSTPONE_REASONS } from '@/lib/postpone-reasons';
+import { Button } from '@/components/ui/Button';
 
 /**
  * Dialogs for the confirmation screen: a date picker for postponing, and
@@ -19,34 +20,53 @@ import { POSTPONE_REASONS } from '@/lib/postpone-reasons';
 const FIELD_CLS =
   'w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] text-sm focus:outline-none focus:border-[var(--sys-primary)]';
 
+/**
+ * THE ROW THAT ENDS A DIALOG — IN THE MODAL'S FOOTER, AND THE SHARED BUTTON.
+ *
+ * These were two hand-made `py-2` buttons, 36px tall with 8px between them,
+ * in the dialogs an agent opens most on a phone — and with their own idea of
+ * «جارٍ الحفظ» that no other button in the product shared. The shared Button
+ * is 44px on a phone, locks itself while the request is in the air, and the
+ * Modal's footer keeps the row on screen when the form scrolls.
+ *
+ * The row sits OUTSIDE the `<form>` now, so its submit button names the form
+ * it belongs to: pressing it, or pressing Enter in a field, submits it.
+ */
 function Buttons({
   onCancel,
   busy,
   disabled,
   submitLabel,
+  cancelLabel = 'إلغاء',
+  formId,
+  danger,
 }: {
   onCancel: () => void;
   busy?: boolean;
-  /** Not ready — as opposed to `busy`, which is «جارٍ الحفظ…». */
+  /** Not ready — as opposed to `busy`, which locks the button while it works. */
   disabled?: boolean;
   submitLabel: string;
+  /** «إلغاء» unless the dialog's own words are better («تراجع» on a cancellation). */
+  cancelLabel?: string;
+  formId: string;
+  /** The submit is a destructive decision: drawn in the destructive colour. */
+  danger?: boolean;
 }) {
   return (
-    <div className="flex gap-2 pt-2">
-      <button
+    <div className="flex gap-2">
+      <Button
         type="submit"
-        disabled={busy || disabled}
-        className="px-4 py-2 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-60"
+        form={formId}
+        loading={busy}
+        disabled={disabled}
+        variant={danger ? 'danger' : 'primary'}
+        className="flex-1 md:flex-none"
       >
-        {busy ? 'جارٍ الحفظ…' : submitLabel}
-      </button>
-      <button
-        type="button"
-        onClick={onCancel}
-        className="px-4 py-2 rounded-lg border border-[var(--sys-border)] text-sm text-[var(--sys-muted-foreground)]"
-      >
-        إلغاء
-      </button>
+        {submitLabel}
+      </Button>
+      <Button type="button" variant="outline" onClick={onCancel} className="flex-1 md:flex-none">
+        {cancelLabel}
+      </Button>
     </div>
   );
 }
@@ -94,10 +114,19 @@ export function PostponeDialog({
     note: '',
   }));
   const [today] = useState(() => new Date().toISOString().slice(0, 10));
+  const formId = useId();
 
   return (
-    <Modal isOpen={open} onClose={onClose} title="تأجيل الطلب" subtitle={orderNumber} maxWidth="sm">
+    <Modal
+      isOpen={open}
+      onClose={onClose}
+      title="تأجيل الطلب"
+      subtitle={orderNumber}
+      maxWidth="sm"
+      footer={<Buttons onCancel={onClose} busy={busy} submitLabel="تأجيل" formId={formId} />}
+    >
       <form
+        id={formId}
         onSubmit={(e) => {
           e.preventDefault();
           onSubmit(value);
@@ -154,7 +183,6 @@ export function PostponeDialog({
             placeholder="مثال: العميل مسافر حتى الأحد"
           />
         </Field>
-        <Buttons onCancel={onClose} busy={busy} submitLabel="تأجيل" />
       </form>
     </Modal>
   );
@@ -185,10 +213,19 @@ export function IssueDialog({
   const [reason, setReason] = useState<string>('MISSING_DATA');
   const [note, setNote] = useState('');
   const noteRequired = reason === 'OTHER';
+  const formId = useId();
 
   return (
-    <Modal isOpen={open} onClose={onClose} title="إشكال في بيانات الإدخال" subtitle={orderNumber} maxWidth="sm">
+    <Modal
+      isOpen={open}
+      onClose={onClose}
+      title="إشكال في بيانات الإدخال"
+      subtitle={orderNumber}
+      maxWidth="sm"
+      footer={<Buttons onCancel={onClose} busy={busy} submitLabel="فتح الإشكال" formId={formId} />}
+    >
       <form
+        id={formId}
         onSubmit={(e) => {
           e.preventDefault();
           onSubmit({ reason, note });
@@ -217,7 +254,6 @@ export function IssueDialog({
             placeholder="مثال: رقم الهاتف 8 أرقام فقط"
           />
         </Field>
-        <Buttons onCancel={onClose} busy={busy} submitLabel="فتح الإشكال" />
       </form>
     </Modal>
   );
@@ -325,10 +361,27 @@ export function ChangeRequestDialog({
    * يدوياً» every time.
    */
   const { regions, loading: regionsLoading } = useRegions();
+  const formId = useId();
 
   return (
-    <Modal isOpen={open} onClose={onClose} title="طلب على طلب مؤكد" subtitle={orderNumber} maxWidth="sm">
+    <Modal
+      isOpen={open}
+      onClose={onClose}
+      title="طلب على طلب مؤكد"
+      subtitle={orderNumber}
+      maxWidth="sm"
+      footer={
+        <Buttons
+          onCancel={onClose}
+          busy={busy}
+          disabled={intent === 'EDIT' && !to.trim()}
+          submitLabel="إرسال الطلب"
+          formId={formId}
+        />
+      }
+    >
       <form
+        id={formId}
         onSubmit={(e) => {
           e.preventDefault();
           onSubmit({ intent, field, to, postponeDate, cancelReason, reason });
@@ -500,13 +553,8 @@ export function ChangeRequestDialog({
         </Field>
         {/* `required` cannot guard the picker — it is not an input — so the
             one rule covers all three: an EDIT with no new value is not a
-            request, it is an empty queue entry somebody has to chase. */}
-        <Buttons
-          onCancel={onClose}
-          busy={busy}
-          disabled={intent === 'EDIT' && !to.trim()}
-          submitLabel="إرسال الطلب"
-        />
+            request, it is an empty queue entry somebody has to chase. The
+            rule is on the submit button, in the dialog's footer. */}
       </form>
     </Modal>
   );
@@ -549,10 +597,21 @@ export function RejectDialog({
   // The server demands a note of its own for OTHER; asking here saves a
   // round trip that ends in a red error.
   const noteRequired = rejectionReason === 'OTHER';
+  const formId = useId();
 
   return (
-    <Modal isOpen={open} onClose={onClose} title="إلغاء الطلب" subtitle={orderNumber} maxWidth="sm">
+    <Modal
+      isOpen={open}
+      onClose={onClose}
+      title="إلغاء الطلب"
+      subtitle={orderNumber}
+      maxWidth="sm"
+      footer={
+        <Buttons onCancel={onClose} busy={busy} submitLabel="ألغِ الطلب" cancelLabel="تراجع" formId={formId} danger />
+      }
+    >
       <form
+        id={formId}
         onSubmit={(e) => {
           e.preventDefault();
           onSubmit({ rejectionReason, note });
@@ -582,22 +641,6 @@ export function RejectDialog({
             className={FIELD_CLS}
           />
         </Field>
-        <div className="flex gap-2 pt-2">
-          <button
-            type="submit"
-            disabled={busy}
-            className="px-4 py-2 rounded-lg bg-[var(--sys-destructive)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-60"
-          >
-            ألغِ الطلب
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-lg border border-[var(--sys-border)] text-sm text-[var(--sys-muted-foreground)]"
-          >
-            تراجع
-          </button>
-        </div>
       </form>
     </Modal>
   );

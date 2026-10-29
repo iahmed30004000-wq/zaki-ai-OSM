@@ -89,3 +89,20 @@ WHERE NOT EXISTS (
   SELECT 1 FROM "role_permission_defaults" v WHERE v."roleId" = rp."roleId" AND v."permission" = q.needs
 )
 ORDER BY 1, 2, 4;
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- AND THE SECOND QUESTION (PR-5, ai.assist): WHICH ROLES WILL THE MIGRATION 20261030120000_ai_assist_key GIVE THE
+-- «المساعدون الأذكياء» BOX TO? Every role that holds any key one of the five helpers asked before (the same five the
+-- migration reads: src/lib/ai-assistants.ts AI_ASSIST_FROM). A role listed here keeps its helpers on the day; a role NOT
+-- listed loses nothing, because it never reached one. `already_has_it` = rows the owner ticked before the deploy.
+-- Read-only, same as above. After the deploy, the owner unticks the box from the roles that should not have a model
+-- (orders.view is one of the five, so the list is long) — a «منع» on the box for one person does the same for one person.
+-- ═══════════════════════════════════════════════════════════════════════
+SELECT r."name" AS "role", r."companyId",
+       array_agg(DISTINCT rp."permission" ORDER BY rp."permission") AS "reaches_a_helper_through",
+       bool_or(EXISTS (SELECT 1 FROM "role_permissions" b WHERE b."roleId" = r."id" AND b."permission" = 'ai.assist')) AS "already_has_it"
+FROM "role_permissions" rp
+JOIN "roles" r ON r."id" = rp."roleId"
+WHERE rp."permission" IN ('confirmation.work', 'ops.prepare', 'landing_pages.edit', 'orders.create', 'orders.view')
+GROUP BY r."id", r."name", r."companyId"
+ORDER BY 2 NULLS FIRST, 1;

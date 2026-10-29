@@ -285,7 +285,7 @@
     "columns": 0,
     "cards": 0,
     "modals": 1,
-    "icons": 8,
+    "icons": 9,
     "links": 0,
     "tabs": 0
   },
@@ -800,7 +800,7 @@
     "tabs": 0
   },
   "src/components/screens/confirmation/ActionDialogs.tsx": {
-    "buttons": 5,
+    "buttons": 3,
     "inputs": 14,
     "columns": 0,
     "cards": 0,

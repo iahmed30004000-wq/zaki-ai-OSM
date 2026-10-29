@@ -45,16 +45,23 @@ export function NotificationCards() {
        * which anchors to the END side. Two floaters on one corner is two
        * things covering each other, which is the bug this file's sibling
        * fix was about.
+       *
+       * And it lets a press through wherever there is no card. It is a
+       * column 20rem wide that stands above the page's last rows: five cards
+       * cover up to 250 points from the bottom of a phone, and the gaps
+       * BETWEEN them — and the strip beside a narrow card — swallowed every
+       * tap meant for the page. Only the cards (and «إخفاء الكل») take
+       * presses; the rest of the column is not there for a finger.
        */
       style={{ bottom: 'calc(var(--sys-mobile-nav-h) + env(safe-area-inset-bottom) + 0.75rem)' }}
-      className="fixed start-4 z-50 flex w-[min(20rem,calc(100vw-2rem))] flex-col gap-2 md:!bottom-4"
+      className="pointer-events-none fixed start-4 z-50 flex w-[min(20rem,calc(100vw-2rem))] flex-col gap-2 md:!bottom-4"
       aria-live="polite"
     >
       {arriving.length > 1 && (
         <button
           type="button"
           onClick={dismissAll}
-          className="self-start rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-2.5 py-1 text-xs font-semibold text-[var(--sys-muted-foreground)] shadow-raised hover:text-[var(--sys-foreground)]"
+          className="pointer-events-auto self-start rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-2.5 py-1 text-xs font-semibold text-[var(--sys-muted-foreground)] shadow-raised hover:text-[var(--sys-foreground)]"
         >
           إخفاء الكل ({arriving.length})
         </button>
@@ -74,7 +81,7 @@ export function NotificationCards() {
             </span>
           </>
         );
-        const shell = `relative rounded-lg border border-s-4 border-[var(--sys-border)] bg-[var(--sys-card)] p-3 pe-8 shadow-overlay ${
+        const shell = `pointer-events-auto relative rounded-lg border border-s-4 border-[var(--sys-border)] bg-[var(--sys-card)] p-3 pe-8 shadow-overlay ${
           TONE[n.type] ?? 'border-s-[var(--sys-muted)]'
         }`;
 

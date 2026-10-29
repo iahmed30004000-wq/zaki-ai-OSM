@@ -90,6 +90,8 @@ interface PaletteMay {
   people: boolean;
   /** The store's numbers, or this desk's. Only the wording depends on it. */
   wide: boolean;
+  /** «لخّصلي اليوم» — only for who may read the numbers AND hold the assistants' key. Absent in an older answer: not offered. */
+  today?: boolean;
   /**
    * «+ أنشئ» — the forms this account may be taken to, already drawn. Optional because an older answer, or a failed one, has none:
    * a box without them is a box without the group, never a box that guesses.
@@ -194,7 +196,8 @@ const ACTIONS: Action[] = [
     label: () => 'لخّصلي اليوم',
     hint: 'فقرة واحدة من الأرقام نفسها — بلا أسماء ولا هواتف',
     icon: 'Lightbulb',
-    offered: ({ may }) => may !== null,
+    // Exactly the summary door's own two keys, as the server reported them — a button that only ever answers 403 teaches nothing.
+    offered: ({ may }) => may?.today === true,
     run: (ctx) => void summariseToday(ctx),
     keepsOpen: true,
   },

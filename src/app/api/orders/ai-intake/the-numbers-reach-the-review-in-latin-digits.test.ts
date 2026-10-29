@@ -38,7 +38,9 @@ const { db, requireContext, requirePermission, aiChat, activeBlock, findOrCreate
 
 vi.mock('@/lib/db', () => ({ db }));
 vi.mock('@/lib/geo-context', () => ({ requireContext: (...a: unknown[]) => requireContext(...a) }));
-vi.mock('@/lib/authorization', () => ({ can: () => false, requirePermission: (...a: unknown[]) => requirePermission(...a) }));
+// OLD → NEW (PR-5): `can: () => false` for everything. The model is asked only for a person who holds the assistants' key
+// (`ai.assist`), and this file is about what the model WROTE — so that one key is held; every other question is still «no».
+vi.mock('@/lib/authorization', () => ({ can: (_u: unknown, k: string) => k === 'ai.assist', requirePermission: (...a: unknown[]) => requirePermission(...a) }));
 vi.mock('@/lib/notify', () => ({ notify: vi.fn() }));
 vi.mock('@/lib/audit', () => ({ logAudit: vi.fn() }));
 vi.mock('@/lib/offers', () => ({ activeOffersFor: vi.fn(async () => []) }));

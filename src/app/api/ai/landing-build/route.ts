@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { inStore } from '@/lib/store-filter';
-import { requirePermission } from '@/lib/authorization';
+import { requireAssistant } from '@/lib/require-assistant';
 import { apiErrorResponse } from '@/lib/api-error';
 import { zodMessage } from '@/lib/zod-message';
 import { AiNotConfigured, aiChat, describeRoute, type AiImage } from '@/lib/ai-provider';
@@ -80,7 +80,7 @@ export async function POST(req: Request) {
   try {
     const { user, companyId, storeId, country } = await requireContext();
     const assistant = assistantByKey('landing_copy')!;
-    await requirePermission(assistant.needs);
+    await requireAssistant(assistant);
     const limited = tooManyAiCalls('landing-build', companyId, user.id, 3);
     if (limited) return limited;
 

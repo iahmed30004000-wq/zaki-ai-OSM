@@ -73,8 +73,29 @@ const badPassword = new Map<string, number>();
 
 const key = (email: string) => email.trim().toLowerCase();
 
+/** Past this many remembered addresses, the ones whose quarter of an hour has passed are dropped. */
+const SWEEP_ABOVE = 1_000;
+
 export function noteBadPassword(email: string, now: number = Date.now()): void {
+  /*
+   * NOTHING WAS EVER FORGOTTEN unless the same address was asked about again:
+   * `recentBadPassword` deletes a stale entry only when it is looked up, so a
+   * stranger trying a thousand different addresses left a thousand entries
+   * for the life of the process. Dropping the ones past the window changes
+   * no answer — `recentBadPassword` already treats them as absent — and
+   * never drops one that is still inside it.
+   */
+  if (badPassword.size >= SWEEP_ABOVE) {
+    for (const [address, at] of badPassword) {
+      if (now - at >= SUSPICION_WINDOW_MS) badPassword.delete(address);
+    }
+  }
   badPassword.set(key(email), now);
+}
+
+/** Tests only — how many addresses are being remembered. */
+export function rememberedBadPasswords(): number {
+  return badPassword.size;
 }
 
 export function recentBadPassword(email: string, now: number = Date.now()): boolean {

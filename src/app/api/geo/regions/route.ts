@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { apiErrorResponse } from '@/lib/api-error';
-import { deliveryWindows, deliveryWindowAr } from '@/lib/delivery-time';
+import { deliveryWindows, deliveryWindowAr, type DeliveryWindow } from '@/lib/delivery-time';
+import { shortMemo } from '@/lib/short-memo';
+
+/** One minute, at most this many (company, store) pairs. */
+const WINDOWS = shortMemo<Map<string, DeliveryWindow>>(60_000, 200);
 
 /**
  * GET /api/geo/regions — the governorates of the SELECTED country.
@@ -32,7 +36,11 @@ export async function GET() {
      * screen that needs to say it. Governorates with too few deliveries
      * carry nothing rather than an anecdote; see src/lib/delivery-time.ts.
      */
-    const windows = await deliveryWindows({ companyId, storeId });
+    // A minute's memory, per company AND store (RV184): the orders screen
+    // asks this door three times on every opening, and each answer is a scan
+    // of 180 days of delivered orders. A delivery time that is a minute old
+    // is as true as one a second old.
+    const windows = await WINDOWS.get(`${companyId}:${storeId ?? ''}`, () => deliveryWindows({ companyId, storeId }));
 
     return NextResponse.json({
       // The currency travels with the country: every screen that needs the

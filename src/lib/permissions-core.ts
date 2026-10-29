@@ -22,6 +22,7 @@
  */
 import { db } from './db';
 import { ROLE_PERMISSIONS, UserRole } from '../types/auth';
+import { AI_ASSIST_FROM, AI_ASSIST_KEY } from './ai-assistants';
 
 export type Scope = 'ALL_COMPANY' | 'OWN' | 'ASSIGNED' | 'CATEGORY' | 'SPECIFIC';
 
@@ -255,6 +256,9 @@ export async function computeEffectiveGrants(
       { has: (k) => grants[k] !== undefined },
       (k) => { grants[k] ??= { scope: 'ALL_COMPANY' }; }
     );
+    // The in-screen assistants' box (PR-5) did not exist when this matrix was written: whoever reached one of the helpers
+    // through a key below keeps it. A «منع» on the box, or on the key, still wins in step 3.
+    if (AI_ASSIST_FROM.some((k) => grants[k] !== undefined)) grants[AI_ASSIST_KEY] ??= { scope: 'ALL_COMPANY' };
   }
 
   // 3. User overrides — DENY wins, ALLOW wins over role absence/scope
@@ -299,6 +303,8 @@ export function legacyEffectiveKeys(role: UserRole): string[] {
   }
   if (role === 'ACCOUNTANT' || role === 'SETTLEMENT_OFFICER') keys.add('products.view');
   addGeoCompanions(role, keys, (k) => keys.add(k));
+  // The assistants' box goes to whoever reached an in-screen helper through the old keys (the reset-to-default baseline too).
+  if (AI_ASSIST_FROM.some((k) => keys.has(k))) keys.add(AI_ASSIST_KEY);
   return [...keys];
 }
 
