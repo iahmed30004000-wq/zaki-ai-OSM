@@ -62,6 +62,19 @@ export async function apiFetch(input: string, init?: RequestInit): Promise<Respo
   return res;
 }
 
+/**
+ * WHAT THE SERVER SAID WHEN IT SAID NO — in Arabic, or the fallback.
+ *
+ * A board that reads its numbers with `res.ok` and does nothing else draws a
+ * refusal as zeros: «٠ طلب، ٠٪» is a statement about the shop, and a 403 is
+ * not. The screens that read a response by hand say what came back with this.
+ */
+export async function saidBy(res: Response, fallback: string): Promise<string> {
+  const data = await res.json().catch(() => ({}));
+  const said = (data as { errorAr?: unknown }).errorAr;
+  return typeof said === 'string' && said ? said : fallback;
+}
+
 export async function apiJson<T>(input: string, init?: RequestInit): Promise<T> {
   const res = await apiFetch(input, init);
   const data = await res.json().catch(() => ({}));

@@ -23,9 +23,10 @@ import { CHANNEL_KIND_AR as KIND_AR } from '@/lib/order-channel-kinds';
  * So it MOVED, whole, to sit under the table it is built from, and the channels
  * screen links here.
  *
- * Its own door (`GET /api/settings/channels/performance`) asks `analytics.view`
- * and may answer 403 to somebody who may still open the board with `reports.view`;
- * then the section draws nothing rather than an error under every table.
+ * Its own door (`GET /api/settings/channels/performance`) asks `reports.view`,
+ * the key of the board it sits on, so it answers 403 only to somebody the board
+ * itself refuses; if it ever does, the section draws nothing rather than an
+ * error under every table.
  */
 
 /**
@@ -33,7 +34,7 @@ import { CHANNEL_KIND_AR as KIND_AR } from '@/lib/order-channel-kinds';
  *
  * Kept off `GET /api/settings/channels` on purpose: that call fills the
  * dropdown on every order-intake form and is open to anyone who may enter an
- * order. Numbers belong behind `analytics.view`, and a data-entry form should
+ * order. Numbers belong behind `reports.view`, and a data-entry form should
  * not wait for a report to load.
  */
 interface ChannelPerf {

@@ -18,7 +18,7 @@ import { stripComments } from '@/lib/guard-source';
  *     the board for whoever may open it;
  *   · the board's section reads its own report and draws the score, the bands, and
  *     the orders that came through no door;
- *   · and when the report is refused (`analytics.view` is not `reports.view`) the
+ *   · and when the report is refused (its door asks `reports.view`, the key of the board) the
  *     section is SILENT, not an error under every table.
  */
 

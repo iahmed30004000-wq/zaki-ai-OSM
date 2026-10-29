@@ -7,7 +7,7 @@ import type { CourierEvent } from './types';
  */
 
 const tx = {
-  order: { update: vi.fn() },
+  order: { updateMany: vi.fn() },
   orderActivity: { create: vi.fn() },
   orderChangeRequest: { updateMany: vi.fn() },
 };
@@ -16,9 +16,13 @@ vi.mock('../db', () => ({ db: { $transaction: vi.fn(async (fn: (t: typeof tx) =>
 import { applyCourierEvent } from './apply-event';
 
 const event = (status: CourierEvent['status']): CourierEvent => ({ trackingNumber: 'B1', rawStatus: 'RAW', occurredAt: new Date(), status });
-const data = () => tx.order.update.mock.calls[0][0].data as Record<string, unknown>;
+const data = () => tx.order.updateMany.mock.calls[0][0].data as Record<string, unknown>;
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  // The compare-and-set write: one row changed, as it does when nothing moved under the poll.
+  tx.order.updateMany.mockResolvedValue({ count: 1 });
+});
 
 describe('the status’s own time', () => {
   it('READY_FOR_PICKUP → SHIPPED with shippedAt empty stamps shippedAt', async () => {
@@ -37,17 +41,22 @@ describe('the status’s own time', () => {
     expect('shippedAt' in data()).toBe(false);
   });
 
-  it('out for delivery and a failed attempt stamp theirs', async () => {
+  it('out for delivery stamps its own time', async () => {
     await applyCourierEvent({ order: { id: 'o1', companyId: 'c1', shippingStatus: 'SHIPPED', outForDeliveryAt: null }, event: event('OUT_FOR_DELIVERY'), courierName: 'الباشا', source: 'POLL' });
     expect(data().outForDeliveryAt).toBeInstanceOf(Date);
-    vi.clearAllMocks();
-    await applyCourierEvent({ order: { id: 'o1', companyId: 'c1', shippingStatus: 'OUT_FOR_DELIVERY', failedAt: null }, event: event('FAILED_DELIVERY'), courierName: 'الباشا', source: 'POLL' });
-    expect(data().failedAt).toBeInstanceOf(Date);
+  });
+
+  // WAS: 'out for delivery and a failed attempt stamp theirs' (a polled FAILED_DELIVERY wrote failedAt).
+  // NOW: a feed never writes FAILED — see apply-event NOTE_ONLY and the-feed-keeps-words-and-never-overwrites.test.ts.
+  it('NEGATIVE: a failed attempt is NOT written by a feed, so it stamps nothing', async () => {
+    const out = await applyCourierEvent({ order: { id: 'o1', companyId: 'c1', shippingStatus: 'OUT_FOR_DELIVERY', failedAt: null }, event: event('FAILED_DELIVERY'), courierName: 'الباشا', source: 'POLL' });
+    expect(out).toBe('NOT_AUTO_APPLICABLE');
+    expect(tx.order.updateMany).not.toHaveBeenCalled();
   });
 
   it('NEGATIVE: a money status is still not applied by a feed — nothing is written', async () => {
     const out = await applyCourierEvent({ order: { id: 'o1', companyId: 'c1', shippingStatus: 'OUT_FOR_DELIVERY', shippedAt: null }, event: event('DELIVERED'), courierName: 'الباشا', source: 'POLL' });
     expect(out).toBe('NOT_AUTO_APPLICABLE');
-    expect(tx.order.update).not.toHaveBeenCalled();
+    expect(tx.order.updateMany).not.toHaveBeenCalled();
   });
 });

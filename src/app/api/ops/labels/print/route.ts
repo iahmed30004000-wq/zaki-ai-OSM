@@ -5,7 +5,7 @@ import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { verifyLabelBatch } from '@/lib/labels';
 import { renderLabelSheet, storeLogoForPrint } from '@/lib/label-sheet';
-import { csvCell, loadWaybillOrders, printRefusal, toLabelView, waybillCod } from '@/lib/waybill';
+import { altPhoneForLabel, csvCell, loadWaybillOrders, printRefusal, toLabelView, waybillCod } from '@/lib/waybill';
 import { formatMoney } from '@/lib/money';
 import { placeLine } from '@/lib/address';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
@@ -78,7 +78,7 @@ export async function GET(req: Request) {
             o.trackingNumber ?? '',
             o.customer.fullName,
             o.customer.rawPhone || o.customer.phone,
-            o.customer.altPhone ?? '',
+            altPhoneForLabel(o.customer.altPhone, country.code),
             o.region?.name ?? o.customer.city,
             // The address without the governorate repeated in front of it —
             // the region has its own column.
@@ -109,7 +109,7 @@ export async function GET(req: Request) {
       select: { name: true, logo: true, supportPhone: true },
     });
 
-    const labels = await Promise.all(printable.map((o) => toLabelView(o, minorUnit)));
+    const labels = await Promise.all(printable.map((o) => toLabelView(o, minorUnit, country.code)));
     const mode = url.searchParams.get('mode') === 'pdf' ? 'pdf' : 'print';
     const day = new Date().toISOString().slice(0, 10);
 

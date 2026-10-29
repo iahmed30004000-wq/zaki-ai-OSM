@@ -91,7 +91,7 @@ describe('who may ask', () => {
   });
 });
 
-describe('the sales gate — reports.view or analytics.view', () => {
+describe('the sales gate — reports.view alone', () => {
   it('omits the whole performance half when the caller has neither', async () => {
     can.mockReturnValue(false);
     const res = await GET(req('top'));
@@ -122,11 +122,11 @@ describe('the sales gate — reports.view or analytics.view', () => {
     expect(body.readiness.notSellable).toBe(1);
   });
 
-  it('accepts either permission on its own', async () => {
+  it('opens on reports.view alone — and NEGATIVE: the retired analytics.view opens nothing (29/10)', async () => {
     can.mockImplementation((_u: unknown, key: string) => key === 'reports.view');
     expect((await (await GET(req('top'))).json()).salesVisible).toBe(true);
     can.mockImplementation((_u: unknown, key: string) => key === 'analytics.view');
-    expect((await (await GET(req('top'))).json()).salesVisible).toBe(true);
+    expect((await (await GET(req('top'))).json()).salesVisible).toBe(false);
   });
 });
 

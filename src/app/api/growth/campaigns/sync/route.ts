@@ -17,7 +17,7 @@ import { syncAdSpend } from '@/lib/ads/sync';
 export async function POST() {
   try {
     const { user, companyId, storeId } = await requireContext();
-    await requirePermission('reports.view').catch(async () => requirePermission('analytics.view'));
+    await requirePermission('reports.view');
 
     const result = await syncAdSpend({ companyId, storeId });
 

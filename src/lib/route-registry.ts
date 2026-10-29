@@ -246,7 +246,7 @@ export const NAV: NavGroup[] = [
     routes: [
       // The DETAIL of the dashboard (owner, 24/10): a link there («التفاصيل»), not a second
       // menu line, for whoever can open the dashboard. Whoever cannot keeps it as a line.
-      { ...r('/growth/performance', 'لوحة الأداء', 'Gauge', ['reports.view', 'analytics.view']), foldedUnder: '/dashboard' },
+      { ...r('/growth/performance', 'لوحة الأداء', 'Gauge', ['reports.view']), foldedUnder: '/dashboard' },
       r('/growth/campaigns', 'الحملات', 'Megaphone', ['reports.view']),
 
       /**
