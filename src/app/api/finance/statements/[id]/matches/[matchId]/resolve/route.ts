@@ -153,11 +153,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         await tx.$queryRaw`SELECT "id" FROM "courier_statements" WHERE "id" = ${id} FOR UPDATE`;
         const statement = await tx.courierStatement.findFirst({
           where: { id, companyId, storeId },
-          select: { approvedAt: true },
+          select: { status: true, approvedAt: true },
         });
         if (!statement) throw new DecisionRefused(404, { error: 'الكشف غير موجود', code: 'NOT_FOUND' });
         // A closed statement takes no answer — the same sentence every door of it gives.
-        if (isApproved(statement)) throw new DecisionRefused(409, closedStatementRefusal());
+        if (isApproved(statement)) throw new DecisionRefused(409, { ...closedStatementRefusal() });
 
         // What may be said, asked of the order as it is at this moment. (A line no order carries has no order to ask.)
         if (!parkedLine) {

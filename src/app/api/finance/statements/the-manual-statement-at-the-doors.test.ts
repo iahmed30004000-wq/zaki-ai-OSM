@@ -357,7 +357,7 @@ describe('the list says which statements are manual', () => {
     expect(statements[0].counts).toMatchObject({ lines: 4, receipts: 1, matches: 4 });
     // …and it was one grouped read for the page, by the shared filter.
     expect(db.settlementMatch.groupBy).toHaveBeenCalledTimes(1);
-    expect(db.settlementMatch.groupBy.mock.calls[0][0].where).toEqual({
+    expect((db.settlementMatch.groupBy.mock.calls as unknown as [{ where: unknown }][])[0][0].where).toEqual({
       companyId: 'c1', statementId: { in: ['a', 'b'] }, ...openLineWhere(),
     });
   });

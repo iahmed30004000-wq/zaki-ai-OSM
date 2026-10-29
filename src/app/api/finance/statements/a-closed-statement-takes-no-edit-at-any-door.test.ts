@@ -130,7 +130,7 @@ describe('running the matching again', () => {
   it('on an open statement: the statement is taken FIRST, with the condition in the write, and only then is it matched', async () => {
     const res = await rematch();
     expect(res.status).toBe(200);
-    const claim = db.courierStatement.updateMany.mock.calls[0][0];
+    const claim = (db.courierStatement.updateMany.mock.calls as unknown as [{ where: Record<string, unknown>; data?: unknown }][])[0][0];
     expect(claim.where).toMatchObject({ id: 'st1', companyId: 'c1', storeId: 's1', approvedAt: null, status: { not: 'APPROVED' } });
     expect(claim.data).toEqual({ status: 'MATCHED' });
     expect(db.courierStatement.updateMany.mock.invocationCallOrder[0]).toBeLessThan(runMatching.mock.invocationCallOrder[0]);

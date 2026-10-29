@@ -74,11 +74,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       await tx.$queryRaw`SELECT "id" FROM "courier_statements" WHERE "id" = ${id} FOR UPDATE`;
       const statement = await tx.courierStatement.findFirst({
         where: { id, companyId, storeId },
-        select: { reference: true, approvedAt: true },
+        select: { reference: true, status: true, approvedAt: true },
       });
       if (!statement) throw new BulkRefused(404, { error: 'الكشف غير موجود', code: 'NOT_FOUND' });
       // A closed statement takes no answer, one or many: the same sentence every door of it gives.
-      if (isApproved(statement)) throw new BulkRefused(409, closedStatementRefusal());
+      if (isApproved(statement)) throw new BulkRefused(409, { ...closedStatementRefusal() });
 
       const rows = await tx.settlementMatch.findMany({
         where: { id: { in: ids }, statementId: id, companyId },

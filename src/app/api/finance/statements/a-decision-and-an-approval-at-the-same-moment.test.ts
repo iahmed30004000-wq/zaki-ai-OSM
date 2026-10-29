@@ -194,7 +194,7 @@ describe('the approval commits first', () => {
     expect((await approve()).status).toBe(200);
     db.settlementMatch.findMany.mockResolvedValueOnce([
       { id: M1, result: 'MISMATCHED', orderId: 'o1', expectedAmount: 20, statementAmount: 18, difference: -2, statementLine: { status: 'مؤجلة' }, order: { orderNumber: 'N-1' } },
-    ]);
+    ] as never);
     const res = await decideMany(send({ matchIds: [M1], resolution: 'UNDER_REVIEW', note: 'ننتظر ردّ الشركة' }), { params: Promise.resolve({ id: 'st1' }) });
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ code: 'ALREADY_APPROVED', error: CLOSED });
