@@ -116,6 +116,12 @@ describe('the payment', () => {
     expect(previewPayslip).not.toHaveBeenCalled();
   });
 
+  it.each(['abc', '1,41', '1e999', ' '])('NEGATIVE: a rate written «%s» is refused by the shared reader, not turned into NaN or zero', async (typed) => {
+    const res = await get(`?userId=${U}&convertCurrency=JOD&convertRate=${encodeURIComponent(typed)}`);
+    expect(res.status).toBe(400);
+    expect(previewPayslip).not.toHaveBeenCalled();
+  });
+
   it('a payment the rate would turn into nothing is answered in Arabic as a conflict', async () => {
     paySalary.mockRejectedValue(new PayrollRefused('RATE_TOO_SMALL'));
     const res = await post({ userId: U, walletId: W, exchangeRate: 1, convert: { currencyCode: 'JOD', rate: 0.000001 } });

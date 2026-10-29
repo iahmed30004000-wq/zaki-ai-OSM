@@ -8,6 +8,7 @@ import { zodMessage } from '@/lib/zod-message';
 import { logAudit } from '@/lib/audit';
 import { paySalary, previewPayslip, PayrollRefused } from '@/lib/payroll';
 import { MIN_CONVERT_RATE } from '@/lib/currencies';
+import { readTypedFigure } from '@/lib/numeric-input';
 import { currentSpan } from '@/lib/commission-period';
 import { owedTo } from '@/lib/commission-payout';
 
@@ -61,7 +62,7 @@ export async function GET(req: Request) {
     // `convertCurrency` + `convertRate`: draw the slip as it would be with the deductions of that currency converted.
     const wantsConvert = q.get('convertCurrency') !== null || q.get('convertRate') !== null;
     const convert = wantsConvert
-      ? convertSchema.safeParse({ currencyCode: q.get('convertCurrency'), rate: Number(q.get('convertRate')) })
+      ? convertSchema.safeParse({ currencyCode: q.get('convertCurrency'), rate: readTypedFigure(q.get('convertRate')) })
       : null;
     if (convert && !convert.success) return NextResponse.json({ error: 'اكتب العملة وسعر تحويلها' }, { status: 400 });
 
