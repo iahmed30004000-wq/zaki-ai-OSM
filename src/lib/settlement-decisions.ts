@@ -4,6 +4,7 @@ import { roundMinor } from './money';
 import { claimingRowWhere, openRequestWhere } from './match-integrity';
 import { normalizePhrase, readCourierWord } from './courier-words';
 import { PARKED, PARKED_AR, RESOLUTIONS, RESOLUTION_AR, type Resolution } from './settlement-difference';
+import { STATEMENT_CLOSED_SENTENCE } from './settlement-gates';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -100,7 +101,7 @@ export const WHY = {
   notSent: 'الطلب لم يُسلَّم للشركة بحالته الحالية',
   openRequest: 'عليه طلب إلغاء أو تأجيل مفتوح — أجبه أولاً',
   heldElsewhere: 'الطلب محجوز بسطر آخر',
-  approved: 'الكشف معتمد — التصحيح بكشف تسوية',
+  approved: STATEMENT_CLOSED_SENTENCE,
   notDeliveredYet: 'الطرد لم يُسجَّل مسلَّماً بعد — لا مطالبة قبل التسليم',
   nothingOwed: 'لا نقص نطالب به — رقم الشركة ليس أقل من رقمنا',
   returnedNoClaim: 'طلب مرتجع — لا مبلغ نطالب به',
@@ -132,13 +133,24 @@ export function claimOf(row: { expectedAmount: number | null; statementAmount: n
  *   مُسوّى أصلاً                           لا                         لا                       نعم
  *   عليه طلب إلغاء/تأجيل مفتوح             لا                         لا                       نعم
  *   محجوز بسطر آخر                         لا                         لا                       نعم
- *   الكشف معتمد                            لا (كشف تسوية)             نعم إن كان عندنا نقص      نعم
+ *   الكشف معتمد (مغلق نهائياً)             لا (كشف تسوية)             لا (كشف تسوية)           لا (كشف تسوية)
  *
  * WHY EACH «NO»: a figure can only be accepted or claimed for a parcel the money is about. An order that never
  * left, or is settled, or has a cancel waiting, or is held by another row, is not that parcel yet — and the
  * third saying exists exactly so that such a row is not left looking unanswered.
  */
 export function decisionMatrix(f: DecisionFacts): Matrix {
+  /*
+   * A CLOSED STATEMENT TAKES NO ANSWER AT ALL — asked first, whatever the order is.
+   *
+   * It used to take «رقمنا» and «قيد المراجعة» after the approval because they move no money. But «قيد المراجعة»
+   * written over a row answered «رقمنا» took the claim off the company without a word (RV313), and «رقمنا» written
+   * after the fact opened a claim that no approval had looked at. The statement is closed for good
+   * (settlement-gates); the correction is a settlement statement.
+   */
+  if (f.statementApproved) {
+    return { ACCEPTED_COURIER: no(WHY.approved), OURS_STANDS: no(WHY.approved), [PARKED]: no(WHY.approved) };
+  }
   if (!f.hasOrder) {
     return { ACCEPTED_COURIER: no(WHY.noOrder), OURS_STANDS: no(WHY.noOrder), [PARKED]: no(WHY.noOrder) };
   }
@@ -161,8 +173,7 @@ export function decisionMatrix(f: DecisionFacts): Matrix {
     accepted = no(both);
     ours = no(both);
   } else {
-    if (f.statementApproved) accepted = no(WHY.approved);
-    else if (group === 'COMING_BACK') accepted = f.statementAmount === 0 ? yes : no(WHY.amountOnReturn);
+    if (group === 'COMING_BACK') accepted = f.statementAmount === 0 ? yes : no(WHY.amountOnReturn);
     // A statement is the proof of delivery of a parcel on the road only by stating money for it: a line of zero
     // beside «مؤجلة» is the company saying it did NOT deliver, and accepting it would deliver the parcel for nothing.
     else if (group === 'IN_FLIGHT' && f.statementAmount === 0) accepted = no(WHY.zeroOnTheRoad);
@@ -188,7 +199,7 @@ export const DECISION_MATRIX: { state: string; accepted: string; ours: string; p
   { state: 'مُسوّى أصلاً', accepted: 'لا', ours: 'لا', parked: 'نعم' },
   { state: 'عليه طلب إلغاء أو تأجيل مفتوح', accepted: 'لا', ours: 'لا', parked: 'نعم' },
   { state: 'محجوز بسطر آخر', accepted: 'لا', ours: 'لا', parked: 'نعم' },
-  { state: 'الكشف معتمد', accepted: 'لا — كشف تسوية', ours: 'نعم إن كان عندنا نقص', parked: 'نعم' },
+  { state: 'الكشف معتمد', accepted: 'لا — كشف تسوية', ours: 'لا — كشف تسوية', parked: 'لا — كشف تسوية' },
 ];
 
 /* ───────────────────────────── the group of a bulk decision ───────────────────────────── */

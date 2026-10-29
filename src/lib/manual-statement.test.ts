@@ -249,6 +249,27 @@ describe('two presses in a row — the second changes nothing it should not', ()
   });
 });
 
+describe('the draft is claimed with the condition in the write (the lock)', () => {
+  it('the total is written by a claim that carries approvedAt: null, and a lost claim refuses with the one sentence of a closed statement', async () => {
+    await add([{ orderId: 'o1' }]);
+    const claim = tx.courierStatement.updateMany.mock.calls[0][0];
+    expect(claim.where).toMatchObject({ approvedAt: null, status: { not: 'APPROVED' } });
+    expect(claim.data).toEqual({ totalAmount: 17.5 });
+
+    // A statement that is not open in the database takes none of it: refused, in the words of every door of a closed statement.
+    tx.courierStatement.updateMany.mockResolvedValueOnce({ count: 0 });
+    const e = await refusal(() => add([{ orderId: 'o2' }]));
+    expect(e.body).toEqual({ code: 'ALREADY_APPROVED', error: 'الكشف مغلق نهائياً — التصحيح بكشف تسوية' });
+  });
+
+  it('and the gathering of an approved statement says the same, before it writes anything', async () => {
+    const draft = await (async () => { await add([{ orderId: 'o1' }]); return world.statements[0]; })();
+    Object.assign(draft, { approvedAt: new Date('2026-10-28T00:00:00Z'), status: 'APPROVED' });
+    const e = await refusal(() => assembleDraft(tx as never, { ...scope, statementId: draft.id, reference: 'الأحد', periodFrom: null, periodTo: null }));
+    expect(e.body).toEqual({ code: 'ALREADY_APPROVED', error: 'الكشف مغلق نهائياً — التصحيح بكشف تسوية' });
+  });
+});
+
 describe('adding stops at the first receipt', () => {
   it('a draft that already took a receipt takes no order, and nothing is written', async () => {
     await add([{ orderId: 'o1' }]);
@@ -408,7 +429,9 @@ describe('press 2 — gathering', () => {
     const draft = await draftWith();
     const hashBefore = draft.fileHash;
     await gather(draft.id, 'الأحد');
-    const where = tx.courierStatement.updateMany.mock.calls[0][0].where;
+    // (Was calls[0]. Press 1 now claims the draft with a write of its own, so the gathering is the LAST claim.)
+    const claims = tx.courierStatement.updateMany.mock.calls;
+    const where = claims[claims.length - 1][0].where;
     expect(where).toMatchObject({ id: draft.id, approvedAt: null, fileHash: hashBefore, receipts: { none: {} } });
   });
 

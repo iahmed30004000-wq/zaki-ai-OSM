@@ -23,7 +23,7 @@ const { db, requireContext, requirePermission, logAudit, state } = vi.hoisted(()
     requests: [] as { orderId: string; intent: string }[],
   };
   const db = {
-    settlementMatch: { findMany: vi.fn(), update: vi.fn() },
+    settlementMatch: { findMany: vi.fn(), updateMany: vi.fn() },
     orderNote: { create: vi.fn() },
     courierStatement: { findFirst: vi.fn() },
     order: { findMany: vi.fn() },
@@ -67,7 +67,7 @@ beforeEach(() => {
     // The rows of the press, and — for the "is another row holding the order" question, which has an OR — none.
     args.where.OR ? [] : (state.rows as Row[]).filter((r) => args.where.id!.in.includes(r.id))
   );
-  db.settlementMatch.update.mockResolvedValue({ id: 'x' });
+  db.settlementMatch.updateMany.mockResolvedValue({ count: 1 });
   db.order.findMany.mockImplementation(async () => state.orders);
   db.orderChangeRequest.findMany.mockImplementation(async () => state.requests);
   db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn(db));
@@ -81,8 +81,8 @@ describe('one answer for a group of lines with the same word', () => {
 
     expect(res.status).toBe(200);
     expect(body.count).toBe(3);
-    expect(db.settlementMatch.update).toHaveBeenCalledTimes(3);
-    for (const call of db.settlementMatch.update.mock.calls) {
+    expect(db.settlementMatch.updateMany).toHaveBeenCalledTimes(3);
+    for (const call of db.settlementMatch.updateMany.mock.calls) {
       expect(call[0].data).toMatchObject({ resolution: 'UNDER_REVIEW', resolutionNote: 'ننتظر كشف الشركة', resolvedById: 'u1' });
     }
     expect(db.orderNote.create).toHaveBeenCalledTimes(3);
@@ -93,7 +93,7 @@ describe('one answer for a group of lines with the same word', () => {
 
   it('every row gets the SAME time, so the group reads as one act', async () => {
     await call({ matchIds: ids(3), resolution: 'ACCEPTED_COURIER', note: 'خصم متفق عليه' });
-    const times = new Set(db.settlementMatch.update.mock.calls.map((c) => (c[0].data.resolvedAt as Date).getTime()));
+    const times = new Set(db.settlementMatch.updateMany.mock.calls.map((c) => (c[0].data.resolvedAt as Date).getTime()));
     expect(times.size).toBe(1);
   });
 
@@ -115,14 +115,14 @@ describe('two chosen lines for ONE order (the company names a parcel twice)', ()
     expect(body.code).toBe('DECISION_NOT_ALLOWED');
     // Only the second is named; the first is not a refusal.
     expect(body.refused).toEqual([{ matchId: ids(9)[1], order: 'ORD-0', why: 'الطلب محجوز بسطر آخر' }]);
-    expect(db.settlementMatch.update).not.toHaveBeenCalled();
+    expect(db.settlementMatch.updateMany).not.toHaveBeenCalled();
   });
 
   it('…and pressing again for the first line alone goes through', async () => {
     twice();
     const res = await call({ matchIds: [ids(2)[0]], resolution: 'ACCEPTED_COURIER', note: 'خصم متفق عليه' });
     expect(res.status).toBe(200);
-    expect(db.settlementMatch.update).toHaveBeenCalledTimes(1);
+    expect(db.settlementMatch.updateMany).toHaveBeenCalledTimes(1);
   });
 
   it('the order of the press decides which is first: the line sent first holds it', async () => {
@@ -163,7 +163,7 @@ describe('the store’s fence — a statement of another store is not found and 
     expect(res.status).toBe(404);
     expect(db.courierStatement.findFirst.mock.calls[0][0].where).toMatchObject({ id: 'st1', companyId: 'c1', storeId: 's2' });
     expect(db.settlementMatch.findMany).not.toHaveBeenCalled();
-    expect(db.settlementMatch.update).not.toHaveBeenCalled();
+    expect(db.settlementMatch.updateMany).not.toHaveBeenCalled();
     expect(db.orderNote.create).not.toHaveBeenCalled();
     expect(logAudit).not.toHaveBeenCalled();
   });
@@ -180,7 +180,7 @@ describe('the lines must carry the same word', () => {
     const res = await call({ matchIds: ids(2), resolution: 'ACCEPTED_COURIER', note: 'خصم متفق عليه' });
     expect(res.status).toBe(409);
     expect((await res.json()).code).toBe('MIXED_WORDS');
-    expect(db.settlementMatch.update).not.toHaveBeenCalled();
+    expect(db.settlementMatch.updateMany).not.toHaveBeenCalled();
     expect(db.orderNote.create).not.toHaveBeenCalled();
   });
 
@@ -207,7 +207,7 @@ describe('all or none', () => {
     expect(body.code).toBe('DECISION_NOT_ALLOWED');
     expect(body.refused).toEqual([{ matchId: ids(9)[1], order: 'ORD-1', why: expect.stringContaining('مُسوّى أصلاً') }]);
     expect(body.error).toContain('ORD-1');
-    expect(db.settlementMatch.update).not.toHaveBeenCalled();
+    expect(db.settlementMatch.updateMany).not.toHaveBeenCalled();
     expect(db.orderNote.create).not.toHaveBeenCalled();
     expect(logAudit).not.toHaveBeenCalled();
   });
@@ -228,14 +228,14 @@ describe('all or none', () => {
     put([mkRow(0)]);
     const res = await call({ matchIds: ids(2), resolution: 'UNDER_REVIEW', note: 'ننتظر الشركة' });
     expect(res.status).toBe(404);
-    expect(db.settlementMatch.update).not.toHaveBeenCalled();
+    expect(db.settlementMatch.updateMany).not.toHaveBeenCalled();
   });
 
   it('an approved statement no longer takes their figure', async () => {
     state.approvedAt = new Date('2026-10-29T00:00:00Z');
     const res = await call({ matchIds: ids(3), resolution: 'ACCEPTED_COURIER', note: 'خصم متفق عليه' });
     expect(res.status).toBe(409);
-    expect(db.settlementMatch.update).not.toHaveBeenCalled();
+    expect(db.settlementMatch.updateMany).not.toHaveBeenCalled();
   });
 });
 
@@ -254,7 +254,7 @@ describe('the explanation, the ceiling and the lock', () => {
   it('the same id sent twice is one row, not two', async () => {
     const res = await call({ matchIds: [ids(1)[0], ids(1)[0]], resolution: 'UNDER_REVIEW', note: 'ننتظر الشركة' });
     expect(res.status).toBe(200);
-    expect(db.settlementMatch.update).toHaveBeenCalledTimes(1);
+    expect(db.settlementMatch.updateMany).toHaveBeenCalledTimes(1);
   });
 
   it('locks the statement’s row before it reads anything, as the single door does', async () => {

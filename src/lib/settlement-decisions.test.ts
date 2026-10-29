@@ -176,13 +176,22 @@ describe('the matrix — a decision against the state of the order', () => {
     expect(decisionMatrix(facts({ hasOrder: false })).UNDER_REVIEW.why).toContain('اربطه بطلب');
   });
 
-  it('after the approval their figure can no longer be accepted — the correction is a settlement statement', () => {
+  it('after the approval NO saying is taken — the statement is closed for good, the correction is a settlement statement', () => {
+    // (Was: «رقمنا» and «قيد المراجعة» were still taken after the approval because they move no money. Reversed by the
+    // lock: «قيد المراجعة» over a row answered «رقمنا» took the claim off the company in silence — RV313.)
     const m = decisionMatrix(facts({ statementApproved: true }));
-    expect(m.ACCEPTED_COURIER.allowed).toBe(false);
-    expect(m.ACCEPTED_COURIER.why).toContain('كشف تسوية');
-    // …but the claim is a record, and parking is a record: both still stand.
-    expect(m.OURS_STANDS.allowed).toBe(true);
-    expect(m.UNDER_REVIEW.allowed).toBe(true);
+    for (const saying of ['ACCEPTED_COURIER', 'OURS_STANDS', 'UNDER_REVIEW'] as const) {
+      expect(m[saying].allowed, saying).toBe(false);
+      expect(m[saying].why, saying).toBe('الكشف مغلق نهائياً — التصحيح بكشف تسوية');
+    }
+  });
+
+  it('and the closed statement is asked FIRST: a row with no order, or an order already settled, says the same sentence', () => {
+    for (const over of [{ hasOrder: false }, { settlementStatus: 'SETTLED' }, { shippingStatus: 'CANCELLED' }]) {
+      expect(decisionMatrix(facts({ statementApproved: true, ...over })).UNDER_REVIEW.why).toBe(
+        'الكشف مغلق نهائياً — التصحيح بكشف تسوية'
+      );
+    }
   });
 
   it('«رقمنا» needs something to claim: not when the company paid the same, or MORE', () => {

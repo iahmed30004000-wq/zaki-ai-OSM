@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import type { db } from './db';
 import { roundMinor } from './money';
 import { expectedAmountFor, SETTLEMENT_ORDER_SELECT } from './settlement';
-import { collectTotalRefusal, statementNamingRefusal } from './settlement-gates';
+import { closedStatementRefusal, collectTotalRefusal, statementNamingRefusal } from './settlement-gates';
 import { readNamingLines, readTiedLines } from './statement-naming';
 import {
   DRAFT_REFERENCE,
@@ -245,7 +245,12 @@ export async function addOrdersToDraft(
   }
 
   const { lines, total } = await totalOfLines(tx, statementId, p.minorUnit);
-  await tx.courierStatement.update({ where: { id: statementId }, data: { totalAmount: total } });
+  // The lines above are written under this one claim: an open statement, or none of them (the whole transaction rolls back).
+  const open = await tx.courierStatement.updateMany({
+    where: { id: statementId, companyId: p.companyId, approvedAt: null, status: { not: 'APPROVED' } },
+    data: { totalAmount: total },
+  });
+  if (open.count !== 1) throw new ManualRefused(409, closedStatementRefusal());
 
   return { statementId, courier: courierName, currencyCode: p.currencyCode, created: !draft, added, updated, lines, total };
 }
@@ -293,7 +298,7 @@ export async function assembleDraft(
   });
   if (!statement) throw new ManualRefused(404, { code: 'NOT_FOUND', error: 'الكشف غير موجود' });
   if (statement.approvedAt != null || statement.status === 'APPROVED') {
-    throw new ManualRefused(409, { code: 'ALREADY_APPROVED', error: 'الكشف معتمد مسبقاً' });
+    throw new ManualRefused(409, closedStatementRefusal());
   }
   if (!isManualHash(statement.fileHash)) {
     throw new ManualRefused(409, { code: 'NOT_MANUAL', error: 'هذا كشف مستورد من ملف — التجميع لمسوّدة الكشف اليدوي فقط' });

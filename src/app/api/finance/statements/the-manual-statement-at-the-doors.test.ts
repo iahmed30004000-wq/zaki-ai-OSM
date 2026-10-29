@@ -52,6 +52,8 @@ const {
     order: { updateMany: vi.fn(), findMany: vi.fn(), update: vi.fn() },
     orderActivity: { create: vi.fn() },
     customer: { update: vi.fn() },
+    // The list counts the lines still a question, by the same rule the approval waits for.
+    settlementMatch: { groupBy: vi.fn(async () => []) },
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(db)),
   };
   return {
@@ -85,6 +87,7 @@ import { PATCH as approveStatement } from './[id]/route';
 import { POST as addReceipt } from './[id]/receipts/route';
 import { POST as runMatch } from './[id]/match/route';
 import { manualFileHash, newDraftHash } from '@/lib/manual-statement-rules';
+import { openLineWhere } from '@/lib/statement-open-lines';
 
 const ID = '88888888-8888-4888-8888-888888888888';
 const WALLET = '11111111-1111-4111-8111-111111111111';
@@ -154,13 +157,36 @@ describe('the approval matches a manual statement AGAIN, inside its own transact
     expect(db.$transaction.mock.invocationCallOrder[0]).toBeLessThan(rematch);
   });
 
-  it('what is settled is what the re-run left clean: an order a hand collection took meanwhile is no longer MATCHED', async () => {
+  // (Was: the approval went on and settled only o1. The lock makes the approval wait for every line that is a question, so a
+  // re-run that finds a NEW difference stops it — nothing is written — and the person answers it first. A row the re-run
+  // KEPT because a person had answered it does not stop it: the test below.)
+  it('an order a hand collection took meanwhile is flagged by the re-run — and that is a question the approval waits for', async () => {
     // The press on «مطابقة» saw both orders clean; by approval o2 was collected by hand and the re-run flagged it.
     state.reads = [
       statement(),
       statement({}, [
         { orderId: 'o1', result: 'MATCHED', statementAmount: 17.5, statementFee: 2.5 },
         { orderId: 'o2', result: 'MISMATCHED', statementAmount: 17.5, statementFee: 2.5 },
+      ]),
+    ];
+
+    const res = await approve();
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.code).toBe('OPEN_LINES');
+    expect(body.error).toContain('اضغط «مطابقة»');
+    expect(recordMovement).not.toHaveBeenCalled();
+    expect(markPayableForOrders).not.toHaveBeenCalled();
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('what is settled is what the re-run left clean: a flagged order a person has already parked settles nothing', async () => {
+    state.reads = [
+      statement(),
+      statement({}, [
+        { orderId: 'o1', result: 'MATCHED', statementAmount: 17.5, statementFee: 2.5 },
+        { orderId: 'o2', result: 'MISMATCHED', resolution: 'UNDER_REVIEW', statementAmount: 17.5, statementFee: 2.5 },
       ]),
     ];
 
@@ -313,5 +339,26 @@ describe('the list says which statements are manual', () => {
     ]);
     expect(JSON.stringify(statements)).not.toContain('manual:');
     expect(statements[0]).not.toHaveProperty('fileHash');
+  });
+
+  it('each statement carries the number of lines still a question, counted by the SAME filter the approval’s rule is held to', async () => {
+    const row = (id: string) => ({
+      id, reference: 'x', fileName: 'f', status: 'MATCHED', approvedAt: null, currencyCode: 'JOD', totalAmount: 35,
+      createdAt: NOW, periodFrom: null, periodTo: null, fileHash: 'ab'.repeat(32),
+      _count: { lines: 4, receipts: 1, matches: 4 }, receipts: [],
+    });
+    db.courierStatement.findMany.mockResolvedValue([row('a'), row('b')]);
+    db.settlementMatch.groupBy.mockResolvedValueOnce([{ statementId: 'a', _count: { _all: 3 } }] as never);
+
+    const { statements } = await (await listStatements()).json();
+
+    expect(statements.map((s: { counts: { openLines: number } }) => s.counts.openLines)).toEqual([3, 0]);
+    // The existing counts are untouched…
+    expect(statements[0].counts).toMatchObject({ lines: 4, receipts: 1, matches: 4 });
+    // …and it was one grouped read for the page, by the shared filter.
+    expect(db.settlementMatch.groupBy).toHaveBeenCalledTimes(1);
+    expect(db.settlementMatch.groupBy.mock.calls[0][0].where).toEqual({
+      companyId: 'c1', statementId: { in: ['a', 'b'] }, ...openLineWhere(),
+    });
   });
 });

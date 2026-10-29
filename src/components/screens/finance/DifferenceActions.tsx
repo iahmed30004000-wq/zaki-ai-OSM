@@ -6,6 +6,7 @@ import { apiJson } from '@/lib/api-client';
 import { OrderNotesPeek } from '@/components/orders/OrderNotesPeek';
 import { PARKED, PARKED_AR, RESOLUTION_AR, RESOLUTION_MEANING, RESOLUTIONS, type Resolution } from '@/lib/settlement-difference';
 import { EXPLANATION_SENTENCE, explanationOf } from '@/lib/decision-words';
+import { STATEMENT_CLOSED_SENTENCE } from '@/lib/settlement-gates';
 
 /**
  * WHAT TO DO ABOUT A DIFFERENCE, WHERE THE DIFFERENCE IS.
@@ -43,8 +44,10 @@ interface Props {
   /** What the company still owes, when our figure was the one that stood. */
   claim?: number | null;
   currency?: string;
-  /** The statement is approved: an answer that needs the approval to act on it is no longer taken. */
+  /** The statement is closed for good (approved): no answer is taken any more — the correction is a settlement statement. */
   locked?: boolean;
+  /** A line no order carries: no figure to choose, only «قيد المراجعة» with its reason (the one answer it may have). */
+  parkOnly?: boolean;
 }
 
 /*
@@ -66,6 +69,7 @@ export function DifferenceActions({
   claim,
   currency,
   locked,
+  parkOnly,
 }: Props) {
   const [busy, setBusy] = useState<Resolution | typeof PARKED | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -142,6 +146,11 @@ export function DifferenceActions({
     );
   }
 
+  // A closed statement takes no answer: the row says why, in the sentence every door of it gives.
+  if (locked) {
+    return <span className="text-xs text-[var(--sys-muted-foreground)]">{STATEMENT_CLOSED_SENTENCE}</span>;
+  }
+
   // What the server's matrix says, once, per saying: the sentence that explains a greyed-out button is the one
   // the door would answer with.
   const verdict = (k: string) => decisions?.[k] ?? { allowed: true, why: null };
@@ -157,7 +166,7 @@ export function DifferenceActions({
         aria-label="تفسير القرار"
         className="h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm bg-[var(--sys-card)] min-w-[220px]"
       />
-      {RESOLUTIONS.map((r) => (
+      {!parkOnly && RESOLUTIONS.map((r) => (
         <button
           key={r}
           type="button"
@@ -185,7 +194,7 @@ export function DifferenceActions({
         {busy === PARKED ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : null}
         {PARKED_AR}
       </button>
-      {refusal && <span className="text-xs text-[var(--sys-muted-foreground)]">{refusal}</span>}
+      {refusal && !parkOnly && <span className="text-xs text-[var(--sys-muted-foreground)]">{refusal}</span>}
       {orderId && (
         <OrderNotesPeek
           orderId={orderId}

@@ -170,11 +170,12 @@ describe('replacing a proof before «اعتماد»', () => {
     expect(writeProofFile).not.toHaveBeenCalled();
   });
 
-  it('is refused once the statement is approved — with the receipt route’s sentence', async () => {
+  // (Was «الكشف معتمد — أي تصحيح يكون بقيد عكسي»; the lock gives every door of a closed statement one sentence.)
+  it('is refused once the statement is approved — with the one sentence of a closed statement', async () => {
     db.statementReceipt.findFirst.mockResolvedValue(receiptRow({ statement: { status: 'APPROVED', approvedAt: new Date() } }));
     const res = await PUT(send('PUT', proofBody()), params);
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ code: 'ALREADY_APPROVED', error: 'الكشف معتمد — أي تصحيح يكون بقيد عكسي' });
+    expect(await res.json()).toEqual({ code: 'ALREADY_APPROVED', error: 'الكشف مغلق نهائياً — التصحيح بكشف تسوية' });
     expect(db.statementReceipt.updateMany).not.toHaveBeenCalled();
     expect(writeProofFile).not.toHaveBeenCalled();
   });
@@ -245,7 +246,8 @@ describe('removing a wrong receipt before «اعتماد»', () => {
     db.statementReceipt.findFirst.mockResolvedValue(receiptRow({ statement: { status: 'MATCHED', approvedAt: new Date() } }));
     const res = await DELETE(send('DELETE'), params);
     expect(res.status).toBe(409);
-    expect((await res.json()).error).toBe('الكشف معتمد — أي تصحيح يكون بقيد عكسي');
+    // (Was «الكشف معتمد — أي تصحيح يكون بقيد عكسي».)
+    expect((await res.json()).error).toBe('الكشف مغلق نهائياً — التصحيح بكشف تسوية');
     expect(db.statementReceipt.deleteMany).not.toHaveBeenCalled();
     expect(logAudit).not.toHaveBeenCalled();
   });

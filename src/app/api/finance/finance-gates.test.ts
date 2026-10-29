@@ -413,7 +413,9 @@ describe('the statement is the delivery proof', () => {
   });
 
   it('does not close an order the statement did not match', async () => {
-    await approveWith([{ orderId: 'o1', result: 'MISMATCHED', statementAmount: 10 }], []);
+    // (Was an undecided MISMATCHED row. The lock makes the approval wait for undecided differences, so the row is
+    // answered «قيد المراجعة» here — which settles nothing, the very thing this test is about.)
+    await approveWith([{ orderId: 'o1', result: 'MISMATCHED', resolution: 'UNDER_REVIEW', statementAmount: 10 }], []);
     expect(db.order.findMany.mock.calls[0][0].where.id).toEqual({ in: [] });
   });
 
@@ -446,7 +448,8 @@ describe('the statement is the delivery proof', () => {
   });
 
   it('and never promotes an order the statement did not MATCH, whatever its state', async () => {
-    await approveWith([{ orderId: 'o7', result: 'MISMATCHED', statementAmount: 10 }], []);
+    // (Was an undecided MISMATCHED row — answered «قيد المراجعة» now, see above.)
+    await approveWith([{ orderId: 'o7', result: 'MISMATCHED', resolution: 'UNDER_REVIEW', statementAmount: 10 }], []);
     expect(db.order.findMany.mock.calls[0][0].where.id).toEqual({ in: [] });
   });
 

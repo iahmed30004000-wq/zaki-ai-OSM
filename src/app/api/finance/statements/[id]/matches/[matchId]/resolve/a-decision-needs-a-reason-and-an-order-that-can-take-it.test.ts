@@ -21,7 +21,7 @@ const { db, requireContext, requirePermission, logAudit, state } = vi.hoisted(()
     order_: [] as string[],
   };
   const db = {
-    settlementMatch: { findFirst: vi.fn(), update: vi.fn(), findMany: vi.fn() },
+    settlementMatch: { findFirst: vi.fn(), updateMany: vi.fn(), findMany: vi.fn() },
     orderNote: { create: vi.fn() },
     courierStatement: { findFirst: vi.fn() },
     order: { findMany: vi.fn() },
@@ -61,7 +61,7 @@ beforeEach(() => {
   requirePermission.mockResolvedValue({ id: 'u1' });
   db.settlementMatch.findFirst.mockResolvedValue(row());
   db.settlementMatch.findMany.mockImplementation(async () => state.holders);
-  db.settlementMatch.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: 'm1', ...data }));
+  db.settlementMatch.updateMany.mockResolvedValue({ count: 1 });
   db.courierStatement.findFirst.mockImplementation(async () => ({ approvedAt: state.approvedAt }));
   db.order.findMany.mockImplementation(async () => (state.order ? [state.order] : []));
   db.orderChangeRequest.findMany.mockImplementation(async () => state.requests);
@@ -73,7 +73,7 @@ describe('the explanation is five characters at least', () => {
     const res = await call('ACCEPTED_COURIER', 'خصم');
     expect(res.status).toBe(400);
     expect(db.$transaction).not.toHaveBeenCalled();
-    expect(db.settlementMatch.update).not.toHaveBeenCalled();
+    expect(db.settlementMatch.updateMany).not.toHaveBeenCalled();
     expect(db.orderNote.create).not.toHaveBeenCalled();
     expect(logAudit).not.toHaveBeenCalled();
   });
@@ -83,14 +83,14 @@ describe('the explanation is five characters at least', () => {
     expect((await call('OURS_STANDS', '')).status).toBe(400);
     expect((await callWith({ resolution: 'OURS_STANDS' })).status).toBe(400);
     expect((await callWith({ resolution: 'OURS_STANDS', note: null })).status).toBe(400);
-    expect(db.settlementMatch.update).not.toHaveBeenCalled();
+    expect(db.settlementMatch.updateMany).not.toHaveBeenCalled();
   });
 
   it('five characters that carry no reason are refused too: dots, stretch marks, zero-width and direction marks', async () => {
     for (const note of ['.....', '\u0640\u0640\u0640\u0640\u0640', '\u200B\u200B\u200B\u200B\u200B', '\u200E\u200E\u200E\u200E\u200E']) {
       expect((await call('ACCEPTED_COURIER', note)).status, JSON.stringify(note)).toBe(400);
     }
-    expect(db.settlementMatch.update).not.toHaveBeenCalled();
+    expect(db.settlementMatch.updateMany).not.toHaveBeenCalled();
     expect(db.orderNote.create).not.toHaveBeenCalled();
     // …and a short real reason passes.
     expect((await call('ACCEPTED_COURIER', 'خطأ بالرقم')).status).toBe(200);
@@ -99,9 +99,9 @@ describe('the explanation is five characters at least', () => {
   it('exactly five, stored on the row with the person, and copied to the order’s internal notes', async () => {
     const res = await call('ACCEPTED_COURIER', ' اتفقن ');
     expect(res.status).toBe(200);
-    expect(db.settlementMatch.update).toHaveBeenCalledWith(
+    expect(db.settlementMatch.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'm1' },
+        where: expect.objectContaining({ id: 'm1', statement: { approvedAt: null } }),
         data: expect.objectContaining({ resolution: 'ACCEPTED_COURIER', resolutionNote: 'اتفقن', resolvedById: 'u1' }),
       })
     );
@@ -123,7 +123,7 @@ describe('the matrix is asked of the order as it is now', () => {
       expect(body.code).toBe('DECISION_NOT_ALLOWED');
       expect(body.error).toContain('مُسوّى أصلاً');
     }
-    expect(db.settlementMatch.update).not.toHaveBeenCalled();
+    expect(db.settlementMatch.updateMany).not.toHaveBeenCalled();
     expect(db.orderNote.create).not.toHaveBeenCalled();
     expect(logAudit).not.toHaveBeenCalled();
   });
@@ -131,7 +131,7 @@ describe('the matrix is asked of the order as it is now', () => {
   it('…but «قيد المراجعة» is always there, even for that order', async () => {
     state.order = { id: 'o1', shippingStatus: 'DELIVERED', settlementStatus: 'SETTLED' };
     expect((await call('UNDER_REVIEW', 'سُوّي بكشف آخر')).status).toBe(200);
-    expect(db.settlementMatch.update.mock.calls[0][0].data.resolution).toBe('UNDER_REVIEW');
+    expect(db.settlementMatch.updateMany.mock.calls[0][0].data.resolution).toBe('UNDER_REVIEW');
   });
 
   it('a parcel on the road: their figure yes, a claim no', async () => {
@@ -167,7 +167,7 @@ describe('the matrix is asked of the order as it is now', () => {
   });
 });
 
-describe('the statement’s row is locked first, and an approved statement no longer takes their figure', () => {
+describe('the statement’s row is locked first, and an approved statement takes no answer at all', () => {
   it('locks before it reads the stamp or the order', async () => {
     await call('ACCEPTED_COURIER');
     const lock = db.$queryRaw.mock.invocationCallOrder[0];
@@ -180,20 +180,29 @@ describe('the statement’s row is locked first, and an approved statement no lo
     state.approvedAt = new Date('2026-10-29T00:00:00Z');
     const res = await call('ACCEPTED_COURIER');
     expect(res.status).toBe(409);
-    expect((await res.json()).error).toContain('كشف تسوية');
-    expect(db.settlementMatch.update).not.toHaveBeenCalled();
+    expect((await res.json()).error).toBe('الكشف مغلق نهائياً — التصحيح بكشف تسوية');
+    expect(db.settlementMatch.updateMany).not.toHaveBeenCalled();
   });
 
-  it('…while the claim and the parking are records, and still stand after it', async () => {
+  // OLD → NEW (the lock): «رقمنا» and «قيد المراجعة» were taken after the approval because they move no money. Reversed:
+  // «قيد المراجعة» over a row answered «رقمنا» took the claim off the company in silence (RV313), and «رقمنا» after the fact
+  // opened a claim no approval had looked at. A closed statement is corrected by a settlement statement only.
+  it('…and neither is the claim nor the parking: every saying is refused with the one sentence, nothing is written', async () => {
     state.approvedAt = new Date('2026-10-29T00:00:00Z');
-    expect((await call('OURS_STANDS')).status).toBe(200);
-    expect((await call('UNDER_REVIEW', 'ننتظر الشركة')).status).toBe(200);
+    for (const [saying, note] of [['OURS_STANDS', 'نطالب بالفرق'], ['UNDER_REVIEW', 'ننتظر الشركة'], ['ACCEPTED_COURIER', 'خصم متفق عليه']] as const) {
+      const res = await call(saying, note);
+      expect(res.status, saying).toBe(409);
+      expect(await res.json(), saying).toEqual({ code: 'ALREADY_APPROVED', error: 'الكشف مغلق نهائياً — التصحيح بكشف تسوية' });
+    }
+    expect(db.settlementMatch.updateMany).not.toHaveBeenCalled();
+    expect(db.orderNote.create).not.toHaveBeenCalled();
+    expect(logAudit).not.toHaveBeenCalled();
   });
 
   it('a statement of another store is not found', async () => {
     db.courierStatement.findFirst.mockResolvedValue(null);
     expect((await call('OURS_STANDS')).status).toBe(404);
-    expect(db.settlementMatch.update).not.toHaveBeenCalled();
+    expect(db.settlementMatch.updateMany).not.toHaveBeenCalled();
   });
 });
 

@@ -16,7 +16,6 @@ import {
   MIN_QUERY,
   OTHER_COURIER_WARNING,
   OTHER_COURIER_NOT_EXACT_SENTENCE,
-  APPROVED_WHILE_LINKING_SENTENCE,
   isOurNumber,
   OTHER_STORE_SENTENCE,
   NOT_SHIPPED_SENTENCE,
@@ -313,8 +312,24 @@ describe('what a link refuses', () => {
   it('an approved statement: linking decides what approval settles', async () => {
     w.statement.approvedAt = new Date();
     w.statement.status = 'APPROVED';
-    const e = await refusedWith(link(makeTx(w)));
+    const tx = makeTx(w);
+    const e = await refusedWith(link(tx));
     expect(e.body.code).toBe('ALREADY_APPROVED');
+    // The one sentence of a closed statement, and nothing was written.
+    expect(e.body.error).toBe('الكشف مغلق نهائياً — التصحيح بكشف تسوية');
+    expect(tx.counts['match.updateMany']).toBeUndefined();
+    expect(tx.counts['match.deleteMany']).toBeUndefined();
+    expect(tx.counts['note.create']).toBeUndefined();
+  });
+
+  it('a line that was PARKED («قيد المراجعة», the one answer a line with no order may have) comes out of the link unanswered', async () => {
+    // Otherwise a difference would look answered the moment it was linked, and the approval would not wait for it.
+    Object.assign(w.matches[0], { resolution: 'UNDER_REVIEW', resolutionNote: 'ليس لنا', resolvedById: 'u0', resolvedAt: new Date() });
+    w.orders = [order({ totalAmount: 25 })];
+    const tx = makeTx(w);
+    const r = await link(tx);
+    expect(r.result).toBe('MISMATCHED');
+    expect(w.matches[0]).toMatchObject({ result: 'MISMATCHED', resolution: null, resolutionNote: null, resolvedById: null, resolvedAt: null });
   });
 
   it('a row that is not an unlinked «في الكشف وليس عندنا»', async () => {
@@ -368,6 +383,14 @@ describe('what a link refuses', () => {
       id: 'm1', statementId: 'st1', result: 'MISSING_IN_SYSTEM', orderId: null, statement: { approvedAt: null },
     });
   });
+
+  it('and so is the removal of the sweep row that follows it — an open statement in its own WHERE', async () => {
+    const tx = makeTx(w);
+    await link(tx);
+    expect(tx.settlementMatch.deleteMany.mock.calls[0][0].where).toMatchObject({
+      statementId: 'st1', result: 'MISSING_IN_STATEMENT', statement: { approvedAt: null },
+    });
+  });
 });
 
 describe('an approval that lands while the link is being made', () => {
@@ -383,7 +406,8 @@ describe('an approval that lands while the link is being made', () => {
     expect(tx.$queryRaw.mock.invocationCallOrder[1]).toBeLessThan(tx.order.findFirst.mock.invocationCallOrder[0]);
   });
 
-  it('is refused by the write with «الكشف انعتمد — حدّث», though the statement looked open when it was read', async () => {
+  // (Was: «الكشف انعتمد — حدّث». The lock gives every door of a statement one sentence — settlement-gates.)
+  it('is refused by the write with the one sentence of a closed statement, though the statement looked open when it was read', async () => {
     const tx = makeTx(w);
     // The first read (the check) sees it open; the approval commits; the write finds it approved.
     const open = { ...w.statement };
@@ -391,7 +415,7 @@ describe('an approval that lands while the link is being made', () => {
     Object.assign(w.statement, { status: 'APPROVED', approvedAt: new Date('2026-10-29T10:00:00Z') });
 
     const e = await refusedWith(link(tx));
-    expect(e.body).toEqual({ error: APPROVED_WHILE_LINKING_SENTENCE, code: 'ALREADY_APPROVED' });
+    expect(e.body).toEqual({ error: 'الكشف مغلق نهائياً — التصحيح بكشف تسوية', code: 'ALREADY_APPROVED' });
     expect(w.matches[0]).toMatchObject({ result: 'MISSING_IN_SYSTEM', orderId: null });
     expect(tx.counts['note.create']).toBeUndefined();
     expect(tx.counts['match.deleteMany']).toBeUndefined();

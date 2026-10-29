@@ -5,7 +5,7 @@ import { orderSearchOr } from './order-filters';
 import { hasLeftWarehouse } from './order-state';
 import { claimingRowWhere, integrityNotes, MANUAL_MATCH, openRequestWhere, type OtherStatement } from './match-integrity';
 import { expectedAmountFor, judgeLine, SETTLEMENT_ORDER_SELECT } from './settlement';
-import { isApproved } from './settlement-gates';
+import { closedStatementRefusal, isApproved } from './settlement-gates';
 import { openClaimsFor } from './settlement-decisions';
 
 type Tx = Prisma.TransactionClient | typeof db;
@@ -52,7 +52,6 @@ export function isOurNumber(order: { orderNumber: string; merchantRef: string | 
 
 export const OTHER_COURIER_NOT_EXACT_SENTENCE =
   'طلب شركة شحن أخرى يُربط برقم طلبنا بالضبط فقط — اكتب رقم الطلب كاملاً وابحث';
-export const APPROVED_WHILE_LINKING_SENTENCE = 'الكشف انعتمد — حدّث';
 
 export const OTHER_COURIER_WARNING = 'هذا الطلب مع شركة شحن أخرى غير صاحبة الكشف — اربطه فقط إن كنت متأكداً أن السطر له';
 
@@ -352,7 +351,7 @@ export async function linkLineToOrder(
   if (!statement) throw new LinkRefused(404, { error: 'الكشف غير موجود', code: 'NOT_FOUND' });
   // Linking decides which orders approval settles, exactly as matching does: after approval it is history.
   if (isApproved(statement)) {
-    throw new LinkRefused(409, { error: 'الكشف معتمد — لا يُربط فيه سطر. أيّ تصحيح بعد الاعتماد يكون بقيد عكسي.', code: 'ALREADY_APPROVED' });
+    throw new LinkRefused(409, closedStatementRefusal());
   }
 
   const match = await tx.settlementMatch.findFirst({
@@ -434,6 +433,12 @@ export async function linkLineToOrder(
       statementFee: v.statedFee,
       feeDifference: v.feeDifference,
       note: v.note,
+      // A line that was parked («قيد المراجعة», the one answer a line with no order may have) is a line with an order now,
+      // judged afresh: the old answer does not follow it, or a difference would look answered when nobody has.
+      resolution: null,
+      resolutionNote: null,
+      resolvedById: null,
+      resolvedAt: null,
     },
   });
   if (claimed.count !== 1) {
@@ -442,14 +447,14 @@ export async function linkLineToOrder(
       select: { status: true, approvedAt: true },
     });
     if (now && isApproved(now)) {
-      throw new LinkRefused(409, { error: APPROVED_WHILE_LINKING_SENTENCE, code: 'ALREADY_APPROVED' });
+      throw new LinkRefused(409, closedStatementRefusal());
     }
     throw new LinkRefused(409, { error: 'رُبط هذا السطر قبل لحظات', code: 'NOT_LINKABLE' });
   }
 
   // The order is now named by a line of this statement: it is no longer «a parcel no statement names» here.
   await tx.settlementMatch.deleteMany({
-    where: { statementId: p.statementId, orderId: order.id, result: 'MISSING_IN_STATEMENT', resolution: null },
+    where: { statementId: p.statementId, orderId: order.id, result: 'MISSING_IN_STATEMENT', resolution: null, statement: { approvedAt: null } },
   });
 
   await tx.orderNote.create({
