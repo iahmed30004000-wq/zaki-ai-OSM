@@ -7,6 +7,7 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { zodMessage } from '@/lib/zod-message';
 import { logAudit } from '@/lib/audit';
 import { paySalary, previewPayslip, PayrollRefused } from '@/lib/payroll';
+import { MIN_CONVERT_RATE } from '@/lib/currencies';
 import { currentSpan } from '@/lib/commission-period';
 import { owedTo } from '@/lib/commission-payout';
 
@@ -42,7 +43,8 @@ function periodOf(param: string | null): { start: Date; end: Date } {
  */
 const convertSchema = z.object({
   currencyCode: z.string().trim().toUpperCase().length(3),
-  rate: z.number().positive().max(1_000_000),
+  // Not below what the rate column holds (six decimals): a smaller rate turns a deduction into nothing.
+  rate: z.number().min(MIN_CONVERT_RATE, 'السعر صغير جداً — الخصم بيطلع صفر').max(1_000_000),
 });
 
 export async function GET(req: Request) {

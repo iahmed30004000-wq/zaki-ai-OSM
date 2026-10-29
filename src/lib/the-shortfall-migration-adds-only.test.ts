@@ -8,8 +8,9 @@ import { ALL_CATALOG_KEYS } from './permission-catalog';
  *
  * ⚠️ There is no database in CI, so the migration is read here as text. It was ALSO run against the local database
  * inside a transaction that was rolled back, over fixture people — before and after compared; that measurement is in
- * the pull request and is the stronger evidence. It is applied to production by the owner's press and nothing else:
- * `prisma db execute`, then `prisma migrate resolve --applied`.
+ * the pull request and is the stronger evidence. It reaches production with the first Redeploy (docker-entrypoint.sh
+ * runs `prisma migrate deploy` at every start), which is safe because it only adds and can run twice; applying it by
+ * hand first (`prisma db execute`, then `prisma migrate resolve --applied`) is optional.
  */
 
 const MIGRATIONS = path.join(process.cwd(), 'prisma', 'migrations');

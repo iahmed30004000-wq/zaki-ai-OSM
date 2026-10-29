@@ -134,6 +134,23 @@ describe('moving a shortfall to another person', () => {
   });
 });
 
+describe('a decision that lost the race to a payment or to another decision', () => {
+  it.each(['apply', 'waive', 'reverse', 'retarget'] as const)('%s is answered «الخصم تغيّر هلّق — حدّث الصفحة», as a conflict, with no audit row and no notice', async (action) => {
+    const refused = new PenaltyRefused('CHANGED');
+    applyPenalty.mockRejectedValue(refused);
+    waivePenalty.mockRejectedValue(refused);
+    reversePenalty.mockRejectedValue(refused);
+    retargetShortfall.mockRejectedValue(refused);
+    const res = await post({ penaltyId: ID, action, note: 'سبب', userId: MONA });
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.code).toBe('CHANGED');
+    expect(body.error).toBe('الخصم تغيّر هلّق — حدّث الصفحة');
+    expect(logAudit).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
+  });
+});
+
 describe('deciding one’s own', () => {
   it('is answered in Arabic, as a conflict', async () => {
     applyPenalty.mockRejectedValue(new PenaltyRefused('SELF_DECISION'));

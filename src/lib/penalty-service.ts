@@ -30,7 +30,8 @@ export class PenaltyRefused extends Error {
       | 'ESTIMATED'
       | 'SELF_DECISION'
       | 'NOT_SHORTFALL'
-      | 'BAD_TARGET',
+      | 'BAD_TARGET'
+      | 'CHANGED',
     message?: string
   ) {
     super(message ?? reason);
@@ -204,6 +205,21 @@ export async function recordProposals(tx: Tx, scope: ProposeScope, proposals: Pr
   return written;
 }
 
+/**
+ * THE WRITE THAT DECIDES — CONDITIONAL ON WHAT WAS READ.
+ *
+ * Every decision first READS the row, checks it may move, then writes. Between the two a payment can stamp the row
+ * with its payslip, or another person can decide it: an unconditional `update` would then write WAIVED over a
+ * deduction the salary has already taken (or APPLIED over one somebody waived). So the write itself carries the
+ * state it expects and the payslip it expects to be absent, and exactly one row must answer. Anything else — the
+ * state moved, a payslip stamped it — refuses with `CHANGED` and writes nothing: the caller's transaction rolls back
+ * whatever came before it.
+ */
+async function moveFrom(tx: Tx, row: { id: string; status: string }, data: Prisma.PenaltyUpdateManyMutationInput) {
+  const done = await tx.penalty.updateMany({ where: { id: row.id, status: row.status, payslipId: null }, data });
+  if (done.count !== 1) throw new PenaltyRefused('CHANGED');
+}
+
 export interface Decision {
   penaltyId: string;
   decidedById: string;
@@ -224,15 +240,14 @@ export async function applyPenalty(tx: Tx, input: Decision) {
   // Nobody decides a deduction taken from themselves: not to apply it and not to wave it away.
   if (row.userId === input.decidedById) throw new PenaltyRefused('SELF_DECISION');
 
-  return tx.penalty.update({
-    where: { id: row.id },
-    data: {
-      status: 'APPLIED',
-      decidedById: input.decidedById,
-      decidedAt: new Date(),
-      decisionNote: input.note ?? null,
-    },
-  });
+  const data = {
+    status: 'APPLIED',
+    decidedById: input.decidedById,
+    decidedAt: new Date(),
+    decisionNote: input.note ?? null,
+  };
+  await moveFrom(tx, row, data);
+  return { ...row, ...data };
 }
 
 /**
@@ -249,15 +264,14 @@ export async function waivePenalty(tx: Tx, input: Decision) {
   if (!input.note?.trim()) throw new PenaltyRefused('REASON_REQUIRED');
   if (row.userId === input.decidedById) throw new PenaltyRefused('SELF_DECISION');
 
-  return tx.penalty.update({
-    where: { id: row.id },
-    data: {
-      status: 'WAIVED',
-      decidedById: input.decidedById,
-      decidedAt: new Date(),
-      decisionNote: input.note.trim(),
-    },
-  });
+  const data = {
+    status: 'WAIVED',
+    decidedById: input.decidedById,
+    decidedAt: new Date(),
+    decisionNote: input.note.trim(),
+  };
+  await moveFrom(tx, row, data);
+  return { ...row, ...data };
 }
 
 /**
@@ -279,10 +293,7 @@ export async function reversePenalty(tx: Tx, input: Decision) {
   if (row.userId === input.decidedById) throw new PenaltyRefused('SELF_DECISION');
 
   const now = new Date();
-  await tx.penalty.update({
-    where: { id: row.id },
-    data: { status: 'REVERSED', decidedById: input.decidedById, decidedAt: now, decisionNote: input.note.trim() },
-  });
+  await moveFrom(tx, row, { status: 'REVERSED', decidedById: input.decidedById, decidedAt: now, decisionNote: input.note.trim() });
 
   return tx.penalty.create({
     data: {
@@ -338,10 +349,7 @@ export async function retargetShortfall(tx: Tx, input: Retarget) {
   if (!target || !mayCarryShortfall(target.role) || target.id === input.decidedById) throw new PenaltyRefused('BAD_TARGET');
 
   const now = new Date();
-  await tx.penalty.update({
-    where: { id: row.id },
-    data: { status: 'WAIVED', decidedById: input.decidedById, decidedAt: now, decisionNote: NOT_THE_ONE_AR },
-  });
+  await moveFrom(tx, row, { status: 'WAIVED', decidedById: input.decidedById, decidedAt: now, decisionNote: NOT_THE_ONE_AR });
 
   return tx.penalty.create({
     data: {

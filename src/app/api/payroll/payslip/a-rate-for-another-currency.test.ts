@@ -99,6 +99,30 @@ describe('the payment', () => {
     expect(paySalary).not.toHaveBeenCalled();
   });
 
+  it('NEGATIVE: a rate under 0.000001 is refused by the server — the column cannot hold it', async () => {
+    const res = await post({ userId: U, walletId: W, exchangeRate: 1, convert: { currencyCode: 'JOD', rate: 0.0000001 } });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain('السعر صغير جداً');
+    expect(paySalary).not.toHaveBeenCalled();
+  });
+
+  it('0.000001 passes', async () => {
+    expect((await post({ userId: U, walletId: W, exchangeRate: 1, convert: { currencyCode: 'JOD', rate: 0.000001 } })).status).toBe(200);
+    expect(paySalary.mock.calls[0][1].convert).toEqual({ currencyCode: 'JOD', rate: 0.000001 });
+  });
+
+  it('the preview refuses the same small rate', async () => {
+    expect((await get(`?userId=${U}&convertCurrency=JOD&convertRate=0.0000001`)).status).toBe(400);
+    expect(previewPayslip).not.toHaveBeenCalled();
+  });
+
+  it('a payment the rate would turn into nothing is answered in Arabic as a conflict', async () => {
+    paySalary.mockRejectedValue(new PayrollRefused('RATE_TOO_SMALL'));
+    const res = await post({ userId: U, walletId: W, exchangeRate: 1, convert: { currencyCode: 'JOD', rate: 0.000001 } });
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('RATE_TOO_SMALL');
+  });
+
   it('a payment that stops because the deductions changed is answered as a conflict', async () => {
     paySalary.mockRejectedValue(new PayrollRefused('DEDUCTIONS_CHANGED'));
     const res = await post({ userId: U, walletId: W, exchangeRate: 1 });

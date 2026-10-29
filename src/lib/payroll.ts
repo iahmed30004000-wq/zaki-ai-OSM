@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { db } from './db';
 import { roundMinor } from './money';
-import { minorUnitFor } from './currencies';
+import { MIN_CONVERT_RATE, minorUnitFor } from './currencies';
 import { checkWallet, recordSpend } from './pay-from-wallet';
 import { SHORTFALL_KIND, UNDECIDED_AT_PAYDAY_AR } from './shortfall';
 
@@ -48,7 +48,8 @@ export type PayrollRefusal =
   | 'NOTHING_OWED'
   | 'CURRENCY_MISMATCH'
   | 'SELF_DECISION'
-  | 'DEDUCTIONS_CHANGED';
+  | 'DEDUCTIONS_CHANGED'
+  | 'RATE_TOO_SMALL';
 
 const REFUSAL_AR: Record<PayrollRefusal, string> = {
   NO_SALARY: 'لا راتب مسجّل لهذا الموظف',
@@ -59,6 +60,7 @@ const REFUSAL_AR: Record<PayrollRefusal, string> = {
   CURRENCY_MISMATCH: 'خصمٌ بعملة غير عملة الراتب — لا يُطرح منه',
   SELF_DECISION: 'فرق تحصيل عليك لم يُقرَّر بعد — لا تصرف راتبك وتطبّقه على نفسك، يصرفه غيرك',
   DEDUCTIONS_CHANGED: 'تغيّرت الخصومات أثناء الصرف (أُلغي خصم أو أُرجع) — أعد فتح الصرف وراجع الأرقام',
+  RATE_TOO_SMALL: 'السعر صغير جداً — الخصم بيطلع صفر',
 };
 
 export class PayrollRefused extends Error {
@@ -129,8 +131,14 @@ export async function previewPayslip(
 
   // A typed rate that is not a rate is refused, not ignored: a conversion that silently did not happen would pay
   // a person the full wage on top of a deduction they were told was taken.
-  if (params.convert && !(params.convert.rate > 0)) throw new PayrollRefused('BAD_RATE');
-  const convert = params.convert && params.convert.currencyCode !== currencyCode ? params.convert : null;
+  // The rate is cut to the six decimals its column holds BEFORE it is used, so what is computed with is exactly what
+  // is stored — a rate of 0.0000001 used as itself and stored as 0.000000 would explain nothing a month later.
+  const typedRate = params.convert ? roundMinor(params.convert.rate, 6) : 0;
+  if (params.convert && !(typedRate >= MIN_CONVERT_RATE)) throw new PayrollRefused('BAD_RATE');
+  const convert =
+    params.convert && params.convert.currencyCode !== currencyCode
+      ? { currencyCode: params.convert.currencyCode, rate: typedRate }
+      : null;
 
   const penalties = await tx.penalty.findMany({
     where: {
@@ -154,7 +162,10 @@ export async function previewPayslip(
     } else if (convert && p.currencyCode === convert.currencyCode) {
       // Each row on its own, rounded by the SALARY's decimals: a row is settled whole or waits whole, so what
       // is settled must be a figure of the salary's own unit.
-      counted.push({ id: p.id, own, inSalary: roundMinor(own * convert.rate, minor), foreign: true, undecided, currencyCode: p.currencyCode });
+      const inSalary = roundMinor(own * convert.rate, minor);
+      // A deduction the rate turns into nothing would be stamped as taken and take nothing.
+      if (own > 0 && inSalary <= 0) throw new PayrollRefused('RATE_TOO_SMALL');
+      counted.push({ id: p.id, own, inSalary, foreign: true, undecided, currencyCode: p.currencyCode });
     } else {
       others.set(p.currencyCode, (others.get(p.currencyCode) ?? 0) + own);
     }

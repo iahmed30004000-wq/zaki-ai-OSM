@@ -248,6 +248,49 @@ describe('a deduction in ANOTHER currency is converted at a rate the payer typed
     expect(p.converted).toBeNull();
   });
 
+  describe('a rate too small to mean anything', () => {
+    // A dinar salary (three places), a deduction of 5000 Egyptian pounds.
+    beforeEach(() => {
+      db.user.findFirst.mockResolvedValue(salaryOf(300, 'JOD'));
+      db.penalty.findMany.mockResolvedValue([row('e1', 5000, '2026-10-18', 'EGP')]);
+    });
+    const convert = (rate: number) => previewPayslip(db as never, { ...SCOPE, convert: { currencyCode: 'EGP', rate } });
+
+    it('NEGATIVE: 0.0000001 is refused — it is stored as 0.000000, so it explains nothing', async () => {
+      await expect(convert(0.0000001)).rejects.toMatchObject({ reason: 'BAD_RATE' });
+    });
+
+    it('0.000001 passes, and converts to the dinar’s own three places: 5000 × 0.000001 = 0.005', async () => {
+      const p = await convert(0.000001);
+      expect(p.converted).toEqual({ currencyCode: 'EGP', rate: 0.000001, amount: 5000, inSalaryCurrency: 0.005 });
+      expect(p.net).toBe(299.995);
+    });
+
+    it('a rate with more than six decimals is cut to the six the column holds — and the cut one is what is used and stored', async () => {
+      const p = await convert(0.0000014);
+      expect(p.converted!.rate).toBe(0.000001);
+      expect(p.converted!.inSalaryCurrency).toBe(0.005);
+    });
+
+    it('NEGATIVE: a rate that turns a deduction into 0.000 (after roundMinor) is refused — it would be stamped as taken and take nothing', async () => {
+      db.penalty.findMany.mockResolvedValue([row('e1', 2, '2026-10-18', 'EGP')]);
+      // 2 × 0.000001 = 0.000002 → 0.000 dinars.
+      await expect(convert(0.000001)).rejects.toMatchObject({ reason: 'RATE_TOO_SMALL' });
+      await expect(convert(0.000001)).rejects.toThrow('السعر صغير جداً — الخصم بيطلع صفر');
+    });
+
+    it('and the payment refuses too, before any money moves', async () => {
+      db.penalty.findMany.mockResolvedValue([row('e1', 2, '2026-10-18', 'EGP')]);
+      await expect(paySalary(db as never, { ...PAY, convert: { currencyCode: 'EGP', rate: 0.000001 } })).rejects.toMatchObject({ reason: 'RATE_TOO_SMALL' });
+      expect(db.payslip.create).not.toHaveBeenCalled();
+      expect(recordSpend).not.toHaveBeenCalled();
+    });
+
+    it('a currency nobody owes does not trip it', async () => {
+      await expect(previewPayslip(db as never, { ...SCOPE, convert: { currencyCode: 'EUR', rate: 0.000001 } })).resolves.toMatchObject({ converted: null });
+    });
+  });
+
   it('converting into a dinar salary keeps three places', async () => {
     db.user.findFirst.mockResolvedValue(salaryOf(300, 'JOD'));
     db.penalty.findMany.mockResolvedValue([row('u1', 2, '2026-10-18', 'USD')]);

@@ -33,6 +33,7 @@ const REFUSAL_AR: Record<string, string> = {
   SELF_DECISION: 'لا تقرّر في خصمٍ عليك أنت — يقرّره غيرك',
   NOT_SHORTFALL: 'التحويل لموظف آخر لفرق التحصيل وحده',
   BAD_TARGET: 'اختر موظفاً فعّالاً غير المالك والمدراء وغيرك وغير الحالي',
+  CHANGED: 'الخصم تغيّر هلّق — حدّث الصفحة',
 };
 
 export async function GET(req: Request) {

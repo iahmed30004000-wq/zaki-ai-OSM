@@ -32,7 +32,9 @@
 -- with no rows there answers «no baseline» — a lone row would turn that into a baseline holding these two keys,
 -- and restoring it would wipe the role. (The same lesson as 20261029000000_tracking_returns_view_key.)
 --
--- HOW IT IS APPLIED — by the owner's press, never by a deploy:
+-- HOW IT IS APPLIED — by the first Redeploy: docker-entrypoint.sh runs `prisma migrate deploy` at every start, and
+-- this file is additive and idempotent, so the columns arrive before the code that reads them. The owner MAY apply it
+-- by hand before the Redeploy instead (optional):
 --   npx prisma db execute --file prisma/migrations/20261029120000_shortfall_penalty/migration.sql --schema prisma/schema.prisma
 --   npx prisma migrate resolve --applied 20261029120000_shortfall_penalty
 
