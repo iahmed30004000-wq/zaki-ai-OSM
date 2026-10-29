@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { REJECTION_REASONS } from './confirmation-workflow';
 import { orderSearchOr } from './order-filters';
 import { typed } from './text-search';
+import { receiptCameBackWhere } from './written-off';
 import { LOST_STATUSES, NEVER_WINBACK_REASONS, type WinbackRule } from './winback';
 
 /**
@@ -154,7 +155,8 @@ const stillCooling = (rule: WinbackRule, now: Date): Where => ({
  */
 const returnCandidate = (): Where => ({
   ...cameBack(),
-  returnReceipt: { isNot: null },
+  // A receipt that says nothing came back (a zero count, a write-off) closes the order; nobody holds goods to resell.
+  returnReceipt: { is: receiptCameBackWhere() },
   replacedBy: null,
   replacesOrderId: null,
   OR: [{ rejectionReason: null }, { rejectionReason: { notIn: [...NEVER_WINBACK_REASONS] } }],
@@ -212,7 +214,9 @@ export const periodWhere = (period: Period, now: Date, rule: WinbackRule): Where
   const since = new Date(now.getTime() - Number(period) * DAY);
   const lostWithin: Where = { statusLogs: { some: lostLog({ createdAt: { gte: since } }) } };
   if (rule.afterShipping !== true) return lostWithin;
-  return { OR: [lostWithin, { ...cameBack(), returnReceipt: { is: { inspectedAt: { gte: since } } } }] };
+  return {
+    OR: [lostWithin, { ...cameBack(), returnReceipt: { is: { AND: [receiptCameBackWhere(), { inspectedAt: { gte: since } }] } } }],
+  };
 };
 /** «قبل الشحن» is a parcel that never left, «بعد الشحن» one that did — whatever became of it since. */
 export const shippingWhere = (kind: ShippingKind): Where => (kind === 'before' ? { shippedAt: null } : { shippedAt: { not: null } });

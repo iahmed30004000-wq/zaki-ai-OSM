@@ -7,6 +7,8 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { zodMessage } from '@/lib/zod-message';
 import { consumeOrderStock } from '@/lib/stock-consumption';
+import { expectedBackTotal } from '@/lib/partial-delivery';
+import { LOSS_RECEIPT_NOTE, SETTLEMENT_WITH_MONEY, lossReceiptCounts } from '@/lib/written-off';
 
 /**
  * POST /api/ops/tracking/write-off — the parcel is never coming back.
@@ -26,6 +28,17 @@ import { consumeOrderStock } from '@/lib/stock-consumption';
  * It is not a deletion and not a cancellation. The order keeps its number,
  * its barcode and its history; what changes is that we stop waiting, and
  * the reason is required so the loss can be explained later.
+ *
+ * IT CLOSES THE WAY THE DESK CLOSES A ZERO COUNT. The order used to be left
+ * RETURNED with no receipt, and everything that reads «a return nobody has
+ * received» kept it: the desk's list, the daily alert, «شغلك اليوم», the
+ * finance count of what is pending, and the media buyer (RETURNED with
+ * returned_at empty). So it writes what the desk writes for a count of
+ * nothing: a receipt of received 0, damaged 0, missing = expected, the note
+ * «أُغلق كخسارة — لم يصل», returnedAt, and no settlement owed. The words
+ * «مفقود بعد الشحن — خسارة = مغلق» are READ from that shape (`order-outcome`).
+ * If the parcel turns up later the desk completes this same receipt (the
+ * returns door), it does not open a second one.
  */
 
 const schema = z.object({
@@ -52,6 +65,9 @@ export async function POST(req: Request) {
         shippingStatus: true,
         trackingNumber: true,
         totalAmount: true,
+        settlementStatus: true,
+        returnReceipt: { select: { id: true } },
+        items: { select: { id: true, quantity: true, freeQuantity: true, deliveredQty: true } },
         deliveryProvider: { select: { name: true } },
         replacedBy: { select: { orderNumber: true } },
       },
@@ -69,6 +85,14 @@ export async function POST(req: Request) {
       );
     }
 
+    // A receipt already stands for this order: it was counted at the desk, so there is nothing left to give up on.
+    if (order.returnReceipt) {
+      return NextResponse.json({ error: 'تم استلام هذا المرتجع مسبقاً', code: 'ALREADY_RECEIVED' }, { status: 409 });
+    }
+
+    // What was expected back: the same sum the desk uses, so the two receipts read alike.
+    const loss = lossReceiptCounts(expectedBackTotal(order.items));
+
     const result = await db.$transaction(async (tx) => {
       // The units left the building and will not come back. Consuming is
       // the honest entry; restoring would credit a shelf that is empty.
@@ -79,10 +103,28 @@ export async function POST(req: Request) {
         userId: user.id,
       });
 
+      // The desk's own zero count, written by the same hand: nothing received, nothing damaged, all of it missing.
+      // One receipt per order (`orderId` is unique), so a second write-off in a race fails here and rolls the shelf back.
+      await tx.returnReceipt.create({
+        data: {
+          companyId,
+          orderId: order.id,
+          ...loss,
+          courierFeeCharged: false,
+          courierFeeAmount: 0,
+          inspectedById: user.id,
+          note: LOSS_RECEIPT_NOTE,
+          stockRestored: false,
+        },
+      });
+
       const updated = await tx.order.update({
         where: { id: order.id },
         data: {
           shippingStatus: 'RETURNED',
+          returnedAt: new Date(),
+          // No settlement is owed on goods that never came back — unless money is already recorded against it, which stays.
+          ...((SETTLEMENT_WITH_MONEY as readonly string[]).includes(order.settlementStatus) ? {} : { settlementStatus: 'NOT_APPLICABLE' }),
           returnReason: `أُغلق كخسارة — لم تُستلم البضاعة. ${parsed.data.reason}`,
           version: { increment: 1 },
         },
@@ -102,6 +144,7 @@ export async function POST(req: Request) {
             barcode: order.trackingNumber,
             replacement: order.replacedBy?.orderNumber ?? null,
             amount: order.totalAmount,
+            expectedQty: loss.expectedQty,
           }),
         },
       });

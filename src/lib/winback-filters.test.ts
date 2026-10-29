@@ -33,6 +33,7 @@ import {
   type WinbackSource,
 } from './winback';
 import { repoFile, stripComments } from './guard-source';
+import { nothingCameBack } from './written-off';
 
 /**
  * «جاهز (23)» IS A PROMISE THAT TWENTY-THREE ROWS WILL APPEAR.
@@ -92,13 +93,18 @@ function evaluate(where: Any, row: Any): Tri {
           // A list relation is EXISTS: some child for which the condition is TRUE.
           if (op === 'some') return (value as Any[]).some((child) => evaluate(arg as Any, child) === true);
           // A single relation: «there is none», or «there is one and it matches» — EXISTS again.
-          if (op === 'is') return arg === null ? value === null : value !== null && evaluate(arg as Any, value) === true;
+          // A bare receipt in these fixtures is an ordinary one: a unit received, none damaged, none missing.
+          if (op === 'is') return arg === null ? value === null : value !== null && evaluate(arg as Any, { receivedQty: 1, damagedQty: 0, missingQty: 0, ...value }) === true;
           if (op === 'isNot' && arg === null) return value !== null;
           if (op === 'not' && arg === null) return value !== null;
           if (op === 'isNot' || op === 'not') throw new Error(`the evaluator does not know «${op}» with a value`);
           if (value === null) return null; // any other comparison with an empty column
           if (op === 'in') return (arg as unknown[]).includes(value);
           if (op === 'notIn') return !(arg as unknown[]).includes(value);
+          if (typeof value === 'number') {
+            if (op === 'gt') return value > (arg as number);
+            throw new Error(`the evaluator compares numbers with «gt» only, not «${op}»`);
+          }
           if (!(value instanceof Date)) throw new Error(`the evaluator compares dates only, not «${op}» on ${typeof value}`);
           const a = value.getTime();
           const b = (arg as Date).getTime();
@@ -126,13 +132,16 @@ interface OrderRow {
   createdAt: Date;
   shippedAt: Date | null;
   shippingStatus: string;
-  returnReceipt: { inspectedAt: Date } | null;
+  returnReceipt: { inspectedAt: Date; receivedQty?: number; damagedQty?: number; missingQty?: number } | null;
   replacedBy: { orderNumber: string } | null;
   replacesOrderId: string | null;
   rejectionReason: string | null;
   productNameSnapshot: string | null;
   statusLogs: Log[];
 }
+
+/** The receipt a write-off writes (and a zero count at the desk): nothing received, nothing damaged, all of it missing. */
+const WRITTEN_OFF = { receivedQty: 0, damagedQty: 0, missingQty: 4 };
 
 const lost = (createdAt: Date, newValue = 'REJECTED'): Log => ({ statusType: 'CONFIRMATION', newValue, createdAt });
 
@@ -167,6 +176,10 @@ const back = (over: Partial<OrderRow> = {}): OrderRow =>
     ...over,
   });
 
+/** A bare receipt in these fixtures is an ordinary one — a unit received — until a case gives it counts. */
+const cameNothing = (r: NonNullable<OrderRow['returnReceipt']>) =>
+  nothingCameBack({ receivedQty: r.receivedQty ?? 1, damagedQty: r.damagedQty ?? 0, missingQty: r.missingQty ?? 0 });
+
 /** What the route does for each row: the closing date is the LAST loss row, and the verdict is taken with it. */
 function verdictOf(o: OrderRow, rule: WinbackRule = RULE) {
   const last = o.statusLogs
@@ -178,7 +191,9 @@ function verdictOf(o: OrderRow, rule: WinbackRule = RULE) {
     rejectedAt: last?.createdAt ?? null,
     shippedAt: o.shippedAt,
     shippingStatus: o.shippingStatus,
-    returnReceivedAt: o.returnReceipt?.inspectedAt ?? null,
+    // What the route does with the receipt: a receipt that says nothing came back is not a return received.
+    returnReceivedAt: o.returnReceipt && !cameNothing(o.returnReceipt) ? o.returnReceipt.inspectedAt : null,
+    returnNothingCameBack: o.returnReceipt ? cameNothing(o.returnReceipt) : false,
     replacedByOrderNumber: o.replacedBy?.orderNumber ?? null,
     replacesOrderNumber: o.replacesOrderId ? 'ORD-X' : null,
     sellingPrice: 100,
@@ -247,6 +262,13 @@ function matrix(): { name: string; row: OrderRow }[] {
   add('back, cooling from its receipt though the loss is old', back({ confirmationStatus: 'REJECTED', rejectionReason: 'PRICE_TOO_HIGH', statusLogs: [lost(ago(90))], returnReceipt: { inspectedAt: ago(2) } }));
   add('back, received long ago though a loss is fresh', back({ confirmationStatus: 'REJECTED', rejectionReason: 'PRICE_TOO_HIGH', statusLogs: [lost(ago(1))], returnReceipt: { inspectedAt: ago(40) } }));
   add('back, a duplicate, still cooling', back({ rejectionReason: 'DUPLICATE_ORDER', returnReceipt: { inspectedAt: ago(2) } }));
+  // ── a receipt that says NOTHING came back: a write-off, or a zero count at the desk ──
+  for (const closedAt of COOLING_EDGES) add(`back, written off ${daysAgo(closedAt)} days ago`, back({ returnReceipt: { inspectedAt: closedAt, ...WRITTEN_OFF } }));
+  add('back, written off, and a duplicate', back({ rejectionReason: 'DUPLICATE_ORDER', returnReceipt: { inspectedAt: ago(30), ...WRITTEN_OFF } }));
+  add('back, written off, lost at confirmation too', back({ confirmationStatus: 'REJECTED', rejectionReason: 'PRICE_TOO_HIGH', statusLogs: [lost(ago(60))], returnReceipt: { inspectedAt: ago(30), ...WRITTEN_OFF } }));
+  add('back, only broken units came back', back({ returnReceipt: { inspectedAt: ago(30), receivedQty: 0, damagedQty: 2, missingQty: 2 } }));
+  add('back, a receipt that expected nothing (missing 0)', back({ returnReceipt: { inspectedAt: ago(30), receivedQty: 0, damagedQty: 0, missingQty: 0 } }));
+  add('back, part of it came back', back({ returnReceipt: { inspectedAt: ago(30), receivedQty: 1, damagedQty: 0, missingQty: 3 } }));
   // ── and everything that left and is NOT back, a receipt beside it or not ──
   for (const shippingStatus of NOT_BACK) {
     add(`not back: ${shippingStatus}, with a receipt`, back({ shippingStatus }));
@@ -624,7 +646,78 @@ describe('the module is safe for the screen to import', () => {
   it('— it reaches no server module: no database, no session', () => {
     const src = stripComments(repoFile('src/lib/winback-filters.ts'));
     const imports = [...src.matchAll(/^import .*? from '([^']+)'/gm)].map((m) => m[1]);
-    expect(imports.sort()).toEqual(['./confirmation-workflow', './order-filters', './text-search', './winback', '@prisma/client']);
+    expect(imports.sort()).toEqual(['./confirmation-workflow', './order-filters', './text-search', './winback', './written-off', '@prisma/client']);
     expect(src).toMatch(/import type \{ Prisma \} from '@prisma\/client'/);
+  });
+});
+
+/**
+ * A WRITE-OFF IS NOT A RETURN TO WIN BACK.
+ *
+ * The desk closes a zero count with a receipt of received 0, damaged 0 and everything missing; a write-off now
+ * writes the same one. `returnCandidate` used to accept ANY receipt, so both turned into a discount call — to
+ * a customer whose goods nobody holds. The list, the period filter and the verdict all read the receipt's shape
+ * now, and these hold them to each other.
+ */
+describe('a receipt that says nothing came back is never a win-back call', () => {
+  const writtenOff = (inspectedAt = ago(30)) => back({ returnReceipt: { inspectedAt, ...WRITTEN_OFF } });
+  const received = (over: Partial<NonNullable<OrderRow['returnReceipt']>> = {}) => back({ returnReceipt: { inspectedAt: ago(30), ...over } });
+
+  it('the verdict refuses it: nobody holds the goods', () => {
+    const v = verdictOf(writtenOff());
+    expect(v.eligible).toBe(false);
+    if (!v.eligible) expect(v.code).toBe('RETURN_NOT_RECEIVED');
+  });
+
+  it('and the list agrees: in the refused view, in neither the ready one nor the cooling one — at any age', () => {
+    for (const closedAt of COOLING_EDGES) {
+      expect(viewsOf(writtenOff(closedAt)), daysAgo(closedAt)).toEqual(['skipped']);
+    }
+  });
+
+  it('and «آخر ٧ أيام» does not count it as a return cancelled in the week', () => {
+    const fresh = writtenOff(ago(1)) as unknown as Any;
+    expect(matches(periodWhere('7', NOW, RULE) as Any, fresh)).toBe(false);
+    expect(matches(periodWhere('30', NOW, RULE) as Any, writtenOff(ago(20)) as unknown as Any)).toBe(false);
+  });
+
+  it('NEGATIVE: an ordinary received return (a unit back) is still work, and its period still counts', () => {
+    const ordinary = received({ receivedQty: 3, damagedQty: 0, missingQty: 0 });
+    expect(verdictOf(ordinary).eligible).toBe(true);
+    expect(viewsOf(ordinary)).toEqual(['ready']);
+    expect(matches(periodWhere('30', NOW, RULE) as Any, received({ inspectedAt: ago(20), receivedQty: 3, damagedQty: 0, missingQty: 0 }) as unknown as Any)).toBe(true);
+  });
+
+  it('NEGATIVE: part of it back, or only broken units back, is still a return that came back', () => {
+    for (const r of [{ receivedQty: 1, damagedQty: 0, missingQty: 3 }, { receivedQty: 0, damagedQty: 2, missingQty: 2 }]) {
+      expect(verdictOf(received(r)).eligible, JSON.stringify(r)).toBe(true);
+      expect(viewsOf(received(r)), JSON.stringify(r)).toEqual(['ready']);
+    }
+  });
+
+  it('NEGATIVE: a bare receipt (no counts selected) reads as it did before — a return that came back', () => {
+    expect(verdictOf(back()).eligible).toBe(true);
+    expect(viewsOf(back())).toEqual(['ready']);
+  });
+
+  it('the design reference says so: a receipt that expected nothing (missing 0) is accepted', () => {
+    const empty = received({ receivedQty: 0, damagedQty: 0, missingQty: 0 });
+    expect(nothingCameBack({ receivedQty: 0, damagedQty: 0, missingQty: 0 })).toBe(false);
+    expect(viewsOf(empty)).toEqual(['ready']);
+    expect(verdictOf(empty).eligible).toBe(true);
+  });
+
+  it('and the same receipt at the desk (a zero count) is refused exactly like a write-off — one shape, one answer', () => {
+    // identical counts, whoever wrote them
+    const deskZeroCount = back({ returnReceipt: { inspectedAt: ago(30), receivedQty: 0, damagedQty: 0, missingQty: 3 } });
+    expect(viewsOf(deskZeroCount)).toEqual(viewsOf(writtenOff()));
+    expect(verdictOf(deskZeroCount).eligible).toBe(false);
+  });
+
+  it('the clause for the database is written the same way in both places', () => {
+    const asked = JSON.stringify(viewWhere('ready', RULE, NOW)) + JSON.stringify(periodWhere('30', NOW, RULE));
+    for (const piece of ['"receivedQty":{"gt":0}', '"damagedQty":{"gt":0}', '"missingQty":0']) {
+      expect(asked.split(piece).length - 1, piece).toBeGreaterThanOrEqual(2);
+    }
   });
 });

@@ -16,6 +16,7 @@ import { baseWhere, winbackFilters } from '@/lib/winback-filters';
 import { readWinbackPage, winbackFacts } from '@/lib/winback-list';
 import { readLimit, readPage } from '@/lib/numeric-input';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
+import { nothingCameBack } from '@/lib/written-off';
 
 /**
  * GET  /api/confirmation/winback — the lost orders worth one more call.
@@ -102,7 +103,7 @@ export async function GET(req: Request) {
           quantity: true, currency: true, productNameSnapshot: true, createdAt: true,
           // Whether a parcel that left came back, why, and when the desk received it.
           shippingStatus: true, returnReason: true, deliveryFailureReason: true,
-          returnReceipt: { select: { inspectedAt: true } },
+          returnReceipt: { select: { inspectedAt: true, receivedQty: true, damagedQty: true, missingQty: true } },
           customer: { select: { fullName: true, phone: true } },
           replacedBy: { select: { orderNumber: true } },
           // Whether this order is itself somebody's second chance.
@@ -154,7 +155,8 @@ export async function GET(req: Request) {
         rejectedAt: rejectedAt.get(o.id) ?? null,
         shippedAt: o.shippedAt,
         shippingStatus: o.shippingStatus,
-        returnReceivedAt: o.returnReceipt?.inspectedAt ?? null,
+        returnReceivedAt: o.returnReceipt && !nothingCameBack(o.returnReceipt) ? o.returnReceipt.inspectedAt : null,
+        returnNothingCameBack: o.returnReceipt ? nothingCameBack(o.returnReceipt) : false,
         replacedByOrderNumber: o.replacedBy?.orderNumber ?? null,
         replacesOrderNumber: o.replaces?.orderNumber ?? null,
         sellingPrice: Number(o.sellingPrice ?? 0),
@@ -179,7 +181,7 @@ export async function GET(req: Request) {
         // A parcel that came back is named a return, in words — never the courier's code, never the prose a
         // write-off or a transfer typed into `returnReason` (which is why that column is not sent at all).
         returnLabel: returnedAfterShipping(source) ? returnLabel(o) : null,
-        returnReceivedAt: o.returnReceipt?.inspectedAt ?? null,
+        returnReceivedAt: o.returnReceipt && !nothingCameBack(o.returnReceipt) ? o.returnReceipt.inspectedAt : null,
         verdict,
       };
     });
@@ -222,7 +224,7 @@ export async function POST(req: Request) {
         replacedBy: { select: { orderNumber: true } },
         replaces: { select: { orderNumber: true } },
         // A parcel that came back is offered only once the desk has received it — and cools from that day.
-        returnReceipt: { select: { inspectedAt: true } },
+        returnReceipt: { select: { inspectedAt: true, receivedQty: true, damagedQty: true, missingQty: true } },
       },
     });
     if (!order) return NextResponse.json({ error: 'الطلب غير موجود' }, { status: 404 });
@@ -241,7 +243,8 @@ export async function POST(req: Request) {
       rejectedAt: lastRejection?.createdAt ?? null,
       shippedAt: order.shippedAt,
       shippingStatus: order.shippingStatus,
-      returnReceivedAt: order.returnReceipt?.inspectedAt ?? null,
+      returnReceivedAt: order.returnReceipt && !nothingCameBack(order.returnReceipt) ? order.returnReceipt.inspectedAt : null,
+      returnNothingCameBack: order.returnReceipt ? nothingCameBack(order.returnReceipt) : false,
       replacedByOrderNumber: order.replacedBy?.orderNumber ?? null,
       replacesOrderNumber: order.replaces?.orderNumber ?? null,
       sellingPrice: Number(order.sellingPrice ?? 0),

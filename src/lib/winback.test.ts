@@ -296,6 +296,14 @@ describe('and after it shipped — a parcel that came back', () => {
     expect(code(winbackVerdict({ ...returned, returnReceivedAt: 'not a date' }, NOW))).toBe('RETURN_NOT_RECEIVED');
   });
 
+  it('— a receipt that says NOTHING CAME BACK (a write-off, a zero count) is refused though it carries a date', () => {
+    const v = winbackVerdict({ ...returned, returnNothingCameBack: true }, NOW);
+    expect(code(v)).toBe('RETURN_NOT_RECEIVED');
+    // NEGATIVE: the same order with a receipt that holds units, or with the flag absent, is still called.
+    expect(code(winbackVerdict({ ...returned, returnNothingCameBack: false }, NOW))).toBe('ELIGIBLE');
+    expect(code(winbackVerdict({ ...returned }, NOW))).toBe('ELIGIBLE');
+  });
+
   /**
    * NOT BACK. A partial delivery carries a receipt — the refused units are counted in — and stays
    * PARTIALLY_DELIVERED: he took part of it. FAILED_DELIVERY and RETURN_REQUESTED may yet be delivered.
@@ -459,9 +467,11 @@ describe('the offer raises a new order and leaves the loss where it is', () => {
     const at = src.indexOf('export async function POST');
     // Each half on its own: the whole file passing with one of them missing is how a door goes blind.
     for (const [half, body] of [['القائمة', src.slice(0, at)], ['العرض', src.slice(at)]] as const) {
-      expect(body, `${half}: لا يقرأ الاستلام`).toContain('returnReceipt: { select: { inspectedAt: true } }');
+      expect(body, `${half}: لا يقرأ الاستلام`).toContain('returnReceipt: { select: { inspectedAt: true, receivedQty: true, damagedQty: true, missingQty: true } }');
       expect(body, `${half}: لا يمرّر حالة الشحن`).toMatch(/shippingStatus: o(?:rder)?\.shippingStatus,/);
-      expect(body, `${half}: لا يمرّر يوم الاستلام`).toMatch(/returnReceivedAt: o(?:rder)?\.returnReceipt\?\.inspectedAt \?\? null,/);
+      // (the day is passed only when something came back; a receipt that says nothing did is not a return received)
+      expect(body, `${half}: لا يمرّر يوم الاستلام`).toMatch(/returnReceivedAt: o(?:rder)?\.returnReceipt && !nothingCameBack/);
+      expect(body, `${half}: لا يمرّر أنّ الإيصال يقول لم يصل شيء`).toMatch(/returnNothingCameBack: o(?:rder)?\.returnReceipt \? nothingCameBack/);
     }
   });
 

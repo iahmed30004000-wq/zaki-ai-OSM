@@ -19,6 +19,7 @@ import { readLimit, readPage } from '@/lib/numeric-input';
 import { readOrderPage } from '@/lib/paged-read';
 import { PENDING_ORDER_BY, RECEIVED_ORDER_BY, daysWaitedOf, returnsFilters, sinceOf, viewScope } from '@/lib/returns-filters';
 import { returnsFacts } from '@/lib/returns-list';
+import { nothingCameBack, receiptNothingCameBackWhere } from '@/lib/written-off';
 
 /**
  * Return receiving.
@@ -220,12 +221,21 @@ export async function POST(req: Request) {
       select: {
         id: true, orderNumber: true, shippingStatus: true, settlementStatus: true,
         regionId: true, deliveryProviderId: true,
-        returnReceipt: { select: { id: true } },
+        returnReceipt: { select: { id: true, receivedQty: true, damagedQty: true, missingQty: true, courierFeeCharged: true } },
         items: { select: { id: true, productId: true, productName: true, quantity: true, freeQuantity: true, deliveredQty: true } },
       },
     });
     if (!order) return NextResponse.json({ error: 'الطلب غير موجود' }, { status: 404 });
-    if (order.returnReceipt) {
+    /*
+     * A RECEIPT THAT SAYS NOTHING CAME BACK IS NOT THE END OF THE PARCEL.
+     *
+     * A write-off, and a zero count at this desk, both leave a receipt of received 0, damaged 0 and everything
+     * missing. If the parcel turns up after all, this call COMPLETES that same receipt — one receipt per order —
+     * instead of being refused as «already received». A second zero count, or any receipt that already holds
+     * units, is still refused.
+     */
+    const completing = !!order.returnReceipt && nothingCameBack(order.returnReceipt) && input.receivedQty + input.damagedQty > 0;
+    if (order.returnReceipt && !completing) {
       return NextResponse.json({ error: 'تم استلام هذا المرتجع مسبقاً', code: 'ALREADY_RECEIVED' }, { status: 409 });
     }
     /**
@@ -321,22 +331,46 @@ export async function POST(req: Request) {
     }
 
     const receipt = await db.$transaction(async (tx) => {
-      const created = await tx.returnReceipt.create({
-        data: {
-          companyId,
-          orderId: order.id,
-          expectedQty,
-          receivedQty: input.receivedQty,
-          damagedQty: input.damagedQty,
-          missingQty,
-          courierFeeCharged: input.chargeCourierFee,
-          courierFeeAmount,
-          inspectedById: user.id,
-          note: input.note ?? null,
-          // Only sound units go back on the shelf.
-          stockRestored: input.receivedQty > 0,
-        },
-      });
+      const counted = {
+        expectedQty,
+        receivedQty: input.receivedQty,
+        damagedQty: input.damagedQty,
+        missingQty,
+        inspectedById: user.id,
+        // Only sound units go back on the shelf.
+        stockRestored: input.receivedQty > 0,
+      };
+      let created;
+      if (completing) {
+        /*
+         * The same receipt, completed. The guard is in the question — «still says nothing came back» — so two
+         * clerks pressing at once cannot both complete it: the second finds no such receipt and is refused.
+         * A fee the first receipt already carried stays as it was; the fee is only taken when it had none.
+         */
+        const held = order.returnReceipt!;
+        const done = await tx.returnReceipt.updateMany({
+          where: { orderId: order.id, ...receiptNothingCameBackWhere() },
+          data: {
+            ...counted,
+            inspectedAt: new Date(),
+            ...(held.courierFeeCharged ? {} : { courierFeeCharged: input.chargeCourierFee, courierFeeAmount }),
+            note: input.note ?? null,
+          },
+        });
+        if (done.count !== 1) return null;
+        created = await tx.returnReceipt.findUniqueOrThrow({ where: { orderId: order.id } });
+      } else {
+        created = await tx.returnReceipt.create({
+          data: {
+            companyId,
+            orderId: order.id,
+            ...counted,
+            courierFeeCharged: input.chargeCourierFee,
+            courierFeeAmount,
+            note: input.note ?? null,
+          },
+        });
+      }
 
       // Stock re-entry happens HERE, after the acknowledgement, never before.
       //
@@ -364,8 +398,9 @@ export async function POST(req: Request) {
         // for what they kept: rewriting it to RETURNED would erase the
         // delivery, and `NOT_APPLICABLE` would drop money the courier is
         // still holding out of everything that chases it.
+        // A receipt being COMPLETED leaves the order as the first one closed it: already RETURNED, with its moment.
         data:
-          order.shippingStatus === 'PARTIALLY_DELIVERED'
+          order.shippingStatus === 'PARTIALLY_DELIVERED' || completing
             ? { version: { increment: 1 } }
             : {
                 shippingStatus: 'RETURNED',
@@ -401,6 +436,7 @@ export async function POST(req: Request) {
           authorId: user.id,
           kind: 'return',
           body:
+            (completing ? 'وصل الطرد بعد إغلاقه بلا استلام — ' : '') +
             `استلام مرتجع: وصل ${input.receivedQty}، تالف ${input.damagedQty}، ناقص ${missingQty}` +
             (input.chargeCourierFee ? ` — أجرة إرجاع ${courierFeeAmount}` : '') +
             (input.note ? ` — ${input.note}` : '') +
@@ -413,6 +449,10 @@ export async function POST(req: Request) {
       return created;
     });
 
+    if (!receipt) {
+      return NextResponse.json({ error: 'تم استلام هذا المرتجع مسبقاً', code: 'ALREADY_RECEIVED' }, { status: 409 });
+    }
+
     await logAudit({
       companyId, userId: user.id, action: 'RETURN_RECEIVED',
       entity: 'Order', entityId: order.id,
@@ -421,6 +461,8 @@ export async function POST(req: Request) {
         missingQty, courierFeeAmount,
         // Whether this receipt finished the order or only half of it.
         completion: completion.degree, awaiting: completion.awaiting,
+        // The parcel written off as lost turned up: this completed the receipt the write-off had closed.
+        ...(completing ? { completesLossReceipt: true } : {}),
       },
     });
 

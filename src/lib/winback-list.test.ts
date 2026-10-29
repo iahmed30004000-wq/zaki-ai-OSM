@@ -49,13 +49,18 @@ function evaluate(where: Any, row: Any): Tri {
       return all3(
         Object.entries(cond as Any).map(([op, arg]): Tri => {
           if (op === 'some') return (value as Any[]).some((child) => evaluate(arg as Any, child) === true);
-          if (op === 'is') return arg === null ? value === null : value !== null && evaluate(arg as Any, value) === true;
+          // A bare receipt in these fixtures is an ordinary one: a unit received, none damaged, none missing.
+          if (op === 'is') return arg === null ? value === null : value !== null && evaluate(arg as Any, { receivedQty: 1, damagedQty: 0, missingQty: 0, ...value }) === true;
           if (op === 'isNot' && arg === null) return value !== null;
           if (op === 'not' && arg === null) return value !== null;
           if (op === 'isNot' || op === 'not') throw new Error(`the evaluator does not know «${op}» with a value`);
           if (value === null) return null;
           if (op === 'in') return (arg as unknown[]).includes(value);
           if (op === 'notIn') return !(arg as unknown[]).includes(value);
+          if (typeof value === 'number') {
+            if (op === 'gt') return value > (arg as number);
+            throw new Error(`the evaluator compares numbers with «gt» only, not «${op}»`);
+          }
           if (!(value instanceof Date)) throw new Error(`the evaluator compares dates only, not «${op}» on ${typeof value}`);
           const a = value.getTime();
           const b = (arg as Date).getTime();
@@ -79,7 +84,7 @@ interface Row {
   createdAt: Date;
   shippedAt: Date | null;
   shippingStatus: string;
-  returnReceipt: { inspectedAt: Date } | null;
+  returnReceipt: { inspectedAt: Date; receivedQty?: number; damagedQty?: number; missingQty?: number } | null;
   replacedBy: { orderNumber: string } | null;
   replacesOrderId: string | null;
   rejectionReason: string | null;

@@ -75,7 +75,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
                 id: true, orderNumber: true, merchantRef: true, shippingStatus: true,
                 // What the order's own outcome word is read from (order-outcome.ts): never stored, always read.
                 confirmationStatus: true, settlementStatus: true, rejectionReason: true,
-                returnReceipt: { select: { courierFeeCharged: true } },
+                returnReceipt: { select: { courierFeeCharged: true, receivedQty: true, damagedQty: true, missingQty: true } },
               },
             },
             // The status word and the whole row as the company wrote it: its own reason, in its own words.
