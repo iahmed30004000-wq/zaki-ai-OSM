@@ -2,12 +2,12 @@
 
 import { DispatchResult } from '@/components/ops/DispatchResult';
 import React, { useCallback, useState } from 'react';
-import { apiJson } from '@/lib/api-client';
+import { apiFetch, apiJson } from '@/lib/api-client';
 import type { DispatchSummary } from '@/lib/courier-dispatch';
 import { arDateShort } from '@/lib/format';
 import { LabelSizePicker, useLabelSize } from '@/components/labels/LabelSize';
 import { BLOCKED_WAYBILLS, describeRefused, openWaybills, WaybillError } from '@/components/labels/openWaybills';
-import { useTell } from '@/components/ui/Confirm';
+import { useAsk, useTell } from '@/components/ui/Confirm';
 import { ScanSheet } from '@/components/scan/ScanButton';
 import { RiBarcodeLine, RiDownload2Line, RiEBike2Line, RiLoader4Line, RiLockLine, RiPrinterLine, RiQrScan2Line, RiSendPlaneLine, RiTruckLine } from '@remixicon/react';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -58,6 +58,7 @@ export function ShippingBatchesScreen() {
   const [filter, setFilter] = useState<'all' | 'READY' | 'SHIPPED' | 'CLOSED'>('all');
   const [busy, setBusy] = useState<string | null>(null);
   const tell = useTell();
+  const ask = useAsk();
   const [result, setResult] = useState<{ batchId: string; summary: DispatchSummary } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const labelSize = useLabelSize();
@@ -118,6 +119,60 @@ export function ShippingBatchesScreen() {
       await load();
     } catch (e) {
       toast.failed(e instanceof Error ? e.message : 'تعذر الترحيل');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
+   * «تحقّقتُ مع الشركة — لا طرد عندهم».
+   *
+   * A send that timed out keeps its claim on purpose — the parcel may exist —
+   * and only a person who rang the company can say it does not. She writes
+   * what they said (it is recorded with her name); if the order carries a
+   * barcode she types it back, so a real parcel's number is never erased by
+   * a click. The server refuses anything that could be a real parcel.
+   */
+  async function clearSend(o: { orderId: string; orderNumber: string }) {
+    const said = await ask({
+      title: `${o.orderNumber}: تحقّقتُ مع الشركة — لا طرد عندهم`,
+      body: 'بعد هالخطوة بيصير يرجع يترحّل للشركة من جديد. إذا الشركة عندها طرد فعلاً بيطلع طرد مكرر.',
+      confirmLabel: 'فكّ الإرسال',
+      tone: 'danger',
+      input: { label: 'شو قالت الشركة؟', required: true, multiline: true, maxLength: 300 },
+    });
+    if (!said) return;
+    setBusy(o.orderId);
+    try {
+      let confirmBarcode: string | undefined;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const res = await apiFetch('/api/ops/shipments/clear-send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId: o.orderId, note: said, ...(confirmBarcode ? { confirmBarcode } : {}) }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (res.ok) {
+          toast.done(`انفكّ إرسال ${o.orderNumber} — بيصير ترحّله من جديد`);
+          setResult(null);
+          await load();
+          return;
+        }
+        if (body?.code === 'BARCODE_CONFIRM_REQUIRED' && body?.barcode && attempt === 0) {
+          const typed = await ask({
+            title: 'على الطلب باركود مسجّل',
+            body: `الباركود: ${body.barcode}. اكتبه بنفسك لتأكيد إنو الشركة ما عندها طرد بهالرقم.`,
+            confirmLabel: 'أكّد',
+            input: { label: 'الباركود', required: true },
+          });
+          if (!typed) return;
+          confirmBarcode = typed;
+          continue;
+        }
+        throw new Error(body?.errorAr || body?.error || 'تعذّر فكّ الإرسال');
+      }
+    } catch (e) {
+      toast.failed(e instanceof Error ? e.message : 'تعذّر فكّ الإرسال');
     } finally {
       setBusy(null);
     }
@@ -288,6 +343,7 @@ export function ShippingBatchesScreen() {
 
                 {result?.batchId === b.id && (
                   <DispatchResult
+                    onClearSend={(o) => void clearSend(o)}
                     summary={result.summary}
                     savedNote="الباركودات محفوظة على الطلبات — تظهر على البوليصة وتُتابَع بها الحالة."
                   />

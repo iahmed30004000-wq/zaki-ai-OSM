@@ -11,6 +11,7 @@ import { assertCancellable, assertReadyToShip, type StateSource } from '@/lib/or
 import { zodMessage } from '@/lib/zod-message';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { orderSearchOr } from '@/lib/order-filters';
+import { BATCHABLE_SHIPPING, whyNotBatchable } from '@/lib/batching-guard';
 
 /**
  * Shipment creation.
@@ -196,6 +197,13 @@ export async function GET(req: Request) {
   }
 }
 
+/** The order changed between the read and the write — see the update in POST. */
+class OrderMovedOn extends Error {
+  constructor(readonly orderNumber: string) {
+    super('ORDER_MOVED_ON');
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const { user, companyId, storeId, country } = await requireContext();
@@ -215,7 +223,7 @@ export async function POST(req: Request) {
       select: {
         id: true, orderNumber: true, companyId: true, storeId: true, customerId: true, regionId: true,
         confirmationStatus: true, shippingStatus: true, shippedAt: true, priceIncludesDelivery: true,
-        deliveryProviderId: true, version: true,
+        deliveryProviderId: true, version: true, shippingBatchId: true, labelPrintedAt: true,
         items: { select: { quantity: true, freeQuantity: true, reservedQty: true, unitPrice: true, discountShare: true } },
         // The upsell the customer accepted. Without it, the snapshot below
         // rebuilt the total from the lines alone and the add-on was never
@@ -229,6 +237,10 @@ export async function POST(req: Request) {
 
     for (const order of orders) {
       const reasons: string[] = [];
+
+      // The list may be a minute old. Asked of the row as it is now.
+      const moved = whyNotBatchable(order);
+      if (moved) reasons.push(moved);
 
       const ready = assertReadyToShip(order as StateSource, order.items);
       if (!ready.allowed) reasons.push(ready.message ?? 'غير جاهز للشحن');
@@ -296,22 +308,40 @@ export async function POST(req: Request) {
           minorUnit: country.minorUnit,
         });
 
-        await tx.order.update({
-          where: { id: order.id },
-          data: {
-            shippingBatchId: created.id,
-            deliveryProviderId,
-            deliveryAssignedAt: new Date(),
-            deliveryAssignedById: user.id,
-            // Fee and COD are snapshots taken now; a later table change never
-            // rewrites this order.
-            deliveryFee: fee.fee,
-            totalAmount: money.cod,
-            shippingStatus: 'READY_FOR_PICKUP',
-            settlementStatus: 'PENDING_COLLECTION',
-            version: { increment: 1 },
-          },
-        });
+        /*
+         * THE WRITE REPEATS THE QUESTION. Between the read above and this
+         * line another press may have put the order on a trolley, or the
+         * order may have been edited (its version moved). The filter makes
+         * the database refuse that order rather than move it: Prisma then
+         * throws "record not found", which stops the whole batch and is
+         * answered below with the order's number.
+         */
+        await tx.order
+          .update({
+            where: {
+              id: order.id,
+              version: order.version,
+              shippingBatchId: null,
+              shippingStatus: { in: [...BATCHABLE_SHIPPING] },
+            },
+            data: {
+              shippingBatchId: created.id,
+              deliveryProviderId,
+              deliveryAssignedAt: new Date(),
+              deliveryAssignedById: user.id,
+              // Fee and COD are snapshots taken now; a later table change never
+              // rewrites this order.
+              deliveryFee: fee.fee,
+              totalAmount: money.cod,
+              shippingStatus: 'READY_FOR_PICKUP',
+              settlementStatus: 'PENDING_COLLECTION',
+              version: { increment: 1 },
+            },
+          })
+          .catch((e: unknown) => {
+            if ((e as { code?: string })?.code === 'P2025') throw new OrderMovedOn(order.orderNumber);
+            throw e;
+          });
         await tx.orderStatusLog.create({
           data: {
             companyId, orderId: order.id, statusType: 'SHIPPING',
@@ -334,6 +364,15 @@ export async function POST(req: Request) {
     // before «اطبع», so the waybill carries the courier's barcode beside our QR.
     return NextResponse.json({ batch, shipped: shippable.length, exceptions, courierApi: provider.apiEnabled === true }, { status: 201 });
   } catch (error) {
+    if (error instanceof OrderMovedOn) {
+      return NextResponse.json(
+        {
+          error: `الطلب ${error.orderNumber} تغيّر قبل ما تنعمل الدفعة — ما انحفظ شي. حدّث القائمة وجرّب من جديد.`,
+          code: 'ORDER_MOVED_ON',
+        },
+        { status: 409 }
+      );
+    }
     return apiErrorResponse(error);
   }
 }

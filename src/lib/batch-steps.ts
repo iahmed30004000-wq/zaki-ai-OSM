@@ -1,0 +1,49 @@
+/**
+ * A TROLLEY GOES ONE WAY: READY → SHIPPED → CLOSED.
+ *
+ * The batch PATCH used to take any of the three words from any of the three
+ * states, in two separate statements: the batch row first, then its orders.
+ * So a press on an already-handed-over batch stamped nothing twice but a
+ * press on a CLOSED one reopened it, a READY → CLOSED skipped the handover
+ * and left every parcel un-stamped, and a failure between the two statements
+ * left a batch SHIPPED with orders still waiting for pickup.
+ *
+ * This file owns the one list of steps and the words for refusing the rest.
+ * The route writes the step as a CONDITION on the batch's current status, in
+ * one transaction, so two presses at once cannot both win.
+ */
+
+export const BATCH_STATUSES = ['READY', 'SHIPPED', 'CLOSED'] as const;
+export type BatchStatus = (typeof BATCH_STATUSES)[number];
+
+/** From → the only status it may go to. */
+const NEXT: Record<BatchStatus, BatchStatus | null> = {
+  READY: 'SHIPPED',
+  SHIPPED: 'CLOSED',
+  CLOSED: null,
+};
+
+export type StepVerdict =
+  | { ok: true }
+  | { ok: false; code: 'BATCH_STEP_DONE' | 'BATCH_FORWARD_ONLY'; message: string };
+
+export function checkStep(from: string, to: BatchStatus): StepVerdict {
+  if (from === to) {
+    return { ok: false, code: 'BATCH_STEP_DONE', message: 'الدفعة بهالحالة أصلاً — يمكن حدا ضغط قبلك. حدّث الصفحة.' };
+  }
+  if (NEXT[from as BatchStatus] !== to) {
+    return {
+      ok: false,
+      code: 'BATCH_FORWARD_ONLY',
+      message: 'الدفعة بتمشي لقدّام بس: تجميع، ثم تسليم، ثم إغلاق. ما بترجع ولا بتقفز.',
+    };
+  }
+  return { ok: true };
+}
+
+/** The refusal that names the parcels still waiting for an answer. */
+export function pendingChangesMessage(orderNumbers: string[]): string {
+  const shown = orderNumbers.slice(0, 8).join('، ');
+  const more = orderNumbers.length > 8 ? ` و${orderNumbers.length - 8} غيرها` : '';
+  return `ما بيصير تسلّم الدفعة: على هالطلبات إلغاء أو تأجيل لسّا ما انحسم (${shown}${more}). قرّروا فيهم أوّلاً.`;
+}

@@ -7,6 +7,16 @@ import { logAudit } from '@/lib/audit';
 import { can } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { redactCustomerForWarehouse } from '@/lib/operations';
+import { BATCH_STATUSES, checkStep, pendingChangesMessage, type BatchStatus } from '@/lib/batch-steps';
+
+/** The batch was moved by someone else between the read and the write. */
+class BatchMoved extends Error {}
+/** Parcels with a cancel or a postponement still unanswered. */
+class PendingChanges extends Error {
+  constructor(readonly orderNumbers: string[]) {
+    super('PENDING_CHANGES');
+  }
+}
 
 /**
  * PATCH /api/shipping-batches/[id] — update status/notes/provider (company-scoped)
@@ -81,9 +91,34 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     };
 
     const updateData: Record<string, unknown> = {};
-    if (status && ['READY', 'SHIPPED', 'CLOSED'].includes(status)) {
-      updateData.status = status;
-      if (status === 'SHIPPED' && !batch.shippedAt) updateData.shippedAt = new Date();
+    /*
+     * ONE STEP, FORWARD, AS A CONDITION.
+     *
+     * The status is no longer written to whatever the row holds: it is
+     * written only if the row STILL holds what this request read
+     * (`status: batch.status` in the update below), inside one transaction
+     * with the orders' stamp. Two presses at once, or a press on a stale
+     * screen, find the condition false and stop — nobody gets a second
+     * stamp and nobody reopens a closed trolley.
+     */
+    let step: BatchStatus | null = null;
+    if (status !== undefined) {
+      if (!(BATCH_STATUSES as readonly string[]).includes(status)) {
+        return NextResponse.json({ error: 'حالة الدفعة غير معروفة', errorAr: 'حالة الدفعة غير معروفة', code: 'BATCH_STATUS_UNKNOWN' }, { status: 400 });
+      }
+      const verdict = checkStep(batch.status, status as BatchStatus);
+      if (!verdict.ok) {
+        // Asking for the state it is already in, together with a note or a
+        // courier, is an ordinary save; alone it is a second press.
+        const alone = notes === undefined && deliveryProviderId === undefined;
+        if (verdict.code !== 'BATCH_STEP_DONE' || alone) {
+          return NextResponse.json({ error: verdict.message, errorAr: verdict.message, code: verdict.code }, { status: 409 });
+        }
+      } else {
+        step = status as BatchStatus;
+        updateData.status = step;
+        if (step === 'SHIPPED' && !batch.shippedAt) updateData.shippedAt = new Date();
+      }
     }
     if (notes !== undefined) updateData.notes = notes?.trim() || null;
     if (deliveryProviderId !== undefined) {
@@ -96,22 +131,67 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       }
     }
 
-    const updated = await db.shippingBatch.update({ where: { id }, data: updateData });
+    let updated;
+    try {
+      updated = await db.$transaction(async (tx) => {
+        const won = await tx.shippingBatch.updateMany({
+          where: { id, companyId, storeId, status: batch.status },
+          data: updateData,
+        });
+        if (won.count !== 1) throw new BatchMoved();
 
-    // Batch-level ship stamp on member orders (server timestamps)
-    if (status === 'SHIPPED') {
-      const now = new Date();
-      await db.order.updateMany({
-        where: { shippingBatchId: id, companyId, storeId, shippingStatus: 'READY_FOR_PICKUP' },
-        data: { shippingStatus: 'SHIPPED', shippedAt: now, version: { increment: 1 } },
+        if (step === 'SHIPPED') {
+          /*
+           * THE PRESS NAMES WHAT IT WOULD LEAVE BEHIND. A parcel with a
+           * cancel or a postponement still waiting for an answer is being
+           * handed to the courier against a decision that has not been
+           * made. Inside the transaction, after the batch is won, so a
+           * request raised a moment ago is seen and the whole press rolls
+           * back.
+           */
+          const waiting = await tx.orderChangeRequest.findMany({
+            where: {
+              companyId,
+              intent: { in: ['CANCEL', 'POSTPONE'] },
+              OR: [{ status: 'PENDING' }, { status: 'APPROVED', appliedAt: null }],
+              order: { shippingBatchId: id },
+            },
+            select: { order: { select: { orderNumber: true } } },
+          });
+          if (waiting.length > 0) {
+            throw new PendingChanges([...new Set(waiting.map((w) => w.order.orderNumber))]);
+          }
+
+          // Batch-level ship stamp on member orders (server timestamps)
+          await tx.order.updateMany({
+            where: { shippingBatchId: id, companyId, storeId, shippingStatus: 'READY_FOR_PICKUP' },
+            data: { shippingStatus: 'SHIPPED', shippedAt: new Date(), version: { increment: 1 } },
+          });
+        }
+        return tx.shippingBatch.findUniqueOrThrow({ where: { id } });
       });
+    } catch (e) {
+      if (e instanceof BatchMoved) {
+        return NextResponse.json(
+          { error: 'الدفعة تغيّرت قبل ما يخلص طلبك — حدّث الصفحة', errorAr: 'الدفعة تغيّرت قبل ما يخلص طلبك — حدّث الصفحة', code: 'BATCH_MOVED' },
+          { status: 409 }
+        );
+      }
+      if (e instanceof PendingChanges) {
+        const message = pendingChangesMessage(e.orderNumbers);
+        return NextResponse.json(
+          { error: message, errorAr: message, code: 'PENDING_CHANGES', orders: e.orderNumbers },
+          { status: 409 }
+        );
+      }
+      throw e;
     }
 
     await logAudit({
       companyId, userId: user.id, action: 'SHIPPING_BATCH_UPDATED',
       entity: 'ShippingBatch', entityId: id,
       previousData: { status: batch.status },
-      newData: { status: status ?? batch.status, by: user.name },
+      newData: { status: step ?? batch.status, by: user.name },
     });
 
     return NextResponse.json({ success: true, batch: updated });

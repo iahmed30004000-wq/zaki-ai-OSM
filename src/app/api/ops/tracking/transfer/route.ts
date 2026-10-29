@@ -6,7 +6,7 @@ import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { orderRefFields } from '@/lib/order-ref';
-import { planTransfer, requiresOpenBatch, TransferRefused, type TransferParty } from '@/lib/courier-transfer';
+import { assertCompanyHoldsIt, planTransfer, requiresOpenBatch, TransferRefused, type TransferParty } from '@/lib/courier-transfer';
 import { createReplacement, type ReplacementSource } from '@/lib/replacement-order';
 import { zodMessage } from '@/lib/zod-message';
 
@@ -41,6 +41,9 @@ export async function POST(req: Request) {
       include: {
         deliveryProvider: { select: { id: true, name: true, kind: true } },
         replacedBy: { select: { id: true, orderNumber: true } },
+        // Whether its trolley has gone: a parcel the company never took
+        // cannot be taken back from them.
+        shippingBatch: { select: { status: true } },
       },
     });
     if (!order) return NextResponse.json({ error: 'الطلب غير موجود' }, { status: 404 });
@@ -72,6 +75,11 @@ export async function POST(req: Request) {
     let plan;
     try {
       plan = planTransfer({ from, to: target, shippingStatus: order.shippingStatus });
+      assertCompanyHoldsIt(plan, {
+        shippingStatus: order.shippingStatus,
+        shippedAt: order.shippedAt,
+        batchStatus: order.shippingBatch?.status ?? null,
+      });
     } catch (e) {
       if (e instanceof TransferRefused) {
         return NextResponse.json({ error: e.message, code: e.code }, { status: 409 });
@@ -129,8 +137,11 @@ export async function POST(req: Request) {
       }
 
       // REPLACE: close the company's leg, raise a fresh order for the new one.
+      // The version is part of the condition: two presses on one parcel must
+      // not raise two replacements and reserve its goods twice — the second
+      // finds the version moved and stops (answered below as «تغيّر»).
       await tx.order.update({
-        where: { id: order.id },
+        where: { id: order.id, version: order.version },
         data: {
           shippingStatus: plan.originalStatus,
           returnReason: plan.reason,
@@ -188,6 +199,12 @@ export async function POST(req: Request) {
         break;
       } catch (e: any) {
         if (e?.code === 'P2002' && attempt < 4) continue;
+        if (e?.code === 'P2025') {
+          return NextResponse.json(
+            { error: 'الطلب تغيّر قبل ما ينتقل — حدّث الصفحة وجرّب من جديد', code: 'VERSION_CONFLICT' },
+            { status: 409 }
+          );
+        }
         throw e;
       }
     }

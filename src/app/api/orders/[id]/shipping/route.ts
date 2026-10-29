@@ -21,6 +21,7 @@ import { logAudit } from '@/lib/audit';
 import { apiError } from '@/lib/api-error';
 import { can, authorize } from '@/lib/authorization';
 import { assertCancellable, assertReadyToShip, type StateSource } from '@/lib/order-state';
+import { whyNotMovable } from '@/lib/batching-guard';
 import { orderLinesForGuard } from '@/lib/reservation';
 import { CONFIRMATION_STATUS_AR } from '@/lib/confirmation-workflow';
 
@@ -292,6 +293,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
               errorAr: `الدفعة ${batch.batchNumber} سلِّمت لشركة الشحن ولم تعد تستقبل طلبات. أنشئ دفعة جديدة.`,
               code: 'BATCH_CLOSED_FOR_INTAKE',
             },
+            { status: 409 }
+          );
+        }
+        /*
+         * AND THE ORDER MUST STILL BE MOVABLE. A list that is a minute old
+         * offered an order that another press had already put on a trolley
+         * (or that had already left): moving it again put one parcel on two
+         * manifests, or a van's parcel onto a trolley that was never loaded.
+         * The version check below catches an edit in between; this catches
+         * the order that was never ours to move.
+         */
+        const unmovable = whyNotMovable(order, batch.id);
+        if (unmovable) {
+          return NextResponse.json(
+            { error: unmovable, errorAr: unmovable, code: 'ORDER_NOT_MOVABLE' },
             { status: 409 }
           );
         }

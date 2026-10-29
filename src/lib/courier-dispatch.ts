@@ -122,6 +122,7 @@ export async function dispatchBatch(input: {
     select: {
       id: true,
       batchNumber: true,
+      status: true,
       provider: {
         select: { id: true, name: true, code: true, adapterCode: true, apiEnabled: true, apiConfig: true, apiCredentials: true, companyId: true, storeId: true },
       },
@@ -141,6 +142,18 @@ export async function dispatchBatch(input: {
   if (batch.provider && !courierBelongsToStore(batch.provider, input.companyId, input.storeId)) {
     throw new Error('COURIER_NOT_IN_STORE');
   }
+
+  /**
+   * ONLY A TROLLEY STILL BEING FILLED IS SENT.
+   *
+   * The batch status was never read here, so a batch already handed to the
+   * courier (or closed) could be dispatched again from a stale screen or a
+   * direct call: parcels created at the company after the driver had left
+   * with the others, for orders whose seal says they are no longer ours to
+   * change. Sending is part of filling the trolley; once it is handed over
+   * a missing barcode is typed in by hand, as for a manual courier.
+   */
+  if (batch.status !== 'READY') throw new Error('BATCH_NOT_READY');
 
   const adapter = adapterFor(batch.provider);
 

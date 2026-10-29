@@ -121,3 +121,41 @@ export function courierActionAr(action: CourierAction): string {
   }
   return '';
 }
+
+/**
+ * A CANCELLATION OF A PARCEL THE COURIER ALREADY HOLDS.
+ *
+ * An approved cancel used to reach `stand-down`, which refuses once the
+ * waybill is printed — and refusing was the end: the approval sat «waiting
+ * to be applied» for ever, the courier was never told, and the customer's
+ * parcel went on to the customer's door. The refusal's own text promised
+ * «it is recorded as a cancel request», and the request WAS the record —
+ * nothing carried it out.
+ *
+ * Carrying it out is a message to the company, not a change to our order:
+ * the order stays where it is, the goods stay counted as the parcel's, and
+ * the return comes back through the returns door, counted, like any other.
+ * Same shape as `courierMessage`: their barcode first, one imperative
+ * sentence, then the reason.
+ */
+export function courierCancelMessage(input: {
+  orderNumber: string;
+  trackingNumber?: string | null;
+  storeName?: string | null;
+  /** Why the customer cancelled, already in words. */
+  reason?: string | null;
+}): string {
+  const { orderNumber, trackingNumber, storeName, reason } = input;
+  const ref = trackingNumber?.trim() ? `بوليصة رقم ${trackingNumber.trim()}` : `طلب رقم ${orderNumber}`;
+  const from = storeName?.trim() ? ` (${storeName.trim()})` : '';
+  return [
+    `السلام عليكم، ${ref}${from}.`,
+    'نرجو إلغاء هذه البوليصة وعدم تسليم الطرد — الزبون ألغى الطلب.',
+    ...(reason?.trim() ? [`• السبب: ${reason.trim()}`] : []),
+    `وأفيدونا فور إرجاع الطرد إلينا (طلب رقم ${orderNumber}). شكراً لكم.`,
+  ].join('\n');
+}
+
+/** Why our record is not changing: the courier has to stop the parcel first. */
+export const COURIER_CANCEL_AR =
+  'الطرد عند شركة الشحن وبوليصتُه مطبوعة — الإلغاء عندنا ما بيوقّفه. أبلغ الشركة ليوقفوه، وبيرجع عبر باب المرتجعات ويتعدّ.';

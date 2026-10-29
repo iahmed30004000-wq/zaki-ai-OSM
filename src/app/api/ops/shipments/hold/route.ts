@@ -8,6 +8,7 @@ import { logAudit } from '@/lib/audit';
 import { zodMessage } from '@/lib/zod-message';
 import { holdReservation } from '@/lib/shipment-hold';
 import { releaseOrderLines, reserveOrderLines } from '@/lib/reservation';
+import { hasEverShipped } from '@/lib/order-state';
 
 /**
  * POST /api/ops/shipments/hold — keep an order out of today's shipment.
@@ -127,6 +128,10 @@ export async function POST(req: Request) {
         shippingStatus: true,
         shippingBatchId: true,
         shipHoldUntil: true,
+        // The version the page was read at: lifting a hold writes it back as
+        // a condition, so a stale screen cannot re-reserve an order that has
+        // moved on since.
+        version: true,
         // What `hasLeftWarehouse` reads: units already packed under this
         // order's name are not on a shelf anybody else can be sold from.
         shippedAt: true,
@@ -149,6 +154,25 @@ export async function POST(req: Request) {
     }
 
     /**
+     * LIFTING A HOLD RESERVES THE GOODS AGAIN — SO ONLY FOR AN ORDER THAT CAN HOLD THEM.
+     *
+     * The release took the order's id and nothing else: an order cancelled
+     * or rejected while it sat held got its units reserved by a click on a
+     * stale «held» list, and a parcel already gone had stock reserved for
+     * it a second time. The order must still be a confirmed one that has
+     * not left; the write below also repeats the version.
+     */
+    if (release) {
+      const reservable = order.confirmationStatus === 'CONFIRMED' && !hasEverShipped(order as never) && order.shippingStatus !== 'CANCELLED';
+      if (!reservable) {
+        return NextResponse.json(
+          { error: 'الطلب ما عاد مؤكَّد أو انشحن — ما في شي يرجع ينحجز له. حدّث القائمة.', code: 'NOT_RESERVABLE' },
+          { status: 409 }
+        );
+      }
+    }
+
+    /**
      * THE STOCK AND THE HOLD MOVE TOGETHER OR NOT AT ALL.
      *
      * One transaction, because the two halves contradict each other if only
@@ -160,7 +184,7 @@ export async function POST(req: Request) {
     const reservation = holdReservation(order as never);
     const updated = await db.$transaction(async (tx) => {
       const row = await tx.order.update({
-        where: { id: order.id },
+        where: { id: order.id, version: order.version },
         data: release
           ? { shipHoldUntil: null, shipHoldReason: null, version: { increment: 1 } }
           : {
