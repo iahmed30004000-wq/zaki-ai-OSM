@@ -44,10 +44,12 @@ export const WAYBILL_SELECT = {
   // shippingNote and the order's note thread are staff talk and never leave
   // the building on a courier's document.
   customerNotes: true,
+  // The address THIS order goes to, when the visitor typed one other than the customer row's — it comes first.
+  deliveryAddress: true,
   customer: { select: { fullName: true, phone: true, rawPhone: true, altPhone: true, city: true, address: true } },
   region: { select: { name: true } },
   deliveryProvider: { select: COURIER_KIND_SELECT },
-  items: { select: { productName: true, quantity: true, freeQuantity: true, unitPrice: true, discountShare: true } },
+  items: { select: { productName: true, quantity: true, freeQuantity: true, unitPrice: true, discountShare: true, lineTotal: true } },
   // The upsell accepted on the thank-you page. It used to be missing from
   // the label, so the packer never put it in the box.
   addOns: { select: { productName: true, quantity: true, price: true } },
@@ -164,7 +166,7 @@ export async function toLabelView(order: WaybillOrder, minorUnit: number): Promi
     courierCode: order.trackingNumber || ref,
     name: c.fullName,
     phones: [c.rawPhone || c.phone, c.altPhone ?? ''].filter(Boolean),
-    place: placeLine(order.region?.name, c.city, c.address),
+    place: placeLine(order.region?.name, c.city, order.deliveryAddress ?? c.address),
     items: [
       ...order.items.map((i) => ({ name: i.productName, qty: i.quantity + i.freeQuantity })),
       ...order.addOns.map((a) => ({ name: a.productName, qty: a.quantity, addOn: true })),

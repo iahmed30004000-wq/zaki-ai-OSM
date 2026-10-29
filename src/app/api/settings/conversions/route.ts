@@ -6,7 +6,7 @@ import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import {
-  CONVERSION_TRIGGERS, VALUE_SOURCES, validateEventName, collidesWithBrowserPixel, replacesBrowserPurchase,
+  CONVERSION_TRIGGERS, VALUE_SOURCES, validateEventName, collidesWithBrowserPixel, replacesBrowserPurchase, orderEventOf,
   TRIGGER_AR, TRIGGER_HINT_AR, VALUE_SOURCE_AR, SUGGESTED_EVENT_NAMES,
   type ConversionTrigger, type ValueSource,
 } from '@/lib/conversions/types';
@@ -158,7 +158,7 @@ export async function POST(req: Request) {
 
     const pixel = await db.trackingPixel.findFirst({
       where: { id: pixelId, companyId },
-      select: { id: true, platform: true, name: true, capiToken: true },
+      select: { id: true, platform: true, name: true, capiToken: true, orderEvent: true },
     });
     if (!pixel) return NextResponse.json({ error: 'البكسل غير موجود' }, { status: 404 });
     if (pixel.platform !== 'META') {
@@ -198,10 +198,12 @@ export async function POST(req: Request) {
       // doubled return on ad spend and scale a campaign on a number that
       // was never real.
       // The one combination that is meant: the page stops sending Purchase to this pixel by itself.
-      note: replacesBrowserPurchase(eventName, trigger)
-        ? 'الشراء صار يُحسب مرة واحدة عند تأكيد الطلب: الصفحة توقفت عن إرسال Purchase من المتصفح لهذا البكسل تلقائياً.'
+      // Said only when it is TRUE: the page stands down for a pixel only while the conversion is switched on and the
+      // pixel holds its token (`pixelsWithServerPurchase`). A conversion saved off, or without a token, stops nothing.
+      note: replacesBrowserPurchase(eventName, trigger, orderEventOf(pixel)) && enabled && !!pixel.capiToken
+        ? `الطلب صار يُحسب مرة واحدة عند تأكيد الطلب: الصفحة توقفت عن إرسال ${eventName} من المتصفح لهذا البكسل تلقائياً.`
         : null,
-      warning: collidesWithBrowserPixel(eventName, trigger)
+      warning: collidesWithBrowserPixel(eventName, trigger, orderEventOf(pixel))
         ? `«${eventName}» هو نفس اسم حدث يرسله البكسل من المتصفح. ميتا ستعدّ الاثنين، وسيتضاعف الشراء المسجَّل. اختر اسماً خاصاً ما لم تكن تقصد ذلك.`
         : pixel.capiToken
           ? null

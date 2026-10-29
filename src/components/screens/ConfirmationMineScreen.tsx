@@ -33,6 +33,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { arDate } from '@/lib/format';
 import { Money } from '@/components/ui/Money';
 import { cardTone, noAnswerWords } from '@/lib/no-answer-tone';
+import { POST_ORDER_ADDITION_AR } from '@/lib/post-order-offer-copy';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 
 /**
@@ -83,6 +84,8 @@ interface OrderRow {
   channel: { id: string; name: string } | null;
   customer: { id: string; fullName: string; phone: string; rawPhone: string; city: string; address: string };
   items: { id: string; productName: string; quantity: number; freeQuantity: number; lineTotal: number }[];
+  /** What the customer added after ordering — absent on a response from before this field existed. */
+  addOns?: { id: string; productName: string; quantity: number; total: number }[];
   _count: { contactAttempts: number; notes: number };
   risk?: RiskInfo | null;
   changeRequests?: { id: string }[];
@@ -650,6 +653,11 @@ export function ConfirmationMineScreen() {
                     <li key={it.id}>
                       {it.productName} × {it.quantity}
                       {it.freeQuantity > 0 && ` (+${it.freeQuantity} هدية)`}
+                    </li>
+                  ))}
+                  {order.addOns?.map((a) => (
+                    <li key={a.id}>
+                      {POST_ORDER_ADDITION_AR}: {a.productName} ×{a.quantity} ({a.total})
                     </li>
                   ))}
                 </ul>

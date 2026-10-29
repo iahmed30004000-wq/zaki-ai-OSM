@@ -43,6 +43,8 @@ export async function POST() {
         confirmationStatus: true, createdAt: true,
         customer: { select: { id: true, fullName: true, phone: true, rawPhone: true, city: true, address: true } },
         items: { select: { id: true, productName: true, quantity: true, freeQuantity: true, lineTotal: true } },
+        // The customer's own additions after the order — see the same select in `mine`.
+        addOns: { select: { id: true, productName: true, quantity: true, total: true } },
       },
     });
 

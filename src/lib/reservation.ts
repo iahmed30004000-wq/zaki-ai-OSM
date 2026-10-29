@@ -305,6 +305,23 @@ export async function releaseOrderLines(tx: Tx, orderId: string): Promise<number
   return res.count + addOns.count;
 }
 
+/**
+ * An order's lines AND its add-ons in the one shape the READY_TO_SHIP guard reads.
+ *
+ * An add-on short of stock holds the parcel back exactly like a line: the customer was promised it. Pure, so the
+ * bulk shipment door — which has already read both — asks the same question as the single-order door without a
+ * second query.
+ */
+export function guardLines(
+  items: ReadonlyArray<{ quantity: number; freeQuantity: number; reservedQty: number }>,
+  addOns: ReadonlyArray<{ quantity: number; reservedQty: number }>
+) {
+  return [
+    ...items.map((i) => ({ quantity: i.quantity, freeQuantity: i.freeQuantity, reservedQty: i.reservedQty })),
+    ...addOns.map((a) => ({ quantity: a.quantity, freeQuantity: 0, reservedQty: a.reservedQty, addOn: true })),
+  ];
+}
+
 /** Lines of an order in the shape the READY_TO_SHIP guard expects. */
 export async function orderLinesForGuard(tx: Tx, orderId: string) {
   const [lines, addOns] = await Promise.all([
@@ -314,6 +331,5 @@ export async function orderLinesForGuard(tx: Tx, orderId: string) {
     }),
     tx.orderAddOn.findMany({ where: { orderId }, select: { quantity: true, reservedQty: true } }),
   ]);
-  // An add-on short of stock holds the parcel back exactly like a line: the customer was promised it.
-  return [...lines, ...addOns.map((a) => ({ quantity: a.quantity, freeQuantity: 0, reservedQty: a.reservedQty }))];
+  return guardLines(lines, addOns);
 }

@@ -314,6 +314,8 @@ export interface LineReservation {
   quantity: number;
   freeQuantity?: number;
   reservedQty: number;
+  /** An add-on the customer took after ordering, not a line — the refusal names it as such. */
+  addOn?: boolean;
 }
 
 /**
@@ -329,10 +331,17 @@ export function assertReadyToShip(order: StateSource, lines: LineReservation[]):
   }
   const short = lines.filter((l) => l.reservedQty < l.quantity + (l.freeQuantity ?? 0));
   if (short.length > 0) {
+    // «سطر» for a line and «إضافة» for what the customer added after ordering — they are two things to the packer.
+    const addOns = short.filter((l) => l.addOn).length;
+    const lines2 = short.length - addOns;
+    const said = [
+      ...(lines2 > 0 ? [`${lines2} سطر غير محجوز بالكامل`] : []),
+      ...(addOns > 0 ? [`${addOns} إضافة غير محجوزة بالكامل`] : []),
+    ].join('، و');
     return {
       allowed: false,
       code: 'UNRESERVED_LINES',
-      message: `لا يمكن التجهيز: ${short.length} سطر غير محجوز بالكامل`,
+      message: `لا يمكن التجهيز: ${said}`,
     };
   }
   return { allowed: true };

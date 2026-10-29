@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
-import { rateLimit, getClientIp } from '@/lib/rate-limit';
+import { rateLimit, getClientIp, UNKNOWN_IP } from '@/lib/rate-limit';
 import { verifyAddonToken } from '@/lib/landing-pages';
 import { ORDER_NUMBER_RE } from '@/lib/order-ref';
 import { zodMessage } from '@/lib/zod-message';
@@ -59,13 +59,24 @@ export async function POST(req: Request, ctx: Ctx) {
       return NextResponse.json({ error: 'Not found' }, { status: 404, headers: CORS });
     }
 
-    // Rate limit add-ons (per orderNumber — a token is bound to one order)
-    const rl = rateLimit(`lp_addon:${orderNumber}`, 5, 30 * 60_000);
-    if (!rl.allowed) {
-      return NextResponse.json(
-        { error: `محاولات كثيرة جدًا. أعد المحاولة بعد ${rl.retryAfterSec} ثانية` },
-        { status: 429, headers: { ...CORS, 'Retry-After': String(rl.retryAfterSec) } }
-      );
+    /*
+     * A COARSE COUNTER PER ADDRESS BEFORE THE TOKEN — and only for an address we can tell apart.
+     *
+     * The per-order counter used to stand here, keyed on the order number in the URL, which is the one thing a
+     * stranger can know: five requests with no token at all spent the real customer's five, and the customer was
+     * told «محاولات كثيرة» about their own order. The order's counter now waits for the token (below); this one
+     * limits a single address grinding at the door. Where the address is unknown (`UNKNOWN_IP`) every visitor
+     * shares one bucket, and a switch any stranger can pull is worse than no limit — so it is skipped there.
+     */
+    const ip = getClientIp(req);
+    if (ip !== UNKNOWN_IP) {
+      const byIp = rateLimit(`lp_addon_ip:${ip}`, 30, 10 * 60_000);
+      if (!byIp.allowed) {
+        return NextResponse.json(
+          { error: `محاولات كثيرة جدًا. أعد المحاولة بعد ${byIp.retryAfterSec} ثانية` },
+          { status: 429, headers: { ...CORS, 'Retry-After': String(byIp.retryAfterSec) } }
+        );
+      }
     }
 
     const contentLength = parseInt(req.headers.get('content-length') || '0', 10);
@@ -105,6 +116,15 @@ export async function POST(req: Request, ctx: Ctx) {
     const tok = await verifyAddonToken(v.token);
     if (!tok || tok.orderNumber !== decodeURIComponent(orderNumber)) {
       return NextResponse.json({ error: 'رابط الإضافة غير صالح أو منتهي الصلاحية' }, { status: 401, headers: CORS });
+    }
+
+    // Rate limit add-ons — counted on the order the TOKEN proves, so only its owner spends it.
+    const rl = rateLimit(`lp_addon:${tok.orderId}`, 5, 30 * 60_000);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: `محاولات كثيرة جدًا. أعد المحاولة بعد ${rl.retryAfterSec} ثانية` },
+        { status: 429, headers: { ...CORS, 'Retry-After': String(rl.retryAfterSec) } }
+      );
     }
 
     // ─── Resolve order: token orderId + orderNumber + landing-page slug must all match ───
@@ -169,6 +189,10 @@ export async function POST(req: Request, ctx: Ctx) {
     }
 
     const unitPrice = rec.product.basePrice; // server-side price — never from the browser
+    // A product at nothing is not a suggestion: it would be added at 0 and shipped free.
+    if (!(unitPrice > 0)) {
+      return NextResponse.json({ error: 'المنتج غير متاح حاليًا' }, { status: 409, headers: CORS });
+    }
     const addQty = 1; // one unit per add — client cannot choose quantity
 
     /*
@@ -193,6 +217,38 @@ export async function POST(req: Request, ctx: Ctx) {
 
     // ─── Update the SAME order server-side (no new order, total from DB) ───
     const result = await db.$transaction(async (tx) => {
+      /*
+       * THE ORDER'S ROW IS LOCKED FIRST — two presses at the same moment add once.
+       *
+       * Both read the order before this point, both passed the gate, and both wrote: the total grew by the
+       * recommendation twice. An UPDATE holds the row until the transaction ends, so the second press waits here,
+       * then re-reads the order AS IT IS NOW (it may have been confirmed or called meanwhile) and the add-ons it
+       * already has. The `version` moves with it, so a staff member saving from a copy older than this add-on is
+       * told the order changed instead of overwriting it.
+       */
+      await tx.order.update({ where: { id: order.id }, data: { version: { increment: 1 } }, select: { id: true } });
+      const now = await tx.order.findFirst({
+        where: { id: order.id },
+        select: { status: true, confirmationStatus: true, createdAt: true, totalAmount: true, _count: { select: { contactAttempts: true } } },
+      });
+      const regate = postOrderGate(
+        {
+          status: now?.status ?? status,
+          confirmationStatus: now?.confirmationStatus ?? confirmationStatus,
+          createdAt: now?.createdAt ?? createdAt,
+          contactAttempts: now?._count.contactAttempts ?? 0,
+          postOrderAddOns: 0,
+        },
+        windowMinutes,
+        new Date()
+      );
+      if (!regate.allowed) return { refused: regate.reason } as const;
+      // The same suggestion twice is ONE add-on: the repeat is answered with what is already on the order.
+      const existing = await tx.orderAddOn.findFirst({
+        where: { orderId: order.id, productId: rec.product.id, landingPageId: order.landingPage!.id, offerId: null },
+      });
+      if (existing) return { existing, total: Number(now?.totalAmount ?? order.totalAmount) } as const;
+
       const addOn = await tx.orderAddOn.create({
         data: {
           companyId: order.companyId,
@@ -235,6 +291,27 @@ export async function POST(req: Request, ctx: Ctx) {
       });
       return { addOn, order: updated };
     });
+
+    if ('refused' in result) {
+      return NextResponse.json({ error: POST_ORDER_REFUSAL_AR[result.refused], code: result.refused }, { status: 409, headers: CORS });
+    }
+    if ('existing' in result) {
+      return NextResponse.json(
+        {
+          success: true,
+          alreadyAdded: true,
+          orderNumber: order.orderNumber,
+          addOn: {
+            id: result.existing.id,
+            productName: result.existing.productName,
+            price: result.existing.price,
+            quantity: result.existing.quantity,
+          },
+          newTotal: result.total,
+        },
+        { headers: CORS }
+      );
+    }
 
     return NextResponse.json(
       {

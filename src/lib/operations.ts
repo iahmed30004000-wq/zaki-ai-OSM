@@ -201,7 +201,22 @@ export async function shipmentBlocks(
     where: { orderId: order.id },
     select: { productId: true, productName: true, quantity: true, freeQuantity: true, reservedQty: true },
   });
-  for (const line of lines) {
+  /*
+   * THE CUSTOMER'S ADDITIONS AFTER THE ORDER ARE GOODS IN THE BOX TOO.
+   *
+   * Only the lines were asked about, so an add-on the shelf could not cover was shipped (and collected for) without a
+   * word, while the single-order door refused the same parcel. They are read here and asked the same question; the
+   * sentence says «إضافة» so the packer knows it is not a line of the order itself.
+   */
+  const addOns = await tx.orderAddOn.findMany({
+    where: { orderId: order.id },
+    select: { productId: true, productName: true, quantity: true },
+  });
+  const wanted = [
+    ...lines.map((l) => ({ ...l, addOn: false })),
+    ...addOns.map((a) => ({ productId: a.productId, productName: a.productName, quantity: a.quantity, freeQuantity: 0, addOn: true })),
+  ];
+  for (const line of wanted) {
     /*
      * ── WHAT THIS LINE NEEDS, NOT WHAT IS LEFT UNRESERVED ──
      *
@@ -239,7 +254,7 @@ export async function shipmentBlocks(
     if (free < need) {
       blocks.push({
         code: 'STOCK_SHORTAGE',
-        message: `نقص مخزون: ${line.productName} (ينقص ${need - Math.max(0, free)})`,
+        message: `نقص مخزون: ${line.productName} (${line.addOn ? 'إضافة، ' : ''}ينقص ${need - Math.max(0, free)})`,
         /*
          * Refused outright where negative stock is forbidden; where it is
          * allowed, a SOFT block — which the shipments door still refuses

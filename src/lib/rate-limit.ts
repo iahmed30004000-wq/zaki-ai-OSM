@@ -44,6 +44,26 @@ export function rateLimit(
 }
 
 /**
+ * GIVE BACK THE SLOT A REQUEST TOOK, because the request did not do its work.
+ *
+ * A guard that counts the ATTEMPT punishes the visitor for our failure: the
+ * order door takes its one-per-phone slot before it writes, so when the write
+ * threw (a 500) the customer's second press was told «تم استلام طلبك» for an
+ * order that does not exist. Releasing the slot when nothing was saved makes
+ * the second press a real second try. After a saved order it is NEVER called —
+ * that is the case the slot is for.
+ *
+ * Takes ONE count off the bucket (and drops the bucket when that was the only
+ * one), so a bucket that other requests also counted in keeps their counts.
+ */
+export function releaseRateLimit(key: string): void {
+  const bucket = buckets.get(key);
+  if (!bucket) return;
+  if (bucket.count > 1) bucket.count -= 1;
+  else buckets.delete(key);
+}
+
+/**
  * THE ANSWER FOR «I DO NOT KNOW WHO THIS IS».
  *
  * Also the value every caller shares when no trusted proxy is configured.

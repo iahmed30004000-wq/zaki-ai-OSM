@@ -82,7 +82,7 @@ export async function GET(req: Request) {
             o.region?.name ?? o.customer.city,
             // The address without the governorate repeated in front of it —
             // the region has its own column.
-            placeLine(o.region?.name ?? o.customer.city, null, o.customer.address).replace(/^[^—]*—\s*/, ''),
+            placeLine(o.region?.name ?? o.customer.city, null, o.deliveryAddress ?? o.customer.address).replace(/^[^—]*—\s*/, ''),
             // The amount with the currency's decimals, not a raw float.
             formatMoney(cod, o.currency, minorUnit).split(' ')[0],
             o.currency,
