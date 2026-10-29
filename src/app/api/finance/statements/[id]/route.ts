@@ -6,7 +6,8 @@ import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { consumeOrderStock } from '@/lib/stock-consumption';
-import { receiptGap } from '@/lib/settlement';
+import { receiptGap, runMatching } from '@/lib/settlement';
+import { isManualDraftHash, isManualHash, MANUAL_DRAFT_SENTENCE } from '@/lib/manual-statement-rules';
 import { COURIER_OUTCOME_AR, readCourierWord } from '@/lib/courier-words';
 import { OUTCOME_LABEL_AR, orderOutcome } from '@/lib/order-outcome';
 import { isNotMentioned } from '@/lib/settlement-difference';
@@ -170,6 +171,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (isApproved(statement)) {
       return NextResponse.json({ error: 'الكشف معتمد مسبقاً', code: 'ALREADY_APPROVED' }, { status: 409 });
     }
+    // An open manual draft has no reference yet and its total is still moving: it is gathered first.
+    if (isManualDraftHash(statement.fileHash)) {
+      return NextResponse.json({ error: MANUAL_DRAFT_SENTENCE, code: 'MANUAL_DRAFT' }, { status: 409 });
+    }
 
     if (parsed.data.gapExplanation && !parsed.data.approve) {
       const updated = await db.courierStatement.update({
@@ -230,6 +235,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       });
       if (claimed.count !== 1) {
         throw new ApprovalStopped(409, { error: 'الكشف معتمد مسبقاً', code: 'ALREADY_APPROVED' });
+      }
+
+      /**
+       * A STATEMENT A PERSON GATHERED BY HAND IS MATCHED AGAIN HERE, INSIDE THE APPROVAL.
+       *
+       * A file statement is matched by a press and the rows it wrote are what the approval settles. A manual one is
+       * gathered from orders that were delivered by us, not stated by a courier, and the days between the person
+       * pressing «مطابقة» and «اعتماد» are exactly when one of its orders is collected by hand, settled by
+       * another statement or has a cancel asked for. So the matching is re-run in THIS transaction, after the
+       * claim above holds the statement and before the rows are read: the orders settled are the ones that are
+       * clean at the moment of approval. Answers a person already gave are kept by the matcher itself.
+       */
+      if (isManualHash(statement.fileHash)) {
+        await runMatching(tx, { companyId, storeId, statementId: id, minorUnit: country.minorUnit });
       }
 
       const inside = await tx.courierStatement.findFirst({

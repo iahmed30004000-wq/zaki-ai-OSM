@@ -112,6 +112,9 @@ export function CollectDialog({
           <p className="text-[var(--sys-muted)]">
             وهو صافي ما يسلّمه بعد خصم أجرة التوصيل، لا المبلغ الذي دفعه العميل.
           </p>
+          <p className="text-[var(--sys-muted)]">
+            «استلمت منه» لنقد بعملة الطلب نفسها إلى محفظة فعّالة. أيّ عملة ثانية أو سعر صرف: «مطابق يدوي» ثم «تجميع».
+          </p>
         </div>
 
         <div className="max-h-32 overflow-y-auto border border-[var(--sys-border)] rounded-lg divide-y divide-[var(--sys-border)]">

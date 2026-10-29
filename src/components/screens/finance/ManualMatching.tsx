@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { RiCheckLine, RiCloseLine, RiHandCoinLine, RiLoader4Line } from '@remixicon/react';
+import { RiCheckLine, RiCloseLine, RiFileList3Line, RiHandCoinLine, RiLoader4Line } from '@remixicon/react';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
 import { apiJson } from '@/lib/api-client';
@@ -12,6 +12,7 @@ import { canCollect } from '@/lib/tracking-priority';
 import type { TrackingListFacts } from '@/lib/tracking-list';
 import { usePagedList, type PagedRead, type Paging } from '@/hooks/usePagedList';
 import { CollectDialog } from '@/components/screens/tracking/CollectDialog';
+import { ManualStatementDialog } from '@/components/screens/finance/ManualStatementDialog';
 import { useConfirm } from '@/components/ui/Confirm';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ListToolbar, withChosen, type ToolbarFilter } from '@/components/ui/ListToolbar';
@@ -182,6 +183,8 @@ export function ManualMatching() {
   const { currentUser } = useApp();
   // UX only: the door refuses a person without the permission whatever this draws.
   const mayCollect = userCan(currentUser, 'finance.cashbox');
+  // The permission that makes a statement: «مطابق يدوي» writes lines of one, and moves no money.
+  const mayGather = userCan(currentUser, 'settlement.upload');
   const confirm = useConfirm();
 
   const [term, setTerm] = useState('');
@@ -196,6 +199,8 @@ export function ManualMatching() {
   const [working, setWorking] = useState(false);
   /** The choice the money dialog was opened for (its ids, sorted) — see below. */
   const [collectingFor, setCollectingFor] = useState<string | null>(null);
+  /** The same, for the dialog of «مطابق يدوي». */
+  const [gatheringFor, setGatheringFor] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [failed, setFailed] = useState<Failure[]>([]);
 
@@ -238,6 +243,7 @@ export function ManualMatching() {
     .sort()
     .join(',');
   if (collectingFor !== null && (collectingFor !== choiceKey || step !== 'COLLECT' || problem)) setCollectingFor(null);
+  if (gatheringFor !== null && (gatheringFor !== choiceKey || step !== 'COLLECT' || problem)) setGatheringFor(null);
 
   /** A new question starts a new selection: the boxes ticked were on a page that is not on screen any more. */
   const choose = (set: (v: string) => void) => (v: string) => {
@@ -375,6 +381,10 @@ export function ManualMatching() {
         <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
           بعد الاستلام يُغلق الطلب مالياً. والراجع يُغلق بعد عدّ بضاعته في «المرتجعات».
         </p>
+        <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+          «استلمت منه» لنقد بعملة الطلب نفسها إلى محفظة فعّالة. أيّ عملة ثانية، أو سعر صرف، أو كشف واحد تعتمده: «مطابق يدوي»
+          لإضافة الطلبات إلى مسوّدة، ثم «تجميع» في «التحصيل والكشوف».
+        </p>
       </div>
 
       <ListToolbar
@@ -447,9 +457,16 @@ export function ManualMatching() {
             </span>
           )}
           {!problem && step === 'COLLECT' && (
-            <button onClick={() => setCollectingFor(choiceKey)} className={`${GREEN} mr-auto`}>
-              <RiHandCoinLine className="w-4 h-4" aria-hidden /> استلمت منه ({chosen.length})
-            </button>
+            <span className="flex items-center gap-2 mr-auto">
+              {mayGather && (
+                <button onClick={() => setGatheringFor(choiceKey)} className={GREEN}>
+                  <RiFileList3Line className="w-4 h-4" aria-hidden /> مطابق يدوي ({chosen.length})
+                </button>
+              )}
+              <button onClick={() => setCollectingFor(choiceKey)} className={GREEN}>
+                <RiHandCoinLine className="w-4 h-4" aria-hidden /> استلمت منه ({chosen.length})
+              </button>
+            </span>
           )}
         </div>
       )}
@@ -549,6 +566,20 @@ export function ManualMatching() {
           onPage={(page) => {
             setSelected({});
             list.goTo(page);
+          }}
+        />
+      )}
+
+      {gatheringFor !== null && (
+        <ManualStatementDialog
+          orders={chosen}
+          onClose={() => setGatheringFor(null)}
+          onDone={async (message) => {
+            setGatheringFor(null);
+            setSelected({});
+            setFailed([]);
+            setDone(message);
+            await list.reload();
           }}
         />
       )}

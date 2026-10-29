@@ -24,6 +24,9 @@ import { Money } from '@/components/ui/Money';
 import { importedSentence, type ImportedStatement } from '@/lib/statement-import-message';
 import { approvalRefusal, isApproved, rematchRefusal } from '@/lib/settlement-gates';
 import { useConfirm } from '@/components/ui/Confirm';
+import { AssembleStatementDialog } from '@/components/screens/finance/AssembleStatementDialog';
+import { receiptsInStatementCurrency } from '@/lib/receipt-conversion';
+import { minorUnitFor } from '@/lib/currencies';
 
 /**
  * /finance/collection — the three sequential steps, in order and visible as
@@ -54,6 +57,9 @@ interface StatementRow {
   status: string;
   /** Set when the money moved. Nothing about the statement reopens after it. */
   approvedAt: string | null;
+  /** A statement a person gathered by hand, and whether it is still the open draft (no reference, no receipt yet). */
+  manual?: boolean;
+  draft?: boolean;
   currencyCode: string;
   totalAmount: number;
   createdAt: string;
@@ -152,6 +158,8 @@ export function CollectionScreen() {
   const [importing, setImporting] = useState(false);
   const [receiptFor, setReceiptFor] = useState<StatementRow | null>(null);
   const [explainFor, setExplainFor] = useState<StatementRow | null>(null);
+  // The draft whose «تجميع» dialog is open.
+  const [assembleFor, setAssembleFor] = useState<StatementRow | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   // The hand rows the server found when asked to approve: shown with «اعتمد هيك» / «رجوع», never auto-confirmed.
   const [doubleFor, setDoubleFor] = useState<{ statement: StatementRow; sentence: string; rows: HandRow[] } | null>(null);
@@ -257,14 +265,15 @@ export function CollectionScreen() {
    */
   async function undoImport(s: StatementRow) {
     const ok = await confirm({
-      title: `إلغاء استيراد الكشف «${s.reference}»؟`,
-      body:
-        (s.counts.receipts > 0 ? `سيُحذف معه ${s.counts.receipts} إيصال استلام (ومرفقاته) ونتيجة المطابقة. ` : 'يُحذف الكشف وسطوره. ') +
-        'لم يتحرك أي مبلغ ولم يُسجَّل شيء بالمحافظ لأنه لم يُعتمد بعد، ويمكن رفع الملف نفسه من جديد. يزول هذا الخيار عند الاعتماد.',
+      title: s.draft ? 'حذف مسوّدة الكشف اليدوي؟' : `إلغاء استيراد الكشف «${s.reference}»؟`,
+      body: s.draft
+        ? 'تُحذف المسوّدة وأسطرها، وتعود طلباتها إلى المطابقة اليدوية. لم يتحرك أي مبلغ ولم يُسجَّل شيء بالمحافظ.'
+        : (s.counts.receipts > 0 ? `سيُحذف معه ${s.counts.receipts} إيصال استلام (ومرفقاته) ونتيجة المطابقة. ` : 'يُحذف الكشف وسطوره. ') +
+          'لم يتحرك أي مبلغ ولم يُسجَّل شيء بالمحافظ لأنه لم يُعتمد بعد، ويمكن رفع الملف نفسه من جديد. يزول هذا الخيار عند الاعتماد.',
       tone: 'danger',
     });
     if (!ok) return;
-    await act(s.id, `أُلغي استيراد الكشف «${s.reference}»`, () =>
+    await act(s.id, s.draft ? 'حُذفت المسوّدة' : `أُلغي استيراد الكشف «${s.reference}»`, () =>
       apiJson(`/api/finance/statements/${s.id}`, { method: 'DELETE' })
     );
   }
@@ -279,7 +288,7 @@ export function CollectionScreen() {
           <Link href="/finance/matching?mode=manual" className="font-medium text-[var(--sys-primary)] hover:underline">
             المطابقة ← يدوي — بلا كشف
           </Link>
-          .
+          . وللطلبات التي سلّمها المندوب وتريد اعتمادها في كشف واحد: «مطابق يدوي» هناك، ثم «تجميع» هنا.
         </p>
       )}
 
@@ -348,7 +357,7 @@ export function CollectionScreen() {
                 primary: true,
                 render: (s) => (
                   <span className={`text-xs px-2 py-1 rounded-sm border ${STATUS_STYLE[s.status] ?? ''}`}>
-                    {STATUS_AR[s.status] ?? s.status}
+                    {s.draft ? 'مسوّدة' : STATUS_AR[s.status] ?? s.status}
                   </span>
                 ),
               },
@@ -500,11 +509,23 @@ export function CollectionScreen() {
                     onClick={() => void undoImport(s)}
                     className="text-xs text-[var(--sys-destructive)] hover:underline disabled:opacity-50"
                   >
-                    إلغاء الاستيراد
+                    {s.draft ? 'حذف المسوّدة' : 'إلغاء الاستيراد'}
                   </button>
-                  <button onClick={() => setReceiptFor(s)} className="text-xs text-[var(--sys-primary)] hover:underline">
-                    إيصال استلام
-                  </button>
+                  {s.draft && (
+                    <button
+                      disabled={busy === s.id}
+                      onClick={() => setAssembleFor(s)}
+                      className="text-xs font-medium text-[var(--sys-success)] hover:underline disabled:opacity-50"
+                    >
+                      تجميع
+                    </button>
+                  )}
+                  {!s.draft && (
+                    <button onClick={() => setReceiptFor(s)} className="text-xs text-[var(--sys-primary)] hover:underline">
+                      إيصال استلام
+                    </button>
+                  )}
+                  {!s.draft && (
                   <button
                     disabled={s.counts.receipts === 0 || !!noRematch || busy === s.id}
                     title={noRematch?.error ?? (s.counts.receipts === 0 ? 'سجّل إيصال الاستلام أولاً' : 'شغّل المطابقة')}
@@ -517,11 +538,13 @@ export function CollectionScreen() {
                   >
                     مطابقة
                   </button>
-                  {s.gap.needsExplanation && !s.gap.explained && (
+                  )}
+                  {!s.draft && s.gap.needsExplanation && !s.gap.explained && (
                     <button onClick={() => setExplainFor(s)} className="text-xs text-[var(--sys-warning)] hover:underline">
                       تفسير الفرق
                     </button>
                   )}
+                  {!s.draft && (
                   <button
                     disabled={!!refusal || busy === s.id}
                     title={refusal?.error ?? 'اعتماد الكشف — عندها تُسجَّل حركة المحفظة'}
@@ -530,6 +553,7 @@ export function CollectionScreen() {
                   >
                     اعتماد
                   </button>
+                  )}
                 </span>
               );
             }}
@@ -550,6 +574,18 @@ export function CollectionScreen() {
           onClose={() => setReceiptFor(null)}
           onSaved={async (message) => {
             setReceiptFor(null);
+            setDone(message);
+            await load();
+          }}
+        />
+      )}
+
+      {assembleFor && (
+        <AssembleStatementDialog
+          statement={assembleFor}
+          onClose={() => setAssembleFor(null)}
+          onSaved={async (message) => {
+            setAssembleFor(null);
             setDone(message);
             await load();
           }}
@@ -733,6 +769,21 @@ function ReceiptDialog({
 
   const wallet = wallets.find((w) => w.id === walletId);
   const needsRate = !!wallet && wallet.currencyCode !== statement.currencyCode;
+  /*
+   * WHAT THE RECEIPT IS WORTH IN THE STATEMENT'S CURRENCY, shown while it is typed.
+   *
+   * The same function the gap is worked out with (`receiptsInStatementCurrency`): the amount is in the wallet's
+   * currency and the rate says how many of it one unit of the statement's currency buys, so going back divides.
+   * Said before saving, because a rate typed upside down is the one mistake that looks right until the gap appears.
+   */
+  const converted =
+    needsRate && wallet && Number(amount) > 0 && Number(rate) > 0
+      ? receiptsInStatementCurrency(
+          [{ amount: Number(amount), currencyCode: wallet.currencyCode, exchangeRate: Number(rate) }],
+          statement.currencyCode,
+          minorUnitFor(statement.currencyCode) ?? 2
+        ).received
+      : null;
 
   return (
     <Modal isOpen onClose={onClose} title={`إيصال استلام — ${statement.reference}`}>
@@ -811,14 +862,19 @@ function ReceiptDialog({
             </span>
             <input
               type="number"
-              step="0.0001"
-              min="0.0001"
+              step="0.000001"
+              min="0.000001"
               value={rate}
               onChange={(e) => setRate(e.target.value)}
               required
               className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm"
               dir="ltr"
             />
+            {converted !== null && (
+              <span className="mt-1 block text-xs text-[var(--sys-muted-foreground)]">
+                يساوي <Money value={converted} currency={statement.currencyCode} /> بعملة الكشف
+              </span>
+            )}
           </label>
         )}
 

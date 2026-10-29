@@ -6,6 +6,7 @@ import { db } from './db';
 import { codForOrder, type OrderLineLike } from './delivery-fees';
 import { roundMinor } from './money';
 import { leftWarehouseWhere } from './order-state';
+import { isManualHash } from './manual-statement-rules';
 // The ONE reader for a figure that arrived in a file. A courier's money
 // column is read through it, brackets and Arabic digits and all.
 import { readStatementFigure } from './numeric-input';
@@ -847,7 +848,7 @@ export async function runMatching(
   });
   const statement = await tx.courierStatement.findFirst({
     where: { id: statementId, companyId },
-    select: { id: true, deliveryProviderId: true, periodFrom: true, periodTo: true, createdAt: true },
+    select: { id: true, deliveryProviderId: true, periodFrom: true, periodTo: true, createdAt: true, fileHash: true },
   });
   if (!statement) throw new Error('Statement not found');
 
@@ -1108,6 +1109,16 @@ export async function runMatching(
       if (feeWrong) outcome.feeMismatched++;
     }
   }
+
+  /**
+   * A STATEMENT A PERSON GATHERED BY HAND HAS NO COURIER FILE TO LEAVE THINGS OUT OF.
+   *
+   * The sweep below asks «what did the courier forget to list», of every delivered order of that courier in the period.
+   * A manual statement is the list a person made of the parcels they chose to settle together, so every other
+   * delivered order of the courier would come out as «لم يرد في كشف الشركة» — a false alarm against parcels the
+   * person simply has not gathered yet. Its lines are matched above like any other; only the sweep is skipped.
+   */
+  if (isManualHash(statement.fileHash)) return outcome;
 
   // Orders we delivered in the period that the courier did not list at all.
   //

@@ -6,6 +6,7 @@ import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { fileHash, parseStatement, receiptGap } from '@/lib/settlement';
+import { isManualDraftHash, isManualHash } from '@/lib/manual-statement-rules';
 import { roundMinor } from '@/lib/money';
 import { zodMessage } from '@/lib/zod-message';
 
@@ -86,6 +87,10 @@ export async function GET() {
           // their match and approve buttons on this, because `status` alone
           // could be written back to MATCHED over an approved statement.
           approvedAt: s.approvedAt,
+          // A statement a person gathered by hand, and whether it is still the open draft (orders can be added,
+          // there is no reference and no receipt yet). The hash itself is not sent: only what the screen draws.
+          manual: isManualHash(s.fileHash),
+          draft: isManualDraftHash(s.fileHash),
           currencyCode: s.currencyCode,
           totalAmount: Number(s.totalAmount),
           createdAt: s.createdAt,
