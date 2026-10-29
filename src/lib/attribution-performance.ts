@@ -1,5 +1,6 @@
 import { CONFIRMATION_REFUSED, DELIVERED_SHIPPING, rateOf } from './order-state';
 import { db } from './db';
+import { notSuperseded } from './superseded';
 
 /**
  * WHO BROUGHT THE BUSINESS, AND WHAT BECAME OF IT.
@@ -99,6 +100,15 @@ async function attribution(scope: Scope, key: GroupKey): Promise<AttributionRow[
     storeId,
     [key]: { not: null },
     ...(when ? { createdAt: when } : {}),
+    /*
+     * ONE SALE IS ONE ORDER. A replacement now carries the campaign, the door
+     * and the moderator of the order it replaced, so counting both would
+     * bring the same customer twice — once as a sale and once as a return.
+     * The replaced order is left out; the replacement is the sale, and fails
+     * on its own account if it does. The money below reads delivered orders
+     * only, and a replaced order is never one.
+     */
+    ...notSuperseded,
   } as Record<string, unknown>;
 
   const by = [key] as ['moderatorId'] | ['channelId'] | ['campaignId'];

@@ -6,6 +6,7 @@ import { calculateRealProfit } from './financial';
 import { commissionByUserForOrders, commissionCostForOrders } from './commission';
 import { AiBusinessContext } from './ai';
 import { endOfLocalDay, startOfLocalDay } from './local-day';
+import { notSuperseded } from './superseded';
 
 export interface DateFilter {
   period?: 'today' | 'yesterday' | '7d' | '30d' | 'month' | 'last_month' | 'all';
@@ -210,11 +211,24 @@ export async function getCompanyAnalytics(
       : {};
 
   const baseWhere = { companyId, ...(storeId ? { storeId } : {}), ...dateFilter };
+  /*
+   * THE ORDERS THAT COUNT AS SALES. A replaced order — taken back from a
+   * courier company, or cancelled at the courier for a change to the goods —
+   * is not a second order of the same customer, and the replacement now
+   * carries its moderator and campaign; counting both is two confirmations
+   * and one return for one sale (src/lib/superseded.ts).
+   *
+   * ONLY THE COUNTS read this. The delivered figures, the revenue and the
+   * commission below keep `baseWhere`: a replaced order is never delivered,
+   * so it adds nothing to them, and no money figure on this screen is
+   * allowed to move with a reading of history.
+   */
+  const countedWhere = { ...baseWhere, ...notSuperseded };
 
   // ─── 1. Status breakdown: two GROUP BYs over the two real columns ───
   const [confirmationGroups, shippingGroups] = await Promise.all([
-    db.order.groupBy({ by: ['confirmationStatus'], where: baseWhere, _count: { _all: true } }),
-    db.order.groupBy({ by: ['shippingStatus'], where: baseWhere, _count: { _all: true } }),
+    db.order.groupBy({ by: ['confirmationStatus'], where: countedWhere, _count: { _all: true } }),
+    db.order.groupBy({ by: ['shippingStatus'], where: countedWhere, _count: { _all: true } }),
   ]);
 
   const confirmationCount = new Map<string, number>();
@@ -331,7 +345,7 @@ export async function getCompanyAnalytics(
   // with its own quantity and its own share of the money.
   const lineGroups = await db.orderItem.groupBy({
     by: ['productId', 'orderId'],
-    where: { order: baseWhere },
+    where: { order: countedWhere },
     _sum: { lineTotal: true, quantity: true },
   });
 
@@ -490,7 +504,7 @@ export async function getCompanyAnalytics(
   // ─── 4. Moderator leaderboard: GROUP BY (moderatorId, status) ───
   const moderatorGroups = await db.order.groupBy({
     by: ['moderatorId', 'confirmationStatus', 'shippingStatus'],
-    where: { ...baseWhere, moderatorId: { not: null } },
+    where: { ...countedWhere, moderatorId: { not: null } },
     _count: { _all: true },
     _sum: {
       totalAmount: true,

@@ -48,14 +48,43 @@ describe('the route that records which figure stands', () => {
 });
 
 describe('the screen', () => {
-  it('offers the actions on every difference queue and on none of the matched', () => {
+  /*
+   * REWRITTEN (كلمات الشركة والأصفار). It said «offers the actions on every difference queue» and counted
+   * `resolvable` at least four times — three queues carried «رقمنا / رقمهم». Only «فرق في المبلغ» has two
+   * figures to choose between; the other two have one figure each, and answering them with a choice of
+   * figures recorded nothing true and counted them in the per-person tally. «في الكشف وليس عندنا» now
+   * shows the company's reason, and «طلبات لم يذكرها أي كشف» (the old «مسلَّم عندنا وليس في الكشف»)
+   * offers three actions on the order instead.
+   */
+  it('offers رقمنا / رقمهم on «فرق في المبلغ» only — not on the matched, not on the two missing queues', () => {
     const src = screen();
     expect(src.length).toBeGreaterThan(2000);
-    // Three difference queues carry it; «مطابق» must not.
-    expect((src.match(/resolvable/g) ?? []).length).toBeGreaterThanOrEqual(4);
-    const matched = src.slice(src.indexOf('title="مطابق"'), src.indexOf('title="فرق في المبلغ"'));
-    expect(matched.length).toBeGreaterThan(50);
-    expect(matched, 'طابور المطابق صار فيه بتّ').not.toContain('resolvable');
+    const queueOf = (title: string) => {
+      const at = src.indexOf(`title="${title}"`);
+      expect(at, title).toBeGreaterThan(0);
+      return src.slice(at, src.indexOf('/>', at));
+    };
+    expect(queueOf('فرق في المبلغ')).toContain('resolvable');
+    for (const title of ['مطابق', 'في الكشف وليس عندنا', 'طلبات لم يذكرها أي كشف']) {
+      expect(queueOf(title), `${title}: صار فيه رقمنا/رقمهم`).not.toContain('resolvable');
+    }
+    // And the third queue carries its own actions, on the order.
+    expect(queueOf('طلبات لم يذكرها أي كشف')).toContain('unmentioned');
+    expect(src).toContain('<NotMentionedActions');
+  });
+
+  it('the old name of the fourth queue is gone, and the new one is on the screen', () => {
+    const src = screen();
+    expect(src).not.toContain('مسلَّم عندنا وليس في الكشف');
+    expect(src).toContain('طلبات لم يذكرها أي كشف');
+  });
+
+  it('shows the company’s own reason — its word and its whole row — and the order’s outcome word', () => {
+    const src = screen();
+    expect(src).toContain('سبب الشركة بكلامها');
+    expect(src).toMatch(/statementLine\?\.rawRow/);
+    expect(src).toContain('m.courierWord');
+    expect(src).toContain('m.orderOutcome');
   });
 
   it('and redraws the queue after an answer, so the chip is the saved one', () => {

@@ -144,6 +144,167 @@ describe('a replacement with nothing changed', () => {
   });
 });
 
+/**
+ * THE REPLACEMENT KEEPS THE SALE'S NAME.
+ *
+ * The replacement used to copy the moderator and the source and nothing
+ * else, so the campaign that paid for the click, the page the customer
+ * ordered from, the person who confirmed the order and the one it was
+ * assigned to all stayed on the old order — which ends as a return. The
+ * order that finally delivered belonged to nobody.
+ *
+ * Only NAMES move. The money below is built exactly as before.
+ */
+const SOLD: ReplacementSource = {
+  ...ORDER,
+  channelId: 'ch1',
+  campaignId: 'camp1',
+  landingPageId: 'lp1',
+  deviceClass: 'mobile',
+  adId: 'ad9',
+  adSourceType: 'CTWA',
+  refCode: 'K7Q2',
+  refCodeAt: new Date('2026-10-20T10:00:00Z'),
+  touchAt: new Date('2026-10-20T09:00:00Z'),
+  pageId: 'pg1',
+  wabaId: 'wa1',
+  conversationRef: 'conv-1',
+  confirmedById: 'u-confirmer',
+  assignedToId: 'u-assignee',
+  assignedAt: new Date('2026-10-21T08:00:00Z'),
+};
+
+describe('a replacement carries who sold it and where it came from', () => {
+  it('copies the campaign, the door, the page and the ad evidence', async () => {
+    const { tx, created } = fakeTx();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await createReplacement(tx as any, { ...plan, order: SOLD });
+    const row = created[0];
+    expect(row).toMatchObject({
+      channelId: 'ch1',
+      campaignId: 'camp1',
+      landingPageId: 'lp1',
+      deviceClass: 'mobile',
+      adId: 'ad9',
+      adSourceType: 'CTWA',
+      refCode: 'K7Q2',
+      pageId: 'pg1',
+      wabaId: 'wa1',
+      conversationRef: 'conv-1',
+    });
+    expect(row.refCodeAt).toEqual(SOLD.refCodeAt);
+    expect(row.touchAt).toEqual(SOLD.touchAt);
+  });
+
+  it('and the moderator, the confirmer and the assignee', async () => {
+    const { tx, created } = fakeTx();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await createReplacement(tx as any, { ...plan, order: SOLD });
+    const row = created[0];
+    expect(row.moderatorId).toBe('m1');
+    expect(row.confirmedById).toBe('u-confirmer');
+    expect(row.assignedToId).toBe('u-assignee');
+    expect(row.assignedAt).toEqual(SOLD.assignedAt);
+  });
+
+  it('an order that had none of it gets none — nothing is invented', async () => {
+    const { tx, created } = fakeTx();
+    // ORDER is the short fixture: no attribution fields at all.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await createReplacement(tx as any, plan);
+    const row = created[0];
+    for (const key of [
+      'channelId', 'campaignId', 'landingPageId', 'deviceClass', 'adId', 'adSourceType', 'refCode',
+      'refCodeAt', 'touchAt', 'pageId', 'wabaId', 'conversationRef', 'confirmedById', 'assignedToId', 'assignedAt',
+    ]) {
+      expect(row[key], key).toBeNull();
+    }
+    // The moderator was always carried, null or not.
+    expect(row.moderatorId).toBe('m1');
+  });
+
+  it('an explicit null on the original stays null', async () => {
+    const { tx, created } = fakeTx();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await createReplacement(tx as any, { ...plan, order: { ...SOLD, campaignId: null, confirmedById: null, moderatorId: null } });
+    expect(created[0].campaignId).toBeNull();
+    expect(created[0].confirmedById).toBeNull();
+    expect(created[0].moderatorId).toBeNull();
+  });
+
+  /** The sealed ones are written by the systems door alone. */
+  it('and leaves behind what is not the replacement’s to carry', async () => {
+    const { tx, created } = fakeTx();
+    const fat = {
+      ...SOLD,
+      ctwaClidEnc: 'sealed-click',
+      psidEnc: 'sealed-chat',
+      externalRef: 'other-system-1',
+      createdById: 'u-creator',
+      claimedById: 'u-claimer',
+      currentOwnerId: 'u-owner',
+      confirmedAt: new Date('2026-10-20T11:00:00Z'),
+      moderatorCommission: 7,
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await createReplacement(tx as any, { ...plan, order: fat as any });
+    for (const key of [
+      'ctwaClidEnc', 'psidEnc', 'externalRef', 'createdById', 'claimedById',
+      'currentOwnerId', 'confirmedAt', 'moderatorCommission',
+    ]) {
+      expect(created[0], key).not.toHaveProperty(key);
+    }
+  });
+});
+
+describe('and not one amount moves', () => {
+  /**
+   * The same order with and without the sale's name on it must produce the
+   * same money, field for field — in the currency with three decimals too,
+   * where a fils is a real figure.
+   */
+  const MONEY = ['sellingPrice', 'discountAmount', 'shippingCost', 'totalAmount', 'estimatedCostOfGoods', 'quantity', 'freeQuantity'];
+
+  it.each([
+    { label: 'unchanged goods', overrides: undefined, minorUnit: 2 },
+    { label: 'changed goods', overrides: { quantity: 3 }, minorUnit: 2 },
+    { label: 'changed goods in dinars (3 places)', overrides: { quantity: 3, discountAmount: 2.5 }, minorUnit: 3 },
+  ])('$label', async ({ overrides, minorUnit }) => {
+    const bare = fakeTx();
+    const sold = fakeTx();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await createReplacement(bare.tx as any, { ...plan, minorUnit, overrides });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await createReplacement(sold.tx as any, { ...plan, order: SOLD, minorUnit, overrides });
+    for (const key of MONEY) expect(sold.created[0][key], key).toBe(bare.created[0][key]);
+    expect(sold.lines).toEqual(bare.lines);
+  });
+
+  it('three decimals: 3 × 12.345 less 1.111 is 35.924, not 35.92', async () => {
+    const { tx, created } = fakeTx();
+    const items = [{ productId: 'p1', productName: 'قميص', quantity: 1, freeQuantity: 0, unitPrice: 12.345, lineTotal: 12.345, discountShare: 0 }];
+    tx.orderItem.findMany.mockResolvedValueOnce(items);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await createReplacement(tx as any, {
+      ...plan,
+      order: { ...SOLD, quantity: 1, currency: 'JOD' },
+      minorUnit: 3,
+      overrides: { quantity: 3, discountAmount: 1.111 },
+    });
+    expect(created[0].sellingPrice).toBe(37.035);
+    expect(created[0].totalAmount).toBe(35.924);
+  });
+
+  it('the carried columns are names — no price, fee, discount or commission among them', () => {
+    const src = stripComments(repoFile('src/lib/replacement-order.ts'));
+    const block = src.slice(src.indexOf('export function carriedSale'), src.indexOf('export interface ReplacementPlan'));
+    expect(block).not.toMatch(/Amount|Price|Fee|Cost|Commission|discount|total|money/i);
+    // And it is spread into the row, once, beside the figures — not written
+    // a second time by hand next to them.
+    expect(src.match(/\.\.\.carriedSale\(order\)/g)).toHaveLength(1);
+  });
+});
+
 describe('a replacement carrying an approved change', () => {
   it('recomputes the money at the new count', async () => {
     const { tx, created, lines } = fakeTx();

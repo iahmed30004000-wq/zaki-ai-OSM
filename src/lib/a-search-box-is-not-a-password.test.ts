@@ -42,6 +42,8 @@ const ROOT = join(process.cwd(), 'src');
  * something a person typed».
  */
 const EXEMPT: Record<string, string> = {
+  'lib/superseded.ts':
+    'يَبحثُ عن علامتَين ثابتتَين كتبتْهما أبوابُنا في نصِّ JSON لنشاطِ الطلب ("mode":"REPLACE" و"role":"REPLACEMENT") — الإبرةُ ثابتةٌ من عندنا لا من إنسان، والمطابقةُ الحرفيةُ هي المقصود',
   'lib/storefront.ts':
     'يَبحثُ عن اسمٍ لطيفٍ داخلَ مصفوفةِ JSON مخزونة — والاسمُ اللطيفُ صغيرُ الأحرفِ ببنائه، وهذا احتواءٌ في نصٍّ مُسلسَلٍ لا بحثُ إنسان',
 };

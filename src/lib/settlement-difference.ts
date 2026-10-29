@@ -53,8 +53,25 @@ export const RESOLUTION_MEANING: Record<Resolution, string> = {
     'الفرق غير مقبول — يُطالَب به من الشركة. لا يُسوّى على رقمهم حتى يصحّحوه، ويبقى الطلب معلَّماً.',
 };
 
-/** The match results that are a difference somebody has to answer for. */
-export const DIFFERENCE_RESULTS = ['MISMATCHED', 'MISSING_IN_STATEMENT', 'MISSING_IN_SYSTEM'] as const;
+/**
+ * THE ONE KIND OF ROW THAT IS A DIFFERENCE IN MONEY: the company's figure and ours disagree.
+ *
+ * «رقمنا / رقمهم» is an answer about TWO FIGURES. A parcel we delivered that no statement mentions has one
+ * figure only (ours), and a line with no order has the other only (theirs): there is nothing to choose
+ * between, so the answer recorded nothing of any use — and the row then counted in the per-person tally
+ * as if somebody had given a discount. Those two are lists of things to chase or to link, with their own
+ * actions on the ORDER, and they are not counted here. This is also the gate's list: whatever later asks
+ * «is anything still undecided» asks it of these rows and of nothing else.
+ */
+export const DIFFERENCE_RESULTS = ['MISMATCHED'] as const;
+
+/** The rows that name a parcel one side does not have. Never a difference in money, never counted at approval. */
+export const MISSING_RESULTS = ['MISSING_IN_STATEMENT', 'MISSING_IN_SYSTEM'] as const;
+
+/** A parcel we delivered that no statement names — «طلبات لم يذكرها أي كشف». */
+export function isNotMentioned(m: { result: string }): boolean {
+  return m.result === 'MISSING_IN_STATEMENT';
+}
 
 export interface MatchRow {
   result: string;
@@ -71,7 +88,7 @@ export function isDifference(m: Pick<MatchRow, 'result'>): boolean {
   return (DIFFERENCE_RESULTS as readonly string[]).includes(m.result);
 }
 
-/** Still waiting for somebody to say which figure stands. */
+/** Still waiting for somebody to say which figure stands. The only rows a gate, a lock or a refusal may count. */
 export function isOpen(m: Pick<MatchRow, 'result' | 'resolution'>): boolean {
   return isDifference(m) && !m.resolution;
 }

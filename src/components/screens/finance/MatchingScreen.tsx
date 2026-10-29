@@ -11,8 +11,10 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { NextStepButton } from '@/components/ui/NextStep';
 import { DifferenceActions } from '@/components/screens/finance/DifferenceActions';
 import { DifferencesByPerson } from '@/components/screens/finance/DifferencesByPerson';
+import { NotMentionedActions } from '@/components/screens/finance/NotMentionedActions';
+import { mayCorrectStatus } from '@/lib/not-mentioned';
 import { useToast } from '@/components/ui/Toast';
-import { Rows } from '@/components/ui/Rows';
+import { Rows, type Column } from '@/components/ui/Rows';
 import { Money } from '@/components/ui/Money';
 import { Tabs } from '@/components/ui/Tabs';
 import { ManualMatching } from '@/components/screens/finance/ManualMatching';
@@ -20,9 +22,15 @@ import { isApproved } from '@/lib/settlement-gates';
 
 /**
  * /finance/matching — the outcome of matching, read as four queues: agreed,
- * different amount, in the statement but not in the system, and delivered
- * here but absent from the statement. Nothing is edited here; a difference
- * is resolved on the order or by a reversing entry, never by overwriting.
+ * different amount, in the statement but not in the system, and orders no
+ * statement names. Nothing is edited here; a difference is resolved on the
+ * order or by a reversing entry, never by overwriting.
+ *
+ * Two of the four are a difference in MONEY and two are not. Only «فرق في المبلغ» has two
+ * figures to choose between, so only it offers «رقمنا / رقمهم». A line with no order and an
+ * order with no line have one figure each: they show what the company WROTE (its status word
+ * and its whole row, in its own words) or what the order's own outcome is, and the second
+ * offers three actions on the order — see `NotMentionedActions`.
  *
  * «يدوي — بلا كشف» is the other half of the word «مطابقة»: a courier or a company
  * that sends no statement and no file is matched by a person naming the orders —
@@ -46,7 +54,20 @@ interface Match {
   resolution: string | null;
   resolutionNote: string | null;
   order: { id: string; orderNumber: string; merchantRef: string | null; shippingStatus: string } | null;
-  statementLine: { merchantRef: string | null; barcode: string | null; amount: string | number } | null;
+  statementLine: {
+    merchantRef: string | null;
+    barcode: string | null;
+    amount: string | number;
+    /** The company's own status cell, and the whole row as it wrote it (notes column included). */
+    status: string | null;
+    rawRow: string | null;
+  } | null;
+  /** The status word read through the one phrase table: what it says, and whether the table knows it. */
+  courierWord: { phrase: string; outcome: string; known: boolean; label: string } | null;
+  /** The order's own outcome word (order-outcome), for the orders no statement names. */
+  orderOutcome: { key: string; label: string } | null;
+  /** The last answer a person recorded on the order about not being on a statement. */
+  followUp: { action: string; at: string } | null;
 }
 
 interface StatementRow {
@@ -217,6 +238,7 @@ export function MatchingScreen() {
           <Queue
             title="فرق في المبلغ"
             resolvable
+            reason
             statementId={selected}
             onResolved={() => void load(selected!)}
             tone="rose"
@@ -226,23 +248,22 @@ export function MatchingScreen() {
           />
           <Queue
             title="في الكشف وليس عندنا"
-            resolvable
-            statementId={selected}
-            onResolved={() => void load(selected!)}
+            reason
             tone="amber"
             currency={statement?.currencyCode ?? ''}
             rows={queue('MISSING_IN_SYSTEM')}
-            hint="مرجع لا يقابله طلب في هذا المتجر — غالباً كشف شركة أخرى أو مرجع مكتوب خطأً."
+            hint="مرجع لا يقابله طلب في هذا المتجر — غالباً كشف شركة أخرى أو مرجع مكتوب خطأً. لا رقمين هنا يُختار بينهما؛ اقرأ سبب الشركة بكلامها."
           />
           <Queue
-            title="مسلَّم عندنا وليس في الكشف"
-            resolvable
+            title="طلبات لم يذكرها أي كشف"
+            unmentioned
+            canUnlock={userCan(currentUser, 'orders.unlock')}
             statementId={selected}
             onResolved={() => void load(selected!)}
             tone="amber"
             currency={statement?.currencyCode ?? ''}
             rows={queue('MISSING_IN_STATEMENT')}
-            hint="طلبات سُلِّمت ولم تُذكر في الكشف — مبالغ لم تُحصَّل بعد، طالِب بها."
+            hint="طلبات سُلِّمت عندنا ولم يذكرها أي كشف من الشركة بعد. لكل طلب كلمة نتيجته، وما تقرره بشأنه يُسجَّل على الطلب نفسه ولا يُحسب فرقاً في المبلغ."
           />
         </div>
       )}
@@ -266,6 +287,9 @@ function Queue({
   hint,
   currency,
   resolvable,
+  reason,
+  unmentioned,
+  canUnlock,
   statementId,
   onResolved,
 }: {
@@ -274,12 +298,191 @@ function Queue({
   rows: Match[];
   hint: string;
   currency: string;
-  /** A difference queue: every row here is a question somebody must answer. */
+  /** A difference in money: two figures, and the person says which one stands. Only «فرق في المبلغ». */
   resolvable?: boolean;
+  /** Show the company's own reason: its status word and its whole row. */
+  reason?: boolean;
+  /** Orders no statement names: no company figure, so the order's outcome word and three actions on the order. */
+  unmentioned?: boolean;
+  /** May this person correct a delivered order's status (the door the third action leads to)? */
+  canUnlock?: boolean;
   statementId?: string | null;
   onResolved?: () => void;
 }) {
   const [open, setOpen] = useState(rows.length > 0 && tone !== 'emerald');
+
+  const columns: Column<Match>[] = [
+    {
+      key: 'barcode',
+      label: 'باركود الشحنة',
+      primary: true,
+      // The barcode IS the reference: the courier assigns it and
+      // writes their statement in it. Our own number sits under
+      // it, smaller, as the fallback key.
+      render: (m) => (
+        <span dir="ltr">
+          <span className="block font-medium">{m.statementLine?.barcode ?? '—'}</span>
+          {(m.statementLine?.merchantRef ?? m.order?.merchantRef) && (
+            <span className="block text-xs text-[var(--sys-muted)]">
+              {m.statementLine?.merchantRef ?? m.order?.merchantRef}
+            </span>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: 'order',
+      label: 'الطلب',
+      primary: true,
+      render: (m) =>
+        m.order ? (
+          <a href={`/orders/${m.order.id}`} className="text-[var(--sys-primary)] hover:underline" dir="ltr">
+            {m.order.orderNumber}
+          </a>
+        ) : (
+          <span className="text-[var(--sys-muted)]">—</span>
+        ),
+    },
+    {
+      key: 'expected',
+      label: 'المتوقَّع',
+      align: 'end',
+      render: (m) => (num(m.expectedAmount) === null ? '—' : <Money value={num(m.expectedAmount)!} currency={currency} />),
+    },
+    // The order's OWN outcome word — «تم التسليم — بانتظار التحصيل», «مغلق» — read from the order, never stored.
+    ...(unmentioned
+      ? [
+          {
+            key: 'outcome',
+            label: 'كلمة نتيجته',
+            render: (m: Match) => m.orderOutcome?.label ?? '—',
+          },
+        ]
+      : [
+          {
+            key: 'stated',
+            label: 'في الكشف',
+            align: 'end' as const,
+            render: (m: Match) =>
+              num(m.statementAmount) === null ? '—' : <Money value={num(m.statementAmount)!} currency={currency} />,
+          },
+          {
+            key: 'gap',
+            label: 'الفرق',
+            align: 'end' as const,
+            render: (m: Match) => {
+              const diff = num(m.difference);
+              return diff === null ? '—' : <Money value={diff} currency={currency} tone={diff ? 'lost' : undefined} />;
+            },
+          },
+          {
+            key: 'fee',
+            label: 'أجرة التوصيل',
+            align: 'end' as const,
+            render: (m: Match) => {
+              const feeDiff = num(m.feeDifference);
+              if (num(m.statementFee) === null) return <span className="text-[var(--sys-muted)]">—</span>;
+              return feeDiff ? (
+                <span className="text-xs font-medium text-[var(--sys-destructive)]">
+                  {num(m.statementFee)} بدل {num(m.expectedFee)}
+                </span>
+              ) : (
+                <span className="text-xs text-[var(--sys-muted-foreground)]">{num(m.statementFee)}</span>
+              );
+            },
+          },
+        ]),
+    /*
+     * THE COMPANY'S OWN REASON, IN ITS OWN WORDS.
+     *
+     * Its status word, read through the one phrase table — and, whatever the table says, the word itself,
+     * so an unknown word is shown rather than hidden. Under it the whole row as the company wrote it: the
+     * notes column is part of that row, and «15132 - العميل طلب التأجيل» is the reason, not decoration.
+     * This was stored on every line and shown on no screen.
+     */
+    ...(reason
+      ? [
+          {
+            key: 'reason',
+            label: 'سبب الشركة بكلامها',
+            render: (m: Match) => {
+              const word = m.courierWord;
+              const raw = m.statementLine?.rawRow;
+              if (!word && !raw) return <span className="text-[var(--sys-muted)]">—</span>;
+              return (
+                <span className="block">
+                  {word && (
+                    <span className="block font-medium">
+                      «{word.phrase}» <span className="text-xs text-[var(--sys-muted-foreground)]">{word.label}</span>
+                    </span>
+                  )}
+                  {raw && (
+                    <span className="block text-xs text-[var(--sys-muted)]" dir="auto">
+                      {raw}
+                    </span>
+                  )}
+                </span>
+              );
+            },
+          },
+        ]
+      : []),
+    ...(resolvable && statementId
+      ? [
+          {
+            key: 'resolve',
+            label: 'البتّ في الفرق',
+            render: (m: Match) => (
+              <DifferenceActions
+                statementId={statementId}
+                matchId={m.id}
+                orderId={m.order?.id ?? null}
+                orderNumber={m.order?.orderNumber ?? null}
+                resolution={m.resolution}
+                resolutionNote={m.resolutionNote}
+                onResolved={() => onResolved?.()}
+              />
+            ),
+          },
+        ]
+      : []),
+    // What a person decided about an order no statement names: recorded on the ORDER, moves no money.
+    ...(unmentioned && statementId
+      ? [
+          {
+            key: 'follow',
+            label: 'ما تقرّره بشأنه',
+            render: (m: Match) =>
+              m.order ? (
+                <NotMentionedActions
+                  statementId={statementId}
+                  matchId={m.id}
+                  orderId={m.order.id}
+                  orderNumber={m.order.orderNumber}
+                  canCorrectStatus={mayCorrectStatus({ holdsUnlock: !!canUnlock, shippingStatus: m.order.shippingStatus })}
+                  followUp={m.followUp}
+                  onDone={() => onResolved?.()}
+                />
+              ) : (
+                <span className="text-[var(--sys-muted)]">—</span>
+              ),
+          },
+        ]
+      : []),
+    ...(unmentioned
+      ? []
+      : [
+          {
+            key: 'via',
+            label: 'طوبق عبر',
+            // A desk's column. On a card it is one more labelled line
+            // between the reader and the number they came for.
+            hideOnPhone: true,
+            render: (m: Match) =>
+              m.matchedBy === 'MERCHANT_REF' ? 'المرجع' : m.matchedBy === 'BARCODE' ? 'الباركود' : '—',
+          },
+        ]),
+  ];
 
   return (
     <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden">
@@ -304,110 +507,7 @@ function Queue({
               rows={rows}
               keyOf={(m) => m.id}
               alert={(m) => num(m.difference) !== null && num(m.difference) !== 0}
-              columns={[
-                {
-                  key: 'barcode',
-                  label: 'باركود الشحنة',
-                  primary: true,
-                  // The barcode IS the reference: the courier assigns it and
-                  // writes their statement in it. Our own number sits under
-                  // it, smaller, as the fallback key.
-                  render: (m) => (
-                    <span dir="ltr">
-                      <span className="block font-medium">{m.statementLine?.barcode ?? '—'}</span>
-                      {(m.statementLine?.merchantRef ?? m.order?.merchantRef) && (
-                        <span className="block text-xs text-[var(--sys-muted)]">
-                          {m.statementLine?.merchantRef ?? m.order?.merchantRef}
-                        </span>
-                      )}
-                    </span>
-                  ),
-                },
-                {
-                  key: 'order',
-                  label: 'الطلب',
-                  primary: true,
-                  render: (m) =>
-                    m.order ? (
-                      <a href={`/orders/${m.order.id}`} className="text-[var(--sys-primary)] hover:underline" dir="ltr">
-                        {m.order.orderNumber}
-                      </a>
-                    ) : (
-                      <span className="text-[var(--sys-muted)]">—</span>
-                    ),
-                },
-                {
-                  key: 'expected',
-                  label: 'المتوقَّع',
-                  align: 'end',
-                  render: (m) =>
-                    num(m.expectedAmount) === null ? '—' : <Money value={num(m.expectedAmount)!} currency={currency} />,
-                },
-                {
-                  key: 'stated',
-                  label: 'في الكشف',
-                  align: 'end',
-                  render: (m) =>
-                    num(m.statementAmount) === null ? '—' : <Money value={num(m.statementAmount)!} currency={currency} />,
-                },
-                {
-                  key: 'gap',
-                  label: 'الفرق',
-                  align: 'end',
-                  render: (m) => {
-                    const diff = num(m.difference);
-                    return diff === null ? (
-                      '—'
-                    ) : (
-                      <Money value={diff} currency={currency} tone={diff ? 'lost' : undefined} />
-                    );
-                  },
-                },
-                {
-                  key: 'fee',
-                  label: 'أجرة التوصيل',
-                  align: 'end',
-                  render: (m) => {
-                    const feeDiff = num(m.feeDifference);
-                    if (num(m.statementFee) === null) return <span className="text-[var(--sys-muted)]">—</span>;
-                    return feeDiff ? (
-                      <span className="text-xs font-medium text-[var(--sys-destructive)]">
-                        {num(m.statementFee)} بدل {num(m.expectedFee)}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-[var(--sys-muted-foreground)]">{num(m.statementFee)}</span>
-                    );
-                  },
-                },
-                ...(resolvable && statementId
-                  ? [
-                      {
-                        key: 'resolve',
-                        label: 'البتّ في الفرق',
-                        render: (m: Match) => (
-                          <DifferenceActions
-                            statementId={statementId}
-                            matchId={m.id}
-                            orderId={m.order?.id ?? null}
-                            orderNumber={m.order?.orderNumber ?? null}
-                            resolution={m.resolution}
-                            resolutionNote={m.resolutionNote}
-                            onResolved={() => onResolved?.()}
-                          />
-                        ),
-                      },
-                    ]
-                  : []),
-                {
-                  key: 'via',
-                  label: 'طوبق عبر',
-                  // A desk's column. On a card it is one more labelled line
-                  // between the reader and the number they came for.
-                  hideOnPhone: true,
-                  render: (m) =>
-                    m.matchedBy === 'MERCHANT_REF' ? 'المرجع' : m.matchedBy === 'BARCODE' ? 'الباركود' : '—',
-                },
-              ]}
+              columns={columns}
               empty={<EmptyState title="لا أسطر في هذه المجموعة" why={hint} />}
             />
           )}

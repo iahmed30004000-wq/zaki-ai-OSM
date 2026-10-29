@@ -7,6 +7,10 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { consumeOrderStock } from '@/lib/stock-consumption';
 import { receiptGap } from '@/lib/settlement';
+import { COURIER_OUTCOME_AR, readCourierWord } from '@/lib/courier-words';
+import { OUTCOME_LABEL_AR, orderOutcome } from '@/lib/order-outcome';
+import { isNotMentioned } from '@/lib/settlement-difference';
+import { NOT_MENTIONED_ACTIVITY } from '@/lib/not-mentioned';
 import { approvalRefusal, isApproved, undoImportRefusal } from '@/lib/settlement-gates';
 import { recordMovement } from '@/lib/wallets';
 import { markPayableForOrders } from '@/lib/commission';
@@ -66,8 +70,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         receipts: { include: { wallet: { select: { id: true, name: true, currencyCode: true } } } },
         matches: {
           include: {
-            order: { select: { id: true, orderNumber: true, merchantRef: true, shippingStatus: true } },
-            statementLine: { select: { merchantRef: true, barcode: true, amount: true } },
+            order: {
+              select: {
+                id: true, orderNumber: true, merchantRef: true, shippingStatus: true,
+                // What the order's own outcome word is read from (order-outcome.ts): never stored, always read.
+                confirmationStatus: true, settlementStatus: true, rejectionReason: true,
+                returnReceipt: { select: { courierFeeCharged: true } },
+              },
+            },
+            // The status word and the whole row as the company wrote it: its own reason, in its own words.
+            statementLine: { select: { merchantRef: true, barcode: true, amount: true, status: true, rawRow: true } },
           },
         },
       },
@@ -75,13 +87,57 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     if (!statement) return NextResponse.json({ error: 'الكشف غير موجود' }, { status: 404 });
 
     const gap = await receiptGap(db, id, country.minorUnit);
+
+    /*
+     * WHAT EACH ROW SAYS ABOUT ITSELF, READ ONCE HERE SO THE SCREEN ONLY SHOWS IT.
+     *
+     * · `courierWord` — the company's status cell through the ONE phrase table (`courier-words`), the same
+     *   reading the import and the matching use. Null when the cell is empty.
+     * · `orderOutcome` — the order's own outcome word (`order-outcome`), for the group of parcels no
+     *   statement names: «تم التسليم — بانتظار التحصيل», «مغلق», … never a second vocabulary.
+     * · `followUp` — the last thing a person recorded on that order about it being unmentioned.
+     */
+    const missingOrderIds = statement.matches.filter((m) => isNotMentioned(m) && m.orderId).map((m) => m.orderId as string);
+    const followUps = new Map<string, { action: string; at: Date }>();
+    if (missingOrderIds.length > 0) {
+      const acts = await db.orderActivity.findMany({
+        where: {
+          companyId,
+          orderId: { in: missingOrderIds },
+          action: { in: Object.values(NOT_MENTIONED_ACTIVITY) },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { orderId: true, action: true, createdAt: true },
+      });
+      for (const a of acts) if (!followUps.has(a.orderId)) followUps.set(a.orderId, { action: a.action, at: a.createdAt });
+    }
+    const matches = statement.matches.map((m) => {
+      const reading = readCourierWord(m.statementLine?.status);
+      let outcome: { key: string; label: string } | null = null;
+      if (m.order) {
+        const key = orderOutcome({
+          confirmationStatus: m.order.confirmationStatus,
+          shippingStatus: m.order.shippingStatus,
+          settlementStatus: m.order.settlementStatus,
+          rejectionReason: m.order.rejectionReason,
+          returnReceipt: m.order.returnReceipt,
+        });
+        outcome = { key, label: OUTCOME_LABEL_AR[key] };
+      }
+      return {
+        ...m,
+        courierWord: reading ? { ...reading, label: COURIER_OUTCOME_AR[reading.outcome] } : null,
+        orderOutcome: outcome,
+        followUp: m.orderId ? followUps.get(m.orderId) ?? null : null,
+      };
+    });
     const queues = {
-      matched: statement.matches.filter((m) => m.result === 'MATCHED'),
-      mismatched: statement.matches.filter((m) => m.result === 'MISMATCHED'),
-      missing: statement.matches.filter((m) => m.result.startsWith('MISSING')),
+      matched: matches.filter((m) => m.result === 'MATCHED'),
+      mismatched: matches.filter((m) => m.result === 'MISMATCHED'),
+      missing: matches.filter((m) => m.result.startsWith('MISSING')),
     };
 
-    return NextResponse.json({ statement, gap, queues });
+    return NextResponse.json({ statement: { ...statement, matches }, gap, queues });
   } catch (error) {
     return apiErrorResponse(error);
   }

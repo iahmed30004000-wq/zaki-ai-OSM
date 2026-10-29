@@ -108,6 +108,16 @@ export function orderOutcome(o: OutcomeSource): Outcome {
   return 'BEING_WORKED';
 }
 
+/*
+ * NOT FILTERED BY `notSuperseded`, ON PURPOSE.
+ *
+ * This reads where each order PHYSICALLY stands: a replaced order is still a
+ * parcel coming back, and hiding it here would show «everything closed»
+ * while a box is in a van. The word that says «replaced by another order» is
+ * a new outcome with its own label and its own place in the closing test —
+ * the swap work adds it (`src/lib/superseded.ts` is the definition to use),
+ * not a silent filter on a count.
+ */
 type Db = {
   order: {
     groupBy: (args: any) => Promise<any[]>;

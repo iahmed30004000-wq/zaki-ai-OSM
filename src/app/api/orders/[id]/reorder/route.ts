@@ -13,6 +13,7 @@ import { courierActionFor } from '@/lib/courier-change';
 import { orderSeal, sealedFieldsIn, handedToCourier } from '@/lib/order-seal';
 import { mayDecide } from '@/lib/change-request-routing';
 import { createReplacement, type ReplacementSource } from '@/lib/replacement-order';
+import { ACTIVITY_ROLE } from '@/lib/superseded';
 
 /**
  * POST /api/orders/:id/reorder — the waybill is cancelled; here is the new order.
@@ -205,9 +206,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
         // Both ends of the story, on both orders, so neither can be read
         // without the other.
-        for (const [orderId, body] of [
-          [order.id, `أُلغيت بوليصتُه لدى شركة الشحن وصدر البديل ${replacement.orderNumber} — ${request.reason}`],
-          [replacement.id, `بديل عن ${order.orderNumber} بعد تعديلٍ معتمَد — ${request.reason}`],
+        for (const [orderId, body, role] of [
+          [order.id, `أُلغيت بوليصتُه لدى شركة الشحن وصدر البديل ${replacement.orderNumber} — ${request.reason}`, ACTIVITY_ROLE.original],
+          [replacement.id, `بديل عن ${order.orderNumber} بعد تعديلٍ معتمَد — ${request.reason}`, ACTIVITY_ROLE.replacement],
         ] as const) {
           await tx.orderNote.create({
             data: { companyId, orderId, authorId: user.id, kind: 'internal', body },
@@ -216,7 +217,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
             data: {
               companyId, orderId, userId: user.id,
               action: 'CHANGE_REQUEST_REORDERED',
+              // The role says which side of the pair this copy is on —
+              // see src/lib/superseded.ts.
               metadata: JSON.stringify({
+                role,
                 requestId: request.id,
                 original: order.orderNumber,
                 replacement: replacement.orderNumber,
