@@ -58,7 +58,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const { user, companyId } = await requireContext();
-    await requirePermission('settings.manage');
+    await requirePermission('penalties.rules');
 
     const parsed = schema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
@@ -106,7 +106,7 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
   try {
     const { user, companyId } = await requireContext();
-    await requirePermission('settings.manage');
+    await requirePermission('penalties.rules');
 
     const body = (await req.json().catch(() => null)) as { id?: string; isActive?: boolean } | null;
     if (!body?.id || typeof body.isActive !== 'boolean') {

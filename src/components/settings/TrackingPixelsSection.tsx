@@ -133,7 +133,7 @@ const PLATFORMS: {
 
 export function TrackingPixelsSection() {
   const { currentUser } = useApp();
-  const canEdit = userCan(currentUser, 'settings.edit');
+  const canEdit = userCan(currentUser, 'settings.tracking');
   const confirm = useConfirm();
   const askText = useAsk();
 

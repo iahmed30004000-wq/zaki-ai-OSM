@@ -24,7 +24,7 @@ export async function POST() {
   try {
     const { companyId } = await requireCompanyTenant();
     // Testing spends the company's own credit with their provider.
-    await requirePermission('settings.edit');
+    await requirePermission('settings.manage');
 
     /**
      * ── IT REPORTS WHERE IT WENT, NOT WHAT THE COMPANY CHOSE ──

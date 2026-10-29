@@ -14,7 +14,7 @@ import { resolvePixelScope } from '@/lib/tracking/pixel-scope';
 /**
  * Global tracking pixels — settings-scoped resource.
  *   GET  /api/settings/tracking-pixels   (settings.view)
- *   POST /api/settings/tracking-pixels   (settings.edit)
+ *   POST /api/settings/tracking-pixels   (settings.tracking)
  *
  * Security: companyId is ALWAYS derived from the session (never from the
  * body); platform/scope are allowlisted enums; the Pixel ID is validated
@@ -82,7 +82,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const { user, companyId } = await requireCompanyTenant();
-    await requirePermission('settings.edit');
+    await requirePermission('settings.tracking');
 
     const parsed = createSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {

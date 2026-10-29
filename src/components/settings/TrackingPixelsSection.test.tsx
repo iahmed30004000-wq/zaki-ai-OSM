@@ -14,7 +14,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 
 const { can } = vi.hoisted(() => ({ can: { edit: true } }));
 vi.mock('@/context/AppContext', () => ({ useApp: () => ({ currentUser: { id: 'u1' } }) }));
-vi.mock('@/lib/can', () => ({ userCan: (_u: unknown, key: string) => key === 'settings.edit' && can.edit }));
+vi.mock('@/lib/can', () => ({ userCan: (_u: unknown, key: string) => key === 'settings.tracking' && can.edit }));
 
 import { TrackingPixelsSection } from '@/components/settings/TrackingPixelsSection';
 

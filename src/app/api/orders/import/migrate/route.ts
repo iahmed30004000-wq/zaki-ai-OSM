@@ -32,7 +32,7 @@ import {
  * المعاينة لا تكتب شيئاً. التطبيق يكتب كل طلب جديد بمعاملة لحاله — فطلب يفشل هو طلب واحد، لا تراجع عن الباقين.
  * الجواب لا يحمل اسماً ولا هاتفاً ولا عنواناً: ملف وسطر وسبب فقط.
  *
- * للمالك وحده: `orders.import` و`settings.manage` معاً — باب يكتب طلبات مؤكّدة ومشحونة بتاريخ ماضٍ ليس لكل من يستورد.
+ * للمالك وحده: `orders.import` و`orders.migrate` معاً — باب يكتب طلبات مؤكّدة ومشحونة بتاريخ ماضٍ ليس لكل من يستورد.
  */
 
 const MAX_FILES = 10;
@@ -45,8 +45,8 @@ export async function POST(req: Request) {
   try {
     const { user, companyId, storeId, country } = await requireContext();
     await requirePermission('orders.import');
-    if (!can(user, 'settings.manage')) {
-      return NextResponse.json({ error: forbiddenAr('Forbidden: missing required permission settings.manage'), code: 'OWNER_ONLY' }, { status: 403 });
+    if (!can(user, 'orders.migrate')) {
+      return NextResponse.json({ error: forbiddenAr('Forbidden: missing required permission orders.migrate'), code: 'OWNER_ONLY' }, { status: 403 });
     }
     if (!storeId) return NextResponse.json({ error: 'اختر المتجر أولاً', code: 'STORE_REQUIRED' }, { status: 400 });
 

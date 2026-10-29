@@ -196,7 +196,7 @@ export async function GET(req: Request) {
       facts,
       rule,
       // The screen offers «عدّل القاعدة» to somebody who can change it; the route that changes it asks again.
-      canEditRule: can(user, 'settings.manage'),
+      canEditRule: can(user, 'offers.rules'),
       applied: parsed.applied,
     });
   } catch (error) {
