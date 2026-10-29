@@ -27,7 +27,7 @@ const { db, requireContext, assertOrderAccess, endOrder, emitAppEvent, can } = v
   requireContext: vi.fn(),
   assertOrderAccess: vi.fn(),
   endOrder: vi.fn(),
-  emitAppEvent: vi.fn(async () => 1),
+  emitAppEvent: vi.fn(async (..._a: unknown[]) => 1),
   can: vi.fn(),
 }));
 

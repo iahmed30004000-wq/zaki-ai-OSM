@@ -25,7 +25,7 @@ const { db, requireContext, assertOrderAccess, can, createNotification } = vi.ho
   },
   requireContext: vi.fn(),
   assertOrderAccess: vi.fn(),
-  can: vi.fn(),
+  can: vi.fn<(...a: unknown[]) => boolean>(),
   createNotification: vi.fn(async () => 1),
 }));
 
@@ -85,7 +85,7 @@ describe('a labelled parcel on a trolley still being filled', () => {
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(res.body.readyToApply).toBe(true);
-    expect(db.orderChangeRequest.update.mock.calls[0][0].data).toMatchObject({ status: 'APPROVED', decidedById: 'owner' });
+    expect((db.orderChangeRequest.update.mock.calls[0] as unknown as [{ data: unknown }])[0].data).toMatchObject({ status: 'APPROVED', decidedById: 'owner' });
   });
 
   it('NEGATIVE: an EDIT of the same parcel still waits — the printed waybill fixes what the driver reads', async () => {
