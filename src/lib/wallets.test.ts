@@ -46,9 +46,38 @@ describe('recordMovement', () => {
     await expect(
       recordMovement(db as never, {
         companyId: 'c1', walletId: 'w1', direction: 'OUT', amount: 0,
-        party: 'x', category: 'EXPENSE', note: 'y', createdById: 'u1',
+        party: 'x', category: 'OTHER', note: 'y', createdById: 'u1',
       })
-    ).rejects.toThrow();
+    ).rejects.toThrow(/greater than zero/);
+  });
+
+  /*
+   * «مصروف» and «عمولة» have ledgers of their own, and a row with no reference is one typed outside them.
+   * (The test above moved from EXPENSE to OTHER: with this rule an EXPENSE with no reference is refused for
+   * ANOTHER reason first, and `.rejects.toThrow()` with no message would have kept passing for the wrong one.)
+   */
+  it('refuses an expense or a commission that names no row of its ledger', async () => {
+    db.wallet.findFirst.mockResolvedValue({ id: 'w1', currencyCode: 'JOD' });
+    db.walletMovement.create.mockClear();
+    for (const category of ['EXPENSE', 'COMMISSION'] as const) {
+      await expect(
+        recordMovement(db as never, {
+          companyId: 'c1', walletId: 'w1', direction: 'OUT', amount: 10,
+          party: 'x', category, note: 'y', createdById: 'u1',
+        })
+      ).rejects.toThrow(/must reference the row/);
+    }
+    expect(db.walletMovement.create).not.toHaveBeenCalled();
+  });
+
+  it('and takes the same category once it names the row it belongs to', async () => {
+    db.wallet.findFirst.mockResolvedValue({ id: 'w1', currencyCode: 'JOD' });
+    await expect(
+      recordMovement(db as never, {
+        companyId: 'c1', walletId: 'w1', direction: 'OUT', amount: 10,
+        party: 'x', category: 'EXPENSE', note: 'y', referenceType: 'EXPENSE', referenceId: 'e1', createdById: 'u1',
+      })
+    ).resolves.toBeTruthy();
   });
 });
 

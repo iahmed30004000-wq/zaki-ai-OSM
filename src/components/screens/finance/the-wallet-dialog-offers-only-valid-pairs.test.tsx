@@ -55,41 +55,62 @@ async function openDialog() {
   return screen.findByRole('dialog');
 }
 
+/** The options a person can actually choose. */
 const optionsOf = (dialog: HTMLElement) =>
   within(dialog)
     .getAllByRole('option')
+    .filter((o) => !(o as HTMLOptionElement).disabled)
     .map((o) => (o as HTMLOptionElement).value);
 
+/** The ones listed but not choosable — each with the door that writes it. */
+const disabledOf = (dialog: HTMLElement) =>
+  within(dialog)
+    .getAllByRole('option')
+    .filter((o) => (o as HTMLOptionElement).disabled)
+    .map((o) => ({ value: (o as HTMLOptionElement).value, text: o.textContent ?? '' }));
+
 describe('the category box', () => {
-  it('opens on «صادر» offering expense, commission, adjustment and other — never a collection or a transfer', async () => {
+  /*
+   * OLD → NEW (29/10, P19a). The dialog used to open on «مصروف» and offer expense + commission going OUT; those two
+   * have ledgers of their own (the expense list; the commission entries) and are refused by the door in both
+   * directions now. They stay LISTED, disabled, each naming the door to use — marked, not removed — and the dialog
+   * opens on the first category a person may type.
+   */
+  it('opens on «صادر» offering adjustment and other only — never a collection, a transfer, an expense or a commission', async () => {
     const dialog = await openDialog();
-    expect(optionsOf(dialog)).toEqual(['COMMISSION', 'EXPENSE', 'ADJUSTMENT', 'OTHER']);
+    expect(optionsOf(dialog)).toEqual(['ADJUSTMENT', 'OTHER']);
     expect(optionsOf(dialog)).toEqual(
-      ['COMMISSION', 'EXPENSE', 'ADJUSTMENT', 'OTHER'].filter((c) => handCategoriesFor('OUT').includes(c))
+      ['ADJUSTMENT', 'OTHER'].filter((c) => handCategoriesFor('OUT').includes(c))
     );
-    expect((within(dialog).getByRole('combobox') as HTMLSelectElement).value).toBe('EXPENSE');
-  });
-
-  it('on «وارد» offers only adjustment and other, and moves off a category that cannot come in', async () => {
-    const dialog = await openDialog();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'وارد' }));
-
-    await waitFor(() => expect(optionsOf(dialog)).toEqual(['ADJUSTMENT', 'OTHER']));
-    // «مصروف» was chosen and cannot be incoming: the pair moved to one the door accepts.
     expect((within(dialog).getByRole('combobox') as HTMLSelectElement).value).toBe('ADJUSTMENT');
   });
 
-  it('coming back to «صادر» offers the expense again', async () => {
+  it('lists the expense and the commission DISABLED, each naming the door that writes it — in both directions', async () => {
     const dialog = await openDialog();
+    for (const direction of ['وارد', 'صادر']) {
+      fireEvent.click(within(dialog).getByRole('button', { name: direction }));
+      await waitFor(() => expect(disabledOf(dialog).map((o) => o.value)).toEqual(['EXPENSE', 'COMMISSION']));
+      const text = Object.fromEntries(disabledOf(dialog).map((o) => [o.value, o.text]));
+      expect(text.EXPENSE).toContain('سجّل مصروفاً');
+      expect(text.COMMISSION).toContain('صرف');
+    }
+  });
+
+  it('on «وارد» offers the same two, and a chosen pair stays valid when the direction flips', async () => {
+    const dialog = await openDialog();
+    fireEvent.change(within(dialog).getByRole('combobox'), { target: { value: 'OTHER' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'وارد' }));
-    fireEvent.click(within(dialog).getByRole('button', { name: 'صادر' }));
-    await waitFor(() => expect(optionsOf(dialog)).toContain('EXPENSE'));
+
+    await waitFor(() => expect(optionsOf(dialog)).toEqual(['ADJUSTMENT', 'OTHER']));
+    expect((within(dialog).getByRole('combobox') as HTMLSelectElement).value).toBe('OTHER');
   });
 
   it('says in one line where courier money is recorded', async () => {
     const dialog = await openDialog();
     expect(within(dialog).getByText(/تحصيل شركة الشحن لا يُكتب هنا/)).toBeTruthy();
     expect(within(dialog).getByText(/استلمت منه/)).toBeTruthy();
+    // And the second line: where the expense, the commission and the salary are written.
+    expect(within(dialog).getByText(/المصروف من «سجّل مصروفاً» في «الأرباح»/)).toBeTruthy();
   });
 
   it('and every pair the dialog can send is a pair the door accepts', async () => {

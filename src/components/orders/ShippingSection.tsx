@@ -96,6 +96,8 @@ export function ShippingSection({ order, ar, isRtl, onRefreshOrder, canEdit = tr
   const [providerId, setProviderId] = useState('');
   const [trackingNumber, setTrackingNumber] = useState('');
   const [deliveryFee, setDeliveryFee] = useState('');
+  // Why the fee was changed — written beside the old and the new figure when the fee moves.
+  const [feeReason, setFeeReason] = useState('');
   const [failureReason, setFailureReason] = useState('');
   const [returnReason, setReturnReason] = useState('');
   const [attemptResult, setAttemptResult] = useState('');
@@ -301,7 +303,7 @@ export function ShippingSection({ order, ar, isRtl, onRefreshOrder, canEdit = tr
                * So the box shows `null`/absent as empty and everything else,
                * including 0, as the stored number.
                */
-              onClick={() => { setTrackingNumber(order.trackingNumber || ''); setDeliveryFee(order.deliveryFee == null ? '' : String(order.deliveryFee)); setOpenForm('tracking'); }}
+              onClick={() => { setTrackingNumber(order.trackingNumber || ''); setDeliveryFee(order.deliveryFee == null ? '' : String(order.deliveryFee)); setFeeReason(''); setOpenForm('tracking'); }}
               disabled={actionLoading !== null}
               className="min-h-11 md:min-h-0 inline-flex items-center inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border-2 border-[var(--sys-border-strong)] text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface)] transition-colors cursor-pointer disabled:opacity-50"
             >
@@ -503,6 +505,15 @@ export function ShippingSection({ order, ar, isRtl, onRefreshOrder, canEdit = tr
                 : 'Empty = not recorded yet. A typed 0 = no fee on this order, and it is settled as zero.'
             }
           />
+          {deliveryFee !== String(order.deliveryFee ?? '') && (
+            <Input
+              label={ar ? 'سبب تغيير الأجرة (اختياري)' : 'Why the fee changed (optional)'}
+              name="deliveryFeeReason"
+              value={feeReason}
+              onChange={(e) => setFeeReason(e.target.value)}
+              maxLength={300}
+            />
+          )}
           <div className="flex justify-end gap-2">
             <Button size="sm" variant="outline" onClick={() => setOpenForm(null)}>{ar ? 'إلغاء' : 'Cancel'}</Button>
             <Button
@@ -552,11 +563,12 @@ export function ShippingSection({ order, ar, isRtl, onRefreshOrder, canEdit = tr
                     action: 'update_tracking',
                     trackingNumber,
                     deliveryFee: deliveryFee.trim() === '' ? null : deliveryFee,
+                    ...(feeReason.trim() && deliveryFee !== String(order.deliveryFee ?? '') ? { deliveryFeeReason: feeReason.trim() } : {}),
                   }, currentVersion);
                   if (!r2.ok) return;
                 }
                 // Full sequence succeeded → close + refresh
-                setTrackingNumber(''); setDeliveryFee(''); setProviderId('');
+                setTrackingNumber(''); setDeliveryFee(''); setFeeReason(''); setProviderId('');
                 setOpenForm(null);
                 await onRefreshOrder();
               }}

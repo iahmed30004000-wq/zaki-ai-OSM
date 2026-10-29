@@ -75,6 +75,17 @@ export interface MovementInput {
 
 /** Record one movement. Every field the contract lists is required. */
 export async function recordMovement(tx: Tx, input: MovementInput) {
+  /*
+   * A MOVEMENT OF A CATEGORY WITH A LEDGER OF ITS OWN MUST NAME THAT LEDGER'S ROW.
+   *
+   * «مصروف» and «عمولة» are written by the expense door and the payout and payroll doors, each of which carries
+   * the id of the row it belongs to. One with no reference is a person typing it in by hand — outside the expense
+   * list (so profit never subtracts it) or beside the commission entries (so they can be paid again). The wallet
+   * route refuses it first, with a sentence; this is the same rule where every writer has to pass.
+   */
+  if ((input.category === 'EXPENSE' || input.category === 'COMMISSION') && !input.referenceType) {
+    throw new Error('A movement of this category must reference the row it belongs to');
+  }
   const wallet = await tx.wallet.findFirst({
     where: { id: input.walletId, companyId: input.companyId, isActive: true },
     select: { id: true, currencyCode: true },

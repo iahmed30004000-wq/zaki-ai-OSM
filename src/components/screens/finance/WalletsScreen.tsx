@@ -11,7 +11,7 @@ import { useToast } from '@/components/ui/Toast';
 import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { arDateTime } from '@/lib/format';
-import { COURIER_MONEY_HINT, handCategoriesFor } from '@/lib/hand-movement-rules';
+import { COURIER_MONEY_HINT, OWN_LEDGER, OWN_LEDGER_HINT, handCategoriesFor, ownLedgerCategories } from '@/lib/hand-movement-rules';
 
 /**
  * /finance/wallets — balances and the movement ledger. A recorded movement is
@@ -598,7 +598,7 @@ function RecordDialog({
   const [direction, setDirection] = useState<'IN' | 'OUT'>('OUT');
   const [amount, setAmount] = useState('');
   const [party, setParty] = useState('');
-  const [category, setCategory] = useState('EXPENSE');
+  const [category, setCategory] = useState(handCategoriesFor('OUT')[0]);
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -637,7 +637,7 @@ function RecordDialog({
               type="button"
               onClick={() => {
                 setDirection(d);
-                // The pair must stay one the door accepts: «مصروف» runs out only.
+                // The pair must stay one the door accepts.
                 if (!handCategoriesFor(d).includes(category)) setCategory(handCategoriesFor(d)[0]);
               }}
               className={`flex-1 h-11 md:h-10 rounded-lg border text-sm font-medium ${
@@ -691,8 +691,12 @@ function RecordDialog({
               .map(([key, label]) => (
                 <option key={key} value={key}>{label}</option>
               ))}
+            {/* Listed, not removed: the pointer beside each one says which door writes it. */}
+            {ownLedgerCategories().map((key) => (
+              <option key={key} value={key} disabled>{CATEGORY_AR[key]} — {OWN_LEDGER[key].short}</option>
+            ))}
           </select>
-          <span className="block text-xs text-[var(--sys-muted)] mt-1">{COURIER_MONEY_HINT} التحويلات من شاشة التحويلات.</span>
+          <span className="block text-xs text-[var(--sys-muted)] mt-1">{COURIER_MONEY_HINT} {OWN_LEDGER_HINT} التحويلات من شاشة التحويلات.</span>
         </label>
 
         <label className="block">

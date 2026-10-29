@@ -193,3 +193,10 @@ describe('paying', () => {
     expect(checkWallet.mock.calls[0][1].amount).toBe(4800);
   });
 });
+
+describe('the wallet is checked in the store that pays (63)', () => {
+  it('hands the payslip’s store to the wallet check, so another store’s drawer cannot pay a salary', async () => {
+    await paySalary(db as never, PAY);
+    expect(checkWallet.mock.calls[0][1]).toMatchObject({ companyId: 'c1', walletId: 'w1', storeId: 's1' });
+  });
+});

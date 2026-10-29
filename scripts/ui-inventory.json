@@ -481,7 +481,7 @@
   },
   "src/components/orders/ShippingSection.tsx": {
     "buttons": 11,
-    "inputs": 9,
+    "inputs": 10,
     "columns": 0,
     "cards": 0,
     "modals": 4,

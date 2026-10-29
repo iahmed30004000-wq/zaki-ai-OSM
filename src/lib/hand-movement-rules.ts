@@ -21,10 +21,23 @@ export interface HandRefusal {
   error: string;
 }
 
-/** The categories a person may type, and the directions each one may run in. */
+/**
+ * The categories a person may type, and the directions each one may run in.
+ *
+ * ONLY «تسوية» AND «أخرى» — a person writing down a movement that has no ledger of its own.
+ *
+ * «مصروف» and «عمولة» used to be here, running OUT. Each of them HAS a ledger, and a row typed here sits
+ * outside it:
+ *
+ *   · a typed «مصروف» took the money out of the wallet and never reached the expense list, so profit did
+ *     not subtract it (the expense door writes the expense and this same movement in one transaction);
+ *   · a typed «عمولة» paid money out and left the commission entries «مستحقة», so «صرف» could pay the
+ *     same commission a second time.
+ *
+ * The doors that own them are «سجّل مصروفاً» (finance/route POST) and «صرف» (commission-payout, payroll).
+ * They are refused here and the dialog still LISTS them, disabled, with the door to use — marked, not removed.
+ */
 const HAND_DIRECTIONS: Record<string, readonly HandDirection[]> = {
-  EXPENSE: ['OUT'],
-  COMMISSION: ['OUT'],
   ADJUSTMENT: ['IN', 'OUT'],
   OTHER: ['IN', 'OUT'],
 };
@@ -33,14 +46,39 @@ const HAND_DIRECTIONS: Record<string, readonly HandDirection[]> = {
 export const COURIER_MONEY_HINT =
   'تحصيل شركة الشحن لا يُكتب هنا: يُسجَّل عند اعتماد الكشف (إيصال الاستلام) أو من «استلمت منه».';
 
-const ONLY_OUT: Record<string, string> = {
-  EXPENSE: 'المصروف صادر بس',
-  COMMISSION: 'العمولة صادرة بس',
+/** The second line: where the two ledgers that used to be typable here are written now. */
+export const OWN_LEDGER_HINT =
+  'المصروف من «سجّل مصروفاً» في «الأرباح»، والعمولة من «صرف» في «العمولات»، والراتب من صفحة الموظف.';
+
+/**
+ * Categories with a ledger of their own: refused at the hand door in BOTH directions, each with the
+ * short pointer the dialog prints beside the disabled option and the sentence the door answers with.
+ */
+export const OWN_LEDGER: Record<string, { short: string; code: string; error: string }> = {
+  EXPENSE: {
+    short: 'من «سجّل مصروفاً»',
+    code: 'EXPENSE_NOT_BY_HAND',
+    error:
+      'المصروف ما بينكتب من هون — سجّله من «سجّل مصروفاً» في «الأرباح» فبينخصم من الربح وبيطلع من المحفظة بنفس اللحظة. ' +
+      'الراتب من صفحة الموظف. مصروف رجع؟ اكتبه «تسوية» واردة.',
+  },
+  COMMISSION: {
+    short: 'من «صرف» في «العمولات»',
+    code: 'COMMISSION_NOT_BY_HAND',
+    error:
+      'العمولة ما بتنكتب من هون — بتنصرف من «صرف» في «الإعدادات ← العمولات» فبتنعلّم قيودها مدفوعة وما بتنصرف مرتين. ' +
+      'عمولة رجعت؟ اكتبها «تسوية» واردة.',
+  },
 };
 
 /** The categories the dialog may offer for this direction. */
 export function handCategoriesFor(direction: HandDirection): string[] {
   return Object.keys(HAND_DIRECTIONS).filter((c) => HAND_DIRECTIONS[c].includes(direction));
+}
+
+/** The categories the dialog lists DISABLED, because their own door writes them. */
+export function ownLedgerCategories(): string[] {
+  return Object.keys(OWN_LEDGER);
 }
 
 /** Null when a person may type this pair; otherwise the door's refusal. */
@@ -56,10 +94,14 @@ export function handMovementRefusal(category: string, direction: HandDirection):
   if (category === 'TRANSFER_IN' || category === 'TRANSFER_OUT') {
     return { code: 'TRANSFER_NOT_BY_HAND', error: 'التحويل بين المحافظ من «تحويل»، مش من هون' };
   }
-  const allowed = HAND_DIRECTIONS[category];
+  if (Object.hasOwn(OWN_LEDGER, category)) {
+    const own = OWN_LEDGER[category];
+    return { code: own.code, error: own.error };
+  }
+  const allowed = Object.hasOwn(HAND_DIRECTIONS, category) ? HAND_DIRECTIONS[category] : undefined;
   if (!allowed) return { code: 'UNKNOWN_CATEGORY', error: 'بند غير معروف' };
   if (!allowed.includes(direction)) {
-    return { code: 'DIRECTION_NOT_ALLOWED', error: ONLY_OUT[category] ?? 'هذا البند لا يُكتب بهذا الاتجاه' };
+    return { code: 'DIRECTION_NOT_ALLOWED', error: 'هذا البند لا يُكتب بهذا الاتجاه' };
   }
   return null;
 }

@@ -127,8 +127,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ error: zodMessage(parsed.error) }, { status: 400 });
     }
 
+    // This store's wallet or one not placed yet: the statement is this store's (`storeId` above), and the cash
+    // of a store goes into that store's drawer, not into another store's of the same company.
     const wallet = await db.wallet.findFirst({
-      where: { id: parsed.data.walletId, companyId, isActive: true },
+      where: { id: parsed.data.walletId, companyId, isActive: true, OR: [{ storeId }, { storeId: null }] },
       select: { id: true, name: true, currencyCode: true },
     });
     if (!wallet) return NextResponse.json({ error: 'المحفظة غير موجودة' }, { status: 404 });

@@ -249,3 +249,30 @@ describe('the salary key is still its own', () => {
     expect(db.user.update.mock.calls[0][0].data).not.toHaveProperty('salaryAmount');
   });
 });
+
+/* ── 29/10: the audit row says what the salary BECAME, not only what it was (56) ─── */
+
+describe('a salary change is audited from both sides', () => {
+  const audit = () => logAudit.mock.calls.map((c) => c[0]).find((a) => a.action === 'USER_CONTACT_UPDATED');
+
+  it('records the old figure AND the new one, and the currency', async () => {
+    const res = await patch({ action: 'updateContact', salaryAmount: '6500', salaryCurrency: 'usd' });
+    expect(res.status).toBe(200);
+    expect(audit().previousData).toMatchObject({ salaryAmount: 5000, salaryCurrency: 'EGP' });
+    expect(audit().newData).toMatchObject({ salaryAmount: 6500, salaryCurrency: 'USD' });
+  });
+
+  it('clearing a salary is recorded as a null, not as «nothing happened»', async () => {
+    const res = await patch({ action: 'updateContact', salaryAmount: null });
+    expect(res.status).toBe(200);
+    expect(audit().previousData.salaryAmount).toBe(5000);
+    expect(audit().newData).toHaveProperty('salaryAmount', null);
+  });
+
+  it('an edit that does not send a salary does not claim to have set one', async () => {
+    const res = await patch({ action: 'updateContact', phone: '0790000000' });
+    expect(res.status).toBe(200);
+    expect(audit().newData).not.toHaveProperty('salaryAmount');
+    expect(audit().newData).not.toHaveProperty('salaryCurrency');
+  });
+});

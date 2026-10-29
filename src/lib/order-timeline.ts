@@ -131,6 +131,7 @@ const ACTIVITY_AR: Record<string, string> = {
   CALL_MADE: 'اتصال بالعميل',
   NOTE_ADDED: 'إضافة ملاحظة',
   SHIPPING_UPDATED: 'تحديث الشحن',
+  DELIVERY_FEE_CHANGED: 'تغيير أجرة التوصيل',
   PARTIAL_DELIVERY: 'تسليم جزئي',
   COURIER_ASSIGNED: 'إسناد شركة شحن',
   COURIER_TRANSFERRED: 'تحويل بين شركات الشحن',
@@ -161,6 +162,7 @@ const METADATA_AR: Record<string, string> = {
   source: 'المصدر', intakeMethod: 'طريقة الإدخال', createdBy: 'أدخله',
   updatedBy: 'عدّله', callResult: 'نتيجة الاتصال', notes: 'ملاحظات',
   caller: 'المتصل', role: 'الدور', fields: 'الحقول',
+  feeBefore: 'الأجرة قبل', feeAfter: 'الأجرة بعد', feeReason: 'السبب',
 };
 
 const FIELD_AR: Record<string, string> = {

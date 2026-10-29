@@ -96,7 +96,7 @@ describe('an expense', () => {
   it('is spent from this store’s wallet or an unplaced one — another store’s wallet is not found', async () => {
     db.wallet.findFirst.mockResolvedValue(null);
     const res = await recordExpense(
-      new Request('http://x', { method: 'POST', body: JSON.stringify({ title: 'إيجار', category: 'RENT', amount: 100, walletId: 'w-other' }) }),
+      new Request('http://x', { method: 'POST', body: JSON.stringify({ title: 'إيجار', category: 'OFFICE', amount: 100, walletId: 'w-other' }) }),
     );
     expect(res.status).toBe(404);
     expect(db.wallet.findFirst.mock.calls[0][0].where).toMatchObject({

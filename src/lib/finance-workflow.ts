@@ -20,6 +20,9 @@ export const SETTLEMENT_TRANSITIONS: Record<SettlementStatus, SettlementStatus[]
   NOT_APPLICABLE: ['PENDING'],
   PENDING: ['PARTIALLY_SETTLED', 'SETTLED', 'REFUNDED', 'PARTIALLY_REFUNDED', 'CANCELLED'],
   PARTIALLY_SETTLED: ['SETTLED', 'REFUNDED', 'PARTIALLY_REFUNDED'],
+  // Every row below that LISTS 'SETTLED' lists what the map allows, not what PATCH /api/orders/:id/finance
+  // accepts: that door refuses SETTLED outright (SETTLE_THROUGH_COLLECTION), because it moves no money into a
+  // wallet. The only writers of SETTLED are the approval of a courier statement and «استلمت منه».
   SETTLED: ['REFUNDED', 'PARTIALLY_REFUNDED'], // post-settlement refund possible
   REFUNDED: [],                                 // terminal
   PARTIALLY_REFUNDED: ['SETTLED', 'REFUNDED'],

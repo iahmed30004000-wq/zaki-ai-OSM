@@ -52,8 +52,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: zodMessage(parsed.error) }, { status: 400 });
     }
 
+    // This store's wallet or one not placed yet — never another store's: the money goes into the drawer of the
+    // store whose orders these are (the orders are read with `storeId` below).
     const wallet = await db.wallet.findFirst({
-      where: { id: parsed.data.walletId, companyId, isActive: true },
+      where: { id: parsed.data.walletId, companyId, isActive: true, OR: [{ storeId }, { storeId: null }] },
       select: { id: true, name: true, currencyCode: true },
     });
     if (!wallet) return NextResponse.json({ error: 'المحفظة غير موجودة' }, { status: 404 });
@@ -107,6 +109,26 @@ export async function POST(req: Request) {
         {
           error: `طلبات غير مسلَّمة: ${notDelivered.map((o) => o.orderNumber).join('، ')}`,
           code: 'NOT_DELIVERED',
+        },
+        { status: 409 }
+      );
+    }
+
+    /*
+     * ONE COURIER PER HANDOVER, CHECKED HERE AND NOT ONLY BY THE SCREEN.
+     *
+     * The movement is written once, in the name of `orders[0]`'s courier. Orders of two couriers in one request
+     * book both couriers' money under the first one's name — the second courier's cash is then nobody's on the
+     * wallet statement, and the agent-custody report cannot tell who handed over what. The screen groups by
+     * courier, but an API client (or a stale screen) does not. A null courier is its own group: a parcel with
+     * no courier named is not the first courier's.
+     */
+    const couriers = new Set(orders.map((o) => o.deliveryProviderId ?? null));
+    if (couriers.size > 1) {
+      return NextResponse.json(
+        {
+          error: 'الطلبات من أكثر من شركة شحن أو مندوب — سجّل استلام كل واحد لحاله حتى يُكتب المبلغ باسمه.',
+          code: 'MIXED_COURIER',
         },
         { status: 409 }
       );

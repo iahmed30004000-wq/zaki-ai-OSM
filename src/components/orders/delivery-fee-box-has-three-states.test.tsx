@@ -230,3 +230,45 @@ describe('the body on the wire — three states, three values', () => {
     expect(sent).toEqual([]);
   });
 });
+
+describe('the reason box — a changed fee can say why (29/10)', () => {
+  const reasonBox = () => screen.queryByLabelText('سبب تغيير الأجرة (اختياري)') as HTMLInputElement | null;
+
+  it('is absent while the fee is as stored, and appears the moment it differs', async () => {
+    const user = userEvent.setup();
+    await mount(ORDER(5));
+    const fee = await openTracking(user);
+    expect(reasonBox()).toBeNull();
+    await user.clear(fee);
+    await user.type(fee, '3');
+    expect(reasonBox()).toBeTruthy();
+    await user.clear(fee);
+    await user.type(fee, '5');
+    expect(reasonBox()).toBeNull();
+  });
+
+  it('travels with a changed fee, and the fee stays the characters typed', async () => {
+    const user = userEvent.setup();
+    await mount(ORDER(5));
+    const fee = await openTracking(user);
+    await user.clear(fee);
+    await user.type(fee, '0');
+    await user.type(reasonBox()!, 'اتفاق مع الشركة');
+    await user.click(screen.getByText('حفظ'));
+
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0].body.deliveryFee).toBe('0');
+    expect(sent[0].body.deliveryFeeReason).toBe('اتفاق مع الشركة');
+  });
+
+  it('is not sent when left empty, nor when only the tracking number changed', async () => {
+    const user = userEvent.setup();
+    await mount(ORDER(5));
+    const fee = await openTracking(user);
+    await user.clear(fee);
+    await user.type(fee, '7');
+    await user.click(screen.getByText('حفظ'));
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect('deliveryFeeReason' in sent[0].body).toBe(false);
+  });
+});
