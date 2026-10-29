@@ -183,7 +183,7 @@ export async function POST(req: Request) {
         ...outcome,
         message:
           outcome.status === 'DELIVERED'
-            ? `سُلِّم كاملاً — حُصِّل ${outcome.collectedAmount} ${country.currencyCode}`
+            ? `سُلِّم كاملاً — المتوقَّع ${outcome.collectedAmount} ${country.currencyCode}، بانتظار التحصيل`
             : outcome.status === 'RETURNED'
               ? 'لم يُستلم شيء — الطلب مرتجع'
               : // A PARTIAL DELIVERY SAYS SO OUT LOUD.

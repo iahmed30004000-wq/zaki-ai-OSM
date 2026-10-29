@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { isAge, type Age } from './age-piles';
 import { orderSearchOr } from './order-filters';
 import { SHIPPING_STATUS_AR } from './shipping-workflow';
-import { URGENCIES, type ConditionKey } from './tracking-priority';
+import { NOT_LATE, URGENCIES, type ChipKey, type ConditionKey } from './tracking-priority';
 
 /**
  * WHAT A FOLLOW-UP AGENT ASKS OF THE PARCELS IN THE FIELD — THE WORDS, READ ONCE, IN ONE PLACE.
@@ -35,6 +35,8 @@ export type StatusChoice = typeof DEFAULT_STATUS | typeof EVERY_STATUS | (typeof
 
 /** The seven chips, in the order they are drawn — the order of `URGENCIES`, minus «nothing». */
 export const TASKS = URGENCIES.filter((k): k is ConditionKey => k !== 'NONE');
+/** The chips the screen can press: the seven conditions, then «غير متأخرة» — which is a chip and never a reason. */
+export const CHIPS: readonly ChipKey[] = [...TASKS, NOT_LATE];
 
 /** «Nobody» as a courier or a governorate: the parcel has none on it. */
 export const NOBODY = 'none';
@@ -44,6 +46,7 @@ export const isOneOf = (v: unknown): v is string => typeof v === 'string' && (v 
 export const isStatusChoice = (v: unknown): v is StatusChoice =>
   v === DEFAULT_STATUS || v === EVERY_STATUS || (typeof v === 'string' && (SHIPPING_STATUSES as readonly string[]).includes(v));
 export const isTask = (v: unknown): v is ConditionKey => typeof v === 'string' && (TASKS as readonly string[]).includes(v);
+export const isChip = (v: unknown): v is ChipKey => typeof v === 'string' && (CHIPS as readonly string[]).includes(v);
 
 export const MAX_SEARCH_LENGTH = 100;
 
@@ -58,7 +61,7 @@ export const searchWhere = (q: string): Where => ({ OR: orderSearchOr(q) as Wher
 
 export interface TrackingApplied {
   status: StatusChoice;
-  task: ConditionKey | null;
+  task: ChipKey | null;
   courier: string | null;
   region: string | null;
   age: Age | null;
@@ -104,7 +107,7 @@ export function trackingFilters(params: URLSearchParams): TrackingFilterResult {
 
   const task = choice('task');
   if (task) {
-    if (!isTask(task)) return refuse('task', 'المهمة', task);
+    if (!isChip(task)) return refuse('task', 'المهمة', task);
     applied.task = task;
   }
 

@@ -28,6 +28,8 @@ const parcel = (over: Partial<LeanParcel> = {}): LeanParcel => ({
   settlementStatus: 'NOT_APPLICABLE',
   trackingNumber: `TRK-${n}`,
   shippedAt: ago(1),
+  deliveredAt: null,
+  returnedAt: null,
   deliveryProviderId: 'p1',
   regionId: 'r1',
   confirmationStatus: 'CONFIRMED',
@@ -47,6 +49,8 @@ interface World {
   /** Acknowledgements: orderId → when. */
   acked?: Record<string, Date>;
   providers?: Record<string, string>;
+  /** The companies that hand out a barcode through their API (`apiEnabled` with an adapter). The rest are manual. */
+  api?: string[];
   regions?: Record<string, string>;
 }
 
@@ -108,7 +112,12 @@ function dbOf(w: World) {
     deliveryProvider: {
       findMany: vi.fn(async (args: any) => {
         calls.provider.push(args);
-        return Object.entries(w.providers ?? {}).filter(([id]) => args.where.id.in.includes(id)).map(([id, name]) => ({ id, name }));
+        return Object.entries(w.providers ?? {}).filter(([id]) => args.where.id.in.includes(id)).map(([id, name]) => ({
+          id,
+          name,
+          apiEnabled: (w.api ?? []).includes(id),
+          adapterCode: (w.api ?? []).includes(id) ? 'logestechs' : null,
+        }));
       }),
     },
     region: {
@@ -157,6 +166,7 @@ function shop(): World {
     changed: { [changed.id]: ago(1) },
     acked: { [cancelledSeen.id]: ago(1) },
     providers: { p1: 'أبو علي', p2: 'أمان' },
+    api: ['p1'],
     regions: { r1: 'عمّان', r2: 'إربد' },
   };
 }
@@ -173,7 +183,7 @@ describe('the one read', () => {
 
   it('and the lean select carries what the chips need and none of what the rows draw — no lines, no money, no customer', () => {
     expect(Object.keys(LEAN_SELECT).sort()).toEqual(
-      ['confirmationStatus', 'deliveryProviderId', 'id', 'regionId', 'settlementStatus', 'shippedAt', 'shippingStatus', 'trackingNumber', 'updatedAt']
+      ['confirmationStatus', 'deliveredAt', 'deliveryProviderId', 'id', 'regionId', 'returnedAt', 'settlementStatus', 'shippedAt', 'shippingStatus', 'trackingNumber', 'updatedAt']
     );
   });
 
@@ -369,6 +379,7 @@ describe('the pages — worst first, cut after the sort', () => {
       total: 0,
       tasks: { CANCELLED: 0, CHANGED: 0, FAILED: 0, RETURNING: 0, LATE: 0, NO_BARCODE: 0, COLLECT: 0 },
       lateCount: 0,
+      notLate: 0,
       couriers: [],
       regions: [],
       ages: { fresh: 0, few: 0, week: 0, old: 0 },
@@ -477,5 +488,86 @@ describe('the bound — no silent cap', () => {
     const whole = await read({ parcels: Array.from({ length: 20_000 }, (_, i) => parcel({ id: `w${i}` })) }, { limit: 100 });
     expect(whole.capped).toBe(false);
     expect(whole.facts.total).toBe(20_000);
+  });
+});
+
+describe('the truth about arrived parcels, manual companies and the owed money', () => {
+  const api = ['p1'];
+  const providers = { p1: 'بالربط', m1: 'يدوية' };
+  const fees = { 'p1|r1': 3, 'm1|r1': 3 };
+  const world = (parcels: LeanParcel[]): World => ({ parcels, fees, providers, api, regions: { r1: 'عمّان' } });
+  const owed = (id: string, deliveredDaysAgo: number | null) =>
+    parcel({
+      id, shippingStatus: 'DELIVERED', settlementStatus: 'PENDING_COLLECTION', shippedAt: ago(60),
+      deliveredAt: deliveredDaysAgo === null ? null : ago(deliveredDaysAgo),
+    });
+
+  it('— a delivered parcel is not late, however long ago it shipped; the same parcel on the road is', async () => {
+    const l = await read(world([owed('arrived', 30), parcel({ id: 'road', shippedAt: ago(30) })]));
+    expect(l.facts.lateCount).toBe(1);
+    expect(l.facts.tasks.LATE).toBe(1);
+    const late = await read(world([owed('arrived', 30), parcel({ id: 'road', shippedAt: ago(30) })]), { task: 'LATE' });
+    expect(late.ids).toEqual(['road']);
+  });
+
+  it('— a returned parcel is not late either', async () => {
+    const l = await read(world([parcel({ id: 'back', shippingStatus: 'RETURNED', shippedAt: ago(50), returnedAt: ago(40) })]));
+    expect(l.facts.lateCount).toBe(0);
+    expect(l.facts.notLate).toBe(0);
+  });
+
+  it('— a manual company’s parcel with no barcode is not flagged; an API company’s is', async () => {
+    const l = await read(
+      world([
+        parcel({ id: 'manual', trackingNumber: null, deliveryProviderId: 'm1' }),
+        parcel({ id: 'api', trackingNumber: null, deliveryProviderId: 'p1' }),
+      ]),
+      { task: 'NO_BARCODE' }
+    );
+    expect(l.ids).toEqual(['api']);
+    expect(l.facts.tasks.NO_BARCODE).toBe(1);
+  });
+
+  it('— a delivered parcel of an API company with no barcode is not flagged', async () => {
+    const l = await read(world([{ ...owed('d', 2), trackingNumber: null }]));
+    expect(l.facts.tasks.NO_BARCODE).toBe(0);
+  });
+
+  it('— a cancelled order raises its alert only while the parcel is out', async () => {
+    const out = parcel({ id: 'out', confirmationStatus: 'CANCELLED' });
+    const done = { ...owed('done', 3), confirmationStatus: 'CANCELLED' };
+    const l = await read(world([out, done]), { task: 'CANCELLED' });
+    expect(l.ids).toEqual(['out']);
+    expect(l.facts.tasks.CANCELLED).toBe(1);
+  });
+
+  it('— «غير متأخرة» counts the parcels on the road inside their time, and filters to exactly them', async () => {
+    const ps = [parcel({ id: 'fresh', shippedAt: ago(1) }), parcel({ id: 'late', shippedAt: ago(9) }), owed('arrived', 5)];
+    const l = await read(world(ps), { task: 'NOT_LATE' });
+    expect(l.facts.notLate).toBe(1);
+    expect(l.ids).toEqual(['fresh']);
+    expect(l.total).toBe(1);
+  });
+
+  it('— a failed delivery inside its time is «غير متأخرة» too: it is still on the road', async () => {
+    const l = await read(world([parcel({ id: 'f', shippingStatus: 'FAILED_DELIVERY', shippedAt: ago(1) })]));
+    expect(l.facts.notLate).toBe(1);
+  });
+
+  it('— the owed total does not depend on the page, and the owed rows come oldest-delivery first with the undated last', async () => {
+    const ps = [parcel({ id: 'late', shippedAt: ago(30) }), owed('new', 2), owed('old', 20), owed('import', null), owed('mid', 9)];
+    const first = await read(world(ps), { limit: 1, page: 1 });
+    const last = await read(world(ps), { limit: 1, page: 5 });
+    expect(first.facts.tasks.COLLECT).toBe(4);
+    expect(last.facts.tasks.COLLECT).toBe(4);
+    expect(first.ids).toEqual(['late']);
+    const owedPage = await read(world(ps), { task: 'COLLECT' });
+    expect(owedPage.ids).toEqual(['old', 'mid', 'new', 'import']);
+  });
+
+  it('— the companies are read once, and with the two fields that decide the barcode', async () => {
+    const { calls } = await read(world([parcel({ deliveryProviderId: 'p1' }), parcel({ deliveryProviderId: 'm1' })]));
+    expect(calls.provider).toHaveLength(1);
+    expect(calls.provider[0].select).toEqual({ id: true, name: true, apiEnabled: true, adapterCode: true });
   });
 });
