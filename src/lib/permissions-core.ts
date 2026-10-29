@@ -25,6 +25,26 @@ import { ROLE_PERMISSIONS, UserRole } from '../types/auth';
 
 export type Scope = 'ALL_COMPANY' | 'OWN' | 'ASSIGNED' | 'CATEGORY' | 'SPECIFIC';
 
+/**
+ * THE BOXES SPLIT OFF THE SETTINGS KEYS (PR-4), AND THE KEY EACH DOOR ASKED BEFORE.
+ *
+ * `[newKey, sourceKey]`: whoever held the source yesterday holds the new box today. The migration
+ * 20261029140000_settings_split_keys writes it into the database from the same list (a test reads the SQL
+ * and this table side by side), and the in-code fallback below applies it to a person with no stored role.
+ * The one door that asked for TWO keys (orders.migrate: orders.import AND settings.manage) is not a row here.
+ */
+export const SPLIT_FROM_SETTINGS: ReadonlyArray<readonly [newKey: string, source: string]> = [
+  ['settings.jobs', 'settings.manage'],
+  ['settings.messages', 'settings.manage'],
+  ['penalties.rules', 'settings.manage'],
+  ['team.settings', 'settings.manage'],
+  ['offers.rules', 'settings.manage'],
+  ['commission.view', 'settings.view'],
+  ['commission.manage', 'settings.edit'],
+  ['settings.delivery_fees', 'settings.edit'],
+  ['settings.tracking', 'settings.edit'],
+];
+
 export interface Grant {
   scope: Scope;
   scopeIds?: unknown[] | null;
@@ -101,7 +121,12 @@ function expandLegacyKey(legacy: string): string[] {
     'moderators.manage': ['users.view', 'users.edit'],
     // SETTINGS — the legacy key meant both: the general settings AND the
     // sensitive ones, which are their own box since the alias went (RV149).
-    'settings.manage': ['settings.edit', 'settings.manage'],
+    'settings.manage': [
+      'settings.edit', 'settings.manage',
+      ...SPLIT_FROM_SETTINGS.filter(([, src]) => src === 'settings.manage' || src === 'settings.edit').map(([k]) => k),
+    ],
+    // The commission page and the team's running progress used to open on settings.view.
+    'settings.view': ['settings.view', 'commission.view'],
     // CRM
     'crm.view': ['crm.view', 'crm.contacts.view', 'crm.companies.view', 'crm.leads.view', 'crm.deals.view', 'crm.tasks.view', 'crm.invoices.view'],
     'crm.manage': [
@@ -202,6 +227,7 @@ export async function computeEffectiveGrants(
   if (user.role === 'SUPER_ADMIN') return { fullAccess: true, grants: {} };
 
   const grants: Record<string, Grant> = {};
+  let usedFallback = false;
 
   // 2. Role grants (DB). A user without roleId inherits the system role
   //    template named like their legacy role string, so role edits in the
@@ -213,6 +239,7 @@ export async function computeEffectiveGrants(
       grants[r.permission] = { scope: r.scope as Scope, scopeIds: (r.scopeIds as unknown[]) ?? null };
     }
   } else {
+    usedFallback = true;
     // Legacy fallback: ROLE_PERMISSIONS[role] mapped to new catalog keys.
     for (const legacy of ROLE_PERMISSIONS[user.role as UserRole] ?? []) {
       const key = scopeAwareKey(legacy);
@@ -237,6 +264,15 @@ export async function computeEffectiveGrants(
       delete grants[o.permission];
     } else {
       grants[o.permission] = { scope: (o.scope as Scope) ?? 'ALL_COMPANY', scopeIds: (o.scopeIds as unknown[]) ?? null };
+    }
+  }
+
+  // 4. The in-code fallback holds the OLD keys only. A person who passed a split door through one of them keeps
+  //    the new box — decided AFTER the overrides, so a «منع» on the source (or on the box) still counts.
+  if (usedFallback) {
+    const denied = new Set(overrides.filter((o) => o.effect === 'DENY').map((o) => o.permission));
+    for (const [newKey, src] of SPLIT_FROM_SETTINGS) {
+      if (grants[src] && !grants[newKey] && !denied.has(newKey)) grants[newKey] = { scope: 'ALL_COMPANY' };
     }
   }
 

@@ -107,3 +107,60 @@ describe('the three new order permissions', () => {
     }
   });
 });
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * THE TEN SETTINGS BOXES (PR-4) — THE SAME RULE, FOR KEYS GRANTED THROUGH A SNAPSHOT.
+ *
+ * 20261029140000_settings_split_keys does not write each key's name next to its INSERT: it takes one gate table
+ * («this box ← that key») and every INSERT reads it. So the checks above, which look for a statement naming both the
+ * key and its source, cannot see it. The checks below read the gate table itself — and the full replay of the people
+ * it touches is in `the-settings-split-keeps-every-door.test.ts`.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+describe('the ten settings boxes', () => {
+  const GATES: Record<string, string[]> = {
+    'settings.jobs': ['settings.manage'],
+    'settings.messages': ['settings.manage'],
+    'penalties.rules': ['settings.manage'],
+    'team.settings': ['settings.manage'],
+    'offers.rules': ['settings.manage'],
+    'commission.view': ['settings.view'],
+    'commission.manage': ['settings.edit'],
+    'settings.delivery_fees': ['settings.edit'],
+    'settings.tracking': ['settings.edit'],
+    'orders.migrate': ['orders.import', 'settings.manage'],
+  };
+  const sql = readFileSync(path.join(MIGRATIONS, '20261029140000_settings_split_keys', 'migration.sql'), 'utf8')
+    .split('\n')
+    .filter((l) => !l.trim().startsWith('--'))
+    .join('\n');
+
+  it('are all in the catalog, so the owner can tick them', () => {
+    for (const key of Object.keys(GATES)) expect(ALL_CATALOG_KEYS.has(key), `${key} مش بقائمة الصلاحيات`).toBe(true);
+  });
+
+  it('are each granted FROM the key their door used to ask for — a gate row, or the migration box’s two halves', () => {
+    for (const [key, sources] of Object.entries(GATES)) {
+      if (key === 'orders.migrate') {
+        for (const s of sources) expect(sql, `${key} مش مأخوذ من ${s}`).toContain(`'${s}'`);
+        expect(sql).toContain(`'orders.migrate'::text`);
+        continue;
+      }
+      // The gate table aligns its columns with spaces; read it with them collapsed.
+      expect(sql.replace(/\s+/g, ' '), `${key} ما في صف بالجدول من ${sources[0]} — الأدوار رح تخسر الباب`).toContain(`('${key}', '${sources[0]}')`);
+    }
+  });
+
+  it('land in BOTH tables, so «إرجاع للافتراضي» does not undo the migration — and carry the «منع» across', () => {
+    expect(sql).toContain('INSERT INTO "role_permission_defaults"');
+    expect(sql).toContain('INSERT INTO "role_permissions"');
+    expect(sql).toContain(`'DENY'`);
+  });
+
+  it('and are written so running them twice changes nothing', () => {
+    for (const s of sql.split(/;\s*\n/).filter((x) => x.trim().startsWith('INSERT INTO'))) {
+      expect(s, 'إدخال بلا ON CONFLICT — إعادة التشغيل بتفشل').toMatch(/ON CONFLICT[\s\S]*DO NOTHING/);
+    }
+  });
+});

@@ -64,8 +64,8 @@ function ago(iso: string | null): string {
 }
 
 export function JobsScreen() {
-  // Running a job by hand is «الإعدادات الحسّاسة» — the page opens on «عرض الإعدادات», so the buttons ask their own door's key.
-  const canManage = useCan('settings.manage');
+  // Running a job by hand is «تشغيل المهام المجدولة» — the page opens on «عرض الإعدادات», so the buttons ask their own door's key.
+  const canManage = useCan('settings.jobs');
   const [data, setData] = useState<{ jobs: JobRow[]; recent: RunRow[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);

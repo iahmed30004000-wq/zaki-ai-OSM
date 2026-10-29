@@ -46,7 +46,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ platform
   try {
     const { platform } = await params;
     const { user, companyId, storeId } = await requireContext();
-    await requirePermission('settings.edit');
+    await requirePermission('settings.manage');
 
     if (!isAdPlatform(platform)) return back('unsupported');
 

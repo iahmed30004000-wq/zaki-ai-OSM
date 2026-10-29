@@ -33,7 +33,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   try {
     const { id } = await params;
     const { user, companyId } = await requireCompanyTenant();
-    await requirePermission('settings.edit');
+    await requirePermission('settings.tracking');
 
     const existing = await db.customConversion.findFirst({
       where: { id, companyId },
@@ -92,7 +92,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   try {
     const { id } = await params;
     const { user, companyId } = await requireCompanyTenant();
-    await requirePermission('settings.edit');
+    await requirePermission('settings.tracking');
 
     const existing = await db.customConversion.findFirst({
       where: { id, companyId },

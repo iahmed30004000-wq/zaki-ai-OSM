@@ -359,7 +359,7 @@ export const NAV: NavGroup[] = [
        * Its permissions are the union of the screens it fronts: whoever may
        * open any one of them may open the door to it, and nobody else.
        */
-      r('/settings', 'الإعدادات', 'Settings', ['geo.view', 'settings.view', 'whatsapp.manage', 'telegram.manage', 'apps.view']),
+      r('/settings', 'الإعدادات', 'Settings', ['geo.view', 'settings.view', 'commission.view', 'whatsapp.manage', 'telegram.manage', 'apps.view']),
       r('/settings/geo', 'البلدان والمتاجر', 'Globe', ['geo.view']),
 
       /**
@@ -375,7 +375,7 @@ export const NAV: NavGroup[] = [
        * Aleppo exists, and the two now read in that order.
        */
       r('/settings/couriers', 'شركات الشحن وأجورها', 'Truck', ['settings.view']),
-      r('/settings/commission', 'العمولات', 'Percent', ['settings.view']),
+      r('/settings/commission', 'العمولات', 'Percent', ['commission.view']),
       r('/settings/channels', 'قنوات الطلبات', 'Radio', ['settings.view']),
       r('/settings/tracking', 'بكسل الإعلانات', 'Radar', ['settings.view']),
       // «الربط»: WhatsApp and Telegram, one card each (owner, 24/10). Each card is drawn only

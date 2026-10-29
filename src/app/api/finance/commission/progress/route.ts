@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
-import { requirePermission } from '@/lib/authorization';
+import { can, requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { measure } from '@/lib/commission-metrics';
 import {
@@ -34,13 +34,22 @@ function runningSpan(span: Span, now: Date): { start: Date; end: Date } {
   return { start, end };
 }
 
-export async function GET(req: Request) {
+export async function GET() {
   try {
     const { user, companyId, storeId } = await requireContext();
-    await requirePermission('settings.view');
 
-    // A supervisor may look at the team; everyone else sees their own row.
-    const mine = new URL(req.url).searchParams.get('mine') === '1';
+    /*
+     * WHOSE ROWS IS DECIDED HERE, NEVER BY THE CALLER.
+     *
+     * The route used to read «mine» from the query string and drop the
+     * other people's rows only when the CALLER asked it to: anybody who left
+     * the flag off — a script, a second tab, a copied URL — was handed every
+     * agent's running count. commission.view sees the team. A person who holds
+     * only the door this route used to ask (settings.view) sees their OWN row,
+     * and nobody else gets in. The query string is not read at all.
+     */
+    const seesEveryone = can(user, 'commission.view');
+    if (!seesEveryone) await requirePermission('settings.view');
 
     const rules = await db.commissionRule.findMany({
       where: {
@@ -68,7 +77,7 @@ export async function GET(req: Request) {
       const tiers = parseTiers(rule.tiers);
 
       for (const person of people) {
-        if (mine && person.id !== user.id) continue;
+        if (!seesEveryone && person.id !== user.id) continue;
         const result = await measure(db, rule.metric, {
           companyId, storeId, userId: person.id,
           start: span.start, end: span.end,
