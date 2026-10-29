@@ -10,7 +10,10 @@ import { leftWarehouseWhere } from './order-state';
 // column is read through it, brackets and Arabic digits and all.
 import { readStatementFigure } from './numeric-input';
 import { receiptsInStatementCurrency } from './receipt-conversion';
-import { MANUAL_MATCH, ZERO_LINE_NOTE, integrityNotes, openRequestWhere, type OtherStatement } from './match-integrity';
+import {
+  MANUAL_MATCH, ZERO_LINE_NOTE, integrityNotes, openRequestWhere,
+  type IntegrityFacts, type OtherStatement,
+} from './match-integrity';
 import { courierWordNote, isNoMoneyCell, readCourierWord, tallyCourierWords, type CourierWordTally } from './courier-words';
 import { looksLikeXlsx, readXlsxRows } from './xlsx-reader';
 
@@ -754,6 +757,79 @@ type ResolvedOrder = Prisma.OrderGetPayload<{ select: { id: true; settlementStat
  */
 export const SWEEP_LIMIT = 5000;
 
+/** What a verdict on one line needs besides the order: the line itself, and what makes a person look. */
+export interface LineVerdictInput {
+  order: SettlementFacts & { settlementStatus: string | null };
+  line: { amount: Prisma.Decimal | number | string; fee?: Prisma.Decimal | number | string | null; status?: string | null };
+  minorUnit: number;
+  integrity: Omit<IntegrityFacts, 'settlementStatus'>;
+}
+
+export interface LineVerdict {
+  result: 'MATCHED' | 'MISMATCHED';
+  clean: boolean;
+  feeWrong: boolean;
+  expected: number;
+  stated: number;
+  difference: number;
+  expectedFee: number;
+  statedFee: number | null;
+  feeDifference: number | null;
+  /** The sentences a person reads beside the row, or null when the row has nothing more to say. */
+  note: string | null;
+}
+
+/**
+ * THE VERDICT ON ONE LINE AGAINST ONE ORDER — written once.
+ *
+ * The matcher reaches it for every line it resolves, and the hand link reaches it for the line a person tied to
+ * an order: the same figure, the same fee rule, the same reasons. A link is therefore never a more generous
+ * judge than the matcher, and there is no second place where «expected» is computed.
+ */
+export function judgeLine({ order, line, minorUnit, integrity }: LineVerdictInput): LineVerdict {
+  /**
+   * THE COMPANY'S OWN WORD, read here the way the import read it: one function, one table
+   * (`courier-words`). It is written beside a row that needs a person — never a reason to change a verdict:
+   * what the company SAID about the parcel is a thing to read, and the money is still measured by the
+   * figure and nothing else.
+   */
+  const wordNote = courierWordNote(readCourierWord(line.status));
+  const zeroLine = Number(line.amount) === 0;
+
+  // Rounded by the minor unit inside the rule itself, so the matcher and
+  // the screen cannot round the same figure two different ways.
+  const expected = expectedAmountFor(order, minorUnit);
+  const stated = roundMinor(Number(line.amount), minorUnit);
+  const difference = roundMinor(stated - expected, minorUnit);
+
+  // The delivery fee is checked in its own right. With the price INCLUDING
+  // delivery the customer pays one figure and the fee comes out of it, so a
+  // fee higher than agreed does not look like an error — the money still
+  // arrives, just less of it. Comparing both quantities names the cause.
+  const expectedFee = roundMinor(Number(order.deliveryFee ?? 0), minorUnit);
+  const statedFee = line.fee === null || line.fee === undefined ? null : roundMinor(Number(line.fee), minorUnit);
+  const feeDifference = statedFee === null ? null : roundMinor(statedFee - expectedFee, minorUnit);
+
+  // A returned parcel is charged no fee, so its fee is not compared.
+  const feeWrong = feeDifference !== null && feeDifference !== 0 && expected > 0;
+
+  // An order that must not be matched by itself: the figures may agree to the fils and it is still a person's call.
+  const reasons = integrityNotes({ settlementStatus: order.settlementStatus, ...integrity });
+  const clean = difference === 0 && !feeWrong && reasons.length === 0;
+  const notes = [
+    ...(feeWrong && difference === 0 ? [`أجرة التوصيل ${statedFee} بدل ${expectedFee}`] : []),
+    ...reasons,
+    // A clean row says nothing more; one a person must look at also says what the company wrote.
+    ...(clean ? [] : [...(zeroLine ? [ZERO_LINE_NOTE] : []), ...(wordNote ? [wordNote] : [])]),
+  ];
+
+  return {
+    result: clean ? 'MATCHED' : 'MISMATCHED',
+    clean, feeWrong, expected, stated, difference, expectedFee, statedFee, feeDifference,
+    note: notes.length > 0 ? notes.join(' · ') : null,
+  };
+}
+
 /**
  * Run matching for one statement. Called on demand, and only after a
  * receipt exists — the caller enforces that order.
@@ -964,12 +1040,7 @@ export async function runMatching(
 
   // PASS 2: the verdict on each line.
   for (const { line, order, byBarcode: matchedByBarcode } of resolved) {
-    /**
-     * THE COMPANY'S OWN WORD, read here the way the import read it: one function, one table
-     * (`courier-words`). It is written beside a row that needs a person — never a reason to change a verdict:
-     * what the company SAID about the parcel is a thing to read, and the money is still measured by the
-     * figure and nothing else.
-     */
+    // A line with no order at all says what the company wrote beside it (an order's verdict is `judgeLine`'s).
     const wordNote = courierWordNote(readCourierWord(line.status));
     const zeroLine = Number(line.amount) === 0;
 
@@ -988,51 +1059,32 @@ export async function runMatching(
     // The first line to name an order keeps its verdict; a later one is the same parcel claimed twice.
     const claimedByAnotherLine = claimedOrderIds.has(order.id);
     matchedOrderIds.add(order.id);
-    // Rounded by the minor unit inside the rule itself, so the matcher and
-    // the screen cannot round the same figure two different ways.
-    const expected = expectedAmountFor(order, minorUnit);
-    const stated = roundMinor(Number(line.amount), minorUnit);
-    const difference = roundMinor(stated - expected, minorUnit);
-
-    // The delivery fee is checked in its own right. With the price INCLUDING
-    // delivery the customer pays one figure and the fee comes out of it, so a
-    // fee higher than agreed does not look like an error — the money still
-    // arrives, just less of it. Comparing both quantities names the cause.
-    const expectedFee = roundMinor(Number(order.deliveryFee ?? 0), minorUnit);
-    const statedFee = line.fee === null || line.fee === undefined ? null : roundMinor(Number(line.fee), minorUnit);
-    const feeDifference = statedFee === null ? null : roundMinor(statedFee - expectedFee, minorUnit);
-
-    // A returned parcel is charged no fee, so its fee is not compared.
-    const feeWrong = feeDifference !== null && feeDifference !== 0 && expected > 0;
-
-    // An order that must not be matched by itself: the figures may agree to the fils and it is still a person's call.
-    const reasons = integrityNotes({
-      settlementStatus: order.settlementStatus,
-      claimedByAnotherLine,
-      otherStatements: elsewhereOf.get(order.id) ?? [],
-      openRequests: requestsOf.get(order.id) ?? [],
+    // The verdict itself is `judgeLine`: the function a person's hand link is judged by as well.
+    const v = judgeLine({
+      order,
+      line,
+      minorUnit,
+      integrity: {
+        claimedByAnotherLine,
+        otherStatements: elsewhereOf.get(order.id) ?? [],
+        openRequests: requestsOf.get(order.id) ?? [],
+      },
     });
-    const clean = difference === 0 && !feeWrong && reasons.length === 0;
-    const notes = [
-      ...(feeWrong && difference === 0 ? [`أجرة التوصيل ${statedFee} بدل ${expectedFee}`] : []),
-      ...reasons,
-      // A clean row says nothing more; one a person must look at also says what the company wrote.
-      ...(clean ? [] : [...(zeroLine ? [ZERO_LINE_NOTE] : []), ...(wordNote ? [wordNote] : [])]),
-    ];
+    const { clean, feeWrong } = v;
 
     await tx.settlementMatch.create({
       data: {
         companyId, statementId, statementLineId: line.id, orderId: order.id,
-        result: clean ? 'MATCHED' : 'MISMATCHED',
+        result: v.result,
         // Record which key actually found it, not which one the line carries.
         matchedBy: matchedByBarcode ? 'BARCODE' : 'MERCHANT_REF',
-        expectedAmount: expected,
-        statementAmount: stated,
-        difference,
-        expectedFee,
-        statementFee: statedFee,
-        feeDifference,
-        note: notes.length > 0 ? notes.join(' · ') : null,
+        expectedAmount: v.expected,
+        statementAmount: v.stated,
+        difference: v.difference,
+        expectedFee: v.expectedFee,
+        statementFee: v.statedFee,
+        feeDifference: v.feeDifference,
+        note: v.note,
       },
     });
     if (clean) {
@@ -1132,8 +1184,31 @@ export async function runMatching(
     ).flatMap((l) => [l.barcode, l.merchantRef].filter(Boolean) as string[])
   );
 
+  /**
+   * AN ORDER A PERSON LINKED BY HAND IS MENTIONED, WHATEVER ITS REFERENCES SAY.
+   *
+   * The question above is asked of the references on the lines, and a hand link exists precisely because the
+   * line's reference named nothing of ours — so the order's own numbers appear on no line and the sweep would
+   * call a parcel somebody just tied to a statement «missing from every statement». The link itself is the
+   * mention: a MANUAL row with a line, on any statement.
+   */
+  const handLinked = new Set<string>();
+  if (delivered.length > 0) {
+    const links = await tx.settlementMatch.findMany({
+      where: {
+        companyId,
+        matchedBy: MANUAL_MATCH,
+        statementLineId: { not: null },
+        orderId: { in: delivered.map((o) => o.id) },
+      },
+      select: { orderId: true },
+    });
+    for (const l of links) if (l.orderId) handLinked.add(l.orderId);
+  }
+
   for (const order of delivered) {
     if (matchedOrderIds.has(order.id)) continue;
+    if (handLinked.has(order.id)) continue;
     if (
       (order.trackingNumber && mentioned.has(order.trackingNumber)) ||
       (order.merchantRef && mentioned.has(order.merchantRef))
