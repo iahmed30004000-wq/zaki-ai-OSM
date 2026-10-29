@@ -41,6 +41,8 @@ interface Provider {
   keyHelp: string;
   /** LOCAL only: a machine the owner runs, so it needs an address. */
   needsEndpoint?: boolean;
+  /** An OpenAI-compatible server on the internet: an https address and a model name. */
+  needsHttpsEndpoint?: boolean;
   /** Most local servers are not authenticated at all. */
   keyOptional?: boolean;
 }
@@ -62,6 +64,8 @@ interface SystemAi {
   model: string;
   providerKeys: Record<string, { configured: boolean; savedAt: string | null }>;
   localBaseUrl: string | null;
+  /** The OpenAI-compatible server. Never a key. */
+  compat?: { baseUrl: string | null; host: string | null; model: string | null };
   savedAt: string | null;
   savedBy: string | null;
   encryptionAvailable: boolean;
@@ -97,6 +101,8 @@ export function AiSettingsScreen() {
   const [keyDrafts, setKeyDrafts] = useState<Record<string, string>>({});
   const [system, setSystem] = useState<SystemAi | null>(null);
   const [localUrl, setLocalUrl] = useState('');
+  const [compatUrl, setCompatUrl] = useState('');
+  const [compatModel, setCompatModel] = useState('');
   const [systemBusy, setSystemBusy] = useState(false);
   const [systemMsg, setSystemMsg] = useState<{ ok: boolean; text: string } | null>(null);
   /** Null until the first load says whether this account may see it at all. */
@@ -117,7 +123,9 @@ export function AiSettingsScreen() {
   const canTest = defaultRoute
     ? defaultRoute.provider === 'LOCAL'
       ? !!defaultRoute.baseUrl
-      : defaultRoute.keyFrom !== 'none'
+      : defaultRoute.provider === 'OPENAI_COMPATIBLE'
+        ? !!defaultRoute.baseUrl && defaultRoute.keyFrom !== 'none'
+        : defaultRoute.keyFrom !== 'none'
     : false;
 
   async function testConnection() {
@@ -184,6 +192,8 @@ export function AiSettingsScreen() {
         model: sysJson.system?.model ?? null,
       };
       setLocalUrl(sysJson.system?.localBaseUrl ?? '');
+      setCompatUrl(sysJson.system?.compat?.baseUrl ?? '');
+      setCompatModel(sysJson.system?.compat?.model ?? '');
       setSystemAllowed(true);
       if (sysJson.providers) setProviders(sysJson.providers);
     } else {
@@ -287,6 +297,10 @@ export function AiSettingsScreen() {
           ...(system.model !== savedDefault.current.model ? { model: system.model } : {}),
           ...(Object.keys(providerKeys).length > 0 ? { providerKeys } : {}),
           localBaseUrl: localUrl.trim() || null,
+          // Only what changed: an address sent again is, to the server, a new
+          // place for the key to go, and it asks for a new key.
+          ...(compatUrl.trim() !== (system.compat?.baseUrl ?? '') ? { compatBaseUrl: compatUrl.trim() || null } : {}),
+          ...(compatModel.trim() !== (system.compat?.model ?? '') ? { compatModel: compatModel.trim() || null } : {}),
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -294,6 +308,8 @@ export function AiSettingsScreen() {
       setKeyDrafts({});
       setSystem(json.system);
       setLocalUrl(json.system?.localBaseUrl ?? '');
+      setCompatUrl(json.system?.compat?.baseUrl ?? '');
+      setCompatModel(json.system?.compat?.model ?? '');
       setSystemMsg({ ok: true, text: 'حُفظت حسابات المزوّدين للنظام.' });
     } catch (e) {
       setSystemMsg({ ok: false, text: e instanceof Error ? e.message : 'تعذر الحفظ' });
@@ -543,7 +559,50 @@ export function AiSettingsScreen() {
                       />
                       <p className="mt-1 text-xs leading-relaxed text-[var(--sys-muted)]">
                         على الخادم نفسه أو على شبكتك الداخلية فقط. عنوان على الإنترنت مرفوض — مزوّد على
-                        الإنترنت يُضاف أعلاه بمفتاحه.
+                        الإنترنت يُضاف كـ«خادم متوافق مع OpenAI» بمفتاحه.
+                      </p>
+                    </div>
+                  )}
+
+                  {/*
+                    AN OPENAI-COMPATIBLE SERVER ON THE INTERNET.
+                    Always an outside party: the server refuses to send it a
+                    customer, whatever is typed here. The address is https and a
+                    public name; the key is bound to it, so changing the address
+                    asks for a new key.
+                  */}
+                  {p.needsHttpsEndpoint && (
+                    <div className="mt-2 space-y-2 border-t border-[var(--sys-border)] pt-2">
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold text-[var(--sys-foreground)]" htmlFor="ai-compat-url">
+                          عنوان الخادم (https)
+                        </label>
+                        <input
+                          id="ai-compat-url"
+                          value={compatUrl}
+                          onChange={(e) => setCompatUrl(e.target.value)}
+                          placeholder="https://…/v1"
+                          className={INPUT}
+                          dir="ltr"
+                          autoComplete="off"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold text-[var(--sys-foreground)]" htmlFor="ai-compat-model">
+                          اسم النموذج على خادمك
+                        </label>
+                        <input
+                          id="ai-compat-model"
+                          value={compatModel}
+                          onChange={(e) => setCompatModel(e.target.value)}
+                          className={INPUT}
+                          dir="ltr"
+                          autoComplete="off"
+                        />
+                      </div>
+                      <p className="text-xs leading-relaxed text-[var(--sys-muted)]">
+                        اسم النموذج كما يعرّفه خادمك، وكل مساعد بيقدر يختار غيره من «أخرى». هذا الخادم خارجي:
+                        اسم الزبون ورقمه وعنوانه ما بيوصلوه أبداً. وتغيير العنوان بيحذف المفتاح — الصق مفتاحاً جديداً معه.
                       </p>
                     </div>
                   )}

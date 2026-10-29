@@ -48,7 +48,15 @@ export type EndpointRefusal =
   | 'SCHEME'
   | 'CREDENTIALS'
   | 'METADATA'
-  | 'PUBLIC';
+  | 'PUBLIC'
+  // The «خادم متوافق مع OpenAI» door — see `parseCompatEndpoint`.
+  | 'NOT_HTTPS'
+  | 'PRIVATE'
+  | 'IP_LITERAL'
+  | 'BAD_HOST'
+  | 'RESERVED_HOST'
+  | 'PATH_SECRET'
+  | 'MODEL_INVALID';
 
 export type HostKind = 'loopback' | 'private' | 'linklocal' | 'public';
 
@@ -240,6 +248,202 @@ export function parseLocalEndpoint(raw: string | null | undefined, allowed: stri
 function normalise(url: URL): string {
   const path = url.pathname.replace(/\/+$/, '');
   return `${url.protocol}//${url.host}${path}`;
+}
+
+export interface CompatEndpointOk {
+  ok: true;
+  /** The address as it will be stored: https, no trailing slash, no query, no fragment. */
+  url: string;
+  host: string;
+}
+
+export type CompatEndpointCheck = CompatEndpointOk | EndpointRefused;
+
+/**
+ * Names that never resolve on the public internet, or that an operator
+ * means to keep private. A suffix match, so `box.lan` and `a.b.corp` both
+ * fall here. `example.com` itself is deliberately NOT listed: only the
+ * `.example` top level is reserved, and the second-level names are what
+ * documentation and tests use.
+ */
+const RESERVED_SUFFIXES = [
+  'local',
+  'internal',
+  'localhost',
+  'home.arpa',
+  'arpa',
+  'lan',
+  'corp',
+  'home',
+  'intranet',
+  'private',
+  'localdomain',
+  'test',
+  'invalid',
+  'example',
+  'onion',
+];
+
+/**
+ * LOOKS LIKE A SECRET, SO IT DOES NOT BELONG IN A BOX THAT IS NOT A SECRET BOX.
+ *
+ * The model name and the address are stored unencrypted, written to the
+ * audit, shown to every company that can open the AI screen, and quoted in
+ * the text of an error. A key pasted into the wrong box would travel all of
+ * those ways, so the shapes a key takes are refused in them.
+ */
+export function looksLikeSecret(token: string): boolean {
+  const t = token.trim();
+  // A vendor prefix: sk-…, key_…, gw.…, Bearer …
+  if (/^(sk|pk|key|gw|bearer|ghp|gho|xox[baprs])[-_.: ]/i.test(t)) return true;
+  // One opaque run — nobody names a model, or a path, with 24 unbroken characters.
+  if (/[A-Za-z0-9]{24,}/.test(t)) return true;
+  // Groups of letters and digits joined by dashes, the way some gateways print a key.
+  if (/^[A-Za-z0-9]{8,}(?:-[A-Za-z0-9]{4,}){2,}$/.test(t)) return true;
+  return false;
+}
+
+/**
+ * CHECK AND NORMALISE THE ADDRESS OF AN OPENAI-COMPATIBLE SERVER ON THE INTERNET.
+ *
+ * `parseLocalEndpoint` is a BLOCKLIST turned inside out: it accepts what is
+ * private. This one takes a name that must be PUBLIC, and a validator that
+ * accepts «anything not recognised as private» is the wrong way round —
+ * `classifyHost` answers `public` for what it does not understand
+ * (`0.0.0.0`, `localhost.`, a Docker service name, `[::7f00:1]`), and here
+ * `public` is the accepting branch. So this one ACCEPTS a narrow shape and
+ * refuses the rest:
+ *
+ *   https, and nothing else — the key rides on this request;
+ *   no user:password in the address;
+ *   no IP literal of any kind, in any spelling (`0x7f000001` and
+ *   `2130706433` are turned into 127.0.0.1 by the URL parser and caught
+ *   there) — a server with a valid certificate has a name;
+ *   a dotted name with a letters-only ending and no trailing dot, so a
+ *   one-word Docker name or `localhost.` has no way in;
+ *   none of the endings that exist only on a private network.
+ *
+ * It takes NO allowlist. `AI_LOCAL_ALLOWED_HOSTS` turns a host into «محلي»,
+ * and a model that counts as local is one customer data may be sent to; the
+ * address here is always an outside party, so nothing in the environment can
+ * widen it.
+ *
+ * The check is on the NAME. A public name that resolves to a private address
+ * is not caught here; https (the metadata service speaks plain http), the
+ * certificate, the system-administrator-only door and `redirect: 'error'` at
+ * the call are what stand behind it.
+ */
+export function parseCompatEndpoint(raw: string | null | undefined): CompatEndpointCheck {
+  const text = (raw ?? '').trim();
+  if (!text) {
+    return refuse('EMPTY', 'اكتب عنوان الخادم الذي يشغّل النموذج — يبدأ بـ https');
+  }
+
+  const badAddress = refuse(
+    'MALFORMED',
+    'العنوان غير صالح — اكتبه كاملاً مع البروتوكول، يبدأ بـ https'
+  );
+  if (!text.includes('://')) return badAddress;
+
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    return badAddress;
+  }
+
+  if (url.protocol !== 'https:') {
+    return refuse('NOT_HTTPS', 'لا يُقبل إلا https — المفتاح وطلباتك ما بيمشوا على الإنترنت بلا تشفير.');
+  }
+
+  if (url.username || url.password) {
+    return refuse('CREDENTIALS', 'لا تضع اسم مستخدم أو كلمة مرور داخل العنوان — ضع المفتاح في خانة المفتاح.');
+  }
+
+  const host = url.hostname.toLowerCase();
+  const kind = classifyHost(host);
+
+  // An IP literal: bracketed IPv6, or a dotted quad (every other spelling of
+  // an IPv4 address was already rewritten to this by the URL parser).
+  if (host.startsWith('[') || /^\d+(?:\.\d+)*$/.test(host)) {
+    if (kind === 'linklocal') {
+      return refuse(
+        'METADATA',
+        'هذا النطاق محجوز لخدمة بيانات الخادم عند مزوّد الاستضافة، وليس عنوان نموذج — مرفوض.'
+      );
+    }
+    if (kind === 'loopback' || kind === 'private') {
+      return refuse('PRIVATE', 'هذا عنوان على شبكتك الداخلية — أضِفه كـ«نموذج على خادمك».');
+    }
+    return refuse('IP_LITERAL', 'اكتب اسم الخادم لا رقمه — الأرقام لا تُقبل، والشهادة تكون على الاسم.');
+  }
+
+  if (kind === 'linklocal') {
+    return refuse(
+      'METADATA',
+      'هذا النطاق محجوز لخدمة بيانات الخادم عند مزوّد الاستضافة، وليس عنوان نموذج — مرفوض.'
+    );
+  }
+  if (kind === 'loopback' || kind === 'private') {
+    return refuse('PRIVATE', 'هذا عنوان على شبكتك الداخلية — أضِفه كـ«نموذج على خادمك».');
+  }
+
+  const labels = host.split('.');
+  const tld = labels[labels.length - 1];
+  const wellFormed =
+    host.length <= 253 &&
+    labels.length >= 2 &&
+    labels.every((l) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(l)) &&
+    /^[a-z]{2,63}$/.test(tld);
+  if (!wellFormed) {
+    return refuse(
+      'BAD_HOST',
+      'اسم الخادم غير صالح — لازم اسم كامل بنقطة، مثل نطاق حقيقي، بلا نقطة في آخره.'
+    );
+  }
+
+  if (RESERVED_SUFFIXES.some((s) => host === s || host.endsWith(`.${s}`))) {
+    return refuse('RESERVED_HOST', 'هذا اسم لا يوجد على الإنترنت العام — مرفوض.');
+  }
+
+  // A token pasted into the path would be stored in the clear and shown to
+  // every company that can open the screen.
+  if (url.pathname.split('/').some((seg) => seg && looksLikeSecret(decodeURIComponentSafe(seg)))) {
+    return refuse('PATH_SECRET', 'في العنوان جزء يشبه مفتاحاً — ضع المفتاح في خانة المفتاح لا في العنوان.');
+  }
+
+  return { ok: true, url: normalise(url), host };
+}
+
+function decodeURIComponentSafe(s: string): string {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+}
+
+/**
+ * The name a compatible server answers to — `glm-4.6`, `Qwen/Qwen2.5-72B`.
+ *
+ * Letters, digits and `. _ : / @ -` only, at most 120 characters, and not
+ * the shape of a key (see `looksLikeSecret`): the box sits beside the key
+ * box and is not encrypted.
+ */
+export const COMPAT_MODEL_PATTERN = /^[A-Za-z0-9._:/@-]{1,120}$/;
+
+export type CompatModelCheck = { ok: true; model: string } | EndpointRefused;
+
+export function parseCompatModel(raw: string | null | undefined): CompatModelCheck {
+  const text = (raw ?? '').trim();
+  if (!text) return refuse('EMPTY', 'اكتب اسم النموذج كما يعرّفه خادمك.');
+  if (!COMPAT_MODEL_PATTERN.test(text) || looksLikeSecret(text)) {
+    return refuse(
+      'MODEL_INVALID',
+      'اسم النموذج غير صالح — حروف وأرقام ونقطة وشرطة فقط. والمفتاح له خانته، لا تلصقه هنا.'
+    );
+  }
+  return { ok: true, model: text };
 }
 
 /**

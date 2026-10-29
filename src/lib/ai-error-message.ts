@@ -13,11 +13,13 @@ import { AiEndpointMissing, AiNotConfigured } from './ai-provider';
  */
 export function explainAiError(error: unknown): { ok: false; error: string } {
   if (error instanceof AiEndpointMissing) {
-    // A local model was chosen and nobody said where it lives. Distinct from
-    // "no key": the local provider usually needs no key at all, so telling
-    // somebody to paste one would send them looking for a thing that does
-    // not exist.
-    return { ok: false, error: 'لم يُحفظ عنوان الخادم المحلي بعد — اكتب العنوان في إعدادات النظام واحفظ.' };
+    // A local model, or an OpenAI-compatible server, was chosen and nobody
+    // said where it lives (or the saved address no longer passes the check).
+    // Distinct from "no key": the local provider usually needs no key at all,
+    // so telling somebody to paste one would send them looking for a thing
+    // that does not exist. «العنوان» stays in the sentence: the connection
+    // test pins it.
+    return { ok: false, error: 'لم يُحفظ عنوان الخادم بعد — اكتب العنوان في «حسابات المزوّدين» واحفظ.' };
   }
   if (error instanceof AiNotConfigured) {
     return { ok: false, error: 'لم يُحفظ مفتاح بعد — الصق المفتاح واحفظ، ثم جرّب الاتصال.' };

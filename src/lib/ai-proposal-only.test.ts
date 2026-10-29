@@ -554,6 +554,32 @@ describe('ai-intake — الوضعُ الذي يسأل النموذج لا يك�
     expect(body.engine).toBe('deterministic');
   });
 
+  it('ولا لخادمٍ متوافقٍ مع OpenAI بمفتاحه وعنوانه المحفوظَين — خارجيٌّ دائماً', async () => {
+    /*
+     * كلُّ شيءٍ سليم: عنوانٌ https عامّ، ومفتاحٌ مربوطٌ بعنوانه، والمساعدُ
+     * موجَّهٌ إليه. ومع ذلك لا يخرجُ نداءٌ — لأنّ هذا المزوّد خارجيٌّ ولا
+     * يوجد مفتاحٌ «هذا خادمي» يجعله غير ذلك. غيابُ ذلك المفتاح هو الشاهد.
+     */
+    const { encryptSecret } = await import('@/lib/secrets');
+    process.env.APP_ENCRYPTION_KEY = 'a'.repeat(64);
+    db.systemSetting.findUnique.mockResolvedValue({
+      value: JSON.stringify({
+        provider: 'OPENAI_COMPATIBLE',
+        compat: { baseUrl: 'https://models.example.com/v1', model: 'glm-4.6' },
+        keys: { OPENAI_COMPATIBLE: { enc: encryptSecret('test-compat-key-0001'), url: 'https://models.example.com/v1' } },
+      }),
+    });
+
+    const res = await post({ text: 'اسمي سامر ورقمي 0999111222 وبدي منتج واحد' });
+    const body = await res.json();
+
+    expect(calledHosts, 'خرجَ نداءٌ وفيه بياناتُ زبون إلى خادمٍ خارجيّ').toEqual([]);
+    expect(body.aiSkipped).toBe('NOT_LOCAL');
+    expect(body.engine).toBe('deterministic');
+    expect(db.order.create).not.toHaveBeenCalled();
+    delete process.env.APP_ENCRYPTION_KEY;
+  });
+
   it('ولا يكتب شيئاً وهو يسأل', async () => {
     await post({ text: 'اسمي سامر ورقمي 0999111222 وبدي منتج واحد' });
     expect(db.order.create).not.toHaveBeenCalled();
