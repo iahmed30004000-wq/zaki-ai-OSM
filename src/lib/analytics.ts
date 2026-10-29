@@ -7,6 +7,7 @@ import { commissionByUserForOrders, commissionCostForOrders } from './commission
 import { AiBusinessContext } from './ai';
 import { endOfLocalDay, startOfLocalDay } from './local-day';
 import { notSuperseded } from './superseded';
+import { expensesOf } from './expense-scope';
 
 export interface DateFilter {
   period?: 'today' | 'yesterday' | '7d' | '30d' | 'month' | 'last_month' | 'all';
@@ -178,8 +179,10 @@ function round2(n: number): number {
 
 /**
  * scope.storeId = one store's orders; null = every store of the company
- * (company-level reports such as the AI daily summary). Expenses have no
- * store dimension yet and are always company-wide.
+ * (company-level reports such as the AI daily summary). An expense counts for
+ * the store it was recorded in; one recorded before expenses had a store
+ * (store null) still counts against every store until the owner runs the
+ * backfill; a cancelled one counts nowhere (expense-scope.ts).
  */
 export async function getCompanyAnalytics(
   scope: { companyId: string; storeId: string | null },
@@ -300,8 +303,10 @@ export async function getCompanyAnalytics(
       }),
     ]),
     db.expense.aggregate({
+      // This store's expenses and those from before they had a store; a cancelled one costs nothing
+      // (expense-scope.ts). With no store (a company-wide report) every live expense of the company.
       where: {
-        companyId,
+        ...expensesOf(companyId, storeId),
         ...(start && end ? { expenseDate: { gte: start, lte: end } } : {}),
       },
       _sum: { amount: true },

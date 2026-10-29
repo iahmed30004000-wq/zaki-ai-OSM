@@ -22,9 +22,9 @@ import {
  * The first thing here is the one that can fail without anybody touching this
  * file: `STORE_TABLES` lists every model that points at a store, by hand,
  * because the database cannot say «something was entered» — eight of the
- * twenty-seven have no foreign key at all, and would be left behind pointing
+ * twenty-eight have no foreign key at all, and would be left behind pointing
  * at a store that is gone. So the list is held against Prisma's own generated
- * model: a twenty-eighth table with a `storeId` fails the first claim below
+ * model: a twenty-ninth table with a `storeId` fails the first claim below
  * until somebody has decided what it means for deleting a store.
  */
 
@@ -237,8 +237,8 @@ describe('asking about many stores at once', () => {
     const many = fakeDb();
     await storeBlockers(many.db, Array.from({ length: 40 }, (_, i) => store(`s${i}`)), asker);
     expect(many.asked.length).toBe(one.asked.length);
-    // Twenty-six stoppers (the browser's visit count joined the server's), and the pages.
-    expect(one.asked.length).toBe(27);
+    // Twenty-seven stoppers (the expenses joined the wallets and payslips), and the pages.
+    expect(one.asked.length).toBe(28);
   });
 
   it('and no stores asks nothing at all', async () => {

@@ -1060,11 +1060,11 @@
     "tabs": 0
   },
   "src/components/screens/FinanceProfitScreen.tsx": {
-    "buttons": 3,
-    "inputs": 6,
-    "columns": 5,
+    "buttons": 6,
+    "inputs": 7,
+    "columns": 6,
     "cards": 4,
-    "modals": 1,
+    "modals": 2,
     "icons": 1,
     "links": 0,
     "tabs": 0
