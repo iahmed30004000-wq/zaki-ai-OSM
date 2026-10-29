@@ -81,6 +81,19 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       { key: 'orders.unlock', requires: 'orders.view', ar: 'تجاوز أقفال التحرير', en: 'Override edit locks' },
       { key: 'orders.confirm', requires: 'orders.view', ar: 'تغيير حالة التأكيد', en: 'Change confirmation status' },
       { key: 'orders.change_status', requires: 'orders.view', ar: 'تغيير حالة الشحن', en: 'Change shipping status' },
+      /*
+       * THE ORDER ACTIONS THAT GOT A BOX EACH (perm-plan PR-6, migration 20261030130000_order_action_keys).
+       *
+       * Each used to ride on a wider key, so the owner could not give a person the order and keep the price, the fee, the
+       * cancel, the note or the review link away from her. The migration gave every box to exactly the people who passed
+       * that door before; from then on one tick moves one door.
+       */
+      { key: 'orders.change_price', requires: 'orders.edit', ar: 'تغيير سعر الطلب أو الخصم أو سعر السطر', en: 'Change an order price, discount or line price', scopes: ['ALL_COMPANY', 'OWN', 'ASSIGNED'] },
+      { key: 'orders.change_fee', requires: 'orders.change_status', ar: 'تغيير أجرة التوصيل', en: 'Change the delivery fee' },
+      { key: 'orders.cancel', requires: 'orders.view', ar: 'إلغاء الطلب أو إبطاله', en: 'Cancel or void an order' },
+      { key: 'orders.note', requires: 'orders.view', ar: 'كتابة ملاحظة على الطلب', en: 'Write a note on an order' },
+      { key: 'orders.request_change', requires: 'orders.view', ar: 'رفع طلب تعديل على طلب مؤكّد', en: 'Raise a change request on a confirmed order' },
+      { key: 'orders.rating_link', requires: 'orders.view', ar: 'نسخ رابط تقييم الطلب', en: 'Copy the order review link' },
     ],
   },
   {
@@ -254,6 +267,7 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       { key: 'control.change_requests', opens: ['طلبات التعديل'], ar: 'طلبات التعديل', en: 'Change requests' },
       { key: 'control.discount_alerts', opens: ['تنبيهات الخصم'], ar: 'تنبيهات الخصم', en: 'Discount alerts' },
       { key: 'control.blacklist', opens: ['القائمة السوداء'], ar: 'القائمة السوداء', en: 'Blacklist' },
+      { key: 'control.blacklist_manage', requires: 'control.blacklist', ar: 'حظر رقم أو رفع الحظر عنه', en: 'Block a number or lift the block' },
     ],
   },
   {

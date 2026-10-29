@@ -53,7 +53,8 @@ function toneFor(name: string): string {
 }
 const initials = (name: string) => name.trim().charAt(0) || '؟';
 
-export function OrderNotes({ orderId }: { orderId: string }) {
+/** `canWrite`: writing a note is a key of its own (PR-6, `orders.note`); reading the thread is not. UX only — the server asks the same. */
+export function OrderNotes({ orderId, canWrite: mayWrite = true }: { orderId: string; canWrite?: boolean }) {
   const toast = useToast();
   const [notes, setNotes] = useState<Note[] | null>(null);
   const [draft, setDraft] = useState('');
@@ -140,6 +141,7 @@ export function OrderNotes({ orderId }: { orderId: string }) {
 
       {error && <p className="text-xs text-[var(--sys-destructive)] mt-2">{error}</p>}
 
+      {mayWrite && (
       <div className="mt-4 pt-3 border-t border-[var(--sys-border)]">
         <div className="flex items-end gap-2">
           <textarea
@@ -170,6 +172,7 @@ export function OrderNotes({ orderId }: { orderId: string }) {
           تُضاف ولا تُعدَّل — تبقى كما كُتبت وباسم كاتبها.
         </p>
       </div>
+      )}
     </div>
   );
 }

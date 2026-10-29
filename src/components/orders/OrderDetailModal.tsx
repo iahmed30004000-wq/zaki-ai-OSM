@@ -79,6 +79,11 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
   // `userCan` is the server's own answer — no role is let through by name, because none is on the server.
   const mayChangeChannel = userCan(currentUser, 'orders.assign');
   const mayChangeShipping = userCan(currentUser, 'orders.change_status');
+  // Raising a request on a confirmed order is a key of its own (PR-6); the server asks the same.
+  const mayRequestChange = userCan(currentUser, 'orders.request_change');
+  const mayWriteNote = userCan(currentUser, 'orders.note');
+  const mayChangeFee = userCan(currentUser, 'orders.change_fee');
+  const mayCopyRatingLink = userCan(currentUser, 'orders.rating_link');
   const ar = locale === 'ar';
   const [order, setOrder] = useState<any>(null);
   const [currency, setCurrency] = useState<Currency | null>(null);
@@ -543,6 +548,8 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
             ar={ar}
             isRtl={isRtl}
             canEdit={mayChangeShipping}
+            canChangeFee={mayChangeFee}
+            canCopyRatingLink={mayCopyRatingLink}
             onRefreshOrder={async () => {
               if (order?.id) await loadOrder(order.id);
               onRefresh();
@@ -554,7 +561,7 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
           <OrderStages stages={stages} />
 
           {/* What was said about it, under what happened to it. */}
-          <OrderNotes orderId={order.id} />
+          <OrderNotes orderId={order.id} canWrite={mayWriteNote} />
 
           {/* Recording a call outcome is the confirmation agent's job. For an
               owner this screen is oversight, and a panel of buttons whose
@@ -574,7 +581,7 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
             can do to a sealed order, so it is the one control that must be
             visible without hunting for it.
           */}
-          {order.confirmationStatus === 'CONFIRMED' && (
+          {order.confirmationStatus === 'CONFIRMED' && mayRequestChange && (
             <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 shadow-raised space-y-2">
               <h4 className="text-xs font-black text-[var(--sys-foreground)]">
                 طلبٌ على هذا الطلب

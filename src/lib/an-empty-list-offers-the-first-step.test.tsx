@@ -132,7 +132,10 @@ vi.mock('@/hooks/useLiveRefresh', () => ({
 // The same object every render, on purpose: a hook that answers a NEW array each time is a dependency that
 // changes on every render, and the screen's effects would load, re-render and load again until the test times out.
 const { APP, REGIONS } = vi.hoisted(() => ({
-  APP: { t: { customers: 'العملاء' }, currentUser: { id: 'u', role: 'COMPANY_ADMIN', permissions: [] }, locale: 'ar' },
+  // OLD → NEW (PR-6): the person holds `control.blacklist_manage` — blocking a number is its own key now, and the blacklist
+  // screen draws «حظر رقم» (in the header and in the empty list) only for who holds it. The migration gave it to every
+  // holder of control.blacklist, so this is the person AFTER the deploy.
+  APP: { t: { customers: 'العملاء' }, currentUser: { id: 'u', role: 'COMPANY_ADMIN', permissions: ['control.blacklist_manage'] }, locale: 'ar' },
   REGIONS: { regions: [], countryName: '' },
 }));
 vi.mock('@/context/AppContext', () => ({ useApp: () => APP }));

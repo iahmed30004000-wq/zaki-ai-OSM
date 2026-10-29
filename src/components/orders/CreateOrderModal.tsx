@@ -45,7 +45,9 @@ export function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateOrderModa
   const mayConfirm = userCan(currentUser, 'orders.confirm');
   const [confirmNow, setConfirmNow] = useState(false);
 
-  const [moderators, setModerators] = useState<any[]>([]);
+  const [moderators, setModerators] = useState<{ id: string; name: string }[]>([]);
+  /** Naming a responsible moderator needs `orders.assign`; the server says whether this person holds it. */
+  const [mayAssign, setMayAssign] = useState(false);
 
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -125,18 +127,14 @@ export function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateOrderModa
 
   const loadFormData = async () => {
     try {
-      // The catalogue is `useProducts`'s; this loads what it does not.
-      const [modRes, chRes] = await Promise.all([
-        apiFetch('/api/moderators'),
-        apiFetch('/api/settings/channels'),
-      ]);
-      if (chRes.ok) {
-        const chData = await chRes.json();
-        setChannels((chData.channels ?? []).filter((c: any) => c.isActive));
-      }
-      if (modRes.ok) {
-        const mData = await modRes.json();
-        setModerators(mData.moderators || []);
+      // The catalogue is `useProducts`'s; this loads what it does not — from the order form's own door, which hands a
+      // person the channel names and (only with `orders.assign`) the moderators' names, and nothing of the team's money.
+      const res = await apiFetch('/api/orders/form-options');
+      if (res.ok) {
+        const data = await res.json();
+        setChannels((data.channels ?? []).map((c: { id: string; name: string }) => ({ ...c, isActive: true })));
+        setModerators(data.moderators ?? []);
+        setMayAssign(data.mayAssign === true);
       }
     } catch (e) {
       console.error(e);
@@ -410,12 +408,15 @@ export function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateOrderModa
           <SectionTitle icon={RiUserSettingsLine} title="3. التعيين والمصدر" color="bg-[var(--sys-surface)] text-[var(--sys-muted-foreground)]" />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Select label="المودريتور المسؤول" value={moderatorId} onChange={(e) => setModeratorId(e.target.value)}>
-              <option value="">تعيين تلقائي / بدون</option>
-              {moderators.map((m) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
-              ))}
-            </Select>
+            {/* The picker is for whoever may hand orders out: for everybody else the order is theirs, and the server refuses a name. */}
+            {mayAssign && (
+              <Select label="المودريتور المسؤول" value={moderatorId} onChange={(e) => setModeratorId(e.target.value)}>
+                <option value="">تعيين تلقائي / بدون</option>
+                {moderators.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </Select>
+            )}
 
             <div>
               <label className="block text-xs font-medium text-[var(--sys-foreground)] mb-1.5">قناة الطلب</label>

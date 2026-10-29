@@ -125,7 +125,8 @@ beforeEach(() => {
    * deliberately does not hold. `orders.contact_log` is new and is simply
    * the door into the `contact_result` action these cases drive.
    */
-  can.mockImplementation((_u: unknown, key: string) => key === 'orders.contact_log');
+  // OLD → NEW (PR-6): + `orders.request_change` — raising a change request is its own key now (the `change request` cases below).
+  can.mockImplementation((_u: unknown, key: string) => key === 'orders.contact_log' || key === 'orders.request_change');
   createNotification.mockResolvedValue(1);
   db.$transaction.mockImplementation(async (fn: any) => (typeof fn === 'function' ? fn(db) : fn));
   db.order.updateMany.mockResolvedValue({ count: 1 });

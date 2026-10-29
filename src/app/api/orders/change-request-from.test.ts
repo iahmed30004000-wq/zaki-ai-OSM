@@ -32,7 +32,8 @@ vi.mock('@/lib/notification', () => ({ createNotification: vi.fn() }));
 import { POST } from '@/app/api/orders/[id]/change-requests/route';
 
 const ctx = {
-  user: { id: 'u1', name: 'مودريتور', role: 'MODERATOR', status: 'ACTIVE', permissions: [] },
+  // OLD → NEW (PR-6): raising a request is its own key (`orders.request_change`), given to everybody who passed the work door.
+  user: { id: 'u1', name: 'مودريتور', role: 'MODERATOR', status: 'ACTIVE', permissions: ['orders.request_change'] },
   companyId: 'c1', storeId: 's1',
   country: { workHoursStart: '09:00', workHoursEnd: '17:00', weekendDays: [5], timezone: 'Asia/Amman' },
 };

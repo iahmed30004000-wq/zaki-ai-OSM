@@ -5,6 +5,7 @@ import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { assertOrderAccess, assertOrderReadable } from '@/lib/rbac';
 import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
+import { can } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { addBusinessMinutes } from '@/lib/business-calendar';
@@ -87,6 +88,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const access = await assertOrderAccess(id, user, { companyId, storeId }, ORDER_WORK_DOOR);
     if (!access.allowed) return NextResponse.json({ error: 'Order not found', errorAr: ORDER_NOT_FOUND }, { status: 404 });
     const order = access.order;
+
+    // Raising a request has a key of its own (PR-6): `orders.request_change`, given to everybody who passed the work
+    // door (`orders.view` or `confirmation.work`). Reading the list of requests keeps the old door.
+    if (!can(user, 'orders.request_change')) {
+      return NextResponse.json(
+        { error: 'ما عندك صلاحية رفع طلب تعديل.', errorAr: 'ما عندك صلاحية رفع طلب تعديل.', code: 'REQUEST_CHANGE_FORBIDDEN' },
+        { status: 403 }
+      );
+    }
 
     const parsed = createSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {

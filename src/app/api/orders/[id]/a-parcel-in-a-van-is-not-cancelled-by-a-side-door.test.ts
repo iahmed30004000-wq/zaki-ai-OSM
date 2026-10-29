@@ -256,12 +256,13 @@ describe('an ending travels alone', () => {
  * `orders.change_status` at the PATCH's own checks, and it used to write one
  * column. It now ends the order — CANCELLED, the reservation released, the
  * customer counted, System 7 told — which at the confirmation door takes
- * `orders.unlock` and a written reason. A weaker pair at this door was a
+ * `orders.cancel` and a written reason (PR-6: the key moved off `orders.unlock`; the migration gave it to every holder of
+ * the old one). A weaker pair at this door was a
  * cancellation by a role that could not cancel anywhere else.
  */
-describe('an ending needs the unlock key and a written reason', () => {
-  it.each(ENDINGS)('%s: %s without orders.unlock is refused — and nothing is written', async (field, value) => {
-    can.mockImplementation((_u: unknown, key: string) => key !== 'orders.unlock');
+describe('an ending needs the cancel key and a written reason', () => {
+  it.each(ENDINGS)('%s: %s without orders.cancel is refused — and nothing is written', async (field, value) => {
+    can.mockImplementation((_u: unknown, key: string) => key !== 'orders.cancel');
 
     const res = await patch({ [field]: value });
 
@@ -273,12 +274,12 @@ describe('an ending needs the unlock key and a written reason', () => {
   });
 
   it('the shipping field alone — the one the older checks let through — is a plain 403', async () => {
-    can.mockImplementation((_u: unknown, key: string) => key !== 'orders.unlock');
+    can.mockImplementation((_u: unknown, key: string) => key !== 'orders.cancel');
 
     const res = await patch({ shippingStatus: 'CANCELLED' });
 
     expect(res.status).toBe(403);
-    expect(res.body.code).toBe('UNLOCK_REQUIRED');
+    expect(res.body.code).toBe('CANCEL_REQUIRED');
   });
 
   it.each(ENDINGS)('%s: %s with the key but no reason (or a few letters) is refused', async (field, value) => {
@@ -300,10 +301,10 @@ describe('an ending needs the unlock key and a written reason', () => {
   });
 
   it('NEGATIVE: a change that ends nothing does not ask for the key', async () => {
-    can.mockImplementation((_u: unknown, key: string) => key !== 'orders.unlock');
+    can.mockImplementation((_u: unknown, key: string) => key !== 'orders.cancel');
 
     const res = await patch({ shippingStatus: 'SHIPPED' });
 
-    expect(res.body.code).not.toBe('UNLOCK_REQUIRED');
+    expect(res.body.code).not.toBe('CANCEL_REQUIRED');
   });
 });

@@ -24,6 +24,7 @@ import { zodMessage } from '@/lib/zod-message';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { giftUnits } from '@/lib/offer-gift';
 import { projectOrder } from '@/lib/order-projection';
+import { responsibleModerator, MODERATOR_FORBIDDEN_AR } from '@/lib/responsible-moderator';
 
 export async function GET(req: Request) {
   try {
@@ -265,6 +266,22 @@ export async function POST(req: Request) {
       customerNotes,
       internalNotes,
     } = v;
+
+    /*
+     * WHO IS RESPONSIBLE FOR THIS ORDER — decided by a KEY, and BEFORE anything is written.
+     *
+     * Naming somebody other than yourself needs `orders.assign` (RV150: with the moderator goes the commission), and an
+     * order typed by somebody who does not hand orders out is theirs. The rule is `responsibleModerator`; this is its only
+     * use on this door. The owner's rule for this change, in his words: «اي قرار بعد الان اتخذو دون الرجوع الي».
+     */
+    const responsible = responsibleModerator({
+      requestedId: moderatorId,
+      creatorId: user.id,
+      mayAssign: can(user, 'orders.assign'),
+    });
+    if (!responsible.ok) {
+      return NextResponse.json({ error: MODERATOR_FORBIDDEN_AR, code: responsible.code }, { status: 403 });
+    }
 
     // The channel, if one was named: it must be ours, and its name becomes
     // the order's written source.
@@ -546,8 +563,9 @@ export async function POST(req: Request) {
     });
 
     // Moderator assignment — Phase S: moderator must belong to THIS company
-    const assignedModeratorId = moderatorId || (user.role === 'MODERATOR' ? user.id : null);
-    if (assignedModeratorId) {
+    const assignedModeratorId = responsible.moderatorId;
+    // Yourself needs no lookup — the session is this company's by construction. Only somebody else is checked.
+    if (assignedModeratorId && assignedModeratorId !== user.id) {
       const mod = await db.user.findFirst({ where: { id: assignedModeratorId, companyId } });
       if (!mod) {
         return NextResponse.json({ error: 'الموديريتور غير موجود في شركتك' }, { status: 404 });

@@ -118,7 +118,8 @@ describe('a confirmed order’s lines', () => {
   const LINES = { items: [{ productId: 'product-0001', quantity: 2, unitPrice: 10 }] };
 
   it('are a change request once the order is confirmed', async () => {
-    as(person(['orders.view', 'orders.edit']));
+    // OLD → NEW (PR-6): + orders.change_price, the key the migration gives every orders.edit holder (the lines carry a price).
+    as(person(['orders.view', 'orders.edit', 'orders.change_price']));
     current.order = order({ confirmationStatus: 'CONFIRMED' });
     const res = await patch(LINES);
     const body = await res.json();
@@ -129,7 +130,7 @@ describe('a confirmed order’s lines', () => {
   });
 
   it('and are not stopped by this lock before confirmation', async () => {
-    as(person(['orders.view', 'orders.edit']));
+    as(person(['orders.view', 'orders.edit', 'orders.change_price']));
     const res = await patch(LINES);
     const body = await res.json().catch(() => ({}));
     expect(body.code).not.toBe('CHANGE_REQUEST_REQUIRED');

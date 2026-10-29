@@ -5,6 +5,7 @@ import { requireContext } from '@/lib/geo-context';
 import { ORDER_ACCESS_STATUS, assertOrderAccess, assertOrderReadable } from '@/lib/rbac';
 import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
 import { apiErrorResponse } from '@/lib/api-error';
+import { can } from '@/lib/authorization';
 import { zodMessage } from '@/lib/zod-message';
 import { ORDER_NOT_FOUND } from '@/lib/order-refusals';
 
@@ -65,6 +66,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const access = await assertOrderAccess(id, user, { companyId, storeId }, ORDER_WORK_DOOR);
     if (!access.allowed) {
       return NextResponse.json({ error: 'Order not found or not assigned to you', errorAr: ORDER_NOT_FOUND }, { status: ORDER_ACCESS_STATUS[access.reason] });
+    }
+
+    /*
+     * WRITING A NOTE IS ITS OWN KEY (perm-plan PR-6): `orders.note`. It rode on the work door — `orders.view` or
+     * `confirmation.work` — so a person who could only READ an order could also leave a line on it that every colleague
+     * trusts. The migration gave the key to everybody who passed the door, so nobody lost it; reading the thread above
+     * is unchanged.
+     */
+    if (!can(user, 'orders.note')) {
+      return NextResponse.json(
+        { error: 'ما عندك صلاحية كتابة ملاحظة على الطلب.', errorAr: 'ما عندك صلاحية كتابة ملاحظة على الطلب.', code: 'NOTE_FORBIDDEN' },
+        { status: 403 }
+      );
     }
 
     const parsed = createSchema.safeParse(await req.json().catch(() => null));

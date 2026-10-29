@@ -199,3 +199,51 @@ describe('ai.assist', () => {
     }
   });
 });
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * THE ORDER ACTIONS' BOXES (PR-6) — GRANTED THROUGH A GATE TABLE TOO.
+ *
+ * 20261030130000_order_action_keys reads one gate table (`sp6_gate`: the box, the key the door asked, whether the scope
+ * is copied), so the first block of this file cannot see it either. Here: each of the seven boxes is in the catalog, is
+ * granted FROM the key (or keys) its door used to ask, lands in all three places and runs twice. The full replay —
+ * every person against every door, the scope of the price, the fuzz — is `the-order-actions-keep-every-door.test.ts`.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+describe('the order actions’ boxes', () => {
+  const sql = readFileSync(path.join(MIGRATIONS, '20261030130000_order_action_keys', 'migration.sql'), 'utf8')
+    .split('\n')
+    .filter((l) => !l.trim().startsWith('--'))
+    .join('\n');
+  const FROM: Record<string, string[]> = {
+    'orders.change_price': ['orders.edit'],
+    'orders.change_fee': ['orders.change_status'],
+    'orders.cancel': ['orders.unlock'],
+    'orders.note': ['orders.view', 'confirmation.work'],
+    'orders.request_change': ['orders.view', 'confirmation.work'],
+    'orders.rating_link': ['orders.view'],
+    'control.blacklist_manage': ['control.blacklist'],
+  };
+
+  it('are all in the catalog, so the owner can tick them', () => {
+    for (const k of Object.keys(FROM)) expect(ALL_CATALOG_KEYS.has(k), `${k} مش بقائمة الصلاحيات`).toBe(true);
+  });
+
+  it('are each granted FROM the key their door used to ask — a gate row per (box, key)', () => {
+    for (const [box, sources] of Object.entries(FROM)) {
+      for (const source of sources) {
+        expect(sql.split(/\s+/).join(''),`${box} مش مأخوذ من ${source} — من يمرّ بالباب رح يخسره`).toContain(`('${box}','${source}',`);
+      }
+    }
+  });
+
+  it('land in all three places, carry the «منع» across, and run twice without changing anything', () => {
+    expect(sql).toContain('INSERT INTO "role_permission_defaults"');
+    expect(sql).toContain('INSERT INTO "role_permissions"');
+    expect(sql).toContain('INSERT INTO "user_permissions"');
+    expect(sql).toContain(`'DENY'`);
+    for (const s of sql.split(/;\s*\n/).filter((x) => x.trim().startsWith('INSERT INTO'))) {
+      expect(s).toMatch(/ON CONFLICT[\s\S]*DO NOTHING/);
+    }
+  });
+});

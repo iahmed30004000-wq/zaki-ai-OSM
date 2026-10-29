@@ -474,6 +474,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
             return NextResponse.json({ error: 'سبب تغيير الأجرة: نص قصير فقط' }, { status: 400 });
           }
           feeChanged = deliveryFeeChange(order.deliveryFee, updateData.deliveryFee, reason.reason);
+          /*
+           * A CHANGED FEE IS ITS OWN KEY (perm-plan PR-6): `orders.change_fee`, given by the migration to everybody who
+           * held `orders.change_status` — the key it rode on. Only a fee that really CHANGES asks it: the tracking form
+           * posts the fee box back on every save, so somebody who may set the tracking number but not the fee can still
+           * save the number.
+           */
+          if (feeChanged && !can(user, 'orders.change_fee')) {
+            return NextResponse.json(
+              { error: 'ما عندك صلاحية تغيير أجرة التوصيل.', errorAr: 'ما عندك صلاحية تغيير أجرة التوصيل.', code: 'FEE_FORBIDDEN' },
+              { status: 403 }
+            );
+          }
           if (feeChanged) updateData.deliveryFeeOverrideReason = feeChanged.reason;
         }
         break;
