@@ -30,6 +30,17 @@ export function openRequestWhere() {
   };
 }
 
+/**
+ * A MATCH ROW THAT RESERVES ITS ORDER: matched clean, or decided «اعتُمد رقم الشركة».
+ *
+ * A line that merely disagreed (MISMATCHED, nobody's answer yet) reserves nothing — the company's later, right
+ * line for the same order must still be able to match, or the order could never be settled (review of #57).
+ * The hand link asks the same question the matcher does, so the word lives here and both read it.
+ */
+export function claimingRowWhere() {
+  return [{ result: 'MATCHED' }, { resolution: 'ACCEPTED_COURIER' }];
+}
+
 export const HAND_COLLECTED_NOTE = 'حُصّل يدوياً — مبلغه دخل قبل الكشف';
 export const SAME_FILE_NOTE = 'الطلب مذكور بسطر آخر من هذا الكشف';
 /** A line the company wrote at zero, or wrote no money against at all (the import kept it as 0). */

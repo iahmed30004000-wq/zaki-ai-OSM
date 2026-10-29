@@ -279,7 +279,10 @@ describe('9 · an order named twice', () => {
     const call = db.settlementMatch.findMany.mock.calls.find((c) => c[0].where.orderId)!;
     expect(call[0].where.statementId).toEqual({ not: 'st1' });
     expect(call[0].where.statementLineId).toEqual({ not: null });
-    expect(call[0].where.statement.OR).toEqual([
+    // (Was `where.statement.OR`. The statement-time rule now sits in the first branch, because a link made by hand
+    // is the second branch and is exempt from it — see a-manual-link-holds-the-order-on-an-older-statement.)
+    const [byTime] = call[0].where.OR;
+    expect(byTime.AND[1].statement.OR).toEqual([
       { approvedAt: { not: null } },
       { createdAt: { lt: new Date('2026-10-20T00:00:00Z') } },
     ]);
@@ -348,7 +351,10 @@ describe('9 · a line that only DISAGREED claims nothing (review of #57, 29/10)'
     db.order.findFirst.mockResolvedValue(orderRow({}));
     await runMatching(db as never, scope);
     const call = db.settlementMatch.findMany.mock.calls.find((c) => c[0].where.orderId)!;
-    expect(call[0].where.OR).toEqual([{ result: 'MATCHED' }, { resolution: 'ACCEPTED_COURIER' }]);
+    // (Was `where.OR` equal to the claim list; the same list now sits in each of the two branches.)
+    const [byTime, byHand] = call[0].where.OR;
+    expect(byTime.AND[0].OR).toEqual([{ result: 'MATCHED' }, { resolution: 'ACCEPTED_COURIER' }]);
+    expect(byHand).toEqual({ matchedBy: 'MANUAL', OR: [{ result: 'MATCHED' }, { resolution: 'ACCEPTED_COURIER' }] });
   });
 });
 
