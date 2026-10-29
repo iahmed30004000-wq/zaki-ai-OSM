@@ -73,7 +73,7 @@ export function PreparationScreen() {
    */
   const { currentUser } = useApp();
   const mayOpenOrder = userCan(currentUser, 'orders.view');
-  const mayCancel = userCan(currentUser, 'orders.unlock');
+  const mayCancel = userCan(currentUser, 'orders.cancel');
   // The suggested round is the assistants' box (PR-5): without it the list below is the whole screen, and it is whole.
   const mayAskAssistant = userCan(currentUser, AI_ASSIST_KEY);
 

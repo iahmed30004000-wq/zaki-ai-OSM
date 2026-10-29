@@ -251,6 +251,11 @@ const AGENT = person('u1', 'CONFIRMATION_AGENT', {
   'orders.release': 'ALL_COMPANY',
   'orders.confirm': 'ALL_COMPANY',
   'orders.contact_log': 'ALL_COMPANY',
+  // OLD → NEW (PR-6): the three keys the migration 20261030130000_order_action_keys gives the shipped agent — a note and a
+  // change request (she passed the work door through confirmation.work) and the price at the scope of her orders.edit.
+  'orders.note': 'ALL_COMPANY',
+  'orders.request_change': 'ALL_COMPANY',
+  'orders.change_price': 'ASSIGNED',
   'customers.view_basic': 'ALL_COMPANY',
   'products.view': 'ALL_COMPANY',
   'ai.use': 'ALL_COMPANY',

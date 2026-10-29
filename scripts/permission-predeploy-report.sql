@@ -71,7 +71,14 @@ WITH req(action, needs) AS (VALUES
   ('settings.tracking','settings.view'),
   ('penalties.rules','settings.view'),
   ('team.settings','settings.view'),
-  ('commission.manage','commission.view')
+  ('commission.manage','commission.view'),
+  ('orders.change_price','orders.edit'),
+  ('orders.change_fee','orders.change_status'),
+  ('orders.cancel','orders.view'),
+  ('orders.note','orders.view'),
+  ('orders.request_change','orders.view'),
+  ('orders.rating_link','orders.view'),
+  ('control.blacklist_manage','control.blacklist')
 )
 SELECT 'role_permissions' AS "table", r."name" AS "role", r."companyId", q.action, q.needs
 FROM "role_permissions" rp
@@ -106,3 +113,24 @@ JOIN "roles" r ON r."id" = rp."roleId"
 WHERE rp."permission" IN ('confirmation.work', 'ops.prepare', 'landing_pages.edit', 'orders.create', 'orders.view')
 GROUP BY r."id", r."name", r."companyId"
 ORDER BY 2 NULLS FIRST, 1;
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- AND THE THIRD QUESTION (PR-6, the order actions): WHICH ROLES WILL THE MIGRATION 20261030130000_order_action_keys GIVE
+-- EACH OF THE SEVEN BOXES TO? Every role that holds any key the box's door asked before (src/lib/order-action-keys.ts
+-- ORDER_ACTION_KEYS_FROM, the same list the migration reads). A role listed here keeps its action on the day; the owner
+-- unticks the box from the roles that should not have it afterwards. Read-only, same as above.
+-- ═══════════════════════════════════════════════════════════════════════
+SELECT k AS "box", r."name" AS "role", r."companyId", array_agg(DISTINCT rp."permission" ORDER BY rp."permission") AS "through"
+FROM "role_permissions" rp
+JOIN "roles" r ON r."id" = rp."roleId"
+CROSS JOIN LATERAL unnest(CASE rp."permission"
+  WHEN 'orders.edit' THEN ARRAY['orders.change_price']
+  WHEN 'orders.change_status' THEN ARRAY['orders.change_fee']
+  WHEN 'orders.unlock' THEN ARRAY['orders.cancel']
+  WHEN 'orders.view' THEN ARRAY['orders.note', 'orders.request_change', 'orders.rating_link']
+  WHEN 'confirmation.work' THEN ARRAY['orders.note', 'orders.request_change']
+  WHEN 'control.blacklist' THEN ARRAY['control.blacklist_manage']
+  ELSE ARRAY[]::text[]
+END) AS k
+GROUP BY k, r."id", r."name", r."companyId"
+ORDER BY 1, 3 NULLS FIRST, 2;

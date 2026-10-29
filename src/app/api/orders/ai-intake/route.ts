@@ -26,6 +26,7 @@ import { AiEndpointMissing, AiNotConfigured, AiNotLocal, aiChat, aiSettings } fr
 import { resolvePrompt } from '@/lib/ai-prompts';
 import { projectOrder } from '@/lib/order-projection';
 import { flagRecentTwins } from '@/lib/recent-twin-order';
+import { responsibleModerator, MODERATOR_FORBIDDEN_AR } from '@/lib/responsible-moderator';
 
 /**
  * POST /api/orders/ai-intake
@@ -217,6 +218,20 @@ export async function POST(req: Request) {
       }
       const p = check.data;
 
+      /*
+       * WHO IS RESPONSIBLE FOR THIS ORDER — the same rule the manual door asks, in the same words, BEFORE a customer is
+       * written (a refusal must leave no row behind it). Naming somebody other than yourself needs `orders.assign`; an
+       * order pasted by somebody who does not hand orders out is theirs (`responsibleModerator`, perm-plan PR-6, D10).
+       */
+      const responsible = responsibleModerator({
+        requestedId: p.moderatorId,
+        creatorId: user.id,
+        mayAssign: can(user, 'orders.assign'),
+      });
+      if (!responsible.ok) {
+        return NextResponse.json({ error: MODERATOR_FORBIDDEN_AR, code: responsible.code }, { status: 403 });
+      }
+
       if (!p.customerName || !p.phone || !p.productId) {
         return NextResponse.json(
           { error: 'الاسم والرقم والمنتج مطلوبة' },
@@ -337,7 +352,7 @@ export async function POST(req: Request) {
       const gift = giftUnits(quantityOffer, qty);
 
       // Moderator assignment — must belong to THIS company (same rule as POST /orders)
-      const assignedModeratorId = p.moderatorId || (user.role === 'MODERATOR' ? user.id : null);
+      const assignedModeratorId = responsible.moderatorId;
 
       /*
        * WHOSE ORDER IS THIS — the same rule the quick-entry door asks, in
@@ -351,7 +366,8 @@ export async function POST(req: Request) {
         heldTotal: keepsIt ? (await ownedCounts(db, { companyId, storeId }, user.id)).total : 0,
         now: new Date(),
       });
-      if (assignedModeratorId) {
+      // Yourself needs no lookup — the session is this company's by construction. Only somebody else is checked.
+      if (assignedModeratorId && assignedModeratorId !== user.id) {
         const mod = await db.user.findFirst({ where: { id: assignedModeratorId, companyId } });
         if (!mod) {
           return NextResponse.json({ error: 'الموديريتور غير موجود في شركتك' }, { status: 404 });

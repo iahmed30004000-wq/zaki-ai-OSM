@@ -81,9 +81,15 @@ interface ShippingSectionProps {
    * the buttons alone.
    */
   canEdit?: boolean;
+  /**
+   * The delivery fee and the review link each have a key of their own (PR-6: `orders.change_fee`, `orders.rating_link`).
+   * The window passes the server's answer; UX only — the server asks the same. Default: shown (a screen drawn alone).
+   */
+  canChangeFee?: boolean;
+  canCopyRatingLink?: boolean;
 }
 
-export function ShippingSection({ order, ar, isRtl, onRefreshOrder, canEdit = true }: ShippingSectionProps) {
+export function ShippingSection({ order, ar, isRtl, onRefreshOrder, canEdit = true, canChangeFee: mayChangeFee = true, canCopyRatingLink: mayCopyRatingLink = true }: ShippingSectionProps) {
   const [providers, setProviders] = useState<any[]>([]);
   const [attempts, setAttempts] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -241,7 +247,7 @@ export function ShippingSection({ order, ar, isRtl, onRefreshOrder, canEdit = tr
           page, and the seller gets it here to send over WhatsApp. A link
           handed out before delivery is an invitation to rate a parcel
           nobody has opened, so the door refuses it too. */}
-      {['DELIVERED', 'PARTIALLY_DELIVERED'].includes(order?.shippingStatus) && (
+      {mayCopyRatingLink && ['DELIVERED', 'PARTIALLY_DELIVERED'].includes(order?.shippingStatus) && (
         <RatingLinkButton orderId={order.id} />
       )}
 
@@ -497,6 +503,7 @@ export function ShippingSection({ order, ar, isRtl, onRefreshOrder, canEdit = tr
             step="0.01"
             value={deliveryFee}
             onChange={(e) => setDeliveryFee(e.target.value)}
+            disabled={!mayChangeFee}
             dir="ltr"
             placeholder={ar ? 'غير مسجّلة' : 'Not recorded'}
             helperText={

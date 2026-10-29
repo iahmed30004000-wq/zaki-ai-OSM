@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { ORDER_ACCESS_STATUS, assertOrderReadable } from '@/lib/rbac';
 import { apiErrorResponse } from '@/lib/api-error';
+import { can } from '@/lib/authorization';
 import { ORDER_NOT_FOUND } from '@/lib/order-refusals';
 import { deriveCoreState } from '@/lib/order-state';
 import { reviewPath } from '@/lib/review-link';
@@ -40,6 +41,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     // The same envelope the list applies — see `a-queue-row-opens.test.ts`:
     // a row somebody may see in their queue is a row they may open.
+    // The review link has a key of its own (PR-6): `orders.rating_link`, given to everybody who held `orders.view`.
+    if (!can(user, 'orders.rating_link')) {
+      return NextResponse.json(
+        { error: 'ما عندك صلاحية نسخ رابط التقييم.', errorAr: 'ما عندك صلاحية نسخ رابط التقييم.', code: 'RATING_LINK_FORBIDDEN' },
+        { status: 403 }
+      );
+    }
     const access = await assertOrderReadable(id, user, { companyId, storeId }, 'orders.view');
     if (!access.allowed) {
       /*

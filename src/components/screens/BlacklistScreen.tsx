@@ -9,6 +9,8 @@ import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { arDate } from '@/lib/format';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
+import { useApp } from '@/context/AppContext';
+import { userCan } from '@/lib/can';
 
 /**
  * /control/blacklist — who may not order again.
@@ -36,6 +38,9 @@ interface Block {
 }
 
 export function BlacklistScreen() {
+  // Seeing the list is `control.blacklist`; blocking a number and lifting a block is its own key (PR-6), asked of the server too.
+  const { currentUser } = useApp();
+  const mayManage = userCan(currentUser, 'control.blacklist_manage');
   const [blocks, setBlocks] = useState<Block[] | null>(null);
   const [term, setTerm] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -94,13 +99,15 @@ export function BlacklistScreen() {
           <input type="checkbox" checked={showReleased} onChange={(e) => setShowReleased(e.target.checked)} />
           أظهر المفكوكين
         </label>
-        <button
-          type="button"
-          onClick={() => setAdding(true)}
-          className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium inline-flex items-center gap-1.5"
-        >
-          <RiAddCircleLine className="w-4 h-4" /> حظر رقم
-        </button>
+        {mayManage && (
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium inline-flex items-center gap-1.5"
+          >
+            <RiAddCircleLine className="w-4 h-4" /> حظر رقم
+          </button>
+        )}
       </form>
 
       {error && <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>}
@@ -175,12 +182,14 @@ export function BlacklistScreen() {
                 <EmptyState
                   title="لا أرقامَ محظورة"
                   why="الحظر على الهاتف لا على الاسم: مَن رفض الاستلام ثلاث مرّات يطلب من جديد باسمٍ آخر. أضِف رقماً حين يلزم."
-                  action={{ label: 'حظر رقم', onClick: () => setAdding(true) }}
+                  action={mayManage ? { label: 'حظر رقم', onClick: () => setAdding(true) } : undefined}
                 />
               )
             }
             actions={(b) => (
-              <>{b.active ? (
+              <>{b.active && !mayManage ? (
+                      <span className="text-xs text-[var(--sys-muted)]">محظور</span>
+                    ) : b.active ? (
                       <button
                         onClick={() => setReleasing(b)}
                         className="text-xs text-[var(--sys-success)] hover:underline inline-flex items-center gap-1"

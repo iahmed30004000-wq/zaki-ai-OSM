@@ -23,6 +23,7 @@
 import { db } from './db';
 import { ROLE_PERMISSIONS, UserRole } from '../types/auth';
 import { AI_ASSIST_FROM, AI_ASSIST_KEY } from './ai-assistants';
+import { ORDER_ACTION_KEYS_FROM } from './order-action-keys';
 
 export type Scope = 'ALL_COMPANY' | 'OWN' | 'ASSIGNED' | 'CATEGORY' | 'SPECIFIC';
 
@@ -278,6 +279,14 @@ export async function computeEffectiveGrants(
     for (const [newKey, src] of SPLIT_FROM_SETTINGS) {
       if (grants[src] && !grants[newKey] && !denied.has(newKey)) grants[newKey] = { scope: 'ALL_COMPANY' };
     }
+    // The order actions' boxes (PR-6): whoever passed the door through ANY of its old keys keeps it, with the SAME scope
+    // where the old door evaluated one (a price edit is as wide as the order edit was).
+    for (const { key, from, copyScope } of ORDER_ACTION_KEYS_FROM) {
+      if (grants[key] || denied.has(key)) continue;
+      const src = from.find((k) => grants[k]);
+      if (!src) continue;
+      grants[key] = copyScope ? { scope: grants[src].scope, scopeIds: grants[src].scopeIds ?? null } : { scope: 'ALL_COMPANY' };
+    }
   }
 
   return { fullAccess: false, grants };
@@ -305,6 +314,8 @@ export function legacyEffectiveKeys(role: UserRole): string[] {
   addGeoCompanions(role, keys, (k) => keys.add(k));
   // The assistants' box goes to whoever reached an in-screen helper through the old keys (the reset-to-default baseline too).
   if (AI_ASSIST_FROM.some((k) => keys.has(k))) keys.add(AI_ASSIST_KEY);
+  // And the order actions' boxes (PR-6): the baseline of a legacy role carries them for the roles that held the old keys.
+  for (const { key, from } of ORDER_ACTION_KEYS_FROM) if (from.some((k) => keys.has(k))) keys.add(key);
   return [...keys];
 }
 
