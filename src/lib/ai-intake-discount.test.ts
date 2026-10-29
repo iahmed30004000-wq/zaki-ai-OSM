@@ -575,7 +575,10 @@ describe('وحسابُ المالِ يبقى في money.ts', () => {
      * here would charge 19 for a bundle promising 22.
      */
     expect(src().match(/computeCod\(/g) ?? []).toHaveLength(1);
-    expect(src()).toContain('suggestedPrice = qtyOffer.price;');
+    // Was `suggestedPrice = qtyOffer.price;` (the suggestion for ANY nearest bundle). RV173, reviewer's ruling: only the
+    // bundle of EXACTLY this quantity is priced; the nearest is named and the box stays empty.
+    expect(src()).toContain('suggestedPrice = exact.price;');
+    expect(src(), 'عاد تسعيرُ عرضٍ لكميّةٍ مختلفة').not.toContain('suggestedPrice = qtyOffer.price');
   });
 
   it('ولا تدويرَ من عندِه', () => {

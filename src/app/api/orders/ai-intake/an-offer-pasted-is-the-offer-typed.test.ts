@@ -301,12 +301,20 @@ describe('RV173 — المعاينة تقترح العرض الأقرب لكمي
   const TWO = () => view(2, 18, 'قطعتان', 'o2');
   const FOUR = () => view(4, 30, 'أربع قطع', 'o4');
 
-  it('لثلاث قطع وعرضان (١ و٢): الأقرب هو ٢ — لا أول صفٍّ في القائمة', async () => {
+  // Was `suggestedPrice` 18 (the nearest bundle's price, for a different quantity). The reviewer's ruling: a bundle's
+  // price is the price of ITS pieces — the nearest is NAMED, the box is left EMPTY.
+  it('لثلاث قطع وعرضان (١ و٢): الأقرب هو ٢ يُسمّى — لا أول صفٍّ — وخانةُ السعر فارغة', async () => {
     const json = await previewFor(3, [ONE(), TWO()]);
     expect(json.suggestedOfferName, 'عاد أول صف').not.toBe('قطعة');
     expect(json.suggestedOfferName).toBe('قطعتان');
-    expect(json.suggestedPrice).toBe(18);
+    expect(json.suggestedPrice, 'سعرُ حزمةٍ لكميّةٍ مختلفة').toBeNull();
+    expect(json.suggestedPrice).not.toBe(18);
     expect(json.priceFromOffer, 'ما ليس مطابقاً لا يُقفَل').toBe(false);
+  });
+
+  it('وسعرٌ صفرٌ بالرسالة ليس سعراً: الخانةُ تبقى فارغة أيضاً', async () => {
+    const json = await previewFor(3, [ONE(), TWO()], 0);
+    expect(json.suggestedPrice).toBeNull();
   });
 
   it('وإذا تساوى بُعدان (٢ و٤ لثلاث): لا شيء — لا يُختار الأرخص ولا الأول', async () => {

@@ -659,27 +659,21 @@ export async function POST(req: Request) {
         ) {
           typedPrice = parsed.price;
         }
-      } else if (qtyOffer && (parsed.price === null || parsed.price <= 0)) {
-        /*
-         * WHAT THE OFFER PROMISES, AND NOW THAT IS WHAT THE VIEW SAYS.
-         *
-         * A second read of the offer table and a `computeCod` of its own
-         * stood here, because `OfferView.price` used to be `sellingPrice` —
-         * the figure BEFORE the bundle's own discount — while every door
-         * charged the figure after it. Showing the reviewer 25 for a bundle
-         * that charges 22 is not harmless: the modal copies this straight
-         * into `finalPrice`, and their confirmation is what turns the wrong
-         * number into a charge. They cannot catch an error never shown them.
-         *
-         * `activeOffersFor` now applies the reduction once, through
-         * `allocateDiscount`, so `price` IS the charged total and a second
-         * subtraction here would charge 19 for a bundle promising 22. The
-         * suggestion is simply what the customer would pay.
-         */
-        suggestedPrice = qtyOffer.price;
-        suggestedOfferName = qtyOffer.name;
       } else if (qtyOffer) {
+        /*
+         * NO BUNDLE IS THIS QUANTITY: THE NEAREST ONE IS NAMED, NEVER PRICED (RV173 — the reviewer's ruling).
+         *
+         * A bundle's price is the price of ITS pieces. Filling the box with the nearest one's — 18 for two pieces on a
+         * message that asked for three — hands the reviewer a figure that is wrong for this order by the third piece,
+         * and their confirmation is what turns it into a charge. So the name tells them which bundle is closest and
+         * the box stays EMPTY, unless the customer's own message named a price (that stays a suggestion, unlocked, as
+         * before). The write refuses an absent price by name, so nothing is recorded blind.
+         *
+         * (The exact-quantity branch above is untouched: there `OfferView.price` IS the charged total, the reduction
+         * applied once by `activeOffersFor`, and the box is locked on it.)
+         */
         suggestedOfferName = qtyOffer.name;
+        if (parsed.price === null || parsed.price <= 0) suggestedPrice = null;
       }
     }
 
