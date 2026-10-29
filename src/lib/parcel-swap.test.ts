@@ -221,7 +221,7 @@ function makeTx(w: World) {
       create: vi.fn(async ({ data }: { data: Row }) => {
         wrote('order.create');
         w.onCreate?.();
-        const row = { id: `new${++seq}`, version: 1, ...data };
+        const row: Row = { id: `new${++seq}`, version: 1, ...data };
         w.orders.push(row);
         return { id: row.id, orderNumber: row.orderNumber };
       }),
