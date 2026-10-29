@@ -671,7 +671,7 @@
   },
   "src/components/screens/AiSettingsScreen.tsx": {
     "buttons": 8,
-    "inputs": 4,
+    "inputs": 6,
     "columns": 0,
     "cards": 0,
     "modals": 0,

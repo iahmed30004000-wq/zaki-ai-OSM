@@ -4,6 +4,7 @@ import { DispatchResult } from '@/components/ops/DispatchResult';
 import React, { useCallback, useState } from 'react';
 import { apiFetch, apiJson } from '@/lib/api-client';
 import type { DispatchSummary } from '@/lib/courier-dispatch';
+import { courierCityGapLine, type CourierCityGap } from '@/lib/courier-city-gap-line';
 import { arDateShort } from '@/lib/format';
 import { LabelSizePicker, useLabelSize } from '@/components/labels/LabelSize';
 import { BLOCKED_WAYBILLS, describeRefused, openWaybills, WaybillError } from '@/components/labels/openWaybills';
@@ -43,6 +44,8 @@ interface Batch {
   } | null;
   creator: { id: string; name: string } | null;
   _count: { orders: number };
+  /** Parcels the courier has no city id for — said before the press, not after it. */
+  courierCityGap?: CourierCityGap | null;
 }
 
 /** One parcel on an open trolley — only what a decision about it needs. */
@@ -514,6 +517,10 @@ export function ShippingBatchesScreen() {
                     summary={result.summary}
                     savedNote="الباركودات محفوظة على الطلبات — تظهر على البوليصة وتُتابَع بها الحالة."
                   />
+                )}
+
+                {b.status === 'READY' && b.courierCityGap && (
+                  <p className="text-xs font-bold text-[var(--sys-warning)]">{courierCityGapLine(b.courierCityGap)}</p>
                 )}
 
                 <div className="flex flex-wrap gap-1.5 pt-1">

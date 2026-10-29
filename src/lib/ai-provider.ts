@@ -4,7 +4,7 @@ import { sanitizePromptOverrides, resolvePrompt, recordVersions, HOUSE_JOB, type
 import { decryptSecret, encryptSecret, encryptionAvailable } from './secrets';
 import { updateCompanySettings } from './company-settings';
 import { SYSTEM_AI, readSystemSetting, systemSettingMeta, updateSystemSetting } from './system-settings';
-import { chatCompletionsUrl } from './ai-endpoint';
+import { chatCompletionsUrl, parseCompatEndpoint } from './ai-endpoint';
 
 /**
  * WHICH AI, AND WITH WHOSE KEY.
@@ -26,7 +26,7 @@ import { chatCompletionsUrl } from './ai-endpoint';
  * database anybody can read is worse than no AI at all.
  */
 
-export type AiProvider = 'OPENROUTER' | 'OPENAI' | 'ANTHROPIC' | 'LOCAL';
+export type AiProvider = 'OPENROUTER' | 'OPENAI' | 'ANTHROPIC' | 'LOCAL' | 'OPENAI_COMPATIBLE';
 
 export interface ProviderInfo {
   id: AiProvider;
@@ -45,6 +45,12 @@ export interface ProviderInfo {
    * can be abused for.
    */
   needsEndpoint?: boolean;
+  /**
+   * An OpenAI-compatible server on the internet: it needs an https address
+   * and a model name, both kept once for the installation. Never LOCAL —
+   * it is an outside party, so `localOnly` and the pii guard refuse it.
+   */
+  needsHttpsEndpoint?: boolean;
   /** A key is optional: most local servers are not authenticated at all. */
   keyOptional?: boolean;
 }
@@ -144,6 +150,28 @@ export const AI_PROVIDERS: ProviderInfo[] = [
       'أكثر الخوادم المحلية بلا مفتاح — اتركه فارغاً إن لم يطلب خادمك مفتاحاً.',
     needsEndpoint: true,
     keyOptional: true,
+  },
+  {
+    /**
+     * A SERVER ON THE INTERNET THAT SPEAKS THE OPENAI SHAPE — and is therefore
+     * EXTERNAL, always.
+     *
+     * A gateway, a hosted open model, a vLLM behind a name of the owner's own.
+     * The code cannot tell «the owner's machine» from «a proxy that forwards
+     * to a vendor», so it never calls this LOCAL: `localOnly` and the pii
+     * guard refuse it exactly as they refuse OpenAI, and a customer's name
+     * never reaches it. There is no «this is my own server» switch.
+     *
+     * The names below are only suggestions (the existing guard wants every
+     * vendor to list its default). The real name is whatever the server
+     * lists, kept beside the address.
+     */
+    id: 'OPENAI_COMPATIBLE',
+    label: 'خادم متوافق مع OpenAI',
+    defaultModel: 'glm-4.6',
+    models: ['glm-4.6', 'glm-4.5-air'],
+    keyHelp: 'مفتاح خادمك أو بوّابتك — بيُرسَل Bearer. العنوان واسم النموذج تحت.',
+    needsHttpsEndpoint: true,
   },
 ];
 
@@ -304,7 +332,16 @@ interface SystemAi {
   provider?: string;
   model?: string;
   /** Encrypted key per vendor, with when it was set. Never the key, never a hint. */
-  keys?: Record<string, { enc: string; at?: string }>;
+  keys?: Record<string, { enc: string; at?: string; url?: string }>;
+  /**
+   * The OpenAI-compatible server: where it is and what it is called.
+   *
+   * Its key lives in `keys.OPENAI_COMPATIBLE` WITH the address it was issued
+   * for (`url`), and is used only while that equals `compat.baseUrl`. A key
+   * that survived an address change would be sent to the new host by the
+   * next call — so a change of address deletes it.
+   */
+  compat?: { baseUrl: string; model?: string };
   /**
    * Where the owner's own model server lives.
    *
@@ -322,11 +359,39 @@ export interface SystemAiSettings {
   /** Which vendors hold a key, and when it was put there. */
   providerKeys: Record<string, { configured: boolean; savedAt: string | null }>;
   localBaseUrl: string | null;
+  /**
+   * The OpenAI-compatible server. `host` is the name alone, for a sentence on
+   * the screen. Never a key, never a hint of one.
+   */
+  compat: { baseUrl: string | null; host: string | null; model: string | null };
   /** Who last changed the installation's AI settings, and when. */
   savedAt: string | null;
   savedBy: string | null;
   /** Can a key be stored at all right now? A screen should say so first. */
   encryptionAvailable: boolean;
+}
+
+/** The host name of a stored address, or null when it does not parse. */
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return null;
+  }
+}
+
+/** The vendor keys with the compatible server's removed (undefined when none are left). */
+function withoutCompatKey(keys: SystemAi['keys']): SystemAi['keys'] {
+  if (!keys?.OPENAI_COMPATIBLE) return keys;
+  const rest = { ...keys };
+  delete rest.OPENAI_COMPATIBLE;
+  return Object.keys(rest).length > 0 ? rest : undefined;
+}
+
+/** Is the stored compatible-server key the one issued for the stored address? */
+function compatKeyBound(sys: SystemAi): boolean {
+  const entry = sys.keys?.OPENAI_COMPATIBLE;
+  return !!entry?.enc && !!sys.compat?.baseUrl && entry.url === sys.compat.baseUrl;
 }
 
 export async function systemAi(): Promise<SystemAiSettings> {
@@ -339,10 +404,21 @@ export async function systemAi(): Promise<SystemAiSettings> {
     providerKeys: Object.fromEntries(
       AI_PROVIDERS.map((p) => [
         p.id,
-        { configured: !!stored.keys?.[p.id]?.enc, savedAt: stored.keys?.[p.id]?.at ?? null },
+        {
+          // A compatible server's key counts only while it is bound to the
+          // address it is saved for — a key that would not be sent is not
+          // «محفوظ».
+          configured: !!stored.keys?.[p.id]?.enc && (p.id !== 'OPENAI_COMPATIBLE' || compatKeyBound(stored)),
+          savedAt: stored.keys?.[p.id]?.at ?? null,
+        },
       ])
     ),
     localBaseUrl: stored.localBaseUrl ?? null,
+    compat: {
+      baseUrl: stored.compat?.baseUrl ?? null,
+      host: stored.compat?.baseUrl ? hostOf(stored.compat.baseUrl) : null,
+      model: stored.compat?.model ?? null,
+    },
     savedAt: meta?.updatedAt.toISOString() ?? null,
     savedBy: meta?.updatedBy ?? null,
     encryptionAvailable: encryptionAvailable(),
@@ -358,6 +434,13 @@ export interface SaveSystemAiInput {
   providerKeys?: Record<string, string | null>;
   /** The local server's address, already checked by `parseLocalEndpoint`. */
   localBaseUrl?: string | null;
+  /**
+   * The compatible server's address, already checked by `parseCompatEndpoint`.
+   * A different address (or null) deletes the key kept for the old one.
+   */
+  compatBaseUrl?: string | null;
+  /** The name that server answers to, already checked by `parseCompatModel`. */
+  compatModel?: string | null;
 }
 
 /**
@@ -388,6 +471,30 @@ export async function saveSystemAi(input: SaveSystemAiInput, actorId?: string | 
         next.model = chosen || providerInfo(next.provider ?? 'OPENROUTER').defaultModel;
       }
 
+      /*
+       * ── THE COMPATIBLE SERVER: ADDRESS, NAME, AND THE KEY THAT GOES WITH IT ──
+       *
+       * Before the keys below, in the same row lock, because a key saved in
+       * this request is bound to the address as it is AFTER this block.
+       *
+       * A key kept across an address change would be sent to the new host
+       * by the very next call, and a company user pressing «اختبار الاتصال»
+       * makes that call. So a different address, or none, deletes the key
+       * kept for the old one; a new key arriving in the same save is added
+       * back by the loop below, bound to the new address.
+       */
+      if (input.compatBaseUrl === null) {
+        delete next.compat;
+        next.keys = withoutCompatKey(next.keys);
+      } else if (input.compatBaseUrl && input.compatBaseUrl !== next.compat?.baseUrl) {
+        next.compat = { baseUrl: input.compatBaseUrl, model: next.compat?.model };
+        next.keys = withoutCompatKey(next.keys);
+      }
+      if (input.compatModel !== undefined && next.compat) {
+        if (input.compatModel === null) delete next.compat.model;
+        else next.compat = { ...next.compat, model: input.compatModel };
+      }
+
       if (input.providerKeys) {
         const keys = { ...(next.keys ?? {}) };
         for (const [id, value] of Object.entries(input.providerKeys)) {
@@ -396,7 +503,19 @@ export async function saveSystemAi(input: SaveSystemAiInput, actorId?: string | 
           // nothing ever reads.
           if (!AI_PROVIDERS.some((p) => p.id === id)) continue;
           if (value === null) delete keys[id];
-          else if (value) keys[id] = { enc: encryptSecret(value.trim()), at: new Date().toISOString() };
+          else if (value) {
+            const entry: { enc: string; at: string; url?: string } = {
+              enc: encryptSecret(value.trim()),
+              at: new Date().toISOString(),
+            };
+            if (id === 'OPENAI_COMPATIBLE') {
+              // Bound to the address it is saved for. With no address there is
+              // nowhere this key could ever be sent, so it is not kept.
+              if (!next.compat?.baseUrl) throw new Error('COMPAT_ENDPOINT_REQUIRED');
+              entry.url = next.compat.baseUrl;
+            }
+            keys[id] = entry;
+          }
         }
         next.keys = Object.keys(keys).length > 0 ? keys : undefined;
       }
@@ -444,13 +563,25 @@ export async function aiSettings(companyId: string): Promise<AiSettings> {
     // because nobody turned it off is an assistant nobody decided on.
     intelligenceScopes: sanitizeScopes(ai.intelligenceScopes),
     promptHistory: ai.promptHistory ?? {},
-    hasKey: !!ai.apiKeyEncrypted || !!ai.keys?.[provider] || !!process.env.OPENROUTER_API_KEY,
+    /*
+     * The environment key is OpenRouter's, by its own name — `routeFor` hands
+     * it to that vendor alone. Counting it for every vendor made the screen
+     * say «مفتاح موجود» beside a company on Anthropic whose calls then failed
+     * with no key at all. And the compatible server's key is the
+     * installation's, bound to its address, so a company-level answer here
+     * is always no.
+     */
+    hasKey:
+      provider !== 'OPENAI_COMPATIBLE' &&
+      // A local model needs no key at all, so it is never «بلا مفتاح».
+      (provider === 'LOCAL' ||
+        !!ai.apiKeyEncrypted || !!ai.keys?.[provider] || (provider === 'OPENROUTER' && !!process.env.OPENROUTER_API_KEY)),
     // WHICH vendors this company has a key for — a yes or a no, never a
     // fragment of the key itself.
     providerKeys: Object.fromEntries(
       AI_PROVIDERS.map((p) => [
         p.id,
-        !!ai.keys?.[p.id]?.enc || (p.id === provider && !!ai.apiKeyEncrypted),
+        p.id !== 'OPENAI_COMPATIBLE' && (!!ai.keys?.[p.id]?.enc || (p.id === provider && !!ai.apiKeyEncrypted)),
       ])
     ),
     assistants: ai.assistants ?? {},
@@ -566,6 +697,10 @@ export async function saveAiSettings(
       const keys = { ...(current.keys ?? {}) };
       for (const [id, value] of Object.entries(input.providerKeys)) {
         if (!AI_PROVIDERS.some((p) => p.id === id)) continue;
+        // The compatible server's key is the installation's and is bound to
+        // its address; a company never holds one, so a value sent here is
+        // dropped rather than stored under a name nothing reads.
+        if (id === 'OPENAI_COMPATIBLE') continue;
         if (value === null) delete keys[id];
         else if (value) keys[id] = { enc: encryptSecret(value.trim()) };
       }
@@ -610,7 +745,11 @@ export interface AiRoute {
    * only honest source for that is the resolution that picked it.
    */
   keyFrom: KeySource;
-  /** Only for LOCAL: the server the owner runs. Null for a vendor. */
+  /**
+   * LOCAL: the server the owner runs. OPENAI_COMPATIBLE: the address that
+   * passed `parseCompatEndpoint` and that the stored key is bound to, or null
+   * when either fails. Null for a vendor.
+   */
   baseUrl?: string | null;
 }
 
@@ -653,7 +792,11 @@ async function routeFor(companyId: string, job?: string): Promise<AiRoute> {
   // saved as `claude-sonnet-4-5` would otherwise 404 on every call for ever.
   const model = liveModel(
     override?.model?.trim() ||
-      (chosen && chosen !== fallback
+      (provider === 'OPENAI_COMPATIBLE'
+        // The name the server answers to lives beside its address. The
+        // company's stamped model belongs to ANOTHER vendor and would 404.
+        ? sys.compat?.model || providerInfo(provider).defaultModel
+        : chosen && chosen !== fallback
         ? providerInfo(provider).defaultModel
         // The same order as the vendor above: the company's own model
         // first, because it is the narrower statement.
@@ -662,9 +805,25 @@ async function routeFor(companyId: string, job?: string): Promise<AiRoute> {
 
   let key: string | null = null;
   let keyFrom: KeySource = 'none';
-  // The installation's key for THIS vendor, then the company's own.
-  const fromSystem = sys.keys?.[provider]?.enc;
-  const fromCompany = ai.keys?.[provider]?.enc;
+  /*
+   * THE COMPATIBLE SERVER'S ADDRESS, JUDGED AGAIN AT THE CALL.
+   *
+   * The route checked it when it was saved; a document edited by hand does
+   * not pass through the route. And its key is used only while it is the key
+   * issued for THIS address — otherwise it would be sent to whatever host the
+   * address now names.
+   */
+  const compatChecked = provider === 'OPENAI_COMPATIBLE' && sys.compat?.baseUrl ? parseCompatEndpoint(sys.compat.baseUrl) : null;
+  const compatUrl = compatChecked && compatChecked.ok ? compatChecked.url : null;
+  // The installation's key for THIS vendor, then the company's own. The
+  // compatible server has no company key and no legacy one.
+  const fromSystem =
+    provider === 'OPENAI_COMPATIBLE'
+      ? compatUrl && compatKeyBound(sys)
+        ? sys.keys?.OPENAI_COMPATIBLE?.enc
+        : undefined
+      : sys.keys?.[provider]?.enc;
+  const fromCompany = provider === 'OPENAI_COMPATIBLE' ? undefined : ai.keys?.[provider]?.enc;
   const stored = fromSystem ?? fromCompany;
   if (stored) {
     try {
@@ -673,7 +832,7 @@ async function routeFor(companyId: string, job?: string): Promise<AiRoute> {
     } catch {
       key = null;
     }
-  } else if (provider === fallback && ai.apiKeyEncrypted) {
+  } else if (provider !== 'OPENAI_COMPATIBLE' && provider === fallback && ai.apiKeyEncrypted) {
     // The legacy single key belongs to whichever provider was the default
     // when it was entered — never handed to a vendor it was not issued by.
     try {
@@ -694,7 +853,7 @@ async function routeFor(companyId: string, job?: string): Promise<AiRoute> {
     model,
     key,
     keyFrom,
-    baseUrl: provider === 'LOCAL' ? sys.localBaseUrl ?? null : null,
+    baseUrl: provider === 'LOCAL' ? sys.localBaseUrl ?? null : compatUrl,
   };
 }
 
@@ -722,13 +881,22 @@ export interface RouteDescription {
   provider: AiProvider;
   model: string;
   keyFrom: KeySource;
-  /** The local server's address, when the route is LOCAL. Never a secret. */
+  /**
+   * The local server's address when the route is LOCAL. For the compatible
+   * server it is the HOST NAME ONLY: this description reaches every company
+   * that can open the AI screen, and the full address is the installation's.
+   */
   baseUrl: string | null;
 }
 
 export async function describeRoute(companyId: string, job?: string): Promise<RouteDescription> {
   const { provider, model, keyFrom, baseUrl } = await routeFor(companyId, job);
-  return { provider, model, keyFrom, baseUrl: baseUrl ?? null };
+  return {
+    provider,
+    model,
+    keyFrom,
+    baseUrl: provider === 'OPENAI_COMPATIBLE' ? (baseUrl ? hostOf(baseUrl) : null) : baseUrl ?? null,
+  };
 }
 
 /**
@@ -743,12 +911,29 @@ export async function describeRoute(companyId: string, job?: string): Promise<Ro
  * key goes up in a header and nothing sends it back. Trimmed to 300
  * characters so a vendor's HTML error page cannot become the message.
  */
-async function vendorError(res: Response, model: string): Promise<Error> {
+async function vendorError(res: Response, model: string, key?: string | null): Promise<Error> {
   let said = '';
   try {
-    said = (await res.text()).slice(0, 300);
+    // Bounded before it is scrubbed (a vendor's HTML page can be large) but NOT
+    // cut to the message length yet: a key that straddles character 300 would
+    // be cut in two, and neither half equals the key any more.
+    said = (await res.text()).slice(0, 20_000);
   } catch {
     said = '';
+  }
+  /*
+   * ── THE KEY WE SENT, BY ITS EXACT VALUE ──
+   *
+   * The patterns below know the shapes of the big vendors' keys. A gateway's
+   * key has no shape (`gw.…`, a bare token), and a server that echoes the
+   * request back would print it into the log. The key is known — it is the
+   * one this call carried — so every occurrence is removed by value, in the
+   * three spellings an echo takes: as it is, JSON-escaped, and URL-encoded.
+   * Shorter than 8 characters is not removed: that would eat ordinary words.
+   */
+  if (key && key.length >= 8) {
+    const spellings = new Set([key, JSON.stringify(key).slice(1, -1), encodeURIComponent(key)]);
+    for (const spelling of spellings) said = said.split(spelling).join('«مفتاح»');
   }
   /*
    * ── AND NOTHING KEY-SHAPED SURVIVES THE TRIP ──
@@ -770,7 +955,7 @@ async function vendorError(res: Response, model: string): Promise<Error> {
   const scrubbed = said
     .replace(/(sk|sk-ant|sk-or|sk-proj|ghp|gho|xox[baprs])[-_][A-Za-z0-9_-]{6,}/gi, '«مفتاح»')
     .replace(/(Bearer|x-api-key|api[-_]?key)\s*[:=]?\s*[A-Za-z0-9_\-.]{12,}/gi, '$1 «مفتاح»');
-  return new Error(`AI_HTTP_${res.status}|${model}|${scrubbed.replace(/\s+/g, ' ').trim()}`);
+  return new Error(`AI_HTTP_${res.status}|${model}|${scrubbed.replace(/\s+/g, ' ').trim().slice(0, 300)}`);
 }
 
 /**
@@ -918,7 +1103,10 @@ function imageContent(req: ChatRequest, shape: 'anthropic' | 'openai'): unknown 
 }
 
 /**
- * One call, three vendors.
+ * One call, five vendors — and exactly one of them, LOCAL, is ever allowed to
+ * receive a customer. The OpenAI-compatible server is an outside party: the
+ * two guards below (`localOnly` and the pii declaration) refuse it because it
+ * is not LOCAL, and there is deliberately no switch that makes it one.
  *
  * Anthropic's API differs enough to be worth naming: the system prompt is a
  * top-level field rather than a message, the key rides in `x-api-key`, and
@@ -978,9 +1166,15 @@ export async function aiChat(req: ChatRequest): Promise<string> {
    * cannot turn on. What it cannot do without is somewhere to send the
    * request.
    */
-  if (route.provider === 'LOCAL') {
+  if (route.provider === 'LOCAL' || route.provider === 'OPENAI_COMPATIBLE') {
+    // For the compatible server `baseUrl` is null when the stored address
+    // does not pass `parseCompatEndpoint` — judged here, at the call, and not
+    // only when it was saved.
     if (!route.baseUrl) throw new AiEndpointMissing();
-  } else if (!key) {
+  }
+  // Every vendor but LOCAL needs a key. A compatible server on the internet
+  // is a public https host: it carries one.
+  if (route.provider !== 'LOCAL' && !key) {
     throw new AiNotConfigured();
   }
 
@@ -1054,29 +1248,34 @@ export async function aiChat(req: ChatRequest): Promise<string> {
           ],
         }),
       });
-      if (!res.ok) throw await vendorError(res, route.model);
+      if (!res.ok) throw await vendorError(res, route.model, key);
       const data = await res.json();
       return data?.content?.[0]?.text ?? '';
     }
 
     /**
-     * OpenAI, OpenRouter and a local server all speak one shape, which is
-     * why the owner's own machine needs no adapter — only an address.
+     * OpenAI, OpenRouter, a local server and an OpenAI-compatible server all
+     * speak one shape, which is why the owner's own machine needs no adapter
+     * — only an address.
      *
-     * `route.baseUrl` reached here through `parseLocalEndpoint`, which is
-     * the only thing standing between this `fetch` and an address somebody
-     * typed. See `ai-endpoint.ts`.
+     * `route.baseUrl` reached here through `parseLocalEndpoint` (LOCAL) or
+     * `parseCompatEndpoint` (OPENAI_COMPATIBLE, judged again in `routeFor`),
+     * which are the only things standing between this `fetch` and an address
+     * somebody typed. See `ai-endpoint.ts`.
      */
     const url =
       route.provider === 'OPENAI'
         ? 'https://api.openai.com/v1/chat/completions'
-        : route.provider === 'LOCAL'
+        : route.provider === 'LOCAL' || route.provider === 'OPENAI_COMPATIBLE'
           ? chatCompletionsUrl(route.baseUrl as string)
           : 'https://openrouter.ai/api/v1/chat/completions';
 
     const res = await fetch(url, {
       method: 'POST',
       signal: controller.signal,
+      // A redirect from the compatible server is an error, not a hop: the
+      // body and the Bearer key would be replayed to wherever it points.
+      ...(route.provider === 'OPENAI_COMPATIBLE' ? { redirect: 'error' as const } : {}),
       headers: {
         'Content-Type': 'application/json',
         // A local server usually wants no key at all, and sending
@@ -1095,9 +1294,17 @@ export async function aiChat(req: ChatRequest): Promise<string> {
         ...(req.json ? { response_format: { type: 'json_object' } } : {}),
       }),
     });
-    if (!res.ok) throw await vendorError(res, route.model);
+    if (!res.ok) throw await vendorError(res, route.model, key);
     const data = await res.json();
-    return data?.choices?.[0]?.message?.content ?? '';
+    const content = data?.choices?.[0]?.message?.content ?? '';
+    // A reasoning model behind a server with no reasoning parser answers with
+    // its thinking in front of the answer, and `JSON.parse` of that fails.
+    // Only the compatible server, only one leading block — and only when the
+    // content IS text: a gateway may return an array of parts, which has no
+    // `replace` and is handed back untouched as every other vendor's is.
+    return route.provider === 'OPENAI_COMPATIBLE' && typeof content === 'string'
+      ? content.replace(/^\s*<think>[\s\S]*?<\/think>\s*/, '')
+      : content;
   } finally {
     clearTimeout(timer);
   }

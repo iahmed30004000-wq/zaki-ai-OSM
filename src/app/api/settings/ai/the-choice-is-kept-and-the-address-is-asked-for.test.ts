@@ -137,3 +137,50 @@ describe('«نموذج على خادمك»', () => {
     expect(body.error).toBe('اكتب عنوان الخادم الذي يشغّل النموذج قبل اختياره مزوّداً.');
   });
 });
+
+describe('«خادم متوافق مع OpenAI»', () => {
+  it('is accepted once the installation has an address for it', async () => {
+    systemAi.mockResolvedValue({
+      provider: 'OPENROUTER',
+      localBaseUrl: null,
+      compat: { baseUrl: 'https://models.example.com/v1', host: 'models.example.com', model: 'glm-4.6' },
+    });
+    const res = await put({ ...BASE, provider: 'OPENAI_COMPATIBLE' });
+    expect(res.status, await res.clone().text()).toBeLessThan(400);
+    expect(saveAiSettings.mock.calls[0][1].provider).toBe('OPENAI_COMPATIBLE');
+  });
+
+  it('and refused without one, in words, before anything is stored', async () => {
+    systemAi.mockResolvedValue({
+      provider: 'OPENROUTER',
+      localBaseUrl: null,
+      compat: { baseUrl: null, host: null, model: null },
+    });
+    const res = await put({ ...BASE, provider: 'OPENAI_COMPATIBLE' });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.code).toBe('ENDPOINT_REQUIRED');
+    expect(body.error).toBe('اكتب عنوان الخادم الذي يشغّل النموذج قبل اختياره مزوّداً.');
+    expect(saveAiSettings, 'انحفظ مزوّد بلا عنوان').not.toHaveBeenCalled();
+  });
+
+  it('and this door never takes its address, its name or a declaration — the schema has no such field', async () => {
+    systemAi.mockResolvedValue({
+      provider: 'OPENROUTER',
+      localBaseUrl: null,
+      compat: { baseUrl: 'https://models.example.com/v1', host: 'models.example.com', model: 'glm-4.6' },
+    });
+    await put({
+      ...BASE,
+      provider: 'OPENAI_COMPATIBLE',
+      compatBaseUrl: 'https://evil.example.net/v1',
+      compatModel: 'x',
+      compatOwnServer: true,
+      ownServer: true,
+    });
+    const sent = saveAiSettings.mock.calls[0][1];
+    expect(Object.keys(sent).filter((k) => /compat|ownServer/i.test(k))).toEqual([]);
+  });
+});
+

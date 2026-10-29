@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useAsk } from '@/components/ui/Confirm';
 import { apiFetch, apiJson } from '@/lib/api-client';
@@ -205,17 +205,28 @@ export function ShipmentsNewScreen() {
     }
   };
 
+  /*
+   * THE LATEST QUESTION WINS (RV34).
+   *
+   * The search box fires a load a quarter-second after each keystroke, and a slow answer to an older question could land
+   * after the newer one — the list then showed an old result beside a newer search. Each load takes a number, and only
+   * the newest number may write to the screen.
+   */
+  const loadSeq = useRef(0);
   const load = useCallback(async () => {
+    const mine = ++loadSeq.current;
     setError(null);
     const q = new URLSearchParams();
     Object.entries(filters).forEach(([k, v]) => v && q.set(k, v));
     if (view === 'held') q.set('held', 'only');
     try {
       const data = await apiJson<{ orders: Row[]; heldCount?: number }>(`/api/ops/shipments?${q}`);
+      if (mine !== loadSeq.current) return;
       setRows(data.orders);
       setHeldCount(data.heldCount ?? 0);
       setSelected({});
     } catch (e) {
+      if (mine !== loadSeq.current) return;
       setError(e instanceof Error ? e.message : 'تعذر التحميل');
     }
   }, [filters, view]);
@@ -541,6 +552,7 @@ ${describeRefused(out.refused)}`,
             {label}
             {k === 'held' && heldCount > 0 && (
               <span
+                title="كل المؤجَّل بالمتجر — مش حسب البحث"
                 className={`ms-1.5 rounded-full px-1.5 py-0.5 text-xs font-bold tabular-nums ${
                   view === k
                     ? 'bg-[var(--sys-primary-foreground)]/20'
