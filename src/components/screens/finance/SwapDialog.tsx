@@ -85,7 +85,7 @@ export function SwapDialog({ statementId, matchId, reference, amount, currency, 
         onClick={() => setOpen(true)}
         className="min-h-11 md:min-h-0 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:border-[var(--sys-warning)] hover:text-[var(--sys-warning)]"
       >
-        <RiArrowLeftRightLine className="h-4 w-4" />
+        <RiArrowLeftRightLine className="icon-mirror h-4 w-4" />
         كان من طرد طلب آخر
       </button>
 
