@@ -189,7 +189,10 @@ describe('the half that cannot work is not offered', () => {
 
   it('the list runs the same guard the door does, not a copy of its rule', () => {
     const src = list();
-    expect(src).toContain('assertCancellable(order as unknown as StateSource)');
+    // (old → new, M6) The door asks `cancelVerdict` with the trolley's status now, and so does
+    // the list — a printed waybill no longer blocks the cancel, only a trolley that was pressed.
+    expect(src).toMatch(/cancelVerdict\(\{/);
+    expect(src).not.toContain('assertCancellable');
     expect(src).toContain('standDownBlocked');
     // The fields that guard reads have to be selected, or it always allows.
     expect(src, 'الحارس يقرأ حقولاً غير مُحمَّلة').toContain('labelPrintedAt: true');
@@ -199,8 +202,9 @@ describe('the half that cannot work is not offered', () => {
    * AND THE VERDICT MOVED TO THE CONTROL IT ACTUALLY GOVERNS.
    *
    * It used to disable half of the postpone dialog. That half is gone, but
-   * the rule it carries was always about CANCELLING: `assertCancellable` is
-   * what the stand-down door runs and a printed waybill is what it refuses.
+   * the rule it carries was always about CANCELLING: `cancelVerdict` is what the
+   * stand-down door runs (since M6 it refuses a trolley that was pressed, no
+   * longer a printed waybill).
    * Spending it on the postpone button left the cancel button offering
    * something the door would refuse — measured: two of five rows here
    * already had a label printed.

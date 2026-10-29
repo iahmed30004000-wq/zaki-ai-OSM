@@ -35,11 +35,23 @@ import { stripComments } from '../guard-source';
 
 const SRC = join(process.cwd(), 'src');
 
-/** The three places an order's life actually changes. */
+/**
+ * The places an order's life actually changes.
+ *
+ * ADDED (28/10, additive only — the contract and the envelope are untouched):
+ *   · `lib/order-cancel.ts` — `order.cancelled`, from the ONE helper every cancel door goes through
+ *     (before, the confirmation and shipping doors each announced a cancel of their own and the
+ *     other four never did). It carries the shipping golden payload for a parcel that had a
+ *     shipping life, and the confirmation one otherwise — never REJECTED.
+ *   · `app/api/shipping-batches/[id]/route.ts` — `order.shipped`, one per parcel, when the press of
+ *     «إغلاق الشحنة — سُلّمت للشركة» hands the trolley over (it stamped the parcels and told nobody).
+ */
 const ALLOWED = [
   'lib/public-order.ts',
+  'lib/order-cancel.ts',
   'app/api/orders/[id]/confirmation/route.ts',
   'app/api/orders/[id]/shipping/route.ts',
+  'app/api/shipping-batches/[id]/route.ts',
 ].sort();
 
 function sources(dir: string, out: string[] = []): string[] {
@@ -94,7 +106,7 @@ describe('every place an app event is announced from', () => {
     expect(all.length, 'لم يُعثَر على أيّ نداء — المسح لا يمسح').toBeGreaterThanOrEqual(3);
   });
 
-  it('and they are exactly the three the contract was written for', () => {
+  it('and they are exactly the five the contract was written for (the three it began with, and the two that announce a cancel and a handover)', () => {
     const files = [...new Set(all.map((s) => s.file))].sort();
     expect(
       files,

@@ -7,11 +7,13 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { shipmentBlocks } from '@/lib/operations';
 import { codForOrder, resolveDeliveryFee } from '@/lib/delivery-fees';
-import { assertCancellable, assertReadyToShip, type StateSource } from '@/lib/order-state';
+import { assertReadyToShip, type StateSource } from '@/lib/order-state';
+import { cancelVerdict } from '@/lib/shipment-cancel';
+import { batchStatusOf } from '@/lib/order-cancel';
 import { zodMessage } from '@/lib/zod-message';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { orderSearchOr } from '@/lib/order-filters';
-import { BATCHABLE_SHIPPING, whyNotBatchable } from '@/lib/batching-guard';
+import { BATCHABLE_SHIPPING, HELD_PACKED_PARCEL, WAITING_FOR_A_TROLLEY, whyNotBatchable } from '@/lib/batching-guard';
 
 /**
  * Shipment creation.
@@ -76,12 +78,23 @@ export async function GET(req: Request) {
         companyId,
         storeId,
         confirmationStatus: 'CONFIRMED',
-        shippingStatus: { in: ['NOT_READY', 'PACKING', 'READY_FOR_SHIPPING'] },
         // Held back by hand: the customer asked for it not to go out yet.
         // A hold with no date is open-ended and only ends when released.
-        ...(held === 'only'
-          ? { shipHoldUntil: { not: null } }
-          : { OR: [{ shipHoldUntil: null }, { shipHoldUntil: { lte: new Date() } }] }),
+        //
+        // TWO KINDS OF PARCEL WAIT FOR A TROLLEY, as two branches: one not yet packed, and one PACKED (still
+        // READY_FOR_PICKUP) that «أجّل الشحن» took off a trolley. The second keeps its status, because that status
+        // is the fact «the box is packed»; its hold date is what tells it from one an agent handed back.
+        // «المؤجَّلة»: every branch below is held, and the column says so at the top too.
+        ...(held === 'only' ? { shipHoldUntil: { not: null } } : {}),
+        OR: [
+          {
+            shippingStatus: { in: [...WAITING_FOR_A_TROLLEY] },
+            ...(held === 'only'
+              ? { shipHoldUntil: { not: null } }
+              : { OR: [{ shipHoldUntil: null }, { shipHoldUntil: { lte: new Date() } }] }),
+          },
+          held === 'only' ? HELD_PACKED_PARCEL : { ...HELD_PACKED_PARCEL, shipHoldUntil: { lte: new Date() } },
+        ],
         ...(regionId ? { regionId } : {}),
         ...(productId ? { items: { some: { productId } } } : {}),
         // ANDed as its own clause, not spread: the where above already has
@@ -109,6 +122,12 @@ export async function GET(req: Request) {
         addOns: { select: { quantity: true, price: true } },
       },
     });
+
+    // The trolleys these orders sit on, read once: `cancelVerdict` needs the status of each.
+    const batchStatuses = new Map<string, string | null>();
+    for (const batchId of new Set(orders.map((o) => o.shippingBatchId).filter((v): v is string => !!v))) {
+      batchStatuses.set(batchId, await batchStatusOf(db, batchId));
+    }
 
     const rows = [];
     for (const order of orders) {
@@ -148,19 +167,25 @@ export async function GET(req: Request) {
         /**
          * CAN THIS ORDER STILL BE STOOD DOWN?
          *
-         * Measured on this database: two of the five candidate rows already
-         * had a printed waybill. The delay dialog offered «أعِده إلى
-         * المتابعة» on them and the door refused every time — a control that
-         * always fails teaches people the screen is lying, which is worse
-         * than not offering it.
+         * A control that always fails teaches people the screen is lying, so
+         * the row says in advance what the door will answer. It asks
+         * `cancelVerdict`, the same function the door itself uses, so the row
+         * and the refusal can never disagree.
          *
-         * The answer comes from `assertCancellable`, the same function the
-         * door itself calls, so the row and the refusal can never disagree.
-         * The hold half stays available: a printed label does not stop us
-         * keeping the parcel back, only from un-confirming the sale.
+         * Until «إغلاق الشحنة — سُلّمت للشركة» the answer is YES even for a
+         * parcel with a printed waybill (M6): the door then asks for the
+         * person's word that the box was opened. Only a parcel the courier
+         * has taken is blocked here.
          */
         standDownBlocked: (() => {
-          const verdict = assertCancellable(order as unknown as StateSource);
+          const verdict = cancelVerdict({
+            confirmationStatus: order.confirmationStatus,
+            shippingStatus: order.shippingStatus,
+            shippedAt: order.shippedAt,
+            labelPrintedAt: order.labelPrintedAt,
+            shippingBatchId: order.shippingBatchId,
+            batchStatus: batchStatuses.get(order.shippingBatchId ?? '') ?? null,
+          });
           return verdict.allowed ? null : { code: verdict.code, message: verdict.message };
         })(),
       });
@@ -177,7 +202,7 @@ export async function GET(req: Request) {
         companyId,
         storeId,
         confirmationStatus: 'CONFIRMED',
-        shippingStatus: { in: ['NOT_READY', 'PACKING', 'READY_FOR_SHIPPING'] },
+        OR: [{ shippingStatus: { in: [...WAITING_FOR_A_TROLLEY] } }, HELD_PACKED_PARCEL],
         shipHoldUntil: { not: null },
       },
     });
@@ -223,7 +248,7 @@ export async function POST(req: Request) {
       select: {
         id: true, orderNumber: true, companyId: true, storeId: true, customerId: true, regionId: true,
         confirmationStatus: true, shippingStatus: true, shippedAt: true, priceIncludesDelivery: true,
-        deliveryProviderId: true, version: true, shippingBatchId: true, labelPrintedAt: true,
+        deliveryProviderId: true, version: true, shippingBatchId: true, labelPrintedAt: true, shipHoldUntil: true,
         items: { select: { quantity: true, freeQuantity: true, reservedQty: true, unitPrice: true, discountShare: true } },
         // The upsell the customer accepted. Without it, the snapshot below
         // rebuilt the total from the lines alone and the add-on was never
@@ -322,7 +347,8 @@ export async function POST(req: Request) {
               id: order.id,
               version: order.version,
               shippingBatchId: null,
-              shippingStatus: { in: [...BATCHABLE_SHIPPING] },
+              // A packed parcel that «أجّل الشحن» took off a trolley is batchable again: only with its hold date.
+              shippingStatus: { in: [...BATCHABLE_SHIPPING, ...(order.shipHoldUntil ? ['READY_FOR_PICKUP'] : [])] },
             },
             data: {
               shippingBatchId: created.id,

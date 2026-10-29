@@ -33,20 +33,39 @@ describe('1 · zone is derived, never stored', () => {
 });
 
 describe('3 · the reservation is released in the SAME transaction', () => {
-  const DOORS = [
+  /** Doors that release for themselves. */
+  const OWN = [
+    'src/app/api/confirmation/issues/[id]/route.ts',
+    'src/app/api/ops/shipments/hold/route.ts',
+  ];
+  /**
+   * Doors that END an order. They used to release for themselves, five different
+   * ways (and the shipping screen's CANCELLED not at all). They go through ONE
+   * helper now, `endOrder`, which releases inside its own transaction — so what
+   * is asserted is that each of them calls it, and that the helper passes `tx`.
+   */
+  const THROUGH_THE_HELPER = [
     'src/app/api/orders/[id]/route.ts',
     'src/app/api/orders/[id]/confirmation/route.ts',
     'src/app/api/orders/[id]/contact-attempts/route.ts',
-    'src/app/api/confirmation/issues/[id]/route.ts',
-    'src/app/api/ops/shipments/hold/route.ts',
+    'src/app/api/orders/[id]/shipping/route.ts',
     'src/app/api/ops/shipments/stand-down/route.ts',
   ];
 
-  it.each(DOORS)('%s releases, and passes a transaction', (door) => {
+  it.each(OWN)('%s releases, and passes a transaction', (door) => {
     const src = stripComments(repoFile(door));
     // `tx` and not `db`: a release outside the transaction that cancels the
     // order can commit while the cancel rolls back, and the stock is freed
     // for an order that still exists.
+    expect(src).toMatch(/releaseOrderLines\(tx,/);
+  });
+
+  it.each(THROUGH_THE_HELPER)('%s ends an order through the one helper', (door) => {
+    expect(stripComments(repoFile(door))).toMatch(/endOrder\(\{/);
+  });
+
+  it('and the helper releases inside the transaction it writes the ending in', () => {
+    const src = stripComments(repoFile('src/lib/order-cancel.ts'));
     expect(src).toMatch(/releaseOrderLines\(tx,/);
   });
 

@@ -7,8 +7,8 @@ import { authorises } from '@/lib/change-request-apply';
 import { apiErrorResponse } from '@/lib/api-error';
 import { zodMessage } from '@/lib/zod-message';
 import { logAudit } from '@/lib/audit';
-import { releaseOrderLines } from '@/lib/reservation';
-import { assertCancellable, type StateSource } from '@/lib/order-state';
+import { cancelVerdict } from '@/lib/shipment-cancel';
+import { batchStatusOf, endOrder } from '@/lib/order-cancel';
 import { REJECTION_REASONS } from '@/lib/confirmation-workflow';
 import { courierCancelCarryOut } from '@/lib/courier-cancel-carryout';
 import { notify } from '@/lib/notify';
@@ -39,6 +39,16 @@ import { notify } from '@/lib/notify';
  * CANCELLED, VOIDED, unconfirm» — and the reason for it is plain: stock held
  * by an order that is not going anywhere is stock the next customer is told
  * we do not have.
+ *
+ * ── UNTIL «إغلاق الشحنة — سُلّمت للشركة» (M6, 28/10) ──
+ *
+ * Both outcomes are possible for as long as the parcel is ours: labelled, on
+ * the pickup shelf, even on a trolley that has not been pressed. They go
+ * through `endOrder` — the one helper every cancel door uses — which takes
+ * the order off the trolley, asks the company to cancel a barcode it already
+ * holds, and counts packed goods back only on a person's word
+ * (`parcelInHand`). Only after the press does a cancel become a message to
+ * the company instead.
  */
 
 const schema = z.object({
@@ -65,6 +75,14 @@ const schema = z.object({
    * with the name of whoever made it, same as the edit path's.
    */
   courierNotified: z.literal(true).optional(),
+  /**
+   * «الطرد بين يديّ — فككتُه وأعدتُ قطعه للرف وأتلفتُ بوليصته». Required when
+   * the parcel is labelled or on the pickup shelf: its goods are packed under
+   * this order's name, and counting them back without anyone having opened
+   * the box invents stock. A statement, recorded with the name of whoever
+   * made it — not a permission.
+   */
+  parcelInHand: z.literal(true).optional(),
 });
 
 export async function POST(req: Request) {
@@ -75,7 +93,7 @@ export async function POST(req: Request) {
     if (!parsed.success) {
       return NextResponse.json({ error: zodMessage(parsed.error) }, { status: 400 });
     }
-    const { orderId, outcome, note, changeRequestId, courierNotified } = parsed.data;
+    const { orderId, outcome, note, changeRequestId, courierNotified, parcelInHand } = parsed.data;
     let { until, reason } = parsed.data;
 
     /**
@@ -144,14 +162,22 @@ export async function POST(req: Request) {
     if (!order) return NextResponse.json({ error: 'الطلب غير موجود' }, { status: 404 });
 
     /**
-     * NOT AFTER IT HAS LEFT.
+     * NOT AFTER THE COURIER HAS TAKEN IT.
      *
-     * Once the parcel is with the courier this is no longer a decision about
-     * a shipment — it is a return, counted and inspected when it comes back.
-     * The same guard the cancel path already uses, so the two cannot drift.
+     * The line is the press of «إغلاق الشحنة — سُلّمت للشركة», not the
+     * printer: until then the box is on our floor. Once the company has the
+     * parcel this is no longer a decision about a shipment — it is a message
+     * to them and a return, counted and inspected when it comes back.
      */
-    const cancellable = assertCancellable(order as unknown as StateSource);
-    if (!cancellable.allowed) {
+    const gate = cancelVerdict({
+      confirmationStatus: order.confirmationStatus,
+      shippingStatus: order.shippingStatus,
+      shippedAt: order.shippedAt,
+      labelPrintedAt: order.labelPrintedAt,
+      shippingBatchId: order.shippingBatchId,
+      batchStatus: await batchStatusOf(db, order.shippingBatchId),
+    });
+    if (!gate.allowed) {
       /*
        * AN APPROVED CANCEL IS NOT A DEAD END.
        *
@@ -162,8 +188,14 @@ export async function POST(req: Request) {
        * the company; once a person says it was sent, the request is marked
        * carried out. The order itself is untouched and the goods come back
        * through the returns door, counted. Anything else keeps the refusal.
+       *
+       * ONLY WHEN THE COMPANY HAS THE PARCEL. A trolley that has not been
+       * pressed is still ours: that case never reaches here, because the
+       * gate allows it. The old version let «أبلغتُهم» mark a request carried
+       * out while the parcel still stood on our trolley — which hid the
+       * request from the press and sent a cancelled parcel.
        */
-      if (viaRequest && outcome === 'CANCEL') {
+      if (viaRequest && outcome === 'CANCEL' && gate.code === 'CANCEL_AFTER_SHIPPED') {
         const out = await courierCancelCarryOut({
           companyId, storeId, user, courierNotified: courierNotified === true,
           order: {
@@ -174,7 +206,7 @@ export async function POST(req: Request) {
         });
         return NextResponse.json(out.body, { status: out.status });
       }
-      return NextResponse.json({ error: cancellable.message, code: cancellable.code }, { status: 409 });
+      return NextResponse.json({ error: gate.message, errorAr: gate.message, code: gate.code }, { status: 409 });
     }
 
     if (order.confirmationStatus !== 'CONFIRMED') {
@@ -215,8 +247,6 @@ export async function POST(req: Request) {
         lockedById: null,
         lockedAt: null,
         signatureStatus: 'UNSIGNED',
-        shippingStatus: 'NOT_READY',
-        version: { increment: 1 },
       };
       auditAction = 'SHIPMENT_STOOD_DOWN_POSTPONED';
       noteBody = `أُوقف شحنه وأُعيد إلى المتابعة حتى ${due.toISOString().slice(0, 10)}${note ? ` — ${note}` : ''}`;
@@ -228,69 +258,52 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'سبب «أخرى» يحتاج ملاحظة تشرحه' }, { status: 400 });
       }
       data = {
-        confirmationStatus: 'REJECTED',
-        status: 'REJECTED',
-        rejectionReason: reason,
-        rejectionNote: note?.trim() || null,
         claimedById: null,
         claimedAt: null,
         currentOwnerId: null,
         lockedById: null,
         lockedAt: null,
-        shippingStatus: 'NOT_READY',
-        version: { increment: 1 },
       };
       auditAction = 'SHIPMENT_STOOD_DOWN_CANCELLED';
       noteBody = `أُلغي قبل الشحن (${reason})${note ? ` — ${note}` : ''}`;
     }
 
-    await db.$transaction(async (tx) => {
-      const res = await tx.order.updateMany({
-        where: { id: order.id, companyId, version: order.version },
-        data,
-      });
-      if (res.count !== 1) throw new Error('VERSION_CONFLICT');
-
-      // The contract's rule, in the same transaction as the decision: stock
-      // held by an order that is not going anywhere is stock the next
-      // customer is told we do not have.
-      await releaseOrderLines(tx, order.id);
-
-      await tx.orderStatusLog.create({
-        data: {
-          companyId, orderId: order.id, statusType: 'CONFIRMATION',
-          previousValue: 'CONFIRMED',
-          newValue: outcome === 'POSTPONE' ? 'POSTPONED' : 'REJECTED',
-          changedById: user.id, changedByRole: user.role,
-          note: noteBody,
-        },
-      });
-      await tx.orderNote.create({
-        data: {
-          companyId,
-          orderId: order.id,
-          authorId: user.id,
-          kind: 'internal',
-          // Whose ask this was. A cancellation that appears on an order
-          // with only the deciding manager's name on it loses the agent's
-          // sentence — and her sentence is the only record of what the
-          // customer actually said.
-          body: viaRequest ? `${noteBody} — بناءً على طلب: ${viaRequest.reason}` : noteBody,
-        },
-      });
-
-      /**
-       * ONCE. `appliedAt: null` in the filter makes a second, concurrent
-       * carry-out a no-op — the same guard the edit path uses, for the same
-       * reason: two presses must not cancel an order twice.
-       */
-      if (viaRequest) {
-        await tx.orderChangeRequest.updateMany({
-          where: { id: viaRequest.id, appliedAt: null },
-          data: { appliedAt: new Date(), appliedById: user.id },
-        });
-      }
+    /**
+     * ONE HELPER, ONE END STATE, ONE TRANSACTION.
+     *
+     * The conditional write (version, trolley, barcode, claim), the release
+     * of the reservation, the status logs, the customer's count, the
+     * activity «أُخرج من الدفعة» and the event for System 7 all live in
+     * `endOrder` — the same place the confirmation's cancel, the shipping
+     * screen's CANCELLED, the PATCH and the automatic close go through, so
+     * they cannot end an order five different ways.
+     */
+    const ended = await endOrder({
+      orderId: order.id,
+      companyId,
+      storeId,
+      by: { id: user.id, name: user.name, role: user.role },
+      door: 'STAND_DOWN',
+      kind: outcome === 'POSTPONE' ? 'FOLLOW_UP' : 'CANCEL',
+      endAs: 'CANCELLED',
+      reason: outcome === 'CANCEL' ? reason : undefined,
+      rejectionNote: outcome === 'CANCEL' ? note?.trim() || null : undefined,
+      data,
+      logNote: noteBody,
+      // Whose ask this was. A cancellation that appears on an order with only
+      // the deciding manager's name on it loses the agent's sentence — and
+      // her sentence is the only record of what the customer actually said.
+      noteBody: viaRequest ? `${noteBody} — بناءً على طلب: ${viaRequest.reason}` : noteBody,
+      expectedVersion: order.version,
+      parcelInHand: parcelInHand === true,
+      viaRequest,
     });
+    if (!ended.ok) {
+      return NextResponse.json(
+        { error: ended.error, errorAr: ended.error, code: ended.code, ...(ended.attestation ? { attestation: ended.attestation } : {}) },
+        { status: ended.status }
+      );
+    }
 
     /**
      * AND THE PERSON WHO ASKED HEARS THAT IT IS DONE.

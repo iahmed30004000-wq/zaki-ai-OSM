@@ -3,7 +3,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAsk } from '@/components/ui/Confirm';
-import { apiJson } from '@/lib/api-client';
+import { apiFetch, apiJson } from '@/lib/api-client';
+import { ATTESTATION_AR } from '@/lib/shipment-cancel';
 import { CustomerHistoryButton } from '@/components/orders/CustomerHistory';
 import { ScreenTitle } from '@/components/shell/ScreenTitle';
 import { RiAlertLine, RiArrowGoBackLine, RiCloseCircleLine, RiLoader4Line, RiPauseCircleLine, RiTruckLine } from '@remixicon/react';
@@ -121,15 +122,35 @@ export function ShipmentsNewScreen() {
    */
   const standDown = async (
     row: Row,
-    body: { outcome: 'CANCEL'; reason: string; note: string }
+    body: { outcome: 'CANCEL'; reason: string; note: string },
+    parcelInHand = false
   ) => {
     setStandingDown(row.id);
     try {
-      await apiJson('/api/ops/shipments/stand-down', {
+      const res = await apiFetch('/api/ops/shipments/stand-down', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: row.id, ...body }),
+        body: JSON.stringify({ orderId: row.id, ...body, ...(parcelInHand ? { parcelInHand: true } : {}) }),
       });
+      const answer = await res.json().catch(() => ({}));
+      /*
+       * A PACKED PARCEL (waybill printed, or on the pickup shelf): its goods
+       * go back on the shelf only on this person's word that the box was
+       * opened. The server names the sentence; the same press is repeated
+       * with it, recorded with the name of whoever said it.
+       */
+      if (!res.ok && answer?.code === 'ATTESTATION_REQUIRED') {
+        setStandingDown(null);
+        const said = await confirm({
+          title: `الطرد ${row.orderNumber} مطبوعة بوليصته`,
+          body: answer.attestation ?? ATTESTATION_AR,
+          confirmLabel: 'أؤكد',
+          tone: 'danger',
+        });
+        if (said) await standDown(row, body, true);
+        return;
+      }
+      if (!res.ok) throw new Error(answer?.errorAr || answer?.error || 'تعذّر التنفيذ');
       toast.done(`${row.orderNumber} أُلغي — وبضاعته رجعت للبيع`);
       await load();
     } catch (e) {
@@ -689,11 +710,11 @@ ${describeRefused(out.refused)}`,
                     /* THE VERDICT BELONGS TO THIS CONTROL NOW.
                        It was spent disabling half of the postpone dialog,
                        and that half is gone — but the rule it carries was
-                       always about CANCELLING: `assertCancellable` is what
-                       the stand-down door runs, and a printed waybill is
-                       what it refuses. Two of five rows measured on this
-                       database already had one, so the button failed every
-                       time it was pressed on them. */
+                       always about CANCELLING: `cancelVerdict` is what the
+                       stand-down door runs. Since M6 a printed waybill no
+                       longer blocks it (the door asks for the person's word
+                       that the box was opened); only a parcel the courier
+                       has taken does. */
                     title={r.standDownBlocked?.message ?? 'ألغِ الطلب — تعود بضاعتُه للبيع'}
                     className="min-h-11 md:min-h-0 ms-1 inline-flex items-center gap-1 rounded-md border border-[var(--sys-border)] px-2 py-1 text-xs text-[var(--sys-muted-foreground)] transition-colors hover:border-[var(--sys-destructive-border)] hover:text-[var(--sys-destructive)] disabled:opacity-50"
                   >

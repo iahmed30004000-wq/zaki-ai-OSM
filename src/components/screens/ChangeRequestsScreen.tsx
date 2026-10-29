@@ -7,6 +7,7 @@ import { ChangeRequestReview } from '@/components/orders/ChangeRequestReview';
 import { useConfirm, useTell } from '@/components/ui/Confirm';
 import { changeFieldLabel } from '@/lib/change-request-fields';
 import { INTENT_AR, type ChangeIntent } from '@/lib/change-request-intent';
+import { ATTESTATION_AR } from '@/lib/shipment-cancel';
 import { REJECTION_REASON_AR } from '@/lib/confirmation-workflow';
 import { deriveCoreState } from '@/lib/order-state';
 import { OrderStateChip } from '@/components/ui/StatusChip';
@@ -149,7 +150,7 @@ export function ChangeRequestsScreen() {
     EDIT_ORDER: 'طبّق التعديل على الطلب',
     CANCEL_ORDER: 'ألغِ الطلب',
     CANCEL_VIA_COURIER: 'أبلغ شركة الشحن بالإلغاء',
-    HOLD_SHIPMENT: 'أجّل الطلب',
+    HOLD_SHIPMENT: 'أجّل الشحن',
   };
 
   async function apply(r: ChangeRequest) {
@@ -168,9 +169,9 @@ export function ChangeRequestsScreen() {
           ? r.carryOut?.kind === 'CANCEL_VIA_COURIER'
             ? 'الطرد عند شركة الشحن: ستظهر لك رسالة جاهزة لها لتوقف الطرد. الطلب يبقى كما هو، ويرجع الطرد عبر المرتجعات ويتعدّ.'
             : `سبب الإلغاء: ${REJECTION_REASON_AR[r.cancelReason ?? ''] ?? r.cancelReason ?? '—'}\n\n` +
-              'تعود البضاعةُ المحجوزة إلى المخزون في المعاملة نفسها.'
-          : `يُؤجَّل حتى ${String(r.postponeUntil ?? '').slice(0, 10)}\n\n` +
-            'يعود الطلبُ إلى المتابعة ويظهر لمن يكون فارغاً يومَها، وتعود بضاعتُه إلى المخزون.';
+              'تعود البضاعةُ المحجوزة إلى المخزون في المعاملة نفسها. وإن كانت بوليصتُه مطبوعة سنسألك إن كان الطرد بين يديك.'
+          : `يُؤجَّل الشحن حتى ${String(r.postponeUntil ?? '').slice(0, 10)}\n\n` +
+            'يبقى الطلب مؤكَّداً وتبقى بضاعتُه وبوليصتُه، ويخرج من الدفعة المفتوحة ويعود إلى قائمة الشحن يومَه.';
 
     const ok = await confirm({
       title: `${CARRY_LABEL[r.carryOut?.kind] ?? 'نفِّذ'} — ${r.order.orderNumber}؟`,
@@ -191,24 +192,54 @@ export function ChangeRequestsScreen() {
    * A cancellation or a postponement, through the door that does it.
    *
    * The id and nothing else: the date and the structured reason come from
-   * the approved request, on the server. `assertCancellable` still refuses
-   * once the goods have left — and its refusal is the message to the
-   * courier, which is the real remedy there.
+   * the approved request, on the server. Once the courier has the parcel
+   * (the press of «إغلاق الشحنة — سُلّمت للشركة») the door refuses — and its
+   * refusal is the message to the courier, which is the real remedy there.
    */
-  async function standDown(r: ChangeRequest, intent: ChangeIntent, courierNotified = false) {
+  async function standDown(r: ChangeRequest, intent: ChangeIntent, courierNotified = false, parcelInHand = false) {
     setApplying(r.id);
     try {
-      const res = await apiFetch('/api/ops/shipments/stand-down', {
+      /*
+       * A POSTPONEMENT IS A HOLD, A CANCELLATION IS A STAND-DOWN.
+       *
+       * «أأجلو» means the customer still wants it, on a later day: the order
+       * stays confirmed, its goods and waybill stay, and it leaves the open
+       * trolley (`/api/ops/shipments/hold`). The stand-down's POSTPONE sends
+       * the order back to the confirmation desk to be called again — a second
+       * call the customer did not ask for.
+       */
+      const res = await apiFetch(intent === 'CANCEL' ? '/api/ops/shipments/stand-down' : '/api/ops/shipments/hold', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderId: r.order.id,
-          outcome: intent === 'CANCEL' ? 'CANCEL' : 'POSTPONE',
-          changeRequestId: r.id,
-          ...(courierNotified ? { courierNotified: true } : {}),
-        }),
+        body: JSON.stringify(
+          intent === 'CANCEL'
+            ? {
+                orderId: r.order.id,
+                outcome: 'CANCEL',
+                changeRequestId: r.id,
+                ...(courierNotified ? { courierNotified: true } : {}),
+                ...(parcelInHand ? { parcelInHand: true } : {}),
+              }
+            : { orderId: r.order.id, changeRequestId: r.id }
+        ),
       });
       const body = await res.json().catch(() => ({}));
+      /*
+       * A PACKED PARCEL: the units come back on a person's word. The server
+       * names the sentence; the person ticks it, by name, and the same press
+       * is repeated with it.
+       */
+      if (!res.ok && body?.code === 'ATTESTATION_REQUIRED') {
+        setApplying(null);
+        const said = await confirm({
+          title: `الطرد ${r.order.orderNumber} مطبوعة بوليصته`,
+          body: `${body.attestation ?? ATTESTATION_AR}\n\nبتأكيدك ينسجَّل اسمك على الطلب وتعود قطعه للمخزون.`,
+          confirmLabel: 'أؤكد',
+          tone: 'danger',
+        });
+        if (said) await standDown(r, intent, courierNotified, true);
+        return;
+      }
       /*
        * A PARCEL THE COMPANY HOLDS: the answer is the message to send them,
        * not a refusal. The same dialog the edit path uses, and the same two

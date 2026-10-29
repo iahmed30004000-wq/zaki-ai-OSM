@@ -124,6 +124,13 @@ const WRITERS = [
 const READS_ONLY: Record<string, string> = {
   'src/app/api/confirmation/postponed/route.ts': 'يعرض إجمالي الطلب في قائمة',
   /*
+   * THE ONE HELPER THAT ENDS AN ORDER. It READS `totalAmount` to put it in the
+   * `order.cancelled` event and writes no figure of any order: its update sets a
+   * status, takes the parcel off its trolley and clears the waybill — the COD
+   * snapshot (`totalAmount`, `deliveryFee`) is left exactly as it was.
+   */
+  'src/lib/order-cancel.ts': 'يقرأ إجمالي الطلب ليعلنه في حدث الإلغاء، ولا يكتب مالاً',
+  /*
    * `src/app/api/customers/route.ts` was here. It left the sweep on
    * 2026-10-02: it no longer writes a customer itself — the create went
    * through `findOrCreateCustomer`, where it belonged — so nothing in it looks

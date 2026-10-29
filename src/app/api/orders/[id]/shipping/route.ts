@@ -20,7 +20,9 @@ import { appendDeliveryAttempt } from '@/lib/delivery-attempts';
 import { logAudit } from '@/lib/audit';
 import { apiError } from '@/lib/api-error';
 import { can, authorize } from '@/lib/authorization';
-import { assertCancellable, assertReadyToShip, type StateSource } from '@/lib/order-state';
+import { assertReadyToShip, type StateSource } from '@/lib/order-state';
+import { batchStatusOf, endOrder } from '@/lib/order-cancel';
+import { cancelVerdict } from '@/lib/shipment-cancel';
 import { whyNotMovable, type BatchingFacts } from '@/lib/batching-guard';
 import { orderLinesForGuard } from '@/lib/reservation';
 import { CONFIRMATION_STATUS_AR } from '@/lib/confirmation-workflow';
@@ -118,7 +120,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const {
       action, to, deliveryProviderId, shippingBatchId,
       trackingNumber, shippingReference, deliveryFee, shippingNote,
-      deliveryFailureReason, returnReason, expectedVersion,
+      deliveryFailureReason, returnReason, expectedVersion, parcelInHand,
     } = body as {
       action?: string; to?: string; deliveryProviderId?: string; shippingBatchId?: string;
       // `unknown`, not `number`: this is a parsed request body and the
@@ -126,6 +128,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       // `Number(deliveryFee) || 0` read as a formality.
       trackingNumber?: string; shippingReference?: string; deliveryFee?: unknown; shippingNote?: string;
       deliveryFailureReason?: string; returnReason?: string; expectedVersion?: number;
+      /** «الطرد بين يديّ…» — a person's word that a packed parcel's box was opened. */
+      parcelInHand?: boolean;
     };
 
     if (!action) return NextResponse.json({ error: 'لم يُحدَّد الإجراء' }, { status: 400 });
@@ -169,14 +173,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           );
         }
 
-        // ── No cancellation once the order has shipped (invariant 4) ──
+        // ── No cancellation once the courier has the parcel (invariant 4, as moved by M6) ──
         // Checked BEFORE the transition validator so the admin override path
-        // cannot bypass it either.
+        // cannot bypass it either. The line is the press of «إغلاق الشحنة —
+        // سُلّمت للشركة», not the printer; `endOrder` asks the same function
+        // again, fresh, when it writes.
         if (newShippingStatus === 'CANCELLED') {
-          const cancellable = assertCancellable(order as StateSource);
-          if (!cancellable.allowed) {
+          const gate = cancelVerdict({
+            confirmationStatus: order.confirmationStatus,
+            shippingStatus: order.shippingStatus,
+            shippedAt: order.shippedAt,
+            labelPrintedAt: order.labelPrintedAt,
+            shippingBatchId: order.shippingBatchId,
+            batchStatus: await batchStatusOf(db, order.shippingBatchId),
+          });
+          if (!gate.allowed) {
             return NextResponse.json(
-              { error: cancellable.message, errorAr: cancellable.message, code: cancellable.code },
+              { error: gate.message, errorAr: gate.message, code: gate.code },
               { status: 409 }
             );
           }
@@ -196,6 +209,61 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
               { status: 409 }
             );
           }
+        }
+
+        /*
+         * ── CANCELLING IS THE ONE HELPER'S, NOT THIS ROUTE'S (invariant 4, as moved by M6) ──
+         *
+         * This door used to write ONE column — `shippingStatus: 'CANCELLED'` —
+         * and nothing else: the confirmation stayed CONFIRMED, the units
+         * stayed reserved, the parcel stayed on its trolley with its waybill,
+         * and the customer's cancellation was never counted. It is the same
+         * ending the stand-down, the confirmation's «cancel» and the PATCH
+         * perform, so it is performed by the same helper: the gate (until
+         * «إغلاق الشحنة — سُلّمت للشركة» the order is still ours), the word of
+         * the person who opened the box, the company told for a barcode it
+         * holds, ONE end state, and the event for System 7.
+         *
+         * Checked after the transition table, which only the override passes.
+         */
+        if (newShippingStatus === 'CANCELLED') {
+          const ended = await endOrder({
+            orderId: id,
+            companyId,
+            storeId,
+            by: { id: user.id, name: user.name, role: user.role },
+            door: 'SHIPPING_STATUS',
+            kind: 'CANCEL',
+            endAs: 'CANCELLED',
+            logNote: shippingNote?.trim() || null,
+            expectedVersion,
+            parcelInHand: parcelInHand === true,
+          });
+          if (!ended.ok) {
+            return NextResponse.json(
+              {
+                error: ended.error,
+                errorAr: ended.error,
+                code: ended.code,
+                ...(ended.attestation ? { attestation: ended.attestation } : {}),
+              },
+              { status: ended.status }
+            );
+          }
+          await logAudit({
+            companyId, userId: user.id, action: 'SHIPPING_STATUS_CHANGED',
+            entity: 'Order', entityId: id,
+            previousData: { shippingStatus: from, trackingNumber: order.trackingNumber },
+            newData: { shippingStatus: 'NOT_READY', cancelled: true, action, by: user.name },
+          });
+          const cancelled = await db.order.findUnique({
+            where: { id },
+            include: {
+              deliveryProvider: { select: { id: true, name: true, code: true, phone: true } },
+              shippingBatch: { select: { id: true, batchNumber: true } },
+            },
+          });
+          return NextResponse.json({ success: true, order: cancelled });
         }
 
         // ── A blocking change request stops OUR forward transitions ──
@@ -451,7 +519,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       SHIPPED: 'order.shipped',
       DELIVERED: 'order.delivered',
       RETURNED: 'order.returned',
-      CANCELLED: 'order.cancelled',
+      // CANCELLED is not here: `endOrder` announces it, once, from the one place every cancel door goes through.
     };
     if (newShippingStatus && newShippingStatus !== from && APP_EVENT_FOR[newShippingStatus]) {
       await emitAppEvent(companyId, APP_EVENT_FOR[newShippingStatus], {

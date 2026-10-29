@@ -18,6 +18,9 @@ export function dispatchReasonAr(o: Pick<DispatchOutcome, 'skipped' | 'regionNam
       return 'بلا شركة شحن';
     case 'SEND_IN_FLIGHT':
       return 'قيد الإرسال الآن من مكانٍ آخر';
+    case 'LEFT_THE_BATCH':
+      // Cancelled, held back or handed over between the read and the claim.
+      return 'خرج من الدفعة قبل الإرسال (أُلغي أو أُجِّل) — لم يُرسَل';
     case 'NO_COURIER_CITY':
       // Which governorate, and where its id goes — it was an English error code.
       return `${o.regionName ?? 'المحافظة'}: لا رمز لها عند الشركة بعد — لم يُرسَل. أدخِل رمزها من شركات الشحن ← الأجور ← «رمزها عند الشركة»، أو انقل الطلب لشركة أخرى`;

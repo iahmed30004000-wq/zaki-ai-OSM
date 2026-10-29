@@ -13,10 +13,11 @@ import { checkStep, pendingChangesMessage } from '@/lib/batch-steps';
  * ═══════════════════════════════════════════════════════════════════════
  */
 
-const { db, requireContext, can, logAudit } = vi.hoisted(() => ({
+const { db, requireContext, can, logAudit, emitAppEvent } = vi.hoisted(() => ({
   db: {
     shippingBatch: { findFirst: vi.fn(), updateMany: vi.fn(), findUniqueOrThrow: vi.fn() },
-    order: { updateMany: vi.fn() },
+    order: { updateMany: vi.fn(), findMany: vi.fn() },
+    orderStatusLog: { createMany: vi.fn() },
     orderChangeRequest: { findMany: vi.fn() },
     deliveryProvider: { findFirst: vi.fn() },
     $transaction: vi.fn(),
@@ -24,6 +25,7 @@ const { db, requireContext, can, logAudit } = vi.hoisted(() => ({
   requireContext: vi.fn(),
   can: vi.fn(),
   logAudit: vi.fn(),
+  emitAppEvent: vi.fn(async (..._a: unknown[]) => 1),
 }));
 
 vi.mock('@/lib/db', () => ({ db }));
@@ -31,8 +33,16 @@ vi.mock('@/lib/geo-context', () => ({ requireContext: (...a: unknown[]) => requi
 vi.mock('@/lib/authorization', () => ({ can: (...a: unknown[]) => can(...a), requirePermission: vi.fn() }));
 vi.mock('@/lib/audit', () => ({ logAudit: (...a: unknown[]) => logAudit(...a) }));
 vi.mock('@/lib/pii-alert', () => ({ noteCustomersHandedOut: vi.fn() }));
+vi.mock('@/lib/apps/events', () => ({ emitAppEvent: (...a: unknown[]) => emitAppEvent(...a) }));
 
 import { PATCH } from './[id]/route';
+
+/** Three parcels on the trolley, waiting for pickup. */
+const MEMBERS = [
+  { id: 'o1', orderNumber: 'SY-2026-0001', totalAmount: 20, currency: 'JOD', trackingNumber: 'BC-1' },
+  { id: 'o2', orderNumber: 'SY-2026-0002', totalAmount: 35, currency: 'JOD', trackingNumber: null },
+  { id: 'o3', orderNumber: 'SY-2026-0003', totalAmount: 12.5, currency: 'JOD', trackingNumber: 'BC-3' },
+];
 
 const BATCH = (over: Record<string, unknown> = {}) => ({
   id: 'b1', companyId: 'c1', storeId: 's1', status: 'READY', shippedAt: null, batchNumber: 'BATCH-1', ...over,
@@ -52,12 +62,14 @@ const patch = async (body: Record<string, unknown>) => {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  requireContext.mockResolvedValue({ user: { id: 'u1', name: 'م' }, companyId: 'c1', storeId: 's1' });
+  requireContext.mockResolvedValue({ user: { id: 'u1', name: 'م', role: 'WAREHOUSE' }, companyId: 'c1', storeId: 's1' });
   can.mockReturnValue(true);
   db.shippingBatch.findFirst.mockResolvedValue(BATCH());
   db.shippingBatch.updateMany.mockResolvedValue({ count: 1 });
   db.shippingBatch.findUniqueOrThrow.mockResolvedValue(BATCH({ status: 'SHIPPED' }));
-  db.order.updateMany.mockResolvedValue({ count: 3 });
+  db.order.findMany.mockResolvedValue(MEMBERS);
+  db.order.updateMany.mockResolvedValue({ count: MEMBERS.length });
+  db.orderStatusLog.createMany.mockResolvedValue({ count: MEMBERS.length });
   db.orderChangeRequest.findMany.mockResolvedValue([]);
   db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn(db));
 });
@@ -209,5 +221,94 @@ describe('the other steps', () => {
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(db.shippingBatch.updateMany.mock.calls[0][0].data).not.toHaveProperty('status');
     expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * «إغلاق الشحنة — سُلّمت للشركة» — THE PRESS, ONE TRANSACTION, FORWARD ONLY.
+ *
+ * It is the line after which cancelling and postponing stop being ours (M6).
+ * So it must be exactly what it says: refused on an empty trolley, atomic
+ * over every member, written to each parcel's timeline, and announced to the
+ * installed apps once per parcel — and only after it committed.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+describe('the press, as the handover that ends «cancel or postpone»', () => {
+  it('refuses an empty trolley — nothing to hand over — and stamps nothing', async () => {
+    db.order.findMany.mockResolvedValue([]);
+
+    const res = await patch({ status: 'SHIPPED' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('EMPTY_BATCH');
+    expect(db.order.updateMany, 'انختمت دفعة فاضية').not.toHaveBeenCalled();
+    expect(emitAppEvent, 'أُعلن شحن بلا طرود').not.toHaveBeenCalled();
+  });
+
+  it('stamps exactly the parcels it read, by id, still waiting for pickup on THIS trolley', async () => {
+    await patch({ status: 'SHIPPED' });
+
+    const where = db.order.updateMany.mock.calls[0][0].where;
+    expect(where.id).toEqual({ in: ['o1', 'o2', 'o3'] });
+    expect(where).toMatchObject({ shippingBatchId: 'b1', shippingStatus: 'READY_FOR_PICKUP' });
+  });
+
+  it('rolls the whole press back when a parcel moved between the read and the stamp', async () => {
+    // One of the three was cancelled or held a moment ago: the stamp finds two.
+    db.order.updateMany.mockResolvedValue({ count: 2 });
+
+    const res = await patch({ status: 'SHIPPED' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('MEMBERS_MOVED');
+    expect(db.orderStatusLog.createMany, 'انكتب سجل تسليم لطرد ما انسلّم').not.toHaveBeenCalled();
+    expect(emitAppEvent, 'أُعلن شحن في ضغطة تراجعت').not.toHaveBeenCalled();
+    expect(logAudit, 'سُجّل تسليم ضغطة تراجعت').not.toHaveBeenCalled();
+  });
+
+  it('writes one status-log row per parcel: READY_FOR_PICKUP → SHIPPED, by the person who pressed', async () => {
+    await patch({ status: 'SHIPPED' });
+
+    const rows = db.orderStatusLog.createMany.mock.calls[0][0].data as Record<string, unknown>[];
+    expect(rows.map((r) => r.orderId)).toEqual(['o1', 'o2', 'o3']);
+    for (const r of rows) {
+      expect(r).toMatchObject({
+        companyId: 'c1', statusType: 'SHIPPING',
+        previousValue: 'READY_FOR_PICKUP', newValue: 'SHIPPED',
+        changedById: 'u1', changedByRole: 'WAREHOUSE',
+      });
+    }
+  });
+
+  it('announces order.shipped once per parcel, with the shipping payload the contract has', async () => {
+    await patch({ status: 'SHIPPED' });
+
+    expect(emitAppEvent).toHaveBeenCalledTimes(3);
+    expect(emitAppEvent.mock.calls[0]).toEqual([
+      'c1',
+      'order.shipped',
+      {
+        orderId: 'o1',
+        orderNumber: 'SY-2026-0001',
+        shippingStatus: 'SHIPPED',
+        previousStatus: 'READY_FOR_PICKUP',
+        total: 20,
+        currency: 'JOD',
+        trackingNumber: 'BC-1',
+      },
+    ]);
+    // A parcel with no barcode says null — the contract allows it, a missing key is a different message.
+    expect((emitAppEvent.mock.calls[1][2] as Record<string, unknown>).trackingNumber).toBeNull();
+  });
+
+  it('and nothing is announced when the trolley is only closed after settlement', async () => {
+    db.shippingBatch.findFirst.mockResolvedValue(BATCH({ status: 'SHIPPED', shippedAt: new Date() }));
+    db.shippingBatch.findUniqueOrThrow.mockResolvedValue(BATCH({ status: 'CLOSED' }));
+
+    await patch({ status: 'CLOSED' });
+
+    expect(emitAppEvent).not.toHaveBeenCalled();
+    expect(db.order.findMany, 'قُرئت طرود دفعة لا تُسلَّم').not.toHaveBeenCalled();
   });
 });

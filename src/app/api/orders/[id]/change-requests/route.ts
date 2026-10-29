@@ -11,7 +11,6 @@ import { addBusinessMinutes } from '@/lib/business-calendar';
 import { zodMessage } from '@/lib/zod-message';
 import { CHANGEABLE_FIELDS, withFrom } from '@/lib/change-request-fields';
 import { CHANGE_INTENTS, INTENT_AR, INTENT_ASK_AR, carryOut, missingFor, type ChangeIntent } from '@/lib/change-request-intent';
-import { hasLeftWarehouse, type StateSource } from '@/lib/order-state';
 import { createNotification } from '@/lib/notification';
 import { deciderFor, mayDecide, SUPERVISOR_ROLES } from '@/lib/change-request-routing';
 import { orderSeal, handedToCourier } from '@/lib/order-seal';
@@ -102,6 +101,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (missing) return NextResponse.json({ error: missing }, { status: 400 });
 
     /**
+     * WHERE THE PARCEL IS — READ ONCE, FOR EVERY QUESTION BELOW.
+     *
+     * The trolley's status decides whether the courier has taken it
+     * («إغلاق الشحنة — سُلّمت للشركة»), so it is loaded before the first
+     * answer rather than after the request is written.
+     */
+    const batch = await db.shippingBatch.findFirst({
+      where: { orders: { some: { id } }, companyId },
+      select: { status: true, batchNumber: true },
+    });
+    const handed = handedToCourier({
+      shippingStatus: (order as { shippingStatus?: string }).shippingStatus ?? '',
+      shippedAt: (order as { shippedAt?: Date | null }).shippedAt ?? null,
+      batchStatus: batch?.status ?? null,
+    });
+
+    /**
      * REFUSED AT THE DOOR, NOT AN HOUR LATER BY A SUPERVISOR.
      *
      * A postponement once the parcel is with the courier is the one ask
@@ -109,10 +125,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
      * Letting it be raised would put it in somebody's queue for two hours
      * so they could say the same sentence this says now, while the agent
      * believed the customer's date was booked.
+     *
+     * «With the courier» is the press of «إغلاق الشحنة — سُلّمت للشركة»,
+     * not the printer (M6): a labelled parcel still on our floor can be
+     * held, and a cancel of it is ours to make.
      */
-    const refusal = carryOut(intent, {
-      hasLeftWarehouse: hasLeftWarehouse(order as unknown as StateSource),
-    });
+    const refusal = carryOut(intent, { handedToCourier: handed });
     if (refusal.kind === 'REFUSED') {
       return NextResponse.json({ error: refusal.reason, code: 'INTENT_IMPOSSIBLE' }, { status: 409 });
     }
@@ -190,10 +208,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
      * that appeared already approved — «طُبِّق مباشرةً» is a fact about who
      * did what, and the audit and the reports read it like any other.
      */
-    const batch = await db.shippingBatch.findFirst({
-      where: { orders: { some: { id } }, companyId },
-      select: { status: true, batchNumber: true },
-    });
     const seal = orderSeal({
       shippingBatch: batch,
       shippingStatus: (order as { shippingStatus?: string }).shippingStatus,
@@ -206,13 +220,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       // The handover, not the printer: a labelled parcel still on our
       // floor is the warehouse's to answer. `batch` is already loaded
       // above for the seal.
-      handedToCourier: handedToCourier({
-        shippingStatus: (order as { shippingStatus?: string }).shippingStatus ?? '',
-        shippedAt: (order as { shippedAt?: Date | null }).shippedAt ?? null,
-        batchStatus: batch?.status ?? null,
-      }),
+      handedToCourier: handed,
     });
-    const readyToApply = mine.allowed && !seal.sealed;
+    /*
+     * THE LINE DEPENDS ON WHAT IS ASKED (M6).
+     *
+     * An EDIT is sealed by the printed waybill — what the driver will read is
+     * fixed the moment it is stuck on the box. A CANCEL or a POSTPONEMENT is
+     * not: until the courier has the parcel it can be opened and the waybill
+     * torn up, so an asker who may decide it needs no second pair of eyes —
+     * which also ends the deadlock where the owner could not approve his own
+     * cancellation of a labelled parcel («لا يمكنك اعتماد طلب قدّمته بنفسك»).
+     */
+    const readyToApply = mine.allowed && (intent === 'EDIT' ? !seal.sealed : !handed);
 
     if (readyToApply) {
       await db.orderChangeRequest.update({

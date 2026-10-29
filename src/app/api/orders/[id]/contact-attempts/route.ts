@@ -7,8 +7,7 @@ import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
 import { CONTACT_METHODS, CONTACT_RESULTS, NO_ANSWER_RESULTS } from '@/lib/confirmation-workflow';
 import { logAudit } from '@/lib/audit';
 import { NO_ANSWER_LIMIT } from '@/lib/confirmation-workflow';
-import { assertCancellable, type StateSource } from '@/lib/order-state';
-import { releaseOrderLines } from '@/lib/reservation';
+import { endOrder } from '@/lib/order-cancel';
 import { can, authorize } from '@/lib/authorization';
 import { ORDER_NOT_FOUND } from '@/lib/order-refusals';
 
@@ -136,7 +135,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // The third no-answer closes the order under its OWN reason, in the same
     // transaction as the attempt, and releases the reservation. It is not a
     // customer rejection and must never be reported as one.
-    const { attempt, autoClosed, noAnswerCount } = await db.$transaction(async (tx) => {
+    const { attempt, autoClosed, noAnswerCount, announce } = await db.$transaction(async (tx) => {
       const created = await tx.orderContactAttempt.create({
         data: {
           companyId,            // from session — never client
@@ -158,23 +157,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
       const terminal = ['CONFIRMED', 'REJECTED', 'CANCELLED'].includes(order.confirmationStatus);
       /*
-       * AND THE PARCEL MUST STILL BE OURS TO CANCEL.
+       * AND THE PARCEL MUST STILL BE OURS TO CANCEL — ASKED OF THE ONE HELPER.
        *
        * This is the one door that cancels an order without a person pressing
-       * cancel, and it did not ask. Today it cannot reach a shipped parcel —
-       * but only by coincidence: shipping requires `confirmationStatus ===
-       * 'CONFIRMED'` (assertReadyToShip) and CONFIRMED happens to be in the
-       * `terminal` list above, so the auto-close is skipped. Two unrelated
-       * lists overlapping is not a rule; it is a rule's shadow, and it
-       * disappears the day anybody ships an order by another path or edits
-       * either list.
-       *
-       * The rule itself is `assertCancellable`, and it is the same function
-       * the shipments door and the stand-down door call: once the parcel has
-       * left, cancelling is a change REQUEST and the stock returns through
-       * the returns door, counted — not by a status written here.
+       * cancel, so it must not even try to touch a parcel that has entered
+       * the shipment: an order with a trolley, a barcode, a printed waybill
+       * or a place on the pickup shelf is a person's decision (it needs
+       * their word that the box was opened), never a counter's. It could not
+       * reach one by coincidence once — shipping needs CONFIRMED and
+       * CONFIRMED is in the `terminal` list — and a rule's shadow is not a
+       * rule. `endOrder` is the helper every cancel door goes through; this
+       * door asks it, in this transaction, only for an order that never left
+       * the confirmation desk.
        */
-      const stillOurs = assertCancellable(order as unknown as StateSource).allowed;
+      const neverShipped =
+        !order.shippingBatchId &&
+        !order.trackingNumber &&
+        !order.labelPrintedAt &&
+        order.shippingStatus === 'NOT_READY';
       /*
        * ANY of the three, not `NO_ANSWER` alone.
        *
@@ -188,38 +188,40 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         (NO_ANSWER_RESULTS as readonly string[]).includes(result!) &&
         noAnswers >= NO_ANSWER_LIMIT &&
         !terminal &&
-        stillOurs
+        neverShipped
       ) {
-        await tx.order.update({
-          where: { id },
-          data: {
-            confirmationStatus: 'CANCELLED',
-            status: 'CANCELLED',
-            rejectionReason: 'NO_ANSWER_3_ATTEMPTS',
-            rejectionNote: `إغلاق تلقائي بعد ${noAnswers} محاولات بلا رد`,
-            followUpStatus: order.nextFollowUpAt ? 'CANCELLED' : order.followUpStatus,
-            version: { increment: 1 },
-          },
+        const closed = await endOrder({
+          orderId: id,
+          companyId,
+          storeId,
+          by: { id: user.id, name: user.name, role: user.role },
+          door: 'CONTACT_AUTO_CLOSE',
+          kind: 'CANCEL',
+          endAs: 'CANCELLED',
+          reason: 'NO_ANSWER_3_ATTEMPTS',
+          rejectionNote: `إغلاق تلقائي بعد ${noAnswers} محاولات بلا رد`,
+          data: { followUpStatus: order.nextFollowUpAt ? 'CANCELLED' : order.followUpStatus },
+          logNote: 'AUTO_CLOSE_NO_ANSWER_3_ATTEMPTS',
+          noteBody: `أُغلق الطلب تلقائياً بعد ${noAnswers} محاولات اتصال بلا رد.`,
+          tx,
         });
-        await releaseOrderLines(tx, id);
-        await tx.orderStatusLog.create({
-          data: {
-            companyId, orderId: id, statusType: 'CONFIRMATION',
-            previousValue: order.confirmationStatus, newValue: 'CANCELLED',
-            changedById: user.id, changedByRole: user.role,
-            note: 'AUTO_CLOSE_NO_ANSWER_3_ATTEMPTS',
-          },
-        });
-        await tx.orderNote.create({
-          data: {
-            companyId, orderId: id, authorId: user.id, kind: 'follow_up',
-            body: `أُغلق الطلب تلقائياً بعد ${noAnswers} محاولات اتصال بلا رد.`,
-          },
-        });
-        return { attempt: created, autoClosed: true, noAnswerCount: noAnswers };
+        // A refusal (the order moved on in the same instant) leaves the attempt
+        // recorded and the order alone; the next attempt asks again.
+        //
+        // The announcement for System 7 is NOT sent from in here: this transaction
+        // has not committed, and a cancellation told to an installed app that is
+        // then rolled back is a customer written to about an order that is still open.
+        return {
+          attempt: created,
+          autoClosed: closed.ok,
+          noAnswerCount: noAnswers,
+          announce: closed.ok ? closed.afterCommit : undefined,
+        };
       }
-      return { attempt: created, autoClosed: false, noAnswerCount: noAnswers };
+      return { attempt: created, autoClosed: false, noAnswerCount: noAnswers, announce: undefined };
     });
+    // The transaction has committed: only now does anybody hear the order closed.
+    await announce?.();
 
     await logAudit({
       companyId, userId: user.id, action: 'CONTACT_ATTEMPT_RECORDED',

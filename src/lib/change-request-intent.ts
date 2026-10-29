@@ -22,8 +22,9 @@
  *   EDIT     → the apply path (money, seal and audit as a direct edit)
  *   CANCEL   → the confirmation route's `cancel`, which already refuses
  *              after the goods left and says why
- *   POSTPONE → `ops/shipments/hold`, which already holds a confirmed order
- *              back to a date without rewinding its confirmation
+ *   POSTPONE → `ops/shipments/hold`, which holds a confirmed order back to a
+ *              date without rewinding its confirmation — and, on a parcel
+ *              already on a trolley, takes it off the trolley first
  *
  * Nothing new decides, nothing new moves money, and nothing new writes a
  * state. This file only says which of the three doors an approval opens.
@@ -48,20 +49,28 @@ export const INTENT_ASK_AR: Record<ChangeIntent, string> = {
 };
 
 /**
- * Where the parcel is — the one fact all three answers turn on.
+ * Where the parcel is — the one fact the cancel and the postponement turn on.
  *
- * `hasLeftWarehouse`, not `hasEverShipped`: the goods are committed the
- * moment the waybill is printed, a stage before SHIPPED, and that is the
- * line `assertCancellable` already draws.
+ * `handedToCourier`, NOT `hasLeftWarehouse` (M6, 28/10): the owner ruled that
+ * cancelling and postponing stay possible «لغاية ما اضغط اغلاق الشحنة»
+ * — until the press of «إغلاق الشحنة — سُلّمت للشركة». A printed waybill or a
+ * parcel on the pickup shelf commits the GOODS (that 28/09 line still decides
+ * stock, in `shipment-cancel`), but the box is on our floor and can be
+ * opened, so for «may this still be cancelled or held?» the line is the
+ * handover.
  */
 export interface ParcelFacts {
-  hasLeftWarehouse: boolean;
+  handedToCourier: boolean;
 }
 
 export type CarryOut =
   /** Through the change-request apply path, as today. */
   | { kind: 'EDIT_ORDER' }
-  /** Still ours: cancel outright, the units go back on the shelf. */
+  /**
+   * Still ours: cancel outright. The units go back on the shelf — for a
+   * labelled or pickup-shelf parcel, on the word of the person who opened
+   * the box (`ATTESTATION_AR`).
+   */
   | { kind: 'CANCEL_ORDER' }
   /**
    * Gone: the courier is told to cancel the waybill, and the goods return
@@ -69,14 +78,14 @@ export type CarryOut =
    * pretend the parcel stopped moving because we decided it should.
    */
   | { kind: 'CANCEL_VIA_COURIER' }
-  /** Still ours: held back to a date, confirmation untouched. */
+  /** Still ours: held back to a date, confirmation untouched, the goods and the waybill kept. */
   | { kind: 'HOLD_SHIPMENT' }
   | { kind: 'REFUSED'; reason: string };
 
 export function carryOut(intent: ChangeIntent, facts: ParcelFacts): CarryOut {
   if (intent === 'EDIT') return { kind: 'EDIT_ORDER' };
   if (intent === 'CANCEL') {
-    return facts.hasLeftWarehouse ? { kind: 'CANCEL_VIA_COURIER' } : { kind: 'CANCEL_ORDER' };
+    return facts.handedToCourier ? { kind: 'CANCEL_VIA_COURIER' } : { kind: 'CANCEL_ORDER' };
   }
   /**
    * A PARCEL IN A VAN CANNOT BE POSTPONED.
@@ -90,7 +99,7 @@ export function carryOut(intent: ChangeIntent, facts: ParcelFacts): CarryOut {
    * "not this week" while the parcel is out is asking for a cancellation
    * whether or not she used the word.
    */
-  if (facts.hasLeftWarehouse) {
+  if (facts.handedToCourier) {
     return {
       kind: 'REFUSED',
       reason: 'الطرد سُلّم لشركة الشحن — لم يبقَ ما يُؤجَّل. اطلب الإلغاء ليُعاد، ثم ارفع طلباً جديداً بالموعد الذي يناسبه.',

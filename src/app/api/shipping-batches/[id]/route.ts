@@ -7,10 +7,15 @@ import { logAudit } from '@/lib/audit';
 import { can } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { redactCustomerForWarehouse } from '@/lib/operations';
-import { BATCH_STATUSES, checkStep, pendingChangesMessage, type BatchStatus } from '@/lib/batch-steps';
+import { BATCH_STATUSES, EMPTY_BATCH_AR, checkStep, pendingChangesMessage, type BatchStatus } from '@/lib/batch-steps';
+import { emitAppEvent } from '@/lib/apps/events';
 
 /** The batch was moved by someone else between the read and the write. */
 class BatchMoved extends Error {}
+/** The press found nothing to hand over: an empty trolley is not a handover. */
+class EmptyBatch extends Error {}
+/** A parcel changed between the list of members and the stamp — the whole press stops. */
+class MembersMoved extends Error {}
 /** Parcels with a cancel or a postponement still unanswered. */
 class PendingChanges extends Error {
   constructor(readonly orderNumbers: string[]) {
@@ -132,6 +137,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
 
     let updated;
+    let members: { id: string; orderNumber: string; totalAmount: number; currency: string; trackingNumber: string | null }[] = [];
     try {
       updated = await db.$transaction(async (tx) => {
         const won = await tx.shippingBatch.updateMany({
@@ -162,10 +168,42 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             throw new PendingChanges([...new Set(waiting.map((w) => w.order.orderNumber))]);
           }
 
-          // Batch-level ship stamp on member orders (server timestamps)
-          await tx.order.updateMany({
+          /*
+           * THE PRESS IS ONE TRANSACTION, AND IT ANSWERS FOR EVERY MEMBER.
+           *
+           * «إغلاق الشحنة — سُلّمت للشركة» is the line after which cancelling
+           * stops being ours (M6), so it must be exactly what it says:
+           *
+           *   · the members are READ first and named — an empty trolley is not
+           *     a handover and is refused, not stamped over nothing;
+           *   · they are stamped in ONE conditional update whose count must
+           *     equal the number read — a parcel cancelled or held a moment
+           *     ago makes the count short and the whole press rolls back,
+           *     instead of handing over a manifest nobody checked;
+           *   · each gets its status-log row (the timeline said nothing about
+           *     the handover) and, after the commit, `order.shipped`;
+           *   · and it only goes forward (READY → SHIPPED) — the batch row
+           *     above won its condition or none of this ran.
+           */
+          members = await tx.order.findMany({
             where: { shippingBatchId: id, companyId, storeId, shippingStatus: 'READY_FOR_PICKUP' },
+            select: { id: true, orderNumber: true, totalAmount: true, currency: true, trackingNumber: true },
+          });
+          if (members.length === 0) throw new EmptyBatch();
+
+          const stamped = await tx.order.updateMany({
+            where: { id: { in: members.map((m) => m.id) }, shippingBatchId: id, companyId, storeId, shippingStatus: 'READY_FOR_PICKUP' },
             data: { shippingStatus: 'SHIPPED', shippedAt: new Date(), version: { increment: 1 } },
+          });
+          if (stamped.count !== members.length) throw new MembersMoved();
+
+          await tx.orderStatusLog.createMany({
+            data: members.map((m) => ({
+              companyId, orderId: m.id, statusType: 'SHIPPING',
+              previousValue: 'READY_FOR_PICKUP', newValue: 'SHIPPED',
+              changedById: user.id, changedByRole: user.role,
+              note: `سُلّمت الدفعة ${batch.batchNumber}`,
+            })),
           });
         }
         return tx.shippingBatch.findUniqueOrThrow({ where: { id } });
@@ -177,6 +215,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           { status: 409 }
         );
       }
+      if (e instanceof EmptyBatch) {
+        return NextResponse.json({ error: EMPTY_BATCH_AR, errorAr: EMPTY_BATCH_AR, code: 'EMPTY_BATCH' }, { status: 409 });
+      }
+      if (e instanceof MembersMoved) {
+        const moved = 'تغيّر طرد من الدفعة أثناء الضغط (أُلغي أو أُجِّل) — ما انسلّم شي. حدّث الصفحة وجرّب من جديد.';
+        return NextResponse.json({ error: moved, errorAr: moved, code: 'MEMBERS_MOVED' }, { status: 409 });
+      }
       if (e instanceof PendingChanges) {
         const message = pendingChangesMessage(e.orderNumbers);
         return NextResponse.json(
@@ -185,6 +230,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         );
       }
       throw e;
+    }
+
+    // Tell the installed apps, after the commit and never able to undo it:
+    // a parcel that left, left. One announcement per parcel the press stamped.
+    for (const m of members) {
+      await emitAppEvent(companyId, 'order.shipped', {
+        orderId: m.id,
+        orderNumber: m.orderNumber,
+        shippingStatus: 'SHIPPED',
+        previousStatus: 'READY_FOR_PICKUP',
+        total: Number(m.totalAmount),
+        currency: m.currency,
+        trackingNumber: m.trackingNumber ?? null,
+      });
     }
 
     await logAudit({
