@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { orderRefFields } from './order-ref';
-import { reserveOrderLines } from './reservation';
+import { releaseOrderLines, reserveOrderLines } from './reservation';
 import { computeCod, roundMinor } from './money';
 
 /**
@@ -145,17 +145,322 @@ export interface ReplacementPlan {
    * path at all. A transfer carries none of these and passes nothing.
    */
   overrides?: { quantity?: number; discountAmount?: number };
+  /**
+   * THE GOODS ARE ANOTHER ORDER'S BOX, AND THE ORDER IS BORN DELIVERED.
+   *
+   * Only the parcel swap passes this (src/lib/parcel-swap.ts): the courier handed the customer a box that
+   * was packed for someone else, and collected for it. The customer, the sale's people and the campaign
+   * come from `order` as always; the goods, the price and the dates come from the box and the statement line.
+   */
+  box?: BoxPlan;
+}
+
+/** What the swap tells the replacement: whose box, how many pieces, what was paid, and when. */
+export interface BoxPlan {
+  /** The order whose box it was — its lines are read here. */
+  fromOrderId: string;
+  /** How many pieces of that box the customer took. */
+  pieces: number;
+  /** What the customer paid at the door, fee included — the statement line's gross. */
+  paid: number;
+  /** The courier's fee for the leg, kept out of what they hand over. */
+  fee: number;
+  priceIncludesDelivery: boolean;
+  shippedAt: Date | null;
+  deliveredAt: Date;
 }
 
 export interface ReplacementResult {
   id: string;
   orderNumber: string;
+  /** The box path only: what the customer paid, as the one COD function priced it. */
+  cod?: number;
+  /** The box path only: the fee kept out of it. */
+  fee?: number;
+}
+
+/** A line of a box, as the swap reads it. */
+export interface BoxLine {
+  id: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  freeQuantity: number;
+}
+
+/** Every physical piece in the box, gifts included. */
+export function boxUnits(lines: ReadonlyArray<Pick<BoxLine, 'quantity' | 'freeQuantity'>>): number {
+  return lines.reduce((sum, l) => sum + l.quantity + l.freeQuantity, 0);
+}
+
+/**
+ * WHICH LINES THE PIECES COME OUT OF — in the order the box was packed.
+ *
+ * The customer took `pieces` of the box; line by line, as many as the line holds. A gift is a piece like any
+ * other here: the customer paid one sum for what they were handed, and what they were handed is what counts.
+ */
+export function takeFromBox(lines: ReadonlyArray<BoxLine>, pieces: number): { line: BoxLine; qty: number }[] {
+  if (!Number.isInteger(pieces) || pieces < 1 || pieces > boxUnits(lines)) {
+    throw new Error('BOX_PIECES_OUT_OF_RANGE');
+  }
+  const out: { line: BoxLine; qty: number }[] = [];
+  let left = pieces;
+  for (const line of lines) {
+    if (left <= 0) break;
+    const qty = Math.min(left, line.quantity + line.freeQuantity);
+    if (qty <= 0) continue;
+    out.push({ line, qty });
+    left -= qty;
+  }
+  return out;
+}
+
+export interface PricedBox {
+  subtotal: number;
+  cod: number;
+  fee: number;
+  lines: { line: BoxLine; qty: number; unitPrice: number; lineTotal: number }[];
+}
+
+/**
+ * WHAT THE CUSTOMER PAID, SPREAD OVER WHAT THEY WERE HANDED — through the one COD function.
+ *
+ * The price is not the box's own price: the customer paid what the courier collected. So the goods are what was
+ * paid (less the fee when the fee is on top), shared out by pieces with the last fils on the largest line, and
+ * `computeCod` then writes the order's figures — which must come back to exactly what was paid, or nothing is
+ * written at all. A swap that cannot reproduce the courier's own figure would be a MISMATCHED line made by us.
+ */
+export function priceTheBox(p: {
+  taken: { line: BoxLine; qty: number }[];
+  paid: number;
+  fee: number;
+  priceIncludesDelivery: boolean;
+  minorUnit: number;
+}): PricedBox {
+  const paid = roundMinor(p.paid, p.minorUnit);
+  const fee = roundMinor(Math.max(0, p.fee), p.minorUnit);
+  const goods = p.priceIncludesDelivery ? paid : roundMinor(paid - fee, p.minorUnit);
+  if (!(goods > 0)) throw new Error('BOX_PRICE_NOT_POSITIVE');
+
+  const units = p.taken.reduce((sum, t) => sum + t.qty, 0);
+  const shares = p.taken.map((t) => roundMinor((goods * t.qty) / units, p.minorUnit));
+  const drift = roundMinor(goods - shares.reduce((a, b) => a + b, 0), p.minorUnit);
+  if (drift !== 0) {
+    let largest = 0;
+    for (let i = 1; i < shares.length; i++) if (shares[i] > shares[largest]) largest = i;
+    shares[largest] = roundMinor(shares[largest] + drift, p.minorUnit);
+  }
+
+  const money = computeCod({
+    lines: p.taken.map((t, i) => ({ quantity: t.qty, unitPrice: shares[i] / t.qty })),
+    discount: 0,
+    deliveryFee: fee,
+    priceIncludesDelivery: p.priceIncludesDelivery,
+    minorUnit: p.minorUnit,
+  });
+  if (money.cod !== paid) throw new Error('BOX_PRICE_DRIFT');
+
+  return {
+    subtotal: money.subtotal,
+    cod: money.cod,
+    fee: money.deliveryFee,
+    lines: p.taken.map((t, i) => ({
+      line: t.line,
+      qty: t.qty,
+      lineTotal: money.lineTotals[i],
+      unitPrice: money.lineTotals[i] / t.qty,
+    })),
+  };
+}
+
+/** The write lost its race: the order the box was going into moved on after it was read. */
+export class BoxOrderMoved extends Error {
+  constructor() {
+    super('BOX_ORDER_MOVED');
+  }
+}
+
+/** Reads the box and prices it — shared by the new order and by the one that is reshaped. */
+async function readAndPriceBox(tx: Prisma.TransactionClient, companyId: string, minorUnit: number, box: BoxPlan) {
+  const from = await tx.order.findFirst({
+    where: { id: box.fromOrderId, companyId },
+    select: {
+      productId: true,
+      productNameSnapshot: true,
+      productImageSnapshot: true,
+      estimatedCostOfGoods: true,
+      items: {
+        select: { id: true, productId: true, productName: true, quantity: true, freeQuantity: true },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      },
+    },
+  });
+  if (!from) throw new Error('BOX_NOT_FOUND');
+  const lines = from.items as BoxLine[];
+  const taken = takeFromBox(lines, box.pieces);
+  const priced = priceTheBox({
+    taken,
+    paid: box.paid,
+    fee: box.fee,
+    priceIncludesDelivery: box.priceIncludesDelivery,
+    minorUnit,
+  });
+  const first = taken[0].line;
+  const sameProduct = first.productId === from.productId;
+  return {
+    priced,
+    // The goods are the box's: its first product, named as the box named it.
+    goods: {
+      productId: first.productId,
+      productNameSnapshot: sameProduct ? (from.productNameSnapshot ?? first.productName) : first.productName,
+      productImageSnapshot: sameProduct ? from.productImageSnapshot : null,
+      // Cost follows the pieces: the same units at the box's own average.
+      estimatedCostOfGoods: roundMinor(
+        (Number(from.estimatedCostOfGoods) * box.pieces) / Math.max(1, boxUnits(lines)),
+        minorUnit
+      ),
+    },
+  };
+}
+
+/** The columns a box-born order has, whether it is created or an unshipped replacement is reshaped into it. */
+function boxOrderColumns(
+  box: BoxPlan,
+  read: Awaited<ReturnType<typeof readAndPriceBox>>,
+  deliveryProviderId: string | null
+) {
+  const { priced, goods } = read;
+  return {
+    productId: goods.productId,
+    offerId: null,
+    quantity: box.pieces,
+    freeQuantity: 0,
+    sellingPrice: priced.subtotal,
+    discountAmount: 0,
+    shippingCost: 0,
+    totalAmount: priced.cod,
+    deliveryFee: priced.fee,
+    priceIncludesDelivery: box.priceIncludesDelivery,
+    productNameSnapshot: goods.productNameSnapshot,
+    productImageSnapshot: goods.productImageSnapshot,
+    estimatedCostOfGoods: goods.estimatedCostOfGoods,
+    // Born delivered: the statement is the proof, and its dates are the dates.
+    status: 'DELIVERED',
+    confirmationStatus: 'CONFIRMED',
+    shippingStatus: 'DELIVERED',
+    settlementStatus: 'NOT_APPLICABLE',
+    shippedAt: box.shippedAt,
+    deliveredAt: box.deliveredAt,
+    deliveryProviderId,
+    shippingBatchId: null,
+  };
+}
+
+async function writeBoxLines(
+  tx: Prisma.TransactionClient,
+  companyId: string,
+  orderId: string,
+  priced: PricedBox
+): Promise<void> {
+  for (const l of priced.lines) {
+    await tx.orderItem.create({
+      data: {
+        companyId,
+        orderId,
+        productId: l.line.productId,
+        productName: l.line.productName,
+        quantity: l.qty,
+        freeQuantity: 0,
+        unitPrice: l.unitPrice,
+        lineTotal: l.lineTotal,
+        discountShare: 0,
+        addedStage: 'INTAKE',
+      },
+    });
+  }
+}
+
+/** A NEW order made of a box: the customer and the sale's people from `order`, the goods and money from the box. */
+async function createBoxReplacement(tx: Prisma.TransactionClient, plan: ReplacementPlan): Promise<ReplacementResult> {
+  const { companyId, order } = plan;
+  const box = plan.box!;
+  const read = await readAndPriceBox(tx, companyId, plan.minorUnit, box);
+  const refs = await orderRefFields(tx, companyId, plan.orderPrefix, plan.attempt);
+  // The sale's names (people, campaign, page) — the same columns the ordinary replacement carries.
+  const sale = carriedSale(order);
+  const created = await tx.order.create({
+    data: {
+      companyId,
+      countryId: order.countryId,
+      storeId: order.storeId,
+      regionId: order.regionId,
+      ...refs,
+      replacesOrderId: order.id,
+      customerId: order.customerId,
+      currency: order.currency,
+      ...sale,
+      ...boxOrderColumns(box, read, plan.deliveryProviderId ?? null),
+      source: order.source,
+      customerNotes: order.customerNotes,
+      internalNotes: plan.internalNotes,
+      version: 1,
+    },
+    select: { id: true, orderNumber: true },
+  });
+  await writeBoxLines(tx, companyId, created.id, read.priced);
+  await reserveOrderLines(tx, created.id, { allowNegativeStock: plan.allowNegativeStock });
+  return { ...created, cod: read.priced.cod, fee: read.priced.fee };
+}
+
+/**
+ * AN UNSHIPPED REPLACEMENT BECOMES THE SALE — instead of a second one being raised beside it.
+ *
+ * A reorder already raised «X_r» for the customer and it has not left the warehouse. The box that was handed
+ * over is its goods now: its lines are replaced, its units released and taken again for the new lines, and it is
+ * delivered. The write is conditional on the version it was read at, so a press that raced it finds it moved.
+ */
+export async function reshapeToBox(
+  tx: Prisma.TransactionClient,
+  p: {
+    companyId: string;
+    orderId: string;
+    expectedVersion: number;
+    minorUnit: number;
+    allowNegativeStock: boolean;
+    deliveryProviderId: string | null;
+    box: BoxPlan;
+    internalNote: string;
+  }
+): Promise<ReplacementResult> {
+  const read = await readAndPriceBox(tx, p.companyId, p.minorUnit, p.box);
+  await releaseOrderLines(tx, p.orderId);
+  await tx.orderItem.deleteMany({ where: { orderId: p.orderId } });
+  await writeBoxLines(tx, p.companyId, p.orderId, read.priced);
+  const moved = await tx.order.updateMany({
+    where: { id: p.orderId, companyId: p.companyId, version: p.expectedVersion },
+    data: {
+      ...boxOrderColumns(p.box, read, p.deliveryProviderId),
+      internalNotes: p.internalNote,
+      version: { increment: 1 },
+    },
+  });
+  if (moved.count !== 1) throw new BoxOrderMoved();
+  await reserveOrderLines(tx, p.orderId, { allowNegativeStock: p.allowNegativeStock });
+  const row = await tx.order.findFirst({
+    where: { id: p.orderId, companyId: p.companyId },
+    select: { id: true, orderNumber: true },
+  });
+  if (!row) throw new BoxOrderMoved();
+  return { ...row, cod: read.priced.cod, fee: read.priced.fee };
 }
 
 export async function createReplacement(
   tx: Prisma.TransactionClient,
   plan: ReplacementPlan
 ): Promise<ReplacementResult> {
+  // A box handed to the wrong customer is a different kind of order: delivered, priced by what was paid.
+  if (plan.box) return createBoxReplacement(tx, plan);
+
   const { companyId, order, overrides } = plan;
   const items = await tx.orderItem.findMany({ where: { orderId: order.id } });
 
@@ -284,3 +589,50 @@ export async function createReplacement(
 
   return replacement;
 }
+
+/**
+ * THE COLUMNS `ReplacementSource` IS READ FROM — one select, so a caller cannot forget one.
+ *
+ * `carriedSale` copies the sale's people and the campaign, and each of them is a column somebody has to ask the
+ * database for. The swap reads its customer's order through this, and the reorder and the transfer hand over the
+ * whole row, so the three agree on what a replacement is made of.
+ */
+export const REPLACEMENT_SOURCE_SELECT = {
+  id: true,
+  orderNumber: true,
+  countryId: true,
+  storeId: true,
+  regionId: true,
+  customerId: true,
+  productId: true,
+  offerId: true,
+  quantity: true,
+  freeQuantity: true,
+  sellingPrice: true,
+  discountAmount: true,
+  shippingCost: true,
+  totalAmount: true,
+  currency: true,
+  priceIncludesDelivery: true,
+  productNameSnapshot: true,
+  productImageSnapshot: true,
+  moderatorId: true,
+  estimatedCostOfGoods: true,
+  source: true,
+  customerNotes: true,
+  channelId: true,
+  campaignId: true,
+  landingPageId: true,
+  deviceClass: true,
+  adId: true,
+  adSourceType: true,
+  refCode: true,
+  refCodeAt: true,
+  touchAt: true,
+  pageId: true,
+  wabaId: true,
+  conversationRef: true,
+  confirmedById: true,
+  assignedToId: true,
+  assignedAt: true,
+} as const;

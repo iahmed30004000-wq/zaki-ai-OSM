@@ -4,6 +4,7 @@ import { STATE_LABEL_AR } from './order-state';
 import { SHIPPING_STATUS_AR } from './shipping-workflow';
 import { CONFIRMATION_STATUS_AR } from './confirmation-workflow';
 import { NOT_MENTIONED_ACTIVITY_AR } from './not-mentioned';
+import { SWAP_ACTION } from './superseded';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -139,6 +140,9 @@ const ACTIVITY_AR: Record<string, string> = {
   LABEL_STALE_REPRINT: 'بوليصة الطرد لم تعد تطابق الطلب — تُطبع من جديد',
   PARCEL_ATTESTED_IN_HAND: 'أكّد أن الطرد بين يديه',
   COURIER_CANCELLED_ORDER_MOVED: 'ألغت الشركة الطرد وتغيّر الطلب قبل الحفظ',
+  // «كان من طرد طلب آخر»: the courier gave a box to another customer; both orders and the box's order say so.
+  [SWAP_ACTION]: 'تبديل طرد عند الشركة',
+  SWAP_BOX_GIVEN: 'بضاعة هذا الطرد سُلِّمت لزبون طلب آخر',
   // «فرق في المبلغ»: what the approval did with the answer a person gave, in that person's name.
   SETTLEMENT_DECISION_APPLIED: 'سُوّي الطلب برقم الشركة بعد بتّ مكتوب',
   SETTLEMENT_CLAIM_OPENED: 'بقي الطلب مطالبة على الشركة بالباقي',

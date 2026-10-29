@@ -43,7 +43,7 @@ beforeEach(() => {
   requirePermission.mockResolvedValue(undefined);
   db.courierStatement.findFirst.mockResolvedValue(row());
   db.courierStatement.deleteMany.mockResolvedValue({ count: 1 });
-  db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn({ courierStatement: db.courierStatement }));
+  db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn({ courierStatement: db.courierStatement, $queryRaw: vi.fn(async () => []) }));
 });
 
 describe('taking an import back', () => {

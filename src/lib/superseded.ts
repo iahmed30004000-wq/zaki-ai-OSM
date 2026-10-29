@@ -30,8 +30,8 @@ import type { Prisma } from '@prisma/client';
  *   · CHANGE_REQUEST_REORDERED — the waybill was cancelled for a change to
  *     the goods.
  *   · SWAP_RECORDED — a statement line showed the courier gave this parcel's
- *     goods to another customer. Written by a door that is not built yet;
- *     named here so the day it lands, nothing else has to learn the word.
+ *     goods to another customer. Written by the parcel swap (parcel-swap.ts),
+ *     which imports the word from here as `SWAP_ACTION` and never spells it.
  *
  * THE REPLACEMENT'S OWN ACTIVITY IS THE SAME WORD. Both doors write the
  * activity on both orders so neither can be read without the other. The
@@ -49,11 +49,14 @@ import type { Prisma } from '@prisma/client';
  * state machine (what an order may do next). This is a reading of history.
  */
 
+/** The activity a parcel swap writes on both orders. The one place the word is spelled. */
+export const SWAP_ACTION = 'SWAP_RECORDED' as const;
+
 /** The activities that say «this order's sale carried on in another». */
 export const SUPERSEDING_ACTIONS = [
   'COURIER_TRANSFERRED',
   'CHANGE_REQUEST_REORDERED',
-  'SWAP_RECORDED',
+  SWAP_ACTION,
 ] as const;
 
 /** The mark on a transfer that took the parcel back from a company. */
@@ -113,7 +116,7 @@ export const supersededWhere: Prisma.OrderWhereInput = {
           AND: [{ NOT: { metadata: { contains: REPLACEMENT_SIDE } } }],
         },
         { action: 'CHANGE_REQUEST_REORDERED', ...notTheReplacementsCopy },
-        { action: 'SWAP_RECORDED', ...notTheReplacementsCopy },
+        { action: SWAP_ACTION, ...notTheReplacementsCopy },
       ],
     },
   },
@@ -127,3 +130,18 @@ export const supersededWhere: Prisma.OrderWhereInput = {
  * must wrap both in an `AND` instead of spreading.
  */
 export const notSuperseded: Prisma.OrderWhereInput = { NOT: supersededWhere };
+
+/**
+ * THE STATEMENT LINES A PARCEL SWAP TIED TO THE SALE IT MADE.
+ *
+ * A swap is the one thing recorded on a statement that writes an order, draws stock and accrues commission BEFORE
+ * the approval — so a statement that carries one can no longer be "taken back". The import's undo reads this as the
+ * filter of its own `deleteMany`, which is what makes the refusal hold against a swap that lands a moment later.
+ */
+export const swapTiedToLine: Prisma.SettlementMatchWhereInput = {
+  matchedBy: 'MANUAL',
+  order: { activities: { some: { action: SWAP_ACTION } } },
+};
+
+export const SWAP_BLOCKS_UNDO_AR =
+  'سُجّل على هذا الكشف تبديل طرد — أنشأ طلباً وسحب مخزوناً. لا يُلغى استيراده؛ يكتمل باعتماده.';
