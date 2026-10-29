@@ -37,7 +37,9 @@ const { db } = vi.hoisted(() => ({
   db: {
     statementLine: { findMany: vi.fn() },
     courierStatement: { findFirst: vi.fn(), findUnique: vi.fn() },
-    settlementMatch: { deleteMany: vi.fn(), create: vi.fn() },
+    // findMany: the answers a re-run keeps, and the other statements that name an order.
+    settlementMatch: { deleteMany: vi.fn(), create: vi.fn(), findMany: vi.fn() },
+    orderChangeRequest: { findMany: vi.fn() },
     order: { findFirst: vi.fn(), findMany: vi.fn() },
     statementReceipt: { findMany: vi.fn() },
   },
@@ -51,6 +53,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   db.settlementMatch.create.mockResolvedValue({});
   db.settlementMatch.deleteMany.mockResolvedValue({ count: 0 });
+  db.settlementMatch.findMany.mockResolvedValue([]);
+  db.orderChangeRequest.findMany.mockResolvedValue([]);
   db.order.findMany.mockResolvedValue([]);
   db.courierStatement.findFirst.mockResolvedValue({
     id: 'st1', deliveryProviderId: 'dp1', periodFrom: null, periodTo: null,

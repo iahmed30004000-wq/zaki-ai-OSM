@@ -36,6 +36,9 @@ const patchSchema = z.object({
   confirmPossibleDouble: z.boolean().optional(),
 });
 
+/** The in-flight states a matched line promotes to «مُسلَّم» when the statement is approved. */
+const IN_FLIGHT_PROMOTED_BY_STATEMENT = ['SHIPPED', 'OUT_FOR_DELIVERY', 'READY_FOR_PICKUP', 'FAILED_DELIVERY'] as const;
+
 /** A stop inside the approval transaction: the whole transaction rolls back and this is the answer. */
 class ApprovalStopped extends Error {
   constructor(readonly status: number, readonly body: Record<string, unknown>) {
@@ -328,11 +331,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
        * re-importing a file.
        */
 
+      /*
+       * A FAILED ATTEMPT IS STILL ON THE ROAD.
+       *
+       * FAILED_DELIVERY was missing from this list, so a parcel the door had marked failed — the customer was out,
+       * the courier came back the next day — and which the courier then delivered and PAID FOR, was settled and
+       * paid commission but stayed «فشل التوصيل» for ever: never delivered, never counted out of stock, never
+       * in the customer's record. A line that matched at the amount actually collected is the proof it arrived.
+       * RETURN_REQUESTED and RETURNED stay out on purpose: those are parcels coming back, and a statement line
+       * at zero is what they should read.
+       */
       const inFlight = await tx.order.findMany({
         where: {
           id: { in: settledOrderIds },
           companyId,
-          shippingStatus: { in: ['SHIPPED', 'OUT_FOR_DELIVERY', 'READY_FOR_PICKUP'] },
+          shippingStatus: { in: [...IN_FLIGHT_PROMOTED_BY_STATEMENT] },
         },
         select: { id: true, orderNumber: true, customerId: true },
       });
