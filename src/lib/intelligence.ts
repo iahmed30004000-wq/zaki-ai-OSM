@@ -4,6 +4,7 @@ import { availableStock } from './reservation';
 import type { Prisma } from '@prisma/client';
 import { db } from './db';
 import { roundMinor } from './money';
+import { notSuperseded } from './superseded';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -95,7 +96,7 @@ const pct = (n: number) => `${Math.round(n * 1000) / 10}%`;
  */
 export async function returningProducts(tx: Tx, scope: Scope): Promise<Finding[]> {
   const items = await tx.orderItem.findMany({
-    where: { order: { companyId: scope.companyId, storeId: scope.storeId } },
+    where: { order: { companyId: scope.companyId, storeId: scope.storeId, ...notSuperseded } },
     select: {
       productId: true,
       productName: true,
@@ -147,7 +148,7 @@ export async function returningProducts(tx: Tx, scope: Scope): Promise<Finding[]
  */
 export async function returningRegions(tx: Tx, scope: Scope): Promise<Finding[]> {
   const orders = await tx.order.findMany({
-    where: { companyId: scope.companyId, storeId: scope.storeId, regionId: { not: null } },
+    where: { companyId: scope.companyId, storeId: scope.storeId, regionId: { not: null }, ...notSuperseded },
     select: { regionId: true, shippingStatus: true, region: { select: { name: true } } },
   });
 
@@ -193,7 +194,7 @@ export async function returningRegions(tx: Tx, scope: Scope): Promise<Finding[]>
  */
 export async function riskyCustomers(tx: Tx, scope: Scope): Promise<Finding[]> {
   const orders = await tx.order.findMany({
-    where: { companyId: scope.companyId, storeId: scope.storeId },
+    where: { companyId: scope.companyId, storeId: scope.storeId, ...notSuperseded },
     select: {
       customerId: true,
       shippingStatus: true,
@@ -626,6 +627,9 @@ export async function moderatorRates(tx: Tx, scope: Scope): Promise<Finding[]> {
       storeId: scope.storeId,
       moderatorId: { not: null },
       confirmationStatus: { in: ['CONFIRMED', 'REJECTED', 'CANCELLED'] },
+      // The replacement carries the moderator, so the replaced order would
+      // be a second confirmation for the same sale.
+      ...notSuperseded,
     },
     select: { moderatorId: true, confirmationStatus: true, moderator: { select: { name: true } } },
   });

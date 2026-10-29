@@ -3,7 +3,7 @@ import { DEAD_CONFIRMATION, TRACKING_ACK_ACTION, trackingAlert } from '@/lib/tra
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { ruleFor } from '@/lib/phone-rules';
-import { requirePermission } from '@/lib/authorization';
+import { can, requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { transitOf } from '@/lib/transit';
 import { expectsBarcode } from '@/lib/tracking-priority';
@@ -12,6 +12,7 @@ import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { readLimit, readPage } from '@/lib/numeric-input';
 import { searchWhere, trackingFilters } from '@/lib/tracking-filters';
 import { readTrackingList } from '@/lib/tracking-list';
+import { sightWhere, unseenKey, withoutMoney, type TrackingSight } from '@/lib/tracking-sight';
 
 /**
  * GET /api/ops/tracking?q=&status=&task=&courier=&region=&age=&page=&limit=
@@ -32,6 +33,13 @@ import { readTrackingList } from '@/lib/tracking-list';
  *   ?age=      fresh|few|week|old, by the shipping date
  *
  * An unknown value is a 400 in Arabic, never a quiet «everything».
+ *
+ * TWO LEVELS OF SIGHT (see `lib/tracking-sight.ts`). Whoever holds `ops.track` sees the parcels on the road. The
+ * delivered parcels, the «بانتظار التحصيل» chip and the courier's figures need «عرض التسويات» or «إدارة الصناديق
+ * النقدية»; the return rows need «عرض المرتجعات». Without them those rows are never read — so the chips, the
+ * dropdowns' numbers and the pages leave them out too — the figures are taken off every row, and a request for a state
+ * or a chip that is only those rows is a 403. `access` tells the screen which level it holds, so it draws no option
+ * and no button the door would refuse; it is not what refuses.
  */
 const IN_FLIGHT = ['SHIPPED', 'OUT_FOR_DELIVERY', 'READY_FOR_PICKUP', 'FAILED_DELIVERY', 'RETURN_REQUESTED'];
 
@@ -49,12 +57,22 @@ export async function GET(req: Request) {
   try {
     const { user, companyId, storeId, country } = await requireContext();
     await requirePermission('ops.track');
+    const sight: TrackingSight = {
+      money: can(user, 'settlement.view') || can(user, 'finance.cashbox'),
+      returns: can(user, 'ops.returns_view'),
+      // Acting on the courier's money is the collect door's own key.
+      collect: can(user, 'finance.cashbox'),
+    };
 
     const q = new URL(req.url).searchParams;
     const now = new Date();
     const parsed = trackingFilters(q);
     if (!parsed.ok) return NextResponse.json({ error: parsed.error, errorAr: parsed.errorAr }, { status: 400 });
     const { status, task, courier, region, age, product, q: term } = parsed.applied;
+    // A state or a chip that is only the other level's rows: refused in the door's own sentence, not answered with nothing.
+    const unseen = unseenKey({ status, task }, sight);
+    if (unseen) throw new Error(`Forbidden: missing required permission ${unseen}`);
+    const inSight = sightWhere(sight);
 
     /*
      * ── AND THE DEFAULT CARRIES WHAT IS WAITING TO BE COLLECTED ──
@@ -103,6 +121,8 @@ export async function GET(req: Request) {
         storeId,
         AND: [
           ...(statusClause ? [statusClause] : []),
+          // The rows this person may read — nothing added for someone who may read them all.
+          ...(inSight ? [inSight] : []),
           // THIS store's order for that product — the store is already in the WHERE, so another store's product id finds nothing.
           ...(product ? [{ productId: product }] : []),
           ...(term ? [searchWhere(term)] : []),
@@ -197,7 +217,7 @@ export async function GET(req: Request) {
     });
     const thresholdOf = new Map(fees.map((f) => [`${f.deliveryProviderId}|${f.regionId}`, f.lateThresholdDays]));
 
-    const rows = orders.map((order) => {
+    const built = orders.map((order) => {
       // The lines, the add-ons and the return receipt are what the
       // EXPECTATION is built from, not something this screen prints — so they
       // feed the rule and stay off the wire. A row carrying every unit of
@@ -301,6 +321,8 @@ export async function GET(req: Request) {
         }),
       };
     });
+    // The courier's figures leave with the permission: every row is built whole by the one rule above, then they are taken off.
+    const rows = sight.money ? built : built.map((r) => withoutMoney(r));
 
     // Contact details left the building; the tally is the person's, not
     // this screen's. See noteCustomersHandedOut.
@@ -313,6 +335,8 @@ export async function GET(req: Request) {
       // What is ON this page — a different fact from how many there are (`pagination.total`).
       count: rows.length,
       orders: rows,
+      // Which level of the screen this person holds — what to draw, never what to allow.
+      access: sight,
       // Over everything the list holds, not the page: the badge says how many parcels are late, not how many of these 25.
       lateCount: list.facts.lateCount,
       pagination: { total: list.total, page: list.page, limit: list.limit, totalPages: list.totalPages },

@@ -49,7 +49,7 @@ const input = { batchId: 'b1', companyId: 'c1', storeId: 's1', userId: 'u1' };
 beforeEach(() => {
   vi.clearAllMocks();
   db.shippingBatch.findFirst.mockResolvedValue({
-    id: 'b1', batchNumber: 'BATCH-2026-0001',
+    id: 'b1', batchNumber: 'BATCH-2026-0001', status: 'READY',
     provider: { id: 'p1', code: 'BASHA', apiEnabled: true, companyId: 'c1', storeId: 's1' },
   });
   adapterFor.mockReturnValue({ code: 'LOGESTECHS', automated: true, createShipment });
@@ -232,7 +232,7 @@ describe("a courier that is not this store's", () => {
 
   it("allows the store's own", async () => {
     db.shippingBatch.findFirst.mockResolvedValue({
-      id: 'b1', batchNumber: 'BATCH-2026-0001',
+      id: 'b1', batchNumber: 'BATCH-2026-0001', status: 'READY',
       provider: { id: 'p1', code: 'BASHA', apiEnabled: true, companyId: 'c1', storeId: 's1' },
     });
     db.order.findMany.mockResolvedValue([order()]);
@@ -496,7 +496,7 @@ describe('the batch that failed thirty-five of thirty-six, and the second press'
 
   it('the courier’s display name reaches the adapter, so a refusal can say «الباشا رفض»', async () => {
     db.shippingBatch.findFirst.mockResolvedValue({
-      id: 'b1', batchNumber: 'BATCH-2026-0003',
+      id: 'b1', batchNumber: 'BATCH-2026-0003', status: 'READY',
       provider: { id: 'p1', name: 'الباشا', code: 'BASHA', apiEnabled: true, companyId: 'c1', storeId: 's1' },
     });
     db.order.findMany.mockResolvedValue([]);
@@ -510,5 +510,46 @@ describe('the batch that failed thirty-five of thirty-six, and the second press'
     createShipment.mockResolvedValueOnce({ trackingNumber: 'K1' }).mockResolvedValueOnce({ trackingNumber: 'K2' });
     const res = await dispatchBatch(input);
     expect(groupDispatchReasons(res.outcomes)).toEqual([]);
+  });
+});
+
+/**
+ * ONLY A TROLLEY STILL BEING FILLED IS SENT.
+ *
+ * The batch status was never read: a batch already handed to the courier
+ * (or closed) could be dispatched again from a stale screen or a direct
+ * call, creating parcels at the company after the driver had left.
+ */
+describe('a batch that is not READY', () => {
+  const batchIs = (status: string) =>
+    db.shippingBatch.findFirst.mockResolvedValue({
+      id: 'b1', batchNumber: 'BATCH-2026-0001', status,
+      provider: { id: 'p1', code: 'BASHA', apiEnabled: true, companyId: 'c1', storeId: 's1' },
+    });
+
+  it.each(['SHIPPED', 'CLOSED'])('is refused when %s, and nothing is read or sent', async (status) => {
+    batchIs(status);
+    db.order.findMany.mockResolvedValue([order()]);
+
+    await expect(dispatchBatch(input)).rejects.toThrow('BATCH_NOT_READY');
+
+    expect(createShipment, 'انبعت طرد من دفعة مسلّمة').not.toHaveBeenCalled();
+    expect(db.order.findMany).not.toHaveBeenCalled();
+    expect(db.$queryRaw, 'انكتبت مطالبة على طلب من دفعة مسلّمة').not.toHaveBeenCalled();
+  });
+
+  it('still sends a READY one', async () => {
+    batchIs('READY');
+    db.order.findMany.mockResolvedValue([order()]);
+
+    const res = await dispatchBatch(input);
+
+    expect(res.sent).toBe(1);
+  });
+
+  it('and a missing batch is still «not found», not «not ready»', async () => {
+    db.shippingBatch.findFirst.mockResolvedValue(null);
+
+    await expect(dispatchBatch(input)).rejects.toThrow('BATCH_NOT_FOUND');
   });
 });

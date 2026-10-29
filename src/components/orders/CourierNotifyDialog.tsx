@@ -26,7 +26,7 @@ import { RiChat3Line, RiFileCopyLine, RiCheckLine } from '@remixicon/react';
  */
 
 export interface CourierAsk {
-  action: 'CONTACT_CHANGE' | 'CANCEL_AND_REORDER' | 'NONE';
+  action: 'CONTACT_CHANGE' | 'CANCEL_AND_REORDER' | 'CANCEL_WAYBILL' | 'NONE';
   /** Why our record is not changing yet, in the reader's own words. */
   reason: string;
   message: string;
@@ -137,7 +137,9 @@ export function CourierNotifyDialog({
             */}
             {ask.action === 'CANCEL_AND_REORDER'
               ? 'أبلغتُهم — ألغِ البوليصة وارفع الطلب البديل'
-              : 'أبلغتُهم — طبّق التعديل الآن'}
+              : ask.action === 'CANCEL_WAYBILL'
+                ? 'أبلغتُهم — علّم الطلب منفَّذاً'
+                : 'أبلغتُهم — طبّق التعديل الآن'}
           </button>
           <button
             type="button"
@@ -149,7 +151,9 @@ export function CourierNotifyDialog({
           <span className="text-xs text-[var(--sys-muted-foreground)]">
             {ask.action === 'CANCEL_AND_REORDER'
               ? 'يعود هذا الطلب مرتجعاً، ويصدر بديلٌ بالتعديل جاهزاً للتحضير.'
-              : 'يُسجَّل على الطلب أنّك أبلغتَهم قبل التطبيق.'}
+              : ask.action === 'CANCEL_WAYBILL'
+                ? 'الطلب يبقى كما هو إلى أن يرجع الطرد ويتعدّ عند المرتجعات.'
+                : 'يُسجَّل على الطلب أنّك أبلغتَهم قبل التطبيق.'}
           </span>
         </div>
       </div>

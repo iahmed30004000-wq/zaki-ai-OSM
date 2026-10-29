@@ -133,6 +133,8 @@ const ACTIVITY_AR: Record<string, string> = {
   PARTIAL_DELIVERY: 'تسليم جزئي',
   COURIER_ASSIGNED: 'إسناد شركة شحن',
   COURIER_TRANSFERRED: 'تحويل بين شركات الشحن',
+  COURIER_SEND_CLEARED: 'فكّ إرسال عالق للشركة',
+  COURIER_TOLD_TO_CANCEL: 'إبلاغ الشركة بإلغاء الطرد',
   // «طلبات لم يذكرها أي كشف»: what a person decided about it, on the order itself.
   ...NOT_MENTIONED_ACTIVITY_AR,
 };

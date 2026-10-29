@@ -12,8 +12,24 @@ import { groupDispatchReasons, type DispatchReasonGroup } from '@/lib/dispatch-r
  * group first, and the order numbers of a group sit behind a real button — closed until somebody asks for them.
  * The summary line stays as it was.
  */
-export function DispatchResult({ summary, savedNote }: { summary: DispatchSummary; savedNote: string }) {
+export function DispatchResult({
+  summary,
+  savedNote,
+  onClearSend,
+}: {
+  summary: DispatchSummary;
+  savedNote: string;
+  /**
+   * The way out of a send that never answered. Offered only where the screen
+   * can carry it out; the orders it is offered for are the ones whose send is
+   * «قيد الإرسال» or may have created a parcel.
+   */
+  onClearSend?: (order: { orderId: string; orderNumber: string }) => void;
+}) {
   const groups = groupDispatchReasons(summary.outcomes);
+  const stuck = onClearSend
+    ? summary.outcomes.filter((o) => !o.ok && (o.skipped === 'SEND_IN_FLIGHT' || o.outcomeUnknown))
+    : [];
   return (
     <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-2.5 space-y-1">
       <p className="text-xs font-bold text-[var(--sys-heading)]">
@@ -24,6 +40,21 @@ export function DispatchResult({ summary, savedNote }: { summary: DispatchSummar
       {groups.map((g) => (
         <ReasonGroup key={`${g.outcomeUnknown ? 'U' : 'K'}|${g.reason}`} group={g} />
       ))}
+      {stuck.length > 0 && onClearSend && (
+        <div className="space-y-1">
+          <p className="text-xs text-[var(--sys-muted-foreground)]">سألت الشركة وما عندها طرد لهالطلبات؟</p>
+          {stuck.map((o) => (
+            <button
+              key={o.orderId}
+              type="button"
+              onClick={() => onClearSend({ orderId: o.orderId, orderNumber: o.orderNumber })}
+              className="min-h-11 md:min-h-0 inline-flex items-center text-xs font-medium text-[var(--sys-primary)] underline"
+            >
+              تحقّقتُ مع الشركة — لا طرد عندهم ({o.orderNumber})
+            </button>
+          ))}
+        </div>
+      )}
       {summary.outcomes.some((o) => o.ok) && <p className="text-xs text-[var(--sys-success)]">{savedNote}</p>}
     </div>
   );

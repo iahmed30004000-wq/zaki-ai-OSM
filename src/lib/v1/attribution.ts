@@ -241,6 +241,17 @@ export function attributionItem(o: Row, origin: string | null | undefined) {
   };
 }
 
+/*
+ * NOT FILTERED BY `notSuperseded`, ON PURPOSE.
+ *
+ * This feed is a published contract: the same fields and six status
+ * words for every caller. Dropping a replaced order from it would leave the
+ * media buyer holding that order «shipped» for ever (it was served before it
+ * was replaced), and there is no seventh word to say «replaced». Adding one
+ * is a decision on the contract, not on this reader. What changed for the
+ * media buyer is that the replacement now carries the ad, the campaign and
+ * the page, so the sale that finally delivers is visible to it at last.
+ */
 /** One page of orders touched at or after `since`, oldest change first. */
 export async function readAttributionPage(params: {
   companyId: string;

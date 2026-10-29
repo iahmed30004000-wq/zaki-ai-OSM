@@ -53,6 +53,16 @@ export async function POST(req: Request, ctx: Ctx) {
     if (error instanceof Error && error.message === 'BATCH_NOT_FOUND') {
       return NextResponse.json({ error: 'الدفعة غير موجودة' }, { status: 404 });
     }
+    if (error instanceof Error && error.message === 'BATCH_NOT_READY') {
+      return NextResponse.json(
+        {
+          error: 'الدفعة ما عادت قيد التجميع (سُلّمت أو انغلقت) — ما بيصير ترحيلها للشركة من جديد',
+          errorAr: 'الدفعة ما عادت قيد التجميع (سُلّمت أو انغلقت) — ما بيصير ترحيلها للشركة من جديد',
+          code: 'BATCH_NOT_READY',
+        },
+        { status: 409 }
+      );
+    }
     return apiErrorResponse(error);
   }
 }

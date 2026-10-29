@@ -228,6 +228,25 @@ export async function POST(req: Request) {
     if (order.returnReceipt) {
       return NextResponse.json({ error: 'تم استلام هذا المرتجع مسبقاً', code: 'ALREADY_RECEIVED' }, { status: 409 });
     }
+    /**
+     * A DELIVERED ORDER WHOSE MONEY IS SETTLED HAS NOTHING COMING BACK.
+     *
+     * The returns list never offers one, but the door took any order id: a
+     * call straight to the API rewrote a delivered, settled order as RETURNED
+     * and reversed the commission it had earned — a sale undone by a typed
+     * order number. If goods really did come back, that is a correction the
+     * statement or the finance door makes, with its own record.
+     */
+    if (order.shippingStatus === 'DELIVERED' && order.settlementStatus === 'SETTLED') {
+      return NextResponse.json(
+        {
+          error: 'هالطلب انسلّم وانسوّى حسابه — ما في مرتجع ليتسجّل عليه',
+          errorAr: 'هالطلب انسلّم وانسوّى حسابه — ما في مرتجع ليتسجّل عليه',
+          code: 'DELIVERED_AND_SETTLED',
+        },
+        { status: 409 }
+      );
+    }
 
     const expectedQty = expectedBackTotal(order.items);
     if (input.receivedQty + input.damagedQty > expectedQty) {

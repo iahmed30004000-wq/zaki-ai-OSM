@@ -10,6 +10,7 @@ import { logAudit } from '@/lib/audit';
 import { releaseOrderLines } from '@/lib/reservation';
 import { assertCancellable, type StateSource } from '@/lib/order-state';
 import { REJECTION_REASONS } from '@/lib/confirmation-workflow';
+import { courierCancelCarryOut } from '@/lib/courier-cancel-carryout';
 import { notify } from '@/lib/notify';
 
 /**
@@ -58,6 +59,12 @@ const schema = z.object({
    * route already performs, with the same guards.
    */
   changeRequestId: z.string().uuid().optional(),
+  /**
+   * For an approved CANCEL on a parcel the courier already holds: a person
+   * says the company has been told. Not a permission — a statement, recorded
+   * with the name of whoever made it, same as the edit path's.
+   */
+  courierNotified: z.literal(true).optional(),
 });
 
 export async function POST(req: Request) {
@@ -68,7 +75,7 @@ export async function POST(req: Request) {
     if (!parsed.success) {
       return NextResponse.json({ error: zodMessage(parsed.error) }, { status: 400 });
     }
-    const { orderId, outcome, note, changeRequestId } = parsed.data;
+    const { orderId, outcome, note, changeRequestId, courierNotified } = parsed.data;
     let { until, reason } = parsed.data;
 
     /**
@@ -130,6 +137,8 @@ export async function POST(req: Request) {
       select: {
         id: true, orderNumber: true, version: true, confirmationStatus: true,
         shippingStatus: true, shippedAt: true, labelPrintedAt: true, shippingBatchId: true,
+        // For the message to the company when the parcel is already theirs.
+        trackingNumber: true, deliveryProviderId: true,
       },
     });
     if (!order) return NextResponse.json({ error: 'الطلب غير موجود' }, { status: 404 });
@@ -143,6 +152,28 @@ export async function POST(req: Request) {
      */
     const cancellable = assertCancellable(order as unknown as StateSource);
     if (!cancellable.allowed) {
+      /*
+       * AN APPROVED CANCEL IS NOT A DEAD END.
+       *
+       * Refusing here was right for the order — it must not be cancelled
+       * under a parcel in a van — and wrong for the approval: the request
+       * stayed «waiting to be applied» for ever and the courier was never
+       * asked to stop the parcel. So an approved CANCEL gets the message to
+       * the company; once a person says it was sent, the request is marked
+       * carried out. The order itself is untouched and the goods come back
+       * through the returns door, counted. Anything else keeps the refusal.
+       */
+      if (viaRequest && outcome === 'CANCEL') {
+        const out = await courierCancelCarryOut({
+          companyId, storeId, user, courierNotified: courierNotified === true,
+          order: {
+            id: order.id, orderNumber: order.orderNumber,
+            trackingNumber: order.trackingNumber, deliveryProviderId: order.deliveryProviderId,
+          },
+          request: viaRequest,
+        });
+        return NextResponse.json(out.body, { status: out.status });
+      }
       return NextResponse.json({ error: cancellable.message, code: cancellable.code }, { status: 409 });
     }
 

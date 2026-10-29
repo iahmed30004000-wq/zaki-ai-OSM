@@ -177,6 +177,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       }
       case 'reject': {
         target = 'REJECTED';
+        // The same line «cancel» draws below. A reject writes the same dead
+        // end and drops the same reservation, so with the override
+        // (orders.unlock) it freed the units of a parcel already labelled or
+        // sitting in a batch's van. One question, asked at both doors.
+        const rejectable = assertCancellable(order as StateSource);
+        if (!rejectable.allowed) {
+          return NextResponse.json(
+            { error: rejectable.message, errorAr: rejectable.message, code: rejectable.code },
+            { status: 409 }
+          );
+        }
         if (!rejectionReason || !(REJECTION_REASONS as readonly string[]).includes(rejectionReason)) {
           return NextResponse.json({ error: 'اختر سبب الرفض من القائمة' }, { status: 400 });
         }
