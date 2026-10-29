@@ -16,6 +16,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { db, requireContext, requirePermission, logAudit, recordMovement, markPayableForOrders, world } = vi.hoisted(() => {
   const world = {
     lines: [] as Record<string, any>[],
+    // The match rows: the sweep's «MISSING_IN_STATEMENT» (no line) and the links a person made (a line, an order).
+    matches: [] as Record<string, any>[],
     settled: new Set<string>(),
   };
   const db = {
@@ -42,8 +44,17 @@ const { db, requireContext, requirePermission, logAudit, recordMovement, markPay
         );
       }),
     },
-    // The sweep's «MISSING_IN_STATEMENT» rows live here. The door must never read them.
-    settlementMatch: { findMany: vi.fn() },
+    // The door reads only the rows that HAVE a line: a sweep row «MISSING_IN_STATEMENT» has none and never blocks.
+    settlementMatch: {
+      findMany: vi.fn(async ({ where }: { where: Record<string, any> }) =>
+        world.matches.filter(
+          (m) =>
+            where.orderId.in.includes(m.orderId) &&
+            (where.statementLineId?.not === null ? m.statementLineId !== null : true) &&
+            m.statement.companyId === where.companyId
+        )
+      ),
+    },
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(db)),
   };
   return {
@@ -103,6 +114,7 @@ const line = (over: Record<string, unknown> = {}, statement: Record<string, unkn
 beforeEach(() => {
   vi.clearAllMocks();
   world.lines = [];
+  world.matches = [];
   world.settled = new Set();
   requireContext.mockResolvedValue({ user: { id: 'u1' }, companyId: 'c1', storeId: 's1', country: { minorUnit: 2, currencyCode: 'USD' } });
   requirePermission.mockResolvedValue({});
@@ -111,6 +123,16 @@ beforeEach(() => {
   db.orderActivity.create.mockResolvedValue({});
   recordMovement.mockResolvedValue({ id: 'm1' });
   markPayableForOrders.mockResolvedValue(0);
+});
+
+/** A match row that a person made: it has a line, and the order — and the line carries none of the order's references. */
+const link = (over: Record<string, unknown> = {}, statement: Record<string, unknown> = {}) => ({
+  orderId: ORDER_A, result: 'MATCHED', matchedBy: 'MANUAL', statementLineId: 'l1',
+  statement: {
+    companyId: 'c1', storeId: 's1', reference: 'ST-2026-10', status: 'MATCHED', approvedAt: null, deliveryProviderId: 'p1',
+    ...statement,
+  },
+  ...over,
 });
 
 const nothingBooked = () => {
@@ -180,11 +202,13 @@ describe('an order a statement speaks for is not collected by hand', () => {
     expect((await press()).status).toBe(200);
   });
 
-  it('a sweep row «MISSING_IN_STATEMENT» is not a line: the door never reads the matches', async () => {
-    db.settlementMatch.findMany.mockResolvedValue([{ orderId: ORDER_A, result: 'MISSING_IN_STATEMENT' }]);
+  it('a sweep row «MISSING_IN_STATEMENT» is not a line: it has no line, so it never blocks', async () => {
+    // (Was: the door never reads the matches at all. It now reads them — only the rows that carry a line —
+    // because a link made by hand names the order through its match row and through nothing else.)
+    world.matches = [{ orderId: ORDER_A, result: 'MISSING_IN_STATEMENT', statementLineId: null, statement: link().statement }];
     const res = await press();
     expect(res.status).toBe(200);
-    expect(db.settlementMatch.findMany).not.toHaveBeenCalled();
+    expect(db.settlementMatch.findMany.mock.calls[0][0].where).toMatchObject({ orderId: { in: [ORDER_A] }, statementLineId: { not: null } });
   });
 
   it('one order of a batch is enough to refuse the batch — and the sentence names that order', async () => {
@@ -258,5 +282,58 @@ describe('the sentence, on its own', () => {
       { merchantRef: 'A', barcode: null, statement: { ...st, reference: 'ST-0', status: 'APPROVED' } },
     ];
     expect(statementNamingRefusal([o('A')], lines)!.error).toBe('مصاري الطلب A دخلت مع كشف ST-0');
+  });
+});
+
+describe('an order a person tied to a statement line by hand is not collected by hand either', () => {
+  it('linked on a statement that is not approved: refused with the statement’s own sentence, nothing written', async () => {
+    world.matches = [link()];
+    const res = await press();
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.code).toBe('ON_UNAPPROVED_STATEMENT');
+    expect(body.error).toBe('الطلب SY-2026-0001 بكشف ما انعتمد بعد — مصاريه بتنسجّل لما ينعتمد الكشف');
+    nothingBooked();
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('linked on an approved statement: «دخلت مع كشف»', async () => {
+    world.matches = [link({}, { status: 'APPROVED', approvedAt: new Date('2026-10-28T09:00:00Z'), reference: 'ST-APPROVED' })];
+    const res = await press();
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe('مصاري الطلب SY-2026-0001 دخلت مع كشف ST-APPROVED');
+    nothingBooked();
+  });
+
+  it('a link of ANOTHER order does not block this one', async () => {
+    world.matches = [link({ orderId: ORDER_B })];
+    expect((await press()).status).toBe(200);
+  });
+
+  it('the same sentence from the pure rule, found by the order’s id', () => {
+    const r = statementNamingRefusal([{ id: ORDER_A, orderNumber: 'A' }], [], [link()])!;
+    expect(r.code).toBe('ON_UNAPPROVED_STATEMENT');
+    expect(statementNamingRefusal([{ id: ORDER_B, orderNumber: 'B' }], [], [link()])).toBeNull();
+    // An order without an id cannot be found through a link — and must not match a link without an order.
+    expect(statementNamingRefusal([{ orderNumber: 'A' }], [], [link({ orderId: null })])).toBeNull();
+  });
+
+  it('a link that lands while the press is waiting for the order is seen after the claim, and nothing is booked', async () => {
+    // The first read (before the claim) finds nothing; the link commits; the second read (after the claim) finds it.
+    db.settlementMatch.findMany.mockImplementationOnce(async () => []);
+    world.matches = [link()];
+    const res = await press();
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('ON_UNAPPROVED_STATEMENT');
+    expect(db.settlementMatch.findMany).toHaveBeenCalledTimes(2);
+    nothingBooked();
+  });
+
+  it('two simultaneous presses on a linked order are both refused, and neither writes', async () => {
+    world.matches = [link()];
+    const [a, b] = await Promise.all([press(), press()]);
+    expect([a.status, b.status]).toEqual([409, 409]);
+    nothingBooked();
   });
 });

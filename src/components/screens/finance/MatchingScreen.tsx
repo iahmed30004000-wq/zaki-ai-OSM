@@ -12,6 +12,7 @@ import { NextStepButton } from '@/components/ui/NextStep';
 import { DifferenceActions } from '@/components/screens/finance/DifferenceActions';
 import { DifferencesByPerson } from '@/components/screens/finance/DifferencesByPerson';
 import { NotMentionedActions } from '@/components/screens/finance/NotMentionedActions';
+import { LinkLineDialog } from '@/components/screens/finance/LinkLineDialog';
 import { mayCorrectStatus } from '@/lib/not-mentioned';
 import { useToast } from '@/components/ui/Toast';
 import { Rows, type Column } from '@/components/ui/Rows';
@@ -86,6 +87,7 @@ export function MatchingScreen() {
   const toast = useToast();
   const { currentUser } = useApp();
   const mayManual = userCan(currentUser, 'ops.track');
+  const mayReview = userCan(currentUser, 'settlement.review');
   const [mode, setMode] = useState<'statement' | 'manual'>(useSearchParams().get('mode') === 'manual' ? 'manual' : 'statement');
   const [statements, setStatements] = useState<StatementRow[] | null>(null);
   const [selected, setSelected] = useState<string>('');
@@ -249,10 +251,13 @@ export function MatchingScreen() {
           <Queue
             title="في الكشف وليس عندنا"
             reason
+            linkable={mayReview && !closed}
+            statementId={selected}
+            onResolved={() => void load(selected!)}
             tone="amber"
             currency={statement?.currencyCode ?? ''}
             rows={queue('MISSING_IN_SYSTEM')}
-            hint="مرجع لا يقابله طلب في هذا المتجر — غالباً كشف شركة أخرى أو مرجع مكتوب خطأً. لا رقمين هنا يُختار بينهما؛ اقرأ سبب الشركة بكلامها."
+            hint="مرجع لا يقابله طلب في هذا المتجر — غالباً كشف شركة أخرى أو مرجع مكتوب خطأً. لا رقمين هنا يُختار بينهما؛ اقرأ سبب الشركة بكلامها، أو اربط السطر بطلبه: بهاتف الزبون أو برقم طلبنا."
           />
           <Queue
             title="طلبات لم يذكرها أي كشف"
@@ -289,6 +294,7 @@ function Queue({
   resolvable,
   reason,
   unmentioned,
+  linkable,
   canUnlock,
   statementId,
   onResolved,
@@ -304,6 +310,8 @@ function Queue({
   reason?: boolean;
   /** Orders no statement names: no company figure, so the order's outcome word and three actions on the order. */
   unmentioned?: boolean;
+  /** A line with no order of ours: a person may tie it to one by hand (never after approval). */
+  linkable?: boolean;
   /** May this person correct a delivered order's status (the door the third action leads to)? */
   canUnlock?: boolean;
   statementId?: string | null;
@@ -446,6 +454,25 @@ function Queue({
           },
         ]
       : []),
+    // A line no order of ours carries: a person ties it to its order by hand.
+    ...(linkable && statementId
+      ? [
+          {
+            key: 'link',
+            label: 'ربطه بطلب',
+            render: (m: Match) => (
+              <LinkLineDialog
+                statementId={statementId}
+                matchId={m.id}
+                reference={m.statementLine?.barcode ?? m.statementLine?.merchantRef ?? null}
+                amount={num(m.statementAmount)}
+                currency={currency}
+                onLinked={() => onResolved?.()}
+              />
+            ),
+          },
+        ]
+      : []),
     // What a person decided about an order no statement names: recorded on the ORDER, moves no money.
     ...(unmentioned && statementId
       ? [
@@ -479,7 +506,13 @@ function Queue({
             // between the reader and the number they came for.
             hideOnPhone: true,
             render: (m: Match) =>
-              m.matchedBy === 'MERCHANT_REF' ? 'المرجع' : m.matchedBy === 'BARCODE' ? 'الباركود' : '—',
+              m.matchedBy === 'MERCHANT_REF'
+                ? 'المرجع'
+                : m.matchedBy === 'BARCODE'
+                  ? 'الباركود'
+                  : m.matchedBy === 'MANUAL'
+                    ? 'ربط يدوي'
+                    : '—',
           },
         ]),
   ];

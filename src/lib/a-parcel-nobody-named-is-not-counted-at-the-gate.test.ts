@@ -44,10 +44,15 @@ describe('the refusal of a hand collection', () => {
     expect(statementNamingRefusal(orders, lines)).toBeNull();
   });
 
-  it('and the collect door never reads the match rows at all', () => {
+  it('and the collect door reads the match rows ONLY for the lines a person tied by hand, never a sweep row', () => {
+    // (Was: the door never read the match rows at all. A line tied to an order by hand carries none of the
+    // order's references, so the match row that holds the link is the only way to see that a statement names it.)
     const src = code('src/app/api/ops/tracking/collect/route.ts');
     expect(src.length).toBeGreaterThan(2000);
-    expect(src).not.toContain('settlementMatch');
+    expect(src).toContain('settlementMatch');
+    // Only rows that HAVE a line — a sweep row «MISSING_IN_STATEMENT» has none…
+    expect(src).toMatch(/statementLineId: { not: null }/);
+    // …and the door never names a missing result.
     expect(src).not.toMatch(/MISSING_IN_STATEMENT|MISSING_IN_SYSTEM/);
   });
 });
