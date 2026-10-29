@@ -34,6 +34,8 @@ interface Creatable {
   route: string;
   /** The permission the form's button — or, where the button is bare, its door — is behind. */
   needs: string;
+  /** A second permission the same button is behind (RV98: the import dialog sends each row through the order door). */
+  alsoNeeds?: string;
   /** What else somebody might type for it. The generic ones («أنشئ», «جديد») are added to every row below. */
   words: string[];
 }
@@ -60,6 +62,7 @@ export const CREATABLES: readonly Creatable[] = [
     icon: 'FileSpreadsheet',
     route: '/orders',
     needs: 'orders.import',
+    alsoNeeds: 'orders.create',
     words: ['طلب', 'استورد', 'ملف', 'اكسل', 'إكسل', 'excel', 'csv', 'رفع'],
   },
   { key: 'product', label: 'إضافة منتج', icon: 'PackagePlus', route: '/products', needs: 'products.create', words: ['منتج', 'صنف', 'بضاعة', 'سلعة'] },
@@ -72,7 +75,7 @@ export const CREATABLES: readonly Creatable[] = [
 export function creatablesFor(user: SessionUser, can: PermissionCheck): CreateRow[] {
   return CREATABLES.filter((c) => {
     const route = findRoute(c.route);
-    return !!route && canAccessRoute(user, route, can) && can(user, c.needs);
+    return !!route && canAccessRoute(user, route, can) && can(user, c.needs) && (!c.alsoNeeds || can(user, c.alsoNeeds));
   }).map((c) => ({
     key: c.key,
     label: c.label,

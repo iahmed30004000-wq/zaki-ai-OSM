@@ -411,6 +411,8 @@ export async function POST(req: Request) {
           productNameSnapshot: order.productNameSnapshot,
           productImageSnapshot: order.productImageSnapshot,
           moderatorId: order.moderatorId,
+          // Who made the offer — the account that ENTERED this order (RV8). The ORIGINAL's creator is not copied.
+          createdById: user.id,
           estimatedCostOfGoods: order.estimatedCostOfGoods,
           // Straight into the pool, held by nobody: whoever is free calls it,
           // and it is an ordinary new order from there on. No second queue.

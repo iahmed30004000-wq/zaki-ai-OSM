@@ -5,6 +5,7 @@ import { SHIPPING_STATUS_AR } from './shipping-workflow';
 import { CONFIRMATION_STATUS_AR } from './confirmation-workflow';
 import { NOT_MENTIONED_ACTIVITY_AR } from './not-mentioned';
 import { SWAP_ACTION } from './superseded';
+import { TWIN_ACTION } from './recent-twin-order';
 import { POST_ORDER_ADDITION_AR } from './post-order-offer-copy';
 import { COURIER_SAID, courierSaidTitle } from './couriers/courier-said';
 
@@ -149,6 +150,8 @@ const ACTIVITY_AR: Record<string, string> = {
   COURIER_CANCELLED_ORDER_MOVED: 'ألغت الشركة الطرد وتغيّر الطلب قبل الحفظ',
   // «كان من طرد طلب آخر»: the courier gave a box to another customer; both orders and the box's order say so.
   [SWAP_ACTION]: 'تبديل طرد عند الشركة',
+  // «طلب مشابه»: the same customer asked for the same product minutes before — a flag for the caller, nothing refused.
+  [TWIN_ACTION]: 'تنبيه: نفس العميل طلب نفس المنتج قبل دقائق',
   SWAP_BOX_GIVEN: 'بضاعة هذا الطرد سُلِّمت لزبون طلب آخر',
   // «فرق في المبلغ»: what the approval did with the answer a person gave, in that person's name.
   SETTLEMENT_DECISION_APPLIED: 'سُوّي الطلب برقم الشركة بعد بتّ مكتوب',

@@ -3,14 +3,23 @@ import { NextResponse } from 'next/server';
 import { apiErrorResponse } from '@/lib/api-error';
 import { db } from '@/lib/db';
 import { requireCompanyTenant } from '@/lib/auth';
-import { requirePermission } from '@/lib/authorization';
+import { can, requirePermission } from '@/lib/authorization';
 import { commissionByUserForOrders } from '@/lib/commission';
 import { notSuperseded } from '@/lib/superseded';
 
 export async function GET() {
   try {
     const { user, companyId } = await requireCompanyTenant();
-    await requirePermission('users.view');
+    const viewer = await requirePermission('users.view');
+    /*
+     * WHAT A MODERATOR EARNS IS NOT FOR EVERYONE WHO MAY SEE THE LIST (RV161).
+     *
+     * «عرض المستخدمين» opens this list — the new-order window calls it to fill the «المودريتور» box — and it used to
+     * answer every reader with each moderator's commission RATE and their running commission total. The rate is the
+     * number the owner negotiates per person; the total is a payroll figure. Both are shown on the commission screen
+     * to whoever holds `commission.view`, so that is the key that opens them here too. No new key.
+     */
+    const mayReadCommission = can(viewer, 'commission.view');
 
     const moderators = await db.user.findMany({
       where: {
@@ -90,7 +99,7 @@ export async function GET() {
         email: mod.email,
         phone: mod.phone,
         status: mod.status,
-        commissionRate: mod.commissionRate,
+        ...(mayReadCommission ? { commissionRate: mod.commissionRate } : {}),
         stats: {
           totalOrders,
           confirmedOrders,
@@ -101,7 +110,7 @@ export async function GET() {
           rejectionRate,
           deliveryRate,
           sales: Number(sales.toFixed(2)),
-          commissions: Number(commissions.toFixed(2)),
+          ...(mayReadCommission ? { commissions: Number(commissions.toFixed(2)) } : {}),
         },
       };
     });

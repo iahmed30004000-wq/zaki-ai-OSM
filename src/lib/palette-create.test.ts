@@ -97,9 +97,10 @@ describe('an account is told only what it may do', () => {
     expect(keysFor(user(['orders.view', 'orders.create', 'orders.import']))).toEqual(['order', 'ai-order', 'import-orders']);
   });
 
-  it('the import is behind «orders.import», the key its BUTTON is behind — holding only «orders.create» does not offer it', () => {
+  it('the import is behind BOTH «orders.import» and «orders.create», the keys its BUTTON is behind (RV98) — neither alone offers it', () => {
     expect(keysFor(user(['orders.view', 'orders.create']))).not.toContain('import-orders');
-    expect(keysFor(user(['orders.view', 'orders.import']))).toEqual(['import-orders']);
+    // was: ['import-orders'] — the dialog sends every row through the order door, which wants «orders.create» too
+    expect(keysFor(user(['orders.view', 'orders.import']))).toEqual([]);
   });
 
   it('the screen must be openable: holding the create key without the screen’s own view key offers nothing', () => {
@@ -211,9 +212,13 @@ describe('every word has a screen that answers it, behind the gate its own butto
     }
     // …and the gate each host uses IS the permission the list says (so the box never offers what the screen would not draw).
     expect(stripComments(repoFile(HOSTS['/orders']))).toContain("const canCreate = userCan(currentUser, 'orders.create');");
-    expect(stripComments(repoFile(HOSTS['/orders']))).toContain("const canImport = userCan(currentUser, 'orders.import');");
+    // was: "const canImport = userCan(currentUser, 'orders.import');" — RV98: the import needs both keys, on the screen and in the box
+    expect(stripComments(repoFile(HOSTS['/orders']))).toContain(
+      "const canImport = userCan(currentUser, 'orders.import') && userCan(currentUser, 'orders.create');"
+    );
     expect(CREATABLES.find((c) => c.key === 'user')!.needs).toBe('users.create');
     expect(CREATABLES.find((c) => c.key === 'import-orders')!.needs).toBe('orders.import');
+    expect(CREATABLES.find((c) => c.key === 'import-orders')!.alsoNeeds).toBe('orders.create');
     expect(CREATABLES.filter((c) => c.route === '/orders' && c.key !== 'import-orders').every((c) => c.needs === 'orders.create')).toBe(true);
   });
 });

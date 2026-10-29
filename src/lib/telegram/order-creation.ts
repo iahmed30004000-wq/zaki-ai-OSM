@@ -23,6 +23,7 @@ import { priceIncludesDeliveryFor } from '../delivery-fees';
 import { db } from '../db';
 import { notify } from '../notify';
 import { logAudit } from '../audit';
+import { flagRecentTwins } from '../recent-twin-order';
 import { resolveRegionId } from '@/lib/regions';
 import { orderRefFields } from '../order-ref';
 import { computeCod, roundMinor } from '../money';
@@ -324,6 +325,16 @@ export async function createTelegramOrder(input: CreateTelegramOrderInput): Prom
         telegramChatId: telegram.chatId,
         telegramThreadId: telegram.threadId,
       },
+    });
+
+    // Same customer, same product, minutes apart: a flag on the history for the person who calls — never a refusal.
+    await flagRecentTwins(db, {
+      companyId,
+      orderId: order.id,
+      customerId: customer.id,
+      productIds: [product.id],
+      at: (order as any).createdAt ?? now,
+      userId: actor.id,
     });
 
     // This store's confirmation supervisors; nobody acted, so nobody is
