@@ -6,6 +6,7 @@ import type { SessionUser } from '@/types/auth';
 import { getCompanyAnalytics, reportRange, previousRange, DateFilter } from '@/lib/analytics';
 import { rateLimit } from '@/lib/rate-limit';
 import { db } from '@/lib/db';
+import { expensesOf } from '@/lib/expense-scope';
 import { countOutcomes } from '@/lib/order-outcome';
 import { DELIVERED_SHIPPING, rateOf, whereDelivered } from '@/lib/order-state';
 import {
@@ -186,7 +187,7 @@ export async function answerAnalytics(
         // hole in the net profit, and the screen says so rather than
         // subtracting zero and calling the result net.
         db.expense.count({
-          where: { companyId, ...(start && end ? { expenseDate: { gte: start, lte: end } } : {}) },
+          where: { ...expensesOf(companyId, storeId), ...(start && end ? { expenseDate: { gte: start, lte: end } } : {}) },
         }),
 
         /**

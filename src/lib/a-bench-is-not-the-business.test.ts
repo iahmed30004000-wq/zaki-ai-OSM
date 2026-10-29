@@ -47,12 +47,13 @@ vi.mock('./db', () => ({ db: {} }));
  * spread is never checked for excess properties) and so did every test (they
  * mock Prisma); it surfaced only when the dev server was run, 2026-10-21.
  *
- * ── AND TWO ARE NOT FIXABLE HERE, WHICH IS SAID RATHER THAN HIDDEN ──
+ * ── AND ONE IS NOT FIXABLE HERE, WHICH IS SAID RATHER THAN HIDDEN ──
  *
- * `Expense` and `WalletTransfer` carry NO `storeId` at all. They are
- * company money by schema design, and a bench's ad spend is money that
- * really left the account. Subtracting it would need a column on those
- * tables and a ruling from the owner about whether a test's cost is a cost.
+ * `WalletTransfer` carries NO `storeId` at all. It is company money by
+ * schema design. (`Expense` was the second until 29/10: it now carries a
+ * `storeId`, every read of it names the store, and the sweep skips a `where`
+ * that does — see expense-scope.ts. Whether a bench store's expense is a
+ * cost of the business is still the owner's ruling, not made here.)
  * Named below so the list cannot grow in silence.
  * ═══════════════════════════════════════════════════════════════════════════
  */
@@ -203,10 +204,7 @@ const ID_SCOPED: Record<string, Excuse> = {
  * aggregate appears, it is not here and the sweep fails.
  */
 const NO_STORE_COLUMN: Record<string, Excuse> = {
-  'lib/analytics-answer.ts': { reason: 'expense — لا عمودَ متجرٍ في الجدول؛ وكلفةُ تجربةٍ مالٌ خرجَ فعلاً، وحسمُها قرارُ المالك', sites: 1 },
-  'app/api/finance/route.ts': { reason: 'expense — لا عمودَ متجرٍ في الجدول؛ القرارُ نفسُه', sites: 3 },
   'app/api/finance/transfers/route.ts': { reason: 'walletTransfer — لا عمودَ متجرٍ في الجدول', sites: 1 },
-  'lib/analytics.ts': { reason: 'expense — لا عمودَ متجرٍ في الجدول؛ القرارُ نفسُه', sites: 1 },
 };
 
 describe('Ⅰ · every company-wide money read is on one side or the other', () => {
@@ -325,17 +323,22 @@ describe('Ⅰ · every company-wide money read is on one side or the other', () 
     /*
      * CHECKED AGAINST THE SCHEMA, not taken on trust. This is the bucket
      * that admits a live leak, so its claim is the one most worth being
-     * false: if somebody adds `storeId` to `Expense`, the excuse evaporates
-     * and this fails, which is exactly when the filter becomes writable.
+     * false: if somebody adds `storeId` to `WalletTransfer`, the excuse
+     * evaporates and this fails, which is exactly when the filter becomes
+     * writable. `Expense` got its column on 29/10 and left the bucket, so the
+     * other half of this claim is that it HAS it.
      */
     const schema = readFileSync(join(process.cwd(), 'prisma/schema.prisma'), 'utf8');
     const modelOf = (name: string) =>
       schema.slice(schema.indexOf(`model ${name} {`), schema.indexOf('\n}', schema.indexOf(`model ${name} {`)));
-    for (const model of ['Expense', 'WalletTransfer']) {
+    for (const model of ['WalletTransfer']) {
       expect(modelOf(model), `${model} صارَ له عمودُ متجر — فالعذرُ بَطَلَ والفلترُ صارَ ممكناً`).not.toMatch(
         /^\s+storeId/m
       );
     }
+    expect(modelOf('Expense'), 'المصروفُ فَقَدَ عمودَ متجره — عادَ ربحُ كلِّ متجرٍ يطرحُ مصاريفَ كلِّ المتاجر').toMatch(
+      /^\s+storeId\s+String\?\s+@map\("store_id"\)/m
+    );
   });
 });
 

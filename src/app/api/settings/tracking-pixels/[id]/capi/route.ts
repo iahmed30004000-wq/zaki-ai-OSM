@@ -49,7 +49,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   try {
     const { id } = await params;
     const { user, companyId } = await requireCompanyTenant();
-    await requirePermission('settings.edit');
+    await requirePermission('settings.tracking');
 
     const pixel = await db.trackingPixel.findFirst({
       where: { id, companyId },

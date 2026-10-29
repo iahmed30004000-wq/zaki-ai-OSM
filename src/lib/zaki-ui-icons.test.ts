@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 /**
@@ -20,7 +21,7 @@ const PKG = join(process.cwd(), 'packages', 'zaki-ui');
 
 /**
  * THE CLAIM IS ABOUT CONTENT, AND THE TREE IS LEFT AS FOUND — see `zaki-ui-tokens.test.ts` for why (RV50): the build writes LF, a
- * Windows checkout has CRLF, and a byte comparison is then red on every such machine; and the bytes that were there are written back.
+ * Windows checkout has CRLF, and a byte comparison is then red on every such machine. The committed files are only read; the build writes elsewhere (RV38).
  */
 const lf = (text: string) => text.replace(/\r\n/g, '\n');
 const SVG = join(PKG, 'icons.svg');
@@ -33,18 +34,31 @@ afterAll(() => {
   expect(Buffer.compare(readFileSync(INDEX), ORIGINAL[1]), 'icons.json: a test left it changed').toBe(0);
 });
 
+/**
+ * THE BUILD WRITES INTO A FOLDER OF ITS OWN (RV38).
+ *
+ * This used to run the build over the committed `icons.svg` and put the old
+ * bytes back afterwards. In between, the committed file was a half-written
+ * thing that any other test reading it at that moment (the package test
+ * builds `dist/` from it) could see — a test that failed once in a full run
+ * and passed alone twice. Now the committed files are only READ, and the
+ * build's output is compared with them.
+ */
 function regenerate() {
-  const before = [readFileSync(SVG), readFileSync(INDEX)];
+  const out = mkdtempSync(join(tmpdir(), 'zaki-ui-icons-'));
   try {
-    execFileSync(process.execPath, [join(PKG, 'scripts', 'build-icons.mjs')], { cwd: process.cwd(), stdio: 'pipe' });
-    const svg = lf(before[0].toString('utf8'));
-    const index = lf(before[1].toString('utf8'));
-    expect(lf(readFileSync(SVG, 'utf8'))).toBe(svg);
-    expect(lf(readFileSync(INDEX, 'utf8'))).toBe(index);
+    execFileSync(process.execPath, [join(PKG, 'scripts', 'build-icons.mjs')], {
+      cwd: process.cwd(),
+      stdio: 'pipe',
+      env: { ...process.env, ZAKI_UI_ICONS_OUT: out },
+    });
+    const svg = lf(readFileSync(SVG, 'utf8'));
+    const index = lf(readFileSync(INDEX, 'utf8'));
+    expect(lf(readFileSync(join(out, 'icons.svg'), 'utf8')), 'icons.svg: الملف المحفوظ غير الناتج عن البناء').toBe(svg);
+    expect(lf(readFileSync(join(out, 'icons.json'), 'utf8')), 'icons.json: الملف المحفوظ غير الناتج عن البناء').toBe(index);
     return { svg, index: JSON.parse(index) };
   } finally {
-    writeFileSync(SVG, before[0]);
-    writeFileSync(INDEX, before[1]);
+    rmSync(out, { recursive: true, force: true });
   }
 }
 

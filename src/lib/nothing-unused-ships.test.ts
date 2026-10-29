@@ -376,6 +376,7 @@ const NAV_SOURCE = readFileSync(join(ROOT, 'src/lib/route-registry.ts'), 'utf8')
  */
 const REACHED_BUT_UNSEEN: Record<string, string> = {
   '/api/health': 'يستدعيه مراقبُ التشغيل وHEALTHCHECK في Dockerfile — لا ملفَّ مصدرٍ يسمّيه',
+  '/api/health/live': 'HEALTHCHECK في Dockerfile يسأله: هل العمليةُ حيّة؟ بلا قاعدةٍ ولا عامل',
   '/api/health/worker': 'نفسُ الباب: نبضُ العاملِ يُقرأ من خارج المستودع لا من داخله',
   '/api/geo/stores/[id]/favicon': 'StoreBrandField يبني `/api/geo/stores/${storeId}/${kind}` والمقطعُ الأخير محسوب',
   '/api/geo/stores/[id]/logo': 'StoreBrandField يبني `/api/geo/stores/${storeId}/${kind}` والمقطعُ الأخير محسوب',

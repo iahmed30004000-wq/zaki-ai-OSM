@@ -6,6 +6,9 @@ import { requireContext } from '@/lib/geo-context';
 import { logAudit } from '@/lib/audit';
 import { requirePermission } from '@/lib/authorization';
 import { commissionCostForOrders } from '@/lib/commission';
+import { expensesOf } from '@/lib/expense-scope';
+import { cancelExpense } from '@/lib/expense-void';
+import { ExpenseRefused } from '@/lib/wallets';
 import { getCompanyAnalytics, getDateRange, previousRange } from '@/lib/analytics';
 import { gradeExpenseTypes, ledgerTrust, resolveExpenseCategory, type ExpenseTypeInput } from '@/lib/expense-grade';
 import { z } from 'zod';
@@ -75,10 +78,18 @@ export async function GET(req: Request) {
     const { companyId, storeId, country } = await requireContext();
     await requirePermission('finance.view');
 
+    /*
+     * THIS STORE'S EXPENSES, AND THE ONES FROM BEFORE EXPENSES HAD A STORE.
+     *
+     * This read `where: { companyId }`: every store's profit subtracted every store's expenses. A row that
+     * carries a store now counts for that store only; a row with none counts as it always did until the
+     * owner runs the backfill (expense-scope.ts). The list keeps the CANCELLED rows, marked; the money does not.
+     */
     const expenses = await db.expense.findMany({
-      where: { companyId },
+      where: expensesOf(companyId, storeId, { withCancelled: true }),
       orderBy: { expenseDate: 'desc' },
     });
+    const liveExpenses = expenses.filter((e) => !e.voidedAt);
 
     const deliveredOrders = await db.order.findMany({
       where: { companyId, storeId, status: 'DELIVERED' },
@@ -105,7 +116,7 @@ export async function GET(req: Request) {
     // and is reported, not silently repaired — correcting it moves the
     // revenue figure on this screen.
     const totalCommissions = await commissionCostForOrders({ companyId, storeId, shippingStatus: 'DELIVERED' });
-    const totalOperationalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
+    const totalOperationalExpenses = liveExpenses.reduce((s, e) => s + e.amount, 0);
 
     const netProfit =
       totalRevenue -
@@ -161,7 +172,7 @@ export async function GET(req: Request) {
       db.expense.groupBy({
         by: ['category'],
         where: {
-          companyId,
+          ...expensesOf(companyId, storeId),
           ...(thisMonth.start && thisMonth.end ? { expenseDate: { gte: thisMonth.start, lte: thisMonth.end } } : {}),
         },
         _count: { _all: true },
@@ -170,7 +181,7 @@ export async function GET(req: Request) {
       lastMonth
         ? db.expense.groupBy({
             by: ['category'],
-            where: { companyId, expenseDate: { gte: lastMonth.start, lte: lastMonth.end } },
+            where: { ...expensesOf(companyId, storeId), expenseDate: { gte: lastMonth.start, lte: lastMonth.end } },
             _count: { _all: true },
             _sum: { amount: true },
           })
@@ -220,7 +231,7 @@ export async function GET(req: Request) {
     // Does the ledger tie to money that actually left a wallet? Asked over
     // the whole ledger, because it is a question about bookkeeping habit
     // rather than about any one month.
-    const withWallet = expenses.filter((e) => !!e.walletId).length;
+    const withWallet = liveExpenses.filter((e) => !!e.walletId).length;
 
     return NextResponse.json({
       // The country's own currency. The screen printed "$" beside every
@@ -237,7 +248,7 @@ export async function GET(req: Request) {
         deliveredRevenue: spendWindow.deliveredRevenue,
         priorDeliveredRevenue: spendWindow.priorDeliveredRevenue,
         hasPrevious: !!lastMonth,
-        ledger: ledgerTrust(withWallet, expenses.length),
+        ledger: ledgerTrust(withWallet, liveExpenses.length),
         window: {
           from: thisMonth.start?.toISOString() ?? null,
           to: thisMonth.end?.toISOString() ?? null,
@@ -335,6 +346,8 @@ export async function POST(req: Request) {
           expenseDate: expenseDate ? new Date(expenseDate) : new Date(),
           notes: notes?.trim() || null,
           walletId: wallet.id,
+          // The store this expense is recorded in: its profit alone subtracts it.
+          storeId,
           createdById: user.id,
         },
       });
@@ -371,6 +384,49 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ success: true, expense });
+  } catch (error: any) {
+    return apiErrorResponse(error);
+  }
+}
+
+const cancelSchema = z.object({
+  expenseId: z.string().min(1, 'اختر المصروف'),
+  reason: z.string().trim().min(5, 'سبب الإلغاء إلزامي').max(300),
+});
+
+/**
+ * CANCEL AN EXPENSE (not delete). Its money goes back to the wallet it left, by a reversing entry, and it leaves
+ * every profit figure; the row stays on the list, marked, with who and why. See expense-void.ts.
+ */
+export async function PATCH(req: Request) {
+  try {
+    const { user, companyId, storeId } = await requireContext();
+    await requirePermission('finance.update');
+
+    const parsed = cancelSchema.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) return NextResponse.json({ error: zodMessage(parsed.error) }, { status: 400 });
+
+    try {
+      // One transaction: the cancelled mark and the reversing movement are one fact.
+      const out = await db.$transaction((tx) =>
+        cancelExpense(tx, { companyId, storeId, expenseId: parsed.data.expenseId, reason: parsed.data.reason, userId: user.id })
+      );
+      await logAudit({
+        companyId,
+        userId: user.id,
+        action: 'EXPENSE_VOIDED',
+        entity: 'Expense',
+        entityId: parsed.data.expenseId,
+        newData: { reason: parsed.data.reason, moneyReturned: out.moneyReturned, reversalId: out.reversalId },
+      });
+      return NextResponse.json({ success: true, ...out });
+    } catch (e) {
+      if (e instanceof ExpenseRefused) {
+        const status = e.code === 'NOT_FOUND' ? 404 : e.code === 'OTHER_STORE' || e.code === 'NOT_ALLOWED' ? 403 : 409;
+        return NextResponse.json({ error: e.message, code: e.code }, { status });
+      }
+      throw e;
+    }
   } catch (error: any) {
     return apiErrorResponse(error);
   }

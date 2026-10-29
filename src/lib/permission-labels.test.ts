@@ -87,11 +87,12 @@ describe('the catalog is the whole list, in both directions', () => {
 describe('`settings.manage` names what it actually opens', () => {
   const label = PERMISSION_MODULES.flatMap((g) => g.items).find((i) => i.key === 'settings.manage');
 
-  it('gates far more than scheduled jobs — the measurement that started this', () => {
+  it('gates the credentials — the measurement that started this — and no longer the jobs it was named after', () => {
     const where = (ENFORCED.get('settings.manage') ?? []).sort();
-    // The jobs route it was named after…
-    expect(where.some((f) => f.includes('admin/jobs'))).toBe(true);
-    // …and the three that are credentials.
+    // PR-4: the jobs route has a box of its own (settings.jobs), so this label must not claim it any more…
+    expect(where.some((f) => f.includes('admin/jobs'))).toBe(false);
+    expect((ENFORCED.get('settings.jobs') ?? []).some((f) => f.includes('admin/jobs'))).toBe(true);
+    // …and the three that are credentials stay.
     expect(where.some((f) => f.includes('delivery-providers') && f.includes('credentials'))).toBe(true);
     expect(where.some((f) => f.includes('settings/ad-accounts'))).toBe(true);
     expect(where.some((f) => f.includes('settings/ai'))).toBe(true);
@@ -108,9 +109,12 @@ describe('`settings.manage` names what it actually opens', () => {
     expect(label!.en).not.toBe('Run scheduled jobs');
   });
 
-  it('and it still mentions the jobs, because that door is still behind it', () => {
-    // Replacing one half-truth with another would be the same defect.
-    expect(label!.ar).toMatch(/المهام المجدولة/);
-    expect(label!.en.toLowerCase()).toMatch(/job/);
+  it('and no longer mentions the jobs — that door is behind settings.jobs now, whose label does', () => {
+    // A label that names a door it no longer gates is the same defect as one that hides a door it does.
+    expect(label!.ar).not.toMatch(/المهام المجدولة/);
+    expect(label!.en.toLowerCase()).not.toMatch(/job/);
+    const jobs = PERMISSION_MODULES.flatMap((g) => g.items).find((i) => i.key === 'settings.jobs');
+    expect(jobs!.ar).toMatch(/المهام المجدولة/);
+    expect(jobs!.en.toLowerCase()).toMatch(/job/);
   });
 });

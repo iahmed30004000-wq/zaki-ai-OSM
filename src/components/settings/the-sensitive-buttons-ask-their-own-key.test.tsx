@@ -67,7 +67,7 @@ import { PenaltyRulesCard } from './PenaltyRulesCard';
 import { MessageTemplatesCard } from './MessageTemplatesCard';
 import { AdAccountsCard } from './AdAccountsCard';
 
-function signedIn(holdsTheKey: boolean) {
+function signedIn(holdsTheKey: boolean, key = 'settings.manage') {
   app.value = {
     locale: 'ar',
     isRtl: true,
@@ -77,7 +77,7 @@ function signedIn(holdsTheKey: boolean) {
       name: 'موظف',
       role: 'COMPANY_ADMIN',
       status: 'ACTIVE',
-      permissions: holdsTheKey ? ['settings.view', 'settings.manage'] : ['settings.view'],
+      permissions: holdsTheKey ? ['settings.view', key] : ['settings.view'],
     },
   };
 }
@@ -92,13 +92,13 @@ afterEach(() => {
 });
 
 /** Render for the person without the key, then for the one with it; `check` runs against each. */
-async function bothWays(mount: () => void, ready: () => Promise<void>, drawn: () => Record<string, boolean>) {
+async function bothWays(mount: () => void, ready: () => Promise<void>, drawn: () => Record<string, boolean>, key = 'settings.manage') {
   signedIn(false);
   mount();
   await ready();
   const without = drawn();
   cleanup();
-  signedIn(true);
+  signedIn(true, key);
   mount();
   await ready();
   const withIt = drawn();
@@ -120,6 +120,7 @@ describe('the scheduled jobs', () => {
       () => render(<JobsScreen />),
       async () => { await screen.findByText('يزامن الطلبات'); },
       () => ({ all: has('شغّلها كلَّها بالترتيب'), now: has('شغّلها الآن'), unpark: has('أعد تفعيلها') }),
+      'settings.jobs',
     );
     expect(without).toEqual({ all: false, now: false, unpark: false });
     expect(withIt).toEqual({ all: true, now: true, unpark: true });
@@ -163,6 +164,7 @@ describe('the cards on «إعدادات النظام»', () => {
       () => render(<PostOrderOfferCard />),
       async () => { await screen.findByRole('spinbutton'); },
       () => ({ save: has('احفظ'), locked: box().disabled, said: has(/قراءة فقط/) }),
+      'offers.rules',
     );
     expect(without).toEqual({ save: false, locked: true, said: true });
     expect(withIt).toEqual({ save: true, locked: false, said: false });
@@ -178,6 +180,7 @@ describe('the cards on «إعدادات النظام»', () => {
       () => render(<PerformanceSettingsCard />),
       async () => { await screen.findAllByRole('spinbutton'); },
       () => ({ save: has('احفظ العتبات'), locked: locked(), said: has(/قراءة فقط/) }),
+      'team.settings',
     );
     expect(without).toEqual({ save: false, locked: true, said: true });
     expect(withIt).toEqual({ save: true, locked: false, said: false });
@@ -193,6 +196,7 @@ describe('the cards on «إعدادات النظام»', () => {
       () => render(<PenaltyRulesCard />),
       async () => { await screen.findAllByText('تأخير'); },
       () => ({ toggle: has('أوقفها'), add: has('أضف قاعدة'), said: has(/قراءة فقط/) }),
+      'penalties.rules',
     );
     expect(without).toEqual({ toggle: false, add: false, said: true });
     expect(withIt).toEqual({ toggle: true, add: true, said: false });
@@ -209,7 +213,7 @@ describe('the message templates', () => {
     expect(has('احفظ القوالب')).toBe(false);
     cleanup();
 
-    signedIn(true);
+    signedIn(true, 'settings.messages');
     render(<MessageTemplatesCard />);
     await screen.findByText('احفظ القوالب');
     expect(api.calls).toEqual(['/api/settings/messages?sample=1']);
@@ -298,20 +302,56 @@ describe('the AI settings', () => {
 });
 
 describe('every sensitive screen asks, in its own source', () => {
-  const FILES = [
-    'src/components/screens/JobsScreen.tsx',
-    'src/components/screens/AiSettingsScreen.tsx',
-    'src/components/screens/ai/AssistantsTable.tsx',
-    'src/components/settings/CourierCredentials.tsx',
-    'src/components/settings/CourierWebhook.tsx',
-    'src/components/settings/PostOrderOfferCard.tsx',
-    'src/components/settings/PerformanceSettingsCard.tsx',
-    'src/components/settings/PenaltyRulesCard.tsx',
-    'src/components/settings/MessageTemplatesCard.tsx',
-    'src/components/settings/AdAccountsCard.tsx',
+  // [file, the key its writes ask]. PR-4: five of the ten moved from «الإعدادات الحسّاسة» to a box of their own.
+  const FILES: Array<[string, string]> = [
+    ['src/components/screens/JobsScreen.tsx', 'settings.jobs'],
+    ['src/components/screens/AiSettingsScreen.tsx', 'settings.manage'],
+    ['src/components/screens/ai/AssistantsTable.tsx', 'settings.manage'],
+    ['src/components/settings/CourierCredentials.tsx', 'settings.manage'],
+    ['src/components/settings/CourierWebhook.tsx', 'settings.manage'],
+    ['src/components/settings/PostOrderOfferCard.tsx', 'offers.rules'],
+    ['src/components/settings/PerformanceSettingsCard.tsx', 'team.settings'],
+    ['src/components/settings/PenaltyRulesCard.tsx', 'penalties.rules'],
+    ['src/components/settings/MessageTemplatesCard.tsx', 'settings.messages'],
+    ['src/components/settings/AdAccountsCard.tsx', 'settings.manage'],
   ];
-  it.each(FILES)('%s asks for «الإعدادات الحسّاسة» before it draws a write', (file) => {
+  it.each(FILES)('%s asks for its own key before it draws a write (%s)', (file, key) => {
     const src = readFileSync(join(process.cwd(), file), 'utf8');
-    expect(src, file).toContain("useCan('settings.manage')");
+    expect(src, file).toContain(`useCan('${key}')`);
+    // NEGATIVE: the five that moved no longer ask the old key.
+    if (key !== 'settings.manage') expect(src, file).not.toContain("useCan('settings.manage')");
+  });
+});
+
+describe('NEGATIVE: «الإعدادات الحسّاسة» no longer draws the five buttons that moved to a box of their own', () => {
+  it('the person who holds only the old key is offered none of them', async () => {
+    const oldKeyOnly = () => {
+      app.value = {
+        locale: 'ar', isRtl: true, t: {},
+        currentUser: { id: 'u0', name: 'موظف', role: 'COMPANY_ADMIN', status: 'ACTIVE', permissions: ['settings.view', 'settings.manage'] },
+      };
+    };
+    api.answers['/api/admin/jobs'] = {
+      jobs: [{ name: 'orders-sync', description: 'يزامن الطلبات', everySeconds: 60, schedule: 'كل دقيقة', last: null, lastSuccessAt: null, overdue: false, consecutiveFailures: 0, alerting: false, parked: true }],
+      recent: [],
+    };
+    oldKeyOnly();
+    render(<JobsScreen />);
+    await screen.findByText('يزامن الطلبات');
+    expect([has('شغّلها كلَّها بالترتيب'), has('شغّلها الآن'), has('أعد تفعيلها')]).toEqual([false, false, false]);
+    cleanup();
+
+    api.answers['/api/settings/post-order-offer'] = { settings: { windowMinutes: 15 }, defaults: { windowMinutes: 15 }, fixed: [] };
+    oldKeyOnly();
+    render(<PostOrderOfferCard />);
+    await screen.findByRole('spinbutton');
+    expect(has('احفظ')).toBe(false);
+    cleanup();
+
+    api.answers['/api/settings/messages'] = { templates: [], vars: [], languages: [{ code: 'ar', label: 'العربية' }], sample: null };
+    oldKeyOnly();
+    render(<MessageTemplatesCard />);
+    await screen.findByText(/قوالب الرسائل تتعدّل لمن عنده/);
+    expect(has('احفظ القوالب')).toBe(false);
   });
 });

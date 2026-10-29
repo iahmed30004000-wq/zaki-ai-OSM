@@ -19,14 +19,14 @@ import { PAGE_SEEDS } from './store-pages';
  * ── «NOTHING ENTERED» MEANS: NO ROW IN ANY TABLE THAT POINTS AT IT ──
  *
  * Counted per model, from `STORE_TABLES`, because the database cannot be
- * trusted to say it: of the twenty-seven models that carry a `storeId`, nine
+ * trusted to say it: of the twenty-eight models that carry a `storeId`, ten
  * stop the delete on their own (`Restrict`), eight vanish with it silently
  * (`Cascade`), two let go (`SetNull` — a courier scoped to the store would
  * quietly become company-wide), and EIGHT have no foreign key at all — an
  * inventory movement, a payslip, a courier statement would be left behind
  * pointing at a store that no longer exists. So every one is listed here, by
  * name, with what it is called on the screen; and `geo-removal.test.ts` reads
- * Prisma's generated model and fails the day a twenty-eighth table gains a
+ * Prisma's generated model and fails the day a twenty-ninth table gains a
  * `storeId` without somebody deciding what it means for deleting a store.
  *
  * ── WHAT DOES NOT COUNT ──
@@ -90,6 +90,7 @@ export const STORE_TABLES: readonly StoreTable[] = [
   // Money.
   { model: 'wallet', label: 'المحافظ المالية', how: 'blocks' },
   { model: 'payslip', label: 'كشوف الرواتب', how: 'blocks' },
+  { model: 'expense', label: 'المصاريف', how: 'blocks' },
   { model: 'commissionRule', label: 'قواعد العمولة', how: 'blocks' },
   { model: 'penaltyRule', label: 'قواعد الجزاءات', how: 'blocks' },
   { model: 'penalty', label: 'الجزاءات', how: 'blocks' },

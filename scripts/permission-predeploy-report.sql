@@ -62,7 +62,16 @@ WITH req(action, needs) AS (VALUES
   ('whatsapp.send','whatsapp.view'),
   ('whatsapp.manage','whatsapp.view'),
   ('whatsapp.assign','whatsapp.view'),
-  ('telegram.manage','telegram.view')
+  ('telegram.manage','telegram.view'),
+  ('orders.migrate','orders.import'),
+  ('offers.rules','settings.view'),
+  ('settings.jobs','settings.view'),
+  ('settings.messages','settings.view'),
+  ('settings.delivery_fees','settings.view'),
+  ('settings.tracking','settings.view'),
+  ('penalties.rules','settings.view'),
+  ('team.settings','settings.view'),
+  ('commission.manage','commission.view')
 )
 SELECT 'role_permissions' AS "table", r."name" AS "role", r."companyId", q.action, q.needs
 FROM "role_permissions" rp

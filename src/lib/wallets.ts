@@ -123,7 +123,19 @@ export async function recordMovement(tx: Tx, input: MovementInput) {
  */
 export async function reverseMovement(
   tx: Tx,
-  params: { companyId: string; walletId: string; movementId: string; reason: string; createdById: string }
+  params: {
+    companyId: string;
+    walletId: string;
+    movementId: string;
+    reason: string;
+    createdById: string;
+    /**
+     * May this caller cancel an EXPENSE through its movement? Reversing the money of an expense also takes the
+     * expense out of the profit, which is a finance edit, so the door that calls this says whether the person
+     * holds it. Absent = no: a caller that never thought about expenses cannot cancel one by accident.
+     */
+    mayCancelExpense?: boolean;
+  }
 ) {
   const original = await tx.walletMovement.findFirst({
     where: { id: params.movementId, companyId: params.companyId, walletId: params.walletId },
@@ -133,6 +145,26 @@ export async function reverseMovement(
 
   const already = await tx.walletMovement.findUnique({ where: { reversalOfId: original.id } });
   if (already) throw new Error('This movement was already reversed');
+
+  /*
+   * THE MONEY OF AN EXPENSE COMING BACK CANCELS THE EXPENSE.
+   *
+   * It did not: the reversal returned the money to the wallet and the expense kept subtracting from profit, so
+   * the books said the money was spent and the drawer said it was there. The expense is marked cancelled FIRST,
+   * in the same transaction: if the mark is refused nothing has moved yet, and the caller's transaction (see
+   * the route) keeps the two together if the reversal fails after it.
+   */
+  if (original.referenceType === 'EXPENSE') {
+    if (!params.mayCancelExpense) throw new ExpenseRefused('NOT_ALLOWED');
+    if (!original.referenceId) throw new ExpenseRefused('NOT_PAID_BY_THIS');
+    await markExpenseVoided(tx, {
+      companyId: original.companyId,
+      expenseId: original.referenceId,
+      movementId: original.id,
+      reason: params.reason,
+      userId: params.createdById,
+    });
+  }
 
   return tx.walletMovement.create({
     data: {
@@ -151,6 +183,44 @@ export async function reverseMovement(
       createdById: params.createdById,
     },
   });
+}
+
+/** Why an expense could not be cancelled — each with a sentence a person can act on. */
+export type ExpenseRefusal = 'NOT_FOUND' | 'ALREADY_VOID' | 'NOT_PAID_BY_THIS' | 'OTHER_STORE' | 'NOT_ALLOWED';
+
+export const EXPENSE_REFUSAL_AR: Record<ExpenseRefusal, string> = {
+  NOT_FOUND: 'المصروف غير موجود',
+  ALREADY_VOID: 'هذا المصروف ملغى من قبل',
+  NOT_PAID_BY_THIS: 'هذه الحركة ليست حركة هذا المصروف — لم يُلغَ شيء',
+  OTHER_STORE: 'هذا المصروف خرج من محفظة متجر آخر — يُلغى من ذلك المتجر',
+  NOT_ALLOWED: 'عكس حركة مصروف يُلغي المصروف من الربح — يحتاج «تعديل المالية»',
+};
+
+export class ExpenseRefused extends Error {
+  constructor(public readonly code: ExpenseRefusal) {
+    super(EXPENSE_REFUSAL_AR[code]);
+    this.name = 'ExpenseRefused';
+  }
+}
+
+/**
+ * Mark one expense cancelled — only the expense that THIS movement paid, and only once.
+ *
+ * The condition is in the write, not before it: two presses at once cannot both win, and a movement id that
+ * belongs to some other expense matches nothing. When nothing matched, the row is read again to say which of the
+ * two it was, so the person is told the truth rather than a guess.
+ */
+export async function markExpenseVoided(
+  tx: Tx,
+  p: { companyId: string; expenseId: string; movementId: string | null; reason: string; userId: string }
+) {
+  const done = await tx.expense.updateMany({
+    where: { id: p.expenseId, companyId: p.companyId, movementId: p.movementId, voidedAt: null },
+    data: { voidedAt: new Date(), voidReason: p.reason, voidedById: p.userId },
+  });
+  if (done.count === 1) return;
+  const row = await tx.expense.findFirst({ where: { id: p.expenseId, companyId: p.companyId }, select: { voidedAt: true } });
+  throw new ExpenseRefused(row?.voidedAt ? 'ALREADY_VOID' : 'NOT_PAID_BY_THIS');
 }
 
 /**

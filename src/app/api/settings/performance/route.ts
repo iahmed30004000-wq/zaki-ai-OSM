@@ -32,7 +32,7 @@ export async function GET() {
 export async function PUT(req: Request) {
   try {
     const { user, companyId } = await requireContext();
-    await requirePermission('settings.manage');
+    await requirePermission('team.settings');
 
     const before = await performanceSettings(companyId);
     // Parsed, clamped and narrowed by the settings module: anything that is

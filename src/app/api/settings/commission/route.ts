@@ -54,7 +54,7 @@ const endSchema = z.object({
 export async function GET() {
   try {
     const { companyId, storeId } = await requireContext();
-    await requirePermission('settings.view');
+    await requirePermission('commission.view');
 
     const rules = await db.commissionRule.findMany({
       // This store's agreement. One store's arrangement with its agents is
@@ -95,7 +95,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const { user, companyId, storeId } = await requireContext();
-    await requirePermission('settings.edit');
+    await requirePermission('commission.manage');
 
     const parsed = createSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
@@ -199,7 +199,7 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
   try {
     const { user, companyId, storeId } = await requireContext();
-    await requirePermission('settings.edit');
+    await requirePermission('commission.manage');
 
     const parsed = endSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
