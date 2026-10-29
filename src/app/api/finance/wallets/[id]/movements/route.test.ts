@@ -18,7 +18,7 @@ const { db, TX, can, requireContext, requirePermission, logAudit, reverseMovemen
       $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(TX)),
     },
     TX,
-    can: vi.fn(() => true),
+    can: vi.fn((..._args: unknown[]) => true),
     requireContext: vi.fn(),
     requirePermission: vi.fn(),
     logAudit: vi.fn(),
