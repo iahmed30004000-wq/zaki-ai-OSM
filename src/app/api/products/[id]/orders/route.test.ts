@@ -118,7 +118,13 @@ describe('which orders', () => {
     const [user, where, queue] = applyQueueFilter.mock.calls[0];
     expect(user).toBe(USER);
     expect(queue, 'ما في صفٌّ مطلوب: المغلَّف الافتراضيّ للدور').toBeNull();
-    expect(where).toMatchObject({ companyId: 'c1', storeId: 's1', productId: 'p1' });
+    // Was `productId: 'p1'` (the legacy first-line column). RV75: «of this product» is any line — the first line OR a
+    // later one — as the reports count it; `orders-of-a-product-are-any-line.test.ts` runs the clause over real orders.
+    expect(where).toMatchObject({
+      companyId: 'c1',
+      storeId: 's1',
+      AND: [{ OR: [{ productId: 'p1' }, { items: { some: { productId: 'p1' } } }] }],
+    });
     // The envelope wraps what was asked, and what is READ is the wrapped question.
     const asked = db.order.findMany.mock.calls[0][0].where;
     expect(asked).toEqual({ AND: [where, { visible: 'for-this-reader' }] });

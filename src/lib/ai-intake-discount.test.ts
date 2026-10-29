@@ -390,11 +390,11 @@ describe('المقترَح للمراجع هو ما يَعِدُ به العرض
 /**
  * THE WRITE PATH, RE-JUDGED.
  *
- * It binds no offer — the confirm payload has no `offerId` — so it passes no
- * `discount`, and its `NO_OFFER_BOUND` entry stands. These two tests pin the
- * reason, because the obvious «fix» to that entry is the dangerous one: now
- * that the preview hands over the NET figure, passing the discount here too
- * would charge 19 for an offer that promises 22.
+ * It binds the bundle whose quantity the paste matches (RV172: the order's `offerId`, the gift on the line, the
+ * delivery policy — `an-offer-pasted-is-the-offer-typed.test.ts`) but it passes no `discount`, and its
+ * `NO_OFFER_BOUND` entry stands: the figure it is handed is already the bundle's NET price. These two tests pin the
+ * reason, because the obvious «fix» to that entry is the dangerous one: now that the preview hands over the NET figure,
+ * passing the discount here too would charge 19 for an offer that promises 22.
  */
 describe('وبابُ الكتابةِ يقبض ما أكّدَه المراجعُ، لا أقلَّ منه', () => {
   const confirm = (finalPrice: number) =>
@@ -575,7 +575,10 @@ describe('وحسابُ المالِ يبقى في money.ts', () => {
      * here would charge 19 for a bundle promising 22.
      */
     expect(src().match(/computeCod\(/g) ?? []).toHaveLength(1);
-    expect(src()).toContain('suggestedPrice = qtyOffer.price;');
+    // Was `suggestedPrice = qtyOffer.price;` (the suggestion for ANY nearest bundle). RV173, reviewer's ruling: only the
+    // bundle of EXACTLY this quantity is priced; the nearest is named and the box stays empty.
+    expect(src()).toContain('suggestedPrice = exact.price;');
+    expect(src(), 'عاد تسعيرُ عرضٍ لكميّةٍ مختلفة').not.toContain('suggestedPrice = qtyOffer.price');
   });
 
   it('ولا تدويرَ من عندِه', () => {

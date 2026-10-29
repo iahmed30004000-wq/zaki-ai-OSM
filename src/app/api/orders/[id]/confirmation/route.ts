@@ -113,6 +113,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (
       needsContactFirst({
         action,
+        // A result that carries a date is also a postponement (RV5) — see `needsContactFirst`.
+        schedulesFollowUp: !!nextFollowUpAt,
         isHolder: order.claimedById === user.id,
         hasAttempt:
           (await db.orderContactAttempt.count({ where: { orderId: order.id }, take: 1 })) > 0,

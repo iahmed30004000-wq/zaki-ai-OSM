@@ -135,7 +135,18 @@ export function ordersWhere(params: URLSearchParams, input: OrdersWhereInput = {
   }
 
   const productId = params.get('productId')?.trim();
-  if (productId && productId !== 'all') where.productId = productId;
+  if (productId && productId !== 'all') {
+    /*
+     * «OF THIS PRODUCT» MEANS ANY LINE, NOT ONLY THE FIRST (RV75).
+     *
+     * `Order.productId` is the legacy column and names the FIRST line's product. The reports and the grades count the
+     * LINES, so an order of two products showed under the second in the reports and not under «كل الطلبات على هذا المنتج»
+     * nor on the product page's «أحدث الطلبات». The order matches when its first line is the product (the column, kept
+     * for a row written before it had lines) or when any of its lines is. It is an extra clause in the AND list, so the
+     * search box's own `OR` is left whole, and every caller still ANDs it onto its own scope.
+     */
+    and.push({ OR: [{ productId }, { items: { some: { productId } } }] });
+  }
 
   const regionId = params.get('regionId')?.trim();
   if (regionId && regionId !== 'all') where.regionId = regionId;
