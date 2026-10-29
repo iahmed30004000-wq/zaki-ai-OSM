@@ -485,8 +485,28 @@ summary {
  *
  * And only where a finger is the pointer: a mouse does not need it, and on
  * a desk the same overlap would be a mis-click with no upside.
+ *
+ * THE FIELDS ARE 16 PIXELS WHERE A FINGER TYPES, AND NO SMALLER.
+ *
+ * iOS Safari zooms the whole page into any input, select or textarea whose
+ * text is under 16px, and does not zoom back out when the field loses
+ * focus: the page then scrolls sideways and its edge is cut off until the
+ * person pinches. Every field in this product was 14px or 12px. One rule
+ * here beats editing a hundred screens, and unlayered CSS outranks the
+ * utility layer, so it wins over `text-sm` and `text-xs` without `!`.
+ *
+ * `(pointer: coarse)` rather than a width: the zoom belongs to the finger,
+ * not to the screen — an iPad zooms the same way — and the rule costs 37
+ * bytes inside this block against 60 for a block of its own, in a
+ * stylesheet held to a ceiling (quality-gates.test.ts).
  */
 @media (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
   .tap-safe {
     position: relative;
   }

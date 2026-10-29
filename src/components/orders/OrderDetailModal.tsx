@@ -261,7 +261,9 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
     try {
       await loadOrder(targetId);
       // Scroll modal body back to top so the user sees the new order's header
-      document.querySelector('.max-h-\\[90vh\\] .overflow-y-auto')?.scrollTo({ top: 0 });
+      // By the attribute the dialog puts on its own scrolling body, not by the
+      // class names it happens to wear this month.
+      document.querySelector('[data-modal-body]')?.scrollTo({ top: 0 });
     } finally {
       setNavLoading(null);
     }
