@@ -250,9 +250,19 @@ export function needsContactFirst(args: {
   isHolder: boolean;
   /** Does the order carry at least one contact attempt? */
   hasAttempt: boolean;
+  /**
+   * Does this request SCHEDULE a follow-up — carries a `nextFollowUpAt`? (RV5)
+   *
+   * `contact_result` is the recording of the attempt itself, so on its own it is never bound. But the same action,
+   * handed a date, ALSO postpones the order — and that is `schedule_follow_up` by another name, which hides the order
+   * and keeps the claim. The screen always writes the attempt first (`ConfirmationActions.submitAction`), so an honest
+   * caller is never stopped; a bare call to the API with a date and no attempt on the order was the way around.
+   */
+  schedulesFollowUp?: boolean;
 }): boolean {
   if (!args.isHolder) return false;
   if (args.hasAttempt) return false;
+  if (args.action === 'contact_result' && args.schedulesFollowUp === true) return true;
   return (CONTACT_FIRST_ACTIONS as readonly string[]).includes(args.action);
 }
 
@@ -393,9 +403,11 @@ export async function postponedNotDueCount(tx: Tx, scope: QueueScope, now = new 
     where: {
       ...claimableWhere(scope),
       confirmationStatus: 'POSTPONED',
-      AND: [
-        { OR: [{ postponedUntil: { gt: leadEnd } }, { postponedUntil: null }] },
-        { OR: [{ nextFollowUpAt: { gt: leadEnd } }, { nextFollowUpAt: null }] },
+      // The complement of `duePostponedWhere`, date by date (RV79): the postponement date decides when it exists, and the
+      // follow-up date only when it does not. An order with neither stays here, as it always did — it is not takeable.
+      OR: [
+        { postponedUntil: { gt: leadEnd } },
+        { postponedUntil: null, OR: [{ nextFollowUpAt: { gt: leadEnd } }, { nextFollowUpAt: null }] },
       ],
     },
   });
@@ -453,7 +465,10 @@ export function duePostponedWhere(scope: QueueScope, now: Date) {
   return {
     ...claimableWhere(scope),
     confirmationStatus: 'POSTPONED',
-    OR: [{ postponedUntil: { lte: leadEnd } }, { nextFollowUpAt: { lte: leadEnd } }],
+    // THE SCREEN'S READING OF «WHEN» (RV79): `postponedUntil ?? nextFollowUpAt`. The postponement date decides when there
+    // is one; the follow-up date counts only for an order that has none. Either date alone made the counter and the
+    // «اسحب» button call due an order the postponed list showed with a far date. `postponed-filters.ts` reads it the same way.
+    OR: [{ postponedUntil: { lte: leadEnd } }, { postponedUntil: null, nextFollowUpAt: { lte: leadEnd } }],
   };
 }
 

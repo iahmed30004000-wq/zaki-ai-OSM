@@ -9,6 +9,7 @@ import { orderRefFields } from '@/lib/order-ref';
 import { resolveRegionId } from '@/lib/regions';
 import { computeCod, roundMinor } from '@/lib/money';
 import { priceIncludesDeliveryFor } from '@/lib/delivery-fees';
+import { giftUnits } from '@/lib/offer-gift';
 import { count, money as amount, readTypedFigure } from '@/lib/numeric-input';
 import { productCost } from '@/lib/product-cost';
 import { parseOrderText, matchProduct, normalizeArabic, ParsedOrder } from '@/lib/order-parser';
@@ -46,6 +47,32 @@ export type AiSkipped = 'NOT_LOCAL' | 'NOT_CONFIGURED' | 'FAILED' | null;
  */
 function offerForQuantity<T extends { quantity: number }>(offers: T[], qty: number): T | null {
   return offers.find((o) => o.quantity === qty) ?? null;
+}
+
+/**
+ * THE ONE BUNDLE NEAREST THIS QUANTITY — OR NOTHING (RV173).
+ *
+ * When no bundle is exactly the quantity pasted, the preview may still NAME the closest one, so the reviewer sees what
+ * the shop sells near it. It used to take `offers[0]` — the first row in the seller's own sort order, whatever its size:
+ * for «٣ قطع» it filled the box with the price of a bundle of ONE. The nearest is read by the pieces, not by the order
+ * of the list; two bundles equally near (a 2 and a 4 for a 3) are no answer at all, and it says nothing rather than
+ * pick the cheaper one. Several bundles of the same size are one answer: the first, as `offerForQuantity` reads them.
+ */
+function nearestOfferForQuantity<T extends { quantity: number }>(offers: T[], qty: number): T | null {
+  let best: T | null = null;
+  let gap = Infinity;
+  let tied = false;
+  for (const o of offers) {
+    const g = Math.abs(o.quantity - qty);
+    if (g < gap) {
+      best = o;
+      gap = g;
+      tied = false;
+    } else if (g === gap && best && o.quantity !== best.quantity) {
+      tied = true;
+    }
+  }
+  return tied ? null : best;
 }
 
 /**
@@ -292,6 +319,15 @@ export async function POST(req: Request) {
        * So the choice is made in one place and read here.
        */
       const unitCost = (await productCost(db, companyId, product.id)).average;
+      /*
+       * THE GIFT THIS ORDER CARRIES — the bundle bound above, through the one rule.
+       *
+       * `giftUnits` is the manual door's own function (`POST /orders`), so «3 + 1» typed by hand and «3 + 1» pasted
+       * here are the same four units. It is one gift per BUNDLE: this door binds an offer only when the quantity is
+       * exactly the bundle's (`offerForQuantity`), so the gift is the offer's `freeQuantity`, once — never × the
+       * pieces. No bound offer is no gift: an order at the reviewer's own figure promised the customer nothing.
+       */
+      const gift = giftUnits(quantityOffer, qty);
 
       // Moderator assignment — must belong to THIS company (same rule as POST /orders)
       const assignedModeratorId = p.moderatorId || (user.role === 'MODERATOR' ? user.id : null);
@@ -318,10 +354,12 @@ export async function POST(req: Request) {
       /**
        * ONE COD function (contract PART 5); no delivery fee at intake.
        *
-       * NO `discount`, AND THAT IS NOT THE PREVIEW'S DEFECT REPEATED. This
-       * door binds no offer: the confirm payload carries no `offerId`, and
-       * `price` above is either the reviewer's confirmed total or the
-       * product's base price. There is no `discount` column in play to pass.
+       * NO `discount`, AND THAT IS NOT THE PREVIEW'S DEFECT REPEATED. The
+       * bundle bound above (RV172) gives this order its `offerId`, its gift
+       * and its delivery policy — but NOT its reduction: `price` is the
+       * reviewer's confirmed total, and for a bound bundle that total is
+       * already the offer's NET figure (the write refuses any other). The
+       * reduction is inside it; there is no `discount` left to pass.
        *
        * And passing the chosen offer's discount here would now subtract it
        * TWICE: the preview already hands the reviewer the net figure (25
@@ -402,11 +440,14 @@ export async function POST(req: Request) {
                  * and the courier statement disagrees with the order by
                  * exactly the fee.
                  *
-                 * This door binds no offer (see the note above
-                 * `computeCod`), so the store's own policy is the whole
-                 * of the answer for an order with no bundle on it.
+                 * AND A BUNDLE THAT CARRIES DELIVERY TURNS IT ON, as at
+                 * `POST /orders` (RV172): the offer's `deliveryIncluded`
+                 * can only switch it ON, never off. With no bundle bound
+                 * the store's own policy is the whole of the answer.
                  */
-                priceIncludesDelivery: await priceIncludesDeliveryFor(storeId),
+                priceIncludesDelivery: await priceIncludesDeliveryFor(storeId, quantityOffer?.deliveryIncluded),
+                // Which bundle sold this: `null` when the quantity matched none and the reviewer's own figure stood.
+                offerId: quantityOffer?.id ?? null,
                 quantity: qty,
                 sellingPrice: price,
                 shippingCost: 0,
@@ -418,8 +459,8 @@ export async function POST(req: Request) {
                 claimedById: entry.claimedById,
                 claimedAt: entry.claimedAt,
                 currentOwnerId: entry.currentOwnerId,
-                // Rounded by the currency, like the total beside it.
-                estimatedCostOfGoods: roundMinor(unitCost * qty, country.minorUnit),
+                // Rounded by the currency, like the total beside it. The gift is a unit off the shelf like any other: it costs.
+                estimatedCostOfGoods: roundMinor(unitCost * (qty + gift), country.minorUnit),
                 productNameSnapshot: product.name,
                 productImageSnapshot: product.image || null,
                 status: 'NEW',
@@ -449,6 +490,8 @@ export async function POST(req: Request) {
             productId: product.id,
             productName: product.name,
             quantity: qty,
+            // Real stock at zero price: the reservation, the delivery deduction and the return all read `quantity + freeQuantity`.
+            freeQuantity: gift,
             unitPrice: money.subtotal / qty,
             lineTotal: money.lineTotals[0] ?? money.subtotal,
             addedById: user.id,
@@ -600,7 +643,7 @@ export async function POST(req: Request) {
       const offers = await activeOffersFor(db, companyId, match.id, country.minorUnit);
       offerPrices = offers.map((o) => ({ quantity: o.quantity, price: o.price, name: o.name }));
       const exact = offerForQuantity(offers, parsed.quantity || 1);
-      const qtyOffer = exact || offers[0];
+      const qtyOffer = exact || nearestOfferForQuantity(offers, parsed.quantity || 1);
       if (exact) {
         // The offer's price, whatever the message said (RV151). A different figure the customer
         // typed is returned beside it, said on the screen and kept in the order's history.

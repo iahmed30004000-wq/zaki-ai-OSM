@@ -372,16 +372,14 @@ const NO_OFFER_BOUND: Record<string, string> = {
   // `src/lib/telegram/order-creation.ts` was here, for «the price is the operator's advertised total; no offer is bound».
   // It left on 29/10: the message's «إسم العرض» is now bound to a real offer (28/10: «نص العرض مربوط بالعرض») and
   // `priceTelegramLine` passes `discount: basketDiscount([line])` to `computeCod`, as the storefront door does.
-  // `const price = p.finalPrice || product.basePrice` — a human-confirmed
-  // figure or the product's base price, and the confirm payload carries no
-  // `offerId` at all. This file's OTHER `computeCod` call — the preview that
-  // suggests a price — does pass the chosen offer's discount, and that is
-  // why the write path must not: the reviewer is handed the NET figure (25
-  // with a discount of 3 is suggested as 22) and the modal copies it into
-  // `finalPrice`, so reducing it again here would charge 19.
+  // `const price = p.finalPrice` — the human-confirmed total. Since RV172 the write path DOES bind the bundle whose
+  // quantity the paste matches (the order's `offerId`, the gift, the delivery policy), but the total it prices is that
+  // bundle's NET figure: the write refuses any other (`OFFER_PRICE`). The reduction is already inside it: the reviewer
+  // is handed 22 for 25 with a discount of 3 and the modal copies it into `finalPrice`, so reducing it again here
+  // would charge 19. (Comment and reason text only — the assertions of this test are unchanged.)
   'src/app/api/orders/ai-intake/route.ts':
-    'the write path prices a reviewer-confirmed total with no offer bound; its preview call already ' +
-    'passes the offer’s discount, so subtracting it again here would take it off twice',
+    'the write path prices a reviewer-confirmed total that, for a bound bundle, is already the offer’s net figure; ' +
+    'subtracting the discount again here would take it off twice',
   /*
    * «العرض بعد الطلب» — `computeCod({ lines: [], addOns: [one] })`, called
    * for one reason: to read back `.addOns`, which is the add-on's value
