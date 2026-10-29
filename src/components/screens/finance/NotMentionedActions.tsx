@@ -84,7 +84,7 @@ export function NotMentionedActions({ statementId, matchId, orderId, orderNumber
           className="inline-flex items-center gap-1 text-xs text-[var(--sys-primary)] hover:underline"
           title={`افتح الطلب ${orderNumber} لتصحيح حالته`}
         >
-          <RiExternalLinkLine className="h-4 w-4" />
+          <RiExternalLinkLine className="icon-mirror h-4 w-4" />
           افتح الطلب
         </a>
       )}
