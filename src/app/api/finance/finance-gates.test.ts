@@ -84,7 +84,9 @@ beforeEach(() => {
   db.courierStatement.update.mockResolvedValue({ id: ID, status: 'APPROVED' });
   db.courierStatement.updateMany.mockResolvedValue({ count: 1 });
   db.walletMovement.findMany.mockResolvedValue([]);
-  db.order.updateMany.mockResolvedValue({ count: 0 });
+  // The approval claims its orders with a conditional write and stops unless it took every one it asked for
+  // (RV291): a fake that answers like a database that took them all.
+  db.order.updateMany.mockImplementation(async (a: { where?: { id?: { in?: unknown[] } } }) => ({ count: a?.where?.id?.in?.length ?? 0 }));
   markPayableForOrders.mockResolvedValue(0);
   // The approval recomputes the book balance; by default nothing moved
   // since the count, so the recorded difference still holds.

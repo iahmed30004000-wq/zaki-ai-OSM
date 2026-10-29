@@ -124,7 +124,9 @@ beforeEach(() => {
   requirePermission.mockResolvedValue({});
   receiptGap.mockResolvedValue({ claimed: 1543.9, received: 1543.9, gap: 0, needsExplanation: false, explained: false, unconvertible: 0 });
   db.order.findMany.mockResolvedValue([]);
-  db.order.updateMany.mockResolvedValue({ count: 0 });
+  // The approval claims its orders with a conditional write and stops unless it took every one it asked for
+  // (RV291): a fake that answers like a database that took them all.
+  db.order.updateMany.mockImplementation(async (a: { where?: { id?: { in?: unknown[] } } }) => ({ count: a?.where?.id?.in?.length ?? 0 }));
   markPayableForOrders.mockResolvedValue(0);
   recordMovement.mockResolvedValue({ id: 'm1' });
   state.reads = [statement([{ id: 'r1', walletId: 'w-usd', amount: 1543.9 }])];

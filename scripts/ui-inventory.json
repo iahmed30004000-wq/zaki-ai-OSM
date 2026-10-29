@@ -919,6 +919,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/screens/finance/BulkDecide.tsx": {
+    "buttons": 1,
+    "inputs": 3,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 1,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/screens/finance/ClosingScreen.tsx": {
     "buttons": 4,
     "inputs": 3,
@@ -940,12 +950,12 @@
     "tabs": 0
   },
   "src/components/screens/finance/DifferenceActions.tsx": {
-    "buttons": 1,
-    "inputs": 0,
+    "buttons": 3,
+    "inputs": 1,
     "columns": 0,
     "cards": 0,
     "modals": 0,
-    "icons": 3,
+    "icons": 4,
     "links": 0,
     "tabs": 0
   },
