@@ -105,7 +105,7 @@ export function planTransfer(input: {
   if (!TRANSFERABLE.includes(status)) {
     throw new TransferRefused(
       'NOT_TRANSFERABLE',
-      'لا يمكن تحويل طلب في هذه الحالة — التحويل يكون قبل إغلاق الشحنة'
+      'لا يمكن تحويل طلب في هذه الحالة — التحويل يكون قبل انتهاء رحلة الطرد'
     );
   }
 

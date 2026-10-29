@@ -22,6 +22,9 @@ const { db, requireContext, requirePermission, can, logAudit, releaseOrderLines,
     orderNote: { create: vi.fn() },
     orderActivity: { create: vi.fn() },
     orderStatusLog: { create: vi.fn() },
+    // The trolley's status — «after handover» now means the trolley was PRESSED (M6), not that a waybill was printed.
+    shippingBatch: { findFirst: vi.fn() },
+    customer: { update: vi.fn() },
     $transaction: vi.fn(),
   },
   requireContext: vi.fn(),
@@ -41,6 +44,7 @@ vi.mock('@/lib/authorization', () => ({
 vi.mock('@/lib/audit', () => ({ logAudit: (...a: unknown[]) => logAudit(...a) }));
 vi.mock('@/lib/reservation', () => ({ releaseOrderLines: (...a: unknown[]) => releaseOrderLines(...a) }));
 vi.mock('@/lib/notify', () => ({ notify: (...a: unknown[]) => notify(...a) }));
+vi.mock('@/lib/apps/events', () => ({ emitAppEvent: vi.fn(async () => 1) }));
 
 import { POST } from '@/app/api/ops/shipments/stand-down/route';
 
@@ -80,6 +84,8 @@ beforeEach(() => {
   db.order.findFirst.mockResolvedValue(stored());
   db.deliveryProvider.findFirst.mockResolvedValue({ name: 'الباشا', phone: '0999' });
   db.orderChangeRequest.updateMany.mockResolvedValue({ count: 1 });
+  // Handed over = the trolley the parcel sits on was pressed.
+  db.shippingBatch.findFirst.mockResolvedValue({ status: 'SHIPPED' });
   db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn(db));
 });
 
@@ -193,5 +199,90 @@ describe('an approved cancel on an order still on the shelf — the negative', (
     expect(releaseOrderLines).toHaveBeenCalledTimes(1);
     expect(db.order.updateMany).toHaveBeenCalledTimes(1);
     expect(res.body.courierTold).toBeUndefined();
+  });
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * M6 — UNTIL THE PRESS, «أبلغتُهم» IS NOT AN ANSWER: THE PARCEL IS STILL OURS.
+ *
+ * #59 sent every approved cancel of a labelled parcel to the courier message,
+ * and a person pressing «أبلغتُهم» marked the request carried out while the
+ * parcel still stood on our own trolley — which hid the request from the
+ * press (it only names requests still waiting) and let a cancelled parcel be
+ * sent and handed over. Now a parcel on an OPEN trolley is cancelled and taken
+ * off it; the company message is only for a trolley that was pressed.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+describe('an approved cancel on a parcel that is labelled but still on our open trolley', () => {
+  const onOpenTrolley = (over: Record<string, unknown> = {}) =>
+    stored({
+      shippingStatus: 'READY_FOR_PICKUP', shippedAt: null, trackingNumber: null, deliveryProviderId: null,
+      courierSendStartedAt: null, totalAmount: 10, currency: 'JOD', customerId: 'cu1',
+      // What `endOrder` reads: the order WITH its trolley, whose status it will not guess.
+      shippingBatch: { status: 'READY', batchNumber: 'BATCH-2026-0001' }, ...over,
+    });
+
+  beforeEach(() => {
+    db.shippingBatch.findFirst.mockResolvedValue({ status: 'READY' });
+    db.order.findFirst.mockResolvedValue(onOpenTrolley());
+    db.order.updateMany.mockResolvedValue({ count: 1 });
+  });
+
+  it('does NOT send it to the courier message — it is cancelled and taken off our trolley', async () => {
+    const res = await press({ parcelInHand: true });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.code, 'ذهب إلى رسالة الشركة وهو ما زال على عربتنا').not.toBe('COURIER_ACTION_REQUIRED');
+    expect(db.orderActivity.create.mock.calls.map((c: any[]) => c[0].data.action)).not.toContain('COURIER_TOLD_TO_CANCEL');
+    expect(db.order.updateMany.mock.calls[0][0].data).toMatchObject({
+      confirmationStatus: 'CANCELLED', shippingBatchId: null, labelPrintedAt: null, shippingStatus: 'NOT_READY',
+    });
+    expect(releaseOrderLines).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks for the person’s word first, and the request stays WAITING until they give it', async () => {
+    const res = await press({});
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('ATTESTATION_REQUIRED');
+    expect(res.body.attestation).toBe('الطرد بين يديّ — فككتُه وأعدتُ قطعه للرف وأتلفتُ بوليصته');
+    // Still «waiting to be applied», so the press keeps naming it.
+    expect(db.orderChangeRequest.updateMany).not.toHaveBeenCalled();
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+    expect(releaseOrderLines).not.toHaveBeenCalled();
+  });
+
+  it('marks the request carried out in the SAME transaction as the cancel, once', async () => {
+    await press({ parcelInHand: true });
+
+    expect(db.orderChangeRequest.updateMany).toHaveBeenCalledTimes(1);
+    expect(db.orderChangeRequest.updateMany.mock.calls[0][0]).toMatchObject({
+      where: { id: REQUEST_ID, appliedAt: null },
+      data: { appliedById: 'boss' },
+    });
+    // And the one who asked hears it was done.
+    expect(notify.mock.calls[0][0].audience).toEqual({ userIds: ['agent-1'] });
+  });
+
+  it('a request that loses the race to a press keeps its approval standing', async () => {
+    db.order.updateMany.mockResolvedValue({ count: 0 });
+
+    const res = await press({ parcelInHand: true });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('ORDER_MOVED_ON');
+    expect(db.orderChangeRequest.updateMany, 'عُلّم الطلب منفّذاً وما انتنفّذ').not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE: once the trolley is pressed, the same parcel goes back to the courier message', async () => {
+    db.shippingBatch.findFirst.mockResolvedValue({ status: 'SHIPPED' });
+
+    const res = await press({});
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('COURIER_ACTION_REQUIRED');
+    expect(db.order.updateMany).not.toHaveBeenCalled();
   });
 });

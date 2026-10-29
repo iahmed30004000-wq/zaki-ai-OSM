@@ -108,6 +108,15 @@ export interface CourierAdapter {
 
   createShipment(req: CourierShipmentRequest): Promise<CourierShipmentResult>;
   fetchEvents(trackingNumbers: string[]): Promise<CourierEvent[]>;
+  /**
+   * Ask the company to cancel a parcel we created — resolving means YES.
+   *
+   * A refusal throws (the company's own words in the error), and a timeout
+   * throws an error marked `outcomeUnknown`: the caller must change nothing
+   * on either, because only a clear yes means the waybill is gone. Absent on
+   * a courier nobody calls. See `courier-remote-cancel.ts`.
+   */
+  cancelShipment?(trackingNumber: string): Promise<void>;
   /** Courier status code → ours. Unknown codes MUST return null. */
   mapStatus(rawStatus: string): ShippingStatus | null;
 }

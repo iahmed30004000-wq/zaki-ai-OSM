@@ -264,7 +264,15 @@ describe('one parcel per order, decided by the row and not by the snapshot', () 
     // and an order already claimed must BOTH fail to be taken.
     expect(claim.sql).toContain('"trackingNumber" IS NULL');
     expect(claim.sql).toContain('"courier_send_started_at" IS NULL');
-    expect(claim.args).toEqual(['o1']);
+    // (old → new, item 4 of the close-the-shipment PR) The claim names the trolley too.
+    expect(claim.args).toEqual(['o1', 'b1']);
+    // And requires the order to still be what made it sendable: on THIS trolley, waiting for
+    // pickup, confirmed, and not shipped — a cancel or a press between the read and the claim
+    // makes the statement find nothing.
+    expect(claim.sql).toContain('"shippingBatchId" = ?');
+    expect(claim.sql).toContain(`"shippingStatus" = 'READY_FOR_PICKUP'`);
+    expect(claim.sql).toContain(`"confirmationStatus" = 'CONFIRMED'`);
+    expect(claim.sql).toContain('"shippedAt" IS NULL');
     expect(
       db.$queryRaw.mock.invocationCallOrder[0],
       'كُلِّمت الشركةُ قبل حجز الطلب'
@@ -279,6 +287,49 @@ describe('one parcel per order, decided by the row and not by the snapshot', () 
     expect(createShipment, 'أرسلت طرداً ثانياً لطلبٍ قيد الإرسال').not.toHaveBeenCalled();
     expect(res.outcomes[0].skipped).toBe('SEND_IN_FLIGHT');
     expect(res.skipped).toBe(1);
+  });
+
+  /*
+   * ITEM 4 OF «CLOSE THE SHIPMENT»: the claim repeats what made the order sendable.
+   * The loop reads the batch once and claims twenty orders over seconds; in between a
+   * person may cancel one (it leaves the trolley), hold it, or press the batch. A claim
+   * that checked only the barcode would send a dead order.
+   */
+  it('does NOT send an order that left the trolley between the read and the claim (cancelled or held)', async () => {
+    db.$queryRaw.mockImplementation(async (frags: string[]) =>
+      frags.join(' ').includes('UPDATE')
+        ? []
+        : [{ tracking: null, claimed: null, batch: null, shipping: 'NOT_READY', confirmation: 'CANCELLED', shipped: null }]
+    );
+    const res = await dispatchBatch(input);
+    expect(createShipment, 'أُرسل طلب ملغى إلى الشركة').not.toHaveBeenCalled();
+    expect(res.outcomes[0]).toMatchObject({ ok: false, skipped: 'LEFT_THE_BATCH' });
+    expect(res.skipped).toBe(1);
+    expect(groupDispatchReasons(res.outcomes)[0].reason).toContain('خرج من الدفعة قبل الإرسال');
+  });
+
+  it.each([
+    ['moved to another trolley', { batch: 'b2', shipping: 'READY_FOR_PICKUP', confirmation: 'CONFIRMED', shipped: null }],
+    ['no longer waiting for pickup', { batch: 'b1', shipping: 'NOT_READY', confirmation: 'CONFIRMED', shipped: null }],
+    ['no longer confirmed', { batch: 'b1', shipping: 'READY_FOR_PICKUP', confirmation: 'POSTPONED', shipped: null }],
+    ['already shipped (the press landed first)', { batch: 'b1', shipping: 'SHIPPED', confirmation: 'CONFIRMED', shipped: new Date() }],
+  ])('and the same when it was %s', async (_name, row) => {
+    db.$queryRaw.mockImplementation(async (frags: string[]) =>
+      frags.join(' ').includes('UPDATE') ? [] : [{ tracking: null, claimed: null, ...row }]
+    );
+    const res = await dispatchBatch(input);
+    expect(createShipment).not.toHaveBeenCalled();
+    expect(res.outcomes[0].skipped).toBe('LEFT_THE_BATCH');
+  });
+
+  it('NEGATIVE: an order still on the trolley whose claim another run holds is still «in flight», not «left»', async () => {
+    db.$queryRaw.mockImplementation(async (frags: string[]) =>
+      frags.join(' ').includes('UPDATE')
+        ? []
+        : [{ tracking: null, claimed: new Date(), batch: 'b1', shipping: 'READY_FOR_PICKUP', confirmation: 'CONFIRMED', shipped: null }]
+    );
+    const res = await dispatchBatch(input);
+    expect(res.outcomes[0].skipped).toBe('SEND_IN_FLIGHT');
   });
 
   it('calls it already sent when the row turns out to carry a barcode', async () => {

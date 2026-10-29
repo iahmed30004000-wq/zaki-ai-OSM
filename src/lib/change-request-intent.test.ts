@@ -18,8 +18,15 @@ import { repoFile, stripComments } from './guard-source';
  * and these are the four ways it must still refuse.
  */
 
-const ours = { hasLeftWarehouse: false };
-const gone = { hasLeftWarehouse: true };
+/*
+ * (old → new, M6 28/10) These two constants said `hasLeftWarehouse` — the printed
+ * waybill. The owner moved the line for cancelling and postponing to the press
+ * of «إغلاق الشحنة — سُلّمت للشركة», so the parcel's position is now whether
+ * the courier has TAKEN it. `packedButOurs` is the case the move exists for.
+ */
+const ours = { handedToCourier: false };
+const gone = { handedToCourier: true };
+const packedButOurs = ours; // labelled, on the pickup shelf, on a trolley not yet pressed: still ours
 
 describe('what an approved ask becomes', () => {
   it('an edit is the edit path, wherever the parcel is', () => {
@@ -27,9 +34,15 @@ describe('what an approved ask becomes', () => {
     expect(carryOut('EDIT', gone)).toEqual({ kind: 'EDIT_ORDER' });
   });
 
-  it('a cancellation before the waybill cancels; after it, the courier is told', () => {
+  it('a cancellation before the handover cancels; after it, the courier is told', () => {
     expect(carryOut('CANCEL', ours)).toEqual({ kind: 'CANCEL_ORDER' });
     expect(carryOut('CANCEL', gone)).toEqual({ kind: 'CANCEL_VIA_COURIER' });
+  });
+
+  it('a labelled parcel still on our open trolley is cancelled and held, never sent to the courier message', () => {
+    // The waybill is not the line any more — the press is.
+    expect(carryOut('CANCEL', packedButOurs)).toEqual({ kind: 'CANCEL_ORDER' });
+    expect(carryOut('POSTPONE', packedButOurs)).toEqual({ kind: 'HOLD_SHIPMENT' });
   });
 
   /**
@@ -37,7 +50,7 @@ describe('what an approved ask becomes', () => {
    * driver knocks tomorrow is a date on a screen and nothing else, so it is
    * refused at the door rather than two hours later in a queue.
    */
-  it('and a parcel in a van cannot be postponed', () => {
+  it('and a parcel the courier has taken cannot be postponed', () => {
     expect(carryOut('POSTPONE', ours)).toEqual({ kind: 'HOLD_SHIPMENT' });
     const out = carryOut('POSTPONE', gone);
     expect(out.kind).toBe('REFUSED');
@@ -193,7 +206,10 @@ describe('the wiring', () => {
     // with the parcel's position — not a link that opens an edit form the
     // seal will refuse.
     expect(src).toMatch(/order\.confirmationStatus === 'CONFIRMED' && \(/);
-    expect(src).toMatch(/hasLeftWarehouse=\{hasLeftWarehouse\(order as unknown as StateSource\)\}/);
+    // (old → new, M6) The dialog was told `hasLeftWarehouse` (the printed waybill);
+    // it is told whether the courier has TAKEN the parcel.
+    expect(src).toMatch(/handedToCourier=\{handedOver\}/);
+    expect(src).toMatch(/const handedOver = handedToCourier\(\{/);
   });
 
   it('and the door offers every intent there is', () => {
@@ -226,37 +242,45 @@ describe('the wiring', () => {
   /**
    * ONE LINE, FOUR GATES.
    *
-   * Where the goods stop being ours to take back is a ruling, not a
-   * preference: the waybill, not the handover — a labelled parcel on the
-   * out-tray is committed, because stock counted as available while it
-   * sits in a box is stock the next customer is promised and does not get.
-   * `warehouse-custody.test.ts` holds that line itself.
+   * (old → new, M6 28/10) This held that the three asks read «the waybill, not
+   * the handover» — `hasLeftWarehouse` — the 28/09 ruling. The owner overturned
+   * it for CANCEL and POSTPONE only: «الغاء و التأجيل لغاية ما اضغط اغلاق
+   * الشحنة». The line is now the press of «إغلاق الشحنة — سُلّمت للشركة», and the
+   * 28/09 reason survives where it was always about STOCK (`shipment-cancel`,
+   * `warehouse-custody.test.ts`).
    *
-   * What this holds is that the three asks all ASK THE SAME FUNCTION. Four
-   * places decide it — the door that offers the buttons, the route that
+   * What this holds is unchanged in spirit: the asks all ASK THE SAME FUNCTION.
+   * Four places decide it — the door that offers the buttons, the route that
    * accepts a request, the queue that names the act, and the card on the
-   * order — and four copies of «has it gone?» is four places for the line
-   * to drift to SHIPPED, one at a time, until the door offers a
-   * postponement the route refuses.
+   * order — and four copies of «has it gone?» is four places for the line to
+   * drift, one at a time, until the door offers a postponement the route
+   * refuses.
    */
-  it('and every gate reads the same line, the waybill one', () => {
+  it('and every gate reads the same line, the handover one', () => {
     for (const f of [
       'src/app/api/orders/[id]/change-requests/route.ts',
       'src/app/api/control/change-requests/route.ts',
       'src/components/orders/OrderDetailModal.tsx',
     ]) {
       const src = stripComments(repoFile(f));
-      expect(src, `${f} لا يسأل الخطَّ نفسه`).toMatch(/hasLeftWarehouse\(/);
-      // Not the later line. `hasEverShipped` starts at SHIPPED and would
-      // leave a printed waybill editable — the exact window the custody
-      // rule exists to close.
+      expect(src, `${f} لا يسأل الخطَّ نفسه`).toMatch(/handedToCourier\(/);
+      // Not the 28/09 line, and not the later one. `hasLeftWarehouse` starts at
+      // the printed waybill and would refuse a cancel the owner allowed;
+      // `hasEverShipped` starts at SHIPPED and would let a pressed trolley's
+      // parcel be cancelled by a status.
       //
-      // The NAME anywhere in the file, not `hasEverShipped(` at a call
-      // site: `import { hasEverShipped as hasLeftWarehouse }` moves the
-      // line while every call still reads correctly, and that spelling
-      // walked straight past the first version of this.
-      expect(src, `${f} يستعمل خطَّ الشحن لا خطَّ البوليصة`).not.toMatch(/hasEverShipped/);
+      // The NAME anywhere in the file, not a call site: an import under another
+      // name moves the line while every call still reads correctly.
+      expect(src, `${f} يستعمل خطَّ البوليصة لا خطَّ التسليم`).not.toMatch(/hasLeftWarehouse|hasEverShipped/);
     }
+  });
+
+  it('and the trolley’s status reaches each of them — a gate that cannot see the press cannot draw its line', () => {
+    // The control queue reads the trolley with the order; the create door reads
+    // it before it answers; the order window is handed it by the GET.
+    expect(stripComments(repoFile('src/app/api/control/change-requests/route.ts'))).toMatch(/shippingBatch: \{ select: \{ status: true \} \}/);
+    expect(stripComments(repoFile('src/app/api/orders/[id]/change-requests/route.ts'))).toMatch(/batchStatus: batch\?\.status \?\? null/);
+    expect(stripComments(repoFile('src/app/api/orders/[id]/route.ts'))).toMatch(/shippingBatch: \{ select: \{ id: true, batchNumber: true, status: true \} \}/);
   });
 
   it('and the order screen is actually told the waybill was printed', () => {

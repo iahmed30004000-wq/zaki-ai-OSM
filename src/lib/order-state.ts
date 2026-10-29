@@ -135,7 +135,7 @@ export function stateAgeMinutes(enteredAt: Date | string | null | undefined, now
 export interface GuardResult {
   allowed: boolean;
   /** Stable code for the API response; never a raw message. */
-  code?: 'ALREADY_SHIPPED' | 'CANCEL_AFTER_SHIPPED' | 'UNRESERVED_LINES' | 'NOT_CONFIRMED';
+  code?: 'ALREADY_SHIPPED' | 'CANCEL_AFTER_SHIPPED' | 'UNRESERVED_LINES' | 'NOT_CONFIRMED' | 'IN_BATCH';
   message?: string;
 }
 
@@ -215,6 +215,11 @@ export function hasLeftWarehouse(order: StateSource): boolean {
  *
  * The owner's words, and they settled this line deliberately: «لحظةَ طباعة
  * البوليصة». A labelled parcel on the out-tray is committed.
+ *
+ * (M6, 28/10: that line is still THE line for stock, VOID, the matcher and
+ * printing. It is no longer the line for CANCELLING and POSTPONING, which the
+ * owner moved to the press of «إغلاق الشحنة — سُلّمت للشركة» — see
+ * `assertCancellable` and `shipment-cancel.ts`.)
  */
 /*
  * A FUNCTION, NOT A CONSTANT, AND FOR TWO REASONS.
@@ -240,10 +245,41 @@ export function leftWarehouseWhere(): {
 }
 
 /**
- * Cancellation after SHIPPED is refused — it becomes a cancel request and
- * ends as RETURNED with a reason (contract invariant 4).
+ * THE STRICT, 28/09 READING OF «MAY IT BE CANCELLED» — and no cancel door asks it any more.
+ *
+ * ── M6 (28/10): THE OWNER MOVED THE LINE FOR CANCEL AND POSTPONE ──
+ *
+ * The 28/09 ruling was «لحظةَ طباعة البوليصة»: a labelled parcel is committed,
+ * and cancelling it was refused. On 28/10 the owner overturned that FOR
+ * CANCELLING AND POSTPONING ONLY: «الغاء و التأجيل لغاية ما اضغط اغلاق الشحنة» —
+ * both stay possible until the press of «إغلاق الشحنة — سُلّمت للشركة», and
+ * after it a cancel is a change request that tells the company.
+ *
+ * The 28/09 STOCK reason still stands and is kept, as its own question: a
+ * labelled parcel, or one on the pickup shelf, is packed under this order's
+ * name, so its units go back on the shelf only on a person's word that the box
+ * was opened («الطرد بين يديّ — فككتُه وأعدتُ قطعه للرف وأتلفتُ بوليصته»),
+ * recorded with their name. That question, and the new line, live in
+ * `shipment-cancel.ts` (`cancelVerdict`) and are asked through ONE helper
+ * (`order-cancel.ts`, `endOrder`) by every door that cancels. `hasLeftWarehouse`
+ * stays the line for stock, VOID, the statement matcher and printing.
+ *
+ * This function is the old strict reading, kept for readers that mean it. It
+ * FAILS CLOSED on a parcel that sits on a trolley: a batched order is refused
+ * here whatever its status, because answering «yes» without knowing the
+ * trolley's status is exactly how a parcel in a van was once cancelled.
+ *
+ * (Originally: cancellation after SHIPPED is refused — it becomes a cancel
+ * request and ends as RETURNED with a reason, contract invariant 4.)
  */
-export function assertCancellable(order: StateSource): GuardResult {
+export function assertCancellable(order: StateSource & { shippingBatchId?: string | null }): GuardResult {
+  if (order.shippingBatchId) {
+    return {
+      allowed: false,
+      code: 'IN_BATCH',
+      message: 'الطرد داخل دفعة شحن — يُلغى أو يُؤجَّل من شاشة الدفعة قبل «إغلاق الشحنة — سُلّمت للشركة»',
+    };
+  }
   if (hasLeftWarehouse(order)) {
     return {
       allowed: false,

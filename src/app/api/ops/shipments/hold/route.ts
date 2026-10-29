@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
-import { requirePermission } from '@/lib/authorization';
+import { can, requirePermission } from '@/lib/authorization';
+import { authorises } from '@/lib/change-request-apply';
+import { holdFromTrolley } from '@/lib/order-cancel';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { zodMessage } from '@/lib/zod-message';
@@ -51,6 +53,15 @@ import { hasEverShipped } from '@/lib/order-state';
  */
 const schema = z.union([
   z.object({ orderId: z.string().uuid(), release: z.literal(true) }),
+  /**
+   * AN APPROVED «أجّل الطلب» REQUEST, CARRIED OUT.
+   *
+   * The id and nothing else: the date and the reason come from what was
+   * approved, on the server. A postponement is a HOLD — the order stays
+   * confirmed and goes out on its day — not an un-confirmation: the customer
+   * already said yes, and wants a later day, not a second call.
+   */
+  z.object({ orderId: z.string().uuid(), changeRequestId: z.string().uuid() }),
   z.object({
     orderId: z.string().uuid(),
     /**
@@ -79,7 +90,6 @@ export const MAX_HOLD_DAYS = 30;
 export async function POST(req: Request) {
   try {
     const { user, companyId, storeId, country } = await requireContext();
-    await requirePermission('ops.ship');
 
     const parsed = schema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
@@ -88,8 +98,40 @@ export async function POST(req: Request) {
     const data = parsed.data;
     const orderId = data.orderId;
     const release = 'release' in data && data.release === true;
-    const until = release ? null : (data as { until: string }).until;
-    const reason = release ? undefined : (data as { reason?: string }).reason;
+    const changeRequestId = 'changeRequestId' in data ? data.changeRequestId : undefined;
+    let until: string | null = release || changeRequestId ? null : (data as { until: string }).until;
+    let reason: string | undefined = release || changeRequestId ? undefined : (data as { reason?: string }).reason;
+
+    /**
+     * WHO MAY: the packing table, or a decision that says so.
+     *
+     * The approved request does not widen `ops.ship`, it stands beside it, and
+     * it is read from the database rather than believed — the same rule the
+     * stand-down door states for the same reason.
+     */
+    let viaRequest: { id: string } | null = null;
+    if (changeRequestId) {
+      const request = await db.orderChangeRequest.findFirst({
+        where: { id: changeRequestId, companyId },
+        select: { id: true, orderId: true, status: true, appliedAt: true, intent: true, reason: true, postponeUntil: true },
+      });
+      if (!request) return NextResponse.json({ error: 'طلب التعديل غير موجود' }, { status: 404 });
+      const verdict = authorises(request, 'POSTPONE', orderId);
+      if (!verdict.ok) {
+        return NextResponse.json({ error: verdict.error, code: verdict.code }, { status: verdict.status });
+      }
+      if (!can(user, 'control.change_requests') && !can(user, 'ops.ship')) {
+        return NextResponse.json({ error: 'لا تملك صلاحية تنفيذ هذا القرار' }, { status: 403 });
+      }
+      if (!request.postponeUntil) {
+        return NextResponse.json({ error: 'طلب التأجيل بلا موعد', code: 'NO_DATE' }, { status: 409 });
+      }
+      until = request.postponeUntil.toISOString();
+      reason = request.reason;
+      viaRequest = { id: request.id };
+    } else {
+      await requirePermission('ops.ship');
+    }
 
     /**
      * THE DATE HAS TO BE A DATE, AND NOT A YEAR FROM NOW.
@@ -140,17 +182,53 @@ export async function POST(req: Request) {
     });
     if (!order) return NextResponse.json({ error: 'الطلب غير موجود' }, { status: 404 });
 
-    // Once it is on a trolley the hold is the wrong instrument: the parcel
-    // has to come off the batch first, and that is a different decision
-    // with a different audit trail.
+    /**
+     * ON A TROLLEY: THE HOLD TAKES IT OFF, AND KEEPS THE GOODS AND THE LABEL.
+     *
+     * This used to refuse («أخرجه من الدفعة أولاً») — and there was no door
+     * that did. Until «إغلاق الشحنة — سُلّمت للشركة» the parcel is still ours
+     * (M6), so the hold is the way to say «not this trolley». The box is not
+     * opened: no attestation and no stock moves. A parcel the company already
+     * has a barcode for is cancelled THERE first — postponing an API parcel is
+     * cancelling it now and sending it again later.
+     */
     if (!release && order.shippingBatchId) {
-      return NextResponse.json(
-        {
-          error: 'الطلب دخل دفعة شحن — أخرجه من الدفعة أولاً، أو ألغِه إن كان الزبون تراجع.',
-          code: 'ALREADY_BATCHED',
+      const held = await holdFromTrolley({
+        orderId: order.id,
+        companyId,
+        storeId,
+        by: { id: user.id, name: user.name, role: user.role },
+        until: new Date(until as string),
+        reason: reason?.trim() || null,
+        viaRequest,
+      });
+      if (!held.ok) {
+        return NextResponse.json({ error: held.error, errorAr: held.error, code: held.code }, { status: held.status });
+      }
+      await db.orderActivity.create({
+        data: {
+          companyId,
+          orderId: order.id,
+          userId: user.id,
+          action: 'SHIP_HOLD_SET',
+          metadata: JSON.stringify({ until, reason: reason ?? null, stock: 'KEPT', fromTrolley: true }),
         },
-        { status: 409 }
-      );
+      });
+      await logAudit({
+        companyId,
+        userId: user.id,
+        action: 'SHIP_HOLD_SET',
+        entity: 'Order',
+        entityId: order.id,
+        previousData: { shipHoldUntil: order.shipHoldUntil },
+        newData: { shipHoldUntil: until, reason: reason ?? null, fromTrolley: true },
+      });
+      return NextResponse.json({
+        order: { id: order.id, orderNumber: held.orderNumber, shipHoldUntil: until, shipHoldReason: reason ?? null },
+        message:
+          `${held.orderNumber} خرج من الدفعة ومؤجَّل حتى ${String(until).slice(0, 10)} — بضاعته وبوليصته محفوظتان.` +
+          `${held.courierCancelled ? ' وألغينا الطرد عند الشركة، وبينرسل من جديد بيومه.' : ''}`,
+      });
     }
 
     /**
@@ -194,6 +272,13 @@ export async function POST(req: Request) {
             },
         select: { id: true, orderNumber: true, shipHoldUntil: true, shipHoldReason: true },
       });
+      if (viaRequest) {
+        // ONCE: `appliedAt: null` makes a second, concurrent carry-out a no-op.
+        await tx.orderChangeRequest.updateMany({
+          where: { id: viaRequest.id, appliedAt: null },
+          data: { appliedAt: new Date(), appliedById: user.id },
+        });
+      }
       if (release) {
         // Back in the shipment list, so its units are taken again — against
         // what is on the shelf NOW. A shortage is not hidden: the lines stay

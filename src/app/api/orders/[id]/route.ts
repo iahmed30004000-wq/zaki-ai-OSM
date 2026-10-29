@@ -6,8 +6,8 @@ import { count, money as amount } from '@/lib/numeric-input';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { computeCod, totalsBeforeDiscount } from '@/lib/money';
-import { hasEverShipped, hasLeftWarehouse, assertCancellable, deriveCoreState, getZone, type StateSource } from '@/lib/order-state';
-import { releaseOrderLines } from '@/lib/reservation';
+import { hasEverShipped, hasLeftWarehouse, deriveCoreState, getZone, type StateSource } from '@/lib/order-state';
+import { endOrder } from '@/lib/order-cancel';
 import { consumeOrderStock } from '@/lib/stock-consumption';
 import { ORDER_ACCESS_STATUS, assertOrderAccess, assertOrderReadable, applyQueueFilter } from '@/lib/rbac';
 import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
@@ -151,6 +151,12 @@ const patchSchema = z.object({
    * name of whoever made it.
    */
   courierNotified: z.boolean().optional(),
+  /**
+   * «الطرد بين يديّ — فككتُه وأعدتُ قطعه للرف وأتلفتُ بوليصته». Only read when
+   * the request ENDS the order and its parcel is packed: a person's word that
+   * the box was opened, recorded with their name. Not a permission.
+   */
+  parcelInHand: z.boolean().optional(),
 });
 
 /**
@@ -268,6 +274,10 @@ export async function GET(
           },
         },
         deliveryProvider: { select: { id: true, name: true, code: true } },
+        // The trolley's status: with it the screen can tell «the courier has
+        // taken it» (the press of «إغلاق الشحنة — سُلّمت للشركة») from a
+        // parcel that is only labelled and still on our floor.
+        shippingBatch: { select: { id: true, batchNumber: true, status: true } },
         landingPage: { select: { id: true, name: true, slug: true } },
         addOns: { orderBy: { createdAt: 'asc' } },
         moderator: { select: { id: true, name: true, email: true, phone: true } },
@@ -525,7 +535,7 @@ export async function PATCH(
       confirmationStatus, shippingStatus, expectedVersion,
       customerName, customerPhone, customerAltPhone, customerAddress, regionId,
       sellingPrice, quantity, discountAmount, shippingCost, productId, items, channelId,
-      reason: editReason,
+      reason: editReason, parcelInHand,
     } = data;
 
     // ── Authorization chain: visibility/assignment (RBAC engine) → canonical
@@ -688,6 +698,88 @@ export async function PATCH(
       );
     }
 
+    /*
+     * ═══════════════════════════════════════════════════════════════════
+     * AN ENDING IS THE ONE HELPER'S — THIS ROUTE NO LONGER PERFORMS ONE.
+     *
+     * `status: 'CANCELLED' | 'REJECTED'` (the combined word), and the same
+     * ending sent as `confirmationStatus` or `shippingStatus: 'CANCELLED'`,
+     * used to be written here by this route's own transaction: its own idea of
+     * the end state, its own reservation release, and the only customer count
+     * of a cancellation in the product. Five other doors ended an order five
+     * other ways. They all go through `endOrder` now: the gate (until
+     * «إغلاق الشحنة — سُلّمت للشركة» the order is still ours), the word of
+     * the person who opened the box, the company told for a barcode it holds,
+     * ONE end state and the event for System 7.
+     *
+     * The ending travels ALONE: a request that also edits the price or the
+     * address and ends the order in the same breath has no single meaning.
+     * ═══════════════════════════════════════════════════════════════════
+     */
+    const endsByCombined = (status === 'REJECTED' || status === 'CANCELLED') && status !== existing.status;
+    const endsBySeparate =
+      (shippingStatus === 'CANCELLED' && shippingStatus !== existing.shippingStatus) ||
+      ((confirmationStatus === 'CANCELLED' || confirmationStatus === 'REJECTED') &&
+        confirmationStatus !== existing.confirmationStatus);
+    if (endsByCombined || endsBySeparate) {
+      const alsoEditing = [
+        customerName, customerPhone, customerAltPhone, customerAddress, regionId, sellingPrice, quantity,
+        discountAmount, shippingCost, productId, items, channelId, moderatorId, internalNotes, customerNotes,
+        postponedUntil, trackingCode,
+      ].some((v) => v !== undefined);
+      if (alsoEditing) {
+        return NextResponse.json(
+          { errorAr: 'الإلغاء بيمشي لحاله — ما بينجمع مع تعديل ثاني بنفس الطلب.', code: 'CANCEL_ALONE' },
+          { status: 400 }
+        );
+      }
+      const ended = await endOrder({
+        orderId: id,
+        companyId,
+        storeId,
+        by: { id: user.id, name: user.name, role: user.role },
+        door: 'PATCH',
+        kind: 'CANCEL',
+        endAs: confirmationStatus === 'REJECTED' || status === 'REJECTED' ? 'REJECTED' : 'CANCELLED',
+        logNote: editReason?.trim() || null,
+        expectedVersion,
+        parcelInHand: parcelInHand === true,
+        viaRequest: null,
+      });
+      if (!ended.ok) {
+        return NextResponse.json(
+          {
+            error: ended.error,
+            errorAr: ended.error,
+            code: ended.code,
+            ...(ended.attestation ? { attestation: ended.attestation } : {}),
+          },
+          { status: ended.status }
+        );
+      }
+      await logAudit({
+        companyId, userId: user.id, action: 'ORDER_UPDATED',
+        entity: 'Order', entityId: id,
+        previousData: { status: existing.status, confirmationStatus: existing.confirmationStatus, shippingStatus: existing.shippingStatus },
+        newData: { ended: true, by: user.name, ...(editReason ? { reason: editReason } : {}) },
+      });
+      const endedOrder = await db.order.findUnique({ where: { id } });
+      // Tell this store's confirmation supervisors and the moderator whose
+      // commission rides on it — the same sentence the ordinary terminal
+      // status sends. After commit; never throws.
+      notify({
+        companyId,
+        storeId: existing.storeId ?? storeId,
+        audience: { permission: 'confirmation.supervise', userIds: [existing.moderatorId] },
+        actorId: user.id,
+        title: endedOrder?.confirmationStatus === 'REJECTED' ? 'رفض طلب' : 'إلغاء طلب',
+        message: `الطلب #${existing.orderNumber} أصبح بالحالة ${endedOrder?.confirmationStatus ?? 'CANCELLED'} بواسطة ${user.name}.`,
+        type: 'SYSTEM_ALERT',
+        link: `/orders?highlight=${existing.id}`,
+      });
+      return NextResponse.json({ success: true, order: endedOrder });
+    }
+
     const previousStatus = existing.status;
     const updateData: any = {};
 
@@ -711,47 +803,11 @@ export async function PATCH(
         updateData.settlementStatus = 'COLLECTED';
       }
 
-      if (status === 'REJECTED' || status === 'CANCELLED') {
-        // The same guard the confirmation route applies. This legacy path
-        // wrote CANCELLED without it, so a parcel already handed to a
-        // courier could be cancelled here — and its units counted as back
-        // on the shelf while they sat in a van.
-        const cancellable = assertCancellable(existing as StateSource);
-        if (!cancellable.allowed) {
-          return NextResponse.json(
-            { error: cancellable.message, errorAr: cancellable.message, code: cancellable.code },
-            { status: 409 }
-          );
-        }
-        updateData.confirmationStatus = 'CANCELLED';
-      }
     }
 
     // Explicit separate-status updates (Phase D completes the workflow, fields exist now)
     // FIX: an explicit differing shippingStatus must actually be written — the
     // previous `!changingShipping` guard made every real change dead code.
-    /*
-     * THE SEPARATE FIELDS ASK THE SAME QUESTION AS THE COMBINED ONE.
-     *
-     * `status: 'CANCELLED'` above asks `assertCancellable`. Sending the same
-     * ending as `confirmationStatus: 'CANCELLED' | 'REJECTED'` or as
-     * `shippingStatus: 'CANCELLED'` walked past it: the order read as
-     * cancelled while its parcel was labelled or on the courier's van.
-     */
-    const endsTheOrder =
-      (shippingStatus !== undefined && shippingStatus !== existing.shippingStatus && shippingStatus === 'CANCELLED') ||
-      (confirmationStatus !== undefined &&
-        confirmationStatus !== existing.confirmationStatus &&
-        (confirmationStatus === 'CANCELLED' || confirmationStatus === 'REJECTED'));
-    if (endsTheOrder && !changingCombined) {
-      const cancellable = assertCancellable(existing as StateSource);
-      if (!cancellable.allowed) {
-        return NextResponse.json(
-          { error: cancellable.message, errorAr: cancellable.message, code: cancellable.code },
-          { status: 409 }
-        );
-      }
-    }
     if (shippingStatus !== undefined && !changingCombined) {
       updateData.shippingStatus = shippingStatus;
     }
@@ -1495,16 +1551,9 @@ export async function PATCH(
         });
       }
 
-      if ((status === 'REJECTED' || status === 'CANCELLED') && status !== previousStatus) {
-        await tx.customer.update({
-          where: { id: existing.customerId },
-          data: { cancelledOrders: { increment: 1 } },
-        });
-        // Stock is never held by a dead order. The reservation is dropped in
-        // THIS transaction, so a failure cannot leave the units reserved
-        // against an order that no longer exists in any queue.
-        await releaseOrderLines(tx, id);
-      }
+      // A REJECTED or CANCELLED ending is not written here any more: it went
+      // through `endOrder` above — the customer's count and the release of the
+      // reservation live there, once, for every door.
 
       // Status logs — one per changed category (mirrors the confirmation route)
       const newConfirmationStatus: string | undefined = updateData.confirmationStatus;

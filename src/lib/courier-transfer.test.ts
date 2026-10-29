@@ -61,7 +61,7 @@ describe('refusals', () => {
 
   it('refuses once the journey is over', () => {
     for (const status of ['DELIVERED', 'RETURNED', 'CANCELLED']) {
-      expect(() => plan(aramex, other, status), status).toThrow(/قبل إغلاق الشحنة/);
+      expect(() => plan(aramex, other, status), status).toThrow(/قبل انتهاء رحلة الطرد/);
     }
   });
 

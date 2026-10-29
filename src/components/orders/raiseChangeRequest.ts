@@ -1,4 +1,4 @@
-import { apiJson } from '@/lib/api-client';
+import { apiFetch, apiJson } from '@/lib/api-client';
 import type { ChangeRequestValue } from '@/components/screens/confirmation/ActionDialogs';
 
 /**
@@ -14,9 +14,10 @@ import type { ChangeRequestValue } from '@/components/screens/confirmation/Actio
  *
  * WHAT THE CARRY-OUT IS DEPENDS ON THE ASK, and each goes through the door
  * that already does that thing: an edit through the order's own money path,
- * a cancellation or a postponement through the stand-down door, which
- * releases the reservation in the same transaction and, for a postponement,
- * puts the order back in front of whoever is free on its date.
+ * a cancellation through the stand-down door, which releases the reservation
+ * in the same transaction, and a postponement through the HOLD door — the
+ * order stays confirmed, its goods and waybill stay, it leaves the open
+ * trolley and comes back to the shipment list on its day (M6, 28/10).
  *
  * `readyToApply` is the server saying the raiser may also decide it and the
  * parcel is still ours. When it is false the request is in somebody's
@@ -66,13 +67,25 @@ export async function raiseChangeRequest(
     });
     return;
   }
-  await apiJson('/api/ops/shipments/stand-down', {
+  const res2 = await apiFetch(value.intent === 'CANCEL' ? '/api/ops/shipments/stand-down' : '/api/ops/shipments/hold', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      orderId,
-      outcome: value.intent === 'CANCEL' ? 'CANCEL' : 'POSTPONE',
-      changeRequestId: res.request.id,
-    }),
+    body: JSON.stringify(
+      value.intent === 'CANCEL'
+        ? { orderId, outcome: 'CANCEL', changeRequestId: res.request.id }
+        : { orderId, changeRequestId: res.request.id }
+    ),
   });
+  if (res2.ok) return;
+  const answer = await res2.json().catch(() => ({}));
+  /*
+   * A PACKED PARCEL needs a person's word that the box was opened, and a
+   * helper with no screen cannot ask for it. The request stays APPROVED and
+   * waiting, so the press still names it, and «طلبات التعديل» carries it out
+   * with the question. Said plainly rather than as a failure of the ask.
+   */
+  if (answer?.code === 'ATTESTATION_REQUIRED') {
+    throw new Error('اعتُمد الطلب وبقي تنفيذه: بوليصة الطرد مطبوعة. افتح «طلبات التعديل» ونفّذه من هناك لتؤكد أن الطرد بين يديك.');
+  }
+  throw new Error(answer?.errorAr || answer?.error || 'تعذر تنفيذ القرار');
 }

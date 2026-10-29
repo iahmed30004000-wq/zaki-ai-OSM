@@ -7,7 +7,9 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { shipmentBlocks } from '@/lib/operations';
 import { codForOrder, resolveDeliveryFee } from '@/lib/delivery-fees';
-import { assertCancellable, assertReadyToShip, type StateSource } from '@/lib/order-state';
+import { assertReadyToShip, type StateSource } from '@/lib/order-state';
+import { cancelVerdict } from '@/lib/shipment-cancel';
+import { batchStatusOf } from '@/lib/order-cancel';
 import { zodMessage } from '@/lib/zod-message';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { orderSearchOr } from '@/lib/order-filters';
@@ -110,6 +112,12 @@ export async function GET(req: Request) {
       },
     });
 
+    // The trolleys these orders sit on, read once: `cancelVerdict` needs the status of each.
+    const batchStatuses = new Map<string, string | null>();
+    for (const batchId of new Set(orders.map((o) => o.shippingBatchId).filter((v): v is string => !!v))) {
+      batchStatuses.set(batchId, await batchStatusOf(db, batchId));
+    }
+
     const rows = [];
     for (const order of orders) {
       const provider = providerId ?? order.deliveryProviderId;
@@ -148,19 +156,25 @@ export async function GET(req: Request) {
         /**
          * CAN THIS ORDER STILL BE STOOD DOWN?
          *
-         * Measured on this database: two of the five candidate rows already
-         * had a printed waybill. The delay dialog offered «أعِده إلى
-         * المتابعة» on them and the door refused every time — a control that
-         * always fails teaches people the screen is lying, which is worse
-         * than not offering it.
+         * A control that always fails teaches people the screen is lying, so
+         * the row says in advance what the door will answer. It asks
+         * `cancelVerdict`, the same function the door itself uses, so the row
+         * and the refusal can never disagree.
          *
-         * The answer comes from `assertCancellable`, the same function the
-         * door itself calls, so the row and the refusal can never disagree.
-         * The hold half stays available: a printed label does not stop us
-         * keeping the parcel back, only from un-confirming the sale.
+         * Until «إغلاق الشحنة — سُلّمت للشركة» the answer is YES even for a
+         * parcel with a printed waybill (M6): the door then asks for the
+         * person's word that the box was opened. Only a parcel the courier
+         * has taken is blocked here.
          */
         standDownBlocked: (() => {
-          const verdict = assertCancellable(order as unknown as StateSource);
+          const verdict = cancelVerdict({
+            confirmationStatus: order.confirmationStatus,
+            shippingStatus: order.shippingStatus,
+            shippedAt: order.shippedAt,
+            labelPrintedAt: order.labelPrintedAt,
+            shippingBatchId: order.shippingBatchId,
+            batchStatus: batchStatuses.get(order.shippingBatchId ?? '') ?? null,
+          });
           return verdict.allowed ? null : { code: verdict.code, message: verdict.message };
         })(),
       });

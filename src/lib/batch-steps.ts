@@ -41,6 +41,9 @@ export function checkStep(from: string, to: BatchStatus): StepVerdict {
   return { ok: true };
 }
 
+/** The refusal for pressing «إغلاق الشحنة — سُلّمت للشركة» on a trolley with nothing on it. */
+export const EMPTY_BATCH_AR = 'الدفعة فاضية — ما في طرد يتسلّم للشركة.';
+
 /** The refusal that names the parcels still waiting for an answer. */
 export function pendingChangesMessage(orderNumbers: string[]): string {
   const shown = orderNumbers.slice(0, 8).join('، ');

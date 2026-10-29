@@ -15,7 +15,7 @@ import { ShapeRiskPanel } from '@/components/orders/ShapeRiskPanel';
 import { STAGE_AR, STAGE_STATE_AR, type StageState } from '@/lib/order-closing';
 import { ChangeRequestDialog, type ChangeRequestValue } from '@/components/screens/confirmation/ActionDialogs';
 import { raiseChangeRequest } from '@/components/orders/raiseChangeRequest';
-import { hasLeftWarehouse, type StateSource } from '@/lib/order-state';
+import { handedToCourier } from '@/lib/order-seal';
 import { ShippingSection } from '@/components/orders/ShippingSection';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
@@ -297,6 +297,17 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
 
   const isNavigating = navLoading !== null || loading;
 
+  /**
+   * HAS THE COURIER TAKEN THE PARCEL? — the press of «إغلاق الشحنة — سُلّمت
+   * للشركة», not the printer. Until then cancelling and postponing are still
+   * ours to do; after it they are a message to the company.
+   */
+  const handedOver = handedToCourier({
+    shippingStatus: order.shippingStatus,
+    shippedAt: order.shippedAt ?? null,
+    batchStatus: order.shippingBatch?.status ?? null,
+  });
+
   // ─── Phase C: lock state helpers ───
   const lockActive = !!order.lockedById && !!order.lockExpiresAt && new Date(order.lockExpiresAt).getTime() > nowMs;
   const editingLockedByOther = lockActive && order.lockedById !== currentUser?.id;
@@ -567,7 +578,7 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
                 طلبٌ على هذا الطلب
               </h4>
               <p className="text-xs text-[var(--sys-muted-foreground)]">
-                {hasLeftWarehouse(order as unknown as StateSource)
+                {handedOver
                   ? 'الطرد عند شركة الشحن — التعديل والإلغاء يمرّان برسالةٍ إليهم بعد الموافقة.'
                   : 'الطلب مؤكَّد وللقراءة فقط — تعديلُه أو إلغاؤه أو تأجيلُه يمرّ بقرار.'}
               </p>
@@ -854,7 +865,7 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
           open
           orderNumber={order.orderNumber}
           busy={asking}
-          hasLeftWarehouse={hasLeftWarehouse(order as unknown as StateSource)}
+          handedToCourier={handedOver}
           onClose={() => setAskOpen(false)}
           onSubmit={(value: ChangeRequestValue) => {
             setAskOpen(false);

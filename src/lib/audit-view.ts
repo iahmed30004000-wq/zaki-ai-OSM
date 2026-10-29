@@ -55,7 +55,7 @@ const ACTION_AR: Record<string, string> = {
   ORDER_TRANSFERRED: 'نقل طلب لموظف آخر', ORDER_LOCKED: 'قفل طلب', ORDER_UNLOCKED: 'فتح قفل طلب', ORDER_ISSUE_RAISED: 'رفع إشكال على طلب',
   ORDER_ISSUE_CORRECTED: 'تصحيح إشكال طلب', ORDER_VOIDED_AFTER_ISSUE: 'إبطال طلب بعد إشكال', ORDER_WRITTEN_OFF: 'شطب طلب',
   ORDERS_EXPORTED: 'تصدير طلبات', SHIPPING_STATUS_CHANGED: 'تغيير حالة الشحن', SHIPPING_INFO_UPDATED: 'تعديل معلومات الشحن',
-  COURIER_SEND_CLEARED: 'فكّ إرسال عالق للشركة', SHIPMENT_CANCEL_COURIER_TOLD: 'إبلاغ الشركة بإلغاء طرد', SHIP_HOLD_SET: 'إيقاف شحن طلب', SHIP_HOLD_RELEASED: 'رفع إيقاف شحن طلب', RETURN_RECEIVED: 'استلام مرتجع', LABELS_PRINTED: 'طباعة بوالص',
+  COURIER_SEND_CLEARED: 'فكّ إرسال عالق للشركة', SHIPMENT_CANCEL_COURIER_TOLD: 'إبلاغ الشركة بإلغاء طرد', PARCEL_ATTESTED_IN_HAND: 'تأكيد أن الطرد بين يدي المستودع', SHIP_HOLD_SET: 'إيقاف شحن طلب', SHIP_HOLD_RELEASED: 'رفع إيقاف شحن طلب', RETURN_RECEIVED: 'استلام مرتجع', LABELS_PRINTED: 'طباعة بوالص',
   CHANGE_REQUEST_APPROVED: 'اعتماد طلب تعديل', CHANGE_REQUEST_REJECTED: 'رفض طلب تعديل', CHANGE_REQUEST_RAISED: 'رفع طلب تعديل',
   CHANGE_REQUEST_WITHDRAWN: 'سحب طلب تعديل', POSTPONED_RETURNED_TO_QUEUE: 'إرجاع مؤجَّل للطابور',
   WALLET_TRANSFER: 'تحويل بين محافظ', WALLET_MOVEMENT_RECORDED: 'تسجيل حركة محفظة', WALLET_MOVEMENT_REVERSED: 'عكس حركة محفظة',

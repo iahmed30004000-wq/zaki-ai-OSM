@@ -235,8 +235,14 @@ describe('a decider does not queue behind themselves', () => {
   const mine = () => stripComments(repoFile('src/components/screens/ConfirmationMineScreen.tsx'));
 
   it('on both conditions, never on either alone', () => {
+    // (old → new, M6 28/10) The second condition was «the waybill is not printed»
+    // for every ask. For an EDIT it still is — the printed waybill fixes what the
+    // driver reads. For a CANCEL or a POSTPONEMENT the line is the press of
+    // «إغلاق الشحنة — سُلّمت للشركة»: a labelled parcel on our own floor can
+    // still be opened, so its raiser (the owner included) need not wait for a
+    // second person to approve what he can do with his own hands.
     expect(raise(), 'شرطٌ واحدٌ يكفي للبتّ الذاتي').toContain(
-      'const readyToApply = mine.allowed && !seal.sealed;'
+      "const readyToApply = mine.allowed && (intent === 'EDIT' ? !seal.sealed : !handed);"
     );
   });
 

@@ -52,13 +52,22 @@ describe('once the parcel has left, cancelling is a request — not a status', (
    * `confirmationStatus === 'CONFIRMED'` and CONFIRMED is in the «already
    * decided» list it checks. Two unrelated lists overlapping is not a rule;
    * it is a rule's shadow, and it goes away the day either list is edited.
+   *
+   * (old → new, M6 28/10) It used to call `assertCancellable`. Every cancel
+   * door now asks the ONE helper, `endOrder`, and this door asks it only for
+   * an order that never entered the shipment: a counter does not get to take a
+   * parcel off a trolley.
    */
-  it('the automatic close asks the rule, not a list that happens to overlap it', () => {
+  it('the automatic close asks the one helper, and only for an order that never entered the shipment', () => {
     const src = stripComments(repoFile('src/app/api/orders/[id]/contact-attempts/route.ts'));
-    expect(src).toContain('assertCancellable(');
-    // And the answer is USED — an `assertCancellable` whose verdict is not in
-    // the condition is a call that reassures a reader and stops nothing.
-    expect(src).toMatch(/noAnswers >= NO_ANSWER_LIMIT[^)]*stillOurs/);
+    expect(src).toMatch(/endOrder\(\{/);
+    // And the answer is USED — a `neverShipped` whose verdict is not in the
+    // condition is a variable that reassures a reader and stops nothing.
+    expect(src).toMatch(/noAnswers >= NO_ANSWER_LIMIT[^)]*neverShipped/);
+    // The four facts that make an order «never shipped».
+    for (const fact of ['shippingBatchId', 'trackingNumber', 'labelPrintedAt', "shippingStatus === 'NOT_READY'"]) {
+      expect(src, `neverShipped لا يسأل عن ${fact}`).toContain(fact);
+    }
   });
 
   it('and every door that writes CANCELLED on an order asks it', () => {
@@ -66,11 +75,19 @@ describe('once the parcel has left, cancelling is a request — not a status', (
      * Swept, because the question is not «does this door ask» but «is there a
      * door that does not». Change-request rows are exempt by shape: that
      * `status: 'CANCELLED'` is the REQUEST's own status, not an order's.
+     *
+     * (old → new, M6) The list is the same three plus the three doors that
+     * ended an order without being on it (stand-down, the shipping screen, the
+     * PATCH), and the question is `endOrder` — the helper — or, for the void,
+     * `assertVoidable`.
      */
     const DOORS = [
       'src/app/api/confirmation/issues/[id]/route.ts',
       'src/app/api/orders/[id]/contact-attempts/route.ts',
       'src/app/api/orders/[id]/confirmation/route.ts',
+      'src/app/api/ops/shipments/stand-down/route.ts',
+      'src/app/api/orders/[id]/shipping/route.ts',
+      'src/app/api/orders/[id]/route.ts',
     ];
     const deaf: string[] = [];
     for (const door of DOORS) {
@@ -85,7 +102,7 @@ describe('once the parcel has left, cancelling is a request — not a status', (
        * times: a guard that asks whether a name is PRESENT rather than
        * whether it is USED.
        */
-      const called = /(assertCancellable|assertVoidable|hasEverShipped|hasLeftWarehouse)\s*\(\s*[A-Za-z]/.test(src);
+      const called = /(endOrder|assertVoidable)\s*\(\s*[A-Za-z{]/.test(src);
       if (!called) deaf.push(door);
     }
     expect(deaf, 'بابٌ يُلغي بلا سؤال').toEqual([]);

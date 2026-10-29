@@ -5,7 +5,7 @@ import { can } from '@/lib/authorization';
 import { BEFORE_OPERATIONS } from '@/lib/change-request-routing';
 import { apiErrorResponse } from '@/lib/api-error';
 import { carryOut, type ChangeIntent } from '@/lib/change-request-intent';
-import { hasLeftWarehouse, type StateSource } from '@/lib/order-state';
+import { handedToCourier } from '@/lib/order-seal';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 
 /**
@@ -76,6 +76,9 @@ export async function GET(req: Request) {
             // means — a cancellation before the waybill is a cancellation,
             // and after it is a message to the courier and a return.
             shippedAt: true, labelPrintedAt: true,
+            // The trolley's status: «the courier has taken it» is the press of
+            // «إغلاق الشحنة — سُلّمت للشركة», not the printer.
+            shippingBatch: { select: { status: true } },
             customer: { select: { fullName: true, phone: true } },
           },
         },
@@ -101,11 +104,16 @@ export async function GET(req: Request) {
          * WHAT PRESSING THE BUTTON WILL DO, decided here rather than in the
          * browser. The screen has to name the act on the button — «ألغِ
          * الطلب» and «أبلغ شركة الشحن» are not the same press — and the
-         * rule that tells them apart is `hasLeftWarehouse`, which the
-         * screen would have to re-derive from three columns to guess at.
+         * rule that tells them apart is `handedToCourier` (the press of
+         * «إغلاق الشحنة — سُلّمت للشركة»), which the screen would have to
+         * re-derive from three columns and a trolley to guess at.
          */
         carryOut: carryOut((r.intent ?? 'EDIT') as ChangeIntent, {
-          hasLeftWarehouse: hasLeftWarehouse(r.order as unknown as StateSource),
+          handedToCourier: handedToCourier({
+            shippingStatus: r.order.shippingStatus,
+            shippedAt: r.order.shippedAt,
+            batchStatus: r.order.shippingBatch?.status ?? null,
+          }),
         }),
         // Hers to withdraw, never hers to decide — the decide route refuses
         // self-approval, and a button that always 403s teaches people the
