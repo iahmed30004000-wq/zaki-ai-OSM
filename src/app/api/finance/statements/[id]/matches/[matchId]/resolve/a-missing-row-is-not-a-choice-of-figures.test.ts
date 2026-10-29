@@ -10,8 +10,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { db, requireContext, requirePermission, logAudit } = vi.hoisted(() => ({
   db: {
-    settlementMatch: { findFirst: vi.fn(), update: vi.fn() },
+    settlementMatch: { findFirst: vi.fn(), update: vi.fn(), findMany: vi.fn() },
     orderNote: { create: vi.fn() },
+    // The door now locks the statement's row, reads its approval stamp and asks the matrix about the order's state.
+    courierStatement: { findFirst: vi.fn() },
+    order: { findMany: vi.fn() },
+    orderChangeRequest: { findMany: vi.fn() },
+    $queryRaw: vi.fn(),
     $transaction: vi.fn(),
   },
   requireContext: vi.fn(),
@@ -26,8 +31,9 @@ vi.mock('@/lib/api-error', () => ({ apiErrorResponse: (e: unknown) => new Respon
 
 import { POST } from './route';
 
+// The answer carries its explanation now (five characters at least); the rows below are asked about the refusal, not the note.
 const call = (resolution = 'OURS_STANDS') =>
-  POST(new Request('http://x', { method: 'POST', body: JSON.stringify({ resolution }) }), {
+  POST(new Request('http://x', { method: 'POST', body: JSON.stringify({ resolution, note: 'اتفقنا مع الزبون' }) }), {
     params: Promise.resolve({ id: 'st1', matchId: 'm1' }),
   });
 
@@ -39,12 +45,23 @@ const row = (result: string) => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  requireContext.mockResolvedValue({ user: { id: 'u1' }, companyId: 'c1', storeId: 's1' });
+  requireContext.mockResolvedValue({ user: { id: 'u1' }, companyId: 'c1', storeId: 's1', country: { minorUnit: 2 } });
+  db.courierStatement.findFirst.mockResolvedValue({ approvedAt: null });
+  db.order.findMany.mockResolvedValue([{ id: 'o1', shippingStatus: 'DELIVERED', settlementStatus: 'PENDING_COLLECTION' }]);
+  db.orderChangeRequest.findMany.mockResolvedValue([]);
+  db.settlementMatch.findMany.mockResolvedValue([]);
   requirePermission.mockResolvedValue({ id: 'u1' });
   db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
     fn({
-      settlementMatch: { update: async () => ({ id: 'm1', resolution: 'OURS_STANDS', resolutionNote: null, resolvedAt: new Date() }) },
+      settlementMatch: {
+        update: async () => ({ id: 'm1', resolution: 'OURS_STANDS', resolutionNote: null, resolvedAt: new Date() }),
+        findMany: db.settlementMatch.findMany,
+      },
       orderNote: { create: db.orderNote.create },
+      courierStatement: db.courierStatement,
+      order: db.order,
+      orderChangeRequest: db.orderChangeRequest,
+      $queryRaw: db.$queryRaw,
     })
   );
 });

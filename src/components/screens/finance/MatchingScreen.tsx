@@ -10,6 +10,7 @@ import { RiGitBranchLine, RiLoader4Line, RiScales3Line } from '@remixicon/react'
 import { EmptyState } from '@/components/ui/EmptyState';
 import { NextStepButton } from '@/components/ui/NextStep';
 import { DifferenceActions } from '@/components/screens/finance/DifferenceActions';
+import { BulkDecide } from '@/components/screens/finance/BulkDecide';
 import { DifferencesByPerson } from '@/components/screens/finance/DifferencesByPerson';
 import { NotMentionedActions } from '@/components/screens/finance/NotMentionedActions';
 import { LinkLineDialog } from '@/components/screens/finance/LinkLineDialog';
@@ -51,9 +52,15 @@ interface Match {
   statementFee: string | number | null;
   feeDifference: string | number | null;
   note: string | null;
-  /** ACCEPTED_COURIER | OURS_STANDS — null while nobody has answered. */
+  /** ACCEPTED_COURIER | OURS_STANDS | UNDER_REVIEW — null while nobody has answered. */
   resolution: string | null;
   resolutionNote: string | null;
+  /** What may be said about this order as it is now (settlement-decisions), or null on a row that is no difference. */
+  decisions?: Record<string, { allowed: boolean; why: string | null }> | null;
+  /** The key a bulk answer groups the lines by: the same courier word. */
+  wordGroup?: string | null;
+  /** What the company still owes, on a row answered «رقمنا هو المعتمد». */
+  claim?: number | null;
   order: { id: string; orderNumber: string; merchantRef: string | null; shippingStatus: string } | null;
   statementLine: {
     merchantRef: string | null;
@@ -240,9 +247,22 @@ export function MatchingScreen() {
             rows={queue('MATCHED')}
             hint="المبلغ في الكشف يساوي المتوقَّع — تُعتمد هذه الطلبات وتصبح عمولتها مستحقة عند اعتماد الكشف."
           />
+          {mayReview && !closed && (
+            <BulkDecide
+              statementId={selected}
+              onDone={() => void load(selected!)}
+              rows={queue('MISMATCHED').map((m) => ({
+                id: m.id,
+                wordGroup: m.wordGroup ?? null,
+                word: m.courierWord?.phrase ?? null,
+                answered: !!m.resolution,
+              }))}
+            />
+          )}
           <Queue
             title="فرق في المبلغ"
             resolvable
+            locked={closed}
             reason
             statementId={selected}
             onResolved={() => void load(selected!)}
@@ -299,6 +319,7 @@ function Queue({
   unmentioned,
   linkable,
   canUnlock,
+  locked,
   statementId,
   onResolved,
 }: {
@@ -317,6 +338,8 @@ function Queue({
   linkable?: boolean;
   /** May this person correct a delivered order's status (the door the third action leads to)? */
   canUnlock?: boolean;
+  /** The statement is approved: an answer is read, no longer changed. */
+  locked?: boolean;
   statementId?: string | null;
   onResolved?: () => void;
 }) {
@@ -451,6 +474,10 @@ function Queue({
                 orderNumber={m.order?.orderNumber ?? null}
                 resolution={m.resolution}
                 resolutionNote={m.resolutionNote}
+                decisions={m.decisions}
+                claim={m.claim}
+                currency={currency}
+                locked={locked}
                 onResolved={() => onResolved?.()}
               />
             ),

@@ -16,6 +16,7 @@ import {
   type IntegrityFacts, type OtherStatement,
 } from './match-integrity';
 import { courierWordNote, isNoMoneyCell, readCourierWord, tallyCourierWords, type CourierWordTally } from './courier-words';
+import { openClaimsFor } from './settlement-decisions';
 import { looksLikeXlsx, readXlsxRows } from './xlsx-reader';
 
 type Tx = Prisma.TransactionClient | typeof db;
@@ -764,6 +765,12 @@ export interface LineVerdictInput {
   line: { amount: Prisma.Decimal | number | string; fee?: Prisma.Decimal | number | string | null; status?: string | null };
   minorUnit: number;
   integrity: Omit<IntegrityFacts, 'settlementStatus'>;
+  /**
+   * What the company still owes on this order after an earlier APPROVED statement was answered «رقمنا هو
+   * المعتمد» (settlement-decisions): a line of a settlement statement pays THAT, not the whole order again.
+   * Null or absent: the order has no open claim and is judged against its own expectation, as always.
+   */
+  openClaim?: number | null;
 }
 
 export interface LineVerdict {
@@ -787,7 +794,7 @@ export interface LineVerdict {
  * an order: the same figure, the same fee rule, the same reasons. A link is therefore never a more generous
  * judge than the matcher, and there is no second place where «expected» is computed.
  */
-export function judgeLine({ order, line, minorUnit, integrity }: LineVerdictInput): LineVerdict {
+export function judgeLine({ order, line, minorUnit, integrity, openClaim }: LineVerdictInput): LineVerdict {
   /**
    * THE COMPANY'S OWN WORD, read here the way the import read it: one function, one table
    * (`courier-words`). It is written beside a row that needs a person — never a reason to change a verdict:
@@ -799,7 +806,9 @@ export function judgeLine({ order, line, minorUnit, integrity }: LineVerdictInpu
 
   // Rounded by the minor unit inside the rule itself, so the matcher and
   // the screen cannot round the same figure two different ways.
-  const expected = expectedAmountFor(order, minorUnit);
+  // An open claim on the company replaces the whole expectation: the part already paid is not expected twice.
+  const claim = openClaim != null && openClaim > 0 ? roundMinor(openClaim, minorUnit) : null;
+  const expected = claim ?? expectedAmountFor(order, minorUnit);
   const stated = roundMinor(Number(line.amount), minorUnit);
   const difference = roundMinor(stated - expected, minorUnit);
 
@@ -809,7 +818,8 @@ export function judgeLine({ order, line, minorUnit, integrity }: LineVerdictInpu
   // arrives, just less of it. Comparing both quantities names the cause.
   const expectedFee = roundMinor(Number(order.deliveryFee ?? 0), minorUnit);
   const statedFee = line.fee === null || line.fee === undefined ? null : roundMinor(Number(line.fee), minorUnit);
-  const feeDifference = statedFee === null ? null : roundMinor(statedFee - expectedFee, minorUnit);
+  // A payment on a claim is the rest of an order whose fee its first statement already settled: no fee is compared.
+  const feeDifference = statedFee === null || claim !== null ? null : roundMinor(statedFee - expectedFee, minorUnit);
 
   // A returned parcel is charged no fee, so its fee is not compared.
   const feeWrong = feeDifference !== null && feeDifference !== 0 && expected > 0;
@@ -818,6 +828,7 @@ export function judgeLine({ order, line, minorUnit, integrity }: LineVerdictInpu
   const reasons = integrityNotes({ settlementStatus: order.settlementStatus, ...integrity });
   const clean = difference === 0 && !feeWrong && reasons.length === 0;
   const notes = [
+    ...(claim !== null && !clean ? [`دفعة على مطالبة سابقة على الشركة — الباقي ${claim}`] : []),
     ...(feeWrong && difference === 0 ? [`أجرة التوصيل ${statedFee} بدل ${expectedFee}`] : []),
     ...reasons,
     // A clean row says nothing more; one a person must look at also says what the company wrote.
@@ -1052,6 +1063,20 @@ export async function runMatching(
     }
   }
 
+  /**
+   * WHAT THE COMPANY STILL OWES, for the orders that are not settled.
+   *
+   * An order answered «رقمنا هو المعتمد» on an approved statement waits as a claim on the company; the line that
+   * names it now is the payment, and is judged against what remains (settlement-decisions). An order that is
+   * SETTLED has no claim any more, whatever its old rows say.
+   */
+  const claimsByOrder = await openClaimsFor(tx, {
+    companyId,
+    orderIds: [...new Set(resolved.flatMap((r) => (r.order && r.order.settlementStatus !== 'SETTLED' ? [r.order.id] : [])))],
+    excludeStatementId: statementId,
+    minorUnit,
+  });
+
   // PASS 2: the verdict on each line.
   for (const { line, order, byBarcode: matchedByBarcode } of resolved) {
     // A line with no order at all says what the company wrote beside it (an order's verdict is `judgeLine`'s).
@@ -1083,6 +1108,7 @@ export async function runMatching(
         otherStatements: elsewhereOf.get(order.id) ?? [],
         openRequests: requestsOf.get(order.id) ?? [],
       },
+      openClaim: claimsByOrder.get(order.id)?.remaining ?? null,
     });
     const { clean, feeWrong } = v;
 

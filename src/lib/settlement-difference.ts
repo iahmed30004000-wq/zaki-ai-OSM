@@ -37,6 +37,8 @@
  * Pure: no database, no clock. It is handed rows and returns verdicts.
  */
 
+import { roundMinor } from './money';
+
 export const RESOLUTIONS = ['ACCEPTED_COURIER', 'OURS_STANDS'] as const;
 export type Resolution = (typeof RESOLUTIONS)[number];
 
@@ -44,6 +46,17 @@ export const RESOLUTION_AR: Record<Resolution, string> = {
   ACCEPTED_COURIER: 'اعتُمد رقم الشركة',
   OURS_STANDS: 'رقمنا هو المعتمد',
 };
+
+/**
+ * THE THIRD THING A PERSON CAN SAY: «قيد المراجعة».
+ *
+ * Offered where neither figure can be settled yet — the order has no door that takes either answer (not
+ * delivered, a cancel asked for, already settled elsewhere). It records that somebody looked and parked the
+ * row. It settles nothing and claims nothing, so it is not one of the two ANSWERS above and `RESOLUTIONS` does
+ * not hold it; it does end the «nobody has looked» state, which is why `isOpen` does not count it.
+ */
+export const PARKED = 'UNDER_REVIEW' as const;
+export const PARKED_AR = 'قيد المراجعة';
 
 /** What pressing each one means, in the words the screen shows. */
 export const RESOLUTION_MEANING: Record<Resolution, string> = {
@@ -103,11 +116,17 @@ export function isOpen(m: Pick<MatchRow, 'result' | 'resolution'>): boolean {
  *
  * `difference` on the row is `statement − expected`, so the sign is flipped
  * here rather than in a screen, where two screens would flip it twice.
+ *
+ * ROUNDED BY THE CURRENCY'S MINOR UNIT, handed in by the caller. A dinar has three places: rounding it to two
+ * printed a difference of 2.125 as 2.13 on the answer of the door that records which figure stands (RV306).
  */
-export function shortfall(m: Pick<MatchRow, 'expectedAmount' | 'statementAmount' | 'difference'>): number | null {
-  if (m.difference !== null && m.difference !== undefined) return round2(-m.difference);
+export function shortfall(
+  m: Pick<MatchRow, 'expectedAmount' | 'statementAmount' | 'difference'>,
+  minorUnit = 2
+): number | null {
+  if (m.difference !== null && m.difference !== undefined) return roundMinor(-m.difference, minorUnit);
   if (m.expectedAmount === null || m.statementAmount === null) return null;
-  return round2(m.expectedAmount - m.statementAmount);
+  return roundMinor(m.expectedAmount - m.statementAmount, minorUnit);
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
@@ -13,9 +14,13 @@ import { OUTCOME_LABEL_AR, orderOutcome } from '@/lib/order-outcome';
 import { isNotMentioned } from '@/lib/settlement-difference';
 import { NOT_MENTIONED_ACTIVITY } from '@/lib/not-mentioned';
 import { approvalRefusal, isApproved, undoImportRefusal } from '@/lib/settlement-gates';
+import { roundMinor } from '@/lib/money';
 import { recordMovement } from '@/lib/wallets';
 import { markPayableForOrders } from '@/lib/commission';
 import { zodMessage } from '@/lib/zod-message';
+import {
+  claimOf, decisionMatrix, loadDecisionFacts, paidGross, stillAcceptableWhere, stillSettlableWhere, wordGroupKey,
+} from '@/lib/settlement-decisions';
 import { removeProofFile } from '@/lib/settlement-proof';
 import { POSSIBLE_DOUBLE_SENTENCE, findPossibleDoubles, handWindowStart, type HandMovement } from '@/lib/possible-double';
 
@@ -51,6 +56,31 @@ class ApprovalStopped extends Error {
   }
 }
 
+/**
+ * A claim that took fewer orders than it asked for: the approval stops and the transaction is rolled back.
+ *
+ * It carries the claim's own filter and NOT the names. The names are read AFTER the rollback (see the catch below):
+ * inside the transaction the orders this very claim had already taken are SETTLED too, and a read there would
+ * name the orders that were never the problem.
+ */
+class OrdersChanged extends Error {
+  constructor(readonly ids: string[], readonly where: Prisma.OrderWhereInput) {
+    super('ORDERS_CHANGED');
+  }
+}
+
+/** The answer when an order changed between the matching (or the decision) and the approval. */
+function ordersChangedBody(names: string[]) {
+  return {
+    code: 'ORDERS_CHANGED',
+    error:
+      'تغيّر وضع طلب أو أكثر منذ المطابقة (سُوّي بباب آخر، أو عليه طلب إلغاء أو تأجيل، أو تغيّرت حالته)' +
+      (names.length > 0 ? `: ${names.join('، ')}` : '') +
+      '. أعد المطابقة، أو غيّر بتّه إلى «قيد المراجعة»، ثم اعتمد.',
+    orders: names,
+  };
+}
+
 /** Hand entries that look like the same money as a receipt — shown to the person before anything is written. */
 class PossibleDouble extends Error {
   constructor(readonly rows: (HandMovement & { wallet: string; currencyCode: string })[]) {
@@ -63,6 +93,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const { id } = await params;
     const { companyId, storeId, country } = await requireContext();
     await requirePermission('settlement.view');
+    const minor = country.minorUnit;
 
     const statement = await db.courierStatement.findFirst({
       where: { id, companyId, storeId },
@@ -112,8 +143,30 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       });
       for (const a of acts) if (!followUps.has(a.orderId)) followUps.set(a.orderId, { action: a.action, at: a.createdAt });
     }
+    /*
+     * WHAT MAY BE SAID ABOUT EACH DIFFERENCE, READ ONCE HERE SO THE SCREEN ONLY OFFERS IT.
+     *
+     * The matrix of settlement-decisions, asked of every «فرق في المبلغ» row with the order's state of NOW: the
+     * button greyed out on the screen carries the sentence the door would answer with, and the bulk decision is
+     * offered per courier word (`wordGroup`).
+     */
+    const facts = await loadDecisionFacts(db, {
+      companyId,
+      storeId,
+      minorUnit: minor,
+      rows: statement.matches
+        .filter((m) => m.result === 'MISMATCHED')
+        .map((m) => ({
+          id: m.id,
+          orderId: m.orderId,
+          expectedAmount: m.expectedAmount == null ? null : Number(m.expectedAmount),
+          statementAmount: m.statementAmount == null ? null : Number(m.statementAmount),
+          approvedAt: statement.approvedAt,
+        })),
+    });
     const matches = statement.matches.map((m) => {
       const reading = readCourierWord(m.statementLine?.status);
+      const f = facts.get(m.id);
       let outcome: { key: string; label: string } | null = null;
       if (m.order) {
         const key = orderOutcome({
@@ -130,6 +183,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         courierWord: reading ? { ...reading, label: COURIER_OUTCOME_AR[reading.outcome] } : null,
         orderOutcome: outcome,
         followUp: m.orderId ? followUps.get(m.orderId) ?? null : null,
+        // Only a difference in money has a decision to take.
+        decisions: f ? decisionMatrix(f) : null,
+        wordGroup: f ? wordGroupKey(m.statementLine?.status) : null,
+        // What the company still owes if our figure stands — shown on the row that says so.
+        claim: m.resolution === 'OURS_STANDS' ? claimOf({ expectedAmount: m.expectedAmount == null ? null : Number(m.expectedAmount), statementAmount: m.statementAmount == null ? null : Number(m.statementAmount) }, minor) : null,
       };
     });
     const queues = {
@@ -161,7 +219,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       // the GROSS the customer paid — the net plus the fee the courier kept.
       include: {
         receipts: true,
-        matches: { select: { orderId: true, result: true, statementAmount: true, statementFee: true } },
+        matches: { select: { orderId: true, result: true, resolution: true, statementAmount: true, statementFee: true } },
       },
     });
     if (!statement) return NextResponse.json({ error: 'الكشف غير موجود' }, { status: 404 });
@@ -255,7 +313,23 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         where: { id, companyId, storeId },
         include: {
           receipts: true,
-          matches: { select: { orderId: true, result: true, statementAmount: true, statementFee: true } },
+          matches: {
+            select: {
+              id: true, orderId: true, result: true, resolution: true, resolutionNote: true, resolvedById: true,
+              statementAmount: true, statementFee: true, expectedAmount: true,
+              // What the company already paid on a claim for this order: the part of its gross that an EARLIER approved
+              // statement settled (settlement-decisions). Empty for nearly every order.
+              order: {
+                select: {
+                  orderNumber: true,
+                  settlementMatches: {
+                    where: { resolution: 'OURS_STANDS', statementId: { not: id }, statement: { approvedAt: { not: null } } },
+                    select: { statementAmount: true, statementFee: true },
+                  },
+                },
+              },
+            },
+          },
         },
       });
       if (!inside) throw new ApprovalStopped(404, { error: 'الكشف غير موجود' });
@@ -332,16 +406,54 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         });
       }
 
-      // Settled orders make their commission payable — not before.
+      /**
+       * WHAT THIS APPROVAL SETTLES — THE CLEAN ROWS, AND THE ROWS A PERSON ANSWERED «اعتُمد رقم الشركة».
+       *
+       * Two kinds of row, and no third:
+       *
+       *   · MATCHED — the courier's figure and ours agree, and nothing else forbids it;
+       *   · MISMATCHED and decided ACCEPTED_COURIER, with an explanation, by a person — their figure stands.
+       *
+       * «رقمنا هو المعتمد» is NOT settled: that order stays PENDING_COLLECTION as a claim on the company, and a
+       * later statement's line pays what remains (settlement-decisions). «قيد المراجعة» settles nothing either.
+       * An undecided MISMATCHED row settles nothing, as it never did. Nothing else writes SETTLED from a
+       * statement, and nothing else writes the amount below.
+       */
       const matched = matches.filter((m) => m.result === 'MATCHED' && m.orderId);
-      const settledOrderIds = matched.map((m) => m.orderId as string);
-      await markPayableForOrders(tx, companyId, settledOrderIds);
-      if (settledOrderIds.length > 0) {
-        await tx.order.updateMany({
-          where: { id: { in: settledOrderIds }, companyId },
-          data: { settlementStatus: 'SETTLED' },
-        });
+      const matchedIds = new Set(matched.map((m) => m.orderId as string));
+      const accepted = matches.filter(
+        (m) => m.result === 'MISMATCHED' && m.resolution === 'ACCEPTED_COURIER' && m.orderId && !matchedIds.has(m.orderId)
+      );
+      // The order of the rows is the order of the file; an order two rows name is settled once, by the first.
+      const settling = [...matched, ...accepted].filter(
+        (m, i, all) => all.findIndex((o) => o.orderId === m.orderId) === i
+      );
+      const settledOrderIds = settling.map((m) => m.orderId as string);
+      const acceptedIds = accepted.filter((m) => settledOrderIds.includes(m.orderId as string)).map((m) => m.orderId as string);
+      const cleanIds = settledOrderIds.filter((oid) => !acceptedIds.includes(oid));
+      // A line of zero against a parcel coming back is the only line an order in that state may be accepted at.
+      const zeroLineIds = accepted.filter((m) => Number(m.statementAmount) === 0).map((m) => m.orderId as string);
+
+      /**
+       * THE ORDERS ARE LOOKED AT AGAIN, AS THE WRITE THAT SETTLES THEM.
+       *
+       * The rows were matched, and decided, some time before this press — long enough for a hand collection to
+       * take the order, for another statement to be approved first (two statements that name one order, matched
+       * in the other order, are both clean) or for a cancel to be asked for. The question «is it still ours to
+       * settle by this line» is therefore the WHERE of the claim itself (`stillSettlableWhere`), not a read
+       * before it: there is no gap for the answer to go stale in. A claim that takes fewer orders than were
+       * asked for stops the whole approval, rolls back the wallet movements above it and names the orders.
+       */
+      const claimWheres: Array<{ ids: string[]; where: Prisma.OrderWhereInput }> = [];
+      if (cleanIds.length > 0) claimWheres.push({ ids: cleanIds, where: stillSettlableWhere(companyId, cleanIds) });
+      if (acceptedIds.length > 0) claimWheres.push({ ids: acceptedIds, where: stillAcceptableWhere(companyId, acceptedIds, zeroLineIds) });
+      for (const claim of claimWheres) {
+        const taken = await tx.order.updateMany({ where: claim.where, data: { settlementStatus: 'SETTLED' } });
+        if (taken.count !== claim.ids.length) throw new OrdersChanged(claim.ids, claim.where);
       }
+
+      // Settled orders make their commission payable — not before.
+      await markPayableForOrders(tx, companyId, settledOrderIds);
 
       /**
        * WHAT THE CUSTOMER PAID AT THE DOOR — THE GROSS, NOT THE NET.
@@ -369,11 +481,28 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
        * and `statementFee` is null on none of them.
        */
       const amountOf = new Map(
-        matched.map((m) => [
+        settling.map((m) => [
           m.orderId as string,
           m.statementAmount == null ? null : Number(m.statementAmount) + Number(m.statementFee ?? 0),
         ])
       );
+      /**
+       * THE LAST PAYMENT ON A CLAIM CLOSES IT, AND THE ORDER'S AMOUNT IS EVERYTHING PAID.
+       *
+       * An order answered «رقمنا هو المعتمد» on an earlier approved statement was paid part of its price then
+       * (the gross of that row) and is owed the rest. This statement's line pays that rest, so what the customer
+       * handed over at the door — what `collectedAmount` records — is the earlier gross PLUS this line's NET.
+       * The fee is counted once, in the first payment's gross: a closing line that carries a fee of its own (a manual
+       * statement states the order's fee on every line) must not add it a second time. An order with no earlier
+       * claim row gets exactly the figure above, untouched.
+       */
+      const collectedOf = (orderId: string): number | null => {
+        const base = amountOf.get(orderId);
+        if (base == null) return null;
+        const row = settling.find((m) => m.orderId === orderId);
+        const earlier = paidGross(row?.order?.settlementMatches ?? [], country.minorUnit);
+        return earlier > 0 ? roundMinor(Number(row?.statementAmount ?? 0) + earlier, country.minorUnit) : base;
+      };
 
       /**
        * ── THE STATEMENT IS THE DELIVERY PROOF, AND THE ONLY SOURCE OF THE MONEY ──
@@ -429,7 +558,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       const deliveredAt = statement.periodTo ?? new Date();
 
       for (const order of inFlight) {
-        const collected = amountOf.get(order.id);
+        const collected = collectedOf(order.id);
         await tx.order.update({
           where: { id: order.id },
           data: {
@@ -500,7 +629,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         select: { id: true },
       });
       for (const order of awaitingAmount) {
-        const collected = amountOf.get(order.id);
+        const collected = collectedOf(order.id);
         if (collected == null) continue;
         await tx.order.update({
           where: { id: order.id },
@@ -508,10 +637,69 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         });
       }
 
-      return { row, deliveredCount: inFlight.length, receiptCount: receipts.length };
+      /**
+       * WHAT THE DECISIONS DID, WRITTEN ON THE ORDERS THEY DID IT TO — in the name of the person approving.
+       *
+       * A clean row needs no sentence of its own (the delivery above and the audit row below say it). A row a
+       * PERSON answered does: the order's timeline shows which figure stood, why, and who said so — and an
+       * order left as a claim on the company shows the claim, so the next person who opens it knows it is waiting
+       * for a settlement statement and not forgotten.
+       */
+      for (const m of accepted) {
+        if (!acceptedIds.includes(m.orderId as string)) continue;
+        await tx.orderActivity.create({
+          data: {
+            companyId,
+            orderId: m.orderId as string,
+            userId: user.id,
+            action: 'SETTLEMENT_DECISION_APPLIED',
+            metadata: JSON.stringify({
+              statement: statement.reference,
+              decision: 'ACCEPTED_COURIER',
+              explanation: m.resolutionNote ?? null,
+              decidedBy: m.resolvedById ?? null,
+              collected: collectedOf(m.orderId as string),
+            }),
+          },
+        });
+      }
+      const claims = matches.filter((m) => m.result === 'MISMATCHED' && m.resolution === 'OURS_STANDS' && m.orderId);
+      for (const m of claims) {
+        await tx.orderActivity.create({
+          data: {
+            companyId,
+            orderId: m.orderId as string,
+            userId: user.id,
+            action: 'SETTLEMENT_CLAIM_OPENED',
+            metadata: JSON.stringify({
+              statement: statement.reference,
+              remaining: roundMinor(Number(m.expectedAmount ?? 0) - Number(m.statementAmount ?? 0), country.minorUnit),
+              explanation: m.resolutionNote ?? null,
+              decidedBy: m.resolvedById ?? null,
+            }),
+          },
+        });
+      }
+
+      return {
+        row,
+        deliveredCount: inFlight.length,
+        receiptCount: receipts.length,
+        settledCount: settledOrderIds.length,
+        acceptedCount: acceptedIds.length,
+        claimCount: claims.length,
+      };
       }, { timeout: 30_000 });
     } catch (e) {
       if (e instanceof ApprovalStopped) return NextResponse.json(e.body, { status: e.status });
+      if (e instanceof OrdersChanged) {
+        // The transaction is gone, so what is read now is what is true: the orders that failed the claim's filter.
+        const changed = await db.order.findMany({
+          where: { id: { in: e.ids }, companyId, storeId, NOT: e.where },
+          select: { orderNumber: true },
+        });
+        return NextResponse.json(ordersChangedBody((Array.isArray(changed) ? changed : []).map((o) => o.orderNumber)), { status: 409 });
+      }
       if (e instanceof PossibleDouble) {
         const actorIds = [...new Set(e.rows.map((r) => r.createdById))];
         const actors = await db.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true } });
@@ -536,6 +724,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       entity: 'CourierStatement', entityId: id,
       newData: {
         gap: gap.gap, explanation: explanation ?? null, receipts: approved.receiptCount,
+        // What the approval settled: the clean rows plus the answered ones, and the claims it left open.
+        settled: approved.settledCount, acceptedByDecision: approved.acceptedCount, claimsOpened: approved.claimCount,
         // Said by the person, on the screen: the hand rows listed were NOT the same money. Written here so
         // the approval itself carries the answer.
         ...(confirmedDoubles.length > 0 ? { confirmedPossibleDouble: true, handRows: confirmedDoubles } : {}),
@@ -548,6 +738,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       // How many the statement itself closed, so the screen can say it
       // rather than leaving somebody to notice the tracking list shrank.
       deliveredByStatement: approved.deliveredCount,
+      settledOrders: approved.settledCount,
+      claimsOpened: approved.claimCount,
     });
   } catch (error) {
     return apiErrorResponse(error);

@@ -631,3 +631,42 @@ describe('ranking', () => {
     expect(rankCandidates(rows).map((r) => r.orderNumber)).toEqual(['A', 'B', 'C', 'Z']);
   });
 });
+
+describe('a line tied by hand is judged against a claim on the company, as the matcher judges it', () => {
+  // An EARLIER, APPROVED statement answered this order «رقمنا هو المعتمد»: expected 20, the company paid 18.
+  const claimRow = (over: Row = {}): Row => ({
+    id: 'old', companyId: 'c1', statementId: 'st0', statementLineId: 'l0', orderId: 'o1', result: 'MISMATCHED',
+    matchedBy: 'MERCHANT_REF', resolution: 'OURS_STANDS', expectedAmount: 20, statementAmount: 18, statementFee: 0,
+    statementRow: { reference: 'ST-0', approvedAt: new Date('2026-10-20T00:00:00Z') }, ...over,
+  });
+
+  it('a line that pays the 2.000 that remains is MATCHED against 2.000, not a difference of 18.000', async () => {
+    w.matches.push(claimRow());
+    w.matches[0].statementLine = { amount: 2, fee: null, status: null };
+    const r = await link(makeTx(w));
+    expect(r).toMatchObject({ result: 'MATCHED', expected: 2, stated: 2, difference: 0 });
+  });
+
+  it('a line that pays less is a difference of what is still missing', async () => {
+    w.matches.push(claimRow());
+    w.matches[0].statementLine = { amount: 1.5, fee: null, status: null };
+    const r = await link(makeTx(w));
+    expect(r).toMatchObject({ result: 'MISMATCHED', expected: 2, difference: -0.5 });
+  });
+
+  it('with no claim the very same line is judged against the whole order, as it always was', async () => {
+    w.matches[0].statementLine = { amount: 2, fee: null, status: null };
+    const r = await link(makeTx(w));
+    expect(r).toMatchObject({ result: 'MISMATCHED', expected: 20, difference: -18 });
+  });
+
+  it('an order already SETTLED has no claim to pay: the claims are not even asked for', async () => {
+    w.orders = [order({ settlementStatus: 'SETTLED' })];
+    w.matches.push(claimRow());
+    w.matches[0].statementLine = { amount: 2, fee: null, status: null };
+    const tx = makeTx(w);
+    const e = await refusedWith(link(tx));
+    expect(e.body.code).toBe('ORDER_NOT_LINKABLE');
+    expect(tx.settlementMatch.findMany.mock.calls.some((c) => (c[0] as { where: Row }).where.resolution === 'OURS_STANDS')).toBe(false);
+  });
+});

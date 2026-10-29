@@ -138,6 +138,9 @@ const ACTIVITY_AR: Record<string, string> = {
   TAKEN_OFF_BATCH: 'أُخرج من الدفعة',
   PARCEL_ATTESTED_IN_HAND: 'أكّد أن الطرد بين يديه وأعاد قطعه للرف',
   COURIER_CANCELLED_ORDER_MOVED: 'ألغت الشركة الطرد وتغيّر الطلب قبل الحفظ',
+  // «فرق في المبلغ»: what the approval did with the answer a person gave, in that person's name.
+  SETTLEMENT_DECISION_APPLIED: 'سُوّي الطلب برقم الشركة بعد بتّ مكتوب',
+  SETTLEMENT_CLAIM_OPENED: 'بقي الطلب مطالبة على الشركة بالباقي',
   // «طلبات لم يذكرها أي كشف»: what a person decided about it, on the order itself.
   ...NOT_MENTIONED_ACTIVITY_AR,
 };

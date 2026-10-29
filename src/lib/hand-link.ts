@@ -6,6 +6,7 @@ import { hasLeftWarehouse } from './order-state';
 import { claimingRowWhere, integrityNotes, MANUAL_MATCH, openRequestWhere, type OtherStatement } from './match-integrity';
 import { expectedAmountFor, judgeLine, SETTLEMENT_ORDER_SELECT } from './settlement';
 import { isApproved } from './settlement-gates';
+import { openClaimsFor } from './settlement-decisions';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -402,12 +403,20 @@ export async function linkLineToOrder(
     select: { intent: true },
   });
 
+  // What the company still owes on this order, when an earlier approved statement was answered «رقمنا»: the matcher
+  // judges the line against it, and so does a person's link — one rule for both.
+  const claims =
+    order.settlementStatus === 'SETTLED'
+      ? new Map<string, { remaining: number }>()
+      : await openClaimsFor(tx, { companyId: p.companyId, orderIds: [order.id], excludeStatementId: p.statementId, minorUnit: p.minorUnit });
+
   // The verdict is the matcher's own: same expectation, same fee rule, same reasons to look.
   const v = judgeLine({
     order,
     line: match.statementLine,
     minorUnit: p.minorUnit,
     integrity: { claimedByAnotherLine: false, otherStatements: [], openRequests: requests.map((r) => r.intent) },
+    openClaim: claims.get(order.id)?.remaining ?? null,
   });
 
   // Claimed on the row's own state, so two people pressing at once cannot both link the one line.
