@@ -730,6 +730,28 @@ export async function PATCH(
     // Explicit separate-status updates (Phase D completes the workflow, fields exist now)
     // FIX: an explicit differing shippingStatus must actually be written — the
     // previous `!changingShipping` guard made every real change dead code.
+    /*
+     * THE SEPARATE FIELDS ASK THE SAME QUESTION AS THE COMBINED ONE.
+     *
+     * `status: 'CANCELLED'` above asks `assertCancellable`. Sending the same
+     * ending as `confirmationStatus: 'CANCELLED' | 'REJECTED'` or as
+     * `shippingStatus: 'CANCELLED'` walked past it: the order read as
+     * cancelled while its parcel was labelled or on the courier's van.
+     */
+    const endsTheOrder =
+      (shippingStatus !== undefined && shippingStatus !== existing.shippingStatus && shippingStatus === 'CANCELLED') ||
+      (confirmationStatus !== undefined &&
+        confirmationStatus !== existing.confirmationStatus &&
+        (confirmationStatus === 'CANCELLED' || confirmationStatus === 'REJECTED'));
+    if (endsTheOrder && !changingCombined) {
+      const cancellable = assertCancellable(existing as StateSource);
+      if (!cancellable.allowed) {
+        return NextResponse.json(
+          { error: cancellable.message, errorAr: cancellable.message, code: cancellable.code },
+          { status: 409 }
+        );
+      }
+    }
     if (shippingStatus !== undefined && !changingCombined) {
       updateData.shippingStatus = shippingStatus;
     }

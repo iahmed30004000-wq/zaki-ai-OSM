@@ -132,6 +132,8 @@ const ACTIVITY_AR: Record<string, string> = {
   PARTIAL_DELIVERY: 'تسليم جزئي',
   COURIER_ASSIGNED: 'إسناد شركة شحن',
   COURIER_TRANSFERRED: 'تحويل بين شركات الشحن',
+  COURIER_SEND_CLEARED: 'فكّ إرسال عالق للشركة',
+  COURIER_TOLD_TO_CANCEL: 'إبلاغ الشركة بإلغاء الطرد',
 };
 
 const ar = (table: Record<string, string>, key: string | null | undefined): string =>

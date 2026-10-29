@@ -1,4 +1,5 @@
 import type { ShippingStatus } from './shipping-workflow';
+import { handedToCourier } from './order-seal';
 
 /**
  * Moving a parcel to a different courier.
@@ -128,4 +129,32 @@ export function planTransfer(input: {
     nextStatus: 'READY_FOR_SHIPPING',
     reason: `سحب من ${from.name} وإصدار طلب بديل لـ ${to.name}`,
   };
+}
+
+/**
+ * A REPLACEMENT IS FOR A PARCEL THE COMPANY HOLDS — NOT ONE STILL ON OUR TROLLEY.
+ *
+ * `planTransfer` accepts READY_FOR_PICKUP because an agent's parcel is that
+ * status the whole time. For a COMPANY's parcel the same status also means
+ * «packed, on our trolley, the company has not come yet». Moving that one
+ * with REPLACE raised a second live order for the same goods and reserved
+ * them twice, while the first one stayed in its batch under its own barcode.
+ *
+ * Nothing is lost by refusing: before the handover the company has nothing
+ * of ours to take back, and the move that fits is a re-batch of the same
+ * order, which is a later change. Until then the answer is no.
+ *
+ * Asked after `planTransfer`, so every other refusal keeps its own words and
+ * the existing rules of that function are untouched.
+ */
+export function assertCompanyHoldsIt(
+  plan: TransferPlan,
+  order: { shippingStatus: string; shippedAt?: Date | string | null; batchStatus?: string | null }
+): void {
+  if (plan.mode !== 'REPLACE') return;
+  if (handedToCourier(order)) return;
+  throw new TransferRefused(
+    'STILL_ON_OUR_TROLLEY',
+    'الطرد لسّا عندنا وما انسلّم للشركة — ما بينسحب منها ببديل. التحويل ببديل بيصير بعد التسليم بس.'
+  );
 }

@@ -165,8 +165,10 @@ export function ChangeRequestsScreen() {
       intent === 'EDIT'
         ? `${lines}\n\nيُكتب على الطلب بالقيم المعتمدة كما هي، ويُسجَّل في سجل التدقيق مع سببه.`
         : intent === 'CANCEL'
-          ? `سبب الإلغاء: ${REJECTION_REASON_AR[r.cancelReason ?? ''] ?? r.cancelReason ?? '—'}\n\n` +
-            'تعود البضاعةُ المحجوزة إلى المخزون في المعاملة نفسها.'
+          ? r.carryOut?.kind === 'CANCEL_VIA_COURIER'
+            ? 'الطرد عند شركة الشحن: ستظهر لك رسالة جاهزة لها لتوقف الطرد. الطلب يبقى كما هو، ويرجع الطرد عبر المرتجعات ويتعدّ.'
+            : `سبب الإلغاء: ${REJECTION_REASON_AR[r.cancelReason ?? ''] ?? r.cancelReason ?? '—'}\n\n` +
+              'تعود البضاعةُ المحجوزة إلى المخزون في المعاملة نفسها.'
           : `يُؤجَّل حتى ${String(r.postponeUntil ?? '').slice(0, 10)}\n\n` +
             'يعود الطلبُ إلى المتابعة ويظهر لمن يكون فارغاً يومَها، وتعود بضاعتُه إلى المخزون.';
 
@@ -193,7 +195,7 @@ export function ChangeRequestsScreen() {
    * once the goods have left — and its refusal is the message to the
    * courier, which is the real remedy there.
    */
-  async function standDown(r: ChangeRequest, intent: ChangeIntent) {
+  async function standDown(r: ChangeRequest, intent: ChangeIntent, courierNotified = false) {
     setApplying(r.id);
     try {
       const res = await apiFetch('/api/ops/shipments/stand-down', {
@@ -203,10 +205,29 @@ export function ChangeRequestsScreen() {
           orderId: r.order.id,
           outcome: intent === 'CANCEL' ? 'CANCEL' : 'POSTPONE',
           changeRequestId: r.id,
+          ...(courierNotified ? { courierNotified: true } : {}),
         }),
       });
       const body = await res.json().catch(() => ({}));
+      /*
+       * A PARCEL THE COMPANY HOLDS: the answer is the message to send them,
+       * not a refusal. The same dialog the edit path uses, and the same two
+       * steps — send it, then say you did.
+       */
+      if (!res.ok && body?.code === 'COURIER_ACTION_REQUIRED') {
+        setCourierFor({
+          request: r,
+          ask: {
+            action: body.action ?? 'CANCEL_WAYBILL',
+            reason: body.errorAr ?? body.error ?? '',
+            message: body.message ?? '',
+            courier: body.courier ?? null,
+          },
+        });
+        return;
+      }
       if (!res.ok) throw new Error(body?.errorAr || body?.error || 'تعذر تنفيذ القرار');
+      setCourierFor(null);
       await load();
     } catch (e) {
       await tell({
@@ -233,6 +254,18 @@ export function ChangeRequestsScreen() {
   async function send(r: ChangeRequest, courierNotified: boolean) {
     setApplying(r.id);
     try {
+      /**
+       * A CANCEL THE COMPANY HAS BEEN TOLD ABOUT IS NOT AN EDIT EITHER.
+       *
+       * The dialog is the same one and its button lands here; what it says
+       * «done» to is the stand-down door, which marks the request carried
+       * out and touches nothing on the order.
+       */
+      if (courierNotified && courierFor?.ask.action === 'CANCEL_WAYBILL') {
+        await standDown(r, 'CANCEL', true);
+        return;
+      }
+
       /**
        * A CANCELLED WAYBILL IS NOT AN EDIT.
        *
