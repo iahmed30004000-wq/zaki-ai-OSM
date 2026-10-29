@@ -203,7 +203,7 @@ const ID_SCOPED: Record<string, Excuse> = {
  * aggregate appears, it is not here and the sweep fails.
  */
 const NO_STORE_COLUMN: Record<string, Excuse> = {
-  'app/api/analytics/route.ts': { reason: 'expense — لا عمودَ متجرٍ في الجدول؛ وكلفةُ تجربةٍ مالٌ خرجَ فعلاً، وحسمُها قرارُ المالك', sites: 1 },
+  'lib/analytics-answer.ts': { reason: 'expense — لا عمودَ متجرٍ في الجدول؛ وكلفةُ تجربةٍ مالٌ خرجَ فعلاً، وحسمُها قرارُ المالك', sites: 1 },
   'app/api/finance/route.ts': { reason: 'expense — لا عمودَ متجرٍ في الجدول؛ القرارُ نفسُه', sites: 3 },
   'app/api/finance/transfers/route.ts': { reason: 'walletTransfer — لا عمودَ متجرٍ في الجدول', sites: 1 },
   'lib/analytics.ts': { reason: 'expense — لا عمودَ متجرٍ في الجدول؛ القرارُ نفسُه', sites: 1 },

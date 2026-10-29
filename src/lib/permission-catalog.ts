@@ -141,7 +141,6 @@ export const PERMISSION_MODULES: CatalogModule[] = [
     items: [
       { key: 'reports.view', ar: 'عرض التقارير', en: 'View reports' },
       { key: 'reports.export', requires: 'orders.view', ar: 'تصدير التقارير', en: 'Export reports' },
-      { key: 'analytics.view', ar: 'عرض التحليلات', en: 'View analytics' },
       // Says what it opens: the in-screen assistants (confirmation, picking,
       // landing pages, AI order entry) answer to the key of the work they sit
       // in, so «منع» on this one turns off the bubble, the assistant page and
@@ -347,17 +346,21 @@ export function catalogItem(key: string): CatalogItem | undefined {
 /**
  * KEYS THE CATALOG HAS STOPPED OFFERING.
  *
- * ⚠️ EMPTY ON PURPOSE, until the key it names is checked by nothing.
- *
  * A key listed here is stripped from every role and every exception list on
- * its next save (`withoutRetired`, at every door). `analytics.view` and
- * `categories.view` will retire one day, but today a route still asks each
- * of them: naming one early would delete the row from the first role the
- * owner saves, and everybody on that role would lose a working door without
- * anything saying so. A key joins this list in the SAME change that removes
- * the last check of it, and leaves `PERMISSION_MODULES` in that change too.
+ * its next save (`withoutRetired`, at every door). A key joins this list in
+ * the SAME change that removes the last check of it, and leaves
+ * `PERMISSION_MODULES` in that change too — naming one early would delete the
+ * row from the first role the owner saves, and everybody on that role would
+ * lose a working door without anything saying so.
+ *
+ * `analytics.view` («عرض التحليلات») joined on 29/10: nothing asks it any more
+ * (the dashboard's doors ask `dashboard.view`, the reports and growth doors
+ * `reports.view`), and the migration 20261029130000_analytics_view_becomes_
+ * reports_view gave its holders those two. Its old rows stay in the database,
+ * inert, and go the next time the owner saves that role. `categories.view`
+ * will retire one day, but a route still asks it.
  */
-export const RETIRED_KEYS: readonly string[] = [];
+export const RETIRED_KEYS: readonly string[] = ['analytics.view'];
 
 export function isRetiredKey(key: string): boolean {
   return RETIRED_KEYS.includes(key);

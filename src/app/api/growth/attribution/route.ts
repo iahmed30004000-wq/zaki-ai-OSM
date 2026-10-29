@@ -15,7 +15,7 @@ import { attributionTotals, channelPerformance, moderatorPerformance } from '@/l
 export async function GET(req: Request) {
   try {
     const { companyId, storeId } = await requireContext();
-    await requirePermission('reports.view').catch(async () => requirePermission('analytics.view'));
+    await requirePermission('reports.view');
 
     const q = new URL(req.url).searchParams;
     const filter: DateFilter = {

@@ -9,7 +9,8 @@ import { useApp } from '@/context/AppContext';
 import { canAccessRoute, findRoute } from '@/lib/route-registry';
 import { userCan } from '@/lib/can';
 import { TEAM_PERMISSIONS } from '@/lib/ai-assistants';
-import { apiFetch } from '@/lib/api-client';
+import { apiFetch, saidBy } from '@/lib/api-client';
+import { EmptyState } from '@/components/ui/EmptyState';
 import Link from 'next/link';
 import { RiAddCircleLine, RiArrowRightLine, RiArrowUpCircleLine, RiAwardLine, RiCloseCircleLine, RiFireLine, RiHandCoinLine, RiInboxUnarchiveLine, RiPercentLine, RiMagicLine, RiShoppingBagLine, RiTruckLine, RiWallet3Line } from '@remixicon/react';
 import { Money } from '@/components/ui/Money';
@@ -63,6 +64,8 @@ export function DashboardScreen() {
   const [period, setPeriod] = useState<'today' | '7d' | '30d' | 'month' | 'all'>('all');
   const [analytics, setAnalytics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  /** Why the numbers did not come: a refusal or a failure, said — never drawn as zeros. */
+  const [refusal, setRefusal] = useState<{ status: number; said: string } | null>(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [aiModalOpen, setAiModalOpen] = useState(false);
 
@@ -76,7 +79,15 @@ export function DashboardScreen() {
     try {
       const res = await apiFetch(`/api/analytics?period=${period}`);
       if (seq !== loadAnalyticsSeq.current) return; // stale — discard
-      if (res.ok) setAnalytics(await res.json());
+      if (res.ok) {
+        setRefusal(null);
+        setAnalytics(await res.json());
+      } else {
+        // A refusal means the numbers are not ours to show: whatever an earlier poll left goes too.
+        if (res.status === 403) setAnalytics(null);
+        const said = await saidBy(res, 'تعذّر تحميل أرقام لوحة التحكم. أعد المحاولة بعد قليل.');
+        if (seq === loadAnalyticsSeq.current) setRefusal({ status: res.status, said });
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -300,6 +311,24 @@ export function DashboardScreen() {
     { icon: RiTruckLine, label: locale === 'ar' ? 'الأكثر توصيلاً' : 'Most Delivered', name: analytics?.rankings?.mostDelivered?.name, id: analytics?.rankings?.mostDelivered?.id, value: `${analytics?.rankings?.mostDelivered?.deliveredOrders ?? 0} ${locale === 'ar' ? 'توصيل' : 'delivered'}`, tint: 'bg-[var(--sys-warning-soft)] border-[var(--sys-warning)]/30', text: 'text-[var(--sys-warning)]' },
     { icon: RiCloseCircleLine, label: locale === 'ar' ? 'الأكثر رفضاً' : 'Highest Rejections', name: analytics?.rankings?.highestRejection?.name, id: analytics?.rankings?.highestRejection?.id, value: `${analytics?.rankings?.highestRejection?.rejectedOrders ?? 0} ${locale === 'ar' ? 'رفض' : 'rejected'}`, tint: 'bg-[var(--sys-destructive-soft)] border-[var(--sys-destructive-border)]', text: 'text-[var(--sys-destructive)]' },
   ];
+
+  // The numbers were refused or failed and there is nothing earlier to show: say so,
+  // rather than drawing «٠» under every tile as if the shop had sold nothing.
+  if (refusal && !analytics) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title={t.dashboard} />
+        <Card>
+          <CardContent>
+            <EmptyState
+              title={refusal.status === 403 ? 'لا تملك صلاحية «عرض لوحة التحكم»' : 'تعذّر تحميل أرقام لوحة التحكم'}
+              why={refusal.said}
+            />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <>

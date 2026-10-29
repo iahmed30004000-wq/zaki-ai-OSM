@@ -25,7 +25,7 @@ import {
  * order. Hanging eight aggregates off it would make every order form wait for
  * a report, and would hand performance figures to a data-entry clerk who is
  * only allowed to see a list of names. So the names stay there, fast and
- * open, and the numbers live here behind `analytics.view`.
+ * open, and the numbers live here behind `reports.view`.
  *
  * NOTHING HERE COUNTS ORDERS THAT `channelPerformance` ALREADY COUNTS. That
  * function is the shared attribution engine — the same one the performance
@@ -81,7 +81,7 @@ export interface ChannelPerformanceRow {
 export async function GET() {
   try {
     const { companyId, storeId } = await requireContext();
-    await requirePermission('analytics.view');
+    await requirePermission('reports.view');
 
     // The same bounded window every report in this system uses for «الكل»:
     // ninety days, clamped server-side. The screen has no date picker, and

@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { useApp } from '@/context/AppContext';
-import { apiJson } from '@/lib/api-client';
+import { apiFetch, apiJson, saidBy } from '@/lib/api-client';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { DateRange } from '@/components/ui/DateRange';
 import { TeamPerformanceTable } from '@/components/performance/TeamPerformanceTable';
 import { AttributionTable, type AttributionRow } from '@/components/performance/AttributionTable';
@@ -104,6 +105,8 @@ export function PerformanceScreen() {
   const [range, setRange] = useState(lastThirtyDays);
   const [analytics, setAnalytics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  /** Why the numbers did not come: a refusal or a failure, said — never drawn as zeros. */
+  const [refusal, setRefusal] = useState<{ status: number; said: string } | null>(null);
   // Who is doing the work, and how well. The endpoints behind these were
   // built and never connected: this screen was a second copy of the
   // dashboard's analytics, and neither answered "which agent" or
@@ -181,10 +184,16 @@ export function PerformanceScreen() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/analytics?${dateQuery}`);
+      // Its OWN door (`reports.view`) — not the dashboard's: a person who may open this board
+      // and not the dashboard (a bookkeeper) reads the same numbers here.
+      const res = await apiFetch(`/api/analytics/performance?${dateQuery}`);
       if (res.ok) {
         const data = await res.json();
+        setRefusal(null);
         setAnalytics(data);
+      } else {
+        if (res.status === 403) setAnalytics(null);
+        setRefusal({ status: res.status, said: await saidBy(res, 'تعذّر تحميل أرقام لوحة الأداء. أعد المحاولة بعد قليل.') });
       }
     } catch (e) {
       console.error(e);
@@ -229,6 +238,24 @@ export function PerformanceScreen() {
           | undefined,
       }
     : null;
+
+  // Refused or failed with nothing earlier to show: say so, rather than drawing «٠» under every
+  // table as if the shop had sold nothing in this window.
+  if (refusal && !analytics) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title={routeLabel('/growth/performance')} />
+        <Card>
+          <CardContent>
+            <EmptyState
+              title={refusal.status === 403 ? 'لا تملك صلاحية «عرض التقارير»' : 'تعذّر تحميل أرقام لوحة الأداء'}
+              why={refusal.said}
+            />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <>

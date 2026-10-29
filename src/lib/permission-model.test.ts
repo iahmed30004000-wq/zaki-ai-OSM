@@ -112,16 +112,21 @@ describe('the catalog names what each action needs', () => {
 });
 
 describe('the keys the catalog stops offering', () => {
-  it('is empty — a key is named here in the SAME change that removes its last check', () => {
+  it('names only keys the catalog no longer offers — a key joins in the SAME change that removes its last check', () => {
     /*
      * ⚠️ DO NOT "FIX" THIS BY ADDING A KEY. A key listed here is stripped
-     * from every role and exception list on its next save. `analytics.view`
-     * and `categories.view` are still asked by routes today: naming one would
-     * delete the row from the first role the owner saves, and everybody on
-     * that role would lose a working door with nothing saying so.
+     * from every role and exception list on its next save. `categories.view`
+     * is still asked by a route today: naming it would delete the row from
+     * the first role the owner saves, and everybody on that role would lose a
+     * working door with nothing saying so. `analytics.view` went on 29/10:
+     * nothing asks it (the dashboard's doors ask `dashboard.view`, the report
+     * and growth doors `reports.view`), and a migration gave its holders both.
      */
-    expect(RETIRED_KEYS).toEqual([]);
-    expect(ALL_CATALOG_KEYS.has('analytics.view')).toBe(true);
+    expect(RETIRED_KEYS).toEqual(['analytics.view']);
+    expect(ALL_CATALOG_KEYS.has('analytics.view')).toBe(false);
+    expect(isRetiredKey('analytics.view')).toBe(true);
+    // NEGATIVE: a retired key that is still offered would show up as a box on the roles screen.
+    for (const k of RETIRED_KEYS) expect(ALL_CATALOG_KEYS.has(k), `${k} still offered`).toBe(false);
     expect(ALL_CATALOG_KEYS.has('categories.view')).toBe(true);
   });
 

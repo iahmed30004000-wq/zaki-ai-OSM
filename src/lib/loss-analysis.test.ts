@@ -274,7 +274,9 @@ describe('the money on the report is an invoice, not an estimate', () => {
   });
 
   it('and is gated like every other figure on that screen', () => {
-    expect(route()).toContain("requirePermission('analytics.view')");
+    // The dashboard's own key (29/10) — the panel sits on the dashboard; «analytics.view» is retired.
+    expect(route()).toContain("requirePermission('dashboard.view')");
+    expect(route()).not.toContain('analytics.view');
   });
 });
 

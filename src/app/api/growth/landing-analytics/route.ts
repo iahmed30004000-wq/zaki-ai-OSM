@@ -9,7 +9,7 @@ import { landingAnalytics, pageVerdicts } from '@/lib/landing-analytics';
  * GET /api/growth/landing-analytics — the landing pages of the selected
  * store, for the performance screen's date window.
  *
- * Two gates: the performance screen's own (reports.view or analytics.view)
+ * Two gates: the performance screen's own (reports.view)
  * AND landing_pages.view — it is marketing data, and a confirmation
  * supervisor who can open the performance screen for the team tables has no
  * business reading it.
@@ -17,7 +17,7 @@ import { landingAnalytics, pageVerdicts } from '@/lib/landing-analytics';
 export async function GET(req: Request) {
   try {
     const { companyId, storeId } = await requireContext();
-    await requirePermission('reports.view').catch(async () => requirePermission('analytics.view'));
+    await requirePermission('reports.view');
     await requirePermission('landing_pages.view');
 
     const q = new URL(req.url).searchParams;

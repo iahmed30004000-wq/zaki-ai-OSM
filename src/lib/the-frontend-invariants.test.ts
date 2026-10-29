@@ -1102,7 +1102,7 @@ describe('Ⅴ · the edges of the sentence, stated rather than implied', () => {
      */
     const dash = stripComments(repoFile('src/components/screens/DashboardScreen.tsx'));
     expect(dash).toMatch(/counts\.rejected \/ \(counts\.decided \?\? counts\.total\)/);
-    const rates = stripComments(repoFile('src/app/api/analytics/route.ts'));
+    const rates = stripComments(repoFile('src/lib/analytics-answer.ts'));
     expect(rates).not.toMatch(/rejectionRate/);
   });
 
