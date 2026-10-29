@@ -573,3 +573,53 @@ describe('recording a receipt', () => {
     expect(db.statementReceipt.create).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * 29/10 — A RECEIPT NEVER LANDS ON A STATEMENT THAT IS CLOSED, EVEN IF IT CLOSED A MOMENT AGO,
+ * AND IT LANDS IN A WALLET OF THIS STORE.
+ *
+ * The status read before the transaction can be stale: an approval that lands between that read and the write
+ * would find the receipt missing from its money, or an orphan nobody's wallet ever saw. The claim inside the
+ * transaction is what decides; these hold that with the claim refused, and hold the wallet to the store.
+ */
+describe('a receipt and the moment of approval, and the wallet it goes into', () => {
+  const W = '11111111-1111-4111-8111-111111111111';
+  const payload = () => ({ receiptId: '77777777-7777-4777-8777-777777777777', walletId: W, amount: 90 });
+
+  beforeEach(() => {
+    db.courierStatement.findFirst.mockResolvedValue({ id: ID, status: 'MATCHED', currencyCode: 'JOD', reference: 'ST-1' });
+    db.wallet.findFirst.mockResolvedValue({ id: W, name: 'الصندوق', currencyCode: 'JOD' });
+    db.statementReceipt.findFirst.mockResolvedValue(null);
+    db.statementReceipt.create.mockResolvedValue({ id: 'r', amount: 90 });
+  });
+
+  it('the status said open, the claim says approved: 409, no receipt row, no file, no audit', async () => {
+    db.courierStatement.updateMany.mockResolvedValue({ count: 0 });
+    const res = await addReceipt(body(payload(), 'POST'), params);
+    expect(res.status).toBe(409);
+    expect(db.statementReceipt.create, 'إيصال كُتب على كشف اعتُمد للتو').not.toHaveBeenCalled();
+    expect(logAudit).not.toHaveBeenCalled();
+  });
+
+  it('the claim is taken BEFORE the receipt is written', async () => {
+    await addReceipt(body(payload(), 'POST'), params);
+    const claim = db.courierStatement.updateMany.mock.invocationCallOrder[0];
+    const write = db.statementReceipt.create.mock.invocationCallOrder[0];
+    expect(claim).toBeLessThan(write);
+  });
+
+  it('the wallet is found among this store’s and the unplaced ones — never another store’s', async () => {
+    await addReceipt(body(payload(), 'POST'), params);
+    expect(db.wallet.findFirst.mock.calls[0][0].where).toMatchObject({
+      id: W, companyId: 'c1', isActive: true, OR: [{ storeId: 's1' }, { storeId: null }],
+    });
+  });
+
+  it('a wallet of another store is a 404 and nothing is written', async () => {
+    db.wallet.findFirst.mockResolvedValue(null);
+    const res = await addReceipt(body(payload(), 'POST'), params);
+    expect(res.status).toBe(404);
+    expect(db.statementReceipt.create).not.toHaveBeenCalled();
+    expect(db.courierStatement.updateMany).not.toHaveBeenCalled();
+  });
+});

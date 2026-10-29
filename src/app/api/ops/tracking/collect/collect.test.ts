@@ -407,3 +407,58 @@ describe('when the sum runs the other way', () => {
     expect(db.order.updateMany.mock.calls[0][0].where.id.in).toEqual([ORDER_A, ORDER_B]);
   });
 });
+
+describe('one courier per handover, and a wallet of this store (29/10)', () => {
+  const two = (a: Record<string, unknown>, b: Record<string, unknown>) =>
+    db.order.findMany.mockResolvedValue([
+      order(a),
+      order({ id: ORDER_B, orderNumber: 'SY-2026-0002', ...b }),
+    ]);
+  const both = () => post({ orderIds: [ORDER_A, ORDER_B], walletId: WALLET, note: 'استلمت منه' });
+  const nothingWritten = () => {
+    expect(recordMovement).not.toHaveBeenCalled();
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+    expect(markPayableForOrders).not.toHaveBeenCalled();
+    expect(db.orderActivity.create).not.toHaveBeenCalled();
+    expect(logAudit).not.toHaveBeenCalled();
+  };
+
+  it('orders of two couriers are refused with MIXED_COURIER and nothing is written', async () => {
+    two({ deliveryProviderId: 'p1' }, { deliveryProviderId: 'p2', deliveryProvider: { id: 'p2', name: 'أبو خالد', kind: 'AGENT' } });
+    const res = await POST(both());
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('MIXED_COURIER');
+    nothingWritten();
+  });
+
+  it('a parcel with NO courier named is not the first courier’s either', async () => {
+    two({ deliveryProviderId: 'p1' }, { deliveryProviderId: null, deliveryProvider: null });
+    const res = await POST(both());
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('MIXED_COURIER');
+    nothingWritten();
+  });
+
+  it('the same courier on every order is collected as before', async () => {
+    two({ deliveryProviderId: 'p1' }, { deliveryProviderId: 'p1' });
+    const res = await POST(both());
+    expect(res.status).toBe(200);
+    expect(recordMovement).toHaveBeenCalledTimes(1);
+  });
+
+  it('the wallet is looked up among this store’s and the unplaced ones, not the whole company’s', async () => {
+    db.order.findMany.mockResolvedValue([order()]);
+    await POST(post({ orderIds: [ORDER_A], walletId: WALLET, note: 'استلمت منه' }));
+    expect(db.wallet.findFirst.mock.calls[0][0].where).toEqual({
+      id: WALLET, companyId: 'c1', isActive: true, OR: [{ storeId: 's1' }, { storeId: null }],
+    });
+  });
+
+  it('a wallet of another store is a 404 and nothing is written', async () => {
+    db.wallet.findFirst.mockResolvedValue(null);
+    db.order.findMany.mockResolvedValue([order()]);
+    const res = await POST(post({ orderIds: [ORDER_A], walletId: WALLET, note: 'استلمت منه' }));
+    expect(res.status).toBe(404);
+    nothingWritten();
+  });
+});

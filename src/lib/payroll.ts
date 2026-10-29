@@ -271,6 +271,8 @@ export async function paySalary(tx: Tx, input: PayInput): Promise<PayslipResult>
     walletId: input.walletId,
     amount: preview.net,
     exchangeRate: input.exchangeRate,
+    // The payslip is this store's (`storeId` below), so the money leaves a wallet of this store or an unplaced one.
+    storeId: input.storeId,
   });
   if (typeof wallet === 'string') throw new PayrollRefused(wallet);
 

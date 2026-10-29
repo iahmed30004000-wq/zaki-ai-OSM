@@ -541,3 +541,47 @@ describe('how it is built', () => {
     expect(src()).not.toMatch(/Date\.now\(\)|new Date\(\)|getTime\(\)/);
   });
 });
+
+describe('«استلمت منه» takes one courier at a time (29/10)', () => {
+  const owed = (id: string, provider: { id: string; name: string; kind: string } | null) =>
+    parcel(id, {
+      shippingStatus: 'DELIVERED', settlementStatus: 'PENDING_COLLECTION', collectionStatus: 'PENDING_COLLECTION',
+      deliveryProvider: provider,
+    });
+  const A = { id: P1, name: 'أبو علي', kind: 'COMPANY' };
+  const B = { id: P2, name: 'أمان', kind: 'COMPANY' };
+  const press = () => screen.getByRole('button', { name: /استلمت منه/ }) as HTMLButtonElement;
+
+  it('«اختر الكل» across two couriers shuts the button and says why, in a short Arabic sentence', async () => {
+    rowsOf = () => [owed('A1', A), owed('B1', B)];
+    await draw();
+    fireEvent.click(screen.getByRole('button', { name: 'اختر الكل' }));
+    expect(press().disabled).toBe(true);
+    expect(screen.getByRole('alert').textContent).toBe('اختر طرود شركة وحدة');
+  });
+
+  it('a parcel with no courier named is its own group', async () => {
+    rowsOf = () => [owed('A1', A), owed('N1', null)];
+    await draw();
+    fireEvent.click(screen.getByRole('button', { name: 'اختر الكل' }));
+    expect(press().disabled).toBe(true);
+  });
+
+  it('one courier: the button is open and no warning is drawn', async () => {
+    rowsOf = () => [owed('A1', A), owed('A2', A)];
+    await draw();
+    fireEvent.click(screen.getByRole('button', { name: 'اختر الكل' }));
+    expect(press().disabled).toBe(false);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('taking one of the two couriers off the selection opens the button again', async () => {
+    rowsOf = () => [owed('A1', A), owed('B1', B)];
+    await draw();
+    fireEvent.click(screen.getByRole('button', { name: 'اختر الكل' }));
+    expect(press().disabled).toBe(true);
+    const boxes = screen.getAllByRole('checkbox') as HTMLInputElement[];
+    fireEvent.click(boxes.find((b) => b.checked && /B1/.test(b.getAttribute('aria-label') ?? '')) ?? boxes.filter((b) => b.checked).at(-1)!);
+    await waitFor(() => expect(press().disabled).toBe(false));
+  });
+});

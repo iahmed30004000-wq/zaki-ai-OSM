@@ -99,6 +99,50 @@ export function isKnownCategory(category: string): boolean {
   return (EXPENSE_CATEGORIES as readonly string[]).includes(category);
 }
 
+/**
+ * THE ORDER THE FORM LISTS THEM IN, and what it calls the two that the profit ALSO counts somewhere else.
+ *
+ * `Expense` rows are subtracted from net profit, and so are two things a delivered order already carries:
+ * `shippingCost` (the courier's fee, per delivered order) and `estimatedCostOfGoods` (the batch cost, per
+ * delivered order). A «شحن» or «تصنيع» expense for the same parcel or the same batch is therefore counted twice.
+ * Refusing the two types would also drop what only an expense can carry (a return fee, a failed delivery, a
+ * product whose batch has no cost written), so they stay — named for what they are FOR, with the sentence that
+ * says what NOT to put in them. Stored rows keep reading through `EXPENSE_CATEGORY_AR`, unchanged.
+ */
+export const EXPENSE_FORM_ORDER: readonly ExpenseCategory[] = [
+  'MARKETING', 'PACKAGING', 'SHIPPING', 'COMMISSION', 'SALARIES', 'OFFICE', 'MANUFACTURING', 'OTHER',
+];
+
+/** What the form calls a type for NEW rows. */
+export const EXPENSE_FORM_LABEL: Partial<Record<ExpenseCategory, string>> = {
+  SHIPPING: 'شحن غير محسوب على طلب مسلَّم — إرجاع أو توصيل فاشل',
+  MANUFACTURING: 'تصنيع — لمنتج بلا كلفة على تشغيلاته',
+};
+
+/** One sentence under the box when this type is chosen. */
+export const EXPENSE_FORM_HINT: Partial<Record<ExpenseCategory, string>> = {
+  SHIPPING:
+    'أجرة توصيل كل طلب مسلَّم يطرحها الربح من الطلب نفسه — فاتورة شركة الشحن عن طرود مسلَّمة لا تُسجَّل هنا. سجّل هنا ما لا يحمله طلب مسلَّم: رسوم الإرجاع والتوصيل الفاشل.',
+  MANUFACTURING:
+    'إن كانت كلفة التشغيلة مكتوبة في «تشغيلات الإنتاج» فالربح يطرحها من كل طلب مسلَّم، وتسجيلها هنا يطرحها مرّتين. سجّل هنا فقط ما لم يُكتب على تشغيلة.',
+};
+
+/**
+ * The type a door was handed, as the stored key — or null when it is not one of the eight.
+ *
+ * The door used to store WHATEVER string arrived: `'rent'`, `'Marketing'`, `''` after a trim, a number. A type
+ * the ledger has never heard of is printed as written and grouped apart from the real ones, so the spend-by-type
+ * card added up while being wrong. The Arabic label and any letter case are accepted and stored as the key.
+ */
+export function resolveExpenseCategory(category: unknown): ExpenseCategory | null {
+  if (typeof category !== 'string') return null;
+  const t = category.trim();
+  if (!t) return null;
+  const byLabel = Object.entries(EXPENSE_CATEGORY_AR).find(([, ar]) => ar === t)?.[0];
+  const key = byLabel ?? t.toUpperCase();
+  return isKnownCategory(key) ? (key as ExpenseCategory) : null;
+}
+
 export const SPEND_DIRECTIONS = ['GROWING', 'STEADY', 'SHRINKING', 'NEW', 'UNKNOWN'] as const;
 export type SpendDirection = (typeof SPEND_DIRECTIONS)[number];
 

@@ -24,7 +24,16 @@ import { EmptyState } from '@/components/ui/EmptyState';
 // `Record<SpendDirection, ...>` below is the exhaustiveness guard: a new
 // direction added to the rule fails this file at compile time rather than
 // rendering an undefined chip.
-import { categoryLabel, type ExpenseTypeGrade, type SpendDirection } from '@/lib/expense-grade';
+import {
+  categoryLabel,
+  EXPENSE_CATEGORY_AR,
+  EXPENSE_FORM_HINT,
+  EXPENSE_FORM_LABEL,
+  EXPENSE_FORM_ORDER,
+  type ExpenseCategory,
+  type ExpenseTypeGrade,
+  type SpendDirection,
+} from '@/lib/expense-grade';
 import type { Trust } from '@/lib/cod-vitals';
 
 /**
@@ -488,14 +497,10 @@ export function FinanceProfitScreen() {
               onChange={(e) => setCategory(e.target.value)}
               required
             >
-              <option value="MARKETING">تسويق وإعلانات</option>
-              <option value="PACKAGING">تغليف</option>
-              <option value="SHIPPING">شحن وتوصيل</option>
-              <option value="COMMISSION">عمولات</option>
-              <option value="SALARIES">رواتب</option>
-              <option value="OFFICE">مكتب وخدمات</option>
-              <option value="MANUFACTURING">تصنيع</option>
-              <option value="OTHER">أخرى</option>
+              {/* One list, in expense-grade: the two types the profit already counts on a delivered order say so. */}
+              {EXPENSE_FORM_ORDER.map((c) => (
+                <option key={c} value={c}>{EXPENSE_FORM_LABEL[c] ?? EXPENSE_CATEGORY_AR[c]}</option>
+              ))}
             </Select>
 
             <Input
@@ -507,6 +512,10 @@ export function FinanceProfitScreen() {
               required
             />
           </div>
+
+          {EXPENSE_FORM_HINT[category as ExpenseCategory] && (
+            <p className="text-xs text-[var(--sys-muted)]">{EXPENSE_FORM_HINT[category as ExpenseCategory]}</p>
+          )}
 
           {/* WHICH WALLET THE MONEY LEFT.
               Required by the server. An expense with no wallet was money

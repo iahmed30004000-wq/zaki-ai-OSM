@@ -18,6 +18,7 @@ import {
   type ShippingStatus,
 } from '@/lib/shipping-workflow';
 import { appendDeliveryAttempt } from '@/lib/delivery-attempts';
+import { deliveryFeeChange, readFeeReason, type DeliveryFeeChange } from '@/lib/delivery-fee-change';
 import { logAudit } from '@/lib/audit';
 import { apiError } from '@/lib/api-error';
 import { can, authorize } from '@/lib/authorization';
@@ -38,6 +39,7 @@ import { CONFIRMATION_STATUS_AR } from '@/lib/confirmation-workflow';
  *   shippingBatchId?:    must belong to this company
  *   trackingNumber?:     string, updatable before SHIPPED only
  *   deliveryFee?:        number
+ *   deliveryFeeReason?:  string (why the fee changed — written beside the old and new figure)
  *   shippingNote?:       string
  *   deliveryFailureReason?: structured (required for FAILED_DELIVERY)
  *   returnReason?:       structured (required for RETURNED)
@@ -120,14 +122,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const body = await req.json();
     const {
       action, to, deliveryProviderId, shippingBatchId,
-      trackingNumber, shippingReference, deliveryFee, shippingNote,
+      trackingNumber, shippingReference, deliveryFee, deliveryFeeReason, shippingNote,
       deliveryFailureReason, returnReason, expectedVersion, parcelInHand,
     } = body as {
       action?: string; to?: string; deliveryProviderId?: string; shippingBatchId?: string;
       // `unknown`, not `number`: this is a parsed request body and the
       // annotation was a wish. Calling it `number` is what let
       // `Number(deliveryFee) || 0` read as a formality.
-      trackingNumber?: string; shippingReference?: string; deliveryFee?: unknown; shippingNote?: string;
+      trackingNumber?: string; shippingReference?: string; deliveryFee?: unknown; deliveryFeeReason?: unknown; shippingNote?: string;
       deliveryFailureReason?: string; returnReason?: string; expectedVersion?: number;
       /** «الطرد بين يديّ…» — a person's word that a packed parcel's box was opened. */
       parcelInHand?: boolean;
@@ -151,6 +153,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const from = order.shippingStatus as ShippingStatus;
     const now = new Date();
     const updateData: Record<string, unknown> = {};
+    let feeChanged: DeliveryFeeChange | null = null;
     let newShippingStatus: ShippingStatus | null = null;
 
     switch (action) {
@@ -457,6 +460,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
             }
             updateData.deliveryFee = fee.data.deliveryFee;
           }
+          /*
+           * A CHANGED FEE LEAVES A BEFORE, AN AFTER AND A REASON.
+           *
+           * The fee moves money in three places (the courier's statement, commission, the agent's custody) and
+           * the audit row below used to say the shipping status and the tracking number — never the fee. The
+           * column `deliveryFeeOverrideReason` existed for exactly this and nothing wrote it. The reason is
+           * optional on the wire (the screen's box may be left empty) but it is never invented, and a fee
+           * saved WITHOUT one clears the old reason rather than leaving a stale sentence beside a new figure.
+           */
+          const reason = readFeeReason(deliveryFeeReason);
+          if (!reason.ok) {
+            return NextResponse.json({ error: 'سبب تغيير الأجرة: نص قصير فقط' }, { status: 400 });
+          }
+          feeChanged = deliveryFeeChange(order.deliveryFee, updateData.deliveryFee, reason.reason);
+          if (feeChanged) updateData.deliveryFeeOverrideReason = feeChanged.reason;
         }
         break;
       }
@@ -621,6 +639,27 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           companyId, orderId: id, userId: user.id, action: 'SHIPPING_UPDATED',
           metadata: JSON.stringify({ by: user.name, providerAssigned: deliveryProviderId }),
         },
+      });
+    }
+    if (feeChanged) {
+      // The fee moves money in three places, so its change is its own row on the order and in the audit log —
+      // before, after and the reason — and not a clause inside «تعديل معلومات الشحن».
+      await db.orderActivity.create({
+        data: {
+          companyId, orderId: id, userId: user.id, action: 'DELIVERY_FEE_CHANGED',
+          metadata: JSON.stringify({
+            updatedBy: user.name,
+            feeBefore: feeChanged.before === null ? 'غير مسجّلة' : feeChanged.before,
+            feeAfter: feeChanged.after === null ? 'غير مسجّلة' : feeChanged.after,
+            ...(feeChanged.reason ? { feeReason: feeChanged.reason } : {}),
+          }),
+        },
+      });
+      await logAudit({
+        companyId, userId: user.id, action: 'DELIVERY_FEE_CHANGED',
+        entity: 'Order', entityId: id,
+        previousData: { deliveryFee: feeChanged.before },
+        newData: { deliveryFee: feeChanged.after, reason: feeChanged.reason, by: user.name },
       });
     }
     await logAudit({

@@ -71,16 +71,34 @@ describe('what is refused', () => {
     expect(logAudit).not.toHaveBeenCalled();
   });
 
-  it('an «مصروف» coming IN — what the 27/10 row actually was', async () => {
-    const res = await post(entry('EXPENSE', 'IN'));
-    expect(res.status).toBe(409);
-    expect((await res.json()).error).toBe('المصروف صادر بس');
+  /*
+   * OLD → NEW (29/10, P19a). These two tests said «an expense coming IN» and «a commission coming IN» were refused
+   * for their DIRECTION. «مصروف» and «عمولة» each have a ledger of their own (the expense list; the commission
+   * entries), so a row typed here sits outside it whichever way it runs: both directions are refused now, with the
+   * door to use. The status (409) is unchanged; the reason and the code changed.
+   */
+  it('an «مصروف» typed by hand — coming IN (the 27/10 row) or going OUT (it never reached profit)', async () => {
+    for (const direction of ['IN', 'OUT']) {
+      const res = await post(entry('EXPENSE', direction));
+      expect(res.status).toBe(409);
+      const body = await res.json();
+      expect(body.code).toBe('EXPENSE_NOT_BY_HAND');
+      expect(body.error).toContain('سجّل مصروفاً');
+    }
     expect(recordMovement).not.toHaveBeenCalled();
+    expect(logAudit).not.toHaveBeenCalled();
   });
 
-  it('a commission coming IN', async () => {
-    expect((await post(entry('COMMISSION', 'IN'))).status).toBe(409);
+  it('a commission typed by hand — it would leave the entries owed, and «صرف» could pay them again', async () => {
+    for (const direction of ['IN', 'OUT']) {
+      const res = await post(entry('COMMISSION', direction));
+      expect(res.status).toBe(409);
+      const body = await res.json();
+      expect(body.code).toBe('COMMISSION_NOT_BY_HAND');
+      expect(body.error).toContain('صرف');
+    }
     expect(recordMovement).not.toHaveBeenCalled();
+    expect(logAudit).not.toHaveBeenCalled();
   });
 
   it('a transfer, in either direction, in either category', async () => {
@@ -97,7 +115,7 @@ describe('what is refused', () => {
 
 describe('what is still taken', () => {
   const ACCEPTED: [string, 'IN' | 'OUT'][] = [
-    ['EXPENSE', 'OUT'], ['COMMISSION', 'OUT'], ['ADJUSTMENT', 'IN'], ['ADJUSTMENT', 'OUT'], ['OTHER', 'IN'], ['OTHER', 'OUT'],
+    ['ADJUSTMENT', 'IN'], ['ADJUSTMENT', 'OUT'], ['OTHER', 'IN'], ['OTHER', 'OUT'],
   ];
 
   it.each(ACCEPTED)('%s %s is written', async (category, direction) => {

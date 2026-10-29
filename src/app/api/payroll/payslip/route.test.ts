@@ -162,3 +162,60 @@ describe('paying', () => {
     expect(logAudit).not.toHaveBeenCalled();
   });
 });
+
+/* ── 29/10: a month that has not begun, and the wallets of this store ───────────── */
+
+describe('a month that has not begun pays nothing', () => {
+  const nextMonth = () => {
+    const now = new Date();
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+  };
+  const thisMonth = () => {
+    const now = new Date();
+    return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  };
+
+  it('POST for a later month is a 400 FUTURE_PERIOD and writes nothing', async () => {
+    for (const period of [nextMonth(), '2031-01', '2099-12']) {
+      const res = await post({ userId: U, walletId: W, exchangeRate: 1, period });
+      expect(res.status, period).toBe(400);
+      expect((await res.json()).code).toBe('FUTURE_PERIOD');
+    }
+    expect(db.$transaction).not.toHaveBeenCalled();
+    expect(paySalary).not.toHaveBeenCalled();
+    expect(logAudit).not.toHaveBeenCalled();
+  });
+
+  it('and so does the preview — nobody is shown a payslip they are not allowed to pay', async () => {
+    const res = await get(`?userId=${U}&period=${nextMonth()}`);
+    expect(res.status).toBe(400);
+    expect(previewPayslip).not.toHaveBeenCalled();
+  });
+
+  it('the running month and the last closed one are still payable', async () => {
+    const now = new Date();
+    const prev = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+    const last = `${prev.getUTCFullYear()}-${String(prev.getUTCMonth() + 1).padStart(2, '0')}`;
+    for (const period of [thisMonth(), last, undefined]) {
+      vi.clearAllMocks();
+      const res = await post({ userId: U, walletId: W, exchangeRate: 1, ...(period ? { period } : {}) });
+      expect(res.status, String(period)).toBe(200);
+      expect(paySalary).toHaveBeenCalledTimes(1);
+    }
+  });
+});
+
+describe('the wallets offered are this store’s and the unplaced ones', () => {
+  it('the preview lists wallets of the store in the session, or none placed', async () => {
+    await get(`?userId=${U}`);
+    expect(db.wallet.findMany.mock.calls[0][0].where).toEqual({
+      companyId: 'c1', isActive: true, OR: [{ storeId: 's1' }, { storeId: null }],
+    });
+  });
+
+  it('the payment hands the same store to the wallet check', async () => {
+    await post({ userId: U, walletId: W, exchangeRate: 1 });
+    expect(paySalary.mock.calls[0][1]).toMatchObject({ companyId: 'c1', storeId: 's1', walletId: W });
+  });
+});

@@ -233,6 +233,32 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         );
       }
 
+      /*
+       * «SETTLED» IS NOT A LABEL THIS DOOR MAY PUT ON AN ORDER.
+       *
+       * It is what four readers take as «the cash is in»: `ops/tracking/collect` refuses a second collection
+       * of it, `settlement.ts` refuses a statement line for it, `agent-custody-totals` drops it from what the
+       * courier still holds, and `commission.ts` makes its commission PAYABLE. This door writes no wallet
+       * movement, no amount and no proof, so a holder of `finance.update` could mark an order settled with
+       * not one coin received and then pay out its commission — and the real collection would afterwards be
+       * refused as «already settled».
+       *
+       * The only two writers are the ones that put the money in a wallet in the same transaction: the
+       * approval of a courier statement, and «استلمت منه». Routing this to either would make a third
+       * door to the same money, so it is refused and says where to go. Nothing is written.
+       */
+      if (settlementStatus === 'SETTLED') {
+        return NextResponse.json(
+          {
+            error: 'Settle where the money lands: this door moves no money into a wallet',
+            errorAr:
+              'تسوية الطلب تكون حين يدخل ماله محفظة: «استلمت منه» في «متابعة الشحن» أو «المطابقة»، أو باعتماد كشف شركة الشحن في «التحصيل والكشوف». هذا الباب لا يُدخل مالاً إلى أي محفظة، فلا يسوّي. إن لم تكن تلك الشاشات من صلاحياتك فيسوّيه من يملكها.',
+            code: 'SETTLE_THROUGH_COLLECTION',
+          },
+          { status: 409 }
+        );
+      }
+
       // PARTIALLY_SETTLED requires an explicit, positive amount within the remaining balance
       if (settlementStatus === 'PARTIALLY_SETTLED') {
         // `MONEY` refuses `undefined` on its own — `z.number()` does — so the
@@ -249,6 +275,34 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           return NextResponse.json({ error: `Amount exceeds the remaining balance (${remaining})`, errorAr: `المبلغ أكبر من المتبقّي (${remaining}).` }, { status: 400 });
         }
         settlementAmount = amt;
+      }
+
+      /*
+       * THE REFUND IS WRITTEN WHERE IT IS DECIDED.
+       *
+       * `Order.refundAmount` had no writer: the figure was validated, put in the ledger row, and thrown away,
+       * so the one reader of the column (the remaining balance of a partial settlement, above) always saw
+       * «nothing refunded». A partial refund with no amount was also accepted, and the ledger then recorded
+       * the WHOLE order total as «partially refunded» — a refund of everything under a name that says less.
+       * The column is the running total refunded: a full refund with no figure is the order's total, and any
+       * typed figure is added to what was already refunded and may not pass the total. Decimal throughout.
+       */
+      if (settlementStatus === 'REFUNDED' || settlementStatus === 'PARTIALLY_REFUNDED') {
+        if (settlementStatus === 'PARTIALLY_REFUNDED' && !(refundNum !== undefined && refundNum > 0)) {
+          return NextResponse.json(
+            { error: 'PARTIALLY_REFUNDED requires a positive refundAmount', errorAr: 'الاسترداد الجزئي يحتاج مبلغاً أكبر من صفر.', code: 'REFUND_AMOUNT_REQUIRED' },
+            { status: 400 }
+          );
+        }
+        const total = D(order.totalAmount);
+        const refundedAfter = refundNum === undefined ? total : D(order.refundAmount).add(D(refundNum));
+        if (refundedAfter.gt(total)) {
+          return NextResponse.json(
+            { error: 'Total refunded would exceed the order total', errorAr: `مجموع المسترَد (${refundedAfter.toString()}) أكبر من قيمة الطلب (${total.toString()}).`, code: 'REFUND_EXCEEDS_TOTAL' },
+            { status: 400 }
+          );
+        }
+        updateData.refundAmount = refundedAfter;
       }
 
       updateData.settlementStatus = settlementStatus;

@@ -39,6 +39,20 @@ function periodOf(param: string | null): { start: Date; end: Date } {
 }
 
 /**
+ * A MONTH THAT HAS NOT BEGUN HAS NOTHING TO PAY FOR.
+ *
+ * `period` was any `YYYY-MM`: `2031-01` was accepted, the payslip was written for it, and the one-payslip-per-month
+ * rule then refused the real January in 2031 — «already paid» — for a salary that was handed over five years early.
+ * The running month is still allowed (the default is the last closed one; paying the running month is a choice the
+ * payer is allowed to make); only a month AFTER it is refused. UTC, like `periodOf`.
+ */
+function notBegunYet(start: Date, now: Date = new Date()): boolean {
+  return start.getTime() > Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
+}
+
+const FUTURE_PERIOD = { error: 'هذا الشهر ما بدأ بعد — ما بينصرف راتبه', code: 'FUTURE_PERIOD' } as const;
+
+/**
  * The conversion of deductions in ANOTHER currency, as the payer typed it: the currency, and the salary's currency
  * for one unit of it. Both or neither — a rate with no currency (or the reverse) is refused, not guessed.
  */
@@ -58,6 +72,7 @@ export async function GET(req: Request) {
     if (!userId) return NextResponse.json({ error: 'حدّد الموظف' }, { status: 400 });
 
     const period = periodOf(q.get('period'));
+    if (notBegunYet(period.start)) return NextResponse.json(FUTURE_PERIOD, { status: 400 });
 
     // `convertCurrency` + `convertRate`: draw the slip as it would be with the deductions of that currency converted.
     const wantsConvert = q.get('convertCurrency') !== null || q.get('convertRate') !== null;
@@ -82,7 +97,8 @@ export async function GET(req: Request) {
         // leaves from is part of this question, and two requests is two
         // chances for the halves to disagree about what exists.
         db.wallet.findMany({
-          where: { companyId, isActive: true },
+          // The same wallets the payment itself accepts (`checkWallet`): this store's and the unplaced ones.
+          where: { companyId, isActive: true, ...(storeId ? { OR: [{ storeId }, { storeId: null }] } : {}) },
           // The minor unit travels WITH the code — see the payout route.
           select: { id: true, name: true, currencyCode: true, country: { select: { minorUnit: true } } },
           orderBy: { name: 'asc' },
@@ -125,6 +141,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: zodMessage(parsed.error) }, { status: 400 });
     }
     const period = periodOf(parsed.data.period ?? null);
+    // Before the transaction: a month that has not begun writes no payslip and moves no money.
+    if (notBegunYet(period.start)) return NextResponse.json(FUTURE_PERIOD, { status: 400 });
 
     try {
       // The payslip, the deductions it settles and the money leaving the

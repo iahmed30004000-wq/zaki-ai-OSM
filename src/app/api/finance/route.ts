@@ -7,7 +7,7 @@ import { logAudit } from '@/lib/audit';
 import { requirePermission } from '@/lib/authorization';
 import { commissionCostForOrders } from '@/lib/commission';
 import { getCompanyAnalytics, getDateRange, previousRange } from '@/lib/analytics';
-import { gradeExpenseTypes, ledgerTrust, type ExpenseTypeInput } from '@/lib/expense-grade';
+import { gradeExpenseTypes, ledgerTrust, resolveExpenseCategory, type ExpenseTypeInput } from '@/lib/expense-grade';
 import { z } from 'zod';
 import { numeric } from '@/lib/numeric-input';
 import { zodMessage } from '@/lib/zod-message';
@@ -275,6 +275,23 @@ export async function POST(req: Request) {
     if (!title || !category) {
       return NextResponse.json({ error: 'العنوان والفئة مطلوبان' }, { status: 400 });
     }
+    /*
+     * THE TYPE IS ONE OF THE EIGHT, AND IS STORED AS ITS KEY.
+     *
+     * This stored whatever string arrived — `'rent'`, `'Marketing'` — and the spend-by-type card then printed it
+     * as written beside the real eight and grouped it apart. A title that is not a string would also have thrown
+     * on `.trim()` below as a 500. Both are 400s with a sentence now, and nothing is written.
+     */
+    const categoryKey = resolveExpenseCategory(category);
+    if (!categoryKey) {
+      return NextResponse.json(
+        { error: 'نوع المصروف غير معروف — اختر نوعاً من القائمة.', code: 'UNKNOWN_CATEGORY' },
+        { status: 400 }
+      );
+    }
+    if (typeof title !== 'string' || !title.trim()) {
+      return NextResponse.json({ error: 'العنوان والفئة مطلوبان' }, { status: 400 });
+    }
 
     const amountRead = amountBody.safeParse({ amount });
     if (!amountRead.success) {
@@ -313,7 +330,7 @@ export async function POST(req: Request) {
         data: {
           companyId,
           title: title.trim(),
-          category, // MANUFACTURING, PACKAGING, SHIPPING, MARKETING, COMMISSION, SALARIES, OFFICE, OTHER
+          category: categoryKey, // checked above: one of the eight keys in expense-grade
           amount: value,
           expenseDate: expenseDate ? new Date(expenseDate) : new Date(),
           notes: notes?.trim() || null,

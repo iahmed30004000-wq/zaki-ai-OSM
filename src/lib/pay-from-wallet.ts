@@ -62,13 +62,29 @@ export interface WalletCheck {
  */
 export async function checkWallet(
   tx: Tx,
-  input: { companyId: string; walletId: string; amount: number; exchangeRate: number }
+  input: {
+    companyId: string;
+    walletId: string;
+    amount: number;
+    exchangeRate: number;
+    /**
+     * The store the payment is made from. A wallet of ANOTHER store of the company is not this store's money:
+     * the wallet is found among this store's and the unplaced ones, as the expense door and the wallets screen do.
+     * Omitted only by a caller that has no store to stand in (the commission payout is a company-level door).
+     */
+    storeId?: string | null;
+  }
 ): Promise<WalletCheck | WalletRefusal> {
   if (!(input.exchangeRate > 0)) return 'BAD_RATE';
   if (!(input.amount > 0)) return 'NOTHING_OWED';
 
   const wallet = await tx.wallet.findFirst({
-    where: { id: input.walletId, companyId: input.companyId, isActive: true },
+    where: {
+      id: input.walletId,
+      companyId: input.companyId,
+      isActive: true,
+      ...(input.storeId ? { OR: [{ storeId: input.storeId }, { storeId: null }] } : {}),
+    },
     select: { id: true, currencyCode: true, country: { select: { minorUnit: true } } },
   });
   if (!wallet) return 'WALLET_NOT_FOUND';

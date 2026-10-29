@@ -461,7 +461,23 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         role: updated.role,
         status: updated.status,
         ...(action === 'updateContact'
-          ? { phone: updateData.phone, commissionCurrency: updateData.commissionCurrency }
+          ? {
+              phone: updateData.phone,
+              commissionCurrency: updateData.commissionCurrency,
+              /*
+               * THE NEW SALARY, NEXT TO THE OLD ONE.
+               *
+               * The row above kept the old figure «on purpose: a salary changed quietly is the one change
+               * nobody can reconstruct later» — and then wrote only the OLD one, so the log said what a salary
+               * had been and never what it became. Only a key that was sent is written (an absent key is «not
+               * touched», a present null is «cleared»), so a phone edit does not claim to have set a salary.
+               * The pay keys are stripped from this row for anyone without the payroll key (audit-pay-redact).
+               */
+              ...('salaryAmount' in updateData
+                ? { salaryAmount: updateData.salaryAmount === null ? null : Number(updateData.salaryAmount) }
+                : {}),
+              ...('salaryCurrency' in updateData ? { salaryCurrency: updateData.salaryCurrency } : {}),
+            }
           : {}),
         changedBy: admin.name,
         changedAt: new Date().toISOString(),
