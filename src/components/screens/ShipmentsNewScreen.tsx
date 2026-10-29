@@ -6,6 +6,7 @@ import { useAsk } from '@/components/ui/Confirm';
 import { apiFetch, apiJson } from '@/lib/api-client';
 import { ATTESTATION_AR } from '@/lib/shipment-cancel';
 import { CustomerHistoryButton } from '@/components/orders/CustomerHistory';
+import { OrderLink } from '@/components/orders/OrderLink';
 import { ScreenTitle } from '@/components/shell/ScreenTitle';
 import { RiAlertLine, RiArrowGoBackLine, RiCloseCircleLine, RiLoader4Line, RiPauseCircleLine, RiTruckLine } from '@remixicon/react';
 import { RejectDialog } from '@/components/screens/confirmation/ActionDialogs';
@@ -593,7 +594,7 @@ ${describeRefused(out.refused)}`,
                 label: 'الطلب',
                 primary: true,
                 render: (r) => (
-                  <span className="font-medium text-[var(--sys-heading)]" dir="ltr">{r.orderNumber}</span>
+                  <OrderLink id={r.id} number={r.orderNumber} className="font-medium text-[var(--sys-heading)]" />
                 ),
               },
               {

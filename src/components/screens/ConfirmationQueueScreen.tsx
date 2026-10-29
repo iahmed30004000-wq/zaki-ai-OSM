@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ScreenTitle } from '@/components/shell/ScreenTitle';
 import { RiLoader4Line } from '@remixicon/react';
 import { Rows } from '@/components/ui/Rows';
+import { OrderLink } from '@/components/orders/OrderLink';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PullPanel, useQueue } from '@/components/confirmation/PullPanel';
 
@@ -52,7 +53,7 @@ export function ConfirmationQueueScreen() {
                 label: 'الطلب',
                 primary: true,
                 render: (o) => (
-                  <span className="font-medium text-[var(--sys-heading)]" dir="ltr">{o.orderNumber}</span>
+                  <OrderLink id={o.id} number={o.orderNumber} className="font-medium text-[var(--sys-heading)]" />
                 ),
               },
               {

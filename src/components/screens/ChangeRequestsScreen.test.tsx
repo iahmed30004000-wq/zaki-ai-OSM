@@ -23,6 +23,8 @@ vi.mock('@/lib/api-client', () => ({
   apiFetch: vi.fn(),
 }));
 vi.mock('next/navigation', () => ({ usePathname: () => '/control/change-requests' }));
+// The order number is an OrderLink now (it asks who is looking); these tests are not about who may open an order.
+vi.mock('@/hooks/useMayOpen', () => ({ useMayOpen: () => () => false }));
 vi.mock('@/components/ui/Toast', () => ({ useToast: () => ({ failed: vi.fn(), done: vi.fn() }) }));
 vi.mock('@/components/ui/Confirm', () => ({
   useConfirm: () => vi.fn(async () => true),

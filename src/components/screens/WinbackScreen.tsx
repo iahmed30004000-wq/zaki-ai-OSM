@@ -17,6 +17,7 @@ import { ruleSentence, type WinbackRule } from '@/lib/winback';
 import { DEFAULT_VIEW, PERIODS, PERIOD_AR, SHIPPING_KINDS, SHIPPING_KIND_AR, VIEWS, VIEW_AR, type View } from '@/lib/winback-filters';
 import type { WinbackFacts } from '@/lib/winback-list';
 import { OrderLink } from '@/components/orders/OrderLink';
+import { CustomerHistoryOffer } from '@/components/orders/CustomerHistory';
 
 /**
  * /confirmation/winback — the lost orders worth one more call.
@@ -52,7 +53,7 @@ import { OrderLink } from '@/components/orders/OrderLink';
 interface Row {
   id: string;
   orderNumber: string;
-  customer: { fullName: string; phone: string };
+  customer: { id?: string; fullName: string; phone: string };
   product: string | null;
   quantity: number;
   sellingPrice: number;
@@ -323,6 +324,12 @@ export function WinbackScreen({ embedded = false }: { embedded?: boolean } = {})
 
             <p className="text-sm text-[var(--sys-heading)]">
               {r.customer.fullName} · <span dir="ltr">{r.customer.phone}</span>
+              {r.customer.id && (
+                <>
+                  {' '}
+                  <CustomerHistoryOffer customerId={r.customer.id} orderId={r.id} />
+                </>
+              )}
             </p>
             <p className="text-xs text-[var(--sys-muted-foreground)]">
               {r.product ?? '—'} · {r.quantity} × <Money value={r.sellingPrice} />

@@ -13,6 +13,7 @@ import { usePagedList, type PagedRead, type Paging } from '@/hooks/usePagedList'
 import { KINDS, KIND_AR, TIMES, TIMES_AR, WHENS, whenLabel } from '@/lib/postponed-filters';
 import type { PostponedFacts } from '@/lib/postponed-list';
 import { OrderLink } from '@/components/orders/OrderLink';
+import { CustomerHistoryOffer } from '@/components/orders/CustomerHistory';
 
 /**
  * /confirmation/postponed — order, customer, due date, days remaining,
@@ -38,7 +39,7 @@ interface Row {
   postponeCount: number;
   followUpReason: string | null;
   actionable: boolean;
-  customer: { fullName: string; phone: string; city: string };
+  customer: { id?: string; fullName: string; phone: string; city: string };
   claimer: { id: string; name: string } | null;
 }
 
@@ -224,7 +225,12 @@ export function ConfirmationPostponedScreen({ embedded = false }: { embedded?: b
               key: 'customer',
               label: 'العميل',
               primary: true,
-              render: (o) => `${o.customer.fullName} · ${o.customer.city}`,
+              render: (o) => (
+                <span className="flex flex-wrap items-center gap-2">
+                  {o.customer.fullName} · {o.customer.city}
+                  {o.customer.id && <CustomerHistoryOffer customerId={o.customer.id} orderId={o.id} />}
+                </span>
+              ),
             },
             {
               key: 'due',
