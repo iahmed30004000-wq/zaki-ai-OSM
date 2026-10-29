@@ -21,6 +21,9 @@ import { SHIPPING_GONE } from './order-state';
  *   - a claim younger than the courier's own patience (the call may still
  *     be answering);
  *   - an order that has already left, whose parcel is by definition real;
+ *   - an order whose send was RECORDED as successful under that very barcode (a successful send writes
+ *     `SHIPMENT_SENT_TO_COURIER` with the barcode; a stuck one never does), so the parcel is real and typing the
+ *     barcode back is not enough to erase it — clearing it would let the next send create a second parcel;
  *   - an order that carries a barcode, unless the caller repeats it back —
  *     a sent order keeps its claim beside its barcode, and the barcode is
  *     what tells a real parcel from a stuck one.
@@ -33,7 +36,7 @@ export type ClearSendResult =
   | { ok: true; clearedBarcode: string | null; orderNumber: string; version: number }
   | {
       ok: false;
-      code: 'NOT_FOUND' | 'NO_CLAIM' | 'TOO_SOON' | 'ALREADY_LEFT' | 'BARCODE_CONFIRM_REQUIRED' | 'MOVED_ON';
+      code: 'NOT_FOUND' | 'NO_CLAIM' | 'TOO_SOON' | 'ALREADY_LEFT' | 'ALREADY_SENT' | 'BARCODE_CONFIRM_REQUIRED' | 'MOVED_ON';
       message: string;
       /** With BARCODE_CONFIRM_REQUIRED: the barcode the screen must show. */
       barcode?: string;
@@ -73,6 +76,26 @@ export async function clearStuckSend(input: {
       code: 'ALREADY_LEFT',
       message: 'الطرد سُلّم للشركة أصلاً — يعني موجود عندهم. ما بيصير نفرّغ رقمه.',
     };
+  }
+  if (order.trackingNumber) {
+    const sent = await db.orderActivity.findMany({
+      where: { orderId: order.id, companyId: input.companyId, action: 'SHIPMENT_SENT_TO_COURIER' },
+      select: { metadata: true },
+    });
+    const real = sent.some((a: { metadata: string | null }) => {
+      try {
+        return (JSON.parse(a.metadata ?? '{}') as { barcode?: string }).barcode === order.trackingNumber;
+      } catch {
+        return false;
+      }
+    });
+    if (real) {
+      return {
+        ok: false,
+        code: 'ALREADY_SENT',
+        message: 'الإرسال انسجّل ناجح بهالباركود — يعني الطرد موجود عند الشركة. ما بيصير نفرّغ رقمه.',
+      };
+    }
   }
   if (order.trackingNumber && input.confirmBarcode?.trim() !== order.trackingNumber) {
     return {

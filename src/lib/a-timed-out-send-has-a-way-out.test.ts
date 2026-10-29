@@ -19,7 +19,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { db, requireContext, requirePermission, logAudit } = vi.hoisted(() => ({
   db: {
     order: { findFirst: vi.fn(), updateMany: vi.fn() },
-    orderActivity: { create: vi.fn() },
+    orderActivity: { create: vi.fn(), findMany: vi.fn() },
   },
   requireContext: vi.fn(),
   requirePermission: vi.fn(),
@@ -53,6 +53,48 @@ beforeEach(() => {
   db.order.findFirst.mockResolvedValue(stored());
   db.order.updateMany.mockResolvedValue({ count: 1 });
   db.orderActivity.create.mockResolvedValue({});
+  db.orderActivity.findMany.mockResolvedValue([]);
+});
+
+describe('a send that was recorded as successful is a real parcel (review of #59, 29/10)', () => {
+  const sentAs = (barcode: string) => [{ metadata: JSON.stringify({ batch: 'B-1', adapter: 'logestechs', barcode }) }];
+
+  it('refuses to clear a barcode the successful send wrote, even when the person types it back', async () => {
+    db.order.findFirst.mockResolvedValue(stored({ trackingNumber: 'LT-123' }));
+    db.orderActivity.findMany.mockResolvedValue(sentAs('LT-123'));
+
+    const res = await clear({ confirmBarcode: 'LT-123' });
+
+    expect(res).toMatchObject({ ok: false, code: 'ALREADY_SENT' });
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('a barcode no successful send recorded (a stuck one) is still cleared once typed back', async () => {
+    db.order.findFirst.mockResolvedValue(stored({ trackingNumber: 'LT-123' }));
+    db.orderActivity.findMany.mockResolvedValue(sentAs('LT-OLD'));
+
+    expect((await clear({ confirmBarcode: 'LT-123' })).ok).toBe(true);
+  });
+
+  it('a record with unreadable details counts for nothing', async () => {
+    db.order.findFirst.mockResolvedValue(stored({ trackingNumber: 'LT-123' }));
+    db.orderActivity.findMany.mockResolvedValue([{ metadata: 'not json' }, { metadata: null }]);
+
+    expect((await clear({ confirmBarcode: 'LT-123' })).ok).toBe(true);
+  });
+
+  it('the door answers 409 with the sentence', async () => {
+    requireContext.mockResolvedValue({ user: { id: 'u1', name: 'س' }, companyId: 'c1', storeId: 's1' });
+    requirePermission.mockResolvedValue(undefined);
+    db.order.findFirst.mockResolvedValue(stored({ trackingNumber: 'LT-123' }));
+    db.orderActivity.findMany.mockResolvedValue(sentAs('LT-123'));
+
+    const res = await POST(new Request('http://x', { method: 'POST', body: JSON.stringify({ orderId: ORDER_ID, note: 'الشركة قالت عندنا', confirmBarcode: 'LT-123' }) }));
+
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('ALREADY_SENT');
+    expect(logAudit).not.toHaveBeenCalled();
+  });
 });
 
 describe('clearing a stuck send', () => {
