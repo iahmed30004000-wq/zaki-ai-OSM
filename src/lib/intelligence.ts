@@ -551,8 +551,8 @@ export async function staleStatements(tx: Tx, scope: Scope, now = new Date()): P
    * the filter every other money read spells `{ store: { isTest: false } }`
    * has nothing to stand on here. This query used to spread it anyway, and
    * Prisma answered at RUNTIME with «Unknown argument `store`» — which took
-   * the whole of GET /api/growth/intelligence down, because `allFindings`
-   * awaits its eleven finders together. Nothing caught it until the dev
+   * the whole of GET /api/growth/intelligence down, because the eleven
+   * finders were awaited together in one Promise.all (each now runs on its own, see runDetectors). Nothing caught it until the dev
    * server was run and the dashboard loaded:
    *
    *   · TypeScript does not check a SPREAD for excess properties, so
@@ -696,28 +696,57 @@ export async function moderatorRates(tx: Tx, scope: Scope): Promise<Finding[]> {
   return findings.sort((a, b) => (b.metric ?? 0) - (a.metric ?? 0));
 }
 
-/** Everything, in one pass. */
-export async function allFindings(tx: Tx, scope: Scope): Promise<Finding[]> {
-  const groups = await Promise.all([
-    // leak — rates, silent until there is history
-    riskyCustomers(tx, scope),
-    returningProducts(tx, scope),
-    returningRegions(tx, scope),
-    thinMarginRegions(tx, scope),
-    // queue — counts, true on day one
-    unpulledPool(tx, scope),
-    overdueFollowUps(tx, scope),
-    readyNotShipped(tx, scope),
-    returnsNotReceived(tx, scope),
-    // risk — what breaks next
-    stockShortfall(tx, scope),
-    staleStatements(tx, scope),
-    // team — against the store's own average
-    moderatorRates(tx, scope),
-  ]);
+/** A detector: reads the store, returns what it found. */
+export type Detector = { name: string; run: (tx: Tx, scope: Scope) => Promise<Finding[]> };
+
+/** The eleven detectors, in the order their findings are first read. */
+const DETECTORS: Detector[] = [
+  // leak — rates, silent until there is history
+  { name: 'riskyCustomers', run: (tx, scope) => riskyCustomers(tx, scope) },
+  { name: 'returningProducts', run: (tx, scope) => returningProducts(tx, scope) },
+  { name: 'returningRegions', run: (tx, scope) => returningRegions(tx, scope) },
+  { name: 'thinMarginRegions', run: (tx, scope) => thinMarginRegions(tx, scope) },
+  // queue — counts, true on day one
+  { name: 'unpulledPool', run: (tx, scope) => unpulledPool(tx, scope) },
+  { name: 'overdueFollowUps', run: (tx, scope) => overdueFollowUps(tx, scope) },
+  { name: 'readyNotShipped', run: (tx, scope) => readyNotShipped(tx, scope) },
+  { name: 'returnsNotReceived', run: (tx, scope) => returnsNotReceived(tx, scope) },
+  // risk — what breaks next
+  { name: 'stockShortfall', run: (tx, scope) => stockShortfall(tx, scope) },
+  { name: 'staleStatements', run: (tx, scope) => staleStatements(tx, scope) },
+  // team — against the store's own average
+  { name: 'moderatorRates', run: (tx, scope) => moderatorRates(tx, scope) },
+];
+
+/**
+ * EVERY DETECTOR ON ITS OWN.
+ *
+ * The eleven used to run inside one Promise.all, so a single query that
+ * threw — one did, in staleStatements — took the whole screen and every
+ * card down with it. Now a detector that throws is skipped, named in the
+ * log and in the returned skipped list, and the other ten still answer. Silence about a
+ * broken detector is not the same as «nothing found», which is why the
+ * names are returned and not swallowed.
+ */
+export async function runDetectors(
+  tx: Tx,
+  scope: Scope,
+  detectors: Detector[] = DETECTORS,
+): Promise<{ findings: Finding[]; skipped: string[] }> {
+  const settled = await Promise.allSettled(detectors.map((d) => d.run(tx, scope)));
+  const skipped: string[] = [];
+  const groups: Finding[][] = [];
+  settled.forEach((r, i) => {
+    if (r.status === 'fulfilled') {
+      groups.push(r.value);
+      return;
+    }
+    skipped.push(detectors[i].name);
+    console.error('Intelligence detector skipped (non-fatal): ' + detectors[i].name, r.reason);
+  });
 
   const order: Record<Severity, number> = { ALARM: 0, WATCH: 1, GOOD: 2 };
-  return groups.flat().sort((a, b) => order[a.severity] - order[b.severity]);
+  return { findings: groups.flat().sort((a, b) => order[a.severity] - order[b.severity]), skipped };
 }
 
 /** The families, in the order the tabs show them. */

@@ -14,6 +14,7 @@ import { KINDS, KIND_AR, TIMES, TIMES_AR, WHENS, whenLabel } from '@/lib/postpon
 import type { PostponedFacts } from '@/lib/postponed-list';
 import { OrderLink } from '@/components/orders/OrderLink';
 import { CustomerHistoryOffer } from '@/components/orders/CustomerHistory';
+import { POSTPONE_REASONS } from '@/lib/postpone-reasons';
 
 /**
  * /confirmation/postponed — order, customer, due date, days remaining,
@@ -254,7 +255,7 @@ export function ConfirmationPostponedScreen({ embedded = false }: { embedded?: b
                 ),
             },
             { key: 'time', label: 'الوقت المفضّل', render: (o) => o.postponePreferredTime ?? '—' },
-            { key: 'reason', label: 'السبب', render: (o) => o.followUpReason ?? '—' },
+            { key: 'reason', label: 'السبب', render: (o) => (o.followUpReason ? (POSTPONE_REASONS.find((r) => r.value === o.followUpReason)?.label ?? 'سبب آخر') : '—') },
             {
               key: 'count',
               label: 'مرات التأجيل',

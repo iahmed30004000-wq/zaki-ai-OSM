@@ -19,7 +19,9 @@ import {
   returningProducts,
   returningRegions,
   riskyCustomers,
+  runDetectors,
   thinMarginRegions,
+  type Detector,
 } from './intelligence';
 
 const scope = { companyId: 'c1', storeId: 's1', minorUnit: 2, currency: 'USD' };
@@ -155,5 +157,45 @@ describe('the thresholds are deliberate', () => {
   it('requires a real sample and a real rate', () => {
     expect(MIN_SAMPLE).toBeGreaterThanOrEqual(8);
     expect(RETURN_ALARM).toBeGreaterThan(0.1);
+  });
+});
+
+/**
+ * ONE BROKEN DETECTOR DOES NOT TAKE THE SCREEN DOWN.
+ *
+ * The eleven used to share a single Promise.all, so one query that threw
+ * emptied the whole page. A detector that throws is now left out, named, and
+ * the others answer.
+ */
+describe('a detector that throws', () => {
+  const finding = (key: string, severity: 'ALARM' | 'WATCH' | 'GOOD') => ({
+    key, family: 'queue' as const, title: key, evidence: 'e', action: 'a', severity,
+  });
+  const ok = (name: string, severity: 'ALARM' | 'WATCH' | 'GOOD'): Detector => ({
+    name, run: async () => [finding(name, severity)],
+  });
+  const broken: Detector = { name: 'staleStatements', run: async () => { throw new Error('Unknown argument'); } };
+
+  it('is skipped and named, and the rest still answer', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const out = await runDetectors(db as never, scope, [ok('a', 'WATCH'), broken, ok('b', 'ALARM')]);
+    expect(out.skipped).toEqual(['staleStatements']);
+    expect(out.findings.map((f) => f.key)).toEqual(['b', 'a']); // alarms first
+    expect(spy).toHaveBeenCalledOnce();
+    spy.mockRestore();
+  });
+
+  it('leaves skipped empty when every detector ran', async () => {
+    const out = await runDetectors(db as never, scope, [ok('a', 'GOOD')]);
+    expect(out.skipped).toEqual([]);
+    expect(out.findings).toHaveLength(1);
+  });
+
+  it('answers, rather than throws, when every detector is broken', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const out = await runDetectors(db as never, scope, [broken, { ...broken, name: 'x' }]);
+    expect(out.findings).toEqual([]);
+    expect(out.skipped).toEqual(['staleStatements', 'x']);
+    spy.mockRestore();
   });
 });

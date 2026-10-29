@@ -19,8 +19,20 @@ import { ListToolbar, withChosen, type ToolbarFilter } from '@/components/ui/Lis
 import { usePagedList, type PagedRead, type Paging } from '@/hooks/usePagedList';
 import { arDate } from '@/lib/format';
 import { arabicDays } from '@/lib/transit';
+import { RETURN_REASON_LABELS } from '@/lib/shipping-workflow';
 import { AGES, AGE_AR, DEFAULT_VIEW, RETURN_STATUSES, STATUS_AR, VIEWS, VIEW_AR, type View } from '@/lib/returns-filters';
 import type { ReturnsFacts } from '@/lib/returns-list';
+
+/**
+ * The reason column. A CODE (CUSTOMER_REFUSED) is shown by its Arabic label, and a code nobody labelled reads «أخرى».
+ * Anything that is not a code is a sentence somebody wrote — «أُغلق كخسارة — لم تُستلم البضاعة…», «نقل من … إلى …» — and
+ * it is shown as written: hiding it behind «أخرى» would throw away the one thing the reader came for.
+ */
+function returnReasonText(value: string | null): string {
+  if (!value) return '—';
+  if (!/^[A-Z_]+$/.test(value)) return value;
+  return RETURN_REASON_LABELS[value]?.ar ?? 'أخرى';
+}
 
 /**
  * /ops/returns — scan or pick a returned shipment, then record the physical
@@ -275,7 +287,7 @@ export function ReturnsScreen() {
                     },
                     { key: 'customer', label: 'العميل', primary: true, render: (r) => r.customer.fullName },
                     { key: 'courier', label: 'شركة الشحن', render: (r) => r.deliveryProvider?.name ?? '—' },
-                    { key: 'reason', label: 'السبب', render: (r) => r.returnReason ?? '—' },
+                    { key: 'reason', label: 'السبب', render: (r) => returnReasonText(r.returnReason) },
                     { key: 'since', label: 'المدّة', render: (r) => since((r as PendingRow).daysWaited) },
                     // NOT «المشحون». This column has always been what is coming
                     // BACK — the parcel less whatever the customer kept — and
