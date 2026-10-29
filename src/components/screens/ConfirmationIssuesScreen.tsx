@@ -11,6 +11,7 @@ import { useToast } from '@/components/ui/Toast';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { OrderLink } from '@/components/orders/OrderLink';
+import { CustomerHistoryOffer } from '@/components/orders/CustomerHistory';
 
 /**
  * /confirmation/issues — entry issues on moderator-entered orders only.
@@ -269,7 +270,8 @@ export function ConfirmationIssuesScreen() {
                 <p className="text-sm text-[var(--sys-foreground)]">
                   {issue.order.customer.fullName} ·{' '}
                   <span dir="ltr">{issue.order.customer.rawPhone || issue.order.customer.phone}</span> ·{' '}
-                  {issue.order.region?.name ?? issue.order.customer.city}
+                  {issue.order.region?.name ?? issue.order.customer.city}{' '}
+                  <CustomerHistoryOffer customerId={issue.order.customer.id} orderId={issue.order.id} />
                 </p>
                 <p className="text-xs text-[var(--sys-muted-foreground)]">{issue.order.customer.address}</p>
                 {issue.order.product && (

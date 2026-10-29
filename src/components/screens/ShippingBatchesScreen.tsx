@@ -1,6 +1,7 @@
 'use client';
 
 import { DispatchResult } from '@/components/ops/DispatchResult';
+import { OrderLink } from '@/components/orders/OrderLink';
 import React, { useCallback, useState } from 'react';
 import { apiFetch, apiJson } from '@/lib/api-client';
 import type { DispatchSummary } from '@/lib/courier-dispatch';
@@ -487,7 +488,7 @@ export function ShippingBatchesScreen() {
                   <ul className="divide-y divide-[var(--sys-border)] rounded-lg border border-[var(--sys-border)]">
                     {parcels.rows.map((o) => (
                       <li key={o.id} className="flex flex-wrap items-center gap-2 p-2">
-                        <span className="font-bold text-[var(--sys-heading)] text-xs" dir="ltr">{o.orderNumber}</span>
+                        <OrderLink id={o.id} number={o.orderNumber} className="font-bold text-[var(--sys-heading)] text-xs" />
                         {o.customer?.fullName && (
                           <span className="text-xs text-[var(--sys-muted-foreground)]">{o.customer.fullName}</span>
                         )}

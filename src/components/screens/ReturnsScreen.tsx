@@ -5,6 +5,7 @@ import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { OrderNotesPeek } from '@/components/orders/OrderNotesPeek';
+import { OrderLink } from '@/components/orders/OrderLink';
 import { ScreenTitle } from '@/components/shell/ScreenTitle';
 import { ScanButton } from '@/components/scan/ScanButton';
 import { RiCheckLine, RiInboxUnarchiveLine, RiTimeLine } from '@remixicon/react';
@@ -281,9 +282,7 @@ export function ReturnsScreen() {
                       label: 'المرجع',
                       primary: true,
                       render: (r) => (
-                        <span className="font-medium text-[var(--sys-heading)]" dir="ltr">
-                          {r.merchantRef ?? r.orderNumber}
-                        </span>
+                        <OrderLink id={r.id} number={r.merchantRef ?? r.orderNumber} className="font-medium text-[var(--sys-heading)]" />
                       ),
                     },
                     { key: 'customer', label: 'العميل', primary: true, render: (r) => r.customer.fullName },
@@ -310,9 +309,7 @@ export function ReturnsScreen() {
                       label: 'المرجع',
                       primary: true,
                       render: (r) => (
-                        <span className="font-medium text-[var(--sys-heading)]" dir="ltr">
-                          {r.merchantRef ?? r.orderNumber}
-                        </span>
+                        <OrderLink id={r.id} number={r.merchantRef ?? r.orderNumber} className="font-medium text-[var(--sys-heading)]" />
                       ),
                     },
                     { key: 'customer', label: 'العميل', primary: true, render: (r) => r.customer.fullName },

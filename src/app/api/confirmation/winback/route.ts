@@ -104,7 +104,7 @@ export async function GET(req: Request) {
           // Whether a parcel that left came back, why, and when the desk received it.
           shippingStatus: true, returnReason: true, deliveryFailureReason: true,
           returnReceipt: { select: { inspectedAt: true, receivedQty: true, damagedQty: true, missingQty: true } },
-          customer: { select: { fullName: true, phone: true } },
+          customer: { select: { id: true, fullName: true, phone: true } },
           replacedBy: { select: { orderNumber: true } },
           // Whether this order is itself somebody's second chance.
           replaces: { select: { orderNumber: true } },

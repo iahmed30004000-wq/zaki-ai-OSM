@@ -1013,7 +1013,21 @@ export function ConfirmationMineScreen() {
             keyOf={(order) => order.id}
             columns={[
               { key: 'c0', label: "الطلب", primary: true,
-                render: (order) => (order.orderNumber) },
+                // The number opens the order's panel here, on her desk — only for
+                // whoever may read it (the work key, or «عرض الطلبات»); else text.
+                render: (order) =>
+                  holderId !== null || userCan(currentUser, 'orders.view') ? (
+                    <button
+                      type="button"
+                      onClick={() => setOpenOrderId(order.id)}
+                      className="min-h-11 md:min-h-0 underline"
+                      dir="ltr"
+                    >
+                      {order.orderNumber}
+                    </button>
+                  ) : (
+                    order.orderNumber
+                  ) },
               { key: 'c1', label: "العميل", primary: true,
                 render: (order) => (
                   <><span className="flex items-center gap-2">

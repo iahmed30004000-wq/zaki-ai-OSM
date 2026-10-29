@@ -25,6 +25,8 @@ const { apiJson } = vi.hoisted(() => ({ apiJson: vi.fn() }));
 
 vi.mock('@/lib/api-client', () => ({ apiJson: (...a: unknown[]) => apiJson(...a) }));
 vi.mock('next/navigation', () => ({ usePathname: () => '/ops/returns' }));
+// The order number is an OrderLink now (it asks who is looking); these tests are not about who may open an order.
+vi.mock('@/hooks/useMayOpen', () => ({ useMayOpen: () => () => false }));
 vi.mock('@/components/ui/Toast', () => ({ useToast: () => ({ failed: vi.fn(), done: vi.fn() }) }));
 // A camera is not a thing jsdom has, and this test is not about scanning.
 vi.mock('@/components/scan/ScanButton', () => ({ ScanButton: () => <button type="button">امسح</button> }));

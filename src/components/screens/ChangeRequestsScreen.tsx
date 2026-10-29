@@ -4,6 +4,7 @@ import React, { useCallback, useState } from 'react';
 import { apiFetch, apiJson } from '@/lib/api-client';
 import { CourierNotifyDialog, type CourierAsk } from '@/components/orders/CourierNotifyDialog';
 import { ChangeRequestReview } from '@/components/orders/ChangeRequestReview';
+import { OrderLink } from '@/components/orders/OrderLink';
 import { useConfirm, useTell } from '@/components/ui/Confirm';
 import { changeFieldLabel } from '@/lib/change-request-fields';
 import { INTENT_AR, type ChangeIntent } from '@/lib/change-request-intent';
@@ -433,7 +434,7 @@ export function ChangeRequestsScreen() {
                   <RiCheckboxCircleLine className="w-4 h-4 text-[var(--sys-success)]" />
                 )}
               </span>
-              <span className="font-semibold text-[var(--sys-heading)]" dir="ltr">{r.order.orderNumber}</span>
+              <OrderLink id={r.order.id} number={r.order.orderNumber} className="font-semibold text-[var(--sys-heading)]" />
               {/* WHICH OF THE THREE. Every row said «طلب تعديل» and a
                   cancellation read as a field edit — answered like one. */}
               <span
