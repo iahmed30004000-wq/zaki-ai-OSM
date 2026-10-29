@@ -26,6 +26,7 @@ import { usePagedList, type PagedRead, type Paging } from '@/hooks/usePagedList'
 import { AGES, AGE_AR } from '@/lib/age-piles';
 import { EVERY_STATUS, TASKS } from '@/lib/tracking-filters';
 import type { TrackingListFacts } from '@/lib/tracking-list';
+import { FULL_SIGHT, NO_SIGHT, statesOffered, type TrackingSight } from '@/lib/tracking-sight';
 
 /**
  * /ops/tracking — search by order, reference, barcode, customer or phone.
@@ -47,7 +48,8 @@ interface Row {
   merchantRef: string | null;
   trackingNumber: string | null;
   shippingStatus: string;
-  collectionStatus: string;
+  /** The courier's money is taken off the row for whoever may not see it (`access.money`). */
+  collectionStatus?: string;
   daysInTransit: number | null;
   /**
    * The region's late threshold in days, or `null` when this courier has no
@@ -88,12 +90,15 @@ interface Extra {
   dialCode: string | null;
   /** The read hit its bound: this is the first of a bigger list. */
   capped: boolean;
+  /** Which level of the screen this person holds. The door decides; this only says what to draw. */
+  access: TrackingSight;
 }
 
 /** Module-level, so the hook's loader keeps one identity — see `usePagedList`. */
 const read = (body: unknown): PagedRead<Row, Extra> => {
-  const b = body as { orders: Row[]; pagination: Paging; facts: TrackingListFacts; lateCount: number; dialCode?: string | null; capped?: boolean };
-  return { rows: b.orders, pagination: b.pagination, extra: { facts: b.facts, lateCount: b.lateCount, dialCode: b.dialCode ?? null, capped: !!b.capped } };
+  const b = body as { orders: Row[]; pagination: Paging; facts: TrackingListFacts; lateCount: number; dialCode?: string | null; capped?: boolean; access?: TrackingSight };
+  // The door always says; an answer that does not is read as the whole screen, since drawing less would hide work, and the door is what refuses.
+  return { rows: b.orders, pagination: b.pagination, extra: { facts: b.facts, lateCount: b.lateCount, dialCode: b.dialCode ?? null, capped: !!b.capped, access: b.access ?? FULL_SIGHT } };
 };
 
 /**
@@ -328,6 +333,8 @@ export function TrackingScreen() {
     read,
   });
   const { extra, rows, pagination } = list;
+  /** Until the first answer says what this person holds, nothing of the other level is offered. */
+  const access = extra?.access ?? NO_SIGHT;
 
   /**
    * THE WORK WAITING, FROM ONE DEFINITION OF EACH CONDITION.
@@ -395,7 +402,8 @@ export function TrackingScreen() {
   // The rows are the page: already filtered by the chip, and worst first, by the server — see `byUrgency` for why
   // the oldest-shipped-first order is kept as the tiebreak.
   const visible = rows;
-  const collectable = visible.filter(canCollect);
+  // The boxes are for whoever may act on the money (the collect door's own key); the rows themselves are the door's.
+  const collectable = access.collect ? visible.filter(canCollect) : [];
   /** Every owed parcel the question matches — counted by the server over the whole list, not over this page. */
   const collectOwed = facts?.tasks.COLLECT ?? 0;
 
@@ -425,8 +433,9 @@ export function TrackingScreen() {
       // THE DEFAULT SAYS WHAT IT ACTUALLY FETCHES. It used to say «قيد الشحن» and ask the door for in-flight only, so
       // «بانتظار التحصيل» — the chip below, and the «استلمت منه» button behind it — never had a single row to draw.
       options: [
-        { value: '', label: 'قيد الشحن وبانتظار التحصيل' },
-        ...Object.entries(STATUS_LABEL).map(([k, v]) => ({ value: k, label: v })),
+        { value: '', label: access.money ? 'قيد الشحن وبانتظار التحصيل' : 'قيد الشحن' },
+        // Only the states the door would answer: a delivered or returned parcel is another level's rows.
+        ...statesOffered(Object.keys(STATUS_LABEL), access).map((k) => ({ value: k, label: STATUS_LABEL[k] })),
         { value: EVERY_STATUS, label: 'الكل' },
       ],
     },
@@ -562,7 +571,7 @@ export function TrackingScreen() {
           money waiting LAST — so on a board of late parcels the first page
           held none, and a bar saying «nothing to collect» hid fourteen
           delivered parcels. «اعرضها» asks the server for exactly them. */}
-      {collectOwed > 0 && (
+      {access.collect && collectOwed > 0 && (
         <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-3 flex flex-wrap items-center gap-3">
           <span className="text-xs text-[var(--sys-muted-foreground)]">
             {chosen.length > 0 ? `مختار ${chosen.length} طلب · صافي ${netOfChosen}` : `${collectOwed} مسلَّم بانتظار التحصيل${openTask !== 'COLLECT' ? ' —' : ''}`}
@@ -680,11 +689,15 @@ export function TrackingScreen() {
               </div>
             )
           }
-          selection={{
-            canSelect: canCollect,
-            isSelected: (o) => !!selected[o.id],
-            onToggle: (o, next) => setSelected((sel) => ({ ...sel, [o.id]: next })),
-          }}
+          selection={
+            access.collect
+              ? {
+                  canSelect: canCollect,
+                  isSelected: (o) => !!selected[o.id],
+                  onToggle: (o, next) => setSelected((sel) => ({ ...sel, [o.id]: next })),
+                }
+              : undefined
+          }
           columns={[
             {
               key: 'ref',
@@ -857,16 +870,21 @@ export function TrackingScreen() {
                 </span>
               ),
             },
-            {
-              key: 'collection',
-              label: 'حالة التحصيل',
-              // Measured: the same single value on 91% of rows. What actually
-              // varies is whether money is waiting, and that is now the
-              // «بانتظار التحصيل» chip, the row's own rank, and the collect
-              // bar above the list.
-              hideOnPhone: true,
-              render: (o) => COLLECTION_LABEL[o.collectionStatus] ?? o.collectionStatus,
-            },
+            // The column is the courier's money — without the level that sees it there is nothing in it to read.
+            ...(access.money
+              ? [
+                  {
+                    key: 'collection',
+                    label: 'حالة التحصيل',
+                    // Measured: the same single value on 91% of rows. What actually
+                    // varies is whether money is waiting, and that is now the
+                    // «بانتظار التحصيل» chip, the row's own rank, and the collect
+                    // bar above the list.
+                    hideOnPhone: true,
+                    render: (o: Row) => COLLECTION_LABEL[o.collectionStatus ?? ''] ?? o.collectionStatus,
+                  },
+                ]
+              : []),
             {
               key: 'amount',
               label: 'المبلغ',

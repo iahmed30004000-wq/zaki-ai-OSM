@@ -19,6 +19,7 @@ import { Money } from '@/components/ui/Money';
 import { Pager } from '@/components/ui/Pager';
 import { Rows } from '@/components/ui/Rows';
 import { OrderLink } from '@/components/orders/OrderLink';
+import { FULL_SIGHT, NO_SIGHT, statesOffered, type TrackingSight } from '@/lib/tracking-sight';
 
 /**
  * «مطابقة يدوية» — a courier, or a company, that sends no statement and no file.
@@ -88,12 +89,14 @@ interface Row {
 
 interface Extra {
   facts: TrackingListFacts;
+  /** Which rows the follow-up door shows this person — the options below offer only what it would answer. */
+  access: TrackingSight;
 }
 
 /** Module-level, so the hook's loader keeps one identity — see `usePagedList`. */
 const read = (body: unknown): PagedRead<Row, Extra> => {
-  const b = body as { orders: Row[]; pagination: Paging; facts: TrackingListFacts };
-  return { rows: b.orders, pagination: b.pagination, extra: { facts: b.facts } };
+  const b = body as { orders: Row[]; pagination: Paging; facts: TrackingListFacts; access?: TrackingSight };
+  return { rows: b.orders, pagination: b.pagination, extra: { facts: b.facts, access: b.access ?? FULL_SIGHT } };
 };
 
 /**
@@ -204,6 +207,8 @@ export function ManualMatching() {
   });
   const { extra, rows, pagination } = list;
   const facts = extra?.facts;
+  // UX only, like `mayCollect`: the door refuses a state or a view that is not this person's, whatever is drawn.
+  const access = extra?.access ?? NO_SIGHT;
   // After the list, so the list's own read is the screen's FIRST: a failure of the first answer is the list's to show.
   const { products } = useProducts();
 
@@ -273,7 +278,7 @@ export function ManualMatching() {
       onChange: choose(setStatus),
       options: [
         { value: 'all', label: 'كل الحالات المفتوحة' },
-        ...MATCHING_STATUSES.map((s) => ({ value: s, label: SHIPPING_STATUS_AR[s] })),
+        ...statesOffered(MATCHING_STATUSES, access).map((s) => ({ value: s, label: SHIPPING_STATUS_AR[s] })),
       ],
     },
     {
@@ -293,7 +298,7 @@ export function ManualMatching() {
       onChange: choose(setView),
       options: [
         { value: '', label: 'كل ما عند الجهة' },
-        { value: 'COLLECT', label: 'المسلَّم بانتظار التحصيل فقط' },
+        ...(access.money ? [{ value: 'COLLECT', label: 'المسلَّم بانتظار التحصيل فقط' }] : []),
       ],
     },
   ];
