@@ -330,6 +330,17 @@ describe('an order a person tied to a statement line by hand is not collected by
     nothingBooked();
   });
 
+  it('a statement line that lands while the press is waiting for the order is seen after the claim too (review of #67)', async () => {
+    // «مطابق يدوي» adds the order to a draft between this press's first read of the statements' lines and its claim.
+    db.statementLine.findMany.mockImplementationOnce(async () => []);
+    world.lines = [line()];
+    const res = await press();
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('ON_UNAPPROVED_STATEMENT');
+    expect(db.statementLine.findMany).toHaveBeenCalledTimes(2);
+    nothingBooked();
+  });
+
   it('two simultaneous presses on a linked order are both refused, and neither writes', async () => {
     world.matches = [link()];
     const [a, b] = await Promise.all([press(), press()]);

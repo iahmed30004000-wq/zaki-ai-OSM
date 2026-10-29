@@ -10,7 +10,7 @@ import { markPayableForOrders } from '@/lib/commission';
 import { roundMinor } from '@/lib/money';
 import { zodMessage } from '@/lib/zod-message';
 import { expectedAmountFor, SETTLEMENT_ORDER_SELECT } from '@/lib/settlement';
-import { statementNamingRefusal } from '@/lib/settlement-gates';
+import { collectTotalRefusal, statementNamingRefusal } from '@/lib/settlement-gates';
 
 /**
  * POST /api/ops/tracking/collect — settle by hand.
@@ -175,37 +175,17 @@ export async function POST(req: Request) {
      * handful of parcels in one handover, and −1.5 on one against 17 on
      * another is 15.5 in the hand. Netting is what a settlement is.
      */
-    if (expected < 0) {
-      const owed = roundMinor(-expected, country.minorUnit);
-      return NextResponse.json(
-        {
-          error:
-            `لا يوجد مبلغ لقبضه: الحساب معكوس، فنحن ندفع للمندوب ${owed} ${wallet.currencyCode} ` +
-            `عن ${orders.length} طلب ولا نقبض منه. السبب أن أجرة الإرجاع أكبر مما استلمه العميل. ` +
-            `هذا الباب يقبض المال فقط — سجّل الدفعة للمندوب من باب المصروفات، ` +
-            `أو صحّح أجرة الإرجاع في سند الإرجاع إن كانت خطأً، ` +
-            `أو اجمع هذا الطلب مع طلبات أخرى في تحصيل واحد.`,
-          code: 'OWED_TO_COURIER',
-          expected,
-          currency: wallet.currencyCode,
-        },
-        { status: 409 }
-      );
-    }
-    if (expected === 0) {
-      return NextResponse.json(
-        {
-          error:
-            `لا يوجد مبلغ لقبضه: المتوقَّع من المندوب 0 ${wallet.currencyCode} عن ${orders.length} طلب. ` +
-            `أجرة التوصيل وأجرة الإرجاع تساوي ما استلمه العميل، فلا يبقى شيء يُسلَّم. ` +
-            `إن كان قد استلم مبلغاً فعلاً فصحّح الكميات المسلَّمة أو الأجرة، ثم أعد المحاولة.`,
-          code: 'NOTHING_TO_COLLECT',
-          expected,
-          currency: wallet.currencyCode,
-        },
-        { status: 409 }
-      );
-    }
+    /*
+     * The two sentences live in `settlement-gates` (`collectTotalRefusal`): the manual statement answers with the
+     * same words when its lines add up to either, so there is one text for «nothing to take in», not two.
+     */
+    const noMoneyIn = collectTotalRefusal({
+      expected,
+      owed: roundMinor(-expected, country.minorUnit),
+      currency: wallet.currencyCode,
+      count: orders.length,
+    });
+    if (noMoneyIn) return NextResponse.json(noMoneyIn, { status: 409 });
     /*
      * The second road to the same wall: `positive()` accepts 0.004, and
      * rounding it by the country's minor unit leaves 0 — a figure the wallet
@@ -242,10 +222,10 @@ export async function POST(req: Request) {
        */
       const refs = orders.map((o) => o.merchantRef).filter((r): r is string => !!r);
       const barcodes = orders.map((o) => o.trackingNumber).filter((b): b is string => !!b);
-      const lines =
+      const readLines = () =>
         refs.length + barcodes.length === 0
-          ? []
-          : await tx.statementLine.findMany({
+          ? Promise.resolve([])
+          : tx.statementLine.findMany({
               where: {
                 statement: { companyId, storeId },
                 OR: [
@@ -259,6 +239,7 @@ export async function POST(req: Request) {
                 statement: { select: { reference: true, status: true, approvedAt: true, deliveryProviderId: true } },
               },
             });
+      const lines = await readLines();
       /**
        * AND A LINE A PERSON TIED TO THE ORDER BY HAND.
        *
@@ -296,7 +277,9 @@ export async function POST(req: Request) {
       // The claim holds the orders' rows, and a link takes the same row before it reads the order's state.
       // So a link that committed while this press waited is visible HERE, and one that has not yet read the
       // order will find it settled: asked again after the claim, the two cannot both succeed.
-      const lateCover = statementNamingRefusal(orders, lines, await tiedLines());
+      // The statements' own lines are read again too: a «مطابق يدوي» that added this order to a draft while this
+      // press waited on the row is visible now (review of #67, 29/10), so the two cannot both book the money.
+      const lateCover = statementNamingRefusal(orders, await readLines(), await tiedLines());
       if (lateCover) throw new CollectStopped(lateCover);
 
       const movement = await recordMovement(tx, {

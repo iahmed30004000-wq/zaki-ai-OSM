@@ -10,6 +10,7 @@ import { logAudit } from '@/lib/audit';
 import { receiptGap } from '@/lib/settlement';
 import { zodMessage } from '@/lib/zod-message';
 import { receiptEditRefusal } from '@/lib/settlement-gates';
+import { isManualDraftHash, MANUAL_DRAFT_SENTENCE } from '@/lib/manual-statement-rules';
 import {
   MAX_PROOF_BYTES,
   describeProof,
@@ -47,7 +48,12 @@ const createSchema = z.object({
   amount: z.number().positive().max(100_000_000),
   receivedAt: z.string().datetime().optional(),
   /** Required when the wallet currency differs from the statement currency. */
-  exchangeRate: z.number().positive().max(1_000_000).optional(),
+  /**
+   * Stored with six decimals, so the smallest rate that survives the column is 0.000001. A smaller one would be
+   * written as zero, which is no rate at all — the receipt would then be counted apart as «بلا سعر صرف» for a
+   * rate the person did type.
+   */
+  exchangeRate: z.number().min(0.000001, 'سعر الصرف لا يقل عن 0.000001').max(1_000_000).optional(),
   note: z.string().trim().max(300).optional(),
   /**
    * THE PAPER BEHIND THE COLLECTION — «حط رفع ملف صورة او ملف عشان اتحقق
@@ -99,11 +105,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     const statement = await db.courierStatement.findFirst({
       where: { id, companyId, storeId },
-      select: { id: true, status: true, approvedAt: true, currencyCode: true, reference: true },
+      select: { id: true, status: true, approvedAt: true, currencyCode: true, reference: true, fileHash: true },
     });
     if (!statement) return NextResponse.json({ error: 'الكشف غير موجود' }, { status: 404 });
     const closed = receiptEditRefusal(statement);
     if (closed) return NextResponse.json(closed, { status: 409 });
+    /*
+     * A MANUAL DRAFT TAKES NO RECEIPT.
+     *
+     * While orders can still be added the statement has no reference and its total is still moving, so a receipt
+     * against it would be measured against a figure that is about to change. A draft only ever stops being a
+     * draft (the second press gathers it), never the other way, so this read cannot go stale in the dangerous
+     * direction.
+     */
+    if (isManualDraftHash(statement.fileHash)) {
+      return NextResponse.json({ code: 'MANUAL_DRAFT', error: MANUAL_DRAFT_SENTENCE }, { status: 409 });
+    }
 
     const parsed = createSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {

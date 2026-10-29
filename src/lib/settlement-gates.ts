@@ -218,3 +218,47 @@ export function statementNamingRefusal(
     orders: named,
   };
 }
+
+/**
+ * A TOTAL THAT CANNOT BE TAKEN IN — the two sentences «استلمت منه» has always answered with, said once.
+ *
+ * A collection door can only take money IN. A batch whose net is below zero means the company owes the courier
+ * (the return fee is larger than what the customers paid), and a batch whose net is exactly zero leaves nothing
+ * to be handed over. The manual statement answers with the same two sentences when its lines add up to either:
+ * one rule, one text, whichever door the person came by. `owed` is the negative total turned positive and
+ * already rounded by the caller, so this file keeps reading nothing.
+ *
+ * Returns null when the total is a positive amount.
+ */
+export function collectTotalRefusal(p: {
+  expected: number;
+  owed: number;
+  currency: string;
+  count: number;
+}): { code: string; error: string; expected: number; currency: string } | null {
+  if (p.expected < 0) {
+    return {
+      error:
+        `لا يوجد مبلغ لقبضه: الحساب معكوس، فنحن ندفع للمندوب ${p.owed} ${p.currency} ` +
+        `عن ${p.count} طلب ولا نقبض منه. السبب أن أجرة الإرجاع أكبر مما استلمه العميل. ` +
+        `هذا الباب يقبض المال فقط — سجّل الدفعة للمندوب من باب المصروفات، ` +
+        `أو صحّح أجرة الإرجاع في سند الإرجاع إن كانت خطأً، ` +
+        `أو اجمع هذا الطلب مع طلبات أخرى في تحصيل واحد.`,
+      code: 'OWED_TO_COURIER',
+      expected: p.expected,
+      currency: p.currency,
+    };
+  }
+  if (p.expected === 0) {
+    return {
+      error:
+        `لا يوجد مبلغ لقبضه: المتوقَّع من المندوب 0 ${p.currency} عن ${p.count} طلب. ` +
+        `أجرة التوصيل وأجرة الإرجاع تساوي ما استلمه العميل، فلا يبقى شيء يُسلَّم. ` +
+        `إن كان قد استلم مبلغاً فعلاً فصحّح الكميات المسلَّمة أو الأجرة، ثم أعد المحاولة.`,
+      code: 'NOTHING_TO_COLLECT',
+      expected: p.expected,
+      currency: p.currency,
+    };
+  }
+  return null;
+}

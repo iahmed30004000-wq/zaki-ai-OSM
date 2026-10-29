@@ -77,6 +77,8 @@ interface StatementRow {
   status: string;
   /** Set when the money moved. Matching is refused after it. */
   approvedAt: string | null;
+  /** An open manual draft has nothing to match yet: it is gathered on the collection screen first. */
+  draft?: boolean;
   currencyCode: string;
   counts: { lines: number; receipts: number; matches: number };
 }
@@ -96,7 +98,8 @@ export function MatchingScreen() {
 
   useEffect(() => {
     void apiJson<{ statements: StatementRow[] }>('/api/finance/statements')
-      .then((d) => {
+      .then((payload) => {
+        const d = { statements: payload.statements.filter((s) => !s.draft) };
         setStatements(d.statements);
         const withMatches = d.statements.find((s) => s.counts.matches > 0) ?? d.statements[0];
         if (withMatches) setSelected(withMatches.id);

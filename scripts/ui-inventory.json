@@ -909,6 +909,16 @@
     "links": 1,
     "tabs": 0
   },
+  "src/components/screens/finance/AssembleStatementDialog.tsx": {
+    "buttons": 2,
+    "inputs": 3,
+    "columns": 0,
+    "cards": 0,
+    "modals": 1,
+    "icons": 1,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/screens/finance/ClosingScreen.tsx": {
     "buttons": 4,
     "inputs": 3,
@@ -920,7 +930,7 @@
     "tabs": 0
   },
   "src/components/screens/finance/CollectionScreen.tsx": {
-    "buttons": 13,
+    "buttons": 14,
     "inputs": 11,
     "columns": 7,
     "cards": 0,
@@ -960,12 +970,22 @@
     "tabs": 0
   },
   "src/components/screens/finance/ManualMatching.tsx": {
-    "buttons": 6,
+    "buttons": 7,
     "inputs": 0,
     "columns": 11,
     "cards": 0,
     "modals": 0,
-    "icons": 5,
+    "icons": 6,
+    "links": 0,
+    "tabs": 0
+  },
+  "src/components/screens/finance/ManualStatementDialog.tsx": {
+    "buttons": 2,
+    "inputs": 1,
+    "columns": 0,
+    "cards": 0,
+    "modals": 1,
+    "icons": 1,
     "links": 0,
     "tabs": 0
   },
