@@ -64,11 +64,21 @@ SALESFLOW is a production-ready, multi-tenant web application engineered for e-c
 npm install
 ```
 
-### 2. Database Sync & Seed
+### 2. Database (a throwaway local database only)
+Point `DATABASE_URL` at a **disposable local PostgreSQL database** — never at a
+shared or production one — then apply the committed migrations:
 ```bash
-npx prisma db push
-node --experimental-strip-types prisma/seed.ts
+npx prisma migrate deploy
 ```
+Never run `prisma db push`, `prisma migrate dev` or `prisma migrate reset`
+here: they drift or wipe the database and drop the partial unique indexes and
+CHECK constraints that exist only in the migration files (for example
+`job_runs_one_running`). If a tool offers to reset a database, answer no. A new
+migration is written by hand and only adds; see `AGENTS.md`.
+
+Seeding is optional, local-only and **forbidden on production**: the seed is
+destructive (it deletes every business table first) and refuses
+`NODE_ENV=production`. See the seed-accounts section below.
 
 ### 3. Run Development Server
 ```bash
@@ -83,7 +93,9 @@ Open [http://localhost:3000](http://localhost:3000).
 All of them share the password you set in `SEED_DEMO_PASSWORD` when you ran the
 seed. It is no longer written down anywhere — this repository is public, and the
 password that used to be printed here was the password thirteen real accounts
-were still using. Set your own and keep it out of git:
+were still using. On a throwaway **local** database only, set your own and keep
+it out of git. Never run the seed against production, and never set
+`SEED_DEMO_PASSWORD` on a production environment:
 
 ```bash
 SEED_DEMO_PASSWORD="$(openssl rand -base64 18)" npx prisma db seed

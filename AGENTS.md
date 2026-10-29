@@ -21,10 +21,15 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   with a PR, and is merged only when CI is green.
 - **One agent per branch.** Two agents on one branch is a merge conflict
   nobody asked for.
-- **Work only on `MKory18/Zaki-ai-CRM`.** The other two repositories are
-  mirrors.
-- **Mirrors move only after a merge** — fast-forward them to the same `main`
-  commit. Never commit on them.
+- **Work only on `iahmed30004000-wq/zaki-ai-OSM`** (git remote `osm`). Branches
+  and PRs happen there. `MKory18/Zaki-ai-CRM` and `MKory18/zaki-ai-OSM-1` are
+  older copies: no work happens on them.
+- **A merge is not a deploy.** Auto-deploy is off on every Coolify app
+  («Manual deployments only»). A deploy is the owner's own «Redeploy» click
+  after he has checked; nobody else presses it. Never push to the `coolify`
+  remote, and never force-push.
+- **The older copies move only when the owner says so** — fast-forward to the
+  same `main` commit. Never commit on them.
 - **No customer data to any external model.** A name, a phone or an address
   may only reach a model running on the owner's own machine — see
   `localOnly` below. Ad tokens reach no model at all.
@@ -35,9 +40,13 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 | Repository | Role |
 |---|---|
-| `MKory18/Zaki-ai-CRM` | **the source of truth** — branches and PRs happen here |
-| `MKory18/zaki-ai-OSM-1` | ⚠️ mirror — fast-forward only, after a merge |
-| `iahmed30004000-wq/zaki-ai-OSM` | ⚠️ mirror — fast-forward only, after a merge |
+| `iahmed30004000-wq/zaki-ai-OSM` | **the source of truth** — branches and PRs happen here (remote `osm`). CI builds the image `ghcr.io/iahmed30004000-wq/zaki-ai-crm:main`; Coolify does not deploy it by itself |
+| `MKory18/Zaki-ai-CRM` | older copy (remote `origin`) — no work happens here |
+| `MKory18/zaki-ai-OSM-1` | older copy (remote `coolify`) — deploys nothing; fast-forward only when the owner says so |
+
+Deploys are manual: after a merge the owner checks, then presses «Redeploy» in
+Coolify. See `docs/ops/DEPLOY.md`. The map of the code is in
+`docs/ARCHITECTURE.md`.
 
 ## System 7 — the replies system
 

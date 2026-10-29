@@ -35,7 +35,6 @@ Telegram Group/Topic → Bot → Webhook → /api/webhooks/telegram
 ```env
 TELEGRAM_BOT_TOKEN="<من BotFather>"
 TELEGRAM_WEBHOOK_SECRET="<openssl rand -hex 32>"
-TELEGRAM_ENCRYPTION_KEY="<openssl rand -hex 32>"
 APP_URL="https://<نطاق-النظام>"
 ```
 
