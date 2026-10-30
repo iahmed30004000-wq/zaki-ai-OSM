@@ -23,7 +23,7 @@ import { toLatinDigits } from './latin-digits';
  * no-break space (U+00A0). Written as escapes so the source holds no mark
  * that an editor could swallow.
  */
-const INVISIBLE = /[​-‏‪- ⁠⁦-⁩؜﻿ ]/g;
+const INVISIBLE = /[\u200B-\u200F\u202A-\u202F\u2060\u2066-\u2069\u061C\uFEFF\u00A0]/g;
 
 const clean = (s: string | null | undefined): string => (s ?? '').replace(INVISIBLE, '').trim();
 
