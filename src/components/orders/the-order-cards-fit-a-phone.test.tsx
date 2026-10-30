@@ -142,7 +142,8 @@ describe('«معلومات العميل» — the title and its two buttons', ()
     version: 1,
     confirmationStatus: 'NEW',
     regionId: 'r1',
-    region: { name: 'عمّان' },
+    totalAmount: 40,
+    region: { id: 'r1', name: 'عمّان' },
     deliveryAddress: 'شارع الجامعة',
     customer: { id: 'c1', fullName: 'نور', phone: '0791234567', rawPhone: '0791234567', altPhone: '', address: 'x', city: 'عمّان', totalOrders: 3 },
   };
