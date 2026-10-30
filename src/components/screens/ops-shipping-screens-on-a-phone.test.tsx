@@ -17,9 +17,10 @@ import React from 'react';
  * slides, the presses side by side, the fold that names what it holds.
  */
 
-const { apiJson, apiFetch, user, phone } = vi.hoisted(() => ({
+const { apiJson, apiFetch, confirmFn, user, phone } = vi.hoisted(() => ({
   apiJson: vi.fn(),
   apiFetch: vi.fn(),
+  confirmFn: vi.fn(async (_o: unknown) => true),
   user: { current: null as unknown },
   phone: { value: true },
 }));
@@ -39,7 +40,7 @@ vi.mock('@/context/AppContext', () => ({
 vi.mock('@/context/StoreCurrency', () => ({ useStoreCurrency: () => ({ code: 'JOD', minorUnit: 3 }) }));
 vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>العنوان</h1> }));
 vi.mock('@/components/ui/Confirm', () => ({
-  useConfirm: () => vi.fn(async () => true),
+  useConfirm: () => confirmFn,
   useAsk: () => vi.fn(async () => null),
   useTell: () => vi.fn(),
 }));
@@ -133,6 +134,22 @@ describe('«إنشاء شحنة»', () => {
     for (const name of ['المحافظة', 'من', 'إلى']) expect(within(fold).getByLabelText(name)).toBeTruthy();
     expect(within(fold).queryByLabelText(/شركة الشحن/)).toBeNull();
     expect(screen.getByLabelText(/شركة الشحن/)).toBeTruthy();
+  });
+
+  it('PHONE: a province or a date chosen inside the closed fold is counted on the row that closes over it', async () => {
+    serve([row()]);
+    await draw();
+    const summary = () => (document.querySelector('details[data-advanced-group]') as HTMLElement).querySelector('summary')!.textContent!;
+    expect(summary()).toContain('المحافظة · التاريخ');
+    expect(summary()).not.toContain('(');
+    const fold = document.querySelector('details[data-advanced-group]') as HTMLElement;
+    fireEvent.change(within(fold).getByLabelText('المحافظة'), { target: { value: 'r1' } });
+    expect(summary()).toContain('المحافظة · التاريخ (1)');
+    fireEvent.change(within(fold).getByLabelText('من'), { target: { value: '2026-10-01' } });
+    fireEvent.change(within(fold).getByLabelText('إلى'), { target: { value: '2026-10-30' } });
+    expect(summary()).toContain('المحافظة · التاريخ (3)');
+    fireEvent.change(within(fold).getByLabelText('المحافظة'), { target: { value: '' } });
+    expect(summary()).toContain('المحافظة · التاريخ (2)');
   });
 
   it('DESK: nothing changed — the province and the dates are cells of the filter grid, no fold', async () => {
@@ -358,6 +375,38 @@ describe('«دفعات الشحن»', () => {
     const cancel = await screen.findByRole('button', { name: 'ألغِ' }, WAIT);
     expect(cancel.parentElement!.className).toContain('grid-cols-3');
     expect(cancel.parentElement!.querySelectorAll('button')).toHaveLength(3);
+  });
+
+  it('PHONE: «سُلّمت للشركة» asks first — declined, nothing is written; confirmed, the handover is written', async () => {
+    serve(batch());
+    await draw();
+    confirmFn.mockResolvedValueOnce(false);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: SHIP }));
+    });
+    expect(confirmFn).toHaveBeenCalledTimes(1);
+    expect((confirmFn.mock.calls[0][0] as { title: string }).title).toContain('BATCH-2026-0001');
+    expect((confirmFn.mock.calls[0][0] as { tone?: string }).tone).toBe('danger');
+    const writes = () => apiJson.mock.calls.filter((c) => (c[1] as RequestInit | undefined)?.method === 'PATCH');
+    expect(writes()).toHaveLength(0);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: SHIP }));
+    });
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    expect(JSON.parse(String((writes()[0][1] as RequestInit).body))).toEqual({ status: 'SHIPPED' });
+  });
+
+  it('DESK: nothing changed — «سُلّمت للشركة» is written on the press, with no question', async () => {
+    phone.value = false;
+    serve(batch());
+    await draw();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: SHIP }));
+    });
+    expect(confirmFn).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(apiJson.mock.calls.filter((c) => (c[1] as RequestInit | undefined)?.method === 'PATCH')).toHaveLength(1)
+    );
   });
 
   it('DESK: nothing changed — all eight presses in one wrapping row in the old order, no fold, the pill is a pill', async () => {

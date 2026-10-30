@@ -369,7 +369,7 @@ export function ManufacturingScreen() {
    */
   /** The rows that did not come in through production: one box each, with the way to see them alone. */
   const readingBoxes = reading.byOrigin.filter((o) => o.origin !== 'PRODUCED');
-  const readingDetail = (
+  const readingBoxNodes = (
     <>
       {readingBoxes.map((o) => (
         <div
@@ -402,7 +402,12 @@ export function ManufacturingScreen() {
           </p>
         </div>
       ))}
-
+    </>
+  );
+  // The warnings are never behind a fold: a red «cost contradicts its lines» and the line that says some rows cannot
+  // be graded are the reason to open this screen, and a closed disclosure would hide them from the one who must act.
+  const readingWarnings = (
+    <>
       {reading.mismatched > 0 && (
         <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-3 text-xs leading-relaxed text-[var(--sys-destructive)]">
           {reading.mismatched} دفعة كلفتها المحفوظة تخالف بنودها — عدّل كلفتها لتتفق الأرقام.
@@ -504,13 +509,19 @@ export function ManufacturingScreen() {
               {/* On a phone the headline stays and the boxes under it are one tap away, in a disclosure that
                   names them — the full read-out was most of the first screen. A desk draws them all. */}
               {phone ? (
-                (readingBoxes.length > 0 || reading.mismatched > 0 || reading.ungraded > 0) && (
-                  <AdvancedGroup label="التفصيل" holds="مصدر الصفوف · التنبيهات">
-                    <div className="w-full space-y-3">{readingDetail}</div>
-                  </AdvancedGroup>
-                )
+                <>
+                  {readingBoxes.length > 0 && (
+                    <AdvancedGroup label="التفصيل" holds="مصدر الصفوف">
+                      <div className="w-full space-y-3">{readingBoxNodes}</div>
+                    </AdvancedGroup>
+                  )}
+                  {readingWarnings}
+                </>
               ) : (
-                readingDetail
+                <>
+                  {readingBoxNodes}
+                  {readingWarnings}
+                </>
               )}
             </CardContent>
           </Card>
@@ -631,6 +642,37 @@ export function ManufacturingScreen() {
                   },
                   { key: 'c7', label: "التاريخ", hideOnPhone: phone,
                     render: (b) => arDate(b.productionDate) },
+                  // A PHONE: the three figures the card leaves out are one tap down, in a disclosure that names them —
+                  // they are not removed. A desk has them in the table, so there is no such column there.
+                  ...(phone
+                    ? [
+                        {
+                          key: 'more',
+                          label: 'تفاصيل',
+                          wide: true,
+                          render: (b: any) => (
+                            <AdvancedGroup label="تفاصيل" holds="بِيع · الكلفة الكلية · التاريخ">
+                              <dl className="w-full space-y-1 text-xs">
+                                <div className="flex justify-between gap-3">
+                                  <dt className="text-[var(--sys-muted-foreground)]">بِيع</dt>
+                                  <dd>{b.quantitySold} قطعة</dd>
+                                </div>
+                                <div className="flex justify-between gap-3">
+                                  <dt className="text-[var(--sys-muted-foreground)]">الكلفة الكلية</dt>
+                                  <dd>
+                                    <Money value={b.totalProductionCost} currency={currency} />
+                                  </dd>
+                                </div>
+                                <div className="flex justify-between gap-3">
+                                  <dt className="text-[var(--sys-muted-foreground)]">التاريخ</dt>
+                                  <dd>{arDate(b.productionDate)}</dd>
+                                </div>
+                              </dl>
+                            </AdvancedGroup>
+                          ),
+                        },
+                      ]
+                    : []),
                 ]}
                 empty={
                   graded.length > 0 ? (

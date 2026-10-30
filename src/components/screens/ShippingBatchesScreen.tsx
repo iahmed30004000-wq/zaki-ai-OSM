@@ -9,7 +9,7 @@ import { courierCityGapLine, type CourierCityGap } from '@/lib/courier-city-gap-
 import { arDateShort } from '@/lib/format';
 import { LabelSizePicker, useLabelSize } from '@/components/labels/LabelSize';
 import { BLOCKED_WAYBILLS, describeRefused, openWaybills, WaybillError } from '@/components/labels/openWaybills';
-import { useAsk, useTell } from '@/components/ui/Confirm';
+import { useAsk, useConfirm, useTell } from '@/components/ui/Confirm';
 import { ScanSheet } from '@/components/scan/ScanButton';
 import { RiBarcodeLine, RiDownload2Line, RiEBike2Line, RiLoader4Line, RiLockLine, RiPrinterLine, RiQrScan2Line, RiSendPlaneLine, RiTruckLine } from '@remixicon/react';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -82,6 +82,7 @@ export function ShippingBatchesScreen() {
   const [busy, setBusy] = useState<string | null>(null);
   const tell = useTell();
   const ask = useAsk();
+  const confirm = useConfirm();
   const [result, setResult] = useState<{ batchId: string; summary: DispatchSummary } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const labelSize = useLabelSize();
@@ -107,6 +108,22 @@ export function ShippingBatchesScreen() {
   }, []);
 
   useLiveRefresh(load);
+
+  /**
+   * ON A PHONE THE HANDOVER ASKS FIRST.
+   * «سُلّمت للشركة» cannot be taken back (from here a parcel can no longer be cancelled or held), and on a phone it
+   * is a full-width press at the top of the card, one thumb-width from print. A desk keeps the press it has always
+   * had; a phone gets the question, in the words the button's own tooltip already uses.
+   */
+  async function confirmShip(batch: Batch) {
+    const ok = await confirm({
+      title: `تسليم ${batch.batchNumber} للشركة؟`,
+      body: 'بعد هالضغطة ما بيصير تلغي ولا تؤجّل طرداً من الدفعة — يصير طلب تغيير يُبلَّغ للشركة.',
+      confirmLabel: 'سُلّمت للشركة',
+      tone: 'danger',
+    });
+    if (ok) await setStatus(batch, 'SHIPPED');
+  }
 
   async function setStatus(batch: Batch, status: 'SHIPPED' | 'CLOSED') {
     setBusy(batch.id);
@@ -547,7 +564,7 @@ export function ShippingBatchesScreen() {
             const shipBtn =
               b.status === 'READY' ? (
                 <button
-                  onClick={() => setStatus(b, 'SHIPPED')}
+                  onClick={() => (phone ? void confirmShip(b) : setStatus(b, 'SHIPPED'))}
                   disabled={busy === b.id || b._count.orders === 0}
                   title={b._count.orders === 0 ? 'الدفعة فاضية — ما في طرد يتسلّم للشركة' : 'بعد هالضغطة ما بيصير تلغي ولا تؤجّل طرداً من الدفعة — يصير طلب تغيير يُبلَّغ للشركة'}
                   className={`min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] font-medium inline-flex items-center gap-1.5 disabled:opacity-50${wide}`}

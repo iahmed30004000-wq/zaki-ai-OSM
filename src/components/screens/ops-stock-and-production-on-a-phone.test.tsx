@@ -275,10 +275,20 @@ describe('«تشغيلات الإنتاج»', () => {
     const f = fold('التفصيل')!;
     expect(f).toBeDefined();
     expect(f.open).toBe(false);
-    expect(f.querySelector('summary')!.textContent).toContain('مصدر الصفوف · التنبيهات');
+    expect(f.querySelector('summary')!.textContent).toContain('مصدر الصفوف');
     expect(within(f).getByRole('button', { name: 'اعرضها وحدها' })).toBeTruthy();
     // the headline is outside the fold, where it is read without a tap
     expect(f.contains(screen.getByText(/^[0-9]+ من 2 /))).toBe(false);
+  });
+
+  it('PHONE: the red «cost contradicts its lines» warning is OUTSIDE the fold, where it is read without a tap', async () => {
+    serve([batch({ totalProductionCost: 999 }), batch({ id: 'b2', batchNumber: 'OPEN-1', openingCountId: 'oc1', costPerUnit: 0, totalProductionCost: 0 })]);
+    render(<ManufacturingScreen />);
+    await waitFor(() => expect(document.querySelector('li')).not.toBeNull(), WAIT);
+    const warning = screen.getByText(/كلفتها المحفوظة تخالف بنودها/);
+    expect(fold('التفصيل')).toBeDefined();
+    expect(fold('التفصيل')!.contains(warning)).toBe(false);
+    expect(warning.className).toContain('border');
   });
 
   it('DESK: nothing changed — the boxes are in the card, no fold', async () => {
@@ -288,9 +298,17 @@ describe('«تشغيلات الإنتاج»', () => {
     expect(screen.getByRole('button', { name: 'اعرضها وحدها' })).toBeTruthy();
   });
 
-  it('PHONE: the card keeps what is read at a glance and leaves the sold count, the total cost and the date to the table', async () => {
+  it('PHONE: the card keeps what is read at a glance; the sold count, the total cost and the date are one tap down in a fold that names them', async () => {
     await draw();
-    for (const gone of ['بِيع', 'الكلفة الكلية', 'التاريخ']) expect(within(card()).queryByText(gone), gone).toBeNull();
+    const more = within(card()).getByText('بِيع').closest('details') as HTMLDetailsElement;
+    expect(more).not.toBeNull();
+    expect(more.open).toBe(false);
+    expect(more.querySelector('summary')!.textContent).toContain('بِيع · الكلفة الكلية · التاريخ');
+    for (const word of ['الكلفة الكلية', 'التاريخ']) expect(within(more).getByText(word), word).toBeTruthy();
+    expect(more.textContent).toContain('40 قطعة');
+    // …and they are not card rows of their own any more
+    expect(within(card()).getByText('بِيع').parentElement!.parentElement!.tagName).toBe('DL');
+    expect(within(card()).getByText('بِيع').closest('dl')!.closest('details')).not.toBeNull();
     for (const kept of ['متبقٍّ', 'كلفة الوحدة', 'درجة الكلفة', 'من أي باب دخلت']) expect(within(card()).getByText(kept), kept).toBeTruthy();
   });
 
@@ -300,6 +318,9 @@ describe('«تشغيلات الإنتاج»', () => {
     for (const word of ['بِيع', 'الكلفة الكلية', 'التاريخ', 'متبقٍّ', 'كلفة الوحدة', 'درجة الكلفة']) {
       expect(within(card()).getByText(word), word).toBeTruthy();
     }
+    // no extra column, no fold in the card
+    expect(within(card()).queryByText('تفاصيل')).toBeNull();
+    expect(card().querySelector('details')).toBeNull();
   });
 
   it('the grade has the whole width of the card, with its reason, on a phone and a desk alike (it is a sentence, not a figure)', async () => {

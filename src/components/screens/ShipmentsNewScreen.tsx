@@ -416,6 +416,12 @@ ${describeRefused(out.refused)}`,
   const selectedCount = Object.values(selected).filter(Boolean).length;
   const phone = useIsPhone();
   const labelsStep = printLabelsStep(mayOpen);
+  /**
+   * HOW MANY OF THE FOLDED FILTERS ARE NARROWING THE LIST (phone).
+   * A closed fold that hides a chosen province or date hides why parcels are missing; the count is on the row
+   * that closes over them, so a narrowed list is never silent.
+   */
+  const narrowedInFold = [filters.region, filters.from, filters.to].filter(Boolean).length;
 
   /*
    * THE TWO WAYS ON FROM THE BANNER, drawn once and placed by the layout. The words, the doors and the order they
@@ -545,7 +551,7 @@ ${describeRefused(out.refused)}`,
         {/* On a phone the province and the dates fold behind one row that says what is inside: the search and the
             courier are what the next press cannot do without. On a desk the three cells are where they have always been. */}
         {phone ? (
-          <AdvancedGroup holds="المحافظة · التاريخ">
+          <AdvancedGroup holds={`المحافظة · التاريخ${narrowedInFold > 0 ? ` (${narrowedInFold})` : ''}`}>
             <Select className="w-full" label="المحافظة" value={filters.region} onChange={(v) => setFilters({ ...filters, region: v })} options={regions.map((r) => ({ value: r.id, label: r.name }))} />
             <DateField className="min-w-0 flex-1" label="من" value={filters.from} onChange={(v) => setFilters({ ...filters, from: v })} />
             <DateField className="min-w-0 flex-1" label="إلى" value={filters.to} onChange={(v) => setFilters({ ...filters, to: v })} />
