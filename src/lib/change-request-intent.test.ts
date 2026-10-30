@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { carryOut, missingFor, refusalFor, CHANGE_INTENTS } from './change-request-intent';
+import { cancelReasonProblem, carryOut, missingFor, refusalFor, CHANGE_INTENTS } from './change-request-intent';
 import { authorises, expandApproved } from './change-request-apply';
 import { repoFile, stripComments } from './guard-source';
 
@@ -75,9 +75,34 @@ describe('what each ask must carry', () => {
     expect(missingFor('POSTPONE', { postponeUntil: '2026-10-05T10:00:00.000Z' })).toBeNull();
   });
 
-  /** A cancellation is its reason, and the reason is demanded of all three. */
-  it('and a cancellation needs neither', () => {
-    expect(missingFor('CANCEL', {})).toBeNull();
+  /**
+   * WAS: «and a cancellation needs neither» (missingFor('CANCEL', {}) → null).
+   * NOW: a cancellation needs the structured reason it will be carried out
+   * under. The old answer let a request be stored with no reason, and the
+   * stand-down door then refused it for ever («سبب الإلغاء مطلوب»): that door
+   * is the design reference, and it demands the same thing.
+   */
+  it('and a cancellation needs its structured reason', () => {
+    expect(missingFor('CANCEL', {})).toBe('اختر سبب الإلغاء');
+    expect(missingFor('CANCEL', { cancelReason: 'CUSTOMER_CHANGED_MIND' })).toBeNull();
+    expect(missingFor('CANCEL', { cancelReason: 'OTHER', reason: 'الزبون سافر فجأة' })).toBeNull();
+    expect(missingFor('CANCEL', { cancelReason: 'OTHER', reason: '' })).toBeTruthy();
+  });
+
+  it('only a choice a person may make — never the two the system owns, never an invented word', () => {
+    expect(cancelReasonProblem('NO_ANSWER_3_ATTEMPTS', 'x'.repeat(9))).toBe('سبب الإلغاء غير صالح — اختر واحداً من القائمة');
+    expect(cancelReasonProblem('MODERATOR_DATA_ERROR', 'x'.repeat(9))).toBeTruthy();
+    expect(cancelReasonProblem('NOT_A_REASON', 'x'.repeat(9))).toBeTruthy();
+    expect(cancelReasonProblem('', 'x'.repeat(9))).toBe('اختر سبب الإلغاء');
+    expect(cancelReasonProblem(null, null)).toBe('اختر سبب الإلغاء');
+  });
+
+  it('«أخرى» needs a sentence of at least five letters, spaces not counted', () => {
+    expect(cancelReasonProblem('OTHER', null)).toBe('سبب «أخرى» يحتاج ملاحظة تشرحه');
+    expect(cancelReasonProblem('OTHER', '   abc  ')).toBeTruthy();
+    expect(cancelReasonProblem('OTHER', 'سافر الزبون')).toBeNull();
+    // Every other pickable reason needs no sentence.
+    expect(cancelReasonProblem('PRICE_TOO_HIGH', null)).toBeNull();
   });
 });
 
