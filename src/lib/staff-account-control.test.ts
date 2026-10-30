@@ -174,8 +174,15 @@ describe('the password door never hands anything back twice', () => {
     expect(src, 'ظهر بابٌ يُعيد قراءة كلمة السرّ').not.toMatch(/temporaryPassword/g.source && /GET[\s\S]{0,400}temporaryPassword/);
   });
 
-  it('and ends every session the employee had', () => {
-    expect(route()).toMatch(/updateData\.tokenVersion = \{ increment: 1 \}/);
+  it('and ends every session the employee had — in the resetPassword branch itself', () => {
+    // RV16: asked of the WHOLE file this stayed green when the raise was removed from this branch,
+    // because `changeStatus` and `forceLogout` carry the same line. Cut to this branch only.
+    const src = route();
+    const from = src.indexOf("action === 'resetPassword'");
+    const to = src.indexOf("action === 'updateContact'", from);
+    expect(from, 'فرع resetPassword اختفى').toBeGreaterThan(-1);
+    expect(to).toBeGreaterThan(from);
+    expect(src.slice(from, to)).toMatch(/updateData\.tokenVersion = \{ increment: 1 \}/);
   });
 
   it('and a typed password is judged by the same rules as every other door', () => {

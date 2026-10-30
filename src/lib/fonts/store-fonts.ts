@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { LOCAL_STORAGE_DIR, STORAGE_PROVIDER } from '@/lib/storage';
+import { LOCAL_STORAGE_DIR, STORAGE_PROVIDER, isSafeStorageKey } from '@/lib/storage';
 import { readFontFacts, looksRestricted, type FontFacts } from './font-file';
 import { cssString } from './css-string';
 
@@ -153,6 +153,8 @@ export async function writeFontFile(storageKey: string, buffer: Buffer): Promise
   if (STORAGE_PROVIDER !== 'local') {
     throw new Error(`STORAGE_PROVIDER=${STORAGE_PROVIDER} غير مُهيأ لرفع الخطوط`);
   }
+  // The same containment guard every other writer and reader of the uploads folder asks (SF-RV68).
+  if (!isSafeStorageKey(storageKey)) throw new Error('مسار تخزين غير صالح');
   const abs = path.join(LOCAL_STORAGE_DIR, storageKey);
   await fs.promises.mkdir(path.dirname(abs), { recursive: true });
   await fs.promises.writeFile(abs, buffer);
