@@ -296,7 +296,8 @@ const seedDiscounted = () =>
 
 /** The boxes a card opens on — what `GET` sends as `beforeDiscount` — for the lines now stored. */
 const opened = (): Box[] => {
-  const before = totalsBeforeDiscount(fake.lines, Number(fake.order.discountAmount), JOD.minorUnit);
+  const stored = fake.lines.map((l) => ({ lineTotal: l.lineTotal as unknown, discountShare: l.discountShare as unknown }));
+  const before = totalsBeforeDiscount(stored, Number(fake.order.discountAmount), JOD.minorUnit);
   return fake.lines.map((l, i) => ({ productId: l.productId, quantity: l.quantity, unitPrice: String(before[i]) }));
 };
 
