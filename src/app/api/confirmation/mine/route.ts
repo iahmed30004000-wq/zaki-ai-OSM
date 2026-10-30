@@ -13,6 +13,7 @@ import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { endOfLocalDay, localDayKey, startOfLocalDay } from '@/lib/local-day';
 import { readPage } from '@/lib/numeric-input';
 import { typed } from '@/lib/text-search';
+import { ruleFor } from '@/lib/phone-rules';
 
 /**
  * GET /api/confirmation/mine — the agent's own desk, in THREE groups.
@@ -104,7 +105,7 @@ async function noAnswerCounts(orderIds: string[]) {
 
 export async function GET(request: Request) {
   try {
-    const { user, companyId, storeId } = await requireContext();
+    const { user, companyId, storeId, country } = await requireContext();
     await requirePermission('confirmation.work');
 
     const scope = { companyId, storeId, claimedById: user.id };
@@ -259,6 +260,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       leadDays: POSTPONE_LEAD_DAYS,
+      // The country's calling code — the rows carry a local number («09…») and WhatsApp needs it in full.
+      dialCode: ruleFor(country.code)?.dialCode ?? null,
       /** Postponed to a later day — off her desk, not gone. */
       waitingLater,
       noAnswerLimit: NO_ANSWER_LIMIT,
