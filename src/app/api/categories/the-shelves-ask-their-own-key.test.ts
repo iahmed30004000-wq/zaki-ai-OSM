@@ -34,16 +34,17 @@ vi.mock('@/lib/auth', () => ({
 }));
 vi.mock('@/lib/audit', () => ({ logAudit: vi.fn() }));
 
-import { GET, POST, PATCH, DELETE } from './route';
+import { GET as rawGet, POST, PATCH, DELETE } from './route';
 
 const person = (grants: Record<string, { scope: string }>, over: Record<string, unknown> = {}) => ({
   id: 'u1', role: 'MODERATOR', status: 'ACTIVE', companyId: 'c1', effectiveGrants: { fullAccess: false, grants }, ...over,
 });
 const A = { scope: 'ALL_COMPANY' };
 
-const post = () => POST(new Request('http://x/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'جديد' }) }));
-const patch = () => PATCH(new Request('http://x/api/categories?id=cat1', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'جديد' }) }));
-const del = () => DELETE(new Request('http://x/api/categories?id=cat1', { method: 'DELETE' }));
+const post = async (): Promise<Response> => (await POST(new Request('http://x/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'جديد' }) })))!;
+const patch = async (): Promise<Response> => (await PATCH(new Request('http://x/api/categories?id=cat1', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'جديد' }) })))!;
+const del = async (): Promise<Response> => (await DELETE(new Request('http://x/api/categories?id=cat1', { method: 'DELETE' })))!;
+const GET = async (): Promise<Response> => (await rawGet())!;
 
 beforeEach(() => {
   writes.length = 0;
