@@ -9,6 +9,7 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { zodMessage } from '@/lib/zod-message';
 import { AiNotConfigured, aiChat, describeRoute } from '@/lib/ai-provider';
 import { customerHistory, customerRisk } from '@/lib/customer-risk';
+import { mayReadInsights } from '@/lib/insights-key';
 import { assistantByKey } from '@/lib/ai-assistants';
 import { deriveCoreState, STATE_LABEL_AR, type StateSource } from '@/lib/order-state';
 
@@ -66,7 +67,10 @@ export async function POST(req: Request) {
     });
     if (!order) return NextResponse.json({ error: 'الطلب غير موجود' }, { status: 404 });
 
-    const risk = order.customer ? await customerRisk(db, companyId, order.customer.id) : null;
+    // The return-risk tier is a smart card (PR-10): without `insights.view` it is neither looked up nor handed to the model or
+    // back to the screen — absent, not «SAFE».
+    const showRisk = mayReadInsights(user);
+    const risk = order.customer && showRisk ? await customerRisk(db, companyId, order.customer.id) : null;
 
     /*
      * The previous orders of THIS PERSON, as facts rather than prose: what
@@ -135,11 +139,15 @@ export async function POST(req: Request) {
              * ever leaving this machine.
              */
             name: local ? order.customer.fullName : '{الاسم}',
-            orders: risk?.orders ?? 0,
-            returns: risk?.returns ?? 0,
-            returnRate: risk?.returnRate ?? 0,
-            tier: risk?.tier ?? 'SAFE',
-            requiresPrepaymentOrApproval: risk?.requiresPrepaymentOrApproval ?? false,
+            ...(showRisk
+              ? {
+                  orders: risk?.orders ?? 0,
+                  returns: risk?.returns ?? 0,
+                  returnRate: risk?.returnRate ?? 0,
+                  tier: risk?.tier ?? 'SAFE',
+                  requiresPrepaymentOrApproval: risk?.requiresPrepaymentOrApproval ?? false,
+                }
+              : {}),
             previous: history.map((h) => ({
               number: h.orderNumber,
               state: STATE_LABEL_AR[deriveCoreState(h as StateSource)],

@@ -23,9 +23,9 @@ export async function GET(req: Request) {
   try {
     const { user, companyId, storeId, country } = await requireContext();
 
-    const mayViewTeam =
-      can(user, 'users.view') || ['SUPER_ADMIN', 'COMPANY_ADMIN', 'MANAGER'].includes(user.role);
-    if (!mayViewTeam) {
+    // The team's table is `team.monitor`'s (PR-10). It read `users.view` OR three role NAMES; the migration
+    // 20261030170000_costs_insights_keys gave the key to everybody who passed either, so nobody lost the table on the day.
+    if (!can(user, 'team.monitor')) {
       return NextResponse.json({ error: 'Forbidden: cannot view team performance', errorAr: 'أداء الفريق للمشرف وحده.' }, { status: 403 });
     }
 

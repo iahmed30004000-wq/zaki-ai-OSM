@@ -369,7 +369,7 @@ export function ProductDetailScreen() {
             </Card>
 
             {/* What it sold — from the server's own count (see ProductPerformance for why the old card was blank). */}
-            <ProductPerformance productId={productId} />
+            {userCan(currentUser, 'insights.view') && <ProductPerformance productId={productId} />}
 
             {/*
               ── «المخزون» WAS HERE, TWICE OVER ──

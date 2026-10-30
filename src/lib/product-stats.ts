@@ -47,6 +47,12 @@ export interface ProductStats {
   top: { id: string; units: number } | null;
 }
 
+/**
+ * What the door SENDS: the whole answer to a caller who may read the smart cards (`insights.view`), only the units per product
+ * — the column in the list — to everybody else. `totals` and `top` are ABSENT then, never zero.
+ */
+export type ProductStatsAnswer = Pick<ProductStats, 'unitsSold'> & Partial<Pick<ProductStats, 'totals' | 'top'>>;
+
 export function summariseProducts(input: {
   products: readonly StatsProduct[];
   /** Units on hand per product (a product with none may be absent). */

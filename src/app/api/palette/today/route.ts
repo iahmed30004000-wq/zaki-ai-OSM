@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { apiErrorResponse } from '@/lib/api-error';
 import { requireContext } from '@/lib/geo-context';
 import { can, getPermissionScope } from '@/lib/authorization';
+import { mayReadInsights } from '@/lib/insights-key';
 import { rateLimit } from '@/lib/rate-limit';
 import {
   AiEndpointMissing,
@@ -55,7 +56,8 @@ export async function POST() {
 
     // The numbers are the person's own scope of `orders.view`, and the sentence is the assistants' — both keys, or neither
     // (PR-5: «لخّصلي اليوم» was offered to everybody who could open the box, and wakes a model on every press).
-    if (!getPermissionScope(user, 'orders.view') || !can(user, 'ai.assist')) {
+    // PR-10: the live counts it sums up are smart cards — the third key rides beside the other two.
+    if (!getPermissionScope(user, 'orders.view') || !can(user, 'ai.assist') || !mayReadInsights(user)) {
       return NextResponse.json({ error: 'لا صلاحية' }, { status: 403 });
     }
 

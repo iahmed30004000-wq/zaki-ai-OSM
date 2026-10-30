@@ -93,9 +93,21 @@ describe('the cost panel', () => {
     expect(screen.queryByText('تكلفة البضاعة:')).toBeNull();
   });
 
-  it('is drawn for the finance key', async () => {
-    viewer.current = { id: 'u1', role: 'CUSTOM', permissions: ['orders.view', 'finance.view'], status: 'ACTIVE' };
+  it('is drawn for the finance key AND the cost key (PR-10)', async () => {
+    viewer.current = { id: 'u1', role: 'CUSTOM', permissions: ['orders.view', 'finance.view', 'costs.view'], status: 'ACTIVE' };
     await open();
     expect(screen.queryByText('تكاليفنا على هذا الطلب')).not.toBeNull();
+  });
+
+  it('NEGATIVE: not drawn for the finance key alone — the owner took the cost away', async () => {
+    viewer.current = { id: 'u1', role: 'CUSTOM', permissions: ['orders.view', 'finance.view'], status: 'ACTIVE' };
+    await open();
+    expect(screen.queryByText('تكاليفنا على هذا الطلب')).toBeNull();
+  });
+
+  it('NEGATIVE: not drawn for the cost key alone — a warehouse keeper sees the shelf’s cost, not the order’s margin', async () => {
+    viewer.current = { id: 'u1', role: 'CUSTOM', permissions: ['orders.view', 'costs.view'], status: 'ACTIVE' };
+    await open();
+    expect(screen.queryByText('تكاليفنا على هذا الطلب')).toBeNull();
   });
 });

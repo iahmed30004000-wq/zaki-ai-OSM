@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
+import { insightsRefused, mayReadInsights } from '@/lib/insights-key';
 import { getDateRange } from '@/lib/analytics';
 import { channelPerformance } from '@/lib/attribution-performance';
 import { DELIVERED_SHIPPING, whereDelivered } from '@/lib/order-state';
@@ -80,8 +81,10 @@ export interface ChannelPerformanceRow {
 
 export async function GET() {
   try {
-    const { companyId, storeId } = await requireContext();
+    const { user, companyId, storeId } = await requireContext();
     await requirePermission('reports.view');
+    // A channel's score is a smart card (PR-10): the report key is not enough, the cards' key rides beside it.
+    if (!mayReadInsights(user)) return insightsRefused();
 
     // The same bounded window every report in this system uses for «الكل»:
     // ninety days, clamped server-side. The screen has no date picker, and

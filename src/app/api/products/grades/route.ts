@@ -4,6 +4,7 @@ import { requireContext } from '@/lib/geo-context';
 import { can, getPermissionScope } from '@/lib/authorization';
 import { apiErrorResponse, forbiddenAr } from '@/lib/api-error';
 import { maySeeCost } from '@/lib/cost-visibility';
+import { insightsRefused, mayReadInsights } from '@/lib/insights-key';
 import { productScopeWhereWithin } from '@/lib/product-scope';
 import { getDateRange } from '@/lib/analytics';
 import { CONFIRMATION_REFUSED, DELIVERED_SHIPPING } from '@/lib/order-state';
@@ -80,6 +81,9 @@ export async function GET(req: Request) {
     if (!scope) {
       return NextResponse.json({ error: 'Forbidden: missing required permission products.view', errorAr: forbiddenAr('Forbidden: missing required permission products.view') }, { status: 403 });
     }
+
+    // The grade IS a smart card (PR-10): the catalogue's key is not enough, the cards' key rides beside it.
+    if (!mayReadInsights(user)) return insightsRefused();
 
     const asked = (new URL(req.url).searchParams.get('ids') ?? '')
       .split(',')

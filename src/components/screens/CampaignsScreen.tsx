@@ -80,7 +80,10 @@ interface Payload {
   currency: string;
   adAccounts: AdAccount[];
   definitions: Record<string, string>;
+  /** ABSENT without `insights.view` (the cards are a verdict, PR-10). */
   insights?: BoardInsights;
+  /** How many hand-typed campaigns have a platform twin — sent to everybody, it is what «احذف المكرر» works on. */
+  duplicatesCount?: number;
 }
 
 /**
@@ -305,7 +308,7 @@ export function CampaignsScreen() {
 
   /** «حذف المكرر» — the hand-typed copy's orders move to the platform twin, then the copy is removed. */
   async function merge(ids?: string[]) {
-    const count = ids?.length ?? data?.insights?.duplicates ?? 0;
+    const count = ids?.length ?? data?.duplicatesCount ?? data?.insights?.duplicates ?? 0;
     const ok = await confirm({
       title: `دمج ${count} حملة مكررة؟`,
       body: 'كل حملة مدخّلة باليد إلها نسخة بنفس الاسم سحبها النظام من المنصة: طلباتها بتنتقل للنسخة اللي فيها الإنفاق، وبعدين النسخة اليدوية بتنحذف. ما في طلب بيضيع.',
@@ -409,6 +412,7 @@ export function CampaignsScreen() {
           mayManage={mayManage}
           campaigns={data?.campaigns ?? []}
           insights={data?.insights ?? null}
+          duplicates={data?.duplicatesCount ?? data?.insights?.duplicates ?? 0}
           currency={currency}
           statuses={CAMPAIGN_STATUSES}
           platforms={CAMPAIGN_PLATFORMS}

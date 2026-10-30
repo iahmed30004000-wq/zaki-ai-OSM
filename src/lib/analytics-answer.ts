@@ -305,7 +305,8 @@ export async function answerAnalytics(
         // in the same payload already carries every product's name, and
         // sending it twice is how one screen comes to show a product under
         // two spellings.
-        returnsByProduct: productReturns,
+        // The return rate of each product is a smart card (PR-10): ABSENT without `insights.view`.
+        ...(can(user, 'insights.view') ? { returnsByProduct: productReturns } : {}),
         outstanding: {
           orders: collected._count._all + uncollected._count._all,
           // The money still out with couriers is money: the tile showing it

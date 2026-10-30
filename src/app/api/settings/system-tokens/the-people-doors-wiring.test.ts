@@ -73,6 +73,7 @@ describe('minting an API key', () => {
 
   it('the same key, minted by somebody who holds both', async () => {
     h.held.keys['finance.view'] = 'ALL_COMPANY';
+    h.held.keys['costs.view'] = 'ALL_COMPANY'; // PR-10: whoever mints the cost key must see the cost
     const res = await asks(['products.read', 'products.costs.read']);
     expect(res.status, await res.clone().text()).toBeLessThan(300);
     expect(h.db.systemToken.create).toHaveBeenCalled();

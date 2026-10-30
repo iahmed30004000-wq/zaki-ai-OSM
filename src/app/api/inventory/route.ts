@@ -7,6 +7,7 @@ import { requireContext } from '@/lib/geo-context';
 import { inStore } from '@/lib/store-filter';
 import { logAudit } from '@/lib/audit';
 import { requirePermission } from '@/lib/authorization';
+import { maySeeCost } from '@/lib/cost-visibility';
 import { drawDownStock, onHandTotal, receiveStock } from '@/lib/receiving';
 import { zodMessage } from '@/lib/zod-message';
 import { resolveUnitCost } from '@/lib/unit-cost';
@@ -18,6 +19,8 @@ export async function GET() {
   try {
     const { user, companyId, storeId } = await requireContext();
     await requirePermission('inventory.view');
+    // What the goods COST is the cost key's (PR-10): the shelf and the verdict stay for the stock key.
+    const showCost = maySeeCost(user);
 
     // This store's goods, and only this store's. Stock is the clearest case
     // of all: a count that includes another store's warehouse is not a
@@ -140,9 +143,14 @@ export async function GET() {
          */
         reserved: reserved.get(p.id) ?? 0,
         batchesCount: p.batches.length,
-        lastUnitCost,
-        /** Batches whose cost is zero — every unit out of them reads as pure profit. */
-        zeroCostBatches: p.batches.filter((b) => b.costPerUnit === 0 && b.quantityRemaining > 0).length,
+        // Omitted, not zeroed or nulled, for a caller without `costs.view`: a null says «never costed» and a zero «cost nothing».
+        ...(showCost
+          ? {
+              lastUnitCost,
+              /** Batches whose cost is zero — every unit out of them reads as pure profit. */
+              zeroCostBatches: p.batches.filter((b) => b.costPerUnit === 0 && b.quantityRemaining > 0).length,
+            }
+          : {}),
         /** The verdict, its reason, its score and the bands behind it. */
         health: stockHealth(facts, MAX_WINDOW_DAYS),
       };

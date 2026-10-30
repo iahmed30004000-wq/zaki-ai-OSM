@@ -19,7 +19,7 @@ import { DELIVERED_SHIPPING } from '@/lib/order-state';
  * ═══════════════════════════════════════════════════════════════════════
  */
 
-const { db, requireContext, getPermissionScope, maySeeCost, productCosts } = vi.hoisted(() => ({
+const { db, requireContext, getPermissionScope, maySeeCost, productCosts, mayReadInsights } = vi.hoisted(() => ({
   db: {
     product: { findMany: vi.fn(), count: vi.fn() },
     orderItem: { groupBy: vi.fn() },
@@ -28,6 +28,7 @@ const { db, requireContext, getPermissionScope, maySeeCost, productCosts } = vi.
   getPermissionScope: vi.fn(),
   maySeeCost: vi.fn(),
   productCosts: vi.fn(),
+  mayReadInsights: vi.fn(),
 }));
 
 vi.mock('@/lib/db', () => ({ db }));
@@ -37,6 +38,7 @@ vi.mock('@/lib/authorization', () => ({
   requirePermission: vi.fn(),
 }));
 vi.mock('@/lib/cost-visibility', () => ({ maySeeCost: (...a: unknown[]) => maySeeCost(...a), withoutCost: (b: unknown) => b }));
+vi.mock('@/lib/insights-key', () => ({ mayReadInsights: (...a: unknown[]) => mayReadInsights(...a) }));
 vi.mock('@/lib/product-cost', () => ({ productCosts: (...a: unknown[]) => productCosts(...a) }));
 vi.mock('@/lib/audit', () => ({ logAudit: vi.fn() }));
 vi.mock('@/lib/auth', () => ({ requireCompanyTenant: vi.fn() }));
@@ -57,6 +59,8 @@ beforeEach(() => {
   requireContext.mockResolvedValue(CTX);
   getPermissionScope.mockReturnValue({ scope: 'ALL_COMPANY' });
   maySeeCost.mockReturnValue(false);
+  // The cards (`totals`, `top`) travel to `insights.view` (PR-10); the tests below hold it unless they say otherwise.
+  mayReadInsights.mockReturnValue(true);
   settledRows = [];
   unsettledRows = [];
   db.product.findMany.mockResolvedValue([]);
@@ -270,5 +274,47 @@ describe('how it is built', () => {
 
   it('and the door sends no English refusal', () => {
     expect(src()).not.toMatch(/error: '[A-Za-z]/);
+  });
+});
+
+/**
+ * THE CARDS ARE THE SMART-CARD KEY'S; THE COLUMN IS THE CATALOGUE'S (perm-plan PR-10).
+ *
+ * `totals` and `top` are the four cards above the list. Without `insights.view` they are ABSENT — not zero, not null — and the
+ * units per product, which feed each row's «المبيعات» cell, stay for everybody who may see the catalogue.
+ */
+describe('without insights.view: the column stays, the cards go', () => {
+  beforeEach(() => {
+    mayReadInsights.mockReturnValue(false);
+    db.product.findMany.mockResolvedValue([{ id: 'p1', status: 'ACTIVE', categoryId: 'c' }]);
+    productCosts.mockResolvedValue(new Map([['p1', cost(10, 35)]]));
+    settledRows = [{ productId: 'p1', _sum: { deliveredQty: 12 } }];
+  });
+
+  it('answers the units per product and nothing else', async () => {
+    const b = await body(await STATS());
+    expect(b).toEqual({ unitsSold: { p1: 12 } });
+    expect('totals' in b).toBe(false);
+    expect('top' in b).toBe(false);
+  });
+
+  it('and not one of the stock figures leaks through the units (no on-hand, no value)', async () => {
+    maySeeCost.mockReturnValue(true);
+    const text = JSON.stringify(await body(await STATS()));
+    expect(text).not.toContain('stockValue');
+    expect(text).not.toContain('unitsOnHand');
+    expect(text).not.toContain('35');
+  });
+
+  it('NEGATIVE (the test of the test): the same caller WITH the key gets the cards', async () => {
+    mayReadInsights.mockReturnValue(true);
+    const b = await body(await STATS());
+    expect(b.totals.unitsSold).toBe(12);
+    expect(b.top).toEqual({ id: 'p1', units: 12 });
+  });
+
+  it('asks the key of THIS caller, not a stale one', async () => {
+    await STATS();
+    expect(mayReadInsights).toHaveBeenCalledWith(CTX.user);
   });
 });

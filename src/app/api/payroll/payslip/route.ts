@@ -66,6 +66,9 @@ export async function GET(req: Request) {
   try {
     const { companyId, storeId } = await requireContext();
     await requirePermission('payroll.pay');
+    // The preview shows what a person is paid, so it rides beside `payroll.view` (PR-10): the page you pay from still asks
+    // the paying key, and the pay itself is the viewing key's to hide. The payment (POST) is unchanged.
+    await requirePermission('payroll.view');
 
     const q = new URL(req.url).searchParams;
     const userId = q.get('userId');

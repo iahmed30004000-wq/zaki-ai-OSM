@@ -4,6 +4,7 @@ import { requireContext } from '@/lib/geo-context';
 import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { customerRisk } from '@/lib/customer-risk';
+import { mayReadInsights } from '@/lib/insights-key';
 import { POSTPONE_LEAD_DAYS } from '@/lib/confirmation-queue';
 import { deriveCoreState, type StateSource } from '@/lib/order-state';
 import { NO_ANSWER_LIMIT , NO_ANSWER_RESULTS } from '@/lib/confirmation-workflow';
@@ -215,7 +216,9 @@ export async function GET(request: Request) {
     // Both lists that go through `decorate`, so the one function never
     // returns a risk tier for some rows and null for others.
     const customerIds = [...new Set([...inConfirmation, ...closedToday].map((o) => o.customer.id))];
-    const risks = await Promise.all(customerIds.map((id) => customerRisk(db, companyId, id)));
+    // The return-risk tier is a smart card (PR-10): `null` without `insights.view`, which the screen already draws as no chip
+    // (a customer with no history has no tier either) — and the lookups are not made.
+    const risks = mayReadInsights(user) ? await Promise.all(customerIds.map((id) => customerRisk(db, companyId, id))) : customerIds.map(() => null);
     const riskByCustomer = new Map(customerIds.map((id, i) => [id, risks[i]]));
     const noAnswer = await noAnswerCounts([...inConfirmation, ...closedToday].map((o) => o.id));
 

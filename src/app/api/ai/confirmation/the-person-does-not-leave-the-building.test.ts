@@ -42,6 +42,7 @@ vi.mock('@/lib/ai-rate', () => ({ tooManyAiCalls: () => null }));
 vi.mock('@/lib/db', () => ({ db }));
 vi.mock('@/lib/geo-context', () => ({ requireContext: (...a: unknown[]) => requireContext(...a) }));
 vi.mock('@/lib/authorization', () => ({ requirePermission: (...a: unknown[]) => requirePermission(...a) }));
+vi.mock('@/lib/insights-key', () => ({ mayReadInsights: () => true }));
 // The work door's envelope (her own OR the order she holds); this file is about the payload.
 vi.mock('@/lib/rbac', () => ({ orderWorkWhere: () => ({}) }));
 vi.mock('@/lib/ai-provider', async (importOriginal) => ({

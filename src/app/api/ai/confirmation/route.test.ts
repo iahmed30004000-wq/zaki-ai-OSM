@@ -35,6 +35,9 @@ vi.mock('@/lib/db', () => ({ db }));
 vi.mock('@/lib/ai-rate', () => ({ tooManyAiCalls: () => null }));
 vi.mock('@/lib/geo-context', () => ({ requireContext: (...a: unknown[]) => requireContext(...a) }));
 vi.mock('@/lib/authorization', () => ({ requirePermission: (...a: unknown[]) => requirePermission(...a) }));
+// PR-10: the return-risk tier is a smart card; the key is asked of the user, and this file holds it unless a test says otherwise.
+const { mayReadInsights } = vi.hoisted(() => ({ mayReadInsights: vi.fn() }));
+vi.mock('@/lib/insights-key', () => ({ mayReadInsights: (...a: unknown[]) => mayReadInsights(...a) }));
 // The person's order envelope — the same one the order window reads through,
 // which is the WORK door's now (`orderWorkWhere`: her envelope OR the order she
 // holds). What it lets through is `the-order-she-holds.test.ts`'s question;
@@ -84,6 +87,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   requireContext.mockResolvedValue({ user: { id: 'u1' }, companyId: 'c1', storeId: 's1' });
   requirePermission.mockResolvedValue(undefined);
+  mayReadInsights.mockReturnValue(true);
   orderWorkWhere.mockReturnValue({});
   db.order.findFirst.mockResolvedValue(order);
   db.order.findMany.mockResolvedValue([]);
@@ -97,6 +101,19 @@ beforeEach(() => {
 
 /** Everything the provider was told, as one string. */
 const sentToModel = () => JSON.stringify(aiChat.mock.calls[0][0]);
+
+describe('the return risk is a smart card — insights.view (PR-10)', () => {
+  it('without the key: the risk is not looked up, not sent to the model and not sent back — absent, not «SAFE»', async () => {
+    mayReadInsights.mockReturnValue(false);
+    const body = await (await ask()).json();
+    expect(customerRisk).not.toHaveBeenCalled();
+    for (const f of ['tier', 'returnRate', 'returns', 'orders', 'requiresPrepaymentOrApproval']) {
+      expect(body.context.customer, f).not.toHaveProperty(f);
+      expect(sentToModel(), f).not.toContain(`"${f}"`);
+    }
+    expect(body.context.customer.previous).toBeDefined();
+  });
+});
 
 describe('what reaches the provider', () => {
   it('never the phone and never the address — the agent already has both on screen', async () => {

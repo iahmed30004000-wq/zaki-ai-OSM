@@ -21,17 +21,11 @@ import { can } from './authorization';
  * customer reads; nothing here hides it.
  */
 export function maySeeCost(user: SessionUser): boolean {
-  // Catalogued keys only. `inventory.manage` reads like one and is not: it
-  // is a legacy ROLE key that the permissions screen cannot grant, so
-  // enforcing it would be enforcing something nobody can be given. The
-  // catalogue guard caught exactly that here.
-  return (
-    can(user, 'inventory.view') ||
-    can(user, 'inventory.adjust') ||
-    can(user, 'production.view') ||
-    can(user, 'production.manage') ||
-    can(user, 'finance.view')
-  );
+  // ONE KEY (perm-plan PR-10, D3). This was an OR of five — the stock, the production and the finance screens' keys — so the
+  // owner could not take the cost away from the warehouse and keep the shelf. The migration
+  // 20261030170000_costs_insights_keys gave `costs.view` to everybody who held any of the five, so nobody lost a figure
+  // on the day; from then on one tick takes it away. A visibility key: the screen still opens on its own key.
+  return can(user, 'costs.view');
 }
 
 /** The batch fields that say what it cost — dropped for everybody else. */

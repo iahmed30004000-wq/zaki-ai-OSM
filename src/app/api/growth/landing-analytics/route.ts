@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireContext } from '@/lib/geo-context';
 import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
+import { mayReadInsights } from '@/lib/insights-key';
 import { getDateRange, type DateFilter } from '@/lib/analytics';
 import { landingAnalytics, pageVerdicts } from '@/lib/landing-analytics';
 
@@ -16,7 +17,7 @@ import { landingAnalytics, pageVerdicts } from '@/lib/landing-analytics';
  */
 export async function GET(req: Request) {
   try {
-    const { companyId, storeId } = await requireContext();
+    const { user, companyId, storeId } = await requireContext();
     await requirePermission('reports.view');
     await requirePermission('landing_pages.view');
 
@@ -36,11 +37,14 @@ export async function GET(req: Request) {
      * permission gates. A second endpoint would be a second place for the
      * window to be computed differently.
      */
+    // The verdicts («أيُّ نسختين تغلب») are smart cards (PR-10): the table is the reports' and the pages' keys', the verdict
+    // is `insights.view`'s — ABSENT, not an empty list, without it (and not even computed).
+    const withVerdicts = mayReadInsights(user);
     const [data, verdicts] = await Promise.all([
       landingAnalytics({ companyId, storeId, start: start ?? now, end: end ?? now }),
-      pageVerdicts({ companyId, storeId, start: start ?? now, end: end ?? now }),
+      withVerdicts ? pageVerdicts({ companyId, storeId, start: start ?? now, end: end ?? now }) : Promise.resolve(undefined),
     ]);
-    return NextResponse.json({ ...data, verdicts });
+    return NextResponse.json(withVerdicts ? { ...data, verdicts } : data);
   } catch (error) {
     return apiErrorResponse(error);
   }

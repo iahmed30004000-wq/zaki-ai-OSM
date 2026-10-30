@@ -32,7 +32,7 @@ function draw(over: Partial<React.ComponentProps<typeof CampaignsBoard>> = {}) {
   const props = {
     // was: no `mayManage` — the writes are drawn only for «إدارة الحملات» since PR-11, so the board is told.
     mayManage: true,
-    campaigns: list, insights, currency: 'USD',
+    campaigns: list, insights, duplicates: insights.duplicates, currency: 'USD',
     statuses: [{ key: 'ACTIVE', label: 'تعمل' }, { key: 'PAUSED', label: 'متوقفة' }],
     platforms: [{ key: 'META', label: 'ميتا' }],
     accounts: [{ id: 'acc', accountName: 'كيوان 3', accountId: 'act_1' }],
@@ -94,8 +94,16 @@ describe('the campaigns board', () => {
   });
 
   it('NEGATIVE: with no duplicates there is no merge button', () => {
-    draw({ insights: { ...insights, duplicates: 0 } });
+    draw({ insights: { ...insights, duplicates: 0 }, duplicates: 0 });
     expect(screen.queryByRole('button', { name: /احذف المكرر/ })).toBeNull();
+  });
+
+  it('PR-10: without the cards (no insights.view) there is NO card, and «احذف المكرر» still works from the twins count', () => {
+    const p = draw({ insights: null, duplicates: 1 });
+    expect(screen.queryByText('أفضل عائد')).toBeNull();
+    expect(screen.queryByText('أكبر خسارة')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /احذف المكرر \(1\)/ }));
+    expect(p.onMerge).toHaveBeenCalledWith();
   });
 });
 

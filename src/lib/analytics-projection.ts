@@ -56,13 +56,21 @@ export function projectAnalytics(analytics: Row, user: SessionUser): Row {
   if (aiContext && typeof aiContext === 'object') {
     // The same closed map the assistant uses: a key nobody classified is dropped.
     out.aiContext = scopeContext(aiContext as object, allowedScopes(['orders', 'finance', 'team'], (p) => can(user, p))).context;
+    // The two rankings the model is told are the smart cards again (PR-10): they follow `insights.view` into the context too.
+    if (!can(user, 'insights.view') && out.aiContext && typeof out.aiContext === 'object') {
+      const ctx = { ...(out.aiContext as Row) };
+      delete ctx.top_demanded_product;
+      delete ctx.highest_rejection_product;
+      out.aiContext = ctx;
+    }
   }
 
   if (Array.isArray(productStats)) {
     out.productStats = money ? productStats : productStats.map((p) => without(p, PRODUCT_MONEY));
   }
 
-  if (rankings && typeof rankings === 'object') {
+  // The five «most / highest» products are smart cards (PR-10): ABSENT, not an empty object, without `insights.view`.
+  if (rankings && typeof rankings === 'object' && can(user, 'insights.view')) {
     const r = rankings as Row;
     out.rankings = money
       ? r

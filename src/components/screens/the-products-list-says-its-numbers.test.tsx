@@ -21,10 +21,10 @@ import { stripComments } from '@/lib/guard-source';
  * ═══════════════════════════════════════════════════════════════════════
  */
 
-const { push } = vi.hoisted(() => ({ push: vi.fn() }));
+const { push, viewer } = vi.hoisted(() => ({ push: vi.fn(), viewer: { current: { id: 'u1', role: 'CUSTOM', status: 'ACTIVE', permissions: ['products.view', 'insights.view'] } } }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }), useSearchParams: () => new URLSearchParams() }));
 vi.mock('next/link', () => ({ default: ({ children }: { children: React.ReactNode }) => <span>{children}</span> }));
-vi.mock('@/context/AppContext', () => ({ useApp: () => ({ t: { products: 'المنتجات', loading: 'جارٍ التحميل…' }, locale: 'ar' }) }));
+vi.mock('@/context/AppContext', () => ({ useApp: () => ({ t: { products: 'المنتجات', loading: 'جارٍ التحميل…' }, locale: 'ar', currentUser: viewer.current }) }));
 vi.mock('@/context/StoreCurrency', () => ({ useStoreCurrency: () => ({ code: 'JOD', minorUnit: 3 }) }));
 vi.mock('@/components/ui/Confirm', () => ({ useConfirm: () => vi.fn(async () => true), useTell: () => vi.fn() }));
 vi.mock('@/components/products/CategoryPicker', () => ({ CategoryPicker: () => <div data-testid="category-picker" /> }));
@@ -55,6 +55,7 @@ let answer: StatsAnswer;
 let asked: string[];
 
 beforeEach(() => {
+  viewer.current = { id: 'u1', role: 'CUSTOM', status: 'ACTIVE', permissions: ['products.view', 'insights.view'] };
   asked = [];
   answer = { kind: 'ok', body: STATS };
   vi.stubGlobal(
@@ -105,6 +106,27 @@ const ready = async () => {
   render(<ProductsScreen />);
   await waitFor(() => expect(screen.getAllByText('طاقية إنبات الشعر').length).toBeGreaterThan(0));
 };
+
+describe('PR-10: the cards and the grade are the smart-card key’s; the column is the catalogue’s', () => {
+  it('without insights.view: the column still prints the units, there are no cards, and the grades door is never asked', async () => {
+    viewer.current = { id: 'u2', role: 'CUSTOM', status: 'ACTIVE', permissions: ['products.view'] };
+    // what the door answers such a caller: the units per product and nothing else
+    answer = { kind: 'ok', body: { unitsSold: STATS.unitsSold } };
+    await ready();
+    await waitFor(() => expect(soldFor('طاقية إنبات الشعر')).toBe('17,664'));
+    expect(screen.queryByText('القطع المباعة')).toBeNull();
+    expect(screen.queryByText('القطع في المستودع')).toBeNull();
+    expect(asked.some((u) => u.startsWith('/api/products/grades')), 'سُئل باب التقدير بلا مفتاحه').toBe(false);
+    expect(screen.queryByText('التقدير')).toBeNull();
+  });
+
+  it('NEGATIVE (the test of the test): with the key the cards, the grade column and the grades call are all there', async () => {
+    await ready();
+    await waitFor(() => expect(screen.getByText('القطع المباعة')).toBeTruthy());
+    await waitFor(() => expect(asked.some((u) => u.startsWith('/api/products/grades'))).toBe(true));
+    expect(screen.getAllByText('التقدير').length).toBeGreaterThan(0);
+  });
+});
 
 describe('the «المبيعات» column prints what the stats door counted', () => {
   it('— the units delivered to customers, per product, in Latin digits with thousands separated', async () => {

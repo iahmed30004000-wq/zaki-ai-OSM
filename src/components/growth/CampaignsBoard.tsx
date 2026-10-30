@@ -47,13 +47,15 @@ const SELECT = 'h-8 rounded-lg border border-[var(--sys-border-input)] bg-[var(-
 const fmt = (n: number | null) => (n === null ? '—' : n.toLocaleString('en-US', { maximumFractionDigits: 2 }));
 
 export function CampaignsBoard<T extends BoardCampaign>({
-  mayManage, campaigns, insights, currency, statuses, platforms, accounts,
+  mayManage, campaigns, insights, duplicates, currency, statuses, platforms, accounts,
   renderCard, onReorder, onBulkDelete, onMerge,
 }: {
   /** «إدارة الحملات» (PR-11): the selection, the drag, the bulk delete and the merge are writes, drawn only for it. */
   mayManage: boolean;
   campaigns: T[];
   insights: BoardInsights | null;
+  /** The twins count, apart from the cards: it works without `insights.view`. */
+  duplicates: number;
   currency: string;
   statuses: readonly { key: string; label: string }[];
   platforms: readonly { key: string; label: string }[];
@@ -191,10 +193,10 @@ export function CampaignsBoard<T extends BoardCampaign>({
             حدد كل المعروض ({shown.length})
           </label>
           )}
-          {mayManage && insights && insights.duplicates > 0 && (
+          {mayManage && duplicates > 0 && (
             <button type="button" onClick={() => void onMerge()}
               className="inline-flex items-center gap-1 rounded-lg border border-[var(--sys-warning)] px-2 py-1 text-xs font-semibold text-[var(--sys-warning)]">
-              <RiGitMergeLine className="h-4 w-4" /> احذف المكرر ({insights.duplicates})
+              <RiGitMergeLine className="h-4 w-4" /> احذف المكرر ({duplicates})
             </button>
           )}
         </div>

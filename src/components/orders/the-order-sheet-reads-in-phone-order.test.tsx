@@ -41,7 +41,7 @@ vi.mock('@/context/AppContext', () => ({
       id: 'u1',
       name: 'سارة',
       role: 'CONFIRMATION_AGENT',
-      permissions: ['orders.view', 'confirmation.work', 'orders.confirm'],
+      permissions: ['orders.view', 'confirmation.work', 'orders.confirm', 'insights.view'],
       status: 'ACTIVE',
     },
   }),
