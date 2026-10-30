@@ -1510,12 +1510,12 @@
     "tabs": 0
   },
   "src/components/screens/UserDetailScreen.tsx": {
-    "buttons": 15,
+    "buttons": 16,
     "inputs": 10,
     "columns": 5,
     "cards": 8,
     "modals": 1,
-    "icons": 23,
+    "icons": 25,
     "links": 0,
     "tabs": 0
   },
@@ -1680,12 +1680,12 @@
     "tabs": 0
   },
   "src/components/settings/PasskeySection.tsx": {
-    "buttons": 2,
-    "inputs": 0,
+    "buttons": 4,
+    "inputs": 1,
     "columns": 0,
     "cards": 1,
     "modals": 0,
-    "icons": 5,
+    "icons": 6,
     "links": 0,
     "tabs": 0
   },
@@ -1930,12 +1930,12 @@
     "tabs": 0
   },
   "src/components/shell/SecondFactor.tsx": {
-    "buttons": 6,
-    "inputs": 3,
+    "buttons": 8,
+    "inputs": 4,
     "columns": 0,
     "cards": 0,
     "modals": 0,
-    "icons": 5,
+    "icons": 6,
     "links": 0,
     "tabs": 0
   },
