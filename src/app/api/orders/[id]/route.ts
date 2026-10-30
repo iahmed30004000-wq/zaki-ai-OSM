@@ -2099,6 +2099,18 @@ export async function PATCH(
             },
           })
           .catch(() => undefined);
+        /*
+         * THE ROLLBACK GAVE THE ORDER BACK ITS DEAD BARCODE. The company has cancelled that parcel, but the rollback restored
+         * `trackingNumber` and the send claim, and the dispatch door refuses an order that carries a barcode — so «أعد إرسال
+         * الطرد» would be a sentence nobody could follow. They are cleared here, and ONLY if the order still carries the very
+         * barcode the company cancelled: a newer one (somebody re-sent it meanwhile) is a live parcel and is left alone.
+         */
+        await db.order
+          .updateMany({
+            where: { id, trackingNumber: courierLetGo.barcode },
+            data: { trackingNumber: null, courierSendStartedAt: null },
+          })
+          .catch(() => undefined);
         throw new PrepShortage(failed.names, true);
       }
       throw failed;

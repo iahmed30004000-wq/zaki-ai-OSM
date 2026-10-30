@@ -797,6 +797,51 @@ describe('(مخزون) the shelf is asked BEFORE the company is', () => {
     expect(logAudit).not.toHaveBeenCalled();
   });
 
+  /**
+   * The order row after the rollback, as a stand-in database sees it: the transaction's own write is rolled back (the barcode
+   * the company just cancelled is back on the row), and the conditional clean-up that follows is applied if its WHERE holds.
+   */
+  const raceWithBarcodeNow = async (now: string) => {
+    PARCEL();
+    reserveOrderLines.mockImplementation(async () => ({ reserved: 0, shortages: [{ orderItemId: 'i1', productId: P1, productName: 'كريم', missing: 2 }] }));
+    const row: { trackingNumber: string | null; courierSendStartedAt: string | null } = { trackingNumber: now, courierSendStartedAt: 'sent' };
+    db.order.updateMany.mockImplementation(async (a: { where: { trackingNumber?: string }; data: Record<string, unknown> }) => {
+      if (a.where.trackingNumber === undefined) return { count: 1 }; // the transaction's own write — rolled back
+      if (a.where.trackingNumber !== row.trackingNumber) return { count: 0 };
+      row.trackingNumber = null;
+      row.courierSendStartedAt = null;
+      return { count: 1 };
+    });
+    const res = await patch({ items: [{ productId: P1, quantity: 5, unitPrice: 60 }] });
+    return { res, row };
+  };
+
+  it('THE RACE leaves the order sendable again: the barcode the company cancelled is cleared, so «أعد إرسال الطرد» can be followed', async () => {
+    const { res, row } = await raceWithBarcodeNow('BC1');
+
+    expect(res.status).toBe(409);
+    expect(res.body.errorAr).toContain('أعد إرسال الطرد');
+    expect(row).toEqual({ trackingNumber: null, courierSendStartedAt: null });
+    const cleanup = db.order.updateMany.mock.calls.map((c: any[]) => c[0]).find((a: any) => a.where.trackingNumber !== undefined);
+    expect(cleanup.where).toEqual({ id: ORDER_ID, trackingNumber: 'BC1' });
+    expect(cleanup.data).toEqual({ trackingNumber: null, courierSendStartedAt: null });
+  });
+
+  it('NEGATIVE: a NEWER barcode (the parcel was sent again meanwhile) is a live parcel and is not wiped', async () => {
+    const { res, row } = await raceWithBarcodeNow('BC2');
+
+    expect(res.status).toBe(409);
+    expect(row).toEqual({ trackingNumber: 'BC2', courierSendStartedAt: 'sent' });
+  });
+
+  it('NEGATIVE: nothing is cleared when the shelf check passed and the edit was saved', async () => {
+    PARCEL();
+
+    await patch({ items: [{ productId: P1, quantity: 5, unitPrice: 60 }] });
+
+    expect(db.order.updateMany).toHaveBeenCalledTimes(1);
+  });
+
   it('NEGATIVE: with no parcel at the company, a race-lost shortage says only that nothing was saved', async () => {
     reserveOrderLines.mockImplementation(async () => ({ reserved: 0, shortages: [{ orderItemId: 'i1', productId: P1, productName: 'كريم', missing: 2 }] }));
 
