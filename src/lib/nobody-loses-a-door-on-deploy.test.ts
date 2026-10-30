@@ -316,3 +316,47 @@ describe('the confirmation and change-request boxes', () => {
     }
   });
 });
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * THE CATEGORIES AND THE CAMPAIGNS (PR-11) — GRANTED THROUGH A GATE TABLE WITH A SCOPE COLUMN.
+ *
+ * 20261030180000_categories_campaign_keys reads one gate table (`sp11_gate`: the box, the key the door asked, and whether the
+ * source counts only «كل الشركة» — D1m, for the shelves). Here: each of the three boxes is in the catalog, is granted FROM the
+ * key its door used to ask, lands in all three places and runs twice. The full replay — every person against every door, the
+ * named people D1m narrows, the fuzz — is `the-categories-and-campaigns-keep-every-door.test.ts`.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+describe('the categories’ and the campaigns’ boxes', () => {
+  const sql = readFileSync(path.join(MIGRATIONS, '20261030180000_categories_campaign_keys', 'migration.sql'), 'utf8')
+    .split('\n')
+    .filter((l) => !l.trim().startsWith('--'))
+    .join('\n');
+  const flat = sql.split(/\s+/).join('');
+  const FROM: Record<string, string> = {
+    'categories.manage': 'products.edit',
+    'campaigns.view': 'reports.view',
+    'campaigns.manage': 'reports.view',
+  };
+
+  it('are all in the catalog, so the owner can tick them', () => {
+    for (const k of Object.keys(FROM)) expect(ALL_CATALOG_KEYS.has(k), `${k} مش بقائمة الصلاحيات`).toBe(true);
+  });
+
+  it('are each granted FROM the key their door used to ask — a gate row per (box, key), and only the shelves narrowed to «كل الشركة»', () => {
+    for (const [box, source] of Object.entries(FROM)) {
+      const wide = box === 'categories.manage';
+      expect(flat, `${box} مش مأخوذ من ${source} — من يمرّ بالباب رح يخسره`).toContain(`('${box}','${source}',${wide})`);
+    }
+  });
+
+  it('land in all three places, carry the «منع» across, and run twice without changing anything', () => {
+    expect(sql).toContain('INSERT INTO "role_permission_defaults"');
+    expect(sql).toContain('INSERT INTO "role_permissions"');
+    expect(sql).toContain('INSERT INTO "user_permissions"');
+    expect(sql).toContain(`'DENY'`);
+    for (const s of sql.split(/;\s*\n/).filter((x) => x.trim().startsWith('INSERT INTO'))) {
+      expect(s).toMatch(/ON CONFLICT[\s\S]*DO NOTHING/);
+    }
+  });
+});

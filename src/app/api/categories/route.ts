@@ -25,15 +25,19 @@ const nameSchema = z.object({
  * picks from is always empty. A capability that cannot be reached is
  * indistinguishable from a broken one.
  *
- * Writing is gated on `products.edit` rather than a new permission key:
- * naming the shelves is part of arranging the shelves, and inventing a
- * key would mean a grant somebody has to remember before any of this
- * works.
+ * Writing was gated on `products.edit` rather than a key of its own, and the
+ * gate never read the SCOPE of that grant — so someone who could edit only
+ * the skincare line could rename and delete every shelf in the company.
+ * Since PR-11 it asks `categories.manage`, and the migration
+ * 20261030180000_categories_campaign_keys gave that key to whoever held the
+ * product edit «كل الشركة» (and to nobody who held it narrower: D1m).
+ * Reading stays on the three keys it always took, plus the new one —
+ * whoever may name the shelves must be able to see them.
  */
 export async function GET() {
   try {
     const user = await requireAuth();
-    if (!can(user, 'categories.view') && !can(user, 'roles.edit') && !can(user, 'users.edit')) {
+    if (!can(user, 'categories.view') && !can(user, 'categories.manage') && !can(user, 'roles.edit') && !can(user, 'users.edit')) {
       return NextResponse.json(
         { error: 'Forbidden: missing required permission categories.view', errorAr: forbiddenAr('Forbidden: missing required permission categories.view') },
         { status: 403 }
@@ -66,11 +70,11 @@ export async function GET() {
   }
 }
 
-/** Whoever may arrange the products may name the shelves. */
+/** Whoever holds «إدارة التصنيفات» may name the shelves. */
 async function editor() {
   const user = await requireAuth();
-  if (!can(user, 'products.edit')) {
-    return { error: NextResponse.json({ error: 'Forbidden: missing products.edit', errorAr: forbiddenAr('Forbidden: missing required permission products.edit') }, { status: 403 }) };
+  if (!can(user, 'categories.manage')) {
+    return { error: NextResponse.json({ error: 'Forbidden: missing categories.manage', errorAr: forbiddenAr('Forbidden: missing required permission categories.manage') }, { status: 403 }) };
   }
   // Same reason as the note in GET: the owner's account carries no company,
   // and `user.companyId` alone refused every write to the one person who
