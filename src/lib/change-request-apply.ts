@@ -1,6 +1,9 @@
 import type { SessionUser } from '@/types/auth';
 import { BEFORE_OPERATIONS, mayDecide } from './change-request-routing';
-import { CHANGEABLE_FIELDS, changeFieldLabel, type ChangeValue } from './change-request-fields';
+import {
+  CHANGEABLE_FIELDS, LINES_FIELD, changeFieldLabel, readLinesChange,
+  type ApprovedLineEdit, type ChangeValue, type LinesChange,
+} from './change-request-fields';
 import { INTENT_AR, type ChangeIntent } from './change-request-intent';
 
 /**
@@ -75,7 +78,18 @@ export interface ApplySource {
 }
 
 export type Expansion =
-  | { ok: true; fields: Record<string, ChangeValue> }
+  | {
+      ok: true;
+      fields: Record<string, ChangeValue>;
+      /**
+       * THE LINES THE REQUEST APPROVED, line by line — present only when it carried the `lines` key (so a request of
+       * plain fields expands to exactly what it always did). Never read from the database here: binding them to the stored
+       * lines is the order route's job, in the same breath as the write.
+       */
+      lineEdits?: ApprovedLineEdit[];
+      /** What the decider was shown as the order's money after the edit, to be compared and never believed. */
+      linesSnapshot?: LinesChange['snapshot'];
+    }
   | { ok: false; status: number; code: string; error: string };
 
 /**
@@ -113,7 +127,38 @@ export function expandApproved(request: ApplySource): Expansion {
   const fields: Record<string, ChangeValue> = {};
   const cannot: string[] = [];
 
+  /*
+   * THE LINES, READ STRICTLY AND BEFORE THE LOOP.
+   *
+   * `lines` is not a `{ from, to }`: the loop below skips anything without a `to`, so left to it a request made of
+   * `lines` alone would have fallen out as «لا حقول لتطبيقها» and a request of `lines` plus a note would have applied the
+   * note and dropped the goods without a word. It is read here or it is refused here.
+   */
+  const lines = readLinesChange(request.changes);
+  if (!lines.ok) {
+    return { ok: false, status: 422, code: 'LINES_INVALID', error: `أسطر طلب التعديل غير صالحة — ${lines.error}` };
+  }
+  if (lines.value && ((lines.value.removed?.length ?? 0) > 0 || (lines.value.added?.length ?? 0) > 0)) {
+    return {
+      ok: false,
+      status: 422,
+      code: 'NOT_APPLICABLE',
+      error: 'إضافة سطر أو حذفه من هنا لسا مش مدعوم — ألغِ الطلب وأنشئ جديداً.',
+    };
+  }
+  // One request, one way to say the goods: the shorthand (a quantity, a product, a price) beside `lines` would be two
+  // answers to one question, and the apply door would have to pick.
+  if (lines.value && ['quantity', 'productId', 'sellingPrice'].some((k) => changes[k] !== undefined)) {
+    return {
+      ok: false,
+      status: 422,
+      code: 'LINES_AND_FLAT',
+      error: 'الطلب بيجمع أسطر مع كمية أو سعر أو منتج مفرد — ما بينطبق. ارفع طلباً واحداً بشكل واحد.',
+    };
+  }
+
   for (const [field, change] of Object.entries(changes)) {
+    if (field === LINES_FIELD) continue;
     if (!change || !('to' in change)) continue;
     const target = APPLIES_AS[field as keyof typeof APPLIES_AS];
     if (!target) {
@@ -131,10 +176,14 @@ export function expandApproved(request: ApplySource): Expansion {
       error: `لا يمكن تطبيق «${cannot.join('، ')}» من هنا — عدّلها يدوياً ثم أغلق الطلب.`,
     };
   }
-  if (Object.keys(fields).length === 0) {
+  if (Object.keys(fields).length === 0 && !lines.value) {
     return { ok: false, status: 422, code: 'NOTHING_TO_APPLY', error: 'لا حقول في طلب التعديل لتطبيقها' };
   }
-  return { ok: true, fields };
+  return {
+    ok: true,
+    fields,
+    ...(lines.value ? { lineEdits: lines.value.edits, linesSnapshot: lines.value.snapshot } : {}),
+  };
 }
 
 /**

@@ -11,6 +11,7 @@ import {
   type PreviewDraft,
   type StoredLine,
 } from './order-line-edit';
+import { inChunks } from './in-chunks';
 import { handedToCourier } from './order-seal';
 import { normalizePhoneNumber } from './phone';
 import { isValidPhoneFor, phoneKeys } from './phone-rules';
@@ -66,19 +67,6 @@ const SHIPPING_CLOSED = ['DELIVERED', 'PARTIALLY_DELIVERED', 'RETURNED', 'CANCEL
 /** A settlement state in which the order's money is still ours to compute. Anything else was moved by a statement. */
 const SETTLEMENT_OPEN = ['NOT_APPLICABLE', 'PENDING', 'PENDING_COLLECTION'];
 
-/**
- * ONE ANSWER PER PRODUCT, A FEW AT A TIME. A draft may name twenty lines, and asking the offers and the shelf of each
- * one after the other made a preview — which the screen asks for at every pause in typing — twenty round trips in a
- * row. All at once would be twenty connections from one keystroke; five at a time is both.
- */
-const AT_A_TIME = 5;
-async function inChunks<T, R>(items: readonly T[], ask: (item: T) => Promise<R>): Promise<R[]> {
-  const out: R[] = [];
-  for (let i = 0; i < items.length; i += AT_A_TIME) {
-    out.push(...(await Promise.all(items.slice(i, i + AT_A_TIME).map(ask))));
-  }
-  return out;
-}
 
 export async function readOrderEditFacts(args: {
   order: EditableOrderRow;

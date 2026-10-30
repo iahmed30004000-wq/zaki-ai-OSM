@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { CHANGEABLE_FIELDS, CHANGE_FIELD_AR, changeFieldLabel, withFrom, type OrderSnapshot } from './change-request-fields';
+import {
+  CHANGEABLE_FIELDS, CHANGE_FIELD_AR, LINES_FIELD, LINE_PRICE_BASES, MONEY_CHANGE_FIELDS, changeFieldLabel, describeLines,
+  readLinesChange, touchesMoney, withFrom, type OrderSnapshot,
+} from './change-request-fields';
+import { PRICE_BASES } from './order-line-edit';
 import { repoFile, stripComments } from './guard-source';
 
 const order: OrderSnapshot = {
@@ -163,5 +167,126 @@ describe('withFrom — the value BEFORE, taken by the server', () => {
 
   it('touches only the fields that were asked for', () => {
     expect(Object.keys(withFrom(order, { customerName: { to: 'محمد' } }))).toEqual(['customerName']);
+  });
+});
+
+/* ═══════════════════════════ THE LINES KEY (طلب التعديل متعدد الحقول، المرحلة ٤) ═══════════════════════════ */
+
+const cream: Record<string, unknown> = {
+  lineId: 'line-1',
+  quantity: { from: 3, to: 5 },
+  lineTotal: { from: 36, to: 58 },
+  freeQuantity: { from: 1, to: 2 },
+  basis: 'OFFER',
+};
+const lines = (over: Record<string, unknown> = {}) => ({ v: 2, edits: [cream], ...over });
+
+describe('the `lines` key of a request', () => {
+  it('is a money key: whoever decides a price decides it — even when it is "only a quantity"', () => {
+    expect(MONEY_CHANGE_FIELDS).toContain(LINES_FIELD);
+    expect(touchesMoney({ lines: lines() })).toBe(true);
+    expect(touchesMoney({ lines: lines(), customerNotes: { to: 'x' } })).toBe(true);
+    // the negatives: the customer's own fields still need no price key
+    expect(touchesMoney({ customerName: { to: 'x' } })).toBe(false);
+    expect(touchesMoney(null)).toBe(false);
+  });
+
+  it('is NOT in the list a person picks a field from, and is named in Arabic', () => {
+    expect(CHANGEABLE_FIELDS).not.toContain(LINES_FIELD);
+    expect(changeFieldLabel('lines')).toBe('أسطر الطلب');
+  });
+
+  it('speaks the same four words for how a total was reached as the engine does', () => {
+    expect([...LINE_PRICE_BASES]).toEqual([...PRICE_BASES]);
+  });
+
+  it('is read strictly: the shape or a sentence, never a half-read object', () => {
+    const ok = readLinesChange({ lines: lines() });
+    expect(ok.ok && ok.value?.edits[0]).toMatchObject({ lineId: 'line-1', quantity: { from: 3, to: 5 }, lineTotal: { to: 58 } });
+
+    const bad = (value: unknown) => readLinesChange({ lines: value });
+    expect(bad(lines({ v: 1 })).ok).toBe(false);
+    expect(bad({ edits: [cream] }).ok).toBe(false);
+    expect(bad(lines({ edits: [] })).ok).toBe(false);
+    expect(bad(lines({ edits: Array.from({ length: 21 }, (_, i) => ({ ...cream, lineId: `l${i}` })) })).ok).toBe(false);
+    expect(bad(lines({ edits: [cream, { ...cream }] })).ok).toBe(false);
+    expect(bad(lines({ edits: [{ lineId: 'line-1' }] })).ok).toBe(false);
+    expect(bad(lines({ edits: [{ ...cream, quantity: { from: 3, to: 0 } }] })).ok).toBe(false);
+    expect(bad(lines({ edits: [{ ...cream, quantity: { from: 3, to: 2.5 } }] })).ok).toBe(false);
+    expect(bad(lines({ edits: [{ ...cream, lineTotal: { from: 36, to: -1 } }] })).ok).toBe(false);
+    expect(bad(lines({ edits: [{ ...cream, freeQuantity: { from: 1, to: -1 } }] })).ok).toBe(false);
+    expect(bad(lines({ edits: [{ ...cream, basis: 'GUESS' }] })).ok).toBe(false);
+    expect(bad('text').ok).toBe(false);
+    const sentence = bad(lines({ edits: [] }));
+    expect(!sentence.ok && sentence.error).toMatch(/[؀-ۿ]/);
+  });
+
+  it('wants a «before» for what a decision is about — the product, the quantity and the line’s total — or it is not this shape', () => {
+    const no = (edit: Record<string, unknown>) => readLinesChange({ lines: lines({ edits: [{ lineId: 'a', ...edit }] }) });
+    for (const edit of [{ quantity: { to: 5 } }, { lineTotal: { to: 58 } }, { productId: { to: 'prod-soap-00002' } }]) {
+      const r = no(edit);
+      expect(r.ok, JSON.stringify(edit)).toBe(false);
+      expect(!r.ok && r.error).toContain('قبل');
+    }
+    // with the «before», the same edits are fine; a gift without one is let through (a stale gift shows in the quantity)
+    expect(no({ quantity: { from: 3, to: 5 }, lineTotal: { from: 36, to: 58 }, productId: { from: 'prod-cream-0001', to: 'prod-soap-00002' } }).ok).toBe(true);
+    expect(no({ freeQuantity: { to: 2 } }).ok).toBe(true);
+    // null is not a «before» either
+    expect(no({ quantity: { from: null, to: 5 } }).ok).toBe(false);
+  });
+
+  it('is absent, not an error, for a request of plain fields — and for a stored value that is not an object', () => {
+    expect(readLinesChange({ customerName: { to: 'x' } })).toEqual({ ok: true, value: null });
+    expect(readLinesChange(null)).toEqual({ ok: true, value: null });
+    expect(readLinesChange('x')).toEqual({ ok: true, value: null });
+    expect(readLinesChange({ lines: null })).toEqual({ ok: true, value: null });
+  });
+
+  it('keeps what the decider was shown, and lets a later version add to it', () => {
+    const r = readLinesChange({ lines: lines({ snapshot: { orderVersion: 12, after: { cod: 62, subtotal: 58 }, stock: [{ productId: 'p', need: 5 }] } }) });
+    expect(r.ok && r.value?.snapshot?.after?.cod).toBe(62);
+  });
+
+  it('an unknown key inside an edit does not break an old reader', () => {
+    const r = readLinesChange({ lines: lines({ edits: [{ ...cream, somethingNew: 1 }] }) });
+    expect(r.ok).toBe(true);
+  });
+});
+
+describe('describeLines — a request in words, one sentence per line', () => {
+  it('names the line, and each figure as it was and became', () => {
+    const r = readLinesChange({ lines: lines() });
+    if (!r.ok || !r.value) throw new Error('expected lines');
+    expect(describeLines(r.value, { minorUnit: 3, names: { 'prod-a-0000001': 'كريم' } })).toEqual([
+      'سطر 1 — الكمية: 3 ← 5 · إجمالي السطر: 36 ← 58 · الهدية: 1 ← 2',
+    ]);
+  });
+
+  it('uses the product’s name when it is known, says a swap in words, and flags a typed price', () => {
+    const r = readLinesChange({
+      lines: lines({
+        edits: [{ lineId: 'a', productId: { from: 'prod-cream-0001', to: 'prod-soap-00002' }, lineTotal: { from: 36, to: 17.5 }, basis: 'MANUAL' }],
+      }),
+    });
+    if (!r.ok || !r.value) throw new Error('expected lines');
+    const [sentence] = describeLines(r.value, { minorUnit: 2, names: { 'prod-cream-0001': 'كريم', 'prod-soap-00002': 'صابون' } });
+    expect(sentence).toBe('كريم — المنتج: كريم ← صابون · إجمالي السطر: 36 ← 17.5 · السعر يدوي');
+  });
+
+  it('rounds at the currency’s own unit and prints no JSON and no English', () => {
+    const r = readLinesChange({ lines: lines({ edits: [{ lineId: 'a', lineTotal: { from: 25, to: 41.6667 } }] }) });
+    if (!r.ok || !r.value) throw new Error('expected lines');
+    expect(describeLines(r.value, { minorUnit: 3 })[0]).toContain('41.667');
+    expect(describeLines(r.value, { minorUnit: 0 })[0]).toContain('25 ← 42');
+    for (const s of describeLines(r.value)) {
+      expect(s).not.toMatch(/[{}\[\]"]/);
+      expect(s).not.toMatch(/[A-Za-z]{3,}/);
+    }
+  });
+
+  it('a figure with no recorded “before” is shown alone, not as «undefined ← 5» (the gift may lack one; the schema lets it)', () => {
+    const r = readLinesChange({ lines: lines({ edits: [{ lineId: 'a', freeQuantity: { to: 2 } }] }) });
+    if (!r.ok || !r.value) throw new Error('expected lines');
+    expect(describeLines(r.value)[0]).toBe('سطر 1 — الهدية: 2');
   });
 });

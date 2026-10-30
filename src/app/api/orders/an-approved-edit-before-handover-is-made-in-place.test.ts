@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CourierRefusal } from '@/lib/couriers/logestechs';
 
-const { db, requireContext, authorize, can, logAudit, adapterFor } = vi.hoisted(() => ({
+const { db, requireContext, authorize, can, logAudit, adapterFor, planLineApply } = vi.hoisted(() => ({
   db: {
     order: { findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     orderChannel: { findFirst: vi.fn() },
@@ -22,6 +22,9 @@ const { db, requireContext, authorize, can, logAudit, adapterFor } = vi.hoisted(
   can: vi.fn(),
   logAudit: vi.fn(),
   adapterFor: vi.fn(),
+  // The plan for the goods of an approved request (see the note on the second describe): this file's order is one the plan
+  // leaves to the older rules — more than one line, so the shorthand cannot be translated into an edit of ONE line.
+  planLineApply: vi.fn(async () => ({ ok: true as const, apply: null })),
 }));
 
 let ORDER: Record<string, unknown>;
@@ -37,6 +40,10 @@ vi.mock('@/lib/authorization', () => ({
 vi.mock('@/lib/rbac', () => ({
   assertOrderAccess: async () => ({ allowed: true, order: ORDER }),
   orderVisibilityWhere: () => ({}),
+}));
+vi.mock('@/lib/order-line-apply', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  planLineApply: (...a: unknown[]) => (planLineApply as (...x: unknown[]) => unknown)(...a),
 }));
 vi.mock('@/lib/couriers', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -206,7 +213,21 @@ describe('an approved edit on a parcel the company has not taken', () => {
   });
 });
 
-describe('a quantity or a product is NOT made in place on a reserved order (temporary ruling)', () => {
+/*
+ * (old → new, طلب التعديل متعدد الحقول ٤) THE PREMISE OF THIS BLOCK CHANGED, THE RULING DID NOT.
+ *
+ * It said «a quantity or a product on a reserved order is never made in place», because the door wrote the order's own
+ * columns and left the lines and their reservation behind. That is now true of ONE case only: an order with MORE THAN ONE
+ * line, where the shorthand («the quantity», «the price») cannot say which line it means. An order with exactly one line
+ * has its shorthand translated into an edit of that line and applied whole — the lines, the reservation, the gift, the
+ * total — and that is held in `an-approved-lines-edit-is-written-whole.test.ts`, against a database fake that runs the
+ * real plan, the real engine and the real reservation.
+ *
+ * So the plan is stubbed here to answer what it answers for such an order — «not mine, leave it to the older rules» — and
+ * every claim below is the old one, word for word: the refusal, its code, its sentence, the order of the checks, and the
+ * negatives.
+ */
+describe('a quantity or a product is NOT made in place on a reserved order of more than one line (temporary ruling)', () => {
   const SENTENCE = 'تعديل الكمية أو المنتج لطلب محجوز بيحتاج إلغاء الطلب وإنشاء جديد — لسا ما في تعديل بمكانو.';
 
   it('a quantity: refused with the sentence, and NOTHING is written or applied', async () => {
