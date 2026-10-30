@@ -588,11 +588,40 @@ export async function activeOffersFor(
   minorUnit: number,
   now: Date = new Date()
 ): Promise<OfferView[]> {
+  const byProduct = await activeOffersForProducts(tx, companyId, [productId], minorUnit, now);
+  return byProduct.get(productId) ?? [];
+}
+
+/**
+ * THE SAME QUESTION FOR MANY PRODUCTS AT ONCE — ONE QUERY, THE SAME PREDICATE, THE SAME VIEW.
+ *
+ * `activeOffersFor` is this with one id, so there is still ONE reader of «what may be bought»: the order lines editor
+ * needs the live offers of every product in a catalogue, and asking one product at a time would be a query per line.
+ * A key is present for every product asked about, with an empty list when it has no live offer.
+ *
+ * `options.withEvidence` (default true) is the only switch: false skips the delivered-orders scan behind `compareAtPrice`.
+ *
+ * A single product is queried exactly as it always was (`productId: <id>`), so the readers and the tests that look at
+ * that query are not disturbed.
+ */
+export async function activeOffersForProducts(
+  tx: Tx,
+  companyId: string,
+  productIds: readonly string[],
+  minorUnit: number,
+  now: Date = new Date(),
+  options: { withEvidence?: boolean } = {}
+): Promise<Map<string, OfferView[]>> {
+  const ids = [...new Set(productIds)];
+  const out = new Map<string, OfferView[]>(ids.map((id) => [id, []]));
+  if (ids.length === 0) return out;
+
   const rows = await tx.offer.findMany({
-    where: { companyId, productId, ...liveOfferWhere(now) },
+    where: { companyId, productId: ids.length === 1 ? ids[0] : { in: ids }, ...liveOfferWhere(now) },
     orderBy: [{ sortOrder: 'asc' }, { quantity: 'asc' }],
     select: {
       id: true,
+      productId: true,
       name: true,
       quantity: true,
       freeQuantity: true,
@@ -608,8 +637,20 @@ export async function activeOffersFor(
     },
   });
 
-  const evidence = await evidencedWasPrices(tx, rows);
-  return rows.map((o) => toOfferView(o, minorUnit, evidence.get(o.id)));
+  /*
+   * THE «WAS» PRICE IS EVIDENCE FROM DELIVERED ORDERS — one `groupBy` over `Order.offerId`, which has no index.
+   * The public pages show a struck-through price and need it (the default, word for word as before). The lines
+   * editor and the order read never show one, so they say `withEvidence: false` and do not pay for the scan; the
+   * views then carry `compareAtPrice: null`, which is what «not proven» has always meant.
+   */
+  const evidence = options.withEvidence === false ? new Map<string, number>() : await evidencedWasPrices(tx, rows);
+  for (const row of rows) {
+    // A caller's stub may leave `productId` out of a row; with ONE product asked about there is no doubt whose it is.
+    const key = row.productId ?? (ids.length === 1 ? ids[0] : undefined);
+    if (key === undefined) continue;
+    out.get(key)?.push(toOfferView(row, minorUnit, evidence.get(row.id)));
+  }
+  return out;
 }
 
 /**
@@ -767,6 +808,18 @@ export interface OfferView {
   deliveryIncluded: boolean;
   /** The moment this bundle stops — the countdown's only source. */
   endsAt: Date | null;
+}
+
+/**
+ * A LIVE OFFER WITH ITS REDUCTION SAID OUT LOUD — for the lines editor, which shows «٣ بـ٧٥ (وفّرت ٣)» without taking
+ * two numbers apart on the screen.
+ *
+ * `discount` is what the bundle's own reduction really took: the price before it (`listPrice`) less the price charged
+ * (`price`), rounded by the currency — 0 when the bundle has none. Derived from the two figures `toOfferView` already
+ * settled, not read again from the column, so it can never be a reduction the clamp refused.
+ */
+export function withTheReduction(view: OfferView, minorUnit: number): OfferView & { discount: number } {
+  return { ...view, discount: view.listPrice === null ? 0 : roundMinor(view.listPrice - view.price, minorUnit) };
 }
 
 export function toOfferView(

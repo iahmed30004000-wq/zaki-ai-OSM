@@ -48,6 +48,24 @@ import type { PickableProduct } from '@/components/ui/ProductPicker';
 export interface CatalogueProduct extends PickableProduct {
   basePrice?: number;
   offers?: { id: string; name: string; quantity: number; sellingPrice: number }[];
+  /**
+   * The offers on sale RIGHT NOW (`activeOffersForProducts`): not stopped, not finished, not the one shown only after an
+   * order. `price` is what the customer is charged for the bundle; `listPrice` the figure before its own reduction (or
+   * null) and `discount` the difference. OPTIONAL: absent when the server could not read them, and `offers` above stays
+   * what it always was for every screen that already reads it.
+   */
+  liveOffers?: {
+    id: string;
+    name: string;
+    quantity: number;
+    freeQuantity: number;
+    price: number;
+    listPrice: number | null;
+    discount: number;
+    isDefault: boolean;
+    deliveryIncluded: boolean;
+    endsAt: string | null;
+  }[];
 }
 
 /**
