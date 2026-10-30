@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -18,6 +18,8 @@ import { useMayOpen } from '@/hooks/useMayOpen';
 import { openOrderStep, openPreparationStep } from '@/lib/next-step';
 import { confirmOrderNow } from '@/lib/confirm-now';
 import { userCan } from '@/lib/can';
+import { useIsPhone } from '@/hooks/useIsPhone';
+import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 
 interface CreateOrderModalProps {
   isOpen: boolean;
@@ -36,6 +38,18 @@ export function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateOrderModa
   const ar = locale === 'ar';
   const toast = useToast();
   const mayOpen = useMayOpen();
+  /*
+   * A PHONE LAYS THIS FORM OUT DIFFERENTLY — AND ONLY LAYS IT OUT (ORD-09).
+   *
+   * Nothing below changes what is sent: every field is still a controlled input of the same state, `handleSubmit`
+   * builds the same body from it, and the order is created by the same door. What the width decides is where the
+   * buttons sit (outside the part that scrolls, so the seller never loses sight of «إنشاء الطلب»), whether the
+   * four sections wear a frame, and whether the two optional ones (assignment, notes) are folded. A desk is
+   * drawn exactly as it was.
+   */
+  const phone = useIsPhone();
+  /** Ties the submit button in the dialog's foot to the form in its body. */
+  const formId = useId();
   const [loading, setLoading] = useState(false);
   /**
    * «الزبون على الخط — أكّده الآن». Offered only to somebody who may confirm (`orders.confirm`):
@@ -266,6 +280,10 @@ export function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateOrderModa
     lines.length > 0 &&
     lines.every((l) => l.productId);
 
+  const frame = phone
+    ? 'space-y-3'
+    : 'border border-[var(--sys-border)] rounded-lg p-4 bg-[var(--sys-surface)]/60 space-y-3';
+
   const SectionTitle = ({ icon: Icon, title, color }: { icon: React.ElementType; title: string; color: string }) => (
     <div className="flex items-center gap-2 pb-2 border-b border-[var(--sys-border)]">
       <div className={`p-1.5 rounded-lg ${color}`}>
@@ -275,18 +293,44 @@ export function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateOrderModa
     </div>
   );
 
+  /*
+   * CANCEL AND CREATE — DRAWN ONCE.
+   *
+   * A desk puts them at the end of the form, where they have always been. A phone hands them to the dialog's
+   * foot (`footer`), which stays put while the body scrolls, and the submit button belongs to the form through
+   * `form="…"`: pressing it submits the same `handleSubmit`, and Enter in a field still does.
+   */
+  const actions = (
+    <div className={phone ? 'flex items-center gap-3' : 'flex items-center justify-end pt-1'}>
+      {/* A text button here used to only CLOSE the modal while telling the
+          person to try «الإدخال بالذكاء» from «the green button» — which is
+          not green, and was one more way out beside «إلغاء». The AI entry
+          is its own button in the orders header. */}
+      <div className={phone ? 'flex w-full items-center gap-3' : 'flex items-center gap-3'}>
+        <Button type="button" variant="outline" onClick={onClose}>
+          إلغاء
+        </Button>
+        <Button type="submit" form={phone ? formId : undefined} loading={loading} disabled={!ready} className={phone ? 'flex-1' : undefined}>
+          <RiMegaphoneLine className="w-4 h-4" />
+          {confirmNow ? 'إنشاء الطلب وتأكيده' : 'إنشاء الطلب'} ({goods === undefined ? '—' : money(goods)})
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
       title="طلب سريع جديد"
-      subtitle="فحص تلقائي للعميل المكرر • تعبئة السعر تلقائياً من العرض • تعيين المودريتور"
+      subtitle={phone ? undefined : 'فحص تلقائي للعميل المكرر • تعبئة السعر تلقائياً من العرض • تعيين المودريتور'}
       maxWidth="2xl"
+      footer={phone ? actions : undefined}
     >
-      <form onSubmit={handleSubmit} className="space-y-4" dir={isRtl ? 'rtl' : 'ltr'}>
+      <form id={formId} onSubmit={handleSubmit} className="space-y-4" dir={isRtl ? 'rtl' : 'ltr'}>
 
         {/* ─── 1. Customer ─── */}
-        <div className="border border-[var(--sys-border)] rounded-lg p-4 bg-[var(--sys-surface)]/60 space-y-3">
+        <div className={frame}>
           <div className="flex items-center justify-between flex-wrap gap-2">
             <SectionTitle icon={RiUserFollowLine} title="1. بيانات العميل" color="bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)]" />
             {existingCustomerAlert?.exists && (
@@ -390,7 +434,7 @@ export function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateOrderModa
         </div>
 
         {/* ─── 2. المنتجات ─── */}
-        <div className="border border-[var(--sys-border)] rounded-lg p-4 bg-[var(--sys-surface)]/60 space-y-3">
+        <div className={frame}>
           <SectionTitle icon={RiArchiveLine} title="2. المنتجات" color="bg-[var(--sys-surface-strong)] text-[var(--sys-primary)]" />
           {/* The same editor the order screen uses, so a line means the same
               thing whether it is typed here or corrected later. */}
@@ -403,8 +447,10 @@ export function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateOrderModa
           />
         </div>
 
+        {/* ─── 3 and 4: optional, so a phone folds them (ORD-09) ─── */}
+        <Optional phone={phone} holds={mayAssign ? 'المودريتور · القناة · ملاحظات' : 'القناة · ملاحظات'}>
         {/* ─── 3. Assignment & Source ─── */}
-        <div className="border border-[var(--sys-border)] rounded-lg p-4 bg-[var(--sys-surface)]/60 space-y-3">
+        <div className={frame}>
           <SectionTitle icon={RiUserSettingsLine} title="3. التعيين والمصدر" color="bg-[var(--sys-surface)] text-[var(--sys-muted-foreground)]" />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -438,7 +484,7 @@ export function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateOrderModa
         </div>
 
         {/* ─── 4. Notes ─── */}
-        <div className="border border-[var(--sys-border)] rounded-lg p-4 bg-[var(--sys-surface)]/60 space-y-3">
+        <div className={frame}>
           <SectionTitle icon={RiStickyNoteLine} title="4. الملاحظات" color="bg-[var(--sys-warning-soft)] text-[var(--sys-warning)]" />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -447,32 +493,38 @@ export function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateOrderModa
           </div>
         </div>
 
+        </Optional>
+
         {/* ─── Actions ─── */}
         {mayConfirm && (
-          <label className="flex items-start gap-2 text-sm text-[var(--sys-foreground)]">
-            <input type="checkbox" checked={confirmNow} onChange={(e) => setConfirmNow(e.target.checked)} className="mt-1" />
+          <label className={phone ? 'flex min-h-11 items-start gap-2 text-sm text-[var(--sys-foreground)]' : 'flex items-start gap-2 text-sm text-[var(--sys-foreground)]'}>
+            <input type="checkbox" checked={confirmNow} onChange={(e) => setConfirmNow(e.target.checked)} className={phone ? 'mt-1 h-5 w-5' : 'mt-1'} />
             <span>
               <span className="font-semibold">الزبون على الخط — أكّده الآن</span>
               <span className="block text-xs text-[var(--sys-muted-foreground)]">يُنشأ الطلب ويُؤكَّد فوراً ويذهب إلى التجهيز، بدل أن يدخل طابور التأكيد.</span>
             </span>
           </label>
         )}
-        <div className="flex items-center justify-end pt-1">
-          {/* A text button here used to only CLOSE the modal while telling the
-              person to try «الإدخال بالذكاء» from «the green button» — which is
-              not green, and was one more way out beside «إلغاء». The AI entry
-              is its own button in the orders header. */}
-          <div className="flex items-center gap-3">
-            <Button type="button" variant="outline" onClick={onClose}>
-              إلغاء
-            </Button>
-            <Button type="submit" loading={loading} disabled={!ready}>
-              <RiMegaphoneLine className="w-4 h-4" />
-              {confirmNow ? 'إنشاء الطلب وتأكيده' : 'إنشاء الطلب'} ({goods === undefined ? '—' : money(goods)})
-            </Button>
-          </div>
-        </div>
+        {!phone && actions}
       </form>
     </Modal>
+  );
+}
+
+/**
+ * THE TWO OPTIONAL SECTIONS — FOLDED ON A PHONE, DRAWN IN PLACE ON A DESK (ORD-09).
+ *
+ * «3. التعيين والمصدر» and «4. الملاحظات» are never required, and after the customer and the products they are
+ * the third and fourth screenful of a form the seller is filling while the customer waits. Folded, they are one
+ * line that says what is inside. The inputs stay in the page while the fold is closed (a native `<details>`
+ * only stops drawing its body), and they are the same controlled inputs of the same state, so nothing that was
+ * typed in them is lost and nothing is sent differently.
+ */
+function Optional({ phone, holds, children }: { phone: boolean; holds: string; children: React.ReactNode }) {
+  if (!phone) return <>{children}</>;
+  return (
+    <AdvancedGroup label="اختياري" holds={holds}>
+      <div className="w-full space-y-4">{children}</div>
+    </AdvancedGroup>
   );
 }

@@ -36,6 +36,8 @@ import { Money } from '@/components/ui/Money';
 import { cardTone, noAnswerWords } from '@/lib/no-answer-tone';
 import { POST_ORDER_ADDITION_AR } from '@/lib/post-order-offer-copy';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
+import { useIsPhone } from '@/hooks/useIsPhone';
+import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 
 /**
  * /confirmation/mine — two sections: in-confirmation (workable) and
@@ -213,6 +215,8 @@ export function ConfirmationMineScreen() {
   // door asked for the issues LIST she was never given.
   const canRaiseIssue = userCan(currentUser, 'confirmation.raise_issue');
   const queue = useQueue(canPull);
+  /* A phone lays the card's buttons in three rows and the tabs in one strip; a desk is as it was. */
+  const phone = useIsPhone();
   // Her id, for the customer's history: one of its orders she holds opens here too (OrderLink).
   const holderId = userCan(currentUser, 'confirmation.work') ? currentUser?.id ?? null : null;
   const [data, setData] = useState<MineResponse | null>(null);
@@ -483,6 +487,13 @@ export function ConfirmationMineScreen() {
   const noAnswer = data.noAnswer.filter((o) => matches(o, findOpen));
   const closedToday = data.closedToday.filter((o) => matches(o, findOpen));
   const confirmed = data.confirmed;
+  /** What each tab holds, in a sentence — under the tab's label on a desk, once under the strip on a phone. */
+  const tabNotes = {
+    work: 'ما حدا اتّصل فيهم بعد',
+    noAnswer: `محاولة أو محاولتين — التالية تُغلق${data.closedToday.length > 0 ? ` · و${data.closedToday.length} أُغلقت اليوم` : ''}`,
+    done: confirmed.q ? `بحث «${confirmed.q}»` : 'يوم واحد في كلّ مرّة',
+    postponed: 'ما أجّلتَه لموعد — تعمل على ما حلّ موعده',
+  };
 
   /*
    * ONE CARD, THREE PLACES.
@@ -523,13 +534,22 @@ export function ConfirmationMineScreen() {
         decision «which of these do I do now» is made before she opens
         either list, and a count she has to click to see cannot inform it.
       */}
-      <div role="tablist" aria-label="طلباتي" className="flex flex-wrap items-center gap-2 border-b border-[var(--sys-border)]">
+      {/*
+        A PHONE: ONE STRIP THAT SCROLLS SIDEWAYS, AND ONE SENTENCE (ORD-16).
+
+        Each tab printed its own sentence under its label, so every tab was as wide as its sentence and the four
+        wrapped into four rows, with the underline lined up only on the last. Now the tabs keep their label and
+        count and do not wrap; the sentence of the tab that is OPEN is printed once, under the strip. The other
+        three are still the tab's title, as they were.
+      */}
+      <div role="tablist" aria-label="طلباتي" className={phone ? 'flex items-center gap-2 border-b border-[var(--sys-border)] overflow-x-auto' : 'flex flex-wrap items-center gap-2 border-b border-[var(--sys-border)]'}>
         <TabButton
           active={tab === 'work'}
           onClick={() => setTab('work')}
           label="للشغل"
           count={data.work.length}
-          note="ما حدا اتّصل فيهم بعد"
+          note={tabNotes.work}
+          phone={phone}
         />
         <TabButton
           active={tab === 'noAnswer'}
@@ -537,14 +557,16 @@ export function ConfirmationMineScreen() {
           label="لا يرد"
           count={data.noAnswer.length}
           tone={data.noAnswer.length > 0 ? 'warning' : undefined}
-          note={`محاولة أو محاولتين — التالية تُغلق${data.closedToday.length > 0 ? ` · و${data.closedToday.length} أُغلقت اليوم` : ''}`}
+          note={tabNotes.noAnswer}
+          phone={phone}
         />
         <TabButton
           active={tab === 'done'}
           onClick={() => setTab('done')}
           label="أكّدتها"
           count={confirmed.total}
-          note={confirmed.q ? `بحث «${confirmed.q}»` : 'يوم واحد في كلّ مرّة'}
+          note={tabNotes.done}
+          phone={phone}
         />
         {/* Her own postponed orders — the same list the supervisor reads in «المتابعة», drawn
             here so the agent is not sent to a page of her own for it. No count: the figure
@@ -553,9 +575,11 @@ export function ConfirmationMineScreen() {
           active={tab === 'postponed'}
           onClick={() => setTab('postponed')}
           label="المؤجلة"
-          note="ما أجّلتَه لموعد — تعمل على ما حلّ موعده"
+          note={tabNotes.postponed}
+          phone={phone}
         />
       </div>
+      {phone && <p className="-mt-3 text-xs text-[var(--sys-muted)]">{tabNotes[tab]}</p>}
 
       {(tab === 'work' || tab === 'noAnswer') && (
       <section>
@@ -565,6 +589,7 @@ export function ConfirmationMineScreen() {
           total={tab === 'work' ? data.work.length : data.noAnswer.length + data.closedToday.length}
           value={findOpen}
           onChange={setFindOpen}
+          phone={phone}
           note={
             tab === 'work' && data.waitingLater > 0
               ? `و${data.waitingLater} مؤجّلة ليوم لاحق — تعود إلى هنا في موعدها`
@@ -607,6 +632,202 @@ export function ConfirmationMineScreen() {
           )}
           {rows.map(({ order, closed }) => {
             const remaining = Math.max(0, data.noAnswerLimit - order.noAnswerCount);
+            /*
+              EACH BUTTON OF THE CARD, DRAWN ONCE, PLACED BY THE WIDTH.
+
+              A desk lays them in one wrapping row, in the order the work happens in; a phone groups them in
+              three rows (see the footer below). Nothing about a button changes with the width — its handler,
+              its lock and its words are the same — so the only thing the width decides is where it sits.
+            */
+            /*
+              THE ORDER SHE IS WORKING ON, OPENED IN THE SAME SCREEN EVERYONE ELSE SEES IT IN.
+
+              She fixes what the customer just told her — a wrong name, a wrong street, a second unit —
+              without leaving the queue. The fields she has no authority over are not shown, and are refused
+              by the server even if they were.
+
+              AND THIS ONE WAS THE WAY AROUND THE OTHER THREE. «تأكيد» and «تأجيل» and «ألغِ» have been locked
+              until the order carries a contact attempt since C1 — and «افتح وعدّل» was not. So an agent who
+              had rung nobody could open the order, change the quantity, the price or the address, and save.
+              The server refuses it now too (`CONTACT_FIRST`), so this is not the rule — it is her being told
+              it before she retypes an address rather than after.
+            */
+            const openBtn = (
+              <Action
+                onClick={() => setOpenOrderId(order.id)}
+                locked={needsContact(order)}
+                lockedTitle={CONTACT_FIRST_MESSAGE}
+                icon={<RiPencilLine className="w-4 h-4" />}
+              >
+                افتح وعدّل
+              </Action>
+            );
+            /* 1/2/3 counter — the third no-answer closes the order by rule */
+            const noAnswerBtn = (
+              <Action
+                onClick={() => logAttempt(order, 'PHONE', 'NO_ANSWER')}
+                busy={busyId === order.id}
+                icon={<RiPhoneLockLine className="w-4 h-4" />}
+                danger={remaining <= 1}
+                wide={phone}
+              >
+                لا يرد
+                <span className="tabular-nums" dir="ltr">
+                  {' '}
+                  {order.noAnswerCount}/{data.noAnswerLimit}
+                </span>
+              </Action>
+            );
+            /*
+              THE PHONE THAT CANNOT RING AT ALL.
+
+              She calls, hears the network's own recording, and had to file it as «لا يرد» — which says the
+              customer did not pick up, a different fact about a different person. The two read the same in a
+              counter and differently to whoever opens the order next: one is somebody ignoring the phone, the
+              other is what a wrong digit looks like. It counts toward the three like the others, because
+              three calls that never reached anybody is the same evidence whichever way the line failed.
+            */
+            const unreachableBtn = (
+              <Action
+                onClick={() => logAttempt(order, 'PHONE', 'UNREACHABLE')}
+                busy={busyId === order.id}
+                icon={<RiPhoneLockLine className="w-4 h-4" />}
+                danger={remaining <= 1}
+                wide={phone}
+              >
+                مغلق أو خارج التغطية
+              </Action>
+            );
+            const remainingHint = (
+              <span className="text-xs text-[var(--sys-muted)]">
+                {remaining === 0
+                  ? 'بلغ الحد'
+                  : remaining === 1
+                    ? 'المحاولة القادمة تُغلق الطلب تلقائياً'
+                    : `متبقٍ ${remaining} محاولات قبل الإغلاق التلقائي`}
+              </span>
+            );
+            /*
+              CALL, SMS AND WHATSAPP — THE SAME STRIP THE REST OF THE PRODUCT USES.
+              Two buttons were hand-rolled here and both were poorer for it: the WhatsApp one opened NOTHING —
+              it recorded a contact and left the agent to find the customer in WhatsApp themselves — and there
+              was no SMS at all, on the one screen where the whole job is reaching somebody. `ContactButtons`
+              already carries the ready-made messages, filtered by channel and filled with this order's own
+              words, and the tracking and couriers screens already use it.
+
+              THE PRESS IS LOGGED BY THE STRIP, AND IS NOT AN OUTCOME. This screen used to file a dialled call
+              as `ANSWERED` — the strongest result there is — because it had nothing weaker to say. The answer
+              rate then counted every dial as a conversation, which is the same inflation the note beside
+              `MESSAGE_SENT` warns about for messages. The strip records `OPENED` on every screen now, so a
+              call placed from the orders list leaves the same trace as one placed here. The outcome is still
+              recorded by the person who knows it: «لا يرد» or «تأكيد».
+            */
+            const contact = (
+              <ContactButtons
+                phone={order.customer.rawPhone}
+                context={{
+                  orderNumber: order.orderNumber,
+                  customerName: order.customer.fullName,
+                  amount: order.totalAmount,
+                  region: order.customer.city,
+                }}
+                orderId={order.id}
+              />
+            );
+            /*
+              IN THE ORDER THE WORK HAPPENS IN.
+
+              She rings, and then one of four things is true. The confirmation is what most calls end in, and
+              it was last — past «تأجيل», «ألغِ», «إشكال» and «مساعدة» — so the commonest press was the
+              furthest from the thumb and sat beside the one that cancels. Confirm first, then postpone, then
+              cancel. The two that are neither an outcome of the call — the entry issue and the assistant —
+              come after them.
+
+              THE THREE THAT DISPOSE OF THE ORDER, SHUT UNTIL SHE HAS TRIED TO REACH THE CUSTOMER. The server
+              refuses them anyway (`needsContactFirst`), so this is not the rule — it is the agent being told
+              the rule before she presses rather than after. The measured failure was «تأجيل» pressed with no
+              call: the order went postponed, left her list, kept her claim, and blocked her next pull for
+              ninety business minutes. «إدخال إشكال» and «مساعدة» stay open: neither decides anything about the
+              order, and they are how she gets help when the call itself is the problem.
+            */
+            const confirmBtn = (
+              <Action
+                primary
+                onClick={() => confirm(order)}
+                busy={busyId === order.id}
+                locked={needsContact(order)}
+                lockedTitle={CONTACT_FIRST_MESSAGE}
+                icon={<RiCheckboxCircleLine className="w-4 h-4" />}
+                wide={phone}
+              >
+                تأكيد الطلب
+              </Action>
+            );
+            const postponeBtn = (
+              <Action
+                onClick={() => setDialog({ kind: 'postpone', order })}
+                busy={busyId === order.id}
+                locked={needsContact(order)}
+                lockedTitle={CONTACT_FIRST_MESSAGE}
+                icon={<RiTimerLine className="w-4 h-4" />}
+                wide={phone}
+              >
+                تأجيل {order.postponeCount > 0 && `(${order.postponeCount})`}
+              </Action>
+            );
+            const rejectBtn = (
+              <Action
+                onClick={() => setDialog({ kind: 'reject', order })}
+                busy={busyId === order.id}
+                locked={needsContact(order)}
+                lockedTitle={CONTACT_FIRST_MESSAGE}
+                danger
+                icon={<RiCloseCircleLine className="w-4 h-4" />}
+                wide={phone}
+              >
+                ألغِ
+              </Action>
+            );
+            const contactFirstHint = needsContact(order) && (
+              <p className="w-full text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+                اتصل بالزبون أول — بعدها بتفتح الأزرار
+              </p>
+            );
+            /*
+              «إدخال إشكال», not «إشكال إدخال»: the button is the act she performs, and the old name read as the
+              name of the thing — so it looked like a filter, not a door.
+
+              AND ONLY ON AN ORDER A MODERATOR ENTERED. `POST /api/confirmation/issues` accepts `moderatorId`
+              orders only: a store order — a landing page, Telegram, the POS — is refused with «لا يمكن فتح
+              إشكال إدخال على طلب من مصدر خارجي». The button was drawn on every card, so the agent learned that
+              by pressing it, and pressed it again on the next one. A button that exists in order to refuse
+              teaches nothing the first four times. What replaces it on a store order is the note: the fact,
+              and what to do instead.
+            */
+            const issueBtn = order.moderatorId && canRaiseIssue && (
+              <Action onClick={() => setDialog({ kind: 'issue', order })} busy={busyId === order.id} icon={<RiAlertLine className="w-4 h-4" />}>
+                إدخال إشكال
+              </Action>
+            );
+            const storeOrderNote = !order.moderatorId && (
+              <span className="w-full text-xs leading-relaxed text-[var(--sys-warning)]">
+                طلب من المتجر — ما في مودريتور يصلّحه.
+                <span className="text-[var(--sys-muted-foreground)]">
+                  {' '}
+                  إذا البيانات غلط: سجّل «رقم خطأ» أو ألغِ واكتب السبب.
+                </span>
+              </span>
+            );
+            /* Reads this order and this customer's history, and says what it would open with. It changes
+               nothing — every button that does is on either side of it. */
+            const assistBtn = canAskAssistant && (
+              <Action onClick={() => setDialog({ kind: 'assist', order })} icon={<RiSparkling2Line className="w-4 h-4" />}>
+                مساعدة
+              </Action>
+            );
+            const moreHolds = ['افتح وعدّل', !!(order.moderatorId && canRaiseIssue) && 'إدخال إشكال', canAskAssistant && 'مساعدة']
+              .filter(Boolean)
+              .join(' · ');
             return (
               <article key={order.id} className={`border rounded-lg p-4 space-y-3 ${cardTone(order.noAnswerCount, data.noAnswerLimit, closed)}`}>
                 <header className="flex flex-wrap items-center gap-2">
@@ -652,7 +873,19 @@ export function ConfirmationMineScreen() {
                 </header>
 
                 <div className="text-sm text-[var(--sys-foreground)]">
-                  {order.customer.fullName} · <span dir="ltr">{order.customer.rawPhone}</span> · {order.customer.city}
+                  {/* A PHONE: EACH FACT IN ITS OWN BOX (ORD-23). A name, a number and a city typed into one string are
+                      one bidirectional run — the number lands against the name with its separator on the far side of
+                      it, and the line breaks in the middle of a fact. The orders list fixed this exact defect; a desk's
+                      line is left as it was. */}
+                  {phone ? (
+                    <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                      <span dir="auto">{order.customer.fullName}</span>
+                      <span dir="ltr">{order.customer.rawPhone}</span>
+                      <span dir="auto">{order.customer.city}</span>
+                    </span>
+                  ) : (
+                    <>{order.customer.fullName} · <span dir="ltr">{order.customer.rawPhone}</span> · {order.customer.city}</>
+                  )}
                   <p className="text-xs text-[var(--sys-muted-foreground)] mt-1">{order.deliveryAddress ?? order.customer.address}</p>
                 </div>
 
@@ -698,233 +931,62 @@ export function ConfirmationMineScreen() {
                   <p className="text-xs leading-relaxed text-[var(--sys-destructive)] pt-1 border-t border-[var(--sys-destructive-border)]">
                     للقراءة فقط — أُغلق بعد {data.noAnswerLimit} محاولات بلا رد. إعادةُ فتحِه من مركز التأكيد، بيد مَن يملك ذلك.
                   </p>
+                ) : phone ? (
+                /*
+                  A PHONE: THREE ROWS, EACH ONE A DECISION (ORD-05).
+
+                  The footer was one wrapping row of up to eleven things — the contact strip, two call results,
+                  three outcomes, a hint, two helpers — and at 311px they piled into five or six rows of mixed
+                  heights with the confirmation in the middle of the pile, beside «ألغِ». Now: reaching the
+                  customer (the strip, then the two call results); then what the call decided — «تأكيد الطلب»
+                  alone and full width, «تأجيل» and «ألغِ» side by side below it; and the rest behind one fold
+                  that names what it holds. The same buttons, the same handlers, the same locks: `Action` is
+                  drawn once per card and only the place it sits changes.
+                */
+                <footer className="space-y-3 pt-1 border-t border-[var(--sys-border)]">
+                  {canLogContact && (
+                    <div className="space-y-2">
+                      {contact}
+                      <div className="grid grid-cols-2 gap-2">
+                        {noAnswerBtn}
+                        {unreachableBtn}
+                      </div>
+                      {remainingHint}
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    {confirmBtn}
+                    <div className="grid grid-cols-2 gap-2">
+                      {postponeBtn}
+                      {rejectBtn}
+                    </div>
+                    {contactFirstHint}
+                  </div>
+                  {storeOrderNote}
+                  <AdvancedGroup label="المزيد" holds={moreHolds}>
+                    {openBtn}
+                    {issueBtn}
+                    {assistBtn}
+                  </AdvancedGroup>
+                </footer>
                 ) : (
                 <footer className="flex flex-wrap items-center gap-2 pt-1 border-t border-[var(--sys-border)]">
-                  {/* The order she is working on, opened in the same screen
-                      everyone else sees it in. She fixes what the customer
-                      just told her — a wrong name, a wrong street, a second
-                      unit — without leaving the queue. The fields she has no
-                      authority over are not shown, and are refused by the
-                      server even if they were. */}
-                  {/*
-                    AND THIS ONE WAS THE WAY AROUND THE OTHER THREE.
-
-                    «تأكيد» and «تأجيل» and «ألغِ» have been locked until
-                    the order carries a contact attempt since C1 — and
-                    «افتح وعدّل» was not. So an agent who had rung nobody
-                    could open the order, change the quantity, the price or
-                    the address, and save. The rule existed and its widest
-                    door was open.
-
-                    The server refuses it now too (`CONTACT_FIRST`), so
-                    this is not the rule — it is her being told it before
-                    she retypes an address rather than after.
-                  */}
-                  <Action
-                    onClick={() => setOpenOrderId(order.id)}
-                    locked={needsContact(order)}
-                    lockedTitle={CONTACT_FIRST_MESSAGE}
-                    icon={<RiPencilLine className="w-4 h-4" />}
-                  >
-                    افتح وعدّل
-                  </Action>
-
-                  {/* 1/2/3 counter — the third no-answer closes the order by rule */}
+                  {openBtn}
                   {canLogContact && (
                   <>
-                  <Action
-                    onClick={() => logAttempt(order, 'PHONE', 'NO_ANSWER')}
-                    busy={busyId === order.id}
-                    icon={<RiPhoneLockLine className="w-4 h-4" />}
-                    danger={remaining <= 1}
-                  >
-                    لا يرد
-                    <span className="tabular-nums" dir="ltr">
-                      {' '}
-                      {order.noAnswerCount}/{data.noAnswerLimit}
-                    </span>
-                  </Action>
-                  {/*
-                    THE PHONE THAT CANNOT RING AT ALL.
-
-                    She calls, hears the network's own recording, and had
-                    to file it as «لا يرد» — which says the customer did
-                    not pick up, a different fact about a different person.
-                    The two read the same in a counter and differently to
-                    whoever opens the order next: one is somebody ignoring
-                    the phone, the other is what a wrong digit looks like.
-
-                    It counts toward the three like the others, because
-                    three calls that never reached anybody is the same
-                    evidence whichever way the line failed.
-                  */}
-                  <Action
-                    onClick={() => logAttempt(order, 'PHONE', 'UNREACHABLE')}
-                    busy={busyId === order.id}
-                    icon={<RiPhoneLockLine className="w-4 h-4" />}
-                    danger={remaining <= 1}
-                  >
-                    مغلق أو خارج التغطية
-                  </Action>
-                  <span className="text-xs text-[var(--sys-muted)]">
-                    {remaining === 0
-                      ? 'بلغ الحد'
-                      : remaining === 1
-                        ? 'المحاولة القادمة تُغلق الطلب تلقائياً'
-                        : `متبقٍ ${remaining} محاولات قبل الإغلاق التلقائي`}
-                  </span>
-
-                  {/*
-                    CALL, SMS AND WHATSAPP — THE SAME STRIP THE REST OF THE
-                    PRODUCT USES.
-                    Two buttons were hand-rolled here and both were poorer for
-                    it: the WhatsApp one opened NOTHING — it recorded a contact
-                    and left the agent to find the customer in WhatsApp
-                    themselves — and there was no SMS at all, on the one screen
-                    where the whole job is reaching somebody.
-                    `ContactButtons` already carries the ready-made messages,
-                    filtered by channel and filled with this order's own words,
-                    and the tracking and couriers screens already use it. The
-                    templates were never missing; this screen was not asking
-                    for them.
-                  */}
-                  <ContactButtons
-                    phone={order.customer.rawPhone}
-                    context={{
-                      orderNumber: order.orderNumber,
-                      customerName: order.customer.fullName,
-                      amount: order.totalAmount,
-                      region: order.customer.city,
-                    }}
-                    /*
-                     * THE PRESS IS LOGGED BY THE STRIP, AND IS NOT AN
-                     * OUTCOME.
-                     *
-                     * This screen used to file a dialled call as
-                     * `ANSWERED` — the strongest result there is —
-                     * because it had nothing weaker to say. The answer
-                     * rate then counted every dial as a conversation,
-                     * which is the same inflation the note beside
-                     * `MESSAGE_SENT` warns about for messages.
-                     *
-                     * The strip records `OPENED` on every screen now, so
-                     * a call placed from the orders list leaves the same
-                     * trace as one placed here. The outcome is still
-                     * recorded below, by the person who knows it: «لا
-                     * يرد» or «تأكيد».
-                     */
-                    orderId={order.id}
-                  />
+                  {noAnswerBtn}
+                  {unreachableBtn}
+                  {remainingHint}
+                  {contact}
                   </>
                   )}
-                  {/*
-                    IN THE ORDER THE WORK HAPPENS IN.
-
-                    She rings, and then one of four things is true. The
-                    confirmation is what most calls end in, and it was last
-                    — past «تأجيل», «ألغِ», «إشكال» and «مساعدة» — so the
-                    commonest press was the furthest from the thumb and sat
-                    beside the one that cancels.
-
-                    Confirm first, then postpone, then cancel. The two that
-                    are neither an outcome of the call — the entry issue and
-                    the assistant — come after them.
-                  */}
-                  {/*
-                    THE THREE THAT DISPOSE OF THE ORDER, SHUT UNTIL SHE HAS
-                    TRIED TO REACH THE CUSTOMER.
-
-                    The server refuses them anyway (`needsContactFirst`), so
-                    this is not the rule — it is the agent being told the
-                    rule before she presses rather than after. The measured
-                    failure was «تأجيل» pressed with no call: the order went
-                    postponed, left her list, kept her claim, and blocked her
-                    next pull for ninety business minutes.
-
-                    «إدخال إشكال» and «مساعدة» stay open: neither decides
-                    anything about the order, and they are how she gets help
-                    when the call itself is the problem.
-
-                    «افتح وعدّل» USED to be in that sentence, and it was the
-                    way around all three — an edit decides plenty. It is
-                    locked with them now, on the card and on the server.
-                  */}
-                  <Action
-                    primary
-                    onClick={() => confirm(order)}
-                    busy={busyId === order.id}
-                    locked={needsContact(order)}
-                    lockedTitle={CONTACT_FIRST_MESSAGE}
-                    icon={<RiCheckboxCircleLine className="w-4 h-4" />}
-                  >
-                    تأكيد الطلب
-                  </Action>
-                  <Action
-                    onClick={() => setDialog({ kind: 'postpone', order })}
-                    busy={busyId === order.id}
-                    locked={needsContact(order)}
-                    lockedTitle={CONTACT_FIRST_MESSAGE}
-                    icon={<RiTimerLine className="w-4 h-4" />}
-                  >
-                    تأجيل {order.postponeCount > 0 && `(${order.postponeCount})`}
-                  </Action>
-                  <Action
-                    onClick={() => setDialog({ kind: 'reject', order })}
-                    busy={busyId === order.id}
-                    locked={needsContact(order)}
-                    lockedTitle={CONTACT_FIRST_MESSAGE}
-                    danger
-                    icon={<RiCloseCircleLine className="w-4 h-4" />}
-                  >
-                    ألغِ
-                  </Action>
-                  {needsContact(order) && (
-                    <p className="w-full text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
-                      اتصل بالزبون أول — بعدها بتفتح الأزرار
-                    </p>
-                  )}
-
-                  {/* «إدخال إشكال», not «إشكال إدخال»: the button is the
-                      act she performs, and the old name read as the name of
-                      the thing — so it looked like a filter, not a door. */}
-                  {/*
-                    AND ONLY ON AN ORDER A MODERATOR ENTERED.
-
-                    `POST /api/confirmation/issues` accepts `moderatorId`
-                    orders only: a store order — a landing page, Telegram,
-                    the POS — is refused with «لا يمكن فتح إشكال إدخال على
-                    طلب من مصدر خارجي». The button was drawn on every card,
-                    so the agent learned that by pressing it, and pressed it
-                    again on the next one. A button that exists in order to
-                    refuse teaches nothing the first four times.
-
-                    What replaces it on a store order is below: the fact,
-                    and what to do instead.
-                  */}
-                  {order.moderatorId ? (
-                  canRaiseIssue && (
-                  <Action onClick={() => setDialog({ kind: 'issue', order })} busy={busyId === order.id} icon={<RiAlertLine className="w-4 h-4" />}>
-                    إدخال إشكال
-                  </Action>
-                  )
-                  ) : (
-                    <span className="w-full text-xs leading-relaxed text-[var(--sys-warning)]">
-                      طلب من المتجر — ما في مودريتور يصلّحه.
-                      <span className="text-[var(--sys-muted-foreground)]">
-                        {' '}
-                        إذا البيانات غلط: سجّل «رقم خطأ» أو ألغِ واكتب السبب.
-                      </span>
-                    </span>
-                  )}
-
-                  {/* Reads this order and this customer's history, and says
-                      what it would open with. It changes nothing — every
-                      button that does is on either side of it. */}
-                  {canAskAssistant && (
-                  <Action onClick={() => setDialog({ kind: 'assist', order })} icon={<RiSparkling2Line className="w-4 h-4" />}>
-                    مساعدة
-                  </Action>
-                  )}
+                  {confirmBtn}
+                  {postponeBtn}
+                  {rejectBtn}
+                  {contactFirstHint}
+                  {issueBtn}
+                  {storeOrderNote}
+                  {assistBtn}
                 </footer>
                 )}
               </article>
@@ -1245,6 +1307,7 @@ function TabButton({
   count,
   note,
   tone,
+  phone,
 }: {
   active: boolean;
   onClick: () => void;
@@ -1252,6 +1315,8 @@ function TabButton({
   count?: number;
   note?: string;
   tone?: 'warning';
+  /** A phone keeps the tab to its label and count, on one line that never wraps. */
+  phone?: boolean;
 }) {
   return (
     <button
@@ -1260,7 +1325,7 @@ function TabButton({
       aria-selected={active}
       onClick={onClick}
       title={note}
-      className={`min-h-11 md:min-h-0 px-3 py-2 -mb-px border-b-2 text-start ${
+      className={`${phone ? 'shrink-0 whitespace-nowrap ' : ''}min-h-11 md:min-h-0 px-3 py-2 -mb-px border-b-2 text-start ${
         active
           ? 'border-[var(--sys-primary)] text-[var(--sys-heading)]'
           : 'border-transparent text-[var(--sys-muted-foreground)] hover:text-[var(--sys-foreground)]'
@@ -1281,7 +1346,7 @@ function TabButton({
         </span>
         )}
       </span>
-      {note && <span className="block text-xs font-normal text-[var(--sys-muted)]">{note}</span>}
+      {note && !phone && <span className="block text-xs font-normal text-[var(--sys-muted)]">{note}</span>}
     </button>
   );
 }
@@ -1299,6 +1364,7 @@ function SectionHead({
   value,
   onChange,
   note,
+  phone,
 }: {
   title: string;
   count: number;
@@ -1306,20 +1372,22 @@ function SectionHead({
   value: string;
   onChange: (v: string) => void;
   note?: string;
+  /** A phone drops the sentence (the open tab already says it) and gives the search box the whole line. */
+  phone?: boolean;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2 mb-3">
       <h2 className="text-sm font-bold text-[var(--sys-heading)]">
         {title} ({value.trim() ? `${count} من ${total}` : total})
       </h2>
-      {note && <span className="text-xs text-[var(--sys-muted)]">{note}</span>}
-      <div className="relative ms-auto">
+      {note && !phone && <span className="text-xs text-[var(--sys-muted)]">{note}</span>}
+      <div className={phone ? 'relative w-full' : 'relative ms-auto'}>
         <RiSearchLine className="w-4 h-4 text-[var(--sys-muted)] absolute top-1/2 -translate-y-1/2 end-2.5" />
         <input
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="رقم الهاتف أو الطلب أو الاسم"
-          className="h-11 md:h-8 w-56 ps-2.5 pe-8 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] text-xs text-[var(--sys-foreground)] focus:outline-none focus:border-[var(--sys-primary)]"
+          className={`h-11 md:h-8 ${phone ? 'w-full' : 'w-56'} ps-2.5 pe-8 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] text-xs text-[var(--sys-foreground)] focus:outline-none focus:border-[var(--sys-primary)]`}
         />
         {value && (
           <button
@@ -1353,6 +1421,7 @@ function Action({
   primary,
   danger,
   icon,
+  wide,
 }: {
   children: React.ReactNode;
   onClick: () => void;
@@ -1362,6 +1431,8 @@ function Action({
   primary?: boolean;
   danger?: boolean;
   icon?: React.ReactNode;
+  /** A phone's button fills the cell it is in (a full row, or half of one). */
+  wide?: boolean;
 }) {
   return (
     <button
@@ -1369,7 +1440,7 @@ function Action({
       disabled={busy || locked}
       title={locked ? lockedTitle : undefined}
       aria-disabled={locked || undefined}
-      className={`min-h-11 md:min-h-0 inline-flex items-center flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border disabled:opacity-50 ${
+      className={`${wide ? 'w-full justify-center ' : ''}min-h-11 md:min-h-0 inline-flex items-center flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border disabled:opacity-50 ${
         primary
           ? 'bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] border-[var(--sys-primary)]'
           : danger

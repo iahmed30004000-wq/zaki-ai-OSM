@@ -12,6 +12,7 @@ import { TERMINAL_CONFIRMATION_STATUSES } from '@/lib/confirmation-workflow';
 import type { ChangeableField } from '@/lib/change-request-fields';
 import { MAX_REASON, MIN_REASON } from '@/lib/order-edit-reason';
 import { useAsk } from '@/components/ui/Confirm';
+import { useIsPhone } from '@/hooks/useIsPhone';
 
 
 /**
@@ -76,6 +77,8 @@ interface Props {
 
 export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSaved }: Props) {
   const patchOrder = useOrderPatch();
+  /* A phone wraps a product's name over two lines where a desk cuts it with an ellipsis (ORD-24). */
+  const phone = useIsPhone();
   const ask = useAsk();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -357,7 +360,7 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
 
   return (
     <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 shadow-raised space-y-3">
-      <div className="flex items-center justify-between gap-2">
+      <div className={phone ? 'flex flex-wrap items-center justify-between gap-2' : 'flex items-center justify-between gap-2'}>
         <h4 className="text-xs font-black text-[var(--sys-foreground)] flex items-center gap-2">
           <RiArchiveLine className="w-4 h-4 text-[var(--sys-primary)]" />
           بيانات الطلب
@@ -391,7 +394,7 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
               size="sm"
             />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-[var(--sys-heading)] truncate">{line.productName}</p>
+              <p className={`text-sm font-medium text-[var(--sys-heading)] ${phone ? 'line-clamp-2' : 'truncate'}`}>{line.productName}</p>
               <p className="text-xs text-[var(--sys-muted)] tabular-nums" dir="ltr">
                 {line.quantity} × {amount(line.unitPrice, currency)}
                 {line.freeQuantity > 0 && ` + ${line.freeQuantity} هدية`}
