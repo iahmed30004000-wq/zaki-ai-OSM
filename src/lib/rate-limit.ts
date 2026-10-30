@@ -44,6 +44,21 @@ export function rateLimit(
 }
 
 /**
+ * ASK WHETHER A BUCKET IS FULL WITHOUT COUNTING THE ASKING.
+ *
+ * For a limit that counts only what went WRONG (a bad password): the check runs before the work, and `rateLimit` is
+ * called afterwards, only for a failure. A correct sign-in therefore never uses up the ceiling, and a bucket nobody has
+ * failed into reads as open. The window is the one `rateLimit` set when the first failure was counted, so the lock ends
+ * on its own; there is no permanent lock.
+ */
+export function peekRateLimit(key: string, limit: number): { blocked: boolean; retryAfterSec: number } {
+  const bucket = buckets.get(key);
+  const now = Date.now();
+  if (!bucket || bucket.resetAt < now || bucket.count < limit) return { blocked: false, retryAfterSec: 0 };
+  return { blocked: true, retryAfterSec: Math.ceil((bucket.resetAt - now) / 1000) };
+}
+
+/**
  * GIVE BACK THE SLOT A REQUEST TOOK, because the request did not do its work.
  *
  * A guard that counts the ATTEMPT punishes the visitor for our failure: the
