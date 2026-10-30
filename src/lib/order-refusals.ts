@@ -52,6 +52,16 @@ export const ORDER_LOCK_EXPIRED = 'انتهت مهلة قفل التعديل. ا
 export const orderClaimedBy = (name?: string | null): string =>
   `سحب هذا الطلبَ ${name || 'موظّفٌ آخر'} قبلك. اختر طلباً آخر من الطابور.`;
 
+/** A supervisor pulling an order back asked for it with nobody holding it. */
+export const ORDER_ALREADY_IN_QUEUE = 'الطلب في الطابور أصلاً، ما في أحد يحمله.';
+
+/** Giving an order back to the queue is a confirmation-desk move; later it would reopen a settled step. */
+export const ORDER_PAST_CONFIRMATION =
+  'الطلب تعدّى مرحلة التأكيد، فلا يرجع للطابور. عدّله مباشرة، أو استلمه بنفسك.';
+
+/** Pulling another person's order back needs the reason in writing, like every hand-over. */
+export const ORDER_TAKEBACK_REASON = 'اكتب سبب سحب الطلب منه — يُسجَّل في سجل الطلب.';
+
 /** The caller does not hold the claim they are trying to act on. */
 export const ORDER_CLAIM_NOT_HELD =
   'هذا الطلب ليس بين يديك. اسحبه أولاً، أو اطلبه من مَن يحمله.';
