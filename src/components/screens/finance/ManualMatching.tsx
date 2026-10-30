@@ -20,6 +20,7 @@ import { Money } from '@/components/ui/Money';
 import { Pager } from '@/components/ui/Pager';
 import { Rows } from '@/components/ui/Rows';
 import { BulkBar } from '@/components/shell/BulkBar';
+import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { OrderLink } from '@/components/orders/OrderLink';
 import { FULL_SIGHT, NO_SIGHT, statesOffered, type TrackingSight } from '@/lib/tracking-sight';
@@ -368,26 +369,49 @@ export function ManualMatching() {
     await list.reload();
   };
 
+  /*
+   * THE RULES, WRITTEN ONCE.
+   * A desk reads all five lines in the card. On a phone five paragraphs were ~220px before the first parcel (with the
+   * tabs, the title, the search and the filters the list began below the fold), so the card keeps a title and a
+   * one-line stepper and the same five paragraphs wait in a fold that says what it holds.
+   */
+  const rules = (
+    <>
+      <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+        1 — اختر الجهة، أو ابحث برقم الطلب أو الباركود أو اسم العميل.
+      </p>
+      <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+        2 — ما سلّمه وما رجع: علّمه واضغط «تم تسليمها» أو «رجعت». يُسجَّل ما حدث فقط، ولا يدخل مالٌ المحفظة.
+      </p>
+      <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+        3 — المال: علّم المسلَّم واضغط «استلمت منه»، واكتب المبلغ الذي استلمته فعلاً. أيّ فرق عن المتوقَّع يُسجَّل كما هو.
+      </p>
+      <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+        بعد الاستلام يُغلق الطلب مالياً. والراجع يُغلق بعد عدّ بضاعته في «المرتجعات».
+      </p>
+      <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+        «استلمت منه» لنقد بعملة الطلب نفسها إلى محفظة فعّالة. أيّ عملة ثانية، أو سعر صرف، أو كشف واحد تعتمده: «مطابق يدوي»
+        لإضافة الطلبات إلى مسوّدة، ثم «تجميع» في «التحصيل والكشوف».
+      </p>
+    </>
+  );
+
   return (
     <div className="space-y-3">
       <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 space-y-2">
         <p className="text-sm font-medium text-[var(--sys-heading)]">مطابقة يدوية — لشركة أو مندوب لا يرسل كشفاً ولا ملفاً</p>
-        <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
-          1 — اختر الجهة، أو ابحث برقم الطلب أو الباركود أو اسم العميل.
-        </p>
-        <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
-          2 — ما سلّمه وما رجع: علّمه واضغط «تم تسليمها» أو «رجعت». يُسجَّل ما حدث فقط، ولا يدخل مالٌ المحفظة.
-        </p>
-        <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
-          3 — المال: علّم المسلَّم واضغط «استلمت منه»، واكتب المبلغ الذي استلمته فعلاً. أيّ فرق عن المتوقَّع يُسجَّل كما هو.
-        </p>
-        <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
-          بعد الاستلام يُغلق الطلب مالياً. والراجع يُغلق بعد عدّ بضاعته في «المرتجعات».
-        </p>
-        <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
-          «استلمت منه» لنقد بعملة الطلب نفسها إلى محفظة فعّالة. أيّ عملة ثانية، أو سعر صرف، أو كشف واحد تعتمده: «مطابق يدوي»
-          لإضافة الطلبات إلى مسوّدة، ثم «تجميع» في «التحصيل والكشوف».
-        </p>
+        {phone ? (
+          <>
+            <p className="text-xs leading-relaxed text-[var(--sys-foreground)]">
+              1 اختر الجهة · 2 سجّل التسليم أو الرجوع · 3 استلم المال
+            </p>
+            <AdvancedGroup label="كيف تعمل؟" holds="الخطوات بالتفصيل">
+              <div className="w-full space-y-2">{rules}</div>
+            </AdvancedGroup>
+          </>
+        ) : (
+          rules
+        )}
       </div>
 
       <ListToolbar

@@ -9,6 +9,7 @@ import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { arDateTime } from '@/lib/format';
 import { Money } from '@/components/ui/Money';
+import { useIsPhone } from '@/hooks/useIsPhone';
 
 /**
  * /finance/transfers — moving money between wallets. One transfer writes two
@@ -119,6 +120,8 @@ export function TransfersScreen() {
         );
       })
     );
+
+  const phone = useIsPhone();
 
   /** What this pair of wallets IS. Read here, and checked again server-side. */
   const reading = from && to ? readTransfer(asSide(from), asSide(to)) : null;
@@ -253,7 +256,10 @@ export function TransfersScreen() {
         {error && <p className="text-sm text-[var(--sys-destructive)]">{error}</p>}
         {done && <p className="text-sm text-[var(--sys-success)]">{done}</p>}
 
-        <div className="flex justify-end">
+        {/* On a phone the sentence that names the transfer is a line of its own with the button under it. Side by side
+            they shared one row with no gap: the sentence squeezed into about 200px over three lines and the button
+            sat flush against the edge of its box. */}
+        <div className={phone ? 'flex flex-col gap-2' : 'flex justify-end'}>
           {/* What you are about to do, said before you do it. The three
               transfers are three different acts — one crosses two sets of
               books, one crosses a currency as well — so the screen names the
@@ -276,7 +282,9 @@ export function TransfersScreen() {
           <button
             type="submit"
             disabled={saving || !!refusal}
-            className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium inline-flex items-center gap-2 disabled:opacity-50"
+            className={`h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium inline-flex items-center gap-2 disabled:opacity-50 ${
+              phone ? 'w-full justify-center' : ''
+            }`}
           >
             {saving ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiRepeatLine className="w-4 h-4" />}
             تحويل
@@ -327,11 +335,18 @@ export function TransfersScreen() {
                 ) },
               { key: 'c5', label: "الوارد", align: 'end',
                 render: (t) => (
-                  <Money value={t.amountIn} currency={t.to?.currencyCode} />
+                  <>
+                    <Money value={t.amountIn} currency={t.to?.currencyCode} />
+                    {/* A card has no room for a rate column that reads «1» on every same-currency transfer; the rate
+                        is said under the amount only when it is a rate (the desk's table keeps its own column). */}
+                    {phone && t.exchangeRate !== 1 && (
+                      <span className="block text-xs text-[var(--sys-muted)]">السعر {t.exchangeRate}</span>
+                    )}
+                  </>
                 ) },
-              { key: 'c6', label: "السعر", align: 'end',
+              { key: 'c6', label: "السعر", align: 'end', hideOnPhone: true,
                 render: (t) => (t.exchangeRate) },
-              { key: 'c7', label: "الملاحظة",
+              { key: 'c7', label: "الملاحظة", wide: true,
                 render: (t) => (t.note ?? '—') },
             ]}
             empty={

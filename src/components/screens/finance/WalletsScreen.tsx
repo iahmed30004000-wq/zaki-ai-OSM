@@ -8,7 +8,9 @@ import { ScreenTitle } from '@/components/shell/ScreenTitle';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 import { RiAddCircleLine, RiArrowGoBackLine, RiCheckLine, RiCloseLine, RiDeleteBinLine, RiLoader4Line, RiPencilLine, RiScales3Line, RiShutDownLine, RiWallet3Line } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
-import { Rows } from '@/components/ui/Rows';
+import { Rows, type Column } from '@/components/ui/Rows';
+import { Money } from '@/components/ui/Money';
+import { useIsPhone } from '@/hooks/useIsPhone';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { arDateTime } from '@/lib/format';
 import { useApp } from '@/context/AppContext';
@@ -76,6 +78,9 @@ export function WalletsScreen() {
   const mayCash = userCan(currentUser, 'finance.cashbox');
   const ask = useConfirm();
   const toast = useToast();
+  // The phone draws a different SET of controls (the day's press first, the upkeep folded under it), not the desk's
+  // row squeezed into 343px: exactly one copy of each button is drawn, and the desk is the layout it always was.
+  const phone = useIsPhone();
   const [wallets, setWallets] = useState<WalletRow[] | null>(null);
   const [active, setActive] = useState<string>('');
   const [movements, setMovements] = useState<Movement[] | null>(null);
@@ -175,11 +180,149 @@ export function WalletsScreen() {
     }
   };
 
+  /*
+   * THE HEADER'S PRESSES, EACH DRAWN ONCE.
+   * They are named here so the desk and the phone can arrange the same four controls differently (see the row below)
+   * without a second copy of any of them: a copy is a button two tests and one screen reader cannot tell apart.
+   */
+  // A STOPPED wallet is the one case where the day's work needs «أعِد تشغيلها»: «record» is disabled until it runs,
+  // so the way out must not sit under a fold that says «إيقاف». It is drawn beside the balance, and only while stopped.
+  const restartButton =
+    wallet && !renaming && !wallet.isActive && mayManage ? (
+      <button
+        onClick={() => patchWallet({ isActive: true }, 'أُعيد تشغيل المحفظة')}
+        disabled={busy}
+        className="h-11 md:h-8 px-3 rounded-lg border border-[var(--sys-success)]/60 text-[var(--sys-success)] text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-40"
+      >
+        <RiShutDownLine className="w-4 h-4" /> أعِد تشغيلها
+      </button>
+    ) : null;
+  // Rename, stop and delete are maintenance, not the day's work: they fold into «متقدم». Nothing is removed.
+  const upkeep =
+    wallet && !renaming && mayManage ? (
+      <AdvancedGroup
+        key={wallet.id}
+        className={phone ? 'w-full' : undefined}
+        holds={wallet.isActive ? 'تعديل الاسم · إيقاف · حذف' : 'تعديل الاسم · حذف'}
+      >
+        <button
+          onClick={() => { setRenaming(true); setNewName(wallet.name); }}
+          aria-label="عدّل الاسم" title="عدّل الاسم"
+          className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 cursor-pointer rounded-lg p-1.5 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-primary-soft)] hover:text-[var(--sys-primary)]"
+        >
+          <RiPencilLine className="w-4 h-4" />
+        </button>
+        {wallet.isActive && (
+          <button
+            onClick={() => patchWallet({ isActive: false }, 'أُوقِفت المحفظة')}
+            disabled={busy}
+            title="أوقف المحفظة" aria-label="أوقف المحفظة"
+            className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 cursor-pointer rounded-lg p-1.5 disabled:opacity-40 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-warning-soft)] hover:text-[var(--sys-warning)]"
+          >
+            <RiShutDownLine className="w-4 h-4" />
+          </button>
+        )}
+        <button aria-label="احذف"
+          onClick={removeWallet}
+          disabled={busy}
+          title="احذف"
+          className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 cursor-pointer rounded-lg p-1.5 text-[var(--sys-muted)] hover:bg-[var(--sys-destructive-soft)] hover:text-[var(--sys-destructive)] disabled:opacity-40"
+        >
+          <RiDeleteBinLine className="w-4 h-4" />
+        </button>
+      </AdvancedGroup>
+    ) : null;
+  // Offered only while it is still true. A wallet that has started moving is reconciled by the daily closing, and the
+  // server refuses this outright — so showing the button there would be an invitation to a red error.
+  const countButton =
+    wallet && !renaming && wallet.movements === 0 && !wallet.openingCount && mayCash ? (
+      <button
+        onClick={() => setCountOpen(true)}
+        disabled={busy}
+        title="سجّل العدّ الافتتاحيّ"
+        className="h-11 md:h-8 px-3 rounded-lg border border-[var(--sys-warning)]/60 text-[var(--sys-warning)] text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-40"
+      >
+        <RiScales3Line className="w-4 h-4" /> العدّ الافتتاحيّ
+      </button>
+    ) : null;
+  const recordButton = mayCash ? (
+    <button
+      disabled={!wallet?.isActive}
+      onClick={() => setRecordOpen(true)}
+      className="h-11 md:h-8 px-3 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-50"
+    >
+      <RiAddCircleLine className="w-4 h-4" /> حركة جديدة
+    </button>
+  ) : null;
+
+  /*
+   * THE LEDGER ON A CARD: WHO, HOW MUCH, THEN THE REST.
+   * The desk's table keeps its columns (date, party, kind, in, out, by). A card drawn from those printed the date AND
+   * the party in bold and then «وارد» and «صادر» as two lines of which one is always empty. On a phone the card is
+   * led by the party and ONE signed figure; the note, which can be a sentence, gets the width of the card.
+   */
+  const movementColumns: Column<Movement>[] = phone
+    ? [
+        { key: 'c1', label: 'الطرف', primary: true, render: (m) => m.party },
+        {
+          key: 'amt',
+          label: 'المبلغ',
+          primary: true,
+          // Which way the money went is the sign and the colour — no empty «صادر» line on a card that is an «وارد».
+          render: (m) => (
+            <span dir="ltr" className="whitespace-nowrap">
+              {m.direction === 'IN' ? '+' : '−'}
+              <Money value={m.amount} currency={wallet?.currencyCode} tone={m.direction === 'IN' ? 'collected' : 'lost'} />
+            </span>
+          ),
+        },
+        { key: 'c0', label: 'التاريخ', render: (m) => arDateTime(m.createdAt) },
+        { key: 'c2', label: 'البند', render: (m) => CATEGORY_AR[m.category] ?? m.category },
+        {
+          key: 'note',
+          label: 'الملاحظة',
+          wide: true,
+          render: (m) => (
+            <>
+              {m.note ?? '—'}
+              {m.reversalReason && (
+                <span className="block text-xs text-[var(--sys-destructive)]">قيد عكسي: {m.reversalReason}</span>
+              )}
+            </>
+          ),
+        },
+      ]
+    : [
+        { key: 'c0', label: "التاريخ", primary: true,
+          render: (m) => (
+            <>{arDateTime(m.createdAt)}</>
+          ) },
+        { key: 'c1', label: "الطرف", primary: true,
+          render: (m) => (
+            <>{m.party}
+              {m.note && <span className="block text-xs text-[var(--sys-muted)]">{m.note}</span>}
+              {m.reversalReason && (
+                <span className="block text-xs text-[var(--sys-destructive)]">قيد عكسي: {m.reversalReason}</span>
+              )}</>
+          ) },
+        { key: 'c2', label: "البند",
+          render: (m) => (CATEGORY_AR[m.category] ?? m.category) },
+        { key: 'c3', label: "وارد", align: 'end',
+          render: (m) => (m.direction === 'IN' ? m.amount : '') },
+        { key: 'c4', label: "صادر", align: 'end',
+          render: (m) => (m.direction === 'OUT' ? m.amount : '') },
+        { key: 'c5', label: "سجّلها",
+          render: (m) => (m.createdByName ?? '—') },
+      ];
+
+
   return (
     <div className="max-w-6xl space-y-3">
       <ScreenTitle />
 
-      <div className="flex items-center justify-between gap-3">
+      {/* On a phone the sentence takes the whole line and the button sits under it: side by side the sentence was
+          squeezed into five lines with the button floating in the middle of them. */}
+      <div className={phone ? 'flex flex-col gap-2' : 'flex items-center justify-between gap-3'}>
         <p className="text-xs text-[var(--sys-muted-foreground)]">
           المحفظة تتبع متجراً واحداً وتحمل عملته. حركاتها سجل دائم: ما مرّ بها مبلغ يُوقَف
           ولا يُحذف — ولا يُحذف فعلياً إلا ما لم يمرّ به شيء.
@@ -207,12 +350,12 @@ export function WalletsScreen() {
         />
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className={phone ? 'grid gap-2' : 'grid gap-3 sm:grid-cols-2 lg:grid-cols-3'}>
             {wallets.map((w) => (
               <button
                 key={w.id}
                 onClick={() => setActive(w.id)}
-                className={`text-right bg-[var(--sys-card)] border rounded-lg p-4 transition ${
+                className={`text-right bg-[var(--sys-card)] border rounded-lg ${phone ? 'p-3' : 'p-4'} transition ${
                   w.id === active ? 'border-[var(--sys-primary)] ring-1 ring-[var(--sys-primary)]/20' : 'border-[var(--sys-border)]'
                 }`}
               >
@@ -220,12 +363,27 @@ export function WalletsScreen() {
                   <span className="text-sm font-medium text-[var(--sys-heading)]">{w.name}</span>
                   {!w.isActive && <span className="text-xs text-[var(--sys-muted)] border border-[var(--sys-border)] rounded-full px-2 py-0.5">موقوفة</span>}
                 </span>
-                <span className="block text-2xl font-semibold text-[var(--sys-heading)] tabular-nums mt-2">
-                  {w.balance} <span className="text-sm font-normal text-[var(--sys-muted-foreground)]">{w.currencyCode}</span>
-                </span>
-                <span className="block text-xs text-[var(--sys-muted-foreground)] mt-1 tabular-nums">
-                  افتتاحي {w.opening} · وارد {w.in} · صادر {w.out}
-                </span>
+                {phone ? (
+                  /* A card a finger scrolls past, six of them: the balance with its thousands separators and its code,
+                     and the three figures behind it each under its own name instead of one dense line of raw numbers. */
+                  <>
+                    <Money value={w.balance} currency={w.currencyCode} className="mt-1 block text-lg font-semibold text-[var(--sys-heading)]" />
+                    <span className="mt-1 grid grid-cols-3 gap-2 text-xs text-[var(--sys-muted-foreground)]">
+                      <span>افتتاحي <Money value={w.opening} currency={null} className="block text-[var(--sys-foreground)]" /></span>
+                      <span>وارد <Money value={w.in} currency={null} className="block text-[var(--sys-foreground)]" /></span>
+                      <span>صادر <Money value={w.out} currency={null} className="block text-[var(--sys-foreground)]" /></span>
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="block text-2xl font-semibold text-[var(--sys-heading)] tabular-nums mt-2">
+                      {w.balance} <span className="text-sm font-normal text-[var(--sys-muted-foreground)]">{w.currencyCode}</span>
+                    </span>
+                    <span className="block text-xs text-[var(--sys-muted-foreground)] mt-1 tabular-nums">
+                      افتتاحي {w.opening} · وارد {w.in} · صادر {w.out}
+                    </span>
+                  </>
+                )}
                 {/* An opening balance nobody counted is a number somebody
                     typed, and it is a term in every daily closing after it.
                     Said on the card because that is where the number is. */}
@@ -279,79 +437,30 @@ export function WalletsScreen() {
                 <h2 className="text-sm font-medium text-[var(--sys-heading)]">حركات {wallet?.name ?? ''}</h2>
               )}
 
-              <span className="flex items-center gap-1.5">
-                {wallet && !renaming && (
+              {/* The desk keeps the row it always had: upkeep, the count, a divider, then the day's press. On a phone the
+                  press that is the screen's work comes FIRST and the upkeep folds into a line of its own underneath:
+                  all of it in one row needed about 500px of a 309px space, so the labels broke inside their boxes and
+                  spilled over each other. */}
+              <span className={phone ? 'flex w-full flex-wrap items-center gap-1.5' : 'flex items-center gap-1.5'}>
+                {phone ? (
                   <>
-                    {/* Rename, stop and delete are maintenance, not the day's
-                        work: the row's own controls stay beside the balance,
-                        these fold into متقدم. Nothing is removed. */}
-                    {/* A STOPPED wallet is the one case where the day's work needs
-                        «أعِد تشغيلها»: «record» is disabled until it runs, so the
-                        way out must not sit under a fold that says «إيقاف». It
-                        is drawn here, beside the balance, and only while stopped. */}
-                    {!wallet.isActive && mayManage && (
-                      <button
-                        onClick={() => patchWallet({ isActive: true }, 'أُعيد تشغيل المحفظة')}
-                        disabled={busy}
-                        className="h-11 md:h-8 px-3 rounded-lg border border-[var(--sys-success)]/60 text-[var(--sys-success)] text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-40"
-                      >
-                        <RiShutDownLine className="w-4 h-4" /> أعِد تشغيلها
-                      </button>
-                    )}
-                    {mayManage && (
-                    <AdvancedGroup key={wallet.id} holds={wallet.isActive ? 'تعديل الاسم · إيقاف · حذف' : 'تعديل الاسم · حذف'}>
-                    <button
-                      onClick={() => { setRenaming(true); setNewName(wallet.name); }}
-                      aria-label="عدّل الاسم" title="عدّل الاسم"
-                      className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 cursor-pointer rounded-lg p-1.5 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-primary-soft)] hover:text-[var(--sys-primary)]"
-                    >
-                      <RiPencilLine className="w-4 h-4" />
-                    </button>
-                    {wallet.isActive && (
-                    <button
-                      onClick={() => patchWallet({ isActive: false }, 'أُوقِفت المحفظة')}
-                      disabled={busy}
-                      title="أوقف المحفظة" aria-label="أوقف المحفظة"
-                      className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 cursor-pointer rounded-lg p-1.5 disabled:opacity-40 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-warning-soft)] hover:text-[var(--sys-warning)]"
-                    >
-                      <RiShutDownLine className="w-4 h-4" />
-                    </button>
-                    )}
-                    <button aria-label="احذف"
-                      onClick={removeWallet}
-                      disabled={busy}
-                      title="احذف"
-                      className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 cursor-pointer rounded-lg p-1.5 text-[var(--sys-muted)] hover:bg-[var(--sys-destructive-soft)] hover:text-[var(--sys-destructive)] disabled:opacity-40"
-                    >
-                      <RiDeleteBinLine className="w-4 h-4" />
-                    </button>
-                    </AdvancedGroup>
-                    )}
-                    {/* Offered only while it is still true. A wallet that has
-                        started moving is reconciled by the daily closing, and
-                        the server refuses this outright — so showing the button
-                        there would be an invitation to a red error. */}
-                    {wallet.movements === 0 && !wallet.openingCount && mayCash && (
-                      <button
-                        onClick={() => setCountOpen(true)}
-                        disabled={busy}
-                        title="سجّل العدّ الافتتاحيّ"
-                        className="h-11 md:h-8 px-3 rounded-lg border border-[var(--sys-warning)]/60 text-[var(--sys-warning)] text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-40"
-                      >
-                        <RiScales3Line className="w-4 h-4" /> العدّ الافتتاحيّ
-                      </button>
-                    )}
-                    <span className="mx-1 h-5 w-px bg-[var(--sys-border)]" />
+                    {recordButton}
+                    {restartButton}
+                    {countButton}
+                    {upkeep}
                   </>
-                )}
-                {mayCash && (
-                <button
-                  disabled={!wallet?.isActive}
-                  onClick={() => setRecordOpen(true)}
-                  className="h-11 md:h-8 px-3 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-50"
-                >
-                  <RiAddCircleLine className="w-4 h-4" /> حركة جديدة
-                </button>
+                ) : (
+                  <>
+                    {wallet && !renaming && (
+                      <>
+                        {restartButton}
+                        {upkeep}
+                        {countButton}
+                        <span className="mx-1 h-5 w-px bg-[var(--sys-border)]" />
+                      </>
+                    )}
+                    {recordButton}
+                  </>
                 )}
               </span>
             </div>
@@ -366,28 +475,7 @@ export function WalletsScreen() {
                             <Rows
                 rows={movements}
                 keyOf={(m) => m.id}
-                columns={[
-                  { key: 'c0', label: "التاريخ", primary: true,
-                    render: (m) => (
-                  <>{arDateTime(m.createdAt)}</>
-                ) },
-                  { key: 'c1', label: "الطرف", primary: true,
-                    render: (m) => (
-                  <>{m.party}
-                        {m.note && <span className="block text-xs text-[var(--sys-muted)]">{m.note}</span>}
-                        {m.reversalReason && (
-                          <span className="block text-xs text-[var(--sys-destructive)]">قيد عكسي: {m.reversalReason}</span>
-                        )}</>
-                ) },
-                  { key: 'c2', label: "البند",
-                    render: (m) => (CATEGORY_AR[m.category] ?? m.category) },
-                  { key: 'c3', label: "وارد", align: 'end',
-                    render: (m) => (m.direction === 'IN' ? m.amount : '') },
-                  { key: 'c4', label: "صادر", align: 'end',
-                    render: (m) => (m.direction === 'OUT' ? m.amount : '') },
-                  { key: 'c5', label: "سجّلها",
-                    render: (m) => (m.createdByName ?? '—') },
-                ]}
+                columns={movementColumns}
                 empty={
                   <EmptyState
                     title="لا حركاتٍ على هذه المحفظة"
