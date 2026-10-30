@@ -148,6 +148,34 @@ interface ProductOption {
    * onto the line either way, from the offer id.
    */
   offers?: { id: string; name: string; quantity: number; freeQuantity?: number; sellingPrice: number }[];
+  /** The offers on sale today (`GET /api/products`). The ONLY list a line may adopt or offer; see `liveOffersOf`. */
+  liveOffers?: { id: string; name: string; quantity: number; freeQuantity?: number; price: number; listPrice?: number | null }[];
+}
+
+type OfferChoice = { id: string; name: string; quantity: number; freeQuantity?: number; sellingPrice: number };
+
+/**
+ * THE OFFERS A LINE MAY TAKE: THE ONES ON SALE TODAY, AND NOTHING ELSE.
+ *
+ * `offers` is every row the product has - stopped, finished, shown only after an order - and the first of them used
+ * to be adopted by a new line, so an order opened at a bundle that no longer exists (A «3 بـ75» finished, B «قطعتان
+ * بـ50» live, A listed first). The route now also sends `liveOffers`, the one reader every door uses.
+ *
+ * ABSENT `liveOffers` (an older server, a failed read) IS «none known»: the line opens at the base price and no bundle
+ * is offered. It never falls back to `offers`, which is the very list that went wrong.
+ *
+ * `sellingPrice` is the figure the box has always held for an offer line: the bundle's price BEFORE its own reduction
+ * (`listPrice`, or `price` when it has none). The reduction is the door's (`offer.discount`), so the body sent for a
+ * live offer is the same one it always was.
+ */
+export function liveOffersOf(product: ProductOption | undefined): OfferChoice[] {
+  return (product?.liveOffers ?? []).map((o) => ({
+    id: o.id,
+    name: o.name,
+    quantity: o.quantity,
+    freeQuantity: o.freeQuantity,
+    sellingPrice: o.listPrice ?? o.price,
+  }));
 }
 
 /**
@@ -185,7 +213,7 @@ function fromCatalogue(
   product: ProductOption | undefined,
   minorUnit: number | null | undefined
 ): Omit<DraftLine, 'key'> {
-  const offer = product?.offers?.[0];
+  const offer = liveOffersOf(product)[0];
   if (offer) {
     return { productId, offerId: offer.id, quantity: offer.quantity, price: String(offer.sellingPrice), pricing: 'follows' };
   }
@@ -257,7 +285,7 @@ export function withOffer(
   product: ProductOption | undefined,
   minorUnit: number | null | undefined
 ): DraftLine {
-  const offer = product?.offers?.find((o) => o.id === offerId);
+  const offer = liveOffersOf(product).find((o) => o.id === offerId);
   if (offer) {
     return { ...line, offerId: offer.id, quantity: offer.quantity, price: String(offer.sellingPrice), pricing: 'follows' };
   }
@@ -333,7 +361,9 @@ export function ProductLinesEditor({
     <div className="space-y-2">
       {lines.map((line) => {
         const product = productOf(line.productId);
-        const offers = product?.offers ?? [];
+        const offers = liveOffersOf(product);
+        /** Offers exist but none is on sale: say so, so the plain base price is not a surprise. */
+        const noneLive = offers.length === 0 && (product?.offers?.length ?? 0) > 0;
         const lockedByOffer = !!line.offerId;
         /** The figure this line's box holds, or nothing — never an invented 0. */
         const lineFigure = typedFigure(line.price);
@@ -366,6 +396,10 @@ export function ProductLinesEditor({
                 </button>
               )}
             </div>
+
+            {noneLive && (
+              <p className="text-xs text-[var(--sys-muted-foreground)]">لا عرض فعّال لهذا المنتج — السعر الأساسي</p>
+            )}
 
             {offers.length > 0 && (
               <select
