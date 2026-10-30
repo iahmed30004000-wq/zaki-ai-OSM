@@ -7,6 +7,7 @@ import { draftState } from '@/lib/landing-draft';
 import {
   sanitizeLandingCss,
   sanitizeLandingHtml,
+  injectPageStyles,
   parseLandingSettings,
   applyLandingVariables,
 } from '@/lib/landing-html-sanitize';
@@ -171,15 +172,11 @@ ${settings.width === 'contained' && settings.maxWidth ? `.zaki-page-wrap{max-wid
     currency,
   });
 
-  // Inject base styles + custom CSS right before </head> (or prepend when no head exists)
-  const injection = `${baseStyles}${customCss}`;
-  if (injection) {
-    if (/<\/head>/i.test(html)) {
-      html = html.replace(/<\/head>/i, `${injection}</head>`);
-    } else {
-      html = injection + html;
-    }
-  }
+  // Base styles go right after the opening <head>, the seller's CSS right
+  // before </head>. The seller's CSS is a seller's text, so it is spliced in
+  // by a function: a replacement STRING would read `$'` in it as «the rest
+  // of the document» (see injectPageStyles).
+  html = injectPageStyles(html, baseStyles, customCss);
 
   // The frame has an opaque origin and sends no cookies, so a stored image
   // linked privately — in the seller's HTML, their CSS, or a product photo

@@ -1,5 +1,5 @@
 import type { LandingSection, SectionType } from './landing-sections';
-import { copyIn, type Dialect, type LandingStructure } from './landing-structure';
+import { copyIn, fillMissingFields, type Dialect, type LandingStructure } from './landing-structure';
 
 /**
  * A PROPOSAL LANDING ON A PAGE SOMEBODY ALREADY ARRANGED.
@@ -184,7 +184,13 @@ export function applyCopyToSections(opts: {
     });
   }
 
-  return { sections: next, placed, unplaced, empty: placed.length === 0 };
+  // A row written one cell at a time is made whole, in the same blocks that
+  // were written to and no others (see fillMissingFields). The id, type and
+  // enabled flag survive a parse, so `sameArrangement` still holds.
+  const written = new Set(placed.map((p) => p.sectionId));
+  const whole = next.map((s) => (written.has(s.id) ? fillMissingFields(s) : s));
+
+  return { sections: whole, placed, unplaced, empty: placed.length === 0 };
 }
 
 /**

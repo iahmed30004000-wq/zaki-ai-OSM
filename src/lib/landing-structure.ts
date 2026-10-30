@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SECTION_LABEL, type LandingSection, type SectionType } from './landing-sections';
+import { SECTION_LABEL, landingSectionSchema, type LandingSection, type SectionType } from './landing-sections';
 
 /**
  * A PERSUASION STRUCTURE — the half of a landing page that is not its look.
@@ -498,6 +498,8 @@ export function structureToSections(
   make: (type: SectionType) => LandingSection
 ): LandingSection[] {
   const sections = structure.sequence.map((type) => make(type));
+  // The blocks a slot wrote into, made whole at the end (see fillMissingFields).
+  const touched = new Set<number>();
 
   for (const slot of structure.slots) {
     const section = sections[slot.at];
@@ -505,6 +507,7 @@ export function structureToSections(
     const text = copyIn(copy[slot.key], dialect);
     if (!text) continue;
     const cut = [...text].slice(0, slot.max).join('');
+    touched.add(slot.at);
 
     /*
      * `headline`, or `points.0.when` — one named field, or a cell of a list.
@@ -537,7 +540,26 @@ export function structureToSections(
    * filling up to the row it is writing.
    */
 
-  return sections;
+  return sections.map((section, at) => (touched.has(at) ? fillMissingFields(section) : section));
+}
+
+/**
+ * A BLOCK WHOSE ROWS WERE WRITTEN ONE CELL AT A TIME, MADE WHOLE.
+ *
+ * A slot may address one cell (`points.0.when`), and the row is CREATED when
+ * it is written to — as `{ when: "…" }`, every other column missing. The
+ * block schema has a default for each of them and the renderers rely on it:
+ * a list is drawn from a PARSED block, and a half-row threw inside the
+ * preview and the creation dialog before the seller saw one word of it.
+ *
+ * So a block this module touched goes through the schema once, which fills
+ * what is missing and changes nothing that is there. A block the schema
+ * REFUSES is returned as it came: a copy that overflows a limit is for the
+ * save endpoint to refuse in words, not for this function to lose.
+ */
+export function fillMissingFields(section: LandingSection): LandingSection {
+  const parsed = landingSectionSchema.safeParse(section);
+  return parsed.success ? parsed.data : section;
 }
 
 /**

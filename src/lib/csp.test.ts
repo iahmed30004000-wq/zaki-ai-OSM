@@ -63,6 +63,19 @@ describe('the uploaded HTML of a landing page', () => {
     expect(sandbox).toContain('sandbox allow-scripts');
     expect(sandbox).not.toContain('allow-same-origin');
   });
+
+  it('cannot submit a form anywhere — the order form is ours, outside the frame', async () => {
+    const rules = await nextConfig.headers!();
+    const raw = rules.find((r) => r.source === '/lp/:slug/raw')!;
+    const csp = raw.headers.find((h) => h.key === 'Content-Security-Policy')!.value;
+    expect(directive(csp, 'sandbox')).not.toContain('allow-forms');
+    expect(csp).not.toContain('allow-forms');
+    // belt and braces: even a sandbox that allowed forms could only post home
+    expect(directive(csp, 'form-action')).toBe("form-action 'self'");
+    // and what the page legitimately needs is still granted
+    expect(directive(csp, 'sandbox')).toContain('allow-scripts');
+    expect(directive(csp, 'sandbox')).toContain('allow-popups');
+  });
 });
 
 describe("a shopper's stored image", () => {

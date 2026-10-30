@@ -6,6 +6,8 @@ import { apiError } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { rateLimit } from '@/lib/rate-limit';
 import { validateHtmlUpload } from '@/lib/landing-pages';
+import { sanitizeLandingHtml } from '@/lib/landing-html-sanitize';
+import { saveContent } from '@/lib/landing-draft';
 
 interface Ctx {
   params: Promise<{ id: string }>;
@@ -49,11 +51,28 @@ export async function POST(req: Request, ctx: Ctx) {
     });
     if (!check.valid) return NextResponse.json({ error: check.error }, { status: 400 });
 
-    const htmlContent = buffer.toString('utf8');
-
-    const updated = await db.landingPage.update({
+    /*
+     * AN UPLOAD IS A SAVE, NOT A PUBLISH — and it is cleaned on the way in.
+     *
+     * This wrote the file straight into the live column, unsanitised, on a
+     * page visitors were reading: a seller picking a file to look at put it
+     * in front of every click the advert was paying for, and the stored row
+     * carried whatever the file carried (the raw route re-cleans at serve
+     * time, but other doors read the row).
+     *
+     * `saveContent` is the door every other edit goes through: a live page
+     * takes the file into its DRAFT and the seller publishes it from the
+     * editor with the button that already exists; a page nobody can see yet
+     * is written straight, as before.
+     *
+     * Decision (owner: «اي قرار بعد الان اتخذو دون الرجوع الي»): the
+     * safer reading — a draft. No published contract changes: the response
+     * keeps its shape and gains one optional field.
+     */
+    const htmlContent = sanitizeLandingHtml(buffer.toString('utf8'));
+    await saveContent(lp.id, { htmlContent }, lp.isPublished);
+    const updated = await db.landingPage.findUniqueOrThrow({
       where: { id: lp.id },
-      data: { htmlContent },
       select: { id: true, name: true, slug: true, isPublished: true, updatedAt: true },
     });
 
@@ -63,10 +82,11 @@ export async function POST(req: Request, ctx: Ctx) {
       action: 'LANDING_PAGE_HTML_UPLOADED',
       entity: 'LandingPage',
       entityId: lp.id,
-      newData: { fileName: (file as File).name, size: buffer.length },
+      newData: { fileName: (file as File).name, size: buffer.length, into: lp.isPublished ? 'draft' : 'live' },
     });
 
-    return NextResponse.json({ success: true, landingPage: updated });
+    // The screen can say «حُفظ كمسودة» from this instead of guessing.
+    return NextResponse.json({ success: true, landingPage: updated, hasUnpublished: lp.isPublished });
   } catch (error) {
     const { body, status } = apiError(error);
     return NextResponse.json(body, { status });

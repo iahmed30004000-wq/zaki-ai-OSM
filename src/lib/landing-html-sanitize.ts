@@ -50,6 +50,15 @@ function decodeCharRefs(value: string): string {
    */
   return value
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+    /*
+     * THE NAMED REFERENCES A SCHEME CAN BE SPELLED WITH. `&Tab;` and
+     * `&NewLine;` are characters a URL parser deletes from inside a scheme
+     * (`java&Tab;script:` is `javascript:`), and `&colon;` is the colon.
+     * Names are case-sensitive in HTML, so they are matched exactly. Like
+     * the numeric ones they JUDGE the value and are never written back.
+     */
+    .replace(/&(?:Tab|NewLine);/g, '')
+    .replace(/&colon;/g, ':')
     .replace(/&#(x[0-9a-f]+|[0-9]+);?/gi, (whole, body: string) => {
     const code = body[0]?.toLowerCase() === 'x' ? parseInt(body.slice(1), 16) : parseInt(body, 10);
     // Surrogates and out-of-range code points make `fromCodePoint` throw;
@@ -194,7 +203,7 @@ export function sanitizeLandingHtml(html: string): string {
    * here and was stripped there.
    */
   out = out.replace(
-    /(<style\b[^>]*>)([\s\S]*?)(<\/style\s*>)/gi,
+    /(<style\b[^>]*>)([\s\S]*?)(<\/style\b[^>]*>)/gi,
     (_m, open: string, css: string, close: string) => `${open}${sanitizeLandingCss(css)}${close}`
   );
 
@@ -227,6 +236,24 @@ export function sanitizeLandingCss(css: string): string {
   );
   // comments can be used to split tokens in old filters — normalize
   out = out.replace(/\/\*[\s\S]*?\*\//g, '');
+  /*
+   * A STYLE ELEMENT ENDS AT THE FIRST END TAG, WHATEVER CSS IS IN THE MIDDLE.
+   *
+   * This CSS goes into a style element twice — the raw route wraps the
+   * page's CSS field in one, and a style block of the uploaded HTML is held
+   * to this function — and the HTML parser looks for the end tag before it
+   * reads one declaration. MEASURED: `a{}</style><script>…</script>` came
+   * back byte for byte, and the raw route put it in the document as a real
+   * script tag AFTER the sanitizer had run, because the CSS field is
+   * injected last.
+   *
+   * The same CSS with the slash escaped is no longer an end tag. ONLY the
+   * `</` before the word is touched: a bare `<` stays, so a media query
+   * written `(width<600px)` keeps working. It runs LAST, after the comments
+   * are gone, because a tag split by a comment is a tag the moment the
+   * comment is removed.
+   */
+  out = out.replace(/<\/(?=\s*style)/gi, '<\\/');
   return out;
 }
 
@@ -284,4 +311,35 @@ export function applyLandingVariables(
     'product.price': escapeHtml(data.price != null ? String(data.price) : ''),
   };
   return html.replace(/\{\{\s*([a-zA-Z.]+)\s*\}\}/g, (m, key: string) => (key in map ? map[key] : m));
+}
+
+/**
+ * PUT THE PAGE'S OWN STYLES INTO ITS DOCUMENT.
+ *
+ * `base` (the page settings) goes straight after the opening `<head>` and
+ * `custom` (the seller's CSS) just before `</head>`, so the base styles are
+ * the first word in the cascade and the seller's CSS the last.
+ *
+ * THE REPLACEMENT IS A FUNCTION, NEVER A STRING. `String.replace` reads
+ * `$'`, `$&` and `$1` in a replacement string, and the CSS is a seller's:
+ * `content:"$'"` made the old call paste the rest of the document into the
+ * middle of the stylesheet. A function's return value is taken literally.
+ *
+ * The pattern is the opening `<head>` tag and not `<header>`. A document
+ * with no head gets both at its front, as it always did; one with an
+ * opening tag and no closing one gets the seller's CSS right after the base.
+ */
+const HEAD_OPEN = /<head(\s[^>]*)?>/i;
+const HEAD_CLOSE = /<\/head>/i;
+
+export function injectPageStyles(html: string, base: string, custom: string): string {
+  if (!base && !custom) return html;
+  const opened = HEAD_OPEN.test(html);
+  const closed = HEAD_CLOSE.test(html);
+  if (!opened && !closed) return base + custom + html;
+  let out = html;
+  if (opened) out = out.replace(HEAD_OPEN, (open) => open + base + (closed ? '' : custom));
+  else out = base + out;
+  if (closed) out = out.replace(HEAD_CLOSE, () => custom + '</head>');
+  return out;
 }
