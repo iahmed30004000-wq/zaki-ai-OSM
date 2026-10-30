@@ -5,6 +5,7 @@ import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
 import { RiCashLine, RiLoader4Line, RiWallet3Line } from '@remixicon/react';
 import { Money } from '@/components/ui/Money';
+import { useIsPhone } from '@/hooks/useIsPhone';
 
 /**
  * WHAT THIS PERSON IS PAID, AND PAYING IT.
@@ -52,7 +53,7 @@ interface WalletRow {
 }
 
 const FIELD =
-  'h-10 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-2 text-xs text-[var(--sys-foreground)] outline-none focus:border-[var(--sys-primary)]';
+  'h-11 md:h-10 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-2 text-xs text-[var(--sys-foreground)] outline-none focus:border-[var(--sys-primary)]';
 
 function Line({ label, value, strong, warn }: { label: string; value: string; strong?: boolean; warn?: boolean }) {
   return (
@@ -84,6 +85,8 @@ export function UserSalary({
   const [saved, setSaved] = useState(`${initial.salaryAmount ?? ''}|${initial.salaryCurrency ?? ''}`);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // The wallet box was a fixed 160px and cut «الصندوق النقدي (JOD)» short on a phone; there it takes the line.
+  const phone = useIsPhone();
 
   const [paying, setPaying] = useState(false);
   const [data, setData] = useState<Data | null>(null);
@@ -391,9 +394,9 @@ export function UserSalary({
               )}
 
               <div className="flex flex-wrap items-end gap-2">
-                <label className="block">
+                <label className={phone ? 'block w-full' : 'block'}>
                   <span className="mb-0.5 block text-xs text-[var(--sys-muted-foreground)]">من محفظة</span>
-                  <select value={walletId} onChange={(e) => setWalletId(e.target.value)} className={`${FIELD} w-40`}>
+                  <select value={walletId} onChange={(e) => setWalletId(e.target.value)} className={`${FIELD} ${phone ? 'w-full' : 'w-40'}`}>
                     <option value="">اختر…</option>
                     {wallets.map((w) => (
                       <option key={w.id} value={w.id}>
@@ -457,14 +460,14 @@ export function UserSalary({
                   type="button"
                   disabled={busy || !walletId || !(effectiveRate > 0) || !!data.period.paid || data.preview.net <= 0}
                   onClick={pay}
-                  className="rounded-lg bg-[var(--sys-primary)] px-4 py-2 text-xs font-medium text-[var(--sys-primary-foreground)] disabled:opacity-50"
+                  className="min-h-11 md:min-h-0 rounded-lg bg-[var(--sys-primary)] px-4 py-2 text-xs font-medium text-[var(--sys-primary-foreground)] disabled:opacity-50"
                 >
                   {busy ? 'جارٍ…' : 'اصرف'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setPaying(false)}
-                  className="rounded-lg border border-[var(--sys-border)] px-4 py-2 text-xs text-[var(--sys-muted-foreground)]"
+                  className="min-h-11 md:min-h-0 rounded-lg border border-[var(--sys-border)] px-4 py-2 text-xs text-[var(--sys-muted-foreground)]"
                 >
                   تراجع
                 </button>

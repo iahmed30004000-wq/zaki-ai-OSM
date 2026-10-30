@@ -8,6 +8,8 @@ import { useApp } from '@/context/AppContext';
 import { useMayOpen } from '@/hooks/useMayOpen';
 import { userCan } from '@/lib/can';
 import { Modal } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
+import { useIsPhone } from '@/hooks/useIsPhone';
 import { ScreenTitle } from '@/components/shell/ScreenTitle';
 import {
   RiAlertLine,
@@ -159,6 +161,7 @@ export function CollectionScreen() {
   // The press that moves the courier's money into a wallet has a key of its own (PR-9): the button is drawn only for
   // whoever the door would let through, so no one is offered a press that ends in a refusal.
   const mayApprove = userCan(currentUser, 'settlement.approve');
+  const phone = useIsPhone();
   const [rows, setRows] = useState<StatementRow[] | null>(null);
   const [providers, setProviders] = useState<{ id: string; name: string }[]>([]);
   const [wallets, setWallets] = useState<{ id: string; name: string; currencyCode: string }[]>([]);
@@ -306,6 +309,98 @@ export function CollectionScreen() {
     );
   }
 
+  /**
+   * A STATEMENT'S PRESSES ON A PHONE: THE NEXT ONE FIRST, THE ONE THAT UNDOES LAST, AND WHY A GREY ONE IS GREY.
+   *
+   * The desk draws five words in a row, which a mouse can aim at. On a phone they were five text links 16px tall,
+   * twelve apart, with the destructive «إلغاء الاستيراد» first and looking the same as «اعتماد»; and the sentence that
+   * says why «مطابقة» or «اعتماد» is grey lived in `title`, which a phone never shows.
+   *
+   * Which step is next is read from the counts the row already carries (no paper yet → the receipt; paper but no
+   * match → the match; a gap nobody explained → the explanation; otherwise the approval) and only decides which
+   * button is drawn as the main one. Whether a press is ALLOWED is still asked of `settlement-gates`, exactly as the
+   * desk asks it — the greyed button carries the server's own sentence, printed under the row.
+   */
+  function actionsOnPhone(
+    s: StatementRow,
+    refusal: { error: string } | null,
+    noRematch: { error: string } | null
+  ) {
+    const needsWhy = s.gap.needsExplanation && !s.gap.explained;
+    const next = s.draft
+      ? 'assemble'
+      : s.counts.receipts === 0
+        ? 'receipt'
+        : s.counts.matches === 0
+          ? 'match'
+          : needsWhy
+            ? 'explain'
+            : 'approve';
+    const kind = (k: string) => (k === next ? 'primary' : 'outline');
+    const matchOff = s.counts.receipts === 0 || !!noRematch || busy === s.id;
+    const approveOff = !!refusal || busy === s.id;
+    // The first reason that applies, printed under the buttons — the owner's rule is «اللي مطفي عن قصد بيضل مطفي، بس
+    // بيكتب السبب جنبه», and a `title` is not beside anything on a phone.
+    const why =
+      s.draft || busy === s.id
+        ? null
+        : s.counts.receipts === 0
+          ? 'سجّل إيصال الاستلام أولاً'
+          : noRematch
+            ? noRematch.error
+            : next === 'approve' && approveOff
+              ? refusal?.error ?? null
+              : null;
+    return (
+      <div className="flex w-full flex-col gap-2">
+        <div className="flex flex-wrap gap-2">
+          {s.draft ? (
+            <Button size="sm" variant={kind('assemble')} disabled={busy === s.id} onClick={() => setAssembleFor(s)}>
+              تجميع
+            </Button>
+          ) : (
+            <>
+              <Button size="sm" variant={kind('receipt')} onClick={() => setReceiptFor(s)}>
+                إيصال استلام
+              </Button>
+              <Button
+                size="sm"
+                variant={kind('match')}
+                disabled={matchOff}
+                onClick={() =>
+                  act(s.id, 'تمت المطابقة', () => apiJson(`/api/finance/statements/${s.id}/match`, { method: 'POST' }))
+                }
+              >
+                مطابقة
+              </Button>
+              {needsWhy && (
+                <Button size="sm" variant={kind('explain')} onClick={() => setExplainFor(s)}>
+                  تفسير الفرق
+                </Button>
+              )}
+              {mayApprove && (
+                <Button size="sm" variant={kind('approve')} disabled={approveOff} onClick={() => void approve(s)}>
+                  اعتماد
+                </Button>
+              )}
+            </>
+          )}
+          {/* The one that takes a thing back: last, and quiet until it is looked for. */}
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={busy === s.id}
+            onClick={() => void undoImport(s)}
+            className="ms-auto text-[var(--sys-destructive)]"
+          >
+            {s.draft ? 'حذف المسوّدة' : 'إلغاء الاستيراد'}
+          </Button>
+        </div>
+        {why && <p className="text-xs text-[var(--sys-muted-foreground)]">{why}</p>}
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-6xl space-y-3">
       <ScreenTitle />
@@ -323,6 +418,7 @@ export function CollectionScreen() {
       <ImportCard
         providers={providers}
         busy={importing}
+        error={error}
         onImport={async (payload) => {
           setImporting(true);
           setError(null);
@@ -533,6 +629,8 @@ export function CollectionScreen() {
                 <span className="text-xs text-[var(--sys-success)] inline-flex items-center gap-1" title={STATEMENT_CLOSED_SENTENCE}>
                   <RiCheckboxCircleLine className="w-4 h-4" /> معتمد
                 </span>
+              ) : phone ? (
+                actionsOnPhone(s, refusal, noRematch)
               ) : (
                 <span className="flex flex-wrap gap-3 justify-end">
                   {/* This branch is the unapproved one — an approved row draws «معتمد» above and has no button. */}
@@ -667,10 +765,13 @@ export function CollectionScreen() {
 function ImportCard({
   providers,
   busy,
+  error,
   onImport,
 }: {
   providers: { id: string; name: string }[];
   busy: boolean;
+  /** The screen's last error: on a phone the sheet shows it too, because the page copy is behind the scrim. */
+  error: string | null;
   onImport: (payload: {
     deliveryProviderId: string;
     reference: string;
@@ -682,25 +783,56 @@ function ImportCard({
   const [providerId, setProviderId] = useState('');
   const [reference, setReference] = useState('');
   const [file, setFile] = useState<{ name: string; content: string; encoding: 'text' | 'base64' } | null>(null);
+  // On a phone the four fields are a sheet that opens from one button: most visits to this screen are to look at the
+  // statements and press the next step on one, not to upload, and the form stood in front of the first statement.
+  const phone = useIsPhone();
+  const [sheet, setSheet] = useState(false);
+  // Whether the LAST press inside the sheet was refused: the refusal (a rejected file, a statement already imported)
+  // is printed inside the sheet, where the person is looking, not only in the page behind the scrim.
+  const [refused, setRefused] = useState(false);
 
-  return (
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!providerId || !file) return;
+    const ok = await onImport({
+      deliveryProviderId: providerId,
+      reference,
+      fileName: file.name,
+      content: file.content,
+      encoding: file.encoding,
+    });
+    setRefused(!ok);
+    if (ok) {
+      setReference('');
+      setFile(null);
+      setSheet(false);
+    }
+  };
+
+  const pickFile = async (picked: File | undefined) => {
+    if (!picked) return setFile(null);
+    // A spreadsheet is binary: send its bytes, not a text reading of
+    // them, or the hash and the parse both see something else.
+    if (/\.xlsx?$/i.test(picked.name)) {
+      const bytes = new Uint8Array(await picked.arrayBuffer());
+      let binary = '';
+      for (const b of bytes) binary += String.fromCharCode(b);
+      setFile({ name: picked.name, content: btoa(binary), encoding: 'base64' });
+    } else {
+      setFile({ name: picked.name, content: await picked.text(), encoding: 'text' });
+    }
+  };
+
+  const FILE_TYPES = '.csv,.xlsx,.xls,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+  const form = (
     <form
-      onSubmit={async (e) => {
-        e.preventDefault();
-        if (!providerId || !file) return;
-        const ok = await onImport({
-          deliveryProviderId: providerId,
-          reference,
-          fileName: file.name,
-          content: file.content,
-          encoding: file.encoding,
-        });
-        if (ok) {
-          setReference('');
-          setFile(null);
-        }
-      }}
-      className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 grid gap-3 md:grid-cols-4 items-end"
+      onSubmit={submit}
+      className={
+        phone
+          ? 'grid gap-3'
+          : 'bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 grid gap-3 md:grid-cols-4 items-end'
+      }
     >
       <label>
         <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">شركة الشحن</span>
@@ -729,28 +861,35 @@ function ImportCard({
         />
       </label>
 
-      <label>
-        <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">ملف الكشف (Excel أو CSV)</span>
-        <input
-          type="file"
-          accept=".csv,.xlsx,.xls,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          onChange={async (e) => {
-            const picked = e.target.files?.[0];
-            if (!picked) return setFile(null);
-            // A spreadsheet is binary: send its bytes, not a text reading of
-            // them, or the hash and the parse both see something else.
-            if (/\.xlsx?$/i.test(picked.name)) {
-              const bytes = new Uint8Array(await picked.arrayBuffer());
-              let binary = '';
-              for (const b of bytes) binary += String.fromCharCode(b);
-              setFile({ name: picked.name, content: btoa(binary), encoding: 'base64' });
-            } else {
-              setFile({ name: picked.name, content: await picked.text(), encoding: 'text' });
-            }
-          }}
-          className="w-full text-xs file:h-8 file:px-3 file:rounded-md file:border-0 file:bg-[var(--sys-surface)] file:text-[var(--sys-foreground)] file:ml-2"
-        />
-      </label>
+      {phone ? (
+        /* The browser's own file button is 32px tall and cannot be restyled without a rule of its own; a label around a
+           hidden input is the same picker with a 44px face, and the chosen file's name is printed under it. */
+        <div>
+          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">ملف الكشف (Excel أو CSV)</span>
+          <label className="inline-flex min-h-11 w-full cursor-pointer items-center justify-center rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] px-3 text-xs font-medium text-[var(--sys-foreground)]">
+            {file ? 'غيّر الملف' : 'اختر الملف'}
+            <input
+              type="file"
+              accept={FILE_TYPES}
+              className="sr-only"
+              onChange={(e) => void pickFile(e.target.files?.[0])}
+            />
+          </label>
+          <span className="mt-1 block break-words text-xs text-[var(--sys-muted-foreground)]" dir="ltr">
+            {file ? file.name : ''}
+          </span>
+        </div>
+      ) : (
+        <label>
+          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">ملف الكشف (Excel أو CSV)</span>
+          <input
+            type="file"
+            accept={FILE_TYPES}
+            onChange={(e) => void pickFile(e.target.files?.[0])}
+            className="w-full text-xs file:h-8 file:px-3 file:rounded-md file:border-0 file:bg-[var(--sys-surface)] file:text-[var(--sys-foreground)] file:ml-2"
+          />
+        </label>
+      )}
 
       <button
         type="submit"
@@ -760,7 +899,30 @@ function ImportCard({
         {busy ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiUpload2Line className="w-4 h-4" />}
         استيراد
       </button>
+      {phone && refused && error && (
+        <p role="alert" className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">
+          {error}
+        </p>
+      )}
     </form>
+  );
+
+  if (!phone) return form;
+  return (
+    <>
+      <Button
+        className="w-full"
+        onClick={() => {
+          setRefused(false);
+          setSheet(true);
+        }}
+      >
+        <RiUpload2Line className="w-4 h-4" aria-hidden /> استيراد كشف
+      </Button>
+      <Modal isOpen={sheet} onClose={() => setSheet(false)} title="استيراد كشف" side="bottom">
+        {form}
+      </Modal>
+    </>
   );
 }
 

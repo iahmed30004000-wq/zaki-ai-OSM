@@ -22,6 +22,7 @@ import { RiAddCircleLine, RiArrowRightDownLine, RiArrowUpCircleLine, RiFileList3
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 import { Rows } from '@/components/ui/Rows';
+import { useIsPhone } from '@/hooks/useIsPhone';
 import { EmptyState } from '@/components/ui/EmptyState';
 // `Record<SpendDirection, ...>` below is the exhaustiveness guard: a new
 // direction added to the rule fails this file at compile time rather than
@@ -325,6 +326,9 @@ export function FinanceProfitScreen() {
     }
   };
 
+  // The phone reads the equation as a receipt and the product list as cards; the desk keeps the five tiles and the row.
+  const phone = useIsPhone();
+
   // The server's shape, not a second one written here. The hand-written
   // copy was missing `shippingAndCommissions`, and the line that reads it
   // took the whole screen down whenever the server did not answer.
@@ -387,6 +391,38 @@ export function FinanceProfitScreen() {
             subtitle="كل رقم مطروح من الذي قبله — المجموع هو ما بقي فعلاً"
           />
           <CardContent>
+            {phone ? (
+              /*
+               * A RECEIPT, NOT FIVE TILES.
+               * Five full-width tiles repeated the four figures above them at ~650px, and between 640 and 767 the
+               * `sm` five-column grid squeezed text-lg figures into 110px tiles that cannot wrap. One label and one
+               * signed figure per line, the net last: the same numbers, read, not computed (the server's own sums).
+               */
+              <div className="space-y-2">
+                {(
+                  [
+                    ['إيراد الموصَّل', '+', summary.totalRevenue, 'text-[var(--sys-success)]'],
+                    ['كلفة البضاعة', '−', summary.totalCOGS, 'text-[var(--sys-destructive)]'],
+                    ['شحن وعمولات', '−', summary.shippingAndCommissions, 'text-[var(--sys-destructive)]'],
+                    ['مصاريف', '−', summary.totalOperationalExpenses, 'text-[var(--sys-destructive)]'],
+                  ] as const
+                ).map(([label, sign, figure, tone]) => (
+                  <div key={label} className="flex items-center justify-between gap-3 bg-[var(--sys-surface)] px-3 py-2 rounded-lg">
+                    <span className="text-xs text-[var(--sys-muted)]">{label}</span>
+                    <span className={`text-sm font-bold ${tone}`} dir="ltr">
+                      {sign}
+                      <Money value={figure} currency={data?.currency} />
+                    </span>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between gap-3 bg-[var(--sys-primary)] px-3 py-2 rounded-lg">
+                  <span className="text-xs font-bold text-[var(--sys-primary-foreground)]/80">الصافي</span>
+                  <span className="text-base font-black text-[var(--sys-primary-foreground)]">
+                    <Money value={summary.netProfit} currency={data?.currency} />
+                  </span>
+                </div>
+              </div>
+            ) : (
             <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 text-center">
               <div className="bg-[var(--sys-surface)] p-3 rounded-lg">
                 <span className="text-xs text-[var(--sys-muted)] block">إيراد الموصَّل</span>
@@ -421,6 +457,7 @@ export function FinanceProfitScreen() {
                 </span>
               </div>
             </div>
+            )}
           </CardContent>
         </Card>
 
@@ -462,7 +499,7 @@ export function FinanceProfitScreen() {
                     render: (e: any) => (
                   <><Money value={e.amount} currency={data?.currency} /></>
                 ) },
-                  { key: 'c4', label: "ملاحظات",
+                  { key: 'c4', label: "ملاحظات", wide: true,
                     render: (e: any) => (e.voidedAt ? `أُلغي: ${e.voidReason ?? '—'}` : e.notes || '—') },
                   { key: 'c5', label: "إجراء",
                     render: (e: any) =>
@@ -490,6 +527,35 @@ export function FinanceProfitScreen() {
               <div className="p-4"><SkeletonRows rows={5} /></div>
             ) : profitability.length === 0 ? (
               <p className="p-6 text-sm text-[var(--sys-muted)] text-center">لا مبيعات مسلَّمة بعد.</p>
+            ) : phone ? (
+              /* The same fields as the row, as the shared card: the name (two lines, not cut to a few words) and the net
+                 lead it, and orders / delivered / revenue are labelled lines instead of fragments that wrapped in a
+                 different place for every product. */
+              <Rows
+                rows={profitability}
+                keyOf={(p: any) => p.id ?? p.name}
+                columns={[
+                  { key: 'name', label: 'المنتج', primary: true, render: (p: any) => p.name },
+                  {
+                    key: 'net',
+                    label: 'الصافي',
+                    primary: true,
+                    render: (p: any) => (
+                      <>
+                        <Money value={p.netProfit} currency={data?.currency} className="font-bold text-[var(--sys-success)]" />
+                        <span className="text-xs text-[var(--sys-muted)] font-normal"> · {p.profitMargin ?? 0}%</span>
+                      </>
+                    ),
+                  },
+                  { key: 'orders', label: 'طلبات', render: (p: any) => p.ordersCount },
+                  { key: 'delivered', label: 'مسلَّم', render: (p: any) => p.deliveredOrders },
+                  {
+                    key: 'revenue',
+                    label: 'إيراد',
+                    render: (p: any) => <Money value={p.revenue} currency={data?.currency} />,
+                  },
+                ]}
+              />
             ) : (
               <ul className="divide-y divide-[var(--sys-border)]">
                 {profitability.map((p: any) => (

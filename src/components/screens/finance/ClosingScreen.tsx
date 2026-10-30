@@ -10,6 +10,7 @@ import { Money } from '@/components/ui/Money';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
+import { useIsPhone } from '@/hooks/useIsPhone';
 
 /**
  * /finance/closing — count each wallet at the end of the day against its book
@@ -47,6 +48,9 @@ export function ClosingScreen() {
   // The screen opens on the cash box's VIEW key (PR-9); each press below is drawn only for the key its door asks.
   const mayCount = userCan(currentUser, 'finance.cashbox');
   const mayApprove = userCan(currentUser, 'finance.closing_approve');
+  // The phone prints the figures the way every other money figure here is printed, and says out loud the rule that
+  // otherwise lives only in a `title` — which a phone never shows.
+  const phone = useIsPhone();
   const [date, setDate] = useState(today());
   const [rows, setRows] = useState<Row[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -108,8 +112,18 @@ export function ClosingScreen() {
                 <div>
                   <h3 className="text-sm font-medium text-[var(--sys-heading)]">{r.walletName}</h3>
                   <p className="text-xs text-[var(--sys-muted-foreground)] tabular-nums mt-0.5">
-                    رصيد الدفاتر <Money value={r.bookBalance} currency={r.currencyCode} />
-                    {r.closing && ` · الجرد ${r.closing.actualBalance}`}
+                    رصيد الدفاتر{' '}
+                    {/* On a phone it takes the same decimals as the counted figure beside it; the desk line is as it was. */}
+                    <Money value={r.bookBalance} currency={r.currencyCode} minorUnit={phone ? r.minorUnit : undefined} />
+                    {r.closing &&
+                      (phone ? (
+                        <>
+                          {' · الجرد '}
+                          <Money value={r.closing.actualBalance} currency={r.currencyCode} minorUnit={r.minorUnit} />
+                        </>
+                      ) : (
+                        ` · الجرد ${r.closing.actualBalance}`
+                      ))}
                   </p>
                 </div>
 
@@ -122,7 +136,12 @@ export function ClosingScreen() {
                           : 'bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)] border-[var(--sys-destructive-border)]'
                       }`}
                     >
-                      الفرق {r.closing.difference}
+                      الفرق{' '}
+                      {phone ? (
+                        <Money value={r.closing.difference} currency={r.currencyCode} minorUnit={r.minorUnit} />
+                      ) : (
+                        r.closing.difference
+                      )}
                     </span>
                   )}
                   {r.closing?.status === 'APPROVED' ? (
@@ -160,7 +179,7 @@ export function ClosingScreen() {
                               setBusy(null);
                             }
                           }}
-                          className="h-8 px-3 rounded-lg border border-[var(--sys-border)] text-xs font-medium text-[var(--sys-success)] disabled:opacity-50"
+                          className="h-11 md:h-8 px-3 rounded-lg border border-[var(--sys-border)] text-xs font-medium text-[var(--sys-success)] disabled:opacity-50"
                         >
                           اعتماد
                         </button>
@@ -169,6 +188,10 @@ export function ClosingScreen() {
                   )}
                 </div>
               </div>
+
+              {phone && r.closing && r.closing.status === 'OPEN' && mayApprove && (
+                <p className="mt-2 text-xs text-[var(--sys-muted-foreground)]">يعتمده شخص غير من سجّل الحركات أو الجرد</p>
+              )}
 
               {r.blockedBy && (
                 <p className="mt-3 text-xs text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/40 rounded-lg p-2.5 flex items-start gap-2">

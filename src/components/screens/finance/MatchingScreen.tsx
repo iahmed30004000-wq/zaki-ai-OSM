@@ -20,6 +20,7 @@ import { useToast } from '@/components/ui/Toast';
 import { Rows, type Column } from '@/components/ui/Rows';
 import { Money } from '@/components/ui/Money';
 import { Tabs } from '@/components/ui/Tabs';
+import { useIsPhone } from '@/hooks/useIsPhone';
 import { ManualMatching } from '@/components/screens/finance/ManualMatching';
 import { STATEMENT_CLOSED_SENTENCE, isApproved } from '@/lib/settlement-gates';
 import { countOpenLines } from '@/lib/statement-open-lines';
@@ -106,6 +107,7 @@ export function MatchingScreen() {
   const [selected, setSelected] = useState<string>('');
   const [matches, setMatches] = useState<Match[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const phone = useIsPhone();
 
   useEffect(() => {
     void apiJson<{ statements: StatementRow[] }>('/api/finance/statements')
@@ -216,11 +218,18 @@ export function MatchingScreen() {
               setBusy(false);
             }
           }}
-          className="h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium inline-flex items-center gap-2 disabled:opacity-50"
+          className={`h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium inline-flex items-center gap-2 disabled:opacity-50 ${
+            phone ? 'w-full justify-center' : ''
+          }`}
         >
           {busy ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiGitBranchLine className="w-4 h-4" />}
           تشغيل المطابقة
         </button>
+        {/* The reason it is grey, where a phone can read it: `title` never shows there. A closed statement already has
+            its own paragraph under this card. */}
+        {phone && !!selected && noReceipt && !closed && (
+          <p className="w-full text-xs text-[var(--sys-muted-foreground)]">{whyNot}</p>
+        )}
       </div>
 
       {closed && (
@@ -454,6 +463,8 @@ function Queue({
           {
             key: 'reason',
             label: 'سبب الشركة بكلامها',
+            // A sentence in the company's own words: the width of the card, not what the label left over.
+            wide: true,
             render: (m: Match) => {
               const word = m.courierWord;
               const raw = m.statementLine?.rawRow;
@@ -530,6 +541,7 @@ function Queue({
           {
             key: 'park',
             label: 'ليس لنا',
+            wide: true,
             render: (m: Match) => (
               <DifferenceActions
                 statementId={statementId}
@@ -571,6 +583,7 @@ function Queue({
           {
             key: 'follow',
             label: 'ما تقرّره بشأنه',
+            wide: true,
             render: (m: Match) =>
               m.order ? (
                 <NotMentionedActions
