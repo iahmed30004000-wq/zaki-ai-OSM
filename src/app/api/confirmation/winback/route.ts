@@ -197,6 +197,8 @@ export async function GET(req: Request) {
       rule,
       // The screen offers «عدّل القاعدة» to somebody who can change it; the route that changes it asks again.
       canEditRule: can(user, 'offers.rules'),
+      // And «اعرضه من جديد» is the offer's own box (PR-7): seeing the list is not enough to press it.
+      canOffer: can(user, 'confirmation.winback'),
       applied: parsed.applied,
     });
   } catch (error) {
@@ -207,7 +209,9 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const { user, companyId, storeId, country } = await requireContext();
-    await requirePermission('confirmation.supervise');
+    // The offer is its OWN box (`confirmation.winback`, PR-7), given to whoever supervised the list before. Reading the
+    // list keeps `confirmation.supervise`.
+    await requirePermission('confirmation.winback');
 
     const parsed = offerSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {

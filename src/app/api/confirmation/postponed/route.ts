@@ -49,6 +49,7 @@ export async function GET(req: Request) {
     await requirePermission('confirmation.work').catch(async () => requirePermission('confirmation.supervise'));
 
     const supervisor = can(user, 'confirmation.supervise');
+    const mayReassign = can(user, 'confirmation.reassign');
     const now = new Date();
     const params = new URL(req.url).searchParams;
 
@@ -82,6 +83,8 @@ export async function GET(req: Request) {
         daysRemaining,
         // Actionable only inside the lead window (overdue counts as actionable).
         actionable: actionableOf(daysRemaining, POSTPONE_LEAD_DAYS),
+        // «إلى الطابور»: her own order always, a colleague's only with the box for it (`confirmation.reassign`, PR-7).
+        mayHandBack: mayReassign || o.claimedById === user.id,
       };
     });
 
@@ -131,7 +134,8 @@ export async function POST(req: Request) {
     const { orderId } = (await req.json().catch(() => ({}))) as { orderId?: string };
     if (!orderId) return NextResponse.json({ error: 'المعرّف مطلوب' }, { status: 400 });
 
-    const supervisor = can(user, 'confirmation.supervise');
+    // Handing a COLLEAGUE'S order back is its own box (`confirmation.reassign`, PR-7); her own needs only the desk key.
+    const mayReassign = can(user, 'confirmation.reassign');
     const now = new Date();
     const leadEnd = new Date(now.getTime() + POSTPONE_LEAD_DAYS * 24 * 60 * 60 * 1000);
 
@@ -144,9 +148,9 @@ export async function POST(req: Request) {
     });
     if (!order) return NextResponse.json({ error: 'الطلب غير موجود' }, { status: 404 });
 
-    // Yours, or you supervise. Handing somebody else's order to the pool is
+    // Yours, or you may reassign. Handing somebody else's order to the pool is
     // a decision about their work.
-    if (!supervisor && order.claimedById !== user.id) {
+    if (!mayReassign && order.claimedById !== user.id) {
       return NextResponse.json({ error: 'هذا الطلب ليس بين يديك' }, { status: 403 });
     }
 

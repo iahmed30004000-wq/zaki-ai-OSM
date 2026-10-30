@@ -144,9 +144,21 @@ export const PERMISSION_MODULES: CatalogModule[] = [
     module: 'finance',
     items: [
       { key: 'finance.view', opens: ['الأرباح'], ar: 'عرض المالية', en: 'View finance' },
-      { key: 'finance.create', requires: 'finance.view', ar: 'إنشاء معاملات مالية', en: 'Create financial transactions' },
+      // D12 (PR-9): the expense and the withdrawal from a wallet stay on this one key. Only the NAME says so now.
+      { key: 'finance.create', requires: 'finance.view', ar: 'تسجيل المصروفات وسحبها من المحفظة ودفع العمولات', en: 'Record expenses (withdrawn from a wallet) and pay commissions' },
       { key: 'finance.update', requires: 'finance.view', ar: 'تعديل السجلات المالية', en: 'Update financial records' },
-      { key: 'finance.cashbox', opens: ['الإغلاق اليومي', 'المحافظ والحركات', 'التحويلات'], ar: 'إدارة الصناديق النقدية', en: 'Manage cashboxes' },
+      /*
+       * THE CASH BOX, IN FOUR KEYS (perm-plan PR-9, migration 20261030150000_finance_split_keys).
+       *
+       * «إدارة الصناديق النقدية» opened the three screens AND created, renamed and deleted wallets AND approved a daily
+       * closing. The owner could not give a cashier the movements and keep the wallets and the closing's approval away
+       * from her. The migration gave the view, the wallets and the closing's approval to every role and person who held
+       * the old key, so nobody lost a door on the day. From then on one tick moves one door.
+       */
+      { key: 'finance.cashbox_view', opens: ['الإغلاق اليومي', 'المحافظ والحركات', 'التحويلات'], ar: 'عرض الصناديق والمحافظ والحركات والإغلاق', en: 'See the wallets, the movements, the transfers and the closings' },
+      { key: 'finance.cashbox', requires: 'finance.cashbox_view', ar: 'تسجيل حركات الصندوق والتحويلات وعدّ الإغلاق واستلام نقد المندوب', en: 'Record cash movements, transfers, closing counts and take a courier’s cash' },
+      { key: 'finance.wallets_manage', requires: 'finance.cashbox_view', ar: 'إنشاء المحافظ وتعديل أسمائها وإيقافها وحذفها', en: 'Create, rename, stop and delete wallets' },
+      { key: 'finance.closing_approve', requires: 'finance.cashbox_view', ar: 'اعتماد الإغلاق اليومي', en: 'Approve a daily closing' },
     ],
   },
   {
@@ -155,6 +167,8 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       { key: 'settlement.view', opens: ['عهدة المندوبين', 'التحصيل والكشوف'], ar: 'عرض التسويات (وصفوف التحصيل ومبالغها في المتابعة)', en: 'View settlements (and the collection rows and their figures in tracking)' },
       { key: 'settlement.upload', requires: 'settlement.view', ar: 'رفع تقارير الشحن', en: 'Upload shipping reports' },
       { key: 'settlement.review', opens: ['المطابقة'], requires: 'settlement.view', ar: 'مراجعة المطابقات', en: 'Review reconciliations' },
+      // PR-9: the approval — the press that moves a courier's money into a wallet — left «مراجعة المطابقات» for a box of its own.
+      { key: 'settlement.approve', requires: 'settlement.view', ar: 'اعتماد كشف شركة الشحن (يُدخل المال إلى المحفظة)', en: 'Approve a courier statement (moves the money into a wallet)' },
     ],
   },
   {
@@ -247,6 +261,18 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       { key: 'confirmation.work', opens: ['طلباتي'], ar: 'العمل على طلباتي والمؤجلة', en: 'Work own and postponed orders' },
       { key: 'confirmation.supervise', opens: ['الطلبات الجديدة', 'المتابعة'], ar: 'الإشراف على التأكيد (عرض القائمة)', en: 'Supervise confirmation (list view)' },
       { key: 'confirmation.issues', opens: ['الإشكالات'], ar: 'إشكالات الإدخال', en: 'Entry issues' },
+      /*
+       * THE CONFIRMATION DOORS THAT GOT A BOX EACH (perm-plan PR-7, migration 20261030140000_confirmation_split_keys).
+       *
+       * The win-back offer and the hand-back of a colleague's order rode on the supervisors' list; raising and closing an
+       * entry issue rode on seeing the issues list. The migration gave each box to exactly the people who passed that door
+       * before (the one deliberate gain: the agent's own «إدخال إشكال», which never worked for her), so from then on one
+       * tick moves one door.
+       */
+      { key: 'confirmation.winback', requires: 'confirmation.supervise', ar: 'عرض خصم لاسترجاع طلب ملغى', en: 'Offer a discount to win back a lost order' },
+      { key: 'confirmation.reassign', requires: 'confirmation.supervise', ar: 'إرجاع طلب مؤجَّل عند موظف آخر إلى الطابور', en: 'Hand a colleague’s postponed order back to the pool' },
+      { key: 'confirmation.issues_correct', requires: 'confirmation.issues', ar: 'تصحيح إشكال إدخال وإغلاقه', en: 'Correct and close an entry issue' },
+      { key: 'confirmation.raise_issue', requires: null, note: 'رفع الإشكال له زره على بطاقة الطلب، وما بيعرض قائمة الإشكالات — فما بيحتاج «إشكالات الإدخال».', ar: 'رفع إشكال إدخال على طلب', en: 'Raise an entry issue on an order' },
     ],
   },
   {
@@ -259,12 +285,14 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       { key: 'ops.returns', opens: ['المرتجعات'], ar: 'المرتجعات', en: 'Returns' },
       // Seeing the return rows on «متابعة الشحن» — NOT receiving the stock, which stays «المرتجعات» above.
       { key: 'ops.returns_view', ar: 'عرض المرتجعات في المتابعة (بلا استلام)', en: 'See return rows in tracking (no receiving)' },
+      { key: 'ops.decide_changes', requires: null, note: 'البتّ بطلب تعديل على طلب مؤكَّد ما زال بالمستودع (طلبات غيرك) — بلا شاشة وبلا قائمة.', ar: 'البتّ في طلبات التعديل وهي بالمستودع', en: 'Decide change requests while the order is in the warehouse' },
     ],
   },
   {
     module: 'control',
     items: [
-      { key: 'control.change_requests', opens: ['طلبات التعديل'], ar: 'طلبات التعديل', en: 'Change requests' },
+      { key: 'control.change_requests_view', ar: 'عرض كل طلبات التعديل', en: 'See every change request' },
+      { key: 'control.change_requests', requires: 'control.change_requests_view', opens: ['طلبات التعديل'], ar: 'طلبات التعديل', en: 'Change requests' },
       { key: 'control.discount_alerts', opens: ['تنبيهات الخصم'], ar: 'تنبيهات الخصم', en: 'Discount alerts' },
       { key: 'control.blacklist', opens: ['القائمة السوداء'], ar: 'القائمة السوداء', en: 'Blacklist' },
       { key: 'control.blacklist_manage', requires: 'control.blacklist', ar: 'حظر رقم أو رفع الحظر عنه', en: 'Block a number or lift the block' },

@@ -8,6 +8,7 @@ import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { receiptGap } from '@/lib/settlement';
+import { inStoreOrShared } from '@/lib/store-filter';
 import { zodMessage } from '@/lib/zod-message';
 import { receiptEditRefusal } from '@/lib/settlement-gates';
 import { isManualDraftHash, MANUAL_DRAFT_SENTENCE } from '@/lib/manual-statement-rules';
@@ -130,7 +131,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // This store's wallet or one not placed yet: the statement is this store's (`storeId` above), and the cash
     // of a store goes into that store's drawer, not into another store's of the same company.
     const wallet = await db.wallet.findFirst({
-      where: { id: parsed.data.walletId, companyId, isActive: true, OR: [{ storeId }, { storeId: null }] },
+      where: { id: parsed.data.walletId, isActive: true, ...inStoreOrShared(companyId, storeId) },
       select: { id: true, name: true, currencyCode: true },
     });
     if (!wallet) return NextResponse.json({ error: 'المحفظة غير موجودة' }, { status: 404 });

@@ -1,5 +1,6 @@
 import type { SessionUser } from '@/types/auth';
 import { can } from './authorization';
+import { PRICE_KEY_REQUIRED_AR } from './change-request-fields';
 
 /**
  * WHO DECIDES A CHANGE REQUEST.
@@ -80,11 +81,15 @@ export function deciderFor(order: RoutingSource): Decider {
   return { kind: 'SUPERVISOR' };
 }
 
-/** What the packing table holds. A role OR the permission that names it. */
-export const WAREHOUSE_ROLES = ['WAREHOUSE'] as const;
-
+/**
+ * What the packing table holds: the permission that names it, `ops.decide_changes` (PR-7).
+ *
+ * It was `ops.ship` OR the role name `WAREHOUSE`. The migration 20261030140000_confirmation_split_keys gave the key to
+ * every holder of `ops.ship` and every person whose role is `WAREHOUSE`, so the same people stand at the table the day
+ * after — and from then on the owner can untick one of them without touching the rest.
+ */
 function isWarehouse(user: SessionUser): boolean {
-  return can(user, 'ops.ship') || (WAREHOUSE_ROLES as readonly string[]).includes(user.role);
+  return can(user, 'ops.decide_changes');
 }
 
 export interface RoutingVerdict {
@@ -92,27 +97,17 @@ export interface RoutingVerdict {
   decider: Decider;
   /** Why not, in Arabic, for a refusal somebody can act on. */
   reason?: string;
+  /** Set when the only thing missing is the price key, so a caller can say that instead of «not the decider». */
+  code?: 'PRICE_KEY_REQUIRED';
 }
 
 /**
  * THE ROLES THAT DECIDED BY NAME, AND WHY THE NAME STOPPED COUNTING.
  *
- * This list WAS authority: four role names could decide a change request
- * whatever their permissions. So «طلبات التعديل» on the permissions screen
- * could be unticked for `MANAGER` and a manager went on deciding — the
- * owner could not keep the final say to himself from the one screen built
- * for keeping it. A guard that is a list of names is incomplete the day it
- * is written, and this one could not even be turned off.
- *
- * It is now a MIGRATION list, not a rule: `control.change_requests` is
- * granted to exactly these roles once, so the day after the deploy the
- * same people decide as before — and from then on the owner unticks
- * whoever he wants out, and it holds.
- *
- * Still exported because the people TOLD about a request should be the
- * people who may decide it, and the notification audience reads this.
+ * Four role names could once decide a change request whatever their permissions, and a list of names is incomplete the
+ * day it is written. `control.change_requests` decides everything now; the four names (and the one the packing table
+ * read) live only in `confirmation-split-keys.ts`, as the list the migration gave a key to.
  */
-export const SUPERVISOR_ROLES = ['SUPER_ADMIN', 'COMPANY_ADMIN', 'MANAGER', 'CONFIRMATION_SUPERVISOR'] as const;
 
 /**
  * A supervisor by authority, and no longer by job title.
@@ -124,19 +119,28 @@ function isSupervisor(user: SessionUser): boolean {
   return can(user, 'control.change_requests');
 }
 
-export function mayDecide(user: SessionUser, order: RoutingSource): RoutingVerdict {
+/**
+ * `money` — the request asks for a price, a discount, a quantity or a product. Deciding it then needs `orders.change_price`
+ * BESIDES the right to decide at this stage (PR-7): the desk, the packing table and the agent holding the order all passed
+ * on the day it shipped, because the migration gave the key to every one of them, so no stage loses its decision — and from
+ * then on the owner can keep the final say on a figure to whoever he chooses. The scope is not compared: the key is asked
+ * as «do you hold it», as the stage keys are.
+ */
+export function mayDecide(user: SessionUser, order: RoutingSource, opts: { money?: boolean } = {}): RoutingVerdict {
   const decider = deciderFor(order);
+  const priceMissing = opts.money === true && !can(user, 'orders.change_price');
+  const refusedForPrice: RoutingVerdict = { allowed: false, decider, reason: PRICE_KEY_REQUIRED_AR, code: 'PRICE_KEY_REQUIRED' };
 
   // Always available, so an escalation path never depends on one person
   // being at their desk.
-  if (isSupervisor(user)) return { allowed: true, decider };
+  if (isSupervisor(user)) return priceMissing ? refusedForPrice : { allowed: true, decider };
 
   if (decider.kind === 'HOLDING_AGENT' && decider.userId === user.id) {
-    return { allowed: true, decider };
+    return priceMissing ? refusedForPrice : { allowed: true, decider };
   }
 
   if (decider.kind === 'WAREHOUSE' && isWarehouse(user)) {
-    return { allowed: true, decider };
+    return priceMissing ? refusedForPrice : { allowed: true, decider };
   }
 
   return {

@@ -30,9 +30,9 @@ export async function GET(req: Request) {
   try {
     const { user, companyId, country, storeId } = await requireContext();
     // Settlement records WHICH wallet a courier payment landed in, so it needs
-    // the list of wallets — but not the cashbox figures. Only finance.cashbox
-    // sees balances.
-    const cashbox = can(user, 'finance.cashbox');
+    // the list of wallets — but not the cashbox figures. Only the cash box's
+    // view key (finance.cashbox_view) sees balances.
+    const cashbox = can(user, 'finance.cashbox_view');
     if (!cashbox) await requirePermission('settlement.upload');
 
     /**
@@ -108,7 +108,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const { user, companyId, storeId } = await requireContext();
-    await requirePermission('finance.cashbox');
+    // Creating a wallet is the wallets' own key (PR-9), no longer the day's cash work.
+    await requirePermission('finance.wallets_manage');
 
     const parsed = createSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {

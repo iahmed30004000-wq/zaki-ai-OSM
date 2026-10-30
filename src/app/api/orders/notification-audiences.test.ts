@@ -94,7 +94,6 @@ import { POST as confirmationPOST } from '@/app/api/orders/[id]/confirmation/rou
 import { POST as shippingPOST } from '@/app/api/orders/[id]/shipping/route';
 import { POST as changeRequestPOST } from '@/app/api/orders/[id]/change-requests/route';
 import { createPublicOrder } from '@/lib/public-order';
-import { SUPERVISOR_ROLES } from '@/lib/change-request-routing';
 
 const actor = { id: 'actor-1', name: 'منفّذ', role: 'CONFIRMATION_AGENT', status: 'ACTIVE' };
 const ctx = {
@@ -208,16 +207,14 @@ describe('a change request', () => {
     });
   });
 
-  it('after confirmation goes to everyone who may decide it in this store — the permission and the supervising roles', async () => {
+  it('after confirmation goes to everyone who may decide it in this store — the permission, and nothing else (PR-7)', async () => {
     assertOrderAccess.mockResolvedValue({ allowed: true, order: order({ confirmationStatus: 'CONFIRMED' }) });
     await raise();
     expect(createNotification).toHaveBeenCalledTimes(1);
     expect(createNotification.mock.calls[0][0]).toMatchObject({ storeId: 'store-a', actorId: 'actor-1' });
-    // Exactly — a supervisor by role decides requests without the permission.
-    expect(createNotification.mock.calls[0][0].audience).toEqual({
-      permission: 'control.change_requests',
-      roles: SUPERVISOR_ROLES,
-    });
+    // Exactly — the four role names that were told as well are the people the migration gave the key to; a name nobody can be
+    // unticked from is not an audience, so the list is gone (OLD: { permission, roles: SUPERVISOR_ROLES }).
+    expect(createNotification.mock.calls[0][0].audience).toEqual({ permission: 'control.change_requests' });
     expect(db.user.findMany).not.toHaveBeenCalled();
   });
 
@@ -238,6 +235,10 @@ describe('a change request', () => {
    * decision already taken is noise addressed to people with nothing to do.
    */
   it('when the holder raised it herself, it decides itself and tells nobody', async () => {
+    // She asks for a QUANTITY — a figure — so deciding it herself needs the price key too (PR-7). The agent of these tests held
+    // `orders.edit` before the deploy, so the migration gave her the key: she is the person AFTER it.
+    can.mockImplementation((_u: unknown, key: string) =>
+      ['orders.contact_log', 'orders.request_change', 'orders.change_price'].includes(key));
     assertOrderAccess.mockResolvedValue({ allowed: true, order: order({ claimedById: 'actor-1' }) });
     await raise();
     expect(createNotification, 'أُعلن قرارٌ اتُّخذ فعلاً').not.toHaveBeenCalled();

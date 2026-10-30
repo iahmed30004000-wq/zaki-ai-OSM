@@ -50,6 +50,25 @@ export const CHANGEABLE_FIELDS = [
 
 export type ChangeableField = (typeof CHANGEABLE_FIELDS)[number];
 
+/**
+ * THE FIELDS WHOSE APPROVAL MOVES WHAT THE CUSTOMER PAYS (perm-plan PR-7).
+ *
+ * The price, the discount, the quantity, the product — and the two names an old row may still carry (`offerId`, `items`),
+ * because a row written before they were retired is decided under today's rule, not under a list that forgot it. Approving
+ * a request that carries one of them needs `orders.change_price`: who may DECIDE a price change is the same question as who
+ * may make one. Rejecting never needs it, and neither does any other field.
+ */
+export const MONEY_CHANGE_FIELDS: readonly string[] = ['sellingPrice', 'discountAmount', 'quantity', 'productId', 'offerId', 'items'];
+
+/** The sentence a decider without the price key reads on a request that moves a figure. */
+export const PRICE_KEY_REQUIRED_AR = 'هذا الطلب يغيّر السعر أو الكمية أو المنتج — البتّ فيه لمن عنده صلاحية تغيير السعر.';
+
+/** Does this request (its `changes` object, as stored or as sent) ask for any money field? */
+export function touchesMoney(changes: unknown): boolean {
+  if (!changes || typeof changes !== 'object' || Array.isArray(changes)) return false;
+  return Object.keys(changes as Record<string, unknown>).some((k) => MONEY_CHANGE_FIELDS.includes(k));
+}
+
 export const CHANGE_FIELD_AR: Record<ChangeableField, string> = {
   customerName: 'اسم العميل',
   customerPhone: 'هاتف العميل',

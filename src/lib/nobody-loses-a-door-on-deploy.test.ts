@@ -247,3 +247,72 @@ describe('the order actions’ boxes', () => {
     }
   });
 });
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * THE CONFIRMATION AND CHANGE-REQUEST BOXES (PR-7) — GRANTED THROUGH A GATE TABLE, BY KEY AND BY NAME.
+ *
+ * 20261030140000_confirmation_split_keys reads one gate table (`sp7_gate`), like the previous two, but a row may name a ROLE
+ * instead of a key — the desk’s four role names and WAREHOUSE were doors that read a NAME. Here: each new key is in the
+ * catalog, is granted FROM the key (or name) its door used to ask, lands in all three places and runs twice. The full replay —
+ * every person against every door, the scope, the fuzz, the one deliberate gain — is `the-confirmation-split-keeps-every-door.test.ts`.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+describe('the confirmation and change-request boxes', () => {
+  const sql = readFileSync(path.join(MIGRATIONS, '20261030140000_confirmation_split_keys', 'migration.sql'), 'utf8')
+    .split('\n')
+    .filter((l) => !l.trim().startsWith('--'))
+    .join('\n');
+  const flat = sql.split(/\s+/).join('');
+  const BY_KEY: Record<string, string[]> = {
+    'confirmation.winback': ['confirmation.supervise'],
+    'confirmation.reassign': ['confirmation.supervise'],
+    'confirmation.issues_correct': ['confirmation.issues'],
+    'confirmation.raise_issue': ['confirmation.issues'],
+    'control.change_requests_view': ['control.change_requests'],
+    'ops.decide_changes': ['ops.ship'],
+    'customers.view_basic': ['customers.view'],
+  };
+  const BY_NAME: Record<string, string[]> = {
+    'control.change_requests_view': ['SUPER_ADMIN', 'COMPANY_ADMIN', 'MANAGER', 'CONFIRMATION_SUPERVISOR'],
+    'ops.decide_changes': ['WAREHOUSE'],
+    'confirmation.raise_issue': ['CONFIRMATION_AGENT'],
+  };
+
+  it('are all in the catalog, so the owner can tick them', () => {
+    for (const k of Object.keys(BY_KEY)) expect(ALL_CATALOG_KEYS.has(k), `${k} مش بقائمة الصلاحيات`).toBe(true);
+  });
+
+  it('are each granted FROM the key their door used to ask — a gate row per (box, key)', () => {
+    for (const [box, sources] of Object.entries(BY_KEY)) {
+      for (const source of sources) {
+        expect(flat, `${box} مش مأخوذ من ${source} — من يمرّ بالباب رح يخسره`).toContain(`('${box}','${source}',NULL::text,`);
+      }
+    }
+  });
+
+  it('and, where the old door read a NAME, from that name too — a gate row per (box, role)', () => {
+    for (const [box, names] of Object.entries(BY_NAME)) {
+      for (const name of names) {
+        expect(flat, `${box} مش مأخوذ من الاسم ${name} — من يمرّ بالاسم رح يخسره`).toContain(`('${box}',NULL::text,'${name}',`);
+      }
+    }
+  });
+
+  it('the price key is also given to whoever could decide a request without orders.edit, and to nobody who holds the edit', () => {
+    for (const source of ['control.change_requests', 'ops.ship', 'confirmation.pull', 'confirmation.work', 'orders.claim']) {
+      expect(flat).toContain(`('orders.change_price','${source}',NULL::text,false,'orders.edit')`);
+    }
+    expect(flat).toContain(`('orders.change_price',NULL::text,'WAREHOUSE',false,'orders.edit')`);
+  });
+
+  it('land in all three places, carry the «منع» across, and run twice without changing anything', () => {
+    expect(sql).toContain('INSERT INTO "role_permission_defaults"');
+    expect(sql).toContain('INSERT INTO "role_permissions"');
+    expect(sql).toContain('INSERT INTO "user_permissions"');
+    expect(sql).toContain(`'DENY'`);
+    for (const s of sql.split(/;\s*\n/).filter((x) => x.trim().startsWith('INSERT INTO'))) {
+      expect(s).toMatch(/ON CONFLICT[\s\S]*DO NOTHING/);
+    }
+  });
+});

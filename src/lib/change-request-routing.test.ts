@@ -142,13 +142,18 @@ describe('who may decide', () => {
  */
 describe('the warehouse, while the goods are on its floor', () => {
   const warehouse = user('user-w', 'WAREHOUSE');
+  // PR-7: the packing table is a KEY now (`ops.decide_changes`), given by the migration to every holder of `ops.ship` and
+  // every person whose role is WAREHOUSE. The warehouse person of these tests is the person AFTER the deploy.
+  const holdsTheDecideKey = () => can.mockImplementation((_u: unknown, p: string) => p === 'ops.decide_changes');
 
   it('decides a confirmed order that has not left', () => {
+    holdsTheDecideKey();
     expect(deciderFor(onOurFloor)).toEqual({ kind: 'WAREHOUSE' });
     expect(mayDecide(warehouse, onOurFloor).allowed).toBe(true);
   });
 
   it('and does not once the waybill is printed', () => {
+    holdsTheDecideKey();
     expect(deciderFor(goneOut)).toEqual({ kind: 'SUPERVISOR' });
     const v = mayDecide(warehouse, goneOut);
     expect(v.allowed).toBe(false);
@@ -171,6 +176,7 @@ describe('the warehouse, while the goods are on its floor', () => {
       claimedById: SARA,
       handedToCourier: false,
     };
+    holdsTheDecideKey();
     expect(deciderFor(labelledNotGone)).toEqual({ kind: 'WAREHOUSE' });
     expect(mayDecide(warehouse, labelledNotGone).allowed).toBe(true);
   });
@@ -180,14 +186,22 @@ describe('the warehouse, while the goods are on its floor', () => {
    * must deny the warehouse, never grant it on a parcel already in a van.
    */
   it('and a caller that says nothing about the parcel denies them', () => {
+    holdsTheDecideKey();
     const silent = { confirmationStatus: 'CONFIRMED', claimedById: SARA };
     expect(deciderFor(silent)).toEqual({ kind: 'SUPERVISOR' });
     expect(mayDecide(warehouse, silent).allowed).toBe(false);
   });
 
-  it('and the packing permission counts as much as the job title', () => {
-    can.mockImplementation((_u: unknown, p: string) => p === 'ops.ship');
+  it('and the KEY is the authority — the job title and the old packing key no longer open it by themselves (PR-7)', () => {
+    // The key, whatever the person's role is called.
+    holdsTheDecideKey();
     expect(mayDecide(user('user-x', 'SOMETHING_ELSE'), onOurFloor).allowed).toBe(true);
+    // NEGATIVE: the name WAREHOUSE with no key decides nothing — the owner can now untick the warehouse person.
+    can.mockReturnValue(false);
+    expect(mayDecide(warehouse, onOurFloor).allowed, 'الاسم لسّا بيعطي سلطة').toBe(false);
+    // NEGATIVE: `ops.ship` alone no longer opens it either; the migration gave its holders `ops.decide_changes`.
+    can.mockImplementation((_u: unknown, p: string) => p === 'ops.ship');
+    expect(mayDecide(user('user-y', 'SOMETHING_ELSE'), onOurFloor).allowed, 'ops.ship لسّا بيفتح الباب').toBe(false);
   });
 
   /**

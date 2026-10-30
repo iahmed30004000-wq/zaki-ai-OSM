@@ -88,7 +88,9 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const { user, companyId, storeId } = await requireContext();
-    await requirePermission('confirmation.issues');
+    // RAISING an issue is its own box (`confirmation.raise_issue`, PR-7): it needs no list, and the agent whose desk holds
+    // the button was never given the list. Reading the list keeps `confirmation.issues`.
+    await requirePermission('confirmation.raise_issue');
 
     const parsed = createSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
