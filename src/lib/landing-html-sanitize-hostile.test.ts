@@ -180,3 +180,133 @@ describe('a big, ordinary project file passes the strict door', () => {
     expect(sanitizeLandingHtmlStrict(page)).not.toBeNull();
   });
 });
+
+/**
+ * A TAG THAT IS DELETED CAN JOIN WHAT WAS ON EITHER SIDE OF IT.
+ *
+ * `<meta <script>` repeated passes a guard that looks only at the input (every
+ * `<meta` has a `>` nearby — the script tag's), and the rule that removes
+ * `<script>` turns it into `<meta <meta <meta …` with no `>` anywhere. Measured:
+ * 128 KB = 0.96 s, 256 KB = 4.3 s, 512 KB = 17.8 s.
+ */
+describe('deleting a tag does not make the rest crawl', () => {
+  const N = 256 * 1024;
+  const rep = (s: string, bytes = N) => s.repeat(Math.floor(bytes / s.length));
+  const ms = (fn: () => unknown) => {
+    const t = performance.now();
+    fn();
+    return performance.now() - t;
+  };
+  const joins: Record<string, string> = {
+    '<meta <script>': rep('<meta <script>'),
+    '<form <script>': rep('<form <script>'),
+    '<style <script>': rep('<style <script>'),
+    '<form <object>': rep('<form <object>'),
+    '<meta <iframe>': rep('<meta <iframe>'),
+    '<form <applet>': rep('<form <applet>'),
+    '<meta <embed>': rep('<meta <embed>'),
+    '<meta <link>': rep('<meta <link>'),
+    '<form <base>': rep('<form <base>'),
+    '<meta <frame>': rep('<meta <frame>'),
+    '<meta <plaintext>': rep('<meta <plaintext>'),
+    '<meta <script> at 512 KB': rep('<meta <script>', 512 * 1024),
+  };
+
+  for (const [name, html] of Object.entries(joins)) {
+    it(`${name}: under 100 ms, and refused rather than cleaned slowly`, () => {
+      let out: string | null = '';
+      expect(ms(() => { out = sanitizeLandingHtmlStrict(html); })).toBeLessThan(100);
+      expect(out).toBeNull();
+    });
+  }
+
+  it('nested to depth: each deletion exposes the next join', () => {
+    // <meta <meta <script>> … : removing the innermost script joins the metas around it
+    const depth = 2000;
+    const html = '<meta '.repeat(depth) + '<script>' + '>'.repeat(depth);
+    expect(ms(() => sanitizeLandingHtmlStrict(html))).toBeLessThan(100);
+    const big = '<meta <script>'.repeat(4000) + '<meta '.repeat(20000);
+    expect(ms(() => sanitizeLandingHtmlStrict(big))).toBeLessThan(100);
+  });
+
+  it('through the lenient door the answer is empty, and as fast', () => {
+    expect(ms(() => expect(sanitizeLandingHtml(joins['<meta <script>'])).toBe(''))).toBeLessThan(100);
+  });
+
+  // negative: the same tags, ordinary and closed, are a page
+  it('a page with a real script, object, iframe, meta and form each next to its neighbour is not refused', () => {
+    const page =
+      '<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head><body>' +
+      '<form method="post"><input name="p"></form><script>if (a<b) go();</script><object data="x"></object>' +
+      '<iframe src="y"></iframe><form method="post"><button>اطلب</button></form></body></html>';
+    const out = sanitizeLandingHtmlStrict(page);
+    expect(out).not.toBeNull();
+    expect(out).not.toMatch(/<script|<object|<iframe/);
+    expect(out).toContain('<form method="post"><input name="p"></form>');
+  });
+
+  it('a tag broken by a deleted neighbour — a few of them — is cleaned, not refused', () => {
+    expect(sanitizeLandingHtmlStrict('<meta <script>alert(1)</script> charset="utf-8"><p>x</p>')).not.toBeNull();
+  });
+
+  it('inline script full of `a<b`, and a huge comparison table, still pass after the deletions', () => {
+    const js = Array.from({ length: 8000 }, (_, i) => `if (v${i} < w${i}) n++;`).join('\n');
+    const table = '<table>' + Array.from({ length: 4000 }, (_, i) => `<tr><td>${i} < ${i + 1}</td></tr>`).join('') + '</table>';
+    const page = `<html><body><script>${js}</script>${table}<form method="post"></form><meta charset="utf-8"></body></html>`;
+    const out = sanitizeLandingHtmlStrict(page);
+    expect(out).not.toBeNull();
+    expect(out).toContain(table);
+  });
+});
+
+/**
+ * CLEANING WHAT WAS ALREADY CLEANED CHANGES NOTHING.
+ */
+describe('the css cleaner reaches a fixed point', () => {
+  const payloads = [
+    '@\\69behavior:x;mport url(https://evil.example/x.css);',
+    '@\\69mport url(//evil/x.css);.a{color:red}',
+    '@/**/import url(https://evil/x.css);',
+    '@imp@import;ort url(https://evil/x.css);',
+    'a{width:expr/**/ession(alert(1))}',
+    'a{width:expression(alert(1))}',
+    'a{background:url(javascript:alert(1))}',
+    'a{background:url(\\6a avascript:alert(1))}',
+    'a{background:url(j\\61vascript:alert(1))}',
+    'a{}</style><script>alert(1)</script>',
+    '</sty/**/le><script>alert(1)</script>',
+    '<</style/style>script>alert(1)</script>',
+    '--><img src=x onerror=alert(1)><!--',
+    '.a::after{content:"a<b"}',
+    '@media (width<600px){.a{color:red}} .b>.c{margin:0}',
+    '.i::before{content:"\\f101"}.q::before{content:"\\201C "}.n::after{content:"a\\A b"}',
+    '.h{background:url(https://cdn.example/x.jpg)}@font-face{src:url(https://cdn.example/f.woff2)}',
+    'a{color:red}/* never closed {}',
+    '/* a */a{color:red}/* b */b{margin:0}',
+    '/' + '/**/' + '*x',
+    'a{background:url(java/**/script:alert(1))}',
+    'behavior:url(x);-moz-binding:url(y);',
+    '@\\000069mport url(//evil/x.css);',
+    '@\\69 mport url(//evil/x.css);',
+    '',
+  ];
+
+  for (const css of payloads) {
+    it(`f(f(x)) = f(x) for ${JSON.stringify(css).slice(0, 60)}`, () => {
+      const once = sanitizeLandingCss(css);
+      expect(sanitizeLandingCss(once)).toBe(once);
+    });
+  }
+
+  it('and the rejoining payload is gone, not just stable', () => {
+    const out = sanitizeLandingCss('@\\69behavior:x;mport url(https://evil.example/x.css);.a{color:red}');
+    expect(out).not.toMatch(/evil/);
+    expect(out).toContain('.a{color:red}');
+  });
+
+  it('the same through a style block of an uploaded file', () => {
+    const once = sanitizeLandingHtml('<style>@\\69behavior:x;mport url(https://evil.example/x.css);</style>');
+    expect(once).not.toMatch(/evil/);
+    expect(sanitizeLandingHtml(once)).toBe(once);
+  });
+});

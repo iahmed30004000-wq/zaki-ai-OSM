@@ -112,13 +112,35 @@ export function sanitizeLandingHtml(html: string): string {
  */
 export function sanitizeLandingHtmlStrict(html: string): string | null {
   let out = html ?? '';
-  if (isTooTangled(out)) return null;
-  for (let pass = 0; pass < MAX_SANITIZE_PASSES; pass++) {
-    const next = sanitizeOnce(out);
-    if (next === out) return out;
-    out = next;
+  try {
+    for (let pass = 0; pass < MAX_SANITIZE_PASSES; pass++) {
+      const next = sanitizeOnce(out);
+      if (next === out) return out;
+      out = next;
+    }
+  } catch (e) {
+    if (e === TANGLED) return null;
+    throw e;
   }
   return null;
+}
+
+/**
+ * THE GUARD RUNS AGAIN AFTER EVERY RULE THAT DELETES A TAG, NOT ONCE AT THE DOOR.
+ *
+ * Deleting a tag can JOIN what was on either side of it. MEASURED with the
+ * guard at the door only: `<meta <script>` repeated has a `>` close to every
+ * `<meta` (the one that ends the script tag), so it passed — and the rule that
+ * removes `<script>` turned it into `<meta <meta <meta …` with no `>` at all,
+ * which the meta rules then read to the end from every start. 128 KB took 0.96 s,
+ * 256 KB 4.3 s, 512 KB 17.8 s; `<form <script>`, `<style <script>` and
+ * `<form <object>` did the same. So every rule's result is measured before
+ * the next rule reads it, and the pass is abandoned (`TANGLED`) the moment the
+ * text is one the next rule would crawl on.
+ */
+const TANGLED = Symbol('too tangled to clean');
+function assertNotTangled(html: string): void {
+  if (isTooTangled(html)) throw TANGLED;
 }
 
 /**
@@ -194,6 +216,7 @@ function stripElements(html: string, name: string): string {
 
 function sanitizeOnce(html: string): string {
   let out = html;
+  assertNotTangled(out);
 
   /*
    * 1+2) REMOVE ACTIVE TAGS — REPEATEDLY, FOR THE REASON STEP 3 ALREADY
@@ -224,14 +247,22 @@ function sanitizeOnce(html: string): string {
     before = out;
     // Script blocks (multiline, case-insensitive), then stray halves.
     out = stripElements(out, 'script');
+    assertNotTangled(out);
     out = out.replace(/<\/?script\b[^>]*>/gi, '');
+    assertNotTangled(out);
     // Dangerous containers, each with a PAIR rule and a LONE-TAG rule.
     out = stripElements(out, 'iframe');
+    assertNotTangled(out);
     out = out.replace(/<\/?iframe\b[^>]*\/?>/gi, '');
+    assertNotTangled(out);
     out = stripElements(out, 'object');
+    assertNotTangled(out);
     out = out.replace(/<\/?object\b[^>]*\/?>/gi, '');
+    assertNotTangled(out);
     out = out.replace(/<\/?embed\b[^>]*\/?>/gi, '');
+    assertNotTangled(out);
     out = out.replace(/<base\b[^>]*>/gi, '');
+    assertNotTangled(out);
     /*
      * `<frame>` IS `<iframe>` WITH A SHORTER NAME, and the list named only
      * the long one. `<frameset>` replaces the document's body outright, so
@@ -249,13 +280,20 @@ function sanitizeOnce(html: string): string {
      * reading.
      */
     out = out.replace(/<\/?frameset\b[^>]*>/gi, '');
+    assertNotTangled(out);
     out = out.replace(/<\/?frame\b[^>]*\/?>/gi, '');
+    assertNotTangled(out);
     out = out.replace(/<\/?plaintext\b[^>]*>/gi, '');
+    assertNotTangled(out);
     out = out.replace(/<\/?link\b[^>]*\/?>/gi, '');
+    assertNotTangled(out);
     out = stripElements(out, 'applet');
+    assertNotTangled(out);
     out = out.replace(/<\/?applet\b[^>]*\/?>/gi, '');
+    assertNotTangled(out);
     // meta refresh / meta with http-equiv
     out = out.replace(/<meta\b[^>]*http-equiv\b[^>]*>/gi, '');
+    assertNotTangled(out);
     /*
      * AND `<meta name="referrer">`, which is not an http-equiv and so was
      * not matched. The raw route sends `Referrer-Policy: no-referrer` as a
@@ -264,6 +302,7 @@ function sanitizeOnce(html: string): string {
      * third party the page touches.
      */
     out = out.replace(/<meta\b[^>]*\sname\s*=\s*["']?referrer\b[^>]*>/gi, '');
+    assertNotTangled(out);
   }
 
   // 3) Strip ALL inline event handlers (on*).
@@ -307,6 +346,7 @@ function sanitizeOnce(html: string): string {
    *    already claimed to remove «action/submit hijacking vectors»; this is
    *    the other half of that sentence.
    */
+  assertNotTangled(out);
   out = out.replace(/<form\b([^>]*)>/gi, (m, attrs: string) => `<form${attrs.replace(ACTION_ATTR, keepQuote)}>`);
   out = out.replace(FORMACTION_ATTR, keepQuote);
 
@@ -328,6 +368,7 @@ function sanitizeOnce(html: string): string {
    * MEASURED: `<style>@import url("https://evil/x.css")</style>` survived
    * here and was stripped there.
    */
+  assertNotTangled(out);
   out = out.replace(
     // `|$`: a style element with NO end tag runs to the end of the document in
     // a browser, so it is CSS all the way down and is held to the CSS rules.
@@ -398,9 +439,28 @@ function unescapeIdentifierChars(css: string): string {
   });
 }
 
-/** Sanitize untrusted landing CSS. Returns cleaned CSS string. */
+/**
+ * Sanitize untrusted landing CSS. Returns cleaned CSS string.
+ *
+ * ROUNDS, UNTIL THE ANSWER STOPS CHANGING — so that cleaning what it already
+ * cleaned changes nothing. One round was not enough: removing a `behavior`
+ * rule from `@\69behavior:x;mport url(…)` leaves `@\69mport url(…)`, which is a
+ * valid escape for `@import` that nothing then decoded. The decoding and the
+ * rules now alternate to a fixed point, with the same cap as the HTML side;
+ * past it the CSS is dropped, not trusted.
+ */
 export function sanitizeLandingCss(css: string): string {
   let out = css ?? '';
+  for (let round = 0; round < MAX_SANITIZE_PASSES; round++) {
+    const next = sanitizeCssRound(out);
+    if (next === out) return out;
+    out = next;
+  }
+  return '';
+}
+
+function sanitizeCssRound(css: string): string {
+  let out = css;
 
   /*
    * COMMENTS FIRST, AND ESCAPES WITH THEM.
