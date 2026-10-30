@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 import { CampaignsBoard, type BoardCampaign } from './CampaignsBoard';
@@ -30,6 +30,8 @@ const insights = { best: { id: 'a', name: 'كمأة سايت', roas: 3 }, worst:
 
 function draw(over: Partial<React.ComponentProps<typeof CampaignsBoard>> = {}) {
   const props = {
+    // was: no `mayManage` — the writes are drawn only for «إدارة الحملات» since PR-11, so the board is told.
+    mayManage: true,
     campaigns: list, insights, duplicates: insights.duplicates, currency: 'USD',
     statuses: [{ key: 'ACTIVE', label: 'تعمل' }, { key: 'PAUSED', label: 'متوقفة' }],
     platforms: [{ key: 'META', label: 'ميتا' }],
@@ -102,5 +104,28 @@ describe('the campaigns board', () => {
     expect(screen.queryByText('أكبر خسارة')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /احذف المكرر \(1\)/ }));
     expect(p.onMerge).toHaveBeenCalledWith();
+  });
+});
+
+describe('a viewer of the campaigns (campaigns.view without campaigns.manage)', () => {
+  // an earlier test picks the short list, and the view is remembered in this browser — start from the default
+  beforeEach(() => { try { localStorage.clear(); } catch { /* storage refused */ } });
+
+  it('sees the cards, the filters and the views, and none of the writes: no selection, no drag, no merge, no bulk bar', () => {
+    draw({ mayManage: false });
+    expect(screen.getAllByTestId('card')).toHaveLength(3);
+    expect(screen.getByLabelText('ابحث في الحملات')).toBeTruthy();
+    expect(screen.queryByLabelText('حدد كل المعروض')).toBeNull();
+    expect(screen.queryAllByLabelText(/^حدد /)).toHaveLength(0);
+    expect(screen.queryAllByLabelText(/^اسحب /)).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: /احذف المكرر/ })).toBeNull();
+    expect(screen.queryByTestId('bulk')).toBeNull();
+  });
+
+  it('NEGATIVE: the same board for a manager offers every one of them', () => {
+    draw({ mayManage: true });
+    expect(screen.getByLabelText('حدد كل المعروض')).toBeTruthy();
+    expect(screen.getAllByLabelText(/^اسحب /)).toHaveLength(3);
+    expect(screen.getByRole('button', { name: /احذف المكرر \(1\)/ })).toBeTruthy();
   });
 });

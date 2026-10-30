@@ -37,7 +37,7 @@ import { publicOrigin } from '@/lib/passkey';
 export async function GET(req: Request) {
   try {
     const { user, companyId, storeId, country } = await requireContext();
-    await requirePermission('reports.view');
+    await requirePermission('campaigns.view');
 
     const q = new URL(req.url).searchParams;
     const { start, end } = campaignWindow(q);
@@ -182,7 +182,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const { user, companyId, storeId } = await requireContext();
-    await requirePermission('reports.view');
+    await requirePermission('campaigns.manage');
     if (!storeId) {
       return NextResponse.json({ error: 'اختر متجراً أولاً — الحملة تخص متجراً بعينه' }, { status: 400 });
     }

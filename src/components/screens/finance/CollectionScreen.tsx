@@ -440,6 +440,7 @@ export function CollectionScreen() {
               {
                 key: 'collected',
                 label: 'ما وصل، ومن أين',
+                wide: true,
                 render: (s) =>
                   s.receipts.length === 0 ? (
                     <span className="text-xs text-[var(--sys-muted)]">—</span>

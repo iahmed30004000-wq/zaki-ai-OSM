@@ -8,7 +8,7 @@ import { canActOnUser, denyRemovalRefusal, loadPermissionTarget, orphanResponse,
 
 /**
  * DELETE /api/users/:id/permissions/:permission — remove a single override row
- * (users.edit). 404 when no override exists for that permission key.
+ * (roles.edit since PR-13, like the PUT beside it; it was users.edit). 404 when no override exists for that permission key.
  * Same tenant boundary + SUPER_ADMIN guards as the collection route.
  */
 export async function DELETE(
@@ -17,7 +17,7 @@ export async function DELETE(
 ) {
   try {
     const { id, permission } = await params;
-    const admin = await requirePermission('users.edit');
+    const admin = await requirePermission('roles.edit');
 
     const loaded = await loadPermissionTarget(id, admin);
     if (!loaded.ok) return loaded.response;

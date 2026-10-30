@@ -37,6 +37,8 @@ const { db, requireContext, requirePermission, aiChat, describeRoute, customerHi
   customerHistory: vi.fn(),
 }));
 
+// The ten-a-minute ceiling is not what this file asks about.
+vi.mock('@/lib/ai-rate', () => ({ tooManyAiCalls: () => null }));
 vi.mock('@/lib/db', () => ({ db }));
 vi.mock('@/lib/geo-context', () => ({ requireContext: (...a: unknown[]) => requireContext(...a) }));
 vi.mock('@/lib/authorization', () => ({ requirePermission: (...a: unknown[]) => requirePermission(...a) }));
@@ -131,12 +133,28 @@ describe('on a vendor that is not ours', () => {
 
   it('and the facts the assistant actually needs still go', async () => {
     // Taking the person out must not take the question out. The order
-    // number, the money, the city and the items are what it reasons from.
+    // number, the money and the items are what it reasons from.
     await ask();
     const sent = sentToModel();
     expect(sent).toContain('ORD-9');
-    expect(sent).toContain('عمّان');
     expect(sent).toContain('قبعة');
+  });
+
+  it('the city stays out too — where the person lives is part of who they are', async () => {
+    // Was: «the city goes» (SF-RV65). The owner's rule is name, phone, address;
+    // a city next to a first name and a basket is enough to find someone.
+    await ask();
+    const sent = sentToModel();
+    expect(sent, 'مدينة الزبون راحت لمزوّد خارجي').not.toContain('عمّان');
+    const payload = JSON.parse(aiChat.mock.calls[0][0].user);
+    expect(payload.order.city).toBeNull();
+    expect(payload.order.hasCity, 'بقي أن يعرف النموذج إن كانت هناك مدينة').toBe(true);
+  });
+
+  it('while the agent’s own screen still gets the city back', async () => {
+    const res = await ask();
+    const body = await res.json();
+    expect(body.context.order.city).toBe('عمّان');
   });
 
   it('and it tells aiChat that it redacted, so the guard lets it through', async () => {
@@ -148,6 +166,11 @@ describe('on a vendor that is not ours', () => {
 describe('on an OpenAI-compatible server — an outside party, whatever its address says', () => {
   beforeEach(() => {
     describeRoute.mockResolvedValue({ provider: 'OPENAI_COMPATIBLE', model: 'glm-4.6', keyFrom: 'system', baseUrl: 'models.example.com' });
+  });
+
+  it('the city is absent here as well', async () => {
+    await ask();
+    expect(sentToModel(), 'مدينة الزبون راحت لخادم متوافق مع OpenAI').not.toContain('عمّان');
   });
 
   it('the name and the notes are absent from the payload, and it says it redacted', async () => {
@@ -170,6 +193,7 @@ describe('on the owner’s own server', () => {
     const sent = sentToModel();
     expect(sent).toContain(NAME);
     expect(sent).toContain('مدرسة الشامل');
+    expect(sent).toContain('عمّان');
   });
 
   it('and it does not claim to have redacted something it did not', async () => {

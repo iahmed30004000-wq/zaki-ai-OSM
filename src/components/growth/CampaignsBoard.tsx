@@ -47,9 +47,11 @@ const SELECT = 'h-8 rounded-lg border border-[var(--sys-border-input)] bg-[var(-
 const fmt = (n: number | null) => (n === null ? '—' : n.toLocaleString('en-US', { maximumFractionDigits: 2 }));
 
 export function CampaignsBoard<T extends BoardCampaign>({
-  campaigns, insights, duplicates, currency, statuses, platforms, accounts,
+  mayManage, campaigns, insights, duplicates, currency, statuses, platforms, accounts,
   renderCard, onReorder, onBulkDelete, onMerge,
 }: {
+  /** «إدارة الحملات» (PR-11): the selection, the drag, the bulk delete and the merge are writes, drawn only for it. */
+  mayManage: boolean;
   campaigns: T[];
   insights: BoardInsights | null;
   /** The twins count, apart from the cards: it works without `insights.view`. */
@@ -101,7 +103,7 @@ export function CampaignsBoard<T extends BoardCampaign>({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
   const onDragEnd = ({ active, over }: DragEndEvent) => {
-    if (!over || active.id === over.id) return;
+    if (!mayManage || !over || active.id === over.id) return;
     const next = arrayMove(order, order.indexOf(String(active.id)), order.indexOf(String(over.id)));
     setOrder(next);
     void onReorder(next);
@@ -185,11 +187,13 @@ export function CampaignsBoard<T extends BoardCampaign>({
       {/* The view, selection and the duplicates button. */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
+          {mayManage && (
           <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--sys-foreground)]">
             <input type="checkbox" aria-label="حدد كل المعروض" checked={allShownSelected} onChange={selectShown} />
             حدد كل المعروض ({shown.length})
           </label>
-          {duplicates > 0 && (
+          )}
+          {mayManage && duplicates > 0 && (
             <button type="button" onClick={() => void onMerge()}
               className="inline-flex items-center gap-1 rounded-lg border border-[var(--sys-warning)] px-2 py-1 text-xs font-semibold text-[var(--sys-warning)]">
               <RiGitMergeLine className="h-4 w-4" /> احذف المكرر ({duplicates})
@@ -205,7 +209,7 @@ export function CampaignsBoard<T extends BoardCampaign>({
           ))}
         </div>
       </div>
-      {filtering && <p className="text-xs text-[var(--sys-muted)]">الترتيب بالسحب متاح على القائمة كاملة — امسح الفلاتر لتسحب.</p>}
+      {mayManage && filtering && <p className="text-xs text-[var(--sys-muted)]">الترتيب بالسحب متاح على القائمة كاملة — امسح الفلاتر لتسحب.</p>}
 
       {view === 'table' && <TableHead />}
       <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis, restrictToParentElement]} onDragEnd={onDragEnd}>
@@ -214,7 +218,7 @@ export function CampaignsBoard<T extends BoardCampaign>({
             {shown.map((c) => {
               const { id, body } = item(c);
               return (
-                <SortableItem key={id} id={id} draggable={!filtering} selected={selected.has(id)} onToggle={() => toggle(id)} name={c.name}>
+                <SortableItem key={id} id={id} mayManage={mayManage} draggable={mayManage && !filtering} selected={selected.has(id)} onToggle={() => toggle(id)} name={c.name}>
                   {body}
                 </SortableItem>
               );
@@ -224,7 +228,7 @@ export function CampaignsBoard<T extends BoardCampaign>({
       </DndContext>
       {shown.length === 0 && <p className="py-6 text-center text-sm text-[var(--sys-muted-foreground)]">ما في حملة بهالفلاتر.</p>}
 
-      <BulkBar show={selected.size > 0}>
+      <BulkBar show={mayManage && selected.size > 0}>
         <span className="text-xs font-semibold">{selected.size} محددة</span>
         <button type="button" onClick={() => void onBulkDelete([...selected])}
           className="inline-flex items-center gap-1 rounded-lg bg-[var(--sys-destructive)] px-3 py-1.5 text-xs font-semibold text-white">
@@ -242,14 +246,14 @@ export function CampaignsBoard<T extends BoardCampaign>({
   );
 }
 
-function SortableItem({ id, draggable, selected, onToggle, name, children }: {
-  id: string; draggable: boolean; selected: boolean; onToggle: () => void; name: string; children: React.ReactNode;
+function SortableItem({ id, mayManage, draggable, selected, onToggle, name, children }: {
+  id: string; mayManage: boolean; draggable: boolean; selected: boolean; onToggle: () => void; name: string; children: React.ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id, disabled: !draggable });
   return (
     <li ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.6 : 1 }} className="flex items-start gap-1.5">
       <div className="flex shrink-0 flex-col items-center gap-1 pt-3">
-        <input type="checkbox" aria-label={`حدد ${name}`} checked={selected} onChange={onToggle} />
+        {mayManage && <input type="checkbox" aria-label={`حدد ${name}`} checked={selected} onChange={onToggle} />}
         {draggable && (
           <button type="button" ref={setActivatorNodeRef} {...attributes} {...listeners} aria-label={`اسحب ${name}`}
             style={{ touchAction: 'none' }} className="cursor-grab text-[var(--sys-muted-foreground)]">

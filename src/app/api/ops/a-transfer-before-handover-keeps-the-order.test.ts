@@ -416,7 +416,7 @@ describe('who may move a parcel off a trolley', () => {
     const res = await transfer();
 
     expect(res.status).toBe(403);
-    expect(requirePermission.mock.calls.map((c: unknown[]) => c[0])).toEqual(expect.arrayContaining(['ops.track', 'ops.ship']));
+    expect(requirePermission.mock.calls.map((c: unknown[]) => c[0])).toEqual(expect.arrayContaining(['ops.transfer', 'ops.ship']));
     expect(cancelShipment).not.toHaveBeenCalled();
     expect(db.order.updateMany).not.toHaveBeenCalled();
   });

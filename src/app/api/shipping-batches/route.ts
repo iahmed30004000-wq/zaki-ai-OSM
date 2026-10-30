@@ -17,10 +17,10 @@ import { courierCityGaps } from '@/lib/courier-city-gaps';
 export async function GET(req: Request) {
   try {
     const { user, companyId, storeId } = await requireContext();
-    // The keys of the screen that reads it (route-registry: /ops/batches).
-    // It asked nothing before, so any signed-in member of the store read
-    // every batch, its courier and who made it.
-    if (!can(user, 'ops.ship') && !can(user, 'ops.track')) {
+    // The key of the screen that reads it (route-registry: /ops/batches): `ops.batches` (PR-8). It asked the packing key OR
+    // the tracking key before, and nothing at all before that — any signed-in member of the store read every batch, its
+    // courier and who made it. The migration gave the box to everybody who held either, so nobody lost the page.
+    if (!can(user, 'ops.batches')) {
       return NextResponse.json({ error: 'دفعات الشحن ليست من صلاحيّاتك.', errorAr: 'دفعات الشحن ليست من صلاحيّاتك.' }, { status: 403 });
     }
     const { searchParams } = new URL(req.url);

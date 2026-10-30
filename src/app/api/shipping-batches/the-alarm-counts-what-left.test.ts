@@ -67,7 +67,7 @@ beforeEach(() => {
 
 describe('the batch screen and the harvest alarm', () => {
   it('without the address-book key nobody is counted, because no phone left', async () => {
-    grant('ops.ship');
+    grant('ops.batches');
     const { status, body } = await get();
     expect(status).toBe(200);
     expect(body.batch.orders.every((o) => o.customer.phone === undefined)).toBe(true);
@@ -76,21 +76,21 @@ describe('the batch screen and the harvest alarm', () => {
   });
 
   it('with the key, each distinct customer is counted once — the repeat customer is one person', async () => {
-    grant('ops.ship', 'customers.view');
+    grant('ops.batches', 'customers.view');
     const { body } = await get();
     expect(body.batch.orders.map((o) => o.customer.phone)).toEqual(['0790000001', '0790000002', '0790000002']);
     expect(distinctCustomers(countedRows())).toBe(2);
   });
 
   it('what is counted is what was sent: the rows handed to the alarm carry no phone the response lacks', async () => {
-    grant('ops.track');
+    grant('ops.batches');
     const { body } = await get();
     const sent = body.batch.orders.map((o) => o.customer.phone).filter(Boolean);
     expect(countedRows().map((r) => r.phone).filter(Boolean)).toEqual(sent);
   });
 
-  it('a caller with neither key is refused and nothing is counted', async () => {
-    grant();
+  it('a caller without the batches key is refused and nothing is counted — the packing and tracking keys alone no longer open it', async () => {
+    grant('ops.ship', 'ops.track');
     const { status } = await get();
     expect(status).toBe(403);
     expect(noteCustomersHandedOut).not.toHaveBeenCalled();

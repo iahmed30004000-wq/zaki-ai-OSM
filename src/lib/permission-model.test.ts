@@ -29,7 +29,7 @@ import { ALL_ROUTES } from './route-registry';
  * can create such a pair — the screens, the doors, and the engine one day —
  * all read the same field. This file holds the field itself still.
  *
- * The 71 pairs are written out BELOW rather than read back from the catalog:
+ * The 82 pairs are written out BELOW rather than read back from the catalog:
  * a test that derives its expectation from the thing it checks passes when
  * the thing is empty.
  * ═══════════════════════════════════════════════════════════════════════
@@ -71,14 +71,21 @@ const EXPECTED: ReadonlyArray<readonly [string, string]> = [
   // PR-9: the cash box and the statement approval (migration 20261030150000_finance_split_keys). 67 -> 71.
   ['finance.cashbox', 'finance.cashbox_view'], ['finance.wallets_manage', 'finance.cashbox_view'],
   ['finance.closing_approve', 'finance.cashbox_view'], ['settlement.approve', 'settlement.view'],
+  // PR-8: the operations doors (migration 20261030160000_ops_action_keys). 71 -> 75. ops.batches is a view and has no pair.
+  ['ops.deliver', 'ops.track'], ['ops.transfer', 'ops.track'], ['ops.write_off', 'ops.track'], ['ops.return_fee', 'ops.returns'],
+  // PR-11: the categories' and the campaigns' keys (migration 20261030180000_categories_campaign_keys). 71 -> 73.
+  ['categories.manage', 'products.view'], ['campaigns.manage', 'campaigns.view'],
+  // PR-13: the users, roles and app-key doors (migration 20261030190000_users_roles_apps_keys). 77 -> 82.
+  ['users.delete', 'users.edit'], ['users.shift', 'users.edit'], ['users.security', 'users.view'],
+  ['roles.edit_system', 'roles.edit'], ['apps.tokens', 'apps.view'],
 ];
 
 const items = PERMISSION_MODULES.flatMap((m) => m.items);
 
 describe('the catalog names what each action needs', () => {
-  it('holds exactly the 71 pairs — none lost, none invented', () => {
+  it('holds exactly the 82 pairs — none lost, none invented', () => {
     const actual = items.filter((i) => i.requires).map((i) => [i.key, i.requires] as const);
-    expect(EXPECTED).toHaveLength(71);
+    expect(EXPECTED).toHaveLength(82);
     expect(actual.length, 'عدد الأزواج').toBe(EXPECTED.length);
     for (const [action, view] of EXPECTED) {
       expect(catalogItem(action)?.requires, `${action} لازم يطلب ${view}`).toBe(view);

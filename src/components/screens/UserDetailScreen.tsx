@@ -338,7 +338,8 @@ export function UserDetailScreen() {
                     shiftEnd: user.shiftEnd ?? null,
                     restDays: user.restDays ?? null,
                   }}
-                  canEdit={userCan(currentUser, 'users.edit')}
+                  // The shift has its own box (PR-13), on top of the edit key the door opens with.
+                  canEdit={userCan(currentUser, 'users.edit') && userCan(currentUser, 'users.shift')}
                 />
               )}
             </div>
@@ -388,7 +389,7 @@ export function UserDetailScreen() {
           same rule that governs stripping a second factor, from the same
           file, because both hand somebody a way into an account.
         */}
-        {maySetPassword(currentUser as never, user.id).ok && (
+        {maySetPassword(currentUser as never, user.id).ok && userCan(currentUser, 'users.edit') && (
           <Card>
             <CardContent className="p-5 space-y-3">
               <h3 className="text-xs font-black text-[var(--sys-foreground)] flex items-center gap-1.5">
@@ -606,9 +607,9 @@ export function UserDetailScreen() {
           <UserGeoAccessSection userId={userId} canEdit={userCan(currentUser, 'geo.manage') && mayManage} />
         )}
 
-        {/* Effective permissions + user overrides (Phase 5) — gated server-side by users.view/users.edit */}
+        {/* Effective permissions + user overrides (Phase 5) — read on users.view; a personal exception is saved on roles.edit (D9, PR-13) */}
         {userCan(currentUser, 'users.view') && userId && (
-          <UserPermissionsSection userId={userId} canEdit={userCan(currentUser, 'users.edit') && mayManage} />
+          <UserPermissionsSection userId={userId} canEdit={userCan(currentUser, 'roles.edit') && mayManage} />
         )}
 
         {/* Workload */}

@@ -23,28 +23,33 @@ import { repoFile, stripComments } from './guard-source';
  * ═══════════════════════════════════════════════════════════════════════
  */
 
-const who = (role: string, id = 'me'): SessionUser => ({ id, role, status: 'ACTIVE' }) as unknown as SessionUser;
+// PR-13 (قديم ← جديد): who may set a password is a KEY now (`users.security`), so a person carries the keys they hold; the owner
+// holds every key centrally and needs none listed.
+const who = (role: string, id = 'me', permissions: string[] = []): SessionUser => ({ id, role, status: 'ACTIVE', permissions }) as unknown as SessionUser;
 const SOMEBODY = 'other-person';
 
 describe('who may set a staff password', () => {
-  it('the owner, and the company owner', () => {
-    for (const role of ['SUPER_ADMIN', 'COMPANY_ADMIN']) {
-      expect(maySetPassword(who(role), SOMEBODY), role).toEqual({ ok: true });
-    }
+  it('the owner (centrally), and the company owner (who holds the key)', () => {
+    expect(maySetPassword(who('SUPER_ADMIN'), SOMEBODY), 'SUPER_ADMIN').toEqual({ ok: true });
+    expect(maySetPassword(who('COMPANY_ADMIN', 'me', ['users.security']), SOMEBODY), 'COMPANY_ADMIN').toEqual({ ok: true });
   });
 
-  it('and not a manager, even holding users.edit', () => {
+  it('and not a manager, even holding users.edit — only the key opens it', () => {
     /*
      * `users.edit` is what opens the route, and MANAGER holds it. Without
      * this check a manager could set the password on the account above
-     * them — which is the whole reason this is granted by ROLE and not by
-     * permission: a permission can be handed on by somebody else.
+     * them. It is a box of its own (`users.security`): the migration gave it to the company
+     * admin and to nobody else, and nobody can hand over a key they do not hold.
      */
-    for (const role of ['MANAGER', 'ACCOUNTANT', 'MODERATOR', 'CONFIRMATION_SUPERVISOR', 'دور من صنع الشركة']) {
-      const verdict = maySetPassword(who(role), SOMEBODY);
+    for (const role of ['MANAGER', 'ACCOUNTANT', 'MODERATOR', 'CONFIRMATION_SUPERVISOR', 'دور من صنع الشركة', 'COMPANY_ADMIN']) {
+      const verdict = maySetPassword(who(role, 'me', ['users.view', 'users.edit']), SOMEBODY);
       expect(verdict.ok, role).toBe(false);
-      expect(verdict).toMatchObject({ status: 403, code: 'OWNER_ONLY' });
+      expect(verdict).toMatchObject({ status: 403, code: 'NO_SECURITY_KEY' });
     }
+  });
+
+  it('and the key alone makes ANY role able — a manager the owner ticked it for', () => {
+    expect(maySetPassword(who('MANAGER', 'me', ['users.security']), SOMEBODY)).toEqual({ ok: true });
   });
 
   it('and never on himself', () => {
@@ -59,9 +64,11 @@ describe('who may set a staff password', () => {
   it('and it is the same rule that governs the second factor', () => {
     // Both hand somebody a way into an account that is not theirs.
     for (const role of ['SUPER_ADMIN', 'COMPANY_ADMIN', 'MANAGER', 'MODERATOR']) {
-      expect(maySetPassword(who(role), SOMEBODY).ok, role).toBe(
-        mayResetTwoFactor(who(role), SOMEBODY).ok
-      );
+      for (const permissions of [[], ['users.security'], ['users.edit']]) {
+        expect(maySetPassword(who(role, 'me', permissions), SOMEBODY).ok, `${role} ${permissions}`).toBe(
+          mayResetTwoFactor(who(role, 'me', permissions), SOMEBODY).ok
+        );
+      }
     }
   });
 });
@@ -174,8 +181,15 @@ describe('the password door never hands anything back twice', () => {
     expect(src, 'ظهر بابٌ يُعيد قراءة كلمة السرّ').not.toMatch(/temporaryPassword/g.source && /GET[\s\S]{0,400}temporaryPassword/);
   });
 
-  it('and ends every session the employee had', () => {
-    expect(route()).toMatch(/updateData\.tokenVersion = \{ increment: 1 \}/);
+  it('and ends every session the employee had — in the resetPassword branch itself', () => {
+    // RV16: asked of the WHOLE file this stayed green when the raise was removed from this branch,
+    // because `changeStatus` and `forceLogout` carry the same line. Cut to this branch only.
+    const src = route();
+    const from = src.indexOf("action === 'resetPassword'");
+    const to = src.indexOf("action === 'updateContact'", from);
+    expect(from, 'فرع resetPassword اختفى').toBeGreaterThan(-1);
+    expect(to).toBeGreaterThan(from);
+    expect(src.slice(from, to)).toMatch(/updateData\.tokenVersion = \{ increment: 1 \}/);
   });
 
   it('and a typed password is judged by the same rules as every other door', () => {

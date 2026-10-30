@@ -43,7 +43,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   try {
     const { user, companyId, storeId } = await requireContext();
     const { id } = await params;
-    if (!can(user, 'ops.ship') && !can(user, 'ops.track')) {
+    // `ops.batches` (PR-8): the packing key OR the tracking key before. The migration gave the box to both sets of holders.
+    if (!can(user, 'ops.batches')) {
       return NextResponse.json({ error: 'دفعات الشحن ليست من صلاحيّاتك.', errorAr: 'دفعات الشحن ليست من صلاحيّاتك.' }, { status: 403 });
     }
     const maySeeContact = can(user, 'customers.view');

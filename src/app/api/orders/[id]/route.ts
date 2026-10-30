@@ -38,6 +38,13 @@ import { PRICE_FORBIDDEN_AR, priceFieldsChanged, storedLinesOf } from '@/lib/ord
 const RESERVED_GOODS_EDIT_AR =
   'تعديل الكمية أو المنتج لطلب محجوز بيحتاج إلغاء الطلب وإنشاء جديد — لسا ما في تعديل بمكانو.';
 
+/**
+ * Why the single-line shorthand (price, quantity or product typed on the order itself) is refused
+ * for an order that has more than one line: it would write one line's money over all of them.
+ */
+const MULTI_LINE_SHORTHAND_AR =
+  'الطلب فيه أكثر من سطر. عدّل الأسطر من قائمة البنود: السعر والكمية والمنتج هنا بيغيّروا الطلب كلو كأنو سطر واحد.';
+
 /** Legacy combined status whitelist (mirrors the UI status config) */
 const ALLOWED_COMBINED_STATUSES = [
   'NEW', 'CONTACTING', 'NO_ANSWER', 'POSTPONED', 'CONFIRMED', 'REJECTED', 'CANCELLED',
@@ -1399,6 +1406,37 @@ export async function PATCH(
          * للكمية الحالية، لا سعر القطعة» — so scaling it as well would
          * apply the quantity twice.
          */
+        /*
+         * ── ONE LINE ONLY (SF-RV57, 30/10) ──
+         *
+         * The shorthand rebuilds the order as ONE line out of the order's own columns —
+         * `quantity` is the SUM of the lines and `sellingPrice` their subtotal. A price, a
+         * quantity or a product typed here on an order with two lines therefore rewrote the
+         * whole order's money as if it were a single piece of goods, while the line rows
+         * (which the shorthand never writes) kept the old figures: the total and the lines
+         * disagreed. The safest answer is to refuse that change and send the person to the
+         * lines list; a discount or a delivery fee alone changes no line and still passes.
+         * The owner: «اي قرار بعد الان اتخذو دون الرجوع الي».
+         */
+        const changesTheGoods =
+          (sellingPrice !== undefined && sellingPrice !== Number(existing.sellingPrice ?? 0)) ||
+          (quantity !== undefined && quantity !== existing.quantity) ||
+          (productId !== undefined && productId !== existing.productId);
+        if (changesTheGoods) {
+          // A SECOND line: the first one skipped, is there another?
+          const secondLine = await db.orderItem.findFirst({
+            where: { orderId: id },
+            orderBy: { id: 'asc' },
+            skip: 1,
+            select: { id: true },
+          });
+          if (secondLine) {
+            return NextResponse.json(
+              { error: MULTI_LINE_SHORTHAND_AR, errorAr: MULTI_LINE_SHORTHAND_AR, code: 'MULTI_LINE_SHORTHAND' },
+              { status: 409 }
+            );
+          }
+        }
         const nextQuantity = quantity ?? existing.quantity;
         // The quantity the stored total was priced for. Zero cannot be a
         // divisor, and an order with no quantity has no piece price to

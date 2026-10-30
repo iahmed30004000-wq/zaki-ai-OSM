@@ -1,34 +1,37 @@
 import type { SessionUser } from '@/types/auth';
+import { userCan } from './can';
 
 /**
- * WHO MAY STRIP SOMEBODY ELSE'S SECOND FACTOR.
+ * WHO MAY STRIP SOMEBODY ELSE'S SECOND FACTOR, AND WHO MAY SET THEIR PASSWORD.
  *
- * «زر لـ reset الـ 2FA للموظفين، بس للمالك حصراً» — and the «حصراً» is the
- * whole rule, not decoration.
+ * «زر لـ reset الـ 2FA للموظفين، بس للمالك حصراً» — and the «حصراً» is still the
+ * whole rule: nothing about it is decoration.
  *
- * Every other administrative act in this system is granted by permission,
- * because permissions are how a growing company delegates. This one is
- * granted by ROLE, and deliberately: a permission can be handed to a new
- * manager by another manager, and the set of people who may weaken an
- * account's login would widen without anybody deciding that it should.
+ * Until PR-13 this was granted by two role NAMES, deliberately, so the set of people who may
+ * weaken an account's login could not widen by a tick another manager handed out. It is a KEY now
+ * (`users.security`, decided by the owner as D6: the owner AND the company admin keep it) because a
+ * name cannot be unticked, and the owner could not take it from a company admin who no longer
+ * should hold it. The key stays out of every other role: the migration gave it to those two names
+ * and to nobody else, and granting it is held to the same rule as every key — nobody can hand over
+ * a key they do not hold.
+ *
+ * SUPER_ADMIN holds it centrally and always (`userCan`, like the server's `can`): unticking the key
+ * from everybody else can never leave an account that nobody can recover.
  *
  * Pure, so the rule can be read and tested without a request.
  */
-
-/** The owner, and nobody else. */
-export const TWO_FACTOR_RESET_ROLES = ['SUPER_ADMIN', 'COMPANY_ADMIN'] as const;
 
 export type ResetVerdict =
   | { ok: true }
   | { ok: false; status: number; code: string; error: string };
 
 export function mayResetTwoFactor(user: SessionUser, targetUserId: string): ResetVerdict {
-  if (!(TWO_FACTOR_RESET_ROLES as readonly string[]).includes(user.role)) {
+  if (!userCan(user, 'users.security')) {
     return {
       ok: false,
       status: 403,
-      code: 'OWNER_ONLY',
-      error: 'إعادة ضبط التحقّق بخطوتين للمالك وحده.',
+      code: 'NO_SECURITY_KEY',
+      error: 'إعادة ضبط التحقّق بخطوتين تحتاج صلاحية «إعادة ضبط دخول موظف».',
     };
   }
 
@@ -56,11 +59,12 @@ export function mayResetTwoFactor(user: SessionUser, targetUserId: string): Rese
  * ═══════════════════════════════════════════════════════════════════════
  * AND WHO MAY SET SOMEBODY ELSE'S PASSWORD.
  *
- * The same two roles, for the same reason, and that is why it lives here
+ * The same key, for the same reason, and that is why it lives here
  * rather than in a file of its own: both acts hand somebody a way into an
  * account that is not theirs. `users.edit` is not enough — it is held by
  * MANAGER, and a manager who may edit a profile must not be able to set
- * the password on the account above them.
+ * the password on the account above them. (The door asks `users.edit` too,
+ * before it gets here: this is the second lock, not the first.)
  *
  * NEVER YOUR OWN, either. An owner changing their own password does it on
  * their own security screen, where the CURRENT one is asked for first;
@@ -68,12 +72,12 @@ export function mayResetTwoFactor(user: SessionUser, targetUserId: string): Rese
  * theirs. A stolen session must not be able to lock the real owner out.
  */
 export function maySetPassword(user: SessionUser, targetUserId: string): ResetVerdict {
-  if (!(TWO_FACTOR_RESET_ROLES as readonly string[]).includes(user.role)) {
+  if (!userCan(user, 'users.security')) {
     return {
       ok: false,
       status: 403,
-      code: 'OWNER_ONLY',
-      error: 'تغيير كلمة سرّ موظّف للمالك وحده.',
+      code: 'NO_SECURITY_KEY',
+      error: 'تغيير كلمة سرّ موظّف يحتاج صلاحية «إعادة ضبط دخول موظف».',
     };
   }
   if (user.id === targetUserId) {

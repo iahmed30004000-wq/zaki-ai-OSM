@@ -9,6 +9,7 @@ import { db } from '@/lib/db';
 import { requireCompanyTenant, requirePermission } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
 import { apiErrorResponse } from '@/lib/api-error';
+import { inboxScopeWhere } from '@/lib/whatsapp/inbox-scope';
 
 const bodySchema = z.object({
   userId: z.string().min(1).max(64).nullable(),
@@ -24,7 +25,8 @@ export async function POST(
     const { id } = await params;
     const body = bodySchema.parse(await req.json());
 
-    const conv = await db.whatsAppConversation.findFirst({ where: { id, companyId } });
+    const mine = inboxScopeWhere(user);
+    const conv = await db.whatsAppConversation.findFirst({ where: { id, companyId, ...(mine ? { AND: [mine] } : {}) } });
     if (!conv) return NextResponse.json({ error: 'المحادثة غير موجودة' }, { status: 404 });
 
     if (body.userId) {

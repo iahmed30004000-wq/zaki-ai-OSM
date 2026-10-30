@@ -5,6 +5,8 @@ const { db, requireContext } = vi.hoisted(() => ({
     attendanceMark: { findFirst: vi.fn(), create: vi.fn(), findMany: vi.fn() },
     orderClaimHistory: { findFirst: vi.fn() },
     order: { findFirst: vi.fn() },
+    // PR-13 (D11): a person outside the eight jobs is asked about her stored shift.
+    user: { findUnique: vi.fn() },
   },
   requireContext: vi.fn(),
 }));
@@ -39,6 +41,7 @@ beforeEach(() => {
   db.attendanceMark.findMany.mockResolvedValue([]);
   db.orderClaimHistory.findFirst.mockResolvedValue(null);
   db.order.findFirst.mockResolvedValue(null);
+  db.user.findUnique.mockResolvedValue({ shiftStart: null, shiftEnd: null, restDays: null });
   db.attendanceMark.create.mockResolvedValue({ at: new Date('2026-09-21T06:00:00Z') });
 });
 
@@ -134,5 +137,60 @@ describe('who is shown a shift at all', () => {
     const body = await (await GET()).json();
     expect(body.shift).toBe(true);
     expect(body.lastAction).toBeNull();
+  });
+});
+
+/**
+ * D11 (perm-plan PR-13): the chip follows the SHIFT, not only the role's name. A person with a start time, a hand-over time or rest
+ * days on file sees it whatever her role is called; the eight jobs keep it by default for people whose shift is not entered yet —
+ * so no agent loses her arrival button on the day (the owner's rule: nobody loses a door).
+ */
+describe('who is shown a shift — by the shift itself (D11)', () => {
+  const asRole = (role: string) =>
+    requireContext.mockResolvedValue({
+      user: { id: 'me', name: 'من', role },
+      companyId: 'c1',
+      storeId: 's1',
+      country: { timezone: 'Asia/Amman', workHoursStart: '09:00', workHoursEnd: '17:00' },
+    });
+
+  it.each([
+    ['a start time', { shiftStart: '11:00', shiftEnd: null, restDays: null }],
+    ['a hand-over time', { shiftStart: null, shiftEnd: '19:00', restDays: null }],
+    ['rest days', { shiftStart: null, shiftEnd: null, restDays: '5,6' }],
+  ])('a custom role with %s on file is shown the chip', async (_n, stored) => {
+    asRole('دور مخصص');
+    db.user.findUnique.mockResolvedValue(stored);
+    const body = await (await GET()).json();
+    expect(body.shift).toBe(true);
+    expect(db.user.findUnique.mock.calls[0][0].where).toEqual({ id: 'me' });
+  });
+
+  it('even the company admin, once someone gives her a shift', async () => {
+    asRole('COMPANY_ADMIN');
+    db.user.findUnique.mockResolvedValue({ shiftStart: '10:00', shiftEnd: null, restDays: null });
+    expect((await (await GET()).json()).shift).toBe(true);
+  });
+
+  it('NEGATIVE: a custom role with no shift on file is not', async () => {
+    asRole('دور مخصص');
+    db.user.findUnique.mockResolvedValue({ shiftStart: null, shiftEnd: null, restDays: null });
+    expect(await (await GET()).json()).toEqual({ shift: false });
+    expect(db.attendanceMark.findMany).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE: an account the database cannot find is not shown one either', async () => {
+    asRole('دور مخصص');
+    db.user.findUnique.mockResolvedValue(null);
+    expect(await (await GET()).json()).toEqual({ shift: false });
+  });
+
+  it('and nobody of the eight jobs loses it for want of an entered shift — and costs no extra query', async () => {
+    for (const role of ['CONFIRMATION_AGENT', 'CONFIRMATION_SUPERVISOR', 'MODERATOR', 'WAREHOUSE', 'DELIVERY_AGENT', 'SETTLEMENT_OFFICER', 'ACCOUNTANT', 'MANAGER']) {
+      asRole(role);
+      db.user.findUnique.mockResolvedValue({ shiftStart: null, shiftEnd: null, restDays: null });
+      expect((await (await GET()).json()).shift, role).toBe(true);
+    }
+    expect(db.user.findUnique).not.toHaveBeenCalled();
   });
 });

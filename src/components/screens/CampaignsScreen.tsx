@@ -14,6 +14,8 @@ import { useCreateIntent } from '@/hooks/useCreateIntent';
 import { isManualAccount } from '@/lib/ads/manual';
 import { DateRange, type Range } from '@/components/ui/DateRange';
 import { CampaignsBoard, type BoardInsights } from '@/components/growth/CampaignsBoard';
+import { useApp } from '@/context/AppContext';
+import { userCan } from '@/lib/can';
 
 /**
  * WHAT EACH AD COST, AND WHAT IT BROUGHT BACK.
@@ -104,6 +106,11 @@ const fmt = (n: number | null) =>
   n === null ? '—' : n.toLocaleString('en-US', { maximumFractionDigits: 2 });
 
 export function CampaignsScreen() {
+  const { currentUser } = useApp();
+  // The screen opens on «عرض الحملات» (PR-11). Every press below that writes — a new campaign, an edit, a delete, the order,
+  // the merge, the two pulls from the platforms — is «إدارة الحملات»; a control is drawn only for the key its door asks, so
+  // nobody is offered a press that ends in a refusal.
+  const mayManage = userCan(currentUser, 'campaigns.manage');
   const toast = useToast();
   const [data, setData] = useState<Payload | null>(null);
   const [period, setPeriod] = useState<string>('month');
@@ -114,7 +121,7 @@ export function CampaignsScreen() {
   const [editing, setEditing] = useState<Campaign | null>(null);
   const [creating, setCreating] = useState(false);
   // «+ أنشئ» in Ctrl+K arrives as `?new=campaign` and opens the form «حملة جديدة» opens.
-  useCreateIntent({ campaign: () => setCreating(true) });
+  useCreateIntent({ campaign: () => { if (mayManage) setCreating(true); } });
   const [copied, setCopied] = useState<string | null>(null);
   const [pages, setPages] = useState<{ id: string; name: string }[]>([]);
   const [products, setProducts] = useState<{ id: string; name: string }[]>([]);
@@ -347,7 +354,7 @@ export function CampaignsScreen() {
           {/* Only an account with a platform on the other end can be pulled
               from. A manual account is a place to put campaigns, and offering
               «اسحب الإنفاق» because one exists would call nobody. */}
-          {connectedAccounts.length > 0 && (
+          {mayManage && connectedAccounts.length > 0 && (
             <>
               {/* Two buttons, not one. «اسحب الحملات» brings rows that do
                   not exist; «اسحب الإنفاق» updates figures on rows that do.
@@ -365,9 +372,11 @@ export function CampaignsScreen() {
               </AdvancedGroup>
             </>
           )}
+          {mayManage && (
           <Button size="sm" onClick={() => setCreating(true)}>
             <RiAddCircleLine className="h-4 w-4" /> حملة جديدة
           </Button>
+          )}
         </div></>
           }
         />
@@ -397,9 +406,10 @@ export function CampaignsScreen() {
           <RiLoader4Line className="h-4 w-4 animate-spin" />
         </div>
       ) : data && data.campaigns.length === 0 ? (
-        <Empty onCreate={() => setCreating(true)} />
+        <Empty onCreate={mayManage ? () => setCreating(true) : undefined} />
       ) : (
         <CampaignsBoard
+          mayManage={mayManage}
           campaigns={data?.campaigns ?? []}
           insights={data?.insights ?? null}
           duplicates={data?.duplicatesCount ?? data?.insights?.duplicates ?? 0}
@@ -416,9 +426,9 @@ export function CampaignsScreen() {
               currency={currency}
               copied={copied === c.id}
               onCopy={() => copy(c.link, c.id)}
-              onEdit={() => setEditing(c)}
-              onRemove={() => remove(c)}
-              onLink={connectedAccounts.length > 0 ? () => setLinking(c) : undefined}
+              onEdit={mayManage ? () => setEditing(c) : undefined}
+              onRemove={mayManage ? () => remove(c) : undefined}
+              onLink={mayManage && connectedAccounts.length > 0 ? () => setLinking(c) : undefined}
             />
           )}
         />
@@ -480,7 +490,7 @@ function Row({
   c, currency, copied, onCopy, onEdit, onRemove, onLink,
 }: {
   c: Campaign; currency: string; copied: boolean;
-  onCopy: () => void; onEdit: () => void; onRemove: () => void; onLink?: () => void;
+  onCopy: () => void; onEdit?: () => void; onRemove?: () => void; onLink?: () => void;
 }) {
   const tone = roasTone(c.money.roas);
   return (
@@ -532,12 +542,16 @@ function Row({
             {copied ? <RiCheckLine className="h-4 w-4 text-[var(--sys-success)]" /> : <RiLinksLine className="h-4 w-4" />}
             {copied ? 'نُسخ' : 'رابط الإعلان'}
           </button>
+          {onEdit && (
           <button aria-label="تعديل" onClick={onEdit} title="تعديل" className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 rounded-lg p-1.5 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface)]">
             <RiPencilLine className="h-4 w-4" />
           </button>
+          )}
+          {onRemove && (
           <button aria-label="حذف" onClick={onRemove} title="حذف" className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 rounded-lg p-1.5 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-destructive-soft)] hover:text-[var(--sys-destructive)]">
             <RiDeleteBinLine className="h-4 w-4" />
           </button>
+          )}
         </div>
       </div>
 
@@ -593,7 +607,7 @@ function Cell({ label, value, unit, tone, icon }: { label: string; value: string
   );
 }
 
-function Empty({ onCreate }: { onCreate: () => void }) {
+function Empty({ onCreate }: { onCreate?: () => void }) {
   return (
     <div className="rounded-lg border border-dashed border-[var(--sys-border-strong)] p-8 text-center">
       <RiMegaphoneLine className="mx-auto h-6 w-6 text-[var(--sys-border-strong)]" />
@@ -602,9 +616,11 @@ function Empty({ onCreate }: { onCreate: () => void }) {
         أنشئ حملة، انسخ رابطها، والصقه في إعلانك. كل طلب يأتي من ذلك الرابط يُحسب عليها —
         وأنت تكتب ما أنفقت، فترى العائد الحقيقي بدل التخمين.
       </p>
+      {onCreate && (
       <Button size="sm" className="mt-3" onClick={onCreate}>
         <RiAddCircleLine className="h-4 w-4" /> حملة جديدة
       </Button>
+      )}
     </div>
   );
 }

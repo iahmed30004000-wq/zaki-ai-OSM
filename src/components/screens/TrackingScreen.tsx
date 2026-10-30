@@ -12,6 +12,8 @@ import { DeliverDialog } from '@/components/screens/tracking/DeliverDialog';
 import { WriteOffDialog } from '@/components/screens/tracking/WriteOffDialog';
 import { apiJson } from '@/lib/api-client';
 import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { BulkBar } from '@/components/shell/BulkBar';
+import { useIsPhone } from '@/hooks/useIsPhone';
 import { Rows, type RowTone } from '@/components/ui/Rows';
 import { RiAlertLine, RiChat1Line, RiCheckLine, RiCloseLine, RiEBike2Line, RiEyeLine, RiHandCoinLine, RiLoader4Line, RiTimerLine, RiTruckLine } from '@remixicon/react';
 import { ALERT_AR, ALERT_CONFIRM_AR, type TrackingAlertKind } from '@/lib/tracking-alert';
@@ -93,13 +95,25 @@ interface Extra {
   capped: boolean;
   /** Which level of the screen this person holds. The door decides; this only says what to draw. */
   access: TrackingSight;
+  /** The three acts that have a box of their own (PR-8). The door decides; this only says which buttons to draw. */
+  acts: TrackingActs;
 }
+
+/** `ops.deliver`, `ops.transfer`, `ops.write_off`: what the server says this person may press on a parcel. */
+interface TrackingActs {
+  deliver: boolean;
+  transfer: boolean;
+  writeOff: boolean;
+}
+
+/** An answer that does not say is read as «all»: drawing less would hide work, and the door is what refuses. */
+const ALL_ACTS: TrackingActs = { deliver: true, transfer: true, writeOff: true };
 
 /** Module-level, so the hook's loader keeps one identity — see `usePagedList`. */
 const read = (body: unknown): PagedRead<Row, Extra> => {
-  const b = body as { orders: Row[]; pagination: Paging; facts: TrackingListFacts; lateCount: number; dialCode?: string | null; capped?: boolean; access?: TrackingSight };
+  const b = body as { orders: Row[]; pagination: Paging; facts: TrackingListFacts; lateCount: number; dialCode?: string | null; capped?: boolean; access?: TrackingSight; acts?: Partial<TrackingActs> };
   // The door always says; an answer that does not is read as the whole screen, since drawing less would hide work, and the door is what refuses.
-  return { rows: b.orders, pagination: b.pagination, extra: { facts: b.facts, lateCount: b.lateCount, dialCode: b.dialCode ?? null, capped: !!b.capped, access: b.access ?? FULL_SIGHT } };
+  return { rows: b.orders, pagination: b.pagination, extra: { facts: b.facts, lateCount: b.lateCount, dialCode: b.dialCode ?? null, capped: !!b.capped, access: b.access ?? FULL_SIGHT, acts: { ...ALL_ACTS, ...b.acts } } };
 };
 
 /**
@@ -336,6 +350,8 @@ export function TrackingScreen() {
   const { extra, rows, pagination } = list;
   /** Until the first answer says what this person holds, nothing of the other level is offered. */
   const access = extra?.access ?? NO_SIGHT;
+  /** The buttons that have a box of their own: delivered / refused, transfer, close as a loss (PR-8). */
+  const acts = extra?.acts ?? ALL_ACTS;
 
   /**
    * THE WORK WAITING, FROM ONE DEFINITION OF EACH CONDITION.
@@ -404,7 +420,10 @@ export function TrackingScreen() {
   // the oldest-shipped-first order is kept as the tiebreak.
   const visible = rows;
   // The boxes are for whoever may act on the money (the collect door's own key); the rows themselves are the door's.
+  const phone = useIsPhone();
   const collectable = access.collect ? visible.filter(canCollect) : [];
+  /** «اختر الكل»: every collectable parcel on THIS page — the strip offers it before a tick, the bar after. */
+  const pickAll = () => setSelected(Object.fromEntries(collectable.map((o) => [o.id, true])));
   /** Every owed parcel the question matches — counted by the server over the whole list, not over this page. */
   const collectOwed = facts?.tasks.COLLECT ?? 0;
 
@@ -580,8 +599,12 @@ export function TrackingScreen() {
           delivered parcels. «اعرضها» asks the server for exactly them. */}
       {access.collect && collectOwed > 0 && (
         <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-3 flex flex-wrap items-center gap-3">
+          {/* On a desk this strip is what it always was: the count, the way out and the button, in a row above the
+              list. On a phone it keeps only what is asked BEFORE anything is ticked; the rest is in the bar below. */}
           <span className="text-xs text-[var(--sys-muted-foreground)]">
-            {chosen.length > 0 ? `مختار ${chosen.length} طلب · صافي ${netOfChosen}` : `${collectOwed} مسلَّم بانتظار التحصيل${openTask !== 'COLLECT' ? ' —' : ''}`}
+            {!phone && chosen.length > 0
+              ? `مختار ${chosen.length} طلب · صافي ${netOfChosen}`
+              : `${collectOwed} مسلَّم بانتظار التحصيل${openTask !== 'COLLECT' && chosen.length === 0 ? ' —' : ''}`}
           </span>
           {openTask !== 'COLLECT' && chosen.length === 0 && (
             <button
@@ -591,15 +614,15 @@ export function TrackingScreen() {
               اعرضها
             </button>
           )}
-          {collectable.length > 0 && (
+          {collectable.length > 0 && (!phone || chosen.length === 0) && (
             <button
-              onClick={() => setSelected(Object.fromEntries(collectable.map((o) => [o.id, true])))}
-              className="text-xs text-[var(--sys-primary)] hover:underline"
+              onClick={pickAll}
+              className="min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline"
             >
               اختر الكل
             </button>
           )}
-          {chosen.length > 0 && (
+          {!phone && chosen.length > 0 && (
             <>
               <button onClick={() => setSelected({})} className="text-xs text-[var(--sys-muted-foreground)] hover:underline">
                 إلغاء الاختيار
@@ -618,6 +641,40 @@ export function TrackingScreen() {
           )}
         </div>
       )}
+
+      {/*
+        «استلمت منه» WHERE THE THUMB IS.
+        The rows are ticked far down a list of cards, and the button that
+        records them used to sit in the strip above it, off the screen by then.
+        On a phone the bar owns the bottom of the screen while something is
+        ticked. On a desk there is no bar: the strip above is where it always was.
+      */}
+      <BulkBar show={phone && access.collect && chosen.length > 0}>
+        <span className="me-auto text-xs font-semibold text-[var(--sys-primary)]">
+          {`مختار ${chosen.length} طلب · صافي ${netOfChosen}`}
+        </span>
+        {collectable.length > chosen.length && (
+          <button onClick={pickAll} className="min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline">
+            اختر الكل
+          </button>
+        )}
+        <button
+          onClick={() => setSelected({})}
+          className="min-h-11 md:min-h-0 text-xs text-[var(--sys-muted-foreground)] hover:underline"
+        >
+          إلغاء الاختيار
+        </button>
+        {mixedCouriers && (
+          <span role="alert" className="w-full text-xs text-[var(--sys-destructive)]">اختر طرود شركة وحدة</span>
+        )}
+        <button
+          onClick={() => setCollecting(true)}
+          disabled={mixedCouriers}
+          className="h-11 md:h-8 px-3 rounded-lg bg-[var(--sys-success)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-50"
+        >
+          <RiHandCoinLine className="w-4 h-4" /> استلمت منه
+        </button>
+      </BulkBar>
 
       {!extra ? (
         <div className="flex items-center justify-center gap-2 text-[var(--sys-muted-foreground)] text-sm py-16">
@@ -964,7 +1021,7 @@ export function TrackingScreen() {
                 the courier's statement is matched. Both buttons go to the
                 one endpoint that has always known that.
               */}
-              {['SHIPPED', 'OUT_FOR_DELIVERY'].includes(o.shippingStatus) && (
+              {acts.deliver && ['SHIPPED', 'OUT_FOR_DELIVERY'].includes(o.shippingStatus) && (
                 <>
                   {/*
                     AND THEY STOP LOOKING LIKE THE SAME LINK.
@@ -1022,7 +1079,7 @@ export function TrackingScreen() {
                 another bare link, because it consumes stock and cannot be
                 undone — the same reason «رفض / ملغى» stopped being a link.
               */}
-              {o.shippingStatus === 'RETURN_REQUESTED' && (
+              {acts.writeOff && o.shippingStatus === 'RETURN_REQUESTED' && (
                 <button
                   onClick={() => setWriteOffFor(o)}
                   className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] px-3 text-xs font-bold text-[var(--sys-destructive)] md:min-h-0"
@@ -1032,6 +1089,7 @@ export function TrackingScreen() {
                   أغلقه كخسارة
                 </button>
               )}
+              {acts.transfer && (
               <button
                 onClick={() => setTransferFor(o)}
                 className="inline-flex min-h-11 items-center text-xs text-[var(--sys-primary)] hover:underline md:min-h-0"
@@ -1043,6 +1101,7 @@ export function TrackingScreen() {
               >
                 تحويل
               </button>
+              )}
               {/* The third one, and the only one that settles nothing. */}
               <button
                 onClick={() => void addNote(o)}

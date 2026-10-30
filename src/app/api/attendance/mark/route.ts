@@ -63,7 +63,17 @@ export async function POST(req: Request) {
  * GET /api/attendance/mark — where today stands for the person asking, so
  * the button can say "استلمت" or "سلّمت" rather than guessing.
  */
-/** Whose day is measured by a shift. The owner's is not. */
+/**
+ * Whose day is measured by a shift: whoever HAS one entered (D11, PR-13) — or, for the eight jobs below, whoever has not had
+ * one entered yet.
+ *
+ * The chip used to be drawn for these eight role NAMES and nobody else, so a custom role that works shifts never saw it and
+ * the owner could not give it to anyone. Now the SHIFT decides: `users.shift` is the key that sets it, and a person with a
+ * start time, a hand-over time or rest days on file sees the chip whatever their role is called. The eight names stay as the
+ * default for people whose shift has not been entered — dropping them would take the arrival button away from every agent
+ * on the day, and the hours it counts are what lateness and the deduction are measured from. The owner's own day is still
+ * not measured: no shift on file and not one of these jobs.
+ */
 const SHIFT_ROLES = [
   'CONFIRMATION_AGENT',
   'CONFIRMATION_SUPERVISOR',
@@ -111,7 +121,13 @@ export async function GET() {
     // sets the shift is noise, and it is the fastest way to teach everybody
     // that the control is decorative.
     if (!SHIFT_ROLES.includes(user.role)) {
-      return NextResponse.json({ shift: false });
+      const entered = await db.user.findUnique({
+        where: { id: user.id },
+        select: { shiftStart: true, shiftEnd: true, restDays: true },
+      });
+      if (!(entered && (entered.shiftStart || entered.shiftEnd || entered.restDays))) {
+        return NextResponse.json({ shift: false });
+      }
     }
 
     // Midnight in the country's own day, not the server's.

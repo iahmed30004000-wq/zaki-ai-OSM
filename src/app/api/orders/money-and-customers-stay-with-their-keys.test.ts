@@ -340,7 +340,10 @@ describe('shipping batches', () => {
   it('the list refuses someone outside the batches screen — it asked nothing before', async () => {
     as(person(['orders.view']));
     expect((await listBatches(new Request('http://x/api/shipping-batches'))).status).toBe(403);
+    // PR-8: the packing key alone no longer opens it — the page has a box of its own.
     as(person(['ops.ship']));
+    expect((await listBatches(new Request('http://x/api/shipping-batches'))).status).toBe(403);
+    as(person(['ops.batches']));
     expect((await listBatches(new Request('http://x/api/shipping-batches'))).status).toBe(200);
   });
 
@@ -349,11 +352,14 @@ describe('shipping batches', () => {
     expect((await readBatch(new Request('http://x'), params('b1'))).status).toBe(403);
 
     as(person(['ops.track']));
+    expect((await readBatch(new Request('http://x'), params('b1'))).status).toBe(403);
+
+    as(person(['ops.batches']));
     const plain = (await (await readBatch(new Request('http://x'), params('b1'))).json()).batch.orders[0];
     expect(plain.orderNumber).toBe('JO-1');
     expect(plain.customer.phone).toBeUndefined();
 
-    as(person(['ops.track', 'customers.view']));
+    as(person(['ops.batches', 'customers.view']));
     const full = (await (await readBatch(new Request('http://x'), params('b1'))).json()).batch.orders[0];
     expect(full.customer.phone).toBe('079');
   });

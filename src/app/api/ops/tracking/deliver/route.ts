@@ -79,7 +79,9 @@ export async function POST(req: Request) {
     // The store too: the order was found by company alone, so an id from
     // another store of the same company could be delivered from this one.
     const { user, companyId, storeId, country } = await requireContext();
-    await requirePermission('ops.track');
+    // Recording what happened at the customer's door is its own box (PR-8). The migration gave it to every holder of
+    // `ops.track`, the key it rode on, so nobody lost it and nobody gained it. Listing the parcels stays `ops.track`.
+    await requirePermission('ops.deliver');
 
     const parsed = schema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {

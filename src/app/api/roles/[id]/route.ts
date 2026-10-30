@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { apiErrorResponse } from '@/lib/api-error';
 import { db } from '@/lib/db';
-import { requirePermission } from '@/lib/authorization';
+import { can, requirePermission } from '@/lib/authorization';
 import { logAudit } from '@/lib/audit';
 import { PERMISSION_MODULES, withoutRetired } from '@/lib/permission-catalog';
 import { isReservedRoleName, isPrivilegedRoleName, normalizeRoleName } from '@/lib/role-names';
@@ -68,8 +68,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
 /**
  * PATCH /api/roles/:id — rename and/or replace the permission matrix.
- * Requires roles.edit. System roles are editable only by COMPANY_ADMIN /
- * SUPER_ADMIN. The SUPER_ADMIN role is read-only by design.
+ * Requires roles.edit; a SYSTEM role also needs roles.edit_system (PR-13 — it was the two role names COMPANY_ADMIN /
+ * SUPER_ADMIN until then; the SUPER_ADMIN person holds every key centrally, so the owner can always rewrite a template).
+ * The SUPER_ADMIN role is read-only by design — for everybody, whatever they hold.
  * All affected users get permissionsVersion bumped so grants recompute.
  */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -82,8 +83,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     // A rename-only save (no list) stays possible.
     const permissions: PermInput[] | undefined = Array.isArray(body?.permissions) ? withoutRetired(body.permissions as PermInput[]) : undefined;
 
-    // Policy: system roles are editable only by COMPANY_ADMIN / SUPER_ADMIN.
-    const adminCanEditSystem = admin.role === 'SUPER_ADMIN' || admin.role === 'COMPANY_ADMIN';
+    // Policy: a system role template is rewritten only by whoever holds roles.edit_system.
+    const adminCanEditSystem = can(admin, 'roles.edit_system');
 
     const role = await loadVisibleRole(id, admin.companyId);
     if (!role) {
@@ -91,7 +92,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
 
     if (role.isSystem && !adminCanEditSystem) {
-      return NextResponse.json({ error: 'فقط مدير الشركة أو المدير الأعلى يمكنه تعديل الأدوار النظامية' }, { status: 403 });
+      return NextResponse.json({ error: 'تعديل الأدوار الأساسية يحتاج صلاحية «تعديل قوالب الأدوار الأساسية».' }, { status: 403 });
     }
 
     // SUPER_ADMIN role is full-access by design — nothing to change, ever.

@@ -87,9 +87,11 @@ describe('the permissions screen matches what the system enforces', () => {
   });
 
   it('promises no delete the system refuses to perform', () => {
-    // An order is VOIDED and a user deactivated: their history has to
-    // outlive them, so the delete these keys promised never existed.
-    for (const key of ['orders.delete', 'users.delete']) {
+    // An order is VOIDED: its history has to outlive it, so the delete this key promised never existed.
+    // PR-13 (قديم ← جديد): `users.delete` left this list. The profile's PATCH has always had a `delete` action (the owner's, API-only,
+    // never on a SUPER_ADMIN or on oneself), and it rode on «تعديل المستخدمين»; the key now names that act so the owner can untick it
+    // from whoever edits profiles. The key is asked by `can(admin, 'users.delete')` in that route, so it is enforced, not promised.
+    for (const key of ['orders.delete']) {
       expect(catalogued.has(key), key).toBe(false);
     }
   });

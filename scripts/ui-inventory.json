@@ -990,12 +990,12 @@
     "tabs": 0
   },
   "src/components/screens/finance/ManualMatching.tsx": {
-    "buttons": 7,
+    "buttons": 12,
     "inputs": 0,
     "columns": 11,
     "cards": 0,
     "modals": 0,
-    "icons": 6,
+    "icons": 11,
     "links": 0,
     "tabs": 0
   },
@@ -1190,12 +1190,12 @@
     "tabs": 0
   },
   "src/components/screens/OrdersScreen.tsx": {
-    "buttons": 17,
+    "buttons": 21,
     "inputs": 9,
     "columns": 0,
     "cards": 1,
     "modals": 0,
-    "icons": 17,
+    "icons": 21,
     "links": 0,
     "tabs": 0
   },
@@ -1230,12 +1230,12 @@
     "tabs": 0
   },
   "src/components/screens/PreparationScreen.tsx": {
-    "buttons": 5,
+    "buttons": 6,
     "inputs": 0,
     "columns": 5,
     "cards": 0,
     "modals": 0,
-    "icons": 6,
+    "icons": 7,
     "links": 0,
     "tabs": 0
   },
@@ -1290,7 +1290,7 @@
     "tabs": 0
   },
   "src/components/screens/ShipmentsNewScreen.tsx": {
-    "buttons": 7,
+    "buttons": 8,
     "inputs": 6,
     "columns": 5,
     "cards": 0,
@@ -1490,12 +1490,12 @@
     "tabs": 0
   },
   "src/components/screens/TrackingScreen.tsx": {
-    "buttons": 14,
+    "buttons": 17,
     "inputs": 0,
     "columns": 15,
     "cards": 0,
     "modals": 0,
-    "icons": 15,
+    "icons": 16,
     "links": 0,
     "tabs": 0
   },

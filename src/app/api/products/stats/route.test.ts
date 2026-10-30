@@ -256,14 +256,19 @@ describe('an empty catalogue', () => {
 
 describe('how it is built', () => {
   const src = () => stripComments(readFileSync(join(process.cwd(), 'src/app/api/products/stats/route.ts'), 'utf8'));
+  // RV87: the counting moved out of this door into the one function the list and the product page also read.
+  const counting = () => stripComments(readFileSync(join(process.cwd(), 'src/lib/product-sold.ts'), 'utf8'));
 
   it('— the units are COUNTED in the database, never loaded line by line into JavaScript', () => {
-    expect(src()).toContain('groupBy');
-    expect(src()).not.toMatch(/orderItem\.findMany/);
+    expect(src()).toContain('deliveredUnitsByProduct');
+    expect(counting()).toContain('groupBy');
+    expect(counting()).not.toMatch(/orderItem\.findMany/);
+    expect(src()).not.toMatch(/orderItem\./);
   });
 
   it('and «delivered» is the one definition of it, imported — never a list of states written here', () => {
-    expect(src()).toContain("import { DELIVERED_SHIPPING } from '@/lib/order-state'");
+    expect(counting()).toContain("import { DELIVERED_SHIPPING } from './order-state'");
+    expect(counting()).not.toMatch(/'DELIVERED'|"DELIVERED"/);
     expect(src()).not.toMatch(/'DELIVERED'|"DELIVERED"/);
   });
 

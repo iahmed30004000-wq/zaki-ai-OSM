@@ -25,8 +25,9 @@ import { CATEGORISE_BATCH, categoryKey } from '@/lib/product-categories';
  *   · It never makes a second copy of a shelf. A name is matched to the company's existing categories first as written and then by
  *     `categoryKey` (spelling folded: «مكملات» is «مكمّلات»), so a spelling cannot double a shelf. Categories are the company's, not
  *     the store's — a shelf made here is the same shelf in every store.
- *   · It does not step outside the caller's reach. The gate is `products.edit` (the one the categories door and the product page
- *     already use — naming the shelves is part of arranging the products), and each product is checked with `authorize(...,
+ *   · It does not step outside the caller's reach. The gate is `products.edit` (the product page's), and MAKING a shelf is
+ *     `categories.manage` (the categories door's, PR-11): without it the sorter files onto the shelves that exist and skips the
+ *     products that wanted a new one. Each product is checked with `authorize(...,
  *     'products.edit', product)`: a grant scoped to a category or to specific products reaches only its own, and an UNFILED product is
  *     in no category, so a category-scoped editor files nothing here. The products read are this store's, as the list is.
  *   · It writes nothing it does not log. One audit row per product filed (`PRODUCT_CATEGORISED`, from no category to this one) and
@@ -105,10 +106,15 @@ export async function POST(req: Request) {
     const byKey = new Map<string, { id: string; name: string }>();
     for (const c of shelves) if (!byKey.has(categoryKey(c.name))) byKey.set(categoryKey(c.name), c);
 
+    // MAKING a shelf is «إدارة التصنيفات» (PR-11) — the same key the categories door asks. Filing a product on a shelf that
+    // exists stays `products.edit`, so the sorter keeps working for everyone who had it; without the key it makes no shelf and
+    // the products that wanted a new one are skipped.
+    const mayMakeShelves = can(user, 'categories.manage');
     const created: string[] = [];
     const shelfFor = async (name: string) => {
       const found = byName.get(name) ?? byKey.get(categoryKey(name));
       if (found) return found;
+      if (!mayMakeShelves) return null;
       const made = await db.category.create({ data: { companyId, name }, select: { id: true, name: true } });
       // By its folded name only: the next product that names it — however it spells it — finds it there.
       byKey.set(categoryKey(made.name), made);
@@ -123,6 +129,7 @@ export async function POST(req: Request) {
     let filed = 0;
     for (const product of reachable) {
       const shelf = await shelfFor(wanted.get(product.id) as string);
+      if (!shelf) continue;
       // `categoryId: null` again, in the write itself: whatever was filed since the read above stays where it is.
       const { count } = await db.product.updateMany({
         where: { id: product.id, companyId, categoryId: null },

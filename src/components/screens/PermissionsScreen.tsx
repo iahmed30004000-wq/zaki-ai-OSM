@@ -95,7 +95,8 @@ export function PermissionsScreen() {
   const canEdit = userCan(currentUser, 'roles.edit');
   const canCreate = userCan(currentUser, 'roles.create');
   const canDelete = userCan(currentUser, 'roles.delete');
-  const isSuper = currentUser?.role === 'SUPER_ADMIN';
+  // PR-13: rewriting a system role template asks its own key (the owner holds every key centrally).
+  const canEditSystem = userCan(currentUser, 'roles.edit_system');
 
   const loadRoles = useCallback(async () => {
     setLoadError(null);
@@ -449,7 +450,7 @@ export function PermissionsScreen() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {filteredRoles.map((role) => {
             const isSuperAdminRole = role.name === 'SUPER_ADMIN';
-            const canEditThis = canEdit && (!role.isSystem || isSuper || currentUser?.role === 'COMPANY_ADMIN') && !isSuperAdminRole;
+            const canEditThis = canEdit && (!role.isSystem || canEditSystem) && !isSuperAdminRole;
             const canDeleteThis = canDelete && !role.isSystem;
             return (
               <Card key={role.id}>
@@ -489,6 +490,11 @@ export function PermissionsScreen() {
                           <Button variant="outline" size="sm" onClick={() => openEdit(role)}>
                             <RiPencilLine className="w-4 h-4" />{ar ? 'تعديل' : 'Edit'}
                           </Button>
+                        )}
+                        {canEdit && role.isSystem && !canEditSystem && (
+                          <span className="text-xs text-[var(--sys-muted)]">
+                            قراءة فقط — تعديل الأدوار الأساسية يحتاج صلاحية «تعديل قوالب الأدوار الأساسية».
+                          </span>
                         )}
                         {canCreate && (
                           <Button variant="outline" size="sm" onClick={() => openDuplicate(role)}>

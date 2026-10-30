@@ -65,7 +65,9 @@
 
 - العامل عملية مستقلة عن الموقع: `scripts/worker.ts` (يبدأ من `docker-entrypoint.sh`،
   وبيوقف بـ`RUN_WORKER=false`).
-- التعريفات: `src/lib/jobs/definitions.ts` (اسم كل مهمة وفترتها ثابتين). التشغيل: `runner.ts`،
+- التعريفات: مجلد `src/lib/jobs/definitions/`، ملف لكل مهمة باسمها (`accrue-commission.ts` · `watchdog.ts`…)،
+  و`index.ts` بيجمعهن ويصدّر `JOBS` و`jobByName` (اسم كل مهمة وفترتها وترتيبها بالقائمة ثابتين).
+  المشترك بينهن بـ`shared.ts` (`activeStores` · `SKIP_AR`). التشغيل: `runner.ts`،
   الموعد: `schedule.ts`، نبض العامل: `heartbeat.ts`، التنبيه لما تفشل: `alerts.ts`.
 - المهام: `release-stale-claims` · `accrue-commission` · `accrue-period-commission` ·
   `sync-courier-status` · `surface-postponed` · `stale-returns` · `closing-reminder` ·
@@ -111,9 +113,10 @@
 | التسوية والمخزون والحالة | `the-settlement-invariants.test.ts` · `the-inventory-invariants.test.ts` · `the-state-invariants.test.ts` |
 | عقد الأحداث | `src/lib/apps/events.test.ts` · `events-sites.test.ts` |
 | مهمة وحدة بالمرة | `src/lib/jobs/two-workers-one-job.test.ts` |
+| أسماء المهام وفواصلها وترتيبها | `src/lib/jobs/definitions-are-pinned.test.ts` (إسقاط مهمة أو تغيير فاصل = أحمر) |
 | الذكاء الاصطناعي | `ai-proposal-only.test.ts` · `ai-routing.test.ts` |
 | لا سر بمستودع | `no-secret-reaches-a-commit.test.ts` · `npm run scan:secrets` |
-| لا شي مبني وما حدا بيستعمله | `nothing-unused-ships.test.ts` (مكوّنات، صفحات، أبواب، حزم) |
+| لا شي مبني وما حدا بيستعمله | `nothing-unused-ships.test.ts` (مكوّنات، صفحات، أبواب، حزم، وتصديرات `src/lib` بسقف ما بيزيد: التصدير غير المستعمل الجديد بيفشل، والمخطَّط له بسبب مكتوب) |
 | الواجهة | `the-frontend-invariants.test.ts` · `touch-targets.test.ts` · `western-digits.test.ts` · `arabic-refusals.test.ts` · `one-icon-family.test.ts` · `a-search-box-is-not-a-password.test.ts` |
 | الجلب من الواجهة | `bare-fetch-ratchet.test.ts` (الدين بيتعدّ لكل ملف، ممنوع جديد) |
 | جرد الأزرار والأسطر | `ui-inventory.test.ts` (مقابل `scripts/ui-inventory.json`) · `cleanup-inventory.test.ts` (مقابل `scripts/cleanup-inventory.json`، أرقام أسطر) |

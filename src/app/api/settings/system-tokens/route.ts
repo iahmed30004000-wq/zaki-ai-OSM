@@ -41,11 +41,14 @@ import {
  * block and a reversed financial entry follow. A deleted row would leave
  * nothing to explain a key that used to work.
  *
- * `apps.manage` is the authority, not a new permission: «الإعدادات ←
- * التطبيقات ← «توكنات الأنظمة»» is where the screen lives, and the
- * catalogue already says what `apps.manage` is for — «Installing an app
- * connects the company to something outside it, and registering one hands
- * out a signing secret.» Handing out a system key is the same act.
+ * `apps.tokens` is the authority (PR-13). It rode on `apps.manage` — «Installing
+ * an app connects the company to something outside it, and registering one hands
+ * out a signing secret» — but a key that READS the company's orders and customers is a
+ * different grant from installing a courier, and the owner could not give a person
+ * the shelf and keep the keys away from her. The migration
+ * 20261030190000_users_roles_apps_keys gave the new box to every role and person that
+ * held `apps.manage`, so nobody lost a door on the day. The per-scope rule
+ * (token-granter.ts) is unchanged: a key never carries more than its minter holds.
  */
 
 const createSchema = z.object({
@@ -63,7 +66,7 @@ const revokeSchema = z.object({ id: z.string().uuid() });
 export async function GET() {
   try {
     const { companyId } = await requireCompanyTenant();
-    const viewer = await requirePermission('apps.manage');
+    const viewer = await requirePermission('apps.tokens');
 
     const rows = await db.systemToken.findMany({
       where: { companyId },
@@ -130,7 +133,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const { user, companyId } = await requireCompanyTenant();
-    const minter = await requirePermission('apps.manage');
+    const minter = await requirePermission('apps.tokens');
 
     const parsed = createSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
@@ -200,7 +203,7 @@ export async function POST(req: Request) {
 export async function DELETE(req: Request) {
   try {
     const { user, companyId } = await requireCompanyTenant();
-    await requirePermission('apps.manage');
+    await requirePermission('apps.tokens');
 
     const parsed = revokeSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {

@@ -19,13 +19,13 @@ import { db } from '../db';
  * ── WHY THESE THREE JOB NAMES, COPIED RATHER THAN DERIVED ──
  *
  * The honest heartbeat is "a job that fires every minute has fired
- * recently". Three jobs in `definitions.ts` have `everySeconds: 60`, so a
+ * recently". Three jobs in `definitions/` have `everySeconds: 60`, so a
  * living worker writes a `JobRun` row at least once a minute.
  *
  * The names are COPIED here instead of being computed from `JOBS` on
  * purpose, and both reasons matter:
  *
- *   - `definitions.ts` pulls in commission accrual, backups, ad-spend
+ *   - `definitions/` pulls in commission accrual, backups, ad-spend
  *     providers, courier clients — the whole business. A health endpoint
  *     that cannot even be IMPORTED because an unrelated module threw at
  *     load time is a health endpoint that reports nothing exactly when

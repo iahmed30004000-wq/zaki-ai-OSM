@@ -5,18 +5,21 @@
  */
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { requireCompanyTenant, requirePermission } from '@/lib/auth';
+import { requirePermission, tenantOf } from '@/lib/auth';
 import { normalizePhoneNumber } from '@/lib/phone';
 import { apiErrorResponse } from '@/lib/api-error';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { typed } from '@/lib/text-search';
+import { inboxScopeWhere } from '@/lib/whatsapp/inbox-scope';
+import { can } from '@/lib/authorization';
 
 export async function GET(req: Request) {
   try {
-    await requirePermission('whatsapp.view');
-    // Once: this door is polled every few seconds, and each call re-reads the user,
-    // the role and the grants (RV182/RV183).
-    const { companyId, user } = await requireCompanyTenant();
+    // ONE read of who is asking: this door is polled every few seconds, and every read of the session
+    // re-reads the user, the role and the grants (7 to 10 queries). `requirePermission` already returns the
+    // user, so the company comes from it and not from a second `requireCompanyTenant` (RV182/RV183).
+    const user = await requirePermission('whatsapp.view');
+    const { companyId } = await tenantOf(user);
     const { searchParams } = new URL(req.url);
 
     const status = searchParams.get('status') === 'CLOSED' ? 'CLOSED' : 'OPEN';
@@ -24,6 +27,9 @@ export async function GET(req: Request) {
     const q = searchParams.get('q')?.trim() || '';
     const cursor = searchParams.get('cursor')?.trim() || '';
     const where: any = { companyId, status };
+    // A person limited to «المسندة إليه» sees hers and the unassigned ones (PR-13) — inside AND, beside the search's own OR.
+    const mine = inboxScopeWhere(user);
+    if (mine) where.AND = [mine];
     if (assigned === 'me') where.assignedUserId = user.id;
     else if (assigned === 'unassigned') where.assignedUserId = null;
     else if (assigned && assigned !== 'all') where.assignedUserId = assigned;
@@ -47,12 +53,14 @@ export async function GET(req: Request) {
       },
     });
     const hasMore = conversations.length > take;
+    const mayCustomer = can(user, 'customers.view_basic') || can(user, 'customers.view');
     // Contact details left the building; the tally is the person's, not
     // this screen's. See noteCustomersHandedOut.
     await noteCustomersHandedOut({ companyId, storeId: null, user, where: 'محادثات واتساب', rows: conversations });
 
     return NextResponse.json({
-      conversations: conversations.slice(0, take),
+      // The linked customer's card needs the customer tier, as on the single conversation (PR-13, WA-2); the answer keeps its shape.
+      conversations: conversations.slice(0, take).map((c) => (mayCustomer ? c : { ...c, customer: null })),
       nextCursor: hasMore ? conversations[take - 1].id : null,
     });
   } catch (error) {
