@@ -362,10 +362,13 @@ export function UsersScreen() {
                   { key: 'c6', label: "إجراءات", align: 'end',
                     render: (u) => (
                   <><div className="flex items-center gap-1.5 justify-end rtl:justify-start">
-                          <Button size="sm" variant="outline" onClick={() => openManage(u)} className="text-xs">
-                            <RiShieldCheckLine className="w-4 h-4 ml-1 rtl:ml-0 rtl:mr-1" />
-                            إدارة
-                          </Button>
+                          {/* Every act in the panel it opens (status, sign-out) asks «تعديل المستخدمين» — no button for who would only be refused. */}
+                          {userCan(currentUser, 'users.edit') && (
+                            <Button size="sm" variant="outline" onClick={() => openManage(u)} className="text-xs">
+                              <RiShieldCheckLine className="w-4 h-4 ml-1 rtl:ml-0 rtl:mr-1" />
+                              إدارة
+                            </Button>
+                          )}
                           <Button
                             size="sm"
                             variant="outline"

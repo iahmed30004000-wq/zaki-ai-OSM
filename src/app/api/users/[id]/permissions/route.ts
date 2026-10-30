@@ -24,7 +24,7 @@ import {
 /**
  * GET /api/users/:id/permissions — permission inspector payload (users.view).
  * PUT /api/users/:id/permissions — FULL REPLACEMENT of the user's overrides
- * (users.edit) in a single transaction (deleteMany + createMany) so a partial
+ * (roles.edit since PR-13 — a personal exception is a role-matrix act; it was users.edit) in a single transaction (deleteMany + createMany) so a partial
  * update can never leave the account in a half-edited state.
  *
  * Precedence itself is NOT changed here — computeEffectiveGrants()
@@ -168,7 +168,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const admin = await requirePermission('users.edit');
+    // D9 (PR-13): a personal exception moves a person's permissions, so it asks the role-matrix key, not the profile key.
+    const admin = await requirePermission('roles.edit');
 
     const loaded = await loadPermissionTarget(id, admin);
     if (!loaded.ok) return loaded.response;

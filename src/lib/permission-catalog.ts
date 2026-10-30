@@ -205,6 +205,22 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       { key: 'users.view', opens: ['الموظفين'], ar: 'عرض المستخدمين', en: 'View users' },
       { key: 'users.create', requires: 'users.view', ar: 'إنشاء مستخدمين', en: 'Create users' },
       { key: 'users.edit', requires: 'users.view', ar: 'تعديل المستخدمين', en: 'Edit users' },
+      /*
+       * THE USERS DOORS THAT GOT A BOX EACH (perm-plan PR-13, migration 20261030190000_users_roles_apps_keys).
+       *
+       * Deleting an account, moving a colleague's shift and setting a password or resetting the second factor all rode on
+       * «تعديل المستخدمين» (the last one on two role NAMES). The migration gave each box to exactly the people who passed that
+       * door before, so from then on one tick moves one door. All three are pressed on the employee's page behind the edit key.
+       */
+      { key: 'users.delete', requires: 'users.edit', ar: 'حذف حساب موظف', en: 'Delete an employee account' },
+      { key: 'users.shift', requires: 'users.edit', ar: 'تحديد دوام الموظف وأيام راحته', en: 'Set an employee’s shift and rest days' },
+      {
+        key: 'users.security',
+        requires: 'users.view',
+        note: 'تغيير كلمة سر موظف يحتاج معها «تعديل المستخدمين» — أما إعادة ضبط التحقق بخطوتين فتكفيها هذه وحدها. المدير الأعلى يملكها دائماً.',
+        ar: 'إعادة ضبط دخول موظف — كلمة السر والتحقق بخطوتين',
+        en: 'Reset an employee’s sign-in — password and two-step verification',
+      },
     ],
   },
   {
@@ -214,6 +230,8 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       { key: 'roles.create', requires: 'roles.view', ar: 'إنشاء أدوار', en: 'Create roles' },
       { key: 'roles.edit', requires: 'roles.view', ar: 'تعديل الأدوار والصلاحيات', en: 'Edit roles & permissions' },
       { key: 'roles.delete', requires: 'roles.view', ar: 'حذف أدوار', en: 'Delete roles' },
+      // Rewriting a system template (COMPANY_ADMIN, MANAGER…) moves every person who carries it. The SUPER_ADMIN template stays read-only for all.
+      { key: 'roles.edit_system', requires: 'roles.edit', ar: 'تعديل قوالب الأدوار الأساسية — بتتغيّر صلاحيات كل من يحملها', en: 'Edit the built-in role templates — everyone who carries one changes' },
     ],
   },
   {
@@ -382,6 +400,8 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       // registering one hands out a signing secret. Both are a separate
       // authority from looking at the shelf.
       { key: 'apps.manage', requires: 'apps.view', ar: 'تثبيت وتسجيل التطبيقات', en: 'Install & register apps' },
+      // A key the replies system (or any other) calls /api/v1 with: it reads the company's orders and customers. Shown once, stopped at once.
+      { key: 'apps.tokens', requires: 'apps.view', ar: 'إصدار وإيقاف مفاتيح ربط الأنظمة الخارجية', en: 'Issue and stop the keys that connect outside systems' },
     ],
   },
   {
@@ -422,7 +442,7 @@ export const PERMISSION_MODULES: CatalogModule[] = [
   {
     module: 'whatsapp',
     items: [
-      { key: 'whatsapp.view', opens: ['صندوق الواتساب'], ar: 'عرض صندوق واتساب', en: 'View WhatsApp inbox' },
+      { key: 'whatsapp.view', opens: ['صندوق الواتساب'], ar: 'عرض صندوق واتساب', en: 'View WhatsApp inbox', scopes: ['ALL_COMPANY', 'ASSIGNED'] },
       { key: 'whatsapp.send', requires: 'whatsapp.view', ar: 'إرسال رسائل واتساب', en: 'Send WhatsApp messages' },
       { key: 'whatsapp.manage', requires: 'whatsapp.view', ar: 'إدارة إعدادات واتساب', en: 'Manage WhatsApp settings' },
       { key: 'whatsapp.assign', requires: 'whatsapp.view', ar: 'إسناد محادثات واتساب', en: 'Assign WhatsApp conversations' },

@@ -67,9 +67,9 @@ beforeEach(() => {
 });
 
 describe('the permission, on every verb', () => {
-  it('refuses a reader who does not hold apps.manage', async () => {
+  it('refuses a reader who does not hold apps.tokens', async () => {
     h.requirePermission.mockRejectedValue(
-      new Error('Forbidden: missing required permission apps.manage')
+      new Error('Forbidden: missing required permission apps.tokens')
     );
     const res = await GET();
     expect(res.status).toBe(403);
@@ -78,7 +78,7 @@ describe('the permission, on every verb', () => {
 
   it('and refuses the creation, which is the one that hands out a key', async () => {
     h.requirePermission.mockRejectedValue(
-      new Error('Forbidden: missing required permission apps.manage')
+      new Error('Forbidden: missing required permission apps.tokens')
     );
     const res = await POST(body({ name: 'نظام الردود', scopes: REPLIES_SCOPES }));
     expect(res.status).toBe(403);
@@ -87,7 +87,7 @@ describe('the permission, on every verb', () => {
 
   it('and refuses the stop, because stopping somebody else’s door is an act too', async () => {
     h.requirePermission.mockRejectedValue(
-      new Error('Forbidden: missing required permission apps.manage')
+      new Error('Forbidden: missing required permission apps.tokens')
     );
     const res = await DELETE(body({ id: ID }));
     expect(res.status).toBe(403);
@@ -98,10 +98,11 @@ describe('the permission, on every verb', () => {
     await GET();
     await POST(body({ name: 'نظام الردود', scopes: REPLIES_SCOPES }));
     await DELETE(body({ id: ID }));
+    // PR-13 (قديم ← جديد): the keys have a box of their own — `apps.tokens`, no longer `apps.manage`.
     expect(h.requirePermission.mock.calls.map((c) => c[0])).toEqual([
-      'apps.manage',
-      'apps.manage',
-      'apps.manage',
+      'apps.tokens',
+      'apps.tokens',
+      'apps.tokens',
     ]);
   });
 });

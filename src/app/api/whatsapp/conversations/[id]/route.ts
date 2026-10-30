@@ -1,14 +1,20 @@
 /**
  * GET  /api/whatsapp/conversations/[id] — full conversation: messages,
- * linked customer, recent orders. Tenant-scoped (id + companyId).
+ * linked customer, recent orders. Tenant-scoped (id + companyId), and scoped to the
+ * conversations the viewer's `whatsapp.view` reaches (ASSIGNED = hers and unassigned).
+ * The customer's card needs the customer tier and the recent orders are only the ones the
+ * viewer may list (PR-13, WA-2): a chat is not a way round the customers and orders keys.
  * PATCH — open/close the conversation (whatsapp.send can toggle status).
  */
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { requireCompanyTenant, requirePermission, tenantOf } from '@/lib/auth';
+import { can } from '@/lib/authorization';
+import { orderListWhere } from '@/lib/rbac';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
+import { inboxScopeWhere } from '@/lib/whatsapp/inbox-scope';
 
 export async function GET(
   req: Request,
@@ -16,14 +22,16 @@ export async function GET(
 ) {
   try {
     // ONE read of who is asking — this is the open thread's poll (RV182/RV183). The user comes back from
-    // `requirePermission`; asking `requireCompanyTenant` as well re-read the user, role and grants a second time.
-    const { companyId } = await tenantOf(await requirePermission('whatsapp.view'));
+    // `requirePermission`; asking for the tenant as well must not re-read the user, role and grants a second time.
+    const viewer = await requirePermission('whatsapp.view');
+    const { companyId } = await tenantOf(viewer);
     const { id } = await params;
     const { searchParams } = new URL(req.url);
     const after = searchParams.get('after')?.trim() || ''; // incremental fetch
 
+    const mine = inboxScopeWhere(viewer);
     const conv = await db.whatsAppConversation.findFirst({
-      where: { id, companyId },
+      where: { id, companyId, ...(mine ? { AND: [mine] } : {}) },
       include: {
         assignedTo: { select: { id: true, name: true } },
         customer: { select: { id: true, fullName: true, phone: true, rawPhone: true, city: true } },
@@ -44,11 +52,13 @@ export async function GET(
       take,
     });
 
-    // Customer panel: recent orders (safe subset) when linked
+    // Customer panel: recent orders (safe subset) when linked — the viewer's own envelope of orders, and the customer tier for the card.
+    const mayCustomer = can(viewer, 'customers.view_basic') || can(viewer, 'customers.view');
     let recentOrders: any[] = [];
     if (conv.customerId) {
       recentOrders = await db.order.findMany({
-        where: { companyId, customerId: conv.customerId },
+        // AND, not a spread: the envelope may carry its own OR, and a spread beside another key drops one of them.
+        where: { companyId, customerId: conv.customerId, AND: [orderListWhere(viewer)] },
         orderBy: { createdAt: 'desc' },
         take: 5,
         select: {
@@ -75,7 +85,7 @@ export async function GET(
         assignedTo: conv.assignedTo,
         customerId: conv.customerId,
       },
-      customer: conv.customer,
+      customer: mayCustomer ? conv.customer : null,
       messages,
       recentOrders,
     });
@@ -96,7 +106,8 @@ export async function PATCH(
     const { id } = await params;
     const body = patchSchema.parse(await req.json());
 
-    const conv = await db.whatsAppConversation.findFirst({ where: { id, companyId } });
+    const mine = inboxScopeWhere(user);
+    const conv = await db.whatsAppConversation.findFirst({ where: { id, companyId, ...(mine ? { AND: [mine] } : {}) } });
     if (!conv) return NextResponse.json({ error: 'المحادثة غير موجودة' }, { status: 404 });
 
     const updated = await db.whatsAppConversation.update({

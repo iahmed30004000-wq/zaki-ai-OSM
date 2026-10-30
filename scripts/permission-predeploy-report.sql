@@ -99,7 +99,14 @@ WITH req(action, needs) AS (VALUES
   -- PR-11. Both keys come out of the migration 20261030180000_categories_campaign_keys together with their view, so before
   -- it has run neither is held by anybody (nothing is reported) and after it only an owner’s later unticking can show here.
   ('categories.manage','products.view'),
-  ('campaigns.manage','campaigns.view')
+  ('campaigns.manage','campaigns.view'),
+  -- PR-13. users.delete and users.shift ride behind users.edit (the profile's PATCH asks it first); the other three sit on their
+  -- screen key. The migration 20261030190000 gives each to the holders of the old door, so a pair is reported only after it ran.
+  ('users.delete','users.edit'),
+  ('users.shift','users.edit'),
+  ('users.security','users.view'),
+  ('roles.edit_system','roles.edit'),
+  ('apps.tokens','apps.view')
 )
 SELECT 'role_permissions' AS "table", r."name" AS "role", r."companyId", q.action, q.needs
 FROM "role_permissions" rp
@@ -273,3 +280,71 @@ FROM "user_permissions" up
 JOIN "users" u ON u."id" = up."userId"
 WHERE up."permission" = 'products.edit' AND up."effect" = 'ALLOW' AND COALESCE(up."scope", 'ALL_COMPANY') <> 'ALL_COMPANY'
 ORDER BY 3, 2;
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- AND THE LAST QUESTION (PR-13, users, roles and app keys), in five parts. Read-only, same as above.
+--
+-- A. WHO ALREADY HOLDS ONE OF THE FIVE NEW KEYS TODAY? It must be NOBODY: the keys are new, and users.delete was pruned on
+--    21/9. A row here would hand the door to people the migration never judged — fix it before the deploy.
+-- ═══════════════════════════════════════════════════════════════════════
+SELECT 'role' AS "kind", r."name" AS "who", r."companyId", rp."permission"
+FROM "role_permissions" rp
+JOIN "roles" r ON r."id" = rp."roleId"
+WHERE rp."permission" IN ('users.delete', 'users.shift', 'users.security', 'roles.edit_system', 'apps.tokens')
+UNION ALL
+SELECT 'person', u."email", u."companyId", up."permission"
+FROM "user_permissions" up
+JOIN "users" u ON u."id" = up."userId"
+WHERE up."permission" IN ('users.delete', 'users.shift', 'users.security', 'roles.edit_system', 'apps.tokens')
+ORDER BY 1, 2;
+
+-- B. WHICH ROLES THE MIGRATION GIVES EACH BOX TO. A role listed keeps its door on the day; the owner unticks afterwards.
+--    users.security and roles.edit_system go to every role NAMED COMPANY_ADMIN (the owner, SUPER_ADMIN, needs no row).
+SELECT k AS "box", r."name" AS "role", r."companyId"
+FROM "role_permissions" rp
+JOIN "roles" r ON r."id" = rp."roleId"
+CROSS JOIN LATERAL unnest(CASE rp."permission"
+  WHEN 'users.edit' THEN ARRAY['users.delete', 'users.shift']
+  WHEN 'apps.manage' THEN ARRAY['apps.tokens']
+  ELSE ARRAY[]::text[]
+END) AS k
+UNION
+SELECT k, r."name", r."companyId"
+FROM "roles" r
+CROSS JOIN LATERAL unnest(ARRAY['users.security', 'roles.edit_system']) AS k
+WHERE r."name" = 'COMPANY_ADMIN'
+GROUP BY k, r."id", r."name", r."companyId"
+ORDER BY 1, 3 NULLS FIRST, 2;
+
+-- C. THE ONE DOOR THAT IS NARROWED ON PURPOSE (D9): personal exceptions move from users.edit to roles.edit, and the migration
+--    does NOT hand roles.edit to profile editors. These roles hold users.edit WITHOUT roles.edit: their people lose the
+--    «استثناءات الموظف» card on the day. How many people each, so the owner knows before the deploy.
+SELECT r."name" AS "role", r."companyId", count(u."id") AS "people"
+FROM "roles" r
+JOIN "role_permissions" e ON e."roleId" = r."id" AND e."permission" = 'users.edit'
+LEFT JOIN "users" u ON u."roleId" = r."id"
+WHERE NOT EXISTS (SELECT 1 FROM "role_permissions" x WHERE x."roleId" = r."id" AND x."permission" = 'roles.edit')
+GROUP BY r."id", r."name", r."companyId"
+ORDER BY 3 DESC, 1;
+
+-- D. THE INBOX NOW OBEYS THE STORED SCOPE (D1-i): a role whose whatsapp.view is saved at anything but the whole company sees
+--    only the conversations assigned to it and the unassigned ones after the deploy. These roles, and their people.
+SELECT r."name" AS "role", r."companyId", rp."scope", count(u."id") AS "people"
+FROM "role_permissions" rp
+JOIN "roles" r ON r."id" = rp."roleId"
+LEFT JOIN "users" u ON u."roleId" = r."id"
+WHERE rp."permission" = 'whatsapp.view' AND rp."scope" <> 'ALL_COMPANY'
+GROUP BY r."id", r."name", r."companyId", rp."scope"
+ORDER BY 4 DESC, 1;
+
+-- E. LEFT FOR THE OWNER, NOT BACKFILLED: a role that manages WhatsApp or Telegram without being able to view it. The migration
+--    does not give it the view (that would open a customer inbox to a role that never saw one).
+SELECT r."name" AS "role", r."companyId", m."permission" AS "manages_without_view"
+FROM "role_permissions" m
+JOIN "roles" r ON r."id" = m."roleId"
+WHERE m."permission" IN ('whatsapp.manage', 'telegram.manage')
+  AND NOT EXISTS (
+    SELECT 1 FROM "role_permissions" v
+    WHERE v."roleId" = m."roleId"
+      AND v."permission" = CASE m."permission" WHEN 'whatsapp.manage' THEN 'whatsapp.view' ELSE 'telegram.view' END)
+ORDER BY 3, 1;

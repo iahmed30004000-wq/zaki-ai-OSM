@@ -10,6 +10,7 @@ import { getActiveConnection, effectiveStatus } from './connection';
 import { sendTextMessage } from './cloud-api';
 import { rateLimit } from '../rate-limit';
 import { logAudit } from '../audit';
+import { inboxScopeWhere } from './inbox-scope';
 
 export type SendResult =
   | { ok: true; message: any }
@@ -35,8 +36,10 @@ export async function sendOutboundMessage(
     return { ok: false, error: 'الرسالة غير صالحة', status: 400 };
   }
 
+  // Only into a conversation the sender's `whatsapp.view` reaches (ASSIGNED = hers and unassigned) — PR-13.
+  const mine = inboxScopeWhere(user);
   const conv = await db.whatsAppConversation.findFirst({
-    where: { id: conversationId, companyId },
+    where: { id: conversationId, companyId, ...(mine ? { AND: [mine] } : {}) },
   });
   if (!conv) {
     return { ok: false, error: 'المحادثة غير موجودة', status: 404 };

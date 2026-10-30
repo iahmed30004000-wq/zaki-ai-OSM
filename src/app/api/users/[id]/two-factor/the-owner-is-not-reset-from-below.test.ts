@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * ═══════════════════════════════════════════════════════════════════════
  * NOBODY STRIPS THE SECOND FACTOR OFF THE ACCOUNT ABOVE THEM.
  *
- * `mayResetTwoFactor` admits SUPER_ADMIN and COMPANY_ADMIN, by design:
+ * `mayResetTwoFactor` admits the holders of `users.security` (SUPER_ADMIN centrally, COMPANY_ADMIN by the migration), by design:
  * the owner of a company unlocks their own locked-out staff. What it
  * cannot know, holding only an id, is WHOSE account the id belongs to.
  *
@@ -53,12 +53,16 @@ import { DELETE } from './route';
 const COMPANY = 'c1';
 const ENROLLED = new Date('2026-09-01T10:00:00.000Z');
 
-/** The person pressing the button. */
-const admin = (role: string, companyId: string | null, id = 'admin-1') => ({
+/**
+ * The person pressing the button. PR-13 (قديم ← جديد): the reset is the key `users.security` now, which the migration gave to the
+ * company admin — so that role carries it here; SUPER_ADMIN passes centrally and lists nothing.
+ */
+const admin = (role: string, companyId: string | null, id = 'admin-1', permissions: string[] = role === 'COMPANY_ADMIN' ? ['users.security'] : []) => ({
   id,
   name: 'الضاغط',
   role,
   companyId,
+  permissions,
 });
 
 /** The row the database returns for the id in the URL. */
@@ -124,6 +128,32 @@ describe('the second factor of an account above you', () => {
     const res = await press('target-1');
     expect(res.status).toBe(404);
     expect(db.$transaction, 'انمسح تحقّق حساب برّا الشركة').not.toHaveBeenCalled();
+  });
+});
+
+describe('without the key nothing is read and nothing is written', () => {
+  it('a company admin the owner took users.security from is refused before the account is even looked up', async () => {
+    requireContext.mockResolvedValue({ user: admin('COMPANY_ADMIN', COMPANY, 'admin-1', ['users.view', 'users.edit']), companyId: COMPANY });
+    const res = await press('target-1');
+    expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe('NO_SECURITY_KEY');
+    expect(db.user.findFirst, 'وصل للقاعدة قبل ما يرفض').not.toHaveBeenCalled();
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('and a manager who was handed the key can reset an ordinary employee — the key is the rule, not a name', async () => {
+    requireContext.mockResolvedValue({ user: admin('MANAGER', COMPANY, 'admin-1', ['users.security']), companyId: COMPANY });
+    db.user.findFirst.mockResolvedValue(target('MODERATOR', COMPANY));
+    expect((await press('target-1')).status).toBe(200);
+  });
+
+  it('but holding the key never lifts the rank rule: nobody resets a SUPER_ADMIN from below', async () => {
+    requireContext.mockResolvedValue({ user: admin('MANAGER', COMPANY, 'admin-1', ['users.security']), companyId: COMPANY });
+    db.user.findFirst.mockResolvedValue(target('SUPER_ADMIN', COMPANY));
+    const res = await press('target-1');
+    expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe('SUPER_ADMIN_ONLY');
+    expect(db.user.update).not.toHaveBeenCalled();
   });
 });
 
