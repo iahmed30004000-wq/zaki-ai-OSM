@@ -147,6 +147,26 @@ const needsContact = (order: { _count: { contactAttempts: number } }) =>
   order._count.contactAttempts === 0;
 
 /**
+ * WHAT THE SERVER SAID NO TO, IN WORDS THAT SAY WHAT TO DO.
+ *
+ * Two refusals come back from the confirmation door often enough to need more than the bare sentence:
+ * `CONTACT_FIRST` (no attempt on the order yet) and `INVALID_TRANSITION` (the order is no longer in the state the
+ * card was drawn from — another person moved it, or the card is stale). Both used to land as one red line with no
+ * next step. Anything else keeps the sentence the server wrote.
+ */
+function refusalText(e: unknown): string {
+  const said = e instanceof Error && e.message ? e.message : 'تعذر تنفيذ الإجراء';
+  const code = (e as { data?: { code?: unknown } } | null)?.data?.code;
+  if (code === 'CONTACT_FIRST') {
+    return `${CONTACT_FIRST_MESSAGE}. سجّل المحاولة بزر «لا يرد» أو «مغلق أو خارج التغطية» وبعدها بتفتح الأزرار.`;
+  }
+  if (code === 'INVALID_TRANSITION') {
+    return `${said} حدّث الشاشة وافتح الطلب لتشوف وين صار.`;
+  }
+  return said;
+}
+
+/**
  * An order id from the address bar, or nothing. It goes into a request path,
  * so only the shape an id has is let through — never a slash or a dot.
  */
@@ -315,7 +335,7 @@ export function ConfirmationMineScreen() {
       after?.(fresh);
       return result;
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'تعذر تنفيذ الإجراء');
+      setError(refusalText(e));
     } finally {
       setBusyId(null);
     }
@@ -795,6 +815,9 @@ export function ConfirmationMineScreen() {
             const contactFirstHint = needsContact(order) && (
               <p className="w-full text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
                 اتصل بالزبون أول — بعدها بتفتح الأزرار
+                {canLogContact
+                  ? ' (سجّل المحاولة بـ«لا يرد» أو «مغلق أو خارج التغطية» إذا ما ردّ).'
+                  : ' (تسجيل نتيجة الاتصال يحتاج صلاحية ما عندك — اطلبها من المسؤول).'}
               </p>
             );
             /*
