@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { SessionUser } from '@/types/auth';
 import { userCan } from '@/lib/can';
 import { stripComments } from '@/lib/guard-source';
+import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import { AppProvider, useApp } from './AppContext';
 
 /**
@@ -42,7 +43,10 @@ const person = (over: Partial<SessionUser> = {}): SessionUser => ({
 let latest: ReturnType<typeof useApp> | null = null;
 function Probe() {
   const app = useApp();
-  latest = app;
+  // Kept for the assertions — written after the render, not during it.
+  useEffect(() => {
+    latest = app;
+  });
   return (
     <div>
       <span data-testid="who">{app.currentUser ? `${app.currentUser.id}:${app.currentUser.role}` : 'nobody'}</span>
@@ -51,21 +55,21 @@ function Probe() {
   );
 }
 
-const mount = (user: SessionUser | null) =>
-  render(
+/** The router's refresh — what the provider asks the SERVER to decide with after a believed 401. */
+const refresh = vi.fn();
+const tree = (user: SessionUser | null) => (
+  <AppRouterContext.Provider value={{ refresh } as never}>
     <AppProvider initialUser={user}>
       <Probe />
     </AppProvider>
-  );
-const again = (view: ReturnType<typeof mount>, user: SessionUser | null) =>
-  view.rerender(
-    <AppProvider initialUser={user}>
-      <Probe />
-    </AppProvider>
-  );
+  </AppRouterContext.Provider>
+);
+const mount = (user: SessionUser | null) => render(tree(user));
+const again = (view: ReturnType<typeof mount>, user: SessionUser | null) => view.rerender(tree(user));
 
 beforeEach(() => {
   latest = null;
+  refresh.mockReset();
 });
 afterEach(() => {
   cleanup();
@@ -227,21 +231,77 @@ describe('coming back to the tab re-reads the permissions', () => {
     expect(screen.queryByText('طلب تعديل')).toBeNull();
   });
 
-  it('a 401 (signed out elsewhere) empties the screen', async () => {
+  /** The two seconds a 401 waits before it is believed — real time, the retry is a plain timer. */
+  const slow = { timeout: 6000 };
+
+  it('a 401 that is only a hiccup (the second ask answers) does not take the buttons away', async () => {
+    fetchMock.mockResolvedValueOnce(answer(401, { user: null })).mockResolvedValueOnce(answer(200, { user: person() }));
+    mount(person());
+    comeBack(61_000);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2), slow);
+    await act(async () => undefined);
+    expect(screen.getByText('طلب تعديل')).toBeTruthy();
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it('a 401 asked twice (signed out elsewhere) empties the screen — and asks the server to decide', async () => {
     fetchMock.mockResolvedValue(answer(401, { user: null }));
     mount(person());
     comeBack(61_000);
-    await waitFor(() => expect(screen.getByTestId('who').textContent).toBe('nobody'));
+    await waitFor(() => expect(screen.getByTestId('who').textContent).toBe('nobody'), slow);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('طلب تعديل')).toBeNull();
+  });
+
+  it('401 and then the SAME account signs in again (same signature): the person comes back, with no remount', async () => {
+    fetchMock.mockResolvedValue(answer(401, { user: null }));
+    const view = mount(person());
+    comeBack(61_000);
+    await waitFor(() => expect(screen.getByTestId('who').textContent).toBe('nobody'), slow);
+    // router.refresh(): the layout answers again — a fresh object with the very same content
+    again(view, person());
+    expect(screen.getByTestId('who').textContent).toBe('u1:MANAGER');
+    expect(screen.getByText('طلب تعديل')).toBeTruthy();
+  });
+
+  it('and a screen emptied by a wrong 401 is not stuck until F5: the next return reads the user back', async () => {
+    fetchMock.mockResolvedValueOnce(answer(401, { user: null })).mockResolvedValueOnce(answer(401, { user: null }));
+    mount(person());
+    comeBack(61_000);
+    await waitFor(() => expect(screen.getByTestId('who').textContent).toBe('nobody'), slow);
+    fetchMock.mockResolvedValue(answer(200, { user: person() }));
+    comeBack(61_000);
+    await waitFor(() => expect(screen.getByTestId('who').textContent).toBe('u1:MANAGER'));
+    expect(screen.getByText('طلب تعديل')).toBeTruthy();
+  });
+
+  it('an old answer for account A, arriving after account B was adopted, is dropped', async () => {
+    let late!: (r: Response) => void;
+    fetchMock.mockReturnValue(
+      new Promise<Response>((resolve) => {
+        late = resolve;
+      })
+    );
+    const view = mount(person({ id: 'a', role: 'MANAGER' }));
+    comeBack(61_000);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    // meanwhile the tab signs in as somebody else
+    again(view, person({ id: 'b', role: 'ACCOUNTANT', permissions: ['orders.view'] }));
+    expect(screen.getByTestId('who').textContent).toBe('b:ACCOUNTANT');
+    await act(async () => late(answer(200, { user: person({ id: 'a', role: 'MANAGER' }) })));
+    expect(screen.getByTestId('who').textContent).toBe('b:ACCOUNTANT');
+    expect(screen.queryByText('طلب تعديل')).toBeNull();
   });
 
   it('a 500, or a dropped connection, is not «signed out»: the buttons stay', async () => {
-    fetchMock.mockResolvedValueOnce(answer(500, { error: 'x' }));
+    fetchMock.mockResolvedValue(answer(500, { error: 'x' }));
     mount(person());
     comeBack(61_000);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     await act(async () => undefined);
     expect(screen.getByText('طلب تعديل')).toBeTruthy();
-    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
     comeBack(61_000);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     await act(async () => undefined);
@@ -261,8 +321,8 @@ describe('the source never goes back to reading the user once', () => {
   it('the state follows the prop: the server’s user is compared and adopted, not just read at mount', () => {
     expect(source).toMatch(/useState<SessionUser \| null>\(initialUser/);
     // the adoption: a remembered signature and a set during render when it differs
-    expect(source).toMatch(/signatureOf\(initialUser\)/);
-    expect(source).toMatch(/if \(incoming !== adopted\)/);
+    expect(source).toMatch(/signatureOf\(initialUser\) !== signatureOf\(seenProp\)/);
+    expect(source).toMatch(/if \(initialUser !== seenProp\)/);
     expect(source).toMatch(/setCurrentUser\(initialUser \|\| null\)/);
   });
 
