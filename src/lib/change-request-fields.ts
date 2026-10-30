@@ -130,8 +130,17 @@ export const LINE_PRICE_BASES = ['KEEP_UNIT', 'OFFER', 'BASE_PRICE', 'MANUAL'] a
 
 const fromTo = <T extends z.ZodType, F extends z.ZodType>(to: T, from: F) => z.object({ from: from.nullish(), to });
 
-const wholeFrom = z.number().int().min(0).max(100000);
-const moneyFrom = z.number().finite().min(0).max(1_000_000);
+/**
+ * A «BEFORE» THAT MUST BE THERE. The apply door finds a line again, after a save has given it a new id, by what the request
+ * recorded of it; a request without that record would be found by its id alone (and refused when the id is gone), and the only
+ * thing left standing guard would be the total. The server writes `from` for the identity of a line and for the two figures a
+ * decision is about — the product, the quantity and the line's total — so a request without them is not this shape.
+ */
+const MISSING_BEFORE_AR = 'قيمة «قبل» ناقصة بسطر الطلب';
+const required = <T extends z.ZodType, F extends z.ZodType>(to: T, from: F) => z.object({ from, to });
+
+const wholeFrom = z.number({ error: MISSING_BEFORE_AR }).int().min(0).max(100000);
+const moneyFrom = z.number({ error: MISSING_BEFORE_AR }).finite().min(0).max(1_000_000);
 
 /**
  * ONE LINE'S EDIT, as it is stored.
@@ -144,9 +153,9 @@ const moneyFrom = z.number().finite().min(0).max(1_000_000);
 export const lineEditChangeSchema = z.object({
   /** The stored line when the request was raised. A save rewrites the lines, so this alone is not trusted — see `from`. */
   lineId: z.string().min(1).max(64),
-  productId: fromTo(z.string().min(10).max(64), z.string().min(1).max(64)).optional(),
-  quantity: fromTo(z.number().int().min(1).max(999), wholeFrom).optional(),
-  lineTotal: fromTo(z.number().finite().min(0).max(100000), moneyFrom).optional(),
+  productId: required(z.string().min(10).max(64), z.string({ error: MISSING_BEFORE_AR }).min(1).max(64)).optional(),
+  quantity: required(z.number().int().min(1).max(999), wholeFrom).optional(),
+  lineTotal: required(z.number().finite().min(0).max(100000), moneyFrom).optional(),
   unitPrice: fromTo(z.number().finite().min(0).max(100000), moneyFrom).optional(),
   freeQuantity: fromTo(z.number().int().min(0).max(9999), wholeFrom).optional(),
   basis: z.enum(LINE_PRICE_BASES).optional(),

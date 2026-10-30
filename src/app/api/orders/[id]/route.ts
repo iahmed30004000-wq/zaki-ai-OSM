@@ -38,7 +38,10 @@ import {
   prepQuantityChanges, prepShortAr, prepTouched, prepWindow,
 } from '@/lib/prep-edit';
 import { availableStock, reserveOrderLines } from '@/lib/reservation';
-import { LinesChanged, blockedByStock, costOfLines, linesAreStill, linesStale, planLineApply, type LineApply } from '@/lib/order-line-apply';
+import {
+  APPLIED_AR, AppliedMeanwhile, LinesChanged, blockedByStock, costAfterEdit, costProductIds, linesAreStill, linesStale, planLineApply,
+  type LineApply,
+} from '@/lib/order-line-apply';
 import type { EditableOrderRow } from '@/lib/order-edit-facts';
 import { describeLines, type ApprovedLineEdit, type LinesChange } from '@/lib/change-request-fields';
 import { productCosts } from '@/lib/product-cost';
@@ -698,10 +701,11 @@ export async function PATCH(
             country: { code: country.code, minorUnit: country.minorUnit, allowNegativeStock: country.allowNegativeStock === true },
             edits: approvedLines.edits,
             snapshot: approvedLines.snapshot,
+            // Every shorthand key the request CARRIED, equal to the order's own or not: «keep the price at 50» is a price.
             flat: {
-              ...(quantity !== undefined && quantity !== existing.quantity ? { quantity } : {}),
-              ...(productId !== undefined && productId !== existing.productId ? { productId } : {}),
-              ...(sellingPrice !== undefined && sellingPrice !== Number(existing.sellingPrice ?? 0) ? { sellingPrice } : {}),
+              ...(quantity !== undefined ? { quantity } : {}),
+              ...(productId !== undefined ? { productId } : {}),
+              ...(sellingPrice !== undefined ? { sellingPrice } : {}),
             },
             ...(discountAmount !== undefined ? { discountAmount } : {}),
           })
@@ -1706,10 +1710,15 @@ export async function PATCH(
       updateData.discountAmount = money.discount;
       if (!prep) updateData.shippingCost = nextShipping;
       updateData.totalAmount = money.cod;
-      // The order is named after its first line, as it is at intake.
-      updateData.productId = nextLines[0].productId;
+      // The order is named after its first line, as it is at intake. An approved request keeps the name it has while that
+      // product is still among the lines: the first line is by (createdAt, id) and every line of a save shares one
+      // createdAt, so "first" would otherwise move to another product at random each time the lines are written.
+      const mainStays = !!lineApply && nextLines.some((l) => l.productId === existing.productId);
+      updateData.productId = mainStays ? existing.productId : nextLines[0].productId;
       if (items) {
-        updateData.productNameSnapshot = lineProducts.get(nextLines[0].productId)?.name ?? existing.productNameSnapshot;
+        updateData.productNameSnapshot = mainStays
+          ? existing.productNameSnapshot
+          : lineProducts.get(nextLines[0].productId)?.name ?? existing.productNameSnapshot;
       }
       lineMoney = money;
 
@@ -1717,11 +1726,13 @@ export async function PATCH(
         // The gift is real stock: the courier is told quantity + gift (`dispatch.ts`) and the shelf holds both, so the
         // order's own total of gifts follows the lines it is made of, in the SAME write.
         updateData.freeQuantity = lineApply.gifts.reduce((sum, g) => sum + g, 0);
-        // What the goods cost us follows too — the same product averages the order was created with, over every unit
-        // that leaves the shelf. Left alone it would put a five-piece order's profit against a three-piece cost.
-        const costs = await productCosts(db, companyId, [...new Set(nextLines.map((l) => l.productId))]);
-        updateData.estimatedCostOfGoods = costOfLines(
-          nextLines.map((l, i) => ({ productId: l.productId, quantity: l.quantity, freeQuantity: lineApply.gifts[i] })),
+        // What the goods cost us follows too — but only by the lines that MOVED, at today's average of their products
+        // (the figure was struck once, from that day's batches; a line nobody touched keeps its share of it, and a product
+        // with no batch left does not turn into free goods). Every unit that leaves the shelf counts, the gift included.
+        const costs = await productCosts(db, companyId, costProductIds(lineApply.audit));
+        updateData.estimatedCostOfGoods = costAfterEdit(
+          Number(existing.estimatedCostOfGoods ?? 0),
+          lineApply.audit,
           (pid) => costs.get(pid)?.average ?? 0,
           country.minorUnit
         );
@@ -1868,6 +1879,22 @@ export async function PATCH(
         throw new Error('VERSION_CONFLICT: This order was updated by another user. Please refresh before saving.');
       }
 
+      /*
+       * THE REQUEST IS STAMPED APPLIED IN THIS WRITE, NOT AFTER IT.
+       *
+       * It was stamped after the commit and after the audit: a crash in between left an order edited and a request still
+       * «approved, not applied», and applying it again found lines that were no longer the ones it named (LINES_STALE, with no
+       * way out). Here the stamp and the edit stand or fall together. And "appliedAt: null" in the filter makes two people
+       * pressing «طبّق» on one approval a race with one winner: the loser's whole write goes back (ALREADY_APPLIED).
+       */
+      if (viaRequest) {
+        const stamp = await tx.orderChangeRequest.updateMany({
+          where: { id: viaRequest.id, appliedAt: null },
+          data: { appliedAt: new Date(), appliedById: user.id },
+        });
+        if (stamp.count !== 1) throw new AppliedMeanwhile();
+      }
+
       // The lines themselves, only when an explicit set was sent. Replacing
       // them wholesale is what the screen does — a product removed from the
       // list is removed from the order — and it happens in this transaction
@@ -1956,6 +1983,8 @@ export async function PATCH(
               unitPrice: line.quantity > 0 ? line.unitPrice / line.quantity : line.unitPrice,
               discountShare: lineMoney!.discountShares[i] ?? 0,
               lineTotal: lineMoney!.lineTotals[i] ?? 0,
+              // A line whose units did not move keeps the stock it holds (a price alone must not cost it its reservation).
+              ...(lineApply && lineApply.keepReserved[i] !== null ? { reservedQty: lineApply.keepReserved[i] as number } : {}),
               addedById: kept ? kept.addedById : user.id,
               addedStage: kept ? kept.addedStage : 'EDIT',
             };
@@ -1974,7 +2003,8 @@ export async function PATCH(
             throw new PrepShortage([...new Set(held.shortages.map((x) => x.productName))]);
           }
         }
-        if (lineApply) {
+        // (When no line's units moved — a price alone — nothing is reserved again and nothing is asked of the shelf.)
+        if (lineApply && lineApply.keepReserved.some((k) => k === null)) {
           await reserveOrderLines(tx, id, { allowNegativeStock: country.allowNegativeStock === true });
           /*
            * AND THEN THE SHELF IS ASKED PER PRODUCT, not per line. `reserveOrderLines` tests each line on its own, so a product
@@ -2236,7 +2266,7 @@ export async function PATCH(
     } catch (failed) {
       // The shelf ran short between the check and the write, AFTER the company had cancelled the parcel: the edit is not
       // saved and that is said on the order and to the person, never as «nothing was saved».
-      if ((failed instanceof PrepShortage || failed instanceof LinesChanged) && courierLetGo) {
+      if ((failed instanceof PrepShortage || failed instanceof LinesChanged || failed instanceof AppliedMeanwhile) && courierLetGo) {
         await db.orderActivity
           .create({
             data: {
@@ -2258,6 +2288,7 @@ export async function PATCH(
           })
           .catch(() => undefined);
         if (failed instanceof LinesChanged) throw new LinesChanged(true);
+        if (failed instanceof AppliedMeanwhile) throw new AppliedMeanwhile(true);
         throw failed instanceof StockShort ? new StockShort(failed.names, true) : new PrepShortage(failed.names, true);
       }
       throw failed;
@@ -2306,13 +2337,8 @@ export async function PATCH(
     });
 
     if (viaRequest) {
-      // Once. `appliedAt: null` in the filter makes a second, concurrent apply
-      // a no-op here — and the values are absolute ("to 3", not "+1"), so the
-      // order itself ends the same either way.
-      const stamped = await db.orderChangeRequest.updateMany({
-        where: { id: viaRequest.id, appliedAt: null },
-        data: { appliedAt: new Date(), appliedById: user.id },
-      });
+      // Stamped applied inside the write (above), once; reaching here means this press is the one that did it.
+      const stamped = { count: 1 };
 
       /**
        * AND WHO TOLD THE COURIER, IF ANYBODY HAD TO.
@@ -2384,7 +2410,7 @@ export async function PATCH(
 
     // The packing table's pen is answered with the few fields its screen needs — never the order row, which carries the
     // cost, the profit and the commission.
-    if (prep && updatedOrder) {
+    if ((prep || viaRequest) && updatedOrder) {
       const { id: orderId, orderNumber, version, quantity: qty, sellingPrice: price, totalAmount, regionId: region } = updatedOrder;
       return NextResponse.json({ success: true, order: { id: orderId, orderNumber, version, quantity: qty, sellingPrice: price, totalAmount, regionId: region } });
     }
@@ -2393,6 +2419,12 @@ export async function PATCH(
     if (error instanceof PrepShortage) {
       const message = prepShortAr(error.names, error.courierCancelled);
       return NextResponse.json({ error: message, errorAr: message, code: error.code }, { status: 409 });
+    }
+    if (error instanceof AppliedMeanwhile) {
+      const message = error.courierCancelled
+        ? `أُلغي الطرد عند شركة الشحن ولم يُحفظ التعديل: ${APPLIED_AR}. أعد إرسال الطرد للشركة.`
+        : APPLIED_AR;
+      return NextResponse.json({ error: message, errorAr: message, code: 'ALREADY_APPLIED' }, { status: 409 });
     }
     if (error instanceof LinesChanged) {
       const stale = linesStale();

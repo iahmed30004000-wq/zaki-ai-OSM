@@ -131,7 +131,8 @@ const { fake, requireContext, logAudit, notify, activeOffersFor, adapterFor, can
     orderChangeRequest: {
       findFirst: ({ where }) => (where.id === fake.request.id ? { ...fake.request } : null),
       updateMany: ({ where, data }) => {
-        if (where.id !== fake.request.id || fake.request.appliedAt) return { count: 0 };
+        // only what the filter asks: a write without `appliedAt: null` would stamp over the winner's name
+        if (where.id !== fake.request.id || (where.appliedAt === null && fake.request.appliedAt)) return { count: 0 };
         Object.assign(fake.request, data);
         return { count: 1 };
       },
@@ -180,6 +181,7 @@ const { fake, requireContext, logAudit, notify, activeOffersFor, adapterFor, can
           lines: fake.lines.map((l) => ({ ...l })),
           activities: [...fake.activities],
           notes: [...fake.notes],
+          request: { ...fake.request },
         };
         try {
           return await fn(fake.tx);
@@ -188,6 +190,7 @@ const { fake, requireContext, logAudit, notify, activeOffersFor, adapterFor, can
           fake.lines = before.lines;
           fake.activities = before.activities;
           fake.notes = before.notes;
+          fake.request = before.request;
           throw e;
         }
       };
@@ -350,6 +353,8 @@ beforeEach(() => {
 
 describe('Ⅰ · quantity, price and gift together, atomically', () => {
   it('3 (+1) for 36 becomes 5 (+2) for 58: the lines, the reservation, the gift, the total, the cost — one write', async () => {
+    // the goods cost 20 when the order was struck: the soap's share is in it and nobody is touching the soap
+    fake.order.estimatedCostOfGoods = 20;
     const res = await apply();
     expect(res.status, await res.clone().text()).toBe(200);
 
@@ -370,8 +375,8 @@ describe('Ⅰ · quantity, price and gift together, atomically', () => {
       freeQuantity: 2,
       version: 4,
     });
-    // 2.500 × (5 + 2) + 1.200 × 2 = 17.500 + 2.400 — the gift costs what it costs
-    expect(fake.order.estimatedCostOfGoods).toBe(19.9);
+    // 20 + 2.500 × (7 − 4): three more units of the cream, the gift counted, and nothing about the soap moves
+    expect(fake.order.estimatedCostOfGoods).toBe(27.5);
     // the request is stamped, once, by whom
     expect(fake.request.appliedAt).toBeInstanceOf(Date);
     expect(fake.request.appliedById).toBe('owner');
@@ -956,6 +961,227 @@ describe('Ⅷ · nothing else gained a way to write a gift or a line', () => {
     const res = await patch({ expectedVersion: 3, items: [{ productId: CREAM, quantity: 4, unitPrice: 48 }] });
     expect(res.status).toBe(409);
     expect((await res.json()).code).toBe('CHANGE_REQUEST_REQUIRED');
+    wroteNothing();
+  });
+});
+
+/* ─────────────────────────── Ⅸ · the reviews of #120, each with its negative ─────────────────────────── */
+
+describe('Ⅸ · the request is stamped applied INSIDE the write', () => {
+  it('two presses on one approval: the loser’s whole write goes back, and the winner’s name stays on the stamp (ALREADY_APPLIED)', async () => {
+    const before = linesNow();
+    const orderBefore = { ...fake.order };
+    fake.hooks.atTxStart = () => {
+      fake.request.appliedAt = new Date('2026-10-30T10:00:00Z');
+      fake.request.appliedById = 'someone-else';
+    };
+    const res = await apply();
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('ALREADY_APPLIED');
+    expect(fake.lines).toEqual(before);
+    expect(fake.order).toEqual(orderBefore);
+    expect(fake.activities).toEqual([]);
+    expect(fake.request.appliedById).toBe('someone-else');
+    expect(logAudit).not.toHaveBeenCalled();
+  });
+
+  it('a write that fails AFTER the stamp takes the stamp with it: the request is still «approved, not applied»', async () => {
+    fake.hooks.beforeCreateMany = () => {
+      fake.shelf[CREAM] = 5;
+    };
+    const res = await apply();
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('STOCK_SHORT');
+    // the stamp WAS written (inside the write), and went back with it
+    expect(fake.writes).toContain('orderChangeRequest.updateMany');
+    expect(fake.request.appliedAt).toBeNull();
+    expect(fake.request.appliedById).toBeUndefined();
+  });
+
+  it('a crash after the commit (the audit cannot be written) leaves an edit AND its stamp — never an edit the request does not know about', async () => {
+    logAudit.mockRejectedValue(new Error('the audit store is down'));
+    const res = await apply();
+    expect(res.status).toBe(500);
+    expect(byProduct(CREAM)[0].quantity).toBe(5);
+    expect(fake.request.appliedAt).toBeInstanceOf(Date);
+  });
+
+  it('stamps once, in the same write as the order, and not again afterwards', async () => {
+    await apply();
+    expect(fake.writes.filter((w) => w === 'orderChangeRequest.updateMany')).toHaveLength(1);
+    expect(fake.writes.indexOf('order.updateMany')).toBeLessThan(fake.writes.indexOf('orderChangeRequest.updateMany'));
+  });
+
+  it('an address-only request is stamped the same way (the door is the one door)', async () => {
+    approve({ customerNotes: { from: null, to: 'قبل الظهر' } });
+    fake.hooks.atTxStart = () => {
+      fake.request.appliedAt = new Date();
+    };
+    const res = await apply();
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('ALREADY_APPLIED');
+    expect(fake.order.customerNotes).toBeNull();
+  });
+});
+
+describe('Ⅹ · the answer to the person who applied it is the few fields the screen needs', () => {
+  const KEYS = ['id', 'orderNumber', 'quantity', 'regionId', 'sellingPrice', 'totalAmount', 'version'];
+
+  it('a lines request: no cost of goods, no profit, no commission — whatever the applier’s keys', async () => {
+    fake.order.estimatedCostOfGoods = 20;
+    fake.order.netProfit = 12;
+    const res = await apply();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(Object.keys(body.order).sort()).toEqual(KEYS);
+    expect(JSON.stringify(body)).not.toMatch(/estimatedCostOfGoods|netProfit/);
+    expect(body.order).toMatchObject({ totalAmount: 74.5, version: 4 });
+  });
+
+  it('and so is an address-only request', async () => {
+    approve({ customerNotes: { from: null, to: 'قبل الظهر' } });
+    const body = await (await apply()).json();
+    expect(Object.keys(body.order).sort()).toEqual(KEYS);
+  });
+});
+
+describe('Ⅺ · an old shorthand request, translated, is what the old door would have done', () => {
+  const offerRow = {
+    id: 'offer-3-plus-1', productId: CREAM, name: '3 + 1', quantity: 3, freeQuantity: 1, sellingPrice: 25,
+    discount: 0, compareAtPrice: null, isDefault: false, deliveryIncluded: true, endsAt: null,
+  };
+  const onSale = [{ id: 'offer-3-plus-1', name: '3 + 1', quantity: 3, freeQuantity: 1, price: 25, listPrice: null }];
+
+  it('THE GIFT IS NOT WORKED OUT AGAIN: 3 → 6 on a line priced by a live «3 + 1» keeps the gift it holds (1), not 2', async () => {
+    seed({
+      lines: [line({ id: 'line-only-01', productId: CREAM, productName: 'كريم', quantity: 3, freeQuantity: 1, unitPrice: 8.333, lineTotal: 25, reservedQty: 4 })],
+      addOns: [],
+      order: { offerId: 'offer-3-plus-1', quantity: 3, freeQuantity: 1, sellingPrice: 25, totalAmount: 27.5 },
+    });
+    fake.offerRow = offerRow;
+    activeOffersFor.mockImplementation(async (...a: unknown[]) => (a[2] === CREAM ? onSale : []));
+    approve({ quantity: { from: 3, to: 6 } });
+    const res = await apply();
+    expect(res.status, await res.clone().text()).toBe(200);
+    // 25 for three is 50 for six — the piece price, as it always was — and ONE free unit, as the line held
+    expect(fake.lines[0]).toMatchObject({ quantity: 6, freeQuantity: 1, lineTotal: 50, reservedQty: 7 });
+    expect(fake.order.freeQuantity).toBe(1);
+    // NEGATIVE: the new request shape, whose gift the decider saw, does carry the 2
+    seed({
+      lines: [line({ id: 'line-only-01', productId: CREAM, productName: 'كريم', quantity: 3, freeQuantity: 1, unitPrice: 8.333, lineTotal: 25, reservedQty: 4 })],
+      addOns: [],
+      order: { offerId: 'offer-3-plus-1', quantity: 3, freeQuantity: 1, sellingPrice: 25, totalAmount: 27.5 },
+    });
+    fake.offerRow = offerRow;
+    approve({
+      lines: lines([{ lineId: 'line-only-01', quantity: { from: 3, to: 6 }, lineTotal: { from: 25, to: 50 }, freeQuantity: { from: 1, to: 2 } }]),
+    });
+    expect((await apply()).status).toBe(200);
+    expect(fake.lines[0].freeQuantity).toBe(2);
+  });
+
+  it('A PRICE THAT IS THERE IS A PRICE: «3 → 6, keep the price at 50» on a line that already costs 50 is 50 for six', async () => {
+    seed({
+      lines: [line({ id: 'line-only-01', productId: CREAM, productName: 'كريم', quantity: 3, unitPrice: 16.667, lineTotal: 50, reservedQty: 3 })],
+      addOns: [],
+      order: { quantity: 3, freeQuantity: 0, sellingPrice: 50, totalAmount: 52.5 },
+    });
+    approve({ quantity: { from: 3, to: 6 }, sellingPrice: { from: 50, to: 50 } });
+    const res = await apply();
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect(fake.lines[0]).toMatchObject({ quantity: 6, lineTotal: 50, reservedQty: 6 });
+    expect(fake.order).toMatchObject({ sellingPrice: 50, totalAmount: 52.5 });
+  });
+
+  it('NEGATIVE: without the price the same quantity is re-priced by the piece — 50 for three is 100 for six', async () => {
+    seed({
+      lines: [line({ id: 'line-only-01', productId: CREAM, productName: 'كريم', quantity: 3, unitPrice: 16.667, lineTotal: 50, reservedQty: 3 })],
+      addOns: [],
+      order: { quantity: 3, freeQuantity: 0, sellingPrice: 50, totalAmount: 52.5 },
+    });
+    approve({ quantity: { from: 3, to: 6 } });
+    await apply();
+    expect(fake.lines[0]).toMatchObject({ quantity: 6, lineTotal: 100 });
+    expect(fake.order.totalAmount).toBe(102.5);
+  });
+});
+
+describe('Ⅻ · the order keeps its name', () => {
+  const three = () => {
+    seed({
+      lines: [
+        line({ id: 'line-c', productId: P_C, productName: 'ج', quantity: 1, unitPrice: 10, lineTotal: 10, reservedQty: 1 }),
+        line({ id: 'line-a', productId: P_A, productName: 'أ', quantity: 1, unitPrice: 10, lineTotal: 10, reservedQty: 1 }),
+        line({ id: 'line-b', productId: P_B, productName: 'ب', quantity: 1, unitPrice: 10, lineTotal: 10, reservedQty: 1 }),
+      ],
+      addOns: [],
+      order: { quantity: 3, freeQuantity: 0, sellingPrice: 30, totalAmount: 32.5, productId: P_C, productNameSnapshot: 'ج' },
+    });
+  };
+
+  it('the main product stays while it is still among the lines — "first by (createdAt, id)" would be a coin toss after every save', async () => {
+    three();
+    approve({ lines: lines([{ lineId: 'line-b', quantity: { from: 1, to: 2 }, lineTotal: { from: 10, to: 20 } }]) });
+    const res = await apply();
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect(fake.order.productId).toBe(P_C);
+    expect(fake.order.productNameSnapshot).toBe('ج');
+  });
+
+  it('NEGATIVE: when the line of the main product is swapped away, the first line in the priced order is the new name', async () => {
+    three();
+    approve({ lines: lines([{ lineId: 'line-c', productId: { from: P_C, to: P_B }, lineTotal: { from: 10, to: 10 } }]) });
+    const res = await apply();
+    expect(res.status, await res.clone().text()).toBe(200);
+    // lines are a, b, c in the priced order, and the first of them is a
+    expect(fake.order.productId).toBe(P_A);
+  });
+});
+
+describe('ⅩⅢ · what the goods cost moves with the lines that moved', () => {
+  it('a line nobody touched keeps its share: the soap’s cost is not re-struck at today’s batches', async () => {
+    fake.order.estimatedCostOfGoods = 20;
+    fake.costs[SOAP] = 9; // today's batches say the soap costs far more; the order was struck at its own day's figure
+    await apply();
+    // only the cream's three extra units move it: 20 + 2.500 × 3
+    expect(fake.order.estimatedCostOfGoods).toBe(27.5);
+  });
+
+  it('NEGATIVE: a price alone moves no units and so no cost', async () => {
+    fake.order.estimatedCostOfGoods = 20;
+    approve({ lines: lines([{ lineId: 'line-cream-01', lineTotal: { from: 36, to: 40 } }]) });
+    expect((await apply()).status).toBe(200);
+    expect(fake.order.estimatedCostOfGoods).toBe(20);
+  });
+});
+
+describe('ⅩⅣ · a price alone does not touch what a line holds on the shelf', () => {
+  it('even when the shelf has been sold past the order: no line loses its reservation, and none is written again', async () => {
+    fake.shelf[CREAM] = 3; // the order holds 4 of it
+    approve({ lines: lines([{ lineId: 'line-cream-01', lineTotal: { from: 36, to: 40 } }]) });
+    const res = await apply();
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect(fake.lines.map((l) => l.reservedQty)).toEqual([4, 2]);
+    expect(fake.writes).not.toContain('orderItem.update');
+    expect(byProduct(CREAM)[0].lineTotal).toBe(40);
+    expect(fake.order.totalAmount).toBe(56.5);
+  });
+
+  it('NEGATIVE: a quantity does re-reserve the line it moves (and only that one keeps nothing)', async () => {
+    await apply();
+    expect(byProduct(CREAM)[0].reservedQty).toBe(7);
+    expect(byProduct(SOAP)[0].reservedQty).toBe(2);
+  });
+});
+
+describe('ⅩⅤ · a request without its «before» is not this shape', () => {
+  it('422 LINES_INVALID, naming the missing «before», and nothing is written', async () => {
+    approve({ lines: lines([{ lineId: 'line-cream-01', quantity: { to: 5 }, lineTotal: { to: 58 } }]) });
+    const res = await apply();
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.code).toBe('LINES_INVALID');
+    expect(body.error).toContain('قبل');
     wroteNothing();
   });
 });

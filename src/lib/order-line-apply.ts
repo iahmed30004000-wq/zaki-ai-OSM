@@ -1,5 +1,6 @@
 import type { ApprovedLineEdit, LinesChange } from './change-request-fields';
 import { roundMinor } from './money';
+import { inChunks } from './in-chunks';
 import { readOrderEditFacts, type EditableOrderRow } from './order-edit-facts';
 import {
   previewLineEdit,
@@ -96,6 +97,10 @@ export function bindApprovedEdits(stored: readonly StoredLine[], edits: readonly
  * order as if it were one line, and for an order with exactly one that is true. With no price the piece price the line
  * already had is kept — the behaviour the shorthand has always had, and the one the person who approved it expected —
  * never the offer's or the catalogue's.
+ *
+ * A PRICE IS TAKEN BECAUSE IT IS THERE, NOT BECAUSE IT DIFFERS. «ثبّت السعر على 50» beside a quantity of six, on a line that
+ * already costs 50, asks for 50 for six; reading «same as now» as «no price» re-priced it by the piece (100) and asked the
+ * customer for the difference. The route therefore hands over every shorthand key the request carried.
  */
 export function flatGoodsEdit(
   line: StoredLine,
@@ -197,6 +202,12 @@ export interface LineApply {
   gifts: number[];
   /** The stored line behind each item, same index — its attribution is carried over. */
   lineIds: string[];
+  /**
+   * What a line keeps of its reservation, same index: the units it held, when its product, quantity and gift are what they
+   * were (a price moved, nothing else); null when the line's units changed and it must be reserved again. A price alone
+   * must not make a line lose the stock it holds because the shelf has since been sold past it.
+   */
+  keepReserved: Array<number | null>;
   /** The order's lines as they were read, for the shelf's question and for the race check. */
   stored: StoredLine[];
   addOns: OrderEditFacts['addOns'];
@@ -258,7 +269,15 @@ export async function planLineApply(input: PlanInput): Promise<Plan> {
   } else {
     // The older shorthand is an edit of a line only when there is exactly one to edit.
     if (facts.lines.length !== 1) return { ok: true, apply: null };
-    drafted = [flatGoodsEdit(facts.lines[0], input.flat)];
+    const only = facts.lines[0];
+    drafted = [flatGoodsEdit(only, input.flat)];
+    /*
+     * THE GIFT IS NOT RE-WORKED FOR A REQUEST THE DECIDER SAW WITHOUT ONE. «3 ← 6» on a line priced by today's «3 + 1» would
+     * come out «1 ← 2» if the offer were asked, a free unit nobody approved. The older door kept the gift as the line held it
+     * (carried by product), and so does this: pinned to what it is now — except on a swap to ANOTHER product, where the
+     * gift of the old one is not carried across (as the lines save has always done).
+     */
+    pinned.set(only.id, input.flat.productId !== undefined && input.flat.productId !== only.productId ? 0 : only.freeQuantity);
   }
 
   const draft: PreviewDraft = {
@@ -286,6 +305,12 @@ export async function planLineApply(input: PlanInput): Promise<Plan> {
       items: ordered.map((l) => ({ productId: l.productId.to, quantity: l.quantity.to, unitPrice: l.lineTotal.to })),
       gifts: ordered.map((l) => l.freeQuantity.to),
       lineIds: ordered.map((l) => l.lineId),
+      keepReserved: ordered.map((l) => {
+        const was = facts.lines.find((s) => s.id === l.lineId);
+        return was && was.productId === l.productId.to && was.quantity === l.quantity.to && was.freeQuantity === l.freeQuantity.to
+          ? was.reservedQty
+          : null;
+      }),
       stored: facts.lines,
       addOns: facts.addOns,
       names: new Map([...facts.lines.map((l) => [l.productId, l.productName] as const), ...facts.products.map((p) => [p.id, p.name] as const)]),
@@ -337,7 +362,11 @@ export async function blockedByStock(
 ): Promise<string[]> {
   const ids = [...new Set([...a.stored.map((l) => l.productId), ...a.next.map((l) => l.productId)])];
   const available: Record<string, number> = {};
-  for (const id of ids) available[id] = await availableStock(client, a.companyId, id, a.orderId);
+  // Reads only, five at a time: the locks of the products were taken (in their fixed order) by the reserver before this.
+  const counts = await inChunks(ids, (id) => availableStock(client, a.companyId, id, a.orderId));
+  ids.forEach((id, i) => {
+    available[id] = counts[i];
+  });
   const effects = stockEffect({
     stored: a.stored,
     next: a.next,
@@ -377,18 +406,42 @@ export function linesAreStill(
   });
 }
 
+/** Thrown inside the write when the request was stamped applied by someone else first; the route says ALREADY_APPLIED. */
+export class AppliedMeanwhile extends Error {
+  constructor(readonly courierCancelled = false) {
+    super('APPLIED_MEANWHILE');
+  }
+}
+
+export const APPLIED_AR = 'طُبّق هذا التعديل مسبقاً';
+
+/** The products whose average cost the edit needs: those the changed lines were and became. */
+export function costProductIds(changed: ReadonlyArray<LineAuditEntry>): string[] {
+  return [...new Set(changed.flatMap((c) => [c.productId, c.productBefore ?? c.productId]))];
+}
+
 /**
- * WHAT THE GOODS ON THE ORDER COST US, estimated — every unit that leaves the shelf, the gift included (a free unit is
- * free to the customer, never to the shop). The same product average the order was created with; the unit of rounding is
- * the currency's own.
+ * WHAT THE GOODS ON THE ORDER COST US AFTER THE EDIT — the old figure, moved by the lines that moved and by nothing else.
+ *
+ * The order's estimated cost was struck once, from the batches of that day, and a line's share of it is not stored. Pricing
+ * every line again at today's averages moved the profit of a line nobody touched, and made a product with no batch left
+ * count as free. So only the CHANGED lines move it: each contributes (units after − units before) at today's average of its
+ * product (a swap takes the old product's units off at the old product's average and puts the new product's on at its own).
+ * Every unit that leaves the shelf counts, the gift included — a free unit is free to the customer, never to the shop.
+ * Never below nothing; rounded at the currency's own unit.
  */
-export function costOfLines(
-  lines: ReadonlyArray<{ productId: string; quantity: number; freeQuantity: number }>,
+export function costAfterEdit(
+  oldCost: number,
+  changed: ReadonlyArray<LineAuditEntry>,
   averageOf: (productId: string) => number,
   minorUnit: number
 ): number {
-  return roundMinor(
-    lines.reduce((sum, l) => sum + averageOf(l.productId) * (l.quantity + l.freeQuantity), 0),
-    minorUnit
+  const moved = changed.reduce(
+    (sum, c) =>
+      sum +
+      averageOf(c.productId) * (c.qtyAfter + c.giftAfter) -
+      averageOf(c.productBefore ?? c.productId) * (c.qtyBefore + c.giftBefore),
+    0
   );
+  return Math.max(0, roundMinor(oldCost + moved, minorUnit));
 }

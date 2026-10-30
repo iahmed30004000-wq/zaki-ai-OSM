@@ -221,6 +221,20 @@ describe('the `lines` key of a request', () => {
     expect(!sentence.ok && sentence.error).toMatch(/[؀-ۿ]/);
   });
 
+  it('wants a «before» for what a decision is about — the product, the quantity and the line’s total — or it is not this shape', () => {
+    const no = (edit: Record<string, unknown>) => readLinesChange({ lines: lines({ edits: [{ lineId: 'a', ...edit }] }) });
+    for (const edit of [{ quantity: { to: 5 } }, { lineTotal: { to: 58 } }, { productId: { to: 'prod-soap-00002' } }]) {
+      const r = no(edit);
+      expect(r.ok, JSON.stringify(edit)).toBe(false);
+      expect(!r.ok && r.error).toContain('قبل');
+    }
+    // with the «before», the same edits are fine; a gift without one is let through (a stale gift shows in the quantity)
+    expect(no({ quantity: { from: 3, to: 5 }, lineTotal: { from: 36, to: 58 }, productId: { from: 'prod-cream-0001', to: 'prod-soap-00002' } }).ok).toBe(true);
+    expect(no({ freeQuantity: { to: 2 } }).ok).toBe(true);
+    // null is not a «before» either
+    expect(no({ quantity: { from: null, to: 5 } }).ok).toBe(false);
+  });
+
   it('is absent, not an error, for a request of plain fields — and for a stored value that is not an object', () => {
     expect(readLinesChange({ customerName: { to: 'x' } })).toEqual({ ok: true, value: null });
     expect(readLinesChange(null)).toEqual({ ok: true, value: null });
@@ -270,9 +284,9 @@ describe('describeLines — a request in words, one sentence per line', () => {
     }
   });
 
-  it('a figure with no recorded “before” is shown alone, not as «undefined ← 5»', () => {
-    const r = readLinesChange({ lines: lines({ edits: [{ lineId: 'a', quantity: { to: 5 } }] }) });
+  it('a figure with no recorded “before” is shown alone, not as «undefined ← 5» (the gift may lack one; the schema lets it)', () => {
+    const r = readLinesChange({ lines: lines({ edits: [{ lineId: 'a', freeQuantity: { to: 2 } }] }) });
     if (!r.ok || !r.value) throw new Error('expected lines');
-    expect(describeLines(r.value)[0]).toBe('سطر 1 — الكمية: 5');
+    expect(describeLines(r.value)[0]).toBe('سطر 1 — الهدية: 2');
   });
 });

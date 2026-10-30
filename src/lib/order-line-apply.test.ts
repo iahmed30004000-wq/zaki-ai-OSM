@@ -12,7 +12,8 @@ vi.mock('./reservation', () => ({ availableStock: (...a: unknown[]) => available
 import {
   blockedByStock,
   bindApprovedEdits,
-  costOfLines,
+  costAfterEdit,
+  costProductIds,
   flatGoodsEdit,
   linesAreStill,
   planLineApply,
@@ -20,6 +21,7 @@ import {
   totalMoved,
 } from './order-line-apply';
 import type { ApprovedLineEdit } from './change-request-fields';
+import type { LineAuditEntry } from './order-line-apply';
 import type { OrderEditFacts, Problem, StoredLine } from './order-line-edit';
 import { repoFile, stripComments } from './guard-source';
 
@@ -140,7 +142,8 @@ describe('Ⅰ · the line a request means is found by what it recorded, and neve
   });
 
   it('an edit that recorded nothing cannot be found by value, so only its id can find it', () => {
-    const bare: ApprovedLineEdit = { lineId: 'gone', quantity: { to: 5 } };
+    // (the schema no longer lets such an edit in; the binder still refuses to guess if one is handed to it)
+    const bare = { lineId: 'gone', quantity: { to: 5 } } as unknown as ApprovedLineEdit;
     expect(bindApprovedEdits(stored, [bare], 3).ok).toBe(false);
     expect(bindApprovedEdits(stored, [{ ...bare, lineId: 'l1' }], 3).ok).toBe(true);
   });
@@ -225,6 +228,28 @@ describe('Ⅲ · what an approved lines request writes', () => {
   it('the discount the same request sets is part of the judgement: over the new total it is refused, not trimmed', async () => {
     const r = await plan({ edits: [{ lineId: 'l1', quantity: { from: 3, to: 1 }, lineTotal: { from: 36, to: 12 } }], discountAmount: 40 });
     expect(r).toMatchObject({ ok: false, status: 400, code: 'DISCOUNT_EXCEEDS_TOTAL' });
+  });
+});
+
+describe('Ⅲb · what a line keeps of its reservation', () => {
+  it('a price alone moves no line’s units: every line keeps exactly the stock it holds', async () => {
+    const r = await plan({ edits: [{ lineId: 'l1', lineTotal: { from: 36, to: 40 } }] });
+    expect(r.ok && r.apply?.keepReserved).toEqual([4, 2]);
+  });
+
+  it('a quantity moves that line only: the other keeps its reservation', async () => {
+    const r = await plan({ edits: [cream5] });
+    expect(r.ok && r.apply?.keepReserved).toEqual([null, 2]);
+  });
+
+  it('a gift alone moves the units too (they are reserved like any unit)', async () => {
+    const r = await plan({ edits: [{ lineId: 'l1', freeQuantity: { from: 1, to: 2 } }] });
+    expect(r.ok && r.apply?.keepReserved).toEqual([null, 2]);
+  });
+
+  it('a swap of product moves it', async () => {
+    const r = await plan({ edits: [{ lineId: 'l2', productId: { from: SOAP, to: DROPS }, lineTotal: { from: 10, to: 17 } }] });
+    expect(r.ok && r.apply?.keepReserved).toEqual([4, null]);
   });
 });
 
@@ -320,6 +345,41 @@ describe('Ⅴ · the old shorthand, translated — only for an order of exactly 
     expect(r.ok && r.apply?.items).toEqual([{ productId: CREAM, quantity: 3, unitPrice: 30 }]);
   });
 
+  it('a price is a price because it is THERE: «keep it at 50» beside a quantity of six asks for 50, not 100', async () => {
+    readOrderEditFacts.mockResolvedValue({
+      ...factsOf({ lines: [line({ id: 'only', quantity: 3, freeQuantity: 0, lineTotal: 50, reservedQty: 3 })] }, { storedTotal: 52.5 }),
+      shipmentCod: 52.5,
+    });
+    const r = await plan({ flat: { quantity: 6, sellingPrice: 50 } });
+    expect(r.ok && r.apply?.items).toEqual([{ productId: CREAM, quantity: 6, unitPrice: 50 }]);
+    expect(r.ok && r.apply?.after.cod).toBe(52.5);
+    // …and without the price it is the piece price: 50 for three is 100 for six
+    const scaled = await plan({ flat: { quantity: 6 } });
+    expect(scaled.ok && scaled.apply?.items[0].unitPrice).toBe(100);
+  });
+
+  it('THE GIFT IS PINNED TO WHAT THE LINE HOLDS: 3 → 6 on a line priced by a live «3 + 1» does not earn a free unit nobody approved', async () => {
+    const offer = { id: 'o', productId: CREAM, name: '3 + 1', quantity: 3, freeQuantity: 1, listPrice: 25, price: 25, live: true };
+    readOrderEditFacts.mockResolvedValue({
+      ...factsOf({ lines: [line({ id: 'only', quantity: 3, freeQuantity: 1, lineTotal: 25, reservedQty: 4 })], orderOffer: offer, offers: [offer] }, { storedTotal: 27.5 }),
+      shipmentCod: 27.5,
+    });
+    const r = await plan({ flat: { quantity: 6 } });
+    expect(r.ok && r.apply?.gifts).toEqual([1]);
+    // the new request shape, where the decider saw the gift, is the one that derives it
+    const lines = await plan({ edits: [{ lineId: 'only', quantity: { from: 3, to: 6 }, lineTotal: { from: 25, to: 50 }, freeQuantity: { from: 1, to: 2 } }] });
+    expect(lines.ok && lines.apply?.gifts).toEqual([2]);
+  });
+
+  it('…and on a swap to ANOTHER product the old product’s gift is not carried across', async () => {
+    readOrderEditFacts.mockResolvedValue({
+      ...factsOf({ lines: [line({ id: 'only', quantity: 3, freeQuantity: 1, lineTotal: 36, reservedQty: 4 })] }, { storedTotal: 38.5 }),
+      shipmentCod: 38.5,
+    });
+    const r = await plan({ flat: { productId: SOAP } });
+    expect(r.ok && r.apply?.gifts).toEqual([0]);
+  });
+
   it('with TWO lines it is left to the older rules (and their refusals): the plan answers «not mine»', async () => {
     expect(await plan({ flat: { quantity: 5 } })).toEqual({ ok: true, apply: null });
   });
@@ -413,6 +473,23 @@ describe('Ⅶ · the shelf is asked per PRODUCT — RV400, closed the stricter w
     expect(await ask({ stored, next: lines, addOns: [{ productId: CREAM, quantity: 2 }] })).toEqual(['كريم']);
   });
 
+  it('asks twelve products five at a time — not one after another, and not all at once', async () => {
+    let live = 0;
+    let peak = 0;
+    availableStock.mockImplementation(async () => {
+      live += 1;
+      peak = Math.max(peak, live);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      live -= 1;
+      return 100;
+    });
+    const ids = Array.from({ length: 12 }, (_, i) => `prod-${i}-0000000`);
+    const blocked = await ask({ stored: [], next: ids.map((productId) => ({ productId, quantity: 1, freeQuantity: 0 })) });
+    expect(blocked).toEqual([]);
+    expect(availableStock).toHaveBeenCalledTimes(12);
+    expect(peak).toBe(5);
+  });
+
   it('asks the shelf with THIS order left out of what is held elsewhere', async () => {
     availableStock.mockResolvedValue(100);
     await ask();
@@ -435,22 +512,46 @@ describe('Ⅷ · the rows at the write are the rows the plan read', () => {
   it('a line that took another id (a save in between): no', () => expect(linesAreStill(rows([{ id: 'x' }]), [l1(), l2()])).toBe(false));
 });
 
-describe('Ⅸ · what the goods cost follows the units — the gift included', () => {
+describe('Ⅸ · what the goods cost moves by the lines that moved — and by nothing else', () => {
   const avg = (id: string) => ({ [CREAM]: 2.5, [SOAP]: 1.2 })[id] ?? 0;
-
-  it('2.500 × (5 + 2) + 1.200 × 2 = 19.900 at three places', () => {
-    expect(costOfLines([{ productId: CREAM, quantity: 5, freeQuantity: 2 }, { productId: SOAP, quantity: 2, freeQuantity: 0 }], avg, 3)).toBe(19.9);
+  const entry = (over: Partial<LineAuditEntry>): LineAuditEntry => ({
+    productId: CREAM, qtyBefore: 3, qtyAfter: 5, totalBefore: 36, totalAfter: 58, giftBefore: 1, giftAfter: 2, ...over,
   });
 
-  it('is rounded at the currency’s own unit — 0.3333 × 3 at two places and at none', () => {
+  it('3 (+1) → 5 (+2) of the cream: seven units where there were four — three more at 2.500, on the cost it had', () => {
+    expect(costAfterEdit(20, [entry({})], avg, 3)).toBe(27.5);
+  });
+
+  it('a line nobody touched is not in the list, so its share of the old figure stands (the soap is neither added nor re-priced)', () => {
+    expect(costAfterEdit(20, [], avg, 3)).toBe(20);
+  });
+
+  it('a price alone moves no units, so it moves no cost', () => {
+    expect(costAfterEdit(20, [entry({ qtyAfter: 3, giftAfter: 1, totalAfter: 40 })], avg, 3)).toBe(20);
+  });
+
+  it('fewer units take cost off — and never below nothing', () => {
+    expect(costAfterEdit(20, [entry({ qtyAfter: 1, giftAfter: 0 })], avg, 3)).toBe(12.5);
+    expect(costAfterEdit(2, [entry({ qtyAfter: 1, giftAfter: 0 })], avg, 3)).toBe(0);
+  });
+
+  it('a swap takes the old product’s units off at its average and puts the new one’s on at its own: 3 cream → 3 soap', () => {
+    // −(3 + 1) × 2.500 + 3 × 1.200 = −6.400
+    expect(costAfterEdit(20, [entry({ productId: SOAP, productBefore: CREAM, qtyAfter: 3, giftAfter: 0 })], avg, 3)).toBe(13.6);
+  });
+
+  it('a product with no batch left counts as nothing for ITS units only: the others’ cost does not become free', () => {
+    expect(costAfterEdit(20, [entry({ productId: DROPS, productBefore: DROPS })], avg, 3)).toBe(20);
+  });
+
+  it('is rounded at the currency’s own unit', () => {
     const third = () => 0.3333;
-    expect(costOfLines([{ productId: CREAM, quantity: 3, freeQuantity: 0 }], third, 2)).toBe(1);
-    expect(costOfLines([{ productId: CREAM, quantity: 7, freeQuantity: 0 }], third, 2)).toBe(2.33);
-    expect(costOfLines([{ productId: CREAM, quantity: 7, freeQuantity: 0 }], third, 0)).toBe(2);
+    expect(costAfterEdit(0, [entry({ qtyBefore: 0, giftBefore: 0, qtyAfter: 7, giftAfter: 0 })], third, 2)).toBe(2.33);
+    expect(costAfterEdit(0, [entry({ qtyBefore: 0, giftBefore: 0, qtyAfter: 7, giftAfter: 0 })], third, 0)).toBe(2);
   });
 
-  it('a product with no cost costs nothing, not NaN', () => {
-    expect(costOfLines([{ productId: DROPS, quantity: 3, freeQuantity: 1 }], avg, 3)).toBe(0);
+  it('names the products it needs the averages of: what the changed lines were and became, once each', () => {
+    expect(costProductIds([entry({}), entry({ productId: SOAP, productBefore: CREAM })]).sort()).toEqual([CREAM, SOAP].sort());
   });
 });
 
