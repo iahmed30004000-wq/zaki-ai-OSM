@@ -106,7 +106,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const OWNER = ['users.view', 'users.edit'];
+// PR-13 (قديم ← جديد): the exceptions card is editable on roles.edit now (D9), so this person holds it; she still lacks the screen key being granted.
+const OWNER = ['users.view', 'users.edit', 'roles.edit'];
 const put = () => net.calls.find((c) => c.method === 'PUT');
 
 async function openAddDialog() {
