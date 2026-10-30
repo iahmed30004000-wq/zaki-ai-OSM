@@ -119,13 +119,16 @@ export type BlockCode =
   | 'RECENT_RETURN'
   | 'STOCK_SHORTAGE'
   | 'NO_REGION'
-  | 'NO_FEE_ROW';
+  | 'NO_FEE_ROW'
+  | 'UNRESERVED_LINES';
 
 export interface OrderBlock {
   code: BlockCode;
   message: string;
   /** false = the operator may acknowledge and continue; true = hard stop. */
   hard: boolean;
+  /** What to do about it, when there is something to do — a second sentence, never part of the door's own words. */
+  hint?: string;
 }
 
 const RECENT_RETURN_DAYS = 30;
