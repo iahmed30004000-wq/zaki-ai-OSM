@@ -316,6 +316,12 @@ export function PerformanceScreen() {
           <ScoreBoard />
         ) : tab === 'landing' && canLanding ? (
           <LandingAnalyticsTab dateQuery={dateQuery} from={range.from} />
+        ) : !analytics ? (
+          // Nothing is drawn as a number before the server has sent one: a refusal returned above, so no analytics here
+          // means the first answer is still on its way — and the cards below would read «٠ طلب» until it lands.
+          <div aria-busy={loading}>
+            <SkeletonRows rows={6} />
+          </div>
         ) : (
         <>
         {/*
