@@ -1110,7 +1110,7 @@
     "tabs": 0
   },
   "src/components/screens/InventoryBalancesScreen.tsx": {
-    "buttons": 7,
+    "buttons": 9,
     "inputs": 4,
     "columns": 0,
     "cards": 1,
@@ -1172,7 +1172,7 @@
   "src/components/screens/ManufacturingScreen.tsx": {
     "buttons": 9,
     "inputs": 10,
-    "columns": 11,
+    "columns": 12,
     "cards": 2,
     "modals": 1,
     "icons": 6,
@@ -1230,7 +1230,7 @@
     "tabs": 0
   },
   "src/components/screens/PreparationScreen.tsx": {
-    "buttons": 6,
+    "buttons": 9,
     "inputs": 0,
     "columns": 5,
     "cards": 0,
@@ -1270,7 +1270,7 @@
     "tabs": 0
   },
   "src/components/screens/ReturnsScreen.tsx": {
-    "buttons": 5,
+    "buttons": 6,
     "inputs": 4,
     "columns": 15,
     "cards": 0,
@@ -1290,13 +1290,13 @@
     "tabs": 0
   },
   "src/components/screens/ShipmentsNewScreen.tsx": {
-    "buttons": 8,
-    "inputs": 6,
+    "buttons": 10,
+    "inputs": 7,
     "columns": 5,
     "cards": 0,
     "modals": 0,
     "icons": 7,
-    "links": 1,
+    "links": 2,
     "tabs": 0
   },
   "src/components/screens/ShippingBatchesScreen.tsx": {
@@ -1305,7 +1305,7 @@
     "columns": 0,
     "cards": 0,
     "modals": 0,
-    "icons": 13,
+    "icons": 14,
     "links": 0,
     "tabs": 0
   },

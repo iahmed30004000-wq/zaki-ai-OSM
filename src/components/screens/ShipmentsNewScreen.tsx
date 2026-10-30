@@ -22,6 +22,8 @@ import type { DispatchSummary } from '@/lib/courier-dispatch';
 import { DispatchResult } from '@/components/ops/DispatchResult';
 import { useToast } from '@/components/ui/Toast';
 import { Rows } from '@/components/ui/Rows';
+import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
+import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Money } from '@/components/ui/Money';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
@@ -414,6 +416,111 @@ ${describeRefused(out.refused)}`,
   const selectedCount = Object.values(selected).filter(Boolean).length;
   const phone = useIsPhone();
   const labelsStep = printLabelsStep(mayOpen);
+  /**
+   * HOW MANY OF THE FOLDED FILTERS ARE NARROWING THE LIST (phone).
+   * A closed fold that hides a chosen province or date hides why parcels are missing; the count is on the row
+   * that closes over them, so a narrowed list is never silent.
+   */
+  const narrowedInFold = [filters.region, filters.from, filters.to].filter(Boolean).length;
+
+  /*
+   * THE TWO WAYS ON FROM THE BANNER, drawn once and placed by the layout. The words, the doors and the order they
+   * come in are the same on both: «رحّل» first, then «اطبع البوالص».
+   */
+  const sendLabel =
+    dispatching === justMade ? 'جارٍ الترحيل…' : shown ? `أعد ترحيل الباقي (${unsent})` : 'رحّل إلى الشركة واجلب الباركود';
+  const sendNode = offerSend ? (
+    phone ? (
+      <Button size="md" className="w-full" onClick={dispatchJustMade} disabled={dispatching === justMade}>
+        {sendLabel}
+      </Button>
+    ) : (
+      <>
+        {' — '}
+        <button type="button" onClick={dispatchJustMade} disabled={dispatching === justMade} className="font-bold underline disabled:opacity-50">
+          {sendLabel}
+        </button>
+      </>
+    )
+  ) : null;
+  const printLabel = printing ? 'جارٍ التجهيز…' : 'اطبع البوالص';
+  const printNode =
+    justMade && mayPrint ? (
+      /* The door refuses an order that has no barcode from its courier (it would print our reference twice). So
+         while none has one, there is nothing to print, and the line above says what to press first. */
+      noBarcodeYet ? null : phone ? (
+        <Button size="md" variant={sendNode ? 'outline' : 'primary'} className="w-full" onClick={printJustMade} disabled={printing}>
+          {printLabel}
+        </Button>
+      ) : (
+        <>
+          {' — '}
+          <button type="button" onClick={printJustMade} disabled={printing} className="font-bold underline disabled:opacity-50">
+            {printLabel}
+          </button>
+        </>
+      )
+    ) : labelsStep ? (
+      phone ? (
+        <Link href={labelsStep.href} className="inline-flex min-h-11 items-center justify-center rounded-lg border border-current px-3 font-bold">
+          {labelsStep.label}
+        </Link>
+      ) : (
+        <>
+          {' — '}
+          <Link href={labelsStep.href} className="font-bold underline">
+            {labelsStep.label}
+          </Link>
+        </>
+      )
+    ) : null;
+
+  /**
+   * THE WARNINGS OF ONE ORDER AND THE BOX THAT ACKNOWLEDGES THEM — one drawing, placed by the layout.
+   * `boxed` is the phone's card notice: the same lines in the tone of the card, and the acknowledgement as a 44px
+   * label around a 20px box (a bare native box is 13px, and a miss here leaves the order in «طلبات لم تُشحن»).
+   */
+  const blocksView = (r: Row, boxed: boolean) => {
+    const lines = (
+      <span className="block space-y-1">
+        {r.blocks.map((b) => (
+          <span
+            key={b.code}
+            className={`text-xs flex items-center gap-1 ${
+              b.hard ? 'text-[var(--sys-destructive)]' : 'text-[var(--sys-warning)]'
+            }`}
+          >
+            <RiAlertLine className="w-4 h-4" /> {b.message}
+          </span>
+        ))}
+        {!r.hardBlocked && (
+          <label
+            className={`flex items-center gap-1 text-xs text-[var(--sys-muted-foreground)]${boxed ? ' min-h-11 gap-2' : ''}`}
+          >
+            <input
+              type="checkbox"
+              className={boxed ? 'h-5 w-5 accent-[var(--sys-primary)]' : undefined}
+              checked={!!acknowledged[r.id]}
+              onChange={(e) => setAcknowledged({ ...acknowledged, [r.id]: e.target.checked })}
+            />
+            أقرّ بالتنبيه وأتابع
+          </label>
+        )}
+      </span>
+    );
+    if (!boxed) return lines;
+    return (
+      <div
+        className={`rounded-lg border p-2.5 ${
+          r.hardBlocked
+            ? 'border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)]'
+            : 'border-[var(--sys-warning)]/40 bg-[var(--sys-warning-soft)]/40'
+        }`}
+      >
+        {lines}
+      </div>
+    );
+  };
 
   return (
     <div className="max-w-5xl space-y-3">
@@ -441,9 +548,21 @@ ${describeRefused(out.refused)}`,
         />
         <div className="grid gap-3 md:grid-cols-5">
         <Select label="شركة الشحن (للشحنة)" value={filters.courier} onChange={(v) => setFilters({ ...filters, courier: v })} options={providers.map((p) => ({ value: p.id, label: p.name }))} />
-        <Select label="المحافظة" value={filters.region} onChange={(v) => setFilters({ ...filters, region: v })} options={regions.map((r) => ({ value: r.id, label: r.name }))} />
-        <DateField label="من" value={filters.from} onChange={(v) => setFilters({ ...filters, from: v })} />
-        <DateField label="إلى" value={filters.to} onChange={(v) => setFilters({ ...filters, to: v })} />
+        {/* On a phone the province and the dates fold behind one row that says what is inside: the search and the
+            courier are what the next press cannot do without. On a desk the three cells are where they have always been. */}
+        {phone ? (
+          <AdvancedGroup holds={`المحافظة · التاريخ${narrowedInFold > 0 ? ` (${narrowedInFold})` : ''}`}>
+            <Select className="w-full" label="المحافظة" value={filters.region} onChange={(v) => setFilters({ ...filters, region: v })} options={regions.map((r) => ({ value: r.id, label: r.name }))} />
+            <DateField className="min-w-0 flex-1" label="من" value={filters.from} onChange={(v) => setFilters({ ...filters, from: v })} />
+            <DateField className="min-w-0 flex-1" label="إلى" value={filters.to} onChange={(v) => setFilters({ ...filters, to: v })} />
+          </AdvancedGroup>
+        ) : (
+          <>
+            <Select label="المحافظة" value={filters.region} onChange={(v) => setFilters({ ...filters, region: v })} options={regions.map((r) => ({ value: r.id, label: r.name }))} />
+            <DateField label="من" value={filters.from} onChange={(v) => setFilters({ ...filters, from: v })} />
+            <DateField label="إلى" value={filters.to} onChange={(v) => setFilters({ ...filters, to: v })} />
+          </>
+        )}
         {/* On a desk the button is the grid's last cell, where it has always been. On a phone it is in the bar. */}
         {!phone && (
         <div className="self-end">
@@ -496,38 +615,15 @@ ${describeRefused(out.refused)}`,
             Whoever holds `ops.labels` prints the batch just made from this
             line; whoever does not is still pointed at the screen that has it.
           */}
-          {offerSend && (
-            <>
-              {' — '}
-              <button type="button" onClick={dispatchJustMade} disabled={dispatching === justMade} className="font-bold underline disabled:opacity-50">
-                {dispatching === justMade
-                  ? 'جارٍ الترحيل…'
-                  : shown
-                    ? `أعد ترحيل الباقي (${unsent})`
-                    : 'رحّل إلى الشركة واجلب الباركود'}
-              </button>
-            </>
-          )}
-          {justMade && mayPrint ? (
-            /* The door refuses an order that has no barcode from its courier (it would print our reference twice). So
-               while none has one, there is nothing to print, and the line above says what to press first. */
-            noBarcodeYet ? null : (
-              <>
-                {' — '}
-                <button type="button" onClick={printJustMade} disabled={printing} className="font-bold underline disabled:opacity-50">
-                  {printing ? 'جارٍ التجهيز…' : 'اطبع البوالص'}
-                </button>
-              </>
-            )
+          {/* The next step is a sentence's underlined word on a desk, as it has always been. On a phone it is a button of
+              its own under the sentence: an underlined word 20px tall inside a green line is not the main action. */}
+          {phone ? (
+            (sendNode || printNode) && <span className="mt-2 flex flex-col gap-2">{sendNode}{printNode}</span>
           ) : (
-            labelsStep && (
-              <>
-                {' — '}
-                <Link href={labelsStep.href} className="font-bold underline">
-                  {labelsStep.label}
-                </Link>
-              </>
-            )
+            <>
+              {sendNode}
+              {printNode}
+            </>
           )}
         </p>
       )}
@@ -598,7 +694,7 @@ ${describeRefused(out.refused)}`,
           </button>
         ))}
       </div>
-      <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden">
+      <div className={phone ? undefined : 'bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden'}>
           {/* The picking list: seven columns, read on a phone at the
               packing bench. `selection` puts the checkbox where a thumb is
               — in the card's heading — instead of in a first column
@@ -607,6 +703,14 @@ ${describeRefused(out.refused)}`,
             rows={rows}
             keyOf={(r) => r.id}
             alert={(r) => r.hardBlocked}
+            /*
+              THE WARNINGS ARE READ BEFORE THE CARD, NOT BESIDE ITS FIELDS.
+              In the table they are a cell. On a card a cell is a label and a value on one line, so the warnings, the
+              box that says «I have read them» and the reason a parcel cannot be shipped at all were squeezed into
+              the left half of a «تنبيهات» line — a 13px box and a 16px label for the press that decides whether the
+              order ships. Here they are one full-width box at the top, in the tone of the card.
+            */
+            notice={phone ? (r) => (r.blocks.length > 0 ? blocksView(r, true) : null) : undefined}
             selection={{
               // A hard-blocked order has no checkbox rather than one that
               // refuses: a control that cannot work is worse than none.
@@ -648,63 +752,59 @@ ${describeRefused(out.refused)}`,
               {
                 key: 'cod',
                 label: 'تفصيل التحصيل',
-                render: (r) => (
-                  <span className="text-xs" dir="ltr">
-                    {r.cod.subtotal} − {r.cod.discount} + {r.cod.deliveryFee} ={' '}
-                    <strong className="tabular-nums">
-                      <Money value={r.cod.cod} currency={r.cod.currency} />
-                    </strong>
-                    {r.cod.feeSource === 'NONE' && (
-                      <span className="text-[var(--sys-destructive)]"> (بلا أجرة)</span>
-                    )}
-                  </span>
-                ),
-              },
-              {
-                key: 'blocks',
-                label: 'تنبيهات',
                 render: (r) =>
-                  r.blocks.length === 0 ? (
-                    <span className="text-xs text-[var(--sys-success)]">جاهز</span>
+                  // On a card the figure the courier collects comes first, and the sum it came from is the small
+                  // line under it. The arithmetic itself is the server's and is the same in both.
+                  phone ? (
+                    <span className="block" dir="ltr">
+                      <strong className="tabular-nums">
+                        <Money value={r.cod.cod} currency={r.cod.currency} />
+                      </strong>
+                      {r.cod.feeSource === 'NONE' && (
+                        <span className="text-[var(--sys-destructive)]"> (بلا أجرة)</span>
+                      )}
+                      <span className="block text-[var(--sys-muted)]">
+                        {r.cod.subtotal} − {r.cod.discount} + {r.cod.deliveryFee}
+                      </span>
+                    </span>
                   ) : (
-                    <span className="block space-y-1">
-                      {r.blocks.map((b) => (
-                        <span
-                          key={b.code}
-                          className={`text-xs flex items-center gap-1 ${
-                            b.hard ? 'text-[var(--sys-destructive)]' : 'text-[var(--sys-warning)]'
-                          }`}
-                        >
-                          <RiAlertLine className="w-4 h-4" /> {b.message}
-                        </span>
-                      ))}
-                      {!r.hardBlocked && (
-                        <label className="flex items-center gap-1 text-xs text-[var(--sys-muted-foreground)]">
-                          <input
-                            type="checkbox"
-                            checked={!!acknowledged[r.id]}
-                            onChange={(e) => setAcknowledged({ ...acknowledged, [r.id]: e.target.checked })}
-                          />
-                          أقرّ بالتنبيه وأتابع
-                        </label>
+                    <span className="text-xs" dir="ltr">
+                      {r.cod.subtotal} − {r.cod.discount} + {r.cod.deliveryFee} ={' '}
+                      <strong className="tabular-nums">
+                        <Money value={r.cod.cod} currency={r.cod.currency} />
+                      </strong>
+                      {r.cod.feeSource === 'NONE' && (
+                        <span className="text-[var(--sys-destructive)]"> (بلا أجرة)</span>
                       )}
                     </span>
                   ),
               },
+              {
+                key: 'blocks',
+                label: 'تنبيهات',
+                // The card carries them in its notice (above); the table has this cell.
+                hideOnPhone: phone,
+                render: (r) =>
+                  r.blocks.length === 0 ? (
+                    <span className="text-xs text-[var(--sys-success)]">جاهز</span>
+                  ) : (
+                    blocksView(r, false)
+                  ),
+              },
             ]}
-            actions={(r) => (
-              <span className="whitespace-nowrap">
-                {/*
-                  ONE CONTROL FOR «NOT TODAY».
-                  There used to be two, «أجّل» and «للمتابعة», and both read
-                  as postponing. The first asked for a reason and never a
-                  date — a missing date stored the year 2999, so the order
-                  left the shipment list and nothing brought it back. The
-                  choice between keeping the goods reserved and letting them
-                  go is real, but it belongs in a sentence at the moment of
-                  choosing, not in two button labels to be decoded first.
-                */}
-                {view === 'held' ? (
+            actions={(r) => {
+              /*
+                ONE CONTROL FOR «NOT TODAY».
+                There used to be two, «أجّل» and «للمتابعة», and both read
+                as postponing. The first asked for a reason and never a
+                date — a missing date stored the year 2999, so the order
+                left the shipment list and nothing brought it back. The
+                choice between keeping the goods reserved and letting them
+                go is real, but it belongs in a sentence at the moment of
+                choosing, not in two button labels to be decoded first.
+              */
+              const first =
+                view === 'held' ? (
                   <button
                     type="button"
                     onClick={() => void releaseHold(r)}
@@ -734,20 +834,29 @@ ${describeRefused(out.refused)}`,
                     )}
                     أجّل
                   </button>
-                )}
-                {r.shipHoldReason && (
-                  <span
-                    className="block text-xs text-[var(--sys-muted)] mt-0.5 max-w-[10rem] truncate"
-                    title={r.shipHoldReason}
-                  >
-                    {r.shipHoldReason}
-                  </span>
-                )}
-
-                {/* It is over. The reason comes from the same structured list
-                    every other cancellation uses — one with no reason is one
-                    nothing can be learned from. */}
-                {view !== 'held' && (
+                );
+              /*
+                THE REASON IS READ IN FULL ON A CARD.
+                Ten rem and an ellipsis is a tooltip's job, and a phone has no tooltip: the sentence the packer needs
+                («ينتظر ردّ الزبون…») was cut at its third word. On a desk it stays one line with the full text on hover.
+              */
+              const reason = r.shipHoldReason ? (
+                <span
+                  className={
+                    phone
+                      ? 'block text-xs text-[var(--sys-muted)] mt-0.5'
+                      : 'block text-xs text-[var(--sys-muted)] mt-0.5 max-w-[10rem] truncate'
+                  }
+                  title={r.shipHoldReason}
+                >
+                  {r.shipHoldReason}
+                </span>
+              ) : null;
+              /* It is over. The reason comes from the same structured list
+                  every other cancellation uses — one with no reason is one
+                  nothing can be learned from. */
+              const cancel =
+                view !== 'held' ? (
                   <button
                     type="button"
                     onClick={() => setCancelling(r)}
@@ -761,14 +870,30 @@ ${describeRefused(out.refused)}`,
                        that the box was opened); only a parcel the courier
                        has taken does. */
                     title={r.standDownBlocked?.message ?? 'ألغِ الطلب — تعود بضاعتُه للبيع'}
-                    className="min-h-11 md:min-h-0 ms-1 inline-flex items-center gap-1 rounded-md border border-[var(--sys-border)] px-2 py-1 text-xs text-[var(--sys-muted-foreground)] transition-colors hover:border-[var(--sys-destructive-border)] hover:text-[var(--sys-destructive)] disabled:opacity-50"
+                    className={`min-h-11 md:min-h-0 ${phone ? 'justify-center' : 'ms-1'} inline-flex items-center gap-1 rounded-md border border-[var(--sys-border)] px-2 py-1 text-xs text-[var(--sys-muted-foreground)] transition-colors hover:border-[var(--sys-destructive-border)] hover:text-[var(--sys-destructive)] disabled:opacity-50`}
                   >
                     <RiCloseCircleLine className="w-4 h-4" aria-hidden />
                     ألغِ
                   </button>
-                )}
-              </span>
-            )}
+                ) : null;
+              // A phone: the two presses side by side and the same width, 8px apart (they were 4px apart in a
+              // no-wrap line, and one of them cancels an order); the reason under both. A desk: the line it always was.
+              return phone ? (
+                <span className="block w-full">
+                  <span className={cancel ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-1'}>
+                    {first}
+                    {cancel}
+                  </span>
+                  {reason}
+                </span>
+              ) : (
+                <span className="whitespace-nowrap">
+                  {first}
+                  {reason}
+                  {cancel}
+                </span>
+              );
+            }}
             empty={
               narrowed ? (
                 <EmptyState
@@ -827,14 +952,16 @@ function Select({
   value,
   onChange,
   options,
+  className = 'block',
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   options: { value: string; label: string }[];
+  className?: string;
 }) {
   return (
-    <label className="block">
+    <label className={className}>
       <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">{label}</span>
       <select
         value={value}
@@ -874,9 +1001,19 @@ function SearchField({ value, onChange }: { value: string; onChange: (v: string)
   );
 }
 
-function DateField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function DateField({
+  label,
+  value,
+  onChange,
+  className = 'block',
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  className?: string;
+}) {
   return (
-    <label className="block">
+    <label className={className}>
       <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">{label}</span>
       <input
         type="date"

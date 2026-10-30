@@ -13,6 +13,8 @@ import { LabelSizePicker, useLabelSize } from '@/components/labels/LabelSize';
 import { BLOCKED_WAYBILLS, describeRefused, openWaybills, WaybillError } from '@/components/labels/openWaybills';
 import { useTell } from '@/components/ui/Confirm';
 import { Rows } from '@/components/ui/Rows';
+import { Button } from '@/components/ui/Button';
+import { useIsPhone } from '@/hooks/useIsPhone';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { MissionDone, NextStepButton } from '@/components/ui/NextStep';
 import { userCan } from '@/lib/can';
@@ -46,6 +48,7 @@ interface Group {
 }
 
 export function PreparationScreen() {
+  const phone = useIsPhone();
   const [data, setData] = useState<{ allowNegativeStock: boolean; totals: { products: number; orders: number; shortages: number }; groups: Group[] } | null>(null);
   // Groups start OPEN: the screen has no action of its own, so a group closed
   // by default was a click for nothing before the packer could read a line.
@@ -134,11 +137,13 @@ export function PreparationScreen() {
   return (
     <div className="max-w-4xl space-y-3">
       <ScreenTitle />
-      <div className="flex flex-wrap gap-3 text-sm">
+      {/* A phone: the three figures share one row of equal boxes and the stock rule is a line of its own under them
+          (two boxes on one row and the third beside a sentence was a ragged wrap). A desk: the row it has always been. */}
+      <div className={phone ? 'grid grid-cols-3 gap-2 text-sm' : 'flex flex-wrap gap-3 text-sm'}>
         <Kpi label="منتجات للتجهيز" value={data.totals.products} />
         <Kpi label="طلبات" value={data.totals.orders} />
         <Kpi label="نواقص" value={data.totals.shortages} danger={data.totals.shortages > 0} />
-        <span className="text-xs text-[var(--sys-muted-foreground)] self-center">
+        <span className={phone ? 'col-span-full text-xs text-[var(--sys-muted-foreground)]' : 'text-xs text-[var(--sys-muted-foreground)] self-center'}>
           {data.allowNegativeStock ? 'المخزون السالب مسموح مع تنبيه' : 'المخزون السالب ممنوع — النقص يمنع الشحن'}
         </span>
       </div>
@@ -160,7 +165,7 @@ export function PreparationScreen() {
               <RiArchiveDrawerLine className="w-4 h-4 text-[var(--sys-primary)]" />
             </span>
             <span className="flex-1 min-w-0">
-              <span className="block text-sm font-semibold text-[var(--sys-heading)] truncate">{g.productName}</span>
+              <span className={phone ? 'block text-sm font-semibold text-[var(--sys-heading)]' : 'block text-sm font-semibold text-[var(--sys-heading)] truncate'}>{g.productName}</span>
               <span className="block text-xs text-[var(--sys-muted-foreground)]">
                 {g.orders} طلب · مطلوب {g.required} · متاح {g.available}
                 {g.shortage > 0 && <span className="text-[var(--sys-destructive)]"> · نقص {g.shortage}</span>}
@@ -170,7 +175,7 @@ export function PreparationScreen() {
           </button>
 
           {!closed[g.productId] && (
-            <div className="border-t border-[var(--sys-border)] p-3">
+            <div className={phone ? 'border-t border-[var(--sys-border)] p-2' : 'border-t border-[var(--sys-border)] p-3'}>
               {/* A packer reads this standing at a shelf. Six columns on a
                   phone is every cell wrapped to four lines; the same
                   definition gives a table on the packing desk and a card in
@@ -179,6 +184,27 @@ export function PreparationScreen() {
                 rows={g.lines}
                 keyOf={(l) => l.orderId}
                 alert={(l) => l.reservedQty < l.quantity + l.freeQuantity}
+                /*
+                  A CHANGE REQUEST IS READ BEFORE THE BOX IS TAPED.
+                  The note in the code said so and the card put it last, after two icons, at the foot. On a phone it is
+                  the first thing on the card, full width, with its own button. On a desk it stays among the actions.
+                */
+                notice={
+                  phone
+                    ? (l) =>
+                        l.pendingChangeRequestId && (
+                          <div className="flex items-center justify-between gap-2 rounded-lg border border-[var(--sys-warning)]/40 bg-[var(--sys-warning-soft)] p-2.5">
+                            <span className="flex items-center gap-1.5 text-xs font-semibold text-[var(--sys-warning)]">
+                              <span className="w-1.5 h-1.5 rounded-full bg-[var(--sys-warning)] animate-pulse" aria-hidden />
+                              طلب تعديل بانتظار البتّ
+                            </span>
+                            <Button size="sm" variant="outline" onClick={() => setReviewing(l.pendingChangeRequestId!)}>
+                              راجعه
+                            </Button>
+                          </div>
+                        )
+                    : undefined
+                }
                 columns={[
                   {
                     key: 'order',
@@ -231,7 +257,30 @@ export function PreparationScreen() {
                     ),
                   },
                 ]}
-                actions={(l) => (
+                actions={(l) =>
+                  phone ? (
+                    // The two icons were 4px apart and said nothing without a tooltip, which a phone cannot show; the
+                    // one that cancels an order is a word now, in its own half of the row.
+                    mayOpenOrder || mayCancel ? (
+                      <span className="grid w-full grid-cols-2 gap-2">
+                        {mayOpenOrder && (
+                          <Button size="sm" variant="outline" onClick={() => setOpenOrderId(l.orderId)}>
+                            افتح الطلب
+                          </Button>
+                        )}
+                        {mayCancel && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-[var(--sys-destructive)]"
+                            onClick={() => setCancelling({ id: l.orderId, orderNumber: l.orderNumber })}
+                          >
+                            ألغِ الطلب
+                          </Button>
+                        )}
+                      </span>
+                    ) : null
+                  ) : (
                   <span className="flex items-center gap-1 whitespace-nowrap">
                     {mayOpenOrder && (
                       <button
@@ -279,7 +328,8 @@ export function PreparationScreen() {
                       </button>
                     )}
                   </span>
-                )}
+                  )
+                }
               />
             </div>
           )}
