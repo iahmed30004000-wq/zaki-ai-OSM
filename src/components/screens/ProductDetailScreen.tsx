@@ -456,6 +456,9 @@ export function ProductDetailScreen() {
           productId={productId}
           basePrice={product.basePrice ?? 0}
           currency={currencyCode}
+          // The offers' doors ask «إدارة العروض» (api/offers), not the product edit: the card drew its controls for everybody
+          // because the prop defaulted to true, and a viewer pressed into a refusal (PR-11).
+          canManage={userCan(currentUser, 'offers.manage')}
           // Both keys the price box of «تعديل المنتج» needs: the button shows for products.edit only, and
           // api/products/[id] checks products.edit before products.change_price.
           canChangePrice={canManage && userCan(currentUser, 'products.change_price')}

@@ -45,7 +45,8 @@ afterEach(() => {
 
 describe('the menu', () => {
   it('leaves the board out for somebody who can open the dashboard — and the board is still theirs to open', () => {
-    const user = userWith(['dashboard.view', 'reports.view']);
+    // was: ['dashboard.view', 'reports.view'] — the campaigns line opens on «campaigns.view» since PR-11
+    const user = userWith(['dashboard.view', 'reports.view', 'campaigns.view']);
     expect(pathsOf(menuNav(user, can))).not.toContain('/growth/performance');
     // folding is for the menu, never for access
     expect(pathsOf(visibleNav(user, can))).toContain('/growth/performance');

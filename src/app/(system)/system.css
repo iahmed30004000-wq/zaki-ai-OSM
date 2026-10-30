@@ -524,6 +524,16 @@ summary {
     /* The hit area only. It must never eat a scroll or paint a pixel. */
     pointer-events: auto;
   }
+
+  /*
+   * The foot of a phone card (Rows `actions`): whatever a screen drew
+   * there, a finger gets 44px. Text links were 16px tall, 8px apart.
+   */
+  .card-acts > :is(a, button) {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
 }
 
 /*

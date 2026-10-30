@@ -99,7 +99,8 @@ const userWith = (grants: Record<string, { scope: string; scopeIds?: string[] | 
   companyId: COMPANY,
   effectiveGrants: { fullAccess: false, grants },
 });
-const EDITOR = userWith({ 'products.edit': { scope: 'ALL_COMPANY' } });
+// was: { 'products.edit' } alone — making a shelf is `categories.manage` since PR-11 (the migration gave it to every company-wide editor).
+const EDITOR = userWith({ 'products.edit': { scope: 'ALL_COMPANY' }, 'categories.manage': { scope: 'ALL_COMPANY' } });
 
 const post = (body: unknown) =>
   POST(
@@ -163,7 +164,8 @@ describe('who may press it', () => {
 
   it('— a grant scoped to SPECIFIC products files those and only those', async () => {
     requireContext.mockResolvedValue({
-      user: userWith({ 'products.edit': { scope: 'SPECIFIC', scopeIds: [P(2)] } }),
+      // was: no categories.manage — here it is held, so this test keeps asking only about the REACH of the edit.
+      user: userWith({ 'products.edit': { scope: 'SPECIFIC', scopeIds: [P(2)] }, 'categories.manage': { scope: 'ALL_COMPANY' } }),
       companyId: COMPANY,
       storeId: STORE,
     });
@@ -174,6 +176,18 @@ describe('who may press it', () => {
     expect(categoryOf(2)).not.toBeNull();
     expect(categoryOf(1)).toBeNull();
     expect(categoryOf(3)).toBeNull();
+  });
+
+  it('— without `categories.manage` it files onto the shelves that EXIST and makes none: the products that wanted a new one are skipped', async () => {
+    requireContext.mockResolvedValue({ user: userWith({ 'products.edit': { scope: 'ALL_COMPANY' } }), companyId: COMPANY, storeId: STORE });
+    fake.categories = [{ id: 'cat-supp', companyId: COMPANY, name: 'مكمّلات' }];
+    fake.products = [productRow(1), productRow(2)];
+    const b = await json(await post({ items: [item(1, 'مكمّلات'), item(2, 'إلكترونيات')] }));
+    expect(b).toEqual({ filed: 1, skipped: 1, created: [] });
+    expect(categoryOf(1)).toBe('cat-supp');
+    expect(categoryOf(2)).toBeNull();
+    expect(fake.calls.createCategory).toHaveLength(0);
+    expect(fake.categories.map((c) => c.name)).toEqual(['مكمّلات']);
   });
 
   it('— a company-wide grant files them all', async () => {

@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server';
-import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { getPermissionScope } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { maySeeCost } from '@/lib/cost-visibility';
 import { productCosts } from '@/lib/product-cost';
-import { DELIVERED_SHIPPING } from '@/lib/order-state';
 import { summariseProducts } from '@/lib/product-stats';
+import { productScopeWhere } from '@/lib/product-scope';
+import { deliveredUnitsByProduct } from '@/lib/product-sold';
 
 /**
  * GET /api/products/stats — the figures above the products list and the units in its «المبيعات» column.
@@ -42,40 +42,18 @@ export async function GET() {
       );
     }
 
-    const where: Prisma.ProductWhereInput = { companyId, ...(storeId ? { storeId } : {}) };
-    if (scope.scope === 'CATEGORY') {
-      where.categoryId = { in: Array.isArray(scope.scopeIds) ? (scope.scopeIds as string[]) : [] };
-    } else if (scope.scope === 'SPECIFIC') {
-      where.id = { in: Array.isArray(scope.scopeIds) ? (scope.scopeIds as string[]) : [] };
-    }
+    // The list's own rule, from the one function both read (RV86) — not a third copy of it.
+    const where = productScopeWhere(scope, companyId, storeId);
 
     const products = await db.product.findMany({ where, select: { id: true, status: true, categoryId: true } });
     const ids = products.map((p) => p.id);
     const showCost = maySeeCost(user);
 
-    // The lines of orders that reached the door as delivered, for THESE products in THIS store.
-    const delivered = {
-      companyId,
-      productId: { in: ids },
-      order: { companyId, ...(storeId ? { storeId } : {}), shippingStatus: { in: [...DELIVERED_SHIPPING] } },
-    };
-
-    const [costs, settled, unsettled] =
-      ids.length === 0
-        ? [new Map(), [], []]
-        : await Promise.all([
-            productCosts(db, companyId, ids),
-            db.orderItem.groupBy({ by: ['productId'], where: { ...delivered, deliveredQty: { not: null } }, _sum: { deliveredQty: true } }),
-            db.orderItem.groupBy({ by: ['productId'], where: { ...delivered, deliveredQty: null }, _sum: { quantity: true, freeQuantity: true } }),
-          ]);
-
-    const unitsSold = new Map<string, number>();
-    for (const row of settled) {
-      unitsSold.set(row.productId, (unitsSold.get(row.productId) ?? 0) + (row._sum.deliveredQty ?? 0));
-    }
-    for (const row of unsettled) {
-      unitsSold.set(row.productId, (unitsSold.get(row.productId) ?? 0) + (row._sum.quantity ?? 0) + (row._sum.freeQuantity ?? 0));
-    }
+    // «Sold» has one home (lib/product-sold.ts): the list door and the product page say the same number.
+    const [costs, unitsSold] = await Promise.all([
+      ids.length === 0 ? Promise.resolve(new Map<string, { onHand: number; stockValue: number }>()) : productCosts(db, companyId, ids),
+      deliveredUnitsByProduct(db, { companyId, storeId, productIds: ids }),
+    ]);
 
     return NextResponse.json(
       summariseProducts({

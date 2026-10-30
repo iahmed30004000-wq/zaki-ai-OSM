@@ -95,7 +95,11 @@ WITH req(action, needs) AS (VALUES
   ('ops.deliver','ops.track'),
   ('ops.transfer','ops.track'),
   ('ops.write_off','ops.track'),
-  ('ops.return_fee','ops.returns')
+  ('ops.return_fee','ops.returns'),
+  -- PR-11. Both keys come out of the migration 20261030180000_categories_campaign_keys together with their view, so before
+  -- it has run neither is held by anybody (nothing is reported) and after it only an owner’s later unticking can show here.
+  ('categories.manage','products.view'),
+  ('campaigns.manage','campaigns.view')
 )
 SELECT 'role_permissions' AS "table", r."name" AS "role", r."companyId", q.action, q.needs
 FROM "role_permissions" rp
@@ -242,3 +246,30 @@ CROSS JOIN LATERAL unnest(CASE rp."permission"
 END) AS k
 GROUP BY k, r."id", r."name", r."companyId"
 ORDER BY 1, 3 NULLS FIRST, 2;
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- AND THE FIFTH QUESTION (PR-11, the categories and the campaigns): WHO GETS WHAT FROM THE MIGRATION
+-- 20261030180000_categories_campaign_keys, AND WHO LOSES THE COMPANY'S SHELVES ON PURPOSE (D1m)?
+-- Per role: the box, and the scope the role holds its source at. campaigns.view and campaigns.manage go to every role that holds
+-- reports.view (the same list — the owner unticks from the checklist afterwards). categories.manage goes only to a role that
+-- holds products.edit «كل الشركة»: a row with `receives = false` is a role whose product editors are narrower than that and
+-- LOSE the company-wide writes to the categories on the day (it keeps the sorter onto existing shelves). Read-only, same as above.
+-- ═══════════════════════════════════════════════════════════════════════
+SELECT k AS "box", r."name" AS "role", r."companyId", rp."permission" AS "source", rp."scope",
+       (k <> 'categories.manage' OR rp."scope" = 'ALL_COMPANY') AS "receives"
+FROM "role_permissions" rp
+JOIN "roles" r ON r."id" = rp."roleId"
+CROSS JOIN LATERAL unnest(CASE rp."permission"
+  WHEN 'products.edit' THEN ARRAY['categories.manage']
+  WHEN 'reports.view' THEN ARRAY['campaigns.view', 'campaigns.manage']
+  ELSE ARRAY[]::text[]
+END) AS k
+ORDER BY 1, 6, 3 NULLS FIRST, 2;
+
+-- The people whose OWN «سماح» on products.edit is narrower than «كل الشركة» — they lose the shelves' writes whatever their role
+-- gives, and the migration refuses them the box with a «منع».
+SELECT u."id", u."name", u."role", up."scope"
+FROM "user_permissions" up
+JOIN "users" u ON u."id" = up."userId"
+WHERE up."permission" = 'products.edit' AND up."effect" = 'ALLOW' AND COALESCE(up."scope", 'ALL_COMPANY') <> 'ALL_COMPANY'
+ORDER BY 3, 2;

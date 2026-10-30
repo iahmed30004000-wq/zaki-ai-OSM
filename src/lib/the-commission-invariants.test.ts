@@ -155,7 +155,7 @@ describe('5 and 7 · what is excluded, and how a closed month is corrected', () 
   it('accrual happens on delivery and nowhere else', () => {
     const door = stripComments(repoFile('src/app/api/settings/commission/route.ts'));
     expect(door).toMatch(/basis: 'ORDER_DELIVERED'/);
-    const jobs = stripComments(repoFile('src/lib/jobs/definitions.ts'));
+    const jobs = stripComments(repoFile('src/lib/jobs/definitions/shared.ts'));
     expect(jobs).toMatch(/NOT_DELIVERED:/);
     expect(jobs).toMatch(/RETURNED:/);
   });

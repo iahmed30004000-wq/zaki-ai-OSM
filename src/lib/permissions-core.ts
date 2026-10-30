@@ -27,6 +27,7 @@ import { ORDER_ACTION_KEYS_FROM } from './order-action-keys';
 import { CONFIRMATION_SPLIT_KEYS_FROM, rolesThatPassedByName } from './confirmation-split-keys';
 import { OPS_ACTION_KEYS_FROM } from './ops-action-keys';
 import { FINANCE_SPLIT_KEYS_FROM } from './finance-split-keys';
+import { CATEGORIES_CAMPAIGNS_KEYS_FROM } from './categories-campaigns-keys';
 
 export type Scope = 'ALL_COMPANY' | 'OWN' | 'ASSIGNED' | 'CATEGORY' | 'SPECIFIC';
 
@@ -313,6 +314,11 @@ export async function computeEffectiveGrants(
       if (grants[key] || denied.has(key)) continue;
       if (from.some((k) => grants[k])) grants[key] = { scope: 'ALL_COMPANY' };
     }
+    // The categories' and the campaigns' boxes (PR-11). D1m: the categories' box needs the source «كل الشركة».
+    for (const { key, from, allCompanyOnly } of CATEGORIES_CAMPAIGNS_KEYS_FROM) {
+      if (grants[key] || denied.has(key)) continue;
+      if (from.some((k) => grants[k] && (!allCompanyOnly || grants[k].scope === 'ALL_COMPANY'))) grants[key] = { scope: 'ALL_COMPANY' };
+    }
   }
 
   return { fullAccess: false, grants };
@@ -352,6 +358,8 @@ export function legacyEffectiveKeys(role: UserRole): string[] {
   for (const { key, from } of OPS_ACTION_KEYS_FROM) if (from.some((k) => keys.has(k))) keys.add(key);
   // And the cash box's and the statement approval's (PR-9).
   for (const { key, from } of FINANCE_SPLIT_KEYS_FROM) if (from.some((k) => keys.has(k))) keys.add(key);
+  // And the categories' and the campaigns' (PR-11). A legacy role holds products.edit «كل الشركة» always (mapLegacyPermission).
+  for (const { key, from } of CATEGORIES_CAMPAIGNS_KEYS_FROM) if (from.some((k) => keys.has(k))) keys.add(key);
   return [...keys];
 }
 

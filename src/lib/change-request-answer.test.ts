@@ -153,7 +153,7 @@ describe('and it can be taken back', () => {
   /** Silence is never consent — the rule this whole file sits next to. */
   it('and nothing here approves anything by itself', () => {
     expect(decideFile()).not.toMatch(/status: 'APPROVED',\s*decidedById: null/);
-    expect(stripComments(repoFile('src/lib/jobs/definitions.ts'))).not.toMatch(
+    expect(stripComments(repoFile('src/lib/jobs/definitions/escalate-change-requests.ts'))).not.toMatch(
       /escalateChangeRequests[\s\S]{0,2000}status: 'APPROVED'/
     );
   });

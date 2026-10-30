@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { can, getPermissionScope } from '@/lib/authorization';
 import { apiErrorResponse, forbiddenAr } from '@/lib/api-error';
 import { maySeeCost } from '@/lib/cost-visibility';
+import { productScopeWhereWithin } from '@/lib/product-scope';
 import { getDateRange } from '@/lib/analytics';
 import { CONFIRMATION_REFUSED, DELIVERED_SHIPPING } from '@/lib/order-state';
 import {
@@ -108,16 +108,8 @@ export async function GET(req: Request) {
       return NextResponse.json({ ...meta, grades: [], readiness: catalogueReadiness([]) });
     }
 
-    const where: Prisma.ProductWhereInput = {
-      companyId,
-      ...(storeId ? { storeId } : {}),
-      id: { in: ids },
-    };
-    if (scope.scope === 'CATEGORY') {
-      where.categoryId = { in: Array.isArray(scope.scopeIds) ? (scope.scopeIds as string[]) : [] };
-    } else if (scope.scope === 'SPECIFIC') {
-      where.id = { in: ids.filter((id) => (Array.isArray(scope.scopeIds) ? scope.scopeIds : []).includes(id)) };
-    }
+    // The catalogue rule the list reads, narrowed to the rows asked about (RV86: one function, not a third copy).
+    const where = productScopeWhereWithin(scope, companyId, storeId, ids);
 
     const products = await db.product.findMany({
       where,

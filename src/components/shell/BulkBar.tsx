@@ -140,6 +140,16 @@ export function BulkBar({
     <>
       <BulkDoneMoment serial={done?.serial ?? null} count={done?.count ?? null} />
       {show && (
+      /*
+       * ONE PLAIN BOX AROUND THE BAR, FOR THE PARENT'S SPACING.
+       * Screens stack their blocks with a vertical gap on every child, and a
+       * margin on a FIXED box is an offset: the bar stood 12-24px above the
+       * bottom edge of the phone, with the list showing through underneath.
+       * The margin now lands on this empty wrapper (it collapses into its
+       * neighbour's), and the bar inside sits on the edge. On a desk the bar
+       * is static, so the gap above the rows is the one it always had.
+       */
+      <div>
       <div
       ref={bar}
       className={
@@ -153,6 +163,7 @@ export function BulkBar({
       aria-label="إجراءات على المحدَّد"
     >
       <div className="flex flex-wrap items-center gap-2">{children}</div>
+      </div>
       </div>
       )}
     </>

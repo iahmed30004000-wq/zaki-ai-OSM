@@ -28,21 +28,21 @@ describe('a category', () => {
   });
 
   /**
-   * Writing is gated on `products.edit`, deliberately not a new key.
+   * Writing asks `categories.manage` (PR-11, D1m) — it used to ask `products.edit` and never read its scope.
    *
-   * Naming the shelves is part of arranging the shelves, and a new
-   * permission is a grant somebody has to remember before any of this
-   * works at all — which is how the feature would arrive already broken
-   * for everyone except whoever thought to tick it.
+   * The migration 20261030180000_categories_campaign_keys gave the new key to every role and person that edited
+   * products «كل الشركة», so the shelves did not close to anyone who had them; a product editor narrower than that
+   * lost the company-wide shelf writes on purpose (the leak: renaming or deleting somebody else's line).
    */
-  it('is written by whoever may edit products, with no new permission to grant', () => {
+  it('is written by whoever holds categories.manage, and the reading key is still offered', () => {
     const api = stripComments(repoFile('src/app/api/categories/route.ts'));
-    expect(api).toContain("can(user, 'products.edit')");
+    expect(api).toContain("can(user, 'categories.manage')");
+    // was: expect(api).toContain("can(user, 'products.edit')") — the product edit is no longer the key of the shelves.
+    expect(api).not.toContain("can(user, 'products.edit')");
     const keys = [...ALL_CATALOG_KEYS];
     expect(keys, 'مفتاح القراءة اختفى').toContain('categories.view');
-    expect(keys.filter((k) => k.startsWith('categories.')), 'مفتاح صلاحية جديد يحتاج منحاً').toEqual([
-      'categories.view',
-    ]);
+    // was: ['categories.view'] alone, "مفتاح صلاحية جديد يحتاج منحاً" — the grant is now a migration, not a thing to remember.
+    expect(keys.filter((k) => k.startsWith('categories.'))).toEqual(['categories.view', 'categories.manage']);
   });
 
   /**

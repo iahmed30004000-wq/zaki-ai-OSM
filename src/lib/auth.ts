@@ -215,7 +215,19 @@ export async function requireAuth(): Promise<SessionUser> {
 }
 
 export async function requireCompanyTenant(): Promise<{ user: SessionUser; companyId: string }> {
-  const user = await requireAuth();
+  return tenantOf(await requireAuth());
+}
+
+/**
+ * THE COMPANY OF A USER WHO WAS ALREADY RESOLVED — NO SECOND READ OF THE SESSION (RV183).
+ *
+ * `requireCompanyTenant` is `requireAuth` + this. A door that has just asked `requirePermission` already holds the
+ * user (it returns it), and asking `requireCompanyTenant` on top of that re-reads the user, the role and the grants —
+ * seven to ten queries — to learn a company id that was in hand. The doors that are polled every few seconds use this
+ * instead. The rule is the same one, line for line: a platform admin falls back to the first company, anybody else
+ * must belong to one. Nothing here reads who is signed in; that stays `requireAuth`'s and `requirePermission`'s.
+ */
+export async function tenantOf(user: SessionUser): Promise<{ user: SessionUser; companyId: string }> {
   if (user.role === 'SUPER_ADMIN') {
     const firstCompany = await db.company.findFirst();
     if (!firstCompany) throw new Error('No company configured in platform');

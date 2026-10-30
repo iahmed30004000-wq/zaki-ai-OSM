@@ -183,8 +183,9 @@ describe('the component library', () => {
  *
  * Tailwind's own scale IS the spacing token set — `p-4` is a token, and
  * forbidding it would forbid the design system. What this refuses is the
- * arbitrary value: `p-[13px]`, `text-[15px]`, `gap-[7px]` — a number
- * somebody measured once, which no other screen will ever match.
+ * arbitrary value: a padding of 13px, a font of 15px, a gap of 7px written
+ * in brackets: a number somebody measured once, which no other screen will
+ * ever match.
  */
 describe('spacing and type', () => {
   const ALLOWED = [

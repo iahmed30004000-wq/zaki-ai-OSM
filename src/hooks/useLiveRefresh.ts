@@ -101,6 +101,13 @@ interface Options {
    * nothing on the screen to explain it.
    */
   initial?: boolean;
+  /**
+   * Called each time the person comes back — to the tab, to the window, or the connection returning — BEFORE the
+   * refresh that return triggers, and even when the throttle swallows that refresh. For a screen that keeps state
+   * about HOW it polls (the WhatsApp inbox slows down when nothing happens and must go back to its fast pace the moment
+   * someone is looking again). It lives here so no screen listens for these events by hand.
+   */
+  onReturn?: () => void;
 }
 
 /**
@@ -112,14 +119,16 @@ interface Options {
  * second.
  */
 export function useLiveRefresh(load: () => void | Promise<unknown>, options: Options = {}): void {
-  const { everyMs, enabled = true, key, initial = true } = options;
+  const { everyMs, enabled = true, key, initial = true, onReturn: onReturnOption } = options;
   const loadRef = useRef(load);
+  const returnRef = useRef(onReturnOption);
   const lastAt = useRef(0);
 
   // Assigned in an effect and never during render: a ref written while
   // rendering is a side effect in a function React may call twice.
   useEffect(() => {
     loadRef.current = load;
+    returnRef.current = onReturnOption;
   });
 
   useEffect(() => {
@@ -140,7 +149,9 @@ export function useLiveRefresh(load: () => void | Promise<unknown>, options: Opt
     if (initial) run(true);
 
     const onReturn = () => {
-      if (!document.hidden) run();
+      if (document.hidden) return;
+      returnRef.current?.();
+      run();
     };
     document.addEventListener('visibilitychange', onReturn);
     window.addEventListener('focus', onReturn);

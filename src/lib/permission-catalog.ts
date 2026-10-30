@@ -115,6 +115,9 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       { key: 'products.upload_images', requires: 'products.view', ar: 'رفع صور المنتجات', en: 'Upload product images' },
       // Reading the category list, which the permission scope pickers need.
       { key: 'categories.view', ar: 'عرض التصنيفات', en: 'View categories' },
+      // PR-11 (D1m): naming, renaming and deleting the COMPANY's categories — and the sorter making a new one. It rode on
+      // «تعديل المنتجات» whatever its scope; now only «كل الشركة» editors received it (migration 20261030180000).
+      { key: 'categories.manage', requires: 'products.view', ar: 'إدارة التصنيفات — إضافة وتسمية وحذف لكل الشركة', en: 'Manage categories — add, rename and delete, company-wide' },
     ],
   },
   {
@@ -358,7 +361,18 @@ export const PERMISSION_MODULES: CatalogModule[] = [
   },
   {
     module: 'growth',
-    items: [{ key: 'growth.intelligence', opens: ['مركز الذكاء', 'منصّة التجريب'], ar: 'مركز الذكاء', en: 'Business intelligence' }],
+    items: [
+      { key: 'growth.intelligence', opens: ['مركز الذكاء', 'منصّة التجريب'], ar: 'مركز الذكاء', en: 'Business intelligence' },
+      /*
+       * THE CAMPAIGNS, ON KEYS OF THEIR OWN (perm-plan PR-11, migration 20261030180000_categories_campaign_keys).
+       *
+       * Every campaign door — the list, the eight writes and the two pulls from the ad platforms — asked «عرض التقارير», so
+       * the owner could not give a person the reports board and keep her away from the spend, nor the other way round.
+       * The migration gave both boxes to every role and person who held the reports key, so nobody lost a door on the day.
+       */
+      { key: 'campaigns.view', opens: ['الحملات'], ar: 'عرض الحملات الإعلانية وصرفها ونتائجها', en: 'View ad campaigns, their spend and results' },
+      { key: 'campaigns.manage', requires: 'campaigns.view', ar: 'إدارة الحملات — إضافة وتعديل وحذف ودمج المكرر وسحب الحملات والإنفاق من حسابات الإعلانات', en: 'Manage campaigns — add, edit, delete, merge duplicates, pull campaigns and spend from ad accounts' },
+    ],
   },
   {
     module: 'apps',

@@ -409,7 +409,7 @@ export function CouriersScreen() {
                       className="h-11 md:h-8 w-32 rounded-lg border border-[var(--sys-border-input)] px-2 text-sm"
                     />
                   ) : c.phone ? (
-                    <span className="inline-flex items-center gap-2">
+                    <span className="inline-flex flex-wrap items-center gap-2">
                       <span dir="ltr">{c.phone}</span>
                       {/* The same buttons the customer rows use, without the
                           ready-made messages: those are written about an

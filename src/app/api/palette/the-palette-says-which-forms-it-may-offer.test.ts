@@ -73,7 +73,8 @@ describe('the account is told its own list', () => {
           'products.view', 'products.create',
           'customers.view', 'customers.create',
           'users.view', 'users.create',
-          'reports.view',
+          // was: 'reports.view' — the campaigns left the reports key (PR-11): the screen opens on campaigns.view, the form is campaigns.manage.
+          'campaigns.view', 'campaigns.manage',
         ],
         { role: 'COMPANY_ADMIN', __scope: 'ALL_COMPANY' }
       )
@@ -82,6 +83,14 @@ describe('the account is told its own list', () => {
     expect(may.create.map((r) => r.key)).toEqual([
       'order', 'ai-order', 'import-orders', 'product', 'customer', 'user', 'campaign',
     ]);
+  });
+
+  it('NEGATIVE: without campaigns.manage the campaign form is not offered — the old reports key, or the view alone, is not enough', async () => {
+    for (const perms of [['reports.view'], ['campaigns.view'], ['campaigns.manage']]) {
+      asUser(account(perms, { role: 'COMPANY_ADMIN', __scope: 'ALL_COMPANY' }));
+      const { may } = await told();
+      expect(may.create.map((r) => r.key), perms.join()).not.toContain('campaign');
+    }
   });
 
   it('a desk that creates orders is told the two order forms, with their addresses', async () => {

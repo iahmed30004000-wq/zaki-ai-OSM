@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { repoFile, stripComments } from './guard-source';
 import { tierFor } from './customer-risk';
 
@@ -224,7 +226,14 @@ describe('what is NOT built, pinned so it cannot read as done', () => {
   });
 
   it('and no job confirms an order, so there is nothing to exclude', () => {
-    const jobs = stripComments(repoFile('src/lib/jobs/definitions.ts'));
+    // every job, now that each one has its own file
+    const folder = 'src/lib/jobs/definitions';
+    const jobs = stripComments(
+      readdirSync(join(process.cwd(), folder))
+        .filter((f) => f.endsWith('.ts'))
+        .map((f) => repoFile(`${folder}/${f}`))
+        .join('\n')
+    );
     expect(jobs).not.toMatch(/confirmationStatus: 'CONFIRMED'/);
     expect(jobs).not.toMatch(/excludedFromAutomatedConfirmation/);
   });

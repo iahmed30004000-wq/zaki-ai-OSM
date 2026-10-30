@@ -9,6 +9,7 @@ import { productCosts } from '@/lib/product-cost';
 import { requirePermission, getPermissionScope } from '@/lib/authorization';
 import { maySeeCost, withoutCost } from '@/lib/cost-visibility';
 import { productScopeWhere } from '@/lib/product-scope';
+import { deliveredUnitsByProduct } from '@/lib/product-sold';
 import { BASE_PRICE_NOT_A_NUMBER, readBasePrice } from '@/lib/product-base-price';
 
 export async function GET(req: Request) {
@@ -128,14 +129,25 @@ export async function GET(req: Request) {
      *
      * One query for the whole page, not one per product.
      */
-    const costOf = showCost
-      ? await productCosts(db, companyId, products.map((p) => p.id))
-      : new Map<string, { average: number }>();
+    /**
+     * «SOLD» IS WHAT THE CUSTOMERS TOOK, NOT THE BATCH COUNTER (RV87).
+     *
+     * `analytics.totalSold` used to be the sum of `quantitySold` over the batches, a counter that only moves when a
+     * delivery draws from a batch — it read 0 for 13 of the 14 products that had delivered units. It is the delivered
+     * lines now, counted in the database by the one function the stats door and the product page also use, and asked in
+     * the same round as the cost. Units only: no price and no cost is touched.
+     */
+    const [costOf, soldOf] = await Promise.all([
+      showCost
+        ? productCosts(db, companyId, products.map((p) => p.id))
+        : Promise.resolve(new Map<string, { average: number }>()),
+      deliveredUnitsByProduct(db, { companyId, storeId, productIds: products.map((p) => p.id) }),
+    ]);
 
     // Compute comprehensive cost analysis for each product
     const enriched = products.map((prod) => {
       const totalProduced = prod.batches.reduce((sum, b) => sum + b.quantityProduced, 0);
-      const totalSold = prod.batches.reduce((sum, b) => sum + b.quantitySold, 0);
+      const totalSold = soldOf.get(prod.id) ?? 0;
       const totalRemaining = prod.batches.reduce((sum, b) => sum + b.quantityRemaining, 0);
 
       const totalMfgCost = prod.batches.reduce((sum, b) => sum + b.manufacturingCost, 0);
