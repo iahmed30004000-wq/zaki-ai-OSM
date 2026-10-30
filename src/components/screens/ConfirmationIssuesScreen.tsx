@@ -14,6 +14,7 @@ import { OrderLink } from '@/components/orders/OrderLink';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
 import { CustomerHistoryOffer } from '@/components/orders/CustomerHistory';
+import { useIsPhone } from '@/hooks/useIsPhone';
 
 /**
  * /confirmation/issues — entry issues on moderator-entered orders only.
@@ -95,6 +96,7 @@ const FIELD_LABEL: Record<keyof Draft, string> = {
 };
 
 export function ConfirmationIssuesScreen() {
+  const phone = useIsPhone();
   const patchOrder = useOrderPatch();
   const toast = useToast();
   // «صحّح البيانات» is the correction's own box and the void is `orders.cancel` (PR-7): the list alone opens neither. The
@@ -274,12 +276,24 @@ export function ConfirmationIssuesScreen() {
 
             {!isEditing && (
               <>
-                <p className="text-sm text-[var(--sys-foreground)]">
-                  {issue.order.customer.fullName} ·{' '}
-                  <span dir="ltr">{issue.order.customer.rawPhone || issue.order.customer.phone}</span> ·{' '}
-                  {issue.order.region?.name ?? issue.order.customer.city}{' '}
-                  <CustomerHistoryOffer customerId={issue.order.customer.id} orderId={issue.order.id} />
-                </p>
+                {/* A PHONE: EACH FACT IN ITS OWN BOX (ORD-23) — the name, the number and the city typed into one
+                    string are one bidirectional run, and the line breaks in the middle of a fact. A desk's line is
+                    left as it was. */}
+                {phone ? (
+                  <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm text-[var(--sys-foreground)]">
+                    <span dir="auto">{issue.order.customer.fullName}</span>
+                    <span dir="ltr">{issue.order.customer.rawPhone || issue.order.customer.phone}</span>
+                    <span dir="auto">{issue.order.region?.name ?? issue.order.customer.city}</span>
+                    <CustomerHistoryOffer customerId={issue.order.customer.id} orderId={issue.order.id} />
+                  </p>
+                ) : (
+                  <p className="text-sm text-[var(--sys-foreground)]">
+                    {issue.order.customer.fullName} ·{' '}
+                    <span dir="ltr">{issue.order.customer.rawPhone || issue.order.customer.phone}</span> ·{' '}
+                    {issue.order.region?.name ?? issue.order.customer.city}{' '}
+                    <CustomerHistoryOffer customerId={issue.order.customer.id} orderId={issue.order.id} />
+                  </p>
+                )}
                 <p className="text-xs text-[var(--sys-muted-foreground)]">{issue.order.customer.address}</p>
                 {issue.order.product && (
                   <p className="text-xs text-[var(--sys-muted)]">
@@ -369,7 +383,7 @@ export function ConfirmationIssuesScreen() {
                   </div>
                 )}
 
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <button
                     onClick={() => saveCorrection(issue)}
                     disabled={busy === issue.id}
@@ -399,7 +413,7 @@ export function ConfirmationIssuesScreen() {
                     className={inputClass}
                   />
                 </label>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <button
                     onClick={() => confirmVoid(issue)}
                     disabled={busy === issue.id}
@@ -423,7 +437,7 @@ export function ConfirmationIssuesScreen() {
             </p>
 
             {!isEditing && !isVoiding && (
-              <footer className="flex gap-2 pt-2 border-t border-[var(--sys-border)]">
+              <footer className="flex flex-wrap gap-2 pt-2 border-t border-[var(--sys-border)]">
                 {canCorrect && (
                 <button
                   onClick={() => openCorrection(issue)}

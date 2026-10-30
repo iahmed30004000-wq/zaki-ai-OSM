@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { RiArrowRightLine } from '@remixicon/react';
 import { missionFor, missionSentence, type Mission } from '@/lib/mission-card';
 import { useMayOpen } from '@/hooks/useMayOpen';
+import { useAppOptional } from '@/context/AppContext';
+import { userCan } from '@/lib/can';
 import type { WorkItem } from '@/lib/my-work';
 
 /**
@@ -38,7 +40,9 @@ import type { WorkItem } from '@/lib/my-work';
  */
 export function MissionCard({ items }: { items: readonly WorkItem[] }) {
   const mayOpen = useMayOpen();
-  const mission = missionFor(items, mayOpen);
+  // Optional on purpose: with no session context at all the card keeps the wording it always had.
+  const app = useAppOptional();
+  const mission = missionFor(items, mayOpen, (key) => !app || userCan(app.currentUser, key));
   if (!mission) return null;
   return <MissionCardView mission={mission} />;
 }

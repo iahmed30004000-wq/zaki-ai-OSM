@@ -8,6 +8,7 @@ import { Rows } from '@/components/ui/Rows';
 import { OrderLink } from '@/components/orders/OrderLink';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PullPanel, useQueue } from '@/components/confirmation/PullPanel';
+import { CONFIRMATION_STATUS_AR, type ConfirmationStatus } from '@/lib/confirmation-workflow';
 
 /**
  * /confirmation/queue — THE SUPERVISOR'S VIEW OF THE POOL.
@@ -62,7 +63,7 @@ export function ConfirmationQueueScreen() {
                 primary: true,
                 render: (o) => `${o.customer.fullName} · ${o.customer.city}`,
               },
-              { key: 'state', label: 'الحالة', render: (o) => o.confirmationStatus },
+              { key: 'state', label: 'الحالة', render: (o) => CONFIRMATION_STATUS_AR[o.confirmationStatus as ConfirmationStatus] ?? 'غير معروفة' },
               {
                 key: 'postponed',
                 label: 'التأجيلات',
