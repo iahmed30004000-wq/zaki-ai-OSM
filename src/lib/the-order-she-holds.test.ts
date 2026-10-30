@@ -367,6 +367,8 @@ const ALLOWED: Record<string, string[]> = {
   'src/app/api/orders/[id]/confirmation/route.ts': ['POST'],
   'src/app/api/orders/[id]/claim/route.ts': ['DELETE'],
   'src/app/api/orders/[id]/change-requests/route.ts': ['POST'],
+  // The preview of a multi-field edit: a pure read over the SAME door as the raise route above (same key, same 404).
+  'src/app/api/orders/[id]/change-requests/preview/route.ts': ['POST'],
   'src/app/api/orders/[id]/shape-risk/route.ts': ['GET'],
   // The repeat-order notice in the same window, over the same envelope as shape-risk: requireContext + assertOrderReadable,
   // then one read of this company's history for this order. It answers with order NUMBERS only (no ids, names or phones).
