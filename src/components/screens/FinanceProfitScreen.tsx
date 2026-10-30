@@ -353,7 +353,7 @@ export function FinanceProfitScreen() {
           />
 
         {/* Real Profit KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <KpiCard
             title="إيراد الموصَّل"
             rule="مجموع المحصَّل فعلاً للطلبات اللي انحصّلت، زائد إجمالي الموصَّلة اللي ما انسجّل إلها تحصيل. الموصَّل وحده، بالمدّة المختارة."

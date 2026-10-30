@@ -347,7 +347,7 @@ export function ProductsScreen() {
           cost, and a caller who may not see that is not shown a zero in its place.
         */}
         {stats?.totals && (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className={stats.totals.stockValue !== undefined ? 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4' : 'grid grid-cols-1 md:grid-cols-3 gap-4'}>
             <KpiCard
               title="المنتجات"
               rule="مجموع المنتجات في كتالوج هذا المتجر ممّا يحقّ لك رؤيته. «نشط» حالته نشط، و«بلا تصنيف» ما إله فئة."
