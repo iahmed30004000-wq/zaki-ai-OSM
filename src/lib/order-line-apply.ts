@@ -114,8 +114,11 @@ export function flatGoodsEdit(
   };
 }
 
-/** An approved edit as the engine's draft line: what was approved is typed whole, so nothing is priced again. */
-function draftLineOf(edit: ApprovedLineEdit, line: StoredLine): LineEditInput {
+/**
+ * An approved edit as the engine's draft line: what was approved is typed whole, so nothing is priced again.
+ * Exported so the decider's preview (`change-request-review-facts.ts`) reads a request the way this door writes it — one mapping, not two.
+ */
+export function draftLineOf(edit: ApprovedLineEdit, line: StoredLine): LineEditInput {
   const goodsMoved = !!edit.productId || !!edit.quantity;
   return {
     lineId: line.id,

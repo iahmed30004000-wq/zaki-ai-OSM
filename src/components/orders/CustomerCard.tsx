@@ -12,6 +12,8 @@ import type { ChangeableField } from '@/lib/change-request-fields';
 import { MAX_REASON, MIN_REASON } from '@/lib/order-edit-reason';
 import { useAsk } from '@/components/ui/Confirm';
 import { useIsPhone } from '@/hooks/useIsPhone';
+import { useAppOptional } from '@/context/AppContext';
+import { userCan } from '@/lib/can';
 
 /**
  * Who the order goes to, and the one button that edits all of it.
@@ -69,6 +71,8 @@ export function CustomerCard({ order, canEdit, dialCode, onAcquireLock, onSaved,
   const ask = useAsk();
   /* A phone lets the card's title and its two buttons wrap onto a second line (ORD-13); a desk keeps the one row. */
   const phone = useIsPhone();
+  // Whether the sentence after raising a request may point at the screen of the requests: only if she can open it.
+  const canOpenQueue = userCan(useAppOptional()?.currentUser ?? null, 'control.change_requests');
   const { regions, countryName } = useRegions();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -168,10 +172,13 @@ export function CustomerCard({ order, canEdit, dialCode, onAcquireLock, onSaved,
         });
         const trimmed = (reason ?? '').trim();
         if (trimmed.length < MIN_REASON) return; // cancelled, or too short to mean anything
-        const { applied } = await raiseEditRequest(order.id, changes, trimmed, order.version);
+        const { applied, message } = await raiseEditRequest(order.id, changes, trimmed, order.version, {
+          canOpenQueue,
+        });
         setOpen(false);
         if (applied) onSaved();
-        else setNotice('بانتظار الموافقة — التعديل انرفع كطلب، والطلب ما تغيّر لحتى حدا يوافق.');
+        // Said where it went: the tab to look in, or who decides it. The order itself has not changed until somebody does.
+        else setNotice(message);
         return;
       }
 

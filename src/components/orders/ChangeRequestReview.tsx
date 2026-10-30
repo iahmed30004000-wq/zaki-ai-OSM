@@ -4,7 +4,9 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { apiJson } from '@/lib/api-client';
-import { changeFieldLabel, PRICE_KEY_REQUIRED_AR } from '@/lib/change-request-fields';
+import { changeFieldLabel, PRICE_KEY_REQUIRED_AR, readLinesChange } from '@/lib/change-request-fields';
+import { LinesRequestReview, type Verdict } from '@/components/orders/LinesRequestReview';
+import { REVIEW_UNCHECKED_AR } from '@/lib/change-request-review';
 import { RiAlertLine, RiArrowLeftLine, RiCheckLine, RiCloseLine, RiLoader4Line } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
 import { arDateTime } from '@/lib/format';
@@ -32,7 +34,8 @@ interface RequestRow {
   id: string;
   orderId: string;
   reason: string;
-  changes: Record<string, { from?: unknown; to?: unknown }> | null;
+  /** Each field as `{ from, to }`; the key `lines` is the one that is not (the request edits several lines). */
+  changes: Record<string, unknown> | null;
   requestedByName?: string | null;
   requestedRole?: string | null;
   createdAt: string;
@@ -62,6 +65,8 @@ export function ChangeRequestReview({
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState<'APPROVED' | 'REJECTED' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** What the check of a lines request says: still asking, or the sentence that shuts the approve button. */
+  const [verdict, setVerdict] = useState<Verdict>({ checking: true, shut: null });
 
   const load = useCallback(async () => {
     try {
@@ -95,7 +100,21 @@ export function ChangeRequestReview({
     }
   };
 
-  const fields = Object.entries(row?.changes ?? {});
+  const fields = Object.entries((row?.changes ?? {}) as Record<string, { from?: unknown; to?: unknown }>).filter(([f]) => f !== 'lines');
+  // A request that edits lines carries its own key; it is read strictly, and one that cannot be read is never approved.
+  const lines = readLinesChange(row?.changes);
+  const linesRequest = lines.ok && lines.value !== null;
+  const approveShut = !row
+    ? null
+    : !lines.ok
+      ? lines.error
+      : linesRequest
+        ? verdict.checking
+          ? 'جارٍ فحص الطلب…'
+          : verdict.unchecked
+            ? REVIEW_UNCHECKED_AR
+            : verdict.shut
+        : null;
 
   return (
     <Modal isOpen onClose={onClose} title={`طلب تعديل · ${row?.order?.orderNumber ?? ''}`}>
@@ -107,7 +126,7 @@ export function ChangeRequestReview({
             </p>
 
             <div className="rounded-lg border border-[var(--sys-border)] divide-y divide-[var(--sys-border)]">
-              {fields.length === 0 ? (
+              {fields.length === 0 && !linesRequest ? (
                 <p className="p-3 text-xs text-[var(--sys-muted)]">لا تفاصيل مرفقة.</p>
               ) : (
                 fields.map(([field, change]) => (
@@ -124,6 +143,13 @@ export function ChangeRequestReview({
                 ))
               )}
             </div>
+
+            {linesRequest && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-[var(--sys-muted-foreground)]">{changeFieldLabel('lines')}</p>
+                <LinesRequestReview requestId={requestId} refreshKey={row.id} onVerdict={setVerdict} />
+              </div>
+            )}
 
             <div className="rounded-lg bg-[var(--sys-surface)] border border-[var(--sys-border)] p-3">
               <p className="text-xs font-semibold text-[var(--sys-muted-foreground)] mb-1">السبب</p>
@@ -158,6 +184,13 @@ export function ChangeRequestReview({
           </p>
         )}
 
+        {approveShut && row?.needsPriceKey !== true && (
+          <p className="flex items-start gap-1.5 text-xs text-[var(--sys-muted-foreground)]">
+            <RiAlertLine className="w-4 h-4 text-[var(--sys-warning)] shrink-0 mt-0.5" />
+            الموافقة مقفلة: {approveShut} الرفض متاح.
+          </p>
+        )}
+
         {error && (
           <p className="text-xs text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-2.5">{error}</p>
         )}
@@ -179,8 +212,8 @@ export function ChangeRequestReview({
           <Button
             size="sm"
             onClick={() => decide('APPROVED')}
-            disabled={!!busy || !row || row.needsPriceKey === true}
-            title={row?.needsPriceKey ? PRICE_KEY_REQUIRED_AR : undefined}
+            disabled={!!busy || !row || row.needsPriceKey === true || approveShut !== null}
+            title={row?.needsPriceKey ? PRICE_KEY_REQUIRED_AR : (approveShut ?? undefined)}
           >
             {busy === 'APPROVED' ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiCheckLine className="w-4 h-4" />}
             موافقة
