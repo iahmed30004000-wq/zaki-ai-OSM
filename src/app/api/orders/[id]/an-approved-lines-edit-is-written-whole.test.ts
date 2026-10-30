@@ -156,6 +156,11 @@ const { fake, requireContext, logAudit, notify, activeOffersFor, adapterFor, can
         fake.customerWrites.push(data);
         return data;
       },
+      /*
+       * The customer as the request found her (30/10): a request whose every value is already on the order is not stamped
+       * «applied», so the route reads her row to tell a new name from the same one. The name the requests below start from.
+       */
+      findUnique: () => ({ fullName: 'أحمد', address: null, city: null, phone: '0790000001', rawPhone: '0790000001', altPhone: null }),
     },
   };
 

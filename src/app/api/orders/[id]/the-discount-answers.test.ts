@@ -690,11 +690,19 @@ describe('Ⅴ · an offer’s order: the order and the shipment say the same, wh
     expect(Number(fake.lines[0].unitPrice) * 3).toBeCloseTo(22, 6);
   });
 
+  /*
+   * 200 → 409 NOTHING_TO_APPLY (30/10, fix/order-columns-never-leave-their-lines). This used to be applied — and stamped
+   * «مطبَّق» — with nothing written. A request whose every value is the one the order holds is no longer stamped: the brief
+   * of that PR, «طلب تعديل لا يكتب شيئاً يُختم مُطبَّق … لا يُختم». What this test was about still holds: no line is
+   * written and the order and the shipment both still read 24.500.
+   */
   it('a discount “changed” to the one it has (0 → 0) writes no line at all, and the shipment is still the order’s 24.500', async () => {
     seedOffer(true);
     approve({ discountAmount: { from: 0, to: 0 } });
     const res = await apply();
-    expect(res.status, await res.clone().text()).toBe(200);
+    expect(res.status, await res.clone().text()).toBe(409);
+    expect((await res.json()).code).toBe('NOTHING_TO_APPLY');
+    expect(fake.request.appliedAt).toBeNull();
     expect(fake.writes).not.toContain('orderItem.update');
     expect(fake.order.totalAmount).toBe(24.5);
     expect(shipment()).toBe(24.5);
@@ -797,11 +805,18 @@ describe('Ⅶ · a statement writes the money, a delivered line is a record: the
     await refused('DISCOUNT_LINE_SETTLED');
   });
 
+  /*
+   * 200 → 409 NOTHING_TO_APPLY (30/10, the same PR as above): the statement still does not refuse it — it is refused, and
+   * not stamped, because it changes nothing at all. The two answers are told apart by their code.
+   */
   it('a discount that is the one it already has is not refused for it, and writes no line', async () => {
     fake.claims = 1;
     approve({ discountAmount: { from: 0, to: 0 } });
     const res = await apply();
-    expect(res.status, await res.clone().text()).toBe(200);
-    expect(fake.writes).not.toContain('orderItem.update');
+    const body = await res.clone().json();
+    expect(body.code, await res.clone().text()).not.toBe('DISCOUNT_STATEMENT_LINKED');
+    expect(body.code).toBe('NOTHING_TO_APPLY');
+    expect(fake.request.appliedAt).toBeNull();
+    expect(fake.writes).toEqual([]);
   });
 });

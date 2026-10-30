@@ -854,6 +854,36 @@ export interface DraftCheck {
 }
 
 /**
+ * THE ORDER'S STORED MONEY AGAINST ITS OWN LINES — `FEE_SOURCE_DRIFT` and `COD_DRIFT`, said in ONE place.
+ *
+ * Two fee figures that disagree come first (the total cannot be checked against either); otherwise the stored total is
+ * held against the lines priced the way the lines save prices them (`beforeCod`) AND against the shipment calculator's
+ * reading of the same rows (`shipmentCod`, `codForOrder`) — the figure the shipping screen collects. Off by more than half
+ * a minor unit from either is drift.
+ *
+ * `draftProblems` asks it of every money draft (blocking for a lines draft only). The order route asks it before the
+ * single-line shorthand rewrites the order's own columns, which it does without touching the lines (`columnsDrift`). One
+ * rule, so the preview and the door cannot disagree about which orders are «off».
+ */
+export function storedMoneyDrift(
+  o: Pick<OrderFlags, 'deliveryFee' | 'shippingCost' | 'storedTotal'>,
+  beforeCod: number,
+  shipmentCod: number | null,
+  mu: number,
+  codBlocking: boolean
+): Problem | null {
+  if (o.deliveryFee !== null && !near(o.deliveryFee, o.shippingCost, mu)) return problem('FEE_SOURCE_DRIFT', true);
+  const off = !near(beforeCod, o.storedTotal, mu) || (shipmentCod !== null && !near(shipmentCod, o.storedTotal, mu));
+  if (!off) return null;
+  return problem('COD_DRIFT', codBlocking, {
+    detail: {
+      stored: text(o.storedTotal, mu),
+      computed: text(shipmentCod !== null && !near(shipmentCod, o.storedTotal, mu) ? shipmentCod : beforeCod, mu),
+    },
+  });
+}
+
+/**
  * EVERYTHING WRONG OR WORTH SAYING ABOUT A DRAFT, in one list: blocking first, then by code, then by line.
  *
  * Refusal beats guessing, always (owner rule, 28/10): a stored total that disagrees with its own lines, two fee
@@ -887,22 +917,8 @@ export function draftProblems(check: DraftCheck): Problem[] {
     if (check.nextDiscount > after.subtotal) {
       out.push(problem('DISCOUNT_EXCEEDS_TOTAL', true, { detail: { max: text(after.subtotal, mu) } }));
     }
-    const twoFees = o.deliveryFee !== null && !near(o.deliveryFee, o.shippingCost, mu);
-    if (twoFees) {
-      out.push(problem('FEE_SOURCE_DRIFT', true));
-    } else {
-      const off = !near(before.cod, o.storedTotal, mu) || (facts.shipmentCod !== null && !near(facts.shipmentCod, o.storedTotal, mu));
-      if (off) {
-        out.push(
-          problem('COD_DRIFT', lineDraft, {
-            detail: {
-              stored: text(o.storedTotal, mu),
-              computed: text(facts.shipmentCod !== null && !near(facts.shipmentCod, o.storedTotal, mu) ? facts.shipmentCod : before.cod, mu),
-            },
-          })
-        );
-      }
-    }
+    const drift = storedMoneyDrift(o, before.cod, facts.shipmentCod, mu, lineDraft);
+    if (drift) out.push(drift);
     if (o.priceIncludesDelivery && !near(after.revenue, before.revenue, mu)) {
       out.push(
         problem('PRICE_INCLUDES_DELIVERY', false, {
