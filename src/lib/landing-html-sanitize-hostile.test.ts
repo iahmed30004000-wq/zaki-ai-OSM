@@ -2,6 +2,33 @@ import { describe, expect, it } from 'vitest';
 import { sanitizeLandingCss, sanitizeLandingHtml, sanitizeLandingHtmlStrict } from './landing-html-sanitize';
 
 /**
+ * HOW THESE TESTS TELL «SLOW» FROM «QUADRATIC».
+ *
+ * They are timing tests, and a timing test has two ways to lie: a slow shared
+ * CI machine (the first version used 100 ms and failed at 114.8 ms and 117.4 ms
+ * on inputs that take 20 ms here — nothing to do with security), and a fast
+ * one that lets a real regression through. What separates the two is the SHAPE
+ * of the cost, not its size: the crawls this file guards against took seconds
+ * (3.9 s, 4.3 s, 17.8 s, 28 s on 256-512 KB), and linear work on the same
+ * input takes tens of milliseconds. So the budget is 750 ms — an order of
+ * magnitude above the slowest CI run seen and far below the cheapest crawl —
+ * and each measurement is the BEST of three runs, which drops a one-off pause
+ * (GC, a noisy neighbour) instead of failing on it. A crawl is slow every time.
+ */
+const BUDGET_MS = 750;
+const RUNS = 3;
+function bestOf<T>(fn: () => T): { ms: number; value: T } {
+  let best = Infinity;
+  let value: T | undefined;
+  for (let i = 0; i < RUNS; i++) {
+    const t = performance.now();
+    value = fn();
+    best = Math.min(best, performance.now() - t);
+  }
+  return { ms: best, value: value as T };
+}
+
+/**
  * INPUT BUILT TO MAKE THE CLEANER CRAWL, AND THE PAGES THAT ARE NOT.
  *
  * (Where the page's styles go is in `landing-html-sanitize-structure.test.ts`.)
@@ -12,16 +39,12 @@ import { sanitizeLandingCss, sanitizeLandingHtml, sanitizeLandingHtmlStrict } fr
  *
  * Measured before the fix, on 256 KB: `<meta ` 8.9 s, `<script ` 5.2 s, a run
  * of letters 28 s. None of them is a page; every one is refused or cleaned in
- * a few milliseconds now. The budget the review set is 100 ms.
+ * a few milliseconds now. The budget is explained at the top of the file.
  */
 describe('hostile input is cheap', () => {
   const N = 256 * 1024;
   const rep = (s: string) => s.repeat(Math.floor(N / s.length));
-  const timed = <T>(fn: () => T): { ms: number; value: T } => {
-    const t = performance.now();
-    const value = fn();
-    return { ms: performance.now() - t, value };
-  };
+  const timed = bestOf;
 
   const hostile: Record<string, string> = {
     '<script> repeated, never closed': rep('<script>'),
@@ -44,9 +67,9 @@ describe('hostile input is cheap', () => {
   };
 
   for (const [name, html] of Object.entries(hostile)) {
-    it(`${name}: under 100 ms`, () => {
+    it(`${name}: under ${BUDGET_MS} ms`, () => {
       const { ms } = timed(() => sanitizeLandingHtml(html));
-      expect(ms).toBeLessThan(100);
+      expect(ms).toBeLessThan(BUDGET_MS);
     });
   }
 
@@ -74,7 +97,7 @@ describe('hostile input is cheap', () => {
     const page = '<!doctype html><html><head><title>t</title></head><body>' + '<div class="a"><p>نص <b>عرض</b></p><img src="https://cdn.example/x.jpg" alt="x"></div>\n'.repeat(2500) + '</body></html>';
     const { ms, value } = timed(() => sanitizeLandingHtmlStrict(page));
     expect(value).toBe(page);
-    expect(ms).toBeLessThan(500);
+    expect(ms).toBeLessThan(BUDGET_MS);
   });
 
   it('a script full of comparisons next to arrows is still not mistaken for an attack', () => {
@@ -95,11 +118,7 @@ describe('hostile input is cheap', () => {
 describe('hostile css is cheap', () => {
   const N = 256 * 1024;
   const rep = (s: string) => s.repeat(Math.floor(N / s.length));
-  const ms = (fn: () => unknown) => {
-    const t = performance.now();
-    fn();
-    return performance.now() - t;
-  };
+  const ms = (fn: () => unknown) => bestOf(fn).ms;
 
   const css: Record<string, string> = {
     'comment openers, never closed': rep('/*a'),
@@ -123,11 +142,11 @@ describe('hostile css is cheap', () => {
   };
 
   for (const [name, text] of Object.entries(css)) {
-    it(`${name}: under 100 ms through the css door`, () => {
-      expect(ms(() => sanitizeLandingCss(text))).toBeLessThan(100);
+    it(`${name}: under ${BUDGET_MS} ms through the css door`, () => {
+      expect(ms(() => sanitizeLandingCss(text))).toBeLessThan(BUDGET_MS);
     });
-    it(`${name}: under 100 ms inside a style block of a file`, () => {
-      expect(ms(() => sanitizeLandingHtmlStrict(`<style>${text}</style>`))).toBeLessThan(100);
+    it(`${name}: under ${BUDGET_MS} ms inside a style block of a file`, () => {
+      expect(ms(() => sanitizeLandingHtmlStrict(`<style>${text}</style>`))).toBeLessThan(BUDGET_MS);
     });
   }
 
@@ -192,11 +211,7 @@ describe('a big, ordinary project file passes the strict door', () => {
 describe('deleting a tag does not make the rest crawl', () => {
   const N = 256 * 1024;
   const rep = (s: string, bytes = N) => s.repeat(Math.floor(bytes / s.length));
-  const ms = (fn: () => unknown) => {
-    const t = performance.now();
-    fn();
-    return performance.now() - t;
-  };
+  const ms = (fn: () => unknown) => bestOf(fn).ms;
   const joins: Record<string, string> = {
     '<meta <script>': rep('<meta <script>'),
     '<form <script>': rep('<form <script>'),
@@ -213,9 +228,9 @@ describe('deleting a tag does not make the rest crawl', () => {
   };
 
   for (const [name, html] of Object.entries(joins)) {
-    it(`${name}: under 100 ms, and refused rather than cleaned slowly`, () => {
+    it(`${name}: under ${BUDGET_MS} ms, and refused rather than cleaned slowly`, () => {
       let out: string | null = '';
-      expect(ms(() => { out = sanitizeLandingHtmlStrict(html); })).toBeLessThan(100);
+      expect(ms(() => { out = sanitizeLandingHtmlStrict(html); })).toBeLessThan(BUDGET_MS);
       expect(out).toBeNull();
     });
   }
@@ -224,13 +239,13 @@ describe('deleting a tag does not make the rest crawl', () => {
     // <meta <meta <script>> … : removing the innermost script joins the metas around it
     const depth = 2000;
     const html = '<meta '.repeat(depth) + '<script>' + '>'.repeat(depth);
-    expect(ms(() => sanitizeLandingHtmlStrict(html))).toBeLessThan(100);
+    expect(ms(() => sanitizeLandingHtmlStrict(html))).toBeLessThan(BUDGET_MS);
     const big = '<meta <script>'.repeat(4000) + '<meta '.repeat(20000);
-    expect(ms(() => sanitizeLandingHtmlStrict(big))).toBeLessThan(100);
+    expect(ms(() => sanitizeLandingHtmlStrict(big))).toBeLessThan(BUDGET_MS);
   });
 
   it('through the lenient door the answer is empty, and as fast', () => {
-    expect(ms(() => expect(sanitizeLandingHtml(joins['<meta <script>'])).toBe(''))).toBeLessThan(100);
+    expect(ms(() => expect(sanitizeLandingHtml(joins['<meta <script>'])).toBe(''))).toBeLessThan(BUDGET_MS);
   });
 
   // negative: the same tags, ordinary and closed, are a page
