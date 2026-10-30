@@ -176,7 +176,8 @@ const ID_SCOPED: Record<string, Excuse> = {
   'app/api/geo/countries/[id]/route.ts': { reason: 'عدٌّ ليُعرَفَ هل يُحذَفُ بلد — ليس رقماً يُعرَض', sites: 1 },
   // old → new (PR-6): 1 → 2. The second is the price gate's read of THIS order's lines (`orderId` + `companyId`), asked only of a person who lacks `orders.change_price`.
   // old → new (30/10, قلم التجهيز): 2 → 4. The third (and, after the reviews of #116, a fourth: the add-on count that refuses a quantity on an order carrying one) is the packing table's read of THIS order's lines (`orderId` + `companyId`) to rebuild a quantity's money from the stored piece price.
-  'app/api/orders/[id]/route.ts': { reason: 'مقيَّد بـ orderId واحد — إضافاتُ طلبٍ بعينه وسطورُه (بوابة السعر وقلم التجهيز)', sites: 4 },
+  // old → new (30/10, الأعمدة لا تفارق الأسطر): 4 → 6. The fifth and sixth are the single-line shorthand's read of THIS order's lines and add-ons (`orderId` + `companyId`), to refuse moving the goods of an order that has lines and to refuse writing over columns that already disagree with them.
+  'app/api/orders/[id]/route.ts': { reason: 'مقيَّد بـ orderId واحد — إضافاتُ طلبٍ بعينه وسطورُه (بوابة السعر وقلم التجهيز وفحص الاختصار)', sites: 6 },
   'app/api/orders/import/migrate/route.ts': { reason: 'مقيَّد بأرقام طلباتٍ مُسمّاة من الملف — هل الرقم محجوز لطلبٍ آخر', sites: 1 },
   'app/api/whatsapp/conversations/[id]/route.ts': { reason: 'مقيَّد بـ customerId واحد — محادثةٌ بعينها', sites: 1 },
   'lib/commission-metrics.ts': { reason: 'مقيَّد بـ orderId: { in } ومستخدمٍ واحد', sites: 1 },

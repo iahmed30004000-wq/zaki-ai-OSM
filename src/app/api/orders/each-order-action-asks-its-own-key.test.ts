@@ -165,7 +165,15 @@ describe('THE PRICE — orders.change_price', () => {
     as(...EDIT, 'orders.change_price');
     const res = await patch({ discountAmount: 5, reason: 'خصم للزبون' });
     expect(await codeOf(res)).not.toBe('PRICE_FORBIDDEN');
-    expect(db.orderItem.findMany).not.toHaveBeenCalled();
+    /*
+     * «no lines read» → «the price gate's read of the lines is not made» (30/10, fix/order-columns-never-leave-their-lines).
+     * The shorthand now reads the order's lines AFTER the gate, with its own shape, to refuse rebuilding the total from two
+     * columns that do not describe them (`LINES_DRIFT`). That read is not the price question this test is about; the gate's
+     * own read — `productId · quantity · lineTotal · discountShare` — is still never made for a person with the key.
+     */
+    const GATE_SELECT = JSON.stringify({ productId: true, quantity: true, lineTotal: true, discountShare: true });
+    const gateReads = db.orderItem.findMany.mock.calls.filter((call: unknown[]) => JSON.stringify((call[0] as { select?: unknown } | undefined)?.select) === GATE_SELECT);
+    expect(gateReads).toEqual([]);
     expect(db.product.findMany).not.toHaveBeenCalled();
   });
 

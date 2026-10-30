@@ -35,7 +35,8 @@ import { count, money as amount } from '@/lib/numeric-input';
 const { db, requireContext, authorize, can, getPermissionScope, logAudit, notify } = vi.hoisted(() => ({
   db: {
     order: { findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
-    orderItem: { findFirst: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn() },
+    // `findMany`: the shorthand reads the order's line rows before it writes the columns (30/10); this order has none.
+    orderItem: { findFirst: vi.fn(), findMany: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn() },
     orderAddOn: { findMany: vi.fn() },
     orderChannel: { findFirst: vi.fn() },
     shippingBatch: { findFirst: vi.fn() },
@@ -152,6 +153,8 @@ beforeEach(() => {
   db.order.findUnique.mockResolvedValue(ORDER);
   db.orderAddOn.findMany.mockResolvedValue([]);
   db.orderItem.findFirst.mockResolvedValue(null);
+  // No line rows: an order whose columns are its only record, where the single-line shorthand still edits the order.
+  db.orderItem.findMany.mockResolvedValue([]);
   db.product.findFirst.mockResolvedValue({ id: PRODUCT_ID, name: 'كريم مرطّب' });
   db.product.findMany.mockResolvedValue([{ id: PRODUCT_ID, name: 'كريم مرطّب' }]);
   db.order.updateMany.mockResolvedValue({ count: 1 });

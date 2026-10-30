@@ -128,9 +128,26 @@ const orderRow = (over: Row = {}) => ({
   ...over,
 });
 
+/*
+ * THE LINES THEMSELVES (30/10). The route now READS the rows whenever the shorthand names the goods — to refuse it on an
+ * order that has lines, and to refuse writing over columns that disagree with them — so the rows are modelled, and they
+ * say what the order's own columns say: one line of three for 36 (one free), or two lines of 3 × 12 and 2 × 12 for the
+ * orders of five for 60 below.
+ */
+const linesFor = (order: Row, lineRows: number): Row[] =>
+  lineRows === 0
+    ? []
+    : lineRows === 1
+      ? [{ id: 'l-first', quantity: order.quantity, freeQuantity: order.freeQuantity, unitPrice: order.sellingPrice / order.quantity, discountShare: 0, lineTotal: order.sellingPrice }]
+      : [
+          { id: 'l-first', quantity: 3, freeQuantity: 0, unitPrice: 12, discountShare: 0, lineTotal: 36 },
+          { id: 'l-second', quantity: 2, freeQuantity: 0, unitPrice: 12, discountShare: 0, lineTotal: 24 },
+        ];
+
 /** A world that keeps what the route writes, so the figures can be read back. */
 function world(order: Row, lineRows = 1) {
   const orderWrites: Row[] = [];
+  const lines = linesFor(order, lineRows);
   const db: Row = {
     order: {
       updateMany: async ({ data }: any) => (orderWrites.push(data), { count: 1 }),
@@ -141,10 +158,12 @@ function world(order: Row, lineRows = 1) {
     orderItem: {
       // The route asks for the line AFTER the first: it exists only when there are two or more.
       findFirst: async ({ skip }: any = {}) => (skip && lineRows > skip ? { id: 'l-second' } : null),
-      findMany: async () => [],
+      findMany: async () => lines.map((l) => ({ ...l })),
       deleteMany: async () => ({ count: 0 }),
       createMany: async () => ({ count: 0 }),
       updateMany: async () => ({ count: 0 }),
+      // a discount alone is spread over the lines in place (`the-discount-answers.test.ts`); this file reads the order
+      update: async () => ({}),
     },
     // No add-ons on this order. The route reads them so an accepted upsell
     // is not dropped by a line edit; an empty answer is the measured state.
@@ -260,12 +279,22 @@ describe('an order with two lines', () => {
   });
 });
 
-describe('an order with one line, or none, is as before', () => {
-  it('one line: 3 pieces for 36 raised to 5 is 60', async () => {
+describe('an order with one line is refused too now; with none, it is as before', () => {
+  /*
+   * < 300 and 60 written → 409 LINES_REQUIRED and nothing written (30/10, fix/order-columns-never-leave-their-lines).
+   *
+   * The shorthand wrote 60 onto the order's columns and left the ONE line at three for 36: the order read 60 while the
+   * shipping screen (which prices the parcel from the lines) and the shelf still read three. That is ORD-2026-0733. The
+   * fixture used to say «one line» only to the second-line question and «no lines» to everything else, which is how this
+   * passed. The lines save (`items`) is the door that moves them; the arithmetic this file guarded is now
+   * `a-bigger-order-costs-more.test.ts`'s, on an order with no line rows, where the shorthand still works.
+   */
+  it('one line: 3 pieces for 36 raised to 5 is refused, and nothing is written', async () => {
     const w = install(world(orderRow(), 1));
     const res = await edit({ quantity: 5 });
-    expect(res.status, await res.clone().text()).toBeLessThan(300);
-    expect(written(w)).toEqual({ sellingPrice: 60, quantity: 5, totalAmount: 60 });
+    expect(res.status, await res.clone().text()).toBe(409);
+    expect((await res.json()).code).toBe('LINES_REQUIRED');
+    expect(wrote(w), 'الطلب انكتب رغم الرفض').toBe(0);
   });
 
   it('no line rows at all (an old order): the shorthand still works', async () => {

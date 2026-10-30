@@ -1,10 +1,13 @@
 import type { ApprovedLineEdit, LinesChange } from './change-request-fields';
-import { roundMinor } from './money';
+import { codForOrder } from './delivery-fees';
+import { moneyText, roundMinor, totalsBeforeDiscount } from './money';
 import { inChunks } from './in-chunks';
 import { readOrderEditFacts, type EditableOrderRow } from './order-edit-facts';
 import {
   previewLineEdit,
+  priceOrderLines,
   stockEffect,
+  storedMoneyDrift,
   type LineEditInput,
   type OrderEditFacts,
   type PreviewDraft,
@@ -175,6 +178,147 @@ export function refusalOf(problems: readonly Problem[]): Refusal | null {
     default:
       return { status: 409, code: hit.code, error: hit.messageAr };
   }
+}
+
+/* ═══════════════════════════ the order's own columns against its lines (30/10) ═══════════════════════════ */
+
+/*
+ * ORD-2026-0733, MEASURED: the order's columns said «10 for 100» and its one line still said «1 for 15». The shipping screen
+ * prices the parcel from the LINES (`codForOrder`) and the shelf held one unit, so the courier was told 15 and the order read
+ * 100. The door that did it was the single-line shorthand of `PATCH /api/orders/[id]`: it rewrites `quantity`, `sellingPrice`
+ * and `totalAmount` from the order's own columns and never writes a line. The owner: «اي قرار بعد الان اتخذو دون الرجوع الي»
+ * — so the safest answer, and the smallest: the shorthand may not move the goods of an order that HAS lines (the lines save
+ * and the approved-request plan do that, lines and shelf in one write), and it may not write over columns that already
+ * disagree with the lines. A request that would change nothing at all is not stamped «applied».
+ */
+
+const LINES_REQUIRED_AR =
+  'الطلب إلو أسطر — الكمية والسعر والمنتج بيتعدّلوا من قائمة البنود، مش من حقول الطلب لحالها، حتى ما يختلف الطلب عن أسطره.';
+const NOTHING_TO_APPLY_AR = 'ما في شي يتغيّر — الطلب أصلاً على هالقيم. ما انكتب شي وما انختم الطلب «مطبَّق».';
+
+/** The shorthand would move the goods of an order that has lines, and write none of them. */
+export const linesRequired = (): Refusal => ({ status: 409, code: 'LINES_REQUIRED', error: LINES_REQUIRED_AR });
+
+/** An approved request whose every value is what the order already holds: nothing to write, so nothing to stamp. */
+export const nothingToApply = (): Refusal => ({ status: 409, code: 'NOTHING_TO_APPLY', error: NOTHING_TO_APPLY_AR });
+
+/** One stored line as the database holds it — the columns both calculators read. */
+export interface LineRow {
+  quantity: number;
+  freeQuantity: number;
+  unitPrice: number | { toString(): string };
+  discountShare: number | { toString(): string };
+  lineTotal: number | { toString(): string };
+}
+
+/**
+ * DO THE ORDER'S COLUMNS STILL SAY WHAT ITS LINES SAY? Null when they do, or the refusal when they do not.
+ *
+ * Asked before the single-line shorthand rewrites the order's columns — which it does FROM those columns, never from the
+ * lines. Three questions, the first two in the order the preview asks them:
+ *
+ *   FEE_SOURCE_DRIFT  two fee figures on the order: which one the total carries cannot be said.
+ *   COD_DRIFT         the stored total against the lines, by the ONE rule the preview uses (`storedMoneyDrift`): priced as
+ *                     the lines save prices them, and as the shipment calculator reads them.
+ *                     Both are asked only when `goods` — the shorthand names a quantity, a price or a product, which the
+ *                     preview judges as a lines draft (blocking). A discount alone over a drifting total only WARNS there
+ *                     («a discount alone over a drifting order only warns», `order-line-edit.test.ts`), and a fee alone is
+ *                     how two fee figures are brought back to one — neither is overruled here.
+ *   LINES_DRIFT       the two columns the shorthand rebuilds the total from: `quantity` must be the lines' paid units and
+ *                     `sellingPrice` their subtotal before the discount (what the lines save writes). Where they are not —
+ *                     a storefront basket stores its LARGEST line there (`public-order.ts`, «the head of the order») — the
+ *                     shorthand would write a total that drops the other lines: a 0 → 3 discount on 20 + 5 (+ 2.500) wrote
+ *                     19.500 while the lines, and the shipping screen, said 24.500. Measured on the real route.
+ *
+ * No line, nothing to disagree with: an old order kept only its columns, and they are the record.
+ */
+export function columnsDrift(input: {
+  order: {
+    quantity: number;
+    sellingPrice: number;
+    totalAmount: number;
+    discount: number;
+    shippingCost: number;
+    deliveryFee: number | null;
+    priceIncludesDelivery: boolean;
+  };
+  rows: readonly LineRow[];
+  addOns: ReadonlyArray<{ quantity: number; price: number | { toString(): string } }>;
+  minorUnit: number;
+  /** The shorthand names the goods (a quantity, a price or a product): the stored total is judged too. */
+  goods: boolean;
+}): Refusal | null {
+  const { order: o, rows, minorUnit: mu } = input;
+  if (rows.length === 0) return null;
+  const addOns = input.addOns.map((a) => ({ quantity: a.quantity, price: Number(a.price) }));
+  // The same reading `readOrderEditFacts` makes of the same rows: each line's total before the discount it carries.
+  const before = totalsBeforeDiscount(rows, o.discount, mu);
+  const priced = priceOrderLines({
+    lines: rows.map((r, i) => ({ quantity: r.quantity, lineTotal: before[i] ?? 0, freeQuantity: r.freeQuantity })),
+    discount: o.discount,
+    deliveryFee: o.shippingCost,
+    priceIncludesDelivery: o.priceIncludesDelivery,
+    addOns,
+    minorUnit: mu,
+  });
+  const shipmentCod = codForOrder({
+    lines: rows.map((r) => ({
+      quantity: r.quantity,
+      unitPrice: Number(r.unitPrice),
+      freeQuantity: r.freeQuantity,
+      discountShare: Number(r.discountShare),
+      lineTotal: Number(r.lineTotal),
+    })),
+    addOns,
+    deliveryFee: o.deliveryFee ?? o.shippingCost,
+    priceIncludesDelivery: o.priceIncludesDelivery,
+    minorUnit: mu,
+  }).cod;
+  const money = storedMoneyDrift(
+    { deliveryFee: o.deliveryFee, shippingCost: o.shippingCost, storedTotal: o.totalAmount },
+    priced.totals.cod,
+    shipmentCod,
+    mu,
+    true
+  );
+  if (money && input.goods) return refusalOf([money]);
+  const units = rows.reduce((sum, r) => sum + r.quantity, 0);
+  if (units !== o.quantity || !near(priced.totals.subtotal, o.sellingPrice, mu)) {
+    const said = (q: number, total: number) => `${q} بـ${moneyText(total, null, mu)}`;
+    return {
+      status: 409,
+      code: 'LINES_DRIFT',
+      error: `كمية الطلب وسعره المخزّنين (${said(o.quantity, o.sellingPrice)}) ما بيطابقوا أسطره (${said(units, priced.totals.subtotal)}) — ما منكتب فوقهم.`,
+    };
+  }
+  return null;
+}
+
+/** Two values as one column holds them: money within half a minor unit, a date by its instant, anything else exactly. */
+function sameValue(was: unknown, next: unknown, minorUnit: number): boolean {
+  if (was instanceof Date || next instanceof Date) {
+    return was instanceof Date && next instanceof Date && was.getTime() === next.getTime();
+  }
+  if (typeof next === 'number') {
+    // A column the row does not carry (or carries empty) and a figure about to be written are not the same thing.
+    if (was === null || was === undefined) return false;
+    const n = Number(was);
+    return Number.isFinite(n) && near(n, next, minorUnit);
+  }
+  return (was ?? null) === (next ?? null);
+}
+
+/**
+ * THE KEYS OF A WRITE THAT WOULD CHANGE SOMETHING — those whose value differs from what the row already holds.
+ *
+ * Asked of the write as it is about to go, not of the request: an approved «quantity 10» on an order that already says 10
+ * becomes a write of the very figures the row holds, and that is not an edit. A key the row does not carry counts as a
+ * change (the cautious side: when it cannot be shown that nothing moves, nothing is refused).
+ */
+export function changedKeys(row: Readonly<Record<string, unknown>>, write: Readonly<Record<string, unknown>>, minorUnit: number): string[] {
+  return Object.entries(write)
+    .filter(([key, next]) => next !== undefined && !sameValue(row[key], next, minorUnit))
+    .map(([key]) => key);
 }
 
 /** The order with the approved lines in it no longer comes to what the decider was shown (the request recorded it). */

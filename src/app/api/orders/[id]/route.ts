@@ -41,7 +41,8 @@ import {
 } from '@/lib/prep-edit';
 import { availableStock, reserveOrderLines } from '@/lib/reservation';
 import {
-  APPLIED_AR, AppliedMeanwhile, LinesChanged, blockedByStock, costAfterEdit, costProductIds, linesAreStill, linesStale, planLineApply,
+  APPLIED_AR, AppliedMeanwhile, LinesChanged, blockedByStock, changedKeys, columnsDrift, costAfterEdit, costProductIds, linesAreStill,
+  linesRequired, linesStale, nothingToApply, planLineApply,
   type LineApply,
 } from '@/lib/order-line-apply';
 import { SETTLEMENT_OPEN, type EditableOrderRow } from '@/lib/order-edit-facts';
@@ -1735,6 +1736,61 @@ export async function PATCH(
           }
         }
         /*
+         * ── AND WITH ONE LINE TOO, THE COLUMNS AND THE LINES NEVER PART (30/10, ORD-2026-0733) ──
+         *
+         * Everything below rebuilds the order's own `quantity`, `sellingPrice` and `totalAmount` FROM THOSE COLUMNS and writes
+         * NO line: so a direct «quantity 10» on an order of one line «1 × 15» left the order reading 10 for 150 while the line,
+         * which the shipping screen prices the parcel from (`codForOrder`) and the shelf holds against, still said one for 15.
+         * The owner: «اي قرار بعد الان اتخذو دون الرجوع الي». Decided, the cautious way and the smaller one (no figure is
+         * computed differently; a write that would leave the two apart is refused instead):
+         *
+         *   · a DIRECT shorthand that moves the goods of an order WITH lines is refused (`LINES_REQUIRED`) — the lines save
+         *     (`items`, which every screen sends) writes the lines and the columns from one `computeCod`;
+         *   · an APPROVED request reaches here only when the plan could not carry it onto the one line — refused the same way,
+         *     never written onto the columns alone;
+         *   · a shorthand that names the goods without moving them (the same figures again) may not write over a stored total
+         *     that already disagrees with the lines (`COD_DRIFT` / `FEE_SOURCE_DRIFT`, by the preview's own rule) — that is
+         *     how a request on ORD-2026-0733 would have been stamped «applied» with the line left at one;
+         *   · and NO shorthand — a discount or a fee alone included — rebuilds the total from two columns that do not describe
+         *     the lines (`LINES_DRIFT`): a storefront basket keeps its largest line there, and a discount of 3 on 20 + 5 wrote
+         *     19.500 against the lines' 24.500. (A discount alone over a drifting total keeps the preview's rule — it warns —
+         *     and a fee alone is how two fee figures are made one again; neither is refused for the total.)
+         *
+         * An order with no line rows at all (an old one) keeps the shorthand: its columns are its only record.
+         */
+        const rows = await db.orderItem.findMany({
+          where: { orderId: id, companyId },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          select: { quantity: true, freeQuantity: true, unitPrice: true, discountShare: true, lineTotal: true },
+        });
+        if (rows.length > 0) {
+          const addOnRows = await db.orderAddOn.findMany({
+            where: { orderId: id, companyId },
+            select: { quantity: true, price: true },
+          });
+          const drift = columnsDrift({
+            order: {
+              quantity: Number(existing.quantity ?? 0),
+              sellingPrice: Number(existing.sellingPrice ?? 0),
+              totalAmount: Number(existing.totalAmount ?? 0),
+              discount: Number(existing.discountAmount ?? 0),
+              shippingCost: Number(existing.shippingCost ?? 0),
+              // The fee the courier table wrote, when one did: a second figure, read as `readOrderEditFacts` reads it.
+              deliveryFee: existing.deliveryFee === null || existing.deliveryFee === undefined ? null : Number(existing.deliveryFee),
+              priceIncludesDelivery: existing.priceIncludesDelivery === true,
+            },
+            rows,
+            addOns: addOnRows,
+            minorUnit: country.minorUnit,
+            goods: sellingPrice !== undefined || quantity !== undefined || productId !== undefined,
+          });
+          // The direct door is told to send the lines; a request that met drift is told the drift, which is its reason.
+          const refused = changesTheGoods && (!viaRequest || !drift) ? linesRequired() : drift;
+          if (refused) {
+            return NextResponse.json({ error: refused.error, errorAr: refused.error, code: refused.code }, { status: refused.status });
+          }
+        }
+        /*
          * A discount that is the one the order already has changes nothing — and rewriting the lines for it would only be a
          * chance to disturb them. Only a CHANGED discount is spread again.
          */
@@ -1924,6 +1980,49 @@ export async function PATCH(
           { error: mayNameThem ? `رقم الهاتف مستخدم بالفعل للعميل: ${dupe.fullName}` : 'رقم الهاتف مستخدم لعميل آخر', code: 'DUPLICATE_PHONE' },
           { status: 409 }
         );
+      }
+    }
+
+    // What the customer's own row is given — built here so the question below asks it of the very write the transaction makes.
+    const custData: any = {};
+    if (editingCustomer) {
+      if (customerName !== undefined) custData.fullName = customerName;
+      if (customerAddress !== undefined) custData.address = customerAddress;
+      // Keep the written city in step with the chosen governorate.
+      if (regionName !== undefined) custData.city = regionName;
+      if (customerPhone !== undefined) {
+        custData.phone = normalizePhoneNumber(customerPhone, country.code);
+        custData.rawPhone = customerPhone;
+      }
+      if (customerAltPhone !== undefined) {
+        custData.altPhone = customerAltPhone?.trim() || null;
+      }
+    }
+
+    /*
+     * ── AN APPROVED REQUEST THAT CHANGES NOTHING IS NOT STAMPED «APPLIED» (30/10) ──
+     *
+     * The stamp (`appliedAt`, inside the write below, #120) says «this decision is now written on the order». A request whose
+     * every value is what the order already holds — «quantity 10» on an order that already reads 10 — reached it with a
+     * write of the very same figures, and the queue moved it to «مطبَّق» while nothing had changed (and on ORD-2026-0733 the
+     * line it was about still said one). So the write is asked, as it is about to go, whether it moves any column of the
+     * order or of the customer's row; if it moves none, nothing is written, nothing is stamped, and the answer says why.
+     * A line the plan rewrites is a change by itself. Asked BEFORE the company is told to cancel a parcel for it.
+     */
+    if (viaRequest && !lineApply) {
+      const moves = changedKeys(existing as unknown as Record<string, unknown>, updateData, country.minorUnit);
+      let customerMoves = false;
+      if (moves.length === 0 && Object.keys(custData).length > 0) {
+        const held = await db.customer.findUnique({
+          where: { id: existing.customerId },
+          select: { fullName: true, address: true, city: true, phone: true, rawPhone: true, altPhone: true },
+        });
+        // A row that cannot be read is not shown to be unchanged.
+        customerMoves = !held || changedKeys(held as Record<string, unknown>, custData, country.minorUnit).length > 0;
+      }
+      if (moves.length === 0 && !customerMoves) {
+        const none = nothingToApply();
+        return NextResponse.json({ error: none.error, errorAr: none.error, code: none.code }, { status: none.status });
       }
     }
 
@@ -2195,23 +2294,9 @@ export async function PATCH(
         }
       }
 
-      // Customer information edit — same transaction as the order write
-      if (editingCustomer) {
-        const custData: any = {};
-        if (customerName !== undefined) custData.fullName = customerName;
-        if (customerAddress !== undefined) custData.address = customerAddress;
-        // Keep the written city in step with the chosen governorate.
-        if (regionName !== undefined) custData.city = regionName;
-        if (customerPhone !== undefined) {
-          custData.phone = normalizePhoneNumber(customerPhone, country.code);
-          custData.rawPhone = customerPhone;
-        }
-        if (customerAltPhone !== undefined) {
-          custData.altPhone = customerAltPhone?.trim() || null;
-        }
-        if (Object.keys(custData).length > 0) {
-          await tx.customer.update({ where: { id: existing.customerId }, data: custData });
-        }
+      // Customer information edit — same transaction as the order write (the row's new values were built above)
+      if (editingCustomer && Object.keys(custData).length > 0) {
+        await tx.customer.update({ where: { id: existing.customerId }, data: custData });
       }
 
       // Side effects (run on tx so they commit atomically with the write)
