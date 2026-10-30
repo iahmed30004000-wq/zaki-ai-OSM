@@ -127,6 +127,16 @@ export async function consumeOrderStock(
   if (await alreadyMoved(tx, input.orderId, SALE)) {
     return { taken: 0, short: 0, alreadyDone: true, cost: 0 };
   }
+  /*
+   * AN ORDER DELIVERED ON A SHELF THAT HELD NOTHING WROTE NO SALE LINE — there was nothing to move — so the key above
+   * cannot see it. Its review line is the proof it was already consumed; without this, a second press after new
+   * stock arrived would take that stock for a delivery that had already been recorded.
+   */
+  const reviewed = await tx.orderActivity.findFirst({
+    where: { orderId: input.orderId, companyId: input.companyId, action: STOCK_SHORT_ACTION },
+    select: { id: true },
+  });
+  if (reviewed) return { taken: 0, short: 0, alreadyDone: true, cost: 0 };
 
   const order = await tx.order.findFirst({
     where: { id: input.orderId, companyId: input.companyId },
@@ -251,12 +261,18 @@ export async function consumeOrderStock(
    * it and renaming a column is not what this is. After delivery it is
    * no longer an estimate.
    *
+   * AND NEVER WHEN ANYTHING WAS SHORT (P0-13 review). Cost over the units that
+   * left is a cost of PART of the parcel: 4 of 10 units at 5 is 20 written over
+   * an estimate of 50 for the whole order, and the profit rises by 30 on goods
+   * that were all handed over. A short order keeps its estimate — the guess
+   * about the whole parcel is closer than a true figure about part of it.
+   *
    * Only when something was actually drawn: an order served from an
    * empty shelf (negative stock allowed) took no money out of any batch,
    * and writing zero over the estimate would be replacing a guess with a
    * falsehood.
    */
-  if (taken > 0) {
+  if (taken > 0 && short === 0) {
     await tx.order.update({
       where: { id: input.orderId },
       // Rounded by the CURRENCY. Two decimals here was the same defect found

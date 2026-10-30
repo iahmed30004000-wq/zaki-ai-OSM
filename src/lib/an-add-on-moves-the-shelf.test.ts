@@ -120,6 +120,8 @@ function shelfTx(order: Record<string, unknown>) {
     inventoryMovement: { findFirst: vi.fn(async (a: { where: { type: string } }) => (a.where.type === 'SALE' ? { id: 'sold' } : null)), create: vi.fn() },
     order: { findFirst: vi.fn(async () => order), update: vi.fn() },
     orderItem: { updateMany: vi.fn() },
+    // No review line on the order: it was not delivered short before.
+    orderActivity: { create: vi.fn(), findFirst: vi.fn(async () => null) },
     orderAddOn: { updateMany: vi.fn() },
     productionBatch: { findFirst: vi.fn(async () => ({ costPerUnit: 4 })), create: vi.fn(async () => ({ id: 'b-new' })) },
   };

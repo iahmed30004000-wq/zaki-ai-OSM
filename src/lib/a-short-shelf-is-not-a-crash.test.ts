@@ -49,7 +49,7 @@ const { db, requireContext, requirePermission, logAudit } = vi.hoisted(() => ({
     // An order with no add-ons, unless a test says otherwise — plain functions, so a mock reset leaves them answering.
     orderAddOn: { aggregate: async () => ({ _sum: { reservedQty: 0 } }), findMany: async () => [], update: async () => ({}), updateMany: async () => ({ count: 0 }) },
     orderItem: { updateMany: vi.fn() },
-    orderActivity: { create: vi.fn() },
+    orderActivity: { create: vi.fn(), findFirst: vi.fn() },
     // The write-off door now writes the closing receipt after the shelf is drawn (it is never reached on a short shelf).
     returnReceipt: { create: async () => ({ id: 'rr1' }) },
     inventoryMovement: { findFirst: vi.fn(), create: vi.fn() },
@@ -251,6 +251,10 @@ beforeEach(() => {
   db.inventoryMovement.create.mockImplementation(async ({ data }: any) => ({ id: 'm1', ...data }));
   db.orderItem.updateMany.mockResolvedValue({ count: 0 });
   db.orderActivity.create.mockResolvedValue({ id: 'a1' });
+  // The repeat key: a review line already on the order says it was consumed (none until a test writes one).
+  db.orderActivity.findFirst.mockImplementation(async ({ where }: any) =>
+    db.orderActivity.create.mock.calls.map((c: any) => c[0].data).find((d: any) => d.orderId === where.orderId && d.action === where.action) ?? null
+  );
   db.order.update.mockResolvedValue({ id: ORDER, orderNumber: 'ORD-1', shippingStatus: 'RETURNED', version: 2 });
   // A transaction that lets a throw out, which is the behaviour at issue.
   db.$transaction.mockImplementation(async (fn: any) => fn(db));
@@ -324,9 +328,10 @@ describe('a delivery on a short shelf is recorded; a recount that cannot be cove
     expect(said, 'سطرُ مراجعةٍ واحد').toHaveLength(1);
     expect(said[0].orderId).toBe(ORDER);
     expect(JSON.parse(said[0].metadata)).toMatchObject({ short: 7, lines: [{ productId: PRODUCT, need: 10, taken: 3, short: 7 }] });
-    // And nothing with a price: the cost written on the order is the 3 units' only (3 × 4), not 10 × 4.
+    // And nothing with a price: a short order keeps its ESTIMATE. 3 units at 4 is a cost of part of the parcel, and
+    // written over the whole order's estimate it would raise the profit on goods that were all handed over.
     const costWrites = db.order.update.mock.calls.map((c: any) => c[0].data?.estimatedCostOfGoods).filter((v: unknown) => v !== undefined);
-    expect(costWrites).toEqual([12]);
+    expect(costWrites).toEqual([]);
   });
 
   it('and a shelf that is EMPTY records the delivery too, with no movement at all', async () => {

@@ -40,7 +40,7 @@ function makeTx(over: Record<string, unknown> = {}) {
     orderAddOn: { aggregate: async () => ({ _sum: { reservedQty: 0 } }), findMany: async () => [], update: async () => ({}), updateMany: async () => ({ count: 0 }) },
     orderItem: { updateMany: vi.fn() },
     // The review line a short shelf leaves on the order (P0-13).
-    orderActivity: { create: vi.fn() },
+    orderActivity: { create: vi.fn(), findFirst: vi.fn().mockResolvedValue(null) },
     productionBatch: { findFirst: vi.fn().mockResolvedValue({ costPerUnit: 4 }), create: vi.fn().mockResolvedValue({ id: 'b-new' }) },
     ...over,
   } as never;
@@ -462,6 +462,43 @@ describe('a delivery on a shelf that cannot cover it (P0-13)', () => {
     const data = create.mock.calls[0][0].data;
     expect(data).toMatchObject({ companyId: 'c1', orderId: 'o1', userId: 'u9', action: 'STOCK_SHORT_AT_DELIVERY' });
     expect(JSON.parse(data.metadata)).toMatchObject({ order: 'SY-2026-0100', short: 6 });
+  });
+
+  /*
+   * P0-13 REVIEW (money): a short order keeps its ESTIMATE. The cost of the units that did leave is a cost of PART of
+   * the parcel; written over the estimate for the whole order it raised the profit by the missing units' cost on
+   * goods that were all handed over (4 of 10 at 5 = 20 over an estimate of 50 → profit +30).
+   */
+  it('NEGATIVE: a PARTLY short order does not overwrite its estimated cost', async () => {
+    const tx = makeTx();
+    drawDownStock.mockResolvedValueOnce({ taken: 1, short: 2, cost: 4 }).mockResolvedValueOnce({ taken: 1, short: 0, cost: 4 });
+    const res = await consumeOrderStock(tx, { orderId: 'o1', companyId: 'c1' });
+    expect(res.taken).toBe(2);
+    expect(on(tx, 'order', 'update'), 'كتب كلفةَ جزءٍ من الطرد فوق تقدير الطلب كلّه').not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE: a two-line order with one line EMPTY keeps its estimate too', async () => {
+    const tx = makeTx();
+    drawDownStock.mockResolvedValueOnce({ taken: 3, short: 0, cost: 12 }).mockResolvedValueOnce({ taken: 0, short: 1, cost: 0 });
+    await consumeOrderStock(tx, { orderId: 'o1', companyId: 'c1' });
+    expect(on(tx, 'order', 'update')).not.toHaveBeenCalled();
+  });
+
+  it('and with NOTHING short the cost is written as it always was (no change of behaviour)', async () => {
+    const tx = makeTx();
+    drawDownStock.mockResolvedValue({ taken: 3, short: 0, cost: 12.75 });
+    const res = await consumeOrderStock(tx, { orderId: 'o1', companyId: 'c1' });
+    expect(res.cost).toBe(25.5);
+    expect(on(tx, 'order', 'update')).toHaveBeenCalledWith({ where: { id: 'o1' }, data: { estimatedCostOfGoods: 25.5 } });
+  });
+
+  it('a review line already on the order means it was consumed: no draw, no write', async () => {
+    const tx = makeTx({ orderActivity: { create: vi.fn(), findFirst: vi.fn().mockResolvedValue({ id: 'a1' }) } });
+    const res = await consumeOrderStock(tx, { orderId: 'o1', companyId: 'c1' });
+    expect(res.alreadyDone).toBe(true);
+    expect(drawDownStock).not.toHaveBeenCalled();
+    expect(on(tx, 'order', 'update')).not.toHaveBeenCalled();
+    expect((tx as any).orderActivity.findFirst.mock.calls[0][0].where).toEqual({ orderId: 'o1', companyId: 'c1', action: 'STOCK_SHORT_AT_DELIVERY' });
   });
 
   it('and NO money anywhere: no ledger line, no cost over the estimate, no wallet', async () => {

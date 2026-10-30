@@ -272,7 +272,10 @@ function world(opts: {
       },
     },
     orderStatusLog: { create: async ({ data }: any) => (logs.push(data), data) },
-    orderActivity: { create: async ({ data }: any) => (logs.push(data), data) },
+    orderActivity: {
+      create: async ({ data }: any) => (logs.push(data), data),
+      findFirst: async ({ where }: any) => logs.find((l) => l.orderId === where.orderId && l.action === where.action) ?? null,
+    },
   };
   db.$transaction = (fn: (tx: unknown) => unknown) => fn(db);
 
@@ -418,6 +421,25 @@ describe('the delivery door takes every unit off the shelf', () => {
     expect(sold(w, 'b-only')).toBe(0);
     expect(sales(w)).toHaveLength(0);
     expect(w.movements.filter((m) => m.type === 'SALE')).toHaveLength(1);
+  });
+
+  it('and a PATCH repeated after an EMPTY-shelf delivery takes none of the stock that arrived since (P0-13 review)', async () => {
+    // An empty-shelf delivery wrote no SALE, so the ledger key cannot see it; its review line is the key.
+    const w = install(
+      world({
+        order: orderRow({ quantity: 4 }),
+        items: [{ productId: CREAM, productName: 'كريم', quantity: 4, freeQuantity: 0 }],
+        shelf: [],
+      })
+    );
+    expect((await deliver()).status).toBe(200);
+    expect(sales(w)).toHaveLength(0);
+    w.shelf.push(batch({ id: 'b-late', quantityRemaining: 9 }));
+
+    const again = await consumeOrderStock(w.db as never, { orderId: ORDER, companyId: 'c1', userId: 'u1' });
+    expect(again.alreadyDone).toBe(true);
+    expect(left(w, 'b-late')).toBe(9);
+    expect(sales(w)).toHaveLength(0);
   });
 
   it('and a second door arriving after this one also moves nothing', async () => {

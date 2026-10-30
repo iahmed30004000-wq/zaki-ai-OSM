@@ -474,7 +474,10 @@ function ledger(opts: { orderStore: string | null; shelf: Row[]; alreadySold?: b
     // An order with no add-ons, unless a test says otherwise — plain functions, so a mock reset leaves them answering.
     orderAddOn: { aggregate: async () => ({ _sum: { reservedQty: 0 } }), findMany: async () => [], update: async () => ({}), updateMany: async () => ({ count: 0 }) },
     orderItem: { updateMany: async () => ({ count: 0 }) },
-    orderActivity: { create: async ({ data }: any) => { reviews.push(data); return { id: `a${reviews.length}`, ...data }; } },
+    orderActivity: {
+      create: async ({ data }: any) => { reviews.push(data); return { id: `a${reviews.length}`, ...data }; },
+      findFirst: async ({ where }: any) => reviews.find((r) => r.orderId === where.orderId && r.action === where.action) ?? null,
+    },
     productionBatch: {
       findMany: async ({ where, orderBy }: any) => {
         shelfQueries.push(where);

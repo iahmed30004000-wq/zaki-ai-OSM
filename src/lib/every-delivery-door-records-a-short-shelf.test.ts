@@ -118,7 +118,10 @@ describe('the door-side delivery on a shelf that holds 4 of 10', () => {
       },
       orderItem: { update: async () => ({}), updateMany: async () => ({ count: 0 }) },
       orderAddOn: { aggregate: async () => ({ _sum: { reservedQty: 0 } }), findMany: async () => [], update: async () => ({}), updateMany: async () => ({ count: 0 }) },
-      orderActivity: { create: async ({ data }: Row) => (activities.push(data), data) },
+      orderActivity: {
+        create: async ({ data }: Row) => (activities.push(data), data),
+        findFirst: async ({ where }: Row) => activities.find((a) => a.orderId === where.orderId && a.action === where.action) ?? null,
+      },
       orderNote: { create: async () => ({}) },
       customer: { update: async () => ({}) },
       deliveryAttempt: { create: async () => ({ id: 'a1' }), count: async () => 0, findFirst: async () => null, aggregate: async () => ({ _max: { attemptNumber: 0 } }) },
@@ -163,8 +166,19 @@ describe('the door-side delivery on a shelf that holds 4 of 10', () => {
     const said = w.activities.filter((a) => a.action === 'STOCK_SHORT_AT_DELIVERY');
     expect(said).toHaveLength(1);
     expect(JSON.parse(said[0].metadata)).toMatchObject({ short: 6, lines: [{ productId: 'p1', need: 10, taken: 4, short: 6 }] });
-    // the cost written is the 4 units' (4 × 5), not 10 × 5
-    expect(w.orderWrites.filter((d) => d.estimatedCostOfGoods !== undefined).map((d) => d.estimatedCostOfGoods)).toEqual([20]);
+    // a short order keeps its ESTIMATE: 4 × 5 = 20 written over an estimate for all 10 would raise the profit
+    expect(w.orderWrites.filter((d) => d.estimatedCostOfGoods !== undefined)).toEqual([]);
+  });
+
+  it('and a second press AFTER new stock arrived takes none of it — an empty-shelf delivery wrote no SALE, its review line is the key', async () => {
+    const w = world(0);
+    await door(w);
+    w.batches.push({ id: 'b-new', companyId: 'c1', storeId: 's1', productId: 'p1', quantityRemaining: 10, quantitySold: 0, costPerUnit: 5, productionDate: new Date('2026-02-01'), createdAt: new Date('2026-02-01') });
+    const { consumeOrderStock } = await import('./stock-consumption');
+    const again = await consumeOrderStock(w.tx as never, { orderId: 'o1', companyId: 'c1', userId: 'u1' });
+    expect(again.alreadyDone).toBe(true);
+    expect(w.batches.find((b) => b.id === 'b-new')!.quantityRemaining).toBe(10);
+    expect(w.movements).toHaveLength(0);
   });
 
   it('an EMPTY shelf is recorded too: no ledger line, no cost, one review line', async () => {
