@@ -50,7 +50,7 @@ const base = {
 };
 const ready = { ...base, id: '1', orderNumber: 'SY-2026-0002', blocks: [], selectable: true, hardBlocked: false };
 const SAID = 'لا يمكن التجهيز: 1 سطر غير محجوز بالكامل';
-const HINT = 'المخزون وصل بعد التأكيد: أجِّل الطلب ثم أرجِعه ليُعاد الحجز';
+const HINT = 'وحداته غير محجوزة (وصل المخزون بعد التأكيد، أو انتهى التأجيل): أجِّل الطلب ثم أرجِعه ليُعاد الحجز';
 const unreserved = {
   ...base, id: '2', orderNumber: 'SY-2026-0001',
   blocks: [{ code: 'UNRESERVED_LINES', message: SAID, hard: true, hint: HINT }],

@@ -35,7 +35,7 @@ import { BATCHABLE_SHIPPING, HELD_PACKED_PARCEL, WAITING_FOR_A_TROLLEY, whyNotBa
  * is on the shelf but not earmarked: postponing gives the order's units back and releasing takes them again against
  * the shelf as it is now (`reserveOrderLines` in the hold door). Nothing here writes — it is only said in advance.
  */
-const UNRESERVED_HINT = 'المخزون وصل بعد التأكيد: أجِّل الطلب ثم أرجِعه ليُعاد الحجز';
+const UNRESERVED_HINT = 'وحداته غير محجوزة (وصل المخزون بعد التأكيد، أو انتهى التأجيل): أجِّل الطلب ثم أرجِعه ليُعاد الحجز';
 
 const createSchema = z.object({
   deliveryProviderId: z.string().uuid(),
