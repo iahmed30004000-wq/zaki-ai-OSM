@@ -112,6 +112,14 @@ const EDITOR_LAYOUT_CSS = `
   opacity: 1;
   pointer-events: auto;
 }
+.lp-root.lp-root:has(.lp-sticky) .lp-form-section:where(:not([data-look-pad] *)) { padding-bottom: 30px; }
+.lp-root.lp-root:has(.lp-sticky) [data-family='brand'] .lp-form-section:where(:not([data-look-pad] *)) { padding-bottom: 38px; }
+.lp-root.lp-root:has(.lp-sticky) .lp-footer { padding-bottom: 28px; }
+@media (max-width: 767.98px) {
+  .lp-root [data-block-bar] {
+    bottom: calc(var(--sys-mobile-nav-h, 0px) + env(safe-area-inset-bottom) + 8px) !important;
+  }
+}
 `;
 
 /** A palette the seller can start from instead of hunting for a hex. */

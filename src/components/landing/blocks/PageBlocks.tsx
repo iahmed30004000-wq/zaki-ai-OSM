@@ -1267,6 +1267,7 @@ function Selectable({
       */}
       {active && (
         <div
+          data-block-bar
           className="z-30 mt-1 mb-2 flex flex-wrap items-center gap-1 rounded-lg bg-white p-1 shadow-lg ring-1 ring-[#e3e8ef]"
           style={{ position: 'sticky', bottom: 8, marginInline: 8, zoom: 1 / (selection.zoom || 1) }}
           onClick={(e) => e.stopPropagation()}

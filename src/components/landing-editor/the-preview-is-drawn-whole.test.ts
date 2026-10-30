@@ -25,6 +25,23 @@ const preview = code.slice(previewStart, previewEnd);
 
 const layoutCss = (raw.match(/const EDITOR_LAYOUT_CSS = `([\s\S]*?)`;/) ?? [])[1] ?? '';
 
+/*
+ * The utilities that give a box a height or a clip, built from parts: Tailwind reads this file too, and a utility
+ * named whole in a test is a utility shipped.
+ */
+const t = (...parts: string[]) => parts.join('-');
+const BOXES = new RegExp(
+  [
+    `(^|[\\s"'\`])${t('h', 'screen')}`,
+    `(^|[\\s"'\`])${t('h', '\\[')}`,
+    `(^|[\\s"'\`])${t('h', 'full')}`,
+    `(^|[\\s"'\`])${t('max', 'h')}-`,
+    `(^|[\\s"'\`])${t('overflow', '(hidden|auto|scroll|clip)')}`,
+    `(^|[\\s"'\`])${t('overflow', 'y', '(hidden|auto|scroll)')}`,
+    `(^|[\\s"'\`])${t('overflow', 'x', '(hidden|auto|scroll)')}`,
+  ].join('|'),
+);
+
 describe('the preview has no height of its own and no scroller', () => {
   it('found the preview pane to read', () => {
     expect(previewStart).toBeGreaterThan(0);
@@ -34,18 +51,25 @@ describe('the preview has no height of its own and no scroller', () => {
   it('is not a box as tall as the screen', () => {
     expect(preview).not.toMatch(/100dvh|100vh/);
     expect(preview).not.toMatch(/\bheight:/);
+    // Nor by class: the pane's own class list and the strip around the canvas.
+    const classes = [...preview.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\})/g)].map((m) => m[1] ?? m[2]).join(' ');
+    expect(classes).not.toMatch(new RegExp([t('h', 'screen'), `${t('h', '\\[')}`, `${t('max', 'h')}-`].join('|')));
   });
 
   it('has no scroller inside it, and no transform that would pin the floating button to the page', () => {
-    expect(preview).not.toMatch(/overflow-auto|overflow-y-auto|overflow: ?'auto'|overflow: ?'scroll'/);
+    expect(preview).not.toMatch(/overflow: ?'(auto|scroll)'/);
+    const classes = [...preview.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\})/g)].map((m) => m[1] ?? m[2]).join(' ');
+    expect(classes).not.toMatch(new RegExp(`${t('overflow', '(auto|scroll)')}|${t('overflow', '[xy]', '(auto|scroll)')}`));
     expect(preview).not.toMatch(/translateZ|transform:/);
     expect(code).not.toContain('scrollerRef');
   });
 
   it('rounds its corners with clip, never hidden — hidden would take the sticky bars away from the window', () => {
-    // The PANE's own style (the page's canvas below it says clip too, and must not be what satisfies this).
-    expect(preview).toContain("style={{ overflow: 'clip' }}");
-    expect(preview).not.toMatch(/overflow-hidden/);
+    // The PANE's own style (the page's canvas below it says clip too, and must not be what satisfies this), and
+    // tolerant of a reformat: spacing and quotes are not the rule.
+    expect(preview).toMatch(/style=\{\{\s*overflow:\s*['"]clip['"],?\s*\}\}/);
+    const classes = [...preview.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\})/g)].map((m) => m[1] ?? m[2]).join(' ');
+    expect(classes).not.toContain(t('overflow', 'hidden'));
   });
 
   it('keeps a clicked block under the cursor by moving the WINDOW', () => {
@@ -94,5 +118,55 @@ describe('the floating button, drawn where its block sits in the editor only', (
     const rule = sheet.slice(sheet.indexOf('.lp-sticky-bar {'), sheet.indexOf('.lp-sticky-bar {') + 120);
     expect(rule).toContain('position: fixed');
     expect(sheet).not.toContain('data-editor-controls');
+  });
+});
+
+describe('nothing around the builder gives it a height or a clip — on either screen that mounts it', () => {
+  /** Every `<div className="…">` opening from the start of the screen's last `return (` up to the builder. */
+  function ancestors(file: string): string[] {
+    const src = stripComments(repoFile(file));
+    const at = src.indexOf('<BlockBuilder');
+    expect(at, `${file}: no <BlockBuilder`).toBeGreaterThan(0);
+    const from = src.lastIndexOf('return (', at);
+    return [...src.slice(from, at).matchAll(/<div\s+className=(?:"([^"]*)"|\{`([^`]*)`\})/g)].map((m) => m[1] ?? m[2]);
+  }
+
+  for (const file of [
+    'src/components/screens/LandingPageEditorScreen.tsx',
+    'src/components/screens/StoreDesignScreen.tsx',
+  ]) {
+    it(`${file.split('/').pop()}: no wrapper above the builder has a height, a max-height or an overflow`, () => {
+      const wrappers = ancestors(file);
+      expect(wrappers.length).toBeGreaterThan(0);
+      for (const w of wrappers) expect(w, `${file}: «${w}»`).not.toMatch(BOXES);
+    });
+  }
+
+  it('and the shop tab that holds the home panel does not clip it either', () => {
+    const tab = stripComments(repoFile('src/components/store-admin/StoreAdminScreen.tsx'));
+    const panel = tab.slice(tab.indexOf('{panel ? panel()') - 200, tab.indexOf('{panel ? panel()'));
+    expect(panel).not.toMatch(BOXES);
+  });
+});
+
+describe('the editor’s own rules for the phone and the reserved room', () => {
+  it('the block bar clears the bottom navigation, by an editor-only rule', () => {
+    const phone = layoutCss.slice(layoutCss.indexOf('@media (max-width: 767.98px)'));
+    expect(phone).toMatch(/\[data-block-bar\]/);
+    expect(phone).toMatch(/var\(--sys-mobile-nav-h, 0px\)\s*\+\s*env\(safe-area-inset-bottom\)/);
+    expect(phone).toMatch(/!important/);
+    // The hook is an attribute on the bar in the builder's renderer; the visitor's page never draws the bar.
+    expect(repoFile('src/components/landing/blocks/PageBlocks.tsx')).toMatch(/data-block-bar\s/);
+    expect(repoFile('src/components/landing/blocks/styles.ts')).not.toContain('data-block-bar');
+  });
+
+  it('the room the visitor’s page keeps for a fixed button is given back where the button is in the flow', () => {
+    expect(layoutCss).toMatch(/\.lp-form-section[^{]*\{\s*padding-bottom:\s*30px/);
+    expect(layoutCss).toMatch(/\.lp-footer\s*\{\s*padding-bottom:\s*28px/);
+    // A custom padding look keeps its own: the override steps aside for it.
+    expect(layoutCss).toContain(':where(:not([data-look-pad] *))');
+    // And the visitor's sheet still reserves it.
+    const sheet = repoFile('src/components/landing/blocks/styles.ts');
+    expect(sheet).toContain('.lp-root:has(.lp-sticky) .lp-form-section { padding-bottom: 80px; }');
   });
 });
