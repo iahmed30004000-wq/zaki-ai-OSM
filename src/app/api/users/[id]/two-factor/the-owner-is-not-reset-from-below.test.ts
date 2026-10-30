@@ -29,6 +29,9 @@ const { db, requireContext, logAudit } = vi.hoisted(() => ({
   db: {
     user: { findFirst: vi.fn(), update: vi.fn() },
     twoFactorRecoveryCode: { deleteMany: vi.fn() },
+    // PR-A (A1): the reset also removes the fingerprints, inside the same transaction (which runs on this same object).
+    passkey: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+    passkeyChallenge: { deleteMany: vi.fn(async () => ({ count: 0 })) },
     $transaction: vi.fn(),
   },
   requireContext: vi.fn(),

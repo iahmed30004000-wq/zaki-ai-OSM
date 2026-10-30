@@ -5,6 +5,7 @@ import { PASSWORD_MAX, checkPassword } from '@/lib/password-rules';
 import { db } from '@/lib/db';
 import { requireAuth, hashPassword, verifyPassword } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
+import { wipePasskeys } from '@/lib/passkey-guard';
 import { zodMessage } from '@/lib/zod-message';
 
 const profileSchema = z.object({
@@ -50,7 +51,16 @@ export async function PATCH(req: Request) {
     // NOTE: role / status / permissions are intentionally NOT updatable here.
     // Only administrators can change them via /api/users/:id (server-enforced).
 
-    await db.user.update({ where: { id: session.id }, data: updateData });
+    if (newPassword) {
+      // Changing your own password ends your other sessions (tokenVersion above); it also ends the fingerprints, in the
+      // same step (A1). A key added from a stolen session must not outlive the password change that answers the theft.
+      await db.$transaction(async (tx) => {
+        await tx.user.update({ where: { id: session.id }, data: updateData });
+        await wipePasskeys(tx, session.id);
+      });
+    } else {
+      await db.user.update({ where: { id: session.id }, data: updateData });
+    }
 
     await logAudit({
       companyId: session.companyId || 'platform',

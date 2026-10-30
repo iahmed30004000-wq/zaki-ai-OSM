@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
+import { wipePasskeys } from '@/lib/passkey-guard';
 import { manageableUserWhere, mayActOnUser } from '@/lib/manageable-user';
 import { mayResetTwoFactor } from '@/lib/two-factor-reset';
 import { canActOnUser } from '@/lib/user-permissions';
@@ -139,6 +140,9 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
         },
       });
       await tx.twoFactorRecoveryCode.deleteMany({ where: { userId: target.id } });
+      // A fingerprint stands in for the six digits; with the factor reset it would be the only thing left that skips
+      // them, and the phone that was lost may be the one holding it (A1).
+      await wipePasskeys(tx, target.id);
     });
 
     await logAudit({

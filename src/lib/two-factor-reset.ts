@@ -56,6 +56,33 @@ export function mayResetTwoFactor(user: SessionUser, targetUserId: string): Rese
 }
 
 /**
+ * WHO MAY ISSUE THE CODE THAT LETS SOMEBODY SET UP THEIR SECOND FACTOR FOR THE FIRST TIME (A2).
+ *
+ * The same key and the same two limits as stripping a factor, for the same reason: the code decides whose phone becomes
+ * the account's second factor, which is a way into an account that is not yours. Never your own: an owner who vouches
+ * for themselves vouches for whoever is holding their session.
+ */
+export function mayIssueEnrolCode(user: SessionUser, targetUserId: string): ResetVerdict {
+  if (!userCan(user, 'users.security')) {
+    return {
+      ok: false,
+      status: 403,
+      code: 'NO_SECURITY_KEY',
+      error: 'إصدار رمز التفعيل يحتاج صلاحية «إعادة ضبط دخول موظف».',
+    };
+  }
+  if (user.id === targetUserId) {
+    return {
+      ok: false,
+      status: 403,
+      code: 'NOT_YOURSELF',
+      error: 'لا تُصدر رمز التفعيل لنفسك — يُصدره لك مدير آخر.',
+    };
+  }
+  return { ok: true };
+}
+
+/**
  * ═══════════════════════════════════════════════════════════════════════
  * AND WHO MAY SET SOMEBODY ELSE'S PASSWORD.
  *

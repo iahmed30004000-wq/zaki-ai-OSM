@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { createPasskey, passkeySupported } from '@/lib/passkey-browser';
 import { useConfirm } from '@/components/ui/Confirm';
+import { Input } from '@/components/ui/Input';
 import { RiDeleteBinLine, RiFingerprintLine, RiLoader4Line } from '@remixicon/react';
 
 /**
@@ -32,6 +33,9 @@ export function PasskeySection() {
   const [supported, setSupported] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // THE PASSWORD IS ASKED FOR BEFORE A WAY IN IS ADDED (A1): being signed in is not enough to bolt a key onto the account.
+  const [asking, setAsking] = useState(false);
+  const [password, setPassword] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -52,7 +56,11 @@ export function PasskeySection() {
     setBusy(true);
     setError(null);
     try {
-      const start = await fetch('/api/auth/passkey', { method: 'POST' });
+      const start = await fetch('/api/auth/passkey', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
       const offer = await start.json();
       if (!start.ok) throw new Error(offer?.error || 'تعذّر بدء التسجيل');
 
@@ -69,12 +77,14 @@ export function PasskeySection() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'تعذّر تسجيل البصمة');
+      setAsking(false);
       await load();
     } catch (e) {
       // A cancelled dialog is not a failure worth a red box.
       const msg = e instanceof Error ? e.message : 'تعذّر تسجيل البصمة';
       setError(/NotAllowedError|abort/i.test(msg) ? null : msg);
     } finally {
+      setPassword('');
       setBusy(false);
     }
   }
@@ -158,14 +168,53 @@ export function PasskeySection() {
           </p>
         )}
 
-        {supported !== false && (
+        {supported !== false && asking && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void add();
+            }}
+            className="space-y-3"
+          >
+            <Input
+              label="كلمة المرور الحالية"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+              className="bg-[var(--sys-card)]"
+            />
+            <button
+              type="submit"
+              disabled={busy || password.length === 0}
+              className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[var(--sys-primary)] px-4 py-2 text-sm font-medium text-[var(--sys-primary-foreground)] disabled:opacity-50"
+            >
+              {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiFingerprintLine className="h-4 w-4" />}
+              أكّد وسجّل البصمة
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAsking(false);
+                setPassword('');
+                setError(null);
+              }}
+              className="h-11 w-full text-xs text-[var(--sys-muted-foreground)]"
+            >
+              رجوع
+            </button>
+          </form>
+        )}
+
+        {supported !== false && !asking && (
           <button
             type="button"
-            onClick={() => void add()}
+            onClick={() => setAsking(true)}
             disabled={busy}
             className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[var(--sys-primary)] px-4 py-2 text-sm font-medium text-[var(--sys-primary-foreground)] disabled:opacity-50"
           >
-            {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiFingerprintLine className="h-4 w-4" />}
+            <RiFingerprintLine className="h-4 w-4" />
             سجّل بصمةَ هذا الجهاز
           </button>
         )}

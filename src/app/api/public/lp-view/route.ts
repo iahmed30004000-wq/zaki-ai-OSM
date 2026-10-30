@@ -2,7 +2,7 @@ import { db } from '@/lib/db';
 import { deviceClassOf, isPrefetch, recordBrowserView, recordLandingView } from '@/lib/landing-views';
 import { landingCacheOn } from '@/lib/landing-cache-path';
 import { resolveCampaign } from '@/lib/campaigns-server';
-import { getClientIp, rateLimit } from '@/lib/rate-limit';
+import { UNKNOWN_IP, getClientIp, rateLimit } from '@/lib/rate-limit';
 
 /**
  * POST /api/public/lp-view — «الصفحة انفتحت عند الزائر».
@@ -28,6 +28,8 @@ import { getClientIp, rateLimit } from '@/lib/rate-limit';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CODE = /^[A-Za-z0-9_-]{1,40}$/;
 const done = () => new Response(null, { status: 204 });
+/** Visits one page may record in a minute when the visitor's address is unknown: 20 a second, far above a busy advert hour. */
+const PAGE_CEILING_PER_MINUTE = 1200;
 
 export async function POST(req: Request) {
   try {
@@ -47,10 +49,15 @@ export async function POST(req: Request) {
     if (!pageId) return done();
     const code = typeof body.c === 'string' && CODE.test(body.c) ? body.c : null;
 
-    // A flood from one address is not a crowd. Only when the address is known: behind no trusted proxy every visitor
-    // shares one bucket, and a limit there would stop counting the busy hour an advert brings.
+    // A flood from one address is not a crowd. Behind no trusted proxy every visitor shares one address, so a per-address
+    // limit would stop counting the busy hour an advert brings: there the limit is per PAGE and far looser (A7). It is
+    // only a ceiling against a script writing rows without end, and a beacon over it is dropped silently like any other.
     const ip = getClientIp(req);
-    if (ip !== 'local' && !rateLimit(`lp_view:${ip}:${pageId}`, 60, 60_000).allowed) return done();
+    if (ip === UNKNOWN_IP) {
+      if (!rateLimit(`lp_view:page:${pageId}`, PAGE_CEILING_PER_MINUTE, 60_000).allowed) return done();
+    } else if (!rateLimit(`lp_view:${ip}:${pageId}`, 60, 60_000).allowed) {
+      return done();
+    }
 
     const page = await db.landingPage.findFirst({
       where: { id: pageId, isPublished: true },

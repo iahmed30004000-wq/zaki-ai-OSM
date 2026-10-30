@@ -1,4 +1,5 @@
 import { db } from './db';
+import { publicMediaStrict } from './auth-switches';
 
 /**
  * WHOSE IMAGES ARE PUBLIC, AND WHEN.
@@ -80,12 +81,42 @@ async function shownByPage({ owner, file, via, previewPageId }: MediaRequest): P
   return ownerPage?.companyId ?? ownerProduct?.companyId ?? null;
 }
 
-async function publicOnItsOwn({ owner }: MediaRequest): Promise<string | null> {
+async function publicOnItsOwn({ owner, file }: MediaRequest): Promise<string | null> {
+  const strict = publicMediaStrict();
   const product = await db.product.findFirst({
     where: { id: owner, status: 'ACTIVE' },
-    select: { companyId: true, store: { select: { storefrontEnabled: true, status: true } } },
+    select: {
+      companyId: true,
+      store: { select: { storefrontEnabled: true, status: true } },
+      // Read only under the strict rule (A8), so the default query is the one that has always run.
+      ...(strict
+        ? { image: true, description: true, descriptionEn: true, images: { select: { url: true } } }
+        : {}),
+    },
   });
-  return product?.store?.storefrontEnabled && product.store.status === 'ACTIVE' ? product.companyId : null;
+  if (!(product?.store?.storefrontEnabled && product.store.status === 'ACTIVE')) return null;
+
+  /*
+   * A8 — A FILE IS PUBLIC ON ITS OWN ONLY IF THE PRODUCT STILL SHOWS IT.
+   *
+   * The folder of an active product holds every file ever uploaded for it: the pictures it was given and replaced, and
+   * anything else put there. Serving the whole folder made all of those readable by anyone who could guess or had kept a
+   * link. Under the strict rule a file is public on its own only when it is the product's main picture, one of its
+   * gallery pictures, or appears in its description (a picture written into the text is shown with it). A page's images
+   * are never asked for here; they come through the page. Off by default (`PUBLIC_MEDIA_STRICT`) until the owner has
+   * looked at a storefront with it on.
+   */
+  if (strict) {
+    const shown = product as unknown as {
+      image?: string | null;
+      description?: string | null;
+      descriptionEn?: string | null;
+      images?: Array<{ url: string }>;
+    };
+    const refs = [shown.image, shown.description, shown.descriptionEn, ...(shown.images ?? []).map((i) => i.url)];
+    if (!refs.some((t) => typeof t === 'string' && t.includes(file))) return null;
+  }
+  return product.companyId;
 }
 
 /** For tests: forget every remembered answer. */
