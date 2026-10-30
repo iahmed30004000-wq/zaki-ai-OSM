@@ -2,11 +2,14 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
-import { fillTemplate, whatsappLink, type FillContext, type MessageTemplate } from '@/lib/message-templates';
+import { fillTemplate, whatsappLink, whatsappReady, type FillContext, type MessageTemplate } from '@/lib/message-templates';
 import { RiChat3Line, RiMessage3Line, RiPhoneLine } from '@remixicon/react';
 
 /** Does a refusal already speak to her? (the Arabic block, as `api-error.ts` asks it) */
 const ARABIC = /[؀-ۿ]/;
+
+/** Why WhatsApp is shut on a local number — said beside the button, not guessed at. */
+const NO_COUNTRY = 'رمز الدولة ناقص';
 
 /**
  * CALL, SMS, WHATSAPP — from the row the parcel is on.
@@ -158,6 +161,8 @@ export function ContactButtons({
     typeof navigator !== 'undefined' &&
     (navigator.maxTouchPoints > 1 || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
 
+  const waReady = whatsappReady(phone, countryCode);
+
   /** WhatsApp with no message behind it — for a number that has no order. */
   const openPlainWhatsapp = () => {
     window.open(whatsappLink(phone!, countryCode), '_blank', 'noopener');
@@ -189,9 +194,11 @@ export function ContactButtons({
    * utilities the stylesheet already carries. In the full strip the three
    * share the row on a phone instead of bunching at one end of it.
    */
-  const btn = `inline-flex items-center justify-center rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] hover:border-[var(--sys-primary)]/50 transition-colors ${
-    compact ? 'h-11 w-7 min-w-11 md:h-7 md:min-w-0' : 'h-11 md:h-8 px-2 gap-1 text-xs flex-1 md:flex-none'
-  }`;
+  const size = compact ? 'h-11 w-7 min-w-11 md:h-7 md:min-w-0' : 'h-11 md:h-8 px-2 gap-1 text-xs flex-1 md:flex-none';
+  const look = 'inline-flex items-center justify-center rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)]';
+  const btn = `${look} hover:text-[var(--sys-primary)] hover:border-[var(--sys-primary)]/50 transition-colors ${size}`;
+  /** A shut button must not light up under the pointer — it would look alive. */
+  const shutBtn = `${look} disabled:opacity-50 ${size}`;
 
   // Turned off means written but not offered — a template kept for next
   // season must not appear in the picker during this one.
@@ -242,15 +249,25 @@ export function ContactButtons({
       {!plain && !onPhone && !compact && (
         <span className="text-xs text-[var(--sys-muted)]">الرسائل النصية من الموبايل</span>
       )}
+      {/*
+        A LOCAL NUMBER WITH NO COUNTRY IS NOT SENT TO WHATSAPP.
+        wa.me drops the leading zero and reads the first digits as a country, so «0952554562» opened a chat
+        with +95 (Myanmar) and the message about this order went to a stranger. Without a country code the
+        button stays, shut, and says why — it works the moment the code arrives.
+      */}
       <button
         type="button"
-        title="واتساب"
+        title={waReady ? 'واتساب' : NO_COUNTRY}
+        aria-label={waReady ? undefined : NO_COUNTRY}
+        disabled={!waReady}
         onClick={plain ? openPlainWhatsapp : () => setOpen(open === 'WHATSAPP' ? null : 'WHATSAPP')}
-        className={btn}
+        className={waReady ? btn : shutBtn}
       >
         <RiChat3Line className="w-4 h-4" />
         {!compact && 'واتساب'}
       </button>
+      {/* On a phone there is no hover: the reason is written, in the compact strip too. */}
+      {!waReady && <span className="text-xs text-[var(--sys-muted)]">{NO_COUNTRY}</span>}
 
       {notLogged && (
         <span role="alert" className="text-xs text-[var(--sys-destructive)]">

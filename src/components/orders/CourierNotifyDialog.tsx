@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
-import { whatsappLink } from '@/lib/message-templates';
+import { whatsappLink, whatsappReady } from '@/lib/message-templates';
 import { RiChat3Line, RiFileCopyLine, RiCheckLine } from '@remixicon/react';
 
 /**
@@ -45,7 +45,7 @@ export function CourierNotifyDialog({
   ask: CourierAsk;
   busy: boolean;
   /** Dialling code, e.g. "963" — wa.me needs the number in full international form. */
-  countryCode?: string;
+  countryCode?: string | null;
   onClose: () => void;
   onNotified: () => void;
 }) {
@@ -53,6 +53,8 @@ export function CourierNotifyDialog({
   const [sent, setSent] = useState(false);
 
   const phone = ask.courier?.phone ?? null;
+  /** A local number with no country behind it opens a stranger's chat (or none): shut, and say why. */
+  const waReady = !!phone && whatsappReady(phone, countryCode);
 
   const copy = async () => {
     try {
@@ -68,7 +70,10 @@ export function CourierNotifyDialog({
 
   const openWhatsApp = () => {
     if (!phone) return;
-    window.open(whatsappLink(phone, countryCode, ask.message), '_blank', 'noopener');
+    const link = whatsappLink(phone, countryCode, ask.message);
+    // Nothing opened, nothing sent: «أُرسلت» is claimed only when a link really opened.
+    if (!link) return;
+    window.open(link, '_blank', 'noopener');
     setSent(true);
   };
 
@@ -95,13 +100,16 @@ export function CourierNotifyDialog({
           <button
             type="button"
             onClick={openWhatsApp}
-            disabled={!phone}
-            title={phone ? undefined : 'لا رقم مسجَّل لشركة الشحن — انسخ الرسالة وأرسلها بنفسك'}
+            disabled={!waReady}
+            title={!phone ? 'لا رقم مسجَّل لشركة الشحن — انسخ الرسالة وأرسلها بنفسك' : waReady ? undefined : 'رمز الدولة ناقص — انسخ الرسالة وأرسلها بنفسك'}
             className="min-h-11 md:min-h-0 inline-flex items-center gap-1.5 rounded-lg bg-[var(--sys-success)] px-4 py-1.5 text-xs font-medium text-[var(--sys-primary-foreground)] disabled:opacity-50"
           >
             <RiChat3Line className="w-4 h-4" aria-hidden />
             أرسِلها واتساب
           </button>
+          {!!phone && !waReady && (
+            <span className="text-xs text-[var(--sys-muted)]">رمز الدولة ناقص — انسخ الرسالة وأرسلها بنفسك</span>
+          )}
           <button
             type="button"
             onClick={() => void copy()}
