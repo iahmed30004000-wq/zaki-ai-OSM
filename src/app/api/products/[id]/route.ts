@@ -8,6 +8,7 @@ import { deleteStoredFile } from '@/lib/storage';
 import { logAudit } from '@/lib/audit';
 import { parseCategoryAttributes, parseProductAttributes } from '@/lib/product-attributes';
 import { productCosts } from '@/lib/product-cost';
+import { deliveredUnitsByProduct } from '@/lib/product-sold';
 import { maySeeCost, withoutCost } from '@/lib/cost-visibility';
 import { parseHistory, rememberSlug, slugify, uniqueSlug } from '@/lib/slug';
 import { can, authorize } from '@/lib/authorization';
@@ -95,7 +96,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
      */
     const showCost = maySeeCost(user);
     const totalProduced = product.batches.reduce((s, b) => s + b.quantityProduced, 0);
-    const totalSold = product.batches.reduce((s, b) => s + b.quantitySold, 0);
+    // What the customers took (RV87), from the one function the list and the stats door use — not the batch counter.
+    const totalSold = (await deliveredUnitsByProduct(db, { companyId, storeId, productIds: [product.id] })).get(product.id) ?? 0;
     const totalRemaining = product.batches.reduce((s, b) => s + b.quantityRemaining, 0);
     const costOf = showCost ? await productCosts(db, companyId, [product.id]) : new Map();
 

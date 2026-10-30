@@ -5,7 +5,7 @@
  */
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { requireCompanyTenant, requirePermission } from '@/lib/auth';
+import { requirePermission, tenantOf } from '@/lib/auth';
 import { normalizePhoneNumber } from '@/lib/phone';
 import { apiErrorResponse } from '@/lib/api-error';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
@@ -13,10 +13,11 @@ import { typed } from '@/lib/text-search';
 
 export async function GET(req: Request) {
   try {
-    await requirePermission('whatsapp.view');
-    // Once: this door is polled every few seconds, and each call re-reads the user,
-    // the role and the grants (RV182/RV183).
-    const { companyId, user } = await requireCompanyTenant();
+    // ONE read of who is asking: this door is polled every few seconds, and every read of the session
+    // re-reads the user, the role and the grants (7 to 10 queries). `requirePermission` already returns the
+    // user, so the company comes from it and not from a second `requireCompanyTenant` (RV182/RV183).
+    const user = await requirePermission('whatsapp.view');
+    const { companyId } = await tenantOf(user);
     const { searchParams } = new URL(req.url);
 
     const status = searchParams.get('status') === 'CLOSED' ? 'CLOSED' : 'OPEN';

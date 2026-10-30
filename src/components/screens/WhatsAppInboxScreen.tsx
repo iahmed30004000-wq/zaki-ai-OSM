@@ -12,6 +12,7 @@ import { arTime } from '@/lib/format';
 import { Money } from '@/components/ui/Money';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { userCan } from '@/lib/can';
+import { FAST_POLL_MS, listSignature, paceFor } from '@/lib/inbox-pace';
 
 interface Conversation {
   id: string;
@@ -92,6 +93,31 @@ export function WhatsAppInboxScreen() {
   }, [selectedId]);
   const inFlightRef = useRef(false);
 
+  /*
+   * HOW OFTEN TO ASK (RV182). Five seconds while anything is happening; fifteen after a quiet minute — the list not
+   * moving and no message arriving. Anything the person does, a new message, a change in the list, or coming back to
+   * the tab puts it back to five. The counter lives in a ref (it changes on every poll and must not re-render the
+   * screen); only the pace is state, and setting it to the value it already has renders nothing.
+   */
+  const quietRef = useRef(0);
+  const listSigRef = useRef('');
+  const [pace, setPace] = useState(FAST_POLL_MS);
+  const speedUp = useCallback(() => {
+    quietRef.current = 0;
+    setPace(FAST_POLL_MS);
+  }, []);
+  useEffect(() => {
+    const back = () => {
+      if (!document.hidden) speedUp();
+    };
+    document.addEventListener('visibilitychange', back);
+    window.addEventListener('focus', back);
+    return () => {
+      document.removeEventListener('visibilitychange', back);
+      window.removeEventListener('focus', back);
+    };
+  }, [speedUp]);
+
   const loadConnection = useCallback(async () => {
     try {
       const d: any = await crmApi('/api/whatsapp/connection');
@@ -122,6 +148,11 @@ export function WhatsAppInboxScreen() {
       });
       setOffline(false);
       setError(null);
+      // A person's own request is activity; a silent poll is quiet only when the list did not move.
+      const sig = listSignature(list);
+      quietRef.current = silent && sig === listSigRef.current ? quietRef.current + 1 : 0;
+      listSigRef.current = sig;
+      setPace(paceFor(quietRef.current));
     } catch (e: any) {
       if (/network|fetch/i.test(String(e))) setOffline(true);
       if (!silent) setError(e.message || 'تعذر تحميل المحادثات');
@@ -142,6 +173,7 @@ export function WhatsAppInboxScreen() {
       setSelected((s) => ({ ...(s || conv), ...conv }));
       if (!after) setRecentOrders(d.recentOrders || []);
       if (after) {
+        if ((d.messages || []).length > 0) speedUp();
         setMessages((prev) => {
           const known = new Set(prev.map((m) => m.id));
           return [...prev, ...(d.messages || []).filter((m: WMsg) => !known.has(m.id))];
@@ -198,10 +230,11 @@ export function WhatsAppInboxScreen() {
       loadConversations(true);
       if (selectedIdRef.current) loadMessages(selectedIdRef.current, true);
     },
-    { everyMs: 5_000, enabled: canView }
+    { everyMs: pace, enabled: canView }
   );
 
   const selectConversation = (c: Conversation) => {
+    speedUp();
     setSelectedId(c.id);
     setSelected(c);
     setMessages([]);
@@ -214,6 +247,7 @@ export function WhatsAppInboxScreen() {
 
   const sendMessage = async () => {
     if (!selectedId || !composing.trim() || sending) return;
+    speedUp();
     setSending(true); setSendError(null); setRetryText(null);
     const text = composing.trim();
     try {
