@@ -55,6 +55,22 @@ export const CONTENT_FIELDS = [
 /** The live columns as one object — the shape both blobs hold. */
 const liveAsJsonb = `jsonb_build_object(${CONTENT_FIELDS.map((f) => `'${f}', "${f}"`).join(', ')})`;
 
+/**
+ * THE PAGE'S FINGERPRINT — what a window was looking at when it opened.
+ *
+ * md5 of what the editor opens on: the draft when there is one, the live
+ * columns otherwise (the GET overlays the draft the same way). Computed by
+ * Postgres from the row, so every window and every statement reads one
+ * definition of «the same page».
+ */
+const PAGE_BASE_SQL = `md5(COALESCE("contentDraft", ${liveAsJsonb}::text))`;
+
+/** What the editor sends back as `base`: an md5, 32 hex characters. */
+export const PAGE_BASE_PATTERN = /^[0-9a-f]{32}$/;
+
+/** The sentence for a save or a publish that lost the race. */
+export const PAGE_CHANGED_AR = 'تغيّرت الصفحة من نافذة أخرى — أعد التحميل';
+
 /** `col = <from that blob>`, or the live value when the blob is null. */
 const takeFrom = (blob: 'contentDraft' | 'contentPrevious') =>
   CONTENT_FIELDS.map(
@@ -76,6 +92,11 @@ const takeFrom = (blob: 'contentDraft' | 'contentPrevious') =>
 export type DraftContent = Partial<PageContent>;
 
 export interface DraftState {
+  /**
+   * What this window must hand back to save or publish — see `PAGE_BASE_SQL`.
+   * Optional: a caller that never asks for it is unaffected.
+   */
+  base?: string;
   /** The unpublished edits, or null when there are none. */
   draft: DraftContent | null;
   /** Whether one press would put something different in front of visitors. */
@@ -107,14 +128,15 @@ function parse(blob: unknown): DraftContent | null {
 /** What the editor needs to know about this page beyond its live content. */
 export async function draftState(id: string): Promise<DraftState> {
   const rows = await db.$queryRawUnsafe<
-    { contentDraft: string | null; contentPrevious: string | null; contentPublishedAt: Date | null }[]
+    { contentDraft: string | null; contentPrevious: string | null; contentPublishedAt: Date | null; base?: string }[]
   >(
-    `SELECT "contentDraft", "contentPrevious", "contentPublishedAt" FROM "landing_pages" WHERE "id" = $1`,
+    `SELECT "contentDraft", "contentPrevious", "contentPublishedAt", ${PAGE_BASE_SQL} AS "base" FROM "landing_pages" WHERE "id" = $1`,
     id
   );
   const row = rows[0];
   if (!row) return { draft: null, hasUnpublished: false, canRevert: false, publishedAt: null };
   return {
+    base: row.base,
     draft: parse(row.contentDraft),
     // The column, not the parsed blob: an unparseable draft is still an
     // unpublished edit sitting there, and saying otherwise would make
@@ -166,6 +188,62 @@ export async function saveContent(
 }
 
 /**
+ * SAVE, BUT ONLY IF THE PAGE IS STILL THE ONE THIS WINDOW OPENED.
+ *
+ * Two windows on one page used to erase each other: each saved its patch
+ * over whatever the other had just written, and the later save won without
+ * either seller being told. Here the window hands back the `base` it read,
+ * and the statement writes only where the row still has that fingerprint;
+ * a stale window gets `{ ok: false }` and the route answers 409.
+ *
+ * AND WHERE THE WRITE LANDS IS DECIDED INSIDE THE STATEMENT, from the row's
+ * own `isPublished`. `saveContent` takes that as an argument read earlier,
+ * and a window holding «not published» while another published the page
+ * wrote straight over what visitors were reading. Here the row is asked at
+ * the moment of the write.
+ *
+ * `saveContent` is untouched and still the door for a caller that sends no
+ * base: the old windows keep working.
+ */
+export type GuardedSave = { ok: true; wroteDraft: boolean; base?: string } | { ok: false };
+
+export async function saveContentIfBase(
+  id: string,
+  patch: Partial<PageContent>,
+  base: string
+): Promise<GuardedSave> {
+  const fields = CONTENT_FIELDS.filter((f) => patch[f] !== undefined);
+
+  if (fields.length === 0) {
+    // Nothing to write, but a stale window is still told it is stale.
+    const rows = await db.$queryRawUnsafe<{ isPublished: boolean; base: string }[]>(
+      `SELECT "isPublished", ${PAGE_BASE_SQL} AS "base" FROM "landing_pages" WHERE "id" = $1 AND ${PAGE_BASE_SQL} = $2`,
+      id,
+      base
+    );
+    const row = rows[0];
+    return row ? { ok: true, wroteDraft: Boolean(row.isPublished), base: row.base } : { ok: false };
+  }
+
+  const baseAt = fields.length + 3;
+  const rows = await db.$queryRawUnsafe<{ isPublished: boolean; base: string }[]>(
+    `UPDATE "landing_pages" SET
+       ${fields.map((f, i) => `"${f}" = CASE WHEN "isPublished" THEN "${f}" ELSE $${i + 3}::text END`).join(', ')},
+       "contentDraft" = CASE WHEN "isPublished"
+         THEN (COALESCE("contentDraft"::jsonb, ${liveAsJsonb}) || $2::jsonb)::text
+         ELSE NULL END
+     WHERE "id" = $1 AND ${PAGE_BASE_SQL} = $${baseAt}
+     RETURNING "isPublished", ${PAGE_BASE_SQL} AS "base"`,
+    id,
+    JSON.stringify(Object.fromEntries(fields.map((f) => [f, patch[f] ?? null]))),
+    ...fields.map((f) => patch[f] ?? null),
+    base
+  );
+  const row = rows[0];
+  return row ? { ok: true, wroteDraft: Boolean(row.isPublished), base: row.base } : { ok: false };
+}
+
+/**
  * PUBLISH. The draft becomes what visitors read; what they were reading
  * becomes the one step back.
  *
@@ -173,17 +251,24 @@ export async function saveContent(
  * without disturbing the step back — publishing a page nobody has edited
  * since the last publish should not overwrite the version a seller might
  * still want to return to with an identical copy of what is already live.
+ *
+ * `base` is the fingerprint the window read (see `PAGE_BASE_SQL`). Given,
+ * the press publishes only if the page is still that page — a window cannot
+ * promote a draft it never saw — and `false` means nothing was published.
+ * Not given, it is the old unconditional press and never refuses.
  */
-export async function publishContent(id: string): Promise<void> {
-  await db.$executeRawUnsafe(
+export async function publishContent(id: string, base?: string): Promise<boolean> {
+  const n = await db.$executeRawUnsafe(
     `UPDATE "landing_pages" SET
        "contentPrevious" = CASE WHEN "contentDraft" IS NULL THEN "contentPrevious" ELSE ${liveAsJsonb}::text END,
        ${takeFrom('contentDraft')},
        "contentDraft" = NULL,
        "contentPublishedAt" = NOW()
-     WHERE "id" = $1`,
-    id
+     WHERE "id" = $1${base === undefined ? '' : ` AND ${PAGE_BASE_SQL} = $2`}`,
+    id,
+    ...(base === undefined ? [] : [base])
   );
+  return base === undefined ? true : n > 0;
 }
 
 /**
