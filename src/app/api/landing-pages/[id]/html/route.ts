@@ -6,7 +6,7 @@ import { apiError } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { rateLimit } from '@/lib/rate-limit';
 import { validateHtmlUpload } from '@/lib/landing-pages';
-import { sanitizeLandingHtml } from '@/lib/landing-html-sanitize';
+import { sanitizeLandingHtmlStrict } from '@/lib/landing-html-sanitize';
 import { saveContent } from '@/lib/landing-draft';
 
 interface Ctx {
@@ -69,7 +69,12 @@ export async function POST(req: Request, ctx: Ctx) {
      * safer reading — a draft. No published contract changes: the response
      * keeps its shape and gains one optional field.
      */
-    const htmlContent = sanitizeLandingHtml(buffer.toString('utf8'));
+    const htmlContent = sanitizeLandingHtmlStrict(buffer.toString('utf8'));
+    // Refused is not empty: a file the cleaner gave up on must not be saved as
+    // a blank page and reported as done.
+    if (htmlContent === null) {
+      return NextResponse.json({ error: 'الملف معقّد أكثر من اللازم' }, { status: 400 });
+    }
     await saveContent(lp.id, { htmlContent }, lp.isPublished);
     const updated = await db.landingPage.findUniqueOrThrow({
       where: { id: lp.id },

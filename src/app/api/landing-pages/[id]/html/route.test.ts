@@ -107,6 +107,19 @@ describe('what the door still refuses', () => {
     expect(db.$executeRawUnsafe).not.toHaveBeenCalled();
   });
 
+  it('a file the cleaner gives up on is refused in words, not saved as a blank page', async () => {
+    const res = await upload('<meta '.repeat(40000));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe('الملف معقّد أكثر من اللازم');
+    expect(db.$executeRawUnsafe).not.toHaveBeenCalled();
+  });
+
+  it('but a file that is nothing except an active tag is a valid, empty save', async () => {
+    const res = await upload('<script>alert(1)</script>');
+    expect(res.status).toBe(200);
+    expect(db.$executeRawUnsafe).toHaveBeenCalledTimes(1);
+  });
+
   it('a page that is not this company’s writes nothing', async () => {
     db.landingPage.findFirst.mockResolvedValue(null);
     const res = await upload('<html></html>');

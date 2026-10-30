@@ -98,13 +98,88 @@ const FORMACTION_ATTR = /[\s/"']formaction\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
 const keepQuote = (m: string) => (m[0] === '"' || m[0] === "'" ? m[0] : '');
 
 export function sanitizeLandingHtml(html: string): string {
+  return sanitizeLandingHtmlStrict(html) ?? '';
+}
+
+/**
+ * THE SAME, BUT A REFUSAL IS NOT AN EMPTY PAGE.
+ *
+ * `null` means the input was REFUSED — too tangled to clean in a sensible
+ * time, or not settled after the passes — and an upload says so in words
+ * (400) instead of saving an empty page and calling it done. A file whose
+ * every byte was an active tag legitimately comes back as `''`; that is a
+ * different answer.
+ */
+export function sanitizeLandingHtmlStrict(html: string): string | null {
   let out = html ?? '';
+  if (isTooTangled(out)) return null;
   for (let pass = 0; pass < MAX_SANITIZE_PASSES; pass++) {
     const next = sanitizeOnce(out);
     if (next === out) return out;
     out = next;
   }
-  return '';
+  return null;
+}
+
+/**
+ * INPUT BUILT TO MAKE A REGULAR EXPRESSION CRAWL.
+ *
+ * Most rules here are `<tag\b[^>]*>`: from every `<tag` they read up to the
+ * next `>`. When there is none — or a far one — every start costs the rest
+ * of the document, and N starts cost N times that. MEASURED on the rules
+ * as they were: 256 KB of `<meta ` took 8.9 s, `<script ` 5.2 s, and the
+ * 2 MB upload limit made it minutes on the one event loop every other
+ * request shares.
+ *
+ * This adds up, in ONE linear pass, what each `<` would cost: its distance to
+ * the next `>`. A real page is nowhere near the limit (tags are tens of
+ * characters long); input over it is not a page.
+ */
+const MAX_TANGLE = 10_000_000;
+
+function isTooTangled(html: string): boolean {
+  let work = 0;
+  let gt = -1;
+  for (let i = html.indexOf('<'); i >= 0; i = html.indexOf('<', i + 1)) {
+    if (gt < i) {
+      gt = html.indexOf('>', i);
+      if (gt < 0) gt = html.length;
+    }
+    work += gt - i;
+    if (work > MAX_TANGLE) return true;
+  }
+  return false;
+}
+
+/**
+ * EVERY `<name …> … </name>`, REMOVED IN ONE LINEAR PASS.
+ *
+ * The pair rules were `<name\b…>[\s\S]*?<\/name\s*>`: with no end tag the
+ * lazy part reads to the end of the document from EVERY start, and a file of
+ * `<script>` repeated took 1.2 s per 256 KB. Here the end tags are found
+ * once, and each start looks only at the next one that follows it. No end
+ * tag after a start means none after any later start either, so it stops.
+ * (A start with no end tag is left for the lone-tag rule that follows.)
+ */
+function stripElements(html: string, name: string): string {
+  const closers: { at: number; end: number }[] = [];
+  const close = new RegExp('</' + name + '\\s*>', 'gi');
+  for (let m = close.exec(html); m; m = close.exec(html)) closers.push({ at: m.index, end: m.index + m[0].length });
+  if (closers.length === 0) return html;
+
+  const open = new RegExp('<' + name + '\\b', 'gi');
+  let out = '';
+  let pos = 0;
+  let c = 0;
+  for (let m = open.exec(html); m; m = open.exec(html)) {
+    while (c < closers.length && closers[c].at < m.index) c++;
+    if (c === closers.length) break;
+    out += html.slice(pos, m.index);
+    pos = closers[c].end;
+    open.lastIndex = pos;
+    c++;
+  }
+  return out + html.slice(pos);
 }
 
 function sanitizeOnce(html: string): string {
@@ -138,12 +213,12 @@ function sanitizeOnce(html: string): string {
   for (let before = ''; before !== out; ) {
     before = out;
     // Script blocks (multiline, case-insensitive), then stray halves.
-    out = out.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '');
+    out = stripElements(out, 'script');
     out = out.replace(/<\/?script\b[^>]*>/gi, '');
     // Dangerous containers, each with a PAIR rule and a LONE-TAG rule.
-    out = out.replace(/<iframe\b[\s\S]*?<\/iframe\s*>/gi, '');
+    out = stripElements(out, 'iframe');
     out = out.replace(/<\/?iframe\b[^>]*\/?>/gi, '');
-    out = out.replace(/<object\b[\s\S]*?<\/object\s*>/gi, '');
+    out = stripElements(out, 'object');
     out = out.replace(/<\/?object\b[^>]*\/?>/gi, '');
     out = out.replace(/<\/?embed\b[^>]*\/?>/gi, '');
     out = out.replace(/<base\b[^>]*>/gi, '');
@@ -167,7 +242,7 @@ function sanitizeOnce(html: string): string {
     out = out.replace(/<\/?frame\b[^>]*\/?>/gi, '');
     out = out.replace(/<\/?plaintext\b[^>]*>/gi, '');
     out = out.replace(/<\/?link\b[^>]*\/?>/gi, '');
-    out = out.replace(/<applet\b[\s\S]*?<\/applet\s*>/gi, '');
+    out = stripElements(out, 'applet');
     out = out.replace(/<\/?applet\b[^>]*\/?>/gi, '');
     // meta refresh / meta with http-equiv
     out = out.replace(/<meta\b[^>]*http-equiv\b[^>]*>/gi, '');
@@ -195,7 +270,11 @@ function sanitizeOnce(html: string): string {
   // 4) Neutralize dangerous URL schemes in any attribute
   //    (javascript:, vbscript:, data:text/html — incl. encoded variants)
   const dangerousUrl = /(?:j\s*a\s*v\s*a\s*s\s*c\s*r\s*i\s*p\s*t|v\s*b\s*s\s*c\s*r\s*i\s*p\s*t|d\s*a\s*t\s*a\s*:\s*t\s*e\s*x\s*t\s*\/\s*h\s*t\s*m\s*l)/i;
-  out = out.replace(/(\w+\s*=\s*)(["']?)([^"'>]*)/gi, (m, attr: string, q: string, val: string) => {
+  // `(?<!\w)`: start at the beginning of a word only. From every letter of a
+  // 256 KB run of letters the old pattern read to the end and gave up (28 s);
+  // an earlier start in the same word would have matched anyway, so nothing a
+  // real attribute does is different.
+  out = out.replace(/(?<!\w)(\w+\s*=\s*)(["']?)([^"'>]*)/gi,(m, attr: string, q: string, val: string) => {
     // The pattern tolerates whitespace BETWEEN the letters, which is the
     // old trick. It does not tolerate the letters being written as
     // character references, which is the other one — and a browser decodes
@@ -412,55 +491,107 @@ export function applyLandingVariables(
  * THE TEXT OF A DOCUMENT WITH EVERYTHING INERT BLANKED OUT, SAME LENGTH.
  *
  * `</head>` is only the end of the head where a parser would take it as a
- * tag. Inside a comment, inside a quoted attribute value, inside a title or
- * a textarea (their text is not markup) or inside a script or style, the
- * same six characters are just text — and splicing a stylesheet in THERE
- * puts it in the middle of a comment or an attribute, where a `-->` or a
- * quote in it ends the context and what follows is live. MEASURED:
- * `<div title='</head>'>` took the CSS into the attribute value.
+ * tag. Inside a comment, inside an attribute value, inside a title or a
+ * textarea (their text is not markup) or inside a script or style, the same
+ * six characters are just text — and splicing a stylesheet in THERE puts it
+ * in the middle of a comment or an attribute, where a `-->` or a quote in it
+ * ends the context and what follows is live.
+ *
+ * The scanner reads a tag the way the HTML tokenizer does, attribute by
+ * attribute: a value is quoted ONLY when the quote is the first character
+ * after the `=`. A quote anywhere else — `<p x=a'>`, where it is part of an
+ * unquoted value — opens nothing. The first version counted every quote it
+ * met, lost step with the browser on exactly that input, and let a payload
+ * through (see `injectPageStyles`, which no longer trusts this alone).
  *
  * The result has the same length as the input, so a position found in it is
  * a position in the original.
  */
 export function maskInert(html: string): string {
+  const n = html.length;
   const out = html.split('');
   const blank = (from: number, to: number) => {
-    for (let k = from; k < to && k < out.length; k++) if (out[k] !== '\n') out[k] = '_';
+    for (let k = from; k < to && k < n; k++) if (out[k] !== '\n') out[k] = '_';
   };
+  const space = (c: string) => c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
+  const RAW = /^(title|textarea|script|style|xmp|noembed|noframes|iframe)$/i;
+
   let i = 0;
-  while (i < html.length) {
+  while (i < n) {
+    if (html[i] !== '<') {
+      i++;
+      continue;
+    }
     if (html.startsWith('<!--', i)) {
-      const close = html.indexOf('-->', i + 4);
-      const end = close < 0 ? html.length : close + 3;
+      let end: number;
+      if (html.startsWith('<!-->', i)) end = i + 5;
+      else if (html.startsWith('<!--->', i)) end = i + 6;
+      else {
+        const closer = /--!?>/g;
+        closer.lastIndex = i + 4;
+        const found = closer.exec(html);
+        end = found ? found.index + found[0].length : n;
+      }
       blank(i, end);
       i = end;
       continue;
     }
-    const open = /^<([a-z][a-z0-9-]*)/i.exec(html.slice(i, i + 40));
-    if (html[i] !== '<' || !open) {
-      i++;
+    const isEnd = html[i + 1] === '/';
+    const name = /^[a-z][^\s/>]*/i.exec(html.slice(i + (isEnd ? 2 : 1), i + (isEnd ? 2 : 1) + 40));
+    if (!name) {
+      if (html[i + 1] === '!' || html[i + 1] === '?' || isEnd) {
+        // `<!doctype …>`, `<?…>`, `</ …>`: a bogus comment, to the first `>`
+        const gt = html.indexOf('>', i);
+        const end = gt < 0 ? n : gt + 1;
+        blank(i, end);
+        i = end;
+      } else {
+        i++;
+      }
       continue;
     }
-    // the tag itself: to the first `>` that is not inside a quoted value
-    let j = i + open[0].length;
-    let quote = '';
-    for (; j < html.length; j++) {
+
+    // the tag: attributes, one at a time
+    let j = i + (isEnd ? 2 : 1) + name[0].length;
+    while (j < n) {
       const c = html[j];
-      if (quote) {
-        if (c === quote) quote = '';
-        else out[j] = '_';
-      } else if (c === '"' || c === "'") quote = c;
-      else if (c === '>') break;
+      if (c === '>') {
+        j++;
+        break;
+      }
+      if (space(c) || c === '/') {
+        j++;
+        continue;
+      }
+      // an attribute name runs to whitespace, `/`, `>` or `=` (a leading `=` belongs to it)
+      j++;
+      while (j < n && !space(html[j]) && html[j] !== '/' && html[j] !== '>' && html[j] !== '=') j++;
+      let k = j;
+      while (k < n && space(html[k])) k++;
+      if (html[k] !== '=') continue;
+      k++;
+      while (k < n && space(html[k])) k++;
+      const q = html[k];
+      if (q === '"' || q === "'") {
+        const close = html.indexOf(q, k + 1);
+        const stop = close < 0 ? n : close;
+        blank(k + 1, stop);
+        j = close < 0 ? n : stop + 1;
+      } else {
+        let stop = k;
+        while (stop < n && !space(html[stop]) && html[stop] !== '>') stop++;
+        blank(k, stop);
+        j = stop;
+      }
     }
-    i = j + 1;
+    i = j;
+
     // elements whose text is not markup: blank it to the matching end tag
-    const name = open[1].toLowerCase();
-    if (/^(title|textarea|script|style|xmp|noembed|noframes|iframe)$/.test(name)) {
-      // case-insensitive search from here: lower-casing the whole text could change its length
-      const ender = new RegExp('</' + name, 'ig');
+    if (!isEnd && RAW.test(name[0])) {
+      const ender = new RegExp('</' + name[0], 'ig');
       ender.lastIndex = i;
       const found = ender.exec(html);
-      const end = found ? found.index : html.length;
+      const end = found ? found.index : n;
       blank(i, end);
       i = end;
     }
@@ -481,22 +612,41 @@ export function maskInert(html: string): string {
  * THE REPLACEMENT IS A FUNCTION, NEVER A STRING. `String.replace` reads
  * `$'`, `$&` and `$1` in a replacement string, and the CSS is a seller's:
  * `content:"$'"` made the old call paste the rest of the document into the
- * middle of the stylesheet. A function's return value is taken literally.
+ * middle of the stylesheet. Here nothing is replaced at all: the document is
+ * cut in two and the styles are put between the halves.
  *
- * AND THE `</head>` IS FOUND WHERE A PARSER WOULD FIND IT (see `maskInert`).
- * With none, both go to the front of the document, as they always did.
+ * AND THE SPOT IS CHECKED, NOT TRUSTED. `maskInert` finds the `</head>` the
+ * way a parser would, but a scanner that mirrors a browser is a scanner that
+ * can differ from it by one input, and one input is all an attacker needs. So
+ * the result is read again: with the styles in, the REST of the document must
+ * come out of the scanner exactly as it did without them. If a quote or a
+ * comment in what was injected changed how the rest is read, the styles were
+ * not where they were thought to be, and they go to the one place that needs
+ * no scanning — the start of the document, after any doctype.
+ *
+ * After the doctype and never before it: a style element in front of
+ * `<!doctype html>` puts the page in quirks mode.
  *
  * What is spliced in is run through the sanitizer first, on its own: the
- * whole document cannot be (the server has added its own behaviour script
- * by now, and that is the one script that is meant to be there), but the
- * two style elements are exactly what an attacker controls.
+ * whole document cannot be (the server has added its own behaviour script by
+ * now, and that is the one script that is meant to be there), but the two
+ * style elements are exactly what an attacker controls.
  */
 const HEAD_CLOSE = /<\/head\s*>/i;
+const START_OF_DOCUMENT = /^(?:\s|<!--[\s\S]*?-->)*(?:<!doctype[^>]*>)?/i;
 
 export function injectPageStyles(html: string, base: string, custom: string): string {
   const injection = sanitizeLandingHtml(base) + sanitizeLandingHtml(custom);
   if (!injection) return html;
-  const at = HEAD_CLOSE.exec(maskInert(html));
-  if (!at) return injection + html;
-  return html.slice(0, at.index) + injection + html.slice(at.index);
+
+  const mask = maskInert(html);
+  const close = HEAD_CLOSE.exec(mask);
+  if (close) {
+    const at = close.index;
+    const out = html.slice(0, at) + injection + html.slice(at);
+    const after = maskInert(out);
+    if (after.startsWith('<style', at) && after.slice(at + injection.length) === mask.slice(at)) return out;
+  }
+  const front = START_OF_DOCUMENT.exec(html)?.[0].length ?? 0;
+  return html.slice(0, front) + injection + html.slice(front);
 }
