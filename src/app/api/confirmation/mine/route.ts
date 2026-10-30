@@ -79,6 +79,10 @@ const ORDER_SELECT = {
   channel: { select: { id: true, name: true } },
   // The street THIS order goes to, when the visitor typed one other than the customer row's — shown before it.
   deliveryAddress: true,
+  // The governorate the fee table was read from, and the customer note the row prints in one line. Display only.
+  // `internalNotes` is deliberately NOT read: the system writes into it as well (Telegram ids, win-back discounts, import file names) and no key guards it.
+  region: { select: { name: true } },
+  customerNotes: true,
   customer: { select: { id: true, fullName: true, phone: true, rawPhone: true, city: true, address: true, totalOrders: true } },
   items: { select: { id: true, productName: true, quantity: true, freeQuantity: true, lineTotal: true, reservedQty: true } },
   // What the customer added on the thank-you screen. The total on the card already carries it, so a card that

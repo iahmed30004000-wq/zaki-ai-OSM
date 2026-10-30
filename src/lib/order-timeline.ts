@@ -146,6 +146,9 @@ const ACTIVITY_AR: Record<string, string> = {
   COURIER_TOLD_TO_CANCEL: 'إبلاغ الشركة بإلغاء الطرد',
   TAKEN_OFF_BATCH: 'أُخرج من الدفعة',
   LABEL_STALE_REPRINT: 'بوليصة الطرد لم تعد تطابق الطلب — تُطبع من جديد',
+  // «التجهيز»: corrected at the trolley by the person holding the packing table's pen, before «إغلاق الشحنة».
+  PREP_EDITED_BEFORE_CLOSE: 'عُدِّل قبل إغلاق الشحنة',
+  COURIER_CANCELLED_EDIT_NOT_SAVED: 'أُلغي الطرد عند الشركة ولم يُحفظ تعديل التجهيز',
   PARCEL_ATTESTED_IN_HAND: 'أكّد أن الطرد بين يديه',
   COURIER_CANCELLED_ORDER_MOVED: 'ألغت الشركة الطرد وتغيّر الطلب قبل الحفظ',
   // «كان من طرد طلب آخر»: the courier gave a box to another customer; both orders and the box's order say so.
@@ -188,7 +191,7 @@ const VALUE_AR: Record<string, Record<string, string>> = {
 };
 
 const FIELD_AR: Record<string, string> = {
-  customerName: 'اسم العميل', customerPhone: 'رقم الهاتف', customerAddress: 'العنوان',
+  customerName: 'اسم العميل', customerPhone: 'رقم الهاتف', customerAltPhone: 'الرقم الإضافي', customerAddress: 'العنوان', items: 'كميات الأسطر',
   regionId: 'المحافظة', sellingPrice: 'السعر', quantity: 'الكمية',
   discountAmount: 'الخصم', shippingCost: 'أجرة الشحن', productId: 'المنتج',
 };

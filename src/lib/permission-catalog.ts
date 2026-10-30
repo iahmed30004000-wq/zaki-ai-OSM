@@ -351,6 +351,14 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       { key: 'ops.return_fee', requires: 'ops.returns', ar: 'احتساب أجرة الإرجاع على شركة الشحن', en: 'Charge the courier a return fee' },
       // Seeing the return rows on «متابعة الشحن» — NOT receiving the stock, which stays «المرتجعات» above.
       { key: 'ops.returns_view', ar: 'عرض المرتجعات في المتابعة (بلا استلام)', en: 'See return rows in tracking (no receiving)' },
+      /*
+       * THE PACKING TABLE’S OWN PEN (30/10). Until «إغلاق الشحنة — سُلّمت للشركة» the person at the trolley may correct a CONFIRMED
+       * order in place — the name, the phone, the governorate, the address and the quantities — instead of raising a request.
+       * Granted to NOBODY by any migration or fallback: the owner ticks it for the preparation role or for one employee. It
+       * never moves a price, a discount, a fee or a product (those stay behind orders.change_price / orders.change_fee and the
+       * request), and it stops by itself the moment the shipment is closed.
+       */
+      { key: 'ops.edit_in_batch', requires: 'ops.batches', ar: 'تعديل طلب مؤكَّد مباشرةً قبل إغلاق الشحنة (الاسم والهاتف والمحافظة والعنوان والكمية)', en: 'Edit a confirmed order directly before its shipment is closed' },
       { key: 'ops.decide_changes', requires: null, note: 'البتّ بطلب تعديل على طلب مؤكَّد ما زال بالمستودع (طلبات غيرك) — بلا شاشة وبلا قائمة.', ar: 'البتّ في طلبات التعديل وهي بالمستودع', en: 'Decide change requests while the order is in the warehouse' },
     ],
   },

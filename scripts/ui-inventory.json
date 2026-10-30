@@ -279,6 +279,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/ops/PrepEditSheet.tsx": {
+    "buttons": 4,
+    "inputs": 6,
+    "columns": 0,
+    "cards": 0,
+    "modals": 1,
+    "icons": 3,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/orders/AiOrderModal.tsx": {
     "buttons": 4,
     "inputs": 10,
@@ -862,7 +872,7 @@
   "src/components/screens/ConfirmationMineScreen.tsx": {
     "buttons": 9,
     "inputs": 3,
-    "columns": 4,
+    "columns": 6,
     "cards": 0,
     "modals": 0,
     "icons": 14,
@@ -872,7 +882,7 @@
   "src/components/screens/ConfirmationPostponedScreen.tsx": {
     "buttons": 1,
     "inputs": 0,
-    "columns": 13,
+    "columns": 15,
     "cards": 0,
     "modals": 0,
     "icons": 3,
@@ -1310,12 +1320,12 @@
     "tabs": 0
   },
   "src/components/screens/ShippingBatchesScreen.tsx": {
-    "buttons": 10,
+    "buttons": 11,
     "inputs": 0,
     "columns": 0,
     "cards": 0,
     "modals": 0,
-    "icons": 14,
+    "icons": 15,
     "links": 0,
     "tabs": 0
   },
