@@ -23,6 +23,7 @@ import {
 } from '@/lib/shipping-workflow';
 import { RiArchiveDrawerLine, RiArrowGoBackLine, RiCloseCircleLine, RiHistoryLine, RiNumbersLine, RiShipLine, RiTimerLine, RiTruckLine } from '@remixicon/react';
 import { RatingLinkButton } from './RatingLinkButton';
+import { useIsPhone } from '@/hooks/useIsPhone';
 
 
 /*
@@ -589,11 +590,21 @@ export function ShippingSection({ order, ar, isRtl, onRefreshOrder, canEdit = tr
   );
 }
 
+/**
+ * One fact of the shipping grid.
+ *
+ * A phone gives each box about 106px of text, so a tracking number, a batch number or a courier's name — the
+ * facts staff read out loud — was cut with an ellipsis (ORD-24). On a phone they WRAP instead (a number at any
+ * character, a name at a space), and a box with nothing to say («—») is not drawn at all, so an unshipped order
+ * does not show six boxes of dashes. A desk keeps the one-line box it always had.
+ */
 function Info({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  const phone = useIsPhone();
+  if (phone && value === '—') return null;
   return (
     <div className="rounded-lg bg-[var(--sys-surface)] px-2.5 py-2">
       <p className="text-xs text-[var(--sys-muted)]">{label}</p>
-      <p className={`text-xs font-bold text-[var(--sys-foreground)] truncate ${mono ? 'font-mono' : ''}`} dir={mono ? 'ltr' : undefined}>{value}</p>
+      <p className={`text-xs font-bold text-[var(--sys-foreground)] ${phone ? (mono ? 'break-all' : 'break-words') : 'truncate'} ${mono ? 'font-mono' : ''}`} dir={mono ? 'ltr' : undefined}>{value}</p>
     </div>
   );
 }

@@ -11,6 +11,7 @@ import { TERMINAL_CONFIRMATION_STATUSES } from '@/lib/confirmation-workflow';
 import type { ChangeableField } from '@/lib/change-request-fields';
 import { MAX_REASON, MIN_REASON } from '@/lib/order-edit-reason';
 import { useAsk } from '@/components/ui/Confirm';
+import { useIsPhone } from '@/hooks/useIsPhone';
 
 /**
  * Who the order goes to, and the one button that edits all of it.
@@ -66,6 +67,8 @@ export function CustomerCard({ order, canEdit, dialCode, onAcquireLock, onSaved,
   // Saves, and asks why when the server says this authority owes a reason.
   const patchOrder = useOrderPatch();
   const ask = useAsk();
+  /* A phone lets the card's title and its two buttons wrap onto a second line (ORD-13); a desk keeps the one row. */
+  const phone = useIsPhone();
   const { regions, countryName } = useRegions();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -199,7 +202,7 @@ export function CustomerCard({ order, canEdit, dialCode, onAcquireLock, onSaved,
 
   return (
     <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 shadow-raised space-y-3">
-      <div className="flex items-center justify-between gap-2">
+      <div className={phone ? 'flex flex-wrap items-center justify-between gap-2' : 'flex items-center justify-between gap-2'}>
         <h4 className="text-xs font-black text-[var(--sys-foreground)] flex items-center gap-2">
           <RiUserLine className="w-4 h-4 text-[var(--sys-primary)]" />
           معلومات العميل

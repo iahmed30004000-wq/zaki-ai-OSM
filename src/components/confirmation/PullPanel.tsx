@@ -5,6 +5,8 @@ import { apiJson } from '@/lib/api-client';
 import { RiInboxLine, RiPhoneLockLine, RiTimerFlashLine } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
+import { useIsPhone } from '@/hooks/useIsPhone';
+import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 
 /**
  * «اسحب الطلب التالي» — THE PULL, WHERE THE AGENT WORKS.
@@ -110,6 +112,8 @@ export function PullPanel({
   compact?: boolean;
 }) {
   const { data, error, pulling } = queue;
+  /* The slim bar folds its numbers and its rule on a phone (ORD-07); the full card is a desk page. */
+  const phone = useIsPhone();
   if (!data) return null;
 
   /** The server's word for «this account does not pull, it supervises». */
@@ -130,7 +134,7 @@ export function PullPanel({
       disabled={!data.canPull || pulling || data.waiting === 0}
       className={
         compact
-          ? 'px-5 py-2.5 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-semibold disabled:opacity-50'
+          ? 'min-h-11 md:min-h-0 px-5 py-2.5 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-semibold disabled:opacity-50'
           : 'mt-6 px-8 py-3 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-semibold disabled:opacity-50'
       }
     >
@@ -242,8 +246,29 @@ export function PullPanel({
         </div>
         {onADate}
         {sentence}
-        {caps}
-        {rule}
+        {/*
+          A PHONE: THE COUNT AND THE BUTTON, THEN ONE LINE (ORD-07).
+
+          The two caps and the rule paragraph took about 150px above the first order on every visit. They are
+          still here — the fold's own line says the two figures that matter («بلا محاولة» and «بيدك»), and
+          opening it shows the cards and the rule in full.
+        */}
+        {phone && !notMyDesk ? (
+          <div className="mt-3">
+            <AdvancedGroup
+              label="التفاصيل"
+              holds={`بلا محاولة ${data.owned.withoutAttempt}/${data.caps.withoutAttempt} · بيدك ${data.owned.total}/${data.caps.total}`}
+            >
+              {caps}
+              {rule}
+            </AdvancedGroup>
+          </div>
+        ) : (
+          <>
+            {caps}
+            {rule}
+          </>
+        )}
       </section>
     );
   }

@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { NextStepButton } from '@/components/ui/NextStep';
 import { SHIPPING_STATUS_AR } from '@/lib/shipping-workflow';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
+import { useIsPhone } from '@/hooks/useIsPhone';
 import { OrderLink } from '@/components/orders/OrderLink';
 
 /**
@@ -89,6 +90,8 @@ export function AgentCustodyScreen() {
   const [open, setOpen] = useState<Detail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Before the early return below: a hook after it would be skipped on the first render.
+  const phone = useIsPhone();
 
   const load = useCallback(async () => {
     try {
@@ -133,7 +136,7 @@ export function AgentCustodyScreen() {
       <div className="max-w-4xl space-y-4">
         <button
           onClick={() => setOpen(null)}
-          className="text-xs text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1"
+          className="min-h-11 md:min-h-0 text-xs text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1"
         >
           <RiArrowLeftSLine className="icon-mirror w-4 h-4" />
           كل المندوبين
@@ -152,6 +155,7 @@ export function AgentCustodyScreen() {
           orders={open.inHand}
           money={money}
           showFee={false}
+          phone={phone}
         />
 
         <Section
@@ -161,6 +165,7 @@ export function AgentCustodyScreen() {
           orders={confirmed}
           money={money}
           showFee
+          phone={phone}
         />
 
         {/*
@@ -179,6 +184,7 @@ export function AgentCustodyScreen() {
             orders={awaiting}
             money={money}
             showFee
+            phone={phone}
           />
         )}
 
@@ -245,6 +251,36 @@ export function AgentCustodyScreen() {
                 disabled={loadingDetail}
                 className="w-full text-start p-4 hover:bg-[var(--sys-surface)] transition-colors disabled:opacity-60"
               >
+                {phone ? (
+                  /* Three ragged lines of labels and figures became the name and the balance on one line and the three
+                     figures under it, each under its own name. */
+                  <>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-bold text-[var(--sys-heading)] text-sm inline-flex items-center gap-1.5 min-w-0">
+                        <RiEBike2Line className="w-4 h-4 text-[var(--sys-primary)]" />
+                        {agent.name}
+                      </span>
+                      <Balance totals={totals} money={money} />
+                    </div>
+                    <dl className="mt-2 grid grid-cols-3 gap-2 text-xs text-[var(--sys-muted-foreground)]">
+                      <div>
+                        <dt>بيده</dt>
+                        <dd className="font-semibold text-[var(--sys-heading)] tabular-nums">
+                          {totals.inHandCount} طلب
+                          <span className="block font-normal text-[var(--sys-muted)]" dir="ltr">{money(totals.inHandValue)}</span>
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>حصّل مؤكَّد</dt>
+                        <dd className="font-semibold text-[var(--sys-heading)] tabular-nums" dir="ltr">{money(totals.collected)}</dd>
+                      </div>
+                      <div>
+                        <dt>له</dt>
+                        <dd className="font-semibold text-[var(--sys-heading)] tabular-nums" dir="ltr">{money(totals.fees)}</dd>
+                      </div>
+                    </dl>
+                  </>
+                ) : (
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
                   <span className="font-bold text-[var(--sys-heading)] text-sm inline-flex items-center gap-1.5 min-w-[130px]">
                     <RiEBike2Line className="w-4 h-4 text-[var(--sys-primary)]" />
@@ -267,6 +303,7 @@ export function AgentCustodyScreen() {
 
                   <Balance totals={totals} money={money} />
                 </div>
+                )}
 
                 {/* Not a footnote. An owner reading «صافي عليه 0» beside an
                     agent carrying twelve delivered orders needs to know which
@@ -376,7 +413,7 @@ function Tile({ label, value, hint }: { label: string; value: string; hint?: str
 }
 
 function Section({
-  title, subtitle, icon: Icon, orders, money, showFee,
+  title, subtitle, icon: Icon, orders, money, showFee, phone = false,
 }: {
   title: string;
   subtitle: string;
@@ -384,7 +421,11 @@ function Section({
   orders: CustodyOrder[];
   money: (n: number) => string;
   showFee: boolean;
+  phone?: boolean;
 }) {
+  // «أجرة 2.000 JOD» inside one `dir="ltr"` span puts the Arabic label on the LEFT of its figure, so a right-to-left
+  // reader meets «JOD 2.000 أجرة». On a phone only the FIGURE is left-to-right and the label stays outside it.
+  const fig = (n: number) => (phone ? <span dir="ltr">{money(n)}</span> : money(n));
   return (
     <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg">
       <div className="px-4 py-3 border-b border-[var(--sys-border)]">
@@ -420,20 +461,20 @@ function Section({
                   {arDateShort(o.deliveredAt ?? o.shippedAt)}
                 </span>
                 {showFee && (
-                  <span className="text-[var(--sys-muted)] tabular-nums" dir="ltr">
-                    أجرة {money(o.fee)}
+                  <span className="text-[var(--sys-muted)] tabular-nums" dir={phone ? undefined : 'ltr'}>
+                    أجرة {fig(o.fee)}
                   </span>
                 )}
                 {/* One amount per row, and it says which amount it is. A
                     delivered order with nothing recorded shows the order's
                     value, labelled as the order's value. */}
-                <span className="ms-auto font-bold text-[var(--sys-heading)] tabular-nums" dir="ltr">
+                <span className="ms-auto font-bold text-[var(--sys-heading)] tabular-nums" dir={phone ? undefined : 'ltr'}>
                   {o.collected === null ? (
                     <span className="font-medium text-[var(--sys-warning)]">
-                      قيمة الطلب {money(o.orderValue)}
+                      قيمة الطلب {fig(o.orderValue)}
                     </span>
                   ) : (
-                    money(o.collected)
+                    fig(o.collected)
                   )}
                 </span>
               </li>

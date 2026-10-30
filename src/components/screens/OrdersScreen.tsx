@@ -475,14 +475,57 @@ export function OrdersScreen() {
     window.open(`/api/reports/export?${params.toString()}`, '_blank');
   };
 
+  /*
+   * THE MAIN BUTTON, DRAWN ONCE AND PLACED BY THE WIDTH.
+   *
+   * On a desk it sits after the fold, where it always has. On a phone it comes FIRST: «متقدم» opens in
+   * place and grows the row, and a main button that came after it slid down under four outline buttons
+   * every time somebody opened the fold (ORD-27).
+   */
+  const quickCreate = (
+    <Button
+      size="sm"
+      onClick={() => setCreateModalOpen(true)}
+      className="flex items-center space-x-1.5"
+    >
+      <RiAddCircleLine className="w-4 h-4" />
+      <span>{t.quickCreateOrder}</span>
+    </Button>
+  );
+
+  /*
+   * THE LATE TOGGLE AND THE RESET, DRAWN ONCE.
+   *
+   * On a desk they sit in the search row, as they always have. On a phone they go inside the filter fold
+   * with the filters they belong to — the search row is the search and nothing else (ORD-01).
+   */
+  const lateToggle = (
+    <Button
+      variant={lateOnly ? undefined : 'outline'}
+      onClick={() => setLateOnly((v) => !v)}
+      title="شُحنت منذ 10 أيام أو أكثر ولم تُسلَّم بعد — من تاريخ الشحن"
+      className="shrink-0 gap-1.5"
+    >
+      <RiTimerLine className="w-4 h-4" />
+      {phone ? 'متأخرة +10 أيام' : 'متأخرة 10 أيام+ من الشحن'}
+    </Button>
+  );
+  const resetButton = activeFilters > 0 && (
+    <Button variant="outline" onClick={resetFilters} className="shrink-0 gap-1.5 text-[var(--sys-destructive)]">
+      <RiArrowGoBackLine className="icon-mirror w-4 h-4" />
+      إعادة تعيين ({activeFilters})
+    </Button>
+  );
+
   return (
     <>
       <div className="space-y-6">
         {/* Header */}
         <PageHeader title={t.orders}
-            description="كل الطلبات بحالتها ومَن يحملها — الحالة والفلتر يقرآن نفس الشيء"
+            description={phone ? 'كل الطلبات بحالتها ومَن يحملها' : 'كل الطلبات بحالتها ومَن يحملها — الحالة والفلتر يقرآن نفس الشيء'}
             actions={
-              <><div className="flex items-center space-x-2 rtl:space-x-reverse flex-wrap gap-y-2">
+              <><div className={phone ? 'flex flex-wrap items-center gap-2' : 'flex items-center space-x-2 rtl:space-x-reverse flex-wrap gap-y-2'}>
+            {canCreate && (phone ? quickCreate : null)}
             {/* «holds» names only what THIS person finds inside: export, import and
                 AI entry are each behind a grant. With none of the three there is
                 nothing to fold, so there is no «متقدم» at all (the list refreshes
@@ -540,16 +583,7 @@ export function OrdersScreen() {
             </AdvancedGroup>
             )}
 
-            {canCreate && (
-            <Button
-              size="sm"
-              onClick={() => setCreateModalOpen(true)}
-              className="flex items-center space-x-1.5"
-            >
-              <RiAddCircleLine className="w-4 h-4" />
-              <span>{t.quickCreateOrder}</span>
-            </Button>
-            )}
+            {canCreate && (phone ? null : quickCreate)}
           </div></>
             }
           />
@@ -591,25 +625,30 @@ export function OrdersScreen() {
               }}
               className="shrink-0 h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1.5"
             />
-            <Button
-              variant={lateOnly ? undefined : 'outline'}
-              onClick={() => setLateOnly((v) => !v)}
-              title="شُحنت منذ 10 أيام أو أكثر ولم تُسلَّم بعد — من تاريخ الشحن"
-              className="shrink-0 gap-1.5"
-            >
-              <RiTimerLine className="w-4 h-4" />
-              متأخرة 10 أيام+ من الشحن
-            </Button>
-            {activeFilters > 0 && (
-              <Button variant="outline" onClick={resetFilters} className="shrink-0 gap-1.5 text-[var(--sys-destructive)]">
-                <RiArrowGoBackLine className="icon-mirror w-4 h-4" />
-                إعادة تعيين ({activeFilters})
-              </Button>
-            )}
+            {!phone && lateToggle}
+            {!phone && resetButton}
           </div>
 
+          {/*
+            A PHONE SHOWS THE SEARCH AND ONE BUTTON, NOT SIX DROPDOWNS (ORD-01).
+
+            The first order started 750–850px down the page: the search row wrapped to three lines, then six
+            full-width filters one to a line, then the saved views. The filters, the «متأخرة» toggle, the reset
+            and the saved views now live behind one fold that says how many filters are doing something — they are
+            all still here, one tap away, and a desk draws them exactly as it always has.
+          */}
+          <FilterFold
+            phone={phone}
+            count={activeFilters}
+            footer={
+              <>
+                {lateToggle}
+                {resetButton}
+              </>
+            }
+          >
           {/* Narrowing */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2 p-3">
+          <div className={phone ? 'grid grid-cols-2 gap-2 p-3' : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2 p-3'}>
             <Select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="فلتر الحالة" className="text-xs py-2">
               <option value="all">كل الحالات</option>
               {STATUS_FILTER_OPTIONS.map((st) => (
@@ -688,6 +727,7 @@ export function OrdersScreen() {
           <div className="border-t border-[var(--sys-border)] px-3 pb-3 pt-2">
             <SavedViews screen="orders" current={filterQuery} onApply={applyFilters} />
           </div>
+          </FilterFold>
         </div>
 
         {/* Load error banner */}
@@ -833,7 +873,7 @@ export function OrdersScreen() {
               {!showAll && pagination.totalPages > 1 && (
                 <button
                   onClick={() => setShowAll(true)}
-                  className="ms-auto text-xs font-medium text-[var(--sys-primary)] hover:underline"
+                  className="tap-safe ms-auto text-xs font-medium text-[var(--sys-primary)] hover:underline"
                 >
                   إظهار كل النتائج ({pagination.total})
                 </button>
@@ -841,7 +881,7 @@ export function OrdersScreen() {
               {showAll && (
                 <button
                   onClick={() => setShowAll(false)}
-                  className="ms-auto text-xs font-medium text-[var(--sys-muted-foreground)] hover:underline"
+                  className="tap-safe ms-auto text-xs font-medium text-[var(--sys-muted-foreground)] hover:underline"
                 >
                   العودة للعرض بالصفحات
                 </button>
@@ -1197,5 +1237,35 @@ export function OrdersScreen() {
         />
       )}
     </>
+  );
+}
+
+/**
+ * THE FILTERS OF THE ORDERS LIST, FOLDED ON A PHONE (ORD-01).
+ *
+ * On a desk this draws its children untouched. On a phone it draws ONE fold that says how many filters
+ * are doing something, and the filters, the late toggle (`footer`) and the saved views inside it — the
+ * same controls, the same handlers, one tap away instead of a screen and a half in front of the first
+ * order. It is a fold and not a second copy: exactly one set of controls is in the page.
+ */
+function FilterFold({
+  phone,
+  count,
+  footer,
+  children,
+}: {
+  phone: boolean;
+  count: number;
+  footer: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  if (!phone) return <>{children}</>;
+  return (
+    <div className="p-3">
+      <AdvancedGroup label={count > 0 ? `فلاتر (${count})` : 'فلاتر'} holds="الحالة · الجهة · المنتج · التاريخ">
+        <div className="w-full">{children}</div>
+        <div className="flex flex-wrap items-center gap-2">{footer}</div>
+      </AdvancedGroup>
+    </div>
   );
 }

@@ -7,6 +7,7 @@ import { OrderNotesPeek } from '@/components/orders/OrderNotesPeek';
 import { PARKED, PARKED_AR, RESOLUTION_AR, RESOLUTION_MEANING, RESOLUTIONS, type Resolution } from '@/lib/settlement-difference';
 import { EXPLANATION_SENTENCE, explanationOf } from '@/lib/decision-words';
 import { STATEMENT_CLOSED_SENTENCE } from '@/lib/settlement-gates';
+import { useIsPhone } from '@/hooks/useIsPhone';
 
 /**
  * WHAT TO DO ABOUT A DIFFERENCE, WHERE THE DIFFERENCE IS.
@@ -74,6 +75,9 @@ export function DifferenceActions({
   const [busy, setBusy] = useState<Resolution | typeof PARKED | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState('');
+  // The two money decisions say which is which WITHOUT a hover on a phone (there is none): each at rest wears the
+  // colour the desk shows only under the pointer, and what each one means is printed under the pair.
+  const phone = useIsPhone();
   // An answered row may be answered again until the approval acts on it — the way out of «an order changed».
   const [again, setAgain] = useState(false);
   // While a person changes the answer, the row is read as unanswered; once it is saved the new answer shows.
@@ -175,8 +179,12 @@ export function DifferenceActions({
           onClick={() => void resolve(r)}
           className={`min-h-11 md:min-h-0 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
             r === 'ACCEPTED_COURIER'
-              ? 'border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:border-[var(--sys-success)] hover:text-[var(--sys-success)]'
-              : 'border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:border-[var(--sys-warning)] hover:text-[var(--sys-warning)]'
+              ? phone
+                ? 'border-[var(--sys-success)] text-[var(--sys-success)]'
+                : 'border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:border-[var(--sys-success)] hover:text-[var(--sys-success)]'
+              : phone
+                ? 'border-[var(--sys-warning)] text-[var(--sys-warning)]'
+                : 'border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:border-[var(--sys-warning)] hover:text-[var(--sys-warning)]'
           }`}
         >
           {busy === r ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiShieldCheckLine className="h-4 w-4" />}
@@ -195,6 +203,15 @@ export function DifferenceActions({
         {PARKED_AR}
       </button>
       {refusal && !parkOnly && <span className="text-xs text-[var(--sys-muted-foreground)]">{refusal}</span>}
+      {phone && !parkOnly && (
+        <span className="block w-full space-y-1 text-xs text-[var(--sys-muted-foreground)]">
+          {RESOLUTIONS.map((r) => (
+            <span key={r} className="block">
+              <b className="font-semibold">{RESOLUTION_AR[r]}:</b> {RESOLUTION_MEANING[r]}
+            </span>
+          ))}
+        </span>
+      )}
       {orderId && (
         <OrderNotesPeek
           orderId={orderId}

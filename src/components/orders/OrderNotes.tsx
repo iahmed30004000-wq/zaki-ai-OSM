@@ -162,7 +162,7 @@ export function OrderNotes({ orderId, canWrite: mayWrite = true }: { orderId: st
           <button
             onClick={send}
             disabled={busy || draft.trim().length < 2}
-            className="h-11 md:h-9 w-9 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] disabled:opacity-30 flex items-center justify-center shrink-0"
+            className="h-11 md:h-9 w-9 min-w-11 md:min-w-0 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] disabled:opacity-30 flex items-center justify-center shrink-0"
             aria-label="أضف الملاحظة (Enter)" title="أضف الملاحظة (Enter)"
           >
             {busy ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiSendPlaneLine className="icon-mirror w-4 h-4" />}
