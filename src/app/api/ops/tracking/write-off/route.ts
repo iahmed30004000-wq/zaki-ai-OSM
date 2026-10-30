@@ -49,8 +49,9 @@ const schema = z.object({
 export async function POST(req: Request) {
   try {
     const { user, companyId, storeId, country } = await requireContext();
-    // Writing off goods is a money decision, not a tracking one.
-    await requirePermission('finance.update').catch(async () => requirePermission('orders.unlock'));
+    // Writing off goods is a money decision, not a tracking one: its own box (PR-8), not a chain of two unrelated keys.
+    // The migration gave it to everybody who held `finance.update` or `orders.unlock`, the two the chain accepted.
+    await requirePermission('ops.write_off');
 
     const parsed = schema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {

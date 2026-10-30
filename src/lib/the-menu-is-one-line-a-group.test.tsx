@@ -174,7 +174,9 @@ describe('the sidebar', () => {
     };
     expect(href(NAV, 'الشحن')).toBe('/ops/preparation');
     // A tracking clerk has no «التجهيز»: the line opens the first stop they do have.
-    expect(href(menuFor('ops.track', 'ops.returns'), 'الشحن')).toBe('/ops/batches');
+    expect(href(menuFor('ops.batches', 'ops.track', 'ops.returns'), 'الشحن')).toBe('/ops/batches');
+    // …and the tracking key alone no longer reaches the batches page (PR-8): the line opens «متابعة الشحن».
+    expect(href(menuFor('ops.track', 'ops.returns'), 'الشحن')).toBe('/ops/tracking');
     expect(href(NAV, 'الإعدادات')).toBe('/settings');
   });
 

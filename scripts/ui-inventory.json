@@ -1230,12 +1230,12 @@
     "tabs": 0
   },
   "src/components/screens/PreparationScreen.tsx": {
-    "buttons": 8,
+    "buttons": 9,
     "inputs": 0,
     "columns": 5,
     "cards": 0,
     "modals": 0,
-    "icons": 6,
+    "icons": 7,
     "links": 0,
     "tabs": 0
   },

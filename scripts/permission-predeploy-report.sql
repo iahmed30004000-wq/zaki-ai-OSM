@@ -89,6 +89,13 @@ WITH req(action, needs) AS (VALUES
   ('finance.wallets_manage','finance.cashbox_view'),
   ('finance.closing_approve','finance.cashbox_view'),
   ('settlement.approve','settlement.view'),
+  -- PR-8. The operations boxes sit behind the tracking or the returns screen. The migration 20261030160000 gives each to the
+  -- holders of the key it came from; ops.write_off also comes from two keys that need not come with ops.track, and those
+  -- rows are the ones this reports (the box is inert for them: its only button is on the tracking screen).
+  ('ops.deliver','ops.track'),
+  ('ops.transfer','ops.track'),
+  ('ops.write_off','ops.track'),
+  ('ops.return_fee','ops.returns'),
   -- PR-11. Both keys come out of the migration 20261030180000_categories_campaign_keys together with their view, so before
   -- it has run neither is held by anybody (nothing is reported) and after it only an owner’s later unticking can show here.
   ('categories.manage','products.view'),
@@ -210,6 +217,35 @@ FROM "users" u
 WHERE u."role" IN ('SUPER_ADMIN', 'COMPANY_ADMIN', 'MANAGER', 'CONFIRMATION_SUPERVISOR', 'WAREHOUSE', 'CONFIRMATION_AGENT')
 GROUP BY u."role"
 ORDER BY 1;
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- AND THE SIXTH QUESTION (PR-8, the operations doors): WHICH ROLES WILL THE MIGRATION
+-- 20261030160000_ops_action_keys GIVE EACH BOX TO? Every role that holds any key the box's door asked before
+-- (src/lib/ops-action-keys.ts OPS_ACTION_KEYS_FROM, the same list the migration reads). Read-only, same as above.
+--
+-- `without_its_screen` = the role would hold the box but not the screen key it sits behind (ops.track for the three
+-- tracking acts, ops.returns for the fee): only ops.write_off can be that, because finance.update and orders.unlock need not
+-- come with ops.track. Such a role keeps its door on the day (the API), but the box is inert in practice: its only button is
+-- on the tracking screen. The owner ticks the screen for it or unticks the box.
+--
+-- (The pairs in the first list above for these four boxes return nothing BEFORE the deploy: the boxes do not exist yet.)
+-- ═══════════════════════════════════════════════════════════════════════
+SELECT k AS "box", r."name" AS "role", r."companyId", array_agg(DISTINCT rp."permission" ORDER BY rp."permission") AS "through",
+       (k = 'ops.write_off' AND NOT EXISTS (
+         SELECT 1 FROM "role_permissions" v WHERE v."roleId" = r."id" AND v."permission" = 'ops.track'
+       )) AS "without_its_screen"
+FROM "role_permissions" rp
+JOIN "roles" r ON r."id" = rp."roleId"
+CROSS JOIN LATERAL unnest(CASE rp."permission"
+  WHEN 'ops.ship' THEN ARRAY['ops.batches']
+  WHEN 'ops.track' THEN ARRAY['ops.batches', 'ops.deliver', 'ops.transfer']
+  WHEN 'finance.update' THEN ARRAY['ops.write_off']
+  WHEN 'orders.unlock' THEN ARRAY['ops.write_off']
+  WHEN 'ops.returns' THEN ARRAY['ops.return_fee']
+  ELSE ARRAY[]::text[]
+END) AS k
+GROUP BY k, r."id", r."name", r."companyId"
+ORDER BY 1, 3 NULLS FIRST, 2;
 
 -- ═══════════════════════════════════════════════════════════════════════
 -- AND THE FIFTH QUESTION (PR-11, the categories and the campaigns): WHO GETS WHAT FROM THE MIGRATION

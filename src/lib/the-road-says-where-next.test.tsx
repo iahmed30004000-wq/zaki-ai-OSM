@@ -53,7 +53,7 @@ const menuFor = (...permissions: string[]) =>
     routes: g.routes.filter((r) => r.permissions === null || r.permissions.some((p) => permissions.includes(p))),
   })).filter((g) => g.routes.length > 0);
 
-const SHIPPING = ['ops.prepare', 'ops.ship', 'ops.track', 'ops.returns'];
+const SHIPPING = ['ops.prepare', 'ops.ship', 'ops.batches', 'ops.track', 'ops.returns'];
 
 beforeEach(() => {
   here.path = '/ops/preparation';

@@ -337,6 +337,8 @@ export async function GET(req: Request) {
       orders: rows,
       // Which level of the screen this person holds — what to draw, never what to allow.
       access: sight,
+      // The three acts that have a box of their own (PR-8) — what to draw, never what to allow: each door asks its own key.
+      acts: { deliver: can(user, 'ops.deliver'), transfer: can(user, 'ops.transfer'), writeOff: can(user, 'ops.write_off') },
       // Over everything the list holds, not the page: the badge says how many parcels are late, not how many of these 25.
       lateCount: list.facts.lateCount,
       pagination: { total: list.total, page: list.page, limit: list.limit, totalPages: list.totalPages },
