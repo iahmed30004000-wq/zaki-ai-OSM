@@ -505,3 +505,195 @@ describe('كلُّ مسارِ API إمّا يستدعيه شيءٌ أو يُقا
     expect(both, `مسارٌ قيل عنه الشيءُ ونقيضُه:\n${both.join('\n')}`).toEqual([]);
   });
 });
+
+
+/* ═══════════════════ 4 · EXPORTS OF src/lib ═══════════════════ */
+
+/*
+ * A RATCHET, NOT A VERDICT.
+ *
+ * `src/lib` holds about 2,500 exported values and the sweeps above never
+ * looked inside it. 89 of them are read by no production file at all: 73 by
+ * tests alone, 16 by nothing (two more, deriveFollowUpState and isDecision,
+ * were deleted with this section). It counts them and refuses a NEW one.
+ *
+ * It forces nothing to be deleted. An export that is planned, or sits on
+ * another agent's ground, may stay — with the reason written beside it
+ * (PLANNED_BUT_UNUSED). The 73 that tests read are frozen as they are
+ * (READ_ONLY_BY_TESTS): the list can only shrink, because a name that is not
+ * on it fails the moment it is dead.
+ *
+ * WHAT «DEAD» MEANS HERE, SAID PLAINLY: an exported function, constant, class
+ * or enum whose name appears in no other production file AND nowhere else in
+ * its own file beyond the line that declares it. A name that only its own file
+ * reads is merely over-exported — a different, smaller sin, and not counted.
+ * A name is matched as a word, so a clash with the same word elsewhere reads
+ * as «used»: the sweep errs toward silence, never toward a false alarm.
+ *
+ * `guard-source.ts` is left out: it is the tests' own toolbox, and by design
+ * nothing in production reads it.
+ */
+const LIB_VALUE_DECL = /^export\s+(?:declare\s+)?(?:async\s+)?(?:function\*?|const|let|var|class|enum)\s+([A-Za-z_$][\w$]*)/gm;
+const LIB_EXPORT_LIST = /^export\s+(?:type\s+)?\{([^}]*)\}(?!\s*from)/gm;
+const WORD = /[A-Za-z_$][\w$]*/g;
+const LIB_TEST_TOOLBOX = ['src/lib/guard-source.ts'];
+
+/** Exported by `src/lib`, referenced by no production file and not by its own file either. */
+function deadLibExports(): string[] {
+  const words = new Map<string, Map<string, number>>();
+  for (const [file, src] of TEXT) {
+    const counts = new Map<string, number>();
+    for (const w of src.match(WORD) ?? []) counts.set(w, (counts.get(w) ?? 0) + 1);
+    words.set(file, counts);
+  }
+  const dead: string[] = [];
+  for (const [file, src] of PROD_TEXT) {
+    if (!file.startsWith('src/lib/') || !/\.tsx?$/.test(file) || LIB_TEST_TOOLBOX.includes(file)) continue;
+    // a name's own declaration is one occurrence; a name listed in `export { … }` is declared AND listed
+    const declared = new Map<string, number>();
+    for (const m of src.matchAll(LIB_VALUE_DECL)) declared.set(m[1], 1);
+    for (const m of src.matchAll(LIB_EXPORT_LIST)) {
+      for (const part of m[1].split(',')) {
+        const names = part.trim().replace(/^type\s+/, '').split(/\s+as\s+/);
+        const name = (names[1] ?? names[0]).trim();
+        if (name) declared.set(name, names[1] ? 1 : 2);
+      }
+    }
+    for (const [name, own] of declared) {
+      if ((words.get(file)?.get(name) ?? 0) > own) continue;
+      let usedElsewhere = false;
+      for (const [other, counts] of words) {
+        if (other !== file && !isTest(other) && counts.has(name)) { usedElsewhere = true; break; }
+      }
+      if (!usedElsewhere) dead.push(`${file}:${name}`);
+    }
+  }
+  return dead.sort();
+}
+
+/**
+ * NEVER READ BY ANYTHING, AND KEPT ON PURPOSE — each with the reason.
+ * Two kinds: planned work that has not arrived (RV132 in BACKLOG_P2.md), and
+ * the storefront and landing libraries, which another agent owns and this
+ * work is not allowed to touch.
+ */
+const PLANNED_BUT_UNUSED: Record<string, string> = {
+  'src/lib/confirmation-workflow.ts:HUMAN_ONLY_REJECTION_REASONS': 'قاعدة «السيرفر ما يختار سبباً عن إنسان» لا يفرضها كود بعد — RV132',
+  'src/lib/product-grade.ts:REFUSED_BANDS': 'سجلّ القرارات المرفوضة مخطّط له — RV132',
+  'src/lib/countdown.ts:EXAMPLE_BADGE': 'محرّر صفحات الهبوط يقرؤه لاحقاً — RV132 ومسار الهبوط لوكيله',
+  'src/lib/order-locks.ts:atomicVersionedUpdate': 'بدائية التحديث المتفائل على نسخة الطلب، مخطّطة — RV132',
+  'src/lib/order-state.ts:whereReturned': 'عائلة تعريفات حالة الطلب، مخطّطة — RV132',
+  'src/lib/order-state.ts:whereEverConfirmed': 'عائلة تعريفات حالة الطلب، مخطّطة — RV132',
+  'src/lib/order-state.ts:whereConfirmationRefused': 'عائلة تعريفات حالة الطلب، مخطّطة — RV132',
+  'src/lib/shortfall.ts:SHORTFALL_AR': 'توأم SHORTFALL_KIND في عائلة المال، وبقيّة هذا الملف عليه عمل جارٍ — يُترك لصاحبه',
+  'src/lib/landing-dynamic.ts:safeStyleValue': 'مكتبة الهبوط لوكيل المتجر — لا تُلمس من خارج فرعه',
+  'src/lib/landing-html-sanitize.ts:LANDING_VARIABLES': 'مكتبة الهبوط لوكيل المتجر — لا تُلمس من خارج فرعه',
+  'src/lib/landing-pages.ts:LANDING_PAGE_MIN_QTY': 'مكتبة الهبوط لوكيل المتجر — لا تُلمس من خارج فرعه',
+  'src/lib/landing-pages.ts:LANDING_PAGE_MAX_QTY': 'مكتبة الهبوط لوكيل المتجر — لا تُلمس من خارج فرعه',
+  'src/lib/landing-structure.ts:slotCopySchema': 'مكتبة الهبوط لوكيل المتجر — لا تُلمس من خارج فرعه',
+  'src/lib/landing-tracking.ts:META_PIXEL_EVENTS': 'مكتبة الهبوط لوكيل المتجر — لا تُلمس من خارج فرعه',
+  'src/lib/landing-tracking.ts:pixelActive': 'مكتبة الهبوط لوكيل المتجر — لا تُلمس من خارج فرعه',
+  'src/lib/store-theme.ts:storedLayoutOf': 'مكتبة المتجر لوكيل المتجر — لا تُلمس من خارج فرعه',
+};
+
+/**
+ * READ BY TESTS ALONE — the 73 frozen at the day this section was written.
+ * Not a promise that they are right, only that there are no more than these.
+ * Wire one into production, or delete it, and nothing here needs to change.
+ */
+const READ_ONLY_BY_TESTS: Record<string, string[]> = {
+  'src/lib/ads/meta.ts': ['metaDate'],
+  'src/lib/agent-custody-totals.ts': ['isStillOut'],
+  'src/lib/apps/contract.ts': ['goldenBodies'],
+  'src/lib/block-look.ts': ['fontsUsed'],
+  'src/lib/business-calendar.ts': ['isWithinBusinessHours'],
+  'src/lib/campaigns.ts': ['campaignProductId'],
+  'src/lib/catalog-query.ts': ['priceBounds'],
+  'src/lib/channel-score.ts': ['channelBand'],
+  'src/lib/commission-fairness.ts': ['countsTowardCommission'],
+  'src/lib/conversions/types.ts': ['isTrigger', 'isValueSource'],
+  'src/lib/courier-words.ts': ['COURIER_CODES_READ'],
+  'src/lib/couriers/index.ts': ['registerAdapter'],
+  'src/lib/couriers/webhook-token.ts': ['tokenHashEquals'],
+  'src/lib/customer-filters.ts': ['segmentMatches'],
+  'src/lib/employee-shift.ts': ['hasOwnShift'],
+  'src/lib/exposure.ts': ['CUSTOMER_FIELDS'],
+  'src/lib/geo-removal.ts': ['STORE_TABLE_MODELS'],
+  'src/lib/landing-domain.ts': ['pathForHost'],
+  'src/lib/landing-structure.ts': ['PROOF_SERVED', 'LEGAL_PAGES', 'SECTIONS_THE_TEN_NEED'],
+  'src/lib/launch-flags.ts': ['isFlagOn', 'assertFlagOpen'],
+  'src/lib/order-refusals.ts': ['orderLockedBy'],
+  'src/lib/order-shape-risk.ts': ['differs'],
+  'src/lib/order-state.ts': ['stateAgeMinutes', 'cancelledBeforeShipping', 'assertCancellable'],
+  'src/lib/order-tracking.ts': ['TRACKING_FIELDS', 'everyStateIsSpoken'],
+  'src/lib/outbound-limit.ts': ['forgetOutboundLimits'],
+  'src/lib/penalty-service.ts': ['penaltiesOwed'],
+  'src/lib/pii-access.ts': ['forgetCustomerAccess'],
+  'src/lib/pii-alert.ts': ['distinctCustomers'],
+  'src/lib/postponed-filters.ts': ['whenOf'],
+  'src/lib/price-honesty.ts': ['MIN_PRICE_SAMPLE'],
+  'src/lib/product-grade.ts': ['productBand'],
+  'src/lib/profit-summary.ts': ['PROFIT_FIELDS'],
+  'src/lib/public-address.ts': ['domainIsLive'],
+  'src/lib/public-media-server.ts': ['forgetPublicMedia'],
+  'src/lib/reset-token.ts': ['sameToken'],
+  'src/lib/reviews.ts': ['PUBLIC_REVIEW_FIELDS'],
+  'src/lib/selling-blocks.ts': ['familyNameAr'],
+  'src/lib/settlement-decisions.ts': ['DECISION_MATRIX'],
+  'src/lib/settlement.ts': ['parseStatementCsv'],
+  'src/lib/shipment-cancel.ts': ['IN_FLIGHT_AR'],
+  'src/lib/store-facts.ts': ['factsFor'],
+  'src/lib/store-families.ts': ['voicesOf'],
+  'src/lib/store-filter.ts': ['belongsToStore'],
+  'src/lib/store-search.ts': ['suggestProducts'],
+  'src/lib/store-skin.ts': ['NUMERAL_CSS', 'FEATURES_SERVED', 'skinVars'],
+  'src/lib/store-templates.ts': ['TEMPLATES_PLANNED'],
+  'src/lib/store-theme.ts': ['headingFont', 'menuFont'],
+  'src/lib/store-world.ts': ['worldIsReadable'],
+  'src/lib/structured-data.ts': ['storeJsonLd'],
+  'src/lib/superseded.ts': ['isSuperseded'],
+  'src/lib/system-themes.ts': ['CHART_SERIES'],
+  'src/lib/telegram/labeled-order.ts': ['LABEL_TEXTS'],
+  'src/lib/test-store.ts': ['benchOnly'],
+  'src/lib/theme-decoration.ts': ['PIECES', 'photographsOf'],
+  'src/lib/totp.ts': ['currentCode'],
+  'src/lib/tracking-filters.ts': ['isTask'],
+  'src/lib/tracking-priority.ts': ['countMatching'],
+  'src/lib/tracking/tracking-types.ts': ['pixelScopeKind'],
+  'src/lib/trusted-device.ts': ['rememberedBadPasswords', 'forgetBadPasswords'],
+  'src/lib/two-factor.ts': ['wasOriginallyRequired'],
+  'src/lib/user-commission-rate.ts': ['readCommissionRate'],
+};
+const READ_ONLY_BY_TESTS_KEYS = new Set(
+  Object.entries(READ_ONLY_BY_TESTS).flatMap(([file, names]) => names.map((n) => `${file}:${n}`))
+);
+
+describe('كلُّ تصديرٍ في src/lib إمّا يقرؤه كودُ الإنتاج أو هو على القائمتين — ولا يزيد', () => {
+  const dead = deadLibExports();
+
+  it('and the sweep found the exports — a sweep that counts nothing proves nothing', () => {
+    // the 73 read by tests and the 16 planned are all dead today; losing either means the sweep went blind
+    expect(dead.length, 'المسحُ لم يجد تصديراً واحداً غيرَ مستعمل').toBeGreaterThanOrEqual(60);
+  });
+
+  it('and no NEW export is left unread: use it, delete it, or write why it waits', () => {
+    const stranger = dead.filter((d) => !(d in PLANNED_BUT_UNUSED) && !READ_ONLY_BY_TESTS_KEYS.has(d));
+    expect(
+      stranger,
+      `تصديرٌ في src/lib لا يقرؤه أيُّ ملفِّ إنتاج — استعمِلْه، أو احذفْه، أو اكتبْ سبب بقائه في PLANNED_BUT_UNUSED:\n${stranger.join('\n')}`
+    ).toEqual([]);
+  });
+
+  it('and a planned export is still unread, still there, and has a reason a reviewer can check', () => {
+    const stale = Object.keys(PLANNED_BUT_UNUSED).filter((k) => !dead.includes(k));
+    expect(stale, `سببُ بقاءٍ لتصديرٍ صار يُستعمل أو حُذف — شِلْه من القائمة:\n${stale.join('\n')}`).toEqual([]);
+    for (const [key, why] of Object.entries(PLANNED_BUT_UNUSED)) {
+      expect([...why].length, `${key}: السبب أقصر من أن يُراجَع`).toBeGreaterThan(20);
+    }
+  });
+
+  it('and no export is on both lists at once', () => {
+    const both = Object.keys(PLANNED_BUT_UNUSED).filter((k) => READ_ONLY_BY_TESTS_KEYS.has(k));
+    expect(both, `تصديرٌ على القائمتين معاً:\n${both.join('\n')}`).toEqual([]);
+  });
+});

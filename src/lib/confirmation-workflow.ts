@@ -216,24 +216,3 @@ export const CONTACT_RESULTS = [
  * sat at «3/3» for ever with no door out of it.
  */
 export const NO_ANSWER_RESULTS = ['NO_ANSWER', 'BUSY', 'UNREACHABLE'] as const;
-
-/**
- * Derive follow-up queue bucket from SERVER time (never browser time).
- * Stored followUpStatus is SCHEDULED / COMPLETED / CANCELLED;
- * DUE and OVERDUE are derived at query time.
- */
-export function deriveFollowUpState(
-  nextFollowUpAt: Date | null | undefined,
-  followUpStatus: string | null | undefined,
-  now = new Date()
-): 'SCHEDULED' | 'DUE' | 'OVERDUE' | 'COMPLETED' | 'CANCELLED' | null {
-  if (!nextFollowUpAt) return null;
-  if (followUpStatus === 'COMPLETED' || followUpStatus === 'CANCELLED') {
-    return followUpStatus as 'COMPLETED' | 'CANCELLED';
-  }
-  const diffMs = nextFollowUpAt.getTime() - now.getTime();
-  const HOUR = 60 * 60 * 1000;
-  if (diffMs < -HOUR) return 'OVERDUE';
-  if (diffMs <= 0) return 'DUE';
-  return 'SCHEDULED';
-}
