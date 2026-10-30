@@ -237,8 +237,7 @@ export function ChangeRequestsScreen() {
     if (!linesOf(r)) return null;
     const v = verdicts[r.id];
     // A card nobody has asked about (or one the budget said «wait» to) is not shut: the apply door judges it on the press,
-    // and the card carries an «افحص» button. A check that FAILED is shut, as it always was.
-    if (v?.unchecked) return null;
+    // and the card carries an «افحص» button (its verdict has no sentence, so nothing shuts it). A check that FAILED is shut.
     return !v || v.checking ? 'جارٍ فحص الطلب…' : v.shut;
   };
 
