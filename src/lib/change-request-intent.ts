@@ -32,6 +32,8 @@
  * Pure and client-safe: the dialog reads it to decide what to offer.
  */
 
+import { PICKABLE_REJECTION_REASONS } from './confirmation-workflow';
+
 export const CHANGE_INTENTS = ['EDIT', 'CANCEL', 'POSTPONE'] as const;
 export type ChangeIntent = (typeof CHANGE_INTENTS)[number];
 
@@ -129,7 +131,7 @@ export function refusalFor(intent: ChangeIntent, facts: ParcelFacts): string | n
  */
 export function missingFor(
   intent: ChangeIntent,
-  body: { changes?: object | null; postponeUntil?: string | null }
+  body: { changes?: object | null; postponeUntil?: string | null; cancelReason?: string | null; reason?: string | null }
 ): string | null {
   if (intent === 'EDIT') {
     return body.changes && Object.keys(body.changes).length > 0 ? null : 'حدّد حقلاً واحداً على الأقل';
@@ -137,6 +139,35 @@ export function missingFor(
   if (intent === 'POSTPONE') {
     return body.postponeUntil ? null : 'حدّد التاريخ المطلوب التأجيل إليه';
   }
-  // A cancellation is the reason, and the reason is demanded of all three.
+  // A cancellation carries the structured reason it will be carried out under.
+  return cancelReasonProblem(body.cancelReason, body.reason);
+}
+
+/**
+ * THE REASON A CANCELLATION IS CARRIED OUT UNDER — ASKED AT THE DOOR.
+ *
+ * The stand-down door refuses a cancellation without one of the structured
+ * reasons («سبب الإلغاء مطلوب») and reads it from the request. A request
+ * stored without it was approved, waited in «بانتظار التطبيق» and failed on
+ * the last press, for ever. So the reason is demanded when the request is
+ * RAISED, by the same rule the door applies when it is carried out:
+ *
+ *   - one of the choices a person may make (never the two the system owns);
+ *   - «أخرى» needs a sentence — for a request, the customer's own sentence
+ *     (`reason`, five letters at least) is that sentence.
+ *
+ * Pure, so the route, the dialog and the stand-down door read ONE rule.
+ */
+export function cancelReasonProblem(
+  cancelReason: string | null | undefined,
+  note: string | null | undefined
+): string | null {
+  if (!cancelReason) return 'اختر سبب الإلغاء';
+  if (!(PICKABLE_REJECTION_REASONS as readonly string[]).includes(cancelReason)) {
+    return 'سبب الإلغاء غير صالح — اختر واحداً من القائمة';
+  }
+  if (cancelReason === 'OTHER' && (note ?? '').trim().length < 5) {
+    return 'سبب «أخرى» يحتاج ملاحظة تشرحه';
+  }
   return null;
 }

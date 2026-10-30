@@ -9,7 +9,7 @@ import { useConfirm, useTell } from '@/components/ui/Confirm';
 import { changeFieldLabel } from '@/lib/change-request-fields';
 import { INTENT_AR, type ChangeIntent } from '@/lib/change-request-intent';
 import { ATTESTATION_AR } from '@/lib/shipment-cancel';
-import { REJECTION_REASON_AR } from '@/lib/confirmation-workflow';
+import { PICKABLE_REJECTION_REASONS, REJECTION_REASON_AR } from '@/lib/confirmation-workflow';
 import { deriveCoreState } from '@/lib/order-state';
 import { OrderStateChip } from '@/components/ui/StatusChip';
 import { ROLE_LABELS, type UserRole } from '@/types/auth';
@@ -88,6 +88,8 @@ export function ChangeRequestsScreen() {
   const [withdrawing, setWithdrawing] = useState<string | null>(null);
   /** The request whose parcel is already with the courier, and what to send them. */
   const [courierFor, setCourierFor] = useState<{ request: ChangeRequest; ask: CourierAsk } | null>(null);
+  /** The reason picked on each old cancellation that was stored without one, by request. */
+  const [chosen, setChosen] = useState<Record<string, string>>({});
   const confirm = useConfirm();
   const tell = useTell();
 
@@ -154,8 +156,20 @@ export function ChangeRequestsScreen() {
     HOLD_SHIPMENT: 'أجّل الشحن',
   };
 
+  /**
+   * AN OLD CANCELLATION STORED WITHOUT ITS REASON.
+   *
+   * Raised before the reason was saved, approved, and refused on every press
+   * with «سبب الإلغاء مطلوب». Nothing guesses a reason for it: the person
+   * carrying it out picks one here, from the same list, before the button
+   * works. A cancellation that is a message to the courier needs none.
+   */
+  const needsReason = (r: ChangeRequest) =>
+    (r.intent ?? 'EDIT') === 'CANCEL' && !r.cancelReason && r.carryOut?.kind !== 'CANCEL_VIA_COURIER';
+
   async function apply(r: ChangeRequest) {
     const intent = (r.intent ?? 'EDIT') as ChangeIntent;
+    if (needsReason(r) && !chosen[r.id]) return;
     // Built first, and not nested three templates deep inside the ternary:
     // the currency guard walks the source blanking templates, and a
     // template inside a template inside a template is where it loses the
@@ -169,7 +183,7 @@ export function ChangeRequestsScreen() {
         : intent === 'CANCEL'
           ? r.carryOut?.kind === 'CANCEL_VIA_COURIER'
             ? 'الطرد عند شركة الشحن: ستظهر لك رسالة جاهزة لها لتوقف الطرد. الطلب يبقى كما هو، ويرجع الطرد عبر المرتجعات ويتعدّ.'
-            : `سبب الإلغاء: ${REJECTION_REASON_AR[r.cancelReason ?? ''] ?? r.cancelReason ?? '—'}\n\n` +
+            : `سبب الإلغاء: ${REJECTION_REASON_AR[r.cancelReason ?? chosen[r.id] ?? ''] ?? r.cancelReason ?? '—'}\n\n` +
               'تعود البضاعةُ المحجوزة إلى المخزون في المعاملة نفسها. وإن كانت بوليصتُه مطبوعة سنسألك إن كان الطرد بين يديك.'
           : `يُؤجَّل الشحن حتى ${String(r.postponeUntil ?? '').slice(0, 10)}\n\n` +
             'يبقى الطلب مؤكَّداً وتبقى بضاعتُه وبوليصتُه، ويخرج من الدفعة المفتوحة ويعود إلى قائمة الشحن يومَه.';
@@ -198,6 +212,8 @@ export function ChangeRequestsScreen() {
    * refusal is the message to the courier, which is the real remedy there.
    */
   async function standDown(r: ChangeRequest, intent: ChangeIntent, courierNotified = false, parcelInHand = false) {
+    // The reason picked on the card, for an old request stored without one.
+    const pickedReason = intent === 'CANCEL' && needsReason(r) ? chosen[r.id] : undefined;
     setApplying(r.id);
     try {
       /*
@@ -220,6 +236,9 @@ export function ChangeRequestsScreen() {
                 changeRequestId: r.id,
                 ...(courierNotified ? { courierNotified: true } : {}),
                 ...(parcelInHand ? { parcelInHand: true } : {}),
+                // Only for a request stored without its reason: the server
+                // ignores it for any request that has one.
+                ...(pickedReason ? { reason: pickedReason } : {}),
               }
             : { orderId: r.order.id, changeRequestId: r.id }
         ),
@@ -525,6 +544,28 @@ export function ChangeRequestsScreen() {
               {r.order.customer.fullName} · <span dir="ltr">{r.order.customer.phone}</span>
             </p>
 
+            {/* An old cancellation with no reason: the choice is on the card,
+                not behind a press, and the button waits for it. */}
+            {tab === 'AWAITING_APPLY' && needsReason(r) && (
+              <label className="block">
+                <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">
+                  رُفع هذا الطلب بلا سبب إلغاء — اختر السبب قبل التنفيذ
+                </span>
+                <select
+                  value={chosen[r.id] ?? ''}
+                  onChange={(e) => setChosen((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                  className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] text-sm focus:outline-none focus:border-[var(--sys-primary)]"
+                >
+                  <option value="">اختر سبب الإلغاء</option>
+                  {PICKABLE_REJECTION_REASONS.map((key) => (
+                    <option key={key} value={key}>
+                      {REJECTION_REASON_AR[key] ?? key}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
             <footer className="flex flex-wrap items-center gap-2 pt-2 border-t border-[var(--sys-border)]">
               {tab === 'PENDING' ? (
                 /* Nobody decides their own request — the route refuses it,
@@ -559,7 +600,7 @@ export function ChangeRequestsScreen() {
               ) : (
                 <button
                   onClick={() => void apply(r)}
-                  disabled={applying === r.id}
+                  disabled={applying === r.id || (needsReason(r) && !chosen[r.id])}
                   className="min-h-11 md:min-h-0 inline-flex items-center flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-[var(--sys-success)] text-[var(--sys-primary-foreground)] text-xs font-medium disabled:opacity-50"
                 >
                   {applying === r.id && <RiLoader4Line className="w-4 h-4 animate-spin" />}

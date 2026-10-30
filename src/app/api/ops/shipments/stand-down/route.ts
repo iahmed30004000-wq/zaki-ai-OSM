@@ -10,6 +10,7 @@ import { logAudit } from '@/lib/audit';
 import { cancelVerdict } from '@/lib/shipment-cancel';
 import { batchStatusOf, endOrder } from '@/lib/order-cancel';
 import { REJECTION_REASONS } from '@/lib/confirmation-workflow';
+import { cancelReasonProblem } from '@/lib/change-request-intent';
 import { courierCancelCarryOut } from '@/lib/couriers/cancel-carryout';
 import { notify } from '@/lib/notify';
 
@@ -145,10 +146,35 @@ export async function POST(req: Request) {
      * «an approved postponement to Thursday» a way to hold an order until
      * next year.
      */
+    /**
+     * …EXCEPT ONE THING, FOR A REQUEST THAT WAS STORED WITHOUT ITS REASON.
+     *
+     * Cancellation requests raised before the reason was saved sit approved
+     * and un-carried-out with `cancelReason = null`; no reason can be guessed
+     * for them, and refusing for ever helps nobody. So, for those and only
+     * those, the person carrying the decision out chooses the reason from the
+     * same structured list, and it is written onto the request for the record
+     * with their name in the audit. A request that HAS its reason keeps it:
+     * the body's is ignored, exactly as the date's is.
+     */
+    let chosenByDecider = false;
     if (viaRequest) {
       until = viaRequest.postponeUntil ? viaRequest.postponeUntil.toISOString() : undefined;
-      reason = viaRequest.cancelReason ?? undefined;
+      if (viaRequest.cancelReason) {
+        reason = viaRequest.cancelReason;
+      } else if (outcome === 'CANCEL' && reason) {
+        const problem = cancelReasonProblem(reason, note || viaRequest.reason);
+        if (problem) {
+          return NextResponse.json({ error: problem, errorAr: problem, code: 'CANCEL_REASON_REQUIRED' }, { status: 400 });
+        }
+        chosenByDecider = true;
+        viaRequest.cancelReason = reason;
+      } else {
+        reason = undefined;
+      }
     }
+    /** «أخرى» on an approved request is explained by the customer's own sentence it was raised with. */
+    const explained = note?.trim() || (viaRequest && reason === 'OTHER' ? viaRequest.reason : undefined);
 
     const order = await db.order.findFirst({
       where: { id: orderId, companyId, storeId },
@@ -252,10 +278,30 @@ export async function POST(req: Request) {
       noteBody = `أُوقف شحنه وأُعيد إلى المتابعة حتى ${due.toISOString().slice(0, 10)}${note ? ` — ${note}` : ''}`;
     } else {
       if (!reason || !(REJECTION_REASONS as readonly string[]).includes(reason)) {
-        return NextResponse.json({ error: 'سبب الإلغاء مطلوب' }, { status: 400 });
+        // Says what to DO, not only what is missing: the request was approved
+        // and the next step is a choice, which the screen now offers.
+        const ask = 'سبب الإلغاء مطلوب — اختر السبب من القائمة ثم اضغط «نفّذ» مرةً ثانية.';
+        return NextResponse.json({ error: ask, errorAr: ask, code: 'CANCEL_REASON_REQUIRED' }, { status: 400 });
       }
-      if (reason === 'OTHER' && (!note || note.trim().length < 5)) {
-        return NextResponse.json({ error: 'سبب «أخرى» يحتاج ملاحظة تشرحه' }, { status: 400 });
+      if (reason === 'OTHER' && (!explained || explained.trim().length < 5)) {
+        return NextResponse.json({ error: 'سبب «أخرى» يحتاج ملاحظة تشرحه', code: 'CANCEL_REASON_REQUIRED' }, { status: 400 });
+      }
+      /*
+       * THE CHOICE IS THE DECIDER'S, SO IT IS WRITTEN WITH THEIR NAME.
+       * Only where the request had none (`cancelReason: null` in the where),
+       * so two presses cannot overwrite each other and a request that
+       * already carries a reason is never rewritten.
+       */
+      if (viaRequest && chosenByDecider) {
+        await db.orderChangeRequest.updateMany({
+          where: { id: viaRequest.id, companyId, cancelReason: null },
+          data: { cancelReason: reason },
+        });
+        await logAudit({
+          companyId, userId: user.id, action: 'CHANGE_REQUEST_CANCEL_REASON_CHOSEN',
+          entity: 'Order', entityId: order.id,
+          newData: { requestId: viaRequest.id, cancelReason: reason, by: user.name },
+        });
       }
       data = {
         claimedById: null,
@@ -265,7 +311,7 @@ export async function POST(req: Request) {
         lockedAt: null,
       };
       auditAction = 'SHIPMENT_STOOD_DOWN_CANCELLED';
-      noteBody = `أُلغي قبل الشحن (${reason})${note ? ` — ${note}` : ''}`;
+      noteBody = `أُلغي قبل الشحن (${reason})${explained ? ` — ${explained}` : ''}`;
     }
 
     /**
@@ -287,7 +333,7 @@ export async function POST(req: Request) {
       kind: outcome === 'POSTPONE' ? 'FOLLOW_UP' : 'CANCEL',
       endAs: 'CANCELLED',
       reason: outcome === 'CANCEL' ? reason : undefined,
-      rejectionNote: outcome === 'CANCEL' ? note?.trim() || null : undefined,
+      rejectionNote: outcome === 'CANCEL' ? explained || null : undefined,
       data,
       logNote: noteBody,
       // Whose ask this was. A cancellation that appears on an order with only
