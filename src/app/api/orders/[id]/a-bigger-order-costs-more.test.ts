@@ -50,6 +50,8 @@ vi.mock('@/lib/db', () => {
     'order', 'orderItem', 'orderAddOn', 'customer', 'product', 'productionBatch',
     'inventoryMovement', 'orderStatusLog', 'orderActivity', 'changeRequest',
     'shippingBatch', 'region', 'notification',
+    // a discount alone asks whether a courier statement holds the order
+    'settlementMatch',
     /*
      * The route counts the order's contact attempts now: an agent holding
      * an order may not edit it before she has tried to reach the customer
@@ -170,6 +172,7 @@ function world(order: Row) {
     changeRequest: { findUnique: async () => null, update: async () => ({}) },
     // Nothing sealed: the order has not been put in a batch.
     shippingBatch: { findFirst: async () => null },
+    settlementMatch: { count: async () => 0 },
     region: { findFirst: async () => null, findUnique: async () => null },
     notification: { create: async () => ({}), createMany: async () => ({ count: 0 }) },
     /*

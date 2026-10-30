@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { count, money as amount } from '@/lib/numeric-input';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
-import { computeCod, totalsBeforeDiscount } from '@/lib/money';
+import { computeCod, roundMinor, totalsBeforeDiscount } from '@/lib/money';
 import { activeOffersForProducts, type OfferView } from '@/lib/offers';
 import { offerBoundToLine } from '@/lib/offer-line-price';
 import { hasEverShipped, hasLeftWarehouse, deriveCoreState, getZone, type StateSource } from '@/lib/order-state';
@@ -44,7 +44,8 @@ import {
   APPLIED_AR, AppliedMeanwhile, LinesChanged, blockedByStock, costAfterEdit, costProductIds, linesAreStill, linesStale, planLineApply,
   type LineApply,
 } from '@/lib/order-line-apply';
-import type { EditableOrderRow } from '@/lib/order-edit-facts';
+import { SETTLEMENT_OPEN, type EditableOrderRow } from '@/lib/order-edit-facts';
+import { claimingRowWhere } from '@/lib/match-integrity';
 import { describeLines, type ApprovedLineEdit, type LinesChange } from '@/lib/change-request-fields';
 import { productCosts } from '@/lib/product-cost';
 import { resolveDeliveryFee } from '@/lib/delivery-fees';
@@ -59,6 +60,13 @@ const RESERVED_GOODS_EDIT_AR =
  */
 const MULTI_LINE_SHORTHAND_AR =
   'الطلب فيه أكثر من سطر. عدّل الأسطر من قائمة البنود: السعر والكمية والمنتج هنا بيغيّروا الطلب كلو كأنو سطر واحد.';
+
+/** A discount cannot move while a courier statement holds the order's money. */
+const DISCOUNT_STATEMENT_LINKED_AR =
+  'الطلب مربوط بكشف شركة الشحن — الكشف هو اللي بيكتب المال، فما بيتغيّر الخصم من هون.';
+
+/** Nor once a line has been delivered or sent back: that line is a record, not a draft. */
+const DISCOUNT_LINE_SETTLED_AR = 'في سطر انسلّم أو ارتجع — ما بيتغيّر الخصم بعد التسليم.';
 
 /** Legacy combined status whitelist (mirrors the UI status config) */
 const ALLOWED_COMBINED_STATUSES = [
@@ -1600,6 +1608,8 @@ export async function PATCH(
     let costKept = false;
     let lineProducts = new Map<string, { id: string; name: string }>();
     let lineMoney: ReturnType<typeof computeCod> | null = null;
+    /** A discount arrived with no lines and moves no goods: the order's lines must carry it as well (see the write below). */
+    let respreadDiscount = false;
 
     if (editingLine) {
       if (items) {
@@ -1694,6 +1704,42 @@ export async function PATCH(
           if (secondLine) {
             return NextResponse.json(
               { error: MULTI_LINE_SHORTHAND_AR, errorAr: MULTI_LINE_SHORTHAND_AR, code: 'MULTI_LINE_SHORTHAND' },
+              { status: 409 }
+            );
+          }
+        }
+        /*
+         * A discount that is the one the order already has changes nothing — and rewriting the lines for it would only be a
+         * chance to disturb them. Only a CHANGED discount is spread again.
+         */
+        respreadDiscount =
+          !changesTheGoods &&
+          discountAmount !== undefined &&
+          roundMinor(discountAmount, country.minorUnit) !== roundMinor(Number(existing.discountAmount ?? 0), country.minorUnit);
+        if (respreadDiscount) {
+          /*
+           * THE STATEMENT WRITES THE MONEY, AND A DELIVERED LINE IS A RECORD (the owner's rule; the reviewer's finding).
+           * A discount alone never went through the plan of the lines, so neither question was asked of it. The same two
+           * facts the lines' own plan reads (`order-edit-facts.ts`): a courier statement claims the order, or its
+           * settlement has moved; or a line has been delivered or sent back. Then the discount is refused, in words,
+           * and nothing is written.
+           */
+          const claimed = await db.settlementMatch.count({
+            where: { companyId, orderId: id, statementLineId: { not: null }, OR: claimingRowWhere() },
+          });
+          if (claimed > 0 || !SETTLEMENT_OPEN.includes(String(existing.settlementStatus))) {
+            return NextResponse.json(
+              { error: DISCOUNT_STATEMENT_LINKED_AR, errorAr: DISCOUNT_STATEMENT_LINKED_AR, code: 'DISCOUNT_STATEMENT_LINKED' },
+              { status: 409 }
+            );
+          }
+          const settled = await db.orderItem.findFirst({
+            where: { orderId: id, OR: [{ deliveredQty: { not: null } }, { returnedQty: { not: null } }] },
+            select: { id: true },
+          });
+          if (settled) {
+            return NextResponse.json(
+              { error: DISCOUNT_LINE_SETTLED_AR, errorAr: DISCOUNT_LINE_SETTLED_AR, code: 'DISCOUNT_LINE_SETTLED' },
               { status: 409 }
             );
           }
@@ -1943,6 +1989,54 @@ export async function PATCH(
           data: { appliedAt: new Date(), appliedById: user.id },
         });
         if (stamp.count !== 1) throw new AppliedMeanwhile();
+      }
+
+      /*
+       * ── A DISCOUNT ALONE IS WRITTEN ON THE LINES TOO (30/10) ──
+       *
+       * The owner: «الخصم على الطلب ما بتجاوب … لا تنسى الحساب والمخزون».
+       *
+       * A discount with no lines in the request — and that is the ONLY form a discount takes once an order is confirmed:
+       * an approved request carries `discountAmount` and nothing else — rebuilt the order's total from ONE synthetic line
+       * and wrote the order alone. The lines kept the shares they had, and creating the shipment prices the parcel from the
+       * LINES (`codForOrder` sums `discountShare`), so the courier was told the old price, and a partial return refunded by
+       * the old shares. MEASURED in `the-discount-answers.test.ts`: 0 → 10 approved left both shares at 0 and `codForOrder`
+       * at 48.500 against the order's 38.500.
+       *
+       * So the shares are spread afresh, by the same `computeCod`, over what each line cost BEFORE the discount it has now
+       * (`totalsBeforeDiscount`, the figure the screen opens its boxes on) — and each line is UPDATED IN PLACE, only its
+       * `discountShare` and `lineTotal`. Never deleted and recreated: the units a line holds on the shelf, its gift and
+       * who added it are the line's own, and a discount has no business with any of them.
+       */
+      if (respreadDiscount && !items && lineMoney) {
+        const stored = await tx.orderItem.findMany({
+          where: { orderId: id },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          select: { id: true, quantity: true, lineTotal: true, discountShare: true },
+        });
+        if (stored.length > 0) {
+          const before = totalsBeforeDiscount(stored, Number(existing.discountAmount ?? 0), country.minorUnit);
+          const spread = computeCod({
+            lines: stored.map((row, i) => {
+              const was = before[i] ?? 0;
+              return { quantity: row.quantity, unitPrice: row.quantity > 0 ? was / row.quantity : was };
+            }),
+            discount: lineMoney.discount,
+            minorUnit: country.minorUnit,
+          });
+          for (const [i, row] of stored.entries()) {
+            await tx.orderItem.update({
+              where: { id: row.id },
+              data: {
+                discountShare: spread.discountShares[i] ?? 0,
+                lineTotal: spread.lineTotals[i] ?? 0,
+                // The price BEFORE the discount, as the lines' own save writes it: `codForOrder` trusts `lineTotal + share`
+                // only where it equals `quantity × unitPrice`, and an offer's line is written at the price before the offer.
+                unitPrice: row.quantity > 0 ? (before[i] ?? 0) / row.quantity : (before[i] ?? 0),
+              },
+            });
+          }
+        }
       }
 
       // The lines themselves, only when an explicit set was sent. Replacing
