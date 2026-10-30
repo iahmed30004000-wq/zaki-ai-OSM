@@ -17,8 +17,10 @@ import { count, money as amount } from './numeric-input';
  *
  *   · It adds no formula. The money of a draft is `computeCod`, called exactly the way `PATCH /api/orders/[id]` calls
  *     it for a lines save (a line's TOTAL divided by its quantity, the same discount, the same fee, the same add-ons).
- *     `priceOrderLines` below is the single wrapper, so the screen that shows a number and the door that writes it
- *     cannot disagree by construction — and a test feeds the same lines to the real PATCH to hold it.
+ *     `priceOrderLines` below is the single wrapper on THIS side. It is NOT shared with the save: `PATCH` calls
+ *     `computeCod` itself, so the two agree because they call the same function the same way, and only a TEST holds
+ *     that (`the-preview-and-the-save-agree.test.ts` feeds the same lines to the real `PATCH`). If the save ever
+ *     changes how it calls `computeCod`, that test is what turns red — not the compiler.
  *   · It guesses nothing. A line it cannot find, a basis it cannot price, a fee source that disagrees with itself, a
  *     line already delivered: each is a REFUSAL with a sentence, never a plausible number.
  *   · It uses no language model. Everything here is arithmetic the reader can reproduce by hand, so no customer data
@@ -379,31 +381,43 @@ export interface GiftSuggestion {
   /** Worked out from the order's offer, not carried over. */
   derived: boolean;
   /** Why it was not re-derived, when there was something to re-derive. */
-  warn: 'GIFT_NOT_RESCALED' | null;
+  warn: 'GIFT_NOT_RESCALED' | 'GIFT_DROPPED' | null;
 }
 
 /**
  * THE GIFT A LINE CARRIES AFTER ITS QUANTITY CHANGES — derived only when the line is demonstrably the order's offer.
  *
- * «Demonstrably»: the line is of the offer's product, the offer is on sale, and the gift the line holds today is
- * exactly what the offer gives for today's quantity. Then the new gift is what the offer gives for the new quantity —
- * one per WHOLE bundle (`giftUnits`), so 3+1 → six is two and → two is none. In every other case the gift stays as it
- * is and the caller is told it did not move: an offer is never invented for a line that cannot name one.
+ * «Demonstrably»: the line is of the offer's product, the offer is on sale, the line WAS PRICED BY THE OFFER (a whole
+ * number of its bundles at its price — `pricedBy`), and the gift it holds today is exactly what the offer gives for
+ * today's quantity. Then the new gift is what the offer gives for the new quantity — one per WHOLE bundle
+ * (`giftUnits`), so 3+1 → six is two and → two is none. Gift-equals-gift alone is NOT enough: a line of two with no
+ * gift satisfies «0 = 0» on a «3 + 1» without ever having been bought as the offer, and raising it to six must not
+ * hand it two free pieces (owner rule: refuse, do not guess). In every other case the gift stays as it is and the
+ * caller is told it did not move. A line whose PRODUCT is swapped does not carry its gift to the new product — the
+ * save starts a product new to the order at none — and says so (`GIFT_DROPPED`).
  * The gift is real stock (it is reserved and costed like any unit) but it is not money.
  */
 export function suggestGift(
   line: StoredLine,
   next: { productId: string; quantity: number },
-  offer: OfferFact | null
+  offer: OfferFact | null,
+  minorUnit: number
 ): GiftSuggestion {
   const changedProduct = next.productId !== line.productId;
   if (!changedProduct && next.quantity === line.quantity) return { value: line.freeQuantity, derived: false, warn: null };
   if (changedProduct) {
-    return { value: line.freeQuantity, derived: false, warn: line.freeQuantity > 0 ? 'GIFT_NOT_RESCALED' : null };
+    return { value: 0, derived: false, warn: line.freeQuantity > 0 ? 'GIFT_DROPPED' : null };
   }
-  const linked = !!offer && offer.live && offer.productId === line.productId && line.freeQuantity === giftUnits(offer, line.quantity);
+  const linked =
+    !!offer &&
+    offer.live &&
+    offer.productId === line.productId &&
+    pricedBy(line, offer, minorUnit) !== null &&
+    line.freeQuantity === giftUnits(offer, line.quantity);
   if (linked) return { value: giftUnits(offer, next.quantity), derived: true, warn: null };
-  return { value: line.freeQuantity, derived: false, warn: line.freeQuantity > 0 ? 'GIFT_NOT_RESCALED' : null };
+  // A gift the offer WOULD give for the new quantity, left ungiven because the line is not demonstrably its: say so.
+  const wouldGive = !!offer && offer.live && offer.productId === line.productId && giftUnits(offer, next.quantity) > 0;
+  return { value: line.freeQuantity, derived: false, warn: line.freeQuantity > 0 || wouldGive ? 'GIFT_NOT_RESCALED' : null };
 }
 
 /* ═══════════════════════════ problems ═══════════════════════════ */
@@ -433,8 +447,10 @@ export const PROBLEM_CODES = [
   'QTY_NOT_BUNDLE',
   'OFFER_ENDED',
   'GIFT_NOT_RESCALED',
+  'GIFT_DROPPED',
   // stock
   'PRODUCT_UNAVAILABLE',
+  'PRODUCT_INACTIVE',
   'STOCK_SHORT_BLOCKED',
   'STOCK_SHORT_ALLOWED',
   'STOCK_ALREADY_SHORT',
@@ -477,10 +493,12 @@ const MESSAGE_AR: Record<ProblemCode, string> = {
   QTY_BELOW_OFFER_MIN: 'الكمية أقل من حزمة العرض ({bundle}) — بدون هدية وبدون سعر العرض.',
   QTY_NOT_BUNDLE: 'الكمية مش من مضاعفات حزمة العرض ({bundle}) — الهدية للحزم الكاملة بس.',
   OFFER_ENDED: 'عرض الطلب انتهى — ما بنحسب منه سعر ولا هدية.',
-  GIFT_NOT_RESCALED: 'الهدية ما تغيّرت: السطر مش مربوط بعرض معروف.',
+  GIFT_NOT_RESCALED: 'الهدية ما تغيّرت: السطر مش مسعَّر بالعرض، فما بنخترع هدية.',
+  GIFT_DROPPED: 'الهدية ما بتنتقل لمنتج ثاني — صارت صفر.',
   PRODUCT_UNAVAILABLE: 'المنتج مش موجود بهالشركة.',
-  STOCK_SHORT_BLOCKED: 'المخزون ما بيكفي لـ{name} — ناقص {missing}.',
-  STOCK_SHORT_ALLOWED: 'المخزون ما بيكفي لـ{name} (ناقص {missing}) — البلد بتسمح بالسالب.',
+  PRODUCT_INACTIVE: 'المنتج معطّل حالياً.',
+  STOCK_SHORT_BLOCKED: 'المخزون ما بيكفي لـ{name}.',
+  STOCK_SHORT_ALLOWED: 'المخزون ما بيكفي لـ{name} — البلد بتسمح بالسالب.',
   STOCK_ALREADY_SHORT: 'كان في نقص بـ{name} قبل التعديل، وما زاد.',
   PHONE_INVALID: 'رقم الهاتف مش صحيح لهالبلد.',
   DUPLICATE_PHONE: 'رقم الهاتف مستخدم عند زبون ثاني.',
@@ -580,7 +598,7 @@ export function resolveLineEdits(
     if (changedProduct && !product) {
       problems.push(problem('PRODUCT_UNAVAILABLE', true, { lineId: s.id, productId }));
     } else if (changedProduct && product && product.status === 'INACTIVE') {
-      problems.push(problem('PRODUCT_UNAVAILABLE', false, { lineId: s.id, productId }));
+      problems.push(problem('PRODUCT_INACTIVE', false, { lineId: s.id, productId }));
     }
 
     const options = changedProduct || changedQty ? suggestPrice(s, { productId, quantity }, ctx) : [];
@@ -626,14 +644,14 @@ export function resolveLineEdits(
     }
 
     // ── the gift
-    const gift = suggestGift(s, { productId, quantity }, offer);
+    const gift = suggestGift(s, { productId, quantity }, offer, ctx.minorUnit);
     if (gift.warn) problems.push(problem(gift.warn, false, { lineId: s.id, productId: s.productId }));
 
     // ── what the offer, if the line is its, says about this quantity
     const offerLine = !!offer && offer.productId === s.productId && !changedProduct;
     if (offerLine && offer && (changedQty || changedProduct)) {
       const priced = pricedBy(s, offer, ctx.minorUnit);
-      const linked = priced !== null || s.freeQuantity === giftUnits(offer, s.quantity);
+      const linked = priced !== null;
       if (linked && !offer.live) {
         problems.push(problem('OFFER_ENDED', false, { lineId: s.id, productId: s.productId }));
       } else if (linked && changedQty) {
@@ -702,7 +720,11 @@ export type StockStatus =
   | 'NOT_HELD';
 
 /**
- * WHAT THE DRAFT DOES TO ONE PRODUCT'S SHELF. It says `needed` and `missing`, never the shelf's whole balance.
+ * WHAT THE DRAFT DOES TO ONE PRODUCT'S SHELF — the engine's own working figures.
+ *
+ * `needed` and `missing` are INTERNAL: with both, `needed − missing` is the shelf's balance, so a response that
+ * carried the pair would hand the balance to whoever may preview. What leaves the engine is `PublicStockEffect`:
+ * the order's own units and a verdict, nothing from which the shelf's count follows by subtraction.
  */
 export interface StockEffect {
   productId: string;
@@ -845,7 +867,8 @@ export function draftProblems(check: DraftCheck): Problem[] {
 
   // ── the order's own state
   if (o.closed) out.push(problem('ORDER_CLOSED', true));
-  if (o.confirmed && !o.closed && o.handed) out.push(problem('PARCEL_HANDED', false));
+  // With the courier the system does not rewrite the lines (cancel and re-order instead): blocking for a lines draft.
+  if (o.confirmed && !o.closed && o.handed) out.push(problem('PARCEL_HANDED', lineDraft));
   if (o.confirmed && !o.closed && !o.handed && o.labelled && touchesDriver) out.push(problem('LABEL_WILL_RESET', false));
   if (moneyDraft && o.statementLinked) out.push(problem('STATEMENT_LINKED', true));
 
@@ -861,7 +884,7 @@ export function draftProblems(check: DraftCheck): Problem[] {
       const off = !near(before.cod, o.storedTotal, mu) || (facts.shipmentCod !== null && !near(facts.shipmentCod, o.storedTotal, mu));
       if (off) {
         out.push(
-          problem('COD_DRIFT', false, {
+          problem('COD_DRIFT', lineDraft, {
             detail: {
               stored: text(o.storedTotal, mu),
               computed: text(facts.shipmentCod !== null && !near(facts.shipmentCod, o.storedTotal, mu) ? facts.shipmentCod : before.cod, mu),
@@ -882,9 +905,9 @@ export function draftProblems(check: DraftCheck): Problem[] {
   // ── the shelf
   for (const s of stock) {
     if (s.status === 'SHORT_BLOCKED') {
-      out.push(problem('STOCK_SHORT_BLOCKED', true, { productId: s.productId, detail: { name: s.productName, missing: s.missing } }));
+      out.push(problem('STOCK_SHORT_BLOCKED', true, { productId: s.productId, detail: { name: s.productName } }));
     } else if (s.status === 'SHORT_ALLOWED') {
-      out.push(problem('STOCK_SHORT_ALLOWED', false, { productId: s.productId, detail: { name: s.productName, missing: s.missing } }));
+      out.push(problem('STOCK_SHORT_ALLOWED', false, { productId: s.productId, detail: { name: s.productName } }));
     } else if (s.status === 'ALREADY_SHORT') {
       out.push(problem('STOCK_ALREADY_SHORT', false, { productId: s.productId, detail: { name: s.productName } }));
     }
@@ -920,11 +943,27 @@ export interface PreviewLine extends ResolvedLine {
   totalAfterDiscount: number;
 }
 
+/** The shelf verdict a response may carry: the order's own units and a status — no count of what the shelf holds. */
+export type PublicStockEffect = Omit<StockEffect, 'needed' | 'missing'>;
+
+/** What a response may say of a product's shelf: everything of `StockEffect` except the two figures that give it away. */
+function openStock(s: StockEffect): PublicStockEffect {
+  return { productId: s.productId, productName: s.productName, before: s.before, after: s.after, held: s.held, freed: s.freed, enough: s.enough, status: s.status };
+}
+
 export interface OrderEditPreview {
   before: Totals;
   after: Totals;
   lines: PreviewLine[];
-  stock: StockEffect[];
+  /**
+   * THE LINES' ORDER, EXPLICIT. The remainder of a discount that does not divide lands on the first largest line, so
+   * the order the lines are given to `computeCod` decides which line carries it (0.334 / 0.333 / 0.333 on three equal
+   * lines). Stored rows written together share one `createdAt`, so this order is the preview's own deterministic one
+   * (`createdAt`, then `id`). The APPLY phase must write the lines in exactly this order — reuse this array, do
+   * not re-read the rows and sort again — or the shares it writes can differ by a minor unit from the ones shown.
+   */
+  lineOrder: string[];
+  stock: PublicStockEffect[];
   suggestions: ResolvedLines['suggestions'];
   problems: Problem[];
   /** True when at least one problem stops the request from being raised. */
@@ -1002,7 +1041,8 @@ export function previewLineEdit(facts: OrderEditFacts, draft: PreviewDraft): Ord
       discountShare: afterPriced.money.discountShares[i] ?? 0,
       totalAfterDiscount: afterPriced.money.lineTotals[i] ?? 0,
     })),
-    stock: stockForDraft,
+    lineOrder: resolved.lines.map((l) => l.lineId),
+    stock: stockForDraft.map(openStock),
     suggestions: resolved.suggestions,
     problems,
     blocked: problems.some((p) => p.blocking),

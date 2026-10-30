@@ -25,10 +25,16 @@ import { availableStock } from './reservation';
  * notification, audit row or activity row anywhere in it, and a test holds the database to that: any write method
  * on the client it is given fails the run.
  *
- * It asks the shelf the way `reserveOrderLines` does — the order's OWN holding left out, and with no store named,
- * i.e. across the company — so the "short by N" it reports is the question the apply door will ask. If two stores of
- * one company ever keep separate shelves that is a difference in `reserveOrderLines` itself, not something to paper
- * over here (it is on the list of things seen, not fixed).
+ * It asks the shelf with the same inputs `reserveOrderLines` uses — the order's OWN holding left out, and with no store
+ * named, i.e. across the company — but NOT with the same question: this sums the order's units per product (and
+ * subtracts the add-ons it accepted), where `reserveOrderLines` tests each line on its own against the whole shelf.
+ * The preview is the stricter of the two, so it never promises what the apply would refuse for stock, and it may
+ * refuse what the apply would let through. If two stores of one company ever keep separate shelves that is a
+ * difference in `reserveOrderLines` itself, not something to paper over here (BACKLOG_P2: RV400).
+ *
+ * THE LINES' ORDER is made here and is deterministic (`createdAt`, then `id`), whatever order the database hands the
+ * rows back in: rows written together share one `createdAt`, and the remainder of a discount lands on the first
+ * largest line, so a random tie-break would move a minor unit between lines from one read to the next.
  */
 
 /** The order columns this reads. `assertOrderAccess` hands over the whole row; this names what is used. */
@@ -60,6 +66,20 @@ const SHIPPING_CLOSED = ['DELIVERED', 'PARTIALLY_DELIVERED', 'RETURNED', 'CANCEL
 /** A settlement state in which the order's money is still ours to compute. Anything else was moved by a statement. */
 const SETTLEMENT_OPEN = ['NOT_APPLICABLE', 'PENDING', 'PENDING_COLLECTION'];
 
+/**
+ * ONE ANSWER PER PRODUCT, A FEW AT A TIME. A draft may name twenty lines, and asking the offers and the shelf of each
+ * one after the other made a preview — which the screen asks for at every pause in typing — twenty round trips in a
+ * row. All at once would be twenty connections from one keystroke; five at a time is both.
+ */
+const AT_A_TIME = 5;
+async function inChunks<T, R>(items: readonly T[], ask: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = [];
+  for (let i = 0; i < items.length; i += AT_A_TIME) {
+    out.push(...(await Promise.all(items.slice(i, i + AT_A_TIME).map(ask))));
+  }
+  return out;
+}
+
 export async function readOrderEditFacts(args: {
   order: EditableOrderRow;
   companyId: string;
@@ -71,11 +91,12 @@ export async function readOrderEditFacts(args: {
   const now = args.now ?? new Date();
   const minorUnit = country.minorUnit;
 
-  const items = await db.orderItem.findMany({
+  const rows = await db.orderItem.findMany({
     where: { orderId: order.id, companyId },
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     select: {
       id: true,
+      createdAt: true,
       productId: true,
       productName: true,
       quantity: true,
@@ -88,6 +109,8 @@ export async function readOrderEditFacts(args: {
       returnedQty: true,
     },
   });
+  // Equal `createdAt` is the rule, not the exception (one `createMany`): the id settles it, the same way every time.
+  const items = [...rows].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const addOnRows = await db.orderAddOn.findMany({
     where: { orderId: order.id, companyId },
     select: { productId: true, quantity: true, price: true },
@@ -138,9 +161,9 @@ export async function readOrderEditFacts(args: {
 
   // What is on sale comes from the ONE query that decides it (`activeOffersFor`); "live" is whether it is in there.
   const offers: OfferFact[] = [];
-  for (const productId of offerProductIds) {
-    const views = await activeOffersFor(db, companyId, productId, minorUnit, now);
-    for (const v of views) {
+  const viewsByProduct = await inChunks(offerProductIds, (productId) => activeOffersFor(db, companyId, productId, minorUnit, now));
+  for (const [i, productId] of offerProductIds.entries()) {
+    for (const v of viewsByProduct[i]) {
       offers.push({
         id: v.id,
         productId,
@@ -175,9 +198,8 @@ export async function readOrderEditFacts(args: {
   // ── the shelf, asked as `reserveOrderLines` asks it
   const stockIds = [...new Set([...lines.map((l) => l.productId), ...productIds])];
   const available: Record<string, number> = {};
-  for (const productId of stockIds) {
-    available[productId] = await availableStock(db, companyId, productId, order.id);
-  }
+  const counts = await inChunks(stockIds, (productId) => availableStock(db, companyId, productId, order.id));
+  for (const [i, productId] of stockIds.entries()) available[productId] = counts[i];
 
   // ── where the parcel is, and who else already wrote the money
   const batch = await db.shippingBatch.findFirst({

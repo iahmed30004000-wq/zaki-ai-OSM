@@ -336,7 +336,13 @@ describe('Ⅲ · a quantity and a price edited together', () => {
     const missing = resolve([line({ id: 'l1' })], [edit('l1', { productId: 'prod-unknown-001' })]);
     expect(missing.problems.find((p) => p.code === 'PRODUCT_UNAVAILABLE')!.blocking).toBe(true);
     const off = resolveLineEdits([line({ id: 'l1' })], [edit('l1', { productId: DROPS })], ctxOf({ products: new Map([[DROPS, product(DROPS, 'قطرة', 8.5, 'INACTIVE')]]) }));
-    expect(off.problems.find((p) => p.code === 'PRODUCT_UNAVAILABLE')!.blocking).toBe(false);
+    // a switched-off product is not «not found»: its own code, its own sentence, and it does not stop the request
+    const inactive = off.problems.find((p) => p.code === 'PRODUCT_INACTIVE')!;
+    expect(inactive.blocking).toBe(false);
+    expect(inactive.messageAr).toContain('معطّل');
+    expect(inactive.messageAr).not.toContain('مش موجود');
+    expect(codes(off)).not.toContain('PRODUCT_UNAVAILABLE');
+    expect(missing.problems.find((p) => p.code === 'PRODUCT_UNAVAILABLE')!.messageAr).toContain('مش موجود');
   });
 
   it('a price far below half or above double the catalogue price warns; 0 on a paid line is refused', () => {
@@ -433,14 +439,34 @@ describe('Ⅵ · the gift follows the order’s offer, by whole bundles — and 
   });
 
   it('suggestGift states what it did, in three cases', () => {
-    expect(suggestGift(offerLine, { productId: CREAM, quantity: 9 }, BUNDLE)).toEqual({ value: 3, derived: true, warn: null });
+    expect(suggestGift(offerLine, { productId: CREAM, quantity: 9 }, BUNDLE, 3)).toEqual({ value: 3, derived: true, warn: null });
     // not the offer's line: the gift stays and says so
     const stranger = line({ id: 'x', quantity: 3, freeQuantity: 2, lineTotal: 25 });
-    expect(suggestGift(stranger, { productId: CREAM, quantity: 6 }, BUNDLE)).toEqual({ value: 2, derived: false, warn: 'GIFT_NOT_RESCALED' });
+    expect(suggestGift(stranger, { productId: CREAM, quantity: 6 }, BUNDLE, 3)).toEqual({ value: 2, derived: false, warn: 'GIFT_NOT_RESCALED' });
     // a line with no gift and no offer has nothing to say
-    expect(suggestGift(line({ id: 'y' }), { productId: CREAM, quantity: 6 }, null)).toEqual({ value: 0, derived: false, warn: null });
+    expect(suggestGift(line({ id: 'y' }), { productId: CREAM, quantity: 6 }, null, 3)).toEqual({ value: 0, derived: false, warn: null });
     // the quantity did not move: nothing is touched
-    expect(suggestGift(offerLine, { productId: CREAM, quantity: 3 }, BUNDLE)).toEqual({ value: 1, derived: false, warn: null });
+    expect(suggestGift(offerLine, { productId: CREAM, quantity: 3 }, BUNDLE, 3)).toEqual({ value: 1, derived: false, warn: null });
+  });
+
+  it('NO GIFT IS INVENTED: two pieces with no gift on a «3 + 1» order, raised to six, get none — and are told why', () => {
+    // «0 = 0» is true of any line shorter than a bundle; it was never bought as the offer.
+    const two = line({ id: 'l1', quantity: 2, freeQuantity: 0, lineTotal: 24 });
+    const r = resolve([two], [edit('l1', { quantity: 6 })], withOffer);
+    expect(r.lines[0].freeQuantity).toEqual({ from: 0, to: 0 });
+    expect(codes(r)).toContain('GIFT_NOT_RESCALED');
+    // and the price is the piece price (12 × 6), not the bundle's
+    expect(r.lines[0]).toMatchObject({ lineTotal: { to: 72 }, basis: 'KEEP_UNIT' });
+    expect(suggestGift(two, { productId: CREAM, quantity: 6 }, BUNDLE, 3)).toEqual({ value: 0, derived: false, warn: 'GIFT_NOT_RESCALED' });
+  });
+
+  it('nor for a line of a whole bundle that was priced by hand: three at 30 on a «3 + 1» for 25', () => {
+    const byHand = line({ id: 'l1', quantity: 3, freeQuantity: 1, lineTotal: 30 });
+    const r = resolve([byHand], [edit('l1', { quantity: 6 })], withOffer);
+    expect(r.lines[0].freeQuantity).toEqual({ from: 1, to: 1 });
+    expect(codes(r)).toContain('GIFT_NOT_RESCALED');
+    // and no «below the bundle» or «not a bundle» talk about a line the offer never priced
+    expect(codes(resolve([line({ id: 'l1', quantity: 2, lineTotal: 24 })], [edit('l1', { quantity: 4 })], withOffer))).not.toContain('QTY_NOT_BUNDLE');
   });
 
   it('a gift that no longer matches the offer is NOT re-derived — an offer is never invented', () => {
@@ -450,10 +476,16 @@ describe('Ⅵ · the gift follows the order’s offer, by whole bundles — and 
     expect(codes(r)).toContain('GIFT_NOT_RESCALED');
   });
 
-  it('a product swap keeps the gift number and says it could not follow', () => {
+  it('a product swap does NOT carry the gift to the new product — the save starts it at none — and says so', () => {
+    // The gift is real stock of the OLD product: carried over, it would ask the new product's shelf for a piece nobody gave.
     const r = resolve([offerLine], [edit('l1', { productId: DROPS })], withOffer);
-    expect(r.lines[0].freeQuantity).toEqual({ from: 1, to: 1 });
-    expect(codes(r)).toContain('GIFT_NOT_RESCALED');
+    expect(r.lines[0].freeQuantity).toEqual({ from: 1, to: 0 });
+    expect(r.problems.find((p) => p.code === 'GIFT_DROPPED')!.blocking).toBe(false);
+    // a swap of a line with no gift has nothing to say
+    expect(codes(resolve([line({ id: 'x' })], [edit('x', { productId: DROPS })]))).not.toContain('GIFT_DROPPED');
+    // and nothing of the old product's gift is asked of the shelf
+    const preview = previewLineEdit(factsOf({ lines: [offerLine] }), { lines: [{ lineId: 'l1', productId: DROPS }] });
+    expect(preview.after.giftUnits).toBe(0);
   });
 
   it('an ended offer neither prices nor gifts, and the person is told', () => {
@@ -634,14 +666,34 @@ describe('Ⅸ · a draft is refused, not guessed at, when the order disagrees wi
     expect(has(problemsOf(factsOf({}, { deliveryFee: 2.5 }), draft), 'FEE_SOURCE_DRIFT')).toBe(false);
   });
 
-  it('a stored total that is not the lines’ total: COD_DRIFT, a warning', () => {
+  it('a stored total that is not the lines’ total: COD_DRIFT, blocking for a lines draft — the save would rewrite it', () => {
     const p = problemsOf(factsOf({}, { storedTotal: 50 }), draft).find((x) => x.code === 'COD_DRIFT')!;
-    expect(p.blocking).toBe(false);
+    expect(p.blocking).toBe(true);
     expect(p.messageAr).toContain('50.000');
   });
 
-  it('a shipment calculator that disagrees with the stored total also warns', () => {
-    expect(has(problemsOf(factsOf({ shipmentCod: 47 }), draft), 'COD_DRIFT')).toBe(true);
+  it('…and the case that costs money: shares that are not the order’s own discount, so a save takes the discount twice', () => {
+    // 29.5 stored; the lines hold 4.5 of shares against a discount of 3 — before-discount figures are taken as stored
+    // and the order's 3.000 comes off AGAIN: 26.5.
+    const facts = factsOf(
+      {
+        lines: [line({ id: 'l1', quantity: 3, lineTotal: 25, reservedQty: 3 }), line({ id: 'l2', productId: SOAP, quantity: 2, lineTotal: 7, reservedQty: 2 })],
+        shipmentCod: 29.5,
+      },
+      { storedTotal: 29.5, discount: 3, shippingCost: 0 }
+    );
+    const ps = problemsOf(facts, { lines: [{ lineId: 'l1', quantity: 4 }] });
+    expect(ps.find((x) => x.code === 'COD_DRIFT')!.blocking).toBe(true);
+  });
+
+  it('a discount alone over a drifting order only warns; a lines draft over it blocks', () => {
+    const facts = factsOf({}, { storedTotal: 50 });
+    expect(problemsOf(facts, { discountAmount: 1 }).find((x) => x.code === 'COD_DRIFT')!.blocking).toBe(false);
+    expect(problemsOf(facts, { lines: [{ lineId: 'l2', quantity: 3 }] }).find((x) => x.code === 'COD_DRIFT')!.blocking).toBe(true);
+  });
+
+  it('a shipment calculator that disagrees with the stored total also blocks a lines draft', () => {
+    expect(problemsOf(factsOf({ shipmentCod: 47 }), draft).find((x) => x.code === 'COD_DRIFT')!.blocking).toBe(true);
   });
 
   it('an order in a courier statement: STATEMENT_LINKED, blocking — the statement writes the money', () => {
@@ -684,8 +736,12 @@ describe('Ⅹ · the parcel and the customer', () => {
 
   it('with the courier: PARCEL_HANDED, and the door is COURIER_ACTION', () => {
     const preview = previewLineEdit(factsOf({}, { handed: true }), draft);
-    expect(preview.problems.find((p) => p.code === 'PARCEL_HANDED')!.blocking).toBe(false);
+    // no lines are rewritten once the courier has the parcel — cancel and re-order is the way
+    expect(preview.problems.find((p) => p.code === 'PARCEL_HANDED')!.blocking).toBe(true);
+    expect(preview.blocked).toBe(true);
     expect(preview.door).toBe('COURIER_ACTION');
+    // a note on the customer is not a line: said, not refused
+    expect(previewLineEdit(factsOf({}, { handed: true }), { customerNotes: 'ملاحظة' }).problems.find((p) => p.code === 'PARCEL_HANDED')!.blocking).toBe(false);
   });
 
   it('a printed waybill on a parcel that is still ours: LABEL_WILL_RESET, only for what the driver reads', () => {
@@ -738,6 +794,7 @@ describe('Ⅻ · the whole preview', () => {
         line({ id: 'l1', quantity: 3, freeQuantity: 1, lineTotal: 25, reservedQty: 4 }),
         line({ id: 'l2', productId: SOAP, productName: 'صابون', quantity: 2, lineTotal: 10, reservedQty: 2 }),
       ],
+      shipmentCod: 37.5,
     }, { storedTotal: 37.5 });
     const preview = previewLineEdit(facts, {
       lines: [{ lineId: 'l1', quantity: 6 }, { lineId: 'l2', productId: DROPS, unitPrice: 6 }],
@@ -836,6 +893,102 @@ describe('XIII · the draft schema', () => {
 });
 
 /* ─────────────────────────── 8 · what the engine is not allowed to be ─────────────────────────── */
+
+/* ─────────────────────────── 7b · what the reviewer found ─────────────────────────── */
+
+describe('XIII-ب · the shelf is never answered in numbers a subtraction can undo', () => {
+  const short = (available: number, allowNegativeStock = false) =>
+    previewLineEdit(factsOf({ available: { [CREAM]: available, [SOAP]: 20 }, allowNegativeStock }), { lines: [{ lineId: 'l1', quantity: 9 }] });
+
+  it('a shortage carries neither the units needed nor the units missing', () => {
+    const r = short(5);
+    const cream = r.stock.find((s) => s.productId === CREAM)!;
+    expect(cream.status).toBe('SHORT_BLOCKED');
+    expect(Object.keys(cream).sort()).toEqual(['after', 'before', 'enough', 'freed', 'held', 'productId', 'productName', 'status']);
+    expect(r.problems.find((p) => p.code === 'STOCK_SHORT_BLOCKED')!.detail).toEqual({ name: 'كريم' });
+    expect(r.problems.find((p) => p.code === 'STOCK_SHORT_BLOCKED')!.messageAr).not.toMatch(/\d/);
+  });
+
+  it('the answer does not change with how short the shelf is: 5, 3 and 0 on the shelf say the same thing', () => {
+    // needed − missing was the balance. If the response is byte-for-byte the same whatever the balance, no pair of its
+    // numbers can give it away, and no sum, difference or product of them either.
+    const five = JSON.stringify(short(5));
+    expect(JSON.stringify(short(3))).toBe(five);
+    expect(JSON.stringify(short(0))).toBe(five);
+    // …and it is the same where the country lets the shelf go negative, up to the verdict
+    expect(JSON.stringify(short(2, true))).toBe(JSON.stringify(short(0, true)));
+    // …and where there is enough, 100 and 100000 say the same too
+    const enough = (n: number) => JSON.stringify(previewLineEdit(factsOf({ available: { [CREAM]: n, [SOAP]: n } }), { lines: [{ lineId: 'l1', quantity: 5 }] }));
+    expect(enough(100)).toBe(enough(100_000));
+  });
+
+  it('the verdict itself still moves: short is short and enough is enough', () => {
+    expect(short(5).blocked).toBe(true);
+    expect(previewLineEdit(factsOf({ available: { [CREAM]: 500, [SOAP]: 500 } }), { lines: [{ lineId: 'l1', quantity: 9 }] }).blocked).toBe(false);
+  });
+});
+
+describe('XIII-ج · the order of the lines is part of the answer', () => {
+  const three = (ids: string[]) =>
+    ids.map((id) => line({ id, productId: CREAM, quantity: 1, lineTotal: 10, reservedQty: 1 }));
+
+  it('a discount that does not divide puts its remainder on the FIRST of equal lines: 0.334, 0.333, 0.333', () => {
+    // 1.000 over three equal lines: 0.333 each, 0.001 left over.
+    const facts = factsOf({ lines: three(['a', 'b', 'c']), shipmentCod: 30 + 2.5 }, { storedTotal: 32.5 });
+    const preview = previewLineEdit(facts, { discountAmount: 1 });
+    expect(preview.after.discountShares).toEqual([0.334, 0.333, 0.333]);
+    expect(preview.lineOrder).toEqual(['a', 'b', 'c']);
+    expect(preview.lines.map((l) => l.lineId)).toEqual(preview.lineOrder);
+  });
+
+  it('the same lines the other way round put it on the other line — which is why the order is returned, not assumed', () => {
+    const facts = factsOf({ lines: three(['c', 'b', 'a']), shipmentCod: 32.5 }, { storedTotal: 32.5 });
+    const preview = previewLineEdit(facts, { discountAmount: 1 });
+    expect(preview.lineOrder).toEqual(['c', 'b', 'a']);
+    expect(preview.lines.map((l) => [l.lineId, l.discountShare])).toEqual([['c', 0.334], ['b', 0.333], ['a', 0.333]]);
+  });
+
+  it('the lines come back in the order they went in, edited or not', () => {
+    const facts = factsOf({ lines: three(['z', 'm', 'a']), shipmentCod: 32.5 }, { storedTotal: 32.5 });
+    expect(previewLineEdit(facts, { lines: [{ lineId: 'a', quantity: 2 }] }).lineOrder).toEqual(['z', 'm', 'a']);
+  });
+});
+
+describe('XIII-د · prices derived from nothing but the stored line, with the answers written by hand', () => {
+  // Each row: what the line is, what is asked, and the figures a person gets with a pencil.
+  it.each([
+    // 7 pieces for 21.000 are 3.000 each: ten are 30.000, four are 12.000.
+    ['KEEP_UNIT up', { quantity: 7, lineTotal: 21 }, { quantity: 10 }, { subtotal: 30, basis: 'KEEP_UNIT' }],
+    ['KEEP_UNIT down', { quantity: 7, lineTotal: 21 }, { quantity: 4 }, { subtotal: 12, basis: 'KEEP_UNIT' }],
+    // 25 for three, four pieces: 25 × 4 ÷ 3 = 33.3333 → 33.333 at three places.
+    ['KEEP_UNIT, the third of a fil', { quantity: 3, lineTotal: 25 }, { quantity: 4 }, { subtotal: 33.333, basis: 'KEEP_UNIT' }],
+    // a bundle of 3 for 24.000: nine pieces are three bundles, 72.000.
+    ['OFFER, three bundles', { quantity: 3, lineTotal: 24 }, { quantity: 9, priceBasis: 'OFFER' as const }, { subtotal: 72, basis: 'OFFER' }],
+    // catalogue price 2.500: four pieces are 10.000, whatever the line cost.
+    ['BASE_PRICE', { quantity: 7, lineTotal: 21 }, { quantity: 4, priceBasis: 'BASE_PRICE' as const }, { subtotal: 10, basis: 'BASE_PRICE' }],
+    // a typed piece price 2.75 × 4 = 11.000
+    ['MANUAL by piece', { quantity: 7, lineTotal: 21 }, { quantity: 4, unitPrice: 2.75 }, { subtotal: 11, basis: 'MANUAL' }],
+    // a typed line total is taken whole
+    ['MANUAL by total', { quantity: 7, lineTotal: 21 }, { quantity: 4, lineTotal: 11.5 }, { subtotal: 11.5, basis: 'MANUAL' }],
+  ])('%s', (_name, stored, asked, want) => {
+    const offer: OfferFact = { id: 'offer-hand', productId: CREAM, name: '3', quantity: 3, freeQuantity: 0, listPrice: 24, price: 24, live: true };
+    const facts = factsOf(
+      {
+        lines: [line({ id: 'only', ...stored, reservedQty: stored.quantity })],
+        products: [product(CREAM, 'كريم', 2.5)],
+        offers: [offer],
+        orderOffer: offer,
+        available: { [CREAM]: 1000 },
+        shipmentCod: stored.lineTotal,
+      },
+      { storedTotal: stored.lineTotal, shippingCost: 0 }
+    );
+    const preview = previewLineEdit(facts, { lines: [{ lineId: 'only', ...asked }] });
+    expect(preview.after.subtotal).toBe(want.subtotal);
+    expect(preview.after.cod).toBe(want.subtotal);
+    expect(preview.lines[0].basis).toBe(want.basis);
+  });
+});
 
 describe('XIV · pure: no database, no network, one calculator', () => {
   const src = stripComments(repoFile('src/lib/order-line-edit.ts'));

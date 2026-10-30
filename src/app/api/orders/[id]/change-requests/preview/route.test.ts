@@ -145,6 +145,7 @@ const orderRow = (over: Row = {}): Row => ({
 });
 
 const item = (over: Row): Row => ({
+  createdAt: new Date(0),
   productName: 'كريم',
   freeQuantity: 0,
   unitPrice: 12,
@@ -292,16 +293,22 @@ describe('Ⅳ · the answer', () => {
     expect(calls.map((c) => c[2]).sort()).toEqual([CREAM, SOAP].sort());
   });
 
-  it('a shortage on the shelf is reported as a number missing, and blocks the request — without the balance', async () => {
-    availableStock.mockImplementation(async (...a: unknown[]) => (a[2] === CREAM ? 5 : SHELF));
-    const res = await ask({ lines: [{ lineId: 'line-1', quantity: 9 }] });
-    expect(res.status).toBe(200);
-    const cream = res.body.stock.find((s: Row) => s.productId === CREAM);
-    // 9 + 1 gift = 10 needed against 5: five missing
-    expect(cream).toMatchObject({ status: 'SHORT_BLOCKED', needed: 10, missing: 5, enough: false });
-    expect(res.body.blocked).toBe(true);
-    expect(res.body.problems.find((p: Row) => p.code === 'STOCK_SHORT_BLOCKED').blocking).toBe(true);
-    expect(JSON.stringify(res.body)).not.toMatch(/"available"/);
+  it('a shortage on the shelf blocks the request — and the answer is the same whatever the shelf holds', async () => {
+    const withShelf = async (n: number) => {
+      availableStock.mockImplementation(async (...a: unknown[]) => (a[2] === CREAM ? n : SHELF));
+      return ask({ lines: [{ lineId: 'line-1', quantity: 9 }] });
+    };
+    const five = await withShelf(5);
+    expect(five.status).toBe(200);
+    // 9 + 1 gift = 10 against 5
+    expect(five.body.stock.find((s: Row) => s.productId === CREAM)).toMatchObject({ status: 'SHORT_BLOCKED', enough: false });
+    expect(five.body.blocked).toBe(true);
+    expect(five.body.problems.find((p: Row) => p.code === 'STOCK_SHORT_BLOCKED').blocking).toBe(true);
+    // no `needed`, no `missing`: their difference is the shelf's balance
+    expect(JSON.stringify(five.body)).not.toMatch(/"available"|"needed"|"missing"/);
+    // and not one byte moves with the count, so no arithmetic on the answer can recover it
+    expect(JSON.stringify((await withShelf(3)).body)).toBe(JSON.stringify(five.body));
+    expect(JSON.stringify((await withShelf(0)).body)).toBe(JSON.stringify(five.body));
   });
 
   it('never answers with the shelf’s whole balance, or with the customer’s fields it was handed', async () => {
@@ -339,6 +346,51 @@ describe('Ⅳ · the answer', () => {
     const res = await ask({ lines: [{ lineId: 'line-1', quantity: 5 }] });
     expect(res.body.problems.find((p: Row) => p.code === 'STATEMENT_LINKED').blocking).toBe(true);
     expect(res.body.blocked).toBe(true);
+  });
+
+  it('the lines are put in a fixed order whatever order the rows come back in — and the remainder of a discount follows it', async () => {
+    // Three lines written together share one createdAt. 1.000 over three equal lines: 0.334 on the FIRST, 0.333 on the rest.
+    const at = new Date(1000);
+    const rows = ['line-c', 'line-a', 'line-b'].map((id) => item({ id, productId: CREAM, quantity: 1, unitPrice: 10, lineTotal: 10, createdAt: at }));
+    assertOrderAccess.mockResolvedValue({ allowed: true, order: orderRow({ totalAmount: 32.5 }) });
+    for (const shuffled of [rows, [rows[2], rows[0], rows[1]], [...rows].reverse()]) {
+      fake.items = shuffled;
+      const res = await ask({ discountAmount: 1 });
+      expect(res.body.lineOrder, 'ترتيب الأسطر تغيّر مع ترتيب القاعدة').toEqual(['line-a', 'line-b', 'line-c']);
+      expect(res.body.after.discountShares).toEqual([0.334, 0.333, 0.333]);
+    }
+  });
+
+  it('an earlier createdAt comes first, ahead of an id that sorts lower', async () => {
+    fake.items = [
+      item({ id: 'line-a', productId: CREAM, quantity: 1, unitPrice: 10, lineTotal: 10, createdAt: new Date(2000) }),
+      item({ id: 'line-z', productId: CREAM, quantity: 1, unitPrice: 10, lineTotal: 10, createdAt: new Date(1000) }),
+    ];
+    assertOrderAccess.mockResolvedValue({ allowed: true, order: orderRow({ totalAmount: 22.5 }) });
+    expect((await ask({})).body.lineOrder).toEqual(['line-z', 'line-a']);
+  });
+
+  it('twenty products are all asked of the shelf and the offers — a few at a time, none dropped', async () => {
+    const ids = Array.from({ length: 20 }, (_v, i) => `prod-many-${String(i).padStart(4, '0')}`);
+    fake.items = ids.map((productId, i) => item({ id: `line-${i}`, productId, quantity: 1, unitPrice: 1, lineTotal: 1 }));
+    fake.products = ids.map((id) => ({ id, companyId: COMPANY, name: id, basePrice: 1, status: 'ACTIVE' }));
+    assertOrderAccess.mockResolvedValue({ allowed: true, order: orderRow({ totalAmount: 22.5 }) });
+    let running = 0;
+    let peak = 0;
+    availableStock.mockImplementation(async () => {
+      running += 1;
+      peak = Math.max(peak, running);
+      await new Promise((r) => setTimeout(r, 1));
+      running -= 1;
+      return SHELF;
+    });
+    const res = await ask({ lines: [{ lineId: 'line-0', quantity: 2 }] });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(availableStock.mock.calls.map((c) => c[2]).sort()).toEqual([...ids].sort());
+    expect(activeOffersFor.mock.calls.map((c) => c[2]).sort()).toEqual([...ids].sort());
+    expect(res.body.stock).toHaveLength(20);
+    expect(peak, 'كلها دفعة وحدة').toBeLessThanOrEqual(5);
+    expect(peak, 'واحد ورا واحد').toBeGreaterThan(1);
   });
 
   it('every read that can be scoped to the company is: the lines, the add-ons, the products, the trolley, the statements, the customers', async () => {

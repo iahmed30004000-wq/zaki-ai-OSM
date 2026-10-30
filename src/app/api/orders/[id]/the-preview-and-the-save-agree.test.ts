@@ -22,9 +22,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 type Row = Record<string, any>;
 
-const { fake, requireContext, logAudit, notify } = vi.hoisted(() => {
+const { fake, requireContext, logAudit, notify, availableStock, activeOffersFor } = vi.hoisted(() => {
   const fake = {
     order: {} as Row,
+    offerRow: null as Row | null,
     lines: [] as Row[],
     products: [] as Row[],
     addOns: [] as Row[],
@@ -109,7 +110,7 @@ const { fake, requireContext, logAudit, notify } = vi.hoisted(() => {
       },
       createMany: ({ data }) => {
         for (const row of data as Row[]) {
-          fake.lines.push({ id: `line-new-${fake.lines.length + 1}`, reservedQty: 0, deliveredQty: null, returnedQty: null, ...row });
+          fake.lines.push({ id: `line-new-${fake.lines.length + 1}`, createdAt: new Date(0), reservedQty: 0, deliveredQty: null, returnedQty: null, ...row });
         }
         return { count: (data as Row[]).length };
       },
@@ -119,6 +120,7 @@ const { fake, requireContext, logAudit, notify } = vi.hoisted(() => {
     },
     orderAddOn: { findMany: ({ where }) => fake.addOns.filter((a) => matches(a, where)).map((a) => ({ ...a })) },
     shippingBatch: { findFirst: () => null },
+    offer: { findFirst: () => fake.offerRow },
     settlementMatch: { count: () => 0 },
     returnReceipt: { count: () => 0 },
     orderContactAttempt: { count: ({ where }) => (where.orderId === fake.order.id ? fake.attempts : 0) },
@@ -177,7 +179,14 @@ const { fake, requireContext, logAudit, notify } = vi.hoisted(() => {
   };
   fake.db = db;
 
-  return { fake, requireContext: vi.fn(), logAudit: vi.fn(), notify: vi.fn() };
+  return {
+    fake,
+    requireContext: vi.fn(),
+    logAudit: vi.fn(),
+    notify: vi.fn(),
+    availableStock: vi.fn<(...a: unknown[]) => Promise<number>>(),
+    activeOffersFor: vi.fn<(...a: unknown[]) => Promise<Row[]>>(),
+  };
 });
 
 vi.mock('@/lib/db', () => ({ db: fake.db }));
@@ -186,14 +195,14 @@ vi.mock('@/lib/audit', () => ({ logAudit: (...a: unknown[]) => logAudit(...a) })
 vi.mock('@/lib/notify', () => ({ notify: (...a: unknown[]) => notify(...a) }));
 vi.mock('@/lib/pii-alert', () => ({ noteCustomersHandedOut: vi.fn() }));
 vi.mock('@/lib/auth', () => ({ requireAuth: vi.fn() }));
-// The shelf and the offers are not what is under test here: plenty on the shelf, nothing on sale.
+// The shelf and the offers are the test's to set: plenty on the shelf and nothing on sale unless a test says otherwise.
 vi.mock('@/lib/reservation', async (original) => ({
   ...(await original<typeof import('@/lib/reservation')>()),
-  availableStock: vi.fn(async () => 100_000),
+  availableStock: (...a: unknown[]) => availableStock(...a),
 }));
 vi.mock('@/lib/offers', async (original) => ({
   ...(await original<typeof import('@/lib/offers')>()),
-  activeOffersFor: vi.fn(async () => []),
+  activeOffersFor: (...a: unknown[]) => activeOffersFor(...a),
 }));
 
 import { PATCH } from './route';
@@ -227,7 +236,7 @@ const SYP = { id: 'country-sy', code: 'SY', currencyCode: 'SYP', minorUnit: 0, a
 
 const line = (over: Row): Row => ({
   companyId: COMPANY, orderId: ORDER_ID, discountShare: 0, reservedQty: 0, deliveredQty: null, returnedQty: null,
-  addedById: null, addedStage: 'INTAKE', ...over,
+  addedById: null, addedStage: 'INTAKE', createdAt: new Date(0), ...over,
 });
 
 const baseOrder = (country: Row, over: Row = {}): Row => ({
@@ -301,6 +310,9 @@ const holds = (preview: OrderEditPreview, written: { order: Row; lines: Row[] })
 beforeEach(() => {
   vi.clearAllMocks();
   fake.attempts = 1;
+  fake.offerRow = null;
+  availableStock.mockResolvedValue(100_000);
+  activeOffersFor.mockResolvedValue([]);
   fake.addOns = [];
   fake.activities = [];
   fake.transactions = 0;
@@ -415,5 +427,94 @@ describe('Ⅱ · and where they are meant to differ, they say so', () => {
       order: { ...fake.order } as any, companyId: COMPANY, country: JOD, draft: { lines: [{ lineId: 'line-cream-01', quantity: 4 }] },
     });
     expect(preview.problems.map((p) => p.code)).toContain('COD_DRIFT');
+  });
+});
+
+/*
+ * ═══════════════════════════════════════════════════════════════════════
+ * THE THREE THINGS THE FIRST HALF DID NOT VARY — a real offer on sale, a shelf that is short, and an order whose
+ * delivery fee is written twice and differently. The first half feeds the save the preview's own line totals, with
+ * plenty on the shelf, nothing on sale and one fee: a test that agrees with itself on the easy case.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+describe('Ⅲ · a real offer, a short shelf, two fees', () => {
+  const offerRow = {
+    id: 'offer-3-plus-1', productId: CREAM, name: '3 + 1', quantity: 3, freeQuantity: 1, sellingPrice: 25,
+    discount: 0, compareAtPrice: null, isDefault: false, deliveryIncluded: true, endsAt: null,
+  };
+  const onSale = [{ id: 'offer-3-plus-1', name: '3 + 1', quantity: 3, freeQuantity: 1, price: 25, listPrice: null }];
+
+  it('an order taken on the offer: 3 + 1 for 25 becomes 6 + 2 for 50 — the offer’s price, and the save writes the same total', async () => {
+    seed(JOD, 1, { offerId: 'offer-3-plus-1' });
+    fake.offerRow = offerRow;
+    activeOffersFor.mockImplementation(async (...a: unknown[]) => (a[2] === CREAM ? onSale : []));
+    fake.lines[0] = line({ id: 'line-cream-01', productId: CREAM, productName: 'كريم', quantity: 3, freeQuantity: 1, unitPrice: 8.333, lineTotal: 25 });
+    fake.order.sellingPrice = 35;
+    fake.order.totalAmount = 37.5;
+
+    const { preview, written } = await bothWays(JOD, { lines: [{ lineId: 'line-cream-01', quantity: 6 }] });
+    // by hand: two bundles of 25 = 50, the soap 10, 2.5 to deliver
+    expect(preview.lines[0]).toMatchObject({ lineTotal: { to: 50 }, freeQuantity: { to: 2 }, basis: 'OFFER', offerId: 'offer-3-plus-1' });
+    expect(preview.after.cod).toBe(62.5);
+    expect(preview.problems.filter((p) => p.blocking)).toEqual([]);
+    holds(preview, written);
+  });
+
+  it('the same order with the offer ended: the piece price is kept (8.333 × 6 → 50), the gift stays, and it is said', async () => {
+    seed(JOD, 1, { offerId: 'offer-3-plus-1' });
+    fake.offerRow = offerRow;
+    fake.lines[0] = line({ id: 'line-cream-01', productId: CREAM, productName: 'كريم', quantity: 3, freeQuantity: 1, unitPrice: 8.333, lineTotal: 25 });
+    fake.order.sellingPrice = 35;
+    fake.order.totalAmount = 37.5;
+    const { preview, written } = await bothWays(JOD, { lines: [{ lineId: 'line-cream-01', quantity: 6 }] });
+    expect(preview.lines[0]).toMatchObject({ lineTotal: { to: 50 }, freeQuantity: { to: 1 }, basis: 'KEEP_UNIT' });
+    expect(preview.problems.map((p) => p.code)).toContain('OFFER_ENDED');
+    holds(preview, written);
+  });
+
+  it('a short shelf on a confirmed order: the preview refuses what the shelf cannot give — without saying how much it holds', async () => {
+    seed(JOD, 1, { confirmationStatus: 'CONFIRMED', settlementStatus: 'PENDING_COLLECTION' });
+    availableStock.mockImplementation(async (...a: unknown[]) => (a[2] === CREAM ? 6 : 100_000));
+    const preview = await previewOrderEdit({
+      order: { ...fake.order } as any, companyId: COMPANY, country: JOD, draft: { lines: [{ lineId: 'line-cream-01', quantity: 9 }] },
+    });
+    // 9 + 1 gift = 10 against 6
+    expect(preview.stock.find((s) => s.productId === CREAM)).toMatchObject({ status: 'SHORT_BLOCKED', enough: false });
+    expect(preview.blocked).toBe(true);
+    expect(JSON.stringify(preview)).not.toMatch(/"needed"|"missing"|"available"/);
+    // …and the same order with shelf enough goes through
+    availableStock.mockResolvedValue(100_000);
+    const fine = await previewOrderEdit({
+      order: { ...fake.order } as any, companyId: COMPANY, country: JOD, draft: { lines: [{ lineId: 'line-cream-01', quantity: 9 }] },
+    });
+    expect(fine.blocked).toBe(false);
+  });
+
+  it('two delivery fees on one order (3.500 from the courier table, 2.500 on the order): the preview refuses, because the save would not collect the courier’s fee', async () => {
+    seed(JOD, 1, { deliveryFee: 3.5 });
+    const order = { ...fake.order };
+    const preview = await previewOrderEdit({
+      order: order as any, companyId: COMPANY, country: JOD, draft: { lines: [{ lineId: 'line-cream-01', quantity: 5 }] },
+    });
+    expect(preview.problems.find((p) => p.code === 'FEE_SOURCE_DRIFT')!.blocking).toBe(true);
+    expect(preview.blocked).toBe(true);
+
+    // What the save does with those same lines, were it let through: 60 + 10 = 70, and 2.500 on top — the order's own
+    // fee, not the courier's 3.500. That one-dinar gap is the reason for the refusal.
+    requireContext.mockResolvedValue({ user: AGENT, companyId: COMPANY, storeId: STORE, countryId: JOD.id, country: JOD });
+    const res = await PATCH(
+      new Request(`http://localhost/api/orders/${ORDER_ID}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          expectedVersion: order.version,
+          items: preview.lines.map((l) => ({ productId: l.productId.to, quantity: l.quantity.to, unitPrice: String(l.lineTotal.to) })),
+        }),
+      }),
+      { params: Promise.resolve({ id: ORDER_ID }) }
+    );
+    expect(res.status).toBe(200);
+    expect(fake.order.totalAmount).toBe(72.5);
+    expect(fake.order.totalAmount).not.toBe(70 + 3.5);
   });
 });
