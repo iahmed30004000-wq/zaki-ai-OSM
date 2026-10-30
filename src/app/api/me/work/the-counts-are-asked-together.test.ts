@@ -19,7 +19,7 @@ const { db, requireContext, waitingCount, awaitingConfirmationCount, grants } = 
   requireContext: vi.fn(),
   waitingCount: vi.fn(),
   awaitingConfirmationCount: vi.fn(),
-  grants: { allows: (_p: string) => true },
+  grants: { allows: (_p: string): boolean => true },
 }));
 vi.mock('@/lib/db', () => ({ db, default: db }));
 vi.mock('@/lib/geo-context', () => ({
