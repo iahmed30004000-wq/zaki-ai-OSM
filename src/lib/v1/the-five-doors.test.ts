@@ -152,8 +152,7 @@ describe('an order from another company', () => {
     await getOrder(new Request('https://oms.test/api/v1/orders/o1'), {
       params: Promise.resolve({ id: 'o1' }),
     });
-    // PR-13 (قديم ← جديد): the WHERE also carries the system's own origin; the id and the company are exactly what they were.
-    expect(h.db.order.findFirst.mock.calls[0][0].where).toMatchObject({ id: 'o1', companyId: 'c1' });
+    expect(h.db.order.findFirst.mock.calls[0][0].where).toEqual({ id: 'o1', companyId: 'c1' });
   });
 
   it('and a note on it is refused the same way, before a key is burned', async () => {

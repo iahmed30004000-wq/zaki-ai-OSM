@@ -2,7 +2,6 @@ import { db } from '@/lib/db';
 import { requireSystemToken } from '@/lib/v1/system-token';
 import { V1_CODE, V1Fault, requestIdOf, v1ErrorResponse, v1Ok } from '@/lib/v1/door';
 import { isoWithOffset } from '@/lib/v1/shape';
-import { raisedBySystem } from '@/lib/v1/order-origin';
 
 /**
  * GET /api/v1/orders/{id} — «where has this got to?»
@@ -19,11 +18,6 @@ import { raisedBySystem } from '@/lib/v1/order-origin';
  * somewhere, which is an existence oracle over every order in the product
  * for anyone holding any valid key.
  *
- * ── AND ONLY AN ORDER THIS SYSTEM RAISED (PR-13) ──
- *
- * The same 404 answers an order of the company that the calling system did not create through this door — see
- * `raisedBySystem`. The request, the answer and the headers are exactly what they were; only the WHERE narrowed.
- *
  * ── AND NOTHING ABOUT THE CUSTOMER IS IN IT ──
  *
  * No name, no phone, no address, no total. A status endpoint that carried
@@ -38,7 +32,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const { id } = await params;
 
     const order = await db.order.findFirst({
-      where: { id, companyId: caller.companyId, ...raisedBySystem(caller.system) },
+      where: { id, companyId: caller.companyId },
       select: {
         id: true,
         orderNumber: true,
