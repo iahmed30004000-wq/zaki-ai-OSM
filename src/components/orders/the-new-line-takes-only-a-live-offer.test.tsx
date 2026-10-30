@@ -75,7 +75,7 @@ vi.mock('@/components/ui/ProductPicker', () => ({
   ),
 }));
 
-import { ProductLinesEditor, liveOffersOf, newLine, withOffer, withProduct, type DraftLine } from './ProductLinesEditor';
+import { ProductLinesEditor, adoptedOffer, liveOffersOf, newLine, withOffer, withProduct, type DraftLine } from './ProductLinesEditor';
 import { CreateOrderModal } from './CreateOrderModal';
 
 /* ── the catalogue (ids in camelCase: an id spelled like a spacing class is a class to the stylesheet scanner) ── */
@@ -100,7 +100,20 @@ const REDUCED = {
   offers: [{ id: 'offerReduced', name: 'قطعتان', quantity: 2, freeQuantity: 0, sellingPrice: 25 }],
   liveOffers: [{ id: 'offerReduced', name: 'قطعتان', quantity: 2, freeQuantity: 0, price: 22, listPrice: 25 }],
 };
-const CATALOGUE = [HOODIE, NONE_LIVE, NO_LIVE_KEY, PLAIN, REDUCED];
+/** Two live bundles, the SECOND marked as the default: the storefront opens on it, so does the order form. */
+const TWO_LIVE = {
+  id: 'prodTwoLive',
+  name: 'جاكيت',
+  basePrice: 40,
+  offers: [OFFER_B],
+  liveOffers: [
+    { id: 'offerFirst', name: 'قطعتان', quantity: 2, freeQuantity: 0, price: 70, listPrice: null, isDefault: false },
+    { id: 'offerDefault', name: 'ثلاث قطع', quantity: 3, freeQuantity: 0, price: 90, listPrice: null, isDefault: true },
+  ],
+};
+/** Two live bundles and none marked: the first. */
+const NO_DEFAULT = { ...TWO_LIVE, id: 'prodNoDefault', liveOffers: TWO_LIVE.liveOffers.map((o) => ({ ...o, isDefault: false })) };
+const CATALOGUE = [HOODIE, NONE_LIVE, NO_LIVE_KEY, PLAIN, REDUCED, TWO_LIVE, NO_DEFAULT];
 
 const JOD2: Currency = { code: 'JOD', minorUnit: 2 };
 
@@ -151,6 +164,26 @@ describe('L1 — the first LIVE offer is adopted, not the first row', () => {
   });
 });
 
+describe('L1b — the default bundle wins, as in the storefront', () => {
+  it('two live bundles, the default second: the default is adopted', () => {
+    expect(newLine(TWO_LIVE, 2)).toMatchObject({ offerId: 'offerDefault', quantity: 3, price: '90' });
+    expect(adoptedOffer(TWO_LIVE)?.id).toBe('offerDefault');
+    // NEGATIVE: the first row is not the default.
+    expect(newLine(TWO_LIVE, 2).offerId).not.toBe('offerFirst');
+  });
+
+  it('none marked: the first live one', () => {
+    expect(newLine(NO_DEFAULT, 2)).toMatchObject({ offerId: 'offerFirst', quantity: 2, price: '70' });
+  });
+
+  it('picking the product in the form opens at the default', () => {
+    render(<Harness />);
+    pick(TWO_LIVE.id);
+    expect(priceBox().value).toBe('90');
+    expect(offerSelect()?.value).toBe('offerDefault');
+  });
+});
+
 describe('L2/L3 — no live offer: nothing adopted, the base price, and the line says so', () => {
   it.each([
     ['every offer finished or stopped (an empty live list)', NONE_LIVE],
@@ -164,14 +197,21 @@ describe('L2/L3 — no live offer: nothing adopted, the base price, and the line
     expect(line.price).not.toBe('75');
   });
 
-  it('the screen offers no bundle and names the reason', () => {
+  it('the screen offers no bundle and, when the server said none is live, names the reason', () => {
     render(<Harness />);
-    for (const product of [NONE_LIVE, NO_LIVE_KEY]) {
-      pick(product.id);
-      expect(offerSelect(), product.name).toBeNull();
-      expect(screen.getByText(NOTE)).toBeTruthy();
-      expect(priceBox().value).toBe('20');
-    }
+    pick(NONE_LIVE.id);
+    expect(offerSelect()).toBeNull();
+    expect(screen.getByText(NOTE)).toBeTruthy();
+    expect(priceBox().value).toBe('20');
+  });
+
+  it('a MISSING `liveOffers` offers no bundle either, but claims nothing: «unknown» is not «none»', () => {
+    render(<Harness />);
+    pick(NO_LIVE_KEY.id);
+    expect(offerSelect()).toBeNull();
+    expect(priceBox().value).toBe('20');
+    // NEGATIVE: the note would say something nobody checked.
+    expect(screen.queryByText(NOTE)).toBeNull();
   });
 
   it('a product that never had an offer says nothing about one', () => {

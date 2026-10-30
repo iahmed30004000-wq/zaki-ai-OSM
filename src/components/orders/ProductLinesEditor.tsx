@@ -149,10 +149,10 @@ interface ProductOption {
    */
   offers?: { id: string; name: string; quantity: number; freeQuantity?: number; sellingPrice: number }[];
   /** The offers on sale today (`GET /api/products`). The ONLY list a line may adopt or offer; see `liveOffersOf`. */
-  liveOffers?: { id: string; name: string; quantity: number; freeQuantity?: number; price: number; listPrice?: number | null }[];
+  liveOffers?: { id: string; name: string; quantity: number; freeQuantity?: number; price: number; listPrice?: number | null; isDefault?: boolean }[];
 }
 
-type OfferChoice = { id: string; name: string; quantity: number; freeQuantity?: number; sellingPrice: number };
+type OfferChoice = { id: string; name: string; quantity: number; freeQuantity?: number; sellingPrice: number; isDefault?: boolean };
 
 /**
  * THE OFFERS A LINE MAY TAKE: THE ONES ON SALE TODAY, AND NOTHING ELSE.
@@ -165,8 +165,11 @@ type OfferChoice = { id: string; name: string; quantity: number; freeQuantity?: 
  * is offered. It never falls back to `offers`, which is the very list that went wrong.
  *
  * `sellingPrice` is the figure the box has always held for an offer line: the bundle's price BEFORE its own reduction
- * (`listPrice`, or `price` when it has none). The reduction is the door's (`offer.discount`), so the body sent for a
- * live offer is the same one it always was.
+ * (`listPrice`, or `price` when it has none), so the body sent for a live offer is the same one it always was.
+ * NOTE, not a promise: this form sends `items[].offerId` and no top-level `offerId`, and the door reads the offer for
+ * the order's `discount` from the top-level one only, so a bundle's own reduction is NOT taken off an order made
+ * here (25 with a reduction of 3 is collected at 25, the storefront at 22). A standing defect, not this change's:
+ * BACKLOG_P2 RV422 / RV482.
  */
 export function liveOffersOf(product: ProductOption | undefined): OfferChoice[] {
   return (product?.liveOffers ?? []).map((o) => ({
@@ -175,6 +178,7 @@ export function liveOffersOf(product: ProductOption | undefined): OfferChoice[] 
     quantity: o.quantity,
     freeQuantity: o.freeQuantity,
     sellingPrice: o.listPrice ?? o.price,
+    isDefault: o.isDefault,
   }));
 }
 
@@ -207,13 +211,22 @@ function inTheBox(figure: number | undefined): string | undefined {
   return figure === undefined ? undefined : String(figure);
 }
 
+/**
+ * THE ADOPTED OFFER: the live bundle marked as the default, else the first live one - the rule the storefront uses
+ * (`isDefault ?? first`), so a moderator's new line opens where the customer's cart would.
+ */
+export function adoptedOffer(product: ProductOption | undefined): OfferChoice | undefined {
+  const live = liveOffersOf(product);
+  return live.find((o) => o.isDefault) ?? live[0];
+}
+
 /** A line set from the catalogue: the product's first offer, or its base price for one piece. */
 function fromCatalogue(
   productId: string,
   product: ProductOption | undefined,
   minorUnit: number | null | undefined
 ): Omit<DraftLine, 'key'> {
-  const offer = liveOffersOf(product)[0];
+  const offer = adoptedOffer(product);
   if (offer) {
     return { productId, offerId: offer.id, quantity: offer.quantity, price: String(offer.sellingPrice), pricing: 'follows' };
   }
@@ -362,8 +375,12 @@ export function ProductLinesEditor({
       {lines.map((line) => {
         const product = productOf(line.productId);
         const offers = liveOffersOf(product);
-        /** Offers exist but none is on sale: say so, so the plain base price is not a surprise. */
-        const noneLive = offers.length === 0 && (product?.offers?.length ?? 0) > 0;
+        /**
+         * Offers exist and the server said none is on sale: say so, so the plain base price is not a surprise.
+         * Only when `liveOffers` really arrived (an array, even an empty one): a missing key is «unknown», and
+         * «no live offer» would be a claim nobody checked.
+         */
+        const noneLive = Array.isArray(product?.liveOffers) && offers.length === 0 && (product?.offers?.length ?? 0) > 0;
         const lockedByOffer = !!line.offerId;
         /** The figure this line's box holds, or nothing — never an invented 0. */
         const lineFigure = typedFigure(line.price);
