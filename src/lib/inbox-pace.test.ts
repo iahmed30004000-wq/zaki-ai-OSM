@@ -66,8 +66,9 @@ describe('the screen uses it', () => {
     const src = screen();
     expect(src).toMatch(/const selectConversation = \(c: Conversation\) => \{\s*speedUp\(\)/);
     expect(src).toMatch(/if \(!selectedId \|\| !composing\.trim\(\) \|\| sending\) return;\s*speedUp\(\)/);
-    expect(src).toMatch(/window\.addEventListener\('focus', back\)/);
-    expect(src).toMatch(/document\.addEventListener\('visibilitychange', back\)/);
+    // coming back is the hook's event (no hand-written listener on the screen): the screen only says what it means
+    expect(src).toContain('onReturn: speedUp');
+    expect(src).not.toMatch(/addEventListener/);
     expect(src).toMatch(/\(d\.messages \|\| \[\]\)\.length > 0\) speedUp\(\)/);
   });
 

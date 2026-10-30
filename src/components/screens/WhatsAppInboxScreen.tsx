@@ -106,17 +106,6 @@ export function WhatsAppInboxScreen() {
     quietRef.current = 0;
     setPace(FAST_POLL_MS);
   }, []);
-  useEffect(() => {
-    const back = () => {
-      if (!document.hidden) speedUp();
-    };
-    document.addEventListener('visibilitychange', back);
-    window.addEventListener('focus', back);
-    return () => {
-      document.removeEventListener('visibilitychange', back);
-      window.removeEventListener('focus', back);
-    };
-  }, [speedUp]);
 
   const loadConnection = useCallback(async () => {
     try {
@@ -230,7 +219,8 @@ export function WhatsAppInboxScreen() {
       loadConversations(true);
       if (selectedIdRef.current) loadMessages(selectedIdRef.current, true);
     },
-    { everyMs: pace, enabled: canView }
+    // Coming back to the tab puts the pace back to five seconds: the hook says when, the screen says what it means.
+    { everyMs: pace, enabled: canView, onReturn: speedUp }
   );
 
   const selectConversation = (c: Conversation) => {
