@@ -339,7 +339,7 @@ export function PerformanceScreen() {
           fee to bring it back — and nothing in this product answered it.
         */}
         {canInsights && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
           <Rank
             icon={<RiTrophyLine className="w-4 h-4" />}
             label="الأكثر طلباً"
