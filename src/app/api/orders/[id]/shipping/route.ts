@@ -84,7 +84,7 @@ const DELIVERY_FEE = z.object({ deliveryFee: moneyInput(1_000_000) });
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const { user, companyId, storeId, country } = await requireContext();
+    const { user, companyId, storeId } = await requireContext();
 
     // Order access first, then shipping authority evaluated against the order
     const access = await assertOrderAccess(id, user, { companyId, storeId }, 'orders.view');
@@ -546,7 +546,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         consumption = await consumeOrderStock(tx, {
           orderId: id,
           companyId,
-          allowNegativeStock: country.allowNegativeStock,
           userId: user.id,
         });
       }

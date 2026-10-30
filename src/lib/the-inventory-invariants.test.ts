@@ -442,6 +442,8 @@ function matchesWhere(row: Row, where: Row): boolean {
 function ledger(opts: { orderStore: string | null; shelf: Row[]; alreadySold?: boolean }) {
   const movements: Row[] = [];
   const created: Row[] = [];
+  /** The review lines a short shelf writes on the order (P0-13). */
+  const reviews: Row[] = [];
   const shelf: Row[] = opts.shelf.map((b) => ({ ...b }));
   /** Every `where` the draw-down asked the shelf, so its store can be read. */
   const shelfQueries: Row[] = [];
@@ -472,6 +474,7 @@ function ledger(opts: { orderStore: string | null; shelf: Row[]; alreadySold?: b
     // An order with no add-ons, unless a test says otherwise — plain functions, so a mock reset leaves them answering.
     orderAddOn: { aggregate: async () => ({ _sum: { reservedQty: 0 } }), findMany: async () => [], update: async () => ({}), updateMany: async () => ({ count: 0 }) },
     orderItem: { updateMany: async () => ({ count: 0 }) },
+    orderActivity: { create: async ({ data }: any) => { reviews.push(data); return { id: `a${reviews.length}`, ...data }; } },
     productionBatch: {
       findMany: async ({ where, orderBy }: any) => {
         shelfQueries.push(where);
@@ -524,7 +527,7 @@ function ledger(opts: { orderStore: string | null; shelf: Row[]; alreadySold?: b
     },
   };
 
-  return { tx: tx as never, movements, created, shelfQueries, shelf };
+  return { tx: tx as never, movements, created, shelfQueries, shelf, reviews };
 }
 
 const batchOn = (store: string, id: string, qty = 50) => ({
@@ -543,7 +546,6 @@ const consume = (store: string | null, shelf: Row[]) => {
   return consumeOrderStock(l.tx, {
     orderId: ORDER,
     companyId: 'c1',
-    allowNegativeStock: false,
     userId: 'u1',
   }).then(() => l);
 };
@@ -693,10 +695,22 @@ describe('the draw crosses batches, and nobody deducts by hand', () => {
     );
   });
 
-  it('and a shelf shorter than the order refuses rather than taking what it can', async () => {
-    // `allowNegativeStock` is false in `consume` above. Taking 1 of 3 and
-    // reporting success is exactly what the deleted block did.
-    await expect(consume(MUBARAK, [batchOn(MUBARAK, 'b-jan', 1)])).rejects.toThrow(/المخزون غير كافٍ/);
+  /*
+   * CHANGED 30/10 (P0-13, OLD → NEW). Old: «a shelf shorter than the order refuses rather than taking what it
+   * can» — it threw. New: the delivery is recorded, the shelf gives what it HAS, and the rest is not silent: it is
+   * reported and written as a review line. Reason (LAUNCH_LINE P0-13): the old block's sin was taking 1 of 3 and
+   * saying NOTHING; refusing a delivery that already happened was the other way to be wrong. What the old test
+   * protected — «not in silence» — is kept, and asserted below.
+   */
+  it('and a shelf shorter than the order gives what it has and SAYS what it could not', async () => {
+    const l = await consume(MUBARAK, [batchOn(MUBARAK, 'b-jan', 1)]);
+    expect(l.shelf.find((b) => b.id === 'b-jan')!.quantityRemaining).toBe(0);
+    expect(l.movements).toHaveLength(1);
+    expect(l.movements[0]).toMatchObject({ type: 'SALE', quantity: -1, balanceAfter: 0 });
+    // The two it did not have are on the order, once.
+    expect(l.reviews).toHaveLength(1);
+    expect(l.reviews[0]).toMatchObject({ orderId: ORDER, action: 'STOCK_SHORT_AT_DELIVERY' });
+    expect(JSON.parse(l.reviews[0].metadata)).toMatchObject({ short: 2, lines: [{ need: 3, taken: 1, short: 2 }] });
   });
 
   it('and asking twice deducts once — the ledger is the key, not a status column', async () => {
@@ -707,7 +721,6 @@ describe('the draw crosses batches, and nobody deducts by hand', () => {
     const again = await consumeOrderStock(first.tx, {
       orderId: ORDER,
       companyId: 'c1',
-      allowNegativeStock: false,
       userId: 'u1',
     });
     expect(again.alreadyDone).toBe(true);

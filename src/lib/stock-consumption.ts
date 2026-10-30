@@ -40,7 +40,12 @@ export interface ConsumptionResult {
   cost: number;
   /** Its goods left before the store's opening count — see outsideTheCount. */
   outsideTheCount?: boolean;
+  /** The lines whose shelf could not cover them, so the caller can say which. Absent when none was short. */
+  shortLines?: { productId: string; productName: string; need: number; taken: number; short: number }[];
 }
+
+/** The review mark a delivery leaves on an order whose shelf could not cover it. */
+export const STOCK_SHORT_ACTION = 'STOCK_SHORT_AT_DELIVERY';
 
 /** The mark the legacy import (scripts/migration) writes on every order. */
 export const LEGACY_IMPORT_SOURCE = 'Legacy import';
@@ -91,10 +96,33 @@ async function alreadyMoved(tx: Tx, orderId: string, type: string): Promise<bool
  * Runs inside the caller's transaction so the units leave stock in the same
  * commit that marks the order delivered — there is no window in which the
  * order is delivered and the goods are still for sale.
+ *
+ * ── A DELIVERY IS A FACT, AND THE SHELF FOLLOWS IT (P0-13, 30/10) ──
+ *
+ * This takes no `allowNegativeStock` and never refuses. The country's flag
+ * answers «may we PROMISE what the shelf does not hold», and it is asked
+ * where the promise is made — confirming an order and creating its shipment
+ * (`reservation.ts`). By the time a parcel is DELIVERED the goods are in the
+ * customer's hands: refusing to record it leaves a delivered order that the
+ * system calls open, a courier statement that cannot be approved, and money
+ * the customer already paid with no door to book it through.
+ *
+ * Until now the doors gave this one event three different rules — the
+ * country's flag at the manual transition, the order edit and the write-off;
+ * `false` at the door-side delivery; a hand-written `true` at the courier
+ * statement and the parcel swap — so the SAME delivery was recorded or
+ * refused by whichever door happened to see it first. The rule lives here,
+ * once, and a door cannot hand it a different one.
+ *
+ * What a short shelf does: the units it holds leave it (never below zero),
+ * the rest are reported in the result and written as ONE review line on the
+ * order (`STOCK_SHORT_AT_DELIVERY`), and no money is written for them — a
+ * shortfall priced at the last batch would invent cost for goods the books
+ * never held. Making the books agree is the stocktake's job, with a reason.
  */
 export async function consumeOrderStock(
   tx: Tx,
-  input: { orderId: string; companyId: string; allowNegativeStock: boolean; userId?: string | null }
+  input: { orderId: string; companyId: string; userId?: string | null }
 ): Promise<ConsumptionResult> {
   if (await alreadyMoved(tx, input.orderId, SALE)) {
     return { taken: 0, short: 0, alreadyDone: true, cost: 0 };
@@ -127,6 +155,7 @@ export async function consumeOrderStock(
   let taken = 0;
   let short = 0;
   let cost = 0;
+  const shortLines: NonNullable<ConsumptionResult['shortLines']> = [];
 
   /*
    * THE ADD-ONS LEAVE IN THE SAME PARCEL.
@@ -150,11 +179,15 @@ export async function consumeOrderStock(
       storeId: order.storeId,
       productId: line.productId,
       quantity: need,
-      allowNegative: input.allowNegativeStock,
+      // The delivery happened. The draw takes what the shelf holds and reports the rest — see above.
+      allowNegative: true,
     });
     taken += result.taken;
     short += result.short;
     cost += result.cost;
+    if (result.short > 0) {
+      shortLines.push({ productId: line.productId, productName: line.productName, need, taken: result.taken, short: result.short });
+    }
 
     if (result.taken > 0) {
       await tx.inventoryMovement.create({
@@ -234,7 +267,25 @@ export async function consumeOrderStock(
     });
   }
 
-  return { taken, short, alreadyDone: false, cost: roundMinor(cost, minorUnit) };
+  /*
+   * THE SHORTFALL IS SAID, ONCE, ON THE ORDER — in the transaction that
+   * delivered it, so the line cannot outlive a delivery that rolled back.
+   * Units and products only: no price, no wallet, no ledger line. The
+   * reader of this is whoever reviews stock.
+   */
+  if (shortLines.length > 0) {
+    await tx.orderActivity.create({
+      data: {
+        companyId: input.companyId,
+        orderId: input.orderId,
+        userId: input.userId ?? null,
+        action: STOCK_SHORT_ACTION,
+        metadata: JSON.stringify({ order: order.orderNumber, short, lines: shortLines }),
+      },
+    });
+  }
+
+  return { taken, short, alreadyDone: false, cost: roundMinor(cost, minorUnit), ...(shortLines.length ? { shortLines } : {}) };
 }
 
 /**

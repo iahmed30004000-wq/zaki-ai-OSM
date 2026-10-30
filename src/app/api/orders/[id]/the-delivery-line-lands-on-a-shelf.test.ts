@@ -276,7 +276,7 @@ function world(opts: {
   };
   db.$transaction = (fn: (tx: unknown) => unknown) => fn(db);
 
-  return { db, order, items, shelf, movements, orderWrites, shelfQueries };
+  return { db, order, items, shelf, movements, orderWrites, shelfQueries, activities: logs };
 }
 
 const deliver = (body: Record<string, unknown> = {}) =>
@@ -438,7 +438,6 @@ describe('the delivery door takes every unit off the shelf', () => {
     const again = await consumeOrderStock(w.db as never, {
       orderId: ORDER,
       companyId: 'c1',
-      allowNegativeStock: false,
       userId: 'u1',
     });
     expect(again.alreadyDone).toBe(true);
@@ -501,11 +500,15 @@ describe('the delivery door takes every unit off the shelf', () => {
     expect(sales(w)[0].balanceAfter).toBe(6);
   });
 
-  it('and a shelf too short to cover the order refuses, rather than under-deducting in silence', async () => {
-    // The old block's answer to «ten ordered, five on the shelf» was to take
-    // five and say nothing. `allowNegativeStock` is false for this country,
-    // so the draw refuses and the whole transaction — status, counters,
-    // ledger — goes with it.
+  /*
+   * CHANGED 30/10 (P0-13, OLD → NEW). Old: «a shelf too short to cover the order refuses, rather than
+   * under-deducting in silence» — with `allowNegativeStock: false` the draw threw and the whole transaction (status,
+   * counters, ledger) went with it, so a parcel in the customer's hands stayed «open». New: the country's flag is
+   * asked where a promise is made (confirmation, shipment), not where a delivery is recorded; this door records the
+   * delivery whatever the flag says, takes what the shelf has, and says the rest on the order. What the old test
+   * protected — «not in silence» — is asserted in the next test.
+   */
+  it('and a shelf too short to cover the order is still a delivery — the flag does not matter here', async () => {
     const w = install(
       world({
         order: orderRow({ quantity: 10 }),
@@ -514,9 +517,15 @@ describe('the delivery door takes every unit off the shelf', () => {
       })
     );
 
-    expect((await deliver()).status).not.toBe(200);
-    expect(left(w, 'b-only')).toBe(5);
-    expect(sales(w)).toHaveLength(0);
+    // allowNegativeStock is FALSE for this country (the world's default) and the door still records it.
+    expect((await deliver()).status).toBe(200);
+    expect(left(w, 'b-only')).toBe(0);
+    expect(sales(w)).toHaveLength(1);
+    expect(sales(w)[0].quantity).toBe(-5);
+    // …and the five it could not give are on the order, not silent.
+    const said = w.activities.filter((a: Row) => a.action === 'STOCK_SHORT_AT_DELIVERY');
+    expect(said).toHaveLength(1);
+    expect(JSON.parse(said[0].metadata)).toMatchObject({ short: 5 });
   });
 
   it('and where the country allows it, the shortfall is drawn to zero and recorded', async () => {

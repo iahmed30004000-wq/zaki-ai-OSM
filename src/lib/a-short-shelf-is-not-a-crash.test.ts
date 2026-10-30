@@ -256,7 +256,7 @@ beforeEach(() => {
   db.$transaction.mockImplementation(async (fn: any) => fn(db));
 });
 
-describe('a door that cannot find the goods says so, and stays a door', () => {
+describe('a delivery on a short shelf is recorded; a recount that cannot be covered says so', () => {
   /**
    * `POST /api/ops/tracking/write-off` — the smallest of the five doors
    * that reach `drawDownStock` through `consumeOrderStock`, and the one
@@ -287,28 +287,55 @@ describe('a door that cannot find the goods says so, and stays a door', () => {
     }));
   });
 
-  it('answers 409 with the shortage in Arabic — it answered 500 «حدث خطأ داخلي»', async () => {
+  /*
+   * CHANGED 30/10 (P0-13, OLD → NEW): this door used to refuse with 409 «المخزون غير كافٍ» when the shelf held
+   * less than the order, and the order stayed «مطلوب إرجاعه» for ever. Reason: the goods HAVE left — the write-off
+   * records a fact, and a record that refuses to be written leaves the books describing a parcel that does not
+   * exist (LAUNCH_LINE P0-13: «بابٌ يسجّل ما حدث فعلاً يجب أن يكتب السجلَّ ويُظهر الفرق، لا أن يرفض»). The refusal
+   * stays where it belongs — the stocktake door below, which is not recording a delivery.
+   */
+  it('a write-off on a short shelf is RECORDED, not refused — the order closes', async () => {
     shelf.push(batch('b-three', MUBARAK, 3));
 
     const res = await writeOffReq();
     const body = await res.json();
 
-    expect(res.status, JSON.stringify(body)).toBe(409);
-    expect(body.code).toBe('INSUFFICIENT_STOCK');
-    expect(body.errorAr).toContain('المتاح 3');
-    expect(body.errorAr).toContain('والمطلوب 10');
-    expect(body.errorAr).not.toMatch(/حدث خطأ داخلي/);
-    expect(body.errorAr).not.toMatch(/[A-Za-z]:[\\/]/);
+    expect(res.status, JSON.stringify(body)).toBe(200);
+    const wroteOff = db.order.update.mock.calls.some((c: any) => c[0].data?.shippingStatus === 'RETURNED');
+    expect(wroteOff, 'الطلبُ أُغلق كخسارةٍ رغم قِصَر الرفّ').toBe(true);
   });
 
-  it('and the shelf is left exactly as it was — a refusal is not a part-draw', async () => {
+  it('and the shelf gives what it HAS and never goes below zero', async () => {
     shelf.push(batch('b-three', MUBARAK, 3));
     await writeOffReq();
 
-    expect(shelf[0].quantityRemaining, 'الرفُّ تُرِك كما كان').toBe(3);
-    expect(shelf[0].quantitySold).toBe(0);
-    expect(db.inventoryMovement.create, 'لا سطرَ سجلٍّ لحركةٍ لم تَحدُث').not.toHaveBeenCalled();
-    expect(db.order.update, 'الطلبُ لم يُغلق كخسارةٍ ببضاعةٍ لم تُخصَم').not.toHaveBeenCalled();
+    expect(shelf[0].quantityRemaining, 'لا رصيدَ سالباً').toBe(0);
+    expect(shelf[0].quantitySold).toBe(3);
+    // One ledger line, for the 3 that existed — none for the 7 that did not.
+    expect(db.inventoryMovement.create).toHaveBeenCalledTimes(1);
+    expect(db.inventoryMovement.create.mock.calls[0][0].data.quantity).toBe(-3);
+  });
+
+  it('and the 7 it could not give are SAID on the order, as a review line with no money in it', async () => {
+    shelf.push(batch('b-three', MUBARAK, 3));
+    await writeOffReq();
+
+    const said = db.orderActivity.create.mock.calls.map((c: any) => c[0].data).filter((d: any) => d.action === 'STOCK_SHORT_AT_DELIVERY');
+    expect(said, 'سطرُ مراجعةٍ واحد').toHaveLength(1);
+    expect(said[0].orderId).toBe(ORDER);
+    expect(JSON.parse(said[0].metadata)).toMatchObject({ short: 7, lines: [{ productId: PRODUCT, need: 10, taken: 3, short: 7 }] });
+    // And nothing with a price: the cost written on the order is the 3 units' only (3 × 4), not 10 × 4.
+    const costWrites = db.order.update.mock.calls.map((c: any) => c[0].data?.estimatedCostOfGoods).filter((v: unknown) => v !== undefined);
+    expect(costWrites).toEqual([12]);
+  });
+
+  it('and a shelf that is EMPTY records the delivery too, with no movement at all', async () => {
+    const res = await writeOffReq();
+    expect(res.status, JSON.stringify(await res.clone().json())).toBe(200);
+    expect(db.inventoryMovement.create, 'لا سطرَ سجلٍّ لبضاعةٍ لم تكن على الرفّ').not.toHaveBeenCalled();
+    const said = db.orderActivity.create.mock.calls.map((c: any) => c[0].data).filter((d: any) => d.action === 'STOCK_SHORT_AT_DELIVERY');
+    expect(JSON.parse(said[0].metadata)).toMatchObject({ short: 10 });
+    expect(db.order.update.mock.calls.some((c: any) => c[0].data?.estimatedCostOfGoods !== undefined), 'لا كلفةَ تُكتب فوق التقدير').toBe(false);
   });
 
   it('while a shelf that can cover it still passes — the branch refuses nothing else', async () => {
