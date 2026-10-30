@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { db } from './db';
 import { businessMinutesBetween, type BusinessCalendar } from './business-calendar';
+import { rejectionNeedsConversation } from './confirmation-workflow';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -259,10 +260,17 @@ export function needsContactFirst(args: {
    * caller is never stopped; a bare call to the API with a date and no attempt on the order was the way around.
    */
   schedulesFollowUp?: boolean;
+  /**
+   * The reason a `reject` carries. A closing for a reason that needs no word with the customer (a duplicate, a
+   * fake order, a wrong number, outside the service area) is not bound — see `NO_CONVERSATION_REJECTION_REASONS`.
+   * Absent or unknown, `reject` stays bound exactly as before.
+   */
+  rejectionReason?: string | null;
 }): boolean {
   if (!args.isHolder) return false;
   if (args.hasAttempt) return false;
   if (args.action === 'contact_result' && args.schedulesFollowUp === true) return true;
+  if (args.action === 'reject' && !rejectionNeedsConversation(args.rejectionReason)) return false;
   return (CONTACT_FIRST_ACTIONS as readonly string[]).includes(args.action);
 }
 

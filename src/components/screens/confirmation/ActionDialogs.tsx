@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useId, useState } from 'react';
-import { PICKABLE_REJECTION_REASONS, REJECTION_REASON_AR } from '@/lib/confirmation-workflow';
+import { PICKABLE_REJECTION_REASONS, REJECTION_REASON_AR, NO_CONVERSATION_REJECTION_REASONS, rejectionNeedsConversation } from '@/lib/confirmation-workflow';
 import { CHANGE_INTENTS, INTENT_AR, refusalFor, type ChangeIntent } from '@/lib/change-request-intent';
 import { CHANGEABLE_FIELDS, CHANGE_FIELD_AR } from '@/lib/change-request-fields';
 import { ProductPicker } from '@/components/ui/ProductPicker';
@@ -579,20 +579,30 @@ export const REJECT_REASONS = PICKABLE_REJECTION_REASONS.map((value) => ({
   label: REJECTION_REASON_AR[value] ?? value,
 }));
 
+/** Under the reasons, when the order has no attempt yet: why some are grey, in a line a finger can read. */
+export const REJECT_NEEDS_CALL_LINE = 'يحتاج اتصالاً بالزبون أولاً — سجّل محاولة أو اختر سبباً لا يحتاج اتصالاً';
+
 export function RejectDialog({
   open,
   orderNumber,
   busy,
+  hasAttempt = true,
   onClose,
   onSubmit,
 }: {
   open: boolean;
   orderNumber: string;
   busy?: boolean;
+  /**
+   * Does the order carry a contact attempt? Only the desk («طلباتي») knows, and only there is the rule in force;
+   * every other caller leaves it out and every reason stays open. Without an attempt the reasons that need a word
+   * with the customer are shut — see `NO_CONVERSATION_REJECTION_REASONS`.
+   */
+  hasAttempt?: boolean;
   onClose: () => void;
   onSubmit: (value: { rejectionReason: string; note: string }) => void;
 }) {
-  const [rejectionReason, setReason] = useState<string>('CUSTOMER_CHANGED_MIND');
+  const [rejectionReason, setReason] = useState<string>(hasAttempt ? 'CUSTOMER_CHANGED_MIND' : NO_CONVERSATION_REJECTION_REASONS[0]);
   const [note, setNote] = useState('');
   // The server demands a note of its own for OTHER; asking here saves a
   // round trip that ends in a red error.
@@ -624,12 +634,13 @@ export function RejectDialog({
         <Field label="السبب">
           <select value={rejectionReason} onChange={(e) => setReason(e.target.value)} className={FIELD_CLS}>
             {REJECT_REASONS.map((r) => (
-              <option key={r.value} value={r.value}>
+              <option key={r.value} value={r.value} disabled={!hasAttempt && rejectionNeedsConversation(r.value)}>
                 {r.label}
               </option>
             ))}
           </select>
         </Field>
+        {!hasAttempt && <p className="text-xs text-[var(--sys-muted-foreground)]">{REJECT_NEEDS_CALL_LINE}</p>}
         <Field label={noteRequired ? 'التفاصيل (إلزامية)' : 'تفاصيل (اختياري)'}>
           <textarea
             required={noteRequired}
