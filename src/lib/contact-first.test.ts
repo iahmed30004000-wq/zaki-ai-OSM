@@ -154,7 +154,10 @@ describe('the screen says it before she presses, not after', () => {
      */
     // `locked`, not `busy`: a button that looks like it is saving for ever
     // teaches her nothing.
-    expect((src.match(/locked=\{needsContact\(order\)\}/g) ?? []).length, 'ليست الأربعة').toBe(4);
+    // CHANGED 30/10 (the owner: «٥ تمام») — was 4, now 3: «ألغِ» is no longer a locked button; it opens a dialog that
+    // shuts only the reasons that need a word with the customer (and the server keeps the same line).
+    expect((src.match(/locked=\{needsContact\(order\)\}/g) ?? []).length, 'ليست الثلاثة').toBe(3);
+    expect(src, 'الحوار لا يعرف إن كان للطلب محاولة').toMatch(/hasAttempt=\{!needsContact\(dialog\.order\)\}/);
     expect(src).toMatch(/const needsContact = \(order: \{ _count: \{ contactAttempts: number \} \}\) =>\s*order\._count\.contactAttempts === 0/);
   });
 

@@ -95,6 +95,32 @@ export const PICKABLE_REJECTION_REASONS = REJECTION_REASONS.filter(
 );
 
 /**
+ * REASONS THAT NEED NO WORD WITH THE CUSTOMER (30/10, the owner: «٥ تمام»).
+ *
+ * The contact-first rule (C1) stays, but a duplicate, a wrong number or a place we do not serve is a
+ * fact about the ORDER, not an answer the customer gives — an agent who sees it should not have to press «لا يرد»
+ * (a pretend attempt) just to close it. Three, and only three:
+ *
+ *   · `FAKE_ORDER` is left OUT too (the reviewer, 30/10): rejecting for it puts the customer's number on the
+ *     blacklist (`blockPhone`, in the confirmation door) — a real effect outside this order, which one press with
+ *     no attempt must not cause. It stays locked until an attempt is recorded.
+ *   · `MODERATOR_DATA_ERROR` is left OUT on purpose. The owner listed it, but no screen offers it (it is in
+ *     `SYSTEM_ONLY_REJECTION_REASONS`), so exempting it would only open a way round the rule through a value
+ *     nobody can pick — a caller of the API could close any held order with it and no attempt.
+ *   · `OTHER`, and every reason that is the customer's own word (price, changed mind, does not want it, found it
+ *     cheaper) stay locked: they need the conversation.
+ *   · `NO_ANSWER_3_ATTEMPTS` is the system's, and it follows three attempts by definition.
+ */
+export const NO_CONVERSATION_REJECTION_REASONS = [
+  'DUPLICATE_ORDER', 'WRONG_NUMBER', 'OUT_OF_SERVICE_AREA',
+] as const;
+
+/** Does closing an order for this reason need a contact attempt first? Anything unknown does. */
+export function rejectionNeedsConversation(reason: string | null | undefined): boolean {
+  return !(NO_CONVERSATION_REJECTION_REASONS as readonly string[]).includes(reason ?? '');
+}
+
+/**
  * EVERY REASON IN WORDS, INCLUDING THE ONES NOBODY PICKS.
  *
  * One map, because the screen used to keep its own copy of eight while the
