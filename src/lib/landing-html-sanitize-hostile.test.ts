@@ -1,107 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import {
-  injectPageStyles,
-  maskInert,
-  sanitizeLandingCss,
-  sanitizeLandingHtml,
-  sanitizeLandingHtmlStrict,
-} from './landing-html-sanitize';
+import { sanitizeLandingCss, sanitizeLandingHtml, sanitizeLandingHtmlStrict } from './landing-html-sanitize';
 
 /**
- * THE THIRD ROUND: A SCANNER THAT DISAGREES WITH THE BROWSER, A DOCUMENT
- * WITH NO HEAD, AND INPUT BUILT TO MAKE THE CLEANER CRAWL.
+ * INPUT BUILT TO MAKE THE CLEANER CRAWL, AND THE PAGES THAT ARE NOT.
+ *
+ * (Where the page's styles go is in `landing-html-sanitize-structure.test.ts`.)
  */
-
-const style = (css: string) => `<style id="zaki-custom-style">${css}</style>`;
-const attributeNames = (html: string) => maskInert(html);
-
-describe('a quote the browser does not count', () => {
-  // The payload is the CSS: it tries to end whatever it landed in and add a
-  // meta refresh. What is asserted is what a browser would see as MARKUP —
-  // the mask blanks comments, attribute values and the text of style, title
-  // and textarea — so an attribute NAME showing up there is a live attribute.
-  const cases: Record<string, { html: string; css: string }> = {
-    'unquoted value holding an apostrophe, then a single-quoted </head>': {
-      html: "<p x=a'><meta name=x data='</head>'>",
-      css: "' http-equiv=refresh content=0;url=https://evil.example x='",
-    },
-    'the same, double quotes': {
-      html: '<p x=a"><meta name=x data="</head>">',
-      css: '" http-equiv=refresh content=0;url=https://evil.example x="',
-    },
-    'the same, inside a whole document': {
-      html: "<!doctype html><html><head><title>t</title></head><body><p x=a'><meta name=x data='</head>'></body></html>",
-      css: "' http-equiv=refresh content=0;url=https://evil.example x='",
-    },
-    'an unquoted value that ends at the tag': {
-      html: '<p x=a><meta data=</head>>',
-      css: '> <meta http-equiv=refresh content=0;url=https://evil.example>',
-    },
-    'a form action': {
-      html: "<p x=a'><form data='</head>'>",
-      css: "' action=https://evil.example x='",
-    },
-    'a referrer policy': {
-      html: "<p x=a'><meta data='</head>'>",
-      css: "' name=referrer content=unsafe-url x='",
-    },
-  };
-
-  for (const [name, { html, css }] of Object.entries(cases)) {
-    it(`${name}: nothing it adds is live`, () => {
-      const out = injectPageStyles(html, '', style(css));
-      const live = attributeNames(out);
-      expect(live).not.toMatch(/http-equiv|referrer|refresh|\baction\b/i);
-      // and it did not vanish: the stylesheet is in, as markup
-      expect(live).toMatch(/<style id="_+">/);
-      // and the document it was put into is still all there
-      expect(out.replace(/<style id="zaki-custom-style">[\s\S]*?<\/style>/, '')).toBe(html);
-    });
-  }
-
-  // negative: an ordinary document gets its styles before the real </head>
-  it('a sound document takes them just before its </head>, and reads the same afterwards', () => {
-    const html = '<!doctype html><html><head><title>t</title><meta charset="utf-8"></head><body>B</body></html>';
-    const out = injectPageStyles(html, '', style('a{color:red}'));
-    expect(out).toBe(html.replace('</head>', style('a{color:red}') + '</head>'));
-  });
-
-  it('the scanner counts a quote only after an =', () => {
-    expect(maskInert("<p x=a'><b>")).toBe("<p x=__><b>");
-    expect(maskInert('<p x="a>b"><b>')).toBe('<p x="___"><b>');
-    expect(maskInert("<p x = 'a b' y=z>")).toBe("<p x = '___' y=_>");
-  });
-});
-
-describe('a document with no </head>', () => {
-  const css = style('a{color:red}');
-
-  it('takes the styles AFTER the doctype, never before it (quirks mode)', () => {
-    const html = '<!doctype html><html><body>BODY</body></html>';
-    const out = injectPageStyles(html, '', css);
-    expect(out.startsWith('<!doctype html>')).toBe(true);
-    expect(out).toBe('<!doctype html>' + css + '<html><body>BODY</body></html>');
-  });
-
-  it('after a comment and the doctype, and past a byte-order mark', () => {
-    const html = '﻿<!-- made by hand -->\n<!DOCTYPE html>\n<html><body>x</body></html>';
-    const out = injectPageStyles(html, '', css);
-    expect(out.indexOf('<style')).toBeGreaterThan(out.indexOf('<!DOCTYPE html>'));
-    expect(out.indexOf('<style')).toBeLessThan(out.indexOf('<html>'));
-  });
-
-  // negative: no doctype at all is no worse than it was
-  it('with no doctype the styles are first, as before', () => {
-    expect(injectPageStyles('<p>x</p>', '', css)).toBe(css + '<p>x</p>');
-  });
-
-  it('a payload that makes the head unfindable falls back to the front and stays inert', () => {
-    const html = "<!doctype html><p x=a'><meta data='</head>'>";
-    const out = injectPageStyles(html, '', style("' http-equiv=refresh x='"));
-    expect(out.startsWith('<!doctype html><style')).toBe(true);
-    expect(maskInert(out)).not.toMatch(/http-equiv/i);
-  });
-});
 
 /**
  * INPUT BUILT TO MAKE THE CLEANER CRAWL.
@@ -175,6 +79,104 @@ describe('hostile input is cheap', () => {
 
   it('a script full of comparisons next to arrows is still not mistaken for an attack', () => {
     const page = '<html><body><p>x</p><script>' + 'for (let i = 0; i < n; i++) { if (a < b) go(x => x); }\n'.repeat(400) + '</script></body></html>';
+    expect(sanitizeLandingHtmlStrict(page)).not.toBeNull();
+  });
+});
+
+/**
+ * THE SAME FOR CSS: the page's CSS field, and every style block of a file.
+ *
+ * Measured before the fix: 85,000 copies of `/*a` (256 KB) took 3.9 s through
+ * `sanitizeLandingHtmlStrict` and 4.2 s through `sanitizeLandingCss`, because
+ * the comment pattern read to the end of the text from every opener — and an
+ * unclosed comment stays in the stored row, so the cost came back on every
+ * public visit to the page.
+ */
+describe('hostile css is cheap', () => {
+  const N = 256 * 1024;
+  const rep = (s: string) => s.repeat(Math.floor(N / s.length));
+  const ms = (fn: () => unknown) => {
+    const t = performance.now();
+    fn();
+    return performance.now() - t;
+  };
+
+  const css: Record<string, string> = {
+    'comment openers, never closed': rep('/*a'),
+    'comment openers and a closer at the very end': rep('/*a') + '*/',
+    'comment closers only': rep('*/'),
+    'slash, comment, star (rejoins)': rep('//**/*'),
+    'url( repeated': rep('url('),
+    'url(j repeated': rep('url(j'),
+    'url(javascript: repeated': rep('url(javascript:'),
+    'expression( repeated': rep('expression('),
+    'expression(( repeated': rep('expression(('),
+    '@import repeated': rep('@import '),
+    '@imp@import repeated': rep('@imp@import;ort '),
+    'backslashes': rep('\\'),
+    'escapes': rep('\\6'),
+    'double quotes': rep('"'),
+    'single quotes': rep("'"),
+    'less-than and dashes': rep('<a-->'),
+    'behavior: repeated': rep('behavior:'),
+    'braces': rep('{'),
+  };
+
+  for (const [name, text] of Object.entries(css)) {
+    it(`${name}: under 100 ms through the css door`, () => {
+      expect(ms(() => sanitizeLandingCss(text))).toBeLessThan(100);
+    });
+    it(`${name}: under 100 ms inside a style block of a file`, () => {
+      expect(ms(() => sanitizeLandingHtmlStrict(`<style>${text}</style>`))).toBeLessThan(100);
+    });
+  }
+
+  it('an unclosed comment is cut to the end, as a browser does, and the css before it stays', () => {
+    expect(sanitizeLandingCss('a{color:red}/* never closed {}')).toBe('a{color:red}');
+    expect(sanitizeLandingCss(rep('/*a'))).toBe('');
+  });
+
+  // negative: comments that ARE closed are removed exactly, and nothing else changes
+  it('closed comments come out and the css around them is untouched', () => {
+    expect(sanitizeLandingCss('/* a */a{color:red}/* b */b{margin:0}')).toBe('a{color:red}b{margin:0}');
+    expect(sanitizeLandingCss('a{/**/color:red}')).toBe('a{color:red}');
+    expect(sanitizeLandingCss('/*/ not closed yet */a{x:y}')).toBe('a{x:y}');
+  });
+
+  it('a comment whose removal makes a new opener is still cut', () => {
+    expect(sanitizeLandingCss('/' + '/**/' + '*x')).toBe('');
+  });
+});
+
+/**
+ * A REAL PROJECT FILE IS NOT AN ATTACK.
+ *
+ * The first version of the guard added up the distance from EVERY `<` to the
+ * next `>`. An inline script that compares things with `<` and has no `>` in
+ * it for a hundred kilobytes is an ordinary page and was refused. The guard
+ * now counts only the starts the rules actually key on (`<script`, `<meta`,
+ * `<form` …), and this is the page that proves it.
+ */
+describe('a big, ordinary project file passes the strict door', () => {
+  const rows = (n: number) => Array.from({ length: n }, (_, i) => `if (a${i} < b${i}) { totals[${i}] = a${i} + b${i}; }`).join('\n');
+
+  it('300 KB of inline script made of `<` comparisons and no `>`', () => {
+    const page = `<!doctype html><html><head><title>t</title></head><body><p>x</p><script>${rows(6000)}</script></body></html>`;
+    expect(page.length).toBeGreaterThan(250 * 1024);
+    const out = sanitizeLandingHtmlStrict(page);
+    expect(out).not.toBeNull();
+    // the script itself is removed — that is the cleaner doing its job, not the guard refusing
+    expect(out).toBe('<!doctype html><html><head><title>t</title></head><body><p>x</p></body></html>');
+  });
+
+  it('a comparison table in the text, `<` unescaped, 5,000 rows', () => {
+    const table = '<table>' + Array.from({ length: 5000 }, (_, i) => `<tr><td>${i} < ${i + 1}</td><td>ok</td></tr>`).join('') + '</table>';
+    const out = sanitizeLandingHtmlStrict(table);
+    expect(out).toBe(table);
+  });
+
+  it('a page that really has hundreds of forms and metas, each closed, passes', () => {
+    const page = '<head>' + '<meta charset="utf-8">'.repeat(300) + '</head><body>' + '<form method="post"><input name="p"></form>'.repeat(300) + '</body>';
     expect(sanitizeLandingHtmlStrict(page)).not.toBeNull();
   });
 });

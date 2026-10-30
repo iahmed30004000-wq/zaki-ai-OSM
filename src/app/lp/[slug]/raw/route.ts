@@ -118,18 +118,20 @@ export async function GET(req: Request, ctx: Ctx) {
   const stored = clampStoredHtml(lp.htmlContent);
   const settings = parseLandingSettings(lp.pageSettings);
 
-  // ── Page settings (base styles) — injected BEFORE user CSS so the user's
-  //    custom CSS always wins cascade battles. ──
+  // ── Page settings (base styles). They are injected at the START of the document
+  //    (see injectPageStyles), so the uploaded file's own <style> elements come
+  //    AFTER them. `html body` is one step more specific than the plain `body`
+  //    such a file writes, so the seller's choice in the editor still wins. ──
   const baseStyles = settings
-    ? `<style id="zaki-base-style">body{${[
+    ? `<style id="zaki-base-style">html body{${[
         settings.background ? `background:${settings.background}` : '',
         settings.direction ? `direction:${settings.direction}` : '',
         settings.fontFamily ? `font-family:${settings.fontFamily}` : '',
       ].filter(Boolean).join(';')}}
-${settings.width === 'contained' && settings.maxWidth ? `.zaki-page-wrap{max-width:${settings.maxWidth}px;margin:0 auto;padding:0 16px}` : ''}</style>`
+${settings.width === 'contained' && settings.maxWidth ? `html .zaki-page-wrap{max-width:${settings.maxWidth}px;margin:0 auto;padding:0 16px}` : ''}</style>`
     : '';
 
-  // ── Custom CSS — sanitized, injected last inside <head> (highest priority) ──
+  // ── Custom CSS — sanitized, injected right after the settings ──
   const customCss = lp.cssContent?.trim() ? `<style id="zaki-custom-style">${sanitizeLandingCss(lp.cssContent)}</style>` : '';
 
   // ── Whitelisted dynamic variables — values from the DB only ──

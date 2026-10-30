@@ -137,15 +137,25 @@ export function sanitizeLandingHtmlStrict(html: string): string | null {
  */
 const MAX_TANGLE = 10_000_000;
 
+/**
+ * ONLY THE STARTS THE RULES ACTUALLY KEY ON COUNT. A rule is tried at its
+ * own tag names and nowhere else, so a `<` in `a<b` costs nothing, and a
+ * project file whose inline script has thousands of them (a comparison
+ * table, a loop) is not an attack. The first version added up EVERY `<` and
+ * would have refused that page.
+ */
+const KEYED_STARTS = /<\/?(?:script|iframe|object|embed|base|frameset|frame|plaintext|link|applet|meta|form|style)\b/gi;
+
 function isTooTangled(html: string): boolean {
   let work = 0;
   let gt = -1;
-  for (let i = html.indexOf('<'); i >= 0; i = html.indexOf('<', i + 1)) {
-    if (gt < i) {
-      gt = html.indexOf('>', i);
+  KEYED_STARTS.lastIndex = 0;
+  for (let m = KEYED_STARTS.exec(html); m; m = KEYED_STARTS.exec(html)) {
+    if (gt < m.index) {
+      gt = html.indexOf('>', m.index);
       if (gt < 0) gt = html.length;
     }
-    work += gt - i;
+    work += gt - m.index;
     if (work > MAX_TANGLE) return true;
   }
   return false;
@@ -329,6 +339,43 @@ function sanitizeOnce(html: string): string {
 }
 
 /**
+ * COMMENTS OUT OF CSS, LEFT TO RIGHT, IN ONE PASS PER ROUND — NO REGULAR EXPRESSION.
+ *
+ * `/\*[\s\S]*?\*\/` reads to the end of the text from EVERY `/*` that has no
+ * `*\/` after it, so 85,000 copies of `/*a` (256 KB) took 3.9 s, and a comment
+ * that is never closed stays in the stored row and is cleaned again on every
+ * public visit. Here an unclosed comment is cut to the end of the text in one
+ * step — which is what a browser does with it — and the rest is never read twice.
+ *
+ * Rounds repeat because removing a comment can join the `/` before it to the
+ * `*` after it into a new comment opener; a text that is still changing after
+ * ten rounds was built to do that, and is refused (`null`).
+ */
+function stripCssComments(css: string): string | null {
+  let out = css;
+  for (let round = 0; round < 10; round++) {
+    let result = '';
+    let at = 0;
+    let found = false;
+    for (;;) {
+      const open = out.indexOf('/*', at);
+      if (open < 0) {
+        result += out.slice(at);
+        break;
+      }
+      found = true;
+      result += out.slice(at, open);
+      const close = out.indexOf('*/', open + 2);
+      if (close < 0) break; // never closed: everything from here on is the comment
+      at = close + 2;
+    }
+    if (!found) return out;
+    out = result;
+  }
+  return null;
+}
+
+/**
  * CSS ESCAPES THAT SPELL A PLAIN LETTER, DIGIT, HYPHEN OR UNDERSCORE.
  *
  * `@\69mport` is `@import` to a CSS parser, and `\6a avascript:` is
@@ -365,11 +412,9 @@ export function sanitizeLandingCss(css: string): string {
    * looked. Removed in a loop, because taking one comment out can close the
    * gap of another (`/` + comment + `*`).
    */
-  for (let before = ''; before !== out; ) {
-    before = out;
-    out = out.replace(/\/\*[\s\S]*?\*\//g, '');
-  }
-  out = unescapeIdentifierChars(out);
+  const uncommented = stripCssComments(out);
+  if (uncommented === null) return '';
+  out = unescapeIdentifierChars(uncommented);
 
   /*
    * THE RULES, REPEATED UNTIL NOTHING CHANGES: removing `@import …;` from
@@ -488,165 +533,66 @@ export function applyLandingVariables(
 }
 
 /**
- * THE TEXT OF A DOCUMENT WITH EVERYTHING INERT BLANKED OUT, SAME LENGTH.
+ * PUT THE PAGE'S OWN STYLES INTO ITS DOCUMENT — AT THE START, ALWAYS.
  *
- * `</head>` is only the end of the head where a parser would take it as a
- * tag. Inside a comment, inside an attribute value, inside a title or a
- * textarea (their text is not markup) or inside a script or style, the same
- * six characters are just text — and splicing a stylesheet in THERE puts it
- * in the middle of a comment or an attribute, where a `-->` or a quote in it
- * ends the context and what follows is live.
+ * This is the third answer to «where does it go», and the one that does not
+ * depend on reading the document. The first two LOOKED for the `</head>`
+ * (first as text, then with a scanner that mirrored the HTML tokenizer, then
+ * with that scanner checking itself), and each was beaten by an input a real
+ * browser reads differently: a quote inside an unquoted value, then
+ * `<svg><title>`, `<svg><textarea>`, `<svg><xmp>`, `<svg><noembed>` and
+ * `<math><title>`, which switch the tokenizer into rules the scanner did not
+ * have — and the checker used the same scanner, so it agreed with it. A
+ * search over a document an attacker wrote can always be fooled by one more
+ * rule of the HTML spec.
  *
- * The scanner reads a tag the way the HTML tokenizer does, attribute by
- * attribute: a value is quoted ONLY when the quote is the first character
- * after the `=`. A quote anywhere else — `<p x=a'>`, where it is part of an
- * unquoted value — opens nothing. The first version counted every quote it
- * met, lost step with the browser on exactly that input, and let a payload
- * through (see `injectPageStyles`, which no longer trusts this alone).
- *
- * The result has the same length as the input, so a position found in it is
- * a position in the original.
- */
-export function maskInert(html: string): string {
-  const n = html.length;
-  const out = html.split('');
-  const blank = (from: number, to: number) => {
-    for (let k = from; k < to && k < n; k++) if (out[k] !== '\n') out[k] = '_';
-  };
-  const space = (c: string) => c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
-  const RAW = /^(title|textarea|script|style|xmp|noembed|noframes|iframe)$/i;
-
-  let i = 0;
-  while (i < n) {
-    if (html[i] !== '<') {
-      i++;
-      continue;
-    }
-    if (html.startsWith('<!--', i)) {
-      let end: number;
-      if (html.startsWith('<!-->', i)) end = i + 5;
-      else if (html.startsWith('<!--->', i)) end = i + 6;
-      else {
-        const closer = /--!?>/g;
-        closer.lastIndex = i + 4;
-        const found = closer.exec(html);
-        end = found ? found.index + found[0].length : n;
-      }
-      blank(i, end);
-      i = end;
-      continue;
-    }
-    const isEnd = html[i + 1] === '/';
-    const name = /^[a-z][^\s/>]*/i.exec(html.slice(i + (isEnd ? 2 : 1), i + (isEnd ? 2 : 1) + 40));
-    if (!name) {
-      if (html[i + 1] === '!' || html[i + 1] === '?' || isEnd) {
-        // `<!doctype …>`, `<?…>`, `</ …>`: a bogus comment, to the first `>`
-        const gt = html.indexOf('>', i);
-        const end = gt < 0 ? n : gt + 1;
-        blank(i, end);
-        i = end;
-      } else {
-        i++;
-      }
-      continue;
-    }
-
-    // the tag: attributes, one at a time
-    let j = i + (isEnd ? 2 : 1) + name[0].length;
-    while (j < n) {
-      const c = html[j];
-      if (c === '>') {
-        j++;
-        break;
-      }
-      if (space(c) || c === '/') {
-        j++;
-        continue;
-      }
-      // an attribute name runs to whitespace, `/`, `>` or `=` (a leading `=` belongs to it)
-      j++;
-      while (j < n && !space(html[j]) && html[j] !== '/' && html[j] !== '>' && html[j] !== '=') j++;
-      let k = j;
-      while (k < n && space(html[k])) k++;
-      if (html[k] !== '=') continue;
-      k++;
-      while (k < n && space(html[k])) k++;
-      const q = html[k];
-      if (q === '"' || q === "'") {
-        const close = html.indexOf(q, k + 1);
-        const stop = close < 0 ? n : close;
-        blank(k + 1, stop);
-        j = close < 0 ? n : stop + 1;
-      } else {
-        let stop = k;
-        while (stop < n && !space(html[stop]) && html[stop] !== '>') stop++;
-        blank(k, stop);
-        j = stop;
-      }
-    }
-    i = j;
-
-    // elements whose text is not markup: blank it to the matching end tag
-    if (!isEnd && RAW.test(name[0])) {
-      const ender = new RegExp('</' + name[0], 'ig');
-      ender.lastIndex = i;
-      const found = ender.exec(html);
-      const end = found ? found.index : n;
-      blank(i, end);
-      i = end;
-    }
-  }
-  return out.join('');
-}
-
-/**
- * PUT THE PAGE'S OWN STYLES INTO ITS DOCUMENT.
- *
- * Both go just before the `</head>` of the document, `base` (the page
- * settings) first and `custom` (the seller's CSS) after it. That order is
- * the one the page always had and it is deliberate: the settings (background,
- * direction, font) are the seller's choice made in the EDITOR, and they have
- * to win over a `<style>` that came inside the uploaded file; the seller's
- * CSS field is the last word of all.
- *
- * THE REPLACEMENT IS A FUNCTION, NEVER A STRING. `String.replace` reads
- * `$'`, `$&` and `$1` in a replacement string, and the CSS is a seller's:
- * `content:"$'"` made the old call paste the rest of the document into the
- * middle of the stylesheet. Here nothing is replaced at all: the document is
- * cut in two and the styles are put between the halves.
- *
- * AND THE SPOT IS CHECKED, NOT TRUSTED. `maskInert` finds the `</head>` the
- * way a parser would, but a scanner that mirrors a browser is a scanner that
- * can differ from it by one input, and one input is all an attacker needs. So
- * the result is read again: with the styles in, the REST of the document must
- * come out of the scanner exactly as it did without them. If a quote or a
- * comment in what was injected changed how the rest is read, the styles were
- * not where they were thought to be, and they go to the one place that needs
- * no scanning — the start of the document, after any doctype.
+ * So nothing is searched. The only thing in front of the injection point is
+ * what can be MATCHED FROM THE FIRST CHARACTER by a pattern that is the whole
+ * grammar of the thing: whitespace and a byte-order mark, complete comments,
+ * a `<?xml … ?>` (which HTML reads as a comment ending at the first `>`), a
+ * doctype (ends at the first `>`), and the whitespace and comments after it.
+ * After those the tokenizer is in its ordinary state by construction, which
+ * is the one state in which a `<style>` element means a `<style>` element —
+ * and inside it the CSS cannot leave: `</style` and `<` before a letter are
+ * escaped (see `sanitizeLandingCss`). The rest of the document is not read at
+ * all, so no input can make it read wrong.
  *
  * After the doctype and never before it: a style element in front of
- * `<!doctype html>` puts the page in quirks mode.
+ * `<!doctype html>` puts the page in quirks mode. A browser puts a style
+ * element that comes before `<html>` into the head it creates, and the
+ * file's own `<html>`/`<head>` tags then merge into it.
+ *
+ * THE CASCADE, SAID PLAINLY. The order a page used to have was «settings,
+ * then the file's own styles, then the seller's CSS field». That order needed
+ * the end of the head, which is exactly what is no longer looked for. Here
+ * both come first, so the file's own `<style>` elements now follow them:
+ *   - the page settings are written with `html body` (see the raw route), one
+ *     step more specific than the `body` an uploaded file normally writes,
+ *     so they still win over it;
+ *   - the seller's CSS field wins over the settings (it is after them) but
+ *     on EQUAL specificity it loses to a rule inside the uploaded file.
+ * Decided (owner: «اي قرار بعد الان اتخذو دون الرجوع الي»): the safe
+ * position over the old tie-breaking; a seller who needs their CSS to beat
+ * the file's writes `!important` or a more specific selector.
+ *
+ * THE REPLACEMENT IS NEVER A STRING: nothing is replaced, the document is cut
+ * in two and the styles go between the halves, so `$'` in a seller's CSS is
+ * just text.
  *
  * What is spliced in is run through the sanitizer first, on its own: the
  * whole document cannot be (the server has added its own behaviour script by
  * now, and that is the one script that is meant to be there), but the two
  * style elements are exactly what an attacker controls.
  */
-const HEAD_CLOSE = /<\/head\s*>/i;
-const START_OF_DOCUMENT = /^(?:\s|<!--[\s\S]*?-->)*(?:<!doctype[^>]*>)?/i;
+const COMMENT = String.raw`<!--(?:>|->|[\s\S]*?--!?>)`;
+const START_OF_DOCUMENT = new RegExp(
+  String.raw`^(?:\s|${COMMENT}|<\?[^>]*>)*(?:<!doctype[^>]*>)?(?:\s|${COMMENT})*`,
+  'i'
+);
 
 export function injectPageStyles(html: string, base: string, custom: string): string {
   const injection = sanitizeLandingHtml(base) + sanitizeLandingHtml(custom);
   if (!injection) return html;
-
-  const mask = maskInert(html);
-  const close = HEAD_CLOSE.exec(mask);
-  if (close) {
-    const at = close.index;
-    const out = html.slice(0, at) + injection + html.slice(at);
-    const after = maskInert(out);
-    if (after.startsWith('<style', at) && after.slice(at + injection.length) === mask.slice(at)) return out;
-  }
   const front = START_OF_DOCUMENT.exec(html)?.[0].length ?? 0;
   return html.slice(0, front) + injection + html.slice(front);
 }

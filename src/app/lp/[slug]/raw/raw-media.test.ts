@@ -116,7 +116,7 @@ describe('the seller css in the served page', () => {
     expect(html.match(/BODY-MARKER/g)).toHaveLength(1);
   });
 
-  it("the page settings, then the seller css, both after the file's own style and before </head>", async () => {
+  it("the settings, then the seller css, both at the start and ahead of the file's own style", async () => {
     const own = '<style>body{background:red}</style>';
     const html = await serve({
       htmlContent: `<!doctype html><html><head><title>t</title>${own}</head><body><p>BODY-MARKER</p></body></html>`,
@@ -125,19 +125,23 @@ describe('the seller css in the served page', () => {
     });
     const base = html.indexOf('id="zaki-base-style"');
     const custom = html.indexOf('id="zaki-custom-style"');
-    // the settings are the seller's choice in the editor: they win over the uploaded file's style
-    expect(base).toBeGreaterThan(html.indexOf(own));
+    // after the doctype (standards mode), before everything else
+    expect(base).toBeGreaterThan(html.indexOf('<!doctype html>'));
+    expect(html.indexOf('<html>')).toBeGreaterThan(custom);
     expect(base).toBeLessThan(custom);
-    expect(custom).toBeLessThan(html.indexOf('</head>'));
+    expect(custom).toBeLessThan(html.indexOf(own));
+    // one step more specific than the plain `body` an uploaded file writes, so the editor's choice still wins
+    expect(html).toContain('html body{background:#112233}');
   });
 
-  it('a </head> inside a comment is not the end of the head', async () => {
+  it('a </head> inside a comment, an attribute or an svg title changes nothing: the styles are at the start', async () => {
     const html = await serve({
-      htmlContent: '<!doctype html><!-- </head> --><html><head><title>t</title></head><body><p>BODY-MARKER</p></body></html>',
-      cssContent: '--><img src=x onerror=alert(1)><!--',
+      htmlContent: "<!doctype html><!-- </head> --><html><head><title>t</title></head><body><svg><title><meta x='</title></head>'></svg><p>BODY-MARKER</p></body></html>",
+      cssContent: "--><img src=x onerror=alert(1)><!-- ' http-equiv=refresh x='",
     });
     expect(html).not.toContain('<img');
-    expect(html.indexOf('zaki-custom-style')).toBeGreaterThan(html.indexOf('</title>'));
+    expect(html.indexOf('zaki-custom-style')).toBeLessThan(html.indexOf('<html>'));
+    expect(html.indexOf('zaki-custom-style')).toBeGreaterThan(html.indexOf('<!doctype html>'));
   });
 
   // negative: a sound page with sound css comes through whole
