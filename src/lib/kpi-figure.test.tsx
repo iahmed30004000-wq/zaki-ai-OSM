@@ -189,6 +189,10 @@ describe('the grids that decide how wide a card is', () => {
     }
   });
 
+  it('lays the theme picker out three across before four, so twelve themes are not six rows', () => {
+    expect(read('src/components/settings/ThemePicker.tsx')).toContain('sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4');
+  });
+
   it('keeps the card on the scale the product already has', () => {
     const src = stripComments(repoFile('src/lib/kpi-figure.ts'));
     const sizes = [...src.matchAll(/size:\s*'([^']+)'/g)].map((m) => m[1]);
