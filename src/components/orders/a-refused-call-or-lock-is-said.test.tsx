@@ -115,7 +115,7 @@ describe('the call strip', () => {
   });
 
   it('NEGATIVE: and a number with no order records nothing, so it has nothing to say', async () => {
-    render(<ContactButtons phone="0791234567" plain context={{}} />);
+    render(<ContactButtons phone="0791234567" countryCode="962" plain context={{}} />);
     fireEvent.click(screen.getByTitle('واتساب'));
     await new Promise((r) => setTimeout(r, 0));
     expect(apiJson).not.toHaveBeenCalled();

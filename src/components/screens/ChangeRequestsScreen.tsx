@@ -87,6 +87,8 @@ export function ChangeRequestsScreen() {
   const [applying, setApplying] = useState<string | null>(null);
   const [withdrawing, setWithdrawing] = useState<string | null>(null);
   /** The request whose parcel is already with the courier, and what to send them. */
+  /** The country's calling code, for the courier's WhatsApp. */
+  const [dialCode, setDialCode] = useState<string | null>(null);
   const [courierFor, setCourierFor] = useState<{ request: ChangeRequest; ask: CourierAsk } | null>(null);
   /** The reason picked on each old cancellation that was stored without one, by request. */
   const [chosen, setChosen] = useState<Record<string, string>>({});
@@ -98,10 +100,11 @@ export function ChangeRequestsScreen() {
       // Both at once: the tab counts are the point, so a decision that just
       // moved a request from one list to the other shows on both.
       const [pending, awaiting] = await Promise.all([
-        apiJson<{ requests: ChangeRequest[] }>('/api/control/change-requests?status=PENDING'),
+        apiJson<{ requests: ChangeRequest[]; dialCode?: string | null }>('/api/control/change-requests?status=PENDING'),
         apiJson<{ requests: ChangeRequest[] }>('/api/control/change-requests?status=AWAITING_APPLY'),
       ]);
       setLists({ PENDING: pending.requests, AWAITING_APPLY: awaiting.requests });
+      setDialCode(pending.dialCode ?? null);
     } catch (e) {
       toast.failed(e instanceof Error ? e.message : 'تعذر التحميل');
     }
@@ -616,6 +619,7 @@ export function ChangeRequestsScreen() {
         <CourierNotifyDialog
           orderNumber={courierFor.request.order.orderNumber}
           ask={courierFor.ask}
+          countryCode={dialCode}
           busy={applying === courierFor.request.id}
           onClose={() => setCourierFor(null)}
           onNotified={() => void send(courierFor.request, true)}

@@ -8,6 +8,7 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { carryOut, type ChangeIntent } from '@/lib/change-request-intent';
 import { handedToCourier } from '@/lib/order-seal';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
+import { ruleFor } from '@/lib/phone-rules';
 
 /**
  * GET /api/control/change-requests?status=PENDING
@@ -16,7 +17,7 @@ import { noteCustomersHandedOut } from '@/lib/pii-alert';
  */
 export async function GET(req: Request) {
   try {
-    const { user, companyId, storeId } = await requireContext();
+    const { user, companyId, storeId, country } = await requireContext();
 
     // A supervisor sees the whole desk. An agent sees the requests she is
     // the one who has to answer — the ones on orders still in her hands.
@@ -101,6 +102,8 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       count: rows.length,
+      // The country's calling code: the courier's number is typed local, and WhatsApp needs it in full.
+      dialCode: ruleFor(country.code)?.dialCode ?? null,
       requests: rows.map((r) => ({
         ...r,
         requestedByName: nameOf.get(r.requestedById) ?? null,
