@@ -212,7 +212,8 @@ describe('WHO SEES AN ORDER’S MONEY SNAPSHOT — finance.view sees the margin,
   });
 
   it('finance.view: the whole snapshot, as before — nobody with the finance key lost anything', async () => {
-    as('finance.view');
+    // PR-10: the margin needs the cost key beside the finance key; the migration gave it to every holder of finance.view.
+    as('finance.view', 'costs.view');
     const f = await read();
     expect(f.netProfit).toBe(60);
     expect(f.shippingCost).toBe(5);
@@ -220,8 +221,16 @@ describe('WHO SEES AN ORDER’S MONEY SNAPSHOT — finance.view sees the margin,
     expect((f.financialTransactions as unknown[]).length).toBe(5);
   });
 
+  it('NEGATIVE (PR-10): the finance key WITHOUT the cost key — the owner took the cost away — gets the settlement’s view of it, no margin', async () => {
+    as('finance.view');
+    const f = await read();
+    for (const field of ['estimatedCostOfGoods', 'productCost', 'packagingCost', 'advertisingCost', 'otherCost', 'grossProfit', 'netProfit', 'shippingCost']) {
+      expect(f, field).not.toHaveProperty(field);
+    }
+  });
+
   it('both keys: the finance key wins — the whole snapshot', async () => {
-    as('finance.view', 'settlement.view');
+    as('finance.view', 'costs.view', 'settlement.view');
     expect((await read()).grossProfit).toBe(70);
   });
 
