@@ -8,7 +8,10 @@ import { RejectDialog } from '@/components/screens/confirmation/ActionDialogs';
 import { useApp } from '@/context/AppContext';
 import { PickingAssistant } from '@/components/screens/ops/PickingAssistant';
 import { ScreenTitle } from '@/components/shell/ScreenTitle';
-import { RiArchiveDrawerLine, RiArrowDownSLine, RiArrowLeftSLine, RiCloseCircleLine, RiLoader4Line, RiPencilLine } from '@remixicon/react';
+import { RiArchiveDrawerLine, RiArrowDownSLine, RiArrowLeftSLine, RiCloseCircleLine, RiLoader4Line, RiPencilLine, RiPrinterLine } from '@remixicon/react';
+import { LabelSizePicker, useLabelSize } from '@/components/labels/LabelSize';
+import { BLOCKED_WAYBILLS, describeRefused, openWaybills, WaybillError } from '@/components/labels/openWaybills';
+import { useTell } from '@/components/ui/Confirm';
 import { Rows } from '@/components/ui/Rows';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { MissionDone, NextStepButton } from '@/components/ui/NextStep';
@@ -76,6 +79,38 @@ export function PreparationScreen() {
   const mayCancel = userCan(currentUser, 'orders.cancel');
   // The suggested round is the assistants' box (PR-5): without it the list below is the whole screen, and it is whole.
   const mayAskAssistant = userCan(currentUser, AI_ASSIST_KEY);
+  // The warehouse prints the waybill where it packs (D8): the same `ops.labels` key the print door asks, on the same device-wide paper size.
+  const mayPrint = userCan(currentUser, 'ops.labels');
+  const labelSize = useLabelSize();
+  const tell = useTell();
+  const [printing, setPrinting] = useState<string | null>(null);
+
+  /**
+   * ONE ORDER'S WAYBILL, FROM THE ROW THE PACKER IS LOOKING AT.
+   *
+   * The warehouse role holds `ops.labels` and neither the batches page nor the orders list, so it had no print button
+   * anywhere. This is the orders list's single-waybill press (`openWaybills` by order id), not a second printer: the
+   * server still prints only a confirmed order with a courier, and names the ones it could not. Failures are SAID in a
+   * dialog and never put in `error`, because that replaces the whole screen.
+   */
+  const printOne = async (orderId: string) => {
+    setPrinting(orderId);
+    try {
+      const out = await openWaybills({ orderIds: [orderId], ...labelSize.dims }, 'print');
+      if (!out.opened) void tell({ title: BLOCKED_WAYBILLS, tone: 'danger' });
+      if (out.refused.length) {
+        void tell({
+          title: `جُهِّزت ${out.count} بوليصة، ولم تُجهَّز ${out.refused.length}`,
+          body: `لا يُطبع إلا طلب مؤكَّد له شركة شحن:\n${describeRefused(out.refused)}`,
+        });
+      }
+    } catch (e) {
+      if (e instanceof WaybillError && e.refused.length) void tell({ title: e.message, body: describeRefused(e.refused), tone: 'danger' });
+      else void tell({ title: e instanceof Error ? e.message : 'تعذر تجهيز البوالص', tone: 'danger' });
+    } finally {
+      setPrinting(null);
+    }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -109,6 +144,8 @@ export function PreparationScreen() {
       </div>
 
       {data.groups.length > 0 && mayAskAssistant && <PickingAssistant />}
+
+      {data.groups.length > 0 && mayPrint && <LabelSizePicker compact className="ms-auto flex items-center" />}
 
       {data.groups.length === 0 ? (
         <MissionDone why="لا توجد طلبات مؤكدة بانتظار التجهيز." />
@@ -205,6 +242,18 @@ export function PreparationScreen() {
                         className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 p-1 rounded-lg text-[var(--sys-muted)] hover:text-[var(--sys-primary)] hover:bg-[var(--sys-primary-soft)]"
                       >
                         <RiPencilLine className="w-4 h-4" />
+                      </button>
+                    )}
+                    {mayPrint && (
+                      <button
+                        type="button"
+                        onClick={() => void printOne(l.orderId)}
+                        disabled={printing === l.orderId}
+                        title="اطبع بوليصة هذا الطلب"
+                        aria-label="اطبع البوليصة"
+                        className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 p-1 rounded-lg text-[var(--sys-muted)] hover:text-[var(--sys-primary)] hover:bg-[var(--sys-primary-soft)] disabled:opacity-40"
+                      >
+                        <RiPrinterLine className="w-4 h-4" />
                       </button>
                     )}
                     {mayCancel && (

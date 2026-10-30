@@ -196,7 +196,8 @@ describe('the button is where the door can answer', () => {
 
   it('appears only on a parcel the route accepts', () => {
     const screenSrc = read('src/components/screens/TrackingScreen.tsx');
-    expect(screenSrc).toContain("{o.shippingStatus === 'RETURN_REQUESTED' && (");
+    // PR-8: the button is also drawn only for whoever holds the write-off box (`acts.writeOff`, from the server).
+    expect(screenSrc).toContain("{acts.writeOff && o.shippingStatus === 'RETURN_REQUESTED' && (");
     expect(screenSrc).toContain('setWriteOffFor(o)');
   });
 

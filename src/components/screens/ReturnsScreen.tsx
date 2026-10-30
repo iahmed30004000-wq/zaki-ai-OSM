@@ -129,12 +129,14 @@ interface Extra {
   facts: ReturnsFacts;
   /** The view these rows belong to — the answer's own word, so a column is never drawn for rows of the other kind. */
   view: View;
+  /** The fee tick-box's own key (`ops.return_fee`). Absent from an older server: the door itself still asks. */
+  mayChargeFee: boolean;
 }
 
 /** Module-level, so the hook's loader keeps one identity — see `usePagedList`. */
 const read = (body: unknown): PagedRead<Row, Extra> => {
-  const b = body as { orders: Row[]; pagination: Paging; facts: ReturnsFacts; applied: { view: View } };
-  return { rows: b.orders, pagination: b.pagination, extra: { facts: b.facts, view: b.applied.view } };
+  const b = body as { orders: Row[]; pagination: Paging; facts: ReturnsFacts; applied: { view: View }; mayChargeFee?: boolean };
+  return { rows: b.orders, pagination: b.pagination, extra: { facts: b.facts, view: b.applied.view, mayChargeFee: b.mayChargeFee !== false } };
 };
 
 const since = (days: number | null) => (days === null ? '—' : days === 0 ? 'اليوم' : `منذ ${arabicDays(days)}`);
@@ -396,6 +398,7 @@ export function ReturnsScreen() {
       {active && (
         <ReceiveDialog
           order={active}
+          mayChargeFee={extra?.mayChargeFee !== false}
           onClose={() => setActive(null)}
           onDone={async (message) => {
             setActive(null);
@@ -410,10 +413,12 @@ export function ReturnsScreen() {
 
 function ReceiveDialog({
   order,
+  mayChargeFee,
   onClose,
   onDone,
 }: {
   order: PendingRow;
+  mayChargeFee: boolean;
   onClose: () => void;
   onDone: (message: string) => void;
 }) {
@@ -635,6 +640,7 @@ function ReceiveDialog({
               `min-h-11 min-w-11` on the label keeps the phone tap target at
               44px while the box itself stays 20px.
             */}
+            {mayChargeFee && (
             <label className="flex min-h-11 items-center gap-2 text-sm text-[var(--sys-foreground)] md:min-h-0">
               <input
                 type="checkbox"
@@ -644,6 +650,7 @@ function ReceiveDialog({
               />
               احتساب أجرة إرجاع لشركة الشحن (تُؤخذ من جدول الأجور)
             </label>
+            )}
 
             {/*
               READ BEFORE WRITING. The contract surfaces notes on «settlement

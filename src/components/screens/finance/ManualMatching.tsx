@@ -41,7 +41,7 @@ import { FULL_SIGHT, NO_SIGHT, statesOffered, type TrackingSight } from '@/lib/t
  * each behind its own permission and each refusing what it must:
  *
  *   • the list      GET  /api/ops/tracking          (ops.track) — the courier's open parcels
- *   • the outcome   POST /api/ops/tracking/deliver  (ops.track) — «all» or «none» of an order
+ *   • the outcome   POST /api/ops/tracking/deliver  (ops.deliver) — «all» or «none» of an order
  *   • the money     POST /api/ops/tracking/collect  (finance.cashbox) — through `CollectDialog`
  *
  * So the order of the work is the order of the doors: say what happened at the
@@ -94,12 +94,14 @@ interface Extra {
   facts: TrackingListFacts;
   /** Which rows the follow-up door shows this person — the options below offer only what it would answer. */
   access: TrackingSight;
+  /** `ops.deliver` (PR-8): whether «تم تسليمها» / «رجعت» are drawn. The door decides; an answer that does not say is read as «yes». */
+  mayDeliver: boolean;
 }
 
 /** Module-level, so the hook's loader keeps one identity — see `usePagedList`. */
 const read = (body: unknown): PagedRead<Row, Extra> => {
-  const b = body as { orders: Row[]; pagination: Paging; facts: TrackingListFacts; access?: TrackingSight };
-  return { rows: b.orders, pagination: b.pagination, extra: { facts: b.facts, access: b.access ?? FULL_SIGHT } };
+  const b = body as { orders: Row[]; pagination: Paging; facts: TrackingListFacts; access?: TrackingSight; acts?: { deliver?: boolean } };
+  return { rows: b.orders, pagination: b.pagination, extra: { facts: b.facts, access: b.access ?? FULL_SIGHT, mayDeliver: b.acts?.deliver !== false } };
 };
 
 /**
@@ -450,7 +452,7 @@ export function ManualMatching() {
           )}
           {!phone && problem && <span className="text-xs text-[var(--sys-destructive)]">{problem}</span>}
           {/* A problem only ever belongs to a mixed choice (no step) or to money (one courier, one currency). */}
-          {!phone && step === 'DELIVER' && (
+          {!phone && step === 'DELIVER' && extra?.mayDeliver !== false && (
             <span className="flex items-center gap-2 mr-auto">
               <button onClick={() => void settle('NONE')} disabled={working} className={RED}>
                 <RiCloseLine className="w-4 h-4" aria-hidden /> رجعت ({chosen.length})
