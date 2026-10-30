@@ -15,6 +15,7 @@ import type { PostponedFacts } from '@/lib/postponed-list';
 import { OrderLink } from '@/components/orders/OrderLink';
 import { CustomerHistoryOffer } from '@/components/orders/CustomerHistory';
 import { POSTPONE_REASONS } from '@/lib/postpone-reasons';
+import { OrderGoods, OrderNotes, OrderPlace } from '@/components/orders/OrderGoods';
 
 /**
  * /confirmation/postponed — order, customer, due date, days remaining,
@@ -42,7 +43,14 @@ interface Row {
   actionable: boolean;
   /** Hers, or she holds the box for a colleague's (`confirmation.reassign`). Absent from an older server: the door itself still asks. */
   mayHandBack?: boolean;
-  customer: { id?: string; fullName: string; phone: string; city: string };
+  customer: { id?: string; fullName: string; phone: string; city: string; address?: string };
+  /** What is in the order and where it goes — absent from an older server, and then the cells draw a dash. */
+  items?: { id: string; productName: string; quantity: number; freeQuantity: number }[];
+  addOns?: { id: string; productName: string; quantity: number }[];
+  deliveryAddress?: string | null;
+  region?: { name: string } | null;
+  internalNotes?: string | null;
+  customerNotes?: string | null;
   claimer: { id: string; name: string } | null;
 }
 
@@ -234,6 +242,23 @@ export function ConfirmationPostponedScreen({ embedded = false }: { embedded?: b
                   {o.customer.id && <CustomerHistoryOffer customerId={o.customer.id} orderId={o.id} />}
                 </span>
               ),
+            },
+            {
+              key: 'goods',
+              label: 'المنتجات',
+              wide: true,
+              render: (o) => (
+                <>
+                  <OrderGoods items={o.items} addOns={o.addOns} />
+                  <OrderNotes customer={o.customerNotes} internal={o.internalNotes} />
+                </>
+              ),
+            },
+            {
+              key: 'place',
+              label: 'العنوان',
+              wide: true,
+              render: (o) => <OrderPlace region={o.region?.name} city={o.customer.city} address={o.deliveryAddress ?? o.customer.address} />,
             },
             {
               key: 'due',

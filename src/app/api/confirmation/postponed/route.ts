@@ -40,7 +40,7 @@ import { postponedFacts, postponedScope, readPostponedPage } from '@/lib/postpon
 type PostponedRow = {
   postponedUntil: Date | null;
   nextFollowUpAt: Date | null;
-  customer: { id: string; fullName: string; phone: string; city: string } | null;
+  customer: { id: string; fullName: string; phone: string; city: string; address: string } | null;
 } & Record<string, unknown>;
 
 export async function GET(req: Request) {
@@ -67,7 +67,14 @@ export async function GET(req: Request) {
           id: true, orderNumber: true, merchantRef: true, totalAmount: true, currency: true,
           postponedUntil: true, postponePreferredTime: true, postponeCount: true,
           nextFollowUpAt: true, followUpReason: true, claimedById: true,
-          customer: { select: { id: true, fullName: true, phone: true, city: true } },
+          // What is in the order and where it goes — read in the same query as the page (no query per row), display only.
+          deliveryAddress: true,
+          region: { select: { name: true } },
+          internalNotes: true,
+          customerNotes: true,
+          items: { select: { id: true, productName: true, quantity: true, freeQuantity: true } },
+          addOns: { select: { id: true, productName: true, quantity: true } },
+          customer: { select: { id: true, fullName: true, phone: true, city: true, address: true } },
           claimer: { select: { id: true, name: true } },
         },
       }),

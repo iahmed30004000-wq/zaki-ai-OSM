@@ -38,6 +38,7 @@ import { POST_ORDER_ADDITION_AR } from '@/lib/post-order-offer-copy';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
+import { OrderGoods, OrderNotes, OrderPlace } from '@/components/orders/OrderGoods';
 
 /**
  * /confirmation/mine — two sections: in-confirmation (workable) and
@@ -83,6 +84,10 @@ interface OrderRow {
   source: string | null;
   /** The address this order goes to; the customer's own is the fallback. */
   deliveryAddress?: string | null;
+  /** The governorate, and the two notes — absent on a response from before they were read. */
+  region?: { name: string } | null;
+  internalNotes?: string | null;
+  customerNotes?: string | null;
   moderatorId: string | null;
   moderator: { id: string; name: string } | null;
   createdBy: { id: string; name: string } | null;
@@ -886,6 +891,9 @@ export function ConfirmationMineScreen() {
                   ) : (
                     <>{order.customer.fullName} · <span dir="ltr">{order.customer.rawPhone}</span> · {order.customer.city}</>
                   )}
+                  {order.region?.name && order.region.name !== order.customer.city && (
+                    <p className="text-xs text-[var(--sys-muted-foreground)] mt-1">المحافظة: {order.region.name}</p>
+                  )}
                   <p className="text-xs text-[var(--sys-muted-foreground)] mt-1">{order.deliveryAddress ?? order.customer.address}</p>
                 </div>
 
@@ -902,6 +910,7 @@ export function ConfirmationMineScreen() {
                     </li>
                   ))}
                 </ul>
+                <OrderNotes customer={order.customerNotes} internal={order.internalNotes} />
 
                 {order.postponedUntil && (
                   <p className="text-xs text-[var(--sys-warning)]">
@@ -1112,6 +1121,16 @@ export function ConfirmationMineScreen() {
                   <><a href={`tel:${order.customer.rawPhone}`} className="tabular-nums hover:text-[var(--sys-primary)]">
                       {order.customer.rawPhone}
                     </a></>
+                ) },
+              /* What is in the order and where it goes — on the row, so she does not open it to read it. Display only. */
+              { key: 'goods', label: "المنتجات", wide: true,
+                render: (order) => (
+                  <><OrderGoods items={order.items} addOns={order.addOns} />
+                    <OrderNotes customer={order.customerNotes} internal={order.internalNotes} /></>
+                ) },
+              { key: 'place', label: "العنوان", wide: true,
+                render: (order) => (
+                  <OrderPlace region={order.region?.name} city={order.customer.city} address={order.deliveryAddress ?? order.customer.address} />
                 ) },
               { key: 'c3', label: "المبلغ", align: 'end',
                 render: (order) => (
