@@ -196,7 +196,7 @@ describe('the orders list honours what points at it', () => {
  */
 describe('the lost-parcel alert lands on the parcel', () => {
   it('sends the order number, which that search can match', () => {
-    const job = readFileSync(join(root, 'src/lib/jobs/definitions.ts'), 'utf8');
+    const job = readFileSync(join(root, 'src/lib/jobs/definitions/sync-courier-status.ts'), 'utf8');
     expect(job).toMatch(/\/ops\/tracking\?order=\$\{order\.orderNumber\}/);
     // An id matches nothing in that screen's search — it landed on every
     // parcel in the store instead of the one the alert named.

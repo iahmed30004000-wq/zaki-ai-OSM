@@ -129,7 +129,7 @@ describe('the jobs that may run twice', () => {
   it('the per-order accrual skips what it has already accrued', () => {
     // Idempotent by its QUERY, not by a constraint — and that is enough here,
     // because it asks for orders that have no commission at all.
-    const defs = read('src/lib/jobs/definitions.ts');
+    const defs = read('src/lib/jobs/definitions/accrue-commission.ts');
     const job = defs.slice(defs.indexOf("name: 'accrue-commission'"));
     expect(job.slice(0, job.indexOf('\n};'))).toContain('commissions: { none: {} }');
   });
@@ -137,7 +137,7 @@ describe('the jobs that may run twice', () => {
   it('the per-order accrual never takes imported history into its batch', () => {
     // A legacy order never accrues (no moderator, no confirmer), so without
     // this it stays «no commission» forever and crowds the 500-row batch.
-    const defs = read('src/lib/jobs/definitions.ts');
+    const defs = read('src/lib/jobs/definitions/accrue-commission.ts');
     const job = defs.slice(defs.indexOf("name: 'accrue-commission'"));
     expect(job.slice(0, job.indexOf('\n};'))).toContain("source: { not: 'Legacy import' }");
     // the mark the job excludes is the mark the import writes
