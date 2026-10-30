@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { can } from '@/lib/authorization';
 import { BEFORE_OPERATIONS } from '@/lib/change-request-routing';
-import { touchesMoney } from '@/lib/change-request-fields';
+import { readLinesChange, touchesMoney } from '@/lib/change-request-fields';
 import { apiErrorResponse } from '@/lib/api-error';
 import { carryOut, type ChangeIntent } from '@/lib/change-request-intent';
 import { handedToCourier } from '@/lib/order-seal';
@@ -95,6 +95,35 @@ export async function GET(req: Request) {
       : [];
     const nameOf = new Map(requesters.map((u) => [u.id, u.name]));
 
+    // The products a request that edits lines names, by id, so the queue can say «كريم» and not an id nobody can read.
+    const linesOf = new Map(rows.map((r) => [r.id, readLinesChange(r.changes)] as const));
+    const lineProductIds = new Set<string>();
+    for (const parsed of linesOf.values()) {
+      if (!parsed.ok || !parsed.value) continue;
+      for (const e of parsed.value.edits) {
+        if (e.productId) {
+          lineProductIds.add(e.productId.from);
+          lineProductIds.add(e.productId.to);
+        }
+      }
+    }
+    const lineProducts = lineProductIds.size
+      ? await db.product.findMany({ where: { id: { in: [...lineProductIds] }, companyId }, select: { id: true, name: true } })
+      : [];
+    const productName = new Map(lineProducts.map((p) => [p.id, p.name]));
+    const lineNamesOf = (id: string): Record<string, string> => {
+      const parsed = linesOf.get(id);
+      if (!parsed || !parsed.ok || !parsed.value) return {};
+      const out: Record<string, string> = {};
+      for (const e of parsed.value.edits) {
+        for (const pid of e.productId ? [e.productId.from, e.productId.to] : []) {
+          const name = productName.get(pid);
+          if (name) out[pid] = name;
+        }
+      }
+      return out;
+    };
+
     // Contact details left the building; the tally is the person's, not
     // this screen's. See noteCustomersHandedOut.
     await noteCustomersHandedOut({ companyId, storeId, user, where: 'طلبات التعديل', rows });
@@ -104,6 +133,8 @@ export async function GET(req: Request) {
       requests: rows.map((r) => ({
         ...r,
         requestedByName: nameOf.get(r.requestedById) ?? null,
+        // The names behind the product ids of a lines request (empty for any other): the queue prints these, never the ids.
+        lineNames: lineNamesOf(r.id),
         /**
          * WHAT PRESSING THE BUTTON WILL DO, decided here rather than in the
          * browser. The screen has to name the act on the button — «ألغِ

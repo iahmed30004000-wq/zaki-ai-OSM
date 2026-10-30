@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { apiFetch, apiJson } from '@/lib/api-client';
 import { CourierNotifyDialog, type CourierAsk } from '@/components/orders/CourierNotifyDialog';
 import { ChangeRequestReview } from '@/components/orders/ChangeRequestReview';
+import { LinesRequestReview, type Verdict } from '@/components/orders/LinesRequestReview';
 import { OrderLink } from '@/components/orders/OrderLink';
 import { useConfirm, useTell } from '@/components/ui/Confirm';
-import { changeFieldLabel } from '@/lib/change-request-fields';
+import { changeFieldLabel, describeLines, readLinesChange } from '@/lib/change-request-fields';
 import { INTENT_AR, type ChangeIntent } from '@/lib/change-request-intent';
 import { ATTESTATION_AR } from '@/lib/shipment-cancel';
 import { PICKABLE_REJECTION_REASONS, REJECTION_REASON_AR } from '@/lib/confirmation-workflow';
@@ -63,7 +64,10 @@ interface ChangeRequest {
   cancelReason: string | null;
   /** What pressing the button will actually do — decided by the server. */
   carryOut: { kind: string; reason?: string };
-  changes: Record<string, { from?: string | number | null; to: string | number | null }>;
+  /** Each field as a from/to pair; the key lines (a request that edits several lines) is the one that is not. */
+  changes: Record<string, unknown>;
+  /** The names behind the product ids of a lines request, from the server. */
+  lineNames?: Record<string, string>;
   order: {
     id: string;
     orderNumber: string;
@@ -79,9 +83,47 @@ type Tab = 'PENDING' | 'AWAITING_APPLY';
 
 const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
 
+/**
+ * WHAT EACH TAB MEANS, said under the tabs.
+ *
+ * «حتى لما رفعت طلب تعديل ما ظهر بطلبات التعديل»: a request its raiser may also decide is approved the moment it is
+ * raised, so it never waits in «بانتظار القرار» — it goes straight to «بانتظار التطبيق», and the first tab read «0» while
+ * the second held the request. Each tab now says what it holds, and a screen that opens on an empty tab points at the full one.
+ */
+const TAB_AR: Record<Tab, { label: string; means: string }> = {
+  PENDING: { label: 'بانتظار القرار', means: 'طلبات لسا ما حدا بتّ فيها: وافق أو ارفض.' },
+  AWAITING_APPLY: { label: 'بانتظار التطبيق', means: 'طلبات اعتُمدت ولسا ما انكتبت على الطلب — اضغط التنفيذ.' },
+};
+
+/** The fields of a request that are from/to pairs — everything but the lines, which have their own section. */
+function fieldPairs(r: ChangeRequest): Array<[string, { from?: unknown; to?: unknown }]> {
+  return Object.entries(r.changes ?? {}).filter(([f]) => f !== 'lines') as Array<[string, { from?: unknown; to?: unknown }]>;
+}
+
+/** A request that edits lines, read strictly — null for any other, and for one whose lines cannot be read. */
+function linesOf(r: ChangeRequest) {
+  const read = readLinesChange(r.changes);
+  return read.ok ? read.value : null;
+}
+
+/** One sentence per edited line, with the product names the server sent. */
+function lineSentences(r: ChangeRequest): string[] {
+  const change = linesOf(r);
+  if (!change) return [];
+  const snap = change.snapshot as { minorUnit?: unknown } | undefined;
+  return describeLines(change, {
+    ...(typeof snap?.minorUnit === 'number' ? { minorUnit: snap.minorUnit } : {}),
+    names: r.lineNames ?? {},
+  });
+}
+
 export function ChangeRequestsScreen() {
   const toast = useToast();
   const [tab, setTab] = useState<Tab>('PENDING');
+  /** The tab is picked once, on the first load, and never moved under a hand that already chose. */
+  const tabChosen = useRef(false);
+  /** What the check of each lines request waiting to be carried out says, by request. */
+  const [verdicts, setVerdicts] = useState<Record<string, Verdict>>({});
   const [lists, setLists] = useState<Record<Tab, ChangeRequest[]> | null>(null);
   const [reviewing, setReviewing] = useState<string | null>(null);
   const [applying, setApplying] = useState<string | null>(null);
@@ -102,6 +144,11 @@ export function ChangeRequestsScreen() {
         apiJson<{ requests: ChangeRequest[] }>('/api/control/change-requests?status=AWAITING_APPLY'),
       ]);
       setLists({ PENDING: pending.requests, AWAITING_APPLY: awaiting.requests });
+      // Open on the tab that has something: a request approved on the spot never waits in the first one.
+      if (!tabChosen.current) {
+        tabChosen.current = true;
+        if (pending.requests.length === 0 && awaiting.requests.length > 0) setTab('AWAITING_APPLY');
+      }
     } catch (e) {
       toast.failed(e instanceof Error ? e.message : 'تعذر التحميل');
     }
@@ -167,6 +214,18 @@ export function ChangeRequestsScreen() {
   const needsReason = (r: ChangeRequest) =>
     (r.intent ?? 'EDIT') === 'CANCEL' && !r.cancelReason && r.carryOut?.kind !== 'CANCEL_VIA_COURIER';
 
+  /**
+   * THE SENTENCE THAT SHUTS «نفِّذ» FOR A LINES REQUEST, or null.
+   *
+   * The check is the server's (the request's preview): the request is carried out only if the order, as it stands now,
+   * can still take it. While the check is in the air the button waits too, so nobody presses it on a guess.
+   */
+  const gateShut = (r: ChangeRequest): string | null => {
+    if (!linesOf(r)) return null;
+    const v = verdicts[r.id];
+    return !v || v.checking ? 'جارٍ فحص الطلب…' : v.shut;
+  };
+
   async function apply(r: ChangeRequest) {
     const intent = (r.intent ?? 'EDIT') as ChangeIntent;
     if (needsReason(r) && !chosen[r.id]) return;
@@ -174,9 +233,10 @@ export function ChangeRequestsScreen() {
     // the currency guard walks the source blanking templates, and a
     // template inside a template inside a template is where it loses the
     // thread and reports an innocent line as a typed «$».
-    const lines = Object.entries(r.changes ?? {})
-      .map(([f, v]) => `${changeFieldLabel(f)}: ${v?.from !== undefined ? `${show(v.from)} ← ` : ''}${show(v?.to)}`)
-      .join('\n');
+    const lines = [
+      ...fieldPairs(r).map(([f, v]) => `${changeFieldLabel(f)}: ${v?.from !== undefined ? `${show(v.from)} ← ` : ''}${show(v?.to)}`),
+      ...lineSentences(r),
+    ].join('\n');
     const body =
       intent === 'EDIT'
         ? `${lines}\n\nيُكتب على الطلب بالقيم المعتمدة كما هي، ويُسجَّل في سجل التدقيق مع سببه.`
@@ -394,6 +454,7 @@ export function ChangeRequestsScreen() {
   }
 
   const rows = lists[tab];
+  const other: Tab = tab === 'PENDING' ? 'AWAITING_APPLY' : 'PENDING';
 
   return (
     <div className="max-w-4xl space-y-3">
@@ -403,14 +464,17 @@ export function ChangeRequestsScreen() {
       <div className="flex gap-1 rounded-lg bg-[var(--sys-surface-strong)] p-0.5 w-fit">
         {(
           [
-            ['PENDING', 'بانتظار القرار'],
-            ['AWAITING_APPLY', 'بانتظار التطبيق'],
+            ['PENDING', TAB_AR.PENDING.label],
+            ['AWAITING_APPLY', TAB_AR.AWAITING_APPLY.label],
           ] as [Tab, string][]
         ).map(([key, label]) => (
           <button
             key={key}
             type="button"
-            onClick={() => setTab(key)}
+            onClick={() => {
+              tabChosen.current = true;
+              setTab(key);
+            }}
             className={`min-h-11 md:min-h-0 inline-flex items-center flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition ${
               tab === key ? 'bg-[var(--sys-card)] text-[var(--sys-primary)] shadow-raised' : 'text-[var(--sys-muted-foreground)] hover:text-[var(--sys-foreground)]'
             }`}
@@ -427,6 +491,8 @@ export function ChangeRequestsScreen() {
         ))}
       </div>
 
+      <p className="text-xs text-[var(--sys-muted-foreground)]">{TAB_AR[tab].means}</p>
+
       {rows.length === 0 && (
         <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)]">
           <EmptyState
@@ -438,6 +504,20 @@ export function ChangeRequestsScreen() {
             }
           />
         </div>
+      )}
+
+      {/* The other tab holds requests while this one is empty: say so, with the way there. */}
+      {rows.length === 0 && lists[other].length > 0 && (
+        <button
+          type="button"
+          onClick={() => {
+            tabChosen.current = true;
+            setTab(other);
+          }}
+          className="min-h-11 md:min-h-0 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] text-[var(--sys-foreground)] text-xs font-medium"
+        >
+          افتح «{TAB_AR[other].label}» — فيه {lists[other].length} طلب
+        </button>
       )}
 
       {rows.map((r) => {
@@ -517,10 +597,10 @@ export function ChangeRequestsScreen() {
                 Arabic name, and the value before and after. */}
             <ul
               className={`rounded-lg border border-[var(--sys-border)] divide-y divide-[var(--sys-border)] ${
-                Object.keys(r.changes ?? {}).length === 0 ? 'hidden' : ''
+                fieldPairs(r).length === 0 ? 'hidden' : ''
               }`}
             >
-              {Object.entries(r.changes ?? {}).map(([field, value]) => (
+              {fieldPairs(r).map(([field, value]) => (
                 <li key={field} className="flex flex-wrap items-center gap-2 px-3 py-2 text-xs">
                   <span className="w-28 shrink-0 font-semibold text-[var(--sys-muted-foreground)]">{changeFieldLabel(field)}</span>
                   {value?.from !== undefined && (
@@ -533,6 +613,31 @@ export function ChangeRequestsScreen() {
                 </li>
               ))}
             </ul>
+
+            {/* A request that edits lines: one sentence per line here; the full before ← after is in the review. */}
+            {lineSentences(r).length > 0 && (
+              <ul className="rounded-lg border border-[var(--sys-border)] divide-y divide-[var(--sys-border)]">
+                {lineSentences(r).map((sentence, i) => (
+                  <li key={i} className="px-3 py-2 text-xs text-[var(--sys-heading)]">
+                    {sentence}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {/* And before it is carried out, the order as it stands now: the gate the button below waits for. */}
+            {tab === 'AWAITING_APPLY' && linesOf(r) && (
+              <LinesRequestReview
+                requestId={r.id}
+                variant="gate"
+                refreshKey={r.order.version}
+                onVerdict={(v) =>
+                  setVerdicts((prev) =>
+                    prev[r.id]?.checking === v.checking && prev[r.id]?.shut === v.shut ? prev : { ...prev, [r.id]: v }
+                  )
+                }
+              />
+            )}
 
             {tab === 'AWAITING_APPLY' && r.decisionNote && (
               <p className="text-xs text-[var(--sys-foreground)] bg-[var(--sys-success-soft)] rounded-lg px-3 py-2">
@@ -600,7 +705,8 @@ export function ChangeRequestsScreen() {
               ) : (
                 <button
                   onClick={() => void apply(r)}
-                  disabled={applying === r.id || (needsReason(r) && !chosen[r.id])}
+                  disabled={applying === r.id || (needsReason(r) && !chosen[r.id]) || gateShut(r) !== null}
+                  title={gateShut(r) ?? undefined}
                   className="min-h-11 md:min-h-0 inline-flex items-center flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-[var(--sys-success)] text-[var(--sys-primary-foreground)] text-xs font-medium disabled:opacity-50"
                 >
                   {applying === r.id && <RiLoader4Line className="w-4 h-4 animate-spin" />}

@@ -284,6 +284,30 @@ describe('describeLines — a request in words, one sentence per line', () => {
     }
   });
 
+  it('a figure that did not move is not printed — the server records the whole line, and the sentence says what changed', () => {
+    const r = readLinesChange({
+      lines: lines({
+        edits: [
+          {
+            lineId: 'a',
+            productId: { from: 'prod-cream-0001', to: 'prod-cream-0001' },
+            quantity: { from: 3, to: 5 },
+            lineTotal: { from: 36, to: 60 },
+            freeQuantity: { from: 0, to: 0 },
+          },
+        ],
+      }),
+    });
+    if (!r.ok || !r.value) throw new Error('expected lines');
+    expect(describeLines(r.value, { minorUnit: 3, names: { 'prod-cream-0001': 'كريم' } })).toEqual(['كريم — الكمية: 3 ← 5 · إجمالي السطر: 36 ← 60']);
+  });
+
+  it('and a line where nothing moved says so instead of ending on a dash', () => {
+    const r = readLinesChange({ lines: lines({ edits: [{ lineId: 'a', quantity: { from: 3, to: 3 } }] }) });
+    if (!r.ok || !r.value) throw new Error('expected lines');
+    expect(describeLines(r.value)[0]).toBe('سطر 1 — بلا تغيير');
+  });
+
   it('a figure with no recorded “before” is shown alone, not as «undefined ← 5» (the gift may lack one; the schema lets it)', () => {
     const r = readLinesChange({ lines: lines({ edits: [{ lineId: 'a', freeQuantity: { to: 2 } }] }) });
     if (!r.ok || !r.value) throw new Error('expected lines');

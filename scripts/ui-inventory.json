@@ -305,7 +305,7 @@
     "columns": 0,
     "cards": 0,
     "modals": 1,
-    "icons": 7,
+    "icons": 8,
     "links": 0,
     "tabs": 0
   },
@@ -387,6 +387,16 @@
     "modals": 1,
     "icons": 6,
     "links": 2,
+    "tabs": 0
+  },
+  "src/components/orders/LinesRequestReview.tsx": {
+    "buttons": 1,
+    "inputs": 0,
+    "columns": 12,
+    "cards": 0,
+    "modals": 0,
+    "icons": 4,
+    "links": 0,
     "tabs": 0
   },
   "src/components/orders/MigrateOrdersDialog.tsx": {
@@ -770,7 +780,7 @@
     "tabs": 0
   },
   "src/components/screens/ChangeRequestsScreen.tsx": {
-    "buttons": 4,
+    "buttons": 5,
     "inputs": 1,
     "columns": 0,
     "cards": 0,

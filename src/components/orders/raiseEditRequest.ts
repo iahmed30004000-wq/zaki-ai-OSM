@@ -1,5 +1,6 @@
 import { apiJson } from '@/lib/api-client';
 import type { ChangeableField } from '@/lib/change-request-fields';
+import { answerAfterRaise } from '@/lib/change-request-after-raise';
 
 /**
  * AN EDIT ON A CONFIRMED ORDER, AS A REQUEST — ALL ITS FIELDS AT ONCE.
@@ -20,6 +21,11 @@ import type { ChangeableField } from '@/lib/change-request-fields';
  * the parcel is still ours. When it is false the request is in somebody's
  * queue and this returns `applied: false` — which is the whole of what the
  * raiser can do, and what the card says out loud.
+ *
+ * AND IT RETURNS THE SENTENCE (`message`) that says where the request went — carried out, or waiting for a decision in
+ * «بانتظار القرار». When it was approved on the spot and the last step failed it THROWS the sentence that names
+ * «بانتظار التطبيق», as it always threw: a card that catches it shows it as the reason the save did not finish, which is
+ * now also the place to look.
  */
 export async function raiseEditRequest(
   orderId: string,
@@ -30,9 +36,12 @@ export async function raiseEditRequest(
    * every write without it, so a request the raiser could also decide
    * would be raised, approved, and then fail at the last step.
    */
-  expectedVersion: number
-): Promise<{ applied: boolean; requestId: string }> {
-  const res = await apiJson<{ request: { id: string }; readyToApply?: boolean }>(
+  expectedVersion: number,
+  /** Whether the person holds the screen of the requests: it decides whether the sentence points at it. */
+  opts: { canOpenQueue?: boolean } = {}
+): Promise<{ applied: boolean; requestId: string; message: string }> {
+  const canOpenQueue = opts.canOpenQueue === true;
+  const res = await apiJson<{ request: { id: string }; orderStatus?: string; readyToApply?: boolean }>(
     `/api/orders/${orderId}/change-requests`,
     {
       method: 'POST',
@@ -45,12 +54,27 @@ export async function raiseEditRequest(
     }
   );
 
-  if (!res.readyToApply) return { applied: false, requestId: res.request.id };
+  if (!res.readyToApply) {
+    const waiting = answerAfterRaise({ intent: 'EDIT', readyToApply: false, orderStatus: res.orderStatus, canOpenQueue });
+    return { applied: false, requestId: res.request.id, message: waiting.message };
+  }
 
-  await apiJson(`/api/orders/${orderId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ changeRequestId: res.request.id, expectedVersion }),
-  });
-  return { applied: true, requestId: res.request.id };
+  try {
+    await apiJson(`/api/orders/${orderId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ changeRequestId: res.request.id, expectedVersion }),
+    });
+  } catch (e) {
+    throw new Error(
+      answerAfterRaise({
+        intent: 'EDIT',
+        readyToApply: true,
+        failure: e instanceof Error ? e.message : null,
+        orderStatus: res.orderStatus,
+        canOpenQueue,
+      }).message
+    );
+  }
+  return { applied: true, requestId: res.request.id, message: answerAfterRaise({ intent: 'EDIT', readyToApply: true, canOpenQueue }).message };
 }
