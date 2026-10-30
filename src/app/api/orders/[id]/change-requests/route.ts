@@ -16,6 +16,24 @@ import { createNotification } from '@/lib/notification';
 import { deciderFor, mayDecide } from '@/lib/change-request-routing';
 import { orderSeal, handedToCourier } from '@/lib/order-seal';
 import { ORDER_NOT_FOUND } from '@/lib/order-refusals';
+import { previewDraftSchema } from '@/lib/order-line-edit';
+import { previewOrderEdit, type EditableOrderRow } from '@/lib/order-edit-facts';
+import {
+  LINES_ADD_REMOVE_AR,
+  LINES_AND_FLAT_AR,
+  LINES_NEED_EDIT_AR,
+  LINES_NOT_CONFIRMED_AR,
+  LINES_NOTHING_CHANGED_AR,
+  blockingRefusal,
+  draftFromRaised,
+  flatGoodsIn,
+  raisedLinesSchema,
+  readsBack,
+  splitLinesKey,
+  storedLinesFrom,
+  type RaisedLines,
+} from '@/lib/change-request-raise-lines';
+import type { LinesChange } from '@/lib/change-request-fields';
 
 /**
  * Change requests on an order (contract PART 2 / invariant 7).
@@ -107,14 +125,37 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       );
     }
 
-    const parsed = createSchema.safeParse(await req.json().catch(() => null));
+    // `changes.lines` is read apart: the ten fields are parsed by the schema they always were, and the lines by theirs.
+    const { rest, lines: rawLines } = splitLinesKey(await req.json().catch(() => null));
+    const parsed = createSchema.safeParse(rest);
     if (!parsed.success) {
       return NextResponse.json({ error: zodMessage(parsed.error) }, { status: 400 });
     }
 
     const intent = parsed.data.intent as ChangeIntent;
+
+    let raised: RaisedLines | null = null;
+    if (rawLines !== undefined) {
+      const lines = raisedLinesSchema.safeParse(rawLines);
+      if (!lines.success) {
+        const message = zodMessage(lines.error);
+        return NextResponse.json({ error: message, errorAr: message, code: 'LINES_INVALID' }, { status: 400 });
+      }
+      raised = lines.data;
+      if (intent !== 'EDIT') {
+        return NextResponse.json({ error: LINES_NEED_EDIT_AR, errorAr: LINES_NEED_EDIT_AR, code: 'LINES_NEED_EDIT' }, { status: 400 });
+      }
+      // One request, one way to say the goods: the shorthand beside `lines` would be two answers to one question.
+      if (flatGoodsIn(parsed.data.changes).length > 0) {
+        return NextResponse.json({ error: LINES_AND_FLAT_AR, errorAr: LINES_AND_FLAT_AR, code: 'LINES_AND_FLAT' }, { status: 422 });
+      }
+      if ((raised.removed?.length ?? 0) > 0 || (raised.added?.length ?? 0) > 0) {
+        return NextResponse.json({ error: LINES_ADD_REMOVE_AR, errorAr: LINES_ADD_REMOVE_AR, code: 'NOT_APPLICABLE' }, { status: 422 });
+      }
+    }
+
     const missing = missingFor(intent, {
-      changes: parsed.data.changes ?? null,
+      changes: raised ? { ...(parsed.data.changes ?? {}), lines: raised } : (parsed.data.changes ?? null),
       postponeUntil: parsed.data.postponeUntil ?? null,
       cancelReason: parsed.data.cancelReason ?? null,
       reason: parsed.data.reason,
@@ -197,6 +238,65 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       }
     }
 
+    /**
+     * THE LINES, JUDGED BY THE SAME ENGINE THE SCREEN PREVIEWED WITH — AND WRITTEN FROM ITS ANSWER.
+     *
+     * Only a request that carries `lines` comes through here; every other request is stored exactly as it always was.
+     * The server runs `previewOrderEdit` on the draft the person sent, in the same breath as the write, so that:
+     *
+     *   · a blocking problem (the shelf cannot give it, the stored total disagrees with its own lines, a courier
+     *     statement claims the order, the parcel is with the courier, a line already delivered…) is a refusal NOW,
+     *     in the engine's own Arabic, and not an approval that fails an hour later;
+     *   · every figure written is the preview's: the «before» of each line, the gifts, the total the decider will be
+     *     shown. The body is never asked for any of them — a `from`, a gift or a snapshot in it is not read at all.
+     *
+     * The write of the request is the only write on this path: the preview reads and answers.
+     */
+    let storedLines: LinesChange | null = null;
+    if (raised) {
+      const candidate = previewDraftSchema.safeParse(draftFromRaised(raised, parsed.data.changes ?? {}));
+      if (!candidate.success) {
+        const message = zodMessage(candidate.error);
+        return NextResponse.json({ error: message, errorAr: message, code: 'INVALID_DRAFT' }, { status: 400 });
+      }
+      const preview = await previewOrderEdit({
+        order: order as EditableOrderRow,
+        companyId,
+        country,
+        draft: candidate.data,
+      });
+
+      const blocked = blockingRefusal(preview.problems);
+      if (blocked) {
+        return NextResponse.json(
+          {
+            error: blocked.error,
+            errorAr: blocked.error,
+            code: 'LINES_BLOCKED',
+            problems: blocked.reasons.map((p) => ({ code: p.code, messageAr: p.messageAr, lineId: p.lineId, productId: p.productId })),
+          },
+          { status: 409 }
+        );
+      }
+      // Before confirmation an order is edited on its own screen; a request on it could never be applied (`NOT_CONFIRMED`).
+      if (preview.door === 'DIRECT') {
+        return NextResponse.json({ error: LINES_NOT_CONFIRMED_AR, errorAr: LINES_NOT_CONFIRMED_AR, code: 'NOT_CONFIRMED' }, { status: 409 });
+      }
+
+      storedLines = storedLinesFrom(preview, new Set(raised.edits.map((e) => e.lineId)));
+      if (storedLines) {
+        const unreadable = readsBack(storedLines);
+        if (unreadable) {
+          return NextResponse.json({ error: unreadable, errorAr: unreadable, code: 'LINES_INVALID' }, { status: 422 });
+        }
+      } else if (Object.keys(parsed.data.changes ?? {}).length === 0) {
+        return NextResponse.json({ error: LINES_NOTHING_CHANGED_AR, errorAr: LINES_NOTHING_CHANGED_AR, code: 'NOTHING_CHANGED' }, { status: 400 });
+      }
+    }
+    // What is stored and what is decided on: the ten fields as they always were, and — only if a line really changed — `lines`.
+    const flatChanges = parsed.data.changes ?? {};
+    const askedChanges: object = storedLines ? { ...flatChanges, lines: storedLines } : flatChanges;
+
     const cal = {
       workHoursStart: country.workHoursStart,
       workHoursEnd: country.workHoursEnd,
@@ -227,7 +327,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         requestedById: user.id,
         requestedRole: user.role,
         intent,
-        changes: withFrom(snapshot, parsed.data.changes ?? {}) as object,
+        // `lines` is written beside the fields, never through `withFrom`: its «before» is the preview's, not the browser's.
+        changes: { ...withFrom(snapshot, flatChanges), ...(storedLines ? { lines: storedLines } : {}) } as object,
         postponeUntil: parsed.data.postponeUntil ? new Date(parsed.data.postponeUntil) : null,
         // Only a cancellation has one; an edit or a postponement never stores a stray.
         cancelReason: intent === 'CANCEL' ? parsed.data.cancelReason : null,
@@ -278,7 +379,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }, {
       // A request that moves a figure is only decided by itself when its raiser holds `orders.change_price` too (PR-7):
       // otherwise it waits for somebody who does, exactly like a request raised by somebody who may not decide.
-      money: touchesMoney(parsed.data.changes),
+      money: touchesMoney(askedChanges),
     });
     /*
      * THE LINE DEPENDS ON WHAT IS ASKED (M6).
@@ -368,6 +469,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       entityId: id,
       newData: {
         requestId: created.id, intent, changes: parsed.data.changes, reason: parsed.data.reason,
+        ...(storedLines ? { lines: storedLines } : {}),
         ...(intent === 'CANCEL' ? { cancelReason: parsed.data.cancelReason } : {}),
       },
     });
