@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useId, useState, useEffect, useMemo } from 'react';
 import { NOT_A_NUMBER, onTheWire, typedNumber } from '@/lib/typed-box';
 import Link from 'next/link';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/Badge';
 import { useApp } from '@/context/AppContext';
 import { useToast } from '@/components/ui/Toast';
 import { useMayOpen } from '@/hooks/useMayOpen';
+import { useIsPhone } from '@/hooks/useIsPhone';
 import { openBalancesStep } from '@/lib/next-step';
 import { arDate } from '@/lib/format';
 import { BatchCostDialog, type BatchForCost } from '@/components/production/BatchCostDialog';
@@ -95,10 +96,15 @@ function numberOnly(v: number | undefined | typeof NOT_A_NUMBER): number | undef
  * characters is the only way its refusal can be about what a person typed.
  */
 
+/** The two presses at the foot of a run's card, as two equal bordered targets rather than two bare words. */
+const CARD_PRESS = ' flex-1 justify-center rounded-lg border border-[var(--sys-border)] px-3';
+
 export function ManufacturingScreen() {
   const { t } = useApp();
   const toast = useToast();
   const mayOpen = useMayOpen();
+  const phone = useIsPhone();
+  const formId = useId();
   const [batches, setBatches] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -361,6 +367,70 @@ export function ManufacturingScreen() {
    * batch too, and a second copy of «name the batch, then open the form» is how
    * the two would come to number batches differently.
    */
+  /** The rows that did not come in through production: one box each, with the way to see them alone. */
+  const readingBoxes = reading.byOrigin.filter((o) => o.origin !== 'PRODUCED');
+  const readingDetail = (
+    <>
+      {readingBoxes.map((o) => (
+        <div
+          key={o.origin}
+          className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3"
+        >
+          <p className="flex flex-wrap items-center gap-2 text-xs font-bold text-[var(--sys-heading)]">
+            <span>{ORIGIN[o.origin].ar}</span>
+            <span className="tabular-nums rounded-full bg-[var(--sys-surface-strong)] px-2 py-0.5">
+              {o.count}
+            </span>
+            <button
+              type="button"
+              onClick={() => setDoor(o.origin)}
+              className="inline-flex min-h-11 items-center text-xs font-semibold text-[var(--sys-primary)] hover:underline md:min-h-0"
+            >
+              اعرضها وحدها
+            </button>
+            {ORIGIN[o.origin].href && (
+              <Link
+                href={ORIGIN[o.origin].href as string}
+                className="inline-flex min-h-11 items-center text-xs font-semibold text-[var(--sys-primary)] hover:underline md:min-h-0"
+              >
+                اذهب إلى بابها
+              </Link>
+            )}
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+            {ORIGIN[o.origin].why}
+          </p>
+        </div>
+      ))}
+
+      {reading.mismatched > 0 && (
+        <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-3 text-xs leading-relaxed text-[var(--sys-destructive)]">
+          {reading.mismatched} دفعة كلفتها المحفوظة تخالف بنودها — عدّل كلفتها لتتفق الأرقام.
+        </p>
+      )}
+
+      {reading.ungraded > 0 && (
+        <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+          {reading.ungraded} دفعة بلا درجة: لم يُقَس منها إلا وجود الكلفة، فلا بنود كلفة فيها
+          ولا سعر بيع للمنتج يُقارن به. درجةٌ مبنيّة على سؤال واحد ليست درجة — فلا تُمنَح.
+        </p>
+      )}
+    </>
+  );
+
+  // The two ends of the dialog, drawn once and placed by the layout: at the end of the form on a desk, in the footer of
+  // the dialog on a phone (a submit button out there belongs to the form by its id).
+  const actionRow = (
+    <div className="flex justify-end space-x-2 pt-2">
+      <Button type="button" variant="outline" onClick={() => setCreateModalOpen(false)}>
+        {t.cancel}
+      </Button>
+      <Button type="submit" form={phone ? formId : undefined} loading={modalLoading}>
+        احفظ الدفعة وأضفها للمخزون
+      </Button>
+    </div>
+  );
+
   const openNewBatch = () => {
     setBatchNumber(`BATCH-${new Date().getFullYear()}-${String(batches.length + 1).padStart(3, '0')}`);
     setCreateModalOpen(true);
@@ -431,51 +501,16 @@ export function ManufacturingScreen() {
               {/* Why a row that is not production is on the production
                   screen — the owner's question, answered per door, with the
                   door's own link so the row can be managed where it belongs. */}
-              {reading.byOrigin
-                .filter((o) => o.origin !== 'PRODUCED')
-                .map((o) => (
-                  <div
-                    key={o.origin}
-                    className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3"
-                  >
-                    <p className="flex flex-wrap items-center gap-2 text-xs font-bold text-[var(--sys-heading)]">
-                      <span>{ORIGIN[o.origin].ar}</span>
-                      <span className="tabular-nums rounded-full bg-[var(--sys-surface-strong)] px-2 py-0.5">
-                        {o.count}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setDoor(o.origin)}
-                        className="text-xs font-semibold text-[var(--sys-primary)] hover:underline"
-                      >
-                        اعرضها وحدها
-                      </button>
-                      {ORIGIN[o.origin].href && (
-                        <Link
-                          href={ORIGIN[o.origin].href as string}
-                          className="text-xs font-semibold text-[var(--sys-primary)] hover:underline"
-                        >
-                          اذهب إلى بابها
-                        </Link>
-                      )}
-                    </p>
-                    <p className="mt-1 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
-                      {ORIGIN[o.origin].why}
-                    </p>
-                  </div>
-                ))}
-
-              {reading.mismatched > 0 && (
-                <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-3 text-xs leading-relaxed text-[var(--sys-destructive)]">
-                  {reading.mismatched} دفعة كلفتها المحفوظة تخالف بنودها — عدّل كلفتها لتتفق الأرقام.
-                </p>
-              )}
-
-              {reading.ungraded > 0 && (
-                <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
-                  {reading.ungraded} دفعة بلا درجة: لم يُقَس منها إلا وجود الكلفة، فلا بنود كلفة فيها
-                  ولا سعر بيع للمنتج يُقارن به. درجةٌ مبنيّة على سؤال واحد ليست درجة — فلا تُمنَح.
-                </p>
+              {/* On a phone the headline stays and the boxes under it are one tap away, in a disclosure that
+                  names them — the full read-out was most of the first screen. A desk draws them all. */}
+              {phone ? (
+                (readingBoxes.length > 0 || reading.mismatched > 0 || reading.ungraded > 0) && (
+                  <AdvancedGroup label="التفصيل" holds="مصدر الصفوف · التنبيهات">
+                    <div className="w-full space-y-3">{readingDetail}</div>
+                  </AdvancedGroup>
+                )
+              ) : (
+                readingDetail
               )}
             </CardContent>
           </Card>
@@ -506,8 +541,8 @@ export function ManufacturingScreen() {
               />
             </div>
           )}
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
+          <CardContent className={phone ? 'p-3' : 'p-0'}>
+            <div className={phone ? undefined : 'overflow-x-auto'}>
                             <Rows
                 rows={visible}
                 keyOf={(b) => b.id}
@@ -536,7 +571,7 @@ export function ManufacturingScreen() {
                     render: (b) => (
                   <>{b.quantityProduced} قطعة</>
                 ) },
-                  { key: 'c3', label: "بِيع",
+                  { key: 'c3', label: "بِيع", hideOnPhone: phone,
                     render: (b) => (
                   <>{b.quantitySold} قطعة</>
                 ) },
@@ -546,7 +581,7 @@ export function ManufacturingScreen() {
                           {b.quantityRemaining} قطعة
                         </span></>
                 ) },
-                  { key: 'c5', label: "الكلفة الكلية",
+                  { key: 'c5', label: "الكلفة الكلية", hideOnPhone: phone,
                     render: (b) => (
                   <><Money value={b.totalProductionCost} currency={currency} /></>
                 ) },
@@ -574,6 +609,9 @@ export function ManufacturingScreen() {
                     // to wrap inside rather than pushing a ten-column table
                     // sideways.
                     className: 'max-w-xs',
+                    // The reason is a sentence: on a card it takes the whole width under its label instead of the
+                    // half a figure gets.
+                    wide: true,
                     render: (b) => (
                       <>
                         <HealthChip health={b.grade} />
@@ -591,7 +629,7 @@ export function ManufacturingScreen() {
                       </>
                     ),
                   },
-                  { key: 'c7', label: "التاريخ",
+                  { key: 'c7', label: "التاريخ", hideOnPhone: phone,
                     render: (b) => arDate(b.productionDate) },
                 ]}
                 empty={
@@ -612,7 +650,7 @@ export function ManufacturingScreen() {
                   <><button
                           type="button"
                           onClick={() => setCosting(b)}
-                          className="text-xs text-[var(--sys-primary)] hover:underline whitespace-nowrap"
+                          className={`text-xs text-[var(--sys-primary)] hover:underline whitespace-nowrap${phone ? CARD_PRESS : ''}`}
                         >
                           عدّل الكلفة
                         </button>
@@ -624,7 +662,7 @@ export function ManufacturingScreen() {
                         {b.productId && (
                           <Link
                             href={`/products/${b.productId}`}
-                            className="text-xs text-[var(--sys-primary)] hover:underline whitespace-nowrap"
+                            className={`text-xs text-[var(--sys-primary)] hover:underline whitespace-nowrap${phone ? CARD_PRESS : ''}`}
                           >
                             المنتج
                           </Link>
@@ -647,15 +685,18 @@ export function ManufacturingScreen() {
         title="تشغيلة إنتاج جديدة"
         subtitle="تكلفة الوحدة تُحسب تلقائياً من كل بنود الكلفة التي تدخلها"
         maxWidth="xl"
+        // A phone: the two buttons stay at the foot of the dialog while the form scrolls (the save was the last
+        // thing under four boxes, a list of lines and a calculator). A desk: at the end of the form.
+        footer={phone ? actionRow : undefined}
       >
-        <form onSubmit={handleCreateBatch} className="space-y-4">
+        <form id={formId} onSubmit={handleCreateBatch} className="space-y-4">
           {modalError && (
             <div className="p-3 bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-xs rounded-lg">
               {modalError}
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className={phone ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-2 gap-3'}>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-[var(--sys-heading)]">
                 المنتج *
@@ -786,8 +827,9 @@ export function ManufacturingScreen() {
               ) : (
                 <div className="space-y-2">
                   {costLines.map((line, i) => (
-                    <div key={i} className="flex items-end gap-2">
-                      <div className="min-w-0 flex-1">
+                    <div key={i} className={phone ? 'flex flex-wrap items-end gap-2' : 'flex items-end gap-2'}>
+                      {/* A phone: the name has a line to itself, the amount and the delete share the next. */}
+                      <div className={phone ? 'w-full' : 'min-w-0 flex-1'}>
                         <Input
                           label={i === 0 ? 'البند' : undefined}
                           placeholder="مثال: أجرة عامل"
@@ -797,7 +839,7 @@ export function ManufacturingScreen() {
                           }
                         />
                       </div>
-                      <div className="w-32 shrink-0">
+                      <div className={phone ? 'min-w-0 flex-1' : 'w-32 shrink-0'}>
                         <Input
                           label={i === 0 ? 'كم كلّف' : undefined}
                           name={`costLineAmount-${i}`}
@@ -833,7 +875,7 @@ export function ManufacturingScreen() {
           </div>
 
           {/* Section 5 Live Real-time RiCalculatorLine Box */}
-          <div className="p-4 bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg flex items-center justify-between text-xs">
+          <div className={`p-4 bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg flex ${phone ? 'flex-col gap-2' : 'items-center justify-between'} text-xs`}>
             <div className="flex items-center space-x-2">
               <RiCalculatorLine className="w-5 h-5 text-[var(--sys-destructive)]" />
               <div>
@@ -865,20 +907,13 @@ export function ManufacturingScreen() {
 
           <Textarea
             label="ملاحظات الدفعة وفحص الجودة"
-            placeholder="e.g. Amber glass vials, passed lab leak audit..."
+            placeholder="مثال: قوارير زجاج عنبري، نجحت في فحص التسريب"
             rows={2}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
           />
 
-          <div className="flex justify-end space-x-2 pt-2">
-            <Button type="button" variant="outline" onClick={() => setCreateModalOpen(false)}>
-              {t.cancel}
-            </Button>
-            <Button type="submit" loading={modalLoading}>
-              احفظ الدفعة وأضفها للمخزون
-            </Button>
-          </div>
+          {!phone && actionRow}
         </form>
       </Modal>
     </>

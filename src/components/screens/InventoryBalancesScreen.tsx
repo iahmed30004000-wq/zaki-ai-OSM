@@ -6,6 +6,8 @@ import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
+import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
+import { useIsPhone } from '@/hooks/useIsPhone';
 import { HealthChip } from '@/components/ui/HealthChip';
 import { useApp } from '@/context/AppContext';
 import { routeLabel } from '@/lib/route-registry';
@@ -94,8 +96,13 @@ function Figure({
   );
 }
 
+/** A phone draws this many cards, then asks. A hundred and fourteen at 370px each is a page nobody scrolls to its end. */
+const PHONE_PAGE = 20;
+
 export function InventoryBalancesScreen() {
   const { t, currentUser } = useApp();
+  const phone = useIsPhone();
+  const [pages, setPages] = useState(1);
   /** UX only: the door (`POST /api/inventory`) asks `inventory.adjust` itself. */
   const canReceive = userCan(currentUser, 'inventory.adjust');
   const [stockSummary, setStockSummary] = useState<StockRow[]>([]);
@@ -223,6 +230,8 @@ export function InventoryBalancesScreen() {
    * somewhere below the fold with nothing marking it. The comparator lives in
    * `stock-health` so the API could sort the same way if it ever needs to.
    */
+  useEffect(() => setPages(1), [term, only]);
+
   const visible = useMemo(() => {
     const q = term.trim();
     return stockSummary
@@ -235,6 +244,31 @@ export function InventoryBalancesScreen() {
       .slice()
       .sort((a, b) => byUrgency(a.health, b.health));
   }, [stockSummary, term, only]);
+
+  /**
+   * THE WINDOW'S SENTENCE, drawn once. A desk prints it under the alerts on every visit; a phone folds it behind
+   * «كيف تُحسب السرعة؟» (three or four lines on every visit pushed the search and the first card down), and the
+   * fold is a native disclosure that says what is inside.
+   */
+  const windowNote = (inFold: boolean) => (
+    <p className={inFold ? 'w-full text-xs leading-relaxed text-[var(--sys-muted-foreground)]' : 'mt-2.5 text-xs leading-relaxed text-[var(--sys-muted-foreground)]'}>
+      {ledgerDays === null || ledgerDays < MIN_LEDGER_DAYS ? (
+        <>
+          سجل التسليمات لا يعود لأكثر من {ledgerDays ?? 0} يوم، و{MIN_LEDGER_DAYS} أيام هي أقلّ ما
+          تُقاس به سرعةُ بيع — فلا معدَّل يومياً على هذه الشاشة بعد.
+        </>
+      ) : (
+        <>
+          سرعة البيع مقيسة على آخر {ledgerDays} يوماً — وهو عمق سجل التسليمات نفسه، لا مدّةً
+          مختارة. منتجٌ تحت {MIN_DELIVERED_LINES} تسليمات لا يُعطى معدَّلاً، و«راكد» لا تُقال قبل{' '}
+          {IDLE_WINDOW_DAYS} يوماً على الرف.
+        </>
+      )}
+    </p>
+  );
+
+  /** The cards drawn: all of them on a desk, a page at a time on a phone. */
+  const cards = phone ? visible.slice(0, PHONE_PAGE * pages) : visible;
 
   const linked = useMemo(() => {
     if (receivedDismissed || !asked || !canReceive || stockSummary.length === 0) {
@@ -308,7 +342,7 @@ export function InventoryBalancesScreen() {
                     type="button"
                     onClick={() => setOnly(active ? null : a.state)}
                     aria-pressed={active}
-                    className={`rounded-lg p-0.5 ${active ? 'ring-2 ring-[var(--sys-primary)]' : ''}`}
+                    className={`inline-flex min-h-11 items-center rounded-lg p-0.5 md:min-h-0 ${active ? 'ring-2 ring-[var(--sys-primary)]' : ''}`}
                   >
                     <HealthChip
                       health={{
@@ -324,7 +358,7 @@ export function InventoryBalancesScreen() {
                 <button
                   type="button"
                   onClick={() => setOnly(null)}
-                  className="text-xs font-medium text-[var(--sys-primary)] hover:underline"
+                  className="inline-flex min-h-11 items-center text-xs font-medium text-[var(--sys-primary)] hover:underline md:min-h-0"
                 >
                   اعرض الكل
                 </button>
@@ -335,20 +369,13 @@ export function InventoryBalancesScreen() {
                 divided by this number of days, and a reader who does not know
                 it cannot judge any of them. On a young record it is also the
                 explanation for most of the screen saying «لا يكفي». */}
-            <p className="mt-2.5 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
-              {ledgerDays === null || ledgerDays < MIN_LEDGER_DAYS ? (
-                <>
-                  سجل التسليمات لا يعود لأكثر من {ledgerDays ?? 0} يوم، و{MIN_LEDGER_DAYS} أيام هي أقلّ ما
-                  تُقاس به سرعةُ بيع — فلا معدَّل يومياً على هذه الشاشة بعد.
-                </>
-              ) : (
-                <>
-                  سرعة البيع مقيسة على آخر {ledgerDays} يوماً — وهو عمق سجل التسليمات نفسه، لا مدّةً
-                  مختارة. منتجٌ تحت {MIN_DELIVERED_LINES} تسليمات لا يُعطى معدَّلاً، و«راكد» لا تُقال قبل{' '}
-                  {IDLE_WINDOW_DAYS} يوماً على الرف.
-                </>
-              )}
-            </p>
+            {phone ? (
+              <div className="mt-2.5">
+                <AdvancedGroup label="كيف تُحسب السرعة؟">{windowNote(true)}</AdvancedGroup>
+              </div>
+            ) : (
+              windowNote(false)
+            )}
           </div>
         )}
 
@@ -373,12 +400,51 @@ export function InventoryBalancesScreen() {
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {visible.map((s) => {
+          {cards.map((s) => {
             const h = s.health;
             const bandsOpen = openBands === s.id;
+            const shelfFigure = <Figure label="على الرف" value={s.remaining} hint="ما تحمله دفعات هذا المستودع فعلاً." />;
+            const reservedFigure = (
+              <Figure label="محجوز" value={s.reserved} hint="موعودٌ به لطلبات مفتوحة — لا يُوعَد به مرّتين." />
+            );
+            const availableFigure = <Figure label="متاح" value={h.available} strong hint="ما يمكن أن يأخذه طلبٌ جديد." />;
+            const perDayFigure = (
+              <Figure
+                label="يومياً"
+                value={h.perDay}
+                hint={
+                  h.perDay === null
+                    ? `لا معدَّل: العيّنة تحت ${MIN_DELIVERED_LINES} تسليمات أو السجل أقصر من ${MIN_LEDGER_DAYS} أيام.`
+                    : `${h.perDay} وحدة يومياً، مقيسةً على ${h.windowDays} يوماً من التسليمات.`
+                }
+              />
+            );
+            const coverFigure = (
+              <Figure
+                label="تكفي (يوم)"
+                value={h.coverDays === null ? null : Math.round(h.coverDays)}
+                hint={
+                  h.coverDays === null
+                    ? 'لا معدَّلَ يوميّاً تُحسب به مدّةُ الكفاية.'
+                    : 'المتاح مقسوماً على المعدَّل اليومي.'
+                }
+              />
+            );
+            const scoreFigure = (
+              <Figure
+                label="الدرجة"
+                value={h.score}
+                strong
+                hint={
+                  h.score === null
+                    ? 'لا درجة: مدّةُ الكفاية — وهي 55 من 100 — لا تُحسب لهذا المنتج.'
+                    : `${h.score} من 100. اضغط «من أين الدرجة؟» لبنودها.`
+                }
+              />
+            );
             return (
               <Card key={s.id}>
-                <CardContent className="p-5 space-y-3">
+                <CardContent className={phone ? 'p-4 space-y-3' : 'p-5 space-y-3'}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <span className="font-mono text-xs font-bold text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] px-2 py-0.5 rounded-lg">
@@ -406,65 +472,65 @@ export function InventoryBalancesScreen() {
                       how many to buy. */}
                   <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">{h.why}</p>
 
-                  <div className="grid grid-cols-3 gap-2 pt-1">
-                    <Figure label="على الرف" value={s.remaining} hint="ما تحمله دفعات هذا المستودع فعلاً." />
-                    <Figure
-                      label="محجوز"
-                      value={s.reserved}
-                      hint="موعودٌ به لطلبات مفتوحة — لا يُوعَد به مرّتين."
-                    />
-                    <Figure label="متاح" value={h.available} strong hint="ما يمكن أن يأخذه طلبٌ جديد." />
-                    <Figure
-                      label="يومياً"
-                      value={h.perDay}
-                      hint={
-                        h.perDay === null
-                          ? `لا معدَّل: العيّنة تحت ${MIN_DELIVERED_LINES} تسليمات أو السجل أقصر من ${MIN_LEDGER_DAYS} أيام.`
-                          : `${h.perDay} وحدة يومياً، مقيسةً على ${h.windowDays} يوماً من التسليمات.`
-                      }
-                    />
-                    <Figure
-                      label="تكفي (يوم)"
-                      value={h.coverDays === null ? null : Math.round(h.coverDays)}
-                      hint={
-                        h.coverDays === null
-                          ? 'لا معدَّلَ يوميّاً تُحسب به مدّةُ الكفاية.'
-                          : 'المتاح مقسوماً على المعدَّل اليومي.'
-                      }
-                    />
-                    <Figure
-                      label="الدرجة"
-                      value={h.score}
-                      strong
-                      hint={
-                        h.score === null
-                          ? 'لا درجة: مدّةُ الكفاية — وهي 55 من 100 — لا تُحسب لهذا المنتج.'
-                          : `${h.score} من 100. اضغط «من أين الدرجة؟» لبنودها.`
-                      }
-                    />
-                  </div>
+                  {/*
+                    A PHONE READS THREE FIGURES AND UNFOLDS THE REST.
+                    Six tiles of two lines each were most of a 370px card. What a buyer needs at a glance is what can be
+                    sold, how long it lasts and the score; the shelf, the reserved and the daily rate are one tap down,
+                    in a disclosure that names them. A desk draws the six, in the order it always has.
+                  */}
+                  {phone ? (
+                    <>
+                      <div className="grid grid-cols-3 gap-2 pt-1">
+                        {availableFigure}
+                        {coverFigure}
+                        {scoreFigure}
+                      </div>
+                      <AdvancedGroup label="باقي الأرقام" holds="على الرف · محجوز · يومياً">
+                        <div className="grid w-full grid-cols-3 gap-2">
+                          {shelfFigure}
+                          {reservedFigure}
+                          {perDayFigure}
+                        </div>
+                      </AdvancedGroup>
+                    </>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2 pt-1">
+                      {shelfFigure}
+                      {reservedFigure}
+                      {availableFigure}
+                      {perDayFigure}
+                      {coverFigure}
+                      {scoreFigure}
+                    </div>
+                  )}
 
-                  <div className="flex items-center justify-between gap-2 pt-1">
+                  <div className={phone ? 'flex flex-wrap items-center justify-between gap-2 pt-1' : 'flex items-center justify-between gap-2 pt-1'}>
                     <span className="text-xs text-[var(--sys-muted)]">
                       دخل {s.produced} · خرج {s.sold}
                     </span>
                     {/* Only a product you BUY ready comes in here; a made one
-                        has «تشغيلة» on its chip and its own door. */}
-                    {canReceive && s.sourceType === 'PURCHASED' && (
-                      <button
-                        type="button"
-                        onClick={() => setReceiving(s)}
-                        className="text-xs font-medium text-[var(--sys-primary)] hover:underline"
-                      >
-                        استلام
-                      </button>
-                    )}
+                        has «تشغيلة» on its chip and its own door. On a phone the press is across the card, 44px:
+                        the main action of the card was the smallest thing on it. */}
+                    {canReceive && s.sourceType === 'PURCHASED' &&
+                      (phone ? (
+                        <Button size="sm" className="w-full" onClick={() => setReceiving(s)}>
+                          استلام
+                        </Button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setReceiving(s)}
+                          className="text-xs font-medium text-[var(--sys-primary)] hover:underline"
+                        >
+                          استلام
+                        </button>
+                      ))}
                     {h.bands.length > 0 && (
                       <button
                         type="button"
                         onClick={() => setOpenBands(bandsOpen ? null : s.id)}
                         aria-expanded={bandsOpen}
-                        className="text-xs font-medium text-[var(--sys-primary)] hover:underline"
+                        className="inline-flex min-h-11 items-center text-xs font-medium text-[var(--sys-primary)] hover:underline md:min-h-0"
                       >
                         {bandsOpen ? 'أخفِ البنود' : 'من أين الدرجة؟'}
                       </button>
@@ -492,6 +558,12 @@ export function InventoryBalancesScreen() {
             );
           })}
         </div>
+
+        {phone && visible.length > cards.length && (
+          <Button variant="outline" className="w-full" onClick={() => setPages((n) => n + 1)}>
+            اعرض المزيد ({visible.length - cards.length})
+          </Button>
+        )}
 
         {/* THE MOVEMENTS LOG IS NOT REDRAWN HERE.
             It was — the whole table, eight columns of it — while
@@ -560,7 +632,7 @@ export function InventoryBalancesScreen() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1.5 block text-xs font-medium text-[var(--sys-heading)]">رصيد النظام</label>
-              <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] px-3 py-2 text-sm font-bold tabular-nums text-[var(--sys-muted-foreground)]" dir="ltr">
+              <div className={`rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] px-3 ${phone ? 'flex h-11 items-center' : 'py-2'} text-sm font-bold tabular-nums text-[var(--sys-muted-foreground)]`} dir="ltr">
                 {systemQty}
               </div>
             </div>

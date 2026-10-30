@@ -8,6 +8,7 @@ import { apiJson } from '@/lib/api-client';
 import { RiAddCircleLine, RiCloseLine, RiLoader4Line } from '@remixicon/react';
 import { Money } from '@/components/ui/Money';
 import { useToast } from '@/components/ui/Toast';
+import { useIsPhone } from '@/hooks/useIsPhone';
 
 /**
  * WHAT THIS RUN ACTUALLY COST.
@@ -41,7 +42,7 @@ export interface BatchForCost {
   costLines?: { label: string; amount: number }[];
 }
 
-const INPUT =
+const FIELD =
   'w-full h-10 px-2 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] text-xs text-[var(--sys-foreground)] focus:outline-none focus:border-[var(--sys-primary)]';
 
 const BUCKETS = [
@@ -61,6 +62,10 @@ export function BatchCostDialog({
   onSaved: () => void;
 }) {
   const toast = useToast();
+  const phone = useIsPhone();
+  // A finger needs 44px; the shared field is 40 and 12px on every screen. The size of the text on a phone is the
+  // stylesheet's (a field under 16px zooms the page on an iPhone).
+  const INPUT = phone ? FIELD.replace('h-10', 'h-11') : FIELD;
   const [buckets, setBuckets] = useState({
     rawMaterialCost: batch.rawMaterialCost,
     manufacturingCost: batch.manufacturingCost,
@@ -149,7 +154,7 @@ export function BatchCostDialog({
               type="button"
               onClick={() => setLines([...lines, { label: '', amount: 0 }])}
               disabled={lines.length >= 30}
-              className="inline-flex items-center gap-1 text-xs text-[var(--sys-primary)] hover:underline disabled:opacity-50"
+              className="inline-flex min-h-11 items-center gap-1 text-xs text-[var(--sys-primary)] hover:underline disabled:opacity-50 md:min-h-0"
             >
               <RiAddCircleLine className="w-4 h-4" /> بند
             </button>
@@ -159,14 +164,14 @@ export function BatchCostDialog({
           ) : (
             <div className="space-y-2">
               {lines.map((line, i) => (
-                <div key={i} className="flex items-center gap-2">
+                <div key={i} className={phone ? 'flex flex-wrap items-center gap-2' : 'flex items-center gap-2'}>
                   <input
                     value={line.label}
                     placeholder="اسم البند"
                     onChange={(e) =>
                       setLines(lines.map((l, n) => (n === i ? { ...l, label: e.target.value } : l)))
                     }
-                    className={`${INPUT} flex-1`}
+                    className={`${INPUT} ${phone ? 'w-full' : 'flex-1'}`}
                   />
                   <input
                     type="number"
@@ -176,7 +181,7 @@ export function BatchCostDialog({
                     onChange={(e) =>
                       setLines(lines.map((l, n) => (n === i ? { ...l, amount: Number(e.target.value) } : l)))
                     }
-                    className={`${INPUT} w-28`}
+                    className={`${INPUT} ${phone ? 'min-w-0 flex-1' : 'w-28'}`}
                     dir="ltr"
                   />
                   <button

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
@@ -11,6 +11,8 @@ import { ScanButton } from '@/components/scan/ScanButton';
 import { RiCheckLine, RiInboxUnarchiveLine, RiTimeLine } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
 import { Rows } from '@/components/ui/Rows';
+import { Button } from '@/components/ui/Button';
+import { useIsPhone } from '@/hooks/useIsPhone';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { MissionDone } from '@/components/ui/NextStep';
 import { SkeletonRows } from '@/components/ui/Skeleton';
@@ -140,6 +142,7 @@ const read = (body: unknown): PagedRead<Row, Extra> => {
 const since = (days: number | null) => (days === null ? '—' : days === 0 ? 'اليوم' : `منذ ${arabicDays(days)}`);
 
 export function ReturnsScreen() {
+  const phone = useIsPhone();
   const [term, setTerm] = useState('');
   const [view, setView] = useState<View>(DEFAULT_VIEW);
   const [status, setStatus] = useState('all');
@@ -267,7 +270,7 @@ export function ReturnsScreen() {
       {!extra ? (
         <SkeletonRows rows={4} />
       ) : (
-        <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-3">
+        <div className={phone ? undefined : 'rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-3'}>
           {/* A returns clerk reads this at the door with a parcel in one
               hand. Six columns on a phone is unreadable; the card leads
               with the reference on the label and whose parcel it is. */}
@@ -338,14 +341,21 @@ export function ReturnsScreen() {
             }
             actions={
               extra.view === 'pending'
-                ? (r) => (
-                    <button
-                      onClick={() => setActive(r as PendingRow)}
-                      className="text-xs font-semibold text-[var(--sys-primary)] hover:underline"
-                    >
-                      استلام
-                    </button>
-                  )
+                ? (r) =>
+                    // The one press this desk exists for. A phone: a button across the card that a thumb finds with a
+                    // parcel in the other hand. A desk: the word it has always been.
+                    phone ? (
+                      <Button size="md" className="w-full" onClick={() => setActive(r as PendingRow)}>
+                        استلام
+                      </Button>
+                    ) : (
+                      <button
+                        onClick={() => setActive(r as PendingRow)}
+                        className="text-xs font-semibold text-[var(--sys-primary)] hover:underline"
+                      >
+                        استلام
+                      </button>
+                    )
                 : undefined
             }
             empty={
@@ -418,6 +428,8 @@ function ReceiveDialog({
   onDone: (message: string) => void;
 }) {
   const toast = useToast();
+  const phone = useIsPhone();
+  const formId = useId();
   const [received, setReceived] = useState(order.expectedQty);
   const [damaged, setDamaged] = useState(0);
   const [courierFee, setCourierFee] = useState(false);
@@ -441,6 +453,26 @@ function ReceiveDialog({
   const gated = order.action !== null && arrived !== true;
 
   const missing = Math.max(0, order.expectedQty - received - damaged);
+
+  // The two ends of the dialog, drawn once and placed by the layout: inside the form on a desk, in the footer of the
+  // dialog on a phone (a submit button out there belongs to the form by its id).
+  const actionRow = (
+    <div className="flex gap-2 pt-1">
+      {!gated && (
+        <button
+          type="submit"
+          form={phone ? formId : undefined}
+          disabled={busy || !acknowledged}
+          className={`h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50${phone ? ' flex-1' : ''}`}
+        >
+          {busy ? 'جارٍ الحفظ…' : 'تأكيد الاستلام'}
+        </button>
+      )}
+      <button type="button" onClick={onClose} className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm text-[var(--sys-muted-foreground)]">
+        {arrived === false ? 'إغلاق' : 'إلغاء'}
+      </button>
+    </div>
+  );
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -474,8 +506,17 @@ function ReceiveDialog({
   };
 
   return (
-    <Modal isOpen onClose={onClose} title="استلام مرتجع" subtitle={order.merchantRef ?? order.orderNumber} maxWidth="sm">
-      <form onSubmit={submit} className="space-y-3">
+    <Modal
+      isOpen
+      onClose={onClose}
+      title="استلام مرتجع"
+      subtitle={order.merchantRef ?? order.orderNumber}
+      maxWidth="sm"
+      // A phone: the two buttons stay at the foot of the dialog while the form scrolls — «تأكيد الاستلام» was the
+      // last thing under a count, a tick, a note and an acknowledgement, and the keyboard covered it. A desk: in the form.
+      footer={phone ? actionRow : undefined}
+    >
+      <form id={formId} onSubmit={submit} className="space-y-3">
         {/*
           WHICH PRODUCT, HOW MANY TAKEN, HOW MANY DUE BACK.
 
@@ -488,26 +529,28 @@ function ReceiveDialog({
           in the row behind this dialog said 1 while the list said 3.
         */}
         <div className="border border-[var(--sys-border)] rounded-lg overflow-hidden">
-          <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 px-2 py-1.5 bg-[var(--sys-surface)] text-xs font-medium text-[var(--sys-muted-foreground)]">
-            <span>المنتج</span>
-            <span className="w-12 text-center">شُحن</span>
-            <span className="w-12 text-center">استلمه</span>
-            <span className="w-12 text-center">راجع</span>
+          <div className={`${phone ? 'grid grid-cols-3' : 'grid grid-cols-[1fr_auto_auto_auto]'} gap-2 px-2 py-1.5 bg-[var(--sys-surface)] text-xs font-medium text-[var(--sys-muted-foreground)]`}>
+            {!phone && <span>المنتج</span>}
+            <span className={phone ? 'text-center' : 'w-12 text-center'}>شُحن</span>
+            <span className={phone ? 'text-center' : 'w-12 text-center'}>استلمه</span>
+            <span className={phone ? 'text-center' : 'w-12 text-center'}>راجع</span>
           </div>
           {order.lines.map((l) => (
             <div
               key={l.itemId}
-              className="grid grid-cols-[1fr_auto_auto_auto] gap-2 px-2 py-1.5 border-t border-[var(--sys-border)] text-xs items-center"
+              className={`${phone ? 'grid grid-cols-3' : 'grid grid-cols-[1fr_auto_auto_auto]'} gap-2 px-2 py-1.5 border-t border-[var(--sys-border)] text-xs items-center`}
             >
-              <span className="text-[var(--sys-heading)] truncate">{l.productName}</span>
-              <span className="w-12 text-center tabular-nums text-[var(--sys-muted-foreground)]">{l.shipped}</span>
+              {/* The name is the thing being checked. A phone gives it a line of its own, in full, with the three
+                  numbers in a row under it; a desk keeps one row and the ellipsis. */}
+              <span className={phone ? 'col-span-full text-[var(--sys-heading)]' : 'text-[var(--sys-heading)] truncate'}>{l.productName}</span>
+              <span className={`${phone ? '' : 'w-12 '}text-center tabular-nums text-[var(--sys-muted-foreground)]`}>{l.shipped}</span>
               {/* A dash, not a zero: the door never spoke about this line, and
                   «0» would be a statement that the customer refused it. */}
-              <span className="w-12 text-center tabular-nums text-[var(--sys-foreground)]">
+              <span className={`${phone ? '' : 'w-12 '}text-center tabular-nums text-[var(--sys-foreground)]`}>
                 {l.delivered === null ? '—' : l.delivered}
               </span>
               <span
-                className={`w-12 text-center tabular-nums font-semibold ${
+                className={`${phone ? '' : 'w-12 '}text-center tabular-nums font-semibold ${
                   l.expectedBack > 0 ? 'text-[var(--sys-warning)]' : 'text-[var(--sys-muted)]'
                 }`}
               >
@@ -686,16 +729,7 @@ function ReceiveDialog({
           </>
         )}
 
-        <div className="flex gap-2 pt-1">
-          {!gated && (
-            <button type="submit" disabled={busy || !acknowledged} className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50">
-              {busy ? 'جارٍ الحفظ…' : 'تأكيد الاستلام'}
-            </button>
-          )}
-          <button type="button" onClick={onClose} className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm text-[var(--sys-muted-foreground)]">
-            {arrived === false ? 'إغلاق' : 'إلغاء'}
-          </button>
-        </div>
+        {!phone && actionRow}
       </form>
     </Modal>
   );

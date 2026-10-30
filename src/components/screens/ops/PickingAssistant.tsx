@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { RiLoader4Line, RiSparkling2Line } from '@remixicon/react';
+import { useIsPhone } from '@/hooks/useIsPhone';
 
 /**
  * THE ROUND, SUGGESTED — beside the list, never instead of it.
@@ -23,6 +24,7 @@ interface Answer {
 }
 
 export function PickingAssistant() {
+  const phone = useIsPhone();
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
@@ -41,14 +43,16 @@ export function PickingAssistant() {
 
   return (
     <section className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-3">
-      <div className="flex items-center justify-between gap-3">
+      {/* A phone: the sentence has the whole width (it was squeezed to 185px beside the button) and the button is a
+          full-width press under it. A desk: side by side, as ever. */}
+      <div className={phone ? 'flex flex-col gap-2' : 'flex items-center justify-between gap-3'}>
         <p className="text-xs text-[var(--sys-muted-foreground)]">
           اسأل المساعد عن ترتيب الجولة والنواقص. لا يرى اسم زبون ولا عنواناً، ولا يحجز ولا يحرّك مخزوناً.
         </p>
         <button
           onClick={ask}
           disabled={busy}
-          className="shrink-0 flex h-11 items-center gap-1.5 px-3 md:h-auto md:py-1.5 rounded-lg border border-[var(--sys-border)] text-xs text-[var(--sys-foreground)] hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)] disabled:opacity-60 cursor-pointer"
+          className={`shrink-0 flex h-11 items-center gap-1.5 px-3 md:h-auto md:py-1.5 rounded-lg border border-[var(--sys-border)] text-xs text-[var(--sys-foreground)] hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)] disabled:opacity-60 cursor-pointer${phone ? ' justify-center' : ''}`}
         >
           {busy ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiSparkling2Line className="w-4 h-4 text-[var(--sys-primary)]" />}
           {busy ? 'جارٍ…' : 'رتّب لي الجولة'}

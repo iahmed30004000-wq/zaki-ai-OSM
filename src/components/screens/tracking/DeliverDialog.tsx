@@ -6,6 +6,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { RiArchiveDrawerLine } from '@remixicon/react';
 import { Money } from '@/components/ui/Money';
+import { useIsPhone } from '@/hooks/useIsPhone';
 
 /**
  * Settling a parcel at the door.
@@ -50,6 +51,7 @@ export function DeliverDialog({
   onClose: () => void;
   onDone: (message: string) => void;
 }) {
+  const phone = useIsPhone();
   const [lines, setLines] = useState<Line[] | null>(null);
   const [taken, setTaken] = useState<Record<string, number>>({});
   const [note, setNote] = useState('');
@@ -161,7 +163,8 @@ export function DeliverDialog({
                 return (
                   <div key={l.id} className="flex items-center justify-between gap-3 px-3 py-2">
                     <div className="min-w-0">
-                      <p className="text-sm text-[var(--sys-heading)] truncate">{l.productName}</p>
+                      {/* In 271px the name is what is being checked; an ellipsis hid the size or the variant. A desk keeps one line. */}
+                      <p className={phone ? 'text-sm text-[var(--sys-heading)]' : 'text-sm text-[var(--sys-heading)] truncate'}>{l.productName}</p>
                       <p className="text-xs text-[var(--sys-muted)] tabular-nums">
                         شُحن {shipped}
                         {l.freeQuantity > 0 && ` (منها ${l.freeQuantity} هدية)`}

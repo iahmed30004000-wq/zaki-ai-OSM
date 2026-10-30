@@ -517,6 +517,14 @@ export function TrackingScreen() {
    * came back 409 inside the dialog. A parcel with no courier named is its own group, as at the door.
    */
   const mixedCouriers = new Set(chosen.map((o) => o.deliveryProvider?.id ?? 'none')).size > 1;
+  /** On a phone a chip never shrinks into its neighbour; the strip slides instead. */
+  const chipFit = phone ? ' shrink-0 whitespace-nowrap' : '';
+  /**
+   * The three quieter presses at the foot of a card (a part delivery, a transfer, a note) were bare words of three
+   * colours, one of them 28px wide. On a phone they share the row as three equal bordered targets, like the two
+   * answers above them; on a desk they stay the links they were.
+   */
+  const quiet = phone ? ' flex-1 justify-center rounded-lg border border-[var(--sys-border)] px-3' : '';
 
   return (
     <div className="max-w-6xl space-y-3">
@@ -548,10 +556,13 @@ export function TrackingScreen() {
       {done && <p className="text-sm text-[var(--sys-success)] bg-[var(--sys-success-soft)] border border-[var(--sys-success)]/30 rounded-lg p-3">{done}</p>}
 
       {facts && facts.total > 0 && (
-        <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-3 flex flex-wrap items-center gap-2">
+        // A phone: eight 44px chips wrapped into three rows pushed the first parcel below the fold. One strip that
+        // slides sideways (the way every other strip of tabs does) keeps the list in sight; the chips keep their
+        // counts, their order and their words. A desk wraps, as it always has.
+        <div className={`bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-3 flex ${phone ? 'overflow-x-auto' : 'flex-wrap'} items-center gap-2`}>
           <button
             onClick={() => { setTask('all'); setSelected({}); }}
-            className={`min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1 rounded-full border ${
+            className={`min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1 rounded-full border${chipFit} ${
               openTask === 'all' ? 'bg-[var(--sys-heading)] text-[var(--sys-primary-foreground)] border-[var(--sys-heading)]' : 'border-[var(--sys-border)] text-[var(--sys-muted-foreground)]'
             }`}
           >
@@ -562,7 +573,7 @@ export function TrackingScreen() {
               key={t.key}
               onClick={() => { setTask(t.key); setSelected({}); }}
               title={chipFacts(t.key).why}
-              className={`min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1 rounded-full border ${
+              className={`min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1 rounded-full border${chipFit} ${
                 openTask === t.key
                   ? 'bg-[var(--sys-heading)] text-[var(--sys-primary-foreground)] border-[var(--sys-heading)]'
                   : TASK_TONE[chipFacts(t.key).tone]
@@ -1041,7 +1052,7 @@ export function TrackingScreen() {
                   </button>
                   <button
                     onClick={() => setDeliverFor(o)}
-                    className="inline-flex min-h-11 items-center text-xs text-[var(--sys-muted-foreground)] hover:text-[var(--sys-foreground)] hover:underline md:min-h-0"
+                    className={`inline-flex min-h-11 items-center text-xs text-[var(--sys-muted-foreground)] hover:text-[var(--sys-foreground)] hover:underline md:min-h-0${quiet}`}
                     title="استلم بعض البنود فقط — أشّر ما أخذه بالضبط"
                   >
                     استلم جزءاً
@@ -1068,7 +1079,7 @@ export function TrackingScreen() {
               {o.shippingStatus === 'RETURN_REQUESTED' && (
                 <button
                   onClick={() => setWriteOffFor(o)}
-                  className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] px-3 text-xs font-bold text-[var(--sys-destructive)] md:min-h-0"
+                  className={`inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] px-3 text-xs font-bold text-[var(--sys-destructive)] md:min-h-0${phone ? ' w-full' : ''}`}
                   title="البضاعة لن تعود — تخرج من المخزون ويُغلق الطلب كخسارة بسبب مكتوب"
                 >
                   <RiAlertLine className="w-4 h-4" aria-hidden />
@@ -1077,7 +1088,7 @@ export function TrackingScreen() {
               )}
               <button
                 onClick={() => setTransferFor(o)}
-                className="inline-flex min-h-11 items-center text-xs text-[var(--sys-primary)] hover:underline md:min-h-0"
+                className={`inline-flex min-h-11 items-center text-xs text-[var(--sys-primary)] hover:underline md:min-h-0${quiet}`}
                 title={
                   o.deliveryProvider?.kind === 'AGENT'
                     ? 'استلام من المندوب وتحويلها لجهة أخرى'
@@ -1090,7 +1101,7 @@ export function TrackingScreen() {
               <button
                 onClick={() => void addNote(o)}
                 disabled={noting === o.id}
-                className="inline-flex min-h-11 items-center gap-1 text-xs text-[var(--sys-muted-foreground)] hover:text-[var(--sys-foreground)] hover:underline disabled:opacity-50 md:min-h-0"
+                className={`inline-flex min-h-11 items-center gap-1 text-xs text-[var(--sys-muted-foreground)] hover:text-[var(--sys-foreground)] hover:underline disabled:opacity-50 md:min-h-0${quiet}`}
                 title="اكتب ما حدث — تُضاف كملاحظة داخلية على الطلب ولا تُغيّر حالته"
               >
                 {noting === o.id ? (
