@@ -422,7 +422,7 @@ export function CustomersScreen() {
                    */
                   <span
                     onClick={(e) => e.stopPropagation()}
-                    className="inline-flex items-center gap-2"
+                    className="inline-flex flex-wrap items-center gap-2"
                   >
                     <span className="font-mono text-[var(--sys-heading)]" dir="ltr">
                       {c.rawPhone || c.phone}

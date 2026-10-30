@@ -24,3 +24,29 @@ export function productScopeWhere(
   else if (scope.scope === 'SPECIFIC') where.id = { in: ids };
   return where;
 }
+
+/**
+ * THE SAME RULE, NARROWED TO THE ROWS A SCREEN IS SHOWING.
+ *
+ * `/api/products/grades?ids=…` answers only for the products on one page, so it starts from the catalogue rule above and
+ * intersects with the ids asked for — an id in a query string is a request, not a permission. For a SPECIFIC grant the
+ * intersection is taken here (an id the grant does not name is simply dropped); for every other scope the grant's own
+ * filter is kept and the ids are added to it.
+ *
+ * It is written on top of `productScopeWhere`, not beside it: the day a new scope kind appears, it is added in ONE place.
+ */
+export function productScopeWhereWithin(
+  scope: { scope: string; scopeIds?: unknown },
+  companyId: string,
+  storeId: string | null | undefined,
+  ids: readonly string[]
+): Prisma.ProductWhereInput {
+  const where = productScopeWhere(scope, companyId, storeId);
+  if (scope.scope === 'SPECIFIC') {
+    const granted = Array.isArray(scope.scopeIds) ? (scope.scopeIds as string[]) : [];
+    where.id = { in: ids.filter((id) => granted.includes(id)) };
+  } else {
+    where.id = { in: [...ids] };
+  }
+  return where;
+}

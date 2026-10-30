@@ -9,7 +9,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
-import { requireCompanyTenant, requirePermission } from '@/lib/auth';
+import { requirePermission, tenantOf } from '@/lib/auth';
 import { can } from '@/lib/authorization';
 import { orderListWhere } from '@/lib/rbac';
 import { apiErrorResponse } from '@/lib/api-error';
@@ -21,8 +21,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // ONE read of who is asking — this is the open thread's poll (RV182/RV183). The user comes back from
+    // `requirePermission`; asking for the tenant as well must not re-read the user, role and grants a second time.
     const viewer = await requirePermission('whatsapp.view');
-    const { companyId } = await requireCompanyTenant();
+    const { companyId } = await tenantOf(viewer);
     const { id } = await params;
     const { searchParams } = new URL(req.url);
     const after = searchParams.get('after')?.trim() || ''; // incremental fetch

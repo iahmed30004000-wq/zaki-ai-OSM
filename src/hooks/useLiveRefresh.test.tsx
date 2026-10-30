@@ -254,3 +254,43 @@ describe('a screen that loads itself', () => {
     expect(load).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('a screen that wants to know it was returned to', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    setHidden(false);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('is told on every way back — tab, window, connection — even when the throttle swallows the refresh', () => {
+    const load = vi.fn();
+    const back = vi.fn();
+    renderHook(() => useLiveRefresh(load, { onReturn: back }));
+    // inside the throttle window of the mount load: the refresh is swallowed, the notice is not
+    comeBack('focus');
+    comeBack('visibilitychange');
+    comeBack('online');
+    expect(back).toHaveBeenCalledTimes(3);
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  it('NEGATIVE: not told while the tab is hidden', () => {
+    const back = vi.fn();
+    renderHook(() => useLiveRefresh(vi.fn(), { onReturn: back }));
+    setHidden(true);
+    comeBack('focus');
+    expect(back).not.toHaveBeenCalled();
+  });
+
+  it('and the LATEST callback is the one called, not the one from mount', () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const { rerender } = renderHook(({ cb }) => useLiveRefresh(vi.fn(), { onReturn: cb }), { initialProps: { cb: first } });
+    rerender({ cb: second });
+    comeBack('focus');
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+});

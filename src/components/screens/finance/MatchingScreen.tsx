@@ -481,6 +481,7 @@ function Queue({
           {
             key: 'resolve',
             label: 'البتّ في الفرق',
+            wide: true,
             render: (m: Match) => (
               <DifferenceActions
                 statementId={statementId}

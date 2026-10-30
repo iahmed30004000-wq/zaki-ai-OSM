@@ -46,10 +46,6 @@ export type Decision = Resolution | typeof PARKED;
 
 export const DECISION_AR: Record<Decision, string> = { ...RESOLUTION_AR, [PARKED]: PARKED_AR };
 
-export function isDecision(value: unknown): value is Decision {
-  return typeof value === 'string' && (DECISIONS as readonly string[]).includes(value);
-}
-
 export { BULK_LIMIT, EXPLANATION_SENTENCE, MIN_EXPLANATION, explanationOf } from './decision-words';
 
 /* ───────────────────────────── the order's state ───────────────────────────── */

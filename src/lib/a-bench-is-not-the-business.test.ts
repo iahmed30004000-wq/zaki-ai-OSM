@@ -181,7 +181,7 @@ const ID_SCOPED: Record<string, Excuse> = {
   'lib/commission-metrics.ts': { reason: 'مقيَّد بـ orderId: { in } ومستخدمٍ واحد', sites: 1 },
   'lib/courier-dispatch.ts': { reason: 'مقيَّد بـ shippingBatchId واحد', sites: 1 },
   'lib/customer-risk.ts': { reason: 'مقيَّد بالعميل نفسِه — تاريخُ شخصٍ لا رقمُ متجر', sites: 3 },
-  'lib/jobs/definitions.ts': { reason: 'مقيَّد بمندوبٍ واحد وبوليصةٍ موجودة', sites: 1 },
+  'lib/jobs/definitions/sync-courier-status.ts': { reason: 'مقيَّد بمندوبٍ واحد وبوليصةٍ موجودة', sites: 1 },
   'lib/landing-analytics.ts': { reason: 'مقيَّد بـ campaignIds مُسمّاة', sites: 1 },
   'lib/operations.ts': { reason: 'مقيَّد بالعميل نفسِه — طلباتُه الأخرى', sites: 2 },
   'lib/payroll.ts': { reason: 'مقيَّد بمستخدمٍ واحد — جزاءُ شخصٍ لا رقمُ متجر', sites: 1 },

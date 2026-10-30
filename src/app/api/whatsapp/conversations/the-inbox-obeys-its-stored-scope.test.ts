@@ -36,6 +36,7 @@ vi.mock('@/lib/auth', () => ({
   requireAuth: async () => h.who.current,
   requirePermission: async () => h.who.current,
   requireCompanyTenant: async () => ({ user: h.who.current, companyId: 'c1' }),
+  tenantOf: async (user: unknown) => ({ user, companyId: 'c1' }),
 }));
 vi.mock('@/lib/whatsapp/config', () => ({ getAccessToken: () => 'tok', getPhoneNumberId: () => 'pn' }));
 vi.mock('@/lib/whatsapp/cloud-api', () => ({

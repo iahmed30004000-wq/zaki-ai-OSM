@@ -216,6 +216,8 @@ function VerifyStep({
           placeholder="______"
           dir="ltr"
           className="h-11 w-full rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-3 text-center text-lg tracking-[0.4em] tabular-nums"
+          // The code is read by eye, spaced out: the phone rule that lifts fields to 16px (system.css) would shrink 18 to 16.
+          style={{ fontSize: '1.125rem' }}
         />
       </label>
 
@@ -373,6 +375,8 @@ function EnrolStep({ challenge, email, onCancel }: { challenge: string; email: s
           placeholder="______"
           dir="ltr"
           className="h-11 w-full rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-3 text-center text-lg tracking-[0.4em] tabular-nums"
+          // The code is read by eye, spaced out: the phone rule that lifts fields to 16px (system.css) would shrink 18 to 16.
+          style={{ fontSize: '1.125rem' }}
         />
       </label>
 

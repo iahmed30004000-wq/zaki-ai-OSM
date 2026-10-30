@@ -213,10 +213,11 @@ describe('the command it runs', () => {
 
   /** The job is in the scheduler that already exists, not in a second timer. */
   it('runs from the scheduler, and throws rather than reporting a quiet zero', () => {
-    const defs = stripComments(repoFile('src/lib/jobs/definitions.ts'));
+    // the job lives in its own file; the gathering file lists it in JOBS
+    const defs = stripComments(repoFile('src/lib/jobs/definitions/daily-backup.ts'));
     expect(defs).toContain("name: 'daily-backup'");
-    expect(defs).toContain('dailyBackup,');
-    const job = defs.slice(defs.indexOf("name: 'daily-backup'"), defs.indexOf('export const JOBS'));
+    expect(stripComments(repoFile('src/lib/jobs/definitions/index.ts'))).toContain('dailyBackup,');
+    const job = defs.slice(defs.indexOf("name: 'daily-backup'"));
     // No try/catch swallowing the failure: the runner counts failures, backs
     // off, and alerts after three. A backup job that answers «nothing to do»
     // when the disk is full is the exact problem it exists to prevent.
