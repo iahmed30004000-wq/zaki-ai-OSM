@@ -27,7 +27,7 @@ const { db, requireContext, createNotification, assertOrderAccess, current } = v
     $transaction: vi.fn(),
   },
   requireContext: vi.fn(),
-  createNotification: vi.fn(async () => 1),
+  createNotification: vi.fn(async (..._a: unknown[]) => 1),
   assertOrderAccess: vi.fn(),
   current: { user: null as unknown as SessionUser },
 }));
