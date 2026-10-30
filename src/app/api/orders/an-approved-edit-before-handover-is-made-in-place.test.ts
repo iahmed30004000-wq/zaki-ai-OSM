@@ -5,11 +5,14 @@ const { db, requireContext, authorize, can, logAudit, adapterFor, planLineApply 
   db: {
     order: { findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     orderChannel: { findFirst: vi.fn() },
+    // a discount alone asks whether a courier statement holds the order (none does in this fixture)
+    settlementMatch: { count: vi.fn(async () => 0) },
     shippingBatch: { findFirst: vi.fn() },
     customer: { update: vi.fn() },
     orderNote: { create: vi.fn(async () => ({})) },
     orderAddOn: { findMany: vi.fn(async () => []) },
-    orderItem: { findFirst: vi.fn() },
+    // `findMany`: a discount alone now also reads the order's lines, to carry its share (this fixture holds none).
+    orderItem: { findFirst: vi.fn(), findMany: vi.fn(async () => []) },
     product: { findFirst: vi.fn() },
     deliveryProvider: { findFirst: vi.fn() },
     orderStatusLog: { create: vi.fn() },
@@ -118,7 +121,7 @@ beforeEach(() => {
     id: ORDER_ID, companyId: 'c1', storeId: 's1', customerId: 'cu1', version: 3, orderNumber: 'SY-1',
     confirmationStatus: 'CONFIRMED', shippingStatus: 'READY_FOR_PICKUP', shippedAt: null,
     labelPrintedAt: new Date('2026-10-28T08:00:00Z'), shippingBatchId: 'b1', deliveryProviderId: 'co1',
-    trackingNumber: null, courierSendStartedAt: null,
+    trackingNumber: null, courierSendStartedAt: null, settlementStatus: 'PENDING_COLLECTION',
     claimedById: null, lockedById: null, lockExpiresAt: null, shippingCost: 3,
     quantity: 1, sellingPrice: 20, discountAmount: 0, totalAmount: 23, productId: 'p1',
     priceIncludesDelivery: false,
@@ -169,6 +172,8 @@ describe('an approved edit on a parcel the company has not taken', () => {
 
   it('a DISCOUNT (carries no goods) is made in place too, with the waybill reprinted', async () => {
     db.orderChangeRequest.findFirst.mockResolvedValue(approved({ changes: { discountAmount: { from: 0, to: 2 } } }));
+    // a discount asks whether any line was delivered or sent back; this parcel's lines were only reserved
+    db.orderItem.findFirst.mockResolvedValue(null);
 
     const res = await patch({ expectedVersion: 3, changeRequestId: REQUEST_ID });
 
