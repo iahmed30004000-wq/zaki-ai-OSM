@@ -322,7 +322,13 @@ const lines = (edits: Row[], more: Row = {}) => ({ v: 2, edits, ...more });
 
 const linesNow = () => fake.lines.map((l) => ({ ...l }));
 const byProduct = (id: string) => fake.lines.filter((l) => l.productId === id);
-const activity = (action: string) => fake.activities.find((a) => a.action === action);
+const activity = (action: string): Row | undefined => fake.activities.find((a) => a.action === action);
+/** The activity that MUST be there: a missing one fails the test by name instead of by a TypeError. */
+const activityOf = (action: string): Row => {
+  const hit = activity(action);
+  if (!hit) throw new Error(`no activity «${action}» on the order`);
+  return hit;
+};
 const wroteNothing = () => expect(fake.writes.filter((w) => !w.startsWith('orderItem.update'))).toEqual([]);
 
 beforeEach(() => {
@@ -764,7 +770,7 @@ describe('Ⅵ · the parcel is still ours: the waybill is printed again, the bar
     const res = await apply();
     expect(res.status, await res.clone().text()).toBe(200);
     expect(fake.order.labelPrintedAt).toBeNull();
-    const stale = activity('LABEL_STALE_REPRINT');
+    const stale = activityOf('LABEL_STALE_REPRINT');
     expect(JSON.parse(stale.metadata)).toMatchObject({ fields: ['items'], requestId: REQUEST_ID });
   });
 
@@ -818,7 +824,7 @@ describe('Ⅵ · the parcel is still ours: the waybill is printed again, the bar
     // the rollback gave the order back its barcode; it is cleared, because the company no longer has that parcel
     expect(fake.order.trackingNumber).toBeNull();
     expect(fake.order.courierSendStartedAt).toBeNull();
-    expect(JSON.parse(activity('COURIER_CANCELLED_EDIT_NOT_SAVED').metadata)).toMatchObject({ barcode: 'LG-9', door: 'LINE_EDIT' });
+    expect(JSON.parse(activityOf('COURIER_CANCELLED_EDIT_NOT_SAVED').metadata)).toMatchObject({ barcode: 'LG-9', door: 'LINE_EDIT' });
     expect(fake.lines.map((l) => l.reservedQty)).toEqual([4, 2]);
   });
 
