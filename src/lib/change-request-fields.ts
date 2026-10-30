@@ -1,3 +1,6 @@
+import { z } from 'zod';
+import { roundMinor } from './money';
+
 /**
  * WHAT A CHANGE REQUEST MAY TOUCH, AND WHAT EACH THING IS CALLED.
  *
@@ -58,7 +61,13 @@ export type ChangeableField = (typeof CHANGEABLE_FIELDS)[number];
  * a request that carries one of them needs `orders.change_price`: who may DECIDE a price change is the same question as who
  * may make one. Rejecting never needs it, and neither does any other field.
  */
-export const MONEY_CHANGE_FIELDS: readonly string[] = ['sellingPrice', 'discountAmount', 'quantity', 'productId', 'offerId', 'items'];
+export const MONEY_CHANGE_FIELDS: readonly string[] = [
+  'sellingPrice', 'discountAmount', 'quantity', 'productId', 'offerId', 'items',
+  // The lines of the order (a request that edits several things at once). A quantity alone moves the total through it,
+  // so the key that decides a price decides this too — without the name here a lines request would be approved by
+  // anyone who may decide, on the strength of «it is only a quantity».
+  'lines',
+];
 
 /** The sentence a decider without the price key reads on a request that moves a figure. */
 export const PRICE_KEY_REQUIRED_AR = 'هذا الطلب يغيّر السعر أو الكمية أو المنتج — البتّ فيه لمن عنده صلاحية تغيير السعر.';
@@ -94,7 +103,131 @@ const RETIRED_FIELD_AR: Record<string, string> = {
 };
 
 export function changeFieldLabel(field: string): string {
+  if (field === 'lines') return 'أسطر الطلب';
   return (CHANGE_FIELD_AR as Record<string, string>)[field] ?? RETIRED_FIELD_AR[field] ?? field;
+}
+
+/* ═══════════════════════════ THE LINES OF THE ORDER ═══════════════════════════ */
+
+/**
+ * THE ONE KEY THAT IS NOT A `{ from, to }`: `lines`.
+ *
+ * «أقدر أعدل كذا شغلة بنفس الوقت، مثلاً الكمية أكيد بتتطلب أغير معها السعر». The ten fields above describe the order as
+ * if it had one line — `quantity` is the SUM of the lines and `sellingPrice` their subtotal — so a request could never
+ * say «the second line, five pieces, at 58». `lines` says it, line by line, and travels beside the customer's fields.
+ *
+ * It is deliberately NOT in `CHANGEABLE_FIELDS`: that list is what the dialog offers a person to pick from and what the
+ * route accepts from a browser today. The request that carries `lines` is raised by the server from a preview (the
+ * numbers are the server's), and applied by `change-request-apply` — which is why the name lives here, beside the
+ * labels, and not in the menu.
+ *
+ * No migration: `OrderChangeRequest.changes` is a JSON column and this is one more key in it.
+ */
+export const LINES_FIELD = 'lines';
+
+/** The ways a line's total was reached — the same four words `order-line-edit` speaks (a test holds them equal). */
+export const LINE_PRICE_BASES = ['KEEP_UNIT', 'OFFER', 'BASE_PRICE', 'MANUAL'] as const;
+
+const fromTo = <T extends z.ZodType, F extends z.ZodType>(to: T, from: F) => z.object({ from: from.nullish(), to });
+
+/**
+ * A «BEFORE» THAT MUST BE THERE. The apply door finds a line again, after a save has given it a new id, by what the request
+ * recorded of it; a request without that record would be found by its id alone (and refused when the id is gone), and the only
+ * thing left standing guard would be the total. The server writes `from` for the identity of a line and for the two figures a
+ * decision is about — the product, the quantity and the line's total — so a request without them is not this shape.
+ */
+const MISSING_BEFORE_AR = 'قيمة «قبل» ناقصة بسطر الطلب';
+const required = <T extends z.ZodType, F extends z.ZodType>(to: T, from: F) => z.object({ from, to });
+
+const wholeFrom = z.number({ error: MISSING_BEFORE_AR }).int().min(0).max(100000);
+const moneyFrom = z.number({ error: MISSING_BEFORE_AR }).finite().min(0).max(1_000_000);
+
+/**
+ * ONE LINE'S EDIT, as it is stored.
+ *
+ * Every figure is the one the person who DECIDED saw: `lineTotal` is what the line costs BEFORE the order's discount for
+ * its paid units, `freeQuantity` the gift the server worked out. `from` is the server's reading of the line at the moment
+ * of asking (never the browser's), and is what the apply door checks the line against before it writes anything.
+ * `unitPrice` is for the eye only — the apply door never reads it.
+ */
+export const lineEditChangeSchema = z.object({
+  /** The stored line when the request was raised. A save rewrites the lines, so this alone is not trusted — see `from`. */
+  lineId: z.string().min(1).max(64),
+  productId: required(z.string().min(10).max(64), z.string({ error: MISSING_BEFORE_AR }).min(1).max(64)).optional(),
+  quantity: required(z.number().int().min(1).max(999), wholeFrom).optional(),
+  lineTotal: required(z.number().finite().min(0).max(100000), moneyFrom).optional(),
+  unitPrice: fromTo(z.number().finite().min(0).max(100000), moneyFrom).optional(),
+  freeQuantity: fromTo(z.number().int().min(0).max(9999), wholeFrom).optional(),
+  basis: z.enum(LINE_PRICE_BASES).optional(),
+  offerId: z.string().max(64).nullish(),
+});
+
+export type ApprovedLineEdit = z.infer<typeof lineEditChangeSchema>;
+
+/** What the person who decided was shown as the order's money, kept to be compared — not to be believed. */
+const totalsSeen = z.object({ cod: z.number().finite().optional() }).passthrough();
+
+export const linesChangeSchema = z
+  .object({
+    /** The version of this shape. A request without it is not this shape. */
+    v: z.literal(2),
+    edits: z.array(lineEditChangeSchema).min(1, 'ما في أسطر للتعديل').max(20, 'الحد الأعلى عشرين سطر'),
+    /** Adding and removing a line is a later stage: a request that carries either is refused, not half-applied. */
+    removed: z.array(z.unknown()).optional(),
+    added: z.array(z.unknown()).optional(),
+    snapshot: z
+      .object({ orderVersion: z.number().optional(), before: totalsSeen.optional(), after: totalsSeen.optional() })
+      .passthrough()
+      .optional(),
+  })
+  .refine((l) => new Set(l.edits.map((e) => e.lineId)).size === l.edits.length, { message: 'نفس السطر مكرر بالطلب' })
+  .refine(
+    (l) => l.edits.every((e) => e.productId || e.quantity || e.lineTotal || e.freeQuantity),
+    { message: 'سطر بلا أي تغيير بالطلب' }
+  );
+
+export type LinesChange = z.infer<typeof linesChangeSchema>;
+
+/** The `lines` key of a stored request, read strictly: the shape or a sentence. Absent is `null`, not an error. */
+export function readLinesChange(changes: unknown): { ok: true; value: LinesChange | null } | { ok: false; error: string } {
+  if (!changes || typeof changes !== 'object' || Array.isArray(changes)) return { ok: true, value: null };
+  const raw = (changes as Record<string, unknown>)[LINES_FIELD];
+  if (raw === undefined || raw === null) return { ok: true, value: null };
+  const parsed = linesChangeSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message || 'أسطر طلب التعديل مش بالشكل المعتمد' };
+  }
+  return { ok: true, value: parsed.data };
+}
+
+/**
+ * A `lines` request in words, one sentence per line — for the screen of whoever decides (and for a timeline), never JSON.
+ *
+ * `names` maps a product id to its name; a line without one reads «سطر ٣». The figures are printed as stored, rounded to
+ * the currency's own unit: this file adds nothing up and prices nothing.
+ */
+export function describeLines(
+  change: Pick<LinesChange, 'edits'>,
+  opts: { minorUnit?: number; names?: Readonly<Record<string, string>> } = {}
+): string[] {
+  const mu = opts.minorUnit ?? 2;
+  const num = (n: number) => String(roundMinor(n, mu));
+  const arrow = (pair: { from?: number | null; to: number }) =>
+    pair.from === undefined || pair.from === null ? num(pair.to) : `${num(pair.from)} ← ${num(pair.to)}`;
+  const name = (id: string | null | undefined, fallback: string) => (id && opts.names?.[id]) || fallback;
+
+  return change.edits.map((edit, i) => {
+    const label = name(edit.productId?.from ?? null, `سطر ${i + 1}`);
+    const parts: string[] = [];
+    if (edit.productId) {
+      parts.push(`المنتج: ${name(edit.productId.from, 'منتج')} ← ${name(edit.productId.to, 'منتج آخر')}`);
+    }
+    if (edit.quantity) parts.push(`الكمية: ${arrow(edit.quantity)}`);
+    if (edit.lineTotal) parts.push(`إجمالي السطر: ${arrow(edit.lineTotal)}`);
+    if (edit.freeQuantity) parts.push(`الهدية: ${arrow(edit.freeQuantity)}`);
+    if (edit.basis === 'MANUAL') parts.push('السعر يدوي');
+    return `${label} — ${parts.join(' · ')}`;
+  });
 }
 
 export type ChangeValue = string | number | null;

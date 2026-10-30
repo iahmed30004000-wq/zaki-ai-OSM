@@ -94,3 +94,72 @@ describe('strayFields', () => {
     expect(strayFields({ changeRequestId: 'x', customerPhone: undefined })).toEqual([]);
   });
 });
+
+/* ═══════════════════════════ THE LINES KEY (طلب التعديل متعدد الحقول، المرحلة ٤) ═══════════════════════════ */
+
+const linesOf = (over: Record<string, unknown> = {}) => ({
+  v: 2,
+  edits: [{ lineId: 'line-1', quantity: { from: 3, to: 5 }, lineTotal: { from: 36, to: 58 }, freeQuantity: { from: 1, to: 2 } }],
+  ...over,
+});
+
+describe('a request that carries `lines`', () => {
+  it('expands to the approved edits, line by line, and reads nothing from any database', () => {
+    const r = expandApproved(approved({ lines: linesOf({ snapshot: { after: { cod: 70.5 } } }) }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.fields).toEqual({});
+    expect(r.lineEdits).toEqual([
+      { lineId: 'line-1', quantity: { from: 3, to: 5 }, lineTotal: { from: 36, to: 58 }, freeQuantity: { from: 1, to: 2 } },
+    ]);
+    expect(r.linesSnapshot).toEqual({ after: { cod: 70.5 } });
+  });
+
+  it('carries the customer’s fields beside the lines — one request, both', () => {
+    const r = expandApproved(approved({ lines: linesOf(), customerNotes: { from: null, to: 'قبل الظهر' }, discountAmount: { from: 0, to: 2 } }));
+    expect(r.ok && r.fields).toEqual({ customerNotes: 'قبل الظهر', discountAmount: 2 });
+    expect(r.ok && r.lineEdits).toHaveLength(1);
+  });
+
+  it('is never skipped in silence: the loop over `{from, to}` keys would have dropped it', () => {
+    // A request of `lines` alone must not fall out as «nothing to apply», and a request of `lines` plus a note must not
+    // apply the note and lose the goods.
+    expect(expandApproved(approved({ lines: linesOf() })).ok).toBe(true);
+    const garbage = expandApproved(approved({ lines: { v: 2, edits: 'x' }, customerNotes: { to: 'ملاحظة' } }));
+    expect(garbage.ok).toBe(false);
+    if (!garbage.ok) {
+      expect(garbage.code).toBe('LINES_INVALID');
+      expect(garbage.status).toBe(422);
+    }
+  });
+
+  it('is refused beside the shorthand for the same goods — two answers to one question', () => {
+    for (const flat of [{ quantity: { to: 5 } }, { productId: { to: 'p2' } }, { sellingPrice: { to: 50 } }]) {
+      const r = expandApproved(approved({ lines: linesOf(), ...flat }));
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('LINES_AND_FLAT');
+    }
+  });
+
+  it('refuses a request that adds or removes a line — a later stage, not half-applied', () => {
+    for (const k of ['added', 'removed']) {
+      const r = expandApproved(approved({ lines: linesOf({ [k]: [{ productId: 'p' }] }) }));
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('NOT_APPLICABLE');
+    }
+    // empty lists are what a request that adds nothing carries
+    expect(expandApproved(approved({ lines: linesOf({ added: [], removed: [] }) })).ok).toBe(true);
+  });
+
+  it('a request of plain fields expands to exactly what it always did — no lines keys appear', () => {
+    const r = expandApproved(approved({ customerAddress: { to: 'شارع' } }));
+    expect(r).toEqual({ ok: true, fields: { customerAddress: 'شارع' } });
+    expect(r.ok && 'lineEdits' in r).toBe(false);
+  });
+
+  it('is still refused as a wrong intent or an unapproved request before its lines are looked at', () => {
+    expect(expandApproved({ ...approved({ lines: linesOf() }), status: 'PENDING' })).toMatchObject({ ok: false, code: 'NOT_APPROVED' });
+    expect(expandApproved({ ...approved({ lines: linesOf() }), appliedAt: new Date() })).toMatchObject({ ok: false, code: 'ALREADY_APPLIED' });
+    expect(expandApproved({ ...approved({ lines: linesOf() }), intent: 'CANCEL' })).toMatchObject({ ok: false, code: 'WRONG_INTENT' });
+  });
+});
