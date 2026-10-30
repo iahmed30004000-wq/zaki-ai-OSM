@@ -9,6 +9,7 @@ import { zodMessage } from '@/lib/zod-message';
 import { ORDER_NOT_FOUND } from '@/lib/order-refusals';
 import { previewDraftSchema } from '@/lib/order-line-edit';
 import { previewOrderEdit, type EditableOrderRow } from '@/lib/order-edit-facts';
+import { PREVIEWS_PER_MINUTE, previewRateKey } from '@/lib/change-request-raise-lines';
 
 /**
  * WHAT A MULTI-FIELD EDIT WOULD DO — ANSWERED BEFORE ANYBODY ASKS FOR IT.
@@ -30,8 +31,6 @@ import { previewOrderEdit, type EditableOrderRow } from '@/lib/order-edit-facts'
  * warehouse holds is not the seller's to read off a preview.
  */
 
-/** Previews a person may ask for in a minute — a pause in typing is about two a second at the very most. */
-const PREVIEWS_PER_MINUTE = 90;
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -48,7 +47,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       );
     }
 
-    const limit = rateLimit(`order-edit-preview:${companyId}:${user.id}`, PREVIEWS_PER_MINUTE, 60 * 1000);
+    const limit = rateLimit(previewRateKey(companyId, user.id), PREVIEWS_PER_MINUTE, 60 * 1000);
     if (!limit.allowed) {
       return NextResponse.json(
         {
