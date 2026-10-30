@@ -263,6 +263,21 @@ describe('what it refuses, never guessing', () => {
     for (const n of [2, 4, 7]) for (const note of priceByOffer(THREE_FOR_75, n, ctx(25)).notes) expect(note).not.toMatch(/[A-Za-z]/);
   });
 
+  it('a price too large to hold is a refusal, not a zero (the check comes before the rounding)', () => {
+    const huge = { quantity: 1, freeQuantity: 0, price: 1e308 };
+    for (const n of [2, 999]) {
+      const answer = priceByOffer(huge, n, ctx(25));
+      expect(answer.basis, `n=${n}`).toBe('REFUSED');
+      expect(answer.lineTotal).toBeNull();
+    }
+    // one bundle of 1e308 is finite until the currency scales it — still a refusal, never 0
+    expect(priceByOffer(huge, 1, ctx(25)).basis).toBe('REFUSED');
+    // with a remainder as well
+    expect(priceByOffer({ quantity: 2, freeQuantity: 0, price: 1e308 }, 999, ctx(25)).basis).toBe('REFUSED');
+    // NEGATIVE: a large but holdable price is priced.
+    expect(priceByOffer({ quantity: 1, freeQuantity: 0, price: 99999 }, 999, ctx(25)).basis).toBe('OFFER');
+  });
+
   it('is pure: the same question twice is the same answer, and a frozen input is not touched', () => {
     const offer = Object.freeze({ quantity: 3, freeQuantity: 1, price: 75 });
     const first = priceByOffer(offer, 7, ctx(25));
@@ -307,7 +322,7 @@ describe('which live offer a stored line was sold on', () => {
     expect(find({ quantity: 6, freeQuantity: 2, total: 147 }, [reduced])).toBeNull();
   });
 
-  it('two offers fit one line: the one whose gift is the gift already stored wins, then the order’s own, then the first', () => {
+  it('two offers fit one line: those whose gift is the stored gift remain, then the order’s own wins, then the first', () => {
     // 6 pieces at 150: two «٣ + ١» (gift 2) or one «٦ + ٢» (gift 2) — same gift here, so the order’s own decides
     expect(find({ quantity: 6, freeQuantity: 2, total: 150 }, [o3, o6])?.offer.id).toBe('o3');
     expect(find({ quantity: 6, freeQuantity: 2, total: 150 }, [o3, o6], 'o6')?.offer.id).toBe('o6');
@@ -317,6 +332,25 @@ describe('which live offer a stored line was sold on', () => {
     const o6b: LiveOfferTerms = { ...o6, freeQuantity: 3 };
     expect(find({ quantity: 6, freeQuantity: 3, total: 150 }, [o3, o6b])?.offer.id).toBe('o6');
     expect(find({ quantity: 6, freeQuantity: 2, total: 150 }, [o3, o6b], 'o6')?.offer.id).toBe('o3');
+  });
+
+  it('B2 — a plain 3 × 25 with NO gift has a «3 + 1 بـ75» total and was not sold on it: bound to nothing', () => {
+    expect(find({ quantity: 3, freeQuantity: 0, total: 75 }, [o3])).toBeNull();
+    // NEGATIVE: the same figure with the gift the offer gives IS the offer.
+    expect(find({ quantity: 3, freeQuantity: 1, total: 75 }, [o3])).toMatchObject({ offer: { id: 'o3' }, gift: 1 });
+  });
+
+  it('B5c — a line carrying 5 gifts is not an offer that gives none, nor one that gives another number: bound to nothing', () => {
+    const noGift: LiveOfferTerms = { id: 'n', quantity: 3, freeQuantity: 0, price: 60, listPrice: null };
+    expect(find({ quantity: 3, freeQuantity: 5, total: 60 }, [noGift])).toBeNull();
+    expect(find({ quantity: 3, freeQuantity: 5, total: 75 }, [o3])).toBeNull();
+    expect(find({ quantity: 6, freeQuantity: 5, total: 150 }, [o3, o6])).toBeNull();
+    // NEGATIVE: an offer with no gift DOES bind a line with no gift.
+    expect(find({ quantity: 3, freeQuantity: 0, total: 60 }, [noGift])).toMatchObject({ offer: { id: 'n' }, gift: 0 });
+  });
+
+  it('when the gifts disagree with every candidate nothing is bound, even if the order itself was taken on one of them', () => {
+    expect(find({ quantity: 6, freeQuantity: 0, total: 150 }, [o3, o6], 'o6')).toBeNull();
   });
 
   it('the same offer listed twice is one answer', () => {

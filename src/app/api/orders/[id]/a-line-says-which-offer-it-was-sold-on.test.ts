@@ -189,6 +189,20 @@ describe('and only that line', () => {
     expect(where).toMatchObject({ companyId: 'c1', productId: { in: ['P1', 'P2'] }, status: 'ACTIVE', postOrderOffer: false });
   });
 
+  it('B2 — a plain 3 pieces with no gift at the price of a «3 + 1» is not bound to it', async () => {
+    seed(baseOrder([item({ id: 'plain', productId: 'P1', quantity: 3, freeQuantity: 0, lineTotal: 75 })]));
+    const [a] = await lines(await open());
+    expect(a.boundOfferId).toBeNull();
+    expect(a.giftUnits).toBeNull();
+    expect(a.freeQuantity).toBe(0);
+  });
+
+  it('does not scan delivered orders for a struck-through price it never shows', async () => {
+    seed(baseOrder([item({ id: 'i1', productId: 'P1' })]));
+    await open();
+    expect(db.order.groupBy).not.toHaveBeenCalled();
+  });
+
   it('two live offers fit one line: the order’s own offer settles it', async () => {
     db.offer.findMany.mockResolvedValue([
       liveRow({ id: 'o3', productId: 'P1' }),

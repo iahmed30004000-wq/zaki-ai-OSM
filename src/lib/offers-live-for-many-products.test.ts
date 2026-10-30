@@ -152,6 +152,41 @@ describe('the offers on sale right now, for many products in one query', () => {
   });
 });
 
+describe('the «was» price is evidence, and only those who show it pay for it', () => {
+  /** A bundle with a claimed «was» of 90 and five delivered orders at 80: the public pages strike 80 through. */
+  const withHistory = () => {
+    const rows = [row({ id: 'sale', productId: 'p1', compareAtPrice: 90 })];
+    const findMany = vi.fn(async (): Promise<Row[]> => rows);
+    const groupBy = vi.fn(async (): Promise<unknown[]> => [{ offerId: 'sale', sellingPrice: 80, _count: { _all: 5 } }]);
+    return { tx: { offer: { findMany }, order: { groupBy } } as never, groupBy };
+  };
+
+  it('by default it looks at delivered orders and strikes the proven price through — the public pages are as before', async () => {
+    const { tx, groupBy } = withHistory();
+    const got = await activeOffersForProducts(tx, 'c1', ['p1'], 3, NOW);
+    expect(groupBy).toHaveBeenCalledTimes(1);
+    expect(got.get('p1')?.[0]?.compareAtPrice).toBe(80);
+    const one = withHistory();
+    expect((await activeOffersFor(one.tx, 'c1', 'p1', 3, NOW))[0]?.compareAtPrice).toBe(80);
+    expect(one.groupBy).toHaveBeenCalledTimes(1);
+  });
+
+  it('with `withEvidence: false` it never touches the orders table, and says «not proven»', async () => {
+    const { tx, groupBy } = withHistory();
+    const got = await activeOffersForProducts(tx, 'c1', ['p1'], 3, NOW, { withEvidence: false });
+    expect(groupBy).not.toHaveBeenCalled();
+    expect(got.get('p1')?.[0]).toMatchObject({ id: 'sale', price: 75, compareAtPrice: null });
+  });
+
+  it('NEGATIVE: `withEvidence: true` and an empty options object are the default, not the switch', async () => {
+    for (const options of [{}, { withEvidence: true }]) {
+      const { tx, groupBy } = withHistory();
+      await activeOffersForProducts(tx, 'c1', ['p1'], 3, NOW, options);
+      expect(groupBy).toHaveBeenCalledTimes(1);
+    }
+  });
+});
+
 describe('and the single-product reader is the same reader', () => {
   it('activeOffersFor answers exactly what activeOffersForProducts says for that product', async () => {
     const { tx } = fakeTx();
@@ -167,8 +202,8 @@ describe('and the single-product reader is the same reader', () => {
   });
 
   it('a caller’s stub that leaves productId out of a row still answers for the one product asked about', async () => {
-    const findMany = vi.fn(async () => [{ ...row({ id: 'stub' }), productId: undefined }]);
-    const tx = { offer: { findMany }, order: { groupBy: vi.fn(async () => []) } } as never;
+    const findMany = vi.fn(async (): Promise<unknown[]> => [{ ...row({ id: 'stub' }), productId: undefined }]);
+    const tx = { offer: { findMany }, order: { groupBy: vi.fn(async (): Promise<unknown[]> => []) } } as never;
     expect((await activeOffersFor(tx, 'c1', 'p1', 3, NOW)).map((o) => o.id)).toEqual(['stub']);
   });
 });

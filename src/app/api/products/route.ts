@@ -125,7 +125,9 @@ export async function GET(req: Request) {
      */
     let liveOf: Map<string, OfferView[]> | null = null;
     try {
-      liveOf = await activeOffersForProducts(db, companyId, products.map((p) => p.id), country.minorUnit);
+      liveOf = await activeOffersForProducts(db, companyId, products.map((p) => p.id), country.minorUnit, new Date(), {
+        withEvidence: false,
+      });
     } catch {
       liveOf = null;
     }

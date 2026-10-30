@@ -128,10 +128,16 @@ export function priceByOffer(
     };
   }
 
-  const bundlesPrice = roundMinor(bundles * offer.price, minorUnit);
+  /*
+   * A FIGURE TOO LARGE TO HOLD IS A REFUSAL, NOT A ZERO. `roundMinor` answers 0 for a value that is not finite, so the
+   * check has to come BEFORE the rounding: a bundle price of 1e308 over 999 bundles would otherwise be «0, offer».
+   */
+  const rawBundles = bundles * offer.price;
+  if (!Number.isFinite(rawBundles)) return refused('السعر كبير أكثر من اللازم');
+  const bundlesPrice = roundMinor(rawBundles, minorUnit);
+  if (!Number.isFinite(bundlesPrice)) return refused('السعر كبير أكثر من اللازم');
 
   if (remainder === 0) {
-    if (!Number.isFinite(bundlesPrice)) return refused('السعر كبير أكثر من اللازم');
     return { bundles, remainder: 0, price: bundlesPrice, gift, lineTotal: bundlesPrice, basis: 'OFFER', notes: [] };
   }
 
@@ -174,9 +180,13 @@ export interface LiveOfferTerms extends OfferTerms {
  * product. A line with pieces left over, a typed price, or no live offer at all is bound to NOTHING — and that is
  * the safe answer: «unbound» changes no gift and no price.
  *
- * Two offers can fit one line (6 pieces is two «3 بـ75» and one «6 بـ150» when the prices agree). The tie is broken by
- * evidence, in this order: the offer whose gift is the gift the line already carries; the offer the order itself was
- * taken on (`preferId`); the first in the order given.
+ * THE GIFT HAS TO AGREE TOO. A line is bound only when its stored gift is the very gift the offer gives for its bundles:
+ * a plain 3 × 25 with no gift has the total of a «3 + 1» for 75 and was NOT sold on it, and a line carrying 5 gifts is
+ * not an offer that gives 0. No agreement means no binding (null) — the editor must never show or suggest a gift the
+ * line did not get.
+ *
+ * Two offers can still fit one line (6 pieces is two «3 بـ75» and one «6 بـ150» when the prices agree and so do the
+ * gifts). The tie is broken by the offer the order itself was taken on (`preferId`), then the first in the order given.
  *
  * It reads `priceByOffer` and nothing else, so the total it compares against is the very figure the editor will put in
  * the box.
@@ -200,6 +210,5 @@ export function offerBoundToLine(
   }
   if (fits.length === 0) return null;
   const agreeing = fits.filter((f) => f.gift === line.freeQuantity);
-  const pool = agreeing.length > 0 ? agreeing : fits;
-  return pool.find((f) => f.offer.id === preferId) ?? pool[0] ?? null;
+  return agreeing.find((f) => f.offer.id === preferId) ?? agreeing[0] ?? null;
 }

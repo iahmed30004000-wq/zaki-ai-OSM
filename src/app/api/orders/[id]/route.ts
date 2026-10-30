@@ -478,7 +478,9 @@ export async function GET(
     let liveOffers: Map<string, OfferView[]> | null = null;
     if (itemsBefore.length > 0) {
       try {
-        liveOffers = await activeOffersForProducts(db, companyId, itemsBefore.map((l) => l.productId), country.minorUnit);
+        liveOffers = await activeOffersForProducts(db, companyId, itemsBefore.map((l) => l.productId), country.minorUnit, new Date(), {
+          withEvidence: false,
+        });
       } catch {
         liveOffers = null;
       }

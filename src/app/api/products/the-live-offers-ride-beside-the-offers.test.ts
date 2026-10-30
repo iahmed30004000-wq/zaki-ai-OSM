@@ -121,6 +121,11 @@ describe('`liveOffers` is what may be sold today', () => {
     expect(where.OR).toHaveLength(2);
   });
 
+  it('does not scan delivered orders for a struck-through price it never shows', async () => {
+    await list();
+    expect(db.order.groupBy).not.toHaveBeenCalled();
+  });
+
   it('is rounded by the store’s currency (three places), and a reduction below the unit takes nothing', async () => {
     db.offer.findMany.mockResolvedValue([{ ...LIVE_ROW, sellingPrice: 0.1234, discount: 0.0004 }]);
     const body = await json(await list());
