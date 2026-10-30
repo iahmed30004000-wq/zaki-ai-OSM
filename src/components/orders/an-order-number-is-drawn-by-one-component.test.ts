@@ -114,10 +114,14 @@ const HAND_ALLOWED = new Map<string, { n: number; because: string }>([
 const HAND_ALLOWED_CEILING = 7;
 
 /**
- * R6 — raw `navigator.clipboard.writeText` still on screens. All nine copy a
+ * R6 — raw `navigator.clipboard.writeText` still on screens. Seven copy a
  * secret or a link (a token, a store address, a rating link, a password a
- * moment after it is made); none is a customer's phone or an order number.
- * New ones go through `copyText`.
+ * moment after it is made). TWO copy text that names a customer:
+ * `CourierNotifyDialog` copies `ask.message` (the order number and the
+ * customer's name, for the courier) and `AssistantDialog` copies a suggested
+ * reply with the customer's name in it. None copies the phone or the barcode
+ * as such — those are what `OrderRef` is for. New ones go through
+ * `copyText`.
  */
 const RAW_COPY_DEBT: Ledger = new Map<string, number>([
   ['src/components/apps/SystemTokensPanel.tsx', 1],
@@ -327,9 +331,18 @@ describe('the guard itself catches what it claims to', () => {
     expect(total(raised)).toBeGreaterThan(LINK_CEILING);
   });
 
-  it('the starting debt is the measured one', () => {
-    expect(total(LINK_DEBT)).toBe(17);
-    expect(total(HAND_DEBT) + total(handAllowedAsLedger)).toBe(17);
-    expect(total(RAW_COPY_DEBT)).toBe(9);
+  // Consistency, not literals: each ledger sums to no more than its own
+  // recorded ceiling, and the ledgers that count a thing the sweep can see
+  // sum to EXACTLY what the sweep sees (so a ledger cannot be padded to hide
+  // room, nor a ceiling raised alone). The numbers in the header comments
+  // are history; these lines are what keeps them true.
+  it('every ledger sums to within its ceiling, and to what the sweep finds', () => {
+    expect(total(LINK_DEBT)).toBeLessThanOrEqual(LINK_CEILING);
+    expect(total(HAND_DEBT)).toBeLessThanOrEqual(HAND_CEILING);
+    expect(total(handAllowedAsLedger)).toBeLessThanOrEqual(HAND_ALLOWED_CEILING);
+    expect(total(RAW_COPY_DEBT)).toBeLessThanOrEqual(RAW_COPY_CEILING);
+    expect(total(LINK_DEBT)).toBe(total(linkFound));
+    expect(total(handAllowedAll)).toBe(total(handFound));
+    expect(total(RAW_COPY_DEBT)).toBe(total(rawFound));
   });
 });

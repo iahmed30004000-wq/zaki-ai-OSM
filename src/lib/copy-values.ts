@@ -18,12 +18,22 @@ import { toLatinDigits } from './latin-digits';
 /**
  * Marks that have no glyph: LRM/RLM and the other zero-width joiners
  * (U+200B–U+200F), the embedding and isolate controls (U+202A–U+202E,
- * U+2066–U+2069), the Arabic letter mark (U+061C), the byte-order mark
- * (U+FEFF) and the no-break space (U+00A0).
+ * U+2066–U+2069), the Arabic letter mark (U+061C), the narrow no-break space
+ * (U+202F), the word joiner (U+2060), the byte-order mark (U+FEFF) and the
+ * no-break space (U+00A0). Written as escapes so the source holds no mark
+ * that an editor could swallow.
  */
-const INVISIBLE = /[​-‏‪-‮⁦-⁩؜﻿ ]/g;
+const INVISIBLE = /[​-‏‪- ⁠⁦-⁩؜﻿ ]/g;
 
 const clean = (s: string | null | undefined): string => (s ?? '').replace(INVISIBLE, '').trim();
+
+/**
+ * A field that holds MORE THAN ONE number, or a number and an extension:
+ * a slash, a comma (Latin or Arabic), a semicolon, a vertical bar, a line
+ * break, «ext» or «داخلي»/«تحويلة». Stripping such a field down to digits
+ * glues two numbers into one that dials nobody.
+ */
+const MORE_THAN_ONE = /[/,،;؛|\n\r]|\bext\b|داخلي|تحويلة/i;
 
 /** The order number, as the screen prints it. */
 export function orderNumberToCopy(shown: string | null | undefined): string {
@@ -32,13 +42,21 @@ export function orderNumberToCopy(shown: string | null | undefined): string {
 
 /**
  * The phone, as a dialler is handed it: Latin digits and a `+`, nothing
- * decorative — the same cleaning the `tel:` link beside it applies. When
- * fewer than five digits survive it is not a number the cleaning can speak
- * for, so what the row held is copied (still in Latin digits, still without
- * invisible marks) rather than a stump.
+ * decorative. The `tel:` link beside it (`ContactButtons`) strips with
+ * `[^\d+]`, which does not see Arabic-Indic digits at all, so this reads them
+ * as Latin FIRST — the copy is therefore at least as complete as the link.
+ *
+ * Two cases hand the row's text back instead of a cleaned number:
+ *   · the field holds several numbers or an extension (see `MORE_THAN_ONE`):
+ *     what the row said is copied as it is, minus invisible marks — the
+ *     person picks the one they need;
+ *   · fewer than five digits survive, so it is not a number the cleaning can
+ *     speak for: the row text, in Latin digits, rather than a stump.
  */
 export function phoneToCopy(shown: string | null | undefined): string {
-  const readable = toLatinDigits(clean(shown));
+  const text = clean(shown);
+  if (MORE_THAN_ONE.test(text)) return text;
+  const readable = toLatinDigits(text);
   const dialled = readable.replace(/[^\d+]/g, '');
   const digits = dialled.replace(/\D/g, '');
   return digits.length >= 5 ? dialled : readable;

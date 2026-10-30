@@ -38,6 +38,11 @@ import { barcodeToCopy, orderNumberToCopy, phoneToCopy } from '@/lib/copy-values
  * when the row is READ by the server — the row is already counted — so
  * there is no second door here. This file has no request in it, and a test
  * says so.
+ *
+ * IT NEEDS A `ToastProvider` ABOVE IT (the app shell has one). Without it the
+ * failure notice of `CopyValue` goes nowhere: a copy that is refused fails
+ * SILENTLY — no message, no value to select by hand. A screen drawn outside
+ * the shell (a test, a standalone page) must wrap it.
  */
 export function OrderRef({
   id,

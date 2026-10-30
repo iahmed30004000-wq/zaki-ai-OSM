@@ -273,10 +273,6 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
     'النصف المرسوم من بطاقة «مهمّتك الجاية» — يُصدَّر ليصيّره اختبارُها بمهمّة جاهزة بلا جلسة؛ `MissionCard` نفسها هي ما تستخدمه الشاشة.',
 
   /*
-   * Same shape as `MissionCardView`: rendered by its own file (the «إضافة استثناء» dialog of UserDetailScreen), and
-   * exported so its test can draw the list with a role already in hand, without faking the whole user page.
-   */
-  /*
    * `OrderRef` LANDS FIRST AND THE SCREENS FOLLOW, ON PURPOSE.
    *
    * The copy buttons beside an order number are built as one component, with
@@ -289,6 +285,10 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
   'src/components/orders/OrderRef.tsx:OrderRef':
     'مكوّن رقم الطلب مع أزرار النسخ — مبنيٌّ ومحروسٌ بحارس الدَّين، وتنتقل إليه الشاشات واحدةً واحدةً بطلباتٍ لاحقة؛ يخرج من هذه القائمة بأول شاشة.',
 
+  /*
+   * Same shape as `MissionCardView`: rendered by its own file (the «إضافة استثناء» dialog of UserDetailScreen), and
+   * exported so its test can draw the list with a role already in hand, without faking the whole user page.
+   */
   'src/components/screens/UserDetailScreen.tsx:PermissionPicker':
     'قائمة الصلاحيات بنافذة «إضافة استثناء» — ترسمها شاشة المستخدم نفسها، وتُصدَّر ليرسمها اختبارُها بدور جاهز بلا صفحة كاملة.',
 };
