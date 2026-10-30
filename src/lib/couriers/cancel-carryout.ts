@@ -27,6 +27,19 @@ import { COURIER_CANCEL_AR, courierCancelMessage } from './change';
  * one transaction stays the one that stops an order.
  */
 
+/**
+ * THE REASON THE COURIER READS.
+ *
+ * «سبب آخر» alone says nothing to the company, so for OTHER the sentence the
+ * request was raised with goes beside it: «سبب آخر: …». Every other reason
+ * is its own words.
+ */
+export function reasonForCourier(request: { reason: string; cancelReason: string | null }): string {
+  const named = REJECTION_REASON_AR[request.cancelReason ?? ''];
+  if (!named) return request.reason;
+  return request.cancelReason === 'OTHER' && request.reason.trim() ? named + ': ' + request.reason.trim() : named;
+}
+
 export interface CarryOutResult {
   status: number;
   body: Record<string, unknown>;
@@ -61,7 +74,7 @@ export async function courierCancelCarryOut(input: {
         message: courierCancelMessage({
           orderNumber: order.orderNumber,
           trackingNumber: order.trackingNumber,
-          reason: REJECTION_REASON_AR[request.cancelReason ?? ''] ?? request.reason,
+          reason: reasonForCourier(request),
         }),
       },
     };

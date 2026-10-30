@@ -174,7 +174,7 @@ export async function POST(req: Request) {
       }
     }
     /** «أخرى» on an approved request is explained by the customer's own sentence it was raised with. */
-    const explained = note?.trim() || (viaRequest && reason === 'OTHER' ? viaRequest.reason : undefined);
+    let explained = note?.trim() || (viaRequest && reason === 'OTHER' ? viaRequest.reason : undefined);
 
     const order = await db.order.findFirst({
       where: { id: orderId, companyId, storeId },
@@ -293,15 +293,33 @@ export async function POST(req: Request) {
        * already carries a reason is never rewritten.
        */
       if (viaRequest && chosenByDecider) {
-        await db.orderChangeRequest.updateMany({
+        const wrote = await db.orderChangeRequest.updateMany({
           where: { id: viaRequest.id, companyId, cancelReason: null },
           data: { cancelReason: reason },
         });
-        await logAudit({
-          companyId, userId: user.id, action: 'CHANGE_REQUEST_CANCEL_REASON_CHOSEN',
-          entity: 'Order', entityId: order.id,
-          newData: { requestId: viaRequest.id, cancelReason: reason, by: user.name },
-        });
+        if (wrote.count === 1) {
+          await logAudit({
+            companyId, userId: user.id, action: 'CHANGE_REQUEST_CANCEL_REASON_CHOSEN',
+            entity: 'Order', entityId: order.id,
+            newData: { requestId: viaRequest.id, cancelReason: reason, by: user.name },
+          });
+        } else {
+          /*
+           * SOMEBODY ELSE PRESSED FIRST. Their write stands, so the audit is
+           * not written for a choice that was not kept, and THIS press is
+           * carried out under the reason the request actually holds — not
+           * the one in this body.
+           */
+          const kept = await db.orderChangeRequest.findFirst({
+            where: { id: viaRequest.id, companyId },
+            select: { cancelReason: true },
+          });
+          if (kept?.cancelReason) {
+            reason = kept.cancelReason;
+            viaRequest.cancelReason = kept.cancelReason;
+            explained = note?.trim() || (reason === 'OTHER' ? viaRequest.reason : undefined);
+          }
+        }
       }
       data = {
         claimedById: null,

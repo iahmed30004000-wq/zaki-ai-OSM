@@ -18,7 +18,7 @@ const { db, requireContext, requirePermission, can, logAudit, endOrder, courierC
     order: { findFirst: vi.fn() },
     orderChangeRequest: {
       findFirst: vi.fn<(...a: unknown[]) => Promise<Record<string, unknown> | null>>(),
-      updateMany: vi.fn(async (..._a: unknown[]) => ({ count: 1 })),
+      updateMany: vi.fn<(...a: unknown[]) => Promise<{ count: number }>>(async () => ({ count: 1 })),
     },
     shippingBatch: { findFirst: vi.fn() },
   },
@@ -175,6 +175,43 @@ describe('a request that HAS its reason keeps it', () => {
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(endOrder.mock.calls[0][0].reason).toBe('FAKE_ORDER');
+  });
+});
+
+describe('two deciders press at once, with different reasons', () => {
+  it('the loser is carried out under the reason that was KEPT, and writes no audit for a choice that was not', async () => {
+    // The other press got there first: our conditional write finds nothing to change…
+    db.orderChangeRequest.updateMany.mockResolvedValueOnce({ count: 0 });
+    // …and the request now holds THEIR reason.
+    db.orderChangeRequest.findFirst
+      .mockResolvedValueOnce(approved())
+      .mockResolvedValueOnce({ cancelReason: 'FAKE_ORDER' });
+
+    const res = await press({ reason: 'PRICE_TOO_HIGH' });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(endOrder.mock.calls[0][0]).toMatchObject({ reason: 'FAKE_ORDER' });
+    expect(endOrder.mock.calls[0][0].viaRequest).toMatchObject({ cancelReason: 'FAKE_ORDER' });
+    expect(logAudit.mock.calls.map((c) => c[0].action)).not.toContain('CHANGE_REQUEST_CANCEL_REASON_CHOSEN');
+  });
+
+  it('the loser who is left holding «أخرى» is explained by the customer’s sentence', async () => {
+    db.orderChangeRequest.updateMany.mockResolvedValueOnce({ count: 0 });
+    db.orderChangeRequest.findFirst
+      .mockResolvedValueOnce(approved())
+      .mockResolvedValueOnce({ cancelReason: 'OTHER' });
+
+    const res = await press({ reason: 'PRICE_TOO_HIGH' });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(endOrder.mock.calls[0][0]).toMatchObject({ reason: 'OTHER', rejectionNote: SAID });
+  });
+
+  it('NEGATIVE: the winner (count 1) is audited with their own choice', async () => {
+    await press({ reason: 'PRICE_TOO_HIGH' });
+
+    expect(logAudit.mock.calls.map((c) => c[0].action)).toContain('CHANGE_REQUEST_CANCEL_REASON_CHOSEN');
+    expect(endOrder.mock.calls[0][0]).toMatchObject({ reason: 'PRICE_TOO_HIGH' });
   });
 });
 
