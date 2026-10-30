@@ -178,7 +178,7 @@ export const NAV: NavGroup[] = [
     routes: [
       r('/ops/preparation', 'التجهيز', 'PackageCheck', ['ops.prepare'], 1),
       r('/ops/shipments/new', 'إنشاء شحنة', 'Truck', ['ops.ship'], 2),
-      r('/ops/batches', 'دفعات الشحن', 'Boxes', ['ops.ship', 'ops.track'], 3),
+      r('/ops/batches', 'دفعات الشحن', 'Boxes', ['ops.batches'], 3),
       r('/ops/tracking', 'متابعة الشحن', 'MapPin', ['ops.track'], 4),
       r('/ops/returns', 'المرتجعات', 'Undo2', ['ops.returns'], 5),
     ],

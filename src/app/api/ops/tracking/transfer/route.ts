@@ -40,7 +40,9 @@ const schema = z.object({
 export async function POST(req: Request) {
   try {
     const { user, companyId, storeId, country } = await requireContext();
-    await requirePermission('ops.track');
+    // Moving a parcel to another courier is its own box (PR-8), given by the migration to every holder of `ops.track`.
+    // The packing-table half below (a parcel the company never took) still asks `ops.ship` as well.
+    await requirePermission('ops.transfer');
 
     const parsed = schema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
