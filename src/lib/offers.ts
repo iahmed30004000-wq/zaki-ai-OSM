@@ -588,11 +588,37 @@ export async function activeOffersFor(
   minorUnit: number,
   now: Date = new Date()
 ): Promise<OfferView[]> {
+  const byProduct = await activeOffersForProducts(tx, companyId, [productId], minorUnit, now);
+  return byProduct.get(productId) ?? [];
+}
+
+/**
+ * THE SAME QUESTION FOR MANY PRODUCTS AT ONCE — ONE QUERY, THE SAME PREDICATE, THE SAME VIEW.
+ *
+ * `activeOffersFor` is this with one id, so there is still ONE reader of «what may be bought»: the order lines editor
+ * needs the live offers of every product in a catalogue, and asking one product at a time would be a query per line.
+ * A key is present for every product asked about, with an empty list when it has no live offer.
+ *
+ * A single product is queried exactly as it always was (`productId: <id>`), so the readers and the tests that look at
+ * that query are not disturbed.
+ */
+export async function activeOffersForProducts(
+  tx: Tx,
+  companyId: string,
+  productIds: readonly string[],
+  minorUnit: number,
+  now: Date = new Date()
+): Promise<Map<string, OfferView[]>> {
+  const ids = [...new Set(productIds)];
+  const out = new Map<string, OfferView[]>(ids.map((id) => [id, []]));
+  if (ids.length === 0) return out;
+
   const rows = await tx.offer.findMany({
-    where: { companyId, productId, ...liveOfferWhere(now) },
+    where: { companyId, productId: ids.length === 1 ? ids[0] : { in: ids }, ...liveOfferWhere(now) },
     orderBy: [{ sortOrder: 'asc' }, { quantity: 'asc' }],
     select: {
       id: true,
+      productId: true,
       name: true,
       quantity: true,
       freeQuantity: true,
@@ -609,7 +635,13 @@ export async function activeOffersFor(
   });
 
   const evidence = await evidencedWasPrices(tx, rows);
-  return rows.map((o) => toOfferView(o, minorUnit, evidence.get(o.id)));
+  for (const row of rows) {
+    // A caller's stub may leave `productId` out of a row; with ONE product asked about there is no doubt whose it is.
+    const key = row.productId ?? (ids.length === 1 ? ids[0] : undefined);
+    if (key === undefined) continue;
+    out.get(key)?.push(toOfferView(row, minorUnit, evidence.get(row.id)));
+  }
+  return out;
 }
 
 /**
@@ -767,6 +799,18 @@ export interface OfferView {
   deliveryIncluded: boolean;
   /** The moment this bundle stops — the countdown's only source. */
   endsAt: Date | null;
+}
+
+/**
+ * A LIVE OFFER WITH ITS REDUCTION SAID OUT LOUD — for the lines editor, which shows «٣ بـ٧٥ (وفّرت ٣)» without taking
+ * two numbers apart on the screen.
+ *
+ * `discount` is what the bundle's own reduction really took: the price before it (`listPrice`) less the price charged
+ * (`price`), rounded by the currency — 0 when the bundle has none. Derived from the two figures `toOfferView` already
+ * settled, not read again from the column, so it can never be a reduction the clamp refused.
+ */
+export function withTheReduction(view: OfferView, minorUnit: number): OfferView & { discount: number } {
+  return { ...view, discount: view.listPrice === null ? 0 : roundMinor(view.listPrice - view.price, minorUnit) };
 }
 
 export function toOfferView(

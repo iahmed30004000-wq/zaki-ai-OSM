@@ -6,6 +6,8 @@ import { count, money as amount } from '@/lib/numeric-input';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { computeCod, totalsBeforeDiscount } from '@/lib/money';
+import { activeOffersForProducts, type OfferView } from '@/lib/offers';
+import { offerBoundToLine } from '@/lib/offer-line-price';
 import { hasEverShipped, hasLeftWarehouse, deriveCoreState, getZone, type StateSource } from '@/lib/order-state';
 import { endOrder, releaseCourierParcel } from '@/lib/order-cancel';
 import { consumeOrderStock } from '@/lib/stock-consumption';
@@ -459,7 +461,38 @@ export async function GET(
       Number(order.discountAmount ?? 0),
       country.minorUnit
     );
-    const items = (order.items ?? []).map((line, i) => ({ ...line, beforeDiscount: beforeDiscount[i] }));
+    const itemsBefore = (order.items ?? []).map((line, i) => ({ ...line, beforeDiscount: beforeDiscount[i] }));
+
+    /*
+     * WHICH LIVE OFFER EACH LINE WAS SOLD ON — READ ONLY, FOR THE LINES EDITOR.
+     *
+     * `OrderItem` has no offer column, so the offer is recognised by the figure: a whole number of a live offer's
+     * bundles at that offer's price (`offerBoundToLine`, the same test `order-line-edit.ts` applies to the order's
+     * one offer). `boundOfferId` is that offer's id, or null when the line fits none — a typed price, pieces left over,
+     * an offer that has ended. `giftUnits` is what the bound offer gives for the line's bundles, or null when unbound,
+     * and null means «not known», never «none»: a line this cannot recognise keeps the gift it already has.
+     *
+     * NOTHING IS WRITTEN OR CHANGED BY THIS. The stored columns go out beside it exactly as before, and when the read
+     * of the live offers fails both keys are simply absent — the order must open whatever happens to the extras.
+     */
+    let liveOffers: Map<string, OfferView[]> | null = null;
+    if (itemsBefore.length > 0) {
+      try {
+        liveOffers = await activeOffersForProducts(db, companyId, itemsBefore.map((l) => l.productId), country.minorUnit);
+      } catch {
+        liveOffers = null;
+      }
+    }
+    const items = itemsBefore.map((line) => {
+      if (!liveOffers) return line;
+      const bound = offerBoundToLine(
+        { quantity: line.quantity, freeQuantity: line.freeQuantity, total: line.beforeDiscount },
+        liveOffers.get(line.productId) ?? [],
+        country.minorUnit,
+        order.offerId
+      );
+      return { ...line, boundOfferId: bound ? bound.offer.id : null, giftUnits: bound ? bound.gift : null };
+    });
 
     // Decimal never leaves as a Decimal: the browser would receive a string
     // and `money()` would render it as NaN.

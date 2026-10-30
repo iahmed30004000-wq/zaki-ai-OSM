@@ -11,10 +11,11 @@ import { maySeeCost, withoutCost } from '@/lib/cost-visibility';
 import { productScopeWhere } from '@/lib/product-scope';
 import { deliveredUnitsByProduct } from '@/lib/product-sold';
 import { BASE_PRICE_NOT_A_NUMBER, readBasePrice } from '@/lib/product-base-price';
+import { activeOffersForProducts, withTheReduction, type OfferView } from '@/lib/offers';
 
 export async function GET(req: Request) {
   try {
-    const { user, companyId, storeId } = await requireContext();
+    const { user, companyId, storeId, country } = await requireContext();
 
     // Canonical gate — products.view, resolved to its effective scope so the
     // list query can filter at the SQL level (no JS filtering).
@@ -111,6 +112,25 @@ export async function GET(req: Request) {
     const showCost = maySeeCost(user);
 
     /**
+     * THE OFFERS ON SALE RIGHT NOW, BESIDE `offers` AND NOT INSTEAD OF IT.
+     *
+     * `offers` above is every row the product has — stopped, finished, the one shown only after an order — and a good
+     * many screens read it as exactly that, so it is left word for word. `liveOffers` is the other question, «what
+     * may be sold today»: the one reader every door uses (`activeOffersForProducts`), so a list that offers a bundle
+     * to somebody pricing a line offers only one the doors would accept. `price` in it is what the customer is charged
+     * (after the bundle's own reduction); `listPrice` is the figure before it, or null; `discount` is the difference.
+     *
+     * BEST-EFFORT, and it must stay so: an extra field is no reason for the catalogue not to load. When the read fails
+     * the key is simply absent, which every reader treats as «no live offer known».
+     */
+    let liveOf: Map<string, OfferView[]> | null = null;
+    try {
+      liveOf = await activeOffersForProducts(db, companyId, products.map((p) => p.id), country.minorUnit);
+    } catch {
+      liveOf = null;
+    }
+
+    /**
      * ONE «متوسط تكلفة الوحدة», AND IT IS THE ONE product-cost.ts OWNS.
      *
      * This used to be computed here by hand as `totalProductionCost /
@@ -159,6 +179,7 @@ export async function GET(req: Request) {
 
       return {
         ...prod,
+        ...(liveOf ? { liveOffers: (liveOf.get(prod.id) ?? []).map((o) => withTheReduction(o, country.minorUnit)) } : {}),
         // The batches keep their quantities and dates for everybody; their
         // money is dropped, not zeroed — a zero is a claim, and «this cost
         // nothing» is a false one.
