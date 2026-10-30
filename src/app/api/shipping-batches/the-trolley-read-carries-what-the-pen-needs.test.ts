@@ -126,7 +126,7 @@ describe('who is shown the numbers and the address', () => {
   it('the alarm counts a customer whose second number or address left, not only the first number', async () => {
     grant('ops.batches', 'ops.edit_in_batch');
     db.shippingBatch.findFirst.mockResolvedValue(
-      batch('READY', [{ ...order(), customer: { fullName: 'أبو محمد', phone: null, altPhone: '0781111111', address: null, city: 'السويداء' } }])
+      batch('READY', [{ ...order(), customer: { fullName: 'أبو محمد', phone: null, altPhone: '0781111111', address: null, city: 'السويداء' } } as unknown as ReturnType<typeof order>])
     );
     await get();
     expect((noteCustomersHandedOut.mock.calls[0][0] as { rows: unknown[] }).rows).toHaveLength(1);
