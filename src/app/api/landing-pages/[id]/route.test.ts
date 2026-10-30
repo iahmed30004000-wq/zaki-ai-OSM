@@ -123,7 +123,7 @@ describe('the first page of the shelf is the owner’s press', () => {
 
   it('showing a published page that sells something is refused while the store has not switched', async () => {
     page.isPublished = true;
-    const res = await patch({ showInStore: true });
+    const res = await patch({ showInStore: true, askBeforeSwitchingStore: true });
     expect(res.status).toBe(409);
     const json = await res.json();
     expect(json.error).toContain('اعرض كل الصفحات المنشورة');
@@ -135,7 +135,7 @@ describe('the first page of the shelf is the owner’s press', () => {
 
   it('publishing a page that was marked to be shown is refused the same way', async () => {
     page.showInStore = true;
-    const res = await patch({ isPublished: true });
+    const res = await patch({ isPublished: true, askBeforeSwitchingStore: true });
     expect(res.status).toBe(409);
     expect(db.landingPage.update).not.toHaveBeenCalled();
   });
@@ -144,13 +144,13 @@ describe('the first page of the shelf is the owner’s press', () => {
     page.productId = null;
     page.showInStore = true;
     page.isPublished = true;
-    expect((await patch({ productId: PRODUCT })).status).toBe(409);
+    expect((await patch({ productId: PRODUCT, askBeforeSwitchingStore: true })).status).toBe(409);
   });
 
   it('NEGATIVE: a store that already switched takes the same press', async () => {
     page.isPublished = true;
     shownPageProductIds.mockResolvedValue(new Set(['other']));
-    expect((await patch({ showInStore: true })).status).toBe(200);
+    expect((await patch({ showInStore: true, askBeforeSwitchingStore: true })).status).toBe(200);
     expect(db.landingPage.update).toHaveBeenCalled();
   });
 
@@ -177,15 +177,56 @@ describe('the first page of the shelf is the owner’s press', () => {
   it('the permission is still asked first: no key, no answer about the store', async () => {
     page.isPublished = true;
     requirePermission.mockRejectedValue(Object.assign(new Error('forbidden'), { status: 403 }));
-    const res = await patch({ showInStore: true });
+    const res = await patch({ showInStore: true, askBeforeSwitchingStore: true });
     expect(res.status).toBeGreaterThanOrEqual(400);
     expect(shownPageProductIds).not.toHaveBeenCalled();
     expect(db.landingPage.update).not.toHaveBeenCalled();
   });
 });
 
+describe('a window that did not say it will ask', () => {
+  /*
+   * THE EDITOR IN USE HAS NO QUESTION TO SHOW. Its publish of a marked page
+   * with a product worked before this change and must keep working: the 409
+   * is for a window that sends the flag `askBeforeSwitchingStore: true`.
+   */
+  beforeEach(() => {
+    page.productId = PRODUCT;
+  });
+
+  it('shows a published page exactly as before: no 409, the shelf is not even asked', async () => {
+    page.isPublished = true;
+    const res = await patch({ showInStore: true });
+    expect(res.status).toBe(200);
+    expect((db.landingPage.update.mock.calls[0]![0].data as Record<string, unknown>).showInStore).toBe(true);
+    expect(shownPageProductIds).not.toHaveBeenCalled();
+  });
+
+  it('publishes a marked page exactly as before', async () => {
+    page.showInStore = true;
+    expect((await patch({ isPublished: true })).status).toBe(200);
+    expect(publishContent).toHaveBeenCalledWith('lp1');
+  });
+
+  it('NEGATIVE: saying false is the same as not saying it', async () => {
+    page.isPublished = true;
+    expect((await patch({ showInStore: true, askBeforeSwitchingStore: false })).status).toBe(200);
+    expect(shownPageProductIds).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE: the flag is not stored on the page', async () => {
+    page.isPublished = true;
+    await patch({ showInStore: true, askBeforeSwitchingStore: true });
+    shownPageProductIds.mockResolvedValue(new Set(['other']));
+    await patch({ showInStore: true, askBeforeSwitchingStore: true });
+    for (const call of db.landingPage.update.mock.calls) {
+      expect('askBeforeSwitchingStore' in (call[0].data as object)).toBe(false);
+    }
+  });
+});
+
 describe('a body that asks for nothing', () => {
-  it.each([[{}], [undefined], [{ nothing: 1 }]])('%j is a 400 and writes nothing', async (body) => {
+  it.each([[{}], [undefined], [{ nothing: 1 }], [{ askBeforeSwitchingStore: true }]])('%j is a 400 and writes nothing', async (body) => {
     expect((await patch(body)).status).toBe(400);
     expect(db.landingPage.update).not.toHaveBeenCalled();
   });

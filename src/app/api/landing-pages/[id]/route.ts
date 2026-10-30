@@ -120,6 +120,17 @@ export async function PATCH(req: Request, ctx: Ctx) {
       showInStore: z.boolean().optional(),
       // '' clears the domain; the page goes back to /lp/<slug> only.
       domain: z.string().trim().max(253).optional().nullable(),
+      /**
+       * THE WINDOW SAYS IT WILL ASK THE SELLER, so it may be told «no».
+       *
+       * Without this flag a press that makes a page the store's first shelf
+       * page goes through exactly as it always did — the editor in use today
+       * has no question to show for a refusal, and a publish that used to
+       * work must not start failing. A window that has the question sends
+       * `true` and gets the 409 `STORE_NOT_SWITCHED` to turn into it. It
+       * asks for nothing by itself: never an edit, never a permission.
+       */
+      askBeforeSwitchingStore: z.boolean().optional(),
     });
     const parsed = schema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
@@ -127,7 +138,8 @@ export async function PATCH(req: Request, ctx: Ctx) {
     }
     // A body that names nothing asked for nothing: it used to pass every
     // check (no field, so no permission) and write an empty update.
-    if (Object.values(parsed.data).every((v) => v === undefined)) {
+    const { askBeforeSwitchingStore, ...edits } = parsed.data;
+    if (Object.values(edits).every((v) => v === undefined)) {
       return NextResponse.json({ error: 'لم يُرسل أي تعديل' }, { status: 400 });
     }
 
@@ -215,6 +227,11 @@ export async function PATCH(req: Request, ctx: Ctx) {
      * So when this change would make the page the first of its kind and the
      * store has not switched, it is refused and the sentence names the press.
      * A store that already switched takes the change as before.
+     *
+     * ONLY FOR A WINDOW THAT ASKED (`askBeforeSwitchingStore: true`). The
+     * editor in use has no question to show, and refusing it would break a
+     * publish that works today; it keeps the old behaviour until the new
+     * editor, which sends the flag, replaces it.
      */
     const feedsShelf = (shown: boolean, published: boolean, product: string | null) => shown && published && !!product;
     const willFeed = feedsShelf(
@@ -222,7 +239,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
       parsed.data.isPublished ?? lp.isPublished,
       parsed.data.productId !== undefined ? parsed.data.productId : lp.productId
     );
-    if (willFeed && !feedsShelf(lp.showInStore, lp.isPublished, lp.productId)) {
+    if (askBeforeSwitchingStore === true && willFeed && !feedsShelf(lp.showInStore, lp.isPublished, lp.productId)) {
       if ((await shownPageProductIds(companyId, storeId)).size === 0) {
         return NextResponse.json(
           {
