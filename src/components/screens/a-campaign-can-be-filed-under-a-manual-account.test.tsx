@@ -24,6 +24,10 @@ import React from 'react';
 const { apiJson, confirmFn } = vi.hoisted(() => ({ apiJson: vi.fn(), confirmFn: vi.fn() }));
 vi.mock('@/lib/api-client', () => ({ apiJson: (...a: unknown[]) => apiJson(...a) }));
 vi.mock('@/components/ui/Confirm', () => ({ useConfirm: () => confirmFn }));
+// was: no session — the screen draws its writes only for «campaigns.manage» since PR-11, so it asks who is looking.
+vi.mock('@/context/AppContext', () => ({
+  useApp: () => ({ currentUser: { id: 'u1', name: 'م', role: 'MODERATOR', status: 'ACTIVE', permissions: ['campaigns.view', 'campaigns.manage'] } }),
+}));
 vi.mock('@/hooks/useLiveRefresh', () => ({
   useLiveRefresh: (load: () => Promise<void>) => {
     React.useEffect(() => {

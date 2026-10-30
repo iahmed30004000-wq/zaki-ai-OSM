@@ -135,11 +135,13 @@ describe('the owner, whose account carries no company', () => {
 });
 
 describe('and nothing widened while fixing it', () => {
-  it('a user without products.edit still cannot name one', async () => {
+  // was: 'a user without products.edit still cannot name one' — the writes ask categories.manage since PR-11.
+  it('a user without categories.manage still cannot name one', async () => {
     can.mockReturnValue(false);
     const res = await post({ name: 'العطور' });
 
     expect(res.status).toBe(403);
+    expect(can).toHaveBeenCalledWith(expect.anything(), 'categories.manage');
     expect(db.category.create).not.toHaveBeenCalled();
   });
 

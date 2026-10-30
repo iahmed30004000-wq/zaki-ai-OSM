@@ -247,7 +247,7 @@ export const NAV: NavGroup[] = [
       // The DETAIL of the dashboard (owner, 24/10): a link there («التفاصيل»), not a second
       // menu line, for whoever can open the dashboard. Whoever cannot keeps it as a line.
       { ...r('/growth/performance', 'لوحة الأداء', 'Gauge', ['reports.view']), foldedUnder: '/dashboard' },
-      r('/growth/campaigns', 'الحملات', 'Megaphone', ['reports.view']),
+      r('/growth/campaigns', 'الحملات', 'Megaphone', ['campaigns.view']),
 
       /**
        * THE AI'S WORK IS HERE; ITS WIRING IS IN THE SETTINGS.

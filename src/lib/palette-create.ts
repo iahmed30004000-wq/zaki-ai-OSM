@@ -68,7 +68,7 @@ export const CREATABLES: readonly Creatable[] = [
   { key: 'product', label: 'إضافة منتج', icon: 'PackagePlus', route: '/products', needs: 'products.create', words: ['منتج', 'صنف', 'بضاعة', 'سلعة'] },
   { key: 'customer', label: 'إضافة عميل', icon: 'Users', route: '/customers', needs: 'customers.create', words: ['عميل', 'زبون', 'عملاء'] },
   { key: 'user', label: 'موظف جديد', icon: 'UserCog', route: '/admin/users', needs: 'users.create', words: ['موظف', 'مستخدم', 'حساب', 'فريق'] },
-  { key: 'campaign', label: 'حملة جديدة', icon: 'Megaphone', route: '/growth/campaigns', needs: 'reports.view', words: ['حملة', 'حملات', 'اعلان', 'إعلان', 'إعلانات'] },
+  { key: 'campaign', label: 'حملة جديدة', icon: 'Megaphone', route: '/growth/campaigns', needs: 'campaigns.manage', words: ['حملة', 'حملات', 'اعلان', 'إعلان', 'إعلانات'] },
 ];
 
 /** The rows this account is told about. `can` is the server's permission check; the registry takes it as a parameter for this. */
