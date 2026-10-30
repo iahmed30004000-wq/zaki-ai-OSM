@@ -180,6 +180,8 @@ const ID_SCOPED: Record<string, Excuse> = {
   'app/api/whatsapp/conversations/[id]/route.ts': { reason: 'مقيَّد بـ customerId واحد — محادثةٌ بعينها', sites: 1 },
   'lib/commission-metrics.ts': { reason: 'مقيَّد بـ orderId: { in } ومستخدمٍ واحد', sites: 1 },
   'lib/couriers/dispatch.ts': { reason: 'مقيَّد بـ shippingBatchId واحد', sites: 1 },
+  // new (طلب التعديل م٢): قراءتا أسطر وإضافات طلبٍ واحد مُتحقَّق منه (orderId + companyId) لمعاينة التعديل — قراءةٌ صرفة.
+  'lib/order-edit-facts.ts': { reason: 'مقيَّد بـ orderId واحد — سطورُ طلبٍ بعينه وإضافاتُه (معاينة التعديل)', sites: 2 },
   'lib/customer-risk.ts': { reason: 'مقيَّد بالعميل نفسِه — تاريخُ شخصٍ لا رقمُ متجر', sites: 3 },
   'lib/jobs/definitions/sync-courier-status.ts': { reason: 'مقيَّد بمندوبٍ واحد وبوليصةٍ موجودة', sites: 1 },
   'lib/landing-analytics.ts': { reason: 'مقيَّد بـ campaignIds مُسمّاة', sites: 1 },
