@@ -1,7 +1,7 @@
 import type { JobDefinition } from '../runner';
 import { watchdog } from './watchdog';
 import { dailyBackup } from './daily-backup';
-import { syncCourierStatus, POLL_BATCH, forgetCourierPollCursor } from './sync-courier-status';
+import { syncCourierStatus, POLL_BATCH } from './sync-courier-status';
 import { releaseClaims } from './release-stale-claims';
 import { surfacePostponed } from './surface-postponed';
 import { staleReturns } from './stale-returns';
@@ -18,7 +18,6 @@ export {
   releaseClaims,
   accrueCommission,
   POLL_BATCH,
-  forgetCourierPollCursor,
   syncCourierStatus,
   surfacePostponed,
   staleReturns,

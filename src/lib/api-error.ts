@@ -187,6 +187,11 @@ export function apiError(error: unknown): ApiErrorResult {
    * entirely theirs to resolve; the sentence the code had already written,
    * which names the two numbers, was thrown away on the way out.
    *
+   * (30/10, P0-13: only the stocktake door still throws it. The delivery
+   * doors below no longer do — a delivery is recorded whatever the shelf
+   * says, see `consumeOrderStock`; the list is kept as the history of why
+   * the branch is in the shared mapper.)
+   *
    * ONE BRANCH, NOT FIVE. Five doors reach this thrower — the stocktake
    * shortfall in `/api/inventory`, and `consumeOrderStock` from
    * `/api/orders/[id]`, `/api/orders/[id]/shipping`,

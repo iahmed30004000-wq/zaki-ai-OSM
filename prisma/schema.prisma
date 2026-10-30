@@ -1008,6 +1008,11 @@ model Order {
   trackingMissCount         Int       @default(0) @map("tracking_miss_count")
   trackingMissingSince      DateTime? @map("tracking_missing_since")
   trackingMissingAlertedAt  DateTime? @map("tracking_missing_alerted_at")
+  /// When the courier was last ASKED about this parcel (RV146). The status poll takes the parcels never asked, then the
+  /// ones asked longest ago, sixty a sweep, so a restart no longer starts every courier again from the same first ones.
+  /// Written only by raw SQL in `couriers/poll-stamp.ts`: a bookkeeping stamp must not move `updatedAt`, which the
+  /// media buyer's hourly read pages by. Null = never asked. Not money, not a status.
+  courierPolledAt           DateTime? @map("courier_polled_at")
   /// When this order was handed to the courier's API, set BEFORE the call.
   ///
   /// The claim, not the record: a second dispatcher finds it already set

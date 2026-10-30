@@ -112,9 +112,8 @@ async function main() {
       consumeOrderStock(tx, {
         orderId: order.id,
         companyId: order.companyId,
-        // Stock cannot go negative here: this is history being recorded, and
-        // a negative balance would be a number nobody can act on.
-        allowNegativeStock: false,
+        // No stock rule is passed (P0-13): a delivery is recorded whatever the shelf says. The shelf still never
+        // goes below zero; what it could not give is counted in `short` below and written as a review line.
         userId: null,
       })
     );

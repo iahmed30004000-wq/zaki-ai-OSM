@@ -1,0 +1,22 @@
+-- «متى سألنا الشركة عن هذا الطرد آخر مرة» (RV146) — the status poll's place, kept in the database instead of the process.
+--
+-- The poll asks a courier about at most sixty parcels a sweep and used to remember where it stopped IN MEMORY, so every
+-- deploy and every restart sent it back to the same first sixty. This column is the memory: the poll takes the parcels it
+-- has never asked about, then the ones it asked about longest ago, and stamps the ones it just asked.
+--
+-- ONE COLUMN, NULLABLE, NO DEFAULT, NO INDEX. It changes no row, writes no value, touches no status and no money; every
+-- existing order reads null = «never asked», which is exactly where the old in-memory cursor started. Adding a nullable
+-- column with no default is a catalogue change only in Postgres (no table rewrite), so it is instant on any table size.
+-- No index on purpose: the poll's own filter (company, courier, in-transit status) already narrows to the parcels on the
+-- road, and an index on a column stamped sixty times a sweep would cost more than the sort it saves.
+--
+-- Code that runs BEFORE this file (the previous release) never names the column, so it keeps working if this file is
+-- applied first; code that runs AFTER it needs the column. docker-entrypoint.sh runs `prisma migrate deploy` at every
+-- start, before the server, so the column arrives first. The owner MAY apply it by hand before the Redeploy (optional):
+--   npx prisma db execute --file prisma/migrations/20261030200000_courier_polled_at/migration.sql --schema prisma/schema.prisma
+--   npx prisma migrate resolve --applied 20261030200000_courier_polled_at
+--
+-- Additive only and idempotent (IF NOT EXISTS): running it twice, or on a database that already has the column, changes
+-- nothing. Rollback: rollback.sql beside this file.
+
+ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "courier_polled_at" TIMESTAMP(3);

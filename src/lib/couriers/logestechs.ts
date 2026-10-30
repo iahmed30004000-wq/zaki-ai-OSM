@@ -1,8 +1,9 @@
 import type { ShippingStatus } from '@/lib/shipping-workflow';
 import { limitFor, paced } from '../outbound-limit';
-import { markOutcomeUnknown } from './types';
+import { errorClassOfHttpStatus, markOutcomeUnknown } from './types';
 import type {
   CourierAdapter,
+  CourierErrorClass,
   CourierEvent,
   CourierShipmentRequest,
   CourierShipmentResult,
@@ -412,12 +413,16 @@ export class LogesTechsAdapter implements CourierAdapter {
           raw: res,
         };
       } catch (e) {
+        // The company's own refusal carries the HTTP status; a timeout, no network or a body that is not JSON
+        // carries none, and is «it did not answer».
+        const errorClass: CourierErrorClass = e instanceof CourierRefusal ? errorClassOfHttpStatus(e.status) : 'UNREACHABLE';
         return {
           trackingNumber: barcode,
           rawStatus: 'ERROR',
           occurredAt: new Date(),
           status: null,
           note: e instanceof Error ? e.message : 'تعذّر الاستعلام',
+          errorClass,
         };
       }
     });

@@ -572,7 +572,6 @@ export async function recordParcelSwap(tx: Tx, p: SwapInput): Promise<SwapResult
   const consumed = await consumeOrderStock(tx as never, {
     orderId: made.id,
     companyId: p.companyId,
-    allowNegativeStock: true,
     userId: p.user.id,
   });
 

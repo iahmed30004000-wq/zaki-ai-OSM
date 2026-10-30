@@ -29,7 +29,7 @@ const ENV = process.env.APP_ENCRYPTION_KEY;
 process.env.APP_ENCRYPTION_KEY = 'd'.repeat(64);
 
 import { encryptJson } from '../secrets';
-import { forgetCourierPollCursor, syncCourierStatus } from './definitions';
+import { syncCourierStatus } from './definitions';
 import type { JobContext } from './runner';
 
 const ctx = { now: new Date(), db } as unknown as JobContext;
@@ -56,7 +56,6 @@ const knowsAllBut = (unknown: string[]) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
-  forgetCourierPollCursor();
   db.deliveryProvider.findMany.mockResolvedValue([BASHA]);
 });
 afterEach(() => vi.unstubAllGlobals());

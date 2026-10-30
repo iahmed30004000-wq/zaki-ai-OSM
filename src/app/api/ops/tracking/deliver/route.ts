@@ -162,7 +162,6 @@ export async function POST(req: Request) {
           minorUnit: country.minorUnit,
           userId: user.id,
           note: parsed.data.note ?? null,
-          allowNegativeStock: country.allowNegativeStock,
         })
       );
 
