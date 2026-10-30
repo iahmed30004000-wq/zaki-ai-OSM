@@ -114,13 +114,19 @@ describe('nothing extra ships to the browser', () => {
 
   it('and puts no secret in a NEXT_PUBLIC_ name', () => {
     // Every NEXT_PUBLIC_ value is compiled into the bundle and is public
-    // whatever it is called. One is allowed, and it is an address.
+    // whatever it is called. Two are allowed: an address, and a yes/no.
+    //
+    // قديم ← جديد (PR-A, A5): ['NEXT_PUBLIC_APP_URL'] ← the same plus NEXT_PUBLIC_SHOW_RESET_LINK. It is the build-time
+    // switch that brings the login page's «forgot password» link back in production (hidden there by default): its whole
+    // value is `true`, nothing else is read from it, and it is named for what it shows, with none of the words that mark a
+    // secret. The «no secret in the name» half is kept and now checked on every allowed name.
     const files = walk(join(process.cwd(), 'src'));
     const names = new Set<string>();
     for (const file of [...files, join(process.cwd(), 'next.config.ts')]) {
       for (const m of readFileSync(file, 'utf8').matchAll(/NEXT_PUBLIC_[A-Z0-9_]+/g)) names.add(m[0]);
     }
-    expect([...names].sort()).toEqual(['NEXT_PUBLIC_APP_URL']);
+    expect([...names].sort()).toEqual(['NEXT_PUBLIC_APP_URL', 'NEXT_PUBLIC_SHOW_RESET_LINK']);
+    for (const name of names) expect(name, 'اسمٌ يوحي بسر').not.toMatch(/SECRET|KEY|TOKEN|PASSWORD|PASS|CREDENTIAL/);
   });
 });
 

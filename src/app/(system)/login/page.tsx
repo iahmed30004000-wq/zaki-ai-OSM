@@ -234,7 +234,7 @@ export default function LoginPage() {
                 {/*
                   «نسيت كلمة المرور» DOES NOTHING ON A REAL SERVER (A5). No mail is sent from here, so the link led a person to
                   a promise nobody keeps; the owner sets a new password from the user's page. It stays in development, where
-                  the token is printed for the developer, and NEXT_PUBLIC_SHOW_FORGOT_PASSWORD=true brings it back in
+                  the token is printed for the developer, and NEXT_PUBLIC_SHOW_RESET_LINK=true brings it back in
                   production (read when the app is built).
                 */}
                 {showForgotLink() && (
