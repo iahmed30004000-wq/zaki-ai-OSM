@@ -69,9 +69,46 @@ function decodeCharRefs(value: string): string {
   });
 }
 
-/** Sanitize untrusted landing HTML. Returns cleaned HTML string. */
+/**
+ * Sanitize untrusted landing HTML. Returns cleaned HTML string.
+ *
+ * RUN UNTIL NOTHING CHANGES. The rules inside `sanitizeOnce` delete or
+ * neutralise, and a rule that runs LATE in a pass (step 7, the CSS of a
+ * style block) can put back together what an EARLIER rule had already
+ * looked at. MEASURED on the single pass: inside an svg a style element's
+ * text is parsed as live markup, and `<svg><style><scr/` + `**` + `/ipt>…`
+ * came out as a working script tag, because the comment that split the word
+ * was removed by a step that ran AFTER the step that looks for scripts. So
+ * the whole pipeline repeats on its own output until it is a fixed point.
+ * Past the cap the input is adversarial and the answer is nothing: a
+ * sanitizer that cannot finish does not get to say «clean».
+ */
+const MAX_SANITIZE_PASSES = 8;
+
+/*
+ * THE SEPARATOR BEFORE AN ATTRIBUTE IS NOT ALWAYS A SPACE. An HTML parser
+ * starts a new attribute after whitespace, after a slash (`<form/action=…>`)
+ * and straight after a closing quote (`<form id="a"action=…>`); the two
+ * rules these serve matched whitespace alone — the same hole step 3 closed
+ * for handlers. The separator goes with the attribute, except a quote, which
+ * belongs to the attribute BEFORE it and must stay or that one breaks.
+ */
+const ACTION_ATTR = /[\s/"']action\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
+const FORMACTION_ATTR = /[\s/"']formaction\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
+const keepQuote = (m: string) => (m[0] === '"' || m[0] === "'" ? m[0] : '');
+
 export function sanitizeLandingHtml(html: string): string {
   let out = html ?? '';
+  for (let pass = 0; pass < MAX_SANITIZE_PASSES; pass++) {
+    const next = sanitizeOnce(out);
+    if (next === out) return out;
+    out = next;
+  }
+  return '';
+}
+
+function sanitizeOnce(html: string): string {
+  let out = html;
 
   /*
    * 1+2) REMOVE ACTIVE TAGS — REPEATEDLY, FOR THE REASON STEP 3 ALREADY
@@ -181,8 +218,8 @@ export function sanitizeLandingHtml(html: string): string {
    *    already claimed to remove «action/submit hijacking vectors»; this is
    *    the other half of that sentence.
    */
-  out = out.replace(/<form\b([^>]*)>/gi, (m, attrs: string) => `<form${attrs.replace(/\saction\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')}>`);
-  out = out.replace(/\sformaction\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+  out = out.replace(/<form\b([^>]*)>/gi, (m, attrs: string) => `<form${attrs.replace(ACTION_ATTR, keepQuote)}>`);
+  out = out.replace(FORMACTION_ATTR, keepQuote);
 
   // 6) style attributes with expression()/javascript: are dead in modern
   //    browsers, stripped anyway for depth:
@@ -203,17 +240,64 @@ export function sanitizeLandingHtml(html: string): string {
    * here and was stripped there.
    */
   out = out.replace(
-    /(<style\b[^>]*>)([\s\S]*?)(<\/style\b[^>]*>)/gi,
+    // `|$`: a style element with NO end tag runs to the end of the document in
+    // a browser, so it is CSS all the way down and is held to the CSS rules.
+    /(<style\b[^>]*>)([\s\S]*?)(<\/style\b[^>]*>|$)/gi,
     (_m, open: string, css: string, close: string) => `${open}${sanitizeLandingCss(css)}${close}`
   );
 
   return out;
 }
 
+/**
+ * CSS ESCAPES THAT SPELL A PLAIN LETTER, DIGIT, HYPHEN OR UNDERSCORE.
+ *
+ * `@\69mport` is `@import` to a CSS parser, and `\6a avascript:` is
+ * `javascript:`; every rule below looks for the literal word. Only escapes
+ * whose result is an ordinary identifier character are decoded — the text
+ * means the same afterwards, which is why it is safe to WRITE BACK — and
+ * every other escape (`\3c `, `\"`, `\a ` for a newline in a string) is left
+ * exactly as it was.
+ */
+function unescapeIdentifierChars(css: string): string {
+  return css.replace(/\\(?:([0-9a-f]{1,6})[ \t\n\r\f]?|([^\n\r\f0-9a-f]))/gi, (whole, hex?: string, single?: string) => {
+    if (hex) {
+      const code = parseInt(hex, 16);
+      const plain =
+        (code >= 0x30 && code <= 0x39) || (code >= 0x41 && code <= 0x5a) ||
+        (code >= 0x61 && code <= 0x7a) || code === 0x2d || code === 0x5f;
+      return plain ? String.fromCharCode(code) : whole;
+    }
+    return single && /[a-z]/i.test(single) ? single : whole;
+  });
+}
+
 /** Sanitize untrusted landing CSS. Returns cleaned CSS string. */
 export function sanitizeLandingCss(css: string): string {
   let out = css ?? '';
+
   /*
+   * COMMENTS FIRST, AND ESCAPES WITH THEM.
+   *
+   * Both were handled last (the comments) or not at all (the escapes), so
+   * every rule below judged text a CSS parser does not see: `@/**\/import`,
+   * `@\69mport` and `expr/**\/ession(` all came through, and a comment
+   * removed at the END rejoins whatever it was splitting AFTER the rules had
+   * looked. Removed in a loop, because taking one comment out can close the
+   * gap of another (`/` + comment + `*`).
+   */
+  for (let before = ''; before !== out; ) {
+    before = out;
+    out = out.replace(/\/\*[\s\S]*?\*\//g, '');
+  }
+  out = unescapeIdentifierChars(out);
+
+  /*
+   * THE RULES, REPEATED UNTIL NOTHING CHANGES: removing `@import …;` from
+   * `@imp@import;ort url(x);` leaves `@import url(x);`. Every rule only
+   * deletes or replaces with something that cannot match again, so it ends;
+   * the cap is for input built to make it not.
+   *
    * expression(), behavior, -moz-binding (old IE vectors, dead but stripped).
    *
    * ONE LEVEL OF NESTING, because `[^)]*` stopped at the FIRST `)` — which
@@ -222,38 +306,49 @@ export function sanitizeLandingCss(css: string): string {
    * the declaration after it was swallowed by a parser reading unbalanced
    * CSS. A sanitizer that leaves broken syntax breaks pages it approved.
    */
-  out = out.replace(/expression\s*\((?:[^()]|\([^()]*\))*\)/gi, '');
-  out = out.replace(/behavior\s*:[^;}]+;?/gi, '');
-  out = out.replace(/-moz-binding\s*:[^;}]+;?/gi, '');
-  // @import can fetch remote CSS (and old-IE javascript: URLs)
-  out = out.replace(/@import[^;]+;?/gi, '');
-  // javascript: / data:text/html URLs in url(...) — one level of nesting,
-  // for the same reason as `expression` above: `url(javascript:alert(1))`
-  // left `url("#"))` and an unbalanced bracket in the sheet.
-  out = out.replace(
-    /url\s*\(\s*(['"]?)\s*(?:j\s*a\s*v\s*a\s*s\s*c\s*r\s*i\s*p\s*t|v\s*b\s*s\s*c\s*r\s*i\s*p\s*t|d\s*a\s*t\s*a\s*:\s*t\s*e\s*x\s*t\s*\/\s*h\s*t\s*m\s*l)(?:[^()]|\([^()]*\))*\)/gi,
-    'url("#")'
-  );
-  // comments can be used to split tokens in old filters — normalize
-  out = out.replace(/\/\*[\s\S]*?\*\//g, '');
+  let settled = false;
+  for (let pass = 0; pass < 10 && !settled; pass++) {
+    const before = out;
+    out = out.replace(/expression\s*\((?:[^()]|\([^()]*\))*\)/gi, '');
+    out = out.replace(/behavior\s*:[^;}]+;?/gi, '');
+    out = out.replace(/-moz-binding\s*:[^;}]+;?/gi, '');
+    // @import can fetch remote CSS (and old-IE javascript: URLs). With no `;`
+    // it runs to the end of the sheet, which is what a browser does too.
+    out = out.replace(/@import[^;]*;?/gi, '');
+    // javascript: / data:text/html URLs in url(...) — one level of nesting,
+    // for the same reason as `expression` above: `url(javascript:alert(1))`
+    // left `url("#"))` and an unbalanced bracket in the sheet.
+    out = out.replace(
+      /url\s*\(\s*(['"]?)\s*(?:j\s*a\s*v\s*a\s*s\s*c\s*r\s*i\s*p\s*t|v\s*b\s*s\s*c\s*r\s*i\s*p\s*t|d\s*a\s*t\s*a\s*:\s*t\s*e\s*x\s*t\s*\/\s*h\s*t\s*m\s*l)(?:[^()]|\([^()]*\))*\)/gi,
+      'url("#")'
+    );
+    settled = out === before;
+  }
+  if (!settled) return '';
+
   /*
-   * A STYLE ELEMENT ENDS AT THE FIRST END TAG, WHATEVER CSS IS IN THE MIDDLE.
+   * NO TAG CAN BE OPENED FROM INSIDE A STYLE ELEMENT, AND NO COMMENT CLOSED.
    *
    * This CSS goes into a style element twice — the raw route wraps the
    * page's CSS field in one, and a style block of the uploaded HTML is held
    * to this function — and the HTML parser looks for the end tag before it
    * reads one declaration. MEASURED: `a{}</style><script>…</script>` came
-   * back byte for byte, and the raw route put it in the document as a real
-   * script tag AFTER the sanitizer had run, because the CSS field is
-   * injected last.
+   * back byte for byte. Inside an svg or a math element it is worse: a style
+   * element's text is parsed as live MARKUP there, so any `<script` or
+   * `<img` in it is a tag. And the CSS field is spliced into a document
+   * that may have a comment or an attribute open at that point, where
+   * `-->` or a quote ends it.
    *
-   * The same CSS with the slash escaped is no longer an end tag. ONLY the
-   * `</` before the word is touched: a bare `<` stays, so a media query
-   * written `(width<600px)` keeps working. It runs LAST, after the comments
-   * are gone, because a tag split by a comment is a tag the moment the
-   * comment is removed.
+   * So a `<` that could begin a tag (a letter, `/`, `!` or `?` after it) is
+   * written as the CSS escape for the same character, `\3c `, and the `>` of
+   * a `-->` as `\3e `. They mean exactly what they said to a CSS parser and
+   * are inert to an HTML one. A bare `<` stays, so a media query written
+   * `(width<600px)` keeps working. It runs LAST, after the comments are gone,
+   * because a tag split by a comment is a tag the moment the comment is
+   * removed.
    */
-  out = out.replace(/<\/(?=\s*style)/gi, '<\\/');
+  out = out.replace(/<(?=[a-z/!?])/gi, '\\3c ');
+  out = out.replace(/-->/g, '--\\3e ');
   return out;
 }
 
@@ -290,7 +385,7 @@ export const LANDING_VARIABLES = [
 ] as const;
 
 function escapeHtml(v: string): string {
-  return v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 /**
@@ -314,32 +409,94 @@ export function applyLandingVariables(
 }
 
 /**
+ * THE TEXT OF A DOCUMENT WITH EVERYTHING INERT BLANKED OUT, SAME LENGTH.
+ *
+ * `</head>` is only the end of the head where a parser would take it as a
+ * tag. Inside a comment, inside a quoted attribute value, inside a title or
+ * a textarea (their text is not markup) or inside a script or style, the
+ * same six characters are just text — and splicing a stylesheet in THERE
+ * puts it in the middle of a comment or an attribute, where a `-->` or a
+ * quote in it ends the context and what follows is live. MEASURED:
+ * `<div title='</head>'>` took the CSS into the attribute value.
+ *
+ * The result has the same length as the input, so a position found in it is
+ * a position in the original.
+ */
+export function maskInert(html: string): string {
+  const out = html.split('');
+  const blank = (from: number, to: number) => {
+    for (let k = from; k < to && k < out.length; k++) if (out[k] !== '\n') out[k] = '_';
+  };
+  let i = 0;
+  while (i < html.length) {
+    if (html.startsWith('<!--', i)) {
+      const close = html.indexOf('-->', i + 4);
+      const end = close < 0 ? html.length : close + 3;
+      blank(i, end);
+      i = end;
+      continue;
+    }
+    const open = /^<([a-z][a-z0-9-]*)/i.exec(html.slice(i, i + 40));
+    if (html[i] !== '<' || !open) {
+      i++;
+      continue;
+    }
+    // the tag itself: to the first `>` that is not inside a quoted value
+    let j = i + open[0].length;
+    let quote = '';
+    for (; j < html.length; j++) {
+      const c = html[j];
+      if (quote) {
+        if (c === quote) quote = '';
+        else out[j] = '_';
+      } else if (c === '"' || c === "'") quote = c;
+      else if (c === '>') break;
+    }
+    i = j + 1;
+    // elements whose text is not markup: blank it to the matching end tag
+    const name = open[1].toLowerCase();
+    if (/^(title|textarea|script|style|xmp|noembed|noframes|iframe)$/.test(name)) {
+      // case-insensitive search from here: lower-casing the whole text could change its length
+      const ender = new RegExp('</' + name, 'ig');
+      ender.lastIndex = i;
+      const found = ender.exec(html);
+      const end = found ? found.index : html.length;
+      blank(i, end);
+      i = end;
+    }
+  }
+  return out.join('');
+}
+
+/**
  * PUT THE PAGE'S OWN STYLES INTO ITS DOCUMENT.
  *
- * `base` (the page settings) goes straight after the opening `<head>` and
- * `custom` (the seller's CSS) just before `</head>`, so the base styles are
- * the first word in the cascade and the seller's CSS the last.
+ * Both go just before the `</head>` of the document, `base` (the page
+ * settings) first and `custom` (the seller's CSS) after it. That order is
+ * the one the page always had and it is deliberate: the settings (background,
+ * direction, font) are the seller's choice made in the EDITOR, and they have
+ * to win over a `<style>` that came inside the uploaded file; the seller's
+ * CSS field is the last word of all.
  *
  * THE REPLACEMENT IS A FUNCTION, NEVER A STRING. `String.replace` reads
  * `$'`, `$&` and `$1` in a replacement string, and the CSS is a seller's:
  * `content:"$'"` made the old call paste the rest of the document into the
  * middle of the stylesheet. A function's return value is taken literally.
  *
- * The pattern is the opening `<head>` tag and not `<header>`. A document
- * with no head gets both at its front, as it always did; one with an
- * opening tag and no closing one gets the seller's CSS right after the base.
+ * AND THE `</head>` IS FOUND WHERE A PARSER WOULD FIND IT (see `maskInert`).
+ * With none, both go to the front of the document, as they always did.
+ *
+ * What is spliced in is run through the sanitizer first, on its own: the
+ * whole document cannot be (the server has added its own behaviour script
+ * by now, and that is the one script that is meant to be there), but the
+ * two style elements are exactly what an attacker controls.
  */
-const HEAD_OPEN = /<head(\s[^>]*)?>/i;
-const HEAD_CLOSE = /<\/head>/i;
+const HEAD_CLOSE = /<\/head\s*>/i;
 
 export function injectPageStyles(html: string, base: string, custom: string): string {
-  if (!base && !custom) return html;
-  const opened = HEAD_OPEN.test(html);
-  const closed = HEAD_CLOSE.test(html);
-  if (!opened && !closed) return base + custom + html;
-  let out = html;
-  if (opened) out = out.replace(HEAD_OPEN, (open) => open + base + (closed ? '' : custom));
-  else out = base + out;
-  if (closed) out = out.replace(HEAD_CLOSE, () => custom + '</head>');
-  return out;
+  const injection = sanitizeLandingHtml(base) + sanitizeLandingHtml(custom);
+  if (!injection) return html;
+  const at = HEAD_CLOSE.exec(maskInert(html));
+  if (!at) return injection + html;
+  return html.slice(0, at.index) + injection + html.slice(at.index);
 }

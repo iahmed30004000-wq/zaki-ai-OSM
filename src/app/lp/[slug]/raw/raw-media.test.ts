@@ -116,14 +116,28 @@ describe('the seller css in the served page', () => {
     expect(html.match(/BODY-MARKER/g)).toHaveLength(1);
   });
 
-  it('the page settings land right after <head>, the seller css right before </head>', async () => {
-    const html = await serve({ pageSettings: JSON.stringify({ background: '#112233' }), cssContent: '.a{color:red}' });
+  it("the page settings, then the seller css, both after the file's own style and before </head>", async () => {
+    const own = '<style>body{background:red}</style>';
+    const html = await serve({
+      htmlContent: `<!doctype html><html><head><title>t</title>${own}</head><body><p>BODY-MARKER</p></body></html>`,
+      pageSettings: JSON.stringify({ background: '#112233' }),
+      cssContent: '.a{color:red}',
+    });
     const base = html.indexOf('id="zaki-base-style"');
     const custom = html.indexOf('id="zaki-custom-style"');
-    expect(html.indexOf('<head>')).toBeLessThan(base);
-    expect(base).toBeLessThan(html.indexOf('<title>'));
-    expect(custom).toBeGreaterThan(html.indexOf('</title>'));
+    // the settings are the seller's choice in the editor: they win over the uploaded file's style
+    expect(base).toBeGreaterThan(html.indexOf(own));
+    expect(base).toBeLessThan(custom);
     expect(custom).toBeLessThan(html.indexOf('</head>'));
+  });
+
+  it('a </head> inside a comment is not the end of the head', async () => {
+    const html = await serve({
+      htmlContent: '<!doctype html><!-- </head> --><html><head><title>t</title></head><body><p>BODY-MARKER</p></body></html>',
+      cssContent: '--><img src=x onerror=alert(1)><!--',
+    });
+    expect(html).not.toContain('<img');
+    expect(html.indexOf('zaki-custom-style')).toBeGreaterThan(html.indexOf('</title>'));
   });
 
   // negative: a sound page with sound css comes through whole

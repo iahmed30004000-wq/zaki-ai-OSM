@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { injectPageStyles, sanitizeLandingCss, sanitizeLandingHtml } from './landing-html-sanitize';
+import { sanitizeLandingCss, sanitizeLandingHtml } from './landing-html-sanitize';
 
 /**
  * AN EVENT HANDLER IS REMOVED WHEREVER A PARSER WOULD SEE ONE.
@@ -420,8 +420,12 @@ describe('CSS cannot close its own style element', () => {
 
   // negative: sound CSS passes untouched
   it('a bare < survives — a media query written without spaces still works', () => {
-    const css = '@media (width<600px){.a{color:red}} .b::after{content:"a<b"}';
+    const css = '@media (width<600px){.a{color:red}} .b>.c{margin:0}';
     expect(sanitizeLandingCss(css)).toBe(css);
+  });
+
+  it('a < that could open a tag is written as the CSS escape for the same character', () => {
+    expect(sanitizeLandingCss('.b::after{content:"a<b"}')).toBe('.b::after{content:"a\\3c b"}');
   });
 
   it('ordinary CSS comes back byte for byte', () => {
@@ -464,55 +468,3 @@ describe('javascript: written with named character references', () => {
   });
 });
 
-/**
- * THE SELLER'S CSS IS SPLICED IN LITERALLY.
- */
-describe('injectPageStyles', () => {
-  const base = '<style id="b">body{}</style>';
-  const custom = '<style id="c">a{}</style>';
-  const doc = '<!doctype html><html><head><title>t</title></head><body>BODY-MARKER</body></html>';
-
-  it('the base goes right after <head>, the seller css right before </head>', () => {
-    const out = injectPageStyles(doc, base, custom);
-    expect(out.indexOf('<head>' + base)).toBeGreaterThan(-1);
-    expect(out).toContain(custom + '</head>');
-    expect(out.indexOf(base)).toBeLessThan(out.indexOf('<title>'));
-    expect(out.indexOf(custom)).toBeGreaterThan(out.indexOf('</title>'));
-  });
-
-  it('a $\' in the css does not paste the rest of the document into it', () => {
-    const evil = `<style>a::after{content:"$'"}b::after{content:"$&"}c::after{content:"$\`"}</style>`;
-    const out = injectPageStyles(doc, '', evil);
-    expect(out).toContain(evil + '</head>');
-    expect(out.match(/BODY-MARKER/g)).toHaveLength(1);
-  });
-
-  it('the same in the base styles', () => {
-    const out = injectPageStyles(doc, `<style>x{content:"$'"}</style>`, '');
-    expect(out.match(/BODY-MARKER/g)).toHaveLength(1);
-  });
-
-  it('<header> is not <head>', () => {
-    const out = injectPageStyles('<header>H</header><p>x</p>', base, custom);
-    expect(out).toBe(base + custom + '<header>H</header><p>x</p>');
-  });
-
-  it('a <head> with attributes still takes the base after its opening tag', () => {
-    const out = injectPageStyles('<html><head lang="ar"><meta charset="utf-8"></head><body></body></html>', base, custom);
-    expect(out).toContain('<head lang="ar">' + base + '<meta');
-  });
-
-  it('an opening <head> with no </head> gets both, base first', () => {
-    const out = injectPageStyles('<head><title>t</title><body>x', base, custom);
-    expect(out.startsWith('<head>' + base + custom)).toBe(true);
-  });
-
-  it('no head at all: both go to the front, as before', () => {
-    expect(injectPageStyles('<p>x</p>', base, custom)).toBe(base + custom + '<p>x</p>');
-  });
-
-  // negative: nothing to inject, nothing changes
-  it('with nothing to inject the document is returned as it came', () => {
-    expect(injectPageStyles(doc, '', '')).toBe(doc);
-  });
-});
