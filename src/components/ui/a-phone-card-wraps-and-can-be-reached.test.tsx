@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, render } from '@testing-library/react';
+import { cleanup, render, renderHook } from '@testing-library/react';
+import { useIsPhone } from '@/hooks/useIsPhone';
 import React from 'react';
 import { Rows, type Column } from './Rows';
 import { repoFile, stripComments } from '@/lib/guard-source';
@@ -137,5 +138,38 @@ describe('the two-factor code box', () => {
     const boxes = (src.match(/<input\b[\s\S]*?\/>/g) ?? []).filter((b) => b.includes('inputMode="numeric"'));
     expect(boxes).toHaveLength(2);
     for (const box of boxes) expect(box).toContain("style={{ fontSize: '1.125rem' }}");
+  });
+});
+
+/**
+ * ONE LAYOUT AT A TIME: the phone's bar and the desk's strip are never both in the page.
+ * Where the browser cannot say (no `matchMedia`) it is the desk, which is what has always been drawn.
+ */
+describe('useIsPhone', () => {
+  const real = window.matchMedia;
+  afterEach(() => {
+    window.matchMedia = real;
+  });
+  const fake = (matches: boolean) => {
+    window.matchMedia = ((q: string) => ({
+      matches,
+      media: q,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    })) as unknown as typeof window.matchMedia;
+  };
+
+  it('is true only where the width query matches, and the query is the one `md` switches at', () => {
+    fake(true);
+    expect(renderHook(() => useIsPhone()).result.current).toBe(true);
+    fake(false);
+    expect(renderHook(() => useIsPhone()).result.current).toBe(false);
+    expect(stripComments(repoFile('src/hooks/useIsPhone.ts'))).toContain("'(max-width: 767.98px)'");
+  });
+
+  it('NEGATIVE: with no matchMedia at all it is the desk', () => {
+    // @ts-expect-error — a browser without it
+    window.matchMedia = undefined;
+    expect(renderHook(() => useIsPhone()).result.current).toBe(false);
   });
 });

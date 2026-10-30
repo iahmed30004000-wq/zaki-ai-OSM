@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Input';
 import { DateRange } from '@/components/ui/DateRange';
 import { BulkBar } from '@/components/shell/BulkBar';
+import { useIsPhone } from '@/hooks/useIsPhone';
 import { LabelSizePicker, useLabelSize } from '@/components/labels/LabelSize';
 import { BLOCKED_WAYBILLS, describeRefused, openWaybills, WaybillError } from '@/components/labels/openWaybills';
 import { useTell } from '@/components/ui/Confirm';
@@ -359,6 +360,8 @@ export function OrdersScreen() {
    *  The size used to be hard-coded here, so the same order came out
    *  thermal-sized from this screen and A4-sized from the labels screen. */
   const labelSize = useLabelSize();
+  // The bar on the bottom edge of a phone is a different set of controls from the desk's (see useIsPhone).
+  const phone = useIsPhone();
   const tell = useTell();
   const [printing, setPrinting] = useState(false);
   /*
@@ -699,9 +702,48 @@ export function OrdersScreen() {
             hands it the bottom strip, because selecting five rows and then
             scrolling four screens up to act on them is why nobody did. */}
         <BulkBar show={selected.size > 0} done={batchDone}>
+          {!phone ? (
+          <>
+            <span className="text-xs font-semibold text-[var(--sys-primary)]">
+              محدَّد: {selected.size} طلب
+            </span>
+            {/* The paper sits beside the button that uses it, so nobody
+                prints thirty labels before discovering the size. */}
+            <LabelSizePicker compact className="ms-auto flex items-center" />
+            {/* Shown only to whoever may print: the server refuses anyone
+                else, and a button that always answers 403 is a broken one. */}
+            {canPrint && (
+              <>
+                <Button size="sm" variant="outline" onClick={() => void handlePrintLabels('print')} loading={printing}>
+                  <RiPrinterLine className="w-4 h-4" />
+                  طباعة البوالص
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void handlePrintLabels('pdf')}
+                  disabled={printing}
+                  title="نفس البوالص كملف PDF — الحفظ لا يعلّم الطلبات مطبوعة"
+                >
+                  <RiDownload2Line className="w-4 h-4" />
+                  PDF
+                </Button>
+              </>
+            )}
+            {canExport && (
+            <Button size="sm" variant="outline" onClick={handleExportSelected}>
+              <RiDownload2Line className="w-4 h-4" />
+              تصدير المحدَّد
+            </Button>
+            )}
+            <Button size="sm" variant="outline" onClick={() => setSelected(new Set())}>
+              إلغاء التحديد
+            </Button>
+          </>
+          ) : (
           <>
             {/*
-              TWO ROWS ON A PHONE, NOT THREE OR FOUR.
+              A PHONE: TWO ROWS, NOT THREE OR FOUR.
               The bar held the count, the paper size, four buttons and the
               cancel at one weight, and at 44px each they wrapped into a
               strip of about 190px that covered the bottom of the list. Now
@@ -747,6 +789,7 @@ export function OrdersScreen() {
               )}
             </AdvancedGroup>
           </>
+          )}
         </BulkBar>
 
         {/* Orders — rows, not a table.

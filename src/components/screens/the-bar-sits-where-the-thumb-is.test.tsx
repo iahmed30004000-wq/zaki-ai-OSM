@@ -17,17 +17,20 @@ import React from 'react';
  *   • something ticked: the bar holds the count, the way out and the buttons that
  *     do the work, and the in-page strip holds none of those (one copy of each
  *     name — a second copy is a button two tests and one thumb cannot tell apart);
- *   • the strip yields on a desk when the bar takes its place, and stays on a
- *     phone, so the list does not jump under the finger.
+ *   • the bar is the PHONE's layout. On a desk nothing changed: the strip, the
+ *     button in the filters and the old bar are exactly what they were, and the
+ *     bar is not drawn (a second copy of every button would be one more thing
+ *     a screen reader and a test could not tell apart).
  *
  * jsdom has no layout; the 44px, the fixed strip and the stacking were measured in
  * a real browser at 375px (see the pull request).
  */
 
-const { apiJson, apiFetch, user } = vi.hoisted(() => ({
+const { apiJson, apiFetch, user, phone } = vi.hoisted(() => ({
   apiJson: vi.fn(),
   apiFetch: vi.fn(),
   user: { current: null as unknown },
+  phone: { value: true },
 }));
 
 vi.mock('@/lib/api-client', () => ({
@@ -49,6 +52,7 @@ vi.mock('@/components/ui/Confirm', () => ({
   useTell: () => vi.fn(),
 }));
 vi.mock('@/components/ui/Toast', () => ({ useToast: () => ({ failed: vi.fn(), done: vi.fn() }) }));
+vi.mock('@/hooks/useIsPhone', () => ({ useIsPhone: () => phone.value }));
 vi.mock('@/hooks/useMayOpen', () => ({ useMayOpen: () => () => true }));
 vi.mock('@/hooks/useRegions', () => ({ useRegions: () => ({ regions: [] }) }));
 vi.mock('@/hooks/useProducts', () => ({ useProducts: () => ({ products: [] }) }));
@@ -90,6 +94,8 @@ const outsideBar = (name: string | RegExp) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // The bar is the PHONE's layout (useIsPhone); the desk describe at the end turns it off.
+  phone.value = true;
 });
 afterEach(cleanup);
 
@@ -177,6 +183,18 @@ describe('«الطلبات» — the bar and the boxes', () => {
     expect((screen.getByLabelText(`تحديد الطلب ${ORDERS[0].orderNumber}`) as HTMLInputElement).checked).toBe(true);
     expect(bar()!.textContent).toContain('محدَّد: 1 طلب');
   });
+
+  it('DESK: nothing changed — the paper, the PDF, the export and a worded cancel sit beside the print button, none of them folded', async () => {
+    phone.value = false;
+    await draw();
+    fireEvent.click(screen.getByLabelText('تحديد كل الطلبات في هذه الصفحة'));
+    expect(bar()!.querySelector('details')).toBeNull();
+    expect(bar()!.querySelector('[data-picker]')).not.toBeNull();
+    for (const name of ['طباعة البوالص', 'PDF', 'إلغاء التحديد']) {
+      expect(inBar(name).textContent?.trim(), name).not.toBe('');
+    }
+    expect(inBar('إلغاء التحديد').textContent).toContain('إلغاء التحديد');
+  });
 });
 
 /* ═══════════════════════ متابعة الشحن — OPS-TRK-1 ═══════════════════════ */
@@ -237,7 +255,6 @@ describe('«متابعة الشحن» — «استلمت منه»', () => {
     answerWith([owed('a'), owed('b')]);
     await draw();
     expect(bar()).toBeNull();
-    expect(strip().className).not.toContain('md:hidden');
     expect(within(strip()).getByRole('button', { name: 'اختر الكل' })).toBeTruthy();
   });
 
@@ -251,8 +268,8 @@ describe('«متابعة الشحن» — «استلمت منه»', () => {
     // One copy of each name in the whole page.
     expect(screen.getAllByRole('button', { name: 'استلمت منه' })).toHaveLength(1);
     expect(screen.getAllByRole('button', { name: 'إلغاء الاختيار' })).toHaveLength(1);
-    // The strip stays for a phone (no jump) and yields on a desk (the bar takes its slot).
-    expect(strip().className).toContain('md:hidden');
+    // The strip stays on a phone, so the list does not jump up under the finger.
+    expect(strip().isConnected).toBe(true);
     expect(within(strip()).queryByRole('button', { name: 'اختر الكل' })).toBeNull();
   });
 
@@ -280,6 +297,19 @@ describe('«متابعة الشحن» — «استلمت منه»', () => {
     fireEvent.click(within(strip()).getByRole('button', { name: 'اختر الكل' }));
     fireEvent.click(inBar('إلغاء الاختيار'));
     expect(bar()).toBeNull();
+  });
+
+  it('DESK: nothing changed — the count, the net, the way out and «استلمت منه» are in the strip, and there is no bar', async () => {
+    phone.value = false;
+    answerWith([owed('a'), owed('b')]);
+    await draw();
+    fireEvent.click(within(strip()).getByRole('button', { name: 'اختر الكل' }));
+    expect(bar()).toBeNull();
+    const row = screen.getByText(/مختار 2 طلب · صافي 75/).parentElement as HTMLElement;
+    expect(within(row).getByRole('button', { name: 'استلمت منه' })).toBeTruthy();
+    expect(within(row).getByRole('button', { name: 'إلغاء الاختيار' })).toBeTruthy();
+    // «اختر الكل» stays in the strip, as it always did
+    expect(within(row).getByRole('button', { name: 'اختر الكل' })).toBeTruthy();
   });
 });
 
@@ -338,7 +368,6 @@ describe('«مطابقة يدوية» — «تم تسليمها» / «رجعت»
     holds([parcel('M1'), parcel('M2')]);
     await draw();
     expect(bar()).toBeNull();
-    expect(strip().className).not.toContain('md:hidden');
     expect(within(strip()).getByRole('button', { name: /اختر كل ما بانتظار التسليم \(2\)/ })).toBeTruthy();
   });
 
@@ -352,7 +381,7 @@ describe('«مطابقة يدوية» — «تم تسليمها» / «رجعت»
     expect(inBar(/إلغاء الاختيار/)).toBeTruthy();
     expect(outsideBar(/تم تسليمها|رجعت/)).toHaveLength(0);
     expect(outsideBar(/إلغاء الاختيار/)).toHaveLength(0);
-    expect(strip().className).toContain('md:hidden');
+    expect(strip().isConnected).toBe(true);
     // And the picks are not offered twice: once something is ticked they are gone from the strip.
     expect(within(strip()).queryByRole('button', { name: /اختر كل/ })).toBeNull();
   });
@@ -383,7 +412,20 @@ describe('«مطابقة يدوية» — «تم تسليمها» / «رجعت»
     tick(0);
     fireEvent.click(inBar(/إلغاء الاختيار/));
     expect(bar()).toBeNull();
-    expect(strip().className).not.toContain('md:hidden');
+  });
+
+  it('DESK: nothing changed — the count, the way out and the buttons are in the strip above the list, and there is no bar', async () => {
+    phone.value = false;
+    holds([parcel('M1'), parcel('M2')]);
+    await draw();
+    tick(0);
+    expect(bar()).toBeNull();
+    const row = screen.getByText('مختار 1 طلب').parentElement as HTMLElement;
+    expect(row.textContent).toContain('مختار 1 طلب');
+    for (const name of ['تم تسليمها (1)', 'رجعت (1)', 'إلغاء الاختيار']) {
+      expect(within(row).getByRole('button', { name })).toBeTruthy();
+    }
+    expect(screen.getAllByRole('button', { name: /إلغاء الاختيار/ })).toHaveLength(1);
   });
 });
 
@@ -457,6 +499,20 @@ describe('«إنشاء شحنة» — the button is in the bar', () => {
     const body = JSON.parse(String((post![1] as RequestInit).body));
     expect(body.deliveryProviderId).toBe('p1');
     expect(body.orderIds.sort()).toEqual(['1', '2']);
+  });
+
+  it('DESK: nothing changed — the button is the last cell of the filters with its count, there is no bar and no sentence about the courier', async () => {
+    phone.value = false;
+    await draw();
+    const button = screen.getByRole('button', { name: 'إنشاء شحنة (0)' });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(button.closest('[role="toolbar"]')).toBeNull();
+    tickAll();
+    expect(bar()).toBeNull();
+    expect(screen.getByRole('button', { name: 'إنشاء شحنة (2)' })).toBeTruthy();
+    expect(document.body.textContent).not.toContain('اختر شركة الشحن من الأعلى');
+    // one button, not two
+    expect(screen.getAllByText(/^إنشاء شحنة/)).toHaveLength(1);
   });
 });
 
