@@ -115,6 +115,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         action,
         // A result that carries a date is also a postponement (RV5) — see `needsContactFirst`.
         schedulesFollowUp: !!nextFollowUpAt,
+        // A reject for a reason that needs no word with the customer is not bound (the owner, 30/10).
+        rejectionReason,
         isHolder: order.claimedById === user.id,
         hasAttempt:
           (await db.orderContactAttempt.count({ where: { orderId: order.id }, take: 1 })) > 0,
