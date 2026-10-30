@@ -216,17 +216,25 @@ export function describeLines(
     pair.from === undefined || pair.from === null ? num(pair.to) : `${num(pair.from)} ← ${num(pair.to)}`;
   const name = (id: string | null | undefined, fallback: string) => (id && opts.names?.[id]) || fallback;
 
+  /**
+   * A FIGURE THAT DID NOT MOVE IS NOT PRINTED. The server writes the whole record of an edited line — «٠ ← ٠» for a gift
+   * nobody touched, «كريم ← كريم» for a product nobody swapped — and a sentence that lists them buries the one thing the
+   * line changes. A figure with no recorded «before» is shown alone (it is new information, not a repeat).
+   */
+  const moved = (pair: { from?: number | null; to: number } | undefined): pair is { from?: number | null; to: number } =>
+    !!pair && (pair.from === undefined || pair.from === null || pair.from !== pair.to);
+
   return change.edits.map((edit, i) => {
     const label = name(edit.productId?.from ?? null, `سطر ${i + 1}`);
     const parts: string[] = [];
-    if (edit.productId) {
+    if (edit.productId && edit.productId.from !== edit.productId.to) {
       parts.push(`المنتج: ${name(edit.productId.from, 'منتج')} ← ${name(edit.productId.to, 'منتج آخر')}`);
     }
-    if (edit.quantity) parts.push(`الكمية: ${arrow(edit.quantity)}`);
-    if (edit.lineTotal) parts.push(`إجمالي السطر: ${arrow(edit.lineTotal)}`);
-    if (edit.freeQuantity) parts.push(`الهدية: ${arrow(edit.freeQuantity)}`);
+    if (moved(edit.quantity)) parts.push(`الكمية: ${arrow(edit.quantity)}`);
+    if (moved(edit.lineTotal)) parts.push(`إجمالي السطر: ${arrow(edit.lineTotal)}`);
+    if (moved(edit.freeQuantity)) parts.push(`الهدية: ${arrow(edit.freeQuantity)}`);
     if (edit.basis === 'MANUAL') parts.push('السعر يدوي');
-    return `${label} — ${parts.join(' · ')}`;
+    return `${label} — ${parts.length > 0 ? parts.join(' · ') : 'بلا تغيير'}`;
   });
 }
 
