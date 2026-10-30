@@ -1,4 +1,4 @@
-import type { ShippingStatus } from './shipping-workflow';
+import type { ShippingStatus } from '../shipping-workflow';
 
 /**
  * Moving a parcel to a different courier.

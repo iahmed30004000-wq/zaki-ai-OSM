@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { LogesTechsAdapter, COMPANY_HEADER } from './couriers/logestechs';
-import { manualAdapter } from './couriers/manual';
-import { cancelAtCourier, notSureAr, refusedAr } from './courier-remote-cancel';
+import { LogesTechsAdapter, COMPANY_HEADER } from './logestechs';
+import { manualAdapter } from './manual';
+import { cancelAtCourier, notSureAr, refusedAr } from './remote-cancel';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -139,9 +139,9 @@ describe('when there is nothing to cancel there', () => {
 
 describe('the seam', () => {
   it('cancelShipment is part of the adapter interface, optional, and LogesTechs fulfils it', () => {
-    const adapter: import('./couriers/types').CourierAdapter = adapterWith(recorder(new Response('{}')).fetchImpl);
+    const adapter: import('./types').CourierAdapter = adapterWith(recorder(new Response('{}')).fetchImpl);
     expect(typeof adapter.cancelShipment).toBe('function');
     // The courier nobody calls simply does not have one.
-    expect((manualAdapter as import('./couriers/types').CourierAdapter).cancelShipment).toBeUndefined();
+    expect((manualAdapter as import('./types').CourierAdapter).cancelShipment).toBeUndefined();
   });
 });

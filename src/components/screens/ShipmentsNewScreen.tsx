@@ -18,7 +18,7 @@ import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
 import { useLabelSize } from '@/components/labels/LabelSize';
 import { BLOCKED_WAYBILLS, describeRefused, openWaybills, WaybillError } from '@/components/labels/openWaybills';
-import type { DispatchSummary } from '@/lib/courier-dispatch';
+import type { DispatchSummary } from '@/lib/couriers/dispatch';
 import { DispatchResult } from '@/components/ops/DispatchResult';
 import { useToast } from '@/components/ui/Toast';
 import { Rows } from '@/components/ui/Rows';

@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import type { StatusChoice } from './tracking-filters';
+import type { StatusChoice } from './filters';
 
 /**
  * WHO SEES WHICH ROWS ON THE FOLLOW-UP SCREEN — TWO LEVELS, AND THE SERVER IS WHERE THEY HOLD.

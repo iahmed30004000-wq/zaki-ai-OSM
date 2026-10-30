@@ -6,7 +6,7 @@ import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { zodMessage } from '@/lib/zod-message';
-import { clearStuckSend } from '@/lib/courier-send-reset';
+import { clearStuckSend } from '@/lib/couriers/send-reset';
 
 /**
  * POST /api/ops/shipments/clear-send — «تحقّقتُ مع الشركة — لا طرد عندهم».
@@ -19,7 +19,7 @@ import { clearStuckSend } from '@/lib/courier-send-reset';
  *
  * It is a person's word, so it is recorded with their name and the sentence
  * they typed, on the order and in the audit. The rules of when it refuses
- * are in `lib/courier-send-reset.ts`.
+ * are in `lib/couriers/send-reset.ts`.
  */
 
 const schema = z.object({

@@ -16,20 +16,20 @@ import { BulkBar } from '@/components/shell/BulkBar';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { Rows, type RowTone } from '@/components/ui/Rows';
 import { RiAlertLine, RiChat1Line, RiCheckLine, RiCloseLine, RiEBike2Line, RiEyeLine, RiHandCoinLine, RiLoader4Line, RiTimerLine, RiTruckLine } from '@remixicon/react';
-import { ALERT_AR, ALERT_CONFIRM_AR, type TrackingAlertKind } from '@/lib/tracking-alert';
+import { ALERT_AR, ALERT_CONFIRM_AR, type TrackingAlertKind } from '@/lib/parcel-tracking/alert';
 import { useAsk, useConfirm } from '@/components/ui/Confirm';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { HealthChip } from '@/components/ui/HealthChip';
-import { NOT_LATE, NOT_LATE_FACTS, URGENCY, canCollect, trackingUrgency, type ChipKey } from '@/lib/tracking-priority';
+import { NOT_LATE, NOT_LATE_FACTS, URGENCY, canCollect, trackingUrgency, type ChipKey } from '@/lib/parcel-tracking/priority';
 import { Money } from '@/components/ui/Money';
 import { Pager } from '@/components/ui/Pager';
 import { NextStepButton } from '@/components/ui/NextStep';
 import { ListToolbar, withChosen, type ToolbarFilter } from '@/components/ui/ListToolbar';
 import { usePagedList, type PagedRead, type Paging } from '@/hooks/usePagedList';
 import { AGES, AGE_AR } from '@/lib/age-piles';
-import { EVERY_STATUS, TASKS } from '@/lib/tracking-filters';
-import type { TrackingListFacts } from '@/lib/tracking-list';
-import { FULL_SIGHT, NO_SIGHT, statesOffered, type TrackingSight } from '@/lib/tracking-sight';
+import { EVERY_STATUS, TASKS } from '@/lib/parcel-tracking/filters';
+import type { TrackingListFacts } from '@/lib/parcel-tracking/list';
+import { FULL_SIGHT, NO_SIGHT, statesOffered, type TrackingSight } from '@/lib/parcel-tracking/sight';
 
 /**
  * /ops/tracking — search by order, reference, barcode, customer or phone.
@@ -358,7 +358,7 @@ export function TrackingScreen() {
    *
    * Every predicate here used to be written inline, and `canCollect` was
    * written a second time for the checkbox. They live in
-   * `tracking-priority.ts` now, which is also what ranks and sorts the rows —
+   * `parcel-tracking/priority.ts` now, which is also what ranks and sorts the rows —
    * so a chip and the order of the list can never disagree about what
    * «متأخرة» means.
    *

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { repoFile, stripComments } from './guard-source';
+import { repoFile, stripComments } from '../guard-source';
 import {
   MATCHES,
   URGENCIES,
@@ -9,7 +9,7 @@ import {
   countMatching,
   trackingUrgency,
   type TrackingFacts,
-} from './tracking-priority';
+} from './priority';
 
 const row = (over: Partial<TrackingFacts> = {}): TrackingFacts => ({
   shippingStatus: 'SHIPPED',
@@ -273,9 +273,9 @@ describe('the tracking card on a phone', () => {
   it('sorts the list worst-first instead of leaving it in arrival order', () => {
     // 21/10 — THE SORT MOVED TO WHERE THE LIST IS READ. A page is cut from a list that is sorted FIRST, and the screen no
     // longer holds the whole list (it asks for a page of 25), so a sort in the browser would only sort those 25. The
-    // claim is the same — worst first, never arrival order — and `tracking-list.test.ts` proves it over a database that
+    // claim is the same — worst first, never arrival order — and `parcel-tracking/list.test.ts` proves it over a database that
     // holds the parcels; this pins WHERE it is written, and that the screen does not do it a second time.
-    expect(stripComments(repoFile('src/lib/tracking-list.ts'))).toMatch(/\.sort\(byUrgency\)/);
+    expect(stripComments(repoFile('src/lib/parcel-tracking/list.ts'))).toMatch(/\.sort\(byUrgency\)/);
     expect(src, 'عاد الفرزُ إلى المتصفّح — سيفرزُ خمساً وعشرين فقط').not.toMatch(/\.sort\(byUrgency\)/);
   });
 

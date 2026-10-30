@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { repoFile, stripComments } from './guard-source';
+import { repoFile, stripComments } from '../guard-source';
 import {
   COURIER_FIXABLE,
   courierActionAr,
   courierActionFor,
   courierMessage,
   sealedAmong,
-} from './courier-change';
-import { SEALED_FIELDS } from './order-seal';
+} from './change';
+import { SEALED_FIELDS } from '../order-seal';
 
 /**
  * ONCE THE WAYBILL IS ON THE BOX, THE PAPER IS THE ADDRESS.

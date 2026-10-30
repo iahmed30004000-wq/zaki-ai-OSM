@@ -114,7 +114,7 @@ export interface CourierAdapter {
    * A refusal throws (the company's own words in the error), and a timeout
    * throws an error marked `outcomeUnknown`: the caller must change nothing
    * on either, because only a clear yes means the waybill is gone. Absent on
-   * a courier nobody calls. See `courier-remote-cancel.ts`.
+   * a courier nobody calls. See `couriers/remote-cancel.ts`.
    */
   cancelShipment?(trackingNumber: string): Promise<void>;
   /** Courier status code → ours. Unknown codes MUST return null. */

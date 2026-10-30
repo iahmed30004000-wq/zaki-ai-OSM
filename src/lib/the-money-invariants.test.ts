@@ -46,7 +46,7 @@ describe('the merchant reference', () => {
   });
 
   it('reaches the courier in its own field, never inside a note', () => {
-    const dispatch = stripComments(repoFile('src/lib/courier-dispatch.ts'));
+    const dispatch = stripComments(repoFile('src/lib/couriers/dispatch.ts'));
     /*
      * IN THE CALL TO THE COURIER, not merely somewhere in the file.
      *

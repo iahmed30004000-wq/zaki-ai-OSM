@@ -33,8 +33,8 @@
 | صفحات الهبوط | `landing-*.ts` · `page-templates.ts` — **مسار المتجر والهبوط له وكيله، ما بنلمسه** |
 | المتجر | `store-*.ts` · `storefront*.ts` · `system-themes.ts` — نفس القاعدة |
 | الذكاء الاصطناعي | `ai.ts` · `ai-provider.ts` · `ai-endpoint.ts` · `ai-prompts.ts` · `ai-rate.ts` · `ai-scope.ts` · `ai-vision.ts` |
-| شركات الشحن | `couriers/` (المحوّلات: `logestechs.ts` · `manual.ts` · `apply-event.ts` · `webhook-token.ts`) + `courier-*.ts` المفرودة فوقه (إرسال، نقل، إلغاء، مدن) |
-| التتبّع | `tracking-*.ts` و`transit.ts` و`order-tracking.ts` = **تتبّع الطرود**. أما مجلد `tracking/` = **بكسلات الإعلانات** (اسم واحد بمعنيين) |
+| شركات الشحن | كلها تحت `couriers/`: المحوّلات (`logestechs.ts` · `manual.ts` · `apply-event.ts` · `webhook-token.ts`) وفوقها منطق الإرسال والنقل والإلغاء والمدن (`dispatch.ts` · `transfer.ts` · `remote-cancel.ts` · `cancel-carryout.ts` · `send-reset.ts` · `change.ts` · `city-gaps.ts` · `places.ts` · `scope.ts` · `score.ts` · `words.ts`). كانت `courier-*.ts` مفرودة بـ`src/lib/` وانتقلت بلا تغيير سلوك |
+| التتبّع | `parcel-tracking/` (`alert.ts` · `filters.ts` · `list.ts` · `priority.ts` · `sight.ts`) و`transit.ts` و`order-tracking.ts` = **تتبّع الطرود**. أما مجلد `tracking/` = **بكسلات الإعلانات** (كانت الكلمة بمعنيين، والآن لكل معنى مجلده) |
 | الإعلانات | `ads/` (ميتا · تيك توك · سناب · يدوي) · `conversions/` (أحداث التحويل لميتا) · `campaign*.ts` |
 | التكاملات | `telegram/` · `whatsapp/` · `v1/` (واجهة الأنظمة الخارجية) · `apps/` (الأحداث لنظام ٧) |
 | المهام | `jobs/` |
@@ -93,7 +93,7 @@
 | حساب الصلاحية الفعلية (الدور + استثناءات المستخدم) | `src/lib/permissions-core.ts` · `user-permissions.ts` |
 | كتالوج المفاتيح والأسماء القديمة | `src/lib/permission-catalog.ts` · `permission-aliases.ts` |
 | فحص الواجهة (للراحة فقط، السيرفر هو القرار) | `src/lib/can.ts` · `src/hooks/useMayOpen.ts` |
-| نطاق الرؤية (طلبات، منتجات، شركات شحن) | `src/lib/order-filters.ts` · `product-scope.ts` · `courier-scope.ts` · `geo-access.ts` |
+| نطاق الرؤية (طلبات، منتجات، شركات شحن) | `src/lib/order-filters.ts` · `product-scope.ts` · `couriers/scope.ts` · `geo-access.ts` |
 | الصفحات | `src/lib/page-guard.ts` + `route-registry.ts` |
 
 ## ٧. الذكاء الاصطناعي: محلّي فقط لبيانات الزبون
@@ -115,6 +115,8 @@
 | مهمة وحدة بالمرة | `src/lib/jobs/two-workers-one-job.test.ts` |
 | أسماء المهام وفواصلها وترتيبها | `src/lib/jobs/definitions-are-pinned.test.ts` (إسقاط مهمة أو تغيير فاصل = أحمر) |
 | الذكاء الاصطناعي | `ai-proposal-only.test.ts` · `ai-routing.test.ts` |
+| شركات الشحن (أمر الفحص) | `npx vitest run src/lib/couriers src/lib/outbound-limit.test.ts src/lib/jobs/basha-statuses-come-from-the-api.test.ts src/app/api/webhooks/couriers src/app/api/delivery-providers src/app/api/settings/couriers` (مساران قديمان بالجرد: `src/lib/courier-dispatch.test.ts` و`src/lib/courier-scope.test.ts` صارا داخل `src/lib/couriers/`) |
+| تتبّع الطرود (أمر الفحص) | `npx vitest run src/lib/parcel-tracking src/app/api/ops/tracking src/components/screens/the-tracking-screen-pages-and-filters.test.tsx` |
 | لا سر بمستودع | `no-secret-reaches-a-commit.test.ts` · `npm run scan:secrets` |
 | لا شي مبني وما حدا بيستعمله | `nothing-unused-ships.test.ts` (مكوّنات، صفحات، أبواب، حزم، وتصديرات `src/lib` بسقف ما بيزيد: التصدير غير المستعمل الجديد بيفشل، والمخطَّط له بسبب مكتوب) |
 | الواجهة | `the-frontend-invariants.test.ts` · `touch-targets.test.ts` · `western-digits.test.ts` · `arabic-refusals.test.ts` · `one-icon-family.test.ts` · `a-search-box-is-not-a-password.test.ts` |

@@ -1,6 +1,6 @@
-import { db } from './db';
-import { adapterFor } from './couriers';
-import type { CourierCityGap } from './courier-city-gap-line';
+import { db } from '../db';
+import { adapterFor } from './index';
+import type { CourierCityGap } from './city-gap-line';
 
 /**
  * WHICH PARCELS OF AN OPEN TROLLEY THE COURIER HAS NO CITY ID FOR — SAID BEFORE THE PRESS (RV166).

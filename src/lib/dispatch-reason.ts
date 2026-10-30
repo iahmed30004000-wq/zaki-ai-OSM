@@ -1,4 +1,4 @@
-import type { DispatchOutcome } from './courier-dispatch';
+import type { DispatchOutcome } from './couriers/dispatch';
 
 /**
  * WHY ONE ORDER OF A DISPATCH DID NOT GO, IN WORDS.

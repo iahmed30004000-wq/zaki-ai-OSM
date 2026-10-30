@@ -11,8 +11,8 @@ import {
   notLate,
   trackingUrgency,
   type TrackingFacts,
-} from './tracking-priority';
-import { trackingAlert } from './tracking-alert';
+} from './parcel-tracking/priority';
+import { trackingAlert } from './parcel-tracking/alert';
 import { repoFile, stripComments } from './guard-source';
 
 /**

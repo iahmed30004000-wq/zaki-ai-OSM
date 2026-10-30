@@ -28,7 +28,7 @@ import { CONTACT_FIRST_MESSAGE, needsContactFirst } from '@/lib/confirmation-que
 
 import { orderSeal, sealedFieldsIn, sealMessage, handedToCourier } from '@/lib/order-seal';
 import { UNKNOWN_BATCH_AR } from '@/lib/shipment-cancel';
-import { courierActionAr, courierActionFor, courierMessage, sealedAmong } from '@/lib/courier-change';
+import { courierActionAr, courierActionFor, courierMessage, sealedAmong } from '@/lib/couriers/change';
 import { expandApproved, mayApply, strayFields } from '@/lib/change-request-apply';
 import { zodMessage } from '@/lib/zod-message';
 import { ORDER_NOT_FOUND, ORDER_VERSION_MISSING } from '@/lib/order-refusals';

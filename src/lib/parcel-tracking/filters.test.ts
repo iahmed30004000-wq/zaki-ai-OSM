@@ -10,17 +10,17 @@ import {
   isTask,
   searchWhere,
   trackingFilters,
-} from './tracking-filters';
-import { SHIPPING_STATUS_AR } from './shipping-workflow';
-import { URGENCIES } from './tracking-priority';
-import { repoFile, stripComments } from './guard-source';
+} from './filters';
+import { SHIPPING_STATUS_AR } from '../shipping-workflow';
+import { URGENCIES } from './priority';
+import { repoFile, stripComments } from '../guard-source';
 
 /**
  * WHAT A FOLLOW-UP AGENT CAN CHOOSE, READ ONCE.
  *
  * «متابعة الشحن — صفحات + فلاتر + بحث». The state, the chip, the delivery company, the governorate, how long it has
  * been out, the word searched: each is read here, a value this module does not know is REFUSED in Arabic, and the chip
- * names are the very names `tracking-priority.ts` ranks by — never a second list of them.
+ * names are the very names `parcel-tracking/priority.ts` ranks by — never a second list of them.
  */
 
 const ask = (query = '') => trackingFilters(new URLSearchParams(query));
@@ -89,7 +89,7 @@ describe('the product', () => {
 });
 
 describe('the chip', () => {
-  it('— is one of the seven conditions `tracking-priority.ts` ranks, in the order they are drawn, and «nothing» is not a chip', () => {
+  it('— is one of the seven conditions `parcel-tracking/priority.ts` ranks, in the order they are drawn, and «nothing» is not a chip', () => {
     expect([...TASKS]).toEqual(['CANCELLED', 'CHANGED', 'FAILED', 'RETURNING', 'LATE', 'NO_BARCODE', 'COLLECT']);
     expect(TASKS).toEqual(URGENCIES.filter((k) => k !== 'NONE'));
     for (const t of TASKS) expect(ask(`task=${t}`), t).toMatchObject({ ok: true, applied: { task: t } });
@@ -149,8 +149,8 @@ describe('the word', () => {
 
 describe('the module is safe for the screen to import', () => {
   it('— it reaches no server module: no database, no session, no queue', () => {
-    const src = stripComments(repoFile('src/lib/tracking-filters.ts'));
-    for (const forbidden of ["'./db'", "'@/lib/db'", 'next/server', 'next/headers', 'geo-context', 'authorization']) {
+    const src = stripComments(repoFile('src/lib/parcel-tracking/filters.ts'));
+    for (const forbidden of ["'../db'", "'@/lib/db'", 'next/server', 'next/headers', 'geo-context', 'authorization']) {
       expect(src, forbidden).not.toContain(forbidden);
     }
   });

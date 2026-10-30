@@ -1,12 +1,12 @@
-import { rateOf } from './order-state';
-import { trustOf, type Trust } from './cod-vitals';
+import { rateOf } from '../order-state';
+import { trustOf, type Trust } from '../cod-vitals';
 
 /**
  * WHICH COURIER GETS THE PARCEL TO THE DOOR — NOT WHICH ONE CARRIES THE MOST.
  *
  * «AI + Score في تسعة مواضع … متابعة الشحن». Eight of those nine places
  * already carry a number and a sentence; this was the ninth that had a
- * sentence and no number. `tracking-priority.ts` ranks a PARCEL by how
+ * sentence and no number. `parcel-tracking/priority.ts` ranks a PARCEL by how
  * urgently it needs chasing, which is a different question — it tells the
  * follow-up clerk what to do next and says nothing at all about whether the
  * courier doing the carrying is any good.

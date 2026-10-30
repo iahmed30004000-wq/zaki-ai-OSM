@@ -17,7 +17,7 @@
  * carry its reason.
  *
  * `IN_TRANSFER` — the courier-to-courier move. It EXISTS: `POST
- * /api/ops/tracking/transfer`, rules in `courier-transfer.ts`. It is not a
+ * /api/ops/tracking/transfer`, rules in `couriers/transfer.ts`. It is not a
  * state, and must not be: the original parcel is physically at the first
  * company UNDER THEIR BARCODE and will appear in THEIR statement. Writing
  * `IN_TRANSFER` onto the order means overwriting its provider, which detaches

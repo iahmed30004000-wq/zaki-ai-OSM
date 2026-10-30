@@ -1,5 +1,5 @@
-import { SEALED_FIELDS } from './order-seal';
-import { CHANGE_FIELD_AR, type ChangeableField } from './change-request-fields';
+import { SEALED_FIELDS } from '../order-seal';
+import { CHANGE_FIELD_AR, type ChangeableField } from '../change-request-fields';
 
 /**
  * A CHANGE TO AN ORDER THE COURIER IS ALREADY HOLDING.

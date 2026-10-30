@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
-import { courierScope } from '@/lib/courier-scope';
+import { courierScope } from '@/lib/couriers/scope';
 import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
-import { courierPlaces } from '@/lib/courier-places';
+import { courierPlaces } from '@/lib/couriers/places';
 
 /**
  * GET /api/settings/delivery-fees/places?courier=<id>

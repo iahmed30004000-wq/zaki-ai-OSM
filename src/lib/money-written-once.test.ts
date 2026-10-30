@@ -207,7 +207,7 @@ describe('one rounding rule, and the money that is written goes through it', () 
      */
     const order = stripComments(repoFile('src/lib/public-order.ts'));
     expect(order).toContain('const totalAmount = money.cod;');
-    const dispatch = stripComments(repoFile('src/lib/courier-dispatch.ts'));
+    const dispatch = stripComments(repoFile('src/lib/couriers/dispatch.ts'));
     expect(dispatch).toContain('codAmount: Number(order.totalAmount ?? 0)');
     expect(dispatch).not.toContain('computeCod(');
   });

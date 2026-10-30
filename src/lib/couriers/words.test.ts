@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LOGESTECHS_STATUS_AR } from './couriers/logestechs';
+import { LOGESTECHS_STATUS_AR } from './logestechs';
 import {
   COURIER_CODES_READ,
   COURIER_OUTCOMES,
@@ -9,7 +9,7 @@ import {
   normalizePhrase,
   readCourierWord,
   tallyCourierWords,
-} from './courier-words';
+} from './words';
 
 /**
  * THE COURIER'S WORD, READ FROM AN EXACT-PHRASE TABLE — ONE TABLE, SEEDED FROM THE COMPANY'S OWN.
@@ -142,7 +142,7 @@ describe('the sentence beside a row that needs a person', () => {
 });
 
 describe('a money cell that says «nothing here»', () => {
-  it.each(['', '   ', '-', '--', '—', '–', '−', '_', '.', '/', 'لا يوجد', 'لايوجد', 'لا شيء', 'بدون', 'فاضي', 'N/A', 'n/a', 'NA', 'null', 'None'])(
+  it.each(['', '   ', '-', '--', '—', '–', '−', '_', '..', '/', 'لا يوجد', 'لايوجد', 'لا شيء', 'بدون', 'فاضي', 'N/A', 'n/a', 'NA', 'null', 'None'])(
     '«%s» is no money',
     (cell) => {
       expect(isNoMoneyCell(cell)).toBe(true);

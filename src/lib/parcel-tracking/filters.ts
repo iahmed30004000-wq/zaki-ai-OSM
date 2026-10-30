@@ -1,8 +1,8 @@
 import type { Prisma } from '@prisma/client';
-import { isAge, type Age } from './age-piles';
-import { orderSearchOr } from './order-filters';
-import { SHIPPING_STATUS_AR } from './shipping-workflow';
-import { NOT_LATE, URGENCIES, type ChipKey, type ConditionKey } from './tracking-priority';
+import { isAge, type Age } from '../age-piles';
+import { orderSearchOr } from '../order-filters';
+import { SHIPPING_STATUS_AR } from '../shipping-workflow';
+import { NOT_LATE, URGENCIES, type ChipKey, type ConditionKey } from './priority';
 
 /**
  * WHAT A FOLLOW-UP AGENT ASKS OF THE PARCELS IN THE FIELD — THE WORDS, READ ONCE, IN ONE PLACE.
@@ -13,7 +13,7 @@ import { NOT_LATE, URGENCIES, type ChipKey, type ConditionKey } from './tracking
  * from the default view silently looked at every status (`OR` replaced `OR`).
  *
  * Everything a person can choose is read here: the state (the default is the screen's job description; «every» is
- * every state), the chip (one of the seven conditions `tracking-priority.ts` defines — never a second list of them),
+ * every state), the chip (one of the seven conditions `parcel-tracking/priority.ts` defines — never a second list of them),
  * the delivery company, the governorate, how long it has been out, and the word searched. A value this module does not
  * know is REFUSED, in Arabic, rather than ignored: ignoring it answers a question nobody asked with a list nobody
  * filtered.

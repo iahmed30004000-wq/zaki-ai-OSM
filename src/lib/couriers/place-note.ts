@@ -1,6 +1,6 @@
 /**
  * WHAT THE «رمزها عند الشركة» BOX SAYS ABOUT THE NUMBER TYPED IN IT — client-safe, no data file.
- * The cities and regions come from `/api/settings/delivery-fees/places` (see `courier-places`, server only).
+ * The cities and regions come from `/api/settings/delivery-fees/places` (see `couriers/places`, server only).
  */
 
 export interface CourierPlaces {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { trackingAlert, ALERT_AR, DEAD_CONFIRMATION, TRACKING_ACK_ACTION } from './tracking-alert';
-import { repoFile, stripComments } from './guard-source';
+import { trackingAlert, ALERT_AR, DEAD_CONFIRMATION, TRACKING_ACK_ACTION } from './alert';
+import { repoFile, stripComments } from '../guard-source';
 
 /**
  * WHAT THE PERSON CHASING A PARCEL MUST BE TOLD.

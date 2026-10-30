@@ -9,8 +9,8 @@ import {
   statesOffered,
   unseenKey,
   withoutMoney,
-} from './tracking-sight';
-import { SHIPPING_STATUSES } from './tracking-filters';
+} from './sight';
+import { SHIPPING_STATUSES } from './filters';
 
 /**
  * THE TWO LEVELS OF THE FOLLOW-UP SCREEN, AS PURE RULES.

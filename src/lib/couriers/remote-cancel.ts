@@ -1,6 +1,6 @@
-import { db } from './db';
-import { adapterFor, type CourierAdapter } from './couriers';
-import { CourierRefusal } from './couriers/logestechs';
+import { db } from '../db';
+import { adapterFor, type CourierAdapter } from './index';
+import { CourierRefusal } from './logestechs';
 
 /**
  * TELLING THE COMPANY WE DO NOT WANT THE PARCEL — BEFORE WE FORGET ABOUT IT.

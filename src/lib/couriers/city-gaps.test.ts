@@ -16,13 +16,13 @@ const { db } = vi.hoisted(() => ({
     region: { findMany: vi.fn() },
   },
 }));
-vi.mock('./db', () => ({ db }));
+vi.mock('../db', () => ({ db }));
 
 process.env.APP_ENCRYPTION_KEY = 'c'.repeat(64);
 
-import { courierCityGaps } from './courier-city-gaps';
-import { courierCityGapLine } from './courier-city-gap-line';
-import { encryptJson } from './secrets';
+import { courierCityGaps } from './city-gaps';
+import { courierCityGapLine } from './city-gap-line';
+import { encryptJson } from '../secrets';
 
 const account = encryptJson({
   email: 'shop@example.com', password: 'a-real-password', companyId: 744, originCityId: 445053,

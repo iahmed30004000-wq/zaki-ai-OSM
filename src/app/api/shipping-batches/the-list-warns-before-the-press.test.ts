@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * THE BATCH LIST CARRIES THE WARNING (RV166).
  *
  * Each batch of the list comes back with `courierCityGap`: null when the courier has an id for every waiting parcel's
- * governorate, and {count, regions} when it has not. The query behind it is tested in `courier-city-gaps.test.ts`;
+ * governorate, and {count, regions} when it has not. The query behind it is tested in `couriers/city-gaps.test.ts`;
  * here, that the route asks it for THIS company and store, and hands the answer back beside the right batch.
  */
 
@@ -18,7 +18,7 @@ vi.mock('@/lib/db', () => ({ db }));
 vi.mock('@/lib/geo-context', () => ({ requireContext: (...a: unknown[]) => requireContext(...a) }));
 vi.mock('@/lib/authorization', () => ({ can: (...a: unknown[]) => can(...a), requirePermission: vi.fn() }));
 vi.mock('@/lib/audit', () => ({ logAudit: vi.fn() }));
-vi.mock('@/lib/courier-city-gaps', () => ({ courierCityGaps: (...a: unknown[]) => courierCityGaps(...a) }));
+vi.mock('@/lib/couriers/city-gaps', () => ({ courierCityGaps: (...a: unknown[]) => courierCityGaps(...a) }));
 
 import { GET } from './route';
 

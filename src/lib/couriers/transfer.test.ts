@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { planTransfer, TransferRefused, type TransferParty, requiresOpenBatch } from './courier-transfer';
+import { planTransfer, TransferRefused, type TransferParty, requiresOpenBatch } from './transfer';
 
 /**
  * The transfer rules, exactly as the business states them: you may move a

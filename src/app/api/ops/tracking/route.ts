@@ -1,18 +1,18 @@
 import { NextResponse } from 'next/server';
-import { DEAD_CONFIRMATION, TRACKING_ACK_ACTION, trackingAlert } from '@/lib/tracking-alert';
+import { DEAD_CONFIRMATION, TRACKING_ACK_ACTION, trackingAlert } from '@/lib/parcel-tracking/alert';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { ruleFor } from '@/lib/phone-rules';
 import { can, requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { transitOf } from '@/lib/transit';
-import { expectsBarcode } from '@/lib/tracking-priority';
+import { expectsBarcode } from '@/lib/parcel-tracking/priority';
 import { expectedAmountFor, SETTLEMENT_ORDER_SELECT } from '@/lib/settlement';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { readLimit, readPage } from '@/lib/numeric-input';
-import { searchWhere, trackingFilters } from '@/lib/tracking-filters';
-import { readTrackingList } from '@/lib/tracking-list';
-import { sightWhere, unseenKey, withoutMoney, type TrackingSight } from '@/lib/tracking-sight';
+import { searchWhere, trackingFilters } from '@/lib/parcel-tracking/filters';
+import { readTrackingList } from '@/lib/parcel-tracking/list';
+import { sightWhere, unseenKey, withoutMoney, type TrackingSight } from '@/lib/parcel-tracking/sight';
 
 /**
  * GET /api/ops/tracking?q=&status=&task=&courier=&region=&age=&page=&limit=
@@ -26,7 +26,7 @@ import { sightWhere, unseenKey, withoutMoney, type TrackingSight } from '@/lib/t
  * most), worst first, and the seven chips, the «late» badge and the numbers
  * beside the dropdowns are counted over EVERY parcel the question matches — not
  * over the first two hundred, which is all the screen could hold. See
- * `lib/tracking-list.ts` for how, and `lib/tracking-filters.ts` for the words.
+ * `lib/parcel-tracking/list.ts` for how, and `lib/parcel-tracking/filters.ts` for the words.
  *
  *   ?status=   nothing: what is moving plus what arrived and is still owed · a state · `every` (or the old `all`)
  *   ?task=     one of the seven chips          ?courier= ?region=   an id, or `none`
@@ -34,7 +34,7 @@ import { sightWhere, unseenKey, withoutMoney, type TrackingSight } from '@/lib/t
  *
  * An unknown value is a 400 in Arabic, never a quiet «everything».
  *
- * TWO LEVELS OF SIGHT (see `lib/tracking-sight.ts`). Whoever holds `ops.track` sees the parcels on the road. The
+ * TWO LEVELS OF SIGHT (see `lib/parcel-tracking/sight.ts`). Whoever holds `ops.track` sees the parcels on the road. The
  * delivered parcels, the «بانتظار التحصيل» chip and the courier's figures need «عرض التسويات» or «إدارة الصناديق
  * النقدية»; the return rows need «عرض المرتجعات». Without them those rows are never read — so the chips, the
  * dropdowns' numbers and the pages leave them out too — the figures are taken off every row, and a request for a state
@@ -46,7 +46,7 @@ const IN_FLIGHT = ['SHIPPED', 'OUT_FOR_DELIVERY', 'READY_FOR_PICKUP', 'FAILED_DE
 /**
  * Arrived, and the money is still with the courier.
  *
- * The same two statuses `canCollect` reads in `tracking-priority.ts`. A
+ * The same two statuses `canCollect` reads in `parcel-tracking/priority.ts`. A
  * partial delivery belongs here as much as a full one: the customer took
  * some of it and paid for what they took, and that cash is owed exactly
  * like any other.
@@ -143,7 +143,7 @@ export async function GET(req: Request) {
           select: {
             id: true, orderNumber: true, merchantRef: true, trackingNumber: true,
             // The order may be dead while its parcel is still moving — see
-            // src/lib/tracking-alert.ts for why that is the one thing this
+            // src/lib/parcel-tracking/alert.ts for why that is the one thing this
             // screen was not saying.
             confirmationStatus: true, updatedAt: true,
             // Everything the settlement rule reads, in one spread — including

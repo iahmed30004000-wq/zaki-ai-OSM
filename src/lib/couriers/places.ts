@@ -1,5 +1,5 @@
-import bashaVillages from '../../reference/couriers/basha-villages.json';
-import type { CourierPlaces } from './courier-place-note';
+import bashaVillages from '../../../reference/couriers/basha-villages.json';
+import type { CourierPlaces } from './place-note';
 
 /**
  * THE PLACES A COURIER'S OWN LIST NAMES, FOR THE BOX WHERE ITS CODE IS TYPED.
@@ -12,7 +12,7 @@ import type { CourierPlaces } from './courier-place-note';
  *
  * So the box shows the name of the place a typed number is, and warns — never blocks — when it is a Region Id.
  *
- * SERVER ONLY: the list is 461 rows, and the browser is sent only the 150 cities and the regions (see `courier-place-note`).
+ * SERVER ONLY: the list is 461 rows, and the browser is sent only the 150 cities and the regions (see `couriers/place-note`).
  */
 
 interface Village {

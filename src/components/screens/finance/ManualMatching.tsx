@@ -7,9 +7,9 @@ import { userCan } from '@/lib/can';
 import { apiJson } from '@/lib/api-client';
 import { SHIPPING_STATUS_AR } from '@/lib/shipping-workflow';
 import { useProducts } from '@/hooks/useProducts';
-import { ALERT_AR, type TrackingAlertKind } from '@/lib/tracking-alert';
-import { canCollect } from '@/lib/tracking-priority';
-import type { TrackingListFacts } from '@/lib/tracking-list';
+import { ALERT_AR, type TrackingAlertKind } from '@/lib/parcel-tracking/alert';
+import { canCollect } from '@/lib/parcel-tracking/priority';
+import type { TrackingListFacts } from '@/lib/parcel-tracking/list';
 import { usePagedList, type PagedRead, type Paging } from '@/hooks/usePagedList';
 import { CollectDialog } from '@/components/screens/tracking/CollectDialog';
 import { ManualStatementDialog } from '@/components/screens/finance/ManualStatementDialog';
@@ -23,7 +23,7 @@ import { BulkBar } from '@/components/shell/BulkBar';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { OrderLink } from '@/components/orders/OrderLink';
-import { FULL_SIGHT, NO_SIGHT, statesOffered, type TrackingSight } from '@/lib/tracking-sight';
+import { FULL_SIGHT, NO_SIGHT, statesOffered, type TrackingSight } from '@/lib/parcel-tracking/sight';
 
 /**
  * «مطابقة يدوية» — a courier, or a company, that sends no statement and no file.

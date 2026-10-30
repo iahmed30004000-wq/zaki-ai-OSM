@@ -1,9 +1,9 @@
-import { db } from './db';
-import { adapterFor } from './couriers';
-import { courierBelongsToStore } from './courier-scope';
-import { isOutcomeUnknown } from './couriers/types';
-import { logAudit } from './audit';
-import { formatPhoneNumber } from './phone';
+import { db } from '../db';
+import { adapterFor } from './index';
+import { courierBelongsToStore } from './scope';
+import { isOutcomeUnknown } from './types';
+import { logAudit } from '../audit';
+import { formatPhoneNumber } from '../phone';
 
 /**
  * HANDING THE ORDERS TO THE COURIER.

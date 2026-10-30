@@ -1,5 +1,5 @@
-import { db } from './db';
-import { SHIPPING_GONE } from './order-state';
+import { db } from '../db';
+import { SHIPPING_GONE } from '../order-state';
 
 /**
  * A SEND THAT NEVER ANSWERED — AND THE ONE PERSON WHO CAN CLOSE IT.

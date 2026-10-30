@@ -17,13 +17,13 @@ const { db, adapterFor, logAudit } = vi.hoisted(() => ({
   adapterFor: vi.fn(),
   logAudit: vi.fn(),
 }));
-vi.mock('./db', () => ({ db }));
-vi.mock('./couriers', () => ({ adapterFor: (...a: unknown[]) => adapterFor(...a) }));
-vi.mock('./audit', () => ({ logAudit: (...a: unknown[]) => logAudit(...a) }));
+vi.mock('../db', () => ({ db }));
+vi.mock('./index', () => ({ adapterFor: (...a: unknown[]) => adapterFor(...a) }));
+vi.mock('../audit', () => ({ logAudit: (...a: unknown[]) => logAudit(...a) }));
 
-import { dispatchBatch } from './courier-dispatch';
-import { markOutcomeUnknown } from './couriers/types';
-import { groupDispatchReasons } from './dispatch-reason';
+import { dispatchBatch } from './dispatch';
+import { markOutcomeUnknown } from './types';
+import { groupDispatchReasons } from '../dispatch-reason';
 
 /**
  * Handing orders to the courier and taking back the barcode.

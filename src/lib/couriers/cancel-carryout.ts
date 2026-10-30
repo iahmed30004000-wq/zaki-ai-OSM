@@ -1,8 +1,8 @@
-import { db } from './db';
-import { logAudit } from './audit';
-import { notify } from './notify';
-import { REJECTION_REASON_AR } from './confirmation-workflow';
-import { COURIER_CANCEL_AR, courierCancelMessage } from './courier-change';
+import { db } from '../db';
+import { logAudit } from '../audit';
+import { notify } from '../notify';
+import { REJECTION_REASON_AR } from '../confirmation-workflow';
+import { COURIER_CANCEL_AR, courierCancelMessage } from './change';
 
 /**
  * CARRYING OUT AN APPROVED CANCEL ON A PARCEL THE COURIER ALREADY HOLDS.

@@ -99,7 +99,7 @@ export async function GET() {
         returned: t.returned,
         /*
          * OUT OF WHAT THE BENCH FINISHED WITH, the same denominator
-         * `courier-score` uses: a parcel still in a van is not a verdict on
+         * `couriers/score` uses: a parcel still in a van is not a verdict on
          * a product either. Null below the first decision rather than 0%,
          * because «0%» about a product tried yesterday is a lie.
          */

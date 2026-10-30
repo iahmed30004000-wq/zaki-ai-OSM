@@ -10,7 +10,7 @@ import { logAudit } from '@/lib/audit';
 import { cancelVerdict } from '@/lib/shipment-cancel';
 import { batchStatusOf, endOrder } from '@/lib/order-cancel';
 import { REJECTION_REASONS } from '@/lib/confirmation-workflow';
-import { courierCancelCarryOut } from '@/lib/courier-cancel-carryout';
+import { courierCancelCarryOut } from '@/lib/couriers/cancel-carryout';
 import { notify } from '@/lib/notify';
 
 /**

@@ -1,6 +1,6 @@
-import type { HealthTone } from './health';
-import type { TrackingAlertKind } from './tracking-alert';
-import { isInFlight } from './transit';
+import type { HealthTone } from '../health';
+import type { TrackingAlertKind } from './alert';
+import { isInFlight } from '../transit';
 
 /**
  * WHY THIS PARCEL IS IN FRONT OF YOU, IN ONE WORD.
@@ -67,7 +67,7 @@ export interface UrgencyFacts {
  * not describe the parcel — it describes whether ANY action on this row is
  * still correct. Ringing a customer about a cancelled order, or reading an
  * address that a change request has since rewritten, is worse than being
- * slow: it is confidently wrong. `tracking-alert.ts` calls these "the two
+ * slow: it is confidently wrong. `parcel-tracking/alert.ts` calls these "the two
  * things that make chasing a parcel pointless or wrong", and that is a
  * statement about precedence.
  *

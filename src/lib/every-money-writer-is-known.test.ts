@@ -197,7 +197,7 @@ const READS_ONLY: Record<string, string> = {
   'src/app/api/whatsapp/conversations/[id]/route.ts': 'يعرض إجمالاً داخل محادثة',
   'src/lib/commission.ts': 'العمولة، ولها دالّتها وجدولها المنفصل عن الطلب',
   'src/lib/conversions/emit.ts': 'يرسل قيمة إلى منصّة إعلانات — صادر، قراءة',
-  'src/lib/courier-dispatch.ts': 'يقرأ الإجمالي المخزّن ليبلّغه للمندوب',
+  'src/lib/couriers/dispatch.ts': 'يقرأ الإجمالي المخزّن ليبلّغه للمندوب',
   'src/lib/offers.ts': 'تسعير العروض نفسها — سعر العرض إدخال البائع',
   'src/lib/settlement.ts': 'تسوية — مالها مالُ كشفٍ لا طلب',
   'src/lib/manual-statement.ts': 'الكشف اليدوي: يكتب إجمالي الكشف (مجموع أسطره) وأسطره، لا إجمالي طلب ولا حركة محفظة — المال يتحرك عند الاعتماد',

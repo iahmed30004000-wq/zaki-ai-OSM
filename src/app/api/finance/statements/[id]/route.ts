@@ -9,7 +9,7 @@ import { logAudit } from '@/lib/audit';
 import { consumeOrderStock } from '@/lib/stock-consumption';
 import { receiptGap, runMatching } from '@/lib/settlement';
 import { isManualDraftHash, isManualHash, MANUAL_DRAFT_SENTENCE } from '@/lib/manual-statement-rules';
-import { COURIER_OUTCOME_AR, readCourierWord } from '@/lib/courier-words';
+import { COURIER_OUTCOME_AR, readCourierWord } from '@/lib/couriers/words';
 import { OUTCOME_LABEL_AR, orderOutcome } from '@/lib/order-outcome';
 import { isNotMentioned } from '@/lib/settlement-difference';
 import { NOT_MENTIONED_ACTIVITY } from '@/lib/not-mentioned';
@@ -135,7 +135,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     /*
      * WHAT EACH ROW SAYS ABOUT ITSELF, READ ONCE HERE SO THE SCREEN ONLY SHOWS IT.
      *
-     * · `courierWord` — the company's status cell through the ONE phrase table (`courier-words`), the same
+     * · `courierWord` — the company's status cell through the ONE phrase table (`couriers/words`), the same
      *   reading the import and the matching use. Null when the cell is empty.
      * · `orderOutcome` — the order's own outcome word (`order-outcome`), for the group of parcels no
      *   statement names: «تم التسليم — بانتظار التحصيل», «مغلق», … never a second vocabulary.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { courierPlaces } from './courier-places';
-import { placeNote } from './courier-place-note';
+import { courierPlaces } from './places';
+import { placeNote } from './place-note';
 
 /**
  * «رمزها عند الشركة»: Basha works at REGION level («دمشق - دمشق - دمشق» is intended). Their API field is `cityId`, so the

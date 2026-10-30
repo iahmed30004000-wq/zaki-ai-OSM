@@ -5,7 +5,7 @@ import {
   isCourierInUse,
   describeUsage,
   type CourierUsage,
-} from './courier-scope';
+} from './scope';
 
 const none: CourierUsage = { orders: 0, batches: 0, statements: 0, fees: 0, attempts: 0 };
 

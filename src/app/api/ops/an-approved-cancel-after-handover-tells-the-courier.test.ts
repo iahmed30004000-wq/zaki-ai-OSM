@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { courierCancelMessage } from '@/lib/courier-change';
+import { courierCancelMessage } from '@/lib/couriers/change';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════

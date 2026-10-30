@@ -1,4 +1,4 @@
-import { LOGESTECHS_STATUS_AR } from './couriers/logestechs';
+import { LOGESTECHS_STATUS_AR } from './logestechs';
 
 /**
  * THE COURIER'S OWN WORD, READ ONE WAY AT BOTH DOORS.

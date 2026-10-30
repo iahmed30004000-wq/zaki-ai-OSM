@@ -1,7 +1,7 @@
 /**
  * THE WARNING A TROLLEY SHOWS FOR PARCELS THE COURIER HAS NO CITY ID FOR (RV166).
  *
- * Pure, so the screen can read it without pulling the database layer in; the query that fills it is `courier-city-gaps`.
+ * Pure, so the screen can read it without pulling the database layer in; the query that fills it is `couriers/city-gaps`.
  */
 export interface CourierCityGap {
   /** Parcels the press would skip for this reason. */
