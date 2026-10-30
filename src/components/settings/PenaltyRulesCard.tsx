@@ -9,6 +9,7 @@ import { RiAddCircleLine, RiLoader4Line, RiShieldKeyholeLine } from '@remixicon/
 import { useToast } from '@/components/ui/Toast';
 import { Money } from '@/components/ui/Money';
 import { useCan } from '@/hooks/useCan';
+import { useIsPhone } from '@/hooks/useIsPhone';
 
 /**
  * THE RULES THAT PROPOSE A DEDUCTION.
@@ -41,12 +42,16 @@ interface Rule {
 }
 
 const FIELD =
-  'h-10 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-2 text-xs text-[var(--sys-foreground)] outline-none focus:border-[var(--sys-primary)]';
+  'rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-2 text-xs text-[var(--sys-foreground)] outline-none focus:border-[var(--sys-primary)]';
 
 export function PenaltyRulesCard() {
   const toast = useToast();
   // Adding a rule and switching one are «تعديل قواعد الخصومات»: the rules are seen by whoever opens the page.
   const canManage = useCan('penalties.rules');
+  // On a phone the add-rule row is two columns of full-width fields at the 44px touch height, with the
+  // add button on a row of its own; on a desk it is the same wrapping row of fixed widths it always was.
+  const phone = useIsPhone();
+  const field = `${phone ? 'h-11' : 'h-10'} ${FIELD}`;
   const [kinds, setKinds] = useState<Kind[]>([]);
   const [roles, setRoles] = useState<string[]>([]);
   const [rules, setRules] = useState<Rule[] | null>(null);
@@ -178,10 +183,10 @@ export function PenaltyRulesCard() {
         {!canManage && <p className="text-xs text-[var(--sys-muted)]">قراءة فقط — التعديل لمن عنده «تعديل قواعد الخصومات».</p>}
         {canManage && (
         <div className="rounded-lg border border-[var(--sys-border)] p-2.5">
-          <div className="flex flex-wrap items-end gap-2">
+          <div className={phone ? 'grid grid-cols-2 items-end gap-2' : 'flex flex-wrap items-end gap-2'}>
             <label className="block">
               <span className="mb-0.5 block text-xs text-[var(--sys-muted-foreground)]">النوع</span>
-              <select value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value })} className={`${FIELD} w-36`}>
+              <select value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value })} className={`${field} ${phone ? 'w-full' : 'w-36'}`}>
                 {kinds.map((k) => (
                   <option key={k.key} value={k.key}>{k.ar}</option>
                 ))}
@@ -189,7 +194,7 @@ export function PenaltyRulesCard() {
             </label>
             <label className="block">
               <span className="mb-0.5 block text-xs text-[var(--sys-muted-foreground)]">الدور</span>
-              <select value={draft.role} onChange={(e) => setDraft({ ...draft, role: e.target.value })} className={`${FIELD} w-32`}>
+              <select value={draft.role} onChange={(e) => setDraft({ ...draft, role: e.target.value })} className={`${field} ${phone ? 'w-full' : 'w-32'}`}>
                 <option value="">كل الأدوار</option>
                 {roles.map((r) => (
                   <option key={r} value={r}>{ROLE_LABELS[r as keyof typeof ROLE_LABELS]?.ar ?? r}</option>
@@ -204,7 +209,7 @@ export function PenaltyRulesCard() {
                 step="0.01"
                 value={draft.perUnit}
                 onChange={(e) => setDraft({ ...draft, perUnit: e.target.value })}
-                className={`${FIELD} w-24`}
+                className={`${field} ${phone ? 'w-full' : 'w-24'}`}
                 dir="ltr"
               />
             </label>
@@ -215,7 +220,7 @@ export function PenaltyRulesCard() {
                 onChange={(e) => setDraft({ ...draft, currencyCode: e.target.value })}
                 maxLength={3}
                 placeholder="SYP"
-                className={`${FIELD} w-20`}
+                className={`${field} ${phone ? 'w-full' : 'w-20'}`}
                 dir="ltr"
               />
             </label>
@@ -226,7 +231,7 @@ export function PenaltyRulesCard() {
                 min={0}
                 value={draft.grace}
                 onChange={(e) => setDraft({ ...draft, grace: e.target.value })}
-                className={`${FIELD} w-24`}
+                className={`${field} ${phone ? 'w-full' : 'w-24'}`}
                 dir="ltr"
               />
             </label>
@@ -238,11 +243,11 @@ export function PenaltyRulesCard() {
                 value={draft.periodCap}
                 onChange={(e) => setDraft({ ...draft, periodCap: e.target.value })}
                 placeholder="بلا"
-                className={`${FIELD} w-24`}
+                className={`${field} ${phone ? 'w-full' : 'w-24'}`}
                 dir="ltr"
               />
             </label>
-            <Button size="sm" onClick={add} disabled={busy || !ready}>
+            <Button size="sm" onClick={add} disabled={busy || !ready} className={phone ? 'col-span-2 w-full' : undefined}>
               {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiAddCircleLine className="h-4 w-4" />}
               أضف قاعدة
             </Button>

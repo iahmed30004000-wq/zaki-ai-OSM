@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { RiFocus3Line, RiLoader4Line } from '@remixicon/react';
+import { useIsPhone } from '@/hooks/useIsPhone';
 
 /**
  * WHERE THE RUNNING SPAN STANDS.
@@ -33,6 +34,7 @@ interface Row {
 }
 
 export function PeriodProgress() {
+  const phone = useIsPhone();
   const [rows, setRows] = useState<Row[] | null>(null);
   const [note, setNote] = useState('');
 
@@ -60,32 +62,55 @@ export function PeriodProgress() {
           <ul className="divide-y divide-[var(--sys-border)]">
             {rows.map((r) => {
               const short = r.minOrders != null && r.count < r.minOrders;
+              const standing = short ? (
+                <span className="text-xs text-[var(--sys-warning)] whitespace-nowrap">
+                  دون الحد الأدنى ({r.minOrders}) — لا تُحتسب بعد
+                </span>
+              ) : r.inBand ? (
+                <span className="text-xs text-[var(--sys-success)] whitespace-nowrap">
+                  {r.isTarget ? `بلغ الهدف · ${r.inBand.value}` : `شريحة ${r.inBand.label} · ${r.inBand.value}`}
+                </span>
+              ) : (
+                <span className="text-xs text-[var(--sys-muted)] whitespace-nowrap">لم يبلغ أي شريحة بعد</span>
+              );
+              const figure = (
+                <span className="text-sm font-bold text-[var(--sys-heading)] tabular-nums ms-auto" dir="ltr">
+                  {r.count}
+                  {r.goal !== null && <span className="text-[var(--sys-muted)] font-normal"> / {r.goal}</span>}
+                </span>
+              );
+              const remaining = r.next && (
+                <span className="text-xs text-[var(--sys-muted-foreground)] whitespace-nowrap">
+                  باقي {r.next.remaining} لـ {r.next.at}
+                </span>
+              );
+              // A phone reads each person as three short lines: who and how many, the rule, then where that stands.
+              if (phone) {
+                return (
+                  <li key={`${r.ruleId}:${r.userId}`} className="px-4 py-2.5 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium text-[var(--sys-heading)]">{r.userName}</span>
+                      {figure}
+                    </div>
+                    <p className="text-xs text-[var(--sys-muted-foreground)]">
+                      {r.ruleName} · {r.metricLabel} · {r.periodLabel}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                      {standing}
+                      {remaining}
+                    </div>
+                  </li>
+                );
+              }
               return (
                 <li key={`${r.ruleId}:${r.userId}`} className="px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-1">
                   <span className="text-sm font-medium text-[var(--sys-heading)] min-w-[120px]">{r.userName}</span>
                   <span className="text-xs text-[var(--sys-muted-foreground)]">
                     {r.ruleName} · {r.metricLabel} · {r.periodLabel}
                   </span>
-                  <span className="text-sm font-bold text-[var(--sys-heading)] tabular-nums ms-auto" dir="ltr">
-                    {r.count}
-                    {r.goal !== null && <span className="text-[var(--sys-muted)] font-normal"> / {r.goal}</span>}
-                  </span>
-                  {short ? (
-                    <span className="text-xs text-[var(--sys-warning)] whitespace-nowrap">
-                      دون الحد الأدنى ({r.minOrders}) — لا تُحتسب بعد
-                    </span>
-                  ) : r.inBand ? (
-                    <span className="text-xs text-[var(--sys-success)] whitespace-nowrap">
-                      {r.isTarget ? `بلغ الهدف · ${r.inBand.value}` : `شريحة ${r.inBand.label} · ${r.inBand.value}`}
-                    </span>
-                  ) : (
-                    <span className="text-xs text-[var(--sys-muted)] whitespace-nowrap">لم يبلغ أي شريحة بعد</span>
-                  )}
-                  {r.next && (
-                    <span className="text-xs text-[var(--sys-muted-foreground)] whitespace-nowrap">
-                      باقي {r.next.remaining} لـ {r.next.at}
-                    </span>
-                  )}
+                  {figure}
+                  {standing}
+                  {remaining}
                 </li>
               );
             })}

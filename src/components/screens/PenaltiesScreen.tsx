@@ -305,7 +305,7 @@ export function PenaltiesScreen() {
                     ? decide(asking.row, 'retarget', undefined, target)
                     : decide(asking.row, asking.action, reason.trim())
                 }
-                className="rounded-lg bg-[var(--sys-primary)] px-4 py-2 text-xs font-medium text-[var(--sys-primary-foreground)] disabled:opacity-50"
+                className="min-h-11 md:min-h-0 rounded-lg bg-[var(--sys-primary)] px-4 py-2 text-xs font-medium text-[var(--sys-primary-foreground)] disabled:opacity-50"
               >
                 {busy === asking.row.id ? 'جارٍ…' : 'تأكيد'}
               </button>
@@ -316,7 +316,7 @@ export function PenaltiesScreen() {
                   setReason('');
                   setTarget('');
                 }}
-                className="rounded-lg border border-[var(--sys-border)] px-4 py-2 text-xs text-[var(--sys-muted-foreground)]"
+                className="min-h-11 md:min-h-0 rounded-lg border border-[var(--sys-border)] px-4 py-2 text-xs text-[var(--sys-muted-foreground)]"
               >
                 تراجع
               </button>

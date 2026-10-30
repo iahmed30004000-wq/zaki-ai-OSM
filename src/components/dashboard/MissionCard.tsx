@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { RiArrowRightLine } from '@remixicon/react';
 import { missionFor, missionSentence, type Mission } from '@/lib/mission-card';
 import { useMayOpen } from '@/hooks/useMayOpen';
+import { useApp } from '@/context/AppContext';
+import { userCan } from '@/lib/can';
 import type { WorkItem } from '@/lib/my-work';
 
 /**
@@ -38,7 +40,8 @@ import type { WorkItem } from '@/lib/my-work';
  */
 export function MissionCard({ items }: { items: readonly WorkItem[] }) {
   const mayOpen = useMayOpen();
-  const mission = missionFor(items, mayOpen);
+  const { currentUser } = useApp();
+  const mission = missionFor(items, mayOpen, (key) => !!currentUser && userCan(currentUser, key));
   if (!mission) return null;
   return <MissionCardView mission={mission} />;
 }

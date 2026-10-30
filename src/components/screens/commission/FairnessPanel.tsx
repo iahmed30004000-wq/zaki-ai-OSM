@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { HealthChip } from '@/components/ui/HealthChip';
 import { RiScales3Line } from '@remixicon/react';
+import { useIsPhone } from '@/hooks/useIsPhone';
 import {
   MIN_COMPARABLE_DAYS,
   MIN_COUNTED_ORDERS,
@@ -90,7 +91,7 @@ function AgentRow({ a }: { a: FairAgent & { userName: string } }) {
             type="button"
             onClick={() => setOpen(!open)}
             aria-expanded={open}
-            className="mt-1 text-xs font-medium text-[var(--sys-primary)] hover:underline"
+            className="min-h-11 md:min-h-0 inline-flex items-center mt-1 text-xs font-medium text-[var(--sys-primary)] hover:underline"
           >
             {open ? 'أخفِ البنود' : `من أين الدرجة (${a.score} من 100)؟`}
           </button>
@@ -166,7 +167,11 @@ function Block({
   );
 }
 
+const explanation =
+  'الترتيب بعدد الطلبات يكافئ التقويم: الرواتب تنزل أوّل الشهر، التحويل يرتفع، ومَن عمل تلك الأيام يتصدّر. فبدلاً من تقدير «كم كان يجب أن يكون هذا اليوم»، يُقارَن كلُّ موظفٍ بمَن عمل الأيامَ نفسها فقط — فإذا رفعت الرواتب أرقامَ الجميع في يوم، رفعتها للطرفين، والنسبة بينهما لا تتغيّر. نصيب اليوم هو إجمالُ ذلك اليوم مقسوماً على عدد مَن عمله.';
+
 export function FairnessPanel({ data }: { data: FairnessData | null }) {
+  const phone = useIsPhone();
   if (!data) return null;
   if (data.confirmed.length === 0 && data.sourced.length === 0) return null;
 
@@ -180,12 +185,20 @@ export function FairnessPanel({ data }: { data: FairnessData | null }) {
         <h2 className="text-sm font-medium text-[var(--sys-heading)]">عدالة العدد — مقابل نصيب اليوم</h2>
       </div>
 
-      <p className="px-4 py-2.5 text-xs leading-relaxed text-[var(--sys-muted-foreground)] border-b border-[var(--sys-border)]">
-        الترتيب بعدد الطلبات يكافئ التقويم: الرواتب تنزل أوّل الشهر، التحويل يرتفع، ومَن عمل تلك الأيام
-        يتصدّر. فبدلاً من تقدير «كم كان يجب أن يكون هذا اليوم»، يُقارَن كلُّ موظفٍ بمَن عمل الأيامَ نفسها
-        فقط — فإذا رفعت الرواتب أرقامَ الجميع في يوم، رفعتها للطرفين، والنسبة بينهما لا تتغيّر.
-        نصيب اليوم هو إجمالُ ذلك اليوم مقسوماً على عدد مَن عمله.
-      </p>
+      {/* On a phone the long explanation is folded behind one line that says what it is, so the
+          headline and the numbers are what the first screen shows; on a desk it is printed whole. */}
+      {phone ? (
+        <details className="border-b border-[var(--sys-border)]">
+          <summary className="flex min-h-11 cursor-pointer items-center px-4 text-xs font-medium text-[var(--sys-primary)]">
+            لماذا هذه المقارنة؟
+          </summary>
+          <p className="px-4 pb-2.5 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">{explanation}</p>
+        </details>
+      ) : (
+        <p className="px-4 py-2.5 text-xs leading-relaxed text-[var(--sys-muted-foreground)] border-b border-[var(--sys-border)]">
+          {explanation}
+        </p>
+      )}
 
       {/* THE PRECONDITION HE ASKED FOR, ANSWERED. Rather than silently
           skipping «أي فترة من الشهر» or inventing a payday coefficient, the
