@@ -30,6 +30,7 @@ vi.mock('@/lib/api-client', () => ({ apiJson: (...a: unknown[]) => apiJson(...a)
 vi.mock('@/hooks/useIsPhone', () => ({ useIsPhone: () => phone.value }));
 vi.mock('@/context/AppContext', () => ({
   useApp: () => ({ locale: 'ar', isRtl: true, currentUser: user.current }),
+  useAppOptional: () => ({ locale: 'ar', isRtl: true, currentUser: user.current }),
 }));
 vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
