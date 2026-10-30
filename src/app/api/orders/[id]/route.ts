@@ -1787,11 +1787,8 @@ export async function PATCH(
         await consumeOrderStock(tx, {
           orderId: id,
           companyId,
-          // The country's own rule, read from the same context the rest of
-          // this handler uses — and the same argument
-          // `/api/orders/[id]/shipping` passes, so the two doors cannot
-          // disagree about whether a short shelf may deliver.
-          allowNegativeStock: country.allowNegativeStock,
+          // No stock rule is passed: a delivery is recorded whatever the shelf says, and a short one is
+          // written as a review line (P0-13) — the same for every door, so none can disagree.
           userId: user.id,
         });
       }

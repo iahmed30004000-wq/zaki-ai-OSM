@@ -239,13 +239,18 @@ describe('stock leaves when the parcel does', () => {
     expect(consumeOrderStock).not.toHaveBeenCalled();
   });
 
-  it('carries the country’s negative-stock rule through rather than deciding it here', async () => {
+  /*
+   * CHANGED 30/10 (P0-13, OLD → NEW). Old: «carries the country's negative-stock rule through rather than deciding
+   * it here» — this door passed `input.allowNegativeStock ?? false`, a default that refused a short shelf the moment
+   * a second caller forgot the flag (LAUNCH_LINE: «السطرُ الذي يصير عطلاً عند أوّلِ مُستدعٍ ثانٍ»). New: no door
+   * passes a stock rule at all; a delivery is recorded whatever the shelf says (`consumeOrderStock`).
+   */
+  it('passes NO stock rule: a delivery is recorded whatever the shelf says', async () => {
     await recordPartialDelivery(db as never, {
       companyId: 'c1', orderId: ORDER, minorUnit: 2, userId: 'u1',
       lines: [{ itemId: 'i1', deliveredQty: 2 }, { itemId: 'i2', deliveredQty: 1 }],
-      allowNegativeStock: true,
     });
-    expect(consumeOrderStock.mock.calls[0][1]).toMatchObject({ allowNegativeStock: true });
+    expect(Object.keys(consumeOrderStock.mock.calls[0][1] as object).sort()).toEqual(['companyId', 'orderId', 'userId']);
   });
 });
 

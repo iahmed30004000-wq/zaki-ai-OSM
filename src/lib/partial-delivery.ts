@@ -171,8 +171,6 @@ export async function recordPartialDelivery(
     minorUnit: number;
     userId: string;
     note?: string | null;
-    /** The country's rule when a batch cannot cover what went out the door. */
-    allowNegativeStock?: boolean;
   }
 ): Promise<PartialOutcome> {
   const order = await tx.order.findFirst({
@@ -393,7 +391,6 @@ export async function recordPartialDelivery(
     await consumeOrderStock(tx, {
       orderId: order.id,
       companyId: input.companyId,
-      allowNegativeStock: input.allowNegativeStock ?? false,
       userId: input.userId,
     });
   }

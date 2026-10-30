@@ -629,7 +629,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         await consumeOrderStock(tx as never, {
           orderId: order.id,
           companyId,
-          allowNegativeStock: true,
           userId: user.id,
         });
         /**

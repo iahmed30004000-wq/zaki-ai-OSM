@@ -120,6 +120,8 @@ function shelfTx(order: Record<string, unknown>) {
     inventoryMovement: { findFirst: vi.fn(async (a: { where: { type: string } }) => (a.where.type === 'SALE' ? { id: 'sold' } : null)), create: vi.fn() },
     order: { findFirst: vi.fn(async () => order), update: vi.fn() },
     orderItem: { updateMany: vi.fn() },
+    // No review line on the order: it was not delivered short before.
+    orderActivity: { create: vi.fn(), findFirst: vi.fn(async () => null) },
     orderAddOn: { updateMany: vi.fn() },
     productionBatch: { findFirst: vi.fn(async () => ({ costPerUnit: 4 })), create: vi.fn(async () => ({ id: 'b-new' })) },
   };
@@ -140,7 +142,7 @@ describe('delivering the order', () => {
     drawDownStock.mockImplementation(async (_tx: unknown, a: { productId: string; quantity: number }) => ({
       taken: a.quantity, short: 0, cost: a.productId === 'p2' ? 6 : 5,
     }));
-    const out = await consumeOrderStock(tx as never, { orderId: 'o1', companyId: 'c1', allowNegativeStock: false });
+    const out = await consumeOrderStock(tx as never, { orderId: 'o1', companyId: 'c1' });
     expect(drawDownStock.mock.calls.map((c) => [c[1].productId, c[1].quantity])).toEqual([['p1', 1], ['p2', 2]]);
     expect(out).toMatchObject({ taken: 3, cost: 11 });
     // The reservation has served its purpose — for the add-on too.
@@ -151,7 +153,7 @@ describe('delivering the order', () => {
     const tx = shelfTx({ ...ORDER, addOns: [] });
     tx.inventoryMovement.findFirst.mockResolvedValue(null as never);
     drawDownStock.mockResolvedValue({ taken: 1, short: 0, cost: 5 });
-    await consumeOrderStock(tx as never, { orderId: 'o1', companyId: 'c1', allowNegativeStock: false });
+    await consumeOrderStock(tx as never, { orderId: 'o1', companyId: 'c1' });
     expect(drawDownStock).toHaveBeenCalledTimes(1);
   });
 });

@@ -272,11 +272,14 @@ function world(opts: {
       },
     },
     orderStatusLog: { create: async ({ data }: any) => (logs.push(data), data) },
-    orderActivity: { create: async ({ data }: any) => (logs.push(data), data) },
+    orderActivity: {
+      create: async ({ data }: any) => (logs.push(data), data),
+      findFirst: async ({ where }: any) => logs.find((l) => l.orderId === where.orderId && l.action === where.action) ?? null,
+    },
   };
   db.$transaction = (fn: (tx: unknown) => unknown) => fn(db);
 
-  return { db, order, items, shelf, movements, orderWrites, shelfQueries };
+  return { db, order, items, shelf, movements, orderWrites, shelfQueries, activities: logs };
 }
 
 const deliver = (body: Record<string, unknown> = {}) =>
@@ -420,6 +423,25 @@ describe('the delivery door takes every unit off the shelf', () => {
     expect(w.movements.filter((m) => m.type === 'SALE')).toHaveLength(1);
   });
 
+  it('and a PATCH repeated after an EMPTY-shelf delivery takes none of the stock that arrived since (P0-13 review)', async () => {
+    // An empty-shelf delivery wrote no SALE, so the ledger key cannot see it; its review line is the key.
+    const w = install(
+      world({
+        order: orderRow({ quantity: 4 }),
+        items: [{ productId: CREAM, productName: 'كريم', quantity: 4, freeQuantity: 0 }],
+        shelf: [],
+      })
+    );
+    expect((await deliver()).status).toBe(200);
+    expect(sales(w)).toHaveLength(0);
+    w.shelf.push(batch({ id: 'b-late', quantityRemaining: 9 }));
+
+    const again = await consumeOrderStock(w.db as never, { orderId: ORDER, companyId: 'c1', userId: 'u1' });
+    expect(again.alreadyDone).toBe(true);
+    expect(left(w, 'b-late')).toBe(9);
+    expect(sales(w)).toHaveLength(0);
+  });
+
   it('and a second door arriving after this one also moves nothing', async () => {
     // The statement sweep in `/api/finance/statements/[id]` calls the same
     // helper on orders it promotes. An order delivered here and then settled
@@ -438,7 +460,6 @@ describe('the delivery door takes every unit off the shelf', () => {
     const again = await consumeOrderStock(w.db as never, {
       orderId: ORDER,
       companyId: 'c1',
-      allowNegativeStock: false,
       userId: 'u1',
     });
     expect(again.alreadyDone).toBe(true);
@@ -501,11 +522,15 @@ describe('the delivery door takes every unit off the shelf', () => {
     expect(sales(w)[0].balanceAfter).toBe(6);
   });
 
-  it('and a shelf too short to cover the order refuses, rather than under-deducting in silence', async () => {
-    // The old block's answer to «ten ordered, five on the shelf» was to take
-    // five and say nothing. `allowNegativeStock` is false for this country,
-    // so the draw refuses and the whole transaction — status, counters,
-    // ledger — goes with it.
+  /*
+   * CHANGED 30/10 (P0-13, OLD → NEW). Old: «a shelf too short to cover the order refuses, rather than
+   * under-deducting in silence» — with `allowNegativeStock: false` the draw threw and the whole transaction (status,
+   * counters, ledger) went with it, so a parcel in the customer's hands stayed «open». New: the country's flag is
+   * asked where a promise is made (confirmation, shipment), not where a delivery is recorded; this door records the
+   * delivery whatever the flag says, takes what the shelf has, and says the rest on the order. What the old test
+   * protected — «not in silence» — is asserted in the next test.
+   */
+  it('and a shelf too short to cover the order is still a delivery — the flag does not matter here', async () => {
     const w = install(
       world({
         order: orderRow({ quantity: 10 }),
@@ -514,9 +539,15 @@ describe('the delivery door takes every unit off the shelf', () => {
       })
     );
 
-    expect((await deliver()).status).not.toBe(200);
-    expect(left(w, 'b-only')).toBe(5);
-    expect(sales(w)).toHaveLength(0);
+    // allowNegativeStock is FALSE for this country (the world's default) and the door still records it.
+    expect((await deliver()).status).toBe(200);
+    expect(left(w, 'b-only')).toBe(0);
+    expect(sales(w)).toHaveLength(1);
+    expect(sales(w)[0].quantity).toBe(-5);
+    // …and the five it could not give are on the order, not silent.
+    const said = w.activities.filter((a: Row) => a.action === 'STOCK_SHORT_AT_DELIVERY');
+    expect(said).toHaveLength(1);
+    expect(JSON.parse(said[0].metadata)).toMatchObject({ short: 5 });
   });
 
   it('and where the country allows it, the shortfall is drawn to zero and recorded', async () => {
