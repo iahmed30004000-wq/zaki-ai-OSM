@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { db } = vi.hoisted(() => ({
   db: {
     landingPage: { findFirst: vi.fn() },
-    storeRedirect: { findMany: vi.fn(), upsert: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+    storeRedirect: { findMany: vi.fn(), findFirst: vi.fn(), upsert: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
   },
 }));
 vi.mock('./db', () => ({ db }));
@@ -69,6 +69,46 @@ describe('a shop cannot forward somebody else’s address', () => {
     for (const from of ['/orders', '/dashboard', '/admin/users', '/login', '/']) {
       expect((await mayClaimFrom(from, STORE)).ok, from).toBe(false);
     }
+  });
+});
+
+describe('an address another company already forwards is not free', () => {
+  it('refuses /lp/<slug> when another company holds a redirect from it, suggested or accepted', async () => {
+    db.storeRedirect.findFirst.mockResolvedValue({ companyId: 'c2' });
+    const verdict = await mayClaimFrom('/lp/just-renamed', STORE);
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) return;
+    expect(verdict.error).toContain('شركة أخرى');
+    // No filter on suggested/isActive: a suggestion is a claim too.
+    const where = db.storeRedirect.findFirst.mock.calls[0][0].where;
+    expect(where).toMatchObject({ from: '/lp/just-renamed', companyId: { not: 'c1' } });
+    expect(where.suggested).toBeUndefined();
+    expect(where.isActive).toBeUndefined();
+  });
+
+  it('NEGATIVE: the same company’s redirect is not another company’s', async () => {
+    // The query excludes it, and the row is checked again in code.
+    db.storeRedirect.findFirst.mockResolvedValue({ companyId: 'c1' });
+    expect((await mayClaimFrom('/lp/mine-already', STORE)).ok).toBe(true);
+  });
+
+  it('NEGATIVE: nobody forwarding it leaves the address claimable', async () => {
+    expect((await mayClaimFrom('/lp/free-address', STORE)).ok).toBe(true);
+  });
+
+  it('a live page is still refused first, with its own sentence', async () => {
+    db.landingPage.findFirst.mockResolvedValue({ id: 'p', companyId: 'c1' });
+    db.storeRedirect.findFirst.mockResolvedValue({ companyId: 'c2' });
+    const verdict = await mayClaimFrom('/lp/both', STORE);
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) return;
+    expect(verdict.error).toContain('صفحة عندك');
+  });
+
+  it('the shop’s own storefront paths never ask', async () => {
+    db.storeRedirect.findFirst.mockResolvedValue({ companyId: 'c2' });
+    expect((await mayClaimFrom('/s/seha/p/x', STORE)).ok).toBe(true);
+    expect(db.storeRedirect.findFirst).not.toHaveBeenCalled();
   });
 });
 
