@@ -418,6 +418,7 @@ export function CollectionScreen() {
       <ImportCard
         providers={providers}
         busy={importing}
+        error={error}
         onImport={async (payload) => {
           setImporting(true);
           setError(null);
@@ -764,10 +765,13 @@ export function CollectionScreen() {
 function ImportCard({
   providers,
   busy,
+  error,
   onImport,
 }: {
   providers: { id: string; name: string }[];
   busy: boolean;
+  /** The screen's last error: on a phone the sheet shows it too, because the page copy is behind the scrim. */
+  error: string | null;
   onImport: (payload: {
     deliveryProviderId: string;
     reference: string;
@@ -783,6 +787,9 @@ function ImportCard({
   // statements and press the next step on one, not to upload, and the form stood in front of the first statement.
   const phone = useIsPhone();
   const [sheet, setSheet] = useState(false);
+  // Whether the LAST press inside the sheet was refused: the refusal (a rejected file, a statement already imported)
+  // is printed inside the sheet, where the person is looking, not only in the page behind the scrim.
+  const [refused, setRefused] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -794,6 +801,7 @@ function ImportCard({
       content: file.content,
       encoding: file.encoding,
     });
+    setRefused(!ok);
     if (ok) {
       setReference('');
       setFile(null);
@@ -891,13 +899,24 @@ function ImportCard({
         {busy ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiUpload2Line className="w-4 h-4" />}
         استيراد
       </button>
+      {phone && refused && error && (
+        <p role="alert" className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">
+          {error}
+        </p>
+      )}
     </form>
   );
 
   if (!phone) return form;
   return (
     <>
-      <Button className="w-full" onClick={() => setSheet(true)}>
+      <Button
+        className="w-full"
+        onClick={() => {
+          setRefused(false);
+          setSheet(true);
+        }}
+      >
         <RiUpload2Line className="w-4 h-4" aria-hidden /> استيراد كشف
       </Button>
       <Modal isOpen={sheet} onClose={() => setSheet(false)} title="استيراد كشف" side="bottom">

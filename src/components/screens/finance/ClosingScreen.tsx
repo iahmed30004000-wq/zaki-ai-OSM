@@ -112,7 +112,9 @@ export function ClosingScreen() {
                 <div>
                   <h3 className="text-sm font-medium text-[var(--sys-heading)]">{r.walletName}</h3>
                   <p className="text-xs text-[var(--sys-muted-foreground)] tabular-nums mt-0.5">
-                    رصيد الدفاتر <Money value={r.bookBalance} currency={r.currencyCode} />
+                    رصيد الدفاتر{' '}
+                    {/* On a phone it takes the same decimals as the counted figure beside it; the desk line is as it was. */}
+                    <Money value={r.bookBalance} currency={r.currencyCode} minorUnit={phone ? r.minorUnit : undefined} />
                     {r.closing &&
                       (phone ? (
                         <>

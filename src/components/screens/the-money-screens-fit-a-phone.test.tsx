@@ -233,6 +233,32 @@ describe('«المحافظ»', () => {
     expect(note.className, 'الملاحظة ليست بعرض البطاقة').toContain('flex-col');
   });
 
+  it('a digit is never taken away: 12.345 stays 12.345 on a phone card (balance, opening, in, out) and on a movement', async () => {
+    const odd = { ...WALLET, balance: 12.345, opening: 1.125, in: 12.345, out: 1.125 };
+    apiJson.mockImplementation(async (url: string) =>
+      String(url).includes('/movements')
+        ? { movements: [{ ...MOVES[0], amount: 12.345 }] }
+        : { wallets: [odd] }
+    );
+    render(<WalletsScreen />);
+    await screen.findAllByText('شركة الشحن');
+    const card = screen.getByRole('button', { name: /الصندوق/ });
+    expect(card.textContent).toContain('12.345 JOD');
+    expect(card.textContent).toContain('1.125');
+    expect(card.textContent).not.toMatch(/12\.35|1\.13/);
+    const movement = cards().find((c) => c.textContent?.includes('شركة الشحن'))!;
+    expect(movement.textContent).toContain('+12.345');
+    expect(movement.textContent).not.toContain('12.35');
+  });
+
+  it('and a wallet of whole numbers keeps the currency’s own two decimals, the four figures alike', async () => {
+    await draw();
+    const card = screen.getByRole('button', { name: /الصندوق/ });
+    expect(card.textContent).toContain('1,250.00 JOD');
+    expect(card.textContent).toContain('1,000.00');
+    expect(card.textContent).toContain('250.00');
+  });
+
   it('FIN-14 DESK: the columns are the old six, in and out apart, the note under the party', async () => {
     phone.value = false;
     await draw();
@@ -327,6 +353,59 @@ describe('«التحصيل والكشوف»', () => {
     expect(screen.getByLabelText('شركة الشحن')).toBeTruthy();
     // The picker has a 44px face and says what was chosen.
     expect(screen.getByText('اختر الملف').closest('label')!.className).toContain('min-h-11');
+  });
+
+  it('FIN-15: a REFUSED import is printed inside the sheet, where the person is looking, and the sheet stays open', async () => {
+    apiJson.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') throw new Error('هذا الكشف مستورد من قبل');
+      if (String(url).startsWith('/api/finance/statements')) return { statements: [statement()] };
+      if (String(url).startsWith('/api/ops/references')) return { providers: [{ id: 'p1', name: 'أبو علي' }] };
+      return { wallets: [] };
+    });
+    render(<CollectionScreen />);
+    await screen.findAllByText('ST-2026-09');
+    fireEvent.click(screen.getByRole('button', { name: /استيراد كشف/ }));
+    const dialog = await screen.findByRole('dialog');
+    await waitFor(() => expect(within(dialog).getByRole('option', { name: 'أبو علي' })).toBeTruthy());
+    fireEvent.change(within(dialog).getByLabelText('شركة الشحن'), { target: { value: 'p1' } });
+    fireEvent.change(within(dialog).getByLabelText('مرجع الكشف'), { target: { value: 'ST-2026-10' } });
+    const file = new File(['a,b'], 'x.csv', { type: 'text/csv' });
+    Object.defineProperty(file, 'text', { value: async () => 'a,b' });
+    fireEvent.change(dialog.querySelector('input[type="file"]') as HTMLInputElement, { target: { files: [file] } });
+    await waitFor(() => expect((within(dialog).getByRole('button', { name: 'استيراد' }) as HTMLButtonElement).disabled).toBe(false));
+    // Nothing refused yet: no sentence in the sheet.
+    expect(within(dialog).queryByRole('alert')).toBeNull();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'استيراد' }));
+    const alert = await within(dialog).findByRole('alert');
+    expect(alert.textContent).toBe('هذا الكشف مستورد من قبل');
+    expect(screen.getByRole('dialog')).toBe(dialog);
+  });
+
+  it('FIN-15 NEGATIVE: opening the sheet again does not greet the person with the last refusal', async () => {
+    apiJson.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') throw new Error('هذا الكشف مستورد من قبل');
+      if (String(url).startsWith('/api/finance/statements')) return { statements: [statement()] };
+      if (String(url).startsWith('/api/ops/references')) return { providers: [{ id: 'p1', name: 'أبو علي' }] };
+      return { wallets: [] };
+    });
+    render(<CollectionScreen />);
+    await screen.findAllByText('ST-2026-09');
+    fireEvent.click(screen.getByRole('button', { name: /استيراد كشف/ }));
+    let dialog = await screen.findByRole('dialog');
+    await waitFor(() => expect(within(dialog).getByRole('option', { name: 'أبو علي' })).toBeTruthy());
+    fireEvent.change(within(dialog).getByLabelText('شركة الشحن'), { target: { value: 'p1' } });
+    fireEvent.change(within(dialog).getByLabelText('مرجع الكشف'), { target: { value: 'ST-2026-10' } });
+    const file = new File(['a,b'], 'x.csv', { type: 'text/csv' });
+    Object.defineProperty(file, 'text', { value: async () => 'a,b' });
+    fireEvent.change(dialog.querySelector('input[type="file"]') as HTMLInputElement, { target: { files: [file] } });
+    await waitFor(() => expect((within(dialog).getByRole('button', { name: 'استيراد' }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'استيراد' }));
+    await within(dialog).findByRole('alert');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'إغلاق' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: /استيراد كشف/ }));
+    dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByRole('alert')).toBeNull();
   });
 
   it('FIN-15 DESK: the form is in the page, as it was, and there is no extra button', async () => {
@@ -482,6 +561,19 @@ describe('«إغلاق اليوم»', () => {
     await draw();
     expect(document.body.textContent).toContain('4,350');
     expect(document.body.textContent).not.toContain('الجرد 4350');
+  });
+
+  it('the books balance and the counted figure share the currency’s decimals on a phone; the desk line is untouched', async () => {
+    apiJson.mockResolvedValue({ rows: [{ ...ROW, bookBalance: 4350.5, closing: { ...ROW.closing, bookBalance: 4350.5, actualBalance: 4350.5 } }] });
+    render(<ClosingScreen />);
+    await screen.findByRole('button', { name: 'اعتماد' });
+    expect(document.body.textContent).toContain('رصيد الدفاتر 4,350.500 JOD · الجرد 4,350.500 JOD');
+    cleanup();
+    phone.value = false;
+    apiJson.mockResolvedValue({ rows: [{ ...ROW, bookBalance: 4350.5, closing: { ...ROW.closing, bookBalance: 4350.5, actualBalance: 4350.5 } }] });
+    render(<ClosingScreen />);
+    await screen.findByRole('button', { name: 'اعتماد' });
+    expect(document.body.textContent).toContain('رصيد الدفاتر 4,350.50 JOD · الجرد 4350.5');
   });
 
   it('DESK: the figures are the raw ones they were, and the rule stays a hover title', async () => {

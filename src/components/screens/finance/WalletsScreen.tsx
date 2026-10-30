@@ -10,6 +10,8 @@ import { RiAddCircleLine, RiArrowGoBackLine, RiCheckLine, RiCloseLine, RiDeleteB
 import { useToast } from '@/components/ui/Toast';
 import { Rows, type Column } from '@/components/ui/Rows';
 import { Money } from '@/components/ui/Money';
+import { useStoreCurrency } from '@/context/StoreCurrency';
+import { moneyDigits } from '@/lib/money';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { arDateTime } from '@/lib/format';
@@ -81,6 +83,19 @@ export function WalletsScreen() {
   // The phone draws a different SET of controls (the day's press first, the upkeep folded under it), not the desk's
   // row squeezed into 343px: exactly one copy of each button is drawn, and the desk is the layout it always was.
   const phone = useIsPhone();
+  const store = useStoreCurrency();
+  /*
+   * A FIGURE ON A CARD MUST SHOW WHAT THE DESK SHOWS, TO THE LAST DIGIT.
+   * The desk prints the raw number. `Money` rounds to the decimals of the currency it is given, and for a currency
+   * that is not the store's it guesses two — which would turn 12.345 into 12.35 on a phone. So the card asks for the
+   * currency's own decimals, and never fewer than the figure actually has: formatting is added (separators, a code),
+   * a digit is never taken away. Display only; nothing here changes a stored or sent amount.
+   */
+  const digitsFor = (code: string | null | undefined, ...figures: number[]) =>
+    Math.max(
+      moneyDigits({ currency: code, store }),
+      ...figures.map((n) => (String(n).split('.')[1] ?? '').length)
+    );
   const [wallets, setWallets] = useState<WalletRow[] | null>(null);
   const [active, setActive] = useState<string>('');
   const [movements, setMovements] = useState<Movement[] | null>(null);
@@ -272,7 +287,12 @@ export function WalletsScreen() {
           render: (m) => (
             <span dir="ltr" className="whitespace-nowrap">
               {m.direction === 'IN' ? '+' : '−'}
-              <Money value={m.amount} currency={wallet?.currencyCode} tone={m.direction === 'IN' ? 'collected' : 'lost'} />
+              <Money
+                value={m.amount}
+                currency={wallet?.currencyCode}
+                minorUnit={digitsFor(wallet?.currencyCode, m.amount)}
+                tone={m.direction === 'IN' ? 'collected' : 'lost'}
+              />
             </span>
           ),
         },
@@ -367,11 +387,17 @@ export function WalletsScreen() {
                   /* A card a finger scrolls past, six of them: the balance with its thousands separators and its code,
                      and the three figures behind it each under its own name instead of one dense line of raw numbers. */
                   <>
-                    <Money value={w.balance} currency={w.currencyCode} className="mt-1 block text-lg font-semibold text-[var(--sys-heading)]" />
+                    {/* The four figures of one wallet share one count of decimals, so they line up and none loses a digit. */}
+                    <Money
+                      value={w.balance}
+                      currency={w.currencyCode}
+                      minorUnit={digitsFor(w.currencyCode, w.balance, w.opening, w.in, w.out)}
+                      className="mt-1 block text-lg font-semibold text-[var(--sys-heading)]"
+                    />
                     <span className="mt-1 grid grid-cols-3 gap-2 text-xs text-[var(--sys-muted-foreground)]">
-                      <span>افتتاحي <Money value={w.opening} currency={null} className="block text-[var(--sys-foreground)]" /></span>
-                      <span>وارد <Money value={w.in} currency={null} className="block text-[var(--sys-foreground)]" /></span>
-                      <span>صادر <Money value={w.out} currency={null} className="block text-[var(--sys-foreground)]" /></span>
+                      <span>افتتاحي <Money value={w.opening} currency={null} minorUnit={digitsFor(w.currencyCode, w.balance, w.opening, w.in, w.out)} className="block text-[var(--sys-foreground)]" /></span>
+                      <span>وارد <Money value={w.in} currency={null} minorUnit={digitsFor(w.currencyCode, w.balance, w.opening, w.in, w.out)} className="block text-[var(--sys-foreground)]" /></span>
+                      <span>صادر <Money value={w.out} currency={null} minorUnit={digitsFor(w.currencyCode, w.balance, w.opening, w.in, w.out)} className="block text-[var(--sys-foreground)]" /></span>
                     </span>
                   </>
                 ) : (
