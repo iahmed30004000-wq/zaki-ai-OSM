@@ -291,3 +291,23 @@ describe('Ⅵ · on a phone', () => {
     expect(screen.getAllByText('سعر كل سطر قبل الخصم؛ الخصم مرة واحدة على مجموع الطلب.')).toHaveLength(1);
   });
 });
+
+describe('Ⅶ · the line says what it counts, and what a confirmed order’s discount does', () => {
+  it('it is the order’s GOODS after the discount — and names what it leaves out (delivery and add-ons)', async () => {
+    draw();
+    await open();
+    expect(after()).toContain('بضاعة الطلب بعد الخصم (بدون التوصيل والإضافات)');
+  });
+
+  it('before confirmation there is no word about a request', async () => {
+    draw();
+    await open();
+    expect(screen.queryByText(/طلب تعديل — لا يتغير الطلب/)).toBeNull();
+  });
+
+  it('after confirmation it says the discount is a request and the order does not change until it is approved', async () => {
+    draw([A, B], { confirmationStatus: 'CONFIRMED' });
+    await open();
+    expect(screen.getByText('الخصم بعد التأكيد طلب تعديل — لا يتغير الطلب حتى الموافقة.')).toBeTruthy();
+  });
+});

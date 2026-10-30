@@ -30,6 +30,8 @@ const { fake, requireContext, logAudit, notify, activeOffersFor, adapterFor, can
     addOns: [] as Row[],
     shelf: {} as Record<string, number>,
     request: {} as Row,
+    /** Courier-statement rows that claim the order. */
+    claims: 0,
     activities: [] as Row[],
     /** `model.method` of every write, in order. */
     writes: [] as string[],
@@ -112,7 +114,7 @@ const { fake, requireContext, logAudit, notify, activeOffersFor, adapterFor, can
     },
     offer: { findFirst: () => null },
     shippingBatch: { findFirst: () => null },
-    settlementMatch: { count: () => 0 },
+    settlementMatch: { count: () => fake.claims },
     orderContactAttempt: { count: () => 1 },
     orderChangeRequest: {
       findFirst: ({ where }) => (where.id === fake.request.id ? { ...fake.request } : null),
@@ -282,6 +284,7 @@ const seed = (opts: { confirmed?: boolean; lines?: Row[]; order?: Row } = {}) =>
   fake.shelf = { [CREAM]: 50, [SOAP]: 50 };
   fake.activities = [];
   fake.writes = [];
+  fake.claims = 0;
 };
 
 /** An order that already carries a discount of 4.600 — shares 3.600 and 1.000 — as a card save wrote it. */
@@ -629,5 +632,176 @@ describe('Ⅳ · after confirmation the discount is a request — and APPLYING i
     expect(fake.writes).toEqual([]);
     expect(fake.lines.map((l) => l.discountShare)).toEqual([0, 0]);
     expect(fake.request.appliedAt).toBeNull();
+  });
+});
+
+/*
+ * ═══════════════════════════════════════════════════════════════════════
+ * THE PARCEL IS PRICED FROM THE LINES — AND SO AN OFFER'S ORDER MUST COME OUT THE SAME ON BOTH SIDES.
+ *
+ * (The adversarial review of this PR.) A storefront order with an offer is written at the price BEFORE the offer in
+ * `unitPrice`, the offer's reduction in `discountShare`, and 0 in `discountAmount`. `codForOrder` trusts
+ * `lineTotal + discountShare` only where it equals `quantity × unitPrice`; a discount written on the lines alone, with
+ * `unitPrice` left at the old price, made the two disagree and the shipment dropped the offer's reduction: the order said
+ * 22.500 and the courier was told 25.499. So a discount rewrites `unitPrice` too, and every case below asks the shipment.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+
+/** What creating the shipment would tell the courier to collect: priced from the LINES, the way `ops/shipments` does. */
+const shipment = (): number =>
+  codForOrder({
+    lines: fake.lines.map((l) => ({
+      quantity: l.quantity, unitPrice: l.unitPrice, freeQuantity: l.freeQuantity, discountShare: l.discountShare, lineTotal: l.lineTotal,
+    })),
+    addOns: fake.addOns.map((a) => ({ quantity: a.quantity, price: a.price })),
+    deliveryFee: Number(fake.order.shippingCost),
+    priceIncludesDelivery: false,
+    minorUnit: JOD.minorUnit,
+  }).cod;
+
+/** 3 for 25 with the offer's 3 off: the line is 22, a gift of 1, 2.500 to deliver — 24.500 collected, from either side. */
+const seedOffer = (confirmed: boolean) => {
+  seed({
+    confirmed,
+    order: { quantity: 3, freeQuantity: 1, sellingPrice: 22, discountAmount: 0, totalAmount: 24.5 },
+    lines: [
+      line({ id: 'line-offer', productId: CREAM, productName: 'كريم', quantity: 3, freeQuantity: 1, unitPrice: 8.333, discountShare: 3, lineTotal: 22, reservedQty: confirmed ? 4 : 0 }),
+    ],
+  });
+  if (confirmed) authorize.mockReturnValue({ allowed: false, reason: 'OUT_OF_SCOPE' });
+};
+
+describe('Ⅴ · an offer’s order: the order and the shipment say the same, whatever is done to its discount', () => {
+  it('the fixture itself: before anything, 24.500 on both sides', () => {
+    seedOffer(true);
+    expect(fake.order.totalAmount).toBe(24.5);
+    expect(shipment()).toBe(24.5);
+  });
+
+  it('a discount of 2 approved: the order 22.500 and the shipment 22.500 — the offer’s 3 is not dropped', async () => {
+    seedOffer(true);
+    approve({ discountAmount: { from: 0, to: 2 } });
+    const res = await apply();
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect(fake.order.totalAmount).toBe(22.5);
+    expect(shipment()).toBe(22.5);
+    // the line is priced BEFORE the discount again (22 over 3), the share is the 2, the line 20
+    expect(fake.lines[0]).toMatchObject({ discountShare: 2, lineTotal: 20, reservedQty: 4, freeQuantity: 1 });
+    expect(Number(fake.lines[0].unitPrice) * 3).toBeCloseTo(22, 6);
+  });
+
+  it('a discount “changed” to the one it has (0 → 0) writes no line at all, and the shipment is still the order’s 24.500', async () => {
+    seedOffer(true);
+    approve({ discountAmount: { from: 0, to: 0 } });
+    const res = await apply();
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect(fake.writes).not.toContain('orderItem.update');
+    expect(fake.order.totalAmount).toBe(24.5);
+    expect(shipment()).toBe(24.5);
+  });
+
+  it('the card’s save with nothing touched (0 → 0), pressed twice: 24.500 on both sides each time', async () => {
+    seedOffer(false);
+    for (const press of [1, 2]) {
+      fake.order.version = 3;
+      const res = await card([{ productId: CREAM, quantity: 3, unitPrice: '22' }], 0);
+      expect(res.status, await res.clone().text()).toBe(200);
+      expect(fake.order.totalAmount, `الضغطة ${press}`).toBe(24.5);
+      expect(shipment(), `الضغطة ${press}`).toBe(24.5);
+    }
+  });
+
+  it('the card’s save with 2 off an offer’s line: 22.500 on both sides', async () => {
+    seedOffer(false);
+    const res = await card([{ productId: CREAM, quantity: 3, unitPrice: '22' }], 2);
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect(fake.order.totalAmount).toBe(22.5);
+    expect(shipment()).toBe(22.5);
+  });
+
+  it('an order with NO offer: 10 off approved, the order and the shipment 38.500, the unit prices exactly as they were', async () => {
+    seed({ confirmed: true });
+    authorize.mockReturnValue({ allowed: false, reason: 'OUT_OF_SCOPE' });
+    approve({ discountAmount: { from: 0, to: 10 } });
+    expect((await apply()).status).toBe(200);
+    expect(fake.order.totalAmount).toBe(38.5);
+    expect(shipment()).toBe(38.5);
+    expect(fake.lines.map((l) => l.unitPrice)).toEqual([12, 5]);
+  });
+});
+
+describe('Ⅵ · the add-ons a customer accepted are collected, never discounted — in the card’s save and in the approved discount', () => {
+  const withAddOn = (confirmed: boolean) => {
+    seed({ confirmed, order: { totalAmount: 52.5 } });
+    fake.addOns = [{ companyId: COMPANY, orderId: ORDER_ID, productId: SOAP, productName: 'صابون', quantity: 1, price: 4, reservedQty: confirmed ? 1 : 0 }];
+    if (confirmed) authorize.mockReturnValue({ allowed: false, reason: 'OUT_OF_SCOPE' });
+  };
+
+  it('approved 5 off: 46 − 5 + 4 + 2.500 = 47.500 on the order and on the shipment; the shares add up to the 5 alone', async () => {
+    withAddOn(true);
+    approve({ discountAmount: { from: 0, to: 5 } });
+    expect((await apply()).status).toBe(200);
+    expect(fake.order.totalAmount).toBe(47.5);
+    expect(shipment()).toBe(47.5);
+    expect(fake.lines.reduce((sum, l) => sum + Number(l.discountShare), 0)).toBeCloseTo(5, 6);
+    expect(fake.writes.filter((w) => w.startsWith('orderAddOn'))).toEqual([]);
+  });
+
+  it('the card’s save, 5 off: the same 47.500 — and the screen’s “بعد الخصم” is the goods alone, 41, as it says', async () => {
+    withAddOn(false);
+    const boxes = opened();
+    const shown = previewOrderDiscount({ lines: boxes.map((b) => ({ quantity: b.quantity, price: b.unitPrice })), discount: '5', minorUnit: 3 });
+    expect(shown).toMatchObject({ kind: 'ok', after: 41 });
+    expect((await card(boxes, 5)).status).toBe(200);
+    expect(fake.order.totalAmount).toBe(47.5);
+    expect(shipment()).toBe(47.5);
+  });
+});
+
+describe('Ⅶ · a statement writes the money, a delivered line is a record: the discount is refused, in words, with nothing written', () => {
+  beforeEach(() => {
+    seed({ confirmed: true });
+    authorize.mockReturnValue({ allowed: false, reason: 'OUT_OF_SCOPE' });
+    approve({ discountAmount: { from: 0, to: 10 } });
+  });
+
+  const refused = async (code: string) => {
+    const res = await apply();
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.code).toBe(code);
+    expect(String(body.errorAr)).toMatch(/[؀-ۿ]/);
+    expect(fake.writes).toEqual([]);
+    expect(fake.order.discountAmount).toBe(0);
+    expect(fake.request.appliedAt).toBeNull();
+    expect(fake.lines.map((l) => l.discountShare)).toEqual([0, 0]);
+  };
+
+  it('a courier statement claims the order', async () => {
+    fake.claims = 1;
+    await refused('DISCOUNT_STATEMENT_LINKED');
+  });
+
+  it('its settlement has moved already', async () => {
+    fake.order.settlementStatus = 'SETTLED';
+    await refused('DISCOUNT_STATEMENT_LINKED');
+  });
+
+  it('a line has been delivered', async () => {
+    fake.lines[0].deliveredQty = 3;
+    await refused('DISCOUNT_LINE_SETTLED');
+  });
+
+  it('a line has been sent back', async () => {
+    fake.lines[1].returnedQty = 1;
+    await refused('DISCOUNT_LINE_SETTLED');
+  });
+
+  it('a discount that is the one it already has is not refused for it, and writes no line', async () => {
+    fake.claims = 1;
+    approve({ discountAmount: { from: 0, to: 0 } });
+    const res = await apply();
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect(fake.writes).not.toContain('orderItem.update');
   });
 });

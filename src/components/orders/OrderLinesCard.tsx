@@ -492,7 +492,7 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
           </p>
           <div aria-live="polite">
             <p className="text-xs text-[var(--sys-muted-foreground)]">
-              بعد الخصم:{' '}
+              بضاعة الطلب بعد الخصم (بدون التوصيل والإضافات):{' '}
               <span className="font-bold text-[var(--sys-heading)] tabular-nums" dir="ltr">
                 {preview.kind === 'ok' ? amount(preview.after, currency) : '—'}
               </span>
@@ -504,6 +504,11 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
                   <span dir="ltr">{amount(preview.shares[i] ?? 0, currency)}</span>
                 </p>
               ))}
+            {pastConfirmation && (
+              <p className="text-xs text-[var(--sys-muted)]">
+                الخصم بعد التأكيد طلب تعديل — لا يتغير الطلب حتى الموافقة.
+              </p>
+            )}
           </div>
 
           <label className="block">

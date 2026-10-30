@@ -65,7 +65,7 @@ export interface EditableOrderRow {
 const SHIPPING_CLOSED = ['DELIVERED', 'PARTIALLY_DELIVERED', 'RETURNED', 'CANCELLED'];
 
 /** A settlement state in which the order's money is still ours to compute. Anything else was moved by a statement. */
-const SETTLEMENT_OPEN = ['NOT_APPLICABLE', 'PENDING', 'PENDING_COLLECTION'];
+export const SETTLEMENT_OPEN = ['NOT_APPLICABLE', 'PENDING', 'PENDING_COLLECTION'];
 
 
 export async function readOrderEditFacts(args: {
