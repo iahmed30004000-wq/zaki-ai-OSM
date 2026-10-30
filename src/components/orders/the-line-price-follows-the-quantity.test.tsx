@@ -75,6 +75,8 @@ const BUNDLE = {
   name: 'غسول',
   basePrice: 25,
   offers: [{ id: 'offerThree', name: 'ثلاث قطع', quantity: 3, freeQuantity: 1, sellingPrice: 60 }],
+  // A line takes only the offers on sale today (`liveOffers`); the same bundle, live, is what these tests drive.
+  liveOffers: [{ id: 'offerThree', name: 'ثلاث قطع', quantity: 3, freeQuantity: 1, price: 60, listPrice: null }],
 };
 /** Base price 0: the column's default, «not set yet». */
 const UNPRICED = { id: 'prodUnpriced', name: 'عيّنة', basePrice: 0, offers: [] };
