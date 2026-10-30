@@ -1,6 +1,7 @@
 import { updateCompanySettings } from './company-settings';
 import { DEFAULT_LANGUAGE, STORE_LANGUAGES } from './store-languages';
 import { db } from './db';
+import { toLatinDigits } from './latin-digits';
 
 /**
  * WHAT WE SEND A CUSTOMER, AND HOW.
@@ -229,7 +230,9 @@ export function fillTemplate(body: string, ctx: FillContext): string {
 
 /** wa.me wants digits only, with the country code and no leading zero. */
 export function waNumber(raw: string, countryCode?: string | null): string {
-  let digits = (raw || '').replace(/\D/g, '');
+  // An Arabic keyboard types ٠٩٥٢… — read it as 0952…, or the number looks empty and the reason given is wrong.
+  raw = toLatinDigits(raw || '');
+  let digits = raw.replace(/\D/g, '');
   if (!digits) return '';
   // Already international — eleven digits or more with no trunk zero is a number carrying its own country code
   // (a Turkish line in the north of Syria: «905XXXXXXXXX»). Prefixing the store's code made it «963905…», nobody.

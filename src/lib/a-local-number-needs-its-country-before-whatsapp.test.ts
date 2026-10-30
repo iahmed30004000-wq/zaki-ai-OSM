@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { dashboardFiles, repoFile, stripComments } from './guard-source';
 import { waNumber, whatsappLink, whatsappReady } from './message-templates';
@@ -142,5 +144,77 @@ describe('every <ContactButtons> on a screen is given the country', () => {
     const from = screen.indexOf('<ContactButtons');
     const call = screen.slice(from, screen.indexOf('/>', from));
     expect(call).toContain('countryCode={data.dialCode}');
+  });
+});
+
+describe('Arabic-Indic and Persian digits are read as digits', () => {
+  it('٠٩٥٢٥٥٤٥٦٢ + 963 → 963952554562', () => {
+    expect(waNumber('٠٩٥٢٥٥٤٥٦٢', '963')).toBe('963952554562');
+  });
+
+  it('Persian digits too, and mixed with Latin ones', () => {
+    expect(waNumber('۰۹۵۲۵۵۴۵۶۲', '963')).toBe('963952554562');
+    expect(waNumber('٠952554562', '963')).toBe('963952554562');
+  });
+
+  it('without a country they are a local number all the same — shut, for the right reason', () => {
+    expect(waNumber('٠٩٥٢٥٥٤٥٦٢')).toBe('');
+    expect(waNumber('٠٠٩٠٥٣٢١٢٣٤٥٦٧')).toBe('905321234567');
+  });
+});
+
+describe('the courier’s office gets the country too', () => {
+  it('the change-requests list sends the calling code, from the store’s country', () => {
+    const src = stripComments(repoFile('src/app/api/control/change-requests/route.ts'));
+    expect(src).toMatch(/dialCode:\s*ruleFor\(country\.code\)\?\.dialCode \?\? null/);
+  });
+
+  it('and the screen hands it to the dialog', () => {
+    const src = stripComments(repoFile('src/components/screens/ChangeRequestsScreen.tsx'));
+    const from = src.indexOf('<CourierNotifyDialog');
+    expect(src.slice(from, src.indexOf('/>', from))).toContain('countryCode={dialCode}');
+  });
+
+  it('and the dialog shuts the button and claims «sent» only for a link that opened', () => {
+    const src = stripComments(repoFile('src/components/orders/CourierNotifyDialog.tsx'));
+    expect(src).toContain('whatsappReady(phone, countryCode)');
+    expect(src).toContain('disabled={!waReady}');
+    expect(src).toMatch(/if \(!link\) return;/);
+  });
+});
+
+/**
+ * NO ONE BUILDS A WHATSAPP LINK WITHOUT SAYING WHICH COUNTRY.
+ *
+ * Every caller of `whatsappLink(` outside its own file passes `countryCode` or `dialCode` as the second argument. A
+ * caller that leaves it out gets an empty link for a local number — and a dialog that did not look at the result
+ * opened a blank tab and called the message sent.
+ */
+describe('every whatsappLink caller names the country', () => {
+  const walk = (dir: string, out: string[] = []): string[] => {
+    for (const name of readdirSync(dir)) {
+      const full = join(dir, name);
+      if (statSync(full).isDirectory()) {
+        if (name === 'node_modules') continue;
+        walk(full, out);
+      } else if (/\.(ts|tsx)$/.test(name) && !/\.test\.(ts|tsx)$/.test(name)) out.push(full);
+    }
+    return out;
+  };
+
+  const callers: { file: string; call: string }[] = [];
+  for (const file of walk(join(process.cwd(), 'src'))) {
+    if (file.endsWith('message-templates.ts')) continue;
+    const body = stripComments(readFileSync(file, 'utf8'));
+    for (const m of body.matchAll(/whatsappLink\(([^)]*)\)/g)) callers.push({ file, call: m[1] ?? '' });
+  }
+
+  it('the callers are found (the guard is not looking at nothing)', () => {
+    expect(callers.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('and each passes countryCode or dialCode second', () => {
+    const bad = callers.filter(({ call }) => !/^[^,]+,\s*(countryCode|dialCode)\b/.test(call)).map((c) => `${c.file}: whatsappLink(${c.call})`);
+    expect(bad, `رابط واتساب بلا رمز دولة:\n${bad.join('\n')}`).toEqual([]);
   });
 });

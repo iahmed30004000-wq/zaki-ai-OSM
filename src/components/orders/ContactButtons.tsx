@@ -194,9 +194,11 @@ export function ContactButtons({
    * utilities the stylesheet already carries. In the full strip the three
    * share the row on a phone instead of bunching at one end of it.
    */
-  const btn = `inline-flex items-center justify-center rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] hover:border-[var(--sys-primary)]/50 transition-colors ${
-    compact ? 'h-11 w-7 min-w-11 md:h-7 md:min-w-0' : 'h-11 md:h-8 px-2 gap-1 text-xs flex-1 md:flex-none'
-  }`;
+  const size = compact ? 'h-11 w-7 min-w-11 md:h-7 md:min-w-0' : 'h-11 md:h-8 px-2 gap-1 text-xs flex-1 md:flex-none';
+  const look = 'inline-flex items-center justify-center rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)]';
+  const btn = `${look} hover:text-[var(--sys-primary)] hover:border-[var(--sys-primary)]/50 transition-colors ${size}`;
+  /** A shut button must not light up under the pointer — it would look alive. */
+  const shutBtn = `${look} disabled:opacity-50 ${size}`;
 
   // Turned off means written but not offered — a template kept for next
   // season must not appear in the picker during this one.
@@ -259,12 +261,13 @@ export function ContactButtons({
         aria-label={waReady ? undefined : NO_COUNTRY}
         disabled={!waReady}
         onClick={plain ? openPlainWhatsapp : () => setOpen(open === 'WHATSAPP' ? null : 'WHATSAPP')}
-        className={waReady ? btn : `${btn} disabled:opacity-50`}
+        className={waReady ? btn : shutBtn}
       >
         <RiChat3Line className="w-4 h-4" />
         {!compact && 'واتساب'}
       </button>
-      {!waReady && !compact && <span className="text-xs text-[var(--sys-muted)]">{NO_COUNTRY}</span>}
+      {/* On a phone there is no hover: the reason is written, in the compact strip too. */}
+      {!waReady && <span className="text-xs text-[var(--sys-muted)]">{NO_COUNTRY}</span>}
 
       {notLogged && (
         <span role="alert" className="text-xs text-[var(--sys-destructive)]">

@@ -103,11 +103,20 @@ describe('without the country', () => {
     expect(opened).not.toHaveBeenCalled();
   });
 
-  it('the compact strip shuts it without a sentence (no room), and keeps the reason as its name', () => {
+  it('the compact strip shuts it too, and the reason is written (a phone has no hover)', () => {
     render(<ContactButtons phone="0952554562" compact orderId="o1" context={CONTEXT} />);
     const shut = screen.getByLabelText('رمز الدولة ناقص') as HTMLButtonElement;
     expect(shut.disabled).toBe(true);
-    expect(screen.queryByText('رمز الدولة ناقص')).toBeNull();
+    expect(screen.getByText('رمز الدولة ناقص')).toBeTruthy();
+  });
+
+  it('a shut button does not light up under the pointer', () => {
+    render(<ContactButtons phone="0952554562" orderId="o1" context={CONTEXT} />);
+    const shut = screen.getByTitle('رمز الدولة ناقص');
+    expect(shut.className).not.toMatch(/hover:/);
+    cleanup();
+    render(<ContactButtons phone="0952554562" countryCode="963" orderId="o1" context={CONTEXT} />);
+    expect(screen.getByTitle('واتساب').className, 'الزر الشغّال فقد تأثير المرور').toMatch(/hover:/);
   });
 
   it('a null country is the same as none', () => {
