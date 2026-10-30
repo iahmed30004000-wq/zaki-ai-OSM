@@ -146,6 +146,8 @@ export async function GET(req: Request) {
       pagination: { total: list.total, page: list.page, limit: list.limit, totalPages: list.totalPages },
       facts,
       applied: parsed.applied,
+      // The fee tick-box's own key (PR-8), so the screen draws no box the door would refuse.
+      mayChargeFee: can(user, 'ops.return_fee'),
       // `items` is deliberately NOT spread out below: `lines` is the same
       // fact in the shape the desk needs, and shipping both invites the
       // screen to reach for the raw one again.
@@ -215,6 +217,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: zodMessage(parsed.error) }, { status: 400 });
     }
     const input = parsed.data;
+
+    /*
+     * CHARGING THE COURIER A RETURN FEE IS ITS OWN BOX (`ops.return_fee`, PR-8).
+     *
+     * Receiving a return is the desk's job and stays on `ops.returns`; putting a fee on the courier is a money decision
+     * that rode on it. The migration gave the box to everybody who held `ops.returns`, so nobody lost the checkbox. A
+     * receiver without it can still receive the return — she just cannot tick the fee — so the refusal is on the fee and
+     * nothing else is held back. Asked before the order is even read: nothing is written for a refused request.
+     */
+    if (input.chargeCourierFee && !can(user, 'ops.return_fee')) {
+      return NextResponse.json(
+        { error: 'احتساب أجرة الإرجاع على الشركة ليس من صلاحيّاتك — استلم المرتجع بدونه.', errorAr: 'احتساب أجرة الإرجاع على الشركة ليس من صلاحيّاتك — استلم المرتجع بدونه.', code: 'RETURN_FEE_FORBIDDEN' },
+        { status: 403 }
+      );
+    }
 
     const order = await db.order.findFirst({
       where: { id: input.orderId, companyId, storeId },

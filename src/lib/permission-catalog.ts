@@ -279,10 +279,23 @@ export const PERMISSION_MODULES: CatalogModule[] = [
     module: 'ops',
     items: [
       { key: 'ops.prepare', opens: ['التجهيز'], ar: 'التجهيز', en: 'Preparation' },
-      { key: 'ops.ship', opens: ['إنشاء شحنة', 'دفعات الشحن'], ar: 'إنشاء الشحنات', en: 'Create shipments' },
+      { key: 'ops.ship', opens: ['إنشاء شحنة'], ar: 'إنشاء الشحنات', en: 'Create shipments' },
       { key: 'ops.labels', ar: 'البوالص', en: 'Labels' },
-      { key: 'ops.track', opens: ['متابعة الشحن', 'دفعات الشحن'], ar: 'متابعة الشحن', en: 'Tracking' },
+      { key: 'ops.track', opens: ['متابعة الشحن'], ar: 'متابعة الشحن', en: 'Tracking' },
       { key: 'ops.returns', opens: ['المرتجعات'], ar: 'المرتجعات', en: 'Returns' },
+      /*
+       * THE OPERATIONS DOORS THAT GOT A BOX EACH (perm-plan PR-8, migration 20261030160000_ops_action_keys).
+       *
+       * The batches page rode on the packing key OR the tracking key; recording a delivery outcome and moving a parcel to
+       * another courier rode on the tracking key; closing a lost parcel was a chain of two unrelated keys; charging the
+       * courier a return fee rode on receiving the return. The migration gave each box to exactly the people who passed that
+       * door before, so from then on one tick moves one door.
+       */
+      { key: 'ops.batches', opens: ['دفعات الشحن'], ar: 'عرض دفعات الشحن', en: 'See shipping batches' },
+      { key: 'ops.deliver', requires: 'ops.track', ar: 'تسجيل نتيجة التسليم (سُلّم، جزئياً، رفض)', en: 'Record the delivery outcome' },
+      { key: 'ops.transfer', requires: 'ops.track', ar: 'تحويل طرد لشركة شحن أو مندوب آخر', en: 'Transfer a parcel to another courier' },
+      { key: 'ops.write_off', requires: 'ops.track', ar: 'إغلاق طرد ضائع كخسارة (تخرج بضاعته من المخزون)', en: 'Close a lost parcel as a loss' },
+      { key: 'ops.return_fee', requires: 'ops.returns', ar: 'احتساب أجرة الإرجاع على شركة الشحن', en: 'Charge the courier a return fee' },
       // Seeing the return rows on «متابعة الشحن» — NOT receiving the stock, which stays «المرتجعات» above.
       { key: 'ops.returns_view', ar: 'عرض المرتجعات في المتابعة (بلا استلام)', en: 'See return rows in tracking (no receiving)' },
       { key: 'ops.decide_changes', requires: null, note: 'البتّ بطلب تعديل على طلب مؤكَّد ما زال بالمستودع (طلبات غيرك) — بلا شاشة وبلا قائمة.', ar: 'البتّ في طلبات التعديل وهي بالمستودع', en: 'Decide change requests while the order is in the warehouse' },
