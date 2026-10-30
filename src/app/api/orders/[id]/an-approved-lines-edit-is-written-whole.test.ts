@@ -719,6 +719,14 @@ describe('Ⅴ · a decision is carried out against the order it was about — or
     wroteNothing();
   });
 
+  it('a stale version is the word VERSION_CONFLICT even when a line is stale too — and no line is read for a decision the order has moved past', async () => {
+    fake.lines[0] = { ...fake.lines[0], quantity: 4, lineTotal: 48 };
+    const res = await patch({ expectedVersion: 2, changeRequestId: REQUEST_ID });
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('VERSION_CONFLICT');
+    wroteNothing();
+  });
+
   it('VERSION_CONFLICT inside the write: the order moved during it — everything goes back', async () => {
     const before = linesNow();
     fake.hooks.atTxStart = () => {

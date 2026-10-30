@@ -688,8 +688,10 @@ export async function PATCH(
      * its own code (see `order-line-apply.ts`), and nothing is written.
      * ═══════════════════════════════════════════════════════════════════
      */
+    // (A version the screen did not load is answered by the version check below — VERSION_CONFLICT is the right word then,
+    // and no line is read for a decision the order has already moved past.)
     const planned =
-      viaRequest !== null
+      viaRequest !== null && expectedVersion === existing.version
         ? await planLineApply({
             order: existing as unknown as EditableOrderRow,
             companyId,
