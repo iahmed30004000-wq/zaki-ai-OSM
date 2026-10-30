@@ -58,6 +58,7 @@ vi.mock('@/lib/apps/events', () => ({ emitAppEvent: vi.fn() }));
 vi.mock('@/lib/conversions/emit', () => ({ queueConversions: vi.fn() }));
 vi.mock('@/lib/blacklist', () => ({ AlreadyBlocked: class extends Error {}, blockPhone: vi.fn() }));
 
+import { blockPhone } from '@/lib/blacklist';
 import { POST } from './route';
 
 const ME = { id: 'agent-1', name: 'سارة', role: 'CONFIRMATION_AGENT' };
@@ -102,10 +103,10 @@ beforeEach(() => {
   noAttempt();
 });
 
-describe('the four reasons that need no call', () => {
-  it('the set is exactly the owner’s four that a person can pick (the fifth is left out, on purpose)', () => {
+describe('the three reasons that need no call', () => {
+  it('the set is exactly three (the owner’s five less «وهمي» and the system-only one, on purpose)', () => {
     expect([...NO_CONVERSATION_REJECTION_REASONS].sort()).toEqual(
-      ['DUPLICATE_ORDER', 'FAKE_ORDER', 'OUT_OF_SERVICE_AREA', 'WRONG_NUMBER']
+      ['DUPLICATE_ORDER', 'OUT_OF_SERVICE_AREA', 'WRONG_NUMBER']
     );
     // every one of them is something the screen can offer — an exemption for a value nobody can pick is a back door
     for (const r of NO_CONVERSATION_REJECTION_REASONS) expect(PICKABLE_REJECTION_REASONS).toContain(r);
@@ -128,7 +129,7 @@ describe('the four reasons that need no call', () => {
 
 describe('every other reason still needs the call', () => {
   const needCall = [
-    'PRICE_TOO_HIGH', 'CUSTOMER_CHANGED_MIND', 'CUSTOMER_DOES_NOT_WANT_PRODUCT', 'FOUND_CHEAPER_ELSEWHERE',
+    'PRICE_TOO_HIGH', 'CUSTOMER_CHANGED_MIND', 'CUSTOMER_DOES_NOT_WANT_PRODUCT', 'FOUND_CHEAPER_ELSEWHERE', 'FAKE_ORDER',
   ];
 
   it.each(needCall)('%s with no attempt ⇒ 409 CONTACT_FIRST and nothing is written', async (reason) => {
@@ -138,6 +139,13 @@ describe('every other reason still needs the call', () => {
     expect(res.body.code).toBe('CONTACT_FIRST');
     expect(db.order.updateMany).not.toHaveBeenCalled();
     expect(releaseOrderLines).not.toHaveBeenCalled();
+  });
+
+  it('FAKE_ORDER with no attempt blocks no number: the blacklist is never touched', async () => {
+    const res = await reject('FAKE_ORDER');
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('CONTACT_FIRST');
+    expect(blockPhone).not.toHaveBeenCalled();
   });
 
   it('OTHER (even with its note) with no attempt ⇒ 409 CONTACT_FIRST', async () => {

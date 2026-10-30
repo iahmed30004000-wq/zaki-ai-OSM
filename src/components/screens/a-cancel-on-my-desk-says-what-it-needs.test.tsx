@@ -47,7 +47,7 @@ vi.mock('@/components/confirmation/PullPanel', () => ({ PullPanel: () => null, u
 
 import { ConfirmationMineScreen } from './ConfirmationMineScreen';
 import { CONTACT_FIRST_MESSAGE } from '@/lib/confirmation-queue';
-import { REJECT_NEEDS_CALL_LINE } from './confirmation/ActionDialogs';
+import { REJECT_NEEDS_CALL_LINE, REJECT_NEEDS_CALL_LINE_NO_KEY, REJECT_PICK_A_REASON } from './confirmation/ActionDialogs';
 
 const order = (attempts: number) => ({
   id: 'W1',
@@ -133,8 +133,8 @@ describe('the lock says why, on the card', () => {
 });
 
 describe('«ألغِ» with no attempt: the dialog opens and shuts only the reasons that need a call (30/10)', () => {
-  const NEEDS_CALL = ['PRICE_TOO_HIGH', 'CUSTOMER_CHANGED_MIND', 'CUSTOMER_DOES_NOT_WANT_PRODUCT', 'FOUND_CHEAPER_ELSEWHERE', 'OTHER'];
-  const NO_CALL = ['DUPLICATE_ORDER', 'WRONG_NUMBER', 'FAKE_ORDER', 'OUT_OF_SERVICE_AREA'];
+  const NEEDS_CALL = ['PRICE_TOO_HIGH', 'CUSTOMER_CHANGED_MIND', 'CUSTOMER_DOES_NOT_WANT_PRODUCT', 'FOUND_CHEAPER_ELSEWHERE', 'FAKE_ORDER', 'OTHER'];
+  const NO_CALL = ['DUPLICATE_ORDER', 'WRONG_NUMBER', 'OUT_OF_SERVICE_AREA'];
   const openDialog = () => fireEvent.click(screen.getByRole('button', { name: /^ألغِ$/ }));
   const option = (value: string) => {
     const el = Array.from(document.querySelectorAll('option')).find((o) => o.value === value);
@@ -148,7 +148,7 @@ describe('«ألغِ» with no attempt: the dialog opens and shuts only the reas
     expect(await screen.findByRole('button', { name: 'ألغِ الطلب' })).toBeTruthy();
   });
 
-  it('(ط) the reasons that need a call are grey, the four that do not are open', async () => {
+  it('(ط) the reasons that need a call are grey, the three that do not are open', async () => {
     await draw(0);
     openDialog();
     await screen.findByRole('button', { name: 'ألغِ الطلب' });
@@ -166,13 +166,19 @@ describe('«ألغِ» with no attempt: the dialog opens and shuts only the reas
     expect(line).not.toMatch(/[A-Za-z]/);
   });
 
-  it('(ك) the dialog starts on a reason that is open, so the first press can go through', async () => {
+  it('(ك) no reason is picked for her: the select starts on «اختر السبب» and «ألغِ الطلب» is shut until she chooses', async () => {
     await draw(0);
     openDialog();
-    await screen.findByRole('button', { name: 'ألغِ الطلب' });
+    const send = (await screen.findByRole('button', { name: 'ألغِ الطلب' })) as HTMLButtonElement;
     const select = document.querySelector('select') as HTMLSelectElement;
-    expect(select.value).toBe('DUPLICATE_ORDER');
-    expect(option(select.value).disabled).toBe(false);
+    expect(select.value).toBe('');
+    expect(select.options[select.selectedIndex].textContent).toBe(REJECT_PICK_A_REASON);
+    expect(send.disabled).toBe(true);
+    // a press on the shut button sends nothing
+    fireEvent.click(send);
+    expect(apiJson.mock.calls.filter((c) => String(c[0]).includes('/confirmation') && !String(c[0]).includes('mine'))).toEqual([]);
+    fireEvent.change(select, { target: { value: 'DUPLICATE_ORDER' } });
+    expect(send.disabled).toBe(false);
   });
 
   it('(ل) the select is a finger-sized control (44 points on a phone)', async () => {
@@ -182,16 +188,27 @@ describe('«ألغِ» with no attempt: the dialog opens and shuts only the reas
     expect((document.querySelector('select') as HTMLSelectElement).className).toMatch(/\bh-11\b/);
   });
 
-  it('(م) pressing «ألغِ الطلب» on the open reason sends the reject, with no attempt recorded first', async () => {
+  it('(م) choosing an open reason and pressing «ألغِ الطلب» sends the reject, with no attempt recorded first', async () => {
     await draw(0);
     apiJson.mockImplementation(async (url: string) => (url.startsWith('/api/confirmation/mine') ? desk(0) : { success: true }));
     openDialog();
-    fireEvent.click(await screen.findByRole('button', { name: 'ألغِ الطلب' }));
+    const send = await screen.findByRole('button', { name: 'ألغِ الطلب' });
+    fireEvent.change(document.querySelector('select') as HTMLSelectElement, { target: { value: 'WRONG_NUMBER' } });
+    fireEvent.click(send);
     await waitFor(() => {
       const posts = apiJson.mock.calls.filter((c) => !String(c[0]).startsWith('/api/confirmation/mine'));
       expect(posts.map((c) => String(c[0]))).toEqual(['/api/orders/W1/confirmation']);
-      expect(JSON.parse((posts[0][1] as { body: string }).body)).toMatchObject({ action: 'reject', rejectionReason: 'DUPLICATE_ORDER' });
+      expect(JSON.parse((posts[0][1] as { body: string }).body)).toMatchObject({ action: 'reject', rejectionReason: 'WRONG_NUMBER' });
     });
+  });
+
+  it('(ع) without the key that records a call, the line points at a colleague and not at a button she does not have', async () => {
+    await draw(0, ['confirmation.work']);
+    openDialog();
+    const line = (await screen.findByText(REJECT_NEEDS_CALL_LINE_NO_KEY)).textContent ?? '';
+    expect(line).toMatch(/زميل مخوَّل/);
+    expect(line).not.toMatch(/[A-Za-z]/);
+    expect(screen.queryByText(REJECT_NEEDS_CALL_LINE)).toBeNull();
   });
 
   it('(ن) NEGATIVE: with an attempt on the order every reason is open, no line is drawn, and it starts on the old default', async () => {
@@ -201,6 +218,8 @@ describe('«ألغِ» with no attempt: the dialog opens and shuts only the reas
     for (const v of [...NEEDS_CALL, ...NO_CALL]) expect(option(v).disabled, v).toBe(false);
     expect(screen.queryByText(REJECT_NEEDS_CALL_LINE)).toBeNull();
     expect((document.querySelector('select') as HTMLSelectElement).value).toBe('CUSTOMER_CHANGED_MIND');
+    expect((screen.getByRole('button', { name: 'ألغِ الطلب' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(document.querySelector('option[value=""]')).toBeNull();
   });
 });
 

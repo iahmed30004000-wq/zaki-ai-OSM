@@ -21,7 +21,7 @@ describe('needsContactFirst — the reason a reject carries', () => {
 
   it.each([
     'PRICE_TOO_HIGH', 'CUSTOMER_CHANGED_MIND', 'CUSTOMER_DOES_NOT_WANT_PRODUCT', 'FOUND_CHEAPER_ELSEWHERE',
-    'OTHER', 'MODERATOR_DATA_ERROR', 'NO_ANSWER_3_ATTEMPTS', 'NOT_A_REASON', '',
+    'FAKE_ORDER', 'OTHER', 'MODERATOR_DATA_ERROR', 'NO_ANSWER_3_ATTEMPTS', 'NOT_A_REASON', '',
   ])('reject for %s stays bound', (rejectionReason) => {
     expect(needsContactFirst({ ...held, action: 'reject', rejectionReason })).toBe(true);
   });
@@ -50,6 +50,11 @@ describe('needsContactFirst — the reason a reject carries', () => {
 });
 
 describe('the list of exempt reasons', () => {
+  it('FAKE_ORDER is not exempt: it puts the customer on the blacklist, so it needs an attempt first', () => {
+    expect(NO_CONVERSATION_REJECTION_REASONS).not.toContain('FAKE_ORDER');
+    expect(rejectionNeedsConversation('FAKE_ORDER')).toBe(true);
+  });
+
   it('only what the screen can offer — a reason nobody can pick is no exemption', () => {
     for (const r of NO_CONVERSATION_REJECTION_REASONS) expect(PICKABLE_REJECTION_REASONS).toContain(r);
     expect(rejectionNeedsConversation('MODERATOR_DATA_ERROR')).toBe(true);

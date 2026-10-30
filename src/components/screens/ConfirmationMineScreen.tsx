@@ -1251,6 +1251,7 @@ export function ConfirmationMineScreen() {
           orderNumber={dialog.order.orderNumber}
           busy={busyId === dialog.order.id}
           hasAttempt={!needsContact(dialog.order)}
+          canLogContact={canLogContact}
           onClose={() => setDialog(null)}
           onSubmit={(value) => submitReject(dialog.order, value)}
         />

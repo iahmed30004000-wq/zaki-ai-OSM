@@ -261,8 +261,8 @@ export function needsContactFirst(args: {
    */
   schedulesFollowUp?: boolean;
   /**
-   * The reason a `reject` carries. A closing for a reason that needs no word with the customer (a duplicate, a
-   * fake order, a wrong number, outside the service area) is not bound — see `NO_CONVERSATION_REJECTION_REASONS`.
+   * The reason a `reject` carries. A closing for a reason that needs no word with the customer (a duplicate,
+   * a wrong number, outside the service area) is not bound — see `NO_CONVERSATION_REJECTION_REASONS`.
    * Absent or unknown, `reject` stays bound exactly as before.
    */
   rejectionReason?: string | null;
