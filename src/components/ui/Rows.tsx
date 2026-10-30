@@ -208,7 +208,7 @@ export function Rows<T>({ columns, rows, keyOf, onRowClick, empty, actions, sele
   return (
     <>
       {/* The desk. */}
-      <div className="hidden overflow-hidden rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] md:block">
+      <div className="hidden overflow-x-auto rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] md:block">
         <table className="w-full text-sm">
           <thead className="bg-[var(--sys-surface)] text-xs text-[var(--sys-muted-foreground)]">
             <tr>
