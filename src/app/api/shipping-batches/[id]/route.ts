@@ -4,7 +4,7 @@ import { requireContext } from '@/lib/geo-context';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 
 import { logAudit } from '@/lib/audit';
-import { can } from '@/lib/authorization';
+import { authorize, can } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { redactCustomerForWarehouse } from '@/lib/operations';
 import { totalsBeforeDiscount } from '@/lib/money';
@@ -49,7 +49,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ error: 'دفعات الشحن ليست من صلاحيّاتك.', errorAr: 'دفعات الشحن ليست من صلاحيّاتك.' }, { status: 403 });
     }
     const maySeeCustomers = can(user, 'customers.view');
-    const mayEdit = can(user, 'ops.edit_in_batch');
+    // The SAME question the order's door asks (`authorize`, with the scope), not the key alone: a key held with a scope the door
+    // refuses would otherwise draw a button that fails and show a phone nobody may correct.
+    const mayEdit = can(user, 'ops.edit_in_batch') && authorize(user, 'ops.edit_in_batch', { companyId, storeId }).allowed;
 
     const batch = await db.shippingBatch.findFirst({
       where: { id, companyId, ...(storeId ? { storeId } : {}) },
@@ -90,9 +92,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       return {
         ...o,
         customer: maySeeContact ? customer : { ...customer, altPhone: undefined },
-        items: (lines ?? []).map((l, i) => ({
-          productId: l.productId, productName: l.productName, quantity: l.quantity, freeQuantity: l.freeQuantity, unitPrice: before[i],
-        })),
+        // The goods of a parcel are shown while its trolley is open; a trolley already handed over is history.
+        items: batch.status !== 'READY'
+          ? []
+          : (lines ?? []).map((l, i) => ({
+              productId: l.productId, productName: l.productName, quantity: l.quantity, freeQuantity: l.freeQuantity, unitPrice: before[i],
+            })),
       };
     });
 
@@ -102,7 +107,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     // warehouse worker who was never shown a phone was still tallied as
     // having read every customer in the batch.
     await noteCustomersHandedOut({
-      companyId, storeId, user, where: 'دفعة شحن', rows: orders.map((o) => o.customer).filter((c) => c.phone),
+      companyId, storeId, user, where: 'دفعة شحن', rows: orders.map((o) => o.customer).filter((c) => c.phone || c.altPhone || c.address),
     });
 
     // `canEditInBatch` is the key AND an open trolley: the screen draws «عدّل» only when both hold (the door asks again).

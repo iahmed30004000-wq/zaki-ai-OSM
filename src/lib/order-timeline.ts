@@ -148,6 +148,7 @@ const ACTIVITY_AR: Record<string, string> = {
   LABEL_STALE_REPRINT: 'بوليصة الطرد لم تعد تطابق الطلب — تُطبع من جديد',
   // «التجهيز»: corrected at the trolley by the person holding the packing table's pen, before «إغلاق الشحنة».
   PREP_EDITED_BEFORE_CLOSE: 'عُدِّل قبل إغلاق الشحنة',
+  COURIER_CANCELLED_EDIT_NOT_SAVED: 'أُلغي الطرد عند الشركة ولم يُحفظ تعديل التجهيز',
   PARCEL_ATTESTED_IN_HAND: 'أكّد أن الطرد بين يديه',
   COURIER_CANCELLED_ORDER_MOVED: 'ألغت الشركة الطرد وتغيّر الطلب قبل الحفظ',
   // «كان من طرد طلب آخر»: the courier gave a box to another customer; both orders and the box's order say so.

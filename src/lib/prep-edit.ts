@@ -126,13 +126,48 @@ export function prepTouched(data: Record<string, unknown>): string[] {
   return EDITS.filter((k) => data[k] !== undefined);
 }
 
-/** The shelf could not hold the new quantity — nothing was saved. */
-export const prepShortAr = (names: string[]) =>
-  `المخزون لا يكفي للكمية الجديدة${names.length ? ` (${names.join('، ')})` : ''} — لم يُحفظ شيء.`;
+/**
+ * The shelf could not hold the new quantity. If the company had ALREADY been told to cancel the parcel when that was found
+ * (the race between the check and the write), the sentence says so: the edit is not saved, the parcel is cancelled there.
+ */
+export const prepShortAr = (names: string[], courierCancelled = false) => {
+  const what = `المخزون لا يكفي للكمية الجديدة${names.length ? ` (${names.join('، ')})` : ''}`;
+  return courierCancelled
+    ? `أُلغي الطرد عند شركة الشحن ولم يُحفظ التعديل: ${what}. أعد إرسال الطرد للشركة.`
+    : `${what} — لم يُحفظ شيء.`;
+};
 
-/** Thrown inside the save so the whole write rolls back; the route turns it into a 409. */
+/** Thrown to stop the save (and roll the write back); the route turns it into a 409. */
 export class PrepShortage extends Error {
-  constructor(readonly names: string[]) {
+  constructor(readonly names: string[], readonly courierCancelled = false) {
     super('PREP_SHORTAGE');
   }
+}
+
+const PREP_COMPLEX_AR = 'فيه خصم أو هدية أو إضافة على هذا الطلب: تعديل الكمية بيصير بطلب تعديل.';
+export const PREP_REGION_FEE_AR = 'تغيير المحافظة يغيّر أجرة التوصيل — ارفع طلب تعديل.';
+export const PREP_REGION_CLEAR_AR = 'المحافظة بتنختار من القائمة ولا بتنمسح — أجرة التوصيل مبنية عليها.';
+
+/**
+ * Is this an ORDINARY order, whose quantity can be changed in place? The reason it is not, in words, or null.
+ *
+ * A discount is a fixed amount that is not split again when a quantity moves; a gift unit (`freeQuantity`) is not derived
+ * again from its offer; a line carrying a share of a discount was priced against it; an accepted add-on is reserved apart
+ * from the lines; and a product on two lines cannot be told apart from the screen. The name, the phone and the address
+ * carry none of this and are never refused by it.
+ */
+export function prepGoodsRefusal(order: {
+  discount: number;
+  lines: ReadonlyArray<{ productId: string; freeQuantity: number; discountShare: number }>;
+  addOns: number;
+}): string | null {
+  if (order.discount > 0 || order.addOns > 0) return PREP_COMPLEX_AR;
+  if (order.lines.some((l) => l.freeQuantity > 0 || l.discountShare > 0)) return PREP_COMPLEX_AR;
+  if (new Set(order.lines.map((l) => l.productId)).size !== order.lines.length) return PREP_COMPLEX_AR;
+  return null;
+}
+
+/** The fee the order was snapshotted with and the one the courier's table gives for the new governorate: the same, to the minor unit. */
+export function prepFeeUnchanged(stored: number, wanted: number, minorUnit: number): boolean {
+  return roundMinor(stored, minorUnit) === roundMinor(wanted, minorUnit);
 }

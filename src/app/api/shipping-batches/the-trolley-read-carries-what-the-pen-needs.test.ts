@@ -14,16 +14,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * ═══════════════════════════════════════════════════════════════════════
  */
 
-const { db, requireContext, can, noteCustomersHandedOut } = vi.hoisted(() => ({
+const { db, requireContext, can, authorize, noteCustomersHandedOut } = vi.hoisted(() => ({
   db: { shippingBatch: { findFirst: vi.fn() } },
   requireContext: vi.fn(),
   can: vi.fn(),
+  authorize: vi.fn(),
   noteCustomersHandedOut: vi.fn(async (..._a: unknown[]) => undefined),
 }));
 
 vi.mock('@/lib/db', () => ({ db }));
 vi.mock('@/lib/geo-context', () => ({ requireContext: (...a: unknown[]) => requireContext(...a) }));
-vi.mock('@/lib/authorization', () => ({ can: (...a: unknown[]) => can(...a), requirePermission: vi.fn() }));
+vi.mock('@/lib/authorization', () => ({
+  can: (...a: unknown[]) => can(...a),
+  authorize: (...a: unknown[]) => authorize(...a),
+  requirePermission: vi.fn(),
+}));
 vi.mock('@/lib/audit', () => ({ logAudit: vi.fn() }));
 vi.mock('@/lib/apps/events', () => ({ emitAppEvent: vi.fn() }));
 vi.mock('@/lib/pii-alert', async (orig) => ({
@@ -61,6 +66,8 @@ beforeEach(() => {
     country: { currencyCode: 'JOD', minorUnit: 2 },
   });
   db.shippingBatch.findFirst.mockResolvedValue(batch());
+  // The order's own door asks `authorize` with the scope; here the key is held with «كل الشركة».
+  authorize.mockReturnValue({ allowed: true });
 });
 
 describe('canEditInBatch', () => {
@@ -72,6 +79,15 @@ describe('canEditInBatch', () => {
   it('NEGATIVE: false without the key — whatever else is held', async () => {
     grant('ops.batches', 'customers.view', 'orders.edit', 'orders.change_price');
     expect((await get()).body.canEditInBatch).toBe(false);
+  });
+
+  it('NEGATIVE: false when the key is held with a scope the order’s door refuses — no button that would fail, no number to correct', async () => {
+    grant('ops.batches', 'ops.edit_in_batch');
+    authorize.mockReturnValue({ allowed: false, reason: 'OUT_OF_SCOPE' });
+    const body = (await get()).body;
+    expect(body.canEditInBatch).toBe(false);
+    expect(body.batch.orders[0].customer.phone).toBeUndefined();
+    expect(authorize.mock.calls[0][1]).toBe('ops.edit_in_batch');
   });
 
   it('NEGATIVE: false on a trolley already handed over, key or not', async () => {
@@ -107,6 +123,15 @@ describe('who is shown the numbers and the address', () => {
     expect(c.address).toBeUndefined();
   });
 
+  it('the alarm counts a customer whose second number or address left, not only the first number', async () => {
+    grant('ops.batches', 'ops.edit_in_batch');
+    db.shippingBatch.findFirst.mockResolvedValue(
+      batch('READY', [{ ...order(), customer: { fullName: 'أبو محمد', phone: null, altPhone: '0781111111', address: null, city: 'السويداء' } }])
+    );
+    await get();
+    expect((noteCustomersHandedOut.mock.calls[0][0] as { rows: unknown[] }).rows).toHaveLength(1);
+  });
+
   it('the alarm counts what left: a holder shown the numbers is counted, one shown none is not', async () => {
     grant('ops.batches', 'ops.edit_in_batch');
     await get();
@@ -132,6 +157,12 @@ describe('what each parcel carries for the screen', () => {
     db.shippingBatch.findFirst.mockResolvedValue(batch('READY', [order(4, [3, 1])]));
     const items = (await get()).body.batch.orders[0].items;
     expect(items.map((l: any) => l.unitPrice)).toEqual([36, 10]);
+  });
+
+  it('NEGATIVE: the goods of a parcel on a trolley already handed over are not sent', async () => {
+    grant('ops.batches', 'customers.view');
+    db.shippingBatch.findFirst.mockResolvedValue(batch('SHIPPED'));
+    expect((await get()).body.batch.orders[0].items).toEqual([]);
   });
 
   it('the order’s discount and the line rows’ own columns do not travel', async () => {

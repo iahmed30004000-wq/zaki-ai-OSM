@@ -16,7 +16,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * ═══════════════════════════════════════════════════════════════════════
  */
 
-const { db, requireContext, can, authorize, assertOrderAccess, logAudit, reserveOrderLines, calls } = vi.hoisted(() => ({
+const { db, requireContext, can, authorize, assertOrderAccess, logAudit, reserveOrderLines, availableStock, releaseCourierParcel, calls } = vi.hoisted(() => ({
   db: {
     order: { findUnique: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
     orderChangeRequest: { findFirst: vi.fn() },
@@ -25,6 +25,7 @@ const { db, requireContext, can, authorize, assertOrderAccess, logAudit, reserve
     orderAddOn: { findMany: vi.fn() },
     product: { findMany: vi.fn(), findFirst: vi.fn() },
     region: { findFirst: vi.fn() },
+    deliveryFee: { findFirst: vi.fn() },
     customer: { findFirst: vi.fn(), update: vi.fn() },
     orderActivity: { create: vi.fn() },
     orderStatusLog: { create: vi.fn() },
@@ -37,6 +38,8 @@ const { db, requireContext, can, authorize, assertOrderAccess, logAudit, reserve
   assertOrderAccess: vi.fn(),
   logAudit: vi.fn(),
   reserveOrderLines: vi.fn(),
+  availableStock: vi.fn(),
+  releaseCourierParcel: vi.fn(),
   calls: [] as string[],
 }));
 
@@ -53,7 +56,14 @@ vi.mock('@/lib/rbac', async (importOriginal) => ({
   assertOrderAccess: (...a: unknown[]) => assertOrderAccess(...a),
   assertOrderReadable: vi.fn(),
 }));
-vi.mock('@/lib/reservation', () => ({ reserveOrderLines: (...a: unknown[]) => reserveOrderLines(...a) }));
+vi.mock('@/lib/reservation', () => ({
+  reserveOrderLines: (...a: unknown[]) => reserveOrderLines(...a),
+  availableStock: (...a: unknown[]) => availableStock(...a),
+}));
+vi.mock('@/lib/order-cancel', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  releaseCourierParcel: (...a: unknown[]) => releaseCourierParcel(...a),
+}));
 vi.mock('@/lib/pii-alert', () => ({ noteCustomersHandedOut: vi.fn() }));
 vi.mock('@/lib/audit', () => ({ logAudit: (...a: unknown[]) => logAudit(...a) }));
 vi.mock('@/lib/notify', () => ({ notify: vi.fn() }));
@@ -65,13 +75,18 @@ const P1 = 'prod-aaaa-1';
 const P2 = 'prod-bbbb-2';
 const REGION = '22222222-2222-4222-8222-222222222222';
 
-/** Confirmed, on a trolley still being filled: three pieces at 12 each, delivery 3. */
+/**
+ * Confirmed, on a trolley still being filled: three pieces at 12 each, delivery 3.
+ *
+ * The fee is where a BATCHED order keeps it: `deliveryFee` (the courier's table, snapshotted when the order went on the
+ * trolley) with `shippingCost` left at 0 — which is what `ops/shipments` writes (it never touches `shippingCost`).
+ */
 const baseOrder = () => ({
   id: ORDER_ID, companyId: 'c1', storeId: 's1', countryId: 'co1', customerId: 'cu1', version: 3, orderNumber: 'SY-1',
   status: 'CONFIRMED', confirmationStatus: 'CONFIRMED', shippingStatus: 'READY_FOR_PICKUP', shippedAt: null,
-  labelPrintedAt: null, shippingBatchId: 'b1', deliveryProviderId: null, trackingNumber: null, courierSendStartedAt: null,
+  labelPrintedAt: null, shippingBatchId: 'b1', deliveryProviderId: 'dp1', trackingNumber: null, courierSendStartedAt: null,
   claimedById: null, lockedById: null, lockExpiresAt: null, regionId: 'r-old', moderatorId: 'u9',
-  quantity: 3, sellingPrice: 36, discountAmount: 0, shippingCost: 3, totalAmount: 39, productId: P1, productNameSnapshot: 'كريم',
+  quantity: 3, sellingPrice: 36, discountAmount: 0, shippingCost: 0, deliveryFee: 3, totalAmount: 39, productId: P1, productNameSnapshot: 'كريم',
   priceIncludesDelivery: false,
 });
 let ORDER: ReturnType<typeof baseOrder>;
@@ -115,7 +130,13 @@ beforeEach(() => {
   db.order.findUnique.mockImplementation(async () => ({ ...ORDER }));
   db.shippingBatch.findFirst.mockResolvedValue({ status: 'READY', batchNumber: 'BATCH-7' });
   db.orderChangeRequest.findFirst.mockResolvedValue(null);
-  db.orderItem.findMany.mockResolvedValue([{ productId: P1, quantity: 3, lineTotal: 36, discountShare: 0, freeQuantity: 0 }]);
+  db.orderItem.findMany.mockResolvedValue([{ productId: P1, productName: 'كريم', quantity: 3, lineTotal: 36, discountShare: 0, freeQuantity: 0 }]);
+  db.deliveryFee.findFirst.mockResolvedValue({ fee: 3, lateThresholdDays: 0, returnFee: 0 });
+  availableStock.mockResolvedValue(100);
+  releaseCourierParcel.mockResolvedValue({
+    ok: true, courierCancelled: true, cleared: { trackingNumber: null, courierSendStartedAt: null },
+    remote: { kind: 'CANCELLED', courier: 'الباشا', barcode: 'BC1' },
+  });
   db.orderItem.findFirst.mockResolvedValue(null);
   db.orderItem.deleteMany.mockImplementation(async () => { calls.push('delete lines'); return { count: 1 }; });
   db.orderItem.createMany.mockImplementation(async () => { calls.push('write lines'); return { count: 1 }; });
@@ -157,7 +178,9 @@ describe('(أ) the holder of the key, on a confirmed order in an open batch', ()
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(lineRows()).toHaveLength(1);
     expect(lineRows()[0]).toMatchObject({ productId: P1, quantity: 5, lineTotal: 60, unitPrice: 12 });
-    expect(wrote().data).toMatchObject({ quantity: 5, sellingPrice: 60, totalAmount: 63, shippingCost: 3, discountAmount: 0 });
+    expect(wrote().data).toMatchObject({ quantity: 5, sellingPrice: 60, totalAmount: 63, discountAmount: 0 });
+    // The fee is the courier's snapshot: this door neither reads it from `shippingCost` (0 here) nor writes it.
+    expect(wrote().data).not.toHaveProperty('shippingCost');
   });
 
   it('CLAIM: the price the browser sends for a line is ignored — the door rebuilds it from the stored line', async () => {
@@ -179,13 +202,17 @@ describe('(أ) the holder of the key, on a confirmed order in an open batch', ()
     expect(wrote().data).toMatchObject({ quantity: 2, sellingPrice: 24, totalAmount: 27 });
   });
 
-  it('the accepted add-ons stay part of what is collected', async () => {
+  // (old → new, 30/10, review of #116) This claim used to read «a quantity change keeps the accepted add-ons in the total» (68).
+  // The reviewers showed the add-on is reserved apart from the lines and the total was only ever as right as that sum; the
+  // decision is that an order with an add-on takes its quantity by REQUEST. What stays true: an add-on order still takes the
+  // fields that carry no money, and the total it was collected with is not recomputed.
+  it('an order with an accepted add-on takes a name and keeps its total untouched', async () => {
     db.orderAddOn.findMany.mockResolvedValue([{ quantity: 1, price: 5 }]);
 
-    const res = await patch({ items: [{ productId: P1, quantity: 5, unitPrice: 60 }] });
+    const res = await patch({ customerName: 'سارة أحمد' });
 
     expect(res.status).toBe(200);
-    expect(wrote().data.totalAmount).toBe(68);
+    expect(wrote().data).not.toHaveProperty('totalAmount');
   });
 
   it('the shelf follows the quantity through the one reserver — after the new rows are written, never before', async () => {
@@ -528,5 +555,320 @@ describe('the edge cases of a quantity', () => {
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('INVALID_PHONE');
     expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * THE REVIEWS OF #116 (30/10) — each claim runs the door, and each has the case that hid the defect.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+describe('(مال) the delivery fee is not lost from the total', () => {
+  it('a BATCHED order keeps its fee in deliveryFee and shippingCost 0: 3 at 12 + 3 becomes 5 at 12 + 3 = 63, not 60', async () => {
+    expect(ORDER.shippingCost).toBe(0);
+    expect(ORDER.deliveryFee).toBe(3);
+
+    const res = await patch({ items: [{ productId: P1, quantity: 5, unitPrice: 60 }] });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(wrote().data.totalAmount).toBe(63);
+  });
+
+  it('deliveryFee wins over a stale shippingCost, as it does where the total was written', async () => {
+    ORDER.shippingCost = 7 as never;
+
+    await patch({ items: [{ productId: P1, quantity: 5, unitPrice: 60 }] });
+
+    expect(wrote().data.totalAmount).toBe(63);
+  });
+
+  it('an order with no deliveryFee falls back to its own shippingCost', async () => {
+    ORDER.deliveryFee = null as never;
+    ORDER.shippingCost = 3 as never;
+
+    await patch({ items: [{ productId: P1, quantity: 5, unitPrice: 60 }] });
+
+    expect(wrote().data.totalAmount).toBe(63);
+  });
+
+  it('a store order (shippingCost 0 and no fee yet) is 5 at 12 = 60 — nothing is invented', async () => {
+    ORDER.deliveryFee = null as never;
+    ORDER.shippingCost = 0 as never;
+
+    await patch({ items: [{ productId: P1, quantity: 5, unitPrice: 60 }] });
+
+    expect(wrote().data.totalAmount).toBe(60);
+  });
+
+  it('a price that already INCLUDES delivery does not add the fee again: 5 at 12 = 60', async () => {
+    (ORDER as Record<string, unknown>).priceIncludesDelivery = true;
+
+    await patch({ items: [{ productId: P1, quantity: 5, unitPrice: 60 }] });
+
+    expect(wrote().data.totalAmount).toBe(60);
+    expect(wrote().data.sellingPrice).toBe(60);
+  });
+
+  it('there and back again: 3 to 5 to 3 lands on the original total, because the total is rebuilt from the stored line, not added to', async () => {
+    await patch({ items: [{ productId: P1, quantity: 5, unitPrice: 0 }] });
+    expect(wrote().data.totalAmount).toBe(63);
+    // The line as the first write left it.
+    db.orderItem.findMany.mockResolvedValue([{ productId: P1, productName: 'كريم', quantity: 5, lineTotal: 60, discountShare: 0, freeQuantity: 0 }]);
+    db.order.updateMany.mockClear();
+
+    await patch({ items: [{ productId: P1, quantity: 3, unitPrice: 0 }] });
+
+    expect(wrote().data.totalAmount).toBe(39);
+  });
+});
+
+describe('(مال) a new governorate must not change what the courier charges', () => {
+  it('the same fee goes through', async () => {
+    db.deliveryFee.findFirst.mockResolvedValue({ fee: 3, lateThresholdDays: 0, returnFee: 0 });
+
+    const res = await patch({ regionId: REGION });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(wrote().data.regionId).toBe(REGION);
+  });
+
+  it('a different fee is refused in words, and nothing is written', async () => {
+    db.deliveryFee.findFirst.mockResolvedValue({ fee: 5, lateThresholdDays: 0, returnFee: 0 });
+
+    const res = await patch({ customerName: 'سارة أحمد', regionId: REGION });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('PREP_REGION_FEE');
+    expect(res.body.errorAr).toContain('أجرة التوصيل');
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+    expect(db.customer.update).not.toHaveBeenCalled();
+  });
+
+  it('a governorate the courier has no row for is a fee of nothing: refused while the order carries a fee', async () => {
+    db.deliveryFee.findFirst.mockResolvedValue(null);
+
+    const res = await patch({ regionId: REGION });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('PREP_REGION_FEE');
+  });
+
+  it('an order with no courier on it cannot be checked, so it is refused', async () => {
+    ORDER.deliveryProviderId = null as never;
+
+    const res = await patch({ regionId: REGION });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('PREP_REGION_FEE');
+    expect(db.deliveryFee.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('the governorate it already has is not looked up again', async () => {
+    ORDER.regionId = REGION as never;
+
+    const res = await patch({ regionId: REGION });
+
+    expect(res.status).toBe(200);
+    expect(db.deliveryFee.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('a governorate can be chosen, never cleared', async () => {
+    const res = await patch({ regionId: null });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('PREP_REGION_CLEAR');
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('(مال) only an ordinary order’s quantity is changed in place', () => {
+  const refused = async () => {
+    const res = await patch({ items: [{ productId: P1, quantity: 5, unitPrice: 60 }] });
+    expect(res.status, JSON.stringify(res.body)).toBe(409);
+    expect(res.body.code).toBe('PREP_COMPLEX_ORDER');
+    expect(res.body.errorAr).toContain('خصم');
+    expect(db.orderItem.deleteMany).not.toHaveBeenCalled();
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+    expect(reserveOrderLines).not.toHaveBeenCalled();
+  };
+
+  it('an order with a discount', async () => {
+    ORDER.discountAmount = 4 as never;
+    db.orderItem.findMany.mockResolvedValue([{ productId: P1, productName: 'كريم', quantity: 3, lineTotal: 32, discountShare: 4, freeQuantity: 0 }]);
+    await refused();
+  });
+
+  it('an order with a gift unit on a line', async () => {
+    db.orderItem.findMany.mockResolvedValue([{ productId: P1, productName: 'كريم', quantity: 3, lineTotal: 36, discountShare: 0, freeQuantity: 1 }]);
+    await refused();
+  });
+
+  it('a line that carries a share of a discount', async () => {
+    db.orderItem.findMany.mockResolvedValue([{ productId: P1, productName: 'كريم', quantity: 3, lineTotal: 35, discountShare: 1, freeQuantity: 0 }]);
+    await refused();
+  });
+
+  it('an order with an add-on the customer accepted', async () => {
+    db.orderAddOn.findMany.mockResolvedValue([{ quantity: 1, price: 5 }]);
+    await refused();
+  });
+
+  it('a product on two lines', async () => {
+    db.orderItem.findMany.mockResolvedValue([
+      { productId: P1, productName: 'كريم', quantity: 2, lineTotal: 24, discountShare: 0, freeQuantity: 0 },
+      { productId: P1, productName: 'كريم', quantity: 1, lineTotal: 12, discountShare: 0, freeQuantity: 0 },
+    ]);
+    const res = await patch({ items: [{ productId: P1, quantity: 3, unitPrice: 0 }, { productId: P1, quantity: 1, unitPrice: 0 }] });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('PREP_COMPLEX_ORDER');
+    expect(db.orderItem.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE: the same orders still take a name, a phone and an address — the fields that carry no money', async () => {
+    ORDER.discountAmount = 4 as never;
+    db.orderAddOn.findMany.mockResolvedValue([{ quantity: 1, price: 5 }]);
+
+    const res = await patch({ customerName: 'سارة أحمد', customerPhone: '0791234567', customerAddress: 'شارع الجلاء' });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(db.orderItem.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE: quantities sent back as they are rewrite nothing on such an order', async () => {
+    ORDER.discountAmount = 4 as never;
+    db.orderItem.findMany.mockResolvedValue([{ productId: P1, productName: 'كريم', quantity: 3, lineTotal: 32, discountShare: 4, freeQuantity: 0 }]);
+
+    const res = await patch({ customerName: 'سارة أحمد', items: [{ productId: P1, quantity: 3, unitPrice: 36 }] });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(db.orderItem.deleteMany).not.toHaveBeenCalled();
+    expect(reserveOrderLines).not.toHaveBeenCalled();
+  });
+});
+
+describe('(مخزون) the shelf is asked BEFORE the company is', () => {
+  const PARCEL = () => {
+    ORDER.trackingNumber = 'BC1' as never;
+    ORDER.labelPrintedAt = new Date('2026-10-29T08:00:00Z') as never;
+  };
+
+  it('a quantity the shelf cannot cover is refused with the company never told to cancel the parcel', async () => {
+    PARCEL();
+    availableStock.mockResolvedValue(4);
+
+    const res = await patch({ items: [{ productId: P1, quantity: 5, unitPrice: 60 }] });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('PREP_SHORTAGE');
+    expect(res.body.errorAr).toContain('كريم');
+    expect(res.body.errorAr).toContain('لم يُحفظ شيء');
+    expect(releaseCourierParcel).not.toHaveBeenCalled();
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('asks about this order’s own product, leaving out what this very order already holds', async () => {
+    await patch({ items: [{ productId: P1, quantity: 5, unitPrice: 60 }] });
+
+    expect(availableStock).toHaveBeenCalledWith(db, 'c1', P1, ORDER_ID);
+  });
+
+  it('enough on the shelf: the company is told, the write follows', async () => {
+    PARCEL();
+
+    const res = await patch({ items: [{ productId: P1, quantity: 5, unitPrice: 60 }] });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(releaseCourierParcel).toHaveBeenCalledTimes(1);
+    expect(wrote().data).toMatchObject({ trackingNumber: null, labelPrintedAt: null });
+  });
+
+  it('THE RACE: the shelf empties after the company said yes — the order says so, and the person is told the truth', async () => {
+    PARCEL();
+    reserveOrderLines.mockImplementation(async () => ({ reserved: 0, shortages: [{ orderItemId: 'i1', productId: P1, productName: 'كريم', missing: 2 }] }));
+
+    const res = await patch({ items: [{ productId: P1, quantity: 5, unitPrice: 60 }] });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('PREP_SHORTAGE');
+    expect(res.body.errorAr).toContain('أُلغي الطرد عند شركة الشحن');
+    expect(res.body.errorAr).not.toContain('لم يُحفظ شيء');
+    const note = activities().find((a: any) => a.action === 'COURIER_CANCELLED_EDIT_NOT_SAVED');
+    expect(note).toBeTruthy();
+    expect(JSON.parse(note.metadata)).toMatchObject({ barcode: 'BC1', door: 'PREP_EDIT' });
+    expect(logAudit).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE: with no parcel at the company, a race-lost shortage says only that nothing was saved', async () => {
+    reserveOrderLines.mockImplementation(async () => ({ reserved: 0, shortages: [{ orderItemId: 'i1', productId: P1, productName: 'كريم', missing: 2 }] }));
+
+    const res = await patch({ items: [{ productId: P1, quantity: 5, unitPrice: 60 }] });
+
+    expect(res.body.errorAr).toContain('لم يُحفظ شيء');
+    expect(activities().some((a: any) => a.action === 'COURIER_CANCELLED_EDIT_NOT_SAVED')).toBe(false);
+  });
+});
+
+describe('(صلاحيات) what the packing table’s pen is answered with, and who may use it', () => {
+  it('the answer carries a few fields — never the cost, the profit or the commission of the order row', async () => {
+    db.order.findUnique.mockImplementation(async () => ({
+      ...ORDER, grossProfit: 11, netProfit: 9, productCost: 5, advertisingCost: 2, moderatorCommission: 1, internalNotes: 'سرّ',
+    }));
+
+    const res = await patch({ customerName: 'سارة أحمد' });
+
+    expect(res.status).toBe(200);
+    const sent = JSON.stringify(res.body);
+    for (const leaked of ['grossProfit', 'netProfit', 'productCost', 'advertisingCost', 'moderatorCommission', 'internalNotes']) {
+      expect(sent, leaked).not.toContain(leaked);
+    }
+    expect(res.body.order).toMatchObject({ id: ORDER_ID, orderNumber: 'SY-1' });
+  });
+
+  it('the key without the batches screen opens nothing — a «requires» is a hint on the permissions screen, not a rule', async () => {
+    holds('ops.edit_in_batch');
+
+    const res = await patch({ customerName: 'سارة أحمد' });
+
+    expect(res.status).toBe(404);
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('a phone that belongs to another customer is refused WITHOUT that customer’s name for the key alone', async () => {
+    db.customer.findFirst.mockResolvedValue({ id: 'cu2', fullName: 'زبون آخر اسمه سرّي' });
+
+    const res = await patch({ customerPhone: '0791234567' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('DUPLICATE_PHONE');
+    expect(JSON.stringify(res.body)).not.toContain('سرّي');
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('and WITH the customers key the name is said, as it always was', async () => {
+    holds('ops.batches', 'ops.edit_in_batch', 'customers.view');
+    db.customer.findFirst.mockResolvedValue({ id: 'cu2', fullName: 'زبون آخر اسمه سرّي' });
+
+    const res = await patch({ customerPhone: '0791234567' });
+
+    expect(res.body.error).toContain('زبون آخر اسمه سرّي');
+  });
+
+  it('the closed-shipment message is given only for an order of her own store’s batch — another store’s is not found, not sealed', async () => {
+    db.shippingBatch.findFirst.mockResolvedValue({ status: 'SHIPPED', batchNumber: 'BATCH-7' });
+    ORDER.storeId = 's2';
+
+    const res = await patch({ customerName: 'سارة أحمد' });
+
+    expect(res.status).toBe(404);
+    expect(JSON.stringify(res.body)).not.toContain('BATCH-7');
+  });
+
+  it('and it is not given at all to someone without the batches screen', async () => {
+    holds('ops.edit_in_batch');
+    db.shippingBatch.findFirst.mockResolvedValue({ status: 'SHIPPED', batchNumber: 'BATCH-7' });
+
+    const res = await patch({ customerName: 'سارة أحمد' });
+
+    expect(res.status).toBe(404);
+    expect(JSON.stringify(res.body)).not.toContain('BATCH-7');
   });
 });

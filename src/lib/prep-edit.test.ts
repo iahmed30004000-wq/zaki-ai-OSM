@@ -7,7 +7,7 @@ vi.mock('@/lib/auth', () => ({ requireAuth: vi.fn() }));
 
 import { attachGrants, can } from './authorization';
 import { ALL_CATALOG_KEYS, PERMISSION_MODULES } from './permission-catalog';
-import { PrepShortage, prepFieldsOnly, prepItems, prepQuantityChanges, prepShortAr, prepTouched, prepWindow } from './prep-edit';
+import { PrepShortage, prepFeeUnchanged, prepFieldsOnly, prepGoodsRefusal, prepItems, prepQuantityChanges, prepShortAr, prepTouched, prepWindow } from './prep-edit';
 import type { SessionUser } from '@/types/auth';
 
 /**
@@ -127,7 +127,53 @@ describe('the lines: quantity only, the money rebuilt from the piece price the l
 
   it('the shortage sentence names the products, and the error carries them', () => {
     expect(prepShortAr(['كريم', 'عطر'])).toContain('كريم، عطر');
+    expect(prepShortAr(['كريم'])).toContain('لم يُحفظ شيء');
     expect(new PrepShortage(['كريم']).names).toEqual(['كريم']);
+  });
+
+  it('once the company has been told to cancel the parcel, the sentence never says nothing was saved', () => {
+    const said = prepShortAr(['كريم'], true);
+    expect(said).toContain('أُلغي الطرد عند شركة الشحن');
+    expect(said).toContain('لم يُحفظ التعديل');
+    expect(said).not.toContain('لم يُحفظ شيء');
+    expect(new PrepShortage(['كريم'], true).courierCancelled).toBe(true);
+    expect(new PrepShortage(['كريم']).courierCancelled).toBe(false);
+  });
+
+  it('three for 25 there and back lands on 25 again — the figure is rebuilt from the stored line each time', () => {
+    const to4 = prepItems([{ productId: 'prod-aaaa-1', quantity: 3, beforeDiscount: 25 }], [{ productId: 'prod-aaaa-1', quantity: 4, unitPrice: 0 }], 2);
+    expect(to4).toEqual({ ok: true, items: [{ productId: 'prod-aaaa-1', quantity: 4, unitPrice: 33.33 }] });
+    const back = prepItems([{ productId: 'prod-aaaa-1', quantity: 4, beforeDiscount: 33.33 }], [{ productId: 'prod-aaaa-1', quantity: 3, unitPrice: 0 }], 2);
+    expect(back).toEqual({ ok: true, items: [{ productId: 'prod-aaaa-1', quantity: 3, unitPrice: 25 }] });
+  });
+});
+
+describe('an ordinary order, and the fee a governorate carries', () => {
+  const line = (over: Record<string, unknown> = {}) => ({ productId: 'prod-aaaa-1', freeQuantity: 0, discountShare: 0, ...over });
+
+  it('an order with no discount, no gift, no add-on and no repeated product has nothing to refuse', () => {
+    expect(prepGoodsRefusal({ discount: 0, lines: [line(), line({ productId: 'prod-bbbb-2' })], addOns: 0 })).toBeNull();
+  });
+
+  it('NEGATIVE: each of the five things refuses, in the same Arabic words', () => {
+    const refusals = [
+      prepGoodsRefusal({ discount: 1, lines: [line()], addOns: 0 }),
+      prepGoodsRefusal({ discount: 0, lines: [line({ freeQuantity: 1 })], addOns: 0 }),
+      prepGoodsRefusal({ discount: 0, lines: [line({ discountShare: 0.5 })], addOns: 0 }),
+      prepGoodsRefusal({ discount: 0, lines: [line()], addOns: 1 }),
+      prepGoodsRefusal({ discount: 0, lines: [line(), line()], addOns: 0 }),
+    ];
+    for (const r of refusals) expect(r).toContain('خصم أو هدية أو إضافة');
+    expect(new Set(refusals).size).toBe(1);
+  });
+
+  it('a fee is the same fee to the minor unit, and nothing less', () => {
+    expect(prepFeeUnchanged(3, 3, 2)).toBe(true);
+    expect(prepFeeUnchanged(3, 3.001, 2)).toBe(true);
+    expect(prepFeeUnchanged(3, 3.01, 2)).toBe(false);
+    expect(prepFeeUnchanged(3, 3.001, 3)).toBe(false);
+    expect(prepFeeUnchanged(0, 0, 3)).toBe(true);
+    expect(prepFeeUnchanged(3, 0, 2)).toBe(false);
   });
 });
 
