@@ -182,3 +182,21 @@ describe('the holder giving his own order back is unchanged', () => {
     expect(JSON.parse(db.orderClaimHistory.create.mock.calls[0][0].data.metadata)).toEqual({ previousOwner: 'agent1' });
   });
 });
+
+describe('the holder is only a current owner, and the unlock key alone is not enough', () => {
+  it('claimedById null with currentOwnerId set: matches IS NULL, writes the owner as the one pulled back', async () => {
+    as('owner1', ['orders.release', 'orders.unlock']);
+    assertOrderAccess.mockResolvedValue({ allowed: true, order: { ...HELD, claimedById: null, lockedById: null } });
+    const res = await pullBack();
+    expect(res.status).toBe(200);
+    expect(db.order.updateMany.mock.calls[0][0].where.claimedById).toBeNull();
+    expect(JSON.parse(db.orderClaimHistory.create.mock.calls[0][0].data.metadata)).toMatchObject({ previousOwner: 'agent1' });
+  });
+
+  it('unlock without release is refused at the first door, nothing written', async () => {
+    as('owner1', ['orders.unlock']);
+    const res = await pullBack();
+    expect(res.status).toBe(403);
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+});

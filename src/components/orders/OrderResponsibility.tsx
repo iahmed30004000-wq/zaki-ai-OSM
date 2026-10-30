@@ -65,7 +65,8 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
    * drawn — it used to be, and the door refused it.
    */
   const mayOverride = !heldByMe && userCan(currentUser, 'orders.unlock');
-  const mayRelease = heldByMe ? mayTransfer || userCan(currentUser, 'orders.release') : mayOverride;
+  // The door asks `orders.release` as well, so the button is drawn only for whoever it will accept.
+  const mayRelease = heldByMe ? mayTransfer || userCan(currentUser, 'orders.release') : mayOverride && userCan(currentUser, 'orders.release');
 
   useEffect(() => {
     setOpen(null);
@@ -145,7 +146,7 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
           )}
         </div>
 
-        {((holder && mayRelease) || mayOverride) && (
+        {((holder && (mayRelease || mayTransfer)) || mayOverride) && (
           <div className="flex flex-wrap items-center gap-1.5">
             {mayOverride && (
               <button
@@ -165,7 +166,7 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
               سحبه منه
             </button>
             )}
-            {holder && mayRelease && mayTransfer && (
+            {holder && mayTransfer && (
             <button
               onClick={() => { setOpen(open === 'transfer' ? null : 'transfer'); }}
               disabled={candidates.length === 0}
