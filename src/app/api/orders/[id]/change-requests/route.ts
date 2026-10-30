@@ -10,6 +10,7 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { addBusinessMinutes } from '@/lib/business-calendar';
 import { zodMessage } from '@/lib/zod-message';
+import { rateLimit } from '@/lib/rate-limit';
 import { CHANGEABLE_FIELDS, touchesMoney, withFrom } from '@/lib/change-request-fields';
 import { CHANGE_INTENTS, INTENT_AR, INTENT_ASK_AR, carryOut, missingFor, type ChangeIntent } from '@/lib/change-request-intent';
 import { createNotification } from '@/lib/notification';
@@ -24,9 +25,11 @@ import {
   LINES_NEED_EDIT_AR,
   LINES_NOT_CONFIRMED_AR,
   LINES_NOTHING_CHANGED_AR,
+  PREVIEWS_PER_MINUTE,
   blockingRefusal,
   draftFromRaised,
   flatGoodsIn,
+  previewRateKey,
   raisedLinesSchema,
   readsBack,
   splitLinesKey,
@@ -258,6 +261,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       if (!candidate.success) {
         const message = zodMessage(candidate.error);
         return NextResponse.json({ error: message, errorAr: message, code: 'INVALID_DRAFT' }, { status: 400 });
+      }
+      // The same budget as the preview endpoint: raising is a way of asking «does the shelf cover it?» too, and the
+      // refusal below answers it. Before the preview runs, so a flood costs a counter and not the reads.
+      const limit = rateLimit(previewRateKey(companyId, user.id), PREVIEWS_PER_MINUTE, 60 * 1000);
+      if (!limit.allowed) {
+        const message = `طلبات كثيرة جداً. أعد المحاولة بعد ${limit.retryAfterSec} ثانية`;
+        return NextResponse.json(
+          { error: message, errorAr: message, code: 'RATE_LIMITED' },
+          { status: 429, headers: { 'Retry-After': String(limit.retryAfterSec) } }
+        );
       }
       const preview = await previewOrderEdit({
         order: order as EditableOrderRow,

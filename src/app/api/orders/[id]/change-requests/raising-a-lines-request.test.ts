@@ -27,7 +27,7 @@ interface PreviewCall {
   draft: PreviewDraft;
 }
 
-const { db, requireContext, assertOrderAccess, can, state, createNotification } = vi.hoisted(() => ({
+const { db, requireContext, assertOrderAccess, can, state, createNotification, rateLimit } = vi.hoisted(() => ({
   db: {
     orderChangeRequest: {
       findFirst: vi.fn<(args: { where: Record<string, unknown> }) => Promise<unknown>>(),
@@ -42,6 +42,7 @@ const { db, requireContext, assertOrderAccess, can, state, createNotification } 
   assertOrderAccess: vi.fn<(...a: unknown[]) => Promise<unknown>>(),
   can: vi.fn<(...a: unknown[]) => boolean>(),
   createNotification: vi.fn<(...a: unknown[]) => Promise<number>>(),
+  rateLimit: vi.fn<(key: string, max: number, windowMs: number) => { allowed: boolean; retryAfterSec: number }>(),
   state: { facts: null as unknown, previews: [] as unknown[] },
 }));
 
@@ -55,6 +56,7 @@ vi.mock('@/lib/audit', () => ({ logAudit: vi.fn() }));
 vi.mock('@/lib/notification', () => ({ createNotification: (...a: unknown[]) => createNotification(...a) }));
 vi.mock('@/lib/notify', () => ({ afterResponse: (fn: () => Promise<void>) => void fn() }));
 vi.mock('@/lib/authorization', () => ({ can: (...a: unknown[]) => can(...a) }));
+vi.mock('@/lib/rate-limit', () => ({ rateLimit: (key: string, max: number, windowMs: number) => rateLimit(key, max, windowMs) }));
 // The facts reader is the one fake: the REAL engine judges whatever order this file builds.
 vi.mock('@/lib/order-edit-facts', async () => {
   const engine = await vi.importActual<typeof import('@/lib/order-line-edit')>('@/lib/order-line-edit');
@@ -169,6 +171,7 @@ beforeEach(() => {
   db.shippingBatch.findFirst.mockResolvedValue(null);
   db.orderNote.create.mockResolvedValue({});
   createNotification.mockResolvedValue(1);
+  rateLimit.mockReturnValue({ allowed: true, retryAfterSec: 0 });
 });
 
 /* ─────────────────────────── 1 · a valid request is written from the preview ─────────────────────────── */
@@ -578,5 +581,49 @@ describe('Ⅵ · a flat request is raised exactly as before', () => {
 
     expect(res.status).toBe(400);
     expect(db.orderChangeRequest.create).not.toHaveBeenCalled();
+  });
+});
+
+/* ─────────────────────────── 7 · asking by raising is asking, and the preview’s budget covers it ─────────────────────────── */
+
+describe('Ⅶ · the raise door keeps the preview’s ceiling', () => {
+  it('over the ceiling: 429 in Arabic with Retry-After, and the shelf is never asked nor anything written', async () => {
+    rateLimit.mockReturnValue({ allowed: false, retryAfterSec: 17 });
+    // a refusal that would have named the shelf must not be reachable once the budget is spent
+    state.facts = factsOf({ available: { [CREAM]: 4, [SOAP]: 100 } });
+
+    const res = await raise(asked(FIVE));
+
+    expect(res.status).toBe(429);
+    expect(res.body.code).toBe('RATE_LIMITED');
+    expect(res.body.error).toContain('17');
+    expect(res.body.error).not.toContain('المخزون');
+    expect(state.previews).toHaveLength(0);
+    expect(db.orderChangeRequest.create).not.toHaveBeenCalled();
+  });
+
+  it('under the ceiling it goes through as before, on the preview endpoint’s own key and number', async () => {
+    const res = await raise(asked(FIVE));
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(rateLimit).toHaveBeenCalledTimes(1);
+    expect(rateLimit).toHaveBeenCalledWith('order-edit-preview:c1:rim', 90, 60_000);
+    expect(state.previews).toHaveLength(1);
+  });
+
+  it('a flat request asks nothing of the shelf and draws nothing from the budget', async () => {
+    rateLimit.mockReturnValue({ allowed: false, retryAfterSec: 30 });
+
+    const res = await raise({ reason: REASON, changes: { customerNotes: { to: 'بعد العصر' } } });
+
+    expect(res.status).toBe(201);
+    expect(rateLimit).not.toHaveBeenCalled();
+  });
+
+  it('a malformed draft is refused before it costs the budget', async () => {
+    const res = await raise(asked({ v: 2, edits: [{ lineId: L1, unitPrice: { to: 12 }, lineTotal: { to: 36 } }] }));
+
+    expect(res.status).toBe(400);
+    expect(rateLimit).not.toHaveBeenCalled();
   });
 });

@@ -202,3 +202,15 @@ export function blockingRefusal(problems: readonly Problem[]): { error: string; 
   const sentences = [...new Set(reasons.map((p) => p.messageAr))];
   return { error: sentences.join(' — '), reasons };
 }
+
+/* ═══════════════════════════ how often the shelf may be asked ═══════════════════════════ */
+
+/**
+ * ONE BUDGET FOR EVERY QUESTION «DOES THE SHELF COVER IT?».
+ *
+ * The preview endpoint and the raise door both run the whole preview — the offers, the shelf, the statements — and both
+ * answer with the reasons it is refused, the stock among them. So they draw on the SAME count per person: asking by
+ * raising is not a way round the ceiling the preview keeps.
+ */
+export const PREVIEWS_PER_MINUTE = 90;
+export const previewRateKey = (companyId: string, userId: string): string => `order-edit-preview:${companyId}:${userId}`;
