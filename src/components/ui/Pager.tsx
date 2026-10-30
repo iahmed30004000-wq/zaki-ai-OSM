@@ -39,6 +39,7 @@ export function Pager({
   total,
   shown,
   noun,
+  label,
   loading = false,
   onPage,
 }: {
@@ -48,6 +49,12 @@ export function Pager({
   shown: number;
   /** What a row is called, singular as it reads after a number: «طلب», «عميل», «مرتجع». */
   noun: string;
+  /**
+   * Replaces the count on the start side. A list that already says its count
+   * elsewhere passes `null` (nothing is drawn there), and one with its own wording
+   * («إجمالي N مستخدم») passes it here — the arrows and «صفحة X من Y» are the same either way.
+   */
+  label?: React.ReactNode;
   loading?: boolean;
   onPage: (page: number) => void;
 }) {
@@ -55,7 +62,13 @@ export function Pager({
   return (
     <div className="flex items-center justify-between text-xs text-[var(--sys-muted-foreground)]">
       <span>
-        عرض <strong>{shown}</strong> من <strong>{total}</strong> {noun}
+        {label !== undefined ? (
+          label
+        ) : (
+          <>
+            عرض <strong>{shown}</strong> من <strong>{total}</strong> {noun}
+          </>
+        )}
       </span>
       <div className="flex items-center space-x-2 rtl:space-x-reverse">
         <Button

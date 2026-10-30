@@ -38,7 +38,7 @@ import { FILTERABLE_STATES, STATE_LABEL_AR } from '@/lib/order-state';
  */
 const STATUS_FILTER_OPTIONS: readonly string[] = [...FILTERABLE_STATES, 'CLOSED'];
 const STATUS_FILTER_LABELS: Record<string, string> = { ...STATE_LABEL_AR, CLOSED: 'مغلق' };
-import { RiAddCircleLine, RiArrowGoBackLine, RiArrowLeftSLine, RiArrowRightSLine, RiCloseLine, RiDownload2Line, RiEBike2Line, RiMagicLine, RiPrinterLine, RiSearchLine, RiTimerLine, RiTruckLine, RiUploadCloud2Line } from '@remixicon/react';
+import { RiAddCircleLine, RiArrowGoBackLine, RiCloseLine, RiDownload2Line, RiEBike2Line, RiMagicLine, RiPrinterLine, RiSearchLine, RiTimerLine, RiTruckLine, RiUploadCloud2Line } from '@remixicon/react';
 import { Money } from '@/components/ui/Money';
 import { arDateTime } from '@/lib/format';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -48,6 +48,7 @@ import { MigrateOrdersDialog } from '@/components/orders/MigrateOrdersDialog';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
+import { Pager } from '@/components/ui/Pager';
 
 export function OrdersScreen() {
   const { t, currentUser, locale } = useApp();
@@ -1136,43 +1137,17 @@ export function OrdersScreen() {
               </ul>
             )}
 
-            {/* Pagination Bar */}
-            <div className="px-6 py-3 border-t border-[var(--sys-border)] flex items-center justify-between text-xs text-[var(--sys-muted-foreground)]">
-              {/* The count is on the line above the list already («عرض 1–25 من أصل N»). */}
-              <span />
-
-              {/* An arrow on its own is not a name. Every other icon-only
-                  button on this screen says what it does — the printer, the
-                  refresh, the «late» filter — and these two were the only
-                  controls in the page body that a screen reader announces
-                  as «button» and nothing more. */}
-              <div className="flex items-center space-x-2 rtl:space-x-reverse">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={pagination.page <= 1}
-                  onClick={() => loadOrders(pagination.page - 1)}
-                  aria-label="الصفحة السابقة"
-                  title="الصفحة السابقة"
-                  className="p-1.5"
-                >
-                  <RiArrowLeftSLine className="icon-mirror w-4 h-4" />
-                </Button>
-                <span className="font-medium">
-                  صفحة {pagination.page} من {pagination.totalPages || 1}
-                </span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={pagination.page >= pagination.totalPages}
-                  onClick={() => loadOrders(pagination.page + 1)}
-                  aria-label="الصفحة التالية"
-                  title="الصفحة التالية"
-                  className="p-1.5"
-                >
-                  <RiArrowRightSLine className="icon-mirror w-4 h-4" />
-                </Button>
-              </div>
+            {/* Pagination Bar — the shared one (`ui/Pager`); the count is on the line above the list already («عرض 1–25 من أصل N»). */}
+            <div className="px-6 py-3 border-t border-[var(--sys-border)]">
+              <Pager
+                page={pagination.page}
+                totalPages={pagination.totalPages}
+                total={pagination.total}
+                shown={orders.length}
+                noun="طلب"
+                label={null}
+                onPage={(page) => loadOrders(page)}
+              />
             </div>
           </div>
         </Card>

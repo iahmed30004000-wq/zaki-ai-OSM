@@ -28,7 +28,7 @@ describe('routing a call', () => {
    * whose name says `OPENROUTER`, is offered to OpenRouter alone.
    */
   it('takes the key of the provider it resolved, never whichever is stored', () => {
-    const src = stripComments(repoFile('src/lib/ai-provider.ts'));
+    const src = stripComments(repoFile('src/lib/ai-provider/routing.ts'));
     expect(src, 'لا موجِّه لكلّ مساعد').toContain('async function routeFor');
     // The per-vendor store is consulted by the resolved provider's id.
     expect(src).toMatch(/ai\.keys\?\.\[provider\]/);
@@ -64,7 +64,7 @@ describe('routing a call', () => {
    * to. The new vendor's own default is used instead.
    */
   it('does not carry a model across a vendor switch', () => {
-    const src = stripComments(repoFile('src/lib/ai-provider.ts'));
+    const src = stripComments(repoFile('src/lib/ai-provider/routing.ts'));
     expect(src).toMatch(/chosen && chosen !== fallback/);
     const ui = stripComments(repoFile('src/components/screens/ai/AssistantsTable.tsx'));
     expect(ui, 'تبديل المزوّد يُبقي نموذج المزوّد القديم').toMatch(
@@ -73,7 +73,7 @@ describe('routing a call', () => {
   });
 
   it('and an unknown vendor is dropped rather than stored', () => {
-    const src = stripComments(repoFile('src/lib/ai-provider.ts'));
+    const src = stripComments(repoFile('src/lib/ai-provider/settings.ts'));
     // A typo must not route an assistant at a vendor that does not exist:
     // the failure would surface as «الذكاء غير مضبوط» on a far screen.
     expect(src).toMatch(/AI_PROVIDERS\.find\(\(p\) => p\.id === v\.provider\)\?\.id/);
@@ -149,7 +149,7 @@ describe('the models offered', () => {
   });
 
   it('and the repair is applied where a call is routed, not only in the screen', () => {
-    const src = stripComments(repoFile('src/lib/ai-provider.ts'));
+    const src = stripComments(repoFile('src/lib/ai-provider/routing.ts'));
     const route = src.slice(src.indexOf('async function routeFor'));
     expect(route, 'المسار لا يُصلح الاسم المتقاعد').toMatch(/const model = liveModel\(/);
   });

@@ -385,7 +385,7 @@ describe('the answer', () => {
 
 describe('the shape of the thing', () => {
   it('the two guards still say «not LOCAL» and nothing else — no declaration exists', () => {
-    const src = stripComments(repoFile('src/lib/ai-provider.ts'));
+    const src = stripComments(repoFile('src/lib/ai-provider/call.ts'));
     expect(src).toMatch(/req\.localOnly && route\.provider !== 'LOCAL'\)/);
     expect(src).toMatch(/!req\.piiSafe && route\.provider !== 'LOCAL' && req\.job/);
     expect(src).not.toMatch(/ownServer/);
@@ -397,12 +397,12 @@ describe('the shape of the thing', () => {
     const route = stripComments(repoFile('src/app/api/settings/ai/system/route.ts'));
     expect(route).toMatch(/parseCompatEndpoint\(parsed\.data\.compatBaseUrl\)/);
     expect(route).not.toMatch(/parseCompatEndpoint\([^)]*allowedHosts/);
-    const provider = stripComments(repoFile('src/lib/ai-provider.ts'));
+    const provider = stripComments(repoFile('src/lib/ai-provider/routing.ts'));
     expect(provider).not.toMatch(/parseCompatEndpoint\([^)]*allowedHosts/);
   });
 
   it('the redirect rule sits on the compatible server’s fetch', () => {
-    const src = stripComments(repoFile('src/lib/ai-provider.ts'));
+    const src = stripComments(repoFile('src/lib/ai-provider/call.ts'));
     expect(src).toMatch(/route\.provider === 'OPENAI_COMPATIBLE' \? \{ redirect: 'error' as const \}/);
   });
 });
