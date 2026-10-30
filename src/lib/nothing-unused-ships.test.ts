@@ -273,6 +273,19 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
     'النصف المرسوم من بطاقة «مهمّتك الجاية» — يُصدَّر ليصيّره اختبارُها بمهمّة جاهزة بلا جلسة؛ `MissionCard` نفسها هي ما تستخدمه الشاشة.',
 
   /*
+   * `OrderRef` LANDS FIRST AND THE SCREENS FOLLOW, ON PURPOSE.
+   *
+   * The copy buttons beside an order number are built as one component, with
+   * its tests and a ratchet (`an-order-number-is-drawn-by-one-component`)
+   * that names every screen still drawing the number another way. Moving the
+   * fifteen screens is one PR each, so none of them is in this one. The
+   * entry comes OFF this list in the first screen PR — the stale check
+   * below fails that PR until it does.
+   */
+  'src/components/orders/OrderRef.tsx:OrderRef':
+    'مكوّن رقم الطلب مع أزرار النسخ — مبنيٌّ ومحروسٌ بحارس الدَّين، وتنتقل إليه الشاشات واحدةً واحدةً بطلباتٍ لاحقة؛ يخرج من هذه القائمة بأول شاشة.',
+
+  /*
    * Same shape as `MissionCardView`: rendered by its own file (the «إضافة استثناء» dialog of UserDetailScreen), and
    * exported so its test can draw the list with a role already in hand, without faking the whole user page.
    */
