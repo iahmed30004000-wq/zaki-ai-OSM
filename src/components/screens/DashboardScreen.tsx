@@ -27,6 +27,7 @@ import type { Trust } from '@/lib/cod-vitals';
 import { STATE_TONE, type CoreState } from '@/lib/order-state';
 import { TONE_DOT, TONE_TEXT } from '@/components/ui/StatusChip';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
+import { SkeletonRows } from '@/components/ui/Skeleton';
 
 const PERIODS = [
   { key: 'today', ar: 'اليوم' },
@@ -113,6 +114,16 @@ export function DashboardScreen() {
   // «الكل» reads the whole history (see `reportRange`), so it is asked for
   // every two minutes; a named period stays live at thirty seconds.
   useLiveRefresh(loadAnalytics, { everyMs: period === 'all' ? 120_000 : 30_000, key: period });
+
+  /**
+   * NOTHING IS DRAWN AS A NUMBER BEFORE THE SERVER HAS SENT ONE.
+   *
+   * `loading` was written on every request and read by nobody, so until the first answer the board painted «٠ طلب»،
+   * «٠٪» and «٠ دينار» from the fallbacks below, and then changed them — a lie for the length of a request, on the
+   * screen people decide from. Waiting is no analytics AND no refusal: a refusal has its own card above, and an
+   * earlier answer keeps standing while a poll is in flight (the next one replaces it without a flash).
+   */
+  const waiting = !analytics && !refusal;
 
   const fin = analytics?.financials ?? {
     deliveredRevenue: 0, costOfGoodsSold: 0, shippingCosts: 0,
@@ -438,6 +449,12 @@ export function DashboardScreen() {
           little, but it is the phone room's own figure and dropping it would
           leave that team without a number on the screen they open.
         */}
+        {waiting ? (
+          <div aria-busy={loading}>
+            <SkeletonRows rows={6} />
+          </div>
+        ) : (
+        <>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {canFinance && (
             <KpiCard
@@ -730,6 +747,8 @@ export function DashboardScreen() {
           </Card>
           )}
         </div>
+        </>
+        )}
 
       </div>
 
