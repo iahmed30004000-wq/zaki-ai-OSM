@@ -48,13 +48,21 @@ export async function GET() {
      * nobody is shown is a query run for nothing, on every poll, for every
      * user in the company.
      */
-    if (wanted.has('CONFIRM_POOL')) counts.CONFIRM_POOL = await waitingCount(db, scope);
-    if (wanted.has('MY_UNCONFIRMED')) {
-      counts.MY_UNCONFIRMED = await awaitingConfirmationCount(db, scope, user.id);
-    }
+    /**
+     * ALL OF THEM AT ONCE (RV181). These were eleven counts one behind the other, each waiting for the one before it to
+     * come back; none needs another's answer. The questions are the same and so are the numbers — only the waiting
+     * changed: the poll now takes as long as its slowest count, not the sum of them.
+     */
+    const tasks: Promise<void>[] = [];
+    const count = (key: WorkKey, pending: Promise<number>) => {
+      tasks.push(pending.then((n) => { counts[key] = n; }));
+    };
+
+    if (wanted.has('CONFIRM_POOL')) count('CONFIRM_POOL', waitingCount(db, scope));
+    if (wanted.has('MY_UNCONFIRMED')) count('MY_UNCONFIRMED', awaitingConfirmationCount(db, scope, user.id));
 
     if (wanted.has('READY_TO_SHIP')) {
-      counts.READY_TO_SHIP = await db.order.count({
+      count('READY_TO_SHIP', db.order.count({
         where: {
           ...scope,
           confirmationStatus: 'CONFIRMED',
@@ -64,40 +72,40 @@ export async function GET() {
           // the same filter the shipment list itself uses.
           OR: [{ shipHoldUntil: null }, { shipHoldUntil: { lte: new Date() } }],
         },
-      });
+      }));
     }
 
     if (wanted.has('RETURNS_WAITING')) {
-      counts.RETURNS_WAITING = await db.order.count({
+      count('RETURNS_WAITING', db.order.count({
         where: {
           ...scope,
           shippingStatus: { in: ['RETURN_REQUESTED', 'RETURNED', 'FAILED_DELIVERY', 'PARTIALLY_DELIVERED'] },
           returnReceipt: null,
         },
-      });
+      }));
     }
 
     if (wanted.has('CHANGE_REQUESTS')) {
-      counts.CHANGE_REQUESTS = await db.orderChangeRequest.count({
+      count('CHANGE_REQUESTS', db.orderChangeRequest.count({
         where: { companyId, status: 'PENDING', order: { storeId } },
-      });
+      }));
     }
 
     /** The warehouse's list: the very orders `/api/ops/preparation` groups by product. */
     if (wanted.has('TO_PREPARE')) {
-      counts.TO_PREPARE = await db.order.count({
+      count('TO_PREPARE', db.order.count({
         where: {
           ...scope,
           confirmationStatus: 'CONFIRMED',
           shippingStatus: { in: ['NOT_READY', 'PACKING'] },
           items: { some: {} },
         },
-      });
+      }));
     }
 
     // What `/api/confirmation/issues` lists by default (status OPEN), in this store.
     if (wanted.has('ISSUES_OPEN')) {
-      counts.ISSUES_OPEN = await db.orderIssue.count({ where: { companyId, status: 'OPEN', order: { storeId } } });
+      count('ISSUES_OPEN', db.orderIssue.count({ where: { companyId, status: 'OPEN', order: { storeId } } }));
     }
 
     /**
@@ -107,17 +115,17 @@ export async function GET() {
      */
     if (wanted.has('POSTPONED_DUE')) {
       const supervisor = can(user, 'confirmation.supervise');
-      counts.POSTPONED_DUE = await db.order.count({
+      count('POSTPONED_DUE', db.order.count({
         where: {
           ...postponedScope({ companyId, storeId, ownOnly: supervisor ? undefined : user.id }),
           AND: [whenWhere('now', new Date(), POSTPONE_LEAD_DAYS)],
         },
-      });
+      }));
     }
 
     // Statements not yet approved: approval is what moves the courier's cash, so it is the open decision.
     if (wanted.has('STATEMENTS_OPEN')) {
-      counts.STATEMENTS_OPEN = await db.courierStatement.count({ where: { companyId, storeId, approvedAt: null, status: { not: 'APPROVED' } } });
+      count('STATEMENTS_OPEN', db.courierStatement.count({ where: { companyId, storeId, approvedAt: null, status: { not: 'APPROVED' } } }));
     }
 
     /**
@@ -129,32 +137,36 @@ export async function GET() {
      * flag the far ones every week and teach people to ignore the chip.
      */
     if (wanted.has('LATE_SHIPMENTS')) {
-      const fees = await db.deliveryFee.findMany({
-        where: { companyId, isActive: true },
-        select: { regionId: true, deliveryProviderId: true, lateThresholdDays: true },
-      });
-      const daysFor = new Map(fees.map((f) => [`${f.deliveryProviderId}:${f.regionId}`, f.lateThresholdDays]));
+      count('LATE_SHIPMENTS', (async () => {
+        const fees = await db.deliveryFee.findMany({
+          where: { companyId, isActive: true },
+          select: { regionId: true, deliveryProviderId: true, lateThresholdDays: true },
+        });
+        const daysFor = new Map(fees.map((f) => [`${f.deliveryProviderId}:${f.regionId}`, f.lateThresholdDays]));
 
-      const flying = await db.order.findMany({
-        where: {
-          ...scope,
-          shippingStatus: { in: ['SHIPPED', 'OUT_FOR_DELIVERY'] },
-          shippedAt: { not: null },
-          // A parcel that arrived or came back has no clock: it cannot be late.
-          deliveredAt: null,
-          returnedAt: null,
-        },
-        select: { shippedAt: true, regionId: true, deliveryProviderId: true, shippingStatus: true, deliveredAt: true, returnedAt: true },
-        take: 2000,
-      });
+        const flying = await db.order.findMany({
+          where: {
+            ...scope,
+            shippingStatus: { in: ['SHIPPED', 'OUT_FOR_DELIVERY'] },
+            shippedAt: { not: null },
+            // A parcel that arrived or came back has no clock: it cannot be late.
+            deliveredAt: null,
+            returnedAt: null,
+          },
+          select: { shippedAt: true, regionId: true, deliveryProviderId: true, shippingStatus: true, deliveredAt: true, returnedAt: true },
+          take: 2000,
+        });
 
-      // No threshold on file is not «late»: it is «we never said». Guessing one would put a red number on a screen
-      // nobody can act on. The count is the tracking screen's own rule — `transitOf` — not a second copy of it.
-      const now = new Date();
-      counts.LATE_SHIPMENTS = flying.filter(
-        (o) => transitOf(o, daysFor.get(`${o.deliveryProviderId}:${o.regionId}`) ?? 0, now).late
-      ).length;
+        // No threshold on file is not «late»: it is «we never said». Guessing one would put a red number on a screen
+        // nobody can act on. The count is the tracking screen's own rule — `transitOf` — not a second copy of it.
+        const now = new Date();
+        return flying.filter(
+          (o) => transitOf(o, daysFor.get(`${o.deliveryProviderId}:${o.regionId}`) ?? 0, now).late
+        ).length;
+      })());
     }
+
+    await Promise.all(tasks);
 
     const items: WorkItem[] = kinds.map((k) => ({
       key: k.key,
