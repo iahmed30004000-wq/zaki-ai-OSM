@@ -15,14 +15,22 @@ export type ConfirmationStatus = (typeof CONFIRMATION_STATUSES)[number];
 
 /**
  * Explicit allowed transitions. Anything not listed here is rejected.
- * Any status → CANCELLED only via SUPER_ADMIN override (with reason).
+ * Any other move (the `cancel` action → CANCELLED included) passes only through the override of whoever holds
+ * `orders.unlock`, with a note of at least five characters; the route checks that, not this table.
+ *
+ * ── «ألغِ» FROM A WAITING STATE (30/10) ──
+ * `REJECTED` was listed under NEW and IN_PROGRESS only. An order whose last call ended «لا يرد», «طلب معاودة» or a
+ * postponement sits in NO_ANSWER / FOLLOW_UP_REQUIRED / POSTPONED, and from there «ألغِ» (the `reject` action) was
+ * refused with INVALID_TRANSITION although the contact-first rule was met. The only way out was to open the order,
+ * record «العميل أجاب» (→ IN_PROGRESS) and cancel afterwards. None of the three is confirmed, so there is no stock
+ * reserved that `endOrder` does not already release. CONFIRMED stays closed from them: only the cancel was asked for.
  */
 export const CONFIRMATION_TRANSITIONS: Record<ConfirmationStatus, ConfirmationStatus[]> = {
   NEW: ['IN_PROGRESS', 'NO_ANSWER', 'FOLLOW_UP_REQUIRED', 'POSTPONED', 'CONFIRMED', 'REJECTED'],
   IN_PROGRESS: ['NO_ANSWER', 'FOLLOW_UP_REQUIRED', 'POSTPONED', 'CONFIRMED', 'REJECTED'],
-  NO_ANSWER: ['IN_PROGRESS', 'FOLLOW_UP_REQUIRED'],
-  FOLLOW_UP_REQUIRED: ['IN_PROGRESS'],
-  POSTPONED: ['IN_PROGRESS'],
+  NO_ANSWER: ['IN_PROGRESS', 'FOLLOW_UP_REQUIRED', 'REJECTED'],
+  FOLLOW_UP_REQUIRED: ['IN_PROGRESS', 'REJECTED'],
+  POSTPONED: ['IN_PROGRESS', 'REJECTED'],
   CONFIRMED: [],            // terminal for confirmation stage (D2 shipping takes over)
   REJECTED: [],             // terminal
   CANCELLED: [],            // terminal
