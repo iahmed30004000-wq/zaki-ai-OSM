@@ -83,7 +83,7 @@ describe('the table of the whole team', () => {
   it('the refusal says so in Arabic (the English `error` is the old one — this change adds no new English refusal)', async () => {
     as('MANAGER');
     const body = await (await team()).json();
-    expect(body.errorAr).toMatch(/[؀-ۿ]/);
+    expect(body.errorAr).toMatch(/[\u0600-\u06FF]/);
   });
 });
 
