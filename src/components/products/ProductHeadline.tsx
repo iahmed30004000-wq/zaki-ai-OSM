@@ -1,5 +1,6 @@
 'use client';
 
+import { plainNumber } from '@/lib/format';
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { RiArchiveLine, RiCoinsLine, RiLoader4Line } from '@remixicon/react';
@@ -47,7 +48,7 @@ export function ProductHeadline({ productId }: { productId: string }) {
   if (failed) return null;
 
   const money = (n: number) =>
-    `${n.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${stock?.currencyCode ?? ''}`.trim();
+    `${plainNumber(n, 2)} ${stock?.currencyCode ?? ''}`.trim();
 
   return (
     <div className="flex flex-wrap items-center gap-2">

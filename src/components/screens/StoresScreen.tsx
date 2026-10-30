@@ -1,5 +1,6 @@
 'use client';
 
+import { plainNumber } from '@/lib/format';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useConfirm } from '@/components/ui/Confirm';
 import { STORE_TYPE_LABEL } from '@/lib/store-types';
@@ -563,7 +564,7 @@ function Num({ label, value }: { label: string; value: number }) {
     <div>
       <p className="text-xs text-[var(--sys-muted)]">{label}</p>
       <p className="text-xs font-bold tabular-nums text-[var(--sys-heading)]" dir="ltr">
-        {value.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+        {plainNumber(value, 0)}
       </p>
     </div>
   );
