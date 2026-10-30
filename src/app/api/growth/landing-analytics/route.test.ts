@@ -5,13 +5,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * opens the performance screen for the team tables, and that is all.
  */
 
-const { requirePermission, landingAnalytics, pageVerdicts } = vi.hoisted(() => ({
+const { requirePermission, landingAnalytics, pageVerdicts, mayReadInsights } = vi.hoisted(() => ({
+  mayReadInsights: vi.fn(),
   requirePermission: vi.fn(),
   landingAnalytics: vi.fn(),
   pageVerdicts: vi.fn(),
 }));
 
-vi.mock('@/lib/geo-context', () => ({ requireContext: async () => ({ companyId: 'c1', storeId: 's1' }) }));
+vi.mock('@/lib/geo-context', () => ({ requireContext: async () => ({ user: { id: 'u1' }, companyId: 'c1', storeId: 's1' }) }));
+vi.mock('@/lib/insights-key', () => ({ mayReadInsights: (...a: unknown[]) => mayReadInsights(...a) }));
 vi.mock('@/lib/authorization', () => ({ requirePermission: (...a: unknown[]) => requirePermission(...a) }));
 vi.mock('@/lib/landing-analytics', () => ({
   landingAnalytics: (...a: unknown[]) => landingAnalytics(...a),
@@ -31,6 +33,31 @@ beforeEach(() => {
   vi.clearAllMocks();
   landingAnalytics.mockResolvedValue({ totals: {} });
   pageVerdicts.mockResolvedValue([]);
+  mayReadInsights.mockReturnValue(true);
+});
+
+describe('the verdicts are smart cards — insights.view (PR-10)', () => {
+  it('a reader of the table without the key gets the table and NO verdicts — absent, not an empty list — and the verdicts are not even computed', async () => {
+    requirePermission.mockResolvedValue(undefined);
+    mayReadInsights.mockReturnValue(false);
+    pageVerdicts.mockResolvedValue([{ productId: 'p1', productName: 'س', pages: 2, verdict: { ok: false, waiting: [] } }]);
+    const body = await (await get()).json();
+    expect(body).toEqual({ totals: {} });
+    expect('verdicts' in body).toBe(false);
+    expect(pageVerdicts).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE (the test of the test): with the key the same reader gets them', async () => {
+    requirePermission.mockResolvedValue(undefined);
+    pageVerdicts.mockResolvedValue([{ productId: 'p1', productName: 'س', pages: 2, verdict: { ok: false, waiting: [] } }]);
+    expect((await (await get()).json()).verdicts).toHaveLength(1);
+  });
+
+  it('the key alone opens nothing: the reports’ and the pages’ gates still come first', async () => {
+    requirePermission.mockImplementation(async () => { throw new Denied(); });
+    expect((await get()).status).toBe(403);
+    expect(landingAnalytics).not.toHaveBeenCalled();
+  });
 });
 
 describe('who may read it', () => {

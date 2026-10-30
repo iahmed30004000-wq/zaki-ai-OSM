@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { apiErrorResponse } from '@/lib/api-error';
 import { requireContext } from '@/lib/geo-context';
 import { can, getPermissionScope } from '@/lib/authorization';
+import { mayReadInsights } from '@/lib/insights-key';
 import { manageableUsersWhere } from '@/lib/manageable-user';
 import { creatablesFor } from '@/lib/palette-create';
 import { paletteProducts } from '@/lib/palette-products';
@@ -51,7 +52,7 @@ async function capabilities(user: Parameters<typeof readsTheWholeStore>[0]) {
      * «لخّصلي اليوم» — the same two keys its door asks (`/api/palette/today`: the numbers on `orders.view`, the sentence on
      * `ai.assist`), so the box offers it to exactly the people it will answer.
      */
-    today: !!getPermissionScope(user, 'orders.view') && can(user, 'ai.assist'),
+    today: !!getPermissionScope(user, 'orders.view') && can(user, 'ai.assist') && mayReadInsights(user),
     /**
      * «+ أنشئ» — the forms this account may be taken to, drawn here and not in the box: the screen must be one it may open AND the
      * permission must be the one the form's own button is behind (`palette-create.ts`). The box carries no list of its own.
@@ -81,8 +82,10 @@ export async function GET() {
       );
     }
 
+    // The live counts (new, postponed, at the courier…) are smart cards (PR-10): an EMPTY list without `insights.view` —
+    // the same shape the box already draws for an account with no orders grant, so the navigation and «+ أنشئ» stay.
     return NextResponse.json({
-      facts: await paletteSummary({ companyId, storeId }, user),
+      facts: mayReadInsights(user) ? await paletteSummary({ companyId, storeId }, user) : [],
       may: await capabilities(user),
     });
   } catch (error) {
@@ -147,7 +150,7 @@ export async function POST(req: Request) {
       : [];
 
     return NextResponse.json({
-      facts: await paletteCounts({ companyId, storeId }, user, term),
+      facts: mayReadInsights(user) ? await paletteCounts({ companyId, storeId }, user, term) : [],
       people,
       products,
     });

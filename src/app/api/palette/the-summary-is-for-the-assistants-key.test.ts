@@ -51,8 +51,13 @@ beforeEach(() => {
 
 describe('the box is told `today` for the account that asked', () => {
   it('orders.view AND the box → true', async () => {
-    asUser(account(['orders.view', 'ai.assist']));
+    asUser(account(['orders.view', 'ai.assist', 'insights.view']));
     expect(await mayToday()).toBe(true);
+  });
+
+  it('NEGATIVE (PR-10): orders.view AND the box but not the smart-card key → false (the counts it sums up are cards)', async () => {
+    asUser(account(['orders.view', 'ai.assist']));
+    expect(await mayToday()).toBe(false);
   });
 
   it('NEGATIVE: orders.view without the box → false (the owner took the model away)', async () => {
@@ -74,11 +79,17 @@ describe('the box is told `today` for the account that asked', () => {
 });
 
 describe('the door refuses exactly who the box stopped offering it to', () => {
-  it('both keys → the sentence', async () => {
-    asUser(account(['orders.view', 'ai.assist']));
+  it('all three keys (PR-10: the counts are cards) → the sentence', async () => {
+    asUser(account(['orders.view', 'ai.assist', 'insights.view']));
     const res = await today();
     expect(res.status).toBe(200);
     expect((await res.json()).from).toBe('LOCAL_MODEL');
+  });
+
+  it('NEGATIVE (PR-10): both of the old keys without the smart-card key → 403 and the model is never asked', async () => {
+    asUser(account(['orders.view', 'ai.assist']));
+    expect((await today()).status).toBe(403);
+    expect(aiChat).not.toHaveBeenCalled();
   });
 
   it('NEGATIVE: orders.view alone → 403 and the model is never asked', async () => {

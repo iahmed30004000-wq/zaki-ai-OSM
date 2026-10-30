@@ -27,6 +27,7 @@ import { ORDER_ACTION_KEYS_FROM } from './order-action-keys';
 import { CONFIRMATION_SPLIT_KEYS_FROM, rolesThatPassedByName } from './confirmation-split-keys';
 import { OPS_ACTION_KEYS_FROM } from './ops-action-keys';
 import { FINANCE_SPLIT_KEYS_FROM } from './finance-split-keys';
+import { VISIBILITY_KEYS_FROM } from './visibility-keys';
 import { CATEGORIES_CAMPAIGNS_KEYS_FROM } from './categories-campaigns-keys';
 import { USERS_ROLES_APPS_KEYS_FROM } from './users-roles-apps-keys';
 
@@ -326,6 +327,12 @@ export async function computeEffectiveGrants(
       if (grants[key] || denied.has(key)) continue;
       if (from.some((k) => grants[k]) || (byRole ?? []).includes(user.role)) grants[key] = { scope: 'ALL_COMPANY' };
     }
+    // The cost, smart-card, team-table and payslip keys (PR-10): whoever passed the door through the old key — or the
+    // old role NAME — keeps it. Decided after the overrides, so a «منع» on the key or on the box still counts.
+    for (const { key, from, byRole } of VISIBILITY_KEYS_FROM) {
+      if (grants[key] || denied.has(key)) continue;
+      if (from.some((k) => grants[k]) || (byRole ?? []).includes(user.role)) grants[key] = { scope: 'ALL_COMPANY' };
+    }
   }
 
   return { fullAccess: false, grants };
@@ -369,6 +376,10 @@ export function legacyEffectiveKeys(role: UserRole): string[] {
   for (const { key, from } of CATEGORIES_CAMPAIGNS_KEYS_FROM) if (from.some((k) => keys.has(k))) keys.add(key);
   // And the users, roles and app-key boxes (PR-13), with the role NAMES that used to open a door by themselves.
   for (const { key, from, byRole } of USERS_ROLES_APPS_KEYS_FROM) {
+    if (from.some((k) => keys.has(k)) || (byRole ?? []).includes(role)) keys.add(key);
+  }
+  // And the cost, smart-card, team-table and payslip keys (PR-10), with the role NAMES that used to open a team table.
+  for (const { key, from, byRole } of VISIBILITY_KEYS_FROM) {
     if (from.some((k) => keys.has(k)) || (byRole ?? []).includes(role)) keys.add(key);
   }
   return [...keys];

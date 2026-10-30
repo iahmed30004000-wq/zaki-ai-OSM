@@ -66,7 +66,7 @@ const OWNER = {
   role: 'COMPANY_ADMIN',
   companyId: 'c1',
   __scope: 'ALL_COMPANY',
-  __perms: ['users.view', 'confirmation.pull'],
+  __perms: ['users.view', 'confirmation.pull', 'insights.view'],
 };
 
 const AGENT = {
@@ -75,7 +75,7 @@ const AGENT = {
   role: 'CONFIRMATION_AGENT',
   companyId: 'c1',
   __scope: 'ASSIGNED',
-  __perms: ['confirmation.pull'],
+  __perms: ['confirmation.pull', 'insights.view'],
 };
 
 const PHONE = '0791234567';
@@ -141,6 +141,40 @@ describe('the counter takes its term in the body', () => {
     expect(src, 'الباب لم يُستعمل أصلاً').toContain("'/api/palette'");
     expect(palette, 'المصطلح صار في عنوان الطلب').not.toMatch(/\/api\/palette\?/);
     expect(src, 'المصطلح لم يُرسل في الجسم').toMatch(/body: JSON\.stringify\(\{ q: term \}\)/);
+  });
+});
+
+/**
+ * THE LIVE COUNTS ARE SMART CARDS (perm-plan PR-10). Without `insights.view` the box still finds products and people and still
+ * navigates; only the counters («جديدة»، «مؤجّلة»…) are an empty list — the same shape it already draws for an account with
+ * no orders grant — and not one count query is made.
+ */
+describe('without insights.view the counters are empty and nothing is counted', () => {
+  it('the summary is an empty list, the capabilities still travel, and no order is counted', async () => {
+    asUser({ ...AGENT, __perms: ['confirmation.pull'] });
+    const body = await (await GET()).json();
+    expect(body.facts).toEqual([]);
+    expect(body.may).toBeTruthy();
+    expect(db.order.count).not.toHaveBeenCalled();
+  });
+
+  it('the typed counter likewise — products and people are still searched', async () => {
+    asUser({ ...OWNER, __perms: ['users.view', 'confirmation.pull'] });
+    db.product.findMany.mockResolvedValue([]);
+    const body = await (await ask(PHONE)).json();
+    expect(body.facts).toEqual([]);
+    expect(body.people).toEqual([]);
+    expect(body.products).toEqual([]);
+    expect(db.order.count).not.toHaveBeenCalled();
+    expect(db.user.findMany).toHaveBeenCalled();
+    expect(db.product.findMany).toHaveBeenCalled();
+  });
+
+  it('NEGATIVE (the test of the test): the same agent WITH the key is counted', async () => {
+    asUser(AGENT);
+    const body = await (await ask(PHONE)).json();
+    expect(body.facts.length).toBeGreaterThan(0);
+    expect(db.order.count).toHaveBeenCalled();
   });
 });
 

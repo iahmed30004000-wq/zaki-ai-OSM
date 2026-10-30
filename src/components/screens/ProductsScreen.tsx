@@ -10,6 +10,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 import { ProductThumb } from '@/components/ui/ProductThumb';
 import { useApp } from '@/context/AppContext';
+import { userCan } from '@/lib/can';
 import { useCreateIntent } from '@/hooks/useCreateIntent';
 import { productName } from '@/lib/product-name';
 import Link from 'next/link';
@@ -26,7 +27,7 @@ import { PRODUCT_STATUS_AR, productStatusAr, productStatusTone } from '@/lib/pro
 import { ProductEditDialog } from '@/components/products/ProductEditDialog';
 import { CategoriseDialog, type CategoriseResult } from '@/components/products/CategoriseDialog';
 import { apiJson } from '@/lib/api-client';
-import type { ProductStats } from '@/lib/product-stats';
+import type { ProductStatsAnswer as ProductStats } from '@/lib/product-stats';
 
 /** A count as a reader reads it — Latin digits, thousands separated. */
 const count = (n: number) => n.toLocaleString('en-US');
@@ -44,7 +45,9 @@ interface GradeAnswer {
 }
 
 export function ProductsScreen() {
-  const { t, locale } = useApp();
+  const { t, locale, currentUser } = useApp();
+  /** UX only: the grades' door (`GET /api/products/grades`) asks `insights.view` itself (PR-10). */
+  const canInsights = userCan(currentUser, 'insights.view');
   const router = useRouter();
   const ask = useConfirm();
   const tell = useTell();
@@ -87,7 +90,7 @@ export function ProductsScreen() {
     try {
       const data = await apiJson<ProductStats>('/api/products/stats');
       // A shape that is not the answer is no answer: the cards and the column read it field by field.
-      if (data && data.totals && data.unitsSold) answer = data;
+      if (data && data.unitsSold) answer = data;
     } catch {
       // The catalogue must render even when its numbers cannot — a dash says so.
     }
@@ -202,7 +205,8 @@ export function ProductsScreen() {
    */
   const loadGrades = async (ids: string[]) => {
     setGradeData(null);
-    if (ids.length === 0) return;
+    // Nobody is asked what they may not read: the grade is a smart card (PR-10), and a 403 is not a failure worth a call.
+    if (ids.length === 0 || !canInsights) return;
     try {
       const res = await fetch(`/api/products/grades?ids=${ids.join(',')}`);
       // A refusal here is the ordinary case for somebody who may see the
@@ -341,7 +345,7 @@ export function ProductsScreen() {
           to be read in the meantime; and the value of the stock is a card only when the server sent it — it is what the goods
           cost, and a caller who may not see that is not shown a zero in its place.
         */}
-        {stats && (
+        {stats?.totals && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <KpiCard
               title="المنتجات"
@@ -597,10 +601,10 @@ export function ProductsScreen() {
                     out of seventy, and colouring it would be this screen
                     inventing one.
                   */
-                  {
+                  ...(!canInsights ? [] : [{
                     key: 'grade',
                     label: 'التقدير',
-                    render: (p) => {
+                    render: (p: any) => {
                       const g = gradeOf(p.id);
                       if (!g) return <span className="text-xs text-[var(--sys-muted)]">—</span>;
                       return (
@@ -639,7 +643,7 @@ export function ProductsScreen() {
                         </div>
                       );
                     },
-                  },
+                  }]),
                 ]}
                 actions={(p) => (
                   <span className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>

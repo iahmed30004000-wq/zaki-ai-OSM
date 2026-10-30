@@ -30,8 +30,11 @@ export interface ReceiveProduct {
   id: string;
   name: string;
   remaining: number;
-  /** The newest costed price, or null when this product has never been costed. */
-  lastUnitCost: number | null;
+  /**
+   * The newest costed price, or null when this product has never been costed. ABSENT (undefined) for a caller without
+   * `costs.view`: the number is not shown and no claim is made about it — a blank is still the server's decision.
+   */
+  lastUnitCost?: number | null;
 }
 
 export function ReceiveDialog({
@@ -121,13 +124,15 @@ export function ReceiveDialog({
             step="0.001"
             value={unitCost}
             onChange={(e) => setUnitCost(e.target.value)}
-            placeholder={product.lastUnitCost !== null ? String(product.lastUnitCost) : 'اكتب الكلفة'}
+            placeholder={typeof product.lastUnitCost === 'number' ? String(product.lastUnitCost) : product.lastUnitCost === undefined ? 'اتركها فارغة أو اكتب الكلفة' : 'اكتب الكلفة'}
             required={product.lastUnitCost === null}
             className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm"
             dir="ltr"
           />
           <span className="block text-xs text-[var(--sys-muted)] mt-1">
-            {product.lastUnitCost !== null ? (
+            {product.lastUnitCost === undefined ? (
+              <>تُفتح دفعة جديدة بهذه التكلفة، فلا تتأثر تكلفة البضاعة القديمة. واتركها فارغةً لتدخل بكلفة آخر دفعة إن وُجدت، وإلا طلب منك النظام كتابتها.</>
+            ) : product.lastUnitCost !== null ? (
               <>تُفتح دفعة جديدة بهذه التكلفة، فلا تتأثر تكلفة البضاعة القديمة. واتركها فارغةً لتدخل بكلفة آخر دفعة ({product.lastUnitCost}).</>
             ) : (
               <>لم تُسعَّر هذه البضاعة من قبل، فلا كلفةَ تُبنى عليها. تركُها فارغةً يُدخلها بصفر فيظهر كلُّ ما يُباع منها ربحاً صافياً.</>

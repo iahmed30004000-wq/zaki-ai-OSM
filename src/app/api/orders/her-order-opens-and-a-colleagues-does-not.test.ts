@@ -268,6 +268,9 @@ const AGENT = person('u1', 'CONFIRMATION_AGENT', {
   // OLD → NEW (PR-7): raising an entry issue is its own box, `confirmation.raise_issue`. The migration 20261030140000_confirmation_split_keys
   // gives it to the shipped agent BY NAME (D14: her «إدخال إشكال» always answered 403) and to whoever held `confirmation.issues`.
   'confirmation.raise_issue': 'ALL_COMPANY',
+  // OLD → NEW (PR-10): the return risk of an order is a smart card. The migration 20261030170000_costs_insights_keys gives
+  // `insights.view` to whoever held the key of a screen a card is drawn on (here confirmation.work, orders.confirm, products.view).
+  'insights.view': 'ALL_COMPANY',
 });
 /** The moderator's template since 14/10: his own entries; no pull, no work, no supervise. */
 const MODERATOR = person('m1', 'MODERATOR', {

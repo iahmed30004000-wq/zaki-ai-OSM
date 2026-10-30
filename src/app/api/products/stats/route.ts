@@ -4,6 +4,7 @@ import { requireContext } from '@/lib/geo-context';
 import { getPermissionScope } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { maySeeCost } from '@/lib/cost-visibility';
+import { mayReadInsights } from '@/lib/insights-key';
 import { productCosts } from '@/lib/product-cost';
 import { summariseProducts } from '@/lib/product-stats';
 import { productScopeWhere } from '@/lib/product-scope';
@@ -55,14 +56,16 @@ export async function GET() {
       deliveredUnitsByProduct(db, { companyId, storeId, productIds: ids }),
     ]);
 
-    return NextResponse.json(
-      summariseProducts({
-        products,
-        onHand: new Map([...costs].map(([id, c]) => [id, c.onHand])),
-        stockValue: showCost ? new Map([...costs].map(([id, c]) => [id, c.stockValue])) : null,
-        unitsSold,
-      })
-    );
+    const answer = summariseProducts({
+      products,
+      onHand: new Map([...costs].map(([id, c]) => [id, c.onHand])),
+      stockValue: showCost ? new Map([...costs].map(([id, c]) => [id, c.stockValue])) : null,
+      unitsSold,
+    });
+
+    // THE CARDS ABOVE THE LIST (`totals`, `top`) ARE SMART CARDS (PR-10): ABSENT, not zero, without `insights.view`. The units
+    // in each row's «المبيعات» column are the catalogue's own figure — they stay for everybody who may see the catalogue.
+    return NextResponse.json(mayReadInsights(user) ? answer : { unitsSold: answer.unitsSold });
   } catch (error) {
     return apiErrorResponse(error);
   }

@@ -152,7 +152,7 @@ describe('and the screen tells the truth about the field', () => {
     // name of the local that derives it, so looking for the word passed with
     // the property deleted from the object the screen actually reads.
     expect(inventory(), 'القائمة لا ترسل الكلفة السابقة في الصفّ').toMatch(
-      /batchesCount: p\.batches\.length,\s*lastUnitCost,/
+      /batchesCount: p\.batches\.length,[\s\S]{0,400}\.\.\.\(showCost\s*\?\s*\{\s*lastUnitCost,/
     );
   });
 

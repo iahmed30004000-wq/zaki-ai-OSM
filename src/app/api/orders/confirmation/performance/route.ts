@@ -53,9 +53,9 @@ export async function GET(req: Request) {
      */
     let employeeId = user.id;
     if (requestedEmployeeId && requestedEmployeeId !== user.id) {
-      const mayViewTeam =
-        can(user, 'users.view') || ['SUPER_ADMIN', 'COMPANY_ADMIN', 'MANAGER'].includes(user.role);
-      if (!mayViewTeam) {
+      // Somebody else's numbers are `team.monitor`'s (PR-10): it read `users.view` OR three role NAMES, and the migration
+      // 20261030170000_costs_insights_keys gave the key to everybody who passed either.
+      if (!can(user, 'team.monitor')) {
         return NextResponse.json(
           {
             error: 'Forbidden: cannot view other employees’ performance',

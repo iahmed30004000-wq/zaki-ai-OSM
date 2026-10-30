@@ -91,9 +91,36 @@ describe('who may ask', () => {
   });
 });
 
+describe('the grade is a smart card — insights.view (PR-10)', () => {
+  it('refuses a caller who may see the catalogue and the reports but not the cards, in Arabic in BOTH fields, reading nothing', async () => {
+    can.mockImplementation((_u: unknown, key: string) => key !== 'insights.view');
+    const res = await GET(req('top'));
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toMatch(/[\u0600-\u06FF]/);
+    expect(body.errorAr).toBe(body.error);
+    expect(body.code).toBe('INSIGHTS_REQUIRED');
+    expect(db.product.findMany).not.toHaveBeenCalled();
+    expect(db.orderItem.findMany).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE: the cards alone, without the catalogue key, is still the catalogue’s refusal', async () => {
+    getPermissionScope.mockReturnValue(null);
+    can.mockImplementation((_u: unknown, key: string) => key === 'insights.view');
+    expect((await GET(req('top'))).status).toBe(403);
+    expect(db.product.findMany).not.toHaveBeenCalled();
+  });
+
+  it('asks the cards’ key of THIS caller', async () => {
+    await GET(req('top'));
+    expect(can.mock.calls.some((c) => c[1] === 'insights.view' && c[0]?.id === 'owner')).toBe(true);
+  });
+});
+
 describe('the sales gate — reports.view alone', () => {
   it('omits the whole performance half when the caller has neither', async () => {
-    can.mockReturnValue(false);
+    // The cards' key is held (PR-10); the reports' key is not.
+    can.mockImplementation((_u: unknown, key: string) => key === 'insights.view');
     const res = await GET(req('top'));
     const body = await res.json();
     expect(body.salesVisible).toBe(false);
@@ -105,14 +132,14 @@ describe('the sales gate — reports.view alone', () => {
   });
 
   it('leaks no count, no revenue and no order of any kind in that answer', async () => {
-    can.mockReturnValue(false);
+    can.mockImplementation((_u: unknown, key: string) => key === 'insights.view');
     const text = JSON.stringify(await (await GET(req('top'))).json());
     expect(text).not.toContain('deliveredRevenue');
     expect(text).not.toContain('"confirmed"');
   });
 
   it('still answers the readiness question, which is catalogue data the list already shows', async () => {
-    can.mockReturnValue(false);
+    can.mockImplementation((_u: unknown, key: string) => key === 'insights.view');
     const body = await (await GET(req('top'))).json();
     expect(body.grades[0].readiness.gaps.map((g: { key: string }) => g.key)).toEqual([
       'price',
@@ -123,9 +150,9 @@ describe('the sales gate — reports.view alone', () => {
   });
 
   it('opens on reports.view alone — and NEGATIVE: the retired analytics.view opens nothing (29/10)', async () => {
-    can.mockImplementation((_u: unknown, key: string) => key === 'reports.view');
+    can.mockImplementation((_u: unknown, key: string) => key === 'reports.view' || key === 'insights.view');
     expect((await (await GET(req('top'))).json()).salesVisible).toBe(true);
-    can.mockImplementation((_u: unknown, key: string) => key === 'analytics.view');
+    can.mockImplementation((_u: unknown, key: string) => key === 'analytics.view' || key === 'insights.view');
     expect((await (await GET(req('top'))).json()).salesVisible).toBe(false);
   });
 });

@@ -147,6 +147,22 @@ export const PERMISSION_MODULES: CatalogModule[] = [
     module: 'finance',
     items: [
       { key: 'finance.view', opens: ['الأرباح'], ar: 'عرض المالية', en: 'View finance' },
+      /*
+       * WHAT A THING COST US, ON ONE KEY (perm-plan PR-10, D3, migration 20261030170000_costs_insights_keys).
+       *
+       * The unit cost of a product, a batch's cost, the value of the stock and the cost and profit on an order were each
+       * shown to whoever held ANY of five keys (the stock, the production or the finance screen). It is a visibility key:
+       * it opens no screen and it is ticked beside the screen's own key, never instead of it. The migration gave it to
+       * everybody who held one of the five, so nobody lost a figure on the day; from then on one tick takes it away.
+       * An order's cost and profit need this AND «عرض المالية».
+       */
+      {
+        key: 'costs.view',
+        requires: null,
+        note: 'بتشتغل مع مفتاح الشاشة نفسه — بدونها بتضل الشاشة تشتغل وبتختفي الكلفة والهامش منها.',
+        ar: 'عرض التكلفة والهامش — كلفة المنتج والدفعة وقيمة المخزون وكلفة الطلب وربحه',
+        en: 'See costs and margin — product and batch cost, stock value, order cost and profit',
+      },
       // D12 (PR-9): the expense and the withdrawal from a wallet stay on this one key. Only the NAME says so now.
       { key: 'finance.create', requires: 'finance.view', ar: 'تسجيل المصروفات وسحبها من المحفظة ودفع العمولات', en: 'Record expenses (withdrawn from a wallet) and pay commissions' },
       { key: 'finance.update', requires: 'finance.view', ar: 'تعديل السجلات المالية', en: 'Update financial records' },
@@ -178,6 +194,22 @@ export const PERMISSION_MODULES: CatalogModule[] = [
     module: 'reports',
     items: [
       { key: 'reports.view', ar: 'عرض التقارير', en: 'View reports' },
+      /*
+       * THE SMART CARDS, ON ONE KEY (perm-plan PR-10, D2, migration 20261030170000_costs_insights_keys).
+       *
+       * A product's grade, the dashboard's rankings and loss reasons, a channel's score, an order's and a customer's return
+       * risk, a campaign's best and worst, a landing page's verdict and the live counts in the search box each sat behind
+       * the key of the screen they are drawn on, so a person who could open the screen could not be kept from the verdicts.
+       * A visibility key: the screen still opens on its own key, and loses only the cards when this one is taken. The
+       * migration gave it to everybody who held one of those screen keys, so nobody lost a card on the day.
+       */
+      {
+        key: 'insights.view',
+        requires: null,
+        note: 'بتشتغل مع مفتاح الشاشة نفسه — بدونها بتضل الشاشة تشتغل وبتختفي البطاقات الذكية منها.',
+        ar: 'عرض البطاقات الذكية — تقييم المنتجات، ترتيب لوحة التحكم، أسباب الخسارة، درجة القنوات، خطر الإرجاع، بطاقات الحملات وأرقام البحث الفورية',
+        en: 'See the smart cards — product grades, dashboard rankings, loss reasons, channel scores, return risk, campaign cards and live search counts',
+      },
       { key: 'reports.export', requires: 'orders.view', ar: 'تصدير التقارير', en: 'Export reports' },
       // Says what it opens: the bubble, the assistant page and «اسأل الذكاء». The helpers INSIDE the screens are the next
       // box, so «منع» on this one does not turn them off, and the other way round.

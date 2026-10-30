@@ -412,7 +412,7 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
               moment before the call ends. See orders/ShapeRiskPanel.
             */}
             {mayRecordCalls && order?.id && <DuplicateSuspectNotice orderId={order.id} />}
-            {mayRecordCalls && order?.id && <ShapeRiskPanel orderId={order.id} />}
+            {mayRecordCalls && order?.id && userCan(currentUser, 'insights.view') && <ShapeRiskPanel orderId={order.id} />}
 
             {mayRecordCalls && (
             <ConfirmationActions
@@ -779,8 +779,8 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
 
               {/* Costs are ours, not the customer's — kept apart so the column
                   above never reads as a sum that includes them. And only to
-                  the finance key: the server sends them to nobody else. */}
-              {userCan(currentUser, 'finance.view') && (
+                  the finance key AND the cost key: the server sends them to nobody else. */}
+              {userCan(currentUser, 'finance.view') && userCan(currentUser, 'costs.view') && (
               <div className="mt-2 rounded-lg border border-[var(--sys-border)] divide-y divide-[var(--sys-border)]">
                 <p className="text-xs font-bold text-[var(--sys-muted-foreground)] px-2.5 py-1.5 bg-[var(--sys-surface)] rounded-t-lg">
                   تكاليفنا على هذا الطلب

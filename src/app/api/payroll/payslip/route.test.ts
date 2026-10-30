@@ -78,6 +78,26 @@ describe('who may open it', () => {
     expect(previewPayslip).not.toHaveBeenCalled();
   });
 
+  it('PR-10: the preview shows a person’s pay, so it rides beside payroll.view — and each key alone is refused, before anything is computed', async () => {
+    await get(`?userId=${U}`);
+    expect(requirePermission).toHaveBeenCalledWith('payroll.pay');
+    expect(requirePermission).toHaveBeenCalledWith('payroll.view');
+    for (const missing of ['payroll.pay', 'payroll.view']) {
+      vi.clearAllMocks();
+      requirePermission.mockImplementation(async (key: string) => {
+        if (key === missing) throw new Error(`Forbidden: missing required permission ${missing}`);
+      });
+      expect((await get(`?userId=${U}`)).status, `بلا ${missing}`).toBe(403);
+      expect(previewPayslip, `بلا ${missing}`).not.toHaveBeenCalled();
+    }
+  });
+
+  it('PR-10: the PAYMENT is unchanged — it asks payroll.pay and does not ask payroll.view', async () => {
+    await post({ userId: U, walletId: W, exchangeRate: 1 });
+    expect(requirePermission).toHaveBeenCalledWith('payroll.pay');
+    expect(requirePermission).not.toHaveBeenCalledWith('payroll.view');
+  });
+
   it('paying needs it too, and computes nothing without it', async () => {
     requirePermission.mockRejectedValue(new Error('Forbidden: missing required permission payroll.pay'));
     expect((await post({ userId: U, walletId: W, exchangeRate: 1 })).status).toBe(403);

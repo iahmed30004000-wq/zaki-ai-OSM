@@ -11,14 +11,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * counts taken from the courier's own statements.
  */
 
-const { db, requireContext, assertOrderReadable } = vi.hoisted(() => ({
+const { db, requireContext, assertOrderReadable, mayReadInsights } = vi.hoisted(() => ({
   db: { order: { findFirst: vi.fn(), groupBy: vi.fn() } },
   requireContext: vi.fn(),
   assertOrderReadable: vi.fn(),
+  mayReadInsights: vi.fn(),
 }));
 
 vi.mock('@/lib/db', () => ({ db }));
 vi.mock('@/lib/geo-context', () => ({ requireContext: (...a: unknown[]) => requireContext(...a) }));
+vi.mock('@/lib/insights-key', () => ({
+  mayReadInsights: (...a: unknown[]) => mayReadInsights(...a),
+  insightsRefused: () => new Response(JSON.stringify({ error: 'x', code: 'INSIGHTS_REQUIRED' }), { status: 403 }),
+}));
 vi.mock('@/lib/rbac', () => ({
   assertOrderReadable: (...a: unknown[]) => assertOrderReadable(...a),
   ORDER_ACCESS_STATUS: { NOT_FOUND: 404, WRONG_COMPANY: 404, NOT_ASSIGNED: 404 },
@@ -68,9 +73,27 @@ const call = () => GET(new Request('http://x'), { params: Promise.resolve({ id: 
 beforeEach(() => {
   vi.resetAllMocks();
   requireContext.mockResolvedValue({ user: { id: 'u1' }, companyId: 'c1', storeId: 's1' });
+  mayReadInsights.mockReturnValue(true);
   assertOrderReadable.mockResolvedValue({ allowed: true });
   db.order.findFirst.mockResolvedValue(ORDER);
   db.order.groupBy.mockResolvedValueOnce(CONCLUDED).mockResolvedValueOnce(RETURNED);
+});
+
+describe('the return risk of an order is a smart card — insights.view (PR-10)', () => {
+  it('is refused without the key, and nothing is read: not the order, not the shop’s counts', async () => {
+    mayReadInsights.mockReturnValue(false);
+    const res = await call();
+    expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe('INSIGHTS_REQUIRED');
+    expect(assertOrderReadable).not.toHaveBeenCalled();
+    expect(db.order.findFirst).not.toHaveBeenCalled();
+    expect(db.order.groupBy).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE (the test of the test): with the key the same caller reads it, and is asked about THIS user', async () => {
+    expect((await call()).status).toBe(200);
+    expect(mayReadInsights).toHaveBeenCalledWith({ id: 'u1' });
+  });
 });
 
 describe('GET /api/orders/:id/shape-risk', () => {

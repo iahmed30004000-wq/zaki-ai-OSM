@@ -44,9 +44,16 @@ export const CUSTOMER_PRIVATE_FIELDS = [
   'cancelledOrders',
 ] as const;
 
-/** Cost and profit on an order: the finance key, as on every money screen. */
+/**
+ * Cost and profit on an order: the finance key AND the cost key (perm-plan PR-10, D3).
+ *
+ * BOTH, not either. The money is the finance key's, as on every money screen; what the goods cost is the cost key's, and an
+ * order's cost and profit are exactly that. `costs.view` alone (a warehouse keeper who sees the unit cost of the shelf) must
+ * not open an order's margin, so nobody gains a figure on the day; and the migration gave `costs.view` to every holder of
+ * `finance.view`, so nobody loses one either.
+ */
 export function maySeeOrderCost(user: SessionUser): boolean {
-  return can(user, 'finance.view');
+  return can(user, 'finance.view') && can(user, 'costs.view');
 }
 
 /** Other people's commission on an order: pay is payroll's, money is finance's. */

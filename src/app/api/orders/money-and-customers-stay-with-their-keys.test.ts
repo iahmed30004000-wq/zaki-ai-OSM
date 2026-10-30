@@ -70,7 +70,9 @@ import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
 
 const person = (keys: string[], scopes?: Record<string, string>): Who => ({ id: 'me', role: 'CUSTOM', status: 'ACTIVE', keys, scopes });
 const AGENT = person(['orders.view'], { 'orders.view': 'ASSIGNED' });
-const ACCOUNTANT = person(['orders.view', 'finance.view', 'customers.view']);
+// OLD → NEW (PR-10): an order's cost and profit need the finance key AND the cost key; the migration
+// 20261030170000_costs_insights_keys gave `costs.view` to every holder of `finance.view`, so the accountant keeps them.
+const ACCOUNTANT = person(['orders.view', 'finance.view', 'costs.view', 'customers.view']);
 
 function as(user: Who) {
   requireContext.mockResolvedValue({
@@ -157,6 +159,27 @@ describe('the orders list', () => {
     const full = (await (await listOrders(new Request('http://x/api/orders'))).json()).orders[0];
     expect(full.customer.notes).toBe('زبونة صعبة');
     expect(full.customer.cancelledOrders).toBe(1);
+  });
+});
+
+describe('an order’s cost and profit need the finance key AND the cost key (PR-10, D3)', () => {
+  const listOne = async () => (await (await listOrders(new Request('http://x/api/orders'))).json()).orders[0];
+  const windowOne = async () => (await (await readOrder(new Request('http://x/api/orders/o1'), params('o1'))).json()).order;
+
+  it('NEGATIVE: the finance key alone — the owner took the cost away — shows no cost and no profit, in the list and in the window', async () => {
+    as(person(['orders.view', 'finance.view']));
+    for (const row of [await listOne(), await windowOne()]) for (const f of COST) expect(row, f).not.toHaveProperty(f);
+  });
+
+  it('NEGATIVE: the cost key alone — a warehouse keeper who sees the shelf’s cost — gains no order margin', async () => {
+    as(person(['orders.view', 'costs.view']));
+    for (const row of [await listOne(), await windowOne()]) for (const f of COST) expect(row, f).not.toHaveProperty(f);
+  });
+
+  it('both keys: the costs, as before', async () => {
+    as(person(['orders.view', 'finance.view', 'costs.view']));
+    expect((await listOne()).netProfit).toBe(8);
+    expect((await windowOne()).estimatedCostOfGoods).toBe(9);
   });
 });
 

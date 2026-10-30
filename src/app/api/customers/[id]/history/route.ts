@@ -7,6 +7,7 @@ import { assertOrderReadable } from '@/lib/rbac';
 import { ORDER_WORK_DOOR, mayEnterOrderWorkDoor } from '@/lib/order-work-door';
 import { apiErrorResponse } from '@/lib/api-error';
 import { customerRisk } from '@/lib/customer-risk';
+import { mayReadInsights } from '@/lib/insights-key';
 import { deriveCoreState, type StateSource } from '@/lib/order-state';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 
@@ -87,7 +88,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       },
     });
 
-    const risk = await customerRisk(db, companyId, id);
+    // The return-risk tier is a smart card (PR-10): ABSENT without `insights.view`, and the lookup is not made.
+    const risk = mayReadInsights(user) ? await customerRisk(db, companyId, id) : undefined;
 
     /*
      * One person's contact details — and the same tally the list feeds.
@@ -100,7 +102,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     return NextResponse.json({
       customer,
-      risk,
+      ...(risk ? { risk } : {}),
       count: orders.length,
       orders: orders.map((o) => ({
         ...o,
