@@ -269,7 +269,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         return NextResponse.json(
           {
             error: `لا يمكن الانتقال من «${CONFIRMATION_AR[from] ?? from}» إلى «${CONFIRMATION_AR[target] ?? target}»`,
-            errorAr: `انتقال غير صالح في سير العمل: ${from} → ${target}`,
+            // In Arabic, the two states in the screen's own words — the English codes were all the agent was shown.
+            errorAr: `لا يمكن الانتقال من «${CONFIRMATION_AR[from] ?? from}» إلى «${CONFIRMATION_AR[target] ?? target}» — هذا الإجراء غير مسموح على حالة الطلب الآن.`,
             code: 'INVALID_TRANSITION',
           },
           { status: 409 }
