@@ -119,11 +119,16 @@ describe('«أرصدة المخزون»', () => {
     expect(screen.queryByRole('button', { name: /اعرض المزيد/ })).toBeNull();
   });
 
-  it('PHONE: a search starts again at the first page; nothing is lost behind the cap', async () => {
-    await draw(25);
-    fireEvent.click(screen.getByRole('button', { name: 'اعرض المزيد (5)' }));
-    fireEvent.change(screen.getByPlaceholderText('ابحث باسم المنتج أو رمزه…'), { target: { value: 'منتج 2' } });
-    // «منتج 2x» matches منتج 20..25 only
+  it('PHONE: a new search starts again at the first page — and a narrow one loses nothing behind the cap', async () => {
+    await draw(45);
+    fireEvent.click(screen.getByRole('button', { name: 'اعرض المزيد (25)' }));
+    expect(cards()).toHaveLength(40);
+    // «منتج » still matches all 45, so only the reset can bring the page back to twenty
+    fireEvent.change(screen.getByPlaceholderText('ابحث باسم المنتج أو رمزه…'), { target: { value: 'منتج ' } });
+    await waitFor(() => expect(cards()).toHaveLength(20));
+    expect(screen.getByRole('button', { name: 'اعرض المزيد (25)' })).toBeTruthy();
+    // a search that matches six shows six, with no button
+    fireEvent.change(screen.getByPlaceholderText('ابحث باسم المنتج أو رمزه…'), { target: { value: 'منتج 4' } });
     await waitFor(() => expect(cards()).toHaveLength(6));
     expect(screen.queryByRole('button', { name: /اعرض المزيد/ })).toBeNull();
   });
