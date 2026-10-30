@@ -201,7 +201,7 @@ describe('the screen asks, then applies', () => {
    */
   it('opening WhatsApp through the one shared link builder', () => {
     const src = dialog();
-    expect(src).toContain("import { whatsappLink } from '@/lib/message-templates'");
+    expect(src).toContain("import { whatsappLink, whatsappReady } from '@/lib/message-templates'");
     expect(src, 'الحوار يبني الرابط بنفسه').not.toMatch(/https:\/\/wa\.me\//);
     expect(src).toMatch(/whatsappLink\(phone, countryCode, ask\.message\)/);
 
@@ -215,7 +215,9 @@ describe('the screen asks, then applies', () => {
   it('and a copy button for a courier with no number on file', () => {
     const src = dialog();
     expect(src).toContain('انسخ الرسالة');
-    expect(src).toMatch(/disabled=\{!phone\}/);
+    // shut when there is no number OR no country behind it (`waReady` is false for a missing phone too)
+    expect(src).toMatch(/const waReady = !!phone && whatsappReady\(phone, countryCode\)/);
+    expect(src).toMatch(/disabled=\{!waReady\}/);
     expect(src).toContain('لا رقم مسجَّل لشركة الشحن');
   });
 });
