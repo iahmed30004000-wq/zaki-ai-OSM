@@ -554,7 +554,7 @@ export function ChangeRequestsScreen() {
                 <select
                   value={chosen[r.id] ?? ''}
                   onChange={(e) => setChosen((prev) => ({ ...prev, [r.id]: e.target.value }))}
-                  className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] text-sm focus:outline-none focus:border-[var(--sys-primary)]"
+                  className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] text-sm focus:outline-none focus:border-[var(--sys-primary)]"
                 >
                   <option value="">اختر سبب الإلغاء</option>
                   {PICKABLE_REJECTION_REASONS.map((key) => (
