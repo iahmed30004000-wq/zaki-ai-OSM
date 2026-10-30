@@ -48,6 +48,16 @@ export function enrolCodeSelect(): { enrolCodeHash: true; enrolCodeExpiresAt: tr
   return enrolCodeRequired() ? { enrolCodeHash: true, enrolCodeExpiresAt: true } : {};
 }
 
+/**
+ * THE TWO COLUMNS OF A ROW READ WITH `enrolCodeSelect()`, in the shape the gate asks for. The row's type is a union (with the
+ * columns when the switch is on, without when off), and a type with none of the gate's properties is refused as an argument
+ * for an all-optional one, so the narrowing is written here once instead of at each door.
+ */
+export function enrolColumnsOf(row: object): EnrolCodeColumns {
+  const r = row as EnrolCodeColumns;
+  return { enrolCodeHash: r.enrolCodeHash ?? null, enrolCodeExpiresAt: r.enrolCodeExpiresAt ?? null };
+}
+
 export type EnrolCodeVerdict = 'ok' | 'missing' | 'wrong' | 'expired' | 'none-issued';
 
 /** Judges what the person typed against what the owner issued. Never says which digit was wrong. */

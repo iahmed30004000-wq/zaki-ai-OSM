@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const { db, verifyPassword, issueChallenge } = vi.hoisted(() => ({
   db: { user: { findUnique: vi.fn() } },
   verifyPassword: vi.fn(async (plain: string, hash: string) => hash === `hash:${plain}`),
-  issueChallenge: vi.fn(async () => 'ticket'),
+  issueChallenge: vi.fn(async (..._a: unknown[]) => 'ticket'),
 }));
 vi.mock('@/lib/db', () => ({ db }));
 vi.mock('@/lib/audit', () => ({ logAudit: vi.fn() }));

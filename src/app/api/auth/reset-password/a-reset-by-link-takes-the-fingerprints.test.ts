@@ -8,9 +8,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { tx, db } = vi.hoisted(() => {
   const tx = {
-    user: { update: vi.fn(async () => ({ id: 'u1', status: 'ACTIVE', email: 'a@x.example', companyId: 'c1' })) },
-    passkey: { deleteMany: vi.fn(async () => ({ count: 1 })) },
-    passkeyChallenge: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+    user: { update: vi.fn(async (..._a: unknown[]) => ({ id: 'u1', status: 'ACTIVE', email: 'a@x.example', companyId: 'c1' })) },
+    passkey: { deleteMany: vi.fn(async (..._a: unknown[]) => ({ count: 1 })) },
+    passkeyChallenge: { deleteMany: vi.fn(async (..._a: unknown[]) => ({ count: 0 })) },
   };
   return {
     tx,
@@ -48,7 +48,7 @@ describe('a reset by link', () => {
   it('sets the password, ends the sessions, and removes the fingerprints and their challenges — together', async () => {
     const res = await reset();
     expect(res.status).toBe(200);
-    expect(tx.user.update.mock.calls[0][0].data).toMatchObject({ passwordHash: 'hash:Brand-New-Pass9', tokenVersion: { increment: 1 } });
+    expect((tx.user.update.mock.calls[0]?.[0] as { data: unknown }).data).toMatchObject({ passwordHash: 'hash:Brand-New-Pass9', tokenVersion: { increment: 1 } });
     expect(tx.passkey.deleteMany).toHaveBeenCalledWith({ where: { userId: 'u1' } });
     expect(tx.passkeyChallenge.deleteMany).toHaveBeenCalledWith({ where: { userId: 'u1' } });
   });

@@ -13,10 +13,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { tx, db, requirePermission, canActOnUser } = vi.hoisted(() => {
   const tx = {
-    user: { update: vi.fn(async () => ({ id: 'emp', name: 'سارة', email: 's@x.example', role: 'MODERATOR', status: 'ACTIVE', assignedById: null, assignedAt: null })) },
-    passkey: { deleteMany: vi.fn(async () => ({ count: 2 })) },
-    passkeyChallenge: { deleteMany: vi.fn(async () => ({ count: 0 })) },
-    twoFactorRecoveryCode: { deleteMany: vi.fn(async () => ({ count: 8 })) },
+    user: { update: vi.fn(async (..._a: unknown[]) => ({ id: 'emp', name: 'سارة', email: 's@x.example', role: 'MODERATOR', status: 'ACTIVE', assignedById: null, assignedAt: null })) },
+    passkey: { deleteMany: vi.fn(async (..._a: unknown[]) => ({ count: 2 })) },
+    passkeyChallenge: { deleteMany: vi.fn(async (..._a: unknown[]) => ({ count: 0 })) },
+    twoFactorRecoveryCode: { deleteMany: vi.fn(async (..._a: unknown[]) => ({ count: 8 })) },
   };
   return {
     tx,
@@ -47,7 +47,7 @@ const TARGET = { id: 'emp', name: 'سارة', email: 's@x.example', role: 'MODER
 const patch = (body: Record<string, unknown>) =>
   PATCH(new Request('http://localhost/api/users/emp', { method: 'PATCH', body: JSON.stringify(body) }), { params: Promise.resolve({ id: 'emp' }) });
 
-const wiped = () => tx.passkey.deleteMany.mock.calls.map((c) => (c[0] as { where: { userId: string } }).where.userId);
+const wiped = () => tx.passkey.deleteMany.mock.calls.map((c) => (c[0] as unknown as { where: { userId: string } }).where.userId);
 const challengesWiped = () => tx.passkeyChallenge.deleteMany.mock.calls.length;
 
 beforeEach(() => {
@@ -66,7 +66,7 @@ describe('the actions that close the way in', () => {
     expect((await patch({ action: 'forceLogout' })).status).toBe(200);
     expect(wiped()).toEqual(['emp']);
     expect(challengesWiped()).toBe(1);
-    expect(tx.user.update.mock.calls[0][0].data).toMatchObject({ tokenVersion: { increment: 1 } });
+    expect((tx.user.update.mock.calls[0]?.[0] as { data: unknown }).data).toMatchObject({ tokenVersion: { increment: 1 } });
   });
 
   it('suspending and disabling remove them', async () => {
@@ -79,7 +79,7 @@ describe('the actions that close the way in', () => {
     const res = await patch({ action: 'resetPassword', newPassword: 'Brand-New-Pass9' });
     expect(res.status).toBe(200);
     expect(db.$transaction).toHaveBeenCalledTimes(1);
-    expect(tx.user.update.mock.calls[0][0].data).toMatchObject({ passwordHash: 'hash:Brand-New-Pass9' });
+    expect((tx.user.update.mock.calls[0]?.[0] as { data: unknown }).data).toMatchObject({ passwordHash: 'hash:Brand-New-Pass9' });
     expect(wiped()).toEqual(['emp']);
   });
 

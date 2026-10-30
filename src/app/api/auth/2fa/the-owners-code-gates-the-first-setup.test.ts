@@ -20,7 +20,7 @@ const { db, tx, readChallenge, completeEnrolment, beginEnrolment } = vi.hoisted(
     },
     readChallenge: vi.fn(),
     completeEnrolment: vi.fn(),
-    beginEnrolment: vi.fn(() => ({ secret: 'SECRET', uri: 'otpauth://x' })),
+    beginEnrolment: vi.fn((..._a: unknown[]) => ({ secret: 'SECRET', uri: 'otpauth://x' })),
   };
 });
 vi.mock('@/lib/db', () => ({ db }));
@@ -39,7 +39,7 @@ import { newEnrolCode, sealEnrolCode } from '@/lib/enrol-code';
 import { TwoFactorRefused } from '@/lib/two-factor';
 
 let n = 0;
-const call = (handler: typeof start, url: string, body: unknown) =>
+const call = (handler: (req: Request) => Promise<Response>, url: string, body: unknown) =>
   handler(
     new Request(`http://localhost${url}`, {
       method: 'POST',

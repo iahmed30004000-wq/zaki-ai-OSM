@@ -4,7 +4,7 @@ import { db } from '@/lib/db';
 import { readChallenge } from '@/lib/two-factor-challenge';
 import { TwoFactorRefused, beginEnrolment } from '@/lib/two-factor';
 import { rateLimitByIp, getClientIp } from '@/lib/rate-limit';
-import { enrolCodeSelect, gateEnrolment } from '@/lib/enrol-code';
+import { enrolCodeSelect, enrolColumnsOf, gateEnrolment } from '@/lib/enrol-code';
 
 /**
  * POST /api/auth/2fa/start — hand out a secret to scan.
@@ -39,7 +39,7 @@ export async function POST(req: Request) {
     }
 
     // With the owner's code switched on, no secret is handed out before the code is right (A2).
-    const gate = await gateEnrolment(ticket.userId, user, enrolCode);
+    const gate = await gateEnrolment(ticket.userId, enrolColumnsOf(user), enrolCode);
     if (!gate.ok) return NextResponse.json({ error: gate.error, code: gate.code }, { status: gate.status });
 
     const { secret, uri } = beginEnrolment(user.email);
