@@ -178,7 +178,7 @@ export const NAV: NavGroup[] = [
     routes: [
       r('/ops/preparation', 'التجهيز', 'PackageCheck', ['ops.prepare'], 1),
       r('/ops/shipments/new', 'إنشاء شحنة', 'Truck', ['ops.ship'], 2),
-      r('/ops/batches', 'دفعات الشحن', 'Boxes', ['ops.ship', 'ops.track'], 3),
+      r('/ops/batches', 'دفعات الشحن', 'Boxes', ['ops.batches'], 3),
       r('/ops/tracking', 'متابعة الشحن', 'MapPin', ['ops.track'], 4),
       r('/ops/returns', 'المرتجعات', 'Undo2', ['ops.returns'], 5),
     ],
@@ -247,7 +247,7 @@ export const NAV: NavGroup[] = [
       // The DETAIL of the dashboard (owner, 24/10): a link there («التفاصيل»), not a second
       // menu line, for whoever can open the dashboard. Whoever cannot keeps it as a line.
       { ...r('/growth/performance', 'لوحة الأداء', 'Gauge', ['reports.view']), foldedUnder: '/dashboard' },
-      r('/growth/campaigns', 'الحملات', 'Megaphone', ['reports.view']),
+      r('/growth/campaigns', 'الحملات', 'Megaphone', ['campaigns.view']),
 
       /**
        * THE AI'S WORK IS HERE; ITS WIRING IS IN THE SETTINGS.

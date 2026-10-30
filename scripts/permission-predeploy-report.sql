@@ -89,6 +89,17 @@ WITH req(action, needs) AS (VALUES
   ('finance.wallets_manage','finance.cashbox_view'),
   ('finance.closing_approve','finance.cashbox_view'),
   ('settlement.approve','settlement.view'),
+  -- PR-8. The operations boxes sit behind the tracking or the returns screen. The migration 20261030160000 gives each to the
+  -- holders of the key it came from; ops.write_off also comes from two keys that need not come with ops.track, and those
+  -- rows are the ones this reports (the box is inert for them: its only button is on the tracking screen).
+  ('ops.deliver','ops.track'),
+  ('ops.transfer','ops.track'),
+  ('ops.write_off','ops.track'),
+  ('ops.return_fee','ops.returns'),
+  -- PR-11. Both keys come out of the migration 20261030180000_categories_campaign_keys together with their view, so before
+  -- it has run neither is held by anybody (nothing is reported) and after it only an owner’s later unticking can show here.
+  ('categories.manage','products.view'),
+  ('campaigns.manage','campaigns.view'),
   -- PR-13. users.delete and users.shift ride behind users.edit (the profile's PATCH asks it first); the other three sit on their
   -- screen key. The migration 20261030190000 gives each to the holders of the old door, so a pair is reported only after it ran.
   ('users.delete','users.edit'),
@@ -215,7 +226,63 @@ GROUP BY u."role"
 ORDER BY 1;
 
 -- ═══════════════════════════════════════════════════════════════════════
--- AND THE SIXTH QUESTION (PR-13, users, roles and app keys), in five parts. Read-only, same as above.
+-- AND THE SIXTH QUESTION (PR-8, the operations doors): WHICH ROLES WILL THE MIGRATION
+-- 20261030160000_ops_action_keys GIVE EACH BOX TO? Every role that holds any key the box's door asked before
+-- (src/lib/ops-action-keys.ts OPS_ACTION_KEYS_FROM, the same list the migration reads). Read-only, same as above.
+--
+-- `without_its_screen` = the role would hold the box but not the screen key it sits behind (ops.track for the three
+-- tracking acts, ops.returns for the fee): only ops.write_off can be that, because finance.update and orders.unlock need not
+-- come with ops.track. Such a role keeps its door on the day (the API), but the box is inert in practice: its only button is
+-- on the tracking screen. The owner ticks the screen for it or unticks the box.
+--
+-- (The pairs in the first list above for these four boxes return nothing BEFORE the deploy: the boxes do not exist yet.)
+-- ═══════════════════════════════════════════════════════════════════════
+SELECT k AS "box", r."name" AS "role", r."companyId", array_agg(DISTINCT rp."permission" ORDER BY rp."permission") AS "through",
+       (k = 'ops.write_off' AND NOT EXISTS (
+         SELECT 1 FROM "role_permissions" v WHERE v."roleId" = r."id" AND v."permission" = 'ops.track'
+       )) AS "without_its_screen"
+FROM "role_permissions" rp
+JOIN "roles" r ON r."id" = rp."roleId"
+CROSS JOIN LATERAL unnest(CASE rp."permission"
+  WHEN 'ops.ship' THEN ARRAY['ops.batches']
+  WHEN 'ops.track' THEN ARRAY['ops.batches', 'ops.deliver', 'ops.transfer']
+  WHEN 'finance.update' THEN ARRAY['ops.write_off']
+  WHEN 'orders.unlock' THEN ARRAY['ops.write_off']
+  WHEN 'ops.returns' THEN ARRAY['ops.return_fee']
+  ELSE ARRAY[]::text[]
+END) AS k
+GROUP BY k, r."id", r."name", r."companyId"
+ORDER BY 1, 3 NULLS FIRST, 2;
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- AND THE FIFTH QUESTION (PR-11, the categories and the campaigns): WHO GETS WHAT FROM THE MIGRATION
+-- 20261030180000_categories_campaign_keys, AND WHO LOSES THE COMPANY'S SHELVES ON PURPOSE (D1m)?
+-- Per role: the box, and the scope the role holds its source at. campaigns.view and campaigns.manage go to every role that holds
+-- reports.view (the same list — the owner unticks from the checklist afterwards). categories.manage goes only to a role that
+-- holds products.edit «كل الشركة»: a row with `receives = false` is a role whose product editors are narrower than that and
+-- LOSE the company-wide writes to the categories on the day (it keeps the sorter onto existing shelves). Read-only, same as above.
+-- ═══════════════════════════════════════════════════════════════════════
+SELECT k AS "box", r."name" AS "role", r."companyId", rp."permission" AS "source", rp."scope",
+       (k <> 'categories.manage' OR rp."scope" = 'ALL_COMPANY') AS "receives"
+FROM "role_permissions" rp
+JOIN "roles" r ON r."id" = rp."roleId"
+CROSS JOIN LATERAL unnest(CASE rp."permission"
+  WHEN 'products.edit' THEN ARRAY['categories.manage']
+  WHEN 'reports.view' THEN ARRAY['campaigns.view', 'campaigns.manage']
+  ELSE ARRAY[]::text[]
+END) AS k
+ORDER BY 1, 6, 3 NULLS FIRST, 2;
+
+-- The people whose OWN «سماح» on products.edit is narrower than «كل الشركة» — they lose the shelves' writes whatever their role
+-- gives, and the migration refuses them the box with a «منع».
+SELECT u."id", u."name", u."role", up."scope"
+FROM "user_permissions" up
+JOIN "users" u ON u."id" = up."userId"
+WHERE up."permission" = 'products.edit' AND up."effect" = 'ALLOW' AND COALESCE(up."scope", 'ALL_COMPANY') <> 'ALL_COMPANY'
+ORDER BY 3, 2;
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- AND THE LAST QUESTION (PR-13, users, roles and app keys), in five parts. Read-only, same as above.
 --
 -- A. WHO ALREADY HOLDS ONE OF THE FIVE NEW KEYS TODAY? It must be NOBODY: the keys are new, and users.delete was pruned on
 --    21/9. A row here would hand the door to people the migration never judged — fix it before the deploy.

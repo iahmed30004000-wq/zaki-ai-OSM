@@ -123,8 +123,13 @@ describe('an account is told only what it may do', () => {
     // The customers screen opens for either of two view keys.
     expect(keysFor(user(['customers.view_basic', 'customers.create']))).toEqual(['customer']);
     expect(keysFor(user(['users.view', 'users.create']))).toEqual(['user']);
-    // The campaigns door is behind «reports.view» — the screen’s own key.
-    expect(keysFor(user(['reports.view']))).toEqual(['campaign']);
+    // The campaigns door is behind «campaigns.manage» (PR-11), and the screen it lands on opens on «campaigns.view».
+    // was: keysFor(user(['reports.view'])) → ['campaign'] — the campaigns left the reports key; the migration gave both boxes to its holders.
+    expect(keysFor(user(['campaigns.view', 'campaigns.manage']))).toEqual(['campaign']);
+    // NEGATIVE: neither half alone offers it, and the old key no longer does.
+    expect(keysFor(user(['campaigns.view']))).toEqual([]);
+    expect(keysFor(user(['campaigns.manage']))).toEqual([]);
+    expect(keysFor(user(['reports.view']))).toEqual([]);
   });
 
   it('an account with nothing granted is told nothing — and neither is one that is not active, whatever it holds', () => {

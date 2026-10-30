@@ -25,7 +25,9 @@ import { ROLE_PERMISSIONS, UserRole } from '../types/auth';
 import { AI_ASSIST_FROM, AI_ASSIST_KEY } from './ai-assistants';
 import { ORDER_ACTION_KEYS_FROM } from './order-action-keys';
 import { CONFIRMATION_SPLIT_KEYS_FROM, rolesThatPassedByName } from './confirmation-split-keys';
+import { OPS_ACTION_KEYS_FROM } from './ops-action-keys';
 import { FINANCE_SPLIT_KEYS_FROM } from './finance-split-keys';
+import { CATEGORIES_CAMPAIGNS_KEYS_FROM } from './categories-campaigns-keys';
 import { USERS_ROLES_APPS_KEYS_FROM } from './users-roles-apps-keys';
 
 export type Scope = 'ALL_COMPANY' | 'OWN' | 'ASSIGNED' | 'CATEGORY' | 'SPECIFIC';
@@ -308,6 +310,16 @@ export async function computeEffectiveGrants(
       if (grants[key] || denied.has(key)) continue;
       if (from.some((k) => grants[k])) grants[key] = { scope: 'ALL_COMPANY' };
     }
+    // The operations boxes (PR-8): the same — whoever passed the door through ANY of its old keys keeps it.
+    for (const { key, from } of OPS_ACTION_KEYS_FROM) {
+      if (grants[key] || denied.has(key)) continue;
+      if (from.some((k) => grants[k])) grants[key] = { scope: 'ALL_COMPANY' };
+    }
+    // The categories' and the campaigns' boxes (PR-11). D1m: the categories' box needs the source «كل الشركة».
+    for (const { key, from, allCompanyOnly } of CATEGORIES_CAMPAIGNS_KEYS_FROM) {
+      if (grants[key] || denied.has(key)) continue;
+      if (from.some((k) => grants[k] && (!allCompanyOnly || grants[k].scope === 'ALL_COMPANY'))) grants[key] = { scope: 'ALL_COMPANY' };
+    }
     // The users, roles and app-key boxes (PR-13): the same, and a door that used to be a role NAME (the password and
     // second-factor doors read the two owner names, the system-template door read COMPANY_ADMIN) is kept for that role.
     for (const { key, from, byRole } of USERS_ROLES_APPS_KEYS_FROM) {
@@ -349,8 +361,12 @@ export function legacyEffectiveKeys(role: UserRole): string[] {
     if (rule.unless && keys.has(rule.unless)) continue;
     if (rule.from.some((k) => keys.has(k)) || rolesThatPassedByName(rule).includes(role)) keys.add(rule.key);
   }
+  // And the operations boxes (PR-8).
+  for (const { key, from } of OPS_ACTION_KEYS_FROM) if (from.some((k) => keys.has(k))) keys.add(key);
   // And the cash box's and the statement approval's (PR-9).
   for (const { key, from } of FINANCE_SPLIT_KEYS_FROM) if (from.some((k) => keys.has(k))) keys.add(key);
+  // And the categories' and the campaigns' (PR-11). A legacy role holds products.edit «كل الشركة» always (mapLegacyPermission).
+  for (const { key, from } of CATEGORIES_CAMPAIGNS_KEYS_FROM) if (from.some((k) => keys.has(k))) keys.add(key);
   // And the users, roles and app-key boxes (PR-13), with the role NAMES that used to open a door by themselves.
   for (const { key, from, byRole } of USERS_ROLES_APPS_KEYS_FROM) {
     if (from.some((k) => keys.has(k)) || (byRole ?? []).includes(role)) keys.add(key);

@@ -22,7 +22,7 @@ const schema = z.object({ ids: z.array(z.string().uuid()).min(1).max(1000) });
 export async function POST(req: Request) {
   try {
     const { user, companyId, storeId } = await requireContext();
-    await requirePermission('reports.view');
+    await requirePermission('campaigns.manage');
     const parsed = schema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ error: zodMessage(parsed.error) }, { status: 400 });
     const ids = [...new Set(parsed.data.ids)];

@@ -424,20 +424,22 @@ describe('Ⅶ · the door', () => {
 
   it('asks for exactly what the create form asks for', () => {
     /*
-     * This creates rows carrying codes stamped into order numbering, so a
-     * stricter gate than `/sync`'s was the instinct — and there is no
-     * `campaigns.manage` permission. Inventing one so the fast way is
-     * harder than the slow way would be inventing policy.
+     * This creates rows carrying codes stamped into order numbering, so a stricter gate than the create form's
+     * would be inventing policy. Since PR-11 both ask the campaigns' own key, «إدارة الحملات»: the old comment here
+     * said no such key existed, and the reports key was borrowed for the whole screen.
      */
     const create = stripComments(read('src/app/api/growth/campaigns/route.ts'));
-    // 29/10: «عرض التحليلات» retired — both doors ask «عرض التقارير» alone, with no fallback.
-    const gate = /requirePermission\('reports\.view'\);/;
+    // was: requirePermission('reports.view') on both doors — the campaigns left the reports key (PR-11).
+    const gate = /requirePermission\('campaigns\.manage'\);/;
     expect(route, 'بوّابةٌ تختلفُ عن بابِ الإنشاء').toMatch(gate);
     expect(create).toMatch(gate);
     for (const src of [route, create]) {
       expect(src).not.toContain('analytics.view');
       expect(src).not.toContain('.catch(async () => requirePermission');
     }
+    // NEGATIVE: the reports key opens neither of them any more.
+    expect(route).not.toContain("requirePermission('reports.view')");
+    expect(create.slice(create.indexOf('export async function POST'))).not.toContain("requirePermission('reports.view')");
   });
 
   it('and is rate limited, because it talks to three third parties', () => {
