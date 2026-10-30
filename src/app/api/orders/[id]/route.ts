@@ -26,7 +26,7 @@ import { maySeeOrderCost, projectOrder } from '@/lib/order-projection';
 import { MAX_REASON, MIN_REASON, reasonRefusal } from '@/lib/order-edit-reason';
 import { CHANGEABLE_FIELDS, CHANGE_FIELD_AR } from '@/lib/change-request-fields';
 import { TERMINAL_CONFIRMATION_STATUSES } from '@/lib/confirmation-workflow';
-import { CONTACT_FIRST_MESSAGE, needsContactFirst } from '@/lib/confirmation-queue';
+import { CONTACT_FIRST_MESSAGE, needsContactFirst, needsRegionFirst, REGION_REQUIRED_MESSAGE } from '@/lib/confirmation-queue';
 
 import { orderSeal, sealedFieldsIn, sealMessage, handedToCourier } from '@/lib/order-seal';
 import { UNKNOWN_BATCH_AR } from '@/lib/shipment-cancel';
@@ -1000,6 +1000,32 @@ export async function PATCH(
           { error: 'Forbidden: you are not allowed to change order confirmation status', errorAr: 'لا تملك صلاحية تغيير حالة التأكيد.' }, { status: 403 }
         );
       }
+    }
+    /*
+     * ═══════════════════════════════════════════════════════════════════
+     * NO GOVERNORATE, NO YES — AT THIS DOOR TOO (the owner, 30/10).
+     *
+     * The confirmation door asks `needsRegionFirst` before it confirms; the override above (`orders.unlock`) reaches
+     * the same decision from here, and it must not be the way round. Asked of the governorate the order WILL have: the
+     * one this very request sets, else the one it already has — so «set the governorate and confirm» in one request is
+     * fine, and «confirm» alone on an order with none is not. Nothing has been written yet.
+     *
+     * AND A CONFIRMED ORDER KEEPS ITS GOVERNORATE. Clearing it (`regionId: null`) is the same hole from the other side:
+     * the order stays confirmed and the fee goes. It is refused with the same code, whichever way the clear arrives —
+     * a direct save, the packing table's pen, or an approved change request carried out through this route.
+     * ═══════════════════════════════════════════════════════════════════
+     */
+    const becomesConfirmed =
+      (changingCombined && status === 'CONFIRMED') || (changingConfirmation && confirmationStatus === 'CONFIRMED');
+    const staysConfirmed = existing.confirmationStatus === 'CONFIRMED' || existing.status === 'CONFIRMED';
+    if (
+      (becomesConfirmed && needsRegionFirst({ regionId: regionId !== undefined ? regionId : existing.regionId })) ||
+      (staysConfirmed && regionId === null)
+    ) {
+      return NextResponse.json(
+        { error: REGION_REQUIRED_MESSAGE, errorAr: REGION_REQUIRED_MESSAGE, code: 'REGION_REQUIRED' },
+        { status: 409 }
+      );
     }
     if (changingShipping) {
       const shippingAuth = authorize(user, 'orders.change_status', existing);

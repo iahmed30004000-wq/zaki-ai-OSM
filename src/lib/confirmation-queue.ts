@@ -277,6 +277,37 @@ export function needsContactFirst(args: {
 /** The one sentence the server and the screen both say. */
 export const CONTACT_FIRST_MESSAGE = 'اتصل بالزبون أول — أو اكبس «لا يرد»';
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * NO ORDER IS CONFIRMED WITHOUT ITS GOVERNORATE.
+ *
+ * The owner: «المفروض ما يسمح لموظفة التأكيد تأكّد غير لما تحدد المحافظة». Measured on this installation: an order
+ * confirmed with no `regionId`, and the shipment screen answering «لم تُحدَّد المحافظة — لا يمكن حساب أجرة التوصيل».
+ * The delivery fee, the late threshold and the courier's price list are all keyed on the governorate, so an order
+ * without one cannot be priced or sent; `NO_REGION` caught it only when the shipment was created, days after the
+ * agent had said yes. The question is asked where the yes is given.
+ *
+ * ── A DEFINITION OF «NO GOVERNORATE» THAT CANNOT BE FOOLED ──
+ *
+ * `regionId` and nothing else. `Customer.city` is free text a customer or a form typed — «سكاكة الجوف» is a town, not
+ * a row in the fee table — so a written city never counts as a governorate.
+ *
+ * ── IT BINDS EVERYONE ──
+ *
+ * Unlike the contact-first rule, this is not about the person acting: a supervisor, a holder of `orders.unlock` and a
+ * SUPER_ADMIN are all refused, because the missing governorate is a fact about the ORDER and the shipment screen
+ * cannot price it whoever pressed the button. The only way through is to set the governorate.
+ *
+ * Asked ONLY about confirming. Rejecting, postponing, following up and cancelling never needed a fee.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+export function needsRegionFirst(order: { regionId?: string | null }): boolean {
+  return typeof order.regionId !== 'string' || order.regionId.trim() === '';
+}
+
+/** The one sentence the server and the screen both say about it. */
+export const REGION_REQUIRED_MESSAGE = 'حدّد المحافظة أولاً — أجرة التوصيل مبنية عليها ولا يُؤكَّد طلب بلا محافظة';
+
 export type PullRefusal =
   | { code: 'NOT_YOUR_DESK'; message: string }
   /** Carries the order it is about, so the screen can open it. */
