@@ -7,6 +7,7 @@ import { draftState } from '@/lib/landing-draft';
 import {
   sanitizeLandingCss,
   sanitizeLandingHtml,
+  injectPageStyles,
   parseLandingSettings,
   applyLandingVariables,
 } from '@/lib/landing-html-sanitize';
@@ -117,18 +118,20 @@ export async function GET(req: Request, ctx: Ctx) {
   const stored = clampStoredHtml(lp.htmlContent);
   const settings = parseLandingSettings(lp.pageSettings);
 
-  // ── Page settings (base styles) — injected BEFORE user CSS so the user's
-  //    custom CSS always wins cascade battles. ──
+  // ── Page settings (base styles). They are injected at the START of the document
+  //    (see injectPageStyles), so the uploaded file's own <style> elements come
+  //    AFTER them. `html body` is one step more specific than the plain `body`
+  //    such a file writes, so the seller's choice in the editor still wins. ──
   const baseStyles = settings
-    ? `<style id="zaki-base-style">body{${[
+    ? `<style id="zaki-base-style">html body{${[
         settings.background ? `background:${settings.background}` : '',
         settings.direction ? `direction:${settings.direction}` : '',
         settings.fontFamily ? `font-family:${settings.fontFamily}` : '',
       ].filter(Boolean).join(';')}}
-${settings.width === 'contained' && settings.maxWidth ? `.zaki-page-wrap{max-width:${settings.maxWidth}px;margin:0 auto;padding:0 16px}` : ''}</style>`
+${settings.width === 'contained' && settings.maxWidth ? `html .zaki-page-wrap{max-width:${settings.maxWidth}px;margin:0 auto;padding:0 16px}` : ''}</style>`
     : '';
 
-  // ── Custom CSS — sanitized, injected last inside <head> (highest priority) ──
+  // ── Custom CSS — sanitized, injected right after the settings ──
   const customCss = lp.cssContent?.trim() ? `<style id="zaki-custom-style">${sanitizeLandingCss(lp.cssContent)}</style>` : '';
 
   // ── Whitelisted dynamic variables — values from the DB only ──
@@ -171,15 +174,11 @@ ${settings.width === 'contained' && settings.maxWidth ? `.zaki-page-wrap{max-wid
     currency,
   });
 
-  // Inject base styles + custom CSS right before </head> (or prepend when no head exists)
-  const injection = `${baseStyles}${customCss}`;
-  if (injection) {
-    if (/<\/head>/i.test(html)) {
-      html = html.replace(/<\/head>/i, `${injection}</head>`);
-    } else {
-      html = injection + html;
-    }
-  }
+  // Base styles go right after the opening <head>, the seller's CSS right
+  // before </head>. The seller's CSS is a seller's text, so it is spliced in
+  // by a function: a replacement STRING would read `$'` in it as «the rest
+  // of the document» (see injectPageStyles).
+  html = injectPageStyles(html, baseStyles, customCss);
 
   // The frame has an opaque origin and sends no cookies, so a stored image
   // linked privately — in the seller's HTML, their CSS, or a product photo

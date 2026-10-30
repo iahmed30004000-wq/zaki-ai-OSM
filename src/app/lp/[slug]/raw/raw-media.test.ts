@@ -72,3 +72,83 @@ describe('the served page', () => {
     expect(html).not.toContain('?p=forged');
   });
 });
+
+/**
+ * THE SELLER'S CSS CANNOT LEAVE ITS ELEMENT, AND IS NEVER READ AS A TEMPLATE.
+ *
+ * The CSS field is wrapped in a style element AFTER the HTML sanitizer has
+ * run, and was spliced into the document with a replacement STRING.
+ */
+describe('the seller css in the served page', () => {
+  const doc = '<!doctype html><html><head><title>t</title></head><body><p>BODY-MARKER</p></body></html>';
+  const serve = async (over: Record<string, unknown>) => {
+    db.landingPage.findFirst.mockResolvedValue({ ...page, htmlContent: doc, ...over });
+    return (await get()).text();
+  };
+  // What a browser sees as MARKUP: a style element ends at its first end tag,
+  // and whatever sits inside it is inert text.
+  const markup = (html: string) => html.replace(/<style\b[^>]*>[\s\S]*?<\/style[^>]*>/gi, '');
+  const scripts = (html: string) => (markup(html).match(/<script\b/gi) ?? []).length;
+
+  it('a style end tag in the css does not open a script', async () => {
+    const html = await serve({ cssContent: 'a{color:red}</style><script>alert(document.cookie)</script><style>' });
+    expect(scripts(html)).toBe(0);
+    // the element the css lives in is closed exactly once, by us
+    expect(html.match(/<\/style/gi)).toHaveLength(1);
+    expect(html).toContain('a{color:red}');
+  });
+
+  it('nor an event handler after one', async () => {
+    const html = await serve({ cssContent: '</style><img src=x onerror=alert(1)>' });
+    expect(markup(html)).not.toMatch(/onerror/i);
+  });
+
+  it("a $' in the css does not paste the rest of the page into it", async () => {
+    const html = await serve({ cssContent: `.a::after{content:"$'"}` });
+    expect(html).toContain(`content:"$'"`);
+    expect(html.match(/BODY-MARKER/g)).toHaveLength(1);
+  });
+
+  it('the same for $& and the backtick form', async () => {
+    const html = await serve({ cssContent: '.a::after{content:"$&"}.b::after{content:"$`"}' });
+    expect(html).toContain('content:"$&"');
+    expect(html).toContain('content:"$`"');
+    expect(html.match(/BODY-MARKER/g)).toHaveLength(1);
+  });
+
+  it("the settings, then the seller css, both at the start and ahead of the file's own style", async () => {
+    const own = '<style>body{background:red}</style>';
+    const html = await serve({
+      htmlContent: `<!doctype html><html><head><title>t</title>${own}</head><body><p>BODY-MARKER</p></body></html>`,
+      pageSettings: JSON.stringify({ background: '#112233' }),
+      cssContent: '.a{color:red}',
+    });
+    const base = html.indexOf('id="zaki-base-style"');
+    const custom = html.indexOf('id="zaki-custom-style"');
+    // after the doctype (standards mode), before everything else
+    expect(base).toBeGreaterThan(html.indexOf('<!doctype html>'));
+    expect(html.indexOf('<html>')).toBeGreaterThan(custom);
+    expect(base).toBeLessThan(custom);
+    expect(custom).toBeLessThan(html.indexOf(own));
+    // one step more specific than the plain `body` an uploaded file writes, so the editor's choice still wins
+    expect(html).toContain('html body{background:#112233}');
+  });
+
+  it('a </head> inside a comment, an attribute or an svg title changes nothing: the styles are at the start', async () => {
+    const html = await serve({
+      htmlContent: "<!doctype html><!-- </head> --><html><head><title>t</title></head><body><svg><title><meta x='</title></head>'></svg><p>BODY-MARKER</p></body></html>",
+      cssContent: "--><img src=x onerror=alert(1)><!-- ' http-equiv=refresh x='",
+    });
+    expect(html).not.toContain('<img');
+    expect(html.indexOf('zaki-custom-style')).toBeLessThan(html.indexOf('<html>'));
+    expect(html.indexOf('zaki-custom-style')).toBeGreaterThan(html.indexOf('<!doctype html>'));
+  });
+
+  // negative: a sound page with sound css comes through whole
+  it('a sound page keeps its css and its body, once', async () => {
+    const html = await serve({ cssContent: '.hero{color:#123;margin:0}@media (width<600px){.hero{margin:4px}}' });
+    expect(html).toContain('.hero{color:#123;margin:0}@media (width<600px){.hero{margin:4px}}');
+    expect(html.match(/BODY-MARKER/g)).toHaveLength(1);
+    expect(scripts(html)).toBe(0);
+  });
+});

@@ -81,9 +81,18 @@ export const SELLING_PAGE_HEADERS: { key: string; value: string }[] = [
  * route handler's same-named header is then dropped. The route sent this
  * policy and the browser never received it — it received the config's,
  * which had no sandbox.
+ *
+ * NO `allow-forms`. The order form on a page is OURS and is drawn outside
+ * this frame; a form inside the uploaded file can only be a form that posts
+ * a visitor's phone number and address somewhere the seller (or whoever
+ * edited their file) chose. Without the token the browser refuses to submit
+ * it at all — and `form-action 'self'` is kept beside it, so the policy
+ * does not depend on one directive. (The frame's own `sandbox` attribute,
+ * in LandingPageView, still names allow-forms; the header's sandbox is
+ * added to it, never subtracted, so the header decides.)
  */
 export const RAW_HTML_CSP =
-  "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; font-src 'self' data: https:; connect-src 'self'; form-action 'self'; frame-ancestors 'self'; sandbox allow-scripts allow-forms allow-popups allow-modals";
+  "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; font-src 'self' data: https:; connect-src 'self'; form-action 'self'; frame-ancestors 'self'; sandbox allow-scripts allow-popups allow-modals";
 
 export const RAW_HTML_HEADERS: { key: string; value: string }[] = [
   { key: 'Content-Security-Policy', value: RAW_HTML_CSP },

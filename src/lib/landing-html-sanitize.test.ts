@@ -370,3 +370,101 @@ describe('remote media, allowed on purpose', () => {
     expect(sanitizeLandingHtml('<img src="https://cdn/x.jpg">')).toContain('cdn/x.jpg');
   });
 });
+
+/**
+ * A STYLE ELEMENT ENDS AT THE FIRST END TAG, WHATEVER CSS IS IN THE MIDDLE.
+ *
+ * The page's CSS field is wrapped in a style element by the raw route AFTER
+ * the HTML sanitizer has run. `a{}</style><script>…` therefore needs the
+ * CSS function itself to refuse it, and the same function holds a style
+ * block inside uploaded HTML.
+ */
+describe('CSS cannot close its own style element', () => {
+  const closes = (css: string) => /<\/\s*style/i.test(css);
+
+  it('the plain breakout, with a script behind it', () => {
+    const out = sanitizeLandingCss('a{color:red}</style><script>alert(1)</script>');
+    expect(closes(out)).toBe(false);
+    expect(out).toContain('a{color:red}');
+  });
+
+  it('in any case, and with whitespace before the name', () => {
+    expect(closes(sanitizeLandingCss('</STYLE><img src=x onerror=alert(1)>'))).toBe(false);
+    expect(closes(sanitizeLandingCss('</ style ><img src=x onerror=alert(1)>'))).toBe(false);
+    expect(closes(sanitizeLandingCss('</StYlE/x>'))).toBe(false);
+  });
+
+  it('split by a comment, which is removed afterwards', () => {
+    const out = sanitizeLandingCss('</sty/**/le><script>alert(1)</script>');
+    expect(closes(out)).toBe(false);
+  });
+
+  it('doubled, so removing one cannot rejoin the other', () => {
+    const out = sanitizeLandingCss('<</style/style>script>alert(1)</script>');
+    expect(closes(out)).toBe(false);
+  });
+
+  it('what the raw route builds from it has exactly one end tag', () => {
+    const doc = `<style>${sanitizeLandingCss('a{}</style><script>alert(1)</script><style>')}</style>`;
+    expect(doc.match(/<\/style/gi)).toHaveLength(1);
+    // the one end tag is the wrapper's own, the last thing in the document: whatever
+    // the seller wrote sits inside the element as inert text
+    expect(doc.toLowerCase().lastIndexOf('</style')).toBe(doc.length - '</style>'.length);
+    expect(doc.toLowerCase().indexOf('</style')).toBe(doc.length - '</style>'.length);
+  });
+
+  it('a style block in uploaded HTML cannot end early with an end tag that has attributes', () => {
+    const out = sanitizeLandingHtml('<style>a{}</style x="1"><img src=x onerror=alert(1)></style>');
+    expect(out).not.toMatch(/onerror/i);
+  });
+
+  // negative: sound CSS passes untouched
+  it('a bare < survives — a media query written without spaces still works', () => {
+    const css = '@media (width<600px){.a{color:red}} .b>.c{margin:0}';
+    expect(sanitizeLandingCss(css)).toBe(css);
+  });
+
+  it('a < that could open a tag is written as the CSS escape for the same character', () => {
+    expect(sanitizeLandingCss('.b::after{content:"a<b"}')).toBe('.b::after{content:"a\\3c b"}');
+  });
+
+  it('ordinary CSS comes back byte for byte', () => {
+    const css = 'body{margin:0;font:16px/1.5 "Cairo",sans-serif}.hero{background:url(https://cdn.example/x.jpg)}';
+    expect(sanitizeLandingCss(css)).toBe(css);
+  });
+});
+
+/**
+ * A SCHEME SPELLED WITH THE NAMED REFERENCES.
+ */
+describe('javascript: written with named character references', () => {
+  const dead = (html: string) => !/javascript/i.test(sanitizeLandingHtml(html).replace(/&[A-Za-z]+;/g, ''));
+
+  it('&Tab; and &NewLine; inside the scheme', () => {
+    expect(sanitizeLandingHtml('<a href="java&Tab;script:alert(1)">x</a>')).toContain('href="#"');
+    expect(sanitizeLandingHtml('<a href="java&NewLine;script:alert(1)">x</a>')).toContain('href="#"');
+  });
+
+  it('&colon; for the colon', () => {
+    expect(sanitizeLandingHtml('<a href="javascript&colon;alert(1)">x</a>')).toContain('href="#"');
+    // the word alone would be caught either way; the colon is what a data: URL needs
+    expect(sanitizeLandingHtml('<a href="data&colon;text/html;base64,PHNjcmlwdD4=">x</a>')).toContain('href="#"');
+  });
+
+  it('all three at once, and in another attribute as well', () => {
+    expect(dead('<a href="ja&Tab;va&NewLine;script&colon;alert(1)">x</a>')).toBe(true);
+    expect(sanitizeLandingHtml('<img src="java&Tab;script&colon;alert(1)">')).toContain('src="#"');
+  });
+
+  // negative: an ordinary link with entities in it is left alone
+  it('a link with &amp; and a named entity that is not a scheme letter stays', () => {
+    const html = '<a href="https://shop.example/p?a=1&amp;b=2&colon;3">x</a>';
+    expect(sanitizeLandingHtml(html)).toBe(html);
+  });
+
+  it('text that merely mentions javascript is not a link and stays', () => {
+    const html = '<p>learn javascript&colon; the basics</p>';
+    expect(sanitizeLandingHtml(html)).toBe(html);
+  });
+});
+
