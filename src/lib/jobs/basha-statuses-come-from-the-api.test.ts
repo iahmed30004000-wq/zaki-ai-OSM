@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 const { db, applyCourierEvent, recordMiss, clearMiss, createNotification } = vi.hoisted(() => ({
-  db: { deliveryProvider: { findMany: vi.fn() }, order: { findMany: vi.fn() } },
+  db: { deliveryProvider: { findMany: vi.fn() }, order: { findMany: vi.fn() }, $executeRaw: vi.fn() },
   applyCourierEvent: vi.fn(async (_input: unknown) => 'APPLIED'),
   recordMiss: vi.fn(async () => ({ alertNow: false })),
   clearMiss: vi.fn(async () => undefined),
@@ -31,7 +31,7 @@ const ENV = process.env.APP_ENCRYPTION_KEY;
 process.env.APP_ENCRYPTION_KEY = 'a'.repeat(64);
 
 import { encryptJson } from '../secrets';
-import { forgetCourierPollCursor, POLL_BATCH, syncCourierStatus } from './definitions';
+import { POLL_BATCH, syncCourierStatus } from './definitions';
 import type { JobContext } from './runner';
 
 const ctx = { now: new Date(), db } as unknown as JobContext;
@@ -48,11 +48,25 @@ const parcel = (n: number) => ({
   shippedAt: null, outForDeliveryAt: null, failedAt: null,
 });
 
-/** The order table, answering the job's cursor query the way Postgres would. */
+/**
+ * The order table, answering the job's query the way Postgres would: never asked first (null), then asked longest ago,
+ * `id` breaking a tie — and taking the stamp the job writes with raw SQL (RV146).
+ */
+const polledAt = new Map<string, number>();
+let clock = 0;
 function ordersTable(rows: ReturnType<typeof parcel>[]) {
-  db.order.findMany.mockImplementation(async (q: { where: { id?: { gt: string } }; take: number }) => {
-    const after = q.where.id?.gt;
-    return rows.filter((r) => !after || r.id > after).slice(0, q.take);
+  polledAt.clear();
+  clock = 0;
+  db.order.findMany.mockImplementation(async (q: { take: number }) =>
+    [...rows]
+      .sort((a, b) => (polledAt.get(a.id) ?? -1) - (polledAt.get(b.id) ?? -1) || a.id.localeCompare(b.id))
+      .slice(0, q.take)
+  );
+  // `${companyId}` then `Prisma.join(ids)`: the stamp of one sweep is one instant, as `now()` is inside a statement.
+  db.$executeRaw.mockImplementation(async (_strings: unknown, _companyId: string, list: { values: string[] }) => {
+    clock++;
+    for (const id of list.values) polledAt.set(id, clock);
+    return list.values.length;
   });
 }
 
@@ -67,7 +81,6 @@ const answer = (body: (barcode: string) => unknown, status = 200) =>
 beforeEach(() => {
   vi.clearAllMocks();
   asked.length = 0;
-  forgetCourierPollCursor();
   db.deliveryProvider.findMany.mockResolvedValue([BASHA]);
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -109,17 +122,60 @@ describe('Basha is asked at all', () => {
 });
 
 describe('a long list is asked in turns', () => {
-  it('sixty a sweep, in id order, then from the top again', async () => {
+  it('sixty a sweep — the never-asked first, then the asked-longest-ago — so every parcel gets its turn', async () => {
     const rows = Array.from({ length: 130 }, (_, i) => parcel(i + 1));
     ordersTable(rows);
     answer(() => ({ status: 'SCANNED_BY_DRIVER_AND_IN_CAR' }));
-    const sweeps: number[] = [];
+    const sweeps: string[][] = [];
     for (let i = 0; i < 4; i++) {
       asked.length = 0;
       await syncCourierStatus.run(ctx);
-      sweeps.push(asked.length);
+      sweeps.push([...asked].sort());
     }
-    expect(sweeps).toEqual([POLL_BATCH, POLL_BATCH, 10, POLL_BATCH]);
+    // Every sweep is a full batch (it no longer stops short at the end of the list: it goes on to the oldest stamps)…
+    expect(sweeps.map((s) => s.length)).toEqual([POLL_BATCH, POLL_BATCH, POLL_BATCH, POLL_BATCH]);
+    // …and by the third sweep all 130 have been asked at least once.
+    expect(new Set(sweeps.slice(0, 3).flat()).size).toBe(130);
+    // The third took the ten never asked (121–130) before anything asked twice.
+    for (let n = 121; n <= 130; n++) expect(sweeps[2]).toContain(`KSA${n}`);
+  });
+
+  it('the question itself: never-asked first, then asked-longest-ago, id only breaks a tie — and no id cursor', async () => {
+    ordersTable([parcel(1)]);
+    answer(() => ({ status: 'SCANNED_BY_DRIVER_AND_IN_CAR' }));
+    await syncCourierStatus.run(ctx);
+    const q = db.order.findMany.mock.calls[0][0];
+    expect(q.orderBy).toEqual([{ courierPolledAt: { sort: 'asc', nulls: 'first' } }, { id: 'asc' }]);
+    expect(q.take).toBe(POLL_BATCH);
+    expect(q.where).not.toHaveProperty('id');
+  });
+
+  it('a restart forgets nothing: the place is in the stamp, not in the process', async () => {
+    const rows = Array.from({ length: 130 }, (_, i) => parcel(i + 1));
+    ordersTable(rows);
+    answer(() => ({ status: 'SCANNED_BY_DRIVER_AND_IN_CAR' }));
+    await syncCourierStatus.run(ctx);
+    const first = new Set(asked);
+    asked.length = 0;
+    // A fresh module registry is what a restart is; the stamps (the table) survive it.
+    vi.resetModules();
+    const again = await import('./definitions');
+    await again.syncCourierStatus.run(ctx);
+    expect(asked.some((b) => first.has(b))).toBe(false);
+  });
+
+  it('NEGATIVE: the stamp is raw SQL scoped to the company, never an update that would move updatedAt', async () => {
+    ordersTable([parcel(1), parcel(2)]);
+    answer(() => ({ status: 'SCANNED_BY_DRIVER_AND_IN_CAR' }));
+    await syncCourierStatus.run(ctx);
+    expect(db.$executeRaw).toHaveBeenCalledTimes(1);
+    const [strings, companyId, list] = db.$executeRaw.mock.calls[0] as unknown as [string[], string, { values: string[] }];
+    const sql = strings.join('?');
+    expect(sql).toContain('"courier_polled_at" = now()');
+    expect(sql).toContain('"companyId" =');
+    expect(sql).not.toMatch(/"updatedAt"|"version"|"shippingStatus"/);
+    expect(companyId).toBe('c1');
+    expect(list.values.sort()).toEqual(['o0001', 'o0002']);
   });
 });
 

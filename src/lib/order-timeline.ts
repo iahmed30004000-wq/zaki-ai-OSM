@@ -181,7 +181,8 @@ const METADATA_AR: Record<string, string> = {
  * (a store's own name is a source too), never blanked: a change that happened must stay visible.
  */
 const VALUE_AR: Record<string, Record<string, string>> = {
-  source: { 'Landing Page': 'صفحة هبوط', 'post-order offer': 'عرض بعد الطلب', 'public visitor': 'زائر' },
+  // POLL / WEBHOOK: how the courier's word reached us (couriers/apply-event writes it on every status the feed moved).
+  source: { 'Landing Page': 'صفحة هبوط', 'post-order offer': 'عرض بعد الطلب', 'public visitor': 'زائر', POLL: 'استعلام من الشركة', WEBHOOK: 'إشعار من الشركة' },
   intakeMethod: { AI_PASTE: 'لصق نص بالذكاء', MANUAL: 'يدوي', IMPORT: 'استيراد' },
   createdBy: { 'public visitor': 'زائر' },
 };

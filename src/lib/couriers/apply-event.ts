@@ -71,16 +71,23 @@ export async function applyCourierEvent(input: {
   courierName: string;
   /** How we learned of it — kept on the activity row so the two are told apart. */
   source: 'POLL' | 'WEBHOOK';
+  /**
+   * COMPUTE, DO NOT WRITE. Every guard runs exactly as it does for real and the answer comes back — 'APPLIED' means
+   * «this WOULD move the order» — but nothing is written: no status, no stamp, no activity row, no flag, no note.
+   * The poll's trial switch (COURIER_POLL_DRY_RUN) is the only caller that sets it.
+   */
+  dryRun?: boolean;
 }): Promise<ApplyOutcome> {
   const { order, event, courierName, source } = input;
 
   if (event.status === null) return 'UNKNOWN_STATUS';
   if (!isAutoApplicable(event) || NOTE_ONLY.has(event.status)) {
-    await keepWhatTheCourierSaid(input);
+    if (!input.dryRun) await keepWhatTheCourierSaid(input);
     return 'NOT_AUTO_APPLICABLE';
   }
   if (event.status === order.shippingStatus) return 'NO_CHANGE';
   if (!isValidShippingTransition(order.shippingStatus, event.status)) return 'INVALID_TRANSITION';
+  if (input.dryRun) return 'APPLIED';
 
   const field = STATUS_TIMESTAMP[event.status as keyof typeof STATUS_TIMESTAMP];
   const stamp =

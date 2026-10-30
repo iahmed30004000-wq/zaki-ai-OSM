@@ -3,7 +3,10 @@ import type { JobDefinition, JobResult } from '../runner';
 import { adapterFor } from '../../couriers';
 import { applyCourierEvent } from '../../couriers/apply-event';
 import { clearMiss, missingHours, recordMiss } from '../../couriers/missing-shipment';
+import { isAnOutage, outageReason } from '../../couriers/outage';
+import { stampCourierPolled } from '../../couriers/poll-stamp';
 import { createNotification } from '../../notification';
+import { SHIPPING_STATUS_AR } from '../../shipping-workflow';
 
 /**
  * Asks each integrated courier where its parcels are.
@@ -14,26 +17,39 @@ import { createNotification } from '../../notification';
  * the courier's statement. This job moves parcels along the in-transit
  * states and nothing else.
  */
-/** Parcels asked about per courier per sweep — the rest wait for the next sweep, in id order. */
+/** Parcels asked about per courier per sweep — the rest wait for the next sweep. */
 export const POLL_BATCH = 60;
 /** Barcodes asked at once: the first ten tell us whether the courier is reachable at all. */
 const POLL_CHUNK = 10;
+
 /*
- * Where each courier's last sweep stopped. In memory: a restart starts again from the top, which only costs one
- * sweep of fairness. Without it, a courier with more than POLL_BATCH parcels in transit had the same first ones
- * asked about for ever.
+ * WHERE EACH COURIER'S SWEEP STOPPED IS IN THE DATABASE (RV146).
+ *
+ * `orders.courier_polled_at` is the last time the courier was asked about the parcel. The sweep takes the parcels never
+ * asked about first, then the ones asked longest ago — so a courier with more than POLL_BATCH parcels in transit is
+ * walked through fairly, and a deploy or a restart no longer sends it back to the same first sixty (the old cursor
+ * lived in the process). The stamp is written by raw SQL (couriers/poll-stamp), after the courier answered, for the
+ * parcels that were actually asked — never for a courier that did not answer at all.
  */
-const pollCursor = new Map<string, string>();
-/** Tests start each case from the top. */
-export function forgetCourierPollCursor(): void {
-  pollCursor.clear();
+
+/**
+ * THE TRIAL SWITCH. `COURIER_POLL_DRY_RUN=1` (or `true`): the sweep asks the courier, runs every guard, and writes the
+ * result as the job's own sentence — and writes NOTHING else: no status, no stamp, no timeline row, no miss count, no
+ * alert. Off by default, so an unset variable is today's behaviour.
+ */
+export function courierPollIsDryRun(env: NodeJS.ProcessEnv = process.env): boolean {
+  const v = env.COURIER_POLL_DRY_RUN?.trim().toLowerCase();
+  return v === '1' || v === 'true';
 }
+
+const statusWord = (status: string): string => SHIPPING_STATUS_AR[status as keyof typeof SHIPPING_STATUS_AR] ?? status;
 
 export const syncCourierStatus: JobDefinition = {
   name: 'sync-courier-status',
   everySeconds: 120,
   description: 'تحديث حالات الشحنات من شركات الشحن المرتبطة',
   async run(): Promise<JobResult> {
+    const dryRun = courierPollIsDryRun();
     /*
      * THE PLATFORM AND THE ACCOUNT ARE PART OF THE QUESTION.
      *
@@ -55,6 +71,9 @@ export const syncCourierStatus: JobDefinition = {
     const skipped: string[] = [];
     const notPolled: string[] = [];
     const unreachable: string[] = [];
+    // A trial only: what the sweep would have done, said instead of done.
+    const wouldMove: string[] = [];
+    let wouldCountMissing = 0;
 
     for (const provider of providers) {
       const adapter = adapterFor(provider);
@@ -65,31 +84,24 @@ export const syncCourierStatus: JobDefinition = {
       }
 
       // One read, its `where` written in place: a-bench-is-not-the-business finds this site by reading it.
-      const page = (after?: string) =>
-        db.order.findMany({
-          where: {
-            companyId: provider.companyId,
-            deliveryProviderId: provider.id,
-            trackingNumber: { not: null },
-            shippingStatus: { in: ['READY_FOR_PICKUP', 'SHIPPED', 'OUT_FOR_DELIVERY', 'FAILED_DELIVERY'] },
-            ...(after ? { id: { gt: after } } : {}),
-          },
-          select: {
-            id: true, trackingNumber: true, shippingStatus: true, companyId: true, storeId: true,
-            orderNumber: true, trackingMissCount: true, trackingMissingSince: true,
-            trackingMissingAlertedAt: true,
-            // Read so the status's own timestamp is stamped when it is still empty (apply-event).
-            shippedAt: true, outForDeliveryAt: true, failedAt: true,
-          },
-          orderBy: { id: 'asc' },
-          take: POLL_BATCH,
-        });
-      const after = pollCursor.get(provider.id);
-      let inTransit = await page(after);
-      // Past the end: start again from the top.
-      if (inTransit.length === 0 && after) inTransit = await page();
-      if (inTransit.length === POLL_BATCH) pollCursor.set(provider.id, inTransit[inTransit.length - 1].id);
-      else pollCursor.delete(provider.id);
+      // Never asked first (null), then asked longest ago; `id` only breaks a tie so the order is the same every time.
+      const inTransit = await db.order.findMany({
+        where: {
+          companyId: provider.companyId,
+          deliveryProviderId: provider.id,
+          trackingNumber: { not: null },
+          shippingStatus: { in: ['READY_FOR_PICKUP', 'SHIPPED', 'OUT_FOR_DELIVERY', 'FAILED_DELIVERY'] },
+        },
+        select: {
+          id: true, trackingNumber: true, shippingStatus: true, companyId: true, storeId: true,
+          orderNumber: true, trackingMissCount: true, trackingMissingSince: true,
+          trackingMissingAlertedAt: true,
+          // Read so the status's own timestamp is stamped when it is still empty (apply-event).
+          shippedAt: true, outForDeliveryAt: true, failedAt: true,
+        },
+        orderBy: [{ courierPolledAt: { sort: 'asc', nulls: 'first' } }, { id: 'asc' }],
+        take: POLL_BATCH,
+      });
       if (inTransit.length === 0) continue;
 
       /*
@@ -98,21 +110,23 @@ export const syncCourierStatus: JobDefinition = {
        * The first chunk decides. When every barcode in it (two or more) answers with an error, the courier is down
        * or our account is refused — that is not sixty lost parcels, and counting it as sixty misses would raise
        * sixty «مفقودة» alerts after three sweeps. The courier is skipped and named; nothing is recorded as missing.
+       * The error class each answer carries says WHY, so the name comes with its reason (couriers/outage).
        */
       const events: Awaited<ReturnType<typeof adapter.fetchEvents>> = [];
       let reachable = true;
       for (let i = 0; i < inTransit.length; i += POLL_CHUNK) {
         const chunk = await adapter.fetchEvents(inTransit.slice(i, i + POLL_CHUNK).map((o) => o.trackingNumber!));
-        if (i === 0 && chunk.length >= 2 && chunk.every((e) => e.rawStatus === 'ERROR')) {
+        if (i === 0 && isAnOutage(chunk)) {
           reachable = false;
+          unreachable.push(`${provider.name} (${outageReason(chunk)})`);
           break;
         }
         events.push(...chunk);
       }
-      if (!reachable) {
-        unreachable.push(provider.name);
-        continue;
-      }
+      // Nothing was learned, so nothing is stamped: the same parcels are asked again as soon as it answers.
+      if (!reachable) continue;
+      // It answered, so these parcels HAVE been asked, whatever it said about each. Not in a trial.
+      if (!dryRun) await stampCourierPolled(provider.companyId, inTransit.map((o) => o.id));
       const byBarcode = new Map(events.map((e) => [e.trackingNumber, e]));
 
       for (const order of inTransit) {
@@ -125,6 +139,11 @@ export const syncCourierStatus: JobDefinition = {
         // nobody knew. Three misses in a row, with every other barcode in
         // the same sweep answering, is a parcel that is not there.
         if (!event || event.rawStatus === 'ERROR') {
+          // A trial counts the miss and does not record it: a recorded miss is what raises the alert.
+          if (dryRun) {
+            wouldCountMissing++;
+            continue;
+          }
           const outcome = await recordMiss(db, order);
           if (outcome.alertNow) {
             missing++;
@@ -151,7 +170,7 @@ export const syncCourierStatus: JobDefinition = {
         // It answered, so it is not missing — and a barcode that goes
         // missing, comes back and goes again is two incidents, the second
         // as worth shouting about as the first.
-        if (order.trackingMissCount > 0 || order.trackingMissingAlertedAt) {
+        if (!dryRun && (order.trackingMissCount > 0 || order.trackingMissingAlertedAt)) {
           await clearMiss(db, order);
         }
 
@@ -161,10 +180,28 @@ export const syncCourierStatus: JobDefinition = {
           event,
           courierName: provider.name,
           source: 'POLL',
+          dryRun,
         });
-        if (outcome === 'APPLIED') applied++;
-        else if (outcome === 'NOT_AUTO_APPLICABLE') skipped.push(event.rawStatus);
+        if (outcome === 'APPLIED') {
+          applied++;
+          if (dryRun) wouldMove.push(`${order.orderNumber}: ${statusWord(order.shippingStatus)} ← ${statusWord(event.status ?? event.rawStatus)}`);
+        } else if (outcome === 'NOT_AUTO_APPLICABLE') skipped.push(event.rawStatus);
       }
+    }
+
+    if (dryRun) {
+      // A trial writes nothing but this sentence, and `processed` stays 0: nothing was processed.
+      const shown = wouldMove.slice(0, 10).join('، ') + (wouldMove.length > 10 ? '، …' : '');
+      const trial = [
+        `تجربة بلا كتابة: كان سيُحدَّث ${applied} شحنة${shown ? ` (${shown})` : ''}`,
+        skipped.length ? `${skipped.length} حالة تحتاج قراراً بشرياً` : null,
+        wouldCountMissing ? `${wouldCountMissing} شحنة لم تردّ عنها الشركة` : null,
+        notPolled.length ? `لا يُستطلع: ${notPolled.join('، ')}` : null,
+      ].filter(Boolean);
+      if (unreachable.length) {
+        throw new Error(`تعذّر الوصول إلى ${unreachable.join('، ')} — تجربة بلا كتابة. ${trial.join(' · ')}`.trim());
+      }
+      return { processed: 0, detail: trial.join(' · ') };
     }
 
     const notes = [
