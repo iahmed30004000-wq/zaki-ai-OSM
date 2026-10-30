@@ -38,7 +38,7 @@ import { printLabelsStep } from '@/lib/next-step';
  * in the exceptions panel and never produce a shipment row.
  */
 
-interface Block { code: string; message: string; hard: boolean }
+interface Block { code: string; message: string; hard: boolean; hint?: string }
 interface Row {
   id: string;
   orderNumber: string;
@@ -336,7 +336,21 @@ export function ShipmentsNewScreen() {
       setExceptions(res.exceptions);
       await load();
     } catch (e) {
-      toast.failed(e instanceof Error ? e.message : 'تعذر إنشاء الشحنة');
+      /*
+       * THE DOOR'S REAL REASONS, NOT ITS GENERIC LINE.
+       *
+       * «لا يوجد طلب صالح للشحن ضمن الاختيار» came back with the reason of each order in `exceptions` and the screen
+       * kept only the sentence. They go to the same panel a partial success fills — order number and why — and the
+       * list is read again, because the row that said «جاهز» was out of date or wrong.
+       */
+      const refused = (e as { data?: { exceptions?: unknown } } | null)?.data?.exceptions;
+      if (Array.isArray(refused) && refused.length > 0) {
+        setExceptions(refused as { orderNumber: string; reasons: string[] }[]);
+        toast.failed('لم يُشحن أي طلب — أسباب كل طلب مكتوبة في «طلبات لم تُشحن»');
+        await load();
+      } else {
+        toast.failed(e instanceof Error ? e.message : 'تعذر إنشاء الشحنة');
+      }
     } finally {
       setBusy(false);
     }
@@ -491,6 +505,7 @@ ${describeRefused(out.refused)}`,
             }`}
           >
             <RiAlertLine className="w-4 h-4" /> {b.message}
+            {b.hint && <span className="text-[var(--sys-muted-foreground)]"> — {b.hint}</span>}
           </span>
         ))}
         {!r.hardBlocked && (

@@ -79,8 +79,15 @@ export async function apiJson<T>(input: string, init?: RequestInit): Promise<T> 
   const res = await apiFetch(input, init);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(
-      (data as any).errorAr || (data as any).error || `HTTP ${res.status}`
+    /*
+     * The body travels with the error. Some refusals carry more than one sentence — the shipment door answers
+     * `exceptions` (order by order, with the reason of each) beside its generic line — and a screen that only
+     * ever saw `message` could only show the generic one. Read as `(e as { data?: ... }).data`; no new export,
+     * so the many tests that stand in for this module keep working.
+     */
+    throw Object.assign(
+      new Error((data as any).errorAr || (data as any).error || `HTTP ${res.status}`),
+      { status: res.status, data }
     );
   }
   return data as T;
