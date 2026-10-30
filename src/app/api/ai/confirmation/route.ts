@@ -108,7 +108,9 @@ export async function POST(req: Request) {
         number: order.orderNumber,
         total: Number(order.totalAmount),
         currency: order.currency,
+        // The screen shows the city; the model gets it only on a local route (below).
         city: order.customer?.city ?? null,
+        hasCity: !!order.customer?.city?.trim(),
         // The address itself is not sent: what the agent needs to know is
         // whether one is missing, and an address in the payload is customer
         // data travelling for no reason.
@@ -148,6 +150,16 @@ export async function POST(req: Request) {
         : null,
     };
 
+    /*
+     * What the MODEL reads. The city is where the person lives: with the name
+     * and the notes it identifies them, so off a local route it is a boolean
+     * like the notes. The screen still gets the city in `context` — it is the
+     * agent's own browser, already showing the order.
+     */
+    const forModel = local
+      ? context
+      : { ...context, order: { ...context.order, city: null } };
+
     try {
       const suggestion = await aiChat({
         companyId,
@@ -156,7 +168,7 @@ export async function POST(req: Request) {
         // is a placeholder and the notes are a boolean. `aiChat` refuses a
         // `pii: true` assistant on a vendor without it.
         ...(local ? {} : { piiSafe: true as const }),
-        user: JSON.stringify(context, null, 2),
+        user: JSON.stringify(forModel, null, 2),
         timeoutMs: 20_000,
       });
       // The facts go back too: the agent should be able to check the
