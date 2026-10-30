@@ -8,6 +8,8 @@ import { ATTESTATION_AR } from '@/lib/shipment-cancel';
 import { CustomerHistoryButton } from '@/components/orders/CustomerHistory';
 import { OrderLink } from '@/components/orders/OrderLink';
 import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { BulkBar } from '@/components/shell/BulkBar';
+import { useIsPhone } from '@/hooks/useIsPhone';
 import { RiAlertLine, RiArrowGoBackLine, RiCloseCircleLine, RiLoader4Line, RiPauseCircleLine, RiTruckLine } from '@remixicon/react';
 import { RejectDialog } from '@/components/screens/confirmation/ActionDialogs';
 import { DelayShipmentDialog, type DelayChoice } from '@/components/ops/DelayShipmentDialog';
@@ -410,6 +412,7 @@ ${describeRefused(out.refused)}`,
   const noBarcodeYet =
     !!justMade && courierApi && !(shown && shown.outcomes.some((o) => o.ok || o.skipped === 'ALREADY_SENT'));
   const selectedCount = Object.values(selected).filter(Boolean).length;
+  const phone = useIsPhone();
   const labelsStep = printLabelsStep(mayOpen);
 
   return (
@@ -441,6 +444,8 @@ ${describeRefused(out.refused)}`,
         <Select label="المحافظة" value={filters.region} onChange={(v) => setFilters({ ...filters, region: v })} options={regions.map((r) => ({ value: r.id, label: r.name }))} />
         <DateField label="من" value={filters.from} onChange={(v) => setFilters({ ...filters, from: v })} />
         <DateField label="إلى" value={filters.to} onChange={(v) => setFilters({ ...filters, to: v })} />
+        {/* On a desk the button is the grid's last cell, where it has always been. On a phone it is in the bar. */}
+        {!phone && (
         <div className="self-end">
           <button
             onClick={create}
@@ -450,8 +455,35 @@ ${describeRefused(out.refused)}`,
             {busy ? 'جارٍ الإنشاء…' : `إنشاء شحنة (${selectedCount})`}
           </button>
         </div>
+        )}
         </div>
       </div>
+
+      {/*
+        «إنشاء شحنة» WHERE THE THUMB IS, NOT AT THE TOP OF A FORM.
+        The button used to be the last cell of the filter grid. On a phone the
+        grid is one column, so the button was 450px down the page and the
+        orders it ships were below it: a worker ticked parcels far down the
+        list and the only thing that ships them was back at the top. While
+        anything is ticked the bar owns the bottom of the phone; on a desk it
+        is not drawn (the button is in the filters, as it always was). The courier stays in the filters, drawn from
+        the first moment — it is the choice the shipment cannot do without.
+      */}
+      <BulkBar show={phone && selectedCount > 0}>
+        <span className="me-auto text-xs font-semibold text-[var(--sys-primary)]">
+          محدَّد: {selectedCount} طلب
+        </span>
+        {!filters.courier && (
+          <span className="w-full text-xs text-[var(--sys-muted-foreground)]">اختر شركة الشحن من الأعلى أولاً.</span>
+        )}
+        <button
+          onClick={create}
+          disabled={busy || selectedCount === 0}
+          className="flex-1 md:flex-none h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
+        >
+          {busy ? 'جارٍ الإنشاء…' : `إنشاء شحنة (${selectedCount})`}
+        </button>
+      </BulkBar>
 
       {error && <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>}
       {done && (
