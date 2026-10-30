@@ -990,6 +990,18 @@ describe('XIII-د · prices derived from nothing but the stored line, with the a
   });
 });
 
+describe('XIII-هـ · what is KNOWN not to be perfect, pinned so a change to it is a decision (BACKLOG_P2: RV401)', () => {
+  it('KEEP_UNIT goes and comes back a fil off: 25 for three → two → three is 25.001, not 25', () => {
+    // 25 × 2 ÷ 3 = 16.667, and 16.667 × 3 ÷ 2 = 25.0005 → 25.001. The preview shows the new figure before it is sent.
+    const down = resolve([line({ id: 'l1', lineTotal: 25 })], [edit('l1', { quantity: 2 })]);
+    expect(down.lines[0].lineTotal.to).toBe(16.667);
+    const back = resolve([line({ id: 'l1', quantity: 2, lineTotal: 16.667 })], [edit('l1', { quantity: 3 })]);
+    expect(back.lines[0].lineTotal.to).toBe(25.001);
+    // a typed figure does not drift
+    expect(resolve([line({ id: 'l1', quantity: 2, lineTotal: 16.667 })], [edit('l1', { quantity: 3, lineTotal: 25 })]).lines[0].lineTotal.to).toBe(25);
+  });
+});
+
 describe('XIV · pure: no database, no network, one calculator', () => {
   const src = stripComments(repoFile('src/lib/order-line-edit.ts'));
 
