@@ -73,10 +73,10 @@ process.on('exit', () => {
 
 describe('the switch', () => {
   it.each(['1', 'true', 'TRUE', ' 1 '])('%j turns the trial on', (v) => {
-    expect(courierPollIsDryRun({ COURIER_POLL_DRY_RUN: v } as NodeJS.ProcessEnv)).toBe(true);
+    expect(courierPollIsDryRun({ COURIER_POLL_DRY_RUN: v } as unknown as NodeJS.ProcessEnv)).toBe(true);
   });
   it.each([undefined, '', '0', 'false', 'no', 'yes', '2'])('NEGATIVE: %j leaves the real sweep on', (v) => {
-    expect(courierPollIsDryRun({ COURIER_POLL_DRY_RUN: v } as NodeJS.ProcessEnv)).toBe(false);
+    expect(courierPollIsDryRun({ COURIER_POLL_DRY_RUN: v } as unknown as NodeJS.ProcessEnv)).toBe(false);
   });
 });
 
