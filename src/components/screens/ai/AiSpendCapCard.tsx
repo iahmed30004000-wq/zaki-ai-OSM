@@ -101,7 +101,7 @@ export function AiSpendCapCard({ cap, usage, canManage, onSaved }: Props) {
             احفظ السقف
           </Button>
         ) : (
-          <span className="text-xs text-[var(--sys-muted)]">قراءة فقط — التعديل لمن عنده «الإعدادات الحسّاسة».</span>
+          <span className="text-xs text-[var(--sys-muted)]">لا تملك مفتاح تعديل السقف.</span>
         )}
         {msg && (
           <span className={`text-xs font-medium ${msg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>{msg.text}</span>

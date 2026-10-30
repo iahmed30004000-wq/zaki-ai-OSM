@@ -130,7 +130,7 @@ export function estimateTokens(chars: number, images = 0): number {
   return text + Math.max(0, images) * IMAGE_TOKENS;
 }
 
-function figure(v: unknown): number | null {
+function reportedCount(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : null;
 }
 
@@ -145,9 +145,9 @@ export function tokensUsed(
   lengths: { inChars: number; images: number; outChars: number }
 ): number {
   const usage = (reply as { usage?: Record<string, unknown> } | null | undefined)?.usage;
-  const input = figure(shape === 'anthropic' ? usage?.input_tokens : usage?.prompt_tokens);
-  const output = figure(shape === 'anthropic' ? usage?.output_tokens : usage?.completion_tokens);
-  const total = figure(usage?.total_tokens);
+  const input = reportedCount(shape === 'anthropic' ? usage?.input_tokens : usage?.prompt_tokens);
+  const output = reportedCount(shape === 'anthropic' ? usage?.output_tokens : usage?.completion_tokens);
+  const total = reportedCount(usage?.total_tokens);
   if (input != null && output != null && input + output > 0) return input + output;
   if (shape === 'openai' && total != null && total > 0) return total;
   return estimateTokens(lengths.inChars, lengths.images) + estimateTokens(lengths.outChars);
