@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
+import { mayReadInsights } from '@/lib/insights-key';
 import { logAudit } from '@/lib/audit';
 import { inStore } from '@/lib/store-filter';
 import { campaignWindow } from '@/lib/campaign-window';
@@ -35,7 +36,7 @@ import { publicOrigin } from '@/lib/passkey';
 
 export async function GET(req: Request) {
   try {
-    const { companyId, storeId, country } = await requireContext();
+    const { user, companyId, storeId, country } = await requireContext();
     await requirePermission('reports.view');
 
     const q = new URL(req.url).searchParams;
@@ -150,7 +151,10 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       campaigns: list.map((c) => ({ ...c, sortOrder: orderOf.get(c.id) ?? 0, duplicateOf: duplicates.get(c.id) ?? null })),
-      insights,
+      // The cards at the top (best, worst, spent-with-no-orders…) are smart cards (PR-10): ABSENT, not zero, without
+      // `insights.view`. The number of hand-typed twins is a tool's count, not a verdict, so «حذف المكرر» keeps working.
+      ...(mayReadInsights(user) ? { insights } : {}),
+      duplicatesCount: duplicates.size,
       totals: {
         ...campaignResult(totals.spend, { revenue: totals.revenue, brought: totals.brought, delivered: totals.delivered }),
         brought: totals.brought,

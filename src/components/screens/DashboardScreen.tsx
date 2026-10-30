@@ -59,6 +59,8 @@ export function DashboardScreen() {
   /** The href, or nothing — a card with no link is still a card. */
   const linkTo = (path: string): string | undefined => (mayOpen(path) ? path : undefined);
   const canFinance = userCan(currentUser, 'finance.view');
+  /** The rankings and the loss reasons are smart cards (PR-10): the server sends them to this key only. */
+  const canInsights = userCan(currentUser, 'insights.view');
   const maySeeColleagues = TEAM_PERMISSIONS.some((p) => userCan(currentUser, p));
 
   const [period, setPeriod] = useState<'today' | '7d' | '30d' | 'month' | 'all'>('all');
@@ -597,6 +599,7 @@ export function DashboardScreen() {
 
         {/* ─── Rankings + Leaderboard ─── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {canInsights && (
           <Card>
             <CardHeader
               title={
@@ -650,6 +653,7 @@ export function DashboardScreen() {
               ))}
             </CardContent>
           </Card>
+          )}
 
           {/*
             RIGHT AFTER «الأكثر رفضاً», because that card names the product
@@ -658,7 +662,7 @@ export function DashboardScreen() {
             the answer to «why are we losing orders» belongs on the screen
             somebody already opens to ask it.
           */}
-          <LossPanel period={period} />
+          {canInsights && <LossPanel period={period} />}
 
           {/* Colleagues by name: only for the key of a screen that already shows
               them — the server sends no leaderboard to anyone else. */}

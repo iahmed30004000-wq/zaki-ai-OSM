@@ -32,7 +32,7 @@ interface Data {
   byDevice: Row[];
   byCampaign: Row[];
   /** One per product that has more than one page — see `pageVerdicts`. */
-  verdicts: { productId: string; productName: string; pages: number; verdict: Verdict }[];
+  verdicts?: { productId: string; productName: string; pages: number; verdict: Verdict }[];
   /** The server's count beside the browser's, for the week before the page is cached — see `CountCheck`. */
   countCheck: CountCheckData | null;
 }
@@ -105,7 +105,7 @@ export function LandingAnalyticsTab({ dateQuery, from }: { dateQuery: string; fr
         العيّنة — ما بيطفّي الخاسر لحاله»: there is no button in this block,
         and the module behind it has no way to turn a page off.
       */}
-      {data.verdicts.length > 0 && (
+      {data.verdicts !== undefined && data.verdicts.length > 0 && (
         <section className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)]">
           <h3 className="border-b border-[var(--sys-surface-strong)] px-4 py-2.5 text-sm font-bold text-[var(--sys-heading)]">
             <RiTrophyLine className="me-1 inline h-4 w-4" />

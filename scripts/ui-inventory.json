@@ -1252,7 +1252,7 @@
   "src/components/screens/ProductsScreen.tsx": {
     "buttons": 14,
     "inputs": 7,
-    "columns": 8,
+    "columns": 7,
     "cards": 1,
     "modals": 1,
     "icons": 13,

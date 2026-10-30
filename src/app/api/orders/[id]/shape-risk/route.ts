@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { ORDER_ACCESS_STATUS, assertOrderReadable } from '@/lib/rbac';
+import { insightsRefused, mayReadInsights } from '@/lib/insights-key';
 import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
 import { ORDER_NOT_FOUND } from '@/lib/order-refusals';
 import { apiErrorResponse } from '@/lib/api-error';
@@ -58,6 +59,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   try {
     const { id } = await params;
     const { user, companyId, storeId } = await requireContext();
+    // The return risk of an order is a smart card (PR-10): reading the order is not enough, the cards' key rides beside it.
+    if (!mayReadInsights(user)) return insightsRefused();
     // The order through the same envelope the window opened it with: an agent
     // asked about orders outside her own by id, and got this card for any of them.
     // The window opens through the work door now, so this card does too.

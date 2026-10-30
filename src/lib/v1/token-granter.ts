@@ -24,8 +24,8 @@ const NEEDS: Record<V1Scope, readonly string[]> = {
   'orders.read': ['orders.view'],
   'orders.note': ['orders.view'],
   'orders.attribution.read': ['orders.view'],
-  // The cost of goods is money: the product key and the finance key.
-  'products.costs.read': ['products.view', 'finance.view'],
+  // The cost of goods is money: the product key, the finance key and the cost key (PR-10: whoever mints it must see it).
+  'products.costs.read': ['products.view', 'finance.view', 'costs.view'],
 };
 
 /** The first scope this person may not mint, with the key it lacks — or null. */

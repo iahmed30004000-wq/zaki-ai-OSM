@@ -16,8 +16,9 @@ import React from 'react';
  * allowed → the tiles — so a fix that simply blanked the page fails.
  */
 
-const { apiFetch, may } = vi.hoisted(() => ({
+const { apiFetch, may, who } = vi.hoisted(() => ({
   apiFetch: vi.fn(),
+  who: { perms: ['dashboard.view', 'reports.view', 'insights.view'] as string[] },
   may: { yes: ((_p: string) => true) as (p: string) => boolean },
 }));
 
@@ -31,7 +32,7 @@ vi.mock('@/context/AppContext', () => ({
     t: { dashboard: 'لوحة التحكم' },
     locale: 'ar',
     isRtl: true,
-    currentUser: { id: 'u1', role: 'MANAGER', permissions: ['dashboard.view', 'reports.view'] },
+    currentUser: { id: 'u1', role: 'MANAGER', permissions: who.perms },
   }),
 }));
 vi.mock('@/hooks/useMayOpen', () => ({
@@ -78,6 +79,7 @@ const GOOD = {
 beforeEach(() => {
   vi.clearAllMocks();
   may.yes = () => true;
+  who.perms = ['dashboard.view', 'reports.view', 'insights.view'];
 });
 afterEach(cleanup);
 
@@ -129,6 +131,35 @@ describe('the dashboard', () => {
     render(<DashboardScreen />);
     await waitFor(() => expect(screen.getByText('الأكثر طلباً')).toBeTruthy());
     expect(screen.queryByText('لا تملك صلاحية «عرض التقارير»')).toBeNull();
+  });
+});
+
+describe('PR-10: the smart cards are drawn for insights.view only', () => {
+  it('the dashboard: without the key there is no ranking and no loss panel — but the tiles are there', async () => {
+    who.perms = ['dashboard.view', 'reports.view'];
+    apiFetch.mockResolvedValue(json(200, GOOD));
+    render(<DashboardScreen />);
+    await waitFor(() => expect(apiFetch).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByText('تعذّر تحميل أرقام لوحة التحكم')).toBeNull());
+    expect(screen.queryByText('الأكثر طلباً')).toBeNull();
+    expect(screen.queryByText('ترتيب المنتجات والأرباح')).toBeNull();
+  });
+
+  it('NEGATIVE (the test of the test): the same dashboard WITH the key draws the ranking', async () => {
+    apiFetch.mockResolvedValue(json(200, GOOD));
+    render(<DashboardScreen />);
+    await waitFor(() => expect(screen.getByText('الأكثر طلباً')).toBeTruthy());
+    expect(screen.getByText('ترتيب المنتجات والأرباح')).toBeTruthy();
+  });
+
+  it('the performance board: without the key there are no headlines', async () => {
+    who.perms = ['dashboard.view', 'reports.view'];
+    apiFetch.mockResolvedValue(json(200, GOOD));
+    render(<PerformanceScreen />);
+    await waitFor(() => expect(apiFetch).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByText('تعذّر تحميل أرقام لوحة الأداء')).toBeNull());
+    expect(screen.queryByText('الأكثر طلباً')).toBeNull();
+    expect(screen.queryByText('الأكثر توصيلاً')).toBeNull();
   });
 });
 

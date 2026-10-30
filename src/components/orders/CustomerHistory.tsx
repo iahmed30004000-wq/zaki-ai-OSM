@@ -35,7 +35,8 @@ interface HistoryOrder {
 
 interface HistoryResponse {
   customer: { fullName: string; rawPhone: string; totalOrders: number; deliveredOrders: number; cancelledOrders: number };
-  risk: { tier: 'SAFE' | 'WATCH' | 'HIGH'; returnRate: number; orders: number; returns: number; requiresPrepaymentOrApproval: boolean };
+  /** ABSENT without `insights.view` — the return-risk tier is a smart card. */
+  risk?: { tier: 'SAFE' | 'WATCH' | 'HIGH'; returnRate: number; orders: number; returns: number; requiresPrepaymentOrApproval: boolean };
   orders: HistoryOrder[];
 }
 
@@ -135,14 +136,16 @@ export function CustomerHistoryModal({
 
       {history && (
         <div className="flex flex-wrap items-center gap-2 mb-4">
-          <span className={`text-xs px-2 py-0.5 rounded-md border ${RISK[history.risk.tier].cls}`}>
-            {RISK[history.risk.tier].text} · {Math.round(history.risk.returnRate * 100)}% مرتجع من {history.risk.orders} طلب
-          </span>
+          {history.risk && (
+            <span className={`text-xs px-2 py-0.5 rounded-md border ${RISK[history.risk.tier].cls}`}>
+              {RISK[history.risk.tier].text} · {Math.round(history.risk.returnRate * 100)}% مرتجع من {history.risk.orders} طلب
+            </span>
+          )}
           <span className="text-xs text-[var(--sys-muted-foreground)]">
             إجمالي {history.customer.totalOrders} · مسلّم {history.customer.deliveredOrders} · ملغى{' '}
             {history.customer.cancelledOrders}
           </span>
-          {history.risk.requiresPrepaymentOrApproval && (
+          {history.risk?.requiresPrepaymentOrApproval && (
             <span className="flex items-center gap-1 text-xs text-[var(--sys-destructive)]">
               <RiShieldFlashLine className="w-4 h-4" /> يتطلب دفعاً مسبقاً أو موافقة مشرف
             </span>

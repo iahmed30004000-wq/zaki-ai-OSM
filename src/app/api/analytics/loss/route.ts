@@ -4,6 +4,7 @@ import { orderGoodsCost } from '@/lib/finance-workflow';
 import { requireContext } from '@/lib/geo-context';
 import { can, requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
+import { insightsRefused, mayReadInsights } from '@/lib/insights-key';
 import { reportRange, type DateFilter } from '@/lib/analytics';
 import { summariseLoss, type LossRow } from '@/lib/loss-analysis';
 import { notSuperseded } from '@/lib/superseded';
@@ -40,6 +41,8 @@ export async function GET(req: Request) {
   try {
     const { user, companyId, storeId } = await requireContext();
     await requirePermission('reports.view');
+    // The reasons orders died are a smart card (PR-10): the report key is not enough, the cards' key rides beside it.
+    if (!mayReadInsights(user)) return insightsRefused();
 
     const { searchParams } = new URL(req.url);
     const filter: DateFilter = {

@@ -64,8 +64,8 @@ interface StockRow {
   remaining: number;
   /** Held for open orders — the server's own figure, not a subtraction. */
   reserved: number;
-  /** The newest costed price, or null when this product has never been costed. */
-  lastUnitCost: number | null;
+  /** The newest costed price, or null when this product has never been costed; absent without `costs.view`. */
+  lastUnitCost?: number | null;
   health: StockHealth;
 }
 

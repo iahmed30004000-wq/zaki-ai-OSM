@@ -110,7 +110,8 @@ describe('the catalog names what each action needs', () => {
     const standalone = items.filter((i) => i.requires === null);
     // ai.assist (PR-5): no screen and no list of its own — it is held WITH the key of the work the helper sits in (R4).
     // confirmation.raise_issue and ops.decide_changes (PR-7): each has its own button or door and shows no list (R4).
-    expect(standalone.map((i) => i.key).sort()).toEqual(['ai.assist', 'confirmation.raise_issue', 'customers.create', 'ops.decide_changes', 'orders.create']);
+    // costs.view and insights.view (PR-10): visibility keys — they open no screen and are ticked BESIDE the screen's own key (R5).
+    expect(standalone.map((i) => i.key).sort()).toEqual(['ai.assist', 'confirmation.raise_issue', 'costs.view', 'customers.create', 'insights.view', 'ops.decide_changes', 'orders.create']);
     for (const i of standalone) expect((i.note ?? '').trim().length, `${i.key} بلا ملاحظة`).toBeGreaterThan(10);
   });
 

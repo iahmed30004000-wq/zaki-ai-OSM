@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { inStore } from '@/lib/store-filter';
 import { requireContext } from '@/lib/geo-context';
 import { requirePermission } from '@/lib/authorization';
+import { maySeeCost } from '@/lib/cost-visibility';
 import { apiErrorResponse } from '@/lib/api-error';
 import { productCost } from '@/lib/product-cost';
 import { reservedElsewhere } from '@/lib/reservation';
@@ -17,8 +18,10 @@ import { reservedElsewhere } from '@/lib/reservation';
  */
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
-    const { companyId, storeId, country } = await requireContext();
+    const { user, companyId, storeId, country } = await requireContext();
     await requirePermission('inventory.view');
+    // The quantities are the stock key's; what they cost is the cost key's (PR-10) — omitted, not zeroed, for the rest.
+    const showCost = maySeeCost(user);
     const { id } = await ctx.params;
 
     const product = await db.product.findFirst({
@@ -40,9 +43,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       // and rounding it up to zero would hide the shortage from the one
       // person who can still fix it.
       available: cost.onHand - reserved,
-      averageCost: cost.average,
-      nextOutCost: cost.nextOut,
-      stockValue: cost.stockValue,
+      ...(showCost ? { averageCost: cost.average, nextOutCost: cost.nextOut, stockValue: cost.stockValue } : {}),
       batchCount: cost.batchCount,
       currencyCode: country.currencyCode,
       sourceType: product.sourceType === 'PURCHASED' ? 'PURCHASED' : 'MANUFACTURED',

@@ -40,7 +40,7 @@ vi.mock('next/link', () => ({
 }));
 // A company admin who HOLDS the box: the screen asks the server's question (`userCan`), and the server lets no role
 // through by name — only SUPER_ADMIN holds everything.
-const as = vi.hoisted(() => ({ user: { value: { id: 'u1', role: 'COMPANY_ADMIN', permissions: ['products.view', 'products.edit', 'products.upload_images'] as string[] } } }));
+const as = vi.hoisted(() => ({ user: { value: { id: 'u1', role: 'COMPANY_ADMIN', permissions: ['products.view', 'products.edit', 'products.upload_images', 'insights.view'] as string[] } } }));
 vi.mock('@/context/AppContext', () => ({ useApp: () => ({ currentUser: as.user.value, locale: 'ar', t: {} }) }));
 vi.mock('@/components/ui/Confirm', () => ({
   useConfirm: () => async () => confirmAnswer.value,
@@ -91,7 +91,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mounts.stock = 0;
   confirmAnswer.value = true;
-  as.user.value = { id: 'u1', role: 'COMPANY_ADMIN', permissions: ['products.view', 'products.edit', 'products.upload_images'] };
+  as.user.value = { id: 'u1', role: 'COMPANY_ADMIN', permissions: ['products.view', 'products.edit', 'products.upload_images', 'insights.view'] };
   current = productWith([]);
   fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
     if (init?.method === 'DELETE' || init?.method === 'PATCH' || init?.method === 'POST') return respond({ ok: true });
@@ -223,6 +223,13 @@ describe('the cards that were blank are on the page, for THIS product', () => {
   it('— the performance card and the latest orders are mounted with the page’s own product id', async () => {
     await draw();
     expect(screen.getByTestId('performance').getAttribute('data-product')).toBe('p-1');
+    expect(screen.getByTestId('recent-orders').getAttribute('data-product')).toBe('p-1');
+  });
+
+  it('PR-10: the performance card is a smart card — not mounted (so not fetched) without insights.view, while the orders stay', async () => {
+    as.user.value = { id: 'u7', role: 'MODERATOR', permissions: ['products.view'] };
+    await draw();
+    expect(screen.queryByTestId('performance')).toBeNull();
     expect(screen.getByTestId('recent-orders').getAttribute('data-product')).toBe('p-1');
   });
 

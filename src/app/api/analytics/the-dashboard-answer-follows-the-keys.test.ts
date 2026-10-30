@@ -58,7 +58,7 @@ const as = (...keys: string[]) => {
 
 describe('the analytics answer', () => {
   it('without «عرض المالية»: counts and rates, and not one money figure in any shape', () => {
-    const out = as('reports.view');
+    const out = as('reports.view', 'insights.view');
     expect(out.ordersCount).toEqual({ total: 100 });
     expect(out.financials).toBeUndefined();
     const product = (out.productStats as Record<string, unknown>[])[0];
@@ -78,7 +78,7 @@ describe('the analytics answer', () => {
   });
 
   it('with it: all of the money', () => {
-    const out = as('reports.view', 'finance.view');
+    const out = as('reports.view', 'finance.view', 'insights.view');
     expect(out.financials).toEqual({ netProfit: 2200 });
     expect((out.productStats as Record<string, unknown>[])[0].netProfit).toBe(170);
     expect((out.rankings as Record<string, Record<string, unknown>>).mostProfitable.netProfit).toBe(170);
@@ -96,10 +96,64 @@ describe('the analytics answer', () => {
     }
   });
 
+  it('the rankings are smart cards: absent — not empty — without insights.view, whole with it (PR-10)', () => {
+    for (const keys of [['reports.view'], ['reports.view', 'finance.view'], ['dashboard.view', 'team.monitor']]) {
+      expect(as(...keys), keys.join(',')).not.toHaveProperty('rankings');
+    }
+    expect(as('reports.view', 'insights.view').rankings).toBeTruthy();
+    // the counts and the rates stay for everybody
+    expect(as('reports.view').ordersCount).toEqual({ total: 100 });
+    expect(as('reports.view').rates).toEqual({ confirmationRate: 80 });
+  });
+
+  it('PR-10: the two rankings the model is told leave the AI context with the cards — and come back with the key', () => {
+    const keys = ['dashboard.view', 'reports.view', 'finance.view'];
+    const ctx = (extra: string[]) => (as(...keys, ...extra).aiContext as Record<string, unknown>);
+    const WITH = { ...ANALYTICS, aiContext: { ...ANALYTICS.aiContext, top_demanded_product: 'سيروم', highest_rejection_product: 'كريم' } };
+    held.keys = keys;
+    const without = projectAnalytics(WITH, USER).aiContext as Record<string, unknown>;
+    expect(without).not.toHaveProperty('top_demanded_product');
+    expect(without).not.toHaveProperty('highest_rejection_product');
+    expect(without.total_orders).toBe(100);
+    held.keys = [...keys, 'insights.view'];
+    const withKey = projectAnalytics(WITH, USER).aiContext as Record<string, unknown>;
+    expect(withKey.top_demanded_product).toBe('سيروم');
+    expect(withKey.highest_rejection_product).toBe('كريم');
+    expect(ctx([])).toBeTruthy();
+  });
+
   it('the latest orders with their customers’ phones leave for nobody — the owner included', () => {
     for (const keys of [['dashboard.view'], ['dashboard.view', 'finance.view', 'reports.view', 'customers.view']]) {
       expect(as(...keys).orders, keys.join(',')).toBeUndefined();
     }
+  });
+});
+
+describe('the loss panel is a smart card (PR-10)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    requireContext.mockResolvedValue({ user: USER, companyId: 'c1', storeId: 's1' });
+  });
+
+  it('refuses a reader of the reports who lacks insights.view, in Arabic in both fields, and reads nothing', async () => {
+    held.keys = ['reports.view', 'finance.view'];
+    const res = await loss(new Request('http://x/api/analytics/loss?period=all'));
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.code).toBe('INSIGHTS_REQUIRED');
+    expect(body.error).toMatch(/[\u0600-\u06FF]/);
+    expect(body.errorAr).toBe(body.error);
+    expect(db.order.findMany).not.toHaveBeenCalled();
+    expect(db.order.count).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE: the cards’ key alone, without the reports’ key, is still the reports’ refusal', async () => {
+    const authorization = await import('@/lib/authorization');
+    (authorization.requirePermission as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('FORBIDDEN'));
+    held.keys = ['insights.view'];
+    const res = await loss(new Request('http://x/api/analytics/loss?period=all'));
+    expect(res.status).not.toBe(200);
+    expect(db.order.findMany).not.toHaveBeenCalled();
   });
 });
 
@@ -116,7 +170,7 @@ describe('the loss panel', () => {
   const read = async () => (await loss(new Request('http://x/api/analytics/loss?period=all'))).json();
 
   it('without «عرض المالية»: the counts and reasons, every money figure zero, and it says so', async () => {
-    held.keys = ['reports.view'];
+    held.keys = ['reports.view', 'insights.view'];
     const body = await read();
     expect(body.moneyWithheld).toBe(true);
     expect(body.after.count).toBe(1);
@@ -125,7 +179,7 @@ describe('the loss panel', () => {
   });
 
   it('with it: what the parcel cost', async () => {
-    held.keys = ['reports.view', 'finance.view'];
+    held.keys = ['reports.view', 'finance.view', 'insights.view'];
     const body = await read();
     expect(body.moneyWithheld).toBeUndefined();
     expect(body.after.money).toBeGreaterThan(0);

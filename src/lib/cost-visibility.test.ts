@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { maySeeCost, withoutCost } from './cost-visibility';
 import { attachGrants } from './authorization';
-import { mapLegacyPermission } from './permissions-core';
+import { legacyEffectiveKeys, mapLegacyPermission } from './permissions-core';
+import { VISIBILITY_KEYS_FROM } from './visibility-keys';
 import { repoFile, stripComments } from './guard-source';
 import type { SessionUser } from '@/types/auth';
 import { ROLE_PERMISSIONS } from '@/types/auth';
@@ -25,6 +26,9 @@ function userWith(role: keyof typeof ROLE_PERMISSIONS): SessionUser {
   for (const legacy of ROLE_PERMISSIONS[role] ?? []) {
     grants[legacy] = mapLegacyPermission(legacy)[0];
   }
+  // PR-10, as the engine's in-code fallback does it: `costs.view` goes to whoever held any of the five keys `maySeeCost` used to
+  // be an OR of (src/lib/visibility-keys.ts), so what a role sees did not change on the day.
+  for (const { key, from } of VISIBILITY_KEYS_FROM) if (from.some((k) => grants[k])) grants[key] = { scope: 'ALL_COMPANY' };
   // SUPER_ADMIN is fullAccess in a real session, as it is in the database.
   attachGrants(user, { fullAccess: role === 'SUPER_ADMIN', grants } as never);
   return user;
@@ -106,5 +110,61 @@ describe('who may see what a thing cost', () => {
     const src = stripComments(repoFile('src/components/screens/ProductsScreen.tsx'));
     expect(src).toMatch(/const showsCost = products\.some\([\s\S]{0,120}avgCostPerUnit !== undefined/);
     expect(src).toMatch(/\.\.\.\(showsCost/);
+  });
+});
+
+/**
+ * ONE KEY, NOT AN OR OF FIVE (perm-plan PR-10, D3).
+ *
+ * `maySeeCost` was `inventory.view || inventory.adjust || production.view || production.manage || finance.view`, so the owner
+ * could never take the cost away from the warehouse and keep the shelf. It is `costs.view` now; the migration
+ * 20261030170000_costs_insights_keys gave that key to everybody who held any of the five, and
+ * `the-visibility-keys-keep-every-door.test.ts` proves nobody lost a figure on the day. These are the other half: that the
+ * old keys alone no longer open it.
+ */
+describe('costs.view is the only key that shows a cost', () => {
+  const holding = (...keys: string[]): SessionUser => {
+    const user = { id: 'u2', role: 'MODERATOR', status: 'ACTIVE', companyId: 'c1' } as unknown as SessionUser;
+    const grants: Record<string, unknown> = {};
+    for (const k of keys) grants[k] = { scope: 'ALL_COMPANY' };
+    attachGrants(user, { fullAccess: false, grants } as never);
+    return user;
+  };
+
+  it('the key alone shows the cost, with none of the five', () => {
+    expect(maySeeCost(holding('costs.view'))).toBe(true);
+  });
+
+  it('NEGATIVE: each of the five old keys, alone, shows nothing any more', () => {
+    for (const old of ['inventory.view', 'inventory.adjust', 'production.view', 'production.manage', 'finance.view']) {
+      expect(maySeeCost(holding(old)), `${old} وحده ما زال يفتح الكلفة`).toBe(false);
+    }
+  });
+
+  it('NEGATIVE: all five together, without the key, show nothing', () => {
+    expect(maySeeCost(holding('inventory.view', 'inventory.adjust', 'production.view', 'production.manage', 'finance.view'))).toBe(false);
+  });
+
+  it('the legacy baseline of every role that held one of the five carries the key — the warehouse, the accountant, the managers', () => {
+    const holders = Object.keys(ROLE_PERMISSIONS).filter((r) => {
+      const keys = legacyEffectiveKeys(r as keyof typeof ROLE_PERMISSIONS);
+      return ['inventory.view', 'inventory.adjust', 'production.view', 'production.manage', 'finance.view'].some((k) => keys.includes(k));
+    });
+    expect(holders.length, 'a check over nobody would pass for the wrong reason').toBeGreaterThan(3);
+    for (const r of holders) expect(legacyEffectiveKeys(r as keyof typeof ROLE_PERMISSIONS), r).toContain('costs.view');
+    for (const r of Object.keys(ROLE_PERMISSIONS)) {
+      if (!holders.includes(r)) expect(legacyEffectiveKeys(r as keyof typeof ROLE_PERMISSIONS), r).not.toContain('costs.view');
+    }
+  });
+
+  it('and the inventory and stock doors ask it, not the stock key', () => {
+    for (const file of ['src/app/api/inventory/route.ts', 'src/app/api/products/[id]/stock/route.ts']) {
+      const src = stripComments(repoFile(file));
+      expect(src, `${file}: بلا maySeeCost`).toMatch(/const showCost = maySeeCost\(user\)/);
+    }
+    const stock = stripComments(repoFile('src/app/api/products/[id]/stock/route.ts'));
+    expect(stock, 'كلفة المخزون تُرسل للجميع').toMatch(/\.\.\.\(showCost \? \{ averageCost: cost\.average, nextOutCost: cost\.nextOut, stockValue: cost\.stockValue \} : \{\}\)/);
+    const inv = stripComments(repoFile('src/app/api/inventory/route.ts'));
+    expect(inv, 'آخر كلفة تُرسل للجميع').toMatch(/\.\.\.\(showCost\s*\?\s*\{\s*lastUnitCost,/);
   });
 });

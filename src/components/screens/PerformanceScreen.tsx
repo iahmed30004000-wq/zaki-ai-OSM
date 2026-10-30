@@ -84,6 +84,8 @@ export function PerformanceScreen() {
   const canScores = userCan(currentUser, 'team.monitor');
   // The money columns and «الأكثر ربحاً»: the finance key's, as the server now sends them.
   const canFinance = userCan(currentUser, 'finance.view');
+  /** The four headlines, the per-product return columns and the channel scores are smart cards (PR-10). */
+  const canInsights = userCan(currentUser, 'insights.view');
   const [tab, setTab] = useState<Tab>('team');
   // Opened from a link (?tab=landing) — read after mount, so the server
   // render and the first client render agree.
@@ -135,6 +137,9 @@ export function PerformanceScreen() {
 
   useEffect(() => {
     setTeam(null);
+    // The table of the confirmation team is `team.monitor`'s (PR-10): nobody is asked what they may not read, and a 403 is
+    // never drawn as an empty table.
+    if (!canScores) return;
     // The team endpoint's totals belong to the TEAM table. They were being
     // put into `attrTotals`, which is the attribution tables' state, while
     // the attribution endpoint's totals were being put into `totals`, which
@@ -146,7 +151,7 @@ export function PerformanceScreen() {
         setTotals(d.totals ?? null);
       })
       .catch(() => setTeam([]));
-  }, [dateQuery]);
+  }, [dateQuery, canScores]);
 
   useEffect(() => {
     setModerators(null);
@@ -220,7 +225,8 @@ export function PerformanceScreen() {
     | {
         door: { delivered: number; failed: number; returned: number; decided: number; returnRate: number | null };
         cost: Trust;
-        returnsByProduct: { productId: string; returned: number; decided: number; rate: number | null }[];
+        /** ABSENT without `insights.view` — a smart card, never a list of zeros. */
+        returnsByProduct?: { productId: string; returned: number; decided: number; rate: number | null }[];
       }
     | undefined;
   const costStated = vitals ? vitals.cost.level !== 'WITHHELD' : false;
@@ -332,6 +338,7 @@ export function PerformanceScreen() {
           five questions that costs money twice — the outbound fee and the
           fee to bring it back — and nothing in this product answered it.
         */}
+        {canInsights && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <Rank
             icon={<RiTrophyLine className="w-4 h-4" />}
@@ -371,6 +378,7 @@ export function PerformanceScreen() {
             warn
           />
         </div>
+        )}
 
         {/*
           THE WHOLE COMPANY'S RETURN RATE, ABOVE THE TABLE THAT BREAKS IT UP.
@@ -452,6 +460,7 @@ export function PerformanceScreen() {
                    * cheapest loss was reported per product and the dearest
                    * one was not reported anywhere.
                    */
+                  ...(!canInsights ? [] : [
                   { key: 'c5', label: "مرتجع من الباب",
                     render: (prod: any) => (returnsOf.get(prod.id)?.returned ?? 0) },
                   { key: 'c6', label: "نسبة الإرجاع",
@@ -468,6 +477,7 @@ export function PerformanceScreen() {
                         </span>
                       );
                     } },
+                  ]),
                   // The five money columns, only with «عرض المالية».
                   ...(!canFinance ? [] : [
                   { key: 'c7', label: "إيراد الموصَّل",
@@ -519,6 +529,7 @@ export function PerformanceScreen() {
         </Card>
 
         {/* Confirmation agents */}
+        {canScores && (
         <Card>
           <CardHeader
             title="أداء موظفي التأكيد"
@@ -528,6 +539,7 @@ export function PerformanceScreen() {
             <TeamPerformanceTable rows={team as any} totals={totals} />
           </CardContent>
         </Card>
+        )}
 
         {/* Who brought it in */}
         <Card>
@@ -552,7 +564,7 @@ export function PerformanceScreen() {
         </Card>
 
         {/* What each of those doors DELIVERED and COLLECTED — the score that used to sit at the foot of the channels settings. */}
-        <ChannelScoresSection />
+        {canInsights && <ChannelScoresSection />}
 
         {/* Couriers */}
         <Card>

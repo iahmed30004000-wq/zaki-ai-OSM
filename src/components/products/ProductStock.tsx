@@ -27,9 +27,10 @@ interface Stock {
   onHand: number;
   reserved: number;
   available: number;
-  averageCost: number;
-  nextOutCost: number;
-  stockValue: number;
+  /** The three cost figures are ABSENT (not zero) for a caller without `costs.view`. */
+  averageCost?: number;
+  nextOutCost?: number;
+  stockValue?: number;
   batchCount: number;
   currencyCode: string;
   sourceType: 'MANUFACTURED' | 'PURCHASED';
@@ -124,16 +125,17 @@ export function ProductStock({ productId, canReceive, canProduce }: { productId:
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <Tile label="تكلفة الوحدة (متوسط مرجّح)" value={money(stock.averageCost)} />
-          <Tile label="تكلفة الدفعة القادمة للخروج" value={money(stock.nextOutCost)} />
-          <Tile label="قيمة المخزون" value={money(stock.stockValue)} />
-        </div>
+        {stock.averageCost !== undefined && stock.nextOutCost !== undefined && stock.stockValue !== undefined && (
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <Tile label="تكلفة الوحدة (متوسط مرجّح)" value={money(stock.averageCost)} />
+            <Tile label="تكلفة الدفعة القادمة للخروج" value={money(stock.nextOutCost)} />
+            <Tile label="قيمة المخزون" value={money(stock.stockValue)} />
+          </div>
+        )}
 
         <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
-          «متوسط مرجّح» يعني: كل دفعة بوزن ما تبقّى منها فعلاً. 90 قطعة بـ3 و10 بـ8
-          تكلفتها 3.50 للقطعة — لا 5.50. الدفعات الفارغة خارج الحساب لأنها تقول
-          ماذا كلّف الماضي، لا ماذا تكلّف قطعة اليوم.
+          {stock.averageCost !== undefined &&
+            '«متوسط مرجّح» يعني: كل دفعة بوزن ما تبقّى منها فعلاً. 90 قطعة بـ3 و10 بـ8 تكلفتها 3.50 للقطعة — لا 5.50. الدفعات الفارغة خارج الحساب لأنها تقول ماذا كلّف الماضي، لا ماذا تكلّف قطعة اليوم.'}
           {stock.batchCount > 0 && ` المخزون موزّع على ${stock.batchCount} دفعة.`}
         </p>
 

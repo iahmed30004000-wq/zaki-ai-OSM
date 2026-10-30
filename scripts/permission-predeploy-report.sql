@@ -206,3 +206,77 @@ FROM "users" u
 WHERE u."role" IN ('SUPER_ADMIN', 'COMPANY_ADMIN', 'MANAGER', 'CONFIRMATION_SUPERVISOR', 'WAREHOUSE', 'CONFIRMATION_AGENT')
 GROUP BY u."role"
 ORDER BY 1;
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- AND THE SIXTH QUESTION (PR-10, cost, smart cards and the team's tables): WHICH ROLES WILL THE MIGRATION
+-- 20261030170000_costs_insights_keys GIVE costs.view, insights.view AND team.monitor TO? Every role that holds any key the
+-- door asked before (src/lib/visibility-keys.ts VISIBILITY_KEYS_FROM, the same list the migration reads), and the roles NAMED
+-- COMPANY_ADMIN / MANAGER for team.monitor. A role listed here keeps its figures on the day; the owner unticks the box from
+-- the roles that should not have it afterwards (D5: from a checklist, never inside a migration). Read-only, same as above.
+-- ═══════════════════════════════════════════════════════════════════════
+SELECT k AS "box", r."name" AS "role", r."companyId", array_agg(DISTINCT rp."permission" ORDER BY rp."permission") AS "through"
+FROM "role_permissions" rp
+JOIN "roles" r ON r."id" = rp."roleId"
+CROSS JOIN LATERAL unnest(CASE rp."permission"
+  WHEN 'inventory.view' THEN ARRAY['costs.view', 'insights.view']
+  WHEN 'inventory.adjust' THEN ARRAY['costs.view']
+  WHEN 'production.view' THEN ARRAY['costs.view']
+  WHEN 'production.manage' THEN ARRAY['costs.view']
+  WHEN 'finance.view' THEN ARRAY['costs.view']
+  WHEN 'products.view' THEN ARRAY['insights.view']
+  WHEN 'reports.view' THEN ARRAY['insights.view']
+  WHEN 'dashboard.view' THEN ARRAY['insights.view']
+  WHEN 'confirmation.work' THEN ARRAY['insights.view']
+  WHEN 'orders.confirm' THEN ARRAY['insights.view']
+  WHEN 'customers.view' THEN ARRAY['insights.view']
+  WHEN 'orders.view' THEN ARRAY['insights.view']
+  WHEN 'landing_pages.view' THEN ARRAY['insights.view']
+  WHEN 'users.view' THEN ARRAY['team.monitor']
+  ELSE ARRAY[]::text[]
+END) AS k
+GROUP BY k, r."id", r."name", r."companyId"
+ORDER BY 1, 3 NULLS FIRST, 2;
+
+-- The people who pass the team tables BY NAME and get team.monitor from the migration: how many there are per role.
+SELECT u."role" AS "role", count(*) AS "people"
+FROM "users" u
+WHERE u."role" IN ('COMPANY_ADMIN', 'MANAGER')
+GROUP BY u."role"
+ORDER BY 1;
+
+-- Who holds payroll.pay WITHOUT payroll.view (the catalogue says the first requires the second). The payslip preview now asks
+-- BOTH, so each of these roles loses the preview until the owner ticks «عرض الرواتب» for it — the migration cannot do it
+-- for them without opening the profile's pay and a colleague's owed commission to people who do not see them today.
+SELECT r."name" AS "role", r."companyId"
+FROM "role_permissions" rp
+JOIN "roles" r ON r."id" = rp."roleId"
+WHERE rp."permission" = 'payroll.pay'
+  AND NOT EXISTS (SELECT 1 FROM "role_permissions" v WHERE v."roleId" = rp."roleId" AND v."permission" = 'payroll.view')
+ORDER BY 2 NULLS FIRST, 1;
+
+-- …and the same for a PERSON: a personal «سماح» on payroll.pay with no payroll.view of their own (the role may give it).
+-- The profile’s salary section was already drawn only with payroll.view, so none of them could reach the preview by a screen;
+-- this lists who could still have called it.
+SELECT u."email", u."role"
+FROM "user_permissions" up
+JOIN "users" u ON u."id" = up."userId"
+WHERE up."permission" = 'payroll.pay' AND up."effect" = 'ALLOW'
+  AND NOT EXISTS (SELECT 1 FROM "user_permissions" v WHERE v."userId" = up."userId" AND v."permission" = 'payroll.view' AND v."effect" = 'ALLOW')
+ORDER BY 2, 1;
+
+-- The one widening of PR-10 (see the migration header): who ALREADY holds team.monitor — by a role or by a personal «سماح» — and
+-- will now also read the confirmation team tables through it. And the roles NAMED COMPANY_ADMIN / MANAGER that do not hold it
+-- today: the migration gives it to them (the team tables were open to those names), which undoes an untick the owner may have made.
+SELECT 'role holds team.monitor' AS "what", r."name" AS "who", r."companyId"
+FROM "role_permissions" rp JOIN "roles" r ON r."id" = rp."roleId"
+WHERE rp."permission" = 'team.monitor'
+UNION ALL
+SELECT 'person holds team.monitor', u."email", NULL
+FROM "user_permissions" up JOIN "users" u ON u."id" = up."userId"
+WHERE up."permission" = 'team.monitor' AND up."effect" = 'ALLOW'
+UNION ALL
+SELECT 'named role WITHOUT team.monitor (will receive it)', r."name", r."companyId"
+FROM "roles" r
+WHERE r."name" IN ('COMPANY_ADMIN', 'MANAGER')
+  AND NOT EXISTS (SELECT 1 FROM "role_permissions" rp WHERE rp."roleId" = r."id" AND rp."permission" = 'team.monitor')
+ORDER BY 1, 2;

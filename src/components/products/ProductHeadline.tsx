@@ -23,7 +23,8 @@ import { RiArchiveLine, RiCoinsLine, RiLoader4Line } from '@remixicon/react';
 interface Stock {
   onHand: number;
   available: number;
-  averageCost: number;
+  /** ABSENT (not zero) for a caller without `costs.view`. */
+  averageCost?: number;
   currencyCode: string;
 }
 
@@ -69,11 +70,13 @@ export function ProductHeadline({ productId }: { productId: string }) {
           {/* The weighted average of the stock actually on hand — a March
               run at 3.20 and a June one at 3.60 are one product and two
               costs, and the average is what a sale is measured against. */}
+          {stock.averageCost !== undefined && (
           <span className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] px-3 py-1.5">
             <RiCoinsLine className="h-4 w-4 text-[var(--sys-warning)]" aria-hidden />
             <span className="text-xs text-[var(--sys-muted-foreground)]">متوسط كلفة الوحدة</span>
             <b className="text-sm tabular-nums text-[var(--sys-heading)]" dir="ltr">{money(stock.averageCost)}</b>
           </span>
+          )}
         </>
       )}
     </div>
