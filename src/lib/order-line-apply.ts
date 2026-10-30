@@ -421,27 +421,47 @@ export function costProductIds(changed: ReadonlyArray<LineAuditEntry>): string[]
 }
 
 /**
- * WHAT THE GOODS ON THE ORDER COST US AFTER THE EDIT — the old figure, moved by the lines that moved and by nothing else.
+ * WHAT THE GOODS ON THE ORDER COST US AFTER THE EDIT — a conservative ESTIMATE, by the share of the units.
  *
  * The order's estimated cost was struck once, from the batches of that day, and a line's share of it is not stored. Pricing
- * every line again at today's averages moved the profit of a line nobody touched, and made a product with no batch left
- * count as free. So only the CHANGED lines move it: each contributes (units after − units before) at today's average of its
- * product (a swap takes the old product's units off at the old product's average and puts the new product's on at its own).
- * Every unit that leaves the shelf counts, the gift included — a free unit is free to the customer, never to the shop.
- * Never below nothing; rounded at the currency's own unit.
+ * every line again at today's averages moved the profit of a line nobody touched; taking the OLD units off at TODAY's average
+ * could cut it to nothing while a unit was still on the order (a cost of 12 for three, today's average 9: 12 + 9 − 27), or
+ * leave the old product's cost standing beside the new one's. So the old figure is spread over the units it was struck for
+ * (its own average per unit) and only the CHANGED lines move it:
+ *
+ *   FEWER units   — the units removed take their share OFF at the order's own average (cost × removed ÷ units before).
+ *   MORE units    — the units added are put ON at today's average of the product, or at the order's own where the product has
+ *                   no batch now.
+ *   A SWAP        — the old line's units come off at the order's own average, the new product's go on at its today's average
+ *                   (the order's own where it has none). Nothing is counted twice.
+ *
+ * Every unit that leaves the shelf counts, the gift included — a free unit is free to the customer, never to the shop. Never
+ * below nothing; rounded at the currency's own unit.
+ *
+ * A COST THAT IS NOT KNOWN IS NOT INVENTED. An order struck at 0 (or with no units) has no per-unit figure to move: it is left
+ * as it is and `kept` says so — only when a unit really moved — so the order can be told, on its timeline, that its cost was
+ * not re-estimated.
  */
 export function costAfterEdit(
   oldCost: number,
+  unitsBefore: number,
   changed: ReadonlyArray<LineAuditEntry>,
   averageOf: (productId: string) => number,
   minorUnit: number
-): number {
-  const moved = changed.reduce(
-    (sum, c) =>
-      sum +
-      averageOf(c.productId) * (c.qtyAfter + c.giftAfter) -
-      averageOf(c.productBefore ?? c.productId) * (c.qtyBefore + c.giftBefore),
-    0
-  );
-  return Math.max(0, roundMinor(oldCost + moved, minorUnit));
+): { cost: number; kept: boolean } {
+  const unitsMoved = changed.some((c) => c.qtyAfter + c.giftAfter !== c.qtyBefore + c.giftBefore || c.productBefore !== undefined);
+  if (!(oldCost > 0) || !(unitsBefore > 0)) return { cost: oldCost, kept: unitsMoved };
+  const own = oldCost / unitsBefore;
+  const today = (productId: string) => {
+    const average = averageOf(productId);
+    return average > 0 ? average : own;
+  };
+  let moved = 0;
+  for (const c of changed) {
+    const before = c.qtyBefore + c.giftBefore;
+    const after = c.qtyAfter + c.giftAfter;
+    if (c.productBefore !== undefined) moved += today(c.productId) * after - own * before;
+    else moved += after >= before ? today(c.productId) * (after - before) : -own * (before - after);
+  }
+  return { cost: Math.max(0, roundMinor(oldCost + moved, minorUnit)), kept: false };
 }

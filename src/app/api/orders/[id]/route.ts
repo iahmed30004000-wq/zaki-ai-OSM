@@ -693,8 +693,17 @@ export async function PATCH(
      */
     // (A version the screen did not load is answered by the version check below — VERSION_CONFLICT is the right word then,
     // and no line is read for a decision the order has already moved past.)
+    // A request whose shorthand keys all say what the order already says, and which carries no `lines`, touches no line: it is
+    // a plain edit of the customer's fields and is not judged as an edit of the goods (a statement-linked order may have its
+    // name corrected; a quantity «changed» to the one it has asks the shelf nothing). A key that CHANGES something —
+    // beside which a price kept as it is stays a price — makes it a goods request, and all its keys go to the plan.
+    const touchesGoods =
+      approvedLines.edits.length > 0 ||
+      (quantity !== undefined && quantity !== existing.quantity) ||
+      (productId !== undefined && productId !== existing.productId) ||
+      (sellingPrice !== undefined && sellingPrice !== Number(existing.sellingPrice ?? 0));
     const planned =
-      viaRequest !== null && expectedVersion === existing.version
+      viaRequest !== null && touchesGoods && expectedVersion === existing.version
         ? await planLineApply({
             order: existing as unknown as EditableOrderRow,
             companyId,
@@ -1552,6 +1561,8 @@ export async function PATCH(
     // them; otherwise the existing lines carry on, adjusted by whatever
     // single-line fields were sent.
     let nextLines: { productId: string; quantity: number; unitPrice: number }[] = [];
+    /** The order's estimated cost was not known (0), so an edit of the lines could not move it. */
+    let costKept = false;
     let lineProducts = new Map<string, { id: string; name: string }>();
     let lineMoney: ReturnType<typeof computeCod> | null = null;
 
@@ -1730,12 +1741,16 @@ export async function PATCH(
         // (the figure was struck once, from that day's batches; a line nobody touched keeps its share of it, and a product
         // with no batch left does not turn into free goods). Every unit that leaves the shelf counts, the gift included.
         const costs = await productCosts(db, companyId, costProductIds(lineApply.audit));
-        updateData.estimatedCostOfGoods = costAfterEdit(
+        const recost = costAfterEdit(
           Number(existing.estimatedCostOfGoods ?? 0),
+          lineApply.stored.reduce((sum, l) => sum + l.quantity + l.freeQuantity, 0),
           lineApply.audit,
           (pid) => costs.get(pid)?.average ?? 0,
           country.minorUnit
         );
+        updateData.estimatedCostOfGoods = recost.cost;
+        // A cost struck at nothing has no per-unit figure to move; it is left, and the timeline says so.
+        costKept = recost.kept;
       }
     }
     if (productId !== undefined && productId !== existing.productId) {
@@ -2227,6 +2242,7 @@ export async function PATCH(
                     lines: lineApply.audit,
                     totalBefore: lineApply.before.cod,
                     totalAfter: lineApply.after.cod,
+                    ...(costKept ? { costNote: 'بقيت كما هي — التكلفة المخزَّنة غير معروفة' } : {}),
                   }
                 : {}),
             }),

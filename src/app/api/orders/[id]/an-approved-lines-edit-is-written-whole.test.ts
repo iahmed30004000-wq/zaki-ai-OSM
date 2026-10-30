@@ -1155,6 +1155,75 @@ describe('ⅩⅢ · what the goods cost moves with the lines that moved', () => 
   });
 });
 
+describe('ⅩⅢb · the cost is an estimate by the share of the units', () => {
+  it('(أ) fewer units come off at the order’s own average — not at today’s, which would cut it to nothing with a unit still on the order', async () => {
+    // 6 units (cream 3+1, soap 2) cost 24: 4 a unit. The cream goes to ONE unit: three units off at 4. Today's cream average is 9.
+    fake.order.estimatedCostOfGoods = 24;
+    fake.costs[CREAM] = 9;
+    approve({ lines: lines([{ lineId: 'line-cream-01', quantity: { from: 3, to: 1 }, lineTotal: { from: 36, to: 12 }, freeQuantity: { from: 1, to: 0 } }]) });
+    const res = await apply();
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect(fake.order.estimatedCostOfGoods).toBe(12);
+  });
+
+  it('(ج) a cost struck at nothing is not invented — it stays nothing, and the order says it was not re-estimated', async () => {
+    fake.order.estimatedCostOfGoods = 0;
+    const res = await apply();
+    expect(res.status).toBe(200);
+    expect(fake.order.estimatedCostOfGoods).toBe(0);
+    expect(JSON.parse(activityOf('ORDER_UPDATED').metadata).costNote).toContain('غير معروفة');
+  });
+
+  it('NEGATIVE: a cost that is known says nothing of the kind', async () => {
+    fake.order.estimatedCostOfGoods = 20;
+    await apply();
+    expect(JSON.parse(activityOf('ORDER_UPDATED').metadata)).not.toHaveProperty('costNote');
+  });
+});
+
+describe('ⅩⅢc · a request that changes no line is a plain edit of the customer', () => {
+  it('a quantity «changed» to the one the order has, beside a new name, on an order a statement claims: it goes through — no STATEMENT_LINKED, no shelf, no line written', async () => {
+    // one line, so the plan WOULD judge a shorthand quantity if it were asked
+    seed({
+      lines: [line({ id: 'line-only-01', productId: CREAM, productName: 'كريم', quantity: 3, unitPrice: 12, lineTotal: 36, reservedQty: 3 })],
+      addOns: [],
+      order: { quantity: 3, freeQuantity: 0, sellingPrice: 36, totalAmount: 38.5 },
+    });
+    fake.claims = 1;
+    approve({ quantity: { from: 3, to: 3 }, customerName: { from: 'أحمد', to: 'محمد علي' } });
+    const res = await apply();
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect(JSON.stringify(fake.customerWrites)).toContain('محمد علي');
+    expect(fake.writes.filter((w) => w.startsWith('orderItem'))).toEqual([]);
+  });
+
+  it('NEGATIVE: the same order and a quantity that really changes IS judged as goods — and refused as the statement’s', async () => {
+    fake.claims = 1;
+    seed({
+      lines: [line({ id: 'line-only-01', productId: CREAM, productName: 'كريم', quantity: 3, unitPrice: 12, lineTotal: 36, reservedQty: 3 })],
+      addOns: [],
+      order: { quantity: 3, freeQuantity: 0, sellingPrice: 36, totalAmount: 38.5 },
+    });
+    fake.claims = 1;
+    approve({ quantity: { from: 3, to: 5 }, customerName: { from: 'أحمد', to: 'محمد علي' } });
+    const res = await apply();
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('STATEMENT_LINKED');
+    wroteNothing();
+  });
+
+  it('«keep the price at 50» beside a quantity that changes stays a price (all its keys go to the plan)', async () => {
+    seed({
+      lines: [line({ id: 'line-only-01', productId: CREAM, productName: 'كريم', quantity: 3, unitPrice: 16.667, lineTotal: 50, reservedQty: 3 })],
+      addOns: [],
+      order: { quantity: 3, freeQuantity: 0, sellingPrice: 50, totalAmount: 52.5 },
+    });
+    approve({ quantity: { from: 3, to: 6 }, sellingPrice: { from: 50, to: 50 } });
+    expect((await apply()).status).toBe(200);
+    expect(fake.lines[0]).toMatchObject({ quantity: 6, lineTotal: 50 });
+  });
+});
+
 describe('ⅩⅣ · a price alone does not touch what a line holds on the shelf', () => {
   it('even when the shelf has been sold past the order: no line loses its reservation, and none is written again', async () => {
     fake.shelf[CREAM] = 3; // the order holds 4 of it

@@ -512,42 +512,67 @@ describe('Ⅷ · the rows at the write are the rows the plan read', () => {
   it('a line that took another id (a save in between): no', () => expect(linesAreStill(rows([{ id: 'x' }]), [l1(), l2()])).toBe(false));
 });
 
-describe('Ⅸ · what the goods cost moves by the lines that moved — and by nothing else', () => {
-  const avg = (id: string) => ({ [CREAM]: 2.5, [SOAP]: 1.2 })[id] ?? 0;
+describe('Ⅸ · what the goods cost: an estimate by the share of the units, moved by the lines that moved', () => {
+  const avg = (id: string) => ({ [CREAM]: 2.5, [SOAP]: 7, [DROPS]: 0 })[id] ?? 0;
   const entry = (over: Partial<LineAuditEntry>): LineAuditEntry => ({
     productId: CREAM, qtyBefore: 3, qtyAfter: 5, totalBefore: 36, totalAfter: 58, giftBefore: 1, giftAfter: 2, ...over,
   });
+  const cost = (...a: Parameters<typeof costAfterEdit>) => costAfterEdit(...a).cost;
 
-  it('3 (+1) → 5 (+2) of the cream: seven units where there were four — three more at 2.500, on the cost it had', () => {
-    expect(costAfterEdit(20, [entry({})], avg, 3)).toBe(27.5);
+  it('MORE units go on at today’s average: 3 (+1) → 5 (+2) of the cream is three more at 2.500, on the 20 it had', () => {
+    // the order holds 6 units (cream 4, soap 2): the soap’s share is in the 20 and nobody is touching it
+    expect(cost(20, 6, [entry({})], avg, 3)).toBe(27.5);
   });
 
-  it('a line nobody touched is not in the list, so its share of the old figure stands (the soap is neither added nor re-priced)', () => {
-    expect(costAfterEdit(20, [], avg, 3)).toBe(20);
+  it('a line nobody touched is not in the list, so its share of the old figure stands', () => {
+    expect(cost(20, 6, [], avg, 3)).toBe(20);
   });
 
   it('a price alone moves no units, so it moves no cost', () => {
-    expect(costAfterEdit(20, [entry({ qtyAfter: 3, giftAfter: 1, totalAfter: 40 })], avg, 3)).toBe(20);
+    expect(costAfterEdit(20, 6, [entry({ qtyAfter: 3, giftAfter: 1, totalAfter: 40 })], avg, 3)).toEqual({ cost: 20, kept: false });
   });
 
-  it('fewer units take cost off — and never below nothing', () => {
-    expect(costAfterEdit(20, [entry({ qtyAfter: 1, giftAfter: 0 })], avg, 3)).toBe(12.5);
-    expect(costAfterEdit(2, [entry({ qtyAfter: 1, giftAfter: 0 })], avg, 3)).toBe(0);
+  it('(أ) FEWER units come off at the ORDER’S OWN average, not today’s: 3 → 1 on a cost of 12 (4 a unit) with today’s average at 9 leaves 4, not nothing', () => {
+    const nine = () => 9;
+    // the old way: 12 + 9 × 1 − 9 × 3 = −6 → cut to 0, with a unit still on the order (profit inflated)
+    expect(cost(12, 3, [entry({ qtyBefore: 3, giftBefore: 0, qtyAfter: 1, giftAfter: 0 })], nine, 3)).toBe(4);
   });
 
-  it('a swap takes the old product’s units off at its average and puts the new one’s on at its own: 3 cream → 3 soap', () => {
-    // −(3 + 1) × 2.500 + 3 × 1.200 = −6.400
-    expect(costAfterEdit(20, [entry({ productId: SOAP, productBefore: CREAM, qtyAfter: 3, giftAfter: 0 })], avg, 3)).toBe(13.6);
+  it('…and taking every unit off leaves nothing, never less', () => {
+    expect(cost(12, 3, [entry({ qtyBefore: 3, giftBefore: 0, qtyAfter: 0, giftAfter: 0 })], avg, 3)).toBe(0);
+    expect(cost(5, 3, [entry({ qtyBefore: 3, giftBefore: 0, qtyAfter: 0, giftAfter: 0 }), entry({ productId: SOAP, qtyBefore: 3, giftBefore: 0, qtyAfter: 0, giftAfter: 0 })], avg, 3)).toBe(0);
   });
 
-  it('a product with no batch left counts as nothing for ITS units only: the others’ cost does not become free', () => {
-    expect(costAfterEdit(20, [entry({ productId: DROPS, productBefore: DROPS })], avg, 3)).toBe(20);
+  it('(ب) A SWAP takes the old line’s share off by the share and puts the new product on at its own average — whatever the old product’s average is today', () => {
+    // 3 units, cost 12; the old product (DROPS) has no batch now (average 0); the new one (SOAP) averages 7 → 12 − 12 + 3 × 7
+    const swap = entry({ productId: SOAP, productBefore: DROPS, qtyBefore: 3, giftBefore: 0, qtyAfter: 3, giftAfter: 0 });
+    expect(cost(12, 3, [swap], avg, 3)).toBe(21);
+    // the old way left the old cost standing and added the new one beside it: 12 + 21 − 0 = 33
+    expect(cost(12, 3, [swap], avg, 3)).not.toBe(33);
+  });
+
+  it('a swap to a product with no batch either does not double: the order’s own average stands in', () => {
+    const swap = entry({ productId: DROPS, productBefore: CREAM, qtyBefore: 3, giftBefore: 0, qtyAfter: 3, giftAfter: 0 });
+    expect(cost(12, 3, [swap], () => 0, 3)).toBe(12);
+  });
+
+  it('MORE units of a product with no batch now go on at the order’s own average', () => {
+    // 4 units cost 20 (5 a unit); three more of a product with no batch → 20 + 3 × 5
+    expect(cost(20, 4, [entry({ productId: DROPS, qtyBefore: 1, giftBefore: 0, qtyAfter: 4, giftAfter: 0 })], avg, 3)).toBe(35);
+  });
+
+  it('(ج) A COST THAT IS NOT KNOWN IS NOT INVENTED: struck at nothing, it stays nothing — and says it was kept, only when a unit really moved', () => {
+    expect(costAfterEdit(0, 6, [entry({})], avg, 3)).toEqual({ cost: 0, kept: true });
+    expect(costAfterEdit(0, 0, [entry({})], avg, 3)).toEqual({ cost: 0, kept: true });
+    // a price alone moved nothing: nothing to say
+    expect(costAfterEdit(0, 6, [entry({ qtyAfter: 3, giftAfter: 1 })], avg, 3)).toEqual({ cost: 0, kept: false });
   });
 
   it('is rounded at the currency’s own unit', () => {
     const third = () => 0.3333;
-    expect(costAfterEdit(0, [entry({ qtyBefore: 0, giftBefore: 0, qtyAfter: 7, giftAfter: 0 })], third, 2)).toBe(2.33);
-    expect(costAfterEdit(0, [entry({ qtyBefore: 0, giftBefore: 0, qtyAfter: 7, giftAfter: 0 })], third, 0)).toBe(2);
+    const more = [entry({ qtyBefore: 0, giftBefore: 0, qtyAfter: 7, giftAfter: 0 })];
+    expect(cost(1, 1, more, third, 2)).toBe(3.33);
+    expect(cost(1, 1, more, third, 0)).toBe(3);
   });
 
   it('names the products it needs the averages of: what the changed lines were and became, once each', () => {
