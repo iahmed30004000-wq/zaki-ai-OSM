@@ -27,6 +27,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const body = await req.json();
     const { action, role, status, roleId } = body;
 
+    /**
+     * A BOX OF ITS OWN, ON TOP OF THE EDIT KEY (perm-plan PR-13).
+     *
+     * Deleting an account and setting somebody's password rode on «تعديل المستخدمين» (the second on two role NAMES): the owner
+     * could not hand a manager the profiles and keep the deletion away from him. Each now asks its key, before the account is
+     * even looked up. Moving a shift is judged further down, once the account's own values are known.
+     */
+    const missingBox = (key: string) => {
+      const refusal = forbiddenAr(`Forbidden: missing required permission ${key}`);
+      return NextResponse.json({ error: refusal, errorAr: refusal }, { status: 403 });
+    };
+    if (action === 'delete' && !can(admin, 'users.delete')) return missingBox('users.delete');
+    if (action === 'resetPassword' && !can(admin, 'users.security')) return missingBox('users.security');
+
     const target = await db.user.findUnique({
       where: { id },
       include: { assignedBy: { select: { name: true } } },
@@ -306,12 +320,22 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
        * A save that sends the values the account already has is not a change: the shift card posts both fields
        * together, and an employee correcting their own phone must not be refused for a shift they did not touch.
        */
-      if (target.id === admin.id && ('shiftStart' in body || 'shiftEnd' in body || 'restDays' in body)) {
-        const moves =
-          ('shiftStart' in body && parseHhMm(body.shiftStart) !== (target.shiftStart ?? null)) ||
-          ('shiftEnd' in body && parseHhMm(body.shiftEnd) !== (target.shiftEnd ?? null)) ||
-          ('restDays' in body && parseRestDays(body.restDays) !== (target.restDays ?? null));
-        if (moves && !can(admin, 'payroll.pay')) {
+      const movesShift =
+        ('shiftStart' in body && parseHhMm(body.shiftStart) !== (target.shiftStart ?? null)) ||
+        ('shiftEnd' in body && parseHhMm(body.shiftEnd) !== (target.shiftEnd ?? null)) ||
+        ('restDays' in body && parseRestDays(body.restDays) !== (target.restDays ?? null));
+
+      /*
+       * AND ANYBODY'S SHIFT HAS A BOX OF ITS OWN (PR-13): `users.shift`, not the edit key.
+       *
+       * Lateness and the deduction built on it are counted from these three fields, so moving them is no more «editing a
+       * profile» than the salary is. Same rule as the self-rule below: only a CHANGE asks — the card posts all three
+       * together, and a colleague correcting a phone must not be refused for a shift they did not touch.
+       */
+      if (movesShift && !can(admin, 'users.shift')) return missingBox('users.shift');
+
+      if (target.id === admin.id && movesShift) {
+        if (!can(admin, 'payroll.pay')) {
           const refusal = 'ما بتقدر تغيّر دوامك بنفسك — الدوام بيحدد التأخير والخصم، وبيغيّره حدا ثاني.';
           return NextResponse.json({ error: refusal, errorAr: refusal, code: 'OWN_SHIFT' }, { status: 403 });
         }

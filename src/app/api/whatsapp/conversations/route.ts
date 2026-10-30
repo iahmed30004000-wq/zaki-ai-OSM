@@ -10,6 +10,7 @@ import { normalizePhoneNumber } from '@/lib/phone';
 import { apiErrorResponse } from '@/lib/api-error';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { typed } from '@/lib/text-search';
+import { inboxScopeWhere } from '@/lib/whatsapp/inbox-scope';
 
 export async function GET(req: Request) {
   try {
@@ -24,6 +25,9 @@ export async function GET(req: Request) {
     const q = searchParams.get('q')?.trim() || '';
     const cursor = searchParams.get('cursor')?.trim() || '';
     const where: any = { companyId, status };
+    // A person limited to «المسندة إليه» sees hers and the unassigned ones (PR-13) — inside AND, beside the search's own OR.
+    const mine = inboxScopeWhere(user);
+    if (mine) where.AND = [mine];
     if (assigned === 'me') where.assignedUserId = user.id;
     else if (assigned === 'unassigned') where.assignedUserId = null;
     else if (assigned && assigned !== 'all') where.assignedUserId = assigned;

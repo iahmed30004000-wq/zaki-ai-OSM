@@ -4,7 +4,7 @@ import { requireContext } from '@/lib/geo-context';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { manageableUserWhere, mayActOnUser } from '@/lib/manageable-user';
-import { mayResetTwoFactor, TWO_FACTOR_RESET_ROLES } from '@/lib/two-factor-reset';
+import { mayResetTwoFactor } from '@/lib/two-factor-reset';
 import { canActOnUser } from '@/lib/user-permissions';
 
 /**
@@ -22,10 +22,12 @@ import { canActOnUser } from '@/lib/user-permissions';
  * with a fresh secret and fresh recovery codes. A reset account is not an
  * account without a second factor; it is an account that has to set one up.
  *
- * WHO. The owner alone — `TWO_FACTOR_RESET_ROLES`. Not «anyone who can edit
- * users»: stripping a second factor is the one administrative act that
- * weakens somebody else's account, and the person who may do it should be
- * the smallest possible set.
+ * WHO. The holders of `users.security` — the owner and the company admin, and
+ * nobody else unless the owner ticks it for them (D6, PR-13). Not «anyone who
+ * can edit users»: stripping a second factor is the one administrative act
+ * that weakens somebody else's account, so it has a box of its own, and the
+ * SUPER_ADMIN holds it centrally — whatever is unticked from the rest, an
+ * account that lost its phone can always be recovered by the owner.
  *
  * AND NEVER YOUR OWN. An owner resetting themselves proves nothing — the
  * session doing it is already authenticated — but it is exactly the move a

@@ -10,6 +10,7 @@ import {
   requestFingerprint,
 } from '@/lib/v1/idempotency';
 import { NOTE_KINDS } from '@/lib/order-notes';
+import { raisedBySystem } from '@/lib/v1/order-origin';
 
 /**
  * POST /api/v1/orders/{id}/notes — «الزبون طلب التوصيل بعد الساعة 5».
@@ -70,14 +71,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     /*
-     * THE ORDER IS PROVED TO BE THIS COMPANY'S BEFORE THE KEY IS CLAIMED.
+     * THE ORDER IS PROVED TO BE THIS COMPANY'S — AND THIS SYSTEM'S — BEFORE THE KEY IS CLAIMED.
      *
      * A note on somebody else's order is a 404, and burning an idempotency
      * key on it would mean the caller could not reuse that key once it
-     * corrected the id.
+     * corrected the id. «This system's» (PR-13) is an order it raised through
+     * this door (`raisedBySystem`): a leaked key can no longer write on the
+     * rest of the company's orders.
      */
     const order = await db.order.findFirst({
-      where: { id, companyId: caller.companyId },
+      where: { id, companyId: caller.companyId, ...raisedBySystem(caller.system) },
       select: { id: true },
     });
     if (!order) throw new V1Fault(404, V1_CODE.NOT_FOUND, 'No such order');

@@ -50,7 +50,9 @@ const written = () => db.user.update.mock.calls.map((c) => c[0].data);
 
 beforeEach(() => {
   vi.clearAllMocks();
-  held.keys = new Set();
+  // PR-13 (قديم ← جديد): moving ANYBODY's shift asks `users.shift`; this file is about the self-rule on top of it, so the admin holds it
+  // (the key itself is tested in the-users-doors-ask-their-own-keys.test.ts).
+  held.keys = new Set(['users.shift']);
   actor.current = { id: 'admin', name: 'مدير', role: 'COMPANY_ADMIN', companyId: 'c1' };
   db.user.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => row(where.id));
   db.user.update.mockImplementation(async () => row('x'));

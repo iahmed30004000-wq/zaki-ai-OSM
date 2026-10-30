@@ -26,6 +26,7 @@ import { AI_ASSIST_FROM, AI_ASSIST_KEY } from './ai-assistants';
 import { ORDER_ACTION_KEYS_FROM } from './order-action-keys';
 import { CONFIRMATION_SPLIT_KEYS_FROM, rolesThatPassedByName } from './confirmation-split-keys';
 import { FINANCE_SPLIT_KEYS_FROM } from './finance-split-keys';
+import { USERS_ROLES_APPS_KEYS_FROM } from './users-roles-apps-keys';
 
 export type Scope = 'ALL_COMPANY' | 'OWN' | 'ASSIGNED' | 'CATEGORY' | 'SPECIFIC';
 
@@ -307,6 +308,12 @@ export async function computeEffectiveGrants(
       if (grants[key] || denied.has(key)) continue;
       if (from.some((k) => grants[k])) grants[key] = { scope: 'ALL_COMPANY' };
     }
+    // The users, roles and app-key boxes (PR-13): the same, and a door that used to be a role NAME (the password and
+    // second-factor doors read the two owner names, the system-template door read COMPANY_ADMIN) is kept for that role.
+    for (const { key, from, byRole } of USERS_ROLES_APPS_KEYS_FROM) {
+      if (grants[key] || denied.has(key)) continue;
+      if (from.some((k) => grants[k]) || (byRole ?? []).includes(user.role)) grants[key] = { scope: 'ALL_COMPANY' };
+    }
   }
 
   return { fullAccess: false, grants };
@@ -344,6 +351,10 @@ export function legacyEffectiveKeys(role: UserRole): string[] {
   }
   // And the cash box's and the statement approval's (PR-9).
   for (const { key, from } of FINANCE_SPLIT_KEYS_FROM) if (from.some((k) => keys.has(k))) keys.add(key);
+  // And the users, roles and app-key boxes (PR-13), with the role NAMES that used to open a door by themselves.
+  for (const { key, from, byRole } of USERS_ROLES_APPS_KEYS_FROM) {
+    if (from.some((k) => keys.has(k)) || (byRole ?? []).includes(role)) keys.add(key);
+  }
   return [...keys];
 }
 

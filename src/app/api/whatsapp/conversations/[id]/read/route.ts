@@ -9,17 +9,19 @@ import { requireCompanyTenant, requirePermission } from '@/lib/auth';
 import { getAccessToken, getPhoneNumberId } from '@/lib/whatsapp/config';
 import { markMessageRead } from '@/lib/whatsapp/cloud-api';
 import { apiErrorResponse } from '@/lib/api-error';
+import { inboxScopeWhere } from '@/lib/whatsapp/inbox-scope';
 
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requirePermission('whatsapp.view');
+    const viewer = await requirePermission('whatsapp.view');
     const { companyId } = await requireCompanyTenant();
     const { id } = await params;
 
-    const conv = await db.whatsAppConversation.findFirst({ where: { id, companyId } });
+    const mine = inboxScopeWhere(viewer);
+    const conv = await db.whatsAppConversation.findFirst({ where: { id, companyId, ...(mine ? { AND: [mine] } : {}) } });
     if (!conv) return NextResponse.json({ error: 'المحادثة غير موجودة' }, { status: 404 });
 
     await db.whatsAppConversation.update({ where: { id }, data: { unreadCount: 0 } });

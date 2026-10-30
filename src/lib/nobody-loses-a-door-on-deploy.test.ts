@@ -316,3 +316,64 @@ describe('the confirmation and change-request boxes', () => {
     }
   });
 });
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * THE USERS, ROLES AND APP-KEY BOXES (PR-13) — GRANTED THROUGH A GATE TABLE, BY KEY AND BY NAME.
+ *
+ * 20261030190000_users_roles_apps_keys reads one gate table (`sp13_gate`) with three columns — the box, the key its door asked,
+ * the role NAME its door read. Here: each new key is in the catalog, is granted FROM that key or name, lands in all three places and
+ * runs twice. The full replay — every person against every door, the «منع», the baseline, the owner’s way back in — is
+ * `the-users-roles-apps-split-keeps-every-door.test.ts`.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+describe('the users, roles and app-key boxes', () => {
+  const sql = readFileSync(path.join(MIGRATIONS, '20261030190000_users_roles_apps_keys', 'migration.sql'), 'utf8')
+    .split('\n')
+    .filter((l) => !l.trim().startsWith('--'))
+    .join('\n');
+  const flat = sql.split(/\s+/).join('');
+  const BY_KEY: Record<string, string[]> = {
+    'users.delete': ['users.edit'],
+    'users.shift': ['users.edit'],
+    'apps.tokens': ['apps.manage'],
+  };
+  const BY_NAME: Record<string, string[]> = {
+    'users.security': ['COMPANY_ADMIN'],
+    'roles.edit_system': ['COMPANY_ADMIN'],
+  };
+
+  it('are all in the catalog, so the owner can tick them', () => {
+    for (const k of [...Object.keys(BY_KEY), ...Object.keys(BY_NAME)]) expect(ALL_CATALOG_KEYS.has(k), `${k} مش بقائمة الصلاحيات`).toBe(true);
+  });
+
+  it('are each granted FROM the key their door used to ask — a gate row per (box, key)', () => {
+    for (const [box, sources] of Object.entries(BY_KEY)) {
+      for (const source of sources) {
+        expect(flat, `${box} مش مأخوذ من ${source} — من يمرّ بالباب رح يخسره`).toContain(`('${box}','${source}',NULL::text)`);
+      }
+    }
+  });
+
+  it('and, where the old door read a NAME, from that name — a gate row per (box, role)', () => {
+    for (const [box, names] of Object.entries(BY_NAME)) {
+      for (const name of names) {
+        expect(flat, `${box} مش مأخوذ من الاسم ${name} — من يمرّ بالاسم رح يخسره`).toContain(`('${box}',NULL::text,'${name}')`);
+      }
+    }
+  });
+
+  it('writes nothing for the owner’s name: SUPER_ADMIN passes every door centrally and has no row to lose', () => {
+    expect(flat).not.toContain(`'SUPER_ADMIN')`);
+  });
+
+  it('land in all three places, carry the «منع» across, and run twice without changing anything', () => {
+    expect(sql).toContain('INSERT INTO "role_permission_defaults"');
+    expect(sql).toContain('INSERT INTO "role_permissions"');
+    expect(sql).toContain('INSERT INTO "user_permissions"');
+    expect(sql).toContain(`'DENY'`);
+    for (const s of sql.split(/;\s*\n/).filter((x) => x.trim().startsWith('INSERT INTO'))) {
+      expect(s).toMatch(/ON CONFLICT[\s\S]*DO NOTHING/);
+    }
+  });
+});

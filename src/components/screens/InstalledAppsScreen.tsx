@@ -8,6 +8,8 @@ import { RiAlertLine, RiCheckboxCircleLine, RiCloseCircleLine, RiLoader4Line, Ri
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SystemTokensPanel } from '@/components/apps/SystemTokensPanel';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
+import { useApp } from '@/context/AppContext';
+import { userCan } from '@/lib/can';
 
 /**
  * /apps/installed — what is connected, and whether it is hearing us.
@@ -39,6 +41,7 @@ interface Shelf {
 }
 
 export function InstalledAppsScreen() {
+  const { currentUser } = useApp();
   const [shelf, setShelf] = useState<Shelf | null>(null);
   const [deliveries, setDeliveries] = useState<Delivery[] | null>(null);
   const [totals, setTotals] = useState({ pending: 0, failed: 0, ok: 0 });
@@ -145,7 +148,8 @@ export function InstalledAppsScreen() {
         — «الإعدادات ← التطبيقات ← توكنات الأنظمة», where the contract says
         it belongs. One screen, so «ما هو موصول بشركتك» has one answer.
       */}
-      <SystemTokensPanel />
+      {/* Its own key (PR-13): the shelf above opens on «عرض التطبيقات»; the keys other systems call us with are `apps.tokens`. */}
+      {userCan(currentUser, 'apps.tokens') && <SystemTokensPanel />}
 
       <section>
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">

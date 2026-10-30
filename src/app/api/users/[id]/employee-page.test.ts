@@ -26,6 +26,8 @@ vi.mock('@/lib/auth', () => ({
 }));
 vi.mock('@/lib/authorization', () => ({
   requirePermission: async () => actor.current,
+  // PR-13 (قديم ← جديد): moving a shift asks `users.shift` through `can`; this file is about the role and the phone, so the actor holds it.
+  can: () => true,
 }));
 // Acting on a more senior account is its own test (people-act-within-their-reach).
 vi.mock('@/lib/user-permissions', () => ({

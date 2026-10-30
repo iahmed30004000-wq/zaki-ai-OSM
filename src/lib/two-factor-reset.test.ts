@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mayResetTwoFactor, TWO_FACTOR_RESET_ROLES } from './two-factor-reset';
+import { mayResetTwoFactor } from './two-factor-reset';
 import { TWO_FACTOR_ROLES } from './two-factor';
 import type { SessionUser } from '@/types/auth';
 import { repoFile, stripComments } from './guard-source';
@@ -16,14 +16,14 @@ import { repoFile, stripComments } from './guard-source';
  * by a permission another manager could hand out.
  */
 
-const who = (id: string, role: string) => ({ id, role, permissions: [] }) as unknown as SessionUser;
+// PR-13 (قديم ← جديد): the reset is the KEY `users.security` now, not two role names. The owner holds every key centrally.
+const who = (id: string, role: string, permissions: string[] = []) => ({ id, role, permissions }) as unknown as SessionUser;
 const SOMEBODY = 'user-target';
 
 describe('the owner, and nobody else', () => {
-  it('lets the owner reset an employee', () => {
-    for (const role of TWO_FACTOR_RESET_ROLES) {
-      expect(mayResetTwoFactor(who('owner', role), SOMEBODY), role).toEqual({ ok: true });
-    }
+  it('lets the owner reset an employee — centrally, with no key listed — and the company admin who holds the key', () => {
+    expect(mayResetTwoFactor(who('owner', 'SUPER_ADMIN'), SOMEBODY)).toEqual({ ok: true });
+    expect(mayResetTwoFactor(who('owner', 'COMPANY_ADMIN', ['users.security']), SOMEBODY)).toEqual({ ok: true });
   });
 
   /**
@@ -32,13 +32,11 @@ describe('the owner, and nobody else', () => {
    * being the same permission is how that set widens without anybody
    * deciding it should.
    */
-  it('and refuses everybody else, including the roles that carry 2FA themselves', () => {
-    const owners = TWO_FACTOR_RESET_ROLES as readonly string[];
-    for (const role of ['MANAGER', 'ACCOUNTANT', 'SETTLEMENT_OFFICER', 'CONFIRMATION_SUPERVISOR', 'WAREHOUSE']) {
-      expect(owners, `${role} صار مالكاً`).not.toContain(role);
-      const v = mayResetTwoFactor(who('u', role), SOMEBODY);
+  it('and refuses everybody else, including the roles that carry 2FA themselves and a company admin the key was taken from', () => {
+    for (const role of ['MANAGER', 'ACCOUNTANT', 'SETTLEMENT_OFFICER', 'CONFIRMATION_SUPERVISOR', 'WAREHOUSE', 'COMPANY_ADMIN']) {
+      const v = mayResetTwoFactor(who('u', role, ['users.view', 'users.edit', 'roles.edit_system']), SOMEBODY);
       expect(v.ok, role).toBe(false);
-      if (!v.ok) expect(v.code).toBe('OWNER_ONLY');
+      if (!v.ok) expect(v.code).toBe('NO_SECURITY_KEY');
     }
     // Some of those roles are required to hold a second factor themselves;
     // holding one is not the same as being able to remove another's.
