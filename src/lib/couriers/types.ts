@@ -77,6 +77,17 @@ export interface CourierShipmentResult {
   raw?: unknown;
 }
 
+/**
+ * WHY A QUESTION TO THE COURIER CAME BACK WITH NOTHING.
+ *
+ * Three different failures looked the same (`rawStatus: 'ERROR'`) and the poll had to guess which one it was looking at:
+ *   UNKNOWN_PARCEL — the company answered 404: it does not know the barcode (or the address we ask is wrong).
+ *   REFUSED        — any other 4xx: our account or our request was refused.
+ *   UNREACHABLE    — a 5xx, a timeout, no network, or an answer that is not JSON: the company did not answer.
+ * An adapter that cannot tell leaves it out.
+ */
+export type CourierErrorClass = 'UNKNOWN_PARCEL' | 'REFUSED' | 'UNREACHABLE';
+
 export interface CourierEvent {
   trackingNumber: string;
   /** What the courier called it, kept verbatim for the audit trail. */
@@ -90,6 +101,8 @@ export interface CourierEvent {
   /** Present when the courier reports a partial or adjusted collection. */
   collectedAmount?: number | null;
   note?: string | null;
+  /** Only on `rawStatus: 'ERROR'`: which of the three failures it was. */
+  errorClass?: CourierErrorClass;
   raw?: unknown;
 }
 
@@ -143,4 +156,11 @@ export const COURIER_CANNOT_ASSERT: ShippingStatus[] = [
 /** True when this event is safe to apply automatically. */
 export function isAutoApplicable(event: CourierEvent): boolean {
   return event.status !== null && !COURIER_CANNOT_ASSERT.includes(event.status);
+}
+
+/** What an HTTP status the company answered with means for the poll: 404 = it does not know the parcel, other 4xx = refused, the rest = it is not answering properly. */
+export function errorClassOfHttpStatus(status: number): CourierErrorClass {
+  if (status === 404) return 'UNKNOWN_PARCEL';
+  if (status >= 400 && status < 500) return 'REFUSED';
+  return 'UNREACHABLE';
 }

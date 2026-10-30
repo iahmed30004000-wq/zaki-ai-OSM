@@ -486,3 +486,48 @@ describe('the door announces the second half as it creates it', () => {
     expect(out.completion.halves.map((h) => h.key)).toEqual(['GOODS']);
   });
 });
+
+describe('a failed attempt is still a parcel on the road (RV111)', () => {
+  it('settles a FAILED_DELIVERY parcel at the door, with exactly the figure an OUT_FOR_DELIVERY one gets', async () => {
+    db.order.findFirst.mockResolvedValue(order());
+    const normal = await run([{ itemId: 'i1', deliveredQty: 2 }, { itemId: 'i2', deliveredQty: 0 }]);
+
+    vi.clearAllMocks();
+    db.order.findFirst.mockResolvedValue(order({ shippingStatus: 'FAILED_DELIVERY' }));
+    db.order.update.mockResolvedValue({});
+    db.orderItem.update.mockResolvedValue({});
+    db.orderActivity.create.mockResolvedValue({});
+    db.customer.update.mockResolvedValue({});
+    const afterFailure = await run([{ itemId: 'i1', deliveredQty: 2 }, { itemId: 'i2', deliveredQty: 0 }]);
+
+    // The door's arithmetic does not know the status it came from.
+    expect(afterFailure).toEqual(normal);
+    expect(afterFailure.status).toBe('PARTIALLY_DELIVERED');
+    expect(afterFailure.collectedAmount).toBe(25);
+    expect(db.order.update.mock.calls[0][0].data.shippingStatus).toBe('PARTIALLY_DELIVERED');
+    expect(consumeOrderStock).toHaveBeenCalledTimes(1);
+  });
+
+  it('a FAILED_DELIVERY parcel the customer finally refuses closes as RETURNED, takes nothing off the shelf', async () => {
+    db.order.findFirst.mockResolvedValue(order({ shippingStatus: 'FAILED_DELIVERY' }));
+    const result = await run([{ itemId: 'i1', deliveredQty: 0 }, { itemId: 'i2', deliveredQty: 0 }]);
+    expect(result.status).toBe('RETURNED');
+    expect(result.collectedAmount).toBe(0);
+    expect(consumeOrderStock).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE: one already settled is still refused, whatever status it shows', async () => {
+    db.order.findFirst.mockResolvedValue(order({ shippingStatus: 'FAILED_DELIVERY', deliveredAt: new Date('2026-09-20') }));
+    await expect(run([{ itemId: 'i1', deliveredQty: 1 }])).rejects.toThrow(/مسبقاً/);
+    expect(db.order.update).not.toHaveBeenCalled();
+  });
+
+  it.each(['READY_FOR_PICKUP', 'RETURN_REQUESTED', 'RETURNED', 'CANCELLED', 'DELIVERED', 'NOT_READY'])(
+    'NEGATIVE: %s is still not at the door',
+    async (shippingStatus) => {
+      db.order.findFirst.mockResolvedValue(order({ shippingStatus }));
+      await expect(run([{ itemId: 'i1', deliveredQty: 1 }])).rejects.toMatchObject({ code: 'NOT_AT_DOOR' });
+      expect(db.order.update).not.toHaveBeenCalled();
+    }
+  );
+});

@@ -210,3 +210,38 @@ describe('ط25 — what the customer added after ordering is on the history, in 
     expect(event.detail).toBeNull();
   });
 });
+
+describe('a status the courier moved reads in Arabic, with no English key or value (RV146 follow-up)', () => {
+  /** Exactly what couriers/apply-event writes: a JSON string whose `source` is POLL or WEBHOOK. */
+  const synced = (source: 'POLL' | 'WEBHOOK') =>
+    JSON.stringify({ courier: 'الباشا', rawStatus: 'SCANNED_BY_DRIVER_AND_IN_CAR', note: 'مع السائق', source });
+
+  it('POLL and WEBHOOK are words, and the raw courier code and the keys stay hidden', async () => {
+    db.orderActivity.findMany.mockResolvedValue([
+      { id: 'a1', createdAt: at('2026-09-02T10:00:00Z'), action: 'COURIER_STATUS_SYNCED', userId: null, metadata: synced('POLL') },
+      { id: 'a2', createdAt: at('2026-09-02T11:00:00Z'), action: 'COURIER_STATUS_SYNCED', userId: null, metadata: synced('WEBHOOK') },
+    ]);
+    const events = await orderTimeline(db as never, 'o1');
+    expect(events.map((e) => e.detail)).toEqual(['المصدر: استعلام من الشركة', 'المصدر: إشعار من الشركة']);
+    for (const e of events) {
+      expect(e.detail).not.toMatch(/POLL|WEBHOOK|rawStatus|SCANNED|courier/);
+      expect(e.title).toBe('الشركة حدّثت حالة الطرد');
+    }
+  });
+
+  it('NEGATIVE: a source value nobody translated is still shown as written, never blanked', async () => {
+    db.orderActivity.findMany.mockResolvedValue([
+      { id: 'a3', createdAt: at('2026-09-02T10:00:00Z'), action: 'COURIER_STATUS_SYNCED', userId: null, metadata: synced('POLL').replace('POLL', 'متجر الورد') },
+    ]);
+    const [event] = await orderTimeline(db as never, 'o1');
+    expect(event.detail).toBe('المصدر: متجر الورد');
+  });
+
+  it('a stored OBJECT (an older row) reads the same as the JSON string', async () => {
+    db.orderActivity.findMany.mockResolvedValue([
+      { id: 'a4', createdAt: at('2026-09-02T10:00:00Z'), action: 'COURIER_STATUS_SYNCED', userId: null, metadata: { courier: 'الباشا', rawStatus: 'X', source: 'POLL' } },
+    ]);
+    const [event] = await orderTimeline(db as never, 'o1');
+    expect(event.detail).toBe('المصدر: استعلام من الشركة');
+  });
+});

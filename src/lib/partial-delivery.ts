@@ -139,8 +139,19 @@ export class PartialDeliveryRefused extends Error {
   }
 }
 
-/** States at which a parcel can still be settled at the door. */
-const SETTLEABLE = ['OUT_FOR_DELIVERY', 'SHIPPED'];
+/**
+ * States at which a parcel can still be settled at the door.
+ *
+ * FAILED_DELIVERY IS ONE OF THEM (RV111, decided 30/10 under the owner's «اي قرار بعد الان اتخذو دون الرجوع الي»).
+ * A failed attempt is a parcel still on the road: the customer was out, the courier went back the next day and handed
+ * it over. The courier's STATEMENT already reads it that way (IN_FLIGHT_PROMOTED_BY_STATEMENT holds FAILED_DELIVERY),
+ * so the door that records «I stood there and they took it» has to as well — otherwise the only way to say so was to
+ * push the parcel back to «مشحون» first, and the manual matching tab had no button for it at all. Nothing else about
+ * the door changes: the figure is still doorMoney, the money is still the statement's to write, and the guards that
+ * matter stay (an order with a delivery or return date is refused; READY_FOR_PICKUP and the parcels coming back are
+ * still refused).
+ */
+const SETTLEABLE = ['OUT_FOR_DELIVERY', 'SHIPPED', 'FAILED_DELIVERY'];
 
 /**
  * Works out what a partial delivery means, and writes it.
