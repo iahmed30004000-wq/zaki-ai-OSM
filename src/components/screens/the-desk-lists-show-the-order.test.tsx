@@ -154,7 +154,15 @@ describe('«للشغل» and «لا يرد» — the working card', () => {
     expect(screen.getByText('المحافظة: دمشق')).toBeTruthy();
     expect(screen.getByText('شارع الجلاء بناء 4')).toBeTruthy();
     expect(screen.getByText('ملاحظة الزبون: اتصلوا بعد العصر')).toBeTruthy();
-    expect(screen.getByText('ملاحظة داخلية: عميل قديم')).toBeTruthy();
+    // the team’s note is never drawn, even if the response carried it
+    expect(screen.queryByText(/عميل قديم/)).toBeNull();
+    expect(screen.queryByText(/ملاحظة داخلية/)).toBeNull();
+  });
+
+  it('the governorate that only repeats the city, with spaces around it, is not printed', async () => {
+    mine = desk({ work: [base('W1', { region: { name: ' المزة ' } })] });
+    await draw();
+    expect(screen.queryByText(/المحافظة/)).toBeNull();
   });
 
   it('(ب) an order with no lines and no notes does not crash, and the other card is still drawn', async () => {
@@ -182,6 +190,36 @@ describe('«للشغل» and «لا يرد» — the working card', () => {
     expect(await screen.findByText('ORD-N1')).toBeTruthy();
     expect(screen.getByText(/كريم مرطب × 3/)).toBeTruthy();
     expect(screen.getByText('المحافظة: دمشق')).toBeTruthy();
+  });
+});
+
+describe('the team’s note is not on any list', () => {
+  const MACHINE = 'Telegram: chat 5001 topic 9 msg 77 | page 3 | advertised total price 45 | group: سوق الجملة';
+  const HUMAN = 'الزبون عميل قديم ويحب الاتصال صباحاً';
+
+  it.each([MACHINE, HUMAN])('«%s» — on none of the four lists, whoever wrote it', async (note) => {
+    mine = desk({
+      work: [base('W1', { internalNotes: note })],
+      noAnswer: [base('N1', { noAnswerCount: 1, internalNotes: note })],
+      confirmed: { ...desk().confirmed, rows: [base('C1', { internalNotes: note })] },
+    });
+    postponedRows = [POSTPONED_ROW('P1', { internalNotes: note })];
+    const key = note.slice(0, 12);
+    await draw();
+    expect(screen.queryByText(new RegExp(key))).toBeNull();
+    openTab('لا يرد');
+    expect(screen.queryByText(new RegExp(key))).toBeNull();
+    openTab('أكّدتها');
+    expect(screen.queryByText(new RegExp(key))).toBeNull();
+    openTab('المؤجلة');
+    await screen.findAllByText('ORD-P1');
+    expect(screen.queryByText(new RegExp(key))).toBeNull();
+    expect(document.body.textContent).not.toContain(note);
+  });
+
+  it('and neither door asks the database for it', () => {
+    expect(stripComments(repoFile('src/app/api/confirmation/mine/route.ts'))).not.toContain('internalNotes');
+    expect(stripComments(repoFile('src/app/api/confirmation/postponed/route.ts'))).not.toContain('internalNotes');
   });
 });
 
@@ -214,6 +252,13 @@ describe('«أكّدتها»', () => {
     await draw();
     openTab('أكّدتها');
     expect(within(table()).getAllByText('—')).toHaveLength(2);
+  });
+
+  it('a blank order street falls back to the customer’s own, in the table cell', async () => {
+    mine = desk({ confirmed: { ...desk().confirmed, rows: [base('C1', { deliveryAddress: '   ' })] } });
+    await draw();
+    openTab('أكّدتها');
+    expect(within(table()).getByText('عنوان الزبون')).toBeTruthy();
   });
 
   it('ten lines are cut to three and the rest is a number', async () => {
@@ -279,6 +324,22 @@ describe('«المؤجلة»', () => {
   });
 });
 
+describe('the table never hides its right-hand columns (eleven on «المؤجلة»)', () => {
+  it('its wrapper scrolls sideways instead of clipping', async () => {
+    await draw();
+    openTab('المؤجلة');
+    await screen.findAllByText('ORD-P1');
+    const wrapper = table().parentElement as HTMLElement;
+    expect(wrapper.className).toContain('overflow-x-auto');
+    expect(wrapper.className).not.toContain('overflow-hidden');
+  });
+
+  it('and it is the one shared wrapper, so every list gets it', () => {
+    const s = repoFile('src/components/ui/Rows.tsx');
+    expect(s).toContain('hidden overflow-x-auto rounded-lg border');
+  });
+});
+
 describe('the doors — one query, the same visibility, the same customer-data tally', () => {
   const mineSrc = () => stripComments(repoFile('src/app/api/confirmation/mine/route.ts'));
   const postponedSrc = () => stripComments(repoFile('src/app/api/confirmation/postponed/route.ts'));
@@ -289,7 +350,7 @@ describe('the doors — one query, the same visibility, the same customer-data t
     expect(s).toContain('addOns: { select: { id: true, productName: true, quantity: true, total: true } }');
     expect(s).toContain('region: { select: { name: true } }');
     expect(s).toContain('select: { ...ORDER_SELECT, changeRequests');
-    expect(s).toContain('internalNotes: true');
+    expect(s).not.toContain('internalNotes');
     expect(s).toContain('customerNotes: true');
   });
 

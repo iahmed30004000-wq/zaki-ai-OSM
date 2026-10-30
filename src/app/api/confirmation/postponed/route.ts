@@ -70,7 +70,6 @@ export async function GET(req: Request) {
           // What is in the order and where it goes — read in the same query as the page (no query per row), display only.
           deliveryAddress: true,
           region: { select: { name: true } },
-          internalNotes: true,
           customerNotes: true,
           items: { select: { id: true, productName: true, quantity: true, freeQuantity: true } },
           addOns: { select: { id: true, productName: true, quantity: true } },

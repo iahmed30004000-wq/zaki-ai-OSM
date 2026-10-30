@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import React from 'react';
-import { GOODS_SHOWN, OrderGoods, OrderNotes, OrderPlace, goodsLines } from './OrderGoods';
+import { GOODS_SHOWN, OrderGoods, OrderNotes, OrderPlace, goodsLines, governorateOf, streetOf } from './OrderGoods';
 
 /**
  * WHAT THE DESK'S LISTS SAY ABOUT AN ORDER — the three pieces and the cut.
@@ -76,6 +76,13 @@ describe('OrderGoods', () => {
     expect(screen.queryByText(/أخرى/)).toBeNull();
   });
 
+  it('every line follows its own direction — an English product name in an Arabic list reads right', () => {
+    const { container } = render(<OrderGoods items={[line(1, { productName: 'Vitamin C 500mg' }), line(2), line(3), line(4)]} />);
+    const lis = container.querySelectorAll('li');
+    expect(lis).toHaveLength(4);
+    for (const li of lis) expect(li.getAttribute('dir')).toBe('auto');
+  });
+
   it('an order with no lines draws a dash', () => {
     render(<OrderGoods items={[]} addOns={undefined} />);
     expect(screen.getByText('—')).toBeTruthy();
@@ -120,14 +127,37 @@ describe('OrderPlace', () => {
 });
 
 describe('OrderNotes', () => {
-  it('one line each, the customer’s and the team’s', () => {
-    render(<OrderNotes customer="اتصلوا بعد العصر" internal="عميل قديم" />);
-    expect(screen.getByText('ملاحظة الزبون: اتصلوا بعد العصر')).toBeTruthy();
-    expect(screen.getByText('ملاحظة داخلية: عميل قديم')).toBeTruthy();
+  it('the customer’s own note, in one line that follows its own direction', () => {
+    render(<OrderNotes customer="اتصلوا بعد العصر" />);
+    const p = screen.getByText('ملاحظة الزبون: اتصلوا بعد العصر');
+    expect(p.getAttribute('dir')).toBe('auto');
   });
 
-  it('no note draws nothing at all', () => {
-    const { container } = render(<OrderNotes customer={null} internal="  " />);
-    expect(container.innerHTML).toBe('');
+  it('no note, or a blank one, draws nothing at all', () => {
+    expect(render(<OrderNotes customer={null} />).container.innerHTML).toBe('');
+    cleanup();
+    expect(render(<OrderNotes customer="   " />).container.innerHTML).toBe('');
+  });
+
+  it('the team’s note has no prop to be passed in: the piece cannot print it', () => {
+    // @ts-expect-error — `internal` is not a prop; a caller that tries is a type error, not a leak
+    render(<OrderNotes customer="x" internal="Telegram: chat 5 topic 9" />);
+    expect(screen.queryByText(/Telegram/)).toBeNull();
+  });
+});
+
+describe('the small rules', () => {
+  it('streetOf: the order’s own street, else the customer’s, and a blank string is absent', () => {
+    expect(streetOf(' شارع أ ', 'شارع ب')).toBe('شارع أ');
+    expect(streetOf('', 'شارع ب')).toBe('شارع ب');
+    expect(streetOf('   ', ' شارع ب ')).toBe('شارع ب');
+    expect(streetOf(null, undefined)).toBe('');
+  });
+
+  it('governorateOf: trimmed, and nothing when it only repeats the city (spaces do not make it different)', () => {
+    expect(governorateOf(' دمشق ', 'المزة')).toBe('دمشق');
+    expect(governorateOf('دمشق', ' دمشق ')).toBeNull();
+    expect(governorateOf('   ', 'دمشق')).toBeNull();
+    expect(governorateOf(undefined, 'دمشق')).toBeNull();
   });
 });

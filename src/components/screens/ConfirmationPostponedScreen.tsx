@@ -15,7 +15,7 @@ import type { PostponedFacts } from '@/lib/postponed-list';
 import { OrderLink } from '@/components/orders/OrderLink';
 import { CustomerHistoryOffer } from '@/components/orders/CustomerHistory';
 import { POSTPONE_REASONS } from '@/lib/postpone-reasons';
-import { OrderGoods, OrderNotes, OrderPlace } from '@/components/orders/OrderGoods';
+import { OrderGoods, OrderNotes, OrderPlace, streetOf } from '@/components/orders/OrderGoods';
 
 /**
  * /confirmation/postponed — order, customer, due date, days remaining,
@@ -49,7 +49,6 @@ interface Row {
   addOns?: { id: string; productName: string; quantity: number }[];
   deliveryAddress?: string | null;
   region?: { name: string } | null;
-  internalNotes?: string | null;
   customerNotes?: string | null;
   claimer: { id: string; name: string } | null;
 }
@@ -250,7 +249,7 @@ export function ConfirmationPostponedScreen({ embedded = false }: { embedded?: b
               render: (o) => (
                 <>
                   <OrderGoods items={o.items} addOns={o.addOns} />
-                  <OrderNotes customer={o.customerNotes} internal={o.internalNotes} />
+                  <OrderNotes customer={o.customerNotes} />
                 </>
               ),
             },
@@ -258,7 +257,7 @@ export function ConfirmationPostponedScreen({ embedded = false }: { embedded?: b
               key: 'place',
               label: 'العنوان',
               wide: true,
-              render: (o) => <OrderPlace region={o.region?.name} city={o.customer.city} address={o.deliveryAddress ?? o.customer.address} />,
+              render: (o) => <OrderPlace region={o.region?.name} city={o.customer.city} address={streetOf(o.deliveryAddress, o.customer.address)} />,
             },
             {
               key: 'due',

@@ -5,7 +5,7 @@ import React from 'react';
  *
  * The agent's «أكّدتها» and «المؤجلة» lists showed a number, a name, a phone and a
  * sum. A row that says «٤٥ دينار» and not what the 45 buys is a row she has to
- * open to read. These three pieces put the goods, the place and the notes on the
+ * open to read. These three pieces put the goods, the place and the customer's note on the
  * row itself — display only: nothing here adds, prices or decides anything.
  * The sum stays the server's (`totalAmount`), exactly as the row already carried it.
  *
@@ -77,14 +77,30 @@ export function OrderGoods({
   return (
     <ul className="text-xs space-y-0.5 break-words">
       {shown.map((l) => (
-        <li key={l.key} className="line-clamp-2">
+        <li key={l.key} dir="auto" className="line-clamp-2">
           {l.addOn && <span className="text-[var(--sys-warning)]">إضافة: </span>}
           {l.text}
         </li>
       ))}
-      {more > 0 && <li className="text-[var(--sys-muted-foreground)]">+{more} أخرى</li>}
+      {more > 0 && <li dir="auto" className="text-[var(--sys-muted-foreground)]">+{more} أخرى</li>}
     </ul>
   );
+}
+
+/** The first non-blank of the order's own street and the customer's: an empty string is absent, not an address. */
+export function streetOf(...candidates: Array<string | null | undefined>): string {
+  for (const c of candidates) {
+    const t = c?.trim();
+    if (t) return t;
+  }
+  return '';
+}
+
+/** The governorate to print: trimmed, and nothing when it only repeats the city. One rule for the cells and the working card. */
+export function governorateOf(region: string | null | undefined, city: string | null | undefined): string | null {
+  const r = region?.trim();
+  if (!r) return null;
+  return r === city?.trim() ? null : r;
 }
 
 /**
@@ -118,23 +134,13 @@ export function OrderPlace({
   );
 }
 
-/** The customer's note and the team's, one line each. Nothing to say draws nothing. */
-export function OrderNotes({ customer, internal }: { customer?: string | null; internal?: string | null }) {
+/** The customer's own note, one line. Nothing to say draws nothing. The team's note is not printed here — see the doors. */
+export function OrderNotes({ customer }: { customer?: string | null }) {
   const c = customer?.trim();
-  const i = internal?.trim();
-  if (!c && !i) return null;
+  if (!c) return null;
   return (
-    <div className="text-xs break-words text-[var(--sys-muted-foreground)]">
-      {c && (
-        <p dir="auto" className="line-clamp-1" title={c}>
-          ملاحظة الزبون: {c}
-        </p>
-      )}
-      {i && (
-        <p dir="auto" className="line-clamp-1" title={i}>
-          ملاحظة داخلية: {i}
-        </p>
-      )}
-    </div>
+    <p dir="auto" className="text-xs break-words line-clamp-1 text-[var(--sys-muted-foreground)]" title={c}>
+      ملاحظة الزبون: {c}
+    </p>
   );
 }
