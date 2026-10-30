@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useId } from 'react';
+import React, { useEffect, useId, useRef } from 'react';
 import { RiArrowGoBackLine, RiSearchLine } from '@remixicon/react';
 import { Button } from './Button';
 import { Select } from './Input';
@@ -95,6 +95,15 @@ export function ListToolbar({
   searchLabel?: string;
 }) {
   const searchId = useId();
+  // «The cursor is in the box when the screen opens» is a desk's convenience — a hand holding a parcel has no
+  // hand free to click. On a phone it raises the keyboard over half the list before anybody has asked to
+  // search, so it is done only where the main pointer is a mouse (and where nothing can say, as before).
+  const searchBox = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!searchAutoFocus) return;
+    const hasMouse = typeof window.matchMedia !== 'function' || window.matchMedia('(pointer: fine)').matches;
+    if (hasMouse) searchBox.current?.focus();
+  }, [searchAutoFocus]);
   const icon = <RiSearchLine className="absolute left-3 rtl:left-auto rtl:right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--sys-muted)]" />;
   const input = (
     <input
@@ -104,7 +113,7 @@ export function ListToolbar({
       placeholder={placeholder}
       value={search}
       onChange={(e) => onSearch(e.target.value)}
-      autoFocus={searchAutoFocus}
+      ref={searchBox}
       dir={searchDir}
       className="h-11 md:h-auto w-full pl-9 pr-4 rtl:pl-4 rtl:pr-9 md:py-2 text-xs bg-[var(--sys-card)] border border-[var(--sys-border-input)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--sys-primary)]/30 focus:border-[var(--sys-primary)] shadow-raised"
     />

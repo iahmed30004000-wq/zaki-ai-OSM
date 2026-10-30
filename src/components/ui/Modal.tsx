@@ -265,7 +265,7 @@ export function Modal({
         )}
       >
         <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-[var(--sys-border)] bg-[var(--sys-surface)]">
-          <div>
+          <div className="min-w-0">
             <h3 className="text-lg font-semibold text-[var(--sys-heading)]">{title}</h3>
             {subtitle && <p className="text-xs text-[var(--sys-muted-foreground)] mt-0.5">{subtitle}</p>}
           </div>

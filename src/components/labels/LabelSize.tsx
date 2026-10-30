@@ -159,7 +159,7 @@ export function useLabelSize() {
 }
 
 const INPUT =
-  'w-full h-10 px-2 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] text-xs text-[var(--sys-foreground)] focus:outline-none focus:border-[var(--sys-primary)]';
+  'w-full h-11 md:h-10 px-2 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] text-xs text-[var(--sys-foreground)] focus:outline-none focus:border-[var(--sys-primary)]';
 
 /**
  * The picker itself. `compact` is the one-line form that sits beside a

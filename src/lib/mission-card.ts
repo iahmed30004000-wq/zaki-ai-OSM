@@ -73,6 +73,9 @@ export const MISSION_COPY: Readonly<Record<WorkKey, MissionCopy>> = {
   MY_UNCONFIRMED: { noun: 'طلب غير مؤكَّد', cta: 'افتح الطلبات' },
 };
 
+/** A supervisor who may not pull watches the queue; she does not «start confirming» from it. */
+export const WATCH_ONLY_CTA = 'راقب الطابور';
+
 export interface Mission {
   /** The server's item, untouched — the number is printed from here. */
   item: WorkItem;
@@ -93,14 +96,22 @@ export interface Mission {
  */
 export function missionFor(
   items: readonly WorkItem[],
-  mayOpen: (href: string) => boolean
+  mayOpen: (href: string) => boolean,
+  /**
+   * Asked once, for the one kind whose button promises something only a
+   * permission delivers: «ابدأ التأكيد» says the reader will pull from the
+   * queue, which a supervisor without the pull key cannot. Left out, every
+   * reader is taken to hold what the button promises.
+   */
+  mayDo: (permission: string) => boolean = () => true
 ): Mission | null {
   const first = visibleWork(items, items.length).find((i) => i.href !== null && mayOpen(i.href));
   if (!first || !first.href) return null;
   // `key` is a `WorkKey`, so the map is total and no fallback is needed — a
   // second lookup here would only hide a kind somebody forgot to write copy for.
   const copy = MISSION_COPY[first.key];
-  return { item: first, href: first.href, noun: copy.noun, cta: copy.cta };
+  const watchOnly = first.key === 'CONFIRM_POOL' && !mayDo('confirmation.pull');
+  return { item: first, href: first.href, noun: copy.noun, cta: watchOnly ? WATCH_ONLY_CTA : copy.cta };
 }
 
 /**

@@ -99,7 +99,7 @@ export function Tabs({
             tabIndex={on ? 0 : -1}
             onClick={() => onChange(tab.key)}
             className={clsx(
-              'shrink-0 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm transition-colors',
+              'min-h-11 md:min-h-0 shrink-0 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm transition-colors',
               on
                 ? 'border-[var(--sys-primary)] font-semibold text-[var(--sys-primary)]'
                 : 'border-transparent text-[var(--sys-muted-foreground)] hover:text-[var(--sys-heading)]'
