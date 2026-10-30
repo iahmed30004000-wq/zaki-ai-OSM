@@ -13,6 +13,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Input, Textarea, Select } from '@/components/ui/Input';
 import { apiFetch } from '@/lib/api-client';
 import { useIsPhone } from '@/hooks/useIsPhone';
+import { needsRegionFirst, REGION_REQUIRED_MESSAGE } from '@/lib/confirmation-queue';
 import { CONFIRMATION_STATUS_AR, PICKABLE_REJECTION_REASONS, REJECTION_REASON_AR } from '@/lib/confirmation-workflow';
 import { arDateShort, arDateTime } from '@/lib/format';
 import { RiCalendarScheduleLine, RiCheckLine, RiCloseCircleLine, RiPhoneLine, RiPhoneLockLine, RiRefreshLine, RiTimerLine } from '@remixicon/react';
@@ -169,6 +170,13 @@ export function ConfirmationActions({ order, ar, isRtl, onRefreshOrder }: Confir
   const wf = WORKFLOW_STATE[order?.confirmationStatus] ?? WORKFLOW_STATE.NEW;
   const terminal = ['CONFIRMED', 'REJECTED', 'CANCELLED'].includes(order?.confirmationStatus);
   const busy = actionLoading || loadingAttempts;
+  /*
+   * NO GOVERNORATE, NO YES (the owner, 30/10): the door refuses the confirmation (`REGION_REQUIRED`), and this window says so
+   * BEFORE the press — a contact attempt is recorded first by `submitAction`, and a refusal after it would leave a call in the
+   * log for a confirmation that never happened. `'regionId' in order`: an order object that does not carry the field at all
+   * is not "without a governorate"; the door still decides.
+   */
+  const regionMissing = !!order && 'regionId' in order && needsRegionFirst(order);
 
   const handleQuickSubmit = async () => {
     if (!openForm) return;
@@ -352,6 +360,11 @@ export function ConfirmationActions({ order, ar, isRtl, onRefreshOrder }: Confir
                   ? 'سيتم تسجيل تأكيد العميل للطلب ونقله لمرحلة ما بعد التأكيد.'
                   : 'The order will be confirmed and prepared for the next operational stage.'}
               </p>
+              {regionMissing && (
+                <p role="alert" className="text-xs text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-2.5">
+                  {REGION_REQUIRED_MESSAGE}
+                </p>
+              )}
               <Textarea label={ar ? 'ملاحظة تأكيد (اختياري)' : 'Confirmation note (optional)'} rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
             </>
           )}
@@ -409,6 +422,7 @@ export function ConfirmationActions({ order, ar, isRtl, onRefreshOrder }: Confir
   }
 
   function formDisabled(): boolean {
+    if (openForm === 'confirm') return regionMissing;
     if (openForm === 'reject') return !rejectionReason || (rejectionReason === 'OTHER' && (!note || note.trim().length < 5));
     if (openForm === 'followup' || openForm === 'call_later') return !followUpDate;
     return false;

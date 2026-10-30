@@ -61,6 +61,8 @@ beforeEach(() => {
     id: ORDER_ID, companyId: 'c1', storeId: 's1', customerId: 'cu1', version: 3, orderNumber: 'SY-1',
     status: 'CONTACTING', confirmationStatus: 'IN_PROGRESS', shippingStatus: 'NOT_READY',
     moderatorId: 'mod-A', lockedById: null, lockExpiresAt: null, shippingCost: 0,
+    // CHANGED 30/10 (no confirmation without a governorate) — was: no `regionId` on the fixture. The outcome is only reachable on an order that has one.
+    regionId: 'r1',
   };
   requireContext.mockResolvedValue({
     user: { id: 'agent-1', name: 'سارة', role: 'CONFIRMATION_AGENT' },

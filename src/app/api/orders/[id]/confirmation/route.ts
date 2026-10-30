@@ -13,7 +13,7 @@ import { endOrder } from '@/lib/order-cancel';
 import { reserveOrderLines } from '@/lib/reservation';
 import { emitAppEvent } from '@/lib/apps/events';
 import { queueConversions } from '@/lib/conversions/emit';
-import { needsContactFirst, CONTACT_FIRST_MESSAGE } from '@/lib/confirmation-queue';
+import { needsContactFirst, CONTACT_FIRST_MESSAGE, needsRegionFirst, REGION_REQUIRED_MESSAGE } from '@/lib/confirmation-queue';
 
 /**
  * POST /api/orders/[id]/confirmation — controlled confirmation workflow action.
@@ -178,6 +178,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         break;
       }
       case 'confirm': {
+        /*
+         * NO GOVERNORATE, NO YES (the owner, 30/10) — see `needsRegionFirst`. Asked of the order's own `regionId`, before
+         * anything is decided, reserved or written, and of EVERYONE: the override (`orders.unlock`) does not reach it,
+         * because the fee cannot be priced whoever pressed the button.
+         */
+        if (needsRegionFirst(order)) {
+          return NextResponse.json(
+            { error: REGION_REQUIRED_MESSAGE, errorAr: REGION_REQUIRED_MESSAGE, code: 'REGION_REQUIRED' },
+            { status: 409 }
+          );
+        }
         target = 'CONFIRMED';
         break;
       }

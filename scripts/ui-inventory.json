@@ -901,7 +901,7 @@
   },
   "src/components/screens/ConfirmationMineScreen.tsx": {
     "buttons": 9,
-    "inputs": 3,
+    "inputs": 4,
     "columns": 6,
     "cards": 0,
     "modals": 0,

@@ -82,6 +82,8 @@ const ORDER_SELECT = {
   deliveryAddress: true,
   // The governorate the fee table was read from, and the customer note the row prints in one line. Display only.
   // `internalNotes` is deliberately NOT read: the system writes into it as well (Telegram ids, win-back discounts, import file names) and no key guards it.
+  // `regionId` too: the card asks «does this order HAVE a governorate» of the id, never of the free-text city — the confirm button waits on it.
+  regionId: true,
   region: { select: { name: true } },
   customerNotes: true,
   customer: { select: { id: true, fullName: true, phone: true, rawPhone: true, city: true, address: true, totalOrders: true } },

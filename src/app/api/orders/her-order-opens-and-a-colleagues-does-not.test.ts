@@ -465,6 +465,9 @@ describe('POSITIVE: the order she holds is worked from start to finish without �
 
   it('it is confirmed', async () => {
     rang();
+    // CHANGED 30/10 (the owner: no confirmation without a governorate) — was: confirmed with `regionId: null`. Now the order has one,
+    // as every order that reaches «تأكيد» must (the refusal itself is tested in `confirmation/no-yes-without-a-governorate.test.ts`).
+    fake.tables.orders.find((o) => o.id === HERS)!.regionId = 'r1';
     const res = await confirmationRoute.POST(json({ action: 'confirm', expectedVersion: 3 }), params(HERS));
     expect(res.status).toBe(200);
     expect(fake.tables.orders.find((o) => o.id === HERS)!.confirmationStatus).toBe('CONFIRMED');

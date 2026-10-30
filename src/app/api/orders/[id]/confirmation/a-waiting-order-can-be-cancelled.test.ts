@@ -70,6 +70,9 @@ const ORDER = {
   nextFollowUpAt: null, followUpStatus: null, moderatorId: null,
   shippingBatchId: null, shippingBatch: null, deliveryProviderId: null, trackingNumber: null,
   courierSendStartedAt: null, totalAmount: 10, currency: 'JOD',
+  // CHANGED 30/10 (no confirmation without a governorate) — was: no `regionId`. The «تأكيد» test below is about the TRANSITION table;
+  // without a governorate it would be refused earlier, for a different reason, and stop testing what it says it tests.
+  regionId: 'r1',
 };
 
 const send = async (body: Record<string, unknown>) => {

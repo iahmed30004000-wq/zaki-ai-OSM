@@ -3,7 +3,10 @@
 import React, { useCallback, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { apiJson } from '@/lib/api-client';
-import { CONTACT_FIRST_MESSAGE } from '@/lib/confirmation-queue';
+import { CONTACT_FIRST_MESSAGE, REGION_REQUIRED_MESSAGE } from '@/lib/confirmation-queue';
+import { useRegions } from '@/hooks/useRegions';
+import { matchRegion } from '@/lib/regions';
+import { useOrderPatch } from '@/components/orders/useOrderPatch';
 import { humanMinutes, useElapsedMinutes } from '@/components/ui/Elapsed';
 import { CustomerHistoryButton } from '@/components/orders/CustomerHistory';
 import { OrderStateBadge } from '@/components/orders/OrderStateBadge';
@@ -86,6 +89,8 @@ interface OrderRow {
   deliveryAddress?: string | null;
   /** The governorate and the customer note — absent on a response from before they were read. */
   region?: { name: string } | null;
+  /** The governorate's id — null/empty means the order has none; absent on a response from before it was read. */
+  regionId?: string | null;
   customerNotes?: string | null;
   moderatorId: string | null;
   moderator: { id: string; name: string } | null;
@@ -149,6 +154,16 @@ const needsContact = (order: { _count: { contactAttempts: number } }) =>
   order._count.contactAttempts === 0;
 
 /**
+ * DOES THIS ORDER LACK ITS GOVERNORATE? (the owner, 30/10 — «ما يسمح لموظفة التأكيد تأكّد غير لما تحدد المحافظة»)
+ *
+ * Asked of the id and never of the written city: `customer.city` is free text, and a town typed there is not a row in
+ * the fee table. An answer that has not arrived (`undefined`, a response from before the id was read) is NOT «none» —
+ * the door is the authority and refuses it anyway; the screen only avoids shutting a button on a guess.
+ */
+const lacksRegion = (order: { regionId?: string | null }) =>
+  order.regionId === null || (typeof order.regionId === 'string' && order.regionId.trim() === '');
+
+/**
  * WHAT THE SERVER SAID NO TO, IN WORDS THAT SAY WHAT TO DO.
  *
  * Two refusals come back from the confirmation door often enough to need more than the bare sentence:
@@ -161,6 +176,9 @@ function refusalText(e: unknown): string {
   const code = (e as { data?: { code?: unknown } } | null)?.data?.code;
   if (code === 'CONTACT_FIRST') {
     return `${CONTACT_FIRST_MESSAGE}. سجّل المحاولة بزر «لا يرد» أو «مغلق أو خارج التغطية» وبعدها بتفتح الأزرار.`;
+  }
+  if (code === 'REGION_REQUIRED') {
+    return `${REGION_REQUIRED_MESSAGE}. اختر المحافظة من الخانة بالبطاقة.`;
   }
   if (code === 'INVALID_TRANSITION') {
     return `${said} حدّث الشاشة وافتح الطلب لتشوف وين صار.`;
@@ -199,6 +217,81 @@ const SOURCE_AR: Record<string, string> = {
   MANUAL: 'إدخال يدوي',
 };
 
+/**
+ * THE GOVERNORATE, ASKED ON THE CARD THAT NEEDS IT (the owner, 30/10).
+ *
+ * An order with no `regionId` cannot be confirmed (`REGION_REQUIRED`), so the field that sets it is drawn on the card
+ * itself — a real select, visible, not behind «افتح وعدّل». The governorates are the country's own (`useRegions`, the list
+ * every order form reads); no second source.
+ *
+ * WHAT THE CUSTOMER TYPED IS A CLUE, NOT AN ANSWER. `customer.city` is free text, so it is printed as «المكتوب» — never
+ * under the word «المحافظة» — and `matchRegion` (the matcher every intake path uses) turns it into a SUGGESTION: the select
+ * starts on it and a line says so, but nothing is written until she presses «احفظ المحافظة». Ambiguity gives no suggestion.
+ *
+ * Shut while no call has been logged: the save is an edit, and the door refuses an edit by the holder before the first
+ * attempt (`CONTACT_FIRST`) — the line under the buttons already says how to open it.
+ */
+function RegionGate({
+  order,
+  locked,
+  busy,
+  onSave,
+}: {
+  order: OrderRow;
+  locked: boolean;
+  busy: boolean;
+  onSave: (regionId: string) => void;
+}) {
+  const { regions, countryName } = useRegions();
+  const fieldId = React.useId();
+  const written = order.customer.city?.trim() ?? '';
+  const guess = matchRegion(regions, written);
+  // `null` = she has not touched it, so it follows the suggestion; her own choice (even «none») wins from then on.
+  const [picked, setPicked] = useState<string | null>(null);
+  const value = picked ?? guess?.id ?? '';
+  return (
+    <div className="rounded-lg border border-[var(--sys-warning)]/40 bg-[var(--sys-warning-soft)] p-2 space-y-2">
+      <label htmlFor={fieldId} className="block text-xs font-medium text-[var(--sys-warning)]">
+        المحافظة — لازم قبل التأكيد{countryName ? ` (${countryName})` : ''}
+      </label>
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          id={fieldId}
+          value={value}
+          disabled={locked || busy}
+          onChange={(e) => setPicked(e.target.value)}
+          className="min-w-0 flex-1 h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] text-sm"
+        >
+          <option value="">— اختر المحافظة —</option>
+          {regions.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </select>
+        <Action
+          onClick={() => onSave(value)}
+          busy={busy}
+          locked={locked || !value}
+          lockedTitle={locked ? CONTACT_FIRST_MESSAGE : 'اختر المحافظة أولاً'}
+        >
+          احفظ المحافظة
+        </Action>
+      </div>
+      {written && (
+        <p className="text-xs text-[var(--sys-muted-foreground)]">
+          المكتوب: <span dir="auto">{written}</span>
+        </p>
+      )}
+      {guess && picked === null && (
+        <p className="text-xs text-[var(--sys-muted-foreground)]">
+          اقتراح من المكتوب: {guess.name} — لم يُحفظ بعد، اضغط «احفظ المحافظة».
+        </p>
+      )}
+    </div>
+  );
+}
+
 function sourceLabel(order: OrderRow): string {
   if (order.moderator?.name) return `مودريتور: ${order.moderator.name}`;
   if (order.source === 'MANUAL' && order.createdBy?.name) return `إدخال يدوي: ${order.createdBy.name}`;
@@ -209,6 +302,8 @@ function sourceLabel(order: OrderRow): string {
 
 export function ConfirmationMineScreen() {
   const toast = useToast();
+  // Saves the governorate the way the order screen saves it — and asks why when the server says this authority owes a reason.
+  const patchOrder = useOrderPatch();
   const mayOpen = useMayOpen();
   /**
    * ── THE PHONE STRIP FOLLOWS ITS OWN PERMISSION ──
@@ -402,6 +497,26 @@ export function ConfirmationMineScreen() {
           // The last one: what she confirmed is what the warehouse packs next — for whoever may open that desk.
           deskIsEmpty(fresh) ? openPreparationStep(mayOpen) : undefined
         )
+    );
+
+  /**
+   * THE GOVERNORATE, WRITTEN BY HER PRESS AND BY NOTHING ELSE.
+   *
+   * The ordinary `PATCH regionId` of the order screen — the suggestion on the card is only what the select starts on.
+   * The door's own refusals (`CONTACT_FIRST`, a foreign lock, a version that moved) are said by `refusalText`.
+   */
+  const saveRegion = (order: OrderRow, regionId: string) =>
+    act(
+      order.id,
+      async () => {
+        const res = await patchOrder(order.id, { expectedVersion: order.version, regionId });
+        if (!res.ok) {
+          const data = (await res.json().catch(() => ({}))) as { errorAr?: string; error?: string; code?: string };
+          throw Object.assign(new Error(data.errorAr || data.error || 'تعذر حفظ المحافظة'), { data });
+        }
+        return res;
+      },
+      () => toast.done(`تم تحديد محافظة الطلب ${order.orderNumber}`)
     );
 
   const submitPostpone = (order: OrderRow, value: PostponeValue) => {
@@ -786,13 +901,17 @@ export function ConfirmationMineScreen() {
               ninety business minutes. «إدخال إشكال» and «مساعدة» stay open: neither decides anything about the
               order, and they are how she gets help when the call itself is the problem.
             */
+            /*
+              AND SHUT UNTIL IT HAS ITS GOVERNORATE (the owner, 30/10). The door refuses it too (`REGION_REQUIRED`); the
+              line under the button says what opens it, and the select that does is on this very card.
+            */
             const confirmBtn = (
               <Action
                 primary
                 onClick={() => confirm(order)}
                 busy={busyId === order.id}
-                locked={needsContact(order)}
-                lockedTitle={CONTACT_FIRST_MESSAGE}
+                locked={needsContact(order) || lacksRegion(order)}
+                lockedTitle={needsContact(order) ? CONTACT_FIRST_MESSAGE : REGION_REQUIRED_MESSAGE}
                 icon={<RiCheckboxCircleLine className="w-4 h-4" />}
                 wide={phone}
               >
@@ -829,6 +948,9 @@ export function ConfirmationMineScreen() {
                   ? ' (سجّل المحاولة بـ«لا يرد» أو «مغلق أو خارج التغطية» إذا ما ردّ).'
                   : ' (تسجيل نتيجة الاتصال يحتاج صلاحية ما عندك — اطلبها من المسؤول).'}
               </p>
+            );
+            const regionHint = lacksRegion(order) && (
+              <p className="w-full text-xs leading-relaxed text-[var(--sys-warning)]">اختر المحافظة لتفتح التأكيد</p>
             );
             /*
               «إدخال إشكال», not «إشكال إدخال»: the button is the act she performs, and the old name read as the
@@ -928,6 +1050,15 @@ export function ConfirmationMineScreen() {
                   )}
                   <p className="text-xs text-[var(--sys-muted-foreground)] mt-1">{order.deliveryAddress ?? order.customer.address}</p>
                 </div>
+                {/* An order with no governorate cannot be confirmed: the select that sets it is HERE, drawn without a click. */}
+                {lacksRegion(order) && (
+                  <RegionGate
+                    order={order}
+                    locked={needsContact(order)}
+                    busy={busyId === order.id}
+                    onSave={(regionId) => void saveRegion(order, regionId)}
+                  />
+                )}
 
                 <ul className="text-xs text-[var(--sys-muted-foreground)] space-y-0.5">
                   {order.items.map((it) => (
@@ -1002,6 +1133,7 @@ export function ConfirmationMineScreen() {
                       {rejectBtn}
                     </div>
                     {contactFirstHint}
+                    {regionHint}
                   </div>
                   {storeOrderNote}
                   <AdvancedGroup label="المزيد" holds={moreHolds}>
@@ -1025,6 +1157,7 @@ export function ConfirmationMineScreen() {
                   {postponeBtn}
                   {rejectBtn}
                   {contactFirstHint}
+                  {regionHint}
                   {issueBtn}
                   {storeOrderNote}
                   {assistBtn}

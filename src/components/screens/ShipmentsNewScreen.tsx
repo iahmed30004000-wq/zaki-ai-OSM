@@ -763,7 +763,24 @@ ${describeRefused(out.refused)}`,
                   </span>
                 ),
               },
-              { key: 'region', label: 'المحافظة', render: (r) => r.region?.name ?? r.customer.city },
+              {
+                key: 'region',
+                label: 'المحافظة',
+                // A governorate is a row of the fee table. The city the customer typed is NOT one: it used to be printed
+                // under this heading when the order had none, and read as settled while the fee could not be priced.
+                render: (r) =>
+                  r.region?.name ?? (
+                    <span>
+                      <span className="text-[var(--sys-destructive)]">لم تُحدَّد</span>
+                      {r.customer.city?.trim() && (
+                        <span className="text-xs text-[var(--sys-muted-foreground)]">
+                          {' '}
+                          · المكتوب: <span dir="auto">{r.customer.city.trim()}</span>
+                        </span>
+                      )}
+                    </span>
+                  ),
+              },
               {
                 key: 'cod',
                 label: 'تفصيل التحصيل',
