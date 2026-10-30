@@ -283,17 +283,23 @@ export async function publishContent(id: string, base?: string): Promise<boolean
  * the regretted one sitting in the editor would publish it again the next
  * time anybody pressed «نشر».
  *
- * @returns false when there was no step to take.
+ * `base` is the fingerprint the window read (see `PAGE_BASE_SQL`): given, the
+ * step back is taken only if the page is still that page — a window cannot
+ * undo a publish it never saw. Not given, it is the old press.
+ *
+ * @returns false when there was no step to take, or (with a base) when the
+ * page is no longer the one the window read.
  */
-export async function revertContent(id: string): Promise<boolean> {
+export async function revertContent(id: string, base?: string): Promise<boolean> {
   const n = await db.$executeRawUnsafe(
     `UPDATE "landing_pages" SET
        "contentPrevious" = ${liveAsJsonb}::text,
        ${takeFrom('contentPrevious')},
        "contentDraft" = NULL,
        "contentPublishedAt" = NOW()
-     WHERE "id" = $1 AND "contentPrevious" IS NOT NULL`,
-    id
+     WHERE "id" = $1 AND "contentPrevious" IS NOT NULL${base === undefined ? '' : ` AND ${PAGE_BASE_SQL} = $2`}`,
+    id,
+    ...(base === undefined ? [] : [base])
   );
   return n > 0;
 }

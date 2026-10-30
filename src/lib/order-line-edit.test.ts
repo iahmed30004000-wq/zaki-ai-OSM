@@ -1044,3 +1044,53 @@ describe('XIV · pure: no database, no network, one calculator', () => {
   });
 });
 
+
+describe('XV · an approved request pins the gift it was approved with', () => {
+  const stored = [line({ id: 'l1', quantity: 3, freeQuantity: 1, lineTotal: 25, reservedQty: 4 })];
+  const withOffer = { orderOffer: BUNDLE, offers: [BUNDLE] };
+
+  it('without a pin, the gift is derived from the offer as ever: 3 → 6 on a «3 + 1» is 2', () => {
+    expect(resolve(stored, [edit('l1', { quantity: 6 })], withOffer).lines[0].freeQuantity.to).toBe(2);
+  });
+
+  it('a pin wins over the derivation — the person who decided saw THAT number', () => {
+    const r = resolveLineEdits(stored, [edit('l1', { quantity: 6 })], ctxOf(withOffer), new Map([['l1', 5]]));
+    expect(r.lines[0].freeQuantity).toEqual({ from: 1, to: 5 });
+    expect(codes(r)).not.toContain('GIFT_NOT_RESCALED');
+  });
+
+  it('…even where the offer has ended since, and no derivation would have been made', () => {
+    const ended = { orderOffer: { ...BUNDLE, live: false }, offers: [] };
+    const r = resolveLineEdits(stored, [edit('l1', { quantity: 6 })], ctxOf(ended), new Map([['l1', 2]]));
+    expect(r.lines[0].freeQuantity.to).toBe(2);
+  });
+
+  it('a pinned zero is a zero, not “unset”', () => {
+    expect(resolveLineEdits(stored, [edit('l1', { quantity: 6 })], ctxOf(withOffer), new Map([['l1', 0]])).lines[0].freeQuantity.to).toBe(0);
+  });
+
+  it('a gift alone is a change: the line is marked changed with no quantity or price touched', () => {
+    const r = resolveLineEdits(stored, [edit('l1')], ctxOf(withOffer), new Map([['l1', 3]]));
+    expect(r.lines[0]).toMatchObject({ changed: true, quantity: { from: 3, to: 3 }, freeQuantity: { from: 1, to: 3 } });
+  });
+
+  it('a pin names a line, not a product: another line of the same product keeps its own gift', () => {
+    const two = [stored[0], line({ id: 'l2', quantity: 3, freeQuantity: 1, lineTotal: 25 })];
+    const r = resolveLineEdits(two, [], ctxOf(withOffer), new Map([['l1', 4]]));
+    expect(r.lines.map((l) => l.freeQuantity.to)).toEqual([4, 1]);
+  });
+
+  it('the pin reaches the shelf: the preview counts the pinned gift in the units the order would hold', () => {
+    const facts = factsOf({ available: { [CREAM]: 5, [SOAP]: 20 } });
+    const draft: PreviewDraft = { lines: [{ lineId: 'l1', quantity: 3 }] };
+    // 3 + 1 = 4 fits 5; with the pinned 3 it is 3 + 3 = 6, which does not
+    expect(previewLineEdit(facts, draft).blocked).toBe(false);
+    expect(previewLineEdit(facts, draft, new Map([['l1', 3]])).blocked).toBe(true);
+  });
+
+  it('a browser cannot send a gift: the draft schema has no such box and drops the key', () => {
+    const parsed = lineEditsSchema.parse([{ lineId: 'l1', quantity: 4, freeQuantity: 9 }]);
+    expect(parsed[0]).not.toHaveProperty('freeQuantity');
+    expect(previewDraftSchema.parse({ lines: [{ lineId: 'l1', freeQuantity: 9 }] }).lines![0]).not.toHaveProperty('freeQuantity');
+  });
+});

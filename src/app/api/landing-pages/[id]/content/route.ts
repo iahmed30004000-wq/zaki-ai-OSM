@@ -304,13 +304,25 @@ export async function POST(req: Request, ctx: Ctx) {
   }
 }
 
-export async function PATCH(_req: Request, ctx: Ctx) {
+export async function PATCH(req: Request, ctx: Ctx) {
   try {
     const { id } = await ctx.params;
     const { user, companyId, lp } = await pageFor(id);
     if (!lp) return NextResponse.json({ error: 'صفحة الهبوط غير موجودة' }, { status: 404 });
 
-    if (!(await revertContent(lp.id))) {
+    // Same optional fingerprint as the save and the publish; a press with no
+    // body is the old press.
+    const body = z
+      .object({ base: z.string().regex(PAGE_BASE_PATTERN).optional() })
+      .safeParse((await req.json().catch(() => null)) ?? {});
+    if (!body.success) return NextResponse.json({ error: 'بيانات غير صالحة' }, { status: 400 });
+
+    if (!(await revertContent(lp.id, body.data.base))) {
+      // Two reasons for «false», told apart only when a base was sent: there
+      // was no step to take, or the page is no longer the one this window read.
+      if (body.data.base !== undefined && (await draftState(lp.id)).canRevert) {
+        return NextResponse.json({ error: PAGE_CHANGED_AR, code: 'PAGE_CHANGED' }, { status: 409 });
+      }
       return NextResponse.json({ error: 'لا نسخة سابقة لهذه الصفحة', code: 'NO_PREVIOUS' }, { status: 409 });
     }
     await refreshLandingPages({ pageId: lp.id });

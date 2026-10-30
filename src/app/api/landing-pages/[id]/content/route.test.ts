@@ -171,9 +171,44 @@ describe('the publish press', () => {
 });
 
 describe('the step back', () => {
+  const back = (body?: unknown) =>
+    PATCH(new Request('http://localhost/x', { method: 'PATCH', body: body === undefined ? undefined : JSON.stringify(body) }), ctx);
+
   it('hands the window the page’s new fingerprint', async () => {
-    const res = await PATCH(new Request('http://localhost/x', { method: 'PATCH' }), ctx);
+    const res = await back();
     expect(res.status).toBe(200);
     expect((await res.json()).base).toBe('d'.repeat(32));
+  });
+
+  it('with a base takes the step only against that base', async () => {
+    expect((await back({ base: BASE })).status).toBe(200);
+    expect(revertContent).toHaveBeenCalledWith('lp1', BASE);
+  });
+
+  it('is refused with 409 PAGE_CHANGED when the page is no longer the one the window read', async () => {
+    revertContent.mockResolvedValue(false);
+    draftState.mockResolvedValue({ hasUnpublished: false, canRevert: true, publishedAt: null, draft: null });
+    const res = await back({ base: BASE });
+    expect(res.status).toBe(409);
+    const json = await res.json();
+    expect(json.code).toBe('PAGE_CHANGED');
+    expect(json.error).toBe('تغيّرت الصفحة من نافذة أخرى — أعد التحميل');
+  });
+
+  it('NEGATIVE: no step to take is still NO_PREVIOUS, with or without a base', async () => {
+    revertContent.mockResolvedValue(false);
+    draftState.mockResolvedValue({ hasUnpublished: false, canRevert: false, publishedAt: null, draft: null });
+    expect((await (await back({ base: BASE })).json()).code).toBe('NO_PREVIOUS');
+    expect((await (await back()).json()).code).toBe('NO_PREVIOUS');
+  });
+
+  it('OLD WINDOW: a press with no body is the old press and reads no state on the way', async () => {
+    expect((await back()).status).toBe(200);
+    expect(revertContent).toHaveBeenCalledWith('lp1', undefined);
+  });
+
+  it('NEGATIVE: a malformed base is refused before anything moves', async () => {
+    expect((await back({ base: 'nope' })).status).toBe(400);
+    expect(revertContent).not.toHaveBeenCalled();
   });
 });

@@ -139,9 +139,23 @@ export const prepShortAr = (names: string[], courierCancelled = false) => {
 
 /** Thrown to stop the save (and roll the write back); the route turns it into a 409. */
 export class PrepShortage extends Error {
+  /** The code the 409 carries. The packing table's own is `PREP_SHORTAGE`; `StockShort` below speaks for a request. */
+  readonly code: string = 'PREP_SHORTAGE';
+
   constructor(readonly names: string[], readonly courierCancelled = false) {
     super('PREP_SHORTAGE');
   }
+}
+
+/**
+ * THE SAME STOP, FOR AN APPROVED REQUEST THAT REWRITES THE LINES (`STOCK_SHORT`).
+ *
+ * One mechanism, two names: the sentence, the 409, the rollback and the cleanup of a barcode the company has already
+ * cancelled are the packing table's (the route catches the base class), and only the code the screen reads differs — a
+ * request is told «STOCK_SHORT», the trolley keeps «PREP_SHORTAGE» so nothing that reads it changes.
+ */
+export class StockShort extends PrepShortage {
+  override readonly code: string = 'STOCK_SHORT';
 }
 
 const PREP_COMPLEX_AR = 'فيه خصم أو هدية أو إضافة على هذا الطلب: تعديل الكمية بيصير بطلب تعديل.';

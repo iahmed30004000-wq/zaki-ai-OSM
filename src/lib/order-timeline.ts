@@ -175,6 +175,8 @@ const METADATA_AR: Record<string, string> = {
   updatedBy: 'عدّله', callResult: 'نتيجة الاتصال', notes: 'ملاحظات',
   caller: 'المتصل', role: 'الدور', fields: 'الحقول',
   feeBefore: 'الأجرة قبل', feeAfter: 'الأجرة بعد', feeReason: 'السبب',
+  // An approved edit of the lines that could not move the estimated cost, because it was not known.
+  costNote: 'التكلفة المقدَّرة',
   // The addition after the order: what was added, how many, for how much, from which offer.
   product: 'المنتج', quantity: 'الكمية', total: 'المجموع', offerName: 'العرض', landingPage: 'الصفحة',
 };

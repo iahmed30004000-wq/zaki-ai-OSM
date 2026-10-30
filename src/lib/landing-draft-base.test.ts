@@ -26,6 +26,7 @@ import {
   PAGE_BASE_PATTERN,
   draftState,
   publishContent,
+  revertContent,
   saveContent,
   saveContentIfBase,
 } from './landing-draft';
@@ -131,6 +132,29 @@ describe('saving with a base', () => {
     const sql = sqlOf(db.$executeRawUnsafe);
     expect(sql).not.toContain('md5');
     expect(db.$queryRawUnsafe).not.toHaveBeenCalled();
+  });
+});
+
+describe('the step back with a base', () => {
+  it('adds the guard to the same single statement, after the existing one', async () => {
+    await revertContent('lp1', BASE);
+    expect(db.$executeRawUnsafe).toHaveBeenCalledTimes(1);
+    const call = db.$executeRawUnsafe.mock.calls[0]!;
+    expect((call[0] as string).replace(/\s+/g, ' ')).toMatch(/AND "contentPrevious" IS NOT NULL AND md5\(COALESCE\("contentDraft"/);
+    expect(call[1]).toBe('lp1');
+    expect(call[2]).toBe(BASE);
+  });
+
+  it('is false when no row matched', async () => {
+    db.$executeRawUnsafe.mockResolvedValue(0);
+    expect(await revertContent('lp1', BASE)).toBe(false);
+  });
+
+  it('OLD WINDOW: with no base the statement has no md5 and takes one argument', async () => {
+    await revertContent('lp1');
+    const call = db.$executeRawUnsafe.mock.calls[0]!;
+    expect(call[0] as string).not.toContain('md5');
+    expect(call).toHaveLength(2);
   });
 });
 
