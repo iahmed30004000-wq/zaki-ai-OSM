@@ -50,7 +50,7 @@ const ACTION_AR: Record<string, string> = {
   TWO_FACTOR_RECOVERY_USED: 'استعمال رمز استرداد', TWO_FACTOR_DEVICE_TRUSTED: 'الوثوق بجهاز', PASSKEY_FAILED: 'فشل مفتاح المرور',
   PASSKEY_REGISTERED: 'تسجيل مفتاح مرور', PASSKEY_REMOVED: 'حذف مفتاح مرور', SUPER_ADMIN_OVERRIDE: 'تجاوز بصلاحية المدير الأعلى',
   ORDER_CREATED: 'إنشاء طلب', ORDER_CREATED_AI_INTAKE: 'إنشاء طلب من المساعد', ORDER_CREATED_TELEGRAM: 'إنشاء طلب من تلجرام',
-  ORDER_UPDATED: 'تعديل طلب', ORDER_UPDATED_BY_CHANGE_REQUEST: 'تعديل طلب بموجب طلب تعديل', ORDER_CONFIRMED: 'تأكيد طلب',
+  ORDER_UPDATED: 'تعديل طلب', ORDER_UPDATED_BY_CHANGE_REQUEST: 'تعديل طلب بموجب طلب تعديل', ORDER_UPDATED_IN_BATCH: 'تعديل طلب قبل إغلاق الشحنة', ORDER_CONFIRMED: 'تأكيد طلب',
   ORDER_REJECTED: 'رفض طلب', ORDER_STATUS_CHANGED: 'تغيير حالة طلب', ORDER_CLAIMED: 'سحب طلب', ORDER_RELEASED: 'إرجاع طلب للطابور',
   ORDER_TRANSFERRED: 'نقل طلب لموظف آخر', ORDER_LOCKED: 'قفل طلب', ORDER_UNLOCKED: 'فتح قفل طلب', ORDER_ISSUE_RAISED: 'رفع إشكال على طلب',
   ORDER_ISSUE_CORRECTED: 'تصحيح إشكال طلب', ORDER_VOIDED_AFTER_ISSUE: 'إبطال طلب بعد إشكال', ORDER_WRITTEN_OFF: 'شطب طلب',

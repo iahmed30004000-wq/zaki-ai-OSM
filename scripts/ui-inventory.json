@@ -279,6 +279,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/ops/PrepEditSheet.tsx": {
+    "buttons": 4,
+    "inputs": 6,
+    "columns": 0,
+    "cards": 0,
+    "modals": 1,
+    "icons": 3,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/orders/AiOrderModal.tsx": {
     "buttons": 4,
     "inputs": 10,
@@ -1310,12 +1320,12 @@
     "tabs": 0
   },
   "src/components/screens/ShippingBatchesScreen.tsx": {
-    "buttons": 10,
+    "buttons": 11,
     "inputs": 0,
     "columns": 0,
     "cards": 0,
     "modals": 0,
-    "icons": 14,
+    "icons": 15,
     "links": 0,
     "tabs": 0
   },
