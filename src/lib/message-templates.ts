@@ -235,13 +235,25 @@ export function waNumber(raw: string, countryCode?: string | null): string {
   // (a Turkish line in the north of Syria: «905XXXXXXXXX»). Prefixing the store's code made it «963905…», nobody.
   if (digits.startsWith('00')) return digits.slice(2);
   if (digits.length >= 11 && !digits.startsWith('0')) return digits;
-  if (countryCode) {
-    const cc = countryCode.replace(/\D/g, '');
-    if (cc && !digits.startsWith(cc)) {
-      digits = cc + digits.replace(/^0+/, '');
-    }
+  const cc = (countryCode ?? '').replace(/\D/g, '');
+  if (cc) {
+    if (!digits.startsWith(cc)) digits = cc + digits.replace(/^0+/, '');
+    return digits;
   }
-  return digits;
+  /*
+   * A LOCAL NUMBER WITH NO COUNTRY BEHIND IT IS NOT A WHATSAPP NUMBER.
+   *
+   * «0952554562» sent on as it is makes wa.me drop the zero and read «95…» as a country — Myanmar — so the
+   * message (the customer's name, address, the order) goes to a stranger. There is no safe guess here, so
+   * the answer is «no number» and the strip says why. Only a number that carries its own country is let
+   * through without one: a leading «+» in what was typed, «00…» (above), or eleven digits and up (above).
+   */
+  return (raw || '').trim().startsWith('+') ? digits : '';
+}
+
+/** Can a WhatsApp link be built for this number: is the country known, or is the number international already? */
+export function whatsappReady(phone: string | null | undefined, countryCode?: string | null): boolean {
+  return waNumber(phone ?? '', countryCode) !== '';
 }
 
 /**

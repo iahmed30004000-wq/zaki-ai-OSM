@@ -64,6 +64,8 @@ export function CouriersScreen() {
   const [rows, setRows] = useState<Courier[] | null>(null);
   /** Regions in the current country — the denominator of «٨ من ١٢». */
   const [totalRegions, setTotalRegions] = useState(0);
+  /** The country's calling code, for WhatsApp on a number typed local. */
+  const [dialCode, setDialCode] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ name: '', code: '', phone: '', kind: 'COMPANY' as 'COMPANY' | 'AGENT', adapterCode: 'MANUAL' });
   const [editing, setEditing] = useState<string | null>(null);
@@ -85,9 +87,10 @@ export function CouriersScreen() {
 
   const load = useCallback(async () => {
     try {
-      const data = await apiJson<{ providers?: Courier[]; deliveryProviders?: Courier[]; totalRegions?: number }>('/api/delivery-providers');
+      const data = await apiJson<{ providers?: Courier[]; deliveryProviders?: Courier[]; totalRegions?: number; dialCode?: string | null }>('/api/delivery-providers');
       setRows(data.providers ?? data.deliveryProviders ?? []);
       setTotalRegions(data.totalRegions ?? 0);
+      setDialCode(data.dialCode ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'تعذر التحميل');
     }
@@ -414,7 +417,7 @@ export function CouriersScreen() {
                       {/* The same buttons the customer rows use, without the
                           ready-made messages: those are written about an
                           order, and a courier's office does not have one. */}
-                      <ContactButtons phone={c.phone} context={{}} compact plain />
+                      <ContactButtons phone={c.phone} countryCode={dialCode} context={{}} compact plain />
                     </span>
                   ) : (
                     '—'

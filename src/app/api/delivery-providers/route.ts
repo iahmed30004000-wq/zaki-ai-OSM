@@ -7,6 +7,7 @@ import { courierScope } from '@/lib/couriers/scope';
 import { logAudit } from '@/lib/audit';
 import { requirePermission } from '@/lib/authorization';
 import { zodMessage } from '@/lib/zod-message';
+import { ruleFor } from '@/lib/phone-rules';
 
 const providerSchema = z.object({
   name: z.string().trim().min(2).max(80),
@@ -75,6 +76,8 @@ export async function GET() {
     return NextResponse.json({
       providers: providers.map((p) => ({ ...p, pricedRegions: pricedBy.get(p.id) ?? 0 })),
       totalRegions: regions,
+      // The country's calling code: a courier's number is typed local, and WhatsApp needs it in full.
+      dialCode: ruleFor(country.code)?.dialCode ?? null,
     });
   } catch (error: any) {
     return NextResponse.json({ error: 'حدث خطأ داخلي' }, { status: 400 });

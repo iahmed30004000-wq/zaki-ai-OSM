@@ -2,11 +2,14 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
-import { fillTemplate, whatsappLink, type FillContext, type MessageTemplate } from '@/lib/message-templates';
+import { fillTemplate, whatsappLink, whatsappReady, type FillContext, type MessageTemplate } from '@/lib/message-templates';
 import { RiChat3Line, RiMessage3Line, RiPhoneLine } from '@remixicon/react';
 
 /** Does a refusal already speak to her? (the Arabic block, as `api-error.ts` asks it) */
 const ARABIC = /[؀-ۿ]/;
+
+/** Why WhatsApp is shut on a local number — said beside the button, not guessed at. */
+const NO_COUNTRY = 'رمز الدولة ناقص';
 
 /**
  * CALL, SMS, WHATSAPP — from the row the parcel is on.
@@ -158,6 +161,8 @@ export function ContactButtons({
     typeof navigator !== 'undefined' &&
     (navigator.maxTouchPoints > 1 || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
 
+  const waReady = whatsappReady(phone, countryCode);
+
   /** WhatsApp with no message behind it — for a number that has no order. */
   const openPlainWhatsapp = () => {
     window.open(whatsappLink(phone!, countryCode), '_blank', 'noopener');
@@ -242,15 +247,24 @@ export function ContactButtons({
       {!plain && !onPhone && !compact && (
         <span className="text-xs text-[var(--sys-muted)]">الرسائل النصية من الموبايل</span>
       )}
+      {/*
+        A LOCAL NUMBER WITH NO COUNTRY IS NOT SENT TO WHATSAPP.
+        wa.me drops the leading zero and reads the first digits as a country, so «0952554562» opened a chat
+        with +95 (Myanmar) and the message about this order went to a stranger. Without a country code the
+        button stays, shut, and says why — it works the moment the code arrives.
+      */}
       <button
         type="button"
-        title="واتساب"
+        title={waReady ? 'واتساب' : NO_COUNTRY}
+        aria-label={waReady ? undefined : NO_COUNTRY}
+        disabled={!waReady}
         onClick={plain ? openPlainWhatsapp : () => setOpen(open === 'WHATSAPP' ? null : 'WHATSAPP')}
-        className={btn}
+        className={waReady ? btn : `${btn} disabled:opacity-50`}
       >
         <RiChat3Line className="w-4 h-4" />
         {!compact && 'واتساب'}
       </button>
+      {!waReady && !compact && <span className="text-xs text-[var(--sys-muted)]">{NO_COUNTRY}</span>}
 
       {notLogged && (
         <span role="alert" className="text-xs text-[var(--sys-destructive)]">
