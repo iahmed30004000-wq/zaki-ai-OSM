@@ -558,11 +558,17 @@ export interface ResolvedLines {
  * labelled «عرض» that is not the offer's is recorded as «يدوي»). Without a typed price a changed quantity or product
  * takes the basis they chose, or the default of `suggestPrice`. A basis that cannot be priced is refused — the
  * line still carries the default number so the screen can draw a result, but the problem is blocking.
+ *
+ * `pinnedGifts` is for the one caller that is not guessing: carrying out a request somebody APPROVED, whose gift
+ * per line was written into it and seen by the person who decided. A line named there takes that figure and no other
+ * (the offer may have ended since); every other line, and every preview, derives its gift as always. It is not a field
+ * of the draft on purpose — the draft is what a browser sends, and a gift is never a box.
  */
 export function resolveLineEdits(
   stored: readonly StoredLine[],
   edits: readonly LineEditInput[],
-  ctx: PricingContext
+  ctx: PricingContext,
+  pinnedGifts?: ReadonlyMap<string, number>
 ): ResolvedLines {
   const problems: Problem[] = [];
   const suggestions: ResolvedLines['suggestions'] = [];
@@ -644,7 +650,11 @@ export function resolveLineEdits(
     }
 
     // ── the gift
-    const gift = suggestGift(s, { productId, quantity }, offer, ctx.minorUnit);
+    const pinned = pinnedGifts?.get(s.id);
+    const gift: GiftSuggestion =
+      pinned !== undefined
+        ? { value: pinned, derived: false, warn: null }
+        : suggestGift(s, { productId, quantity }, offer, ctx.minorUnit);
     if (gift.warn) problems.push(problem(gift.warn, false, { lineId: s.id, productId: s.productId }));
 
     // ── what the offer, if the line is its, says about this quantity
@@ -977,7 +987,12 @@ export interface OrderEditPreview {
  * THE PREVIEW OF A DRAFT, as a pure function of the facts: before, after, the lines, the shelf, the problems and the
  * door. Nothing here reads or writes anything; `order-edit-facts.ts` supplies the facts and returns this unchanged.
  */
-export function previewLineEdit(facts: OrderEditFacts, draft: PreviewDraft): OrderEditPreview {
+export function previewLineEdit(
+  facts: OrderEditFacts,
+  draft: PreviewDraft,
+  /** Gifts an approved request fixed, by stored line id — see `resolveLineEdits`. A preview never passes it. */
+  pinnedGifts?: ReadonlyMap<string, number>
+): OrderEditPreview {
   const mu = facts.minorUnit;
   const o = facts.order;
   const products = new Map(facts.products.map((p) => [p.id, p]));
@@ -989,7 +1004,7 @@ export function previewLineEdit(facts: OrderEditFacts, draft: PreviewDraft): Ord
     orderDiscount: o.discount,
   };
 
-  const resolved = resolveLineEdits(facts.lines, draft.lines ?? [], ctx);
+  const resolved = resolveLineEdits(facts.lines, draft.lines ?? [], ctx, pinnedGifts);
   const nextDiscount = draft.discountAmount ?? o.discount;
 
   const beforePriced = priceOrderLines({
