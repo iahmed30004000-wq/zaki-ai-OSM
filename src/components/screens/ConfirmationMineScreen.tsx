@@ -116,6 +116,8 @@ interface MineResponse {
   /** Postponed to a later day — off her desk, not gone. */
   waitingLater: number;
   noAnswerLimit: number;
+  /** The country's calling code («963») — WhatsApp needs the number in full. */
+  dialCode?: string | null;
   /** The server's clock, so a wrong clock on her machine changes nothing. */
   serverNow: string;
   /** Nobody has failed to reach this customer yet — these are calls. */
@@ -755,6 +757,7 @@ export function ConfirmationMineScreen() {
             const contact = (
               <ContactButtons
                 phone={order.customer.rawPhone}
+                countryCode={data.dialCode}
                 context={{
                   orderNumber: order.orderNumber,
                   customerName: order.customer.fullName,
