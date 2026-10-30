@@ -479,6 +479,8 @@ export function ConfirmationMineScreen() {
       // Where the request went, in a sentence: carried out, waiting for a decision, or approved and waiting to be applied.
       const answer = await raiseChangeRequest(order.id, value, order.version, {
         canOpenQueue: userCan(currentUser, 'control.change_requests'),
+        // Her own queue: she holds the order, and the courier has not taken it.
+        order: { handed: false, held: true },
       });
       setNotice(answer.message);
     });

@@ -222,3 +222,31 @@ export function shutReason(problems: readonly ReviewProblem[]): string | null {
 
 /** The reason the buttons are shut when the check itself could not be made. A request nobody could check is not approved. */
 export const REVIEW_UNAVAILABLE_AR = 'تعذّر فحص الطلب على حالة الطلب الآن — أعد المحاولة قبل الموافقة.';
+
+/** The request was decided or carried out while the screen was open: there is nothing left to check, and it is not «تعذّر فحص». */
+export const REVIEW_CLOSED_AR = 'انبتّ فيه الآن — حدّث القائمة.';
+
+/** The lines of a stored request do not read in the shape the apply door reads: it cannot be carried out, and the server would say 422. */
+export const REVIEW_UNREADABLE_AR = 'تعذّر قراءة الطلب — ارفع طلباً جديداً.';
+
+/** A request that has not been checked yet (the page did not ask, or the budget said wait). The DIALOG shuts approval on it. */
+export const REVIEW_UNCHECKED_AR = 'لم يُفحص الطلب بعد — اضغط «افحص» أولاً.';
+
+/**
+ * HOW MANY CARDS ARE CHECKED WITHOUT BEING ASKED, and how many checks run at once.
+ *
+ * The queue holds up to 200 requests. Checking every card on arrival spends the person's whole budget in one screen and
+ * leaves nothing for raising a request; so the first cards (the ones in view) are checked, and each other card carries an
+ * «افحص» button. Three at a time, so a long list does not open a hundred connections together.
+ */
+export const AUTO_CHECKED_CARDS = 12;
+export const PARALLEL_CHECKS = 3;
+
+/**
+ * THE DECIDER'S OWN BUDGET FOR THESE CHECKS — apart from the raising screen's.
+ *
+ * They used to share one count, so a screen full of «بانتظار التطبيق» cards could spend what the same person needs to raise
+ * a request. A different key, a ceiling that fits a full page of cards, and a refusal that is only ever «wait».
+ */
+export const DECIDER_PREVIEWS_PER_MINUTE = 120;
+export const deciderPreviewRateKey = (companyId: string, userId: string): string => `control-preview:${companyId}:${userId}`;

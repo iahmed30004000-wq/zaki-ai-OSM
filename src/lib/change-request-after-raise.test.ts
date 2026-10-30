@@ -47,7 +47,7 @@ describe('Ⅲ · waiting for a decision', () => {
   it('names the stage’s deciders, and the tab', () => {
     const before = answerAfterRaise({ ...edit, readyToApply: false, orderStatus: 'IN_PROGRESS' });
     expect(before.outcome).toBe('WAITING');
-    expect(before.message).toBe('رُفع طلبك وبانتظار قرار الموظف المسؤول عن الطلب أو المشرف — تجده في طلبات التعديل ← بانتظار القرار.');
+    expect(before.message).toBe('رُفع طلبك وبانتظار قرار الموظف الماسك الطلب أو المشرف — تجده في طلبات التعديل ← بانتظار القرار.');
 
     const after = answerAfterRaise({ ...edit, readyToApply: false, orderStatus: 'CONFIRMED' });
     expect(after.message).toBe('رُفع طلبك وبانتظار قرار المشرف أو مسؤول المخزن — تجده في طلبات التعديل ← بانتظار القرار.');

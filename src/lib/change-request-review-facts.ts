@@ -1,4 +1,4 @@
-import { readLinesChange, type ApprovedLineEdit, type LinesChange } from './change-request-fields';
+import { readLinesChange, type LinesChange } from './change-request-fields';
 import {
   reviewDrift,
   reviewTotals,
@@ -7,7 +7,7 @@ import {
   type ReviewProblem,
 } from './change-request-review';
 import { readOrderEditFacts, type EditableOrderRow } from './order-edit-facts';
-import { bindApprovedEdits, linesStale, totalChanged, totalMoved } from './order-line-apply';
+import { bindApprovedEdits, draftLineOf, linesStale, totalChanged, totalMoved } from './order-line-apply';
 import {
   previewDraftSchema,
   previewLineEdit,
@@ -15,7 +15,6 @@ import {
   type OrderEditPreview,
   type PreviewDraft,
   type Problem,
-  type StoredLine,
 } from './order-line-edit';
 
 /**
@@ -61,21 +60,6 @@ function flatDraft(changes: unknown): Omit<PreviewDraft, 'lines'> {
   }
   // Every value above passed the draft schema's own rule for its key, so the object is a draft without lines.
   return out as Omit<PreviewDraft, 'lines'>;
-}
-
-/**
- * An approved edit as the engine's draft line — the SAME mapping the apply door makes (`draftLineOf` in
- * `order-line-apply.ts`, which is not exported): what was approved is typed whole, so nothing is priced again. A test
- * holds this equal to what `planLineApply` makes of the same request.
- */
-function draftLineOf(edit: ApprovedLineEdit, line: StoredLine): LineEditInput {
-  const goodsMoved = !!edit.productId || !!edit.quantity;
-  return {
-    lineId: line.id,
-    ...(edit.productId ? { productId: edit.productId.to } : {}),
-    ...(edit.quantity ? { quantity: edit.quantity.to } : {}),
-    ...(edit.lineTotal ? { lineTotal: edit.lineTotal.to } : goodsMoved ? { priceBasis: 'KEEP_UNIT' as const } : {}),
-  };
 }
 
 /** A product switched off is a warning for a draft and a stop for a decision (`refusalOf`'s own rule). */

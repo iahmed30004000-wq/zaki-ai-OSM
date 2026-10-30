@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { apiJson } from '@/lib/api-client';
 import { changeFieldLabel, PRICE_KEY_REQUIRED_AR, readLinesChange } from '@/lib/change-request-fields';
 import { LinesRequestReview, type Verdict } from '@/components/orders/LinesRequestReview';
+import { REVIEW_UNCHECKED_AR } from '@/lib/change-request-review';
 import { RiAlertLine, RiArrowLeftLine, RiCheckLine, RiCloseLine, RiLoader4Line } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
 import { arDateTime } from '@/lib/format';
@@ -110,7 +111,9 @@ export function ChangeRequestReview({
       : linesRequest
         ? verdict.checking
           ? 'جارٍ فحص الطلب…'
-          : verdict.shut
+          : verdict.unchecked
+            ? REVIEW_UNCHECKED_AR
+            : verdict.shut
         : null;
 
   return (

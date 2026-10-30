@@ -8,7 +8,7 @@ import { mayDecide } from '@/lib/change-request-routing';
 import { handedToCourier } from '@/lib/order-seal';
 import type { EditableOrderRow } from '@/lib/order-edit-facts';
 import { previewStoredRequest } from '@/lib/change-request-review-facts';
-import { PREVIEWS_PER_MINUTE, previewRateKey } from '@/lib/change-request-raise-lines';
+import { DECIDER_PREVIEWS_PER_MINUTE, deciderPreviewRateKey } from '@/lib/change-request-review';
 
 /**
  * WHAT A STORED `lines` REQUEST WOULD DO TO THE ORDER — TODAY, NOT WHEN IT WAS RAISED.
@@ -26,7 +26,8 @@ import { PREVIEWS_PER_MINUTE, previewRateKey } from '@/lib/change-request-raise-
  *
  * WHAT IT NEVER SHOWS: the order's cost or profit, and the shelf's whole balance (a product is «enough» or not).
  *
- * HOW OFTEN: the decider's screen asks once per request it draws, so it shares the raising screen's budget per person.
+ * HOW OFTEN: the decider's screen asks once per card it checks, so it has a budget of its own (`control-preview:…`), apart from
+ * the raising screen's: a page of cards must not spend what the same person needs to raise a request.
  */
 
 const NOT_FOUND = 'طلب التعديل غير موجود';
@@ -94,7 +95,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ error: NOT_FOUND, errorAr: NOT_FOUND }, { status: 404 });
     }
 
-    const limit = rateLimit(previewRateKey(companyId, user.id), PREVIEWS_PER_MINUTE, 60 * 1000);
+    const limit = rateLimit(deciderPreviewRateKey(companyId, user.id), DECIDER_PREVIEWS_PER_MINUTE, 60 * 1000);
     if (!limit.allowed) {
       const message = `طلبات كثيرة جداً. أعد المحاولة بعد ${limit.retryAfterSec} ثانية`;
       return NextResponse.json(

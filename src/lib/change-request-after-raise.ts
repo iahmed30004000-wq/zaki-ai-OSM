@@ -41,9 +41,19 @@ export const BEFORE_CONFIRMATION = ['NEW', 'IN_PROGRESS', 'NO_ANSWER', 'FOLLOW_U
  * is true for every stage. Whoever can is told the stage's own deciders (`deciderFor`): the agent holding the order before
  * confirmation, the packing table or a supervisor after it. The exact person is the server's to know and is not guessed.
  */
-export function waitingFor(orderStatus: string | null | undefined, canOpenQueue: boolean): string {
+export function waitingFor(
+  orderStatus: string | null | undefined,
+  canOpenQueue: boolean,
+  /** What the screen knows of the order beyond its status (`deciderFor`'s inputs): the courier has the parcel; somebody holds it. */
+  order: { handed?: boolean; held?: boolean } = {}
+): string {
   if (!canOpenQueue) return 'المشرف';
-  return orderStatus && BEFORE_CONFIRMATION.includes(orderStatus) ? 'الموظف المسؤول عن الطلب أو المشرف' : 'المشرف أو مسؤول المخزن';
+  if (orderStatus && BEFORE_CONFIRMATION.includes(orderStatus)) {
+    // The agent holding it decides (`deciderFor`); with nobody holding it only a supervisor can answer.
+    return order.held === false ? 'المشرف' : 'الموظف الماسك الطلب أو المشرف';
+  }
+  // Confirmed and the courier has the parcel: the supervisor alone decides. Otherwise the packing table may too.
+  return order.handed === true ? 'المشرف' : 'المشرف أو مسؤول المخزن';
 }
 
 const DONE_AR: Record<RaisedIntent, string> = {
@@ -61,7 +71,14 @@ export function answerAfterRaise(a: {
   orderStatus?: string | null;
   /** Holds the screen of the requests. */
   canOpenQueue: boolean;
+  /** What the screen knows of the order, for naming who decides. */
+  order?: { handed?: boolean; held?: boolean };
+  /** The last step answered «ALREADY_APPLIED»: somebody (or a second press) carried it out first. Nothing is waiting. */
+  alreadyApplied?: boolean;
 }): RaisedAnswer {
+  if (a.readyToApply && a.alreadyApplied) {
+    return { outcome: 'APPLIED', message: 'طُبِّق مسبقاً — ما في شي بانتظار التطبيق.' };
+  }
   if (a.readyToApply && a.failure === undefined) {
     return { outcome: 'APPLIED', message: DONE_AR[a.intent] };
   }
@@ -70,7 +87,7 @@ export function answerAfterRaise(a: {
     const why = a.failure ? ` (${a.failure})` : '';
     return { outcome: 'APPROVED_WAITING', message: `اعتُمد مباشرة وهو بانتظار التطبيق — ${where}.${why}` };
   }
-  const who = waitingFor(a.orderStatus, a.canOpenQueue);
+  const who = waitingFor(a.orderStatus, a.canOpenQueue, a.order);
   return {
     outcome: 'WAITING',
     message: a.canOpenQueue ? `رُفع طلبك وبانتظار قرار ${who} — تجده في ${WHERE_PENDING_AR}.` : `رُفع طلبك وبانتظار قرار ${who}.`,

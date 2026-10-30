@@ -42,10 +42,14 @@ export async function raiseChangeRequest(
    * English sentence. It was reported as exactly that.
    */
   expectedVersion: number,
-  /** Whether the person holds the screen of the requests: it decides whether the sentence points at it. */
-  opts: { canOpenQueue?: boolean } = {}
+  /**
+   * Whether the person holds the screen of the requests (it decides whether the sentence points at it), and what the
+   * screen knows of the order — the parcel is with the courier; an agent holds it — so the sentence names who decides.
+   */
+  opts: { canOpenQueue?: boolean; order?: { handed?: boolean; held?: boolean } } = {}
 ): Promise<RaisedAnswer> {
   const canOpenQueue = opts.canOpenQueue === true;
+  const order = opts.order;
   /**
    * Each ask carries only what it means. A cancellation names no field and
    * a postponement names no value; sending empty ones would have the server
@@ -67,13 +71,16 @@ export async function raiseChangeRequest(
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
   );
   if (!res.readyToApply) {
-    return answerAfterRaise({ intent: value.intent, readyToApply: false, orderStatus: res.orderStatus, canOpenQueue });
+    return answerAfterRaise({ intent: value.intent, readyToApply: false, orderStatus: res.orderStatus, canOpenQueue, order });
   }
 
   /** The last step failed: the request is approved and sits in «بانتظار التطبيق», and that is what the sentence says. */
   const waiting = (why: string | null): never => {
-    throw new Error(answerAfterRaise({ intent: value.intent, readyToApply: true, failure: why, orderStatus: res.orderStatus, canOpenQueue }).message);
+    throw new Error(answerAfterRaise({ intent: value.intent, readyToApply: true, failure: why, orderStatus: res.orderStatus, canOpenQueue, order }).message);
   };
+  /** A second press (or somebody else) carried it out first: nothing waits, and saying «بانتظار التطبيق» would send her looking for it. */
+  const already = (): RaisedAnswer =>
+    answerAfterRaise({ intent: value.intent, readyToApply: true, alreadyApplied: true, orderStatus: res.orderStatus, canOpenQueue, order });
   const done = (): RaisedAnswer => answerAfterRaise({ intent: value.intent, readyToApply: true, orderStatus: res.orderStatus, canOpenQueue });
 
   if (value.intent === 'EDIT') {
@@ -84,6 +91,7 @@ export async function raiseChangeRequest(
         body: JSON.stringify({ changeRequestId: res.request.id, expectedVersion }),
       });
     } catch (e) {
+      if ((e as { data?: { code?: string } }).data?.code === 'ALREADY_APPLIED') return already();
       return waiting(e instanceof Error ? e.message : null);
     }
     return done();
@@ -108,5 +116,6 @@ export async function raiseChangeRequest(
   if (answer?.code === 'ATTESTATION_REQUIRED') {
     throw new Error('اعتُمد الطلب وبقي تنفيذه: بوليصة الطرد مطبوعة. افتح «طلبات التعديل» ونفّذه من هناك لتؤكد أن الطرد بين يديك.');
   }
+  if (answer?.code === 'ALREADY_APPLIED') return already();
   return waiting(answer?.errorAr || answer?.error || 'تعذر تنفيذ القرار');
 }

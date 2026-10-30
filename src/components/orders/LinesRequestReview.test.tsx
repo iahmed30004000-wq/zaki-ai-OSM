@@ -93,7 +93,7 @@ describe('Ⅰ · the table', () => {
     await screen.findAllByText('كريم');
     expect(apiJson).toHaveBeenCalledWith('/api/control/change-requests/cr1/preview');
     // While it was asking, the parent was told «still checking» and no sentence.
-    expect(told[0]).toEqual({ checking: true, shut: null });
+    expect(told[0]).toMatchObject({ checking: true, shut: null });
   });
 
   it('draws the money before ← after, every figure the server’s', async () => {
@@ -188,12 +188,12 @@ describe('Ⅱ · the reasons it cannot be carried out shut the button', () => {
     apiJson.mockRejectedValueOnce(new Error('تعذر الاتصال'));
     const told = draw();
     await screen.findByText('تعذر الاتصال');
-    expect(told.at(-1)).toEqual({ checking: false, shut: REVIEW_UNAVAILABLE_AR });
+    expect(told.at(-1)).toMatchObject({ checking: false, shut: REVIEW_UNAVAILABLE_AR });
 
     apiJson.mockResolvedValue(preview());
     fireEvent.click(screen.getByRole('button', { name: 'أعد الفحص' }));
     await screen.findByText('الحساب');
-    await waitFor(() => expect(told.at(-1)).toEqual({ checking: false, shut: null }));
+    await waitFor(() => expect(told.at(-1)).toMatchObject({ checking: false, shut: null }));
     expect(apiJson).toHaveBeenCalledTimes(2);
   });
 });

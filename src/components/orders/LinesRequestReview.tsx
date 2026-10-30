@@ -1,11 +1,13 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { throttled } from '@/components/orders/preview-queue';
 import { RiAlertLine, RiArrowLeftLine, RiLoader4Line } from '@remixicon/react';
 import { apiJson } from '@/lib/api-client';
 import { Money } from '@/components/ui/Money';
 import { Rows, type Column } from '@/components/ui/Rows';
 import {
+  REVIEW_CLOSED_AR,
   REVIEW_UNAVAILABLE_AR,
   shutReason,
   type ReviewLine,
@@ -26,6 +28,11 @@ import type { PublicStockEffect, StockStatus } from '@/lib/order-line-edit';
  * A request that cannot be checked is shut too: «اعتُمد ويستحيل تطبيقه» is the state this exists to prevent, and a
  * decider who could not see the check must not be the one who skips it. Rejecting is never shut by it.
  *
+ * A request that was NOT checked is a different state from one whose check failed: a long queue checks its first cards and
+ * leaves an «افحص» on the rest, and the budget answering «wait» leaves the same button. `unchecked` is told to the parent
+ * apart from `shut`: the dialog (approval has no second look) shuts on it, the queue's carry-out button (the apply door
+ * judges) does not.
+ *
  * `variant="gate"` is the short form for a card in the queue: the total, the reasons and what moved — not the tables.
  */
 
@@ -34,40 +41,69 @@ export interface Verdict {
   checking: boolean;
   /** The sentence that shuts the button, or `null` when nothing stops it. */
   shut: string | null;
+  /** Nobody has asked yet, or the budget said wait: no answer, and no reason either way. */
+  unchecked?: boolean;
 }
 
-type Loaded = { phase: 'loading' } | { phase: 'ready'; preview: ReviewPreview } | { phase: 'failed'; error: string };
+type Loaded =
+  | { phase: 'loading' }
+  | { phase: 'ready'; preview: ReviewPreview }
+  /** `closed`: decided or carried out while the screen was open — not a failure of the check. */
+  | { phase: 'failed'; error: string; closed: boolean }
+  /** `RATE`: the server said wait; `LATER`: not asked yet. Either way a button asks. */
+  | { phase: 'unchecked'; why: 'LATER' | 'RATE' };
 
-/** The preview of one request. `refreshKey` re-asks when the order moved under the screen. */
-export function useRequestPreview(requestId: string, refreshKey?: unknown): { state: Loaded; reload: () => void } {
-  const [state, setState] = useState<Loaded>({ phase: 'loading' });
+/**
+ * The preview of one request. `refreshKey` re-asks when the order moved under the screen — and the answer for the OLD key is
+ * never shown for the new one: the moment the key changes the state is «loading» again, not the old verdict for a moment.
+ * `auto: false` waits for `start()` (a card below the fold).
+ */
+export function useRequestPreview(
+  requestId: string,
+  refreshKey?: unknown,
+  auto = true
+): { state: Loaded; reload: () => void; start: () => void } {
+  const [pressed, setPressed] = useState(false);
+  // Asked by the page (a card among the first) or by the «افحص» button; a card that BECOMES one of the first is asked too.
+  const asked = auto || pressed;
   const [attempt, setAttempt] = useState(0);
+  const [done, setDone] = useState<{ key: string; value: Loaded } | null>(null);
+  const key = `${requestId}|${String(refreshKey)}|${attempt}`;
 
   useEffect(() => {
+    if (!asked) return undefined;
     let live = true;
-    apiJson<ReviewPreview>(`/api/control/change-requests/${requestId}/preview`)
+    throttled(() => apiJson<ReviewPreview>(`/api/control/change-requests/${requestId}/preview`))
       .then((preview) => {
-        if (live) setState({ phase: 'ready', preview });
+        if (live) setDone({ key, value: { phase: 'ready', preview } });
       })
       .catch((e: unknown) => {
-        if (live) setState({ phase: 'failed', error: e instanceof Error ? e.message : REVIEW_UNAVAILABLE_AR });
+        if (!live) return;
+        const err = e as { status?: number; data?: { code?: string } };
+        const value: Loaded =
+          err.status === 429
+            ? { phase: 'unchecked', why: 'RATE' }
+            : { phase: 'failed', error: e instanceof Error ? e.message : REVIEW_UNAVAILABLE_AR, closed: err.data?.code === 'NOT_OPEN' };
+        setDone({ key, value });
       });
     return () => {
       live = false;
     };
-  }, [requestId, refreshKey, attempt]);
+  }, [requestId, asked, key]);
 
-  const reload = useCallback(() => {
-    setState({ phase: 'loading' });
+  const state: Loaded = !asked ? { phase: 'unchecked', why: 'LATER' } : done?.key === key ? done.value : { phase: 'loading' };
+  const start = useCallback(() => {
+    setPressed(true);
     setAttempt((n) => n + 1);
   }, []);
-  return { state, reload };
+  return { state, reload: start, start };
 }
 
 /** What the parent is told, derived once so the card and the dialog read the same answer. */
 export function verdictOf(state: Loaded): Verdict {
   if (state.phase === 'loading') return { checking: true, shut: null };
-  if (state.phase === 'failed') return { checking: false, shut: REVIEW_UNAVAILABLE_AR };
+  if (state.phase === 'unchecked') return { checking: false, shut: null, unchecked: true };
+  if (state.phase === 'failed') return { checking: false, shut: state.closed ? REVIEW_CLOSED_AR : REVIEW_UNAVAILABLE_AR };
   return { checking: false, shut: shutReason(state.preview.problems) };
 }
 
@@ -123,24 +159,42 @@ export function LinesRequestReview({
   requestId,
   variant = 'full',
   refreshKey,
+  auto = true,
   onVerdict,
 }: {
   requestId: string;
   variant?: 'full' | 'gate';
+  /** `false`: the check waits for the «افحص» button (a card below the first few of a long queue). */
+  auto?: boolean;
   /** When this changes the check is made again (the order's version, on the queue). */
   refreshKey?: unknown;
   onVerdict?: (v: Verdict) => void;
 }) {
-  const { state, reload } = useRequestPreview(requestId, refreshKey);
+  const { state, reload, start } = useRequestPreview(requestId, refreshKey, auto);
   const tell = useRef(onVerdict);
   useEffect(() => {
     tell.current = onVerdict;
   });
 
-  const { checking, shut } = verdictOf(state);
+  const { checking, shut, unchecked } = verdictOf(state);
   useEffect(() => {
-    tell.current?.({ checking, shut });
-  }, [checking, shut]);
+    tell.current?.({ checking, shut, unchecked: unchecked === true });
+  }, [checking, shut, unchecked]);
+
+  if (state.phase === 'unchecked') {
+    return (
+      <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--sys-muted-foreground)]">
+        <span>{state.why === 'RATE' ? 'الفحص مزدحم الآن — حاول بعد قليل.' : 'لم يُفحص هذا الطلب بعد.'}</span>
+        <button
+          type="button"
+          onClick={start}
+          className="min-h-11 md:min-h-0 inline-flex items-center px-4 py-1.5 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] text-[var(--sys-foreground)] text-xs font-medium"
+        >
+          افحص
+        </button>
+      </div>
+    );
+  }
 
   if (state.phase === 'loading') {
     return (
@@ -153,15 +207,21 @@ export function LinesRequestReview({
   if (state.phase === 'failed') {
     return (
       <div className="text-xs text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-2.5 space-y-2">
-        <p>{state.error}</p>
-        <p>{REVIEW_UNAVAILABLE_AR}</p>
-        <button
-          type="button"
-          onClick={reload}
-          className="min-h-11 md:min-h-0 inline-flex items-center px-4 py-1.5 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] text-[var(--sys-foreground)] text-xs font-medium"
-        >
-          أعد الفحص
-        </button>
+        {state.closed ? (
+          <p>{REVIEW_CLOSED_AR}</p>
+        ) : (
+          <>
+            <p>{state.error}</p>
+            <p>{REVIEW_UNAVAILABLE_AR}</p>
+            <button
+              type="button"
+              onClick={reload}
+              className="min-h-11 md:min-h-0 inline-flex items-center px-4 py-1.5 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] text-[var(--sys-foreground)] text-xs font-medium"
+            >
+              أعد الفحص
+            </button>
+          </>
+        )}
       </div>
     );
   }

@@ -57,7 +57,8 @@ vi.mock('@/lib/order-edit-facts', () => ({
 }));
 
 import { GET } from './route';
-import { PREVIEWS_PER_MINUTE, previewRateKey } from '@/lib/change-request-raise-lines';
+import { DECIDER_PREVIEWS_PER_MINUTE, deciderPreviewRateKey } from '@/lib/change-request-review';
+import { previewRateKey } from '@/lib/change-request-raise-lines';
 
 const stored = (over: Partial<StoredLine> & { id: string }): StoredLine => ({
   productId: CREAM,
@@ -321,10 +322,24 @@ describe('Ⅳ · it is a read', () => {
   });
 });
 
-describe('Ⅴ · the budget it shares with the raising screen', () => {
-  it('draws on the same count per person, in the same company', async () => {
+describe('Ⅴ · the decider’s own budget, apart from the raising screen’s', () => {
+  it('draws on a key of its own, per person and company, with a ceiling that fits a page of cards', async () => {
     await ask();
-    expect(rateLimit).toHaveBeenCalledWith(previewRateKey('c1', 'sami'), PREVIEWS_PER_MINUTE, 60 * 1000);
+    expect(rateLimit).toHaveBeenCalledTimes(1);
+    expect(rateLimit).toHaveBeenCalledWith(deciderPreviewRateKey('c1', 'sami'), DECIDER_PREVIEWS_PER_MINUTE, 60 * 1000);
+    expect(deciderPreviewRateKey('c1', 'sami')).toBe('control-preview:c1:sami');
+    expect(DECIDER_PREVIEWS_PER_MINUTE).toBe(120);
+  });
+
+  it('and never the key the raising screen spends — a page of cards cannot use up a request to raise', async () => {
+    await ask();
+    const keys = rateLimit.mock.calls.map(([key]) => key);
+    expect(keys).not.toContain(previewRateKey('c1', 'sami'));
+  });
+
+  it('another person has another count', async () => {
+    expect(deciderPreviewRateKey('c1', 'sami')).not.toBe(deciderPreviewRateKey('c1', 'rim'));
+    expect(deciderPreviewRateKey('c1', 'sami')).not.toBe(deciderPreviewRateKey('c2', 'sami'));
   });
 
   it('answers 429 with the wait, and reads nothing when the budget is spent', async () => {

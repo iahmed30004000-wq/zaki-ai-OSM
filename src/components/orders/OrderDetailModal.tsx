@@ -936,7 +936,10 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
           onSubmit={(value: ChangeRequestValue) => {
             setAskOpen(false);
             setAsking(true);
-            void raiseChangeRequest(order.id, value, order.version, { canOpenQueue: userCan(currentUser, 'control.change_requests') })
+            void raiseChangeRequest(order.id, value, order.version, {
+              canOpenQueue: userCan(currentUser, 'control.change_requests'),
+              order: { handed: handedOver, held: !!order.claimedById },
+            })
               .then(async (answer) => {
                 // The sentence says where the request went: carried out, waiting for a decision, or approved and waiting to be applied.
                 setActionFeedback({ type: 'success', text: answer?.message ?? 'أُرسل الطلب — يصلك القرار إشعاراً.' });

@@ -5,6 +5,7 @@ import { apiFetch, apiJson } from '@/lib/api-client';
 import { CourierNotifyDialog, type CourierAsk } from '@/components/orders/CourierNotifyDialog';
 import { ChangeRequestReview } from '@/components/orders/ChangeRequestReview';
 import { LinesRequestReview, type Verdict } from '@/components/orders/LinesRequestReview';
+import { AUTO_CHECKED_CARDS, REVIEW_UNREADABLE_AR } from '@/lib/change-request-review';
 import { OrderLink } from '@/components/orders/OrderLink';
 import { useConfirm, useTell } from '@/components/ui/Confirm';
 import { changeFieldLabel, describeLines, readLinesChange } from '@/lib/change-request-fields';
@@ -104,6 +105,14 @@ function fieldPairs(r: ChangeRequest): Array<[string, { from?: unknown; to?: unk
 function linesOf(r: ChangeRequest) {
   const read = readLinesChange(r.changes);
   return read.ok ? read.value : null;
+}
+
+/**
+ * A request that CARRIES lines the apply door cannot read (a hand-edited row, a shape from before the schema): the door
+ * answers 422 when pressed, so the button is shut now, with the sentence — failing closed, not failing on the press.
+ */
+function linesUnreadable(r: ChangeRequest): boolean {
+  return 'lines' in (r.changes ?? {}) && !readLinesChange(r.changes).ok;
 }
 
 /** One sentence per edited line, with the product names the server sent. */
@@ -224,8 +233,12 @@ export function ChangeRequestsScreen() {
    * can still take it. While the check is in the air the button waits too, so nobody presses it on a guess.
    */
   const gateShut = (r: ChangeRequest): string | null => {
+    if (linesUnreadable(r)) return REVIEW_UNREADABLE_AR;
     if (!linesOf(r)) return null;
     const v = verdicts[r.id];
+    // A card nobody has asked about (or one the budget said «wait» to) is not shut: the apply door judges it on the press,
+    // and the card carries an «افحص» button. A check that FAILED is shut, as it always was.
+    if (v?.unchecked) return null;
     return !v || v.checking ? 'جارٍ فحص الطلب…' : v.shut;
   };
 
@@ -457,6 +470,9 @@ export function ChangeRequestsScreen() {
   }
 
   const rows = lists[tab];
+  // The first cards of a long queue are checked on arrival; every other one waits for its «افحص» (a page of two hundred
+  // checks at once would spend the person's whole budget before they had pressed anything).
+  const checkedCards = new Set(lists.AWAITING_APPLY.filter((q) => linesOf(q)).slice(0, AUTO_CHECKED_CARDS).map((q) => q.id));
   const other: Tab = tab === 'PENDING' ? 'AWAITING_APPLY' : 'PENDING';
 
   return (
@@ -629,10 +645,17 @@ export function ChangeRequestsScreen() {
             )}
 
             {/* And before it is carried out, the order as it stands now: the gate the button below waits for. */}
+            {tab === 'AWAITING_APPLY' && linesUnreadable(r) && (
+              <p className="text-xs text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-2.5">
+                {REVIEW_UNREADABLE_AR}
+              </p>
+            )}
+
             {tab === 'AWAITING_APPLY' && linesOf(r) && (
               <LinesRequestReview
                 requestId={r.id}
                 variant="gate"
+                auto={checkedCards.has(r.id)}
                 refreshKey={r.order.version}
                 onVerdict={(v) =>
                   setVerdicts((prev) =>

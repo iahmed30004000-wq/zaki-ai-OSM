@@ -37,10 +37,11 @@ export async function raiseEditRequest(
    * would be raised, approved, and then fail at the last step.
    */
   expectedVersion: number,
-  /** Whether the person holds the screen of the requests: it decides whether the sentence points at it. */
-  opts: { canOpenQueue?: boolean } = {}
+  /** Whether the person holds the screen of the requests, and what the screen knows of the order (see `raiseChangeRequest`). */
+  opts: { canOpenQueue?: boolean; order?: { handed?: boolean; held?: boolean } } = {}
 ): Promise<{ applied: boolean; requestId: string; message: string }> {
   const canOpenQueue = opts.canOpenQueue === true;
+  const order = opts.order;
   const res = await apiJson<{ request: { id: string }; orderStatus?: string; readyToApply?: boolean }>(
     `/api/orders/${orderId}/change-requests`,
     {
@@ -55,7 +56,7 @@ export async function raiseEditRequest(
   );
 
   if (!res.readyToApply) {
-    const waiting = answerAfterRaise({ intent: 'EDIT', readyToApply: false, orderStatus: res.orderStatus, canOpenQueue });
+    const waiting = answerAfterRaise({ intent: 'EDIT', readyToApply: false, orderStatus: res.orderStatus, canOpenQueue, order });
     return { applied: false, requestId: res.request.id, message: waiting.message };
   }
 
@@ -66,6 +67,11 @@ export async function raiseEditRequest(
       body: JSON.stringify({ changeRequestId: res.request.id, expectedVersion }),
     });
   } catch (e) {
+    // A second press carried it out first: it is applied, and nothing waits.
+    if ((e as { data?: { code?: string } }).data?.code === 'ALREADY_APPLIED') {
+      const done = answerAfterRaise({ intent: 'EDIT', readyToApply: true, alreadyApplied: true, orderStatus: res.orderStatus, canOpenQueue, order });
+      return { applied: true, requestId: res.request.id, message: done.message };
+    }
     throw new Error(
       answerAfterRaise({
         intent: 'EDIT',
@@ -73,6 +79,7 @@ export async function raiseEditRequest(
         failure: e instanceof Error ? e.message : null,
         orderStatus: res.orderStatus,
         canOpenQueue,
+        order,
       }).message
     );
   }

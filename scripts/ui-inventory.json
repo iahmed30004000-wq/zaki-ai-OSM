@@ -390,7 +390,7 @@
     "tabs": 0
   },
   "src/components/orders/LinesRequestReview.tsx": {
-    "buttons": 1,
+    "buttons": 2,
     "inputs": 0,
     "columns": 12,
     "cards": 0,
