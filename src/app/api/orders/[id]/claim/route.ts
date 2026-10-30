@@ -7,7 +7,11 @@ import { atomicClaim, isLockActive, lockConfig, ownershipSnapshot } from '@/lib/
 import { logAudit } from '@/lib/audit';
 import { apiError } from '@/lib/api-error';
 import { can } from '@/lib/authorization';
-import { ORDER_CLAIM_NOT_HELD, ORDER_NOT_FOUND, ORDER_STALE, orderClaimedBy } from '@/lib/order-refusals';
+import { deriveCoreState, getZone, type StateSource } from '@/lib/order-state';
+import {
+  ORDER_ALREADY_IN_QUEUE, ORDER_CLAIM_NOT_HELD, ORDER_NOT_FOUND, ORDER_PAST_CONFIRMATION, ORDER_STALE,
+  ORDER_TAKEBACK_REASON, orderClaimedBy,
+} from '@/lib/order-refusals';
 import { ownedCounts, pullRefusal } from '@/lib/confirmation-queue';
 
 /**
@@ -225,32 +229,64 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     if (!access.allowed) return NextResponse.json({ error: 'Order not found', errorAr: ORDER_NOT_FOUND }, { status: 404 });
 
     const order = access.order;
-    if (order.claimedById !== user.id) {
-      return NextResponse.json({ error: 'You do not hold the claim on this order.', errorAr: ORDER_CLAIM_NOT_HELD }, { status: 403 });
+    const mine = order.claimedById === user.id;
+    /*
+     * PULLING SOMEBODY ELSE'S ORDER BACK.
+     *
+     * The box on the order sheet draws «سحبه منه» and this door answered the
+     * owner «ليس بين يديك» — a button the door refused. He pressed it three times.
+     *
+     * Owner and supervisor only: `orders.unlock`, the key the override door
+     * (`?mode=override`) already asks, which only the owner, the company admin
+     * and the manager hold. With the reason in writing, and only while the order
+     * is still at the confirmation desk: past it the release below would put a
+     * confirmed or shipped order back to NEW. After that the order is edited in
+     * place or taken with the override.
+     */
+    const takingBack = !mine && can(user, 'orders.unlock');
+    if (!mine && !takingBack) {
+      return NextResponse.json({ error: 'لا تحمل هذا الطلب.', errorAr: ORDER_CLAIM_NOT_HELD }, { status: 403 });
     }
 
     const { searchParams } = new URL(req.url);
     const reason = searchParams.get('reason') || undefined;
     const now = new Date();
+    const holderId = order.claimedById ?? order.currentOwnerId ?? null;
 
-    // Conditional release: only the CURRENT claim holder may release, guarded
-    // by the version the caller loaded (lost-update protection).
+    if (takingBack) {
+      if (!holderId) {
+        return NextResponse.json({ error: ORDER_ALREADY_IN_QUEUE, errorAr: ORDER_ALREADY_IN_QUEUE, code: 'ALREADY_IN_QUEUE' }, { status: 409 });
+      }
+      const zone = getZone(deriveCoreState(order as StateSource));
+      if (zone !== 'CONFIRMATION' && zone !== 'INTAKE') {
+        return NextResponse.json({ error: ORDER_PAST_CONFIRMATION, errorAr: ORDER_PAST_CONFIRMATION, code: 'PAST_CONFIRMATION' }, { status: 409 });
+      }
+      if (!reason || reason.trim().length < 3) {
+        return NextResponse.json({ error: ORDER_TAKEBACK_REASON, errorAr: ORDER_TAKEBACK_REASON, code: 'REASON_REQUIRED' }, { status: 400 });
+      }
+    }
+
+    // Conditional release: only the CURRENT holder's claim is released (or the
+    // reassigner pulling it back), guarded by the version the caller loaded
+    // (lost-update protection).
     const released = await db.order.updateMany({
       where: {
         id,
         companyId,
-        claimedById: user.id,
+        claimedById: takingBack ? order.claimedById : user.id,
         version: order.version,
       },
       data: {
         claimedById: null, claimedAt: null,
         currentOwnerId: null,
+        // Pulled back: the order is nobody's, not «assigned» to the one it was taken from
+        ...(takingBack ? { assignedToId: null, assignedAt: null } : {}),
         // A released order goes back to the claimable queue (legacy 'NEW')
         confirmationStatus: 'NEW',
         status: 'NEW',
         signatureStatus: 'UNSIGNED', signedById: null, signedAt: null, signatureNote: null,
-        // releasing also drops any editing lock I hold
-        ...(order.lockedById === user.id ? { lockedById: null, lockedAt: null, lockExpiresAt: null } : {}),
+        // releasing also drops any editing lock I hold — and, pulled back, the holder's
+        ...(order.lockedById === user.id || (takingBack && order.lockedById) ? { lockedById: null, lockedAt: null, lockExpiresAt: null } : {}),
         version: { increment: 1 },
       },
     });
@@ -264,15 +300,18 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     await db.orderClaimHistory.create({
       data: {
         companyId, orderId: id, userId: user.id, action: 'RELEASED', reason,
-        metadata: JSON.stringify({ previousOwner: user.id }),
+        metadata: JSON.stringify({ previousOwner: takingBack ? holderId : user.id, ...(takingBack ? { pulledBackBy: user.id } : {}) }),
       },
     });
     await db.orderActivity.create({
-      data: { companyId, orderId: id, userId: user.id, action: 'RELEASED', metadata: JSON.stringify({ releasedBy: user.name }) },
+      data: {
+        companyId, orderId: id, userId: user.id, action: 'RELEASED',
+        metadata: JSON.stringify({ releasedBy: user.name, ...(takingBack ? { pulledBack: true, from: holderId, reason } : {}) }),
+      },
     });
     await logAudit({
       companyId, userId: user.id, action: 'ORDER_RELEASED', entity: 'Order', entityId: id,
-      previousData: { claimedById: user.id }, newData: { claimedById: null, reason },
+      previousData: { claimedById: takingBack ? order.claimedById : user.id }, newData: { claimedById: null, reason, ...(takingBack ? { pulledBackBy: user.id } : {}) },
     });
 
     const freshOrder = await db.order.findUnique({ where: { id } });

@@ -40,7 +40,7 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
   const toast = useToast();
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [mayTransfer, setMayTransfer] = useState(false);
-  const [open, setOpen] = useState<'transfer' | 'release' | null>(null);
+  const [open, setOpen] = useState<'transfer' | 'release' | 'take' | null>(null);
   const [targetId, setTargetId] = useState('');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
@@ -56,7 +56,16 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
    * door), and the button to do it was not drawn.
    */
   const { currentUser } = useApp();
-  const mayRelease = mayTransfer || (heldByMe && userCan(currentUser, 'orders.release'));
+  /*
+   * OWNER AND SUPERVISOR: PULL ANY ORDER BACK, OR TAKE IT.
+   *
+   * `orders.unlock` is the key the server asks for both («سحبه منه» from someone
+   * else, and taking the order over); only the owner, the company admin and the
+   * manager hold it. Without it the button for another person's order is not
+   * drawn — it used to be, and the door refused it.
+   */
+  const mayOverride = !heldByMe && userCan(currentUser, 'orders.unlock');
+  const mayRelease = heldByMe ? mayTransfer || userCan(currentUser, 'orders.release') : mayOverride;
 
   useEffect(() => {
     setOpen(null);
@@ -71,9 +80,11 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
       });
   }, [order.id, order.claimedById]);
 
-  async function run(action: 'transfer' | 'release') {
-    if (!reason.trim() || reason.trim().length < 3) {
-      toast.failed('اكتب السبب — يُسجَّل في سجل الطلب.');
+  async function run(action: 'transfer' | 'release' | 'take') {
+    // Taking the order over is the override door: it wants five characters.
+    const shortest = action === 'take' ? 5 : 3;
+    if (reason.trim().length < shortest) {
+      toast.failed(action === 'take' ? 'اكتب سبب استلامك للطلب (5 أحرف على الأقل) — يُسجَّل في سجل الطلب.' : 'اكتب السبب — يُسجَّل في سجل الطلب.');
       return;
     }
     if (action === 'transfer' && !targetId) {
@@ -87,6 +98,12 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ targetUserId: targetId, reason: reason.trim() }),
+        });
+      } else if (action === 'take') {
+        await apiJson(`/api/orders/${order.id}/claim?mode=override`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason: reason.trim() }),
         });
       } else {
         await apiJson(`/api/orders/${order.id}/claim?reason=${encodeURIComponent(reason.trim())}`, {
@@ -128,8 +145,18 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
           )}
         </div>
 
-        {holder && mayRelease && (
-          <div className="flex items-center gap-1.5">
+        {((holder && mayRelease) || mayOverride) && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {mayOverride && (
+              <button
+                onClick={() => { setOpen(open === 'take' ? null : 'take'); }}
+                className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1.5"
+              >
+                <RiUserFollowLine className="w-4 h-4" />
+                استلمه أنا
+              </button>
+            )}
+            {holder && mayRelease && (
             <button
               onClick={() => { setOpen(open === 'release' ? null : 'release'); }}
               className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-destructive)] inline-flex items-center gap-1.5"
@@ -137,7 +164,8 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
               <RiUserUnfollowLine className="w-4 h-4" />
               سحبه منه
             </button>
-            {mayTransfer && (
+            )}
+            {holder && mayRelease && mayTransfer && (
             <button
               onClick={() => { setOpen(open === 'transfer' ? null : 'transfer'); }}
               disabled={candidates.length === 0}
@@ -170,13 +198,13 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
 
           <label className="block">
             <span className="block text-xs font-medium text-[var(--sys-muted-foreground)] mb-1">
-              السبب {open === 'release' ? '(لماذا يُسحب منه)' : ''}
+              السبب {open === 'release' ? '(لماذا يُسحب منه)' : open === 'take' ? '(لماذا تستلمه أنت)' : ''}
             </span>
             <input
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               autoFocus
-              placeholder={open === 'release' ? 'انتهى دوامه، لم يتابعه…' : 'إجازة، توزيع الحمل…'}
+              placeholder={open === 'release' ? 'انتهى دوامه، لم يتابعه…' : open === 'take' ? 'أعدّله بنفسي، متابعة خاصة…' : 'إجازة، توزيع الحمل…'}
               className={inputClass}
             />
           </label>
@@ -189,7 +217,7 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
               className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-3 py-1.5 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] font-medium disabled:opacity-50 inline-flex items-center gap-1.5"
             >
               {busy && <RiLoader4Line className="w-4 h-4 animate-spin" />}
-              {open === 'release' ? 'أعِده للطابور' : 'حوّل الطلب'}
+              {open === 'release' ? 'أعِده للطابور' : open === 'take' ? 'استلمه' : 'حوّل الطلب'}
             </button>
             <button
               onClick={() => { setOpen(null); }}
