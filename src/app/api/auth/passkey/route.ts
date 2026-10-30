@@ -4,6 +4,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { CHALLENGE_TTL_MS, newChallenge, publicOrigin, relyingParty } from '@/lib/passkey';
+import { checkStepUp } from '@/lib/passkey-guard';
 
 /**
  * GET    /api/auth/passkey — the keys I have registered.
@@ -47,6 +48,16 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    /**
+     * THE SESSION IS NOT ENOUGH TO ADD A WAY IN (A1).
+     *
+     * The password (or a fresh six-digit code) is asked for here, at the START: a challenge only exists for somebody who
+     * passed it, and `register` accepts nothing but an unspent challenge, so the finish needs no second question.
+     */
+    const body = await req.json().catch(() => null);
+    const stepUp = await checkStepUp({ userId: me.id, status: me.status, password: body?.password, code: body?.code });
+    if (!stepUp.ok) return NextResponse.json({ error: stepUp.error, code: 'STEP_UP' }, { status: stepUp.status });
 
     const challenge = newChallenge();
     await db.passkeyChallenge.create({

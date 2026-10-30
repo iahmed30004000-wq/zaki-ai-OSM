@@ -9,6 +9,7 @@ import { maySetPassword, generatePassword } from '@/lib/two-factor-reset';
 import { passwordMessage } from '@/lib/password-rules';
 import { ASSIGNABLE_ROLES, UserRole, UserStatus } from '@/types/auth';
 import { logAudit } from '@/lib/audit';
+import { wipePasskeys } from '@/lib/passkey-guard';
 import { can, requirePermission } from '@/lib/authorization';
 import { isPrivilegedRoleName } from '@/lib/role-names';
 import { canActOnUser, canConferRole } from '@/lib/user-permissions';
@@ -256,7 +257,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       const tempPassword = typed ?? generatePassword((max) => crypto.randomInt(max));
       updateData.passwordHash = await hashPassword(tempPassword);
       updateData.tokenVersion = { increment: 1 };
-      await db.user.update({ where: { id }, data: updateData });
+      // The sessions end with the old password (tokenVersion above); so do the fingerprints, in the same step (A1). A key
+      // added with the old password must not survive the person who has just been given a new one.
+      await db.$transaction(async (tx) => {
+        await tx.user.update({ where: { id }, data: updateData });
+        await wipePasskeys(tx, id);
+      });
       await logAudit({
         companyId: target.companyId || admin.companyId || 'platform',
         userId: admin.id,
@@ -465,7 +471,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: 'إجراء غير معروف' }, { status: 400 });
     }
 
-    const updated = await db.user.update({
+    // Signing somebody out everywhere, suspending or disabling them: the sessions end (tokenVersion) and so do their
+    // fingerprints, in the same step (A1). A fingerprint left behind is a way in that the action just meant to close.
+    const closesTheWay =
+      action === 'forceLogout' || (action === 'changeStatus' && (status === 'SUSPENDED' || status === 'DISABLED'));
+    const updateArgs = {
       where: { id },
       data: updateData,
       select: {
@@ -477,7 +487,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         assignedById: true,
         assignedAt: true,
       },
-    });
+    } as const;
+    // Only the closing actions need the second step, so every other edit goes through the single update it always did.
+    const updated = closesTheWay
+      ? await db.$transaction(async (tx) => {
+          const row = await tx.user.update(updateArgs);
+          await wipePasskeys(tx, id);
+          return row;
+        })
+      : await db.user.update(updateArgs);
 
     await logAudit({
       companyId: target.companyId || admin.companyId || 'platform',
