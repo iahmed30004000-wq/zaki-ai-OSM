@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { tooManyAiCalls } from '@/lib/ai-rate';
+import { capReachedResponse } from '@/lib/ai-spend';
 import { z } from 'zod';
 import { requireContext } from '@/lib/geo-context';
 import { can, requirePermission } from '@/lib/authorization';
@@ -213,6 +214,9 @@ export async function POST(req: Request) {
         : {}),
     });
   } catch (error) {
+    // Over the daily or monthly ceiling: a sentence, not a 500.
+    const capped = capReachedResponse(error);
+    if (capped) return capped;
     if (error instanceof AiEndpointMissing) {
       return NextResponse.json(
         {

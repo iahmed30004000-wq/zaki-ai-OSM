@@ -1,4 +1,5 @@
 import { AiEndpointMissing, AiNotConfigured } from './ai-provider';
+import { AiCapReached } from './ai-spend';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -20,6 +21,10 @@ export function explainAiError(error: unknown): { ok: false; error: string } {
     // that does not exist. «العنوان» stays in the sentence: the connection
     // test pins it.
     return { ok: false, error: 'لم يُحفظ عنوان الخادم بعد — اكتب العنوان في «حسابات المزوّدين» واحفظ.' };
+  }
+  if (error instanceof AiCapReached) {
+    // Not a fault of the connection: the company is over its own ceiling.
+    return { ok: false, error: error.messageAr };
   }
   if (error instanceof AiNotConfigured) {
     return { ok: false, error: 'لم يُحفظ مفتاح بعد — الصق المفتاح واحفظ، ثم جرّب الاتصال.' };

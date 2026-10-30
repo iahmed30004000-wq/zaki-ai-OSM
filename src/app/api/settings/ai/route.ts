@@ -8,6 +8,7 @@ import { logAudit } from '@/lib/audit';
 import { zodMessage } from '@/lib/zod-message';
 import { AI_JOBS, MAX_PROMPT } from '@/lib/ai-prompts';
 import { ASSISTANTS } from '@/lib/ai-assistants';
+import { MAX_CAP_TOKENS, readUsage } from '@/lib/ai-spend';
 
 /**
  * GET/PUT /api/settings/ai — which AI, which model, whose key.
@@ -61,6 +62,17 @@ const schema = z.object({
       z.object({ provider: z.string().max(20).optional(), model: z.string().trim().max(120).optional() }).strict()
     )
     .optional(),
+  /**
+   * The daily and monthly ceiling, in tokens. Both sides are always sent
+   * together; null is «no ceiling» for that side. Omitted leaves it alone.
+   */
+  spendCap: z
+    .object({
+      dailyTokens: z.number().int().min(1).max(MAX_CAP_TOKENS).nullable(),
+      monthlyTokens: z.number().int().min(1).max(MAX_CAP_TOKENS).nullable(),
+    })
+    .strict()
+    .optional(),
 });
 
 /** The scopes alone — the boxes are ticked one at a time, not with the form. */
@@ -101,6 +113,8 @@ export async function GET() {
       defaultRoute: await describeRoute(companyId),
       /** Per assistant job. Key-free by construction. */
       routes: Object.fromEntries(jobs.map((job, i) => [job, described[i]])),
+      /** What was used today and this month — numbers only, never a question. */
+      usage: await readUsage(companyId),
     });
   } catch (error) {
     return apiErrorResponse(error);
@@ -179,13 +193,19 @@ export async function PUT(req: Request) {
       action: 'AI_SETTINGS_UPDATED',
       entity: 'Company',
       entityId: companyId,
-      previousData: { provider: before.provider, model: before.model, hasKey: before.hasKey },
+      previousData: {
+        provider: before.provider,
+        model: before.model,
+        hasKey: before.hasKey,
+        spendCap: before.spendCap,
+      },
       // The key itself is never written to the log — only that it moved.
       newData: {
         provider: saved.provider,
         model: saved.model,
         hasKey: saved.hasKey,
         keyChanged: parsed.data.apiKey !== undefined,
+        spendCap: saved.spendCap,
       },
     });
 

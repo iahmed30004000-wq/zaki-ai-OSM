@@ -4,6 +4,7 @@ import { sanitizePromptOverrides, resolvePrompt, recordVersions, HOUSE_JOB, type
 import { encryptSecret, encryptionAvailable } from '../secrets';
 import { updateCompanySettings } from '../company-settings';
 import { SYSTEM_AI, readSystemSetting, systemSettingMeta, updateSystemSetting } from '../system-settings';
+import { hasCap, sanitizeCap, type SpendCap } from '../ai-spend';
 import { AI_PROVIDERS, providerInfo, type AiProvider } from './catalogue';
 
 /**
@@ -58,6 +59,12 @@ export interface AiSettings {
   providerKeys: Record<string, boolean>;
   /** Per-assistant vendor and model, where one was chosen. */
   assistants: Record<string, { provider?: string; model?: string }>;
+  /**
+   * THE DAILY AND MONTHLY CEILING, in tokens. A side that is null means «no
+   * ceiling», which is what every company has until the owner writes one.
+   * See `ai-spend.ts`.
+   */
+  spendCap?: SpendCap;
 }
 
 export interface StoredAi {
@@ -102,6 +109,8 @@ export interface StoredAi {
    * every assistant did before and what most should keep doing.
    */
   assistants?: Record<string, { provider?: string; model?: string }>;
+  /** See AiSettings.spendCap. Absent = no ceiling. */
+  spendCap?: SpendCap;
 }
 
 /**
@@ -383,6 +392,7 @@ export async function aiSettings(companyId: string): Promise<AiSettings> {
       ])
     ),
     assistants: ai.assistants ?? {},
+    spendCap: sanitizeCap(ai.spendCap),
   };
 }
 
@@ -403,6 +413,8 @@ export async function saveAiSettings(
     providerKeys?: Record<string, string | null>;
     /** Per-assistant vendor and model. An empty object clears an override. */
     assistants?: Record<string, { provider?: string; model?: string }>;
+    /** The daily and monthly ceiling. Absent leaves it; a null side is «no ceiling». */
+    spendCap?: SpendCap;
   },
   /** Whoever pressed save, for the prompt versions. */
   actor?: { name: string | null; now?: Date }
@@ -488,6 +500,9 @@ export async function saveAiSettings(
                 // An override that says nothing is not stored at all.
                 .filter(([, v]) => Object.keys(v).length > 0)
             ),
+      // Carried through EVERY save, like the keys: a prompt save that forgot
+      // it would switch the ceiling off. Both sides null is stored as nothing.
+      spendCap: input.spendCap === undefined ? current.spendCap : hasCap(sanitizeCap(input.spendCap)) ? sanitizeCap(input.spendCap) : undefined,
     };
 
     // Per-vendor keys, each encrypted on the way in.

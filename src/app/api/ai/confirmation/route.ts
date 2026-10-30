@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { tooManyAiCalls } from '@/lib/ai-rate';
+import { AiCapReached } from '@/lib/ai-spend';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
@@ -185,6 +186,10 @@ export async function POST(req: Request) {
     } catch (e) {
       if (e instanceof AiNotConfigured) {
         return NextResponse.json({ suggestion: null, context, error: 'لم يُضبط مزوّد الذكاء بعد.' });
+      }
+      // Over the daily or monthly ceiling: the facts still show, with the reason.
+      if (e instanceof AiCapReached) {
+        return NextResponse.json({ suggestion: null, context, error: e.messageAr, code: 'AI_CAP_REACHED' });
       }
       // The facts are useful on their own; a model that did not answer must
       // not take the customer's history down with it.
