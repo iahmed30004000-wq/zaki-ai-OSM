@@ -8,6 +8,8 @@ import { apiError } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { validateSlug, clampStoredHtml, conversionRate } from '@/lib/landing-pages';
 import { draftState, publishContent } from '@/lib/landing-draft';
+import { activeOffersFor } from '@/lib/offers';
+import { shownPageProductIds } from '@/lib/storefront';
 import { validateDomain, forgetHost, dashboardHosts } from '@/lib/landing-domain';
 import { zodMessage } from '@/lib/zod-message';
 import { standDownRedirectsTo, suggestSlugRedirect } from '@/lib/store-redirects';
@@ -39,7 +41,7 @@ export async function GET(_req: Request, ctx: Ctx) {
         // that is the country's currency, not the company's. The page is
         // read through the selected store, so it always has one.
         // And the store's identity, which the footer block shows.
-        store: { select: { name: true, logo: true, supportPhone: true, theme: true, country: { select: { currencyCode: true } } } },
+        store: { select: { name: true, logo: true, supportPhone: true, theme: true, country: { select: { currencyCode: true, minorUnit: true } } } },
       },
     });
     if (!lp) return NextResponse.json({ error: 'صفحة الهبوط غير موجودة' }, { status: 404 });
@@ -55,7 +57,22 @@ export async function GET(_req: Request, ctx: Ctx) {
      * Overlaid field by field, so a draft that touched only the sections
      * still shows the live html beside them.
      */
-    const state = await draftState(lp.id);
+    /**
+     * THE OFFERS THE PUBLISHED PAGE SHOWS, NOT A SECOND COUNT OF THEM.
+     *
+     * The editor used to list offers through `/api/offers` and draw its
+     * preview and its «بعد الطلب» count from that list — every row,
+     * including a stopped one, a finished one and the post-order one — so it
+     * showed and counted bundles the page does not. `activeOffersFor` is the
+     * single question the visitor's page asks, in the store's own currency
+     * (`minorUnit`), so the editor now reads the same answer. Both fields
+     * are additions: a window that ignores them is unchanged.
+     */
+    const minorUnit = lp.store?.country?.minorUnit ?? 2;
+    const [state, offers] = await Promise.all([
+      draftState(lp.id),
+      lp.productId ? activeOffersFor(db, companyId, lp.productId, minorUnit) : Promise.resolve([]),
+    ]);
     return NextResponse.json({
       landingPage: {
         ...lp,
@@ -67,6 +84,12 @@ export async function GET(_req: Request, ctx: Ctx) {
       hasUnpublished: state.hasUnpublished,
       canRevert: state.canRevert,
       publishedAt: state.publishedAt,
+      // The fingerprint of what this response shows. A window sends it back
+      // with its save and its publish, so one that is behind is refused
+      // instead of erasing the newer work (409).
+      base: state.base,
+      offers,
+      minorUnit,
       // The store's family (عيادة · عطّار · ترند), the same one the published page wears — so the editor's preview
       // draws the page the visitor will see, not the family-less one.
       family: familyOf(parseStoreTheme(lp.store?.theme).template),
@@ -97,10 +120,27 @@ export async function PATCH(req: Request, ctx: Ctx) {
       showInStore: z.boolean().optional(),
       // '' clears the domain; the page goes back to /lp/<slug> only.
       domain: z.string().trim().max(253).optional().nullable(),
+      /**
+       * THE WINDOW SAYS IT WILL ASK THE SELLER, so it may be told «no».
+       *
+       * Without this flag a press that makes a page the store's first shelf
+       * page goes through exactly as it always did — the editor in use today
+       * has no question to show for a refusal, and a publish that used to
+       * work must not start failing. A window that has the question sends
+       * `true` and gets the 409 `STORE_NOT_SWITCHED` to turn into it. It
+       * asks for nothing by itself: never an edit, never a permission.
+       */
+      askBeforeSwitchingStore: z.boolean().optional(),
     });
-    const parsed = schema.safeParse(await req.json());
+    const parsed = schema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
       return NextResponse.json({ error: zodMessage(parsed.error) }, { status: 400 });
+    }
+    // A body that names nothing asked for nothing: it used to pass every
+    // check (no field, so no permission) and write an empty update.
+    const { askBeforeSwitchingStore, ...edits } = parsed.data;
+    if (Object.values(edits).every((v) => v === undefined)) {
+      return NextResponse.json({ error: 'لم يُرسل أي تعديل' }, { status: 400 });
     }
 
     const lp = await loadLandingPage(id, companyId, storeId);
@@ -173,6 +213,44 @@ export async function PATCH(req: Request, ctx: Ctx) {
     if (parsed.data.isPublished !== undefined) data.isPublished = parsed.data.isPublished;
     if (parsed.data.showInStore !== undefined) data.showInStore = parsed.data.showInStore;
 
+    /**
+     * THE FIRST PAGE THAT FEEDS THE SHELF IS THE OWNER'S PRESS, NOT THIS ONE.
+     *
+     * The catalogue switches the moment a store has one published, shown page
+     * that sells a product (`shownPageProductIds`), and from then on the
+     * shop window is only what its pages sell. «اعرض كل الصفحات المنشورة»
+     * flips every page in one `updateMany` so the shelf is never empty in
+     * between; a single toggle here — showing a published page, publishing a
+     * shown one, or giving a shown one its product — would switch the store
+     * with ONE page and take a twelve-product shop down to one.
+     *
+     * So when this change would make the page the first of its kind and the
+     * store has not switched, it is refused and the sentence names the press.
+     * A store that already switched takes the change as before.
+     *
+     * ONLY FOR A WINDOW THAT ASKED (`askBeforeSwitchingStore: true`). The
+     * editor in use has no question to show, and refusing it would break a
+     * publish that works today; it keeps the old behaviour until the new
+     * editor, which sends the flag, replaces it.
+     */
+    const feedsShelf = (shown: boolean, published: boolean, product: string | null) => shown && published && !!product;
+    const willFeed = feedsShelf(
+      parsed.data.showInStore ?? lp.showInStore,
+      parsed.data.isPublished ?? lp.isPublished,
+      parsed.data.productId !== undefined ? parsed.data.productId : lp.productId
+    );
+    if (askBeforeSwitchingStore === true && willFeed && !feedsShelf(lp.showInStore, lp.isPublished, lp.productId)) {
+      if ((await shownPageProductIds(companyId, storeId)).size === 0) {
+        return NextResponse.json(
+          {
+            error: 'هذا يبدّل واجهة المتجر كلها إلى صفحاته فقط — استعمل زر «اعرض كل الصفحات المنشورة» ليظهر كل شيء معاً',
+            code: 'STORE_NOT_SWITCHED',
+          },
+          { status: 409 }
+        );
+      }
+    }
+
     // ── Custom domain ──
     if (parsed.data.domain !== undefined) {
       const raw = parsed.data.domain?.trim() ?? '';
@@ -205,6 +283,10 @@ export async function PATCH(req: Request, ctx: Ctx) {
           );
         }
         data.domain = check.domain;
+        // A DIFFERENT host is not the host somebody proved. The mark is wiped
+        // only when the host changes: the screen sends the whole form on
+        // every save, and saving the same domain again must keep it.
+        if (check.domain !== lp.domain) data.domainVerifiedAt = null;
       }
       // The proxy caches host → page for a minute; a domain is changed at the
       // exact moment somebody is waiting to see whether it works.
@@ -239,7 +321,8 @@ export async function PATCH(req: Request, ctx: Ctx) {
        * seller is looking at, which is the only version of this that is not
        * a surprise.
        */
-      if (parsed.data.isPublished === true && !lp.isPublished) await publishContent(lp.id);
+      const goingLive = parsed.data.isPublished === true && !lp.isPublished;
+      if (goingLive) await publishContent(lp.id);
       // Whatever changed — the name, the slug, published or taken down, the product — the cached page is rebuilt now:
       // under both slugs, so an old address stops showing the page the moment it moves.
       await refreshLandingPages({ slugs: [lp.slug, updated.slug] });
@@ -260,6 +343,12 @@ export async function PATCH(req: Request, ctx: Ctx) {
         // shadow the page it now names — the address would answer with
         // somewhere else. Stand it down rather than let it win.
         await standDownRedirectsTo(updated.slug);
+      } else if (goingLive) {
+        // The same rule at the other moment it can bite: a page published for
+        // the FIRST time under a slug that a redirect (a seller's, perhaps
+        // another company's, made while the address was free) still forwards
+        // away from. The page is live now; the redirect would shadow it.
+        await standDownRedirectsTo(updated.slug);
       }
       await logAudit({
         companyId,
@@ -269,7 +358,18 @@ export async function PATCH(req: Request, ctx: Ctx) {
         entityId: lp.id,
         newData: { name: updated.name, slug: updated.slug, isPublished: updated.isPublished, productId: updated.productId },
       });
-      return NextResponse.json({ success: true, landingPage: updated });
+      // Going live from here promotes the draft, so the window cannot guess
+      // what is now unpublished or what its next save must be based on: it
+      // is told by the row. Only that press pays the read; taking a page
+      // down or any other edit changes neither.
+      const state = goingLive ? await draftState(lp.id) : null;
+      return NextResponse.json({
+        success: true,
+        landingPage: updated,
+        ...(state
+          ? { hasUnpublished: state.hasUnpublished, canRevert: state.canRevert, publishedAt: state.publishedAt, base: state.base }
+          : {}),
+      });
     } catch (e: any) {
       if (e?.code === 'P2002') {
         // Two unique keys reach here now; naming the wrong one sends the

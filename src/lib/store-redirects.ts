@@ -154,6 +154,27 @@ export async function mayClaimFrom(
           : 'هذا العنوان تستعمله صفحة تابعة لشركة أخرى — لا يمكن تحويله من هنا',
     };
   }
+
+  /*
+   * AN ADDRESS ANOTHER COMPANY ALREADY FORWARDS IS NOT FREE EITHER.
+   *
+   * Right after a rename the old address is free of pages, and the rename
+   * leaves a redirect from it (suggested, then accepted) for the company
+   * whose advert is still pointing there. `redirectFor` resolves a path
+   * claimed twice to the OLDER claim, so a second company claiming it would
+   * lose quietly — or, if the first were switched off, take over somebody
+   * else's paid traffic. Refused here, in words, whoever claims second.
+   * The same company's other shop is not "another company".
+   */
+  const held = await db.storeRedirect.findFirst({
+    where: { from, companyId: { not: store.companyId } },
+    select: { companyId: true },
+  });
+  // The query already excludes this company; the row is checked again so the
+  // refusal never rests on the filter alone.
+  if (held?.companyId && held.companyId !== store.companyId) {
+    return { ok: false, error: 'هذا العنوان محجوز بتحويل تابع لشركة أخرى — لا يمكن تحويله من هنا' };
+  }
   return { ok: true };
 }
 
