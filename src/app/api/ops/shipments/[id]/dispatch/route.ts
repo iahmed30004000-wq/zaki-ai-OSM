@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { requireContext } from '@/lib/geo-context';
 import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
-import { dispatchBatch } from '@/lib/courier-dispatch';
+import { dispatchBatch } from '@/lib/couriers/dispatch';
 
 /**
  * POST /api/ops/shipments/[id]/dispatch

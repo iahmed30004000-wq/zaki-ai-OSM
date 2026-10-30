@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import type { db } from './db';
 import { roundMinor } from './money';
 import { claimingRowWhere, openRequestWhere } from './match-integrity';
-import { normalizePhrase, readCourierWord } from './courier-words';
+import { normalizePhrase, readCourierWord } from './couriers/words';
 import { PARKED, PARKED_AR, RESOLUTIONS, RESOLUTION_AR, type Resolution } from './settlement-difference';
 import { STATEMENT_CLOSED_SENTENCE } from './settlement-gates';
 

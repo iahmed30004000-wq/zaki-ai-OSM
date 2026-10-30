@@ -15,7 +15,7 @@ import {
   MANUAL_MATCH, ZERO_LINE_NOTE, integrityNotes, openRequestWhere,
   type IntegrityFacts, type OtherStatement,
 } from './match-integrity';
-import { courierWordNote, isNoMoneyCell, readCourierWord, tallyCourierWords, type CourierWordTally } from './courier-words';
+import { courierWordNote, isNoMoneyCell, readCourierWord, tallyCourierWords, type CourierWordTally } from './couriers/words';
 import { openClaimsFor } from './settlement-decisions';
 import { looksLikeXlsx, readXlsxRows } from './xlsx-reader';
 
@@ -797,7 +797,7 @@ export interface LineVerdict {
 export function judgeLine({ order, line, minorUnit, integrity, openClaim }: LineVerdictInput): LineVerdict {
   /**
    * THE COMPANY'S OWN WORD, read here the way the import read it: one function, one table
-   * (`courier-words`). It is written beside a row that needs a person — never a reason to change a verdict:
+   * (`couriers/words`). It is written beside a row that needs a person — never a reason to change a verdict:
    * what the company SAID about the parcel is a thing to read, and the money is still measured by the
    * figure and nothing else.
    */

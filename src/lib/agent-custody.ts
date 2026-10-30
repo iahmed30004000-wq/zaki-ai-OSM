@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { db } from './db';
-import { courierScope } from './courier-scope';
+import { courierScope } from './couriers/scope';
 import {
   CUSTODY_DELIVERED,
   CUSTODY_IN_HAND,

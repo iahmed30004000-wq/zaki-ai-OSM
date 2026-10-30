@@ -84,3 +84,21 @@ export function arTime(value: Date | string | null | undefined): string {
   if (Number.isNaN(d.getTime())) return '—';
   return format(d, 'HH:mm');
 }
+
+/**
+ * A plain count or figure with no currency beside it — Latin digits, thousands separated.
+ *
+ * ONE COPY of what five local `fmt` helpers and a dozen `toLocaleString('en-US')` calls
+ * each wrote out: with no second argument it prints exactly `n.toLocaleString('en-US')`
+ * (up to three decimals), and `maxFractionDigits` is the same option those calls passed
+ * (`2` for a rate or an average, `0` for a whole count). It asks for `en-US` by name, so
+ * no machine's locale can turn the digits Arabic-Indic.
+ *
+ * ⚠️ Not for money. A figure beside a currency goes through `<Money>` / `moneyText`,
+ * which know the store's minor unit; this one knows nothing of it.
+ */
+export function plainNumber(n: number, maxFractionDigits?: number): string {
+  return maxFractionDigits === undefined
+    ? n.toLocaleString('en-US')
+    : n.toLocaleString('en-US', { maximumFractionDigits: maxFractionDigits });
+}

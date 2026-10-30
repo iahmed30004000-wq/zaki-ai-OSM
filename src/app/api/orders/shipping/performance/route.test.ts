@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * ═══════════════════════════════════════════════════════════════════════════
  * THE DOOR HANDS THE COURIER ITS SCORE.
  *
- * `courier-score.ts` is guarded on its own arithmetic in
+ * `couriers/score.ts` is guarded on its own arithmetic in
  * `a-courier-is-judged-on-what-it-finished`. What that cannot see is the
  * JOIN: an engine proved correct and a caller that never calls it ships a
  * screen with no score on it, and every test still passes. That exact hole

@@ -5,7 +5,7 @@ import { requireContext } from '@/lib/geo-context';
 import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { zodMessage } from '@/lib/zod-message';
-import { TRACKING_ACK_ACTION, type TrackingAlertKind } from '@/lib/tracking-alert';
+import { TRACKING_ACK_ACTION, type TrackingAlertKind } from '@/lib/parcel-tracking/alert';
 
 /**
  * POST /api/ops/tracking/acknowledge — «رأيتُ هذا».

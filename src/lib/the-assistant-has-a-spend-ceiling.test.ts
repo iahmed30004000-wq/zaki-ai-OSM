@@ -373,12 +373,12 @@ describe('every door that can reach a vendor knows what to say at the ceiling', 
     for (const rel of ['src/app/api/orders/ai-intake/route.ts', 'src/app/api/palette/today/route.ts']) {
       expect(stripComments(repoFile(rel))).toMatch(/localOnly: true/);
     }
-    const provider = stripComments(repoFile('src/lib/ai-provider.ts'));
+    const provider = stripComments(repoFile('src/lib/ai-provider/call.ts'));
     expect(provider).toMatch(/const metered = route\.provider !== 'LOCAL'/);
   });
 
   it('the check is made after the privacy guards and before the first byte leaves', () => {
-    const src = stripComments(repoFile('src/lib/ai-provider.ts'));
+    const src = stripComments(repoFile('src/lib/ai-provider/call.ts'));
     const at = (needle: string | RegExp) => (typeof needle === 'string' ? src.indexOf(needle) : src.search(needle));
     const check = at('await assertUnderCap(');
     const firstFetch = at("fetch('https://api.anthropic.com");

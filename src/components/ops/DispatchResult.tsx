@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useId, useState } from 'react';
-import type { DispatchSummary } from '@/lib/courier-dispatch';
+import type { DispatchSummary } from '@/lib/couriers/dispatch';
 import { groupDispatchReasons, type DispatchReasonGroup } from '@/lib/dispatch-reason';
 
 /**

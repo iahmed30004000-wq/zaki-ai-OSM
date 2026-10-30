@@ -6,7 +6,7 @@ import {
   courierRates,
   scoreCourier,
   whyNoCourierScore,
-} from './courier-score';
+} from './couriers/score';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -14,7 +14,7 @@ import {
  *
  * «AI + Score في تسعة مواضع … متابعة الشحن». Eight of the nine already
  * carried a number and a sentence. This one had a sentence and no number:
- * `tracking-priority.ts` ranks a PARCEL by how urgently it needs chasing,
+ * `parcel-tracking/priority.ts` ranks a PARCEL by how urgently it needs chasing,
  * which never says whether the courier carrying it is any good — and the
  * screen comparing couriers printed raw counts and one bare percentage.
  *

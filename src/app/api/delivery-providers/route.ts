@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { requireCompanyTenant } from '@/lib/auth';
 import { requireContext } from '@/lib/geo-context';
-import { courierScope } from '@/lib/courier-scope';
+import { courierScope } from '@/lib/couriers/scope';
 import { logAudit } from '@/lib/audit';
 import { requirePermission } from '@/lib/authorization';
 import { zodMessage } from '@/lib/zod-message';

@@ -21,7 +21,7 @@
  *
  * THEREFORE: this engine is built with a floor and REFUSES below it, like
  * `delivery-time.ts` refuses a median of two deliveries and
- * `courier-score.ts` refuses a score over four parcels. It says nothing
+ * `couriers/score.ts` refuses a score over four parcels. It says nothing
  * today and starts answering by itself the day ten products have sold.
  *
  * ── AND IT COUNTS. IT DOES NOT PREDICT ──
@@ -72,7 +72,7 @@ export const MIN_DELIVERED = 3;
  * HOW MANY SELLERS MAKE A POPULATION.
  *
  * Ten, the same floor `health.ts` puts under every rate, `channel-score`
- * under every channel and `courier-score` under every courier —
+ * under every channel and `couriers/score` under every courier —
  * deliberately identical, because a reader who has learned what «لا يكفي»
  * means on one screen should not have to learn a second meaning here.
  *

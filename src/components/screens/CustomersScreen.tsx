@@ -11,7 +11,7 @@ import { useRegions } from '@/hooks/useRegions';
 import { useApp } from '@/context/AppContext';
 import { useCreateIntent } from '@/hooks/useCreateIntent';
 import { format } from 'date-fns';
-import { RiAddCircleLine, RiArrowGoBackLine, RiArrowLeftSLine, RiArrowRightSLine, RiMapPinLine, RiSearchLine } from '@remixicon/react';
+import { RiAddCircleLine, RiArrowGoBackLine, RiMapPinLine, RiSearchLine } from '@remixicon/react';
 import { Money } from '@/components/ui/Money';
 import { HealthChip } from '@/components/ui/HealthChip';
 import { ContactButtons } from '@/components/orders/ContactButtons';
@@ -38,6 +38,7 @@ import { GRADE_RANK, scoreCustomer } from '@/lib/customer-score';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { apiFetch } from '@/lib/api-client';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
+import { Pager } from '@/components/ui/Pager';
 import { useIsPhone } from '@/hooks/useIsPhone';
 
 export function CustomersScreen() {
@@ -501,53 +502,21 @@ export function CustomersScreen() {
         </div>
 
         {/*
-          THE PAGE BAR. 25 rows to a page, read forward with «التالي» —
-          the same controls the orders screen uses, so one habit of hand
-          works everywhere. The count under the figures describes what is
-          shown against the whole book, not this page alone.
-
-          THE BUTTON'S OWN PROMISE-LOCK IS DELIBERATELY NOT USED HERE.
-          That lock is for submissions — a second shipment, a second
-          payout. A page turn is a read, and reads arrive late through
-          nothing of the reader's doing; the screen's own `loading`
-          drives these two instead, and an ignored click while a load is
-          in the air is exactly right: the rows are still the truth of
-          the page in hand.
+          THE PAGE BAR — the shared one (`ui/Pager`), the same on every list.
+          25 rows to a page; the count describes what is shown against the whole
+          book, not this page alone. The screen's own `loading` drives the two
+          arrows: an ignored click while a load is in the air is exactly right,
+          the rows are still the truth of the page in hand.
         */}
-        <div className="flex items-center justify-between text-xs text-[var(--sys-muted-foreground)]">
-          <span>
-            عرض <strong>{customers.length}</strong> من <strong>{pagination.total}</strong> عميل
-          </span>
-          <div className="flex items-center space-x-2 rtl:space-x-reverse">
-            <Button
-              size="sm"
-              variant="outline"
-              loading={loading}
-              disabled={loading || pagination.page <= 1}
-              onClick={() => { void loadRef.current(pagination.page - 1); }}
-              aria-label="الصفحة السابقة"
-              title="الصفحة السابقة"
-              className="p-1.5"
-            >
-              <RiArrowLeftSLine className="icon-mirror w-4 h-4" />
-            </Button>
-            <span className="font-medium">
-              صفحة {pagination.page} من {pagination.totalPages || 1}
-            </span>
-            <Button
-              size="sm"
-              variant="outline"
-              loading={loading}
-              disabled={loading || pagination.page >= pagination.totalPages}
-              onClick={() => { void loadRef.current(pagination.page + 1); }}
-              aria-label="الصفحة التالية"
-              title="الصفحة التالية"
-              className="p-1.5"
-            >
-              <RiArrowRightSLine className="icon-mirror w-4 h-4" />
-            </Button>
-          </div>
-        </div>
+        <Pager
+          page={pagination.page}
+          totalPages={pagination.totalPages}
+          total={pagination.total}
+          shown={customers.length}
+          noun="عميل"
+          loading={loading}
+          onPage={(page) => { void loadRef.current(page); }}
+        />
 
         {/*
           AND THE ASSISTANT, READING THESE CUSTOMERS.

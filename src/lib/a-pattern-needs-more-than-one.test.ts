@@ -37,7 +37,7 @@ import {
  *   their own memory and a prediction is a claim this data cannot support.
  *
  * The day ten products have sold, it starts answering by itself — which is
- * the same deal `delivery-time.ts` and `courier-score.ts` make.
+ * the same deal `delivery-time.ts` and `couriers/score.ts` make.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 

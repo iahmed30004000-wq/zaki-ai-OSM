@@ -4,7 +4,7 @@ import { requireContext } from '@/lib/geo-context';
 import { logAudit } from '@/lib/audit';
 import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
-import { describeUsage, isCourierInUse, type CourierUsage } from '@/lib/courier-scope';
+import { describeUsage, isCourierInUse, type CourierUsage } from '@/lib/couriers/scope';
 
 /**
  * PATCH  /api/delivery-providers/[id] — edit, or activate/deactivate.

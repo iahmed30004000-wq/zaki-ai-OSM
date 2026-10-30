@@ -900,12 +900,12 @@
     "tabs": 0
   },
   "src/components/screens/CustomersScreen.tsx": {
-    "buttons": 6,
+    "buttons": 4,
     "inputs": 10,
     "columns": 5,
     "cards": 0,
     "modals": 2,
-    "icons": 6,
+    "icons": 4,
     "links": 0,
     "tabs": 0
   },
@@ -1200,12 +1200,12 @@
     "tabs": 0
   },
   "src/components/screens/OrdersScreen.tsx": {
-    "buttons": 21,
+    "buttons": 19,
     "inputs": 9,
     "columns": 0,
     "cards": 1,
     "modals": 0,
-    "icons": 21,
+    "icons": 19,
     "links": 0,
     "tabs": 0
   },
@@ -1570,12 +1570,12 @@
     "tabs": 0
   },
   "src/components/screens/UsersScreen.tsx": {
-    "buttons": 13,
+    "buttons": 11,
     "inputs": 5,
     "columns": 9,
     "cards": 1,
     "modals": 2,
-    "icons": 13,
+    "icons": 11,
     "links": 1,
     "tabs": 0
   },

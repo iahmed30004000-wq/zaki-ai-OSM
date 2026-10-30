@@ -22,7 +22,7 @@ import { healthOf } from '@/lib/health';
 import { HealthChip } from '@/components/ui/HealthChip';
 import { BackToDashboardLink } from '@/components/dashboard/DetailsLinks';
 import { ChannelScoresSection } from '@/components/growth/ChannelScores';
-import type { CourierScore } from '@/lib/courier-score';
+import type { CourierScore } from '@/lib/couriers/score';
 import { rowCostStated, type Trust } from '@/lib/cod-vitals';
 
 /** The last thirty days, which is what "how are we doing" nearly always means. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SHIPPING_STATUS_AR } from './shipping-workflow';
-import { canCollect } from './tracking-priority';
+import { canCollect } from './parcel-tracking/priority';
 import { repoFile, stripComments } from './guard-source';
 
 /**
@@ -114,7 +114,7 @@ describe('the default load fetches what the collect chip is made of', () => {
     // 21/10: the screen sends `every` — `all` is «no filter» to the list hook, which would have dropped it — and the old
     // word `all` still means exactly that, read one level down. Either way the door asks for no state at all.
     expect(door()).toMatch(/status === 'every'\s*\?\s*null/);
-    expect(stripComments(repoFile('src/lib/tracking-filters.ts'))).toMatch(/status === 'all' \? EVERY_STATUS : status/);
+    expect(stripComments(repoFile('src/lib/parcel-tracking/filters.ts'))).toMatch(/status === 'all' \? EVERY_STATUS : status/);
   });
 
   it('and the filter says what it fetches', () => {

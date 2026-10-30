@@ -6,7 +6,7 @@ import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { orderRefFields } from '@/lib/order-ref';
-import { planTransfer, requiresOpenBatch, TransferRefused, type TransferParty } from '@/lib/courier-transfer';
+import { planTransfer, requiresOpenBatch, TransferRefused, type TransferParty } from '@/lib/couriers/transfer';
 import { handedToCourier } from '@/lib/order-seal';
 import { moveBeforeHandover } from '@/lib/order-cancel';
 import { createReplacement, type ReplacementSource } from '@/lib/replacement-order';
@@ -16,7 +16,7 @@ import { zodMessage } from '@/lib/zod-message';
 /**
  * POST /api/ops/tracking/transfer — move a parcel to another courier.
  *
- * The rules live in src/lib/courier-transfer.ts. Away from a مندوب it is one
+ * The rules live in src/lib/couriers/transfer.ts. Away from a مندوب it is one
  * move; away from a company that has TAKEN the parcel it is taken back and
  * a REPLACEMENT order is raised, because the original is physically with that
  * company under their barcode and will appear in their statement.

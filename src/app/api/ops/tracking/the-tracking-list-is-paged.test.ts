@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { LEAN_CAP, LEAN_SELECT } from '@/lib/tracking-list';
+import { LEAN_CAP, LEAN_SELECT } from '@/lib/parcel-tracking/list';
 
 /**
  * THE SHIPMENT FOLLOW-UP, IN PAGES — THE DOOR.

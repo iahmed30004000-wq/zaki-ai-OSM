@@ -1,5 +1,6 @@
 'use client';
 
+import { plainNumber } from '@/lib/format';
 import React, { useEffect, useMemo, useState } from 'react';
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { restrictToParentElement, restrictToVerticalAxis } from '@dnd-kit/modifiers';
@@ -44,7 +45,7 @@ const VIEWS: { key: View; label: string }[] = [
 const CHIP_ON = 'bg-[var(--sys-primary-soft)] text-[var(--sys-primary)]';
 const CHIP_OFF = 'text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface)]';
 const SELECT = 'h-8 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-2 text-xs text-[var(--sys-foreground)]';
-const fmt = (n: number | null) => (n === null ? '—' : n.toLocaleString('en-US', { maximumFractionDigits: 2 }));
+const fmt = (n: number | null) => (n === null ? '—' : plainNumber(n, 2));
 
 export function CampaignsBoard<T extends BoardCampaign>({
   mayManage, campaigns, insights, duplicates, currency, statuses, platforms, accounts,

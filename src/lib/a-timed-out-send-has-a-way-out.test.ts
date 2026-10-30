@@ -32,7 +32,7 @@ vi.mock('@/lib/geo-context', () => ({ requireContext: (...a: unknown[]) => requi
 vi.mock('@/lib/authorization', () => ({ requirePermission: (...a: unknown[]) => requirePermission(...a) }));
 vi.mock('@/lib/audit', () => ({ logAudit: (...a: unknown[]) => logAudit(...a) }));
 
-import { STUCK_AFTER_MS, clearStuckSend } from './courier-send-reset';
+import { STUCK_AFTER_MS, clearStuckSend } from './couriers/send-reset';
 import { POST } from '@/app/api/ops/shipments/clear-send/route';
 
 const NOW = new Date();

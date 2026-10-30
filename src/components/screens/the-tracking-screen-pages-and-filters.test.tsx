@@ -533,7 +533,7 @@ describe('how it is built', () => {
 
   it('and the chips are the server’s: counted from `facts`, drawn from the ranking’s own names', () => {
     expect(src()).toContain('facts.tasks[key]');
-    expect(src()).toContain("from '@/lib/tracking-filters'");
+    expect(src()).toContain("from '@/lib/parcel-tracking/filters'");
     expect(src()).not.toMatch(/'CANCELLED', 'CHANGED', 'FAILED'/);
   });
 

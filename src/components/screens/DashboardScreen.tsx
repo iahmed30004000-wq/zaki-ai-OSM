@@ -1,5 +1,6 @@
 'use client';
 
+import { plainNumber } from '@/lib/format';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardHeader, CardContent, KpiCard } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -586,12 +587,12 @@ export function DashboardScreen() {
                     <span className={`inline-block w-2 h-2 rounded-full ${r.closed ? 'bg-[var(--sys-success)]' : 'bg-[var(--sys-warning)]'}`} />
                     <span className="text-[var(--sys-heading)]">{r.label}</span>
                   </span>
-                  <span className="font-bold tabular-nums">{r.count.toLocaleString('en-US')}</span>
+                  <span className="font-bold tabular-nums">{plainNumber(r.count)}</span>
                 </li>
               ))}
               <li className="flex items-center justify-between px-4 py-2.5 text-sm bg-[var(--sys-surface)]">
                 <span className="font-semibold">المجموع</span>
-                <span className="font-black tabular-nums">{analytics.outcomes.total.toLocaleString('en-US')}</span>
+                <span className="font-black tabular-nums">{plainNumber(analytics.outcomes.total)}</span>
               </li>
             </ul>
           </Card>

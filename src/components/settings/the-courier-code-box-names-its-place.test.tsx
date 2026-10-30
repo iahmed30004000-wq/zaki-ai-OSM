@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
-import { courierPlaces } from '@/lib/courier-places';
+import { courierPlaces } from '@/lib/couriers/places';
 
 /**
  * «رمزها عند الشركة» NAMES THE PLACE A TYPED NUMBER IS.
