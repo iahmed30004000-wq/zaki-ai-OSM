@@ -475,7 +475,15 @@ export function ConfirmationMineScreen() {
    */
   const submitChange = (order: OrderRow, value: ChangeRequestValue) => {
     setDialog(null);
-    void act(order.id, () => raiseChangeRequest(order.id, value, order.version));
+    void act(order.id, async () => {
+      // Where the request went, in a sentence: carried out, waiting for a decision, or approved and waiting to be applied.
+      const answer = await raiseChangeRequest(order.id, value, order.version, {
+        canOpenQueue: userCan(currentUser, 'control.change_requests'),
+        // Her own queue: she holds the order, and the courier has not taken it.
+        order: { handed: false, held: true },
+      });
+      setNotice(answer.message);
+    });
   };
 
   if (!data) {

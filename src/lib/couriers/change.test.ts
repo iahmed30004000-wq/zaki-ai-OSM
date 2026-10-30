@@ -274,7 +274,8 @@ describe('a decider does not queue behind themselves', () => {
     // press was; asserting the PATCH's presence in one screen file stopped
     // saying that the moment the code moved.
     const src = stripComments(repoFile('src/components/orders/raiseChangeRequest.ts'));
-    expect(src, 'الشاشة تتجاهل أنّ الطلب جاهزٌ للتطبيق').toMatch(/if \(!res\.readyToApply\) return;/);
+    // (old → new, PR «شاشة المقرِّر») the raiser no longer returns nothing: it returns the sentence that says where the request went.
+    expect(src, 'الشاشة تتجاهل أنّ الطلب جاهزٌ للتطبيق').toMatch(/if \(!res\.readyToApply\) \{\s*return answerAfterRaise\(/);
     expect(src).toMatch(/changeRequestId: res\.request\.id/);
     expect(src).toMatch(/method: 'PATCH'/);
   });
