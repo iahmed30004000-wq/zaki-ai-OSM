@@ -250,7 +250,7 @@ describe('stock leaves when the parcel does', () => {
       companyId: 'c1', orderId: ORDER, minorUnit: 2, userId: 'u1',
       lines: [{ itemId: 'i1', deliveredQty: 2 }, { itemId: 'i2', deliveredQty: 1 }],
     });
-    expect(Object.keys(consumeOrderStock.mock.calls[0][1]).sort()).toEqual(['companyId', 'orderId', 'userId']);
+    expect(Object.keys(consumeOrderStock.mock.calls[0][1] as object).sort()).toEqual(['companyId', 'orderId', 'userId']);
   });
 });
 
