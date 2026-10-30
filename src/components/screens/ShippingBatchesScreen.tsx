@@ -2,16 +2,17 @@
 
 import { DispatchResult } from '@/components/ops/DispatchResult';
 import { OrderLink } from '@/components/orders/OrderLink';
+import { PrepEditSheet, type PrepParcel } from '@/components/ops/PrepEditSheet';
 import React, { useCallback, useState } from 'react';
 import { apiFetch, apiJson } from '@/lib/api-client';
 import type { DispatchSummary } from '@/lib/couriers/dispatch';
 import { courierCityGapLine, type CourierCityGap } from '@/lib/couriers/city-gap-line';
-import { arDateShort } from '@/lib/format';
+import { amount, arDateShort, type Currency } from '@/lib/format';
 import { LabelSizePicker, useLabelSize } from '@/components/labels/LabelSize';
 import { BLOCKED_WAYBILLS, describeRefused, openWaybills, WaybillError } from '@/components/labels/openWaybills';
 import { useAsk, useConfirm, useTell } from '@/components/ui/Confirm';
 import { ScanSheet } from '@/components/scan/ScanButton';
-import { RiBarcodeLine, RiDownload2Line, RiEBike2Line, RiLoader4Line, RiLockLine, RiPrinterLine, RiQrScan2Line, RiSendPlaneLine, RiTruckLine } from '@remixicon/react';
+import { RiBarcodeLine, RiDownload2Line, RiEBike2Line, RiLoader4Line, RiLockLine, RiPencilLine, RiPrinterLine, RiQrScan2Line, RiSendPlaneLine, RiTruckLine } from '@remixicon/react';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 import { useIsPhone } from '@/hooks/useIsPhone';
@@ -51,12 +52,18 @@ interface Batch {
   courierCityGap?: CourierCityGap | null;
 }
 
-/** One parcel on an open trolley — only what a decision about it needs. */
-interface Parcel {
+/**
+ * One parcel on an open trolley — what a decision about it needs, and what the person at the trolley reads beside it:
+ * who it goes to, where, what is in it and what is collected (30/10). The optional fields are the server's to send: a
+ * trolley read without the address-book key carries no phone, and says nothing of one.
+ */
+interface Parcel extends Partial<Omit<PrepParcel, 'customer'>> {
   id: string;
   orderNumber: string;
   trackingNumber: string | null;
-  customer: { fullName?: string | null; city?: string | null } | null;
+  customer: { fullName?: string | null; phone?: string | null; altPhone?: string | null; address?: string | null; city?: string | null } | null;
+  totalAmount?: number | string | null;
+  region?: { id?: string; name: string } | null;
 }
 
 /** How a parcel leaves the open trolley. */
@@ -93,7 +100,9 @@ export function ShippingBatchesScreen() {
   // business keeping those anywhere, in memory or otherwise.
   const [verify, setVerify] = useState<{ batch: Batch; refs: Set<string>; seen: Set<string> } | null>(null);
   // The open trolley's parcels, shown only while somebody is deciding about them.
-  const [parcels, setParcels] = useState<{ batchId: string; rows: Parcel[] } | null>(null);
+  const [parcels, setParcels] = useState<{ batchId: string; rows: Parcel[]; canEdit: boolean; currency: Currency | null } | null>(null);
+  // The parcel whose «عدّل» form is open (only ever offered to the holder of `ops.edit_in_batch`, on an open trolley).
+  const [editing, setEditing] = useState<{ batchId: string; parcel: Parcel } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -233,8 +242,10 @@ export function ShippingBatchesScreen() {
   async function loadParcels(batchId: string) {
     setBusy(batchId);
     try {
-      const data = await apiJson<{ batch: { orders: Parcel[] } }>(`/api/shipping-batches/${batchId}`);
-      setParcels({ batchId, rows: data.batch.orders });
+      const data = await apiJson<{ batch: { orders: Parcel[] }; canEditInBatch?: boolean; currency?: Currency | null }>(
+        `/api/shipping-batches/${batchId}`
+      );
+      setParcels({ batchId, rows: data.batch.orders, canEdit: data.canEditInBatch === true, currency: data.currency ?? null });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'تعذر قراءة طرود الدفعة');
     } finally {
@@ -619,7 +630,7 @@ export function ShippingBatchesScreen() {
                     disabled={busy === b.id}
                     className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1.5 disabled:opacity-40"
                   >
-                    {parcels?.batchId === b.id ? 'أخفِ الطرود' : 'طرود الدفعة — ألغِ أو أجّل قبل التسليم'}
+                    {parcels?.batchId === b.id ? 'أخفِ الطرود' : 'طرود الدفعة وتفاصيلها — ألغِ أو أجّل قبل التسليم'}
                   </button>
                 )}
 
@@ -633,6 +644,37 @@ export function ShippingBatchesScreen() {
                         )}
                         {o.trackingNumber && (
                           <span className="text-xs text-[var(--sys-muted)]" dir="ltr">{o.trackingNumber}</span>
+                        )}
+                        {/*
+                          WHO IT GOES TO, WHERE, WHAT IS IN IT, WHAT IS COLLECTED — beside the parcel, so the person at
+                          the trolley does not open the order to know which box is in her hand (30/10). The phone is
+                          there only when the server sent one (the address-book key, or the packing table's pen).
+                        */}
+                        {(o.customer?.phone || o.region?.name || o.customer?.city) && (
+                          <p className="w-full text-xs text-[var(--sys-muted-foreground)]">
+                            {o.customer?.phone && <span dir="ltr">{o.customer.phone}</span>}
+                            {o.customer?.phone && (o.region?.name || o.customer?.city) && ' · '}
+                            {o.region?.name ?? o.customer?.city}
+                          </p>
+                        )}
+                        {((o.items?.length ?? 0) > 0 || o.totalAmount != null) && (
+                          <p className="w-full text-xs text-[var(--sys-muted-foreground)]">
+                            {(o.items ?? [])
+                              .map((l) => `${l.productName} × ${l.quantity}${l.freeQuantity ? ` + ${l.freeQuantity} هدية` : ''}`)
+                              .join('، ')}
+                            {(o.items?.length ?? 0) > 0 && o.totalAmount != null && ' · '}
+                            {o.totalAmount != null && <span dir="ltr">{amount(o.totalAmount, parcels.currency)}</span>}
+                          </p>
+                        )}
+                        {parcels.canEdit && o.version != null && (
+                          <button
+                            onClick={() => setEditing({ batchId: b.id, parcel: o })}
+                            disabled={busy === o.id}
+                            className={`min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1.5 disabled:opacity-40${phone ? ' w-full justify-center' : ''}`}
+                          >
+                            <RiPencilLine className="w-4 h-4" />
+                            عدّل
+                          </button>
                         )}
                         <span className={phone ? 'grid w-full grid-cols-3 gap-2' : 'ms-auto flex flex-wrap gap-1.5'}>
                           {([['CANCEL', 'ألغِ'], ['FOLLOW_UP', 'أعِده للمتابعة'], ['HOLD', 'أجّل الشحن']] as const).map(([how, label]) => (
@@ -708,6 +750,31 @@ export function ShippingBatchesScreen() {
       )}
 
       <NextStepButton />
+
+      {editing && editing.parcel.version != null && (
+        <PrepEditSheet
+          order={{
+            id: editing.parcel.id,
+            orderNumber: editing.parcel.orderNumber,
+            version: editing.parcel.version,
+            regionId: editing.parcel.regionId ?? null,
+            customer: editing.parcel.customer,
+            items: editing.parcel.items ?? [],
+          }}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            const at = editing;
+            setEditing(null);
+            toast.done(`عُدِّل ${at.parcel.orderNumber} وانكتب على الطلب`);
+            void load();
+            void loadParcels(at.batchId);
+          }}
+          onStale={() => {
+            void load();
+            void loadParcels(editing.batchId);
+          }}
+        />
+      )}
 
       {verify && (
         <ScanSheet

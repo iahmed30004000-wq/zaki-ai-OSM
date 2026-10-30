@@ -33,6 +33,8 @@ import { expandApproved, mayApply, strayFields } from '@/lib/change-request-appl
 import { zodMessage } from '@/lib/zod-message';
 import { ORDER_NOT_FOUND, ORDER_VERSION_MISSING } from '@/lib/order-refusals';
 import { PRICE_FORBIDDEN_AR, priceFieldsChanged, storedLinesOf } from '@/lib/order-price-gate';
+import { PrepShortage, prepFieldsOnly, prepItems, prepQuantityChanges, prepShortAr, prepTouched, prepWindow } from '@/lib/prep-edit';
+import { reserveOrderLines } from '@/lib/reservation';
 
 /** Why a quantity or a product is not changed in place for an order whose goods are reserved. */
 const RESERVED_GOODS_EDIT_AR =
@@ -547,15 +549,75 @@ export async function PATCH(
       status, moderatorId, internalNotes, customerNotes, postponedUntil, trackingCode,
       confirmationStatus, shippingStatus, expectedVersion,
       customerName, customerPhone, customerAltPhone, customerAddress, regionId,
-      sellingPrice, quantity, discountAmount, shippingCost, productId, items, channelId,
+      sellingPrice, quantity, discountAmount, shippingCost, productId, items: itemsAsSent, channelId,
       reason: editReason, parcelInHand,
     } = data;
+    // `let`: the packing table's edit rebuilds the lines' money on the server (see `prepItems`) before anything reads them.
+    let items = itemsAsSent;
 
     // ── Authorization chain: visibility/assignment (RBAC engine) → canonical
     // orders.edit permission with scope evaluation (ASSIGNED scope enforces
     // own-assignment, so no separate any/own check is needed) ──
     // The work door: the order she holds opens without «عرض الطلبات».
-    const access = await assertOrderAccess(id, user, { companyId, storeId }, ORDER_WORK_DOOR);
+    /*
+     * ── THE PACKING TABLE'S OWN PEN (`ops.edit_in_batch`, 30/10) ──
+     *
+     * The owner: «تعديل حصري لموظفة التجهيز … قبل ما تغلق الباتش، وبعد ما تغلق ما تقدر تعدل شي».
+     *
+     * A key holder whose request is made of nothing but name · phone · second phone · address · governorate · quantities
+     * is let through the `CHANGE_REQUEST_REQUIRED` rule below — and only while the order is CONFIRMED and sits in a batch
+     * that is still OPEN. Everything else about the request is the ordinary door's: any other field, an order outside
+     * the window, an order of another company or store, a person without the key. In those cases `prep` stays null and
+     * nothing in this block has happened.
+     *
+     * The window shutting is answered here too, in the seal's own words: a holder who reaches an order whose batch was
+     * closed between her reading it and her saving it is told so, instead of being sent to a «not found» she cannot
+     * explain.
+     */
+    let prep: { order: Record<string, any>; batchNumber: string; before: { productId: string; quantity: number }[] } | null = null;
+    if (!viaRequest && can(user, 'ops.edit_in_batch') && prepFieldsOnly(data as Record<string, unknown>)) {
+      const candidate = await db.order.findUnique({ where: { id } });
+      if (
+        candidate &&
+        candidate.companyId === companyId &&
+        candidate.storeId === storeId &&
+        authorize(user, 'ops.edit_in_batch', candidate).allowed
+      ) {
+        const batch = candidate.shippingBatchId
+          ? await db.shippingBatch.findFirst({ where: { id: candidate.shippingBatchId, companyId }, select: { status: true, batchNumber: true } })
+          : null;
+        const row = candidate as { shippedAt?: Date | null; labelPrintedAt?: Date | null };
+        const gate = prepWindow(
+          {
+            confirmationStatus: candidate.confirmationStatus,
+            shippingStatus: candidate.shippingStatus,
+            shippedAt: row.shippedAt ?? null,
+            shippingBatchId: candidate.shippingBatchId ?? null,
+          },
+          batch
+        );
+        if (gate.open) {
+          prep = { order: candidate, batchNumber: batch?.batchNumber ?? '', before: [] };
+        } else if (gate.why === 'HANDED_OVER') {
+          const seal = orderSeal({
+            shippingBatch: batch,
+            shippingStatus: candidate.shippingStatus,
+            shippedAt: row.shippedAt ?? null,
+            labelPrintedAt: row.labelPrintedAt ?? null,
+          });
+          const touched = prepTouched(data as Record<string, unknown>);
+          const message = sealMessage(batch?.batchNumber, touched, seal.reason ?? 'BATCH');
+          return NextResponse.json(
+            { error: message, errorAr: message, code: 'ORDER_SEALED', fields: touched, batchNumber: batch?.batchNumber },
+            { status: 409 }
+          );
+        }
+      }
+    }
+
+    const access = prep
+      ? ({ allowed: true, order: prep.order } as const)
+      : await assertOrderAccess(id, user, { companyId, storeId }, ORDER_WORK_DOOR);
     if (!access.allowed) {
       return NextResponse.json({ error: 'Order not found or not assigned to you', errorAr: ORDER_NOT_FOUND }, { status: ORDER_ACCESS_STATUS[access.reason] });
     }
@@ -583,7 +645,7 @@ export async function PATCH(
     // The approved request IS the authority here — decided by somebody who
     // could reach the courier, for this order and these fields. Without one,
     // the ordinary orders.edit scope applies exactly as before.
-    const editAuth = viaRequest ? { allowed: true as const } : authorize(user, 'orders.edit', existing);
+    const editAuth = viaRequest || prep ? { allowed: true as const } : authorize(user, 'orders.edit', existing);
     if (!editAuth.allowed) {
       // Secure policy: out-of-scope/other-tenant orders are reported as missing
       if (editAuth.reason === 'NO_TENANT' || editAuth.reason === 'OUT_OF_SCOPE') {
@@ -610,6 +672,28 @@ export async function PATCH(
      * for somebody who does not.
      * ═══════════════════════════════════════════════════════════════════
      */
+    /*
+     * THE PACKING TABLE'S LINES: QUANTITY ONLY, THE MONEY REBUILT HERE.
+     *
+     * What the browser sent as each line's price is ignored: the line keeps the piece price it already had, times the new
+     * quantity (`prepItems`). So the price gate just below finds no price moved, and a request cannot use this key to
+     * pass a price through. A product swapped, added or dropped is refused by name.
+     */
+    if (prep && items !== undefined) {
+      const heldRows = await db.orderItem.findMany({
+        where: { orderId: id, companyId },
+        orderBy: { id: 'asc' },
+        select: { productId: true, quantity: true, lineTotal: true, discountShare: true },
+      });
+      const heldLines = storedLinesOf(heldRows, Number(existing.discountAmount ?? 0), country.minorUnit);
+      const rebuilt = prepItems(heldLines, items, country.minorUnit);
+      if (!rebuilt.ok) {
+        return NextResponse.json({ error: rebuilt.error, errorAr: rebuilt.error, code: 'PREP_GOODS_ONLY' }, { status: 409 });
+      }
+      prep.before = heldLines.map((l) => ({ productId: l.productId, quantity: l.quantity }));
+      items = rebuilt.items;
+    }
+
     if (!viaRequest && (sellingPrice !== undefined || discountAmount !== undefined || items !== undefined)) {
       const priceAuth = authorize(user, 'orders.change_price', existing);
       if (!priceAuth.allowed) {
@@ -1093,7 +1177,7 @@ export async function PATCH(
        * DIRECT edit (no request) still gets the old refusal — it never had a decision.
        */
       const madeInPlace =
-        !!viaRequest &&
+        (!!viaRequest || !!prep) &&
         !handedToCourier({
           shippingStatus: existing.shippingStatus,
           shippedAt: (existing as { shippedAt?: Date | null }).shippedAt ?? null,
@@ -1172,7 +1256,7 @@ export async function PATCH(
     let letTheCompanyGo = false;
     const changedForTheDriver = sealedFieldsIn(data as Record<string, unknown>);
     const row = existing as { labelPrintedAt?: Date | null; trackingNumber?: string | null; courierSendStartedAt?: Date | null; shippedAt?: Date | null };
-    if (viaRequest && changedForTheDriver.length > 0 && (row.labelPrintedAt || row.trackingNumber || row.courierSendStartedAt)) {
+    if ((viaRequest || prep) && changedForTheDriver.length > 0 && (row.labelPrintedAt || row.trackingNumber || row.courierSendStartedAt)) {
       const batchRow = existing.shippingBatchId
         ? await db.shippingBatch.findFirst({ where: { id: existing.shippingBatchId, companyId }, select: { status: true } })
         : null;
@@ -1266,6 +1350,8 @@ export async function PATCH(
 
     if (
       !viaRequest &&
+      // The packing table's pen: confirmed, in an OPEN batch, and the fields are the ones its key may change.
+      !prep &&
       /*
        * THE THREE TERMINAL STATUSES BY NAME, not «anything not in
        * BEFORE_OPERATIONS». The complement of a list is a list nobody
@@ -1351,7 +1437,8 @@ export async function PATCH(
         const committed = await db.orderItem.findFirst({
           where: {
             orderId: id,
-            OR: [{ reservedQty: { gt: 0 } }, { deliveredQty: { gt: 0 } }, { returnedQty: { gt: 0 } }],
+            // The packing table's edit re-reserves in the same write (below); a delivered or returned line is still a record.
+            OR: [...(prep ? [] : [{ reservedQty: { gt: 0 } }]), { deliveredQty: { gt: 0 } }, { returnedQty: { gt: 0 } }],
           },
           select: { id: true },
         });
@@ -1684,6 +1771,19 @@ export async function PATCH(
             addedStage: 'EDIT',
           })),
         });
+        /*
+         * THE SHELF FOLLOWS THE QUANTITY — the one reserver, not a second one.
+         *
+         * The rows above are new, so they hold nothing; `reserveOrderLines` takes what each line needs against what the
+         * shelf has left (the add-ons the customer accepted keep theirs). A line the shelf cannot cover rolls the whole
+         * write back — unless the country lets stock go negative, where the shortage is recorded and flagged as everywhere.
+         */
+        if (prep) {
+          const held = await reserveOrderLines(tx, id, { allowNegativeStock: country.allowNegativeStock === true });
+          if (country.allowNegativeStock !== true && held.shortages.length > 0) {
+            throw new PrepShortage([...new Set(held.shortages.map((x) => x.productName))]);
+          }
+        }
       }
 
       // Customer information edit — same transaction as the order write
@@ -1896,6 +1996,22 @@ export async function PATCH(
           },
         });
       }
+      if (prep) {
+        // Said on the order itself, by name: who corrected it at the trolley, and what. Quantities only — no customer data here.
+        await tx.orderActivity.create({
+          data: {
+            companyId, orderId: id, userId: user.id, action: 'PREP_EDITED_BEFORE_CLOSE',
+            metadata: JSON.stringify({
+              updatedBy: user.name,
+              role: user.role,
+              fields: prepTouched(data as Record<string, unknown>),
+              batch: prep.batchNumber,
+              quantities: prepQuantityChanges(prep.before, items ?? []),
+              ...(editReason ? { reason: editReason } : {}),
+            }),
+          },
+        });
+      }
     });
 
     const updatedOrder = await db.order.findUnique({ where: { id } });
@@ -1903,7 +2019,7 @@ export async function PATCH(
     await logAudit({
       companyId,
       userId: user.id,
-      action: viaRequest ? 'ORDER_UPDATED_BY_CHANGE_REQUEST' : 'ORDER_UPDATED',
+      action: viaRequest ? 'ORDER_UPDATED_BY_CHANGE_REQUEST' : prep ? 'ORDER_UPDATED_IN_BATCH' : 'ORDER_UPDATED',
       entity: 'Order',
       entityId: id,
       previousData: existing,
@@ -1915,6 +2031,18 @@ export async function PATCH(
             // the seal must say what allowed it.
             changeRequest: { id: viaRequest.id, reason: viaRequest.reason, decision: viaRequest.decisionNote },
           }
+        // The packing table's pen: who, what, and the quantities before and after — the order row is the rest.
+        : prep
+          ? {
+              ...updatedOrder,
+              prepEdit: {
+                by: user.name,
+                fields: prepTouched(data as Record<string, unknown>),
+                batch: prep.batchNumber,
+                quantities: prepQuantityChanges(prep.before, items ?? []),
+                ...(editReason ? { reason: editReason } : {}),
+              },
+            }
         // The other door into somebody else's order. The reason is demanded
         // above for exactly these edits, so it is here whenever it applies.
         : editReason
@@ -2001,6 +2129,10 @@ export async function PATCH(
 
     return NextResponse.json({ success: true, order: updatedOrder });
   } catch (error: any) {
+    if (error instanceof PrepShortage) {
+      const message = prepShortAr(error.names);
+      return NextResponse.json({ error: message, errorAr: message, code: 'PREP_SHORTAGE' }, { status: 409 });
+    }
     // Re-raise version conflicts in their legacy response shape
     if (error?.message?.startsWith('VERSION_CONFLICT')) {
       return NextResponse.json(

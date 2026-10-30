@@ -193,6 +193,10 @@ describe('an approved edit on a parcel the company has not taken', () => {
 
   it('NEGATIVE: the same edit made DIRECTLY, with no decision, is still refused by the seal', async () => {
     authorize.mockReturnValue({ allowed: true });
+    // (old → new, 30/10) The person here holds every key the mock knows — and now one of them, `ops.edit_in_batch`, is the packing
+    // table's own pen, which makes exactly this edit in place on an open trolley (prep-edit-in-batch.test.ts). This claim is about
+    // everyone WITHOUT that key, so the mock no longer hands it out.
+    can.mockImplementation((_user: unknown, key: string) => key !== 'ops.edit_in_batch');
 
     const res = await patch({ expectedVersion: 3, customerAddress: 'شارع جديد' });
 

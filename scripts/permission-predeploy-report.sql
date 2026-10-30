@@ -106,7 +106,9 @@ WITH req(action, needs) AS (VALUES
   ('users.shift','users.edit'),
   ('users.security','users.view'),
   ('roles.edit_system','roles.edit'),
-  ('apps.tokens','apps.view')
+  ('apps.tokens','apps.view'),
+  -- 30/10: the packing table's pen. Granted by no migration — a pair here would be a person the owner ticked it for who lost the screen key.
+  ('ops.edit_in_batch','ops.batches')
 )
 SELECT 'role_permissions' AS "table", r."name" AS "role", r."companyId", q.action, q.needs
 FROM "role_permissions" rp

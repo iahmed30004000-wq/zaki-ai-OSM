@@ -7,6 +7,7 @@ import { logAudit } from '@/lib/audit';
 import { can } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { redactCustomerForWarehouse } from '@/lib/operations';
+import { totalsBeforeDiscount } from '@/lib/money';
 import { BATCH_STATUSES, EMPTY_BATCH_AR, checkStep, pendingChangesMessage, type BatchStatus } from '@/lib/batch-steps';
 import { emitAppEvent } from '@/lib/apps/events';
 
@@ -41,13 +42,14 @@ class PendingChanges extends Error {
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { user, companyId, storeId } = await requireContext();
+    const { user, companyId, storeId, country } = await requireContext();
     const { id } = await params;
     // `ops.batches` (PR-8): the packing key OR the tracking key before. The migration gave the box to both sets of holders.
     if (!can(user, 'ops.batches')) {
       return NextResponse.json({ error: 'دفعات الشحن ليست من صلاحيّاتك.', errorAr: 'دفعات الشحن ليست من صلاحيّاتك.' }, { status: 403 });
     }
-    const maySeeContact = can(user, 'customers.view');
+    const maySeeCustomers = can(user, 'customers.view');
+    const mayEdit = can(user, 'ops.edit_in_batch');
 
     const batch = await db.shippingBatch.findFirst({
       where: { id, companyId, ...(storeId ? { storeId } : {}) },
@@ -58,8 +60,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           select: {
             id: true, orderNumber: true, merchantRef: true, totalAmount: true,
             trackingNumber: true, shippingStatus: true,
-            customer: { select: { fullName: true, phone: true, city: true } },
-            region: { select: { name: true } },
+            // What the trolley screen shows beside each parcel, and what its edit form opens on (30/10).
+            version: true, currency: true, confirmationStatus: true, regionId: true, discountAmount: true,
+            customer: { select: { fullName: true, phone: true, altPhone: true, address: true, city: true } },
+            region: { select: { id: true, name: true } },
+            items: {
+              select: { productId: true, productName: true, quantity: true, freeQuantity: true, lineTotal: true, discountShare: true },
+              orderBy: { id: 'asc' },
+            },
           },
           orderBy: { createdAt: 'asc' },
         },
@@ -67,9 +75,26 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     });
     if (!batch) return NextResponse.json({ error: 'الدفعة غير موجودة' }, { status: 404 });
 
+    // The packing table's pen (30/10): whoever may correct a name, a phone or an address on an OPEN trolley has to be shown
+    // them. A closed trolley is history, and its contact details go only with the customers key as before.
+    const maySeeContact = maySeeCustomers || (mayEdit && batch.status === 'READY');
+
     // What the response will actually carry: without the address-book key the
     // phone is gone from every parcel.
-    const orders = batch.orders.map((o) => ({ ...o, customer: redactCustomerForWarehouse(o.customer, maySeeContact) }));
+    // (`altPhone` is a number too: it goes where the first one goes.)
+    const orders = batch.orders.map(({ discountAmount, items: lines, ...o }) => {
+      const customer = redactCustomerForWarehouse(o.customer, maySeeContact);
+      // Each line's total BEFORE the order's discount — the figure the edit form echoes back and the door ignores
+      // (it rebuilds it from the stored line), so a quantity can be sent without the screen ever doing a sum.
+      const before = totalsBeforeDiscount(lines ?? [], Number(discountAmount ?? 0), country?.minorUnit ?? 2);
+      return {
+        ...o,
+        customer: maySeeContact ? customer : { ...customer, altPhone: undefined },
+        items: (lines ?? []).map((l, i) => ({
+          productId: l.productId, productName: l.productName, quantity: l.quantity, freeQuantity: l.freeQuantity, unitPrice: before[i],
+        })),
+      };
+    });
 
     // A batch is a list of parcels, and every parcel carries a person — but
     // only those whose contact details LEFT count towards the harvest alarm.
@@ -80,7 +105,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       companyId, storeId, user, where: 'دفعة شحن', rows: orders.map((o) => o.customer).filter((c) => c.phone),
     });
 
-    return NextResponse.json({ batch: { ...batch, orders } });
+    // `canEditInBatch` is the key AND an open trolley: the screen draws «عدّل» only when both hold (the door asks again).
+    // `currency` is the store's, so the price beside each parcel is written the way every other screen writes it.
+    return NextResponse.json({
+      batch: { ...batch, orders },
+      canEditInBatch: mayEdit && batch.status === 'READY',
+      currency: country ? { code: country.currencyCode, minorUnit: country.minorUnit } : null,
+    });
   } catch (error) {
     return apiErrorResponse(error);
   }
