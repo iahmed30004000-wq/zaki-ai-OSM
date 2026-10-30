@@ -56,6 +56,15 @@ const createSchema = z.object({
     .optional(),
   /** The day a postponement is asking to wait until. */
   postponeUntil: z.string().datetime().optional(),
+  /**
+   * WHAT A CANCELLATION IS CARRIED OUT UNDER.
+   *
+   * One of the structured reasons — read later by the stand-down door, which
+   * refuses to cancel without it. It was never defined here, so zod dropped
+   * it, and every cancellation was stored without one and failed on the last
+   * press. Optional in the schema, demanded of a CANCEL by `missingFor`.
+   */
+  cancelReason: z.string().trim().max(60).optional(),
   reason: z.string().trim().min(5, 'اذكر سبب التعديل').max(500),
   blocking: z.boolean().default(true),
 });
@@ -107,8 +116,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const missing = missingFor(intent, {
       changes: parsed.data.changes ?? null,
       postponeUntil: parsed.data.postponeUntil ?? null,
+      cancelReason: parsed.data.cancelReason ?? null,
+      reason: parsed.data.reason,
     });
-    if (missing) return NextResponse.json({ error: missing }, { status: 400 });
+    if (missing) {
+      return NextResponse.json(
+        { error: missing, errorAr: missing, ...(intent === 'CANCEL' ? { code: 'CANCEL_REASON_REQUIRED' } : {}) },
+        { status: 400 }
+      );
+    }
 
     /**
      * WHERE THE PARCEL IS — READ ONCE, FOR EVERY QUESTION BELOW.
@@ -156,6 +172,31 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       );
     }
 
+    /**
+     * ONE CANCELLATION AT A TIME, AND ONE ALREADY DECIDED IS NOT RAISED AGAIN.
+     *
+     * An approved cancellation that has not been carried out is not «open» to
+     * the check above (it is APPROVED, not PENDING), so a second one could be
+     * raised beside it — and the review queue showed the same order twice,
+     * one of them already «تم». Two cancels of one order are one cancel: the
+     * answer is the press the first is waiting for.
+     */
+    if (intent === 'CANCEL') {
+      const decided = await db.orderChangeRequest.findFirst({
+        where: { orderId: id, companyId, intent: 'CANCEL', status: 'APPROVED', appliedAt: null },
+        select: { id: true },
+      });
+      if (decided) {
+        return NextResponse.json(
+          {
+            error: 'يوجد طلب إلغاء معتمَد لهذا الطلب ينتظر التنفيذ — نفّذه من «طلبات التعديل» بدل رفع طلب جديد.',
+            code: 'CANCEL_ALREADY_APPROVED',
+          },
+          { status: 409 }
+        );
+      }
+    }
+
     const cal = {
       workHoursStart: country.workHoursStart,
       workHoursEnd: country.workHoursEnd,
@@ -188,6 +229,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         intent,
         changes: withFrom(snapshot, parsed.data.changes ?? {}) as object,
         postponeUntil: parsed.data.postponeUntil ? new Date(parsed.data.postponeUntil) : null,
+        // Only a cancellation has one; an edit or a postponement never stores a stray.
+        cancelReason: intent === 'CANCEL' ? parsed.data.cancelReason : null,
         reason: parsed.data.reason,
         blocking: parsed.data.blocking,
         slaDueAt: addBusinessMinutes(new Date(), CHANGE_REQUEST_SLA_MINUTES, cal),
@@ -323,7 +366,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       action: 'CHANGE_REQUEST_RAISED',
       entity: 'Order',
       entityId: id,
-      newData: { requestId: created.id, intent, changes: parsed.data.changes, reason: parsed.data.reason },
+      newData: {
+        requestId: created.id, intent, changes: parsed.data.changes, reason: parsed.data.reason,
+        ...(intent === 'CANCEL' ? { cancelReason: parsed.data.cancelReason } : {}),
+      },
     });
     await db.orderNote.create({
       data: {
