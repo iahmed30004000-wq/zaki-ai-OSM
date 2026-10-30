@@ -5,6 +5,8 @@ import { db } from '@/lib/db';
 import { hashPassword } from '@/lib/auth';
 import { rateLimit, getClientIp } from '@/lib/rate-limit';
 import { logAudit } from '@/lib/audit';
+import { selfSignupOn } from '@/lib/auth-switches';
+import { mayBootstrapOwner } from '@/lib/bootstrap-owner';
 
 const registerSchema = z
   .object({
@@ -39,6 +41,30 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'طلب غير صالح' }, { status: 400 });
     }
 
+    /**
+     * THE DOOR IS SHUT UNLESS THE OWNER OPENED IT (A4, D7).
+     *
+     * Self sign-up is off by default: a stranger who can register an account can fill the approval list, probe the
+     * system and wait for a manager to tick the wrong box. The one thing that still works with the door shut is the
+     * owner's own bootstrap (A3), and only while there is no owner. The answer is the same for every shut case, and it
+     * is given before the body is judged, so it says nothing about which emails exist.
+     */
+    const askedEmail = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+    const configuredEmail = process.env.INITIAL_SUPER_ADMIN_EMAIL;
+    const bootstrap =
+      askedEmail !== '' &&
+      mayBootstrapOwner({
+        configuredEmail,
+        email: askedEmail,
+        superAdminCount: (configuredEmail ?? '').trim() === '' ? 1 : await db.user.count({ where: { role: 'SUPER_ADMIN' } }),
+      });
+    if (!selfSignupOn() && !bootstrap) {
+      return NextResponse.json(
+        { error: 'التسجيل الذاتي مغلق. اطلب من المدير أن ينشئ لك حساباً' },
+        { status: 403 }
+      );
+    }
+
     // Server-side Zod validation — role/status are NEVER accepted from the client
     const parsed = registerSchema.safeParse(body);
     if (!parsed.success) {
@@ -48,23 +74,28 @@ export async function POST(req: Request) {
 
     const { fullName, email, password } = parsed.data;
 
-    // Unique email check (DB also enforces a unique constraint)
-    const existing = await db.user.findUnique({ where: { email } });
-    if (existing) {
-      return NextResponse.json(
-        { error: 'هذا البريد الإلكتروني مسجل مسبقاً' },
-        { status: 409 }
-      );
-    }
-
+    /*
+     * THE SAME WORK AND THE SAME ANSWER, WHETHER THE EMAIL IS NEW OR NOT (A4).
+     *
+     * The hash is made BEFORE the lookup, so a taken email does not answer faster than a free one, and a taken email gets
+     * the very body a new one gets: «هذا البريد مسجل مسبقاً» (409) told a stranger which emails have accounts. Nothing is
+     * created for a taken email, and the real owner of it learns nothing from a stranger's attempt.
+     */
     const passwordHash = await hashPassword(password);
+    const isInitialSuperAdmin = bootstrap && email === askedEmail;
+    const answer = () =>
+      NextResponse.json({
+        success: true,
+        status: isInitialSuperAdmin ? 'ACTIVE' : 'PENDING',
+        role: isInitialSuperAdmin ? 'SUPER_ADMIN' : 'PENDING_USER',
+        signIn: true,
+        message: isInitialSuperAdmin
+          ? 'تم إنشاء حساب المدير الأعلى بنجاح — سجّل دخولك الآن'
+          : 'استلمنا طلبك. إن كان البريد جديداً فحسابك الآن بانتظار موافقة المدير',
+      });
 
-    // Secure bootstrap: environment-designated first Super Admin
-    const initialSuperAdminEmail = (process.env.INITIAL_SUPER_ADMIN_EMAIL || '')
-      .trim()
-      .toLowerCase();
-    const isInitialSuperAdmin =
-      initialSuperAdminEmail !== '' && email === initialSuperAdminEmail;
+    const existing = await db.user.findUnique({ where: { email }, select: { id: true } });
+    if (existing) return answer();
 
     const user = await db.user.create({
       data: {
@@ -105,18 +136,17 @@ export async function POST(req: Request) {
      * that can do everything must not be the one account that got in
      * without enrolling.
      */
-    return NextResponse.json({
-      success: true,
-      status: user.status,
-      role: user.role,
-      signIn: true,
-      message: isInitialSuperAdmin
-        ? 'تم إنشاء حساب المدير الأعلى بنجاح — سجّل دخولك الآن'
-        : 'تم إنشاء حسابك بنجاح وهو الآن بانتظار موافقة المدير',
-    });
+    return answer();
   } catch (error: any) {
     if (error?.code === 'P2002') {
-      return NextResponse.json({ error: 'هذا البريد الإلكتروني مسجل مسبقاً' }, { status: 409 });
+      // Two requests for one new email raced: the second is a taken email, and a taken email gets the neutral answer.
+      return NextResponse.json({
+        success: true,
+        status: 'PENDING',
+        role: 'PENDING_USER',
+        signIn: true,
+        message: 'استلمنا طلبك. إن كان البريد جديداً فحسابك الآن بانتظار موافقة المدير',
+      });
     }
     console.error('Register error:', error);
     return NextResponse.json({ error: 'حدث خطأ داخلي. حاول مرة أخرى' }, { status: 500 });
