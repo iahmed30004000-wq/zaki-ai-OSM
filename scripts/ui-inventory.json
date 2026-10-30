@@ -669,6 +669,16 @@
     "links": 1,
     "tabs": 0
   },
+  "src/components/screens/ai/AiSpendCapCard.tsx": {
+    "buttons": 1,
+    "inputs": 2,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 2,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/screens/ai/AssistantsTable.tsx": {
     "buttons": 0,
     "inputs": 5,

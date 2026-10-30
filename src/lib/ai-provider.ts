@@ -4,6 +4,7 @@ import { sanitizePromptOverrides, resolvePrompt, recordVersions, HOUSE_JOB, type
 import { decryptSecret, encryptSecret, encryptionAvailable } from './secrets';
 import { updateCompanySettings } from './company-settings';
 import { SYSTEM_AI, readSystemSetting, systemSettingMeta, updateSystemSetting } from './system-settings';
+import { assertUnderCap, hasCap, recordUsage, sanitizeCap, tokensUsed, type SpendCap } from './ai-spend';
 import { chatCompletionsUrl, parseCompatEndpoint } from './ai-endpoint';
 
 /**
@@ -260,6 +261,12 @@ export interface AiSettings {
   providerKeys: Record<string, boolean>;
   /** Per-assistant vendor and model, where one was chosen. */
   assistants: Record<string, { provider?: string; model?: string }>;
+  /**
+   * THE DAILY AND MONTHLY CEILING, in tokens. A side that is null means «no
+   * ceiling», which is what every company has until the owner writes one.
+   * See `ai-spend.ts`.
+   */
+  spendCap?: SpendCap;
 }
 
 interface StoredAi {
@@ -304,6 +311,8 @@ interface StoredAi {
    * every assistant did before and what most should keep doing.
    */
   assistants?: Record<string, { provider?: string; model?: string }>;
+  /** See AiSettings.spendCap. Absent = no ceiling. */
+  spendCap?: SpendCap;
 }
 
 /**
@@ -585,6 +594,7 @@ export async function aiSettings(companyId: string): Promise<AiSettings> {
       ])
     ),
     assistants: ai.assistants ?? {},
+    spendCap: sanitizeCap(ai.spendCap),
   };
 }
 
@@ -605,6 +615,8 @@ export async function saveAiSettings(
     providerKeys?: Record<string, string | null>;
     /** Per-assistant vendor and model. An empty object clears an override. */
     assistants?: Record<string, { provider?: string; model?: string }>;
+    /** The daily and monthly ceiling. Absent leaves it; a null side is «no ceiling». */
+    spendCap?: SpendCap;
   },
   /** Whoever pressed save, for the prompt versions. */
   actor?: { name: string | null; now?: Date }
@@ -690,6 +702,9 @@ export async function saveAiSettings(
                 // An override that says nothing is not stored at all.
                 .filter(([, v]) => Object.keys(v).length > 0)
             ),
+      // Carried through EVERY save, like the keys: a prompt save that forgot
+      // it would switch the ceiling off. Both sides null is stored as nothing.
+      spendCap: input.spendCap === undefined ? current.spendCap : hasCap(sanitizeCap(input.spendCap)) ? sanitizeCap(input.spendCap) : undefined,
     };
 
     // Per-vendor keys, each encrypted on the way in.
@@ -1103,6 +1118,19 @@ function imageContent(req: ChatRequest, shape: 'anthropic' | 'openai'): unknown 
 }
 
 /**
+ * HOW LONG THE CALL WAS, for the estimate when a vendor reports no count.
+ * Lengths only: the words are not kept, and no number made from them can be
+ * turned back into them.
+ */
+function lengthsOf(system: string, req: ChatRequest, answer: string) {
+  return {
+    inChars: system.length + req.user.length,
+    images: (req.images ?? []).filter((i) => i && i.base64).length,
+    outChars: answer.length,
+  };
+}
+
+/**
  * One call, five vendors — and exactly one of them, LOCAL, is ever allowed to
  * receive a customer. The OpenAI-compatible server is an outside party: the
  * two guards below (`localOnly` and the pii declaration) refuse it because it
@@ -1178,6 +1206,17 @@ export async function aiChat(req: ChatRequest): Promise<string> {
     throw new AiNotConfigured();
   }
 
+  /**
+   * ── THE DAILY AND MONTHLY CEILING, BEFORE ANYTHING IS SENT ──
+   *
+   * After the configuration errors above, so «no key» is still «no key», and
+   * before the first byte leaves, so a company over its line spends nothing
+   * more. The owner's own machine costs nothing and is neither counted nor
+   * stopped. With no ceiling stored this reads nothing at all.
+   */
+  const metered = route.provider !== 'LOCAL';
+  if (metered) await assertUnderCap(req.companyId, settings.spendCap);
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), req.timeoutMs ?? 30_000);
 
@@ -1250,7 +1289,9 @@ export async function aiChat(req: ChatRequest): Promise<string> {
       });
       if (!res.ok) throw await vendorError(res, route.model, key);
       const data = await res.json();
-      return data?.content?.[0]?.text ?? '';
+      const text = data?.content?.[0]?.text ?? '';
+      if (metered) await recordUsage(req.companyId, tokensUsed(data, 'anthropic', lengthsOf(system, req, text)));
+      return text;
     }
 
     /**
@@ -1297,6 +1338,12 @@ export async function aiChat(req: ChatRequest): Promise<string> {
     if (!res.ok) throw await vendorError(res, route.model, key);
     const data = await res.json();
     const content = data?.choices?.[0]?.message?.content ?? '';
+    if (metered) {
+      await recordUsage(
+        req.companyId,
+        tokensUsed(data, 'openai', lengthsOf(system, req, typeof content === 'string' ? content : JSON.stringify(content)))
+      );
+    }
     // A reasoning model behind a server with no reasoning parser answers with
     // its thinking in front of the answer, and `JSON.parse` of that fails.
     // Only the compatible server, only one leading block — and only when the

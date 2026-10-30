@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { tooManyAiCalls } from '@/lib/ai-rate';
+import { capReachedResponse } from '@/lib/ai-spend';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
@@ -212,6 +213,9 @@ export async function POST(req: Request) {
       if (e instanceof AiNotConfigured) {
         return NextResponse.json({ error: e.message, code: 'AI_NOT_CONFIGURED' }, { status: 409 });
       }
+      // The company is over its daily or monthly ceiling: a sentence, not a 500.
+      const capped = capReachedResponse(e);
+      if (capped) return capped;
       throw e;
     }
   } catch (error) {

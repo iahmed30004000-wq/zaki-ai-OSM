@@ -1,6 +1,7 @@
 'use client';
 
 import { AssistantsTable } from '@/components/screens/ai/AssistantsTable';
+import { AiSpendCapCard } from '@/components/screens/ai/AiSpendCapCard';
 import { MessageTemplatesCard } from '@/components/settings/MessageTemplatesCard';
 import React, { useCallback, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
@@ -84,12 +85,15 @@ interface Settings {
   /** What each job's prompt said before, newest first. */
   promptHistory?: Record<string, PromptVersion[]>;
   hasKey: boolean;
+  /** The daily and monthly ceiling, in tokens. A null side is «no ceiling». */
+  spendCap?: { dailyTokens: number | null; monthlyTokens: number | null };
 }
 
 export function AiSettingsScreen() {
   // Saving the provider, the routing and the prompts is «الإعدادات الحسّاسة» (PUT /api/settings/ai); the page opens on «عرض الإعدادات».
   const canManage = useCan('settings.manage');
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [usage, setUsage] = useState<{ dayTokens: number; monthTokens: number } | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [jobs, setJobs] = useState<AiJob[]>([]);
   /** Where each assistant's call would actually go — from the server. */
@@ -161,6 +165,7 @@ export function AiSettingsScreen() {
     const res = await fetch('/api/settings/ai');
     const json = await res.json();
     setSettings(json.settings);
+    setUsage(json.usage ?? null);
     // What the SERVER holds, so a save can tell a changed dropdown from an
     // untouched one — the same rule the installation card follows.
     savedCompany.current = {
@@ -674,6 +679,17 @@ export function AiSettingsScreen() {
           )}
         </div>
       </section>
+
+      {/* ── the ceiling on how much the assistants may use ── */}
+      <div className={tab === 'provider' ? '' : 'hidden'}>
+        <AiSpendCapCard
+          key={`${settings.spendCap?.dailyTokens ?? ''}:${settings.spendCap?.monthlyTokens ?? ''}`}
+          cap={settings.spendCap ?? { dailyTokens: null, monthlyTokens: null }}
+          usage={usage}
+          canManage={canManage}
+          onSaved={load}
+        />
+      </div>
 
       {/* ── the words ── */}
       <section className={`rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-4 ${tab === 'prompts' ? '' : 'hidden'}`}>

@@ -1,6 +1,7 @@
 import type { AiScope } from './ai-assistants';
 import { scopeNoteAr } from './ai-scope';
 import { aiChat, aiSettings, AiNotConfigured } from './ai-provider';
+import { AiCapReached } from './ai-spend';
 import { resolvePrompt } from './ai-prompts';
 /**
  * OpenRouter AI Service for SALESFLOW
@@ -120,7 +121,12 @@ ${JSON.stringify(context, null, 2)}`,
        * the summary is never empty and never invented. The message names the
        * reason without naming the key.
        */
-      const why = error instanceof AiNotConfigured ? 'no AI provider configured' : error;
+      const why =
+        error instanceof AiNotConfigured
+          ? 'no AI provider configured'
+          : error instanceof AiCapReached
+            ? 'daily or monthly ceiling reached'
+            : error;
       console.warn('Daily summary fell back to the deterministic analyst:', why);
     }
   }
@@ -235,6 +241,13 @@ ${note ? `ملاحظة: ${note}\n\n` : ''}سؤال المستخدم: ${question}
       });
       if (answer) return note ? `${answer}\n\n_${note}_` : answer;
     } catch (e) {
+      /*
+       * OVER THE DAILY OR MONTHLY CEILING: SAY SO, THEN GIVE THE NUMBERS.
+       * The grounded answer is still built from the verified figures, but
+       * on its own it would look like the assistant answering — and the
+       * person asking would never learn why it got so plain.
+       */
+      if (e instanceof AiCapReached) return `${e.messageAr}\n\n${groundedAnswer(question, context, currency, note)}`;
       if (!(e instanceof AiNotConfigured)) console.warn('AI assistant call failed:', e);
     }
   }

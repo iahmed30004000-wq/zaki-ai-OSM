@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { tooManyAiCalls } from '@/lib/ai-rate';
+import { AiCapReached } from '@/lib/ai-spend';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { requireAssistant } from '@/lib/require-assistant';
@@ -63,7 +64,12 @@ export async function POST() {
       });
       return NextResponse.json({ suggestion, picklist });
     } catch (e) {
-      const error = e instanceof AiNotConfigured ? 'لم يُضبط مزوّد الذكاء بعد.' : 'تعذّر الوصول إلى المزوّد.';
+      const error =
+        e instanceof AiNotConfigured
+          ? 'لم يُضبط مزوّد الذكاء بعد.'
+          : e instanceof AiCapReached
+            ? e.messageAr
+            : 'تعذّر الوصول إلى المزوّد.';
       // The picklist stands on its own; a model that did not answer must not
       // take the warehouse's numbers down with it.
       return NextResponse.json({ suggestion: null, picklist, error });
