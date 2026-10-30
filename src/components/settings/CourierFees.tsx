@@ -8,7 +8,7 @@ import { RiAlertLine, RiLoader4Line, RiMagicLine, RiSaveLine } from '@remixicon/
 import { useToast } from '@/components/ui/Toast';
 import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { placeNote, type CourierPlaces } from '@/lib/courier-place-note';
+import { placeNote, type CourierPlaces } from '@/lib/couriers/place-note';
 
 /**
  * ONE COURIER'S FEES — a row per region: the fee, the late threshold in

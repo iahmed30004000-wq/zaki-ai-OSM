@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { MONEY_FIELDS } from '@/lib/tracking-sight';
+import { MONEY_FIELDS } from '@/lib/parcel-tracking/sight';
 
 /**
  * WHO SEES WHICH ROWS ON THE FOLLOW-UP SCREEN — THE DOOR, KEY BY KEY.
  *
  * The screen showed every parcel, the courier's money and the collect bar to anybody holding «متابعة الشحن». It has
- * two levels now (`lib/tracking-sight.ts`) and this holds them where they are enforced:
+ * two levels now (`lib/parcel-tracking/sight.ts`) and this holds them where they are enforced:
  *
  *   • the delivered parcels (the collection rows), the chip and the courier's figures need «عرض التسويات» OR «إدارة
  *     الصناديق النقدية» — without either the rows are not even read, the figures are not in the answer, and a state or a

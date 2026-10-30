@@ -437,7 +437,7 @@ describe('a review carries a first name and a city, and nothing else', () => {
     }
     // And the guarantee it would lean on is real: `aiChat` refuses before
     // any network call when the route is not LOCAL.
-    const provider = code('src/lib/ai-provider.ts');
+    const provider = code('src/lib/ai-provider/call.ts');
     expect(provider).toMatch(/req\.localOnly && route\.provider !== 'LOCAL'/);
     expect(provider).toMatch(/throw new AiNotLocal/);
   });

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ALL_CATALOG_KEYS } from './permission-catalog';
-import { sightWhere, type TrackingSight } from './tracking-sight';
+import { sightWhere, type TrackingSight } from './parcel-tracking/sight';
 
 /**
  * «عرض المرتجعات في المتابعة» (ops.returns_view) — GRANTED ON THE DAY, NOT LEFT FOR SOMEBODY TO NOTICE.

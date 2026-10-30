@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
-import { courierScope } from '@/lib/courier-scope';
+import { courierScope } from '@/lib/couriers/scope';
 import { can } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 

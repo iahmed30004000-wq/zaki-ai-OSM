@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { Pager } from '@/components/ui/Pager';
 import { Select, Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
@@ -15,7 +16,7 @@ import { CreateUserModal } from './users/CreateUserModal';
 import { useConfirm } from '@/components/ui/Confirm';
 import { ASSIGNABLE_ROLES, ROLE_LABELS as ROLE_LABELS_AR, USER_STATUSES } from '@/types/auth';
 import { findRoute, routeLabel } from '@/lib/route-registry';
-import { RiArrowLeftSLine, RiArrowRightSLine, RiForbidLine, RiKey2Line, RiLogoutBoxLine, RiMedalLine, RiPlayCircleLine, RiRefreshLine, RiSearchLine, RiShieldCheckLine, RiShieldCrossLine, RiUserAddLine } from '@remixicon/react';
+import { RiForbidLine, RiKey2Line, RiLogoutBoxLine, RiMedalLine, RiPlayCircleLine, RiRefreshLine, RiSearchLine, RiShieldCheckLine, RiShieldCrossLine, RiUserAddLine } from '@remixicon/react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -391,21 +392,20 @@ export function UsersScreen() {
               />
             </div>
 
-            <div className="px-6 py-3 border-t border-[var(--sys-border)] flex items-center justify-between text-xs text-[var(--sys-muted-foreground)]">
-              <span>
-                إجمالي <strong>{pagination.total}</strong> مستخدم
-              </span>
-              <div className="flex items-center space-x-2 rtl:space-x-reverse">
-                <Button size="sm" variant="outline" disabled={pagination.page <= 1} onClick={() => loadUsers(pagination.page - 1)} className="p-1.5">
-                  <RiArrowLeftSLine className="icon-mirror w-4 h-4" />
-                </Button>
-                <span className="font-medium">
-                  صفحة {pagination.page} من {pagination.totalPages || 1}
-                </span>
-                <Button size="sm" variant="outline" disabled={pagination.page >= pagination.totalPages} onClick={() => loadUsers(pagination.page + 1)} className="p-1.5">
-                  <RiArrowRightSLine className="icon-mirror w-4 h-4" />
-                </Button>
-              </div>
+            <div className="px-6 py-3 border-t border-[var(--sys-border)]">
+              <Pager
+                page={pagination.page}
+                totalPages={pagination.totalPages}
+                total={pagination.total}
+                shown={users.length}
+                noun="مستخدم"
+                label={
+                  <>
+                    إجمالي <strong>{pagination.total}</strong> مستخدم
+                  </>
+                }
+                onPage={(page) => loadUsers(page)}
+              />
             </div>
           </CardContent>
         </Card>

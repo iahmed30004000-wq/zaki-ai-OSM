@@ -9,7 +9,7 @@ import { notify } from '@/lib/notify';
 import { zodMessage } from '@/lib/zod-message';
 import { authorises, expandApproved } from '@/lib/change-request-apply';
 import { changeFieldLabel } from '@/lib/change-request-fields';
-import { courierActionFor } from '@/lib/courier-change';
+import { courierActionFor } from '@/lib/couriers/change';
 import { orderSeal, sealedFieldsIn, handedToCourier } from '@/lib/order-seal';
 import { mayDecide } from '@/lib/change-request-routing';
 import { createReplacement, type ReplacementSource } from '@/lib/replacement-order';

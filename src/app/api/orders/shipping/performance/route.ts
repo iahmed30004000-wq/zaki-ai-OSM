@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { can } from '@/lib/authorization';
-import { courierRates, courierCollectionTrust, scoreCourier, whyNoCourierScore } from '@/lib/courier-score';
+import { courierRates, courierCollectionTrust, scoreCourier, whyNoCourierScore } from '@/lib/couriers/score';
 
 
 /**

@@ -1,5 +1,6 @@
 'use client';
 
+import { plainNumber } from '@/lib/format';
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiJson } from '@/lib/api-client';
@@ -301,5 +302,5 @@ function Table({ title, rows, empty, linkPages }: { title: string; rows: Row[]; 
   );
 }
 
-const fmt = (n: number) => n.toLocaleString('en-US');
+const fmt = (n: number) => plainNumber(n);
 const pct = (n: number | null) => (n === null ? '—' : `${n}%`);

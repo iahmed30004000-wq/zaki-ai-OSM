@@ -28,7 +28,7 @@ const { db } = vi.hoisted(() => ({
 }));
 vi.mock('./db', () => ({ db }));
 
-import { piecesInParcel } from './courier-dispatch';
+import { piecesInParcel } from './couriers/dispatch';
 import { codForOrder } from './delivery-fees';
 import { shipmentBlocks } from './operations';
 import { toLabelView, WAYBILL_SELECT, type WaybillOrder } from './waybill';
@@ -55,7 +55,7 @@ describe('ط32 — the pieces in the box', () => {
 
   it('the dispatch reads the lines and the add-ons from the database', async () => {
     const { repoFile } = await import('./guard-source');
-    const src = repoFile('src/lib/courier-dispatch.ts');
+    const src = repoFile('src/lib/couriers/dispatch.ts');
     expect(src).toContain('items: { select: { quantity: true, freeQuantity: true } }');
     expect(src).toContain('addOns: { select: { quantity: true } }');
     expect(src).toContain('pieces: piecesInParcel(order)');
@@ -131,7 +131,7 @@ describe('ط47 — the waybill takes the parcel\'s own address first', () => {
     const { repoFile } = await import('./guard-source');
     expect(Object.keys(WAYBILL_SELECT)).toContain('deliveryAddress');
     expect(repoFile('src/app/api/ops/labels/print/route.ts')).toContain('o.deliveryAddress ?? o.customer.address');
-    expect(repoFile('src/lib/courier-dispatch.ts')).toContain('order.deliveryAddress ?? order.customer?.address');
+    expect(repoFile('src/lib/couriers/dispatch.ts')).toContain('order.deliveryAddress ?? order.customer?.address');
   });
 
   it('and a staff correction of the address is written on the order, so it is not hidden behind the typed one', async () => {

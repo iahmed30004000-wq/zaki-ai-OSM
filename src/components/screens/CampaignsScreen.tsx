@@ -1,5 +1,6 @@
 'use client';
 
+import { plainNumber } from '@/lib/format';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { apiJson } from '@/lib/api-client';
@@ -103,7 +104,7 @@ const PERIODS = [
 const platformLabel = (k: string) => CAMPAIGN_PLATFORMS.find((p) => p.key === k)?.label ?? k;
 const statusLabel = (k: string) => CAMPAIGN_STATUSES.find((s) => s.key === k)?.label ?? k;
 const fmt = (n: number | null) =>
-  n === null ? '—' : n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  n === null ? '—' : plainNumber(n, 2);
 
 export function CampaignsScreen() {
   const { currentUser } = useApp();

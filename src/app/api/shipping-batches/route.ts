@@ -6,7 +6,7 @@ import { requireContext } from '@/lib/geo-context';
 import { logAudit } from '@/lib/audit';
 import { can } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
-import { courierCityGaps } from '@/lib/courier-city-gaps';
+import { courierCityGaps } from '@/lib/couriers/city-gaps';
 
 /**
  * GET  /api/shipping-batches — company-scoped list (with order counts)

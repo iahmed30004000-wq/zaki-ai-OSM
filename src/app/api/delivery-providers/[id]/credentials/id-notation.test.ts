@@ -44,7 +44,7 @@ vi.mock('@/lib/geo-context', () => ({
   requireContext: async () => ({ user: { id: 'admin', name: 'مدير' }, companyId: 'c1', storeId: 's1' }),
 }));
 vi.mock('@/lib/authorization', () => ({ requirePermission: async () => undefined }));
-vi.mock('@/lib/courier-scope', () => ({ courierScope: () => ({ companyId: 'c1' }) }));
+vi.mock('@/lib/couriers/scope', () => ({ courierScope: () => ({ companyId: 'c1' }) }));
 vi.mock('@/lib/secrets', () => ({
   encryptJson: (...a: unknown[]) => encryptJson(...a),
   decryptJson: () => null,

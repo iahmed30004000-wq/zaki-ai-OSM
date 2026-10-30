@@ -1,5 +1,6 @@
 ﻿'use client';
 
+import { plainNumber } from '@/lib/format';
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardContent, KpiCard } from '@/components/ui/Card';
@@ -30,7 +31,7 @@ import { apiJson } from '@/lib/api-client';
 import type { ProductStatsAnswer as ProductStats } from '@/lib/product-stats';
 
 /** A count as a reader reads it — Latin digits, thousands separated. */
-const count = (n: number) => n.toLocaleString('en-US');
+const count = (n: number) => plainNumber(n);
 
 /**
  * What the grades route answers with, so the screen never guesses a shape.

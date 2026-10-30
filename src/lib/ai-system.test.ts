@@ -300,7 +300,7 @@ describe('the shape of the thing', () => {
   });
 
   it('every outbound AI call carries a timeout', () => {
-    const src = stripComments(repoFile('src/lib/ai-provider.ts'));
+    const src = stripComments(repoFile('src/lib/ai-provider/call.ts'));
     // One controller, aborted on a timer, wrapping every vendor branch.
     expect(src).toMatch(/new AbortController\(\)/);
     expect(src).toMatch(/setTimeout\(\(\) => controller\.abort\(\)/);

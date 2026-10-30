@@ -23,7 +23,7 @@ import {
   notSureAr,
   refusedAr,
   type RemoteCancel,
-} from './courier-remote-cancel';
+} from './couriers/remote-cancel';
 import type { CourierAdapter } from './couriers';
 
 /**
