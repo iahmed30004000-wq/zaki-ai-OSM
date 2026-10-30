@@ -29,7 +29,7 @@ import { ALL_ROUTES } from './route-registry';
  * can create such a pair — the screens, the doors, and the engine one day —
  * all read the same field. This file holds the field itself still.
  *
- * The 67 pairs are written out BELOW rather than read back from the catalog:
+ * The 71 pairs are written out BELOW rather than read back from the catalog:
  * a test that derives its expectation from the thing it checks passes when
  * the thing is empty.
  * ═══════════════════════════════════════════════════════════════════════
@@ -65,7 +65,10 @@ const EXPECTED: ReadonlyArray<readonly [string, string]> = [
   ['orders.change_price', 'orders.edit'], ['orders.change_fee', 'orders.change_status'], ['orders.cancel', 'orders.view'],
   ['orders.note', 'orders.view'], ['orders.request_change', 'orders.view'], ['orders.rating_link', 'orders.view'],
   ['control.blacklist_manage', 'control.blacklist'],
-  // PR-9: the cash box and the statement approval (migration 20261030150000_finance_split_keys). 63 -> 67.
+  // PR-7: the confirmation and change-request doors that got a box each (migration 20261030140000_confirmation_split_keys). 63 -> 67.
+  ['confirmation.winback', 'confirmation.supervise'], ['confirmation.reassign', 'confirmation.supervise'],
+  ['confirmation.issues_correct', 'confirmation.issues'], ['control.change_requests', 'control.change_requests_view'],
+  // PR-9: the cash box and the statement approval (migration 20261030150000_finance_split_keys). 67 -> 71.
   ['finance.cashbox', 'finance.cashbox_view'], ['finance.wallets_manage', 'finance.cashbox_view'],
   ['finance.closing_approve', 'finance.cashbox_view'], ['settlement.approve', 'settlement.view'],
 ];
@@ -73,9 +76,9 @@ const EXPECTED: ReadonlyArray<readonly [string, string]> = [
 const items = PERMISSION_MODULES.flatMap((m) => m.items);
 
 describe('the catalog names what each action needs', () => {
-  it('holds exactly the 67 pairs — none lost, none invented', () => {
+  it('holds exactly the 71 pairs — none lost, none invented', () => {
     const actual = items.filter((i) => i.requires).map((i) => [i.key, i.requires] as const);
-    expect(EXPECTED).toHaveLength(67);
+    expect(EXPECTED).toHaveLength(71);
     expect(actual.length, 'عدد الأزواج').toBe(EXPECTED.length);
     for (const [action, view] of EXPECTED) {
       expect(catalogItem(action)?.requires, `${action} لازم يطلب ${view}`).toBe(view);
@@ -106,7 +109,8 @@ describe('the catalog names what each action needs', () => {
   it('says why when an action needs nothing: a standalone action carries its note', () => {
     const standalone = items.filter((i) => i.requires === null);
     // ai.assist (PR-5): no screen and no list of its own — it is held WITH the key of the work the helper sits in (R4).
-    expect(standalone.map((i) => i.key).sort()).toEqual(['ai.assist', 'customers.create', 'orders.create']);
+    // confirmation.raise_issue and ops.decide_changes (PR-7): each has its own button or door and shows no list (R4).
+    expect(standalone.map((i) => i.key).sort()).toEqual(['ai.assist', 'confirmation.raise_issue', 'customers.create', 'ops.decide_changes', 'orders.create']);
     for (const i of standalone) expect((i.note ?? '').trim().length, `${i.key} بلا ملاحظة`).toBeGreaterThan(10);
   });
 

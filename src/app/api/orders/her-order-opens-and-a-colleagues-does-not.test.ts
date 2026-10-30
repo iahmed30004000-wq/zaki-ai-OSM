@@ -265,6 +265,9 @@ const AGENT = person('u1', 'CONFIRMATION_AGENT', {
   'confirmation.pull': 'ALL_COMPANY',
   'confirmation.work': 'ALL_COMPANY',
   'confirmation.issues': 'ALL_COMPANY',
+  // OLD → NEW (PR-7): raising an entry issue is its own box, `confirmation.raise_issue`. The migration 20261030140000_confirmation_split_keys
+  // gives it to the shipped agent BY NAME (D14: her «إدخال إشكال» always answered 403) and to whoever held `confirmation.issues`.
+  'confirmation.raise_issue': 'ALL_COMPANY',
 });
 /** The moderator's template since 14/10: his own entries; no pull, no work, no supervise. */
 const MODERATOR = person('m1', 'MODERATOR', {
@@ -275,6 +278,9 @@ const MODERATOR = person('m1', 'MODERATOR', {
   'orders.confirm': 'ALL_COMPANY',
   'customers.view_basic': 'ALL_COMPANY',
   'confirmation.issues': 'ALL_COMPANY',
+  // OLD → NEW (PR-7): the moderator held the issues list, so the migration gives him the raising box (and the correction’s).
+  'confirmation.raise_issue': 'ALL_COMPANY',
+  'confirmation.issues_correct': 'ALL_COMPANY',
 });
 
 /* ─────────────────────────────── what ─────────────────────────────── */

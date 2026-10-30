@@ -261,6 +261,18 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       { key: 'confirmation.work', opens: ['طلباتي'], ar: 'العمل على طلباتي والمؤجلة', en: 'Work own and postponed orders' },
       { key: 'confirmation.supervise', opens: ['الطلبات الجديدة', 'المتابعة'], ar: 'الإشراف على التأكيد (عرض القائمة)', en: 'Supervise confirmation (list view)' },
       { key: 'confirmation.issues', opens: ['الإشكالات'], ar: 'إشكالات الإدخال', en: 'Entry issues' },
+      /*
+       * THE CONFIRMATION DOORS THAT GOT A BOX EACH (perm-plan PR-7, migration 20261030140000_confirmation_split_keys).
+       *
+       * The win-back offer and the hand-back of a colleague's order rode on the supervisors' list; raising and closing an
+       * entry issue rode on seeing the issues list. The migration gave each box to exactly the people who passed that door
+       * before (the one deliberate gain: the agent's own «إدخال إشكال», which never worked for her), so from then on one
+       * tick moves one door.
+       */
+      { key: 'confirmation.winback', requires: 'confirmation.supervise', ar: 'عرض خصم لاسترجاع طلب ملغى', en: 'Offer a discount to win back a lost order' },
+      { key: 'confirmation.reassign', requires: 'confirmation.supervise', ar: 'إرجاع طلب مؤجَّل عند موظف آخر إلى الطابور', en: 'Hand a colleague’s postponed order back to the pool' },
+      { key: 'confirmation.issues_correct', requires: 'confirmation.issues', ar: 'تصحيح إشكال إدخال وإغلاقه', en: 'Correct and close an entry issue' },
+      { key: 'confirmation.raise_issue', requires: null, note: 'رفع الإشكال له زره على بطاقة الطلب، وما بيعرض قائمة الإشكالات — فما بيحتاج «إشكالات الإدخال».', ar: 'رفع إشكال إدخال على طلب', en: 'Raise an entry issue on an order' },
     ],
   },
   {
@@ -273,12 +285,14 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       { key: 'ops.returns', opens: ['المرتجعات'], ar: 'المرتجعات', en: 'Returns' },
       // Seeing the return rows on «متابعة الشحن» — NOT receiving the stock, which stays «المرتجعات» above.
       { key: 'ops.returns_view', ar: 'عرض المرتجعات في المتابعة (بلا استلام)', en: 'See return rows in tracking (no receiving)' },
+      { key: 'ops.decide_changes', requires: null, note: 'البتّ بطلب تعديل على طلب مؤكَّد ما زال بالمستودع (طلبات غيرك) — بلا شاشة وبلا قائمة.', ar: 'البتّ في طلبات التعديل وهي بالمستودع', en: 'Decide change requests while the order is in the warehouse' },
     ],
   },
   {
     module: 'control',
     items: [
-      { key: 'control.change_requests', opens: ['طلبات التعديل'], ar: 'طلبات التعديل', en: 'Change requests' },
+      { key: 'control.change_requests_view', ar: 'عرض كل طلبات التعديل', en: 'See every change request' },
+      { key: 'control.change_requests', requires: 'control.change_requests_view', opens: ['طلبات التعديل'], ar: 'طلبات التعديل', en: 'Change requests' },
       { key: 'control.discount_alerts', opens: ['تنبيهات الخصم'], ar: 'تنبيهات الخصم', en: 'Discount alerts' },
       { key: 'control.blacklist', opens: ['القائمة السوداء'], ar: 'القائمة السوداء', en: 'Blacklist' },
       { key: 'control.blacklist_manage', requires: 'control.blacklist', ar: 'حظر رقم أو رفع الحظر عنه', en: 'Block a number or lift the block' },

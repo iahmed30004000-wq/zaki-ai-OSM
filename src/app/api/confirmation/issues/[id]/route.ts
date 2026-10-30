@@ -34,6 +34,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: zodMessage(parsed.error) }, { status: 400 });
     }
 
+    // CLOSING an issue by correcting it is its own box (`confirmation.issues_correct`, PR-7). The void keeps `orders.cancel`.
+    if (parsed.data.action === 'correct' && !can(user, 'confirmation.issues_correct')) {
+      return NextResponse.json(
+        { error: 'ما عندك صلاحية تصحيح الإشكالات.', errorAr: 'ما عندك صلاحية تصحيح الإشكالات.', code: 'ISSUE_CORRECT_FORBIDDEN' },
+        { status: 403 }
+      );
+    }
+
     const issue = await db.orderIssue.findFirst({
       where: { id, companyId, order: { storeId } },
       include: { order: { select: { id: true, confirmationStatus: true, shippingStatus: true, shippedAt: true, labelPrintedAt: true } } },

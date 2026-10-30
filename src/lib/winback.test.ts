@@ -519,7 +519,9 @@ describe('the offer raises a new order and leaves the loss where it is', () => {
     const list = src.slice(0, at);
     const post = src.slice(at);
     expect(list, 'القائمة مفتوحة').toContain("requirePermission('confirmation.supervise')");
-    expect(post, 'العرض مفتوح لأيّ موظّف').toContain("requirePermission('confirmation.supervise')");
+    // OLD → NEW (PR-7): the offer is its own box (`confirmation.winback`); the list keeps `confirmation.supervise`.
+    expect(post, 'العرض مفتوح لأيّ موظّف').toContain("requirePermission('confirmation.winback')");
+    expect(post, 'العرض لسّا على قائمة المشرفين').not.toContain("requirePermission('confirmation.supervise')");
     expect(post).toContain("action: 'WINBACK_OFFERED'");
     expect(post).toContain('orderNote.create');
   });

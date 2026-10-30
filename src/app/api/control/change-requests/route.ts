@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { can } from '@/lib/authorization';
 import { BEFORE_OPERATIONS } from '@/lib/change-request-routing';
+import { touchesMoney } from '@/lib/change-request-fields';
 import { apiErrorResponse } from '@/lib/api-error';
 import { carryOut, type ChangeIntent } from '@/lib/change-request-intent';
 import { handedToCourier } from '@/lib/order-seal';
@@ -21,9 +22,12 @@ export async function GET(req: Request) {
     // the one who has to answer — the ones on orders still in her hands.
     // Sending her to a screen that refuses her, or showing her a queue she
     // cannot act on, are both ways of making the request sit unanswered.
-    const supervises =
-      can(user, 'control.change_requests') ||
-      ['SUPER_ADMIN', 'COMPANY_ADMIN', 'MANAGER', 'CONFIRMATION_SUPERVISOR'].includes(user.role);
+    //
+    // Seeing the WHOLE desk is its own key, `control.change_requests_view` (PR-7). It used to be the decision key OR four
+    // role names, so the owner could untick «طلبات التعديل» from a manager and the manager went on seeing every request.
+    // The migration gave the new key to the holders of the old one AND to the four names, so the same people see the whole
+    // desk the day after — and from then on the owner can untick one of them.
+    const supervises = can(user, 'control.change_requests_view');
     // AND THE REQUESTS SHE RAISED HERSELF.
     //
     // This filter was only «orders still in my hands», which is right for
@@ -119,6 +123,9 @@ export async function GET(req: Request) {
         // self-approval, and a button that always 403s teaches people the
         // screen is lying to them.
         isMine: r.requestedById === user.id,
+        // A request that moves a figure is APPROVED only by somebody who holds `orders.change_price` (PR-7). The screen
+        // says so instead of offering a button the server would refuse; rejecting stays open.
+        needsPriceKey: touchesMoney(r.changes) && !can(user, 'orders.change_price'),
         overdue: r.status === 'PENDING' && !!r.slaDueAt && new Date(r.slaDueAt) < now,
       })),
     });

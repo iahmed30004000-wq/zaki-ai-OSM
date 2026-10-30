@@ -63,7 +63,9 @@ describe('handing a due postponed order back', () => {
 
   it('and one that is not yours, and one that is not postponed', () => {
     const post = route().slice(route().indexOf('export async function POST'));
-    expect(post).toMatch(/!supervisor && order\.claimedById !== user\.id/);
+    // OLD → NEW (PR-7): the colleague's order asks its own box, `confirmation.reassign`, not the supervisors' list.
+    expect(post).toMatch(/!mayReassign && order\.claimedById !== user\.id/);
+    expect(post).toContain("can(user, 'confirmation.reassign')");
     expect(post).toContain('ليس مؤجَّلاً');
     expect(post, 'بلا حماية من تعديل متزامن').toContain('version: order.version');
   });
@@ -77,7 +79,8 @@ describe('handing a due postponed order back', () => {
    */
   it('shows the button only on a row the server called actionable', () => {
     const src = screen();
-    expect(src).toMatch(/o\.actionable \?/);
+    // OLD → NEW (PR-7): and only where the server says the reader may hand it back (`mayHandBack`).
+    expect(src).toMatch(/o\.actionable && o\.mayHandBack !== false \?/);
     expect(src).toContain('إلى الطابور');
     // And the screen says what happened, rather than the row just vanishing.
     expect(src).toContain('ما زال مؤجَّلاً');
