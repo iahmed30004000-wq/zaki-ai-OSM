@@ -438,7 +438,16 @@ export function DashboardScreen() {
           little, but it is the phone room's own figure and dropping it would
           leave that team without a number on the screen they open.
         */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/*
+          THE GRID FOLLOWS THE NUMBER OF CARDS, so no row ends half empty.
+
+          Six cards (with finance) in four columns left a last row of two and
+          two holes; three cards (without) left one hole. Six go three-by-two
+          from `lg` and two-by-three below it; three go in a single row from
+          `md`. One column on a phone: a money figure does not fit half a
+          phone's width.
+        */}
+        <div className={canFinance ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4' : 'grid grid-cols-1 md:grid-cols-3 gap-4'}>
           {canFinance && (
             <KpiCard
               title={t.netProfit}

@@ -101,7 +101,7 @@ describe('the dashboard strip', () => {
   it('sits above the KPI tiles, not under them', () => {
     const src = stripComments(repoFile('src/components/screens/DashboardScreen.tsx'));
     const strip = src.indexOf('<IntelligenceStrip');
-    const kpis = src.indexOf('grid grid-cols-2 lg:grid-cols-4 gap-4');
+    const kpis = src.indexOf('<KpiCard');
     expect(strip, 'الشريط غائب عن اللوحة').toBeGreaterThan(-1);
     expect(strip, 'الشريط تحت المؤشّرات — يُقرأ مرّة في الشهر').toBeLessThan(kpis);
   });
