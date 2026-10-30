@@ -5,6 +5,7 @@ import { useOrderPatch } from '@/components/orders/useOrderPatch';
 import { ProductThumb } from '@/components/ui/ProductThumb';
 import { useProducts } from '@/hooks/useProducts';
 import { amount, type Currency } from '@/lib/format';
+import { previewOrderDiscount } from '@/lib/order-discount-preview';
 import { ProductLinesEditor, type DraftLine } from '@/components/orders/ProductLinesEditor';
 import { RiArchiveLine, RiLoader4Line, RiPencilLine } from '@remixicon/react';
 import { raiseEditRequest } from '@/components/orders/raiseEditRequest';
@@ -358,6 +359,22 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
   const inputClass =
     'w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border)] text-sm focus:outline-none focus:border-[var(--sys-primary)]';
 
+  /*
+   * «بعد الخصم» — WHAT THE DISCOUNT BOX WILL DO, BEFORE THE PRESS.
+   *
+   * The boxes above are handed to the server's own `computeCod` (`order-discount-preview.ts`), the same call the door
+   * makes on حفظ, so the figure here is the figure that will be written — to the last decimal, in every currency. This
+   * card still adds and subtracts nothing: it draws what the function returns. A discount bigger than the goods, or one
+   * the door would refuse, is said here and locks the button, instead of being answered with a 400 after the press.
+   */
+  const preview = previewOrderDiscount({
+    lines: draft.map((l) => ({ quantity: l.quantity, price: l.price })),
+    discount: form.discountAmount,
+    minorUnit: currency?.minorUnit,
+  });
+  const refused = preview.kind === 'tooBig' || preview.kind === 'invalid';
+  const nameOf = (productId: string) => products.find((p) => p.id === productId)?.name ?? '';
+
   return (
     <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 shadow-raised space-y-3">
       <div className={phone ? 'flex flex-wrap items-center justify-between gap-2' : 'flex items-center justify-between gap-2'}>
@@ -453,14 +470,41 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
               className={inputClass}
             />
           </label>
+          {preview.kind === 'tooBig' && (
+            <p role="alert" className="text-xs text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg px-2.5 py-1.5">
+              الخصم أكبر من قيمة البضاعة (<span dir="ltr">{amount(preview.goods, currency)}</span>) — صغّره لتقدر تحفظ.
+            </p>
+          )}
+          {preview.kind === 'invalid' && (
+            <p role="alert" className="text-xs text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg px-2.5 py-1.5">
+              اكتب خصماً صحيحاً — رقم من صفر وما فوق.
+            </p>
+          )}
           {/*
-            Said, because the price box above now holds a different figure
-            from the line in the list: the line before the discount, which is
-            what the save reads it as.
+            Said, because the price box above holds a different figure from
+            the line in the list: the line before the discount, which is what
+            the save reads it as. One rule, in the open: each line is priced
+            before the discount, and the discount is taken ONCE, off the
+            whole order.
           */}
           <p className="text-xs text-[var(--sys-muted)]">
-            سعر كل سطر هنا قبل الخصم، والخصم يُوزَّع على الأسطر عند الحفظ.
+            سعر كل سطر قبل الخصم؛ الخصم مرة واحدة على مجموع الطلب.
           </p>
+          <div aria-live="polite">
+            <p className="text-xs text-[var(--sys-muted-foreground)]">
+              بعد الخصم:{' '}
+              <span className="font-bold text-[var(--sys-heading)] tabular-nums" dir="ltr">
+                {preview.kind === 'ok' ? amount(preview.after, currency) : '—'}
+              </span>
+            </p>
+            {preview.kind === 'ok' && draft.length > 1 && preview.discount > 0 &&
+              draft.map((l, i) => (
+                <p key={l.key} className="text-xs text-[var(--sys-muted)]">
+                  حصة {nameOf(l.productId) || `السطر ${i + 1}`} من الخصم:{' '}
+                  <span dir="ltr">{amount(preview.shares[i] ?? 0, currency)}</span>
+                </p>
+              ))}
+          </div>
 
           <label className="block">
             <span className="block text-xs font-medium text-[var(--sys-muted-foreground)] mb-1">ملاحظات الطلب</span>
@@ -488,7 +532,7 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
           <div className="flex gap-2">
             <button
               onClick={save}
-              disabled={busy}
+              disabled={busy || refused}
               className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-3 py-1.5 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] font-medium disabled:opacity-50 inline-flex items-center gap-1.5"
             >
               {busy && <RiLoader4Line className="w-4 h-4 animate-spin" />}

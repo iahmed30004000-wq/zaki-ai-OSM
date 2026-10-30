@@ -1565,6 +1565,8 @@ export async function PATCH(
     let costKept = false;
     let lineProducts = new Map<string, { id: string; name: string }>();
     let lineMoney: ReturnType<typeof computeCod> | null = null;
+    /** A discount arrived with no lines and moves no goods: the order's lines must carry it as well (see the write below). */
+    let respreadDiscount = false;
 
     if (editingLine) {
       if (items) {
@@ -1663,6 +1665,7 @@ export async function PATCH(
             );
           }
         }
+        respreadDiscount = !changesTheGoods && discountAmount !== undefined;
         const nextQuantity = quantity ?? existing.quantity;
         // The quantity the stored total was priced for. Zero cannot be a
         // divisor, and an order with no quantity has no piece price to
@@ -1908,6 +1911,48 @@ export async function PATCH(
           data: { appliedAt: new Date(), appliedById: user.id },
         });
         if (stamp.count !== 1) throw new AppliedMeanwhile();
+      }
+
+      /*
+       * ── A DISCOUNT ALONE IS WRITTEN ON THE LINES TOO (30/10) ──
+       *
+       * The owner: «الخصم على الطلب ما بتجاوب … لا تنسى الحساب والمخزون».
+       *
+       * A discount with no lines in the request — and that is the ONLY form a discount takes once an order is confirmed:
+       * an approved request carries `discountAmount` and nothing else — rebuilt the order's total from ONE synthetic line
+       * and wrote the order alone. The lines kept the shares they had, and creating the shipment prices the parcel from the
+       * LINES (`codForOrder` sums `discountShare`), so the courier was told the old price, and a partial return refunded by
+       * the old shares. MEASURED in `the-discount-answers.test.ts`: 0 → 10 approved left both shares at 0 and `codForOrder`
+       * at 48.500 against the order's 38.500.
+       *
+       * So the shares are spread afresh, by the same `computeCod`, over what each line cost BEFORE the discount it has now
+       * (`totalsBeforeDiscount`, the figure the screen opens its boxes on) — and each line is UPDATED IN PLACE, only its
+       * `discountShare` and `lineTotal`. Never deleted and recreated: the units a line holds on the shelf, its gift and
+       * who added it are the line's own, and a discount has no business with any of them.
+       */
+      if (respreadDiscount && !items && lineMoney) {
+        const stored = await tx.orderItem.findMany({
+          where: { orderId: id },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          select: { id: true, quantity: true, lineTotal: true, discountShare: true },
+        });
+        if (stored.length > 0) {
+          const before = totalsBeforeDiscount(stored, Number(existing.discountAmount ?? 0), country.minorUnit);
+          const spread = computeCod({
+            lines: stored.map((row, i) => {
+              const was = before[i] ?? 0;
+              return { quantity: row.quantity, unitPrice: row.quantity > 0 ? was / row.quantity : was };
+            }),
+            discount: lineMoney.discount,
+            minorUnit: country.minorUnit,
+          });
+          for (const [i, row] of stored.entries()) {
+            await tx.orderItem.update({
+              where: { id: row.id },
+              data: { discountShare: spread.discountShares[i] ?? 0, lineTotal: spread.lineTotals[i] ?? 0 },
+            });
+          }
+        }
       }
 
       // The lines themselves, only when an explicit set was sent. Replacing

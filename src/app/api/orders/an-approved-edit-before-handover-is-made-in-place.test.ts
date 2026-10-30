@@ -9,7 +9,8 @@ const { db, requireContext, authorize, can, logAudit, adapterFor, planLineApply 
     customer: { update: vi.fn() },
     orderNote: { create: vi.fn(async () => ({})) },
     orderAddOn: { findMany: vi.fn(async () => []) },
-    orderItem: { findFirst: vi.fn() },
+    // `findMany`: a discount alone now also reads the order's lines, to carry its share (this fixture holds none).
+    orderItem: { findFirst: vi.fn(), findMany: vi.fn(async () => []) },
     product: { findFirst: vi.fn() },
     deliveryProvider: { findFirst: vi.fn() },
     orderStatusLog: { create: vi.fn() },
