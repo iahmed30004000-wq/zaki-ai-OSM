@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { SecondFactor } from '@/components/shell/SecondFactor';
 import { loginWithPasskey, passkeySupported } from '@/lib/passkey-browser';
 import { forgetDock } from '@/lib/dock-memory';
+import { showForgotLink } from '@/lib/forgot-link';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
@@ -230,9 +231,17 @@ export default function LoginPage() {
                   />
                   <span>تذكرني</span>
                 </label>
-                <Link href="/forgot-password" className="text-[var(--sys-primary)] hover:underline">
-                  نسيت كلمة المرور؟
-                </Link>
+                {/*
+                  «نسيت كلمة المرور» DOES NOTHING ON A REAL SERVER (A5). No mail is sent from here, so the link led a person to
+                  a promise nobody keeps; the owner sets a new password from the user's page. It stays in development, where
+                  the token is printed for the developer, and NEXT_PUBLIC_SHOW_FORGOT_PASSWORD=true brings it back in
+                  production (read when the app is built).
+                */}
+                {showForgotLink() && (
+                  <Link href="/forgot-password" className="text-[var(--sys-primary)] hover:underline">
+                    نسيت كلمة المرور؟
+                  </Link>
+                )}
               </div>
 
               <Button type="submit" loading={loading} className="w-full">
