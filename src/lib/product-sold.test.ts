@@ -12,7 +12,7 @@ function client(settled: unknown[], unsettled: unknown[]) {
   return { groupBy, orderItem: { groupBy } } as never as { groupBy: typeof groupBy; orderItem: { groupBy: typeof groupBy } };
 }
 
-const ask = (c: ReturnType<typeof client>, over: Record<string, unknown> = {}) =>
+const ask = (c: ReturnType<typeof client>, over: { storeId?: string | null; productIds?: string[] } = {}) =>
   deliveredUnitsByProduct(c as never, { companyId: 'c1', storeId: 's1', productIds: ['p1', 'p2'], ...over });
 
 describe('the arithmetic', () => {
