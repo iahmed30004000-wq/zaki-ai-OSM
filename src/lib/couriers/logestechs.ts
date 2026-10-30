@@ -125,7 +125,7 @@ export class CourierRefusal extends Error {
  * When a POST times out, the parcel may well have been created — we simply
  * never heard. Anything that retries on failure must be able to tell this
  * apart from a refusal, or it books a second waybill for one parcel. The
- * prefix is the seam: `couriers/dispatch` reads it and stops.
+ * prefix is the seam: `courier-dispatch` reads it and stops.
  */
 export const TIMEOUT_PREFIX = 'LOGESTECHS_TIMEOUT';
 

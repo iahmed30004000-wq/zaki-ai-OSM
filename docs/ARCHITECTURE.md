@@ -32,7 +32,7 @@
 | المنتج والعروض | `product-*.ts` · `offers.ts` · `offer-*.ts` · `line-price.ts` · `post-order-offer.ts` · `reservation.ts` · `stock-*.ts` |
 | صفحات الهبوط | `landing-*.ts` · `page-templates.ts` — **مسار المتجر والهبوط له وكيله، ما بنلمسه** |
 | المتجر | `store-*.ts` · `storefront*.ts` · `system-themes.ts` — نفس القاعدة |
-| الذكاء الاصطناعي | `ai.ts` · `ai-provider.ts` · `ai-endpoint.ts` · `ai-prompts.ts` · `ai-rate.ts` · `ai-scope.ts` · `ai-vision.ts` |
+| الذكاء الاصطناعي | `ai.ts` · `ai-provider/` (`index.ts` الباب الوحيد · `catalogue.ts` المزوّدون والنماذج · `settings.ts` المخزَّن · `routing.ts` أي مزوّد ونموذج ومفتاح · `call.ts` النداء وحرّاس `localOnly`) · `ai-endpoint.ts` · `ai-prompts.ts` · `ai-rate.ts` · `ai-scope.ts` · `ai-vision.ts` |
 | شركات الشحن | كلها تحت `couriers/`: المحوّلات (`logestechs.ts` · `manual.ts` · `apply-event.ts` · `webhook-token.ts`) وفوقها منطق الإرسال والنقل والإلغاء والمدن (`dispatch.ts` · `transfer.ts` · `remote-cancel.ts` · `cancel-carryout.ts` · `send-reset.ts` · `change.ts` · `city-gaps.ts` · `places.ts` · `scope.ts` · `score.ts` · `words.ts`). كانت `courier-*.ts` مفرودة بـ`src/lib/` وانتقلت بلا تغيير سلوك |
 | التتبّع | `parcel-tracking/` (`alert.ts` · `filters.ts` · `list.ts` · `priority.ts` · `sight.ts`) و`transit.ts` و`order-tracking.ts` = **تتبّع الطرود**. أما مجلد `tracking/` = **بكسلات الإعلانات** (كانت الكلمة بمعنيين، والآن لكل معنى مجلده) |
 | الإعلانات | `ads/` (ميتا · تيك توك · سناب · يدوي) · `conversions/` (أحداث التحويل لميتا) · `campaign*.ts` |
@@ -99,7 +99,7 @@
 ## ٧. الذكاء الاصطناعي: محلّي فقط لبيانات الزبون
 
 `aiChat({ localOnly: true })` بيرمي `AiNotLocal` قبل أي اتصال إذا المسار مش محلّي
-(`src/lib/ai-provider.ts`). باب الإدخال بالذكاء (`/api/orders/ai-intake`) بيستعمله،
+(`src/lib/ai-provider/`). باب الإدخال بالذكاء (`/api/orders/ai-intake`) بيستعمله،
 وإذا رفض يشتغل المحلّل العادي. التفاصيل بـ`AGENTS.md`.
 
 ## ٨. الحراس والاختبارات اللي بتثبّت البنية
