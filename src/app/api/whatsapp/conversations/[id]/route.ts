@@ -9,7 +9,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
-import { requirePermission, tenantOf } from '@/lib/auth';
+import { requireCompanyTenant, requirePermission, tenantOf } from '@/lib/auth';
 import { can } from '@/lib/authorization';
 import { orderListWhere } from '@/lib/rbac';
 import { apiErrorResponse } from '@/lib/api-error';
