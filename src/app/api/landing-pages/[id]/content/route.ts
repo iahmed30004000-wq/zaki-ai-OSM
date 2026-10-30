@@ -9,7 +9,7 @@ import { logAudit } from '@/lib/audit';
 import { rateLimit } from '@/lib/rate-limit';
 import { MAX_LANDING_HTML_BYTES, clampStoredHtml } from '@/lib/landing-pages';
 import {
-  sanitizeLandingHtml,
+  sanitizeLandingHtmlStrict,
   sanitizeLandingCss,
   parseLandingSettings,
   MAX_LANDING_CSS_BYTES,
@@ -18,7 +18,16 @@ import { landingThemeSchema } from '@/lib/landing-theme';
 import { offerEndings } from '@/lib/offers';
 import { countdownRefusalIn, landingSectionsSchema, stampManualReviews } from '@/lib/landing-sections';
 import { sectionsRefusal } from '@/lib/landing-sections-refusal';
-import { draftState, publishContent, revertContent, saveContent, type PageContent } from '@/lib/landing-draft';
+import {
+  PAGE_BASE_PATTERN,
+  PAGE_CHANGED_AR,
+  draftState,
+  publishContent,
+  revertContent,
+  saveContent,
+  saveContentIfBase,
+  type PageContent,
+} from '@/lib/landing-draft';
 
 interface Ctx {
   params: Promise<{ id: string }>;
@@ -66,6 +75,10 @@ export async function PUT(req: Request, ctx: Ctx) {
       builderMode: z.enum(['BLOCKS', 'HTML']).optional(),
       theme: landingThemeSchema.optional().nullable(),
       sections: z.unknown().optional().nullable(),
+      // The fingerprint this window read from the page (the GET's `base`).
+      // Sent, the save lands only if the page is still that page; left out,
+      // the save is the old unconditional one.
+      base: z.string().regex(PAGE_BASE_PATTERN).optional(),
     });
     const parsed = schema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
@@ -80,7 +93,20 @@ export async function PUT(req: Request, ctx: Ctx) {
       if (parsed.data.html && html === null) {
         return NextResponse.json({ error: `حجم HTML يتجاوز الحد المسموح` }, { status: 400 });
       }
-      data.htmlContent = html ? sanitizeLandingHtml(html) : (html ?? null);
+      /*
+       * REFUSED IS NOT EMPTY. `sanitizeLandingHtml` answers '' for input the
+       * cleaner gave up on, and this door saved that blank and said «تم»:
+       * the seller's page vanished without a word. The strict form says
+       * null, and the seller is told in words — the sentence the upload
+       * door (`html/route.ts`) gives.
+       */
+      if (html) {
+        const clean = sanitizeLandingHtmlStrict(html);
+        if (clean === null) return NextResponse.json({ error: 'الملف معقّد أكثر من اللازم' }, { status: 400 });
+        data.htmlContent = clean;
+      } else {
+        data.htmlContent = html ?? null;
+      }
     }
     if (parsed.data.css !== undefined) {
       const css = parsed.data.css ?? '';
@@ -149,7 +175,19 @@ export async function PUT(req: Request, ctx: Ctx) {
     // visitor — a draft holding unsanitised markup would make «نشر» the
     // moment the stripping happened, and the editor would be previewing
     // something the published page is not.
-    await saveContent(lp.id, data as Partial<PageContent>, lp.isPublished);
+    let intoDraft = lp.isPublished;
+    let base: string | undefined;
+    if (parsed.data.base) {
+      const saved = await saveContentIfBase(lp.id, data as Partial<PageContent>, parsed.data.base);
+      if (!saved.ok) {
+        return NextResponse.json({ error: PAGE_CHANGED_AR, code: 'PAGE_CHANGED' }, { status: 409 });
+      }
+      // Where the write landed, as the row said it at that moment.
+      intoDraft = saved.wroteDraft;
+      base = saved.base;
+    } else {
+      await saveContent(lp.id, data as Partial<PageContent>, lp.isPublished);
+    }
     const updated = await db.landingPage.findUniqueOrThrow({
       where: { id: lp.id },
       select: { id: true, name: true, slug: true, isPublished: true, updatedAt: true },
@@ -166,7 +204,7 @@ export async function PUT(req: Request, ctx: Ctx) {
         cssBytes: parsed.data.css ? Buffer.byteLength(parsed.data.css, 'utf8') : 0,
         // Which of the two this save was, in the log that gets read after
         // somebody asks «من غيّر الصفحة المنشورة؟».
-        into: lp.isPublished ? 'draft' : 'live',
+        into: intoDraft ? 'draft' : 'live',
         // «Who added this manual review, and when» — the editor's fields
         // carry the answer and this is the row that proves it was stamped
         // by the server rather than typed into the browser.
@@ -179,7 +217,10 @@ export async function PUT(req: Request, ctx: Ctx) {
       landingPage: updated,
       // The editor draws «تعديلات غير منشورة» from this rather than guessing
       // from its own dirty flag, which cannot know what the server did.
-      hasUnpublished: lp.isPublished,
+      hasUnpublished: intoDraft,
+      // The new fingerprint, for this window's next save. Absent when the
+      // save carried no base.
+      base,
     });
   } catch (error) {
     return apiErrorResponse(error);
@@ -213,11 +254,18 @@ async function pageFor(id: string) {
   return { user, companyId, lp };
 }
 
-export async function POST(_req: Request, ctx: Ctx) {
+export async function POST(req: Request, ctx: Ctx) {
   try {
     const { id } = await ctx.params;
     const { user, companyId, lp } = await pageFor(id);
     if (!lp) return NextResponse.json({ error: 'صفحة الهبوط غير موجودة' }, { status: 404 });
+
+    // The press may carry the fingerprint of the page this window is looking
+    // at. A press with no body is the old press.
+    const body = z
+      .object({ base: z.string().regex(PAGE_BASE_PATTERN).optional() })
+      .safeParse((await req.json().catch(() => null)) ?? {});
+    if (!body.success) return NextResponse.json({ error: 'بيانات غير صالحة' }, { status: 400 });
 
     const before = await draftState(lp.id);
     if (!before.hasUnpublished) {
@@ -227,7 +275,9 @@ export async function POST(_req: Request, ctx: Ctx) {
       return NextResponse.json({ error: 'لا تعديلات غير منشورة', code: 'NOTHING_TO_PUBLISH' }, { status: 409 });
     }
 
-    await publishContent(lp.id);
+    if (!(await publishContent(lp.id, body.data.base))) {
+      return NextResponse.json({ error: PAGE_CHANGED_AR, code: 'PAGE_CHANGED' }, { status: 409 });
+    }
     // What visitors see just changed: the cached page is rebuilt now, not in a minute.
     await refreshLandingPages({ pageId: lp.id });
 
@@ -246,6 +296,7 @@ export async function POST(_req: Request, ctx: Ctx) {
       hasUnpublished: after.hasUnpublished,
       canRevert: after.canRevert,
       publishedAt: after.publishedAt,
+      base: after.base,
       message: 'نُشرت التعديلات — ويمكنك الرجوع للنسخة السابقة بضغطة.',
     });
   } catch (error) {
@@ -253,13 +304,25 @@ export async function POST(_req: Request, ctx: Ctx) {
   }
 }
 
-export async function PATCH(_req: Request, ctx: Ctx) {
+export async function PATCH(req: Request, ctx: Ctx) {
   try {
     const { id } = await ctx.params;
     const { user, companyId, lp } = await pageFor(id);
     if (!lp) return NextResponse.json({ error: 'صفحة الهبوط غير موجودة' }, { status: 404 });
 
-    if (!(await revertContent(lp.id))) {
+    // Same optional fingerprint as the save and the publish; a press with no
+    // body is the old press.
+    const body = z
+      .object({ base: z.string().regex(PAGE_BASE_PATTERN).optional() })
+      .safeParse((await req.json().catch(() => null)) ?? {});
+    if (!body.success) return NextResponse.json({ error: 'بيانات غير صالحة' }, { status: 400 });
+
+    if (!(await revertContent(lp.id, body.data.base))) {
+      // Two reasons for «false», told apart only when a base was sent: there
+      // was no step to take, or the page is no longer the one this window read.
+      if (body.data.base !== undefined && (await draftState(lp.id)).canRevert) {
+        return NextResponse.json({ error: PAGE_CHANGED_AR, code: 'PAGE_CHANGED' }, { status: 409 });
+      }
       return NextResponse.json({ error: 'لا نسخة سابقة لهذه الصفحة', code: 'NO_PREVIOUS' }, { status: 409 });
     }
     await refreshLandingPages({ pageId: lp.id });
@@ -281,6 +344,7 @@ export async function PATCH(_req: Request, ctx: Ctx) {
       // back, so a seller who reverted by mistake presses again.
       canRevert: after.canRevert,
       publishedAt: after.publishedAt,
+      base: after.base,
       message: 'رجعت الصفحة للنسخة السابقة — والنسخة التي سحبتها صارت خطوةَ الرجوع التالية.',
     });
   } catch (error) {

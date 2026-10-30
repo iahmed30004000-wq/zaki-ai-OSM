@@ -43,14 +43,29 @@ import { logAudit } from '@/lib/audit';
  * third — a name nobody can read at a glance, which is the whole job of a
  * name in a list.
  */
+/**
+ * A page's name is at most this long (`name: z.string().max(100)` in the
+ * create and edit doors). The copy used to be cut at 120, so the copy of a
+ * long name could be a name the page's own edit door then refused to save.
+ */
+const MAX_PAGE_NAME = 100;
+
+/** `base` cut so that `base + suffix` fits, never splitting a surrogate pair. */
+function fit(base: string, suffix: string): string {
+  let cut = base.slice(0, Math.max(1, MAX_PAGE_NAME - suffix.length));
+  const last = cut.charCodeAt(cut.length - 1);
+  if (last >= 0xd800 && last <= 0xdbff) cut = cut.slice(0, -1);
+  return `${cut.trimEnd()}${suffix}`;
+}
+
 export function copyName(original: string, taken: Set<string>): string {
   const base = original.replace(/\s*\(نسخة(\s+\d+)?\)\s*$/u, '').trim() || original;
-  const candidate = (n: number) => (n === 1 ? `${base} (نسخة)` : `${base} (نسخة ${n})`);
+  const candidate = (n: number) => fit(base, n === 1 ? ' (نسخة)' : ` (نسخة ${n})`);
   for (let n = 1; n < 100; n++) {
     const tryName = candidate(n);
-    if (!taken.has(tryName)) return tryName.slice(0, 120);
+    if (!taken.has(tryName)) return tryName;
   }
-  return `${base} (${Date.now()})`.slice(0, 120);
+  return fit(base, ` (${Date.now()})`);
 }
 
 /** A slug nobody else holds. The copy needs its own address. */
@@ -59,8 +74,15 @@ async function freeSlug(companyId: string, from: string): Promise<string> {
   for (let n = 1; n < 100; n++) {
     const candidate = n === 1 ? `${base}-copy` : `${base}-copy-${n}`;
     // Slugs are checked across every company: the public URL is one space.
-    const taken = await db.landingPage.findFirst({ where: { slug: candidate }, select: { id: true } });
-    if (!taken) return candidate;
+    // And an address a redirect forwards away from is not free either: the
+    // copy would take it, the live-page-wins rule would stand the redirect
+    // down, and a seller's accepted redirect would stop working because
+    // somebody pressed «نسخ».
+    const [taken, forwarded] = await Promise.all([
+      db.landingPage.findFirst({ where: { slug: candidate }, select: { id: true } }),
+      db.storeRedirect.findFirst({ where: { from: `/lp/${candidate}`, isActive: true }, select: { id: true } }),
+    ]);
+    if (!taken && !forwarded) return candidate;
   }
   return `${base}-${Date.now().toString(36)}`.slice(0, 60);
 }

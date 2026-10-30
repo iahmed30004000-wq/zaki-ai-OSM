@@ -140,6 +140,53 @@ describe('POST /api/orders/[id]/confirmation — reject', () => {
     }
   );
 
+  it.each(['FOLLOW_UP_REQUIRED', 'POSTPONED'])(
+    'an order in %s with a scheduled follow-up: the cancel succeeds and the follow-up is COMPLETED, not left hanging',
+    async (status) => {
+      orderIs({
+        confirmationStatus: status,
+        nextFollowUpAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+        followUpStatus: 'SCHEDULED',
+      });
+
+      const res = await reject();
+
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const data = db.order.updateMany.mock.calls[0][0].data;
+      expect(data).toMatchObject({ confirmationStatus: 'REJECTED', followUpStatus: 'COMPLETED', followUpResolvedById: ME.id });
+      expect(data.followUpResolvedAt).toBeInstanceOf(Date);
+    }
+  );
+
+  it('NEGATIVE: a follow-up already closed is not rewritten by the cancel', async () => {
+    orderIs({
+      confirmationStatus: 'POSTPONED',
+      nextFollowUpAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      followUpStatus: 'CANCELLED',
+    });
+
+    const res = await reject();
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const data = db.order.updateMany.mock.calls[0][0].data;
+    expect(data.followUpStatus).toBeUndefined();
+    expect(data.followUpResolvedById).toBeUndefined();
+  });
+
+  it.each(['NO_ANSWER', 'FOLLOW_UP_REQUIRED', 'POSTPONED'])(
+    'NEGATIVE: a stale version on an order in %s (it went back to the queue meanwhile) is 409 VERSION_CONFLICT and writes nothing',
+    async (status) => {
+      orderIs({ confirmationStatus: status });
+
+      const res = await reject({ expectedVersion: 2 });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe('VERSION_CONFLICT');
+      expect(db.order.updateMany).not.toHaveBeenCalled();
+      expect(releaseOrderLines).not.toHaveBeenCalled();
+    }
+  );
+
   it('NEGATIVE: with no attempt on the order it is still refused CONTACT_FIRST, and nothing is written', async () => {
     orderIs({ confirmationStatus: 'POSTPONED' });
     db.orderContactAttempt.count.mockResolvedValue(0);
