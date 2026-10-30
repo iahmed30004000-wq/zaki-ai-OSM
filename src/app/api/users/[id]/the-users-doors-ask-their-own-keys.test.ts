@@ -187,6 +187,16 @@ describe('moving a shift asks users.shift — only a CHANGE asks', () => {
     expect(db.user.update.mock.calls[0][0].data.phone).toBe('0933444555');
   });
 
+  it('NEGATIVE: sending only the start (unchanged) cannot wipe the hand-over time - the write sets both ends, so both are judged', async () => {
+    for (const body of [{ shiftStart: '09:00' }, { shiftEnd: '17:00' }]) {
+      const res = await patch('u2', { action: 'updateContact', ...body });
+      expect(res.status, JSON.stringify(body)).toBe(403);
+    }
+    expect(db.user.update).not.toHaveBeenCalled();
+    holding('users.edit', 'users.shift');
+    expect((await patch('u2', { action: 'updateContact', shiftStart: '09:00' })).status).toBe(200);
+  });
+
   it('and a phone alone never asked for it', async () => {
     expect((await patch('u2', { action: 'updateContact', phone: '0933444555' })).status).toBe(200);
   });

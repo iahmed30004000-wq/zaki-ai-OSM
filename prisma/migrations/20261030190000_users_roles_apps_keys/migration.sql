@@ -121,7 +121,12 @@ JOIN sp13_gate g ON g.src = rp."permission"
 UNION ALL
 SELECT r."id", g.new_key
 FROM "roles" r
-JOIN sp13_gate g ON g.role_name = r."name";
+JOIN sp13_gate g ON g.role_name = r."name"
+-- A SYSTEM template with no rows at all is answered by the in-code matrix (permissions-core falls back only while it has no
+-- rows); giving it two rows would switch that fallback off and take every other door from its people. They pass by name
+-- through the fallback in code, and sp13_pass gives them their own row where a stored role is involved.
+WHERE r."companyId" IS NOT NULL
+   OR EXISTS (SELECT 1 FROM "role_permissions" x WHERE x."roleId" = r."id");
 
 -- The same question of the baseline «إرجاع للافتراضي» restores - and a role that was never issued a baseline is NOT given one:
 -- a baseline of a single box would read as "the shipped matrix" and the first reset would wipe the role down to it

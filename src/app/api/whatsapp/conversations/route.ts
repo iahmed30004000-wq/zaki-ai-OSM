@@ -11,6 +11,7 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { typed } from '@/lib/text-search';
 import { inboxScopeWhere } from '@/lib/whatsapp/inbox-scope';
+import { can } from '@/lib/authorization';
 
 export async function GET(req: Request) {
   try {
@@ -51,12 +52,14 @@ export async function GET(req: Request) {
       },
     });
     const hasMore = conversations.length > take;
+    const mayCustomer = can(user, 'customers.view_basic') || can(user, 'customers.view');
     // Contact details left the building; the tally is the person's, not
     // this screen's. See noteCustomersHandedOut.
     await noteCustomersHandedOut({ companyId, storeId: null, user, where: 'محادثات واتساب', rows: conversations });
 
     return NextResponse.json({
-      conversations: conversations.slice(0, take),
+      // The linked customer's card needs the customer tier, as on the single conversation (PR-13, WA-2); the answer keeps its shape.
+      conversations: conversations.slice(0, take).map((c) => (mayCustomer ? c : { ...c, customer: null })),
       nextCursor: hasMore ? conversations[take - 1].id : null,
     });
   } catch (error) {

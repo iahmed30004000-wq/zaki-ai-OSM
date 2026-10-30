@@ -208,6 +208,11 @@ describe('the SQL, read as text', () => {
     }
   });
 
+  it('a system template with NO rows is given none: its people are answered by the in-code matrix, which two rows would switch off', () => {
+    const s = flat(statements.find((x) => x.startsWith('CREATE TEMP TABLE sp13_role_gets'))!);
+    expect(s).toContain('WHERE r."companyId" IS NOT NULL OR EXISTS (SELECT 1 FROM "role_permissions" x WHERE x."roleId" = r."id")');
+  });
+
   it('the baseline of a role named like the owner is written ONLY for a role that already has baseline rows', () => {
     const s = flat(statements.find((x) => x.startsWith('CREATE TEMP TABLE sp13_default_gets'))!);
     expect(s).toContain('FROM "roles" r JOIN sp13_gate g ON g.role_name = r."name" WHERE EXISTS (SELECT 1 FROM "role_permission_defaults" x WHERE x."roleId" = r."id")');
@@ -289,7 +294,7 @@ function userRole(db: Rows) {
   return out;
 }
 
-type Skip = 'deny' | 'allow' | 'roles' | 'defaults' | 'denied-sources' | 'has' | 'names' | 'own-allow-replaces-role' | 'baseline-for-all';
+type Skip = 'deny' | 'allow' | 'roles' | 'defaults' | 'denied-sources' | 'has' | 'names' | 'own-allow-replaces-role' | 'baseline-for-all' | 'rowless-template';
 
 /** Statement-for-statement the SQL of migration.sql. */
 function applyTheMigration(before: Rows, skip?: Skip): Rows {
@@ -345,6 +350,8 @@ function applyTheMigration(before: Rows, skip?: Skip): Rows {
     for (const r of before.roles) {
       // a role never issued a baseline is not given one by the name path (skip 'baseline-for-all' undoes this on purpose)
       if (onlyWithABaseline && skip !== 'baseline-for-all' && !before.defaults.some((x) => x.roleId === r.id)) continue;
+      // a SYSTEM template with no rows is answered by the in-code matrix: it gets no live rows either (skip 'rowless-template' undoes this)
+      if (!onlyWithABaseline && skip !== 'rowless-template' && r.companyId === null && !before.rolePerms.some((x) => x.roleId === r.id)) continue;
       for (const g of gate) if (g.role === r.name) out.push({ rid: r.id, newKey: g.newKey });
     }
     return out;
@@ -646,6 +653,27 @@ describe('the replay: every person, every door — yesterday against today, thro
     const tAdmin = db1.roles.find((r) => r.name === 'COMPANY_ADMIN' && r.companyId === null)!;
     const baseline = db1.defaults.filter((d) => d.roleId === tAdmin.id && NEW_KEYS.includes(d.permission)).map((d) => d.permission).sort();
     expect(baseline).toEqual([...NEW_KEYS].sort());
+  });
+
+  it('a rowless COMPANY_ADMIN system template keeps its people on the in-code matrix: no door lost, none gained, and its matrix is not switched off', async () => {
+    const db0: Rows = {
+      users: [{ id: 'bare-admin', role: 'COMPANY_ADMIN', roleId: null }],
+      roles: [{ id: 'bare', companyId: null, name: 'COMPANY_ADMIN' }],
+      rolePerms: [], defaults: [], userPerms: [],
+    };
+    const db1 = applyTheMigration(db0);
+    expect(db1.rolePerms, 'the template stays rowless').toEqual([]);
+    const before = await holder(db0, 'bare-admin');
+    const after = await holder(db1, 'bare-admin');
+    expect([...after.permissions].sort()).toEqual([...before.permissions].sort());
+    expect(after.permissions.length, 'the fallback matrix is still there').toBeGreaterThan(10);
+    const { lost, gained } = await everyDoorOfEveryone(db0);
+    expect(lost).toEqual([]);
+    expect(gained).toEqual([]);
+    // NEGATIVE, by breaking the replay: two live rows on that template switch the fallback off
+    const broken = applyTheMigration(db0, 'rowless-template');
+    expect(broken.rolePerms.length).toBeGreaterThan(0);
+    expect((await holder(broken, 'bare-admin')).permissions.length).toBeLessThan(5);
   });
 
   it('NEVER creates a baseline where a role had none - a one-box baseline would be read as the shipped matrix and the first reset would wipe the role', async () => {

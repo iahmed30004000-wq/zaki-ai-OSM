@@ -96,8 +96,9 @@ describe('changing your own schedule', () => {
     expect(written()[0].phone).toBe('0922333444');
   });
 
+  // PR-13 (قديم ← جديد): the unchanged shift is the PAIR the card posts - a lone start would null the hand-over time, which is a change.
   it('an unchanged shift beside a changed phone passes; a changed shift beside the same phone does not', async () => {
-    expect((await patch('admin', { action: 'updateContact', phone: '0933444555', shiftStart: '09:00' })).status).toBe(200);
+    expect((await patch('admin', { action: 'updateContact', phone: '0933444555', shiftStart: '09:00', shiftEnd: '17:00' })).status).toBe(200);
     expect((await patch('admin', { action: 'updateContact', phone: '0911222333', shiftStart: '10:00' })).status).toBe(403);
   });
 });

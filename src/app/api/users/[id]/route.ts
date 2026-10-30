@@ -320,9 +320,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
        * A save that sends the values the account already has is not a change: the shift card posts both fields
        * together, and an employee correcting their own phone must not be refused for a shift they did not touch.
        */
+      // The write below sets BOTH ends whenever either is sent (the absent one becomes null), so both are judged: a body
+      // carrying only the unchanged start would otherwise wipe the hand-over time without asking anybody.
       const movesShift =
-        ('shiftStart' in body && parseHhMm(body.shiftStart) !== (target.shiftStart ?? null)) ||
-        ('shiftEnd' in body && parseHhMm(body.shiftEnd) !== (target.shiftEnd ?? null)) ||
+        (('shiftStart' in body || 'shiftEnd' in body) &&
+          (parseHhMm(body.shiftStart) !== (target.shiftStart ?? null) || parseHhMm(body.shiftEnd) !== (target.shiftEnd ?? null))) ||
         ('restDays' in body && parseRestDays(body.restDays) !== (target.restDays ?? null));
 
       /*

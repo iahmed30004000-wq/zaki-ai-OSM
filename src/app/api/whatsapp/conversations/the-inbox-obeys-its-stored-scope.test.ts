@@ -118,6 +118,29 @@ describe('the list', () => {
   });
 });
 
+describe('only ASSIGNED narrows, and the list keeps the customer tier too', () => {
+  it('NEGATIVE: a stored OWN row (copied from the orders rows by the 2026-09 migration, never tickable) is NOT read as narrowing - no door is taken on deploy', async () => {
+    h.who.current = person('me', { ...ALL, 'whatsapp.view': { scope: 'OWN' } });
+    await list(new Request('http://x/api/whatsapp/conversations'));
+    expect(whereOf(h.db.whatsAppConversation.findMany)).not.toHaveProperty('AND');
+  });
+
+  it('the list hides the linked customer from a reader without the customer tier, and keeps the row', async () => {
+    h.who.current = person('me', ALL);
+    h.db.whatsAppConversation.findMany.mockResolvedValue([{ id: 'cv1', customerName: 'ن', customer: { id: 'cu1', fullName: 'عميل', phone: '0790' } }]);
+    const body = await (await list(new Request('http://x/api/whatsapp/conversations'))).json();
+    expect(body.conversations).toHaveLength(1);
+    expect(body.conversations[0]).toMatchObject({ id: 'cv1', customer: null });
+  });
+
+  it('with the customer tier the list carries it as before', async () => {
+    h.who.current = person('me', { ...ALL, 'customers.view_basic': { scope: 'ALL_COMPANY' } });
+    h.db.whatsAppConversation.findMany.mockResolvedValue([{ id: 'cv1', customer: { id: 'cu1', fullName: 'عميل', phone: '0790' } }]);
+    const body = await (await list(new Request('http://x/api/whatsapp/conversations'))).json();
+    expect(body.conversations[0].customer).toMatchObject({ fullName: 'عميل' });
+  });
+});
+
 describe('opening one conversation', () => {
   it('ASSIGNED: the lookup carries the scope — a conversation outside it is the same 404 as an unknown one', async () => {
     h.db.whatsAppConversation.findFirst.mockResolvedValue(null);

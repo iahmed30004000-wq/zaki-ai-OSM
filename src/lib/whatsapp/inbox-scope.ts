@@ -13,13 +13,15 @@ import { getPermissionScope } from '../authorization';
  * a person with NO view scope at all: the doors that do not ask the view key (sending, closing) must not start refusing
  * somebody the engine never narrowed — the doors that DO ask it have already refused a person without it.
  *
- * Any scope but ALL_COMPANY narrows to the same set: the catalog offers only these two, and a stored value it does not offer
- * must never read as wider.
+ * ONLY «المسندة إليه» narrows. The migration that introduced the inbox (20260911150000) copied `whatsapp.view` from the orders and
+ * customers rows WITH their scope, so some roles carry an OWN row the catalog never offered and no screen can tick; reading it
+ * as narrowing would take conversations away from people on the day of the deploy. The owner decided D1-i for ASSIGNED, and
+ * that is all this obeys.
  *
  * Returned as a Prisma fragment to put inside `AND: [ … ]`, so it never collides with the search's own `OR`.
  */
 export function inboxScopeWhere(user: SessionUser): Record<string, unknown> | null {
   const scope = getPermissionScope(user, 'whatsapp.view');
-  if (!scope || scope.scope === 'ALL_COMPANY') return null;
+  if (scope?.scope !== 'ASSIGNED') return null;
   return { OR: [{ assignedUserId: user.id }, { assignedUserId: null }] };
 }
