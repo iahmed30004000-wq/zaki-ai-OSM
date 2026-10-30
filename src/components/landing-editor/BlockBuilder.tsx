@@ -77,6 +77,51 @@ interface Props {
   family?: SellingFamily | null;
 }
 
+/**
+ * THE EDITOR'S TWO COLUMNS WHEN THE PAGE IS DRAWN WHOLE.
+ *
+ * The preview has no scroller of its own: it is as tall as the page and the WINDOW scrolls it. What is
+ * kept within reach while it does is the controls, so they are pinned under the system's bar (measured, in
+ * `--sys-header-h`, 72px until it has measured) and scroll inside themselves when they are taller than the
+ * screen. Desk only: below 1024px the two panes are one at a time (EditorPanes.tsx) and the controls pane
+ * is simply the page. `align-self: start` is what lets a grid item stick at all — stretched to the row it
+ * would have nowhere to move.
+ *
+ * AND THE FLOATING BUTTON IS DRAWN WHERE ITS BLOCK SITS. On the published page it is fixed to the bottom of
+ * the screen. Here a fixed bar would centre itself on the whole window — over the controls — because the
+ * preview is no longer a box of its own to float in. In the flow it is still the same bar, the same look,
+ * and still the block you click to restyle it; and it stays on screen when the form is in view, which the
+ * visitor's copy slides away to avoid.
+ */
+const EDITOR_LAYOUT_CSS = `
+@media (min-width: 1024px) {
+  [data-editor-controls] {
+    position: sticky;
+    top: calc(var(--sys-header-h, 72px) + 12px);
+    align-self: start;
+    max-height: calc(100dvh - var(--sys-header-h, 72px) - 64px);
+    overflow-y: auto;
+    padding: 2px;
+  }
+}
+.lp-root .lp-sticky-bar,
+.lp-root .lp-sticky-bar[data-away] {
+  position: static;
+  margin: 12px auto;
+  transform: none;
+  opacity: 1;
+  pointer-events: auto;
+}
+.lp-root.lp-root:has(.lp-sticky) .lp-form-section:where(:not([data-look-pad] *)) { padding-bottom: 30px; }
+.lp-root.lp-root:has(.lp-sticky) [data-family='brand'] .lp-form-section:where(:not([data-look-pad] *)) { padding-bottom: 38px; }
+.lp-root.lp-root:has(.lp-sticky) .lp-footer { padding-bottom: 28px; }
+@media (max-width: 767.98px) {
+  .lp-root [data-block-bar] {
+    bottom: calc(var(--sys-mobile-nav-h, 0px) + env(safe-area-inset-bottom) + 8px) !important;
+  }
+}
+`;
+
 /** A palette the seller can start from instead of hunting for a hex. */
 const SWATCHES = [
   '#b8256e', '#e11d48', '#ea580c', '#f59e0b',
@@ -205,12 +250,11 @@ export function BlockBuilder(props: Props) {
   /** Each block's row in the side list, so a click on the page can reach it. */
   const rowRefs = useRef<Record<string, HTMLLIElement | null>>({});
   /*
-   * The preview's own scroller, and where the clicked block stood before its bar moved.
+   * Where the clicked block stood before its bar moved.
    *
    * The block's bar sits IN the page now, so selecting a block further down removed the old bar above it and the
    * clicked block jumped up by the bar's height, out from under the cursor. The block is put back where it was.
    */
-  const scrollerRef = useRef<HTMLDivElement>(null);
   const anchorRef = useRef<{ id: string; top: number } | null>(null);
   const selectBlock = (id: string) => {
     const el = canvas?.querySelector<HTMLElement>(`[data-block-id="${CSS.escape(id)}"]`);
@@ -231,10 +275,10 @@ export function BlockBuilder(props: Props) {
     anchorRef.current = null;
     if (!a || a.id !== openId) return;
     const el = canvas?.querySelector<HTMLElement>(`[data-block-id="${CSS.escape(a.id)}"]`);
-    const scroller = scrollerRef.current;
-    if (!el || !scroller) return;
+    if (!el) return;
     const moved = el.getBoundingClientRect().top - a.top;
-    if (moved) scroller.scrollTop += moved;
+    // The WINDOW is what scrolls now: the preview has no scroller of its own.
+    if (moved) window.scrollBy(0, moved);
   }, [openId, canvas]);
 
   /** The block whose look the bar above the page is editing. */
@@ -325,6 +369,7 @@ export function BlockBuilder(props: Props) {
       {/* Above the words the seller just highlighted, not docked in a
           panel they would have to look away to find. */}
       <SelectionBar root={canvas} fonts={fontChoices} onChange={commitSelection} />
+      <style dangerouslySetInnerHTML={{ __html: EDITOR_LAYOUT_CSS }} />
       {/* Declared at the top so the PANEL can draw its specimens in them
           too, not only the preview below. */}
       {storeFontCss && <style dangerouslySetInnerHTML={{ __html: storeFontCss }} />}
@@ -337,7 +382,7 @@ export function BlockBuilder(props: Props) {
       */}
       <PaneToggle pane={pane} onPane={setPane} />
       {/* ─── Controls ─── */}
-      <div className={`space-y-3 ${editPaneClass(pane)}`}>
+      <div data-editor-controls className={`space-y-3 ${editPaneClass(pane)}`}>
         {/*
           FIRST, not buried.
 
@@ -755,12 +800,27 @@ export function BlockBuilder(props: Props) {
 
       {/* ─── Live preview, drawn by the public renderer ─── */}
       <div
-        className={`${previewPaneClass(pane)} min-h-[500px] flex-col overflow-hidden rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)]`}
-        /* As tall as the screen, so its scroller is what scrolls: with no height the pane grew to the whole page, the
-           WINDOW scrolled, and neither the block bar's sticky nor the floating button's «fixed» had anything to hold. */
-        style={{ height: 'calc(100dvh - 6rem)', position: 'sticky', top: '1rem' }}
+        className={`${previewPaneClass(pane)} min-h-[500px] flex-col rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)]`}
+        /*
+          THE PAGE IS DRAWN IN FULL, AND THE WINDOW IS WHAT SCROLLS.
+
+          This pane used to be a fixed-height box with a scroller inside it. Measured at 1900×818: the box was
+          722px, began 233px down, and so ended 137px BELOW the window; the scroller inside it was 676px high and the
+          page inside THAT was stretched to the same 652px by the flex row it sat in and clipped there (1088px of
+          page, 652px shown, nothing to scroll) — so the wheel did nothing, and the order form was cut off.
+          A page shown whole has no scroller to get wrong: one scroll, the window's.
+
+          `clip`, not `hidden`, for the rounded corners: hidden makes this a scroll container, and the toolbar's
+          and the block bar's `sticky` would then hold to THIS box instead of the window.
+        */
+        style={{ overflow: 'clip' }}
       >
-        <div className="flex items-center justify-between border-b border-[var(--sys-border)] px-3 py-2">
+        {/* Pinned under the system's bar for as long as any of the page is on the screen, so the zoom and the
+            phone/desk switch are in reach at every depth. `--sys-header-h` is the bar's measured height. */}
+        <div
+          className="flex items-center justify-between border-b border-[var(--sys-border)] bg-[var(--sys-card)] px-3 py-2"
+          style={{ position: 'sticky', top: 'var(--sys-header-h, 72px)', zIndex: 31 }}
+        >
           <span className="text-xs font-semibold text-[var(--sys-heading)]">معاينة مباشرة</span>
           <div className="flex items-center gap-1">
             {/* How large the page is DRAWN, not how large it is. Checking
@@ -810,21 +870,15 @@ export function BlockBuilder(props: Props) {
         </div>
 
         {/*
-          The transform lives on the SCROLLER, not on the page inside it.
-          `position: fixed` resolves against the nearest transformed
-          ancestor's box — and when that was the page itself, which is as
-          tall as all its blocks, the floating button sat at the bottom of
-          the whole page instead of floating above what the seller was
-          looking at. It was called "the floating button" and it did not
-          float. The scroller's box IS the visible area, so the button now
-          behaves here exactly as it does on a phone.
+          No scroller and no transform here any more.
+
+          The floating button is `position: fixed`, and a fixed element resolves against the nearest TRANSFORMED
+          ancestor. The old scroller carried a transform so that the button floated over the pane; with the page
+          drawn whole there is no pane-sized box to float over, and a transform on a box as tall as the page would
+          park the button at the bottom of all of it. So the button is drawn where its block sits instead — see
+          EDITOR_LAYOUT_CSS — and the visitor's page, which has no editor around it, is untouched.
         */}
-        <div
-          ref={scrollerRef}
-          className="flex flex-1 justify-center overflow-auto bg-[var(--sys-surface)] p-3"
-          // minHeight 0: a flex child does not shrink below its content without it, and the pane's height would be lost.
-          style={{ transform: 'translateZ(0)', minHeight: 0 }}
-        >
+        <div className="flex items-start justify-center bg-[var(--sys-surface)] p-3">
           <div
             ref={setCanvas}
             className="lp-root rounded-lg border border-[var(--sys-border)] shadow-raised"

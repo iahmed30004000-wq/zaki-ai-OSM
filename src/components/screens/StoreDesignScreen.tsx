@@ -231,27 +231,12 @@ export function StoreDesignScreen() {
       )}
 
       {/*
-        A DEFINITE HEIGHT, BECAUSE THE BUILDER NEEDS ONE.
-        It used to be `h-full` on a screen of its own, which worked because
-        the shell's <main> is a stretched flex item. Inside a tab panel the
-        parent's height is its content, so `h-full` resolved to nothing and
-        `flex-1 min-h-0` collapsed the canvas to zero.
-
-        AND IT IS THE HEIGHT THE PAGE EDITOR'S OWN CANVAS ALREADY USES
-        (LandingPageEditorScreen) — three-fifths of the viewport.
-
-        This matters more than it looks. The first version asked for a
-        computed height with a floor, and the second for a different
-        fraction; each of those is a rule NOTHING ELSE in the product
-        needs, and the CSS ratchet charges every page in the system for
-        it. CI caught the second one at twenty-six bytes over a cap that
-        had eleven bytes of room — and the lesson the stage before this
-        one wrote down in its own commit («ثمانٍ وتسعونَ بايتاً، وتعليقٌ
-        كان يَحمِلُها») is that the scanner reads COMMENTS too, so a
-        utility named in prose is a utility shipped. Hence this note names
-        none.
+        NO HEIGHT OF ITS OWN, NO CLIP: THE WINDOW SCROLLS THIS TOO.
+        The builder draws the whole page and the window is what scrolls it (see BlockBuilder). A box with a fixed
+        height or a clip around it would cut the preview at that height with nothing to move it, and would take the
+        builder's pinned bars away from the window. The border alone is what this wrapper is for.
       */}
-      <div className="h-[60vh] overflow-hidden rounded-lg border border-[var(--sys-border)]">
+      <div className="rounded-lg border border-[var(--sys-border)]">
         {/* The one builder in this system. The preview beside it is drawn by
             the public renderer, so it cannot be wrong in a way that only
             shows up after publishing. */}
