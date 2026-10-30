@@ -306,6 +306,12 @@ model User {
   totpSecretEnc String?
   totpEnabledAt DateTime?
   totpLastStep  Int?
+  /// THE CODE THE OWNER ISSUED FOR THE FIRST SETUP OF THE SECOND FACTOR (A2).
+  /// Only the bcrypt hash is kept, so a copy of the table is not a working code. It is spent
+  /// (both columns back to null) in the same transaction that saves the enrolment, and it
+  /// expires on its own. Read only while AUTH_ENROL_CODE_REQUIRED is on.
+  enrolCodeHash      String?   @map("enrol_code_hash")
+  enrolCodeExpiresAt DateTime? @map("enrol_code_expires_at")
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

@@ -34,7 +34,7 @@ import { UserCommissionCurrency } from '@/components/screens/users/UserCommissio
 import { ASSIGNABLE_ROLES, ROLE_LABELS } from '@/types/auth';
 import { RiAddCircleLine, RiAlertLine, RiArrowRightLine, RiCheckLine, RiCloseLine, RiDeleteBinLine, RiKey2Line, RiLoader4Line, RiMailLine, RiSearchLine, RiShieldCheckLine, RiShieldKeyholeLine, RiTimerLine, RiToolsLine, RiUserLine } from '@remixicon/react';
 import { apiJson } from '@/lib/api-client';
-import { maySetPassword } from '@/lib/two-factor-reset';
+import { maySetPassword, mayIssueEnrolCode } from '@/lib/two-factor-reset';
 import { PASSWORD_RULES, passwordProblems } from '@/lib/password-rules';
 import { useConfirm } from '@/components/ui/Confirm';
 import { mayResetTwoFactor } from '@/lib/two-factor-reset';
@@ -65,6 +65,10 @@ export function UserDetailScreen() {
   const [roleFlash, setRoleFlash] = useState<string | null>(null);
   const [resetting2fa, setResetting2fa] = useState(false);
   const [twoFaMsg, setTwoFaMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // THE ACTIVATION CODE, HELD ONLY WHILE THIS SCREEN IS OPEN (A2). The server keeps a hash and nothing else, so this is the
+  // one time the code exists in the clear: the screen says so, and it is gone when the page is left.
+  const [issuingCode, setIssuingCode] = useState(false);
+  const [enrolCode, setEnrolCode] = useState<{ code: string; hours: number } | null>(null);
   /*
    * THE NEW PASSWORD, HELD FOR AS LONG AS THE SCREEN IS OPEN AND NO LONGER.
    *
@@ -122,6 +126,21 @@ export function UserDetailScreen() {
       setPasswordErr(e instanceof Error ? e.message : 'تعذّر تغيير كلمة السرّ');
     } finally {
       setSettingPassword(false);
+    }
+  };
+
+  const issueEnrolCode = async () => {
+    if (!userId) return;
+    setIssuingCode(true);
+    setTwoFaMsg(null);
+    try {
+      const res = await apiJson<{ code: string; hours: number }>(`/api/users/${userId}/enrol-code`, { method: 'POST' });
+      setEnrolCode({ code: res.code, hours: res.hours });
+    } catch (e) {
+      setEnrolCode(null);
+      setTwoFaMsg({ ok: false, text: e instanceof Error ? e.message : 'تعذر إصدار الرمز' });
+    } finally {
+      setIssuingCode(false);
     }
   };
 
@@ -495,6 +514,32 @@ export function UserDetailScreen() {
               <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
                 كلّ حساب صار عليه تحقّق بخطوتين. هذا الموظّف رح يُطلَب منه يسجّله أوّل مرّة يدخل فيها بكلمة السرّ — لازم يكون منزّل تطبيق Google Authenticator على جواله.
               </p>
+              {mayIssueEnrolCode(currentUser as never, user.id).ok && (
+                <>
+                  <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+                    إن كان الرمز مطلوباً عند التفعيل، أعطِ الموظّف رمز تفعيل يكتبه عند أوّل دخول. الرمز لمرّة واحدة.
+                  </p>
+                  {twoFaMsg && !twoFaMsg.ok && (
+                    <p className="rounded-lg px-3 py-2 text-xs font-medium bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)]">
+                      {twoFaMsg.text}
+                    </p>
+                  )}
+                  {enrolCode && (
+                    <p className="rounded-lg px-3 py-2 text-xs font-medium bg-[var(--sys-success-soft)] text-[var(--sys-success)]">
+                      رمز التفعيل: <span dir="ltr" className="font-semibold tabular-nums">{enrolCode.code}</span> — يصلح {enrolCode.hours} ساعة ولمرّة واحدة، ولا يظهر مرّة ثانية. أعطه للموظّف الآن.
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    disabled={issuingCode}
+                    onClick={() => void issueEnrolCode()}
+                    className="min-h-11 md:min-h-0 inline-flex items-center gap-1.5 rounded-lg border border-[var(--sys-border)] px-4 py-1.5 text-xs font-medium text-[var(--sys-foreground)] disabled:opacity-50"
+                  >
+                    {issuingCode ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiKey2Line className="w-4 h-4" />}
+                    أصدر رمز تفعيل
+                  </button>
+                </>
+              )}
             </CardContent>
           </Card>
         )}

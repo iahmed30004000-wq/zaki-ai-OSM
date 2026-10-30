@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { readChallenge } from '@/lib/two-factor-challenge';
 import { TwoFactorRefused, beginEnrolment } from '@/lib/two-factor';
 import { rateLimitByIp, getClientIp } from '@/lib/rate-limit';
+import { enrolCodeSelect, gateEnrolment } from '@/lib/enrol-code';
 
 /**
  * POST /api/auth/2fa/start — hand out a secret to scan.
@@ -22,7 +23,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'محاولات كثيرة — انتظر قليلاً' }, { status: 429 });
     }
 
-    const { challenge } = await req.json().catch(() => ({}));
+    const { challenge, enrolCode } = await req.json().catch(() => ({}));
     const ticket = await readChallenge(challenge, 'enrol');
     if (!ticket) {
       return NextResponse.json({ error: 'انتهت صلاحية الطلب — سجّل الدخول من جديد' }, { status: 401 });
@@ -30,12 +31,16 @@ export async function POST(req: Request) {
 
     const user = await db.user.findUnique({
       where: { id: ticket.userId },
-      select: { email: true, totpEnabledAt: true },
+      select: { email: true, totpEnabledAt: true, ...enrolCodeSelect() },
     });
     if (!user) return NextResponse.json({ error: 'المستخدم غير موجود' }, { status: 404 });
     if (user.totpEnabledAt) {
       return NextResponse.json({ error: 'التحقّق الثنائيّ مفعَّل أصلاً' }, { status: 409 });
     }
+
+    // With the owner's code switched on, no secret is handed out before the code is right (A2).
+    const gate = await gateEnrolment(ticket.userId, user, enrolCode);
+    if (!gate.ok) return NextResponse.json({ error: gate.error, code: gate.code }, { status: gate.status });
 
     const { secret, uri } = beginEnrolment(user.email);
     // Drawn on the server: the URI carries the secret, and a client-side
