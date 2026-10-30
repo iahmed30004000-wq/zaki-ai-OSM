@@ -113,7 +113,7 @@ export function ThemePicker({ initial }: { initial: string | null | undefined })
         إطلاقاً.
       </p>
 
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {THEME_CHOICES.map((choice) => {
           const active = choice.key === chosen;
           /*

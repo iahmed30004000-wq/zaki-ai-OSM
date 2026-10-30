@@ -770,7 +770,8 @@ export function ConfirmationMineScreen() {
               cancel. The two that are neither an outcome of the call — the entry issue and the assistant —
               come after them.
 
-              THE THREE THAT DISPOSE OF THE ORDER, SHUT UNTIL SHE HAS TRIED TO REACH THE CUSTOMER. The server
+              THE ONES THAT DISPOSE OF THE ORDER, SHUT UNTIL SHE HAS TRIED TO REACH THE CUSTOMER («ألغِ» is not among
+              them: it opens the dialog, which shuts only the reasons that need a word — the owner, 30/10). The server
               refuses them anyway (`needsContactFirst`), so this is not the rule — it is the agent being told
               the rule before she presses rather than after. The measured failure was «تأجيل» pressed with no
               call: the order went postponed, left her list, kept her claim, and blocked her next pull for
@@ -806,8 +807,6 @@ export function ConfirmationMineScreen() {
               <Action
                 onClick={() => setDialog({ kind: 'reject', order })}
                 busy={busyId === order.id}
-                locked={needsContact(order)}
-                lockedTitle={CONTACT_FIRST_MESSAGE}
                 danger
                 icon={<RiCloseCircleLine className="w-4 h-4" />}
                 wide={phone}
@@ -1254,6 +1253,8 @@ export function ConfirmationMineScreen() {
           open
           orderNumber={dialog.order.orderNumber}
           busy={busyId === dialog.order.id}
+          hasAttempt={!needsContact(dialog.order)}
+          canLogContact={canLogContact}
           onClose={() => setDialog(null)}
           onSubmit={(value) => submitReject(dialog.order, value)}
         />

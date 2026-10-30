@@ -6,6 +6,7 @@ import { RiArrowDownLine, RiArrowUpLine, type RemixiconComponentType } from '@re
 import { Sparkline } from './Sparkline';
 import clsx from 'clsx';
 import { CARD_CLASS } from '@/lib/theme-shape';
+import { figureScale, figureText } from '@/lib/kpi-figure';
 
 interface CardProps {
   children: React.ReactNode;
@@ -190,8 +191,27 @@ export function KpiCard({
         {Icon && <Icon className="w-5 h-5 shrink-0 text-[var(--sys-muted)]" aria-hidden />}
       </div>
 
-      <div className="mt-2 flex flex-wrap items-baseline gap-2">
-        <span className="text-display font-bold leading-none tabular-nums text-[var(--sys-heading)]">{value}</span>
+      {/*
+        THE FIGURE STAYS INSIDE ITS CARD, WHATEVER IT SAYS.
+
+        It was one size, 32px, for «60%» and for «257,229.32 USD» alike — so
+        the long one filled the card to both edges and the owner saw numbers
+        «طالعة من مكانها». Now the size follows the length (see
+        `figureScale`), on steps the product already ships, and the box can
+        shrink (`min-w-0`) and never wider than the card (`max-w-full`).
+        Left-to-right so a currency code stays after its number inside an
+        Arabic line. Display only: the figure is whatever the server sent.
+      */}
+      <div className="mt-2 flex min-w-0 flex-wrap items-baseline gap-2">
+        <span
+          dir="ltr"
+          className={clsx(
+            'min-w-0 max-w-full font-bold leading-none tabular-nums text-[var(--sys-heading)]',
+            figureScale(figureText(value)),
+          )}
+        >
+          {value}
+        </span>
         {health && <HealthChip health={health} />}
       </div>
 
@@ -246,7 +266,7 @@ export function KpiCard({
     </>
   );
 
-  const shell = 'rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-4';
+  const shell = 'min-w-0 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-4';
 
   // Raised only when it can be pressed. A card that lifts off the page
   // without being pressable is a card people try to press.
