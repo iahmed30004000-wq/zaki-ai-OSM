@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -66,10 +68,10 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('A7 — twenty wrong passwords per email, from any number of addresses', () => {
-  it('PAUSES the email after 20 wrong ones — even the right password waits — with the wait in the message', async () => {
+describe('A7 — thirty wrong passwords per email, from any number of addresses', () => {
+  it('PAUSES the email after 30 wrong ones — even the right password waits — with the wait in the message', async () => {
     const email = 'a7.pause@shop.example';
-    for (let i = 0; i < 20; i += 1) expect((await attempt(email, `wrong${i}`)).status).toBe(401);
+    for (let i = 0; i < 30; i += 1) expect((await attempt(email, `wrong${i}`)).status).toBe(401);
     const blocked = await attempt(email, 'Right-Password1');
     expect(blocked.status).toBe(429);
     const { error } = await blocked.json();
@@ -79,19 +81,19 @@ describe('A7 — twenty wrong passwords per email, from any number of addresses'
 
   it('is per EMAIL, not shared: another account is untouched, and case does not dodge the count', async () => {
     const email = 'a7.case@shop.example';
-    for (let i = 0; i < 20; i += 1) await attempt(i % 2 ? email.toUpperCase() : email, `wrong${i}`);
+    for (let i = 0; i < 30; i += 1) await attempt(i % 2 ? email.toUpperCase() : email, `wrong${i}`);
     expect((await attempt(email.toUpperCase(), 'Right-Password1')).status).toBe(429);
     const other = await attempt('a7.other@shop.example', 'Right-Password1');
     expect(other.status).toBe(200);
     expect((await other.json()).twoFactor).toBe('verify');
   });
 
-  it('the pause is NOT a lock for ever — a quarter of an hour later the right password gets in', async () => {
+  it('the pause is NOT a lock for ever — five minutes later the right password gets in', async () => {
     vi.useFakeTimers();
     const email = 'a7.ends@shop.example';
-    for (let i = 0; i < 20; i += 1) await attempt(email, `wrong${i}`);
+    for (let i = 0; i < 30; i += 1) await attempt(email, `wrong${i}`);
     expect((await attempt(email, 'Right-Password1')).status).toBe(429);
-    vi.advanceTimersByTime(15 * 60 * 1000 + 2000);
+    vi.advanceTimersByTime(5 * 60 * 1000 + 2000);
     expect((await attempt(email, 'Right-Password1')).status).toBe(200);
   });
 
@@ -108,7 +110,7 @@ describe('A7 — twenty wrong passwords per email, from any number of addresses'
 
   it('counts wrong passwords against an email that does not exist too — and says the same thing about it', async () => {
     const email = 'ghost.a7@shop.example';
-    for (let i = 0; i < 20; i += 1) expect((await attempt(email, `wrong${i}`)).status).toBe(401);
+    for (let i = 0; i < 30; i += 1) expect((await attempt(email, `wrong${i}`)).status).toBe(401);
     const blocked = await attempt(email, 'anything');
     expect(blocked.status).toBe(429);
   });
@@ -116,7 +118,7 @@ describe('A7 — twenty wrong passwords per email, from any number of addresses'
   it('with the switch off the old behaviour returns: no per-email ceiling', async () => {
     process.env.AUTH_LOGIN_EMAIL_LIMIT = 'off';
     const email = 'a7.off@shop.example';
-    for (let i = 0; i < 25; i += 1) await attempt(email, `wrong${i}`);
+    for (let i = 0; i < 35; i += 1) await attempt(email, `wrong${i}`);
     expect((await attempt(email, 'Right-Password1')).status).toBe(200);
   });
 });
@@ -160,5 +162,20 @@ describe('the sign-in an honest person does every day is unchanged', () => {
     db.user.findUnique.mockResolvedValueOnce({ ...account('susp@shop.example'), status: 'SUSPENDED' });
     expect((await attempt('susp@shop.example', 'Right-Password1')).status).toBe(403);
     expect((await attempt('plain@shop.example', 'nope')).status).toBe(401);
+  });
+});
+
+describe('the ways round the pause that are the owner own', () => {
+  it('the fingerprint sign-in does not pass through the per-email bucket at all', () => {
+    for (const door of ['passkey/login/route.ts', 'passkey/assert/route.ts']) {
+      const src = readFileSync(path.join(__dirname, '..', door), 'utf8');
+      expect(src, door).not.toContain('login:email');
+    }
+  });
+
+  it('the pause only ever counts wrong passwords and is switchable', () => {
+    const src = readFileSync(path.join(__dirname, 'route.ts'), 'utf8');
+    expect(src).toContain('loginEmailLimitOn()');
+    expect(src.match(/failedOnce\(\)/g)?.length).toBe(2);
   });
 });

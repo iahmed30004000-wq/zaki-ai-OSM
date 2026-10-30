@@ -115,3 +115,65 @@ export async function gateEnrolment(
     error: ENROL_CODE_REFUSAL[verdict],
   };
 }
+
+/**
+ * THE WAY OUT FOR AN OWNER WHO CANNOT ISSUE THEMSELVES A CODE (server shell only).
+ *
+ * The door refuses to issue a code for yourself, and rightly: so an owner who is the only holder of `users.security` and
+ * has no second factor yet, or has lost the phone AND the recovery codes, has nobody to issue one. `scripts/issue-enrol-code.ts`
+ * is that way out. It runs only where somebody has the server's shell and its database, which is the strongest proof of
+ * ownership there is, and it prints the code once.
+ *
+ * `resetFactor` is the lost-phone case and must be asked for by name: it clears the stored second factor and its recovery
+ * codes, ends the sessions and removes the fingerprints, exactly as the owner's «أعد ضبط التحقق» button does, then issues the
+ * code. Without it, an account that already has a second factor is refused.
+ */
+export interface ServerIssueDb {
+  user: {
+    findUnique: (args: { where: { email: string }; select: Record<string, true> }) => Promise<{ id: string; name: string | null; status: string; companyId: string | null; totpEnabledAt: Date | null } | null>;
+    update: (args: { where: { id: string }; data: Record<string, unknown> }) => Promise<unknown>;
+  };
+  twoFactorRecoveryCode: { deleteMany: (args: { where: { userId: string } }) => Promise<unknown> };
+  passkey: { deleteMany: (args: { where: { userId: string } }) => Promise<{ count: number }> };
+  passkeyChallenge: { deleteMany: (args: { where: { userId: string } }) => Promise<{ count: number }> };
+  $transaction: <T>(fn: (tx: ServerIssueDb) => Promise<T>) => Promise<T>;
+}
+
+export type ServerIssue =
+  | { ok: true; code: string; expiresAt: Date; userId: string; companyId: string | null; name: string | null; factorReset: boolean }
+  | { ok: false; reason: 'NOT_FOUND' | 'NOT_ACTIVE' | 'ALREADY_ENROLLED' };
+
+export async function issueEnrolCodeByEmail(
+  db: ServerIssueDb,
+  emailRaw: string,
+  opts: { resetFactor: boolean; now?: Date }
+): Promise<ServerIssue> {
+  const email = emailRaw.trim().toLowerCase();
+  const user = await db.user.findUnique({
+    where: { email },
+    select: { id: true, name: true, status: true, companyId: true, totpEnabledAt: true },
+  });
+  if (!user) return { ok: false, reason: 'NOT_FOUND' };
+  if (user.status !== 'ACTIVE') return { ok: false, reason: 'NOT_ACTIVE' };
+  if (user.totpEnabledAt && !opts.resetFactor) return { ok: false, reason: 'ALREADY_ENROLLED' };
+
+  const code = newEnrolCode();
+  const sealed = await sealEnrolCode(code, opts.now);
+  const factorReset = Boolean(user.totpEnabledAt);
+
+  await db.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: user.id },
+      data: factorReset
+        ? { ...sealed, totpSecretEnc: null, totpEnabledAt: null, totpLastStep: null, tokenVersion: { increment: 1 } }
+        : { ...sealed },
+    });
+    if (factorReset) {
+      await tx.twoFactorRecoveryCode.deleteMany({ where: { userId: user.id } });
+      await tx.passkey.deleteMany({ where: { userId: user.id } });
+      await tx.passkeyChallenge.deleteMany({ where: { userId: user.id } });
+    }
+  });
+
+  return { ok: true, code, expiresAt: sealed.enrolCodeExpiresAt, userId: user.id, companyId: user.companyId, name: user.name, factorReset };
+}

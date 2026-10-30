@@ -13,8 +13,8 @@ import { stepFor } from '@/lib/two-factor';
 import { DEVICE_COOKIE, judgeTrust, noteBadPassword, recentBadPassword } from '@/lib/trusted-device';
 
 /** Wrong passwords one email may collect in the window before the sign-in pauses for it. */
-const EMAIL_FAILURES = 20;
-const EMAIL_WINDOW_MS = 15 * 60 * 1000;
+const EMAIL_FAILURES = 30;
+const EMAIL_WINDOW_MS = 5 * 60 * 1000;
 
 /** «3 دقائق» or «40 ثانية» — the wait said the way a person says it. */
 function waitWords(sec: number): string {
@@ -50,8 +50,14 @@ export async function POST(req: Request) {
      * The bucket above is keyed address+email, so a guesser who changes address on every try (a rotating pool, or an IPv6
      * range) never fills it. This one is keyed by the email alone and counts ONLY what went wrong: a right password never
      * uses it up, and it is checked before any password work is done. The window ends by itself, so it is a pause and
-     * never a lock; the message says how long. A stranger can make the owner wait this long, no longer, and only by
-     * typing wrong passwords against the owner's email, which is the cost of having a limit at all.
+     * never a lock; the message says how long.
+     *
+     * THE HONEST COST. Somebody who knows the owner's email can type 30 wrong passwords and make the owner's PASSWORD
+     * sign-in answer 429 for five minutes (even with the right password), and repeat. Main already had this property
+     * through `login:user:…` (8 attempts in 5 minutes per address+email, right passwords counted), so this does not add
+     * a new way to be kept out; it adds a second ceiling that rotating addresses cannot dodge. It is kept mild on
+     * purpose: 30 not 20, five minutes not fifteen, wrong passwords only. The owner's ways round it: the fingerprint
+     * sign-in does not pass through this bucket at all, and `AUTH_LOGIN_EMAIL_LIMIT=off` takes the ceiling away.
      */
     const emailKey = `login:email:${email}`;
     if (loginEmailLimitOn()) {
