@@ -38,9 +38,12 @@ import { GRADE_RANK, scoreCustomer } from '@/lib/customer-score';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { apiFetch } from '@/lib/api-client';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
+import { useIsPhone } from '@/hooks/useIsPhone';
 
 export function CustomersScreen() {
   const { t, currentUser } = useApp();
+  /* A phone scrolls the facts sideways, wraps the history and stacks the form; a desk is as it was. */
+  const onPhone = useIsPhone();
   // The assistant's own gate: a panel that opens onto a refusal is noise.
   const canAskAi = userCan(currentUser, 'ai.use');
   // Governorates of the selected country, not a hard-coded country list.
@@ -349,15 +352,16 @@ export function CustomersScreen() {
           not over the hundred rows a search happened to return.
         */}
         {facts && (
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-            <Fact label="عميل" value={facts.total} />
-            <Fact label="طلبوا" value={facts.ordered} hint={`${facts.total - facts.ordered} لم يطلبوا بعد`} />
-            <Fact label="كرّروا الطلب" value={facts.repeat} tone="success" />
-            <Fact label="رفضوا طرداً" value={facts.refused} tone={facts.refused > 0 ? 'danger' : undefined} />
+          <div className={onPhone ? 'flex gap-2 overflow-x-auto pb-1' : 'grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5'}>
+            <Fact label="عميل" value={facts.total} strip={onPhone} />
+            <Fact label="طلبوا" value={facts.ordered} hint={`${facts.total - facts.ordered} لم يطلبوا بعد`} strip={onPhone} />
+            <Fact label="كرّروا الطلب" value={facts.repeat} tone="success" strip={onPhone} />
+            <Fact label="رفضوا طرداً" value={facts.refused} tone={facts.refused > 0 ? 'danger' : undefined} strip={onPhone} />
             <Fact
               label="نسبة الاستلام"
               value={facts.deliveryRate === null ? '—' : `${facts.deliveryRate}%`}
               hint={facts.deliveryRate === null ? 'لا طلبَ محسوماً بعد' : 'من الطلبات المحسومة'}
+              strip={onPhone}
             />
           </div>
         )}
@@ -595,10 +599,12 @@ export function CustomersScreen() {
               سجل الطلبات ({selectedCustomer.orders?.length || 0})
             </h4>
 
-            <div className="divide-y divide-[var(--sys-border)] max-h-60 overflow-y-auto">
+            {/* A phone lets the history run down the dialog's own scroll: a list that scrolls inside a list that
+                scrolls traps the thumb (ORD-21). A desk keeps the 15rem window. */}
+            <div className={onPhone ? 'divide-y divide-[var(--sys-border)]' : 'divide-y divide-[var(--sys-border)] max-h-60 overflow-y-auto'}>
               {selectedCustomer.orders?.map((ord: any) => (
-                <div key={ord.id} className="py-2.5 flex items-center justify-between text-xs">
-                  <div>
+                <div key={ord.id} className={onPhone ? 'py-2.5 flex flex-wrap items-center justify-between gap-y-1 text-xs' : 'py-2.5 flex items-center justify-between text-xs'}>
+                  <div className={onPhone ? 'min-w-0' : undefined}>
                     <OrderLink id={ord.id} number={ord.orderNumber} className="font-bold text-[var(--sys-destructive)]" />
                     <span className="text-[var(--sys-muted-foreground)] ml-2 rtl:ml-0 rtl:mr-2">{ord.product?.name}</span>
                   </div>
@@ -635,7 +641,7 @@ export function CustomersScreen() {
             required
           />
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className={onPhone ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-2 gap-3'}>
             <Input
               label="رقم الهاتف *"
               placeholder="مثال: 0936654998"
@@ -650,7 +656,7 @@ export function CustomersScreen() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className={onPhone ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-2 gap-3'}>
             <Select
               label={`المحافظة${countryName ? ` — ${countryName}` : ''}`}
               value={regionNames.includes(city) ? city : 'أخرى'}
@@ -702,11 +708,14 @@ function Fact({
   value,
   hint,
   tone,
+  strip,
 }: {
   label: string;
   value: number | string;
   hint?: string;
   tone?: 'success' | 'danger';
+  /** A phone draws the five as one strip that scrolls sideways, so each keeps a width of its own. */
+  strip?: boolean;
 }) {
   const colour =
     tone === 'success'
@@ -715,7 +724,7 @@ function Fact({
         ? 'text-[var(--sys-destructive)]'
         : 'text-[var(--sys-heading)]';
   return (
-    <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-3">
+    <div className={`${strip ? 'w-36 shrink-0 ' : ''}rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-3`}>
       <p className="text-xs text-[var(--sys-muted-foreground)]">{label}</p>
       <p className={`mt-0.5 text-lg font-bold tabular-nums ${colour}`} dir="ltr">
         {value}

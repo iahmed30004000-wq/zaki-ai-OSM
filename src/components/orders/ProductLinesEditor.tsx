@@ -327,7 +327,7 @@ export function ProductLinesEditor({
 
   const total = goodsTotal(lines);
   const inputClass =
-    'w-full h-10 px-2 rounded-lg border border-[var(--sys-border)] text-sm focus:outline-none focus:border-[var(--sys-primary)] disabled:bg-[var(--sys-surface)]';
+    'w-full h-11 md:h-10 px-2 rounded-lg border border-[var(--sys-border)] text-sm focus:outline-none focus:border-[var(--sys-primary)] disabled:bg-[var(--sys-surface)]';
 
   return (
     <div className="space-y-2">
@@ -360,7 +360,7 @@ export function ProductLinesEditor({
                   onClick={() => onChange(lines.filter((l) => l.key !== line.key))}
                   disabled={disabled}
                   aria-label="احذف هذا المنتج من الطلب" title="احذف هذا المنتج من الطلب"
-                  className="h-11 md:h-9 w-9 rounded-lg bg-[var(--sys-destructive)] text-[var(--sys-primary-foreground)] shrink-0 disabled:opacity-40"
+                  className="h-11 md:h-9 w-9 min-w-11 md:min-w-0 rounded-lg bg-[var(--sys-destructive)] text-[var(--sys-primary-foreground)] shrink-0 disabled:opacity-40"
                 >
                   <RiDeleteBinLine className="w-4 h-4 mx-auto" />
                 </button>
@@ -402,7 +402,7 @@ export function ProductLinesEditor({
                   aria-label="أنقص الكمية"
                   title="أنقص الكمية"
                   disabled={disabled || lockedByOffer}
-                  className="h-11 md:h-9 w-9 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] disabled:opacity-40"
+                  className="h-11 md:h-9 w-9 min-w-11 md:min-w-0 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] disabled:opacity-40"
                 >
                   <RiSubtractLine className="w-4 h-4 mx-auto" />
                 </button>
@@ -421,7 +421,7 @@ export function ProductLinesEditor({
                   aria-label="زد الكمية"
                   title="زد الكمية"
                   disabled={disabled || lockedByOffer}
-                  className="h-11 md:h-9 w-9 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] disabled:opacity-40"
+                  className="h-11 md:h-9 w-9 min-w-11 md:min-w-0 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] disabled:opacity-40"
                 >
                   <RiAddCircleLine className="w-4 h-4 mx-auto" />
                 </button>
@@ -442,7 +442,7 @@ export function ProductLinesEditor({
                 />
               </label>
 
-              <span className="text-sm font-bold text-[var(--sys-heading)] tabular-nums shrink-0 w-24 text-end" dir="ltr">
+              <span className="text-sm font-bold text-[var(--sys-heading)] tabular-nums shrink-0 w-24 text-end ms-auto" dir="ltr">
                 {/* An unwritten price is a dash, not «0.00». A confident zero
                     beside an empty box is the figure the operator believes. */}
                 {lineFigure === undefined ? '—' : amount(lineFigure, currency)}

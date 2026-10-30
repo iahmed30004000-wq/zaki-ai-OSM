@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Textarea, Select } from '@/components/ui/Input';
 import { apiFetch } from '@/lib/api-client';
+import { useIsPhone } from '@/hooks/useIsPhone';
 import { CONFIRMATION_STATUS_AR, PICKABLE_REJECTION_REASONS, REJECTION_REASON_AR } from '@/lib/confirmation-workflow';
 import { arDateShort, arDateTime } from '@/lib/format';
 import { RiCalendarScheduleLine, RiCheckLine, RiCloseCircleLine, RiPhoneLine, RiPhoneLockLine, RiRefreshLine, RiTimerLine } from '@remixicon/react';
@@ -61,6 +62,8 @@ interface ConfirmationActionsProps {
 }
 
 export function ConfirmationActions({ order, ar, isRtl, onRefreshOrder }: ConfirmationActionsProps) {
+  /* A phone groups the seven quick buttons by what they are; a desk keeps the one wrapping row. */
+  const phone = useIsPhone();
   const [attempts, setAttempts] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
   const [loadingAttempts, setLoadingAttempts] = useState(false);
@@ -185,6 +188,77 @@ export function ConfirmationActions({ order, ar, isRtl, onRefreshOrder }: Confir
     if (ok) setOpenForm(null);
   };
 
+  /*
+   * THE SEVEN QUICK BUTTONS, DRAWN ONCE, PLACED BY THE WIDTH.
+   *
+   * `grow` on a phone: a button takes the rest of its row instead of leaving a ragged edge, and the
+   * full-width confirmation takes the whole of one.
+   */
+  const spread = phone ? 'grow justify-center ' : '';
+  const answeredButton = (
+    <button
+      onClick={() => submitAction({ action: 'contact_result', result: 'ANSWERED' })}
+      disabled={busy}
+      className={`${spread}min-h-11 md:min-h-0 inline-flex items-center inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border-2 border-[var(--sys-muted-foreground)]/50 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface)] transition-colors cursor-pointer disabled:opacity-50`}
+    >
+      <RiPhoneLine className="w-4 h-4" />{ar ? 'العميل أجاب' : 'Answered'}
+    </button>
+  );
+  const noAnswerButton = (
+    <button
+      onClick={() => submitAction({ action: 'contact_result', result: 'NO_ANSWER' })}
+      disabled={busy}
+      className={`${spread}min-h-11 md:min-h-0 inline-flex items-center inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border-2 border-[var(--sys-warning)]/60 text-[var(--sys-warning)] hover:bg-[var(--sys-warning-soft)] transition-colors cursor-pointer disabled:opacity-50`}
+    >
+      <RiPhoneLockLine className="w-4 h-4" />{ar ? 'لا يرد' : 'No Answer'}
+    </button>
+  );
+  const callLaterButton = (
+    <button
+      onClick={() => { setNote(''); setOpenForm('call_later'); }}
+      disabled={busy}
+      className={`${spread}min-h-11 md:min-h-0 inline-flex items-center inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border-2 border-[var(--sys-border-strong)] text-[var(--sys-foreground)] hover:bg-[var(--sys-surface)] transition-colors cursor-pointer disabled:opacity-50`}
+    >
+      <RiTimerLine className="w-4 h-4" />{ar ? 'تأجيل' : 'Call Later'}
+    </button>
+  );
+  const followUpButton = (
+    <button
+      onClick={() => { setNote(''); setOpenForm('followup'); }}
+      disabled={busy}
+      className={`${spread}min-h-11 md:min-h-0 inline-flex items-center inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border-2 border-[var(--sys-warning)]/60 text-[var(--sys-warning)] hover:bg-[var(--sys-warning-soft)] transition-colors cursor-pointer disabled:opacity-50`}
+    >
+      <RiRefreshLine className="w-4 h-4" />{ar ? 'متابعة' : 'Follow Up'}
+    </button>
+  );
+  const confirmButton = (
+    <button
+      onClick={() => { setNote(''); setOpenForm('confirm'); }}
+      disabled={busy}
+      className={`${phone ? 'w-full justify-center ' : ''}min-h-11 md:min-h-0 inline-flex items-center inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border-2 border-[var(--sys-success)]/60 text-[var(--sys-success)] hover:bg-[var(--sys-success-soft)] transition-colors cursor-pointer disabled:opacity-50`}
+    >
+      <RiCheckLine className="w-4 h-4" />{ar ? 'تأكيد الطلب' : 'Confirm Order'}
+    </button>
+  );
+  const rejectButton = (
+    <button
+      onClick={() => { setNote(''); setRejectionReason(''); setOpenForm('reject'); }}
+      disabled={busy}
+      className={`${spread}min-h-11 md:min-h-0 inline-flex items-center inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border-2 border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] hover:bg-[var(--sys-destructive-soft)] transition-colors cursor-pointer disabled:opacity-50`}
+    >
+      <RiCloseCircleLine className="w-4 h-4" />{ar ? 'العميل رفض' : 'Rejected'}
+    </button>
+  );
+  const wrongNumberButton = (
+    <button
+      onClick={() => submitAction({ action: 'contact_result', result: 'WRONG_NUMBER' })}
+      disabled={busy}
+      className={`${spread}min-h-11 md:min-h-0 inline-flex items-center inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border-2 border-[var(--sys-border-strong)] text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface)] transition-colors cursor-pointer disabled:opacity-50`}
+    >
+      <RiPhoneLockLine className="w-4 h-4" />{ar ? 'رقم خاطئ' : 'Wrong Number'}
+    </button>
+  );
+
   return (
     <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-4 shadow-raised" dir={isRtl ? 'rtl' : 'ltr'}>
       {/* Header */}
@@ -193,7 +267,7 @@ export function ConfirmationActions({ order, ar, isRtl, onRefreshOrder }: Confir
           <RiPhoneLine className="w-4 h-4 text-[var(--sys-primary)]" />
           {ar ? 'تسجيل نتيجة الاتصال' : 'Record a call outcome'}
         </h4>
-        <div className="flex items-center gap-2">
+        <div className={phone ? 'flex flex-wrap items-center gap-2' : 'flex items-center gap-2'}>
           {summary?.total > 0 && (
             <span className="text-xs font-bold text-[var(--sys-muted-foreground)] bg-[var(--sys-surface-strong)] rounded-lg px-2 py-1">
               {ar ? `محاولات: ${summary.total}` : `Attempts: ${summary.total}`}
@@ -213,56 +287,44 @@ export function ConfirmationActions({ order, ar, isRtl, onRefreshOrder }: Confir
 
       {/* Quick actions */}
       {!terminal && (
-        <div className="flex flex-wrap gap-2 mb-4">
-          <button
-            onClick={() => submitAction({ action: 'contact_result', result: 'ANSWERED' })}
-            disabled={busy}
-            className="min-h-11 md:min-h-0 inline-flex items-center inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border-2 border-[var(--sys-muted-foreground)]/50 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface)] transition-colors cursor-pointer disabled:opacity-50"
-          >
-            <RiPhoneLine className="w-4 h-4" />{ar ? 'العميل أجاب' : 'Answered'}
-          </button>
-          <button
-            onClick={() => submitAction({ action: 'contact_result', result: 'NO_ANSWER' })}
-            disabled={busy}
-            className="min-h-11 md:min-h-0 inline-flex items-center inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border-2 border-[var(--sys-warning)]/60 text-[var(--sys-warning)] hover:bg-[var(--sys-warning-soft)] transition-colors cursor-pointer disabled:opacity-50"
-          >
-            <RiPhoneLockLine className="w-4 h-4" />{ar ? 'لا يرد' : 'No Answer'}
-          </button>
-          <button
-            onClick={() => { setNote(''); setOpenForm('call_later'); }}
-            disabled={busy}
-            className="min-h-11 md:min-h-0 inline-flex items-center inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border-2 border-[var(--sys-border-strong)] text-[var(--sys-foreground)] hover:bg-[var(--sys-surface)] transition-colors cursor-pointer disabled:opacity-50"
-          >
-            <RiTimerLine className="w-4 h-4" />{ar ? 'تأجيل' : 'Call Later'}
-          </button>
-          <button
-            onClick={() => { setNote(''); setOpenForm('followup'); }}
-            disabled={busy}
-            className="min-h-11 md:min-h-0 inline-flex items-center inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border-2 border-[var(--sys-warning)]/60 text-[var(--sys-warning)] hover:bg-[var(--sys-warning-soft)] transition-colors cursor-pointer disabled:opacity-50"
-          >
-            <RiRefreshLine className="w-4 h-4" />{ar ? 'متابعة' : 'Follow Up'}
-          </button>
-          <button
-            onClick={() => { setNote(''); setOpenForm('confirm'); }}
-            disabled={busy}
-            className="min-h-11 md:min-h-0 inline-flex items-center inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border-2 border-[var(--sys-success)]/60 text-[var(--sys-success)] hover:bg-[var(--sys-success-soft)] transition-colors cursor-pointer disabled:opacity-50"
-          >
-            <RiCheckLine className="w-4 h-4" />{ar ? 'تأكيد الطلب' : 'Confirm Order'}
-          </button>
-          <button
-            onClick={() => { setNote(''); setRejectionReason(''); setOpenForm('reject'); }}
-            disabled={busy}
-            className="min-h-11 md:min-h-0 inline-flex items-center inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border-2 border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] hover:bg-[var(--sys-destructive-soft)] transition-colors cursor-pointer disabled:opacity-50"
-          >
-            <RiCloseCircleLine className="w-4 h-4" />{ar ? 'العميل رفض' : 'Rejected'}
-          </button>
-          <button
-            onClick={() => submitAction({ action: 'contact_result', result: 'WRONG_NUMBER' })}
-            disabled={busy}
-            className="min-h-11 md:min-h-0 inline-flex items-center inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border-2 border-[var(--sys-border-strong)] text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface)] transition-colors cursor-pointer disabled:opacity-50"
-          >
-            <RiPhoneLockLine className="w-4 h-4" />{ar ? 'رقم خاطئ' : 'Wrong Number'}
-          </button>
+        <div className={phone ? 'mb-4 space-y-3' : 'flex flex-wrap gap-2 mb-4'}>
+          {/*
+            A PHONE: THE OUTCOME FIRST AND ALONE, THE CALL RESULTS TOGETHER (ORD-11).
+
+            Seven outlined buttons of one weight wrapped into four rows, with «تأكيد الطلب» — what most calls end in —
+            fifth, looking like «رقم خاطئ». Now «تأكيد الطلب» is the first thing and the width of the card; the three
+            results of the call (answered, no answer, wrong number) sit together in a row that SAYS what it is, and the
+            three that decide what happens next (later, follow up, refuse) sit together under it. The same seven
+            buttons, the same handlers; nothing is added and nothing is asked twice.
+          */}
+          {phone ? (
+            <>
+              {confirmButton}
+              <div>
+                <p className="mb-1.5 text-xs text-[var(--sys-muted)]">{ar ? 'نتيجة الاتصال' : 'Call result'}</p>
+                <div className="flex flex-wrap gap-2">
+                  {answeredButton}
+                  {noAnswerButton}
+                  {wrongNumberButton}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {callLaterButton}
+                {followUpButton}
+                {rejectButton}
+              </div>
+            </>
+          ) : (
+            <>
+              {answeredButton}
+              {noAnswerButton}
+              {callLaterButton}
+              {followUpButton}
+              {confirmButton}
+              {rejectButton}
+              {wrongNumberButton}
+            </>
+          )}
         </div>
       )}
 

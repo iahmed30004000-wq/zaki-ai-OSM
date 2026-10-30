@@ -31,6 +31,7 @@ import { useRegions } from '@/hooks/useRegions';
 import { amount, arDateShort, arDateTime, type Currency } from '@/lib/format';
 import { RiArrowLeftSLine, RiArrowRightSLine, RiEBike2Line, RiLockLine, RiMoneyDollarCircleLine, RiPencilLine, RiTimerLine, RiTruckLine, RiUserFollowLine } from '@remixicon/react';
 import { POST_ORDER_ADDITION_AR } from '@/lib/post-order-offer-copy';
+import { useIsPhone } from '@/hooks/useIsPhone';
 
 /** Settlement is its own fact, never merged into the delivery status. */
 const SETTLEMENT_AR: Record<string, string> = {
@@ -71,6 +72,8 @@ interface OrderDetailModalProps {
 
 export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters }: OrderDetailModalProps) {
   const { t, locale, isRtl, currentUser } = useApp();
+  /* A phone reads the order in a different ORDER (the call right after the customer) — the same cards. */
+  const phone = useIsPhone();
   // Saves an edit, and asks why when the server says this authority owes a
   // reason. See src/components/orders/useOrderPatch.ts.
   const patchOrder = useOrderPatch();
@@ -353,12 +356,104 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
     deliveryAttempts: order._count?.deliveryAttempts,
   });
 
+  /*
+   * THE CALL — DRAWN ONCE, PLACED BY THE WIDTH (ORD-06).
+   *
+   * On a desk it ends the left column, where it always has. On a phone the same column was ten cards long and
+   * an agent who opened an order to confirm it scrolled past eight of them to reach the call outcome. So a phone
+   * draws it right after the customer — the person she is about to ring — and the lines, the shipping, the stages
+   * and the notes come after it. One copy: the block is built here and put in one place or the other.
+   */
+  const callBlock = (
+    <>
+            {/* Recording a call outcome is the confirmation agent's job. For an
+                owner this screen is oversight, and a panel of buttons whose
+                every press the server refuses is worse than no panel. The
+                server still enforces it — this only stops offering it. */}
+            {/*
+              THE THREE THINGS A CUSTOMER SAYS AFTER CONFIRMATION.
+
+              This door existed on one screen only — the agent's own queue,
+              which lists orders still in her hands. The moment an order left
+              them there was nowhere to ask anything about it, and this modal
+              is where a confirmed, batched or dispatched order is actually
+              opened. So the customer who rings to cancel a parcel that is
+              already out reached a system with no door for it at all.
+
+              A card, not a link in a corner: asking is the only thing anybody
+              can do to a sealed order, so it is the one control that must be
+              visible without hunting for it.
+            */}
+            {order.confirmationStatus === 'CONFIRMED' && mayRequestChange && (
+              <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 shadow-raised space-y-2">
+                <h4 className="text-xs font-black text-[var(--sys-foreground)]">
+                  طلبٌ على هذا الطلب
+                </h4>
+                <p className="text-xs text-[var(--sys-muted-foreground)]">
+                  {handedOver
+                    ? 'الطرد عند شركة الشحن — التعديل والإلغاء يمرّان برسالةٍ إليهم بعد الموافقة.'
+                    : 'الطلب مؤكَّد وللقراءة فقط — تعديلُه أو إلغاؤه أو تأجيلُه يمرّ بقرار.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setAskOpen(true)}
+                  className="min-h-11 md:min-h-0 inline-flex items-center rounded-lg border border-[var(--sys-border)] px-4 py-1.5 text-xs font-medium text-[var(--sys-foreground)] hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)]"
+                >
+                  تعديل · إلغاء · تأجيل
+                </button>
+              </div>
+            )}
+
+            {/*
+              ABOVE THE BUTTONS, AND ONLY FOR WHOEVER WORKS THE PHONE.
+              The courier's statements say 29.8% of this shop's parcels come
+              back; once the waybill is printed that is a round trip whatever
+              anybody learns afterwards. So the one place this belongs is the
+              moment before the call ends. See orders/ShapeRiskPanel.
+            */}
+            {mayRecordCalls && order?.id && <DuplicateSuspectNotice orderId={order.id} />}
+            {mayRecordCalls && order?.id && <ShapeRiskPanel orderId={order.id} />}
+
+            {mayRecordCalls && (
+            <ConfirmationActions
+              order={order}
+              ar={ar}
+              isRtl={isRtl}
+              onRefreshOrder={async () => {
+                if (order?.id) await loadOrder(order.id);
+                onRefresh();
+              }}
+            />
+            )}
+    </>
+  );
+
+  /*
+   * WHERE THE ORDER CAME FROM, ONE FACT PER ENTRY.
+   *
+   * The header joined up to seven facts with « • » in one string — channel, source, landing page, offer, the
+   * Telegram message and thread — which at 295px wrapped to four or six lines of mixed Arabic and Latin that
+   * flip direction mid-line (ORD-10). A desk still reads them in the header, joined exactly as before; a phone
+   * keeps the date and the channel there and lists the rest, one box each, in «جهة الطلب».
+   */
+  const telegramMessage = (order as any).telegramMessages?.[0];
+  const originFacts = [
+    `قناة الطلب: ${order.source.split(' → ')[0]}`,
+    order.source.includes(' → ') ? `المصدر: ${order.source.split(' → ')[1]}` : null,
+    order.source === 'Landing Page' && order.landingPage?.name ? `صفحة الهبوط: ${order.landingPage.name}` : null,
+    order.offer?.name ? `العرض: ${order.offer.name}` : null,
+    (order.source === 'Telegram' || order.source.startsWith('Telegram → ')) && telegramMessage
+      ? `تيليجرام: رسالة #${telegramMessage.messageId}${telegramMessage.threadId ? ` • موضوع: ${telegramMessage.threadName || telegramMessage.threadId}` : ''}`
+      : null,
+  ].filter((fact): fact is string => !!fact);
+  const subtitle = `أُنشئ في ${arDateTime(order.createdAt)}${(phone ? originFacts.slice(0, 1) : originFacts).map((fact) => ` • ${fact}`).join('')}`;
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
       title={`الطلب ${order.orderNumber}`}
-      subtitle={`أُنشئ في ${arDateTime(order.createdAt)} • قناة الطلب: ${order.source.split(' → ')[0]}${order.source.includes(' → ') ? ` • المصدر: ${order.source.split(' → ')[1]}` : ''}${order.source === 'Landing Page' && order.landingPage?.name ? ` • صفحة الهبوط: ${order.landingPage.name}` : ''}${order.offer?.name ? ` • العرض: ${order.offer.name}` : ''}${(order.source === 'Telegram' || order.source.startsWith('Telegram → ')) && (order as any).telegramMessages?.[0] ? ` • تيليجرام: رسالة #${(order as any).telegramMessages[0].messageId}${(order as any).telegramMessages[0].threadId ? ` • موضوع: ${(order as any).telegramMessages[0].threadName || (order as any).telegramMessages[0].threadId}` : ''}` : ''}`}
+      subtitle={subtitle}
       maxWidth="4xl"
     >
       {/* ─── Prev/Next order navigation (below the header, inside the modal) ───
@@ -520,6 +615,16 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
             </div>
           </div>
 
+          {/* The figure to read aloud on the call, where the call is — the full summary is further down, as before. */}
+          {phone && (
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-4 py-3 shadow-raised">
+              <span className="text-xs font-bold text-[var(--sys-muted-foreground)]">المحصَّل عند الباب</span>
+              <span className="font-black text-[var(--sys-heading)] text-sm" dir="ltr">
+                {money(cod?.cod ?? order.totalAmount)}
+              </span>
+            </div>
+          )}
+
           <CustomerCard
             order={order}
             dialCode={dialCode}
@@ -531,6 +636,8 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
             }}
             onOpenHistory={() => setHistoryOpen(true)}
           />
+
+          {phone && callBlock}
 
           <OrderLinesCard
             order={order}
@@ -564,65 +671,7 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
           {/* What was said about it, under what happened to it. */}
           <OrderNotes orderId={order.id} canWrite={mayWriteNote} />
 
-          {/* Recording a call outcome is the confirmation agent's job. For an
-              owner this screen is oversight, and a panel of buttons whose
-              every press the server refuses is worse than no panel. The
-              server still enforces it — this only stops offering it. */}
-          {/*
-            THE THREE THINGS A CUSTOMER SAYS AFTER CONFIRMATION.
-
-            This door existed on one screen only — the agent's own queue,
-            which lists orders still in her hands. The moment an order left
-            them there was nowhere to ask anything about it, and this modal
-            is where a confirmed, batched or dispatched order is actually
-            opened. So the customer who rings to cancel a parcel that is
-            already out reached a system with no door for it at all.
-
-            A card, not a link in a corner: asking is the only thing anybody
-            can do to a sealed order, so it is the one control that must be
-            visible without hunting for it.
-          */}
-          {order.confirmationStatus === 'CONFIRMED' && mayRequestChange && (
-            <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 shadow-raised space-y-2">
-              <h4 className="text-xs font-black text-[var(--sys-foreground)]">
-                طلبٌ على هذا الطلب
-              </h4>
-              <p className="text-xs text-[var(--sys-muted-foreground)]">
-                {handedOver
-                  ? 'الطرد عند شركة الشحن — التعديل والإلغاء يمرّان برسالةٍ إليهم بعد الموافقة.'
-                  : 'الطلب مؤكَّد وللقراءة فقط — تعديلُه أو إلغاؤه أو تأجيلُه يمرّ بقرار.'}
-              </p>
-              <button
-                type="button"
-                onClick={() => setAskOpen(true)}
-                className="min-h-11 md:min-h-0 inline-flex items-center rounded-lg border border-[var(--sys-border)] px-4 py-1.5 text-xs font-medium text-[var(--sys-foreground)] hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)]"
-              >
-                تعديل · إلغاء · تأجيل
-              </button>
-            </div>
-          )}
-
-          {/*
-            ABOVE THE BUTTONS, AND ONLY FOR WHOEVER WORKS THE PHONE.
-            The courier's statements say 29.8% of this shop's parcels come
-            back; once the waybill is printed that is a round trip whatever
-            anybody learns afterwards. So the one place this belongs is the
-            moment before the call ends. See orders/ShapeRiskPanel.
-          */}
-          {mayRecordCalls && order?.id && <DuplicateSuspectNotice orderId={order.id} />}
-          {mayRecordCalls && order?.id && <ShapeRiskPanel orderId={order.id} />}
-
-          {mayRecordCalls && (
-          <ConfirmationActions
-            order={order}
-            ar={ar}
-            isRtl={isRtl}
-            onRefreshOrder={async () => {
-              if (order?.id) await loadOrder(order.id);
-              onRefresh();
-            }}
-          />
-          )}
+          {!phone && callBlock}
 
         </div>
 
@@ -802,6 +851,12 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
                 {order.moderator?.name && (
                   <p className="text-xs text-[var(--sys-muted)]">أدخله: {order.moderator.name}</p>
                 )}
+                {phone &&
+                  originFacts.slice(1).map((fact) => (
+                    <p key={fact} className="text-xs text-[var(--sys-muted)]" dir="auto">
+                      {fact}
+                    </p>
+                  ))}
               </>
             )}
           </div>
