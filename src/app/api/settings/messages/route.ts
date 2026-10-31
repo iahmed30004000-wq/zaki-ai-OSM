@@ -12,6 +12,7 @@ import {
   saveTemplates,
   templatesFor,
   TEMPLATE_VARS,
+  orderDetailsContext,
   normalizeTemplate,
   type FillContext,
 } from '@/lib/message-templates';
@@ -63,7 +64,8 @@ async function sampleOrder(companyId: string, storeId: string): Promise<FillCont
     where: { companyId, storeId },
     orderBy: { createdAt: 'desc' },
     select: {
-      orderNumber: true, totalAmount: true, currency: true, trackingNumber: true,
+      orderNumber: true, totalAmount: true, currency: true, trackingNumber: true, createdAt: true,
+      items: { select: { productName: true, quantity: true, freeQuantity: true }, orderBy: { createdAt: 'asc' }, take: 20 },
       customer: { select: { fullName: true } },
       region: { select: { name: true } },
       deliveryProvider: { select: { name: true } },
@@ -80,6 +82,10 @@ async function sampleOrder(companyId: string, storeId: string): Promise<FillCont
     barcode: order.trackingNumber,
     region: order.region?.name ?? null,
     storeName: order.store?.name ?? null,
+    ...orderDetailsContext({ createdAt: order.createdAt, items: order.items }),
+    // A real customer's address is not shown to whoever edits wordings (it would also be a door handing out addresses
+    // uncounted): the preview shows a stand-in for where the word goes.
+    address: 'عنوان الزبون الكامل',
   };
 }
 

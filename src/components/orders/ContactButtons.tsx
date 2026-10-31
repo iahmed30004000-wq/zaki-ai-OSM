@@ -2,7 +2,9 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
-import { fillTemplate, whatsappLink, whatsappReady, type FillContext, type MessageTemplate } from '@/lib/message-templates';
+import {
+  fillTemplate, orderDetailsContext, usesOrderDetails, whatsappLink, whatsappReady, type FillContext, type MessageTemplate,
+} from '@/lib/message-templates';
 import { RiChat3Line, RiMessage3Line, RiPhoneLine } from '@remixicon/react';
 
 /** Does a refusal already speak to her? (the Arabic block, as `api-error.ts` asks it) */
@@ -92,6 +94,32 @@ export function ContactButtons({
       .catch(() => setTemplates([]));
   }, [open, templates]);
 
+  /**
+   * THE LINES AND THE ADDRESS, READ WHEN A TEMPLATE ASKS FOR THEM.
+   *
+   * `context` is what the screen already had; no list row carries the order's lines. When the open picker holds a
+   * wording that uses «المنتجات» / «الكمية» / «العنوان» / «تاريخ_الطلب» and there is an order behind the strip, the
+   * order is read once and the four words filled from it. Until it answers (or fails) such a wording cannot be sent:
+   * a message with the words blank is worse than a message a second late.
+   */
+  const [details, setDetails] = useState<Pick<FillContext, 'products' | 'quantity' | 'address' | 'orderDate'> | 'failed' | null>(null);
+  // The strip may be re-used for another order (a list row re-keyed): what was read belongs to the first.
+  useEffect(() => setDetails(null), [orderId]);
+  const needsDetails = !!orderId && (templates ?? []).some((t) => t.active !== false && usesOrderDetails(t.body));
+  useEffect(() => {
+    if (!open || !needsDetails || details) return;
+    let live = true;
+    apiJson<{ order: Parameters<typeof orderDetailsContext>[0] }>(`/api/orders/${orderId}`)
+      .then((d) => live && setDetails(orderDetailsContext(d.order)))
+      .catch(() => live && setDetails('failed'));
+    return () => {
+      live = false;
+    };
+  }, [open, needsDetails, details, orderId]);
+  const fillContext: FillContext = details && details !== 'failed' ? { ...context, ...details } : context;
+  /** A wording that needs the order's lines while they are still being read. */
+  const waiting = (t: MessageTemplate) => details === null && !!orderId && usesOrderDetails(t.body);
+
   useEffect(() => {
     if (!open) return;
     const away = (e: MouseEvent) => {
@@ -170,7 +198,8 @@ export function ContactButtons({
   };
 
   const send = (t: MessageTemplate) => {
-    const text = fillTemplate(t.body, context);
+    if (waiting(t)) return;
+    const text = fillTemplate(t.body, fillContext);
     if (open === 'WHATSAPP') {
       window.open(whatsappLink(phone!, countryCode, text), '_blank', 'noopener');
     } else {
@@ -304,13 +333,14 @@ export function ContactButtons({
                   key={t.id}
                   type="button"
                   onClick={() => send(t)}
+                  disabled={waiting(t)}
                   className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 w-full text-start p-2.5 sm:p-2 rounded-lg hover:bg-[var(--sys-primary-soft)] active:bg-[var(--sys-primary-soft)] transition-colors"
                 >
                   <span className="block text-xs font-semibold text-[var(--sys-heading)]">{t.name}</span>
                   {/* The filled text, not the template: what the customer will
                       actually read is the only useful preview. */}
                   <span className="block text-xs text-[var(--sys-muted-foreground)] line-clamp-2 mt-0.5">
-                    {fillTemplate(t.body, context)}
+                    {waiting(t) ? 'جارٍ التحميل…' : fillTemplate(t.body, fillContext)}
                   </span>
                 </button>
               ))

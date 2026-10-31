@@ -112,6 +112,10 @@ export const TEMPLATE_VARS = [
   { key: 'الباركود', label: 'رقم التتبع' },
   { key: 'المحافظة', label: 'المحافظة' },
   { key: 'المتجر', label: 'اسم المتجر' },
+  { key: 'المنتجات', label: 'المنتجات' },
+  { key: 'الكمية', label: 'الكمية' },
+  { key: 'العنوان', label: 'العنوان' },
+  { key: 'تاريخ_الطلب', label: 'تاريخ الطلب' },
 ] as const;
 
 export const DEFAULT_TEMPLATES: MessageTemplate[] = [
@@ -198,6 +202,14 @@ export interface FillContext {
   barcode?: string | null;
   region?: string | null;
   storeName?: string | null;
+  /** «المنتجات»: each line as «الاسم × الكمية», joined — read from the order's own lines. */
+  products?: string | null;
+  /** «الكمية»: the units the customer asked for (gifts not counted). */
+  quantity?: number | string | null;
+  /** «العنوان»: where the order goes. */
+  address?: string | null;
+  /** «تاريخ_الطلب»: the day the order was made. */
+  orderDate?: string | null;
 }
 
 /**
@@ -217,6 +229,10 @@ export function fillTemplate(body: string, ctx: FillContext): string {
     الباركود: ctx.barcode ?? '',
     المحافظة: ctx.region ?? '',
     المتجر: ctx.storeName ?? '',
+    المنتجات: ctx.products ?? '',
+    الكمية: ctx.quantity == null ? '' : String(ctx.quantity),
+    العنوان: ctx.address ?? '',
+    تاريخ_الطلب: ctx.orderDate ?? '',
   };
   return body
     .replace(/\{([^}]+)\}/g, (whole, name: string) => {
@@ -303,4 +319,42 @@ export async function saveTemplates(
   // that another save may already have overtaken.
   await updateCompanySettings<MessageTemplate[]>(companyId, 'messageTemplates', () => templates);
   return templates;
+}
+
+/**
+ * THE ORDER'S OWN LINES AND ADDRESS, FOR THE WORDS A LIST ROW DOES NOT CARRY.
+ *
+ * The orders list, the tracking list and the queue each hand the message strip a handful of fields; none of them
+ * carries the lines. These four placeholders are read from the one order read («GET /api/orders/:id») by the strip
+ * itself, so every screen that has an order id gets them and none of them has to remember to.
+ */
+export const DETAIL_VARS = ['المنتجات', 'الكمية', 'العنوان', 'تاريخ_الطلب'] as const;
+
+/** Does this wording use a placeholder that needs the order's lines or address? */
+export function usesOrderDetails(body: string): boolean {
+  return DETAIL_VARS.some((v) => body.includes(`{${v}}`));
+}
+
+/** The four placeholders, from the order as the single-order door returns it. Pure; money is never touched. */
+export function orderDetailsContext(order: {
+  createdAt?: string | Date | null;
+  deliveryAddress?: string | null;
+  customer?: { address?: string | null } | null;
+  items?: { productName: string; quantity: number; freeQuantity?: number | null }[] | null;
+}): Pick<FillContext, 'products' | 'quantity' | 'address' | 'orderDate'> {
+  const items = order.items ?? [];
+  const products = items
+    .map((i) => `${i.productName} × ${i.quantity}${i.freeQuantity ? ` (+ ${i.freeQuantity} هدية)` : ''}`)
+    .join('، ');
+  const created = order.createdAt ? new Date(order.createdAt) : null;
+  const orderDate =
+    created && !Number.isNaN(created.getTime())
+      ? `${String(created.getDate()).padStart(2, '0')}/${String(created.getMonth() + 1).padStart(2, '0')}/${created.getFullYear()}`
+      : null;
+  return {
+    products: products || null,
+    quantity: items.length > 0 ? items.reduce((n, i) => n + i.quantity, 0) : null,
+    address: order.deliveryAddress || order.customer?.address || null,
+    orderDate,
+  };
 }
