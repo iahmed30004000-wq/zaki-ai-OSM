@@ -282,9 +282,12 @@ export interface ProductScore {
 export const PRODUCT_GRADE_STATES = [
   /** The caller may see the catalogue but not how it performs. */
   'SALES_HIDDEN',
-  /** Not one order line, ever. 102 of 114 products on this database. */
+  /**
+   * Not one order line IN THE WINDOW the grade reads (ninety days). Never «ever»: the window is all this grade can see, and
+   * four products that delivered 103 to 154 units were told «لم يُطلب قطّ» (31/10) because their orders were older.
+   */
   'NEVER_ORDERED',
-  /** Ordered and never confirmed — refused on the phone every time. */
+  /** Ordered in the window and never confirmed — refused on the phone every time. */
   'NEVER_CONFIRMED',
   /** Confirmed, but under the floor. Nothing is wrong; there is not enough. */
   'THIN_SAMPLE',
@@ -296,8 +299,8 @@ export type ProductGradeState = (typeof PRODUCT_GRADE_STATES)[number];
 
 const STATE_LABEL: Record<ProductGradeState, string> = {
   SALES_HIDDEN: 'الأداء محجوب',
-  NEVER_ORDERED: 'لم يُطلب قطّ',
-  NEVER_CONFIRMED: 'لم يُؤكَّد قطّ',
+  NEVER_ORDERED: 'لا طلب في الفترة',
+  NEVER_CONFIRMED: 'لا تأكيد في الفترة',
   THIN_SAMPLE: HEALTH_AR.unknown,
   GRADED: 'مقيَّم',
 };
@@ -588,7 +591,7 @@ export function gradeProduct(facts: ProductFacts, opts: { minSample?: number } =
 
   // FIRST, because it is a fact about the READER and not about the product:
   // every sentence below would be a claim this caller is not allowed to be
-  // told, and «لم يُطلب قطّ» to somebody who simply may not see the orders
+  // told, and «no order in the window» to somebody who simply may not see the orders
   // would be a lie with a number in it.
   if (s === null) {
     return say(
@@ -605,7 +608,7 @@ export function gradeProduct(facts: ProductFacts, opts: { minSample?: number } =
   if (ordered === 0) {
     return say(
       'NEVER_ORDERED',
-      'لا سطرَ طلبٍ واحداً على هذا المنتج قطّ — والدرجة تُقاس على ما حدث، ولم يحدث شيء. ما ينقصه قبل أن يُطلب مكتوبٌ في جاهزيّة العرض.'
+      'لا سطرَ طلبٍ واحداً على هذا المنتج في فترة التقييم — والدرجة تُقاس على ما حدث فيها، ولم يحدث شيء. وهذا لا يعني أنه لم يُبَع قبلها: المبيعات من أول طلب بعمود «المبيعات». ما ينقصه ليُطلب مكتوبٌ في جاهزيّة العرض.'
     );
   }
 
@@ -615,7 +618,7 @@ export function gradeProduct(facts: ProductFacts, opts: { minSample?: number } =
   if (s.confirmed === 0) {
     return say(
       'NEVER_CONFIRMED',
-      `طُلب ${ordered} مرةً ولم يُؤكَّد ولا مرّة — كلُّها رُفضت على الهاتف. لا نسبةَ تسليمٍ تُقاس على صفرِ تأكيد، والسببُ مكتوبٌ في أسباب الرفض على الطلبات نفسها.`
+      `طُلب ${ordered} مرةً في فترة التقييم ولم يُؤكَّد ولا مرّة — كلُّها رُفضت على الهاتف. لا نسبةَ تسليمٍ تُقاس على صفرِ تأكيد، والسببُ مكتوبٌ في أسباب الرفض على الطلبات نفسها.`
     );
   }
 
@@ -736,7 +739,7 @@ export function catalogueReadiness(grades: readonly ProductGrade[]): CatalogueRe
   if (out.graded) parts.push(`${out.graded} له درجة`);
   if (out.thinSample) parts.push(`${out.thinSample} عيّنتُه تحت الحدّ`);
   if (out.neverConfirmed) parts.push(`${out.neverConfirmed} طُلب ولم يُؤكَّد`);
-  if (out.neverOrdered) parts.push(`${out.neverOrdered} لم يُطلب قطّ`);
+  if (out.neverOrdered) parts.push(`${out.neverOrdered} لم يُطلب في فترة التقييم`);
   if (out.salesHidden) parts.push(`${out.salesHidden} أداؤه محجوبٌ عن هذا الحساب`);
 
   const gaps = out.gaps.length > 0 ? ` وفي بيانات العرض: ${out.gaps.map((g) => `${g.count} ${g.ar}`).join('، ')}.` : '';
