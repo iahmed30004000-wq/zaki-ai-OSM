@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * TAKING THIS ORDER IS THE SAME ACT AS PULLING THE NEXT ONE.
  *
  * «اسحب الطلب التالي» asks `pullRefusal` before it hands anything over:
- * the 120 total, the 40 without a contact attempt, and C1's rule that an
+ * the 300 total, the 40 without a contact attempt, and C1's rule that an
  * untouched order already in your hands comes before a new one.
  *
  * `POST /api/orders/[id]/claim` — take THIS order, by id — asked none of

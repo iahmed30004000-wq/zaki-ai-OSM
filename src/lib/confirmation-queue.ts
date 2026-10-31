@@ -15,7 +15,7 @@ type Tx = Prisma.TransactionClient | typeof db;
  */
 
 /** Caps from the contract. */
-export const CLAIM_CAPS = { withoutAttempt: 40, total: 120 } as const;
+export const CLAIM_CAPS = { withoutAttempt: 40, total: 300 } as const;
 /** A claim with zero logged attempts expires after this many business minutes. */
 export const AUTO_RELEASE_BUSINESS_MINUTES = 90;
 /** How far ahead a postponed order becomes actionable. */
@@ -42,7 +42,7 @@ export const POSTPONE_LEAD_DAYS = 2;
  *
  * ── AND THE CAP STILL BINDS ──
  *
- * 120 is the ceiling on what one person may hold. An entry that would
+ * 300 is the ceiling on what one person may hold. An entry that would
  * cross it goes to the queue instead, and the screen says so — silently
  * handing her a 121st order would make the cap a suggestion.
  * ════════════════════════════════════════════════════════════════════════
