@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 const {
-  db, requireContext, requirePermission, logAudit, recordMovement, reverseMovement, can, receiptGap, markPayableForOrders, state,
+  db, requireContext, requirePermission, logAudit, recordMovement, reverseHandRows, can, receiptGap, markPayableForOrders, state,
 } = vi.hoisted(() => {
   const state = {
     stamped: false,
@@ -58,7 +58,7 @@ const {
   return {
     db, state,
     requireContext: vi.fn(), requirePermission: vi.fn(), logAudit: vi.fn(),
-    recordMovement: vi.fn(), reverseMovement: vi.fn(), can: vi.fn(), receiptGap: vi.fn(), markPayableForOrders: vi.fn(),
+    recordMovement: vi.fn(), reverseHandRows: vi.fn(), can: vi.fn(), receiptGap: vi.fn(), markPayableForOrders: vi.fn(),
   };
 });
 
@@ -73,7 +73,7 @@ vi.mock('@/lib/settlement', async (orig) => ({
 vi.mock('@/lib/wallets', async (orig) => ({
   ...(await orig<typeof import('@/lib/wallets')>()),
   recordMovement: (...a: unknown[]) => recordMovement(...a),
-  reverseMovement: (...a: unknown[]) => reverseMovement(...a),
+  reverseHandRows: (...a: unknown[]) => reverseHandRows(...a),
 }));
 vi.mock('@/lib/commission', async (orig) => ({
   ...(await orig<typeof import('@/lib/commission')>()),
@@ -130,7 +130,7 @@ beforeEach(() => {
   db.order.updateMany.mockImplementation(async (a: { where?: { id?: { in?: unknown[] } } }) => ({ count: a?.where?.id?.in?.length ?? 0 }));
   markPayableForOrders.mockResolvedValue(0);
   recordMovement.mockResolvedValue({ id: 'm1' });
-  reverseMovement.mockResolvedValue({ id: 'rev1' });
+  reverseHandRows.mockResolvedValue({ id: 'rev1' });
   can.mockReturnValue(true);
   state.reads = [statement([{ id: 'r1', walletId: 'w-usd', amount: 1543.9 }])];
 });
@@ -319,11 +319,11 @@ describe('«اعكس اليدوي واعتمد»: the approval reverses the hand
     const res = await approve({ reverseHandRowIds: ['hand-1'] });
 
     expect(res.status).toBe(200);
-    expect(reverseMovement).toHaveBeenCalledTimes(1);
-    expect(reverseMovement.mock.calls[0][1]).toMatchObject({
-      companyId: 'c1', walletId: 'w-usd', movementId: 'hand-1', createdById: 'u1',
+    expect(reverseHandRows).toHaveBeenCalledTimes(1);
+    expect(reverseHandRows.mock.calls[0][1]).toMatchObject({
+      companyId: 'c1', rows: [{ id: 'hand-1', walletId: 'w-usd' }], createdById: 'u1',
     });
-    expect(reverseMovement.mock.calls[0][1].reason).toContain('7446102700052');
+    expect(reverseHandRows.mock.calls[0][1].reason).toContain('7446102700052');
     expect(recordMovement).toHaveBeenCalledTimes(1);
     expect(recordMovement.mock.calls[0][1]).toMatchObject({ direction: 'IN', amount: 1543.9, referenceType: 'STATEMENT' });
     expect(logAudit.mock.calls[0][0].newData).toMatchObject({ reversedHandRows: ['hand-1'] });
@@ -334,7 +334,7 @@ describe('«اعكس اليدوي واعتمد»: the approval reverses the hand
   it('the reversal is written BEFORE the statement movement', async () => {
     state.handRows = [hand()];
     const order: string[] = [];
-    reverseMovement.mockImplementation(async () => { order.push('reverse'); return { id: 'rev1' }; });
+    reverseHandRows.mockImplementation(async () => { order.push('reverse'); return { id: 'rev1' }; });
     recordMovement.mockImplementation(async () => { order.push('record'); return { id: 'm1' }; });
     await approve({ reverseHandRowIds: ['hand-1'] });
     expect(order).toEqual(['reverse', 'record']);
@@ -343,7 +343,7 @@ describe('«اعكس اليدوي واعتمد»: the approval reverses the hand
   it('with nothing alike there is nothing to reverse, and the approval is the plain one', async () => {
     const res = await approve({ reverseHandRowIds: ['hand-1'] });
     expect(res.status).toBe(200);
-    expect(reverseMovement).not.toHaveBeenCalled();
+    expect(reverseHandRows).not.toHaveBeenCalled();
     expect(recordMovement).toHaveBeenCalledTimes(1);
     expect(logAudit.mock.calls[0][0].newData).not.toHaveProperty('reversedHandRows');
   });
@@ -354,14 +354,14 @@ describe('«اعكس اليدوي واعتمد»: the approval reverses the hand
     const res = await approve({ reverseHandRowIds: ['hand-1'] });
     expect(res.status).toBe(403);
     expect((await res.json()).code).toBe('REVERSE_NEEDS_CASHBOX');
-    expect(reverseMovement).not.toHaveBeenCalled();
+    expect(reverseHandRows).not.toHaveBeenCalled();
     expect(recordMovement).not.toHaveBeenCalled();
     expect(logAudit).not.toHaveBeenCalled();
   });
 
   it('a reversal that fails (somebody reversed the row first) stops the whole approval: 409, no movement', async () => {
     state.handRows = [hand()];
-    reverseMovement.mockRejectedValue(new Error('This movement was already reversed'));
+    reverseHandRows.mockRejectedValue(new Error('This movement was already reversed'));
     const res = await approve({ reverseHandRowIds: ['hand-1'] });
     expect(res.status).toBe(409);
     expect((await res.json()).code).toBe('HAND_ROW_CHANGED');
@@ -377,7 +377,7 @@ describe('«اعكس اليدوي واعتمد»: the approval reverses the hand
     state.handRows = [hand({ id: 'h1' }), hand({ id: 'h2' })];
     const res = await approve({ reverseHandRowIds: ['h1', 'h2'] });
     expect(res.status).toBe(200);
-    expect(reverseMovement.mock.calls.map((c) => c[1].movementId)).toEqual(['h1', 'h2']);
+    expect(reverseHandRows.mock.calls[0][1].rows.map((r: { id: string }) => r.id)).toEqual(['h1', 'h2']);
     expect(recordMovement).toHaveBeenCalledTimes(2);
   });
 
@@ -392,7 +392,7 @@ describe('«اعكس اليدوي واعتمد»: the approval reverses the hand
     expect(res.status).toBe(409);
     expect(body.code).toBe('POSSIBLE_DOUBLE');
     expect(body.rows.map((r: { id: string }) => r.id)).toEqual(['h1', 'h2-new']);
-    expect(reverseMovement).not.toHaveBeenCalled();
+    expect(reverseHandRows).not.toHaveBeenCalled();
     expect(recordMovement).not.toHaveBeenCalled();
   });
 
@@ -401,7 +401,7 @@ describe('«اعكس اليدوي واعتمد»: the approval reverses the hand
     const res = await approve({ reverseHandRowIds: ['h1', 'h2'] });
     expect(res.status).toBe(409);
     expect((await res.json()).code).toBe('MORE_HAND_ROWS_THAN_RECEIPTS');
-    expect(reverseMovement).not.toHaveBeenCalled();
+    expect(reverseHandRows).not.toHaveBeenCalled();
     expect(recordMovement).not.toHaveBeenCalled();
   });
 
@@ -409,13 +409,13 @@ describe('«اعكس اليدوي واعتمد»: the approval reverses the hand
     state.handRows = [hand({ id: 'other-wallet', walletId: 'w-jod', wallet: WALLET_JOD }), hand({ id: 'other-amount', amount: 12 })];
     const res = await approve({ reverseHandRowIds: ['hand-1'] });
     expect(res.status).toBe(200);
-    expect(reverseMovement).not.toHaveBeenCalled();
+    expect(reverseHandRows).not.toHaveBeenCalled();
   });
 
   it('a press WITHOUT the answer still stops and shows the rows — nothing reverses on its own', async () => {
     state.handRows = [hand()];
     const res = await approve();
     expect(res.status).toBe(409);
-    expect(reverseMovement).not.toHaveBeenCalled();
+    expect(reverseHandRows).not.toHaveBeenCalled();
   });
 });

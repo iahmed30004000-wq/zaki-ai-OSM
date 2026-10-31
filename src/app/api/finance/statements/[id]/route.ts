@@ -17,7 +17,7 @@ import { approvalRefusal, closedStatementRefusal, isApproved, undoImportRefusal 
 import { countOpenLines } from '@/lib/statement-open-lines';
 import { roundMinor } from '@/lib/money';
 import { explanationOf } from '@/lib/decision-words';
-import { recordMovement, reverseMovement } from '@/lib/wallets';
+import { recordMovement, reverseHandRows } from '@/lib/wallets';
 import { markPayableForOrders } from '@/lib/commission';
 import { zodMessage } from '@/lib/zod-message';
 import {
@@ -467,22 +467,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             error: 'عكس الحركة اليدوية يحتاج صلاحية الصندوق. اطلب ممن يملكها أن يعكسها، أو اعتمد هيك إن كانت مصاريَ أخرى.',
           });
         }
-        for (const d of doubles) {
-          try {
-            await reverseMovement(tx, {
-              companyId,
-              walletId: d.walletId,
-              movementId: d.id,
-              reason: `سُجِّلت بالكشف ${statement.reference} — نفس المبلغ`,
-              createdById: user.id,
-            });
-          } catch {
-            // Somebody reversed that row between the read above and this write: nothing is half done, the person presses again.
-            throw new ApprovalStopped(409, {
-              code: 'HAND_ROW_CHANGED',
-              error: 'تغيّرت الحركة اليدوية قبل عكسها. أعد الضغط على «اعتماد» لترى الحالة الجديدة.',
-            });
-          }
+        try {
+          await reverseHandRows(tx, {
+            companyId,
+            rows: doubles.map((d) => ({ id: d.id, walletId: d.walletId })),
+            reason: `سُجِّلت بالكشف ${statement.reference} — نفس المبلغ`,
+            createdById: user.id,
+          });
+        } catch {
+          // Somebody reversed that row between the read above and this write: nothing is half done, the person presses again.
+          throw new ApprovalStopped(409, {
+            code: 'HAND_ROW_CHANGED',
+            error: 'تغيّرت الحركة اليدوية قبل عكسها. أعد الضغط على «اعتماد» لترى الحالة الجديدة.',
+          });
         }
         reversedDoubles = doubles.map((d) => d.id);
       } else if (doubles.length > 0 && !parsed.data.confirmPossibleDouble) {
