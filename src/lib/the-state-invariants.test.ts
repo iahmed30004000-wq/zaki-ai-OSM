@@ -101,9 +101,9 @@ describe('5 · a partial delivery carries the FULL delivery fee', () => {
 });
 
 describe('8 · the claim caps', () => {
-  it('are 40 without an attempt and 120 in all', () => {
+  it('are 40 without an attempt and 300 in all', () => {
     expect(CLAIM_CAPS.withoutAttempt).toBe(40);
-    expect(CLAIM_CAPS.total).toBe(120);
+    expect(CLAIM_CAPS.total).toBe(300);
   });
 });
 

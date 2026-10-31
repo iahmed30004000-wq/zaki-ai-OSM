@@ -845,7 +845,7 @@ describe('POST /api/orders/ai-intake — the AI modal’s own body, at the real 
  * AND THE SELLER IS TOLD WHEN THE CAP TOOK HER ORDER.
  *
  * An agent keeps the orders she enters — unless she is already holding
- * 120, in which case the entry goes to the shared queue instead. The door
+ * 300, in which case the entry goes to the shared queue instead. The door
  * returns `notice` for exactly that case, and the first version of this
  * work had both windows ignore it: she read «تم إنشاء الطلب», went to
  * «طلباتي», and the order was not there.
@@ -855,7 +855,7 @@ describe('POST /api/orders/ai-intake — the AI modal’s own body, at the real 
  * ═══════════════════════════════════════════════════════════════════════
  */
 describe('the cap notice reaches the seller', () => {
-  const NOTICE = 'وصلت للحد (120) — الطلب راح للطابور';
+  const NOTICE = 'وصلت للحد (300) — الطلب راح للطابور';
 
   it('the quick-entry window says it', async () => {
     const user = userEvent.setup();

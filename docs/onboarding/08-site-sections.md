@@ -125,7 +125,7 @@ flowchart TD
 - **التبويبات:** «للشغل» · «لا يرد» · «أكّدتها» (قراءة بس) · «المؤجلة».
 - **الأزرار:** «اسحب الطلب التالي» (فوق، `PullPanel`) · «اتصال» · «تأكيد الطلب» · «لا يرد» · «مغلق أو خارج التغطية» · «ألغِ» مع السبب · «تأجيل» بموعد · «افتح وعدّل» · «إدخال إشكال» (`confirmation.raise_issue`) · «أعِدْه إلى الطابور» · «طلب تعديل» على المؤكَّد.
 - **بالخلفية:** `POST /api/confirmation/pull` (بيعطي المؤجَّل المستحق أول ثم الأقدم) · `GET /api/confirmation/mine` · `POST /api/orders/[id]/contact-attempts` · `POST /api/orders/[id]/confirmation` بأفعال `start` · `contact_result` · `confirm` · `reject` · `schedule_follow_up` · `cancel`. التأكيد بيحجز؛ الرفض والإلغاء بيحرّروا (`src/app/api/orders/[id]/confirmation/route.ts:379-383`). رفض «طلب وهميّ» بعد اتصال بيحظر الرقم تلقائياً.
-- **حدود السحب:** 40 طلب بلا محاولة اتصال، و120 إجمالاً (`CLAIM_CAPS` بـ`lib/confirmation-queue.ts:18`). بعد 3 مرات «لا يرد» بينغلق لحاله بسبب `NO_ANSWER_3_ATTEMPTS`.
+- **حدود السحب:** 40 طلب بلا محاولة اتصال، و300 إجمالاً (`CLAIM_CAPS` بـ`lib/confirmation-queue.ts:18`). بعد 3 مرات «لا يرد» بينغلق لحاله بسبب `NO_ANSWER_3_ATTEMPTS`.
 - **رفض شائع:** `CONTACT_FIRST` «اتصل بالزبون أول — أو اكبس «لا يرد»» · `REGION_REQUIRED` «حدّد المحافظة أولاً — أجرة التوصيل مبنية عليها ولا يُؤكَّد طلب بلا محافظة» (`lib/confirmation-queue.ts:278,309`) · `INVALID_TRANSITION` · `ORDER_LOCKED` · `CONTACT_LOG_NOT_ALLOWED`.
 - **الكود:** `screens/ConfirmationMineScreen.tsx` · `screens/confirmation/ActionDialogs.tsx` · `src/components/confirmation/PullPanel.tsx` · `lib/confirmation-workflow.ts` · **سيناريوهات:** أ-01…أ-24 · ب-01.
 
@@ -315,7 +315,7 @@ flowchart LR
   F --> I["أكّدتها — قراءة بس، والتغيير بطلب تعديل"]
   C --> J["غلط بالرقم أو العنوان: إدخال إشكال"]
 ```
-بتشتغل كل اليوم بشاشة وحدة. بتسحب لحد 40 طلب بلا محاولة (120 إجمالاً). **سيناريوهات:** أ-01…أ-24.
+بتشتغل كل اليوم بشاشة وحدة. بتسحب لحد 40 طلب بلا محاولة (300 إجمالاً). **سيناريوهات:** أ-01…أ-24.
 
 ### ٢) موظفة متابعة (معنيين)
 ```mermaid

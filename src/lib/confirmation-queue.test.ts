@@ -31,7 +31,7 @@ describe('pullRefusal', () => {
     expect(pullRefusal({ total: 3, withoutAttempt: 1 })?.code).toBe('UNTOUCHED_ORDER');
   });
 
-  it('refuses at the 120 owned cap', () => {
+  it('refuses at the 300 owned cap', () => {
     expect(pullRefusal({ total: CLAIM_CAPS.total, withoutAttempt: 0 })?.code).toBe('CAP_TOTAL');
   });
 

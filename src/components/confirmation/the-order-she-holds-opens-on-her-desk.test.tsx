@@ -84,7 +84,7 @@ const EMPTY_DESK = {
   confirmed: { day: '', q: '', page: 1, pageSize: 25, total: 0, pages: 1, rows: [] },
 };
 const POOL = {
-  waiting: 2, owned: { total: 1, withoutAttempt: 1 }, caps: { withoutAttempt: 40, total: 120 }, leadDays: 2,
+  waiting: 2, owned: { total: 1, withoutAttempt: 1 }, caps: { withoutAttempt: 40, total: 300 }, leadDays: 2,
   canPull: false, autoReleased: 0, orders: null,
   refusal: { code: 'UNTOUCHED_ORDER', message: 'سجّل محاولة اتصال على الطلب JO-7 قبل سحب طلب جديد.', orderId: 'o-7', orderNumber: 'JO-7' },
 };
