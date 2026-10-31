@@ -50,3 +50,21 @@ export function pendingChangesMessage(orderNumbers: string[]): string {
   const more = orderNumbers.length > 8 ? ` و${orderNumbers.length - 8} غيرها` : '';
   return `ما بيصير تسلّم الدفعة: على هالطلبات إلغاء أو تأجيل لسّا ما انحسم (${shown}${more}). قرّروا فيهم أوّلاً.`;
 }
+
+/**
+ * THE HANDOVER OF A BATCH THAT WAS NEVER SENT TO ITS COURIER.
+ *
+ * «إغلاق الشحنة — سُلّمت للشركة» is the line after which a parcel can no longer be sent to the company by API (the dispatch
+ * refuses a batch that is not READY), so the courier's barcode can never come back and no waybill can be printed. A courier
+ * that is connected by API is sent to BEFORE the handover; pressing the handover first is the mistake this sentence stops
+ * (BATCH-2026-0004, 31/10: 147 orders). The press may still go ahead when the person says so — the courier's API can be
+ * down on the day — but only on purpose, with the number in front of her.
+ */
+export function unsentMessage(orderNumbers: string[]): string {
+  const shown = orderNumbers.slice(0, 5).join('، ');
+  const more = orderNumbers.length > 5 ? ' …' : '';
+  return (
+    `${orderNumbers.length} طلب من هالدفعة ما انرحّل للشركة وما إله باركودها (${shown}${more}). ` +
+    'بعد «إغلاق الشحنة» ما بيصير ترحيله من هون، وما بتنطبع بوالصه. رحّل الدفعة أولاً بزر «رحّل إلى الشركة واجلب الباركود».'
+  );
+}

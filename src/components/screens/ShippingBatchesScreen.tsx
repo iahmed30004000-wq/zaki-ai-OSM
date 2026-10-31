@@ -141,16 +141,32 @@ export function ShippingBatchesScreen() {
     if (ok) await setStatus(batch, 'SHIPPED');
   }
 
-  async function setStatus(batch: Batch, status: 'SHIPPED' | 'CLOSED') {
+  /**
+   * `acknowledgeUnsent` is the second press of a handover the server stopped: a courier connected by API was never sent
+   * these parcels, and after «سُلّمت للشركة» they can never be sent from here (BATCH-2026-0004: 147 orders). The server
+   * answers BATCH_UNSENT with the count and the sentence; this asks once, in those words, and only a yes sends it again.
+   */
+  async function setStatus(batch: Batch, status: 'SHIPPED' | 'CLOSED', acknowledgeUnsent = false) {
     setBusy(batch.id);
     try {
       await apiJson(`/api/shipping-batches/${batch.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, ...(acknowledgeUnsent ? { acknowledgeUnsent: true } : {}) }),
       });
       await load();
     } catch (e) {
+      const said = (e as { data?: { code?: string; unsent?: number; errorAr?: string } }).data;
+      if (said?.code === 'BATCH_UNSENT') {
+        const go = await confirm({
+          title: `${said.unsent ?? ''} طلب ما انرحّل للشركة`.trim(),
+          body: said.errorAr ?? '',
+          confirmLabel: 'سلّم رغم ذلك',
+          tone: 'danger',
+        });
+        if (go) await setStatus(batch, status, true);
+        return;
+      }
       toast.failed(e instanceof Error ? e.message : 'تعذر التحديث');
     } finally {
       setBusy(null);
