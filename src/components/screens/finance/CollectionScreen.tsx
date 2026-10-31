@@ -176,7 +176,7 @@ export function CollectionScreen() {
   // The hand rows the server found when asked to approve: shown with «اعتمد هيك» / «رجوع», never auto-confirmed.
   const [doubleFor, setDoubleFor] = useState<{ statement: StatementRow; sentence: string; rows: HandRow[]; people?: Record<string, string> } | null>(null);
   // The short lines the door could not name, shown with «من يتحمّل الفرق؟» until the approver answers for each.
-  const [namingFor, setNamingFor] = useState<{ statement: StatementRow; sentence: string; lines: UnnamedShortfall[]; candidates: ShortfallPerson[]; confirmed: boolean } | null>(null);
+  const [namingFor, setNamingFor] = useState<{ statement: StatementRow; sentence: string; lines: UnnamedShortfall[]; candidates: ShortfallPerson[]; confirmed: boolean | 'reverse' } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -217,7 +217,7 @@ export function CollectionScreen() {
    * When a hand entry of the same money is already in the wallet the server answers POSSIBLE_DOUBLE with the
    * rows. They are shown here; only «اعتمد هيك» sends the approval again with the confirmation.
    */
-  async function approve(s: StatementRow, confirmed = false, people?: Record<string, string>) {
+  async function approve(s: StatementRow, confirmed: boolean | 'reverse' = false, people?: Record<string, string>) {
     setBusy(s.id);
     setError(null);
     setDone(null);
@@ -226,7 +226,7 @@ export function CollectionScreen() {
         method: 'PATCH',
         body: JSON.stringify({
           approve: true,
-          ...(confirmed ? { confirmPossibleDouble: true } : {}),
+          ...(confirmed === 'reverse' ? { reverseHandRows: true } : confirmed ? { confirmPossibleDouble: true } : {}),
           // «من يتحمّل الفرق؟»: the approver's answer for the short lines the door could not name.
           ...(people ? { shortfallPeople: people } : {}),
         }),
@@ -733,6 +733,8 @@ export function CollectionScreen() {
           busy={busy === doubleFor.statement.id}
           onClose={() => setDoubleFor(null)}
           onConfirm={() => void approve(doubleFor.statement, true, doubleFor.people)}
+          // The reversal is a cash-box act: the button is drawn only for who holds that key as well.
+          onReverse={userCan(currentUser, 'finance.cashbox') ? () => void approve(doubleFor.statement, 'reverse', doubleFor.people) : undefined}
         />
       )}
 
@@ -1168,8 +1170,9 @@ function ReceiptDialog({
 /**
  * THE SAME MONEY MAY ALREADY BE IN THE WALLET.
  * The server found hand-entered rows with the same amount in the receipt's wallet. They are listed with who
- * wrote them and when; the person reverses them («قيد عكسي» from the wallets screen) and comes back, or says
- * «اعتمد هيك». Nothing here confirms by itself.
+ * wrote them and when. «اعكس اليدوي واعتمد» says they are the same money — the approval reverses them itself and
+ * writes the statement's movement in one go; «اعتمد هيك» says they are other money and keeps both. Nothing here
+ * answers by itself.
  */
 function PossibleDoubleDialog({
   statement,
@@ -1178,6 +1181,7 @@ function PossibleDoubleDialog({
   busy,
   onClose,
   onConfirm,
+  onReverse,
 }: {
   statement: StatementRow;
   sentence: string;
@@ -1185,6 +1189,8 @@ function PossibleDoubleDialog({
   busy: boolean;
   onClose: () => void;
   onConfirm: () => void;
+  /** Absent when the person does not hold the cash-box key the reversal asks for. */
+  onReverse?: () => void;
 }) {
   return (
     <Modal isOpen onClose={onClose} title={`حركة يدوية بنفس المبلغ — ${statement.reference}`}>
@@ -1211,10 +1217,24 @@ function PossibleDoubleDialog({
             type="button"
             disabled={busy}
             onClick={onConfirm}
-            className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
+            className={
+              onReverse
+                ? 'h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm disabled:opacity-50'
+                : 'h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50'
+            }
           >
             اعتمد هيك
           </button>
+          {onReverse && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onReverse}
+              className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
+            >
+              اعكس اليدوي واعتمد
+            </button>
+          )}
         </div>
       </div>
     </Modal>

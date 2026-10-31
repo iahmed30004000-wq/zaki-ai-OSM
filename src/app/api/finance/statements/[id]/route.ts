@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
-import { requirePermission } from '@/lib/authorization';
+import { can, requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { consumeOrderStock } from '@/lib/stock-consumption';
@@ -17,7 +17,7 @@ import { approvalRefusal, closedStatementRefusal, isApproved, undoImportRefusal 
 import { countOpenLines } from '@/lib/statement-open-lines';
 import { roundMinor } from '@/lib/money';
 import { explanationOf } from '@/lib/decision-words';
-import { recordMovement } from '@/lib/wallets';
+import { recordMovement, reverseMovement } from '@/lib/wallets';
 import { markPayableForOrders } from '@/lib/commission';
 import { zodMessage } from '@/lib/zod-message';
 import {
@@ -50,6 +50,12 @@ const patchSchema = z.object({
    * (or has decided to keep both). Never sent by a screen on its own: only by «اعتمد هيك».
    */
   confirmPossibleDouble: z.boolean().optional(),
+  /**
+   * The person has seen the hand-entered rows and says they ARE the same money: the approval reverses them
+   * itself, in the same transaction that writes the statement's own movement, so the wallet ends holding the
+   * money once. Sent only by «اعكس اليدوي واعتمد». It takes the reversing door's own key as well.
+   */
+  reverseHandRows: z.boolean().optional(),
   /**
    * «من يتحمّل الفرق؟» — for each short line the door could not name, the approver's answer: an employee's id, or
    * `COMPANY` (the loss stays on the company). Keyed by the match row. Sent only after the approval has answered
@@ -299,6 +305,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const approvedAt = new Date();
     // The hand rows the person has just said are NOT the same money — kept for the audit row.
     let confirmedDoubles: string[] = [];
+    // The hand rows the approval itself reversed, because the person said they are the same money as the receipts.
+    let reversedDoubles: string[] = [];
 
     let approved;
     try {
@@ -423,7 +431,41 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         })),
         approvedAt
       );
-      if (doubles.length > 0 && !parsed.data.confirmPossibleDouble) {
+      if (doubles.length > 0 && parsed.data.reverseHandRows) {
+        /*
+         * «THEY ARE THE SAME MONEY» — REVERSED HERE, BY THE APPROVAL, IN THIS TRANSACTION.
+         *
+         * The person used to be sent to the wallet to press «قيد عكسي» and come back. Now the one press does both:
+         * each hand row gets its reversing entry (the ledger is append-only: nothing is edited), then the statement's
+         * own IN is written below. +hand −hand +statement leaves the wallet with the money once. The reversal is a
+         * cash-box act, so it asks the cash-box key as well as the approval's; a failure of any reversal rolls the
+         * approval back, stamp and all.
+         */
+        if (!can(user, 'finance.cashbox')) {
+          throw new ApprovalStopped(403, {
+            code: 'REVERSE_NEEDS_CASHBOX',
+            error: 'عكس الحركة اليدوية يحتاج صلاحية الصندوق. اطلب ممن يملكها أن يعكسها، أو اعتمد هيك إن كانت مصاريَ أخرى.',
+          });
+        }
+        for (const d of doubles) {
+          try {
+            await reverseMovement(tx, {
+              companyId,
+              walletId: d.walletId,
+              movementId: d.id,
+              reason: `سُجِّلت بالكشف ${statement.reference} — نفس المبلغ`,
+              createdById: user.id,
+            });
+          } catch {
+            // Somebody reversed that row between the read above and this write: nothing is half done, the person presses again.
+            throw new ApprovalStopped(409, {
+              code: 'HAND_ROW_CHANGED',
+              error: 'تغيّرت الحركة اليدوية قبل عكسها. أعد الضغط على «اعتماد» لترى الحالة الجديدة.',
+            });
+          }
+        }
+        reversedDoubles = doubles.map((d) => d.id);
+      } else if (doubles.length > 0 && !parsed.data.confirmPossibleDouble) {
         throw new PossibleDouble(
           doubles.map((d) => {
             const wallet = handRows.find((m) => m.id === d.id)!.wallet;
@@ -431,7 +473,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           })
         );
       }
-      confirmedDoubles = doubles.map((d) => d.id);
+      if (reversedDoubles.length === 0) confirmedDoubles = doubles.map((d) => d.id);
 
       // The money moves HERE and nowhere earlier: one wallet movement per
       // receipt, each carrying the wallet it actually landed in.
@@ -844,6 +886,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         // Said by the person, on the screen: the hand rows listed were NOT the same money. Written here so
         // the approval itself carries the answer.
         ...(confirmedDoubles.length > 0 ? { confirmedPossibleDouble: true, handRows: confirmedDoubles } : {}),
+        // The hand rows the approval reversed itself: the person said they were this statement's money.
+        ...(reversedDoubles.length > 0 ? { reversedHandRows: reversedDoubles } : {}),
       },
     });
 

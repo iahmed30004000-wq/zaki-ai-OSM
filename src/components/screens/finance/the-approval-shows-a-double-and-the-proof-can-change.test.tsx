@@ -13,7 +13,9 @@ import React from 'react';
  *    and «احذف الإيصال» (asks first) while the statement is unapproved; after approval both are gone and the
  *    line «الكشف مغلق نهائياً — التصحيح بكشف تسوية» takes their place.
  */
-const { api, fetchApi, confirm } = vi.hoisted(() => ({ api: vi.fn(), fetchApi: vi.fn(), confirm: vi.fn() }));
+const { api, fetchApi, confirm, perms } = vi.hoisted(() => ({
+  api: vi.fn(), fetchApi: vi.fn(), confirm: vi.fn(), perms: { list: [] as string[] },
+}));
 vi.mock('@/lib/api-client', () => ({ apiJson: (...a: unknown[]) => api(...a), apiFetch: (...a: unknown[]) => fetchApi(...a) }));
 vi.mock('next/navigation', () => ({
   usePathname: () => '/finance/collection',
@@ -21,7 +23,7 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 vi.mock('@/context/AppContext', () => ({
-  useApp: () => ({ currentUser: { id: 'u1', status: 'ACTIVE', role: 'COMPANY_ADMIN', permissions: ['settlement.upload', 'settlement.approve'] } }),
+  useApp: () => ({ currentUser: { id: 'u1', status: 'ACTIVE', role: 'COMPANY_ADMIN', permissions: perms.list } }),
 }));
 vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>التحصيل</h1> }));
 vi.mock('@/components/ui/Confirm', () => ({ useConfirm: () => confirm, useAsk: () => async () => null }));
@@ -48,6 +50,7 @@ const calls = (method: string) => api.mock.calls.filter((c) => (c[1] as RequestI
 beforeEach(() => {
   vi.clearAllMocks();
   statements = [statement()];
+  perms.list = ['settlement.upload', 'settlement.approve'];
   confirm.mockResolvedValue(true);
   api.mockImplementation(async (url: string, init?: RequestInit) => {
     if (init?.method === 'DELETE' || init?.method === 'PUT') return { ok: true };
@@ -179,5 +182,38 @@ describe('«اعتماد» when a hand entry of the same money is in the wallet'
     fireEvent.click((await screen.findAllByRole('button', { name: 'اعتماد' }))[0]);
     expect((await screen.findAllByText('الكشف معتمد مسبقاً')).length).toBeGreaterThan(0);
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
+
+describe('«اعكس اليدوي واعتمد» — the hand row is the statement’s money', () => {
+  const rows = [
+    {
+      id: 'hand-1', wallet: 'شام كاش دولار', currencyCode: 'USD', date: '2026-10-27T18:16:00Z', amount: 1543.9,
+      party: 'الباشا 27-10-2026', note: 'Qabas', by: 'مها المحاسبة',
+    },
+  ];
+  const approveCalls = () => fetchApi.mock.calls.filter((c) => (c[1] as RequestInit).method === 'PATCH');
+
+  it('whoever holds the cash-box key is offered it, and it sends the approval with reverseHandRows — never the confirmation', async () => {
+    perms.list = ['settlement.upload', 'settlement.approve', 'finance.cashbox'];
+    fetchApi
+      .mockResolvedValueOnce(json({ code: 'POSSIBLE_DOUBLE', error: SENTENCE, rows }, 409))
+      .mockResolvedValueOnce(json({ statement: { id: 's1' } }, 200));
+    render(<CollectionScreen />);
+    fireEvent.click((await screen.findAllByRole('button', { name: 'اعتماد' }))[0]);
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'اعكس اليدوي واعتمد' }));
+
+    await waitFor(() => expect(approveCalls()).toHaveLength(2));
+    expect(JSON.parse(String((approveCalls()[1][1] as RequestInit).body))).toEqual({ approve: true, reverseHandRows: true });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('without the cash-box key the button is not drawn — the dialog is as it was', async () => {
+    fetchApi.mockResolvedValue(json({ code: 'POSSIBLE_DOUBLE', error: SENTENCE, rows }, 409));
+    render(<CollectionScreen />);
+    fireEvent.click((await screen.findAllByRole('button', { name: 'اعتماد' }))[0]);
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByRole('button', { name: 'اعكس اليدوي واعتمد' })).toBeNull();
+    expect(within(dialog).getByRole('button', { name: 'اعتمد هيك' })).toBeTruthy();
   });
 });
