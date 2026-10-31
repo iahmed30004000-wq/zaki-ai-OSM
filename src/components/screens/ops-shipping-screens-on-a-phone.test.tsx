@@ -409,7 +409,7 @@ describe('«دفعات الشحن»', () => {
     );
   });
 
-  it('DESK: nothing changed — all eight presses in one wrapping row in the old order, no fold, the pill is a pill', async () => {
+  it('DESK: nothing changed — the eight presses keep one wrapping row and their old order (the Excel file sits after the CSV), no fold, the pill is a pill', async () => {
     phone.value = false;
     serve(batch({ provider: { id: 'dp1', name: 'الباشا', code: 'B', kind: 'COMPANY', apiEnabled: true } }));
     await draw();
@@ -422,6 +422,7 @@ describe('«دفعات الشحن»', () => {
       'تحقّق من الطرود',
       'PDF',
       'CSV',
+      'إكسل',
       SEND,
       'إغلاق الشحنة — سُلّمت للشركة',
     ]);
