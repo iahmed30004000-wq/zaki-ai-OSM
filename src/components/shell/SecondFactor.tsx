@@ -270,18 +270,33 @@ function EnrolStep({ challenge, email, onCancel }: { challenge: string; email: s
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const start = useCallback(async () => {
+  // THE OWNER'S CODE (A2). Asked for only when the server says it is required: the first call goes without one, and the
+  // answer decides whether this screen shows the code box or the QR.
+  const [needCode, setNeedCode] = useState(false);
+  const [enrolCode, setEnrolCode] = useState('');
+
+  const start = useCallback(async (typed?: string) => {
+    setBusy(true);
     try {
       const res = await fetch('/api/auth/2fa/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ challenge }),
+        body: JSON.stringify({ challenge, enrolCode: typed }),
       });
       const data = await res.json();
+      if (typeof data?.code === 'string' && data.code.startsWith('ENROL_CODE')) {
+        setNeedCode(true);
+        setError(data.code === 'ENROL_CODE_REQUIRED' ? null : data.error);
+        return;
+      }
       if (!res.ok) throw new Error(data.error || 'تعذّر بدء التفعيل');
+      setNeedCode(false);
+      setError(null);
       setSetup(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'تعذّر بدء التفعيل');
+    } finally {
+      setBusy(false);
     }
   }, [challenge]);
 
@@ -298,7 +313,7 @@ function EnrolStep({ challenge, email, onCancel }: { challenge: string; email: s
       const res = await fetch('/api/auth/2fa/enrol', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ challenge, secret: setup.secret, code }),
+        body: JSON.stringify({ challenge, secret: setup.secret, code, enrolCode: enrolCode || undefined }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'تعذّر التفعيل');
@@ -331,6 +346,50 @@ function EnrolStep({ challenge, email, onCancel }: { challenge: string; email: s
           حفظتُها — إلى تسجيل الدخول
         </button>
       </div>
+    );
+  }
+
+  if (needCode && !setup) {
+    return (
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void start(enrolCode);
+        }}
+        className="space-y-4"
+      >
+        <p className="text-sm leading-relaxed text-[var(--sys-muted-foreground)]">
+          تفعيل التحقّق بخطوتين يحتاج رمزاً يعطيك إياه المدير. اطلبه منه واكتبه هنا.
+        </p>
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-medium text-[var(--sys-heading)]">رمز التفعيل</span>
+          <input
+            autoFocus
+            value={enrolCode}
+            onChange={(e) => setEnrolCode(e.target.value)}
+            placeholder="_____-_____"
+            dir="ltr"
+            autoComplete="off"
+            className="h-11 w-full rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-3 text-center text-lg tracking-[0.4em] tabular-nums"
+            style={{ fontSize: '1.125rem' }}
+          />
+        </label>
+        {error && (
+          <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-sm text-[var(--sys-destructive)]">
+            {error}
+          </p>
+        )}
+        <button
+          type="submit"
+          disabled={busy || enrolCode.trim().length < 8}
+          className="h-11 w-full rounded-lg bg-[var(--sys-primary)] text-sm font-medium text-[var(--sys-primary-foreground)] disabled:opacity-50"
+        >
+          {busy ? <RiLoader4Line className="mx-auto h-5 w-5 animate-spin" aria-hidden /> : 'تابع'}
+        </button>
+        <button type="button" onClick={onCancel} className="h-11 w-full text-xs text-[var(--sys-muted-foreground)]">
+          رجوع
+        </button>
+      </form>
     );
   }
 

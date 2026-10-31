@@ -76,7 +76,7 @@ beforeEach(() => {
   delete process.env.APP_URL;
   delete process.env.NEXT_PUBLIC_APP_URL;
   delete process.env.TRUST_PROXY;
-  getCurrentUser.mockResolvedValue({ id: 'u1', name: 'سارة', companyId: 'c1' });
+  getCurrentUser.mockResolvedValue({ id: 'u1', name: 'سارة', companyId: 'c1', status: 'ACTIVE' });
   db.passkeyChallenge.findFirst.mockResolvedValue({ id: 'tk1', challenge: CHALLENGE });
   db.passkeyChallenge.updateMany.mockResolvedValue({ count: 1 });
   db.passkey.findUnique.mockResolvedValue(null);

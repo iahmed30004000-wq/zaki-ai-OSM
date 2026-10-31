@@ -22,6 +22,10 @@ export async function POST(req: Request) {
     const me = await getCurrentUser();
     if (!me) return NextResponse.json({ error: 'غير مسجَّل الدخول' }, { status: 401 });
 
+    // An account that is suspended, disabled or still pending adds no way in (A1). The step-up itself was asked when the
+    // challenge was issued; this door accepts nothing without one.
+    if (me.status !== 'ACTIVE') return NextResponse.json({ error: 'الحساب غير مفعّل' }, { status: 403 });
+
     const rp = relyingParty(publicOrigin(req));
     if (!rp) return NextResponse.json({ error: 'البصمة تحتاج اتصالاً آمناً (HTTPS)' }, { status: 400 });
 

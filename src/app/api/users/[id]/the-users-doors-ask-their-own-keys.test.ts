@@ -20,6 +20,10 @@ const { db, logAudit, actor, held, hashPassword } = vi.hoisted(() => ({
     user: { findUnique: vi.fn(), update: vi.fn(), delete: vi.fn() },
     role: { findFirst: vi.fn(), findUnique: vi.fn() },
     company: { findMany: vi.fn() },
+    // PR-A (A1): a password set, a sign-out or a suspension also removes the fingerprints, in one transaction. The transaction runs on this same object.
+    passkey: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+    passkeyChallenge: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+    $transaction: vi.fn(),
   },
   logAudit: vi.fn(),
   actor: { current: { id: 'admin', name: 'مدير', role: 'COMPANY_ADMIN', companyId: 'c1' as string | null } },
@@ -67,6 +71,7 @@ beforeEach(() => {
   holding('users.edit');
   db.user.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => row(where.id));
   db.user.update.mockImplementation(async () => row('x'));
+  db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn(db));
   db.user.delete.mockResolvedValue({});
   hashPassword.mockResolvedValue('hashed');
   logAudit.mockResolvedValue(undefined);

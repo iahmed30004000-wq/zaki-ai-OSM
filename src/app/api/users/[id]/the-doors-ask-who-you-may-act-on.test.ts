@@ -21,6 +21,9 @@ const { db, actor, canActOnUser, held } = vi.hoisted(() => ({
     // The payload the exception door answers with reads the role's rows.
     rolePermission: { findMany: vi.fn(async () => []) },
     userPermission: { findUnique: vi.fn(), delete: vi.fn(), findMany: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn() },
+    // PR-A (A1): suspending also removes the fingerprints, in one transaction that runs on this same object.
+    passkey: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+    passkeyChallenge: { deleteMany: vi.fn(async () => ({ count: 0 })) },
     $transaction: vi.fn(),
   },
   actor: { current: { id: 'manager', name: 'مدير', role: 'MANAGER', companyId: 'c1', status: 'ACTIVE' } as Record<string, unknown> },
@@ -76,6 +79,7 @@ describe('an account the actor may not act on', () => {
   });
 
   it('an account within reach is suspended as before', async () => {
+    db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn(db));
     const res = await patch({ action: 'changeStatus', status: 'SUSPENDED' });
     expect(res.status, await res.clone().text()).toBe(200);
     expect(canActOnUser).toHaveBeenCalledWith(expect.objectContaining({ id: 'manager' }), expect.objectContaining({ id: 'admin2', roleId: 'r-admin' }));

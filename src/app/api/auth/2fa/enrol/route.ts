@@ -4,6 +4,8 @@ import { readChallenge } from '@/lib/two-factor-challenge';
 import { TwoFactorRefused, completeEnrolment } from '@/lib/two-factor';
 import { rateLimitByIp, getClientIp } from '@/lib/rate-limit';
 import { logAudit } from '@/lib/audit';
+import { gateEnrolment } from '@/lib/enrol-code';
+import { enrolCodeRequired } from '@/lib/auth-switches';
 
 /**
  * POST /api/auth/2fa/enrol — prove the authenticator works, then keep it.
@@ -24,7 +26,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'محاولات كثيرة — انتظر قليلاً' }, { status: 429 });
     }
 
-    const { challenge, secret, code } = await req.json().catch(() => ({}));
+    const { challenge, secret, code, enrolCode } = await req.json().catch(() => ({}));
     const ticket = await readChallenge(challenge, 'enrol');
     if (!ticket) {
       return NextResponse.json({ error: 'انتهت صلاحية الطلب — سجّل الدخول من جديد' }, { status: 401 });
@@ -33,9 +35,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'الرمز مطلوب' }, { status: 400 });
     }
 
-    const { recoveryCodes } = await db.$transaction((tx) =>
-      completeEnrolment(tx, { userId: ticket.userId, secret, code })
-    );
+    /*
+     * THE OWNER'S CODE IS CHECKED AGAIN HERE, AND SPENT HERE (A2). Checking it only at `start` would let a ticket that
+     * got a secret finish without one; spending it only after a successful setup means a wrong six digits does not burn
+     * the owner's code.
+     */
+    const row = enrolCodeRequired()
+      ? await db.user.findUnique({ where: { id: ticket.userId }, select: { enrolCodeHash: true, enrolCodeExpiresAt: true } })
+      : null;
+    const gate = await gateEnrolment(ticket.userId, row ?? {}, enrolCode);
+    if (!gate.ok) return NextResponse.json({ error: gate.error, code: gate.code }, { status: gate.status });
+
+    const { recoveryCodes } = await db.$transaction(async (tx) => {
+      const done = await completeEnrolment(tx, { userId: ticket.userId, secret, code });
+      // Spent with the setup, in the same transaction; never touched while the switch is off.
+      if (enrolCodeRequired()) {
+        await tx.user.update({ where: { id: ticket.userId }, data: { enrolCodeHash: null, enrolCodeExpiresAt: null } });
+      }
+      return done;
+    });
 
     const user = await db.user.findUnique({
       where: { id: ticket.userId },

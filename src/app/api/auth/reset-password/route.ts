@@ -7,6 +7,7 @@ import { rateLimit, getClientIp } from '@/lib/rate-limit';
 import { storedForm } from '@/lib/reset-token';
 import { UserRole, UserStatus, ROLE_PERMISSIONS } from '@/types/auth';
 import { zodMessage } from '@/lib/zod-message';
+import { wipePasskeys } from '@/lib/passkey-guard';
 
 const resetSchema = z
   .object({
@@ -57,14 +58,19 @@ export async function POST(req: Request) {
     const passwordHash = await hashPassword(password);
 
     // Bump tokenVersion: invalidates every existing session for this user
-    const updated = await db.user.update({
-      where: { id: user.id },
-      data: {
-        passwordHash,
-        resetToken: null,
-        resetTokenExpires: null,
-        tokenVersion: { increment: 1 },
-      },
+    // The fingerprints go with the sessions (A1): whoever held the old password may have added one.
+    const updated = await db.$transaction(async (tx) => {
+      const row = await tx.user.update({
+        where: { id: user.id },
+        data: {
+          passwordHash,
+          resetToken: null,
+          resetTokenExpires: null,
+          tokenVersion: { increment: 1 },
+        },
+      });
+      await wipePasskeys(tx, user.id);
+      return row;
     });
 
     /*
