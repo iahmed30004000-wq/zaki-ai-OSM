@@ -185,6 +185,27 @@ export async function reverseMovement(
   });
 }
 
+/**
+ * Reverse, one by one and in the order given, hand-entered rows the person said are the money of a statement
+ * the caller is approving. Always on the CALLER'S transaction client: a failure on any row rolls the whole
+ * approval back. Hand rows carry no reference, so none of them can be an expense (`reverseMovement` voids an
+ * expense only by its `EXPENSE` reference).
+ */
+export async function reverseHandRows(
+  tx: Prisma.TransactionClient,
+  p: { companyId: string; rows: { id: string; walletId: string }[]; reason: string; createdById: string }
+) {
+  for (const row of p.rows) {
+    await reverseMovement(tx, {
+      companyId: p.companyId,
+      walletId: row.walletId,
+      movementId: row.id,
+      reason: p.reason,
+      createdById: p.createdById,
+    });
+  }
+}
+
 /** Why an expense could not be cancelled — each with a sentence a person can act on. */
 export type ExpenseRefusal = 'NOT_FOUND' | 'ALREADY_VOID' | 'NOT_PAID_BY_THIS' | 'OTHER_STORE' | 'NOT_ALLOWED';
 
