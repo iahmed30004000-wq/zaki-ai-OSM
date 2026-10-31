@@ -12,13 +12,14 @@ import { LabelSizePicker, useLabelSize } from '@/components/labels/LabelSize';
 import { BLOCKED_WAYBILLS, describeRefused, openWaybills, WaybillError } from '@/components/labels/openWaybills';
 import { useAsk, useConfirm, useTell } from '@/components/ui/Confirm';
 import { ScanSheet } from '@/components/scan/ScanButton';
-import { RiBarcodeLine, RiDownload2Line, RiEBike2Line, RiLoader4Line, RiLockLine, RiPencilLine, RiPrinterLine, RiQrScan2Line, RiSendPlaneLine, RiTruckLine } from '@remixicon/react';
+import { RiBarcodeLine, RiDownload2Line, RiEBike2Line, RiFileExcel2Line, RiLoader4Line, RiLockLine, RiPencilLine, RiPrinterLine, RiQrScan2Line, RiSendPlaneLine, RiTruckLine } from '@remixicon/react';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/Toast';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
+import { useCan } from '@/hooks/useCan';
 import { MissionDone, NextStepButton } from '@/components/ui/NextStep';
 
 /**
@@ -83,6 +84,12 @@ const STATUS: Record<string, { ar: string; cls: string }> = {
 export function ShippingBatchesScreen() {
   const toast = useToast();
   const phone = useIsPhone();
+  // The Excel file is names, phones and addresses: the door asks the batches key AND the address-book key, so the button
+  // is drawn only for whoever it will answer.
+  // Both asked on every render (a hook is never called behind `&&`).
+  const mayBatches = useCan('ops.batches');
+  const mayContacts = useCan('customers.view');
+  const mayExport = mayBatches && mayContacts;
   const [batches, setBatches] = useState<Batch[] | null>(null);
   const [total, setTotal] = useState(0);
   const [filter, setFilter] = useState<'all' | 'READY' | 'SHIPPED' | 'CLOSED'>('all');
@@ -409,6 +416,37 @@ export function ShippingBatchesScreen() {
     }
   }
 
+  /**
+   * THE BATCH'S ORDERS AS AN EXCEL FILE — for the parcels that have to be made at the courier by hand.
+   *
+   * The waybill CSV beside it refuses an order with no courier barcode, which is every order of a batch that was handed
+   * over before it was sent. This one lists them all. It is fetched, not linked: a refusal (a missing key, a batch of
+   * another store) must be said on this screen, not saved as a file named after the address.
+   */
+  async function exportBatch(batch: Batch) {
+    setBusy(batch.id);
+    setError(null);
+    try {
+      const res = await apiFetch(`/api/shipping-batches/${batch.id}/export`);
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { errorAr?: string; error?: string };
+        throw new Error(data.errorAr || data.error || 'تعذر تجهيز ملف الإكسل');
+      }
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${batch.batchNumber}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'تعذر تجهيز ملف الإكسل');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   if (!batches) {
     return (
       <div className="flex items-center justify-center gap-2 text-[var(--sys-muted-foreground)] text-sm py-16">
@@ -533,6 +571,18 @@ export function ShippingBatchesScreen() {
                 CSV
               </button>
             );
+            /* Every order of the batch, barcode or not: the sheet for making the parcels at the courier's portal. */
+            const xlsxBtn = mayExport ? (
+              <button
+                onClick={() => void exportBatch(b)}
+                disabled={busy === b.id || b._count.orders === 0}
+                title="كل طلبات الدفعة في ملف إكسل، بباركود الشركة أو بدونه — لإنشاء الطرود عند الشركة يدوياً"
+                className={BTN}
+              >
+                {busy === b.id ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiFileExcel2Line className="w-4 h-4" />}
+                إكسل
+              </button>
+            ) : null;
             /* RiSendPlaneLine the orders to the courier and take their barcodes.
                Separate from marking the batch handed over: one is a
                call to their server, the other is our own record, and
@@ -725,9 +775,10 @@ export function ShippingBatchesScreen() {
                       {printBtn}
                       {verifyBtn}
                     </div>
-                    <AdvancedGroup holds="PDF · CSV">
+                    <AdvancedGroup holds={xlsxBtn ? 'PDF · CSV · إكسل' : 'PDF · CSV'}>
                       {pdfBtn}
                       {csvBtn}
+                      {xlsxBtn}
                     </AdvancedGroup>
                     {manualNote}
                   </div>
@@ -737,6 +788,7 @@ export function ShippingBatchesScreen() {
                     {verifyBtn}
                     {pdfBtn}
                     {csvBtn}
+                    {xlsxBtn}
                     {dispatchBtn}
                     {manualNote}
                     {shipBtn}
