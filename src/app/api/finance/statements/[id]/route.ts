@@ -55,7 +55,7 @@ const patchSchema = z.object({
    * itself, in the same transaction that writes the statement's own movement, so the wallet ends holding the
    * money once. Sent only by «اعكس اليدوي واعتمد». It takes the reversing door's own key as well.
    */
-  reverseHandRows: z.boolean().optional(),
+  reverseHandRowIds: z.array(z.string().min(1).max(64)).max(50).optional(),
   /**
    * «من يتحمّل الفرق؟» — for each short line the door could not name, the approver's answer: an employee's id, or
    * `COMPANY` (the loss stays on the company). Keyed by the match row. Sent only after the approval has answered
@@ -431,7 +431,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         })),
         approvedAt
       );
-      if (doubles.length > 0 && parsed.data.reverseHandRows) {
+      if (doubles.length > 0 && (parsed.data.reverseHandRowIds?.length ?? 0) > 0) {
         /*
          * «THEY ARE THE SAME MONEY» — REVERSED HERE, BY THE APPROVAL, IN THIS TRANSACTION.
          *
@@ -441,6 +441,26 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
          * cash-box act, so it asks the cash-box key as well as the approval's; a failure of any reversal rolls the
          * approval back, stamp and all.
          */
+        // The answer covers the rows the person SAW. A row that appeared since (or in the second round trip) is
+        // shown to them first: the approval stops with the list again instead of reversing what nobody looked at.
+        const shown = new Set(parsed.data.reverseHandRowIds);
+        const unseen = doubles.filter((d) => !shown.has(d.id));
+        if (unseen.length > 0) {
+          throw new PossibleDouble(
+            doubles.map((d) => {
+              const wallet = handRows.find((m) => m.id === d.id)!.wallet;
+              return { ...d, wallet: wallet.name, currencyCode: wallet.currencyCode };
+            })
+          );
+        }
+        // More hand rows than receipts: at least one of them is not this statement's money, and one press cannot
+        // say which. The person reverses the extra one from the wallet, or keeps both with «اعتمد هيك».
+        if (doubles.length > receipts.length) {
+          throw new ApprovalStopped(409, {
+            code: 'MORE_HAND_ROWS_THAN_RECEIPTS',
+            error: 'عدد الحركات اليدوية المشابهة أكبر من عدد إيصالات الكشف، فواحدة منها على الأقل مصاري ثانية. اعكس الزائدة من شاشة المحافظ ثم اعتمد.',
+          });
+        }
         if (!can(user, 'finance.cashbox')) {
           throw new ApprovalStopped(403, {
             code: 'REVERSE_NEEDS_CASHBOX',

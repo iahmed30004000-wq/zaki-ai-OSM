@@ -194,7 +194,7 @@ describe('«اعكس اليدوي واعتمد» — the hand row is the stateme
   ];
   const approveCalls = () => fetchApi.mock.calls.filter((c) => (c[1] as RequestInit).method === 'PATCH');
 
-  it('whoever holds the cash-box key is offered it, and it sends the approval with reverseHandRows — never the confirmation', async () => {
+  it('whoever holds the cash-box key is offered it, and it sends the approval with the ids of the rows it showed (reverseHandRowIds) — never the confirmation', async () => {
     perms.list = ['settlement.upload', 'settlement.approve', 'finance.cashbox'];
     fetchApi
       .mockResolvedValueOnce(json({ code: 'POSSIBLE_DOUBLE', error: SENTENCE, rows }, 409))
@@ -204,7 +204,7 @@ describe('«اعكس اليدوي واعتمد» — the hand row is the stateme
     fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'اعكس اليدوي واعتمد' }));
 
     await waitFor(() => expect(approveCalls()).toHaveLength(2));
-    expect(JSON.parse(String((approveCalls()[1][1] as RequestInit).body))).toEqual({ approve: true, reverseHandRows: true });
+    expect(JSON.parse(String((approveCalls()[1][1] as RequestInit).body))).toEqual({ approve: true, reverseHandRowIds: ['hand-1'] });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 

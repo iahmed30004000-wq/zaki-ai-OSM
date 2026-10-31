@@ -176,7 +176,7 @@ export function CollectionScreen() {
   // The hand rows the server found when asked to approve: shown with «اعتمد هيك» / «رجوع», never auto-confirmed.
   const [doubleFor, setDoubleFor] = useState<{ statement: StatementRow; sentence: string; rows: HandRow[]; people?: Record<string, string> } | null>(null);
   // The short lines the door could not name, shown with «من يتحمّل الفرق؟» until the approver answers for each.
-  const [namingFor, setNamingFor] = useState<{ statement: StatementRow; sentence: string; lines: UnnamedShortfall[]; candidates: ShortfallPerson[]; confirmed: boolean | 'reverse' } | null>(null);
+  const [namingFor, setNamingFor] = useState<{ statement: StatementRow; sentence: string; lines: UnnamedShortfall[]; candidates: ShortfallPerson[]; confirmed: boolean | string[] } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -217,7 +217,7 @@ export function CollectionScreen() {
    * When a hand entry of the same money is already in the wallet the server answers POSSIBLE_DOUBLE with the
    * rows. They are shown here; only «اعتمد هيك» sends the approval again with the confirmation.
    */
-  async function approve(s: StatementRow, confirmed: boolean | 'reverse' = false, people?: Record<string, string>) {
+  async function approve(s: StatementRow, confirmed: boolean | string[] = false, people?: Record<string, string>) {
     setBusy(s.id);
     setError(null);
     setDone(null);
@@ -226,7 +226,7 @@ export function CollectionScreen() {
         method: 'PATCH',
         body: JSON.stringify({
           approve: true,
-          ...(confirmed === 'reverse' ? { reverseHandRows: true } : confirmed ? { confirmPossibleDouble: true } : {}),
+          ...(Array.isArray(confirmed) ? { reverseHandRowIds: confirmed } : confirmed ? { confirmPossibleDouble: true } : {}),
           // «من يتحمّل الفرق؟»: the approver's answer for the short lines the door could not name.
           ...(people ? { shortfallPeople: people } : {}),
         }),
@@ -734,7 +734,7 @@ export function CollectionScreen() {
           onClose={() => setDoubleFor(null)}
           onConfirm={() => void approve(doubleFor.statement, true, doubleFor.people)}
           // The reversal is a cash-box act: the button is drawn only for who holds that key as well.
-          onReverse={userCan(currentUser, 'finance.cashbox') ? () => void approve(doubleFor.statement, 'reverse', doubleFor.people) : undefined}
+          onReverse={userCan(currentUser, 'finance.cashbox') ? () => void approve(doubleFor.statement, doubleFor.rows.map((r) => r.id), doubleFor.people) : undefined}
         />
       )}
 
