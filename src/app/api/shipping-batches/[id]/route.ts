@@ -8,7 +8,9 @@ import { authorize, can } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { redactCustomerForWarehouse } from '@/lib/operations';
 import { totalsBeforeDiscount } from '@/lib/money';
-import { BATCH_STATUSES, EMPTY_BATCH_AR, checkStep, pendingChangesMessage, type BatchStatus } from '@/lib/batch-steps';
+import { BATCH_STATUSES, EMPTY_BATCH_AR, checkStep, pendingChangesMessage, unsentMessage, type BatchStatus } from '@/lib/batch-steps';
+import { COURIER_KIND_SELECT } from '@/lib/waybill';
+import { isAutomated } from '@/lib/couriers';
 import { emitAppEvent } from '@/lib/apps/events';
 
 /** The batch was moved by someone else between the read and the write. */
@@ -17,6 +19,12 @@ class BatchMoved extends Error {}
 class EmptyBatch extends Error {}
 /** A parcel changed between the list of members and the stamp — the whole press stops. */
 class MembersMoved extends Error {}
+/** A courier connected by API, and parcels of the batch that were never sent to it (no courier barcode). */
+class UnsentParcels extends Error {
+  constructor(readonly orderNumbers: string[]) {
+    super('BATCH_UNSENT');
+  }
+}
 /** Parcels with a cancel or a postponement still unanswered. */
 class PendingChanges extends Error {
   constructor(readonly orderNumbers: string[]) {
@@ -134,9 +142,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (!batch) return NextResponse.json({ error: 'Batch not found', errorAr: 'الدفعة غير موجودة. أعد تحميل القائمة.' }, { status: 404 });
 
     const body = await req.json();
-    const { status, notes, deliveryProviderId } = body as {
-      status?: string; notes?: string; deliveryProviderId?: string;
+    const { status, notes, deliveryProviderId, acknowledgeUnsent } = body as {
+      status?: string; notes?: string; deliveryProviderId?: string; acknowledgeUnsent?: boolean;
     };
+    // How many parcels were handed over with no courier barcode, said yes to by the person: written to the audit row.
+    let unsentHandedOver = 0;
 
     const updateData: Record<string, unknown> = {};
     /*
@@ -234,6 +244,26 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           });
           if (members.length === 0) throw new EmptyBatch();
 
+          /*
+           * A COURIER CONNECTED BY API IS SENT TO BEFORE THE HANDOVER.
+           *
+           * After this press the dispatch refuses the batch for good (it only sends a READY one), so a parcel handed over
+           * without its courier barcode can never get one from here and its waybill can never be printed — 147 orders
+           * of BATCH-2026-0004 went that way on 31/10. The press therefore stops and names them; the person who means
+           * it (the courier's API is down today) sends `acknowledgeUnsent` and the number goes to the audit row.
+           * A courier worked by hand has no barcode to wait for and is not asked.
+           */
+          const courier = batch.deliveryProviderId
+            ? await tx.deliveryProvider.findFirst({ where: { id: batch.deliveryProviderId, companyId }, select: COURIER_KIND_SELECT })
+            : null;
+          if (courier && isAutomated(courier)) {
+            const unsent = members.filter((m) => !m.trackingNumber);
+            if (unsent.length > 0) {
+              if (acknowledgeUnsent !== true) throw new UnsentParcels(unsent.map((m) => m.orderNumber));
+              unsentHandedOver = unsent.length;
+            }
+          }
+
           const stamped = await tx.order.updateMany({
             where: { id: { in: members.map((m) => m.id) }, shippingBatchId: id, companyId, storeId, shippingStatus: 'READY_FOR_PICKUP' },
             data: { shippingStatus: 'SHIPPED', shippedAt: new Date(), version: { increment: 1 } },
@@ -265,6 +295,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         const moved = 'تغيّر طرد من الدفعة أثناء الضغط (أُلغي أو أُجِّل) — ما انسلّم شي. حدّث الصفحة وجرّب من جديد.';
         return NextResponse.json({ error: moved, errorAr: moved, code: 'MEMBERS_MOVED' }, { status: 409 });
       }
+      if (e instanceof UnsentParcels) {
+        const message = unsentMessage(e.orderNumbers);
+        return NextResponse.json(
+          { error: message, errorAr: message, code: 'BATCH_UNSENT', unsent: e.orderNumbers.length, orders: e.orderNumbers.slice(0, 20) },
+          { status: 409 }
+        );
+      }
       if (e instanceof PendingChanges) {
         const message = pendingChangesMessage(e.orderNumbers);
         return NextResponse.json(
@@ -293,7 +330,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       companyId, userId: user.id, action: 'SHIPPING_BATCH_UPDATED',
       entity: 'ShippingBatch', entityId: id,
       previousData: { status: batch.status },
-      newData: { status: step ?? batch.status, by: user.name },
+      newData: { status: step ?? batch.status, by: user.name, ...(unsentHandedOver > 0 ? { handedOverUnsent: unsentHandedOver } : {}) },
     });
 
     return NextResponse.json({ success: true, batch: updated });
