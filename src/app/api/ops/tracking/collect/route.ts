@@ -10,6 +10,7 @@ import { markPayableForOrders } from '@/lib/commission';
 import { roundMinor } from '@/lib/money';
 import { zodMessage } from '@/lib/zod-message';
 import { expectedAmountFor, SETTLEMENT_ORDER_SELECT } from '@/lib/settlement';
+import { statementNamingRefusal } from '@/lib/settlement-gates';
 
 /**
  * POST /api/ops/tracking/collect — settle by hand.
@@ -34,6 +35,13 @@ const schema = z.object({
   note: z.string().trim().min(3, 'الملاحظة إلزامية').max(300),
 });
 
+/** A refusal found inside the transaction: it rolls back and this is the answer. */
+class CollectStopped extends Error {
+  constructor(readonly body: { code: string; error: string; orders?: string[] }) {
+    super(body.code);
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const { user, companyId, storeId, country } = await requireContext();
@@ -54,6 +62,8 @@ export async function POST(req: Request) {
       where: { id: { in: parsed.data.orderIds }, companyId, storeId },
       select: {
         id: true, orderNumber: true, currency: true, settlementStatus: true,
+        // How a statement line could name the order: our reference, or the courier's barcode.
+        merchantRef: true, trackingNumber: true, deliveryProviderId: true,
         // Everything the settlement rule reads, in one spread. The delivered
         // lines are part of it: without them a partial delivery's expected
         // net falls back to the whole order and this dialog asks the operator
@@ -219,7 +229,55 @@ export async function POST(req: Request) {
 
     const party = orders[0].deliveryProvider?.name ?? 'تحصيل يدوي';
 
-    const result = await db.$transaction(async (tx) => {
+    let result;
+    try {
+      result = await db.$transaction(async (tx) => {
+      /**
+       * AN ORDER A STATEMENT SPEAKS FOR IS NOT COLLECTED BY HAND.
+       *
+       * The statement writes this money at its approval (or already did, with a MISMATCHED line too), so a
+       * hand collection of the same order books it twice — once as «تحصيل شركة الشحن» from the statement,
+       * once as «تحصيل يدوي» from here. Read inside the transaction, with the lines of THIS store's
+       * statements only. A sweep row «MISSING_IN_STATEMENT» is not a line, so it never blocks.
+       */
+      const refs = orders.map((o) => o.merchantRef).filter((r): r is string => !!r);
+      const barcodes = orders.map((o) => o.trackingNumber).filter((b): b is string => !!b);
+      const lines =
+        refs.length + barcodes.length === 0
+          ? []
+          : await tx.statementLine.findMany({
+              where: {
+                statement: { companyId, storeId },
+                OR: [
+                  ...(refs.length ? [{ merchantRef: { in: refs } }] : []),
+                  ...(barcodes.length ? [{ barcode: { in: barcodes } }] : []),
+                ],
+              },
+              select: {
+                merchantRef: true,
+                barcode: true,
+                statement: { select: { reference: true, status: true, approvedAt: true, deliveryProviderId: true } },
+              },
+            });
+      const covered = statementNamingRefusal(orders, lines);
+      if (covered) throw new CollectStopped(covered);
+
+      /**
+       * ONE PRESS BOOKS THE MONEY, EVEN IF TWO ARE IN FLIGHT.
+       *
+       * The SETTLED check above was read outside this transaction, so two simultaneous presses both passed it
+       * and both wrote the money. The orders are claimed here, conditionally — only those not yet SETTLED —
+       * and the claim must take every one of them: the second press waits on the rows, finds them settled,
+       * gets a short count and rolls back before it writes a movement.
+       */
+      const claimed = await tx.order.updateMany({
+        where: { id: { in: orders.map((o) => o.id) }, settlementStatus: { not: 'SETTLED' } },
+        data: { settlementStatus: 'SETTLED' },
+      });
+      if (claimed.count !== orders.length) {
+        throw new CollectStopped({ code: 'ALREADY_SETTLED', error: 'انحصّل من قبل — حدّث الصفحة' });
+      }
+
       const movement = await recordMovement(tx, {
         companyId,
         walletId: wallet.id,
@@ -231,11 +289,6 @@ export async function POST(req: Request) {
         referenceType: 'MANUAL_COLLECTION',
         referenceId: orders[0].id,
         createdById: user.id,
-      });
-
-      await tx.order.updateMany({
-        where: { id: { in: orders.map((o) => o.id) } },
-        data: { settlementStatus: 'SETTLED' },
       });
 
       // Settled orders make their commission payable — the same rule as a
@@ -255,7 +308,11 @@ export async function POST(req: Request) {
       }
 
       return movement;
-    });
+      });
+    } catch (e) {
+      if (e instanceof CollectStopped) return NextResponse.json(e.body, { status: 409 });
+      throw e;
+    }
 
     await logAudit({
       companyId, userId: user.id, action: 'MANUAL_COLLECTION',

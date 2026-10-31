@@ -9,6 +9,7 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { receiptGap } from '@/lib/settlement';
 import { zodMessage } from '@/lib/zod-message';
+import { receiptEditRefusal } from '@/lib/settlement-gates';
 import {
   MAX_PROOF_BYTES,
   describeProof,
@@ -87,6 +88,9 @@ const createSchema = z.object({
     .optional(),
 });
 
+/** The statement was approved between the check and the write: the transaction rolls back and says so. */
+class StatementClosed extends Error {}
+
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
@@ -95,12 +99,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     const statement = await db.courierStatement.findFirst({
       where: { id, companyId, storeId },
-      select: { id: true, status: true, currencyCode: true, reference: true },
+      select: { id: true, status: true, approvedAt: true, currencyCode: true, reference: true },
     });
     if (!statement) return NextResponse.json({ error: 'الكشف غير موجود' }, { status: 404 });
-    if (statement.status === 'APPROVED') {
-      return NextResponse.json({ error: 'الكشف معتمد — أي تصحيح يكون بقيد عكسي', code: 'ALREADY_APPROVED' }, { status: 409 });
-    }
+    const closed = receiptEditRefusal(statement);
+    if (closed) return NextResponse.json(closed, { status: 409 });
 
     const parsed = createSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
@@ -193,6 +196,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     let receipt;
     try {
       receipt = await db.$transaction(async (tx) => {
+        /*
+         * A RECEIPT NEVER LANDS ON A STATEMENT THAT IS BEING APPROVED.
+         *
+         * The check above is read outside this transaction, so an approval that lands between it and the
+         * write would find this receipt missing from its money — or, written after it, an orphan nobody's
+         * wallet ever saw. The statement is claimed here first, conditionally: only a statement that is
+         * still unapproved takes the status, and the approval's own claim waits on the same row, so the
+         * receipt either lands before the approval reads its receipts or is refused with nothing written.
+         */
+        const open = await tx.courierStatement.updateMany({
+          where: { id, companyId, approvedAt: null, status: { not: 'APPROVED' } },
+          data: { status: 'RECEIPTED' },
+        });
+        if (open.count !== 1) throw new StatementClosed();
+
         const created = await tx.statementReceipt.create({
           data: {
             id: receiptId,
@@ -239,10 +257,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           await writeProofFile(created.proofKey!, proof.bytes);
         }
 
-        await tx.courierStatement.update({ where: { id }, data: { status: 'RECEIPTED' } });
         return created;
       });
     } catch (e) {
+      if (e instanceof StatementClosed) return NextResponse.json(receiptEditRefusal({ status: 'APPROVED' }), { status: 409 });
       /*
        * Two requests carrying the same id at the same moment: the check
        * above saw nothing, the database saw the second one. P2002 here can

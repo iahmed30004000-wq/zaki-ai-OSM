@@ -900,11 +900,11 @@
     "tabs": 0
   },
   "src/components/screens/finance/CollectionScreen.tsx": {
-    "buttons": 10,
-    "inputs": 10,
+    "buttons": 13,
+    "inputs": 11,
     "columns": 7,
     "cards": 0,
-    "modals": 2,
+    "modals": 3,
     "icons": 6,
     "links": 2,
     "tabs": 0

@@ -13,6 +13,8 @@ const { db, requireContext, requirePermission, logAudit, recordMovement, markPay
     wallet: { findFirst: vi.fn() },
     order: { findMany: vi.fn(), updateMany: vi.fn() },
     orderActivity: { create: vi.fn() },
+    // The statements that might already speak for an order (the door refuses those).
+    statementLine: { findMany: vi.fn() },
     // Only the negative-expectation block below uses this: it runs the REAL
     // `recordMovement`, so the wallet's own `amount <= 0` guard is part of
     // the chain under test rather than mocked away.
@@ -83,7 +85,9 @@ beforeEach(() => {
   });
   requirePermission.mockResolvedValue({});
   db.wallet.findFirst.mockResolvedValue({ id: WALLET, name: 'صندوق سوريا', currencyCode: 'USD' });
-  db.order.updateMany.mockResolvedValue({ count: 1 });
+  // The claim takes every order it is given unless a test says another press got there first.
+  db.order.updateMany.mockImplementation(async (a: { where: { id: { in: string[] } } }) => ({ count: a.where.id.in.length }));
+  db.statementLine.findMany.mockResolvedValue([]);
   db.orderActivity.create.mockResolvedValue({});
   db.walletMovement.create.mockResolvedValue({ id: 'm1' });
   recordMovement.mockResolvedValue({ id: 'm1' });

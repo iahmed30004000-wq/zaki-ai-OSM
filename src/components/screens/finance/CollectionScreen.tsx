@@ -2,7 +2,8 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { apiJson } from '@/lib/api-client';
+import { apiFetch, apiJson } from '@/lib/api-client';
+import { arDateTime } from '@/lib/format';
 import { useApp } from '@/context/AppContext';
 import { useMayOpen } from '@/hooks/useMayOpen';
 import { userCan } from '@/lib/can';
@@ -94,6 +95,31 @@ interface ReceiptRow {
  */
 const MAX_PROOF_MB = 4;
 
+/** A hand-entered movement that looks like the same money as a receipt — what the server lists before approving. */
+interface HandRow {
+  id: string;
+  wallet: string;
+  currencyCode: string;
+  date: string;
+  amount: number;
+  party: string;
+  note: string;
+  by: string | null;
+}
+
+/**
+ * The file as base64, in chunks: `String.fromCharCode(...bytes)` on a four-megabyte array blows the argument
+ * limit and throws. One reader for the receipt dialog and for a proof changed later.
+ */
+async function fileToBase64(picked: File): Promise<string> {
+  const bytes = new Uint8Array(await picked.arrayBuffer());
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 8192) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  }
+  return btoa(binary);
+}
+
 const STATUS_AR: Record<string, string> = {
   IMPORTED: 'مستورد',
   RECEIPTED: 'سُجِّل الاستلام',
@@ -127,6 +153,8 @@ export function CollectionScreen() {
   const [receiptFor, setReceiptFor] = useState<StatementRow | null>(null);
   const [explainFor, setExplainFor] = useState<StatementRow | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  // The hand rows the server found when asked to approve: shown with «اعتمد هيك» / «رجوع», never auto-confirmed.
+  const [doubleFor, setDoubleFor] = useState<{ statement: StatementRow; sentence: string; rows: HandRow[] } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -160,6 +188,66 @@ export function CollectionScreen() {
     } finally {
       setBusy(null);
     }
+  }
+
+  /**
+   * APPROVAL — and the one answer that is not a plain refusal.
+   * When a hand entry of the same money is already in the wallet the server answers POSSIBLE_DOUBLE with the
+   * rows. They are shown here; only «اعتمد هيك» sends the approval again with the confirmation.
+   */
+  async function approve(s: StatementRow, confirmed = false) {
+    setBusy(s.id);
+    setError(null);
+    setDone(null);
+    try {
+      const res = await apiFetch(`/api/finance/statements/${s.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ approve: true, ...(confirmed ? { confirmPossibleDouble: true } : {}) }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { code?: string; error?: string; errorAr?: string; rows?: HandRow[] };
+      if (res.status === 409 && data.code === 'POSSIBLE_DOUBLE') {
+        setDoubleFor({ statement: s, sentence: data.error ?? '', rows: data.rows ?? [] });
+        return;
+      }
+      if (!res.ok) throw new Error(data.errorAr || data.error || `HTTP ${res.status}`);
+      setDoubleFor(null);
+      setDone('اعتُمد الكشف وسُجِّلت حركة المحفظة');
+      await load();
+    } catch (e) {
+      setDoubleFor(null);
+      setError(e instanceof Error ? e.message : 'تعذر التنفيذ');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** A receipt's proof, changed until the statement is approved. A real file, judged by the server like the first one. */
+  async function changeProof(s: StatementRow, r: ReceiptRow, picked: File | undefined) {
+    if (!picked) return;
+    if (picked.size > MAX_PROOF_MB * 1024 * 1024) {
+      setError(`حجم الملف ${Math.round(picked.size / 1024 / 1024)} ميجابايت — الحد ${MAX_PROOF_MB}`);
+      return;
+    }
+    const content = await fileToBase64(picked);
+    await act(s.id, 'تغيّر الإثبات', () =>
+      apiJson(`/api/finance/statements/${s.id}/receipts/${r.id}/proof`, {
+        method: 'PUT',
+        body: JSON.stringify({ fileName: picked.name, content }),
+      })
+    );
+  }
+
+  /** A wrong receipt, taken back until the statement is approved. Asks first; the wallet was never touched. */
+  async function removeReceipt(s: StatementRow, r: ReceiptRow) {
+    const ok = await confirm({
+      title: `حذف إيصال ${r.amount} ${r.currencyCode} — ${r.wallet}؟`,
+      body: 'يُحذف هذا الإيصال وحده. لم تتحرك المحفظة لأن الكشف لم يُعتمد، وتضيف الإيصال الصحيح بعده.',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    await act(s.id, 'حُذف الإيصال', () =>
+      apiJson(`/api/finance/statements/${s.id}/receipts/${r.id}`, { method: 'DELETE' })
+    );
   }
 
   /**
@@ -325,6 +413,7 @@ export function CollectionScreen() {
                       the three had nowhere to be opened — which would have
                       made the upload a write-only feature.
                     */
+                    <>
                     <ul className="space-y-1">
                       {s.receipts.map((r) => (
                         <li key={r.id} className="flex flex-wrap items-center gap-1.5 text-xs">
@@ -347,9 +436,39 @@ export function CollectionScreen() {
                                so it is not left as an absence. */
                             <span className="text-[var(--sys-warning)]">بلا إثبات</span>
                           )}
+                          {/* Until «اعتماد» the paper can be changed and a wrong receipt taken back; after it, neither. */}
+                          {!isApproved(s) && (
+                            <>
+                              <label className="inline-flex min-h-11 items-center text-[var(--sys-primary)] hover:underline md:min-h-0">
+                                غيّر الإثبات
+                                <input
+                                  type="file"
+                                  accept="image/jpeg,image/png,image/webp,application/pdf"
+                                  className="sr-only"
+                                  onChange={(e) => {
+                                    const picked = e.target.files?.[0];
+                                    e.target.value = '';
+                                    void changeProof(s, r, picked);
+                                  }}
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                disabled={busy === s.id}
+                                onClick={() => void removeReceipt(s, r)}
+                                className="inline-flex min-h-11 items-center text-[var(--sys-destructive)] hover:underline disabled:opacity-50 md:min-h-0"
+                              >
+                                احذف الإيصال
+                              </button>
+                            </>
+                          )}
                         </li>
                       ))}
                     </ul>
+                    {isApproved(s) && (
+                      <p className="mt-1 text-xs text-[var(--sys-muted-foreground)]">الكشف معتمد — التصحيح بقيد عكسي</p>
+                    )}
+                    </>
                   ),
               },
             ]}
@@ -406,14 +525,7 @@ export function CollectionScreen() {
                   <button
                     disabled={!!refusal || busy === s.id}
                     title={refusal?.error ?? 'اعتماد الكشف — عندها تُسجَّل حركة المحفظة'}
-                    onClick={() =>
-                      act(s.id, 'اعتُمد الكشف وسُجِّلت حركة المحفظة', () =>
-                        apiJson(`/api/finance/statements/${s.id}`, {
-                          method: 'PATCH',
-                          body: JSON.stringify({ approve: true }),
-                        })
-                      )
-                    }
+                    onClick={() => void approve(s)}
                     className="text-xs font-medium text-[var(--sys-success)] hover:underline disabled:text-[var(--sys-border-strong)] disabled:no-underline"
                   >
                     اعتماد
@@ -446,6 +558,17 @@ export function CollectionScreen() {
 
       {/* The money road goes on from here: «المطابقة». */}
       <NextStepButton />
+
+      {doubleFor && (
+        <PossibleDoubleDialog
+          statement={doubleFor.statement}
+          sentence={doubleFor.sentence}
+          rows={doubleFor.rows}
+          busy={busy === doubleFor.statement.id}
+          onClose={() => setDoubleFor(null)}
+          onConfirm={() => void approve(doubleFor.statement, true)}
+        />
+      )}
 
       {explainFor && (
         <ExplainDialog
@@ -736,18 +859,8 @@ function ReceiptDialog({
                   setError(`حجم الملف ${Math.round(picked.size / 1024 / 1024)} ميجابايت — الحد ${MAX_PROOF_MB}`);
                   return;
                 }
-                /*
-                 * Chunked, because `String.fromCharCode(...bytes)` on a
-                 * four-megabyte array blows the argument limit and throws —
-                 * the same trap the statement importer above already walked
-                 * into with a spreadsheet.
-                 */
-                const bytes = new Uint8Array(await picked.arrayBuffer());
-                let binary = '';
-                for (let i = 0; i < bytes.length; i += 8192) {
-                  binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
-                }
-                setProof({ fileName: picked.name, content: btoa(binary), size: picked.size });
+                // Chunked (see `fileToBase64`) — the same trap the statement importer walked into.
+                setProof({ fileName: picked.name, content: await fileToBase64(picked), size: picked.size });
               }}
               className="w-full text-xs file:h-8 file:px-3 file:rounded-md file:border-0 file:bg-[var(--sys-card)] file:text-[var(--sys-foreground)] file:ml-2"
             />
@@ -787,6 +900,62 @@ function ReceiptDialog({
           </button>
         </div>
       </form>
+    </Modal>
+  );
+}
+
+/**
+ * THE SAME MONEY MAY ALREADY BE IN THE WALLET.
+ * The server found hand-entered rows with the same amount in the receipt's wallet. They are listed with who
+ * wrote them and when; the person reverses them («قيد عكسي» from the wallets screen) and comes back, or says
+ * «اعتمد هيك». Nothing here confirms by itself.
+ */
+function PossibleDoubleDialog({
+  statement,
+  sentence,
+  rows,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  statement: StatementRow;
+  sentence: string;
+  rows: HandRow[];
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal isOpen onClose={onClose} title={`حركة يدوية بنفس المبلغ — ${statement.reference}`}>
+      <div className="space-y-3">
+        <p className="text-sm text-[var(--sys-foreground)]">{sentence}</p>
+        <ul className="space-y-2">
+          {rows.map((r) => (
+            <li key={r.id} className="text-xs bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3 space-y-1">
+              <p className="text-[var(--sys-foreground)]">
+                <Money value={r.amount} currency={r.currencyCode} /> — {r.wallet}
+              </p>
+              <p className="text-[var(--sys-muted-foreground)]">
+                {arDateTime(r.date)} · {r.party} · {r.note}
+                {r.by ? ` · ${r.by}` : ''}
+              </p>
+            </li>
+          ))}
+        </ul>
+        <div className="flex gap-2 justify-end">
+          <button type="button" onClick={onClose} className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm">
+            رجوع
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onConfirm}
+            className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
+          >
+            اعتمد هيك
+          </button>
+        </div>
+      </div>
     </Modal>
   );
 }
