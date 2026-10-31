@@ -86,7 +86,10 @@ export function ShippingBatchesScreen() {
   const phone = useIsPhone();
   // The Excel file is names, phones and addresses: the door asks the batches key AND the address-book key, so the button
   // is drawn only for whoever it will answer.
-  const mayExport = useCan('ops.batches') && useCan('customers.view');
+  // Both asked on every render (a hook is never called behind `&&`).
+  const mayBatches = useCan('ops.batches');
+  const mayContacts = useCan('customers.view');
+  const mayExport = mayBatches && mayContacts;
   const [batches, setBatches] = useState<Batch[] | null>(null);
   const [total, setTotal] = useState(0);
   const [filter, setFilter] = useState<'all' | 'READY' | 'SHIPPED' | 'CLOSED'>('all');
