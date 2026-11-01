@@ -108,7 +108,9 @@ describe('«if ANY line includes delivery, the whole order does»', () => {
   const src = stripComments(repoFile('src/lib/public-order.ts'));
 
   it('is read across every line, not off the first one', () => {
-    expect(src).toMatch(/lines\.some\(\(l\) => l\.offer\?\.deliveryIncluded === true\)/);
+    // (old → new, 1/11) The reading moved into `offersSayDeliveryIncluded` (src/lib/offer-delivery.ts), shared by every door; the door
+    // hands it ONE ENTRY PER LINE. Its own table is held in `offer-delivery.test.ts`.
+    expect(src).toMatch(/offersSayDeliveryIncluded\(lines\.map\(\(l\) => l\.offer\?\.deliveryIncluded\)\)/);
   });
 
   it('and the single-line special case is gone, because it was the divergence', () => {
@@ -116,13 +118,17 @@ describe('«if ANY line includes delivery, the whole order does»', () => {
   });
 
   it('and the shop’s policy is the fallback when no line says anything', () => {
-    // `undefined`, not `false`: passing false would override a shop that
-    // prices delivery in, which is the opposite mistake.
-    expect(src).toMatch(/anyLineIncludesDelivery \? true : undefined/);
+    // (old → new, 1/11) «undefined, not false: passing false would override a shop that prices delivery in» — still true for SILENCE:
+    // no offer, or a line with none, says nothing and the store decides. What changed is that an offer which DOES say no (every line
+    // carries an offer and every one is unticked) is obeyed, at the owner's word («أحدد إذا شامل ولا لأ بظبط»).
+    const reader = stripComments(repoFile('src/lib/offer-delivery.ts'));
+    expect(reader).toContain('flags.some((f) => f === true)');
+    expect(reader).toContain('flags.length > 0 && flags.every((f) => f === false)');
+    expect(reader).toMatch(/return undefined;\s*\}\s*$/);
     const fees = stripComments(repoFile('src/lib/delivery-fees.ts'));
     const fn = fees.slice(fees.indexOf('export async function priceIncludesDeliveryFor('));
     const body = fn.slice(0, fn.indexOf('\n}'));
-    expect(body).toContain('offerDeliveryIncluded === true');
+    expect(body).toContain("typeof offersSay === 'boolean'");
     expect(body).toContain('store?.priceIncludesDelivery === true');
   });
 

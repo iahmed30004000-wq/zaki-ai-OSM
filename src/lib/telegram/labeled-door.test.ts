@@ -478,8 +478,10 @@ describe('the money — the OFFER’s price, gift and delivery; «السعر» i
 
   it.each([
     // [store policy, the order's price includes delivery, at creation, at the shipment] — for an offer that does NOT include it
+    // (old → new, 1/11) The second row was [true, true, 15, 15]: the store's policy used to override an offer's «no». The owner
+    // asked for room to say it exactly («أحدد إذا شامل ولا لأ بظبط»), so the offer's own word now stands: the fee is added at the shipment.
     [false, false, 15, 18],
-    [true, true, 15, 15],
+    [true, false, 15, 18],
   ])('an offer without delivery under a store policy of %s → %s · %s at creation · %s at the shipment', async (policy, includes, created, shipped) => {
     state.storePolicy = policy;
     await processStoredMessage(arrive(single({})));
@@ -490,15 +492,12 @@ describe('the money — the OFFER’s price, gift and delivery; «السعر» i
     expect(state.storeWrites).toBe(0);
   });
 
-  it('and an offer that includes delivery turns it on in a store that does not — never the other way', async () => {
+  it('and an offer that includes delivery turns it on in a store that does not', async () => {
     state.storePolicy = false;
     await processStoredMessage(arrive(sample()));
     expect(state.orders[0].priceIncludesDelivery).toBe(true);
-    fresh();
-    state.storePolicy = true;
-    await processStoredMessage(arrive(single({})));
-    expect(state.orders[0].priceIncludesDelivery).toBe(true);
   });
+
 
   it.each(['25 $', '$25', '25 دولار', '25.00', '25'])('the price «%s» is 25', async (price) => {
     fresh();

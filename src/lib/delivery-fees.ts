@@ -99,16 +99,25 @@ export function codForOrder(params: {
  * Whether an order's price already contains delivery — ONE rule for every
  * door (direct, landing page, storefront, Telegram).
  *
- * It is the STORE's pricing policy; an offer may turn it on for its own
- * bundle. It used to be applied to direct orders only, so a store that
+ * It is the STORE's pricing policy for every order no offer speaks for (a
+ * Telegram message, a sheet row, a price typed by hand). An offer that DOES
+ * speak — «السعر شامل التوصيل» ticked or unticked — answers for its own
+ * bundle, yes or no (`offersSayDeliveryIncluded` reads the offers of an
+ * order). It used to be applied to direct orders only, so a store that
  * advertises delivery-inclusive prices had its landing-page and Telegram
  * orders collected as price + fee.
+ *
+ * (1/11, the owner: «بدي اترك مجال … أحدد إذا شامل ولا لأ بظبط».) It used to
+ * be that an offer could only switch delivery ON, so an unticked box on an
+ * offer was silently overridden the day the store's policy was turned on. A
+ * NO that the owner wrote on an offer is now obeyed; silence — `undefined` or
+ * `null` — still follows the store.
  */
 export async function priceIncludesDeliveryFor(
   storeId: string,
-  offerDeliveryIncluded?: boolean | null
+  offersSay?: boolean | null
 ): Promise<boolean> {
-  if (offerDeliveryIncluded === true) return true;
+  if (typeof offersSay === 'boolean') return offersSay;
   const store = await db.store.findFirst({ where: { id: storeId }, select: { priceIncludesDelivery: true } });
   return store?.priceIncludesDelivery === true;
 }

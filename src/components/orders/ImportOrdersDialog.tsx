@@ -68,6 +68,8 @@ export function ImportOrdersDialog({ onClose, onDone }: { onClose: () => void; o
   const [reading, setReading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  // «شامل التوصيل» for the whole file: ticked unless unticked — the sheets sell with free delivery, so the price already carries it.
+  const [includesDelivery, setIncludesDelivery] = useState(true);
   const [failed, setFailed] = useState<{ line: number; why: string }[]>([]);
 
   const upload = async (file: File) => {
@@ -135,6 +137,8 @@ export function ImportOrdersDialog({ onClose, onDone }: { onClose: () => void; o
             sellingPrice: r.sellingPrice,
             customerNotes: r.values.notes || undefined,
             source: 'استيراد ملفّ',
+            // The box above the button, for every row of this file: her word for these orders, sent either way.
+            priceIncludesDelivery: includesDelivery,
             /*
              * THE DIALOG SAYS WHAT IT IS.
              *
@@ -298,6 +302,24 @@ export function ImportOrdersDialog({ onClose, onDone }: { onClose: () => void; o
                 </li>
               ))}
             </ul>
+
+            <label className="flex min-h-11 md:min-h-0 items-start gap-2 text-xs text-[var(--sys-foreground)]">
+              <input
+                type="checkbox"
+                checked={includesDelivery}
+                onChange={(e) => setIncludesDelivery(e.target.checked)}
+                disabled={!!progress}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-semibold">شامل التوصيل (لكل طلبات الملف)</span>
+                <span className="block text-[var(--sys-muted-foreground)]">
+                  {includesDelivery
+                    ? 'الزبون بيدفع السعر اللي بالملف بس، وأجرة التوصيل على المتجر.'
+                    : 'بينضاف توصيل على كل طلب لما تنعمل الشحنة.'}
+                </span>
+              </span>
+            </label>
 
             <div className="flex flex-wrap items-center gap-2 border-t border-[var(--sys-border)] pt-2">
               <button

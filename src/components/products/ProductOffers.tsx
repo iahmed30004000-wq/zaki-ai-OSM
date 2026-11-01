@@ -688,6 +688,17 @@ export function ProductOffers({
               </label>
             </div>
             {/*
+              THE «NO» IS HEARD (the owner, 1/11: «أحدد إذا شامل ولا لأ بظبط»). An unticked box used to be overridden whenever the
+              store's «السعر المُعلن يشمل التوصيل» was on; it is not any more, and the screen says so rather than leaving it to be found
+              in the order total.
+            */}
+            {draft.deliveryIncluded === false && (
+              <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+                «السعر شامل التوصيل» غير مؤشَّر: تُضاف أجرة التوصيل على الزبون عند الشحن، <b>حتى لو</b> كان
+                إعداد المتجر «السعر المُعلن يشمل التوصيل» مفعَّلاً — كلمة العرض تغلب إعداد المتجر.
+              </p>
+            )}
+            {/*
               THE RULES OF THIS BOX, ON THE SCREEN AND NOT ONLY IN THE CODE.
 
               Each sentence is a server rule the seller would otherwise meet
