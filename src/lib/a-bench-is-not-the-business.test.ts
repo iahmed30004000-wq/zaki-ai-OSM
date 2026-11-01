@@ -181,7 +181,8 @@ const ID_SCOPED: Record<string, Excuse> = {
   'app/api/orders/import/migrate/route.ts': { reason: 'مقيَّد بأرقام طلباتٍ مُسمّاة من الملف — هل الرقم محجوز لطلبٍ آخر', sites: 1 },
   'app/api/whatsapp/conversations/[id]/route.ts': { reason: 'مقيَّد بـ customerId واحد — محادثةٌ بعينها', sites: 1 },
   'lib/commission-metrics.ts': { reason: 'مقيَّد بـ orderId: { in } ومستخدمٍ واحد', sites: 1 },
-  'lib/couriers/dispatch.ts': { reason: 'مقيَّد بـ shippingBatchId واحد', sites: 1 },
+  // The send and its plan (`dispatchPlan`, the orders left to send): both read the orders of ONE batch, which was found in this store first.
+  'lib/couriers/dispatch.ts': { reason: 'مقيَّد بـ shippingBatchId واحد', sites: 2 },
   // new (طلب التعديل م٢): قراءتا أسطر وإضافات طلبٍ واحد مُتحقَّق منه (orderId + companyId) لمعاينة التعديل — قراءةٌ صرفة.
   'lib/order-edit-facts.ts': { reason: 'مقيَّد بـ orderId واحد — سطورُ طلبٍ بعينه وإضافاتُه (معاينة التعديل)', sites: 2 },
   'lib/customer-risk.ts': { reason: 'مقيَّد بالعميل نفسِه — تاريخُ شخصٍ لا رقمُ متجر', sites: 3 },

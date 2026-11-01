@@ -20,6 +20,7 @@ import { useLabelSize } from '@/components/labels/LabelSize';
 import { BLOCKED_WAYBILLS, describeRefused, openWaybills, WaybillError } from '@/components/labels/openWaybills';
 import type { DispatchSummary } from '@/lib/couriers/dispatch';
 import { DispatchResult } from '@/components/ops/DispatchResult';
+import { DispatchInterrupted, dispatchInChunks, type DispatchProgress } from '@/components/ops/dispatchInChunks';
 import { useToast } from '@/components/ui/Toast';
 import { Rows } from '@/components/ui/Rows';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
@@ -92,6 +93,8 @@ export function ShipmentsNewScreen() {
   const [courierApi, setCourierApi] = useState(false);
   /** The batch being sent right now — by id, so an answer lands on its own batch. */
   const [dispatching, setDispatching] = useState<string | null>(null);
+  /** How far the send has got — a big batch goes a few orders at a time (`dispatchInChunks`), and the button says how many. */
+  const [dispatchProgress, setDispatchProgress] = useState<DispatchProgress | null>(null);
   /** What the courier answered, order by order, and for which batch. */
   const [dispatched, setDispatched] = useState<{ batchId: string; summary: DispatchSummary } | null>(null);
   const { currentUser } = useApp();
@@ -402,17 +405,22 @@ ${describeRefused(out.refused)}`,
     const id = justMade;
     if (!id) return;
     setDispatching(id);
+    setDispatchProgress(null);
     try {
-      const summary = await apiJson<DispatchSummary>(`/api/ops/shipments/${id}/dispatch`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
+      // A few orders per request, with the count on the button: a hundred and sixty orders are minutes, and one request is not.
+      const summary = await dispatchInChunks(id, setDispatchProgress);
       setDispatched({ batchId: id, summary });
     } catch (e) {
-      toast.failed(e instanceof Error ? e.message : 'تعذر الترحيل');
+      if (e instanceof DispatchInterrupted) {
+        // What was done is shown, the rest is listed as not sent (the banner offers «أعد ترحيل الباقي»), and the sentence says what to do.
+        setDispatched({ batchId: id, summary: e.summary });
+        toast.failed(e.message);
+      } else {
+        toast.failed(e instanceof Error ? e.message : 'تعذر الترحيل');
+      }
     } finally {
       setDispatching((d) => (d === id ? null : d));
+      setDispatchProgress(null);
     }
   };
 
@@ -442,7 +450,13 @@ ${describeRefused(out.refused)}`,
    * come in are the same on both: «رحّل» first, then «اطبع البوالص».
    */
   const sendLabel =
-    dispatching === justMade ? 'جارٍ الترحيل…' : shown ? `أعد ترحيل الباقي (${unsent})` : 'رحّل إلى الشركة واجلب الباركود';
+    dispatching === justMade
+      ? dispatchProgress && dispatchProgress.total > 0
+        ? `جارٍ الترحيل… ${dispatchProgress.done} من ${dispatchProgress.total}`
+        : 'جارٍ الترحيل…'
+      : shown
+        ? `أعد ترحيل الباقي (${unsent})`
+        : 'رحّل إلى الشركة واجلب الباركود';
   const sendNode = offerSend ? (
     phone ? (
       <Button size="md" className="w-full" onClick={dispatchJustMade} disabled={dispatching === justMade}>
