@@ -4,14 +4,19 @@
  *   (layout dir/lang untouched) and throws a user-facing Arabic message.
  * - apiJson: parses JSON and throws a readable error from errorAr/error fields.
  * - All requests carry a 15s timeout via AbortSignal.timeout, merged with any
- *   caller-provided signal so a caller abort also cancels the request.
+ *   caller-provided signal so a caller abort also cancels the request. A call
+ *   that is slow by nature (handing a few parcels to a courier) names its own
+ *   wait with `timeoutMs`; nothing else gets more than 15s.
  */
 
 const REQUEST_TIMEOUT_MS = 15_000;
 
-/** Merge the default timeout signal with a caller-provided signal. */
-function withTimeout(signal?: AbortSignal | null): AbortSignal {
-  const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+/** What a caller may add to a `RequestInit`: how long THIS request may take. */
+type TimedInit = RequestInit & { timeoutMs?: number };
+
+/** Merge the timeout signal (the default, or the caller's own) with a caller-provided signal. */
+function withTimeout(signal?: AbortSignal | null, timeoutMs: number = REQUEST_TIMEOUT_MS): AbortSignal {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
   if (!signal) return timeoutSignal;
   // AbortSignal.any is widely available; fall back for older runtimes
   if (typeof (AbortSignal as any).any === 'function') {
@@ -26,13 +31,14 @@ function withTimeout(signal?: AbortSignal | null): AbortSignal {
   return controller.signal;
 }
 
-export async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+export async function apiFetch(input: string, init?: TimedInit): Promise<Response> {
   let res: Response;
+  const { timeoutMs, ...rest } = init ?? {};
   try {
     res = await fetch(input, {
       credentials: 'same-origin',
-      ...init,
-      signal: withTimeout(init?.signal),
+      ...rest,
+      signal: withTimeout(rest.signal, timeoutMs),
     });
   } catch (e: any) {
     // Timeout abort surfaces as AbortError ("signal timed out" for AbortSignal.timeout)
@@ -75,7 +81,7 @@ export async function saidBy(res: Response, fallback: string): Promise<string> {
   return typeof said === 'string' && said ? said : fallback;
 }
 
-export async function apiJson<T>(input: string, init?: RequestInit): Promise<T> {
+export async function apiJson<T>(input: string, init?: TimedInit): Promise<T> {
   const res = await apiFetch(input, init);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
