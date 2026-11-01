@@ -140,10 +140,15 @@ describe('a product with a fixed figure', () => {
     show({ fixedCost: 6.75 });
     expect(screen.getByText('6.75 JOD')).toBeTruthy();
     expect(screen.getByText(/تكلفة الوحدة بشاشات المنتجات والمخزون هي هالرقم/)).toBeTruthy();
-    // The orders: new ones, the lines that are edited, the ones delivered from now on. An order already delivered keeps its cost.
-    expect(screen.getByText(/الطلبات الجديدة بتنحسب تكلفتها من هالرقم/)).toBeTruthy();
-    expect(screen.getByText(/السطور اللي بتتعدّل والطلبات اللي بتتسلّم من هلّق/)).toBeTruthy();
+    // The orders: a new one, the units ADDED to an existing one, the ones delivered from now on — and only «إذا كفّى المخزون», because a
+    // short or empty shelf at delivery keeps the cost the order was raised with (RV576). An order already delivered keeps its cost.
+    expect(screen.getByText(/الطلب الجديد بينكتب بهالرقم/)).toBeTruthy();
+    expect(screen.getByText(/القطع اللي بتنزاد على طلب موجود/)).toBeTruthy();
+    expect(screen.getByText(/الطلب اللي بيتسلّم من هلّق إذا كفّى المخزون/)).toBeTruthy();
     expect(screen.getByText(/الطلب اللي تسلّم قبل بيضل بتكلفته/)).toBeTruthy();
+    // What it must NOT promise (the independent review, 2/11): every edited line, or a delivery on a short shelf.
+    expect(screen.queryByText(/السطور اللي بتتعدّل/)).toBeNull();
+    expect(screen.queryByText(/الطلبات اللي بتتسلّم من هلّق\./)).toBeNull();
     // The first release's honest «not yet» is gone: it would now be a lie in the other direction.
     expect(screen.queryByText(/الطلبات لسا بتنحسب من الدفعات/)).toBeNull();
     expect(screen.queryByText(/وربطها بالرقم بالخطوة الجاية/)).toBeNull();
@@ -152,7 +157,7 @@ describe('a product with a fixed figure', () => {
 
   it('with no figure it says the same about orders: typing one changes the screens AND the orders costed from now on', () => {
     show();
-    expect(screen.getByText(/بالطلبات الجديدة، وبالسطور اللي بتتعدّل، وبالطلبات اللي بتتسلّم من هلّق/)).toBeTruthy();
+    expect(screen.getByText(/وبالطلب الجديد، وبالقطع اللي بتنزاد على طلب موجود، وبالطلب اللي بيتسلّم من هلّق إذا كفّى المخزون/)).toBeTruthy();
     expect(screen.getByText(/الطلب اللي تسلّم قبل بيضل بتكلفته/)).toBeTruthy();
     expect(screen.queryByText(/الطلبات ما بتتأثر لسا/)).toBeNull();
   });

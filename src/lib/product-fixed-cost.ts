@@ -84,7 +84,10 @@ export function costOfACopy(
   if (withFigure.length === 0 || !(units > 0)) return base;
   const figureUnits = withFigure.reduce((n, l) => n + l.units, 0);
   const figureCost = withFigure.reduce((sum, l) => sum + (fixed.get(l.productId) as number) * l.units, 0);
-  return roundMinor(figureCost + (base * (units - figureUnits)) / units, minorUnit);
+  // A `base` that is not a number (undefined, NaN) has no share to give: it is NOT allowed to turn the lines that DO have a figure into 0
+  // (`undefined * 0` is NaN, and `roundMinor(NaN)` is 0) — the independent review, 2/11. Both callers hand a real number today.
+  const rest = Number.isFinite(base) ? (base * (units - figureUnits)) / units : 0;
+  return roundMinor(figureCost + rest, minorUnit);
 }
 
 const round4 = (n: number) => Number(n.toFixed(4));

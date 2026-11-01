@@ -503,6 +503,56 @@ describe('a fixed cost is what the systems door costs a product at', () => {
   });
 });
 
+/**
+ * AN ORDER OF TWO PRODUCTS IS COSTED PRODUCT BY PRODUCT (the independent review, 2/11).
+ *
+ * Every test above sends p1 alone, so a door that asked for the FIRST line's product only — and costed every other line at nothing —
+ * stayed green. Here the order holds p1 (2 units) and p2 (3 units), the shelf says 4 and 7 a unit, and the figures decide line by line.
+ */
+describe('an order of two products is costed line by line at the systems door', () => {
+  const TWO = () =>
+    parse({
+      items: [
+        { product_code: 'TIN01', quantity: 2 },
+        { product_code: 'TIN02', quantity: 3 },
+      ],
+    });
+
+  beforeEach(() => {
+    h.db.product.findMany.mockResolvedValue([product(), product({ id: 'p2', sku: 'TIN02', name: 'منتج تاني' })]);
+    h.productCosts.mockResolvedValue(new Map([['p1', { average: 4 }], ['p2', { average: 7 }]]));
+  });
+
+  it('NO FIGURE: each line at its own shelf average — 2 × 4 + 3 × 7 = 29', async () => {
+    await createSystemOrder(CALLER, TWO());
+    expect(created().estimatedCostOfGoods).toBe(29);
+  });
+
+  it('A FIGURE FOR THE FIRST ONLY: 2 × 6 for it, the second still at the shelf — 12 + 21 = 33', async () => {
+    h.db.productFixedCost.findMany.mockResolvedValue([{ productId: 'p1', amount: 6 }]);
+    await createSystemOrder(CALLER, TWO());
+    expect(created().estimatedCostOfGoods).toBe(33);
+  });
+
+  it('A FIGURE FOR THE SECOND ONLY: the first at the shelf, 3 × 1 for the second — 8 + 3 = 11', async () => {
+    h.db.productFixedCost.findMany.mockResolvedValue([{ productId: 'p2', amount: 1 }]);
+    await createSystemOrder(CALLER, TWO());
+    expect(created().estimatedCostOfGoods).toBe(11);
+  });
+
+  it('A FIGURE FOR BOTH, the second one ZERO: 2 × 6 + 3 × 0 = 12', async () => {
+    h.db.productFixedCost.findMany.mockResolvedValue([{ productId: 'p1', amount: 6 }, { productId: 'p2', amount: 0 }]);
+    await createSystemOrder(CALLER, TWO());
+    expect(created().estimatedCostOfGoods).toBe(12);
+  });
+
+  it('both products are asked for in the same question', async () => {
+    await createSystemOrder(CALLER, TWO());
+    expect(h.db.productFixedCost.findMany).toHaveBeenCalledTimes(1);
+    expect(h.db.productFixedCost.findMany.mock.calls[0][0].where).toEqual({ companyId: 'c1', productId: { in: ['p1', 'p2'] } });
+  });
+});
+
 describe('the company is the token’s', () => {
   it('on every query and on the row itself', async () => {
     await createSystemOrder({ ...CALLER, companyId: 'c_other' }, parse());

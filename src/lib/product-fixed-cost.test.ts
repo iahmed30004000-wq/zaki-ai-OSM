@@ -261,4 +261,20 @@ describe('costOfACopy', () => {
     const lines = [{ productId: 'p1', units: 2 }, { productId: 'p1', units: 1 }, { productId: 'p2', units: 1 }];
     expect(costOfACopy(40, lines, new Map([['p1', 6]]), 2)).toBe(28); // 3 × 6 + 40 × 1/4
   });
+
+  /*
+   * A BASE THAT IS NOT A NUMBER MUST NOT ERASE THE FIGURES (the independent review, 2/11). `undefined * 0` is NaN, and `roundMinor(NaN)`
+   * is 0 — so a copy whose every line has a figure, handed a missing base, came out as 0 instead of Σ figure × units. Both callers hand a
+   * real number today; this holds the day one does not.
+   */
+  it('A MISSING BASE: every line with a figure still costs figure × units — never 0', () => {
+    const all = new Map([['p1', 50], ['p2', 10]]);
+    for (const base of [undefined, Number.NaN, Number.POSITIVE_INFINITY] as unknown as number[]) {
+      expect(costOfACopy(base, two, all, 2), String(base)).toBe(130);
+    }
+  });
+
+  it('A MISSING BASE gives nothing to the lines with no figure — their share of nothing is nothing, and the figured line is untouched', () => {
+    expect(costOfACopy(Number.NaN, two, new Map([['p1', 50]]), 2)).toBe(100);
+  });
 });
