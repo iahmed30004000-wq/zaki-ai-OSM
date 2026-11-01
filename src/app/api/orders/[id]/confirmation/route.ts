@@ -13,7 +13,9 @@ import { endOrder } from '@/lib/order-cancel';
 import { reserveOrderLines } from '@/lib/reservation';
 import { emitAppEvent } from '@/lib/apps/events';
 import { queueConversions } from '@/lib/conversions/emit';
-import { needsContactFirst, CONTACT_FIRST_MESSAGE, needsRegionFirst, REGION_REQUIRED_MESSAGE } from '@/lib/confirmation-queue';
+import {
+  needsContactFirst, CONTACT_FIRST_MESSAGE, needsRegionFirst, REGION_REQUIRED_MESSAGE, mustHoldToWork, NOT_HELD_MESSAGE,
+} from '@/lib/confirmation-queue';
 
 /**
  * POST /api/orders/[id]/confirmation — controlled confirmation workflow action.
@@ -62,6 +64,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const confirmAuth = authorize(user, 'orders.confirm', order);
     if (!confirmAuth.allowed) {
       return NextResponse.json({ error: 'لا تملك صلاحية تغيير حالة التأكيد' }, { status: 403 });
+    }
+
+    /*
+     * AN AGENT WORKS ONLY THE ORDER SHE HOLDS (the owner, 1/11) — see `mustHoldToWork`. Asked before anything is read from the body,
+     * for EVERY action: an agent who could `confirm` an order nobody held, from the orders list, also left it with no holder, no
+     * stage and no contact rule (`needsContactFirst` binds only a holder). Supervisors and the owner are not bound.
+     */
+    if (mustHoldToWork((permission) => can(user, permission)) && order.claimedById !== user.id) {
+      return NextResponse.json({ error: NOT_HELD_MESSAGE, errorAr: NOT_HELD_MESSAGE, code: 'NOT_HELD' }, { status: 403 });
     }
 
     // ── Editing-lock enforcement: an ACTIVE foreign lock blocks edits ──

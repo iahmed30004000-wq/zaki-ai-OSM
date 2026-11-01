@@ -327,6 +327,8 @@ export async function GET(
         // are negative entries, so a returned order nets to zero here.
         commissions: { select: { id: true, userId: true, role: true, amount: true, status: true } },
         claimer: { select: { id: true, name: true } },
+        // Who gave the yes (`confirmedById`) — an order can be confirmed with no holder, and the sheet says so rather than «متاح في الطابور».
+        confirmer: { select: { id: true, name: true } },
         owner: { select: { id: true, name: true } },
         // Whom it is held for, while the hold stands (order-reservation.ts).
         assignee: { select: { id: true, name: true, status: true } },

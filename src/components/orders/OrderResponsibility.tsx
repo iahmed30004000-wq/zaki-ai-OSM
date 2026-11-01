@@ -7,6 +7,7 @@ import { RiArrowLeftRightLine, RiLoader4Line, RiUserFollowLine, RiUserUnfollowLi
 import { useToast } from '@/components/ui/Toast';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
+import { OPEN_CONFIRMATION } from '@/lib/confirmation-queue';
 
 /**
  * Whose hands the order is in.
@@ -31,6 +32,9 @@ interface Props {
     owner?: { id: string; name: string } | null;
     /** Held for the agent who worked this customer last, while the hold stands (order-reservation.ts). */
     reservedFor?: { id: string; name: string; hoursLeft?: number } | null;
+    /** Where the confirmation stands, and who gave the yes — an order can be decided with no holder at all. */
+    confirmationStatus?: string;
+    confirmer?: { id: string; name: string } | null;
   };
   currentUserId?: string;
   onChanged: () => void;
@@ -42,6 +46,8 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
   const toast = useToast();
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [mayTransfer, setMayTransfer] = useState(false);
+  /* Who the list holds: every employee who can work the order (for whoever assigns), or only the holder's own role (an agent giving it up). */
+  const [anyAgent, setAnyAgent] = useState(false);
   const [open, setOpen] = useState<'transfer' | 'release' | 'take' | null>(null);
   const [targetId, setTargetId] = useState('');
   const [reason, setReason] = useState('');
@@ -49,6 +55,12 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
 
   const holder = order.claimer ?? order.owner ?? null;
   const heldByMe = holder?.id === currentUserId;
+  /*
+   * «متاح في الطابور» IS TRUE ONLY OF AN ORDER STILL WAITING TO BE DECIDED (the owner, 1/11).
+   * ORD-2026-1896 was confirmed with nobody holding it — a confirmation agent pressed «تأكيد» from the orders list — and this box read
+   * «لم يستلمه أحد بعد — متاح في الطابور» beside a confirmed status. A decided order is in no queue; say what happened instead.
+   */
+  const decided = !!order.confirmationStatus && !OPEN_CONFIRMATION.includes(order.confirmationStatus);
   /*
    * GIVING BACK WHAT SHE HOLDS FOLLOWS ITS OWN KEY.
    *
@@ -72,13 +84,15 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
 
   useEffect(() => {
     setOpen(null);
-    apiJson<{ mayTransfer: boolean; candidates: Candidate[] }>(`/api/orders/${order.id}/transfer`)
+    apiJson<{ mayTransfer: boolean; scope?: 'ANY_AGENT' | 'SAME_RANK'; candidates: Candidate[] }>(`/api/orders/${order.id}/transfer`)
       .then((d) => {
         setMayTransfer(d.mayTransfer);
+        setAnyAgent(d.scope === 'ANY_AGENT');
         setCandidates(d.candidates ?? []);
       })
       .catch(() => {
         setMayTransfer(false);
+        setAnyAgent(false);
         setCandidates([]);
       });
   }, [order.id, order.claimedById]);
@@ -151,6 +165,13 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
                   </span>
                 )}
               </p>
+            ) : decided ? (
+              <p className="text-sm text-[var(--sys-muted-foreground)]">
+                {order.confirmationStatus === 'CONFIRMED' ? 'انأكّد من غير ما حدا يستلمه' : 'انحسم من غير ما حدا يستلمه'}
+                {order.confirmationStatus === 'CONFIRMED' && order.confirmer && (
+                  <span className="font-bold text-[var(--sys-heading)]"> — أكّده {order.confirmer.name}</span>
+                )}
+              </p>
             ) : (
               <p className="text-sm text-[var(--sys-muted-foreground)]">
                 لم يستلمه أحد بعد — <span className="text-[var(--sys-foreground)]">متاح في الطابور</span>
@@ -183,7 +204,7 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
             <button
               onClick={() => { setOpen(open === 'transfer' ? null : 'transfer'); }}
               disabled={candidates.length === 0}
-              title={candidates.length === 0 ? 'لا يوجد زميل بنفس الرتبة' : undefined}
+              title={candidates.length === 0 ? (anyAgent ? 'لا يوجد موظف تأكيد يقدر يشتغل على الطلب' : 'لا يوجد زميل بنفس الرتبة') : undefined}
               className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1.5 disabled:opacity-40"
             >
               <RiArrowLeftRightLine className="icon-mirror w-4 h-4" />
@@ -199,7 +220,7 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
           {open === 'transfer' && (
             <label className="block">
               <span className="block text-xs font-medium text-[var(--sys-muted-foreground)] mb-1">
-                يُحوَّل إلى (زملاء بنفس الرتبة فقط)
+                {anyAgent ? 'يُحوَّل إلى (موظفو التأكيد)' : 'يُحوَّل إلى (زملاء بنفس الرتبة فقط)'}
               </span>
               <select value={targetId} onChange={(e) => setTargetId(e.target.value)} className={inputClass}>
                 <option value="">— اختر الزميل —</option>

@@ -73,6 +73,8 @@ export interface StageSource extends StateSource {
   source?: string | null;
   moderator?: { name: string } | null;
   claimer?: { name: string } | null;
+  /** Who gave the yes (`Order.confirmedById`) — an order can be confirmed without anybody having claimed it. */
+  confirmer?: { name: string } | null;
   deliveryProvider?: { name: string } | null;
   trackingNumber?: string | null;
   quantity?: number;
@@ -135,7 +137,12 @@ export function orderStages(
   /** When each stage began, as far as the order's own record shows. */
   const enteredAt: Record<StageKey, Date | null> = {
     INTAKE: date(order.createdAt),
-    CONFIRMATION: claimedAt,
+    /*
+     * The confirmation stage began when somebody CLAIMED the order — or, for an order that was decided with nobody holding it (an agent
+     * pressed «تأكيد» from the orders list: ORD-2026-1896, the owner, 1/11), at the yes itself. It was `claimedAt` alone, so such an
+     * order read «التأكيد: لم يمر بها» in the same card that said «محاولات التواصل: 1 · أُكِّد: نعم».
+     */
+    CONFIRMATION: claimedAt ?? confirmedAt,
     // Confirmation is what releases an order to the warehouse.
     WAREHOUSE: confirmedAt,
     TRANSIT: shippedAt,
@@ -179,11 +186,13 @@ export function orderStages(
         break;
 
       case 'CONFIRMATION':
-        who = order.claimer?.name ?? null;
+        who = order.claimer?.name ?? order.confirmer?.name ?? null;
         if (counts.contactAttempts) {
           facts.push({ label: 'محاولات التواصل', value: String(counts.contactAttempts) });
         }
         if (confirmedAt) facts.push({ label: 'أُكّد', value: 'نعم' });
+        // Said plainly, not hidden: the yes was given with nobody holding the order.
+        if (confirmedAt && !claimedAt) facts.push({ label: 'الاستلام', value: 'بلا استلام' });
         break;
 
       case 'WAREHOUSE':
@@ -218,7 +227,10 @@ export function orderStages(
     const start = enteredAt[key];
     const end = endedAt(index);
     const ongoing = Boolean(start && !end && status === 'CURRENT');
-    const minutes = start ? minutesBetween(start, end ?? now) : null;
+    // A confirmation decided with nobody holding the order began and ended at the yes: there is no time «in» the stage to report, and a
+    // zero would read as «instant» for something nobody measured — the same reason a stage never entered says nothing.
+    const unmeasured = key === 'CONFIRMATION' && !claimedAt;
+    const minutes = start && !unmeasured ? minutesBetween(start, end ?? now) : null;
 
     return { key, title: TITLES[key], status, at: start, who, facts, minutes, ongoing };
   });
