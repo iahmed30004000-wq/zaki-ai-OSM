@@ -15,7 +15,8 @@ const { db, requireContext } = vi.hoisted(() => ({
 }));
 vi.mock('@/lib/db', () => ({ db }));
 vi.mock('@/lib/geo-context', () => ({ requireContext: (...a: unknown[]) => requireContext(...a) }));
-vi.mock('@/lib/authorization', () => ({ requirePermission: vi.fn(), can: () => true }));
+// Everything is allowed except the owner's key (`ops.labels_any`): the rule for everybody else is what these labels are drawn under.
+vi.mock('@/lib/authorization', () => ({ requirePermission: vi.fn(), can: (_u: unknown, key: string) => key !== 'ops.labels_any' }));
 vi.mock('@/lib/audit', () => ({ logAudit: vi.fn() }));
 
 import { GET as printGET } from '@/app/api/ops/labels/print/route';

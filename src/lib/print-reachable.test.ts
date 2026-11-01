@@ -40,8 +40,13 @@ describe('printing a waybill', () => {
   it('and appears only where it can actually produce one', () => {
     const src = screen();
     // A waybill needs a confirmed order; a button that answers with a
-    // refusal is worse than no button.
-    expect(src).toMatch(/canPrint && order\.confirmationStatus === 'CONFIRMED' &&/);
+    // refusal is worse than no button. Whoever holds the owner's key
+    // (`ops.labels_any`) prints any order in any state, so for her every row
+    // can produce one — and for nobody else is the button drawn on an
+    // unconfirmed row.
+    expect(src).toMatch(/canPrint && \(canPrintAny \|\| order\.confirmationStatus === 'CONFIRMED'\) &&/);
+    expect(src).toMatch(/const canPrintAny = userCan\(currentUser, 'ops\.labels_any'\)/);
+    expect(ALL_CATALOG_KEYS.has('ops.labels_any'), 'مفتاح المالك غير قابل للمنح').toBe(true);
   });
 
   it('and the permission behind it is one somebody can be granted', () => {
