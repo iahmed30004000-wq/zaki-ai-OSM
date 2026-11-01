@@ -136,19 +136,30 @@ describe('what «احفظ» accepts', () => {
 });
 
 describe('a product with a fixed figure', () => {
-  it('says the figure, that the screens use it, and — truthfully — that orders are not priced from it YET', () => {
+  it('says the figure, that the screens use it, and — truthfully — which orders are costed from it', () => {
     show({ fixedCost: 6.75 });
     expect(screen.getByText('6.75 JOD')).toBeTruthy();
     expect(screen.getByText(/تكلفة الوحدة بشاشات المنتجات والمخزون هي هالرقم/)).toBeTruthy();
-    // This release changes no order (the door says so too); the box must not promise what a later release does.
-    expect(screen.getByText(/الطلبات لسا بتنحسب من الدفعات/)).toBeTruthy();
-    expect(screen.queryByText(/الطلبات الجديدة بتنحسب تكلفتها من هالرقم/)).toBeNull();
+    // The orders: a new one, the units ADDED to an existing one, the ones delivered from now on — and only «إذا كفّى المخزون», because a
+    // short or empty shelf at delivery keeps the cost the order was raised with (RV576). An order already delivered keeps its cost.
+    expect(screen.getByText(/الطلب الجديد بينكتب بهالرقم/)).toBeTruthy();
+    expect(screen.getByText(/القطع اللي بتنزاد على طلب موجود/)).toBeTruthy();
+    expect(screen.getByText(/الطلب اللي بيتسلّم من هلّق إذا كفّى المخزون/)).toBeTruthy();
+    expect(screen.getByText(/الطلب اللي تسلّم قبل بيضل بتكلفته/)).toBeTruthy();
+    // What it must NOT promise (the independent review, 2/11): every edited line, or a delivery on a short shelf.
+    expect(screen.queryByText(/السطور اللي بتتعدّل/)).toBeNull();
+    expect(screen.queryByText(/الطلبات اللي بتتسلّم من هلّق\./)).toBeNull();
+    // The first release's honest «not yet» is gone: it would now be a lie in the other direction.
+    expect(screen.queryByText(/الطلبات لسا بتنحسب من الدفعات/)).toBeNull();
+    expect(screen.queryByText(/وربطها بالرقم بالخطوة الجاية/)).toBeNull();
     expect(screen.queryByText(/بلا تكلفة ثابتة/)).toBeNull();
   });
 
-  it('with no figure it says the same about orders: typing one changes the screens, not the orders', () => {
+  it('with no figure it says the same about orders: typing one changes the screens AND the orders costed from now on', () => {
     show();
-    expect(screen.getByText(/الطلبات ما بتتأثر لسا/)).toBeTruthy();
+    expect(screen.getByText(/وبالطلب الجديد، وبالقطع اللي بتنزاد على طلب موجود، وبالطلب اللي بيتسلّم من هلّق إذا كفّى المخزون/)).toBeTruthy();
+    expect(screen.getByText(/الطلب اللي تسلّم قبل بيضل بتكلفته/)).toBeTruthy();
+    expect(screen.queryByText(/الطلبات ما بتتأثر لسا/)).toBeNull();
   });
 
   it('offers «امسح», and not «ثبّت على المتوسط الحالي» — it already has a figure', () => {
@@ -157,7 +168,7 @@ describe('a product with a fixed figure', () => {
     expect(screen.queryByRole('button', { name: 'ثبّت على المتوسط الحالي' })).toBeNull();
   });
 
-  it('«امسح» asks first, in a danger dialog that says the cost goes back to the average', async () => {
+  it('«امسح» asks first, in a danger dialog that says the cost goes back to the average — and that a delivered order keeps its cost', async () => {
     confirmMock.mockResolvedValue(false);
     show({ fixedCost: 6.75 });
     await press('امسح');
@@ -165,6 +176,7 @@ describe('a product with a fixed figure', () => {
     const asked = confirmMock.mock.calls[0][0] as { body: string; tone: string; confirmLabel: string };
     expect(asked.tone).toBe('danger');
     expect(asked.body).toContain('متوسط المخزون');
+    expect(asked.body).toContain('الطلب اللي تسلّم قبل ما بيتغيّر');
     expect(asked.confirmLabel).toBe('امسح');
   });
 

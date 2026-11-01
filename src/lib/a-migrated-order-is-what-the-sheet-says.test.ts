@@ -164,7 +164,7 @@ describe('writing one migrated order', () => {
     const deps: WriteDeps = {
       findOrCreateCustomer: vi.fn(async () => ({ id: 'cu1', firstOrderDate: null })),
       orderRefFields: vi.fn(async () => ({ orderNumber: 'SY-1', merchantRef: 'SY-1' })),
-      averageCost: vi.fn(async () => 4),
+      unitCost: vi.fn(async () => 4),
       deliveryFee: vi.fn(async () => 3),
       reserve: vi.fn(async () => ({ shortages: [] })),
     };
@@ -203,6 +203,31 @@ describe('writing one migrated order', () => {
     await writeMigratedOrder(tx, ctx, planned(), deps);
     expect(calls.item[0]).toMatchObject({ productId: 'p-kamaa', quantity: 3, freeQuantity: 0, lineTotal: 25 });
     expect(calls.order[0].estimatedCostOfGoods).toBe(12);
+  });
+
+  it('asks what one unit costs for THIS row’s product, in the row’s company, inside the order’s own transaction', async () => {
+    const { tx, deps, ctx } = harness();
+    await writeMigratedOrder(tx, ctx, planned(), deps);
+    expect(deps.unitCost).toHaveBeenCalledTimes(1);
+    expect(deps.unitCost).toHaveBeenCalledWith(tx, 'co', 'p-kamaa');
+  });
+
+  it('a unit that costs nothing is a cost of nothing — the dependency’s zero is an answer, not a gap to fill', async () => {
+    const { tx, deps, ctx, calls } = harness();
+    (deps.unitCost as any).mockResolvedValue(0);
+    await writeMigratedOrder(tx, ctx, planned(), deps);
+    expect(calls.order[0].estimatedCostOfGoods).toBe(0);
+  });
+
+  it('and the cost is rounded by the currency: 3 × 1.1117 = 3.3351 is 3.34 at two places and 3.335 at three', async () => {
+    const two = harness();
+    (two.deps.unitCost as any).mockResolvedValue(1.1117);
+    await writeMigratedOrder(two.tx, two.ctx, planned(), two.deps);
+    expect(two.calls.order[0].estimatedCostOfGoods).toBe(3.34);
+    const three = harness();
+    (three.deps.unitCost as any).mockResolvedValue(1.1117);
+    await writeMigratedOrder(three.tx, { ...three.ctx, minorUnit: 3 }, planned(), three.deps);
+    expect(three.calls.order[0].estimatedCostOfGoods).toBe(3.335);
   });
 
   it('holds the stock ONCE — through the reservation every order uses, inside the same transaction', async () => {

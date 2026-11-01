@@ -17,6 +17,10 @@ import { useConfirm } from '@/components/ui/Confirm';
  *
  * THE FIGURES COME FROM THE SERVER. The average offered by «ثبّت» is the one the stock read answered; nothing is worked out here.
  * The door (`PUT /api/products/[id]/fixed-cost`) asks the key again, and writes the before and the after to the audit log.
+ *
+ * WHAT IT SAYS ABOUT ORDERS IS THE TRUTH OF `product-fixed-cost.ts` (Stage 2): an order raised from now on, a line that is edited
+ * and an order that is delivered from now on are costed from the figure; an order already delivered keeps the cost it was written
+ * with. The first release said «الطلبات لسا بتنحسب من الدفعات» because it changed no order — that sentence is gone with the reason for it.
  */
 export function FixedCostEditor({
   productId,
@@ -69,8 +73,8 @@ export function FixedCostEditor({
       </p>
       <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
         {fixedCost !== null
-          ? 'تكلفة الوحدة بشاشات المنتجات والمخزون هي هالرقم، وما بتتغيّر مع الدفعات. الطلبات لسا بتنحسب من الدفعات، وربطها بالرقم بالخطوة الجاية.'
-          : 'لما تحدّد رقماً، بتصير تكلفة الوحدة بشاشات المنتجات والمخزون هو، بدل المتوسط. الطلبات ما بتتأثر لسا.'}
+          ? 'تكلفة الوحدة بشاشات المنتجات والمخزون هي هالرقم، وما بتتغيّر مع الدفعات. الطلب الجديد بينكتب بهالرقم، وكمان القطع اللي بتنزاد على طلب موجود، والطلب اللي بيتسلّم من هلّق إذا كفّى المخزون. الطلب اللي تسلّم قبل بيضل بتكلفته.'
+          : 'لما تحدّد رقماً، بتصير تكلفة الوحدة هو بدل المتوسط: بالشاشات، وبالطلب الجديد، وبالقطع اللي بتنزاد على طلب موجود، وبالطلب اللي بيتسلّم من هلّق إذا كفّى المخزون. الطلب اللي تسلّم قبل بيضل بتكلفته.'}
       </p>
 
       {canChange && (
@@ -117,7 +121,7 @@ export function FixedCostEditor({
               onClick={() =>
                 void save(null, {
                   title: 'مسح التكلفة الثابتة؟',
-                  body: 'بترجع التكلفة متوسط المخزون وبتتغيّر مع الدفعات. الطلبات اللي انكتبت ما بتتغيّر.',
+                  body: 'بترجع التكلفة متوسط المخزون وبتتغيّر مع الدفعات، وبترجع الطلبات الجديدة والمتسلَّمة من هلّق تنحسب منها. الطلب اللي تسلّم قبل ما بيتغيّر.',
                   confirmLabel: 'امسح',
                 })
               }

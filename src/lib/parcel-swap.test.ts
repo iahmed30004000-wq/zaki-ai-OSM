@@ -156,6 +156,8 @@ interface World {
   addOns: Row[];
   /** Runs ONCE just before the conditional update of that order — a press that lands after the read and before the write. */
   beforeOrderUpdate?: Record<string, () => void>;
+  /** The FIXED COST an admin set for a product (`ProductFixedCost`) — none, unless a test says so. */
+  figures: Record<string, number>;
 }
 
 let seq = 0;
@@ -245,6 +247,14 @@ function makeTx(w: World) {
         w.items.splice(0, w.items.length, ...keep);
         return { count: n };
       }),
+    },
+    // The fixed figures, answered the way the table does: this company's, for the products asked, and only the ones that have a row.
+    productFixedCost: {
+      findMany: vi.fn(async ({ where }: { where: Row }) =>
+        Object.entries(w.figures)
+          .filter(([productId]) => where.companyId === 'c1' && (where.productId.in as string[]).includes(productId))
+          .map(([productId, amount]) => ({ productId, amount }))
+      ),
     },
     orderChangeRequest: {
       count: vi.fn(async ({ where }: { where: Row }) => w.requests.filter((r) => fits(r, where)).length),
@@ -368,6 +378,7 @@ function makeWorld(over: Partial<World> = {}): World {
     writes: [],
     moved: new Set<string>(),
     addOns: [],
+    figures: {},
     ...over,
   };
 }
@@ -1065,6 +1076,63 @@ describe('a box of two lines', () => {
     expect(W.items.find((i) => i.id === 'yi1')).toMatchObject({ deliveredQty: 2, returnedQty: 0, reservedQty: 0 });
     expect(W.items.find((i) => i.id === 'yi2')).toMatchObject({ deliveredQty: 0, returnedQty: 1, reservedQty: 1 });
     expect(expectedBackTotal(W.items.filter((i) => i.orderId === 'y') as any)).toBe(1);
+  });
+
+  /*
+   * THE OWNER'S FIXED COST ON THE BOX (1/11: «ثابت لكل الطلبات»). Y was struck at 12 for three pieces (4 a piece). The sale is a new
+   * order costed now: a product with a figure costs the figure × the pieces A was handed; a product with none keeps its share of 12.
+   */
+  it('the whole box, with a figure on the first product only: 2 × 6 for the perfume, and the cream keeps its third of the 12 — 12 + 4', async () => {
+    twoLines();
+    W.figures = { p1: 6 };
+    const r = await run({ pieces: 3 });
+    expect(orderOf(r.sale.id).estimatedCostOfGoods).toBe(16);
+  });
+
+  it('…with a figure on both: 2 × 6 + 1 × 3 = 15, whatever the box was struck at', async () => {
+    twoLines();
+    W.figures = { p1: 6, p2: 3 };
+    const r = await run({ pieces: 3 });
+    expect(orderOf(r.sale.id).estimatedCostOfGoods).toBe(15);
+  });
+
+  it('…and ZERO is a figure: the perfume costs nothing and the cream keeps its 4 — not the 12 the box was struck at', async () => {
+    twoLines();
+    W.figures = { p1: 0 };
+    const r = await run({ pieces: 3 });
+    expect(orderOf(r.sale.id).estimatedCostOfGoods).toBe(4);
+  });
+
+  it('…and with NO figure it is exactly what it was: the box’s cost, 12', async () => {
+    twoLines();
+    const r = await run({ pieces: 3 });
+    expect(orderOf(r.sale.id).estimatedCostOfGoods).toBe(12);
+  });
+
+  it('two pieces: only the perfume goes — a figure of 6 makes it 12, where the share of the box said 8', async () => {
+    twoLines();
+    W.figures = { p1: 6 };
+    const r = await run({ pieces: 2 });
+    expect(orderOf(r.sale.id).estimatedCostOfGoods).toBe(12);
+  });
+
+  it('the figure of a product the customer was NOT handed moves nothing: the cream’s 3 is not in a two-piece sale of the perfume (8)', async () => {
+    twoLines();
+    W.figures = { p2: 3 };
+    const r = await run({ pieces: 2 });
+    expect(orderOf(r.sale.id).estimatedCostOfGoods).toBe(8);
+  });
+
+  it('the figures are asked for the products of the pieces handed over, in the sale’s company — once', async () => {
+    twoLines();
+    W.figures = { p1: 6 };
+    const tx = makeTx(W);
+    await recordParcelSwap(tx as any, { ...INPUT, pieces: 3 });
+    expect(tx.productFixedCost.findMany).toHaveBeenCalledTimes(1);
+    expect(tx.productFixedCost.findMany).toHaveBeenCalledWith({
+      where: { companyId: 'c1', productId: { in: ['p1', 'p2'] } },
+      select: { productId: true, amount: true },
+    });
   });
 
   it('packing order is by when a line was written, then by its id', () => {

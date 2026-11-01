@@ -39,6 +39,8 @@ const { db, requireContext, requirePermission, activeBlock, logAudit, notify, no
       store: { findFirst: vi.fn() },
       deliveryFee: { findFirst: vi.fn() },
       productionBatch: { findMany: vi.fn() },
+      // No fixed cost for any product here: the order's cost is what the batches say.
+      productFixedCost: { findMany: async () => [] },
       offer: { findFirst: vi.fn() },
       user: { findFirst: vi.fn() },
       order: { create: vi.fn(), count: vi.fn(), findFirst: vi.fn(), findMany: vi.fn() },

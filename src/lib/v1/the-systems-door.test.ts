@@ -456,7 +456,8 @@ describe('the intake reuses every shared rule, and owns none of them', () => {
       /activeOffersFor\(\s*db\b/,
       /computeCod\(\s*\{/,
       /priceIncludesDeliveryFor\(\s*store\.id/,
-      /productCosts\(\s*\n?\s*db\b/,
+      // (old → new, 1/11) `productCosts(db` → the one helper the other order doors read, which answers the fixed cost first.
+      /unitCostsOf\(\s*\n?\s*db\b/,
       /orderRefFields\(\s*tx\b/,
       /logAudit\(\s*\{/,
       /notify\(\s*\{/,

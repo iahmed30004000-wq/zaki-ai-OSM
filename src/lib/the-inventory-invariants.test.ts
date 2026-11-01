@@ -474,6 +474,9 @@ function ledger(opts: { orderStore: string | null; shelf: Row[]; alreadySold?: b
     // An order with no add-ons, unless a test says otherwise — plain functions, so a mock reset leaves them answering.
     orderAddOn: { aggregate: async () => ({ _sum: { reservedQty: 0 } }), findMany: async () => [], update: async () => ({}), updateMany: async () => ({ count: 0 }) },
     orderItem: { updateMany: async () => ({ count: 0 }) },
+    // No fixed cost for any product: the order's cost is what the batches say. The figure is the ORDER's, never the shelf's —
+    // it is not a shelf query, so it is kept out of `shelfQueries`.
+    productFixedCost: { findMany: async () => [] },
     orderActivity: {
       create: async ({ data }: any) => { reviews.push(data); return { id: `a${reviews.length}`, ...data }; },
       findFirst: async ({ where }: any) => reviews.find((r) => r.orderId === where.orderId && r.action === where.action) ?? null,

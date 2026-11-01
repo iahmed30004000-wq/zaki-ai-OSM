@@ -48,7 +48,7 @@ import {
 import { SETTLEMENT_OPEN, type EditableOrderRow } from '@/lib/order-edit-facts';
 import { claimingRowWhere } from '@/lib/match-integrity';
 import { describeLines, type ApprovedLineEdit, type LinesChange } from '@/lib/change-request-fields';
-import { productCosts } from '@/lib/product-cost';
+import { fixedCostsOf, unitCostsOf } from '@/lib/product-fixed-cost';
 import { heldFor, reservationHoursLeft } from '@/lib/order-reservation';
 import { resolveDeliveryFee } from '@/lib/delivery-fees';
 
@@ -1913,16 +1913,21 @@ export async function PATCH(
         // The gift is real stock: the courier is told quantity + gift (`dispatch.ts`) and the shelf holds both, so the
         // order's own total of gifts follows the lines it is made of, in the SAME write.
         updateData.freeQuantity = lineApply.gifts.reduce((sum, g) => sum + g, 0);
-        // What the goods cost us follows too — but only by the lines that MOVED, at today's average of their products
-        // (the figure was struck once, from that day's batches; a line nobody touched keeps its share of it, and a product
-        // with no batch left does not turn into free goods). Every unit that leaves the shelf counts, the gift included.
-        const costs = await productCosts(db, companyId, costProductIds(lineApply.audit));
+        // What the goods cost us follows too — but only by the lines that MOVED, at what one unit of their products costs
+        // today (`unitCostsOf`: the product's FIXED figure when an admin set one, else the average of its batches; the
+        // figure was struck once, from that day's costs; a line nobody touched keeps its share of it, and a product with
+        // neither a figure nor a batch left does not turn into free goods). Every unit that leaves the shelf counts, the
+        // gift included. `fixedCostsOf` is asked only to tell a ZERO figure (a real answer: nothing goes on) from «nothing known».
+        const costIds = costProductIds(lineApply.audit);
+        const costs = await unitCostsOf(db, companyId, costIds);
+        const figures = await fixedCostsOf(db, companyId, costIds);
         const recost = costAfterEdit(
           Number(existing.estimatedCostOfGoods ?? 0),
           lineApply.stored.reduce((sum, l) => sum + l.quantity + l.freeQuantity, 0),
           lineApply.audit,
-          (pid) => costs.get(pid)?.average ?? 0,
-          country.minorUnit
+          (pid) => costs.get(pid) ?? 0,
+          country.minorUnit,
+          (pid) => figures.get(pid)
         );
         updateData.estimatedCostOfGoods = recost.cost;
         // A cost struck at nothing has no per-unit figure to move; it is left, and the timeline says so.

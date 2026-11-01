@@ -52,7 +52,7 @@ const { makeDb, requireContext, assertOrderAccess, authorize, can, getPermission
  */
 vi.mock('@/lib/db', () => {
   const forward = (model: string, method: string) => (args: unknown) => makeDb.current[model][method](args);
-  const models = ['order', 'orderItem', 'orderAddOn', 'customer', 'productionBatch', 'inventoryMovement', 'orderStatusLog', 'orderActivity'];
+  const models = ['order', 'orderItem', 'orderAddOn', 'customer', 'productionBatch', 'productFixedCost', 'inventoryMovement', 'orderStatusLog', 'orderActivity'];
   const methods = ['findFirst', 'findUnique', 'findMany', 'create', 'createMany', 'update', 'updateMany', 'deleteMany', 'aggregate', 'count'];
   const db: Record<string, unknown> = {
     $transaction: (fn: (tx: unknown) => unknown) => fn(db),
@@ -158,6 +158,8 @@ function world(opts: {
   shelf?: Row[];
   /** A SALE already recorded for this order — the 26-order state measured. */
   priorSale?: boolean;
+  /** The FIXED COST an admin set for these products (`ProductFixedCost`): none, unless a test says so. */
+  figures?: Record<string, number>;
 }) {
   const order = opts.order ?? orderRow();
   const items = opts.items ?? [{ productId: CREAM, productName: 'كريم', quantity: 3, freeQuantity: 0 }];
@@ -168,6 +170,7 @@ function world(opts: {
   const logs: Row[] = [];
   const orderWrites: Row[] = [];
   const shelfQueries: Row[] = [];
+  const figureQueries: Row[] = [];
   let seq = 0;
 
   const db: Row = {
@@ -262,6 +265,15 @@ function world(opts: {
         },
       }),
     },
+    // The fixed figures, answered the way the table does: this company's, for the products asked, and only the ones that have a row.
+    productFixedCost: {
+      findMany: async ({ where }: any) => {
+        figureQueries.push(where);
+        return Object.entries(opts.figures ?? {})
+          .filter(([productId]) => where.companyId === 'c1' && where.productId.in.includes(productId))
+          .map(([productId, amount]) => ({ productId, amount }));
+      },
+    },
     inventoryMovement: {
       findFirst: async ({ where }: any) =>
         movements.find((m) => m.referenceId === where.referenceId && m.type === where.type) ?? null,
@@ -279,7 +291,7 @@ function world(opts: {
   };
   db.$transaction = (fn: (tx: unknown) => unknown) => fn(db);
 
-  return { db, order, items, shelf, movements, orderWrites, shelfQueries, activities: logs };
+  return { db, order, items, shelf, movements, orderWrites, shelfQueries, figureQueries, activities: logs };
 }
 
 const deliver = (body: Record<string, unknown> = {}) =>
@@ -683,6 +695,185 @@ describe('and it files that SALE on the order’s own shelf', () => {
     });
     expect((await deliver()).status).toBe(200);
     expect(w.movements).toHaveLength(0);
+  });
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * A PRODUCT WITH A FIXED COST IS COSTED AT IT WHEN THE GOODS LEAVE (the owner, 1/11)
+ *
+ * «سعر تكلفة المنتج يكون ثابت ولا يتغير ابدا… ثابت لكل الطلبات وما يتغير تحت اي ظرف». The complaint was this very overwrite: the order
+ * was costed once when it was raised and again, from whichever batches were oldest, when it was delivered — two numbers for one
+ * order. Through the real door and the real draw-down: the SHELF is what it always was (the batches, the ledger, the remainders); only
+ * the cost WRITTEN ON THE ORDER follows the figure.
+ *
+ * The batches below cost 3 (March, 3 units) and 5 (June, 8 units): 10 units drawn FIFO cost 3×3 + 7×5 = 44. A product with no
+ * figure is written at 44, as ever.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+describe('a fixed cost is what the order is written at, and the shelf is still the shelf’s', () => {
+  const march = () => batch({ id: 'b-march', quantityRemaining: 3, productionDate: new Date('2026-03-01'), costPerUnit: 3 });
+  const june = () => batch({ id: 'b-june', quantityRemaining: 8, productionDate: new Date('2026-06-01'), costPerUnit: 5 });
+  const ten = () => ({
+    order: orderRow({ quantity: 10 }),
+    items: [{ productId: CREAM, productName: 'كريم', quantity: 10, freeQuantity: 0 }],
+    shelf: [june(), march()],
+  });
+  /** Every cost of goods written on the order during the request — the last one is what stays. */
+  const costsWritten = (w: ReturnType<typeof world>) => w.orderWrites.filter((d) => 'estimatedCostOfGoods' in d).map((d) => d.estimatedCostOfGoods);
+
+  it('NO FIGURE: the batches price it, exactly as before — 3×3 + 7×5 = 44', async () => {
+    const w = install(world(ten()));
+    expect((await deliver()).status).toBe(200);
+    expect(costsWritten(w)).toEqual([44]);
+  });
+
+  it('A FIGURE OF 6: the order is written at 10 × 6 = 60, not at the 44 the batches say', async () => {
+    const w = install(world({ ...ten(), figures: { [CREAM]: 6 } }));
+    expect((await deliver()).status).toBe(200);
+    expect(costsWritten(w)).toEqual([60]);
+  });
+
+  it('…and the SHELF is untouched by the figure: the same remainders, the same sold, the same ledger line', async () => {
+    const w = install(world({ ...ten(), figures: { [CREAM]: 6 } }));
+    expect((await deliver()).status).toBe(200);
+    expect(left(w, 'b-march')).toBe(0);
+    expect(left(w, 'b-june')).toBe(1);
+    expect(sold(w, 'b-march')).toBe(3);
+    expect(sold(w, 'b-june')).toBe(7);
+    expect(sales(w)).toHaveLength(1);
+    expect(sales(w)[0].quantity).toBe(-10);
+    // …and no batch's own cost was rewritten: the figure is the ORDER's, the batches keep what they cost.
+    expect(w.shelf.find((b) => b.id === 'b-march')!.costPerUnit).toBe(3);
+    expect(w.shelf.find((b) => b.id === 'b-june')!.costPerUnit).toBe(5);
+  });
+
+  it('A FIGURE WINS OVER BATCHES THAT COST NOTHING: a free batch does not make the order free', async () => {
+    const w = install(world({ ...ten(), shelf: [batch({ id: 'b-free', quantityRemaining: 20, costPerUnit: 0 })], figures: { [CREAM]: 6 } }));
+    expect((await deliver()).status).toBe(200);
+    expect(costsWritten(w)).toEqual([60]);
+  });
+
+  it('ZERO IS A FIGURE: an item that costs nothing is written at 0, not at the 44 of the batches', async () => {
+    const w = install(world({ ...ten(), figures: { [CREAM]: 0 } }));
+    expect((await deliver()).status).toBe(200);
+    expect(costsWritten(w)).toEqual([0]);
+  });
+
+  it('THE GIFT COSTS THE FIGURE TOO: 3 paid + 1 free at 6 is 4 × 6 = 24', async () => {
+    const w = install(
+      world({
+        order: orderRow({ quantity: 3, freeQuantity: 1 }),
+        items: [{ productId: CREAM, productName: 'كريم', quantity: 3, freeQuantity: 1 }],
+        shelf: [batch({ id: 'b-only', quantityRemaining: 10 })],
+        figures: { [CREAM]: 6 },
+      })
+    );
+    expect((await deliver()).status).toBe(200);
+    expect(costsWritten(w)).toEqual([24]);
+  });
+
+  it('A MIXED ORDER sums both ways: the cream at its figure (2 × 6), the soap at its batches (4 × 2)', async () => {
+    const w = install(
+      world({
+        order: orderRow({ quantity: 2 }),
+        items: [
+          { productId: CREAM, productName: 'كريم', quantity: 2, freeQuantity: 0 },
+          { productId: SOAP, productName: 'صابون', quantity: 4, freeQuantity: 0 },
+        ],
+        shelf: [
+          batch({ id: 'b-cream', productId: CREAM, quantityRemaining: 5, costPerUnit: 9 }),
+          batch({ id: 'b-soap', productId: SOAP, quantityRemaining: 9, costPerUnit: 2 }),
+        ],
+        figures: { [CREAM]: 6 },
+      })
+    );
+    expect((await deliver()).status).toBe(200);
+    expect(costsWritten(w)).toEqual([20]); // 12 + 8 — not 18 + 8 (the cream's batches) and not 24 + 8 (a figure for both)
+  });
+
+  it('A SHORT SHELF keeps the estimate it was raised with, figure or not: nothing is written over it', async () => {
+    const w = install(
+      world({
+        order: orderRow({ quantity: 10 }),
+        items: [{ productId: CREAM, productName: 'كريم', quantity: 10, freeQuantity: 0 }],
+        shelf: [batch({ id: 'b-only', quantityRemaining: 5 })],
+        figures: { [CREAM]: 6 },
+      })
+    );
+    expect((await deliver()).status).toBe(200);
+    expect(costsWritten(w)).toEqual([]);
+  });
+
+  it('AN EMPTY SHELF writes no cost either — nothing left, so nothing is priced', async () => {
+    const w = install(world({ ...ten(), shelf: [], figures: { [CREAM]: 6 } }));
+    expect((await deliver()).status).toBe(200);
+    expect(costsWritten(w)).toEqual([]);
+  });
+
+  it('A DELIVERY ALREADY RECORDED does nothing twice: a second door finds the sale and writes no cost and reads no figure', async () => {
+    const w = install(world({ ...ten(), figures: { [CREAM]: 6 } }));
+    expect((await deliver()).status).toBe(200);
+    expect(costsWritten(w)).toEqual([60]);
+    w.figureQueries.length = 0;
+    w.orderWrites.length = 0;
+    const again = await consumeOrderStock(w.db as never, { orderId: ORDER, companyId: 'c1', userId: 'u1' });
+    expect(again.alreadyDone).toBe(true);
+    expect(costsWritten(w)).toEqual([]);
+    expect(w.figureQueries).toEqual([]);
+  });
+
+  it('THE FIGURE IS ASKED FOR THIS COMPANY’S PRODUCTS IN THE ORDER, once for the whole parcel', async () => {
+    const w = install(
+      world({
+        order: orderRow({ quantity: 2 }),
+        items: [
+          { productId: CREAM, productName: 'كريم', quantity: 2, freeQuantity: 0 },
+          { productId: SOAP, productName: 'صابون', quantity: 4, freeQuantity: 0 },
+          { productId: CREAM, productName: 'كريم', quantity: 1, freeQuantity: 0 },
+        ],
+        shelf: [
+          batch({ id: 'b-cream', productId: CREAM, quantityRemaining: 5 }),
+          batch({ id: 'b-soap', productId: SOAP, quantityRemaining: 9 }),
+        ],
+        figures: { [CREAM]: 6 },
+      })
+    );
+    expect((await deliver()).status).toBe(200);
+    expect(w.figureQueries).toEqual([{ companyId: 'c1', productId: { in: [CREAM, SOAP] } }]);
+  });
+
+  it('A SECOND LINE OF THE SAME PRODUCT costs the figure as well: 2 + 1 cream at 6 and 4 soap at 2 is 18 + 8', async () => {
+    const w = install(
+      world({
+        order: orderRow({ quantity: 2 }),
+        items: [
+          { productId: CREAM, productName: 'كريم', quantity: 2, freeQuantity: 0 },
+          { productId: SOAP, productName: 'صابون', quantity: 4, freeQuantity: 0 },
+          { productId: CREAM, productName: 'كريم', quantity: 1, freeQuantity: 0 },
+        ],
+        shelf: [
+          batch({ id: 'b-cream', productId: CREAM, quantityRemaining: 5, costPerUnit: 9 }),
+          batch({ id: 'b-soap', productId: SOAP, quantityRemaining: 9, costPerUnit: 2 }),
+        ],
+        figures: { [CREAM]: 6 },
+      })
+    );
+    expect((await deliver()).status).toBe(200);
+    expect(costsWritten(w)).toEqual([26]);
+  });
+
+  it('THE CURRENCY ROUNDS IT: 3 × 1.1117 = 3.3351 is written as 3.34 (the world’s currency has two places)', async () => {
+    const w = install(
+      world({
+        order: orderRow({ quantity: 3 }),
+        items: [{ productId: CREAM, productName: 'كريم', quantity: 3, freeQuantity: 0 }],
+        shelf: [batch({ id: 'b-only', quantityRemaining: 10 })],
+        figures: { [CREAM]: 1.1117 },
+      })
+    );
+    expect((await deliver()).status).toBe(200);
+    expect(costsWritten(w)).toEqual([3.34]);
   });
 });
 

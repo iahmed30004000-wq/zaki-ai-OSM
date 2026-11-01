@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { orderRefFields } from './order-ref';
 import { releaseOrderLines, reserveOrderLines } from './reservation';
 import { computeCod, roundMinor } from './money';
+import { costOfACopy, fixedCostsOf } from './product-fixed-cost';
 
 /**
  * A SECOND ORDER FOR THE SAME SALE.
@@ -315,6 +316,9 @@ async function readAndPriceBox(tx: Prisma.TransactionClient, companyId: string, 
   });
   const first = taken[0].line;
   const sameProduct = first.productId === from.productId;
+  // The pieces the customer was handed, by product: a product with a FIXED figure costs the figure × its pieces whatever the
+  // box was struck at (the owner, 1/11: «ثابت لكل الطلبات»); the rest keep their share, below.
+  const figures = await fixedCostsOf(tx, companyId, [...new Set(taken.map((t) => t.line.productId))]);
   return {
     priced,
     // The goods are the box's: its first product, named as the box named it.
@@ -322,9 +326,11 @@ async function readAndPriceBox(tx: Prisma.TransactionClient, companyId: string, 
       productId: first.productId,
       productNameSnapshot: sameProduct ? (from.productNameSnapshot ?? first.productName) : first.productName,
       productImageSnapshot: sameProduct ? from.productImageSnapshot : null,
-      // Cost follows the pieces: the same units at the box's own average.
-      estimatedCostOfGoods: roundMinor(
-        (Number(from.estimatedCostOfGoods) * box.pieces) / Math.max(1, boxUnits(lines)),
+      // Cost follows the pieces: the same units at the box's own average — and a fixed figure on top, where the product has one.
+      estimatedCostOfGoods: costOfACopy(
+        roundMinor((Number(from.estimatedCostOfGoods) * box.pieces) / Math.max(1, boxUnits(lines)), minorUnit),
+        taken.map((t) => ({ productId: t.line.productId, units: t.qty })),
+        figures,
         minorUnit
       ),
     },
@@ -522,6 +528,21 @@ export async function createReplacement(
       })
     : null;
 
+  /*
+   * COST OF GOODS FOLLOWS THE COUNT: the same units at the same average — and a FIXED FIGURE on top (the owner, 1/11: «ثابت لكل
+   * الطلبات»). The replacement is a new order costed now, so a line whose product has a figure costs the figure × the units it
+   * really carries (the gift included), whatever the order it replaces was struck at. A cost is stored per order, not per line,
+   * so the lines with no figure keep their share of the scaled cost (`costOfACopy`); with no figure on any line the cost is
+   * exactly what it always was. Rounded by the currency — `plan.minorUnit` is the same one the money above was computed with.
+   */
+  const figures = await fixedCostsOf(tx, companyId, [...new Set(scaled.map((l) => l.item.productId))]);
+  const carriedCost = costOfACopy(
+    changed ? roundMinor(order.estimatedCostOfGoods * factor, plan.minorUnit) : order.estimatedCostOfGoods,
+    scaled.map((l) => ({ productId: l.item.productId, units: l.qty + l.item.freeQuantity })),
+    figures,
+    plan.minorUnit
+  );
+
   const refs = await orderRefFields(tx, companyId, plan.orderPrefix, plan.attempt);
   const replacement = await tx.order.create({
     data: {
@@ -547,12 +568,8 @@ export async function createReplacement(
       ...(plan.createdById ? { createdById: plan.createdById } : {}),
       // The sale's name: moderator, confirmer, assignee, campaign, page.
       ...carriedSale(order),
-      // Cost of goods follows the count: the same units at the same average.
-      // Rounded by the currency — `plan.minorUnit` is the same one the
-      // money above was computed with.
-      estimatedCostOfGoods: changed
-        ? roundMinor(order.estimatedCostOfGoods * factor, plan.minorUnit)
-        : order.estimatedCostOfGoods,
+      // Cost of goods follows the count, and a fixed figure where the product has one — see `carriedCost` above.
+      estimatedCostOfGoods: carriedCost,
       // Already confirmed once — it re-enters at preparation, not intake.
       status: 'CONFIRMED',
       confirmationStatus: 'CONFIRMED',

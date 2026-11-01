@@ -578,6 +578,57 @@ describe('Ⅸ · what the goods cost: an estimate by the share of the units, mov
   it('names the products it needs the averages of: what the changed lines were and became, once each', () => {
     expect(costProductIds([entry({}), entry({ productId: SOAP, productBefore: CREAM })]).sort()).toEqual([CREAM, SOAP].sort());
   });
+
+  /*
+   * THE OWNER'S FIXED COST (1/11: «ثابت لكل الطلبات»). `fixedOf` answers a product's figure — ZERO included — and wins over the
+   * average for the units that GO ON. The units that come off still come off at the order's own average. With no `fixedOf` at all
+   * (every caller before this) nothing above changes.
+   */
+  describe('Ⅸb · with a fixed figure for a product', () => {
+    const figure = (rows: Record<string, number>) => (id: string) => rows[id];
+    const more = [entry({})]; // cream 3 (+1) → 5 (+2): three more units
+
+    it('MORE units go on at the FIGURE, not at today’s average: three more at 4 on the 20 it had is 32 (the average said 2.5 → 27.5)', () => {
+      expect(costAfterEdit(20, 6, more, avg, 3, figure({ [CREAM]: 4 })).cost).toBe(32);
+      expect(costAfterEdit(20, 6, more, avg, 3).cost).toBe(27.5);
+    });
+
+    it('ZERO is a figure: three more units of an item that costs nothing add nothing — not the average (2.5), not the order’s own (20 ÷ 6)', () => {
+      expect(costAfterEdit(20, 6, more, avg, 3, figure({ [CREAM]: 0 })).cost).toBe(20);
+      // …where an average of 0 (no batch now) is «not known», and the order’s own stands in:
+      expect(costAfterEdit(20, 6, more, () => 0, 3).cost).toBeCloseTo(20 + (20 / 6) * 3, 3);
+    });
+
+    it('a figure beats a product with NO batch now: the order’s own average does not stand in for it', () => {
+      expect(costAfterEdit(20, 6, more, () => 0, 3, figure({ [CREAM]: 4 })).cost).toBe(32);
+    });
+
+    it('the figure of ANOTHER product moves nothing, and a line nobody touched keeps its share', () => {
+      expect(costAfterEdit(20, 6, more, avg, 3, figure({ [SOAP]: 9 })).cost).toBe(27.5);
+      expect(costAfterEdit(20, 6, [], avg, 3, figure({ [CREAM]: 4, [SOAP]: 9 })).cost).toBe(20);
+    });
+
+    it('FEWER units still come off at the ORDER’S OWN average — a figure is for the units that go on: 12 over 3 units, 3 → 1, at a figure of 9, is 4', () => {
+      const fewer = [entry({ qtyBefore: 3, giftBefore: 0, qtyAfter: 1, giftAfter: 0 })];
+      expect(costAfterEdit(12, 3, fewer, avg, 3, figure({ [CREAM]: 9 })).cost).toBe(4);
+    });
+
+    it('A SWAP puts the new product on at ITS figure and takes the old line off at the order’s own: soap → drops at 7, 3 units on 12, is 12 − 12 + 21', () => {
+      const swap = entry({ productId: DROPS, productBefore: SOAP, qtyBefore: 3, giftBefore: 0, qtyAfter: 3, giftAfter: 0 });
+      expect(costAfterEdit(12, 3, [swap], avg, 3, figure({ [DROPS]: 7 })).cost).toBe(21);
+      // with no figure DROPS has no batch (average 0): the order’s own stands in — nothing moves
+      expect(costAfterEdit(12, 3, [swap], avg, 3).cost).toBe(12);
+    });
+
+    it('a cost struck at nothing is NOT invented even where a figure exists — it stays nothing and says it was kept', () => {
+      expect(costAfterEdit(0, 6, more, avg, 3, figure({ [CREAM]: 4 }))).toEqual({ cost: 0, kept: true });
+    });
+
+    it('rounds at the currency’s own unit: three more at 1.11117 on 20 is 23.33351 → 23.334 (three places), 23.33 (two)', () => {
+      expect(costAfterEdit(20, 6, more, avg, 3, figure({ [CREAM]: 1.11117 })).cost).toBe(23.334);
+      expect(costAfterEdit(20, 6, more, avg, 2, figure({ [CREAM]: 1.11117 })).cost).toBe(23.33);
+    });
+  });
 });
 
 describe('Ⅹ · the plan adds no arithmetic of its own', () => {

@@ -25,6 +25,8 @@ const { db, requireContext, requirePermission, activeBlock, findOrCreateCustomer
     orderItem: { create: vi.fn() },
     customer: { update: vi.fn() },
     orderActivity: { create: vi.fn() },
+    // No fixed figure for any product here: `unitCostsOf` falls through to the batch average the mock below answers.
+    productFixedCost: { findMany: async () => [] },
     $transaction: vi.fn(),
   },
   requireContext: vi.fn(),
@@ -47,7 +49,12 @@ vi.mock('@/lib/authorization', () => ({
 vi.mock('@/lib/blacklist', () => ({ activeBlock: (...a: unknown[]) => activeBlock(...a) }));
 vi.mock('@/lib/customer-identity', () => ({ findOrCreateCustomer: (...a: unknown[]) => findOrCreateCustomer(...a) }));
 vi.mock('@/lib/order-ref', () => ({ orderRefFields: (...a: unknown[]) => orderRefFields(...a) }));
-vi.mock('@/lib/product-cost', () => ({ productCost: (...a: unknown[]) => productCost(...a) }));
+vi.mock('@/lib/product-cost', () => ({
+  productCost: (...a: unknown[]) => productCost(...a),
+  // `unitCostsOf` asks for several products at once: each costs what the single-product answer says.
+  productCosts: async (d: unknown, c: unknown, ids: string[]) =>
+    new Map(await Promise.all(ids.map(async (id) => [id, await productCost(d, c, id)] as const))),
+}));
 vi.mock('@/lib/regions', () => ({ resolveRegionId: (...a: unknown[]) => resolveRegionId(...a) }));
 vi.mock('@/lib/audit', () => ({ logAudit: vi.fn() }));
 vi.mock('@/lib/notify', () => ({ notify: vi.fn() }));

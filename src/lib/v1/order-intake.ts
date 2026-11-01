@@ -7,7 +7,7 @@ import { activeOffersFor, type OfferView } from '../offers';
 import { computeCod, roundMinor } from '../money';
 import { orderRefFields } from '../order-ref';
 import { priceIncludesDeliveryFor } from '../delivery-fees';
-import { productCosts } from '../product-cost';
+import { unitCostsOf } from '../product-fixed-cost';
 import { resolveRegionId } from '../regions';
 import { normalizePhoneNumber } from '../phone';
 import { isValidPhoneFor, phoneErrorFor } from '../phone-rules';
@@ -54,7 +54,7 @@ import type { SystemCaller } from './system-token';
  * Nothing here decides anything that is already decided somewhere else.
  * `findOrCreateCustomer` · `activeBlock` · `resolveRegionId` ·
  * `activeOffersFor` · `computeCod` · `priceIncludesDeliveryFor` ·
- * `orderRefFields` · `productCosts` · `logAudit` — the
+ * `orderRefFields` · `unitCostsOf` · `logAudit` — the
  * shared rules, called in the order `POST /api/orders` calls them in. A
  * guard (`the-systems-door.test.ts`) asserts this file imports each of them,
  * so a future edit cannot quietly grow a second pricing or identity rule
@@ -445,13 +445,14 @@ export async function createSystemOrder(
   const priceAdjusted =
     quoted !== null && roundMinor(quoted, country.minorUnit) !== cod.subtotal;
 
-  // Cost of goods at the weighted average of the stock on hand — the one
-  // helper every other door reads, so two doors never cost one order two
-  // ways.
-  const costByProduct = await productCosts(db, companyId, [...new Set(lines.map((l) => l.productId))]);
+  // Cost of goods at what one unit of each product costs — the one helper
+  // every other door reads (`unitCostsOf`: the fixed figure an admin set for
+  // the product, or the weighted average of the stock on hand where it has
+  // none), so two doors never cost one order two ways.
+  const costByProduct = await unitCostsOf(db, companyId, [...new Set(lines.map((l) => l.productId))]);
   const costOfGoods = roundMinor(
     lines.reduce(
-      (sum, l) => sum + (costByProduct.get(l.productId)?.average ?? 0) * (l.quantity + l.freeQuantity),
+      (sum, l) => sum + (costByProduct.get(l.productId) ?? 0) * (l.quantity + l.freeQuantity),
       0
     ),
     country.minorUnit

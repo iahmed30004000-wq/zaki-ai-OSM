@@ -341,6 +341,7 @@ revenue = cod بدون الأجرة، أو net − fee إذا السعر بيش�
 | `src/lib/every-money-writer-is-known.test.ts` | أي ملف بيذكر `totalAmount · sellingPrice · discountAmount · estimatedCostOfGoods` وبيكتب صف (`.create/.update…`) لازم يكون إما بقائمة `WRITERS` (`:85-118`) وبينادي `computeCod(` أو `codForOrder(` أو `roundMinor(` فعلاً (النداء، مش الاستيراد، `:77`)، أو بقائمة `READS_ONLY` مع سبب مكتوب. ملف جديد برّا القائمتين = أحمر |
 | `src/lib/money-written-once.test.ts` | قاعدة تقريب وحدة، والمال اللي بينكتب بيمرق فيها. الحالة اللي فتحته: باب العرض بعد الطلب كان بيقرّب `.toFixed(2)` على الدينار وبيضيّع فلس |
 | `src/lib/money-decimals.test.ts` | خانات العملة |
+| `src/lib/an-order-is-costed-from-one-place.test.ts` | تكلفة بضاعة الطلب (`estimatedCostOfGoods`) بتجي من مكان واحد: الأبواب التسعة اللي بتكتبها بتسأل `unitCostsOf` (تكلفة الوحدة) أو `fixedCostsOf` (التسليم والنسخ) من `product-fixed-cost.ts`، وما حدا بينادي `productCost(s)` (متوسط الدفعات) غير القائمة المسمّاة بأسبابها. باب جديد بيكتب تكلفة طلب ويقرأ الدفعات بحاله = أحمر. الصفر رقم (`??` مش `\|\|`)، والدفتر (الرف والدفعات وقيمة المخزون) ما بيقرأ الرقم |
 
 إذا حمّر واحد من هدول بتغييرك: **وقّف**. معناها إنك عم تكتب مال الطلب. اكتب للمالك قبل ما تكمّل.
 

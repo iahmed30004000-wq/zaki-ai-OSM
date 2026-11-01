@@ -42,8 +42,18 @@ function makeTx(over: Record<string, unknown> = {}) {
     // The review line a short shelf leaves on the order (P0-13).
     orderActivity: { create: vi.fn(), findFirst: vi.fn().mockResolvedValue(null) },
     productionBatch: { findFirst: vi.fn().mockResolvedValue({ costPerUnit: 4 }), create: vi.fn().mockResolvedValue({ id: 'b-new' }) },
+    // The fixed cost an admin set for a product (`ProductFixedCost`): none, unless a test hands some in — a plain function, so a mock reset leaves it answering.
+    productFixedCost: { findMany: async () => [] },
     ...over,
   } as never;
+}
+
+/** A transaction whose products have these fixed costs; the `findMany` is a mock so the question asked can be read back. */
+function txWithFigures(figures: { productId: string; amount: number }[], order: Record<string, unknown> = ORDER) {
+  return makeTx({
+    order: { findFirst: vi.fn().mockResolvedValue(order), update: vi.fn() },
+    productFixedCost: { findMany: vi.fn(async () => figures) },
+  });
 }
 
 beforeEach(() => {
@@ -365,6 +375,161 @@ describe('the cost of the goods that actually left', () => {
     expect(res.alreadyDone).toBe(true);
     expect(res.cost).toBe(0);
     expect(on(tx, 'order', 'update')).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * A FIXED COST IS WHAT THE ORDER IS WRITTEN AT WHEN THE GOODS LEAVE (the owner, 1/11)
+ *
+ * «سعر تكلفة المنتج يكون ثابت ولا يتغير ابدا… ثابت لكل الطلبات وما يتغير تحت اي ظرف». The complaint was this very overwrite: the cost
+ * struck when the order was raised and the cost struck here, from the batches that happened to be oldest, were two numbers for one
+ * order. A line whose product has a fixed figure is written as the figure × the units that LEFT; a line without one as the batches
+ * priced it. The ledger — the draw-down, the SALE lines, the batches — never reads the figure, and `result.cost` stays the batches'.
+ *
+ * The fixture is the one above: p1 is 2 paid + 1 gift (3 units), p2 is 1 unit. The batches priced p1 at 12.75 and p2 at 3.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+describe('a product with a fixed cost is written at it, not at its batches', () => {
+  const batchesPriceThem = () =>
+    drawDownStock
+      .mockResolvedValueOnce({ taken: 3, short: 0, cost: 12.75 }) // p1: 2 paid + 1 gift
+      .mockResolvedValueOnce({ taken: 1, short: 0, cost: 3 }); //     p2
+
+  const written = (tx: unknown) => (on(tx, 'order', 'update').mock.calls as unknown[][]).map((c) => (c[0] as { data: { estimatedCostOfGoods: number } }).data.estimatedCostOfGoods);
+
+  it('NO FIGURE: the batches price both lines, exactly as before — 12.75 + 3', async () => {
+    const tx = txWithFigures([]);
+    batchesPriceThem();
+    await consumeOrderStock(tx, { orderId: 'o1', companyId: 'c1' });
+    expect(written(tx)).toEqual([15.75]);
+  });
+
+  it('A FIGURE FOR p1: its three units at 6 are 18, the p2 line stays at its batches (3) — 21, not 15.75', async () => {
+    const tx = txWithFigures([{ productId: 'p1', amount: 6 }]);
+    batchesPriceThem();
+    await consumeOrderStock(tx, { orderId: 'o1', companyId: 'c1' });
+    expect(written(tx)).toEqual([21]);
+  });
+
+  it('A FIGURE FOR BOTH: 3 × 6 + 1 × 2 = 20 — the batches are not asked what they cost', async () => {
+    const tx = txWithFigures([{ productId: 'p1', amount: 6 }, { productId: 'p2', amount: 2 }]);
+    batchesPriceThem();
+    await consumeOrderStock(tx, { orderId: 'o1', companyId: 'c1' });
+    expect(written(tx)).toEqual([20]);
+  });
+
+  it('ZERO IS A FIGURE: p1 costs the order nothing (0 + p2’s 3), the batches’ 12.75 is not used', async () => {
+    const tx = txWithFigures([{ productId: 'p1', amount: 0 }]);
+    batchesPriceThem();
+    await consumeOrderStock(tx, { orderId: 'o1', companyId: 'c1' });
+    expect(written(tx)).toEqual([3]);
+  });
+
+  it('A FIGURE WINS OVER BATCHES THAT COST NOTHING: free stock does not make the order free — 3 × 6 + 1 × 6', async () => {
+    const tx = txWithFigures([{ productId: 'p1', amount: 6 }, { productId: 'p2', amount: 6 }]);
+    drawDownStock.mockResolvedValue({ taken: 1, short: 0, cost: 0 }).mockResolvedValueOnce({ taken: 3, short: 0, cost: 0 });
+    await consumeOrderStock(tx, { orderId: 'o1', companyId: 'c1' });
+    expect(written(tx)).toEqual([24]);
+  });
+
+  it('IT IS THE UNITS THAT LEFT: the figure × `taken`, which is the quantity wanted when nothing was short', async () => {
+    const tx = txWithFigures([{ productId: 'p1', amount: 6 }, { productId: 'p2', amount: 6 }]);
+    batchesPriceThem();
+    await consumeOrderStock(tx, { orderId: 'o1', companyId: 'c1' });
+    expect(written(tx)).toEqual([24]); // (3 + 1) × 6
+    expect(drawDownStock.mock.calls.map((c) => c[1].quantity)).toEqual([3, 1]);
+  });
+
+  it('AND THE LEDGER’S FIGURE IS UNTOUCHED: `cost` is what the batches say, the shelf is drawn exactly the same, and no batch is repriced', async () => {
+    const tx = txWithFigures([{ productId: 'p1', amount: 6 }]);
+    batchesPriceThem();
+    const res = await consumeOrderStock(tx, { orderId: 'o1', companyId: 'c1', userId: 'u9' });
+    expect(res.cost).toBe(15.75);
+    expect(res).toMatchObject({ taken: 4, short: 0, alreadyDone: false });
+    // the SALE lines are the units, not the money: -3 and -1, and nothing about a cost on them
+    const sales = (on(tx, 'inventoryMovement', 'create').mock.calls as unknown[][]).map((c) => (c[0] as { data: Record<string, unknown> }).data);
+    expect(sales.map((d) => [d.productId, d.type, d.quantity])).toEqual([['p1', 'SALE', -3], ['p2', 'SALE', -1]]);
+    for (const d of sales) expect(d).not.toHaveProperty('costPerUnit');
+    expect((tx as any).productionBatch.create).not.toHaveBeenCalled();
+  });
+
+  it('A SHORT SHELF STILL KEEPS THE ESTIMATE it was raised with, figure or not: nothing is written over it', async () => {
+    const tx = txWithFigures([{ productId: 'p1', amount: 6 }, { productId: 'p2', amount: 6 }]);
+    drawDownStock.mockResolvedValueOnce({ taken: 1, short: 2, cost: 4 }).mockResolvedValueOnce({ taken: 1, short: 0, cost: 3 });
+    await consumeOrderStock(tx, { orderId: 'o1', companyId: 'c1' });
+    expect(on(tx, 'order', 'update')).not.toHaveBeenCalled();
+  });
+
+  it('AN EMPTY SHELF writes nothing either: no unit left, so nothing is priced — a figure does not invent a cost for goods the shelf never held', async () => {
+    const tx = txWithFigures([{ productId: 'p1', amount: 6 }, { productId: 'p2', amount: 6 }]);
+    drawDownStock.mockResolvedValue({ taken: 0, short: 3, cost: 0 });
+    await consumeOrderStock(tx, { orderId: 'o1', companyId: 'c1' });
+    expect(on(tx, 'order', 'update')).not.toHaveBeenCalled();
+  });
+
+  it('A PARCEL WITH NOTHING TO TAKE writes no cost: a figure does not turn an empty order into a cost of 0', async () => {
+    const empty = { orderNumber: 'SY-1', items: [{ productId: 'p1', productName: 'أ', quantity: 0, freeQuantity: 0 }] };
+    const tx = txWithFigures([{ productId: 'p1', amount: 6 }], empty);
+    const res = await consumeOrderStock(tx, { orderId: 'o1', companyId: 'c1' });
+    expect(res).toMatchObject({ taken: 0, short: 0, alreadyDone: false });
+    expect(drawDownStock).not.toHaveBeenCalled();
+    expect(on(tx, 'order', 'update')).not.toHaveBeenCalled();
+  });
+
+  it('A DELIVERY ALREADY RECORDED does nothing twice: no figure is read, no cost is written', async () => {
+    const tx = makeTx({
+      inventoryMovement: { findFirst: vi.fn().mockResolvedValue({ id: 'm1' }), create: vi.fn() },
+      productFixedCost: { findMany: vi.fn(async () => [{ productId: 'p1', amount: 6 }]) },
+    });
+    const res = await consumeOrderStock(tx, { orderId: 'o1', companyId: 'c1' });
+    expect(res.alreadyDone).toBe(true);
+    expect(on(tx, 'productFixedCost', 'findMany')).not.toHaveBeenCalled();
+    expect(on(tx, 'order', 'update')).not.toHaveBeenCalled();
+  });
+
+  it('A SHORT-DELIVERY REVIEW LINE already on the order counts as recorded too: no figure read, no cost written', async () => {
+    const tx = makeTx({
+      orderActivity: { create: vi.fn(), findFirst: vi.fn().mockResolvedValue({ id: 'a1' }) },
+      productFixedCost: { findMany: vi.fn(async () => [{ productId: 'p1', amount: 6 }]) },
+    });
+    const res = await consumeOrderStock(tx, { orderId: 'o1', companyId: 'c1' });
+    expect(res.alreadyDone).toBe(true);
+    expect(on(tx, 'productFixedCost', 'findMany')).not.toHaveBeenCalled();
+  });
+
+  it('THE FIGURES ARE ASKED ONCE for every product in the parcel (the add-ons included), in this company', async () => {
+    const withAddOn = { ...ORDER, addOns: [{ productId: 'p3', productName: 'ج', quantity: 2 }] };
+    const tx = txWithFigures([{ productId: 'p3', amount: 5 }], withAddOn);
+    drawDownStock
+      .mockResolvedValueOnce({ taken: 3, short: 0, cost: 12.75 })
+      .mockResolvedValueOnce({ taken: 1, short: 0, cost: 3 })
+      .mockResolvedValueOnce({ taken: 2, short: 0, cost: 7 });
+    await consumeOrderStock(tx, { orderId: 'o1', companyId: 'c1' });
+    expect(on(tx, 'productFixedCost', 'findMany')).toHaveBeenCalledTimes(1);
+    expect(on(tx, 'productFixedCost', 'findMany')).toHaveBeenCalledWith({
+      where: { companyId: 'c1', productId: { in: ['p1', 'p2', 'p3'] } },
+      select: { productId: true, amount: true },
+    });
+    // 12.75 + 3 from the batches, and the add-on’s two units at its figure of 5 — not the 7 its batch said
+    expect(written(tx)).toEqual([25.75]);
+  });
+
+  it('ROUNDED BY THE CURRENCY: 3 units at 1.1117 is 3.3351 — 3.34 at two places, 3.335 at three', async () => {
+    const one = { orderNumber: 'SY-1', items: [{ productId: 'p1', productName: 'أ', quantity: 3, freeQuantity: 0 }] };
+    for (const [minorUnit, expected] of [[2, 3.34], [3, 3.335]] as const) {
+      const tx = txWithFigures([{ productId: 'p1', amount: 1.1117 }], { ...one, store: { country: { minorUnit } } });
+      drawDownStock.mockResolvedValueOnce({ taken: 3, short: 0, cost: 9 });
+      await consumeOrderStock(tx, { orderId: 'o1', companyId: 'c1' });
+      expect(written(tx)).toEqual([expected]);
+    }
+  });
+
+  it('IT IS READ FROM THE ORDER’S COMPANY, and the rule has no switch a door could hand it', () => {
+    const src = stripComments(repoFile('src/lib/stock-consumption.ts'));
+    expect(src).toMatch(/fixedCostsOf\(tx, input\.companyId, /);
+    const sig = src.slice(src.indexOf('export async function consumeOrderStock('), src.indexOf('): Promise<ConsumptionResult>'));
+    expect(sig).not.toMatch(/fixed|figure/i);
   });
 });
 

@@ -54,6 +54,8 @@ const { db, requireContext, assertOrderAccess, can, createNotification } = vi.ho
     // weighted average every other order door reads. No batches on hand
     // averages to zero, which is the honest answer for an empty shelf.
     productionBatch: { findMany: vi.fn(async () => []) },
+    // No fixed figure for any product here: `unitCostsOf` falls through to the batches above.
+    productFixedCost: { findMany: async () => [] },
     landingPageRecommendation: { findMany: vi.fn() },
     $transaction: vi.fn(),
   };

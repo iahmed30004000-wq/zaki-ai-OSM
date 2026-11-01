@@ -27,6 +27,7 @@ import { flagRecentTwins } from '../recent-twin-order';
 import { resolveRegionId } from '@/lib/regions';
 import { orderRefFields } from '../order-ref';
 import { computeCod, roundMinor } from '../money';
+import { fixedCostsOf } from '../product-fixed-cost';
 import { basketDiscount, type ResolvedLine } from '../public-order';
 
 export interface CreateTelegramOrderInput {
@@ -173,7 +174,12 @@ export async function createTelegramOrder(input: CreateTelegramOrderInput): Prom
   const totalAmount = money.cod;
 
   // The gift is a real unit in the box: the goods cost what the paid pieces AND the gift cost (as `createPublicOrder`).
-  const unitCost = productRow.batches[0]?.costPerUnit || 0;
+  //
+  // A product's FIXED figure wins — zero included (the owner, 1/11: «ثابت لكل الطلبات»). Without one this door costs the goods as it
+  // always has: by the unit cost of the product's NEWEST batch, which is not the weighted average the other doors read (RV574 asks
+  // whether to unify the two; it moves the cost of Telegram orders for products that have no figure, so it is not done here).
+  const fixedCost = (await fixedCostsOf(db, companyId, [productRow.id])).get(productRow.id);
+  const unitCost = fixedCost ?? (productRow.batches[0]?.costPerUnit || 0);
   const estimatedCostOfGoods = roundMinor(unitCost * (quantity + freeQuantity), store.country.minorUnit);
   const now = new Date();
 

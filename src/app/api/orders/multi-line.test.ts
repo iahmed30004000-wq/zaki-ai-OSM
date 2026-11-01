@@ -33,6 +33,8 @@ const { db, requireContext, requirePermission, logAudit, activeBlock, createNoti
     orderActivity: { create: vi.fn() },
     orderStatusLog: { create: vi.fn() },
     productionBatch: { findMany: vi.fn() },
+    // The fixed cost an admin set for a product (`ProductFixedCost`): none unless a test says so — then `unitCostsOf` falls through to the batches above.
+    productFixedCost: { findMany: vi.fn(async (): Promise<{ productId: string; amount: number }[]> => []) },
     $transaction: vi.fn(),
   },
   requireContext: vi.fn(),
@@ -114,6 +116,7 @@ beforeEach(() => {
     { productId: DROPS.id, quantityRemaining: 100, costPerUnit: 7 },
   ]);
   db.$transaction.mockImplementation(async (fn: any) => fn(db));
+  db.productFixedCost.findMany.mockImplementation(async () => []);
 });
 
 describe('an order can hold more than one product', () => {
@@ -350,6 +353,85 @@ describe('the gift is one per bundle', () => {
     await post(body({ items: [line(o, 3)] }));
     const [asked] = db.offer.findMany.mock.calls[0] as unknown as [{ select: Record<string, boolean> }];
     expect(asked.select).toMatchObject({ quantity: true, freeQuantity: true });
+  });
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * THE MANUAL DOOR COSTS A PRODUCT AT ITS FIXED COST WHEN IT HAS ONE (the owner, 1/11)
+ *
+ * «سعر تكلفة المنتج يكون ثابت ولا يتغير ابدا… ثابت لكل الطلبات». The shelf above holds the cream at 5 and the drops at 7 a unit.
+ * A fixed figure an admin set for a product wins over that, per line; a product with none is costed exactly as the tests above say.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+describe('a fixed cost is what the manual door costs a product at', () => {
+  const figures = (...rows: [string, number][]) =>
+    db.productFixedCost.findMany.mockImplementation(async () => rows.map(([productId, amount]) => ({ productId, amount })));
+
+  it('the cream (2) at its figure of 8 and the drops (1) at their batches: 16 + 7 — not 2 × 5 + 7', async () => {
+    figures([CREAM.id, 8]);
+    await post(body({ items: [{ productId: CREAM.id, quantity: 2, unitPrice: 40 }, { productId: DROPS.id, quantity: 1, unitPrice: 20 }] }));
+    expect(written().order.estimatedCostOfGoods).toBe(23);
+  });
+
+  it('a figure on both products costs each line its own figure: 2 × 8 + 1 × 3 = 19', async () => {
+    figures([CREAM.id, 8], [DROPS.id, 3]);
+    await post(body({ items: [{ productId: CREAM.id, quantity: 2, unitPrice: 40 }, { productId: DROPS.id, quantity: 1, unitPrice: 20 }] }));
+    expect(written().order.estimatedCostOfGoods).toBe(19);
+  });
+
+  it('ZERO is a figure: an item that costs nothing costs the order nothing — the 5 on the shelf is not used', async () => {
+    figures([CREAM.id, 0]);
+    await post(body({ items: [{ productId: CREAM.id, quantity: 3, unitPrice: 60 }] }));
+    expect(written().order.estimatedCostOfGoods).toBe(0);
+  });
+
+  it('a figure wins even where the shelf holds nothing costed (no batch): 3 × 8, not the 0 the empty shelf would say', async () => {
+    db.productionBatch.findMany.mockResolvedValue([]);
+    figures([CREAM.id, 8]);
+    await post(body({ items: [{ productId: CREAM.id, quantity: 3, unitPrice: 60 }] }));
+    expect(written().order.estimatedCostOfGoods).toBe(24);
+  });
+
+  it('THE GIFT COSTS THE FIGURE TOO: «3 + 1» at 8 is four units — 32', async () => {
+    const o = { id: 'offer-three-plus-one', quantity: 3, freeQuantity: 1, deliveryIncluded: false, discount: 0 };
+    db.offer.findMany.mockResolvedValue([o]);
+    figures([CREAM.id, 8]);
+    await post(body({ items: [{ productId: CREAM.id, offerId: o.id, quantity: 3, unitPrice: 60 }] }));
+    const { order, lines } = written();
+    expect([lines[0].quantity, lines[0].freeQuantity]).toEqual([3, 1]);
+    expect(order.estimatedCostOfGoods).toBe(32);
+  });
+
+  it('and what the customer pays does not move with the figure: the price is the price', async () => {
+    await post(body({ items: [{ productId: CREAM.id, quantity: 2, unitPrice: 40 }] }));
+    const without = written().order.totalAmount;
+    db.order.create.mockClear();
+    db.orderItem.createMany.mockClear();
+    figures([CREAM.id, 8]);
+    await post(body({ items: [{ productId: CREAM.id, quantity: 2, unitPrice: 40 }] }));
+    expect(without).toBeGreaterThan(0);
+    expect(written().order.totalAmount).toBe(without);
+  });
+
+  it('the figures are asked ONCE for the distinct products of the lines, in this company', async () => {
+    figures([CREAM.id, 8]);
+    await post(body({ items: [
+      { productId: CREAM.id, quantity: 1, unitPrice: 20 },
+      { productId: DROPS.id, quantity: 1, unitPrice: 20 },
+      { productId: CREAM.id, quantity: 2, unitPrice: 40 },
+    ] }));
+    expect(db.productFixedCost.findMany).toHaveBeenCalledTimes(1);
+    expect(db.productFixedCost.findMany).toHaveBeenCalledWith({
+      where: { companyId: 'c1', productId: { in: [CREAM.id, DROPS.id] } },
+      select: { productId: true, amount: true },
+    });
+  });
+
+  it('the cost is rounded as this door always rounded it — to two decimals: 3 × 1.1117 = 3.3351 is 3.34', async () => {
+    figures([CREAM.id, 1.1117]);
+    await post(body({ items: [{ productId: CREAM.id, quantity: 3, unitPrice: 60 }] }));
+    expect(written().order.estimatedCostOfGoods).toBe(3.34);
   });
 });
 

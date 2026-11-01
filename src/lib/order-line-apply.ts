@@ -588,18 +588,26 @@ export function costProductIds(changed: ReadonlyArray<LineAuditEntry>): string[]
  * A COST THAT IS NOT KNOWN IS NOT INVENTED. An order struck at 0 (or with no units) has no per-unit figure to move: it is left
  * as it is and `kept` says so — only when a unit really moved — so the order can be told, on its timeline, that its cost was
  * not re-estimated.
+ *
+ * «TODAY'S» COST OF A PRODUCT IS ITS FIXED FIGURE WHEN IT HAS ONE (the owner, 1/11: «ثابت لكل الطلبات»). `fixedOf` answers it —
+ * and answers ZERO as a figure: an item that costs nothing puts nothing on the order, where `averageOf` answering 0 means «no
+ * batch now», for which the order's own average stands in. The fixed figure wins over the average for the units that go on; the
+ * units that come off still come off at the order's own average, whatever was struck.
  */
 export function costAfterEdit(
   oldCost: number,
   unitsBefore: number,
   changed: ReadonlyArray<LineAuditEntry>,
   averageOf: (productId: string) => number,
-  minorUnit: number
+  minorUnit: number,
+  fixedOf: (productId: string) => number | undefined = () => undefined
 ): { cost: number; kept: boolean } {
   const unitsMoved = changed.some((c) => c.qtyAfter + c.giftAfter !== c.qtyBefore + c.giftBefore || c.productBefore !== undefined);
   if (!(oldCost > 0) || !(unitsBefore > 0)) return { cost: oldCost, kept: unitsMoved };
   const own = oldCost / unitsBefore;
   const today = (productId: string) => {
+    const fixed = fixedOf(productId);
+    if (fixed !== undefined) return fixed;
     const average = averageOf(productId);
     return average > 0 ? average : own;
   };

@@ -28,6 +28,10 @@ const { db, state, gate } = vi.hoisted(() => {
     regions: [] as Row[],
     offers: [] as Row[],
     storePolicy: false,
+    /** The FIXED COST an admin set for a product (`ProductFixedCost`), by product id — none, unless a test says so. */
+    figures: {} as Record<string, number>,
+    /** The unit cost of the product's NEWEST batch — the cost this door reads where there is no figure; null = no batch at all. */
+    newestBatch: null as number | null,
     country: { id: 'country-sy', code: 'SY', name: 'سوريا', currencyCode: 'USD', minorUnit: 2, orderPrefix: 'SY' },
     seq: 0,
     storeWrites: 0,
@@ -101,8 +105,16 @@ const { db, state, gate } = vi.hoisted(() => {
       ),
       findFirst: vi.fn(async ({ where }: Row) => {
         const p = state.products.find((x) => x.id === where.id && x.companyId === where.companyId);
-        return p ? { ...p, batches: [] } : null;
+        return p ? { ...p, batches: state.newestBatch === null ? [] : [{ costPerUnit: state.newestBatch }] } : null;
       }),
+    },
+    // The fixed figures, answered the way the table does: this company's, for the products asked, and only the ones that have a row.
+    productFixedCost: {
+      findMany: vi.fn(async ({ where }: Row) =>
+        Object.entries(state.figures)
+          .filter(([productId]) => where.companyId === 'c1' && where.productId.in.includes(productId))
+          .map(([productId, amount]) => ({ productId, amount }))
+      ),
     },
     customerBlock: {
       findFirst: vi.fn(
@@ -308,6 +320,8 @@ beforeEach(() => {
       offerRow({ id: 'of-bundle-b', productId: 'prod-kamaa-b', name: BUNDLE, quantity: 2, freeQuantity: 1, sellingPrice: 25 }),
     ],
     storePolicy: false,
+    figures: {},
+    newestBatch: null,
     country: { id: 'country-sy', code: 'SY', name: 'سوريا', currencyCode: 'USD', minorUnit: 2, orderPrefix: 'SY' },
     seq: 0,
     storeWrites: 0,
@@ -1137,5 +1151,75 @@ describe('«تعديل وترحيل» — a held message, corrected by hand, is 
     await processStoredMessage(id);
     await processStoredMessage(id);
     expect(state.orders).toHaveLength(1);
+  });
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * WHAT THE GOODS COST A TELEGRAM ORDER (the owner, 1/11: «ثابت لكل الطلبات وما يتغير تحت اي ظرف»)
+ *
+ * His message is one bundle: two paid pieces and one gift, so THREE pieces leave the shelf. A product's FIXED figure, where an admin
+ * set one, is what each of them costs — ZERO included. Where there is none this door costs the goods as it always has, by the unit
+ * cost of the product's NEWEST batch (not the weighted average the other doors read: RV574 asks whether to unify them).
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+describe('the cost of the goods on a Telegram order', () => {
+  const costOfTheOrder = async () => {
+    const result = await processStoredMessage(arrive(sample()));
+    expect(result.status).toBe('PROCESSED');
+    return state.orders[0].estimatedCostOfGoods;
+  };
+
+  it('NO FIGURE, NO BATCH: nothing to read a cost from is a cost of 0 — as before', async () => {
+    expect(await costOfTheOrder()).toBe(0);
+  });
+
+  it('NO FIGURE: the newest batch’s unit cost × the three pieces, the gift included — 3 × 4 = 12, exactly as before', async () => {
+    state.newestBatch = 4;
+    expect(await costOfTheOrder()).toBe(12);
+  });
+
+  it('A FIGURE OF 5: 3 × 5 = 15, whatever the newest batch cost', async () => {
+    state.newestBatch = 4;
+    state.figures = { 'prod-kamaa': 5 };
+    expect(await costOfTheOrder()).toBe(15);
+  });
+
+  it('A FIGURE WINS WHERE THERE IS NO BATCH AT ALL: 3 × 5, not the 0 of an empty shelf', async () => {
+    state.figures = { 'prod-kamaa': 5 };
+    expect(await costOfTheOrder()).toBe(15);
+  });
+
+  it('ZERO IS A FIGURE: an item that costs nothing costs the order nothing — the batch’s 4 is not used', async () => {
+    state.newestBatch = 4;
+    state.figures = { 'prod-kamaa': 0 };
+    expect(await costOfTheOrder()).toBe(0);
+  });
+
+  it('the figure of ANOTHER product moves nothing: the honey’s 9 is not the water’s cost', async () => {
+    state.newestBatch = 4;
+    state.figures = { 'prod-honey': 9 };
+    expect(await costOfTheOrder()).toBe(12);
+  });
+
+  it('the cost is rounded by the currency, like the money beside it: 3 × 1.1117 = 3.3351 is 3.34 at two places', async () => {
+    state.figures = { 'prod-kamaa': 1.1117 };
+    expect(await costOfTheOrder()).toBe(3.34);
+  });
+
+  it('and the money does not move with it: the total is the offer’s 25 with or without a figure', async () => {
+    state.figures = { 'prod-kamaa': 5 };
+    await costOfTheOrder();
+    expect(state.orders[0]).toMatchObject({ totalAmount: 25, sellingPrice: 25, quantity: 2, freeQuantity: 1 });
+  });
+
+  it('the figure is asked for THIS company’s product, once', async () => {
+    state.figures = { 'prod-kamaa': 5 };
+    await costOfTheOrder();
+    expect(db.productFixedCost.findMany).toHaveBeenCalledTimes(1);
+    expect(db.productFixedCost.findMany).toHaveBeenCalledWith({
+      where: { companyId: 'c1', productId: { in: ['prod-kamaa'] } },
+      select: { productId: true, amount: true },
+    });
   });
 });

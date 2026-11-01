@@ -33,6 +33,8 @@ const { db, requireContext, requirePermission, logAudit, activeBlock, createNoti
     orderActivity: { create: vi.fn() },
     orderStatusLog: { create: vi.fn() },
     productionBatch: { findMany: vi.fn() },
+    // No fixed figure for any product here: `unitCostsOf` falls through to the batches above (plain function, so a mock reset leaves it answering).
+    productFixedCost: { findMany: async () => [] },
     $transaction: vi.fn(),
   },
   requireContext: vi.fn(),

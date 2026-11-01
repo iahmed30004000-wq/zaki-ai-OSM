@@ -69,11 +69,19 @@ const ITEMS = [
   { productId: 'p1', productName: 'قميص', quantity: 2, freeQuantity: 0, unitPrice: 100, lineTotal: 180, discountShare: 20 },
 ];
 
-function fakeTx() {
+function fakeTx(figures: Record<string, number> = {}) {
   const created: Record<string, unknown>[] = [];
   const lines: Record<string, unknown>[] = [];
   return {
     tx: {
+      // The fixed cost an admin set for a product (`ProductFixedCost`): none, unless a test hands some in.
+      productFixedCost: {
+        findMany: vi.fn(async ({ where }: { where: { companyId: string; productId: { in: string[] } } }) =>
+          Object.entries(figures)
+            .filter(([productId]) => where.productId.in.includes(productId))
+            .map(([productId, amount]) => ({ productId, amount }))
+        ),
+      },
       orderItem: {
         findMany: vi.fn(async () => ITEMS),
         create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
@@ -351,6 +359,108 @@ describe('a replacement carrying an approved change', () => {
     expect(lines).toHaveLength(ITEMS.length);
     expect(lines[0].productId).toBe('p1');
     expect(lines[0].addedStage).toBe('INTAKE');
+  });
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * A REPLACEMENT IS A NEW ORDER, COSTED NOW — SO THE OWNER'S FIXED COST APPLIES TO IT (1/11)
+ *
+ * «سعر تكلفة المنتج يكون ثابت ولا يتغير ابدا… ثابت لكل الطلبات». A replacement does not read the shelf: it takes a share of the cost of
+ * the order it stands for (80 for two shirts above). With a fixed figure on a line's product the line costs the FIGURE × the units it
+ * really carries (the gift included), whatever the original was struck at; a line with no figure keeps its share of the carried cost;
+ * and with no figure on any line the cost is exactly what it always was (the tests above).
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+describe('a replacement costs a fixed figure when its product has one', () => {
+  it('unchanged goods: 2 shirts at a figure of 50 cost 100, not the 80 the original was struck at', async () => {
+    const { tx, created } = fakeTx({ p1: 50 });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await createReplacement(tx as any, plan);
+    expect(created[0].estimatedCostOfGoods).toBe(100);
+  });
+
+  it('changed goods: 4 shirts at 50 cost 200 (the scaled 160 is replaced, not added to)', async () => {
+    const { tx, created } = fakeTx({ p1: 50 });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await createReplacement(tx as any, { ...plan, overrides: { quantity: 4 } });
+    expect(created[0].estimatedCostOfGoods).toBe(200);
+  });
+
+  it('ZERO is a figure: a shirt that costs nothing makes a replacement that costs nothing', async () => {
+    const { tx, created } = fakeTx({ p1: 0 });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await createReplacement(tx as any, plan);
+    expect(created[0].estimatedCostOfGoods).toBe(0);
+  });
+
+  it('the gift counts: 2 paid + 1 free at 50 is 150 — the carried 80 would have said 80', async () => {
+    const { tx, created } = fakeTx({ p1: 50 });
+    tx.orderItem.findMany.mockResolvedValueOnce([{ productId: 'p1', productName: 'قميص', quantity: 2, freeQuantity: 1, unitPrice: 100, lineTotal: 180, discountShare: 20 }]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await createReplacement(tx as any, { ...plan, order: { ...ORDER, freeQuantity: 1 } });
+    expect(created[0].estimatedCostOfGoods).toBe(150);
+  });
+
+  it('…and a changed count moves the paid units and leaves the gift where it was: 3 paid + 1 free at 50 is 200, not the 4/3 of anything', async () => {
+    const { tx, created } = fakeTx({ p1: 50 });
+    tx.orderItem.findMany.mockResolvedValueOnce([{ productId: 'p1', productName: 'قميص', quantity: 2, freeQuantity: 1, unitPrice: 100, lineTotal: 180, discountShare: 20 }]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await createReplacement(tx as any, { ...plan, order: { ...ORDER, freeQuantity: 1 }, overrides: { quantity: 3 } });
+    // quantity 2 → 3 on the order, the one line scaled to 3 paid; the gift on the line is still its one
+    expect(created[0].estimatedCostOfGoods).toBe(200);
+  });
+
+  it('a MIXED order: the shirts (2) at their figure of 50, the socks (3) keep their 3/5 of the carried 80 — 100 + 48', async () => {
+    const { tx, created } = fakeTx({ p1: 50 });
+    tx.orderItem.findMany.mockResolvedValueOnce([
+      { productId: 'p1', productName: 'قميص', quantity: 2, freeQuantity: 0, unitPrice: 100, lineTotal: 180, discountShare: 20 },
+      { productId: 'p2', productName: 'جوارب', quantity: 3, freeQuantity: 0, unitPrice: 10, lineTotal: 30, discountShare: 0 },
+    ]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await createReplacement(tx as any, { ...plan, order: { ...ORDER, quantity: 5 } });
+    expect(created[0].estimatedCostOfGoods).toBe(148);
+  });
+
+  it('a figure for a product that is NOT among the lines moves nothing: the carried 80, untouched', async () => {
+    const { tx, created } = fakeTx({ p9: 50 });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await createReplacement(tx as any, plan);
+    expect(created[0].estimatedCostOfGoods).toBe(80);
+  });
+
+  it('rounded by the currency: 3 units at 1.1117 is 3.3351 — 3.34 at two places, 3.335 at three', async () => {
+    const items = [{ productId: 'p1', productName: 'قميص', quantity: 3, freeQuantity: 0, unitPrice: 100, lineTotal: 300, discountShare: 0 }];
+    for (const [minorUnit, expected] of [[2, 3.34], [3, 3.335]] as const) {
+      const { tx, created } = fakeTx({ p1: 1.1117 });
+      tx.orderItem.findMany.mockResolvedValueOnce(items);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await createReplacement(tx as any, { ...plan, order: { ...ORDER, quantity: 3 }, minorUnit });
+      expect(created[0].estimatedCostOfGoods).toBe(expected);
+    }
+  });
+
+  it('the figure is asked for the products of the LINES, once, in the plan’s company', async () => {
+    const { tx } = fakeTx({ p1: 50 });
+    tx.orderItem.findMany.mockResolvedValueOnce([
+      { productId: 'p1', productName: 'قميص', quantity: 1, freeQuantity: 0, unitPrice: 100, lineTotal: 100, discountShare: 0 },
+      { productId: 'p2', productName: 'جوارب', quantity: 1, freeQuantity: 0, unitPrice: 10, lineTotal: 10, discountShare: 0 },
+      { productId: 'p1', productName: 'قميص', quantity: 1, freeQuantity: 0, unitPrice: 100, lineTotal: 100, discountShare: 0 },
+    ]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await createReplacement(tx as any, { ...plan, order: { ...ORDER, quantity: 3 } });
+    expect(tx.productFixedCost.findMany).toHaveBeenCalledTimes(1);
+    expect(tx.productFixedCost.findMany).toHaveBeenCalledWith({
+      where: { companyId: 'co1', productId: { in: ['p1', 'p2'] } },
+      select: { productId: true, amount: true },
+    });
+  });
+
+  it('NEGATIVE: with no figure on any line nothing is rounded or recomputed — the very number the original had, even a fraction', async () => {
+    const { tx, created } = fakeTx();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await createReplacement(tx as any, { ...plan, order: { ...ORDER, estimatedCostOfGoods: 80.123456 } });
+    expect(created[0].estimatedCostOfGoods).toBe(80.123456);
   });
 });
 

@@ -35,6 +35,8 @@ const {
     orderItem: { create: vi.fn(), createMany: vi.fn() },
     orderActivity: { create: vi.fn() },
     orderStatusLog: { create: vi.fn() },
+    // The fixed cost an admin set for a product (`ProductFixedCost`) — none unless a test says so; re-armed in `beforeEach`.
+    productFixedCost: { findMany: vi.fn() },
     $transaction: vi.fn(async (fn: unknown) => (typeof fn === 'function' ? (fn as (tx: unknown) => unknown)(db) : fn)),
   },
   requireContext: vi.fn(),
@@ -171,6 +173,8 @@ beforeEach(() => {
   findOrCreateCustomer.mockResolvedValue({ id: 'cu1', city: 'دمشق', firstOrderDate: null });
   productCost.mockResolvedValue({ average: UNIT_COST });
   productCosts.mockImplementation(async (_d: unknown, _c: unknown, ids: string[]) => new Map(ids.map((id) => [id, { average: UNIT_COST }])));
+  // No fixed figure for any product: the batch average above is the cost, unless a test arms one.
+  db.productFixedCost.findMany.mockResolvedValue([]);
   resolveRegionId.mockResolvedValue('r1');
   delete process.env.OPENROUTER_API_KEY;
 });
@@ -276,6 +280,72 @@ describe('RV172 — «٣ + ١» بالذكاء = «٣ + ١» باليد', () => 
     expect(hand).toMatch(/import \{ giftUnits \} from '@\/lib\/offer-gift'/);
     expect(ai).toContain('giftUnits(quantityOffer, qty)');
     expect(ai, 'ضربُ الهدية بعدد القطع عاد').not.toMatch(/freeQuantity\s*\*\s*qty|qty\s*\*\s*[\w.]*freeQuantity/);
+  });
+});
+
+/**
+ * THE OWNER'S FIXED COST, AT THE TWO DOORS THAT TAKE THE SAME ORDER (1/11): «ثابت لكل الطلبات وما يتغير تحت اي ظرف».
+ *
+ * The shelf says a unit costs 5 (`UNIT_COST`). A fixed figure an admin set for the product wins over it — the gift included, because
+ * a free unit is free to the customer and never to the shop — and typed or pasted, the order carries the same cost.
+ */
+describe('a fixed cost is the cost, typed or pasted', () => {
+  const armed = (amount: number) => db.productFixedCost.findMany.mockResolvedValue([{ productId: PRODUCT.id, amount }]);
+
+  it('«٣ + ١» at a figure of 8 costs four units × 8 = 32 at both doors — not the 20 of the shelf', async () => {
+    sell(THREE_PLUS_ONE);
+    armed(8);
+    const byHand = await typed(THREE_PLUS_ONE, 3, 60);
+    vi.clearAllMocks();
+    db.$transaction.mockImplementation(async (fn: unknown) => (typeof fn === 'function' ? (fn as (tx: unknown) => unknown)(db) : fn));
+    db.order.create.mockResolvedValue({ id: 'o-new', orderNumber: 'SY-2026-0200', source: 'AI Intake' });
+    const byPaste = await pasted(3, 60);
+    expect(byHand.order.estimatedCostOfGoods).toBe(32);
+    expect(byPaste.order.estimatedCostOfGoods).toBe(32);
+    // …and what the customer pays is the offer's, whatever the product costs us.
+    expect(byPaste.order.totalAmount).toBe(60);
+  });
+
+  it('a quantity that is no bundle carries no gift, and the figure counts the paid pieces only: 4 × 8 = 32', async () => {
+    sell(THREE_PLUS_ONE);
+    armed(8);
+    const byPaste = await pasted(4, 80);
+    expect(byPaste.line.freeQuantity).toBe(0);
+    expect(byPaste.order.estimatedCostOfGoods).toBe(32);
+  });
+
+  it('ZERO is a figure: a pasted order of an item that costs nothing costs nothing — the shelf’s 5 is not used', async () => {
+    sell(THREE_PLUS_ONE);
+    armed(0);
+    const byPaste = await pasted(3, 60);
+    expect(byPaste.order.estimatedCostOfGoods).toBe(0);
+  });
+
+  it('a figure wins where the shelf holds nothing costed (no batch) — 3 + 1 at 8 is 32, not zero', async () => {
+    sell(THREE_PLUS_ONE);
+    armed(8);
+    productCosts.mockImplementation(async (_d: unknown, _c: unknown, ids: string[]) => new Map(ids.map((id) => [id, { average: 0 }])));
+    const byPaste = await pasted(3, 60);
+    expect(byPaste.order.estimatedCostOfGoods).toBe(32);
+  });
+
+  it('rounded by the currency, like the total beside it: 3 × 1.1117 = 3.3351 is 3.34 at two places', async () => {
+    const noGift = { ...THREE_PLUS_ONE, freeQuantity: 0, name: 'ثلاث قطع' };
+    sell(noGift);
+    armed(1.1117);
+    const byPaste = await pasted(3, 60);
+    expect(byPaste.order.estimatedCostOfGoods).toBe(3.34);
+  });
+
+  it('the pasted door asks for THIS company’s product, once', async () => {
+    sell(THREE_PLUS_ONE);
+    armed(8);
+    await pasted(3, 60);
+    expect(db.productFixedCost.findMany).toHaveBeenCalledTimes(1);
+    expect(db.productFixedCost.findMany).toHaveBeenCalledWith({
+      where: { companyId: 'c1', productId: { in: [PRODUCT.id] } },
+      select: { productId: true, amount: true },
+    });
   });
 });
 
