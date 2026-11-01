@@ -58,6 +58,9 @@ export function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateOrderModa
    */
   const mayConfirm = userCan(currentUser, 'orders.confirm');
   const [confirmNow, setConfirmNow] = useState(false);
+  // «شامل التوصيل»: ticked unless she unticks it — most of what is sold here is sold with free delivery, and a forgotten box
+  // used to mean the courier's fee added on top of a price the customer had been told includes it.
+  const [includesDelivery, setIncludesDelivery] = useState(true);
 
   const [moderators, setModerators] = useState<{ id: string; name: string }[]>([]);
   /** Naming a responsible moderator needs `orders.assign`; the server says whether this person holds it. */
@@ -98,6 +101,7 @@ export function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateOrderModa
       // previous open never persist, then load fresh dropdown data
       setLoading(false);
       setConfirmNow(false);
+      setIncludesDelivery(true);
       setCustomerName('');
       setCustomerPhone('');
       setCustomerAltPhone('');
@@ -204,6 +208,8 @@ export function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateOrderModa
           })),
           // The delivery fee follows the courier and is set when the shipment
           // is created; sending a zero here would read as free delivery.
+          // Whether the price already CARRIES it is the box below — her word for this order, sent either way.
+          priceIncludesDelivery: includesDelivery,
           channelId: channelId || null,
           moderatorId: moderatorId || null,
           customerNotes,
@@ -445,6 +451,25 @@ export function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateOrderModa
             onChange={setLines}
             disabled={loading}
           />
+          {/* Under the prices, where the figure it changes is read. Ticked, the customer pays the price and the courier's fee comes out
+              of the shop; unticked, the fee is added to what the courier collects when the shipment is made. */}
+          <label className={phone ? 'mt-3 flex min-h-11 items-start gap-2 text-sm text-[var(--sys-foreground)]' : 'mt-3 flex items-start gap-2 text-sm text-[var(--sys-foreground)]'}>
+            <input
+              type="checkbox"
+              checked={includesDelivery}
+              onChange={(e) => setIncludesDelivery(e.target.checked)}
+              disabled={loading}
+              className={phone ? 'mt-1 h-5 w-5' : 'mt-1'}
+            />
+            <span>
+              <span className="font-semibold">شامل التوصيل</span>
+              <span className="block text-xs text-[var(--sys-muted-foreground)]">
+                {includesDelivery
+                  ? 'الزبون بيدفع سعر الطلب بس، وأجرة التوصيل على المتجر.'
+                  : 'بينضاف توصيل على الزبون لما تنعمل الشحنة.'}
+              </span>
+            </span>
+          </label>
         </div>
 
         {/* ─── 3 and 4: optional, so a phone folds them (ORD-09) ─── */}

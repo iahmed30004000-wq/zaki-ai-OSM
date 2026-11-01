@@ -132,6 +132,8 @@ export function AiOrderModal({ isOpen, onClose, onSuccess }: AiOrderModalProps) 
    */
   const [priceTyped, setPriceTyped] = useState('');
   const [quantityTyped, setQuantityTyped] = useState('');
+  // «السعر شامل التوصيل»: ticked unless she unticks it — her word for this order, sent either way (see `POST /api/orders`).
+  const [includesDelivery, setIncludesDelivery] = useState(true);
   /*
    * THE BUNDLES OF THE PRODUCT IN THE BOX, AND WHOSE THEY ARE.
    *
@@ -156,6 +158,7 @@ export function AiOrderModal({ isOpen, onClose, onSuccess }: AiOrderModalProps) 
       setProductId('');
       setPriceTyped('');
       setQuantityTyped('');
+      setIncludesDelivery(true);
       setOffers({ productId: '', list: [] });
     }
   }, [isOpen]);
@@ -230,6 +233,8 @@ export function AiOrderModal({ isOpen, onClose, onSuccess }: AiOrderModalProps) 
             finalPrice: onTheWire(shownPrice),
             // Kept in the order's history, never charged.
             typedPrice: result.typedPrice ?? undefined,
+            // The box under the price: whether the price already carries the courier's fee.
+            priceIncludesDelivery: includesDelivery,
           },
         }),
       });
@@ -543,6 +548,26 @@ export function AiOrderModal({ isOpen, onClose, onSuccess }: AiOrderModalProps) 
                 }
               />
             </div>
+
+            <label className="flex min-h-11 md:min-h-0 items-start gap-2 text-sm text-[var(--sys-foreground)]">
+              <input
+                type="checkbox"
+                checked={includesDelivery}
+                onChange={(e) => setIncludesDelivery(e.target.checked)}
+                disabled={saving}
+                className="mt-1"
+              />
+              <span>
+                {/* The owner's own word for the box («شامل التوصيل»), and NOT «السعر …»: the price field here is «الإجمالي», and a second label
+                    starting «السعر» is exactly what `the-price-boxes-and-their-doors-agree` keeps out of this dialog. */}
+                <span className="font-semibold">شامل التوصيل</span>
+                <span className="block text-xs text-[var(--sys-muted-foreground)]">
+                  {includesDelivery
+                    ? 'الزبون بيدفع السعر بس، وأجرة التوصيل على المتجر.'
+                    : 'بينضاف توصيل على الزبون لما تنعمل الشحنة.'}
+                </span>
+              </span>
+            </label>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input label="المصدر / اسم الصفحة" value={p.source} onChange={(e) => setResult({ ...result, parsed: { ...p, source: e.target.value } })} />
