@@ -59,7 +59,7 @@ beforeEach(() => {
   db.deliveryFee.findMany.mockResolvedValue([]);
   // By default the claim is won: the ordinary case is one dispatcher.
   db.$queryRaw.mockImplementation(async (frags: string[]) =>
-    frags.join(' ').includes('UPDATE') ? [{ id: 'o1' }] : [{ tracking: null }]
+    frags.join(' ').includes('UPDATE') ? [{ id: 'o1', totalAmount: 60 }] : [{ tracking: null }]
   );
   db.$executeRaw.mockResolvedValue(1);
 });
@@ -290,6 +290,36 @@ describe('one parcel per order, decided by the row and not by the snapshot', () 
   });
 
   /*
+   * THE AMOUNT THE COURIER IS TOLD IS THE ONE THE CLAIM TOOK (the independent review of the «شامل التوصيل» door, 1/11).
+   *
+   * The batch is read once, then its orders are claimed one by one. Somebody flips «شامل التوصيل» on a not-yet-claimed order in
+   * between: the row now says 20, the early read says 23. The courier must be told 20 — what our record holds.
+   */
+  it('tells the courier the amount the order had when it was claimed, not the one from the early read of the batch', async () => {
+    db.order.findMany.mockResolvedValue([order({ totalAmount: 23 })]); // read before the flip
+    db.$queryRaw.mockImplementation(async (frags: string[]) =>
+      frags.join(' ').includes('UPDATE') ? [{ id: 'o1', totalAmount: 20 }] : [{ tracking: null }] // claimed after it
+    );
+    const res = await dispatchBatch(input);
+    expect(res.sent).toBe(1);
+    expect(createShipment.mock.calls[0][0].codAmount, 'انبعت للشركة المبلغ القديم').toBe(20);
+  });
+
+  it('asks for the amount in the very statement that takes the row', async () => {
+    await dispatchBatch(input);
+    const claim = raw(db.$queryRaw)[0];
+    expect(claim.sql).toMatch(/RETURNING "id", "totalAmount"/);
+  });
+
+  it('the amount is exactly the claim\'s figure, to the cent, as the database returns it', async () => {
+    db.$queryRaw.mockImplementation(async (frags: string[]) =>
+      frags.join(' ').includes('UPDATE') ? [{ id: 'o1', totalAmount: '33.5' }] : [{ tracking: null }]
+    );
+    await dispatchBatch(input);
+    expect(createShipment.mock.calls[0][0].codAmount).toBe(33.5);
+  });
+
+  /*
    * ITEM 4 OF «CLOSE THE SHIPMENT»: the claim repeats what made the order sendable.
    * The loop reads the batch once and claims twenty orders over seconds; in between a
    * person may cancel one (it leaves the trolley), hold it, or press the batch. A claim
@@ -477,7 +507,7 @@ describe('the batch that failed thirty-five of thirty-six, and the second press'
     db.deliveryFee.findMany.mockResolvedValue([{ regionId: 'r-dam', courierCityId: 445053 }]);
     // Every claim is won unless a test says otherwise (the claim is keyed by the order id in the first value).
     db.$queryRaw.mockImplementation(async (frags: string[], id: string) =>
-      frags.join(' ').includes('UPDATE') ? [{ id }] : [{ tracking: null }],
+      frags.join(' ').includes('UPDATE') ? [{ id, totalAmount: 60 }] : [{ tracking: null }],
     );
   });
 
@@ -510,7 +540,7 @@ describe('the batch that failed thirty-five of thirty-six, and the second press'
     // `held` lost its claim — an earlier send timed out and is still holding it, with no barcode yet.
     db.$queryRaw.mockImplementation(async (frags: string[], id: string) => {
       const sql = frags.join(' ');
-      if (sql.includes('UPDATE')) return id === 'held' ? [] : [{ id }];
+      if (sql.includes('UPDATE')) return id === 'held' ? [] : [{ id, totalAmount: 60 }];
       return [{ tracking: null }];
     });
     createShipment
