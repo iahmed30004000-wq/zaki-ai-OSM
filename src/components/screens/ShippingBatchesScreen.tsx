@@ -427,7 +427,7 @@ export function ShippingBatchesScreen() {
       if (out.refused.length) {
         void tell({
           title: `جُهِّزت ${out.count} بوليصة، ولم تُجهَّز ${out.refused.length}`,
-          body: `لا يُطبع إلا طلب مؤكَّد له شركة شحن:\n${describeRefused(out.refused)}`,
+          body: describeRefused(out.refused),
         });
       }
     } catch (e) {

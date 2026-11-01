@@ -67,7 +67,21 @@ export type WaybillOrder = Prisma.OrderGetPayload<{ select: typeof WAYBILL_SELEC
  */
 export const WAITING_FOR_BARCODE = 'رحّل الطلب للشركة أول، عشان يطلع باركود الشحنة على البوليصة';
 
-const FINISHED = ['DELIVERED', 'PARTIALLY_DELIVERED', 'RETURNED', 'CANCELLED'];
+/** Where an order's shipping ends. After any of these nothing is left to ship, so a waybill is a COPY and commits nothing. */
+const OVER = ['DELIVERED', 'PARTIALLY_DELIVERED', 'RETURNED', 'CANCELLED'];
+
+function isOver(order: { shippingStatus: string }): boolean {
+  return OVER.includes(order.shippingStatus);
+}
+
+type Printable = {
+  confirmationStatus: string;
+  shippingStatus: string;
+  deliveryProviderId: string | null;
+  /** With `deliveryProvider`: decides whether the courier's barcode is still owed. Left out, the order prints as before. */
+  trackingNumber?: string | null;
+  deliveryProvider?: ProviderLike | null;
+};
 
 /**
  * Why this order may not be printed, or null when it may.
@@ -76,24 +90,44 @@ const FINISHED = ['DELIVERED', 'PARTIALLY_DELIVERED', 'RETURNED', 'CANCELLED'];
  * printed order is sealed and can no longer simply be cancelled. That is
  * right for a parcel on a shelf and wrong for an order nobody has confirmed
  * yet — which is exactly what any order could become, from the orders list,
- * with one click. Now only a confirmed order with a courier gets a label.
+ * with one click. So a label is for a confirmed order with a courier.
+ *
+ * ── A SHIPPED ORDER PRINTS AGAIN (the owner, 1/11) ──
+ *
+ * This used to refuse every order that had ended — delivered, partly delivered, returned — with «مُغلق», and the dialog said
+ * «لا يُطبع إلا طلب مؤكَّد له شركة شحن» over an order that WAS confirmed and HAD a courier. A parcel that has shipped is the
+ * one somebody asks the second copy of: a torn label, the courier's request, the customer's complaint. Only a CANCELLED
+ * shipment is still refused (its label would send a parcel nobody wants). And an order that is over never waits for a
+ * courier's barcode: there is no scan left to wait for.
+ *
+ * ── THE OWNER'S KEY ──
+ *
+ * `anyOrder` is `ops.labels_any`: a waybill for any order, in any state, whatever the rules above say. It is asked by the
+ * routes, never here, so nothing but the key can turn it on. Such a print COMMITS NOTHING (`sealsOnPrint`): it is paper, not a
+ * promise that the parcel has gone.
  */
-export function printRefusal(order: {
-  confirmationStatus: string;
-  shippingStatus: string;
-  deliveryProviderId: string | null;
-  /** With `deliveryProvider`: decides whether the courier's barcode is still owed. Left out, the order prints as before. */
-  trackingNumber?: string | null;
-  deliveryProvider?: ProviderLike | null;
-}): string | null {
+export function printRefusal(order: Printable, opts: { anyOrder?: boolean } = {}): string | null {
+  if (opts.anyOrder) return null;
   if (order.confirmationStatus !== 'CONFIRMED') return 'لم يُؤكَّد';
-  if (FINISHED.includes(order.shippingStatus)) return 'مُغلق';
+  if (order.shippingStatus === 'CANCELLED') return 'مُلغى';
   // A waybill names the courier and carries its barcode; without one there
   // is no delivery fee either, so the amount printed could not be right.
   if (!order.deliveryProviderId) return 'بلا شركة شحن';
   // A courier we send to by API answers with the barcode the label must carry. A manual courier has none to wait for.
-  if (!order.trackingNumber && order.deliveryProvider && isAutomated(order.deliveryProvider)) return WAITING_FOR_BARCODE;
+  if (!isOver(order) && !order.trackingNumber && order.deliveryProvider && isAutomated(order.deliveryProvider)) return WAITING_FOR_BARCODE;
   return null;
+}
+
+/**
+ * Does printing this order COMMIT it — stamp `labelPrintedAt`, which seals the order against direct edits and turns a
+ * cancellation into a return?
+ *
+ * Only when the rule would have let it print AND its parcel is still to go. A copy of a delivered order, and anything the owner's
+ * key printed past the rule (an unconfirmed order, one with no courier), is paper only: stamping it would seal an order nobody
+ * has promised to a driver.
+ */
+export function sealsOnPrint(order: Printable): boolean {
+  return printRefusal(order) === null && !isOver(order);
 }
 
 /**

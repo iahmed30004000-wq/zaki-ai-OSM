@@ -375,6 +375,7 @@ export function OrdersScreen() {
    */
   const [batchDone, setBatchDone] = useState<{ serial: number; count: number } | null>(null);
   const canPrint = userCan(currentUser, 'ops.labels');
+  const canPrintAny = userCan(currentUser, 'ops.labels_any');
   /**
    * ── EVERY BUTTON HERE ASKS WHAT ITS OWN DOOR ASKS ──
    *
@@ -444,7 +445,7 @@ export function OrdersScreen() {
       if (out.refused.length) {
         void tell({
           title: `جُهِّزت ${out.count} بوليصة، ولم تُجهَّز ${out.refused.length}`,
-          body: `لا يُطبع إلا طلب مؤكَّد له شركة شحن:\n${describeRefused(out.refused)}`,
+          body: describeRefused(out.refused),
         });
       }
     } catch (e) {
@@ -1089,9 +1090,11 @@ export function OrdersScreen() {
                             Shown on the rows that can actually produce one
                             — a waybill needs a confirmed order with a
                             courier — so it is never a button that answers
-                            with a refusal.
+                            with a refusal. Whoever holds the owner's key
+                            (`ops.labels_any`) prints any order in any
+                            state, so for her every row can produce one.
                           */}
-                          {canPrint && order.confirmationStatus === 'CONFIRMED' && (
+                          {canPrint && (canPrintAny || order.confirmationStatus === 'CONFIRMED') && (
                             <button
                               type="button"
                               onClick={() => void handlePrintLabels('print', [order.id])}

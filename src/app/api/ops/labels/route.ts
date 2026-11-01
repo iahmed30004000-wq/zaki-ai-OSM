@@ -83,8 +83,10 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const { companyId, storeId } = await requireContext();
+    const { user, companyId, storeId } = await requireContext();
     await requirePermission('ops.labels');
+    // The owner's key: a waybill for any order in any state (waybill.ts `printRefusal`). Nothing else turns it on.
+    const anyOrder = can(user, 'ops.labels_any');
 
     const parsed = tokenSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
@@ -110,16 +112,23 @@ export async function POST(req: Request) {
     if (rows.length === 0) return NextResponse.json({ error: 'لا توجد طلبات صالحة' }, { status: 404 });
 
     const refused: { orderNumber: string; reason: string }[] = [];
+    // What the owner's key printed that the rule would have refused — said back, so the screen and the sheet can tell her.
+    const outsideTheRule: { orderNumber: string; reason: string }[] = [];
     const printable = rows.filter((o) => {
-      const reason = printRefusal(o);
+      const reason = printRefusal(o, { anyOrder });
       if (reason) refused.push({ orderNumber: o.orderNumber, reason });
+      else if (anyOrder) {
+        const rule = printRefusal(o);
+        if (rule) outsideTheRule.push({ orderNumber: o.orderNumber, reason: rule });
+      }
       return !reason;
     });
     if (printable.length === 0) {
       return NextResponse.json(
         {
-          // All of them waiting for the courier's barcode is a different news from «not confirmed».
-          error: refused.every((r) => r.reason === WAITING_FOR_BARCODE) ? WAITING_FOR_BARCODE : 'لا يُطبع إلا طلب مؤكَّد له شركة شحن',
+          // All of them waiting for the courier's barcode is a different news from the rest. The reasons are in `refused`, one
+          // per order, so this sentence states no rule of its own: a rule stated over an order that kept it was the bug.
+          error: refused.every((r) => r.reason === WAITING_FOR_BARCODE) ? WAITING_FOR_BARCODE : 'ما انطبع ولا طلب',
           code: 'NOTHING_PRINTABLE',
           refused,
         },
@@ -147,6 +156,7 @@ export async function POST(req: Request) {
       printPath,
       pdfPath: `${printPath}&mode=pdf`,
       refused,
+      outsideTheRule,
     });
   } catch (error) {
     return apiErrorResponse(error);

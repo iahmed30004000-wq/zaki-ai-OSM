@@ -86,6 +86,11 @@ export interface SheetOptions {
   stampUrl: string;
   /** Orders that were asked for and are not on this sheet, and why. */
   skipped?: { orderNumber: string; reason: string }[];
+  /**
+   * Orders that ARE on this sheet only because the owner's key (`ops.labels_any`) printed them past the rule, and which rule.
+   * Said above the labels, never on paper, so whoever prints knows these are copies that commit nothing.
+   */
+  outsideTheRule?: { orderNumber: string; reason: string }[];
   /** A file-name-like title; Chromium suggests it when saving a PDF. */
   title?: string;
 }
@@ -257,6 +262,7 @@ export function renderLabelSheet(labels: LabelView[], size: SheetSize, opts: She
     : '';
 
   const skipped = opts.skipped ?? [];
+  const outside = opts.outsideTheRule ?? [];
   const title = opts.title ?? `بوالص الشحن — ${labels.length}`;
 
   return `<!DOCTYPE html>
@@ -281,6 +287,7 @@ export function renderLabelSheet(labels: LabelView[], size: SheetSize, opts: She
   .bar .run.done { background: #00994d; }
   .bar .runs { display: flex; gap: 6px; flex-wrap: wrap; }
   .skipped { background: #fff4e5; color: #7a4b00; font-size: 12px; padding: 8px 16px; }
+  .outside { background: #e8f1fb; color: #1d4a7a; font-size: 12px; padding: 8px 16px; }
 
   .page { width: ${pageW}mm; height: ${pageH}mm; margin: 10px auto; background: #fff;
           display: grid; grid-template-columns: repeat(auto-fill, ${size.width}mm);
@@ -344,7 +351,7 @@ export function renderLabelSheet(labels: LabelView[], size: SheetSize, opts: She
   @media print {
     ${runRules}
     html, body { background: #fff; }
-    .bar, .skipped { display: none; }
+    .bar, .skipped, .outside { display: none; }
     .page { margin: 0; box-shadow: none; break-after: page; }
     .page:last-child { break-after: auto; }
     .label { border-color: transparent; }
@@ -396,6 +403,13 @@ ${
     ? `<div class="skipped">لم تُطبع ${skipped.length}: ${skipped
         .map((s) => `${esc(s.orderNumber)} (${esc(s.reason)})`)
         .join('، ')}</div>`
+    : ''
+}
+${
+  outside.length
+    ? `<div class="outside">طُبعت ${outside.length} بصلاحية «البوالص بكل الأحوال» رغم القاعدة: ${outside
+        .map((s) => `${esc(s.orderNumber)} (${esc(s.reason)})`)
+        .join('، ')} — نسخ ورقية فقط، ما بتنسجّل مطبوعة وما بتختم الطلب.</div>`
     : ''
 }
 ${sheets.join('\n')}
