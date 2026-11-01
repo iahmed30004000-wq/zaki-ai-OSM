@@ -133,6 +133,8 @@ const ACTIVITY_AR: Record<string, string> = {
   UPSELL_ADDED: POST_ORDER_ADDITION_AR,
   CUSTOMER_UPDATED: 'تعديل بيانات العميل',
   MODERATOR_ASSIGNED: 'إسناد مودريتور',
+  // «زبون راجع»: held for the agent who worked him last (order-reservation.ts) — she is named on the order itself.
+  HELD_FOR_AGENT: 'حُجز للموظفة التي تعاملت مع هالزبون قبل',
   CALL_MADE: 'اتصال بالعميل',
   NOTE_ADDED: 'إضافة ملاحظة',
   SHIPPING_UPDATED: 'تحديث الشحن',

@@ -30,6 +30,8 @@ export interface QueueResponse {
   caps: { withoutAttempt: number; total: number };
   leadDays: number;
   waitingOnADate?: number;
+  /** In the queue and held for a colleague who worked the customer: seen, not takeable. */
+  reservedForColleagues?: number;
   canPull: boolean;
   refusal: {
     code: string;
@@ -50,6 +52,8 @@ export interface QueueResponse {
         totalAmount: number;
         customer: { fullName: string; city: string };
         product: { name: string } | null;
+        /** Whom it is held for, while the hold stands. */
+        reservedFor?: { id: string; name: string } | null;
       }[]
     | null;
 }
@@ -207,7 +211,7 @@ export function PullPanel({
 
   const rule = !notMyDesk && (
     <p className={`${compact ? 'mt-3' : 'mt-4'} text-xs text-[var(--sys-muted)]`}>
-      الأولوية للطلبات المؤجلة المستحقة خلال {data.leadDays} يوم، ثم الأقدم. يُحرَّر أي طلب بلا محاولة اتصال بعد 90 دقيقة عمل.
+      طلب الزبون الراجع التابع لك يأتيك أولاً. الأولوية للطلبات المؤجلة المستحقة خلال {data.leadDays} يوم، ثم الأقدم. يُحرَّر أي طلب بلا محاولة اتصال بعد 90 دقيقة عمل.
     </p>
   );
 
@@ -223,6 +227,18 @@ export function PullPanel({
   const onADate = !!data.waitingOnADate && (
     <p className="mt-1 text-xs text-[var(--sys-muted)]">
       و{data.waitingOnADate} مؤجَّلة حتى موعدها — تُسحب في يومها وحدها
+    </p>
+  );
+
+  /*
+    HELD FOR A COLLEAGUE IS NOT WAITING FOR YOU EITHER — and it is said, not hidden.
+
+    The orders of returning customers stay in the queue with the name of the agent who worked them. They are not in the big
+    number (that is what she may take), and they are not silent: «و٣ تابعة لزميلاتك».
+  */
+  const heldForColleagues = !!data.reservedForColleagues && (
+    <p className="mt-1 text-xs text-[var(--sys-muted)]">
+      و{data.reservedForColleagues} تابعة لزميلاتك — زبائنهنّ السابقين، تشوفها بقائمة «الطلبات» وما بتسحبها
     </p>
   );
 
@@ -245,6 +261,7 @@ export function PullPanel({
           <div className="ms-auto">{button}</div>
         </div>
         {onADate}
+        {heldForColleagues}
         {sentence}
         {/*
           A PHONE: THE COUNT AND THE BUTTON, THEN ONE LINE (ORD-07).
@@ -281,6 +298,7 @@ export function PullPanel({
       <p className="mt-4 text-4xl font-bold text-[var(--sys-heading)] tabular-nums">{data.waiting}</p>
       <p className="mt-1 text-sm text-[var(--sys-muted-foreground)]">طلب جاهز للسحب الآن</p>
       {onADate}
+      {heldForColleagues}
       {button}
       {sentence}
       {caps}

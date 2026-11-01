@@ -77,7 +77,8 @@ const take = () =>
  */
 function desk({ total = 0, withoutAttempt = 0, untouched = null as null | { id: string; orderNumber: string } }) {
   db.order.count.mockResolvedValueOnce(total).mockResolvedValueOnce(withoutAttempt);
-  db.order.findFirst.mockResolvedValue(untouched);
+  // The first `findFirst` is the claim door asking «is it held for a colleague?» (nobody holds it); the next is the untouched order.
+  db.order.findFirst.mockResolvedValueOnce(null).mockResolvedValue(untouched);
 }
 
 beforeEach(() => {

@@ -64,6 +64,8 @@ export function ConfirmationQueueScreen() {
                 render: (o) => `${o.customer.fullName} · ${o.customer.city}`,
               },
               { key: 'state', label: 'الحالة', render: (o) => CONFIRMATION_STATUS_AR[o.confirmationStatus as ConfirmationStatus] ?? 'غير معروفة' },
+              // A returning customer's order, held for the agent who worked him last (order-reservation.ts). «—» when it is everybody's.
+              { key: 'heldFor', label: 'تابع لـ', render: (o) => o.reservedFor?.name ?? '—' },
               {
                 key: 'postponed',
                 label: 'التأجيلات',

@@ -90,6 +90,7 @@ const ORDER = {
   shipments: [],
   payments: [],
   returnReceipts: [],
+  claimHistory: [],
 };
 
 const open = () =>
