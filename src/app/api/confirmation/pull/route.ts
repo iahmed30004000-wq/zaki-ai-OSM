@@ -4,6 +4,7 @@ import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { pullNextOrder } from '@/lib/confirmation-queue';
+import { reserveReturningCustomers } from '@/lib/reserve-returning-customers';
 import { db } from '@/lib/db';
 
 /**
@@ -17,6 +18,10 @@ export async function POST() {
   try {
     const { user, companyId, storeId, country } = await requireContext();
     await requirePermission('confirmation.pull');
+
+    // A returning customer's order that has just arrived is held for the agent who worked him last BEFORE the pick — best-effort:
+    // if the hold cannot be written the order is simply the shared queue's, as it was before holds existed.
+    await reserveReturningCustomers({ companyId, storeId }).catch(() => 0);
 
     const result = await pullNextOrder(
       { companyId, storeId },

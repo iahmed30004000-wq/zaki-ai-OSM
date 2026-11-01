@@ -103,6 +103,24 @@ describe('the counts start together', () => {
     });
   });
 
+  it('— «بانتظار التأكيد» is counted for HER when she pulls (an order held for a colleague is not waiting for her), and for the whole pool when she only supervises', async () => {
+    waitingCount.mockResolvedValue(2);
+    awaitingConfirmationCount.mockResolvedValue(0);
+    db.order.count.mockResolvedValue(0);
+    db.orderChangeRequest.count.mockResolvedValue(0);
+    db.orderIssue.count.mockResolvedValue(0);
+    db.courierStatement.count.mockResolvedValue(0);
+
+    grants.allows = (p) => p === 'confirmation.pull';
+    await GET();
+    expect(waitingCount.mock.calls[0][3], 'من تسحب: الرقم لها هي').toBe('u');
+
+    waitingCount.mockClear();
+    grants.allows = (p) => p === 'confirmation.supervise';
+    await GET();
+    expect(waitingCount.mock.calls[0][3], 'المشرف لا يسحب: يقرأ الطابور كله').toBeUndefined();
+  });
+
   it('— a number past the ceiling is still «كثير», 999', async () => {
     waitingCount.mockResolvedValue(5000);
     awaitingConfirmationCount.mockResolvedValue(0);

@@ -932,7 +932,7 @@
   "src/components/screens/ConfirmationQueueScreen.tsx": {
     "buttons": 0,
     "inputs": 0,
-    "columns": 4,
+    "columns": 5,
     "cards": 0,
     "modals": 0,
     "icons": 1,

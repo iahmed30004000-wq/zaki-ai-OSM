@@ -163,8 +163,13 @@ describe('and the scope decides, not the name of the role', () => {
      * made its own role — «موظّف تأكيد — مسائي» — got the unfiltered
      * branch and walked every order in the store.
      */
+    // The list envelope carries a time (the hold of a returning customer's order lets go after a day): freeze it, or two
+    // envelopes built a millisecond apart are not equal.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-31T12:00:00.000Z'));
     const named = navigationWhere(user('ASSIGNED', 'CONFIRMATION_AGENT'));
     const custom = navigationWhere(user('ASSIGNED', 'موظّف تأكيد — مسائي'));
+    vi.useRealTimers();
     expect(custom).toEqual(named);
     expect(matches(custom, POOL), 'دور مخصّص بنفس النطاق لسّا بيمشي بالطابور').toBe(false);
     expect(matches(custom, THEIRS), 'دور مخصّص بيمشي بطلبات زميل').toBe(false);
