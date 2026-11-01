@@ -428,3 +428,59 @@ FROM "roles" r
 WHERE r."name" IN ('COMPANY_ADMIN', 'MANAGER')
   AND NOT EXISTS (SELECT 1 FROM "role_permissions" rp WHERE rp."roleId" = r."id" AND rp."permission" = 'team.monitor')
 ORDER BY 1, 2;
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- AND THE QUESTION OF THE OWNERSHIP RULE (#154, the owner 1/11, the independent review of it): WHO IS *NOT* BOUND BY
+-- «AN AGENT WORKS ONLY THE ORDER SHE HOLDS» TODAY? Read-only, same as above.
+--
+-- The rule (src/lib/confirmation-queue.ts `mustHoldToWork`) binds every ACTIVE account that holds `confirmation.work` and holds
+-- NEITHER `orders.unlock` NOR `orders.assign`: whoever can take any order or hand any order out gains nothing from being bound.
+-- So the day the owner ticks one of those two boxes on an AGENT role, the rule turns itself off for every person on that role —
+-- silently, and the tests cannot see it (their key lists are pictures of one day). This lists exactly the accounts the rule does not
+-- reach: ACTIVE, holding `confirmation.work` AND one of the two keys, one row per person, with HOW each key reaches him. Today's rows
+-- are the baseline (the owner's own SUPER_ADMIN account is always one: full access holds every key); a row for the agent role is the
+-- day the rule stopped binding it. Run it before and after touching «تجاوز أقفال التحرير» or «إسناد الطلبات» on any role.
+--
+-- A person's keys are decided as the engine decides them (src/lib/permissions-core.ts computeEffectiveGrants), written once for SQL:
+--   · SUPER_ADMIN holds every key ('full access');
+--   · otherwise a personal «منع» (user_permissions.effect = 'DENY') takes the key away whatever the role gives;
+--   · otherwise a personal «سماح» (any other effect) gives it ('personal allow');
+--   · otherwise the role's rows give it ('role') — the person's own role (users.roleId), or, when he has none, the system template
+--     named like his legacy role (a role with companyId NULL).
+-- A person with neither a role row nor such a template is judged by the engine from an in-code matrix a query cannot read: the second
+-- list names them, so nobody is judged by a guess (none is expected).
+-- ═══════════════════════════════════════════════════════════════════════
+WITH people AS (
+  SELECT u."id", u."name", u."email", u."role" AS "legacy_role", u."companyId",
+         COALESCE(u."roleId", (SELECT t."id" FROM "roles" t WHERE t."companyId" IS NULL AND t."name" = u."role" LIMIT 1)) AS "role_id"
+  FROM "users" u
+  WHERE u."status" = 'ACTIVE'
+),
+how AS (
+  SELECT p.*, k."key",
+         CASE
+           WHEN p."legacy_role" = 'SUPER_ADMIN' THEN 'full access'
+           WHEN EXISTS (SELECT 1 FROM "user_permissions" d WHERE d."userId" = p."id" AND d."permission" = k."key" AND d."effect" = 'DENY') THEN NULL
+           WHEN EXISTS (SELECT 1 FROM "user_permissions" a WHERE a."userId" = p."id" AND a."permission" = k."key") THEN 'personal allow'
+           WHEN EXISTS (SELECT 1 FROM "role_permissions" g WHERE g."roleId" = p."role_id" AND g."permission" = k."key") THEN 'role'
+         END AS "via"
+  FROM people p
+  CROSS JOIN (VALUES ('confirmation.work'), ('orders.unlock'), ('orders.assign')) AS k("key")
+)
+SELECT w."name", w."email", w."legacy_role", r."name" AS "role", w."companyId",
+       w."via" AS "work_through", ul."via" AS "unlock_through", asg."via" AS "assign_through"
+FROM how w
+JOIN how ul ON ul."id" = w."id" AND ul."key" = 'orders.unlock'
+JOIN how asg ON asg."id" = w."id" AND asg."key" = 'orders.assign'
+LEFT JOIN "roles" r ON r."id" = w."role_id"
+WHERE w."key" = 'confirmation.work' AND w."via" IS NOT NULL
+  AND (ul."via" IS NOT NULL OR asg."via" IS NOT NULL)
+ORDER BY 5 NULLS FIRST, 4, 1;
+
+-- The accounts the list above cannot judge: ACTIVE, not SUPER_ADMIN, with no role of their own and no system template named like their
+-- legacy role. The engine reads an in-code matrix for them; none is expected.
+SELECT u."email", u."role"
+FROM "users" u
+WHERE u."status" = 'ACTIVE' AND u."role" <> 'SUPER_ADMIN' AND u."roleId" IS NULL
+  AND NOT EXISTS (SELECT 1 FROM "roles" t WHERE t."companyId" IS NULL AND t."name" = u."role")
+ORDER BY 2, 1;

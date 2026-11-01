@@ -9,6 +9,7 @@ import { apiError } from '@/lib/api-error';
 import { can, authorize } from '@/lib/authorization';
 import { ORDER_NOT_FOUND, ORDER_STALE } from '@/lib/order-refusals';
 import { resolveAudience } from '@/lib/notification-audience';
+import { mayBeHandedAnOrder } from '@/lib/confirmation-queue';
 
 /**
  * POST /api/orders/[id]/transfer
@@ -37,12 +38,21 @@ function sameRank(a: RankedUser, b: RankedUser): boolean {
  * The same-role rule below was written for an agent handing a confirmation order to the warehouse. It also stopped the owner and the
  * supervisor — whose role is not an agent's — from handing an order DOWN to a confirmation agent: the list offered only people of the
  * HOLDER'S role, and the holder was the owner who had just taken the order. What the rule protects is that the order lands in hands
- * that can work it, so for a person with `orders.assign` that is what is asked: the target holds `confirmation.work` («العمل على
- * طلباتي»), the key the work door and the pull ask. A warehouse employee has no such key and is still refused.
+ * that can work it, so for a person with `orders.assign` that is what is asked: the target can WORK the order — `mayBeHandedAnOrder`:
+ * `confirmation.work` («العمل على طلباتي»), `confirmation.pull` and `orders.confirm`. A warehouse employee has no such key and is
+ * still refused.
+ *
+ * ⚠️ `confirmation.work` ALONE was the first version of this question, and the supervisor template holds it (it works a queue to
+ * watch it): she was offered, and received, an order she could neither confirm nor ring — no pull, no `orders.confirm`, no
+ * `orders.contact_log` (the independent review of #154). The audience resolver is still asked for `confirmation.work` — it already
+ * returns every holder with the grants the engine computed for him — and the other two keys are asked of those same sessions, in
+ * memory: no query of its own, and the list and the acceptance below read this one function, so they cannot disagree.
  */
 async function whoMayWorkTheOrder(companyId: string, storeId: string | null): Promise<Array<{ id: string; name: string; email?: string | null }>> {
   const audience = await resolveAudience({ companyId, storeId, audience: { permission: 'confirmation.work' } });
-  return audience.map((u) => ({ id: u.id, name: u.name, email: u.email }));
+  return audience
+    .filter((u) => mayBeHandedAnOrder((permission) => can(u, permission)))
+    .map((u) => ({ id: u.id, name: u.name, email: u.email }));
 }
 
 /** Whose hands the order is in right now: the claimer, else the owner, else
@@ -123,7 +133,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         return NextResponse.json(
           {
             error: `${target.name} ما بيشتغل على الطلبات — ما بيتحوّل الطلب لإلو`,
-            errorAr: `${target.name} ما بيشتغل على الطلبات (ما عنده «العمل على طلباتي») — حوّل الطلب لموظف تأكيد.`,
+            errorAr: `${target.name} ما بيقدر يشتغل على الطلب (لازم يكون عنده «العمل على طلباتي والمؤجلة» و«سحب الطلب التالي» و«تغيير حالة التأكيد») — حوّل الطلب لموظف تأكيد.`,
             code: 'CANNOT_WORK_IT',
           },
           { status: 409 }
