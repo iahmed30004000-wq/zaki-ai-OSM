@@ -38,6 +38,8 @@ interface Answer {
   totalBefore: number;
   totalAfter: number;
   unchanged?: boolean;
+  /** The order is on a shipping trolley: a file or a page printed from it earlier still carries the old amount. */
+  inBatch?: boolean;
 }
 
 export function DeliveryIncludedBox({
@@ -60,16 +62,27 @@ export function DeliveryIncludedBox({
   const post = (body: Record<string, unknown>) =>
     apiJson<Answer>(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
+  /** What the press does to the figure, said in the direction it goes (a zero change today still changes the parcel's figure later). */
+  function saying(next: boolean, asked: Answer): string {
+    const figure = amount(asked.totalAfter, currency);
+    const money =
+      asked.totalBefore === asked.totalAfter
+        ? next
+          ? `المبلغ ما بيتغيّر هلّق (${figure}) — بس لما تنعمل الشحنة ما رح تنضاف أجرة التوصيل عليه.`
+          : `المبلغ ما بيتغيّر هلّق (${figure}) — بس لما تنعمل الشحنة بتنضاف أجرة التوصيل عليه.`
+        : `المبلغ المطلوب من الزبون بيصير ${figure} بدل ${amount(asked.totalBefore, currency)}.`;
+    return asked.inBatch
+      ? `${money} الطلب على عربة شحن: إذا صدّرت ملف الدفعة أو طبعت ورقتها قبل هلّق، أعد التصدير والطباعة بعد التعديل.`
+      : money;
+  }
+
   async function change(next: boolean) {
     setBusy(true);
     try {
       const asked = await post({ included: next, expectedVersion: version, dryRun: true });
-      const same = asked.totalBefore === asked.totalAfter;
       const go = await confirm({
         title: next ? 'السعر يصير شامل التوصيل؟' : 'يرجع التوصيل يتضاف على الزبون؟',
-        body: same
-          ? `المبلغ ما بيتغيّر هلّق (${amount(asked.totalAfter, currency)}). بيتغيّر وقت إنشاء الشحنة، لأنو الأجرة بتنقرأ من علم الطلب.`
-          : `المبلغ المطلوب من الزبون بيصير ${amount(asked.totalAfter, currency)} بدل ${amount(asked.totalBefore, currency)}.`,
+        body: saying(next, asked),
         confirmLabel: next ? 'اجعله شامل التوصيل' : 'أضف التوصيل',
         tone: next ? undefined : 'danger',
       });
@@ -79,6 +92,13 @@ export function DeliveryIncludedBox({
       await onChanged();
     } catch (e) {
       toast.failed(e instanceof Error ? e.message : 'تعذّر التعديل');
+      // A refusal means the sheet in front of her is not the order any more (another person moved it, or it left): show the order
+      // as it is now, with the version a second try needs.
+      try {
+        await onChanged();
+      } catch {
+        /* the reload failing too says nothing more than the toast already did */
+      }
     } finally {
       setBusy(false);
     }

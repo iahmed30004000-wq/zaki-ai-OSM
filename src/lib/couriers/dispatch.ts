@@ -65,7 +65,12 @@ export interface DispatchOutcome {
  * Raw SQL, deliberately: `updateMany` returns a count and not the row, and
  * this needs the conditional update and its result in a single round trip.
  */
-async function claimForSend(orderId: string, batchId: string): Promise<'CLAIMED' | 'ALREADY_SENT' | 'SEND_IN_FLIGHT' | 'LEFT_THE_BATCH'> {
+type Claim =
+  /** Won — with the AMOUNT the order carried at the moment it was taken: that figure, and no earlier one, is what the courier is told. */
+  | { won: true; totalAmount: number }
+  | { won: false; reason: 'ALREADY_SENT' | 'SEND_IN_FLIGHT' | 'LEFT_THE_BATCH' };
+
+async function claimForSend(orderId: string, batchId: string): Promise<Claim> {
   /*
    * THE CLAIM REPEATS WHAT MADE THE ORDER SENDABLE.
    *
@@ -77,7 +82,16 @@ async function claimForSend(orderId: string, batchId: string): Promise<'CLAIMED'
    * same statement requires: still on THIS trolley, still waiting for
    * pickup, still confirmed, and not yet shipped.
    */
-  const won = await db.$queryRaw<{ id: string }[]>`
+  /*
+   * AND THE CLAIM HANDS BACK THE AMOUNT IT TOOK (the independent review of the delivery-included door, 1/11).
+   *
+   * The batch's orders were read once, before the loop; this order may be claimed minutes later. A person who flips «شامل التوصيل»
+   * on it in between (or any other door that re-prices an order still on the trolley) changes `totalAmount` in the row, and a send
+   * that used the figure from the early read would tell the courier to collect a sum our own record no longer holds. Reading it in
+   * the statement that takes the row closes that: every door that moves the amount refuses once `courier_send_started_at` is set,
+   * so from the claim onwards the figure cannot change, and until it, this is the figure the row had.
+   */
+  const won = await db.$queryRaw<{ id: string; totalAmount: number | string }[]>`
     UPDATE "orders"
        SET "courier_send_started_at" = now()
      WHERE "id" = ${orderId}
@@ -87,8 +101,8 @@ async function claimForSend(orderId: string, batchId: string): Promise<'CLAIMED'
        AND "shippingStatus" = 'READY_FOR_PICKUP'
        AND "confirmationStatus" = 'CONFIRMED'
        AND "shippedAt" IS NULL
-    RETURNING "id"`;
-  if (won.length > 0) return 'CLAIMED';
+    RETURNING "id", "totalAmount"`;
+  if (won.length > 0) return { won: true, totalAmount: Number(won[0].totalAmount ?? 0) };
 
   // Lost, and the reasons are different news: one parcel exists, one is
   // mid-flight and nobody yet knows, or the order is no longer this
@@ -97,11 +111,11 @@ async function claimForSend(orderId: string, batchId: string): Promise<'CLAIMED'
     SELECT "trackingNumber" AS tracking, "courier_send_started_at" AS claimed, "shippingBatchId" AS batch,
            "shippingStatus" AS shipping, "confirmationStatus" AS confirmation, "shippedAt" AS shipped
       FROM "orders" WHERE "id" = ${orderId}`;
-  if (row?.tracking) return 'ALREADY_SENT';
+  if (row?.tracking) return { won: false, reason: 'ALREADY_SENT' };
   const left =
     row?.batch !== undefined &&
     (row.batch !== batchId || row.shipping !== 'READY_FOR_PICKUP' || row.confirmation !== 'CONFIRMED' || !!row.shipped);
-  return left ? 'LEFT_THE_BATCH' : 'SEND_IN_FLIGHT';
+  return { won: false, reason: left ? 'LEFT_THE_BATCH' : 'SEND_IN_FLIGHT' };
 }
 
 /**
@@ -208,7 +222,8 @@ export async function dispatchBatch(input: {
     },
     select: {
       id: true, orderNumber: true, merchantRef: true, trackingNumber: true,
-      totalAmount: true, currency: true, quantity: true, freeQuantity: true,
+      // (No `totalAmount`: the amount to collect is the one the claim takes — `claimForSend`.)
+      currency: true, quantity: true, freeQuantity: true,
       customerNotes: true, deliveryProviderId: true,
       // The parcel's own address, when the visitor typed one that differs from the customer row's.
       deliveryAddress: true,
@@ -274,8 +289,8 @@ export async function dispatchBatch(input: {
      * this is the last moment before somebody else's system is involved.
      */
     const claim = await claimForSend(order.id, batch.id);
-    if (claim !== 'CLAIMED') {
-      outcomes.push({ orderId: order.id, orderNumber: order.orderNumber, ok: false, skipped: claim });
+    if (!claim.won) {
+      outcomes.push({ orderId: order.id, orderNumber: order.orderNumber, ok: false, skipped: claim.reason });
       continue;
     }
 
@@ -291,7 +306,8 @@ export async function dispatchBatch(input: {
         orderId: order.id,
         // Our order number, so their statement line can be matched back.
         merchantRef: order.merchantRef || order.orderNumber,
-        codAmount: Number(order.totalAmount ?? 0),
+        // The amount the claim took, not the one from the early read of the batch: see `claimForSend`.
+        codAmount: claim.totalAmount,
         currencyCode: order.currency,
         customer: {
           fullName: order.customer?.fullName ?? '',

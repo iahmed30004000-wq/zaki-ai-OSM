@@ -86,14 +86,35 @@ describe('the box', () => {
     expect(box().checked).toBe(false);
   });
 
-  it('the door’s refusal is said in its own words, and nothing is changed', async () => {
+  it('the door’s refusal is said in its own words, nothing is changed, and the sheet is reloaded so a second try has the new version', async () => {
     apiJson.mockRejectedValue(Object.assign(new Error('بوليصة الطلب طُبعت ولُصقت على الطرد.'), { status: 409 }));
     mount(false);
     fireEvent.click(box());
     await waitFor(() => expect(toast.failed).toHaveBeenCalledWith('بوليصة الطلب طُبعت ولُصقت على الطرد.'));
+    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
     expect(confirm).not.toHaveBeenCalled();
-    expect(onChanged).not.toHaveBeenCalled();
+    // One call only: the refused dry run. Nothing was written.
+    expect(posts()).toEqual([{ included: true, expectedVersion: 3, dryRun: true }]);
     expect(box().checked).toBe(false);
+  });
+
+  it('a reload that fails too changes nothing more: the box is usable again and no error escapes', async () => {
+    apiJson.mockRejectedValue(new Error('الطلب تغيّر من حدا تاني.'));
+    onChanged.mockRejectedValueOnce(new Error('offline'));
+    mount(false);
+    fireEvent.click(box());
+    await waitFor(() => expect(toast.failed).toHaveBeenCalledWith('الطلب تغيّر من حدا تاني.'));
+    await waitFor(() => expect(box().disabled).toBe(false));
+    expect(toast.failed).toHaveBeenCalledTimes(1);
+  });
+
+  it('«لا» at the question does not reload anything (only a refusal does)', async () => {
+    confirm.mockResolvedValue(false);
+    mount(false);
+    fireEvent.click(box());
+    await waitFor(() => expect(confirm).toHaveBeenCalled());
+    await waitFor(() => expect(box().disabled).toBe(false));
+    expect(onChanged).not.toHaveBeenCalled();
   });
 
   it('taking it back: unticking asks the other way, and the sentence says the fee is added again', async () => {
@@ -110,15 +131,50 @@ describe('the box', () => {
     expect(asked.tone).toBe('danger');
   });
 
-  it('when the total does not move yet (no fee priced), it says that the fee follows the flag at the shipment', async () => {
+  it('when the total does not move yet (no fee priced) and the box is being TICKED: it says the fee will not be added at the shipment', async () => {
     apiJson.mockImplementation(async (_u: string, init: { body: string }) =>
       JSON.parse(init.body).dryRun ? { dryRun: true, totalBefore: 20, totalAfter: 20, delta: 0 } : { changed: true }
     );
     mount(false);
     fireEvent.click(box());
     await waitFor(() => expect(confirm).toHaveBeenCalled());
-    expect((confirm.mock.calls[0][0] as { body: string }).body).toContain('المبلغ ما بيتغيّر هلّق');
-    expect((confirm.mock.calls[0][0] as { body: string }).body).toContain('وقت إنشاء الشحنة');
+    const body = (confirm.mock.calls[0][0] as { body: string }).body;
+    expect(body).toContain('المبلغ ما بيتغيّر هلّق');
+    expect(body).toContain('ما رح تنضاف أجرة التوصيل');
+  });
+
+  it('and when it is being UNTICKED with no fee priced: it says the fee will be added at the shipment (the other direction, its own sentence)', async () => {
+    apiJson.mockImplementation(async (_u: string, init: { body: string }) =>
+      JSON.parse(init.body).dryRun ? { dryRun: true, totalBefore: 20, totalAfter: 20, delta: 0 } : { changed: true }
+    );
+    mount(true);
+    fireEvent.click(box());
+    await waitFor(() => expect(confirm).toHaveBeenCalled());
+    const body = (confirm.mock.calls[0][0] as { body: string }).body;
+    expect(body).toContain('المبلغ ما بيتغيّر هلّق');
+    expect(body).toContain('بتنضاف أجرة التوصيل عليه');
+    expect(body).not.toContain('ما رح تنضاف');
+  });
+
+  it('an order on a shipping trolley is told to export and print again; one that is not, is not', async () => {
+    apiJson.mockImplementation(async (_u: string, init: { body: string }) =>
+      JSON.parse(init.body).dryRun ? { dryRun: true, totalBefore: 23, totalAfter: 20, delta: -3, inBatch: true } : { changed: true }
+    );
+    mount(false);
+    fireEvent.click(box());
+    await waitFor(() => expect(confirm).toHaveBeenCalled());
+    expect((confirm.mock.calls[0][0] as { body: string }).body).toContain('أعد التصدير والطباعة');
+
+    cleanup();
+    vi.clearAllMocks();
+    confirm.mockResolvedValue(true);
+    apiJson.mockImplementation(async (_u: string, init: { body: string }) =>
+      JSON.parse(init.body).dryRun ? { dryRun: true, totalBefore: 23, totalAfter: 20, delta: -3, inBatch: false } : { changed: true }
+    );
+    mount(false);
+    fireEvent.click(box());
+    await waitFor(() => expect(confirm).toHaveBeenCalled());
+    expect((confirm.mock.calls[0][0] as { body: string }).body).not.toContain('أعد التصدير');
   });
 });
 
