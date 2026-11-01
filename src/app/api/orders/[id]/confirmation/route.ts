@@ -69,7 +69,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     /*
      * AN AGENT WORKS ONLY THE ORDER SHE HOLDS (the owner, 1/11) — see `mustHoldToWork`. Asked before anything is read from the body,
      * for EVERY action: an agent who could `confirm` an order nobody held, from the orders list, also left it with no holder, no
-     * stage and no contact rule (`needsContactFirst` binds only a holder). Supervisors and the owner are not bound.
+     * stage and no contact rule (`needsContactFirst` binds only a holder). Whoever can take or hand out any order (`orders.unlock`,
+     * `orders.assign`) is not bound — and `confirmation.supervise` does NOT excuse anybody: the live agent role holds it.
      */
     if (mustHoldToWork((permission) => can(user, permission)) && order.claimedById !== user.id) {
       return NextResponse.json({ error: NOT_HELD_MESSAGE, errorAr: NOT_HELD_MESSAGE, code: 'NOT_HELD' }, { status: 403 });

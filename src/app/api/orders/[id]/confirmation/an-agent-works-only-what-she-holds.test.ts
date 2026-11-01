@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NOT_HELD_MESSAGE, keepsOwnEntry, mustHoldToWork } from '@/lib/confirmation-queue';
+import { NOT_HELD_MESSAGE, mustHoldToWork } from '@/lib/confirmation-queue';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -10,11 +10,16 @@ import { NOT_HELD_MESSAGE, keepsOwnEntry, mustHoldToWork } from '@/lib/confirmat
  * they carry NO holder («لم يستلمه أحد بعد — متاح في الطابور» beside «مؤكَّد»), and the contact-first rule (which binds only a holder)
  * never applied. The door asked `orders.confirm` only, and that key is company-wide for the shipped agent.
  *
- *  1. For the account that works a queue and does not supervise one (`confirmation.work` without `confirmation.supervise`, by
- *     PERMISSION and never by role name) every action of the confirmation door — confirm, reject, postpone, a call result, start,
- *     cancel, resolve — is refused with 403 `NOT_HELD` unless `claimedById` is HER. Nothing is written, reserved or notified.
- *  2. The order she holds works exactly as before; so does an order held by nobody for a supervisor, for the owner (who holds every
- *     key), and for a person who holds `orders.confirm` without the queue key (not an agent of the queue).
+ *  1. For every account that works a queue (`confirmation.work`, by PERMISSION and never by role name) and cannot take or hand out any
+ *     order (`orders.unlock`, `orders.assign`), every action of the confirmation door — confirm, reject, postpone, a call result,
+ *     start, cancel, resolve — is refused with 403 `NOT_HELD` unless `claimedById` is HER. Nothing is written, reserved or notified.
+ *     THE KEYS OF THIS TEST ARE THE LIVE ROLE'S, measured on the site on 1/11 (read-only `GET /api/roles`): CONFIRMATION_AGENT holds
+ *     `confirmation.supervise` and `confirmation.reassign` too. The first version of the rule excused anybody holding `supervise`, which
+ *     would have excused all ten agents — including the one the incident came from — and every unit test passed, because the keys
+ *     were handed to the door by hand. `supervise` gates what she SEES, not what she may take; it excuses nobody.
+ *  2. The order she holds works exactly as before; so does an order held by nobody for whoever can take or hand out any order (a
+ *     manager: `orders.unlock` / `orders.assign`), for the owner (who holds every key), and for a person who holds `orders.confirm`
+ *     without the queue key (a moderator — see BACKLOG RV563: she is not bound, and that is the owner's call).
  *  3. An order held by a COLLEAGUE is not hers either.
  *  4. The sentence is one, the same at the door and on the screen, Arabic only.
  *
@@ -77,8 +82,17 @@ const ORDER: Record<string, unknown> = {
   regionId: 'r1',
 };
 
-/** The shipped agent: works her queue, may log a call and confirm, and does NOT supervise or override. */
-const AGENT_KEYS = ['confirmation.work', 'confirmation.pull', 'orders.confirm', 'orders.contact_log', 'orders.claim'];
+/**
+ * THE LIVE AGENT: the system role CONFIRMATION_AGENT as `GET /api/roles` returned it on crm.zakiai.io, 1/11 (22 keys; configuration, no
+ * customer data). It holds `confirmation.supervise` and `confirmation.reassign`, and neither `orders.unlock` nor `orders.assign`.
+ */
+const PRODUCTION_CONFIRMATION_AGENT = [
+  'ai.assist', 'ai.use', 'confirmation.issues', 'confirmation.issues_correct', 'confirmation.pull', 'confirmation.raise_issue',
+  'confirmation.reassign', 'confirmation.supervise', 'confirmation.winback', 'confirmation.work', 'customers.view_basic', 'insights.view',
+  'orders.change_price', 'orders.claim', 'orders.confirm', 'orders.contact_log', 'orders.edit', 'orders.note', 'orders.rating_link',
+  'orders.release', 'orders.request_change', 'orders.view',
+];
+const AGENT_KEYS = PRODUCTION_CONFIRMATION_AGENT;
 
 function holding(...keys: string[]) {
   can.mockImplementation((_u: unknown, key: string) => keys.includes(key));
@@ -136,13 +150,24 @@ beforeEach(() => {
 });
 
 describe('the rule itself', () => {
-  it('is the queue account: confirmation.work without confirmation.supervise — by permission, never by role name', () => {
+  it('is the queue account: confirmation.work — by permission, never by role name', () => {
     const holds = (...keys: string[]) => (p: string) => keys.includes(p);
     expect(mustHoldToWork(holds('confirmation.work'))).toBe(true);
     expect(mustHoldToWork(holds('confirmation.work', 'orders.confirm', 'orders.contact_log', 'confirmation.pull'))).toBe(true);
-    expect(mustHoldToWork(holds('confirmation.work', 'confirmation.supervise'))).toBe(false);
     expect(mustHoldToWork(holds('orders.confirm'))).toBe(false); // confirms, but is not an agent of the queue
     expect(mustHoldToWork(holds())).toBe(false);
+  });
+
+  it('THE LIVE AGENT IS BOUND — the measured CONFIRMATION_AGENT key list, `confirmation.supervise` and all', () => {
+    expect(PRODUCTION_CONFIRMATION_AGENT).toContain('confirmation.supervise');
+    expect(PRODUCTION_CONFIRMATION_AGENT).toContain('confirmation.reassign');
+    expect(mustHoldToWork((p) => PRODUCTION_CONFIRMATION_AGENT.includes(p))).toBe(true);
+  });
+
+  it('NEGATIVE: `confirmation.supervise` alone excuses nobody — it is what she SEES, not what she may take', () => {
+    const holds = (...keys: string[]) => (p: string) => keys.includes(p);
+    expect(mustHoldToWork(holds('confirmation.work', 'confirmation.supervise'))).toBe(true);
+    expect(mustHoldToWork(holds('confirmation.work', 'confirmation.supervise', 'confirmation.reassign'))).toBe(true);
   });
 
   it('and not whoever can TAKE any order (orders.unlock) or GIVE any order away (orders.assign): binding them gains nothing', () => {
@@ -150,15 +175,6 @@ describe('the rule itself', () => {
     expect(mustHoldToWork(holds('confirmation.work', 'orders.unlock'))).toBe(false);
     expect(mustHoldToWork(holds('confirmation.work', 'orders.assign'))).toBe(false);
     expect(mustHoldToWork(holds('confirmation.work', 'orders.unlock', 'orders.assign'))).toBe(false);
-  });
-
-  it('it is `keepsOwnEntry`’s test plus those two exceptions — never a looser one: whoever must hold also keeps her own entries', () => {
-    const holds = (...keys: string[]) => (p: string) => keys.includes(p);
-    const pool = ['confirmation.work', 'confirmation.supervise', 'orders.unlock', 'orders.assign'];
-    for (let mask = 0; mask < 1 << pool.length; mask++) {
-      const keys = pool.filter((_k, i) => mask & (1 << i));
-      if (mustHoldToWork(holds(...keys))) expect(keepsOwnEntry(holds(...keys)), keys.join('+')).toBe(true);
-    }
   });
 
   it('says one sentence, in Arabic, that tells her what to do', () => {
@@ -206,13 +222,13 @@ describe('the order she HOLDS works exactly as before', () => {
 describe('everybody else is unbound — an order nobody holds still works for them', () => {
   const confirms = async () => send({ action: 'confirm' });
 
-  it('a supervisor (confirmation.supervise, with the queue key too)', async () => {
-    holding('confirmation.work', 'confirmation.supervise', 'orders.confirm', 'orders.contact_log');
+  it('a moderator: holds orders.confirm and the call key but NOT the queue key — not bound (BACKLOG RV563: the owner decides)', async () => {
+    holding('orders.confirm', 'orders.contact_log', 'orders.claim', 'orders.view');
     const res = await confirms();
     expect(res.status, JSON.stringify(res.body)).toBe(200);
   });
 
-  it('a manager who can take any order (orders.unlock) or hand any order out (orders.assign), without the supervise key', async () => {
+  it('a manager who can take any order (orders.unlock) or hand any order out (orders.assign)', async () => {
     for (const key of ['orders.unlock', 'orders.assign']) {
       vi.clearAllMocks();
       holding('confirmation.work', 'orders.confirm', 'orders.contact_log', key);
@@ -239,8 +255,8 @@ describe('everybody else is unbound — an order nobody holds still works for th
     expect(res.status, JSON.stringify(res.body)).toBe(200);
   });
 
-  it('and a supervisor on an order a colleague holds — as before', async () => {
-    holding('confirmation.work', 'confirmation.supervise', 'orders.confirm');
+  it('and a manager on an order a colleague holds — as before', async () => {
+    holding('confirmation.work', 'confirmation.supervise', 'orders.confirm', 'orders.unlock');
     orderIs({ claimedById: 'agent-2' });
     expect((await confirms()).status).toBe(200);
   });

@@ -134,8 +134,12 @@ describe('the sheet owes «اسحبه أولاً» to an agent on an order still
     }
   });
 
-  it('a supervisor, a manager who can take or hand out any order, the owner, and somebody who is not an agent of the queue ⇒ no', () => {
-    expect(agentMustPullFirst({ holds: holds('confirmation.work', 'confirmation.supervise'), userId: 'a1', order: waiting })).toBe(false);
+  it('the LIVE agent role, `confirmation.supervise` and `confirmation.reassign` included ⇒ yes (they excuse nobody)', () => {
+    const live = holds('confirmation.work', 'confirmation.supervise', 'confirmation.reassign', 'confirmation.pull', 'orders.confirm', 'orders.contact_log', 'orders.claim', 'orders.view');
+    expect(agentMustPullFirst({ holds: live, userId: 'a1', order: waiting })).toBe(true);
+  });
+
+  it('a manager who can take or hand out any order, the owner, and somebody who is not an agent of the queue ⇒ no', () => {
     expect(agentMustPullFirst({ holds: holds('confirmation.work', 'orders.unlock'), userId: 'a1', order: waiting })).toBe(false);
     expect(agentMustPullFirst({ holds: holds('confirmation.work', 'orders.assign'), userId: 'a1', order: waiting })).toBe(false);
     expect(agentMustPullFirst({ holds: () => true, userId: 'owner', order: waiting })).toBe(false);
