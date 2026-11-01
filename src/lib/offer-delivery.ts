@@ -5,8 +5,8 @@
  * has its own policy («السعر المُعلن يشمل التوصيل») for the orders no offer speaks for. The landing page and the storefront
  * (`public-order.ts`) are the one door where an offer may say NO as well as yes (1/11, the owner: «بدي اترك مجال … من اللاندنج انو
  * اقدر احدد اذا شامل ولا لأ بظبط»); this is the reader it uses, and `priceIncludesDeliveryFor` asks the store only when this returns
- * `undefined`. Telegram, the systems door and the paste-in dialog do NOT use it: the store's switch covers them whole, and an offer
- * there still only ever turns delivery on.
+ * `undefined`. Telegram and the systems door do NOT use it: the store's switch covers them whole, and an offer there still only ever
+ * turns delivery on (so does the paste-in dialog, whenever it sends no box of its own).
  *
  *   · ANY line whose offer includes delivery makes the whole order include it — a customer pays one delivery fee or none, and the
  *     owner ruled that a printed promise («السعر شامل التوصيل») is never broken at the door.

@@ -557,8 +557,8 @@ async function takeOrder(
    * AND AT THIS DOOR AN OFFER'S «NO» IS HEARD TOO (the owner, 1/11: «بدي اترك مجال … من اللاندنج انو اقدر احدد اذا شامل ولا لأ بظبط»).
    * When EVERY line carries an offer and every offer is unticked, the order is not delivery-included even in a store whose policy
    * includes delivery for everything else; a line with no offer, or any offer that says yes, leaves the answer as it was.
-   * `offersSayDeliveryIncluded` is the reader. NO OTHER DOOR PASSES `offerMaySayNo`: the store's switch covers Telegram, the systems
-   * door and the paste-in dialog whole (see `priceIncludesDeliveryFor`).
+   * `offersSayDeliveryIncluded` is the reader. NO OTHER DOOR PASSES `offerMaySayNo`: the store's switch covers Telegram and the systems
+   * door whole, and the paste-in dialog when it sends no box (see `priceIncludesDeliveryFor`).
    */
   const priceIncludesDelivery = await priceIncludesDeliveryFor(
     store.id,

@@ -91,7 +91,8 @@ const line = (productId: string, offerId?: string) => ({ productId, ...(offerId 
 async function placed(products: unknown[], items: unknown[], storeIncludes: boolean) {
   vi.clearAllMocks();
   db.offer.findMany.mockImplementation(async ({ where }: any) => OFFERS[where.productId] ?? []);
-  db.store.findFirst.mockResolvedValue({ priceIncludesDelivery: storeIncludes });
+  // Answers only for THE order's store: a door that asked for another id (the company's, say) would read no store at all.
+  db.store.findFirst.mockImplementation(async ({ where }: any) => (where?.id === 'store-a' ? { priceIncludesDelivery: storeIncludes } : null));
   const r = await createPublicOrder(surface(products) as never, body(items));
   expect(r.ok, JSON.stringify(r)).toBe(true);
   return tx.order.create.mock.calls.at(-1)![0].data.priceIncludesDelivery as boolean;

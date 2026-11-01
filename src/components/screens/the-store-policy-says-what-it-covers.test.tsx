@@ -81,7 +81,9 @@ describe('the checkbox under a store', () => {
     // The two places that may say otherwise, named as the screens call them — and ONLY them.
     expect(text).toContain('خانة «شامل التوصيل»');
     expect(text).toContain('علامة «السعر شامل التوصيل»');
-    expect(text).toContain('عرض صفحة البيع');
+    expect(text).toContain('بصفحة البيع');
+    // …with its condition: the exception applies only when EVERY offer in the customer's basket is unticked.
+    expect(text).toContain('كل عروض سلّة الزبون غير مؤشَّرة');
     // And that it is not retroactive.
     expect(text).toContain('الطلبات اللي انكتبت قبل ما تغيّره بتضل متل ما هي');
   });

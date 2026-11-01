@@ -65,7 +65,8 @@ describe('the offer editor', () => {
     expect(text).toContain('صفحة البيع');
     expect(text).toContain('كل عروض سلّته غير مؤشَّرة');
     // …and what keeps it from applying, so it is not read as a promise about every order:
-    expect(text).toContain('عرض مؤشَّر أو منتج بلا عرض');
+    expect(text).toContain('سلّة فيها عرض مؤشَّر تُحسب شاملة');
+    expect(text).toContain('بلا عرض بيتبع إعداد المتجر'); // not «included»: with the store switch off a bare line is charged
     // NEGATIVE: it does not claim to beat the order form's own box, and it no longer says an offer beats the store everywhere.
     expect(text).not.toContain('كلمة العرض تغلب إعداد المتجر');
     await user.click(box());
