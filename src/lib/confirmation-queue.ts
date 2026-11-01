@@ -82,7 +82,8 @@ export function keepsOwnEntry(holds: (permission: string) => boolean): boolean {
  * take. A rule that excused it would have excused every agent it was written for and stopped nobody; the unit tests, which hand the
  * door keys by hand, could not have said so. `the-live-agent-is-refused-by-the-real-engine.test.ts` holds the measured list.
  *
- * The pull stays what puts an order in her hands (`/api/confirmation/pull`, «طلباتي»); there is no «claim by id» for an agent.
+ * The pull stays what puts an order in her hands from the screen (`/api/confirmation/pull`, «طلباتي»). The API also has a claim-by-number
+ * door (`POST /api/orders/[id]/claim`, `orders.claim`, which the live agent holds); no screen calls it — BACKLOG RV565.
  * ═══════════════════════════════════════════════════════════════════════
  */
 export function mustHoldToWork(holds: (permission: string) => boolean): boolean {
