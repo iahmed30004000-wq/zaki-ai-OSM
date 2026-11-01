@@ -5,7 +5,8 @@ import { getPermissionScope } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { maySeeCost } from '@/lib/cost-visibility';
 import { mayReadInsights } from '@/lib/insights-key';
-import { productCosts } from '@/lib/product-cost';
+import { productCosts, type ProductCost } from '@/lib/product-cost';
+import { fixedCostsOf, withFixedCost } from '@/lib/product-fixed-cost';
 import { summariseProducts } from '@/lib/product-stats';
 import { productScopeWhere } from '@/lib/product-scope';
 import { deliveredUnitsByProduct } from '@/lib/product-sold';
@@ -51,15 +52,17 @@ export async function GET() {
     const showCost = maySeeCost(user);
 
     // «Sold» has one home (lib/product-sold.ts): the list door and the product page say the same number.
-    const [costs, unitsSold] = await Promise.all([
-      ids.length === 0 ? Promise.resolve(new Map<string, { onHand: number; stockValue: number }>()) : productCosts(db, companyId, ids),
+    const [costs, unitsSold, fixedOf] = await Promise.all([
+      ids.length === 0 ? Promise.resolve(new Map<string, ProductCost>()) : productCosts(db, companyId, ids),
       deliveredUnitsByProduct(db, { companyId, storeId, productIds: ids }),
+      // Only read for those who may see a cost; a product with a fixed figure is worth what is on hand times it.
+      showCost ? fixedCostsOf(db, companyId, ids) : Promise.resolve(new Map<string, number>()),
     ]);
 
     const answer = summariseProducts({
       products,
       onHand: new Map([...costs].map(([id, c]) => [id, c.onHand])),
-      stockValue: showCost ? new Map([...costs].map(([id, c]) => [id, c.stockValue])) : null,
+      stockValue: showCost ? new Map([...costs].map(([id, c]) => [id, withFixedCost(c, fixedOf.get(id)).stockValue])) : null,
       unitsSold,
     });
 

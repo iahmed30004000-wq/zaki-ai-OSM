@@ -8,6 +8,7 @@ import { deleteStoredFile } from '@/lib/storage';
 import { logAudit } from '@/lib/audit';
 import { parseCategoryAttributes, parseProductAttributes } from '@/lib/product-attributes';
 import { productCosts } from '@/lib/product-cost';
+import { fixedCostsOf } from '@/lib/product-fixed-cost';
 import { deliveredUnitsByProduct } from '@/lib/product-sold';
 import { maySeeCost, withoutCost } from '@/lib/cost-visibility';
 import { parseHistory, rememberSlug, slugify, uniqueSlug } from '@/lib/slug';
@@ -100,6 +101,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const totalSold = (await deliveredUnitsByProduct(db, { companyId, storeId, productIds: [product.id] })).get(product.id) ?? 0;
     const totalRemaining = product.batches.reduce((s, b) => s + b.quantityRemaining, 0);
     const costOf = showCost ? await productCosts(db, companyId, [product.id]) : new Map();
+    // The fixed figure an admin set, when there is one: it IS the unit cost of this product. Read only for those who may see a cost.
+    const fixed = showCost ? (await fixedCostsOf(db, companyId, [product.id])).get(product.id) : undefined;
 
     return NextResponse.json({
       product: {
@@ -111,7 +114,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         totalSold,
         totalRemaining,
         ...(showCost
-          ? { avgCostPerUnit: Number((costOf.get(product.id)?.average ?? 0).toFixed(2)) }
+          ? { avgCostPerUnit: Number((fixed ?? costOf.get(product.id)?.average ?? 0).toFixed(2)), fixedCost: fixed ?? null }
           : {}),
       },
       currencyCode,

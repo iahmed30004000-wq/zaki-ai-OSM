@@ -573,7 +573,14 @@ export function ProductsScreen() {
                           key: 'cost',
                           label: 'التكلفة/وحدة',
                           align: 'end' as const,
-                          render: (p: any) => <Money value={p.analytics?.avgCostPerUnit ?? 0} />,
+                          // A product with a fixed cost shows IT; one without shows the batches' average and says so, so nobody takes a
+                          // moving number for a fixed one.
+                          render: (p: any) => (
+                            <span className="inline-flex flex-col items-end">
+                              <Money value={p.analytics?.avgCostPerUnit ?? 0} />
+                              {p.analytics?.fixedCost === null && <span className="text-xs text-[var(--sys-muted)]">متوسط · غير ثابتة</span>}
+                            </span>
+                          ),
                         },
                       ]
                     : []),

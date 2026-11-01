@@ -440,7 +440,7 @@ export function ProductDetailScreen() {
         )}
 
         {/* Stock, cost and the one door that adds more. */}
-        <ProductStock productId={productId} canReceive={canReceiveStock} canProduce={canProduce} />
+        <ProductStock productId={productId} canReceive={canReceiveStock} canProduce={canProduce} canChangeCost={userCan(currentUser, 'products.change_cost')} />
 
         {/* What kind of thing it is — the answers that become filters. */}
         <Card>
