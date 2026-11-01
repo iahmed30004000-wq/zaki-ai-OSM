@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { requireContext } from '@/lib/geo-context';
 import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
-import { dispatchBatch } from '@/lib/couriers/dispatch';
+import { dispatchBatch, dispatchPlan } from '@/lib/couriers/dispatch';
 
 /**
  * POST /api/ops/shipments/[id]/dispatch
@@ -18,6 +18,10 @@ import { dispatchBatch } from '@/lib/couriers/dispatch';
  * network call to somebody else's server, and the two failing together
  * would mean a warehouse that cannot group a shipment because an API is
  * down.
+ *
+ * A BIG BATCH GOES IN PIECES. The send is one order at a time, each a call to the courier, so a hundred and sixty orders are
+ * minutes — longer than any one request is waited for. The screen asks `GET` below which orders are left, then posts a few
+ * `orderIds` at a time and shows the progress; each piece is the same call it always was.
  */
 
 interface Ctx {
@@ -25,9 +29,43 @@ interface Ctx {
 }
 
 const schema = z.object({
-  /** Narrow to a retry of specific orders; omitted, the whole batch. */
+  /** Narrow to a retry of specific orders, or to one piece of a big batch; omitted, the whole batch. */
   orderIds: z.array(z.string().min(10).max(64)).max(500).optional(),
 });
+
+/** The two answers both verbs give for a batch that cannot be sent, and the generic one for everything else. */
+function refusal(error: unknown) {
+  if (error instanceof Error && error.message === 'BATCH_NOT_FOUND') {
+    return NextResponse.json({ error: 'الدفعة غير موجودة' }, { status: 404 });
+  }
+  if (error instanceof Error && error.message === 'BATCH_NOT_READY') {
+    return NextResponse.json(
+      {
+        error: 'الدفعة ما عادت قيد التجميع (سُلّمت أو انغلقت) — ما بيصير ترحيلها للشركة من جديد',
+        errorAr: 'الدفعة ما عادت قيد التجميع (سُلّمت أو انغلقت) — ما بيصير ترحيلها للشركة من جديد',
+        code: 'BATCH_NOT_READY',
+      },
+      { status: 409 }
+    );
+  }
+  return apiErrorResponse(error);
+}
+
+/**
+ * GET /api/ops/shipments/[id]/dispatch — which orders of this batch still have no courier barcode.
+ *
+ * Ids and numbers only (see `dispatchPlan`). It writes nothing and calls nobody.
+ */
+export async function GET(_req: Request, ctx: Ctx) {
+  try {
+    const { companyId, storeId } = await requireContext();
+    await requirePermission('ops.ship');
+    const { id } = await ctx.params;
+    return NextResponse.json(await dispatchPlan({ batchId: id, companyId, storeId }));
+  } catch (error) {
+    return refusal(error);
+  }
+}
 
 export async function POST(req: Request, ctx: Ctx) {
   try {
@@ -50,19 +88,6 @@ export async function POST(req: Request, ctx: Ctx) {
 
     return NextResponse.json(summary);
   } catch (error) {
-    if (error instanceof Error && error.message === 'BATCH_NOT_FOUND') {
-      return NextResponse.json({ error: 'الدفعة غير موجودة' }, { status: 404 });
-    }
-    if (error instanceof Error && error.message === 'BATCH_NOT_READY') {
-      return NextResponse.json(
-        {
-          error: 'الدفعة ما عادت قيد التجميع (سُلّمت أو انغلقت) — ما بيصير ترحيلها للشركة من جديد',
-          errorAr: 'الدفعة ما عادت قيد التجميع (سُلّمت أو انغلقت) — ما بيصير ترحيلها للشركة من جديد',
-          code: 'BATCH_NOT_READY',
-        },
-        { status: 409 }
-      );
-    }
-    return apiErrorResponse(error);
+    return refusal(error);
   }
 }
