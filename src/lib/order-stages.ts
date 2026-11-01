@@ -73,6 +73,8 @@ export interface StageSource extends StateSource {
   source?: string | null;
   moderator?: { name: string } | null;
   claimer?: { name: string } | null;
+  /** Who gave the yes (`Order.confirmedById`) — an order can be confirmed without anybody having claimed it. */
+  confirmer?: { name: string } | null;
   deliveryProvider?: { name: string } | null;
   trackingNumber?: string | null;
   quantity?: number;
@@ -132,10 +134,23 @@ export function orderStages(
   const deliveredAt = date(order.deliveredAt);
   const returnedAt = date(order.returnedAt);
 
+  /**
+   * Was the order in somebody's hands when the yes was given? A claim AFTER the yes (a transfer, or the owner's «استلمه أنا» to repair an
+   * order that was decided with nobody holding it) must not move the confirmation stage to after the stage that follows it: the first
+   * version read `claimedAt ?? confirmedAt`, so the intake showed 76 minutes instead of 2 and the confirmation began after the warehouse
+   * did (the independent review, 1/11).
+   */
+  const heldAtTheYes = Boolean(claimedAt && (!confirmedAt || claimedAt.getTime() <= confirmedAt.getTime()));
+
   /** When each stage began, as far as the order's own record shows. */
   const enteredAt: Record<StageKey, Date | null> = {
     INTAKE: date(order.createdAt),
-    CONFIRMATION: claimedAt,
+    /*
+     * The confirmation stage began when somebody CLAIMED the order — or, for an order that was decided with nobody holding it (an agent
+     * pressed «تأكيد» from the orders list: ORD-2026-1896, the owner, 1/11), at the yes itself. It was `claimedAt` alone, so such an
+     * order read «التأكيد: لم يمر بها» in the same card that said «محاولات التواصل: 1 · أُكِّد: نعم».
+     */
+    CONFIRMATION: heldAtTheYes ? claimedAt : (confirmedAt ?? claimedAt),
     // Confirmation is what releases an order to the warehouse.
     WAREHOUSE: confirmedAt,
     TRANSIT: shippedAt,
@@ -179,11 +194,15 @@ export function orderStages(
         break;
 
       case 'CONFIRMATION':
-        who = order.claimer?.name ?? null;
+        // Held when the yes was given: the holder. Decided with nobody holding it, or taken only afterwards: the one who gave the yes.
+        who = (heldAtTheYes ? (order.claimer?.name ?? order.confirmer?.name) : (order.confirmer?.name ?? order.claimer?.name)) ?? null;
         if (counts.contactAttempts) {
           facts.push({ label: 'محاولات التواصل', value: String(counts.contactAttempts) });
         }
         if (confirmedAt) facts.push({ label: 'أُكّد', value: 'نعم' });
+        // Said plainly, not hidden: the yes was given with nobody holding the order.
+        if (confirmedAt && !claimedAt) facts.push({ label: 'الاستلام', value: 'بلا استلام' });
+        else if (confirmedAt && !heldAtTheYes) facts.push({ label: 'الاستلام', value: 'بعد التأكيد' });
         break;
 
       case 'WAREHOUSE':
@@ -218,7 +237,10 @@ export function orderStages(
     const start = enteredAt[key];
     const end = endedAt(index);
     const ongoing = Boolean(start && !end && status === 'CURRENT');
-    const minutes = start ? minutesBetween(start, end ?? now) : null;
+    // A confirmation decided with nobody holding the order began and ended at the yes: there is no time «in» the stage to report, and a
+    // zero would read as «instant» for something nobody measured — the same reason a stage never entered says nothing.
+    const unmeasured = key === 'CONFIRMATION' && Boolean(confirmedAt) && !heldAtTheYes;
+    const minutes = start && !unmeasured ? minutesBetween(start, end ?? now) : null;
 
     return { key, title: TITLES[key], status, at: start, who, facts, minutes, ongoing };
   });

@@ -58,6 +58,54 @@ export function keepsOwnEntry(holds: (permission: string) => boolean): boolean {
   return holds('confirmation.work') && !holds('confirmation.supervise');
 }
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * AN AGENT WORKS ONLY THE ORDER SHE HOLDS (the owner, 1/11).
+ *
+ * Twenty orders were found confirmed by one agent straight from the orders list: she opened an order nobody held, rang, pressed
+ * «تأكيد» — and it was recorded confirmed with NO holder: «لم يستلمه أحد بعد — متاح في الطابور» beside a confirmed status, and a
+ * path that said the confirmation stage «لم يمر بها». The door asked only `orders.confirm`, and that key is scoped to the whole
+ * company for the shipped agent, so "her order" was every order she could open.
+ *
+ * `confirmation.work` is «العمل على طلباتي» (see `heldOrderWhere` in rbac.ts: «an order nobody holds is reached by pulling it,
+ * not by its id»). So for every account that works a queue, every decision and every logged call goes through the order she HOLDS.
+ *
+ * NOT BOUND: whoever holds a key to TAKE any order (`orders.unlock`, the override of «استلمه أنا») or to GIVE any order away
+ * (`orders.assign`): binding them would gain nothing — they can take or hand over the order in one press — and would cost a manager's
+ * day the moment she opened an order nobody had pulled. The owner holds every key.
+ *
+ * ⚠️ `confirmation.supervise` IS NOT AN EXEMPTION, and the first version of this rule made it one (`keepsOwnEntry`'s test). Measured
+ * on the live site, 1/11, read-only (`GET /api/roles`, then every account's effective keys): the role CONFIRMATION_AGENT — all seven active
+ * accounts, the one the incident came from — each holds `confirmation.supervise` and `confirmation.reassign` besides
+ * `confirmation.work`, `confirmation.pull`, `orders.confirm` and `orders.view` for the whole company, and none holds `orders.unlock`
+ * or `orders.assign`. That key gates what a person SEES (the whole queue, the win-back list, the notifications), not what she may
+ * take. A rule that excused it would have excused every agent it was written for and stopped nobody; the unit tests, which hand the
+ * door keys by hand, could not have said so. `the-live-agent-is-refused-by-the-real-engine.test.ts` holds the measured list.
+ *
+ * The pull stays what puts an order in her hands from the screen (`/api/confirmation/pull`, «طلباتي»). The API also has a claim-by-number
+ * door (`POST /api/orders/[id]/claim`, `orders.claim`, which the live agent holds); no screen calls it — BACKLOG RV565.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+export function mustHoldToWork(holds: (permission: string) => boolean): boolean {
+  return holds('confirmation.work') && !holds('orders.unlock') && !holds('orders.assign');
+}
+
+/** Said by the door and by the screen, in the same words. */
+export const NOT_HELD_MESSAGE = 'اسحب الطلب أولاً — لا يمكن العمل على طلب ليس بين يديك';
+
+/**
+ * Does the sheet owe this person «اسحبه أولاً» instead of the call and confirm buttons? An agent, on an order that is still waiting
+ * to be decided and is not in her hands. Asked by the screen only so that it never draws a panel whose every press the door refuses
+ * (`NOT_HELD`); the door asks `mustHoldToWork` itself and is the enforcement.
+ */
+export function agentMustPullFirst(args: {
+  holds: (permission: string) => boolean;
+  userId?: string | null;
+  order: { claimedById?: string | null; confirmationStatus: string };
+}): boolean {
+  return mustHoldToWork(args.holds) && args.order.claimedById !== args.userId && OPEN_CONFIRMATION.includes(args.order.confirmationStatus);
+}
+
 export interface EntryOwnership {
   /** Null when the order goes to the pull queue, as every entry used to. */
   claimedById: string | null;

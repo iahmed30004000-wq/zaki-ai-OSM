@@ -28,6 +28,7 @@ import { OrderStateBadge } from '@/components/orders/OrderStateBadge';
 import { OrderStages } from '@/components/orders/OrderStages';
 import { OrderNotes } from '@/components/orders/OrderNotes';
 import { orderStages } from '@/lib/order-stages';
+import { agentMustPullFirst, NOT_HELD_MESSAGE } from '@/lib/confirmation-queue';
 import { useRegions } from '@/hooks/useRegions';
 import { amount, arDateShort, arDateTime, type Currency } from '@/lib/format';
 import { RiArrowLeftSLine, RiArrowRightSLine, RiEBike2Line, RiLockLine, RiMoneyDollarCircleLine, RiPencilLine, RiTimerLine, RiTruckLine, RiUserFollowLine } from '@remixicon/react';
@@ -350,6 +351,18 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
   const mayRecordCalls =
     userCan(currentUser, 'orders.confirm') || userCan(currentUser, 'confirmation.work');
 
+  /*
+   * AN AGENT WORKS ONLY THE ORDER SHE HOLDS (the owner, 1/11 — twenty orders confirmed straight from the orders list, never pulled).
+   * The doors refuse an agent on an order that is not in her hands (`NOT_HELD`); a panel of call and confirm buttons whose every press
+   * is refused is worse than a sentence that says what to do, so for her, on an order still waiting to be decided, the panel is replaced
+   * by that sentence. A supervisor and the owner see the panel on any order, as before.
+   */
+  const mustPullFirst = agentMustPullFirst({
+    holds: (permission) => userCan(currentUser, permission),
+    userId: currentUser?.id,
+    order,
+  });
+
   // Derived here from the order the screen already holds — the same way the
   // state and the zone are derived, and never stored.
   const stages = orderStages(order, {
@@ -415,7 +428,15 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
             {mayRecordCalls && order?.id && <DuplicateSuspectNotice orderId={order.id} />}
             {mayRecordCalls && order?.id && userCan(currentUser, 'insights.view') && <ShapeRiskPanel orderId={order.id} />}
 
-            {mayRecordCalls && (
+            {mayRecordCalls && mustPullFirst && (
+              <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 shadow-raised space-y-1">
+                <h4 className="text-xs font-black text-[var(--sys-foreground)]">الطلب مو بين يديك</h4>
+                <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+                  {NOT_HELD_MESSAGE}. اسحبه من «اسحب التالي» أو افتحه من «طلباتي»، وبعدها اتصل وأكّد.
+                </p>
+              </div>
+            )}
+            {mayRecordCalls && !mustPullFirst && (
             <ConfirmationActions
               order={order}
               ar={ar}

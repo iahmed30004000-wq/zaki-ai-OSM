@@ -10,6 +10,7 @@ import { NO_ANSWER_LIMIT } from '@/lib/confirmation-workflow';
 import { endOrder } from '@/lib/order-cancel';
 import { can, authorize } from '@/lib/authorization';
 import { ORDER_NOT_FOUND } from '@/lib/order-refusals';
+import { mustHoldToWork, NOT_HELD_MESSAGE } from '@/lib/confirmation-queue';
 
 /**
  * GET  /api/orders/[id]/contact-attempts — chronological attempt history
@@ -103,6 +104,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // claim holders may record attempts on the claimable queue.
     if (!authorize(user, 'orders.edit', order).allowed && !can(user, 'orders.claim')) {
       return NextResponse.json({ error: 'Forbidden: cannot record contact attempts', errorAr: 'لا تملك صلاحية تسجيل محاولات التواصل.' }, { status: 403 });
+    }
+
+    // AN AGENT WORKS ONLY THE ORDER SHE HOLDS (the owner, 1/11): the call she logs is on the order in her hands, as the confirmation
+    // door next door asks. Whoever can take or hand out any order (`orders.unlock`, `orders.assign`) logs a call on any order, as before.
+    if (mustHoldToWork((permission) => can(user, permission)) && order.claimedById !== user.id) {
+      return NextResponse.json({ error: NOT_HELD_MESSAGE, errorAr: NOT_HELD_MESSAGE, code: 'NOT_HELD' }, { status: 403 });
     }
 
     const body = await req.json();

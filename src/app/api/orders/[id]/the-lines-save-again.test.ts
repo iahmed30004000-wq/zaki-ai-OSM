@@ -100,6 +100,8 @@ const { fake, requireContext, logAudit, notify } = vi.hoisted(() => {
     // The window also reads the trolley's status now (to tell «with the courier» from «only labelled»).
     shippingBatch: () => null,
     claimer: () => null, owner: () => null, lockHolder: () => null, signer: () => null,
+    // Who gave the yes: the window says so for an order decided with nobody holding it (1/11). Nobody is named here.
+    confirmer: () => null,
     // Whom a returning customer's order is held for (order-reservation.ts): the window reads it, nobody here is named.
     assignee: () => null,
   };
