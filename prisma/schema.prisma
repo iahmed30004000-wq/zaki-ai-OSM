@@ -38,6 +38,7 @@ model Company {
   attendanceMarks       AttendanceMark[]
   aiSummaries           AiDailySummary[]
   productImages         ProductImage[]
+  productFixedCosts     ProductFixedCost[]
   deliveryProviders     DeliveryProvider[]
   shippingBatches       ShippingBatch[]
   financialTransactions FinancialTransaction[]
@@ -449,6 +450,9 @@ model Product {
   addOns             OrderAddOn[]
   images             ProductImage[]
   reviews            ProductReview[]
+  /// The fixed cost, when an admin has set one. A row of its OWN table and not a column here, on purpose: every read of a product
+  /// takes the whole row, and a cost on it would ride out in whatever answer returns the row — including the ones a customer sees.
+  fixedCost          ProductFixedCost?
 
   @@unique([companyId, storeId, sku])
   @@index([companyId, storeId])
@@ -477,6 +481,33 @@ model ProductImage {
 
   @@index([companyId, productId])
   @@map("product_images")
+}
+
+/// WHAT ONE UNIT OF THIS PRODUCT COSTS US — A NUMBER THAT DOES NOT MOVE (the owner, 1/11).
+///
+/// «سعر تكلفة المنتج يكون ثابت ولا يتغير ابدا… اللي بيقدر يغيرو الادمنة فقط من قائمة المنتجات.» Until now a product's cost was
+/// whatever the weighted average of its batches happened to be on the day an order was written, and again, differently, on the day
+/// it was delivered — so the profit of one order moved with the stock around it. This is the one figure an admin sets by hand; the
+/// orders written afterwards cost `fixed × (quantity + gift)` (`product-fixed-cost.ts`), whatever the batches say.
+///
+/// ONE ROW PER PRODUCT (`productId` is unique), in its own table so it never rides out with a product row. No row means «no fixed
+/// cost yet» and the product behaves exactly as it did: the weighted average. Nothing is written for existing products.
+model ProductFixedCost {
+  id        String   @id @default(uuid())
+  companyId String
+  productId String   @unique
+  /// In the store's currency, to the currency's decimals. Never negative. A free item is a real answer, so zero is allowed.
+  amount    Float
+  /// Who set it last. The history of the figure is in the audit log, with the before and the after.
+  setById   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@map("product_fixed_costs")
 }
 
 /// WHAT A BUYER SAID — and whether anybody can check that they bought it.

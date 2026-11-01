@@ -82,14 +82,16 @@ const EXPECTED: ReadonlyArray<readonly [string, string]> = [
   ['ops.edit_in_batch', 'ops.batches'],
   // 1/11: a waybill for any order in any state (no migration — granted to nobody; the owner's full access holds it). 83 -> 84.
   ['ops.labels_any', 'ops.labels'],
+  // 1/11: a product's fixed cost (no migration grants it — the owner's full access holds it). 84 -> 85.
+  ['products.change_cost', 'products.edit'],
 ];
 
 const items = PERMISSION_MODULES.flatMap((m) => m.items);
 
 describe('the catalog names what each action needs', () => {
-  it('holds exactly the 84 pairs — none lost, none invented', () => {
+  it('holds exactly the 85 pairs — none lost, none invented', () => {
     const actual = items.filter((i) => i.requires).map((i) => [i.key, i.requires] as const);
-    expect(EXPECTED).toHaveLength(84);
+    expect(EXPECTED).toHaveLength(85);
     expect(actual.length, 'عدد الأزواج').toBe(EXPECTED.length);
     for (const [action, view] of EXPECTED) {
       expect(catalogItem(action)?.requires, `${action} لازم يطلب ${view}`).toBe(view);

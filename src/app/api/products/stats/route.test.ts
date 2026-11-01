@@ -22,6 +22,8 @@ import { DELIVERED_SHIPPING } from '@/lib/order-state';
 const { db, requireContext, getPermissionScope, maySeeCost, productCosts, mayReadInsights } = vi.hoisted(() => ({
   db: {
     product: { findMany: vi.fn(), count: vi.fn() },
+    // no product has a fixed cost here: the stock is worth what its batches say, as it was
+    productFixedCost: { findMany: vi.fn(async (_args?: unknown): Promise<unknown[]> => []) },
     orderItem: { groupBy: vi.fn() },
   },
   requireContext: vi.fn(),
@@ -240,6 +242,40 @@ describe('the stock and what it is worth', () => {
     await STATS();
     expect(productCosts).toHaveBeenCalledTimes(1);
     expect(productCosts).toHaveBeenCalledWith(db, 'c1', ['p1', 'p2']);
+  });
+
+  describe('a product with a fixed cost (the owner, 1/11: «سعر تكلفة المنتج يكون ثابت»)', () => {
+    it('— its stock is worth on hand × the figure an admin set; the other product is still worth what its batches say', async () => {
+      maySeeCost.mockReturnValue(true);
+      // p1: 10 on hand, the batches say 35 (3.5 each) — the admin fixed it at 5. p2: 4 on hand worth 12 by its batches, no figure.
+      productCosts.mockResolvedValue(new Map([['p1', cost(10, 35)], ['p2', cost(4, 12)]]));
+      db.productFixedCost.findMany.mockResolvedValueOnce([{ productId: 'p1', amount: 5 }]);
+      const b = await body(await STATS());
+      expect(b.totals.stockValue).toBe(62); // 10 × 5 + 12 — not 47 (the batches), and not 70 (p1's figure applied to p2 as well)
+    });
+
+    it('— a product with no figure is unchanged: 35, as before', async () => {
+      maySeeCost.mockReturnValue(true);
+      const b = await body(await STATS());
+      expect(b.totals.stockValue).toBe(35);
+    });
+
+    it('— the figures are read once, for this company and exactly the products in scope', async () => {
+      maySeeCost.mockReturnValue(true);
+      await STATS();
+      expect(db.productFixedCost.findMany).toHaveBeenCalledTimes(1);
+      const args = db.productFixedCost.findMany.mock.calls[0][0] as { where: { companyId: string; productId: { in: string[] } } };
+      expect(args.where).toEqual({ companyId: 'c1', productId: { in: ['p1', 'p2'] } });
+    });
+
+    it('— somebody who may not see what goods cost has the figures neither read nor sent', async () => {
+      maySeeCost.mockReturnValue(false);
+      db.productFixedCost.findMany.mockResolvedValue([{ productId: 'p1', amount: 5 }]);
+      const b = await body(await STATS());
+      expect(db.productFixedCost.findMany).not.toHaveBeenCalled();
+      expect('stockValue' in b.totals).toBe(false);
+      expect(JSON.stringify(b)).not.toContain('50');
+    });
   });
 });
 
