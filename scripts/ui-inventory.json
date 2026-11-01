@@ -619,6 +619,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/products/FixedCostEditor.tsx": {
+    "buttons": 3,
+    "inputs": 1,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/products/ProductAttributes.tsx": {
     "buttons": 1,
     "inputs": 4,

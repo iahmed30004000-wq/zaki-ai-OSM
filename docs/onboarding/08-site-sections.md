@@ -112,10 +112,10 @@ flowchart TD
 - **الكود:** `screens/CustomersScreen.tsx` · **سيناريوهات:** ما في بملف 01.
 
 #### `/products` و`/products/[id]` — المنتجات
-- **ليش:** الكتالوج، الصور، السعر، العروض. **مين:** `products.view`؛ الإنشاء `products.create`، التعديل `products.edit`، السعر `products.change_price`، الصور `products.upload_images`، العروض `offers.manage`.
-- **الأزرار:** «إضافة منتج» · «تعديل المنتج» · الصور (الأولى رئيسية). البضاعة ما بتدخل من هون: من «تشغيلات الإنتاج» أو «استلام» بالأرصدة.
-- **بالخلفية:** `GET/POST /api/products` · `PATCH/DELETE /api/products/[id]` · `POST /api/products/[id]/images` · `GET/POST /api/offers` · `GET /api/products/[id]/stock` (`inventory.view`).
-- **رفض شائع:** `CATEGORY_REQUIRED` «اختر تصنيف المنتج…» · `BASE_BELOW_ACTIVE_OFFER` (سعر أساسي أقل من عرض فعّال، `src/app/api/products/[id]/route.ts:188-199`) · حذف منتج عليه طلبات: «لا يمكن حذف منتج مرتبط بطلبات — غيّر حالته إلى "غير نشط" بدلاً من الحذف».
+- **ليش:** الكتالوج، الصور، السعر، العروض. **مين:** `products.view`؛ الإنشاء `products.create`، التعديل `products.edit`، السعر `products.change_price`، التكلفة الثابتة `products.change_cost` (مع `costs.view`)، الصور `products.upload_images`، العروض `offers.manage`.
+- **الأزرار:** «إضافة منتج» · «تعديل المنتج» · الصور (الأولى رئيسية) · «التكلفة الثابتة» بصفحة المنتج (احفظ · ثبّت على المتوسط الحالي · امسح). البضاعة ما بتدخل من هون: من «تشغيلات الإنتاج» أو «استلام» بالأرصدة.
+- **بالخلفية:** `GET/POST /api/products` · `PATCH/DELETE /api/products/[id]` · `POST /api/products/[id]/images` · `PUT /api/products/[id]/fixed-cost` (`products.change_cost`) · `GET/POST /api/offers` · `GET /api/products/[id]/stock` (`inventory.view`).
+- **رفض شائع:** `COST_CHANGE_FORBIDDEN` «تغيير تكلفة المنتج ليس من صلاحيّاتك…» · `CATEGORY_REQUIRED` «اختر تصنيف المنتج…» · `BASE_BELOW_ACTIVE_OFFER` (سعر أساسي أقل من عرض فعّال، `src/app/api/products/[id]/route.ts:188-199`) · حذف منتج عليه طلبات: «لا يمكن حذف منتج مرتبط بطلبات — غيّر حالته إلى "غير نشط" بدلاً من الحذف».
 - **الكود:** `screens/ProductsScreen.tsx` · `screens/ProductDetailScreen.tsx` · **سيناريوهات:** ج-01 · ج-03 (العروض).
 
 ### ٢.٢ مركز التأكيد (سطر واحد بحبوب)

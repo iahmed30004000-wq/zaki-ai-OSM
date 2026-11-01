@@ -112,6 +112,13 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       { key: 'products.create', requires: 'products.view', ar: 'إنشاء منتجات', en: 'Create products' },
       { key: 'products.delete', requires: 'products.view', ar: 'حذف منتجات', en: 'Delete products' },
       { key: 'products.change_price', requires: 'products.view', ar: 'تغيير أسعار المنتجات', en: 'Change product prices' },
+      /*
+       * A PRODUCT'S FIXED COST (1/11) — «اللي بيقدر يغيرو الادمنة فقط من قائمة المنتجات». The one figure the orders written afterwards
+       * cost (`product-fixed-cost.ts`); it never moves by itself. Granted to NOBODY by any migration or fallback: the owner holds it
+       * (full access) and ticks it for the admins he means. It works beside the cost key (`costs.view`): the door asks both, because
+       * a person who may not see what things cost may not set it.
+       */
+      { key: 'products.change_cost', requires: 'products.edit', ar: 'تغيير تكلفة المنتج الثابتة', en: 'Set a product’s fixed cost' },
       { key: 'products.upload_images', requires: 'products.view', ar: 'رفع صور المنتجات', en: 'Upload product images' },
       // Reading the category list, which the permission scope pickers need.
       { key: 'categories.view', ar: 'عرض التصنيفات', en: 'View categories' },

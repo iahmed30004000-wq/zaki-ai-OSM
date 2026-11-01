@@ -21,6 +21,8 @@ import { productScopeWhere, productScopeWhereWithin } from '@/lib/product-scope'
 const { db, requireContext, getPermissionScope, maySeeCost, productCosts, authorize } = vi.hoisted(() => ({
   db: {
     product: { findMany: vi.fn(), count: vi.fn(), findFirst: vi.fn() },
+    // no product has a fixed cost in these tests: the costs are the batches', as they were
+    productFixedCost: { findMany: vi.fn(async (): Promise<unknown[]> => []) },
     orderItem: { groupBy: vi.fn() },
   },
   requireContext: vi.fn(),

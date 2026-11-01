@@ -8,6 +8,7 @@ import { apiJson } from '@/lib/api-client';
 import { RiArrowLeftRightLine, RiBuilding4Line, RiInboxArchiveLine, RiLoader4Line, RiLockLine, RiStackLine } from '@remixicon/react';
 import { moneyText } from '@/lib/money';
 import { minorUnitFor } from '@/lib/currencies';
+import { FixedCostEditor } from '@/components/products/FixedCostEditor';
 
 /**
  * What this product has, what it cost, and the one door that adds more.
@@ -31,6 +32,9 @@ interface Stock {
   averageCost?: number;
   nextOutCost?: number;
   stockValue?: number;
+  /** For a caller who may see a cost: the fixed figure an admin set (null: none yet), and what the batches say beside it. */
+  fixedCost?: number | null;
+  batchAverageCost?: number;
   batchCount: number;
   currencyCode: string;
   sourceType: 'MANUFACTURED' | 'PURCHASED';
@@ -41,7 +45,18 @@ interface Stock {
  * /inventory/balances (inventory.view + inventory.adjust), a production run on /manufacturing (production.view +
  * production.manage). It asked `products.edit`, which neither screen checks.
  */
-export function ProductStock({ productId, canReceive, canProduce }: { productId: string; canReceive: boolean; canProduce: boolean }) {
+export function ProductStock({
+  productId,
+  canReceive,
+  canProduce,
+  canChangeCost = false,
+}: {
+  productId: string;
+  canReceive: boolean;
+  canProduce: boolean;
+  /** `products.change_cost`: the admin who may set the fixed cost. The door asks it again. */
+  canChangeCost?: boolean;
+}) {
   const [stock, setStock] = useState<Stock | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -127,14 +142,25 @@ export function ProductStock({ productId, canReceive, canProduce }: { productId:
 
         {stock.averageCost !== undefined && stock.nextOutCost !== undefined && stock.stockValue !== undefined && (
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <Tile label="تكلفة الوحدة (متوسط مرجّح)" value={money(stock.averageCost)} />
+            <Tile label={stock.fixedCost != null ? 'تكلفة الوحدة (ثابتة)' : 'تكلفة الوحدة (متوسط مرجّح)'} value={money(stock.averageCost)} />
             <Tile label="تكلفة الدفعة القادمة للخروج" value={money(stock.nextOutCost)} />
             <Tile label="قيمة المخزون" value={money(stock.stockValue)} />
           </div>
         )}
 
+        {stock.fixedCost !== undefined && stock.batchAverageCost !== undefined && (
+          <FixedCostEditor
+            productId={productId}
+            fixedCost={stock.fixedCost}
+            batchAverage={stock.batchAverageCost}
+            money={money}
+            canChange={canChangeCost}
+            onSaved={load}
+          />
+        )}
+
         <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
-          {stock.averageCost !== undefined &&
+          {stock.averageCost !== undefined && stock.fixedCost == null &&
             '«متوسط مرجّح» يعني: كل دفعة بوزن ما تبقّى منها فعلاً. 90 قطعة بـ3 و10 بـ8 تكلفتها 3.50 للقطعة — لا 5.50. الدفعات الفارغة خارج الحساب لأنها تقول ماذا كلّف الماضي، لا ماذا تكلّف قطعة اليوم.'}
           {stock.batchCount > 0 && ` المخزون موزّع على ${stock.batchCount} دفعة.`}
         </p>

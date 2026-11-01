@@ -6,6 +6,7 @@ import { requireCompanyTenant } from '@/lib/auth';
 import { requireContext } from '@/lib/geo-context';
 import { logAudit } from '@/lib/audit';
 import { productCosts } from '@/lib/product-cost';
+import { fixedCostsOf } from '@/lib/product-fixed-cost';
 import { requirePermission, getPermissionScope } from '@/lib/authorization';
 import { maySeeCost, withoutCost } from '@/lib/cost-visibility';
 import { productScopeWhere } from '@/lib/product-scope';
@@ -159,11 +160,13 @@ export async function GET(req: Request) {
      * lines now, counted in the database by the one function the stats door and the product page also use, and asked in
      * the same round as the cost. Units only: no price and no cost is touched.
      */
-    const [costOf, soldOf] = await Promise.all([
+    const [costOf, soldOf, fixedOf] = await Promise.all([
       showCost
         ? productCosts(db, companyId, products.map((p) => p.id))
         : Promise.resolve(new Map<string, { average: number }>()),
       deliveredUnitsByProduct(db, { companyId, storeId, productIds: products.map((p) => p.id) }),
+      // The figure an admin set, for those who may see a cost: it is the unit cost of a product that has one.
+      showCost ? fixedCostsOf(db, companyId, products.map((p) => p.id)) : Promise.resolve(new Map<string, number>()),
     ]);
 
     // Compute comprehensive cost analysis for each product
@@ -197,9 +200,10 @@ export async function GET(req: Request) {
                 totalRawCost,
                 totalOtherCost,
                 totalProdCost,
-                // The weighted average of the stock actually on hand — the
-                // one figure, from the one owner.
-                avgCostPerUnit: Number((costOf.get(prod.id)?.average ?? 0).toFixed(2)),
+                // The unit cost: the fixed figure an admin set where there is one, else the weighted average of the stock
+                // actually on hand — the one figure, from the one owner. `fixedCost` says which of the two it is (null: the average).
+                avgCostPerUnit: Number((fixedOf.get(prod.id) ?? costOf.get(prod.id)?.average ?? 0).toFixed(2)),
+                fixedCost: fixedOf.get(prod.id) ?? null,
               }
             : {}),
         },
