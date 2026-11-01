@@ -10,6 +10,7 @@ import { useOrderOwnership } from '@/hooks/useOrderOwnership';
 import { OrderResponsibility } from '@/components/orders/OrderResponsibility';
 import { CustomerCard } from '@/components/orders/CustomerCard';
 import { OrderLinesCard } from '@/components/orders/OrderLinesCard';
+import { DeliveryIncludedBox, mayTellDelivery } from '@/components/orders/DeliveryIncludedBox';
 import { ConfirmationActions } from '@/components/orders/ConfirmationActions';
 import { ShapeRiskPanel } from '@/components/orders/ShapeRiskPanel';
 import { DuplicateSuspectNotice } from '@/components/orders/DuplicateSuspectNotice';
@@ -763,6 +764,22 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
                     <span className="text-[var(--sys-foreground)]" dir="ltr">{money(cod?.deliveryFee ?? order.shippingCost)}</span>
                   )}
                 </div>
+                {/* The box from the order form, until the parcel leaves: an order written without it is a plain price and the fee
+                    is added at the shipment. The door asks again; the figures it shows before the press are its own. */}
+                {mayTellDelivery(order, mayChangeFee, handedOver) && (
+                  <div className="px-2.5 py-1.5">
+                    <DeliveryIncludedBox
+                      orderId={order.id}
+                      version={order.version}
+                      included={order.priceIncludesDelivery === true}
+                      currency={currency}
+                      onChanged={async () => {
+                        await loadOrder(order.id);
+                        onRefresh();
+                      }}
+                    />
+                  </div>
+                )}
                 <div className="flex justify-between px-2.5 py-2 bg-[var(--sys-surface)] rounded-b-lg">
                   <span className="font-bold">المحصَّل عند الباب:</span>
                   {/* Money coming IN, and the headline figure of the whole
