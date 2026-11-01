@@ -58,6 +58,46 @@ export function keepsOwnEntry(holds: (permission: string) => boolean): boolean {
   return holds('confirmation.work') && !holds('confirmation.supervise');
 }
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * AN AGENT WORKS ONLY THE ORDER SHE HOLDS (the owner, 1/11).
+ *
+ * Twenty orders were found confirmed by one agent straight from the orders list: she opened an order nobody held, rang, pressed
+ * «تأكيد» — and it was recorded confirmed with NO holder: «لم يستلمه أحد بعد — متاح في الطابور» beside a confirmed status, and a
+ * path that said the confirmation stage «لم يمر بها». The door asked only `orders.confirm`, and that key is scoped to the whole
+ * company for the shipped agent, so "her order" was every order she could open.
+ *
+ * `confirmation.work` is «العمل على طلباتي» (see `heldOrderWhere` in rbac.ts: «an order nobody holds is reached by pulling it,
+ * not by its id»). So for the account that works a queue and does not supervise one — `keepsOwnEntry`'s test, asked about a
+ * different thing — every decision and every logged call goes through the order she HOLDS.
+ *
+ * NOT BOUND: whoever supervises (`confirmation.supervise`), and whoever holds a key to TAKE any order (`orders.unlock`, the override
+ * of «استلمه أنا») or to GIVE any order away (`orders.assign`): binding them would gain nothing — they can take or hand over the order
+ * in one press — and would cost a manager's day the moment she opened an order nobody had pulled. The owner holds every key.
+ *
+ * The pull stays what puts an order in her hands (`/api/confirmation/pull`, «طلباتي»); there is no «claim by id» for an agent.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+export function mustHoldToWork(holds: (permission: string) => boolean): boolean {
+  return keepsOwnEntry(holds) && !holds('orders.unlock') && !holds('orders.assign');
+}
+
+/** Said by the door and by the screen, in the same words. */
+export const NOT_HELD_MESSAGE = 'اسحب الطلب أولاً — لا يمكن العمل على طلب ليس بين يديك';
+
+/**
+ * Does the sheet owe this person «اسحبه أولاً» instead of the call and confirm buttons? An agent, on an order that is still waiting
+ * to be decided and is not in her hands. Asked by the screen only so that it never draws a panel whose every press the door refuses
+ * (`NOT_HELD`); the door asks `mustHoldToWork` itself and is the enforcement.
+ */
+export function agentMustPullFirst(args: {
+  holds: (permission: string) => boolean;
+  userId?: string | null;
+  order: { claimedById?: string | null; confirmationStatus: string };
+}): boolean {
+  return mustHoldToWork(args.holds) && args.order.claimedById !== args.userId && OPEN_CONFIRMATION.includes(args.order.confirmationStatus);
+}
+
 export interface EntryOwnership {
   /** Null when the order goes to the pull queue, as every entry used to. */
   claimedById: string | null;

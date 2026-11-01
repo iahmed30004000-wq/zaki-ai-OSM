@@ -8,6 +8,7 @@ import { logAudit } from '@/lib/audit';
 import { apiError } from '@/lib/api-error';
 import { can, authorize } from '@/lib/authorization';
 import { ORDER_NOT_FOUND, ORDER_STALE } from '@/lib/order-refusals';
+import { resolveAudience } from '@/lib/notification-audience';
 
 /**
  * POST /api/orders/[id]/transfer
@@ -28,6 +29,20 @@ interface RankedUser { id: string; name: string; role: string; roleId: string | 
 function sameRank(a: RankedUser, b: RankedUser): boolean {
   if (a.roleId && b.roleId) return a.roleId === b.roleId;
   return a.role === b.role;
+}
+
+/**
+ * WHO MAY BE HANDED AN ORDER BY SOMEBODY WHO ASSIGNS (the owner, 1/11: «سحبت الطلب اجيت اعطيه لموظفة التأكيد مش ملاقيها»).
+ *
+ * The same-role rule below was written for an agent handing a confirmation order to the warehouse. It also stopped the owner and the
+ * supervisor — whose role is not an agent's — from handing an order DOWN to a confirmation agent: the list offered only people of the
+ * HOLDER'S role, and the holder was the owner who had just taken the order. What the rule protects is that the order lands in hands
+ * that can work it, so for a person with `orders.assign` that is what is asked: the target holds `confirmation.work` («العمل على
+ * طلباتي»), the key the work door and the pull ask. A warehouse employee has no such key and is still refused.
+ */
+async function whoMayWorkTheOrder(companyId: string, storeId: string | null): Promise<Array<{ id: string; name: string; email?: string | null }>> {
+  const audience = await resolveAudience({ companyId, storeId, audience: { permission: 'confirmation.work' } });
+  return audience.map((u) => ({ id: u.id, name: u.name, email: u.email }));
 }
 
 /** Whose hands the order is in right now: the claimer, else the owner, else
@@ -101,7 +116,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // to the warehouse would put it in a pair of hands that cannot do the
     // next thing it needs, and the queue it belongs to would not show it.
     const holder = await currentHolder(db, order, user);
-    if (holder && !sameRank(holder, target)) {
+    if (isReassigner) {
+      // Somebody who assigns hands the order to anybody who can WORK it, whatever her role — not only to the holder's role.
+      const mayWork = (await whoMayWorkTheOrder(companyId, storeId ?? null)).some((u) => u.id === target.id);
+      if (!mayWork) {
+        return NextResponse.json(
+          {
+            error: `${target.name} ما بيشتغل على الطلبات — ما بيتحوّل الطلب لإلو`,
+            errorAr: `${target.name} ما بيشتغل على الطلبات (ما عنده «العمل على طلباتي») — حوّل الطلب لموظف تأكيد.`,
+            code: 'CANNOT_WORK_IT',
+          },
+          { status: 409 }
+        );
+      }
+    } else if (holder && !sameRank(holder, target)) {
       return NextResponse.json(
         {
           error: `لا يمكن تحويل الطلب إلى رتبة مختلفة — ${target.name} ليس بنفس دور ${holder.name}`,
@@ -194,6 +222,20 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const holder = await currentHolder(db, order, user);
     if (!holder) return NextResponse.json({ candidates: [], mayTransfer: true });
 
+    // Whoever assigns may hand it to any employee who can work it (the owner, 1/11); an agent giving it up keeps to her own role.
+    if (authorize(user, 'orders.assign', order).allowed) {
+      const workers = (await whoMayWorkTheOrder(companyId, storeId ?? null))
+        .filter((u) => u.id !== holder.id)
+        .sort((a, b) => a.name.localeCompare(b.name, 'ar'))
+        .slice(0, 50);
+      return NextResponse.json({
+        mayTransfer: true,
+        scope: 'ANY_AGENT',
+        holder: { id: holder.id, name: holder.name },
+        candidates: workers.map((u) => ({ id: u.id, name: u.name, email: u.email ?? undefined })),
+      });
+    }
+
     const candidates = await db.user.findMany({
       where: {
         companyId,
@@ -208,6 +250,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     return NextResponse.json({
       mayTransfer: true,
+      scope: 'SAME_RANK',
       holder: { id: holder.id, name: holder.name },
       candidates,
     });

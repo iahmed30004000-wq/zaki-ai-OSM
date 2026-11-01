@@ -78,6 +78,9 @@ const ORDER = {
   offer: { name: 'اشترِ 3 واحصل على 1' },
   status: 'NEW',
   confirmationStatus: 'NEW',
+  // (old → new, 1/11) The agent below works HER order: an agent is not drawn the call panel on an order she does not hold
+  // (`an-agent-works-only-what-she-holds`), and what this file holds is where that panel SITS, so the order is hers.
+  claimedById: 'u1',
   state: 'NEW',
   customer: { id: 'cu1', fullName: 'زبون', phone: '079', city: 'عمّان' },
   items: [],
