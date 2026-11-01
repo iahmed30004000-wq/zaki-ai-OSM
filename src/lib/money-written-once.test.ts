@@ -204,11 +204,16 @@ describe('one rounding rule, and the money that is written goes through it', () 
      * dispatch instead would be the second place the audit forbids — and it
      * would silently change what a courier collects whenever a fee table was
      * edited between the order and the parcel.
+     *
+     * (old → new, 1/11, the «شامل التوصيل» door's review) STILL THE STORED FIGURE — read in the very statement that claims
+     * the order instead of in the early read of the whole batch, because an order on the trolley can have its flag flipped
+     * (its stored total moves with it) between that read and its send. Still no arithmetic here.
      */
     const order = stripComments(repoFile('src/lib/public-order.ts'));
     expect(order).toContain('const totalAmount = money.cod;');
     const dispatch = stripComments(repoFile('src/lib/couriers/dispatch.ts'));
-    expect(dispatch).toContain('codAmount: Number(order.totalAmount ?? 0)');
+    expect(dispatch).toContain('codAmount: claim.totalAmount');
+    expect(dispatch).toContain('RETURNING "id", "totalAmount"');
     expect(dispatch).not.toContain('computeCod(');
   });
 });

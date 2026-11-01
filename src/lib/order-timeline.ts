@@ -137,6 +137,8 @@ const ACTIVITY_AR: Record<string, string> = {
   NOTE_ADDED: 'إضافة ملاحظة',
   SHIPPING_UPDATED: 'تحديث الشحن',
   DELIVERY_FEE_CHANGED: 'تغيير أجرة التوصيل',
+  // «شامل التوصيل» told (or untold) on an order that already existed, before its parcel left: the flag and the total moved together.
+  DELIVERY_INCLUDED_CHANGED: 'تغيير «شامل التوصيل»',
   PARTIAL_DELIVERY: 'تسليم جزئي',
   COURIER_ASSIGNED: 'إسناد شركة شحن',
   COURIER_TRANSFERRED: 'تحويل بين شركات الشحن',
