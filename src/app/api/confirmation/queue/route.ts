@@ -9,9 +9,12 @@ import {
   pullPermission,
   releaseStaleClaims,
   waitingCount,
+  reservedForColleaguesCount,
   postponedNotDueCount,
   POSTPONE_LEAD_DAYS,
 } from '@/lib/confirmation-queue';
+import { heldFor } from '@/lib/order-reservation';
+import { reserveReturningCustomers } from '@/lib/reserve-returning-customers';
 
 /**
  * GET /api/confirmation/queue
@@ -33,13 +36,20 @@ export async function GET() {
       timezone: country.timezone,
     };
     const released = await releaseStaleClaims(db, scope, cal);
+    // Held for the agent who worked the customer last — made before anything is counted, best-effort (order-reservation.ts).
+    await reserveReturningCustomers(scope).catch(() => 0);
 
-    const [waiting, counts, waitingOnADate] = await Promise.all([
-      waitingCount(db, scope),
+    const mayPull = can(user, 'confirmation.pull');
+    const now = new Date();
+    const [waiting, counts, waitingOnADate, heldForColleagues] = await Promise.all([
+      // For an agent: what SHE may take (hers first, never a colleague's). For a supervisor: the whole pool, as before.
+      waitingCount(db, scope, now, mayPull ? user.id : undefined),
       ownedCounts(db, scope, user.id),
       // Real work, none of it takeable today. Said out loud rather than
       // folded into a number that promises a pull.
       postponedNotDueCount(db, scope),
+      // In the queue, seen and not takeable: said apart, so «بانتظارك» never promises a pull that answers «لا توجد طلبات».
+      mayPull ? reservedForColleaguesCount(db, scope, user.id, now) : Promise.resolve(0),
     ]);
     /**
      * The authority first, then the caps. A supervisor holds
@@ -60,6 +70,9 @@ export async function GET() {
             confirmationStatus: true, postponedUntil: true, postponeCount: true, totalAmount: true,
             customer: { select: { fullName: true, city: true } },
             product: { select: { name: true } },
+            // Whom it is held for, when it is — the supervisor sees the pool WITH the names.
+            claimedById: true, assignedToId: true, assignedAt: true,
+            assignee: { select: { id: true, name: true, status: true } },
           },
         })
       : null;
@@ -67,6 +80,7 @@ export async function GET() {
     return NextResponse.json({
       waiting,
       waitingOnADate,
+      reservedForColleagues: heldForColleagues,
       owned: counts,
       caps: CLAIM_CAPS,
       leadDays: POSTPONE_LEAD_DAYS,
@@ -74,7 +88,12 @@ export async function GET() {
       refusal,
       autoReleased: released,
       // Agents never see the list; supervisors see the same rows as data.
-      orders: rows,
+      orders: rows
+        ? rows.map(({ assignee, claimedById, assignedToId, assignedAt, ...row }) => ({
+            ...row,
+            reservedFor: heldFor({ claimedById, confirmationStatus: row.confirmationStatus, assignedToId, assignedAt, assignee }, now),
+          }))
+        : null,
     });
   } catch (error) {
     return apiErrorResponse(error);

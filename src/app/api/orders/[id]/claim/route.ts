@@ -13,6 +13,8 @@ import {
   ORDER_TAKEBACK_REASON, orderClaimedBy,
 } from '@/lib/order-refusals';
 import { ownedCounts, pullRefusal } from '@/lib/confirmation-queue';
+import { reservedForOthersWhere, reservedMessage } from '@/lib/order-reservation';
+import { reserveReturningCustomers } from '@/lib/reserve-returning-customers';
 
 /**
  * POST /api/orders/[id]/claim        → claim + digital signature
@@ -91,6 +93,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     // ── Normal claim ──
+    // A returning customer's order is held for the agent who worked him last BEFORE anybody may take it — best-effort: a hold
+    // that could not be written must never stop a claim (the order is then the shared queue's, as it was before holds).
+    await reserveReturningCustomers({ companyId, storeId }, new Date(), { orderIds: [id] }).catch(() => 0);
+
     if (!can(user, 'orders.claim')) {
       return NextResponse.json({ error: 'Forbidden: missing required permission orders.claim', errorAr: 'لا تملك صلاحية سحب الطلبات من الطابور.' }, { status: 403 });
     }
@@ -127,6 +133,27 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // Already claimed by me → idempotent success
     if (order.claimedById === user.id && order.signatureStatus === 'SIGNED') {
       return NextResponse.json({ success: true, alreadyClaimed: true, order });
+    }
+
+    /**
+     * ── HELD FOR A COLLEAGUE WHO WORKED THIS CUSTOMER ──
+     *
+     * The order is in the queue and in her list with her name on it, and only she may take it (order-reservation.ts). The
+     * owner and the supervisor take it over with «استلمه أنا», the override door above. Asked from the same filter the queue
+     * and the write use, so the three cannot disagree.
+     */
+    if (order.claimedById !== user.id) {
+      const held = await db.order.findFirst({
+        where: { id, ...reservedForOthersWhere(user.id, new Date()) },
+        select: { assignee: { select: { name: true } } },
+      });
+      if (held) {
+        const said = reservedMessage(held.assignee?.name);
+        return NextResponse.json(
+          { error: said, errorAr: said, code: 'RESERVED_FOR_COLLEAGUE', heldFor: held.assignee?.name ?? null },
+          { status: 409 }
+        );
+      }
     }
 
     /**
@@ -279,8 +306,11 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       data: {
         claimedById: null, claimedAt: null,
         currentOwnerId: null,
+        // A release lets go of the hold as well: an order she gave back is the shared queue's, not held for her a second time
+        // (`assignedAt` is what a hold is measured from — order-reservation.ts).
+        assignedAt: null,
         // Pulled back: the order is nobody's, not «assigned» to the one it was taken from
-        ...(takingBack ? { assignedToId: null, assignedAt: null } : {}),
+        ...(takingBack ? { assignedToId: null } : {}),
         // A released order goes back to the claimable queue (legacy 'NEW')
         confirmationStatus: 'NEW',
         status: 'NEW',

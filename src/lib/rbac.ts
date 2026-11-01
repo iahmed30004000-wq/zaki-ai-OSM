@@ -19,6 +19,7 @@ import { ROLE_PERMISSIONS } from '@/types/auth';
  */
 import { can as _can, requirePermission as _requirePermission, getPermissionScope } from './authorization';
 import { ORDER_WORK_DOOR, mayEnterOrderWorkDoor, type OrderWorkDoor } from './order-work-door';
+import { isHeldRow, reservedWhere } from './order-reservation';
 export const can: (user: SessionUser, permission: Permission) => boolean = _can;
 export const requirePermission: (permission: Permission) => Promise<SessionUser> = _requirePermission;
 
@@ -132,6 +133,15 @@ export function orderListWhere(user: SessionUser): Record<string, unknown> {
         // Orders she entered herself — by either record of it.
         { createdById: user.id },
         { moderatorId: user.id },
+        /*
+         * AND THE ORDERS HELD FOR A COLLEAGUE, so she can SEE them and cannot take them.
+         *
+         * The owner, 31/10: «باقي الموظفات يشوفوه ومايقدرو يسحبوه». A returning customer's new order is held for the agent who
+         * worked him last (order-reservation.ts); it is in the queue and in every agent's «الطلبات» with her name on it. The
+         * ones held for HER are already above (`assignedToId`); this adds the ones held for anybody — read-only here, because
+         * the claim door and the pull skip them for everyone but her.
+         */
+        reservedWhere(new Date()),
       ],
     };
   }
@@ -267,6 +277,7 @@ type Ownership = {
   claimedById?: string | null;
   currentOwnerId?: string | null;
   moderatorId?: string | null;
+  confirmationStatus?: string | null;
 };
 
 function viewScopeReaches(user: SessionUser, order: Ownership): boolean {
@@ -276,7 +287,8 @@ function viewScopeReaches(user: SessionUser, order: Ownership): boolean {
       return true;
     case 'ASSIGNED':
       return (
-        order.assignedToId === user.id ||
+        // Named for her and nobody holds it: hers to take through the claim door, not to work (order-reservation.ts).
+        (order.assignedToId === user.id && !isHeldRow(order)) ||
         order.claimedById === user.id ||
         order.currentOwnerId === user.id ||
         order.moderatorId === user.id

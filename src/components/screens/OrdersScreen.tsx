@@ -991,6 +991,19 @@ export function OrdersScreen() {
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                           <span className="font-bold text-[var(--sys-heading)] text-xs shrink-0 whitespace-nowrap" dir="ltr">{order.orderNumber}</span>
                           <OrderStateBadge state={order.state} />
+                          {/*
+                            A RETURNING CUSTOMER'S ORDER IS HELD FOR THE AGENT WHO WORKED HIM LAST — seen by everybody, taken by her alone
+                            (order-reservation.ts). The server sends `reservedFor` only while the hold stands: not after a day, not once
+                            her account is off, not once anybody holds the order.
+                          */}
+                          {order.reservedFor && (
+                            <span
+                              className="inline-flex items-center rounded-md border border-[var(--sys-primary)]/40 bg-[var(--sys-primary-soft)] px-2 py-0.5 text-xs font-medium text-[var(--sys-primary)]"
+                              title="زبون راجع: الموظفة اللي تعاملت معه قبل هي اللي تسحب طلبه. بيصير عاماً بعد 24 ساعة من وصوله أو إذا ما كانت متاحة."
+                            >
+                              تابع لـ{order.reservedFor.name}
+                            </span>
+                          )}
                           {/* where it ended up, in the owner's words — sent by the server */}
                           {order.outcome && (
                             <span className={`text-xs font-medium ${order.outcomeClosed ? 'text-[var(--sys-success)]' : 'text-[var(--sys-muted-foreground)]'}`}>

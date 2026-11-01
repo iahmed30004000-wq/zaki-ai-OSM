@@ -56,7 +56,8 @@ const user = (scope: 'ALL_COMPANY' | 'ASSIGNED' | 'OWN', id = 'u1'): SessionUser
 /** The branch that lists work nobody has taken. */
 const poolBranch = (envelope: Record<string, unknown>) =>
   (envelope.OR as Record<string, unknown>[] | undefined)?.find(
-    (b) => b.confirmationStatus === 'NEW' && b.claimedById === null
+    // A branch that names an agent and a time is not the pool: it is an order held for a colleague (order-reservation.ts).
+    (b) => b.confirmationStatus === 'NEW' && b.claimedById === null && !('assignedToId' in b)
   );
 
 describe('the read envelope still carries the pool — the pull depends on it', () => {
@@ -71,15 +72,25 @@ describe('the read envelope still carries the pool — the pull depends on it', 
 });
 
 describe('the list envelope does not', () => {
-  it('an agent’s list is what she took and what she typed — never the pool', () => {
+  it('an agent’s list is what she took, what she typed and what is held for a colleague — never the pool', () => {
     const envelope = orderListWhere(user('ASSIGNED')) as { OR: Record<string, unknown>[] };
     expect(poolBranch(envelope), 'الطابورُ ما زالَ في قائمتِها').toBeUndefined();
+    // The one branch that is not hers: the order held for a colleague — by name, by time, and only while her account is ACTIVE.
+    const held = envelope.OR.filter((b) => 'assignee' in b);
+    expect(held).toHaveLength(1);
+    expect(held[0]).toMatchObject({
+      claimedById: null,
+      confirmationStatus: 'NEW',
+      assignedToId: { not: null },
+      assignee: { is: { status: 'ACTIVE' } },
+    });
     // And it is not empty either: she must still see her own work.
-    const keys = envelope.OR.map((b) => Object.keys(b)[0]).sort();
+    const own = envelope.OR.filter((b) => !('assignee' in b));
+    const keys = own.map((b) => Object.keys(b)[0]).sort();
     expect(keys).toEqual(
       ['assignedToId', 'claimedById', 'createdById', 'currentOwnerId', 'moderatorId'].sort()
     );
-    for (const branch of envelope.OR) expect(Object.values(branch)[0]).toBe('u1');
+    for (const branch of own) expect(Object.values(branch)[0]).toBe('u1');
   });
 
   it('and a moderator’s list is the orders he entered, by either record of it', () => {

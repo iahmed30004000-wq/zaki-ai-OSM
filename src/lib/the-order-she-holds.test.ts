@@ -292,8 +292,22 @@ const ASSIGNED_READ = {
     },
   ],
 };
+/**
+ * THE ONE CLAUSE THAT WAS ADDED (31/10): an order held for a colleague who worked the customer last — seen, never taken
+ * (order-reservation.ts). It names an agent and a time, so it is not the pool; the pool is still not in the list.
+ */
+const HELD_FOR_A_COLLEAGUE = {
+  claimedById: null,
+  confirmationStatus: 'NEW',
+  assignedToId: { not: null },
+  assignedAt: { gt: expect.any(Date) },
+  assignee: { is: { status: 'ACTIVE' } },
+};
 const ASSIGNED_LIST = {
-  OR: [{ assignedToId: 'u1' }, { claimedById: 'u1' }, { currentOwnerId: 'u1' }, { createdById: 'u1' }, { moderatorId: 'u1' }],
+  OR: [
+    { assignedToId: 'u1' }, { claimedById: 'u1' }, { currentOwnerId: 'u1' }, { createdById: 'u1' }, { moderatorId: 'u1' },
+    HELD_FOR_A_COLLEAGUE,
+  ],
 };
 const OWN = { OR: [{ createdById: 'u1' }, { moderatorId: 'u1' }] };
 const NONE = { id: '__no_access__' };

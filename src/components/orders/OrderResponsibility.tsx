@@ -29,6 +29,8 @@ interface Props {
     claimedAt: string | null;
     claimer?: { id: string; name: string } | null;
     owner?: { id: string; name: string } | null;
+    /** Held for the agent who worked this customer last, while the hold stands (order-reservation.ts). */
+    reservedFor?: { id: string; name: string; hoursLeft?: number } | null;
   };
   currentUserId?: string;
   onChanged: () => void;
@@ -140,9 +142,20 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
               )}
             </p>
           ) : (
-            <p className="text-sm text-[var(--sys-muted-foreground)]">
-              لم يستلمه أحد بعد — <span className="text-[var(--sys-foreground)]">متاح في الطابور</span>
-            </p>
+            order.reservedFor ? (
+              <p className="text-sm text-[var(--sys-muted-foreground)]">
+                لم يستلمه أحد بعد — <span className="font-bold text-[var(--sys-heading)]">تابع لـ{order.reservedFor.name}</span>
+                {order.reservedFor.hoursLeft !== undefined && (
+                  <span className="text-xs text-[var(--sys-muted)]">
+                    {' '}· هي اللي تسحبه، وبيصير عاماً بعد {order.reservedFor.hoursLeft} ساعة
+                  </span>
+                )}
+              </p>
+            ) : (
+              <p className="text-sm text-[var(--sys-muted-foreground)]">
+                لم يستلمه أحد بعد — <span className="text-[var(--sys-foreground)]">متاح في الطابور</span>
+              </p>
+            )
           )}
         </div>
 

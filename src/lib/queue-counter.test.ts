@@ -147,7 +147,8 @@ describe('the picker and the counter', () => {
     const at = src.indexOf('export async function pickNextCandidate');
     const body = src.slice(at, src.indexOf('\nexport', at + 10));
     expect(body).toContain('duePostponedWhere(scope, now)');
-    expect(body).toContain('readyToPullWhere(scope)');
+    // The agent travels with it: the picker and the counter both ask what is takeable BY HER (order-reservation.ts).
+    expect(body).toContain('readyToPullWhere(scope, forUserId, now)');
     // No third opinion about what is takeable.
     expect(body, 'المنتقي يكتب شرطَه بنفسه').not.toMatch(/claimedById: null/);
   });

@@ -24,6 +24,7 @@ import { db } from './db';
 import { requireAuth } from './auth';
 import { computeEffectiveGrants, EffectiveGrants, Scope } from './permissions-core';
 import { LEGACY_ALIAS } from './permission-aliases';
+import { isHeldRow } from './order-reservation';
 
 // ─────────────────────────────────────────────────────
 // Grants access — sync when the session carries them (normal path),
@@ -117,7 +118,8 @@ function orderMatchesScope(order: Record<string, any>, userId: string, scope: Sc
       return true; // tenant boundary already enforced by caller
     case 'ASSIGNED':
       return (
-        order.assignedToId === userId ||
+        // An order named for her that nobody holds is hers to TAKE, not to work (order-reservation.ts `isHeldRow`).
+        (order.assignedToId === userId && !isHeldRow(order)) ||
         order.claimedById === userId ||
         order.currentOwnerId === userId ||
         order.moderatorId === userId
