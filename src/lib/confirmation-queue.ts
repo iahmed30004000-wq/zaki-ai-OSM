@@ -68,18 +68,25 @@ export function keepsOwnEntry(holds: (permission: string) => boolean): boolean {
  * company for the shipped agent, so "her order" was every order she could open.
  *
  * `confirmation.work` is «العمل على طلباتي» (see `heldOrderWhere` in rbac.ts: «an order nobody holds is reached by pulling it,
- * not by its id»). So for the account that works a queue and does not supervise one — `keepsOwnEntry`'s test, asked about a
- * different thing — every decision and every logged call goes through the order she HOLDS.
+ * not by its id»). So for every account that works a queue, every decision and every logged call goes through the order she HOLDS.
  *
- * NOT BOUND: whoever supervises (`confirmation.supervise`), and whoever holds a key to TAKE any order (`orders.unlock`, the override
- * of «استلمه أنا») or to GIVE any order away (`orders.assign`): binding them would gain nothing — they can take or hand over the order
- * in one press — and would cost a manager's day the moment she opened an order nobody had pulled. The owner holds every key.
+ * NOT BOUND: whoever holds a key to TAKE any order (`orders.unlock`, the override of «استلمه أنا») or to GIVE any order away
+ * (`orders.assign`): binding them would gain nothing — they can take or hand over the order in one press — and would cost a manager's
+ * day the moment she opened an order nobody had pulled. The owner holds every key.
+ *
+ * ⚠️ `confirmation.supervise` IS NOT AN EXEMPTION, and the first version of this rule made it one (`keepsOwnEntry`'s test). Measured
+ * on the live site, 1/11, read-only (`GET /api/roles`, then every account's effective keys): the role CONFIRMATION_AGENT — all seven active
+ * accounts, the one the incident came from — each holds `confirmation.supervise` and `confirmation.reassign` besides
+ * `confirmation.work`, `confirmation.pull`, `orders.confirm` and `orders.view` for the whole company, and none holds `orders.unlock`
+ * or `orders.assign`. That key gates what a person SEES (the whole queue, the win-back list, the notifications), not what she may
+ * take. A rule that excused it would have excused every agent it was written for and stopped nobody; the unit tests, which hand the
+ * door keys by hand, could not have said so. `the-live-agent-is-refused-by-the-real-engine.test.ts` holds the measured list.
  *
  * The pull stays what puts an order in her hands (`/api/confirmation/pull`, «طلباتي»); there is no «claim by id» for an agent.
  * ═══════════════════════════════════════════════════════════════════════
  */
 export function mustHoldToWork(holds: (permission: string) => boolean): boolean {
-  return keepsOwnEntry(holds) && !holds('orders.unlock') && !holds('orders.assign');
+  return holds('confirmation.work') && !holds('orders.unlock') && !holds('orders.assign');
 }
 
 /** Said by the door and by the screen, in the same words. */

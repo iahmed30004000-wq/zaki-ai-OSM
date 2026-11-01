@@ -107,7 +107,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     // AN AGENT WORKS ONLY THE ORDER SHE HOLDS (the owner, 1/11): the call she logs is on the order in her hands, as the confirmation
-    // door next door asks. A supervisor and the owner log a call on any order, as before.
+    // door next door asks. Whoever can take or hand out any order (`orders.unlock`, `orders.assign`) logs a call on any order, as before.
     if (mustHoldToWork((permission) => can(user, permission)) && order.claimedById !== user.id) {
       return NextResponse.json({ error: NOT_HELD_MESSAGE, errorAr: NOT_HELD_MESSAGE, code: 'NOT_HELD' }, { status: 403 });
     }
