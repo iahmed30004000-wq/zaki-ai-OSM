@@ -285,9 +285,9 @@ export function GeoSettingsScreen() {
                   <p className="text-xs text-[var(--sys-muted-foreground)]" dir="ltr">
                     /{s.slug} · {storeTypeLabel(s.type)}
                   </p>
-                  {/* Read on every direct order of this store (an offer can
-                      still override it), and until now it had no control at
-                      all — every store priced as price + delivery. */}
+                  {/* The policy for every order no offer speaks for — Telegram, a sheet row, a price typed by hand — and
+                      until it had a control every store priced as price + delivery. An offer's own «السعر شامل التوصيل» (yes OR
+                      no) and the box on the order form beat it (the owner, 1/11: «أحدد إذا شامل ولا لأ بظبط»). */}
                   <label className="mt-1 flex items-center gap-1.5 text-xs text-[var(--sys-foreground)]">
                     <input
                       type="checkbox"
@@ -296,6 +296,11 @@ export function GeoSettingsScreen() {
                     />
                     السعر المُعلن يشمل التوصيل
                   </label>
+                  <p className="mt-0.5 max-w-prose text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+                    شغّله إذا كل طلباتك توصيلها مجاني: بيشمل طلبات تلجرام والشيتات وصفحات البيع. بيغيّر ربحك، لأنو أجرة التوصيل
+                    بتنخصم من الإيراد. وبتقدر تحدد «شامل» أو لأ بالظبط وإنت بتضيف الطلب يدوي (خانة «شامل التوصيل»)، ولكل عرض
+                    بصفحة البيع (خانة «السعر شامل التوصيل»): كلمتهم بتغلب هاد الإعداد. الطلبات اللي انكتبت قبل ما تغيّره بتضل متل ما هي.
+                  </p>
                 </div>
                 <button
                   onClick={() => setStorefrontFor((cur) => (cur === s.id ? null : s.id))}

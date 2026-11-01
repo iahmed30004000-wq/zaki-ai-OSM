@@ -7,6 +7,7 @@ import { activeOffersFor, type OfferView } from '../offers';
 import { computeCod, roundMinor } from '../money';
 import { orderRefFields } from '../order-ref';
 import { priceIncludesDeliveryFor } from '../delivery-fees';
+import { offersSayDeliveryIncluded } from '../offer-delivery';
 import { productCosts } from '../product-cost';
 import { resolveRegionId } from '../regions';
 import { normalizePhoneNumber } from '../phone';
@@ -414,7 +415,7 @@ export async function createSystemOrder(
   const shippingCost = 0;
   const priceIncludesDelivery = await priceIncludesDeliveryFor(
     store.id,
-    lines.some((l) => l.offer?.deliveryIncluded === true) ? true : undefined
+    offersSayDeliveryIncluded(lines.map((l) => l.offer?.deliveryIncluded))
   );
 
   // ONE COD function, used by every screen and service (contract PART 5).

@@ -9,6 +9,7 @@ import { orderRefFields } from '@/lib/order-ref';
 import { resolveRegionId } from '@/lib/regions';
 import { computeCod, roundMinor } from '@/lib/money';
 import { priceIncludesDeliveryFor } from '@/lib/delivery-fees';
+import { offersSayDeliveryIncluded } from '@/lib/offer-delivery';
 import { giftUnits } from '@/lib/offer-gift';
 import { count, money as amount, readTypedFigure } from '@/lib/numeric-input';
 import { productCost } from '@/lib/product-cost';
@@ -466,15 +467,17 @@ export async function POST(req: Request) {
                  * and the courier statement disagrees with the order by
                  * exactly the fee.
                  *
-                 * AND A BUNDLE THAT CARRIES DELIVERY TURNS IT ON, as at
+                 * AND A BUNDLE SAYS YES OR NO FOR ITSELF, as at
                  * `POST /orders` (RV172): the offer's `deliveryIncluded`
-                 * can only switch it ON, never off. With no bundle bound
-                 * the store's own policy is the whole of the answer.
+                 * ticked turns it on, unticked turns it off (the owner,
+                 * 1/11: an offer's «no» is heard even in a store that
+                 * includes delivery). With no bundle bound the store's own
+                 * policy is the whole of the answer.
                  */
                 priceIncludesDelivery:
                   typeof p.priceIncludesDelivery === 'boolean'
                     ? p.priceIncludesDelivery
-                    : await priceIncludesDeliveryFor(storeId, quantityOffer?.deliveryIncluded),
+                    : await priceIncludesDeliveryFor(storeId, offersSayDeliveryIncluded([quantityOffer?.deliveryIncluded])),
                 // Which bundle sold this: `null` when the quantity matched none and the reviewer's own figure stood.
                 offerId: quantityOffer?.id ?? null,
                 quantity: qty,

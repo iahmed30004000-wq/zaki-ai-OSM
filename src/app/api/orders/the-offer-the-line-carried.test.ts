@@ -83,7 +83,9 @@ describe('the door reads the offer each line carried', () => {
      * order is delivery-inclusive», which no courier can collect.
      */
     const src = door();
-    expect(src).toMatch(/anyLineIncludesDelivery/);
+    // (old → new, 1/11) «any line includes» is read by `offersSayDeliveryIncluded` — shared by every door — which is also where an
+    // offer's «no» is heard. The door hands it one entry per line (and the top-level offer of the single-product shorthand).
+    expect(src).toMatch(/offersSayDeliveryIncluded\(/);
     /*
      * ⚠️ AND IT IS PASSED TO THE RULE, NOT MERELY COMPUTED.
      *
@@ -95,7 +97,8 @@ describe('the door reads the offer each line carried', () => {
      * purpose, which is the only way that kind of claim is ever found.
      */
     const call = src.slice(src.indexOf('priceIncludesDeliveryFor('));
-    expect(call.slice(0, 200), 'محسوب وما بينمرّر للقاعدة').toContain('anyLineIncludesDelivery');
+    expect(call.slice(0, 500), 'محسوب وما بينمرّر للقاعدة').toContain('offersSayDeliveryIncluded(');
+    expect(call.slice(0, 500), 'سطور الطلب كلها بتنقرأ').toContain('requestedLines.map(');
   });
 
   it('and the order records which bundle sold it', () => {
