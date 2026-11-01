@@ -95,7 +95,7 @@ const baseOrder = (items: ItemRow[], over: Record<string, unknown> = {}) => ({
   addOns: [],
   customer: { id: 'cu1', fullName: 'زبون', phone: '079', city: 'عمّان' },
   activities: [], statusLogs: [], contactAttempts: [], changeRequests: [], deliveryAttempts: [], notes: [],
-  callLogs: [], commissions: [], shipments: [], payments: [], returnReceipts: [],
+  callLogs: [], commissions: [], shipments: [], payments: [], returnReceipts: [], claimHistory: [],
   ...over,
 });
 

@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { db } from './db';
 import { businessMinutesBetween, type BusinessCalendar } from './business-calendar';
 import { rejectionNeedsConversation } from './confirmation-workflow';
+import { notHeldForOthersWhere, reservedForOthersWhere, reservedForWhere } from './order-reservation';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -406,7 +407,8 @@ export async function releaseStaleClaims(tx: Tx, scope: QueueScope, cal: Busines
   for (const order of expired) {
     await tx.order.updateMany({
       where: { id: order.id, claimedById: order.claimedById },
-      data: { claimedById: null, claimedAt: null, currentOwnerId: null, signatureStatus: 'UNSIGNED' },
+      // `assignedAt: null` as well: an order she let go of unworked is the shared queue's, not held for her a second time.
+      data: { claimedById: null, claimedAt: null, currentOwnerId: null, signatureStatus: 'UNSIGNED', assignedAt: null },
     });
     await tx.orderClaimHistory.create({
       data: {
@@ -422,13 +424,23 @@ export async function releaseStaleClaims(tx: Tx, scope: QueueScope, cal: Busines
 }
 
 /** How many orders are waiting to be pulled (the agent's only queue number). */
-export async function waitingCount(tx: Tx, scope: QueueScope, now = new Date()) {
+export async function waitingCount(tx: Tx, scope: QueueScope, now = new Date(), forUserId?: string) {
   // Exactly the set `pickNextCandidate` draws from — see the note there.
   const [due, ready] = await Promise.all([
     tx.order.count({ where: duePostponedWhere(scope, now) }),
-    tx.order.count({ where: readyToPullWhere(scope) }),
+    tx.order.count({ where: readyToPullWhere(scope, forUserId, now) }),
   ]);
   return due + ready;
+}
+
+/**
+ * THE ORDERS SHE CAN SEE AND CANNOT TAKE: held for a colleague who worked the customer last.
+ *
+ * Said apart from the number that promises a pull — «بانتظارك» counts what she may take, and this counts what is in the
+ * queue and is somebody else's, so the first number is never a button that answers «لا توجد طلبات».
+ */
+export async function reservedForColleaguesCount(tx: Tx, scope: QueueScope, userId: string, now = new Date()) {
+  return tx.order.count({ where: { ...claimableWhere(scope), ...reservedForOthersWhere(userId, now) } });
 }
 
 /**
@@ -511,15 +523,31 @@ export function duePostponedWhere(scope: QueueScope, now: Date) {
   };
 }
 
-export function readyToPullWhere(scope: QueueScope) {
-  return { ...claimableWhere(scope), confirmationStatus: { not: 'POSTPONED' } };
+export function readyToPullWhere(scope: QueueScope, forUserId?: string, now: Date = new Date()) {
+  return {
+    ...claimableWhere(scope),
+    confirmationStatus: { not: 'POSTPONED' },
+    // For an agent: not what is held for a colleague — the POSITIVE form (`notHeldForOthersWhere`), because `NOT (…)` over nullable
+    // columns drops a released order that kept its name. Without `forUserId` it is the whole pool, as the supervisor reads it.
+    ...(forUserId ? { AND: [notHeldForOthersWhere(forUserId, now)] } : {}),
+  };
 }
 
 /**
  * The next order to work on: a postponed one that is due within the lead
  * days, otherwise the oldest waiting order.
  */
-export async function pickNextCandidate(tx: Tx, scope: QueueScope, now = new Date()) {
+export async function pickNextCandidate(tx: Tx, scope: QueueScope, now = new Date(), forUserId?: string) {
+  // THE ORDER HELD FOR HER COMES FIRST: the customer is a returning one and she is the person he spoke to.
+  if (forUserId) {
+    const mine = await tx.order.findFirst({
+      where: { ...claimableWhere(scope), ...reservedForWhere(forUserId, now) },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    if (mine) return mine.id;
+  }
+
   // The same two predicates the counter uses — kept as two queries only
   // because they are ordered differently: a promise by its date, and
   // everything else by its age.
@@ -531,7 +559,7 @@ export async function pickNextCandidate(tx: Tx, scope: QueueScope, now = new Dat
   if (duePostponed) return duePostponed.id;
 
   const oldest = await tx.order.findFirst({
-    where: readyToPullWhere(scope),
+    where: readyToPullWhere(scope, forUserId, now),
     orderBy: { createdAt: 'asc' },
     select: { id: true },
   });
@@ -565,7 +593,7 @@ export async function pullNextOrder(
     if (refusal) return { ok: false, refusal, released };
 
     for (let attempt = 0; attempt < 5; attempt++) {
-      const candidate = await pickNextCandidate(tx, scope, now);
+      const candidate = await pickNextCandidate(tx, scope, now, user.id);
       if (!candidate) {
         return {
           ok: false,
@@ -576,7 +604,8 @@ export async function pullNextOrder(
       }
 
       const taken = await tx.order.updateMany({
-        where: { id: candidate, claimedById: null },
+        // «Not held for somebody else» is asked again at the write: the hold may have been made between the pick and here.
+        where: { id: candidate, claimedById: null, AND: [notHeldForOthersWhere(user.id, now)] },
         data: {
           claimedById: user.id,
           claimedAt: now,

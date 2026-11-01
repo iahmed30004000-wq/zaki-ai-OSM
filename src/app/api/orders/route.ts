@@ -25,6 +25,7 @@ import { zodMessage } from '@/lib/zod-message';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { giftUnits } from '@/lib/offer-gift';
 import { projectOrder } from '@/lib/order-projection';
+import { heldFor } from '@/lib/order-reservation';
 import { flagRecentTwins } from '@/lib/recent-twin-order';
 import { responsibleModerator, MODERATOR_FORBIDDEN_AR } from '@/lib/responsible-moderator';
 
@@ -114,6 +115,10 @@ export async function GET(req: Request) {
           // list, so neither needs opening the order to see.
           region: { select: { id: true, name: true } },
           deliveryProvider: { select: { id: true, name: true, kind: true } },
+          // Whom a returning customer's order is held for (order-reservation.ts) — read here, shown only while the hold stands.
+          assignee: { select: { id: true, name: true, status: true } },
+          // Has anybody ever claimed it? A hold belongs to an order that has just arrived and nobody else (order-reservation.ts).
+          _count: { select: { claimHistory: true } },
           // whether the counting desk received it, and with a fee or not —
           // the half of «where it ended up» the order's own columns lack
           returnReceipt: { select: { courierFeeCharged: true, receivedQty: true, damagedQty: true, missingQty: true } },
@@ -133,8 +138,9 @@ export async function GET(req: Request) {
       // the legacy `status` column is kept for compatibility but never drives
       // a screen, because it drifts from confirmation/shipping status.
       // Cost, profit and the customer's private counters only to their own keys — see order-projection.ts.
-      orders: orders.map((o) => projectOrder({
+      orders: orders.map(({ assignee, _count, ...o }) => projectOrder({
         ...o,
+        reservedFor: heldFor({ ...o, assignee, everClaimed: _count.claimHistory > 0 }, new Date()),
         state: deriveCoreState(o as unknown as StateSource),
         zone: getZone(deriveCoreState(o as unknown as StateSource)),
         // in the owner's words, read from the same fields (order-outcome.ts)

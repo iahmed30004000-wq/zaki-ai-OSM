@@ -58,7 +58,9 @@ export async function GET() {
       tasks.push(pending.then((n) => { counts[key] = n; }));
     };
 
-    if (wanted.has('CONFIRM_POOL')) count('CONFIRM_POOL', waitingCount(db, scope));
+    // What SHE may take: an order held for a colleague is not waiting for her (order-reservation.ts), and a chip that counts it is a
+    // number that promises a pull the button answers «لا توجد طلبات». A supervisor, who pulls nothing, reads the whole pool.
+    if (wanted.has('CONFIRM_POOL')) count('CONFIRM_POOL', waitingCount(db, scope, new Date(), can(user, 'confirmation.pull') ? user.id : undefined));
     if (wanted.has('MY_UNCONFIRMED')) count('MY_UNCONFIRMED', awaitingConfirmationCount(db, scope, user.id));
 
     if (wanted.has('READY_TO_SHIP')) {

@@ -49,6 +49,7 @@ import { SETTLEMENT_OPEN, type EditableOrderRow } from '@/lib/order-edit-facts';
 import { claimingRowWhere } from '@/lib/match-integrity';
 import { describeLines, type ApprovedLineEdit, type LinesChange } from '@/lib/change-request-fields';
 import { productCosts } from '@/lib/product-cost';
+import { heldFor, reservationHoursLeft } from '@/lib/order-reservation';
 import { resolveDeliveryFee } from '@/lib/delivery-fees';
 
 /** Why a quantity or a product is not changed in place for an order whose goods are reserved. */
@@ -327,6 +328,8 @@ export async function GET(
         commissions: { select: { id: true, userId: true, role: true, amount: true, status: true } },
         claimer: { select: { id: true, name: true } },
         owner: { select: { id: true, name: true } },
+        // Whom it is held for, while the hold stands (order-reservation.ts).
+        assignee: { select: { id: true, name: true, status: true } },
         lockHolder: { select: { id: true, name: true } },
         signer: { select: { id: true, name: true } },
         claimHistory: {
@@ -521,10 +524,18 @@ export async function GET(
       companyId, storeId, user, where: 'تفاصيل الطلب', rows: [order],
     });
 
+    // Whom it is held for while the hold stands, and how many hours it has left (order-reservation.ts) — said by the server, so no
+    // screen reads a clock to say it.
+    const asOf = new Date();
+    const held = heldFor({ ...order, everClaimed: order.claimHistory.length > 0 }, asOf);
+    const reservedFor = held ? { ...held, hoursLeft: reservationHoursLeft(order.assignedAt!, asOf) } : null;
+    // The colleague's account status stays on the server: the screen is told whom it is held for, not what her account is.
+    const { assignee: _heldFor, ...orderToSend } = order;
+
     return NextResponse.json({
       // Cost, profit and other people's commission only to those whose screens show money — see order-projection.ts.
       order: projectOrder(
-        { ...order, items, state, zone: getZone(state), commission: maySeeOrderCost(user) ? commission : undefined, closing },
+        { ...orderToSend, items, state, reservedFor, zone: getZone(state), commission: maySeeOrderCost(user) ? commission : undefined, closing },
         user,
       ),
       // The store's own currency, so the detail screen shows the same money

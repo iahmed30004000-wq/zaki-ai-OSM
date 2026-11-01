@@ -13,6 +13,7 @@ import { deliverConversions } from './deliver-conversions';
 import { proposePenaltiesJob } from './propose-penalties';
 import { escalateChangeRequests } from './escalate-change-requests';
 import { pullAdSpend } from './pull-ad-spend';
+import { reserveReturning } from './reserve-returning-customers';
 
 export {
   releaseClaims,
@@ -28,6 +29,7 @@ export {
   proposePenaltiesJob,
   escalateChangeRequests,
   pullAdSpend,
+  reserveReturning,
   watchdog,
 };
 
@@ -61,6 +63,8 @@ export const JOBS: JobDefinition[] = [
   proposePenaltiesJob,
   escalateChangeRequests,
   pullAdSpend,
+  // Appended, never inserted: the order of this list is the contract with the run log.
+  reserveReturning,
 ];
 
 export function jobByName(name: string): JobDefinition | undefined {
