@@ -17,7 +17,8 @@ const { db, requireContext } = vi.hoisted(() => ({
 }));
 vi.mock('@/lib/db', () => ({ db }));
 vi.mock('@/lib/geo-context', () => ({ requireContext: (...a: unknown[]) => requireContext(...a) }));
-vi.mock('@/lib/authorization', () => ({ requirePermission: vi.fn(), can: () => true }));
+// Everything is allowed except the owner's key (`ops.labels_any`): the barcode rule is what these tests are about.
+vi.mock('@/lib/authorization', () => ({ requirePermission: vi.fn(), can: (_u: unknown, key: string) => key !== 'ops.labels_any' }));
 vi.mock('@/lib/audit', () => ({ logAudit: vi.fn() }));
 
 process.env.APP_ENCRYPTION_KEY = 'b'.repeat(64);
@@ -105,10 +106,13 @@ describe('POST /api/ops/labels: the others print, this one waits', () => {
     expect(body.refused).toHaveLength(2);
   });
 
-  it('nothing printable for the OLD reason keeps the OLD sentence', async () => {
+  it('nothing printable for another reason: the sentence states no rule — the reason is in the list, one per order', async () => {
+    // The old sentence was «لا يُطبع إلا طلب مؤكَّد له شركة شحن», and it was said over an order that WAS confirmed and HAD a courier.
     db.order.findMany.mockResolvedValue([{ ...row(A, 'ORD-A', 'K1', BASHA), confirmationStatus: 'NEW' }]);
     const res = await tokenPOST(json({ orderIds: [A], width: 100, height: 150 }));
-    expect((await res.json()).error).toBe('لا يُطبع إلا طلب مؤكَّد له شركة شحن');
+    const body = await res.json();
+    expect(body.error).toBe('ما انطبع ولا طلب');
+    expect(body.refused).toEqual([{ orderNumber: 'ORD-A', reason: 'لم يُؤكَّد' }]);
   });
 
   it('the account is read to decide, and never comes back out', async () => {

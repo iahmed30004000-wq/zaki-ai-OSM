@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
-import { requirePermission } from '@/lib/authorization';
+import { can, requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { verifyLabelBatch } from '@/lib/labels';
-import { COURIER_KIND_SELECT, printRefusal } from '@/lib/waybill';
+import { COURIER_KIND_SELECT, printRefusal, sealsOnPrint } from '@/lib/waybill';
 import { logAudit } from '@/lib/audit';
 
 /**
@@ -19,10 +19,13 @@ import { logAudit } from '@/lib/audit';
  * The page may only report orders its own token names: an id that is not
  * in the token (or, for a batch token, not in that batch) is ignored, so
  * this cannot seal an order somebody merely knows the id of. Orders that
- * may not be printed are ignored too.
+ * this session may not print are ignored too.
  *
  * The FIRST print is the commitment. A reprint — a torn label, a second
- * copy — does not move the timestamp.
+ * copy — does not move the timestamp. And only a print that commits
+ * stamps at all (waybill.ts `sealsOnPrint`): a copy of a delivered order,
+ * or an order the owner's key printed past the rule, is counted in the
+ * audit row as a copy and changes nothing on the order.
  */
 const schema = z.object({
   t: z.string().min(10).max(20_000),
@@ -60,13 +63,22 @@ export async function POST(req: Request) {
         trackingNumber: true, deliveryProvider: { select: COURIER_KIND_SELECT },
       },
     });
-    const printable = orders.filter((o) => !printRefusal(o)).map((o) => o.id);
-    if (printable.length === 0) return NextResponse.json({ stamped: 0 });
+    /*
+     * Only a print that COMMITS stamps: the rule lets it print and its parcel is still to go (`sealsOnPrint`). A copy — the second
+     * waybill of a delivered order, or one the owner's key printed past the rule — is paper and changes nothing on the order.
+     * It is still a sheet of names and addresses that left the building, so it is counted below beside the stamped ones.
+     */
+    const mayPrint = orders.filter((o) => !printRefusal(o, { anyOrder: can(user, 'ops.labels_any') }));
+    const printable = mayPrint.filter((o) => sealsOnPrint(o)).map((o) => o.id);
+    const copies = mayPrint.length - printable.length;
+    if (printable.length === 0 && copies === 0) return NextResponse.json({ stamped: 0 });
 
-    const { count } = await db.order.updateMany({
-      where: { id: { in: printable }, companyId, storeId, labelPrintedAt: null },
-      data: { labelPrintedAt: new Date() },
-    });
+    const { count } = printable.length
+      ? await db.order.updateMany({
+          where: { id: { in: printable }, companyId, storeId, labelPrintedAt: null },
+          data: { labelPrintedAt: new Date() },
+        })
+      : { count: 0 };
 
     /**
      * A WAYBILL IS CUSTOMER DATA ON PAPER.
@@ -86,7 +98,7 @@ export async function POST(req: Request) {
       action: 'LABELS_PRINTED',
       entity: 'Order',
       entityId: batch.batchId ?? `labels:${count}`,
-      newData: { printed: count, asked: asked.length, batchId: batch.batchId ?? null, withContact: true },
+      newData: { printed: count, copies, asked: asked.length, batchId: batch.batchId ?? null, withContact: true },
     });
 
     return NextResponse.json({ stamped: count });

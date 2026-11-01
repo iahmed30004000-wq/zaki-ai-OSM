@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
-import { requirePermission } from '@/lib/authorization';
+import { can, requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { verifyLabelBatch } from '@/lib/labels';
 import { renderLabelSheet, storeLogoForPrint } from '@/lib/label-sheet';
@@ -46,10 +46,17 @@ export async function GET(req: Request) {
 
     // The same rule the token route applied, checked again here: a token is
     // thirty minutes old at most, and an order can be cancelled in that time.
+    // The owner's key (`ops.labels_any`) is asked of THIS session, not read off the token: a token carries no person.
+    const anyOrder = can(user, 'ops.labels_any');
     const skipped: { orderNumber: string; reason: string }[] = [];
+    const outsideTheRule: { orderNumber: string; reason: string }[] = [];
     const printable = all.filter((o) => {
-      const reason = printRefusal(o);
+      const reason = printRefusal(o, { anyOrder });
       if (reason) skipped.push({ orderNumber: o.orderNumber, reason });
+      else if (anyOrder) {
+        const rule = printRefusal(o);
+        if (rule) outsideTheRule.push({ orderNumber: o.orderNumber, reason: rule });
+      }
       return !reason;
     });
     if (printable.length === 0) {
@@ -123,6 +130,7 @@ export async function GET(req: Request) {
       token,
       stampUrl: '/api/ops/labels/printed',
       skipped,
+      outsideTheRule,
       // Chromium suggests the page title as the file name when saving a PDF.
       title: `بوالص-${store?.name ?? 'الشحن'}-${day}-${labels.length}`,
     });

@@ -341,6 +341,14 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       { key: 'ops.prepare', opens: ['التجهيز'], ar: 'التجهيز', en: 'Preparation' },
       { key: 'ops.ship', opens: ['إنشاء شحنة'], ar: 'إنشاء الشحنات', en: 'Create shipments' },
       { key: 'ops.labels', ar: 'البوالص', en: 'Labels' },
+      /*
+       * A WAYBILL FOR ANY ORDER, IN ANY STATE (1/11). The rule for everybody else is a confirmed order with a courier (and the courier's
+       * barcode when it is sent by API); this key prints past all of it — an unconfirmed order, one with no courier, a parcel still waiting
+       * for its barcode, a cancelled one. Such a print is paper only: it commits nothing and seals nothing, and the sheet says which
+       * orders it printed past the rule. Granted to NOBODY by any migration or fallback: the owner holds it (full access) and ticks it for
+       * one person he trusts with it.
+       */
+      { key: 'ops.labels_any', requires: 'ops.labels', ar: 'طباعة بوليصة أي طلب بكل الأحوال (حتى غير المؤكَّد أو بلا شركة شحن أو قبل باركودها)', en: 'Print the waybill of any order, in any state' },
       { key: 'ops.track', opens: ['متابعة الشحن'], ar: 'متابعة الشحن', en: 'Tracking' },
       { key: 'ops.returns', opens: ['المرتجعات'], ar: 'المرتجعات', en: 'Returns' },
       /*

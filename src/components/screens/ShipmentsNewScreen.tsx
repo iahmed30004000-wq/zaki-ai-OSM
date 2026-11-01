@@ -373,8 +373,7 @@ export function ShipmentsNewScreen() {
       if (out.refused.length) {
         void tell({
           title: `جُهِّزت ${out.count} بوليصة، ولم تُجهَّز ${out.refused.length}`,
-          body: `لا يُطبع إلا طلب مؤكَّد له شركة شحن:
-${describeRefused(out.refused)}`,
+          body: describeRefused(out.refused),
         });
       }
     } catch (e) {

@@ -109,6 +109,8 @@ WITH req(action, needs) AS (VALUES
   ('apps.tokens','apps.view'),
   -- 30/10: the packing table's pen. Granted by no migration — a pair here would be a person the owner ticked it for who lost the screen key.
   ('ops.edit_in_batch','ops.batches'),
+  -- 1/11: a waybill for any order in any state. Granted by no migration — a pair here would be a person the owner ticked it for who lost the labels key.
+  ('ops.labels_any','ops.labels'),
   -- 1/11: a product's fixed cost. Granted by no migration — a pair here would be a person the owner ticked it for who lost the edit key.
   ('products.change_cost','products.edit')
 )
