@@ -103,8 +103,9 @@ const WRITERS = [
   'src/lib/v1/order-intake.ts',
   'src/app/api/ops/shipments/route.ts',
   /*
-   * «شامل التوصيل» FOR AN ORDER THAT EXISTS (1/11). It writes `totalAmount`, and only as the difference `codForOrder` gives when
-   * asked with the flag as it is and as it will be, added to the stored figure — never a number typed or computed by hand. Refused
+   * «شامل التوصيل» FOR AN ORDER THAT EXISTS (1/11). It writes `totalAmount`, and only as `codForOrder` answers for the NEW flag,
+   * asked fresh — never a number typed or computed by hand, and never «the stored figure plus a difference» (the independent
+   * review): it writes only when the stored figure already agrees with the flag the order has now (`COD_DRIFT` otherwise). Refused
    * once the courier or the paper holds the amount (`orderSeal`, a barcode, a send in flight).
    */
   'src/app/api/orders/[id]/delivery-included/route.ts',

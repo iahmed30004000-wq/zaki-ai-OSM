@@ -155,7 +155,7 @@ describe('the total is what the calculator says for the new flag — asked fresh
     expect(out).toMatchObject({ totalBefore: 20.75, totalAfter: 17.5, delta: -3.25 });
   });
 
-  it('a stored figure half a minor unit off the calculator is rounding noise: it is REPLACED by the calculator’s, not nudged', async () => {
+  it('a stored figure within half a minor unit of the calculator is rounding noise: accepted, and the figure written is the calculator’s', async () => {
     given({ totalAmount: 23.004 });
     const out = await (await flip(true)).json();
     expect(out).toMatchObject({ changed: true, totalAfter: 20 });
@@ -209,6 +209,49 @@ describe('an order whose total no longer follows its fee is for a person to reco
     given({ totalAmount: 23.006 });
     expect((await (await flip(true)).json()).code).toBe('COD_DRIFT');
     given({ totalAmount: 23.004 });
+    expect((await (await flip(true)).json()).changed).toBe(true);
+  });
+
+  /*
+   * THE LIMIT SCALES WITH THE CURRENCY (the independent review, 1/11: the tolerance could be replaced by a flat 0.005 and every test
+   * stayed green). Half a minor unit is 0.5 at none, 0.005 at two decimals, 0.0005 at three — the dinar's fils.
+   */
+  it('JOD (three decimals): 0.0004 off passes, 0.0006 off and 0.002 off do not — a flat 0.005 would have let them through', async () => {
+    requireContext.mockResolvedValue({ user: USER, companyId: 'c1', storeId: 's1', country: { minorUnit: 3 } });
+    const jod = { items: [line({ unitPrice: 17.5, lineTotal: 17.5 })], deliveryFee: 3.25 }; // the calculator says 20.75
+    given({ ...jod, totalAmount: 20.7504 });
+    expect((await (await flip(true)).json()).changed, '0.0004 off').toBe(true);
+    given({ ...jod, totalAmount: 20.7496 });
+    expect((await (await flip(true)).json()).changed, '0.0004 under').toBe(true);
+    given({ ...jod, totalAmount: 20.7506 });
+    expect((await (await flip(true)).json()).code, '0.0006 off').toBe('COD_DRIFT');
+    given({ ...jod, totalAmount: 20.752 });
+    expect((await (await flip(true)).json()).code, '0.002 off').toBe('COD_DRIFT');
+  });
+
+  it('a currency with no minor unit: half a unit passes, anything past it does not (the boundary itself is the limit’s, not drift)', async () => {
+    requireContext.mockResolvedValue({ user: USER, companyId: 'c1', storeId: 's1', country: { minorUnit: 0 } });
+    const whole = { items: [line({ unitPrice: 20, lineTotal: 20 })], deliveryFee: 3 }; // the calculator says 23
+    given({ ...whole, totalAmount: 23.4 });
+    expect((await (await flip(true)).json()).changed, '0.4 off').toBe(true);
+    given({ ...whole, totalAmount: 23.5 });
+    expect((await (await flip(true)).json()).changed, 'exactly half a unit').toBe(true);
+    given({ ...whole, totalAmount: 23.6 });
+    expect((await (await flip(true)).json()).code, '0.6 off').toBe('COD_DRIFT');
+    given({ ...whole, totalAmount: 24 });
+    expect((await (await flip(true)).json()).code, 'a whole unit off').toBe('COD_DRIFT');
+  });
+
+  it('two decimals: the upper edge is 0.005 — 23.005 passes, 23.0051 does not', async () => {
+    given({ totalAmount: 23.005 });
+    expect((await (await flip(true)).json()).changed, 'exactly half a cent').toBe(true);
+    given({ totalAmount: 23.0051 });
+    expect((await (await flip(true)).json()).code, 'past half a cent').toBe('COD_DRIFT');
+  });
+
+  it('floating point does not turn the limit itself into drift: 10.005 against 10 is exactly half a cent, though 10.005 − 10 is 0.005000000000000782', async () => {
+    // The slack of 1e-9 in the limit is for this and nothing else; without it this order is refused for a difference of nothing.
+    given({ shippingBatch: null, deliveryFee: 0, shippingCost: 0, items: [line({ unitPrice: 10, lineTotal: 10 })], totalAmount: 10.005 });
     expect((await (await flip(true)).json()).changed).toBe(true);
   });
 });
