@@ -1,15 +1,16 @@
 /**
- * WHAT THE OFFERS ON AN ORDER SAY ABOUT DELIVERY — «yes», «no», or nothing at all.
+ * WHAT THE OFFERS ON A SALES-PAGE ORDER SAY ABOUT DELIVERY — «yes», «no», or nothing at all.
  *
- * An offer carries «السعر شامل التوصيل» as a box the owner ticks or unticks (`Offer.deliveryIncluded`, ticked by default). The store has
- * its own policy («السعر المُعلن يشمل التوصيل») for the orders no offer speaks for — a Telegram message, a sheet row, a price typed by
- * hand. This is the one place that reads the offers of an order and answers for them; `priceIncludesDeliveryFor` then asks the store
- * only when this returns `undefined`.
+ * An offer carries «السعر شامل التوصيل» as a box the owner ticks or unticks (`Offer.deliveryIncluded`, ticked by default). The store
+ * has its own policy («السعر المُعلن يشمل التوصيل») for the orders no offer speaks for. The landing page and the storefront
+ * (`public-order.ts`) are the one door where an offer may say NO as well as yes (1/11, the owner: «بدي اترك مجال … من اللاندنج انو
+ * اقدر احدد اذا شامل ولا لأ بظبط»); this is the reader it uses, and `priceIncludesDeliveryFor` asks the store only when this returns
+ * `undefined`. Telegram, the systems door and the paste-in dialog do NOT use it: the store's switch covers them whole, and an offer
+ * there still only ever turns delivery on.
  *
  *   · ANY line whose offer includes delivery makes the whole order include it — a customer pays one delivery fee or none, and the
- *     owner ruled that a printed promise («السعر شامل التوصيل») is never broken at the door (see `public-order.ts`).
- *   · «NO» only when EVERY line carries an offer and EVERY one of them says no. The owner can tell a sales-page offer «لا، أضف التوصيل»
- *     even in a store that includes delivery for everything else (1/11: «بدي اترك مجال … أحدد إذا شامل ولا لأ بظبط»).
+ *     owner ruled that a printed promise («السعر شامل التوصيل») is never broken at the door.
+ *   · «NO» only when EVERY line carries an offer and EVERY one of them says no.
  *   · Anything else — no offers at all, or a line with no offer beside a line whose offer says no — is silence: the store decides for
  *     the line that has no offer, and a basket with one line the store includes is a basket that includes.
  *

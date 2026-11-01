@@ -67,22 +67,33 @@ const draw = async () => {
 };
 
 describe('the checkbox under a store', () => {
-  it('is followed by what turning it on covers, in the owner’s order: the three doors, the profit, who beats it', async () => {
+  it('is followed by what turning it on covers, in the owner’s order: the doors, the profit, who may say otherwise', async () => {
     await draw();
     const checkbox = screen.getByRole('checkbox', { name: /السعر المُعلن يشمل التوصيل/ });
     const sentence = checkbox.closest('div')!.querySelector('p.leading-relaxed');
     expect(sentence, 'the help sentence is not drawn under the checkbox').toBeTruthy();
     const text = (sentence!.textContent ?? '').replace(/\s+/g, ' ');
     expect(text).toContain('إذا كل طلباتك توصيلها مجاني');
-    for (const door of ['تلجرام', 'الشيتات', 'صفحات البيع']) expect(text, door).toContain(door);
+    // What it covers — TRUE of the code: the store is asked for these, whole (or, on the sales page, wherever no offer says no).
+    for (const door of ['تلجرام', 'الأنظمة الخارجية', 'صفحات البيع']) expect(text, door).toContain(door);
     expect(text).toContain('بيغيّر ربحك');
     expect(text).toContain('أجرة التوصيل بتنخصم من الإيراد');
-    // The two places that beat it, named as the screens call them.
-    expect(text).toContain('شامل التوصيل');
-    expect(text).toContain('السعر شامل التوصيل');
-    expect(text).toContain('كلمتهم بتغلب هاد الإعداد');
+    // The two places that may say otherwise, named as the screens call them — and ONLY them.
+    expect(text).toContain('خانة «شامل التوصيل»');
+    expect(text).toContain('علامة «السعر شامل التوصيل»');
+    expect(text).toContain('عرض صفحة البيع');
     // And that it is not retroactive.
     expect(text).toContain('الطلبات اللي انكتبت قبل ما تغيّره بتضل متل ما هي');
+  });
+
+  it('NEGATIVE: it does not promise what the code does not do — no «الشيتات» as a door the store decides, no «كل عرض» beating it', async () => {
+    // The review (1/11): the import dialog has its own box and the migration door always includes, so the store is not what decides
+    // for a sheet; and an unticked offer is heard on the sales page ONLY, not at Telegram or the systems door.
+    await draw();
+    const checkbox = screen.getByRole('checkbox', { name: /السعر المُعلن يشمل التوصيل/ });
+    const text = (checkbox.closest('div')!.querySelector('p.leading-relaxed')!.textContent ?? '').replace(/\s+/g, ' ');
+    expect(text).not.toMatch(/بيشمل[^.]*الشيتات/);
+    expect(text).not.toContain('كلمتهم بتغلب');
   });
 
   it('ticking it still writes the store’s flag, and only that', async () => {

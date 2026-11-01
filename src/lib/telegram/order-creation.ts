@@ -20,7 +20,6 @@
  */
 import { toLatinDigits } from '../latin-digits';
 import { priceIncludesDeliveryFor } from '../delivery-fees';
-import { offersSayDeliveryIncluded } from '../offer-delivery';
 import { db } from '../db';
 import { notify } from '../notify';
 import { logAudit } from '../audit';
@@ -49,10 +48,9 @@ export interface CreateTelegramOrderInput {
   /** اسم الصفحة التجارية من الرسالة = المصدر في Orders (غير مجموعة تيليجرام) */
   pageName?: string;
   /**
-   * Turns delivery-inclusive ON for this order when the message itself says so (its parsed «توصيل مجاني»), as an offer's
-   * `deliveryIncluded` does. It never turns it off: an absent or `false` value says nothing — the text just did not mention
-   * delivery — so the bound offer's own yes or no (read from `line.offer` regardless of this) and then the store's own policy
-   * decide. Nothing here writes the store.
+   * Turns delivery-inclusive ON for this order, as an offer's `deliveryIncluded` does — the same `priceIncludesDeliveryFor`,
+   * which only ever turns it ON. The bound offer's own `deliveryIncluded` is read from `line.offer` regardless of this.
+   * Absent, the store's own policy decides. Nothing here writes the store.
    */
   deliveryIncluded?: boolean;
   /** «مرجع المصدر: … · وقت الطلب بالمصدر: … · العرض: …» — kept in the internal notes and nowhere else. */
@@ -182,11 +180,11 @@ export async function createTelegramOrder(input: CreateTelegramOrderInput): Prom
   try {
     // The delivery fee is keyed on the region, so bind it at intake.
     const resolvedRegionId = await resolveRegionId(db, store.countryId, input.governorate ?? address);
-    // The store's pricing policy — the same rule every other door follows: the bound offer says yes or no for its own bundle,
-    // a message that itself says «شامل التوصيل» turns it on, and with neither the store decides.
+    // The store's pricing policy — the same rule every other door follows; the offer's `deliveryIncluded` turns it on
+    // for this order, as at the storefront, and can never turn it off.
     const priceIncludesDelivery = await priceIncludesDeliveryFor(
       store.id,
-      input.deliveryIncluded === true ? true : offersSayDeliveryIncluded([line.offer?.deliveryIncluded])
+      line.offer?.deliveryIncluded === true || input.deliveryIncluded === true ? true : undefined
     );
 
     const order = await db.$transaction(async (tx) => {

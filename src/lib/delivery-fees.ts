@@ -99,25 +99,29 @@ export function codForOrder(params: {
  * Whether an order's price already contains delivery — ONE rule for every
  * door (direct, landing page, storefront, Telegram).
  *
- * It is the STORE's pricing policy for every order no offer speaks for (a
- * Telegram message, a sheet row, a price typed by hand). An offer that DOES
- * speak — «السعر شامل التوصيل» ticked or unticked — answers for its own
- * bundle, yes or no (`offersSayDeliveryIncluded` reads the offers of an
- * order). It used to be applied to direct orders only, so a store that
+ * It is the STORE's pricing policy; an offer may turn it on for its own
+ * bundle. It used to be applied to direct orders only, so a store that
  * advertises delivery-inclusive prices had its landing-page and Telegram
  * orders collected as price + fee.
  *
- * (1/11, the owner: «بدي اترك مجال … أحدد إذا شامل ولا لأ بظبط».) It used to
- * be that an offer could only switch delivery ON, so an unticked box on an
- * offer was silently overridden the day the store's policy was turned on. A
- * NO that the owner wrote on an offer is now obeyed; silence — `undefined` or
- * `null` — still follows the store.
+ * AN OFFER'S «NO» IS HEARD AT ONE DOOR ONLY — the sales page (1/11, the owner:
+ * «إذا كل طلباتك توصيلها مجاني، شغّله ليشمل تلجرام والشيتات وصفحات البيع …
+ * بس بدي اترك مجال لاضافة الطلب يدويا او من اللاندنج انو اقدر احدد اذا شامل
+ * ولا لأ بظبط»). The store's switch covers Telegram, the systems door and the
+ * paste-in dialog WHOLE, so for them an offer still only ever turns delivery
+ * ON; a Telegram order is always bound to an offer, and an offer always
+ * answers yes or no, so letting its «no» through there would leave the store's
+ * switch nothing to decide. The sales page (`public-order.ts`) passes
+ * `offerMaySayNo` and an unticked offer — every selling line carrying one — is
+ * obeyed there; an order typed by hand has its own box on the form.
  */
 export async function priceIncludesDeliveryFor(
   storeId: string,
-  offersSay?: boolean | null
+  offerDeliveryIncluded?: boolean | null,
+  options?: { offerMaySayNo?: boolean }
 ): Promise<boolean> {
-  if (typeof offersSay === 'boolean') return offersSay;
+  if (offerDeliveryIncluded === true) return true;
+  if (offerDeliveryIncluded === false && options?.offerMaySayNo === true) return false;
   const store = await db.store.findFirst({ where: { id: storeId }, select: { priceIncludesDelivery: true } });
   return store?.priceIncludesDelivery === true;
 }

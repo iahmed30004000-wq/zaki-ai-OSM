@@ -260,98 +260,54 @@ describe('POST /api/orders/ai-intake (confirm) — the same box on the reviewer�
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * AN OFFER'S «NO» IS HEARD — EVEN IN A STORE WHOSE POLICY INCLUDES DELIVERY (the owner, 1/11)
+ * THE STORE'S SWITCH COVERS THE FORM-LESS DOORS WHOLE — an unticked offer does not beat it here (the owner, 1/11)
  *
  * His words: «إذا كل طلباتك توصيلها مجاني، شغّله ليشمل تلجرام والشيتات وصفحات البيع … بس بدي اترك مجال لاضافة الطلب يدويا او من اللاندنج
- * انو اقدر احدد اذا شامل ولا لأ بظبط». The store's policy covers every order no offer speaks for; an offer (what a sales page sells)
- * says yes or no for its own bundle; the box on the form (above) is the person's word for that one order and beats both.
+ * انو اقدر احدد اذا شامل ولا لأ بظبط». The room he asks for is two places: the order typed by hand (the box above) and the sales page
+ * (`public-order.ts`, held in `public-order-delivery.test.ts`). Everywhere else the store's switch decides: an offer there still only
+ * ever turns delivery ON. A first version of this change let an offer's «no» through at EVERY door; the independent review showed that
+ * left the store's switch nothing to decide for Telegram (every Telegram order is bound to an offer, and an offer always answers).
  *
- * Before this an offer could only switch delivery ON — an unticked «السعر شامل التوصيل» was silently overridden the day the store's
- * policy was turned on. Production today: 18 offers, all ticked, so nothing changes until an owner unticks one.
+ * So, at these two doors WITHOUT the box (an API caller, an older screen): an unticked bundle in a store that includes delivery is
+ * delivery-included; in a store that does not, it is not.
  * ═══════════════════════════════════════════════════════════════════════
  */
-describe('an offer that says NO is obeyed; silence follows the store', () => {
-  const PRODUCT_2 = { ...PRODUCT, id: 'prod-cream-0002', name: 'كريم ٢' };
-  const line = (productId: string, offer: { id: string } | null) => ({
-    productId, ...(offer ? { offerId: offer.id } : {}), quantity: 1, unitPrice: 20,
-  });
+describe('without the box, the store’s switch beats an unticked offer — at the manual and the paste-in doors', () => {
   const store = (includes: boolean) => db.store.findFirst.mockResolvedValue({ priceIncludesDelivery: includes });
-  /** Both bundles are on sale; the order says which line carries which. The door wants exactly the products the lines name. */
-  function bothOnSale(products: unknown[] = [PRODUCT]) {
-    db.offer.findMany.mockResolvedValue([ONE_PIECE, ONE_PIECE_PLUS_DELIVERY]);
-    activeOffersFor.mockResolvedValue([ONE_PIECE, ONE_PIECE_PLUS_DELIVERY].map((o) => toOfferView(o, SYRIA.minorUnit)));
-    db.product.findMany.mockResolvedValue(products);
-  }
-  const basket = [PRODUCT, PRODUCT_2];
-  async function typed(items: unknown[]) {
-    vi.clearAllMocks();
-    db.order.create.mockResolvedValue({ id: 'o-new', orderNumber: 'SY-2026-0200' });
-    const res = await manual(undefined, { items });
-    expect(res.status, JSON.stringify(await res.clone().json())).toBe(200);
-    return manualWritten();
-  }
+  const bound = (offer: { id: string }) => [{ productId: PRODUCT.id, offerId: offer.id, quantity: 1, unitPrice: 20 }];
 
-  it('POST /api/orders · one line: a NO in a store that includes delivery adds the fee; silence and a YES do not', async () => {
+  it('POST /api/orders: an unticked offer in a store that includes delivery → included (the store covers it)', async () => {
     store(true);
-    bothOnSale();
-    const no = await typed([line(PRODUCT.id, ONE_PIECE_PLUS_DELIVERY)]);
-    expect(no.priceIncludesDelivery).toBe(false);
-    expect(no.totalAmount).toBe(23);
-
-    store(true); bothOnSale();
-    const yes = await typed([line(PRODUCT.id, ONE_PIECE)]);
-    expect(yes.priceIncludesDelivery).toBe(true);
-    expect(yes.totalAmount).toBe(20);
-
-    store(true); bothOnSale();
-    const silent = await typed([line(PRODUCT.id, null)]);
-    expect(silent.priceIncludesDelivery, 'no offer: the store speaks').toBe(true);
-    expect(silent.totalAmount).toBe(20);
-  });
-
-  it('POST /api/orders · in a store that does not include delivery nothing changed: a NO and silence add the fee, a YES does not', async () => {
-    store(false); bothOnSale();
-    expect((await typed([line(PRODUCT.id, ONE_PIECE_PLUS_DELIVERY)])).priceIncludesDelivery).toBe(false);
-    store(false); bothOnSale();
-    expect((await typed([line(PRODUCT.id, null)])).priceIncludesDelivery).toBe(false);
-    store(false); bothOnSale();
-    expect((await typed([line(PRODUCT.id, ONE_PIECE)])).priceIncludesDelivery).toBe(true);
-  });
-
-  it('POST /api/orders · a basket: every line a NO is a NO; ONE yes makes it yes; a line with no offer lets the store speak', async () => {
-    store(true); bothOnSale(basket);
-    const allNo = await typed([line(PRODUCT.id, ONE_PIECE_PLUS_DELIVERY), line(PRODUCT_2.id, ONE_PIECE_PLUS_DELIVERY)]);
-    expect(allNo.priceIncludesDelivery, 'two NOs').toBe(false);
-
-    store(true); bothOnSale(basket);
-    const noAndYes = await typed([line(PRODUCT.id, ONE_PIECE_PLUS_DELIVERY), line(PRODUCT_2.id, ONE_PIECE)]);
-    expect(noAndYes.priceIncludesDelivery, 'any line that includes it makes the order include it').toBe(true);
-
-    store(true); bothOnSale(basket);
-    const noAndBare = await typed([line(PRODUCT.id, ONE_PIECE_PLUS_DELIVERY), line(PRODUCT_2.id, null)]);
-    expect(noAndBare.priceIncludesDelivery, 'the line with no offer is the store’s, and the store includes').toBe(true);
-
-    store(false); bothOnSale(basket);
-    const noAndBareElsewhere = await typed([line(PRODUCT.id, ONE_PIECE_PLUS_DELIVERY), line(PRODUCT_2.id, null)]);
-    expect(noAndBareElsewhere.priceIncludesDelivery, 'and where the store does not, neither does the order').toBe(false);
-  });
-
-  it('POST /api/orders · the box on the form still beats a NO and a YES alike (the person’s word for this order)', async () => {
-    store(true); bothOnSale();
-    vi.clearAllMocks();
-    db.order.create.mockResolvedValue({ id: 'o-new', orderNumber: 'SY-2026-0200' });
-    await manual(true, { items: [line(PRODUCT.id, ONE_PIECE_PLUS_DELIVERY)] });
+    sell(ONE_PIECE_PLUS_DELIVERY);
+    const res = await manual(undefined, { items: bound(ONE_PIECE_PLUS_DELIVERY) });
+    expect(res.status, JSON.stringify(await res.clone().json())).toBe(200);
     expect(manualWritten().priceIncludesDelivery).toBe(true);
+    expect(manualWritten().totalAmount).toBe(20);
   });
 
-  it('POST /api/orders/ai-intake · a pasted order matched to a NO offer adds the fee even in a store that includes delivery', async () => {
+  it('POST /api/orders: the same offer in a store that does not include delivery → the fee is added (as always)', async () => {
+    store(false);
+    sell(ONE_PIECE_PLUS_DELIVERY);
+    await manual(undefined, { items: bound(ONE_PIECE_PLUS_DELIVERY) });
+    expect(manualWritten().priceIncludesDelivery).toBe(false);
+    expect(manualWritten().totalAmount).toBe(23);
+  });
+
+  it('POST /api/orders: the box still beats the store — ticked or not — whatever the offer', async () => {
+    store(true);
+    sell(ONE_PIECE_PLUS_DELIVERY);
+    await manual(false, { items: bound(ONE_PIECE_PLUS_DELIVERY) });
+    expect(manualWritten().priceIncludesDelivery).toBe(false);
+  });
+
+  it('POST /api/orders/ai-intake: a pasted order matched to an unticked offer, in a store that includes delivery → included', async () => {
     store(true);
     sell(ONE_PIECE_PLUS_DELIVERY);
     expect((await pasted(undefined)).status).toBe(200);
-    expect(db.order.create.mock.calls[0][0].data.priceIncludesDelivery).toBe(false);
+    expect(db.order.create.mock.calls[0][0].data.priceIncludesDelivery).toBe(true);
   });
 
-  it('POST /api/orders/ai-intake · with no offer matched the store speaks (included here), and a YES stays a yes', async () => {
+  it('POST /api/orders/ai-intake: with no offer matched, the store speaks, either way', async () => {
     store(true);
     sell(null);
     expect((await pasted(undefined)).status).toBe(200);
@@ -360,8 +316,8 @@ describe('an offer that says NO is obeyed; silence follows the store', () => {
     vi.clearAllMocks();
     db.order.create.mockResolvedValue({ id: 'o-new', orderNumber: 'SY-2026-0200', source: 'AI Intake' });
     store(false);
-    sell(ONE_PIECE);
+    sell(null);
     expect((await pasted(undefined)).status).toBe(200);
-    expect(db.order.create.mock.calls[0][0].data.priceIncludesDelivery).toBe(true);
+    expect(db.order.create.mock.calls[0][0].data.priceIncludesDelivery).toBe(false);
   });
 });

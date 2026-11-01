@@ -1,5 +1,4 @@
 ﻿import { priceIncludesDeliveryFor } from '@/lib/delivery-fees';
-import { offersSayDeliveryIncluded } from '@/lib/offer-delivery';
 import { NextResponse } from 'next/server';
 import { notify } from '@/lib/notify';
 import { z } from 'zod';
@@ -464,22 +463,18 @@ export async function POST(req: Request) {
      * ANY line carrying a delivery-inclusive offer makes the whole order
      * one — the same rule the storefront door already applies
      * (`public-order.ts:480`), and the only rule that can be stated about
-     * a single parcel: a customer pays one delivery fee or none. And an
-     * offer's «NO» is heard too (the owner, 1/11): when every line carries an
-     * offer and every offer is unticked the order does not include delivery,
-     * whatever the store's policy — `offersSayDeliveryIncluded` is the one
-     * reader of the offers, shared by every door.
+     * a single parcel: a customer pays one delivery fee or none.
      */
+    const anyLineIncludesDelivery = requestedLines.some(
+      (l) => l.offerId && offersById.get(l.offerId)?.deliveryIncluded === true
+    );
     const priceIncludesDelivery =
       // The box on the form is the person's word for this order (see the schema above); without it, the offers and the store decide.
       typeof v.priceIncludesDelivery === 'boolean'
         ? v.priceIncludesDelivery
         : await priceIncludesDeliveryFor(
             storeId,
-            offersSayDeliveryIncluded([
-              ...(offerId ? [offer?.deliveryIncluded] : []),
-              ...requestedLines.map((l) => (l.offerId ? offersById.get(l.offerId)?.deliveryIncluded : undefined)),
-            ])
+            offer?.deliveryIncluded === true || anyLineIncludesDelivery ? true : offer?.deliveryIncluded
           );
     /**
      * THE FREE UNITS THIS LINE CARRIES — ONE GIFT PER BUNDLE, AS THE OFFER SAYS.

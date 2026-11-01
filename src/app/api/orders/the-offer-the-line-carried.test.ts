@@ -83,9 +83,7 @@ describe('the door reads the offer each line carried', () => {
      * order is delivery-inclusive», which no courier can collect.
      */
     const src = door();
-    // (old → new, 1/11) «any line includes» is read by `offersSayDeliveryIncluded` — shared by every door — which is also where an
-    // offer's «no» is heard. The door hands it one entry per line (and the top-level offer of the single-product shorthand).
-    expect(src).toMatch(/offersSayDeliveryIncluded\(/);
+    expect(src).toMatch(/anyLineIncludesDelivery/);
     /*
      * ⚠️ AND IT IS PASSED TO THE RULE, NOT MERELY COMPUTED.
      *
@@ -97,8 +95,7 @@ describe('the door reads the offer each line carried', () => {
      * purpose, which is the only way that kind of claim is ever found.
      */
     const call = src.slice(src.indexOf('priceIncludesDeliveryFor('));
-    expect(call.slice(0, 500), 'محسوب وما بينمرّر للقاعدة').toContain('offersSayDeliveryIncluded(');
-    expect(call.slice(0, 500), 'سطور الطلب كلها بتنقرأ').toContain('requestedLines.map(');
+    expect(call.slice(0, 200), 'محسوب وما بينمرّر للقاعدة').toContain('anyLineIncludesDelivery');
   });
 
   it('and the order records which bundle sold it', () => {
@@ -154,9 +151,8 @@ describe('and the AI door asks the store what its prices mean', () => {
     // still asked, with one more thing it may only turn ON. `an-offer-pasted-is-the-offer-typed.test.ts` drives it.
     // 1/11: the reviewer's own box («شامل التوصيل») is her word for the order when it is sent; the question to the store
     // is what is asked when it is NOT sent, so it is still there, unchanged — as the fallback of the box.
-    // (old → new, 1/11) The bundle's yes OR no is read by `offersSayDeliveryIncluded` — the one reader every door shares.
     expect(src, 'باب الذكاء لسّا ما بيسأل عن سياسة المتجر').toContain(
-      ': await priceIncludesDeliveryFor(storeId, offersSayDeliveryIncluded([quantityOffer?.deliveryIncluded]))'
+      ': await priceIncludesDeliveryFor(storeId, quantityOffer?.deliveryIncluded)'
     );
     expect(src, 'خانة «شامل التوصيل» ما بتُقرأ').toContain("typeof p.priceIncludesDelivery === 'boolean'");
   });

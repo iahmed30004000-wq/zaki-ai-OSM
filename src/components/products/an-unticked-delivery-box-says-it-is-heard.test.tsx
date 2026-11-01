@@ -6,15 +6,17 @@ import React from 'react';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * THE OFFER'S «السعر شامل التوصيل», AND THE STORE'S «السعر المُعلن يشمل التوصيل» — ON THE SCREEN (the owner, 1/11)
+ * THE OFFER'S «السعر شامل التوصيل» SAYS WHERE ITS «NO» IS HEARD — ON THE OFFER EDITOR (the owner, 1/11)
  *
  * His words: «إذا كل طلباتك توصيلها مجاني، شغّله ليشمل تلجرام والشيتات وصفحات البيع. بيغيّر ربحك … بس بدي اترك مجال لاضافة الطلب يدويا
  * او من اللاندنج انو اقدر احدد اذا شامل ولا لأ بظبط».
  *
- *  · under the store's checkbox, the sentence that says what it covers (Telegram, the sheets, the sales pages), that it changes the
- *    profit, and that the order form's box and each offer's box beat it — so the setting is not turned on blind;
- *  · on the offer editor, an UNTICKED «السعر شامل التوصيل» says that the fee is added even where the store includes delivery — and
- *    nothing is said while it is ticked.
+ *  · an UNTICKED «السعر شامل التوصيل» says that the fee is added on the SALES PAGE — when every offer in the customer's basket is
+ *    unticked — even where the store includes delivery; and what does not change that (a ticked offer or a product with no offer in the
+ *    basket). The independent review (1/11) found the first wording claimed more: that the fee is added whatever the door, which is
+ *    false for the order form's own box and for a mixed basket;
+ *  · nothing is said while it is ticked, nor for the bundle shown AFTER the order (its own paragraph says the flag has no effect there).
+ *    The store card's own sentence is held in `the-store-policy-says-what-it-covers.test.tsx`.
  * ═══════════════════════════════════════════════════════════════════════
  */
 
@@ -44,8 +46,9 @@ async function openNewOffer() {
 const box = () => screen.getByRole('checkbox', { name: /السعر شامل التوصيل/ }) as HTMLInputElement;
 /** The hint is one paragraph with a bold span inside it, so it is found by the paragraph's whole text. */
 const hint = () =>
-  Array.from(document.querySelectorAll('p')).find((p) => /حتى لو[\s\S]*إعداد المتجر[\s\S]*مفعَّلاً/.test((p.textContent ?? '').replace(/\s+/g, ' '))) ??
-  null;
+  Array.from(document.querySelectorAll('p')).find((p) =>
+    /صفحة البيع[\s\S]*حتى لو[\s\S]*إعداد المتجر[\s\S]*مفعَّلاً/.test((p.textContent ?? '').replace(/\s+/g, ' '))
+  ) ?? null;
 
 describe('the offer editor', () => {
   it('a new offer opens ticked (the column’s default) and says nothing about the store', async () => {
@@ -54,13 +57,27 @@ describe('the offer editor', () => {
     expect(hint()).toBeNull();
   });
 
-  it('unticking it says the fee is added even where the store includes delivery — and ticking it again takes the sentence away', async () => {
+  it('unticking it says WHERE the fee is added — the sales page, every offer in the basket unticked, even in a store that includes delivery', async () => {
     const user = await openNewOffer();
     await user.click(box());
     expect(box().checked).toBe(false);
-    expect(hint()).toBeTruthy();
-    expect(hint()!.textContent).toContain('كلمة العرض تغلب إعداد المتجر');
+    const text = (hint()?.textContent ?? '').replace(/\s+/g, ' ');
+    expect(text).toContain('صفحة البيع');
+    expect(text).toContain('كل عروض سلّته غير مؤشَّرة');
+    // …and what keeps it from applying, so it is not read as a promise about every order:
+    expect(text).toContain('عرض مؤشَّر أو منتج بلا عرض');
+    // NEGATIVE: it does not claim to beat the order form's own box, and it no longer says an offer beats the store everywhere.
+    expect(text).not.toContain('كلمة العرض تغلب إعداد المتجر');
     await user.click(box());
     expect(hint()).toBeNull();
+  });
+
+  it('NEGATIVE: for the bundle shown AFTER the order the flag has no effect, and the hint is not drawn beside a paragraph that says so', async () => {
+    const user = await openNewOffer();
+    await user.click(box()); // unticked
+    expect(hint()).toBeTruthy();
+    await user.click(screen.getByRole('checkbox', { name: /العرض بعد الطلب/ }));
+    expect(hint()).toBeNull();
+    expect(screen.getByText(/لا أثر له هنا/)).toBeTruthy();
   });
 });

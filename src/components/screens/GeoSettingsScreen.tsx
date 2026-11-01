@@ -285,9 +285,10 @@ export function GeoSettingsScreen() {
                   <p className="text-xs text-[var(--sys-muted-foreground)]" dir="ltr">
                     /{s.slug} · {storeTypeLabel(s.type)}
                   </p>
-                  {/* The policy for every order no offer speaks for — Telegram, a sheet row, a price typed by hand — and
-                      until it had a control every store priced as price + delivery. An offer's own «السعر شامل التوصيل» (yes OR
-                      no) and the box on the order form beat it (the owner, 1/11: «أحدد إذا شامل ولا لأ بظبط»). */}
+                  {/* The policy for Telegram, the systems door and the paste-in dialog WHOLE, and for the sales page wherever no
+                      offer says otherwise; until it had a control every store priced as price + delivery. The exceptions are the
+                      owner's (1/11: «أحدد إذا شامل ولا لأ بظبط»): the box on the order form, and an unticked offer on the
+                      sales page — and only there. */}
                   <label className="mt-1 flex items-center gap-1.5 text-xs text-[var(--sys-foreground)]">
                     <input
                       type="checkbox"
@@ -297,9 +298,10 @@ export function GeoSettingsScreen() {
                     السعر المُعلن يشمل التوصيل
                   </label>
                   <p className="mt-0.5 max-w-prose text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
-                    شغّله إذا كل طلباتك توصيلها مجاني: بيشمل طلبات تلجرام والشيتات وصفحات البيع. بيغيّر ربحك، لأنو أجرة التوصيل
-                    بتنخصم من الإيراد. وبتقدر تحدد «شامل» أو لأ بالظبط وإنت بتضيف الطلب يدوي (خانة «شامل التوصيل»)، ولكل عرض
-                    بصفحة البيع (خانة «السعر شامل التوصيل»): كلمتهم بتغلب هاد الإعداد. الطلبات اللي انكتبت قبل ما تغيّره بتضل متل ما هي.
+                    شغّله إذا كل طلباتك توصيلها مجاني: بيشمل طلبات تلجرام وطلبات الأنظمة الخارجية وصفحات البيع. بيغيّر ربحك، لأنو
+                    أجرة التوصيل بتنخصم من الإيراد. والاستثناء بإيدك: الطلب اللي بتضيفه يدوي أو بالذكاء أو من شيت (استيراد) بتحدد
+                    فيه «شامل» أو لأ بخانة «شامل التوصيل» (مفعّلة افتراضياً)، وعرض صفحة البيع بتفك علامة «السعر شامل التوصيل»
+                    عنه فبتنضاف الأجرة. الطلبات اللي انكتبت قبل ما تغيّره بتضل متل ما هي.
                   </p>
                 </div>
                 <button

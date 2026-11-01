@@ -554,13 +554,16 @@ async function takeOrder(
    * abused is the OFFER — do not mark a cheap bundle delivery-included —
    * not a second rule here.
    *
-   * AND AN OFFER'S «NO» IS HEARD TOO (the owner, 1/11: «بدي اترك مجال … أحدد إذا شامل ولا لأ بظبط»). When EVERY line carries an offer and
-   * every offer is unticked, the order is not delivery-included even in a store whose policy includes delivery for everything else;
-   * a line with no offer, or any offer that says yes, leaves the answer as it was. `offersSayDeliveryIncluded` is the one reader.
+   * AND AT THIS DOOR AN OFFER'S «NO» IS HEARD TOO (the owner, 1/11: «بدي اترك مجال … من اللاندنج انو اقدر احدد اذا شامل ولا لأ بظبط»).
+   * When EVERY line carries an offer and every offer is unticked, the order is not delivery-included even in a store whose policy
+   * includes delivery for everything else; a line with no offer, or any offer that says yes, leaves the answer as it was.
+   * `offersSayDeliveryIncluded` is the reader. NO OTHER DOOR PASSES `offerMaySayNo`: the store's switch covers Telegram, the systems
+   * door and the paste-in dialog whole (see `priceIncludesDeliveryFor`).
    */
   const priceIncludesDelivery = await priceIncludesDeliveryFor(
     store.id,
-    offersSayDeliveryIncluded(lines.map((l) => l.offer?.deliveryIncluded))
+    offersSayDeliveryIncluded(lines.map((l) => l.offer?.deliveryIncluded)),
+    { offerMaySayNo: true }
   );
 
   // The door, as the order channels name it — so the channel table on the
