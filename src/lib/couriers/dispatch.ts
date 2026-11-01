@@ -88,8 +88,11 @@ async function claimForSend(orderId: string, batchId: string): Promise<Claim> {
    * The batch's orders were read once, before the loop; this order may be claimed minutes later. A person who flips «شامل التوصيل»
    * on it in between (or any other door that re-prices an order still on the trolley) changes `totalAmount` in the row, and a send
    * that used the figure from the early read would tell the courier to collect a sum our own record no longer holds. Reading it in
-   * the statement that takes the row closes that: every door that moves the amount refuses once `courier_send_started_at` is set,
-   * so from the claim onwards the figure cannot change, and until it, this is the figure the row had.
+   * the statement that takes the row closes that: the figure the courier is told is the one the row HAD at the moment of the claim.
+   * The «شامل التوصيل» door refuses once `courier_send_started_at` is set (its write carries `courierSendStartedAt: null`); the
+   * order PATCH — the packing pen, an approved change request — does not look at the claim yet (BACKLOG RV558), so a write that
+   * read the order before this claim can still land just after it. That window is one request now, not the minutes between the
+   * read of the batch and its send.
    */
   const won = await db.$queryRaw<{ id: string; totalAmount: number | string }[]>`
     UPDATE "orders"
