@@ -285,6 +285,19 @@ describe('without the box, the store’s switch beats an unticked offer — at t
     expect(manualWritten().totalAmount).toBe(20);
   });
 
+  it('POST /api/orders: the single-product shorthand (a top-level offerId, no items) follows the same rule', async () => {
+    store(true);
+    sell(ONE_PIECE_PLUS_DELIVERY);
+    const res = await manualPOST(
+      new Request('http://localhost/api/orders', asJson({
+        customerName: 'محمد الحسن', customerPhone: '0944555666', customerAddress: 'دوما', source: 'Manual', shippingCost: 3,
+        productId: PRODUCT.id, offerId: ONE_PIECE_PLUS_DELIVERY.id, quantity: 1, sellingPrice: 20,
+      })),
+    );
+    expect(res.status, JSON.stringify(await res.clone().json())).toBe(200);
+    expect(manualWritten().priceIncludesDelivery).toBe(true); // the store covers it: an unticked offer is not heard at this door
+  });
+
   it('POST /api/orders: the same offer in a store that does not include delivery → the fee is added (as always)', async () => {
     store(false);
     sell(ONE_PIECE_PLUS_DELIVERY);
