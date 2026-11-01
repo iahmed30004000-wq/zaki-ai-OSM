@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { stripComments } from './guard-source';
 
 /**
  * WHETHER AN ORDER'S PRICE ALREADY CONTAINS DELIVERY — ONE RULE, EVERY DOOR.
@@ -82,6 +83,9 @@ describe('every door asks it', () => {
     const at = src.search(/await priceIncludesDeliveryFor\(/);
     expect(at, 'the door no longer asks the rule').toBeGreaterThan(-1);
     expect(src.slice(at, at + 600), 'the offers’ answer is not what the rule is asked').toContain('offersSayDeliveryIncluded(');
-    expect(src, 'a door-local «any offer includes» is the old rule coming back').not.toMatch(/anyLineIncludesDelivery|\.some\(\(l\) => l\.offer\?\.deliveryIncluded === true\)/);
+    // (Comments excluded: a door may still NAME the old rule while explaining why it is gone.)
+    expect(stripComments(src), 'a door-local «any offer includes» is the old rule coming back').not.toMatch(
+      /anyLineIncludesDelivery|\.some\(\(l\) => l\.offer\?\.deliveryIncluded === true\)/
+    );
   });
 });
