@@ -172,8 +172,12 @@ describe('a courier sent to by API', () => {
     ],
   };
 
+  /** Which orders of the batch are left (the screen asks before it sends): the two the answer below is about. */
+  const plan = { pending: summary.outcomes.map((o) => ({ id: o.orderId, orderNumber: o.orderNumber })), sent: [] };
+
   beforeEach(() => {
     apiJson.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/dispatch') && !init?.method) return plan;
       if (init?.method === 'POST' && url.endsWith('/dispatch')) return summary;
       if (init?.method === 'POST') return { batch: { id: 'b-1', batchNumber: 'B-26-0001' }, shipped: 1, exceptions: [], courierApi: true };
       if (url.includes('/api/ops/shipments')) return { orders: [row], heldCount: 0 };
@@ -195,9 +199,12 @@ describe('a courier sent to by API', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'رحّل إلى الشركة واجلب الباركود' }));
     });
-    const sent = apiJson.mock.calls.find((c) => String(c[0]).endsWith('/dispatch'));
+    // it asks which orders are left, then sends them (the two of this batch fit one piece)
+    const asked = apiJson.mock.calls.find((c) => String(c[0]).endsWith('/dispatch') && !(c[1] as RequestInit | undefined)?.method);
+    expect(asked?.[0]).toBe('/api/ops/shipments/b-1/dispatch');
+    const sent = apiJson.mock.calls.find((c) => String(c[0]).endsWith('/dispatch') && (c[1] as RequestInit | undefined)?.method === 'POST');
     expect(sent?.[0]).toBe('/api/ops/shipments/b-1/dispatch');
-    expect((sent?.[1] as RequestInit).method).toBe('POST');
+    expect(JSON.parse((sent?.[1] as RequestInit).body as string)).toEqual({ orderIds: ['1', '2'] });
     expect(await screen.findByText(/رُحّل 1/, undefined, WAIT)).toBeTruthy();
     // the same sentence the batches screen gives for a governorate with no id
     expect(screen.getByText(/السويداء: لا رمز لها عند الشركة بعد/)).toBeTruthy();
@@ -260,6 +267,7 @@ describe('a courier sent to by API', () => {
     let answer: (v: unknown) => void = () => undefined;
     let made = 0;
     apiJson.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/dispatch') && !init?.method) return plan;
       if (init?.method === 'POST' && url.endsWith('/dispatch')) return new Promise((r) => { answer = r; });
       if (init?.method === 'POST') {
         made += 1;

@@ -1,6 +1,7 @@
 'use client';
 
 import { DispatchResult } from '@/components/ops/DispatchResult';
+import { DispatchInterrupted, dispatchInChunks, type DispatchProgress } from '@/components/ops/dispatchInChunks';
 import { OrderLink } from '@/components/orders/OrderLink';
 import { PrepEditSheet, type PrepParcel } from '@/components/ops/PrepEditSheet';
 import React, { useCallback, useState } from 'react';
@@ -98,6 +99,8 @@ export function ShippingBatchesScreen() {
   const ask = useAsk();
   const confirm = useConfirm();
   const [result, setResult] = useState<{ batchId: string; summary: DispatchSummary } | null>(null);
+  // How far a send has got: a big batch goes a few orders at a time, and the button says so instead of spinning.
+  const [progress, setProgress] = useState<({ batchId: string } & DispatchProgress) | null>(null);
   const [error, setError] = useState<string | null>(null);
   const labelSize = useLabelSize();
   // Somebody phoned and ordered. There is nothing to confirm — the call WAS
@@ -183,18 +186,24 @@ export function ShippingBatchesScreen() {
   async function dispatch(batch: Batch) {
     setBusy(batch.id);
     setResult(null);
+    setProgress({ batchId: batch.id, done: 0, total: 0 });
     try {
-      const summary = await apiJson<DispatchSummary>(`/api/ops/shipments/${batch.id}/dispatch`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
+      // A few orders per request, with the count on the button: a hundred and sixty orders are minutes, and one request is not.
+      const summary = await dispatchInChunks(batch.id, (p) => setProgress({ batchId: batch.id, ...p }));
       setResult({ batchId: batch.id, summary });
       await load();
     } catch (e) {
-      toast.failed(e instanceof Error ? e.message : 'تعذر الترحيل');
+      if (e instanceof DispatchInterrupted) {
+        // What was done is shown, the rest is listed as not sent, and the sentence says to refresh and press again.
+        setResult({ batchId: batch.id, summary: e.summary });
+        toast.failed(e.message);
+        await load().catch(() => undefined);
+      } else {
+        toast.failed(e instanceof Error ? e.message : 'تعذر الترحيل');
+      }
     } finally {
       setBusy(null);
+      setProgress(null);
     }
   }
 
@@ -617,7 +626,9 @@ export function ShippingBatchesScreen() {
                   className={`min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-primary)] text-[var(--sys-primary)] font-medium inline-flex items-center gap-1.5 disabled:opacity-40${wide}`}
                 >
                   {busy === b.id ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiBarcodeLine className="w-4 h-4" />}
-                  رحّل إلى الشركة واجلب الباركود
+                  {progress?.batchId === b.id && progress.total > 0
+                    ? `جارٍ الترحيل… ${progress.done} من ${progress.total}`
+                    : 'رحّل إلى الشركة واجلب الباركود'}
                 </button>
               ) : null;
             const manualTitle = 'هذه الشركة غير مربوطة بنظامها — البوليصة تُطبع من عندنا والباركود يُدخَل يدوياً عند استلامه.';

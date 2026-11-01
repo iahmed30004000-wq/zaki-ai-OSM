@@ -148,9 +148,46 @@ export function piecesInParcel(order: {
 }
 
 /**
+ * WHAT IS STILL TO SEND, so a big batch can go in small pieces.
+ *
+ * A hundred and sixty orders are minutes of the courier's time, one order at a time, and no single request waits that long: the
+ * screen gave up after fifteen seconds with «انتهت مهلة الطلب» while the server went on. So the screen asks here first, then
+ * sends a few at a time (`dispatchBatch` with `orderIds`) and shows how far it has got. Ids and numbers only — no name, no
+ * phone: this is the `ops.ship` door, and the batch read that carries those is `ops.batches`.
+ *
+ * Asked of the same batch the send is asked of: this store's, still being filled, with a courier that is the store's own.
+ */
+export interface DispatchPlan {
+  /** No barcode yet, in the order the send takes them. */
+  pending: { id: string; orderNumber: string }[];
+  /** Already carry the courier's barcode: nothing to send, and said so in the answer. */
+  sent: { id: string; orderNumber: string }[];
+}
+
+export async function dispatchPlan(input: { batchId: string; companyId: string; storeId: string }): Promise<DispatchPlan> {
+  const batch = await db.shippingBatch.findFirst({
+    where: { id: input.batchId, companyId: input.companyId, storeId: input.storeId },
+    select: { id: true, status: true, provider: { select: { companyId: true, storeId: true } } },
+  });
+  if (!batch) throw new Error('BATCH_NOT_FOUND');
+  if (batch.provider && !courierBelongsToStore(batch.provider, input.companyId, input.storeId)) throw new Error('COURIER_NOT_IN_STORE');
+  if (batch.status !== 'READY') throw new Error('BATCH_NOT_READY');
+
+  const orders = await db.order.findMany({
+    where: { shippingBatchId: batch.id, companyId: input.companyId },
+    select: { id: true, orderNumber: true, trackingNumber: true },
+    orderBy: { orderNumber: 'asc' },
+  });
+  return {
+    pending: orders.filter((o) => !o.trackingNumber).map(({ id, orderNumber }) => ({ id, orderNumber })),
+    sent: orders.filter((o) => !!o.trackingNumber).map(({ id, orderNumber }) => ({ id, orderNumber })),
+  };
+}
+
+/**
  * Send a batch's orders to their courier and record what came back.
  *
- * `orderIds` narrows it to a retry of the ones that failed; omitted, the
+ * `orderIds` narrows it to a retry of the ones that failed — or to one piece of a big batch (`dispatchPlan`); omitted, the
  * whole batch is attempted and the ones already sent are skipped.
  */
 export async function dispatchBatch(input: {

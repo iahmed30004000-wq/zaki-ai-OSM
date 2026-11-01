@@ -54,20 +54,28 @@ const batch = {
   _count: { orders: 36 },
 };
 
-const refusedAll = {
-  sent: 0, skipped: 1, failed: 35,
-  outcomes: [
-    ...Array.from({ length: 35 }, (_, i) => ({
-      orderId: `o${i + 4}`, orderNumber: `ORD-2026-${String(i + 4).padStart(4, '0')}`, ok: false, error: REFUSAL,
-    })),
-    { orderId: 'sw', orderNumber: 'ORD-2026-0508', ok: false, skipped: 'NO_COURIER_CITY', regionName: 'السويداء' },
-  ],
-};
+/** The 36 orders of the batch with no barcode yet: 35 the courier refuses, and one governorate it has no id for. */
+const PENDING = [...Array.from({ length: 35 }, (_, i) => `o${i + 4}`), 'sw'];
+const numberOf = (id: string) => (id === 'sw' ? 'ORD-2026-0508' : `ORD-2026-${String(Number(id.slice(1))).padStart(4, '0')}`);
+
+/** What the courier's door answers for the orders it was handed — one outcome each, as the server does. */
+const answerFor = (ids: string[]) => ({
+  sent: 0,
+  skipped: ids.filter((id) => id === 'sw').length,
+  failed: ids.filter((id) => id !== 'sw').length,
+  outcomes: ids.map((id) =>
+    id === 'sw'
+      ? { orderId: 'sw', orderNumber: numberOf('sw'), ok: false, skipped: 'NO_COURIER_CITY', regionName: 'السويداء' }
+      : { orderId: id, orderNumber: numberOf(id), ok: false, error: REFUSAL }
+  ),
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
   apiJson.mockImplementation(async (url: string, init?: RequestInit) => {
-    if (init?.method === 'POST' && url.endsWith('/dispatch')) return refusedAll;
+    // Which orders are left (GET), then the pieces (POST, a few `orderIds` at a time).
+    if (url.endsWith('/dispatch') && !init?.method) return { pending: PENDING.map((id) => ({ id, orderNumber: numberOf(id) })), sent: [] };
+    if (init?.method === 'POST' && url.endsWith('/dispatch')) return answerFor(JSON.parse(init.body as string).orderIds);
     return { batches: [batch], pagination: { total: 1 } };
   });
 });
@@ -97,7 +105,7 @@ describe('«دفعات الشحن» — the failed orders of a dispatch', () => 
     expect((screen.getByRole('button', { name: 'رحّل إلى الشركة واجلب الباركود' }) as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('pressing it again sends the whole batch to the same door — the server decides what is skipped', async () => {
+  it('pressing it again asks again which orders are left and sends them again, a few at a time — the server decides what is skipped', async () => {
     render(<ShippingBatchesScreen />);
     const press = async () => {
       const send = await screen.findByRole('button', { name: 'رحّل إلى الشركة واجلب الباركود' }, WAIT);
@@ -107,9 +115,18 @@ describe('«دفعات الشحن» — the failed orders of a dispatch', () => 
     };
     await press();
     await press();
-    const sends = apiJson.mock.calls.filter((c) => String(c[0]).endsWith('/dispatch'));
-    expect(sends.map((c) => c[0])).toEqual(['/api/ops/shipments/b3/dispatch', '/api/ops/shipments/b3/dispatch']);
-    expect(JSON.parse((sends[1][1] as RequestInit).body as string)).toEqual({});
+    const calls = apiJson.mock.calls.filter((c) => String(c[0]).endsWith('/dispatch'));
+    // each press: one question, then the pieces — 36 orders, eight at a time, is five requests
+    const posts = calls.filter((c) => (c[1] as RequestInit | undefined)?.method === 'POST');
+    expect(calls.filter((c) => !(c[1] as RequestInit | undefined)?.method)).toHaveLength(2);
+    expect(posts).toHaveLength(10);
+    expect(new Set(posts.map((c) => c[0]))).toEqual(new Set(['/api/ops/shipments/b3/dispatch']));
+    const pieces = posts.map((c) => JSON.parse((c[1] as RequestInit).body as string).orderIds as string[]);
+    expect(pieces.slice(0, 5).map((p) => p.length)).toEqual([8, 8, 8, 8, 4]);
+    expect(pieces.slice(0, 5).flat()).toEqual(PENDING);
+    expect(pieces.slice(5).flat()).toEqual(PENDING);
+    // and each piece is given longer than the fifteen seconds every other request gets
+    for (const c of posts) expect((c[1] as { timeoutMs?: number }).timeoutMs).toBeGreaterThan(15_000);
   });
 
   it('NEGATIVE: a batch already handed over (سُلّمت) has no send button — there is nothing left to send', async () => {
