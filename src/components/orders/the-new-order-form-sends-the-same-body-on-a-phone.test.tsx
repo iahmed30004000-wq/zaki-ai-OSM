@@ -117,6 +117,8 @@ const BASE = {
   customerCity: 'عمّان',
   regionId: 'r1',
   items: [{ productId: 'p1', offerId: null, quantity: 1, unitPrice: expect.any(String) }],
+  // «شامل التوصيل»: the box is ticked unless it is unticked, and it is sent either way (its own test: the-order-form-has-the-delivery-box).
+  priceIncludesDelivery: true,
   channelId: null,
   moderatorId: null,
   customerNotes: '',

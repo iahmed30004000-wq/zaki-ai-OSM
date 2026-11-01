@@ -208,6 +208,9 @@ export async function POST(req: Request) {
         moderatorId: z.string().min(10).max(64).optional().nullable(),
         notes: z.string().trim().max(500).optional().nullable(),
         source: z.string().trim().max(40).optional().nullable(),
+        // The reviewer's box «السعر شامل التوصيل»: her word for THIS order when it is sent (as at `POST /api/orders`); left out, the
+        // offer and the store's policy decide, as they always did.
+        priceIncludesDelivery: z.boolean().optional(),
       });
       const check = confirmSchema.safeParse(body.parsed);
       if (!check.success) {
@@ -468,7 +471,10 @@ export async function POST(req: Request) {
                  * can only switch it ON, never off. With no bundle bound
                  * the store's own policy is the whole of the answer.
                  */
-                priceIncludesDelivery: await priceIncludesDeliveryFor(storeId, quantityOffer?.deliveryIncluded),
+                priceIncludesDelivery:
+                  typeof p.priceIncludesDelivery === 'boolean'
+                    ? p.priceIncludesDelivery
+                    : await priceIncludesDeliveryFor(storeId, quantityOffer?.deliveryIncluded),
                 // Which bundle sold this: `null` when the quantity matched none and the reviewer's own figure stood.
                 offerId: quantityOffer?.id ?? null,
                 quantity: qty,

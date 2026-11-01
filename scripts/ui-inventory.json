@@ -291,7 +291,7 @@
   },
   "src/components/orders/AiOrderModal.tsx": {
     "buttons": 4,
-    "inputs": 10,
+    "inputs": 11,
     "columns": 0,
     "cards": 0,
     "modals": 1,
@@ -351,7 +351,7 @@
   },
   "src/components/orders/CreateOrderModal.tsx": {
     "buttons": 2,
-    "inputs": 10,
+    "inputs": 11,
     "columns": 0,
     "cards": 0,
     "modals": 1,
@@ -391,7 +391,7 @@
   },
   "src/components/orders/ImportOrdersDialog.tsx": {
     "buttons": 4,
-    "inputs": 1,
+    "inputs": 2,
     "columns": 0,
     "cards": 0,
     "modals": 1,

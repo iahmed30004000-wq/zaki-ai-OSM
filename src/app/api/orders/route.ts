@@ -237,6 +237,19 @@ export async function POST(req: Request) {
       quantity: count(999, 1).optional(),
       sellingPrice: amount(100000).optional(),
       shippingCost: amount(1000).optional(),
+      /**
+       * «شامل التوصيل» — THE BOX ON THE FORM, AND THE PERSON'S OWN WORD.
+       *
+       * Sent by the order form (ticked unless she unticks it) and by the import dialog. When it is sent it IS the order's flag:
+       * ticked, the courier's fee is never added on top of the price; unticked, it is added when the shipment is created —
+       * whatever an offer or the store's policy says, because she has just said it for THIS order. Left out (an API caller, an
+       * older screen) the flag is what it always was: the offer's, or the store's policy (`priceIncludesDeliveryFor`).
+       *
+       * Why a box and not only the offers: a price typed or imported that EQUALS an offer's is still not that offer, and an
+       * order that is not bound to a delivery-included offer used to be a plain price with the fee added at shipment — the
+       * 1/11 case, a 20$ line that the customer had been told includes delivery and was collected at 23.
+       */
+      priceIncludesDelivery: z.boolean().optional(),
       source: z.string().trim().max(60).optional(),
       // The channel this came through. Its name is written into `source` too,
       // so the order keeps saying where it came from even if the channel is
@@ -461,10 +474,14 @@ export async function POST(req: Request) {
     const anyLineIncludesDelivery = requestedLines.some(
       (l) => l.offerId && offersById.get(l.offerId)?.deliveryIncluded === true
     );
-    const priceIncludesDelivery = await priceIncludesDeliveryFor(
-      storeId,
-      offer?.deliveryIncluded === true || anyLineIncludesDelivery ? true : offer?.deliveryIncluded
-    );
+    const priceIncludesDelivery =
+      // The box on the form is the person's word for this order (see the schema above); without it, the offers and the store decide.
+      typeof v.priceIncludesDelivery === 'boolean'
+        ? v.priceIncludesDelivery
+        : await priceIncludesDeliveryFor(
+            storeId,
+            offer?.deliveryIncluded === true || anyLineIncludesDelivery ? true : offer?.deliveryIncluded
+          );
     /**
      * THE FREE UNITS THIS LINE CARRIES — ONE GIFT PER BUNDLE, AS THE OFFER SAYS.
      *
