@@ -196,6 +196,18 @@ describe('the assigner', () => {
     expect(JSON.parse(world.activities[0].metadata)).toEqual({ agentId: 'sara', reason: 'RETURNING_CUSTOMER' });
   });
 
+  it('holds NOTHING for a win-back offer — its door says «held by nobody: whoever is free calls it»', async () => {
+    world.audience = [{ id: 'sara' }];
+    // The customer's earlier order was lost (rejected by Sara); the supervisor's offer is a new NEW order that replaces it.
+    const { fresh } = returning({ claimedById: 'sara' }, { replacesOrderId: 'the-lost-order' });
+    const ordinary = order({ customerId: 'regular', createdAt: hoursAgo(1) });
+
+    expect(await reserveReturningCustomers(scope, NOW)).toBe(1);
+
+    expect(byId(fresh.id).assignedToId).toBeNull();
+    expect(byId(ordinary.id).assignedToId).toBe('sara');
+  });
+
   it('holds nothing for a customer with no history, and does not even ask who is available', async () => {
     const { resolveAudience } = await import('./notification-audience');
     order({ customerId: 'first-timer' });
@@ -372,6 +384,34 @@ describe('the claim gate', () => {
   it('an order nobody holds is anybody’s, as it always was', async () => {
     const free = order();
     expect(await atomicClaim({ orderId: free.id, userId: 'huda', now: NOW, lockExpiresAt: lock })).toBe(true);
+  });
+});
+
+describe('the pull’s own write asks «is it held for somebody else?» again', () => {
+  it('a hold that lands AFTER the pick is not taken over by the pull — the order stays hers, and nothing is written for the puller', async () => {
+    const o = order({ customerId: 'regular' });
+    // The pick answers `o`, and THEN Sara is named for it: the assigner ran between the pick and the write.
+    type Pick = { getMockImplementation(): (a: Row) => Promise<Row | null>; mockImplementation(f: (a: Row) => Promise<Row | null>): void };
+    const pick = db.order.findFirst as unknown as Pick;
+    const real = pick.getMockImplementation()!;
+    let landed = false;
+    pick.mockImplementation(async (args) => {
+      const found = await real(args);
+      if (found && !landed) {
+        landed = true;
+        Object.assign(found, { assignedToId: 'sara', assignedAt: NOW, assignee: world.users.get('sara') });
+      }
+      return found;
+    });
+    try {
+      const out = await pullNextOrder(scope, { id: 'huda', role: 'CONFIRMATION_AGENT' }, CAL, NOW);
+      expect(out.ok).toBe(false);
+      expect(byId(o.id).claimedById).toBeNull();
+      expect(byId(o.id).assignedToId).toBe('sara');
+      expect(world.history).toHaveLength(0);
+    } finally {
+      pick.mockImplementation(real);
+    }
   });
 });
 

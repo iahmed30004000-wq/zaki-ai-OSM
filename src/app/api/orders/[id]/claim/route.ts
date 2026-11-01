@@ -93,13 +93,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     // ── Normal claim ──
-    // A returning customer's order is held for the agent who worked him last BEFORE anybody may take it — best-effort: a hold
-    // that could not be written must never stop a claim (the order is then the shared queue's, as it was before holds).
-    await reserveReturningCustomers({ companyId, storeId }, new Date(), { orderIds: [id] }).catch(() => 0);
-
     if (!can(user, 'orders.claim')) {
       return NextResponse.json({ error: 'Forbidden: missing required permission orders.claim', errorAr: 'لا تملك صلاحية سحب الطلبات من الطابور.' }, { status: 403 });
     }
+
+    // A returning customer's order is held for the agent who worked him last BEFORE anybody may take it — best-effort: a hold
+    // that could not be written must never stop a claim (the order is then the shared queue's, as it was before holds). Asked
+    // only of somebody who may claim: the hold write and the audience read behind it are not for any signed-in user to trigger.
+    await reserveReturningCustomers({ companyId, storeId }, new Date(), { orderIds: [id] }).catch(() => 0);
 
     let access = await assertOrderAccess(id, user, { companyId, storeId });
     if (!access.allowed && access.reason === 'NOT_ASSIGNED') {
@@ -197,6 +198,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     });
 
     if (!won) {
+      // The write refuses an order held for a colleague too (`atomicClaim`'s gate). A hold that landed AFTER the check above is the
+      // one race where nobody claimed anything: say whom it is held for, not «already claimed».
+      const heldNow = await db.order.findFirst({
+        where: { id, ...reservedForOthersWhere(user.id, new Date()) },
+        select: { assignee: { select: { name: true } } },
+      });
+      if (heldNow) {
+        const said = reservedMessage(heldNow.assignee?.name);
+        return NextResponse.json(
+          { error: said, errorAr: said, code: 'RESERVED_FOR_COLLEAGUE', heldFor: heldNow.assignee?.name ?? null },
+          { status: 409 }
+        );
+      }
       // Lost the race — read fresh state to tell the user who won
       const fresh = await db.order.findUnique({ where: { id }, select: { claimedById: true } });
       const claimer = fresh?.claimedById

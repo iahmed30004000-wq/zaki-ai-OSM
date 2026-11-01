@@ -119,6 +119,36 @@ describe('taking an order by its id', () => {
     expect(atomicClaim).toHaveBeenCalledTimes(1);
   });
 
+  it('NEGATIVE: somebody who may not claim at all triggers no hold write — the assigner and its audience reads are not for any signed-in user', async () => {
+    can.mockImplementation(() => false);
+    const res = await take();
+    expect(res.status).toBe(403);
+    expect(reserve).not.toHaveBeenCalled();
+    expect(atomicClaim).not.toHaveBeenCalled();
+  });
+
+  it('a hold that lands AFTER the check, and is refused by the write, answers «تابع لـ…» — nobody claimed it', async () => {
+    atomicClaim.mockResolvedValue(false);
+    // the held-check (not held yet), the untouched-order read of her desk, then the read after the refused write (held now)
+    db.order.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(null).mockResolvedValueOnce({ assignee: { name: 'سارة' } });
+
+    const res = await take();
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.code).toBe('RESERVED_FOR_COLLEAGUE');
+    expect(body.errorAr).toBe(reservedMessage('سارة'));
+    expect(body.heldFor).toBe('سارة');
+    expect(db.orderClaimHistory.create).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE: losing the race to a colleague who CLAIMED it still says «already claimed»', async () => {
+    atomicClaim.mockResolvedValue(false);
+    const res = await take();
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('ALREADY_CLAIMED');
+  });
+
   it('is not asked of the person who already holds it (finishing a claim is not taking one)', async () => {
     assertOrderAccess.mockResolvedValue({ allowed: true, order: { ...QUEUED, claimedById: 'a1', signatureStatus: 'SIGNED' } });
     const res = await take();

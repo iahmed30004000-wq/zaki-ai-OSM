@@ -999,7 +999,7 @@ export function OrdersScreen() {
                           {order.reservedFor && (
                             <span
                               className="inline-flex items-center rounded-md border border-[var(--sys-primary)]/40 bg-[var(--sys-primary-soft)] px-2 py-0.5 text-xs font-medium text-[var(--sys-primary)]"
-                              title="زبون راجع: الموظفة اللي تعاملت معه قبل هي اللي تسحب طلبه. بيصير عاماً بعد 24 ساعة من وصوله أو إذا ما كانت متاحة."
+                              title="زبون راجع: الموظفة اللي تعاملت معه قبل هي اللي تسحب طلبه. بيصير عاماً بعد 24 ساعة من حجزه لها أو إذا ما كانت متاحة."
                             >
                               تابع لـ{order.reservedFor.name}
                             </span>

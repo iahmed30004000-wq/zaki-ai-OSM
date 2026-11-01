@@ -43,6 +43,10 @@ export async function reserveReturningCustomers(
       // Never claimed: an order somebody once held and gave back (or the owner pulled back on purpose) is not an arrival, and is
       // not held for anyone a second time.
       claimHistory: { none: {} },
+      // A win-back offer (`replacesOrderId`) is the supervisor's own door and says so: «held by nobody: whoever is free calls it»
+      // (confirmation/winback). It is a new NEW order for a customer somebody worked, and held here it would wait a day for the
+      // very agent who lost the first one.
+      replacesOrderId: null,
       ...(opts.orderIds ? { id: { in: [...opts.orderIds] } } : {}),
     },
     orderBy: { createdAt: 'asc' },
