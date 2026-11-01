@@ -95,7 +95,7 @@ describe('no door hands the shelf a rule of its own', () => {
  */
 describe('the door-side delivery on a shelf that holds 4 of 10', () => {
   type Row = Record<string, any>;
-  function world(shelfQty: number) {
+  function world(shelfQty: number, figures: { productId: string; amount: number }[] = []) {
     const batches: Row[] = shelfQty > 0 ? [{ id: 'b1', companyId: 'c1', storeId: 's1', productId: 'p1', quantityRemaining: shelfQty, quantitySold: 0, costPerUnit: 5, productionDate: new Date('2026-01-01'), createdAt: new Date('2026-01-01') }] : [];
     const movements: Row[] = [];
     const activities: Row[] = [];
@@ -128,6 +128,10 @@ describe('the door-side delivery on a shelf that holds 4 of 10', () => {
       inventoryMovement: {
         findFirst: async ({ where }: Row) => movements.find((m) => m.referenceId === where.referenceId && m.type === where.type) ?? null,
         create: async ({ data }: Row) => (movements.push(data), data),
+      },
+      // The fixed cost an admin set for a product (`ProductFixedCost`): none, unless a test hands some in.
+      productFixedCost: {
+        findMany: async ({ where }: Row) => figures.filter((f) => where.productId.in.includes(f.productId)),
       },
       productionBatch: {
         findMany: async ({ where }: Row) => batches.filter((b) => b.companyId === where.companyId && b.productId === where.productId && b.quantityRemaining > 0 && (!where.storeId || b.storeId === where.storeId)).map((b) => ({ ...b })),
@@ -195,5 +199,30 @@ describe('the door-side delivery on a shelf that holds 4 of 10', () => {
     await door(w);
     expect(w.activities.filter((a) => a.action === 'STOCK_SHORT_AT_DELIVERY')).toHaveLength(0);
     expect(w.batches[0].quantityRemaining).toBe(0);
+  });
+
+  /*
+   * THE OWNER'S FIXED COST, THROUGH THIS DOOR (1/11): the full ordered quantity leaves the shelf here, and the order is written at
+   * what those units cost — the batches' 10 × 5 = 50 where the product has no figure, the figure × 10 where it has one.
+   */
+  it('a shelf that covers it writes the batches’ cost where the product has NO figure: 10 × 5 = 50', async () => {
+    const w = world(10);
+    await door(w);
+    expect(w.orderWrites.filter((d) => d.estimatedCostOfGoods !== undefined).map((d) => d.estimatedCostOfGoods)).toEqual([50]);
+  });
+
+  it('…and the FIGURE × 10 where it has one — 10 × 7 = 70 — with the shelf drawn exactly the same', async () => {
+    const w = world(10, [{ productId: 'p1', amount: 7 }]);
+    await door(w);
+    expect(w.orderWrites.filter((d) => d.estimatedCostOfGoods !== undefined).map((d) => d.estimatedCostOfGoods)).toEqual([70]);
+    expect(w.batches[0].quantityRemaining).toBe(0);
+    expect(w.batches[0].costPerUnit).toBe(5);
+    expect(w.movements).toHaveLength(1);
+  });
+
+  it('…and a SHORT shelf still keeps the estimate, figure or not: nothing is written over it', async () => {
+    const w = world(4, [{ productId: 'p1', amount: 7 }]);
+    await door(w);
+    expect(w.orderWrites.filter((d) => d.estimatedCostOfGoods !== undefined)).toEqual([]);
   });
 });

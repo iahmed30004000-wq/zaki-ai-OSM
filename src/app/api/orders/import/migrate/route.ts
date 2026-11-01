@@ -8,7 +8,7 @@ import { looksLikeXlsx, readXlsxRows } from '@/lib/xlsx-reader';
 import { isValidPhoneFor } from '@/lib/phone-rules';
 import { findOrCreateCustomer } from '@/lib/customer-identity';
 import { orderRefFields } from '@/lib/order-ref';
-import { productCost } from '@/lib/product-cost';
+import { unitCostsOf } from '@/lib/product-fixed-cost';
 import { resolveDeliveryFee } from '@/lib/delivery-fees';
 import { reserveOrderLines } from '@/lib/reservation';
 import {
@@ -114,7 +114,7 @@ export async function POST(req: Request) {
     const deps = {
       findOrCreateCustomer: (tx: never, seed: never) => findOrCreateCustomer(tx, seed),
       orderRefFields: (tx: never, c: string, prefix: string, attempt: number, now: Date) => orderRefFields(tx, c, prefix, attempt, now),
-      averageCost: async (tx: never, c: string, productId: string) => (await productCost(tx, c, productId)).average,
+      unitCost: async (tx: never, c: string, productId: string) => (await unitCostsOf(tx, c, [productId])).get(productId) ?? 0,
       deliveryFee: async (tx: never, p: { deliveryProviderId: string; regionId: string | null; minorUnit: number }) => (await resolveDeliveryFee(tx, p)).fee,
       reserve: (tx: never, orderId: string, opts: { allowNegativeStock: boolean }) => reserveOrderLines(tx, orderId, opts),
     };

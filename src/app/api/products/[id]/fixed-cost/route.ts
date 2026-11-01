@@ -25,8 +25,9 @@ import { apiErrorResponse } from '@/lib/api-error';
  *   HISTORY — an audit row with the figure before and after and the reason, since the product itself carries no timeline. Setting
  *   the same figure again writes nothing.
  *
- * It changes no order. Orders are priced from this figure in a separate step (and an order already written keeps what it was
- * written with).
+ * It rewrites no order row. The orders costed AFTER this call are priced from the figure — one raised at any door, the units a lines edit
+ * adds, a replacement, and every delivery recorded from now on (`product-fixed-cost.ts` says where each asks it); an order already
+ * written keeps what it was written with, and one already delivered keeps its cost for good.
  */
 const body = z.object({
   amount: z.union([z.null(), moneyInput(10_000_000)]),

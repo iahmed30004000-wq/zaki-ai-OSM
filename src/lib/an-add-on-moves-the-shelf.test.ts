@@ -115,8 +115,10 @@ describe('reserving the order at confirmation', () => {
 });
 
 /** A transaction client for delivery and return, holding one order. */
-function shelfTx(order: Record<string, unknown>) {
+function shelfTx(order: Record<string, unknown>, figures: { productId: string; amount: number }[] = []) {
   return {
+    // The fixed cost an admin set for a product (`ProductFixedCost`): none, unless a test hands some in.
+    productFixedCost: { findMany: vi.fn(async () => figures) },
     inventoryMovement: { findFirst: vi.fn(async (a: { where: { type: string } }) => (a.where.type === 'SALE' ? { id: 'sold' } : null)), create: vi.fn() },
     order: { findFirst: vi.fn(async () => order), update: vi.fn() },
     orderItem: { updateMany: vi.fn() },
@@ -147,6 +149,26 @@ describe('delivering the order', () => {
     expect(out).toMatchObject({ taken: 3, cost: 11 });
     // The reservation has served its purpose — for the add-on too.
     expect(tx.orderAddOn.updateMany).toHaveBeenCalledWith({ where: { orderId: 'o1', reservedQty: { gt: 0 } }, data: { reservedQty: 0 } });
+    // No fixed cost: the order is written at what the batches priced, the add-on's 6 included (5 + 6).
+    expect(tx.order.update).toHaveBeenCalledWith({ where: { id: 'o1' }, data: { estimatedCostOfGoods: 11 } });
+  });
+
+  it('an ADD-ON counts at its product’s fixed cost too: the shampoo (2 units) at 4 is 8, whatever its batch cost 6 — the line stays at its batches (5)', async () => {
+    const tx = shelfTx(ORDER, [{ productId: 'p2', amount: 4 }]);
+    tx.inventoryMovement.findFirst.mockResolvedValue(null as never);
+    drawDownStock.mockImplementation(async (_tx: unknown, a: { productId: string; quantity: number }) => ({
+      taken: a.quantity, short: 0, cost: a.productId === 'p2' ? 6 : 5,
+    }));
+    const out = await consumeOrderStock(tx as never, { orderId: 'o1', companyId: 'c1' });
+    expect(tx.order.update).toHaveBeenCalledWith({ where: { id: 'o1' }, data: { estimatedCostOfGoods: 13 } }); // 5 + 2 × 4
+    // …and the ledger's figure is the batches' (5 + 6): the figure is the ORDER's.
+    expect(out.cost).toBe(11);
+    // The add-on's product is among the products asked, once, with the line's.
+    expect(tx.productFixedCost.findMany).toHaveBeenCalledTimes(1);
+    expect(tx.productFixedCost.findMany).toHaveBeenCalledWith({
+      where: { companyId: 'c1', productId: { in: ['p1', 'p2'] } },
+      select: { productId: true, amount: true },
+    });
   });
 
   it('NEGATIVE: an order with no add-ons draws exactly its lines, as before', async () => {

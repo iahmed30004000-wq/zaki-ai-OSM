@@ -336,6 +336,9 @@ const { db, requireContext, requirePermission, logAudit, notify, findOrCreateCus
       // The opening row of the state history, which this door now writes
       // beside the order — see `an-order-and-its-lines-are-one-write`.
       orderStatusLog: { create: vi.fn() },
+      // No fixed cost for any product here: `unitCostsOf` falls through to the batch average the `productCost` mock answers
+      // (a plain function, so the `resetAllMocks` below leaves it answering).
+      productFixedCost: { findMany: async () => [] },
       /*
        * THE DOUBLE IS GIVEN THE TRANSACTION, NOT THE CODE A WAY AROUND IT.
        *
@@ -380,7 +383,12 @@ vi.mock('@/lib/authorization', () => ({
 vi.mock('@/lib/audit', () => ({ logAudit: (...a: unknown[]) => logAudit(...a) }));
 vi.mock('@/lib/notify', () => ({ notify: (...a: unknown[]) => notify(...a) }));
 vi.mock('@/lib/customer-identity', () => ({ findOrCreateCustomer: (...a: unknown[]) => findOrCreateCustomer(...a) }));
-vi.mock('@/lib/product-cost', () => ({ productCost: (...a: unknown[]) => productCost(...a) }));
+vi.mock('@/lib/product-cost', () => ({
+  productCost: (...a: unknown[]) => productCost(...a),
+  // `unitCostsOf` asks for several products at once: each costs what the single-product answer says.
+  productCosts: async (d: unknown, c: unknown, ids: string[]) =>
+    new Map(await Promise.all(ids.map(async (id) => [id, await productCost(d, c, id)] as const))),
+}));
 vi.mock('@/lib/regions', () => ({ resolveRegionId: (...a: unknown[]) => resolveRegionId(...a) }));
 vi.mock('@/lib/order-ref', () => ({ orderRefFields: (...a: unknown[]) => orderRefFields(...a) }));
 vi.mock('@/lib/blacklist', () => ({ activeBlock: (...a: unknown[]) => activeBlock(...a) }));

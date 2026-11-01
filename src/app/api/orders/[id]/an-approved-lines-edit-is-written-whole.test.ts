@@ -31,6 +31,8 @@ const { fake, requireContext, logAudit, notify, activeOffersFor, adapterFor, can
     elsewhere: {} as Record<string, number>,
     /** What one unit of a product cost, per product. */
     costs: {} as Record<string, number>,
+    /** The FIXED COST an admin set for a product (`ProductFixedCost`) — none, unless a test says so. */
+    figures: {} as Record<string, number>,
     request: {} as Row,
     batch: null as Row | null,
     offerRow: null as Row | null,
@@ -124,6 +126,14 @@ const { fake, requireContext, logAudit, notify, activeOffersFor, adapterFor, can
         (where.productId.in as string[])
           .filter((id) => (fake.shelf[id] ?? 0) > 0)
           .map((id) => ({ productId: id, quantityRemaining: fake.shelf[id], costPerUnit: fake.costs[id] ?? 0 })),
+    },
+    // The fixed figures, answered the way the table does: this company's, for the products asked, and only the ones that have a row.
+    productFixedCost: {
+      findMany: ({ where }) =>
+        Object.entries(fake.figures)
+          // 'company-0001' is `COMPANY` below — hoisted code cannot see the constant, so the figure's company is spelled out here.
+          .filter(([productId]) => where.companyId === 'company-0001' && (where.productId.in as string[]).includes(productId))
+          .map(([productId, amount]) => ({ productId, amount })),
     },
     offer: { findFirst: () => fake.offerRow },
     shippingBatch: { findFirst: () => fake.batch },
@@ -307,6 +317,7 @@ const seed = (over: { order?: Row; lines?: Row[]; addOns?: Row[] } = {}) => {
   fake.shelf = { [CREAM]: 50, [SOAP]: 50, [DROPS]: 50, [P_A]: 50, [P_B]: 50, [P_C]: 50 };
   fake.elsewhere = {};
   fake.costs = { [CREAM]: 2.5, [SOAP]: 1.2, [P_A]: 1, [P_B]: 1, [P_C]: 1 };
+  fake.figures = {};
   fake.batch = { status: 'READY', batchNumber: 'B-7' };
   fake.offerRow = null;
   fake.claims = 0;
@@ -1183,6 +1194,100 @@ describe('ⅩⅢb · the cost is an estimate by the share of the units', () => {
     fake.order.estimatedCostOfGoods = 20;
     await apply();
     expect(JSON.parse(activityOf('ORDER_UPDATED').metadata)).not.toHaveProperty('costNote');
+  });
+});
+
+/*
+ * ⅩⅢd · A FIXED FIGURE PRICES THE UNITS THAT GO ON (the owner, 1/11: «ثابت لكل الطلبات وما يتغير تحت اي ظرف»).
+ *
+ * The same order as above: كريم 3 (+1) and صابون 2 — six units, struck at 20 or 24 — and a request that moves only the cream.
+ * A product's figure is what the units that GO ON cost; the units that come off still come off at the order's own average, and a line
+ * nobody touched keeps its share whatever its product's figure says. Today's batches (cream 2.500, soap 1.200) are the answer only
+ * where a product has no figure.
+ */
+describe('ⅩⅢd · what the units that go on cost, when their product has a fixed figure', () => {
+  it('MORE units go on at the FIGURE, not at the batches: three more cream at 4 on the 20 it had is 32 (the batches say 2.500 → 27.500)', async () => {
+    fake.order.estimatedCostOfGoods = 20;
+    fake.figures[CREAM] = 4;
+    expect((await apply()).status).toBe(200);
+    expect(fake.order.estimatedCostOfGoods).toBe(32);
+  });
+
+  it('the figure of ANOTHER product moves nothing: the cream has none, so it is the batches (27.500) — the soap’s 9 is not in the arithmetic', async () => {
+    fake.order.estimatedCostOfGoods = 20;
+    fake.figures[SOAP] = 9;
+    expect((await apply()).status).toBe(200);
+    expect(fake.order.estimatedCostOfGoods).toBe(27.5);
+  });
+
+  it('ZERO is a figure: three more units of an item that costs nothing add nothing — neither the batches (2.500) nor the order’s own average stand in', async () => {
+    fake.order.estimatedCostOfGoods = 20;
+    fake.figures[CREAM] = 0;
+    expect((await apply()).status).toBe(200);
+    expect(fake.order.estimatedCostOfGoods).toBe(20);
+  });
+
+  it('a figure beats a product with NO batch on the shelf now: the order’s own average does not stand in for it', async () => {
+    fake.order.estimatedCostOfGoods = 20;
+    fake.costs[CREAM] = 0; // no costed stock — without a figure the order’s own 20 ÷ 6 would be used
+    fake.figures[CREAM] = 4;
+    expect((await apply()).status).toBe(200);
+    expect(fake.order.estimatedCostOfGoods).toBe(32);
+  });
+
+  it('a line nobody touched keeps its share even when its product HAS a figure: the soap’s 9 moves nothing', async () => {
+    fake.order.estimatedCostOfGoods = 20;
+    fake.figures[CREAM] = 4;
+    fake.figures[SOAP] = 9;
+    expect((await apply()).status).toBe(200);
+    expect(fake.order.estimatedCostOfGoods).toBe(32);
+  });
+
+  it('a price alone moves no units, so no figure is applied: the cost stays 20', async () => {
+    fake.order.estimatedCostOfGoods = 20;
+    fake.figures[CREAM] = 4;
+    approve({ lines: lines([{ lineId: 'line-cream-01', lineTotal: { from: 36, to: 40 } }]) });
+    expect((await apply()).status).toBe(200);
+    expect(fake.order.estimatedCostOfGoods).toBe(20);
+  });
+
+  it('FEWER units still come off at the order’s own average — a figure is for the units that go on: 24 over six units, three off the cream, is 12 even at a figure of 9', async () => {
+    fake.order.estimatedCostOfGoods = 24;
+    fake.figures[CREAM] = 9;
+    approve({ lines: lines([{ lineId: 'line-cream-01', quantity: { from: 3, to: 1 }, lineTotal: { from: 36, to: 12 }, freeQuantity: { from: 1, to: 0 } }]) });
+    expect((await apply()).status).toBe(200);
+    expect(fake.order.estimatedCostOfGoods).toBe(12);
+  });
+
+  it('A SWAP puts the new product on at ITS figure and takes the old line off at the order’s own average: soap(2) → drops at 7 on 24 is 24 − 4×2 + 7×2 = 30', async () => {
+    fake.order.estimatedCostOfGoods = 24;
+    fake.figures[DROPS] = 7;
+    approve({ lines: lines([{ lineId: 'line-soap-02', productId: { from: SOAP, to: DROPS }, lineTotal: { from: 10, to: 17 } }]) });
+    const res = await apply();
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect(fake.order.estimatedCostOfGoods).toBe(30);
+  });
+
+  it('…and the same swap with no figure is what it was: the new product has no costed stock, so the order’s own average stands in (24)', async () => {
+    fake.order.estimatedCostOfGoods = 24;
+    approve({ lines: lines([{ lineId: 'line-soap-02', productId: { from: SOAP, to: DROPS }, lineTotal: { from: 10, to: 17 } }]) });
+    expect((await apply()).status).toBe(200);
+    expect(fake.order.estimatedCostOfGoods).toBe(24);
+  });
+
+  it('a cost struck at nothing is left alone even where a figure exists, and the order says so — a figure on three units does not half-cost an order', async () => {
+    fake.order.estimatedCostOfGoods = 0;
+    fake.figures[CREAM] = 4;
+    expect((await apply()).status).toBe(200);
+    expect(fake.order.estimatedCostOfGoods).toBe(0);
+    expect(JSON.parse(activityOf('ORDER_UPDATED').metadata).costNote).toContain('غير معروفة');
+  });
+
+  it('rounds by the order’s currency (JOD has three places): three more units at 1.11117 on the 20 it had is 23.33351 → 23.334', async () => {
+    fake.order.estimatedCostOfGoods = 20;
+    fake.figures[CREAM] = 1.11117;
+    expect((await apply()).status).toBe(200);
+    expect(fake.order.estimatedCostOfGoods).toBe(23.334);
   });
 });
 

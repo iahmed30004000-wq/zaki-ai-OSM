@@ -10,7 +10,7 @@ import { CORE_STATES, deriveCoreState, getZone, whereForState, type CoreState, t
 import { OUTCOME_CLOSED, OUTCOME_LABEL_AR, orderOutcome } from '@/lib/order-outcome';
 import { orderRefFields } from '@/lib/order-ref';
 import { computeCod } from '@/lib/money';
-import { productCosts } from '@/lib/product-cost';
+import { unitCostsOf } from '@/lib/product-fixed-cost';
 import { normalizePhoneNumber } from '@/lib/phone';
 import { isValidPhoneFor, phoneErrorFor, ruleFor } from '@/lib/phone-rules';
 import { activeBlock } from '@/lib/blacklist';
@@ -538,12 +538,14 @@ export async function POST(req: Request) {
     const qtyTotal = requestedLines.reduce((sum, l) => sum + l.quantity, 0);
     const price = money.subtotal;
 
-    // Cost of goods across every line, at the WEIGHTED AVERAGE of the stock
-    // actually on hand. It used to read `batches[0]` — whichever batch the
-    // query returned first, which is an accident rather than a policy, and
+    // Cost of goods across every line, at what ONE unit of the product costs
+    // (`unitCostsOf`): the fixed figure an admin set for it — the owner's
+    // «ثابت لكل الطلبات» — and, where it has none, the WEIGHTED AVERAGE of the
+    // stock actually on hand. It used to read `batches[0]` — whichever batch
+    // the query returned first, which is an accident rather than a policy, and
     // it moved every order's reported profit by the gap between two
     // arbitrary runs.
-    const costByProduct = await productCosts(
+    const costByProduct = await unitCostsOf(
       db,
       companyId,
       [...new Set(requestedLines.map((l) => l.productId))]
@@ -560,7 +562,7 @@ export async function POST(req: Request) {
       requestedLines
         .reduce(
           (sum, l) =>
-            sum + (costByProduct.get(l.productId)?.average || 0) * (l.quantity + giftOf(l)),
+            sum + (costByProduct.get(l.productId) ?? 0) * (l.quantity + giftOf(l)),
           0
         )
         .toFixed(2)

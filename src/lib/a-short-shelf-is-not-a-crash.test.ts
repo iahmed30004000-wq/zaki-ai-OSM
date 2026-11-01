@@ -53,6 +53,8 @@ const { db, requireContext, requirePermission, logAudit } = vi.hoisted(() => ({
     // The write-off door now writes the closing receipt after the shelf is drawn (it is never reached on a short shelf).
     returnReceipt: { create: async () => ({ id: 'rr1' }) },
     inventoryMovement: { findFirst: vi.fn(), create: vi.fn() },
+    // No fixed cost for any product here: the order's cost is what the batches say (plain function, so a mock reset leaves it answering).
+    productFixedCost: { findMany: async () => [] },
     productionBatch: {
       findMany: vi.fn(),
       findFirst: vi.fn(),

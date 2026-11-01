@@ -120,6 +120,8 @@ const { fake, requireContext, logAudit, notify, activeOffersFor, can, authorize 
           .filter((id) => (fake.shelf[id] ?? 0) > 0)
           .map((id) => ({ productId: id, quantityRemaining: fake.shelf[id], costPerUnit: 0 })),
     },
+    // No fixed figure for any product here: the cost of the units that go on is what the batches above say.
+    productFixedCost: { findMany: () => [] },
     offer: { findFirst: () => null },
     shippingBatch: { findFirst: () => fake.batch },
     settlementMatch: { count: () => fake.claims },

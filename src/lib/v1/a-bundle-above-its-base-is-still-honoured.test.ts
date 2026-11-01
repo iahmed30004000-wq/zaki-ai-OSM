@@ -21,6 +21,8 @@ const h = vi.hoisted(() => ({
     orderItem: { createMany: vi.fn() },
     orderActivity: { create: vi.fn() },
     store: { findMany: vi.fn() },
+    // The fixed cost an admin set for a product (`ProductFixedCost`): none here, re-armed in `beforeEach`.
+    productFixedCost: { findMany: vi.fn() },
     $transaction: vi.fn(),
   },
   activeBlock: vi.fn(),
@@ -118,6 +120,7 @@ beforeEach(() => {
   h.isValidPhoneFor.mockReturnValue(true);
   h.findOrCreateCustomer.mockResolvedValue({ id: 'cust_1', city: 'حلب', firstOrderDate: null });
   h.productCosts.mockResolvedValue(new Map([['p1', { average: 4 }]]));
+  h.db.productFixedCost.findMany.mockResolvedValue([]);
   h.resolveRegionId.mockResolvedValue('region_aleppo');
   h.priceIncludesDeliveryFor.mockResolvedValue(false);
   h.orderRefFields.mockResolvedValue({ orderNumber: 'SY-2026-0201', merchantRef: 'SY-2026-0201' });

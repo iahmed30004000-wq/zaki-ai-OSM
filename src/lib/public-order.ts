@@ -7,7 +7,7 @@ import { findOrCreateCustomer } from './customer-identity';
 import { normalizePhoneNumber } from './phone';
 import { orderRefFields } from './order-ref';
 import { computeCod, roundMinor } from './money';
-import { productCost } from './product-cost';
+import { unitCostsOf } from './product-fixed-cost';
 import { matchRegion } from './regions';
 import { NEUTRAL_REFUSAL, isBlocked } from './blacklist';
 import { rateLimit, releaseRateLimit } from './rate-limit';
@@ -478,15 +478,12 @@ async function takeOrder(
    * hand averages to zero, and that is a real answer to «ما كلفة وحدةٍ
    * الآن؟» when there is nothing on the shelf to read a price from.
    */
-  // Per line, and summed. `productCost` is asked once per distinct product:
+  // Per line, and summed. `unitCostsOf` is asked once for the distinct products:
   // a basket with two bundles of the same product must not count its cost
-  // twice as a query, only as a quantity.
-  const unitCosts = new Map<string, number>();
-  for (const line of lines) {
-    if (!unitCosts.has(line.product.id)) {
-      unitCosts.set(line.product.id, (await productCost(db, companyId, line.product.id)).average);
-    }
-  }
+  // twice as a query, only as a quantity. It answers with the product's FIXED
+  // figure when an admin set one («ثابت لكل الطلبات»), and with the same
+  // weighted average as above when it has none.
+  const unitCosts = await unitCostsOf(db, companyId, lines.map((l) => l.product.id));
   /*
    * ⚠️ THE GIFT COSTS WHAT IT COSTS — here as at the internal door.
    *

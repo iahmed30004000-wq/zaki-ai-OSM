@@ -35,6 +35,8 @@ const {
     orderItem: { create: vi.fn(), createMany: vi.fn() },
     orderActivity: { create: vi.fn() },
     orderStatusLog: { create: vi.fn() },
+    // No fixed figure for any product here: `unitCostsOf` falls through to the batch average the `productCosts` mock answers.
+    productFixedCost: { findMany: async () => [] },
     $transaction: vi.fn(async (fn: unknown) => (typeof fn === 'function' ? (fn as (tx: unknown) => unknown)(db) : fn)),
   },
   requireContext: vi.fn(),

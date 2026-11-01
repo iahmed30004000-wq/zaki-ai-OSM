@@ -24,6 +24,8 @@ const h = vi.hoisted(() => ({
     orderItem: { createMany: vi.fn() },
     orderActivity: { create: vi.fn() },
     store: { findMany: vi.fn() },
+    // The fixed cost an admin set for a product (`ProductFixedCost`): none here, re-armed in `beforeEach`.
+    productFixedCost: { findMany: vi.fn() },
     $transaction: vi.fn(),
   },
   activeBlock: vi.fn(),
@@ -158,6 +160,7 @@ beforeEach(() => {
   h.findOrCreateCustomer.mockResolvedValue({ id: 'cust_1', city: 'حلب', firstOrderDate: null });
   h.activeOffersFor.mockResolvedValue([]);
   h.productCosts.mockResolvedValue(new Map([['p1', { average: 4 }]]));
+  h.db.productFixedCost.findMany.mockResolvedValue([]);
   h.resolveRegionId.mockResolvedValue('region_aleppo');
   h.priceIncludesDeliveryFor.mockResolvedValue(false);
   h.orderRefFields.mockResolvedValue({ orderNumber: 'SY-2026-0148', merchantRef: 'SY-2026-0148' });
@@ -427,6 +430,76 @@ describe('the price is ours', () => {
     await createSystemOrder(CALLER, parse());
     expect(h.productCosts).toHaveBeenCalledWith(h.db, 'c1', ['p1']);
     expect(created().estimatedCostOfGoods).toBe(8); // 2 × 4
+  });
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * THE SYSTEMS DOOR COSTS A PRODUCT AT ITS FIXED COST WHEN IT HAS ONE (the owner, 1/11: «ثابت لكل الطلبات»)
+ *
+ * The same order as above (two units of p1; the shelf says 4 a unit). A figure an admin set for the product wins over the shelf, the
+ * gift included; a product with none is exactly what it was. The replies system's own prices are untouched — this is our cost.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+describe('a fixed cost is what the systems door costs a product at', () => {
+  const armed = (amount: number, productId = 'p1') => h.db.productFixedCost.findMany.mockResolvedValue([{ productId, amount }]);
+
+  it('a figure of 6: 2 × 6 = 12 — not the 8 of the shelf', async () => {
+    armed(6);
+    await createSystemOrder(CALLER, parse());
+    expect(created().estimatedCostOfGoods).toBe(12);
+  });
+
+  it('ZERO is a figure: the order costs nothing, the 4 of the shelf is not used', async () => {
+    armed(0);
+    await createSystemOrder(CALLER, parse());
+    expect(created().estimatedCostOfGoods).toBe(0);
+  });
+
+  it('a figure wins where the shelf holds nothing costed: 2 × 6, not 0', async () => {
+    armed(6);
+    h.productCosts.mockResolvedValue(new Map([['p1', { average: 0 }]]));
+    await createSystemOrder(CALLER, parse());
+    expect(created().estimatedCostOfGoods).toBe(12);
+  });
+
+  it('the gift counts: an offer of two with one free makes three units — 3 × 6 = 18', async () => {
+    armed(6);
+    h.activeOffersFor.mockResolvedValue([
+      { id: 'off_1', name: 'حبتين + هدية', quantity: 2, freeQuantity: 1, price: 30, listPrice: null, deliveryIncluded: false, endsAt: null },
+    ]);
+    await createSystemOrder(CALLER, parse());
+    expect(created().freeQuantity).toBe(1);
+    expect(created().estimatedCostOfGoods).toBe(18);
+  });
+
+  it('the figure of ANOTHER product moves nothing: the shelf’s 8 stands', async () => {
+    armed(6, 'p9');
+    await createSystemOrder(CALLER, parse());
+    expect(created().estimatedCostOfGoods).toBe(8);
+  });
+
+  it('rounded by the order’s currency: 2 × 1.00555 = 2.0111 is 2.01 at two places', async () => {
+    armed(1.00555);
+    await createSystemOrder(CALLER, parse());
+    expect(created().estimatedCostOfGoods).toBe(2.01);
+  });
+
+  it('and what the customer is charged does not move with it', async () => {
+    armed(6);
+    await createSystemOrder(CALLER, parse());
+    expect(created().totalAmount).toBe(30);
+    expect(created().sellingPrice).toBe(30);
+  });
+
+  it('the figure is asked for THIS token’s company, for the distinct products of the order, once', async () => {
+    armed(6);
+    await createSystemOrder(CALLER, parse());
+    expect(h.db.productFixedCost.findMany).toHaveBeenCalledTimes(1);
+    expect(h.db.productFixedCost.findMany).toHaveBeenCalledWith({
+      where: { companyId: 'c1', productId: { in: ['p1'] } },
+      select: { productId: true, amount: true },
+    });
   });
 });
 

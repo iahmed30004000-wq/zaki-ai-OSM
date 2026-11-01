@@ -26,6 +26,8 @@ const { db, tx } = vi.hoisted(() => {
     orderChannel: { findFirst: vi.fn(async () => null) },
     store: { findFirst: vi.fn(async () => ({ priceIncludesDelivery: false })) },
     productionBatch: { findMany: vi.fn(async () => []) },
+    // The fixed cost an admin set for a product: none here, so every product is costed by its batches.
+    productFixedCost: { findMany: vi.fn(async () => []) },
     $transaction: vi.fn(async (fn: any) => fn(tx)),
   };
   return { db, tx };
@@ -86,6 +88,8 @@ beforeEach(() => {
   // clearAllMocks keeps implementations, and one describe below gives this
   // one a bundle. Put the default back so the tests do not depend on order.
   db.offer.findMany.mockImplementation(async () => []);
+  // No fixed cost for any product, unless a test sets one (the same reason: an implementation outlives `clearAllMocks`).
+  db.productFixedCost.findMany.mockImplementation(async () => []);
 });
 
 describe('a basket of several things', () => {
@@ -136,7 +140,10 @@ describe('a basket of several things', () => {
     // No costed stock on hand in this harness, so the honest answer is zero
     // — but it is a zero reached by summing three units, not by skipping two.
     expect(created().estimatedCostOfGoods).toBe(0);
-    expect(db.productionBatch.findMany).toHaveBeenCalledTimes(2);
+    // ONE question for the whole basket (`unitCostsOf`), not one per product: it was two reads for these two products.
+    expect(db.productionBatch.findMany).toHaveBeenCalledTimes(1);
+    const asked = (db.productionBatch.findMany.mock.calls[0] as any[])[0].where.productId.in as string[];
+    expect([...asked].sort()).toEqual(['p-big', 'p-small']);
   });
 
   it('asks each distinct product what it cost exactly once', async () => {
@@ -145,6 +152,7 @@ describe('a basket of several things', () => {
       body({ items: [{ productId: 'p-big', quantity: 1 }, { productId: 'p-big', quantity: 3 }] })
     );
     expect(db.productionBatch.findMany).toHaveBeenCalledTimes(1);
+    expect((db.productionBatch.findMany.mock.calls[0] as any[])[0].where.productId.in).toEqual(['p-big']);
   });
 });
 
@@ -251,6 +259,103 @@ describe('the gift costs what it costs', () => {
     );
     await createPublicOrder(surface([P.big]) as never, body({ items: [{ productId: 'p-big', offerId: 'off-2', quantity: 1 }] }));
     expect(created().estimatedCostOfGoods).toBe(8);
+  });
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * THE STOREFRONT AND THE SALES PAGE COST A PRODUCT AT ITS FIXED COST WHEN IT HAS ONE (the owner, 1/11)
+ *
+ * «سعر تكلفة المنتج يكون ثابت ولا يتغير ابدا… ثابت لكل الطلبات وما يتغير تحت اي ظرف». The shelf says a unit of the big one costs 4
+ * and the small one 2 (100 units each); a figure an admin set wins over it, per product, the gift included — and what the customer
+ * pays never moves with it. The store here counts in dinars: three places.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+describe('a fixed cost is what the storefront costs a product at', () => {
+  const shelf = () =>
+    db.productionBatch.findMany.mockImplementation(async () => [
+      { productId: 'p-big', quantityRemaining: 100, costPerUnit: 4 },
+      { productId: 'p-small', quantityRemaining: 100, costPerUnit: 2 },
+    ]);
+  const figures = (...rows: [string, number][]) =>
+    db.productFixedCost.findMany.mockImplementation(async () => rows.map(([productId, amount]) => ({ productId, amount })));
+  const bundle = () =>
+    db.offer.findMany.mockImplementation(async ({ where }: any) =>
+      where.productId === 'p-big'
+        ? [{ id: 'off-2-1', name: 'عبوتان + الثالثة مجاناً', quantity: 2, freeQuantity: 1, sellingPrice: 20, compareAtPrice: null, isDefault: true, deliveryIncluded: true, endsAt: null }]
+        : []
+    );
+  const twoProducts = { items: [{ productId: 'p-big', quantity: 1 }, { productId: 'p-small', quantity: 2 }] };
+
+  it('NO FIGURE: exactly as before — 1 × 4 + 2 × 2 = 8', async () => {
+    shelf();
+    await createPublicOrder(surface() as never, body(twoProducts));
+    expect(created().estimatedCostOfGoods).toBe(8);
+  });
+
+  it('A FIGURE FOR THE BIG ONE: 1 × 6 + 2 × 2 = 10 — each line its own way, the small one still at its shelf', async () => {
+    shelf();
+    figures(['p-big', 6]);
+    await createPublicOrder(surface() as never, body(twoProducts));
+    expect(created().estimatedCostOfGoods).toBe(10);
+  });
+
+  it('A FIGURE FOR BOTH: 1 × 6 + 2 × 3 = 12', async () => {
+    shelf();
+    figures(['p-big', 6], ['p-small', 3]);
+    await createPublicOrder(surface() as never, body(twoProducts));
+    expect(created().estimatedCostOfGoods).toBe(12);
+  });
+
+  it('ZERO IS A FIGURE: the big one costs nothing, so the order is 2 × 2 = 4 — not 8', async () => {
+    shelf();
+    figures(['p-big', 0]);
+    await createPublicOrder(surface() as never, body(twoProducts));
+    expect(created().estimatedCostOfGoods).toBe(4);
+  });
+
+  it('A FIGURE WINS WHERE THE SHELF HOLDS NOTHING COSTED: 1 × 6, not the 0 of an empty shelf', async () => {
+    db.productionBatch.findMany.mockImplementation(async () => []);
+    figures(['p-big', 6]);
+    await createPublicOrder(surface([P.big]) as never, body({ items: [{ productId: 'p-big', quantity: 1 }] }));
+    expect(created().estimatedCostOfGoods).toBe(6);
+  });
+
+  it('THE GIFT COSTS THE FIGURE: «عبوتان + الثالثة مجاناً» at 6 is three units — 18, where the shelf said 12', async () => {
+    shelf();
+    bundle();
+    figures(['p-big', 6]);
+    await createPublicOrder(surface([P.big]) as never, body({ items: [{ productId: 'p-big', offerId: 'off-2-1', quantity: 1 }] }));
+    expect([items()[0].quantity, items()[0].freeQuantity]).toEqual([2, 1]);
+    expect(created().estimatedCostOfGoods).toBe(18);
+  });
+
+  it('…and what the customer pays is the bundle’s 20, whatever the figure', async () => {
+    shelf();
+    bundle();
+    figures(['p-big', 6]);
+    await createPublicOrder(surface([P.big]) as never, body({ items: [{ productId: 'p-big', offerId: 'off-2-1', quantity: 1 }] }));
+    expect(created().totalAmount).toBe(20);
+  });
+
+  it('ROUNDED BY THE STORE’S CURRENCY (dinars, three places): 3 × 1.11117 = 3.33351 is 3.334', async () => {
+    figures(['p-big', 1.11117]);
+    await createPublicOrder(surface([P.big]) as never, body({ items: [{ productId: 'p-big', quantity: 3 }] }));
+    expect(created().estimatedCostOfGoods).toBe(3.334);
+  });
+
+  it('THE FIGURES ARE ASKED ONCE for the distinct products of the basket, in the store’s company — a product twice is one question', async () => {
+    shelf();
+    figures(['p-big', 6]);
+    await createPublicOrder(
+      surface() as never,
+      body({ items: [{ productId: 'p-big', quantity: 1 }, { productId: 'p-small', quantity: 1 }, { productId: 'p-big', quantity: 2 }] })
+    );
+    expect(db.productFixedCost.findMany).toHaveBeenCalledTimes(1);
+    expect(db.productFixedCost.findMany).toHaveBeenCalledWith({
+      where: { companyId: 'c1', productId: { in: ['p-big', 'p-small'] } },
+      select: { productId: true, amount: true },
+    });
   });
 });
 

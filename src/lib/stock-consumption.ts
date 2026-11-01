@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import type { db as prismaDb } from './db';
 import { drawDownStock, onHandTotal } from './receiving';
 import { roundMinor } from './money';
+import { fixedCostsOf } from './product-fixed-cost';
 
 type Tx = Prisma.TransactionClient | typeof prismaDb;
 
@@ -36,7 +37,10 @@ export interface ConsumptionResult {
   short: number;
   /** True when a previous call had already done the work. */
   alreadyDone: boolean;
-  /** What those units cost, from the batches they actually came out of. */
+  /**
+   * What those units cost, from the batches they actually came out of — the LEDGER's figure. The ORDER's own cost of goods may be
+   * written differently: a product with a fixed figure costs the order the figure × the units (see the end of `consumeOrderStock`).
+   */
   cost: number;
   /** Its goods left before the store's opening count — see outsideTheCount. */
   outsideTheCount?: boolean;
@@ -178,6 +182,14 @@ export async function consumeOrderStock(
     ...order.items,
     ...(order.addOns ?? []).map((a) => ({ productId: a.productId, productName: a.productName, quantity: a.quantity, freeQuantity: 0 })),
   ];
+  /*
+   * THE FIXED FIGURES OF EVERY PRODUCT IN THE PARCEL, READ ONCE (the owner, 1/11: «ثابت لكل الطلبات وما يتغير تحت اي ظرف»).
+   *
+   * They decide only what the ORDER's cost of goods is written as, below. The shelf does not read them: the draw-down, the SALE
+   * movements, the batches' costs and the value of the stock are the ledger's, and a figure never reaches them.
+   */
+  const figures = await fixedCostsOf(tx, input.companyId, [...new Set(lines.map((l) => l.productId))]);
+  let orderCost = 0;
   for (const line of lines) {
     // The gift units are goods too. Leaving them in stock is how a shelf
     // ends up holding inventory that was given away.
@@ -195,6 +207,13 @@ export async function consumeOrderStock(
     taken += result.taken;
     short += result.short;
     cost += result.cost;
+    /*
+     * WHAT THIS LINE COSTS THE ORDER: the figure × the units that really left when the product has one — ZERO is a figure, so
+     * `!== undefined` and never a truthiness test — otherwise what the batches it came out of say, as it always was. The same
+     * units, two prices: the ledger keeps the batches', the order keeps the owner's.
+     */
+    const figure = figures.get(line.productId);
+    orderCost += figure !== undefined ? figure * result.taken : result.cost;
     if (result.short > 0) {
       shortLines.push({ productId: line.productId, productName: line.productName, need, taken: result.taken, short: result.short });
     }
@@ -271,6 +290,14 @@ export async function consumeOrderStock(
    * empty shelf (negative stock allowed) took no money out of any batch,
    * and writing zero over the estimate would be replacing a guess with a
    * falsehood.
+   *
+   * ── AND A PRODUCT WITH A FIXED FIGURE IS NOT COSTED BY THE BATCHES AT ALL (the owner, 1/11) ──
+   *
+   * «سعر تكلفة المنتج يكون ثابت ولا يتغير ابدا… ثابت لكل الطلبات». The complaint was exactly this overwrite: the cost struck when the
+   * order was raised and the cost struck here, from whichever batches happened to be oldest, were two different numbers for one
+   * order. A line whose product has a figure is written as the figure × the units that left (`orderCost`); the lines without one
+   * are written as the batches priced them. Every rule above stands as it was: only when something left and nothing was short, and
+   * never twice. An order already delivered is not read again, so an old delivery keeps the cost it was written with.
    */
   if (taken > 0 && short === 0) {
     await tx.order.update({
@@ -279,7 +306,7 @@ export async function consumeOrderStock(
       // in four other files today, spelled differently — `Math.round(x * 100)
       // / 100` instead of `.toFixed(2)` — which is why the sweep that caught
       // those walked past this one. JOD has three.
-      data: { estimatedCostOfGoods: roundMinor(cost, minorUnit) },
+      data: { estimatedCostOfGoods: roundMinor(orderCost, minorUnit) },
     });
   }
 

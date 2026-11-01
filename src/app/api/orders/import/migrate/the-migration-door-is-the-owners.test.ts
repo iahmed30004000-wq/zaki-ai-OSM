@@ -14,6 +14,8 @@ const { db, tx, requireContext, requirePermission, can, logAudit, sheet } = vi.h
     customer: { update: vi.fn() },
     orderStatusLog: { create: vi.fn() },
     orderActivity: { create: vi.fn() },
+    // The fixed cost figures an admin set (`ProductFixedCost`): none, unless a test says so.
+    productFixedCost: { findMany: vi.fn(async (): Promise<{ productId: string; amount: number }[]> => []) },
   };
   return {
     tx,
@@ -42,7 +44,10 @@ vi.mock('@/lib/api-error', () => ({
 vi.mock('@/lib/xlsx-reader', () => ({ looksLikeXlsx: () => true, readXlsxRows: () => sheet.rows }));
 vi.mock('@/lib/customer-identity', () => ({ findOrCreateCustomer: vi.fn(async () => ({ id: 'cu1', firstOrderDate: null })) }));
 vi.mock('@/lib/order-ref', () => ({ orderRefFields: vi.fn(async () => ({ orderNumber: 'SY-1', merchantRef: 'SY-1' })) }));
-vi.mock('@/lib/product-cost', () => ({ productCost: vi.fn(async () => ({ average: 4 })) }));
+// What the stock on hand says one unit costs: 4. A product with a fixed figure is not asked (`unitCostsOf` reads the figure first).
+vi.mock('@/lib/product-cost', () => ({
+  productCosts: vi.fn(async (_tx: unknown, _c: string, ids: string[]) => new Map(ids.map((id) => [id, { average: 4 }]))),
+}));
 vi.mock('@/lib/delivery-fees', () => ({ resolveDeliveryFee: vi.fn(async () => ({ fee: 3 })) }));
 vi.mock('@/lib/reservation', () => ({ reserveOrderLines: vi.fn(async () => ({ reserved: 1, shortages: [] })) }));
 
@@ -83,6 +88,7 @@ beforeEach(() => {
   db.order.findMany.mockResolvedValue([]);
   db.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) => fn(tx));
   tx.order.create.mockImplementation(async () => ({ id: 'o1', orderNumber: 'SY-1' }));
+  tx.productFixedCost.findMany.mockImplementation(async () => []);
 });
 
 describe('a preview', () => {
@@ -140,6 +146,45 @@ describe('applying', () => {
     await post({ apply: true });
     expect(logAudit).toHaveBeenCalledTimes(1);
     expect(logAudit.mock.calls[0][0]).toMatchObject({ action: 'ORDERS_MIGRATED', newData: { written: 2, matching: 'ref_and_phone' } });
+  });
+});
+
+/*
+ * WHAT A MIGRATED ORDER'S GOODS COST (the owner, 1/11: «ثابت لكل الطلبات»). The two rows written are 3 units (order 100) and 1 unit
+ * (order 101) of the one product. The stock on hand says a unit costs 4; a fixed figure, where an admin set one, wins over it.
+ */
+describe('the cost of the goods on a migrated order', () => {
+  const costs = async () => {
+    await post({ apply: true });
+    return tx.order.create.mock.calls.map((c: any[]) => c[0].data.estimatedCostOfGoods);
+  };
+
+  it('a product with NO fixed figure is costed at the stock on hand, exactly as before: 3 × 4 and 1 × 4', async () => {
+    expect(await costs()).toEqual([12, 4]);
+  });
+
+  it('a product WITH a fixed figure is costed at the figure whatever the stock says: 3 × 5 and 1 × 5', async () => {
+    tx.productFixedCost.findMany.mockImplementation(async () => [{ productId: 'p-kamaa', amount: 5 }]);
+    expect(await costs()).toEqual([15, 5]);
+  });
+
+  it('ZERO is a figure: the order costs nothing, it does not fall back to the stock', async () => {
+    tx.productFixedCost.findMany.mockImplementation(async () => [{ productId: 'p-kamaa', amount: 0 }]);
+    expect(await costs()).toEqual([0, 0]);
+  });
+
+  it('the figure is asked for THIS company’s products, inside the order’s own transaction', async () => {
+    tx.productFixedCost.findMany.mockImplementation(async () => [{ productId: 'p-kamaa', amount: 5 }]);
+    await post({ apply: true });
+    expect(tx.productFixedCost.findMany).toHaveBeenCalledWith({
+      where: { companyId: 'co', productId: { in: ['p-kamaa'] } },
+      select: { productId: true, amount: true },
+    });
+  });
+
+  it('a PREVIEW writes nothing and so costs nothing: no figure is read', async () => {
+    await post();
+    expect(tx.productFixedCost.findMany).not.toHaveBeenCalled();
   });
 });
 

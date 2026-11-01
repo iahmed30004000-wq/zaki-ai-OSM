@@ -11,7 +11,7 @@ import { computeCod, roundMinor } from '@/lib/money';
 import { priceIncludesDeliveryFor } from '@/lib/delivery-fees';
 import { giftUnits } from '@/lib/offer-gift';
 import { count, money as amount, readTypedFigure } from '@/lib/numeric-input';
-import { productCost } from '@/lib/product-cost';
+import { unitCostsOf } from '@/lib/product-fixed-cost';
 import { parseOrderText, matchProduct, normalizeArabic, ParsedOrder } from '@/lib/order-parser';
 import { normalizePhoneNumber } from '@/lib/phone';
 import { phoneKeys } from '@/lib/phone-rules';
@@ -341,9 +341,10 @@ export async function POST(req: Request) {
        * costing it two ways is exactly the drift `product-cost.ts` was
        * written to end; its own comment says a product does not have «a»
        * cost, and that the blend is a choice that shows up in the profit.
-       * So the choice is made in one place and read here.
+       * So the choice is made in one place and read here — and that place is now `unitCostsOf`: the fixed figure an admin set for the
+       * product when it has one («ثابت لكل الطلبات»), the same weighted average as before when it has none.
        */
-      const unitCost = (await productCost(db, companyId, product.id)).average;
+      const unitCost = (await unitCostsOf(db, companyId, [product.id])).get(product.id) ?? 0;
       /*
        * THE GIFT THIS ORDER CARRIES — the bundle bound above, through the one rule.
        *

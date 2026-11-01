@@ -66,6 +66,8 @@ const {
     region: { findFirst: vi.fn() },
     offer: { findFirst: vi.fn() },
     user: { findFirst: vi.fn() },
+    // No fixed figure for any product here: `unitCostsOf` falls through to the batch average the `productCosts` mock answers.
+    productFixedCost: { findMany: async () => [] },
     $transaction: vi.fn(),
   },
   requireContext: vi.fn(),

@@ -191,7 +191,9 @@ describe('and every door that raises an order costs it the same way', () => {
   it('the storefront no longer writes a literal zero', () => {
     const src = publicOrder();
     expect(src, 'واجهة المتجر ما زالت تكتب صفراً').not.toMatch(/const unitCost = 0;/);
-    expect(src).toContain('productCost(db, companyId, line.product.id)).average');
+    // (old → new, 1/11) It read `productCost(db, companyId, line.product.id)).average` — the batch average, one query per product.
+    // The one helper is `unitCostsOf` now: the product's FIXED cost where an admin set one, the same batch average where not.
+    expect(src).toMatch(/unitCostsOf\(db, companyId, lines\.map\(/);
   });
 
   /**
@@ -217,12 +219,14 @@ describe('and every door that raises an order costs it the same way', () => {
   it('the AI intake stops picking a batch of its own', () => {
     const src = aiIntake();
     expect(src, 'ما زال يقرأ دفعةً بعينها').not.toContain('product.batches[0]?.costPerUnit');
-    expect(src).toContain('productCost(db, companyId, product.id)).average');
+    // (old → new, 1/11) `productCost(db, companyId, product.id)).average` → the one helper, `unitCostsOf`, which answers with the fixed cost.
+    expect(src).toContain('unitCostsOf(db, companyId, [product.id])');
   });
 
-  it('and the direct door reads the same helper it always did', () => {
-    expect(direct()).toContain('productCosts(');
-    expect(direct()).toContain('.average');
+  it('and the direct door reads the same helper the others read', () => {
+    // (old → new, 1/11) It asked `productCosts(` and read `.average` itself; the average now lives inside `unitCostsOf`, with the figure.
+    expect(direct()).toContain('unitCostsOf(');
+    expect(direct(), 'يقرأ متوسط الدفعات بنفسه').not.toMatch(/productCosts?\(|\.average\b/);
   });
 
   /**

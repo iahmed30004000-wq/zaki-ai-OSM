@@ -43,6 +43,8 @@ const {
     orderItem: { create: vi.fn() },
     customer: { update: vi.fn() },
     orderActivity: { create: vi.fn() },
+    // No fixed figure for any product here: `unitCostsOf` falls through to the batch average the mock below answers.
+    productFixedCost: { findMany: async () => [] },
     // One transaction: the order and its line are one fact, so a failure
     // between them cannot leave a lineless order. The fake hands itself
     // back as the client rather than the door being split again.
@@ -79,7 +81,12 @@ vi.mock('@/lib/customer-identity', () => ({
   findOrCreateCustomer: (...a: unknown[]) => findOrCreateCustomer(...a),
 }));
 vi.mock('@/lib/order-ref', () => ({ orderRefFields: (...a: unknown[]) => orderRefFields(...a) }));
-vi.mock('@/lib/product-cost', () => ({ productCost: (...a: unknown[]) => productCost(...a) }));
+vi.mock('@/lib/product-cost', () => ({
+  productCost: (...a: unknown[]) => productCost(...a),
+  // `unitCostsOf` asks for several products at once: each costs what the single-product answer above says.
+  productCosts: async (d: unknown, c: unknown, ids: string[]) =>
+    new Map(await Promise.all(ids.map(async (id) => [id, await productCost(d, c, id)] as const))),
+}));
 vi.mock('@/lib/regions', () => ({ resolveRegionId: (...a: unknown[]) => resolveRegionId(...a) }));
 vi.mock('@/lib/audit', () => ({ logAudit: (...a: unknown[]) => logAudit(...a) }));
 vi.mock('@/lib/notify', () => ({ notify: (...a: unknown[]) => notify(...a) }));

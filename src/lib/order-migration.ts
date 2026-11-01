@@ -279,7 +279,11 @@ export interface WriteDeps {
     companyId: string; storeId: string; phone: string; rawPhone: string; fullName: string; address: string; city: string;
   }) => Promise<{ id: string; firstOrderDate: Date | null }>;
   orderRefFields: (tx: Prisma.TransactionClient, companyId: string, prefix: string, attempt: number, now: Date) => Promise<{ orderNumber: string; merchantRef: string }>;
-  averageCost: (tx: Prisma.TransactionClient, companyId: string, productId: string) => Promise<number>;
+  /**
+   * What ONE unit of the product costs an order: the fixed figure an admin set for it, otherwise the weighted average of the stock
+   * on hand (`unitCostsOf`). It was `averageCost`, and the name was the policy; the policy is the owner's now («ثابت لكل الطلبات»).
+   */
+  unitCost: (tx: Prisma.TransactionClient, companyId: string, productId: string) => Promise<number>;
   deliveryFee: (tx: Prisma.TransactionClient, p: { deliveryProviderId: string; regionId: string | null; minorUnit: number }) => Promise<number>;
   reserve: (tx: Prisma.TransactionClient, orderId: string, opts: { allowNegativeStock: boolean }) => Promise<{ shortages: unknown[] }>;
 }
@@ -317,7 +321,7 @@ export async function writeMigratedOrder(
     address: row.address,
     city: row.region,
   });
-  const cost = await deps.averageCost(tx, ctx.companyId, p.productId);
+  const cost = await deps.unitCost(tx, ctx.companyId, p.productId);
   const fee = await deps.deliveryFee(tx, { deliveryProviderId: p.courierId, regionId: p.regionId, minorUnit: ctx.minorUnit });
 
   let order: { id: string; orderNumber: string } | null = null;

@@ -36,6 +36,8 @@ const { db, tx } = vi.hoisted(() => {
     orderChannel: { findFirst: vi.fn(async () => null) },
     store: { findFirst: vi.fn(async () => ({ priceIncludesDelivery: false })) },
     productionBatch: { findMany: vi.fn(async () => []) },
+    // No fixed cost for any product here: the order's cost is what the batches say.
+    productFixedCost: { findMany: async () => [] },
     $transaction: vi.fn(async (fn: any) => fn(tx)),
   };
   return { db, tx };
