@@ -95,6 +95,8 @@ const ORDER_ROW = {
     totalOrders: 4, confirmedOrders: 3, deliveredOrders: 2, cancelledOrders: 1, totalPurchaseValue: 90,
   },
   items: [{ quantity: 1, unitPrice: 25 }],
+  // the list asks how many times it was claimed, the window asks for the history itself
+  claimHistory: [], _count: { claimHistory: 0 },
   commissions: [
     { id: 'k1', userId: 'me', role: 'MODERATOR', amount: 1, status: 'PENDING' },
     { id: 'k2', userId: 'colleague', role: 'CONFIRMATION_AGENT', amount: 0.5, status: 'PENDING' },

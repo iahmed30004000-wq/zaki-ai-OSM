@@ -40,6 +40,9 @@ export async function reserveReturningCustomers(
       shippingStatus: 'NOT_READY',
       // Older than a day, it would already have let go.
       createdAt: { gt: reservationCutoff(now) },
+      // Never claimed: an order somebody once held and gave back (or the owner pulled back on purpose) is not an arrival, and is
+      // not held for anyone a second time.
+      claimHistory: { none: {} },
       ...(opts.orderIds ? { id: { in: [...opts.orderIds] } } : {}),
     },
     orderBy: { createdAt: 'asc' },

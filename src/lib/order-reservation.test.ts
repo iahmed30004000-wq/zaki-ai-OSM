@@ -5,6 +5,7 @@ import {
   handlerOf,
   heldFor,
   isReservedNow,
+  notHeldForOthersWhere,
   reservationCutoff,
   reservationEnds,
   reservationHoursLeft,
@@ -22,10 +23,14 @@ import {
  * «الطلبات» with her name, taken by her alone; and it is everybody's when her account is not ACTIVE, or after 24 hours.
  *
  *  1. «Held» is one definition (`isReservedNow` and the filters `reservedWhere` / `reservedForWhere` / `reservedForOthersWhere`
- *     say the same thing — checked here row by row against a small evaluator of the filters).
+ *     say the same thing — checked here row by row against an evaluator of the filters that knows SQL's THREE values).
  *  2. It stops holding at 24 hours exactly, when the assignee's account is not ACTIVE, when anybody holds the order, when it
- *     is no longer the order that just arrived, and when nothing says when it was held.
- *  3. The agent is the one who worked the NEWEST prior order — and only her: if she is unavailable the answer is nobody (no
+ *     is no longer the order that just arrived, when nothing says when it was held, and when anybody has EVER claimed it.
+ *  3. `notHeldForOthersWhere` — what the pull, the counter and the claim gate use — is the exact complement of
+ *     `reservedForOthersWhere` for every row, NULLs included. (The first version wrote the gate as `NOT (…)`: for a row whose
+ *     `assignedAt` is NULL that is NULL, not TRUE, and the row vanished for everybody — the independent review found it, and the
+ *     two-valued evaluator this file used to carry could not have.)
+ *  4. The agent is the one who worked the NEWEST prior order — and only her: if she is unavailable the answer is nobody (no
  *     fallback to an older agent); a prior order nobody worked is skipped.
  *
  * Blockers: no money, no order creation (this file touches neither), no new column.
@@ -35,55 +40,78 @@ import {
 const NOW = new Date('2026-10-31T12:00:00.000Z');
 const hoursAgo = (h: number) => new Date(NOW.getTime() - h * 3_600_000);
 
-/** Evaluates exactly the operators the filters use — enough to ask the DATABASE's question of a plain row. */
-function matches(row: Record<string, unknown>, where: Record<string, unknown>): boolean {
-  return Object.entries(where).every(([key, cond]) => {
-    if (key === 'AND') return (cond as Record<string, unknown>[]).every((w) => matches(row, w));
-    if (key === 'OR') return (cond as Record<string, unknown>[]).some((w) => matches(row, w));
-    if (key === 'NOT') return !(Array.isArray(cond) ? cond : [cond]).some((w) => matches(row, w as Record<string, unknown>));
-    const value = row[key] ?? null;
-    if (cond === null) return value === null;
-    if (cond instanceof Date || typeof cond !== 'object') {
-      return cond instanceof Date ? value instanceof Date && value.getTime() === cond.getTime() : value === cond;
-    }
-    const ops = cond as Record<string, unknown>;
-    return Object.entries(ops).every(([op, arg]) => {
-      switch (op) {
-        case 'not': return arg === null ? value !== null : value !== null && value !== arg;
-        case 'gt': return value instanceof Date && value.getTime() > (arg as Date).getTime();
-        case 'is': return value !== null && matches(value as Record<string, unknown>, arg as Record<string, unknown>);
-        default: throw new Error(`the evaluator does not know «${op}»`);
-      }
-    });
-  });
-}
+type Row = Record<string, any>;
+type Tri = true | false | null;
+const and = (xs: Tri[]): Tri => (xs.includes(false) ? false : xs.includes(null) ? null : true);
+const or = (xs: Tri[]): Tri => (xs.includes(true) ? true : xs.includes(null) ? null : false);
+const not = (x: Tri): Tri => (x === null ? null : !x);
 
-const row = (over: Record<string, unknown> = {}) => ({
+/**
+ * The database's question, asked of a plain row — with SQL's three values: a comparison with a NULL column is UNKNOWN, `NOT` of
+ * unknown is unknown, and a WHERE keeps only TRUE. `IS NULL` / `IS NOT NULL` (`null` and `{ not: null }`) are the only
+ * comparisons that never answer unknown.
+ */
+function tri(row: Row, where: Row): Tri {
+  return and(
+    Object.entries(where).map(([key, cond]): Tri => {
+      if (key === 'AND') return and((cond as Row[]).map((w) => tri(row, w)));
+      if (key === 'OR') return or((cond as Row[]).map((w) => tri(row, w)));
+      if (key === 'NOT') return not(or((Array.isArray(cond) ? cond : [cond]).map((w) => tri(row, w as Row))));
+      const value = row[key] ?? null;
+      if (cond === null) return value === null;
+      if (cond instanceof Date) return value === null ? null : value instanceof Date && value.getTime() === cond.getTime();
+      if (typeof cond !== 'object') return value === null ? null : value === cond;
+      return and(
+        Object.entries(cond as Row).map(([op, arg]): Tri => {
+          switch (op) {
+            case 'not':
+              if (arg === null) return value !== null;
+              return value === null ? null : value !== arg;
+            case 'gt': return value === null ? null : (value as Date).getTime() > (arg as Date).getTime();
+            case 'lte': return value === null ? null : (value as Date).getTime() <= (arg as Date).getTime();
+            case 'is':
+              if (arg === null) return value === null;
+              return value === null ? null : tri(value as Row, arg as Row);
+            case 'none': return !(row[key] ?? []).some((c: Row) => tri(c, arg as Row) === true);
+            case 'some': return (row[key] ?? []).some((c: Row) => tri(c, arg as Row) === true);
+            default: throw new Error(`the evaluator does not know «${op}»`);
+          }
+        })
+      );
+    })
+  );
+}
+const matches = (row: Row, where: Row): boolean => tri(row, where) === true;
+
+const row = (over: Row = {}): Row => ({
   claimedById: null,
   confirmationStatus: 'NEW',
   assignedToId: 'sara',
   assignedAt: hoursAgo(1),
   assignee: { status: 'ACTIVE' },
+  claimHistory: [],
   ...over,
 });
-const asRow = (r: ReturnType<typeof row>) => ({ ...r, assigneeStatus: r.assignee?.status ?? null });
+const asRow = (r: Row) => ({ ...r, assigneeStatus: r.assignee?.status ?? null, everClaimed: (r.claimHistory ?? []).length > 0 });
+
+const CASES: [string, Row, boolean][] = [
+  ['an order that has just arrived and was named for her an hour ago', row(), true],
+  ['23 hours 59 minutes after it was held', row({ assignedAt: new Date(NOW.getTime() - (24 * 60 - 1) * 60_000) }), true],
+  ['exactly 24 hours after (it has let go)', row({ assignedAt: hoursAgo(24) }), false],
+  ['25 hours after', row({ assignedAt: hoursAgo(25) }), false],
+  ['her account is suspended', row({ assignee: { status: 'SUSPENDED' } }), false],
+  ['her account is disabled', row({ assignee: { status: 'DISABLED' } }), false],
+  ['her account is still pending', row({ assignee: { status: 'PENDING' } }), false],
+  ['somebody holds it', row({ claimedById: 'huda' }), false],
+  ['it came back to the queue after a release (not the order that just arrived)', row({ confirmationStatus: 'IN_PROGRESS' }), false],
+  ['nobody was named', row({ assignedToId: null, assignee: null }), false],
+  ['a name but no time (a release clears it)', row({ assignedAt: null }), false],
+  ['a name and a recent time, but somebody claimed it once and gave it back (the issues door leaves exactly this)', row({ claimHistory: [{ action: 'RELEASED' }] }), false],
+  ['released with its name kept and its time cleared (the release door leaves exactly this)', row({ assignedAt: null, claimHistory: [{ action: 'RELEASED' }] }), false],
+];
 
 describe('a held order, asked three ways, is one answer', () => {
-  const cases: [string, ReturnType<typeof row>, boolean][] = [
-    ['an order that has just arrived and was named for her an hour ago', row(), true],
-    ['23 hours 59 minutes after it was held', row({ assignedAt: new Date(NOW.getTime() - (24 * 60 - 1) * 60_000) }), true],
-    ['exactly 24 hours after (it has let go)', row({ assignedAt: hoursAgo(24) }), false],
-    ['25 hours after', row({ assignedAt: hoursAgo(25) }), false],
-    ['her account is suspended', row({ assignee: { status: 'SUSPENDED' } }), false],
-    ['her account is disabled', row({ assignee: { status: 'DISABLED' } }), false],
-    ['her account is still pending', row({ assignee: { status: 'PENDING' } }), false],
-    ['somebody holds it', row({ claimedById: 'huda' }), false],
-    ['it came back to the queue after a release (not the order that just arrived)', row({ confirmationStatus: 'IN_PROGRESS' }), false],
-    ['nobody was named', row({ assignedToId: null, assignee: null }), false],
-    ['a name but no time (a release clears it)', row({ assignedAt: null }), false],
-  ];
-
-  it.each(cases)('%s → held: %s', (_label, r, held) => {
+  it.each(CASES)('%s → held: %s', (_label, r, held) => {
     expect(isReservedNow(asRow(r), NOW)).toBe(held);
     expect(matches(r, reservedWhere(NOW))).toBe(held);
   });
@@ -103,6 +131,44 @@ describe('a held order, asked three ways, is one answer', () => {
   });
 });
 
+describe('what a colleague may take is the exact complement of what is held for her — NULLs included', () => {
+  const USERS = ['huda', 'sara', 'noor'];
+  // Every row the cases name, plus the ones SQL's third value is made of: a name whose time, status or relation is missing.
+  const ROWS: Row[] = [
+    ...CASES.map(([, r]) => r),
+    row({ assignedAt: null }),
+    row({ assignedAt: null, assignee: null }),
+    row({ assignee: null }),
+    row({ assignedToId: null, assignedAt: hoursAgo(1), assignee: null }),
+    row({ confirmationStatus: 'POSTPONED', assignedAt: null }),
+    row({ claimedById: 'huda', assignedAt: null }),
+  ];
+
+  it.each(USERS)('for %s: takeable ⇔ NOT held-for-others, on every row', (user) => {
+    for (const r of ROWS) {
+      expect(matches(r, notHeldForOthersWhere(user, NOW)), JSON.stringify(r)).toBe(!matches(r, reservedForOthersWhere(user, NOW)));
+    }
+  });
+
+  it('THE REGRESSION: an order released with its name kept and its time cleared is takeable by everybody', () => {
+    const released = row({ assignedAt: null, claimHistory: [{ action: 'RELEASED' }] });
+    for (const user of USERS) expect(matches(released, notHeldForOthersWhere(user, NOW)), user).toBe(true);
+  });
+
+  it('…and the first version, `NOT (held for others)`, is exactly what dropped it — so the gate is an OR on purpose', () => {
+    // A row with a name, ACTIVE, NEW, unclaimed and NO TIME: the held-for-others conjunction is UNKNOWN, and NOT of unknown is
+    // unknown, which a WHERE does not keep. (No claim history here, to isolate the NULL from the history rule.)
+    const nameNoTime = row({ assignedAt: null });
+    expect(matches(nameNoTime, { NOT: reservedForOthersWhere('huda', NOW) })).toBe(false);
+    expect(matches(nameNoTime, notHeldForOthersWhere('huda', NOW))).toBe(true);
+  });
+
+  it('is takeable by the one it is held for, and by nobody else while it is held', () => {
+    expect(matches(row(), notHeldForOthersWhere('sara', NOW))).toBe(true);
+    expect(matches(row(), notHeldForOthersWhere('huda', NOW))).toBe(false);
+  });
+});
+
 describe('the twenty-four hours', () => {
   it('count down in whole hours, never below one', () => {
     expect(reservationHoursLeft(hoursAgo(5), NOW)).toBe(19);
@@ -114,7 +180,6 @@ describe('the twenty-four hours', () => {
     expect(reservationCutoff(NOW).getTime()).toBe(NOW.getTime() - 24 * 3_600_000);
     expect(reservationEnds(hoursAgo(5)).getTime()).toBe(NOW.getTime() + 19 * 3_600_000);
   });
-
 });
 
 describe('who a returning customer goes back to', () => {
@@ -150,7 +215,7 @@ describe('the sentence', () => {
     const said = reservedMessage('سارة');
     expect(said).toContain('تابع لـسارة');
     expect(said).toContain('تعاملت مع هالزبون');
-    expect(said).toContain('24 ساعة');
+    expect(said).toContain('24 ساعة من حجزه');
   });
 
   it('has a name for the one it cannot name', () => {
@@ -159,7 +224,10 @@ describe('the sentence', () => {
 });
 
 describe('whom it is held for, as a screen reads it', () => {
-  const held = { claimedById: null, confirmationStatus: 'NEW', assignedToId: 'sara', assignedAt: hoursAgo(2), assignee: { id: 'sara', name: 'سارة', status: 'ACTIVE' } };
+  const held = {
+    claimedById: null, confirmationStatus: 'NEW', assignedToId: 'sara', assignedAt: hoursAgo(2), everClaimed: false,
+    assignee: { id: 'sara', name: 'سارة', status: 'ACTIVE' },
+  };
 
   it('is the agent’s id and name while the hold stands', () => {
     expect(heldFor(held, NOW)).toEqual({ id: 'sara', name: 'سارة' });
@@ -171,6 +239,8 @@ describe('whom it is held for, as a screen reads it', () => {
     ['somebody holds it', { claimedById: 'huda' }],
     ['no agent on the row', { assignee: null }],
     ['an agent whose status the read did not carry', { assignee: { id: 'sara', name: 'سارة' } }],
+    ['somebody claimed it once and gave it back', { everClaimed: true }],
+    ['the read did not say whether anybody ever claimed it', { everClaimed: undefined }],
   ])('is nothing when %s — so no screen draws a mark that is not true', (_label, patch) => {
     expect(heldFor({ ...held, ...patch }, NOW)).toBeNull();
   });

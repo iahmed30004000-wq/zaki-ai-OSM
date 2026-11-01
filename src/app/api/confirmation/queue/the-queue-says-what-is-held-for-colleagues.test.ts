@@ -52,7 +52,7 @@ const as = (id: string, keys: string[]) => {
 const row = (id: string, over: Record<string, unknown> = {}) => ({
   id, orderNumber: id.toUpperCase(), merchantRef: null, createdAt: hoursAgo(2), confirmationStatus: 'NEW', postponedUntil: null,
   postponeCount: 0, totalAmount: 20, customer: { fullName: 'زبون', city: 'دمشق' }, product: { name: 'منتج' },
-  claimedById: null, assignedToId: null, assignedAt: null, assignee: null, ...over,
+  claimedById: null, assignedToId: null, assignedAt: null, assignee: null, _count: { claimHistory: 0 }, ...over,
 });
 
 beforeEach(() => {

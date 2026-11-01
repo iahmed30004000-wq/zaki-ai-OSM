@@ -34,31 +34,49 @@ const { world } = vi.hoisted(() => ({
   },
 }));
 
-/** The operators the filters use — and nothing else, so a filter that starts using a new one fails here by name. */
-function matches(row: Row, where: Row): boolean {
-  return Object.entries(where).every(([key, cond]) => {
-    if (key === 'AND') return (cond as Row[]).every((w) => matches(row, w));
-    if (key === 'OR') return (cond as Row[]).some((w) => matches(row, w));
-    if (key === 'NOT') return !(Array.isArray(cond) ? cond : [cond]).some((w) => matches(row, w as Row));
-    const value = row[key] ?? null;
-    if (cond === null) return value === null;
-    if (cond instanceof Date) return value instanceof Date && value.getTime() === cond.getTime();
-    if (typeof cond !== 'object') return value === cond;
-    return Object.entries(cond as Row).every(([op, arg]) => {
-      switch (op) {
-        case 'not': return arg === null ? value !== null : value !== null && value !== arg;
-        case 'in': return (arg as unknown[]).includes(value);
-        case 'notIn': return !(arg as unknown[]).includes(value);
-        case 'gt': return value instanceof Date && value.getTime() > (arg as Date).getTime();
-        case 'gte': return value instanceof Date && value.getTime() >= (arg as Date).getTime();
-        case 'lte': return value instanceof Date && value.getTime() <= (arg as Date).getTime();
-        case 'is': return value !== null && matches(value as Row, arg as Row);
-        case 'none': return (row[key] ?? []).length === 0;
-        default: throw new Error(`the in-memory database does not know «${op}»`);
-      }
-    });
-  });
+/**
+ * The operators the filters use — and nothing else, so a filter that starts using a new one fails here by name — with SQL's THREE
+ * values: a comparison with a NULL column is UNKNOWN, `NOT` of unknown is unknown, and a WHERE keeps only TRUE. (This file used to
+ * answer true/false only, and so could not see `NOT (… assignedAt > $cutoff …)` drop a released order that kept its name.)
+ */
+type Tri = true | false | null;
+const and = (xs: Tri[]): Tri => (xs.includes(false) ? false : xs.includes(null) ? null : true);
+const or = (xs: Tri[]): Tri => (xs.includes(true) ? true : xs.includes(null) ? null : false);
+const not = (x: Tri): Tri => (x === null ? null : !x);
+function tri(row: Row, where: Row): Tri {
+  return and(
+    Object.entries(where).map(([key, cond]): Tri => {
+      if (key === 'AND') return and((cond as Row[]).map((w) => tri(row, w)));
+      if (key === 'OR') return or((cond as Row[]).map((w) => tri(row, w)));
+      if (key === 'NOT') return not(or((Array.isArray(cond) ? cond : [cond]).map((w) => tri(row, w as Row))));
+      const value = row[key] ?? null;
+      if (cond === null) return value === null;
+      if (cond instanceof Date) return value === null ? null : value instanceof Date && value.getTime() === cond.getTime();
+      if (typeof cond !== 'object') return value === null ? null : value === cond;
+      return and(
+        Object.entries(cond as Row).map(([op, arg]): Tri => {
+          switch (op) {
+            case 'not':
+              if (arg === null) return value !== null;
+              return value === null ? null : value !== arg;
+            case 'in': return value === null ? null : (arg as unknown[]).includes(value);
+            case 'notIn': return value === null ? null : !(arg as unknown[]).includes(value);
+            case 'gt': return value === null ? null : (value as Date).getTime() > (arg as Date).getTime();
+            case 'gte': return value === null ? null : (value as Date).getTime() >= (arg as Date).getTime();
+            case 'lte': return value === null ? null : (value as Date).getTime() <= (arg as Date).getTime();
+            case 'is':
+              if (arg === null) return value === null;
+              return value === null ? null : tri(value as Row, arg as Row);
+            case 'none': return !(row[key] ?? []).some((c: Row) => tri(c, arg as Row) === true);
+            case 'some': return (row[key] ?? []).some((c: Row) => tri(c, arg as Row) === true);
+            default: throw new Error(`the in-memory database does not know «${op}»`);
+          }
+        })
+      );
+    })
+  );
 }
+const matches = (row: Row, where: Row): boolean => tri(row, where) === true;
 
 const sorted = (rows: Row[], orderBy?: Row | Row[]) => {
   const keys = (Array.isArray(orderBy) ? orderBy : orderBy ? [orderBy] : []).flatMap((o) => Object.entries(o));
@@ -134,7 +152,7 @@ const order = (over: Row = {}): Row => {
     claimedById: null, claimedAt: null, currentOwnerId: null, confirmedById: null,
     assignedToId: null, assignedAt: null, assignee: null,
     signatureStatus: 'UNSIGNED', createdAt: hoursAgo(2), version: 1, contactAttempts: [],
-    lockedById: null, lockExpiresAt: null,
+    lockedById: null, lockExpiresAt: null, claimHistory: [],
     ...over,
   };
   world.orders.push(r);
@@ -171,7 +189,7 @@ describe('the assigner', () => {
 
     expect(byId(fresh.id)).toMatchObject({ assignedToId: 'sara', claimedById: null, version: 2 });
     expect(byId(fresh.id).assignedAt).toEqual(NOW);
-    expect(isReservedNow({ ...byId(fresh.id), assigneeStatus: 'ACTIVE' }, NOW)).toBe(true);
+    expect(isReservedNow({ ...byId(fresh.id), assigneeStatus: 'ACTIVE', everClaimed: false }, NOW)).toBe(true);
     expect(world.activities).toEqual([
       expect.objectContaining({ orderId: fresh.id, action: 'HELD_FOR_AGENT', userId: null }),
     ]);
@@ -326,8 +344,8 @@ describe('«اسحب الطلب التالي» and the counters', () => {
   });
 
   it('keeps the pull filter free of the hold when it is asked for the pool as a whole', () => {
-    expect(readyToPullWhere(scope)).not.toHaveProperty('NOT');
-    expect(readyToPullWhere(scope, 'sara', NOW)).toHaveProperty('NOT');
+    expect(readyToPullWhere(scope)).not.toHaveProperty('AND');
+    expect(readyToPullWhere(scope, 'sara', NOW)).toHaveProperty('AND');
   });
 });
 
@@ -360,7 +378,7 @@ describe('the claim gate', () => {
 describe('a release lets go of the hold', () => {
   it('the auto-release of an unworked claim writes `assignedAt: null` — it is not held for her a second time', async () => {
     // She pulled the order held for her and never rang the customer: ninety business minutes later it goes back.
-    const hers = heldFor('sara', 5, { claimedById: 'sara', claimedAt: hoursAgo(3), confirmationStatus: 'IN_PROGRESS' });
+    const hers = heldFor('sara', 5, { claimedById: 'sara', claimedAt: hoursAgo(3), confirmationStatus: 'IN_PROGRESS', claimHistory: [{ action: 'CLAIMED' }] });
 
     expect(await releaseStaleClaims(db as never, scope, CAL, NOW)).toBe(1);
 
@@ -369,5 +387,64 @@ describe('a release lets go of the hold', () => {
     expect(byId(hers.id).assignedToId).toBe('sara');
     expect(isReservedNow({ ...byId(hers.id), assigneeStatus: 'ACTIVE' }, NOW)).toBe(false);
     expect(await pickNextCandidate(db as never, scope, NOW, 'huda')).toBe(hers.id);
+  });
+});
+
+describe('every way an order comes back to the queue leaves it everybody’s — the independent review’s four findings', () => {
+  const given = (over: Row = {}) => heldFor('sara', 1, { claimHistory: [{ action: 'CLAIMED' }, { action: 'RELEASED' }], ...over });
+
+  it('1 · released with its name kept and its time cleared: counted, picked and claimed by a colleague (NOT(…) over a NULL used to drop it)', async () => {
+    const back = given({ assignedAt: null });
+    expect(await waitingCount(db as never, scope, NOW, 'huda')).toBe(1);
+    expect(await pickNextCandidate(db as never, scope, NOW, 'huda')).toBe(back.id);
+    expect(await reservedForColleaguesCount(db as never, scope, 'huda', NOW)).toBe(0);
+    expect(await atomicClaim({ orderId: back.id, userId: 'huda', now: NOW, lockExpiresAt: new Date(NOW.getTime() + 60_000) })).toBe(true);
+  });
+
+  it('1b · …and the owner takes it with «استلمه أنا» then releases it: that leaves exactly that row, and it is everybody’s too', async () => {
+    const afterOverride = given({ assignedToId: 'owner', assignedAt: null, assignee: user('owner') });
+    expect(await pickNextCandidate(db as never, scope, NOW, 'huda')).toBe(afterOverride.id);
+  });
+
+  it('2 · the pull itself takes it: a colleague with only that order in the queue is given it, with the claim written', async () => {
+    const back = given({ assignedAt: null });
+    const pulled = await pullNextOrder(scope, { id: 'huda', role: 'CONFIRMATION_AGENT' }, CAL, NOW);
+    expect(pulled).toMatchObject({ ok: true, orderId: back.id });
+    expect(byId(back.id).claimedById).toBe('huda');
+  });
+
+  it('3 · the issues door leaves the name AND a recent time on an order that was claimed once: it is not held for her again', async () => {
+    const left = given({ assignedAt: hoursAgo(1) });
+    expect(isReservedNow({ ...byId(left.id), assigneeStatus: 'ACTIVE', everClaimed: true }, NOW)).toBe(false);
+    expect(await pickNextCandidate(db as never, scope, NOW, 'huda')).toBe(left.id);
+    expect(await waitingCount(db as never, scope, NOW, 'huda')).toBe(1);
+    expect(await reservedForColleaguesCount(db as never, scope, 'huda', NOW)).toBe(0);
+  });
+
+  it('4 · the owner’s pull-back (name and time cleared, NEW) is NOT held again by the assigner for the customer’s old agent', async () => {
+    world.audience = [{ id: 'sara' }];
+    order({ customerId: 'regular', confirmationStatus: 'CONFIRMED', createdAt: hoursAgo(40), claimedById: 'sara' });
+    const pulledBack = order({ customerId: 'regular', createdAt: hoursAgo(3), claimHistory: [{ action: 'CLAIMED' }, { action: 'RELEASED', reason: 'الزبون طلب موظفة تانية' }] });
+
+    expect(await reserveReturningCustomers(scope, NOW)).toBe(0);
+    expect(byId(pulledBack.id).assignedToId).toBeNull();
+    expect(await pickNextCandidate(db as never, scope, NOW, 'huda')).toBe(pulledBack.id);
+  });
+
+  it('5 · the assigner holds only an order that has just ARRIVED: one that was claimed once is left alone even before its name is cleared', async () => {
+    world.audience = [{ id: 'sara' }];
+    order({ customerId: 'regular', confirmationStatus: 'CONFIRMED', createdAt: hoursAgo(40), claimedById: 'sara' });
+    const arrival = order({ customerId: 'regular', createdAt: hoursAgo(2) });
+    const claimedBefore = order({ customerId: 'regular', createdAt: hoursAgo(3), claimHistory: [{ action: 'CLAIMED' }] });
+
+    expect(await reserveReturningCustomers(scope, NOW)).toBe(1);
+    expect(byId(arrival.id).assignedToId).toBe('sara');
+    expect(byId(claimedBefore.id).assignedToId).toBeNull();
+  });
+
+  it('6 · a row that was released BEFORE holds existed (name and a recent time, history) is not held on the day this ships', async () => {
+    const old = given({ assignedAt: hoursAgo(2) });
+    expect(await reservedForColleaguesCount(db as never, scope, 'huda', NOW)).toBe(0);
+    expect(await pickNextCandidate(db as never, scope, NOW, 'huda')).toBe(old.id);
   });
 });

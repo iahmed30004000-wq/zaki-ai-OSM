@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { db } from './db';
 import { businessMinutesBetween, type BusinessCalendar } from './business-calendar';
 import { rejectionNeedsConversation } from './confirmation-workflow';
-import { reservedForOthersWhere, reservedForWhere } from './order-reservation';
+import { notHeldForOthersWhere, reservedForOthersWhere, reservedForWhere } from './order-reservation';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -527,8 +527,9 @@ export function readyToPullWhere(scope: QueueScope, forUserId?: string, now: Dat
   return {
     ...claimableWhere(scope),
     confirmationStatus: { not: 'POSTPONED' },
-    // For an agent: not what is held for a colleague. Without `forUserId` it is the whole pool, as the supervisor reads it.
-    ...(forUserId ? { NOT: reservedForOthersWhere(forUserId, now) } : {}),
+    // For an agent: not what is held for a colleague — the POSITIVE form (`notHeldForOthersWhere`), because `NOT (…)` over nullable
+    // columns drops a released order that kept its name. Without `forUserId` it is the whole pool, as the supervisor reads it.
+    ...(forUserId ? { AND: [notHeldForOthersWhere(forUserId, now)] } : {}),
   };
 }
 
@@ -603,8 +604,8 @@ export async function pullNextOrder(
       }
 
       const taken = await tx.order.updateMany({
-        // `NOT held for somebody else` is asked again at the write: the hold may have been made between the pick and here.
-        where: { id: candidate, claimedById: null, NOT: reservedForOthersWhere(user.id, now) },
+        // «Not held for somebody else» is asked again at the write: the hold may have been made between the pick and here.
+        where: { id: candidate, claimedById: null, AND: [notHeldForOthersWhere(user.id, now)] },
         data: {
           claimedById: user.id,
           claimedAt: now,

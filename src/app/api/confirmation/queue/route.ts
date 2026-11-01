@@ -73,6 +73,7 @@ export async function GET() {
             // Whom it is held for, when it is — the supervisor sees the pool WITH the names.
             claimedById: true, assignedToId: true, assignedAt: true,
             assignee: { select: { id: true, name: true, status: true } },
+            _count: { select: { claimHistory: true } },
           },
         })
       : null;
@@ -89,9 +90,12 @@ export async function GET() {
       autoReleased: released,
       // Agents never see the list; supervisors see the same rows as data.
       orders: rows
-        ? rows.map(({ assignee, claimedById, assignedToId, assignedAt, ...row }) => ({
+        ? rows.map(({ assignee, claimedById, assignedToId, assignedAt, _count, ...row }) => ({
             ...row,
-            reservedFor: heldFor({ claimedById, confirmationStatus: row.confirmationStatus, assignedToId, assignedAt, assignee }, now),
+            reservedFor: heldFor(
+              { claimedById, confirmationStatus: row.confirmationStatus, assignedToId, assignedAt, assignee, everClaimed: _count.claimHistory > 0 },
+              now
+            ),
           }))
         : null,
     });

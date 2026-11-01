@@ -302,6 +302,7 @@ const HELD_FOR_A_COLLEAGUE = {
   assignedToId: { not: null },
   assignedAt: { gt: expect.any(Date) },
   assignee: { is: { status: 'ACTIVE' } },
+  claimHistory: { none: {} },
 };
 const ASSIGNED_LIST = {
   OR: [

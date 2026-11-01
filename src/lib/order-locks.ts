@@ -8,7 +8,7 @@
 
 import { db } from './db';
 import { LOCK_CONFIG_DEFAULTS } from './rbac';
-import { reservedForOthersWhere } from './order-reservation';
+import { notHeldForOthersWhere } from './order-reservation';
 
 export type ClaimAction = 'CLAIMED' | 'RELEASED' | 'TRANSFERRED' | 'OVERRIDDEN' | 'UNLOCKED';
 
@@ -65,7 +65,7 @@ export async function atomicClaim(params: {
       signatureStatus: 'UNSIGNED',
       // An order held for a colleague who worked this customer last is hers alone (order-reservation.ts) — asked in the write,
       // so a hold made a moment ago stops a claim that read the order a moment before.
-      NOT: reservedForOthersWhere(userId, now),
+      AND: [notHeldForOthersWhere(userId, now)],
       // Cannot claim while someone else holds an ACTIVE editing lock
       OR: [{ lockedById: null }, { lockExpiresAt: null }, { lockExpiresAt: { lte: new Date() } }],
     },

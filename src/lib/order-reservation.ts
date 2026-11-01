@@ -12,8 +12,11 @@
  *   · Only she may take it. «اسحب التالي» gives it to her first and skips it for everyone else; taking it by id says whose it is.
  *   · It lets go by itself, so nobody has to remember to free it: after twenty-four hours from the day it was held, or the moment
  *     her account is not ACTIVE (disabled, suspended). Then it is the shared queue's, as every order is.
- *   · Once anybody holds it (`claimedById`) it is no longer «held» — it is theirs. A release clears `assignedAt` (see
- *     `releaseStaleClaims` and the release door), so an order she gave back is not held for her a second time.
+ *   · Once anybody holds it (`claimedById`) it is no longer «held» — it is theirs. And an order that has EVER been claimed is
+ *     never held again (`claimHistory: { none: {} }`): a hold belongs to an order that has just ARRIVED. That one rule closes every
+ *     way back into the queue at once — the agent's release, the 90-minute auto-release, the owner's pull-back, the issues door,
+ *     a transfer then a release — without each of them having to remember to clean up, and it keeps old rows (released before
+ *     holds existed, still carrying their name) from becoming held on the day this ships.
  *
  * No new column: `assignedToId` and `assignedAt` exist, every creation door writes them as null, and the transfer and the claim
  * write them with a claim beside them — which this predicate excludes by `claimedById: null`.
@@ -56,6 +59,8 @@ export function reservedWhere(now: Date) {
     assignedToId: { not: null },
     assignedAt: { gt: reservationCutoff(now) },
     assignee: { is: { status: 'ACTIVE' } },
+    // Never claimed: a hold is made at the order's ARRIVAL and by nobody else (see the header).
+    claimHistory: { none: {} },
   };
 }
 
@@ -64,9 +69,37 @@ export function reservedForWhere(userId: string, now: Date) {
   return { ...reservedWhere(now), assignedToId: userId };
 }
 
-/** Held for somebody ELSE — the orders this person may see and may not take. */
+/** Held for somebody ELSE — the orders this person may see and may not take. For READING: a count, a list, the claim door's question. */
 export function reservedForOthersWhere(userId: string, now: Date) {
   return { AND: [reservedWhere(now), { assignedToId: { not: userId } }] };
+}
+
+/**
+ * TAKEABLE BY THIS PERSON — the exact complement of `reservedForOthersWhere`, written as an OR and never as `NOT (…)`.
+ *
+ * SQL has three values. `NOT (a AND b AND assignedAt > $cutoff …)` is NULL, not TRUE, for a row whose `assignedAt` is NULL, and a
+ * WHERE keeps only TRUE — so an order that was released with its name kept and its time cleared (the release door does exactly
+ * that) vanished for every colleague: not counted, not pulled, claimed with «ALREADY_CLAIMED». Each way out is its own
+ * disjunct here, each a plain TRUE/FALSE on a column that can be NULL (`IS NULL`, `IS NOT NULL`) or a comparison that another
+ * disjunct has already settled. Used wherever a WRITE or a COUNT must exclude what is held for a colleague: the pick, the
+ * counter, the pull's claim and the claim gate. `order-reservation.test.ts` holds it to the filter above, row by row, with an
+ * evaluator that knows SQL's three values.
+ */
+export function notHeldForOthersWhere(userId: string, now: Date) {
+  return {
+    OR: [
+      { claimedById: { not: null } },
+      { confirmationStatus: { not: 'NEW' } },
+      { assignedToId: null },
+      { assignedToId: userId },
+      { assignedAt: null },
+      { assignedAt: { lte: reservationCutoff(now) } },
+      { assignee: { is: { status: { not: 'ACTIVE' } } } },
+      // No such account (the foreign key sets the name to NULL when one is deleted, so this is belt and braces).
+      { assignee: { is: null } },
+      { claimHistory: { some: {} } },
+    ],
+  };
 }
 
 /**
@@ -94,11 +127,14 @@ export interface ReservableRow {
   assignedAt?: Date | string | null;
   /** The assignee's account status, when the read carried it. Absent means «not known to be ACTIVE». */
   assigneeStatus?: string | null;
+  /** Has anybody ever claimed it? Must be `false` for a hold: absent means «not known to be never-claimed». */
+  everClaimed?: boolean | null;
 }
 
 /** The filter above, asked of one row already in hand. They must agree, and `a-held-order-agrees-with-its-filter.test.ts` holds them to it. */
 export function isReservedNow(row: ReservableRow, now: Date): boolean {
   if (row.claimedById) return false;
+  if (row.everClaimed !== false) return false;
   if (row.confirmationStatus !== 'NEW') return false;
   if (!row.assignedToId || !row.assignedAt) return false;
   if (new Date(row.assignedAt).getTime() <= reservationCutoff(now).getTime()) return false;
@@ -122,7 +158,7 @@ export function heldFor(
 export function reservedMessage(agentName?: string | null): string {
   return (
     `هذا الطلب تابع لـ${agentName || 'زميلتك'} — هي اللي تعاملت مع هالزبون قبل. ` +
-    `ما بتقدر تسحبه، وبيصير عاماً بعد ${RESERVATION_HOURS} ساعة من وصوله أو إذا ما كانت متاحة.`
+    `ما بتقدر تسحبه، وبيصير عاماً بعد ${RESERVATION_HOURS} ساعة من حجزه لها أو إذا ما كانت متاحة.`
   );
 }
 
