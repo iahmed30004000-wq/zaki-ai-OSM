@@ -73,6 +73,68 @@ describe('confirmed, with no claim — ORD-2026-1896', () => {
   });
 });
 
+/**
+ * TAKEN AFTER THE YES — the owner's own repair of 1896 («سحبت الطلب»). The independent review, 1/11: with `claimedAt ?? confirmedAt` a claim
+ * LATER than the yes started the confirmation stage after the stage that follows it, so the intake read 76 minutes instead of 2 and the
+ * confirmation sat at 19:30 beside a warehouse that began at 18:16.
+ */
+describe('claimed AFTER the yes — a transfer, or «استلمه أنا» on an order decided with nobody holding it', () => {
+  const LATE = new Date('2026-11-01T19:30:00Z');
+  const stages = () =>
+    byKey(
+      orderStages(
+        base({
+          claimedAt: LATE,
+          confirmedAt: new Date('2026-11-01T18:16:00Z'),
+          claimer: { name: 'المالك' },
+          confirmer: { name: 'عبير' },
+        }),
+        { contactAttempts: 1 },
+        new Date('2026-11-01T19:40:00Z')
+      )
+    );
+
+  it('the confirmation still began at the yes — never later than the warehouse that follows it', () => {
+    const s = stages();
+    expect(s.CONFIRMATION.at?.toISOString()).toBe('2026-11-01T18:16:00.000Z');
+    expect(s.WAREHOUSE.at?.toISOString()).toBe('2026-11-01T18:16:00.000Z');
+    expect(s.CONFIRMATION.at!.getTime()).toBeLessThanOrEqual(s.WAREHOUSE.at!.getTime());
+  });
+
+  it('the intake took 2 minutes (18:14 → 18:16), not the 76 until somebody took the order', () => {
+    expect(stages().INTAKE.minutes).toBe(2);
+  });
+
+  it('says the order was taken AFTER the yes — not «بلا استلام», it has a holder now — and invents no duration', () => {
+    const s = stages();
+    expect(s.CONFIRMATION.facts).toContainEqual({ label: 'الاستلام', value: 'بعد التأكيد' });
+    expect(s.CONFIRMATION.facts).not.toContainEqual({ label: 'الاستلام', value: 'بلا استلام' });
+    expect(s.CONFIRMATION.minutes).toBeNull();
+  });
+
+  it('names who gave the yes — not the person who took the order afterwards', () => {
+    expect(stages().CONFIRMATION.who).toBe('عبير');
+  });
+
+  it('a claim at the very moment of the yes is still «held» (the boundary): measured, from the claim', () => {
+    const s = byKey(
+      orderStages(
+        base({
+          claimedAt: new Date('2026-11-01T18:16:00Z'),
+          confirmedAt: new Date('2026-11-01T18:16:00Z'),
+          claimer: { name: 'ليلى' },
+          confirmer: { name: 'ليلى' },
+        }),
+        { contactAttempts: 1 },
+        NOW
+      )
+    );
+    expect(s.CONFIRMATION.minutes).toBe(0);
+    expect(s.CONFIRMATION.facts.find((f) => f.label === 'الاستلام')).toBeUndefined();
+    expect(s.CONFIRMATION.who).toBe('ليلى');
+  });
+});
+
 describe('what did not change', () => {
   it('an order that was claimed and confirmed: the claim starts the stage, the claimer is who, and no «بلا استلام»', () => {
     const s = byKey(
