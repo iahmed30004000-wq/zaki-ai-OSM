@@ -124,8 +124,10 @@ function bodyTheScreenPosts(row: unknown): Record<string, unknown> {
   const literal = src.slice(open, end + 1);
   // It must really be the order body, not some other object in the file.
   expect(literal, 'الجسمُ المُستخرَجُ ليس جسمَ الطلب').toContain('customerPhone');
-  const make = new Function('r', 'return ' + literal) as (r: unknown) => Record<string, unknown>;
-  return make(row);
+  // `includesDelivery` is the dialog's own box (state, ticked by default): the literal reads it, so it is given here as the dialog
+  // has it on opening. The body is still the screen's, extracted from its source — only the one variable it closes over is named.
+  const make = new Function('r', 'includesDelivery', 'return ' + literal) as (r: unknown, includesDelivery: boolean) => Record<string, unknown>;
+  return make(row, true);
 }
 
 beforeEach(() => {

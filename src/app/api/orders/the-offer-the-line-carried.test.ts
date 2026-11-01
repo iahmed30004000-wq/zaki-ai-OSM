@@ -149,9 +149,12 @@ describe('and the AI door asks the store what its prices mean', () => {
     // Was `priceIncludesDeliveryFor(storeId)` alone. RV172: the door now binds the bundle whose quantity the paste
     // matches, so it passes that bundle's `deliveryIncluded` as the manual door does — the question to the store is
     // still asked, with one more thing it may only turn ON. `an-offer-pasted-is-the-offer-typed.test.ts` drives it.
+    // 1/11: the reviewer's own box («شامل التوصيل») is her word for the order when it is sent; the question to the store
+    // is what is asked when it is NOT sent, so it is still there, unchanged — as the fallback of the box.
     expect(src, 'باب الذكاء لسّا ما بيسأل عن سياسة المتجر').toContain(
-      'priceIncludesDelivery: await priceIncludesDeliveryFor(storeId, quantityOffer?.deliveryIncluded)'
+      ': await priceIncludesDeliveryFor(storeId, quantityOffer?.deliveryIncluded)'
     );
+    expect(src, 'خانة «شامل التوصيل» ما بتُقرأ').toContain("typeof p.priceIncludesDelivery === 'boolean'");
   });
 });
 
