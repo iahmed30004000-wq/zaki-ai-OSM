@@ -318,9 +318,12 @@ export async function dispatchBatch(input: {
      * «NO ID» MEANS NONE TYPED AND NONE IN THE COURIER'S OWN LIST. The code
      * must be typed per governorate in the settings, and nobody ever typed
      * the fourteen, so every parcel was refused (the owner, 2/11: «ترحيل
-     * الطلبات مش زابط»). A typed id still wins; otherwise Basha's own sheet
-     * gives the governorate its city (`couriers/city-id`) — and a governorate
-     * the sheet cannot answer, or an order with no governorate, stays refused.
+     * الطلبات مش زابط»). A typed id wins — except a number the courier's
+     * sheet itself holds as a Region Id and as no city's (3003): that is not
+     * a place a parcel can go to, so it counts as not typed. Otherwise the
+     * sheet gives the governorate its city (`couriers/city-id`) — and a
+     * governorate it cannot answer, or an order with no governorate, stays
+     * refused.
      */
     const cityId = courierCityIdFor({
       providerCode: batch.provider?.code,

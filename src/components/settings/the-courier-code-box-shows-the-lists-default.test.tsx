@@ -14,7 +14,8 @@ import { courierPlaces } from '@/lib/couriers/places';
  *
  *  1. Empty box + their list names the governorate: the list’s number is the box’s hint, the city is named beside it
  *     («افتراضي من قايمة الشركة: …»), and the warning border is not drawn.
- *  2. A typed number (or a stored one) wins: the hint goes, and the number is described exactly as before.
+ *  2. A typed number (or a stored one) takes the hint's place and is described: the place it is — or, for a Region Id, a
+ *     warning that says the system ignores it and uses the governorate's city (`couriers/city-id` does exactly that).
  *  3. A governorate the list cannot answer, or no list at all: the box is what it always was — warning border, «بلا رمز».
  *  4. Saving with the box empty still sends no code: the default is used at the press, it is never written as if typed.
  *
@@ -110,12 +111,12 @@ describe('a number in the box wins', () => {
     expect(box('السويداء').className).not.toContain(WARNING_BORDER);
   });
 
-  it('a Region Id typed still warns and names the code to type — the hint does not hide the mistake', async () => {
+  it('a Region Id typed still warns, and says the system ignores it and uses the city — the hint does not hide the mistake', async () => {
     const user = userEvent.setup();
     await open('السويداء');
     await waitFor(() => expect(box('السويداء').placeholder).toBe('445153'));
     await user.type(box('السويداء'), '3003');
-    const warnings = await screen.findAllByText(/هذا رقم المنطقة لـ«السويداء» وليس رقم مدينتها — اكتب 445153/);
+    const warnings = await screen.findAllByText(/هذا رقم المنطقة لـ«السويداء» وليس رقم مدينتها — النظام بيتجاهله ويستعمل 445153/);
     expect(warnings[0].className).toContain('text-[var(--sys-warning)]');
     expect(screen.queryByText(/افتراضي من قايمة الشركة/)).toBeNull();
   });

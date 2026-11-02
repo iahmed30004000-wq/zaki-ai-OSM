@@ -104,7 +104,12 @@ Their API field is `cityId`, and Basha works at region level
 order (`city-id.ts`, used by the press, the warning before it and the Excel
 file alike):
 
-1. the number **typed** on the fees screen («رمزها عند الشركة») — it always wins;
+1. the number **typed** on the fees screen («رمزها عند الشركة») — it wins, except
+   a number their list holds as a Region Id and as no city's (3003 for السويداء,
+   `places.ts` `isRegionIdOnly`): that is not a place a parcel can go to, so it
+   counts as not typed and the box says the system ignores it. A number the
+   list does not know at all, and any number for a courier we hold no list for,
+   still wins;
 2. else the courier's **own list** (`reference/couriers/basha-villages.json`,
    read by `places.ts`): within their region of the same name, the city named
    like the governorate («السويداء» 445153, not «مدينة السويداء» 566117), else

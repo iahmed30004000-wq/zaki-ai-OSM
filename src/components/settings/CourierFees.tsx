@@ -354,7 +354,8 @@ export function CourierFees({
               key: 'courierId',
               label: 'رمزها عند الشركة',
               // Their id, from THEIR list (the villages sheet they send) — never invented. A number typed here is saved
-              // with the row's «تحديث» and always wins. An EMPTY box is no longer a gap when their list names this
+              // with the row's «تحديث» and is the one sent — unless their list proves it is a Region Id, which the note
+              // below says and the press ignores. An EMPTY box is no longer a gap when their list names this
               // governorate: the press takes that city by itself (`couriers/city-id`), and the box shows which. Only a
               // governorate their list cannot answer keeps the warning it always had: without an id their API refuses.
               render: (r) => {

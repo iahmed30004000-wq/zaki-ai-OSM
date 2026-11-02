@@ -10,7 +10,9 @@ import { readXlsxRows } from '@/lib/xlsx-reader';
  *
  *  1. A Basha batch whose governorates have no typed code carries the code from Basha's own list — all fourteen of ours,
  *     asserted against the owner's sheet.
- *  2. A typed code wins over the list.
+ *  2. A typed code wins over the list — except a number the list proves is a Region Id (3003): that is not a city, so the
+ *     file carries the list's city for the governorate instead (an empty cell when the list has none), exactly as the press
+ *     sends it.
  *  3. A governorate the list does not name, a courier we hold no list for, and a batch with no courier keep an empty cell.
  *
  * Blockers: no money arithmetic (the amount is read by `waybillCod`, untouched), no order written, no migration.
@@ -114,6 +116,38 @@ describe('the sheet when a code was typed', () => {
     db.order.findMany.mockResolvedValue([order(1, { id: 'r1', name: 'دمشق' })]);
     await call();
     expect(db.deliveryFee.findMany.mock.calls[0][0].where).toEqual({ deliveryProviderId: 'p1', courierCityId: { not: null } });
+  });
+});
+
+describe('the sheet when the typed number is a Region Id', () => {
+  const sweida = { id: 'r1', name: 'السويداء' };
+  const typedFor = (n: number) => db.deliveryFee.findMany.mockResolvedValue([{ regionId: 'r1', courierCityId: n }]);
+
+  it('typed 3003 for السويداء: the cell carries 445153, the city the press sends — never the Region Id', async () => {
+    typedFor(3003);
+    db.order.findMany.mockResolvedValue([order(1, sweida)]);
+    expect(await codes()).toEqual(['445153']);
+  });
+
+  it('typed 445153: 445153; typed 566117 (a city of the list): 566117; typed 999999999 (unknown to the list): 999999999', async () => {
+    db.order.findMany.mockResolvedValue([order(1, sweida)]);
+    for (const [n, cell] of [[445153, '445153'], [566117, '566117'], [999999999, '999999999']] as const) {
+      typedFor(n);
+      expect(await codes(), String(n)).toEqual([cell]);
+    }
+  });
+
+  it('a Region Id for a governorate the list does not name: nothing to fall back on — an empty cell', async () => {
+    db.deliveryFee.findMany.mockResolvedValue([{ regionId: 'r2', courierCityId: 3003 }]);
+    db.order.findMany.mockResolvedValue([order(1, { id: 'r2', name: 'بغداد' })]);
+    expect(await codes()).toEqual(['']);
+  });
+
+  it('NEGATIVE: a courier we hold no list for — 3003 is only a number, and stays as typed', async () => {
+    db.shippingBatch.findFirst.mockResolvedValue(batchOf('HALA'));
+    typedFor(3003);
+    db.order.findMany.mockResolvedValue([order(1, sweida)]);
+    expect(await codes()).toEqual(['3003']);
   });
 });
 

@@ -11,14 +11,20 @@ import type { CourierPlaces } from './place-note';
  * number to send is the same-name placeholder CITY. Typing the Region Id is the easy mistake, and the shipment is
  * addressed to a place nobody meant.
  *
- * TWO JOBS, ONE RULE.
+ * THREE JOBS, ONE LIST.
  *
  *   1. `defaultCourierCityId` — the city id a governorate is shipped to when nobody typed one. The owner, 2/11: the
  *      governorate's city code is adopted for every city, village and neighbourhood of it; nobody types fourteen
  *      numbers that are already in the sheet. The press, the warning before the press and the Excel file all ask this
- *      (through `couriers/city-id`), and a number typed on the fees screen still wins over it.
+ *      (through `couriers/city-id`), and a number typed on the fees screen wins over it — with ONE exception, job 3.
  *   2. `courierPlaces` — what the box shows: the name of the place a typed number is, a warning when it is a Region Id,
  *      and the same default as a hint. Its hint comes from the SAME rule, so the screen and the press cannot disagree.
+ *   3. `isRegionIdOnly` — whether a typed number is PROVABLY a Region Id: the list holds it as a region's number and
+ *      does not hold it as any city's. Such a number is not a place a parcel can be addressed to, so `couriers/city-id`
+ *      does not send it: the list's own city for the governorate is used instead (or the parcel is refused, when the
+ *      list has none). A number the list does not know at all is not touched — only what the list itself proves is
+ *      a Region Id is overridden. A number the list holds as both a region and a city is a city, the reading the box
+ *      (`placeNote`) already gives it.
  *
  * THE RULE (`buildDefaultCities`), inside the courier's region whose name equals the governorate's after the Arabic
  * spellings are folded together (exact equality — never «contains», never fuzzy):
@@ -115,16 +121,36 @@ export function buildDefaultCities(list: readonly CourierVillage[]): Map<string,
   return defaults;
 }
 
-const BUILT = new Map<string, Map<string, CourierDefaultCity | null>>();
+/**
+ * The ids a list uses ONLY as a Region Id: a region's number that is not also the number of one of the list's cities.
+ *
+ * The same reading `placeNote` gives the box — «both a known city and a known region is read as the city» — so a number
+ * the list holds as both is a city and is not in this set. Built from the list itself and exported so it can be tried on
+ * a list that is not Basha's (Basha's own never reuses a number: 3003 is a region, 445153 is a city, and nothing is both).
+ */
+export function regionOnlyIds(list: readonly CourierVillage[]): Set<number> {
+  const cities = new Set(list.map((v) => v.cityId));
+  return new Set(list.map((v) => v.regionId).filter((id) => !cities.has(id)));
+}
 
-/** The defaults of the list we hold for a courier by its code (any case), built once; null when we hold none for it. */
-function defaultsOf(code: string | null | undefined): Map<string, CourierDefaultCity | null> | null {
+interface BuiltList {
+  list: readonly CourierVillage[];
+  /** The default city of each governorate, by its folded name. */
+  defaults: Map<string, CourierDefaultCity | null>;
+  /** The numbers the list uses only as a Region Id. */
+  regionOnly: ReadonlySet<number>;
+}
+
+const BUILT = new Map<string, BuiltList>();
+
+/** What is derived from the list we hold for a courier by its code (any case), built once; null when we hold none for it. */
+function builtOf(code: string | null | undefined): BuiltList | null {
   const key = (code ?? '').trim().toUpperCase();
   const list = LISTS[key];
   if (!list) return null;
   let built = BUILT.get(key);
   if (!built) {
-    built = buildDefaultCities(list);
+    built = { list, defaults: buildDefaultCities(list), regionOnly: regionOnlyIds(list) };
     BUILT.set(key, built);
   }
   return built;
@@ -140,16 +166,28 @@ export function defaultCourierCityId(
   courierCode: string | null | undefined,
   regionName: string | null | undefined,
 ): CourierDefaultCity | null {
-  const defaults = defaultsOf(courierCode);
-  if (!defaults || !regionName) return null;
-  return defaults.get(foldArabic(regionName)) ?? null;
+  const built = builtOf(courierCode);
+  if (!built || !regionName) return null;
+  return built.defaults.get(foldArabic(regionName)) ?? null;
+}
+
+/**
+ * IS THIS NUMBER, FOR THIS COURIER, PROVABLY A REGION ID — A NUMBER THE LIST HOLDS AS A REGION'S AND AS NO CITY'S?
+ *
+ * 3003 is السويداء's Region Id in Basha's list; a parcel addressed to it goes to no city at all. When somebody typed
+ * it into «رمزها عند الشركة» (the box warns, and saving is not blocked), `couriers/city-id` asks this and does not send
+ * it. False for a number the list does not know — an id it simply does not list may still be right — for a number it
+ * holds as a city (also when it is a region's too), and for every number of a courier we hold no list for.
+ */
+export function isRegionIdOnly(courierCode: string | null | undefined, id: number): boolean {
+  return builtOf(courierCode)?.regionOnly.has(id) ?? false;
 }
 
 /** The list for a courier by its code, or null when we hold none for it. */
 export function courierPlaces(code: string | null | undefined): CourierPlaces | null {
-  const defaults = defaultsOf(code);
-  if (!defaults) return null;
-  const list = LISTS[(code ?? '').trim().toUpperCase()];
+  const built = builtOf(code);
+  if (!built) return null;
+  const { defaults, list } = built;
 
   const cities: CourierPlaces['cities'] = {};
   const regionNames = new Map<number, string>();

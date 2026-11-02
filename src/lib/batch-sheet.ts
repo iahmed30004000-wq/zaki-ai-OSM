@@ -38,8 +38,8 @@ export async function batchSheetRows(
     countryCode?: string | null;
     /**
      * The courier's own id for each governorate, by region id — the one typed on the fees screen
-     * (`DeliveryFee.courierCityId`), else the one in the courier's own list (`couriers/city-id`, the same answer the
-     * dispatch gets).
+     * (`DeliveryFee.courierCityId`, unless the courier's list proves it is a Region Id), else the one in the courier's
+     * own list (`couriers/city-id`, the same answer the dispatch gets).
      */
     cityIds: Map<string, number>;
   }

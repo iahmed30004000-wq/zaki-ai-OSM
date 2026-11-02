@@ -37,6 +37,10 @@ export function defaultCityOf(
 /**
  * What the box says about the number typed in it: the place it names, a warning that it is a Region Id, or nothing.
  * A number that is both a known city and a known region is read as the city — the one the courier's API takes.
+ *
+ * A Region Id is not sent (`couriers/city-id`, `isRegionIdOnly` — the same reading as here): when the list gives that
+ * governorate a city, the note says the system ignores the typed number and uses the city's; when it gives none, the
+ * person is told which number is missing, and the parcel stays refused until one is typed.
  */
 export function placeNote(
   typed: string,
@@ -51,7 +55,7 @@ export function placeNote(
     return {
       kind: 'region',
       text: region.cityId
-        ? `هذا رقم المنطقة لـ«${region.name}» وليس رقم مدينتها — اكتب ${region.cityId}`
+        ? `هذا رقم المنطقة لـ«${region.name}» وليس رقم مدينتها — النظام بيتجاهله ويستعمل ${region.cityId}`
         : `هذا رقم المنطقة لـ«${region.name}» وليس رقم مدينتها — اكتب رقم مدينتها من قائمتهم`,
     };
   }

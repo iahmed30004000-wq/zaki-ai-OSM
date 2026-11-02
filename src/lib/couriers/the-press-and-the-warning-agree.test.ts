@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -10,7 +10,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  *
  *  1. A governorate nobody typed a code for takes its city from the courier's own list (Basha's sheet) — with no fee row
  *     at all, and with a fee row that has no code.
- *  2. A typed code still wins, even when it looks wrong (the box already warns about a Region Id).
+ *  2. A typed code wins — a city of the list, the governorate's own, and a number the list does not know at all —
+ *     EXCEPT a number the list itself proves is a Region Id (held as a region's and as no city's: 3003): that is not a
+ *     place a parcel can go to, so it counts as not typed. The list's city answers, or the parcel is refused when the list
+ *     has none. A number held as both a region's and a city's is a city; a courier with no list keeps its typed number.
  *  3. What the list cannot answer — a governorate it does not name, an order with no governorate — is still refused by
  *     name before the claim and before any call (`NO_COURIER_CITY`), and a courier we hold no list for is unchanged.
  *  4. The WARNING above the press and the REFUSAL at the press are the same decision, for the same data: parameterised
@@ -150,7 +153,14 @@ const CASES: Case[] = [
   { title: 'no city is named like the governorate: «مدينة دير الزور», the placeholder one', fees: [], region: DEIR, sends: 949546 },
   { title: 'the courier’s code in lower case finds the same list', courier: { code: 'basha' }, fees: [], region: SWEIDA, sends: 445153 },
   { title: 'a typed code wins over the list', fees: [typed('r-sweida', 999001)], region: SWEIDA, sends: 999001 },
-  { title: 'a typed code wins even when it is a Region Id (the box warns, it does not block)', fees: [typed('r-sweida', 3003)], region: SWEIDA, sends: 3003 },
+  // THE SAFETY RULE: what the list proves is a Region Id is not a place.
+  { title: 'a typed Region Id (3003) is NOT sent: the list’s city for the governorate answers', fees: [typed('r-sweida', 3003)], region: SWEIDA, sends: 445153 },
+  { title: 'another governorate’s Region Id (3002) typed here is not sent either', fees: [typed('r-sweida', 3002)], region: SWEIDA, sends: 445153 },
+  { title: 'a typed Region Id for a governorate the list does not name: nothing to fall back on, refused', fees: [typed('r-baghdad', 3003)], region: BAGHDAD, sends: null },
+  { title: 'a typed 445153 (the governorate’s own city) is sent', fees: [typed('r-sweida', 445153)], region: SWEIDA, sends: 445153 },
+  { title: 'a typed 566117 (a city of the list, not the default) is sent as typed', fees: [typed('r-sweida', 566117)], region: SWEIDA, sends: 566117 },
+  { title: 'a typed number the list does not know at all (999999999) is sent as typed', fees: [typed('r-sweida', 999999999)], region: SWEIDA, sends: 999999999 },
+  { title: 'a courier with no list: a typed 3003 is only a number, and is sent', courier: { code: 'HALA' }, fees: [typed('r-sweida', 3003)], region: SWEIDA, sends: 3003 },
   { title: 'another courier’s typed code for that governorate is not this courier’s', fees: [typed('r-sweida', 999002, 'other')], region: SWEIDA, sends: 445153 },
   { title: 'a typed code for ANOTHER governorate is not this one’s', fees: [typed('r-idlib', 999003)], region: SWEIDA, sends: 445153 },
   { title: 'a governorate the list does not name is refused, by name', fees: [], region: BAGHDAD, sends: null },
@@ -233,5 +243,77 @@ describe('the press and the warning before it are the same decision', () => {
     oneParcelTo(SWEIDA);
     await press();
     expect(db.deliveryFee.findMany.mock.calls[0][0]).toMatchObject({ where: { deliveryProviderId: 'p1', courierCityId: { not: null } } });
+  });
+});
+
+/**
+ * A NUMBER THE LIST HOLDS AS BOTH A REGION'S AND A CITY'S IS A CITY.
+ *
+ * Basha's real list never reuses a number, so this is tried on a list that does: the courier's JSON is replaced for the
+ * modules loaded here (the press and the warning, fresh), and the same fake database serves both. The reading is the one
+ * `placeNote` gives the box: a known city wins over a known region.
+ *
+ * The list: «سين» (region 7, city 10), «عين» (region 10, city 11) and «صاد» (region 2, city 20). The number 10 is a city
+ * of «سين» AND the Region Id of «عين». For «صاد» — whose own city is 20 — a typed 10 is a city: sent. A typed 2 or 7 is
+ * a Region Id and nothing else: ignored, the list's 20 is used.
+ */
+describe('a number the list holds as both a region and a city is a city', () => {
+  const OVERLAPPING_LIST = [
+    { villageId: 1, villageName: 'سين', cityId: 10, cityName: 'سين', regionId: 7, regionName: 'سين' },
+    { villageId: 2, villageName: 'عين', cityId: 11, cityName: 'عين', regionId: 10, regionName: 'عين' },
+    { villageId: 3, villageName: 'صاد', cityId: 20, cityName: 'صاد', regionId: 2, regionName: 'صاد' },
+  ];
+  const SAD = { id: 'r-sad', name: 'صاد' };
+
+  const LIST_FILE = '../../../reference/couriers/basha-villages.json';
+
+  afterEach(() => {
+    vi.doUnmock(LIST_FILE);
+    vi.resetModules();
+  });
+
+  /**
+   * Fresh copies of the press and the warning, bound to the overlapping list — and proof that they are.
+   *
+   * The imports are AWAITED ONE BY ONE, and that was learned the hard way: a first version imported them together in a
+   * `Promise.all`, and the FIRST test after it still ran on Basha's real list (the three imports race over the module
+   * that holds the list, and the mock lost) — it passed for that wrong reason, and a mutation of the rule under test went
+   * unseen. The check below makes a fixture that is not in effect fail loudly instead of passing quietly.
+   */
+  const withTheOverlappingList = async () => {
+    vi.resetModules();
+    vi.doUnmock(LIST_FILE);
+    vi.doMock(LIST_FILE, () => ({ default: OVERLAPPING_LIST }));
+    vi.resetModules();
+    const places = await import('./places');
+    const { dispatchBatch: pressNow } = await import('./dispatch');
+    const { courierCityGaps: warnNow } = await import('./city-gaps');
+    // A test that quietly ran on Basha's real list would prove nothing: «صاد» and its Region Id 2 exist only in this one.
+    expect(places.courierPlaces('BASHA')?.regions['2']?.name).toBe('صاد');
+    expect(Object.keys(places.courierPlaces('BASHA')?.cities ?? {})).toEqual(['10', '11', '20']);
+    return {
+      press: () => pressNow({ batchId: 'b1', companyId: 'c1', storeId: 's1', userId: 'u1' }),
+      warning: () => warnNow({ companyId: 'c1', storeId: 's1', batches: [{ id: 'b1', status: 'READY', deliveryProviderId: 'p1' }] }),
+    };
+  };
+
+  it.each([
+    { typedId: 10, sends: 10, why: 'a number held as a city of «سين» and as the Region Id of «عين» is a city: sent as typed' },
+    { typedId: 2, sends: 20, why: '2 is «صاد»’s Region Id and no city’s: ignored, the list’s 20 is sent' },
+    { typedId: 7, sends: 20, why: '7 is «سين»’s Region Id and no city’s: ignored here too' },
+    { typedId: 20, sends: 20, why: 'the governorate’s own city is sent' },
+    { typedId: 31337, sends: 31337, why: 'a number the list does not know is sent as typed' },
+  ])('typed $typedId → $sends: $why', async ({ typedId, sends }) => {
+    state.fees = [typed('r-sad', typedId)];
+    oneParcelTo(SAD);
+    const { press: pressNow, warning: warnNow } = await withTheOverlappingList();
+
+    const outcome = (await pressNow()).outcomes[0];
+    const gap = (await warnNow()).get('b1');
+
+    expect(outcome).toMatchObject({ ok: true });
+    expect((createShipment.mock.calls[0] as unknown as [{ cityId: number }])[0].cityId).toBe(sends);
+    // The warning and the press agree: nothing to warn about, nothing refused.
+    expect(gap).toBeUndefined();
   });
 });

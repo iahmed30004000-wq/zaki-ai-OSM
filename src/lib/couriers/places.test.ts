@@ -1,7 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildDefaultCities, courierPlaces, defaultCourierCityId, type CourierVillage } from './places';
+import {
+  buildDefaultCities,
+  courierPlaces,
+  defaultCourierCityId,
+  isRegionIdOnly,
+  regionOnlyIds,
+  type CourierVillage,
+} from './places';
 import { placeNote, defaultCityOf, type CourierPlaces } from './place-note';
 import { foldArabic } from '../address';
 import { repoFile, stripComments } from '../guard-source';
@@ -19,6 +26,9 @@ import { repoFile, stripComments } from '../guard-source';
  *  3. The hint beside the «رمزها عند الشركة» box (`courierPlaces`) is the SAME answer, so it cannot promise what the
  *     press will not do.
  *  4. The resolver is server-only: the 461-row list never reaches the browser.
+ *  5. `isRegionIdOnly(courier, n)` is true exactly for a number the list holds as a Region Id and as no city's — 3003, not
+ *     445153, not 566117, not a number it does not know, not a number of a courier with no list — and a number held as
+ *     both is a city. The box says the system ignores such a typed number and uses the governorate's city.
  *
  * Blockers: no money arithmetic, no order creation, no migration, no customer data.
  * ═══════════════════════════════════════════════════════════════════════
@@ -258,28 +268,39 @@ describe('placeNote: what the box says about the typed number', () => {
     expect(placeNote(' 445053 ', places)).toEqual({ kind: 'place', text: 'دمشق — دمشق' });
   });
 
-  it('a known Region Id warns and says which code to type instead', () => {
+  it('a known Region Id warns, and says the system ignores it and uses the governorate’s city — as the press does', () => {
     const note = placeNote('3003', places)!;
     expect(note.kind).toBe('region');
-    expect(note.text).toContain('«السويداء»');
-    expect(note.text).toContain('445153');
+    expect(note.text).toBe('هذا رقم المنطقة لـ«السويداء» وليس رقم مدينتها — النظام بيتجاهله ويستعمل 445153');
+    // The old sentence told the person to type the city's number; the system now does that without being asked.
+    expect(note.text).not.toContain('اكتب');
   });
 
-  it('القنيطرة’s Region Id now names its code too (it had none to offer)', () => {
+  it('القنيطرة’s Region Id names its city too (it had none to offer)', () => {
     const note = placeNote('3004', places)!;
     expect(note.kind).toBe('region');
     expect(note.text).toContain('«القنيطرة»');
-    expect(note.text).toContain('566122');
+    expect(note.text).toContain('النظام بيتجاهله ويستعمل 566122');
   });
 
-  it('a Region Id whose governorate the list cannot answer warns without inventing a code', () => {
+  it('every Region Id of the list says the city the press will use instead — the same number as the hint beside it', () => {
+    for (const [id, region] of Object.entries(places.regions)) {
+      expect(placeNote(id, places)?.text, `${region.name} (${id})`).toContain(`النظام بيتجاهله ويستعمل ${region.cityId}`);
+    }
+  });
+
+  it('a Region Id whose governorate the list cannot answer warns without inventing a code — the old wording, nothing is ignored in favour of nothing', () => {
     // Basha's real list answers every governorate now, so the branch is tried on a list that does not.
     const unanswered: CourierPlaces = { cities: {}, regions: { '7': { name: 'القنيطرة', cityId: null } } };
     const note = placeNote('7', unanswered)!;
     expect(note.kind).toBe('region');
-    expect(note.text).toContain('«القنيطرة»');
-    expect(note.text).toContain('من قائمتهم');
-    expect(note.text).not.toMatch(/اكتب \d/);
+    expect(note.text).toBe('هذا رقم المنطقة لـ«القنيطرة» وليس رقم مدينتها — اكتب رقم مدينتها من قائمتهم');
+    expect(note.text).not.toContain('بيتجاهله');
+  });
+
+  it('a number the list holds as both a region and a city is read as the city (the box and the press agree)', () => {
+    const both: CourierPlaces = { cities: { '10': 'سين — سين' }, regions: { '10': { name: 'عين', cityId: 11 } } };
+    expect(placeNote('10', both)).toEqual({ kind: 'place', text: 'سين — سين' });
   });
 
   it('NEGATIVE: an unknown number, an empty box, text and no list at all say nothing', () => {
@@ -288,6 +309,74 @@ describe('placeNote: what the box says about the typed number', () => {
     expect(placeNote('12ab', places)).toBeNull();
     expect(placeNote('-5', places)).toBeNull();
     expect(placeNote('445153', null)).toBeNull();
+  });
+});
+
+/**
+ * A TYPED NUMBER THAT THE LIST PROVES IS A REGION ID IS NOT A PLACE.
+ *
+ * `isRegionIdOnly` is what `couriers/city-id` asks before it sends a typed number: true only for a number the courier's own
+ * list holds as a region's and not as any city's. Everything else — unknown numbers, cities, a courier with no list — is
+ * false, so it stays as typed.
+ */
+describe('isRegionIdOnly: provably a Region Id, and nothing else', () => {
+  const regionIds = [...new Set(sheet.map((v) => v.regionId))];
+  const cityIds = [...new Set(sheet.map((v) => v.cityId))];
+
+  it('3003 is السويداء’s Region Id and no city’s: true', () => {
+    expect(isRegionIdOnly('BASHA', 3003)).toBe(true);
+  });
+
+  it('every Region Id of their list is true — and there are 26 of them', () => {
+    expect(regionIds).toHaveLength(26);
+    for (const id of regionIds) expect(isRegionIdOnly('BASHA', id), String(id)).toBe(true);
+  });
+
+  it('NEGATIVE: every city id of their list is false — 445153 (السويداء), 566117 (مدينة السويداء), all 152', () => {
+    expect(cityIds).toHaveLength(152);
+    for (const id of cityIds) expect(isRegionIdOnly('BASHA', id), String(id)).toBe(false);
+    expect(isRegionIdOnly('BASHA', 445153)).toBe(false);
+    expect(isRegionIdOnly('BASHA', 566117)).toBe(false);
+  });
+
+  it('NEGATIVE: a number the list does not know at all is false — it may be right, so it stays as typed', () => {
+    for (const id of [1, 99999, 999001, 999999999, 0, -3003, 3003.5]) expect(isRegionIdOnly('BASHA', id), String(id)).toBe(false);
+  });
+
+  it('NEGATIVE: a courier we hold no list for is false for every number, 3003 included', () => {
+    for (const code of ['HALA', 'NAQEL', '', null, undefined]) expect(isRegionIdOnly(code, 3003), String(code)).toBe(false);
+  });
+
+  it('the courier is found by its code in any case', () => {
+    expect(isRegionIdOnly('basha', 3003)).toBe(true);
+    expect(isRegionIdOnly(' BASHA ', 3003)).toBe(true);
+  });
+
+  it('Basha’s own list never reuses a number: no number is both a region and a city (so nothing is read the wrong way here)', () => {
+    const cities = new Set(cityIds);
+    expect(regionIds.filter((id) => cities.has(id))).toEqual([]);
+  });
+});
+
+describe('regionOnlyIds: the same rule on lists that are not Basha’s', () => {
+  let n = 0;
+  const v = (regionId: number, regionName: string, cityId: number, cityName: string): CourierVillage => ({
+    villageId: ++n, villageName: cityName, cityId, cityName, regionId, regionName,
+  });
+
+  it('a region’s number that is no city’s is region-only', () => {
+    expect([...regionOnlyIds([v(7, 'سين', 70, 'سين'), v(8, 'صاد', 80, 'صاد')])].sort()).toEqual([7, 8]);
+  });
+
+  it('a number held as BOTH a region’s and a city’s is a city: it is not region-only', () => {
+    // 10 is the Region Id of «عين» and also the id of «سين»'s city.
+    const list = [v(7, 'سين', 10, 'سين'), v(10, 'عين', 11, 'عين'), v(2, 'صاد', 20, 'صاد')];
+    expect([...regionOnlyIds(list)].sort((a, b) => a - b)).toEqual([2, 7]);
+  });
+
+  it('a city’s number that is no region’s is never region-only; an empty list has none', () => {
+    expect(regionOnlyIds([v(7, 'سين', 70, 'سين')]).has(70)).toBe(false);
+    expect(regionOnlyIds([]).size).toBe(0);
   });
 });
 
