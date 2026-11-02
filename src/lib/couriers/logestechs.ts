@@ -212,6 +212,11 @@ export class LogesTechsAdapter implements CourierAdapter {
   // Their API addresses a parcel by their city id, nothing else ("الـ API مع الـ id تبع المناطق").
   readonly needsCourierCityId = true;
 
+  /** No address to collect from, after trimming: their server refuses every parcel (see `CourierAdapter`). */
+  get originAddressMissing(): boolean {
+    return !(this.config.origin?.addressLine1 ?? '').trim();
+  }
+
   private readonly base: string;
   private readonly http: typeof fetch;
   private readonly timeoutMs: number;
@@ -336,6 +341,21 @@ export class LogesTechsAdapter implements CourierAdapter {
       throw new Error('LOGESTECHS_CITY_UNKNOWN: لم يُعرف رمز المدينة لدى الشركة');
     }
 
+    /*
+     * NEVER AN EMPTY ADDRESS ON THE WIRE. Their server reads '' as null and refuses the parcel in English
+     * («Invalid Parameter 'model.addressLine1' null»), the same sentence for every order of a batch (2/11). Dispatch
+     * refuses both cases before the claim (`NO_ORIGIN_ADDRESS`, `NO_ADDRESS`); this is the last line for any other
+     * caller, and it says which address is missing, before any request is made.
+     */
+    const originLine1 = (this.config.origin?.addressLine1 ?? '').trim();
+    if (!originLine1) {
+      throw new Error('عنوان الانطلاق فاضي بحساب الشركة — الشركة بترفض الطرد بدونه. اضغط «تغيير الحساب» واكتبه.');
+    }
+    const destinationLine1 = (req.customer.address ?? '').trim();
+    if (!destinationLine1) {
+      throw new Error('الطلب بلا عنوان — اكتب العنوان بالطلب وأعد الترحيل');
+    }
+
     const body = {
       ...this.auth,
       pkgUnitType: 'METRIC',
@@ -369,12 +389,12 @@ export class LogesTechsAdapter implements CourierAdapter {
         ...(this.config.vehicleTypeId !== undefined ? { vehicleTypeId: this.config.vehicleTypeId } : {}),
       },
       destinationAddress: {
-        addressLine1: req.customer.address,
+        addressLine1: destinationLine1,
         cityId,
       },
       originAddress: {
-        addressLine1: this.config.origin.addressLine1,
-        addressLine2: this.config.origin.addressLine2 ?? '',
+        addressLine1: originLine1,
+        addressLine2: (this.config.origin.addressLine2 ?? '').trim(),
         cityId: this.config.origin.cityId,
       },
     };
