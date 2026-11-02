@@ -549,6 +549,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/orders/TwinConfirmedDialog.tsx": {
+    "buttons": 3,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 0,
+    "modals": 1,
+    "icons": 1,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/performance/AttributionTable.tsx": {
     "buttons": 0,
     "inputs": 0,
