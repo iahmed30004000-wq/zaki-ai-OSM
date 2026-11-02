@@ -45,3 +45,26 @@ export function holdReservation(order: StateSource): HoldReservation {
     why: 'بضاعتُه تعود للبيع خلال التأجيل، وتُحجَز من جديد حين تُبنى الشحنة',
   };
 }
+
+/**
+ * IS THIS ORDER WAITING OUT A HOLD THAT GAVE ITS GOODS BACK? (RV635)
+ *
+ * The hold door released the units of an order postponed before it left the
+ * warehouse (`holdReservation` above), and takes them again only when the hold
+ * is lifted — «ما تحجز رصيد الا بعد ما اشيلو من التأجيل». Any other door that
+ * reserves the order's lines while that hold stands takes back what the owner
+ * gave back: an approved edit of 4 → 5 on a postponed order reserved 5.
+ *
+ * So the question every such door asks is this one, and it is the hold door's
+ * own question, not a second reading of the statuses:
+ *
+ *   - a hold date on the order (`shipHoldUntil`), passed or not — a date that
+ *     passed did not reserve anything by itself; «أرجِعه» does;
+ *   - and a parcel that had NOT left the warehouse, which is exactly the case
+ *     the hold door released. A packed parcel (held from a trolley, or lifted
+ *     back to the out-tray with its date set to now) kept its goods, and is
+ *     answered `false`: whatever the door did before, it still does.
+ */
+export function holdReleasedItsStock(order: StateSource & { shipHoldUntil?: Date | string | null }): boolean {
+  return !!order.shipHoldUntil && holdReservation(order).releases;
+}
