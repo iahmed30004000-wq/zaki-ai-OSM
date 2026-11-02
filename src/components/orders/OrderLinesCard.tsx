@@ -10,10 +10,13 @@ import { ProductLinesEditor, type DraftLine } from '@/components/orders/ProductL
 import { RiArchiveLine, RiLoader4Line, RiPencilLine } from '@remixicon/react';
 import { raiseEditRequest } from '@/components/orders/raiseEditRequest';
 import { TERMINAL_CONFIRMATION_STATUSES } from '@/lib/confirmation-workflow';
-import type { ChangeableField } from '@/lib/change-request-fields';
+import { touchesMoney, type ChangeableField } from '@/lib/change-request-fields';
 import { MAX_REASON, MIN_REASON } from '@/lib/order-edit-reason';
 import { useAsk } from '@/components/ui/Confirm';
 import { useIsPhone } from '@/hooks/useIsPhone';
+import { useAppOptional } from '@/context/AppContext';
+import { userCan } from '@/lib/can';
+import { editsNow, type WindowOrder } from '@/lib/edit-confirmed-window';
 
 
 /**
@@ -49,7 +52,12 @@ interface Line {
 }
 
 interface Props {
-  order: {
+  /**
+   * `WindowOrder`'s fields (who holds it, which trolley, the shipping state) are optional here: when the screen's read carries
+   * them, the card can say BEFORE the press whether the save is applied at once (`orders.edit_confirmed`); when it does not,
+   * the card says what it always said.
+   */
+  order: Omit<WindowOrder, 'confirmationStatus'> & {
     id: string;
     version: number;
     /** Confirmation is the line after which an edit becomes a request. */
@@ -81,11 +89,21 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
   /* A phone wraps a product's name over two lines where a desk cuts it with an ellipsis (ORD-24). */
   const phone = useIsPhone();
   const ask = useAsk();
+  const currentUser = useAppOptional()?.currentUser ?? null;
+  /**
+   * WILL THIS SAVE BE APPLIED AT ONCE? (`orders.edit_confirmed`, 2/11) — she holds a confirmed order, holds the key, and the order
+   * is in no batch. The server is the judge; this is only the sentence BEFORE the press. A save that moves a figure (the
+   * discount, a quantity, a product) is applied at once only for somebody who also holds `orders.change_price`.
+   */
+  const holdsWindow = editsNow(currentUser, order, 'EDIT');
+  const mayChangePrice = userCan(currentUser, 'orders.change_price');
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** «بانتظار الموافقة» — said out loud, not left to be guessed. */
   const [notice, setNotice] = useState<string | null>(null);
+  /** «تم تطبيق التعديل» — said out loud too, when the holder's own window applied it. */
+  const [done, setDone] = useState<string | null>(null);
   const [form, setForm] = useState({
     discountAmount: String(order.discountAmount ?? 0),
     // What the customer asked for, or what this order needs. Internal notes
@@ -193,6 +211,7 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
       }))
     );
     setError(null);
+    setDone(null);
     if (!canEdit) await onAcquireLock();
     setOpen(true);
   }
@@ -312,10 +331,14 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
           setOpen(false);
           return;
         }
+        // Applied at once only if the window is open AND, for a figure, she also holds the price key (the server asks the same).
+        const appliesNow = holdsWindow && (!touchesMoney(mapped.changes) || mayChangePrice);
         const reason = await ask({
-          title: 'طلب تعديل',
-          body: 'الطلب مؤكَّد، فالتعديل بيروح كطلب لمن يبتّ فيه. السبب بينحفظ مع الطلب وبيقراه اللي بيوافق.',
-          confirmLabel: 'ارفع الطلب',
+          title: appliesNow ? 'تعديل الطلب' : 'طلب تعديل',
+          body: appliesNow
+            ? 'الطلب مؤكَّد ولم يدخل دفعة شحن بعد، فالتعديل بينطبق فوراً. السبب بينحفظ مع الطلب باسمك.'
+            : 'الطلب مؤكَّد، فالتعديل بيروح كطلب لمن يبتّ فيه. السبب بينحفظ مع الطلب وبيقراه اللي بيوافق.',
+          confirmLabel: appliesNow ? 'طبّق التعديل' : 'ارفع الطلب',
           input: {
             label: 'ليش بدّه يتعدّل؟',
             placeholder: 'مثال: الزبون زاد الكمية بالتلفون',
@@ -326,10 +349,13 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
         });
         const trimmed = (reason ?? '').trim();
         if (trimmed.length < MIN_REASON) return;
-        const { applied } = await raiseEditRequest(order.id, mapped.changes, trimmed, order.version);
+        const { applied, message, viaWindow } = await raiseEditRequest(order.id, mapped.changes, trimmed, order.version);
         setOpen(false);
-        if (applied) onSaved();
-        else setNotice('بانتظار الموافقة — التعديل انرفع كطلب، والطلب ما تغيّر لحتى حدا يوافق.');
+        if (applied) {
+          // Said when it was her own window that applied it; every other authority's save just refreshes, as it always did.
+          if (viaWindow) setDone(message);
+          onSaved();
+        } else setNotice('بانتظار الموافقة — التعديل انرفع كطلب، والطلب ما تغيّر لحتى حدا يوافق.');
         return;
       }
 
@@ -424,6 +450,12 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
         ))}
       </div>
 
+      {done && (
+        <p role="status" className="text-xs text-[var(--sys-success)] bg-[var(--sys-success-soft)] rounded-lg px-2.5 py-1.5">
+          {done}
+        </p>
+      )}
+
       {!open && (
         <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2 text-sm">
           <Small label="سعر البيع" value={amount(order.sellingPrice, currency)} />
@@ -506,7 +538,9 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
               ))}
             {pastConfirmation && (
               <p className="text-xs text-[var(--sys-muted)]">
-                الخصم بعد التأكيد طلب تعديل — لا يتغير الطلب حتى الموافقة.
+                {holdsWindow && mayChangePrice
+                  ? 'الطلب لم يدخل دفعة شحن بعد — الخصم والتعديل بيتطبّقوا فوراً.'
+                  : 'الخصم بعد التأكيد طلب تعديل — لا يتغير الطلب حتى الموافقة.'}
               </p>
             )}
           </div>

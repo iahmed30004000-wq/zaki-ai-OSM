@@ -94,6 +94,18 @@ const ORDER_SELECT = {
   _count: { select: { contactAttempts: true, notes: true } },
 } as const;
 
+/*
+ * WHERE EACH CONFIRMED ORDER IS, for the one button of the «أكّدتها» tab: a holder of `orders.edit_confirmed` changes her own order
+ * herself until it enters a batch (2/11), and the row says «تعديل» instead of «طلب تعديل» only for the orders where that is true.
+ * Read for that tab alone, display only — the server decides again when she presses it.
+ */
+const WHERE_IT_IS = {
+  claimedById: true,
+  shippingBatchId: true,
+  shippedAt: true,
+  labelPrintedAt: true,
+} as const;
+
 /** No-answer attempts logged so far — drives the 1/2/3 counter in the UI. */
 async function noAnswerCounts(orderIds: string[]) {
   if (orderIds.length === 0) return new Map<string, number>();
@@ -212,7 +224,7 @@ export async function GET(request: Request) {
         orderBy: { confirmedAt: 'desc' },
         skip: (page - 1) * CONFIRMED_PAGE_SIZE,
         take: CONFIRMED_PAGE_SIZE,
-        select: { ...ORDER_SELECT, changeRequests: { where: { status: 'PENDING' }, select: { id: true, createdAt: true } } },
+        select: { ...ORDER_SELECT, changeRequests: { where: { status: 'PENDING' }, select: { id: true, createdAt: true } }, ...WHERE_IT_IS },
       }),
       db.order.count({
         where: { ...scope, confirmationStatus: 'CONFIRMED', confirmedAt: { gte: from, lte: to }, ...search },
