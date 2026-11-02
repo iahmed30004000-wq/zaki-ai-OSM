@@ -197,7 +197,10 @@ describe('the rule, step by step', () => {
   });
 
   it('a name filed under two different Region Ids has no answer: which one is meant cannot be told', () => {
-    const list = [v(1, 'سين', 10, 'سين'), v(2, 'سين', 11, 'سين')];
+    // The fixture must not be answerless for another reason: region 1 alone HAS a same-name city, and the union of the two
+    // would answer 10 — only the Region Id guard stands between that and null.
+    expect(answer([v(1, 'سين', 10, 'سين')], 'سين')).toEqual({ cityId: 10, cityName: 'سين' });
+    const list = [v(1, 'سين', 10, 'سين'), v(2, 'سين', 11, 'وسط البلد')];
     expect(answer(list, 'سين')).toBeNull();
   });
 
