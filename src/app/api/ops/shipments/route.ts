@@ -13,8 +13,7 @@ import { cancelVerdict } from '@/lib/shipment-cancel';
 import { batchStatusOf } from '@/lib/order-cancel';
 import { zodMessage } from '@/lib/zod-message';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
-import { orderSearchOr } from '@/lib/order-filters';
-import { BATCHABLE_SHIPPING, HELD_PACKED_PARCEL, WAITING_FOR_A_TROLLEY, whyNotBatchable } from '@/lib/batching-guard';
+import { BATCHABLE_SHIPPING, HELD_PACKED_PARCEL, WAITING_FOR_A_TROLLEY, shipmentListWhere, whyNotBatchable } from '@/lib/batching-guard';
 
 /**
  * Shipment creation.
@@ -82,38 +81,8 @@ export async function GET(req: Request) {
     const search = q.get('q')?.trim();
 
     const orders = await db.order.findMany({
-      where: {
-        companyId,
-        storeId,
-        confirmationStatus: 'CONFIRMED',
-        // Held back by hand: the customer asked for it not to go out yet.
-        // A hold with no date is open-ended and only ends when released.
-        //
-        // TWO KINDS OF PARCEL WAIT FOR A TROLLEY, as two branches: one not yet packed, and one PACKED (still
-        // READY_FOR_PICKUP) that «أجّل الشحن» took off a trolley. The second keeps its status, because that status
-        // is the fact «the box is packed»; its hold date is what tells it from one an agent handed back.
-        // «المؤجَّلة»: every branch below is held, and the column says so at the top too.
-        ...(held === 'only' ? { shipHoldUntil: { not: null } } : {}),
-        OR: [
-          {
-            shippingStatus: { in: [...WAITING_FOR_A_TROLLEY] },
-            ...(held === 'only'
-              ? { shipHoldUntil: { not: null } }
-              : { OR: [{ shipHoldUntil: null }, { shipHoldUntil: { lte: new Date() } }] }),
-          },
-          held === 'only' ? HELD_PACKED_PARCEL : { ...HELD_PACKED_PARCEL, shipHoldUntil: { lte: new Date() } },
-        ],
-        ...(regionId ? { regionId } : {}),
-        ...(productId ? { items: { some: { productId } } } : {}),
-        // ANDed as its own clause, not spread: the where above already has
-        // an `OR` for the hold window, and a second one at the same level
-        // would silently replace it — the held filter would stop working
-        // the moment somebody typed in the search box.
-        ...(search ? { AND: [{ OR: orderSearchOr(search, { withCity: true }) }] } : {}),
-        ...(from || to
-          ? { createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } }
-          : {}),
-      },
+      // The tab's question, written once (`shipmentListWhere`): the file of the ready orders asks the same one.
+      where: shipmentListWhere({ companyId, storeId, held: held === 'only', regionId, productId, search, from, to }),
       orderBy: { createdAt: 'asc' },
       take: 300,
       select: {

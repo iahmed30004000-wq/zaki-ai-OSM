@@ -1,4 +1,6 @@
+import type { Prisma } from '@prisma/client';
 import { hasEverShipped } from './order-state';
+import { orderSearchOr } from './order-filters';
 
 /**
  * WHO MAY BE PUT ON A TROLLEY — AND WHO MAY NOT, WHATEVER THE LIST SAID.
@@ -34,6 +36,57 @@ export const HELD_PACKED_PARCEL = {
   shippingBatchId: null,
   shipHoldUntil: { not: null },
 } as const;
+
+/**
+ * «جاهزة للشحن» AND «مؤجَّلة الشحن» — THE TWO TABS OF «إنشاء شحنة», WRITTEN ONCE (3/11).
+ *
+ * The list's own `where`, lifted out of `GET /api/ops/shipments` so the file of the ready orders
+ * (`GET /api/ops/shipments/export`) asks the very same question instead of a copy of it: what the tab shows is what the
+ * file holds, and a postponed order is in neither. `held: false` is «جاهزة للشحن» (no hold, or a hold whose day has come);
+ * `held: true` is «مؤجَّلة الشحن». The search is the orders list's (`orderSearchOr`), with the city.
+ */
+export function shipmentListWhere(input: {
+  companyId: string;
+  storeId: string;
+  held: boolean;
+  regionId?: string | null;
+  productId?: string | null;
+  search?: string | null;
+  from?: Date | null;
+  to?: Date | null;
+  now?: Date;
+}): Prisma.OrderWhereInput {
+  const { companyId, storeId, held, regionId, productId, search, from, to } = input;
+  const now = input.now ?? new Date();
+  return {
+    companyId,
+    storeId,
+    confirmationStatus: 'CONFIRMED',
+    // Held back by hand: the customer asked for it not to go out yet.
+    // A hold with no date is open-ended and only ends when released.
+    //
+    // TWO KINDS OF PARCEL WAIT FOR A TROLLEY, as two branches: one not yet packed, and one PACKED (still
+    // READY_FOR_PICKUP) that «أجّل الشحن» took off a trolley. The second keeps its status, because that status
+    // is the fact «the box is packed»; its hold date is what tells it from one an agent handed back.
+    // «المؤجَّلة»: every branch below is held, and the column says so at the top too.
+    ...(held ? { shipHoldUntil: { not: null } } : {}),
+    OR: [
+      {
+        shippingStatus: { in: [...WAITING_FOR_A_TROLLEY] },
+        ...(held ? { shipHoldUntil: { not: null } } : { OR: [{ shipHoldUntil: null }, { shipHoldUntil: { lte: now } }] }),
+      },
+      held ? HELD_PACKED_PARCEL : { ...HELD_PACKED_PARCEL, shipHoldUntil: { lte: now } },
+    ],
+    ...(regionId ? { regionId } : {}),
+    ...(productId ? { items: { some: { productId } } } : {}),
+    // ANDed as its own clause, not spread: the where above already has
+    // an `OR` for the hold window, and a second one at the same level
+    // would silently replace it — the held filter would stop working
+    // the moment somebody typed in the search box.
+    ...(search ? { AND: [{ OR: orderSearchOr(search, { withCity: true }) as Prisma.OrderWhereInput[] }] } : {}),
+    ...(from || to ? { createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
+  };
+}
 
 export interface BatchingFacts {
   shippingBatchId?: string | null;
