@@ -12,12 +12,12 @@ import {
   ORDER_ALREADY_IN_QUEUE, ORDER_CLAIM_NOT_HELD, ORDER_NOT_FOUND, ORDER_PAST_CONFIRMATION, ORDER_STALE,
   ORDER_TAKEBACK_REASON, orderClaimedBy,
 } from '@/lib/order-refusals';
-import { ownedCounts, pullRefusal } from '@/lib/confirmation-queue';
+import { claimByNumberMessage, mustHoldToWork, ownedCounts, pullRefusal, USE_THE_PULL_CODE } from '@/lib/confirmation-queue';
 import { reservedForOthersWhere, reservedMessage } from '@/lib/order-reservation';
 import { reserveReturningCustomers } from '@/lib/reserve-returning-customers';
 
 /**
- * POST /api/orders/[id]/claim        → claim + digital signature
+ * POST /api/orders/[id]/claim        → claim + digital signature (NOT for an agent of the queue: she pulls — `USE_THE_PULL`, below)
  * DELETE /api/orders/[id]/claim      → release (self) — body/query: reason
  * POST /api/orders/[id]/claim?mode=override → SUPER_ADMIN override (reason required)
  */
@@ -95,6 +95,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // ── Normal claim ──
     if (!can(user, 'orders.claim')) {
       return NextResponse.json({ error: 'Forbidden: missing required permission orders.claim', errorAr: 'لا تملك صلاحية سحب الطلبات من الطابور.' }, { status: 403 });
+    }
+
+    /**
+     * ── AN AGENT TAKES AN ORDER BY PULLING THE NEXT ONE, NEVER BY ITS NUMBER (the independent review of #154, 2/11) ──
+     *
+     * This door takes ANY unheld order in ANY state — a confirmed one included (`atomicClaim` has no `confirmationStatus` in its
+     * WHERE) — and skips the queue's order, which is the point of a queue. The live agent role holds `orders.claim`, so one request
+     * with an order number was a way to pick an order out of the pool and to take one that was already decided.
+     *
+     * Nothing on screen asks for it from an agent: `useOrderOwnership.claim` has no caller (OrderDetailModal uses the lock and the
+     * release only), `OrderResponsibility` calls `?mode=override` and DELETE, and no Telegram, system or app door posts here. So an
+     * account bound by `mustHoldToWork` is refused, with the sentence that sends her to the pull, before anything is read or written —
+     * not even the best-effort hold below. The owner's «استلمه أنا» (the override above), a manager (`orders.unlock` / `orders.assign`)
+     * and a moderator (`orders.claim` with no `confirmation.work`) are not bound and take an order exactly as they did.
+     */
+    if (mustHoldToWork((permission) => can(user, permission))) {
+      const said = claimByNumberMessage((permission) => can(user, permission));
+      return NextResponse.json({ error: said, errorAr: said, code: USE_THE_PULL_CODE }, { status: 403 });
     }
 
     // A returning customer's order is held for the agent who worked him last BEFORE anybody may take it — best-effort: a hold

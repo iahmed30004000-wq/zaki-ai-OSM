@@ -6,6 +6,7 @@ import { CONTACT_RESULTS, REJECTION_REASONS } from '@/lib/confirmation-workflow'
 import { apiError } from '@/lib/api-error';
 import { can, authorize } from '@/lib/authorization';
 import { ORDER_NOT_FOUND } from '@/lib/order-refusals';
+import { mustHoldToWork, NOT_HELD_MESSAGE } from '@/lib/confirmation-queue';
 
 /**
  * POST /api/orders/[id]/call-logs — record a call. A result that would move
@@ -16,6 +17,10 @@ import { ORDER_NOT_FOUND } from '@/lib/order-refusals';
  *    (ASSIGNED scope enforces own-assignment).
  *  - Order access via assertOrderAccess (company isolation + role assignment scope).
  *  - moderatorId on the log is ALWAYS the authenticated user (server-derived).
+ *  - An agent of the queue logs a call only on the order she HOLDS (`mustHoldToWork`, below).
+ *
+ * Nothing on screen calls this door (OrderDetailModal says so); it is kept for the API, and it stays on `'orders.view'` and off the
+ * work door (`the-order-she-holds.test.ts` holds that) — the holder check is an extra refusal, not a wider entrance.
  */
 export async function POST(
   req: Request,
@@ -64,6 +69,14 @@ export async function POST(
         return NextResponse.json({ error: 'Order not found', errorAr: ORDER_NOT_FOUND }, { status: 404 });
       }
       return NextResponse.json({ error: 'Forbidden: cannot record calls', errorAr: 'لا تملك صلاحية تسجيل الاتصالات.' }, { status: 403 });
+    }
+
+    // AN AGENT WORKS ONLY THE ORDER SHE HOLDS (the owner, 1/11; the independent review of #154 found this door beside the two it fixed):
+    // a call logged here writes a `CallLog` and a CALL_MADE row on whatever order she can open, held or not — the half of «اتصلت ثم
+    // أكّدت» the confirmation door next door refuses. Whoever can take or hand out any order (`orders.unlock`, `orders.assign`) is not
+    // bound, as at the other doors; `confirmation.supervise` excuses nobody. Asked before the body is read and before any row.
+    if (mustHoldToWork((permission) => can(user, permission)) && order.claimedById !== user.id) {
+      return NextResponse.json({ error: NOT_HELD_MESSAGE, errorAr: NOT_HELD_MESSAGE, code: 'NOT_HELD' }, { status: 403 });
     }
 
     const body = await req.json();

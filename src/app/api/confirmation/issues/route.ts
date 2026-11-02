@@ -2,9 +2,11 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
-import { requirePermission } from '@/lib/authorization';
+import { can, requirePermission } from '@/lib/authorization';
 import { assertOrderAccess } from '@/lib/rbac';
 import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
+import { STATE_LABEL_AR, deriveCoreState, getZone, type StateSource } from '@/lib/order-state';
+import { mustHoldToWork, NOT_HELD_MESSAGE } from '@/lib/confirmation-queue';
 import { apiErrorResponse } from '@/lib/api-error';
 import { createNotification } from '@/lib/notification';
 import { logAudit } from '@/lib/audit';
@@ -21,6 +23,11 @@ import { noteCustomersHandedOut } from '@/lib/pii-alert';
  * entry issue: there is no moderator to return it to. An issue is never
  * counted as a cancellation against the agent, and the order keeps its
  * original created_at — it returns to the queue, it is not recreated.
+ *
+ * RAISING one has two more conditions (the independent review of #154): an agent of the queue raises it only on the order she HOLDS
+ * (`NOT_HELD`, 403), and nobody raises it on an order already past the confirmation desk (`PAST_CONFIRMATION`, 409) — that write
+ * puts the order back to NEW and clears its holder, which for a confirmed order would leave its stock reserved beside a status that
+ * says nobody decided it. On an open order she holds it does exactly what it always did.
  */
 
 export const ISSUE_REASONS = [
@@ -103,6 +110,36 @@ export async function POST(req: Request) {
     const access = await assertOrderAccess(parsed.data.orderId, user, { companyId, storeId }, ORDER_WORK_DOOR);
     if (!access.allowed) return NextResponse.json({ error: 'الطلب غير موجود' }, { status: 404 });
     const order = access.order;
+
+    // AN AGENT WORKS ONLY THE ORDER SHE HOLDS (the owner, 1/11) — see `mustHoldToWork`. The button is drawn on the cards of her own desk,
+    // but this door took any order with a `moderatorId`: the independent review ran it with the live agent's keys on an order a
+    // colleague held, and it was taken out of her hands. Asked before anything is read from the order or written; whoever can take or
+    // hand out any order (`orders.unlock`, `orders.assign`) is not bound, and `confirmation.supervise` excuses nobody.
+    if (mustHoldToWork((permission) => can(user, permission)) && order.claimedById !== user.id) {
+      return NextResponse.json({ error: NOT_HELD_MESSAGE, errorAr: NOT_HELD_MESSAGE, code: 'NOT_HELD' }, { status: 403 });
+    }
+
+    /*
+     * AN ENTRY ISSUE SENDS AN ORDER BACK TO THE START OF CONFIRMATION — SO IT NEEDS AN ORDER THAT IS STILL THERE.
+     *
+     * The write below clears the holder and sets the order to NEW. For an order that was already confirmed that is a different act:
+     * it leaves the order's reservation held (nothing here releases it) beside a status that says nobody has decided it, and a
+     * shipped one would read as waiting to be confirmed. The independent review pushed a CONFIRMED order a colleague held back to
+     * NEW this way, with the stock still held.
+     *
+     * No flow needs it: the button is on the cards of «طلباتي» (open states only), and after the yes the way to change an order is
+     * «تعديل · إلغاء · تأجيل» — a request, not an issue. So the door refuses what is past the confirmation desk, for everybody (the
+     * owner too: this is about the order, not about the person), with the state in the sentence. Read from the derived state, as the
+     * release door does (`PAST_CONFIRMATION` in claim/route.ts), so a parcel already in the shipment is refused as well.
+     */
+    const state = deriveCoreState(order as StateSource);
+    const zone = getZone(state);
+    if (zone !== 'INTAKE' && zone !== 'CONFIRMATION') {
+      const said =
+        `الطلب «${STATE_LABEL_AR[state] ?? state}» — إشكال الإدخال بس للطلب اللي لسا بمرحلة التأكيد. ` +
+        'للتغيير بعد التأكيد استعمل «تعديل · إلغاء · تأجيل» من ورقة الطلب.';
+      return NextResponse.json({ error: said, errorAr: said, code: 'PAST_CONFIRMATION' }, { status: 409 });
+    }
 
     // Moderator-entered orders only.
     if (!order.moderatorId) {

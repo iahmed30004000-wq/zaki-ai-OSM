@@ -82,8 +82,23 @@ export function keepsOwnEntry(holds: (permission: string) => boolean): boolean {
  * take. A rule that excused it would have excused every agent it was written for and stopped nobody; the unit tests, which hand the
  * door keys by hand, could not have said so. `the-live-agent-is-refused-by-the-real-engine.test.ts` holds the measured list.
  *
- * The pull stays what puts an order in her hands from the screen (`/api/confirmation/pull`, «طلباتي»). The API also has a claim-by-number
- * door (`POST /api/orders/[id]/claim`, `orders.claim`, which the live agent holds); no screen calls it — BACKLOG RV565.
+ * ── THE DOORS THAT ASK IT (the independent review of #154, 2/11, closed the rest) ──
+ *
+ *   · the confirmation door and the contact-attempts door (#154), and with them the two that sat beside them: the call log
+ *     (`POST /api/orders/[id]/call-logs`) and the entry issue (`POST /api/confirmation/issues`) — each answers `NOT_HELD` before it
+ *     writes a row. The entry issue also refuses an order past the confirmation desk, for everybody (see that door);
+ *   · the transfer door asks the other side of the same rule: who may be HANDED an order (`mayBeHandedAnOrder`);
+ *   · the claim-by-number door (`POST /api/orders/[id]/claim`) is not «hold it first» — taking is the point — so it refuses her
+ *     altogether and sends her to the pull (`claimByNumberMessage`, code `USE_THE_PULL`). Nothing on screen ever called it for her
+ *     (`useOrderOwnership.claim` has no caller). The owner («استلمه أنا»), a manager and a moderator keep it exactly as it was.
+ *
+ * The pull (`/api/confirmation/pull`, «طلباتي») is therefore the ONLY way an order reaches an agent's hands out of the queue. The other
+ * two are not a taking: a hand-over to her (`/api/orders/[id]/transfer`, by whoever assigns or by the colleague who holds it) and an
+ * order she typed herself (`keepsOwnEntry`).
+ *
+ * ⚠️ The rule turns itself off for an account the day the owner ticks `orders.unlock` or `orders.assign` on its role — silently, and
+ * the tests cannot see it (their key lists are pictures of one day). The pre-deploy report lists exactly who is NOT bound today
+ * (`scripts/permission-predeploy-report.sql`, the last section): read it before and after touching those two boxes.
  * ═══════════════════════════════════════════════════════════════════════
  */
 export function mustHoldToWork(holds: (permission: string) => boolean): boolean {
@@ -92,6 +107,32 @@ export function mustHoldToWork(holds: (permission: string) => boolean): boolean 
 
 /** Said by the door and by the screen, in the same words. */
 export const NOT_HELD_MESSAGE = 'اسحب الطلب أولاً — لا يمكن العمل على طلب ليس بين يديك';
+
+/** The code the claim-by-number door answers an agent with — not `NOT_HELD`: she holds nothing yet, and taking is not what is refused. */
+export const USE_THE_PULL_CODE = 'USE_THE_PULL';
+
+/**
+ * What the claim-by-number door says to an agent. The way to an order is the pull, so that is what it names — and only when she HAS
+ * the pull: for an account that works orders but cannot pull (`confirmation.pull` unticked), a sentence that sends her to a button
+ * she does not have is the same lie the order sheet used to tell (RV568).
+ */
+export function claimByNumberMessage(holds: (permission: string) => boolean): string {
+  return holds('confirmation.pull')
+    ? 'ما بينسحب طلب برقمه — اضغط «اسحب الطلب التالي» وبيجيك الطلب اللي دوره'
+    : 'ما بينسحب طلب برقمه — وما عندك صلاحية سحب الطلبات؛ بيوصلك الطلب لما المشرف يحوّله إلك';
+}
+
+/**
+ * MAY THIS ACCOUNT BE HANDED AN ORDER TO WORK? (the transfer door, both its list and its acceptance)
+ *
+ * «Can work» was one key — `confirmation.work` — and the supervisor template holds it: it works a queue to WATCH it, with no pull,
+ * no `orders.confirm` and no `orders.contact_log`. An order handed to her could be neither confirmed nor rung. What the order needs
+ * in the hands that get it is what the doors above ask of her: to work it (`confirmation.work`), to be a person the queue gives
+ * orders to (`confirmation.pull`), and to decide it (`orders.confirm`, the first thing the confirmation door asks of every action).
+ */
+export function mayBeHandedAnOrder(holds: (permission: string) => boolean): boolean {
+  return holds('confirmation.work') && holds('confirmation.pull') && holds('orders.confirm');
+}
 
 /**
  * Does the sheet owe this person «اسحبه أولاً» instead of the call and confirm buttons? An agent, on an order that is still waiting
@@ -104,6 +145,43 @@ export function agentMustPullFirst(args: {
   order: { claimedById?: string | null; confirmationStatus: string };
 }): boolean {
   return mustHoldToWork(args.holds) && args.order.claimedById !== args.userId && OPEN_CONFIRMATION.includes(args.order.confirmationStatus);
+}
+
+/** The sentence the sheet prints under «الطلب مو بين يديك», and which of the three cases below it is. */
+export interface PullFirstNotice {
+  kind: 'HELD_BY_COLLEAGUE' | 'PULL' | 'NOT_YOURS';
+  text: string;
+}
+
+/**
+ * WHAT THE SHEET SAYS TO AN AGENT ON AN ORDER SHE MAY NOT WORK — IN THE WORDS THAT ARE TRUE FOR THAT ORDER (RV568).
+ *
+ * One sentence said «اسحبه من اسحب التالي» to everyone, and it was wrong twice: when a COLLEAGUE holds the order the pull will never
+ * give it to her, and when she holds no `confirmation.pull` there is no button to press. Three cases, then:
+ *
+ *   · a colleague holds it            ⇒ «الطلب مع <name>» — and no instruction to pull (it is hers, not the queue's);
+ *   · nobody holds it, she may pull   ⇒ today's sentence, word for word;
+ *   · nobody holds it, she may not    ⇒ it is not hers, and no instruction to press a button she does not have.
+ *
+ * `null` when the sheet owes her nothing (`agentMustPullFirst` is false). The title above the text — «الطلب مو بين يديك» — is the sheet's.
+ * The name is the holder's, as `GET /api/orders/[id]` sends it (`claimer`); a row that did not carry it says «موظف تاني».
+ *
+ * (An order held FOR a colleague — a returning customer's, `reservedFor` — is still read as «nobody holds it»: BACKLOG RV585.)
+ */
+export function pullFirstNotice(args: {
+  holds: (permission: string) => boolean;
+  userId?: string | null;
+  order: { claimedById?: string | null; confirmationStatus: string; claimer?: { name?: string | null } | null };
+}): PullFirstNotice | null {
+  if (!agentMustPullFirst(args)) return null;
+  if (args.order.claimedById) {
+    const who = args.order.claimer?.name?.trim() || 'موظف تاني';
+    return { kind: 'HELD_BY_COLLEAGUE', text: `الطلب مع ${who} — ما بتتصل ولا بتأكّد على طلب مع غيرك.` };
+  }
+  if (!args.holds('confirmation.pull')) {
+    return { kind: 'NOT_YOURS', text: 'الطلب مو إلك — ما عندك صلاحية سحب الطلبات، فبتشتغل على اللي بيتحوّل لك بس.' };
+  }
+  return { kind: 'PULL', text: `${NOT_HELD_MESSAGE}. اسحبه من «اسحب التالي» أو افتحه من «طلباتي»، وبعدها اتصل وأكّد.` };
 }
 
 export interface EntryOwnership {

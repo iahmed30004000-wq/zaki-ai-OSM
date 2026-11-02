@@ -28,7 +28,7 @@ import { OrderStateBadge } from '@/components/orders/OrderStateBadge';
 import { OrderStages } from '@/components/orders/OrderStages';
 import { OrderNotes } from '@/components/orders/OrderNotes';
 import { orderStages } from '@/lib/order-stages';
-import { agentMustPullFirst, NOT_HELD_MESSAGE } from '@/lib/confirmation-queue';
+import { pullFirstNotice } from '@/lib/confirmation-queue';
 import { useRegions } from '@/hooks/useRegions';
 import { amount, arDateShort, arDateTime, type Currency } from '@/lib/format';
 import { RiArrowLeftSLine, RiArrowRightSLine, RiEBike2Line, RiLockLine, RiMoneyDollarCircleLine, RiPencilLine, RiTimerLine, RiTruckLine, RiUserFollowLine } from '@remixicon/react';
@@ -356,8 +356,12 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
    * The doors refuse an agent on an order that is not in her hands (`NOT_HELD`); a panel of call and confirm buttons whose every press
    * is refused is worse than a sentence that says what to do, so for her, on an order still waiting to be decided, the panel is replaced
    * by that sentence. A supervisor and the owner see the panel on any order, as before.
+   *
+   * THE SENTENCE IS TRUE FOR THE ORDER (RV568): «الطلب مع <الاسم>» when a colleague holds it — the pull will never give it to her, so no
+   * instruction to pull; today's «اسحبه…» when nobody holds it and she holds `confirmation.pull`; «مو إلك» without a pull instruction when
+   * she has no pull. `null` when she is owed nothing. See `pullFirstNotice`.
    */
-  const mustPullFirst = agentMustPullFirst({
+  const pullNotice = pullFirstNotice({
     holds: (permission) => userCan(currentUser, permission),
     userId: currentUser?.id,
     order,
@@ -428,15 +432,15 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
             {mayRecordCalls && order?.id && <DuplicateSuspectNotice orderId={order.id} />}
             {mayRecordCalls && order?.id && userCan(currentUser, 'insights.view') && <ShapeRiskPanel orderId={order.id} />}
 
-            {mayRecordCalls && mustPullFirst && (
+            {mayRecordCalls && pullNotice && (
               <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 shadow-raised space-y-1">
                 <h4 className="text-xs font-black text-[var(--sys-foreground)]">الطلب مو بين يديك</h4>
                 <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
-                  {NOT_HELD_MESSAGE}. اسحبه من «اسحب التالي» أو افتحه من «طلباتي»، وبعدها اتصل وأكّد.
+                  {pullNotice.text}
                 </p>
               </div>
             )}
-            {mayRecordCalls && !mustPullFirst && (
+            {mayRecordCalls && !pullNotice && (
             <ConfirmationActions
               order={order}
               ar={ar}
