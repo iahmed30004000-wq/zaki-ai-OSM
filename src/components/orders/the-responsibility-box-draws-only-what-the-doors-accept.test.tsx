@@ -75,6 +75,23 @@ describe('on an order somebody else holds', () => {
   });
 });
 
+/* ORD-2026-1166: both release doors refuse a decided order (it would go back to NEW, to be pulled again) — so no button offers it. */
+describe('on a decided order', () => {
+  it.each(['CONFIRMED', 'REJECTED', 'CANCELLED'])('%s, held by the person: no give-back; the hand-over to a colleague stays', async (status) => {
+    as('agent1', ['orders.release'], true);
+    await show({ ...agentsOrder, confirmationStatus: status } as typeof agentsOrder, 'agent1');
+    expect(screen.queryByText('سحبه منه')).toBeNull();
+    expect(screen.queryByText('تحويل لزميل')).not.toBeNull();
+  });
+
+  it('held by somebody else: the owner is not drawn a pull-back the door refuses, and keeps «استلمه أنا»', async () => {
+    as('x1', ['orders.unlock', 'orders.release'], false);
+    await show({ ...agentsOrder, confirmationStatus: 'REJECTED' } as typeof agentsOrder);
+    expect(screen.queryByText('سحبه منه')).toBeNull();
+    expect(screen.queryByText('استلمه أنا')).not.toBeNull();
+  });
+});
+
 describe('on the order the person holds', () => {
   it('nothing moved: give it back and hand it to a colleague, no «take»', async () => {
     as('agent1', ['orders.release'], true);
