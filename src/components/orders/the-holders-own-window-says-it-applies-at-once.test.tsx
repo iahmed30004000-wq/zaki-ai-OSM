@@ -267,6 +267,16 @@ describe('Ⅳ · the lines card — the same three states', () => {
     expect(screen.queryByRole('status')).toBeNull();
   });
 
+  it('NEGATIVE: applied by ANOTHER authority (a supervisor deciding on the spot, not her window) ⇒ the card refreshes and says no «تم»', async () => {
+    serve({ readyToApply: true, viaEditWindow: false });
+    const onSaved = await typeANote();
+    await pressSave();
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(patches()).toHaveLength(1);
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
   it('PENDING: on a trolley, the same', async () => {
     serve({ readyToApply: false });
     await typeANote({ shippingBatchId: 'b1', shippingStatus: 'READY_FOR_PICKUP' });
