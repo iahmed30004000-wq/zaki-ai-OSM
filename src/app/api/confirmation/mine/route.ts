@@ -14,6 +14,7 @@ import { endOfLocalDay, localDayKey, startOfLocalDay } from '@/lib/local-day';
 import { readPage } from '@/lib/numeric-input';
 import { typed } from '@/lib/text-search';
 import { ruleFor } from '@/lib/phone-rules';
+import { DESK_NOT_FOUND, DESK_WATCH_REFUSAL, mayWatchDesks, watchedAgent } from '@/lib/desk-watch';
 
 /**
  * GET /api/confirmation/mine — the agent's own desk, in THREE groups.
@@ -108,9 +109,33 @@ async function noAnswerCounts(orderIds: string[]) {
 export async function GET(request: Request) {
   try {
     const { user, companyId, storeId, country } = await requireContext();
-    await requirePermission('confirmation.work');
+    const params = new URL(request.url).searchParams;
 
-    const scope = { companyId, storeId, claimedById: user.id };
+    /*
+     * ── «شاشة موظفة»: WHOSE DESK ──
+     *
+     * Without `?agent=` this is her own desk, asked of `confirmation.work`
+     * exactly as before. With it, the viewer reads a colleague's desk — and
+     * only with the watching keys (desk-watch.ts), only a colleague of this
+     * company and this store (404 otherwise), and only for reading: this door
+     * has no write verb, and no door that writes reads `agent`.
+     */
+    const agentAsked = (params.get('agent') ?? '').trim();
+    let deskOf = user.id;
+    let viewing: { id: string; name: string; readOnly: true } | null = null;
+    if (agentAsked && agentAsked !== user.id) {
+      if (!mayWatchDesks(user)) {
+        return NextResponse.json({ error: 'Forbidden: cannot watch another desk', errorAr: DESK_WATCH_REFUSAL }, { status: 403 });
+      }
+      const agent = await watchedAgent(companyId, storeId, agentAsked);
+      if (!agent) return NextResponse.json({ error: 'Not found', errorAr: DESK_NOT_FOUND }, { status: 404 });
+      deskOf = agent.id;
+      viewing = { ...agent, readOnly: true };
+    } else {
+      await requirePermission('confirmation.work');
+    }
+
+    const scope = { companyId, storeId, claimedById: deskOf };
     const now = new Date();
 
     /*
@@ -125,7 +150,6 @@ export async function GET(request: Request) {
      * refusing: the one thing this list must never do is come back empty
      * because a query string was mistyped.
      */
-    const params = new URL(request.url).searchParams;
     const dayAsked = params.get('day') ?? '';
     const dayStart = startOfLocalDay(dayAsked);
     const dayEnd = endOfLocalDay(dayAsked);
@@ -239,7 +263,7 @@ export async function GET(request: Request) {
 
     // Contact details left the building; the tally is the person's, not
     // this screen's. See noteCustomersHandedOut.
-    await noteCustomersHandedOut({ companyId, storeId, user, where: 'طلباتي', rows: [...inConfirmation, ...closedToday, ...confirmed] });
+    await noteCustomersHandedOut({ companyId, storeId, user, where: viewing ? 'شاشة موظفة' : 'طلباتي', rows: [...inConfirmation, ...closedToday, ...confirmed] });
 
     /*
      * ── THE SPLIT ──
@@ -261,6 +285,8 @@ export async function GET(request: Request) {
     const held = inConfirmation.map(decorate);
 
     return NextResponse.json({
+      // Whose desk this is, when it is not the reader's own — the screen draws it read-only. Absent on her own desk.
+      ...(viewing ? { viewing } : {}),
       leadDays: POSTPONE_LEAD_DAYS,
       // The country's calling code — the rows carry a local number («09…») and WhatsApp needs it in full.
       dialCode: ruleFor(country.code)?.dialCode ?? null,
