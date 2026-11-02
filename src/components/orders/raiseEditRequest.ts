@@ -39,10 +39,10 @@ export async function raiseEditRequest(
   expectedVersion: number,
   /** Whether the person holds the screen of the requests, and what the screen knows of the order (see `raiseChangeRequest`). */
   opts: { canOpenQueue?: boolean; order?: { handed?: boolean; held?: boolean } } = {}
-): Promise<{ applied: boolean; requestId: string; message: string }> {
+): Promise<{ applied: boolean; requestId: string; message: string; viaWindow?: boolean }> {
   const canOpenQueue = opts.canOpenQueue === true;
   const order = opts.order;
-  const res = await apiJson<{ request: { id: string }; orderStatus?: string; readyToApply?: boolean }>(
+  const res = await apiJson<{ request: { id: string }; orderStatus?: string; readyToApply?: boolean; viaEditWindow?: boolean }>(
     `/api/orders/${orderId}/change-requests`,
     {
       method: 'POST',
@@ -83,5 +83,13 @@ export async function raiseEditRequest(
       }).message
     );
   }
-  return { applied: true, requestId: res.request.id, message: answerAfterRaise({ intent: 'EDIT', readyToApply: true, canOpenQueue }).message };
+  // `viaEditWindow`: she changed her own order under her own window (`orders.edit_confirmed`) — the sentence says «تم», and the
+  // card can say it too. The key is present only then, so every other caller gets the object it always got.
+  const viaWindow = res.viaEditWindow === true;
+  return {
+    applied: true,
+    requestId: res.request.id,
+    message: answerAfterRaise({ intent: 'EDIT', readyToApply: true, viaWindow, canOpenQueue }).message,
+    ...(viaWindow ? { viaWindow: true } : {}),
+  };
 }

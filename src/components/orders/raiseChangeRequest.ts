@@ -66,7 +66,7 @@ export async function raiseChangeRequest(
             postponeUntil: new Date(`${value.postponeDate}T10:00:00`).toISOString(),
           };
 
-  const res = await apiJson<{ request: { id: string }; orderStatus?: string; readyToApply?: boolean }>(
+  const res = await apiJson<{ request: { id: string }; orderStatus?: string; readyToApply?: boolean; viaEditWindow?: boolean }>(
     `/api/orders/${orderId}/change-requests`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
   );
@@ -81,7 +81,9 @@ export async function raiseChangeRequest(
   /** A second press (or somebody else) carried it out first: nothing waits, and saying «بانتظار التطبيق» would send her looking for it. */
   const already = (): RaisedAnswer =>
     answerAfterRaise({ intent: value.intent, readyToApply: true, alreadyApplied: true, orderStatus: res.orderStatus, canOpenQueue, order });
-  const done = (): RaisedAnswer => answerAfterRaise({ intent: value.intent, readyToApply: true, orderStatus: res.orderStatus, canOpenQueue });
+  // `viaEditWindow`: the holder changed her own order under her own window (`orders.edit_confirmed`) — the sentence says «تم».
+  const done = (): RaisedAnswer =>
+    answerAfterRaise({ intent: value.intent, readyToApply: true, viaWindow: res.viaEditWindow === true, orderStatus: res.orderStatus, canOpenQueue });
 
   if (value.intent === 'EDIT') {
     try {

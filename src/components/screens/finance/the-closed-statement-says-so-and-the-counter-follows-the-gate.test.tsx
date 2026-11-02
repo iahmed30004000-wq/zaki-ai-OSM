@@ -11,8 +11,11 @@ import React from 'react';
  * · A line no order carries offers the one answer it may have («قيد المراجعة» with a reason), and no figure.
  * · An approved statement says «الكشف مغلق نهائياً — التصحيح بكشف تسوية»; its unanswered rows carry that sentence
  *   instead of a form; nothing offers a decision, a link, a swap or a new matching.
+ *
+ * Since 2/11 («افصل المطابقة عن التحصيل») the number is what «إغلاق المطابقة» waits for, not the approval: the money
+ * goes in with a line still open, the matching stays open, and the close button is grey for exactly that reason.
  */
-const { api, approved } = vi.hoisted(() => ({ api: vi.fn(), approved: { current: false } }));
+const { api, approved, moneyIn } = vi.hoisted(() => ({ api: vi.fn(), approved: { current: false }, moneyIn: { current: false } }));
 vi.mock('@/lib/api-client', () => ({ apiJson: (...a: unknown[]) => api(...a), apiFetch: vi.fn() }));
 vi.mock('next/navigation', () => ({
   usePathname: () => '/finance/matching',
@@ -59,8 +62,10 @@ const matches = [
 
 const gap = { claimed: 35, received: 35, gap: 0, needsExplanation: false, explained: false, unconvertible: 0 };
 const statementRow = () => ({
-  id: 's1', reference: 'ST-1', fileName: 'x.xlsx', status: approved.current ? 'APPROVED' : 'MATCHED',
-  approvedAt: approved.current ? '2026-10-29T10:00:00Z' : null,
+  id: 's1', reference: 'ST-1', fileName: 'x.xlsx', status: approved.current || moneyIn.current ? 'APPROVED' : 'MATCHED',
+  approvedAt: approved.current || moneyIn.current ? '2026-10-29T10:00:00Z' : null,
+  // The money in and the matching open: the list says so with a null close.
+  ...(moneyIn.current ? { matchingClosedAt: null } : {}),
   currencyCode: 'JOD', totalAmount: 35, createdAt: '2026-10-28T00:00:00Z', periodFrom: null, periodTo: null,
   counts: { lines: 3, receipts: 1, matches: 3, openLines: approved.current ? 2 : 2 },
   receipts: [{ id: 'r1', amount: 35, currencyCode: 'JOD', receivedAt: '2026-10-28T09:00:00Z', note: null, wallet: 'الصندوق', proof: null }],
@@ -70,6 +75,7 @@ const statementRow = () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   approved.current = false;
+  moneyIn.current = false;
   api.mockImplementation(async (url: string) => {
     if (url === '/api/finance/statements') return { statements: [statementRow()] };
     if (url === '/api/finance/statements/s1') return { statement: { matches } };
@@ -120,11 +126,11 @@ describe('a statement still open', () => {
     expect(JSON.parse((post[1] as RequestInit).body as string)).toEqual({ resolution: 'UNDER_REVIEW', note: 'من كشف شركة أخرى' });
   });
 
-  it('the approval button is grey, and what it says is the server’s sentence for the same number', async () => {
+  // (Was: the approval button is grey for the 2 lines. 2/11: the money never waits on a line — the close does.)
+  it('the approval button is LIVE with the lines open — the money does not wait on them — and the counter still says 2', async () => {
     render(<CollectionScreen />);
     const approve = (await screen.findAllByRole('button', { name: 'اعتماد' }))[0] as HTMLButtonElement;
-    expect(approve.disabled).toBe(true);
-    expect(approve.title).toBe('بقي 2 سطر بلا بتّ أو ربط — ابتّ فيها قبل الاعتماد، فالكشف بعده يُغلق نهائياً');
+    expect(approve.disabled).toBe(false);
     expect(screen.getAllByText(/2 بلا بتّ/).length).toBeGreaterThan(0);
   });
 
@@ -138,6 +144,30 @@ describe('a statement still open', () => {
     render(<CollectionScreen />);
     const approve = (await screen.findAllByRole('button', { name: 'اعتماد' }))[0] as HTMLButtonElement;
     expect(approve.disabled).toBe(false);
+  });
+});
+
+describe('the money in, the matching open', () => {
+  beforeEach(() => {
+    moneyIn.current = true;
+  });
+
+  it('«إغلاق المطابقة» is grey, and what it says is the server’s sentence for the same number', async () => {
+    render(<CollectionScreen />);
+    const close = (await screen.findAllByRole('button', { name: 'إغلاق المطابقة' }))[0] as HTMLButtonElement;
+    expect(close.disabled).toBe(true);
+    expect(close.title).toBe('بقي 2 سطر بلا بتّ أو ربط — ابتّ فيها قبل إغلاق المطابقة، فالكشف بعده يُغلق نهائياً');
+    expect(screen.getAllByText(/2 بلا بتّ/).length).toBeGreaterThan(0);
+    expect(screen.queryAllByRole('button', { name: 'اعتماد' })).toEqual([]);
+  });
+
+  it('the matching screen still takes answers — and says the money is in and where the close is', async () => {
+    render(<MatchingScreen />);
+    await screen.findAllByText('في الكشف وليس عندنا');
+    expect(screen.getByText(/المصاري دخلت المحفظة باعتماد الكشف/)).toBeTruthy();
+    expect(screen.queryByText(CLOSED, { exact: false })).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'قيد المراجعة' }).length).toBeGreaterThan(0);
+    expect((screen.getByRole('button', { name: 'تشغيل المطابقة' }) as HTMLButtonElement).disabled).toBe(false);
   });
 });
 

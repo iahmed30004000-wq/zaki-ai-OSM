@@ -10,6 +10,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  *     and nothing that follows the write is done. That is the half a mock told the answer cannot prove: the fake
  *     here answers `count: 0` to a conditional write on a statement that is no longer open, exactly as the
  *     database does.
+ *
+ * Since 2/11 («افصل المطابقة عن التحصيل») «closed» is two stamps: the money (`approvedAt`) closes the receipts, the gap
+ * and the undo; the close of the matching (`matchingClosedAt`) closes the re-match. The approval no longer waits on a
+ * line: it posts the money and leaves the matching open while a line is a question.
  */
 
 const { db, requireContext, requirePermission, logAudit, recordMovement, receiptGap, markPayableForOrders, runMatching, state } =
@@ -17,16 +21,19 @@ const { db, requireContext, requirePermission, logAudit, recordMovement, receipt
     const state = {
       /** The statement as the database has it right now. */
       approved: false,
+      /** …and whether its matching is closed (the orders settled). */
+      closed: false,
       /** What a READ of the statement says (can lag the truth: a read taken just before an approval). */
-      readsAs: 'open' as 'open' | 'approved',
+      readsAs: 'open' as 'open' | 'approved' | 'closed',
       matches: [] as Record<string, unknown>[],
     };
     const db = {
       courierStatement: {
         findFirst: vi.fn(async (a: { include?: unknown }) => {
-          const approvedAt = state.readsAs === 'approved' ? new Date('2026-10-28T10:00:00Z') : null;
+          const approvedAt = state.readsAs !== 'open' ? new Date('2026-10-28T10:00:00Z') : null;
           return {
             id: 'st1', status: approvedAt ? 'APPROVED' : 'MATCHED', approvedAt, reference: 'ST-1', gapExplanation: null,
+            matchingClosedAt: state.readsAs === 'closed' ? new Date('2026-10-28T10:00:00Z') : null,
             periodTo: null, fileHash: 'ab'.repeat(32),
             receipts: [{ id: 'r1', walletId: 'w1', amount: 35 }],
             matches: state.matches.map((m) => ({ ...m, order: { orderNumber: `N-${m.orderId}`, settlementMatches: [] } })),
@@ -35,8 +42,10 @@ const { db, requireContext, requirePermission, logAudit, recordMovement, receipt
           };
         }),
         // A conditional write on a statement: it takes only a statement that is open in the DATABASE.
-        updateMany: vi.fn(async (a: { where: { approvedAt?: null } }) => {
+        updateMany: vi.fn(async (a: { where: { approvedAt?: unknown; matchingClosedAt?: null } }) => {
           if (a.where.approvedAt === null && state.approved) return { count: 0 };
+          if (a.where.approvedAt !== undefined && a.where.approvedAt !== null && !state.approved) return { count: 0 };
+          if (a.where.matchingClosedAt === null && state.closed) return { count: 0 };
           return { count: 1 };
         }),
       },
@@ -90,6 +99,7 @@ const clean = (orderId: string) => ({ id: `m-${orderId}`, orderId, result: 'MATC
 beforeEach(() => {
   vi.clearAllMocks();
   state.approved = false;
+  state.closed = false;
   state.readsAs = 'open';
   state.matches = [clean('o1')];
   requireContext.mockResolvedValue({
@@ -108,8 +118,9 @@ beforeEach(() => {
 
 describe('running the matching again', () => {
   it('on a closed statement: the one sentence, and the matching does not run', async () => {
-    state.readsAs = 'approved';
+    state.readsAs = 'closed';
     state.approved = true;
+    state.closed = true;
     const res = await rematch();
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ code: 'ALREADY_APPROVED', error: CLOSED });
@@ -117,9 +128,10 @@ describe('running the matching again', () => {
     expect(db.courierStatement.updateMany).not.toHaveBeenCalled();
   });
 
-  it('an approval that lands after the read: the WRITE refuses it, with the same sentence, and the matching never runs', async () => {
+  it('a close that lands after the read: the WRITE refuses it, with the same sentence, and the matching never runs', async () => {
     state.readsAs = 'open';
-    state.approved = true; // the database is ahead of the read
+    state.approved = true; // the database is ahead of the read: approved AND closed
+    state.closed = true;
     const res = await rematch();
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ code: 'ALREADY_APPROVED', error: CLOSED });
@@ -127,11 +139,26 @@ describe('running the matching again', () => {
     expect(logAudit).not.toHaveBeenCalled();
   });
 
+  it('the money posted and the matching still open: it runs again — and never writes MATCHED over APPROVED, nor any money', async () => {
+    state.readsAs = 'approved';
+    state.approved = true;
+    const res = await rematch();
+    expect(res.status).toBe(200);
+    expect(runMatching).toHaveBeenCalledTimes(1);
+    const claims = (db.courierStatement.updateMany.mock.calls as unknown as [{ where: Record<string, unknown>; data?: unknown }][]).map((c) => c[0]);
+    // The first claim is for an unapproved statement and takes nothing; the second takes it AS APPROVED.
+    expect(claims[0].where).toMatchObject({ approvedAt: null, matchingClosedAt: null });
+    expect(claims[1].where).toMatchObject({ matchingClosedAt: null, approvedAt: { not: null } });
+    expect(claims[1].data).toEqual({ status: 'APPROVED' });
+    expect(claims.some((c) => (c.data as { status?: string })?.status === 'MATCHED' && c.where.approvedAt !== null)).toBe(false);
+    expect(recordMovement).not.toHaveBeenCalled();
+  });
+
   it('on an open statement: the statement is taken FIRST, with the condition in the write, and only then is it matched', async () => {
     const res = await rematch();
     expect(res.status).toBe(200);
     const claim = (db.courierStatement.updateMany.mock.calls as unknown as [{ where: Record<string, unknown>; data?: unknown }][])[0][0];
-    expect(claim.where).toMatchObject({ id: 'st1', companyId: 'c1', storeId: 's1', approvedAt: null, status: { not: 'APPROVED' } });
+    expect(claim.where).toMatchObject({ id: 'st1', companyId: 'c1', storeId: 's1', matchingClosedAt: null, approvedAt: null, status: { not: 'APPROVED' } });
     expect(claim.data).toEqual({ status: 'MATCHED' });
     expect(db.courierStatement.updateMany.mock.invocationCallOrder[0]).toBeLessThan(runMatching.mock.invocationCallOrder[0]);
   });
@@ -175,7 +202,7 @@ describe('writing the explanation of the gap', () => {
   });
 });
 
-/* ───────────────────────────── the approval waits for the lines that are a question ───────────────────────────── */
+/* ───────────────────────────── the money does not wait for the lines; the close does ───────────────────────────── */
 
 describe('the approval', () => {
   const moved = () => ({
@@ -185,21 +212,22 @@ describe('the approval', () => {
     stamp: db.courierStatement.updateMany.mock.calls.length,
   });
 
-  it('an unanswered difference holds it: refused with the number, and nothing is written, not even the stamp', async () => {
+  it('an unanswered difference: the money is posted, and not one order is settled — the matching stays open on it', async () => {
     state.matches = [clean('o1'), { id: 'm2', orderId: 'o2', result: 'MISMATCHED', resolution: null, statementAmount: 18, statementFee: 0, expectedAmount: 20 }];
     const res = await approve();
     const body = await res.json();
-    expect(res.status).toBe(409);
-    expect(body.code).toBe('OPEN_LINES');
-    expect(body.error).toContain('بقي 1 سطر');
-    expect(moved()).toEqual({ wallet: 0, commission: 0, orders: 0, stamp: 0 });
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({ matchingClosed: false, openLines: 1 });
+    // One stamp — the money's. No close, no commission, no order.
+    expect(moved()).toEqual({ wallet: 1, commission: 0, orders: 0, stamp: 1 });
+    expect(db.courierStatement.updateMany.mock.calls[0][0].where).toMatchObject({ approvedAt: null });
   });
 
-  it('a line no order carries, not tied and not parked, holds it too', async () => {
+  it('a line no order carries, not tied and not parked, keeps the matching open too — and only the matching', async () => {
     state.matches = [clean('o1'), { id: 'm3', orderId: null, result: 'MISSING_IN_SYSTEM', resolution: null, statementAmount: 7, statementFee: null, expectedAmount: null }];
     const res = await approve();
-    expect((await res.json()).code).toBe('OPEN_LINES');
-    expect(moved().wallet).toBe(0);
+    expect(await res.json()).toMatchObject({ matchingClosed: false, openLines: 1 });
+    expect(moved()).toMatchObject({ wallet: 1, orders: 0 });
   });
 
   it('a difference that was answered, a line that was parked, a line a person tied, and a parcel no statement names — none holds it', async () => {
@@ -213,9 +241,15 @@ describe('the approval', () => {
     const res = await approve();
     expect(res.status).toBe(200);
     expect(recordMovement).toHaveBeenCalledTimes(1);
+    // …so the matching closes with the money, in the same press: two stamps, the money's first.
+    expect(await res.json()).toMatchObject({ matchingClosed: true, openLines: 0 });
+    const stamps = db.courierStatement.updateMany.mock.calls.map((c) => c[0] as { where: Record<string, unknown> });
+    expect(stamps).toHaveLength(2);
+    expect(stamps[0].where).toMatchObject({ approvedAt: null });
+    expect(stamps[1].where).toMatchObject({ matchingClosedAt: null });
   });
 
-  it('the gate is asked AGAIN on the rows the transaction itself read after the stamp: a row that was answered a moment ago and is not any more stops it, and rolls it back', async () => {
+  it('the lines are counted AGAIN on the rows the transaction itself read after the stamp: a row answered a moment ago and not any more keeps the matching open — the money is still posted once', async () => {
     // The first read (outside) sees every row answered; the read inside the transaction, after the stamp, finds one open.
     const answered = [clean('o1'), { id: 'm2', orderId: 'o2', result: 'MISMATCHED', resolution: 'UNDER_REVIEW', statementAmount: 18, statementFee: 0, expectedAmount: 20 }];
     const open = [clean('o1'), { id: 'm2', orderId: 'o2', result: 'MISMATCHED', resolution: null, statementAmount: 18, statementFee: 0, expectedAmount: 20 }];
@@ -227,9 +261,9 @@ describe('the approval', () => {
     db.courierStatement.findFirst.mockImplementationOnce(async () => shaped(answered) as never);
     db.courierStatement.findFirst.mockImplementationOnce(async () => shaped(open) as never);
     const res = await approve();
-    expect(res.status).toBe(409);
-    expect((await res.json()).code).toBe('OPEN_LINES');
-    expect(recordMovement).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ matchingClosed: false, openLines: 1 });
+    expect(recordMovement).toHaveBeenCalledTimes(1);
     expect(markPayableForOrders).not.toHaveBeenCalled();
   });
 });

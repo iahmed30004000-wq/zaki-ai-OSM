@@ -2641,6 +2641,9 @@ model WalletMovement {
   /// Set on a reversing entry; the original is never edited or deleted.
   reversalOfId   String?  @unique
   reversalReason String?
+  /// The statement receipt this IN is the money of — one movement per receipt, held by the database. Null on
+  /// every other movement, on a reversal, and on statement movements written before the split.
+  statementReceiptId String? @unique
   createdById    String
   createdAt      DateTime @default(now())
 
@@ -2739,7 +2742,13 @@ model CourierStatement {
   gapExplanation     String?
   uploadedById       String
   approvedById       String?
+  /// The MONEY was posted: one wallet IN per receipt. Nothing resets it.
   approvedAt         DateTime?
+  /// The MATCHING was closed: the orders settled, delivered, paid commission on. Never before `approvedAt` —
+  /// the approval closes it in the same act when no line is open, else «إغلاق المطابقة» does it later and writes
+  /// no money (migration 20261102120000_statement_matching_closed).
+  matchingClosedAt   DateTime?
+  matchingClosedById String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 

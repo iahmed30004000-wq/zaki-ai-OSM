@@ -112,7 +112,9 @@ WITH req(action, needs) AS (VALUES
   -- 1/11: a waybill for any order in any state. Granted by no migration — a pair here would be a person the owner ticked it for who lost the labels key.
   ('ops.labels_any','ops.labels'),
   -- 1/11: a product's fixed cost. Granted by no migration — a pair here would be a person the owner ticked it for who lost the edit key.
-  ('products.change_cost','products.edit')
+  ('products.change_cost','products.edit'),
+  -- 2/11: the holder's own window. Granted by no migration — a pair here would be a person the owner ticked it for who lost the request key.
+  ('orders.edit_confirmed','orders.request_change')
 )
 SELECT 'role_permissions' AS "table", r."name" AS "role", r."companyId", q.action, q.needs
 FROM "role_permissions" rp
@@ -484,3 +486,30 @@ FROM "users" u
 WHERE u."status" = 'ACTIVE' AND u."role" <> 'SUPER_ADMIN' AND u."roleId" IS NULL
   AND NOT EXISTS (SELECT 1 FROM "roles" t WHERE t."companyId" IS NULL AND t."name" = u."role")
 ORDER BY 2, 1;
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- AND THE QUESTION OF THE HOLDER'S OWN WINDOW (2/11, `orders.edit_confirmed`): WHO HOLDS IT? Read-only, same as above.
+--
+-- No migration grants it and the in-code fallback derives it for nobody: the owner ticks it himself on «الصلاحيات». So the day
+-- it ships the answer is SUPER_ADMIN only ('full access'), and afterwards exactly the people he ticked it for, through a role or
+-- a personal «سماح». A personal «منع» takes it away whatever the role gives (src/lib/permissions-core.ts computeEffectiveGrants).
+-- ═══════════════════════════════════════════════════════════════════════
+WITH people AS (
+  SELECT u."id", u."name", u."email", u."role" AS "legacy_role", u."companyId",
+         COALESCE(u."roleId", (SELECT t."id" FROM "roles" t WHERE t."companyId" IS NULL AND t."name" = u."role" LIMIT 1)) AS "role_id"
+  FROM "users" u
+  WHERE u."status" = 'ACTIVE'
+)
+SELECT p."name", p."email", p."legacy_role", r."name" AS "role", p."companyId",
+       CASE
+         WHEN p."legacy_role" = 'SUPER_ADMIN' THEN 'full access'
+         WHEN EXISTS (SELECT 1 FROM "user_permissions" a WHERE a."userId" = p."id" AND a."permission" = 'orders.edit_confirmed' AND a."effect" = 'ALLOW') THEN 'personal «سماح»'
+         ELSE 'through the role'
+       END AS "holds_it_by"
+FROM people p
+LEFT JOIN "roles" r ON r."id" = p."role_id"
+WHERE p."legacy_role" = 'SUPER_ADMIN'
+   OR (NOT EXISTS (SELECT 1 FROM "user_permissions" d WHERE d."userId" = p."id" AND d."permission" = 'orders.edit_confirmed' AND d."effect" = 'DENY')
+       AND (EXISTS (SELECT 1 FROM "user_permissions" a WHERE a."userId" = p."id" AND a."permission" = 'orders.edit_confirmed' AND a."effect" = 'ALLOW')
+            OR EXISTS (SELECT 1 FROM "role_permissions" g WHERE g."roleId" = p."role_id" AND g."permission" = 'orders.edit_confirmed')))
+ORDER BY 5 NULLS FIRST, 6, 4, 1;

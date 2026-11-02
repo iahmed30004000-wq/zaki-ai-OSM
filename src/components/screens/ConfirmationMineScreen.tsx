@@ -34,6 +34,8 @@ import { ConfirmationPostponedScreen } from '@/components/screens/ConfirmationPo
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
 import { AI_ASSIST_KEY } from '@/lib/ai-assistants';
+import { editsNow } from '@/lib/edit-confirmed-window';
+import { EDIT_CONFIRMED_KEY } from '@/lib/edit-confirmed-key';
 import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { arDate } from '@/lib/format';
@@ -105,6 +107,16 @@ interface OrderRow {
   _count: { contactAttempts: number; notes: number };
   risk?: RiskInfo | null;
   changeRequests?: { id: string }[];
+  /**
+   * WHERE A CONFIRMED ORDER IS — only the «أكّدتها» rows carry them (`orders.edit_confirmed`, 2/11): who holds it, the trolley it
+   * sits on, and whether it has shipped or its waybill is printed. With them the row can say «تعديل» for the orders she changes
+   * herself; without them (an older response, another tab) it says what it always said.
+   */
+  claimedById?: string | null;
+  shippingStatus?: string;
+  shippingBatchId?: string | null;
+  shippedAt?: string | null;
+  labelPrintedAt?: string | null;
 }
 
 /** «أكّدتها» — a day, a search, a page, and the size of what is behind them. */
@@ -1439,7 +1451,11 @@ export function ConfirmationMineScreen() {
               ) : (
                 <EmptyState
                   title={`لم تؤكّد طلباً في ${confirmed.day}`}
-                  why="ما تؤكّده يظهر هنا للقراءة — وتعديلُه بعدها يمرّ بطلبِ تعديل، لا بتحريرٍ مباشر. غيِّر اليومَ أعلاه لترى يوماً آخر."
+                  why={
+                    userCan(currentUser, EDIT_CONFIRMED_KEY)
+                      ? 'ما تؤكّده يظهر هنا — وتعدّل أو تؤجّل أو تلغي ما لم يدخل دفعة شحن بنفسك، وما دخل دفعة بيمرّ بطلبِ تعديل. غيِّر اليومَ أعلاه لترى يوماً آخر.'
+                      : 'ما تؤكّده يظهر هنا للقراءة — وتعديلُه بعدها يمرّ بطلبِ تعديل، لا بتحريرٍ مباشر. غيِّر اليومَ أعلاه لترى يوماً آخر.'
+                  }
                 />
               )
             }
@@ -1452,7 +1468,8 @@ export function ConfirmationMineScreen() {
                         disabled={busyId === order.id}
                         className="text-xs text-[var(--sys-primary)] hover:underline disabled:opacity-50"
                       >
-                        طلب تعديل
+                        {/* «تعديل» for the orders she changes herself (`orders.edit_confirmed`, 2/11) — the same word the order window's button uses. */}
+                        {editsNow(currentUser, order, 'CANCEL') ? 'تعديل' : 'طلب تعديل'}
                       </button>
                     )}</>
             )}
@@ -1550,6 +1567,12 @@ export function ConfirmationMineScreen() {
           open
           orderNumber={dialog.order.orderNumber}
           busy={busyId === dialog.order.id}
+          appliesNow={{
+            EDIT: editsNow(currentUser, dialog.order, 'EDIT'),
+            CANCEL: editsNow(currentUser, dialog.order, 'CANCEL'),
+            POSTPONE: editsNow(currentUser, dialog.order, 'POSTPONE'),
+          }}
+          mayChangePrice={userCan(currentUser, 'orders.change_price')}
           onClose={() => setDialog(null)}
           onSubmit={(value) => submitChange(dialog.order, value)}
         />

@@ -7,7 +7,7 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { zodMessage } from '@/lib/zod-message';
 import { isDifference, shortfall } from '@/lib/settlement-difference';
-import { closedStatementRefusal, isApproved } from '@/lib/settlement-gates';
+import { closedStatementRefusal, isMatchingClosed } from '@/lib/settlement-gates';
 import {
   BULK_LIMIT,
   DECISIONS,
@@ -74,11 +74,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       await tx.$queryRaw`SELECT "id" FROM "courier_statements" WHERE "id" = ${id} FOR UPDATE`;
       const statement = await tx.courierStatement.findFirst({
         where: { id, companyId, storeId },
-        select: { reference: true, status: true, approvedAt: true },
+        select: { reference: true, status: true, approvedAt: true, matchingClosedAt: true },
       });
       if (!statement) throw new BulkRefused(404, { error: 'الكشف غير موجود', code: 'NOT_FOUND' });
       // A closed statement takes no answer, one or many: the same sentence every door of it gives.
-      if (isApproved(statement)) throw new BulkRefused(409, { ...closedStatementRefusal() });
+      if (isMatchingClosed(statement)) throw new BulkRefused(409, { ...closedStatementRefusal() });
 
       const rows = await tx.settlementMatch.findMany({
         where: { id: { in: ids }, statementId: id, companyId },
@@ -111,7 +111,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           orderId: r.orderId,
           expectedAmount: r.expectedAmount === null ? null : Number(r.expectedAmount),
           statementAmount: r.statementAmount === null ? null : Number(r.statementAmount),
-          approvedAt: statement.approvedAt,
+          approvedAt: statement.matchingClosedAt,
         })),
       });
       /*
@@ -143,7 +143,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         // Each write says it again: an open statement, and the row still the row that was read. One that fails
         // rolls back the whole press — nothing is half-decided.
         const written = await tx.settlementMatch.updateMany({
-          where: { id: r.id, statementId: id, companyId, result: r.result, statement: { approvedAt: null } },
+          where: { id: r.id, statementId: id, companyId, result: r.result, statement: { matchingClosedAt: null } },
           data: decisionData({ resolution, note, userId: user.id, at }),
         });
         if (written.count !== 1) {

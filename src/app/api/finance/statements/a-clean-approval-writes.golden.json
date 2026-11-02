@@ -1,0 +1,399 @@
+[
+  {
+    "op": "recordMovement",
+    "args": {
+      "companyId": "c1",
+      "walletId": "w-usd",
+      "direction": "IN",
+      "amount": 60,
+      "party": "تحصيل شركة الشحن — ST-GOLD",
+      "category": "COURIER_SETTLEMENT",
+      "note": "اعتماد كشف ST-GOLD",
+      "referenceType": "STATEMENT",
+      "referenceId": "88888888-8888-4888-8888-888888888888",
+      "createdById": "u-approver"
+    }
+  },
+  {
+    "op": "recordMovement",
+    "args": {
+      "companyId": "c1",
+      "walletId": "w-usd-2",
+      "direction": "IN",
+      "amount": 18,
+      "party": "تحصيل شركة الشحن — ST-GOLD",
+      "category": "COURIER_SETTLEMENT",
+      "note": "اعتماد كشف ST-GOLD",
+      "referenceType": "STATEMENT",
+      "referenceId": "88888888-8888-4888-8888-888888888888",
+      "createdById": "u-approver"
+    }
+  },
+  {
+    "op": "order.updateMany",
+    "args": {
+      "where": {
+        "id": {
+          "in": [
+            "o1",
+            "o2",
+            "o7"
+          ]
+        },
+        "companyId": "c1",
+        "settlementStatus": {
+          "not": "SETTLED"
+        },
+        "changeRequests": {
+          "none": {
+            "intent": {
+              "in": [
+                "CANCEL",
+                "POSTPONE"
+              ]
+            },
+            "OR": [
+              {
+                "status": "PENDING"
+              },
+              {
+                "status": "APPROVED",
+                "appliedAt": null
+              }
+            ]
+          }
+        }
+      },
+      "data": {
+        "settlementStatus": "SETTLED"
+      },
+      "took": [
+        "o1",
+        "o2",
+        "o7"
+      ]
+    }
+  },
+  {
+    "op": "order.updateMany",
+    "args": {
+      "where": {
+        "id": {
+          "in": [
+            "o3"
+          ]
+        },
+        "companyId": "c1",
+        "settlementStatus": {
+          "not": "SETTLED"
+        },
+        "changeRequests": {
+          "none": {
+            "intent": {
+              "in": [
+                "CANCEL",
+                "POSTPONE"
+              ]
+            },
+            "OR": [
+              {
+                "status": "PENDING"
+              },
+              {
+                "status": "APPROVED",
+                "appliedAt": null
+              }
+            ]
+          }
+        },
+        "OR": [
+          {
+            "shippingStatus": {
+              "in": [
+                "DELIVERED",
+                "PARTIALLY_DELIVERED"
+              ]
+            }
+          },
+          {
+            "id": {
+              "in": [
+                "o3"
+              ]
+            },
+            "shippingStatus": {
+              "in": [
+                "SHIPPED",
+                "OUT_FOR_DELIVERY",
+                "READY_FOR_PICKUP",
+                "FAILED_DELIVERY"
+              ]
+            }
+          }
+        ]
+      },
+      "data": {
+        "settlementStatus": "SETTLED"
+      },
+      "took": [
+        "o3"
+      ]
+    }
+  },
+  {
+    "op": "markPayableForOrders",
+    "args": {
+      "companyId": "c1",
+      "ids": [
+        "o1",
+        "o2",
+        "o7",
+        "o3"
+      ]
+    }
+  },
+  {
+    "op": "order.update",
+    "args": {
+      "where": {
+        "id": "o1"
+      },
+      "data": {
+        "shippingStatus": "DELIVERED",
+        "deliveredAt": "2026-10-20T00:00:00.000Z",
+        "collectedAmount": 25,
+        "version": {
+          "increment": 1
+        }
+      }
+    }
+  },
+  {
+    "op": "consumeOrderStock",
+    "args": {
+      "orderId": "o1",
+      "companyId": "c1",
+      "userId": "u-approver"
+    }
+  },
+  {
+    "op": "customer.update",
+    "args": {
+      "where": {
+        "id": "cu-o1"
+      },
+      "data": {
+        "deliveredOrders": {
+          "increment": 1
+        },
+        "totalPurchaseValue": {
+          "increment": 25
+        }
+      }
+    }
+  },
+  {
+    "op": "orderActivity.create",
+    "args": {
+      "companyId": "c1",
+      "orderId": "o1",
+      "userId": "u-approver",
+      "action": "DELIVERED_BY_STATEMENT",
+      "newStatus": "DELIVERED",
+      "metadata": {
+        "statement": "ST-GOLD",
+        "collected": 25
+      }
+    }
+  },
+  {
+    "op": "order.update",
+    "args": {
+      "where": {
+        "id": "o7"
+      },
+      "data": {
+        "shippingStatus": "DELIVERED",
+        "deliveredAt": "2026-10-20T00:00:00.000Z",
+        "collectedAmount": 20,
+        "version": {
+          "increment": 1
+        }
+      }
+    }
+  },
+  {
+    "op": "consumeOrderStock",
+    "args": {
+      "orderId": "o7",
+      "companyId": "c1",
+      "userId": "u-approver"
+    }
+  },
+  {
+    "op": "customer.update",
+    "args": {
+      "where": {
+        "id": "cu-o7"
+      },
+      "data": {
+        "deliveredOrders": {
+          "increment": 1
+        },
+        "totalPurchaseValue": {
+          "increment": 20
+        }
+      }
+    }
+  },
+  {
+    "op": "orderActivity.create",
+    "args": {
+      "companyId": "c1",
+      "orderId": "o7",
+      "userId": "u-approver",
+      "action": "DELIVERED_BY_STATEMENT",
+      "newStatus": "DELIVERED",
+      "metadata": {
+        "statement": "ST-GOLD",
+        "collected": 20
+      }
+    }
+  },
+  {
+    "op": "order.update",
+    "args": {
+      "where": {
+        "id": "o2"
+      },
+      "data": {
+        "collectedAmount": 30,
+        "version": {
+          "increment": 1
+        }
+      }
+    }
+  },
+  {
+    "op": "order.update",
+    "args": {
+      "where": {
+        "id": "o3"
+      },
+      "data": {
+        "collectedAmount": 35,
+        "version": {
+          "increment": 1
+        }
+      }
+    }
+  },
+  {
+    "op": "penalty.create",
+    "args": {
+      "companyId": "c1",
+      "storeId": "s1",
+      "userId": "u-door",
+      "ruleId": null,
+      "kind": "SHORTFALL",
+      "occurredOn": "2026-10-18T00:00:00.000Z",
+      "units": 1,
+      "chargedUnits": 1,
+      "amount": 5,
+      "currencyCode": "USD",
+      "status": "PROPOSED",
+      "note": "ORD-o3 · ST-GOLD · خصم أعطاه الموظف للزبون",
+      "settlementMatchId": "m-o3"
+    }
+  },
+  {
+    "op": "orderActivity.create",
+    "args": {
+      "companyId": "c1",
+      "orderId": "o3",
+      "userId": "u-approver",
+      "action": "SHORTFALL_PROPOSED",
+      "metadata": {
+        "statement": "ST-GOLD",
+        "amount": 5,
+        "currency": "USD",
+        "employee": "u-door"
+      }
+    }
+  },
+  {
+    "op": "orderActivity.create",
+    "args": {
+      "companyId": "c1",
+      "orderId": "o3",
+      "userId": "u-approver",
+      "action": "SETTLEMENT_DECISION_APPLIED",
+      "metadata": {
+        "statement": "ST-GOLD",
+        "decision": "ACCEPTED_COURIER",
+        "explanation": "خصم أعطاه الموظف للزبون",
+        "decidedBy": "u-decider",
+        "collected": 35
+      }
+    }
+  },
+  {
+    "op": "orderActivity.create",
+    "args": {
+      "companyId": "c1",
+      "orderId": "o4",
+      "userId": "u-approver",
+      "action": "SETTLEMENT_CLAIM_OPENED",
+      "metadata": {
+        "statement": "ST-GOLD",
+        "remaining": 5,
+        "explanation": "سنطالب الشركة بالباقي",
+        "decidedBy": "u-decider"
+      }
+    }
+  },
+  {
+    "op": "logAudit",
+    "args": {
+      "companyId": "c1",
+      "userId": "u-approver",
+      "action": "STATEMENT_APPROVED",
+      "entity": "CourierStatement",
+      "entityId": "88888888-8888-4888-8888-888888888888",
+      "newData": {
+        "gap": 0,
+        "explanation": null,
+        "receipts": 2,
+        "settled": 4,
+        "acceptedByDecision": 1,
+        "claimsOpened": 1,
+        "shortfalls": [
+          {
+            "penaltyId": "pen-1",
+            "employeeId": "u-door",
+            "amount": 5,
+            "currency": "USD"
+          }
+        ],
+        "shortfallsOnCompany": 0
+      }
+    }
+  },
+  {
+    "op": "notify",
+    "args": {
+      "companyId": "c1",
+      "storeId": "s1",
+      "audience": {
+        "userIds": [
+          "u-door"
+        ]
+      },
+      "actorId": "u-approver",
+      "title": "فرق تحصيل عليك — بانتظار القرار",
+      "message": "طلب ORD-o3 · كشف ST-GOLD: دفعت الشركة أقل من المتوقَّع بمقدار 5 USD. إن كان عندك تفسير فاحكِ مع المحاسب أو المالك.",
+      "type": "SYSTEM_ALERT",
+      "link": "/control/penalties"
+    }
+  }
+]

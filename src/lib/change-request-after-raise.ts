@@ -62,10 +62,28 @@ const DONE_AR: Record<RaisedIntent, string> = {
   POSTPONE: 'أُجّل الشحن.',
 };
 
+/**
+ * THE SAME THREE SENTENCES, IN THE HOLDER'S WORDS (`orders.edit_confirmed`, 2/11).
+ *
+ * When the agent changed her OWN confirmed order under her own window, nobody approved anything and nothing is waiting: she did
+ * it, and the sentence says «تم». Every other authority that decides on the spot (a supervisor, the packing table) keeps the
+ * sentences above, word for word.
+ */
+const DONE_BY_HOLDER_AR: Record<RaisedIntent, string> = {
+  EDIT: 'تم تطبيق التعديل على الطلب.',
+  CANCEL: 'تم إلغاء الطلب.',
+  POSTPONE: 'تم تأجيل شحن الطلب.',
+};
+
 export function answerAfterRaise(a: {
   intent: RaisedIntent;
   /** The server said the raiser may also decide it and the parcel is still ours. */
   readyToApply: boolean;
+  /**
+   * The server said it was decided by the holder's own window (`viaEditWindow`). Only changes the sentence of a request that was
+   * carried out; a request that waits, or whose last step failed, is said as it always was.
+   */
+  viaWindow?: boolean;
   /** The sentence the last step failed with, when it did. Only read when `readyToApply`. */
   failure?: string | null;
   orderStatus?: string | null;
@@ -80,7 +98,7 @@ export function answerAfterRaise(a: {
     return { outcome: 'APPLIED', message: 'طُبِّق مسبقاً — ما في شي بانتظار التطبيق.' };
   }
   if (a.readyToApply && a.failure === undefined) {
-    return { outcome: 'APPLIED', message: DONE_AR[a.intent] };
+    return { outcome: 'APPLIED', message: a.viaWindow === true ? DONE_BY_HOLDER_AR[a.intent] : DONE_AR[a.intent] };
   }
   if (a.readyToApply) {
     const where = a.canOpenQueue ? WHERE_APPROVED_AR : 'بلّغ المشرف ليطبّقه';

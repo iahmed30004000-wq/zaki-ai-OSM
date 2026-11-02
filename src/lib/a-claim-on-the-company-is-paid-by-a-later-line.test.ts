@@ -154,15 +154,17 @@ describe('what has no claim is judged as it always was', () => {
     await runMatching(db as never, scope);
     const asked = db.settlementMatch.findMany.mock.calls.map((c) => c[0].where).find((w) => w.resolution === 'OURS_STANDS');
     expect(asked.statementId).toEqual({ not: 'st2' });
-    expect(asked.statement).toEqual({ approvedAt: { not: null } });
+    // Since 2/11 a claim exists once its statement's MATCHING is closed (the money alone settles nothing).
+    expect(asked.statement).toEqual({ matchingClosedAt: { not: null } });
   });
 
-  it('only an APPROVED statement’s answer is a claim — an answer on a statement not yet approved owes nothing yet', async () => {
+  it('only a CLOSED statement’s answer is a claim — an answer on a statement whose matching is open owes nothing yet', async () => {
     db.statementLine.findMany.mockResolvedValue([line(18)]);
     withClaims([]);
     await runMatching(db as never, scope);
     const asked = db.settlementMatch.findMany.mock.calls.map((c) => c[0].where).find((w) => w.resolution === 'OURS_STANDS');
-    expect(asked.statement.approvedAt).toEqual({ not: null });
+    // (Was: `approvedAt`. Before the split the approval closed the matching in the same act.)
+    expect(asked.statement.matchingClosedAt).toEqual({ not: null });
   });
 
   it('a claim already paid in full is no claim: the line is judged against the order again', async () => {

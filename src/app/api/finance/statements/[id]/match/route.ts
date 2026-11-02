@@ -7,7 +7,7 @@ import { logAudit } from '@/lib/audit';
 import { runMatching } from '@/lib/settlement';
 import { closedStatementRefusal, rematchRefusal } from '@/lib/settlement-gates';
 
-/** The statement was approved between the read and the write: the matching never ran. */
+/** The statement's matching was closed between the read and the write: the matching never ran. */
 class StatementClosed extends Error {}
 
 /**
@@ -17,12 +17,13 @@ class StatementClosed extends Error {}
  * claims against what we expect is pointless before we know what arrived.
  * The key is the merchant reference, then the barcode — never the phone.
  *
- * AND NEVER AFTER APPROVAL. This route ended by writing `status = 'MATCHED'`
- * with no regard for where the statement already was, so re-running matching
- * on an APPROVED one rolled it back to MATCHED — after which every approval
- * gate passed again and a SECOND wallet movement was written for the same
- * receipt. Measured on the dev database: 1,889.48 USD posted twice, from a
- * button labelled «تشغيل المطابقة». The rule lives in lib/settlement-gates.
+ * AND NEVER AFTER THE MATCHING IS CLOSED. Between the approval (the money) and the close (the orders) it may run
+ * again — answering the lines is what that time is for — and it writes match rows only: no movement, no order.
+ *
+ * AND IT NEVER WRITES `status = 'MATCHED'` OVER AN APPROVED STATEMENT. It once did, with no regard for where the
+ * statement already was, so re-running matching on an APPROVED one rolled it back to MATCHED — after which every
+ * approval gate passed again and a SECOND wallet movement was written for the same receipt. Measured on the dev
+ * database: 1,889.48 USD posted twice, from a button labelled «تشغيل المطابقة». The rule lives in lib/settlement-gates.
  */
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -32,7 +33,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 
     const statement = await db.courierStatement.findFirst({
       where: { id, companyId, storeId },
-      select: { id: true, status: true, approvedAt: true, reference: true, _count: { select: { receipts: true } } },
+      select: { id: true, status: true, approvedAt: true, matchingClosedAt: true, reference: true, _count: { select: { receipts: true } } },
     });
     if (!statement) return NextResponse.json({ error: 'الكشف غير موجود' }, { status: 404 });
 
@@ -61,10 +62,21 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
            * written back to MATCHED over an APPROVED statement — which is how the money was once posted twice.
            */
           const open = await tx.courierStatement.updateMany({
-            where: { id, companyId, storeId, approvedAt: null, status: { not: 'APPROVED' } },
+            where: { id, companyId, storeId, matchingClosedAt: null, approvedAt: null, status: { not: 'APPROVED' } },
             data: { status: 'MATCHED' },
           });
-          if (open.count !== 1) throw new StatementClosed();
+          if (open.count !== 1) {
+            /*
+             * THE MONEY IS POSTED AND THE MATCHING IS STILL OPEN: matched again, and its status is taken as APPROVED —
+             * the same word it already carries, never MATCHED over it. The write holds the row exactly as the one
+             * above does, so a close that lands after the read leaves count 0 and the matching never runs.
+             */
+            const posted = await tx.courierStatement.updateMany({
+              where: { id, companyId, storeId, matchingClosedAt: null, approvedAt: { not: null } },
+              data: { status: 'APPROVED' },
+            });
+            if (posted.count !== 1) throw new StatementClosed();
+          }
           return runMatching(tx, { companyId, storeId, statementId: id, minorUnit: country.minorUnit });
         },
         { timeout: 30_000 }

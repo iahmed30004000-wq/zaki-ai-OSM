@@ -64,8 +64,11 @@ describe('the refusal of a hand collection', () => {
 
 describe('the approval door', () => {
   it('settles only the clean rows — a missing row settles nothing and pays no commission', () => {
+    // The settling moved into the close of the matching (2/11); the approval route still only SHOWS a missing row.
+    const close = code('src/lib/statement-close.ts');
+    expect(close).toMatch(/matches\.filter\(\(m\) => m\.result === 'MATCHED' && m\.orderId\)/);
+    expect(close).not.toMatch(/result === 'MISSING|result: 'MISSING/);
     const src = code('src/app/api/finance/statements/[id]/route.ts');
-    expect(src).toMatch(/matches\.filter\(\(m\) => m\.result === 'MATCHED' && m\.orderId\)/);
     // The only place the approval route names a missing result is the read that SHOWS it.
     expect(src).not.toMatch(/result === 'MISSING|result: 'MISSING/);
   });

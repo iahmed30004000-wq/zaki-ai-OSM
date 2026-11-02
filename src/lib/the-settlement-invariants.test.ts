@@ -680,7 +680,8 @@ describe('7 · a partial delivery is measured against what actually happened', (
     // The door records it in the AUDIT LOG only — never on the order.
     const update = route.slice(route.indexOf('logAudit('));
     expect(update).toMatch(/collectedAmount: outcome\.collectedAmount/);
-    expect(stripComments(repoFile('src/app/api/finance/statements/[id]/route.ts'))).toMatch(
+    // The statement's write moved, unchanged, into the close of the matching (2/11, «افصل المطابقة عن التحصيل»).
+    expect(stripComments(repoFile('src/lib/statement-close.ts'))).toMatch(
       /data: \{ collectedAmount: collected, version: \{ increment: 1 \} \}/
     );
   });

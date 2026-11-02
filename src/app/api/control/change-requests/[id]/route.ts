@@ -52,6 +52,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           select: {
             id: true, orderNumber: true, confirmationStatus: true, claimedById: true,
             shippingStatus: true, shippedAt: true,
+            // `shippingBatchId` too: the holder's own window (`orders.edit_confirmed`) ends at batch entry, and a batch named by
+            // the column but unreadable through the relation is not an open order.
+            shippingBatchId: true,
             shippingBatch: { select: { status: true } },
           },
         },
@@ -81,6 +84,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         shippedAt: request.order.shippedAt,
         batchStatus: request.order.shippingBatch?.status ?? null,
       }),
+      inBatch: !!request.order.shippingBatchId || request.order.shippingBatch !== null,
     }, {
       // APPROVING a request that moves a price, a discount, a quantity or a product needs `orders.change_price` too (PR-7).
       // Rejecting never does: refusing a figure changes none.
