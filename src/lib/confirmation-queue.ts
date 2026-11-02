@@ -3,6 +3,7 @@ import { db } from './db';
 import { businessMinutesBetween, type BusinessCalendar } from './business-calendar';
 import { rejectionNeedsConversation } from './confirmation-workflow';
 import { notHeldForOthersWhere, reservedForOthersWhere, reservedForWhere } from './order-reservation';
+import { holdTwinsForPuller, lockCustomerForPull } from './twins-follow-the-pull';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -678,14 +679,26 @@ export function readyToPullWhere(scope: QueueScope, forUserId?: string, now: Dat
  * days, otherwise the oldest waiting order.
  */
 export async function pickNextCandidate(tx: Tx, scope: QueueScope, now = new Date(), forUserId?: string) {
+  return (await pickNextCandidateRow(tx, scope, now, forUserId))?.id ?? null;
+}
+
+/** What the pull needs to know about the order it picked: which customer to lock, and the number his other orders are held with. */
+interface PickedOrder {
+  id: string;
+  customerId: string | null;
+  orderNumber: string | null;
+}
+const PICKED_SELECT = { id: true, customerId: true, orderNumber: true } as const;
+
+async function pickNextCandidateRow(tx: Tx, scope: QueueScope, now: Date, forUserId?: string): Promise<PickedOrder | null> {
   // THE ORDER HELD FOR HER COMES FIRST: the customer is a returning one and she is the person he spoke to.
   if (forUserId) {
     const mine = await tx.order.findFirst({
       where: { ...claimableWhere(scope), ...reservedForWhere(forUserId, now) },
       orderBy: { createdAt: 'asc' },
-      select: { id: true },
+      select: PICKED_SELECT,
     });
-    if (mine) return mine.id;
+    if (mine) return mine;
   }
 
   // The same two predicates the counter uses — kept as two queries only
@@ -694,16 +707,15 @@ export async function pickNextCandidate(tx: Tx, scope: QueueScope, now = new Dat
   const duePostponed = await tx.order.findFirst({
     where: duePostponedWhere(scope, now),
     orderBy: [{ postponedUntil: 'asc' }, { nextFollowUpAt: 'asc' }],
-    select: { id: true },
+    select: PICKED_SELECT,
   });
-  if (duePostponed) return duePostponed.id;
+  if (duePostponed) return duePostponed;
 
-  const oldest = await tx.order.findFirst({
+  return tx.order.findFirst({
     where: readyToPullWhere(scope, forUserId, now),
     orderBy: { createdAt: 'asc' },
-    select: { id: true },
+    select: PICKED_SELECT,
   });
-  return oldest?.id ?? null;
 }
 
 export interface PullResult {
@@ -717,7 +729,9 @@ export interface PullResult {
 /**
  * Pull the next order for this agent. The claim is taken with a conditional
  * update, so two agents pulling at the same instant can never get the same
- * order — the loser simply takes the next one.
+ * order — the loser simply takes the next one. And never the same CUSTOMER:
+ * the claim waits on a per-customer lock, and the winner's claim holds his
+ * other waiting orders for her (`twins-follow-the-pull.ts`).
  */
 export async function pullNextOrder(
   scope: QueueScope,
@@ -733,8 +747,8 @@ export async function pullNextOrder(
     if (refusal) return { ok: false, refusal, released };
 
     for (let attempt = 0; attempt < 5; attempt++) {
-      const candidate = await pickNextCandidate(tx, scope, now, user.id);
-      if (!candidate) {
+      const picked = await pickNextCandidateRow(tx, scope, now, user.id);
+      if (!picked) {
         return {
           ok: false,
           released,
@@ -742,6 +756,11 @@ export async function pullNextOrder(
           refusal: { code: 'QUEUE_EMPTY', message: 'لا توجد طلبات بانتظار التأكيد الآن.' },
         };
       }
+
+      const candidate = picked.id;
+      // ONE CUSTOMER, ONE AGENT (`twins-follow-the-pull.ts`): wait here while a colleague is taking one of his orders, so that
+      // when the claim below runs, his other orders are already held for her and this pull moves on to somebody else's.
+      if (picked.customerId) await lockCustomerForPull(tx, picked.customerId);
 
       const taken = await tx.order.updateMany({
         // «Not held for somebody else» is asked again at the write: the hold may have been made between the pick and here.
@@ -786,6 +805,16 @@ export async function pullNextOrder(
           changedByRole: user.role,
           note: 'سحب من الطابور',
         },
+      });
+      // His other orders that are still waiting and nobody's come to her, never more than the cap leaves room for: `counts.total`
+      // is what she held before this pull, and this pull added one.
+      await holdTwinsForPuller(tx, {
+        scope,
+        customerId: picked.customerId,
+        pulled: { id: candidate, orderNumber: picked.orderNumber },
+        agentId: user.id,
+        room: CLAIM_CAPS.total - counts.total - 1,
+        now,
       });
       return { ok: true, orderId: candidate, released };
     }
