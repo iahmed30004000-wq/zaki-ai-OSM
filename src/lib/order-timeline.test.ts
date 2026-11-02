@@ -272,3 +272,18 @@ describe('«طلب تاني فعلاً» — the history says she knew (the conf
     expect(event.detail).toBeNull();
   });
 });
+
+describe('«زبون واحد، موظفة وحدة» — the history says why the order waits for her (the pull, 2/11)', () => {
+  it('reads as a sentence naming the order she pulled — never the agent id, the order id, the constant or the JSON', async () => {
+    db.orderActivity.findMany.mockResolvedValue([
+      {
+        id: 'h1', createdAt: at('2026-11-02T10:00:00Z'), action: 'HELD_WITH_HIS_OTHER_ORDER', userId: null,
+        metadata: JSON.stringify({ agentId: 'u-sara', pulledOrderId: 'cuid-123', withOrder: 'ORD-2026-1896' }),
+      },
+    ]);
+    const [event] = await orderTimeline(db as never, 'o1');
+    expect(event.title).toBe('حُجز للموظفة اللي سحبت طلباً تانياً لنفس الزبون');
+    expect(event.detail).toBe('مع الطلب: ORD-2026-1896');
+    expect(`${event.title} ${event.detail}`).not.toMatch(/HELD_WITH|u-sara|cuid-123|\{|"/);
+  });
+});

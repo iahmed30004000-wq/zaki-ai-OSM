@@ -96,6 +96,10 @@ const sorted = (rows: Row[], orderBy?: Row | Row[]) => {
   });
 };
 
+/** What Prisma returns for a `select`: the keys asked for and no others — so a read that forgets a column it uses fails here. */
+const project = (row: Row | null | undefined, select?: Row): Row | null =>
+  !row ? null : !select ? row : Object.fromEntries(Object.keys(select).filter((k) => select[k] === true).map((k) => [k, row[k] ?? null]));
+
 vi.mock('./db', () => {
   /** One step of the event loop between statements, so that transactions launched together interleave as they would. */
   const tick = () => new Promise<void>((r) => setTimeout(r, 0));
@@ -106,17 +110,17 @@ vi.mock('./db', () => {
   function client(tx: TxState) {
     const tag = tx ? `tx${tx.id}` : 'root';
     const order = {
-      findMany: vi.fn(async ({ where, orderBy, take }: Row) => {
+      findMany: vi.fn(async ({ where, orderBy, take, select }: Row) => {
         await tick();
         if (where?.customerId && where?.id?.not && world.beforeTwinRead) await world.beforeTwinRead(tag);
         world.log.push(`${tag}:findMany`);
         const found = sorted(world.orders.filter((r) => matches(r, where ?? {})), orderBy);
-        return take ? found.slice(0, take) : found;
+        return (take ? found.slice(0, take) : found).map((r) => project(r, select));
       }),
-      findFirst: vi.fn(async ({ where, orderBy }: Row) => {
+      findFirst: vi.fn(async ({ where, orderBy, select }: Row) => {
         await tick();
         world.log.push(`${tag}:pick`);
-        return sorted(world.orders.filter((r) => matches(r, where ?? {})), orderBy)[0] ?? null;
+        return project(sorted(world.orders.filter((r) => matches(r, where ?? {})), orderBy)[0], select);
       }),
       count: vi.fn(async ({ where }: Row) => {
         await tick();
