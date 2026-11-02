@@ -8,7 +8,7 @@ import { RiAlertLine, RiLoader4Line, RiMagicLine, RiSaveLine } from '@remixicon/
 import { useToast } from '@/components/ui/Toast';
 import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { placeNote, type CourierPlaces } from '@/lib/couriers/place-note';
+import { defaultCityOf, placeNote, type CourierPlaces } from '@/lib/couriers/place-note';
 
 /**
  * ONE COURIER'S FEES — a row per region: the fee, the late threshold in
@@ -353,24 +353,32 @@ export function CourierFees({
             {
               key: 'courierId',
               label: 'رمزها عند الشركة',
-              // Their id, typed from THEIR list (the villages sheet they send) — never invented. Saved with the row's
-              // «تحديث». An empty box is the warning it always was: without it their API refuses the shipment.
+              // Their id, from THEIR list (the villages sheet they send) — never invented. A number typed here is saved
+              // with the row's «تحديث» and always wins. An EMPTY box is no longer a gap when their list names this
+              // governorate: the press takes that city by itself (`couriers/city-id`), and the box shows which. Only a
+              // governorate their list cannot answer keeps the warning it always had: without an id their API refuses.
               render: (r) => {
-                const note = placeNote(draftFor(r.id).courierCityId, places);
+                const typed = draftFor(r.id).courierCityId;
+                const note = placeNote(typed, places);
+                const byList = typed.trim() === '' ? defaultCityOf(r.name, places) : null;
                 return (
                   <div>
                     <input
-                      value={draftFor(r.id).courierCityId}
+                      value={typed}
                       onChange={(e) => setField(r.id, { courierCityId: e.target.value })}
                       aria-label={`رمز ${r.name} عند الشركة`}
-                      placeholder="بلا رمز"
-                      title="رمز هذه المحافظة لدى الشركة، من قائمة مناطقهم — بدونه لا تُنشأ الشحنة آلياً."
+                      placeholder={byList ? String(byList.cityId) : 'بلا رمز'}
+                      title={
+                        byList
+                          ? 'اتركه فاضي وبيُستعمل رمز قايمة الشركة الظاهر تحته، أو اكتب رقماً ثانياً وبيصير هو المعتمد.'
+                          : 'رمز هذه المحافظة لدى الشركة، من قائمة مناطقهم — بدونه لا تُنشأ الشحنة آلياً.'
+                      }
                       type="number"
                       min={1}
                       step={1}
                       dir="ltr"
                       className={`h-11 w-28 rounded-lg border bg-[var(--sys-card)] px-2 text-sm md:h-10 ${
-                        draftFor(r.id).courierCityId ? 'border-[var(--sys-border-input)]' : 'border-[var(--sys-warning)]'
+                        typed || byList ? 'border-[var(--sys-border-input)]' : 'border-[var(--sys-warning)]'
                       }`}
                     />
                     {/* Which place the number is — and a warning, never a block, when it is a Region Id. */}
@@ -378,6 +386,10 @@ export function CourierFees({
                       <p className={note.kind === 'region' ? 'text-xs text-[var(--sys-warning)]' : 'text-xs text-[var(--sys-muted-foreground)]'}>
                         {note.text}
                       </p>
+                    )}
+                    {/* Nothing typed, and the list answers: say which city the shipment goes to. */}
+                    {byList && (
+                      <p className="text-xs text-[var(--sys-muted-foreground)]">افتراضي من قايمة الشركة: {byList.label}</p>
                     )}
                   </div>
                 );

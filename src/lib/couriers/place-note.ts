@@ -1,3 +1,5 @@
+import { foldArabic } from '../address';
+
 /**
  * WHAT THE «رمزها عند الشركة» BOX SAYS ABOUT THE NUMBER TYPED IN IT — client-safe, no data file.
  * The cities and regions come from `/api/settings/delivery-fees/places` (see `couriers/places`, server only).
@@ -6,8 +8,30 @@
 export interface CourierPlaces {
   /** cityId → «مدينة السويداء — السويداء» */
   cities: Record<string, string>;
-  /** regionId → its name, and the id of its same-name placeholder city (the one to type), when there is exactly one. */
+  /**
+   * regionId → its name, and the id of the city the press sends that governorate to when nobody typed one — the answer of
+   * `defaultCourierCityId` (the same-name placeholder city, or «مدينة …»), null when the list cannot give one.
+   */
   regions: Record<string, { name: string; cityId: number | null }>;
+}
+
+/**
+ * THE CODE A GOVERNORATE HAS WITHOUT ANYONE TYPING IT, and the place it is — so the box can show it instead of a warning.
+ *
+ * The governorate is one of OURS («إدلب») and the payload's regions are THEIRS («ادلب»): they are matched by the folded
+ * name, exactly as the server matched them when it decided each region's `cityId`. It adds no rule of its own — a region
+ * the server could not answer (null) or filed twice stays unanswered here too.
+ */
+export function defaultCityOf(
+  regionName: string,
+  places: CourierPlaces | null,
+): { cityId: number; label: string } | null {
+  const want = foldArabic(regionName);
+  if (!places || !want) return null;
+  const hits = Object.values(places.regions).filter((r) => foldArabic(r.name) === want);
+  const cityId = hits.length === 1 ? hits[0].cityId : null;
+  if (cityId === null) return null;
+  return { cityId, label: places.cities[String(cityId)] ?? String(cityId) };
 }
 
 /**
