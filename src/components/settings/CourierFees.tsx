@@ -44,6 +44,22 @@ interface FeesData {
   fees: Fee[];
 }
 
+/** What is in a row's boxes. It is a SNAPSHOT: it is made when the row is first edited and is not refreshed by a reload. */
+interface Draft {
+  fee: string;
+  lateThresholdDays: string;
+  returnFee: string;
+  courierCityId: string;
+  /**
+   * True once the operator has TOUCHED the code box (its `onChange`, nowhere else), and false again after a save.
+   *
+   * An empty code box means «clear the stored number» only when the operator emptied it — not when it was empty in a
+   * snapshot taken before somebody else wrote a number. Without this flag, editing only دمشق's late days (its box '' then),
+   * having a second admin write 445053 for it, and then saving the box that never moved sent `null` and wiped their code.
+   */
+  codeEdited?: boolean;
+}
+
 /**
  * A TYPED NUMBER, OR «NOTHING» — AND A TYPED `0` IS A NUMBER.
  *
@@ -81,7 +97,7 @@ export function CourierFees({
 }) {
   const toast = useToast();
   const [data, setData] = useState<FeesData | null>(null);
-  const [draft, setDraft] = useState<Record<string, { fee: string; lateThresholdDays: string; returnFee: string; courierCityId: string }>>({});
+  const [draft, setDraft] = useState<Record<string, Draft>>({});
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -143,7 +159,7 @@ export function CourierFees({
    * left off the request and the column decides. An existing row shows what
    * is stored — including a stored `0`, which is a value, not a blank.
    */
-  const draftFor = (id: string) => {
+  const draftFor = (id: string): Draft => {
     const current = feeFor(id);
     return (
       draft[id] ?? {
@@ -154,7 +170,7 @@ export function CourierFees({
       }
     );
   };
-  const setField = (id: string, patch: Partial<ReturnType<typeof draftFor>>) =>
+  const setField = (id: string, patch: Partial<Draft>) =>
     setDraft({ ...draft, [id]: { ...draftFor(id), ...patch } });
 
   /** Regions this courier has no fee row for — the ones that block orders. */
@@ -185,15 +201,21 @@ export function CourierFees({
     }
 
     // The courier's own id for the region, typed from their list. A number is written. An EMPTY box has two meanings: on a
-    // row that never held a number it sends nothing (there is nothing to change); on a row that DID hold one and was
-    // emptied it sends `null`, which clears it — and the courier's own list answers for that governorate again
-    // (`couriers/city-id`). It used to send nothing in both cases, so a stored number could not be taken back except by
-    // typing another one, and the box's own hint «leave it empty and the list's number is used» was false for exactly
-    // those rows. Anything but a positive whole number is refused here rather than sent, because their API would refuse
-    // the shipment later.
+    // row that never held a number it sends nothing (there is nothing to change); on a row that DID hold one and whose
+    // box the operator EMPTIED it sends `null`, which clears it — and the courier's own list answers for that governorate
+    // again (`couriers/city-id`). It used to send nothing in both cases, so a stored number could not be taken back except
+    // by typing another one, and the box's own hint «leave it empty and the list's number is used» was false for exactly
+    // those rows.
+    //
+    // «EMPTIED» IS THE OPERATOR'S ACT, NOT THE BOX'S CONTENT (`codeEdited`). The draft is a snapshot that a reload does not
+    // refresh, while `current` is read fresh: a box that is '' only because it was snapshotted before somebody else wrote a
+    // number must send nothing, or saving دمشق after editing only its late days wipes that person's code.
+    //
+    // Anything but a positive whole number is refused here rather than sent, because their API would refuse the shipment
+    // later.
     const code = d.courierCityId.trim();
     const hadOne = typeof current?.courierCityId === 'number';
-    const courierCityId: number | null | undefined = code === '' ? (hadOne ? null : undefined) : Number(code);
+    const courierCityId: number | null | undefined = code === '' ? (hadOne && d.codeEdited === true ? null : undefined) : Number(code);
     if (typeof courierCityId === 'number' && !(Number.isInteger(courierCityId) && courierCityId > 0)) {
       toast.failed('رمز الشركة غير صالح — رقم صحيح من قائمتهم');
       return;
@@ -225,6 +247,9 @@ export function CourierFees({
           reason,
         }),
       });
+      // The code box has been dealt with. From here it counts as untouched again, so saving this same draft later cannot
+      // clear a number somebody ELSE writes in the meantime.
+      setDraft((all) => (all[regionId] ? { ...all, [regionId]: { ...all[regionId], codeEdited: false } } : all));
       setSaved(regionId);
       setTimeout(() => setSaved(null), 2000);
       await load();
@@ -378,7 +403,7 @@ export function CourierFees({
                   <div>
                     <input
                       value={typed}
-                      onChange={(e) => setField(r.id, { courierCityId: e.target.value })}
+                      onChange={(e) => setField(r.id, { courierCityId: e.target.value, codeEdited: true })}
                       aria-label={`رمز ${r.name} عند الشركة`}
                       placeholder={byList ? String(byList.cityId) : 'بلا رمز'}
                       title={
