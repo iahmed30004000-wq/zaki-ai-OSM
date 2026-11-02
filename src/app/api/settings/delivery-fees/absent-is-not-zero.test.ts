@@ -293,6 +293,39 @@ describe('the courier’s own code for the region — «انا ليش ما بق�
     expect(wroteUpdate().courierCityId).toBeNull();
   });
 
+  /**
+   * THE SCREEN CLEARS A NUMBER THIS WAY (2/11): emptying a box that held one sends `courierCityId: null`, and the courier's
+   * own list answers for that governorate again (`couriers/city-id`). So what the endpoint says back matters: no reason is
+   * demanded (the fee did not move), the audit records what the number was and that it became nothing, and the answer
+   * carries the row as it now stands, so the screen reloads an empty box.
+   */
+  it('and clearing it asks no reason, is audited as what it was and what it became, and is answered as cleared', async () => {
+    db.deliveryFee.findFirst.mockResolvedValue({ ...STORED, courierCityId: 705991 });
+    const res = await put({ deliveryProviderId: COURIER, regionId: REGION, fee: 2.5, courierCityId: null });
+    expect(res.status).toBe(200);
+    const audit = logAudit.mock.calls[0][0];
+    expect(audit.action).toBe('DELIVERY_FEE_UPDATED');
+    expect(audit.previousData.courierCityId).toBe(705991);
+    expect(audit.newData.courierCityId).toBeNull();
+    expect((await res.json()).fee.courierCityId).toBeNull();
+  });
+
+  it('NEGATIVE: clearing leaves the rest of the row alone — the fee, the threshold and the return fee are not touched', async () => {
+    db.deliveryFee.findFirst.mockResolvedValue({ ...STORED, courierCityId: 705991 });
+    await put({ deliveryProviderId: COURIER, regionId: REGION, fee: 2.5, courierCityId: null });
+    const written = wroteUpdate();
+    expect(written.fee).toBe(2.5);
+    expect(Object.keys(written)).not.toContain('lateThresholdDays');
+    expect(Object.keys(written)).not.toContain('returnFee');
+  });
+
+  it('a new row with a stated null stores no code (the column is nullable, and null is its "not told yet")', async () => {
+    db.deliveryFee.findFirst.mockResolvedValue(null);
+    const res = await put({ deliveryProviderId: COURIER, regionId: REGION, fee: 2.5, courierCityId: null });
+    expect(res.status).toBe(200);
+    expect(wroteCreate().courierCityId).toBeNull();
+  });
+
   it('NEGATIVE: zero, a negative, a fraction or text is refused and nothing is written', async () => {
     for (const bad of [0, -5, 1.5, '445053']) {
       vi.clearAllMocks();

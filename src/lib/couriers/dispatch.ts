@@ -1,5 +1,6 @@
 import { db } from '../db';
 import { adapterFor } from './index';
+import { courierCityIdFor, storedCityIds } from './city-id';
 import { courierBelongsToStore } from './scope';
 import { isOutcomeUnknown } from './types';
 import { logAudit } from '../audit';
@@ -278,14 +279,13 @@ export async function dispatchBatch(input: {
     orderBy: { orderNumber: 'asc' },
   });
 
-  // One read for the whole batch rather than one per parcel.
-  const cityIds = new Map<string, number>(
-    (
-      await db.deliveryFee.findMany({
-        where: { deliveryProviderId: batch.provider?.id, courierCityId: { not: null } },
-        select: { regionId: true, courierCityId: true },
-      })
-    ).map((f) => [f.regionId, f.courierCityId!])
+  // One read for the whole batch rather than one per parcel: the ids TYPED for this courier. What its own list says for
+  // a governorate nobody typed is looked up per parcel, from memory (`courierCityIdFor`) — it needs no fee row.
+  const typedCityIds = storedCityIds(
+    await db.deliveryFee.findMany({
+      where: { deliveryProviderId: batch.provider?.id, courierCityId: { not: null } },
+      select: { regionId: true, courierCityId: true },
+    })
   );
 
   const outcomes: DispatchOutcome[] = [];
@@ -310,12 +310,28 @@ export async function dispatchBatch(input: {
     }
     /*
      * A GOVERNORATE THE COURIER HAS NO ID FOR IS REFUSED HERE — before the
-     * claim and before any call. السويداء is not in Basha's list at all; it
-     * used to be claimed, searched for by name over the network, failed with
-     * an English error code, and released. Now it says which governorate and
-     * where its id is typed, and the rest of the batch goes on.
+     * claim and before any call. It used to be claimed, searched for by name
+     * over the network, failed with an English error code, and released. Now
+     * it says which governorate and where its id is typed, and the rest of
+     * the batch goes on.
+     *
+     * «NO ID» MEANS NONE TYPED AND NONE IN THE COURIER'S OWN LIST. The code
+     * must be typed per governorate in the settings, and nobody ever typed
+     * the fourteen, so every parcel was refused (the owner, 2/11: «ترحيل
+     * الطلبات مش زابط»). A typed id wins — except a number the courier's
+     * sheet itself holds as a Region Id and as no city's (3003): that is not
+     * a place a parcel can go to, so it counts as not typed. Otherwise the
+     * sheet gives the governorate its city (`couriers/city-id`) — and a
+     * governorate it cannot answer, or an order with no governorate, stays
+     * refused.
      */
-    if (adapter.needsCourierCityId && !cityIds.has(order.regionId ?? '')) {
+    const cityId = courierCityIdFor({
+      providerCode: batch.provider?.code,
+      stored: typedCityIds,
+      regionId: order.regionId,
+      regionName: order.region?.name,
+    });
+    if (adapter.needsCourierCityId && cityId === null) {
       outcomes.push({
         orderId: order.id, orderNumber: order.orderNumber, ok: false,
         skipped: 'NO_COURIER_CITY', regionName: order.region?.name ?? null,
@@ -336,13 +352,14 @@ export async function dispatchBatch(input: {
 
     try {
       const result = await adapter.createShipment({
-        // The courier's own id for this region, agreed once and stored on
-        // the fee row. Without it the adapter has to search their API by
-        // name on every single shipment — a round trip that needs their
-        // password, and a name match that quietly takes the first of
-        // several hits. A parcel addressed to the wrong governorate is not
-        // a thing you find out about until the driver calls.
-        cityId: cityIds.get(order.regionId ?? '') ?? undefined,
+        // The courier's own id for this region: the one typed on the fee row,
+        // else the one in their own list (see above). Without it the adapter
+        // has to search their API by name on every single shipment — a round
+        // trip that needs their password, and a name match that quietly takes
+        // the first of several hits. A parcel addressed to the wrong
+        // governorate is not a thing you find out about until the driver
+        // calls.
+        cityId: cityId ?? undefined,
         orderId: order.id,
         // Our order number, so their statement line can be matched back.
         merchantRef: order.merchantRef || order.orderNumber,

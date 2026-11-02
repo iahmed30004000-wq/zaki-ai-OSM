@@ -29,6 +29,14 @@ const account = encryptJson({
   senderName: 'متجر', senderPhone: '0999000000',
 });
 const BASHA = { id: 'p1', name: 'الباشا', code: 'BASHA', adapterCode: 'LOGESTECHS', apiEnabled: true, apiConfig: {}, apiCredentials: account };
+/*
+ * A SECOND COMPANY ON THE SAME PLATFORM — its own account, and no list of city ids of ours.
+ *
+ * These tests are about «a governorate with no id → a warning». Basha has a list (`couriers/places`), which now gives
+ * السويداء its city without anybody typing it (2/11) — so the SAME rule is tried on Basha in
+ * `the-press-and-the-warning-agree.test.ts`, and here the courier is one whose only source of ids is what was typed.
+ */
+const HALA = { ...BASHA, name: 'هلا', code: 'HALA' };
 const MANUAL = { id: 'p2', name: 'ناقل', code: 'NAQEL', adapterCode: null, apiEnabled: false, apiConfig: null, apiCredentials: null };
 
 const ask = (batches: { id: string; status: string; deliveryProviderId: string | null }[]) =>
@@ -37,9 +45,10 @@ const OPEN = { id: 'b1', status: 'READY', deliveryProviderId: 'p1' };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  db.deliveryProvider.findMany.mockResolvedValue([BASHA]);
-  db.deliveryFee.findMany.mockResolvedValue([{ deliveryProviderId: 'p1', regionId: 'damascus' }]);
-  db.region.findMany.mockResolvedValue([{ id: 'sweida', name: 'السويداء' }]);
+  db.deliveryProvider.findMany.mockResolvedValue([HALA]);
+  // The rows the query asks for: the ones that carry an id, with the id.
+  db.deliveryFee.findMany.mockResolvedValue([{ deliveryProviderId: 'p1', regionId: 'damascus', courierCityId: 445053 }]);
+  db.region.findMany.mockResolvedValue([{ id: 'damascus', name: 'دمشق' }, { id: 'sweida', name: 'السويداء' }]);
   db.order.groupBy.mockResolvedValue([
     { shippingBatchId: 'b1', regionId: 'damascus', _count: { _all: 4 } },
     { shippingBatchId: 'b1', regionId: 'sweida', _count: { _all: 2 } },
@@ -54,14 +63,16 @@ describe('the parcels the courier has no city id for', () => {
 
   it('NEGATIVE: every governorate has its id — no warning', async () => {
     db.deliveryFee.findMany.mockResolvedValue([
-      { deliveryProviderId: 'p1', regionId: 'damascus' }, { deliveryProviderId: 'p1', regionId: 'sweida' },
+      { deliveryProviderId: 'p1', regionId: 'damascus', courierCityId: 445053 },
+      { deliveryProviderId: 'p1', regionId: 'sweida', courierCityId: 445153 },
     ]);
     expect((await ask([OPEN])).size).toBe(0);
   });
 
   it('NEGATIVE: another courier’s id for that governorate does not count for this trolley', async () => {
     db.deliveryFee.findMany.mockResolvedValue([
-      { deliveryProviderId: 'p1', regionId: 'damascus' }, { deliveryProviderId: 'other', regionId: 'sweida' },
+      { deliveryProviderId: 'p1', regionId: 'damascus', courierCityId: 445053 },
+      { deliveryProviderId: 'other', regionId: 'sweida', courierCityId: 445153 },
     ]);
     expect((await ask([OPEN])).get('b1')?.count).toBe(2);
   });
@@ -95,9 +106,9 @@ describe('where it says nothing', () => {
   });
 
   it('NEGATIVE: a switched-off or account-less courier is manual too', async () => {
-    db.deliveryProvider.findMany.mockResolvedValue([{ ...BASHA, apiEnabled: false }]);
+    db.deliveryProvider.findMany.mockResolvedValue([{ ...HALA, apiEnabled: false }]);
     expect((await ask([OPEN])).size).toBe(0);
-    db.deliveryProvider.findMany.mockResolvedValue([{ ...BASHA, apiCredentials: null }]);
+    db.deliveryProvider.findMany.mockResolvedValue([{ ...HALA, apiCredentials: null }]);
     expect((await ask([OPEN])).size).toBe(0);
   });
 

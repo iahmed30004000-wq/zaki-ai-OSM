@@ -1,5 +1,6 @@
 import { db } from '../db';
 import { adapterFor } from './index';
+import { courierCityIdFor, storedCityIds } from './city-id';
 import type { CourierCityGap } from './city-gap-line';
 
 /**
@@ -10,8 +11,9 @@ import type { CourierCityGap } from './city-gap-line';
  * pressing. This is the same decision made earlier and read-only: for each open trolley whose courier needs a city id,
  * the waiting parcels whose governorate has none. It WARNS and never blocks — the press still sends the others.
  *
- * It repeats the dispatch's own conditions (same adapter question, the fee row of the trolley's courier, only the
- * parcels dispatch would still claim), so the warning and the refusal cannot disagree.
+ * It repeats the dispatch's own conditions (same adapter question, the same answer for «which id» — `couriers/city-id`:
+ * the id typed for the trolley's courier, else the one in the courier's own list — and only the parcels dispatch would
+ * still claim), so the warning and the refusal cannot disagree.
  */
 /** The governorate of a parcel that has none, as the warning names it. */
 const NO_REGION_AR = 'بلا محافظة';
@@ -30,7 +32,8 @@ export async function courierCityGaps(input: {
     where: { id: { in: [...new Set(open.map((b) => b.deliveryProviderId!))] }, companyId: input.companyId },
     select: { id: true, name: true, code: true, adapterCode: true, apiEnabled: true, apiConfig: true, apiCredentials: true },
   });
-  const needing = new Set(providers.filter((p) => adapterFor(p).needsCourierCityId).map((p) => p.id));
+  // courier id → its code (which list we hold for it)
+  const needing = new Map(providers.filter((p) => adapterFor(p).needsCourierCityId).map((p) => [p.id, p.code]));
   const batches = open.filter((b) => needing.has(b.deliveryProviderId!));
   if (batches.length === 0) return gaps;
 
@@ -49,19 +52,19 @@ export async function courierCityGaps(input: {
   });
   if (parcels.length === 0) return gaps;
 
+  // The ids TYPED for each of these couriers, by courier then region.
   const fees = await db.deliveryFee.findMany({
-    where: { deliveryProviderId: { in: [...needing] }, courierCityId: { not: null } },
-    select: { deliveryProviderId: true, regionId: true },
+    where: { deliveryProviderId: { in: [...needing.keys()] }, courierCityId: { not: null } },
+    select: { deliveryProviderId: true, regionId: true, courierCityId: true },
   });
-  const known = new Set(fees.map((f) => `${f.deliveryProviderId}|${f.regionId}`));
+  const typed = new Map<string, Map<string, number>>(
+    [...needing.keys()].map((id) => [id, storedCityIds(fees.filter((f) => f.deliveryProviderId === id))]),
+  );
   const providerOf = new Map(batches.map((b) => [b.id, b.deliveryProviderId!]));
 
-  const missing = parcels.filter(
-    (p) => p.shippingBatchId && !known.has(`${providerOf.get(p.shippingBatchId)}|${p.regionId ?? ''}`),
-  );
-  if (missing.length === 0) return gaps;
-
-  const regionIds = [...new Set(missing.map((p) => p.regionId).filter((v): v is string => !!v))];
+  // The names of every governorate on the trolleys, not only of the ones with no typed id: the courier's own list is
+  // asked by NAME, so a parcel with no typed id can still have one.
+  const regionIds = [...new Set(parcels.map((p) => p.regionId).filter((v): v is string => !!v))];
   const names = new Map(
     (regionIds.length
       ? await db.region.findMany({ where: { id: { in: regionIds } }, select: { id: true, name: true } })
@@ -69,13 +72,23 @@ export async function courierCityGaps(input: {
     ).map((r) => [r.id, r.name]),
   );
 
-  for (const p of missing) {
-    const batchId = p.shippingBatchId!;
-    const gap = gaps.get(batchId) ?? { count: 0, regions: [] };
+  for (const p of parcels) {
+    if (!p.shippingBatchId) continue;
+    const providerId = providerOf.get(p.shippingBatchId)!;
+    // Exactly the question the press asks of this parcel (`couriers/dispatch`).
+    const id = courierCityIdFor({
+      providerCode: needing.get(providerId),
+      stored: typed.get(providerId) ?? new Map<string, number>(),
+      regionId: p.regionId,
+      regionName: p.regionId ? names.get(p.regionId) : null,
+    });
+    if (id !== null) continue;
+
+    const gap = gaps.get(p.shippingBatchId) ?? { count: 0, regions: [] };
     gap.count += p._count._all;
     const name = p.regionId ? names.get(p.regionId) ?? NO_REGION_AR : NO_REGION_AR;
     if (!gap.regions.includes(name)) gap.regions.push(name);
-    gaps.set(batchId, gap);
+    gaps.set(p.shippingBatchId, gap);
   }
   return gaps;
 }

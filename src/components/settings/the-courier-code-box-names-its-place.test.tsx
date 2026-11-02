@@ -63,13 +63,13 @@ describe('the code box', () => {
     expect((await screen.findAllByText('مدينة السويداء — السويداء')).length).toBeGreaterThan(0);
   });
 
-  it('a Region Id warns and names the code to type — and the row can still be saved', async () => {
+  it('a Region Id warns and says the system ignores it and uses the city — and the row can still be saved', async () => {
     const user = userEvent.setup();
     await open();
     await user.type(box(), '3003');
-    const warnings = await screen.findAllByText(/هذا رقم المنطقة لـ«السويداء» وليس رقم مدينتها — اكتب 445153/);
+    const warnings = await screen.findAllByText(/هذا رقم المنطقة لـ«السويداء» وليس رقم مدينتها — النظام بيتجاهله ويستعمل 445153/);
     expect(warnings[0].className).toContain('text-[var(--sys-warning)]');
-    // A warning, not a block: the owner decides.
+    // A warning, not a block: saving is still allowed (the press ignores the number, it does not refuse the form).
     await user.click(screen.getAllByRole('button', { name: /تحديث/ })[0]);
     await waitFor(() => expect(puts()).toHaveLength(1));
     expect(JSON.parse(puts()[0][1].body as string)).toMatchObject({ regionId: SWEIDA, courierCityId: 3003 });

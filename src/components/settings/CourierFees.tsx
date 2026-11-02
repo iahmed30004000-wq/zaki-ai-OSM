@@ -8,7 +8,7 @@ import { RiAlertLine, RiLoader4Line, RiMagicLine, RiSaveLine } from '@remixicon/
 import { useToast } from '@/components/ui/Toast';
 import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { placeNote, type CourierPlaces } from '@/lib/couriers/place-note';
+import { defaultCityOf, placeNote, type CourierPlaces } from '@/lib/couriers/place-note';
 
 /**
  * ONE COURIER'S FEES — a row per region: the fee, the late threshold in
@@ -42,6 +42,22 @@ interface Fee {
 interface FeesData {
   regions: { id: string; name: string }[];
   fees: Fee[];
+}
+
+/** What is in a row's boxes. It is a SNAPSHOT: it is made when the row is first edited and is not refreshed by a reload. */
+interface Draft {
+  fee: string;
+  lateThresholdDays: string;
+  returnFee: string;
+  courierCityId: string;
+  /**
+   * True once the operator has TOUCHED the code box (its `onChange`, nowhere else), and false again after a save.
+   *
+   * An empty code box means «clear the stored number» only when the operator emptied it — not when it was empty in a
+   * snapshot taken before somebody else wrote a number. Without this flag, editing only دمشق's late days (its box '' then),
+   * having a second admin write 445053 for it, and then saving the box that never moved sent `null` and wiped their code.
+   */
+  codeEdited?: boolean;
 }
 
 /**
@@ -81,7 +97,7 @@ export function CourierFees({
 }) {
   const toast = useToast();
   const [data, setData] = useState<FeesData | null>(null);
-  const [draft, setDraft] = useState<Record<string, { fee: string; lateThresholdDays: string; returnFee: string; courierCityId: string }>>({});
+  const [draft, setDraft] = useState<Record<string, Draft>>({});
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -143,7 +159,7 @@ export function CourierFees({
    * left off the request and the column decides. An existing row shows what
    * is stored — including a stored `0`, which is a value, not a blank.
    */
-  const draftFor = (id: string) => {
+  const draftFor = (id: string): Draft => {
     const current = feeFor(id);
     return (
       draft[id] ?? {
@@ -154,7 +170,7 @@ export function CourierFees({
       }
     );
   };
-  const setField = (id: string, patch: Partial<ReturnType<typeof draftFor>>) =>
+  const setField = (id: string, patch: Partial<Draft>) =>
     setDraft({ ...draft, [id]: { ...draftFor(id), ...patch } });
 
   /** Regions this courier has no fee row for — the ones that block orders. */
@@ -184,11 +200,23 @@ export function CourierFees({
       return;
     }
 
-    // The courier's own id for the region, typed from their list. Empty = leave what is stored; anything but a positive
-    // whole number is refused here rather than sent, because their API would refuse the shipment later.
+    // The courier's own id for the region, typed from their list. A number is written. An EMPTY box has two meanings: on a
+    // row that never held a number it sends nothing (there is nothing to change); on a row that DID hold one and whose
+    // box the operator EMPTIED it sends `null`, which clears it — and the courier's own list answers for that governorate
+    // again (`couriers/city-id`). It used to send nothing in both cases, so a stored number could not be taken back except
+    // by typing another one, and the box's own hint «leave it empty and the list's number is used» was false for exactly
+    // those rows.
+    //
+    // «EMPTIED» IS THE OPERATOR'S ACT, NOT THE BOX'S CONTENT (`codeEdited`). The draft is a snapshot that a reload does not
+    // refresh, while `current` is read fresh: a box that is '' only because it was snapshotted before somebody else wrote a
+    // number must send nothing, or saving دمشق after editing only its late days wipes that person's code.
+    //
+    // Anything but a positive whole number is refused here rather than sent, because their API would refuse the shipment
+    // later.
     const code = d.courierCityId.trim();
-    const courierCityId = code === '' ? undefined : Number(code);
-    if (courierCityId !== undefined && !(Number.isInteger(courierCityId) && courierCityId > 0)) {
+    const hadOne = typeof current?.courierCityId === 'number';
+    const courierCityId: number | null | undefined = code === '' ? (hadOne && d.codeEdited === true ? null : undefined) : Number(code);
+    if (typeof courierCityId === 'number' && !(Number.isInteger(courierCityId) && courierCityId > 0)) {
       toast.failed('رمز الشركة غير صالح — رقم صحيح من قائمتهم');
       return;
     }
@@ -214,10 +242,14 @@ export function CourierFees({
           // ABSENT on the wire. A typed `0` is sent as `0`.
           lateThresholdDays,
           returnFee,
+          // A number, `null` (a stored number was emptied: clear it) or absent (nothing to change).
           courierCityId,
           reason,
         }),
       });
+      // The code box has been dealt with. From here it counts as untouched again, so saving this same draft later cannot
+      // clear a number somebody ELSE writes in the meantime.
+      setDraft((all) => (all[regionId] ? { ...all, [regionId]: { ...all[regionId], codeEdited: false } } : all));
       setSaved(regionId);
       setTimeout(() => setSaved(null), 2000);
       await load();
@@ -353,24 +385,40 @@ export function CourierFees({
             {
               key: 'courierId',
               label: 'رمزها عند الشركة',
-              // Their id, typed from THEIR list (the villages sheet they send) — never invented. Saved with the row's
-              // «تحديث». An empty box is the warning it always was: without it their API refuses the shipment.
+              // Their id, from THEIR list (the villages sheet they send) — never invented. A number typed here is saved
+              // with the row's «تحديث» and is the one sent — unless their list proves it is a Region Id, which the note
+              // below says and the press ignores — and the note names the city used INSTEAD, the row's own default. An
+              // EMPTY box is no longer a gap when their list names this governorate: the press takes that city by itself
+              // (`couriers/city-id`), and the box shows which; emptying a number that was stored and pressing «تحديث»
+              // clears it, so the list answers again. Only a governorate their list cannot answer keeps the warning it
+              // always had: without an id their API refuses.
               render: (r) => {
-                const note = placeNote(draftFor(r.id).courierCityId, places);
+                const typed = draftFor(r.id).courierCityId;
+                // What the press uses for THIS row's parcels when nothing usable is typed. A typed Region Id is replaced
+                // by this — the row's own default, never the city of the Region Id's own region — so the note names it.
+                const rowDefault = defaultCityOf(r.name, places);
+                const note = placeNote(typed, places, rowDefault?.cityId ?? null);
+                const byList = typed.trim() === '' ? rowDefault : null;
                 return (
                   <div>
                     <input
-                      value={draftFor(r.id).courierCityId}
-                      onChange={(e) => setField(r.id, { courierCityId: e.target.value })}
+                      value={typed}
+                      onChange={(e) => setField(r.id, { courierCityId: e.target.value, codeEdited: true })}
                       aria-label={`رمز ${r.name} عند الشركة`}
-                      placeholder="بلا رمز"
-                      title="رمز هذه المحافظة لدى الشركة، من قائمة مناطقهم — بدونه لا تُنشأ الشحنة آلياً."
+                      placeholder={byList ? String(byList.cityId) : 'بلا رمز'}
+                      title={
+                        byList
+                          ? 'اتركه فاضي (أو امسح الرقم واضغط «تحديث») وبيُستعمل رمز قايمة الشركة الظاهر تحته، أو اكتب رقماً ثانياً وبيصير هو المعتمد.'
+                          : rowDefault
+                            ? 'امسح الرقم واضغط «تحديث» وبيرجع النظام يستعمل رمز قايمة الشركة لهذه المحافظة.'
+                            : 'رمز هذه المحافظة لدى الشركة، من قائمة مناطقهم — بدونه لا تُنشأ الشحنة آلياً.'
+                      }
                       type="number"
                       min={1}
                       step={1}
                       dir="ltr"
                       className={`h-11 w-28 rounded-lg border bg-[var(--sys-card)] px-2 text-sm md:h-10 ${
-                        draftFor(r.id).courierCityId ? 'border-[var(--sys-border-input)]' : 'border-[var(--sys-warning)]'
+                        typed || byList ? 'border-[var(--sys-border-input)]' : 'border-[var(--sys-warning)]'
                       }`}
                     />
                     {/* Which place the number is — and a warning, never a block, when it is a Region Id. */}
@@ -378,6 +426,10 @@ export function CourierFees({
                       <p className={note.kind === 'region' ? 'text-xs text-[var(--sys-warning)]' : 'text-xs text-[var(--sys-muted-foreground)]'}>
                         {note.text}
                       </p>
+                    )}
+                    {/* Nothing typed, and the list answers: say which city the shipment goes to. */}
+                    {byList && (
+                      <p className="text-xs text-[var(--sys-muted-foreground)]">افتراضي من قايمة الشركة: {byList.label}</p>
                     )}
                   </div>
                 );

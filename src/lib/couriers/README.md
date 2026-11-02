@@ -87,7 +87,36 @@ LOGESTECHS_BASE_URL=             # optional override
 Then set the provider's `code` to `LOGESTECHS` and turn `apiEnabled` on for
 it. Until someone does both, it is handled manually.
 
-Still worth asking them for: whether they can push status changes by webhook,
-what they sign the payload with, and their retry behaviour. Without it the
-Stage 7 worker polls `GET /guests/packages/status` per barcode, which works
-but is slower and chattier than being told.
+### Statuses: the API, not a webhook
+
+There is no webhook. The owner cancelled it on 2/11 («الغي الويب هوك»): the
+worker polls `GET /guests/packages/status` per barcode
+(`jobs/definitions/sync-courier-status.ts`) and every word goes through
+`apply-event.ts`. `/api/webhooks/couriers/[token]` stays only to answer 410
+to a courier that was given the old link; the card that minted it, its route
+and its token are gone. The three `DeliveryProvider.webhook*` columns are still
+in the schema (no migration with the cancellation) and nothing reads them.
+
+### The courier's city id for a governorate
+
+Their API field is `cityId`, and Basha works at region level
+(«دمشق - دمشق - دمشق» is intended). The number sent for a parcel is, in this
+order (`city-id.ts`, used by the press, the warning before it and the Excel
+file alike):
+
+1. the number **typed** on the fees screen («رمزها عند الشركة») — it wins, except
+   a number their list holds as a Region Id and as no city's (3003 for السويداء,
+   `places.ts` `isRegionIdOnly`): that is not a place a parcel can go to, so it
+   counts as not typed and the box says the system ignores it, naming the city
+   used INSTEAD — the default of the box's own row, whichever Region Id was
+   typed. A number the list does not know at all, and any number for a courier
+   we hold no list for, still wins. To take a typed number back, empty the box
+   and press «تحديث»: the screen then sends `courierCityId: null`, which clears
+   it (a row that never held a number sends nothing);
+2. else the courier's **own list** (`reference/couriers/basha-villages.json`,
+   read by `places.ts`): within their region of the same name, the city named
+   like the governorate («السويداء» 445153, not «مدينة السويداء» 566117), else
+   «مدينة <governorate>» (دير الزور: the one built as a placeholder, 949546),
+   else the governorate's only city — spelling folded (إدلب = ادلب), exact
+   equality, never a guess;
+3. else nothing, and the press refuses the parcel by name (`NO_COURIER_CITY`).
