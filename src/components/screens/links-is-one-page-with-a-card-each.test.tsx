@@ -16,8 +16,10 @@ import { attachGrants, can } from '@/lib/authorization';
  * two cards of one page now (owner, 24/10). What must stay true:
  *
  *   · a person sees the card of the key they hold and never a card whose every
- *     button the door would refuse (`whatsapp.manage` and `telegram.manage` stay
- *     two grants — the page opens for either);
+ *     button the door would refuse (`whatsapp.manage` and `telegram.connect` stay
+ *     two grants — the page opens for either). Telegram's card asks `telegram.connect`
+ *     since T-09 (3/11): `telegram.manage` is the day's message work and opens neither
+ *     the card nor the page;
  *   · the cards are the SAME two screens, drawn without their own page header
  *     (`embedded`) so the page has one title;
  *   · the old addresses redirect for good, to the card they used to be;
@@ -25,7 +27,7 @@ import { attachGrants, can } from '@/lib/authorization';
  */
 
 const { user, conn } = vi.hoisted(() => ({
-  user: { current: { id: 'u1', role: 'MODERATOR', permissions: ['whatsapp.manage', 'telegram.manage'], status: 'ACTIVE' } as Record<string, unknown> },
+  user: { current: { id: 'u1', role: 'MODERATOR', permissions: ['whatsapp.manage', 'telegram.connect'], status: 'ACTIVE' } as Record<string, unknown> },
   conn: { current: { status: 'CONNECTED', envConfigured: true, connection: { displayName: 'صحة', phoneNumber: '+962790000000' } } as unknown },
 }));
 
@@ -54,7 +56,7 @@ vi.mock('@/lib/screen-api', () => ({
 import { LinksSettingsScreen } from './LinksSettingsScreen';
 
 beforeEach(() => {
-  user.current = { id: 'u1', role: 'MODERATOR', permissions: ['whatsapp.manage', 'telegram.manage'], status: 'ACTIVE' };
+  user.current = { id: 'u1', role: 'MODERATOR', permissions: ['whatsapp.manage', 'telegram.connect'], status: 'ACTIVE' };
 });
 afterEach(cleanup);
 
@@ -76,13 +78,21 @@ describe('«الربط» — the page', () => {
     expect(screen.queryByRole('heading', { level: 2, name: 'تلجرام' })).toBeNull();
     first.unmount();
 
-    user.current = { ...user.current, permissions: ['telegram.manage'] };
+    user.current = { ...user.current, permissions: ['telegram.connect'] };
     render(<LinksSettingsScreen />);
     await screen.findByRole('heading', { level: 2, name: 'تلجرام' });
     expect(screen.queryByRole('heading', { level: 2, name: 'واتساب' })).toBeNull();
     // not even the card's own «you may not» box: a card the person cannot use is NOT DRAWN,
     // rather than drawn as a refusal
     expect(screen.queryByText('ليس لديك صلاحية لإدارة واتساب')).toBeNull();
+  });
+
+  it('NEGATIVE (T-09): the day\'s message key alone draws no Telegram card — the connection is its own key', async () => {
+    user.current = { ...user.current, permissions: ['whatsapp.manage', 'telegram.view', 'telegram.manage'] };
+    render(<LinksSettingsScreen />);
+    await screen.findByRole('heading', { level: 2, name: 'واتساب' });
+    expect(screen.queryByRole('heading', { level: 2, name: 'تلجرام' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /تسجيل \/ تحديث الويبهوك/ })).toBeNull();
   });
 
   it('the cards carry the anchors the old links land on', async () => {
@@ -119,8 +129,10 @@ describe('the addresses', () => {
     const route = findRoute('/settings/links')!;
     expect(route.label).toBe('الربط');
     expect(canAccessRoute(mk(['whatsapp.manage']), route, can)).toBe(true);
-    expect(canAccessRoute(mk(['telegram.manage']), route, can)).toBe(true);
+    expect(canAccessRoute(mk(['telegram.connect']), route, can)).toBe(true);
     expect(canAccessRoute(mk(['settings.view']), route, can), 'settings.view وحدها ما تفتح الربط').toBe(false);
+    // NEGATIVE (T-09): the day's message work does not open the connection page any more.
+    expect(canAccessRoute(mk(['telegram.view', 'telegram.manage']), route, can), 'telegram.manage وحدها ما تفتح الربط').toBe(false);
   });
 
   it('the two old settings pages are gone and redirect permanently, each to its own card', () => {

@@ -124,10 +124,12 @@ export function TelegramOrdersScreen() {
   if (!userCan(currentUser, 'telegram.view')) {
     return <div className="p-8 text-center text-[var(--sys-muted-foreground)]">ما عندك صلاحية تشوف طلبات تلجرام</div>;
   }
-  return <TelegramOrdersList canManage={userCan(currentUser, 'telegram.manage')} />;
+  // Two keys (T-09): the row buttons are the day's work (telegram.manage); the «الإعدادات» link opens the connection card,
+  // which asks its own key (telegram.connect) — a link to a page that would refuse is not drawn.
+  return <TelegramOrdersList canManage={userCan(currentUser, 'telegram.manage')} canConnect={userCan(currentUser, 'telegram.connect')} />;
 }
 
-function TelegramOrdersList({ canManage }: { canManage: boolean }) {
+function TelegramOrdersList({ canManage, canConnect }: { canManage: boolean; canConnect: boolean }) {
   const toast = useToast();
   const confirm = useConfirm();
   const [tab, setTab] = useState<Tab>('review');
@@ -317,7 +319,7 @@ function TelegramOrdersList({ canManage }: { canManage: boolean }) {
         description="الرسالة المكتوبة بصيغة الطلب بتصير طلب لحالها، واللي فيها غلط بتستنّى هون للمراجعة."
         actions={
           <div className="flex items-center gap-2">
-            {canManage && (
+            {canConnect && (
               <Link href="/settings/links#telegram">
                 <Button variant="outline" size="sm"><RiEqualizer2Line className="w-4 h-4 ml-1" /> الإعدادات</Button>
               </Link>

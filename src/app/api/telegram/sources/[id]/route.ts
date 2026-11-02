@@ -1,6 +1,7 @@
 /**
  * PATCH  /api/telegram/sources/[id] — enable/disable / edit (tenant-checked).
  * DELETE /api/telegram/sources/[id] — remove a mapping (tenant-checked).
+ * Both on telegram.connect: unbinding or switching off a group stops its orders arriving (T-09).
  */
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -22,7 +23,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   try {
     const { id } = await params;
     const { user, companyId } = await requireCompanyTenant();
-    await requirePermission('telegram.manage');
+    await requirePermission('telegram.connect');
 
     const source = await db.telegramSource.findUnique({ where: { id } });
     if (!source || source.companyId !== companyId) {
@@ -62,7 +63,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   try {
     const { id } = await params;
     const { user, companyId } = await requireCompanyTenant();
-    await requirePermission('telegram.manage');
+    await requirePermission('telegram.connect');
 
     const source = await db.telegramSource.findUnique({ where: { id } });
     if (!source || source.companyId !== companyId) {

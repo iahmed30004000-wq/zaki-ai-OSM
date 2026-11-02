@@ -114,7 +114,9 @@ WITH req(action, needs) AS (VALUES
   -- 1/11: a product's fixed cost. Granted by no migration — a pair here would be a person the owner ticked it for who lost the edit key.
   ('products.change_cost','products.edit'),
   -- 2/11: the holder's own window. Granted by no migration — a pair here would be a person the owner ticked it for who lost the request key.
-  ('orders.edit_confirmed','orders.request_change')
+  ('orders.edit_confirmed','orders.request_change'),
+  -- 3/11 (T-09): the Telegram bot's connection. Granted by no migration — a pair here would be a person the owner ticked it for who lost the message key.
+  ('telegram.connect','telegram.manage')
 )
 SELECT 'role_permissions' AS "table", r."name" AS "role", r."companyId", q.action, q.needs
 FROM "role_permissions" rp
@@ -356,6 +358,19 @@ WHERE m."permission" IN ('whatsapp.manage', 'telegram.manage')
     WHERE v."roleId" = m."roleId"
       AND v."permission" = CASE m."permission" WHEN 'whatsapp.manage' THEN 'whatsapp.view' ELSE 'telegram.view' END)
 ORDER BY 3, 1;
+
+-- F. WHO LOSES THE TELEGRAM CONNECTION ON THE DAY (T-09, 3/11). The webhook registration and the group bindings moved from
+--    telegram.manage to telegram.connect, which no migration gives anybody. Every role listed here keeps «إعادة المعالجة ·
+--    تجاهل · تعديل وترحيل» and loses the Telegram card of «الربط»; the owner ticks telegram.connect for whichever of them
+--    should keep it. SUPER_ADMIN's rows have no effect (its full access holds every key). Read-only, like everything here.
+SELECT r."name" AS "role", r."companyId", count(u."id") AS "people"
+FROM "role_permissions" rp
+JOIN "roles" r ON r."id" = rp."roleId"
+LEFT JOIN "users" u ON u."roleId" = r."id"
+WHERE rp."permission" = 'telegram.manage'
+  AND NOT EXISTS (SELECT 1 FROM "role_permissions" c WHERE c."roleId" = rp."roleId" AND c."permission" = 'telegram.connect')
+GROUP BY r."id", r."name", r."companyId"
+ORDER BY 3 DESC, 1;
 
 -- ═══════════════════════════════════════════════════════════════════════
 -- AND THE QUESTION OF PR-10 ( cost, smart cards and the team's tables): WHICH ROLES WILL THE MIGRATION

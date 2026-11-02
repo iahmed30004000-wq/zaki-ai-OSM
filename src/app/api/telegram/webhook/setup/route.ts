@@ -1,6 +1,7 @@
 /**
  * POST /api/telegram/webhook/setup — registers the Telegram webhook.
- * Requires telegram.manage + configured env (token + secret + APP_URL).
+ * Requires telegram.connect (the connection key, T-09 — not telegram.manage, which is the day's
+ * message work) + configured env (token + secret + APP_URL).
  * Safe to call anytime: fails closed with a clear (Arabic) status when env
  * is missing — no secrets are returned or logged.
  */
@@ -15,7 +16,7 @@ import { apiErrorResponse } from '@/lib/api-error';
 export async function POST() {
   try {
     const { user, companyId } = await requireCompanyTenant();
-    await requirePermission('telegram.manage');
+    await requirePermission('telegram.connect');
 
     if (!botConfigured() || !webhookSecretConfigured()) {
       return NextResponse.json(

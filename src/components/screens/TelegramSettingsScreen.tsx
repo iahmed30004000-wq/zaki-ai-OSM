@@ -23,7 +23,8 @@ export function TelegramSettingsScreen({ embedded = false }: { embedded?: boolea
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const canManage = userCan(currentUser, 'telegram.manage');
+  // The connection's own key (T-09): the day's message work (telegram.manage) no longer registers the webhook or binds a group.
+  const canManage = userCan(currentUser, 'telegram.connect');
 
   const load = useCallback(async () => {
     setLoading(true);

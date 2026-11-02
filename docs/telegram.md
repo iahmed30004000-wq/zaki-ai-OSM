@@ -40,7 +40,7 @@ APP_URL="https://<نطاق-النظام>"
 
 ## 6. إعداد الويبهوك
 
-- من صفحة `/dashboards/telegram/settings` اضغط **تسجيل / تحديث الويبهوك** (يتطلب `telegram.manage`).
+- من «الربط» (`/settings/links#telegram`) اضغط **تسجيل / تحديث الويبهوك** (يتطلب `telegram.connect` — مفتاح الربط لحاله؛ `telegram.manage` صار لشغل الرسائل اليومي بس: إعادة المعالجة والتجاهل والتعديل والترحيل). نفس المفتاح بيربط المجموعات بالمتاجر وبيوقفها وبيحذفها. ما حدا بياخده تلقائياً: المالك بيعلّمه بإيده.
 - أو يدويًا:
   ```
   https://api.telegram.org/bot<TOKEN>/setWebhook?url=<APP_URL>/api/webhooks/telegram&secret_token=<SECRET>
