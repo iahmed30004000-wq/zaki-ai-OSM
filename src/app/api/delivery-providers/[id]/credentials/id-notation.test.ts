@@ -64,6 +64,8 @@ const SOUND = {
   originCityId: 7,
   senderName: 'متجر صحة',
   senderPhone: '+962791234567',
+  // Required on a LogesTechs account since 2/11 (BATCH-2026-0006: «فشل 131» without it).
+  originAddress: 'دمشق — المستودع',
 };
 
 const put = (body: unknown) =>
