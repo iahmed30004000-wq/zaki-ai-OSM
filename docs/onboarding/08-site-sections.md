@@ -165,10 +165,10 @@ flowchart TD
 
 #### 3. `/ops/batches` — دفعات الشحن
 - **ليش:** للدفعة ثلاث حالات بس: تُملأ (`READY`) ← سُلّمت للشركة (`SHIPPED`) ← تنتهي بعد التسوية (`CLOSED`). **مين:** `ops.batches`؛ التعديل جوّا الدفعة `ops.edit_in_batch` (ما بيُعطى لحدا افتراضياً)؛ البتّ بتعديل والطلب بالمستودع `ops.decide_changes`.
-- **الأزرار:** «طباعة بوالص الدفعة» · ملف الشركة CSV · «تحقّق من الطرود» (مسح) · «رحّل إلى الشركة واجلب الباركود» · «إغلاق الشحنة — سُلّمت للشركة» · «أنهِ الدفعة بعد التسوية» · قلم «عدّل» على الطرد.
-- **بالخلفية:** `GET/PATCH /api/shipping-batches/[id]` · `POST /api/ops/shipments/[id]/dispatch` · `GET /api/ops/labels/print` + `POST /api/ops/labels/printed` · التعديل `PATCH /api/orders/[id]` (منطق `lib/prep-edit.ts`).
+- **الأزرار:** «طباعة بوالص الدفعة» · ملف الشركة CSV · «تحقّق من الطرود» (مسح) · «رحّل إلى الشركة واجلب الباركود» · «إغلاق الشحنة — سُلّمت للشركة» · «خرج للتوصيل لكل الدفعة (N)» (لمن معه `ops.batches` و`orders.change_status`؛ N = الطرود اللي لسا «مشحون») · «أنهِ الدفعة بعد التسوية» · قلم «عدّل» على الطرد.
+- **بالخلفية:** `GET/PATCH /api/shipping-batches/[id]` · `POST /api/shipping-batches/[id]/out-for-delivery` (يحرّك كل «مشحون» لـ«خرج للتوصيل» بنفس ما يكتبه باب الطلب الواحد، ويعدّ الباقي «تخطّينا») · `POST /api/ops/shipments/[id]/dispatch` · `GET /api/ops/labels/print` + `POST /api/ops/labels/printed` · التعديل `PATCH /api/orders/[id]` (منطق `lib/prep-edit.ts`).
 - **رفض شائع:** `PENDING_CHANGES` (طرد عليه إلغاء أو تأجيل ما انجاوب) · `EMPTY_BATCH` · `MEMBERS_MOVED` «تغيّر طرد من الدفعة أثناء الضغط…» · `BATCH_NOT_READY` · `ORDER_SEALED` · `CHANGE_REQUEST_REQUIRED` · `PREP_REGION_FEE`.
-- **الكود:** `screens/ShippingBatchesScreen.tsx` · `src/app/api/shipping-batches/[id]/route.ts` · **سيناريوهات:** د-01…د-08 · د-16.
+- **الكود:** `screens/ShippingBatchesScreen.tsx` · `src/app/api/shipping-batches/[id]/route.ts` · `src/lib/batch-out-for-delivery.ts` · **سيناريوهات:** د-01…د-08 · د-16 · د-20.
 
 #### 4. `/ops/tracking` — متابعة الشحن
 - **ليش:** شو صار عند الباب. الحالة الافتراضية «قيد الشحن وبانتظار التحصيل». **مين:** `ops.track`؛ والأفعال كل واحد بمفتاحه: `ops.deliver` · `finance.cashbox` («استلمت منه») · `ops.write_off` · `ops.transfer`.
