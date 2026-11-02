@@ -30,13 +30,17 @@ import { NOT_HELD_MESSAGE, mustHoldToWork } from '@/lib/confirmation-queue';
 
 const { db, requireContext, can, authorize, assertOrderAccess, releaseOrderLines, reserveOrderLines, notify } = vi.hoisted(() => ({
   db: {
-    order: { updateMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn() },
+    // `findMany` and `orderItem` and `$executeRaw` are the confirm guard's (a confirmed twin of the same customer, `confirmed-twin.ts`):
+    // this file is about WHO may confirm, so the customer has no twin here — the guard's own door test says what happens when she does.
+    order: { updateMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(async () => []) },
     customer: { findUnique: vi.fn(async () => null), update: vi.fn() },
     orderNote: { create: vi.fn() },
     orderContactAttempt: { count: vi.fn(async () => 1) },
+    orderItem: { findMany: vi.fn(async () => []) },
     orderStatusLog: { create: vi.fn() },
     orderActivity: { create: vi.fn() },
     user: { findUnique: vi.fn() },
+    $executeRaw: vi.fn(async () => 1),
     $transaction: vi.fn(),
   },
   requireContext: vi.fn(),

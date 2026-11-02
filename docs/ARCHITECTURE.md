@@ -28,7 +28,7 @@
 
 | المجموعة | أمثلة |
 |---|---|
-| الطلب | `order-state.ts` (آلة الحالات) · `order-stages.ts` · `order-cancel.ts` · `order-closing.ts` · `order-seal.ts` · `order-parser.ts` · `order-tracking.ts` · `change-request-*.ts` (طلبات التعديل) · `edit-confirmed-window.ts` (نافذة الماسكة: تعديل/تأجيل/إلغاء المؤكَّد قبل الدفعة، مفتاح `orders.edit_confirmed`) · `confirmation-workflow.ts` · `shipping-workflow.ts` |
+| الطلب | `order-state.ts` (آلة الحالات) · `order-stages.ts` · `order-cancel.ts` · `order-closing.ts` · `order-seal.ts` · `order-parser.ts` · `order-tracking.ts` · `change-request-*.ts` (طلبات التعديل) · `edit-confirmed-window.ts` (نافذة الماسكة: تعديل/تأجيل/إلغاء المؤكَّد قبل الدفعة، مفتاح `orders.edit_confirmed`) · `confirmation-workflow.ts` · `confirmed-twin.ts` (حارس «توأم مؤكَّد» عند «تأكيد») · `twin-refusal.ts` · `shipping-workflow.ts` |
 | المنتج والعروض | `product-*.ts` · `offers.ts` · `offer-*.ts` · `line-price.ts` · `post-order-offer.ts` · `reservation.ts` · `stock-*.ts` |
 | صفحات الهبوط | `landing-*.ts` · `page-templates.ts` — **مسار المتجر والهبوط له وكيله، ما بنلمسه** |
 | المتجر | `store-*.ts` · `storefront*.ts` · `system-themes.ts` — نفس القاعدة |

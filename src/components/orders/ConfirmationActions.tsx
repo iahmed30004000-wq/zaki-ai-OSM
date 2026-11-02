@@ -15,6 +15,8 @@ import { apiFetch } from '@/lib/api-client';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { needsRegionFirst, REGION_REQUIRED_MESSAGE } from '@/lib/confirmation-queue';
 import { CONFIRMATION_STATUS_AR, PICKABLE_REJECTION_REASONS, REJECTION_REASON_AR } from '@/lib/confirmation-workflow';
+import { confirmAnywayBody, rejectAsDuplicateBody, twinsFromRefusal, type ConfirmedTwinView } from '@/lib/twin-refusal';
+import { TwinConfirmedDialog } from '@/components/orders/TwinConfirmedDialog';
 import { arDateShort, arDateTime } from '@/lib/format';
 import { RiCalendarScheduleLine, RiCheckLine, RiCloseCircleLine, RiPhoneLine, RiPhoneLockLine, RiRefreshLine, RiTimerLine } from '@remixicon/react';
 
@@ -76,6 +78,8 @@ export function ConfirmationActions({ order, ar, isRtl, onRefreshOrder }: Confir
   const [note, setNote] = useState('');
   const [followUpDate, setFollowUpDate] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
+  // The door held the yes back for a confirmed twin: the orders it named, and the note she had typed (it goes with the second try).
+  const [twin, setTwin] = useState<{ twins: ConfirmedTwinView[]; note: string } | null>(null);
 
   const loadAttempts = async () => {
     if (!order?.id) return;
@@ -96,6 +100,7 @@ export function ConfirmationActions({ order, ar, isRtl, onRefreshOrder }: Confir
 
   useEffect(() => {
     setFeedback(null);
+    setTwin(null);
     loadAttempts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order?.id]);
@@ -144,6 +149,17 @@ export function ConfirmationActions({ order, ar, isRtl, onRefreshOrder }: Confir
         });
         const confData = await confRes.json().catch(() => ({}));
         if (!confRes.ok) {
+          /*
+           * «الزبون عنده طلب مؤكَّد بنفس المنتج» IS A QUESTION, NOT AN ERROR LINE. The door wrote nothing and named the other
+           * orders; the answer is hers, in the dialog. The call WAS recorded above and stays recorded — the call happened. The
+           * confirm form is closed (its work is done) and the note she typed waits for the second try.
+           */
+          const twins = twinsFromRefusal(confData);
+          if (twins) {
+            setTwin({ twins, note: payload.note ?? '' });
+            setOpenForm(null);
+            return false;
+          }
           // The contact attempt WAS recorded but the transition failed —
           // warn clearly and keep the modal open with the form values intact
           const errText = confData.errorAr || confData.error || (ar ? 'رفض الإجراء' : 'Action rejected');
@@ -162,6 +178,39 @@ export function ConfirmationActions({ order, ar, isRtl, onRefreshOrder }: Confir
       await loadAttempts();
       await onRefreshOrder();
       return true;
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  /**
+   * WHAT SHE ANSWERED TO «الزبون عنده طلب مؤكَّد بنفس المنتج» — the transition alone, with no second contact attempt: the call was
+   * recorded when she pressed «تأكيد». The two bodies are `twin-refusal.ts`'s (the desk sends the same ones). The dialog closes as
+   * she presses, like every dialog of the desk, and the outcome — a stale version included — is said in this card's own line.
+   */
+  const decideTwin = async (kind: 'reject' | 'confirm') => {
+    if (!order?.id || !twin) return;
+    const held = twin;
+    setTwin(null);
+    setActionLoading(true);
+    setFeedback(null);
+    try {
+      const res = await apiFetch(`/api/orders/${order.id}/confirmation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(kind === 'reject' ? rejectAsDuplicateBody(order.version) : confirmAnywayBody(order.version, held.note)),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setFeedback({ type: 'error', text: data.errorAr || data.error || 'رفض الإجراء' });
+        return;
+      }
+      setFeedback({ type: 'success', text: kind === 'reject' ? 'رُفض الطلب كمكرر' : 'تم تأكيد الطلب' });
+      setNote(''); setRejectionReason(''); setFollowUpDate('');
+      await loadAttempts();
+      await onRefreshOrder();
+    } catch (e) {
+      setFeedback({ type: 'error', text: e instanceof Error && e.message ? e.message : 'تعذّر تنفيذ الإجراء' });
     } finally {
       setActionLoading(false);
     }
@@ -406,6 +455,18 @@ export function ConfirmationActions({ order, ar, isRtl, onRefreshOrder }: Confir
           </div>
         </div>
       </Modal>
+
+      {twin && (
+        <TwinConfirmedDialog
+          open
+          orderNumber={order.orderNumber}
+          twins={twin.twins}
+          busy={actionLoading}
+          onRejectAsDuplicate={() => void decideTwin('reject')}
+          onConfirmAnyway={() => void decideTwin('confirm')}
+          onBack={() => setTwin(null)}
+        />
+      )}
     </div>
   );
 

@@ -58,6 +58,51 @@ export function handedToCourier(order: {
 }
 
 /**
+ * `handedToCourier`, ASKED OF THE DATABASE AND TURNED INSIDE OUT: the orders that are still on OUR side of the handover.
+ *
+ * A query that must FIND the orders the courier has not taken cannot call the function above — it has no row in hand —
+ * so the same three facts are rendered as a `where`, here, beside the predicate and read from the same two constants
+ * (`SHIPPING_GONE`, `SEALED_BATCH_STATUSES`). Two renderings of one rule is acceptable only when they are kept together
+ * and held to each other: `an-order-is-ours-until-the-courier-has-it.test.ts` proves they agree over EVERY combination
+ * of the three inputs, generated and not sampled.
+ *
+ * The three terms, one for one with the function:
+ *   · `shippedAt` is empty (the press stamped a member with it);
+ *   · the order's own shipping status is not one the courier already owns;
+ *   · it is on no trolley, or on a trolley that has not been handed over. Written as «no trolley OR a trolley whose
+ *     status is not sealed» and NOT as `NOT (trolley is sealed)`: negating a relation filter drops the orders with no
+ *     trolley at all, because `NULL IN (…)` is not false in SQL, and an order that was never batched is the commonest
+ *     one still ours.
+ *
+ * The line is the owner's of 28/10 (M6, «الغاء و التأجيل لغاية ما اضغط اغلاق الشحنة»), and it is asked here by the
+ * confirm guard (`confirmed-twin.ts`): a confirmed twin that can still be cancelled or held is one a person can still
+ * decide about. It is NOT the 28/09 waybill line (`leftWarehouseWhere`), which stays the line for stock, VOID and printing.
+ *
+ * Returned as one `AND` clause, never as bare keys, so a caller can put it beside its own `OR` without the two keys
+ * landing on each other.
+ */
+export function notHandedToCourierWhere(): {
+  AND: (
+    | { shippedAt: null }
+    | { shippingStatus: { notIn: string[] } }
+    | { OR: ({ shippingBatchId: null } | { shippingBatch: { is: { status: { notIn: string[] } } } })[] }
+  )[];
+} {
+  return {
+    AND: [
+      { shippedAt: null },
+      { shippingStatus: { notIn: [...SHIPPING_GONE] } },
+      {
+        OR: [
+          { shippingBatchId: null },
+          { shippingBatch: { is: { status: { notIn: [...SEALED_BATCH_STATUSES] } } } },
+        ],
+      },
+    ],
+  };
+}
+
+/**
  * The fields the courier is already acting on.
  *
  * Deliberately NOT here: internalNotes, customerNotes, confirmationStatus,

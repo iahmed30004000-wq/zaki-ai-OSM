@@ -258,7 +258,8 @@ export function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateOrderModa
         const done = await confirmOrderNow(created.id);
         const label = created.orderNumber ?? 'الطلب';
         if (done.ok) toast.done(`تم إنشاء ${label} وتأكيده — صار في شاشة التجهيز.`, undefined, openPreparationStep(mayOpen));
-        else toast.warn(`أُنشئ ${label} لكن تعذّر تأكيده: ${done.reason} — أكّده من شاشة الطلبات.`, undefined, openIt);
+        // A twin is the door's question and not an accident (`confirm-now.ts`): it says what to do instead of «أكّده من شاشة الطلبات».
+        else toast.warn(`أُنشئ ${label} لكن تعذّر تأكيده: ${done.reason} — ${done.then ?? 'أكّده من شاشة الطلبات.'}`, undefined, openIt);
       }
       onSuccess(created);
       onClose();
