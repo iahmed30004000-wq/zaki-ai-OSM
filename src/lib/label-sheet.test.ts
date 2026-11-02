@@ -184,6 +184,14 @@ describe('the waybill follows its paper', () => {
     expect(html).toContain('gap: calc(1.4mm * var(--s))');
   });
 
+  it('draws the QR graphic at the measured size, not a fixed one', () => {
+    // `--qr` carries fitFor's number; the rules that size the QR must read
+    // it, or A4 prints a 22 mm QR in a 43 mm slot and 100×100 one that overflows.
+    const html = sheet([label(0)], { width: 210, height: 297 });
+    expect(html).toContain('.qr svg { display: block; width: var(--qr); height: var(--qr); }');
+    expect(html).toContain('.qr { flex-shrink: 0; width: var(--qr); }');
+  });
+
   it('a label taller than the reference gets the extra height as item lines, up to twelve', () => {
     const items = Array.from({ length: 14 }, (_, i) => ({ name: `صنف ${i}`, qty: 1 }));
     expect(sheet([label(0, { items })], thermal)).toContain('و10 أصناف أخرى');

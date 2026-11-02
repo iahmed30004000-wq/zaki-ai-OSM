@@ -274,4 +274,20 @@ describe('the custom boxes say which is which, and send only what prints', () =>
     });
     expect(screen.queryAllByText(hint)).toHaveLength(0);
   });
+
+  it.each([
+    ['', false],
+    ['0', false],
+    ['59.6', false],
+    ['7', true],
+  ])('reads the width that PRINTS, not the one being typed: «%s» → hint %s', async (typed, shown) => {
+    // An empty box or «0» prints 100 mm and «59.6» prints 60: no warning.
+    // «7» prints 40: warning. The raw number would say the opposite for the first three.
+    await customPicker();
+    const hint = 'عرض أقل من 60 مم — الباركود ممكن ما يقرأه الماسح.';
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('العرض (مم)'), { target: { value: typed } });
+    });
+    expect(screen.queryAllByText(hint)).toHaveLength(shown ? 1 : 0);
+  });
 });

@@ -193,7 +193,7 @@ export function LabelSizePicker({
   compact?: boolean;
   className?: string;
 }) {
-  const { stored, setKey, setCustom } = useLabelSize();
+  const { stored, dims, setKey, setCustom } = useLabelSize();
   const widthId = useId();
   const heightId = useId();
   // Leaving a box writes back what will print, so the box never shows a
@@ -212,7 +212,7 @@ export function LabelSizePicker({
     onBlur: settle,
   });
   const narrow =
-    stored.key === 'custom' && stored.custom.width < NARROW_BARCODE_MM ? (
+    stored.key === 'custom' && dims.width < NARROW_BARCODE_MM ? (
       <p className="text-xs text-[var(--sys-warning)] mt-1">
         عرض أقل من {NARROW_BARCODE_MM} مم — الباركود ممكن ما يقرأه الماسح.
       </p>
