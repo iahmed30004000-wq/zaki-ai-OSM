@@ -679,26 +679,14 @@ export function readyToPullWhere(scope: QueueScope, forUserId?: string, now: Dat
  * days, otherwise the oldest waiting order.
  */
 export async function pickNextCandidate(tx: Tx, scope: QueueScope, now = new Date(), forUserId?: string) {
-  return (await pickNextCandidateRow(tx, scope, now, forUserId))?.id ?? null;
-}
-
-/** What the pull needs to know about the order it picked: which customer to lock, and the number his other orders are held with. */
-interface PickedOrder {
-  id: string;
-  customerId: string | null;
-  orderNumber: string | null;
-}
-const PICKED_SELECT = { id: true, customerId: true, orderNumber: true } as const;
-
-async function pickNextCandidateRow(tx: Tx, scope: QueueScope, now: Date, forUserId?: string): Promise<PickedOrder | null> {
   // THE ORDER HELD FOR HER COMES FIRST: the customer is a returning one and she is the person he spoke to.
   if (forUserId) {
     const mine = await tx.order.findFirst({
       where: { ...claimableWhere(scope), ...reservedForWhere(forUserId, now) },
       orderBy: { createdAt: 'asc' },
-      select: PICKED_SELECT,
+      select: { id: true },
     });
-    if (mine) return mine;
+    if (mine) return mine.id;
   }
 
   // The same two predicates the counter uses — kept as two queries only
@@ -707,15 +695,16 @@ async function pickNextCandidateRow(tx: Tx, scope: QueueScope, now: Date, forUse
   const duePostponed = await tx.order.findFirst({
     where: duePostponedWhere(scope, now),
     orderBy: [{ postponedUntil: 'asc' }, { nextFollowUpAt: 'asc' }],
-    select: PICKED_SELECT,
+    select: { id: true },
   });
-  if (duePostponed) return duePostponed;
+  if (duePostponed) return duePostponed.id;
 
-  return tx.order.findFirst({
+  const oldest = await tx.order.findFirst({
     where: readyToPullWhere(scope, forUserId, now),
     orderBy: { createdAt: 'asc' },
-    select: PICKED_SELECT,
+    select: { id: true },
   });
+  return oldest?.id ?? null;
 }
 
 export interface PullResult {
@@ -747,8 +736,8 @@ export async function pullNextOrder(
     if (refusal) return { ok: false, refusal, released };
 
     for (let attempt = 0; attempt < 5; attempt++) {
-      const picked = await pickNextCandidateRow(tx, scope, now, user.id);
-      if (!picked) {
+      const candidate = await pickNextCandidate(tx, scope, now, user.id);
+      if (!candidate) {
         return {
           ok: false,
           released,
@@ -757,10 +746,12 @@ export async function pullNextOrder(
         };
       }
 
-      const candidate = picked.id;
+      // Whose order it is, read by its id: the customer is the lock's key and his other orders' owner; the number is what
+      // their history names.
+      const picked = await tx.order.findFirst({ where: { id: candidate }, select: { customerId: true, orderNumber: true } });
       // ONE CUSTOMER, ONE AGENT (`twins-follow-the-pull.ts`): wait here while a colleague is taking one of his orders, so that
       // when the claim below runs, his other orders are already held for her and this pull moves on to somebody else's.
-      if (picked.customerId) await lockCustomerForPull(tx, picked.customerId);
+      if (picked?.customerId) await lockCustomerForPull(tx, picked.customerId);
 
       const taken = await tx.order.updateMany({
         // «Not held for somebody else» is asked again at the write: the hold may have been made between the pick and here.
@@ -810,8 +801,8 @@ export async function pullNextOrder(
       // is what she held before this pull, and this pull added one.
       await holdTwinsForPuller(tx, {
         scope,
-        customerId: picked.customerId,
-        pulled: { id: candidate, orderNumber: picked.orderNumber },
+        customerId: picked?.customerId,
+        pulled: { id: candidate, orderNumber: picked?.orderNumber },
         agentId: user.id,
         room: CLAIM_CAPS.total - counts.total - 1,
         now,
