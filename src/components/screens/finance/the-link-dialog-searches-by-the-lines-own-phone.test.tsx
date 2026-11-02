@@ -47,7 +47,7 @@ const byText = {
 
 const refusal = (status: number, code: string, error: string) => Object.assign(new Error(error), { status, data: { error, code } });
 
-let onLinked: ReturnType<typeof vi.fn>;
+let onLinked: ReturnType<typeof vi.fn<() => void>>;
 const mount = () =>
   render(<LinkLineDialog statementId="st1" matchId="m1" reference="BC-1" amount={20} currency="SYP" onLinked={onLinked} />);
 const openDialog = async () => {
@@ -59,7 +59,7 @@ const posts = () => api.mock.calls.filter((c) => (c[1] as RequestInit | undefine
 
 beforeEach(() => {
   vi.clearAllMocks();
-  onLinked = vi.fn();
+  onLinked = vi.fn<() => void>();
   api.mockImplementation(async (url: string, init?: RequestInit) => {
     if (init?.method === 'POST') return { message: 'رُبط', linked: { result: 'MATCHED' } };
     if (url === `${BASE}?by=phone`) return byPhone;
@@ -134,6 +134,26 @@ describe('one press is one link', () => {
     fireEvent.click(go);
     fireEvent.click(go);
     fireEvent.click(go);
+    expect(posts()).toHaveLength(1);
+    await act(async () => release({ message: 'رُبط', linked: { result: 'MATCHED' } }));
+    expect(posts()).toHaveLength(1);
+  });
+
+  it('two clicks inside the same moment — before the button has re-drawn as disabled — still send ONE request', async () => {
+    let release: (v: unknown) => void = () => {};
+    api.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') return new Promise((r) => { release = r; });
+      return url === `${BASE}?by=phone` ? byPhone : byText;
+    });
+    await openDialog();
+    await screen.findByText(byPhone.header);
+    fireEvent.click(screen.getByText('ORD-A'));
+    const go = screen.getByRole('button', { name: 'اربطه بالطلب ORD-A' });
+    // One act: React has not committed `linking` between the two, so the button is still enabled for the second.
+    act(() => {
+      go.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      go.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
     expect(posts()).toHaveLength(1);
     await act(async () => release({ message: 'رُبط', linked: { result: 'MATCHED' } }));
     expect(posts()).toHaveLength(1);

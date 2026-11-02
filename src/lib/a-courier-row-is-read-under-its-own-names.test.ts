@@ -122,6 +122,11 @@ describe('phoneFromRawRow — the customer’s mobile in the row', () => {
     expect(phoneFromRawRow(row('064123456'), 'JO')).toBeNull();
   });
 
+  it('a Jordanian number outside the mobile heads 077/078/079 is not a mobile', () => {
+    expect(phoneFromRawRow(row('0761234567'), 'JO')).toBeNull();
+    expect(phoneFromRawRow(row('+962 71 123 4567'), 'SY')).toBeNull();
+  });
+
   it('no row, no phone', () => {
     expect(phoneFromRawRow({ rawRow: null, merchantRef: null, barcode: null }, 'SY')).toBeNull();
   });
