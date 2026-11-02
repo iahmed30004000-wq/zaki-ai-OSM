@@ -12,6 +12,8 @@ import { CustomerHistoryButton } from '@/components/orders/CustomerHistory';
 import { OrderStateBadge } from '@/components/orders/OrderStateBadge';
 import { ContactButtons } from '@/components/orders/ContactButtons';
 import { OrderDetailModal } from '@/components/orders/OrderDetailModal';
+import { CreateOrderModal } from '@/components/orders/CreateOrderModal';
+import { Button } from '@/components/ui/Button';
 import { ScreenTitle } from '@/components/shell/ScreenTitle';
 import {
   ChangeRequestDialog,
@@ -25,7 +27,7 @@ import { raiseChangeRequest } from '@/components/orders/raiseChangeRequest';
 import { TwinConfirmedDialog } from '@/components/orders/TwinConfirmedDialog';
 import { confirmAnywayBody, rejectAsDuplicateBody, twinsFromRefusal, type ConfirmedTwinView } from '@/lib/twin-refusal';
 import { AssistantDialog } from './confirmation/AssistantDialog';
-import { RiAlertLine, RiCheckboxCircleLine, RiCloseCircleLine, RiCloseLine, RiLoader4Line, RiPencilLine, RiPhoneLockLine, RiSearchLine, RiShieldFlashLine, RiSparkling2Line, RiTimerLine } from '@remixicon/react';
+import { RiAddCircleLine, RiAlertLine, RiCheckboxCircleLine, RiCloseCircleLine, RiCloseLine, RiLoader4Line, RiPencilLine, RiPhoneLockLine, RiSearchLine, RiShieldFlashLine, RiSparkling2Line, RiTimerLine } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
 import { deskIsEmpty, openPreparationStep } from '@/lib/next-step';
 import { useMayOpen } from '@/hooks/useMayOpen';
@@ -357,6 +359,14 @@ export function ConfirmationMineScreen() {
    * 403 to anyone else, so for them nothing is asked and nothing is drawn.
    */
   const canPull = userCan(currentUser, 'confirmation.pull');
+  /*
+   * «+ إنشاء طلب» ON HER OWN DESK (the owner, 2/11: «بنات التأكيد و المشرفة يظهرلهم انشاء طلب وتحت في خيار انو طلب مؤكد»).
+   *
+   * The same form as the Orders screen — with its «الزبون على الخط — أكّده الآن» box — drawn where she works, for whoever holds
+   * «إنشاء طلبات». The door asks the same key; this is its answer drawn early, never a way past it.
+   */
+  const canCreate = userCan(currentUser, 'orders.create');
+  const [creating, setCreating] = useState(false);
   // «إدخال إشكال» is its own box (`confirmation.raise_issue`, PR-7) — the agent's desk had the button for years and the
   // door asked for the issues LIST she was never given.
   const canRaiseIssue = userCan(currentUser, 'confirmation.raise_issue');
@@ -764,7 +774,24 @@ export function ConfirmationMineScreen() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <ScreenTitle />
+      <ScreenTitle>
+        {canCreate && !readOnly && (
+          <Button size="sm" onClick={() => setCreating(true)} className="flex items-center space-x-1.5">
+            <RiAddCircleLine className="w-4 h-4" />
+            <span>إنشاء طلب</span>
+          </Button>
+        )}
+      </ScreenTitle>
+      {canCreate && !readOnly && (
+        <CreateOrderModal
+          isOpen={creating}
+          onClose={() => setCreating(false)}
+          onSuccess={() => {
+            void load();
+            void queue.reload();
+          }}
+        />
+      )}
       {desks && desks.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <label htmlFor="desk-watch" className="text-xs font-medium text-[var(--sys-muted-foreground)]">

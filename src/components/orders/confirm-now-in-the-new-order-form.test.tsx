@@ -269,3 +269,72 @@ describe('the door holds the yes back for a confirmed twin', () => {
     expect(stripComments(repoFile('src/components/orders/CreateOrderModal.tsx'))).not.toContain('acknowledgeTwin');
   });
 });
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * T-06 — THE DOOR SAYS WHETHER THE YES WILL COME («انعمل ولكن ما اتأكد»).
+ *
+ * Ticked, the form tells the creation door so (`confirmNow: true`): for an agent bound by «اشتغل على اللي بإيدك» the order becomes
+ * hers and the call she is on is recorded. The door answers `confirmNow.ready`; when it is false (the 300 cap sent the order to the
+ * pool, the box is not hers to tick, no governorate) the form says «انعمل … ولكن ما اتأكد» with the reason — ONE message — and does
+ * not make the confirmation call it already knows will be refused.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+describe('the creation door answers whether the yes will come', () => {
+  const CAP = 'وصلت للحد (300) — الطلب راح للطابور';
+  const createWith = (extra: Record<string, unknown>) =>
+    apiFetch.mockImplementation(async (url: string, init?: RequestInit) =>
+      url === '/api/orders' && init?.method === 'POST'
+        ? { ok: true, json: async () => ({ order: ORDER, ...extra }) }
+        : { ok: true, json: async () => ({}) }
+    );
+  const createBody = () => {
+    const call = apiFetch.mock.calls.find((c) => c[0] === '/api/orders' && (c[1] as RequestInit | undefined)?.method === 'POST');
+    return JSON.parse(String((call?.[1] as RequestInit).body)) as Record<string, unknown>;
+  };
+
+  it('ticked, the order is sent with «confirmNow: true»; unticked, the body carries no such key at all', async () => {
+    await open();
+    fill();
+    fireEvent.click(screen.getByRole('checkbox', { name: /الزبون على الخط/ }));
+    await submit();
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    expect(createBody().confirmNow).toBe(true);
+    cleanup();
+    vi.clearAllMocks();
+    await open();
+    fill();
+    await submit();
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    expect('confirmNow' in createBody()).toBe(false);
+  });
+
+  it('NEGATIVE: ready false (the cap) — ONE warning «انعمل … ولكن ما اتأكد — <reason>», and no confirmation call', async () => {
+    createWith({ notice: CAP, confirmNow: { ready: false, code: 'CAP_FULL', reason: CAP } });
+    await open();
+    fill();
+    fireEvent.click(screen.getByRole('checkbox', { name: /الزبون على الخط/ }));
+    await submit();
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledWith(ORDER));
+    expect(confirmCalls()).toHaveLength(0);
+    expect(apiJson).not.toHaveBeenCalled();
+    expect(toast.warn).toHaveBeenCalledTimes(1);
+    expect(toast.warn.mock.calls[0][0]).toBe(`انعمل الطلب ORD-26-0001 ولكن ما اتأكد — ${CAP}`);
+    expect(toast.done).not.toHaveBeenCalled();
+  });
+
+  it('ready true — the ordinary confirmation call follows', async () => {
+    createWith({ confirmNow: { ready: true } });
+    await open();
+    fill();
+    fireEvent.click(screen.getByRole('checkbox', { name: /الزبون على الخط/ }));
+    await submit();
+    await waitFor(() => expect(confirmCalls()).toHaveLength(1));
+    expect(toast.done.mock.calls[0][0]).toContain('وتأكيده');
+  });
+
+  it('the governorate is required on the form, so the box cannot send an order the door will refuse to confirm', async () => {
+    await open();
+    expect((screen.getByLabelText('المحافظة') as HTMLSelectElement).required).toBe(true);
+  });
+});
