@@ -245,3 +245,30 @@ describe('a status the courier moved reads in Arabic, with no English key or val
     expect(event.detail).toBe('المصدر: استعلام من الشركة');
   });
 });
+
+describe('«طلب تاني فعلاً» — the history says she knew (the confirm guard, 2/11)', () => {
+  const stored = (obj: unknown) => JSON.stringify(obj);
+
+  it('reads as a sentence with the orders she was told about, never as the constant or the JSON', async () => {
+    db.orderActivity.findMany.mockResolvedValue([
+      {
+        id: 'a1', createdAt: at('2026-11-02T10:00:00Z'), action: 'TWIN_CONFIRM_ACKNOWLEDGED', userId: 'u1',
+        metadata: stored({ twins: ['ORD-2026-1711', 'ORD-2026-1701'] }),
+      },
+    ]);
+    const [event] = await orderTimeline(db as never, 'o1');
+    expect(event.title).toBe('أُكِّد الطلب مع العلم بوجود طلب مؤكَّد لنفس الزبون بنفس المنتج');
+    expect(event.detail).toBe('الطلبات المؤكَّدة المشابهة: ORD-2026-1711، ORD-2026-1701');
+    expect(event.actorName).toBe('سارة');
+    expect(`${event.title} ${event.detail}`).not.toMatch(/TWIN_CONFIRM|\{|\[|"/);
+  });
+
+  it('NEGATIVE: a row with no numbers still has its Arabic title and no details', async () => {
+    db.orderActivity.findMany.mockResolvedValue([
+      { id: 'a2', createdAt: at('2026-11-02T10:00:00Z'), action: 'TWIN_CONFIRM_ACKNOWLEDGED', userId: 'u1', metadata: null },
+    ]);
+    const [event] = await orderTimeline(db as never, 'o1');
+    expect(event.title).not.toContain('TWIN_CONFIRM');
+    expect(event.detail).toBeNull();
+  });
+});

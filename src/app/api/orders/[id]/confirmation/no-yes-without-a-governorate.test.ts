@@ -23,13 +23,16 @@ import { REGION_REQUIRED_MESSAGE } from '@/lib/confirmation-queue';
 
 const { db, requireContext, can, authorize, assertOrderAccess, releaseOrderLines, reserveOrderLines } = vi.hoisted(() => ({
   db: {
-    order: { updateMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn() },
+    // The confirm guard's reads (a confirmed twin of the same customer, `confirmed-twin.ts`): no twin here, this file is about the governorate.
+    order: { updateMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(async () => []) },
     customer: { findUnique: vi.fn(async () => null), update: vi.fn() },
     orderNote: { create: vi.fn() },
     orderContactAttempt: { count: vi.fn(async () => 1) },
+    orderItem: { findMany: vi.fn(async () => []) },
     orderStatusLog: { create: vi.fn() },
     orderActivity: { create: vi.fn() },
     user: { findUnique: vi.fn() },
+    $executeRaw: vi.fn(async () => 1),
     $transaction: vi.fn(),
   },
   requireContext: vi.fn(),
