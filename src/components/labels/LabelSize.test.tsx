@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
-import { LabelSizePicker, forgetLabelSize, useLabelSize } from './LabelSize';
+import { LabelSizePicker, dimsOf, forgetLabelSize, useLabelSize } from './LabelSize';
 
 /**
  * PICKING A SIZE AND PRINTING IT.
@@ -79,8 +79,8 @@ describe('the size the print button will actually send', () => {
       fireEvent.change(screen.getByLabelText('مقاس البوليصة'), { target: { value: 'custom' } });
     });
     await act(async () => {
-      fireEvent.change(screen.getByLabelText('العرض بالمليمتر'), { target: { value: '80' } });
-      fireEvent.change(screen.getByLabelText('الارتفاع بالمليمتر'), { target: { value: '60' } });
+      fireEvent.change(screen.getByLabelText('العرض (مم)'), { target: { value: '80' } });
+      fireEvent.change(screen.getByLabelText('الطول (مم)'), { target: { value: '60' } });
     });
 
     expect(screen.getByTestId('will-print').textContent).toBe('80×60');
@@ -164,5 +164,114 @@ describe('the preview shows what will print', () => {
     expect(screen.getByTestId('preview-mm').textContent).toBe('105×148 mm');
     // A6 on A4 is four to a sheet — the dropdown's claim, shown.
     expect(screen.getByText('4 لكل ورقة')).toBeTruthy();
+  });
+});
+
+/**
+ * «بخانة الطباعة مقاس مخصص حدد خانة الطول و العرض مش محطوط».
+ *
+ * The two custom boxes had a name only for a screen reader. And they sent
+ * what was being typed: a «7» on the way to «75» reached the batch
+ * endpoint, which takes whole millimetres from 40 to 300, and the print
+ * failed with a validation error.
+ */
+describe('the custom boxes say which is which, and send only what prints', () => {
+  async function customPicker(compact?: boolean) {
+    await act(async () => {
+      render(
+        <div>
+          <ScreenThatPrints />
+          {compact && <LabelSizePicker compact />}
+        </div>
+      );
+    });
+    await act(async () => {
+      fireEvent.change(screen.getAllByLabelText('مقاس البوليصة')[0], { target: { value: 'custom' } });
+    });
+  }
+
+  it.each([false, true])('names both boxes on the screen, width first (compact: %s)', async (compact) => {
+    await customPicker(compact);
+    const widths = screen.getAllByText('العرض (مم)');
+    const heights = screen.getAllByText('الطول (مم)');
+    expect(widths.length).toBe(compact ? 2 : 1);
+    for (const [i, w] of widths.entries()) {
+      // A visible label element, tied to its own box.
+      expect(w.tagName).toBe('LABEL');
+      const wBox = document.getElementById(w.getAttribute('for')!) as HTMLInputElement;
+      const hBox = document.getElementById(heights[i].getAttribute('for')!) as HTMLInputElement;
+      expect(wBox.value).toBe('100');
+      expect(hBox.value).toBe('150');
+      expect(wBox.compareDocumentPosition(hBox) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+  });
+
+  it.each([
+    ['7', '40×150'],
+    ['75.5', '76×150'],
+    ['999', '300×150'],
+    ['', '100×150'],
+    ['80', '80×150'],
+  ])('a width typed as «%s» prints as %s', async (typed, prints) => {
+    await customPicker();
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('العرض (مم)'), { target: { value: typed } });
+    });
+    expect(screen.getByTestId('will-print').textContent).toBe(prints);
+    expect(screen.getByTestId('preview-mm').textContent).toBe(`${prints} mm`);
+  });
+
+  it('a half-typed height is held too', async () => {
+    await customPicker();
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('الطول (مم)'), { target: { value: '3' } });
+    });
+    expect(screen.getByTestId('will-print').textContent).toBe('100×40');
+  });
+
+  it('leaving the box writes back what will print', async () => {
+    await customPicker();
+    const box = screen.getByLabelText('العرض (مم)') as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(box, { target: { value: '7' } });
+    });
+    expect(box.value).toBe('7'); // typing is not interrupted
+    await act(async () => {
+      fireEvent.blur(box);
+    });
+    expect(box.value).toBe('40');
+    expect(JSON.parse(localStorage.getItem('salesflow.labelSize')!).custom.width).toBe(40);
+  });
+
+  it('dimsOf never returns a half-typed number', () => {
+    expect(dimsOf({ key: 'custom', custom: { width: 7, height: 75.5 } })).toEqual({ width: 40, height: 76 });
+    expect(dimsOf({ key: 'custom', custom: { width: Number.NaN, height: 0 } })).toEqual({ width: 100, height: 150 });
+    expect(dimsOf({ key: 'custom', custom: { width: 301, height: 299.6 } })).toEqual({ width: 300, height: 300 });
+    expect(dimsOf({ key: 'custom', custom: { width: 40, height: 300 } })).toEqual({ width: 40, height: 300 });
+  });
+
+  it('a stored nonsense size is settled on reading, not thrown back to the default', async () => {
+    localStorage.setItem('salesflow.labelSize', JSON.stringify({ key: 'custom', custom: { width: 58.4, height: 'x' } }));
+    await act(async () => {
+      render(<ScreenThatPrints />);
+    });
+    expect(screen.getByTestId('will-print').textContent).toBe('58×150');
+    // The boxes show the settled numbers too, not the stored nonsense.
+    expect((screen.getByLabelText('العرض (مم)') as HTMLInputElement).value).toBe('58');
+    expect((screen.getByLabelText('الطول (مم)') as HTMLInputElement).value).toBe('150');
+  });
+
+  it.each([false, true])('says the barcode may not scan under 60 mm wide, and only then (compact: %s)', async (compact) => {
+    await customPicker(compact);
+    const hint = 'عرض أقل من 60 مم — الباركود ممكن ما يقرأه الماسح.';
+    expect(screen.queryAllByText(hint)).toHaveLength(0);
+    await act(async () => {
+      fireEvent.change(screen.getAllByLabelText('العرض (مم)')[0], { target: { value: '59' } });
+    });
+    expect(screen.getAllByText(hint).length).toBe(compact ? 2 : 1);
+    await act(async () => {
+      fireEvent.change(screen.getAllByLabelText('العرض (مم)')[0], { target: { value: '60' } });
+    });
+    expect(screen.queryAllByText(hint)).toHaveLength(0);
   });
 });

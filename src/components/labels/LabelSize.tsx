@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useSyncExternalStore } from 'react';
+import React, { useCallback, useId, useSyncExternalStore } from 'react';
 import { LABEL_SIZES } from '@/lib/labels';
 
 /**
@@ -39,6 +39,31 @@ interface Stored {
 
 const FALLBACK: Stored = { key: DEFAULT_KEY, custom: { width: 100, height: 150 } };
 
+/** The custom size the server takes: whole millimetres, 40 to 300. */
+export const CUSTOM_MIN_MM = 40;
+export const CUSTOM_MAX_MM = 300;
+/** Under this width a 12-digit barcode's bars get too thin for a 203-dpi head. */
+export const NARROW_BARCODE_MM = 60;
+
+/**
+ * A typed millimetre, as it may leave this device.
+ *
+ * The boxes hold what is being typed — «7» on the way to «75», «75.5» —
+ * and the batch endpoint refuses anything that is not a whole number from
+ * 40 to 300. So the number is settled HERE, before any print button reads
+ * it: rounded, then held inside the range. An empty box or nonsense is the
+ * default, not 40.
+ */
+export function wholeMm(value: unknown, fallback: number): number {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(CUSTOM_MAX_MM, Math.max(CUSTOM_MIN_MM, Math.round(n)));
+}
+
+function settled(custom: { width: number; height: number }) {
+  return { width: wholeMm(custom.width, FALLBACK.custom.width), height: wholeMm(custom.height, FALLBACK.custom.height) };
+}
+
 /** Storage can throw or come back empty; a print button must still work. */
 function read(): Stored {
   try {
@@ -46,24 +71,19 @@ function read(): Stored {
     if (!raw) return FALLBACK;
     const parsed = JSON.parse(raw) as Partial<Stored>;
     const key = typeof parsed.key === 'string' ? parsed.key : DEFAULT_KEY;
-    const w = Number(parsed.custom?.width);
-    const h = Number(parsed.custom?.height);
     return {
       key,
-      custom: {
-        width: Number.isFinite(w) && w >= 40 && w <= 300 ? w : 100,
-        height: Number.isFinite(h) && h >= 40 && h <= 300 ? h : 150,
-      },
+      custom: settled({ width: Number(parsed.custom?.width), height: Number(parsed.custom?.height) }),
     };
   } catch {
     return FALLBACK;
   }
 }
 
-/** The millimetres to send, from a remembered choice. */
+/** The millimetres to send, from a remembered choice. Never a half-typed one. */
 export function dimsOf(stored: Stored): LabelDims {
   const preset = LABEL_SIZES.find((s) => s.key === stored.key);
-  if (!preset) return stored.custom;
+  if (!preset) return settled(stored.custom);
   return {
     width: preset.width,
     height: preset.height,
@@ -149,10 +169,11 @@ export function useLabelSize() {
     publish(next);
   }, []);
 
+  const dims = dimsOf(stored);
   return {
     stored,
-    dims: dimsOf(stored),
-    label: LABEL_SIZES.find((s) => s.key === stored.key)?.label ?? `${stored.custom.width}×${stored.custom.height} مم`,
+    dims,
+    label: LABEL_SIZES.find((s) => s.key === stored.key)?.label ?? `${dims.width}×${dims.height} مم`,
     setKey: (key: string) => update({ ...stored, key }),
     setCustom: (custom: { width: number; height: number }) => update({ ...stored, custom }),
   };
@@ -172,7 +193,32 @@ export function LabelSizePicker({
   compact?: boolean;
   className?: string;
 }) {
-  const { stored, setKey, setCustom } = useLabelSize();
+  const { stored, dims, setKey, setCustom } = useLabelSize();
+  const widthId = useId();
+  const heightId = useId();
+  // Leaving a box writes back what will print, so the box never shows a
+  // number the printer is not going to get.
+  const settle = () => setCustom(settled(stored.custom));
+  const box = (which: 'width' | 'height', id: string, className: string) => (
+    <input
+      id={id}
+      type="number"
+      inputMode="numeric"
+      min={CUSTOM_MIN_MM}
+      max={CUSTOM_MAX_MM}
+      step={1}
+      value={stored.custom[which]}
+      onChange={(e) => setCustom({ ...stored.custom, [which]: Number(e.target.value) })}
+      onBlur={settle}
+      className={className}
+    />
+  );
+  const narrow =
+    stored.key === 'custom' && dims.width < NARROW_BARCODE_MM ? (
+      <p className="text-xs text-[var(--sys-warning)] mt-1">
+        عرض أقل من {NARROW_BARCODE_MM} مم — الباركود ممكن ما يقرأه الماسح.
+      </p>
+    ) : null;
 
   const select = (
     <select
@@ -197,27 +243,19 @@ export function LabelSizePicker({
         {select}
         {stored.key === 'custom' && (
           <span className="ms-2 inline-flex items-center gap-1" dir="ltr">
-            <input
-              type="number"
-              min={40}
-              max={300}
-              value={stored.custom.width}
-              onChange={(e) => setCustom({ ...stored.custom, width: Number(e.target.value) })}
-              className={`${INPUT} w-16`}
-              aria-label="العرض بالمليمتر"
-            />
+            {/* Named where they stand: two bare number boxes were a guess at which is which. */}
+            <label htmlFor={widthId} className="text-xs text-[var(--sys-muted)]">
+              العرض (مم)
+            </label>
+            {box('width', widthId, `${INPUT} w-16`)}
             <span className="text-xs text-[var(--sys-muted)]">×</span>
-            <input
-              type="number"
-              min={40}
-              max={300}
-              value={stored.custom.height}
-              onChange={(e) => setCustom({ ...stored.custom, height: Number(e.target.value) })}
-              className={`${INPUT} w-16`}
-              aria-label="الارتفاع بالمليمتر"
-            />
+            <label htmlFor={heightId} className="text-xs text-[var(--sys-muted)]">
+              الطول (مم)
+            </label>
+            {box('height', heightId, `${INPUT} w-16`)}
           </span>
         )}
+        {narrow}
       </div>
     );
   }
@@ -228,26 +266,21 @@ export function LabelSizePicker({
       {select}
       {stored.key === 'custom' && (
         <div className="grid grid-cols-2 gap-2 mt-2" dir="ltr">
-          <input
-            type="number"
-            min={40}
-            max={300}
-            value={stored.custom.width}
-            onChange={(e) => setCustom({ ...stored.custom, width: Number(e.target.value) })}
-            className={INPUT}
-            aria-label="العرض بالمليمتر"
-          />
-          <input
-            type="number"
-            min={40}
-            max={300}
-            value={stored.custom.height}
-            onChange={(e) => setCustom({ ...stored.custom, height: Number(e.target.value) })}
-            className={INPUT}
-            aria-label="الارتفاع بالمليمتر"
-          />
+          <div>
+            <label htmlFor={widthId} className="block text-xs text-[var(--sys-muted-foreground)] mb-1">
+              العرض (مم)
+            </label>
+            {box('width', widthId, INPUT)}
+          </div>
+          <div>
+            <label htmlFor={heightId} className="block text-xs text-[var(--sys-muted-foreground)] mb-1">
+              الطول (مم)
+            </label>
+            {box('height', heightId, INPUT)}
+          </div>
         </div>
       )}
+      {narrow}
       {/* WHAT IT WILL LOOK LIKE.
           A dropdown reading «A5 على ورقة A4» tells somebody the words; it
           does not tell them the waybill will come out lying on its side.

@@ -24,6 +24,11 @@ import { STORE_LOGO_PREFIX } from './store-logo';
  *   rather than clip at random, each size tier says what it drops, in order
  *   of what a driver needs least.
  *
+ *   THE PAPER DECIDES HOW BIG. The tier says what is shown; how large it is
+ *   drawn follows the millimetres themselves, continuously — see fitFor().
+ *   Four steps of one size each used to print A4 like A5 (small text in a
+ *   big blank) and put a 100 mm wide label in the A4 step.
+ *
  *   PRINTING — NOT OPENING — COMMITS THE LABEL. The page reports which orders
  *   went to the printer on `beforeprint`, which catches the print button,
  *   the print runs and Ctrl+P alike. Opening the page, reloading it, or
@@ -108,24 +113,139 @@ export type Tier = 'tiny' | 'compact' | 'standard' | 'large';
  * What a label of this size can hold.
  *
  *   tiny      < 70 mm either way — barcode, COD, name, phone, one line of place
- *   compact   < 95 wide or < 110 tall (100×100) — adds logo, QR, two item lines
- *   standard  up to 110×160 (100×150, A6) — everything
- *   large     A5 and A4 — everything, set larger
+ *   compact   < 95 wide or < 110 tall (100×100, 150×100) — adds logo, QR, two item lines
+ *   standard  the rest (100×150, A6, 100×200) — everything
+ *   large     BOTH sides at least 140 (A5, A4) — everything, more lines
+ *
+ * Large is decided by the SHORT side. It used to be «more than 110 wide or
+ * more than 160 tall», so a 100 mm wide label 200 tall counted as A4.
  */
 export function tierFor(size: SheetSize): Tier {
   const { width: w, height: h } = size;
   if (w < 70 || h < 70) return 'tiny';
   if (w < 95 || h < 110) return 'compact';
-  if (w <= 110 && h <= 160) return 'standard';
-  return 'large';
+  if (Math.min(w, h) >= 140) return 'large';
+  return 'standard';
 }
 
+/** What each tier SHOWS. How big it is drawn is fitFor()'s, not the tier's. */
 const TIER = {
-  tiny: { scale: 0.78, qr: 0, bar: 10, items: 0, note: 0, place: 1, pad: 2 },
-  compact: { scale: 0.9, qr: 18, bar: 12, items: 2, note: 1, place: 2, pad: 2.5 },
-  standard: { scale: 1, qr: 22, bar: 14, items: 4, note: 2, place: 3, pad: 3.5 },
-  large: { scale: 1.3, qr: 30, bar: 18, items: 8, note: 3, place: 3, pad: 6 },
+  tiny: { qr: false, items: 0, note: 0, place: 1 },
+  compact: { qr: true, items: 2, note: 1, place: 2 },
+  standard: { qr: true, items: 4, note: 2, place: 3 },
+  large: { qr: true, items: 8, note: 3, place: 3 },
 } as const;
+
+/**
+ * The type sizes of one label at fit 1, in points. The stylesheet below is
+ * written from these numbers and fitFor() measures with the same ones, so
+ * what is measured is what is printed.
+ */
+const PT = {
+  body: 8.5,
+  brand: 10,
+  courier: 7.5,
+  courierRef: 9,
+  name: 12.5,
+  phones: 10.5,
+  codLabel: 8,
+  codAmount: 13,
+  caption: 7,
+  foot: 7,
+  tag: 6.5,
+} as const;
+const PT_MM = 25.4 / 72;
+/** The label's line height, and the name's. */
+const LINE = 1.35;
+const NAME_LINE = 1.2;
+/** Millimetres at fit 1: the gap between rows, the paddings inside the rows. */
+const MM = { gap: 1.4, headPad: 1.2, headRule: 0.5, codPad: 1.2, captionTop: 0.4, footPad: 0.8, footRule: 0.2, bodyPad: 1, bodyRule: 0.2 } as const;
+/** The dashed outline of a label, one CSS pixel each side. */
+const OUTLINE_MM = 25.4 / 96;
+/** At most this many item lines, however tall the paper. */
+const MAX_ITEMS = 12;
+
+/** One line of text this size, in millimetres, at fit `s`. */
+const lineMm = (pt: number, s: number, line = LINE) => pt * PT_MM * line * s;
+const r2 = (n: number) => Math.round(n * 100) / 100;
+
+export interface LabelFit {
+  tier: Tier;
+  /** The one number everything is drawn at: the stylesheet's `--s`. */
+  fit: number;
+  /** Millimetres; the QR is 0 when the tier leaves it off. */
+  qr: number;
+  bar: number;
+  pad: number;
+  items: number;
+  note: number;
+  place: number;
+  /** The height inside the padding and outline. */
+  usableMm: number;
+  /**
+   * What the rows that never give way take — header, COD, codes, footer, the
+   * gaps between rows, and the name and phone line of the recipient — so a
+   * test can hold that they fit the paper.
+   */
+  reservedMm: number;
+  /** reservedMm plus every line the label may print: place, items, note. */
+  fullMm: number;
+}
+
+/**
+ * HOW BIG, FROM THE MILLIMETRES.
+ *
+ *   fit = min(width / 100, height / 150), held between 0.7 and 2.2
+ *
+ * 100×150 is the reference the type sizes were set on. The smaller of the
+ * two ratios decides, because the label is a column: a wide label is not
+ * taller for being wide. Below 0.7 the type stops being readable on a
+ * thermal head; the upper bound is above anything the picker offers (A4 is
+ * 1.98), so the ceiling never shrinks a real page.
+ *
+ * The QR (22 mm at fit 1), the barcode height (14) and the padding (3.5)
+ * follow the same number. A taller-than-reference label — 100×200 — gets
+ * the height it has over 150 as more item lines, up to twelve.
+ */
+export function fitFor(size: SheetSize): LabelFit {
+  const tier = tierFor(size);
+  const t = TIER[tier];
+  const s = r2(Math.min(2.2, Math.max(0.7, Math.min(size.width / 100, size.height / 150))));
+  const qr = t.qr ? r2(22 * s) : 0;
+  const bar = r2(14 * s);
+  const pad = r2(3.5 * s);
+  const body = lineMm(PT.body, s);
+
+  const extra = t.items > 0 ? Math.max(0, Math.floor((size.height / s - 150) / lineMm(PT.body, 1))) : 0;
+  const items = Math.min(MAX_ITEMS, t.items + extra);
+
+  const head = Math.max(lineMm(PT.courier + PT.courierRef, s), 7 * s) + MM.headPad * s + MM.headRule;
+  const cod = lineMm(PT.codAmount, s) + 2 * MM.codPad * s;
+  const codes = Math.max(bar, qr) + lineMm(PT.caption, s) + MM.captionTop;
+  const foot = tier === 'tiny' ? 0 : lineMm(PT.foot, s) + MM.footPad * s + MM.footRule;
+  const gaps = 5 * MM.gap * s;
+  const who = lineMm(PT.name, s, NAME_LINE) + lineMm(PT.phones, s);
+  const reservedMm = head + cod + codes + foot + gaps + who;
+
+  // Items: the lines shown, plus «و٣ أصناف أخرى»; none means the one count line.
+  const itemLines = items > 0 ? items + 1 : 1;
+  const fullMm =
+    reservedMm + (t.place + t.note + itemLines) * body + MM.bodyPad * s + MM.bodyRule;
+
+  return {
+    tier,
+    fit: s,
+    qr,
+    bar,
+    pad,
+    items,
+    note: t.note,
+    place: t.place,
+    usableMm: size.height - 2 * pad - 2 * OUTLINE_MM,
+    reservedMm,
+    fullMm,
+  };
+}
 
 export function esc(value: string): string {
   return String(value ?? '').replace(
@@ -193,8 +313,8 @@ function itemsHtml(items: LabelItem[], max: number): string {
   );
 }
 
-function labelHtml(l: LabelView, tier: Tier, store: SheetStore): string {
-  const t = TIER[tier];
+function labelHtml(l: LabelView, t: LabelFit, store: SheetStore): string {
+  const tier = t.tier;
   const code = encodableCode128(l.courierCode);
   const logo =
     store.logoUrl && tier !== 'tiny' ? `<img class="logo" src="${esc(store.logoUrl)}" alt="">` : '';
@@ -232,8 +352,7 @@ export function renderLabelSheet(labels: LabelView[], size: SheetSize, opts: She
   const pageH = size.sheetHeight ?? size.height;
   const perPage = labelsPerPage(size);
   const pages = Math.ceil(labels.length / perPage);
-  const tier = tierFor(size);
-  const t = TIER[tier];
+  const t = fitFor(size);
   const pdf = opts.mode === 'pdf';
 
   const sheets: string[] = [];
@@ -241,7 +360,7 @@ export function renderLabelSheet(labels: LabelView[], size: SheetSize, opts: She
     const chunk = labels.slice(p * perPage, (p + 1) * perPage);
     const run = Math.floor((p * perPage) / PRINT_CHUNK);
     sheets.push(
-      `<div class="page" data-run="${run}">${chunk.map((l) => labelHtml(l, tier, opts.store)).join('')}</div>`
+      `<div class="page" data-run="${run}">${chunk.map((l) => labelHtml(l, t, opts.store)).join('')}</div>`
     );
   }
 
@@ -295,58 +414,58 @@ export function renderLabelSheet(labels: LabelView[], size: SheetSize, opts: She
           box-shadow: 0 1px 4px rgba(0,0,0,.12); contain: layout paint; }
 
   /* ── one label ── */
-  .label { --s: ${t.scale}; --qr: ${t.qr}mm;
+  .label { --s: ${t.fit}; --qr: ${t.qr}mm;
            width: ${size.width}mm; height: ${size.height}mm; padding: ${t.pad}mm; overflow: hidden;
-           display: grid; gap: calc(1.4mm * var(--s));
+           display: grid; gap: calc(${MM.gap}mm * var(--s));
            /* Header, COD, codes and footer always take their full height.
               The recipient block and the contents give way — never the
               barcode. */
            grid-template-rows: auto minmax(0, max-content) minmax(0, 1fr) auto auto auto;
-           border: 1px dashed #c3c9d2; font-size: calc(8.5pt * var(--s)); line-height: 1.35; }
+           border: 1px dashed #c3c9d2; font-size: calc(${PT.body}pt * var(--s)); line-height: ${LINE}; }
 
   .head { display: flex; justify-content: space-between; align-items: center; gap: 2mm;
-          padding-bottom: calc(1.2mm * var(--s)); border-bottom: 0.5mm solid #000; }
+          padding-bottom: calc(${MM.headPad}mm * var(--s)); border-bottom: ${MM.headRule}mm solid #000; }
   .brand { display: flex; align-items: center; gap: 1.5mm; min-width: 0; }
-  .brand strong { font-size: calc(10pt * var(--s)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .brand strong { font-size: calc(${PT.brand}pt * var(--s)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .logo { height: calc(7mm * var(--s)); max-width: calc(22mm * var(--s)); object-fit: contain; }
   .courier { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0;
-             font-size: calc(7.5pt * var(--s)); }
-  .courier b { font-size: calc(9pt * var(--s)); letter-spacing: .3px; }
+             font-size: calc(${PT.courier}pt * var(--s)); }
+  .courier b { font-size: calc(${PT.courierRef}pt * var(--s)); letter-spacing: .3px; }
 
   .who { overflow: hidden; }
   .who p { margin: 0; }
-  .name { font-size: calc(12.5pt * var(--s)); font-weight: bold; line-height: 1.2;
+  .name { font-size: calc(${PT.name}pt * var(--s)); font-weight: bold; line-height: ${NAME_LINE};
           white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .phones { font-size: calc(10.5pt * var(--s)); font-weight: bold; letter-spacing: .4px; text-align: right; }
+  .phones { font-size: calc(${PT.phones}pt * var(--s)); font-weight: bold; letter-spacing: .4px; text-align: right; }
   .place { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
 
-  .body { overflow: hidden; border-top: 0.2mm solid #d0d5dd; padding-top: calc(1mm * var(--s)); }
+  .body { overflow: hidden; border-top: ${MM.bodyRule}mm solid #d0d5dd; padding-top: calc(${MM.bodyPad}mm * var(--s)); }
   .items { margin: 0; padding: 0; list-style: none; }
   .items li { display: flex; align-items: baseline; gap: 1.5mm; }
   .items .iname { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .items .qty { flex-shrink: 0; }
   .items .more { opacity: .75; }
   .tag { flex-shrink: 0; border: 0.25mm solid #000; border-radius: 0.8mm; padding: 0 1mm;
-         font-size: calc(6.5pt * var(--s)); font-weight: bold; }
+         font-size: calc(${PT.tag}pt * var(--s)); font-weight: bold; }
   .count { margin: 0; font-weight: bold; }
   .note { margin: calc(0.8mm * var(--s)) 0 0; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
 
   /* The number the driver collects: black, so it cannot be missed. */
   .cod { display: flex; justify-content: space-between; align-items: center; gap: 2mm;
          background: #000; color: #fff; border-radius: 1mm;
-         padding: calc(1.2mm * var(--s)) calc(2.2mm * var(--s)); font-size: calc(8pt * var(--s)); }
-  .cod strong { font-size: calc(13pt * var(--s)); letter-spacing: .3px; white-space: nowrap; }
+         padding: calc(${MM.codPad}mm * var(--s)) calc(2.2mm * var(--s)); font-size: calc(${PT.codLabel}pt * var(--s)); }
+  .cod strong { font-size: calc(${PT.codAmount}pt * var(--s)); letter-spacing: .3px; white-space: nowrap; }
 
   .codes { display: flex; align-items: flex-end; gap: calc(2.5mm * var(--s)); }
   figure { margin: 0; text-align: center; }
   .barcode { flex: 1; min-width: 0; }
   .qr { flex-shrink: 0; width: var(--qr); }
   .qr svg { display: block; width: var(--qr); height: var(--qr); }
-  figcaption { font-size: calc(7pt * var(--s)); letter-spacing: 1px; margin-top: 0.4mm;
+  figcaption { font-size: calc(${PT.caption}pt * var(--s)); letter-spacing: 1px; margin-top: ${MM.captionTop}mm;
                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  .foot { font-size: calc(7pt * var(--s)); text-align: center; border-top: 0.2mm solid #d0d5dd;
-          padding-top: calc(0.8mm * var(--s)); }
+  .foot { font-size: calc(${PT.foot}pt * var(--s)); text-align: center; border-top: ${MM.footRule}mm solid #d0d5dd;
+          padding-top: calc(${MM.footPad}mm * var(--s)); }
 
   @media print {
     ${runRules}
