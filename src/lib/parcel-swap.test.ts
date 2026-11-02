@@ -333,8 +333,8 @@ function makeWorld(over: Partial<World> = {}): World {
   });
   return {
     statements: [
-      { id: 'st1', companyId: 'c1', storeId: 's1', status: 'MATCHED', approvedAt: null, reference: 'ST-1', deliveryProviderId: 'dp1', currencyCode: 'JOD', fileHash: 'abc123', periodTo: PERIOD_TO },
-      { id: 'st2', companyId: 'c1', storeId: 's1', status: 'APPROVED', approvedAt: new Date('2026-10-01T00:00:00Z'), reference: 'ST-2', deliveryProviderId: 'dp1', currencyCode: 'JOD', fileHash: 'def456', periodTo: null },
+      { id: 'st1', companyId: 'c1', storeId: 's1', status: 'MATCHED', approvedAt: null, matchingClosedAt: null, reference: 'ST-1', deliveryProviderId: 'dp1', currencyCode: 'JOD', fileHash: 'abc123', periodTo: PERIOD_TO },
+      { id: 'st2', companyId: 'c1', storeId: 's1', status: 'APPROVED', approvedAt: new Date('2026-10-01T00:00:00Z'), matchingClosedAt: new Date('2026-10-01T00:00:00Z'), reference: 'ST-2', deliveryProviderId: 'dp1', currencyCode: 'JOD', fileHash: 'def456', periodTo: null },
     ],
     matches: [
       // Y's line: «تم» with the money — the courier collected 40.000, kept 2.500 and handed over 37.500.
@@ -594,8 +594,8 @@ describe('every refusal, and each one writes nothing', () => {
     return e;
   };
 
-  it('an approved statement — the correction is a settlement statement', async () => {
-    const e = await stops('ALREADY_APPROVED', (w) => { w.statements[0].approvedAt = new Date(); w.statements[0].status = 'APPROVED'; });
+  it('a statement whose matching is closed — the correction is a settlement statement', async () => {
+    const e = await stops('ALREADY_APPROVED', (w) => { w.statements[0].approvedAt = new Date(); w.statements[0].matchingClosedAt = new Date(); w.statements[0].status = 'APPROVED'; });
     expect(e.body.error).toBe(SWAP_WHY.approved);
     expect(e.status).toBe(409);
   });
@@ -1167,8 +1167,15 @@ describe('a press that lands while the swap is being written', () => {
     expect(W.matches[0].orderId).toBe('y');
   });
 
-  it('the statement was approved in the meantime: the same claim stops it', async () => {
-    W.onCreate = () => { W.statements[0].approvedAt = new Date(); };
+  it('the money posted and the matching still open (2/11): the swap is taken — it decides what the close will settle', async () => {
+    W.statements[0].approvedAt = new Date();
+    W.statements[0].status = 'APPROVED';
+    const r = await run();
+    expect(r.sale.id).toBeTruthy();
+  });
+
+  it('the statement’s matching was closed in the meantime: the same claim stops it', async () => {
+    W.onCreate = () => { W.statements[0].approvedAt = new Date(); W.statements[0].matchingClosedAt = new Date(); };
     const e = await refusal(run());
     expect(e.body.code).toBe('ORDER_MOVED');
   });

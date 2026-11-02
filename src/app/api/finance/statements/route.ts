@@ -102,6 +102,8 @@ export async function GET() {
           // their match and approve buttons on this, because `status` alone
           // could be written back to MATCHED over an approved statement.
           approvedAt: s.approvedAt,
+          // The matching's close: the orders are settled. Null after the approval while a line is still a question.
+          matchingClosedAt: s.matchingClosedAt,
           // A statement a person gathered by hand, and whether it is still the open draft (orders can be added,
           // there is no reference and no receipt yet). The hash itself is not sent: only what the screen draws.
           manual: isManualHash(s.fileHash),

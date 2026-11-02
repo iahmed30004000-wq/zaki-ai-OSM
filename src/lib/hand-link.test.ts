@@ -90,7 +90,7 @@ const request = (over: Row = {}): Row => ({ companyId: 'c1', orderId: 'o1', inte
 
 function makeWorld(over: Partial<World> = {}): World {
   return {
-    statement: { id: 'st1', companyId: 'c1', storeId: 's1', status: 'MATCHED', approvedAt: null, reference: 'ST-1', deliveryProviderId: 'dp1' },
+    statement: { id: 'st1', companyId: 'c1', storeId: 's1', status: 'MATCHED', approvedAt: null, matchingClosedAt: null, reference: 'ST-1', deliveryProviderId: 'dp1' },
     matches: [
       { id: 'm1', companyId: 'c1', statementId: 'st1', statementLineId: 'l1', orderId: null, result: 'MISSING_IN_SYSTEM', matchedBy: null, resolution: null, statementAmount: 20,
         statementLine: { amount: 20, fee: null, status: null } },
@@ -309,8 +309,18 @@ describe('what a link refuses', () => {
     expect(e.body.reasons).not.toContain(HAND_COLLECTED_NOTE);
   });
 
-  it('an approved statement: linking decides what approval settles', async () => {
+  it('the money posted and the matching still open (2/11): the link is taken — it decides what the close will settle', async () => {
     w.statement.approvedAt = new Date();
+    w.statement.status = 'APPROVED';
+    w.matches[0].statementLine = { amount: 20, fee: null, status: null };
+    const r = await link(makeTx(w));
+    expect(r).toMatchObject({ result: 'MATCHED' });
+    expect(w.matches[0]).toMatchObject({ orderId: 'o1', matchedBy: MANUAL_MATCH });
+  });
+
+  it('a statement whose matching is closed: linking decides what the close settled', async () => {
+    w.statement.approvedAt = new Date();
+    w.statement.matchingClosedAt = new Date();
     w.statement.status = 'APPROVED';
     const tx = makeTx(w);
     const e = await refusedWith(link(tx));
@@ -380,7 +390,7 @@ describe('what a link refuses', () => {
     const tx = makeTx(w);
     await link(tx);
     expect(tx.settlementMatch.updateMany.mock.calls[0][0].where).toEqual({
-      id: 'm1', statementId: 'st1', result: 'MISSING_IN_SYSTEM', orderId: null, statement: { approvedAt: null },
+      id: 'm1', statementId: 'st1', result: 'MISSING_IN_SYSTEM', orderId: null, statement: { matchingClosedAt: null },
     });
   });
 
@@ -388,7 +398,7 @@ describe('what a link refuses', () => {
     const tx = makeTx(w);
     await link(tx);
     expect(tx.settlementMatch.deleteMany.mock.calls[0][0].where).toMatchObject({
-      statementId: 'st1', result: 'MISSING_IN_STATEMENT', statement: { approvedAt: null },
+      statementId: 'st1', result: 'MISSING_IN_STATEMENT', statement: { matchingClosedAt: null },
     });
   });
 });
@@ -412,7 +422,8 @@ describe('an approval that lands while the link is being made', () => {
     // The first read (the check) sees it open; the approval commits; the write finds it approved.
     const open = { ...w.statement };
     tx.courierStatement.findFirst.mockImplementationOnce(async () => open);
-    Object.assign(w.statement, { status: 'APPROVED', approvedAt: new Date('2026-10-29T10:00:00Z') });
+    // (2/11: the approval alone no longer closes the matching — the close does, and it is the close that lands here.)
+    Object.assign(w.statement, { status: 'APPROVED', approvedAt: new Date('2026-10-29T10:00:00Z'), matchingClosedAt: new Date('2026-10-29T10:00:00Z') });
 
     const e = await refusedWith(link(tx));
     expect(e.body).toEqual({ error: 'الكشف مغلق نهائياً — التصحيح بكشف تسوية', code: 'ALREADY_APPROVED' });
@@ -661,7 +672,7 @@ describe('a line tied by hand is judged against a claim on the company, as the m
   const claimRow = (over: Row = {}): Row => ({
     id: 'old', companyId: 'c1', statementId: 'st0', statementLineId: 'l0', orderId: 'o1', result: 'MISMATCHED',
     matchedBy: 'MERCHANT_REF', resolution: 'OURS_STANDS', expectedAmount: 20, statementAmount: 18, statementFee: 0,
-    statementRow: { reference: 'ST-0', approvedAt: new Date('2026-10-20T00:00:00Z') }, ...over,
+    statementRow: { reference: 'ST-0', approvedAt: new Date('2026-10-20T00:00:00Z'), matchingClosedAt: new Date('2026-10-20T00:00:00Z') }, ...over,
   });
 
   it('a line that pays the 2.000 that remains is MATCHED against 2.000, not a difference of 18.000', async () => {

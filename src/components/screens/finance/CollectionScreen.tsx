@@ -24,7 +24,9 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { NextStepButton } from '@/components/ui/NextStep';
 import { Money } from '@/components/ui/Money';
 import { importedSentence, type ImportedStatement } from '@/lib/statement-import-message';
-import { STATEMENT_CLOSED_SENTENCE, approvalRefusal, isApproved, rematchRefusal } from '@/lib/settlement-gates';
+import {
+  STATEMENT_CLOSED_SENTENCE, approvalRefusal, closeRefusal, isApproved, isMatchingClosed, rematchRefusal,
+} from '@/lib/settlement-gates';
 import { useConfirm } from '@/components/ui/Confirm';
 import { AssembleStatementDialog } from '@/components/screens/finance/AssembleStatementDialog';
 import {
@@ -62,8 +64,13 @@ interface StatementRow {
   reference: string;
   fileName: string;
   status: string;
-  /** Set when the money moved. Nothing about the statement reopens after it. */
+  /** Set when the money moved: no receipt, proof, gap or removal after it. */
   approvedAt: string | null;
+  /**
+   * Set when the matching closed and the orders were settled. The approval closes it in the same press when no line
+   * is a question; otherwise it stays open after the money, for «إغلاق المطابقة».
+   */
+  matchingClosedAt?: string | null;
   /** A statement a person gathered by hand, and whether it is still the open draft (no reference, no receipt yet). */
   manual?: boolean;
   draft?: boolean;
@@ -175,8 +182,9 @@ export function CollectionScreen() {
   const [busy, setBusy] = useState<string | null>(null);
   // The hand rows the server found when asked to approve: shown with «اعتمد هيك» / «رجوع», never auto-confirmed.
   const [doubleFor, setDoubleFor] = useState<{ statement: StatementRow; sentence: string; rows: HandRow[]; people?: Record<string, string> } | null>(null);
-  // The short lines the door could not name, shown with «من يتحمّل الفرق؟» until the approver answers for each.
-  const [namingFor, setNamingFor] = useState<{ statement: StatementRow; sentence: string; lines: UnnamedShortfall[]; candidates: ShortfallPerson[]; confirmed: boolean | string[] } | null>(null);
+  // The short lines the door could not name, shown with «من يتحمّل الفرق؟» until the approver answers for each — at
+  // the approval, or at «إغلاق المطابقة» (`mode`), whichever press settles the orders.
+  const [namingFor, setNamingFor] = useState<{ statement: StatementRow; sentence: string; lines: UnnamedShortfall[]; candidates: ShortfallPerson[]; confirmed: boolean | string[]; mode: 'approve' | 'close' } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -216,24 +224,39 @@ export function CollectionScreen() {
    * APPROVAL — and the one answer that is not a plain refusal.
    * When a hand entry of the same money is already in the wallet the server answers POSSIBLE_DOUBLE with the
    * rows. They are shown here; only «اعتمد هيك» sends the approval again with the confirmation.
+   *
+   * «إغلاق المطابقة» (`mode: 'close'`) goes through the same press: it settles the orders the approval left open,
+   * moves no money, and may ask «من يتحمّل الفرق؟» exactly as the approval does.
    */
-  async function approve(s: StatementRow, confirmed: boolean | string[] = false, people?: Record<string, string>) {
+  async function approve(
+    s: StatementRow,
+    confirmed: boolean | string[] = false,
+    people?: Record<string, string>,
+    mode: 'approve' | 'close' = 'approve'
+  ) {
     setBusy(s.id);
     setError(null);
     setDone(null);
     try {
-      const res = await apiFetch(`/api/finance/statements/${s.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          approve: true,
-          ...(Array.isArray(confirmed) ? { reverseHandRowIds: confirmed } : confirmed ? { confirmPossibleDouble: true } : {}),
-          // «من يتحمّل الفرق؟»: the approver's answer for the short lines the door could not name.
-          ...(people ? { shortfallPeople: people } : {}),
-        }),
-      });
+      const res =
+        mode === 'close'
+          ? await apiFetch(`/api/finance/statements/${s.id}/close`, {
+              method: 'POST',
+              body: JSON.stringify(people ? { shortfallPeople: people } : {}),
+            })
+          : await apiFetch(`/api/finance/statements/${s.id}`, {
+              method: 'PATCH',
+              body: JSON.stringify({
+                approve: true,
+                ...(Array.isArray(confirmed) ? { reverseHandRowIds: confirmed } : confirmed ? { confirmPossibleDouble: true } : {}),
+                // «من يتحمّل الفرق؟»: the approver's answer for the short lines the door could not name.
+                ...(people ? { shortfallPeople: people } : {}),
+              }),
+            });
       const data = (await res.json().catch(() => ({}))) as {
         code?: string; error?: string; errorAr?: string; rows?: HandRow[];
         lines?: UnnamedShortfall[]; candidates?: ShortfallPerson[];
+        matchingClosed?: boolean; openLines?: number;
       };
       if (res.status === 409 && data.code === 'POSSIBLE_DOUBLE') {
         setNamingFor(null);
@@ -243,13 +266,19 @@ export function CollectionScreen() {
       if (res.status === 409 && data.code === 'SHORTFALL_UNNAMED') {
         // `confirmed` is kept: someone who already said the hand rows are not the same money is not asked again.
         setDoubleFor(null);
-        setNamingFor({ statement: s, sentence: data.error ?? '', lines: data.lines ?? [], candidates: data.candidates ?? [], confirmed });
+        setNamingFor({ statement: s, sentence: data.error ?? '', lines: data.lines ?? [], candidates: data.candidates ?? [], confirmed, mode });
         return;
       }
       if (!res.ok) throw new Error(data.errorAr || data.error || `HTTP ${res.status}`);
       setDoubleFor(null);
       setNamingFor(null);
-      setDone('اعتُمد الكشف وسُجِّلت حركة المحفظة');
+      setDone(
+        mode === 'close'
+          ? 'تسكّرت المطابقة وتسوّت الطلبات — بلا أي حركة جديدة بالمحفظة'
+          : data.matchingClosed === false
+            ? `دخلت المصاري المحفظة، والمطابقة بقيت مفتوحة: ${data.openLines ?? 0} سطر بلا بتّ — ابتّ فيها ثم اضغط «إغلاق المطابقة»`
+            : 'اعتُمد الكشف وسُجِّلت حركة المحفظة'
+      );
       await load();
     } catch (e) {
       setDoubleFor(null);
@@ -258,6 +287,64 @@ export function CollectionScreen() {
     } finally {
       setBusy(null);
     }
+  }
+
+  /**
+   * THE MONEY IS IN, THE MATCHING IS OPEN — «افصل المطابقة عن التحصيل».
+   *
+   * Two presses are left, and nothing about the money: match again, and close the matching once every line is answered.
+   * Whether the close is ALLOWED is asked of `settlement-gates` (`closeRefusal`), exactly as the server asks it, so the
+   * greyed button carries the server's own sentence.
+   */
+  function openMatchingActions(s: StatementRow) {
+    const refusal = closeRefusal({
+      status: s.status,
+      approvedAt: s.approvedAt,
+      matchingClosedAt: s.matchingClosedAt ?? null,
+      matches: s.counts.matches,
+      openLines: s.counts.openLines ?? 0,
+    });
+    const rematch = () =>
+      act(s.id, 'تمت المطابقة', () => apiJson(`/api/finance/statements/${s.id}/match`, { method: 'POST' }));
+    if (phone) {
+      return (
+        <div className="flex w-full flex-col gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" disabled={busy === s.id} onClick={() => void rematch()}>
+              مطابقة
+            </Button>
+            {mayApprove && (
+              <Button size="sm" variant="primary" disabled={!!refusal || busy === s.id} onClick={() => void approve(s, false, undefined, 'close')}>
+                إغلاق المطابقة
+              </Button>
+            )}
+          </div>
+          {refusal && busy !== s.id && <p className="text-xs text-[var(--sys-muted-foreground)]">{refusal.error}</p>}
+        </div>
+      );
+    }
+    return (
+      <span className="flex flex-wrap gap-3 justify-end">
+        <button
+          disabled={busy === s.id}
+          title="شغّل المطابقة"
+          onClick={() => void rematch()}
+          className="text-xs text-[var(--sys-primary)] hover:underline disabled:text-[var(--sys-border-strong)] disabled:no-underline"
+        >
+          مطابقة
+        </button>
+        {mayApprove && (
+          <button
+            disabled={!!refusal || busy === s.id}
+            title={refusal?.error ?? 'إغلاق المطابقة — عندها تتسوّى الطلبات، بلا أي حركة جديدة بالمحفظة'}
+            onClick={() => void approve(s, false, undefined, 'close')}
+            className="text-xs font-medium text-[var(--sys-success)] hover:underline disabled:text-[var(--sys-border-strong)] disabled:no-underline"
+          >
+            إغلاق المطابقة
+          </button>
+        )}
+      </span>
+    );
   }
 
   /** A receipt's proof, changed until the statement is approved. A real file, judged by the server like the first one. */
@@ -529,7 +616,7 @@ export function CollectionScreen() {
                 render: (s) => (
                   <span className="text-xs text-[var(--sys-muted-foreground)] tabular-nums">
                     {s.counts.lines} سطر · {s.counts.receipts} إيصال · {s.counts.matches} مطابقة
-                    {!isApproved(s) && (s.counts.openLines ?? 0) > 0 && ` · ${s.counts.openLines} بلا بتّ`}
+                    {!isMatchingClosed(s) && (s.counts.openLines ?? 0) > 0 && ` · ${s.counts.openLines} بلا بتّ`}
                   </span>
                 ),
               },
@@ -601,7 +688,9 @@ export function CollectionScreen() {
                       ))}
                     </ul>
                     {isApproved(s) && (
-                      <p className="mt-1 text-xs text-[var(--sys-muted-foreground)]">{STATEMENT_CLOSED_SENTENCE}</p>
+                      <p className="mt-1 text-xs text-[var(--sys-muted-foreground)]">
+                        {isMatchingClosed(s) ? STATEMENT_CLOSED_SENTENCE : 'المصاري دخلت المحفظة — المطابقة لسا مفتوحة'}
+                      </p>
                     )}
                     </>
                   ),
@@ -619,12 +708,12 @@ export function CollectionScreen() {
                 approvedAt: s.approvedAt,
                 receipts: s.counts.receipts,
                 matches: s.counts.matches,
-                // The same count the server waits for (`statement-open-lines`): the button greys out for the reason it would refuse.
-                openLines: s.counts.openLines ?? 0,
                 gap: s.gap,
                 explanation: s.gap.explained ? 'explained' : null,
               });
               const noRematch = rematchRefusal(s);
+              // The money is in and a line is still a question: the matching is open, and «إغلاق المطابقة» settles it.
+              if (isApproved(s) && !isMatchingClosed(s)) return openMatchingActions(s);
               return isApproved(s) ? (
                 <span className="text-xs text-[var(--sys-success)] inline-flex items-center gap-1" title={STATEMENT_CLOSED_SENTENCE}>
                   <RiCheckboxCircleLine className="w-4 h-4" /> معتمد
@@ -745,7 +834,7 @@ export function CollectionScreen() {
           candidates={namingFor.candidates}
           busy={busy === namingFor.statement.id}
           onClose={() => setNamingFor(null)}
-          onConfirm={(people) => void approve(namingFor.statement, namingFor.confirmed, people)}
+          onConfirm={(people) => void approve(namingFor.statement, namingFor.confirmed, people, namingFor.mode)}
         />
       )}
 

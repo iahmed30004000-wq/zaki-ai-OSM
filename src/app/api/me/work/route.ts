@@ -125,9 +125,10 @@ export async function GET() {
       }));
     }
 
-    // Statements not yet approved: approval is what moves the courier's cash, so it is the open decision.
+    // Statements not yet closed: the approval moves the courier's cash, the close settles the orders.
     if (wanted.has('STATEMENTS_OPEN')) {
-      count('STATEMENTS_OPEN', db.courierStatement.count({ where: { companyId, storeId, approvedAt: null, status: { not: 'APPROVED' } } }));
+      // Open until its MATCHING is closed: a statement whose money is posted while a line is still a question is work.
+      count('STATEMENTS_OPEN', db.courierStatement.count({ where: { companyId, storeId, matchingClosedAt: null } }));
     }
 
     /**

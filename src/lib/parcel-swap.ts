@@ -5,7 +5,7 @@ import { claimingRowWhere, MANUAL_MATCH } from './match-integrity';
 import { accrueForOrder } from './commission';
 import { consumeOrderStock } from './stock-consumption';
 import { releaseOrderLines } from './reservation';
-import { STATEMENT_CLOSED_SENTENCE, isApproved } from './settlement-gates';
+import { STATEMENT_CLOSED_SENTENCE, isMatchingClosed } from './settlement-gates';
 import { isManualDraftHash, isManualHash } from './manual-statement-rules';
 import { expectedAmountFor, judgeLine, SETTLEMENT_ORDER_SELECT } from './settlement';
 import { COMING_BACK, IN_FLIGHT, stateGroup } from './settlement-decisions';
@@ -368,12 +368,12 @@ export async function recordParcelSwap(tx: Tx, p: SwapInput): Promise<SwapResult
   const statement = await tx.courierStatement.findFirst({
     where: { id: p.statementId, companyId: p.companyId, storeId: p.storeId },
     select: {
-      id: true, status: true, approvedAt: true, reference: true, deliveryProviderId: true,
+      id: true, status: true, approvedAt: true, matchingClosedAt: true, reference: true, deliveryProviderId: true,
       currencyCode: true, fileHash: true, periodTo: true, storeId: true,
     },
   });
   if (!statement) return refuse(404, 'NOT_FOUND', SWAP_WHY.notFound);
-  if (isApproved(statement)) return refuse(409, 'ALREADY_APPROVED', SWAP_WHY.approved);
+  if (isMatchingClosed(statement)) return refuse(409, 'ALREADY_APPROVED', SWAP_WHY.approved);
   if (isManualHash(statement.fileHash) || isManualDraftHash(statement.fileHash)) {
     return refuse(409, 'MANUAL_STATEMENT', SWAP_WHY.manual);
   }
@@ -608,7 +608,7 @@ export async function recordParcelSwap(tx: Tx, p: SwapInput): Promise<SwapResult
   const linked = await tx.settlementMatch.updateMany({
     where: {
       id: match.id, statementId: p.statementId, orderId: y.id, result: 'MISMATCHED', resolution: null,
-      statement: { approvedAt: null },
+      statement: { matchingClosedAt: null },
     },
     data: {
       orderId: made.id,
@@ -639,7 +639,7 @@ export async function recordParcelSwap(tx: Tx, p: SwapInput): Promise<SwapResult
       if (!row.statementLine) continue;
       const v = judgeLine({ order: ownerFacts, line: row.statementLine, minorUnit: p.minorUnit, integrity: clean, openClaim: null });
       await tx.settlementMatch.updateMany({
-        where: { id: row.id, statementId: p.statementId, resolution: null, statement: { approvedAt: null } },
+        where: { id: row.id, statementId: p.statementId, resolution: null, statement: { matchingClosedAt: null } },
         data: {
           result: v.result,
           expectedAmount: v.expected,

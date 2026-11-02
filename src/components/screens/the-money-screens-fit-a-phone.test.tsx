@@ -318,11 +318,13 @@ describe('«التحصيل والكشوف»', () => {
   });
 
   it('FIN-02: a grey «اعتماد» prints the server’s own sentence, read from the same function the door uses', async () => {
+    // A line still a question no longer greys the approval out (2/11: the money does not wait on the lines — the close
+    // of the matching does). A receipt whose currency has no rate still does: the money cannot be placed.
     const s = statement({
-      status: 'MATCHED', counts: { lines: 3, receipts: 1, matches: 3, openLines: 2 }, gap: { ...gap, received: 100, gap: 0 },
+      status: 'MATCHED', counts: { lines: 3, receipts: 1, matches: 3, openLines: 2 }, gap: { ...gap, received: 100, gap: 0, unconvertible: 1 },
     });
     const refusal = approvalRefusal({
-      status: s.status, approvedAt: null, receipts: 1, matches: 3, openLines: 2, gap: s.gap, explanation: null,
+      status: s.status, approvedAt: null, receipts: 1, matches: 3, gap: s.gap, explanation: null,
     });
     expect(refusal, 'الشرط لم يمنع الاعتماد').not.toBeNull();
     await draw(s);
@@ -334,6 +336,50 @@ describe('«التحصيل والكشوف»', () => {
     user.current = { id: 'u1', status: 'ACTIVE', role: 'COMPANY_ADMIN', permissions: ['finance.cashbox_view'] };
     await draw(statement({ status: 'MATCHED', counts: { lines: 3, receipts: 1, matches: 3 } }));
     expect(within(foot()).queryByRole('button', { name: 'اعتماد' })).toBeNull();
+  });
+
+  it('2/11: the money in, a line still a question — «إغلاق المطابقة» is drawn grey with the close’s own sentence, and nothing about the money', async () => {
+    const s = statement({
+      status: 'APPROVED', approvedAt: '2026-11-02T00:00:00Z', matchingClosedAt: null,
+      counts: { lines: 3, receipts: 1, matches: 3, openLines: 1 }, gap: { ...gap, received: 100, gap: 0 },
+      receipts: [{ id: 'r1', amount: 100, currencyCode: 'JOD', receivedAt: '2026-11-01T00:00:00Z', note: null, wallet: 'الصندوق', proof: null }],
+    });
+    await draw(s);
+    // The card's own foot (a receipt line in the card is a list of its own).
+    const acts = () => document.querySelector('.card-acts') as HTMLElement;
+    const closeBtn = within(acts()).getByRole('button', { name: 'إغلاق المطابقة' }) as HTMLButtonElement;
+    expect(closeBtn.disabled).toBe(true);
+    expect(within(acts()).getByText('بقي 1 سطر بلا بتّ أو ربط — ابتّ فيها قبل إغلاق المطابقة، فالكشف بعده يُغلق نهائياً')).toBeTruthy();
+    // The money is done: no «اعتماد», no receipt, no undo of the import.
+    expect(within(acts()).queryByRole('button', { name: 'اعتماد' })).toBeNull();
+    expect(within(acts()).queryByRole('button', { name: 'إيصال استلام' })).toBeNull();
+    expect(within(acts()).queryByRole('button', { name: 'إلغاء الاستيراد' })).toBeNull();
+    expect(document.body.textContent).toContain('المصاري دخلت المحفظة — المطابقة لسا مفتوحة');
+  });
+
+  it('2/11: every line answered — «إغلاق المطابقة» is the main button, and pressing it posts to the close, not the approval', async () => {
+    const s = statement({
+      status: 'APPROVED', approvedAt: '2026-11-02T00:00:00Z', matchingClosedAt: null,
+      counts: { lines: 3, receipts: 1, matches: 3, openLines: 0 }, gap: { ...gap, received: 100, gap: 0 },
+    });
+    await draw(s);
+    apiFetch.mockResolvedValue(new Response(JSON.stringify({ matchingClosed: true }), { status: 200 }));
+    const closeBtn = within(foot()).getByRole('button', { name: 'إغلاق المطابقة' }) as HTMLButtonElement;
+    expect(closeBtn.disabled).toBe(false);
+    expect(isMain(closeBtn)).toBe(true);
+    fireEvent.click(closeBtn);
+    await waitFor(() => expect(apiFetch).toHaveBeenCalled());
+    expect(apiFetch.mock.calls[0][0]).toBe('/api/finance/statements/s1/close');
+    expect((apiFetch.mock.calls[0][1] as RequestInit).method).toBe('POST');
+  });
+
+  it('2/11: the matching closed with the money — «معتمد», as before', async () => {
+    await draw(statement({
+      status: 'APPROVED', approvedAt: '2026-11-02T00:00:00Z', matchingClosedAt: '2026-11-02T00:00:00Z',
+      counts: { lines: 3, receipts: 1, matches: 3, openLines: 0 }, gap: { ...gap, received: 100, gap: 0 },
+    }));
+    expect(within(foot()).queryByRole('button', { name: 'إغلاق المطابقة' })).toBeNull();
+    expect(foot().textContent).toContain('معتمد');
   });
 
   it('FIN-02 DESK: the five words are the old text links, «إلغاء الاستيراد» first, with no sentence under them', async () => {

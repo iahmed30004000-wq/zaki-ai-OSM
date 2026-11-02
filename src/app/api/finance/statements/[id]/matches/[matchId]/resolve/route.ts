@@ -7,7 +7,7 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { zodMessage } from '@/lib/zod-message';
 import { isDifference, MISSING_RESULTS, PARKED, shortfall } from '@/lib/settlement-difference';
-import { closedStatementRefusal, isApproved } from '@/lib/settlement-gates';
+import { closedStatementRefusal, isMatchingClosed } from '@/lib/settlement-gates';
 import { mayOnlyBeParked } from '@/lib/statement-open-lines';
 import {
   DECISIONS,
@@ -47,10 +47,11 @@ import {
  * or left as a claim on the company — is carried out by the APPROVAL, inside its own transaction, after every
  * order is looked at again. Writing a wallet movement or a settlement from here would be a second money path
  * into settlement — the thing this codebase refuses above all others — from a button whose label says
- * «record the reason». So an answer is taken only BEFORE the approval, whichever answer it is: the statement's
- * row is locked here, and an approval that has started either finished first (and the answer is refused with
- * the one sentence of a closed statement) or waits for this to commit (and reads it). The write repeats it
- * (`approvedAt: null` in its WHERE).
+ * «record the reason». So an answer is taken only BEFORE the matching is closed, whichever answer it is — the money
+ * may already be posted (2/11: the approval no longer waits on the lines), but the orders are settled by the close:
+ * the statement's row is locked here, and a close that has started either finished first (and the answer is refused
+ * with the one sentence of a closed statement) or waits for this to commit (and reads it). The write repeats it
+ * (`matchingClosedAt: null` in its WHERE).
  *
  * This reverses what stood here: «رقمنا» and «قيد المراجعة» were still taken after the approval because they
  * move no money. But «قيد المراجعة» over a row answered «رقمنا» took the claim off the company in silence, and
@@ -153,11 +154,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         await tx.$queryRaw`SELECT "id" FROM "courier_statements" WHERE "id" = ${id} FOR UPDATE`;
         const statement = await tx.courierStatement.findFirst({
           where: { id, companyId, storeId },
-          select: { status: true, approvedAt: true },
+          select: { status: true, approvedAt: true, matchingClosedAt: true },
         });
         if (!statement) throw new DecisionRefused(404, { error: 'الكشف غير موجود', code: 'NOT_FOUND' });
         // A closed statement takes no answer — the same sentence every door of it gives.
-        if (isApproved(statement)) throw new DecisionRefused(409, { ...closedStatementRefusal() });
+        if (isMatchingClosed(statement)) throw new DecisionRefused(409, { ...closedStatementRefusal() });
 
         // What may be said, asked of the order as it is at this moment. (A line no order carries has no order to ask.)
         if (!parkedLine) {
@@ -171,7 +172,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
                 orderId: match.orderId,
                 expectedAmount: match.expectedAmount === null ? null : Number(match.expectedAmount),
                 statementAmount: match.statementAmount === null ? null : Number(match.statementAmount),
-                approvedAt: statement.approvedAt,
+                approvedAt: statement.matchingClosedAt,
               },
             ],
           });
@@ -191,7 +192,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           where: {
             id: match.id, statementId: id, companyId,
             result: match.result, orderId: match.orderId,
-            statement: { approvedAt: null },
+            statement: { matchingClosedAt: null },
           },
           data,
         });
