@@ -235,28 +235,49 @@ function makeWorld(seed: { orders: Row[]; requests?: Row[]; batches?: Row[]; use
     orderStatusLog: { create: create('orderStatusLog', state.statusLogs) },
     orderActivity: { create: create('orderActivity', state.activities) },
     auditLog: { create: create('auditLog', state.audits) },
-    /** A transaction that really rolls back: what the callback wrote is undone when it throws. */
+    /**
+     * A transaction that really rolls back: what the callback wrote is undone when it throws. The callback gets its OWN handle
+     * (`tx`): a write on the outer `db` while the transaction is open would commit on its own in Postgres and survive the
+     * rollback, so here it throws.
+     */
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
       touched.add('$transaction');
       const before = structuredClone({ orders: state.orders, statusLogs: state.statusLogs, activities: state.activities });
+      open = true;
       try {
-        return await fn(db);
+        return await fn(tx);
       } catch (error) {
         state.orders.splice(0, state.orders.length, ...before.orders);
         state.statusLogs.splice(0, state.statusLogs.length, ...before.statusLogs);
         state.activities.splice(0, state.activities.length, ...before.activities);
         throw error;
+      } finally {
+        open = false;
       }
     },
   };
 
-  const db: any = new Proxy(models, {
-    get(target, prop) {
-      if (typeof prop === 'symbol' || NEVER_A_MODEL.has(prop)) return undefined;
-      if (!(prop in target)) throw new Error(`strict fake: db.${prop} is not part of this world (no stock, no wallet, no ledger here)`);
-      return target[prop];
-    },
-  });
+  let open = false;
+  const WRITES = new Set(['create', 'updateMany']);
+  const handle = (isTx: boolean): any =>
+    new Proxy(models, {
+      get(target, prop) {
+        if (typeof prop === 'symbol' || NEVER_A_MODEL.has(prop)) return undefined;
+        if (!(prop in target)) throw new Error(`strict fake: db.${prop} is not part of this world (no stock, no wallet, no ledger here)`);
+        const model = target[prop];
+        if (isTx || !open || prop === '$transaction') return model;
+        return new Proxy(model as Row, {
+          get(m, method) {
+            if (typeof method === 'string' && WRITES.has(method)) {
+              throw new Error(`strict fake: db.${prop}.${method} written outside the open transaction — it would not roll back`);
+            }
+            return m[method as string];
+          },
+        });
+      },
+    });
+  const db: any = handle(false);
+  const tx: any = handle(true);
 
   return { db, state, hooks, touched };
 }
