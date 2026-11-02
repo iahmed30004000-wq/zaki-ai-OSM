@@ -263,36 +263,68 @@ describe('courierPlaces', () => {
 });
 
 describe('placeNote: what the box says about the typed number', () => {
-  it('a known city id names its place', () => {
-    expect(placeNote('445153', places)).toEqual({ kind: 'place', text: 'السويداء — السويداء' });
-    expect(placeNote(' 445053 ', places)).toEqual({ kind: 'place', text: 'دمشق — دمشق' });
+  /** What the press uses for THIS row's parcels when nothing usable is typed: the browser's answer for the row's governorate. */
+  const rowOf = (name: string) => defaultCityOf(name, places)?.cityId ?? null;
+
+  it('a known city id names its place — on any row', () => {
+    expect(placeNote('445153', places, rowOf('السويداء'))).toEqual({ kind: 'place', text: 'السويداء — السويداء' });
+    expect(placeNote(' 445053 ', places, rowOf('دمشق'))).toEqual({ kind: 'place', text: 'دمشق — دمشق' });
+    expect(placeNote('445152', places, rowOf('السويداء'))).toEqual({ kind: 'place', text: 'الحسكة — الحسكة' });
   });
 
-  it('a known Region Id warns, and says the system ignores it and uses the governorate’s city — as the press does', () => {
-    const note = placeNote('3003', places)!;
+  it('a known Region Id warns, and says the system ignores it and uses the row’s city — as the press does', () => {
+    const note = placeNote('3003', places, rowOf('السويداء'))!;
     expect(note.kind).toBe('region');
     expect(note.text).toBe('هذا رقم المنطقة لـ«السويداء» وليس رقم مدينتها — النظام بيتجاهله ويستعمل 445153');
     // The old sentence told the person to type the city's number; the system now does that without being asked.
     expect(note.text).not.toContain('اكتب');
   });
 
-  it('القنيطرة’s Region Id names its city too (it had none to offer)', () => {
-    const note = placeNote('3004', places)!;
+  it('القنيطرة’s Region Id on the القنيطرة row names its city too (it had none to offer)', () => {
+    const note = placeNote('3004', places, rowOf('القنيطرة'))!;
     expect(note.kind).toBe('region');
     expect(note.text).toContain('«القنيطرة»');
     expect(note.text).toContain('النظام بيتجاهله ويستعمل 566122');
   });
 
-  it('every Region Id of the list says the city the press will use instead — the same number as the hint beside it', () => {
+  it('THE ROW’S CITY, NOT THE NUMBER’S: a Region Id typed on another governorate’s row names the city the press sends for THAT row', () => {
+    // 3002 is الحسكة's Region Id (its city is 445152). On the السويداء row the system ignores it and sends 445153.
+    const hasaka = placeNote('3002', places, rowOf('السويداء'))!;
+    expect(hasaka.text).toBe('هذا رقم المنطقة لـ«الحسكة» وليس رقم مدينتها — النظام بيتجاهله ويستعمل 445153');
+    expect(hasaka.text).not.toContain('445152');
+    // 4035 is اربد's Region Id (its city is 949533) — same row, same answer.
+    const irbid = placeNote('4035', places, rowOf('السويداء'))!;
+    expect(irbid.text).toContain('«اربد»');
+    expect(irbid.text).toContain('النظام بيتجاهله ويستعمل 445153');
+    expect(irbid.text).not.toContain('949533');
+  });
+
+  it('EVERY Region Id on EVERY row: the note names that row’s city — the one the press (defaultCourierCityId) sends', () => {
+    const rows = Object.values(places.regions).map((r) => r.name);
+    expect(rows).toHaveLength(26);
+    for (const [typedId, typedRegion] of Object.entries(places.regions)) {
+      for (const row of rows) {
+        const sentForThisRow = defaultCourierCityId('BASHA', row)!.cityId;
+        expect(placeNote(typedId, places, rowOf(row))?.text, `${typedRegion.name} (${typedId}) on the ${row} row`).toBe(
+          `هذا رقم المنطقة لـ«${typedRegion.name}» وليس رقم مدينتها — النظام بيتجاهله ويستعمل ${sentForThisRow}`,
+        );
+      }
+    }
+  });
+
+  it('a row whose governorate the list cannot answer: the old wording for every Region Id, with no promise', () => {
     for (const [id, region] of Object.entries(places.regions)) {
-      expect(placeNote(id, places)?.text, `${region.name} (${id})`).toContain(`النظام بيتجاهله ويستعمل ${region.cityId}`);
+      const note = placeNote(id, places, null)!;
+      expect(note.kind, id).toBe('region');
+      expect(note.text, id).toBe(`هذا رقم المنطقة لـ«${region.name}» وليس رقم مدينتها — اكتب رقم مدينتها من قائمتهم`);
+      expect(note.text, id).not.toContain('بيتجاهله');
     }
   });
 
   it('a Region Id whose governorate the list cannot answer warns without inventing a code — the old wording, nothing is ignored in favour of nothing', () => {
-    // Basha's real list answers every governorate now, so the branch is tried on a list that does not.
+    // Basha's real list answers every governorate now, so the branch is also tried on a list that does not.
     const unanswered: CourierPlaces = { cities: {}, regions: { '7': { name: 'القنيطرة', cityId: null } } };
-    const note = placeNote('7', unanswered)!;
+    const note = placeNote('7', unanswered, defaultCityOf('القنيطرة', unanswered)?.cityId ?? null)!;
     expect(note.kind).toBe('region');
     expect(note.text).toBe('هذا رقم المنطقة لـ«القنيطرة» وليس رقم مدينتها — اكتب رقم مدينتها من قائمتهم');
     expect(note.text).not.toContain('بيتجاهله');
@@ -300,15 +332,15 @@ describe('placeNote: what the box says about the typed number', () => {
 
   it('a number the list holds as both a region and a city is read as the city (the box and the press agree)', () => {
     const both: CourierPlaces = { cities: { '10': 'سين — سين' }, regions: { '10': { name: 'عين', cityId: 11 } } };
-    expect(placeNote('10', both)).toEqual({ kind: 'place', text: 'سين — سين' });
+    expect(placeNote('10', both, 11)).toEqual({ kind: 'place', text: 'سين — سين' });
   });
 
   it('NEGATIVE: an unknown number, an empty box, text and no list at all say nothing', () => {
-    expect(placeNote('99999999', places)).toBeNull();
-    expect(placeNote('', places)).toBeNull();
-    expect(placeNote('12ab', places)).toBeNull();
-    expect(placeNote('-5', places)).toBeNull();
-    expect(placeNote('445153', null)).toBeNull();
+    expect(placeNote('99999999', places, 445153)).toBeNull();
+    expect(placeNote('', places, 445153)).toBeNull();
+    expect(placeNote('12ab', places, 445153)).toBeNull();
+    expect(placeNote('-5', places, 445153)).toBeNull();
+    expect(placeNote('445153', null, 445153)).toBeNull();
   });
 });
 
@@ -389,6 +421,12 @@ describe('defaultCityOf: what the browser is told about a governorate nobody typ
 
   it('is the press’s answer for every one of the fourteen', () => {
     for (const { oms, code } of ORACLE) expect(defaultCityOf(oms, places)?.cityId, oms).toBe(code);
+  });
+
+  it('and for every one of the list’s 26 governorates, whatever the spelling — the number the note promises is the number sent', () => {
+    for (const [id, region] of Object.entries(places.regions)) {
+      expect(defaultCityOf(region.name, places)?.cityId, `${region.name} (${id})`).toBe(defaultCourierCityId('BASHA', region.name)?.cityId);
+    }
   });
 
   it('NEGATIVE: no list, an unknown governorate or an empty name say nothing', () => {

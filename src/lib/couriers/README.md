@@ -107,9 +107,12 @@ file alike):
 1. the number **typed** on the fees screen («رمزها عند الشركة») — it wins, except
    a number their list holds as a Region Id and as no city's (3003 for السويداء,
    `places.ts` `isRegionIdOnly`): that is not a place a parcel can go to, so it
-   counts as not typed and the box says the system ignores it. A number the
-   list does not know at all, and any number for a courier we hold no list for,
-   still wins;
+   counts as not typed and the box says the system ignores it, naming the city
+   used INSTEAD — the default of the box's own row, whichever Region Id was
+   typed. A number the list does not know at all, and any number for a courier
+   we hold no list for, still wins. To take a typed number back, empty the box
+   and press «تحديث»: the screen then sends `courierCityId: null`, which clears
+   it (a row that never held a number sends nothing);
 2. else the courier's **own list** (`reference/couriers/basha-villages.json`,
    read by `places.ts`): within their region of the same name, the city named
    like the governorate («السويداء» 445153, not «مدينة السويداء» 566117), else

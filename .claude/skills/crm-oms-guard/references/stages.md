@@ -20,7 +20,9 @@
 >    - LogesTechs adapter BUILT from their documentation (v. 9-6-2026). It
 >      registers only when every env var is set, and the provider still needs
 >      code=LOGESTECHS plus apiEnabled. Their PARTIALLY_DELIVERED stays null
->      until Stage 9. Only open question left: do they support webhooks.
+>      until Stage 9. Only open question left: do they support webhooks
+>      (closed 2/11: the owner cancelled the webhook, statuses come from
+>      the API poll).
 >    - مندوب (AGENT) vs COMPANY: away from an agent a parcel moves directly;
 >      away from a company it is recalled and a REPLACEMENT order is raised
 >      (replacesOrderId), re-entering preparation. Never overwrite the
@@ -158,7 +160,8 @@ Split: `parent_order_id`, children get suffixed numbers (SY-4401-A).
 Delivery fee charged PER SHIPMENT, never divided, shown before confirming.
 PARTIALLY_DELIVERED with post-event settlement comparison. A pending
 cancellation auto-rejects with "too late - already delivered" when a
-DELIVERED webhook arrives.
+DELIVERED event arrives (the courier's status webhook was cancelled on
+2/11, and a feed never asserts DELIVERED — the door and the statement do).
 
 ## Stage 10 — Courier custody
 `COURIER_CUSTODY` inventory location. Enables: same-run item reassignment

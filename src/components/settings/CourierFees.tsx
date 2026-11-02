@@ -184,11 +184,17 @@ export function CourierFees({
       return;
     }
 
-    // The courier's own id for the region, typed from their list. Empty = leave what is stored; anything but a positive
-    // whole number is refused here rather than sent, because their API would refuse the shipment later.
+    // The courier's own id for the region, typed from their list. A number is written. An EMPTY box has two meanings: on a
+    // row that never held a number it sends nothing (there is nothing to change); on a row that DID hold one and was
+    // emptied it sends `null`, which clears it — and the courier's own list answers for that governorate again
+    // (`couriers/city-id`). It used to send nothing in both cases, so a stored number could not be taken back except by
+    // typing another one, and the box's own hint «leave it empty and the list's number is used» was false for exactly
+    // those rows. Anything but a positive whole number is refused here rather than sent, because their API would refuse
+    // the shipment later.
     const code = d.courierCityId.trim();
-    const courierCityId = code === '' ? undefined : Number(code);
-    if (courierCityId !== undefined && !(Number.isInteger(courierCityId) && courierCityId > 0)) {
+    const hadOne = typeof current?.courierCityId === 'number';
+    const courierCityId: number | null | undefined = code === '' ? (hadOne ? null : undefined) : Number(code);
+    if (typeof courierCityId === 'number' && !(Number.isInteger(courierCityId) && courierCityId > 0)) {
       toast.failed('رمز الشركة غير صالح — رقم صحيح من قائمتهم');
       return;
     }
@@ -214,6 +220,7 @@ export function CourierFees({
           // ABSENT on the wire. A typed `0` is sent as `0`.
           lateThresholdDays,
           returnFee,
+          // A number, `null` (a stored number was emptied: clear it) or absent (nothing to change).
           courierCityId,
           reason,
         }),
@@ -355,13 +362,18 @@ export function CourierFees({
               label: 'رمزها عند الشركة',
               // Their id, from THEIR list (the villages sheet they send) — never invented. A number typed here is saved
               // with the row's «تحديث» and is the one sent — unless their list proves it is a Region Id, which the note
-              // below says and the press ignores. An EMPTY box is no longer a gap when their list names this
-              // governorate: the press takes that city by itself (`couriers/city-id`), and the box shows which. Only a
-              // governorate their list cannot answer keeps the warning it always had: without an id their API refuses.
+              // below says and the press ignores — and the note names the city used INSTEAD, the row's own default. An
+              // EMPTY box is no longer a gap when their list names this governorate: the press takes that city by itself
+              // (`couriers/city-id`), and the box shows which; emptying a number that was stored and pressing «تحديث»
+              // clears it, so the list answers again. Only a governorate their list cannot answer keeps the warning it
+              // always had: without an id their API refuses.
               render: (r) => {
                 const typed = draftFor(r.id).courierCityId;
-                const note = placeNote(typed, places);
-                const byList = typed.trim() === '' ? defaultCityOf(r.name, places) : null;
+                // What the press uses for THIS row's parcels when nothing usable is typed. A typed Region Id is replaced
+                // by this — the row's own default, never the city of the Region Id's own region — so the note names it.
+                const rowDefault = defaultCityOf(r.name, places);
+                const note = placeNote(typed, places, rowDefault?.cityId ?? null);
+                const byList = typed.trim() === '' ? rowDefault : null;
                 return (
                   <div>
                     <input
@@ -371,8 +383,10 @@ export function CourierFees({
                       placeholder={byList ? String(byList.cityId) : 'بلا رمز'}
                       title={
                         byList
-                          ? 'اتركه فاضي وبيُستعمل رمز قايمة الشركة الظاهر تحته، أو اكتب رقماً ثانياً وبيصير هو المعتمد.'
-                          : 'رمز هذه المحافظة لدى الشركة، من قائمة مناطقهم — بدونه لا تُنشأ الشحنة آلياً.'
+                          ? 'اتركه فاضي (أو امسح الرقم واضغط «تحديث») وبيُستعمل رمز قايمة الشركة الظاهر تحته، أو اكتب رقماً ثانياً وبيصير هو المعتمد.'
+                          : rowDefault
+                            ? 'امسح الرقم واضغط «تحديث» وبيرجع النظام يستعمل رمز قايمة الشركة لهذه المحافظة.'
+                            : 'رمز هذه المحافظة لدى الشركة، من قائمة مناطقهم — بدونه لا تُنشأ الشحنة آلياً.'
                       }
                       type="number"
                       min={1}

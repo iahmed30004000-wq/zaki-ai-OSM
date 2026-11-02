@@ -38,13 +38,17 @@ export function defaultCityOf(
  * What the box says about the number typed in it: the place it names, a warning that it is a Region Id, or nothing.
  * A number that is both a known city and a known region is read as the city — the one the courier's API takes.
  *
- * A Region Id is not sent (`couriers/city-id`, `isRegionIdOnly` — the same reading as here): when the list gives that
- * governorate a city, the note says the system ignores the typed number and uses the city's; when it gives none, the
- * person is told which number is missing, and the parcel stays refused until one is typed.
+ * A Region Id is not sent (`couriers/city-id`, `isRegionIdOnly` — the same reading as here). What is used INSTEAD is the
+ * default of the ROW'S governorate, not the city of the typed number's own region: a 3002 (الحسكة's Region Id) typed on
+ * the السويداء row is ignored and 445153 goes — so the caller passes `rowCityId`, the `defaultCityOf` answer for the row
+ * (exactly what the press will use for that row's parcels). The note names that number; when the row's governorate has
+ * none, the person is told to type one, with no promise, and the parcel stays refused until one is typed.
  */
 export function placeNote(
   typed: string,
   places: CourierPlaces | null,
+  /** The city the press sends THIS row's governorate to when nothing usable is typed (`defaultCityOf`), null when it has none. */
+  rowCityId: number | null,
 ): { kind: 'place'; text: string } | { kind: 'region'; text: string } | null {
   const n = typed.trim();
   if (!places || !/^\d+$/.test(n)) return null;
@@ -54,9 +58,10 @@ export function placeNote(
   if (region) {
     return {
       kind: 'region',
-      text: region.cityId
-        ? `هذا رقم المنطقة لـ«${region.name}» وليس رقم مدينتها — النظام بيتجاهله ويستعمل ${region.cityId}`
-        : `هذا رقم المنطقة لـ«${region.name}» وليس رقم مدينتها — اكتب رقم مدينتها من قائمتهم`,
+      text:
+        rowCityId !== null
+          ? `هذا رقم المنطقة لـ«${region.name}» وليس رقم مدينتها — النظام بيتجاهله ويستعمل ${rowCityId}`
+          : `هذا رقم المنطقة لـ«${region.name}» وليس رقم مدينتها — اكتب رقم مدينتها من قائمتهم`,
     };
   }
   return null;

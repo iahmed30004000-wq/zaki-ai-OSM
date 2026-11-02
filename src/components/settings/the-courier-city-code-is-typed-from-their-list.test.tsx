@@ -6,8 +6,12 @@ import React from 'react';
 
 /**
  * «انا ليش ما بقدر ادخل الرموز؟» — the courier's own id for a governorate, typed on the fees screen from the list the
- * courier sends, and saved with the row. Empty keeps what is stored; a number that is not a positive whole number is
- * refused before it is sent. The endpoint half (absent keeps · number writes · null clears · audited) is below.
+ * courier sends, and saved with the row. A number that is not a positive whole number is refused before it is sent. An
+ * EMPTY box depends on the row (2/11, the independent review): one that never held a number sends nothing — there is
+ * nothing to change — but one that HELD a number and was emptied sends `null`, which clears it so the courier's own list
+ * answers again. (Empty used to keep what was stored in both cases, and the box's own hint «leave it empty and the list's
+ * number is used» was false for the second.) The endpoint half (absent keeps · number writes · null clears · audited) is
+ * in `api/settings/delivery-fees/absent-is-not-zero.test.ts`.
  */
 
 const { apiJson, failed } = vi.hoisted(() => ({ apiJson: vi.fn(), failed: vi.fn() }));
@@ -66,11 +70,59 @@ describe('the fees screen', () => {
     expect(sent().reason).toBeUndefined();
   });
 
-  it('NEGATIVE: an empty box sends no code at all — the stored one is kept', async () => {
+  it('NEGATIVE: a box that was EMPTY FROM THE START sends no code at all — there is nothing to change or to clear', async () => {
     const user = userEvent.setup();
     await open();
     await user.click(updateButtons()[0]);
     await waitFor(() => expect(puts()).toHaveLength(1));
+    expect(Object.keys(sent())).not.toContain('courierCityId');
+  });
+
+  it('a stored code that is left alone is sent as it is', async () => {
+    const user = userEvent.setup();
+    await open();
+    await user.click(updateButtons()[1]);
+    await waitFor(() => expect(puts()).toHaveLength(1));
+    expect(sent()).toMatchObject({ regionId: ALEPPO, fee: 4, courierCityId: 705991 });
+  });
+
+  it('a stored code that is EMPTIED is cleared: the PUT carries courierCityId null, so the list answers again', async () => {
+    const user = userEvent.setup();
+    await open();
+    await user.clear(box('رمز حلب عند الشركة'));
+    await user.click(updateButtons()[1]);
+    await waitFor(() => expect(puts()).toHaveLength(1));
+    expect(sent()).toMatchObject({ regionId: ALEPPO, fee: 4 });
+    // The key is there, and it is null — not absent (absent keeps the stored number) and not 0.
+    expect(Object.keys(sent())).toContain('courierCityId');
+    expect(sent().courierCityId).toBeNull();
+    expect(sent().reason).toBeUndefined();
+  });
+
+  it('a stored code that is emptied and typed over is the new number, not a clear', async () => {
+    const user = userEvent.setup();
+    await open();
+    await user.clear(box('رمز حلب عند الشركة'));
+    await user.type(box('رمز حلب عند الشركة'), '705992');
+    await user.click(updateButtons()[1]);
+    await waitFor(() => expect(puts()).toHaveLength(1));
+    expect(sent().courierCityId).toBe(705992);
+  });
+
+  it('NEGATIVE: a governorate with no fee row yet has nothing to clear — adding it sends no code', async () => {
+    const HOMS = 'r0000000-0000-4000-8000-00000000000c';
+    apiJson.mockImplementation(async (url: string, init?: { method?: string }) =>
+      url === '/api/settings/delivery-fees' && !init?.method
+        ? { regions: [...FEES.regions, { id: HOMS, name: 'حمص' }], fees: FEES.fees }
+        : { fee: {} }
+    );
+    const user = userEvent.setup();
+    render(<CourierFees courierId={COURIER} />);
+    await waitFor(() => expect(screen.getAllByLabelText('رمز حمص عند الشركة').length).toBeGreaterThan(0));
+    await user.type(screen.getAllByLabelText('أجرة حمص')[0], '5');
+    await user.click(screen.getAllByRole('button', { name: /إضافة/ })[0]);
+    await waitFor(() => expect(puts()).toHaveLength(1));
+    expect(sent()).toMatchObject({ regionId: HOMS, fee: 5 });
     expect(Object.keys(sent())).not.toContain('courierCityId');
   });
 

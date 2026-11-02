@@ -41,7 +41,7 @@ import type { CourierPlaces } from './place-note';
  * The spelling is folded with `foldArabic` (`address.ts`), the system's one answer to «are these the same place»:
  * their sheet writes «ادلب» and ours «إدلب».
  *
- * SERVER ONLY: the list is 461 rows, and the browser is sent only the 150 cities and the regions (see `couriers/place-note`).
+ * SERVER ONLY: the list is 461 rows, and the browser is sent only the 152 cities and the regions (see `couriers/place-note`).
  */
 
 export interface CourierVillage {

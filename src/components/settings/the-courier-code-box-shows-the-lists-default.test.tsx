@@ -182,3 +182,103 @@ describe('the hint is never saved as if somebody typed it', () => {
     expect(Object.keys(body)).not.toContain('courierCityId');
   });
 });
+
+/**
+ * THE NOTE PROMISES WHAT THE PRESS WILL DO FOR THIS ROW (the independent review, 2/11).
+ *
+ * A Region Id typed in the box is ignored, and the city used instead is the one of the ROW's governorate — not the city of
+ * the Region Id's own region. The note used to name the second, so 3002 (الحسكة's) typed on the السويداء row said 445152 while
+ * the press sent 445153: only the sentence was false, the parcel went right. It names the first now.
+ */
+describe('the note names the ROW’s city, not the typed Region Id’s own', () => {
+  const NOTE = (region: string, city: number) => `هذا رقم المنطقة لـ«${region}» وليس رقم مدينتها — النظام بيتجاهله ويستعمل ${city}`;
+
+  it('3002 (الحسكة’s Region Id) on the السويداء row: the system uses 445153 — never الحسكة’s 445152', async () => {
+    const user = userEvent.setup();
+    await open('السويداء');
+    await waitFor(() => expect(box('السويداء').placeholder).toBe('445153'));
+    await user.type(box('السويداء'), '3002');
+    const notes = await screen.findAllByText(NOTE('الحسكة', 445153));
+    expect(notes[0].className).toContain('text-[var(--sys-warning)]');
+    expect(screen.queryByText(/445152/)).toBeNull();
+  });
+
+  it('4035 (اربد’s Region Id) on the السويداء row: 445153, not 949533', async () => {
+    const user = userEvent.setup();
+    await open('السويداء');
+    await waitFor(() => expect(box('السويداء').placeholder).toBe('445153'));
+    await user.type(box('السويداء'), '4035');
+    expect((await screen.findAllByText(NOTE('اربد', 445153))).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/949533/)).toBeNull();
+  });
+
+  it('the same 3002 on the دمشق row names دمشق’s city: the note follows the row', async () => {
+    regions = [{ id: 'r-dam', name: 'دمشق' }];
+    fees = [fee('r-dam', null)];
+    const user = userEvent.setup();
+    await open('دمشق');
+    await waitFor(() => expect(box('دمشق').placeholder).toBe('445053'));
+    await user.type(box('دمشق'), '3002');
+    expect((await screen.findAllByText(NOTE('الحسكة', 445053))).length).toBeGreaterThan(0);
+  });
+
+  it('a Region Id on a row their list does not name: the old wording, with no promise', async () => {
+    regions = [{ id: 'r-baghdad', name: 'بغداد' }];
+    fees = [fee('r-baghdad', null)];
+    const user = userEvent.setup();
+    await open('بغداد');
+    await user.type(box('بغداد'), '3003');
+    expect((await screen.findAllByText('هذا رقم المنطقة لـ«السويداء» وليس رقم مدينتها — اكتب رقم مدينتها من قائمتهم')).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/بيتجاهله/)).toBeNull();
+  });
+});
+
+/**
+ * THE BOX'S TITLE IS TRUE IN EACH OF ITS THREE STATES.
+ *
+ * «Leave it empty and the list's number is used» was false for a row that held a number: emptying it sent nothing and the
+ * PUT kept the stored one. Emptying a stored number now clears it (see `the-courier-city-code-is-typed-from-their-list`),
+ * and the title says how.
+ */
+describe('the box’s title says what is true', () => {
+  it('empty, and the list answers: leave it empty — or clear a number and press «تحديث» — and the list’s number is used', async () => {
+    await open('السويداء');
+    await waitFor(() => expect(box('السويداء').placeholder).toBe('445153'));
+    expect(box('السويداء').title).toBe(
+      'اتركه فاضي (أو امسح الرقم واضغط «تحديث») وبيُستعمل رمز قايمة الشركة الظاهر تحته، أو اكتب رقماً ثانياً وبيصير هو المعتمد.',
+    );
+  });
+
+  it('a number in it, and the list answers: clear it and press «تحديث» to go back to the list’s number', async () => {
+    fees = [fee('r-sweida', 566117)];
+    await open('السويداء');
+    await waitFor(() => expect(box('السويداء').value).toBe('566117'));
+    expect(box('السويداء').title).toBe('امسح الرقم واضغط «تحديث» وبيرجع النظام يستعمل رمز قايمة الشركة لهذه المحافظة.');
+  });
+
+  it('the list cannot answer: the old title — without a number the shipment is not created', async () => {
+    regions = [{ id: 'r-baghdad', name: 'بغداد' }];
+    fees = [fee('r-baghdad', null)];
+    await open('بغداد');
+    expect(box('بغداد').title).toBe('رمز هذه المحافظة لدى الشركة، من قائمة مناطقهم — بدونه لا تُنشأ الشحنة آلياً.');
+  });
+});
+
+/**
+ * A stored number emptied here is sent as `null` — through the real screen, in this file's own fixtures too.
+ */
+describe('emptying a stored number on this screen', () => {
+  it('sends null, and the hint is what the box shows after the save', async () => {
+    fees = [fee('r-sweida', 566117)];
+    const user = userEvent.setup();
+    await open('السويداء');
+    await waitFor(() => expect(box('السويداء').value).toBe('566117'));
+    await user.clear(box('السويداء'));
+    // Emptied (not yet saved): the list's number is already the hint.
+    await waitFor(() => expect(box('السويداء').placeholder).toBe('445153'));
+    await user.click(screen.getAllByRole('button', { name: /تحديث/ })[0]);
+    await waitFor(() => expect(puts()).toHaveLength(1));
+    const body = JSON.parse(puts()[0][1].body as string) as Record<string, unknown>;
+    expect(body.courierCityId).toBeNull();
+  });
+});
