@@ -77,7 +77,10 @@ describe('the source: no write door reads whom to act as', () => {
 
 const { db, requireContext, assertOrderAccess, reserveOrderLines } = vi.hoisted(() => ({
   db: {
-    order: { updateMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn() },
+    // `findMany`, `orderItem` and `$executeRaw` are the confirmed-twin guard's (#165): the customer's lock, her lines, no twin.
+    order: { updateMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(async () => []) },
+    orderItem: { findMany: vi.fn(async () => []) },
+    $executeRaw: vi.fn(async () => 0),
     customer: { findUnique: vi.fn(async () => null), update: vi.fn() },
     orderContactAttempt: { count: vi.fn(async () => 1) },
     orderStatusLog: { create: vi.fn() },
