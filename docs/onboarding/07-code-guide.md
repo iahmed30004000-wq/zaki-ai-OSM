@@ -38,7 +38,6 @@ flowchart TB
   JB --> DB
   JB -->|"deliver-app-events — HMAC"| S7["نظام 7 — الردود"]
   JB -->|"sync-courier-status"| CO["شركات الشحن"]
-  CO -->|"webhook"| RT
 ```
 
 ### 1.2 مثال حقيقي: موظفة بتكبس «تأكيد»
@@ -256,7 +255,7 @@ flowchart LR
 | انتقال شحن يدوي | `POST /api/orders/[id]/shipping` | `orders.change_status` |
 | نتيجة الباب (مسلّم، جزئي، ما أخد شي) | `POST /api/ops/tracking/deliver` | `ops.deliver` (`deliver/route.ts:84`) |
 | استلام المرتجع وعدّه | `POST /api/ops/returns` | `ops.returns` (`returns/route.ts:213`) |
-| كلمة الشركة | webhook + مهمة `sync-courier-status` | ← `couriers/apply-event.ts` |
+| كلمة الشركة | مهمة `sync-courier-status` (بتسحب من API الشركة؛ الويب هوك ملغي بقرار المالك 2/11) | ← `couriers/apply-event.ts` |
 | تعديل حقول قبل التأكيد | `PATCH /api/orders/[id]` | `orders.edit`، والسعر `orders.change_price`، والأجرة `orders.change_fee` (`orders/[id]/route.ts:788`، `:877`، `:1297`) |
 | تعديل بعد التأكيد | طلب تعديل (القسم 6) | `orders.request_change` |
 

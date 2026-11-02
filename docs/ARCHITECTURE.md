@@ -33,7 +33,7 @@
 | صفحات الهبوط | `landing-*.ts` · `page-templates.ts` — **مسار المتجر والهبوط له وكيله، ما بنلمسه** |
 | المتجر | `store-*.ts` · `storefront*.ts` · `system-themes.ts` — نفس القاعدة |
 | الذكاء الاصطناعي | `ai.ts` · `ai-provider/` (`index.ts` الباب الوحيد · `catalogue.ts` المزوّدون والنماذج · `settings.ts` المخزَّن · `routing.ts` أي مزوّد ونموذج ومفتاح · `call.ts` النداء وحرّاس `localOnly`) · `ai-endpoint.ts` · `ai-prompts.ts` · `ai-rate.ts` · `ai-scope.ts` · `ai-vision.ts` |
-| شركات الشحن | كلها تحت `couriers/`: المحوّلات (`logestechs.ts` · `manual.ts` · `apply-event.ts` · `webhook-token.ts`) وفوقها منطق الإرسال والنقل والإلغاء والمدن (`dispatch.ts` · `transfer.ts` · `remote-cancel.ts` · `cancel-carryout.ts` · `send-reset.ts` · `change.ts` · `city-gaps.ts` · `places.ts` · `scope.ts` · `score.ts` · `words.ts`). كانت `courier-*.ts` مفرودة بـ`src/lib/` وانتقلت بلا تغيير سلوك |
+| شركات الشحن | كلها تحت `couriers/`: المحوّلات (`logestechs.ts` · `manual.ts` · `apply-event.ts`؛ الحالات بتنسحب من API الشركة، والويب هوك ملغي) وفوقها منطق الإرسال والنقل والإلغاء والمدن (`dispatch.ts` · `transfer.ts` · `remote-cancel.ts` · `cancel-carryout.ts` · `send-reset.ts` · `change.ts` · `city-gaps.ts` · `city-id.ts` رمز مدينة المحافظة عند الشركة: المكتوب بالشاشة وإلا من قايمتهم · `places.ts` · `scope.ts` · `score.ts` · `words.ts`). كانت `courier-*.ts` مفرودة بـ`src/lib/` وانتقلت بلا تغيير سلوك |
 | التتبّع | `parcel-tracking/` (`alert.ts` · `filters.ts` · `list.ts` · `priority.ts` · `sight.ts`) و`transit.ts` و`order-tracking.ts` = **تتبّع الطرود**. أما مجلد `tracking/` = **بكسلات الإعلانات** (كانت الكلمة بمعنيين، والآن لكل معنى مجلده) |
 | الإعلانات | `ads/` (ميتا · تيك توك · سناب · يدوي) · `conversions/` (أحداث التحويل لميتا) · `campaign*.ts` |
 | التكاملات | `telegram/` · `whatsapp/` · `v1/` (واجهة الأنظمة الخارجية) · `apps/` (الأحداث لنظام ٧) |
@@ -115,7 +115,7 @@
 | مهمة وحدة بالمرة | `src/lib/jobs/two-workers-one-job.test.ts` |
 | أسماء المهام وفواصلها وترتيبها | `src/lib/jobs/definitions-are-pinned.test.ts` (إسقاط مهمة أو تغيير فاصل = أحمر) |
 | الذكاء الاصطناعي | `ai-proposal-only.test.ts` · `ai-routing.test.ts` |
-| شركات الشحن (أمر الفحص) | `npx vitest run src/lib/couriers src/lib/outbound-limit.test.ts src/lib/jobs/basha-statuses-come-from-the-api.test.ts src/app/api/webhooks/couriers src/app/api/delivery-providers src/app/api/settings/couriers` (مساران قديمان بالجرد: `src/lib/courier-dispatch.test.ts` و`src/lib/courier-scope.test.ts` صارا داخل `src/lib/couriers/`) |
+| شركات الشحن (أمر الفحص) | `npx vitest run src/lib/couriers src/lib/outbound-limit.test.ts src/lib/jobs/basha-statuses-come-from-the-api.test.ts src/app/api/webhooks/couriers src/app/api/delivery-providers src/components/settings/the-courier-code-box-shows-the-lists-default.test.tsx` (مساران قديمان بالجرد: `src/lib/courier-dispatch.test.ts` و`src/lib/courier-scope.test.ts` صارا داخل `src/lib/couriers/`) |
 | تتبّع الطرود (أمر الفحص) | `npx vitest run src/lib/parcel-tracking src/app/api/ops/tracking src/components/screens/the-tracking-screen-pages-and-filters.test.tsx` |
 | لا سر بمستودع | `no-secret-reaches-a-commit.test.ts` · `npm run scan:secrets` |
 | لا شي مبني وما حدا بيستعمله | `nothing-unused-ships.test.ts` (مكوّنات، صفحات، أبواب، حزم، وتصديرات `src/lib` بسقف ما بيزيد: التصدير غير المستعمل الجديد بيفشل، والمخطَّط له بسبب مكتوب) |
