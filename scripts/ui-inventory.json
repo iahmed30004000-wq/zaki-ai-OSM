@@ -931,7 +931,7 @@
   },
   "src/components/screens/ConfirmationMineScreen.tsx": {
     "buttons": 9,
-    "inputs": 4,
+    "inputs": 5,
     "columns": 6,
     "cards": 0,
     "modals": 0,
@@ -1271,7 +1271,7 @@
   },
   "src/components/screens/OrdersScreen.tsx": {
     "buttons": 19,
-    "inputs": 9,
+    "inputs": 10,
     "columns": 0,
     "cards": 1,
     "modals": 0,

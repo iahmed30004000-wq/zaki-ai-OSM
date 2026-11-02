@@ -44,6 +44,8 @@ const FULL = {
   source: 'FACEBOOK',
   courierId: 'cour-1',
   regionId: 'reg-1',
+  // «ماسكه» (2/11): who holds it now — carried by a saved view like the rest.
+  holderId: 'u-7',
   from: '2026-09-01',
   to: '2026-09-30',
   lateDays: '10',
@@ -52,7 +54,7 @@ const FULL = {
 describe('the filters a person set, as the one string that asks for them', () => {
   it('writes every filter that is set and nothing that is not', () => {
     expect(orderFiltersToQuery(FULL)).toBe(
-      'q=0789&status=DELIVERED&productId=prod-1&source=FACEBOOK&courierId=cour-1&regionId=reg-1&from=2026-09-01&to=2026-09-30&lateDays=10'
+      'q=0789&status=DELIVERED&productId=prod-1&source=FACEBOOK&courierId=cour-1&regionId=reg-1&holderId=u-7&from=2026-09-01&to=2026-09-30&lateDays=10'
     );
     // Nothing set is the empty string — not nine `=all` nobody chose.
     expect(orderFiltersToQuery(EMPTY_ORDER_FILTERS)).toBe('');
