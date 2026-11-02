@@ -53,8 +53,9 @@ const importsFromTheOneFile = (src: string, name: string) =>
  * THE TEN PLACES THAT WRITE AN ORDER'S COST OF GOODS, and what each asks of the one file.
  *
  * `unitCostsOf` prices ONE unit of a product (creation: the figure, else the batches' average, else 0) — Telegram included since
- * RV574. The delivery prices the units that LEFT (`fixedCostsOf` × `taken`) and, on a short shelf, puts the figure on the estimate
- * (`costOfACopy`, RV576); the replacement and the win-back copy another order's cost (`fixedCostsOf` + `costOfACopy`, RV575).
+ * RV574. The delivery prices the units that LEFT (`fixedCostsOf` × `taken`) and, on a short shelf whose every line has a figure,
+ * writes Σ figure × units (`costWhenEveryLineHasAFigure`, RV576); the replacement copies another order's cost (`fixedCostsOf` +
+ * `costOfACopy`), and the win-back takes Σ figure × units when every line has one, else the copied cost (RV575).
  */
 const DOORS: Array<{ file: string; asks: RegExp; names: string[]; what: string; writes?: false }> = [
   { file: 'src/app/api/orders/route.ts', asks: /unitCostsOf\(\s*db\b/, names: ['unitCostsOf'], what: 'the manual door' },
@@ -64,10 +65,10 @@ const DOORS: Array<{ file: string; asks: RegExp; names: string[]; what: string; 
   // The writer of a migrated order is `order-migration.ts`; this route hands it the question (its `unitCost` dependency).
   { file: 'src/app/api/orders/import/migrate/route.ts', asks: /unitCostsOf\(\s*tx\b/, names: ['unitCostsOf'], what: 'the migration of old orders (the dependency it hands the writer)', writes: false },
   { file: 'src/app/api/orders/[id]/route.ts', asks: /unitCostsOf\(\s*db\b[\s\S]*fixedCostsOf\(\s*db\b/, names: ['unitCostsOf', 'fixedCostsOf'], what: 'the lines edit — the units that go on' },
-  { file: 'src/lib/stock-consumption.ts', asks: /fixedCostsOf\(\s*tx\b[\s\S]*costOfACopy\(/, names: ['fixedCostsOf', 'costOfACopy'], what: 'the delivery — the units that left, and the figure on a short shelf' },
+  { file: 'src/lib/stock-consumption.ts', asks: /fixedCostsOf\(\s*tx\b[\s\S]*costWhenEveryLineHasAFigure\(/, names: ['fixedCostsOf', 'costWhenEveryLineHasAFigure'], what: 'the delivery — the units that left, and the figures on a short shelf' },
   { file: 'src/lib/replacement-order.ts', asks: /fixedCostsOf\(\s*tx\b[\s\S]*costOfACopy\(/, names: ['fixedCostsOf', 'costOfACopy'], what: 'a replacement and a box handed to another customer' },
   { file: 'src/lib/telegram/order-creation.ts', asks: /unitCostsOf\(\s*db\b/, names: ['unitCostsOf'], what: 'Telegram — the same unit cost as every other door since RV574' },
-  { file: 'src/app/api/confirmation/winback/route.ts', asks: /fixedCostsOf\(\s*db\b[\s\S]*costOfACopy\(/, names: ['fixedCostsOf', 'costOfACopy'], what: 'the win-back — a copy of the cancelled order, with the figure on top (RV575)' },
+  { file: 'src/app/api/confirmation/winback/route.ts', asks: /fixedCostsOf\(\s*db\b[\s\S]*costWhenEveryLineHasAFigure\(/, names: ['fixedCostsOf', 'costWhenEveryLineHasAFigure'], what: 'the win-back — the figures when every line has one, else the copied cost (RV575)' },
 ];
 
 describe('each door that writes an order’s cost asks the owner’s figure — by the call, not by the import', () => {
@@ -204,13 +205,19 @@ describe('the rules the figure follows are written once, in the one file, and ea
     expect(stock).toMatch(/if \(taken > 0 && short === 0\) \{/);
   });
 
-  it('a SHORT or empty shelf puts the figure on the estimate through `costOfACopy`, by every unit of the parcel — and only when a figured line left (RV576)', () => {
+  it('a SHORT or empty shelf writes Σ figure × units only when EVERY line of the parcel has a figure, and never shares the estimate out (RV576 · B1)', () => {
     const stock = code('src/lib/stock-consumption.ts');
-    expect(stock).toMatch(/\} else if \(lines\.some\(\(l\) => l\.quantity \+ l\.freeQuantity > 0 && figures\.has\(l\.productId\)\)\) \{/);
-    const branch = stock.slice(stock.indexOf('} else if (lines.some('), stock.indexOf('if (shortLines.length > 0)'));
-    expect(branch).toMatch(/costOfACopy\(\s*order\.estimatedCostOfGoods \?\? 0,/);
-    expect(branch).toMatch(/units: Math\.max\(0, l\.quantity \+ l\.freeQuantity\)/);
-    expect(branch, 'الرفّ الناقص يسعّر من الدفعات').not.toMatch(/result\.cost|orderCost/);
+    const branch = stock.slice(stock.indexOf('} else {', stock.indexOf('if (taken > 0 && short === 0) {')), stock.indexOf('if (shortLines.length > 0)'));
+    expect(branch).toMatch(/costWhenEveryLineHasAFigure\(\s*lines\.map\(\(l\) => \(\{ productId: l\.productId, units: l\.quantity \+ l\.freeQuantity \}\)\),\s*figures,\s*minorUnit\s*\)/);
+    expect(branch).toMatch(/if \(allFigured !== null\)/);
+    expect(branch, 'الرفّ الناقص يسعّر من الدفعات أو يقسم التقدير').not.toMatch(/result\.cost|orderCost|costOfACopy|estimatedCostOfGoods \?\?/);
+  });
+
+  it('`costWhenEveryLineHasAFigure` is exact or nothing: every line that carries units has a figure (`has`), else `null`', () => {
+    const body = one.slice(one.indexOf('export function costWhenEveryLineHasAFigure('), one.indexOf('const round4'));
+    expect(body).toMatch(/const carrying = lines\.filter\(\(l\) => l\.units > 0\);/);
+    expect(body).toMatch(/if \(carrying\.length === 0 \|\| !carrying\.every\(\(l\) => fixed\.has\(l\.productId\)\)\) return null;/);
+    expect(body, 'يقرأ الصفر على أنه «لا رقم»').not.toMatch(/fixed\.get\([^)]*\)\s*\|\|/);
   });
 
   it('the delivery never lets the figure reach the ledger: the SALE line, the draw-down and the return carry no figure', () => {
@@ -233,10 +240,10 @@ describe('the rules the figure follows are written once, in the one file, and ea
     expect(tg, 'تلجرام لسا بيقرأ دفعة لحاله').not.toMatch(/batches|costPerUnit|productionDate/);
   });
 
-  it('the win-back copies the cancelled order’s cost through `costOfACopy`, by every unit of its lines, the gift included (RV575)', () => {
+  it('the win-back takes Σ figure × units when every line has one, else the cancelled order’s cost — never a share of it (RV575 · B1)', () => {
     const wb = code('src/app/api/confirmation/winback/route.ts');
-    expect(wb).toMatch(/costOfACopy\(\s*order\.estimatedCostOfGoods,/);
-    expect(wb).toMatch(/units: l\.quantity \+ \(l\.freeQuantity \?\? 0\)/);
+    expect(wb).toMatch(/costWhenEveryLineHasAFigure\(\s*lines\.map\(\(l\) => \(\{ productId: l\.productId, units: l\.quantity \+ \(l\.freeQuantity \?\? 0\) \}\)\),\s*figures,\s*country\.minorUnit\s*\) \?\? order\.estimatedCostOfGoods;/);
+    expect(wb, 'الاسترجاع بيقسم الكلفة المنسوخة').not.toMatch(/costOfACopy/);
     expect(wb, 'الاسترجاع لسا بينسخ الكلفة متل ما هي').not.toMatch(/estimatedCostOfGoods: order\.estimatedCostOfGoods/);
   });
 

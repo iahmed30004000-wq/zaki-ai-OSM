@@ -310,9 +310,10 @@ describe('the win-back order carries the goods of the order it is winning back',
  * WHAT THE GOODS COST THE WIN-BACK — THE COPY'S COST, WITH THE OWNER'S FIGURE ON TOP (RV575 · the owner, 3/11 «صلّحهن»)
  *
  * The win-back copied the cancelled order's `estimatedCostOfGoods` as it stood, so a fixed cost set after the original was written
- * was ignored until delivery. It is a copy of that order, so it is costed as a replacement is (`costOfACopy`): a line whose product
- * has a figure costs the figure × its units (the gift included), a line with none keeps its share of the copied cost by units, and
- * with no figure anywhere the copied cost comes back exactly as it was. The price, the total and the lines do not read it.
+ * was ignored until delivery. Now, when EVERY line has a figure, the cost is Σ figure × units (the gift included). When ANY line
+ * has none, the copied cost stays exactly as it was: a mixed order's cost already holds the figure's money (the doors write it
+ * since Stage 2), and a share-out by units would move money between lines (the money review of #175, B1). The price, the total
+ * and the lines do not read it.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 describe('the cost of the goods on a win-back order', () => {
@@ -336,14 +337,35 @@ describe('the cost of the goods on a win-back order', () => {
     expect(writtenOrder().estimatedCostOfGoods).toBe(15);
   });
 
-  it('A FIGURE ON ONE LINE OF TWO: prod-1 at 3 × 5 = 15, prod-2 keeps its share of 12.6 by units — 12.6 × 3/6 = 6.3 — 21.3', async () => {
+  it('A FIGURE ON ONE LINE OF TWO: the copied 12.6 stays as it was — not 21.3 (15 + a share of 12.6)', async () => {
     figures([{ productId: 'prod-1', amount: 5 }]);
     db.orderItem.findMany.mockResolvedValue([
       { productId: 'prod-1', productName: 'سكراب', quantity: 3, freeQuantity: 0, unitPrice: 12 },
       { productId: 'prod-2', productName: 'كريم', quantity: 1, freeQuantity: 2, unitPrice: 14 },
     ]);
     await offer(5);
-    expect(writtenOrder().estimatedCostOfGoods).toBe(21.3);
+    expect(writtenOrder().estimatedCostOfGoods).toBe(12.6);
+  });
+
+  it('B1 — AN ORDER WRITTEN TODAY BY THE RULE (prod-1 at 5 × 3 = 15 + prod-2 at its average 4 × 1 = 4 → 19) is won back at 19, not 19.75', async () => {
+    figures([{ productId: 'prod-1', amount: 5 }]);
+    db.order.findFirst.mockResolvedValue({ ...source, estimatedCostOfGoods: 19 });
+    db.orderItem.findMany.mockResolvedValue([
+      { productId: 'prod-1', productName: 'سكراب', quantity: 3, freeQuantity: 0, unitPrice: 12 },
+      { productId: 'prod-2', productName: 'كريم', quantity: 1, freeQuantity: 0, unitPrice: 14 },
+    ]);
+    await offer(5);
+    expect(writtenOrder().estimatedCostOfGoods).toBe(19);
+  });
+
+  it('A FIGURE ON BOTH LINES: 3 × 5 + 3 × 2 = 21 — the gift of the second line included', async () => {
+    figures([{ productId: 'prod-1', amount: 5 }, { productId: 'prod-2', amount: 2 }]);
+    db.orderItem.findMany.mockResolvedValue([
+      { productId: 'prod-1', productName: 'سكراب', quantity: 3, freeQuantity: 0, unitPrice: 12 },
+      { productId: 'prod-2', productName: 'كريم', quantity: 1, freeQuantity: 2, unitPrice: 14 },
+    ]);
+    await offer(5);
+    expect(writtenOrder().estimatedCostOfGoods).toBe(21);
   });
 
   it('ZERO IS A FIGURE: the goods cost the new order nothing', async () => {

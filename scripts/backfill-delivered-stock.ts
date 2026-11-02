@@ -13,6 +13,14 @@
  * carrying that order's id, and an order that already has one is skipped —
  * the same key the live delivery path uses, so the two can never
  * double-count each other.
+ *
+ * ⚠ IT REWRITES COST TOO (RV899, 3/11). `consumeOrderStock` writes the order's
+ * `estimatedCostOfGoods` — and since RV576 it does so on a SHORT or EMPTY shelf
+ * as well, when every line of the parcel has a fixed figure (Σ figure × units).
+ * An OLD delivered order with no SALE line, run through `--apply` today, would
+ * have its cost rewritten from today's figures, not kept at what it was
+ * delivered with. Look first, and ask the owner before `--apply` on any order
+ * whose products now carry a fixed cost. This note changes no behaviour.
  */
 import { PrismaClient } from '@prisma/client';
 import { consumeOrderStock } from '../src/lib/stock-consumption';
