@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import type { db as prismaDb } from './db';
 import { drawDownStock, onHandTotal } from './receiving';
 import { roundMinor } from './money';
-import { fixedCostsOf } from './product-fixed-cost';
+import { costWhenEveryLineHasAFigure, fixedCostsOf } from './product-fixed-cost';
 
 type Tx = Prisma.TransactionClient | typeof prismaDb;
 
@@ -308,6 +308,27 @@ export async function consumeOrderStock(
       // those walked past this one. JOD has three.
       data: { estimatedCostOfGoods: roundMinor(orderCost, minorUnit) },
     });
+  } else {
+    /*
+     * ── A SHORT OR EMPTY SHELF WHOSE EVERY LINE HAS A FIXED FIGURE (the owner, 3/11: «صلّحهن» · 1/11 «تحت اي ظرف») ──
+     *
+     * The rule above keeps the estimate when the shelf could not cover the parcel, because the batches could only price PART of
+     * it. A parcel whose every line — items AND add-ons — has a FIXED figure does not need the batches: it was handed over (a
+     * delivery is a fact, P0-13), and its units cost Σ figure × units, the same figure × units a full shelf writes above. Without
+     * this, an order written before the figures and delivered after them on a short shelf kept the old average for good (RV576).
+     *
+     * ANY line without a figure, and the estimate stays exactly as before — nothing is written. The estimate of a mixed order
+     * already holds the figure's money (the doors write it since Stage 2); sharing it out by units would move money between
+     * lines (the money review of #175, B1). Cost only: the ledger, the SALE lines and `cost` are untouched.
+     */
+    const allFigured = costWhenEveryLineHasAFigure(
+      lines.map((l) => ({ productId: l.productId, units: l.quantity + l.freeQuantity })),
+      figures,
+      minorUnit
+    );
+    if (allFigured !== null) {
+      await tx.order.update({ where: { id: input.orderId }, data: { estimatedCostOfGoods: allFigured } });
+    }
   }
 
   /*

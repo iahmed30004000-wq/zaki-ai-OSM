@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { costOfACopy, fixedCostsOf, unitCostsOf, withFixedCost } from './product-fixed-cost';
+import { costOfACopy, costWhenEveryLineHasAFigure, fixedCostsOf, unitCostsOf, withFixedCost } from './product-fixed-cost';
 import type { ProductCost } from './product-cost';
 
 /**
@@ -276,5 +276,49 @@ describe('costOfACopy', () => {
 
   it('A MISSING BASE gives nothing to the lines with no figure — their share of nothing is nothing, and the figured line is untouched', () => {
     expect(costOfACopy(Number.NaN, two, new Map([['p1', 50]]), 2)).toBe(100);
+  });
+});
+
+/**
+ * EXACT OR NOTHING (the money review of #175, B1): the win-back and the short-shelf delivery rewrite a cost from the figures alone
+ * only when EVERY line that carries units has one; otherwise `null`, and the caller keeps the cost the order already has.
+ */
+describe('costWhenEveryLineHasAFigure', () => {
+  const figs = (o: Record<string, number>) => new Map(Object.entries(o));
+
+  it('every line with a figure: Σ figure × units — 3 × 5 + 2 × 2 = 19', () => {
+    expect(costWhenEveryLineHasAFigure([{ productId: 'a', units: 3 }, { productId: 'b', units: 2 }], figs({ a: 5, b: 2 }), 3)).toBe(19);
+  });
+
+  it('ONE line without a figure: null — never a share-out (5 × 3 + an average line is not rewritten)', () => {
+    expect(costWhenEveryLineHasAFigure([{ productId: 'a', units: 3 }, { productId: 'b', units: 1 }], figs({ a: 5 }), 3)).toBeNull();
+  });
+
+  it('no figure at all: null', () => {
+    expect(costWhenEveryLineHasAFigure([{ productId: 'a', units: 3 }], figs({}), 3)).toBeNull();
+  });
+
+  it('ZERO is a figure: 0 × 3 + 2 × 1 = 2', () => {
+    expect(costWhenEveryLineHasAFigure([{ productId: 'a', units: 3 }, { productId: 'b', units: 1 }], figs({ a: 0, b: 2 }), 3)).toBe(2);
+  });
+
+  it('a line with NO units asks nothing: a 0-unit line without a figure does not block, and adds nothing', () => {
+    expect(costWhenEveryLineHasAFigure([{ productId: 'a', units: 3 }, { productId: 'b', units: 0 }], figs({ a: 5 }), 3)).toBe(15);
+  });
+
+  it('no line with units at all: null — an empty parcel is not a cost of 0', () => {
+    expect(costWhenEveryLineHasAFigure([{ productId: 'a', units: 0 }], figs({ a: 5 }), 3)).toBeNull();
+    expect(costWhenEveryLineHasAFigure([], figs({ a: 5 }), 3)).toBeNull();
+  });
+
+  it('rounded by the currency: 3 × 1.1117 is 3.335 at three places, 3.34 at two, 3 at none', () => {
+    const one = [{ productId: 'a', units: 3 }];
+    expect(costWhenEveryLineHasAFigure(one, figs({ a: 1.1117 }), 3)).toBe(3.335);
+    expect(costWhenEveryLineHasAFigure(one, figs({ a: 1.1117 }), 2)).toBe(3.34);
+    expect(costWhenEveryLineHasAFigure(one, figs({ a: 1.1117 }), 0)).toBe(3);
+  });
+
+  it('the same product on two lines counts both lines: (2 + 1) × 5 = 15', () => {
+    expect(costWhenEveryLineHasAFigure([{ productId: 'a', units: 2 }, { productId: 'a', units: 1 }], figs({ a: 5 }), 3)).toBe(15);
   });
 });

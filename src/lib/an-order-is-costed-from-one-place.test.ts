@@ -10,9 +10,10 @@ import { stripComments } from './guard-source';
  * «سعر تكلفة المنتج يكون ثابت ولا يتغير ابدا… ثابت لكل الطلبات وما يتغير تحت اي ظرف، اللي بيقدر يغيرو الادمنة فقط من قائمة المنتجات.»
  *
  * The complaint was a cost struck twice, differently: once when the order was raised, from the average of whatever the batches held that
- * day, and again at delivery, from the batches the units happened to come out of. Nine places write an order's cost of goods; each of
+ * day, and again at delivery, from the batches the units happened to come out of. Ten places write an order's cost of goods; each of
  * them now asks `product-fixed-cost.ts` — `unitCostsOf` where it prices a unit, `fixedCostsOf` where it prices the units that left or
- * copies an order — and none of them reads the batch average on its own any more.
+ * copies an order — and none of them reads the batch average on its own any more. (Nine until 3/11: the win-back copied the cost it
+ * found, and Telegram read its newest batch — RV574/RV575, «صلّحهن».)
  *
  * WHAT THIS HOLDS, AND WHY BY READING CODE. A behaviour test shows the door follows the figure TODAY; it cannot show that the tenth
  * door, written next month, will. So the sweeps below are over-inclusive on purpose and fail on a stranger:
@@ -49,11 +50,12 @@ const importsFromTheOneFile = (src: string, name: string) =>
   new RegExp(`import\\s*\\{[^}]*\\b${name}\\b[^}]*\\}\\s*from\\s*'[^']*product-fixed-cost'`).test(src);
 
 /*
- * THE NINE PLACES THAT WRITE AN ORDER'S COST OF GOODS, and what each asks of the one file.
+ * THE TEN PLACES THAT WRITE AN ORDER'S COST OF GOODS, and what each asks of the one file.
  *
- * `unitCostsOf` prices ONE unit of a product (creation: the figure, else the batches' average, else 0). The delivery prices the units
- * that LEFT (`fixedCostsOf` × `taken`), the replacement copies another order's cost (`fixedCostsOf` + `costOfACopy`), and Telegram
- * keeps its own no-figure reading (see below) with the figure on top.
+ * `unitCostsOf` prices ONE unit of a product (creation: the figure, else the batches' average, else 0) — Telegram included since
+ * RV574. The delivery prices the units that LEFT (`fixedCostsOf` × `taken`) and, on a short shelf whose every line has a figure,
+ * writes Σ figure × units (`costWhenEveryLineHasAFigure`, RV576); the replacement copies another order's cost (`fixedCostsOf` +
+ * `costOfACopy`), and the win-back takes Σ figure × units when every line has one, else the copied cost (RV575).
  */
 const DOORS: Array<{ file: string; asks: RegExp; names: string[]; what: string; writes?: false }> = [
   { file: 'src/app/api/orders/route.ts', asks: /unitCostsOf\(\s*db\b/, names: ['unitCostsOf'], what: 'the manual door' },
@@ -63,9 +65,10 @@ const DOORS: Array<{ file: string; asks: RegExp; names: string[]; what: string; 
   // The writer of a migrated order is `order-migration.ts`; this route hands it the question (its `unitCost` dependency).
   { file: 'src/app/api/orders/import/migrate/route.ts', asks: /unitCostsOf\(\s*tx\b/, names: ['unitCostsOf'], what: 'the migration of old orders (the dependency it hands the writer)', writes: false },
   { file: 'src/app/api/orders/[id]/route.ts', asks: /unitCostsOf\(\s*db\b[\s\S]*fixedCostsOf\(\s*db\b/, names: ['unitCostsOf', 'fixedCostsOf'], what: 'the lines edit — the units that go on' },
-  { file: 'src/lib/stock-consumption.ts', asks: /fixedCostsOf\(\s*tx\b/, names: ['fixedCostsOf'], what: 'the delivery — the units that left' },
+  { file: 'src/lib/stock-consumption.ts', asks: /fixedCostsOf\(\s*tx\b[\s\S]*costWhenEveryLineHasAFigure\(/, names: ['fixedCostsOf', 'costWhenEveryLineHasAFigure'], what: 'the delivery — the units that left, and the figures on a short shelf' },
   { file: 'src/lib/replacement-order.ts', asks: /fixedCostsOf\(\s*tx\b[\s\S]*costOfACopy\(/, names: ['fixedCostsOf', 'costOfACopy'], what: 'a replacement and a box handed to another customer' },
-  { file: 'src/lib/telegram/order-creation.ts', asks: /fixedCostsOf\(\s*db\b/, names: ['fixedCostsOf'], what: 'Telegram — whose no-figure reading is its own (RV574)' },
+  { file: 'src/lib/telegram/order-creation.ts', asks: /unitCostsOf\(\s*db\b/, names: ['unitCostsOf'], what: 'Telegram — the same unit cost as every other door since RV574' },
+  { file: 'src/app/api/confirmation/winback/route.ts', asks: /fixedCostsOf\(\s*db\b[\s\S]*costWhenEveryLineHasAFigure\(/, names: ['fixedCostsOf', 'costWhenEveryLineHasAFigure'], what: 'the win-back — the figures when every line has one, else the copied cost (RV575)' },
 ];
 
 describe('each door that writes an order’s cost asks the owner’s figure — by the call, not by the import', () => {
@@ -80,7 +83,7 @@ describe('each door that writes an order’s cost asks the owner’s figure — 
     expect(readers, 'بابٌ يحسب كلفة الطلب من متوسط الدفعات بنفسه — اسأل unitCostsOf').toEqual([]);
   });
 
-  it('and the six doors that price a unit say so with `unitCostsOf`, the one place the figure beats the average', () => {
+  it('and the seven doors that price a unit say so with `unitCostsOf`, the one place the figure beats the average', () => {
     const pricing = DOORS.filter((d) => d.names.includes('unitCostsOf')).map((d) => d.file);
     expect(pricing.sort()).toEqual([
       'src/app/api/orders/[id]/route.ts',
@@ -88,6 +91,7 @@ describe('each door that writes an order’s cost asks the owner’s figure — 
       'src/app/api/orders/import/migrate/route.ts',
       'src/app/api/orders/route.ts',
       'src/lib/public-order.ts',
+      'src/lib/telegram/order-creation.ts',
       'src/lib/v1/order-intake.ts',
     ].sort());
   });
@@ -130,7 +134,7 @@ describe('no file costs an ORDER from the batch average except through the one f
     expect(ghosts, 'اسمٌ في القائمة لا يقرأ المتوسط').toEqual([]);
   });
 
-  it('and not one of the nine order doors is among them', () => {
+  it('and not one of the ten order doors is among them', () => {
     const doors = new Set(DOORS.map((d) => d.file));
     expect(Object.keys(READERS_OF_THE_BATCH_AVERAGE).filter((f) => doors.has(f))).toEqual([]);
   });
@@ -148,8 +152,6 @@ const WRITES_A_ROW = /\.(create|update|updateMany|upsert|createMany)\(/;
 
 /** The files that name the cost and write a row but do not write an ORDER's cost from the shelf or from the figure. */
 const NOT_A_COSTING: Record<string, string> = {
-  'src/app/api/confirmation/winback/route.ts':
-    'the win-back raises a NEW order from a cancelled one and copies its cost; the figure reaches it at DELIVERY (`consumeOrderStock`) — creation-time figure for a copy: RV575',
   'src/app/api/finance/route.ts': 'reports the cost of the delivered orders; it writes expenses and wallets, not an order’s cost',
   'src/app/api/orders/[id]/finance/route.ts': 'writes the HAND-TYPED finance columns (`productCost`, packaging…); `estimatedCostOfGoods` is only read to show the profit',
 };
@@ -203,6 +205,21 @@ describe('the rules the figure follows are written once, in the one file, and ea
     expect(stock).toMatch(/if \(taken > 0 && short === 0\) \{/);
   });
 
+  it('a SHORT or empty shelf writes Σ figure × units only when EVERY line of the parcel has a figure, and never shares the estimate out (RV576 · B1)', () => {
+    const stock = code('src/lib/stock-consumption.ts');
+    const branch = stock.slice(stock.indexOf('} else {', stock.indexOf('if (taken > 0 && short === 0) {')), stock.indexOf('if (shortLines.length > 0)'));
+    expect(branch).toMatch(/costWhenEveryLineHasAFigure\(\s*lines\.map\(\(l\) => \(\{ productId: l\.productId, units: l\.quantity \+ l\.freeQuantity \}\)\),\s*figures,\s*minorUnit\s*\)/);
+    expect(branch).toMatch(/if \(allFigured !== null\)/);
+    expect(branch, 'الرفّ الناقص يسعّر من الدفعات أو يقسم التقدير').not.toMatch(/result\.cost|orderCost|costOfACopy|estimatedCostOfGoods \?\?/);
+  });
+
+  it('`costWhenEveryLineHasAFigure` is exact or nothing: every line that carries units has a figure (`has`), else `null`', () => {
+    const body = one.slice(one.indexOf('export function costWhenEveryLineHasAFigure('), one.indexOf('const round4'));
+    expect(body).toMatch(/const carrying = lines\.filter\(\(l\) => l\.units > 0\);/);
+    expect(body).toMatch(/if \(carrying\.length === 0 \|\| !carrying\.every\(\(l\) => fixed\.has\(l\.productId\)\)\) return null;/);
+    expect(body, 'يقرأ الصفر على أنه «لا رقم»').not.toMatch(/fixed\.get\([^)]*\)\s*\|\|/);
+  });
+
   it('the delivery never lets the figure reach the ledger: the SALE line, the draw-down and the return carry no figure', () => {
     const stock = code('src/lib/stock-consumption.ts');
     const consume = stock.slice(stock.indexOf('export async function consumeOrderStock('), stock.indexOf('export function absorbDamaged('));
@@ -217,9 +234,17 @@ describe('the rules the figure follows are written once, in the one file, and ea
     expect(restore, 'الإرجاع يقرأ التكلفة الثابتة').not.toMatch(/fixedCostsOf|figure/);
   });
 
-  it('Telegram’s figure beats its own reading with `??`, and the reading itself is untouched (RV574)', () => {
+  it('Telegram asks the one function and reads no batch of its own — the newest batch’s unit cost is gone (RV574)', () => {
     const tg = code('src/lib/telegram/order-creation.ts');
-    expect(tg).toMatch(/const unitCost = fixedCost \?\? \(productRow\.batches\[0\]\?\.costPerUnit \|\| 0\);/);
+    expect(tg).toMatch(/const unitCost = \(await unitCostsOf\(db, companyId, \[productRow\.id\]\)\)\.get\(productRow\.id\) \?\? 0;/);
+    expect(tg, 'تلجرام لسا بيقرأ دفعة لحاله').not.toMatch(/batches|costPerUnit|productionDate/);
+  });
+
+  it('the win-back takes Σ figure × units when every line has one, else the cancelled order’s cost — never a share of it (RV575 · B1)', () => {
+    const wb = code('src/app/api/confirmation/winback/route.ts');
+    expect(wb).toMatch(/costWhenEveryLineHasAFigure\(\s*lines\.map\(\(l\) => \(\{ productId: l\.productId, units: l\.quantity \+ \(l\.freeQuantity \?\? 0\) \}\)\),\s*figures,\s*country\.minorUnit\s*\) \?\? order\.estimatedCostOfGoods;/);
+    expect(wb, 'الاسترجاع بيقسم الكلفة المنسوخة').not.toMatch(/costOfACopy/);
+    expect(wb, 'الاسترجاع لسا بينسخ الكلفة متل ما هي').not.toMatch(/estimatedCostOfGoods: order\.estimatedCostOfGoods/);
   });
 
   it('the lines edit asks for the figures only of the products on the lines that MOVED, and passes ZERO through as a figure', () => {

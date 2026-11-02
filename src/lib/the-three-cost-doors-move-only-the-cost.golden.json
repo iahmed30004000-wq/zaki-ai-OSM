@@ -1,0 +1,1551 @@
+{
+  "تلجرام · رقم ثابت 5 · أحدث دفعة 7 · متوسط 6": {
+    "cost": 15,
+    "writes": [
+      {
+        "call": "order.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "countryId": "co1",
+            "storeId": "s1",
+            "regionId": "r1",
+            "orderNumber": "ORD-2026-0100",
+            "merchantRef": "ORD-2026-0100",
+            "customerId": "cu1",
+            "productId": "p1",
+            "quantity": 2,
+            "freeQuantity": 1,
+            "offerId": null,
+            "sellingPrice": 25,
+            "shippingCost": 0,
+            "priceIncludesDelivery": false,
+            "totalAmount": 25,
+            "currency": "JOD",
+            "moderatorId": null,
+            "estimatedCostOfGoods": 15,
+            "productNameSnapshot": "كريم",
+            "productImageSnapshot": null,
+            "status": "NEW",
+            "confirmationStatus": "NEW",
+            "shippingStatus": "NOT_READY",
+            "settlementStatus": "NOT_APPLICABLE",
+            "assignedToId": null,
+            "claimedById": null,
+            "currentOwnerId": null,
+            "signatureStatus": "UNSIGNED",
+            "version": 1,
+            "source": "Telegram",
+            "customerNotes": null,
+            "internalNotes": "Telegram: chat chat1 msg m1"
+          }
+        }
+      },
+      {
+        "call": "orderItem.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "o-new",
+            "productId": "p1",
+            "productName": "كريم",
+            "quantity": 2,
+            "freeQuantity": 1,
+            "unitPrice": 12.5,
+            "discountShare": 0,
+            "lineTotal": 25,
+            "addedStage": "INTAKE"
+          }
+        }
+      },
+      {
+        "call": "customer.update",
+        "args": {
+          "where": {
+            "id": "cu1"
+          },
+          "data": {
+            "totalOrders": {
+              "increment": 1
+            },
+            "lastOrderDate": "2026-11-03T09:00:00.000Z",
+            "firstOrderDate": "2026-11-03T09:00:00.000Z"
+          }
+        }
+      },
+      {
+        "call": "orderActivity.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "o-new",
+            "userId": "u-admin",
+            "action": "ORDER_CREATED",
+            "newStatus": "NEW",
+            "metadata": "{\"source\":\"Telegram\",\"telegramMessageId\":\"m1\",\"telegramChatId\":\"chat1\",\"telegramThreadId\":null}"
+          }
+        }
+      },
+      {
+        "call": "orderStatusLog.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "o-new",
+            "statusType": "CONFIRMATION",
+            "previousValue": null,
+            "newValue": "NEW",
+            "changedById": "u-admin",
+            "changedByRole": "COMPANY_ADMIN",
+            "note": "Order created automatically from Telegram group message"
+          }
+        }
+      }
+    ]
+  },
+  "تلجرام · بلا رقم · أحدث دفعة 7 · متوسط 6": {
+    "cost": 21,
+    "writes": [
+      {
+        "call": "order.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "countryId": "co1",
+            "storeId": "s1",
+            "regionId": "r1",
+            "orderNumber": "ORD-2026-0100",
+            "merchantRef": "ORD-2026-0100",
+            "customerId": "cu1",
+            "productId": "p1",
+            "quantity": 2,
+            "freeQuantity": 1,
+            "offerId": null,
+            "sellingPrice": 25,
+            "shippingCost": 0,
+            "priceIncludesDelivery": false,
+            "totalAmount": 25,
+            "currency": "JOD",
+            "moderatorId": null,
+            "estimatedCostOfGoods": 21,
+            "productNameSnapshot": "كريم",
+            "productImageSnapshot": null,
+            "status": "NEW",
+            "confirmationStatus": "NEW",
+            "shippingStatus": "NOT_READY",
+            "settlementStatus": "NOT_APPLICABLE",
+            "assignedToId": null,
+            "claimedById": null,
+            "currentOwnerId": null,
+            "signatureStatus": "UNSIGNED",
+            "version": 1,
+            "source": "Telegram",
+            "customerNotes": null,
+            "internalNotes": "Telegram: chat chat1 msg m1"
+          }
+        }
+      },
+      {
+        "call": "orderItem.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "o-new",
+            "productId": "p1",
+            "productName": "كريم",
+            "quantity": 2,
+            "freeQuantity": 1,
+            "unitPrice": 12.5,
+            "discountShare": 0,
+            "lineTotal": 25,
+            "addedStage": "INTAKE"
+          }
+        }
+      },
+      {
+        "call": "customer.update",
+        "args": {
+          "where": {
+            "id": "cu1"
+          },
+          "data": {
+            "totalOrders": {
+              "increment": 1
+            },
+            "lastOrderDate": "2026-11-03T09:00:00.000Z",
+            "firstOrderDate": "2026-11-03T09:00:00.000Z"
+          }
+        }
+      },
+      {
+        "call": "orderActivity.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "o-new",
+            "userId": "u-admin",
+            "action": "ORDER_CREATED",
+            "newStatus": "NEW",
+            "metadata": "{\"source\":\"Telegram\",\"telegramMessageId\":\"m1\",\"telegramChatId\":\"chat1\",\"telegramThreadId\":null}"
+          }
+        }
+      },
+      {
+        "call": "orderStatusLog.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "o-new",
+            "statusType": "CONFIRMATION",
+            "previousValue": null,
+            "newValue": "NEW",
+            "changedById": "u-admin",
+            "changedByRole": "COMPANY_ADMIN",
+            "note": "Order created automatically from Telegram group message"
+          }
+        }
+      }
+    ]
+  },
+  "تلجرام · بلا رقم · أحدث دفعة فاضية بـ9 · المتوفر 4 بـ6": {
+    "cost": 27,
+    "writes": [
+      {
+        "call": "order.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "countryId": "co1",
+            "storeId": "s1",
+            "regionId": "r1",
+            "orderNumber": "ORD-2026-0100",
+            "merchantRef": "ORD-2026-0100",
+            "customerId": "cu1",
+            "productId": "p1",
+            "quantity": 2,
+            "freeQuantity": 1,
+            "offerId": null,
+            "sellingPrice": 25,
+            "shippingCost": 0,
+            "priceIncludesDelivery": false,
+            "totalAmount": 25,
+            "currency": "JOD",
+            "moderatorId": null,
+            "estimatedCostOfGoods": 27,
+            "productNameSnapshot": "كريم",
+            "productImageSnapshot": null,
+            "status": "NEW",
+            "confirmationStatus": "NEW",
+            "shippingStatus": "NOT_READY",
+            "settlementStatus": "NOT_APPLICABLE",
+            "assignedToId": null,
+            "claimedById": null,
+            "currentOwnerId": null,
+            "signatureStatus": "UNSIGNED",
+            "version": 1,
+            "source": "Telegram",
+            "customerNotes": null,
+            "internalNotes": "Telegram: chat chat1 msg m1"
+          }
+        }
+      },
+      {
+        "call": "orderItem.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "o-new",
+            "productId": "p1",
+            "productName": "كريم",
+            "quantity": 2,
+            "freeQuantity": 1,
+            "unitPrice": 12.5,
+            "discountShare": 0,
+            "lineTotal": 25,
+            "addedStage": "INTAKE"
+          }
+        }
+      },
+      {
+        "call": "customer.update",
+        "args": {
+          "where": {
+            "id": "cu1"
+          },
+          "data": {
+            "totalOrders": {
+              "increment": 1
+            },
+            "lastOrderDate": "2026-11-03T09:00:00.000Z",
+            "firstOrderDate": "2026-11-03T09:00:00.000Z"
+          }
+        }
+      },
+      {
+        "call": "orderActivity.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "o-new",
+            "userId": "u-admin",
+            "action": "ORDER_CREATED",
+            "newStatus": "NEW",
+            "metadata": "{\"source\":\"Telegram\",\"telegramMessageId\":\"m1\",\"telegramChatId\":\"chat1\",\"telegramThreadId\":null}"
+          }
+        }
+      },
+      {
+        "call": "orderStatusLog.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "o-new",
+            "statusType": "CONFIRMATION",
+            "previousValue": null,
+            "newValue": "NEW",
+            "changedById": "u-admin",
+            "changedByRole": "COMPANY_ADMIN",
+            "note": "Order created automatically from Telegram group message"
+          }
+        }
+      }
+    ]
+  },
+  "تلجرام · بلا رقم · ولا دفعة": {
+    "cost": 0,
+    "writes": [
+      {
+        "call": "order.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "countryId": "co1",
+            "storeId": "s1",
+            "regionId": "r1",
+            "orderNumber": "ORD-2026-0100",
+            "merchantRef": "ORD-2026-0100",
+            "customerId": "cu1",
+            "productId": "p1",
+            "quantity": 2,
+            "freeQuantity": 1,
+            "offerId": null,
+            "sellingPrice": 25,
+            "shippingCost": 0,
+            "priceIncludesDelivery": false,
+            "totalAmount": 25,
+            "currency": "JOD",
+            "moderatorId": null,
+            "estimatedCostOfGoods": 0,
+            "productNameSnapshot": "كريم",
+            "productImageSnapshot": null,
+            "status": "NEW",
+            "confirmationStatus": "NEW",
+            "shippingStatus": "NOT_READY",
+            "settlementStatus": "NOT_APPLICABLE",
+            "assignedToId": null,
+            "claimedById": null,
+            "currentOwnerId": null,
+            "signatureStatus": "UNSIGNED",
+            "version": 1,
+            "source": "Telegram",
+            "customerNotes": null,
+            "internalNotes": "Telegram: chat chat1 msg m1"
+          }
+        }
+      },
+      {
+        "call": "orderItem.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "o-new",
+            "productId": "p1",
+            "productName": "كريم",
+            "quantity": 2,
+            "freeQuantity": 1,
+            "unitPrice": 12.5,
+            "discountShare": 0,
+            "lineTotal": 25,
+            "addedStage": "INTAKE"
+          }
+        }
+      },
+      {
+        "call": "customer.update",
+        "args": {
+          "where": {
+            "id": "cu1"
+          },
+          "data": {
+            "totalOrders": {
+              "increment": 1
+            },
+            "lastOrderDate": "2026-11-03T09:00:00.000Z",
+            "firstOrderDate": "2026-11-03T09:00:00.000Z"
+          }
+        }
+      },
+      {
+        "call": "orderActivity.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "o-new",
+            "userId": "u-admin",
+            "action": "ORDER_CREATED",
+            "newStatus": "NEW",
+            "metadata": "{\"source\":\"Telegram\",\"telegramMessageId\":\"m1\",\"telegramChatId\":\"chat1\",\"telegramThreadId\":null}"
+          }
+        }
+      },
+      {
+        "call": "orderStatusLog.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "o-new",
+            "statusType": "CONFIRMATION",
+            "previousValue": null,
+            "newValue": "NEW",
+            "changedById": "u-admin",
+            "changedByRole": "COMPANY_ADMIN",
+            "note": "Order created automatically from Telegram group message"
+          }
+        }
+      }
+    ]
+  },
+  "تلجرام · رقم صفر": {
+    "cost": 0,
+    "writes": [
+      {
+        "call": "order.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "countryId": "co1",
+            "storeId": "s1",
+            "regionId": "r1",
+            "orderNumber": "ORD-2026-0100",
+            "merchantRef": "ORD-2026-0100",
+            "customerId": "cu1",
+            "productId": "p1",
+            "quantity": 2,
+            "freeQuantity": 1,
+            "offerId": null,
+            "sellingPrice": 25,
+            "shippingCost": 0,
+            "priceIncludesDelivery": false,
+            "totalAmount": 25,
+            "currency": "JOD",
+            "moderatorId": null,
+            "estimatedCostOfGoods": 0,
+            "productNameSnapshot": "كريم",
+            "productImageSnapshot": null,
+            "status": "NEW",
+            "confirmationStatus": "NEW",
+            "shippingStatus": "NOT_READY",
+            "settlementStatus": "NOT_APPLICABLE",
+            "assignedToId": null,
+            "claimedById": null,
+            "currentOwnerId": null,
+            "signatureStatus": "UNSIGNED",
+            "version": 1,
+            "source": "Telegram",
+            "customerNotes": null,
+            "internalNotes": "Telegram: chat chat1 msg m1"
+          }
+        }
+      },
+      {
+        "call": "orderItem.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "o-new",
+            "productId": "p1",
+            "productName": "كريم",
+            "quantity": 2,
+            "freeQuantity": 1,
+            "unitPrice": 12.5,
+            "discountShare": 0,
+            "lineTotal": 25,
+            "addedStage": "INTAKE"
+          }
+        }
+      },
+      {
+        "call": "customer.update",
+        "args": {
+          "where": {
+            "id": "cu1"
+          },
+          "data": {
+            "totalOrders": {
+              "increment": 1
+            },
+            "lastOrderDate": "2026-11-03T09:00:00.000Z",
+            "firstOrderDate": "2026-11-03T09:00:00.000Z"
+          }
+        }
+      },
+      {
+        "call": "orderActivity.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "o-new",
+            "userId": "u-admin",
+            "action": "ORDER_CREATED",
+            "newStatus": "NEW",
+            "metadata": "{\"source\":\"Telegram\",\"telegramMessageId\":\"m1\",\"telegramChatId\":\"chat1\",\"telegramThreadId\":null}"
+          }
+        }
+      },
+      {
+        "call": "orderStatusLog.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "o-new",
+            "statusType": "CONFIRMATION",
+            "previousValue": null,
+            "newValue": "NEW",
+            "changedById": "u-admin",
+            "changedByRole": "COMPANY_ADMIN",
+            "note": "Order created automatically from Telegram group message"
+          }
+        }
+      }
+    ]
+  },
+  "استرجاع · رقم ثابت 5 · الملغي انكتب بـ12": {
+    "cost": 12,
+    "writes": [
+      {
+        "call": "order.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "countryId": "co1",
+            "storeId": "s1",
+            "regionId": "r1",
+            "orderNumber": "ORD-2026-0100",
+            "merchantRef": "ORD-2026-0100",
+            "replacesOrderId": "11111111-1111-4111-8111-111111111111",
+            "customerId": "cu1",
+            "productId": "p1",
+            "offerId": null,
+            "quantity": 2,
+            "freeQuantity": 1,
+            "sellingPrice": 25,
+            "discountAmount": 2,
+            "shippingCost": 0,
+            "totalAmount": 23,
+            "currency": "JOD",
+            "priceIncludesDelivery": false,
+            "productNameSnapshot": "كريم",
+            "productImageSnapshot": null,
+            "moderatorId": "mod-1",
+            "createdById": "u-sup",
+            "estimatedCostOfGoods": 12,
+            "status": "NEW",
+            "confirmationStatus": "NEW",
+            "shippingStatus": "NOT_READY",
+            "settlementStatus": "NOT_APPLICABLE",
+            "source": "TikTok",
+            "customerNotes": null,
+            "internalNotes": "محاولةُ استرجاع لـORD-2026-0052 (PRICE_TOO_HIGH) بخصم 2",
+            "version": 1
+          },
+          "select": {
+            "id": true,
+            "orderNumber": true
+          }
+        }
+      },
+      {
+        "call": "orderItem.createMany",
+        "args": {
+          "data": [
+            {
+              "companyId": "c1",
+              "orderId": "o-new",
+              "productId": "p1",
+              "productName": "كريم",
+              "quantity": 2,
+              "freeQuantity": 1,
+              "unitPrice": 12.5,
+              "discountShare": 2,
+              "lineTotal": 23,
+              "addedById": "u-sup",
+              "addedStage": "INTAKE"
+            }
+          ]
+        }
+      },
+      {
+        "call": "orderNote.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "11111111-1111-4111-8111-111111111111",
+            "authorId": "u-sup",
+            "kind": "internal",
+            "body": "عُرض استرجاعٌ بخصم 2 — الطلب الجديد ORD-2026-0100"
+          }
+        }
+      }
+    ]
+  },
+  "استرجاع · بلا رقم · الملغي انكتب بـ12": {
+    "cost": 12,
+    "writes": [
+      {
+        "call": "order.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "countryId": "co1",
+            "storeId": "s1",
+            "regionId": "r1",
+            "orderNumber": "ORD-2026-0100",
+            "merchantRef": "ORD-2026-0100",
+            "replacesOrderId": "11111111-1111-4111-8111-111111111111",
+            "customerId": "cu1",
+            "productId": "p1",
+            "offerId": null,
+            "quantity": 2,
+            "freeQuantity": 1,
+            "sellingPrice": 25,
+            "discountAmount": 2,
+            "shippingCost": 0,
+            "totalAmount": 23,
+            "currency": "JOD",
+            "priceIncludesDelivery": false,
+            "productNameSnapshot": "كريم",
+            "productImageSnapshot": null,
+            "moderatorId": "mod-1",
+            "createdById": "u-sup",
+            "estimatedCostOfGoods": 12,
+            "status": "NEW",
+            "confirmationStatus": "NEW",
+            "shippingStatus": "NOT_READY",
+            "settlementStatus": "NOT_APPLICABLE",
+            "source": "TikTok",
+            "customerNotes": null,
+            "internalNotes": "محاولةُ استرجاع لـORD-2026-0052 (PRICE_TOO_HIGH) بخصم 2",
+            "version": 1
+          },
+          "select": {
+            "id": true,
+            "orderNumber": true
+          }
+        }
+      },
+      {
+        "call": "orderItem.createMany",
+        "args": {
+          "data": [
+            {
+              "companyId": "c1",
+              "orderId": "o-new",
+              "productId": "p1",
+              "productName": "كريم",
+              "quantity": 2,
+              "freeQuantity": 1,
+              "unitPrice": 12.5,
+              "discountShare": 2,
+              "lineTotal": 23,
+              "addedById": "u-sup",
+              "addedStage": "INTAKE"
+            }
+          ]
+        }
+      },
+      {
+        "call": "orderNote.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "11111111-1111-4111-8111-111111111111",
+            "authorId": "u-sup",
+            "kind": "internal",
+            "body": "عُرض استرجاعٌ بخصم 2 — الطلب الجديد ORD-2026-0100"
+          }
+        }
+      }
+    ]
+  },
+  "استرجاع · سطرين · رقم للأول بس · الملغي انكتب بـ16": {
+    "cost": 16,
+    "writes": [
+      {
+        "call": "order.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "countryId": "co1",
+            "storeId": "s1",
+            "regionId": "r1",
+            "orderNumber": "ORD-2026-0100",
+            "merchantRef": "ORD-2026-0100",
+            "replacesOrderId": "11111111-1111-4111-8111-111111111111",
+            "customerId": "cu1",
+            "productId": "p1",
+            "offerId": null,
+            "quantity": 2,
+            "freeQuantity": 1,
+            "sellingPrice": 29,
+            "discountAmount": 2,
+            "shippingCost": 0,
+            "totalAmount": 27,
+            "currency": "JOD",
+            "priceIncludesDelivery": false,
+            "productNameSnapshot": "كريم",
+            "productImageSnapshot": null,
+            "moderatorId": "mod-1",
+            "createdById": "u-sup",
+            "estimatedCostOfGoods": 16,
+            "status": "NEW",
+            "confirmationStatus": "NEW",
+            "shippingStatus": "NOT_READY",
+            "settlementStatus": "NOT_APPLICABLE",
+            "source": "TikTok",
+            "customerNotes": null,
+            "internalNotes": "محاولةُ استرجاع لـORD-2026-0052 (PRICE_TOO_HIGH) بخصم 2",
+            "version": 1
+          },
+          "select": {
+            "id": true,
+            "orderNumber": true
+          }
+        }
+      },
+      {
+        "call": "orderItem.createMany",
+        "args": {
+          "data": [
+            {
+              "companyId": "c1",
+              "orderId": "o-new",
+              "productId": "p1",
+              "productName": "كريم",
+              "quantity": 2,
+              "freeQuantity": 1,
+              "unitPrice": 12.5,
+              "discountShare": 1.724,
+              "lineTotal": 23.276,
+              "addedById": "u-sup",
+              "addedStage": "INTAKE"
+            },
+            {
+              "companyId": "c1",
+              "orderId": "o-new",
+              "productId": "p2",
+              "productName": "صابون",
+              "quantity": 1,
+              "freeQuantity": 0,
+              "unitPrice": 4,
+              "discountShare": 0.276,
+              "lineTotal": 3.724,
+              "addedById": "u-sup",
+              "addedStage": "INTAKE"
+            }
+          ]
+        }
+      },
+      {
+        "call": "orderNote.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "11111111-1111-4111-8111-111111111111",
+            "authorId": "u-sup",
+            "kind": "internal",
+            "body": "عُرض استرجاعٌ بخصم 2 — الطلب الجديد ORD-2026-0100"
+          }
+        }
+      }
+    ]
+  },
+  "استرجاع · سطرين · الأول برقم 5 والتاني بلا رقم · الملغي انكتب اليوم بالقاعدة 19 (15 + 4)": {
+    "cost": 19,
+    "writes": [
+      {
+        "call": "order.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "countryId": "co1",
+            "storeId": "s1",
+            "regionId": "r1",
+            "orderNumber": "ORD-2026-0100",
+            "merchantRef": "ORD-2026-0100",
+            "replacesOrderId": "11111111-1111-4111-8111-111111111111",
+            "customerId": "cu1",
+            "productId": "p1",
+            "offerId": null,
+            "quantity": 2,
+            "freeQuantity": 1,
+            "sellingPrice": 29,
+            "discountAmount": 2,
+            "shippingCost": 0,
+            "totalAmount": 27,
+            "currency": "JOD",
+            "priceIncludesDelivery": false,
+            "productNameSnapshot": "كريم",
+            "productImageSnapshot": null,
+            "moderatorId": "mod-1",
+            "createdById": "u-sup",
+            "estimatedCostOfGoods": 19,
+            "status": "NEW",
+            "confirmationStatus": "NEW",
+            "shippingStatus": "NOT_READY",
+            "settlementStatus": "NOT_APPLICABLE",
+            "source": "TikTok",
+            "customerNotes": null,
+            "internalNotes": "محاولةُ استرجاع لـORD-2026-0052 (PRICE_TOO_HIGH) بخصم 2",
+            "version": 1
+          },
+          "select": {
+            "id": true,
+            "orderNumber": true
+          }
+        }
+      },
+      {
+        "call": "orderItem.createMany",
+        "args": {
+          "data": [
+            {
+              "companyId": "c1",
+              "orderId": "o-new",
+              "productId": "p1",
+              "productName": "كريم",
+              "quantity": 2,
+              "freeQuantity": 1,
+              "unitPrice": 12.5,
+              "discountShare": 1.724,
+              "lineTotal": 23.276,
+              "addedById": "u-sup",
+              "addedStage": "INTAKE"
+            },
+            {
+              "companyId": "c1",
+              "orderId": "o-new",
+              "productId": "p2",
+              "productName": "صابون",
+              "quantity": 1,
+              "freeQuantity": 0,
+              "unitPrice": 4,
+              "discountShare": 0.276,
+              "lineTotal": 3.724,
+              "addedById": "u-sup",
+              "addedStage": "INTAKE"
+            }
+          ]
+        }
+      },
+      {
+        "call": "orderNote.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "11111111-1111-4111-8111-111111111111",
+            "authorId": "u-sup",
+            "kind": "internal",
+            "body": "عُرض استرجاعٌ بخصم 2 — الطلب الجديد ORD-2026-0100"
+          }
+        }
+      }
+    ]
+  },
+  "استرجاع · سطرين · الاتنين برقم (5 و2) · الملغي انكتب بـ16": {
+    "cost": 16,
+    "writes": [
+      {
+        "call": "order.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "countryId": "co1",
+            "storeId": "s1",
+            "regionId": "r1",
+            "orderNumber": "ORD-2026-0100",
+            "merchantRef": "ORD-2026-0100",
+            "replacesOrderId": "11111111-1111-4111-8111-111111111111",
+            "customerId": "cu1",
+            "productId": "p1",
+            "offerId": null,
+            "quantity": 2,
+            "freeQuantity": 1,
+            "sellingPrice": 29,
+            "discountAmount": 2,
+            "shippingCost": 0,
+            "totalAmount": 27,
+            "currency": "JOD",
+            "priceIncludesDelivery": false,
+            "productNameSnapshot": "كريم",
+            "productImageSnapshot": null,
+            "moderatorId": "mod-1",
+            "createdById": "u-sup",
+            "estimatedCostOfGoods": 16,
+            "status": "NEW",
+            "confirmationStatus": "NEW",
+            "shippingStatus": "NOT_READY",
+            "settlementStatus": "NOT_APPLICABLE",
+            "source": "TikTok",
+            "customerNotes": null,
+            "internalNotes": "محاولةُ استرجاع لـORD-2026-0052 (PRICE_TOO_HIGH) بخصم 2",
+            "version": 1
+          },
+          "select": {
+            "id": true,
+            "orderNumber": true
+          }
+        }
+      },
+      {
+        "call": "orderItem.createMany",
+        "args": {
+          "data": [
+            {
+              "companyId": "c1",
+              "orderId": "o-new",
+              "productId": "p1",
+              "productName": "كريم",
+              "quantity": 2,
+              "freeQuantity": 1,
+              "unitPrice": 12.5,
+              "discountShare": 1.724,
+              "lineTotal": 23.276,
+              "addedById": "u-sup",
+              "addedStage": "INTAKE"
+            },
+            {
+              "companyId": "c1",
+              "orderId": "o-new",
+              "productId": "p2",
+              "productName": "صابون",
+              "quantity": 1,
+              "freeQuantity": 0,
+              "unitPrice": 4,
+              "discountShare": 0.276,
+              "lineTotal": 3.724,
+              "addedById": "u-sup",
+              "addedStage": "INTAKE"
+            }
+          ]
+        }
+      },
+      {
+        "call": "orderNote.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "11111111-1111-4111-8111-111111111111",
+            "authorId": "u-sup",
+            "kind": "internal",
+            "body": "عُرض استرجاعٌ بخصم 2 — الطلب الجديد ORD-2026-0100"
+          }
+        }
+      }
+    ]
+  },
+  "استرجاع · بلا سطور (الأعمدة المفردة) · رقم 5 · الملغي بـ12": {
+    "cost": 12,
+    "writes": [
+      {
+        "call": "order.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "countryId": "co1",
+            "storeId": "s1",
+            "regionId": "r1",
+            "orderNumber": "ORD-2026-0100",
+            "merchantRef": "ORD-2026-0100",
+            "replacesOrderId": "11111111-1111-4111-8111-111111111111",
+            "customerId": "cu1",
+            "productId": "p1",
+            "offerId": null,
+            "quantity": 2,
+            "freeQuantity": 1,
+            "sellingPrice": 25,
+            "discountAmount": 2,
+            "shippingCost": 0,
+            "totalAmount": 23,
+            "currency": "JOD",
+            "priceIncludesDelivery": false,
+            "productNameSnapshot": "كريم",
+            "productImageSnapshot": null,
+            "moderatorId": "mod-1",
+            "createdById": "u-sup",
+            "estimatedCostOfGoods": 12,
+            "status": "NEW",
+            "confirmationStatus": "NEW",
+            "shippingStatus": "NOT_READY",
+            "settlementStatus": "NOT_APPLICABLE",
+            "source": "TikTok",
+            "customerNotes": null,
+            "internalNotes": "محاولةُ استرجاع لـORD-2026-0052 (PRICE_TOO_HIGH) بخصم 2",
+            "version": 1
+          },
+          "select": {
+            "id": true,
+            "orderNumber": true
+          }
+        }
+      },
+      {
+        "call": "orderItem.createMany",
+        "args": {
+          "data": [
+            {
+              "companyId": "c1",
+              "orderId": "o-new",
+              "productId": "p1",
+              "productName": "كريم",
+              "quantity": 2,
+              "freeQuantity": 1,
+              "unitPrice": 12.5,
+              "discountShare": 2,
+              "lineTotal": 23,
+              "addedById": "u-sup",
+              "addedStage": "INTAKE"
+            }
+          ]
+        }
+      },
+      {
+        "call": "orderNote.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "11111111-1111-4111-8111-111111111111",
+            "authorId": "u-sup",
+            "kind": "internal",
+            "body": "عُرض استرجاعٌ بخصم 2 — الطلب الجديد ORD-2026-0100"
+          }
+        }
+      }
+    ]
+  },
+  "تسليم · رفّ فاضي · رقم 5 · التقدير 12": {
+    "cost": 12,
+    "writes": [
+      {
+        "call": "orderItem.updateMany",
+        "args": {
+          "where": {
+            "orderId": "o-90",
+            "reservedQty": {
+              "gt": 0
+            }
+          },
+          "data": {
+            "reservedQty": 0
+          }
+        }
+      },
+      {
+        "call": "orderAddOn.updateMany",
+        "args": {
+          "where": {
+            "orderId": "o-90",
+            "reservedQty": {
+              "gt": 0
+            }
+          },
+          "data": {
+            "reservedQty": 0
+          }
+        }
+      },
+      {
+        "call": "orderActivity.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "o-90",
+            "userId": "u-desk",
+            "action": "STOCK_SHORT_AT_DELIVERY",
+            "metadata": "{\"order\":\"ORD-2026-0090\",\"short\":3,\"lines\":[{\"productId\":\"p1\",\"productName\":\"كريم\",\"need\":3,\"taken\":0,\"short\":3}]}"
+          }
+        }
+      }
+    ]
+  },
+  "تسليم · رفّ ناقص (1 بـ7) · رقم 5 · التقدير 12": {
+    "cost": 12,
+    "writes": [
+      {
+        "call": "productionBatch.update",
+        "args": {
+          "where": {
+            "id": "b-one"
+          },
+          "data": {
+            "quantityRemaining": 0,
+            "quantitySold": 1
+          }
+        }
+      },
+      {
+        "call": "inventoryMovement.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "storeId": "s1",
+            "productId": "p1",
+            "type": "SALE",
+            "quantity": -1,
+            "balanceAfter": 0,
+            "referenceId": "o-90",
+            "reason": "تسليم الطلب ORD-2026-0090",
+            "createdById": "u-desk"
+          }
+        }
+      },
+      {
+        "call": "orderItem.updateMany",
+        "args": {
+          "where": {
+            "orderId": "o-90",
+            "reservedQty": {
+              "gt": 0
+            }
+          },
+          "data": {
+            "reservedQty": 0
+          }
+        }
+      },
+      {
+        "call": "orderAddOn.updateMany",
+        "args": {
+          "where": {
+            "orderId": "o-90",
+            "reservedQty": {
+              "gt": 0
+            }
+          },
+          "data": {
+            "reservedQty": 0
+          }
+        }
+      },
+      {
+        "call": "orderActivity.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "o-90",
+            "userId": "u-desk",
+            "action": "STOCK_SHORT_AT_DELIVERY",
+            "metadata": "{\"order\":\"ORD-2026-0090\",\"short\":2,\"lines\":[{\"productId\":\"p1\",\"productName\":\"كريم\",\"need\":3,\"taken\":1,\"short\":2}]}"
+          }
+        }
+      }
+    ]
+  },
+  "تسليم · رفّ فاضي · بلا رقم · التقدير 12": {
+    "cost": 12,
+    "writes": [
+      {
+        "call": "orderItem.updateMany",
+        "args": {
+          "where": {
+            "orderId": "o-90",
+            "reservedQty": {
+              "gt": 0
+            }
+          },
+          "data": {
+            "reservedQty": 0
+          }
+        }
+      },
+      {
+        "call": "orderAddOn.updateMany",
+        "args": {
+          "where": {
+            "orderId": "o-90",
+            "reservedQty": {
+              "gt": 0
+            }
+          },
+          "data": {
+            "reservedQty": 0
+          }
+        }
+      },
+      {
+        "call": "orderActivity.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "o-90",
+            "userId": "u-desk",
+            "action": "STOCK_SHORT_AT_DELIVERY",
+            "metadata": "{\"order\":\"ORD-2026-0090\",\"short\":3,\"lines\":[{\"productId\":\"p1\",\"productName\":\"كريم\",\"need\":3,\"taken\":0,\"short\":3}]}"
+          }
+        }
+      }
+    ]
+  },
+  "تسليم · رفّ كامل · رقم 5": {
+    "cost": 15,
+    "writes": [
+      {
+        "call": "productionBatch.update",
+        "args": {
+          "where": {
+            "id": "b-old"
+          },
+          "data": {
+            "quantityRemaining": 2,
+            "quantitySold": 3
+          }
+        }
+      },
+      {
+        "call": "inventoryMovement.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "storeId": "s1",
+            "productId": "p1",
+            "type": "SALE",
+            "quantity": -3,
+            "balanceAfter": 7,
+            "referenceId": "o-90",
+            "reason": "تسليم الطلب ORD-2026-0090",
+            "createdById": "u-desk"
+          }
+        }
+      },
+      {
+        "call": "orderItem.updateMany",
+        "args": {
+          "where": {
+            "orderId": "o-90",
+            "reservedQty": {
+              "gt": 0
+            }
+          },
+          "data": {
+            "reservedQty": 0
+          }
+        }
+      },
+      {
+        "call": "orderAddOn.updateMany",
+        "args": {
+          "where": {
+            "orderId": "o-90",
+            "reservedQty": {
+              "gt": 0
+            }
+          },
+          "data": {
+            "reservedQty": 0
+          }
+        }
+      },
+      {
+        "call": "order.update",
+        "args": {
+          "where": {
+            "id": "o-90"
+          },
+          "data": {
+            "estimatedCostOfGoods": 15
+          }
+        }
+      }
+    ]
+  },
+  "تسليم · سطرين · الأول برقم 5 وناقص · التاني بلا رقم · التقدير 16": {
+    "cost": 16,
+    "writes": [
+      {
+        "call": "productionBatch.update",
+        "args": {
+          "where": {
+            "id": "b-p2"
+          },
+          "data": {
+            "quantityRemaining": 2,
+            "quantitySold": 1
+          }
+        }
+      },
+      {
+        "call": "inventoryMovement.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "storeId": "s1",
+            "productId": "p2",
+            "type": "SALE",
+            "quantity": -1,
+            "balanceAfter": 2,
+            "referenceId": "o-90",
+            "reason": "تسليم الطلب ORD-2026-0090",
+            "createdById": "u-desk"
+          }
+        }
+      },
+      {
+        "call": "orderItem.updateMany",
+        "args": {
+          "where": {
+            "orderId": "o-90",
+            "reservedQty": {
+              "gt": 0
+            }
+          },
+          "data": {
+            "reservedQty": 0
+          }
+        }
+      },
+      {
+        "call": "orderAddOn.updateMany",
+        "args": {
+          "where": {
+            "orderId": "o-90",
+            "reservedQty": {
+              "gt": 0
+            }
+          },
+          "data": {
+            "reservedQty": 0
+          }
+        }
+      },
+      {
+        "call": "orderActivity.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "o-90",
+            "userId": "u-desk",
+            "action": "STOCK_SHORT_AT_DELIVERY",
+            "metadata": "{\"order\":\"ORD-2026-0090\",\"short\":3,\"lines\":[{\"productId\":\"p1\",\"productName\":\"كريم\",\"need\":3,\"taken\":0,\"short\":3}]}"
+          }
+        }
+      }
+    ]
+  },
+  "تسليم · رفّ فاضي · سطرين: الأول برقم 5 والتاني بلا رقم · التقدير انكتب بالقاعدة 19 (15 + 4)": {
+    "cost": 19,
+    "writes": [
+      {
+        "call": "orderItem.updateMany",
+        "args": {
+          "where": {
+            "orderId": "o-90",
+            "reservedQty": {
+              "gt": 0
+            }
+          },
+          "data": {
+            "reservedQty": 0
+          }
+        }
+      },
+      {
+        "call": "orderAddOn.updateMany",
+        "args": {
+          "where": {
+            "orderId": "o-90",
+            "reservedQty": {
+              "gt": 0
+            }
+          },
+          "data": {
+            "reservedQty": 0
+          }
+        }
+      },
+      {
+        "call": "orderActivity.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "o-90",
+            "userId": "u-desk",
+            "action": "STOCK_SHORT_AT_DELIVERY",
+            "metadata": "{\"order\":\"ORD-2026-0090\",\"short\":4,\"lines\":[{\"productId\":\"p1\",\"productName\":\"كريم\",\"need\":3,\"taken\":0,\"short\":3},{\"productId\":\"p2\",\"productName\":\"صابون\",\"need\":1,\"taken\":0,\"short\":1}]}"
+          }
+        }
+      }
+    ]
+  },
+  "تسليم · رفّ فاضي · ليرة بلا كسور · الأول برقم 10000 والتاني بلا رقم · التقدير 16000": {
+    "cost": 16000,
+    "writes": [
+      {
+        "call": "orderItem.updateMany",
+        "args": {
+          "where": {
+            "orderId": "o-90",
+            "reservedQty": {
+              "gt": 0
+            }
+          },
+          "data": {
+            "reservedQty": 0
+          }
+        }
+      },
+      {
+        "call": "orderAddOn.updateMany",
+        "args": {
+          "where": {
+            "orderId": "o-90",
+            "reservedQty": {
+              "gt": 0
+            }
+          },
+          "data": {
+            "reservedQty": 0
+          }
+        }
+      },
+      {
+        "call": "orderActivity.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "o-90",
+            "userId": "u-desk",
+            "action": "STOCK_SHORT_AT_DELIVERY",
+            "metadata": "{\"order\":\"ORD-2026-0090\",\"short\":2,\"lines\":[{\"productId\":\"p1\",\"productName\":\"كريم\",\"need\":1,\"taken\":0,\"short\":1},{\"productId\":\"p2\",\"productName\":\"صابون\",\"need\":1,\"taken\":0,\"short\":1}]}"
+          }
+        }
+      }
+    ]
+  },
+  "تسليم · رفّ فاضي · سطر بلا رقم + إضافة برقم 5 انقبلت بعدين · التقدير 20": {
+    "cost": 20,
+    "writes": [
+      {
+        "call": "orderItem.updateMany",
+        "args": {
+          "where": {
+            "orderId": "o-90",
+            "reservedQty": {
+              "gt": 0
+            }
+          },
+          "data": {
+            "reservedQty": 0
+          }
+        }
+      },
+      {
+        "call": "orderAddOn.updateMany",
+        "args": {
+          "where": {
+            "orderId": "o-90",
+            "reservedQty": {
+              "gt": 0
+            }
+          },
+          "data": {
+            "reservedQty": 0
+          }
+        }
+      },
+      {
+        "call": "orderActivity.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "o-90",
+            "userId": "u-desk",
+            "action": "STOCK_SHORT_AT_DELIVERY",
+            "metadata": "{\"order\":\"ORD-2026-0090\",\"short\":3,\"lines\":[{\"productId\":\"p2\",\"productName\":\"صابون\",\"need\":2,\"taken\":0,\"short\":2},{\"productId\":\"p1\",\"productName\":\"كريم\",\"need\":1,\"taken\":0,\"short\":1}]}"
+          }
+        }
+      }
+    ]
+  },
+  "تسليم · رفّ ناقص · سطر برقم 5 + إضافة برقم 2 · التقدير 15": {
+    "cost": 15,
+    "writes": [
+      {
+        "call": "productionBatch.update",
+        "args": {
+          "where": {
+            "id": "b-one"
+          },
+          "data": {
+            "quantityRemaining": 0,
+            "quantitySold": 1
+          }
+        }
+      },
+      {
+        "call": "inventoryMovement.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "storeId": "s1",
+            "productId": "p1",
+            "type": "SALE",
+            "quantity": -1,
+            "balanceAfter": 0,
+            "referenceId": "o-90",
+            "reason": "تسليم الطلب ORD-2026-0090",
+            "createdById": "u-desk"
+          }
+        }
+      },
+      {
+        "call": "orderItem.updateMany",
+        "args": {
+          "where": {
+            "orderId": "o-90",
+            "reservedQty": {
+              "gt": 0
+            }
+          },
+          "data": {
+            "reservedQty": 0
+          }
+        }
+      },
+      {
+        "call": "orderAddOn.updateMany",
+        "args": {
+          "where": {
+            "orderId": "o-90",
+            "reservedQty": {
+              "gt": 0
+            }
+          },
+          "data": {
+            "reservedQty": 0
+          }
+        }
+      },
+      {
+        "call": "orderActivity.create",
+        "args": {
+          "data": {
+            "companyId": "c1",
+            "orderId": "o-90",
+            "userId": "u-desk",
+            "action": "STOCK_SHORT_AT_DELIVERY",
+            "metadata": "{\"order\":\"ORD-2026-0090\",\"short\":4,\"lines\":[{\"productId\":\"p1\",\"productName\":\"كريم\",\"need\":3,\"taken\":1,\"short\":2},{\"productId\":\"p3\",\"productName\":\"فرشاة\",\"need\":2,\"taken\":0,\"short\":2}]}"
+          }
+        }
+      }
+    ]
+  }
+}

@@ -17,6 +17,7 @@ import { readWinbackPage, winbackFacts } from '@/lib/winback-list';
 import { readLimit, readPage } from '@/lib/numeric-input';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { nothingCameBack } from '@/lib/written-off';
+import { costWhenEveryLineHasAFigure, fixedCostsOf } from '@/lib/product-fixed-cost';
 
 /**
  * GET  /api/confirmation/winback — the lost orders worth one more call.
@@ -369,6 +370,24 @@ export async function POST(req: Request) {
     });
     const totalAmount = money.cod;
 
+    /*
+     * WHAT THE GOODS COST — THE OWNER'S FIGURES WHEN EVERY LINE HAS ONE, ELSE THE CANCELLED ORDER'S COST (3/11: «صلّحهن»).
+     *
+     * A win-back is the cancelled order again, and it used to carry that order's cost as it stood — so a fixed cost an admin set
+     * after the original was written was ignored until the parcel was delivered (RV575). Now, when EVERY line has a figure, the
+     * cost is Σ figure × units (the gift included) — what any door writes today. Otherwise the copied cost stays exactly as it
+     * was: a mixed order's cost already holds the figure's money (the doors write it since Stage 2), and sharing it out by units
+     * would move money between lines (the money review of #175, B1). Cost only — the price, the total and the lines above are
+     * computed before this and do not read it.
+     */
+    const figures = await fixedCostsOf(db, companyId, [...new Set(lines.map((l) => l.productId))]);
+    const estimatedCostOfGoods =
+      costWhenEveryLineHasAFigure(
+        lines.map((l) => ({ productId: l.productId, units: l.quantity + (l.freeQuantity ?? 0) })),
+        figures,
+        country.minorUnit
+      ) ?? order.estimatedCostOfGoods;
+
     /**
      * THE ORDER NUMBER RETRIES HERE TOO, which it could not before.
      *
@@ -417,7 +436,7 @@ export async function POST(req: Request) {
           moderatorId: order.moderatorId,
           // Who made the offer — the account that ENTERED this order (RV8). The ORIGINAL's creator is not copied.
           createdById: user.id,
-          estimatedCostOfGoods: order.estimatedCostOfGoods,
+          estimatedCostOfGoods,
           // Straight into the pool, held by nobody: whoever is free calls it,
           // and it is an ordinary new order from there on. No second queue.
           status: 'NEW',

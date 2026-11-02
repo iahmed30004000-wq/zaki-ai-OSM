@@ -24,6 +24,8 @@ const { db, requireContext, requirePermission, logAudit, orderRefFields, stored 
     orderItem: { findMany: vi.fn(), createMany: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     orderStatusLog: { findFirst: vi.fn(), findMany: vi.fn() },
     orderNote: { create: vi.fn() },
+    // The fixed costs an admin set (`ProductFixedCost`): none here — the cost of the copy is the one these claims were written under.
+    productFixedCost: { findMany: async () => [] },
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(db)),
   };
   return {
