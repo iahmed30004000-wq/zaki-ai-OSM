@@ -42,7 +42,7 @@ const puts = () => apiJson.mock.calls.filter((c) => c[0] === '/api/settings/deli
 
 beforeEach(() => {
   vi.clearAllMocks();
-  places = courierPlaces('BASHA');
+  places = courierPlaces({ code: 'BASHA' });
   regions = [{ id: 'r-sweida', name: 'السويداء' }];
   fees = [fee('r-sweida', null)];
   apiJson.mockImplementation(async (url: string, init?: { method?: string }) => {
@@ -75,6 +75,16 @@ describe('an empty box where their list names the governorate', () => {
     await waitFor(() => expect(box('السويداء').placeholder).toBe('445153'));
     expect(box('السويداء').className).not.toContain(WARNING_BORDER);
     expect(box('السويداء').className).toContain('border-[var(--sys-border-input)]');
+  });
+
+  it('production’s Basha row — code LEG-1, platform LogesTechs — shows the same default, with nothing typed', async () => {
+    places = courierPlaces({ code: 'LEG-1', adapterCode: 'LOGESTECHS' });
+    regions = [{ id: 'r-dam', name: 'دمشق' }];
+    fees = [fee('r-dam', null)];
+    await open('دمشق');
+    await waitFor(() => expect(box('دمشق').placeholder).toBe('445053'));
+    expect((await screen.findAllByText('افتراضي من قايمة الشركة: دمشق — دمشق')).length).toBeGreaterThan(0);
+    expect(box('دمشق').className).not.toContain(WARNING_BORDER);
   });
 
   it('finds our «إدلب» under their «ادلب»', async () => {

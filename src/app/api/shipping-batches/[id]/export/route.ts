@@ -38,8 +38,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     const batch = await db.shippingBatch.findFirst({
       where: { id, companyId, storeId },
-      // The courier's code decides which list of its own city ids is asked for a governorate nobody typed one for.
-      select: { id: true, batchNumber: true, deliveryProviderId: true, provider: { select: { code: true } } },
+      // The courier's code and platform decide which list of its own city ids is asked for a governorate nobody typed
+      // one for (`places.courierListKey`: production's Basha row is «LEG-1» on LogesTechs).
+      select: { id: true, batchNumber: true, deliveryProviderId: true, provider: { select: { code: true, adapterCode: true } } },
     });
     if (!batch) return NextResponse.json({ error: 'الدفعة غير موجودة. أعد تحميل القائمة.', errorAr: 'الدفعة غير موجودة. أعد تحميل القائمة.' }, { status: 404 });
 
@@ -64,7 +65,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         : []
     );
     const cityIds = cityIdsForRegions({
-      providerCode: batch.provider?.code,
+      provider: batch.provider,
       stored: typedCityIds,
       regions: orders.map((o) => ({ id: o.regionId, name: o.region?.name })),
     });

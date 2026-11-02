@@ -355,7 +355,7 @@ export async function dispatchBatch(input: {
      * refused.
      */
     const cityId = courierCityIdFor({
-      providerCode: batch.provider?.code,
+      provider: batch.provider,
       stored: typedCityIds,
       regionId: order.regionId,
       regionName: order.region?.name,

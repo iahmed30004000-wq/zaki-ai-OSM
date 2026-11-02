@@ -1,4 +1,4 @@
-import { defaultCourierCityId, isRegionIdOnly } from './places';
+import { defaultCourierCityId, isRegionIdOnly, type CourierIdentity } from './places';
 
 /**
  * THE COURIER'S CITY ID FOR A PARCEL'S GOVERNORATE — ONE ANSWER FOR THE PRESS, THE WARNING BEFORE IT AND THE EXCEL FILE.
@@ -38,8 +38,11 @@ export function storedCityIds(rows: readonly { regionId: string; courierCityId: 
 
 /** The courier's city id for one governorate: what was typed (unless it is provably a Region Id), else what its list says, else null. */
 export function courierCityIdFor(input: {
-  /** The courier's own code (`DeliveryProvider.code`) — which list we hold for it. */
-  providerCode: string | null | undefined;
+  /**
+   * The courier's code AND its platform (`DeliveryProvider.code`, `.adapterCode`) — which list we hold for it
+   * (`places.courierListKey`). The code alone is not enough: production's Basha row is «LEG-1» on LogesTechs.
+   */
+  provider: CourierIdentity | null | undefined;
   /** What was typed for this courier, by region id (`storedCityIds`). */
   stored: ReadonlyMap<string, number>;
   regionId: string | null | undefined;
@@ -47,21 +50,21 @@ export function courierCityIdFor(input: {
 }): number | null {
   if (input.regionId) {
     const typed = input.stored.get(input.regionId);
-    if (typed !== undefined && !isRegionIdOnly(input.providerCode, typed)) return typed;
+    if (typed !== undefined && !isRegionIdOnly(input.provider, typed)) return typed;
   }
-  return defaultCourierCityId(input.providerCode, input.regionName)?.cityId ?? null;
+  return defaultCourierCityId(input.provider, input.regionName)?.cityId ?? null;
 }
 
 /** The same answer for every governorate among these parcels, by region id — the shape the spreadsheet reads. */
 export function cityIdsForRegions(input: {
-  providerCode: string | null | undefined;
+  provider: CourierIdentity | null | undefined;
   stored: ReadonlyMap<string, number>;
   regions: Iterable<{ id: string | null | undefined; name: string | null | undefined }>;
 }): Map<string, number> {
   const ids = new Map<string, number>();
   for (const region of input.regions) {
     if (!region.id || ids.has(region.id)) continue;
-    const id = courierCityIdFor({ providerCode: input.providerCode, stored: input.stored, regionId: region.id, regionName: region.name });
+    const id = courierCityIdFor({ provider: input.provider, stored: input.stored, regionId: region.id, regionName: region.name });
     if (id !== null) ids.set(region.id, id);
   }
   return ids;

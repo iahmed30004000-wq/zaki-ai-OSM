@@ -28,7 +28,7 @@ import { repoFile, stripComments } from '../guard-source';
  */
 
 const NONE = new Map<string, number>();
-const places = courierPlaces('BASHA')!;
+const places = courierPlaces({ code: 'BASHA' })!;
 
 describe('storedCityIds', () => {
   it('keeps the ids typed per governorate', () => {
@@ -45,7 +45,7 @@ describe('storedCityIds', () => {
 
 describe('courierCityIdFor', () => {
   const ask = (over: Partial<Parameters<typeof courierCityIdFor>[0]> = {}) =>
-    courierCityIdFor({ providerCode: 'BASHA', stored: NONE, regionId: 'r-sweida', regionName: 'السويداء', ...over });
+    courierCityIdFor({ provider: { code: 'BASHA' }, stored: NONE, regionId: 'r-sweida', regionName: 'السويداء', ...over });
   const typed = (n: number) => new Map([['r-sweida', n]]);
 
   it('nothing typed: the courier’s own list answers, by the governorate’s name', () => {
@@ -70,7 +70,7 @@ describe('courierCityIdFor', () => {
     expect(ask({ stored: typed(3002) })).toBe(445153); // الحسكة's, typed for السويداء
     for (const [id, region] of Object.entries(places.regions)) {
       expect(ask({ regionName: region.name, stored: typed(Number(id)) }), `${region.name} (${id})`).toBe(
-        defaultCourierCityId('BASHA', region.name)!.cityId,
+        defaultCourierCityId({ code: 'BASHA' }, region.name)!.cityId,
       );
     }
   });
@@ -86,12 +86,12 @@ describe('courierCityIdFor', () => {
   });
 
   it('NEGATIVE: for a courier we hold no list for, a number is only a number — 3003 is sent as typed', () => {
-    expect(ask({ providerCode: 'HALA', stored: typed(3003) })).toBe(3003);
-    expect(ask({ providerCode: null, stored: typed(3003) })).toBe(3003);
+    expect(ask({ provider: { code: 'HALA' }, stored: typed(3003) })).toBe(3003);
+    expect(ask({ provider: null, stored: typed(3003) })).toBe(3003);
   });
 
   it('the courier is found by its code in any case, for the Region Id check too', () => {
-    expect(ask({ providerCode: ' basha ', stored: typed(3003) })).toBe(445153);
+    expect(ask({ provider: { code: ' basha ' }, stored: typed(3003) })).toBe(445153);
   });
 
   it('a typed id belongs to its governorate: another governorate’s id is not this one’s', () => {
@@ -113,9 +113,25 @@ describe('courierCityIdFor', () => {
   });
 
   it('NEGATIVE: a courier we hold no list for has only what was typed', () => {
-    expect(ask({ providerCode: 'HALA' })).toBeNull();
-    expect(ask({ providerCode: null })).toBeNull();
-    expect(ask({ providerCode: 'HALA', stored: typed(777001) })).toBe(777001);
+    expect(ask({ provider: { code: 'HALA' } })).toBeNull();
+    expect(ask({ provider: null })).toBeNull();
+    expect(ask({ provider: { code: 'HALA' }, stored: typed(777001) })).toBe(777001);
+  });
+
+  // Production's Basha row (2/11): code «LEG-1», platform LogesTechs — the list is found through the platform.
+  const LEG1 = { code: 'LEG-1', adapterCode: 'LOGESTECHS' };
+
+  it('production’s LEG-1 row: nothing typed, the list answers; a typed Region Id is not sent; a typed city is', () => {
+    expect(ask({ provider: LEG1 })).toBe(445153);
+    expect(ask({ provider: LEG1, regionId: 'r-dam', regionName: 'دمشق', stored: new Map([['r-dam', 2903]]) })).toBe(445053);
+    expect(ask({ provider: LEG1, regionId: 'r-deir', regionName: 'دير الزور', stored: new Map([['r-deir', 949547]]) })).toBe(949547);
+    expect(ask({ provider: LEG1, regionId: 'r-q', regionName: 'القنيطرة' })).toBe(566122);
+  });
+
+  it('NEGATIVE: LEG-3 with no platform has only what was typed — 2903 is only a number there', () => {
+    const leg3 = { code: 'LEG-3', adapterCode: null };
+    expect(ask({ provider: leg3 })).toBeNull();
+    expect(ask({ provider: leg3, regionId: 'r-dam', regionName: 'دمشق', stored: new Map([['r-dam', 2903]]) })).toBe(2903);
   });
 });
 
@@ -130,17 +146,22 @@ describe('cityIdsForRegions: the same answer for every governorate of a batch, b
   ];
 
   it('lists each governorate once, with its typed id or its list’s — and leaves out what nothing answers', () => {
-    const ids = cityIdsForRegions({ providerCode: 'BASHA', stored: new Map([['r-sweida', 999001]]), regions });
+    const ids = cityIdsForRegions({ provider: { code: 'BASHA' }, stored: new Map([['r-sweida', 999001]]), regions });
     expect(ids).toEqual(new Map([['r-dam', 445053], ['r-sweida', 999001]]));
   });
 
   it('a typed Region Id is not in the file: the list’s city is, and a Region Id with no city to fall back on leaves the cell empty', () => {
-    const ids = cityIdsForRegions({ providerCode: 'BASHA', stored: new Map([['r-sweida', 3003], ['r-baghdad', 3003]]), regions });
+    const ids = cityIdsForRegions({ provider: { code: 'BASHA' }, stored: new Map([['r-sweida', 3003], ['r-baghdad', 3003]]), regions });
+    expect(ids).toEqual(new Map([['r-dam', 445053], ['r-sweida', 445153]]));
+  });
+
+  it('production’s LEG-1 row on LogesTechs: the same file as for BASHA — a typed Region Id replaced by the list’s city', () => {
+    const ids = cityIdsForRegions({ provider: { code: 'LEG-1', adapterCode: 'LOGESTECHS' }, stored: new Map([['r-sweida', 3003], ['r-baghdad', 3003]]), regions });
     expect(ids).toEqual(new Map([['r-dam', 445053], ['r-sweida', 445153]]));
   });
 
   it('NEGATIVE: a courier with no list gets only the typed ones — a Region Id of Basha’s included', () => {
-    const ids = cityIdsForRegions({ providerCode: 'HALA', stored: new Map([['r-baghdad', 777001], ['r-sweida', 3003]]), regions });
+    const ids = cityIdsForRegions({ provider: { code: 'HALA' }, stored: new Map([['r-baghdad', 777001], ['r-sweida', 3003]]), regions });
     expect(ids).toEqual(new Map([['r-baghdad', 777001], ['r-sweida', 3003]]));
   });
 });

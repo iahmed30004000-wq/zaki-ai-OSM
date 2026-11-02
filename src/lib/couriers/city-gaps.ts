@@ -32,8 +32,10 @@ export async function courierCityGaps(input: {
     where: { id: { in: [...new Set(open.map((b) => b.deliveryProviderId!))] }, companyId: input.companyId },
     select: { id: true, name: true, code: true, adapterCode: true, apiEnabled: true, apiConfig: true, apiCredentials: true },
   });
-  // courier id → its code (which list we hold for it)
-  const needing = new Map(providers.filter((p) => adapterFor(p).needsCourierCityId).map((p) => [p.id, p.code]));
+  // courier id → its code and platform (which list we hold for it: `places.courierListKey`)
+  const needing = new Map(
+    providers.filter((p) => adapterFor(p).needsCourierCityId).map((p) => [p.id, { code: p.code, adapterCode: p.adapterCode }]),
+  );
   const batches = open.filter((b) => needing.has(b.deliveryProviderId!));
   if (batches.length === 0) return gaps;
 
@@ -77,7 +79,7 @@ export async function courierCityGaps(input: {
     const providerId = providerOf.get(p.shippingBatchId)!;
     // Exactly the question the press asks of this parcel (`couriers/dispatch`).
     const id = courierCityIdFor({
-      providerCode: needing.get(providerId),
+      provider: needing.get(providerId),
       stored: typed.get(providerId) ?? new Map<string, number>(),
       regionId: p.regionId,
       regionName: p.regionId ? names.get(p.regionId) : null,
