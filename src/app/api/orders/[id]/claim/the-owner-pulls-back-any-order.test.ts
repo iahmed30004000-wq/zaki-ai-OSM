@@ -183,6 +183,40 @@ describe('the holder giving his own order back is unchanged', () => {
   });
 });
 
+/*
+ * ORD-2026-1166 (1/11): a decided order back in the queue is pulled and decided again. The pull-back was refused past the desk;
+ * the holder's own «أعِده للطابور» was not, and its write sets the order to NEW — what the queue hands out.
+ */
+describe('the holder giving back an order already decided is refused, and nothing is written', () => {
+  it.each([
+    ['confirmed', { confirmationStatus: 'CONFIRMED' }, 'مؤكد'],
+    ['rejected', { confirmationStatus: 'REJECTED' }, 'ملغى'],
+    ['cancelled', { confirmationStatus: 'CANCELLED' }, 'ملغى'],
+    ['in the warehouse', { confirmationStatus: 'CONFIRMED', shippingStatus: 'PACKING' }, ''],
+    ['shipped', { confirmationStatus: 'CONFIRMED', shippingStatus: 'SHIPPED' }, ''],
+    ['cancelled at the shipping side', { confirmationStatus: 'NEW', shippingStatus: 'CANCELLED' }, 'ملغى'],
+  ])('an order %s does not go back to the queue', async (_label, patch, label) => {
+    as('agent1', ['orders.release']);
+    assertOrderAccess.mockResolvedValue({ allowed: true, order: { ...HELD, ...patch } });
+    const res = await pullBack('انتهى دوامي');
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.code).toBe('PAST_CONFIRMATION');
+    expect(body.errorAr).toContain('ما بيرجع للتأكيد');
+    if (label) expect(body.errorAr).toContain(label);
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+    expect(db.orderClaimHistory.create).not.toHaveBeenCalled();
+    expect(logAudit).not.toHaveBeenCalled();
+  });
+
+  it.each(['NEW', 'IN_PROGRESS', 'NO_ANSWER', 'FOLLOW_UP_REQUIRED', 'POSTPONED'])('an order still %s at the desk is given back as before', async (status) => {
+    as('agent1', ['orders.release']);
+    assertOrderAccess.mockResolvedValue({ allowed: true, order: { ...HELD, confirmationStatus: status } });
+    expect((await pullBack('انتهى دوامي')).status).toBe(200);
+    expect(db.order.updateMany.mock.calls[0][0].where.claimedById).toBe('agent1');
+  });
+});
+
 describe('the holder is only a current owner, and the unlock key alone is not enough', () => {
   it('claimedById null with currentOwnerId set: matches IS NULL, writes the owner as the one pulled back', async () => {
     as('owner1', ['orders.release', 'orders.unlock']);

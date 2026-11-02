@@ -273,22 +273,16 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
     'النصف المرسوم من بطاقة «مهمّتك الجاية» — يُصدَّر ليصيّره اختبارُها بمهمّة جاهزة بلا جلسة؛ `MissionCard` نفسها هي ما تستخدمه الشاشة.',
 
   /*
-   * `OrderRef` LANDS FIRST AND THE SCREENS FOLLOW, ON PURPOSE.
-   *
-   * The copy buttons beside an order number are built as one component, with
-   * its tests and a ratchet (`an-order-number-is-drawn-by-one-component`)
-   * that names every screen still drawing the number another way. Moving the
-   * fifteen screens is one PR each, so none of them is in this one. The
-   * entry comes OFF this list in the first screen PR — the stale check
-   * below fails that PR until it does.
-   */
-  'src/components/orders/OrderRef.tsx:OrderRef':
-    'مكوّن رقم الطلب مع أزرار النسخ — مبنيٌّ ومحروسٌ بحارس الدَّين، وتنتقل إليه الشاشات واحدةً واحدةً بطلباتٍ لاحقة؛ يخرج من هذه القائمة بأول شاشة.',
-
-  /*
    * Same shape as `MissionCardView`: rendered by its own file (the «إضافة استثناء» dialog of UserDetailScreen), and
    * exported so its test can draw the list with a role already in hand, without faking the whole user page.
    */
+  /*
+   * Same shape again: «سبب الشركة» laid out — rendered by its own file (a column of the matching queues), and exported
+   * so its test can draw one line without faking the whole matching screen.
+   */
+  'src/components/screens/finance/MatchingScreen.tsx:CourierReason':
+    'عمود «سبب الشركة» مرتّباً — ترسمه شاشة المطابقة نفسها، ويُصدَّر ليرسمه اختبارُه بسطرٍ واحد بلا شاشة كاملة.',
+
   'src/components/screens/UserDetailScreen.tsx:PermissionPicker':
     'قائمة الصلاحيات بنافذة «إضافة استثناء» — ترسمها شاشة المستخدم نفسها، وتُصدَّر ليرسمها اختبارُها بدور جاهز بلا صفحة كاملة.',
 };
@@ -438,6 +432,8 @@ const NO_CALLER_FOUND: Record<string, string> = {
   '/api/orders/[id]/call-logs': 'المسارُ باقٍ وتعليقُ OrderDetailModal نفسه يقول إنه عاش هناك ولم يرسمه شيء',
   '/api/moderators': 'صاحبُها الوحيد كان نموذجَ «طلب جديد»، وصار يقرأ /api/orders/form-options (PR-6: الأسماء فقط، ولمن عنده «إسناد الطلبات»). باقٍ كما هو — فيه مبيعاتُ كلِّ موظف وعمولتُه خلف users.view — وتضييقُه بـteam.monitor بندٌ لاحق لا يُنفَّذ هنا',
   '/api/orders/follow-ups': 'مسكَّر (410) — طوابيرُ المتابعةِ صارت بشاشات التأكيد، والبابُ كان بلا صلاحية ويقرّر بأسماء الأدوار',
+  '/api/webhooks/couriers/[token]':
+    'مسكَّر (410) — الويب هوك أُلغي بطلب المالك (2/11) والحالاتُ تُسحب من API الشركة؛ يبقى العنوانُ ليرُدَّ «أُلغي» على شركةٍ ما زالت تُرسل إليه، ولا ملفَّ عندنا يستدعيه',
   /*
    * `/api/orders/confirmation/performance` — STILL UNCALLED, BUT NO LONGER
    * «الطريقُ الأقدمُ لنفسِ الأرقام».
@@ -629,7 +625,6 @@ const READ_ONLY_BY_TESTS: Record<string, string[]> = {
   'src/lib/conversions/types.ts': ['isTrigger', 'isValueSource'],
   'src/lib/couriers/words.ts': ['COURIER_CODES_READ'],
   'src/lib/couriers/index.ts': ['registerAdapter'],
-  'src/lib/couriers/webhook-token.ts': ['tokenHashEquals'],
   'src/lib/customer-filters.ts': ['segmentMatches'],
   'src/lib/employee-shift.ts': ['hasOwnShift'],
   'src/lib/exposure.ts': ['CUSTOMER_FIELDS'],

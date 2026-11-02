@@ -9,7 +9,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 const { db, requireContext, can, courierCityGaps } = vi.hoisted(() => ({
-  db: { shippingBatch: { count: vi.fn(), findMany: vi.fn() } },
+  // `order.groupBy` is the list's count of parcels still at «مشحون» (the «خرج للتوصيل لكل الدفعة» button); this file is about the gap.
+  db: { shippingBatch: { count: vi.fn(), findMany: vi.fn() }, order: { groupBy: vi.fn() } },
   requireContext: vi.fn(),
   can: vi.fn(),
   courierCityGaps: vi.fn(),
@@ -30,6 +31,7 @@ beforeEach(() => {
   can.mockReturnValue(true);
   db.shippingBatch.count.mockResolvedValue(2);
   db.shippingBatch.findMany.mockResolvedValue([batch('b1'), batch('b2')]);
+  db.order.groupBy.mockResolvedValue([]);
   courierCityGaps.mockResolvedValue(new Map([['b1', { count: 2, regions: ['السويداء'] }]]));
 });
 

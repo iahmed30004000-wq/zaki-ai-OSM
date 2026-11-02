@@ -137,6 +137,9 @@ export function CourierCredentials({ providerId }: { providerId: string }) {
     );
   }
 
+  // A LogesTechs account must say where parcels are collected from (see the box below).
+  const originRequired = (status.adapterCode ?? '').trim().toUpperCase() === 'LOGESTECHS';
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -291,10 +294,15 @@ export function CourierCredentials({ providerId }: { providerId: string }) {
               value={form.senderBusiness}
               onChange={(e) => setForm({ ...form, senderBusiness: e.target.value })}
             />
+            {/* Required on LogesTechs: their server refuses every parcel with no address to collect from (2/11, a
+                batch of 131 came back «فشل 131»). The server refuses a blank one too; this says so before the press. */}
             <Input
-              label="عنوان الانطلاق"
+              label={originRequired ? 'عنوان الانطلاق *' : 'عنوان الانطلاق'}
               value={form.originAddress}
               onChange={(e) => setForm({ ...form, originAddress: e.target.value })}
+              required={originRequired}
+              pattern={originRequired ? '.*\\S.*' : undefined}
+              title={originRequired ? 'عنوان الانطلاق مطلوب — الشركة بترفض كل طرد بدونه' : undefined}
             />
           </div>
 

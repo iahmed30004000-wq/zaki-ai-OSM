@@ -7,10 +7,10 @@ import { atomicClaim, isLockActive, lockConfig, ownershipSnapshot } from '@/lib/
 import { logAudit } from '@/lib/audit';
 import { apiError } from '@/lib/api-error';
 import { can } from '@/lib/authorization';
-import { deriveCoreState, getZone, type StateSource } from '@/lib/order-state';
+import { STATE_LABEL_AR, deriveCoreState, getZone, type StateSource } from '@/lib/order-state';
 import {
   ORDER_ALREADY_IN_QUEUE, ORDER_CLAIM_NOT_HELD, ORDER_NOT_FOUND, ORDER_PAST_CONFIRMATION, ORDER_STALE,
-  ORDER_TAKEBACK_REASON, orderClaimedBy,
+  ORDER_TAKEBACK_REASON, orderClaimedBy, orderDecidedStaysOut,
 } from '@/lib/order-refusals';
 import { claimByNumberMessage, mustHoldToWork, ownedCounts, pullRefusal, USE_THE_PULL_CODE } from '@/lib/confirmation-queue';
 import { reservedForOthersWhere, reservedMessage } from '@/lib/order-reservation';
@@ -312,12 +312,28 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     const now = new Date();
     const holderId = order.claimedById ?? order.currentOwnerId ?? null;
 
+    const state = deriveCoreState(order as StateSource);
+    const zone = getZone(state);
+    const pastConfirmation = zone !== 'CONFIRMATION' && zone !== 'INTAKE';
+
+    /*
+     * THE HOLDER GIVING BACK A DECIDED ORDER DOES NOT REOPEN IT (ORD-2026-1166, 1/11).
+     *
+     * The write below sets the order to NEW, and NEW is what the queue hands out. The pull-back was refused past the confirmation
+     * desk; the holder's own release was not — so an agent who had confirmed or rejected an order and pressed «أعِده للطابور» put a
+     * confirmed order (with its stock still held) or a rejected one back in the queue, to be pulled and decided again. Same rule as
+     * the pull-back, for the same reason: past the desk the order is edited in place, cancelled, or taken with «استلمه أنا».
+     */
+    if (!takingBack && pastConfirmation) {
+      const said = orderDecidedStaysOut(STATE_LABEL_AR[state] ?? state);
+      return NextResponse.json({ error: said, errorAr: said, code: 'PAST_CONFIRMATION' }, { status: 409 });
+    }
+
     if (takingBack) {
       if (!holderId) {
         return NextResponse.json({ error: ORDER_ALREADY_IN_QUEUE, errorAr: ORDER_ALREADY_IN_QUEUE, code: 'ALREADY_IN_QUEUE' }, { status: 409 });
       }
-      const zone = getZone(deriveCoreState(order as StateSource));
-      if (zone !== 'CONFIRMATION' && zone !== 'INTAKE') {
+      if (pastConfirmation) {
         return NextResponse.json({ error: ORDER_PAST_CONFIRMATION, errorAr: ORDER_PAST_CONFIRMATION, code: 'PAST_CONFIRMATION' }, { status: 409 });
       }
       if (!reason || reason.trim().length < 3) {

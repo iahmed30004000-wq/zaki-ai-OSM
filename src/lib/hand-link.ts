@@ -6,7 +6,8 @@ import { hasLeftWarehouse } from './order-state';
 import { claimingRowWhere, integrityNotes, MANUAL_MATCH, openRequestWhere, type OtherStatement } from './match-integrity';
 import { expectedAmountFor, judgeLine, SETTLEMENT_ORDER_SELECT } from './settlement';
 import { closedStatementRefusal, isApproved } from './settlement-gates';
-import { openClaimsFor } from './settlement-decisions';
+import { IN_FLIGHT, openClaimsFor } from './settlement-decisions';
+import { phoneFromRawRow, type LinePhone } from './statement-line-reading';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -54,6 +55,20 @@ export const OTHER_COURIER_NOT_EXACT_SENTENCE =
   'طلب شركة شحن أخرى يُربط برقم طلبنا بالضبط فقط — اكتب رقم الطلب كاملاً وابحث';
 
 export const OTHER_COURIER_WARNING = 'هذا الطلب مع شركة شحن أخرى غير صاحبة الكشف — اربطه فقط إن كنت متأكداً أن السطر له';
+
+/**
+ * THE REFUSALS OF A PAGE THAT IS OLDER THAN THE LINE. Each says what happened and what to do — refresh — so a person
+ * who pressed on a stale screen knows the line was not half-linked: the transaction wrote nothing.
+ */
+export const STALE_REFRESH = 'حدّث الصفحة لترى مكانه الآن';
+export function alreadyLinkedSentence(orderNumber: string | null): string {
+  return orderNumber
+    ? `هذا السطر مربوط بالطلب ${orderNumber} من قبل — ما انربط مرة ثانية. ${STALE_REFRESH}`
+    : `هذا السطر مربوط بطلب من قبل — ما انربط مرة ثانية. ${STALE_REFRESH}`;
+}
+export const STALE_LINE_MOVED_SENTENCE = `هذا السطر ما عاد بخانة «في الكشف وليس عندنا» — غالباً أُعيدت المطابقة بعد ما فتحت الصفحة. ${STALE_REFRESH}`;
+export const STALE_LINE_GONE_SENTENCE = `سطر المطابقة هذا ما عاد موجوداً — أُعيدت المطابقة بعد ما فتحت الصفحة. ${STALE_REFRESH}`;
+export const JUST_LINKED_SENTENCE = `رُبط هذا السطر قبل لحظات من شخص آخر — ما انكتب شي. ${STALE_REFRESH}`;
 
 /** A stop that carries its own answer: the transaction rolls back and the route sends this. */
 export class LinkRefused extends Error {
@@ -158,6 +173,9 @@ const ORDER_FACTS = {
   ...SETTLEMENT_ORDER_SELECT,
 } as const;
 
+const CANDIDATE_SELECT = { ...ORDER_FACTS, customer: { select: { id: true, fullName: true, phone: true } } } as const;
+type CandidateRow = Prisma.OrderGetPayload<{ select: typeof CANDIDATE_SELECT }>;
+
 export interface LinkCandidate {
   id: string;
   orderNumber: string;
@@ -249,16 +267,34 @@ export async function findLinkCandidates(
         },
       ],
     } as Prisma.OrderWhereInput,
-    select: { ...ORDER_FACTS, customer: { select: { id: true, fullName: true, phone: true } } },
+    select: CANDIDATE_SELECT,
     orderBy: { createdAt: 'desc' },
     take: CANDIDATE_READ,
   });
   if (rows.length === 0) return { ...empty('لا طلب بهذا البحث في متجر هذا الكشف'), header: candidatesHeader(total, closed), counts: { total, closed, open: Math.max(0, total - closed) } };
 
-  const integrity = await integrityOf(tx, { companyId: p.companyId, statementId: p.statementId, orderIds: rows.map((r) => r.id) });
+  return {
+    header: candidatesHeader(total, closed),
+    counts: { total, closed, open: Math.max(0, total - closed) },
+    candidates: await candidatesOf(tx, { companyId: p.companyId, statementId: p.statementId, deliveryProviderId: statement.deliveryProviderId, minorUnit: p.minorUnit, lineAmount, rows }),
+    hint: null,
+    otherCourierWarning: OTHER_COURIER_WARNING,
+  };
+}
+
+/**
+ * The rows a search read, as candidates: each with what the courier owes for it, how near that is to the line, and
+ * why the rules would refuse it — the nearest a person may pick first. One builder for both searches, so the phone
+ * search cannot offer an order the text search would have greyed out.
+ */
+async function candidatesOf(
+  tx: Tx,
+  p: { companyId: string; statementId: string; deliveryProviderId: string | null; minorUnit: number; lineAmount: number; rows: CandidateRow[] }
+): Promise<LinkCandidate[]> {
+  const integrity = await integrityOf(tx, { companyId: p.companyId, statementId: p.statementId, orderIds: p.rows.map((r) => r.id) });
 
   const ranked = rankCandidates(
-    rows.map((o): LinkCandidate & RankableCandidate => {
+    p.rows.map((o): LinkCandidate & RankableCandidate => {
       let expected: number | null = null;
       try {
         expected = expectedAmountFor(o, p.minorUnit);
@@ -285,20 +321,101 @@ export async function findLinkCandidates(
           confirmationStatus: o.confirmationStatus,
         }).closed,
         expected,
-        distance: expected === null ? null : Math.abs(expected - lineAmount),
-        otherCourier: o.deliveryProviderId !== statement.deliveryProviderId,
+        distance: expected === null ? null : Math.abs(expected - p.lineAmount),
+        otherCourier: o.deliveryProviderId !== p.deliveryProviderId,
         blockedBy,
         linkable: blockedBy.length === 0,
       };
     })
   ).slice(0, CANDIDATE_LIMIT);
 
+  return ranked.map(({ linkable: _linkable, ...c }) => c);
+}
+
+/** «بهاتف السطر»: what the search says about the phone it used, so the screen can show it and where it came from. */
+export interface LinePhoneSearch extends CandidateSearch {
+  /** The phone read off the line, or null when the line carries none. */
+  phone: Pick<LinePhone, 'shown' | 'country'> | null;
+}
+
+export const NO_LINE_PHONE_SENTENCE = 'ما في رقم هاتف بسطر الشركة — اكتب الهاتف أو رقم الطلب بالبحث تحت';
+export const NO_IN_FLIGHT_SENTENCE = 'لهذا الرقم ولا طلب قيد الشحن مع شركة هذا الكشف — جرّب البحث الحر برقم الطلب';
+
+/** «لهذا الرقم 2 طلبات قيد الشحن» — counted by the database, so it is true however many rows the list shows. */
+export function inFlightHeader(total: number): string {
+  if (total <= 0) return 'لا طلبات قيد الشحن لهذا الرقم';
+  if (total === 1) return 'لهذا الرقم طلب واحد قيد الشحن';
+  return `لهذا الرقم ${total} طلبات قيد الشحن`;
+}
+
+/**
+ * «بهاتف السطر» — THE ORDERS OF THE PHONE THE COMPANY WROTE, STILL ON THE ROAD.
+ *
+ * The owner's words: take the phone of that very line by itself, show the orders still being shipped, and let me
+ * pick. So the phone is never taken from the request: it is read off the line's own row (`phoneFromRawRow`). A line
+ * that may be linked has no order (that is what makes it linkable), so there is no order's phone to read first.
+ *
+ * Scope is the text search's, unwidened: this company, this statement's store, this statement's courier — and only
+ * orders still in flight (`IN_FLIGHT`: shipped, out for delivery, ready for pickup, failed delivery). A delivered,
+ * returned or cancelled order is not offered. The candidates are built and greyed by the same builder, and the link
+ * that follows is the same `linkLineToOrder`, judged by `judgeLine`.
+ */
+export async function findLinkCandidatesByLinePhone(
+  tx: Tx,
+  p: { companyId: string; storeId: string; statementId: string; matchId: string; minorUnit: number; countryCode?: string | null }
+): Promise<LinePhoneSearch> {
+  const statement = await tx.courierStatement.findFirst({
+    where: { id: p.statementId, companyId: p.companyId, storeId: p.storeId },
+    select: { id: true, deliveryProviderId: true },
+  });
+  if (!statement) throw new LinkRefused(404, { error: 'الكشف غير موجود', code: 'NOT_FOUND' });
+
+  const match = await tx.settlementMatch.findFirst({
+    where: { id: p.matchId, statementId: p.statementId, companyId: p.companyId },
+    select: {
+      id: true, result: true, orderId: true, statementAmount: true,
+      statementLine: { select: { rawRow: true, merchantRef: true, barcode: true } },
+    },
+  });
+  if (!match) throw new LinkRefused(404, { error: 'سطر المطابقة غير موجود', code: 'NOT_FOUND' });
+  if (match.result !== 'MISSING_IN_SYSTEM' || match.orderId) {
+    throw new LinkRefused(409, { error: 'هذا السطر ليس من «في الكشف وليس عندنا»، أو رُبط بطلب من قبل', code: 'NOT_LINKABLE' });
+  }
+
+  const base = { candidates: [] as LinkCandidate[], otherCourierWarning: OTHER_COURIER_WARNING };
+  const phone = match.statementLine ? phoneFromRawRow(match.statementLine, p.countryCode) : null;
+  if (!phone) {
+    return { ...base, header: inFlightHeader(0), counts: { total: 0, closed: 0, open: 0 }, hint: NO_LINE_PHONE_SENTENCE, phone: null };
+  }
+
+  const where = {
+    companyId: p.companyId,
+    storeId: p.storeId,
+    deliveryProviderId: statement.deliveryProviderId,
+    shippingStatus: { in: [...IN_FLIGHT] },
+    customer: { phone: { in: phone.keys } },
+  } as Prisma.OrderWhereInput;
+
+  const [total, rows] = await Promise.all([
+    tx.order.count({ where }),
+    tx.order.findMany({ where, select: CANDIDATE_SELECT, orderBy: { createdAt: 'desc' }, take: CANDIDATE_READ }),
+  ]);
+  const shown = { shown: phone.shown, country: phone.country };
+  if (rows.length === 0) {
+    return { ...base, header: inFlightHeader(total), counts: { total, closed: 0, open: total }, hint: NO_IN_FLIGHT_SENTENCE, phone: shown };
+  }
+
   return {
-    header: candidatesHeader(total, closed),
-    counts: { total, closed, open: Math.max(0, total - closed) },
-    candidates: ranked.map(({ linkable: _linkable, ...c }) => c),
+    ...base,
+    header: inFlightHeader(total),
+    // In flight is open by definition: nothing here has finished both its stages.
+    counts: { total, closed: 0, open: total },
+    candidates: await candidatesOf(tx, {
+      companyId: p.companyId, statementId: p.statementId, deliveryProviderId: statement.deliveryProviderId,
+      minorUnit: p.minorUnit, lineAmount: Number(match.statementAmount ?? 0), rows,
+    }),
     hint: null,
-    otherCourierWarning: OTHER_COURIER_WARNING,
+    phone: shown,
   };
 }
 
@@ -361,9 +478,14 @@ export async function linkLineToOrder(
       statementLine: { select: { amount: true, fee: true, status: true } },
     },
   });
-  if (!match) throw new LinkRefused(404, { error: 'سطر المطابقة غير موجود', code: 'NOT_FOUND' });
-  if (match.result !== 'MISSING_IN_SYSTEM' || match.orderId || !match.statementLine) {
-    throw new LinkRefused(409, { error: 'هذا السطر ليس من «في الكشف وليس عندنا»، أو رُبط بطلب من قبل', code: 'NOT_LINKABLE' });
+  if (!match) throw new LinkRefused(404, { error: STALE_LINE_GONE_SENTENCE, code: 'NOT_FOUND' });
+  if (match.orderId) {
+    // Somebody tied it first (or the page is older than the link): say to which order, so nobody links it twice.
+    const held = await tx.order.findFirst({ where: { id: match.orderId, companyId: p.companyId }, select: { orderNumber: true } });
+    throw new LinkRefused(409, { error: alreadyLinkedSentence(held?.orderNumber ?? null), code: 'NOT_LINKABLE' });
+  }
+  if (match.result !== 'MISSING_IN_SYSTEM' || !match.statementLine) {
+    throw new LinkRefused(409, { error: STALE_LINE_MOVED_SENTENCE, code: 'NOT_LINKABLE' });
   }
 
   // The order's row too: a hand collection claims it, and between its check and its claim this cannot slip a
@@ -449,7 +571,7 @@ export async function linkLineToOrder(
     if (now && isApproved(now)) {
       throw new LinkRefused(409, closedStatementRefusal());
     }
-    throw new LinkRefused(409, { error: 'رُبط هذا السطر قبل لحظات', code: 'NOT_LINKABLE' });
+    throw new LinkRefused(409, { error: JUST_LINKED_SENTENCE, code: 'NOT_LINKABLE' });
   }
 
   // The order is now named by a line of this statement: it is no longer «a parcel no statement names» here.

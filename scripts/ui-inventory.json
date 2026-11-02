@@ -1060,12 +1060,12 @@
     "tabs": 0
   },
   "src/components/screens/finance/LinkLineDialog.tsx": {
-    "buttons": 5,
+    "buttons": 7,
     "inputs": 1,
     "columns": 0,
     "cards": 0,
     "modals": 1,
-    "icons": 4,
+    "icons": 5,
     "links": 0,
     "tabs": 0
   },
@@ -1380,12 +1380,12 @@
     "tabs": 0
   },
   "src/components/screens/ShippingBatchesScreen.tsx": {
-    "buttons": 12,
+    "buttons": 13,
     "inputs": 0,
     "columns": 0,
     "cards": 0,
     "modals": 0,
-    "icons": 17,
+    "icons": 19,
     "links": 0,
     "tabs": 0
   },
@@ -1706,16 +1706,6 @@
     "cards": 0,
     "modals": 2,
     "icons": 4,
-    "links": 0,
-    "tabs": 0
-  },
-  "src/components/settings/CourierWebhook.tsx": {
-    "buttons": 3,
-    "inputs": 0,
-    "columns": 0,
-    "cards": 0,
-    "modals": 0,
-    "icons": 6,
     "links": 0,
     "tabs": 0
   },

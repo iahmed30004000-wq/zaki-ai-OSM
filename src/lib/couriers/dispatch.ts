@@ -1,5 +1,6 @@
 import { db } from '../db';
 import { adapterFor } from './index';
+import { courierCityIdFor, storedCityIds } from './city-id';
 import { courierBelongsToStore } from './scope';
 import { isOutcomeUnknown } from './types';
 import { logAudit } from '../audit';
@@ -43,7 +44,12 @@ export interface DispatchOutcome {
   ok: boolean;
   /** The courier's barcode — our tracking number from now on. */
   trackingNumber?: string;
-  skipped?: 'ALREADY_SENT' | 'NOT_AUTOMATED' | 'NO_PROVIDER' | 'SEND_IN_FLIGHT' | 'NO_COURIER_CITY' | 'LEFT_THE_BATCH';
+  skipped?:
+    | 'ALREADY_SENT' | 'NOT_AUTOMATED' | 'NO_PROVIDER' | 'SEND_IN_FLIGHT' | 'NO_COURIER_CITY' | 'LEFT_THE_BATCH'
+    /** The courier account has no address to collect from: nothing of the batch was sent. */
+    | 'NO_ORIGIN_ADDRESS'
+    /** This order has no address to deliver to. */
+    | 'NO_ADDRESS';
   /** With NO_COURIER_CITY: the governorate the courier has no id for yet. */
   regionName?: string | null;
   /**
@@ -278,14 +284,37 @@ export async function dispatchBatch(input: {
     orderBy: { orderNumber: 'asc' },
   });
 
-  // One read for the whole batch rather than one per parcel.
-  const cityIds = new Map<string, number>(
-    (
-      await db.deliveryFee.findMany({
-        where: { deliveryProviderId: batch.provider?.id, courierCityId: { not: null } },
-        select: { regionId: true, courierCityId: true },
-      })
-    ).map((f) => [f.regionId, f.courierCityId!])
+  /*
+   * NO ADDRESS TO COLLECT FROM: THE WHOLE BATCH STAYS HOME, BEFORE ANY CLAIM AND ANY CALL.
+   *
+   * BATCH-2026-0006 (2/11): 131 orders, 131 refusals, every one «Invalid Parameter 'model.addressLine1' null» — the
+   * saved account had no «عنوان الانطلاق» and the courier refuses every parcel without it. That is one fact about the
+   * account, not 131 facts about orders, so it is said once per order with one sentence and nobody's server is asked.
+   * No claim is written: there is nothing to release afterwards, and the press works again the moment the address is.
+   */
+  if (adapter.automated && adapter.originAddressMissing === true) {
+    const outcomes: DispatchOutcome[] = orders.map((o) => ({
+      orderId: o.id, orderNumber: o.orderNumber, ok: false, skipped: 'NO_ORIGIN_ADDRESS',
+    }));
+    const summary: DispatchSummary = { sent: 0, skipped: outcomes.length, failed: 0, outcomes };
+    await logAudit({
+      companyId: input.companyId,
+      userId: input.userId,
+      action: 'SHIPMENT_BATCH_DISPATCHED',
+      entity: 'ShippingBatch',
+      entityId: batch.id,
+      newData: { batchNumber: batch.batchNumber, adapter: adapter.code, sent: 0, skipped: summary.skipped, failed: 0, reason: 'NO_ORIGIN_ADDRESS' },
+    });
+    return summary;
+  }
+
+  // One read for the whole batch rather than one per parcel: the ids TYPED for this courier. What its own list says for
+  // a governorate nobody typed is looked up per parcel, from memory (`courierCityIdFor`) — it needs no fee row.
+  const typedCityIds = storedCityIds(
+    await db.deliveryFee.findMany({
+      where: { deliveryProviderId: batch.provider?.id, courierCityId: { not: null } },
+      select: { regionId: true, courierCityId: true },
+    })
   );
 
   const outcomes: DispatchOutcome[] = [];
@@ -310,16 +339,43 @@ export async function dispatchBatch(input: {
     }
     /*
      * A GOVERNORATE THE COURIER HAS NO ID FOR IS REFUSED HERE — before the
-     * claim and before any call. السويداء is not in Basha's list at all; it
-     * used to be claimed, searched for by name over the network, failed with
-     * an English error code, and released. Now it says which governorate and
-     * where its id is typed, and the rest of the batch goes on.
+     * claim and before any call. It used to be claimed, searched for by name
+     * over the network, failed with an English error code, and released. Now
+     * it says which governorate and where its id is typed, and the rest of
+     * the batch goes on.
+     *
+     * «NO ID» MEANS NONE TYPED AND NONE IN THE COURIER'S OWN LIST. The code
+     * must be typed per governorate in the settings, and nobody ever typed
+     * the fourteen, so every parcel was refused (the owner, 2/11: «ترحيل
+     * الطلبات مش زابط»). A typed id wins — except a number the courier's
+     * sheet itself holds as a Region Id and as no city's (3003): that is not
+     * a place a parcel can go to, so it counts as not typed. Otherwise the
+     * sheet gives the governorate its city (`couriers/city-id`) — and a
+     * governorate it cannot answer, or an order with no governorate, stays
+     * refused.
      */
-    if (adapter.needsCourierCityId && !cityIds.has(order.regionId ?? '')) {
+    const cityId = courierCityIdFor({
+      provider: batch.provider,
+      stored: typedCityIds,
+      regionId: order.regionId,
+      regionName: order.region?.name,
+    });
+    if (adapter.needsCourierCityId && cityId === null) {
       outcomes.push({
         orderId: order.id, orderNumber: order.orderNumber, ok: false,
         skipped: 'NO_COURIER_CITY', regionName: order.region?.name ?? null,
       });
+      continue;
+    }
+
+    /*
+     * NO ADDRESS TO DELIVER TO: refused here, before the claim and before any call. The courier reads an empty address
+     * as null and refuses in English; this says which order, and the rest of the batch goes on. The parcel's own
+     * address first, then the customer's — a blank or spaces-only one counts as none.
+     */
+    const address = order.deliveryAddress?.trim() || order.customer?.address?.trim() || '';
+    if (!address) {
+      outcomes.push({ orderId: order.id, orderNumber: order.orderNumber, ok: false, skipped: 'NO_ADDRESS' });
       continue;
     }
 
@@ -336,13 +392,14 @@ export async function dispatchBatch(input: {
 
     try {
       const result = await adapter.createShipment({
-        // The courier's own id for this region, agreed once and stored on
-        // the fee row. Without it the adapter has to search their API by
-        // name on every single shipment — a round trip that needs their
-        // password, and a name match that quietly takes the first of
-        // several hits. A parcel addressed to the wrong governorate is not
-        // a thing you find out about until the driver calls.
-        cityId: cityIds.get(order.regionId ?? '') ?? undefined,
+        // The courier's own id for this region: the one typed on the fee row,
+        // else the one in their own list (see above). Without it the adapter
+        // has to search their API by name on every single shipment — a round
+        // trip that needs their password, and a name match that quietly takes
+        // the first of several hits. A parcel addressed to the wrong
+        // governorate is not a thing you find out about until the driver
+        // calls.
+        cityId: cityId ?? undefined,
         orderId: order.id,
         // Our order number, so their statement line can be matched back.
         merchantRef: order.merchantRef || order.orderNumber,
@@ -362,7 +419,8 @@ export async function dispatchBatch(input: {
             ? formatPhoneNumber(order.customer.altPhone, order.store?.country?.code)
             : null,
           // This parcel's address before the customer's: a returning customer who typed a new street gets it there.
-          address: order.deliveryAddress ?? order.customer?.address ?? '',
+          // (A blank one never reaches here: `NO_ADDRESS` above.)
+          address,
           regionName: order.region?.name ?? null,
         },
         pieces: piecesInParcel(order),

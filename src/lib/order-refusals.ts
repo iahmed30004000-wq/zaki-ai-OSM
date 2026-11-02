@@ -59,6 +59,10 @@ export const ORDER_ALREADY_IN_QUEUE = 'الطلب في الطابور أصلاً
 export const ORDER_PAST_CONFIRMATION =
   'الطلب تعدّى مرحلة التأكيد، فلا يرجع للطابور. عدّله مباشرة، أو استلمه بنفسك.';
 
+/** The holder giving back an order already decided (confirmed, rejected, cancelled, shipped): it is not reopened. */
+export const orderDecidedStaysOut = (stateLabel: string): string =>
+  `الطلب «${stateLabel}» — انحسم وما بيرجع للتأكيد ولا للطابور.`;
+
 /** Pulling another person's order back needs the reason in writing, like every hand-over. */
 export const ORDER_TAKEBACK_REASON = 'اكتب سبب سحب الطلب منه — يُسجَّل في سجل الطلب.';
 

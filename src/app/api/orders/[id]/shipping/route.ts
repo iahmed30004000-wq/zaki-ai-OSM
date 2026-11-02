@@ -12,11 +12,12 @@ import { emitAppEvent, type AppEvent } from '@/lib/apps/events';
 import { queueConversions } from '@/lib/conversions/emit';
 import { ORDER_ACCESS_STATUS, assertOrderAccess } from '@/lib/rbac';
 import {
-  isValidShippingTransition, canEnterShipping, STATUS_TIMESTAMP,
+  isValidShippingTransition, canEnterShipping,
   beforeHandoverReturn, RETURN_BEFORE_HANDOVER_AR,
   DELIVERY_FAILURE_REASONS, RETURN_REASONS, SHIPPING_STATUSES, attemptForShippingStatus,
   type ShippingStatus,
 } from '@/lib/shipping-workflow';
+import { editLockHeldByAnother, recordShippingMove, shippingAuditEntry, shippingMoveColumns } from '@/lib/shipping-move';
 import { appendDeliveryAttempt } from '@/lib/delivery-attempts';
 import { deliveryFeeChange, readFeeReason, type DeliveryFeeChange } from '@/lib/delivery-fee-change';
 import { logAudit } from '@/lib/audit';
@@ -101,11 +102,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     // ── Editing-lock enforcement: an ACTIVE foreign lock blocks edits ──
     // (users with orders.unlock may bypass, same as the generic PATCH)
-    const lockActive =
-      order.lockedById &&
-      order.lockExpiresAt &&
-      new Date(order.lockExpiresAt).getTime() > Date.now();
-    if (lockActive && order.lockedById !== user.id && !can(user, 'orders.unlock')) {
+    // The rule is `editLockHeldByAnother` — the batch door's press asks the same question of each of its parcels.
+    if (editLockHeldByAnother(order, user)) {
       const holder = await db.user.findUnique({ where: { id: order.lockedById! }, select: { name: true } });
       return NextResponse.json(
         {
@@ -344,18 +342,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           updateData.returnReason = returnReason;
         }
 
-        updateData.shippingStatus = newShippingStatus;
-        // Server-set timestamp (never client)
-        const tsField = STATUS_TIMESTAMP[newShippingStatus];
-        if (tsField) updateData[tsField] = now;
-        // Legacy combined status sync for list compatibility
-        if (newShippingStatus === 'SHIPPED') updateData.status = 'SHIPPED';
-        if (newShippingStatus === 'DELIVERED') {
-          updateData.status = 'DELIVERED';
-          // Match the legacy PATCH behavior: delivery marks the COD collected
-          updateData.settlementStatus = 'COLLECTED';
-        }
-        if (newShippingStatus === 'RETURNED') updateData.status = 'RETURNED';
+        // The status, its server-set timestamp and the legacy `status` sync: `shippingMoveColumns`, which the batch door also writes.
+        Object.assign(updateData, shippingMoveColumns(newShippingStatus, now));
         break;
       }
 
@@ -624,24 +612,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     // ── Logs: OrderStatusLog + OrderActivity + Audit (Section 21) ──
     if (newShippingStatus && newShippingStatus !== from) {
-      await db.orderStatusLog.create({
-        data: {
-          companyId, orderId: id, statusType: 'SHIPPING',
-          previousValue: from, newValue: newShippingStatus,
-          changedById: user.id, changedByRole: user.role,
-          note: shippingNote?.trim() || deliveryFailureReason || returnReason || null,
-        },
-      });
-      await db.orderActivity.create({
-        data: {
-          companyId, orderId: id, userId: user.id,
-          action: 'SHIPPING_STATUS_CHANGED', previousStatus: from, newStatus: newShippingStatus,
-          metadata: JSON.stringify({
-            by: user.name, role: user.role,
-            provider: deliveryProviderId || order.deliveryProviderId || null,
-            note: shippingNote || null,
-          }),
-        },
+      // The timeline line and the activity row: `recordShippingMove`, which the batch door writes for each of its parcels too.
+      await recordShippingMove(db, {
+        companyId, orderId: id, from, to: newShippingStatus,
+        user: { id: user.id, name: user.name, role: user.role },
+        logNote: shippingNote?.trim() || deliveryFailureReason || returnReason || null,
+        typedNote: shippingNote || null,
+        provider: deliveryProviderId || order.deliveryProviderId || null,
       });
     }
     if (action === 'assign_provider') {
@@ -673,13 +650,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         newData: { deliveryFee: feeChanged.after, reason: feeChanged.reason, by: user.name },
       });
     }
-    await logAudit({
-      companyId, userId: user.id,
-      action: newShippingStatus ? 'SHIPPING_STATUS_CHANGED' : 'SHIPPING_INFO_UPDATED',
-      entity: 'Order', entityId: id,
-      previousData: { shippingStatus: from, trackingNumber: order.trackingNumber },
-      newData: { shippingStatus: newShippingStatus, action, by: user.name },
-    });
+    await logAudit(shippingAuditEntry({
+      companyId, userId: user.id, orderId: id,
+      from, to: newShippingStatus, trackingNumber: order.trackingNumber,
+      action, by: user.name,
+    }));
 
     // A failed delivery is the tracking desk's to chase: ops.track holders
     // of this store, sent to the screen that lists it. After commit; never

@@ -98,6 +98,9 @@ const credentialsSchema = z.object({
   parcelTypeId: count(2_147_483_647).optional(),
 });
 
+/** The refusal when a LogesTechs account is saved with no address to collect parcels from. */
+const ORIGIN_ADDRESS_REQUIRED = 'عنوان الانطلاق مطلوب — الشركة بترفض كل طرد بدونه';
+
 /**
  * The courier, if it belongs to this store.
  *
@@ -188,6 +191,24 @@ export async function PUT(req: Request, ctx: Ctx) {
         { error: zodMessage(parsed.error) },
         { status: 400 }
       );
+    }
+
+    /*
+     * «عنوان الانطلاق» IS REQUIRED ON A LOGESTECHS ACCOUNT. It was optional here and on the form, and the courier
+     * refuses every parcel without it: BATCH-2026-0006 (2/11) came back «فشل 131», each one «Invalid Parameter
+     * 'model.addressLine1' null». Refused at the save, in words, and stored trimmed. Another platform's account is
+     * read as it always was.
+     */
+    const onLogesTechs = (provider.adapterCode || provider.code || '').trim().toUpperCase() === 'LOGESTECHS';
+    if (onLogesTechs) {
+      const originAddress = (parsed.data.originAddress ?? '').trim();
+      if (!originAddress) {
+        return NextResponse.json(
+          { error: ORIGIN_ADDRESS_REQUIRED, code: 'ORIGIN_ADDRESS_REQUIRED' },
+          { status: 400 }
+        );
+      }
+      parsed.data.originAddress = originAddress;
     }
 
     // Would these credentials actually produce a working adapter? Saying so

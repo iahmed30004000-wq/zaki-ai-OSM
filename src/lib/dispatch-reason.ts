@@ -24,6 +24,11 @@ export function dispatchReasonAr(o: Pick<DispatchOutcome, 'skipped' | 'regionNam
     case 'NO_COURIER_CITY':
       // Which governorate, and where its id goes — it was an English error code.
       return `${o.regionName ?? 'المحافظة'}: لا رمز لها عند الشركة بعد — لم يُرسَل. أدخِل رمزها من شركات الشحن ← الأجور ← «رمزها عند الشركة»، أو انقل الطلب لشركة أخرى`;
+    case 'NO_ORIGIN_ADDRESS':
+      // The account's, not the order's: nothing of the batch was sent, and the fix is one box in the courier's account.
+      return 'عنوان الانطلاق فاضي بحساب الشركة — اضغط «تغيير الحساب» واكتبه، الشركة بترفض الطرد بدونه';
+    case 'NO_ADDRESS':
+      return 'الطلب بلا عنوان — اكتب العنوان بالطلب وأعد الترحيل';
     default:
       return o.error ?? '';
   }

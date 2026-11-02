@@ -174,7 +174,7 @@ export const syncCourierStatus: JobDefinition = {
           await clearMiss(db, order);
         }
 
-        // The same gate the webhook goes through — see couriers/apply-event.
+        // The one gate a courier's word goes through (the webhook that shared it is cancelled) — see couriers/apply-event.
         const outcome = await applyCourierEvent({
           order,
           event,
