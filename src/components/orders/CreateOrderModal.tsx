@@ -18,6 +18,7 @@ import { useMayOpen } from '@/hooks/useMayOpen';
 import { openOrderStep, openPreparationStep } from '@/lib/next-step';
 import { confirmOrderNow } from '@/lib/confirm-now';
 import { userCan } from '@/lib/can';
+import { offersConfirmNow } from '@/lib/confirmation-queue';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 
@@ -52,11 +53,12 @@ export function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateOrderModa
   const formId = useId();
   const [loading, setLoading] = useState(false);
   /**
-   * «الزبون على الخط — أكّده الآن». Offered only to somebody who may confirm (`orders.confirm`):
-   * the server asks the same of the confirmation call, so this is the door's answer drawn early,
-   * never a way past it.
+   * «الزبون على الخط — أكّده الآن». Offered only to somebody who may confirm (`orders.confirm`) — and,
+   * when she works only what she holds, may also record the call the door writes for her
+   * (`orders.contact_log`). The same question the door asks (`offersConfirmNow`), so nobody sees a
+   * box that can never confirm; drawn early, never a way past it.
    */
-  const mayConfirm = userCan(currentUser, 'orders.confirm');
+  const mayConfirm = offersConfirmNow((permission) => userCan(currentUser, permission));
   const [confirmNow, setConfirmNow] = useState(false);
   // «شامل التوصيل»: ticked unless she unticks it — most of what is sold here is sold with free delivery, and a forgotten box
   // used to mean the courier's fee added on top of a price the customer had been told includes it.
@@ -214,6 +216,8 @@ export function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateOrderModa
           moderatorId: moderatorId || null,
           customerNotes,
           internalNotes,
+          // Her word that the customer is on the line: the door keeps the order hers and records the call (`claimsOwnEntry`).
+          ...(confirmNow ? { confirmNow: true } : {}),
         }),
       });
       const data = await res.json();
@@ -250,11 +254,21 @@ export function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateOrderModa
        * a refusal is worse than no link.
        */
       const openIt = openOrderStep(created?.id, mayOpen);
-      if (data.notice) toast.warn(`تم إنشاء الطلب ${created?.orderNumber ?? ''} — ${data.notice}`.trim(), undefined, openIt);
+      /*
+       * «انعمل ولكن ما اتأكد» — SAID BY THE DOOR, BEFORE A CALL IT ALREADY KNOWS WILL BE REFUSED.
+       *
+       * With the box ticked the creation door answers whether the confirmation door will say yes (`confirmNowReadiness`): the cap
+       * sent the order to the pool, the box is not hers to tick, or the order has no governorate. Then the one message says what
+       * happened and why, and the confirmation is not attempted.
+       */
+      const readiness = confirmNow && created?.id ? (data.confirmNow as { ready: boolean; reason?: string } | undefined) : undefined;
+      const notNow = readiness?.ready === false;
+      if (notNow) toast.warn(`انعمل الطلب ${created?.orderNumber ?? ''} ولكن ما اتأكد — ${readiness?.reason ?? ''}`.trim(), undefined, openIt);
+      else if (data.notice) toast.warn(`تم إنشاء الطلب ${created?.orderNumber ?? ''} — ${data.notice}`.trim(), undefined, openIt);
       // With «أكّده الآن» the one message below says both things; two toasts for one act is noise.
       else if (!(confirmNow && created?.id)) toast.done(created?.orderNumber ? `تم إنشاء الطلب ${created.orderNumber} بنجاح` : 'تم إنشاء الطلب بنجاح', undefined, openIt);
       // The customer is on the line: confirm what was just made, through the ordinary confirmation door.
-      if (confirmNow && created?.id) {
+      if (confirmNow && created?.id && !notNow) {
         const done = await confirmOrderNow(created.id);
         const label = created.orderNumber ?? 'الطلب';
         if (done.ok) toast.done(`تم إنشاء ${label} وتأكيده — صار في شاشة التجهيز.`, undefined, openPreparationStep(mayOpen));

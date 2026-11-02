@@ -19,7 +19,10 @@ import { applyQueueFilter } from '@/lib/rbac';
 import { ordersWhere } from '@/lib/order-filters';
 import { apiError } from '@/lib/api-error';
 import { requirePermission, getPermissionScope, can } from '@/lib/authorization';
-import { entryOwnership, ownedCounts, recordEntryClaim, ENTRY_CAP_FULL_MESSAGE } from '@/lib/confirmation-queue';
+import {
+  entryOwnership, ownedCounts, recordEntryClaim, ENTRY_CAP_FULL_MESSAGE, claimsOwnEntry, mayConfirmNow, confirmNowReadiness,
+  recordConfirmNowAttempt,
+} from '@/lib/confirmation-queue';
 import { zodMessage } from '@/lib/zod-message';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { giftUnits } from '@/lib/offer-gift';
@@ -258,6 +261,12 @@ export async function POST(req: Request) {
       moderatorId: z.string().max(64).optional().nullable(),
       customerNotes: z.string().trim().max(500).optional().nullable(),
       internalNotes: z.string().trim().max(500).optional().nullable(),
+      /**
+       * «الزبون على الخط — أكّده الآن» (the owner, 2/11). Only ADDS: the order is still created exactly as without it; for an
+       * agent bound by «اشتغل على اللي بإيدك» it becomes hers and the call she is on is recorded — see `claimsOwnEntry`. The
+       * confirmation itself is the ordinary door's, called by the form afterwards.
+       */
+      confirmNow: z.boolean().optional(),
     });
     const parsed = orderSchema.safeParse(body);
     if (!parsed.success) {
@@ -580,13 +589,21 @@ export async function POST(req: Request) {
      * The held count is read ONLY when the rule needs it: for anybody who
      * does not keep their own entries, this costs no query at all.
      */
-    const keepsIt = can(user, 'confirmation.work') && !can(user, 'confirmation.supervise');
+    const holds = (perm: string) => can(user, perm as Parameters<typeof can>[1]);
+    // «أكّده الآن», honoured only for somebody who may confirm and record the call — and never for a file's row.
+    const askedNow = v.confirmNow === true && body?.viaImport !== true;
+    const wantsNow = askedNow && mayConfirmNow(holds, body?.viaImport === true);
+    // The ONE rule, asked for the read and for the decision alike (a second copy of it here once drifted from the first).
+    const keepsIt = claimsOwnEntry(holds, wantsNow);
     const entry = entryOwnership({
       userId: user.id,
-      holds: (perm) => can(user, perm as Parameters<typeof can>[1]),
+      holds,
       heldTotal: keepsIt ? (await ownedCounts(db, { companyId, storeId }, user.id)).total : 0,
       now: new Date(),
+      confirmNow: wantsNow,
     });
+    // The call she is on is recorded only when the order is hers: a colleague who pulls what the cap sent to the pool still rings.
+    const recordsTheCall = wantsNow && entry.claimedById === user.id;
 
     // Moderator assignment — Phase S: moderator must belong to THIS company
     const assignedModeratorId = responsible.moderatorId;
@@ -742,6 +759,7 @@ export async function POST(req: Request) {
           metadata: JSON.stringify({
             source: created.source,
             createdBy: user.name,
+            ...(askedNow ? { confirmNow: true } : {}),
           }),
         },
       });
@@ -756,6 +774,11 @@ export async function POST(req: Request) {
        * different fact from «she drew it from the queue».
        */
       await recordEntryClaim(tx, { companyId, orderId: created.id, ownership: entry });
+
+      // 5c. «الزبون على الخط» — the call, in the same transaction as the order and its claim (`recordConfirmNowAttempt`).
+      if (recordsTheCall) {
+        await recordConfirmNowAttempt(tx, { companyId, orderId: created.id, user: { id: user.id, role: user.role } });
+      }
 
       // 6. Status log (confirmation workflow entry point)
       await tx.orderStatusLog.create({
@@ -823,6 +846,10 @@ export async function POST(req: Request) {
       // reader without «عرض المالية» (order-projection.ts).
       order: projectOrder(order, user),
       ...(entry.capFull ? { notice: ENTRY_CAP_FULL_MESSAGE } : {}),
+      // Asked only when the box was ticked: will the confirmation door say yes? «ما اتأكد» with the reason, before any doomed call.
+      ...(askedNow
+        ? { confirmNow: confirmNowReadiness({ wanted: wantsNow, holds, userId: user.id, entry, regionId: resolvedRegionId }) }
+        : {}),
     });
   } catch (error) {
     const { body, status } = apiError(error);

@@ -185,6 +185,94 @@ export function pullFirstNotice(args: {
   return { kind: 'PULL', text: `${NOT_HELD_MESSAGE}. اسحبه من «اسحب التالي» أو افتحه من «طلباتي»، وبعدها اتصل وأكّد.` };
 }
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * «الزبون على الخط — أكّده الآن» FOR AN AGENT WHO IS BOUND (the owner, 2/11: «بنات التأكيد و المشرفة يظهرلهم انشاء طلب
+ * وتحت في خيار انو طلب مؤكد»).
+ *
+ * The live agents hold `confirmation.supervise`, so `keepsOwnEntry` sends what they type to the pool — and the confirmation door
+ * then refuses them `NOT_HELD`, because they are bound by `mustHoldToWork`. Neither rule is loosened here. Instead, when she ticks
+ * the box and may confirm, the order she has just typed is HERS — the same kind of claim an agent without supervise gets for every
+ * entry (`MANUAL_ENTRY`), under the same 300 cap. An account the hold rule does not bind (whoever holds `orders.unlock` or
+ * `orders.assign`, or works no queue) is not given a claim it does not need: the confirmation door never asked it to hold.
+ *
+ * And the contact-first rule (`needsContactFirst`) is met by the truth, not by an exemption: the customer was on the line, so the
+ * creation door writes that one call (`CONFIRM_NOW_NOTE`) in the same transaction — and only when the order really is hers.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+export function claimsOwnEntry(holds: (permission: string) => boolean, confirmNow: boolean): boolean {
+  return keepsOwnEntry(holds) || (confirmNow && mustHoldToWork(holds));
+}
+
+/**
+ * MAY THIS PERSON BE OFFERED «أكّده الآن» AT ALL? Asked by the form (the box) and by the door (`mayConfirmNow`), in the same words,
+ * so nobody is shown a box that can never confirm.
+ *
+ * She must be allowed to confirm (`orders.confirm`, the confirmation door's first question). And ONLY when the hold rule binds her
+ * (`mustHoldToWork`) — the one case the creation door writes a call in her name — must she also be allowed to record a call
+ * (`orders.contact_log`, the key that guards exactly that row). Somebody it does not bind — a manager, a moderator, the owner —
+ * keeps today's one-step confirm with `orders.confirm` alone: no call is written for her and none is asked of her (RV686).
+ */
+export function offersConfirmNow(holds: (permission: string) => boolean): boolean {
+  return holds('orders.confirm') && (!mustHoldToWork(holds) || holds('orders.contact_log'));
+}
+
+/** The door's version: the same question, and a file never confirms — an import row carrying the flag is an ordinary row. */
+export function mayConfirmNow(holds: (permission: string) => boolean, viaImport: boolean): boolean {
+  return !viaImport && offersConfirmNow(holds);
+}
+
+/** The call the creation door records when the customer was on the line — PHONE, ANSWERED, and this note. */
+export const CONFIRM_NOW_NOTE = 'الزبون كان على الخط وقت إدخال الطلب — أكّده الآن';
+
+export type ConfirmNowReadiness =
+  | { ready: true }
+  | { ready: false; code: 'CAP_FULL' | 'MAY_NOT_CONFIRM' | 'REGION_REQUIRED'; reason: string };
+
+/** Said when «أكّده الآن» was ticked by somebody the door may not honour it for. */
+export const MAY_NOT_CONFIRM_NOW_MESSAGE = 'ما عندك صلاحية «تغيير حالة التأكيد» — أو «تسجيل نتيجة الاتصال» وإنتِ بتشتغلي على اللي بإيدك بس';
+
+/**
+ * WILL THE CONFIRMATION DOOR SAY YES TO WHAT WAS JUST MADE? Answered by the creation door, so the form never makes a call it
+ * already knows will be refused, and says «انعمل ولكن ما اتأكد» with the reason instead.
+ */
+export function confirmNowReadiness(args: {
+  wanted: boolean;
+  holds: (permission: string) => boolean;
+  userId: string;
+  entry: EntryOwnership;
+  regionId: string | null;
+}): ConfirmNowReadiness {
+  if (!args.wanted) return { ready: false, code: 'MAY_NOT_CONFIRM', reason: MAY_NOT_CONFIRM_NOW_MESSAGE };
+  if (mustHoldToWork(args.holds) && args.entry.claimedById !== args.userId) {
+    return { ready: false, code: 'CAP_FULL', reason: ENTRY_CAP_FULL_MESSAGE };
+  }
+  if (needsRegionFirst({ regionId: args.regionId })) return { ready: false, code: 'REGION_REQUIRED', reason: REGION_REQUIRED_MESSAGE };
+  return { ready: true };
+}
+
+/**
+ * THE CALL, RECORDED — inside the transaction that writes the order, and only when the order is hers (a colleague who pulls an
+ * order the cap sent to the pool must still ring). The order is new, so this is its first attempt.
+ */
+export async function recordConfirmNowAttempt(
+  tx: Tx,
+  args: { companyId: string; orderId: string; user: { id: string; role: string } }
+): Promise<void> {
+  await tx.orderContactAttempt.create({
+    data: {
+      companyId: args.companyId,
+      orderId: args.orderId,
+      employeeId: args.user.id,
+      employeeRole: args.user.role,
+      attemptNumber: 1,
+      contactMethod: 'PHONE',
+      result: 'ANSWERED',
+      note: CONFIRM_NOW_NOTE,
+    },
+  });
+}
+
 export interface EntryOwnership {
   /** Null when the order goes to the pull queue, as every entry used to. */
   claimedById: string | null;
@@ -207,6 +295,8 @@ export function entryOwnership(args: {
   /** `ownedCounts(...).total`, read only when the rule needs it. */
   heldTotal: number;
   now: Date;
+  /** «الزبون على الخط — أكّده الآن», already weighed by `mayConfirmNow`. Absent = false: the AI-intake door never sends it. */
+  confirmNow?: boolean;
 }): EntryOwnership {
   const unclaimed: EntryOwnership = {
     claimedById: null,
@@ -214,7 +304,7 @@ export function entryOwnership(args: {
     currentOwnerId: null,
     capFull: false,
   };
-  if (!keepsOwnEntry(args.holds)) return unclaimed;
+  if (!claimsOwnEntry(args.holds, args.confirmNow === true)) return unclaimed;
   if (args.heldTotal >= CLAIM_CAPS.total) return { ...unclaimed, capFull: true };
   return {
     claimedById: args.userId,
