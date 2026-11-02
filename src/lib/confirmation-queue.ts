@@ -797,6 +797,22 @@ export async function pickNextCandidate(tx: Tx, scope: QueueScope, now = new Dat
   return oldest?.id ?? null;
 }
 
+/**
+ * HOW LONG A PULL MAY WAIT, AND HOW LONG IT MAY RUN (RV711).
+ *
+ * Prisma's defaults are 2 s to get a connection and 5 s for the whole interactive transaction. Since the pull takes the
+ * customer's lock (`lockCustomerForPull`), it can wait behind a colleague's WHOLE pull of the same customer: up to five
+ * attempts, then up to `MAX_TWINS_HELD` hold updates and as many history rows — about 130 statements — and behind more than
+ * one colleague on a busy morning. Five seconds left no margin; past it the pull failed with P2028 and the agent read
+ * «حدث خطأ داخلي».
+ *
+ * Not the 20 s / 30 s the statement doors use: the screen gives up on its own request after 15 s (`REQUEST_TIMEOUT_MS` in
+ * `api-client.ts`). A transaction allowed to run past that would end after nobody is listening — she would read «انتهت مهلة
+ * الطلب» and could not tell whether the order was hers. Both bounds together stay under the screen's wait, so a pull that runs
+ * out of time reaches her as the route's «الطابور مشغول» sentence instead.
+ */
+export const PULL_TRANSACTION_OPTIONS = { maxWait: 3_000, timeout: 10_000 } as const;
+
 export interface PullResult {
   ok: boolean;
   orderId?: string;
@@ -900,5 +916,5 @@ export async function pullNextOrder(
       return { ok: true, orderId: candidate, released };
     }
     return { ok: false, released, refusal: { code: 'QUEUE_EMPTY', message: 'تعذر سحب طلب، حاول مجدداً.' } };
-  });
+  }, PULL_TRANSACTION_OPTIONS);
 }
