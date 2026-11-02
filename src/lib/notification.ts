@@ -3,7 +3,6 @@ import { resolveAudience, type Audience } from './notification-audience';
 import { canAccessRoute, findRoute } from './route-registry';
 import type { SessionUser } from '@/types/auth';
 import { can } from './authorization';
-import { whoMayOpenOrder } from './rbac';
 
 /**
  * ANNOUNCING SOMETHING TO THE PEOPLE IT CONCERNS.
@@ -93,7 +92,11 @@ export async function createNotification({
       ? [...new Map(given.filter((u) => u.id !== actorId).map((u) => [u.id, u])).values()]
       : await resolveAudience({ companyId, storeId, audience, actorId });
     if (recipients.length === 0) return 0;
-    const told = orderId ? await whoMayOpenOrder(recipients, { id: orderId, companyId, storeId }) : recipients;
+    // Loaded here, not at the top: rbac.ts reads authorization.ts as it loads, and the route tests that stub authorization.ts
+    // reach this module through the doors they test — a top-level import made every one of them fail to load.
+    const told = orderId
+      ? await (await import('./rbac')).whoMayOpenOrder(recipients, { id: orderId, companyId, storeId })
+      : recipients;
     if (told.length === 0) return 0;
 
     const links = link == null ? [] : typeof link === 'string' ? [link] : link;
