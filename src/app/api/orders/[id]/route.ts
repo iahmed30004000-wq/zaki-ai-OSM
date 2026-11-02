@@ -720,6 +720,10 @@ export async function PATCH(
           shippingStatus: existing.shippingStatus,
           shippedAt: (existing as { shippedAt?: Date | null }).shippedAt ?? null,
         }),
+        // THE HOLDER'S OWN WINDOW ends at batch entry (`orders.edit_confirmed`, 2/11): the same fact the raising route used
+        // when it decided the request on the spot, so a request she decided herself is not refused here at the last press —
+        // and one decided before the order entered a batch is refused here, by the same predicate.
+        inBatch: !!existing.shippingBatchId,
       });
       if (!verdict.ok) {
         return NextResponse.json({ error: verdict.error, code: verdict.code }, { status: verdict.status });
@@ -1523,6 +1527,16 @@ export async function PATCH(
      * An APPROVED request coming back to be applied carries
      * `changeRequestId`, so `viaRequest` is how the pipeline gets
      * through — this refuses the door, not the decision.
+     *
+     * 2/11 — THE OWNER'S AMENDMENT, FOR THE KEY HOLDER: «بدي التعديل التأجيل أو
+     * الالغاء … أضيفهم كصلاحية انو يقدرو يعدلو ع الطلب لغاية مرحلة الشحنة».
+     * The ruling above stands for everybody who is not that agent, and this
+     * door still refuses a direct edit for her too: what changed is who
+     * DECIDES the request (`mayDecide`, the holder with `orders.edit_confirmed`
+     * while the order is in no batch), so her edit is a request decided on the
+     * spot and carried out HERE with its `changeRequestId` — through the same
+     * money path, seal and audit as any approved request. The decider is asked
+     * again above (`mayApply`), with the batch.
      * ═══════════════════════════════════════════════════════════════════
      */
     /*

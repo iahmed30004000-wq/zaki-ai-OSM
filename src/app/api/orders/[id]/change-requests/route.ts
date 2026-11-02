@@ -15,6 +15,7 @@ import { CHANGEABLE_FIELDS, touchesMoney, withFrom } from '@/lib/change-request-
 import { CHANGE_INTENTS, INTENT_AR, INTENT_ASK_AR, carryOut, missingFor, type ChangeIntent } from '@/lib/change-request-intent';
 import { createNotification } from '@/lib/notification';
 import { deciderFor, mayDecide } from '@/lib/change-request-routing';
+import { EDIT_WINDOW_NOTE_AR } from '@/lib/edit-confirmed-window';
 import { orderSeal, handedToCourier } from '@/lib/order-seal';
 import { ORDER_NOT_FOUND } from '@/lib/order-refusals';
 import { previewDraftSchema } from '@/lib/order-line-edit';
@@ -48,6 +49,14 @@ import type { LinesChange } from '@/lib/change-request-fields';
  * request. A BLOCKING request stops OUR forward transitions only; courier
  * events are always recorded and mark the request as "changed during
  * review". The SLA escalates — it never auto-approves.
+ *
+ * ONE EXCEPTION, THE OWNER'S, 2/11 (`orders.edit_confirmed`): the agent who
+ * HOLDS a confirmed order and holds that key decides her own request on the
+ * spot for as long as the order is in no batch and the courier has not taken
+ * it — «يقدرو يعدلو ع الطلب لغاية مرحلة الشحنة… ودخلت باتش ما بقدرو يعدلو،
+ * بصير يقدمو طلب تعديل». The request is still raised, decided by a named
+ * person and carried out through the same doors; only the wait for somebody
+ * else is gone. See `mayDecide` and edit-confirmed-window.ts.
  */
 
 /** Business minutes before a pending request escalates (never auto-approves). */
@@ -364,8 +373,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
      * So it decides itself, under two conditions, and only both together:
      *
      *   THE RAISER MAY DECIDE IT. `mayDecide` — the supervisor, or the agent
-     *   actually holding the order before operations. An agent raising one
-     *   on somebody else's order still waits, which is the whole rule.
+     *   actually holding the order before operations, or (2/11) the agent
+     *   holding a CONFIRMED order who has `orders.edit_confirmed`, while the
+     *   order is in no batch. An agent raising one on somebody else's order
+     *   still waits, which is the whole rule.
      *
      *   THE PARCEL HAS NOT LEFT. Once the waybill is printed the change is
      *   not ours to make at all: it is a message to the courier, and the
@@ -389,6 +400,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       // floor is the warehouse's to answer. `batch` is already loaded
       // above for the seal.
       handedToCourier: handed,
+      // THE HOLDER'S OWN WINDOW ENDS AT BATCH ENTRY (`orders.edit_confirmed`, 2/11) — earlier than the seal and the handover.
+      // The order's own column AND the batch read above: a batch named by the column but unreadable is not an open order.
+      inBatch: !!(order as { shippingBatchId?: string | null }).shippingBatchId || batch !== null,
     }, {
       // A request that moves a figure is only decided by itself when its raiser holds `orders.change_price` too (PR-7):
       // otherwise it waits for somebody who does, exactly like a request raised by somebody who may not decide.
@@ -405,6 +419,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
      * cancellation of a labelled parcel («لا يمكنك اعتماد طلب قدّمته بنفسك»).
      */
     const readyToApply = mine.allowed && (intent === 'EDIT' ? !seal.sealed : !handed);
+    /*
+     * WHICH RULE LET HER, said in the note. Only the holder's own window (`mine.via`) — a supervisor or the packing table
+     * keeps the sentence they always had, byte for byte. The seal (an EDIT) and the handover (a cancel or a hold) above are
+     * ON TOP of the window: a labelled order is still a request somebody else decides.
+     */
+    const viaEditWindow = readyToApply && mine.via === 'EDIT_CONFIRMED';
 
     if (readyToApply) {
       await db.orderChangeRequest.update({
@@ -413,7 +433,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           status: 'APPROVED',
           decidedById: user.id,
           decidedAt: new Date(),
-          decisionNote: 'طُبِّق مباشرةً — رافعُه يملك البتَّ فيه، والطرد لم يُسلَّم لشركة الشحن بعد.',
+          decisionNote: viaEditWindow
+            ? EDIT_WINDOW_NOTE_AR
+            : 'طُبِّق مباشرةً — رافعُه يملك البتَّ فيه، والطرد لم يُسلَّم لشركة الشحن بعد.',
         },
       });
     }
@@ -497,7 +519,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     });
 
     return NextResponse.json(
-      { request: created, orderStatus: order.confirmationStatus, readyToApply },
+      // `viaEditWindow`: the screen says «تم تطبيق التعديل» in the holder's words, and keeps the older sentences for everybody else.
+      { request: created, orderStatus: order.confirmationStatus, readyToApply, viaEditWindow },
       { status: 201 }
     );
   } catch (error) {
