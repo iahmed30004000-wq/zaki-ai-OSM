@@ -742,6 +742,7 @@ async function takeOrder(
     message: surface.notice.message(order.orderNumber),
     type: 'ORDER_NEW',
     link: ['/confirmation/queue', '/confirmation/mine', '/orders'],
+    orderId: order.id,
   });
 
   // Tell the installed apps. Never inline with the write: an order that

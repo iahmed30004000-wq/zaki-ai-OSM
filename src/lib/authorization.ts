@@ -25,6 +25,7 @@ import { requireAuth } from './auth';
 import { computeEffectiveGrants, EffectiveGrants, Scope } from './permissions-core';
 import { LEGACY_ALIAS } from './permission-aliases';
 import { isHeldRow } from './order-reservation';
+import { enteredBy } from './order-entered-by';
 
 // ─────────────────────────────────────────────────────
 // Grants access — sync when the session carries them (normal path),
@@ -125,7 +126,7 @@ function orderMatchesScope(order: Record<string, any>, userId: string, scope: Sc
         order.moderatorId === userId
       );
     case 'OWN':
-      return order.moderatorId === userId;
+      return enteredBy(order, userId);
     default:
       // CATEGORY / SPECIFIC are not meaningful for orders — company-wide only
       return false;

@@ -8,7 +8,8 @@
  * ── WHAT «HELD» MEANS ──
  *
  *   · The order stays where it is — unclaimed, counted, listed — and carries the name of the agent: `assignedToId`, the
- *     column an order's «مُسنَد إلى» has always been. It shows in the agent's «الطلبات» and in her colleagues', with her name.
+ *     column an order's «مُسنَد إلى» has always been. It shows in HER «الطلبات» and in the queue screen with her name — not in
+ *     her colleagues' «الطلبات» any more (the owner, 2/11: «الطلبات الي سحبتها فقط», overturning 31/10; `orderListWhere`).
  *   · Only she may take it. «اسحب التالي» gives it to her first and skips it for everyone else; taking it by id says whose it is.
  *   · It lets go by itself, so nobody has to remember to free it: after twenty-four hours from the day it was held, or the moment
  *     her account is not ACTIVE (disabled, suspended). Then it is the shared queue's, as every order is.
@@ -22,7 +23,7 @@
  * write them with a claim beside them — which this predicate excludes by `claimedById: null`.
  *
  * THIS FILE IS PURE — no database, no clock of its own. It is the one definition of «held», read by the queue, the claim door,
- * the orders list, the screens' marks and the job that makes the assignment, so that they cannot disagree about which orders
+ * the screens' marks and the job that makes the assignment, so that they cannot disagree about which orders
  * are held. The writer that decides WHO is in `reserve-returning-customers.ts`.
  */
 

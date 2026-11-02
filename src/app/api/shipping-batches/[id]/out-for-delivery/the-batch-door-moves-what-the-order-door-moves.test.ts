@@ -67,7 +67,7 @@ import { POST as orderDoor } from '@/app/api/orders/[id]/shipping/route';
 const COLUMNS: Record<string, string[]> = {
   order: [
     'id', 'orderNumber', 'companyId', 'storeId', 'version', 'status', 'shippingStatus', 'confirmationStatus', 'settlementStatus',
-    'assignedToId', 'claimedById', 'currentOwnerId', 'moderatorId', 'lockedById', 'lockExpiresAt',
+    'assignedToId', 'claimedById', 'currentOwnerId', 'moderatorId', 'createdById', 'lockedById', 'lockExpiresAt',
     'deliveryProviderId', 'trackingNumber', 'shippingBatchId', 'shippedAt', 'outForDeliveryAt', 'deliveredAt', 'failedAt',
     'returnedAt', 'deliveryFailureReason', 'returnReason', 'shippingNote', 'createdAt',
   ],
@@ -307,7 +307,7 @@ let clock = 0;
 const order = (n: number, over: Row = {}): Row => ({
   id: `o${n}`, orderNumber: `ORD-2026-${String(n).padStart(4, '0')}`, companyId: COMPANY, storeId: STORE,
   version: 2, status: 'SHIPPED', shippingStatus: 'SHIPPED', confirmationStatus: 'CONFIRMED', settlementStatus: 'PENDING_COLLECTION',
-  assignedToId: null, claimedById: null, currentOwnerId: null, moderatorId: null, lockedById: null, lockExpiresAt: null,
+  assignedToId: null, claimedById: null, currentOwnerId: null, moderatorId: null, createdById: null, lockedById: null, lockExpiresAt: null,
   deliveryProviderId: 'dp1', trackingNumber: `BSH-${n}`, shippingBatchId: 'b1',
   shippedAt: new Date('2026-11-02T08:00:00Z'), outForDeliveryAt: null, deliveredAt: null, failedAt: null, returnedAt: null,
   deliveryFailureReason: null, returnReason: null, shippingNote: null,
@@ -566,13 +566,23 @@ describe('3b · the scope of `orders.change_status` is asked of EACH parcel', ()
     expect(w.state.statusLogs.map((r) => r.orderId).sort()).toEqual(['o1', 'o3']);
   });
 
-  it('«طلباتي المنشأة»: only the parcels she entered herself', async () => {
+  it('«طلباتي المنشأة»: only the parcels she entered herself — by either record of it', async () => {
     start(
-      { orders: [order(1, { moderatorId: STAFF }), order(2, { moderatorId: 'u-other' })] },
+      {
+        orders: [
+          order(1, { moderatorId: STAFF }),
+          order(2, { moderatorId: 'u-other' }),
+          // She TYPED it and named nobody (she holds «إسناد الطلبات»): `createdById` alone says it is hers (order-entered-by.ts).
+          order(3, { createdById: STAFF, moderatorId: null }),
+          // Somebody else typed it and nobody is its moderator: not hers.
+          order(4, { createdById: 'u-other', moderatorId: null }),
+        ],
+      },
       person({ ...BOTH, 'orders.change_status': 'OWN' })
     );
     const res = await press();
-    expect(res.body).toMatchObject({ moved: 1, failed: 1, failedOrders: ['ORD-2026-0002'] });
+    expect(res.body).toMatchObject({ moved: 2, failed: 2, failedOrders: ['ORD-2026-0002', 'ORD-2026-0004'] });
+    expect(orderRow('o3').shippingStatus, 'the parcel she typed did not move').toBe('OUT_FOR_DELIVERY');
   });
 
   it('a scope orders do not have (a category) moves nothing and names every parcel', async () => {

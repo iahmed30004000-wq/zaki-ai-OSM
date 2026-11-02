@@ -1032,8 +1032,8 @@ export function OrdersScreen() {
                           <span className="font-bold text-[var(--sys-heading)] text-xs shrink-0 whitespace-nowrap" dir="ltr">{order.orderNumber}</span>
                           <OrderStateBadge state={order.state} />
                           {/*
-                            A RETURNING CUSTOMER'S ORDER IS HELD FOR THE AGENT WHO WORKED HIM LAST — seen by everybody, taken by her alone
-                            (order-reservation.ts). The server sends `reservedFor` only while the hold stands: not after a day, not once
+                            A RETURNING CUSTOMER'S ORDER IS HELD FOR THE AGENT WHO WORKED HIM LAST — in her list and in a whole-company one, taken by her alone
+                            (order-reservation.ts; a colleague on «المسندة إليه» no longer lists it, `orderListWhere`). The server sends `reservedFor` only while the hold stands: not after a day, not once
                             her account is off, not once anybody holds the order.
                           */}
                           {order.reservedFor && (

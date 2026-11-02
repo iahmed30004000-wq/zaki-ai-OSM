@@ -61,6 +61,7 @@ export async function createNotification({
   type = 'SYSTEM_ALERT',
   link,
   recipients: given,
+  orderId,
 }: {
   companyId: string;
   /** The store the news is about; null = company-wide (no store filter). */
@@ -80,16 +81,27 @@ export async function createNotification({
   type?: NotificationType;
   /** Where a click goes; a list is tried in order, per recipient (see linkFor). */
   link?: string | readonly string[];
+  /**
+   * The order this news is about. When given, only the recipients the order sheet would OPEN for are told
+   * (`whoMayOpenOrder`): a notice whose order answers «غير موجود» is not news, it is a dead link.
+   */
+  orderId?: string;
 }): Promise<number> {
   try {
     const recipients = given
       ? [...new Map(given.filter((u) => u.id !== actorId).map((u) => [u.id, u])).values()]
       : await resolveAudience({ companyId, storeId, audience, actorId });
     if (recipients.length === 0) return 0;
+    // Loaded here, not at the top: rbac.ts reads authorization.ts as it loads, and the route tests that stub authorization.ts
+    // reach this module through the doors they test — a top-level import made every one of them fail to load.
+    const told = orderId
+      ? await (await import('./rbac')).whoMayOpenOrder(recipients, { id: orderId, companyId, storeId })
+      : recipients;
+    if (told.length === 0) return 0;
 
     const links = link == null ? [] : typeof link === 'string' ? [link] : link;
     const { count } = await db.notification.createMany({
-      data: recipients.map((user) => ({
+      data: told.map((user) => ({
         companyId,
         storeId,
         userId: user.id,
