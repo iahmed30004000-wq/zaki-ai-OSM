@@ -1175,6 +1175,7 @@ export async function PATCH(
         message: `الطلب #${existing.orderNumber} أصبح بالحالة ${endedOrder?.confirmationStatus ?? 'CANCELLED'} بواسطة ${user.name}.`,
         type: 'SYSTEM_ALERT',
         link: `/orders?highlight=${existing.id}`,
+        orderId: existing.id,
       });
       return NextResponse.json({ success: true, order: endedOrder });
     }
@@ -2679,6 +2680,8 @@ export async function PATCH(
         message: `الطلب #${existing.orderNumber} أصبح بالحالة ${status} بواسطة ${user.name}.`,
         type: 'SYSTEM_ALERT',
         link: `/orders?highlight=${existing.id}`,
+        // Told only if the order still opens for them — the old moderator too: a link that answers «غير موجود» tells nothing.
+        orderId: existing.id,
       });
     }
 

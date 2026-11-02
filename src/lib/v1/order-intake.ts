@@ -622,6 +622,7 @@ export async function createSystemOrder(
     message: `وصل طلب جديد #${order.orderNumber} من ${caller.system}.`,
     type: 'ORDER_NEW',
     link: ['/confirmation/queue', '/confirmation/mine', '/orders'],
+    orderId: order.id,
   });
 
   /*

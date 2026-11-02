@@ -615,6 +615,8 @@ describe('the one write', () => {
     expect(h.notify.mock.calls[0][0]).toMatchObject({
       audience: { permission: 'confirmation.supervise' },
       type: 'ORDER_NEW',
+      // …and only those of them the new order opens for (`whoMayOpenOrder`): the notice names its order.
+      orderId: expect.any(String),
     });
   });
 
