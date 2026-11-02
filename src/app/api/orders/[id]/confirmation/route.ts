@@ -566,6 +566,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         message: `الطلب #${order.orderNumber} أصبح بالحالة ${target} بواسطة ${user.name}.`,
         type: 'SYSTEM_ALERT',
         link: `/orders?highlight=${order.id}`,
+        orderId: order.id,
       });
     }
 

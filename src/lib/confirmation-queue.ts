@@ -3,6 +3,7 @@ import { db } from './db';
 import { businessMinutesBetween, type BusinessCalendar } from './business-calendar';
 import { rejectionNeedsConversation } from './confirmation-workflow';
 import { notHeldForOthersWhere, reservedForOthersWhere, reservedForWhere } from './order-reservation';
+import { holdTwinsForPuller, lockCustomerForPull } from './twins-follow-the-pull';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -807,7 +808,9 @@ export interface PullResult {
 /**
  * Pull the next order for this agent. The claim is taken with a conditional
  * update, so two agents pulling at the same instant can never get the same
- * order — the loser simply takes the next one.
+ * order — the loser simply takes the next one. And never the same CUSTOMER:
+ * the claim waits on a per-customer lock, and the winner's claim holds his
+ * other waiting orders for her (`twins-follow-the-pull.ts`).
  */
 export async function pullNextOrder(
   scope: QueueScope,
@@ -832,6 +835,13 @@ export async function pullNextOrder(
           refusal: { code: 'QUEUE_EMPTY', message: 'لا توجد طلبات بانتظار التأكيد الآن.' },
         };
       }
+
+      // Whose order it is, read by its id: the customer is the lock's key and his other orders' owner; the number is what
+      // their history names.
+      const picked = await tx.order.findFirst({ where: { id: candidate }, select: { customerId: true, orderNumber: true } });
+      // ONE CUSTOMER, ONE AGENT (`twins-follow-the-pull.ts`): wait here while a colleague is taking one of his orders, so that
+      // when the claim below runs, his other orders are already held for her and this pull moves on to somebody else's.
+      if (picked?.customerId) await lockCustomerForPull(tx, picked.customerId);
 
       const taken = await tx.order.updateMany({
         // «Not held for somebody else» is asked again at the write: the hold may have been made between the pick and here.
@@ -876,6 +886,16 @@ export async function pullNextOrder(
           changedByRole: user.role,
           note: 'سحب من الطابور',
         },
+      });
+      // His other orders that are still waiting and nobody's come to her, never more than the cap leaves room for: `counts.total`
+      // is what she held before this pull, and this pull added one.
+      await holdTwinsForPuller(tx, {
+        scope,
+        customerId: picked?.customerId,
+        pulled: { id: candidate, orderNumber: picked?.orderNumber },
+        agentId: user.id,
+        room: CLAIM_CAPS.total - counts.total - 1,
+        now,
       });
       return { ok: true, orderId: candidate, released };
     }

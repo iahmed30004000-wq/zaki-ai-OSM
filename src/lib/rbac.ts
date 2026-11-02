@@ -18,8 +18,9 @@ import { ROLE_PERMISSIONS } from '@/types/auth';
  * Re-exported here for backward compatibility — do not re-implement.
  */
 import { can as _can, requirePermission as _requirePermission, getPermissionScope } from './authorization';
+import { enteredBy } from './order-entered-by';
 import { ORDER_WORK_DOOR, mayEnterOrderWorkDoor, type OrderWorkDoor } from './order-work-door';
-import { isHeldRow, reservedWhere } from './order-reservation';
+import { isHeldRow } from './order-reservation';
 export const can: (user: SessionUser, permission: Permission) => boolean = _can;
 export const requirePermission: (permission: Permission) => Promise<SessionUser> = _requirePermission;
 
@@ -31,7 +32,7 @@ export const requirePermission: (permission: Permission) => Promise<SessionUser>
  * Order visibility — driven by the Permission Engine scope of `orders.view`:
  *   ALL_COMPANY → all company orders (SHARED COMPANY VISIBILITY default)
  *   ASSIGNED    → assigned/claimed/owned + claimable queue (agents)
- *   OWN         → orders the user entered (moderatorId)
+ *   OWN         → orders the user entered (createdById or moderatorId)
  *   none        → no orders
  * `companyId` remains the tenant boundary (applied by the caller).
  */
@@ -134,14 +135,16 @@ export function orderListWhere(user: SessionUser): Record<string, unknown> {
         { createdById: user.id },
         { moderatorId: user.id },
         /*
-         * AND THE ORDERS HELD FOR A COLLEAGUE, so she can SEE them and cannot take them.
+         * AND NOTHING HELD FOR A COLLEAGUE — her list is hers.
          *
-         * The owner, 31/10: «باقي الموظفات يشوفوه ومايقدرو يسحبوه». A returning customer's new order is held for the agent who
-         * worked him last (order-reservation.ts); it is in the queue and in every agent's «الطلبات» with her name on it. The
-         * ones held for HER are already above (`assignedToId`); this adds the ones held for anybody — read-only here, because
-         * the claim door and the pull skip them for everyone but her.
+         * The owner, 2/11: «بنات التأكيد يظهرلها بخانة الطلبات الطلبات الي سحبتها فقط». This overturns his 31/10 word
+         * «باقي الموظفات يشوفوه ومايقدرو يسحبوه», which put every order held for a colleague (order-reservation.ts) in every
+         * agent's «الطلبات». A returning customer's order held for Sara is now in Sara's list and in the queue screen with
+         * her name on it — not in Huda's. The one held for HER stays (`assignedToId` above): she is its only taker.
+         *
+         * The READ envelope is not narrowed by this: `orderVisibilityWhere` still opens the pool, so a pull still opens the
+         * order it gives her (osm-one-envelope-two-questions).
          */
-        reservedWhere(new Date()),
       ],
     };
   }
@@ -277,6 +280,7 @@ type Ownership = {
   claimedById?: string | null;
   currentOwnerId?: string | null;
   moderatorId?: string | null;
+  createdById?: string | null;
   confirmationStatus?: string | null;
 };
 
@@ -294,7 +298,7 @@ function viewScopeReaches(user: SessionUser, order: Ownership): boolean {
         order.moderatorId === user.id
       );
     case 'OWN':
-      return order.moderatorId === user.id;
+      return enteredBy(order, user.id);
     default:
       return false;
   }
@@ -348,7 +352,7 @@ export async function assertOrderAccess(
       order.moderatorId === user.id;
     if (!mine) return { allowed: false, reason: 'NOT_ASSIGNED' };
   } else if (viewScope?.scope === 'OWN') {
-    if (order.moderatorId !== user.id) return { allowed: false, reason: 'NOT_ASSIGNED' };
+    if (!enteredBy(order, user.id)) return { allowed: false, reason: 'NOT_ASSIGNED' };
   } else if (!viewScope) {
     return { allowed: false, reason: 'NOT_ASSIGNED' };
   }
@@ -458,6 +462,34 @@ async function readableToWork(
   });
   if (!order) return { allowed: false, reason: 'NOT_FOUND' };
   return { allowed: true, order };
+}
+
+/**
+ * WHO AMONG THESE MAY OPEN THIS ORDER — the order sheet's own question, asked for people who are not on a request.
+ *
+ * A notice about an order is a link to it (`/orders?highlight=<id>` opens the sheet, which reads the order through the work
+ * door above). Once an agent's «عرض الطلبات» is «المسندة إليه», an order a colleague holds answers her «غير موجود» — and the
+ * confirm, reject and cancel notices went to every `confirmation.supervise` holder, which the live agents are. So the notice
+ * goes to the ones the sheet would open for, by the same envelope `readableToWork` puts in its query (`orderWorkWhere`) and the
+ * same entry check; nobody else.
+ *
+ * «كل الشركة» needs no query (the tenant and the store are the order's own). Everybody else costs one `findFirst` each — run
+ * after the response (notify.ts), for an audience of a store's staff.
+ */
+export async function whoMayOpenOrder<U extends SessionUser>(
+  users: readonly U[],
+  order: { id: string; companyId: string; storeId: string | null }
+): Promise<U[]> {
+  const where = { id: order.id, companyId: order.companyId, ...(order.storeId ? { storeId: order.storeId } : {}) };
+  const opens = await Promise.all(
+    users.map(async (u) => {
+      if (!mayEnterOrderWorkDoor(u)) return false;
+      const envelope = orderWorkWhere(u);
+      if (Object.keys(envelope).length === 0) return true;
+      return !!(await db.order.findFirst({ where: { AND: [where, envelope] }, select: { id: true } }));
+    })
+  );
+  return users.filter((_, i) => opens[i]);
 }
 
 // ─────────────────────────────────────────────────────

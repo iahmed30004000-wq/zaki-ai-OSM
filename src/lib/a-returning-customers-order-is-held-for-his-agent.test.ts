@@ -112,6 +112,8 @@ vi.mock('./db', () => {
     orderActivity: { create: vi.fn(async ({ data }: Row) => void world.activities.push(data)) },
     orderClaimHistory: { create: vi.fn(async ({ data }: Row) => void world.history.push(data)) },
     orderStatusLog: { create: vi.fn(async () => undefined) },
+    // The pull's per-customer lock (`twins-follow-the-pull.ts`): one agent at a time here, so it only has to answer.
+    $executeRaw: vi.fn(async () => 1),
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(db)),
   };
   return { db, default: db };

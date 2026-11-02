@@ -73,7 +73,7 @@ export interface OutForDeliveryResult {
 const MEMBER_SELECT = {
   id: true, orderNumber: true, companyId: true, version: true,
   shippingStatus: true, confirmationStatus: true,
-  assignedToId: true, claimedById: true, currentOwnerId: true, moderatorId: true,
+  assignedToId: true, claimedById: true, currentOwnerId: true, moderatorId: true, createdById: true,
   lockedById: true, lockExpiresAt: true,
   deliveryProviderId: true, trackingNumber: true,
 } as const;
@@ -82,6 +82,7 @@ type Member = {
   id: string; orderNumber: string; companyId: string; version: number;
   shippingStatus: string; confirmationStatus: string;
   assignedToId: string | null; claimedById: string | null; currentOwnerId: string | null; moderatorId: string | null;
+  createdById: string | null;
   lockedById: string | null; lockExpiresAt: Date | null;
   deliveryProviderId: string | null; trackingNumber: string | null;
 };
