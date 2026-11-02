@@ -8,13 +8,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * that is counted in the person's tally, the refusal's own status, and one audit row per link.
  */
 
-const { db, requireContext, requirePermission, logAudit, noteCustomersHandedOut, findLinkCandidates, linkLineToOrder } = vi.hoisted(() => ({
+const { db, requireContext, requirePermission, logAudit, noteCustomersHandedOut, findLinkCandidates, findLinkCandidatesByLinePhone, linkLineToOrder } = vi.hoisted(() => ({
   db: { $transaction: vi.fn() },
   requireContext: vi.fn(),
   requirePermission: vi.fn(),
   logAudit: vi.fn(),
   noteCustomersHandedOut: vi.fn(),
   findLinkCandidates: vi.fn(),
+  findLinkCandidatesByLinePhone: vi.fn(),
   linkLineToOrder: vi.fn(),
 }));
 vi.mock('@/lib/db', () => ({ db }));
@@ -28,6 +29,7 @@ vi.mock('@/lib/hand-link', async () => {
   return {
     ...real,
     findLinkCandidates: (...a: unknown[]) => findLinkCandidates(...a),
+    findLinkCandidatesByLinePhone: (...a: unknown[]) => findLinkCandidatesByLinePhone(...a),
     linkLineToOrder: (...a: unknown[]) => linkLineToOrder(...a),
   };
 });
@@ -54,9 +56,10 @@ const linked = { matchId: 'm1', orderId: 'o1', orderNumber: 'ORD-1', result: 'MA
 
 beforeEach(() => {
   vi.clearAllMocks();
-  requireContext.mockResolvedValue({ user: { id: 'u1' }, companyId: 'c1', storeId: 's1', country: { minorUnit: 3 } });
+  requireContext.mockResolvedValue({ user: { id: 'u1' }, companyId: 'c1', storeId: 's1', country: { minorUnit: 3, code: 'SY' } });
   requirePermission.mockResolvedValue({ id: 'u1' });
   findLinkCandidates.mockResolvedValue(found);
+  findLinkCandidatesByLinePhone.mockResolvedValue({ ...found, phone: { shown: '0933620102', country: 'SY' } });
   linkLineToOrder.mockResolvedValue(linked);
   db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn({ tx: true }));
 });
@@ -152,5 +155,53 @@ describe('the link', () => {
     expect((await (await post({ orderId: 'o1' })).json()).message).toContain('متطابقة');
     linkLineToOrder.mockResolvedValueOnce({ ...linked, result: 'MISMATCHED', note: 'عليه طلب إلغاء مفتوح' });
     expect((await (await post({ orderId: 'o1' })).json()).message).toContain('عليه طلب إلغاء مفتوح');
+  });
+});
+
+describe('the search by the line’s own phone (?by=phone)', () => {
+  it('asks for settlement.review, reads in the session’s company and store, and passes the store’s country — nothing from the request', async () => {
+    const res = await get('by=phone&storeId=other&companyId=other&phone=0999999999&q=ignored');
+    expect(res.status).toBe(200);
+    expect(requirePermission).toHaveBeenCalledWith('settlement.review');
+    expect(findLinkCandidatesByLinePhone).toHaveBeenCalledWith(db, {
+      companyId: 'c1', storeId: 's1', statementId: 'st1', matchId: 'm1', minorUnit: 3, countryCode: 'SY',
+    });
+    // The free search is not run beside it.
+    expect(findLinkCandidates).not.toHaveBeenCalled();
+    expect((await res.json()).phone).toEqual({ shown: '0933620102', country: 'SY' });
+  });
+
+  it('refused without the permission: no phone is read and no customer handed out', async () => {
+    requirePermission.mockRejectedValueOnce(new Error('403'));
+    const res = await get('by=phone');
+    expect(res.status).toBe(500);
+    expect(findLinkCandidatesByLinePhone).not.toHaveBeenCalled();
+    expect(noteCustomersHandedOut).not.toHaveBeenCalled();
+  });
+
+  it('refused without a store selected: nothing is read', async () => {
+    requireContext.mockRejectedValueOnce(new Error('STORE_REQUIRED'));
+    const res = await get('by=phone');
+    expect(res.status).toBe(500);
+    expect(findLinkCandidatesByLinePhone).not.toHaveBeenCalled();
+  });
+
+  it('counts the customers it handed out in the person’s tally, like the free search', async () => {
+    await get('by=phone');
+    expect(noteCustomersHandedOut).toHaveBeenCalledTimes(1);
+    expect(noteCustomersHandedOut.mock.calls[0][0].rows).toHaveLength(2);
+  });
+
+  it('a refusal from the rules keeps its own status and sentence', async () => {
+    findLinkCandidatesByLinePhone.mockRejectedValueOnce(new LinkRefused(409, { error: 'مربوط', code: 'NOT_LINKABLE' }));
+    const res = await get('by=phone');
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'مربوط', code: 'NOT_LINKABLE' });
+  });
+
+  it('any other value of «by» is the free search, as before', async () => {
+    await get('by=PHONE&q=0790000001');
+    expect(findLinkCandidatesByLinePhone).not.toHaveBeenCalled();
+    expect(findLinkCandidates).toHaveBeenCalledTimes(1);
   });
 });

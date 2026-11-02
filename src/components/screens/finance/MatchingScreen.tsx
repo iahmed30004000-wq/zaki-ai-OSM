@@ -24,6 +24,7 @@ import { useIsPhone } from '@/hooks/useIsPhone';
 import { ManualMatching } from '@/components/screens/finance/ManualMatching';
 import { STATEMENT_CLOSED_SENTENCE, isApproved } from '@/lib/settlement-gates';
 import { countOpenLines } from '@/lib/statement-open-lines';
+import { readCourierRow } from '@/lib/statement-line-reading';
 
 /**
  * /finance/matching — the outcome of matching, read as four queues: agreed,
@@ -71,6 +72,9 @@ interface Match {
     merchantRef: string | null;
     barcode: string | null;
     amount: string | number;
+    /** What the company says it collected, and the fee it kept — when its file had those columns. */
+    collected?: string | number | null;
+    fee?: string | number | null;
     /** The company's own status cell, and the whole row as it wrote it (notes column included). */
     status: string | null;
     rawRow: string | null;
@@ -451,12 +455,14 @@ function Queue({
           },
         ]),
     /*
-     * THE COMPANY'S OWN REASON, IN ITS OWN WORDS.
+     * THE COMPANY'S OWN REASON, IN ITS OWN WORDS — LAID OUT.
      *
      * Its status word, read through the one phrase table — and, whatever the table says, the word itself,
-     * so an unknown word is shown rather than hidden. Under it the whole row as the company wrote it: the
-     * notes column is part of that row, and «15132 - العميل طلب التأجيل» is the reason, not decoration.
-     * This was stored on every line and shown on no screen.
+     * so an unknown word is shown rather than hidden. Under it the line's pieces under their own names: our
+     * order number as the company wrote it, the amount (and what it collected and kept, when its
+     * file said), then what the row says besides — the notes column, «15132 - العميل طلب التأجيل», is the
+     * reason, not decoration. The whole row as the company wrote it stays one press away («النص الأصلي»).
+     * (The barcode is not repeated here: it is the row's first column already.)
      */
     ...(reason
       ? [
@@ -465,25 +471,7 @@ function Queue({
             label: 'سبب الشركة بكلامها',
             // A sentence in the company's own words: the width of the card, not what the label left over.
             wide: true,
-            render: (m: Match) => {
-              const word = m.courierWord;
-              const raw = m.statementLine?.rawRow;
-              if (!word && !raw) return <span className="text-[var(--sys-muted)]">—</span>;
-              return (
-                <span className="block">
-                  {word && (
-                    <span className="block font-medium">
-                      «{word.phrase}» <span className="text-xs text-[var(--sys-muted-foreground)]">{word.label}</span>
-                    </span>
-                  )}
-                  {raw && (
-                    <span className="block text-xs text-[var(--sys-muted)]" dir="auto">
-                      {raw}
-                    </span>
-                  )}
-                </span>
-              );
-            },
+            render: (m: Match) => <CourierReason m={m} currency={currency} />,
           },
         ]
       : []),
@@ -653,5 +641,60 @@ function Queue({
         </div>
       )}
     </div>
+  );
+}
+
+/** «سبب الشركة» as pieces under their own names, with the row as written one press away. Display only. */
+export function CourierReason({ m, currency }: { m: Pick<Match, 'courierWord' | 'statementLine'>; currency: string }) {
+  const word = m.courierWord;
+  const line = m.statementLine;
+  if (!word && !line?.rawRow) return <span className="text-[var(--sys-muted)]">—</span>;
+  const r = line ? readCourierRow(line) : null;
+  return (
+    <span className="block">
+      {word && (
+        <span className="block font-medium">
+          «{word.phrase}» <span className="text-xs text-[var(--sys-muted-foreground)]">{word.label}</span>
+        </span>
+      )}
+      {r && (
+        <span className="block text-xs text-[var(--sys-muted-foreground)]">
+          {r.orderRef && (
+            <span className="block">
+              رقم الطلب: <b dir="ltr">{r.orderRef}</b>
+            </span>
+          )}
+          {r.amount !== null && (
+            <span className="block">
+              المبلغ: <Money value={r.amount} currency={currency} />
+              {r.collected !== null && (
+                <>
+                  {' '}· المحصَّل <Money value={r.collected} currency={currency} />
+                </>
+              )}
+              {r.fee !== null && (
+                <>
+                  {' '}· الأجرة <Money value={r.fee} currency={currency} />
+                </>
+              )}
+            </span>
+          )}
+          {!word && r.status && <span className="block">الحالة: {r.status}</span>}
+          {r.rest.length > 0 && (
+            <span className="block" dir="auto">
+              ملاحظة الشركة: {r.rest.join(' · ')}
+            </span>
+          )}
+        </span>
+      )}
+      {r?.raw && (
+        <details>
+          <summary className="cursor-pointer text-xs text-[var(--sys-muted)]">النص الأصلي</summary>
+          <span className="block text-xs text-[var(--sys-muted)]" dir="auto">
+            {r.raw}
+          </span>
+        </details>
+      )}
+    </span>
   );
 }
