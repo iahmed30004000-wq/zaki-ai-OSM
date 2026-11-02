@@ -930,12 +930,12 @@
     "tabs": 0
   },
   "src/components/screens/ConfirmationMineScreen.tsx": {
-    "buttons": 9,
+    "buttons": 10,
     "inputs": 5,
     "columns": 6,
     "cards": 0,
     "modals": 0,
-    "icons": 14,
+    "icons": 15,
     "links": 1,
     "tabs": 2
   },
