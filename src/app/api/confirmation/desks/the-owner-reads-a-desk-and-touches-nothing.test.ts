@@ -210,6 +210,14 @@ describe('NEGATIVE: whose desk may not be read — 404, and no order is read', (
       expect(state.wheres).toEqual([]);
     });
   }
+
+  it('something that is not an id is refused before anybody is looked up', async () => {
+    state.user = await person('owner', 'SUPER_ADMIN', []);
+    for (const bad of ['../users', 'a b', 'x'.repeat(65), "sara' OR 1=1"]) {
+      expect((await mine(`?agent=${encodeURIComponent(bad)}`)).status, bad).toBe(404);
+    }
+    expect(resolveAudience).not.toHaveBeenCalled();
+  });
 });
 
 describe('WITHOUT `?agent=` the door is what it was', () => {
