@@ -9,6 +9,7 @@ import { ContactButtons } from '@/components/orders/ContactButtons';
 import { raiseEditRequest } from '@/components/orders/raiseEditRequest';
 import { TERMINAL_CONFIRMATION_STATUSES } from '@/lib/confirmation-workflow';
 import type { ChangeableField } from '@/lib/change-request-fields';
+import { editsNow, type WindowOrder } from '@/lib/edit-confirmed-window';
 import { MAX_REASON, MIN_REASON } from '@/lib/order-edit-reason';
 import { useAsk } from '@/components/ui/Confirm';
 import { useIsPhone } from '@/hooks/useIsPhone';
@@ -28,7 +29,12 @@ import { userCan } from '@/lib/can';
  */
 
 interface Props {
-  order: {
+  /**
+   * `WindowOrder`'s fields (who holds it, which trolley, the shipping state) are optional here: when the screen's read carries
+   * them, the card can say BEFORE the press whether the save is applied at once (`orders.edit_confirmed`); when it does not,
+   * the card says what it always said.
+   */
+  order: Omit<WindowOrder, 'confirmationStatus'> & {
     id: string;
     version: number;
     orderNumber: string;
@@ -71,14 +77,26 @@ export function CustomerCard({ order, canEdit, dialCode, onAcquireLock, onSaved,
   const ask = useAsk();
   /* A phone lets the card's title and its two buttons wrap onto a second line (ORD-13); a desk keeps the one row. */
   const phone = useIsPhone();
+  const currentUser = useAppOptional()?.currentUser ?? null;
   // Whether the sentence after raising a request may point at the screen of the requests: only if she can open it.
-  const canOpenQueue = userCan(useAppOptional()?.currentUser ?? null, 'control.change_requests');
+  const canOpenQueue = userCan(currentUser, 'control.change_requests');
+  /**
+   * WILL THIS SAVE BE APPLIED AT ONCE? (`orders.edit_confirmed`, 2/11)
+   *
+   * She holds a confirmed order, holds the key, and the order is in no batch: the save is a request she decides herself on the
+   * spot. The card says so BEFORE the press instead of «يروح كطلب لمن يبتّ فيه». The server is the judge — if it disagrees, the
+   * sentence after the press says where the request went — and none of this card's fields is a figure, so the price key is not
+   * asked here.
+   */
+  const appliesNow = editsNow(currentUser, order, 'EDIT');
   const { regions, countryName } = useRegions();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** «بانتظار الموافقة» — said out loud, not left to be guessed. */
   const [notice, setNotice] = useState<string | null>(null);
+  /** «تم تطبيق التعديل» — said out loud too, when the holder's own window applied it. */
+  const [done, setDone] = useState<string | null>(null);
   const [form, setForm] = useState({
     fullName: order.customer.fullName ?? '',
     phone: order.customer.rawPhone || order.customer.phone || '',
@@ -104,6 +122,7 @@ export function CustomerCard({ order, canEdit, dialCode, onAcquireLock, onSaved,
     });
     setError(null);
     setNotice(null);
+    setDone(null);
     if (!canEdit) await onAcquireLock();
     setOpen(true);
   }
@@ -159,9 +178,11 @@ export function CustomerCard({ order, canEdit, dialCode, onAcquireLock, onSaved,
           return;
         }
         const reason = await ask({
-          title: 'طلب تعديل',
-          body: 'الطلب مؤكَّد، فالتعديل بيروح كطلب لمن يبتّ فيه. السبب بينحفظ مع الطلب وبيقراه اللي بيوافق.',
-          confirmLabel: 'ارفع الطلب',
+          title: appliesNow ? 'تعديل الطلب' : 'طلب تعديل',
+          body: appliesNow
+            ? 'الطلب مؤكَّد ولم يدخل دفعة شحن بعد، فالتعديل بينطبق فوراً. السبب بينحفظ مع الطلب باسمك.'
+            : 'الطلب مؤكَّد، فالتعديل بيروح كطلب لمن يبتّ فيه. السبب بينحفظ مع الطلب وبيقراه اللي بيوافق.',
+          confirmLabel: appliesNow ? 'طبّق التعديل' : 'ارفع الطلب',
           input: {
             label: 'ليش بدّه يتعدّل؟',
             placeholder: 'مثال: الزبون غيّر العنوان بالتلفون',
@@ -172,11 +193,15 @@ export function CustomerCard({ order, canEdit, dialCode, onAcquireLock, onSaved,
         });
         const trimmed = (reason ?? '').trim();
         if (trimmed.length < MIN_REASON) return; // cancelled, or too short to mean anything
-        const { applied, message } = await raiseEditRequest(order.id, changes, trimmed, order.version, {
+        const { applied, message, viaWindow } = await raiseEditRequest(order.id, changes, trimmed, order.version, {
           canOpenQueue,
         });
         setOpen(false);
-        if (applied) onSaved();
+        if (applied) {
+          // Said when it was her own window that applied it; every other authority's save just refreshes, as it always did.
+          if (viaWindow) setDone(message);
+          onSaved();
+        }
         // Said where it went: the tab to look in, or who decides it. The order itself has not changed until somebody does.
         else setNotice(message);
         return;
@@ -241,6 +266,11 @@ export function CustomerCard({ order, canEdit, dialCode, onAcquireLock, onSaved,
       {notice && (
         <p className="text-xs text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/40 rounded-lg px-2.5 py-1.5">
           {notice}
+        </p>
+      )}
+      {done && (
+        <p role="status" className="text-xs text-[var(--sys-success)] bg-[var(--sys-success-soft)] rounded-lg px-2.5 py-1.5">
+          {done}
         </p>
       )}
 

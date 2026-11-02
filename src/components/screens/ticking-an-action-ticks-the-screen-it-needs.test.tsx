@@ -94,7 +94,7 @@ async function openSection(user: ReturnType<typeof userEvent.setup>, heading: st
 }
 
 const box = (key: RegExp) => screen.getByRole('checkbox', { name: key }) as HTMLInputElement;
-const ORDERS_EDIT = /orders\.edit/;
+const ORDERS_EDIT = /orders\.edit\b/;
 const ORDERS_VIEW = /orders\.view/;
 const sentList = () => net.calls.find((c) => c.method === 'PATCH')!.body;
 
