@@ -214,7 +214,7 @@ export function LabelSizePicker({
     />
   );
   const narrow =
-    stored.key === 'custom' && dims.width < NARROW_BARCODE_MM ? (
+    stored.key === 'custom' && stored.custom.width < NARROW_BARCODE_MM ? (
       <p className="text-xs text-[var(--sys-warning)] mt-1">
         عرض أقل من {NARROW_BARCODE_MM} مم — الباركود ممكن ما يقرأه الماسح.
       </p>
