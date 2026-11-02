@@ -744,7 +744,9 @@ describe('5 · one parcel failing never stops the others, and nothing is half-wr
     expect(res.body.failedOrders).toEqual(['ORD-2026-0001', 'ORD-2026-0003']);
     expect(res.body.failures.map((f: Row) => f.code)).toEqual(['CONFIRMATION_REQUIRED', 'ORDER_LOCKED']);
     expect(Object.keys(res.body).sort()).toEqual(['failed', 'failedOrders', 'failures', 'moved', 'skipped', 'success', 'total']);
-    expect(Object.keys(res.body.failures[0]).sort()).toEqual(['code', 'errorAr', 'orderNumber']);
+    // The order's id (the screen opens and copies it by `OrderRef`) and number, the code, the sentence — no customer data.
+    expect(Object.keys(res.body.failures[0]).sort()).toEqual(['code', 'errorAr', 'orderId', 'orderNumber']);
+    expect(res.body.failures.map((f: Row) => f.orderId)).toEqual(['o1', 'o3']);
   });
 });
 

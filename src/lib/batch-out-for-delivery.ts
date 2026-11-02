@@ -51,6 +51,8 @@ export const OUT_FAILURE_AR: Record<OutFailureCode, string> = {
 };
 
 export interface OutForDeliveryFailure {
+  /** The order's id — the screen draws the number through `OrderRef`, which opens and copies the order by it. No customer data. */
+  orderId: string;
   orderNumber: string;
   code: OutFailureCode;
   errorAr: string;
@@ -112,7 +114,7 @@ export async function moveBatchOutForDelivery(input: {
   const fail = (m: Member, code: OutFailureCode) => {
     result.failed++;
     result.failedOrders.push(m.orderNumber);
-    result.failures.push({ orderNumber: m.orderNumber, code, errorAr: OUT_FAILURE_AR[code] });
+    result.failures.push({ orderId: m.id, orderNumber: m.orderNumber, code, errorAr: OUT_FAILURE_AR[code] });
   };
 
   /*

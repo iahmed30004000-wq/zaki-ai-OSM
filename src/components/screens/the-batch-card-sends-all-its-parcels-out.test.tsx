@@ -228,7 +228,8 @@ describe('3 · «yes» sends one request to the batch’s own door and refreshes
 });
 
 describe('4 · the answer stays on the card', () => {
-  const status = async () => (await screen.findByRole('status', undefined, WAIT)) as HTMLElement;
+  // The answer panel is the first live region of the page; the copy buttons of a named parcel (`OrderRef`) carry their own inside it.
+  const status = async () => (await screen.findAllByRole('status', undefined, WAIT))[0] as HTMLElement;
 
   it('what moved and what was left alone', async () => {
     answer = () => summary({ moved: 158, skipped: 2 });
@@ -245,8 +246,8 @@ describe('4 · the answer stays on the card', () => {
       summary({
         moved: 156, skipped: 2, failed: 2, failedOrders: ['ORD-2026-0031', 'ORD-2026-0102'],
         failures: [
-          { orderNumber: 'ORD-2026-0031', code: 'ORDER_LOCKED', errorAr: 'موظف آخر يعدّل هذا الطلب الآن — جرّب بعد قليل.' },
-          { orderNumber: 'ORD-2026-0102', code: 'VERSION_CONFLICT', errorAr: 'عدّله شخص آخر قبلك — اضغط من جديد.' },
+          { orderId: 'o31', orderNumber: 'ORD-2026-0031', code: 'ORDER_LOCKED', errorAr: 'موظف آخر يعدّل هذا الطلب الآن — جرّب بعد قليل.' },
+          { orderId: 'o102', orderNumber: 'ORD-2026-0102', code: 'VERSION_CONFLICT', errorAr: 'عدّله شخص آخر قبلك — اضغط من جديد.' },
         ],
       });
     render(<ShippingBatchesScreen />);
@@ -255,11 +256,14 @@ describe('4 · the answer stays on the card', () => {
     const s = await status();
     expect(s.textContent).toContain('خرج للتوصيل 156 طلب');
     expect(s.textContent).toContain('تعذّر 2');
-    const items = within(s).getAllByRole('listitem').map((li) => li.textContent);
-    expect(items).toEqual([
+    const items = within(s).getAllByRole('listitem');
+    expect(items.map((li) => li.textContent)).toEqual([
       'ORD-2026-0031 — موظف آخر يعدّل هذا الطلب الآن — جرّب بعد قليل.',
       'ORD-2026-0102 — عدّله شخص آخر قبلك — اضغط من جديد.',
     ]);
+    // Each number is the order's own reference: the copy press of that number is beside it, like everywhere else on a screen.
+    expect(within(items[0]).getByRole('button', { name: 'نسخ رقم الطلب ORD-2026-0031' })).toBeTruthy();
+    expect(within(items[1]).getByRole('button', { name: 'نسخ رقم الطلب ORD-2026-0102' })).toBeTruthy();
   });
 
   it('a second press of a batch that has nothing left says so: nothing moved, all of them left alone', async () => {

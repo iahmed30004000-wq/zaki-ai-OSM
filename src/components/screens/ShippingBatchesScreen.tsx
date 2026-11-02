@@ -3,6 +3,7 @@
 import { DispatchResult } from '@/components/ops/DispatchResult';
 import { DispatchInterrupted, dispatchInChunks, type DispatchProgress } from '@/components/ops/dispatchInChunks';
 import { OrderLink } from '@/components/orders/OrderLink';
+import { OrderRef } from '@/components/orders/OrderRef';
 import { PrepEditSheet, type PrepParcel } from '@/components/ops/PrepEditSheet';
 import React, { useCallback, useState } from 'react';
 import { apiFetch, apiJson } from '@/lib/api-client';
@@ -63,7 +64,7 @@ interface OutSummary {
   skipped: number;
   failed: number;
   failedOrders: string[];
-  failures: { orderNumber: string; code: string; errorAr: string }[];
+  failures: { orderId: string; orderNumber: string; code: string; errorAr: string }[];
 }
 
 /** A number of orders, said the way Arabic counts them: one · two · three to ten in the plural · eleven and over in the singular. */
@@ -873,8 +874,9 @@ export function ShippingBatchesScreen() {
                     {departed.summary.failures.length > 0 && (
                       <ul className="space-y-0.5 font-normal text-[var(--sys-foreground)]">
                         {departed.summary.failures.map((f) => (
-                          <li key={f.orderNumber}>
-                            <span className="font-bold" dir="ltr">{f.orderNumber}</span> — {f.errorAr}
+                          <li key={f.orderId}>
+                            {/* Through `OrderRef`, like every order number on a screen: the one that did not move opens and copies. */}
+                            <OrderRef id={f.orderId} number={f.orderNumber} className="font-bold" /> — {f.errorAr}
                           </li>
                         ))}
                       </ul>

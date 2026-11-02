@@ -24,7 +24,8 @@ type Who = { id: string; role: string; status: 'ACTIVE'; keys: string[]; scopes?
 
 const { db, requireContext, applyQueueFilter, assertOrderReadable, findCustomer } = vi.hoisted(() => ({
   db: {
-    order: { findMany: vi.fn(), count: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn() },
+    // `groupBy` is the batches list's count of parcels still at «مشحون» (the «خرج للتوصيل لكل الدفعة» button).
+    order: { findMany: vi.fn(), count: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn(), groupBy: vi.fn() },
     customer: { findFirst: vi.fn() },
     returnReceipt: { count: vi.fn() },
     shippingBatch: { findMany: vi.fn(), count: vi.fn(), findFirst: vi.fn() },
@@ -333,6 +334,7 @@ describe('shipping batches', () => {
   beforeEach(() => {
     db.shippingBatch.count.mockResolvedValue(1);
     db.shippingBatch.findMany.mockResolvedValue([{ id: 'b1' }]);
+    db.order.groupBy.mockResolvedValue([]);
     db.shippingBatch.findFirst.mockResolvedValue({
       id: 'b1',
       orders: [{ id: 'o1', orderNumber: 'JO-1', trackingNumber: 'T1', customer: { fullName: 'سعاد', phone: '079', city: 'عمّان' } }],
