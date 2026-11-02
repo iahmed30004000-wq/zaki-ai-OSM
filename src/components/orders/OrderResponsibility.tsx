@@ -191,7 +191,8 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
                 استلمه أنا
               </button>
             )}
-            {holder && mayRelease && (
+            {/* A decided order is given back to no queue: both release doors refuse it past the confirmation desk (claim/route.ts). */}
+            {holder && mayRelease && !decided && (
             <button
               onClick={() => { setOpen(open === 'release' ? null : 'release'); }}
               className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-destructive)] inline-flex items-center gap-1.5"

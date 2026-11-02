@@ -35,7 +35,9 @@ describe('the two predicates', () => {
 
   it('and everything else regardless of a date', () => {
     const w = readyToPullWhere(SCOPE) as Record<string, unknown>;
-    expect(w.confirmationStatus).toEqual({ not: 'POSTPONED' });
+    // Was `{ not: 'POSTPONED' }` — which REPLACED the open list `claimableWhere` had spread, so rejected, cancelled and confirmed
+    // orders nobody held were «ready» too (ORD-2026-1166). The open list without POSTPONED, and nothing else.
+    expect(w.confirmationStatus).toEqual({ in: ['NEW', 'IN_PROGRESS', 'NO_ANSWER', 'FOLLOW_UP_REQUIRED'] });
     expect(w.shippingStatus).toBe('NOT_READY');
     expect(w.claimedById).toBeNull();
   });

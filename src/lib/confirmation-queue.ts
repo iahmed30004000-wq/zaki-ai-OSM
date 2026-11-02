@@ -258,6 +258,13 @@ export async function recordEntryClaim(
 /** Statuses that still belong to the confirmation stage. */
 export const OPEN_CONFIRMATION = ['NEW', 'IN_PROGRESS', 'NO_ANSWER', 'FOLLOW_UP_REQUIRED', 'POSTPONED'];
 
+/**
+ * Open, and takeable without waiting for a date: every open status but POSTPONED, which comes back on its day
+ * (`duePostponedWhere`). Derived from `OPEN_CONFIRMATION` and never typed out, so a status added to the open list is added here
+ * too, and a decided one (CONFIRMED · REJECTED · CANCELLED) can never be in it.
+ */
+export const READY_CONFIRMATION = OPEN_CONFIRMATION.filter((status) => status !== 'POSTPONED');
+
 export interface QueueScope {
   companyId: string;
   storeId: string;
@@ -652,7 +659,14 @@ export function duePostponedWhere(scope: QueueScope, now: Date) {
 export function readyToPullWhere(scope: QueueScope, forUserId?: string, now: Date = new Date()) {
   return {
     ...claimableWhere(scope),
-    confirmationStatus: { not: 'POSTPONED' },
+    /*
+     * ORD-2026-1166 (1/11): rejected as a duplicate at 12:18, pulled from the queue at 13:50, confirmed, cancelled before the
+     * shipment at 15:54, and pulled again at 15:56 and the next day. This key used to be `{ not: 'POSTPONED' }`, and a later
+     * key in an object REPLACES the one spread before it — so the `in: OPEN_CONFIRMATION` of `claimableWhere` was thrown away
+     * and the pool was every unclaimed NOT_READY order that was not postponed: rejected, cancelled and confirmed ones included,
+     * and the oldest first. It narrows the open list now, never widens it.
+     */
+    confirmationStatus: { in: READY_CONFIRMATION },
     // For an agent: not what is held for a colleague — the POSITIVE form (`notHeldForOthersWhere`), because `NOT (…)` over nullable
     // columns drops a released order that kept its name. Without `forUserId` it is the whole pool, as the supervisor reads it.
     ...(forUserId ? { AND: [notHeldForOthersWhere(forUserId, now)] } : {}),
@@ -731,7 +745,15 @@ export async function pullNextOrder(
 
       const taken = await tx.order.updateMany({
         // «Not held for somebody else» is asked again at the write: the hold may have been made between the pick and here.
-        where: { id: candidate, claimedById: null, AND: [notHeldForOthersWhere(user.id, now)] },
+        // And «still open, still not shipping» too: an order decided by hand between the pick and here (a manager's yes, a
+        // cancel) is not turned back into IN_PROGRESS by this write.
+        where: {
+          id: candidate,
+          claimedById: null,
+          confirmationStatus: { in: OPEN_CONFIRMATION },
+          shippingStatus: 'NOT_READY',
+          AND: [notHeldForOthersWhere(user.id, now)],
+        },
         data: {
           claimedById: user.id,
           claimedAt: now,
