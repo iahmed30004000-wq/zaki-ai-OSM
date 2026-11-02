@@ -23,6 +23,14 @@ import {
   findLinkCandidates,
   linkLineToOrder,
   rankCandidates,
+  findLinkCandidatesByLinePhone,
+  inFlightHeader,
+  NO_LINE_PHONE_SENTENCE,
+  NO_IN_FLIGHT_SENTENCE,
+  alreadyLinkedSentence,
+  STALE_LINE_MOVED_SENTENCE,
+  STALE_LINE_GONE_SENTENCE,
+  JUST_LINKED_SENTENCE,
 } from './hand-link';
 import { HAND_COLLECTED_NOTE, MANUAL_MATCH, SAME_FILE_NOTE } from './match-integrity';
 
@@ -703,5 +711,214 @@ describe('a line tied by hand is judged against a claim on the company, as the m
     const e = await refusedWith(link(tx));
     expect(e.body.code).toBe('ORDER_NOT_LINKABLE');
     expect(tx.settlementMatch.findMany.mock.calls.some((c) => (c[0] as { where: Row }).where.resolution === 'OURS_STANDS')).toBe(false);
+  });
+});
+
+/*
+ * «بهاتف السطر» — THE PHONE OF THE LINE ITSELF, THE ORDERS STILL ON THE ROAD.
+ *
+ * «بحث برقم الهاتف المرفق ياخد تلقائيا الرقم الهاتف لنفس الطلب ويظهرلك الطلبات الي قيد الشحن و انا اختار». The phone
+ * comes off the line's own row (never the request), and only this store's, this courier's orders still in flight
+ * are offered; a link from them is the same `linkLineToOrder`, judged by the matcher's own rule.
+ */
+describe('the search by the line’s own phone', () => {
+  const syrian = (over: Row = {}) =>
+    order({ customer: { id: 'cu9', fullName: 'رنا', phone: '933620102', rawPhone: '0933620102' }, shippingStatus: 'SHIPPED', ...over });
+  const withRow = (rawRow: string | null, over: Row = {}) => {
+    w.matches[0].statementLine = { amount: 20, fee: null, status: null, rawRow, merchantRef: null, barcode: 'BC-1', ...over };
+  };
+  const byPhone = (tx: ReturnType<typeof makeTx>, countryCode: string | null = 'SY') =>
+    findLinkCandidatesByLinePhone(tx as never, { ...scope, countryCode });
+  const ids = async () => (await byPhone(makeTx(w))).candidates.map((c) => c.id);
+
+  it('reads the phone off the row and lists that customer’s orders in flight, saying which phone it used', async () => {
+    withRow('BC-1 | رنا | +963 933 620 102 | 20000 | مؤجل');
+    w.orders = [syrian({ id: 'a', orderNumber: 'A-1' }), syrian({ id: 'b', orderNumber: 'B-1', shippingStatus: 'OUT_FOR_DELIVERY' })];
+    const r = await byPhone(makeTx(w));
+    expect(r.phone).toEqual({ shown: '0933620102', country: 'SY' });
+    expect(r.candidates.map((c) => c.id).sort()).toEqual(['a', 'b']);
+    expect(r.header).toBe(inFlightHeader(2));
+    expect(r.counts).toEqual({ total: 2, closed: 0, open: 2 });
+    expect(r.hint).toBeNull();
+  });
+
+  it('offers only orders still on the road: not delivered, not returned, not cancelled, not still in the warehouse', async () => {
+    withRow('0933620102');
+    w.orders = [
+      syrian({ id: 'shipped', shippingStatus: 'SHIPPED' }),
+      syrian({ id: 'out', shippingStatus: 'OUT_FOR_DELIVERY' }),
+      syrian({ id: 'failed', shippingStatus: 'FAILED_DELIVERY' }),
+      syrian({ id: 'delivered', shippingStatus: 'DELIVERED' }),
+      syrian({ id: 'partial', shippingStatus: 'PARTIALLY_DELIVERED' }),
+      syrian({ id: 'returned', shippingStatus: 'RETURNED' }),
+      syrian({ id: 'cancelled', shippingStatus: 'CANCELLED' }),
+      syrian({ id: 'packing', shippingStatus: 'PACKING', shippedAt: null }),
+    ];
+    expect((await ids()).sort()).toEqual(['failed', 'out', 'shipped']);
+  });
+
+  it('is scoped to the statement’s company, store and courier — another store’s or courier’s order of the same phone is not offered', async () => {
+    withRow('0933620102');
+    w.orders = [
+      syrian({ id: 'mine' }),
+      syrian({ id: 'otherStore', storeId: 's2' }),
+      syrian({ id: 'otherCourier', deliveryProviderId: 'dp2' }),
+      syrian({ id: 'otherCompany', companyId: 'c2' }),
+    ];
+    expect(await ids()).toEqual(['mine']);
+    const tx = makeTx(w);
+    await byPhone(tx);
+    expect(tx.order.findMany.mock.calls[0][0].where).toMatchObject({ companyId: 'c1', storeId: 's1', deliveryProviderId: 'dp1' });
+  });
+
+  it('another customer’s orders are not offered, however close the amount', async () => {
+    withRow('0933620102');
+    w.orders = [syrian({ id: 'mine' }), syrian({ id: 'stranger', customer: { id: 'cx', fullName: 'غريب', phone: '944111222', rawPhone: '0944111222' } })];
+    expect(await ids()).toEqual(['mine']);
+  });
+
+  it('a row with no phone in it: no search at all, and the sentence says to search by hand', async () => {
+    withRow('BC-1 | 20000 | مؤجل | 2026-10-28');
+    w.orders = [syrian()];
+    const tx = makeTx(w);
+    const r = await byPhone(tx);
+    expect(r).toMatchObject({ phone: null, candidates: [], hint: NO_LINE_PHONE_SENTENCE });
+    expect(tx.order.findMany).not.toHaveBeenCalled();
+    expect(tx.order.count).not.toHaveBeenCalled();
+  });
+
+  it('a line with no row stored is the same: no phone, nothing read', async () => {
+    withRow(null);
+    const tx = makeTx(w);
+    expect((await byPhone(tx)).hint).toBe(NO_LINE_PHONE_SENTENCE);
+    expect(tx.order.findMany).not.toHaveBeenCalled();
+  });
+
+  it('the barcode cell is never read as a phone, even when it has a mobile’s shape', async () => {
+    withRow('0933620102 | 20000', { barcode: '0933620102' });
+    w.orders = [syrian()];
+    expect((await byPhone(makeTx(w))).phone).toBeNull();
+  });
+
+  it('a phone with nothing on the road says so, and still shows the phone it read', async () => {
+    withRow('0933620102');
+    w.orders = [syrian({ shippingStatus: 'DELIVERED' })];
+    const r = await byPhone(makeTx(w));
+    expect(r).toMatchObject({ phone: { shown: '0933620102' }, candidates: [], hint: NO_IN_FLIGHT_SENTENCE, header: inFlightHeader(0) });
+  });
+
+  it('a Jordanian line in a Syrian store finds a customer stored with its code (RV136) or without it', async () => {
+    withRow('0791234567');
+    w.orders = [
+      syrian({ id: 'withCode', customer: { id: 'j1', fullName: 'ج', phone: '962791234567', rawPhone: '+962791234567' } }),
+      syrian({ id: 'legacy', customer: { id: 'j2', fullName: 'ج', phone: '791234567', rawPhone: '0791234567' } }),
+    ];
+    expect((await ids()).sort()).toEqual(['legacy', 'withCode']);
+  });
+
+  it('an order the rules refuse is offered greyed, with its reason — the same builder as the text search', async () => {
+    withRow('0933620102');
+    w.orders = [syrian({ id: 'settled', settlementStatus: 'SETTLED' }), syrian({ id: 'ok', orderNumber: 'ORD-OK' })];
+    const r = await byPhone(makeTx(w));
+    expect(r.candidates.map((c) => c.id)).toEqual(['ok', 'settled']);
+    expect(r.candidates[1].blockedBy).toContain(HAND_COLLECTED_NOTE);
+  });
+
+  it('refuses a line that is linked already or is not «في الكشف وليس عندنا», before reading any order', async () => {
+    withRow('0933620102');
+    w.matches[0].orderId = 'o1';
+    const tx = makeTx(w);
+    expect((await refusedWith(byPhone(tx))).body.code).toBe('NOT_LINKABLE');
+    expect(tx.order.findMany).not.toHaveBeenCalled();
+    w = makeWorld();
+    withRow('0933620102');
+    w.matches[0].result = 'MISMATCHED';
+    expect((await refusedWith(byPhone(makeTx(w)))).body.code).toBe('NOT_LINKABLE');
+  });
+
+  it('a statement of another store is not found — the store is the session’s', async () => {
+    withRow('0933620102');
+    w.statement.storeId = 's2';
+    expect((await refusedWith(byPhone(makeTx(w)))).body.code).toBe('NOT_FOUND');
+  });
+
+  it('then the link from it is the same door, judged by the matcher: same figures MATCHED, different ones MISMATCHED', async () => {
+    withRow('0933620102');
+    w.orders = [syrian({ id: 'o1' })];
+    const [picked] = (await byPhone(makeTx(w))).candidates;
+    const r = await link(makeTx(w), { orderId: picked.id });
+    expect(r.result).toBe('MATCHED');
+
+    w = makeWorld();
+    withRow('0933620102', { amount: 15 });
+    w.orders = [syrian({ id: 'o1' })];
+    const r2 = await link(makeTx(w), { orderId: 'o1' });
+    expect(r2).toMatchObject({ result: 'MISMATCHED', difference: -5 });
+  });
+
+  it('the header words for none, one and many', () => {
+    expect(inFlightHeader(0)).toBe('لا طلبات قيد الشحن لهذا الرقم');
+    expect(inFlightHeader(1)).toBe('لهذا الرقم طلب واحد قيد الشحن');
+    expect(inFlightHeader(3)).toBe('لهذا الرقم 3 طلبات قيد الشحن');
+  });
+});
+
+/*
+ * «الربط ب طلب خليها امورها تمام» — EVERY REFUSAL OF A STALE PAGE SAYS WHAT HAPPENED AND THAT NOTHING WAS WRITTEN.
+ */
+describe('a link pressed on a page older than the line', () => {
+  it('a line somebody already tied names the order it is tied to, and writes nothing', async () => {
+    w.matches[0].orderId = 'o1';
+    w.matches[0].result = 'MATCHED';
+    const tx = makeTx(w);
+    const e = await refusedWith(link(tx, { orderId: 'o1' }));
+    expect(e.body).toEqual({ error: alreadyLinkedSentence('ORD-1'), code: 'NOT_LINKABLE' });
+    expect(e.body.error).toContain('ORD-1');
+    expect(tx.counts['match.updateMany']).toBeUndefined();
+    expect(tx.counts['note.create']).toBeUndefined();
+  });
+
+  it('the order it is tied to is looked up in this company only', async () => {
+    w.matches[0].orderId = 'oX';
+    w.orders = [order(), order({ id: 'oX', companyId: 'c2', orderNumber: 'THEIRS-1' })];
+    const e = await refusedWith(link(makeTx(w)));
+    expect(e.body.error).toBe(alreadyLinkedSentence(null));
+    expect(e.body.error).not.toContain('THEIRS-1');
+  });
+
+  it('a line the matching moved out of «في الكشف وليس عندنا» says the matching was run again', async () => {
+    w.matches[0].result = 'MISMATCHED';
+    const e = await refusedWith(link(makeTx(w)));
+    expect(e.body).toEqual({ error: STALE_LINE_MOVED_SENTENCE, code: 'NOT_LINKABLE' });
+  });
+
+  it('a match row that is gone (the matching rebuilt its rows) says so, as a 404', async () => {
+    w.matches = [];
+    const e = await refusedWith(link(makeTx(w)));
+    expect(e.status).toBe(404);
+    expect(e.body).toEqual({ error: STALE_LINE_GONE_SENTENCE, code: 'NOT_FOUND' });
+  });
+
+  it('a double press: the second finds the line tied to the order the first chose', async () => {
+    const tx = makeTx(w);
+    await link(tx);
+    const e = await refusedWith(link(tx));
+    expect(e.body.error).toBe(alreadyLinkedSentence('ORD-1'));
+    expect(w.notes).toHaveLength(1);
+  });
+
+  it('two at the same instant: the write that lost says it was linked a moment ago by somebody else', async () => {
+    const tx = makeTx(w);
+    tx.settlementMatch.updateMany.mockResolvedValueOnce({ count: 0 });
+    const e = await refusedWith(link(tx));
+    expect(e.body).toEqual({ error: JUST_LINKED_SENTENCE, code: 'NOT_LINKABLE' });
+    expect(tx.counts['note.create']).toBeUndefined();
+    expect(tx.counts['match.deleteMany']).toBeUndefined();
+  });
+
+  it('every one of these sentences tells the person to refresh', () => {
+    for (const s of [alreadyLinkedSentence('X'), alreadyLinkedSentence(null), STALE_LINE_MOVED_SENTENCE, STALE_LINE_GONE_SENTENCE, JUST_LINKED_SENTENCE]) {
+      expect(s).toContain('حدّث الصفحة');
+    }
   });
 });

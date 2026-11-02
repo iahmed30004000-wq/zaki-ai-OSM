@@ -82,6 +82,18 @@ const { fake, state, aiChat, reserveOrderLines } = vi.hoisted(() => {
         if ('none' in rel) return !theirs.some((a) => matches(a, rel.none));
         if ('some' in rel) return theirs.some((a) => matches(a, rel.some));
       }
+      // The confirm guard asks for a twin by the product on any line (`items.some`) and by the trolley the order sits on (`shippingBatch.is`).
+      if (key === 'items') {
+        const rel = value as { some?: unknown };
+        if (!('some' in rel)) throw new Error('the fake table does not know this «items» filter — teach it before trusting it');
+        return ((row.items as Row[] | undefined) ?? []).some((i) => matches(i, rel.some));
+      }
+      if (key === 'shippingBatch') {
+        const rel = value as { is?: unknown };
+        if (!('is' in rel)) throw new Error('the fake table does not know this «shippingBatch» filter — teach it before trusting it');
+        const batch = (row.shippingBatch as Row | null | undefined) ?? null;
+        return batch !== null && matches(batch, rel.is);
+      }
       return holds(row[key], value);
     });
   }
@@ -162,8 +174,15 @@ const { fake, state, aiChat, reserveOrderLines } = vi.hoisted(() => {
     orderClaimHistory: recorded('orderClaimHistory'),
     orderActivity: recorded('orderActivity'),
     orderStatusLog: recorded('orderStatusLog'),
-    orderItem: recorded('orderItem'),
+    // The confirm guard reads the order's own lines (their products are part of «the same product»).
+    orderItem: {
+      ...recorded('orderItem'),
+      findMany: async (q: { where?: { orderId?: string } } = {}) =>
+        ((tables.orders.find((o) => o.id === q.where?.orderId)?.items as Row[] | undefined) ?? []).map((i) => ({ ...i })),
+    },
   };
+  // The confirm guard takes a per-customer lock (`pg_advisory_xact_lock`) as the first statement of the confirming transaction; the table has no locks to give.
+  db.$executeRaw = async () => 1;
   db.$transaction = async (fn: (tx: Row) => unknown) => fn(db);
 
   return {

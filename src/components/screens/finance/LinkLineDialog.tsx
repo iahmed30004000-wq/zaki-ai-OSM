@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
-import { RiAlertLine, RiLink, RiLoader4Line, RiSearchLine } from '@remixicon/react';
+import React, { useRef, useState } from 'react';
+import { RiAlertLine, RiLink, RiLoader4Line, RiPhoneLine, RiSearchLine } from '@remixicon/react';
 import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
 import { Money } from '@/components/ui/Money';
 import { useToast } from '@/components/ui/Toast';
-import type { CandidateSearch, LinkCandidate } from '@/lib/hand-link';
+import type { CandidateSearch, LinkCandidate, LinePhoneSearch } from '@/lib/hand-link';
 
 /**
  * «اربطه بطلب» — A LINE THE MATCHER COULD NOT PLACE, PLACED BY A PERSON.
@@ -19,7 +19,23 @@ import type { CandidateSearch, LinkCandidate } from '@/lib/hand-link';
  * It decides nothing. The server judges the link with the matcher's own rule and refuses an order that is
  * already settled, already matched, or named by another statement; those appear greyed here with the reason, so
  * nobody finds out by pressing. An order that is with another courier carries a warning and asks once more.
+ *
+ * «بهاتف السطر» runs by itself the moment the dialog opens: the server reads the phone off the line's own row and
+ * lists that customer's orders still being shipped with this courier («ياخد تلقائيا الرقم … ويظهرلك الطلبات الي قيد
+ * الشحن و انا اختار»). The free search stays under it for a line with no phone, or a phone the row got wrong.
+ *
+ * A press is one press: a second click while the first is on its way sends nothing. A refusal that means the page is
+ * older than the line (somebody linked it, the matching was run again, the statement was approved) says so and
+ * offers to refresh the list behind — the server wrote nothing.
  */
+
+/** The refusals after which the list behind the dialog no longer says the truth: offer to refresh it. */
+export const STALE_CODES: readonly string[] = ['NOT_LINKABLE', 'NOT_FOUND', 'ALREADY_APPROVED'];
+
+const codeOf = (e: unknown): string | null => {
+  const data = (e as { data?: { code?: unknown } } | null)?.data;
+  return typeof data?.code === 'string' ? data.code : null;
+};
 
 interface Props {
   statementId: string;
@@ -42,27 +58,75 @@ export function LinkLineDialog({ statementId, matchId, reference, amount, curren
   const [searching, setSearching] = useState(false);
   const [linking, setLinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [stale, setStale] = useState(false);
+  // Which search the list below came from, and the phone the server read off the line (null: the row has none).
+  const [source, setSource] = useState<'phone' | 'text' | null>(null);
+  const [linePhone, setLinePhone] = useState<LinePhoneSearch['phone']>(null);
+  // State is read on the next render; a second click in the same moment must be stopped before that.
+  const pressing = useRef(false);
 
   const base = `/api/finance/statements/${statementId}/matches/${matchId}/link`;
 
-  const search = async () => {
+  const failed = (e: unknown, fallback: string) => {
+    setError(e instanceof Error ? e.message : fallback);
+    setStale(STALE_CODES.includes(codeOf(e) ?? ''));
+  };
+
+  const searchByPhone = async () => {
     setSearching(true);
     setError(null);
+    setStale(false);
     setPicked(null);
     try {
-      setFound(await apiJson<CandidateSearch>(`${base}?q=${encodeURIComponent(query.trim())}`));
-      setSearched(query.trim());
+      const r = await apiJson<LinePhoneSearch>(`${base}?by=phone`);
+      setFound(r);
+      setLinePhone(r.phone);
+      setSource('phone');
+      setSearched('');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'تعذّر البحث');
+      failed(e, 'تعذّر البحث');
     } finally {
       setSearching(false);
     }
   };
 
+  const search = async () => {
+    setSearching(true);
+    setError(null);
+    setStale(false);
+    setPicked(null);
+    try {
+      setFound(await apiJson<CandidateSearch>(`${base}?q=${encodeURIComponent(query.trim())}`));
+      setSearched(query.trim());
+      setSource('text');
+    } catch (e) {
+      failed(e, 'تعذّر البحث');
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const openDialog = () => {
+    setOpen(true);
+    setFound(null);
+    setPicked(null);
+    setError(null);
+    setStale(false);
+    setSource(null);
+    void searchByPhone();
+  };
+
+  const refresh = () => {
+    setOpen(false);
+    onLinked();
+  };
+
   const link = async () => {
-    if (!picked) return;
+    if (!picked || pressing.current) return;
+    pressing.current = true;
     setLinking(true);
     setError(null);
+    setStale(false);
     try {
       const res = await apiJson<{ message: string; linked: { result: string } }>(base, {
         method: 'POST',
@@ -74,8 +138,9 @@ export function LinkLineDialog({ statementId, matchId, reference, amount, curren
       setOpen(false);
       onLinked();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'تعذّر الربط');
+      failed(e, 'تعذّر الربط');
     } finally {
+      pressing.current = false;
       setLinking(false);
     }
   };
@@ -84,7 +149,7 @@ export function LinkLineDialog({ statementId, matchId, reference, amount, curren
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={openDialog}
         className="min-h-11 md:min-h-0 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:border-[var(--sys-warning)] hover:text-[var(--sys-warning)]"
       >
         <RiLink className="h-4 w-4" />
@@ -101,8 +166,29 @@ export function LinkLineDialog({ statementId, matchId, reference, amount, curren
                   {' '}— المبلغ في الكشف <Money value={amount} currency={currency} />
                 </>
               )}
-              . اكتب هاتف الزبون أو رقم طلبنا أو رقم الشحنة.
+              .
             </p>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void searchByPhone()}
+                disabled={searching}
+                className={`h-11 md:h-10 px-4 rounded-lg border text-sm inline-flex items-center gap-2 disabled:opacity-50 ${
+                  source === 'phone' ? 'border-[var(--sys-primary)] bg-[var(--sys-surface)]' : 'border-[var(--sys-border)]'
+                }`}
+              >
+                <RiPhoneLine className="w-4 h-4" />
+                بهاتف السطر — الطلبات قيد الشحن
+              </button>
+              {source === 'phone' && linePhone && (
+                <span className="text-xs text-[var(--sys-muted-foreground)]">
+                  الهاتف بسطر الشركة: <b dir="ltr">{linePhone.shown}</b>
+                </span>
+              )}
+            </div>
+
+            <p className="text-xs text-[var(--sys-muted-foreground)]">أو بحث حر: اكتب هاتف الزبون أو رقم طلبنا أو رقم الشحنة.</p>
 
             <form
               onSubmit={(e) => {
@@ -182,7 +268,20 @@ export function LinkLineDialog({ statementId, matchId, reference, amount, curren
               </div>
             )}
 
-            {error && <p className="text-sm text-[var(--sys-destructive)]">{error}</p>}
+            {error && (
+              <div role="alert" className="space-y-2">
+                <p className="text-sm text-[var(--sys-destructive)]">{error}</p>
+                {stale && (
+                  <button
+                    type="button"
+                    onClick={refresh}
+                    className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm"
+                  >
+                    حدّث الصفحة
+                  </button>
+                )}
+              </div>
+            )}
 
             <div className="flex gap-2 justify-end">
               <button

@@ -1,4 +1,5 @@
 import { apiJson } from './api-client';
+import { TWIN_CONFIRMED_CODE, TWIN_FORM_NEXT, twinFormReason, twinsFromRefusal } from './twin-refusal';
 
 /**
  * «الزبون على الخط — أكّده الآن» — CONFIRM THE ORDER THAT WAS JUST MADE.
@@ -16,8 +17,27 @@ import { apiJson } from './api-client';
  *
  * The order exists either way. A refusal is returned, not thrown, so the caller can say
  * «created, but not confirmed» instead of leaving anyone to wonder whether it was made.
+ *
+ * ── AND WHEN THE REASON IS A TWIN ──
+ *
+ * The door refuses a yes for a customer who already has a confirmed order for the same product
+ * (`TWIN_CONFIRMED`). That is the one refusal this form must not read as «try again»: pressing
+ * confirm a second time would be the very mistake the door is there to stop. So it is returned
+ * with its own code, its reason names the other order, and `then` says what to do instead —
+ * open the order and decide, with the question the confirmation window asks. This form NEVER
+ * sends `acknowledgeTwin`: a person who typed an order in the middle of a call has not been
+ * asked, and the answer is not hers to give by a tick box.
  */
-export type ConfirmNowResult = { ok: true } | { ok: false; reason: string };
+export type ConfirmNowResult =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: string;
+      /** Set when the reason is not an accident but the door's question; the form shows `then` in place of its usual advice. */
+      code?: typeof TWIN_CONFIRMED_CODE;
+      /** What to do about it, in a sentence that replaces «أكّده من شاشة الطلبات». */
+      then?: string;
+    };
 
 export async function confirmOrderNow(orderId: string): Promise<ConfirmNowResult> {
   try {
@@ -30,6 +50,8 @@ export async function confirmOrderNow(orderId: string): Promise<ConfirmNowResult
     });
     return { ok: true };
   } catch (e) {
+    const twins = twinsFromRefusal((e as { data?: unknown } | null)?.data);
+    if (twins) return { ok: false, reason: twinFormReason(twins), code: TWIN_CONFIRMED_CODE, then: TWIN_FORM_NEXT };
     return { ok: false, reason: e instanceof Error ? e.message : 'تعذّر التأكيد' };
   }
 }

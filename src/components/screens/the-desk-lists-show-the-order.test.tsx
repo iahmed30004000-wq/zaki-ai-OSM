@@ -372,7 +372,9 @@ describe('the doors — one query, the same visibility, the same customer-data t
 
   it('visibility is what it was: the agent’s own claim, the supervisor’s scope, and the tally of handed-out details', () => {
     const m = mineSrc();
-    expect(m).toContain('const scope = { companyId, storeId, claimedById: user.id }');
+    // Her own desk unless a watcher opened a colleague's (desk-watch.ts, 2/11) — the default is still her own id.
+    expect(m).toContain('let deskOf = user.id;');
+    expect(m).toContain('const scope = { companyId, storeId, claimedById: deskOf }');
     expect(m).toContain('noteCustomersHandedOut({ companyId, storeId, user, where:');
     expect(m).toContain("await requirePermission('confirmation.work')");
     const p = postponedSrc();

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { apiJson } from '@/lib/api-client';
 import { CONTACT_FIRST_MESSAGE, REGION_REQUIRED_MESSAGE } from '@/lib/confirmation-queue';
@@ -22,6 +22,8 @@ import {
   type PostponeValue,
 } from './confirmation/ActionDialogs';
 import { raiseChangeRequest } from '@/components/orders/raiseChangeRequest';
+import { TwinConfirmedDialog } from '@/components/orders/TwinConfirmedDialog';
+import { confirmAnywayBody, rejectAsDuplicateBody, twinsFromRefusal, type ConfirmedTwinView } from '@/lib/twin-refusal';
 import { AssistantDialog } from './confirmation/AssistantDialog';
 import { RiAlertLine, RiCheckboxCircleLine, RiCloseCircleLine, RiCloseLine, RiLoader4Line, RiPencilLine, RiPhoneLockLine, RiSearchLine, RiShieldFlashLine, RiSparkling2Line, RiTimerLine } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
@@ -132,6 +134,15 @@ interface MineResponse {
   /** The third no-answer closed it today. Read-only, and shown so it is not a surprise. */
   closedToday: OrderRow[];
   confirmed: ConfirmedPage;
+  /** Present only on a colleague's desk read through «شاشة موظفة» — whose it is. Never on her own. */
+  viewing?: { id: string; name: string; readOnly: true };
+}
+
+/** One name in the «شاشة موظفة» picker, with what she holds open now. */
+interface WatchableAgent {
+  id: string;
+  name: string;
+  holding: number;
 }
 
 const RISK_LABEL: Record<string, { text: string; cls: string }> = {
@@ -142,6 +153,8 @@ const RISK_LABEL: Record<string, { text: string; cls: string }> = {
 
 type DialogState =
   | { kind: 'postpone' | 'issue' | 'change' | 'reject' | 'assist'; order: OrderRow }
+  // The door held her yes back: this customer already has a confirmed order for the same product (`TWIN_CONFIRMED`).
+  | { kind: 'twin'; order: OrderRow; twins: ConfirmedTwinView[] }
   | null;
 
 /**
@@ -335,6 +348,30 @@ export function ConfirmationMineScreen() {
   // «إدخال إشكال» is its own box (`confirmation.raise_issue`, PR-7) — the agent's desk had the button for years and the
   // door asked for the issues LIST she was never given.
   const canRaiseIssue = userCan(currentUser, 'confirmation.raise_issue');
+  /**
+   * «شاشة موظفة» — THE OWNER READS A COLLEAGUE'S DESK, AND PRESSES NOTHING ON IT.
+   *
+   * Asked of `team.monitor` here only to spare a request; the door
+   * (`/api/confirmation/desks`) decides, and the picker is drawn only when it
+   * answers. `watched` is whose desk is open: null is the reader's own.
+   */
+  const mayWatch = userCan(currentUser, 'team.monitor');
+  const [desks, setDesks] = useState<WatchableAgent[] | null>(null);
+  const [watched, setWatched] = useState<{ id: string; name: string } | null>(null);
+  useEffect(() => {
+    if (!mayWatch) return;
+    let live = true;
+    apiJson<{ agents: WatchableAgent[] }>('/api/confirmation/desks')
+      .then((r) => {
+        if (live) setDesks(r.agents ?? []);
+      })
+      .catch(() => {
+        if (live) setDesks(null);
+      });
+    return () => {
+      live = false;
+    };
+  }, [mayWatch]);
   const queue = useQueue(canPull);
   /* A phone lays the card's buttons in three rows and the tabs in one strip; a desk is as it was. */
   const phone = useIsPhone();
@@ -401,25 +438,50 @@ export function ConfirmationMineScreen() {
       if (doneDay) qs.set('day', doneDay);
       if (doneQuery) qs.set('q', doneQuery);
       if (donePage > 1) qs.set('page', String(donePage));
+      if (watched) qs.set('agent', watched.id);
       const suffix = qs.toString();
       const fresh = await apiJson<MineResponse>(`/api/confirmation/mine${suffix ? `?${suffix}` : ''}`);
       setData(fresh);
       return fresh;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'تعذر التحميل');
+      // A colleague's desk the door refused: back to her own, with the reason above it.
+      if (watched) setWatched(null);
       return null;
     }
-  }, [doneDay, doneQuery, donePage]);
+  }, [doneDay, doneQuery, donePage, watched]);
 
   // The hook's loader answers nothing; ours answers the desk. Wrapped, not widened.
   useLiveRefresh(
     async () => {
       await load();
     },
-    { key: `${doneDay}·${doneQuery}·${donePage}` }
+    { key: `${doneDay}·${doneQuery}·${donePage}·${watched?.id ?? ''}` }
   );
 
-  const act = async (id: string, fn: () => Promise<unknown>, after?: (fresh: MineResponse | null) => void) => {
+  /** Open a colleague's desk (or `''`, her own). The old desk is cleared so it is never read as hers. */
+  const watch = (id: string) => {
+    const agent = desks?.find((d) => d.id === id) ?? null;
+    setData(null);
+    setError(null);
+    setNotice(null);
+    setDonePage(1);
+    setTab((t) => (t === 'postponed' ? 'work' : t));
+    setWatched(agent ? { id: agent.id, name: agent.name } : null);
+  };
+
+  /**
+   * `answered` is for a refusal that is not an error: it takes the thrown thing, does what that refusal means (a dialog, a question)
+   * and returns `true` — and then no red line is drawn. Anything it does not recognise returns `false` and is said as it always was.
+   */
+  const act = async (
+    id: string,
+    fn: () => Promise<unknown>,
+    after?: (fresh: MineResponse | null) => void,
+    answered?: (e: unknown) => boolean
+  ) => {
+    // A colleague's desk is read, never worked: nothing below is drawn on it, and nothing runs from it either.
+    if (watched) return;
     setBusyId(id);
     setError(null);
     try {
@@ -432,7 +494,7 @@ export function ConfirmationMineScreen() {
       after?.(fresh);
       return result;
     } catch (e) {
-      setError(refusalText(e));
+      if (!answered?.(e)) setError(refusalText(e));
     } finally {
       setBusyId(null);
     }
@@ -479,8 +541,12 @@ export function ConfirmationMineScreen() {
    *
    * (It used to offer a link to the pull SCREEN from here; that screen is the
    * supervisor's now, and the panel needs no link.)
+   *
+   * AND IT CAN BE REFUSED WITH A QUESTION. «الزبون عنده طلب مؤكَّد بنفس المنتج» (`TWIN_CONFIRMED`) writes nothing and names the
+   * other orders; it is not a red line but a dialog (`TwinConfirmedDialog`), and `anyway` is the second try after she answered
+   * «طلب تاني فعلاً — أكّد» — the body of which is `twin-refusal.ts`'s, the one the order window sends too.
    */
-  const confirm = (order: OrderRow) =>
+  const confirm = (order: OrderRow, anyway = false) =>
     act(
       order.id,
       () =>
@@ -488,7 +554,7 @@ export function ConfirmationMineScreen() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           // Optimistic concurrency: the version the screen loaded.
-          body: JSON.stringify({ action: 'confirm', expectedVersion: order.version }),
+          body: JSON.stringify(anyway ? confirmAnywayBody(order.version) : { action: 'confirm', expectedVersion: order.version }),
         }),
       (fresh) =>
         toast.done(
@@ -496,8 +562,29 @@ export function ConfirmationMineScreen() {
           deskIsEmpty(fresh) ? 'لا شيء بقي على مكتبك. اسحب الطلب التالي من أعلى الشاشة.' : undefined,
           // The last one: what she confirmed is what the warehouse packs next — for whoever may open that desk.
           deskIsEmpty(fresh) ? openPreparationStep(mayOpen) : undefined
-        )
+        ),
+      (e) => {
+        const twins = twinsFromRefusal((e as { data?: unknown } | null)?.data);
+        if (!twins) return false;
+        setDialog({ kind: 'twin', order, twins });
+        return true;
+      }
     );
+
+  /** «رفضه كمكرر»: the same order sent again. The door's own reject with the reason that already exists, at the version the card was drawn at. */
+  const rejectAsDuplicate = (order: OrderRow) => {
+    setDialog(null);
+    void act(
+      order.id,
+      () =>
+        apiJson(`/api/orders/${order.id}/confirmation`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(rejectAsDuplicateBody(order.version)),
+        }),
+      () => toast.done(`رُفض الطلب ${order.orderNumber} كمكرر`)
+    );
+  };
 
   /**
    * THE GOVERNORATE, WRITTEN BY HER PRESS AND BY NOTHING ELSE.
@@ -609,6 +696,9 @@ export function ConfirmationMineScreen() {
     );
   }
 
+  /** A colleague's desk, opened through «شاشة موظفة»: drawn whole, and nothing on it can be pressed. */
+  const readOnly = watched !== null || !!data.viewing;
+  const watchedName = data.viewing?.name ?? watched?.name ?? '';
   // Digits only, both sides: she types 0999 or 999 and the stored number
   // may be either. Matching on the bare digits means the shape of the
   // number — leading zero, country code, spaces — never hides a match.
@@ -663,7 +753,32 @@ export function ConfirmationMineScreen() {
   return (
     <div className="space-y-6 max-w-5xl">
       <ScreenTitle />
-      {canPull && <PullPanel queue={queue} compact onPulled={async () => void (await load())} />}
+      {desks && desks.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <label htmlFor="desk-watch" className="text-xs font-medium text-[var(--sys-muted-foreground)]">
+            شاشة موظفة
+          </label>
+          <select
+            id="desk-watch"
+            value={watched?.id ?? ''}
+            onChange={(e) => watch(e.target.value)}
+            className="h-11 md:h-10 w-56 px-3 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] text-sm"
+          >
+            <option value="">شاشتي أنا</option>
+            {desks.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name} ({d.holding})
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {readOnly && (
+        <p role="status" className="text-sm text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg p-3">
+          عم تشوف شاشة {watchedName} — قراءة بس
+        </p>
+      )}
+      {canPull && !readOnly && <PullPanel queue={queue} compact onPulled={async () => void (await load())} />}
       {error && (
         <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>
       )}
@@ -720,13 +835,16 @@ export function ConfirmationMineScreen() {
         {/* Her own postponed orders — the same list the supervisor reads in «المتابعة», drawn
             here so the agent is not sent to a page of her own for it. No count: the figure
             this screen has (`waitingLater`) is only the ones for a later day. */}
-        <TabButton
-          active={tab === 'postponed'}
-          onClick={() => setTab('postponed')}
-          label="المؤجلة"
-          note={tabNotes.postponed}
-          phone={phone}
-        />
+        {/* Not on a colleague's desk: that tab is the READER's own postponed list, and under her name it would lie. */}
+        {!readOnly && (
+          <TabButton
+            active={tab === 'postponed'}
+            onClick={() => setTab('postponed')}
+            label="المؤجلة"
+            note={tabNotes.postponed}
+            phone={phone}
+          />
+        )}
       </div>
       {phone && <p className="-mt-3 text-xs text-[var(--sys-muted)]">{tabNotes[tab]}</p>}
 
@@ -1013,7 +1131,7 @@ export function ConfirmationMineScreen() {
                     customerId={order.customer.id}
                     orderId={order.id}
                     previousOrders={order.previousOrders}
-                    holderId={holderId}
+                    holderId={readOnly ? null : holderId}
                   />
                   {order.risk && (
                     <span className={`text-xs px-2 py-0.5 rounded-md border ${RISK_LABEL[order.risk.tier].cls}`}>
@@ -1051,7 +1169,7 @@ export function ConfirmationMineScreen() {
                   <p className="text-xs text-[var(--sys-muted-foreground)] mt-1">{order.deliveryAddress ?? order.customer.address}</p>
                 </div>
                 {/* An order with no governorate cannot be confirmed: the select that sets it is HERE, drawn without a click. */}
-                {lacksRegion(order) && (
+                {lacksRegion(order) && !readOnly && (
                   <RegionGate
                     order={order}
                     locked={needsContact(order)}
@@ -1102,6 +1220,11 @@ export function ConfirmationMineScreen() {
                 {closed ? (
                   <p className="text-xs leading-relaxed text-[var(--sys-destructive)] pt-1 border-t border-[var(--sys-destructive-border)]">
                     للقراءة فقط — أُغلق بعد {data.noAnswerLimit} محاولات بلا رد. إعادةُ فتحِه من مركز التأكيد، بيد مَن يملك ذلك.
+                  </p>
+                ) : readOnly ? (
+                  /* A colleague's desk: not one button of hers — no call, no result, no confirm, no postpone, no cancel. */
+                  <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)] pt-1 border-t border-[var(--sys-border)]">
+                    للقراءة فقط — هذا الطلب بيد {watchedName}.
                   </p>
                 ) : phone ? (
                 /*
@@ -1170,7 +1293,7 @@ export function ConfirmationMineScreen() {
       </section>
       )}
 
-      {tab === 'postponed' && <ConfirmationPostponedScreen embedded />}
+      {tab === 'postponed' && !readOnly && <ConfirmationPostponedScreen embedded />}
 
       {tab === 'done' && (
       <section className="space-y-3">
@@ -1257,7 +1380,7 @@ export function ConfirmationMineScreen() {
                 // The number opens the order's panel here, on her desk — only for
                 // whoever may read it (the work key, or «عرض الطلبات»); else text.
                 render: (order) =>
-                  holderId !== null || userCan(currentUser, 'orders.view') ? (
+                  !readOnly && (holderId !== null || userCan(currentUser, 'orders.view')) ? (
                     <button
                       type="button"
                       onClick={() => setOpenOrderId(order.id)}
@@ -1277,7 +1400,7 @@ export function ConfirmationMineScreen() {
                         customerId={order.customer.id}
                         orderId={order.id}
                         previousOrders={order.previousOrders}
-                        holderId={holderId}
+                        holderId={readOnly ? null : holderId}
                       />
                     </span></>
                 ) },
@@ -1320,7 +1443,7 @@ export function ConfirmationMineScreen() {
                 />
               )
             }
-            actions={(order) => (
+            actions={readOnly ? undefined : (order) => (
               <>{order.changeRequests && order.changeRequests.length > 0 ? (
                       <span className="text-xs text-[var(--sys-warning)]">طلب تعديل قيد المراجعة</span>
                     ) : (
@@ -1398,6 +1521,20 @@ export function ConfirmationMineScreen() {
           canLogContact={canLogContact}
           onClose={() => setDialog(null)}
           onSubmit={(value) => submitReject(dialog.order, value)}
+        />
+      )}
+      {dialog?.kind === 'twin' && (
+        <TwinConfirmedDialog
+          open
+          orderNumber={dialog.order.orderNumber}
+          twins={dialog.twins}
+          busy={busyId === dialog.order.id}
+          onRejectAsDuplicate={() => rejectAsDuplicate(dialog.order)}
+          onConfirmAnyway={() => {
+            setDialog(null);
+            void confirm(dialog.order, true);
+          }}
+          onBack={() => setDialog(null)}
         />
       )}
       {dialog?.kind === 'assist' && (

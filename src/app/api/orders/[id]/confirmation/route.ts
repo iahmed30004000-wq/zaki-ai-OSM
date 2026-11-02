@@ -16,6 +16,9 @@ import { queueConversions } from '@/lib/conversions/emit';
 import {
   needsContactFirst, CONTACT_FIRST_MESSAGE, needsRegionFirst, REGION_REQUIRED_MESSAGE, mustHoldToWork, NOT_HELD_MESSAGE,
 } from '@/lib/confirmation-queue';
+import {
+  TwinConfirmedRefusal, guardConfirmAgainstTwins, recordTwinAcknowledged, twinConfirmedBody, type ConfirmedTwin,
+} from '@/lib/confirmed-twin';
 
 /**
  * POST /api/orders/[id]/confirmation — controlled confirmation workflow action.
@@ -28,6 +31,7 @@ import {
  *   nextFollowUpAt?: required for follow-up/postpone scheduling
  *   followUpReason?: structured follow-up reason
  *   rejectionReason?: structured reason (required for reject)
+ *   acknowledgeTwin?: for confirm only — `true` says «I know this customer already has a confirmed order for the same product»
  *   expectedVersion: optimistic concurrency (mandatory — the version the client loaded)
  * }
  *
@@ -99,13 +103,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const body = await req.json();
     const {
       action, result, note, nextFollowUpAt, followUpReason, preferredTime,
-      rejectionReason, rejectionNote, expectedVersion, parcelInHand,
+      rejectionReason, rejectionNote, expectedVersion, parcelInHand, acknowledgeTwin,
     } = body as {
       action?: string; result?: string; contactMethod?: string; note?: string;
       nextFollowUpAt?: string; followUpReason?: string; preferredTime?: string;
       rejectionReason?: string; rejectionNote?: string; expectedVersion?: number;
       /** «الطرد بين يديّ…» — a person's word that a packed parcel's box was opened. */
       parcelInHand?: boolean;
+      /** «طلب تاني فعلاً» — her word, for `confirm` only, that she knows the customer has a confirmed twin. Only `true` counts. */
+      acknowledgeTwin?: boolean;
     };
 
     if (!action) return NextResponse.json({ error: 'لم يُحدَّد الإجراء' }, { status: 400 });
@@ -379,12 +385,51 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       }
     } else {
       await db.$transaction(async (tx) => {
+        /*
+         * ── THE SECOND «نعم» FOR THE SAME CUSTOMER (the owner, 2/11) ──
+         *
+         * «الزبون بعت طلبو 3 مرات، عندي 3 بنات تأكيد، كل طلب سحبتو بنت مختلفة، بنزلو 3 طلبات مؤكدة». Three agents each held their own
+         * copy, each was told nothing about the other two, and each confirmed. So `confirm` — and only `confirm` — asks, as the
+         * FIRST thing this transaction does and before any write, whether this customer already has a confirmed order for the same
+         * product that the courier has not taken (`guardConfirmAgainstTwins`: the per-customer lock, THEN the read — two agents
+         * pressing at once queue at the lock and the second reads the first's yes).
+         *
+         * Every refusal above stays where it was and in its order: permission, the holder rule, the edit lock, contact-first,
+         * region-first, the transition table, `expectedVersion`. This is the last question, asked after them and before the first write.
+         * A replacement or a win-back is a repeat on purpose and is not asked.
+         *
+         * With twins and no word from her: nothing is written and the answer is 409 `TWIN_CONFIRMED` (a sentinel thrown here and
+         * answered in the `catch`, never a 500). With `acknowledgeTwin: true`: the yes goes through and one history row records
+         * that she knew, in her name, with the numbers she was told.
+         */
+        let knew: ConfirmedTwin[] = [];
+        if (action === 'confirm') {
+          const twins = await guardConfirmAgainstTwins(tx, {
+            companyId,
+            order: {
+              id,
+              customerId: order.customerId,
+              productId: order.productId,
+              storeId: order.storeId,
+              replacesOrderId: order.replacesOrderId,
+            },
+            now,
+          });
+          if (twins.length > 0) {
+            if (acknowledgeTwin !== true) throw new TwinConfirmedRefusal(twins);
+            knew = twins;
+          }
+        }
+
         const res = await tx.order.updateMany({
           where: { id, companyId, ...versionGuard },
           data: updateData,
         });
         if (res.count !== 1) {
           throw new Error('VERSION_CONFLICT: This order was updated by another user. Please refresh before saving.');
+        }
+        if (knew.length > 0) {
+          await recordTwinAcknowledged(tx, { companyId, orderId: id, userId: user.id, twins: knew });
         }
 
         // ── Reservation follows the decision, inside THIS transaction ──
@@ -526,6 +571,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     return NextResponse.json({ success: true, order: fresh });
   } catch (error: any) {
+    // The guard threw it inside the transaction (nothing was written); the answer is a refusal she can act on, not a 500.
+    if (error instanceof TwinConfirmedRefusal) {
+      return NextResponse.json(twinConfirmedBody(error.twins), { status: 409 });
+    }
     if (error?.message?.startsWith('VERSION_CONFLICT')) {
       return NextResponse.json(
         {

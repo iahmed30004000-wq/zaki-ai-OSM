@@ -185,3 +185,87 @@ describe('the batches screen', () => {
     expect(stripComments(repoFile('src/components/orders/CreateOrderModal.tsx'))).not.toContain("action: 'confirm'");
   });
 });
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * «أكّده الآن» MEETS A CONFIRMED TWIN (the owner, 2/11).
+ *
+ * The door refuses a yes for a customer who already has a confirmed order for the same product (`TWIN_CONFIRMED`). This form must
+ * not read that as «try again»: pressing confirm a second time is the mistake the door is there to stop. The order was made; the
+ * message says the customer has a confirmed twin, names it, and says what to do INSTEAD of «أكّده من شاشة الطلبات» — and the form
+ * never sends the acknowledgement: a tick box in the middle of a call is not the answer to a question nobody asked.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+describe('the door holds the yes back for a confirmed twin', () => {
+  const SENTENCE = 'الزبون عنده طلب مؤكَّد بنفس المنتج (ORD-2026-1711) — إذا هالطلب مكرر ارفضه كمكرر، وإذا طلب تاني فعلاً أكّده وانت متأكد';
+  const TWIN = {
+    error: SENTENCE,
+    errorAr: SENTENCE,
+    code: 'TWIN_CONFIRMED',
+    twins: [
+      { orderNumber: 'ORD-2026-1711', confirmedAt: '2026-11-02T09:30:00.000Z', confirmedByName: 'سارة' },
+      { orderNumber: 'ORD-2026-1701', confirmedAt: null, confirmedByName: null },
+    ],
+  };
+
+  const refuseWith = (data: Record<string, unknown>, message = SENTENCE) =>
+    apiJson.mockImplementation(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') throw Object.assign(new Error(message), { status: 409, data });
+      return { order: { version: 4 } };
+    });
+  const tickAndSubmit = async () => {
+    await open();
+    fill();
+    fireEvent.click(screen.getByRole('checkbox', { name: /الزبون على الخط/ }));
+    await submit();
+    await waitFor(() => expect(toast.warn).toHaveBeenCalled());
+  };
+
+  it('the order stays made, and the message says the customer has a confirmed twin, names it, and says what to do instead', async () => {
+    refuseWith(TWIN);
+    await tickAndSubmit();
+    const said = toast.warn.mock.calls[0][0] as string;
+    expect(said).toContain('أُنشئ ORD-26-0001 لكن تعذّر تأكيده: عند الزبون طلب مؤكَّد بنفس المنتج (ORD-2026-1711، ORD-2026-1701)');
+    expect(said).toContain('افتحه من شاشة الطلبات: ارفضه كمكرر، أو أكّده إذا هو طلب تاني فعلاً.');
+    // the usual advice would have been a push to press it again
+    expect(said).not.toContain('— أكّده من شاشة الطلبات.');
+    expect(toast.done).not.toHaveBeenCalled();
+    expect(onSuccess).toHaveBeenCalledWith(ORDER);
+  });
+
+  it('it asked ONCE, plainly: one confirmation request, at the version it read, and it carries no acknowledgement', async () => {
+    refuseWith(TWIN);
+    await tickAndSubmit();
+    expect(confirmCalls()).toHaveLength(1);
+    expect(JSON.parse(String((confirmCalls()[0][1] as RequestInit).body))).toEqual({ action: 'confirm', expectedVersion: 4 });
+  });
+
+  it('NEGATIVE: any other refusal keeps the usual advice, word for word', async () => {
+    refuseWith({ code: 'REGION_REQUIRED' }, 'حدّد المحافظة أولاً');
+    await tickAndSubmit();
+    expect(toast.warn.mock.calls[0][0]).toBe('أُنشئ ORD-26-0001 لكن تعذّر تأكيده: حدّد المحافظة أولاً — أكّده من شاشة الطلبات.');
+  });
+
+  it('NEGATIVE: a body with the twins but not the code is just a refusal', async () => {
+    refuseWith({ twins: TWIN.twins }, 'مرفوض');
+    await tickAndSubmit();
+    expect(toast.warn.mock.calls[0][0]).toBe('أُنشئ ORD-26-0001 لكن تعذّر تأكيده: مرفوض — أكّده من شاشة الطلبات.');
+  });
+
+  it('confirmOrderNow returns it as a result with its own code, not as a throw', async () => {
+    refuseWith(TWIN);
+    const { confirmOrderNow } = await import('@/lib/confirm-now');
+    expect(await confirmOrderNow('o-1')).toEqual({
+      ok: false,
+      code: 'TWIN_CONFIRMED',
+      reason: 'عند الزبون طلب مؤكَّد بنفس المنتج (ORD-2026-1711، ORD-2026-1701)',
+      then: 'افتحه من شاشة الطلبات: ارفضه كمكرر، أو أكّده إذا هو طلب تاني فعلاً.',
+    });
+  });
+
+  it('and the form never writes the acknowledgement: no `acknowledgeTwin` in the call, none in the form', () => {
+    expect(stripComments(repoFile('src/lib/confirm-now.ts'))).not.toContain('acknowledgeTwin');
+    expect(stripComments(repoFile('src/lib/confirm-now.ts'))).not.toContain('confirmAnywayBody');
+    expect(stripComments(repoFile('src/components/orders/CreateOrderModal.tsx'))).not.toContain('acknowledgeTwin');
+  });
+});
