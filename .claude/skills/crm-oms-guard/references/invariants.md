@@ -55,7 +55,8 @@ The nine invariants:
 6. IN_TRANSFER exists for courier-to-courier moves. The order is not
    SHIPPED again until the new courier confirms pickup.
 7. A blocking change request stops OUR forward transitions only. Courier
-   webhook events are always recorded, and flag the pending request as
+   feed events (the API poll; the status webhook was cancelled on 2/11)
+   are always recorded, and flag the pending request as
    "changed during review".
 8. Claim caps: 40 owned with no logged attempt AND 120 owned total.
 9. VOID is refused for any order that has ever reached SHIPPED.

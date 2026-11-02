@@ -91,7 +91,7 @@ settlement statements, lines, receipts and matching (`CourierStatement`,
 **commission rules and ledger** (`CommissionRule`, `CommissionEntry`,
 `CommissionPeriod`, `src/lib/commission.ts`) · courier integration
 including LogesTechs (`src/lib/couriers/`, `logestechs.ts`, `apply-event.ts`,
-`webhook-token.ts`), dispatch, scope and transfer (`src/lib/courier-*.ts`) ·
+`city-id.ts`; the status webhook was cancelled on 2/11), dispatch, scope and transfer (`src/lib/courier-*.ts`) ·
 `getZone(state)` (`src/lib/order-state.ts`) · blacklist, phone-keyed and
 company-wide (`src/lib/blacklist.ts`) · scheduler and worker
 (`src/lib/jobs/runner.ts`, `definitions.ts`) · apps registry (`App`,
