@@ -27,7 +27,9 @@ import { repoFile, stripComments } from './guard-source';
  */
 
 const door = () => stripComments(repoFile('src/lib/partial-delivery.ts'));
-const statement = () => stripComments(repoFile('src/app/api/finance/statements/[id]/route.ts'));
+// What the statement does to orders moved, unchanged, out of the approval route into the close of the matching
+// (`statement-close`, 2/11 «افصل المطابقة عن التحصيل»): the approval runs it when no line is open, «إغلاق المطابقة» otherwise.
+const statement = () => stripComments(repoFile('src/lib/statement-close.ts'));
 const dialog = () => stripComments(repoFile('src/components/screens/tracking/DeliverDialog.tsx'));
 
 describe('the door records the event, not the money', () => {

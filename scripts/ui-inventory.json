@@ -1020,7 +1020,7 @@
     "tabs": 0
   },
   "src/components/screens/finance/CollectionScreen.tsx": {
-    "buttons": 22,
+    "buttons": 26,
     "inputs": 12,
     "columns": 7,
     "cards": 0,

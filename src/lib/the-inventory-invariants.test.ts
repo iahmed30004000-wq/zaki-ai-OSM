@@ -763,7 +763,8 @@ describe('the draw crosses batches, and nobody deducts by hand', () => {
       'src/app/api/orders/[id]/route.ts',
       'src/app/api/orders/[id]/shipping/route.ts',
       'src/lib/partial-delivery.ts',
-      'src/app/api/finance/statements/[id]/route.ts',
+      // The statement's delivery moved into the close of the matching (2/11), which both statement doors run.
+      'src/lib/statement-close.ts',
       'src/app/api/ops/tracking/write-off/route.ts',
     ]) {
       const src = stripComments(repoFile(door));
