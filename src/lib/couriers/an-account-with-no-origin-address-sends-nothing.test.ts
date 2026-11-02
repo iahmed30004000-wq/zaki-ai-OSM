@@ -53,7 +53,7 @@ function realAdapter(origin: string, fetchImpl: typeof fetch, over: Partial<Loge
 }
 
 const counter = () => {
-  const bodies: Record<string, any>[] = [];
+  const bodies: { originAddress: { addressLine1: string }; destinationAddress: { addressLine1: string } }[] = [];
   const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => {
     bodies.push(JSON.parse(String(init.body ?? '{}')));
     return created();
