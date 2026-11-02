@@ -135,7 +135,7 @@ export function builtInApps(db: RegistryDb): BuiltInApp[] {
       description: 'يقرأ الرسائل من المصادر التي تحدّدها ويحوّلها إلى طلبات في نفس نظام الطلبات.',
       category: 'MESSAGING',
       settingsPath: '/settings/links',
-      permission: 'telegram.manage',
+      permission: 'telegram.connect',
       configured: async ({ companyId }) =>
         (await db.telegramSource.count({ where: { companyId, isActive: true } })) > 0,
     },

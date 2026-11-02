@@ -87,14 +87,17 @@ const EXPECTED: ReadonlyArray<readonly [string, string]> = [
   // 2/11: the holder's own window (no migration grants it — the owner ticks it; his full access holds it). It sits behind the
   // request key, which itself sits behind the orders list. 85 -> 86.
   ['orders.edit_confirmed', 'orders.request_change'],
+  // 3/11 (T-09): the Telegram bot's connection, split from the day's message work (no migration grants it — the owner
+  // ticks it; his full access holds it). It sits behind the message key, which sits behind the orders screen. 86 -> 87.
+  ['telegram.connect', 'telegram.manage'],
 ];
 
 const items = PERMISSION_MODULES.flatMap((m) => m.items);
 
 describe('the catalog names what each action needs', () => {
-  it('holds exactly the 86 pairs — none lost, none invented', () => {
+  it('holds exactly the 87 pairs — none lost, none invented', () => {
     const actual = items.filter((i) => i.requires).map((i) => [i.key, i.requires] as const);
-    expect(EXPECTED).toHaveLength(86);
+    expect(EXPECTED).toHaveLength(87);
     expect(actual.length, 'عدد الأزواج').toBe(EXPECTED.length);
     for (const [action, view] of EXPECTED) {
       expect(catalogItem(action)?.requires, `${action} لازم يطلب ${view}`).toBe(view);

@@ -1,6 +1,7 @@
 /**
  * GET  /api/telegram/sources — list sources for the caller's company.
- * POST /api/telegram/sources — create a mapping (companyId from session only).
+ * POST /api/telegram/sources — create a mapping (companyId from session only). telegram.connect:
+ *   which group feeds which store is the connection, not the day's message work (T-09).
  */
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -72,7 +73,7 @@ const createSchema = z.object({
 export async function POST(req: Request) {
   try {
     const { user, companyId, storeId } = await requireContext();
-    await requirePermission('telegram.manage');
+    await requirePermission('telegram.connect');
 
     const body = await req.json().catch(() => null);
     const parsed = createSchema.safeParse(body);

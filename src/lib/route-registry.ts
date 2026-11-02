@@ -359,7 +359,7 @@ export const NAV: NavGroup[] = [
        * Its permissions are the union of the screens it fronts: whoever may
        * open any one of them may open the door to it, and nobody else.
        */
-      r('/settings', 'الإعدادات', 'Settings', ['geo.view', 'settings.view', 'commission.view', 'whatsapp.manage', 'telegram.manage', 'apps.view']),
+      r('/settings', 'الإعدادات', 'Settings', ['geo.view', 'settings.view', 'commission.view', 'whatsapp.manage', 'telegram.connect', 'apps.view']),
       r('/settings/geo', 'البلدان والمتاجر', 'Globe', ['geo.view']),
 
       /**
@@ -380,7 +380,8 @@ export const NAV: NavGroup[] = [
       r('/settings/tracking', 'بكسل الإعلانات', 'Radar', ['settings.view']),
       // «الربط»: WhatsApp and Telegram, one card each (owner, 24/10). Each card is drawn only
       // for whoever holds ITS key; the page opens for either. The old addresses redirect.
-      r('/settings/links', 'الربط', 'MessageCircle', ['whatsapp.manage', 'telegram.manage']),
+      // Telegram's card asks the connection key, not the day's message work (T-09, 3/11).
+      r('/settings/links', 'الربط', 'MessageCircle', ['whatsapp.manage', 'telegram.connect']),
 
       /**
        * WHAT WAS CONFIGURED FROM OTHER GROUPS, NOW CONFIGURED HERE.

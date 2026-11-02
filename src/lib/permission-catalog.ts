@@ -516,7 +516,18 @@ export const PERMISSION_MODULES: CatalogModule[] = [
     module: 'telegram',
     items: [
       { key: 'telegram.view', opens: ['طلبات تلجرام'], ar: 'عرض طلبات تيليجرام', en: 'View Telegram integration' },
-      { key: 'telegram.manage', requires: 'telegram.view', ar: 'إدارة ربط تيليجرام', en: 'Manage Telegram integration' },
+      /*
+       * TWO KEYS, BECAUSE THE DAY'S WORK IS NOT THE WIRE (T-09, 3/11). `telegram.manage` opened both: the buttons on
+       * «طلبات تلجرام» (إعادة المعالجة · تجاهل · تعديل وترحيل) AND the bot's connection — the webhook registration and
+       * which group feeds which store. Whoever was given it to clear the review queue could unbind a group or point the
+       * webhook elsewhere, and the orders would stop arriving with nothing on any screen saying why.
+       *
+       * `telegram.connect` is the connection alone. Granted to NOBODY by any migration, seed or fallback: the owner's
+       * full access holds it, and he ticks it for whoever he wants. The token and the webhook secret are server environment
+       * variables and reach no screen and no response for anyone, with either key.
+       */
+      { key: 'telegram.manage', requires: 'telegram.view', ar: 'معالجة رسائل تيليجرام (إعادة المعالجة · التجاهل · التعديل والترحيل)', en: 'Handle Telegram messages (retry · ignore · correct)' },
+      { key: 'telegram.connect', requires: 'telegram.manage', opens: ['الربط'], ar: 'ربط بوت تيليجرام (تسجيل الويبهوك وربط المجموعات بالمتاجر)', en: 'Connect the Telegram bot (webhook and group bindings)' },
     ],
   },
   {

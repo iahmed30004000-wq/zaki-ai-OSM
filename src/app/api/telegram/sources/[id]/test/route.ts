@@ -1,6 +1,7 @@
 /**
  * POST /api/telegram/sources/[id]/test — verifies the mapping is reachable
  * and reports the latest stored message for this source (no external call).
+ * telegram.connect: a diagnostic of the binding, drawn only on the connection card (T-09).
  */
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
@@ -12,7 +13,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   try {
     const { id } = await params;
     const { companyId } = await requireCompanyTenant();
-    await requirePermission('telegram.manage');
+    await requirePermission('telegram.connect');
 
     const source = await db.telegramSource.findUnique({ where: { id } });
     if (!source || source.companyId !== companyId) {

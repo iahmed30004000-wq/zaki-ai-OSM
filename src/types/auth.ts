@@ -305,7 +305,7 @@ export const STATUS_LABELS: Record<UserStatus, { ar: string; en: string }> = {
 /** Human-readable permission labels for the /permissions matrix page */
 export const PERMISSION_LABELS: Record<Permission, { ar: string; en: string; group: string }> = {
   'telegram.view': { ar: 'عرض طلبات تيليجرام', en: 'View Telegram integration', group: 'TELEGRAM' },
-  'telegram.manage': { ar: 'إدارة ربط تيليجرام', en: 'Manage Telegram integration', group: 'TELEGRAM' },
+  'telegram.manage': { ar: 'معالجة رسائل تيليجرام (إعادة المعالجة · التجاهل · التعديل والترحيل)', en: 'Handle Telegram messages (retry · ignore · correct)', group: 'TELEGRAM' },
   'telegram.receive_orders': { ar: 'استقبال طلبات تيليجرام', en: 'Receive Telegram orders', group: 'TELEGRAM' },
   'whatsapp.view': { ar: 'عرض صندوق واتساب', en: 'View WhatsApp inbox', group: 'WHATSAPP' },
   'whatsapp.send': { ar: 'إرسال رسائل واتساب', en: 'Send WhatsApp messages', group: 'WHATSAPP' },
