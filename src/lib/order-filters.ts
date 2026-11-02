@@ -86,7 +86,12 @@ const CLOSED_CONFIRMATION = ['CANCELLED', 'REJECTED'];
  */
 export function orderSearchOr(
   search: string,
-  opts: { withCity?: boolean } = {}
+  /**
+   * `withPhone: false` (3/11) is for a reader the screen shows no phone to: the batches screen without the address-book
+   * key. A box that finds an order by a number the row then hides would still tell whose number it is. On by default, so
+   * every caller before it asks exactly what it asked.
+   */
+  opts: { withCity?: boolean; withPhone?: boolean } = {}
 ): Record<string, unknown>[] {
   const normalised = normalizePhoneNumber(search);
   return [
@@ -94,8 +99,9 @@ export function orderSearchOr(
     { merchantRef: typed(search) },
     { trackingNumber: typed(search) },
     { customer: { fullName: typed(search) } },
-    { customer: { phone: typed(normalised || search) } },
-    { customer: { rawPhone: typed(search) } },
+    ...(opts.withPhone === false
+      ? []
+      : [{ customer: { phone: typed(normalised || search) } }, { customer: { rawPhone: typed(search) } }]),
     ...(opts.withCity ? [{ customer: { city: typed(search) } }] : []),
   ];
 }

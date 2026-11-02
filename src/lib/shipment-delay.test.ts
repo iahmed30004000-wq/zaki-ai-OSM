@@ -73,9 +73,9 @@ describe('a hold now ends on a day', () => {
   /** The order comes back by itself: the list already filters on this column. */
   it('and the message says the order returns on the day, by itself', () => {
     expect(route()).toContain('ويعود إلى قائمة الشحن يومَها وحده');
-    expect(stripComments(repoFile('src/app/api/ops/shipments/route.ts'))).toContain(
-      'shipHoldUntil: { lte: new Date() }'
-    );
+    // The list's `where` is `shipmentListWhere` since 3/11, asked by the list and by the file of the ready orders.
+    expect(stripComments(repoFile('src/app/api/ops/shipments/route.ts'))).toContain('shipmentListWhere(');
+    expect(stripComments(repoFile('src/lib/batching-guard.ts'))).toContain('shipHoldUntil: { lte: now }');
   });
 });
 

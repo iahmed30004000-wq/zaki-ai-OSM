@@ -10,7 +10,7 @@ import { OrderLink } from '@/components/orders/OrderLink';
 import { ScreenTitle } from '@/components/shell/ScreenTitle';
 import { BulkBar } from '@/components/shell/BulkBar';
 import { useIsPhone } from '@/hooks/useIsPhone';
-import { RiAlertLine, RiArrowGoBackLine, RiCloseCircleLine, RiLoader4Line, RiPauseCircleLine, RiTruckLine } from '@remixicon/react';
+import { RiAlertLine, RiArrowGoBackLine, RiCloseCircleLine, RiDownload2Line, RiLoader4Line, RiPauseCircleLine, RiTruckLine } from '@remixicon/react';
 import { RejectDialog } from '@/components/screens/confirmation/ActionDialogs';
 import { DelayShipmentDialog, type DelayChoice } from '@/components/ops/DelayShipmentDialog';
 import { useConfirm, useTell } from '@/components/ui/Confirm';
@@ -101,6 +101,12 @@ export function ShipmentsNewScreen() {
   const tell = useTell();
   const labelSize = useLabelSize();
   const mayPrint = userCan(currentUser, 'ops.labels');
+  // The file is names, phones and addresses: its door asks the screen's key AND the address-book key, so the button is
+  // drawn only for whoever it will answer.
+  const mayExport = userCan(currentUser, 'ops.ship') && userCan(currentUser, 'customers.view');
+  const [exporting, setExporting] = useState(false);
+  /** What the last file held and what it left out, said under the tabs until the next file. */
+  const [fileNote, setFileNote] = useState<string | null>(null);
 
   useEffect(() => {
     apiJson<{ providers: { id: string; name: string }[]; regions: { id: string; name: string }[] }>(
@@ -193,6 +199,51 @@ export function ShipmentsNewScreen() {
       toast.failed(e instanceof Error ? e.message : 'تعذّر التنفيذ');
     } finally {
       setHolding(null);
+    }
+  };
+
+  /**
+   * «CSV الجاهزة للشحن» (the owner, 3/11: «csv عند انشاء الشحنة استخرج الطلبات الجاهزة للشحن مش المؤجلة»).
+   *
+   * The orders of the «جاهزة للشحن» tab under the filters and the search on the screen, as the file for making the parcels
+   * at the courier's portal; never one of «مؤجَّلة الشحن». The server decides what goes in and says how many it left out
+   * and why, and the line under the tabs repeats it. Fetched, not linked: a refusal is said here, not saved as a file.
+   */
+  const exportReady = async () => {
+    setExporting(true);
+    setFileNote(null);
+    try {
+      const q = new URLSearchParams();
+      Object.entries(filters).forEach(([k, v]) => v && q.set(k, v));
+      const res = await apiFetch(`/api/ops/shipments/export?${q}`);
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as {
+          errorAr?: string; error?: string; held?: number; unready?: number; blocked?: number;
+        };
+        const said = data.errorAr || data.error || 'تعذّر تجهيز الملف';
+        if (res.status === 409) {
+          setFileNote([said, ...leftOutParts(data.held ?? 0, data.unready ?? 0, data.blocked ?? 0)].join(' · '));
+        }
+        else toast.failed(said);
+        return;
+      }
+      const count = Number(res.headers.get('X-Rows') ?? 0);
+      const held = Number(res.headers.get('X-Left-Held') ?? 0);
+      const unready = Number(res.headers.get('X-Left-Unready') ?? 0);
+      const blocked = Number(res.headers.get('X-Left-Blocked') ?? 0);
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ready-to-ship-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      setFileNote([`نزل الملف: ${count} طلب جاهز للشحن`, ...leftOutParts(held, unready, blocked)].join(' · '));
+    } catch (e) {
+      toast.failed(e instanceof Error ? e.message : 'تعذّر تجهيز الملف');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -721,7 +772,29 @@ export function ShipmentsNewScreen() {
             )}
           </button>
         ))}
+        {/* The file of the ready tab, whichever tab is open: it never carries a postponed order. */}
+        {mayExport && (
+          <button
+            type="button"
+            onClick={() => void exportReady()}
+            disabled={exporting || !filters.courier}
+            title={
+              filters.courier
+                ? 'الطلبات الجاهزة للشحن بالفلاتر الحالية بملف CSV — بلا المؤجَّلة'
+                : 'اختر شركة الشحن أولاً — المبلغ ورمز المدينة بالملف من أجورها'
+            }
+            className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1.5 disabled:opacity-40 ms-auto"
+          >
+            {exporting ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiDownload2Line className="w-4 h-4" />}
+            CSV الجاهزة للشحن
+          </button>
+        )}
       </div>
+      {fileNote && (
+        <p role="status" className="text-xs text-[var(--sys-muted-foreground)]">
+          {fileNote}
+        </p>
+      )}
       <div className={phone ? undefined : 'bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden'}>
           {/* The picking list: seven columns, read on a phone at the
               packing bench. `selection` puts the checkbox where a thumb is
@@ -990,6 +1063,15 @@ export function ShipmentsNewScreen() {
       />
     </div>
   );
+}
+
+/** What the file left out and why, in the words the line under the tabs says them. */
+function leftOutParts(held: number, unready: number, blocked: number): string[] {
+  return [
+    ...(held > 0 ? [`${held} ${held === 1 ? 'مؤجّل' : 'مؤجّلين'} برّا الملف`] : []),
+    ...(unready > 0 ? [`${unready} غير محجوز برّا الملف`] : []),
+    ...(blocked > 0 ? [`${blocked} بلا محافظة أو أجرة توصيل برّا الملف`] : []),
+  ];
 }
 
 function Select({

@@ -1370,18 +1370,18 @@
     "tabs": 0
   },
   "src/components/screens/ShipmentsNewScreen.tsx": {
-    "buttons": 10,
+    "buttons": 11,
     "inputs": 7,
     "columns": 5,
     "cards": 0,
     "modals": 0,
-    "icons": 7,
+    "icons": 9,
     "links": 2,
     "tabs": 0
   },
   "src/components/screens/ShippingBatchesScreen.tsx": {
     "buttons": 13,
-    "inputs": 0,
+    "inputs": 1,
     "columns": 0,
     "cards": 0,
     "modals": 0,
