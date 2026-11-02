@@ -671,7 +671,7 @@ describe('4 · every parcel is asked what the order’s door asks', () => {
     const spy = vi.spyOn((w.db as any).orderChangeRequest, 'findMany');
     await press();
     expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy.mock.calls[0][0].where).toEqual({ orderId: { in: ['o1', 'o2', 'o3'] }, status: 'PENDING', blocking: true });
+    expect((spy.mock.calls[0][0] as Row).where).toEqual({ orderId: { in: ['o1', 'o2', 'o3'] }, status: 'PENDING', blocking: true });
   });
 
   it('the first gate that fails is the one named (scope before lock before confirmation before the request)', async () => {
