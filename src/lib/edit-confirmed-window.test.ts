@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionUser } from '@/types/auth';
-import { EDIT_CONFIRMED_KEY, EDIT_CONFIRMED_NEEDS } from './edit-confirmed-key';
+import { EDIT_CONFIRMED_KEY } from './edit-confirmed-key';
 import { EDIT_WINDOW_NOTE_AR, editWindowOpen, editsNow, type EditWindowFacts, type WindowOrder } from './edit-confirmed-window';
 
 /**
@@ -25,9 +25,8 @@ const OPEN: EditWindowFacts = {
 };
 
 describe('the key', () => {
-  it('is orders.edit_confirmed, and a role receives it holding BOTH confirmation.work and orders.request_change', () => {
+  it('is orders.edit_confirmed — a box the owner ticks; who holds it is the-edit-confirmed-key-goes-to-its-holders-only.test.ts', () => {
     expect(EDIT_CONFIRMED_KEY).toBe('orders.edit_confirmed');
-    expect([...EDIT_CONFIRMED_NEEDS]).toEqual(['confirmation.work', 'orders.request_change']);
   });
 
   it('the decision note names who did what, in plain Arabic and with no Latin word', () => {

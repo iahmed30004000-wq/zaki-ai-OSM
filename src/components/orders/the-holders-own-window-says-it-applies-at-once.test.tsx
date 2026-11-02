@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
@@ -277,10 +277,12 @@ describe('Ⅳ · the lines card — the same three states', () => {
   });
 
   it('THE FIGURE NEEDS THE PRICE KEY: a discount without `orders.change_price` is promised as a request, and with it as «فوراً»', async () => {
-    const discount = async () => {
+    /** `said` is the sentence under the discount box, read while the form is open (it is part of the form). */
+    const discount = async (said: string) => {
       render(<OrderLinesCard order={linesOrder()} currency={{ code: 'JOD', minorUnit: 3 }} canEdit onAcquireLock={() => {}} onSaved={() => {}} />);
       await userEvent.click(screen.getByRole('button', { name: /تعديل/ }));
       await waitFor(() => expect(screen.getAllByPlaceholderText('سعر السطر').length).toBeGreaterThan(0));
+      expect(document.body.textContent).toContain(said);
       const box = screen.getByLabelText('الخصم على الطلب');
       await userEvent.clear(box);
       await userEvent.type(box, '2');
@@ -288,17 +290,17 @@ describe('Ⅳ · the lines card — the same three states', () => {
       await waitFor(() => expect(ask).toHaveBeenCalledTimes(1));
     };
 
+    serve({ readyToApply: false });
     viewer.current = user(WITH_KEY.filter((k) => k !== 'orders.change_price'));
-    await discount();
+    await discount('الخصم بعد التأكيد طلب تعديل');
     expect(ask.mock.calls[0][0].title).toBe(TODAYS_ASK.title);
-    expect(document.body.textContent).toContain('الخصم بعد التأكيد طلب تعديل');
 
     cleanup();
     vi.clearAllMocks();
     ask.mockResolvedValue(THE_REASON);
     serve({ readyToApply: true, viaEditWindow: true });
     viewer.current = user(WITH_KEY);
-    await discount();
+    await discount('الخصم والتعديل بيتطبّقوا فوراً');
     expect(ask.mock.calls[0][0].title).toBe(HOLDERS_ASK.title);
   });
 });
@@ -313,7 +315,8 @@ function dialog(props: Partial<React.ComponentProps<typeof ChangeRequestDialog>>
   return render(<ChangeRequestDialog open orderNumber="SY-5" onClose={() => {}} onSubmit={() => {}} {...props} />);
 }
 const field = (value: string) => fireEvent.change(screen.getByLabelText('الحقل المطلوب تعديله'), { target: { value } });
-const intent = (name: string) => userEvent.click(screen.getByRole('button', { name }));
+/** The three asks sit inside the form; the footer has its own «إلغاء» (close the dialog), so the ask is looked up in the form only. */
+const intent = (name: string) => userEvent.click(within(document.querySelector('form')!).getByRole('button', { name }));
 
 describe('Ⅴ · the request dialog — what it promises, per ask', () => {
   it('UNCHANGED by default: no window given ⇒ the title, the paragraph and the button it always had', () => {

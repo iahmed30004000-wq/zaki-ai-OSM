@@ -84,8 +84,8 @@ const EXPECTED: ReadonlyArray<readonly [string, string]> = [
   ['ops.labels_any', 'ops.labels'],
   // 1/11: a product's fixed cost (no migration grants it — the owner's full access holds it). 84 -> 85.
   ['products.change_cost', 'products.edit'],
-  // 2/11: the holder's own window (migration 20261102120000_edit_confirmed_before_batch — given to every role that holds
-  // confirmation.work AND orders.request_change). It sits behind the request key, which itself sits behind the orders list. 85 -> 86.
+  // 2/11: the holder's own window (no migration grants it — the owner ticks it; his full access holds it). It sits behind the
+  // request key, which itself sits behind the orders list. 85 -> 86.
   ['orders.edit_confirmed', 'orders.request_change'],
 ];
 

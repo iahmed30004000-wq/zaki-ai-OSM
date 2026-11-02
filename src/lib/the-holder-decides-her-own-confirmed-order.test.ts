@@ -11,7 +11,7 @@ import type { SessionUser } from '@/types/auth';
  * THE TABLE IS ON THE REAL ENGINE. Nothing about permissions is mocked: each person is built the way a session is — keys turned
  * into `effectiveGrants` by `computeEffectiveGrants` and attached by `attachGrants` — and the REAL `mayDecide`, `holdsTheWindow`
  * and `mayApply` answer for them. The key lists are the live ones: the CONFIRMATION_AGENT role (22 keys, `GET /api/roles`, 1/11)
- * plus the one key the migration 20261102120000 gives her, because she holds `confirmation.work` AND `orders.request_change`.
+ * plus the one key the owner ticks for her on «الصلاحيات» (no migration and no fallback grants it).
  *
  * WHAT THIS FILE HOLDS, IN ORDER:
  *   Ⅰ the rule, row by row — each condition has the row that breaks it;
@@ -37,7 +37,7 @@ const LIVE_AGENT = [
   'orders.change_price', 'orders.claim', 'orders.confirm', 'orders.contact_log', 'orders.edit', 'orders.note', 'orders.rating_link',
   'orders.release', 'orders.request_change', 'orders.view',
 ];
-/** …and what she holds the day after the migration. */
+/** …and what she holds once the owner ticks the box for her role. */
 const WITH_KEY = [...LIVE_AGENT, 'orders.edit_confirmed'];
 const NO_PRICE = WITH_KEY.filter((k) => k !== 'orders.change_price');
 const SUPERVISOR = ['orders.view', 'confirmation.work', 'orders.request_change', 'control.change_requests', 'control.change_requests_view', 'orders.change_price'];

@@ -10,7 +10,7 @@ import type { SessionUser } from '@/types/auth';
  *
  * THE RAISING DOOR, THROUGH THE REAL PERMISSION ENGINE. Each person is built the way a session is (`computeEffectiveGrants` +
  * `attachGrants`) and the REAL `can`, `mayDecide`, `orderSeal` and `handedToCourier` answer. Only the database and the side
- * effects are fakes. The keys are the live CONFIRMATION_AGENT role (22, 1/11) plus the one the migration 20261102120000 gives her.
+ * effects are fakes. The keys are the live CONFIRMATION_AGENT role (22, 1/11) plus the one the owner ticks for her (no migration grants it).
  *
  * WHAT IS HELD, as rows: the holder with the key, on her own confirmed order in no batch, is APPLIED AT ONCE for an edit (with and
  * without a figure), a postponement and a cancellation — with a decision note that says so, a named decider, no notification and an

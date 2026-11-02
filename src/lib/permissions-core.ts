@@ -24,7 +24,6 @@ import { db } from './db';
 import { ROLE_PERMISSIONS, UserRole } from '../types/auth';
 import { AI_ASSIST_FROM, AI_ASSIST_KEY } from './ai-assistants';
 import { ORDER_ACTION_KEYS_FROM } from './order-action-keys';
-import { EDIT_CONFIRMED_KEY, EDIT_CONFIRMED_NEEDS } from './edit-confirmed-key';
 import { CONFIRMATION_SPLIT_KEYS_FROM, rolesThatPassedByName } from './confirmation-split-keys';
 import { OPS_ACTION_KEYS_FROM } from './ops-action-keys';
 import { FINANCE_SPLIT_KEYS_FROM } from './finance-split-keys';
@@ -294,12 +293,6 @@ export async function computeEffectiveGrants(
       if (!src) continue;
       grants[key] = copyScope ? { scope: grants[src].scope, scopeIds: grants[src].scopeIds ?? null } : { scope: 'ALL_COMPANY' };
     }
-    // The holder's own window (2/11): a person with no stored role who holds BOTH keys the migration reads gets the box, exactly as a
-    // role that holds both does. After the order actions' boxes above (`orders.request_change` is one of them) and after the overrides,
-    // so a «منع» on either key, or on the box, still counts.
-    if (!grants[EDIT_CONFIRMED_KEY] && !denied.has(EDIT_CONFIRMED_KEY) && EDIT_CONFIRMED_NEEDS.every((k) => grants[k] !== undefined)) {
-      grants[EDIT_CONFIRMED_KEY] = { scope: 'ALL_COMPANY' };
-    }
     // The confirmation and change-request boxes (PR-7): the same, and a door that used to be a role NAME (the desk's four
     // names, the packing table's WAREHOUSE) is kept for that role — and, deliberately, «إدخال إشكال» for the agent (D14).
     for (const rule of CONFIRMATION_SPLIT_KEYS_FROM) {
@@ -369,8 +362,6 @@ export function legacyEffectiveKeys(role: UserRole): string[] {
   if (AI_ASSIST_FROM.some((k) => keys.has(k))) keys.add(AI_ASSIST_KEY);
   // And the order actions' boxes (PR-6): the baseline of a legacy role carries them for the roles that held the old keys.
   for (const { key, from } of ORDER_ACTION_KEYS_FROM) if (from.some((k) => keys.has(k))) keys.add(key);
-  // And the holder's own window (2/11): the roles that hold BOTH of its keys — after the line above, which is where `orders.request_change` comes from.
-  if (EDIT_CONFIRMED_NEEDS.every((k) => keys.has(k))) keys.add(EDIT_CONFIRMED_KEY);
   // And the confirmation and change-request boxes (PR-7), with the role NAMES that used to open a door by themselves.
   for (const rule of CONFIRMATION_SPLIT_KEYS_FROM) {
     if (rule.inFallback === false) continue;
