@@ -40,6 +40,7 @@ import {
   prepQuantityChanges, prepShortAr, prepTouched, prepWindow,
 } from '@/lib/prep-edit';
 import { availableStock, reserveOrderLines } from '@/lib/reservation';
+import { holdReleasedItsStock } from '@/lib/shipment-hold';
 import {
   APPLIED_AR, AppliedMeanwhile, LinesChanged, blockedByStock, changedKeys, columnsDrift, costAfterEdit, costProductIds, linesAreStill,
   linesRequired, linesStale, nothingToApply, planLineApply,
@@ -2307,7 +2308,16 @@ export async function PATCH(
         }
         // (When no line's units moved — a price alone — nothing is reserved again and nothing is asked of the shelf.)
         if (lineApply && lineApply.keepReserved.some((k) => k === null)) {
-          await reserveOrderLines(tx, id, { allowNegativeStock: country.allowNegativeStock === true });
+          /*
+           * EXCEPT ON A POSTPONED ORDER WHOSE GOODS THE HOLD GAVE BACK (RV635). «ما تحجز رصيد الا بعد ما اشيلو من التأجيل»:
+           * the hold door released its units and takes them again when the hold is lifted, from the lines as they are THEN.
+           * Reserving here took them back while it still sat postponed (ORD-1: 4 released, 4 → 5 approved, 5 reserved). The
+           * lines change; the reservation waits for «أرجِعه». A packed parcel kept its goods through the hold, and is reserved
+           * as before. The shelf is still asked just below: an edit it cannot cover is refused, held or not, as it was.
+           */
+          if (!holdReleasedItsStock(existing as never)) {
+            await reserveOrderLines(tx, id, { allowNegativeStock: country.allowNegativeStock === true });
+          }
           /*
            * AND THEN THE SHELF IS ASKED PER PRODUCT, not per line. `reserveOrderLines` tests each line on its own, so a product
            * on two lines of 3 and 4 against 5 on the shelf has both reserved and 7 promised. The stock is locked by now;

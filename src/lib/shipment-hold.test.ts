@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { holdReservation } from './shipment-hold';
+import { holdReleasedItsStock, holdReservation } from './shipment-hold';
 import { hasLeftWarehouse, type StateSource } from './order-state';
 
 /**
@@ -71,5 +71,48 @@ describe('holdReservation', () => {
   it('always says why, so the message on screen is never a bare refusal', () => {
     expect(holdReservation(order()).why.length).toBeGreaterThan(20);
     expect(holdReservation(order({ shippedAt: new Date() })).why.length).toBeGreaterThan(20);
+  });
+});
+
+/**
+ * THE QUESTION THE OTHER DOORS ASK BEFORE THEY RESERVE (RV635): is this order waiting out a hold that gave its goods back?
+ * The hold door's own answer — a hold date, and a parcel `holdReservation` would release — not a second reading of it.
+ */
+describe('holdReleasedItsStock', () => {
+  const soon = new Date(Date.now() + 86_400_000);
+
+  it('a postponed order still in the warehouse: yes — its goods wait for the hold to be lifted', () => {
+    expect(holdReleasedItsStock({ ...order(), shipHoldUntil: soon })).toBe(true);
+    expect(holdReleasedItsStock({ ...order({ shippingStatus: 'NOT_READY' }), shipHoldUntil: soon.toISOString() })).toBe(true);
+  });
+
+  it('a hold date that passed with nobody lifting it: still yes — a date reserves nothing by itself', () => {
+    expect(holdReleasedItsStock({ ...order(), shipHoldUntil: new Date(Date.now() - 86_400_000) })).toBe(true);
+  });
+
+  it('no hold: no', () => {
+    expect(holdReleasedItsStock({ ...order(), shipHoldUntil: null })).toBe(false);
+    expect(holdReleasedItsStock(order())).toBe(false);
+  });
+
+  it('a held parcel that kept its goods (packed, labelled, gone): no — whatever reserved it before still does', () => {
+    for (const o of [
+      order({ shippingStatus: 'READY_FOR_PICKUP' }),
+      order({ labelPrintedAt: new Date() }),
+      order({ shippedAt: new Date() }),
+    ]) {
+      expect(holdReleasedItsStock({ ...o, shipHoldUntil: soon })).toBe(false);
+    }
+  });
+
+  it('agrees with the hold door over every combination: held AND released by `holdReservation`', () => {
+    for (const shippingStatus of ['NOT_READY', 'PACKING', 'READY_FOR_SHIPPING', 'READY_FOR_PICKUP', 'SHIPPED']) {
+      for (const labelPrintedAt of [null, new Date()]) {
+        for (const shipHoldUntil of [null, soon]) {
+          const o = { ...order({ shippingStatus, labelPrintedAt }), shipHoldUntil };
+          expect(holdReleasedItsStock(o)).toBe(!!shipHoldUntil && holdReservation(o).releases);
+        }
+      }
+    }
   });
 });
