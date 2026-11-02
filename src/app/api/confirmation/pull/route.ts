@@ -80,6 +80,8 @@ export async function POST() {
   } catch (error) {
     if (ranOutOfTime(error)) {
       // 503 + Retry-After: refused for now, not for good — the same press a second later is the answer.
+      // Still one line in the server log, so a morning of busy pulls (or a starved pool) is seen, not swallowed.
+      console.warn('[confirmation/pull] QUEUE_BUSY (P2028):', error instanceof Error ? error.message : error);
       return NextResponse.json(
         { error: QUEUE_BUSY_MESSAGE, errorAr: QUEUE_BUSY_MESSAGE, code: 'QUEUE_BUSY' },
         { status: 503, headers: { 'Retry-After': '1' } }
