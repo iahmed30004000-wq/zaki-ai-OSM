@@ -221,8 +221,19 @@ describe('the door-side delivery on a shelf that holds 4 of 10', () => {
     expect(w.movements).toHaveLength(1);
   });
 
-  it('…and a SHORT shelf still keeps the estimate, figure or not: nothing is written over it', async () => {
+  // RV576 (the owner, 3/11 «صلّحهن»): the parcel was handed over, so a product with a figure costs the figure × all 10 even when
+  // the shelf held 4 — the same 70 a full shelf writes. The shelf is drawn exactly as before: 4 units, one movement.
+  it('…and a SHORT shelf with a FIGURE writes the figure × the whole parcel too — 10 × 7 = 70, the same as a full shelf', async () => {
     const w = world(4, [{ productId: 'p1', amount: 7 }]);
+    await door(w);
+    expect(w.orderWrites.filter((d) => d.estimatedCostOfGoods !== undefined).map((d) => d.estimatedCostOfGoods)).toEqual([70]);
+    expect(w.batches[0].quantityRemaining).toBe(0);
+    expect(w.movements).toHaveLength(1);
+    expect(w.activities.filter((a) => a.action === 'STOCK_SHORT_AT_DELIVERY')).toHaveLength(1);
+  });
+
+  it('…while a SHORT shelf with NO figure still keeps the estimate: nothing is written over it', async () => {
+    const w = world(4);
     await door(w);
     expect(w.orderWrites.filter((d) => d.estimatedCostOfGoods !== undefined)).toEqual([]);
   });

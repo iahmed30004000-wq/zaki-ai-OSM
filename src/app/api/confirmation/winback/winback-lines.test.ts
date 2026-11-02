@@ -40,6 +40,9 @@ const { db, requireContext, requirePermission, logAudit, orderRefFields } = vi.h
     orderItem: { findMany: vi.fn(), createMany: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     orderStatusLog: { findFirst: vi.fn(), findMany: vi.fn() },
     orderNote: { create: vi.fn() },
+    // The fixed costs an admin set (`ProductFixedCost`): none unless a test hands some in (`figures`) — the cost of the copy is the
+    // one the other claims here were written under.
+    productFixedCost: { findMany: vi.fn(async () => [] as { productId: string; amount: number }[]) },
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(db)),
   };
   return {
@@ -150,6 +153,7 @@ beforeEach(() => {
   db.order.create.mockImplementation(async () => ({ id: 'new-order', orderNumber: 'ORD-2026-0057' }));
   db.orderItem.createMany.mockResolvedValue({ count: 1 });
   db.orderNote.create.mockResolvedValue({});
+  db.productFixedCost.findMany.mockResolvedValue([]);
 });
 
 describe('the win-back order carries the goods of the order it is winning back', () => {
@@ -301,6 +305,104 @@ describe('the win-back order carries the goods of the order it is winning back',
  * empty, so a derived order had no creator at all. It is the person who made the offer — and never the original's
  * creator, which is a fact about the old order's work.
  */
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * WHAT THE GOODS COST THE WIN-BACK — THE COPY'S COST, WITH THE OWNER'S FIGURE ON TOP (RV575 · the owner, 3/11 «صلّحهن»)
+ *
+ * The win-back copied the cancelled order's `estimatedCostOfGoods` as it stood, so a fixed cost set after the original was written
+ * was ignored until delivery. It is a copy of that order, so it is costed as a replacement is (`costOfACopy`): a line whose product
+ * has a figure costs the figure × its units (the gift included), a line with none keeps its share of the copied cost by units, and
+ * with no figure anywhere the copied cost comes back exactly as it was. The price, the total and the lines do not read it.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+describe('the cost of the goods on a win-back order', () => {
+  const figures = (rows: { productId: string; amount: number }[]) => db.productFixedCost.findMany.mockResolvedValue(rows);
+
+  it('NO FIGURE: the cancelled order’s cost, as it was — 12.6', async () => {
+    await offer(5);
+    expect(writtenOrder().estimatedCostOfGoods).toBe(12.6);
+  });
+
+  it('A FIGURE OF 5: the three pieces at 5 — 15, not the 12.6 the cancelled order was written at', async () => {
+    figures([{ productId: 'prod-1', amount: 5 }]);
+    await offer(5);
+    expect(writtenOrder().estimatedCostOfGoods).toBe(15);
+  });
+
+  it('THE GIFT IS A UNIT: 2 paid + 1 gift at 5 is 15, not 10', async () => {
+    figures([{ productId: 'prod-1', amount: 5 }]);
+    db.orderItem.findMany.mockResolvedValue([{ productId: 'prod-1', productName: 'سكراب', quantity: 2, freeQuantity: 1, unitPrice: 12 }]);
+    await offer(5);
+    expect(writtenOrder().estimatedCostOfGoods).toBe(15);
+  });
+
+  it('A FIGURE ON ONE LINE OF TWO: prod-1 at 3 × 5 = 15, prod-2 keeps its share of 12.6 by units — 12.6 × 3/6 = 6.3 — 21.3', async () => {
+    figures([{ productId: 'prod-1', amount: 5 }]);
+    db.orderItem.findMany.mockResolvedValue([
+      { productId: 'prod-1', productName: 'سكراب', quantity: 3, freeQuantity: 0, unitPrice: 12 },
+      { productId: 'prod-2', productName: 'كريم', quantity: 1, freeQuantity: 2, unitPrice: 14 },
+    ]);
+    await offer(5);
+    expect(writtenOrder().estimatedCostOfGoods).toBe(21.3);
+  });
+
+  it('ZERO IS A FIGURE: the goods cost the new order nothing', async () => {
+    figures([{ productId: 'prod-1', amount: 0 }]);
+    await offer(5);
+    expect(writtenOrder().estimatedCostOfGoods).toBe(0);
+  });
+
+  it('ROUNDED BY THE CURRENCY: 3 × 1.1117 = 3.3351 is 3.335 in dinars', async () => {
+    figures([{ productId: 'prod-1', amount: 1.1117 }]);
+    await offer(5);
+    expect(writtenOrder().estimatedCostOfGoods).toBe(3.335);
+  });
+
+  it('AN ORDER WITH NO LINES OF ITS OWN is costed from its product columns: 3 × 5 = 15', async () => {
+    figures([{ productId: 'prod-1', amount: 5 }]);
+    db.orderItem.findMany.mockResolvedValue([]);
+    await offer(5);
+    expect(writtenOrder().estimatedCostOfGoods).toBe(15);
+  });
+
+  it('the figures are asked ONCE, for this company, for the products on the lines', async () => {
+    figures([{ productId: 'prod-1', amount: 5 }]);
+    db.orderItem.findMany.mockResolvedValue([
+      { productId: 'prod-1', productName: 'سكراب', quantity: 3, freeQuantity: 0, unitPrice: 12 },
+      { productId: 'prod-2', productName: 'كريم', quantity: 1, freeQuantity: 2, unitPrice: 14 },
+      { productId: 'prod-1', productName: 'سكراب', quantity: 1, freeQuantity: 0, unitPrice: 12 },
+    ]);
+    await offer(5);
+    expect(db.productFixedCost.findMany).toHaveBeenCalledTimes(1);
+    expect(db.productFixedCost.findMany).toHaveBeenCalledWith({
+      where: { companyId: 'c1', productId: { in: ['prod-1', 'prod-2'] } },
+      select: { productId: true, amount: true },
+    });
+  });
+
+  it('AND THE MONEY DOES NOT MOVE WITH IT: the order row and its lines are the same with a figure and without, but for the cost', async () => {
+    await offer(5);
+    const without = { order: { ...writtenOrder() }, lines: writtenLines().map((l) => ({ ...l })) };
+    vi.clearAllMocks();
+    db.order.findFirst.mockResolvedValue(source);
+    db.orderStatusLog.findFirst.mockResolvedValue({ createdAt: new Date(Date.now() - 40 * 86_400_000) });
+    db.orderItem.findMany.mockResolvedValue(ONE_LINE);
+    orderRefFields.mockResolvedValue({ orderNumber: 'ORD-2026-0057', merchantRef: 'ORD-2026-0057' });
+    db.order.create.mockImplementation(async () => ({ id: 'new-order', orderNumber: 'ORD-2026-0057' }));
+    requireContext.mockResolvedValue(ctx);
+    figures([{ productId: 'prod-1', amount: 5 }]);
+    await offer(5);
+    const withFigure = { order: { ...writtenOrder() }, lines: writtenLines() };
+    expect(withFigure.order.estimatedCostOfGoods).toBe(15);
+    expect(without.order.estimatedCostOfGoods).toBe(12.6);
+    const { estimatedCostOfGoods: _a, ...restWith } = withFigure.order;
+    const { estimatedCostOfGoods: _b, ...restWithout } = without.order;
+    expect(restWith).toEqual(restWithout);
+    expect(withFigure.lines).toEqual(without.lines);
+    expect(restWith).toMatchObject({ sellingPrice: 36, totalAmount: 31, discountAmount: 5 });
+  });
+});
+
 describe('the win-back order names who made the offer', () => {
   it('createdById is the supervisor who pressed it', async () => {
     const res = await offer(5);

@@ -30,8 +30,8 @@ const { db, state, gate } = vi.hoisted(() => {
     storePolicy: false,
     /** The FIXED COST an admin set for a product (`ProductFixedCost`), by product id — none, unless a test says so. */
     figures: {} as Record<string, number>,
-    /** The unit cost of the product's NEWEST batch — the cost this door reads where there is no figure; null = no batch at all. */
-    newestBatch: null as number | null,
+    /** The product's batches (`ProductionBatch`): what the door averages where there is no figure — none, unless a test says so. */
+    batches: [] as Row[],
     country: { id: 'country-sy', code: 'SY', name: 'سوريا', currencyCode: 'USD', minorUnit: 2, orderPrefix: 'SY' },
     seq: 0,
     storeWrites: 0,
@@ -105,7 +105,7 @@ const { db, state, gate } = vi.hoisted(() => {
       ),
       findFirst: vi.fn(async ({ where }: Row) => {
         const p = state.products.find((x) => x.id === where.id && x.companyId === where.companyId);
-        return p ? { ...p, batches: state.newestBatch === null ? [] : [{ costPerUnit: state.newestBatch }] } : null;
+        return p ? { ...p } : null;
       }),
     },
     // The fixed figures, answered the way the table does: this company's, for the products asked, and only the ones that have a row.
@@ -114,6 +114,15 @@ const { db, state, gate } = vi.hoisted(() => {
         Object.entries(state.figures)
           .filter(([productId]) => where.companyId === 'c1' && where.productId.in.includes(productId))
           .map(([productId, amount]) => ({ productId, amount }))
+      ),
+    },
+    // The batches on hand, answered the way the table does: this company's, for the products asked, and only those with units left.
+    productionBatch: {
+      findMany: vi.fn(async ({ where }: Row) =>
+        state.batches
+          .filter((b) => b.companyId === where.companyId && where.productId.in.includes(b.productId))
+          .filter((b) => b.quantityRemaining > (where.quantityRemaining?.gt ?? -Infinity))
+          .map((b) => ({ productId: b.productId, quantityRemaining: b.quantityRemaining, costPerUnit: b.costPerUnit }))
       ),
     },
     customerBlock: {
@@ -321,7 +330,7 @@ beforeEach(() => {
     ],
     storePolicy: false,
     figures: {},
-    newestBatch: null,
+    batches: [],
     country: { id: 'country-sy', code: 'SY', name: 'سوريا', currencyCode: 'USD', minorUnit: 2, orderPrefix: 'SY' },
     seq: 0,
     storeWrites: 0,
@@ -1156,11 +1165,13 @@ describe('«تعديل وترحيل» — a held message, corrected by hand, is 
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * WHAT THE GOODS COST A TELEGRAM ORDER (the owner, 1/11: «ثابت لكل الطلبات وما يتغير تحت اي ظرف»)
+ * WHAT THE GOODS COST A TELEGRAM ORDER (the owner, 1/11: «ثابت لكل الطلبات وما يتغير تحت اي ظرف» · 3/11: «صلّحهن»)
  *
- * His message is one bundle: two paid pieces and one gift, so THREE pieces leave the shelf. A product's FIXED figure, where an admin
- * set one, is what each of them costs — ZERO included. Where there is none this door costs the goods as it always has, by the unit
- * cost of the product's NEWEST batch (not the weighted average the other doors read: RV574 asks whether to unify them).
+ * His message is one bundle: two paid pieces and one gift, so THREE pieces leave the shelf. A unit costs what it costs at every
+ * other door (`unitCostsOf`): the product's FIXED figure where an admin set one — ZERO included — else the weighted average of
+ * the batches on hand, else 0. Not the NEWEST batch's unit cost, which this door read until RV574 (even an empty batch).
+ *
+ * The shelf of the worked example: 5 units at 5 (older) and 5 at 7 (newest) — the average is 6, the newest 7.
  * ═══════════════════════════════════════════════════════════════════════
  */
 describe('the cost of the goods on a Telegram order', () => {
@@ -1169,18 +1180,29 @@ describe('the cost of the goods on a Telegram order', () => {
     expect(result.status).toBe('PROCESSED');
     return state.orders[0].estimatedCostOfGoods;
   };
+  const batch = (productId: string, productionDate: string, quantityRemaining: number, costPerUnit: number) => ({
+    companyId: 'c1', productId, productionDate, quantityRemaining, costPerUnit,
+  });
+  const fiveAtFiveFiveAtSeven = () => {
+    state.batches = [batch('prod-kamaa', '2026-09-01', 5, 5), batch('prod-kamaa', '2026-10-01', 5, 7)];
+  };
 
   it('NO FIGURE, NO BATCH: nothing to read a cost from is a cost of 0 — as before', async () => {
     expect(await costOfTheOrder()).toBe(0);
   });
 
-  it('NO FIGURE: the newest batch’s unit cost × the three pieces, the gift included — 3 × 4 = 12, exactly as before', async () => {
-    state.newestBatch = 4;
-    expect(await costOfTheOrder()).toBe(12);
+  it('NO FIGURE: the AVERAGE of what is on hand × the three pieces, the gift included — 3 × 6 = 18, not the newest batch’s 3 × 7 = 21', async () => {
+    fiveAtFiveFiveAtSeven();
+    expect(await costOfTheOrder()).toBe(18);
   });
 
-  it('A FIGURE OF 5: 3 × 5 = 15, whatever the newest batch cost', async () => {
-    state.newestBatch = 4;
+  it('NO FIGURE, AND THE NEWEST BATCH IS EMPTY: it is not on hand, so it prices nothing — 4 units at 6 on hand: 18, not 3 × 9 = 27', async () => {
+    state.batches = [batch('prod-kamaa', '2026-09-01', 4, 6), batch('prod-kamaa', '2026-10-20', 0, 9)];
+    expect(await costOfTheOrder()).toBe(18);
+  });
+
+  it('A FIGURE OF 5: 3 × 5 = 15, whatever the batches cost (newest 7, average 6)', async () => {
+    fiveAtFiveFiveAtSeven();
     state.figures = { 'prod-kamaa': 5 };
     expect(await costOfTheOrder()).toBe(15);
   });
@@ -1190,16 +1212,34 @@ describe('the cost of the goods on a Telegram order', () => {
     expect(await costOfTheOrder()).toBe(15);
   });
 
-  it('ZERO IS A FIGURE: an item that costs nothing costs the order nothing — the batch’s 4 is not used', async () => {
-    state.newestBatch = 4;
+  it('ZERO IS A FIGURE: an item that costs nothing costs the order nothing — the batches’ 6 is not used', async () => {
+    fiveAtFiveFiveAtSeven();
     state.figures = { 'prod-kamaa': 0 };
     expect(await costOfTheOrder()).toBe(0);
   });
 
-  it('the figure of ANOTHER product moves nothing: the honey’s 9 is not the water’s cost', async () => {
-    state.newestBatch = 4;
+  it('the figure of ANOTHER product moves nothing: the honey’s 9 is not the water’s cost — its average 6 is', async () => {
+    fiveAtFiveFiveAtSeven();
     state.figures = { 'prod-honey': 9 };
-    expect(await costOfTheOrder()).toBe(12);
+    expect(await costOfTheOrder()).toBe(18);
+  });
+
+  it('ANOTHER company’s batch of the same product prices nothing here', async () => {
+    state.batches = [{ ...batch('prod-kamaa', '2026-09-01', 5, 40), companyId: 'c-other' }];
+    expect(await costOfTheOrder()).toBe(0);
+  });
+
+  it('A PRODUCT WITH A FIGURE NEVER READS A BATCH; one without reads them once, for this company, units on hand only', async () => {
+    state.figures = { 'prod-kamaa': 5 };
+    await costOfTheOrder();
+    expect(db.productionBatch.findMany).not.toHaveBeenCalled();
+    state.orders = [];
+    state.messages = [];
+    state.figures = {};
+    fiveAtFiveFiveAtSeven();
+    await costOfTheOrder();
+    expect(db.productionBatch.findMany).toHaveBeenCalledTimes(1);
+    expect(db.productionBatch.findMany.mock.calls[0][0].where).toEqual({ companyId: 'c1', productId: { in: ['prod-kamaa'] }, quantityRemaining: { gt: 0 } });
   });
 
   it('the cost is rounded by the currency, like the money beside it: 3 × 1.1117 = 3.3351 is 3.34 at two places', async () => {

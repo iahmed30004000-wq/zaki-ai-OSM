@@ -792,21 +792,45 @@ describe('a fixed cost is what the order is written at, and the shelf is still t
     expect(costsWritten(w)).toEqual([20]); // 12 + 8 — not 18 + 8 (the cream's batches) and not 24 + 8 (a figure for both)
   });
 
-  it('A SHORT SHELF keeps the estimate it was raised with, figure or not: nothing is written over it', async () => {
+  // RV576 (the owner, 3/11 «صلّحهن»): the parcel was handed over, so a product with a figure costs the figure × all 10 whether the
+  // shelf covered it or not — the same 60 a full shelf writes. Without a figure a short shelf still keeps the estimate.
+  it('A SHORT SHELF WITH A FIGURE is written at it too — 10 × 6 = 60, the same as a full shelf — and the shelf gives only its 5', async () => {
     const w = install(
       world({
-        order: orderRow({ quantity: 10 }),
+        order: orderRow({ quantity: 10, estimatedCostOfGoods: 35 }),
         items: [{ productId: CREAM, productName: 'كريم', quantity: 10, freeQuantity: 0 }],
         shelf: [batch({ id: 'b-only', quantityRemaining: 5 })],
         figures: { [CREAM]: 6 },
       })
     );
     expect((await deliver()).status).toBe(200);
+    expect(costsWritten(w)).toEqual([60]);
+    expect(left(w, 'b-only')).toBe(0);
+    expect(sales(w)).toHaveLength(1);
+    expect(sales(w)[0].quantity).toBe(-5);
+  });
+
+  it('A SHORT SHELF WITH NO FIGURE keeps the estimate it was raised with: nothing is written over it', async () => {
+    const w = install(
+      world({
+        order: orderRow({ quantity: 10, estimatedCostOfGoods: 35 }),
+        items: [{ productId: CREAM, productName: 'كريم', quantity: 10, freeQuantity: 0 }],
+        shelf: [batch({ id: 'b-only', quantityRemaining: 5 })],
+      })
+    );
+    expect((await deliver()).status).toBe(200);
     expect(costsWritten(w)).toEqual([]);
   });
 
-  it('AN EMPTY SHELF writes no cost either — nothing left, so nothing is priced', async () => {
-    const w = install(world({ ...ten(), shelf: [], figures: { [CREAM]: 6 } }));
+  it('AN EMPTY SHELF WITH A FIGURE is written at it — 10 × 6 = 60 — with no movement at all', async () => {
+    const w = install(world({ ...ten(), order: orderRow({ quantity: 10, estimatedCostOfGoods: 35 }), shelf: [], figures: { [CREAM]: 6 } }));
+    expect((await deliver()).status).toBe(200);
+    expect(costsWritten(w)).toEqual([60]);
+    expect(sales(w)).toHaveLength(0);
+  });
+
+  it('AN EMPTY SHELF WITH NO FIGURE writes no cost — nothing left, so nothing is priced', async () => {
+    const w = install(world({ ...ten(), shelf: [] }));
     expect((await deliver()).status).toBe(200);
     expect(costsWritten(w)).toEqual([]);
   });

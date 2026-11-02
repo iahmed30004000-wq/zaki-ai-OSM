@@ -454,18 +454,80 @@ describe('a product with a fixed cost is written at it, not at its batches', () 
     expect((tx as any).productionBatch.create).not.toHaveBeenCalled();
   });
 
-  it('A SHORT SHELF STILL KEEPS THE ESTIMATE it was raised with, figure or not: nothing is written over it', async () => {
-    const tx = txWithFigures([{ productId: 'p1', amount: 6 }, { productId: 'p2', amount: 6 }]);
+  /*
+   * RV576 (the owner, 3/11 «صلّحهن» · 1/11 «تحت اي ظرف»). A short or empty shelf used to keep the creation-time estimate even for a
+   * product with a figure, so an order written before the figure and delivered after it kept the old average. The parcel was
+   * handed over: its figured lines cost the figure × the units the customer received — what a full shelf writes — and the lines
+   * with no figure keep their share of the estimate by units (`costOfACopy`), because a short shelf still prices nothing from
+   * part of a parcel. The fixture's order is p1 = 2 paid + 1 gift (3 units) and p2 = 1 unit; the estimate below is 16.
+   */
+  const estimated = (estimatedCostOfGoods: number) => ({ ...ORDER, estimatedCostOfGoods });
+
+  it('A SHORT SHELF, A FIGURE ON EVERY LINE: the figure × the whole parcel — (3 + 1) × 6 = 24, the same as a full shelf, not the 16 it was raised with', async () => {
+    const tx = txWithFigures([{ productId: 'p1', amount: 6 }, { productId: 'p2', amount: 6 }], estimated(16));
+    drawDownStock.mockResolvedValueOnce({ taken: 1, short: 2, cost: 4 }).mockResolvedValueOnce({ taken: 1, short: 0, cost: 3 });
+    const res = await consumeOrderStock(tx, { orderId: 'o1', companyId: 'c1' });
+    expect(written(tx)).toEqual([24]);
+    // the ledger's own figure is still what the batches gave, and the shortfall is still said
+    expect(res).toMatchObject({ taken: 2, short: 2, cost: 7 });
+    expect(on(tx, 'orderActivity', 'create')).toHaveBeenCalledTimes(1);
+  });
+
+  it('AN EMPTY SHELF, A FIGURE ON EVERY LINE: 24 too — the goods were handed over, and the figure is the owner’s, not the shelf’s', async () => {
+    const tx = txWithFigures([{ productId: 'p1', amount: 6 }, { productId: 'p2', amount: 6 }], estimated(16));
+    drawDownStock.mockResolvedValue({ taken: 0, short: 3, cost: 0 });
+    await consumeOrderStock(tx, { orderId: 'o1', companyId: 'c1' });
+    expect(written(tx)).toEqual([24]);
+    expect(on(tx, 'inventoryMovement', 'create')).not.toHaveBeenCalled();
+  });
+
+  it('A SHORT SHELF, A FIGURE ON ONE LINE: p1 at 3 × 6 = 18, p2 keeps its share of the estimate by units — 16 × 1/4 = 4 — 22', async () => {
+    const tx = txWithFigures([{ productId: 'p1', amount: 6 }], estimated(16));
+    drawDownStock.mockResolvedValueOnce({ taken: 0, short: 3, cost: 0 }).mockResolvedValueOnce({ taken: 1, short: 0, cost: 3 });
+    await consumeOrderStock(tx, { orderId: 'o1', companyId: 'c1' });
+    expect(written(tx)).toEqual([22]);
+  });
+
+  it('…and it is the FIGURED line that matters, not the short one: p2 short with no figure, p1 covered with one — 18 + 4 = 22', async () => {
+    const tx = txWithFigures([{ productId: 'p1', amount: 6 }], estimated(16));
+    drawDownStock.mockResolvedValueOnce({ taken: 3, short: 0, cost: 12.75 }).mockResolvedValueOnce({ taken: 0, short: 1, cost: 0 });
+    await consumeOrderStock(tx, { orderId: 'o1', companyId: 'c1' });
+    expect(written(tx)).toEqual([22]);
+  });
+
+  it('A SHORT SHELF WITH NO FIGURE ANYWHERE still keeps the estimate it was raised with: nothing is written over it', async () => {
+    const tx = txWithFigures([], estimated(16));
     drawDownStock.mockResolvedValueOnce({ taken: 1, short: 2, cost: 4 }).mockResolvedValueOnce({ taken: 1, short: 0, cost: 3 });
     await consumeOrderStock(tx, { orderId: 'o1', companyId: 'c1' });
     expect(on(tx, 'order', 'update')).not.toHaveBeenCalled();
   });
 
-  it('AN EMPTY SHELF writes nothing either: no unit left, so nothing is priced — a figure does not invent a cost for goods the shelf never held', async () => {
-    const tx = txWithFigures([{ productId: 'p1', amount: 6 }, { productId: 'p2', amount: 6 }]);
+  it('A FIGURE ONLY FOR A PRODUCT THAT IS NOT IN THE PARCEL moves nothing on a short shelf', async () => {
+    const tx = txWithFigures([{ productId: 'p9', amount: 6 }], estimated(16));
     drawDownStock.mockResolvedValue({ taken: 0, short: 3, cost: 0 });
     await consumeOrderStock(tx, { orderId: 'o1', companyId: 'c1' });
     expect(on(tx, 'order', 'update')).not.toHaveBeenCalled();
+  });
+
+  it('ZERO IS A FIGURE on a short shelf too: p1 at 0, p2’s share 4 — 4, not the 16 estimate', async () => {
+    const tx = txWithFigures([{ productId: 'p1', amount: 0 }], estimated(16));
+    drawDownStock.mockResolvedValue({ taken: 0, short: 3, cost: 0 });
+    await consumeOrderStock(tx, { orderId: 'o1', companyId: 'c1' });
+    expect(written(tx)).toEqual([4]);
+  });
+
+  it('ROUNDED BY THE CURRENCY on a short shelf: 3 units at 1.1117 is 3.335 at three places', async () => {
+    const one = { orderNumber: 'SY-1', estimatedCostOfGoods: 9, items: [{ productId: 'p1', productName: 'أ', quantity: 3, freeQuantity: 0 }], store: { country: { minorUnit: 3 } } };
+    const tx = txWithFigures([{ productId: 'p1', amount: 1.1117 }], one);
+    drawDownStock.mockResolvedValue({ taken: 1, short: 2, cost: 4 });
+    await consumeOrderStock(tx, { orderId: 'o1', companyId: 'c1' });
+    expect(written(tx)).toEqual([3.335]);
+  });
+
+  it('the order is asked for its estimate, so the lines with no figure have something to keep', () => {
+    const src = stripComments(repoFile('src/lib/stock-consumption.ts'));
+    const read = src.slice(src.indexOf('const order = await tx.order.findFirst('), src.indexOf('if (!order) return'));
+    expect(read).toMatch(/estimatedCostOfGoods: true/);
   });
 
   it('A PARCEL WITH NOTHING TO TAKE writes no cost: a figure does not turn an empty order into a cost of 0', async () => {
