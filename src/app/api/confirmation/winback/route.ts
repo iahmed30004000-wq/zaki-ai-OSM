@@ -17,7 +17,7 @@ import { readWinbackPage, winbackFacts } from '@/lib/winback-list';
 import { readLimit, readPage } from '@/lib/numeric-input';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { nothingCameBack } from '@/lib/written-off';
-import { costOfACopy, fixedCostsOf } from '@/lib/product-fixed-cost';
+import { costWhenEveryLineHasAFigure, fixedCostsOf } from '@/lib/product-fixed-cost';
 
 /**
  * GET  /api/confirmation/winback — the lost orders worth one more call.
@@ -371,23 +371,22 @@ export async function POST(req: Request) {
     const totalAmount = money.cod;
 
     /*
-     * WHAT THE GOODS COST — THE COPY'S COST, WITH THE OWNER'S FIGURE ON TOP (3/11: «صلّحهن» · 1/11 «ثابت لكل الطلبات»).
+     * WHAT THE GOODS COST — THE OWNER'S FIGURES WHEN EVERY LINE HAS ONE, ELSE THE CANCELLED ORDER'S COST (3/11: «صلّحهن»).
      *
-     * A win-back is the cancelled order again, so its cost is a COPY of that order's — exactly as a replacement copies the order
-     * it stands for, through the same calculator (`costOfACopy`, `replacement-order.ts`). It used to be the old figure as it
-     * stood, so a fixed cost an admin set after the original was written was ignored until the parcel was delivered (RV575).
-     *
-     * A line whose product has a figure costs the figure × its units, the gift included; the lines with none keep their share of
-     * the copied cost by units. No line with a figure, nothing changes: the old cost comes back as it was. Cost only — the price,
-     * the total and the lines above are computed before this and do not read it.
+     * A win-back is the cancelled order again, and it used to carry that order's cost as it stood — so a fixed cost an admin set
+     * after the original was written was ignored until the parcel was delivered (RV575). Now, when EVERY line has a figure, the
+     * cost is Σ figure × units (the gift included) — what any door writes today. Otherwise the copied cost stays exactly as it
+     * was: a mixed order's cost already holds the figure's money (the doors write it since Stage 2), and sharing it out by units
+     * would move money between lines (the money review of #175, B1). Cost only — the price, the total and the lines above are
+     * computed before this and do not read it.
      */
     const figures = await fixedCostsOf(db, companyId, [...new Set(lines.map((l) => l.productId))]);
-    const estimatedCostOfGoods = costOfACopy(
-      order.estimatedCostOfGoods,
-      lines.map((l) => ({ productId: l.productId, units: l.quantity + (l.freeQuantity ?? 0) })),
-      figures,
-      country.minorUnit
-    );
+    const estimatedCostOfGoods =
+      costWhenEveryLineHasAFigure(
+        lines.map((l) => ({ productId: l.productId, units: l.quantity + (l.freeQuantity ?? 0) })),
+        figures,
+        country.minorUnit
+      ) ?? order.estimatedCostOfGoods;
 
     /**
      * THE ORDER NUMBER RETRIES HERE TOO, which it could not before.

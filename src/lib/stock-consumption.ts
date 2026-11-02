@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import type { db as prismaDb } from './db';
 import { drawDownStock, onHandTotal } from './receiving';
 import { roundMinor } from './money';
-import { costOfACopy, fixedCostsOf } from './product-fixed-cost';
+import { costWhenEveryLineHasAFigure, fixedCostsOf } from './product-fixed-cost';
 
 type Tx = Prisma.TransactionClient | typeof prismaDb;
 
@@ -151,8 +151,6 @@ export async function consumeOrderStock(
       // from its own store's shelf and served out of another's.
       storeId: true,
       source: true,
-      // The estimate the order was written with — what a short shelf keeps for the lines that have no fixed figure (below).
-      estimatedCostOfGoods: true,
       items: {
         select: { productId: true, productName: true, quantity: true, freeQuantity: true, reservedQty: true },
       },
@@ -310,30 +308,27 @@ export async function consumeOrderStock(
       // those walked past this one. JOD has three.
       data: { estimatedCostOfGoods: roundMinor(orderCost, minorUnit) },
     });
-  } else if (lines.some((l) => l.quantity + l.freeQuantity > 0 && figures.has(l.productId))) {
+  } else {
     /*
-     * ── A SHORT OR EMPTY SHELF, AND A PRODUCT WITH A FIXED FIGURE (the owner, 3/11: «صلّحهن» · 1/11 «تحت اي ظرف») ──
+     * ── A SHORT OR EMPTY SHELF WHOSE EVERY LINE HAS A FIXED FIGURE (the owner, 3/11: «صلّحهن» · 1/11 «تحت اي ظرف») ──
      *
      * The rule above keeps the estimate when the shelf could not cover the parcel, because the batches could only price PART of
-     * it. A line with a FIXED figure does not need the batches: the parcel was handed over (a delivery is a fact, P0-13), and its
-     * units cost the figure whether the shelf held them or not — the same figure × units a full shelf writes above. Without
-     * this, an order written before the figure and delivered after it on a short shelf kept the old average for good (RV576).
+     * it. A parcel whose every line — items AND add-ons — has a FIXED figure does not need the batches: it was handed over (a
+     * delivery is a fact, P0-13), and its units cost Σ figure × units, the same figure × units a full shelf writes above. Without
+     * this, an order written before the figures and delivered after them on a short shelf kept the old average for good (RV576).
      *
-     * The lines with NO figure keep their share of the estimate by units, as they always did — the same calculator a copy of an
-     * order uses (`costOfACopy`): a short shelf still prices nothing from a part of the parcel. Only when some line that left
-     * has a figure; otherwise nothing is written, exactly as before. Cost only: the ledger, the SALE lines and `cost` are untouched.
+     * ANY line without a figure, and the estimate stays exactly as before — nothing is written. The estimate of a mixed order
+     * already holds the figure's money (the doors write it since Stage 2); sharing it out by units would move money between
+     * lines (the money review of #175, B1). Cost only: the ledger, the SALE lines and `cost` are untouched.
      */
-    await tx.order.update({
-      where: { id: input.orderId },
-      data: {
-        estimatedCostOfGoods: costOfACopy(
-          order.estimatedCostOfGoods ?? 0,
-          lines.map((l) => ({ productId: l.productId, units: Math.max(0, l.quantity + l.freeQuantity) })),
-          figures,
-          minorUnit
-        ),
-      },
-    });
+    const allFigured = costWhenEveryLineHasAFigure(
+      lines.map((l) => ({ productId: l.productId, units: l.quantity + l.freeQuantity })),
+      figures,
+      minorUnit
+    );
+    if (allFigured !== null) {
+      await tx.order.update({ where: { id: input.orderId }, data: { estimatedCostOfGoods: allFigured } });
+    }
   }
 
   /*

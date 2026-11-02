@@ -203,14 +203,14 @@ const winback = () =>
     })
   );
 
-const toDeliver = (items: Row[], estimatedCostOfGoods: number) => ({
+const toDeliver = (items: Row[], estimatedCostOfGoods: number, addOns: Row[] = [], minorUnit = 3) => ({
   orderNumber: 'ORD-2026-0090',
   storeId: 's1',
   source: 'Facebook',
   estimatedCostOfGoods,
   items,
-  addOns: [],
-  store: { country: { minorUnit: 3 } },
+  addOns,
+  store: { country: { minorUnit } },
 });
 const deliver = () => consumeOrderStock(db as never, { orderId: 'o-90', companyId: 'c1', userId: 'u-desk' });
 
@@ -278,8 +278,36 @@ const SCENARIOS: Scenario[] = [
       ];
     },
     run: winback,
-    // p1: 3 × 5 = 15 · p2 keeps its share of the copied 16 by units: 16 × 1/4 = 4
-    after: 19,
+    // NOT EVERY LINE HAS A FIGURE: the copied 16 stays as it was — it may already hold the figure's money (the review of #175, B1)
+    after: 16,
+  },
+  {
+    name: 'استرجاع · سطرين · الأول برقم 5 والتاني بلا رقم · الملغي انكتب اليوم بالقاعدة 19 (15 + 4)',
+    door: 'winback',
+    set: () => {
+      world.figures = { p1: 5 };
+      world.order = { ...lost(19), sellingPrice: 29, totalAmount: 29 };
+      world.orderItems = [
+        { productId: 'p1', productName: 'كريم', quantity: 2, freeQuantity: 1, unitPrice: 12.5 },
+        { productId: 'p2', productName: 'صابون', quantity: 1, freeQuantity: 0, unitPrice: 4 },
+      ];
+    },
+    run: winback,
+    after: 19, // not 19.75 (15 + 19 × 1/4)
+  },
+  {
+    name: 'استرجاع · سطرين · الاتنين برقم (5 و2) · الملغي انكتب بـ16',
+    door: 'winback',
+    set: () => {
+      world.figures = { p1: 5, p2: 2 };
+      world.order = { ...lost(16), sellingPrice: 29, totalAmount: 29 };
+      world.orderItems = [
+        { productId: 'p1', productName: 'كريم', quantity: 2, freeQuantity: 1, unitPrice: 12.5 },
+        { productId: 'p2', productName: 'صابون', quantity: 1, freeQuantity: 0, unitPrice: 4 },
+      ];
+    },
+    run: winback,
+    after: 17, // 3 × 5 + 1 × 2
   },
   {
     name: 'استرجاع · بلا سطور (الأعمدة المفردة) · رقم 5 · الملغي بـ12',
@@ -322,8 +350,46 @@ const SCENARIOS: Scenario[] = [
       world.order = toDeliver([P1, P2], 16);
     },
     run: deliver,
-    // p1: 3 × 5 = 15 · p2 keeps its share of the estimate by units: 16 × 1/4 = 4
-    after: 19,
+    // NOT EVERY LINE HAS A FIGURE: the estimate stays as it was, exactly as before the fix (the review of #175, B1)
+    after: 16,
+  },
+  {
+    name: 'تسليم · رفّ فاضي · سطرين: الأول برقم 5 والتاني بلا رقم · التقدير انكتب بالقاعدة 19 (15 + 4)',
+    door: 'delivery',
+    set: () => { world.figures = { p1: 5 }; world.order = toDeliver([P1, P2], 19); },
+    run: deliver,
+    after: 19, // not 19.75
+  },
+  {
+    name: 'تسليم · رفّ فاضي · ليرة بلا كسور · الأول برقم 10000 والتاني بلا رقم · التقدير 16000',
+    door: 'delivery',
+    set: () => {
+      world.figures = { p1: 10000 };
+      world.order = toDeliver([{ ...P1, quantity: 1, freeQuantity: 0, reservedQty: 1 }, P2], 16000, [], 0);
+    },
+    run: deliver,
+    after: 16000, // not 22000
+  },
+  {
+    name: 'تسليم · رفّ فاضي · سطر بلا رقم + إضافة برقم 5 انقبلت بعدين · التقدير 20',
+    door: 'delivery',
+    set: () => {
+      world.figures = { p1: 5 };
+      world.order = toDeliver([{ ...P2, quantity: 2, reservedQty: 2 }], 20, [{ productId: 'p1', productName: 'كريم', quantity: 1 }]);
+    },
+    run: deliver,
+    after: 20, // not 18.333
+  },
+  {
+    name: 'تسليم · رفّ ناقص · سطر برقم 5 + إضافة برقم 2 · التقدير 15',
+    door: 'delivery',
+    set: () => {
+      world.figures = { p1: 5, p3: 2 };
+      world.batches = [{ id: 'b-one', companyId: 'c1', storeId: 's1', productId: 'p1', productionDate: '2026-10-01', quantityRemaining: 1, quantitySold: 0, costPerUnit: 7 }];
+      world.order = toDeliver([P1], 15, [{ productId: 'p3', productName: 'فرشاة', quantity: 2 }]);
+    },
+    run: deliver,
+    after: 19, // 3 × 5 + 2 × 2 — the add-on's units are goods that left
   },
 ];
 

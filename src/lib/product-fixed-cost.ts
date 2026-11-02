@@ -90,6 +90,30 @@ export function costOfACopy(
   return roundMinor(figureCost + rest, minorUnit);
 }
 
+/**
+ * THE COST OF AN ORDER WHOSE EVERY LINE HAS A FIGURE — or nothing at all (the owner, 3/11 «صلّحهن»; the money review of #175).
+ *
+ * Two places rewrite an order's cost from the figures alone, with no batch to price a line: the WIN-BACK (a copy of a cancelled
+ * order) and the delivery on a SHORT or EMPTY shelf. Both used to keep the cost the order already carried, figure or not (RV575,
+ * RV576). They may not share that cost out by units the way `costOfACopy` does: since Stage 2 the doors write figure × units INTO
+ * the estimate, so a mixed order's estimate already holds the figure's money, and a share of it by units moves money between
+ * lines (19 → 19.75 on a 5×3 + 4×1 order). So the rule is exact or nothing:
+ *
+ *   · EVERY line that carries units (items and add-ons alike) has a figure → Σ figure × units, rounded by the currency;
+ *   · otherwise `null`: the caller keeps the cost the order already has, exactly as before.
+ *
+ * ZERO is a figure (`has`, never truthiness). A line with no units costs nothing and asks nothing. No line with units → `null`.
+ */
+export function costWhenEveryLineHasAFigure(
+  lines: ReadonlyArray<{ productId: string; units: number }>,
+  fixed: ReadonlyMap<string, number>,
+  minorUnit: number
+): number | null {
+  const carrying = lines.filter((l) => l.units > 0);
+  if (carrying.length === 0 || !carrying.every((l) => fixed.has(l.productId))) return null;
+  return roundMinor(carrying.reduce((sum, l) => sum + (fixed.get(l.productId) as number) * l.units, 0), minorUnit);
+}
+
 const round4 = (n: number) => Number(n.toFixed(4));
 
 /**
