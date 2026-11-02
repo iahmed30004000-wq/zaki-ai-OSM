@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { requireContext } from '@/lib/geo-context';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { requirePermission } from '@/lib/authorization';
@@ -6,6 +7,20 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { pullNextOrder } from '@/lib/confirmation-queue';
 import { reserveReturningCustomers } from '@/lib/reserve-returning-customers';
 import { db } from '@/lib/db';
+
+/**
+ * THE PULL RAN OUT OF TIME — SAY SO, AND SAY PRESS AGAIN (RV711).
+ *
+ * P2028 is Prisma's «transaction API error»: no connection within `maxWait`, or the pull's transaction still running at its
+ * `timeout` (`PULL_TRANSACTION_OPTIONS`) — on a busy morning, waiting behind colleagues pulling the same customer. Nothing was
+ * written (the transaction is rolled back), so pressing again is safe. Without this it fell to the shared mapper's 500
+ * «حدث خطأ داخلي … أبلغ مدير النظام» for a condition that clears by itself.
+ */
+const QUEUE_BUSY_MESSAGE = 'الطابور مشغول لحظة — اضغط «اسحب» مرة تانية';
+
+function ranOutOfTime(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2028';
+}
 
 /**
  * POST /api/confirmation/pull — take the next order.
@@ -63,6 +78,13 @@ export async function POST() {
 
     return NextResponse.json({ order, autoReleased: result.released }, { status: 201 });
   } catch (error) {
+    if (ranOutOfTime(error)) {
+      // 503 + Retry-After: refused for now, not for good — the same press a second later is the answer.
+      return NextResponse.json(
+        { error: QUEUE_BUSY_MESSAGE, errorAr: QUEUE_BUSY_MESSAGE, code: 'QUEUE_BUSY' },
+        { status: 503, headers: { 'Retry-After': '1' } }
+      );
+    }
     return apiErrorResponse(error);
   }
 }
