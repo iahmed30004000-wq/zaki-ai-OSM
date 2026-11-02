@@ -1,4 +1,7 @@
+import { db } from './db';
 import { altPhoneForLabel, waybillCod, type WaybillOrder } from './waybill';
+import { cityIdsForRegions, storedCityIds } from './couriers/city-id';
+import type { CourierIdentity } from './couriers/places';
 import { placeLine } from './address';
 import { roundMinor } from './money';
 import type { Cell } from './xlsx-writer';
@@ -30,6 +33,30 @@ export const BATCH_SHEET_HEADER = [
   'المحتويات',
   'ملاحظات الزبون',
 ] as const;
+
+/**
+ * The courier's own id for each governorate of these orders: the same answer the dispatch gets for the API
+ * (`couriers/city-id`) — the id typed on the fees screen, else the one in the courier's own list. The typed ones are read
+ * once. Lifted out of the batch's Excel door (3/11) so the file of the ready orders asks it the same way.
+ */
+export async function sheetCityIds(
+  courier: { id: string | null; identity: CourierIdentity | null | undefined },
+  orders: readonly { regionId: string | null; region?: { name: string } | null }[]
+): Promise<Map<string, number>> {
+  const typedCityIds = storedCityIds(
+    courier.id
+      ? await db.deliveryFee.findMany({
+          where: { deliveryProviderId: courier.id, courierCityId: { not: null } },
+          select: { regionId: true, courierCityId: true },
+        })
+      : []
+  );
+  return cityIdsForRegions({
+    provider: courier.identity,
+    stored: typedCityIds,
+    regions: orders.map((o) => ({ id: o.regionId, name: o.region?.name })),
+  });
+}
 
 export async function batchSheetRows(
   orders: WaybillOrder[],

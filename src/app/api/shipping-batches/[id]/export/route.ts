@@ -5,8 +5,7 @@ import { can } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { WAYBILL_SELECT } from '@/lib/waybill';
-import { BATCH_SHEET_HEADER, batchSheetRows } from '@/lib/batch-sheet';
-import { cityIdsForRegions, storedCityIds } from '@/lib/couriers/city-id';
+import { BATCH_SHEET_HEADER, batchSheetRows, sheetCityIds } from '@/lib/batch-sheet';
 import { XLSX_CONTENT_TYPE, buildXlsx } from '@/lib/xlsx-writer';
 
 /**
@@ -54,21 +53,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ error: 'الدفعة فاضية — ما في طلبات لتصديرها.', errorAr: 'الدفعة فاضية — ما في طلبات لتصديرها.' }, { status: 409 });
     }
 
-    // The courier's own id for each governorate: the same answer the dispatch gets for the API (`couriers/city-id`) — the
-    // id typed on the fees screen, else the one in the courier's own list. The typed ones are read once.
-    const typedCityIds = storedCityIds(
-      batch.deliveryProviderId
-        ? await db.deliveryFee.findMany({
-            where: { deliveryProviderId: batch.deliveryProviderId, courierCityId: { not: null } },
-            select: { regionId: true, courierCityId: true },
-          })
-        : []
-    );
-    const cityIds = cityIdsForRegions({
-      provider: batch.provider,
-      stored: typedCityIds,
-      regions: orders.map((o) => ({ id: o.regionId, name: o.region?.name })),
-    });
+    // The courier's own id for each governorate: the same answer the dispatch gets for the API (`sheetCityIds`).
+    const cityIds = await sheetCityIds({ id: batch.deliveryProviderId, identity: batch.provider }, orders);
 
     // Counted before the file is built, so the tally does not depend on what the file turns out to hold.
     await noteCustomersHandedOut({ companyId, storeId, user, where: 'ملف إكسل لدفعة شحن', rows: orders });

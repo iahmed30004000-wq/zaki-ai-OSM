@@ -5,7 +5,7 @@ import { DispatchInterrupted, dispatchInChunks, type DispatchProgress } from '@/
 import { OrderLink } from '@/components/orders/OrderLink';
 import { OrderRef } from '@/components/orders/OrderRef';
 import { PrepEditSheet, type PrepParcel } from '@/components/ops/PrepEditSheet';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch, apiJson } from '@/lib/api-client';
 import type { DispatchSummary } from '@/lib/couriers/dispatch';
 import { courierCityGapLine, type CourierCityGap } from '@/lib/couriers/city-gap-line';
@@ -144,8 +144,15 @@ export function ShippingBatchesScreen() {
   // endpoint also returns names and phones, and a verification screen has no
   // business keeping those anywhere, in memory or otherwise.
   const [verify, setVerify] = useState<{ batch: Batch; refs: Set<string>; seen: Set<string> } | null>(null);
-  // The open trolley's parcels, shown only while somebody is deciding about them.
-  const [parcels, setParcels] = useState<{ batchId: string; rows: Parcel[]; canEdit: boolean; currency: Currency | null } | null>(null);
+  // The open trolley's parcels, shown only while somebody is deciding about them. `q` is the search they answer and
+  // `total` the batch's whole count, both from the server (`total` only when something was searched).
+  const [parcels, setParcels] = useState<
+    { batchId: string; rows: Parcel[]; canEdit: boolean; currency: Currency | null; q: string; total: number | null } | null
+  >(null);
+  // What is typed in the box inside the batch; the list follows it a quarter-second later.
+  const [parcelQuery, setParcelQuery] = useState('');
+  // The latest search wins: a slow answer to an older question never overwrites a newer one.
+  const parcelSeq = useRef(0);
   // The parcel whose «عدّل» form is open (only ever offered to the holder of `ops.edit_in_batch`, on an open trolley).
   const [editing, setEditing] = useState<{ batchId: string; parcel: Parcel } | null>(null);
 
@@ -338,27 +345,58 @@ export function ShippingBatchesScreen() {
    * confirmation desk, the hold for «not this week» — pressed from where the
    * parcel is, instead of a screen the packing table never opens.
    */
-  async function loadParcels(batchId: string) {
-    setBusy(batchId);
+  async function loadParcels(batchId: string, q = '') {
+    const mine = ++parcelSeq.current;
+    // A search keeps the button as it is; only opening the list waits on it.
+    if (!q) setBusy(batchId);
     try {
-      const data = await apiJson<{ batch: { orders: Parcel[] }; canEditInBatch?: boolean; currency?: Currency | null }>(
-        `/api/shipping-batches/${batchId}`
-      );
-      setParcels({ batchId, rows: data.batch.orders, canEdit: data.canEditInBatch === true, currency: data.currency ?? null });
+      const data = await apiJson<{
+        batch: { orders: Parcel[] };
+        canEditInBatch?: boolean;
+        currency?: Currency | null;
+        search?: { q: string; total: number };
+      }>(`/api/shipping-batches/${batchId}${q ? `?q=${encodeURIComponent(q)}` : ''}`);
+      if (mine !== parcelSeq.current) return;
+      setParcels({
+        batchId,
+        rows: data.batch.orders,
+        canEdit: data.canEditInBatch === true,
+        currency: data.currency ?? null,
+        q,
+        total: data.search?.total ?? null,
+      });
     } catch (e) {
+      if (mine !== parcelSeq.current) return;
       setError(e instanceof Error ? e.message : 'تعذر قراءة طرود الدفعة');
     } finally {
-      setBusy(null);
+      if (!q) setBusy(null);
     }
   }
 
   async function toggleParcels(batch: Batch) {
+    setParcelQuery('');
     if (parcels?.batchId === batch.id) {
+      parcelSeq.current++;
       setParcels(null);
       return;
     }
     await loadParcels(batch.id);
   }
+
+  /*
+   * THE BOX INSIDE THE BATCH (the owner, 3/11: «صندوق بحث داخل الباتش عن طلب»).
+   * The server asks the orders list's own search of this batch alone — a number, a barcode, a name, a phone where the
+   * row shows one — a quarter-second after the last key, as the other search boxes do. An empty box is the whole batch.
+   */
+  const openBatch = parcels?.batchId ?? null;
+  const answered = parcels?.q ?? '';
+  useEffect(() => {
+    const q = parcelQuery.trim();
+    if (!openBatch || q === answered) return;
+    const timer = setTimeout(() => void loadParcels(openBatch, q), 250);
+    return () => clearTimeout(timer);
+    // `loadParcels` is a plain function of this render; the three values are what decide a new question.
+  }, [parcelQuery, openBatch, answered]);
 
   async function leave(batchId: string, o: Parcel, how: Leave, parcelInHand = false, typedBefore?: string) {
     const typed =
@@ -433,7 +471,7 @@ export function ShippingBatchesScreen() {
             : `${o.orderNumber} مؤجَّل وخرج من الدفعة`
       );
       await load();
-      await loadParcels(batchId);
+      await loadParcels(batchId, parcelQuery.trim());
     } catch (e) {
       toast.failed(e instanceof Error ? e.message : 'تعذّر التنفيذ');
     } finally {
@@ -782,17 +820,48 @@ export function ShippingBatchesScreen() {
 
                 {b.notes && <p className="text-xs text-[var(--sys-muted-foreground)]">{b.notes}</p>}
 
-                {b.status === 'READY' && b._count.orders > 0 && (
+                {/* Every batch with parcels opens its list — to search it (3/11). Only an OPEN trolley offers the ways off it. */}
+                {b._count.orders > 0 && (
                   <button
                     onClick={() => void toggleParcels(b)}
                     disabled={busy === b.id}
                     className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1.5 disabled:opacity-40"
                   >
-                    {parcels?.batchId === b.id ? 'أخفِ الطرود' : 'طرود الدفعة وتفاصيلها — ألغِ أو أجّل قبل التسليم'}
+                    {parcels?.batchId === b.id
+                      ? 'أخفِ الطرود'
+                      : b.status === 'READY'
+                        ? 'طرود الدفعة وتفاصيلها — ألغِ أو أجّل قبل التسليم'
+                        : 'طرود الدفعة — ابحث عن طلب'}
                   </button>
                 )}
 
                 {parcels?.batchId === b.id && (
+                  <label className="block">
+                    <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">ابحث داخل الدفعة</span>
+                    <input
+                      type="search"
+                      value={parcelQuery}
+                      onChange={(e) => setParcelQuery(e.target.value)}
+                      // The phone is in the list of what it finds exactly when the server matches it: for whoever is shown it.
+                      placeholder={
+                        mayContacts || parcels.canEdit
+                          ? 'رقم الطلب · باركود الشركة · اسم الزبون · رقم التلفون'
+                          : 'رقم الطلب · باركود الشركة · اسم الزبون'
+                      }
+                      className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] text-sm"
+                    />
+                  </label>
+                )}
+
+                {parcels?.batchId === b.id && parcels.q && (
+                  <p role="status" className="text-xs text-[var(--sys-muted-foreground)]">
+                    {parcels.rows.length === 0
+                      ? `ما في طلب بهالدفعة بيطابق «${parcels.q}»`
+                      : `${parcels.rows.length} من ${parcels.total ?? b._count.orders} بيطابقوا «${parcels.q}»`}
+                  </p>
+                )}
+
+                {parcels?.batchId === b.id && parcels.rows.length > 0 && (
                   <ul className="divide-y divide-[var(--sys-border)] rounded-lg border border-[var(--sys-border)]">
                     {parcels.rows.map((o) => (
                       <li key={o.id} className="flex flex-wrap items-center gap-2 p-2">
@@ -834,6 +903,7 @@ export function ShippingBatchesScreen() {
                             عدّل
                           </button>
                         )}
+                        {b.status === 'READY' && (
                         <span className={phone ? 'grid w-full grid-cols-3 gap-2' : 'ms-auto flex flex-wrap gap-1.5'}>
                           {([['CANCEL', 'ألغِ'], ['FOLLOW_UP', 'أعِده للمتابعة'], ['HOLD', 'أجّل الشحن']] as const).map(([how, label]) => (
                             <button
@@ -846,6 +916,7 @@ export function ShippingBatchesScreen() {
                             </button>
                           ))}
                         </span>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -954,11 +1025,11 @@ export function ShippingBatchesScreen() {
             setEditing(null);
             toast.done(`عُدِّل ${at.parcel.orderNumber} وانكتب على الطلب`);
             void load();
-            void loadParcels(at.batchId);
+            void loadParcels(at.batchId, parcelQuery.trim());
           }}
           onStale={() => {
             void load();
-            void loadParcels(editing.batchId);
+            void loadParcels(editing.batchId, parcelQuery.trim());
           }}
         />
       )}

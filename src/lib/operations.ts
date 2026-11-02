@@ -139,6 +139,25 @@ const IN_TRANSIT = ['SHIPPED', 'OUT_FOR_DELIVERY'];
  * may acknowledge the soft ones; a hard block (stock shortage with negative
  * stock disallowed) creates no shipment row at all.
  */
+/**
+ * THE TWO HARD BLOCKS ABOUT THE DELIVERY FEE, WRITTEN ONCE (3/11).
+ *
+ * An order with no governorate cannot be priced, and a governorate with no active fee row at the courier is priced at
+ * zero — the courier would collect the goods without the delivery. `shipmentBlocks` asks it of one order; the file of the
+ * ready orders (`GET /api/ops/shipments/export`) asks it of the whole list with one read of the fee rows
+ * (`activeFeeRowWhere` with `{ in: [...] }`). Same row, same rule, same words.
+ */
+export function activeFeeRowWhere(deliveryProviderId: string, regionId: string | { in: string[] }) {
+  return { deliveryProviderId, regionId, isActive: true };
+}
+
+/** `hasFeeRow` is whether an active fee row exists for the order's governorate at the courier (not asked without one). */
+export function deliveryFeeBlock(regionId: string | null, hasFeeRow: boolean): OrderBlock | null {
+  if (!regionId) return { code: 'NO_REGION', message: 'لم تُحدَّد المحافظة — لا يمكن حساب أجرة التوصيل', hard: true };
+  if (!hasFeeRow) return { code: 'NO_FEE_ROW', message: 'لا توجد أجرة توصيل لهذه المحافظة عند هذه الشركة', hard: true };
+  return null;
+}
+
 export async function shipmentBlocks(
   tx: Tx,
   order: {
@@ -189,15 +208,14 @@ export async function shipmentBlocks(
   }
 
   if (!order.regionId) {
-    blocks.push({ code: 'NO_REGION', message: 'لم تُحدَّد المحافظة — لا يمكن حساب أجرة التوصيل', hard: true });
+    blocks.push(deliveryFeeBlock(null, false)!);
   } else if (order.deliveryProviderId) {
     const fee = await tx.deliveryFee.findFirst({
-      where: { deliveryProviderId: order.deliveryProviderId, regionId: order.regionId, isActive: true },
+      where: activeFeeRowWhere(order.deliveryProviderId, order.regionId),
       select: { id: true },
     });
-    if (!fee) {
-      blocks.push({ code: 'NO_FEE_ROW', message: 'لا توجد أجرة توصيل لهذه المحافظة عند هذه الشركة', hard: true });
-    }
+    const block = deliveryFeeBlock(order.regionId, !!fee);
+    if (block) blocks.push(block);
   }
 
   const lines = await tx.orderItem.findMany({

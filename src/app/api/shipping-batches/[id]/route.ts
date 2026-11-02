@@ -12,6 +12,7 @@ import { BATCH_STATUSES, EMPTY_BATCH_AR, checkStep, pendingChangesMessage, unsen
 import { COURIER_KIND_SELECT } from '@/lib/waybill';
 import { isAutomated } from '@/lib/couriers';
 import { emitAppEvent } from '@/lib/apps/events';
+import { orderSearchOr } from '@/lib/order-filters';
 
 /** The batch was moved by someone else between the read and the write. */
 class BatchMoved extends Error {}
@@ -48,7 +49,10 @@ class PendingChanges extends Error {
  * answer carried every customer's name and phone. The phone now goes only
  * with the address-book key, as on the labels and returns screens.
  */
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+/** A search is a reference, a name or a phone; anything longer is not one, and is cut rather than sent as a query. */
+const MAX_SEARCH = 100;
+
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { user, companyId, storeId, country } = await requireContext();
     const { id } = await params;
@@ -89,10 +93,34 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     // them. A closed trolley is history, and its contact details go only with the customers key as before.
     const maySeeContact = maySeeCustomers || (mayEdit && batch.status === 'READY');
 
+    /*
+     * «صندوق بحث داخل الباتش» (the owner, 3/11): `?q=` narrows the parcels to the ones that match — an order number, our
+     * reference, the courier's barcode, a name, or a phone. The question is the orders list's own (`orderSearchOr`), asked
+     * of THIS batch inside the session's company and store, so it finds here what it finds there and nothing of another
+     * trolley. The phone is matched only for whoever is shown the phone: a box that finds a parcel by a number the row then
+     * hides would still say whose number it is.
+     */
+    const search = new URL(req.url).searchParams.get('q')?.trim().slice(0, MAX_SEARCH) ?? '';
+    const total = batch.orders.length;
+    let members = batch.orders;
+    if (search) {
+      const found = await db.order.findMany({
+        where: {
+          shippingBatchId: batch.id,
+          companyId,
+          ...(storeId ? { storeId } : {}),
+          AND: [{ OR: orderSearchOr(search, { withPhone: maySeeContact }) }],
+        },
+        select: { id: true },
+      });
+      const ids = new Set(found.map((o) => o.id));
+      members = batch.orders.filter((o) => ids.has(o.id));
+    }
+
     // What the response will actually carry: without the address-book key the
     // phone is gone from every parcel.
     // (`altPhone` is a number too: it goes where the first one goes.)
-    const orders = batch.orders.map(({ discountAmount, items: lines, ...o }) => {
+    const orders = members.map(({ discountAmount, items: lines, ...o }) => {
       const customer = redactCustomerForWarehouse(o.customer, maySeeContact);
       // Each line's total BEFORE the order's discount — the figure the edit form echoes back and the door ignores
       // (it rebuilds it from the stored line), so a quantity can be sent without the screen ever doing a sum.
@@ -123,6 +151,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({
       batch: { ...batch, orders },
       canEditInBatch: mayEdit && batch.status === 'READY',
+      // What was asked and out of how many, so the screen can say «3 من 20» — absent when nothing was asked.
+      ...(search ? { search: { q: search, total } } : {}),
       currency: country ? { code: country.currencyCode, minorUnit: country.minorUnit } : null,
     });
   } catch (error) {

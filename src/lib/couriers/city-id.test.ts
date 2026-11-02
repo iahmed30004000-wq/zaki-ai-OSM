@@ -171,7 +171,7 @@ describe('no site reads a typed id around the helper', () => {
   const KNOWN = [
     'scripts/import-courier-cities.ts', // the manual script that WRITES the ids, from the list
     'src/app/api/settings/delivery-fees/route.ts', // the fees screen's own door: lists and saves what was typed
-    'src/app/api/shipping-batches/[id]/export/route.ts', // the Excel file
+    'src/lib/batch-sheet.ts', // the files: the batch's Excel and the ready orders' CSV (`sheetCityIds`, 3/11)
     'src/components/settings/CourierFees.tsx', // the box
     'src/lib/couriers/city-gaps.ts', // the warning before the press
     'src/lib/couriers/city-id.ts', // the helper
@@ -196,11 +196,15 @@ describe('no site reads a typed id around the helper', () => {
   });
 
   it('the press, the warning and the file each call the shared function — and none reads a typed id for itself', () => {
-    for (const file of ['src/lib/couriers/dispatch.ts', 'src/lib/couriers/city-gaps.ts', 'src/app/api/shipping-batches/[id]/export/route.ts']) {
+    for (const file of ['src/lib/couriers/dispatch.ts', 'src/lib/couriers/city-gaps.ts', 'src/lib/batch-sheet.ts']) {
       const src = stripComments(repoFile(file));
       expect(src, `${file} لا يسأل الدالة المشتركة`).toMatch(/courierCityIdFor\(|cityIdsForRegions\(/);
       // The ids they read go to `storedCityIds` and from there into the helper — nothing picks one out of the map itself.
       expect(src, `${file} يقرأ رقماً مكتوباً بنفسه`).not.toMatch(/typedCityIds\.(?:get|values|entries)\(|typed\.get\([^)]*\)\??\.get\(/);
+    }
+    // Both files ask it through the one place: the batch's Excel and the ready orders' CSV.
+    for (const file of ['src/app/api/shipping-batches/[id]/export/route.ts', 'src/app/api/ops/shipments/export/route.ts']) {
+      expect(stripComments(repoFile(file)), `${file} لا يسأل sheetCityIds`).toMatch(/sheetCityIds\(/);
     }
   });
 });

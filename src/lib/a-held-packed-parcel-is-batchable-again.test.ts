@@ -36,8 +36,13 @@ describe('the shipment list offers it', () => {
   it('as its own branch, in the list and in the held count', () => {
     expect(HELD_PACKED_PARCEL).toMatchObject({ shippingStatus: 'READY_FOR_PICKUP', shippingBatchId: null });
     const src = route();
-    expect((src.match(/HELD_PACKED_PARCEL/g) ?? []).length).toBeGreaterThanOrEqual(4);
-    expect(src).toMatch(/\.\.\.HELD_PACKED_PARCEL, shipHoldUntil: \{ lte: new Date\(\) \}/);
+    // The list's `where` lives in `shipmentListWhere` since 3/11 (the file of the ready orders asks the same one); the
+    // route asks it, and still names the branch in its own held count.
+    expect(src).toMatch(/shipmentListWhere\(/);
+    expect(src).toMatch(/HELD_PACKED_PARCEL/);
+    const list = stripComments(repoFile('src/lib/batching-guard.ts'));
+    expect((list.match(/HELD_PACKED_PARCEL/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    expect(list).toMatch(/\.\.\.HELD_PACKED_PARCEL, shipHoldUntil: \{ lte: now \}/);
   });
 
   it('and the creation write allows READY_FOR_PICKUP only for a parcel that carries a hold date', () => {
