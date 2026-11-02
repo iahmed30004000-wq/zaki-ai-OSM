@@ -197,6 +197,17 @@ describe('the holder, with the key, on her own confirmed order in no batch — h
 });
 
 describe('every neighbour is refused 403 before anything moves — the window is asked AGAIN here, with the batch', () => {
+  it('NEGATIVE (review of #167): «الطرد بإيدي» in a hand-made body is refused — her word never counts goods back on a labelled order', async () => {
+    const salma = await person('salma', 'CONFIRMATION_AGENT', WITH_KEY);
+    db.order.findFirst.mockResolvedValue(stored({ labelPrintedAt: new Date('2026-11-02T08:00:00Z') }));
+
+    const res = await press(salma, { parcelInHand: true });
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('PARCEL_IN_HAND_NOT_HERS');
+    expectNothingHappened();
+  });
+
   it('on a colleague’s order', async () => {
     const salma = await person('salma', 'CONFIRMATION_AGENT', WITH_KEY);
     db.order.findFirst.mockResolvedValue(stored({ claimedById: 'someone-else' }));
