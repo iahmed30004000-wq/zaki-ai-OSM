@@ -40,6 +40,16 @@ vi.mock('@/lib/geo-context', () => ({ requireContext: async () => world.ctx }));
 vi.mock('@/lib/notify', () => ({ notify: vi.fn(), afterResponse: vi.fn() }));
 vi.mock('@/lib/apps/events', () => ({ emitAppEvent: vi.fn() }));
 vi.mock('@/lib/conversions/emit', () => ({ queueConversions: vi.fn() }));
+// The transition table as both doors read it: the real one, unless a test closes the one step this file is about.
+const table = vi.hoisted(() => ({ closed: false }));
+vi.mock('@/lib/shipping-workflow', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/shipping-workflow')>();
+  return {
+    ...real,
+    isValidShippingTransition: (from: string, to: string) =>
+      table.closed && from === 'SHIPPED' && to === 'OUT_FOR_DELIVERY' ? false : real.isValidShippingTransition(from, to),
+  };
+});
 
 import { emitAppEvent } from '@/lib/apps/events';
 import { notify } from '@/lib/notify';
@@ -307,6 +317,7 @@ const parse = (json: string | null) => (json ? JSON.parse(json) : null);
 beforeEach(() => {
   vi.clearAllMocks();
   clock = 0;
+  table.closed = false;
 });
 
 /** The standard trolley: three parcels waiting, three that are not, and three that are not this trolley's. */
@@ -917,6 +928,23 @@ describe('7 · the batch press and the order’s own door leave the same trace',
     const viaPress = await press();
     expect(viaPress.status).toBe(200);
     expect(viaPress.body).toMatchObject({ moved: 0, skipped: 1, failed: 0 });
+  });
+
+  it('ONE transition table: close «مشحون» → «خرج للتوصيل» in it and BOTH doors refuse; the press names INVALID_TRANSITION and writes nothing', async () => {
+    table.closed = true;
+    start({ orders: [order(1)] });
+    const viaDoor = await door('o1', 2);
+    expect(viaDoor.status).toBe(409);
+    expect(viaDoor.body.code).toBe('INVALID_TRANSITION');
+
+    start({ orders: [order(1), order(2)] });
+    const res = await press();
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ moved: 0, skipped: 0, failed: 2 });
+    expect(res.body.failures.map((f: Row) => f.code)).toEqual(['INVALID_TRANSITION', 'INVALID_TRANSITION']);
+    expect(orderRow('o1').shippingStatus).toBe('SHIPPED');
+    expect(w.state.statusLogs).toHaveLength(0);
+    expect(w.state.audits, 'a press that moved nothing leaves no row').toHaveLength(0);
   });
 
   it('a stale version: the order’s door says VERSION_CONFLICT, the press says VERSION_CONFLICT for that parcel', async () => {
