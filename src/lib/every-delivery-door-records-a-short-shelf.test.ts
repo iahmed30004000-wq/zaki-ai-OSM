@@ -34,7 +34,8 @@ const DOORS = [
   { door: 'PATCH /api/orders/[id]/shipping', file: 'src/app/api/orders/[id]/shipping/route.ts', calls: 'consumeOrderStock' },
   { door: 'POST /api/ops/tracking/write-off', file: 'src/app/api/ops/tracking/write-off/route.ts', calls: 'consumeOrderStock' },
   { door: 'POST /api/ops/tracking/deliver', file: 'src/app/api/ops/tracking/deliver/route.ts', calls: 'recordPartialDelivery' },
-  { door: 'POST /api/finance/statements/[id]', file: 'src/app/api/finance/statements/[id]/route.ts', calls: 'consumeOrderStock' },
+  // Both statement doors (the approval, «إغلاق المطابقة») deliver through the close of the matching (2/11).
+  { door: 'PATCH /api/finance/statements/[id] · POST …/close', file: 'src/lib/statement-close.ts', calls: 'consumeOrderStock' },
   { door: 'the parcel swap', file: 'src/lib/parcel-swap.ts', calls: 'consumeOrderStock' },
   { door: 'recordPartialDelivery (lib)', file: 'src/lib/partial-delivery.ts', calls: 'consumeOrderStock' },
 ];

@@ -261,6 +261,8 @@ export async function POST(req: Request) {
                 merchantRef: true,
                 barcode: true,
                 statement: { select: { reference: true, status: true, approvedAt: true, deliveryProviderId: true } },
+                // A line the matching EXCLUDED (zero, «تم ارجاعها» / «مؤجلة») carries no money for the order.
+                matches: { select: { result: true } },
               },
             });
       const lines = await readLines();
@@ -277,6 +279,7 @@ export async function POST(req: Request) {
           where: { companyId, orderId: { in: orders.map((o) => o.id) }, statementLineId: { not: null } },
           select: {
             orderId: true,
+            result: true,
             statement: { select: { reference: true, status: true, approvedAt: true, deliveryProviderId: true } },
           },
         });

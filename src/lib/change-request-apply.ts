@@ -225,6 +225,13 @@ export function mayApply(
     confirmationStatus: string;
     claimedById: string | null;
     handedToCourier?: boolean;
+    /**
+     * The order is on a trolley (`shippingBatchId`). It travels with the order for the same reason: the holder's own window
+     * (`orders.edit_confirmed`) ends at batch entry, and the self-decision of the raising route and this apply step must read
+     * ONE predicate (`mayDecide`) with the SAME facts, or a request she decided herself would be refused at the last press.
+     * Absent reads as «in a batch», which denies.
+     */
+    inBatch?: boolean;
   }
 ): OrderVerdict {
   if (request.orderId !== order.id) {

@@ -188,7 +188,8 @@ describe('every door that delivers a parcel counts it', () => {
   const doors: [string, string][] = [
     ['التغيير اليدويّ', 'src/app/api/orders/[id]/route.ts'],
     ['التسوية عند الباب', 'src/lib/partial-delivery.ts'],
-    ['كشف شركة الشحن', 'src/app/api/finance/statements/[id]/route.ts'],
+    // The statement's count moved with the rest of what it does to orders, into the close of the matching (2/11).
+    ['كشف شركة الشحن', 'src/lib/statement-close.ts'],
   ];
 
   it('on the customer, not only on the order', () => {

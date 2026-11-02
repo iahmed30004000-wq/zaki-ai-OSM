@@ -120,11 +120,13 @@ describe('what each count asks', () => {
     expect(db.orderIssue.count.mock.calls[0][0].where).toEqual({ companyId: 'co', status: 'OPEN', order: { storeId: 'st' } });
   });
 
-  it('the statements: not approved by either mark of approval', async () => {
+  // (Was: not approved by either mark of approval. Since 2/11 the approval posts the money and a statement whose lines
+  // are still a question keeps its matching open — that is still work, until «إغلاق المطابقة».)
+  it('the statements: open until their matching is closed', async () => {
     const items = await ask('settlement.review');
     expect(countOf(items, 'STATEMENTS_OPEN')).toBe(2);
     expect(db.courierStatement.count.mock.calls[0][0].where).toEqual({
-      companyId: 'co', storeId: 'st', approvedAt: null, status: { not: 'APPROVED' },
+      companyId: 'co', storeId: 'st', matchingClosedAt: null,
     });
   });
 

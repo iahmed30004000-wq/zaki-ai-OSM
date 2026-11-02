@@ -75,7 +75,10 @@ export interface DecisionFacts {
   openRequests: string[];
   /** Another row (another line, another statement) already holds the order cleanly or by a decision. */
   claimedElsewhere: boolean;
-  /** This statement's money has already moved. */
+  /**
+   * This statement takes no answer any more: its MATCHING is closed (`matchingClosedAt`). The name is the old one —
+   * before the split the money and the close were one act — and the callers feed it the close.
+   */
   statementApproved: boolean;
   /** Ours, net — as the row recorded it. */
   expectedAmount: number | null;
@@ -237,7 +240,7 @@ export interface DecisionRow {
   orderId: string | null;
   expectedAmount: number | null;
   statementAmount: number | null;
-  /** The statement's approval stamp. */
+  /** The stamp after which the statement takes no answer: since the split, its matching's close (`matchingClosedAt`). */
   approvedAt: Date | string | null;
 }
 
@@ -326,7 +329,7 @@ export interface ClaimRow {
   expectedAmount: Num;
   statementAmount: Num;
   statementFee?: Num;
-  statement?: { approvedAt: Date | string | null } | null;
+  statement?: { approvedAt?: Date | string | null; matchingClosedAt?: Date | string | null } | null;
 }
 
 /**
@@ -352,11 +355,13 @@ export async function openClaimsFor(
       orderId: { in: p.orderIds },
       resolution: 'OURS_STANDS',
       statementId: { not: p.excludeStatementId },
-      statement: { approvedAt: { not: null } },
+      // A claim exists once its statement's MATCHING is closed: until then «رقمنا» may still be answered otherwise,
+      // and nothing has been settled against it. (Before the split this was the approval: the two were one act.)
+      statement: { matchingClosedAt: { not: null } },
     },
     select: {
       orderId: true, expectedAmount: true, statementAmount: true, statementFee: true,
-      statement: { select: { approvedAt: true } },
+      statement: { select: { approvedAt: true, matchingClosedAt: true } },
     },
   });
   return claimsFromRows(Array.isArray(rows) ? rows : [], p.minorUnit);
@@ -371,7 +376,10 @@ export function claimsFromRows(rows: ClaimRow[], minorUnit: number): Map<string,
   }
   const out = new Map<string, OpenClaim>();
   for (const [orderId, list] of byOrder) {
-    const at = (r: ClaimRow) => (r.statement?.approvedAt ? new Date(r.statement.approvedAt).getTime() : 0);
+    const at = (r: ClaimRow) => {
+      const stamp = r.statement?.matchingClosedAt ?? r.statement?.approvedAt;
+      return stamp ? new Date(stamp).getTime() : 0;
+    };
     const latest = [...list].sort((a, b) => at(b) - at(a))[0];
     const remaining = claimOf(
       { expectedAmount: Number(latest.expectedAmount), statementAmount: Number(latest.statementAmount) },

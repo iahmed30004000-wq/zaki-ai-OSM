@@ -4,6 +4,9 @@ import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { can, requirePermission } from '@/lib/authorization';
 import { authorises } from '@/lib/change-request-apply';
+import { holdsTheWindow } from '@/lib/change-request-routing';
+import { EDIT_CONFIRMED_KEY } from '@/lib/edit-confirmed-key';
+import { handedToCourier } from '@/lib/order-seal';
 import { holdFromTrolley } from '@/lib/order-cancel';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
@@ -110,6 +113,15 @@ export async function POST(req: Request) {
      * stand-down door states for the same reason.
      */
     let viaRequest: { id: string } | null = null;
+    /**
+     * THE ONE OTHER WAY IN: THE HOLDER, BEFORE HER ORDER ENTERS A BATCH (`orders.edit_confirmed`, 2/11).
+     *
+     * The agent who holds a confirmed order and holds that key decided her own postponement on the spot (the raising route),
+     * and this is the door that carries it out. She is let through here only after the order is read below and the SAME
+     * predicate the raising route and the apply step ask (`holdsTheWindow`, with the batch) says her window is open; a
+     * person with the desk's key or the packing table's passes as before.
+     */
+    let holderMustProveTheWindow = false;
     if (changeRequestId) {
       const request = await db.orderChangeRequest.findFirst({
         where: { id: changeRequestId, companyId },
@@ -121,7 +133,10 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: verdict.error, code: verdict.code }, { status: verdict.status });
       }
       if (!can(user, 'control.change_requests') && !can(user, 'ops.ship')) {
-        return NextResponse.json({ error: 'لا تملك صلاحية تنفيذ هذا القرار' }, { status: 403 });
+        if (!can(user, EDIT_CONFIRMED_KEY)) {
+          return NextResponse.json({ error: 'لا تملك صلاحية تنفيذ هذا القرار' }, { status: 403 });
+        }
+        holderMustProveTheWindow = true;
       }
       if (!request.postponeUntil) {
         return NextResponse.json({ error: 'طلب التأجيل بلا موعد', code: 'NO_DATE' }, { status: 409 });
@@ -178,9 +193,23 @@ export async function POST(req: Request) {
         // order's name are not on a shelf anybody else can be sold from.
         shippedAt: true,
         labelPrintedAt: true,
+        // Whose order it is: the holder's own window (`orders.edit_confirmed`) is asked of it, just below.
+        claimedById: true,
       },
     });
     if (!order) return NextResponse.json({ error: 'الطلب غير موجود' }, { status: 404 });
+
+    if (
+      holderMustProveTheWindow &&
+      !holdsTheWindow(user, {
+        confirmationStatus: order.confirmationStatus,
+        claimedById: order.claimedById ?? null,
+        handedToCourier: handedToCourier({ shippingStatus: order.shippingStatus, shippedAt: order.shippedAt }),
+        inBatch: !!order.shippingBatchId,
+      })
+    ) {
+      return NextResponse.json({ error: 'لا تملك صلاحية تنفيذ هذا القرار' }, { status: 403 });
+    }
 
     /**
      * ON A TROLLEY: THE HOLD TAKES IT OFF, AND KEEPS THE GOODS AND THE LABEL.

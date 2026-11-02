@@ -3,14 +3,21 @@ import type { SessionUser } from '@/types/auth';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * DEFINITION OF DONE — «باقي الموظفات يشوفوه ومايقدرو يسحبوه»
+ * DEFINITION OF DONE — «بنات التأكيد يظهرلها بخانة الطلبات الطلبات الي سحبتها فقط» (the owner, 2/11)
  *
- * An order held for a colleague (order-reservation.ts) is in EVERY confirmation agent's «الطلبات» with her name on it, and it
- * opens for them to read — but it is not a door to the pool: once it lets go (24 hours, her account off) it leaves the list
- * again, and an order a colleague merely HOLDS is still none of anybody's business.
+ * An order held for a colleague (order-reservation.ts) is NOT in an agent's «الطلبات» any more. This file was
+ * `a-held-order-is-in-every-agents-list.test.ts` and held the opposite, on his 31/10 word «باقي الموظفات يشوفوه ومايقدرو
+ * يسحبوه»; his newer word overturns it, and every assertion that said «it shows» now says «it does not».
  *
- * This is the envelope itself (`orderListWhere`, `orderVisibilityWhere`), evaluated against rows — the same shape of test
- * `entry-claim-reaches-both-doors.test.ts` holds the two envelopes to each other with.
+ * What did NOT change, and is held here so it cannot drift with it:
+ *   · the one held for HER is still in her list — she is its only taker;
+ *   · the READ envelope (`orderVisibilityWhere`) still opens it — it is the pool, and narrowing the read 404s the pull
+ *     (osm-one-envelope-two-questions);
+ *   · OWN and ALL_COMPANY are untouched;
+ *   · the «ماسكه» filter (#164) still only narrows: naming a colleague shows only those of hers that are in this agent's list.
+ *
+ * This is the envelope itself (`orderListWhere`, `orderVisibilityWhere`) and the one filter every list passes through
+ * (`applyQueueFilter`), evaluated against rows with SQL's three values.
  * ═══════════════════════════════════════════════════════════════════════
  */
 
@@ -20,7 +27,8 @@ vi.mock('./authorization', () => ({
   getPermissionScope: (u: SessionUser & { __scope?: string }) => (u.__scope ? { scope: u.__scope } : null),
 }));
 
-const { orderListWhere, orderVisibilityWhere } = await import('./rbac');
+const { orderListWhere, orderVisibilityWhere, applyQueueFilter } = await import('./rbac');
+const { ordersWhere } = await import('./order-filters');
 
 const agent = (scope: string, id = 'huda'): SessionUser => ({ id, status: 'ACTIVE', role: 'CUSTOM', __scope: scope }) as unknown as SessionUser;
 
@@ -76,17 +84,18 @@ describe('an agent’s «الطلبات»', () => {
   const list = () => orderListWhere(agent('ASSIGNED'));
   const read = () => orderVisibilityWhere(agent('ASSIGNED'));
 
-  it('shows an order held for a colleague — and it opens', () => {
+  it('does NOT show an order held for a colleague — and it still opens, because the read keeps the pool', () => {
+    // FLIPPED 2/11: this was `toBe(true)` — «shows an order held for a colleague — and it opens».
     const row = heldFor('sara', 1);
-    expect(matches(row, list()), 'لا يظهر بقائمتها').toBe(true);
-    expect(matches(row, read()), 'يظهر ولا يُفتَح').toBe(true);
+    expect(matches(row, list()), 'طلب محجوز لزميلة بقائمتها').toBe(false);
+    expect(matches(row, read()), 'غلاف القراءة ضاق — السحب بينكسر').toBe(true);
   });
 
   it('shows the one held for HER, as it always did', () => {
     expect(matches(heldFor('huda', 1), list())).toBe(true);
   });
 
-  it('stops showing it when the hold lets go: after a day, or when her account is off — the pool is still not her list', () => {
+  it('nor when the hold lets go: after a day, or when her account is off — the pool is still not her list', () => {
     expect(matches(heldFor('sara', 25), list())).toBe(false);
     expect(matches(heldFor('sara', 1, 'DISABLED'), list())).toBe(false);
     expect(matches(heldFor('sara', 1, 'SUSPENDED'), list())).toBe(false);
@@ -107,6 +116,38 @@ describe('an agent’s «الطلبات»', () => {
   it('does not show an order somebody claimed once and gave back, though it carries her name and a recent time — it is the pool, not a hold', () => {
     expect(matches(heldFor('sara', 1, 'ACTIVE', { claimHistory: [{ action: 'RELEASED' }] }), list())).toBe(false);
     expect(matches(heldFor('sara', 1, 'ACTIVE', { claimHistory: [{ action: 'RELEASED' }], assignedAt: null }), list())).toBe(false);
+  });
+
+  it('still shows what she pulled, and what she typed even once a colleague holds it — those rows also open', () => {
+    const pulled = { ...base, claimedById: 'huda', currentOwnerId: 'huda', signatureStatus: 'SIGNED', confirmationStatus: 'IN_PROGRESS' };
+    const typedTheirsNow = { ...base, createdById: 'huda', claimedById: 'sara', currentOwnerId: 'sara', signatureStatus: 'SIGNED' };
+    for (const row of [pulled, typedTheirsNow]) {
+      expect(matches(row, list())).toBe(true);
+      expect(matches(row, read()), 'بقائمتها وما بيفتح').toBe(true);
+    }
+  });
+});
+
+describe('the one filter every list passes through (`applyQueueFilter`, no queue named)', () => {
+  const listed = (row: Row, params: Record<string, string> = {}) => {
+    const built = ordersWhere(new URLSearchParams(params));
+    if (!built.ok) throw new Error(built.error);
+    return matches(row, applyQueueFilter(agent('ASSIGNED'), built.where as Record<string, any>, null));
+  };
+
+  it('drops the order held for a colleague from GET /api/orders, the export and the arrows alike', () => {
+    expect(listed(heldFor('sara', 1))).toBe(false);
+    expect(listed(heldFor('huda', 1))).toBe(true);
+  });
+
+  it('«ماسكه = زميلتها» only narrows: her own entry the colleague now holds is found, the colleague’s held one never is', () => {
+    const typedTheirsNow = { ...base, createdById: 'huda', claimedById: 'sara', currentOwnerId: 'sara', signatureStatus: 'SIGNED' };
+    const sarasOwn = { ...base, claimedById: 'sara', currentOwnerId: 'sara', signatureStatus: 'SIGNED' };
+    expect(listed(typedTheirsNow, { holderId: 'sara' })).toBe(true);
+    expect(listed(sarasOwn, { holderId: 'sara' })).toBe(false);
+    // «لا أحد» finds the orders nobody holds — and one held for a colleague is still not hers to see.
+    expect(listed(heldFor('sara', 1), { holderId: 'none' })).toBe(false);
+    expect(listed(heldFor('huda', 1), { holderId: 'none' })).toBe(true);
   });
 });
 

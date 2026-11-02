@@ -157,10 +157,11 @@ describe('the approval matches a manual statement AGAIN, inside its own transact
     expect(db.$transaction.mock.invocationCallOrder[0]).toBeLessThan(rematch);
   });
 
-  // (Was: the approval went on and settled only o1. The lock makes the approval wait for every line that is a question, so a
-  // re-run that finds a NEW difference stops it — nothing is written — and the person answers it first. A row the re-run
-  // KEPT because a person had answered it does not stop it: the test below.)
-  it('an order a hand collection took meanwhile is flagged by the re-run — and that is a question the approval waits for', async () => {
+  // (Was: the approval went on and settled only o1; then the lock made the approval wait for every line that is a question.
+  // Since 2/11 — «افصل المطابقة عن التحصيل» — the MONEY never waits on a line: the receipts are posted, and the re-run's new
+  // question keeps the MATCHING open, so nothing is settled until it is answered and «إغلاق المطابقة» is pressed. A row the
+  // re-run KEPT because a person had answered it does not keep it open: the test below.)
+  it('an order a hand collection took meanwhile is flagged by the re-run — the money is posted, the matching stays open on it', async () => {
     // The press on «مطابقة» saw both orders clean; by approval o2 was collected by hand and the re-run flagged it.
     state.reads = [
       statement(),
@@ -173,10 +174,10 @@ describe('the approval matches a manual statement AGAIN, inside its own transact
     const res = await approve();
     const body = await res.json();
 
-    expect(res.status).toBe(409);
-    expect(body.code).toBe('OPEN_LINES');
-    expect(body.error).toContain('اضغط «مطابقة»');
-    expect(recordMovement).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({ matchingClosed: false, openLines: 1, settledOrders: 0 });
+    expect(recordMovement).toHaveBeenCalledTimes(1);
+    // Not one order is settled while the re-run's question is open — o1 waits with it, for the close.
     expect(markPayableForOrders).not.toHaveBeenCalled();
     expect(db.order.updateMany).not.toHaveBeenCalled();
   });

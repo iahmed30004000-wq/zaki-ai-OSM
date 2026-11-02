@@ -30,7 +30,9 @@ import { stripComments } from '@/lib/guard-source';
  * rather than merely unused, so the net cannot creep back.
  */
 
-const ROUTE = join(process.cwd(), 'src/app/api/finance/statements/[id]/route.ts');
+// The write moved, unchanged, out of the approval route into the close of the matching (2/11, «افصل المطابقة عن
+// التحصيل»): the approval still runs it when no line is open, and «إغلاق المطابقة» runs it later otherwise.
+const ROUTE = join(process.cwd(), 'src/lib/statement-close.ts');
 const src = () => stripComments(readFileSync(ROUTE, 'utf8'));
 
 /** The three live shapes, verbatim from the rows this was measured on. */
@@ -108,7 +110,11 @@ describe('the figure approval writes onto the order', () => {
      * `StatementLine.collected` exactly, and `statementFee` is null on none.
      * A select that drops it would silently make every gross a net again.
      */
-    expect(src()).toMatch(/matches:\s*\{\s*select:\s*\{[^}]*statementFee:\s*true/);
+    // The select is the close's own (`closeRowsSelect`), and both doors that close read the rows through it.
+    expect(src()).toMatch(/export function closeRowsSelect[\s\S]*?return \{[^}]*statementFee:\s*true/);
+    for (const door of ['src/app/api/finance/statements/[id]/route.ts', 'src/app/api/finance/statements/[id]/close/route.ts']) {
+      expect(stripComments(readFileSync(join(process.cwd(), door), 'utf8')), door).toMatch(/select:\s*closeRowsSelect\(id\)/);
+    }
   });
 
   it('and the net is pinned ABSENT at the write, not merely unused', () => {

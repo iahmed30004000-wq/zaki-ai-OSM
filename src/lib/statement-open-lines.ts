@@ -24,6 +24,17 @@ import type { Prisma } from '@prisma/client';
  * inside its own transaction.
  */
 
+/**
+ * A LINE THE COMPANY WROTE AT ZERO FOR A PARCEL IT SAYS CAME BACK OR WAITS — «تم ارجاعها الي بالكشف… لا تحطها
+ * استبعدها… ممكن يكون الطلب مؤجل او مرتجع وفي اصلا عندي قسم للمرتجعات».
+ *
+ * It is not money and it is nobody's question: the returns desk takes the parcel, the next statement takes the money
+ * of one that was only postponed. The matching writes it as its own result (`statement-exclusion` says when), and
+ * it is neither open (it holds nothing back) nor settling (the close never touches its order) — `isOpenLine` below
+ * counts it as what it is, not a question, without a branch of its own.
+ */
+export const EXCLUDED_RESULT = 'EXCLUDED' as const;
+
 export interface LineAnswer {
   result: string;
   resolution?: string | null;

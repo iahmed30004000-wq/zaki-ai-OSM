@@ -5,7 +5,7 @@ import { orderSearchOr } from './order-filters';
 import { hasLeftWarehouse } from './order-state';
 import { claimingRowWhere, integrityNotes, MANUAL_MATCH, openRequestWhere, type OtherStatement } from './match-integrity';
 import { expectedAmountFor, judgeLine, SETTLEMENT_ORDER_SELECT } from './settlement';
-import { closedStatementRefusal, isApproved } from './settlement-gates';
+import { closedStatementRefusal, isMatchingClosed } from './settlement-gates';
 import { IN_FLIGHT, openClaimsFor } from './settlement-decisions';
 import { phoneFromRawRow, type LinePhone } from './statement-line-reading';
 
@@ -463,11 +463,11 @@ export async function linkLineToOrder(
   await tx.$queryRaw`SELECT "id" FROM "courier_statements" WHERE "id" = ${p.statementId} FOR UPDATE`;
   const statement = await tx.courierStatement.findFirst({
     where: { id: p.statementId, companyId: p.companyId, storeId: p.storeId },
-    select: { id: true, status: true, approvedAt: true, reference: true, deliveryProviderId: true },
+    select: { id: true, status: true, approvedAt: true, matchingClosedAt: true, reference: true, deliveryProviderId: true },
   });
   if (!statement) throw new LinkRefused(404, { error: 'الكشف غير موجود', code: 'NOT_FOUND' });
   // Linking decides which orders approval settles, exactly as matching does: after approval it is history.
-  if (isApproved(statement)) {
+  if (isMatchingClosed(statement)) {
     throw new LinkRefused(409, closedStatementRefusal());
   }
 
@@ -543,7 +543,7 @@ export async function linkLineToOrder(
   // Claimed on the row's own state, so two people pressing at once cannot both link the one line.
   const claimed = await tx.settlementMatch.updateMany({
     // An open statement, and the row still unlinked: the write itself says so, not only the reads before it.
-    where: { id: match.id, statementId: p.statementId, result: 'MISSING_IN_SYSTEM', orderId: null, statement: { approvedAt: null } },
+    where: { id: match.id, statementId: p.statementId, result: 'MISSING_IN_SYSTEM', orderId: null, statement: { matchingClosedAt: null } },
     data: {
       orderId: order.id,
       result: v.result,
@@ -566,9 +566,9 @@ export async function linkLineToOrder(
   if (claimed.count !== 1) {
     const now = await tx.courierStatement.findFirst({
       where: { id: p.statementId, companyId: p.companyId },
-      select: { status: true, approvedAt: true },
+      select: { status: true, approvedAt: true, matchingClosedAt: true },
     });
-    if (now && isApproved(now)) {
+    if (now && isMatchingClosed(now)) {
       throw new LinkRefused(409, closedStatementRefusal());
     }
     throw new LinkRefused(409, { error: JUST_LINKED_SENTENCE, code: 'NOT_LINKABLE' });
@@ -576,7 +576,7 @@ export async function linkLineToOrder(
 
   // The order is now named by a line of this statement: it is no longer «a parcel no statement names» here.
   await tx.settlementMatch.deleteMany({
-    where: { statementId: p.statementId, orderId: order.id, result: 'MISSING_IN_STATEMENT', resolution: null, statement: { approvedAt: null } },
+    where: { statementId: p.statementId, orderId: order.id, result: 'MISSING_IN_STATEMENT', resolution: null, statement: { matchingClosedAt: null } },
   });
 
   await tx.orderNote.create({

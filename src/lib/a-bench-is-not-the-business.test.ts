@@ -172,7 +172,6 @@ interface Excuse {
 
 const ID_SCOPED: Record<string, Excuse> = {
   'app/api/control/blacklist/route.ts': { reason: 'مقيَّد بأرقام هواتف مُسمّاة — سؤالٌ عن عميلٍ بعينه', sites: 1 },
-  'app/api/finance/statements/[id]/route.ts': { reason: 'مقيَّد بـ settledOrderIds — سطورُ كشفٍ بعينه', sites: 2 },
   'app/api/geo/countries/[id]/route.ts': { reason: 'عدٌّ ليُعرَفَ هل يُحذَفُ بلد — ليس رقماً يُعرَض', sites: 1 },
   // old → new (PR-6): 1 → 2. The second is the price gate's read of THIS order's lines (`orderId` + `companyId`), asked only of a person who lacks `orders.change_price`.
   // old → new (30/10, قلم التجهيز): 2 → 4. The third (and, after the reviews of #116, a fourth: the add-on count that refuses a quantity on an order carrying one) is the packing table's read of THIS order's lines (`orderId` + `companyId`) to rebuild a quantity's money from the stored piece price.
@@ -194,6 +193,9 @@ const ID_SCOPED: Record<string, Excuse> = {
   'lib/product-cost.ts': { reason: 'مقيَّد بـ productId — ومنتجُ المنصّة صفُّه الخاصّ', sites: 2 },
   'lib/receiving.ts': { reason: 'مقيَّد بـ productId، أو عدُّ ترقيمٍ لتوليدِ رقمٍ فريد', sites: 2 },
   'lib/settlement.ts': { reason: 'مقيَّد بمراجعَ مُسمّاة من كشف', sites: 1 },
+  // moved (2/11, «افصل المطابقة عن التحصيل»): the two reads of `settledOrderIds` left the approval route, unchanged, for the
+  // close of the matching — the orders ONE statement's lines settle.
+  'lib/statement-close.ts': { reason: 'مقيَّد بـ settledOrderIds — سطورُ كشفٍ بعينه', sites: 2 },
   'lib/shortfall.ts': { reason: 'مقيَّد بـ id: { in } لطلباتِ سطورِ كشفٍ مُسمّاة — يقرأ حالةَ الطلب لا رقمَ متجر', sites: 1 },
   'lib/v1/product-figures.ts': { reason: 'مقيَّد بـ productId: { in } — منتجاتٌ قرأها الكتالوجُ أصلاً بـ realStoresOnly', sites: 1 },
 };

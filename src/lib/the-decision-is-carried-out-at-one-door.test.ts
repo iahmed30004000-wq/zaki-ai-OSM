@@ -12,7 +12,9 @@ import { repoFile, stripComments } from './guard-source';
  * the wrong file is the defect (the same money written from a second place).
  */
 
-const approval = () => stripComments(repoFile('src/app/api/finance/statements/[id]/route.ts'));
+// What the statement does to orders moved, unchanged, out of the approval route into the close of the matching
+// (`statement-close`, 2/11 «افصل المطابقة عن التحصيل»): the approval runs it when no line is open, «إغلاق المطابقة» otherwise.
+const approval = () => stripComments(repoFile('src/lib/statement-close.ts'));
 const single = () => stripComments(repoFile('src/app/api/finance/statements/[id]/matches/[matchId]/resolve/route.ts'));
 const bulk = () => stripComments(repoFile('src/app/api/finance/statements/[id]/decisions/route.ts'));
 const rules = () => stripComments(repoFile('src/lib/settlement-decisions.ts'));
@@ -85,15 +87,20 @@ describe('the approval carries out exactly the two that settle', () => {
   it('and the amount written is the one place’s: the gross of the row, plus what an earlier claim row paid', () => {
     const src = approval();
     expect(src).toContain('const collectedOf = (orderId: string)');
-    expect(src).toContain('paidGross(row?.order?.settlementMatches ?? [], country.minorUnit)');
+    expect(src).toContain('paidGross(row?.order?.settlementMatches ?? [], minorUnit)');
     expect(src).not.toMatch(/collectedAmount: amountOf/);
   });
 
   it('the names of an order that stopped the approval are read AFTER the rollback, outside the transaction', () => {
-    const src = approval();
-    const caught = src.indexOf('if (e instanceof OrdersChanged)');
-    expect(caught).toBeGreaterThan(src.indexOf('}, { timeout: 30_000 });'));
-    expect(src.slice(caught, caught + 500)).toContain('await db.order.findMany(');
-    expect(src.slice(caught, caught + 500)).toContain('NOT: e.where');
+    // Both doors that close a matching catch it (the approval, «إغلاق المطابقة»); the class lives with the close.
+    for (const door of ['src/app/api/finance/statements/[id]/route.ts', 'src/app/api/finance/statements/[id]/close/route.ts']) {
+      const src = stripComments(repoFile(door));
+      const caught = src.indexOf('if (e instanceof OrdersChanged)');
+      expect(caught, door).toBeGreaterThan(src.indexOf('{ timeout: 30_000 }'));
+      expect(src.indexOf('{ timeout: 30_000 }'), door).toBeGreaterThan(0);
+      expect(src.slice(caught, caught + 500), door).toContain('await db.order.findMany(');
+      expect(src.slice(caught, caught + 500), door).toContain('NOT: e.where');
+    }
+    expect(approval()).toContain('throw new OrdersChanged(');
   });
 });

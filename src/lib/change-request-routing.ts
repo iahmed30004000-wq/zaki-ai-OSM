@@ -1,6 +1,7 @@
 import type { SessionUser } from '@/types/auth';
 import { can } from './authorization';
 import { PRICE_KEY_REQUIRED_AR } from './change-request-fields';
+import { editWindowOpen } from './edit-confirmed-window';
 
 /**
  * WHO DECIDES A CHANGE REQUEST.
@@ -34,6 +35,19 @@ import { PRICE_KEY_REQUIRED_AR } from './change-request-fields';
  *   So the line is `handedToCourier`, and the two questions keep their
  *   two answers.
  *
+ *   CONFIRMED, NOT IN A BATCH, AND THE HOLDER HAS THE KEY — she decides too
+ *   (2/11). The owner: «بدي التعديل التأجيل أو الالغاء … أضيفهم كصلاحية انو
+ *   يقدرو يعدلو ع الطلب لغاية مرحلة الشحنة. مجرد ما الشحنة اتوزعت ع شركة شحن
+ *   ودخلت باتش ما بقدرو يعدلو، بصير يقدمو طلب تعديل». So the agent HOLDING a
+ *   confirmed order, who holds `orders.edit_confirmed`, answers «can this still
+ *   be changed?» herself for as long as the order is on no trolley and the
+ *   courier has not taken it — she is on the phone with the customer and the
+ *   packing table has not touched the box. This ADDS a decider; it removes
+ *   none: the warehouse and the supervisors decide exactly when they did. The
+ *   window ends at BATCH ENTRY (`inBatch`), which is earlier than the seal and
+ *   earlier than the handover. See edit-confirmed-window.ts, which holds the
+ *   predicate once for this file and for the screens.
+ *
  * A supervisor may decide either way. The agent might be off shift, the
  * request might be urgent, and an escalation path that stops working
  * because one person went home is not a path.
@@ -59,6 +73,13 @@ export interface RoutingSource {
    * granting it on a parcel already in a van.
    */
   handedToCourier?: boolean;
+  /**
+   * Is the order on a trolley (`shippingBatchId` set) — the line the holder's own window ends at (`orders.edit_confirmed`)?
+   *
+   * Absent reads as «in a batch», the same safe way round as `handedToCourier`: a caller that has not been taught to pass it
+   * simply does not open the window. Only the callers that load the order's batch say anything else.
+   */
+  inBatch?: boolean;
 }
 
 export type Decider =
@@ -99,6 +120,12 @@ export interface RoutingVerdict {
   reason?: string;
   /** Set when the only thing missing is the price key, so a caller can say that instead of «not the decider». */
   code?: 'PRICE_KEY_REQUIRED';
+  /**
+   * WHICH RULE ALLOWED IT, when it was the holder's own window (`orders.edit_confirmed`) and no earlier rule: the raising route
+   * writes a decision note that says so. Absent for every other decider — a supervisor or the packing table keeps its verdict
+   * and its sentence exactly as before. (The two doors that carry out a cancel or a hold ask `holdsTheWindow`, not this.)
+   */
+  via?: 'EDIT_CONFIRMED';
 }
 
 /**
@@ -117,6 +144,29 @@ export interface RoutingVerdict {
  */
 function isSupervisor(user: SessionUser): boolean {
   return can(user, 'control.change_requests');
+}
+
+/**
+ * THE HOLDER'S OWN WINDOW, AS A QUESTION ABOUT A PERSON AND AN ORDER (`orders.edit_confirmed`, 2/11).
+ *
+ * The key AND the order — she holds it, it is confirmed, it is on no trolley and the courier has not taken it
+ * (`editWindowOpen`, edit-confirmed-window.ts). Asked by `mayDecide` (last, so it only ever adds a decider) and by the two doors
+ * that carry out a cancellation or a hold on a request she decided herself, so a door never has to guess WHICH rule let her:
+ * a person who is also a warehouse hand is a decider by that rule first, and her window is open all the same.
+ */
+export function holdsTheWindow(user: SessionUser, order: RoutingSource): boolean {
+  // The key is written out here (not EDIT_CONFIRMED_KEY): this is the server's gate, and permission-catalog.test.ts reads a
+  // literal key at a `can(` call to know the box is enforced. A test pins the two to the same string.
+  return (
+    can(user, 'orders.edit_confirmed') &&
+    editWindowOpen({
+      userId: user.id,
+      confirmationStatus: order.confirmationStatus,
+      claimedById: order.claimedById,
+      inBatch: order.inBatch,
+      handedToCourier: order.handedToCourier,
+    })
+  );
 }
 
 /**
@@ -141,6 +191,18 @@ export function mayDecide(user: SessionUser, order: RoutingSource, opts: { money
 
   if (decider.kind === 'WAREHOUSE' && isWarehouse(user)) {
     return priceMissing ? refusedForPrice : { allowed: true, decider };
+  }
+
+  /*
+   * THE HOLDER'S OWN WINDOW (`orders.edit_confirmed`, 2/11), placed LAST so it only ever ADDS a decider: everybody the three
+   * branches above let through is let through by them, with the verdict they always gave. What is left is the agent who holds a
+   * CONFIRMED order, holds the key, and has an order that is on no trolley and not with the courier. The money rule is the
+   * one above, unchanged: a request that moves a figure also needs `orders.change_price`.
+   */
+  if (holdsTheWindow(user, order)) {
+    return priceMissing
+      ? refusedForPrice
+      : { allowed: true, decider: { kind: 'HOLDING_AGENT', userId: user.id }, via: 'EDIT_CONFIRMED' };
   }
 
   return {

@@ -17,6 +17,8 @@ import {
 } from './match-integrity';
 import { courierWordNote, isNoMoneyCell, readCourierWord, tallyCourierWords, type CourierWordTally } from './couriers/words';
 import { openClaimsFor } from './settlement-decisions';
+import { EXCLUDED_RESULT, excludedNote, isExcludedLine } from './statement-exclusion';
+import { lineCarriesNoMoney } from './settlement-gates';
 import { looksLikeXlsx, readXlsxRows } from './xlsx-reader';
 
 type Tx = Prisma.TransactionClient | typeof db;
@@ -746,6 +748,8 @@ export interface MatchOutcome {
   sweepTruncated?: boolean;
   /** Rows from an earlier run that a person decided or made by hand, left as they were. */
   kept?: number;
+  /** Lines the company wrote at zero for a parcel it says came back or waits: not money, not a question. */
+  excluded?: number;
 }
 
 /** An order as the matcher reads it: what the money is built from, plus its id and settlement state. */
@@ -1095,6 +1099,28 @@ export async function runMatching(
       continue;
     }
 
+    /*
+     * A LINE THAT IS NOT MONEY — «تم ارجاعها الي بالكشف… استبعدها» (`statement-exclusion`).
+     *
+     * Zero, a word that says the parcel was not delivered, and our parcel on the road or coming back: the row is
+     * written EXCLUDED, before any verdict. It claims nothing (the order is free for the next statement's line, or
+     * for the returns desk), it is no question (it holds nothing back), and the close never settles its order.
+     */
+    if (isExcludedLine(line, order)) {
+      await tx.settlementMatch.create({
+        data: {
+          companyId, statementId, statementLineId: line.id, orderId: order.id,
+          result: EXCLUDED_RESULT,
+          matchedBy: matchedByBarcode ? 'BARCODE' : 'MERCHANT_REF',
+          statementAmount: line.amount,
+          statementFee: line.fee,
+          note: excludedNote(line.status),
+        },
+      });
+      outcome.excluded = (outcome.excluded ?? 0) + 1;
+      continue;
+    }
+
     // The first line to name an order keeps its verdict; a later one is the same parcel claimed twice.
     const claimedByAnotherLine = claimedOrderIds.has(order.id);
     matchedOrderIds.add(order.id);
@@ -1221,6 +1247,13 @@ export async function runMatching(
    * different result for the same data depending on the order the operator
    * pressed the buttons in.
    */
+  /*
+   * AND A LINE THE MATCHING EXCLUDED IS NO MENTION.
+   *
+   * A parcel postponed on one statement (written at zero, EXCLUDED) and delivered afterwards must still be found
+   * here if the company never lists it again: the zero line said it was NOT delivered, so it is no evidence that its
+   * money was ever stated. A line no run has matched yet still counts — what it will say is not known.
+   */
   const refs = delivered.flatMap((o) => [o.trackingNumber, o.merchantRef].filter(Boolean) as string[]);
   const mentioned = new Set(
     (
@@ -1229,9 +1262,11 @@ export async function runMatching(
           statement: { companyId },
           OR: [{ barcode: { in: refs } }, { merchantRef: { in: refs } }],
         },
-        select: { barcode: true, merchantRef: true },
+        select: { barcode: true, merchantRef: true, matches: { select: { result: true } } },
       })
-    ).flatMap((l) => [l.barcode, l.merchantRef].filter(Boolean) as string[])
+    )
+      .filter((l) => !lineCarriesNoMoney(l))
+      .flatMap((l) => [l.barcode, l.merchantRef].filter(Boolean) as string[])
   );
 
   /**

@@ -228,11 +228,14 @@ describe('the write through the door', () => {
     });
   });
 
-  it('OWN + work: what she holds, and the moderator rule for the rest — exactly as before', async () => {
+  it('OWN + work: what she holds, and «طلباتي المنشأة» for the rest — by either record of who entered it', async () => {
     const own = withView('OWN');
     expect((await verdict(own, { claimedById: 'u1' })).allowed).toBe(true);
     expect((await verdict(own, { moderatorId: 'u1', claimedById: 'u2' })).allowed).toBe(true);
-    expect((await verdict(own, { createdById: 'u1', claimedById: 'u2' })).allowed).toBe(false);
+    // FLIPPED 2/11 (was `false`): the order she TYPED is hers on «طلباتي المنشأة» — her list and her sheet already said so,
+    // and the write answered «غير موجود» (order-entered-by.ts). Somebody else's entry is still not.
+    expect((await verdict(own, { createdById: 'u1', claimedById: 'u2' })).allowed).toBe(true);
+    expect((await verdict(own, { createdById: 'u2', claimedById: 'u2' })).allowed).toBe(false);
   });
 
   it('ASSIGNED + work: today’s four fields, unchanged', async () => {
@@ -293,22 +296,12 @@ const ASSIGNED_READ = {
   ],
 };
 /**
- * THE ONE CLAUSE THAT WAS ADDED (31/10): an order held for a colleague who worked the customer last — seen, never taken
- * (order-reservation.ts). It names an agent and a time, so it is not the pool; the pool is still not in the list.
+ * FLIPPED 2/11: the clause added 31/10 — the order held for a colleague, «باقي الموظفات يشوفوه» — is gone again. The owner,
+ * 2/11: «بنات التأكيد يظهرلها بخانة الطلبات الطلبات الي سحبتها فقط». Her list is the five fields that name her, and nothing
+ * else; the pool is still not in it, and the read envelope above still carries the pool.
  */
-const HELD_FOR_A_COLLEAGUE = {
-  claimedById: null,
-  confirmationStatus: 'NEW',
-  assignedToId: { not: null },
-  assignedAt: { gt: expect.any(Date) },
-  assignee: { is: { status: 'ACTIVE' } },
-  claimHistory: { none: {} },
-};
 const ASSIGNED_LIST = {
-  OR: [
-    { assignedToId: 'u1' }, { claimedById: 'u1' }, { currentOwnerId: 'u1' }, { createdById: 'u1' }, { moderatorId: 'u1' },
-    HELD_FOR_A_COLLEAGUE,
-  ],
+  OR: [{ assignedToId: 'u1' }, { claimedById: 'u1' }, { currentOwnerId: 'u1' }, { createdById: 'u1' }, { moderatorId: 'u1' }],
 };
 const OWN = { OR: [{ createdById: 'u1' }, { moderatorId: 'u1' }] };
 const NONE = { id: '__no_access__' };

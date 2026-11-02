@@ -9,6 +9,9 @@ import { zodMessage } from '@/lib/zod-message';
 import { logAudit } from '@/lib/audit';
 import { cancelVerdict } from '@/lib/shipment-cancel';
 import { batchStatusOf, endOrder } from '@/lib/order-cancel';
+import { holdsTheWindow } from '@/lib/change-request-routing';
+import { EDIT_CONFIRMED_KEY } from '@/lib/edit-confirmed-key';
+import { handedToCourier } from '@/lib/order-seal';
 import { REJECTION_REASONS } from '@/lib/confirmation-workflow';
 import { cancelReasonProblem } from '@/lib/change-request-intent';
 import { courierCancelCarryOut } from '@/lib/couriers/cancel-carryout';
@@ -109,6 +112,16 @@ export async function POST(req: Request) {
       id: string; requestedById: string; reason: string;
       postponeUntil: Date | null; cancelReason: string | null;
     } | null = null;
+    /**
+     * THE ONE OTHER WAY IN: THE HOLDER, BEFORE HER ORDER ENTERS A BATCH (`orders.edit_confirmed`, 2/11).
+     *
+     * An agent has neither the desk's key nor the packing table's, and her own cancellation — decided on the spot by
+     * the raising route — used to reach this door and be refused «لا تملك صلاحية تنفيذ هذا القرار». She is let through here
+     * for a CANCEL and for nothing else, and only after the order is read below: her window is asked again by
+     * `holdsTheWindow`, with the batch read fresh, and nobody else's window passes. She may not say «الطرد بإيدي»
+     * (`parcelInHand`) here. Everybody the keys above let in is let in as before.
+     */
+    let holderMustProveTheWindow = false;
     if (changeRequestId) {
       const request = await db.orderChangeRequest.findFirst({
         where: { id: changeRequestId, companyId },
@@ -124,7 +137,10 @@ export async function POST(req: Request) {
       }
       // Whoever may decide one may carry out the one they decided.
       if (!can(user, 'control.change_requests') && !can(user, 'ops.ship')) {
-        return NextResponse.json({ error: 'لا تملك صلاحية تنفيذ هذا القرار' }, { status: 403 });
+        if (outcome !== 'CANCEL' || !can(user, EDIT_CONFIRMED_KEY)) {
+          return NextResponse.json({ error: 'لا تملك صلاحية تنفيذ هذا القرار' }, { status: 403 });
+        }
+        holderMustProveTheWindow = true;
       }
       viaRequest = {
         id: request.id,
@@ -183,9 +199,31 @@ export async function POST(req: Request) {
         shippingStatus: true, shippedAt: true, labelPrintedAt: true, shippingBatchId: true,
         // For the message to the company when the parcel is already theirs.
         trackingNumber: true, deliveryProviderId: true,
+        // Whose order it is: the holder's own window (`orders.edit_confirmed`) is asked of it, below.
+        claimedById: true,
       },
     });
     if (!order) return NextResponse.json({ error: 'الطلب غير موجود' }, { status: 404 });
+
+    if (
+      holderMustProveTheWindow &&
+      !holdsTheWindow(user, {
+        confirmationStatus: order.confirmationStatus,
+        claimedById: order.claimedById ?? null,
+        handedToCourier: handedToCourier({ shippingStatus: order.shippingStatus, shippedAt: order.shippedAt }),
+        inBatch: !!order.shippingBatchId,
+      })
+    ) {
+      return NextResponse.json({ error: 'لا تملك صلاحية تنفيذ هذا القرار' }, { status: 403 });
+    }
+    // «The parcel is in my hand» counts goods back onto the shelf: it is said at the packing table, never by the holder
+    // from her desk. Her screen never sends it; a hand-made body that does is refused rather than believed.
+    if (holderMustProveTheWindow && parcelInHand === true) {
+      return NextResponse.json(
+        { error: 'تأكيد «الطرد بإيدي» من طاولة التغليف بس — مش من شاشة الموظفة', code: 'PARCEL_IN_HAND_NOT_HERS' },
+        { status: 403 }
+      );
+    }
 
     /**
      * NOT AFTER THE COURIER HAS TAKEN IT.

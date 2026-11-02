@@ -70,6 +70,8 @@ export interface MovementInput {
   note: string;
   referenceType?: string;
   referenceId?: string;
+  /** The statement receipt this IN is the money of: one movement per receipt, held by a unique index. */
+  statementReceiptId?: string;
   createdById: string;
 }
 
@@ -105,6 +107,7 @@ export async function recordMovement(tx: Tx, input: MovementInput) {
       note: input.note,
       referenceType: input.referenceType ?? null,
       referenceId: input.referenceId ?? null,
+      ...(input.statementReceiptId ? { statementReceiptId: input.statementReceiptId } : {}),
       createdById: input.createdById,
     },
   });

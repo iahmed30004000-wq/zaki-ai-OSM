@@ -806,6 +806,7 @@ export async function POST(req: Request) {
       message: `تم إنشاء طلب جديد #${order.orderNumber} بواسطة ${user.name}.`,
       type: 'ORDER_NEW',
       link: ['/confirmation/queue', '/orders'],
+      orderId: order.id,
     });
 
     /*

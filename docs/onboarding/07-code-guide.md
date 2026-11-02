@@ -258,6 +258,7 @@ flowchart LR
 | كلمة الشركة | مهمة `sync-courier-status` (بتسحب من API الشركة؛ الويب هوك ملغي بقرار المالك 2/11) | ← `couriers/apply-event.ts` |
 | تعديل حقول قبل التأكيد | `PATCH /api/orders/[id]` | `orders.edit`، والسعر `orders.change_price`، والأجرة `orders.change_fee` (`orders/[id]/route.ts:788`، `:877`، `:1297`) |
 | تعديل بعد التأكيد | طلب تعديل (القسم 6) | `orders.request_change` |
+| تعديل/تأجيل/إلغاء طلب مؤكَّد **بإيدها** قبل ما يدخل دفعة (2/11) | نفس طلب التعديل، بس بيتطبّق فوراً (القسم 6، «نافذة الماسكة») | `orders.edit_confirmed` — **ما حدا معه** لحتى المالك يعلّمه (غير `SUPER_ADMIN`) |
 
 قاعدة ذهبية من الكشوف: **كشف الشركة بيكتب المال، والباب بيكتب شو صار** (`src/lib/settlement.ts` وأبواب `src/app/api/finance/statements/`).
 
@@ -468,6 +469,16 @@ sequenceDiagram
 
 **2) الاعتماد الذاتي** (`:354-419`): إذا `mayDecide` بتقول نعم للرافع **و**الطرد ما انختم (للـ`EDIT`: `!orderSeal().sealed`، وللإلغاء والتأجيل: `!handed`، شوف `:407`)، الطلب بيصير `APPROVED` فوراً بملاحظة «طُبِّق مباشرةً…». القرار بينسجّل باسمه، ما بيطلع كأنه «نزل معتمد». وهيك المالك بيقدر يعتمد إلغاء طرد مطبوع رفعه بنفسه.
 
+**2-ب) نافذة الماسكة (2/11، `orders.edit_confirmed`)** — كلام المالك: «يقدرو يعدلو ع الطلب لغاية مرحلة الشحنة… مجرد ما… دخلت باتش ما بقدرو يعدلو، بصير يقدمو طلب تعديل».
+
+- الشرط واحد ومكتوب مرة وحدة: `editWindowOpen` (`src/lib/edit-confirmed-window.ts`): الطلب `CONFIRMED`، و`claimedById` هي نفسها، و`inBatch === false` (ما في `shippingBatchId`)، و`handedToCourier === false`. **أي حقيقة مش مقولة = مسكّر** (`inBatch` غايب = جوّا دفعة).
+- `holdsTheWindow` = المفتاح + الشرط، و`mayDecide` بيسألها **آخر شي** (`src/lib/change-request-routing.ts`)، فهي بتزيد مقرِّر وما بتشيل حدا. المال ما تغيّر: تعديل بيمس رقم بدّه `orders.change_price` كمان.
+- نفس الشرط بيسأله: الرفع (اعتماد ذاتي بملاحظة `EDIT_WINDOW_NOTE_AR`، بلا إشعار، والجواب فيه `viaEditWindow`) · التطبيق `mayApply` بـ`PATCH /api/orders/[id]` (بيمرّر `inBatch`) · باب القرار والمعاينة · `stand-down` (للإلغاء بس، عبر `endOrder`) و`hold` (التأجيل) — الاتنين بيعيدوا يسألوا `holdsTheWindow` بعد ما يقروا الطلب.
+- الختم فوقها: `EDIT` بيوقف عند البوليصة المطبوعة حتى لو النافذة مفتوحة؛ الإلغاء والتأجيل بس عند التسليم.
+- **مع قاعدة M6** (الإلغاء والتأجيل لحد «إغلاق الشحنة — سُلّمت للشركة»): النافذة بتتسكّر **أبكر** (عند دخول الدفعة). بعد الدفعة ولحد الضغطة، الإلغاء والتأجيل لسّا ممكنين بس كطلب بيبتّ فيه المستودع أو المشرف، متل قبل.
+- **مع `mustHoldToWork`**: النافذة أضيق منها — بدها إنها هي الماسكة أصلاً، فمفتاح `orders.unlock`/`orders.assign` ما بيفتحها على طلب غيرها.
+- المفتاح **ما بيوصل لحدا بالنشر**: لا ترحيل ولا بديل بالكود (`the-edit-confirmed-key-goes-to-its-holders-only.test.ts`).
+
 **3) القرار** — `PATCH /api/control/change-requests/[id]` (`src/app/api/control/change-requests/[id]/route.ts:30`):
 
 - الرفض بدو سبب (`:39-41`).
@@ -537,7 +548,9 @@ flowchart LR
 ### 7.2 `orderVisibilityWhere` مقابل `orderListWhere`
 
 - `orderVisibilityWhere(user)` (`src/lib/rbac.ts:37`) = **«بقدر أقرا هالطلب؟»**. بنطاق `ASSIGNED` بيشمل طلباتها، واللي دخّلتها، **وطابور السحب** (غير مسحوب، `NEW`، بلا قفل) (`:43-72`). الطابور موجود هون عشان تقدر تفتح الطلب اللي رح تسحبه.
-- `orderListWhere(user)` (`rbac.ts:120`) = **«شو بيطلع بقائمة»**. بيشيل الطابور.
+- `orderListWhere(user)` (`rbac.ts:120`) = **«شو بيطلع بقائمة»**. بيشيل الطابور. وبنطاق `ASSIGNED` بيشيل كمان الطلب المحجوز لزميلة (كلام المالك 2/11 «الطلبات الي سحبتها فقط»)؛ المحجوز إلها بيضل.
+- «طلباتي المنشأة» (`OWN`) = اللي كتبه (`createdById`) أو هو مودريتوره (`moderatorId`)، بقاعدة وحدة `enteredBy` (`src/lib/order-entered-by.ts`) للقراءة والكتابة.
+- الإشعار عن طلب بيمرّر `orderId` لـ`createNotification`، فبيوصل بس للي الطلب بيفتحلهم (`whoMayOpenOrder` بـ`rbac.ts`).
 - **لا تضيّق `orderVisibilityWhere`** لتخبّي شي من القائمة. رح ترجّع 404 لكل سحب. التعليق `rbac.ts:90-119` بيشرحها.
 - `ORDER_WORK_DOOR` (`src/lib/order-work-door.ts:41`) = باب تاني مسمّى: الطلب اللي بإيدها بينفتح بـ`confirmation.work` حتى بلا «عرض الطلبات». وكل مكان بيستعمله مسجّل بـ`the-order-she-holds.test.ts`.
 - بالواجهة: `useCan` (`src/hooks/useCan.ts:20`) و`useMayOpen` (`src/hooks/useMayOpen.ts:30`) **للراحة بس**. السيرفر هو القرار.

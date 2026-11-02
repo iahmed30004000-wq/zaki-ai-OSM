@@ -18,6 +18,7 @@ import { STAGE_AR, STAGE_STATE_AR, type StageState } from '@/lib/order-closing';
 import { ChangeRequestDialog, type ChangeRequestValue } from '@/components/screens/confirmation/ActionDialogs';
 import { raiseChangeRequest } from '@/components/orders/raiseChangeRequest';
 import { handedToCourier } from '@/lib/order-seal';
+import { editsNow } from '@/lib/edit-confirmed-window';
 import { ShippingSection } from '@/components/orders/ShippingSection';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
@@ -322,6 +323,21 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
     batchStatus: order.shippingBatch?.status ?? null,
   });
 
+  /**
+   * WHICH OF THE THREE ASKS WILL BE APPLIED AT ONCE — `orders.edit_confirmed`, 2/11.
+   *
+   * The agent who HOLDS this confirmed order and holds the key changes it herself until it enters a shipping batch; after that,
+   * and on a colleague's order, she raises a request exactly as before. The same predicate the server answers with
+   * (`editsNow` → `editWindowOpen`), asked per ask because an edit is also stopped by a printed waybill. The server is still the
+   * judge: this only decides the sentences the screen draws BEFORE the press.
+   */
+  const appliesNow = {
+    EDIT: editsNow(currentUser, order, 'EDIT'),
+    CANCEL: editsNow(currentUser, order, 'CANCEL'),
+    POSTPONE: editsNow(currentUser, order, 'POSTPONE'),
+  };
+  const windowOpen = appliesNow.CANCEL;
+
   // ─── Phase C: lock state helpers ───
   const lockActive = !!order.lockedById && !!order.lockExpiresAt && new Date(order.lockExpiresAt).getTime() > nowMs;
   const editingLockedByOther = lockActive && order.lockedById !== currentUser?.id;
@@ -406,12 +422,14 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
             {order.confirmationStatus === 'CONFIRMED' && mayRequestChange && (
               <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 shadow-raised space-y-2">
                 <h4 className="text-xs font-black text-[var(--sys-foreground)]">
-                  طلبٌ على هذا الطلب
+                  {windowOpen ? 'تعديل هذا الطلب' : 'طلبٌ على هذا الطلب'}
                 </h4>
                 <p className="text-xs text-[var(--sys-muted-foreground)]">
-                  {handedOver
-                    ? 'الطرد عند شركة الشحن — التعديل والإلغاء يمرّان برسالةٍ إليهم بعد الموافقة.'
-                    : 'الطلب مؤكَّد وللقراءة فقط — تعديلُه أو إلغاؤه أو تأجيلُه يمرّ بقرار.'}
+                  {windowOpen
+                    ? 'الطلب مؤكَّد ولم يدخل دفعة شحن بعد — تعدّله أو تؤجّله أو تلغيه بنفسك وبينطبق فوراً. بعد ما يدخل دفعة بيصير طلباً لمن يبتّ فيه.'
+                    : handedOver
+                      ? 'الطرد عند شركة الشحن — التعديل والإلغاء يمرّان برسالةٍ إليهم بعد الموافقة.'
+                      : 'الطلب مؤكَّد وللقراءة فقط — تعديلُه أو إلغاؤه أو تأجيلُه يمرّ بقرار.'}
                 </p>
                 <button
                   type="button"
@@ -975,6 +993,8 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
           orderNumber={order.orderNumber}
           busy={asking}
           handedToCourier={handedOver}
+          appliesNow={appliesNow}
+          mayChangePrice={userCan(currentUser, 'orders.change_price')}
           onClose={() => setAskOpen(false)}
           onSubmit={(value: ChangeRequestValue) => {
             setAskOpen(false);

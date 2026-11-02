@@ -3,7 +3,7 @@
 import React, { useId, useState } from 'react';
 import { PICKABLE_REJECTION_REASONS, REJECTION_REASON_AR, rejectionNeedsConversation } from '@/lib/confirmation-workflow';
 import { CHANGE_INTENTS, INTENT_AR, refusalFor, type ChangeIntent } from '@/lib/change-request-intent';
-import { CHANGEABLE_FIELDS, CHANGE_FIELD_AR } from '@/lib/change-request-fields';
+import { CHANGEABLE_FIELDS, CHANGE_FIELD_AR, touchesMoney } from '@/lib/change-request-fields';
 import { ProductPicker } from '@/components/ui/ProductPicker';
 import { useProducts } from '@/hooks/useProducts';
 import { useRegions } from '@/hooks/useRegions';
@@ -317,6 +317,8 @@ export function ChangeRequestDialog({
   orderNumber,
   busy,
   handedToCourier = false,
+  appliesNow,
+  mayChangePrice = false,
   onClose,
   onSubmit,
 }: {
@@ -329,6 +331,17 @@ export function ChangeRequestDialog({
    * NOT this: until the press, cancelling and postponing are still ours.
    */
   handedToCourier?: boolean;
+  /**
+   * WHICH OF THE THREE WILL BE APPLIED AT ONCE (`orders.edit_confirmed`, 2/11) — per ask, because an edit is also stopped by a
+   * printed waybill and a cancel or a postponement is not. The screen computes it with `editsNow`, from the same predicate the
+   * server answers with; absent means «none», and the dialog says what it always said.
+   */
+  appliesNow?: Partial<Record<ChangeIntent, boolean>>;
+  /**
+   * Holds `orders.change_price`. A request that moves a figure (the price, the discount, the quantity, the product) is applied
+   * at once only for somebody who holds it; the server leaves it for a decider otherwise, so the dialog must not promise it.
+   */
+  mayChangePrice?: boolean;
   onClose: () => void;
   onSubmit: (value: ChangeRequestValue) => void;
 }) {
@@ -362,12 +375,20 @@ export function ChangeRequestDialog({
    */
   const { regions, loading: regionsLoading } = useRegions();
   const formId = useId();
+  /**
+   * WILL WHAT SHE ASKS BE APPLIED AT ONCE? (`orders.edit_confirmed`, 2/11)
+   *
+   * The holder of the key, on her own order that is in no batch: yes, and the dialog says so instead of «يراجع المشرف الطلب». A
+   * request that moves a figure only if she also holds the price key — the server leaves it for a decider otherwise and the
+   * sentence after the press says so, but the dialog must not promise what it will not do.
+   */
+  const now = appliesNow?.[intent] === true && !(intent === 'EDIT' && touchesMoney({ [field]: 1 }) && !mayChangePrice);
 
   return (
     <Modal
       isOpen={open}
       onClose={onClose}
-      title="طلب على طلب مؤكد"
+      title={now ? 'تعديل طلب مؤكد' : 'طلب على طلب مؤكد'}
       subtitle={orderNumber}
       maxWidth="sm"
       footer={
@@ -375,7 +396,7 @@ export function ChangeRequestDialog({
           onCancel={onClose}
           busy={busy}
           disabled={intent === 'EDIT' && !to.trim()}
-          submitLabel="إرسال الطلب"
+          submitLabel={now ? 'طبّق الآن' : 'إرسال الطلب'}
           formId={formId}
         />
       }
@@ -421,7 +442,9 @@ export function ChangeRequestDialog({
         )}
 
         <p className="text-xs text-[var(--sys-muted-foreground)]">
-          الطلب المؤكد للقراءة فقط. يراجع المشرف الطلب، ويتوقف تقدّم الطلب حتى صدور القرار.
+          {now
+            ? 'الطلب لم يدخل دفعة شحن بعد — التغيير بينطبق فوراً وبيتسجّل باسمك مع السبب. بعد ما يدخل دفعة بيصير طلباً لمن يبتّ فيه.'
+            : 'الطلب المؤكد للقراءة فقط. يراجع المشرف الطلب، ويتوقف تقدّم الطلب حتى صدور القرار.'}
         </p>
 
         {intent === 'EDIT' && (

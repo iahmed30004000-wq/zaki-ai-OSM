@@ -67,6 +67,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
             discountAmount: true,
             offerId: true,
             version: true,
+            // The holder's own window (`orders.edit_confirmed`) ends at batch entry; the preview asks `mayDecide` the same question
+            // the decide door does, so it reads the same facts.
+            shippingBatchId: true,
             shippingBatch: { select: { status: true } },
           },
         },
@@ -87,6 +90,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           shippedAt: order.shippedAt,
           batchStatus: order.shippingBatch?.status ?? null,
         }),
+        inBatch: !!order.shippingBatchId || order.shippingBatch !== null,
       },
       // The price key decides whether the person may APPROVE; looking at what the request does is for every decider.
       { money: false }

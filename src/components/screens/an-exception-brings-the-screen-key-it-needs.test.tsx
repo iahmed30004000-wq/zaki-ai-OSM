@@ -113,7 +113,7 @@ const put = () => net.calls.find((c) => c.method === 'PUT');
 async function openAddDialog() {
   const user = userEvent.setup();
   await user.click(await screen.findByText('إضافة استثناء'));
-  await screen.findByRole('option', { name: /orders\.edit/ });
+  await screen.findByRole('option', { name: /orders\.edit\b/ });
   return user;
 }
 
@@ -126,7 +126,7 @@ describe('«منح» on an action', () => {
     render(<UserDetailScreen />);
     const user = await openAddDialog();
 
-    await user.click(screen.getByRole('option', { name: /orders\.edit/ }));
+    await user.click(screen.getByRole('option', { name: /orders\.edit\b/ }));
     const note = await screen.findByRole('status');
     expect(note.textContent).toContain('ومعها رح ينضاف منح «عرض الطلبات»');
 
@@ -143,7 +143,7 @@ describe('«منح» on an action', () => {
     render(<UserDetailScreen />);
     const user = await openAddDialog();
 
-    await user.click(screen.getByRole('option', { name: /orders\.edit/ }));
+    await user.click(screen.getByRole('option', { name: /orders\.edit\b/ }));
     expect(screen.queryByRole('status')).toBeNull();
     await user.click(screen.getByRole('button', { name: 'حفظ' }));
     await waitFor(() => expect(put()).toBeTruthy());
@@ -157,7 +157,7 @@ describe('«منح» on an action', () => {
     render(<UserDetailScreen />);
     const user = await openAddDialog();
 
-    await user.click(screen.getByRole('option', { name: /orders\.edit/ }));
+    await user.click(screen.getByRole('option', { name: /orders\.edit\b/ }));
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toBe('«تعديل الطلبات» بتحتاج «عرض الطلبات»، وإنت ما عندك «عرض الطلبات» لتمنحها.');
     expect((screen.getByRole('button', { name: 'حفظ' }) as HTMLButtonElement).disabled).toBe(true);
