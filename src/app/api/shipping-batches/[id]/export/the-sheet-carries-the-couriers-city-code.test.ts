@@ -83,10 +83,10 @@ describe('the sheet of a Basha batch with nothing typed', () => {
     expect(await codes()).toEqual(FOURTEEN.map(([, code]) => String(code)));
   });
 
-  it('asks the courier’s code with the batch — that is what picks the list', async () => {
+  it('asks the courier’s code AND platform with the batch — that is what picks the list', async () => {
     db.order.findMany.mockResolvedValue([order(1, { id: 'r1', name: 'السويداء' })]);
     await call();
-    expect(db.shippingBatch.findFirst.mock.calls[0][0].select).toMatchObject({ provider: { select: { code: true } } });
+    expect(db.shippingBatch.findFirst.mock.calls[0][0].select).toMatchObject({ provider: { select: { code: true, adapterCode: true } } });
   });
 
   it('a fee row that carries no code changes nothing — the list still answers', async () => {
@@ -148,6 +148,40 @@ describe('the sheet when the typed number is a Region Id', () => {
     typedFor(3003);
     db.order.findMany.mockResolvedValue([order(1, sweida)]);
     expect(await codes()).toEqual(['3003']);
+  });
+});
+
+/*
+ * PRODUCTION'S BASHA ROW (measured 2/11): code «LEG-1» (named by the legacy import), platform LOGESTECHS. Its list is
+ * found through the platform (`places.courierListKey`); by its code alone it would get none and every cell were empty.
+ */
+describe('the sheet of production’s Basha row: LEG-1 on LogesTechs', () => {
+  const LEG1 = { id: ID, batchNumber: 'BATCH-2026-0004', deliveryProviderId: 'p1', provider: { code: 'LEG-1', adapterCode: 'LOGESTECHS' } };
+
+  beforeEach(() => db.shippingBatch.findFirst.mockResolvedValue(LEG1));
+
+  it('nothing typed: every one of the fourteen carries the list’s city code', async () => {
+    db.order.findMany.mockResolvedValue(FOURTEEN.map(([name], i) => order(i + 1, { id: `r${i}`, name })));
+    expect(await codes()).toEqual(FOURTEEN.map(([, code]) => String(code)));
+  });
+
+  it('دمشق’s Region Id (2903) typed on its row is not in the file — 445053 is', async () => {
+    db.deliveryFee.findMany.mockResolvedValue([{ regionId: 'r-dam', courierCityId: 2903 }]);
+    db.order.findMany.mockResolvedValue([order(1, { id: 'r-dam', name: 'دمشق' })]);
+    expect(await codes()).toEqual(['445053']);
+  });
+
+  it('production’s saved 949547 on دير الزور is a city of the list: it stays as typed', async () => {
+    db.deliveryFee.findMany.mockResolvedValue([{ regionId: 'r-deir', courierCityId: 949547 }]);
+    db.order.findMany.mockResolvedValue([order(1, { id: 'r-deir', name: 'دير الزور' }), order(2, { id: 'r-q', name: 'القنيطرة' })]);
+    expect(await codes()).toEqual(['949547', '566122']);
+  });
+
+  it('NEGATIVE: LEG-3 with no platform («الو دليفيري») gets no list — empty cells, a typed number as typed', async () => {
+    db.shippingBatch.findFirst.mockResolvedValue({ ...LEG1, provider: { code: 'LEG-3', adapterCode: null } });
+    db.deliveryFee.findMany.mockResolvedValue([{ regionId: 'r-dam', courierCityId: 2903 }]);
+    db.order.findMany.mockResolvedValue([order(1, { id: 'r-dam', name: 'دمشق' }), order(2, { id: 'r-sw', name: 'السويداء' })]);
+    expect(await codes()).toEqual(['2903', '']);
   });
 });
 

@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   buildDefaultCities,
+  courierListKey,
   courierPlaces,
   defaultCourierCityId,
   isRegionIdOnly,
@@ -57,7 +58,7 @@ const ORACLE: Row[] = [
 ];
 
 const sheet: CourierVillage[] = JSON.parse(readFileSync(join(process.cwd(), 'reference/couriers/basha-villages.json'), 'utf8'));
-const places = courierPlaces('BASHA')!;
+const places = courierPlaces({ code: 'BASHA' })!;
 
 describe('defaultCourierCityId: the fourteen governorates, one by one, from the real list', () => {
   it('has the whole table (a table that lost a row would pass quietly)', () => {
@@ -66,7 +67,7 @@ describe('defaultCourierCityId: the fourteen governorates, one by one, from the 
   });
 
   it.each(ORACLE)('$oms → $code', ({ oms, code, cityInSheet }) => {
-    expect(defaultCourierCityId('BASHA', oms)).toEqual({ cityId: code, cityName: cityInSheet });
+    expect(defaultCourierCityId({ code: 'BASHA' }, oms)).toEqual({ cityId: code, cityName: cityInSheet });
   });
 
   it.each(ORACLE)('$oms: the number is a city of exactly that governorate in their sheet (the table is not a typo)', (row) => {
@@ -81,10 +82,10 @@ describe('defaultCourierCityId: the fourteen governorates, one by one, from the 
     expect(new Set(sweida.map((v) => v.cityId)).has(566117)).toBe(true);
     expect(sweida.find((v) => v.cityId === 566117)?.cityName).toBe('مدينة السويداء');
     expect(new Set(sweida.map((v) => v.cityId)).has(445153)).toBe(true);
-    expect(defaultCourierCityId('BASHA', 'السويداء')?.cityId).toBe(445153);
-    expect(defaultCourierCityId('BASHA', 'السويداء')?.cityId).not.toBe(566117);
+    expect(defaultCourierCityId({ code: 'BASHA' }, 'السويداء')?.cityId).toBe(445153);
+    expect(defaultCourierCityId({ code: 'BASHA' }, 'السويداء')?.cityId).not.toBe(566117);
     // And never the Region Id.
-    expect(defaultCourierCityId('BASHA', 'السويداء')?.cityId).not.toBe(3003);
+    expect(defaultCourierCityId({ code: 'BASHA' }, 'السويداء')?.cityId).not.toBe(3003);
   });
 
   it('دير الزور: two cities are called «مدينة دير الزور» — the one built as a placeholder wins, not the one of the neighbourhoods', () => {
@@ -92,7 +93,7 @@ describe('defaultCourierCityId: the fourteen governorates, one by one, from the 
     expect(new Set(named.map((v) => v.cityId))).toEqual(new Set([949546, 949547]));
     expect(named.filter((v) => v.cityId === 949546)).toHaveLength(1);
     expect(named.filter((v) => v.cityId === 949547).length).toBeGreaterThan(1);
-    expect(defaultCourierCityId('BASHA', 'دير الزور')?.cityId).toBe(949546);
+    expect(defaultCourierCityId({ code: 'BASHA' }, 'دير الزور')?.cityId).toBe(949546);
   });
 
   it('every governorate of their list answers — none is left without a code to send', () => {
@@ -101,49 +102,49 @@ describe('defaultCourierCityId: the fourteen governorates, one by one, from the 
 
   it('a Region Id is never the answer', () => {
     const regionIds = new Set(sheet.map((v) => v.regionId));
-    for (const row of ORACLE) expect(regionIds.has(defaultCourierCityId('BASHA', row.oms)!.cityId), row.oms).toBe(false);
+    for (const row of ORACLE) expect(regionIds.has(defaultCourierCityId({ code: 'BASHA' }, row.oms)!.cityId), row.oms).toBe(false);
   });
 });
 
 describe('the spelling is folded, the match is exact', () => {
   it('إدلب, ادلب and أدلب are one governorate; so are ة and ه at the end', () => {
-    for (const written of ['إدلب', 'ادلب', 'أدلب']) expect(defaultCourierCityId('BASHA', written)?.cityId, written).toBe(570148);
-    expect(defaultCourierCityId('BASHA', 'اللاذقيه')?.cityId).toBe(705992);
-    expect(defaultCourierCityId('BASHA', 'حماه')?.cityId).toBe(445146);
-    expect(defaultCourierCityId('BASHA', 'القنيطره')?.cityId).toBe(566122);
+    for (const written of ['إدلب', 'ادلب', 'أدلب']) expect(defaultCourierCityId({ code: 'BASHA' }, written)?.cityId, written).toBe(570148);
+    expect(defaultCourierCityId({ code: 'BASHA' }, 'اللاذقيه')?.cityId).toBe(705992);
+    expect(defaultCourierCityId({ code: 'BASHA' }, 'حماه')?.cityId).toBe(445146);
+    expect(defaultCourierCityId({ code: 'BASHA' }, 'القنيطره')?.cityId).toBe(566122);
   });
 
   it('diacritics, the stretched letter and stray spaces change nothing', () => {
-    expect(defaultCourierCityId('BASHA', 'دِمَشق')?.cityId).toBe(445053);
-    expect(defaultCourierCityId('BASHA', 'دمـشق')?.cityId).toBe(445053);
-    expect(defaultCourierCityId('BASHA', '  ريف   دمشق ')?.cityId).toBe(445143);
+    expect(defaultCourierCityId({ code: 'BASHA' }, 'دِمَشق')?.cityId).toBe(445053);
+    expect(defaultCourierCityId({ code: 'BASHA' }, 'دمـشق')?.cityId).toBe(445053);
+    expect(defaultCourierCityId({ code: 'BASHA' }, '  ريف   دمشق ')?.cityId).toBe(445143);
   });
 
   it('«دمشق» and «ريف دمشق» are two governorates: neither is found by containing the other', () => {
-    expect(defaultCourierCityId('BASHA', 'دمشق')?.cityId).toBe(445053);
-    expect(defaultCourierCityId('BASHA', 'ريف دمشق')?.cityId).toBe(445143);
-    expect(defaultCourierCityId('BASHA', 'حلب')?.cityId).toBe(705991);
-    expect(defaultCourierCityId('BASHA', 'ريف حلب')?.cityId).toBe(683199);
+    expect(defaultCourierCityId({ code: 'BASHA' }, 'دمشق')?.cityId).toBe(445053);
+    expect(defaultCourierCityId({ code: 'BASHA' }, 'ريف دمشق')?.cityId).toBe(445143);
+    expect(defaultCourierCityId({ code: 'BASHA' }, 'حلب')?.cityId).toBe(705991);
+    expect(defaultCourierCityId({ code: 'BASHA' }, 'ريف حلب')?.cityId).toBe(683199);
   });
 
   it('NEGATIVE: a name the sheet does not have, a typo, a word inside a name, or nothing at all answers null', () => {
     for (const name of ['بغداد', 'دمشقق', 'شق', 'دمشق الجديدة', 'محافظة دمشق', '', '   ']) {
-      expect(defaultCourierCityId('BASHA', name), JSON.stringify(name)).toBeNull();
+      expect(defaultCourierCityId({ code: 'BASHA' }, name), JSON.stringify(name)).toBeNull();
     }
-    expect(defaultCourierCityId('BASHA', null)).toBeNull();
-    expect(defaultCourierCityId('BASHA', undefined)).toBeNull();
+    expect(defaultCourierCityId({ code: 'BASHA' }, null)).toBeNull();
+    expect(defaultCourierCityId({ code: 'BASHA' }, undefined)).toBeNull();
   });
 
   it('NEGATIVE: a courier we hold no list for answers null — whatever the governorate', () => {
-    expect(defaultCourierCityId('NAQEL', 'دمشق')).toBeNull();
-    expect(defaultCourierCityId('', 'دمشق')).toBeNull();
+    expect(defaultCourierCityId({ code: 'NAQEL' }, 'دمشق')).toBeNull();
+    expect(defaultCourierCityId({ code: '' }, 'دمشق')).toBeNull();
     expect(defaultCourierCityId(null, 'دمشق')).toBeNull();
     expect(defaultCourierCityId(undefined, 'دمشق')).toBeNull();
   });
 
   it('the courier is found by its code in any case', () => {
-    expect(defaultCourierCityId('basha', 'دمشق')?.cityId).toBe(445053);
-    expect(defaultCourierCityId(' BASHA ', 'دمشق')?.cityId).toBe(445053);
+    expect(defaultCourierCityId({ code: 'basha' }, 'دمشق')?.cityId).toBe(445053);
+    expect(defaultCourierCityId({ code: ' BASHA ' }, 'دمشق')?.cityId).toBe(445053);
   });
 });
 
@@ -226,9 +227,9 @@ describe('the rule, step by step', () => {
 
 describe('courierPlaces', () => {
   it('knows Basha (any case) and nobody else', () => {
-    expect(courierPlaces('basha')).not.toBeNull();
-    expect(courierPlaces(' BASHA ')).not.toBeNull();
-    expect(courierPlaces('NAQEL')).toBeNull();
+    expect(courierPlaces({ code: 'basha' })).not.toBeNull();
+    expect(courierPlaces({ code: ' BASHA ' })).not.toBeNull();
+    expect(courierPlaces({ code: 'NAQEL' })).toBeNull();
     expect(courierPlaces(null)).toBeNull();
   });
 
@@ -253,7 +254,7 @@ describe('courierPlaces', () => {
 
   it('THE SAME ANSWER AS THE PRESS: for every governorate of the list, the hint is what defaultCourierCityId says', () => {
     for (const [id, region] of Object.entries(places.regions)) {
-      expect(region.cityId, `${region.name} (${id})`).toBe(defaultCourierCityId('BASHA', region.name)?.cityId ?? null);
+      expect(region.cityId, `${region.name} (${id})`).toBe(defaultCourierCityId({ code: 'BASHA' }, region.name)?.cityId ?? null);
     }
   });
 
@@ -304,7 +305,7 @@ describe('placeNote: what the box says about the typed number', () => {
     expect(rows).toHaveLength(26);
     for (const [typedId, typedRegion] of Object.entries(places.regions)) {
       for (const row of rows) {
-        const sentForThisRow = defaultCourierCityId('BASHA', row)!.cityId;
+        const sentForThisRow = defaultCourierCityId({ code: 'BASHA' }, row)!.cityId;
         expect(placeNote(typedId, places, rowOf(row))?.text, `${typedRegion.name} (${typedId}) on the ${row} row`).toBe(
           `هذا رقم المنطقة لـ«${typedRegion.name}» وليس رقم مدينتها — النظام بيتجاهله ويستعمل ${sentForThisRow}`,
         );
@@ -356,32 +357,32 @@ describe('isRegionIdOnly: provably a Region Id, and nothing else', () => {
   const cityIds = [...new Set(sheet.map((v) => v.cityId))];
 
   it('3003 is السويداء’s Region Id and no city’s: true', () => {
-    expect(isRegionIdOnly('BASHA', 3003)).toBe(true);
+    expect(isRegionIdOnly({ code: 'BASHA' }, 3003)).toBe(true);
   });
 
   it('every Region Id of their list is true — and there are 26 of them', () => {
     expect(regionIds).toHaveLength(26);
-    for (const id of regionIds) expect(isRegionIdOnly('BASHA', id), String(id)).toBe(true);
+    for (const id of regionIds) expect(isRegionIdOnly({ code: 'BASHA' }, id), String(id)).toBe(true);
   });
 
   it('NEGATIVE: every city id of their list is false — 445153 (السويداء), 566117 (مدينة السويداء), all 152', () => {
     expect(cityIds).toHaveLength(152);
-    for (const id of cityIds) expect(isRegionIdOnly('BASHA', id), String(id)).toBe(false);
-    expect(isRegionIdOnly('BASHA', 445153)).toBe(false);
-    expect(isRegionIdOnly('BASHA', 566117)).toBe(false);
+    for (const id of cityIds) expect(isRegionIdOnly({ code: 'BASHA' }, id), String(id)).toBe(false);
+    expect(isRegionIdOnly({ code: 'BASHA' }, 445153)).toBe(false);
+    expect(isRegionIdOnly({ code: 'BASHA' }, 566117)).toBe(false);
   });
 
   it('NEGATIVE: a number the list does not know at all is false — it may be right, so it stays as typed', () => {
-    for (const id of [1, 99999, 999001, 999999999, 0, -3003, 3003.5]) expect(isRegionIdOnly('BASHA', id), String(id)).toBe(false);
+    for (const id of [1, 99999, 999001, 999999999, 0, -3003, 3003.5]) expect(isRegionIdOnly({ code: 'BASHA' }, id), String(id)).toBe(false);
   });
 
   it('NEGATIVE: a courier we hold no list for is false for every number, 3003 included', () => {
-    for (const code of ['HALA', 'NAQEL', '', null, undefined]) expect(isRegionIdOnly(code, 3003), String(code)).toBe(false);
+    for (const code of ['HALA', 'NAQEL', '', null, undefined]) expect(isRegionIdOnly({ code }, 3003), String(code)).toBe(false);
   });
 
   it('the courier is found by its code in any case', () => {
-    expect(isRegionIdOnly('basha', 3003)).toBe(true);
-    expect(isRegionIdOnly(' BASHA ', 3003)).toBe(true);
+    expect(isRegionIdOnly({ code: 'basha' }, 3003)).toBe(true);
+    expect(isRegionIdOnly({ code: ' BASHA ' }, 3003)).toBe(true);
   });
 
   it('Basha’s own list never reuses a number: no number is both a region and a city (so nothing is read the wrong way here)', () => {
@@ -425,7 +426,7 @@ describe('defaultCityOf: what the browser is told about a governorate nobody typ
 
   it('and for every one of the list’s 26 governorates, whatever the spelling — the number the note promises is the number sent', () => {
     for (const [id, region] of Object.entries(places.regions)) {
-      expect(defaultCityOf(region.name, places)?.cityId, `${region.name} (${id})`).toBe(defaultCourierCityId('BASHA', region.name)?.cityId);
+      expect(defaultCityOf(region.name, places)?.cityId, `${region.name} (${id})`).toBe(defaultCourierCityId({ code: 'BASHA' }, region.name)?.cityId);
     }
   });
 
@@ -456,5 +457,78 @@ describe('the list stays on the server', () => {
 
   it('and the resolver itself is the one place that reads the JSON', () => {
     expect(stripComments(repoFile('src/lib/couriers/places.ts'))).toContain('reference/couriers/basha-villages.json');
+  });
+});
+
+/**
+ * WHICH LIST IS THE COURIER'S — ITS CODE, OR ITS PLATFORM.
+ *
+ * Measured on production 2/11: the Basha row's code is «LEG-1» (the legacy import named the codes LEG-1…LEG-4) and its
+ * adapter is LOGESTECHS — the settings screen shows «LEG-1 · LogesTechs». A list looked up by the code alone gave that row
+ * nothing. The decision: Basha's list belongs to the courier whose code is BASHA OR whose platform (adapter code, else
+ * code — as `adapterFor` reads it) is LOGESTECHS. The other legacy rows (LEG-2, LEG-3, a manual one) get none.
+ */
+describe('courierListKey: the one rule for which list a courier reads', () => {
+  const LEG1 = { code: 'LEG-1', adapterCode: 'LOGESTECHS' };
+
+  it('BASHA by its code, in any case, with any platform or none', () => {
+    for (const p of [{ code: 'BASHA' }, { code: ' basha ' }, { code: 'BASHA', adapterCode: null }, { code: 'BASHA', adapterCode: 'MANUAL' }]) {
+      expect(courierListKey(p), JSON.stringify(p)).toBe('BASHA');
+    }
+  });
+
+  it('any code on the LogesTechs platform — production’s LEG-1 — in any case', () => {
+    expect(courierListKey(LEG1)).toBe('BASHA');
+    expect(courierListKey({ code: 'LEG-1', adapterCode: ' logestechs ' })).toBe('BASHA');
+    expect(courierListKey({ code: 'HALA', adapterCode: 'LOGESTECHS' })).toBe('BASHA');
+    // No adapter code: the platform is the courier's own code, as `adapterFor` reads it.
+    expect(courierListKey({ code: 'LOGESTECHS', adapterCode: null })).toBe('BASHA');
+    expect(courierListKey({ code: 'LOGESTECHS', adapterCode: '' })).toBe('BASHA');
+  });
+
+  it('NEGATIVE: another code on no platform or another one gets no list — LEG-3, LEG-2, MANUAL, nothing', () => {
+    for (const p of [
+      { code: 'LEG-3', adapterCode: null }, { code: 'LEG-2', adapterCode: 'MANUAL' }, { code: 'MANUAL' }, { code: 'LEG-1' },
+      { code: 'LEG-1', adapterCode: 'LOGESTECHS-2' }, { code: 'BASHA-2' }, { code: '' }, { code: null, adapterCode: null }, {},
+    ]) {
+      expect(courierListKey(p), JSON.stringify(p)).toBeNull();
+    }
+    expect(courierListKey(null)).toBeNull();
+    expect(courierListKey(undefined)).toBeNull();
+  });
+
+  it('production’s LEG-1 row gets the defaults: دمشق 445053, السويداء 445153, دير الزور 949546, القنيطرة 566122 — all fourteen', () => {
+    expect(defaultCourierCityId(LEG1, 'دمشق')?.cityId).toBe(445053);
+    expect(defaultCourierCityId(LEG1, 'السويداء')?.cityId).toBe(445153);
+    expect(defaultCourierCityId(LEG1, 'دير الزور')?.cityId).toBe(949546);
+    expect(defaultCourierCityId(LEG1, 'القنيطرة')?.cityId).toBe(566122);
+    for (const row of ORACLE) expect(defaultCourierCityId(LEG1, row.oms), row.oms).toEqual({ cityId: row.code, cityName: row.cityInSheet });
+  });
+
+  it('production’s LEG-1 row: the Region-Id guard holds (2903 is دمشق’s Region Id), and a city of the list (949547) is not one', () => {
+    expect(isRegionIdOnly(LEG1, 2903)).toBe(true);
+    expect(isRegionIdOnly(LEG1, 3003)).toBe(true);
+    expect(isRegionIdOnly(LEG1, 949547)).toBe(false);
+    expect(isRegionIdOnly(LEG1, 445053)).toBe(false);
+  });
+
+  it('production’s LEG-1 row: the box’s list is Basha’s, whole — the same object of answers as for BASHA', () => {
+    expect(courierPlaces(LEG1)).toEqual(courierPlaces({ code: 'BASHA' }));
+    expect(courierPlaces(LEG1)?.regions['2903']).toEqual({ name: 'دمشق', cityId: 445053 });
+  });
+
+  it('NEGATIVE: LEG-3 and a manual courier get nothing from any of the three', () => {
+    for (const p of [{ code: 'LEG-3', adapterCode: null }, { code: 'MANUAL', adapterCode: 'MANUAL' }]) {
+      expect(defaultCourierCityId(p, 'دمشق'), p.code).toBeNull();
+      expect(isRegionIdOnly(p, 2903), p.code).toBe(false);
+      expect(courierPlaces(p), p.code).toBeNull();
+    }
+  });
+
+  it('ONE RULE: no other function in places.ts reads a courier’s code or platform itself — they all ask courierListKey', () => {
+    const src = stripComments(repoFile('src/lib/couriers/places.ts'));
+    expect(src.match(/\.code\b/g) ?? []).toHaveLength(2);
+    expect(src.match(/\.adapterCode\b/g) ?? []).toHaveLength(1);
+    expect(src.match(/courierListKey\(/g) ?? []).toHaveLength(2); // its definition, and builtOf
   });
 });

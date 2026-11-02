@@ -22,9 +22,10 @@ export async function GET(req: Request) {
 
     const provider = await db.deliveryProvider.findFirst({
       where: { id, ...courierScope(companyId, storeId) },
-      select: { code: true },
+      // The code AND the platform: production's Basha row is «LEG-1» on LogesTechs (`places.courierListKey`).
+      select: { code: true, adapterCode: true },
     });
-    return NextResponse.json({ places: provider ? courierPlaces(provider.code) : null });
+    return NextResponse.json({ places: courierPlaces(provider) });
   } catch (error) {
     return apiErrorResponse(error);
   }

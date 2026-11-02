@@ -59,9 +59,39 @@ export interface CourierDefaultCity {
   cityName: string;
 }
 
-const LISTS: Record<string, CourierVillage[]> = {
+const LISTS = {
   BASHA: bashaVillages as CourierVillage[],
-};
+} satisfies Record<string, CourierVillage[]>;
+
+/** The name of a list we hold — today only Basha's. */
+export type CourierListKey = keyof typeof LISTS;
+
+/**
+ * WHO A COURIER IS, AS FAR AS WHICH LIST WE HOLD FOR IT: its own code (`DeliveryProvider.code`) and the platform it ships
+ * through (`DeliveryProvider.adapterCode`). Both, because the code alone is not enough — see `courierListKey`.
+ */
+export interface CourierIdentity {
+  code?: string | null;
+  adapterCode?: string | null;
+}
+
+/**
+ * WHICH LIST BELONGS TO THIS COURIER — THE ONE PLACE THAT DECIDES IT; every other function here asks this.
+ *
+ * Basha's list belongs to the courier whose code is BASHA, OR whose platform is LogesTechs: the platform is read the way
+ * `couriers/index` (`adapterFor`) reads it — the adapter code, else the courier's own code, in any case. The code alone
+ * was not enough: on production the Basha row was named by the legacy import, its code is «LEG-1» and its adapter
+ * LOGESTECHS, so a list looked up by code alone gave Basha nothing (measured 2/11). Basha is the only LogesTechs courier
+ * this system knows, and the list is theirs (`reference/couriers/basha-villages.json`). A courier on another platform
+ * with any other code — a manual one, «الو دليفيري» — gets no list, as before. A second LogesTechs company would read
+ * Basha's Syrian list too, and would need its own (BACKLOG_P2).
+ */
+export function courierListKey(provider: CourierIdentity | null | undefined): CourierListKey | null {
+  if (!provider) return null;
+  if ((provider.code ?? '').trim().toUpperCase() === 'BASHA') return 'BASHA';
+  const platform = (provider.adapterCode || provider.code || '').trim().toUpperCase();
+  return platform === 'LOGESTECHS' ? 'BASHA' : null;
+}
 
 interface ListedCity {
   name: string;
@@ -141,13 +171,13 @@ interface BuiltList {
   regionOnly: ReadonlySet<number>;
 }
 
-const BUILT = new Map<string, BuiltList>();
+const BUILT = new Map<CourierListKey, BuiltList>();
 
-/** What is derived from the list we hold for a courier by its code (any case), built once; null when we hold none for it. */
-function builtOf(code: string | null | undefined): BuiltList | null {
-  const key = (code ?? '').trim().toUpperCase();
+/** What is derived from the list we hold for a courier (`courierListKey`), built once; null when we hold none for it. */
+function builtOf(provider: CourierIdentity | null | undefined): BuiltList | null {
+  const key = courierListKey(provider);
+  if (!key) return null;
   const list = LISTS[key];
-  if (!list) return null;
   let built = BUILT.get(key);
   if (!built) {
     built = { list, defaults: buildDefaultCities(list), regionOnly: regionOnlyIds(list) };
@@ -163,10 +193,10 @@ function builtOf(code: string | null | undefined): BuiltList | null {
  * without guessing. A number typed on the fees screen is NOT looked at here: that precedence lives in `couriers/city-id`.
  */
 export function defaultCourierCityId(
-  courierCode: string | null | undefined,
+  provider: CourierIdentity | null | undefined,
   regionName: string | null | undefined,
 ): CourierDefaultCity | null {
-  const built = builtOf(courierCode);
+  const built = builtOf(provider);
   if (!built || !regionName) return null;
   return built.defaults.get(foldArabic(regionName)) ?? null;
 }
@@ -179,13 +209,13 @@ export function defaultCourierCityId(
  * it. False for a number the list does not know — an id it simply does not list may still be right — for a number it
  * holds as a city (also when it is a region's too), and for every number of a courier we hold no list for.
  */
-export function isRegionIdOnly(courierCode: string | null | undefined, id: number): boolean {
-  return builtOf(courierCode)?.regionOnly.has(id) ?? false;
+export function isRegionIdOnly(provider: CourierIdentity | null | undefined, id: number): boolean {
+  return builtOf(provider)?.regionOnly.has(id) ?? false;
 }
 
-/** The list for a courier by its code, or null when we hold none for it. */
-export function courierPlaces(code: string | null | undefined): CourierPlaces | null {
-  const built = builtOf(code);
+/** The list for a courier (`courierListKey`), or null when we hold none for it. */
+export function courierPlaces(provider: CourierIdentity | null | undefined): CourierPlaces | null {
+  const built = builtOf(provider);
   if (!built) return null;
   const { defaults, list } = built;
 

@@ -36,7 +36,7 @@ const { db, state, adapterFor, createShipment } = vi.hoisted(() => {
   interface Parcel { id: string; orderNumber: string; regionId: string | null; regionName: string | null }
   const state = {
     provider: {
-      id: 'p1', name: 'الباشا', code: 'BASHA', adapterCode: 'LOGESTECHS', apiEnabled: true, apiConfig: {}, apiCredentials: 'sealed',
+      id: 'p1', name: 'الباشا', code: 'BASHA', adapterCode: 'LOGESTECHS' as string | null, apiEnabled: true, apiConfig: {}, apiCredentials: 'sealed',
       companyId: 'c1', storeId: 's1',
     },
     fees: [] as Fee[],
@@ -135,6 +135,10 @@ const SWEIDA = { id: 'r-sweida', name: 'السويداء' };
 const IDLIB = { id: 'r-idlib', name: 'إدلب' };
 const DEIR = { id: 'r-deir', name: 'دير الزور' };
 const BAGHDAD = { id: 'r-baghdad', name: 'بغداد' };
+const DAMASCUS = { id: 'r-dam', name: 'دمشق' };
+const QUNEITRA = { id: 'r-quneitra', name: 'القنيطرة' };
+/** Production's Basha row, as the settings screen shows it: «LEG-1 · LogesTechs». */
+const LEG1 = { code: 'LEG-1', adapterCode: 'LOGESTECHS' };
 
 interface Case {
   title: string;
@@ -151,7 +155,7 @@ const CASES: Case[] = [
   { title: 'a fee row exists but carries no code: the list’s city', fees: [typed('r-sweida', null)], region: SWEIDA, sends: 445153 },
   { title: 'the hamza is folded: our «إدلب» is their «ادلب»', fees: [], region: IDLIB, sends: 570148 },
   { title: 'no city is named like the governorate: «مدينة دير الزور», the placeholder one', fees: [], region: DEIR, sends: 949546 },
-  { title: 'the courier’s code in lower case finds the same list', courier: { code: 'basha' }, fees: [], region: SWEIDA, sends: 445153 },
+  { title: 'the courier’s code in lower case finds the same list (with no platform to find it by)', courier: { code: 'basha', adapterCode: null }, fees: [], region: SWEIDA, sends: 445153 },
   { title: 'a typed code wins over the list', fees: [typed('r-sweida', 999001)], region: SWEIDA, sends: 999001 },
   // THE SAFETY RULE: what the list proves is a Region Id is not a place.
   { title: 'a typed Region Id (3003) is NOT sent: the list’s city for the governorate answers', fees: [typed('r-sweida', 3003)], region: SWEIDA, sends: 445153 },
@@ -160,14 +164,30 @@ const CASES: Case[] = [
   { title: 'a typed 445153 (the governorate’s own city) is sent', fees: [typed('r-sweida', 445153)], region: SWEIDA, sends: 445153 },
   { title: 'a typed 566117 (a city of the list, not the default) is sent as typed', fees: [typed('r-sweida', 566117)], region: SWEIDA, sends: 566117 },
   { title: 'a typed number the list does not know at all (999999999) is sent as typed', fees: [typed('r-sweida', 999999999)], region: SWEIDA, sends: 999999999 },
-  { title: 'a courier with no list: a typed 3003 is only a number, and is sent', courier: { code: 'HALA' }, fees: [typed('r-sweida', 3003)], region: SWEIDA, sends: 3003 },
+  { title: 'a courier with no list: a typed 3003 is only a number, and is sent', courier: { code: 'HALA', adapterCode: null }, fees: [typed('r-sweida', 3003)], region: SWEIDA, sends: 3003 },
   { title: 'another courier’s typed code for that governorate is not this courier’s', fees: [typed('r-sweida', 999002, 'other')], region: SWEIDA, sends: 445153 },
   { title: 'a typed code for ANOTHER governorate is not this one’s', fees: [typed('r-idlib', 999003)], region: SWEIDA, sends: 445153 },
   { title: 'a governorate the list does not name is refused, by name', fees: [], region: BAGHDAD, sends: null },
   { title: 'an order with no governorate at all is refused', fees: [], region: null, sends: null },
   { title: 'a typed code for a governorate the list does not name still sends', fees: [typed('r-baghdad', 999004)], region: BAGHDAD, sends: 999004 },
-  { title: 'a courier on the platform with no list of ours: nothing typed, refused (as it always was)', courier: { code: 'HALA' }, fees: [], region: SWEIDA, sends: null },
-  { title: 'the same courier with a typed code: sends it', courier: { code: 'HALA' }, fees: [typed('r-sweida', 777001)], region: SWEIDA, sends: 777001 },
+  { title: 'a courier with no list of ours: nothing typed, refused (as it always was)', courier: { code: 'HALA', adapterCode: null }, fees: [], region: SWEIDA, sends: null },
+  { title: 'the same courier with a typed code: sends it', courier: { code: 'HALA', adapterCode: null }, fees: [typed('r-sweida', 777001)], region: SWEIDA, sends: 777001 },
+  /*
+   * PRODUCTION'S BASHA ROW (measured 2/11): code «LEG-1» (named by the legacy import), platform LOGESTECHS. The list is
+   * found through the platform (`places.courierListKey`) — by its code alone it would get nothing.
+   */
+  { title: 'LEG-1 on LogesTechs, nothing typed: دمشق gets 445053', courier: LEG1, fees: [], region: DAMASCUS, sends: 445053 },
+  { title: 'LEG-1 on LogesTechs, nothing typed: السويداء gets 445153', courier: LEG1, fees: [], region: SWEIDA, sends: 445153 },
+  { title: 'LEG-1 on LogesTechs, nothing typed: دير الزور gets 949546', courier: LEG1, fees: [], region: DEIR, sends: 949546 },
+  { title: 'LEG-1 on LogesTechs, nothing typed: القنيطرة gets 566122', courier: LEG1, fees: [], region: QUNEITRA, sends: 566122 },
+  { title: 'LEG-1 on LogesTechs: دمشق’s Region Id (2903) typed on its row is NOT sent — 445053 is', courier: LEG1, fees: [typed('r-dam', 2903)], region: DAMASCUS, sends: 445053 },
+  { title: 'LEG-1 on LogesTechs: production’s saved 949547 on دير الزور is a city of the list, and is sent as typed', courier: LEG1, fees: [typed('r-deir', 949547)], region: DEIR, sends: 949547 },
+  { title: 'LEG-1 with its platform written in lower case finds the list too', courier: { code: 'LEG-1', adapterCode: 'logestechs' }, fees: [], region: SWEIDA, sends: 445153 },
+  { title: 'any courier on LogesTechs reads Basha’s list — the only LogesTechs courier the system knows', courier: { code: 'HALA', adapterCode: 'LOGESTECHS' }, fees: [typed('r-sweida', 3003)], region: SWEIDA, sends: 445153 },
+  // The other legacy rows are not Basha: no platform of ours, no list — nothing changes for them.
+  { title: 'LEG-3 with no platform: no list — nothing typed, refused', courier: { code: 'LEG-3', adapterCode: null }, fees: [], region: DAMASCUS, sends: null },
+  { title: 'LEG-3 with no platform: a typed 2903 is only a number, and is sent', courier: { code: 'LEG-3', adapterCode: null }, fees: [typed('r-dam', 2903)], region: DAMASCUS, sends: 2903 },
+  { title: 'a MANUAL-coded courier gets no list', courier: { code: 'MANUAL', adapterCode: 'MANUAL' }, fees: [], region: SWEIDA, sends: null },
 ];
 
 describe('the press and the warning before it are the same decision', () => {
@@ -289,8 +309,8 @@ describe('a number the list holds as both a region and a city is a city', () => 
     const { dispatchBatch: pressNow } = await import('./dispatch');
     const { courierCityGaps: warnNow } = await import('./city-gaps');
     // A test that quietly ran on Basha's real list would prove nothing: «صاد» and its Region Id 2 exist only in this one.
-    expect(places.courierPlaces('BASHA')?.regions['2']?.name).toBe('صاد');
-    expect(Object.keys(places.courierPlaces('BASHA')?.cities ?? {})).toEqual(['10', '11', '20']);
+    expect(places.courierPlaces({ code: 'BASHA' })?.regions['2']?.name).toBe('صاد');
+    expect(Object.keys(places.courierPlaces({ code: 'BASHA' })?.cities ?? {})).toEqual(['10', '11', '20']);
     return {
       press: () => pressNow({ batchId: 'b1', companyId: 'c1', storeId: 's1', userId: 'u1' }),
       warning: () => warnNow({ companyId: 'c1', storeId: 's1', batches: [{ id: 'b1', status: 'READY', deliveryProviderId: 'p1' }] }),

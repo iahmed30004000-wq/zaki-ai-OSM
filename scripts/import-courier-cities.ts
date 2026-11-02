@@ -4,6 +4,9 @@
  *   npx tsx scripts/import-courier-cities.ts BASHA --dry
  *   npx tsx scripts/import-courier-cities.ts BASHA
  *
+ * The argument is the courier row's own code — on production Basha's is «LEG-1» (named by the legacy import); its list
+ * is found through its LogesTechs platform (`courierListKey` in `src/lib/couriers/places.ts`).
+ *
  * NOT NEEDED FOR A SHIPMENT TO GO any more (2/11): the press takes a governorate's city from the courier's own list by
  * itself when nothing is typed (`src/lib/couriers/city-id.ts`). This is for the day somebody wants the numbers stored
  * on the rows anyway — a number stored here is read as typed, and wins over the list from then on.
@@ -27,18 +30,20 @@ async function main() {
     process.exit(1);
   }
 
-  const places = courierPlaces(code);
-  if (!places) {
-    console.error(`ما عندنا قائمة مدن لشركة برمز ${code}`);
-    process.exit(1);
-  }
-
+  // The courier first, then its list: which list is the courier's is decided by its code AND its platform
+  // (`courierListKey` — production's Basha row is «LEG-1» on LogesTechs), not by the code typed here.
   const provider = await db.deliveryProvider.findFirst({
     where: { code },
-    select: { id: true, name: true },
+    select: { id: true, name: true, code: true, adapterCode: true },
   });
   if (!provider) {
     console.error(`لا شركة شحن برمز ${code}`);
+    process.exit(1);
+  }
+
+  const places = courierPlaces(provider);
+  if (!places) {
+    console.error(`ما عندنا قائمة مدن لشركة برمز ${code}`);
     process.exit(1);
   }
 
@@ -52,7 +57,7 @@ async function main() {
   const unmatched: string[] = [];
 
   for (const fee of fees) {
-    const city = defaultCourierCityId(code, fee.region.name);
+    const city = defaultCourierCityId(provider, fee.region.name);
     if (!city) {
       unmatched.push(fee.region.name);
       continue;

@@ -32,7 +32,7 @@ const puts = () => apiJson.mock.calls.filter((c) => c[0] === '/api/settings/deli
 
 beforeEach(() => {
   vi.clearAllMocks();
-  places = courierPlaces('BASHA');
+  places = courierPlaces({ code: 'BASHA' });
   apiJson.mockImplementation(async (url: string, init?: { method?: string }) => {
     if (String(url).startsWith('/api/settings/delivery-fees/places')) return { places };
     return url === '/api/settings/delivery-fees' && !init?.method ? FEES : { fee: {} };

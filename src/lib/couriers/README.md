@@ -120,3 +120,11 @@ file alike):
    else the governorate's only city — spelling folded (إدلب = ادلب), exact
    equality, never a guess;
 3. else nothing, and the press refuses the parcel by name (`NO_COURIER_CITY`).
+
+Which courier the list belongs to is decided in one place,
+`places.ts` `courierListKey`: the courier whose code is `BASHA`, **or** whose
+platform (`adapterCode`, else `code`, as `adapterFor` reads it) is LogesTechs.
+The code alone is not enough — on production the Basha row was named by the
+legacy import: code `LEG-1`, adapter LogesTechs (settings shows «LEG-1 ·
+LogesTechs»). The other legacy rows (LEG-2, LEG-3, manual ones) get no list.
+Every caller passes the courier's code and adapter code together.

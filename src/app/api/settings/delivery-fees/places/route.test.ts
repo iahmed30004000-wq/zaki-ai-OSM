@@ -28,10 +28,28 @@ describe('GET /api/settings/delivery-fees/places', () => {
     expect(body.places.regions['3003']).toEqual({ name: 'السويداء', cityId: 445153 });
   });
 
-  it('looks the courier up inside this store only', async () => {
+  it('looks the courier up inside this store only, with its code AND its platform', async () => {
     db.deliveryProvider.findFirst.mockResolvedValue({ code: 'BASHA' });
     await ask('?courier=p1');
     expect(db.deliveryProvider.findFirst.mock.calls[0][0].where).toEqual({ id: 'p1', companyId: 'c1', storeId: 's1' });
+    expect(db.deliveryProvider.findFirst.mock.calls[0][0].select).toEqual({ code: true, adapterCode: true });
+  });
+
+  it('production’s Basha row — code LEG-1, platform LogesTechs — gets the list and the defaults the box shows', async () => {
+    db.deliveryProvider.findFirst.mockResolvedValue({ code: 'LEG-1', adapterCode: 'LOGESTECHS' });
+    const { places } = await (await ask('?courier=p1')).json();
+    expect(places.regions['2903']).toEqual({ name: 'دمشق', cityId: 445053 });
+    expect(places.regions['3003']).toEqual({ name: 'السويداء', cityId: 445153 });
+    expect(places.regions['3736']).toEqual({ name: 'دير الزور', cityId: 949546 });
+    expect(places.regions['3004']).toEqual({ name: 'القنيطرة', cityId: 566122 });
+    expect(places.cities['949547']).toBeDefined();
+  });
+
+  it('NEGATIVE: the other legacy rows — LEG-3 with no platform, a manual one — get no list', async () => {
+    db.deliveryProvider.findFirst.mockResolvedValue({ code: 'LEG-3', adapterCode: null });
+    expect((await (await ask('?courier=p3')).json()).places).toBeNull();
+    db.deliveryProvider.findFirst.mockResolvedValue({ code: 'MANUAL', adapterCode: 'MANUAL' });
+    expect((await (await ask('?courier=p4')).json()).places).toBeNull();
   });
 
   it('NEGATIVE: a courier of another store, one we hold no list for, or none asked, gets null', async () => {
