@@ -93,6 +93,15 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       { key: 'orders.cancel', requires: 'orders.view', ar: 'إلغاء الطلب أو إبطاله', en: 'Cancel or void an order' },
       { key: 'orders.note', requires: 'orders.view', ar: 'كتابة ملاحظة على الطلب', en: 'Write a note on an order' },
       { key: 'orders.request_change', requires: 'orders.view', ar: 'رفع طلب تعديل على طلب مؤكّد', en: 'Raise a change request on a confirmed order' },
+      /*
+       * THE HOLDER'S OWN WINDOW (2/11, migration 20261102120000_edit_confirmed_before_batch) — «بدي التعديل التأجيل أو الالغاء
+       * … أضيفهم كصلاحية انو يقدرو يعدلو ع الطلب لغاية مرحلة الشحنة». With it the agent who HOLDS a confirmed order edits,
+       * postpones or cancels it herself, at once, until it enters a shipping batch; without it (or on a colleague's order, or
+       * once it is in a batch) she raises a request somebody else decides, as before. It sits behind the request key: the
+       * change is still a request, decided on the spot by a named person. The migration gave it to every role that holds
+       * `confirmation.work` AND `orders.request_change`.
+       */
+      { key: 'orders.edit_confirmed', requires: 'orders.request_change', ar: 'تعديل وتأجيل وإلغاء طلب مؤكَّد قبل دخوله دفعة شحن', en: 'Edit, postpone or cancel a confirmed order before it enters a shipping batch' },
       { key: 'orders.rating_link', requires: 'orders.view', ar: 'نسخ رابط تقييم الطلب', en: 'Copy the order review link' },
     ],
   },

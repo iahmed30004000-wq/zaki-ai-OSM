@@ -112,7 +112,10 @@ WITH req(action, needs) AS (VALUES
   -- 1/11: a waybill for any order in any state. Granted by no migration — a pair here would be a person the owner ticked it for who lost the labels key.
   ('ops.labels_any','ops.labels'),
   -- 1/11: a product's fixed cost. Granted by no migration — a pair here would be a person the owner ticked it for who lost the edit key.
-  ('products.change_cost','products.edit')
+  ('products.change_cost','products.edit'),
+  -- 2/11: the holder's own window. The migration 20261102120000 gives it to every role that holds confirmation.work AND
+  -- orders.request_change, so a pair here is a role the owner later took orders.request_change from while the box stayed.
+  ('orders.edit_confirmed','orders.request_change')
 )
 SELECT 'role_permissions' AS "table", r."name" AS "role", r."companyId", q.action, q.needs
 FROM "role_permissions" rp
@@ -484,3 +487,57 @@ FROM "users" u
 WHERE u."status" = 'ACTIVE' AND u."role" <> 'SUPER_ADMIN' AND u."roleId" IS NULL
   AND NOT EXISTS (SELECT 1 FROM "roles" t WHERE t."companyId" IS NULL AND t."name" = u."role")
 ORDER BY 2, 1;
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- AND THE QUESTION OF THE HOLDER'S OWN WINDOW (2/11, migration 20261102120000_edit_confirmed_before_batch): WHICH ACTIVE
+-- ACCOUNTS WILL HOLD `orders.edit_confirmed` THE DAY IT SHIPS, AND WHICH HOLD BOTH OF ITS KEYS AND WILL NOT? Read-only, same
+-- as above.
+--
+-- The box — «تعديل وتأجيل وإلغاء طلب مؤكَّد قبل دخوله دفعة شحن» — goes to every ROLE that holds BOTH `confirmation.work` AND
+-- `orders.request_change` (EDIT_CONFIRMED_NEEDS in src/lib/edit-confirmed-key.ts: company roles and the system templates), and
+-- is refused by a «منع» row to a person with a personal «منع» on either of the two. SUPER_ADMIN holds every key already.
+-- With it, the agent who HOLDS a confirmed order edits, postpones or cancels it herself until it enters a shipping batch; the
+-- supervisors on this list hold it too, and it does nothing for them unless they hold an order.
+--
+--   · 'will receive it'            = her role holds both keys and she has no personal «منع» on either: she has it after the deploy.
+--   · 'full access'                = SUPER_ADMIN: holds every key, no row is written.
+--   · 'holds both, will NOT get it' = she reaches both keys only through a personal «سماح», so no ROLE of hers receives the box.
+--     «Nobody else» is the rule of the migration; if the owner means her, he ticks the box for her himself.
+--
+-- A person's keys are decided as the engine decides them (src/lib/permissions-core.ts computeEffectiveGrants), written once for SQL:
+-- a personal «منع» takes the key away whatever the role gives; a personal «سماح» gives it; otherwise the role's rows give it — the
+-- person's own role (users.roleId) or, when she has none, the system template named like her legacy role (companyId NULL). A
+-- person with neither is judged by the engine from an in-code matrix a query cannot read; the list just above names them.
+-- ═══════════════════════════════════════════════════════════════════════
+WITH people AS (
+  SELECT u."id", u."name", u."email", u."role" AS "legacy_role", u."companyId",
+         COALESCE(u."roleId", (SELECT t."id" FROM "roles" t WHERE t."companyId" IS NULL AND t."name" = u."role" LIMIT 1)) AS "role_id"
+  FROM "users" u
+  WHERE u."status" = 'ACTIVE'
+),
+facts AS (
+  SELECT p.*,
+         (SELECT count(DISTINCT g."permission") FROM "role_permissions" g
+           WHERE g."roleId" = p."role_id" AND g."permission" IN ('confirmation.work', 'orders.request_change')) = 2 AS "role_has_both",
+         EXISTS (SELECT 1 FROM "user_permissions" d
+           WHERE d."userId" = p."id" AND d."effect" = 'DENY' AND d."permission" IN ('confirmation.work', 'orders.request_change')) AS "denied_either",
+         (SELECT count(*) FROM (VALUES ('confirmation.work'), ('orders.request_change')) AS k ("key")
+           WHERE NOT EXISTS (SELECT 1 FROM "user_permissions" d WHERE d."userId" = p."id" AND d."permission" = k."key" AND d."effect" = 'DENY')
+             AND (EXISTS (SELECT 1 FROM "user_permissions" a WHERE a."userId" = p."id" AND a."permission" = k."key" AND a."effect" = 'ALLOW')
+                  OR EXISTS (SELECT 1 FROM "role_permissions" g WHERE g."roleId" = p."role_id" AND g."permission" = k."key"))) = 2 AS "holds_both_now",
+         EXISTS (SELECT 1 FROM "role_permissions" g WHERE g."roleId" = p."role_id" AND g."permission" = 'orders.edit_confirmed') AS "role_already_has_it"
+  FROM people p
+)
+SELECT f."name", f."email", f."legacy_role", r."name" AS "role", f."companyId",
+       CASE
+         WHEN f."legacy_role" = 'SUPER_ADMIN' THEN 'full access'
+         WHEN f."role_has_both" AND NOT f."denied_either" THEN 'will receive it'
+         ELSE 'holds both, will NOT get it'
+       END AS "after_the_deploy",
+       f."role_already_has_it" AS "box_already_on_the_role"
+FROM facts f
+LEFT JOIN "roles" r ON r."id" = f."role_id"
+WHERE f."legacy_role" = 'SUPER_ADMIN'
+   OR (f."role_has_both" AND NOT f."denied_either")
+   OR f."holds_both_now"
+ORDER BY 5 NULLS FIRST, 6, 4, 1;
