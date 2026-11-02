@@ -1,7 +1,6 @@
 import type { SessionUser } from '@/types/auth';
 import { can } from './authorization';
 import { PRICE_KEY_REQUIRED_AR } from './change-request-fields';
-import { EDIT_CONFIRMED_KEY } from './edit-confirmed-key';
 import { editWindowOpen } from './edit-confirmed-window';
 
 /**
@@ -156,8 +155,10 @@ function isSupervisor(user: SessionUser): boolean {
  * a person who is also a warehouse hand is a decider by that rule first, and her window is open all the same.
  */
 export function holdsTheWindow(user: SessionUser, order: RoutingSource): boolean {
+  // The key is written out here (not EDIT_CONFIRMED_KEY): this is the server's gate, and permission-catalog.test.ts reads a
+  // literal key at a `can(` call to know the box is enforced. A test pins the two to the same string.
   return (
-    can(user, EDIT_CONFIRMED_KEY) &&
+    can(user, 'orders.edit_confirmed') &&
     editWindowOpen({
       userId: user.id,
       confirmationStatus: order.confirmationStatus,

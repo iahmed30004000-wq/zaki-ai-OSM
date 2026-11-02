@@ -181,9 +181,10 @@ describe('the holder, with the key, on her own confirmed order in no batch — h
     const activity = db.orderActivity.create.mock.calls.map((c: any[]) => c[0].data).find((d: any) => d.action === 'STATUS_CHANGED');
     expect(activity).toMatchObject({ userId: 'salma', previousStatus: 'CONFIRMED', newStatus: 'CANCELLED' });
     expect(JSON.parse(activity.metadata)).toMatchObject({ door: 'STAND_DOWN', workflow: 'CONFIRMATION' });
-    expect(logAudit.mock.calls.map((c) => c[0].action)).toContain('SHIPMENT_STOOD_DOWN_CANCELLED');
+    expect(logAudit.mock.calls.map((c) => (c[0] as { action: string }).action)).toContain('SHIPMENT_STOOD_DOWN_CANCELLED');
     // …and the note on the order carries HER sentence, the only record of what the customer said.
-    expect(db.orderNote.create.mock.calls[0][0].data.body).toContain('الزبون تراجع بالاتصال');
+    const note = (db.orderNote.create.mock.calls as unknown as Array<[{ data: { body: string } }]>)[0][0];
+    expect(note.data.body).toContain('الزبون تراجع بالاتصال');
   });
 
   it('NEGATIVE: the request’s reason is the one stored, never one riding in the body', async () => {
