@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CLAIM_CAPS, ENTRY_CAP_FULL_MESSAGE, MAY_NOT_CONFIRM_NOW_MESSAGE, REGION_REQUIRED_MESSAGE,
-  claimsOwnEntry, confirmNowReadiness, entryOwnership, keepsOwnEntry, mayConfirmNow,
+  claimsOwnEntry, confirmNowReadiness, entryOwnership, keepsOwnEntry, mayConfirmNow, offersConfirmNow,
 } from './confirmation-queue';
 
 /**
@@ -55,9 +55,24 @@ describe('whose box is honoured', () => {
   it('both keys: confirm and record the call', () => {
     expect(mayConfirmNow(LIVE_AGENT, false)).toBe(true);
   });
-  it('NEGATIVE: either key missing', () => {
-    expect(mayConfirmNow(keys('orders.confirm'), false)).toBe(false);
-    expect(mayConfirmNow(keys('orders.contact_log'), false)).toBe(false);
+  it('NEGATIVE: bound by the hold rule, either key missing', () => {
+    expect(mayConfirmNow(keys('confirmation.work', 'orders.confirm'), false)).toBe(false);
+    expect(mayConfirmNow(keys('confirmation.work', 'orders.contact_log'), false)).toBe(false);
+  });
+  it('RV686: NOT bound (no call is written for her) — «تغيير حالة التأكيد» alone, today’s one-step confirm', () => {
+    expect(offersConfirmNow(keys('orders.confirm'))).toBe(true);
+    expect(offersConfirmNow(keys('confirmation.work', 'orders.unlock', 'orders.confirm'))).toBe(true);
+    expect(offersConfirmNow(keys('confirmation.work', 'orders.assign', 'orders.confirm'))).toBe(true);
+    expect(mayConfirmNow(keys('orders.confirm'), false)).toBe(true);
+  });
+  it('NEGATIVE: nobody without «تغيير حالة التأكيد», bound or not', () => {
+    expect(offersConfirmNow(keys('orders.contact_log'))).toBe(false);
+    expect(offersConfirmNow(keys('orders.unlock', 'orders.contact_log'))).toBe(false);
+  });
+  it('the form and the door ask the same question', () => {
+    for (const h of [LIVE_AGENT, PLAIN_AGENT, MANAGER, MODERATOR, keys('confirmation.work', 'orders.confirm'), keys('orders.confirm')]) {
+      expect(mayConfirmNow(h, false)).toBe(offersConfirmNow(h));
+    }
   });
   it('NEGATIVE: a file never confirms', () => {
     expect(mayConfirmNow(LIVE_AGENT, true)).toBe(false);

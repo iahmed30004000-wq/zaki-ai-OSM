@@ -302,6 +302,17 @@ describe('who the box is honoured for', () => {
     expect(r.json.confirmNow).toMatchObject({ ready: false, code: 'MAY_NOT_CONFIRM' });
   });
 
+  it('RV686: somebody the hold rule does NOT bind needs only «تغيير حالة التأكيد» — no call written, no claim, and the yes as today', async () => {
+    const mgr = await person('mgrNoLog', 'MANAGER', WORKING_MANAGER.filter((k) => k !== 'orders.contact_log'));
+    const made = await create(mgr, body({ confirmNow: true }));
+    expect(made.status).toBe(200);
+    expect(made.row?.claimedById).toBeNull();
+    expect(attemptWrites).toEqual([]);
+    expect(made.json.confirmNow).toEqual({ ready: true });
+    const yes = await confirm(mgr, made.row!);
+    expect(yes.status, JSON.stringify(yes.json)).toBe(200);
+  });
+
   it('NEGATIVE: a file never confirms — an import row carrying the box is an ordinary row', async () => {
     const agent = await person('importer', 'CONFIRMATION_AGENT', [...AGENT_TICKED, 'orders.import']);
     const r = await create(agent, body({ confirmNow: true, viaImport: true }));
@@ -372,40 +383,109 @@ describe('no governorate', () => {
 });
 
 describe('what must NOT change', () => {
-  /** Every money and stock column the creation door writes, on the order and on its lines. */
-  const moneyAndStock = () => {
-    const order = db.order.create.mock.calls[0][0].data;
-    const lines = tx.orderItem.createMany.mock.calls.at(-1)?.[0]?.data ?? [];
-    return {
-      order: {
-        quantity: order.quantity, sellingPrice: order.sellingPrice, shippingCost: order.shippingCost, totalAmount: order.totalAmount,
-        estimatedCostOfGoods: order.estimatedCostOfGoods, priceIncludesDelivery: order.priceIncludesDelivery, offerId: order.offerId,
-        currency: order.currency, productId: order.productId, status: order.status, confirmationStatus: order.confirmationStatus,
-      },
-      lines: lines.map((l: Record<string, unknown>) => ({
-        productId: l.productId, quantity: l.quantity, freeQuantity: l.freeQuantity, unitPrice: l.unitPrice, discountShare: l.discountShare, lineTotal: l.lineTotal,
-      })),
-    };
+  /*
+   * RV692 (independent review, money lens): THREE ORDERS, FIVE PEOPLE, BOX OFF AGAINST BOX ON — every column of the order row and
+   * of its lines, byte for byte, except the three that say whose it is (`claimedById`, `claimedAt`, `currentOwnerId`). The orders
+   * carry what a box could quietly drop: a courier fee, an offer with a gift and delivery included, a discount spread over two lines.
+   */
+  const OFFER_INC = { id: 'offer-inc-000001', quantity: 3, discount: 0, deliveryIncluded: true, freeQuantity: 1 };
+  const OFFER_DISC = { id: 'offer-disc-00001', quantity: 2, discount: 5, deliveryIncluded: false, freeQuantity: 0 };
+  const PROD2 = { id: 'prod-soap-00002', name: 'صابون', image: null, basePrice: 15, batches: [{ costPerUnit: 2 }] };
+  const ORDERS: Record<string, Record<string, unknown>> = {
+    // the PR's worked example: 45 JOD, delivery included, courier fee 3
+    '45 JOD, fee 3': { items: [{ productId: PROD.id, quantity: 1, unitPrice: 45 }], priceIncludesDelivery: true, shippingCost: 3 },
+    // an offer 3 + 1 with delivery included — the offer decides the flag (no box sent) — fee 3
+    'offer 3+1, delivery included, fee 3': {
+      items: [{ productId: PROD.id, offerId: OFFER_INC.id, quantity: 3, unitPrice: 60 }],
+      priceIncludesDelivery: undefined,
+      shippingCost: 3,
+    },
+    // two lines and a 5 JOD discount (the top-level offer), the fee added on top
+    'two lines, 5 JOD discount': {
+      offerId: OFFER_DISC.id,
+      items: [{ productId: PROD.id, quantity: 2, unitPrice: 80 }, { productId: PROD2.id, quantity: 1, unitPrice: 15 }],
+      priceIncludesDelivery: false,
+      shippingCost: 3,
+    },
+  };
+  const OWNERSHIP = new Set(['claimedById', 'claimedAt', 'currentOwnerId']);
+  const snapshot = () => {
+    const order = { ...(db.order.create.mock.calls[0][0].data as Record<string, unknown>) };
+    for (const k of OWNERSHIP) delete order[k];
+    return { order, lines: (tx.orderItem.createMany.mock.calls.at(-1)?.[0]?.data ?? []) as Record<string, unknown>[] };
+  };
+  const catalogue = () => {
+    db.product.findMany.mockImplementation(async ({ where }: { where: { id: { in: string[] } } }) => [PROD, PROD2].filter((p) => where.id.in.includes(p.id)));
+    db.productionBatch.findMany.mockResolvedValue([
+      { productId: PROD.id, quantityRemaining: 100, costPerUnit: 5 },
+      { productId: PROD2.id, quantityRemaining: 100, costPerUnit: 2 },
+    ]);
+    db.offer.findMany.mockImplementation((async ({ where }: { where: { id: { in: string[] } } }) => [OFFER_INC, OFFER_DISC].filter((o) => where.id.in.includes(o.id))) as never);
+    db.offer.findFirst.mockImplementation(async ({ where }: { where: { id: string } }) => [OFFER_INC, OFFER_DISC].find((o) => o.id === where?.id) ?? null);
   };
 
-  it('the money and stock columns are identical with and without the box, for every kind of person', async () => {
-    const people = [
-      await person('abeer', 'CONFIRMATION_AGENT', AGENT_TICKED),
-      await person('sup', 'CONFIRMATION_SUPERVISOR', SUP_TICKED),
-      await person('mod', 'MODERATOR', MODERATOR),
-      await person('root', 'SUPER_ADMIN', []),
-    ];
-    const seen: unknown[] = [];
-    for (const u of people) {
-      for (const ticked of [false, true]) {
-        tx.orderItem.createMany.mockClear();
-        await create(u, body(ticked ? { confirmNow: true } : {}));
-        seen.push(moneyAndStock());
+  for (const [name, fixture] of Object.entries(ORDERS)) {
+    it(`${name}: every column but whose-it-is is identical with and without the box, for five kinds of person`, async () => {
+      catalogue();
+      const people = [
+        await person('abeer', 'CONFIRMATION_AGENT', AGENT_TICKED),
+        await person('sup', 'CONFIRMATION_SUPERVISOR', SUP_TICKED),
+        await person('mgr', 'MANAGER', WORKING_MANAGER),
+        await person('mod', 'MODERATOR', MODERATOR),
+        await person('root', 'SUPER_ADMIN', []),
+      ];
+      const money: unknown[] = [];
+      for (const u of people) {
+        const shots: ReturnType<typeof snapshot>[] = [];
+        for (const ticked of [false, true]) {
+          tx.orderItem.createMany.mockClear();
+          const r = await create(u, body({ ...fixture, ...(ticked ? { confirmNow: true } : {}) }));
+          expect(r.status, `${name}/${u.id}/${ticked}: ${JSON.stringify(r.json)}`).toBe(200);
+          shots.push(snapshot());
+        }
+        expect(shots[1], `${name}/${u.id}`).toEqual(shots[0]);
+        const o = shots[0].order;
+        money.push({
+          order: [o.quantity, o.sellingPrice, o.shippingCost, o.totalAmount, o.estimatedCostOfGoods, o.priceIncludesDelivery, o.offerId],
+          // who added each line is the one column that differs by person (`addedById`), never by the box
+          lines: shots[0].lines.map((l) => Object.fromEntries(Object.entries(l).filter(([k]) => k !== 'addedById'))),
+        });
       }
+      // …the same figures whoever typed it
+      for (const m of money.slice(1)) expect(m).toEqual(money[0]);
+    });
+  }
+
+  it('…and what those three orders come to with the box (so a box that changed every person alike is still caught)', async () => {
+    catalogue();
+    const abeer = await person('abeer', 'CONFIRMATION_AGENT', AGENT_TICKED);
+    const seen: Array<ReturnType<typeof snapshot>> = [];
+    for (const fixture of Object.values(ORDERS)) {
+      tx.orderItem.createMany.mockClear();
+      await create(abeer, body({ ...fixture, confirmNow: true }));
+      seen.push(snapshot());
     }
-    for (const s of seen.slice(1)) expect(s).toEqual(seen[0]);
-    // …and they are real figures, not eight empty objects agreeing
-    expect(seen[0]).toMatchObject({ order: { quantity: 1, sellingPrice: 45, totalAmount: 45, currency: 'JOD', confirmationStatus: 'NEW' } });
+    const [f45, offer, disc] = seen;
+    expect(f45.order).toMatchObject({ totalAmount: 45, sellingPrice: 45, shippingCost: 3, priceIncludesDelivery: true });
+    expect(offer.order).toMatchObject({ offerId: OFFER_INC.id, priceIncludesDelivery: true, shippingCost: 3 });
+    expect(offer.lines[0]).toMatchObject({ quantity: 3, freeQuantity: 1 });
+    expect(disc.order).toMatchObject({ offerId: OFFER_DISC.id, priceIncludesDelivery: false, shippingCost: 3 });
+    expect(disc.lines.reduce((t, l) => t + Number(l.discountShare), 0)).toBeCloseTo(5, 3);
+  });
+
+  it('RV689: the ORDER_CREATED activity carries «confirmNow: true» only when the box was ticked — unticked, no such key at all', async () => {
+    const abeer = await person('abeer', 'CONFIRMATION_AGENT', AGENT_TICKED);
+    const meta = () => {
+      const row = tx.orderActivity.create.mock.calls.map((c) => c[0].data).find((d) => d.action === 'ORDER_CREATED');
+      return JSON.parse(String(row?.metadata)) as Record<string, unknown>;
+    };
+    await create(abeer, body());
+    const plain = meta();
+    expect('confirmNow' in plain).toBe(false);
+    expect(Object.keys(plain).sort()).toEqual(['createdBy', 'source']);
+    tx.orderActivity.create.mockClear();
+    await create(abeer, body({ confirmNow: true }));
+    expect(meta()).toMatchObject({ confirmNow: true });
   });
 
   it('the creation door announces nothing — no order.created, no conversion — with the box ticked', async () => {

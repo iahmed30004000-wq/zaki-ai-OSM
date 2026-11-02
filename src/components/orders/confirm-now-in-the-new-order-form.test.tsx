@@ -338,3 +338,31 @@ describe('the creation door answers whether the yes will come', () => {
     expect((screen.getByLabelText('المحافظة') as HTMLSelectElement).required).toBe(true);
   });
 });
+
+/**
+ * RV686 — THE BOX IS OFFERED BY THE SAME QUESTION THE DOOR ASKS (`offersConfirmNow`). An agent who works only what she holds needs
+ * «تسجيل نتيجة الاتصال» too, because the door writes the call in her name; without it the box would never confirm, so it is not
+ * drawn. Somebody the hold rule does not bind keeps it with «تغيير حالة التأكيد» alone (the manager above).
+ */
+describe('RV686: who sees the box', () => {
+  const BOUND = { id: 'u3', status: 'ACTIVE', role: 'CONFIRMATION_AGENT', permissions: ['orders.create', 'orders.confirm', 'confirmation.work', 'confirmation.supervise'] };
+
+  it('NEGATIVE: a bound agent without «تسجيل نتيجة الاتصال» is not shown a box that can never confirm', async () => {
+    user.current = BOUND;
+    await open();
+    expect(screen.queryByRole('checkbox', { name: /الزبون على الخط/ })).toBeNull();
+  });
+
+  it('the same agent with it is', async () => {
+    user.current = { ...BOUND, permissions: [...BOUND.permissions, 'orders.contact_log'] };
+    await open();
+    expect(screen.getByRole('checkbox', { name: /الزبون على الخط/ })).toBeTruthy();
+  });
+
+  it('a manager the rule does not bind sees it with «تغيير حالة التأكيد» alone', async () => {
+    user.current = CONFIRMER;
+    expect(CONFIRMER.permissions).not.toContain('orders.contact_log');
+    await open();
+    expect(screen.getByRole('checkbox', { name: /الزبون على الخط/ })).toBeTruthy();
+  });
+});

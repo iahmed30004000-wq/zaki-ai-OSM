@@ -204,12 +204,21 @@ export function claimsOwnEntry(holds: (permission: string) => boolean, confirmNo
 }
 
 /**
- * May this person's «أكّده الآن» be honoured at the creation door? She must be allowed to confirm (`orders.confirm`, the confirmation
- * door's first question) and to record a call (`orders.contact_log`, the key that guards exactly the row the door writes for her).
- * A file never confirms: an import row carrying the flag is an ordinary row.
+ * MAY THIS PERSON BE OFFERED «أكّده الآن» AT ALL? Asked by the form (the box) and by the door (`mayConfirmNow`), in the same words,
+ * so nobody is shown a box that can never confirm.
+ *
+ * She must be allowed to confirm (`orders.confirm`, the confirmation door's first question). And ONLY when the hold rule binds her
+ * (`mustHoldToWork`) — the one case the creation door writes a call in her name — must she also be allowed to record a call
+ * (`orders.contact_log`, the key that guards exactly that row). Somebody it does not bind — a manager, a moderator, the owner —
+ * keeps today's one-step confirm with `orders.confirm` alone: no call is written for her and none is asked of her (RV686).
  */
+export function offersConfirmNow(holds: (permission: string) => boolean): boolean {
+  return holds('orders.confirm') && (!mustHoldToWork(holds) || holds('orders.contact_log'));
+}
+
+/** The door's version: the same question, and a file never confirms — an import row carrying the flag is an ordinary row. */
 export function mayConfirmNow(holds: (permission: string) => boolean, viaImport: boolean): boolean {
-  return !viaImport && holds('orders.confirm') && holds('orders.contact_log');
+  return !viaImport && offersConfirmNow(holds);
 }
 
 /** The call the creation door records when the customer was on the line — PHONE, ANSWERED, and this note. */
@@ -220,7 +229,7 @@ export type ConfirmNowReadiness =
   | { ready: false; code: 'CAP_FULL' | 'MAY_NOT_CONFIRM' | 'REGION_REQUIRED'; reason: string };
 
 /** Said when «أكّده الآن» was ticked by somebody the door may not honour it for. */
-export const MAY_NOT_CONFIRM_NOW_MESSAGE = 'ما عندك صلاحية «تغيير حالة التأكيد» و«تسجيل نتيجة الاتصال» مع بعض';
+export const MAY_NOT_CONFIRM_NOW_MESSAGE = 'ما عندك صلاحية «تغيير حالة التأكيد» — أو «تسجيل نتيجة الاتصال» وإنتِ بتشتغلي على اللي بإيدك بس';
 
 /**
  * WILL THE CONFIRMATION DOOR SAY YES TO WHAT WAS JUST MADE? Answered by the creation door, so the form never makes a call it

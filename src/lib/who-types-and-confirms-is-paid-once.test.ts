@@ -41,14 +41,27 @@ const order = (moderator: typeof ABEER, confirmer: typeof ABEER) => ({
   moderator, confirmer,
 });
 
-/** What the ledger holds, entry by entry. */
-const entries = () => db.commissionEntry.create.mock.calls.map((c) => ({ userId: c[0].data.userId, amount: c[0].data.amount, ruleId: c[0].data.ruleId }));
+/*
+ * A LEDGER WITH MEMORY (RV694). The second guard — «this person already has an entry for this order» — is asked of what the ledger
+ * really holds: `findFirst` reads the entries `create` wrote, by order, person and live status. A fake that only answered «nothing»
+ * or «something» on command would let that guard go untested.
+ */
+type Entry = { orderId: string; userId: string; amount: number; ruleId: string; status: string };
+let ledger: Entry[] = [];
+const entries = () => ledger.map(({ userId, amount, ruleId }) => ({ userId, amount, ruleId }));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  ledger = [];
   db.commissionRule.findMany.mockResolvedValue(RULES);
-  db.commissionEntry.findFirst.mockResolvedValue(null);
-  db.commissionEntry.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: 'e', ...data }));
+  db.commissionEntry.findFirst.mockImplementation(
+    async ({ where }: { where: { orderId: string; userId: string; status: { in: string[] } } }) =>
+      ledger.find((e) => e.orderId === where.orderId && e.userId === where.userId && where.status.in.includes(e.status)) ?? null
+  );
+  db.commissionEntry.create.mockImplementation(async ({ data }: { data: Entry }) => {
+    ledger.push({ orderId: data.orderId, userId: data.userId, amount: data.amount, ruleId: data.ruleId, status: data.status });
+    return { id: `e${ledger.length}`, ...data };
+  });
 });
 
 const accrue = () => accrueForOrder(db as never, { companyId: 'c1', orderId: 'o45', minorUnit: 3 });
@@ -71,13 +84,18 @@ describe('the 45 JOD order', () => {
     expect(entries()).toEqual([{ userId: 'abeer', amount: 2.1, ruleId: 'r-agent' }]);
   });
 
-  it('and the accrual job running a second time pays her nothing more', async () => {
+  it('and the accrual job running a second time pays her nothing more — read from what the ledger holds', async () => {
     db.order.findFirst.mockResolvedValue(order(ABEER, ABEER));
     await accrue();
-    db.commissionEntry.findFirst.mockResolvedValue({ id: 'already' });
-    db.commissionEntry.create.mockClear();
     const again = await accrue();
     expect(again.created).toBe(0);
-    expect(db.commissionEntry.create).not.toHaveBeenCalled();
+    expect(entries()).toEqual([{ userId: 'abeer', amount: 2.1, ruleId: 'r-agent' }]);
+  });
+
+  it('…and the same for the two-person order: a second run adds nobody', async () => {
+    db.order.findFirst.mockResolvedValue(order(MONA, ABEER));
+    await accrue();
+    await accrue();
+    expect(entries().map((e) => e.userId)).toEqual(['mona', 'abeer']);
   });
 });

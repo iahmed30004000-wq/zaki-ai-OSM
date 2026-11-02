@@ -18,6 +18,7 @@ import { useMayOpen } from '@/hooks/useMayOpen';
 import { openOrderStep, openPreparationStep } from '@/lib/next-step';
 import { confirmOrderNow } from '@/lib/confirm-now';
 import { userCan } from '@/lib/can';
+import { offersConfirmNow } from '@/lib/confirmation-queue';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 
@@ -52,11 +53,12 @@ export function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateOrderModa
   const formId = useId();
   const [loading, setLoading] = useState(false);
   /**
-   * «الزبون على الخط — أكّده الآن». Offered only to somebody who may confirm (`orders.confirm`):
-   * the server asks the same of the confirmation call, so this is the door's answer drawn early,
-   * never a way past it.
+   * «الزبون على الخط — أكّده الآن». Offered only to somebody who may confirm (`orders.confirm`) — and,
+   * when she works only what she holds, may also record the call the door writes for her
+   * (`orders.contact_log`). The same question the door asks (`offersConfirmNow`), so nobody sees a
+   * box that can never confirm; drawn early, never a way past it.
    */
-  const mayConfirm = userCan(currentUser, 'orders.confirm');
+  const mayConfirm = offersConfirmNow((permission) => userCan(currentUser, permission));
   const [confirmNow, setConfirmNow] = useState(false);
   // «شامل التوصيل»: ticked unless she unticks it — most of what is sold here is sold with free delivery, and a forgotten box
   // used to mean the courier's fee added on top of a price the customer had been told includes it.
