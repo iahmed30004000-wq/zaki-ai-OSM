@@ -5,6 +5,7 @@ import { can, requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import {
   CLAIM_CAPS,
+  OPEN_CONFIRMATION,
   ownedCounts,
   pullPermission,
   releaseStaleClaims,
@@ -62,7 +63,7 @@ export async function GET() {
     const isSupervisor = can(user, 'confirmation.supervise');
     const rows = isSupervisor
       ? await db.order.findMany({
-          where: { ...scope, claimedById: null, confirmationStatus: { in: ['NEW', 'IN_PROGRESS', 'NO_ANSWER', 'FOLLOW_UP_REQUIRED', 'POSTPONED'] }, shippingStatus: 'NOT_READY' },
+          where: { ...scope, claimedById: null, confirmationStatus: { in: OPEN_CONFIRMATION }, shippingStatus: 'NOT_READY' },
           orderBy: [{ postponedUntil: 'asc' }, { createdAt: 'asc' }],
           take: 200,
           select: {
