@@ -449,7 +449,8 @@ describe('a delivery on a short shelf is recorded; a recount that cannot be cove
 const REPO = process.cwd();
 
 /** What, when called, can end in `drawDownStock`. */
-const REACHES_SHELF = /\b(?:drawDownStock|consumeOrderStock|restoreOrderStock|recordPartialDelivery)\s*\(/;
+// `settleStatement` (statement-close) delivers through `consumeOrderStock`: a route that calls it reaches the shelf.
+const REACHES_SHELF = /\b(?:drawDownStock|consumeOrderStock|restoreOrderStock|recordPartialDelivery|settleStatement)\s*\(/;
 /** The shared mapper, by either of the two names it is used under. */
 const SHARED_MAPPER = /\b(?:apiErrorResponse|apiError)\s*\(/;
 
@@ -497,6 +498,7 @@ describe('every door that can empty a shelf answers through the shared mapper', 
       'src/app/api/orders/[id]/route.ts',
       'src/app/api/orders/[id]/shipping/route.ts',
       'src/app/api/finance/statements/[id]/route.ts',
+      'src/app/api/finance/statements/[id]/close/route.ts',
       'src/app/api/ops/tracking/write-off/route.ts',
       'src/app/api/ops/tracking/deliver/route.ts',
     ]) {

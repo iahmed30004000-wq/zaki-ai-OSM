@@ -164,14 +164,14 @@ export const WORK_KINDS: readonly WorkKind[] = [
     rank: 7,
   },
   {
-    /** Courier statements that have not been approved — each is cash waiting on a decision. */
+    /** Courier statements whose matching is not closed — cash waiting on the approval, or orders waiting on the close. */
     key: 'STATEMENTS_OPEN',
-    ar: 'كشف لم يُعتمد',
+    ar: 'كشف مطابقته مفتوحة',
     permissions: ['settlement.review'],
     href: '/finance/matching',
     icon: 'GitCompare',
     tone: 'normal',
-    todo: 'طابقه وراجع فروقه ثم اعتمده — الكاش ما يدخل المحفظة قبل الاعتماد.',
+    todo: 'اعتمده لتدخل المصاري المحفظة، وابتّ بفروقه لتتسكّر المطابقة وتتسوّى الطلبات.',
     rank: 8,
   },
   {

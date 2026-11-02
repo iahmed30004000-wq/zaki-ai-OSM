@@ -126,7 +126,7 @@ describe('a line no order carries', () => {
     const w = updateMany.mock.calls[0] as unknown as [{ where: Record<string, unknown>; data: Record<string, unknown> }];
     expect(w[0].data).toMatchObject({ resolution: 'UNDER_REVIEW', resolutionNote: 'اتفقنا مع الزبون', resolvedById: 'u1' });
     // The write says what it was read as: still a line with no order, on a statement that is still open.
-    expect(w[0].where).toMatchObject({ id: 'm1', result: 'MISSING_IN_SYSTEM', orderId: null, statement: { approvedAt: null } });
+    expect(w[0].where).toMatchObject({ id: 'm1', result: 'MISSING_IN_SYSTEM', orderId: null, statement: { matchingClosedAt: null } });
     expect(db.orderNote.create).not.toHaveBeenCalled();
     expect(db.order.findMany).not.toHaveBeenCalled();
     expect((await res.json()).message).toContain('ولا يعلّق الاعتماد');

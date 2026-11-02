@@ -44,6 +44,8 @@ export async function readNamingLines(
       merchantRef: true,
       barcode: true,
       statement: { select: { reference: true, status: true, approvedAt: true, deliveryProviderId: true } },
+      // A line whose rows are all EXCLUDED carries no money for the order and does not speak for it (settlement-gates).
+      matches: { select: { result: true } },
     },
   });
 }
@@ -62,6 +64,8 @@ export function readTiedLines(
     },
     select: {
       orderId: true,
+      // An EXCLUDED row carries no money for the order (settlement-gates).
+      result: true,
       statement: { select: { reference: true, status: true, approvedAt: true, deliveryProviderId: true } },
     },
   });

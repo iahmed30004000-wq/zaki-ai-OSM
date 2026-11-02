@@ -8,6 +8,7 @@ vi.mock('./db', () => ({ db: {} }));
 import {
   STATEMENT_CLOSED_SENTENCE,
   approvalRefusal,
+  closeRefusal,
   closedStatementRefusal,
   editRefusal,
   openLinesSentence,
@@ -30,6 +31,10 @@ import { SWAP_WHY } from './parcel-swap';
  *   2. Every door that would change an approved statement answers with ONE sentence, from ONE function.
  *   3. Every door that writes a statement is KNOWN, and each carries the condition `approvedAt: null` in the
  *      write itself — not only in a read before it.
+ *
+ * SINCE 2/11 («افصل المطابقة عن التحصيل») the act is two: the approval posts the MONEY and no longer waits on a line;
+ * the close of the MATCHING settles the orders and waits for every line (`closeRefusal`). The gate of 1 is the
+ * close's; the doors of 3 that answer a line carry `matchingClosedAt: null`, the doors of the money `approvedAt: null`.
  */
 
 const SRC = join(process.cwd(), 'src');
@@ -133,42 +138,45 @@ describe('a zero line has no rule of its own — it is one of the two kinds abov
 
 /* ───────────────────────────── 2. the gate, and the counter that follows it ───────────────────────────── */
 
-describe('the approval gate', () => {
-  const ready = {
+describe('the close gate — the lines hold back the orders, not the money', () => {
+  const money = {
     status: 'MATCHED', approvedAt: null, receipts: 1, matches: 4,
     gap: { gap: 0, needsExplanation: false, unconvertible: 0 }, explanation: null,
   };
+  const ready = { status: 'APPROVED', approvedAt: new Date('2026-11-02T00:00:00Z'), matchingClosedAt: null, matches: 4, openLines: 0 };
 
   it('refuses while any line is a question, and says how many', () => {
-    const r = approvalRefusal({ ...ready, openLines: 3 });
+    const r = closeRefusal({ ...ready, openLines: 3 });
     expect(r).toEqual({ code: 'OPEN_LINES', error: openLinesSentence(3) });
     expect(r?.error).toContain('3');
     expect(r?.error).toContain('يُغلق نهائياً');
   });
 
-  it('passes when none is — and an old caller that passes no count reads it as none', () => {
-    expect(approvalRefusal({ ...ready, openLines: 0 })).toBeNull();
-    expect(approvalRefusal(ready)).toBeNull();
+  it('passes when none is — and the approval, which is the money, never waits on a line at all', () => {
+    expect(closeRefusal(ready)).toBeNull();
+    expect(approvalRefusal(money)).toBeNull();
   });
 
-  it('comes AFTER the older gates: no receipt, no rate, no explanation, no matching say their own sentence first', () => {
-    expect(approvalRefusal({ ...ready, receipts: 0, openLines: 2 })?.code).toBe('NO_RECEIPTS');
-    expect(approvalRefusal({ ...ready, matches: 0, openLines: 2 })?.code).toBe('MATCHING_REQUIRED');
-    expect(approvalRefusal({ ...ready, gap: { gap: 4, needsExplanation: true, unconvertible: 0 }, openLines: 2 })?.code).toBe(
-      'GAP_REQUIRES_EXPLANATION'
-    );
+  it('comes AFTER the older gates: no money, a close already taken, no matching say their own sentence first', () => {
+    expect(closeRefusal({ ...ready, approvedAt: null, status: 'MATCHED', openLines: 2 })?.code).toBe('MONEY_NOT_POSTED');
+    expect(closeRefusal({ ...ready, matchingClosedAt: new Date(), openLines: 2 })?.code).toBe('MATCHING_ALREADY_CLOSED');
+    expect(closeRefusal({ ...ready, matches: 0, openLines: 2 })?.code).toBe('MATCHING_REQUIRED');
+    // …and the money's own gates are still the money's.
+    expect(approvalRefusal({ ...money, receipts: 0 })?.code).toBe('NO_RECEIPTS');
+    expect(approvalRefusal({ ...money, matches: 0 })?.code).toBe('MATCHING_REQUIRED');
+    expect(approvalRefusal({ ...money, gap: { gap: 4, needsExplanation: true, unconvertible: 0 } })?.code).toBe('GAP_REQUIRES_EXPLANATION');
   });
 
   it('the counter and the gate are one number: whatever the counter shows is what the button refuses with', () => {
     const matches = rows();
     const n = countOpenLines(matches);
     expect(n).toBe(2);
-    expect(approvalRefusal({ ...ready, matches: matches.length, openLines: n })?.error).toBe(openLinesSentence(2));
+    expect(closeRefusal({ ...ready, matches: matches.length, openLines: n })?.error).toBe(openLinesSentence(2));
 
     // …and answering one of them lowers both by one.
     const answered = matches.map((m, i) => (i === 0 ? { ...m, resolution: 'UNDER_REVIEW' } : m));
     expect(countOpenLines(answered)).toBe(1);
-    expect(approvalRefusal({ ...ready, matches: answered.length, openLines: countOpenLines(answered) })?.error).toBe(openLinesSentence(1));
+    expect(closeRefusal({ ...ready, matches: answered.length, openLines: countOpenLines(answered) })?.error).toBe(openLinesSentence(1));
   });
 
   function rows() {
@@ -180,14 +188,13 @@ describe('the approval gate', () => {
     ];
   }
 
-  it('the list counts with the same function, and both screens hand that count to the same gate', () => {
+  it('the list counts with the same function, and both doors that close count the rows their own transaction read', () => {
     expect(code('src/app/api/finance/statements/route.ts')).toContain('...openLineWhere()');
     expect(code('src/components/screens/finance/CollectionScreen.tsx')).toContain('openLines: s.counts.openLines');
-    // The route counts at BOTH places it asks the gate: the read before, and the rows its own transaction read after the claim.
-    const route = code('src/app/api/finance/statements/[id]/route.ts');
-    expect(route.match(/openLines: countOpenLines\(/g)).toHaveLength(2);
-    expect(route).toContain('countOpenLines(statement.matches)');
-    expect(route).toContain('countOpenLines(matches)');
+    // The approval closes the matching with the money only when the rows it read after its claim leave none open…
+    expect(code('src/app/api/finance/statements/[id]/route.ts')).toContain('const openLines = countOpenLines(matches)');
+    // …and «إغلاق المطابقة» asks the gate on the rows it read after its own claim.
+    expect(code('src/app/api/finance/statements/[id]/close/route.ts')).toContain('openLines: countOpenLines(rows)');
   });
 
   it('the matching screen’s chips count by the same function', () => {
@@ -217,6 +224,14 @@ describe('one sentence, from one function', () => {
     for (const door of [editRefusal, rematchRefusal, undoImportRefusal, receiptEditRefusal]) {
       expect(door({ status: 'MATCHED', approvedAt: null })).toBeNull();
     }
+  });
+
+  it('between the money and the close: the money doors refuse, the matching may run again', () => {
+    const moneyIn = { status: 'APPROVED', approvedAt: new Date('2026-11-02T00:00:00Z'), matchingClosedAt: null };
+    for (const door of [editRefusal, undoImportRefusal, receiptEditRefusal]) expect(door(moneyIn)).toEqual(closedStatementRefusal());
+    expect(rematchRefusal(moneyIn)).toBeNull();
+    // …and once the matching is closed, it is closed for good.
+    expect(rematchRefusal({ ...moneyIn, matchingClosedAt: new Date('2026-11-03T00:00:00Z') })).toEqual(closedStatementRefusal());
   });
 
   it('a decision on a closed statement is refused for every saying, whatever the order is', () => {
@@ -284,9 +299,12 @@ const EDIT = /\b(settlementMatch|courierStatement|statementReceipt|statementLine
 const CLAIM = /\bcourierStatement\.updateMany\(/g;
 
 /**
- * EVERY FILE THAT WRITES A STATEMENT, ROW OR LINE, AND HOW IT KEEPS AN APPROVED ONE OUT.
+ * EVERY FILE THAT WRITES A STATEMENT, ROW OR LINE, AND HOW IT KEEPS A CLOSED ONE OUT.
  *
- *   own     every edit carries `approvedAt: null` in its OWN call (the write says it, not a read before it).
+ *   own     every edit carries `approvedAt: null` — or, for a door that answers a line, `matchingClosedAt: null` —
+ *           in its OWN call (the write says it, not a read before it).
+ *   close   «إغلاق المطابقة»: one claim, `approvedAt` posted and `matchingClosedAt: null`, taken before the engine and
+ *           before the settling.
  *   claim   the edits are inside a transaction that begins with a `courierStatement.updateMany` carrying
  *           `approvedAt: null` — taken first, so it holds the row, and every write after it is the claim's.
  *   claim-last   the same claim, taken after the draft’s lines: a statement that is not open fails it and the whole
@@ -294,9 +312,10 @@ const CLAIM = /\bcourierStatement\.updateMany\(/g;
  *   creates only NEW statements and lines; there is nothing approved to edit.
  *   engine  the matching: it is called only from a door that has taken the claim above (tested below).
  */
-const WRITERS: Record<string, { how: 'own' | 'claim' | 'claim-last' | 'creates' | 'engine'; why: string }> = {
+const WRITERS: Record<string, { how: 'own' | 'claim' | 'claim-last' | 'close' | 'creates' | 'engine'; why: string }> = {
   '/src/app/api/finance/statements/route.ts': { how: 'creates', why: 'the import: a new statement and its lines' },
-  '/src/app/api/finance/statements/[id]/route.ts': { how: 'own', why: 'the explanation, the approval itself (its claim), the removal of an import' },
+  '/src/app/api/finance/statements/[id]/route.ts': { how: 'own', why: 'the explanation, the approval itself (its claim), the close it takes with the money, the removal of an import' },
+  '/src/app/api/finance/statements/[id]/close/route.ts': { how: 'close', why: '«إغلاق المطابقة»: its claim on the close is its only write; the settling runs under it' },
   '/src/app/api/finance/statements/[id]/match/route.ts': { how: 'own', why: 're-running the matching: the status write comes first and carries the condition' },
   '/src/app/api/finance/statements/[id]/decisions/route.ts': { how: 'own', why: 'the bulk answer' },
   '/src/app/api/finance/statements/[id]/matches/[matchId]/resolve/route.ts': { how: 'own', why: 'the answer on one line' },
@@ -325,13 +344,43 @@ describe('every door that writes a statement is known — and a new one is a dec
 
   const doorsOf = (how: string) => Object.entries(WRITERS).filter(([, w]) => w.how === how).map(([f]) => f);
 
-  it.each(doorsOf('own'))('%s — every edit says approvedAt: null in its own call', (file) => {
+  /** The doors that answer a line: closed by the close of the matching, not by the money. */
+  const MATCHING_DOORS = [
+    '/src/app/api/finance/statements/[id]/match/route.ts',
+    '/src/app/api/finance/statements/[id]/decisions/route.ts',
+    '/src/app/api/finance/statements/[id]/matches/[matchId]/resolve/route.ts',
+    '/src/lib/hand-link.ts',
+    '/src/lib/parcel-swap.ts',
+  ];
+
+  it.each(doorsOf('own'))('%s — every edit says its stamp is null in its own call', (file) => {
     const src = code(file.slice(1));
     const edits = calls(src, new RegExp(EDIT.source, 'g'));
     expect(edits.length, 'the file edits something').toBeGreaterThan(0);
+    const stamp = MATCHING_DOORS.includes(file) ? /matchingClosedAt: null/ : /(approvedAt|matchingClosedAt): null/;
     for (const e of edits) {
-      expect(e.text, `${file}: ${e.text.slice(0, 120)}`).toMatch(/approvedAt: null/);
+      expect(e.text, `${file}: ${e.text.slice(0, 120)}`).toMatch(stamp);
     }
+  });
+
+  it('the approval: its first write is the claim on the money, and the close it takes with it comes after', () => {
+    const src = code('src/app/api/finance/statements/[id]/route.ts');
+    const claims = calls(src, new RegExp(CLAIM.source, 'g')).map((c) => c.text);
+    const money = claims.findIndex((t) => /approvedAt: null/.test(t) && /status: 'APPROVED'/.test(t));
+    const close = claims.findIndex((t) => /matchingClosedAt: null/.test(t) && /matchingClosedAt: approvedAt/.test(t));
+    expect(money).toBeGreaterThan(-1);
+    expect(close).toBeGreaterThan(money);
+  });
+
+  it('«إغلاق المطابقة»: one claim — the money posted, the close still open — before the engine and before the settling', () => {
+    const src = code('src/app/api/finance/statements/[id]/close/route.ts');
+    const claims = calls(src, new RegExp(CLAIM.source, 'g'));
+    expect(claims).toHaveLength(1);
+    expect(claims[0].text).toMatch(/approvedAt: \{ not: null \}/);
+    expect(claims[0].text).toMatch(/matchingClosedAt: null/);
+    expect(claims[0].at).toBeLessThan(src.indexOf('await runMatching('));
+    expect(claims[0].at).toBeLessThan(src.indexOf('await settleStatement('));
+    expect(src).toMatch(/claimed\.count !== 1/);
   });
 
   it.each(doorsOf('claim'))('%s — the claim is taken before the first edit, and a lost claim stops it', (file) => {
@@ -353,7 +402,7 @@ describe('every door that writes a statement is known — and a new one is a dec
     expect(src).toContain('closedStatementRefusal()');
   });
 
-  it('the engine is only called under a claim: the match route takes it first, the approval takes it first', () => {
+  it('the engine is only called under a claim: the match route, the approval and the close each take it first', () => {
     const match = code('src/app/api/finance/statements/[id]/match/route.ts');
     expect(match.indexOf('courierStatement.updateMany')).toBeGreaterThan(-1);
     expect(match.indexOf('courierStatement.updateMany')).toBeLessThan(match.indexOf('runMatching('));
@@ -365,6 +414,7 @@ describe('every door that writes a statement is known — and a new one is a dec
       .map(rel)
       .filter((f) => f !== '/src/lib/settlement.ts');
     expect(callers.sort()).toEqual([
+      '/src/app/api/finance/statements/[id]/close/route.ts',
       '/src/app/api/finance/statements/[id]/match/route.ts',
       '/src/app/api/finance/statements/[id]/route.ts',
     ]);
@@ -377,9 +427,10 @@ describe('every door that writes a statement is known — and a new one is a dec
     ]) {
       const src = code(f);
       expect(src, f).toContain('closedStatementRefusal()');
-      expect(src, f).toMatch(/isApproved\(statement\)/);
+      // An answer to a line is taken until the MATCHING closes — the money may already be posted.
+      expect(src, f).toMatch(/isMatchingClosed\(statement\)/);
       // …and the lock comes before the stamp is read.
-      expect(src.indexOf('FOR UPDATE'), f).toBeLessThan(src.indexOf('isApproved(statement)'));
+      expect(src.indexOf('FOR UPDATE'), f).toBeLessThan(src.indexOf('isMatchingClosed(statement)'));
     }
   });
 });
@@ -409,13 +460,16 @@ describe('the correction of a closed statement is a settlement statement — thr
     });
     expect(v.result).toBe('MATCHED');
 
-    // The settlement statement has no open line, so the approval door lets it through…
+    // The settlement statement has no open line, so the approval door lets it through — and closes its matching with it…
     const rowsOfIt = [{ result: v.result, orderId: 'o1', resolution: null }];
     expect(
       approvalRefusal({
         status: 'MATCHED', approvedAt: null, receipts: 1, matches: rowsOfIt.length,
-        openLines: countOpenLines(rowsOfIt), gap: { gap: 0, needsExplanation: false, unconvertible: 0 }, explanation: null,
+        gap: { gap: 0, needsExplanation: false, unconvertible: 0 }, explanation: null,
       })
+    ).toBeNull();
+    expect(
+      closeRefusal({ status: 'APPROVED', approvedAt: new Date(), matchingClosedAt: null, matches: rowsOfIt.length, openLines: countOpenLines(rowsOfIt) })
     ).toBeNull();
 
     // …while the closed one answers every edit with the one sentence.

@@ -101,7 +101,7 @@ describe('the explanation is five characters at least', () => {
     expect(res.status).toBe(200);
     expect(db.settlementMatch.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ id: 'm1', statement: { approvedAt: null } }),
+        where: expect.objectContaining({ id: 'm1', statement: { matchingClosedAt: null } }),
         data: expect.objectContaining({ resolution: 'ACCEPTED_COURIER', resolutionNote: 'اتفقن', resolvedById: 'u1' }),
       })
     );
@@ -181,6 +181,23 @@ describe('the statement’s row is locked first, and an approved statement takes
     const res = await call('ACCEPTED_COURIER');
     expect(res.status).toBe(409);
     expect((await res.json()).error).toBe('الكشف مغلق نهائياً — التصحيح بكشف تسوية');
+    expect(db.settlementMatch.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('the money posted and the matching still open (2/11): every saying is taken — the close is what carries it out', async () => {
+    db.courierStatement.findFirst.mockImplementation(async () => ({ approvedAt: new Date('2026-11-02T00:00:00Z'), matchingClosedAt: null }));
+    for (const [saying, note] of [['OURS_STANDS', 'نطالب بالفرق'], ['UNDER_REVIEW', 'ننتظر الشركة'], ['ACCEPTED_COURIER', 'خصم متفق عليه']] as const) {
+      const res = await call(saying, note);
+      expect(res.status, saying).toBe(200);
+    }
+    // …each write still says the matching is open, so a close that lands in between stops it.
+    for (const c of db.settlementMatch.updateMany.mock.calls) expect(c[0].where).toMatchObject({ statement: { matchingClosedAt: null } });
+  });
+
+  it('…and once the matching is closed, nothing is taken', async () => {
+    db.courierStatement.findFirst.mockImplementation(async () => ({ approvedAt: new Date('2026-11-02T00:00:00Z'), matchingClosedAt: new Date('2026-11-03T00:00:00Z') }));
+    const res = await call('UNDER_REVIEW', 'ننتظر الشركة');
+    expect(res.status).toBe(409);
     expect(db.settlementMatch.updateMany).not.toHaveBeenCalled();
   });
 

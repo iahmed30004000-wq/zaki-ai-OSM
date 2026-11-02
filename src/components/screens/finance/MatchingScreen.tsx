@@ -22,7 +22,7 @@ import { Money } from '@/components/ui/Money';
 import { Tabs } from '@/components/ui/Tabs';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { ManualMatching } from '@/components/screens/finance/ManualMatching';
-import { STATEMENT_CLOSED_SENTENCE, isApproved } from '@/lib/settlement-gates';
+import { STATEMENT_CLOSED_SENTENCE, isApproved, isMatchingClosed } from '@/lib/settlement-gates';
 import { countOpenLines } from '@/lib/statement-open-lines';
 import { readCourierRow } from '@/lib/statement-line-reading';
 
@@ -47,7 +47,7 @@ import { readCourierRow } from '@/lib/statement-line-reading';
 
 interface Match {
   id: string;
-  result: 'MATCHED' | 'MISMATCHED' | 'MISSING_IN_SYSTEM' | 'MISSING_IN_STATEMENT';
+  result: 'MATCHED' | 'MISMATCHED' | 'MISSING_IN_SYSTEM' | 'MISSING_IN_STATEMENT' | 'EXCLUDED';
   matchedBy: string | null;
   /** The order the line is tied to, or null for a line no order carries. */
   orderId?: string | null;
@@ -91,8 +91,10 @@ interface StatementRow {
   id: string;
   reference: string;
   status: string;
-  /** Set when the money moved. Matching is refused after it. */
+  /** Set when the money moved. */
   approvedAt: string | null;
+  /** Set when the matching closed and the orders were settled: no answer, link or new matching after it. */
+  matchingClosedAt?: string | null;
   /** An open manual draft has nothing to match yet: it is gathered on the collection screen first. */
   draft?: boolean;
   currencyCode: string;
@@ -151,7 +153,9 @@ export function MatchingScreen() {
    * into the wallet a second time. The server refuses it now; this is the same
    * rule, read from the same function, so the button is grey instead of red.
    */
-  const closed = statement ? isApproved(statement) : false;
+  const closed = statement ? isMatchingClosed(statement) : false;
+  // The money is in and the matching is still open: the lines are answered here, the close is pressed beside the money.
+  const moneyIn = statement ? isApproved(statement) && !closed : false;
   const noReceipt = (statement?.counts.receipts ?? 0) === 0;
   const whyNot = closed
     ? STATEMENT_CLOSED_SENTENCE
@@ -203,7 +207,7 @@ export function MatchingScreen() {
             <option value="">اختر كشفاً…</option>
             {(statements ?? []).map((s) => (
               <option key={s.id} value={s.id}>
-                {s.reference} — {s.counts.matches} مطابقة{!isApproved(s) && (s.counts.openLines ?? 0) > 0 ? ` · ${s.counts.openLines} بلا بتّ` : ''}
+                {s.reference} — {s.counts.matches} مطابقة{!isMatchingClosed(s) && (s.counts.openLines ?? 0) > 0 ? ` · ${s.counts.openLines} بلا بتّ` : ''}
               </option>
             ))}
           </select>
@@ -243,6 +247,13 @@ export function MatchingScreen() {
         </p>
       )}
 
+      {moneyIn && (
+        <p className="text-xs text-[var(--sys-muted-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3">
+          المصاري دخلت المحفظة باعتماد الكشف، والمطابقة لسا مفتوحة: ابتّ بالأسطر هون، وبعدها اضغط «إغلاق المطابقة» من
+          «التحصيل والكشوف» — عندها تتسوّى الطلبات بلا أي حركة جديدة بالمحفظة.
+        </p>
+      )}
+
       {!selected ? null : !matches ? (
         <div className="flex items-center justify-center gap-2 text-[var(--sys-muted-foreground)] text-sm py-16">
           <RiLoader4Line className="w-4 h-4 animate-spin" /> جارٍ التحميل…
@@ -262,7 +273,7 @@ export function MatchingScreen() {
             tone="emerald"
             currency={statement?.currencyCode ?? ''}
             rows={queue('MATCHED')}
-            hint="المبلغ في الكشف يساوي المتوقَّع — تُعتمد هذه الطلبات وتصبح عمولتها مستحقة عند اعتماد الكشف."
+            hint="المبلغ في الكشف يساوي المتوقَّع — تتسوّى هذه الطلبات وتصبح عمولتها مستحقة عند إغلاق المطابقة (بنفس ضغطة الاعتماد إذا ما ضل سطر بلا بتّ)."
           />
           {mayReview && !closed && (
             <BulkDecide
@@ -301,6 +312,13 @@ export function MatchingScreen() {
             currency={statement?.currencyCode ?? ''}
             rows={queue('MISSING_IN_SYSTEM')}
             hint="مرجع لا يقابله طلب في هذا المتجر — غالباً كشف شركة أخرى أو مرجع مكتوب خطأً. لا رقمين هنا يُختار بينهما؛ اقرأ سبب الشركة بكلامها، أو اربط السطر بطلبه: بهاتف الزبون أو برقم طلبنا. وإن لم يكن لنا فاكتب سببه وقل «قيد المراجعة» ليتابع الاعتماد."
+          />
+          <Queue
+            title="مستبعدة — مرتجع أو مؤجل"
+            tone="amber"
+            currency={statement?.currencyCode ?? ''}
+            rows={queue('EXCLUDED')}
+            hint="كتبتها الشركة بصفر وقالت إن الطرد رجع أو تأجّل. مش مصاري ولا سؤال: ما بتوقّف الاعتماد ولا بتتسوّى. المرتجع بيتابعه قسم المرتجعات، والمؤجل بيجي بكشف جاي."
           />
           <Queue
             title="طلبات لم يذكرها أي كشف"
