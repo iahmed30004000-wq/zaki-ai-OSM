@@ -648,7 +648,7 @@ function Queue({
 export function CourierReason({ m, currency }: { m: Pick<Match, 'courierWord' | 'statementLine'>; currency: string }) {
   const word = m.courierWord;
   const line = m.statementLine;
-  if (!word && !line?.rawRow) return <span className="text-[var(--sys-muted)]">—</span>;
+  if (!word && !m.statementLine?.rawRow) return <span className="text-[var(--sys-muted)]">—</span>;
   const r = line ? readCourierRow(line) : null;
   return (
     <span className="block">
