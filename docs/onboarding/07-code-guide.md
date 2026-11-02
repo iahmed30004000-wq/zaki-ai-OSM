@@ -537,7 +537,9 @@ flowchart LR
 ### 7.2 `orderVisibilityWhere` مقابل `orderListWhere`
 
 - `orderVisibilityWhere(user)` (`src/lib/rbac.ts:37`) = **«بقدر أقرا هالطلب؟»**. بنطاق `ASSIGNED` بيشمل طلباتها، واللي دخّلتها، **وطابور السحب** (غير مسحوب، `NEW`، بلا قفل) (`:43-72`). الطابور موجود هون عشان تقدر تفتح الطلب اللي رح تسحبه.
-- `orderListWhere(user)` (`rbac.ts:120`) = **«شو بيطلع بقائمة»**. بيشيل الطابور.
+- `orderListWhere(user)` (`rbac.ts:120`) = **«شو بيطلع بقائمة»**. بيشيل الطابور. وبنطاق `ASSIGNED` بيشيل كمان الطلب المحجوز لزميلة (كلام المالك 2/11 «الطلبات الي سحبتها فقط»)؛ المحجوز إلها بيضل.
+- «طلباتي المنشأة» (`OWN`) = اللي كتبه (`createdById`) أو هو مودريتوره (`moderatorId`)، بقاعدة وحدة `enteredBy` (`src/lib/order-entered-by.ts`) للقراءة والكتابة.
+- الإشعار عن طلب بيمرّر `orderId` لـ`createNotification`، فبيوصل بس للي الطلب بيفتحلهم (`whoMayOpenOrder` بـ`rbac.ts`).
 - **لا تضيّق `orderVisibilityWhere`** لتخبّي شي من القائمة. رح ترجّع 404 لكل سحب. التعليق `rbac.ts:90-119` بيشرحها.
 - `ORDER_WORK_DOOR` (`src/lib/order-work-door.ts:41`) = باب تاني مسمّى: الطلب اللي بإيدها بينفتح بـ`confirmation.work` حتى بلا «عرض الطلبات». وكل مكان بيستعمله مسجّل بـ`the-order-she-holds.test.ts`.
 - بالواجهة: `useCan` (`src/hooks/useCan.ts:20`) و`useMayOpen` (`src/hooks/useMayOpen.ts:30`) **للراحة بس**. السيرفر هو القرار.
