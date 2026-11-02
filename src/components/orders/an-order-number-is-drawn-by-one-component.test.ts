@@ -110,8 +110,11 @@ const HAND_ALLOWED = new Map<string, { n: number; because: string }>([
   ['src/components/screens/finance/ShortfallPeopleDialog.tsx', { n: 1, because: 'الرقم داخل جملة مالية تُقرأ كما هي' }],
   ['src/components/screens/finance/SwapDialog.tsx', { n: 2, because: 'ملصق خانة اختيار — لا زرّ داخل الملصق' }],
   ['src/components/settings/MessageTemplatesCard.tsx', { n: 1, because: 'عيّنة قالب رسالة وليست طلباً حقيقياً' }],
+  // The confirm guard's refusal (2/11) names the other orders by number, colleague and time and carries NO order id on purpose
+  // (and no customer data), so there is no order to open from the number — the number is what a person says out loud.
+  ['src/components/orders/TwinConfirmedDialog.tsx', { n: 1, because: 'الرقم من جواب الباب الذي لا يحمل معرّف الطلب عن قصد — لا رابط يُفتح منه' }],
 ]);
-const HAND_ALLOWED_CEILING = 7;
+const HAND_ALLOWED_CEILING = 8;
 
 /**
  * R6 — raw `navigator.clipboard.writeText` still on screens. Seven copy a

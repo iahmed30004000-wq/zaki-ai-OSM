@@ -6,6 +6,7 @@ import { CONFIRMATION_STATUS_AR } from './confirmation-workflow';
 import { NOT_MENTIONED_ACTIVITY_AR } from './not-mentioned';
 import { SWAP_ACTION } from './superseded';
 import { TWIN_ACTION } from './recent-twin-order';
+import { TWIN_CONFIRM_ACK_ACTION } from './confirmed-twin';
 import { POST_ORDER_ADDITION_AR } from './post-order-offer-copy';
 import { COURIER_SAID, courierSaidTitle } from './couriers/courier-said';
 
@@ -159,6 +160,8 @@ const ACTIVITY_AR: Record<string, string> = {
   [SWAP_ACTION]: 'تبديل طرد عند الشركة',
   // «طلب مشابه»: the same customer asked for the same product minutes before — a flag for the caller, nothing refused.
   [TWIN_ACTION]: 'تنبيه: نفس العميل طلب نفس المنتج قبل دقائق',
+  // «طلب تاني فعلاً»: she confirmed past the refusal «الزبون عنده طلب مؤكَّد بنفس المنتج» — in her name, with the numbers she was shown.
+  [TWIN_CONFIRM_ACK_ACTION]: 'أُكِّد الطلب مع العلم بوجود طلب مؤكَّد لنفس الزبون بنفس المنتج',
   SWAP_BOX_GIVEN: 'بضاعة هذا الطرد سُلِّمت لزبون طلب آخر',
   // «فرق في المبلغ»: what the approval did with the answer a person gave, in that person's name.
   SETTLEMENT_DECISION_APPLIED: 'سُوّي الطلب برقم الشركة بعد بتّ مكتوب',
@@ -183,6 +186,8 @@ const METADATA_AR: Record<string, string> = {
   costNote: 'التكلفة المقدَّرة',
   // The addition after the order: what was added, how many, for how much, from which offer.
   product: 'المنتج', quantity: 'الكمية', total: 'المجموع', offerName: 'العرض', landingPage: 'الصفحة',
+  // The confirmed orders she was told about when she confirmed past «الزبون عنده طلب مؤكَّد بنفس المنتج» (a list of numbers).
+  twins: 'الطلبات المؤكَّدة المشابهة',
 };
 
 /**

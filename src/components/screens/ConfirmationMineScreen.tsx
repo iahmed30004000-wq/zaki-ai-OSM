@@ -22,6 +22,8 @@ import {
   type PostponeValue,
 } from './confirmation/ActionDialogs';
 import { raiseChangeRequest } from '@/components/orders/raiseChangeRequest';
+import { TwinConfirmedDialog } from '@/components/orders/TwinConfirmedDialog';
+import { confirmAnywayBody, rejectAsDuplicateBody, twinsFromRefusal, type ConfirmedTwinView } from '@/lib/twin-refusal';
 import { AssistantDialog } from './confirmation/AssistantDialog';
 import { RiAlertLine, RiCheckboxCircleLine, RiCloseCircleLine, RiCloseLine, RiLoader4Line, RiPencilLine, RiPhoneLockLine, RiSearchLine, RiShieldFlashLine, RiSparkling2Line, RiTimerLine } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
@@ -151,6 +153,8 @@ const RISK_LABEL: Record<string, { text: string; cls: string }> = {
 
 type DialogState =
   | { kind: 'postpone' | 'issue' | 'change' | 'reject' | 'assist'; order: OrderRow }
+  // The door held her yes back: this customer already has a confirmed order for the same product (`TWIN_CONFIRMED`).
+  | { kind: 'twin'; order: OrderRow; twins: ConfirmedTwinView[] }
   | null;
 
 /**
@@ -466,7 +470,16 @@ export function ConfirmationMineScreen() {
     setWatched(agent ? { id: agent.id, name: agent.name } : null);
   };
 
-  const act = async (id: string, fn: () => Promise<unknown>, after?: (fresh: MineResponse | null) => void) => {
+  /**
+   * `answered` is for a refusal that is not an error: it takes the thrown thing, does what that refusal means (a dialog, a question)
+   * and returns `true` — and then no red line is drawn. Anything it does not recognise returns `false` and is said as it always was.
+   */
+  const act = async (
+    id: string,
+    fn: () => Promise<unknown>,
+    after?: (fresh: MineResponse | null) => void,
+    answered?: (e: unknown) => boolean
+  ) => {
     // A colleague's desk is read, never worked: nothing below is drawn on it, and nothing runs from it either.
     if (watched) return;
     setBusyId(id);
@@ -481,7 +494,7 @@ export function ConfirmationMineScreen() {
       after?.(fresh);
       return result;
     } catch (e) {
-      setError(refusalText(e));
+      if (!answered?.(e)) setError(refusalText(e));
     } finally {
       setBusyId(null);
     }
@@ -528,8 +541,12 @@ export function ConfirmationMineScreen() {
    *
    * (It used to offer a link to the pull SCREEN from here; that screen is the
    * supervisor's now, and the panel needs no link.)
+   *
+   * AND IT CAN BE REFUSED WITH A QUESTION. «الزبون عنده طلب مؤكَّد بنفس المنتج» (`TWIN_CONFIRMED`) writes nothing and names the
+   * other orders; it is not a red line but a dialog (`TwinConfirmedDialog`), and `anyway` is the second try after she answered
+   * «طلب تاني فعلاً — أكّد» — the body of which is `twin-refusal.ts`'s, the one the order window sends too.
    */
-  const confirm = (order: OrderRow) =>
+  const confirm = (order: OrderRow, anyway = false) =>
     act(
       order.id,
       () =>
@@ -537,7 +554,7 @@ export function ConfirmationMineScreen() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           // Optimistic concurrency: the version the screen loaded.
-          body: JSON.stringify({ action: 'confirm', expectedVersion: order.version }),
+          body: JSON.stringify(anyway ? confirmAnywayBody(order.version) : { action: 'confirm', expectedVersion: order.version }),
         }),
       (fresh) =>
         toast.done(
@@ -545,8 +562,29 @@ export function ConfirmationMineScreen() {
           deskIsEmpty(fresh) ? 'لا شيء بقي على مكتبك. اسحب الطلب التالي من أعلى الشاشة.' : undefined,
           // The last one: what she confirmed is what the warehouse packs next — for whoever may open that desk.
           deskIsEmpty(fresh) ? openPreparationStep(mayOpen) : undefined
-        )
+        ),
+      (e) => {
+        const twins = twinsFromRefusal((e as { data?: unknown } | null)?.data);
+        if (!twins) return false;
+        setDialog({ kind: 'twin', order, twins });
+        return true;
+      }
     );
+
+  /** «رفضه كمكرر»: the same order sent again. The door's own reject with the reason that already exists, at the version the card was drawn at. */
+  const rejectAsDuplicate = (order: OrderRow) => {
+    setDialog(null);
+    void act(
+      order.id,
+      () =>
+        apiJson(`/api/orders/${order.id}/confirmation`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(rejectAsDuplicateBody(order.version)),
+        }),
+      () => toast.done(`رُفض الطلب ${order.orderNumber} كمكرر`)
+    );
+  };
 
   /**
    * THE GOVERNORATE, WRITTEN BY HER PRESS AND BY NOTHING ELSE.
@@ -1483,6 +1521,20 @@ export function ConfirmationMineScreen() {
           canLogContact={canLogContact}
           onClose={() => setDialog(null)}
           onSubmit={(value) => submitReject(dialog.order, value)}
+        />
+      )}
+      {dialog?.kind === 'twin' && (
+        <TwinConfirmedDialog
+          open
+          orderNumber={dialog.order.orderNumber}
+          twins={dialog.twins}
+          busy={busyId === dialog.order.id}
+          onRejectAsDuplicate={() => rejectAsDuplicate(dialog.order)}
+          onConfirmAnyway={() => {
+            setDialog(null);
+            void confirm(dialog.order, true);
+          }}
+          onBack={() => setDialog(null)}
         />
       )}
       {dialog?.kind === 'assist' && (
