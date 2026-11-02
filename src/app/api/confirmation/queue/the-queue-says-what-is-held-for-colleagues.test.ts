@@ -42,6 +42,7 @@ vi.mock('@/lib/confirmation-queue', async (orig) => ({
 }));
 
 import { GET } from './route';
+import { OPEN_CONFIRMATION } from '@/lib/confirmation-queue';
 
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000);
 const COUNTRY = { workHoursStart: '09:00', workHoursEnd: '17:00', weekendDays: [5, 6], timezone: 'Asia/Amman' };
@@ -103,6 +104,15 @@ describe('a supervisor reading the queue', () => {
     ]);
     // The raw ownership columns and the assignee's status are not sent.
     expect(Object.keys(body.orders[0]).sort()).not.toEqual(expect.arrayContaining(['assignedToId', 'claimedById', 'assignee']));
+  });
+
+  it('lists only open orders nobody holds and nobody ships — the queue\'s own open list, with no decided status in it (ORD-2026-1166)', async () => {
+    as('boss', ['confirmation.supervise']);
+    await GET();
+    const where = db.order.findMany.mock.calls[0][0].where;
+    expect(where).toMatchObject({ companyId: 'c1', storeId: 's1', claimedById: null, shippingStatus: 'NOT_READY' });
+    expect(where.confirmationStatus).toEqual({ in: OPEN_CONFIRMATION });
+    for (const decided of ['CONFIRMED', 'REJECTED', 'CANCELLED']) expect(where.confirmationStatus.in).not.toContain(decided);
   });
 });
 
