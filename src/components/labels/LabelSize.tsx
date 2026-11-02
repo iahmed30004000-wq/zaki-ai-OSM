@@ -193,26 +193,24 @@ export function LabelSizePicker({
   compact?: boolean;
   className?: string;
 }) {
-  const { stored, dims, setKey, setCustom } = useLabelSize();
+  const { stored, setKey, setCustom } = useLabelSize();
   const widthId = useId();
   const heightId = useId();
   // Leaving a box writes back what will print, so the box never shows a
   // number the printer is not going to get.
   const settle = () => setCustom(settled(stored.custom));
-  const box = (which: 'width' | 'height', id: string, className: string) => (
-    <input
-      id={id}
-      type="number"
-      inputMode="numeric"
-      min={CUSTOM_MIN_MM}
-      max={CUSTOM_MAX_MM}
-      step={1}
-      value={stored.custom[which]}
-      onChange={(e) => setCustom({ ...stored.custom, [which]: Number(e.target.value) })}
-      onBlur={settle}
-      className={className}
-    />
-  );
+  // What every custom box shares; each box is still written out below, so
+  // the screen census counts the four fields that are on the screen.
+  const box = (which: 'width' | 'height') => ({
+    type: 'number',
+    inputMode: 'numeric' as const,
+    min: CUSTOM_MIN_MM,
+    max: CUSTOM_MAX_MM,
+    step: 1,
+    value: stored.custom[which],
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => setCustom({ ...stored.custom, [which]: Number(e.target.value) }),
+    onBlur: settle,
+  });
   const narrow =
     stored.key === 'custom' && stored.custom.width < NARROW_BARCODE_MM ? (
       <p className="text-xs text-[var(--sys-warning)] mt-1">
@@ -247,12 +245,12 @@ export function LabelSizePicker({
             <label htmlFor={widthId} className="text-xs text-[var(--sys-muted)]">
               العرض (مم)
             </label>
-            {box('width', widthId, `${INPUT} w-16`)}
+            <input {...box('width')} id={widthId} className={`${INPUT} w-16`} />
             <span className="text-xs text-[var(--sys-muted)]">×</span>
             <label htmlFor={heightId} className="text-xs text-[var(--sys-muted)]">
               الطول (مم)
             </label>
-            {box('height', heightId, `${INPUT} w-16`)}
+            <input {...box('height')} id={heightId} className={`${INPUT} w-16`} />
           </span>
         )}
         {narrow}
@@ -270,13 +268,13 @@ export function LabelSizePicker({
             <label htmlFor={widthId} className="block text-xs text-[var(--sys-muted-foreground)] mb-1">
               العرض (مم)
             </label>
-            {box('width', widthId, INPUT)}
+            <input {...box('width')} id={widthId} className={INPUT} />
           </div>
           <div>
             <label htmlFor={heightId} className="block text-xs text-[var(--sys-muted-foreground)] mb-1">
               الطول (مم)
             </label>
-            {box('height', heightId, INPUT)}
+            <input {...box('height')} id={heightId} className={INPUT} />
           </div>
         </div>
       )}
