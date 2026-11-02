@@ -107,6 +107,13 @@ export function OrdersScreen() {
   const [toDate, setToDate] = useState('');
   const [lateOnly, setLateOnly] = useState(asked.get('late') === '1');
   const [regionId, setRegionId] = useState('all');
+  /*
+   * «ماسكه» — who holds the order right now. The names come from the server
+   * (`/api/orders/holders`), which answers only whoever sees every order; for
+   * anybody else it is `null` and the filter is not drawn at all.
+   */
+  const [holderId, setHolderId] = useState('all');
+  const [holders, setHolders] = useState<{ id: string; name: string; count: number }[] | null>(null);
   // The governorates of the selected country — the same list the order forms use.
   const { regions } = useRegions();
   /** Show everything the filter matches, not just this page. */
@@ -181,9 +188,10 @@ export function OrdersScreen() {
        * the request stayed behind, asked on every page load, for a list
        * nothing rendered.
        */
-      const [cRes, sRes] = await Promise.all([
+      const [cRes, sRes, hRes] = await Promise.all([
         apiFetch('/api/delivery-providers'),
         apiFetch('/api/orders/sources'),
+        apiFetch('/api/orders/holders'),
       ]);
       if (cRes.ok) {
         const cData = await cRes.json();
@@ -192,6 +200,11 @@ export function OrdersScreen() {
       if (sRes.ok) {
         const sData = await sRes.json();
         setSources(sData.sources ?? []);
+      }
+      // A refusal is the answer «not yours to filter by»: no list, no filter.
+      if (hRes.ok) {
+        const hData = await hRes.json();
+        setHolders(Array.isArray(hData.holders) ? hData.holders : null);
       }
     } catch (e) {
       console.error(e);
@@ -216,6 +229,7 @@ export function OrdersScreen() {
       if (toDate) params.set('to', toDate);
       if (lateOnly) params.set('lateDays', '10');
       if (regionId !== 'all') params.set('regionId', regionId);
+      if (holderId !== 'all') params.set('holderId', holderId);
       if (showAll) params.set('limit', '500');
 
       const res = await apiFetch(`/api/orders?${params.toString()}`);
@@ -244,7 +258,7 @@ export function OrdersScreen() {
       // Only the latest request may clear the shared loading flag
       if (seq === loadOrdersSeq.current) setLoading(false);
     }
-  }, [search, status, productId, source, courierId, regionId, fromDate, toDate, lateOnly, showAll]);
+  }, [search, status, productId, source, courierId, regionId, holderId, fromDate, toDate, lateOnly, showAll]);
 
   // Keep the ref in sync each render (after loadOrders exists)
   useEffect(() => { loadOrdersRef.current = loadOrders; }, [loadOrders]);
@@ -280,7 +294,8 @@ export function OrdersScreen() {
   const activeFilters =
     (search ? 1 : 0) + (status !== 'all' ? 1 : 0) + (source !== 'all' ? 1 : 0) +
     (productId !== 'all' ? 1 : 0) + (courierId !== 'all' ? 1 : 0) +
-    (fromDate ? 1 : 0) + (toDate ? 1 : 0) + (lateOnly ? 1 : 0) + (regionId !== 'all' ? 1 : 0);
+    (fromDate ? 1 : 0) + (toDate ? 1 : 0) + (lateOnly ? 1 : 0) + (regionId !== 'all' ? 1 : 0) +
+    (holderId !== 'all' ? 1 : 0);
 
   /**
    * THE FILTERS AS THEY ARE NOW — and this string IS the saved view.
@@ -296,6 +311,7 @@ export function OrdersScreen() {
     source,
     courierId,
     regionId,
+    holderId,
     from: fromDate,
     to: toDate,
     lateDays: lateOnly ? '10' : '',
@@ -331,6 +347,7 @@ export function OrdersScreen() {
     setToDate(v.to);
     setLateOnly(v.lateDays !== '');
     setRegionId(v.regionId);
+    setHolderId(v.holderId);
     setShowAll(false);
     setSelected(new Set());
   };
@@ -471,6 +488,7 @@ export function OrdersScreen() {
     const params = new URLSearchParams({ q: search, status, productId, source });
     if (courierId !== 'all') params.set('courierId', courierId);
     if (regionId !== 'all') params.set('regionId', regionId);
+    if (holderId !== 'all') params.set('holderId', holderId);
     if (fromDate) params.set('from', fromDate);
     if (toDate) params.set('to', toDate);
     if (lateOnly) params.set('lateDays', '10');
@@ -719,6 +737,27 @@ export function OrdersScreen() {
               onChange={(r) => { setFromDate(r.from); setToDate(r.to); }}
             />
           </div>
+
+          {/*
+            «ماسكه» — WHO HOLDS IT NOW, on a second row of the same grid, one cell wide.
+
+            Drawn only when the server sent the names (see `holders` above): the door answers whoever sees every
+            order and nobody else. A row of its own and not a seventh cell above: the six cells are one row on a
+            desk by design, and a seventh would change that row for everybody who never sees this filter.
+          */}
+          {holders && (
+            <div className={phone ? 'grid grid-cols-2 gap-2 px-3 pb-3' : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2 px-3 pb-3'}>
+              <Select value={holderId} onChange={(e) => setHolderId(e.target.value)} aria-label="فلتر ماسكه" className="text-xs py-2">
+                <option value="all">ماسكه: الكل</option>
+                <option value="none">ما حدا ماسكه</option>
+                {holders.map((h) => (
+                  <option key={h.id} value={h.id}>
+                    {h.name} ({h.count})
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
 
           {/* THE SAME SIX FILTERS, NOT SET AGAIN EVERY MORNING.
               «المتأخرة أكثر من عشرة أيام، أرامكس، إربد» is what somebody
@@ -1200,6 +1239,7 @@ export function OrdersScreen() {
           source,
           regionId,
           courierId,
+          holderId,
           from: fromDate,
           to: toDate,
           lateDays: lateOnly ? '10' : '',

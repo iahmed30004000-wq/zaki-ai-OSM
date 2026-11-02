@@ -385,7 +385,7 @@ describe('OPS-BATCH-2 · حقول مقاس البوليصة', () => {
     forgetLabelSize();
     render(<LabelSizePicker compact />);
     fireEvent.change(screen.getByLabelText('مقاس البوليصة'), { target: { value: 'custom' } });
-    for (const label of ['العرض بالمليمتر', 'الارتفاع بالمليمتر']) {
+    for (const label of ['العرض (مم)', 'الطول (مم)']) {
       expect(has(screen.getByLabelText(label), 'h-11', 'md:h-10')).toBe(true);
     }
   });

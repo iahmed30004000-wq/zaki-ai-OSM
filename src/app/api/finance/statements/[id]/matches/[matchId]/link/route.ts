@@ -7,7 +7,7 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { zodMessage } from '@/lib/zod-message';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
-import { LinkRefused, findLinkCandidates, linkLineToOrder } from '@/lib/hand-link';
+import { LinkRefused, findLinkCandidates, findLinkCandidatesByLinePhone, linkLineToOrder } from '@/lib/hand-link';
 
 /**
  * /api/finance/statements/:id/matches/:matchId/link — «اربطه بطلب».
@@ -15,6 +15,9 @@ import { LinkRefused, findLinkCandidates, linkLineToOrder } from '@/lib/hand-lin
  *   GET  ?q=…            the orders this line might be: by the customer's phone, our order number, or the
  *                        company's barcode. Nearest to the line's amount first, with the count of that number's
  *                        orders (how many are closed, how many open) at the top.
+ *   GET  ?by=phone       «بهاتف السطر»: the phone is read off the LINE'S OWN ROW (never from the request) and the
+ *                        orders of that phone still in flight with this statement's courier are listed — same
+ *                        permission, same store and courier scope, same tally of customers handed out.
  *   POST { orderId }     tie the line to that order, by hand.
  *
  * ── A SEPARATE DOOR, NOT THE MATCHER ──
@@ -48,10 +51,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const { user, companyId, storeId, country } = await requireContext();
     await requirePermission('settlement.review');
 
-    const query = new URL(req.url).searchParams.get('q') ?? '';
-    const found = await findLinkCandidates(db, {
-      companyId, storeId, statementId: id, matchId, query, minorUnit: country.minorUnit,
-    });
+    const sp = new URL(req.url).searchParams;
+    const found =
+      sp.get('by') === 'phone'
+        ? await findLinkCandidatesByLinePhone(db, {
+            companyId, storeId, statementId: id, matchId, minorUnit: country.minorUnit, countryCode: country.code,
+          })
+        : await findLinkCandidates(db, {
+            companyId, storeId, statementId: id, matchId, query: sp.get('q') ?? '', minorUnit: country.minorUnit,
+          });
 
     // Names and phones left the building; the tally is the person's, not this screen's.
     await noteCustomersHandedOut({

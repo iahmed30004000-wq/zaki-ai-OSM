@@ -3,6 +3,7 @@
 import { DispatchResult } from '@/components/ops/DispatchResult';
 import { DispatchInterrupted, dispatchInChunks, type DispatchProgress } from '@/components/ops/dispatchInChunks';
 import { OrderLink } from '@/components/orders/OrderLink';
+import { OrderRef } from '@/components/orders/OrderRef';
 import { PrepEditSheet, type PrepParcel } from '@/components/ops/PrepEditSheet';
 import React, { useCallback, useState } from 'react';
 import { apiFetch, apiJson } from '@/lib/api-client';
@@ -13,7 +14,7 @@ import { LabelSizePicker, useLabelSize } from '@/components/labels/LabelSize';
 import { BLOCKED_WAYBILLS, describeRefused, openWaybills, WaybillError } from '@/components/labels/openWaybills';
 import { useAsk, useConfirm, useTell } from '@/components/ui/Confirm';
 import { ScanSheet } from '@/components/scan/ScanButton';
-import { RiBarcodeLine, RiDownload2Line, RiEBike2Line, RiFileExcel2Line, RiLoader4Line, RiLockLine, RiPencilLine, RiPrinterLine, RiQrScan2Line, RiSendPlaneLine, RiTruckLine } from '@remixicon/react';
+import { RiBarcodeLine, RiDownload2Line, RiEBike2Line, RiFileExcel2Line, RiLoader4Line, RiLockLine, RiPencilLine, RiPrinterLine, RiQrScan2Line, RiRouteLine, RiSendPlaneLine, RiTruckLine } from '@remixicon/react';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 import { useIsPhone } from '@/hooks/useIsPhone';
@@ -52,6 +53,33 @@ interface Batch {
   _count: { orders: number };
   /** Parcels the courier has no city id for — said before the press, not after it. */
   courierCityGap?: CourierCityGap | null;
+  /** Parcels of the batch still at «مشحون» — what «خرج للتوصيل لكل الدفعة» would move. The server counts them; 0 or absent = no button. */
+  shippedCount?: number;
+}
+
+/** What the server answers to «خرج للتوصيل لكل الدفعة»: the counts, and the parcels that did not move with the reason of each. */
+interface OutSummary {
+  total: number;
+  moved: number;
+  skipped: number;
+  failed: number;
+  failedOrders: string[];
+  failures: { orderId: string; orderNumber: string; code: string; errorAr: string }[];
+}
+
+/** A number of orders, said the way Arabic counts them: one · two · three to ten in the plural · eleven and over in the singular. */
+function ordersWord(n: number): string {
+  if (n === 1) return 'طلب واحد';
+  if (n === 2) return 'طلبين';
+  return n >= 3 && n <= 10 ? `${n} طلبات` : `${n} طلب`;
+}
+
+/** The one line that opens the answer: what moved, what was left alone, what could not. */
+function outLine(s: OutSummary): string {
+  const parts = [s.moved > 0 ? `خرج للتوصيل ${ordersWord(s.moved)}` : 'ما تحرّك أي طلب'];
+  if (s.skipped > 0) parts.push(`تخطّينا ${s.skipped} (مو بحالة «مشحون»)`);
+  if (s.failed > 0) parts.push(`تعذّر ${s.failed}`);
+  return parts.join(' · ');
 }
 
 /**
@@ -91,6 +119,10 @@ export function ShippingBatchesScreen() {
   const mayBatches = useCan('ops.batches');
   const mayContacts = useCan('customers.view');
   const mayExport = mayBatches && mayContacts;
+  // «خرج للتوصيل لكل الدفعة» moves the status of orders, so the door asks the batches key AND the shipping-status key (and the
+  // scope of that key over each parcel): the button is drawn only for whoever holds both.
+  const mayMove = useCan('orders.change_status');
+  const mayDepart = mayBatches && mayMove;
   const [batches, setBatches] = useState<Batch[] | null>(null);
   const [total, setTotal] = useState(0);
   const [filter, setFilter] = useState<'all' | 'READY' | 'SHIPPED' | 'CLOSED'>('all');
@@ -101,6 +133,9 @@ export function ShippingBatchesScreen() {
   const [result, setResult] = useState<{ batchId: string; summary: DispatchSummary } | null>(null);
   // How far a send has got: a big batch goes a few orders at a time, and the button says so instead of spinning.
   const [progress, setProgress] = useState<({ batchId: string } & DispatchProgress) | null>(null);
+  // The answer to the last «خرج للتوصيل لكل الدفعة»: it stays on the card of its batch until the next press or a reload, because
+  // a parcel that did not move has to be read and acted on, which a toast gone in three seconds does not allow.
+  const [departed, setDeparted] = useState<{ batchId: string; summary: OutSummary } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const labelSize = useLabelSize();
   // Somebody phoned and ordered. There is nothing to confirm — the call WAS
@@ -142,6 +177,38 @@ export function ShippingBatchesScreen() {
       tone: 'danger',
     });
     if (ok) await setStatus(batch, 'SHIPPED');
+  }
+
+  /**
+   * «خرج للتوصيل لكل الدفعة» — THE DRIVER TOOK THE BATCH.
+   *
+   * A courier worked by hand has no feed to say so, and the status was a press per parcel on the order's own card: a batch of a
+   * hundred and sixty was a hundred and sixty presses (2/11). This is the one press. It asks first, in the words of the
+   * question, because «خرج للتوصيل» has no step back (from there a parcel is delivered, failed or returned); and it answers with
+   * the counts and the parcels that did not move, which stay on the card.
+   */
+  async function confirmOut(batch: Batch) {
+    const ok = await confirm({
+      title: 'السائق أخذ الدفعة فعلاً؟',
+      body: `بتتحدّث ${ordersWord(batch.shippedCount ?? 0)} لـ«خرج للتوصيل».`,
+      confirmLabel: 'إي، أخذها',
+    });
+    if (ok) await sendOut(batch);
+  }
+
+  async function sendOut(batch: Batch) {
+    setBusy(batch.id);
+    setDeparted(null);
+    try {
+      // A parcel is a few statements: a long batch is seconds, not the fifteen the default allows.
+      const summary = await apiJson<OutSummary>(`/api/shipping-batches/${batch.id}/out-for-delivery`, { method: 'POST', timeoutMs: 60_000 });
+      setDeparted({ batchId: batch.id, summary });
+      await load();
+    } catch (e) {
+      toast.failed(e instanceof Error ? e.message : 'تعذّر تحريك الدفعة');
+    } finally {
+      setBusy(null);
+    }
   }
 
   /**
@@ -661,6 +728,20 @@ export function ShippingBatchesScreen() {
                   إغلاق الشحنة — سُلّمت للشركة
                 </button>
               ) : null;
+            /* The stage after the handover: the driver took the batch. Drawn for whoever holds both keys, on any batch that has
+               parcels still at «مشحون», with how many on its face; the press asks once and answers with the counts (below). */
+            const outBtn =
+              mayDepart && (b.shippedCount ?? 0) > 0 ? (
+                <button
+                  onClick={() => void confirmOut(b)}
+                  disabled={busy === b.id}
+                  title="بعد ما ياخد السائق الدفعة: كل طرودها اللي حالتها «مشحون» بتصير «خرج للتوصيل» بضغطة وحدة"
+                  className={`min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] font-medium gap-1.5 disabled:opacity-50${wide}`}
+                >
+                  {busy === b.id ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiRouteLine className="w-4 h-4" />}
+                  خرج للتوصيل لكل الدفعة ({b.shippedCount})
+                </button>
+              ) : null;
             const closeBtn =
               b.status === 'SHIPPED' ? (
                 <button
@@ -778,6 +859,31 @@ export function ShippingBatchesScreen() {
                   />
                 )}
 
+                {departed?.batchId === b.id && (
+                  <div
+                    role="status"
+                    className={`rounded-lg border p-3 text-xs space-y-1 ${
+                      departed.summary.failed > 0
+                        ? 'border-[var(--sys-warning)]/60 bg-[var(--sys-warning-soft)] text-[var(--sys-warning)]'
+                        : departed.summary.moved > 0
+                          ? 'border-[var(--sys-success)]/60 bg-[var(--sys-success-soft)] text-[var(--sys-success)]'
+                          : 'border-[var(--sys-border)] bg-[var(--sys-surface)] text-[var(--sys-muted-foreground)]'
+                    }`}
+                  >
+                    <p className="font-bold">{outLine(departed.summary)}</p>
+                    {departed.summary.failures.length > 0 && (
+                      <ul className="space-y-0.5 font-normal text-[var(--sys-foreground)]">
+                        {departed.summary.failures.map((f) => (
+                          <li key={f.orderId}>
+                            {/* Through `OrderRef`, like every order number on a screen: the one that did not move opens and copies. */}
+                            <OrderRef id={f.orderId} number={f.orderNumber} className="font-bold" /> — {f.errorAr}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+
                 {b.status === 'READY' && b.courierCityGap && (
                   <p className="text-xs font-bold text-[var(--sys-warning)]">{courierCityGapLine(b.courierCityGap)}</p>
                 )}
@@ -791,10 +897,11 @@ export function ShippingBatchesScreen() {
                     and the line that says the courier is manual is a sentence, not a pill that looks pressable.
                   */
                   <div className="space-y-2 pt-1">
-                    {(dispatchBtn || shipBtn || closeBtn) && (
+                    {(dispatchBtn || shipBtn || outBtn || closeBtn) && (
                       <div className="flex flex-col gap-2">
                         {dispatchBtn}
                         {shipBtn}
+                        {outBtn}
                         {closeBtn}
                       </div>
                     )}
@@ -819,6 +926,7 @@ export function ShippingBatchesScreen() {
                     {dispatchBtn}
                     {manualNote}
                     {shipBtn}
+                    {outBtn}
                     {closeBtn}
                   </div>
                 )}

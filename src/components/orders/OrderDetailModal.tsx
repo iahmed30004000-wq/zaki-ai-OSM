@@ -67,6 +67,7 @@ interface OrderDetailModalProps {
     source?: string;
     regionId?: string;
     courierId?: string;
+    holderId?: string;
     from?: string;
     to?: string;
     lateDays?: string;

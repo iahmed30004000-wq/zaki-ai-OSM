@@ -51,8 +51,22 @@ export async function GET(req: Request) {
       batches: batches.map((b) => ({ id: b.id, status: b.status, deliveryProviderId: b.deliveryProviderId })),
     });
 
+    /*
+     * WHAT «خرج للتوصيل لكل الدفعة» WOULD MOVE (2/11): the parcels of each batch still at «مشحون». The button is drawn only
+     * for a batch that has some, and says how many on its face; the press counts them again, itself, when it is pressed.
+     * One grouped count for the whole page — never one query per batch.
+     */
+    const waiting = batches.length
+      ? await db.order.groupBy({
+          by: ['shippingBatchId'],
+          where: { companyId, storeId, shippingBatchId: { in: batches.map((b) => b.id) }, shippingStatus: 'SHIPPED' },
+          _count: { _all: true },
+        })
+      : [];
+    const shippedCounts = new Map<string, number>(waiting.map((w) => [w.shippingBatchId as string, w._count._all]));
+
     return NextResponse.json({
-      batches: batches.map((b) => ({ ...b, courierCityGap: gaps.get(b.id) ?? null })),
+      batches: batches.map((b) => ({ ...b, courierCityGap: gaps.get(b.id) ?? null, shippedCount: shippedCounts.get(b.id) ?? 0 })),
       pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
     });
   } catch (error) {

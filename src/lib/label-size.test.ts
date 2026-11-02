@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LABEL_SIZES } from './labels';
+import { dimsOf } from '@/components/labels/LabelSize';
 
 /**
  * Which millimetres go to the printer.
@@ -10,26 +11,10 @@ import { LABEL_SIZES } from './labels';
  * resolution below is now the single answer all three ask.
  */
 
-// The resolution itself, mirrored from the component so the rule can be
-// tested without a DOM. Any drift here is a failing test, not a silent
-// disagreement about paper.
-interface Dims {
-  width: number;
-  height: number;
-  sheetWidth?: number;
-  sheetHeight?: number;
-}
-
-function dimsOf(stored: { key: string; custom: { width: number; height: number } }): Dims {
-  const preset = LABEL_SIZES.find((s) => s.key === stored.key);
-  if (!preset) return stored.custom;
-  return {
-    width: preset.width,
-    height: preset.height,
-    sheetWidth: preset.sheet?.width,
-    sheetHeight: preset.sheet?.height,
-  };
-}
+// The resolution itself — the component's own function, no longer a copy
+// of it: a mirror passes while the real one drifts, which is how a
+// half-typed custom size reached the server without a test noticing.
+// It runs without a DOM.
 
 const custom = { width: 80, height: 120 };
 

@@ -71,7 +71,7 @@ flowchart TD
 | ٣. التجهيز | موظفة تجهيز `ops.prepare` | `/ops/preparation` · `GET /api/ops/preparation` | — | قراءة بس: المطلوب والمتاح والنقص لكل منتج |
 | ٤. الدفعة والبوليصة | شحن `ops.ship` · `ops.labels` · `ops.batches` | `/ops/shipments/new` · `POST /api/ops/shipments` · `/ops/batches` · `POST /api/ops/labels/printed` | بتتجمّد الأجرة ومبلغ التحصيل على الطلب (`deliveryFee` · `totalAmount`) وبيصير `settlementStatus: 'PENDING_COLLECTION'` (`src/app/api/ops/shipments/route.ts:389-398`) | لسا محجوز. الطباعة بتكتب `labelPrintedAt`: البضاعة «ملتزمة» وما بترجع متاحة (`lib/order-seal.ts`) |
 | ٥. التسليم للشركة | شحن `ops.batches` | «إغلاق الشحنة — سُلّمت للشركة» = `PATCH /api/shipping-batches/[id]` بـ`status: 'SHIPPED'` | الطلب بيصير `SHIPPED` و**مختوم**: الاسم والعنوان والكمية والخصم والأجرة ما بتتعدّل إلا بطلب تعديل (`sealMessage` بـ`lib/order-seal.ts`) | — |
-| ٦. الطريق | شركة الشحن نفسها | ويبهوك `POST /api/webhooks/couriers/[token]` ← `lib/couriers/apply-event.ts` · مهمة `sync-courier-status` (`src/lib/jobs/definitions/sync-courier-status.ts`) | — | — |
+| ٦. الطريق | شركة الشحن نفسها | مهمة `sync-courier-status` بتسحب الحالات من API الشركة (`src/lib/jobs/definitions/sync-courier-status.ts`) ← `lib/couriers/apply-event.ts`. الويب هوك ملغي بقرار المالك (2/11): `/api/webhooks/couriers/[token]` بيرد 410 بس | — | — |
 | ٧. الباب | متابعة/شحن `ops.deliver` | `/ops/tracking` · `POST /api/ops/tracking/deliver` (ALL · NONE · أسطر) | **ما بيكتب مال**؛ بيعرض «المتوقَّع تحصيله» بس (`doorMoney` بـ`lib/settlement.ts`) | تسليم كامل أو جزئي: `consumeOrderStock` بيحوّل الحجز لبيع من الدفعات (`lib/stock-consumption.ts`). رفض: ولا قطعة بترجع قبل عدّ المرتجعات (`POST /api/ops/returns` ← `restoreOrderStock`) |
 | ٨. كشف الشركة | مالية `settlement.upload` · `settlement.review` · `settlement.approve` | `/finance/collection` · `/finance/matching` · `PATCH /api/finance/statements/[id]` (اعتماد) | الاعتماد بيكتب حركة داخلة للمحفظة لكل إيصال (`recordMovement` بـ`lib/wallets.ts`)، وبيكتب `collectedAmount` و`SETTLED` على الطلبات | طلب لسا «بالطريق» والكشف بيقول انسلّم: الاعتماد بيستهلك مخزونه |
 | ٨ب. مندوب بلا كشف | مالية `finance.cashbox` | «استلمت منه» = `POST /api/ops/tracking/collect` | حركة داخلة للمحفظة + `SETTLED` | — |
@@ -165,10 +165,10 @@ flowchart TD
 
 #### 3. `/ops/batches` — دفعات الشحن
 - **ليش:** للدفعة ثلاث حالات بس: تُملأ (`READY`) ← سُلّمت للشركة (`SHIPPED`) ← تنتهي بعد التسوية (`CLOSED`). **مين:** `ops.batches`؛ التعديل جوّا الدفعة `ops.edit_in_batch` (ما بيُعطى لحدا افتراضياً)؛ البتّ بتعديل والطلب بالمستودع `ops.decide_changes`.
-- **الأزرار:** «طباعة بوالص الدفعة» · ملف الشركة CSV · «تحقّق من الطرود» (مسح) · «رحّل إلى الشركة واجلب الباركود» · «إغلاق الشحنة — سُلّمت للشركة» · «أنهِ الدفعة بعد التسوية» · قلم «عدّل» على الطرد.
-- **بالخلفية:** `GET/PATCH /api/shipping-batches/[id]` · `POST /api/ops/shipments/[id]/dispatch` · `GET /api/ops/labels/print` + `POST /api/ops/labels/printed` · التعديل `PATCH /api/orders/[id]` (منطق `lib/prep-edit.ts`).
+- **الأزرار:** «طباعة بوالص الدفعة» · ملف الشركة CSV · «تحقّق من الطرود» (مسح) · «رحّل إلى الشركة واجلب الباركود» · «إغلاق الشحنة — سُلّمت للشركة» · «خرج للتوصيل لكل الدفعة (N)» (لمن معه `ops.batches` و`orders.change_status`؛ N = الطرود اللي لسا «مشحون») · «أنهِ الدفعة بعد التسوية» · قلم «عدّل» على الطرد.
+- **بالخلفية:** `GET/PATCH /api/shipping-batches/[id]` · `POST /api/shipping-batches/[id]/out-for-delivery` (يحرّك كل «مشحون» لـ«خرج للتوصيل» بنفس ما يكتبه باب الطلب الواحد، ويعدّ الباقي «تخطّينا») · `POST /api/ops/shipments/[id]/dispatch` · `GET /api/ops/labels/print` + `POST /api/ops/labels/printed` · التعديل `PATCH /api/orders/[id]` (منطق `lib/prep-edit.ts`).
 - **رفض شائع:** `PENDING_CHANGES` (طرد عليه إلغاء أو تأجيل ما انجاوب) · `EMPTY_BATCH` · `MEMBERS_MOVED` «تغيّر طرد من الدفعة أثناء الضغط…» · `BATCH_NOT_READY` · `ORDER_SEALED` · `CHANGE_REQUEST_REQUIRED` · `PREP_REGION_FEE`.
-- **الكود:** `screens/ShippingBatchesScreen.tsx` · `src/app/api/shipping-batches/[id]/route.ts` · **سيناريوهات:** د-01…د-08 · د-16.
+- **الكود:** `screens/ShippingBatchesScreen.tsx` · `src/app/api/shipping-batches/[id]/route.ts` · `src/lib/batch-out-for-delivery.ts` · **سيناريوهات:** د-01…د-08 · د-16 · د-20.
 
 #### 4. `/ops/tracking` — متابعة الشحن
 - **ليش:** شو صار عند الباب. الحالة الافتراضية «قيد الشحن وبانتظار التحصيل». **مين:** `ops.track`؛ والأفعال كل واحد بمفتاحه: `ops.deliver` · `finance.cashbox` («استلمت منه») · `ops.write_off` · `ops.transfer`.
