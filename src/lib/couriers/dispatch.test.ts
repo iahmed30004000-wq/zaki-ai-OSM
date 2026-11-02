@@ -46,6 +46,19 @@ const order = (over: Record<string, unknown> = {}) => ({
 const createShipment = vi.fn();
 const input = { batchId: 'b1', companyId: 'c1', storeId: 's1', userId: 'u1' };
 
+/*
+ * A COURIER WITH NO LIST OF CITY IDS OF OURS.
+ *
+ * Basha has one (`couriers/places`): since 2/11 a governorate nobody typed a code for takes its city from it, so
+ * السويداء is no longer «a region with no id» for Basha. The tests below that are about exactly that case — an id typed
+ * nowhere, so the parcel is refused by name — use a second company on the same platform, whose ONLY source of ids is
+ * what was typed. The same rule is tried on Basha, with its real list, in `the-press-and-the-warning-agree.test.ts`.
+ */
+const batchOfACourierWithNoList = () => ({
+  id: 'b1', batchNumber: 'BATCH-2026-0001', status: 'READY',
+  provider: { id: 'p1', code: 'HALA', apiEnabled: true, companyId: 'c1', storeId: 's1' },
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   db.shippingBatch.findFirst.mockResolvedValue({
@@ -180,6 +193,7 @@ describe("addressing a parcel with the courier's own city id", () => {
   });
 
   it('leaves the adapter to ask when we hold no id for that region', async () => {
+    db.shippingBatch.findFirst.mockResolvedValue(batchOfACourierWithNoList());
     db.deliveryFee.findMany.mockResolvedValue([{ regionId: 'elsewhere', courierCityId: 566090 }]);
     db.order.findMany.mockResolvedValue([order({ regionId: 'r1' })]);
     await dispatchBatch(input);
@@ -430,14 +444,17 @@ describe('what happens to the claim when the call fails', () => {
 /**
  * A GOVERNORATE THE COURIER HAS NO ID FOR IS REFUSED BEFORE ANYTHING HAPPENS.
  *
- * السويداء is not in Basha's list. Its order used to be claimed, searched for
+ * السويداء was not in Basha's list. Its order used to be claimed, searched for
  * by name over the network, failed with an English error code and released.
  * Now: refused before the claim and before any call, with the governorate
  * named — and the rest of the batch still goes.
+ *
+ * (Its fixture is a courier with no list of ids of ours: see `batchOfACourierWithNoList`.)
  */
 describe('a region with no courier id', () => {
   beforeEach(() => {
     adapterFor.mockReturnValue({ code: 'LOGESTECHS', automated: true, needsCourierCityId: true, createShipment });
+    db.shippingBatch.findFirst.mockResolvedValue(batchOfACourierWithNoList());
     db.deliveryFee.findMany.mockResolvedValue([{ regionId: 'r-dam', courierCityId: 445053 }]);
   });
 
@@ -504,6 +521,7 @@ describe('the batch that failed thirty-five of thirty-six, and the second press'
 
   beforeEach(() => {
     adapterFor.mockReturnValue({ code: 'LOGESTECHS', automated: true, needsCourierCityId: true, createShipment });
+    db.shippingBatch.findFirst.mockResolvedValue(batchOfACourierWithNoList());
     db.deliveryFee.findMany.mockResolvedValue([{ regionId: 'r-dam', courierCityId: 445053 }]);
     // Every claim is won unless a test says otherwise (the claim is keyed by the order id in the first value).
     db.$queryRaw.mockImplementation(async (frags: string[], id: string) =>

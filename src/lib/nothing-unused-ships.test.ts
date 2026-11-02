@@ -438,6 +438,8 @@ const NO_CALLER_FOUND: Record<string, string> = {
   '/api/orders/[id]/call-logs': 'المسارُ باقٍ وتعليقُ OrderDetailModal نفسه يقول إنه عاش هناك ولم يرسمه شيء',
   '/api/moderators': 'صاحبُها الوحيد كان نموذجَ «طلب جديد»، وصار يقرأ /api/orders/form-options (PR-6: الأسماء فقط، ولمن عنده «إسناد الطلبات»). باقٍ كما هو — فيه مبيعاتُ كلِّ موظف وعمولتُه خلف users.view — وتضييقُه بـteam.monitor بندٌ لاحق لا يُنفَّذ هنا',
   '/api/orders/follow-ups': 'مسكَّر (410) — طوابيرُ المتابعةِ صارت بشاشات التأكيد، والبابُ كان بلا صلاحية ويقرّر بأسماء الأدوار',
+  '/api/webhooks/couriers/[token]':
+    'مسكَّر (410) — الويب هوك أُلغي بطلب المالك (2/11) والحالاتُ تُسحب من API الشركة؛ يبقى العنوانُ ليرُدَّ «أُلغي» على شركةٍ ما زالت تُرسل إليه، ولا ملفَّ عندنا يستدعيه',
   /*
    * `/api/orders/confirmation/performance` — STILL UNCALLED, BUT NO LONGER
    * «الطريقُ الأقدمُ لنفسِ الأرقام».
@@ -629,7 +631,6 @@ const READ_ONLY_BY_TESTS: Record<string, string[]> = {
   'src/lib/conversions/types.ts': ['isTrigger', 'isValueSource'],
   'src/lib/couriers/words.ts': ['COURIER_CODES_READ'],
   'src/lib/couriers/index.ts': ['registerAdapter'],
-  'src/lib/couriers/webhook-token.ts': ['tokenHashEquals'],
   'src/lib/customer-filters.ts': ['segmentMatches'],
   'src/lib/employee-shift.ts': ['hasOwnShift'],
   'src/lib/exposure.ts': ['CUSTOMER_FIELDS'],

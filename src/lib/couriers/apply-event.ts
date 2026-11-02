@@ -6,12 +6,16 @@ import { isValidShippingTransition, SHIPPING_STATUS_AR, STATUS_TIMESTAMP } from 
 /**
  * ONE PLACE WHERE A COURIER'S WORD CHANGES AN ORDER.
  *
- * Two things now speak for a courier: the polling job, which asks every two
- * minutes, and the webhook, which is told. They must not disagree. A second
- * copy of these checks would drift — and the thing that drifts here is the
- * rule that stops a courier feed from declaring money collected.
+ * The polling job, which asks the courier's API every two minutes, is what
+ * speaks for a courier. (A webhook used to speak for it too, and the two had
+ * to agree; the owner cancelled the webhook on 2/11 — the `WEBHOOK` source
+ * stays in the type because older activity rows and the timeline carry it.)
+ * A second copy of these checks would still drift — and the thing that
+ * drifts here is the rule that stops a courier feed from declaring money
+ * collected.
  *
- * So both call this, and neither writes `shippingStatus` itself.
+ * So whatever speaks for a courier calls this, and none of it writes
+ * `shippingStatus` itself.
  *
  * The order of the guards matters:
  *   1. Can a machine assert this at all? DELIVERED, RETURNED,
@@ -20,7 +24,7 @@ import { isValidShippingTransition, SHIPPING_STATUS_AR, STATUS_TIMESTAMP } from 
  *      FAILED_DELIVERY waits with them (see NOTE_ONLY below). Their word is
  *      kept as a line on the order's timeline, never as a status.
  *   2. Is it news? The same status arriving twice is not a change, and a
- *      webhook retried three times must not write three activity rows.
+ *      feed retried three times must not write three activity rows.
  *   3. Is the move legal? The transition machine decides, never the feed.
  *
  * AND A FEED NEVER BLOCKS, BUT IT TELLS. A blocking change request stops OUR

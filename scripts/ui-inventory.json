@@ -1699,16 +1699,6 @@
     "links": 0,
     "tabs": 0
   },
-  "src/components/settings/CourierWebhook.tsx": {
-    "buttons": 3,
-    "inputs": 0,
-    "columns": 0,
-    "cards": 0,
-    "modals": 0,
-    "icons": 6,
-    "links": 0,
-    "tabs": 0
-  },
   "src/components/settings/CustomConversionsCard.tsx": {
     "buttons": 11,
     "inputs": 8,
