@@ -202,6 +202,16 @@ describe.each(DAILY)('DAILY — $name', ({ call }) => {
   });
 });
 
+describe('the apps catalogue asks the same key to configure Telegram', () => {
+  it('«تلجرام» in the app store greys out for the day\'s key and opens for the connection key', async () => {
+    const { builtInApps } = await import('@/lib/apps/registry');
+    const app = builtInApps(db as never).find((a) => a.code === 'TELEGRAM')!;
+    expect(app.settingsPath).toBe('/settings/links');
+    expect(can(await person(DAILY_HOLDER), app.permission)).toBe(false);
+    expect(can(await person(CONNECT_HOLDER), app.permission)).toBe(true);
+  });
+});
+
 describe('the bot\'s state is read on telegram.view, and no answer carries a secret', () => {
   it('GET /api/telegram/status answers who only sees the orders — the orders screen\'s «البوت متصل» stays', async () => {
     await as(['telegram.view']);
