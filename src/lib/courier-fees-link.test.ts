@@ -88,10 +88,13 @@ describe('a courier and its fees are one screen', () => {
    * the only way to give a courier its API login was to not have one. The
    * panel is where they live now, and an import with no render is exactly
    * how that came back once already.
+   *
+   * (The webhook panel was removed on 2/11 — the owner cancelled the webhook,
+   * see `the-couriers-webhook-is-cancelled.test.ts` — so one panel is left.)
    */
-  it('and the account panels are rendered, not merely imported', () => {
+  it('and the account panel is rendered, not merely imported', () => {
     const src = stripComments(repoFile('src/components/screens/CouriersScreen.tsx'));
-    for (const panel of ['CourierCredentials', 'CourierWebhook']) {
+    for (const panel of ['CourierCredentials']) {
       const rendered = new RegExp(`<${panel}\\s+providerId=`);
       expect(src, `${panel} مستورد ولا يُعرَض`).toMatch(rendered);
     }

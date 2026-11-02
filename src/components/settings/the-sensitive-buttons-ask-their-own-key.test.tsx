@@ -60,7 +60,6 @@ import { JobsScreen } from '@/components/screens/JobsScreen';
 import { AiSettingsScreen } from '@/components/screens/AiSettingsScreen';
 import { AssistantsTable } from '@/components/screens/ai/AssistantsTable';
 import { CourierCredentials } from './CourierCredentials';
-import { CourierWebhook } from './CourierWebhook';
 import { PostOrderOfferCard } from './PostOrderOfferCard';
 import { PerformanceSettingsCard } from './PerformanceSettingsCard';
 import { PenaltyRulesCard } from './PenaltyRulesCard';
@@ -144,16 +143,8 @@ describe('a courier’s account', () => {
     expect(withIt).toEqual({ test: true, enter: true, remove: true });
   });
 
-  it('and the link the courier pushes to: minting and stopping it', async () => {
-    api.answers['/api/settings/couriers/p1/webhook'] = { configured: true, setAt: null, lastSeenAt: null, polled: false };
-    const { without, withIt } = await bothWays(
-      () => render(<CourierWebhook providerId="p1" />),
-      async () => { await screen.findByText('رابط استقبال الحالات'); },
-      () => ({ mint: has('رابط جديد'), stop: has('أوقف الرابط') }),
-    );
-    expect(without).toEqual({ mint: false, stop: false });
-    expect(withIt).toEqual({ mint: true, stop: true });
-  });
+  // (The link the courier pushed statuses to had its own case here: minting and stopping it. The owner cancelled that
+  // webhook on 2/11 and the card is gone — see `the-couriers-webhook-is-cancelled.test.ts`.)
 });
 
 describe('the cards on «إعدادات النظام»', () => {
@@ -308,7 +299,6 @@ describe('every sensitive screen asks, in its own source', () => {
     ['src/components/screens/AiSettingsScreen.tsx', 'settings.manage'],
     ['src/components/screens/ai/AssistantsTable.tsx', 'settings.manage'],
     ['src/components/settings/CourierCredentials.tsx', 'settings.manage'],
-    ['src/components/settings/CourierWebhook.tsx', 'settings.manage'],
     ['src/components/settings/PostOrderOfferCard.tsx', 'offers.rules'],
     ['src/components/settings/PerformanceSettingsCard.tsx', 'team.settings'],
     ['src/components/settings/PenaltyRulesCard.tsx', 'penalties.rules'],

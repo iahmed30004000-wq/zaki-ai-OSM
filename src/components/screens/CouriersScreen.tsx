@@ -5,7 +5,6 @@ import { useSearchParams } from 'next/navigation';
 import { useConfirm } from '@/components/ui/Confirm';
 import { apiJson } from '@/lib/api-client';
 import { CourierCredentials } from '@/components/settings/CourierCredentials';
-import { CourierWebhook } from '@/components/settings/CourierWebhook';
 import { CourierFees } from '@/components/settings/CourierFees';
 import { ContactButtons } from '@/components/orders/ContactButtons';
 import { COURIER_PLATFORMS } from '@/lib/couriers';
@@ -36,9 +35,13 @@ import { useLiveRefresh } from '@/hooks/useLiveRefresh';
  * «٨ من ١٢ محافظة» is both the answer and the way in.
  *
  * AND THE PANEL IS WHY THE ACCOUNT WORKS AGAIN. «الحساب والتكامل» was a
- * button that set a piece of state nothing read: the credentials and webhook
- * panels were imported here and rendered nowhere, so the only way to give a
- * courier its API login was to not have one. They are a tab now.
+ * button that set a piece of state nothing read: the credentials panel was
+ * imported here and rendered nowhere, so the only way to give a courier its
+ * API login was to not have one. It is a tab now.
+ *
+ * (A second card sat beside it, the link a courier posted statuses to. The
+ * owner cancelled that webhook on 2/11: statuses come from the courier's own
+ * API, so the card, its routes and its token are gone.)
  */
 
 interface Courier {
@@ -568,10 +571,7 @@ export function CouriersScreen() {
             {opened.kind === 'AGENT' || tab === 'fees' ? (
               <CourierFees courierId={opened.id} onChanged={load} />
             ) : (
-              <div className="space-y-4">
-                <CourierCredentials providerId={opened.id} />
-                <CourierWebhook providerId={opened.id} />
-              </div>
+              <CourierCredentials providerId={opened.id} />
             )}
           </div>
         </Modal>
