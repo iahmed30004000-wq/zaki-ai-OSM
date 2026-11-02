@@ -161,6 +161,21 @@ export function ordersWhere(params: URLSearchParams, input: OrdersWhereInput = {
   if (source && source !== 'all') where.source = source;
 
   /*
+   * «ماسكه» — WHO HOLDS IT RIGHT NOW (`claimedById`); 'none' finds the ones nobody holds.
+   *
+   * An extra clause in the AND list and never a top-level key: a queue that
+   * names its own holder («my_orders» spreads `claimedById: me` over the where)
+   * would otherwise overwrite this one instead of narrowing with it. It only
+   * ever narrows: every caller ANDs the person's own envelope over the result,
+   * so an agent who sends a colleague's id gets the part of her own list that
+   * colleague holds — never a row her envelope leaves out.
+   */
+  const holderId = params.get('holderId')?.trim();
+  if (holderId && holderId !== 'all') {
+    and.push({ claimedById: holderId === 'none' ? null : holderId });
+  }
+
+  /*
    * «Late» is measured from `shippedAt`, never `createdAt`: from creation,
    * an order that waited a week to be confirmed and shipped yesterday
    * showed as eight days late and the courier was blamed for the
@@ -204,6 +219,7 @@ export const ORDER_FILTER_PARAMS = [
   'courierId',
   'source',
   'lateDays',
+  'holderId',
 ] as const;
 
 /**
@@ -237,6 +253,8 @@ export interface OrderFilterValues {
   source: string;
   courierId: string;
   regionId: string;
+  /** «ماسكه» — who holds it now: a person's id, or `none`. */
+  holderId: string;
   /** `YYYY-MM-DD`, inclusive. Read by the routes, not by the builder. */
   from: string;
   to: string;
@@ -252,6 +270,7 @@ export const EMPTY_ORDER_FILTERS: OrderFilterValues = {
   source: 'all',
   courierId: 'all',
   regionId: 'all',
+  holderId: 'all',
   from: '',
   to: '',
   lateDays: '',
