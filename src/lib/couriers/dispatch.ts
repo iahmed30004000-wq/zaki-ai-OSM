@@ -44,7 +44,12 @@ export interface DispatchOutcome {
   ok: boolean;
   /** The courier's barcode — our tracking number from now on. */
   trackingNumber?: string;
-  skipped?: 'ALREADY_SENT' | 'NOT_AUTOMATED' | 'NO_PROVIDER' | 'SEND_IN_FLIGHT' | 'NO_COURIER_CITY' | 'LEFT_THE_BATCH';
+  skipped?:
+    | 'ALREADY_SENT' | 'NOT_AUTOMATED' | 'NO_PROVIDER' | 'SEND_IN_FLIGHT' | 'NO_COURIER_CITY' | 'LEFT_THE_BATCH'
+    /** The courier account has no address to collect from: nothing of the batch was sent. */
+    | 'NO_ORIGIN_ADDRESS'
+    /** This order has no address to deliver to. */
+    | 'NO_ADDRESS';
   /** With NO_COURIER_CITY: the governorate the courier has no id for yet. */
   regionName?: string | null;
   /**
@@ -279,6 +284,30 @@ export async function dispatchBatch(input: {
     orderBy: { orderNumber: 'asc' },
   });
 
+  /*
+   * NO ADDRESS TO COLLECT FROM: THE WHOLE BATCH STAYS HOME, BEFORE ANY CLAIM AND ANY CALL.
+   *
+   * BATCH-2026-0006 (2/11): 131 orders, 131 refusals, every one «Invalid Parameter 'model.addressLine1' null» — the
+   * saved account had no «عنوان الانطلاق» and the courier refuses every parcel without it. That is one fact about the
+   * account, not 131 facts about orders, so it is said once per order with one sentence and nobody's server is asked.
+   * No claim is written: there is nothing to release afterwards, and the press works again the moment the address is.
+   */
+  if (adapter.automated && adapter.originAddressMissing === true) {
+    const outcomes: DispatchOutcome[] = orders.map((o) => ({
+      orderId: o.id, orderNumber: o.orderNumber, ok: false, skipped: 'NO_ORIGIN_ADDRESS',
+    }));
+    const summary: DispatchSummary = { sent: 0, skipped: outcomes.length, failed: 0, outcomes };
+    await logAudit({
+      companyId: input.companyId,
+      userId: input.userId,
+      action: 'SHIPMENT_BATCH_DISPATCHED',
+      entity: 'ShippingBatch',
+      entityId: batch.id,
+      newData: { batchNumber: batch.batchNumber, adapter: adapter.code, sent: 0, skipped: summary.skipped, failed: 0, reason: 'NO_ORIGIN_ADDRESS' },
+    });
+    return summary;
+  }
+
   // One read for the whole batch rather than one per parcel: the ids TYPED for this courier. What its own list says for
   // a governorate nobody typed is looked up per parcel, from memory (`courierCityIdFor`) — it needs no fee row.
   const typedCityIds = storedCityIds(
@@ -340,6 +369,17 @@ export async function dispatchBatch(input: {
     }
 
     /*
+     * NO ADDRESS TO DELIVER TO: refused here, before the claim and before any call. The courier reads an empty address
+     * as null and refuses in English; this says which order, and the rest of the batch goes on. The parcel's own
+     * address first, then the customer's — a blank or spaces-only one counts as none.
+     */
+    const address = order.deliveryAddress?.trim() || order.customer?.address?.trim() || '';
+    if (!address) {
+      outcomes.push({ orderId: order.id, orderNumber: order.orderNumber, ok: false, skipped: 'NO_ADDRESS' });
+      continue;
+    }
+
+    /*
      * From here on a parcel may come into existence, so the row is taken
      * first. Everything above is a decision we can make from our own data;
      * this is the last moment before somebody else's system is involved.
@@ -379,7 +419,8 @@ export async function dispatchBatch(input: {
             ? formatPhoneNumber(order.customer.altPhone, order.store?.country?.code)
             : null,
           // This parcel's address before the customer's: a returning customer who typed a new street gets it there.
-          address: order.deliveryAddress ?? order.customer?.address ?? '',
+          // (A blank one never reaches here: `NO_ADDRESS` above.)
+          address,
           regionName: order.region?.name ?? null,
         },
         pieces: piecesInParcel(order),

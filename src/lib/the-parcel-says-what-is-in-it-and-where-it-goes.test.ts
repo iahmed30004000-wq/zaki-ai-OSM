@@ -131,7 +131,9 @@ describe('ط47 — the waybill takes the parcel\'s own address first', () => {
     const { repoFile } = await import('./guard-source');
     expect(Object.keys(WAYBILL_SELECT)).toContain('deliveryAddress');
     expect(repoFile('src/app/api/ops/labels/print/route.ts')).toContain('o.deliveryAddress ?? o.customer.address');
-    expect(repoFile('src/lib/couriers/dispatch.ts')).toContain('order.deliveryAddress ?? order.customer?.address');
+    // Trimmed since 2/11, so a blank parcel address falls back too (and a blank of both is `NO_ADDRESS`, refused before the
+    // claim): the order of the two is what this holds, and the dispatch tests hold it by behaviour.
+    expect(repoFile('src/lib/couriers/dispatch.ts')).toContain('order.deliveryAddress?.trim() || order.customer?.address?.trim()');
   });
 
   it('and a staff correction of the address is written on the order, so it is not hidden behind the typed one', async () => {

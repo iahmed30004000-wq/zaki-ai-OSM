@@ -224,6 +224,8 @@ describe('the adapter the registry builds for a stored account', () => {
     process.env.APP_ENCRYPTION_KEY = 'd'.repeat(64);
     const apiCredentials = encryptJson({
       email: EMAIL, password: PASSWORD, companyId: 744, originCityId: 445053, senderName: 'متجر', senderPhone: '0999000000',
+      // Since 2/11 an account with no «عنوان الانطلاق» sends nothing at all — this one is about the company id.
+      originAddress: 'المستودع',
     });
     const { seen, fetchImpl } = recorder([json({ error: 'رقم تعريف الشركة غير صحيح' }, 400)]);
     vi.stubGlobal('fetch', fetchImpl);

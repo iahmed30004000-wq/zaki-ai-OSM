@@ -118,6 +118,14 @@ export interface CourierAdapter {
    * Dispatch refuses such an order BEFORE claiming it, with the region named.
    */
   readonly needsCourierCityId?: boolean;
+  /**
+   * True when the account has no address to collect parcels FROM, and the courier refuses every parcel without one.
+   *
+   * LogesTechs answered every order of a 131-order batch with «Invalid Parameter 'model.addressLine1' null» (2/11): the
+   * saved account had no «عنوان الانطلاق», and their server reads an empty string as null. Dispatch reads this BEFORE any
+   * claim and any call and sends nothing — one sentence for the whole batch instead of 131 refusals from their server.
+   */
+  readonly originAddressMissing?: boolean;
 
   createShipment(req: CourierShipmentRequest): Promise<CourierShipmentResult>;
   fetchEvents(trackingNumbers: string[]): Promise<CourierEvent[]>;
