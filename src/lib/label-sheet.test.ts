@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  barcodeSvg, labelsPerPage, renderLabelSheet, storeLogoForPrint, tierFor,
+  barcodeSvg, fitFor, labelsPerPage, renderLabelSheet, storeLogoForPrint, tierFor,
   PRINT_CHUNK, QUIET_MODULES, type LabelView, type SheetOptions,
 } from './label-sheet';
 import { code128Bars } from './labels';
@@ -69,6 +69,12 @@ describe('size decides what fits', () => {
     expect(tierFor({ width: 105, height: 148 })).toBe('standard');
     expect(tierFor({ width: 210, height: 148 })).toBe('large');
     expect(tierFor({ width: 210, height: 297 })).toBe('large');
+    // Large needs BOTH sides big. 100×200 was «large» (more than 160 tall)
+    // with a 100 mm wide label; 150×100 was and stays compact (100 tall).
+    expect(tierFor({ width: 100, height: 200 })).toBe('standard');
+    expect(tierFor({ width: 150, height: 100 })).toBe('compact');
+    expect(tierFor({ width: 140, height: 140 })).toBe('large');
+    expect(tierFor({ width: 139, height: 300 })).toBe('standard');
   });
 
   it('keeps the barcode and the COD on the smallest label, and drops the QR and the item list', () => {
@@ -89,6 +95,110 @@ describe('size decides what fits', () => {
     // Header, COD, codes and footer are auto rows; the recipient and the
     // contents are the rows allowed to shrink.
     expect(sheet([label(0)])).toContain('grid-template-rows: auto minmax(0, max-content) minmax(0, 1fr) auto auto auto');
+  });
+});
+
+/**
+ * THE WAYBILL FOLLOWS ITS PAPER.
+ *
+ * «بدي البوليصة تتكيف تلقائيا ع الحجم الي بحطو». Four fixed steps printed
+ * A4 like A5 — small type in a big blank — and a 100 mm wide label 200
+ * tall in the A4 step. Now one number, from the millimetres, draws the
+ * type, the QR, the barcode and the padding.
+ */
+describe('the waybill follows its paper', () => {
+  // [name, width, height, expected fit, tier]
+  const SIZES: [string, number, number, number | null, string][] = [
+    ['50×75', 50, 75, 0.7, 'tiny'],
+    ['75×100', 75, 100, 0.7, 'compact'],
+    ['100×100', 100, 100, 0.7, 'compact'],
+    ['100×150', 100, 150, 1, 'standard'],
+    ['150×100', 150, 100, 0.7, 'compact'],
+    ['100×200', 100, 200, 1, 'standard'],
+    ['A6', 105, 148, 0.99, 'standard'],
+    ['A5 بالعرض', 210, 148, 0.99, 'large'],
+    ['A4', 210, 297, 1.98, 'large'],
+  ];
+
+  it.each(SIZES)('%s: fit, QR, barcode and padding come from the millimetres', (_n, width, height, fit, tier) => {
+    const f = fitFor({ width, height });
+    expect(f.tier).toBe(tier);
+    expect(f.fit).toBe(fit);
+    expect(f.qr).toBeCloseTo(tier === 'tiny' ? 0 : 22 * fit!, 1);
+    expect(f.bar).toBeCloseTo(14 * fit!, 1);
+    expect(f.pad).toBeCloseTo(3.5 * fit!, 1);
+  });
+
+  it.each(SIZES)('%s: every row that never gives way fits the height inside the padding', (_n, width, height) => {
+    const f = fitFor({ width, height });
+    expect(f.reservedMm).toBeGreaterThan(0);
+    expect(f.reservedMm).toBeLessThanOrEqual(f.usableMm);
+    // And with every line it may print — place, items, the note — too.
+    expect(f.fullMm).toBeLessThanOrEqual(f.usableMm);
+  });
+
+  it('measures what the stylesheet draws — 100×150 reserves about 65 mm of its 142', () => {
+    const f = fitFor(thermal);
+    expect(f.usableMm).toBeCloseTo(150 - 7 - 2 * (25.4 / 96), 2);
+    expect(f.reservedMm).toBeCloseTo(65.5, 0);
+    expect(f.fullMm).toBeCloseTo(107.2, 0);
+  });
+
+  it('grows with the paper and shrinks with it — A4 is drawn twice the size of 100×150', () => {
+    const a4 = fitFor({ width: 210, height: 297 });
+    const a6 = fitFor({ width: 105, height: 148 });
+    const square = fitFor({ width: 100, height: 100 });
+    expect(a4.fit).toBeGreaterThan(a6.fit);
+    expect(a6.fit).toBeGreaterThan(square.fit);
+    expect(a4.qr).toBeGreaterThan(a6.qr);
+    expect(a6.qr).toBeGreaterThan(square.qr);
+    expect(a4.bar).toBeGreaterThan(a6.bar);
+    expect(a6.bar).toBeGreaterThan(square.bar);
+    expect(a4.fit / fitFor(thermal).fit).toBeCloseTo(1.98, 2);
+  });
+
+  it('is held between 0.7 and 2.2 — the smallest label stays readable, the largest bounded', () => {
+    expect(fitFor({ width: 40, height: 40 }).fit).toBe(0.7);
+    expect(fitFor({ width: 300, height: 300 }).fit).toBe(2);
+    expect(fitFor({ width: 500, height: 500 }).fit).toBe(2.2);
+  });
+
+  it('writes the numbers into the sheet — A4', () => {
+    const html = sheet([label(0)], { width: 210, height: 297 });
+    expect(html).toContain('--s: 1.98; --qr: 43.56mm;');
+    expect(html).toContain('padding: 6.93mm;');
+    expect(html).toContain('height="27.72mm"');
+  });
+
+  it('and the smallest — 50×75 has no QR and a short barcode', () => {
+    const html = sheet([label(0)], { width: 50, height: 75 });
+    expect(html).toContain('--s: 0.7; --qr: 0mm;');
+    expect(html).toContain('height="9.8mm"');
+    expect(html).not.toContain('<figure class="qr">');
+  });
+
+  it('draws the type from the same numbers it measures with', () => {
+    const html = sheet([label(0)]);
+    expect(html).toContain('.name { font-size: calc(12.5pt * var(--s))');
+    expect(html).toContain('.cod strong { font-size: calc(13pt * var(--s))');
+    expect(html).toContain('gap: calc(1.4mm * var(--s))');
+  });
+
+  it('draws the QR graphic at the measured size, not a fixed one', () => {
+    // `--qr` carries fitFor's number; the rules that size the QR must read
+    // it, or A4 prints a 22 mm QR in a 43 mm slot and 100×100 one that overflows.
+    const html = sheet([label(0)], { width: 210, height: 297 });
+    expect(html).toContain('.qr svg { display: block; width: var(--qr); height: var(--qr); }');
+    expect(html).toContain('.qr { flex-shrink: 0; width: var(--qr); }');
+  });
+
+  it('a label taller than the reference gets the extra height as item lines, up to twelve', () => {
+    const items = Array.from({ length: 14 }, (_, i) => ({ name: `صنف ${i}`, qty: 1 }));
+    expect(sheet([label(0, { items })], thermal)).toContain('و10 أصناف أخرى');
+    expect(sheet([label(0, { items })], { width: 100, height: 200 })).toContain('و2 أصناف أخرى');
+    expect(fitFor({ width: 100, height: 300 }).items).toBe(12);
+    // The same paper lying on its side is not taller: no extra lines.
+    expect(fitFor({ width: 150, height: 100 }).items).toBe(2);
   });
 });
 
