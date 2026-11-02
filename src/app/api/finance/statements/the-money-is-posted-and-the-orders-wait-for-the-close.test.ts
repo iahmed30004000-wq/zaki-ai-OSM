@@ -118,7 +118,11 @@ const { db, requireContext, requirePermission, logAudit, recordMovement, receipt
           return o;
         }),
       },
-      orderActivity: { create: vi.fn(async ({ data }: { data: Record<string, any> }) => log('orderActivity.create', data)) },
+      orderActivity: {
+        create: vi.fn(async ({ data }: { data: Record<string, any> }) => log('orderActivity.create', data)),
+        findMany: vi.fn(async () => []),
+      },
+      orderChangeRequest: { findMany: vi.fn(async () => []) },
       customer: { update: vi.fn(async (args: unknown) => log('customer.update', args)) },
       // A transaction that ROLLS BACK: the stamps, the orders, the penalties and the wallet are what they were.
       $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => {
@@ -182,7 +186,8 @@ vi.mock('@/lib/commission', async (orig) => ({
 }));
 vi.mock('@/lib/stock-consumption', () => ({ consumeOrderStock: (...a: unknown[]) => consumeOrderStock(...(a as [unknown, unknown])) }));
 
-import { PATCH } from './[id]/route';
+import { GET, PATCH } from './[id]/route';
+import { closeRowsSelect } from '@/lib/statement-close';
 import { POST as CLOSE } from './[id]/close/route';
 
 const params = () => ({ params: Promise.resolve({ id: state.identity.id }) });
@@ -471,6 +476,8 @@ describe('the differential: approve with a line open, answer it, close — the s
 describe('a statement approved by the old code during the Redeploy — money posted, orders settled, no close stamped', () => {
   beforeEach(() => {
     state.statement = { approvedAt: new Date('2026-11-02T08:00:00Z'), matchingClosedAt: null, status: 'APPROVED', fileHash: 'ab'.repeat(32) };
+    state.rows = [row('m-o1', 'o1')];
+    state.orders.set('o1', order('o1'));
     state.orders.set('o1', order('o1', { settlementStatus: 'SETTLED' }));
     state.rows = [row('m-o1', 'o1')];
   });
@@ -545,5 +552,74 @@ describe('the close cannot write a wallet movement', () => {
     expect(s.indexOf("data: {\n          status: 'APPROVED'")).toBeLessThan(at[0]);
     // …and the settling, which writes no money, comes after it.
     expect(at[0]).toBeLessThan(s.indexOf('await settleStatement('));
+  });
+});
+
+/* ───────────────────────────── pinned by the adversarial review (RV809–RV811) ───────────────────────────── */
+
+describe('RV809 — «إغلاق المطابقة» reads the statement of THIS store only, at both of its reads', () => {
+  const reads = () => (db.courierStatement.findFirst.mock.calls as unknown as [{ where: Record<string, unknown> }][]).map((c) => c[0].where);
+
+  it('the read before the act asks for this store', async () => {
+    state.statement = { approvedAt: new Date('2026-11-02T08:00:00Z'), matchingClosedAt: null, status: 'APPROVED', fileHash: 'ab'.repeat(32) };
+    state.rows = [row('m-o1', 'o1')];
+    state.orders.set('o1', order('o1'));
+    await close();
+    expect(reads()[0]).toEqual({ id: 'st1', companyId: 'c1', storeId: 's1' });
+    // …and so does the claim that follows it.
+    expect(db.courierStatement.updateMany.mock.calls[0][0].where).toMatchObject({ id: 'st1', companyId: 'c1', storeId: 's1' });
+  });
+
+  it('the read after a lost claim — the one that names why — asks for this store too', async () => {
+    state.statement = { approvedAt: new Date('2026-11-02T08:00:00Z'), matchingClosedAt: null, status: 'APPROVED', fileHash: 'ab'.repeat(32) };
+    state.rows = [row('m-o1', 'o1')];
+    state.orders.set('o1', order('o1'));
+    // The read before sees it open; the claim finds it closed by a press a moment earlier.
+    db.courierStatement.updateMany.mockImplementationOnce(async () => ({ count: 0 }));
+    const res = await close();
+    expect(res.status).toBe(409);
+    expect(reads()).toHaveLength(2);
+    expect(reads()[1]).toEqual({ id: 'st1', companyId: 'c1', storeId: 's1' });
+  });
+});
+
+describe('RV810 — what an earlier claim paid is read from CLOSED statements, at the close', () => {
+  it('the close’s own select asks for the close, not the money', () => {
+    const where = (closeRowsSelect('st1').order.select.settlementMatches as { where: Record<string, unknown> }).where;
+    expect(where.statement).toEqual({ matchingClosedAt: { not: null } });
+    expect(where).toMatchObject({ resolution: 'OURS_STANDS', statementId: { not: 'st1' } });
+  });
+});
+
+describe('RV811 — the statement’s page offers answers until the MATCHING closes, not until the money', () => {
+  const statementRead = (over: Record<string, unknown>) => ({
+    id: 'st1', reference: 'ST-1', currencyCode: 'SYP', gapExplanation: null, status: 'APPROVED',
+    approvedAt: new Date('2026-11-02T08:00:00Z'), createdAt: new Date('2026-10-20T10:00:00Z'), periodTo: null, fileHash: 'ab'.repeat(32),
+    lines: [], receipts: [],
+    matches: [{
+      id: 'm-o2', orderId: 'o2', result: 'MISMATCHED', resolution: null, expectedAmount: 25000, statementAmount: 24000,
+      order: { id: 'o2', orderNumber: 'ORD-o2', merchantRef: 'REF-o2', shippingStatus: 'DELIVERED', confirmationStatus: 'CONFIRMED', settlementStatus: 'PENDING_COLLECTION', rejectionReason: null, returnReceipt: null },
+      statementLine: { merchantRef: 'REF-o2', barcode: null, amount: 24000, collected: null, fee: null, status: null, rawRow: null },
+    }],
+    ...over,
+  });
+  const open = async (over: Record<string, unknown>) => {
+    state.orders.set('o2', order('o2'));
+    receiptGap.mockResolvedValue({ claimed: 0, received: 0, gap: 0, needsExplanation: false, explained: false, unconvertible: 0 });
+    db.courierStatement.findFirst.mockImplementationOnce(async () => statementRead(over) as never);
+    const res = await GET(new Request('http://localhost/x'), params());
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    return body.statement.matches[0].decisions as Record<string, { allowed: boolean; why: string | null }>;
+  };
+
+  it('the money posted, the matching open: «قيد المراجعة» is still offered', async () => {
+    const d = await open({ matchingClosedAt: null });
+    expect(d.UNDER_REVIEW.allowed).toBe(true);
+  });
+
+  it('NEGATIVE — the matching closed: every saying carries the closed sentence', async () => {
+    const d = await open({ matchingClosedAt: new Date('2026-11-03T00:00:00Z') });
+    for (const v of Object.values(d)) expect(v).toEqual({ allowed: false, why: 'الكشف مغلق نهائياً — التصحيح بكشف تسوية' });
   });
 });

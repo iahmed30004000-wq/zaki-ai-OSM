@@ -40,6 +40,7 @@ describe('when a line is not money', () => {
     ['«قيد التوصيل» at zero on a parcel on the road', zero('قيد التوصيل'), 'OUT_FOR_DELIVERY'],
     ['«بالمركبة» at zero on a parcel on the road', zero('بالمركبة'), 'OUT_FOR_DELIVERY'],
     ['a collected cell that says 0', zero('تم ارجاعها', { collected: 0 }), 'SHIPPED'],
+    ['a fee cell that says 0', zero('تم ارجاعها', { fee: 0 }), 'SHIPPED'],
   ])('%s → excluded', (_name, line, shippingStatus) => {
     expect(isExcludedLine(line, { shippingStatus })).toBe(true);
   });
@@ -52,6 +53,11 @@ describe('when a line is not money', () => {
     ['a negative net — the company CHARGED a return fee: money, a question', { amount: -5000, collected: 0, status: 'تم ارجاعها' }, 'OUT_FOR_DELIVERY'],
     ['money stated beside «مؤجلة»', { amount: 20000, status: 'مؤجلة' }, 'OUT_FOR_DELIVERY'],
     ['a collected figure beside a zero net', { amount: 0, collected: 3000, status: 'تم ارجاعها' }, 'OUT_FOR_DELIVERY'],
+    // RV807: the net is zero but the company took a fee for the return — a charge, a question.
+    ['RV807 — a deducted return fee beside a zero net and «تم ارجاعها»', { amount: 0, collected: null, fee: 5000, status: 'تم ارجاعها' }, 'OUT_FOR_DELIVERY'],
+    ['RV807 — the same written 5,000 collected, 5,000 fee', { amount: 0, collected: 5000, fee: 5000, status: 'تم ارجاعها' }, 'RETURNED'],
+    // RV808: a NEGATIVE collected figure is not «nothing collected».
+    ['RV808 — a negative collected figure beside a zero net', { amount: 0, collected: -3000, status: 'تم ارجاعها' }, 'OUT_FOR_DELIVERY'],
     ['zero and «تم توصيلها» — delivered for nothing is a question', { amount: 0, status: 'تم توصيلها' }, 'OUT_FOR_DELIVERY'],
     ['zero and «تم توصيلها بشكل جزئي»', { amount: 0, status: 'تم توصيلها بشكل جزئي' }, 'OUT_FOR_DELIVERY'],
     ['zero and «مغلقة» (a known word that says nothing about the parcel)', { amount: 0, status: 'مغلقة' }, 'OUT_FOR_DELIVERY'],
@@ -137,7 +143,7 @@ describe('the matching writes such a line EXCLUDED — before any verdict', () =
   });
 
   it('the returns desk already closed it: EXCLUDED — not the MATCHED row that settled it over «NOT_APPLICABLE»', async () => {
-    db.statementLine.findMany.mockResolvedValueOnce([line('lD', { status: 'تم ارجاعها', fee: 5000 })]).mockResolvedValue([]);
+    db.statementLine.findMany.mockResolvedValueOnce([line('lD', { status: 'تم ارجاعها', fee: 0 })]).mockResolvedValue([]);
     db.order.findFirst.mockResolvedValue(order('oD', { shippingStatus: 'RETURNED', settlementStatus: 'NOT_APPLICABLE' }));
 
     await runMatching(db as never, scope);
@@ -152,6 +158,15 @@ describe('the matching writes such a line EXCLUDED — before any verdict', () =
     await runMatching(db as never, scope);
 
     expect(created()[0].result).toBe('MISMATCHED');
+  });
+
+  it('NEGATIVE (RV807) — a zero net with a fee taken for the return stays a question, at the matching too', async () => {
+    db.statementLine.findMany.mockResolvedValueOnce([line('lD', { amount: 0, fee: 5000, status: 'تم ارجاعها' })]).mockResolvedValue([]);
+    db.order.findFirst.mockResolvedValue(order('oD'));
+
+    await runMatching(db as never, scope);
+
+    expect(created()[0].result).not.toBe(EXCLUDED_RESULT);
   });
 
   it('NEGATIVE — a returned line that carries a charge (net −5,000) stays a question', async () => {

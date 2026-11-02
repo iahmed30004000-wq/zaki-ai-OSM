@@ -18,8 +18,9 @@ import { EXCLUDED_RESULT } from './statement-open-lines';
  *
  * ── ONLY WHEN EVERY ONE OF THESE HOLDS — money is never hidden ──
  *
- *   · the line is ZERO: net 0, and no collected figure other than 0. A returned line of −5,000 is a fee the company
- *     charged and deducted; it stays a question, or a fee nobody agreed to would vanish from sight;
+ *   · the line is ZERO: net 0, no collected figure other than 0, and no fee other than 0. A returned line of −5,000 is
+ *     a fee the company charged and deducted; so is a line written 5,000 collected, 5,000 fee, 0 net — the net is
+ *     zero but a fee was taken (RV807). Either stays a question, or a fee nobody agreed to would vanish from sight;
  *   · the company's word is one we KNOW says «not delivered»: returned, postponed, cancelled, still on the road. An
  *     empty cell, an unknown word, «delivered» or «partly delivered» at zero is a real question and stays one;
  *   · OUR parcel agrees it was not delivered: on the road, or coming back. If our door recorded it delivered, the
@@ -39,6 +40,8 @@ export interface ExclusionLine {
   amount: Num;
   /** What the customer paid at the door, when the file states it. */
   collected?: Num;
+  /** The fee the company kept or charged for this line, when the file states it. */
+  fee?: Num;
   /** The company's status cell. */
   status?: string | null;
 }
@@ -47,6 +50,7 @@ export interface ExclusionLine {
 export function isExcludedLine(line: ExclusionLine, order: { shippingStatus: string | null | undefined }): boolean {
   if (Number(line.amount ?? 0) !== 0) return false;
   if (line.collected != null && Number(line.collected) !== 0) return false;
+  if (line.fee != null && Number(line.fee) !== 0) return false;
   const reading = readCourierWord(line.status);
   if (!reading || !reading.known || !NOT_DELIVERED_WORDS.includes(reading.outcome)) return false;
   const group = stateGroup(order.shippingStatus);
