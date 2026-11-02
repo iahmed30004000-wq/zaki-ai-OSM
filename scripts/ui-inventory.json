@@ -1370,12 +1370,12 @@
     "tabs": 0
   },
   "src/components/screens/ShippingBatchesScreen.tsx": {
-    "buttons": 12,
+    "buttons": 13,
     "inputs": 0,
     "columns": 0,
     "cards": 0,
     "modals": 0,
-    "icons": 17,
+    "icons": 19,
     "links": 0,
     "tabs": 0
   },
