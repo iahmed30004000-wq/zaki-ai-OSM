@@ -41,6 +41,7 @@ vi.mock('@/lib/delivery-fees', async (orig) => ({
 import { GET } from './route';
 import { shipmentListWhere } from '@/lib/batching-guard';
 import { BATCH_SHEET_HEADER } from '@/lib/batch-sheet';
+import { activeFeeRowWhere } from '@/lib/operations';
 
 const COURIER = '11111111-1111-4111-8111-111111111111';
 const NOW = new Date('2026-11-03T09:00:00.000Z');
@@ -79,7 +80,11 @@ beforeEach(() => {
   });
   asKeys(['ops.ship', 'customers.view']);
   db.deliveryProvider.findFirst.mockResolvedValue({ id: COURIER, code: 'BASHA', adapterCode: null });
-  db.deliveryFee.findMany.mockResolvedValue([]);
+  // Two kinds of read of the fee table: the active rows of the governorates (the door's NO_FEE_ROW question) — every
+  // governorate asked has one unless a test says otherwise — and the typed city ids (none typed).
+  db.deliveryFee.findMany.mockImplementation(async (args: { where: { isActive?: boolean; regionId?: { in: string[] } } }) =>
+    args.where.isActive ? (args.where.regionId?.in ?? []).map((regionId) => ({ regionId })) : []
+  );
   db.order.findMany.mockResolvedValue([]);
   db.order.count.mockResolvedValue(0);
   // The courier's fee for the governorate: 5 for THIS courier, anything else would be another courier's.
@@ -134,6 +139,8 @@ describe('which orders the file asks for', () => {
     const listWhere = db.order.findMany.mock.calls[0][0].where;
     await call(query);
     expect(db.order.findMany.mock.calls[1][0].where).toEqual(listWhere);
+    // And the confirmed ones only, as the list: nothing about the file widens it (RV888).
+    expect(db.order.findMany.mock.calls[1][0].where.confirmationStatus).toBe('CONFIRMED');
   });
 
   it('an order the shipment door would refuse (a line not reserved) is left out and counted as such', async () => {
@@ -148,6 +155,46 @@ describe('which orders the file asks for', () => {
     expect(rows.slice(1).map((r) => r[0])).toEqual(['ORD-2026-0001']);
     expect(res.headers.get('X-Left-Unready')).toBe('2');
     expect(res.headers.get('X-Left-Held')).toBe('1');
+  });
+
+  it('the before and after (RV886): 25,000 to a governorate with no fee row at this courier was in the file at 25,000 — it is left out now, and counted', async () => {
+    const goods = [{ productName: 'خلاط', quantity: 1, freeQuantity: 0, unitPrice: 25000, discountShare: 0, lineTotal: 25000, reservedQty: 1 }];
+    db.order.findMany.mockResolvedValue([
+      order(1),
+      order(2, { regionId: 'r-quneitra', region: { name: 'القنيطرة' }, totalAmount: 25000, items: goods }),
+    ]);
+    // Only Sweida is priced at this courier.
+    db.deliveryFee.findMany.mockImplementation(async (args: { where: { isActive?: boolean } }) =>
+      args.where.isActive ? [{ regionId: 'r-sweida' }] : []
+    );
+    const res = await call();
+    const rows = parse(await res.text());
+    expect(rows.slice(1).map((r) => r[0])).toEqual(['ORD-2026-0001']);
+    expect(rows.some((r) => r.includes('25000'))).toBe(false);
+    expect(res.headers.get('X-Left-Blocked')).toBe('1');
+    expect(res.headers.get('X-Left-Unready')).toBe('0');
+  });
+
+  it('the fee rows are the door’s question — active, this courier, the governorates of the list — read once', async () => {
+    db.order.findMany.mockResolvedValue([order(1), order(2, { regionId: 'r-dam', region: { name: 'دمشق' } }), order(3)]);
+    await call();
+    const feeReads = db.deliveryFee.findMany.mock.calls.filter((c) => (c[0] as { where: { isActive?: boolean } }).where.isActive);
+    expect(feeReads).toHaveLength(1);
+    expect(feeReads[0][0].where).toEqual(activeFeeRowWhere(COURIER, { in: ['r-sweida', 'r-dam'] }));
+  });
+
+  it('an order with no governorate is left out and counted with the blocked ones', async () => {
+    db.order.findMany.mockResolvedValue([order(1), order(2, { regionId: null, region: null })]);
+    const res = await call();
+    expect(parse(await res.text()).slice(1).map((r) => r[0])).toEqual(['ORD-2026-0001']);
+    expect(res.headers.get('X-Left-Blocked')).toBe('1');
+  });
+
+  it('nothing ready because of the fee: refused, and the count of the blocked is in the answer', async () => {
+    db.order.findMany.mockResolvedValue([order(1, { regionId: null, region: null })]);
+    const res = await call();
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ code: 'NOTHING_READY', blocked: 1, unready: 0 });
   });
 
   it('nothing ready: refused with the counts, not answered with an empty file', async () => {

@@ -217,15 +217,20 @@ export function ShipmentsNewScreen() {
       Object.entries(filters).forEach(([k, v]) => v && q.set(k, v));
       const res = await apiFetch(`/api/ops/shipments/export?${q}`);
       if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { errorAr?: string; error?: string; held?: number; unready?: number };
+        const data = (await res.json().catch(() => ({}))) as {
+          errorAr?: string; error?: string; held?: number; unready?: number; blocked?: number;
+        };
         const said = data.errorAr || data.error || 'تعذّر تجهيز الملف';
-        if (res.status === 409) setFileNote([said, ...leftOutParts(data.held ?? 0, data.unready ?? 0)].join(' · '));
+        if (res.status === 409) {
+          setFileNote([said, ...leftOutParts(data.held ?? 0, data.unready ?? 0, data.blocked ?? 0)].join(' · '));
+        }
         else toast.failed(said);
         return;
       }
       const count = Number(res.headers.get('X-Rows') ?? 0);
       const held = Number(res.headers.get('X-Left-Held') ?? 0);
       const unready = Number(res.headers.get('X-Left-Unready') ?? 0);
+      const blocked = Number(res.headers.get('X-Left-Blocked') ?? 0);
       const url = URL.createObjectURL(await res.blob());
       const a = document.createElement('a');
       a.href = url;
@@ -234,7 +239,7 @@ export function ShipmentsNewScreen() {
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 10_000);
-      setFileNote([`نزل الملف: ${count} طلب جاهز للشحن`, ...leftOutParts(held, unready)].join(' · '));
+      setFileNote([`نزل الملف: ${count} طلب جاهز للشحن`, ...leftOutParts(held, unready, blocked)].join(' · '));
     } catch (e) {
       toast.failed(e instanceof Error ? e.message : 'تعذّر تجهيز الملف');
     } finally {
@@ -1061,10 +1066,11 @@ export function ShipmentsNewScreen() {
 }
 
 /** What the file left out and why, in the words the line under the tabs says them. */
-function leftOutParts(held: number, unready: number): string[] {
+function leftOutParts(held: number, unready: number, blocked: number): string[] {
   return [
     ...(held > 0 ? [`${held} ${held === 1 ? 'مؤجّل' : 'مؤجّلين'} برّا الملف`] : []),
     ...(unready > 0 ? [`${unready} غير محجوز برّا الملف`] : []),
+    ...(blocked > 0 ? [`${blocked} بلا محافظة أو أجرة توصيل برّا الملف`] : []),
   ];
 }
 

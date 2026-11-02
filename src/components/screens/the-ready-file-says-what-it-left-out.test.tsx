@@ -53,10 +53,12 @@ const row = {
   blocks: [], selectable: true, hardBlocked: false, shipHoldUntil: null, standDownBlocked: null, shipHoldReason: null,
 };
 
-const fileAnswer = (held: number, unready: number, rows: number) => ({
+const fileAnswer = (held: number, unready: number, rows: number, blocked = 0) => ({
   ok: true,
   status: 200,
-  headers: new Headers({ 'X-Rows': String(rows), 'X-Left-Held': String(held), 'X-Left-Unready': String(unready) }),
+  headers: new Headers({
+    'X-Rows': String(rows), 'X-Left-Held': String(held), 'X-Left-Unready': String(unready), 'X-Left-Blocked': String(blocked),
+  }),
   blob: async () => new Blob(['x'], { type: 'text/csv' }),
   json: async () => ({}),
 });
@@ -127,6 +129,31 @@ describe('the press', () => {
       fireEvent.click(screen.getByRole('button', { name: BUTTON }));
     });
     expect((await screen.findByText('نزل الملف: 3 طلب جاهز للشحن · 1 مؤجّل برّا الملف · 1 غير محجوز برّا الملف', undefined, WAIT)).getAttribute('role')).toBe('status');
+  });
+
+  it('no governorate or no fee row: said in its own words beside the others', async () => {
+    apiFetch.mockResolvedValue(fileAnswer(0, 1, 5, 2));
+    await draw();
+    fireEvent.change(screen.getByLabelText(/شركة الشحن/), { target: { value: 'p1' } });
+    await waitFor(() => expect((screen.getByRole('button', { name: BUTTON }) as HTMLButtonElement).disabled).toBe(false));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: BUTTON }));
+    });
+    expect((await screen.findByText('نزل الملف: 5 طلب جاهز للشحن · 1 غير محجوز برّا الملف · 2 بلا محافظة أو أجرة توصيل برّا الملف', undefined, WAIT)).getAttribute('role')).toBe('status');
+  });
+
+  it('nothing ready because of the fee: the sentence carries the blocked count', async () => {
+    apiFetch.mockResolvedValue({
+      ok: false, status: 409, headers: new Headers(),
+      json: async () => ({ errorAr: 'ما في طلب جاهز للشحن بهالفلاتر — ما في ملف.', held: 0, unready: 0, blocked: 3 }),
+    });
+    await draw();
+    fireEvent.change(screen.getByLabelText(/شركة الشحن/), { target: { value: 'p1' } });
+    await waitFor(() => expect((screen.getByRole('button', { name: BUTTON }) as HTMLButtonElement).disabled).toBe(false));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: BUTTON }));
+    });
+    expect((await screen.findByText('ما في طلب جاهز للشحن بهالفلاتر — ما في ملف. · 3 بلا محافظة أو أجرة توصيل برّا الملف', undefined, WAIT)).getAttribute('role')).toBe('status');
   });
 
   it('nothing ready: the door’s sentence and what it left out are on the screen, and no file is made', async () => {

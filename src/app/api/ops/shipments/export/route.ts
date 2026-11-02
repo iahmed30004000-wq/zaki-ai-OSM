@@ -9,6 +9,7 @@ import { BATCH_SHEET_HEADER, batchSheetRows, sheetCityIds } from '@/lib/batch-sh
 import { shipmentListWhere } from '@/lib/batching-guard';
 import { assertReadyToShip, type StateSource } from '@/lib/order-state';
 import { guardLines } from '@/lib/reservation';
+import { activeFeeRowWhere, deliveryFeeBlock } from '@/lib/operations';
 
 /**
  * GET /api/ops/shipments/export?courier&q&region&from&to — «جاهزة للشحن» as a CSV file (the owner, 3/11).
@@ -19,8 +20,11 @@ import { guardLines } from '@/lib/reservation';
  *   · WHICH ORDERS — the tab's own question (`shipmentListWhere`, `held: false`), never a copy of it; and of those only
  *     the ones the shipment door would take (`assertReadyToShip`, the same lines and add-ons it asks). A postponed order is
  *     not in the question at all; an order whose units are not reserved is in the tab with its warning and not in the file.
+ *     Nor one the door refuses for its delivery fee (`deliveryFeeBlock`, the same rule `shipmentBlocks` asks): no
+ *     governorate, or no active fee row at THIS courier — its amount would print without the delivery.
  *   · HOW MANY WERE LEFT OUT, AND WHY — said in the answer's headers, not in the file: `X-Left-Held` (the «مؤجَّلة الشحن»
- *     tab under the same filters) and `X-Left-Unready`. The file stays a clean sheet for the courier's import.
+ *     tab under the same filters), `X-Left-Unready` (units not reserved) and `X-Left-Blocked` (no governorate or no fee
+ *     row). The file stays a clean sheet for the courier's import.
  *   · THE COLUMNS — the batch's Excel columns exactly (`BATCH_SHEET_HEADER`, `batchSheetRows`): the sheet for making the
  *     parcels at the courier's portal by hand, which is what a file of not-yet-batched orders is for.
  *   · THE AMOUNT — read, not worked out here: `waybillCod`, with the courier this shipment is for, which is the very
@@ -76,12 +80,27 @@ export async function GET(req: Request) {
     });
     const held = await db.order.count({ where: shipmentListWhere({ ...filters, held: true, now }) });
 
-    const ready = listed.filter((o) => assertReadyToShip(o as StateSource, guardLines(o.items, o.addOns)).allowed);
-    const unready = listed.length - ready.length;
+    const reserved = listed.filter((o) => assertReadyToShip(o as StateSource, guardLines(o.items, o.addOns)).allowed);
+    const unready = listed.length - reserved.length;
+
+    // The door's two hard blocks about the fee, for THIS courier: the fee rows of all the governorates, read once.
+    const regionIds = [...new Set(reserved.map((o) => o.regionId).filter((id): id is string => !!id))];
+    const priced = new Set(
+      regionIds.length > 0
+        ? (
+            await db.deliveryFee.findMany({
+              where: activeFeeRowWhere(courier.id, { in: regionIds }),
+              select: { regionId: true },
+            })
+          ).map((f) => f.regionId)
+        : []
+    );
+    const ready = reserved.filter((o) => !deliveryFeeBlock(o.regionId, !!o.regionId && priced.has(o.regionId)));
+    const blocked = reserved.length - ready.length;
 
     if (ready.length === 0) {
       const said = 'ما في طلب جاهز للشحن بهالفلاتر — ما في ملف.';
-      return NextResponse.json({ error: said, errorAr: said, code: 'NOTHING_READY', held, unready }, { status: 409 });
+      return NextResponse.json({ error: said, errorAr: said, code: 'NOTHING_READY', held, unready, blocked }, { status: 409 });
     }
 
     // The courier this shipment is for, as the shipment's creation will record it: the amount and the city id are its.
@@ -102,6 +121,7 @@ export async function GET(req: Request) {
         'X-Rows': String(ready.length),
         'X-Left-Held': String(held),
         'X-Left-Unready': String(unready),
+        'X-Left-Blocked': String(blocked),
       },
     });
   } catch (error) {
