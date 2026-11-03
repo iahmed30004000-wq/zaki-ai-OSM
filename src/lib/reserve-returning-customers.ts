@@ -1,6 +1,7 @@
 import { db } from './db';
 import { resolveAudience } from './notification-audience';
 import { agentForReturningCustomer, reservationCutoff, type PriorOrder } from './order-reservation';
+import { capRoom, ownedCounts } from './confirmation-queue';
 
 /**
  * HOLD A RETURNING CUSTOMER'S NEW ORDER FOR THE AGENT WHO WORKED HIM LAST.
@@ -21,6 +22,9 @@ import { agentForReturningCustomer, reservationCutoff, type PriorOrder } from '.
  *   2. Each one's customer's earlier orders (this store only — a customer is a store's), newest first.
  *   3. The agent who worked the newest of them — and only if she is ACTIVE, may pull and can enter the store.
  *   4. One conditional write per order: it names her only if the order is STILL unclaimed and unassigned.
+ *   5. Never past her cap (RV706, the owner 3/11): the 300 counts what is in her hands AND what is held for her (`capRoom`). An
+ *      agent with no room left is not named; the order is the shared queue's, as an order of a first-time customer is. Her room
+ *      is read once per run and spent as holds are written, so one run cannot overfill it.
  *
  * Best-effort by design: the callers wrap it, because a hold that could not be written must never stop an agent from pulling
  * (the order is then simply the shared queue's, as it was before this existed).
@@ -84,10 +88,14 @@ export async function reserveReturningCustomers(
     ).map((u) => u.id)
   );
 
+  // Her room under the cap, read the first time she is chosen in this run and spent as her holds are written.
+  const room = new Map<string, number>();
   let held = 0;
   for (const candidate of candidates) {
     const agent = agentForReturningCustomer(priors.get(candidate.customerId) ?? [], eligible);
     if (!agent) continue;
+    if (!room.has(agent)) room.set(agent, capRoom(await ownedCounts(db, scope, agent, now)));
+    if ((room.get(agent) ?? 0) <= 0) continue;
 
     const won = await db.order.updateMany({
       where: { id: candidate.id, claimedById: null, assignedToId: null, confirmationStatus: 'NEW' },
@@ -95,6 +103,7 @@ export async function reserveReturningCustomers(
     });
     if (won.count !== 1) continue;
     held += 1;
+    room.set(agent, (room.get(agent) ?? 0) - 1);
 
     await db.orderActivity.create({
       data: {

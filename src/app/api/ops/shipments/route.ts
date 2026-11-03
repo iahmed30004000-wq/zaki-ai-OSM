@@ -14,6 +14,7 @@ import { batchStatusOf } from '@/lib/order-cancel';
 import { zodMessage } from '@/lib/zod-message';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { BATCHABLE_SHIPPING, HELD_PACKED_PARCEL, WAITING_FOR_A_TROLLEY, shipmentListWhere, whyNotBatchable } from '@/lib/batching-guard';
+import { SHIP_HOLD_RELEASED, holdEndsInBatch } from '@/lib/shipment-hold';
 
 /**
  * Shipment creation.
@@ -253,6 +254,8 @@ export async function POST(req: Request) {
         id: true, orderNumber: true, companyId: true, storeId: true, customerId: true, regionId: true,
         confirmationStatus: true, shippingStatus: true, shippedAt: true, priceIncludesDelivery: true,
         deliveryProviderId: true, version: true, shippingBatchId: true, labelPrintedAt: true, shipHoldUntil: true,
+        // What a hold the batch ends said, for the record of it (RV880).
+        shipHoldReason: true,
         items: { select: { quantity: true, freeQuantity: true, reservedQty: true, unitPrice: true, discountShare: true, lineTotal: true } },
         // The upsell the customer accepted. Without it, the snapshot below
         // rebuilt the total from the lines alone and the add-on was never
@@ -296,6 +299,10 @@ export async function POST(req: Request) {
       );
     }
 
+    // The orders whose postponement this batch cut short (RV880): recorded in the audit once the batch exists.
+    const holdsLifted: { id: string; shipHoldUntil: Date | null; shipHoldReason: string | null }[] = [];
+    const now = new Date();
+
     const batch = await db.$transaction(async (tx) => {
       // ONE OPEN TROLLEY PER COURIER.
       //
@@ -337,6 +344,8 @@ export async function POST(req: Request) {
           priceIncludesDelivery: order.priceIncludesDelivery,
           minorUnit: country.minorUnit,
         });
+        // ON A TROLLEY, NOT POSTPONED (RV880): the hold ends in this very write — see `holdEndsInBatch`.
+        const hold = holdEndsInBatch(order, now);
 
         /*
          * THE WRITE REPEATS THE QUESTION. Between the read above and this
@@ -366,6 +375,7 @@ export async function POST(req: Request) {
               totalAmount: money.cod,
               shippingStatus: 'READY_FOR_PICKUP',
               settlementStatus: 'PENDING_COLLECTION',
+              ...(hold.clears ? { shipHoldUntil: null, shipHoldReason: null } : {}),
               version: { increment: 1 },
             },
           })
@@ -381,6 +391,26 @@ export async function POST(req: Request) {
             note: `batch ${created.batchNumber}`,
           },
         });
+        if (hold.lifted) {
+          // In the order's timeline as «أرجِعه» writes a lifted hold — the same action, and its goods untouched by this door.
+          await tx.orderActivity.create({
+            data: {
+              companyId,
+              orderId: order.id,
+              userId: user.id,
+              action: SHIP_HOLD_RELEASED,
+              metadata: JSON.stringify({
+                until: null,
+                reason: null,
+                stock: 'KEPT',
+                intoBatch: created.batchNumber,
+                heldUntil: order.shipHoldUntil,
+                heldReason: order.shipHoldReason ?? null,
+              }),
+            },
+          });
+          holdsLifted.push({ id: order.id, shipHoldUntil: order.shipHoldUntil, shipHoldReason: order.shipHoldReason ?? null });
+        }
       }
       return created;
     });
@@ -390,6 +420,15 @@ export async function POST(req: Request) {
       entity: 'ShippingBatch', entityId: batch.id,
       newData: { batchNumber: batch.batchNumber, orders: shippable.length, exceptions: exceptions.length },
     });
+    // Each postponement the batch cut short, in the audit as «أرجِعه» writes one (RV880).
+    for (const lifted of holdsLifted) {
+      await logAudit({
+        companyId, userId: user.id, action: SHIP_HOLD_RELEASED,
+        entity: 'Order', entityId: lifted.id,
+        previousData: { shipHoldUntil: lifted.shipHoldUntil, reason: lifted.shipHoldReason },
+        newData: { shipHoldUntil: null, reason: null, intoBatch: batch.batchNumber },
+      });
+    }
 
     // Whether this courier is sent to by API: the banner then offers «رحّل»
     // before «اطبع», so the waybill carries the courier's barcode beside our QR.
