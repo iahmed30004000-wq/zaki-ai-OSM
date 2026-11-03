@@ -11,6 +11,8 @@ import { FaqList } from './FaqList';
 import { OrderCta } from './OrderCta';
 import { StickyCta } from './StickyCta';
 import { Slider } from './Slider';
+import { DesignedBlock, planDesign } from '../designs/DesignedBlocks';
+import type { DesignSkin } from '@/lib/landing-designs/skin';
 
 /**
  * The public renderer for a block-built page.
@@ -151,6 +153,16 @@ export interface BlockContext {
     /** Where a category chip points. The builder passes none: nothing to browse. */
     categoryHref?: ((id: string | null) => string) | null;
   } | null;
+  /**
+   * THE DESIGN THE PAGE WEARS — one of the sixty-four, already loaded, or
+   * nothing.
+   *
+   * Absent is today's page, drawn exactly as it always was: the old path is
+   * not touched by a single branch. Present, every block is drawn into the
+   * design's own section (`DesignedBlocks.tsx`) with the block's words; the
+   * form, the offers and the floating button stay the elements they are.
+   */
+  design?: DesignSkin | null;
 }
 
 export interface CatalogItem {
@@ -214,11 +226,14 @@ export function PageBlocks({
   // The first picture a visitor sees: the first gallery among the opening blocks. It is the page's largest paint, so it
   // loads at once and first — `lazy` held it back until layout, on the one image that should never wait.
   const lead = shown.slice(0, 3).find((s) => s.type === 'gallery')?.id;
+  const plan = ctx.design ? planDesign(ctx.design, shown) : null;
 
   return (
     <>
       {shown.map((s, i) => {
-        const block = (
+        const block = plan ? (
+          <DesignedBlock section={s} ctx={ctx} plan={plan} plain={(x) => Block({ section: x, ctx, lead: x.id === lead })} />
+        ) : (
           <Dressed section={s}>
             <Block section={s} ctx={ctx} lead={s.id === lead} />
           </Dressed>

@@ -133,6 +133,9 @@ const nextConfig: NextConfig = {
       { source: '/:path*', headers: securityHeaders },
       // After the catch-all so each overrides the CSP for its own route.
       { source: '/lp/:slug', headers: SELLING_PAGE_HEADERS },
+      // A design's full preview (`/lp/design-preview/<id>`) is two segments deep, so `/lp/:slug` does not reach it; the
+      // library shows it in a frame on the dashboard, which the catch-all's `frame-ancestors 'none'` would refuse.
+      { source: '/lp/design-preview/:design', headers: SELLING_PAGE_HEADERS },
       { source: '/s/:path*', headers: SELLING_PAGE_HEADERS },
       { source: '/lp/:slug/raw', headers: RAW_HTML_HEADERS },
       { source: '/api/public/media/:path*', headers: PUBLIC_MEDIA_HEADERS },
