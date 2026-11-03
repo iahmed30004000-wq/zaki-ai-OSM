@@ -347,7 +347,9 @@ describe('every colour is a variable', () => {
       // `--store-price` left the list the day the cart drew a thumbnail's
       // empty state and a line total in them — which is what this list is
       // for: it can only ever get shorter.
-      '--store-price-compare', '--store-offer-badge',
+      // `--store-offer-badge` left it the day the offer badges were painted
+      // in it (extras-sheet.ts, «شارة العرض» · «لون التمييز»).
+      '--store-price-compare',
       // Older than this work: the order and thank-you pages will read them.
       // `--store-danger` left the list the day the tracking form drew a
       // refusal in it — which is what this list is for.

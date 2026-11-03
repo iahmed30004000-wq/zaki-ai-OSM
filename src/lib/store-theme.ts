@@ -882,6 +882,26 @@ export function storeThemeVars(theme: StoreTheme): Record<string, string> {
 
 
 /**
+ * THE OFFER BADGE'S OWN COLOUR, IF THE SHOP GAVE IT ONE — «شارة العرض» first,
+ * then «لون التمييز». Null for a shop that set neither: its badges keep the
+ * accent they always had, and nothing about them is written (the storefront
+ * shell sets `data-badge` only when this is not null).
+ */
+export function badgeColour(theme: StoreTheme): string | null {
+  return theme.colors?.offerBadge || theme.highlight || null;
+}
+
+/**
+ * The ink ON that badge, measured — `{}` for a shop whose badge has no colour
+ * of its own. Apart from `storeThemeVars` on purpose: there, naming one colour
+ * moves exactly one variable, and the guard in store-theme.test.ts holds it.
+ */
+export function badgeVars(theme: StoreTheme): Record<string, string> {
+  const badge = badgeColour(theme);
+  return badge ? { '--store-offer-badge-ink': readableOn(badge) } : {};
+}
+
+/**
  * EVERY ROLE'S COLOUR, AS THE SHOP WILL ACTUALLY PAINT IT.
  *
  * The contrast rule is written in ROLES («النص على البطاقة»), the editor's

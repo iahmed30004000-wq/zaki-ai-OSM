@@ -1,5 +1,5 @@
 import { minifyCss } from '@/lib/css-minify';
-import type { StoreTheme } from '@/lib/store-theme';
+import { badgeColour, type StoreTheme } from '@/lib/store-theme';
 
 /**
  * THE RULES OF THE STORE-LOOKS PORT — written into a page only for the
@@ -92,6 +92,18 @@ const TICKER_CSS = `
 }
 `;
 
+/**
+ * «شارة العرض» · «لون التمييز» — THE OFFER BADGES, IN THE COLOUR THE SHOP NAMED.
+ *
+ * `--store-offer-badge` was written and read by nothing, so both pickers
+ * coloured nothing. The badges a shopper sees are «الأوفر» on an offer card
+ * and «عرض خاص» on a catalogue card; they keep the accent unless the shop
+ * named a badge colour, and then wear it with measured ink.
+ */
+const BADGE_CSS = `
+.sf-root[data-badge] :is(.lp-offer-tag, .lp-catalog-tag) { background: var(--store-offer-badge); color: var(--store-offer-badge-ink); }
+`;
+
 /** «حجم الشعار». */
 const LOGO_CSS = `
 .sf-root[data-logo] .sf-logo { height: var(--store-logo-h); max-width: calc(var(--store-logo-h) * 4); }
@@ -103,6 +115,7 @@ export const EXTRAS_SLICES = Object.freeze({
   motion: minifyCss(MOTION_CSS),
   ticker: minifyCss(TICKER_CSS),
   logo: minifyCss(LOGO_CSS),
+  badge: minifyCss(BADGE_CSS),
 });
 
 /** The slices this shop's theme asks for, joined — '' when it asks for none. */
@@ -112,6 +125,7 @@ export function shopExtrasSheet(theme: StoreTheme): string {
   if (theme.motion) parts.push(EXTRAS_SLICES.motion);
   if (theme.ticker?.enabled) parts.push(EXTRAS_SLICES.ticker);
   if (theme.header?.logoHeight) parts.push(EXTRAS_SLICES.logo);
+  if (badgeColour(theme)) parts.push(EXTRAS_SLICES.badge);
   return parts.join('');
 }
 

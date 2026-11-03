@@ -1,7 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import type { Storefront } from '@/lib/storefront';
-import { cartBarApplies, familyOf, layoutOf, storeThemeVars } from '@/lib/store-theme';
+import { badgeColour, badgeVars, cartBarApplies, familyOf, layoutOf, storeThemeVars } from '@/lib/store-theme';
 import { telHref, whatsappHref } from '@/lib/store-contact';
 import { fontHref } from '@/components/landing/blocks/styles';
 import { FAMILY_SHEET, SHOP_SHEET } from './styles';
@@ -65,7 +65,7 @@ export function StorefrontShell({
   // Every variable the shop paints itself with, in one call: the palette
   // derived from the accent, plus the eight the seller may name and the
   // header's own height and colour. No component writes a hex.
-  const vars = storeThemeVars(store.theme);
+  const vars = { ...storeThemeVars(store.theme), ...badgeVars(store.theme) };
   /*
    * WHICH FAMILY, AND THE SLICE THAT GOES WITH IT.
    *
@@ -113,6 +113,7 @@ export function StorefrontShell({
       data-radius={store.theme.radius}
       data-motion={store.theme.motion}
       data-logo={store.theme.header?.logoHeight ? '' : undefined}
+      data-badge={badgeColour(store.theme) ? '' : undefined}
       style={vars as React.CSSProperties}
     >
       {/*
