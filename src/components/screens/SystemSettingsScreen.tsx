@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/Input';
 import { PerformanceSettingsCard } from '@/components/settings/PerformanceSettingsCard';
 import { PostOrderOfferCard } from '@/components/settings/PostOrderOfferCard';
 import { PenaltyRulesCard } from '@/components/settings/PenaltyRulesCard';
+import { NoAnswerRoundsCard } from '@/components/settings/NoAnswerRoundsCard';
 import { RiBuildingLine, RiCheckLine, RiLoader4Line } from '@remixicon/react';
 import { PageHeader } from '@/components/ui/PageHeader';
 
@@ -140,6 +141,9 @@ export function SystemSettingsScreen() {
           among the product's own offers, where every price in this system
           lives. */}
       <PostOrderOfferCard />
+
+      {/* «نظام الجولات (تجريبي)» — how «لا يرد» counts and when an unanswered order goes back to the queue. Off by default. */}
+      <NoAnswerRoundsCard />
 
     </div>
   );

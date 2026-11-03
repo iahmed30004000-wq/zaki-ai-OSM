@@ -4,6 +4,15 @@ import { businessMinutesBetween, type BusinessCalendar } from './business-calend
 import { rejectionNeedsConversation } from './confirmation-workflow';
 import { notHeldForOthersWhere, reservedForOthersWhere, reservedForWhere } from './order-reservation';
 import { holdTwinsForPuller, lockCustomerForPull } from './twins-follow-the-pull';
+import { NO_ANSWER_RESULTS } from './confirmation-workflow';
+import {
+  releaseCutoffs,
+  roundsOn,
+  roundsReleaseReason,
+  workClock,
+  type RoundsSwitch,
+} from './no-answer-rounds';
+import { roundsSwitch } from './no-answer-rounds-switch';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -669,7 +678,14 @@ export function pullPermission(mayPull: boolean, counts: OwnedCounts): PullRefus
  * Release claims that were never worked on. Runs before every pull so the
  * pool self-heals even before the scheduler stage ships.
  */
-export async function releaseStaleClaims(tx: Tx, scope: QueueScope, cal: BusinessCalendar, now = new Date()) {
+export async function releaseStaleClaims(
+  tx: Tx,
+  scope: QueueScope,
+  cal: BusinessCalendar,
+  now = new Date(),
+  /** «نظام الجولات»: the switch when the caller already read it (the pull reads it before its transaction), and how many it may let go. */
+  opts: { rounds?: RoundsSwitch; roundsLimit?: number } = {}
+) {
   const stale = await tx.order.findMany({
     where: {
       ...scope,
@@ -701,7 +717,133 @@ export async function releaseStaleClaims(tx: Tx, scope: QueueScope, cal: Busines
       },
     });
   }
-  return expired.length;
+  // «نظام الجولات» (R1) — only with the owner's switch ON; OFF, the lines above are the whole rule, as they always were.
+  const rounds = opts.rounds ?? (await roundsSwitch(tx, scope.companyId));
+  if (!roundsOn(rounds)) return expired.length;
+  return expired.length + (await releaseByRounds(tx, scope, cal, now, rounds, opts.roundsLimit ?? ROUNDS_RELEASE_LIMIT));
+}
+
+/** How many orders one pass of the rounds release may let go — the same bound as the ninety-minute release above. */
+export const ROUNDS_RELEASE_LIMIT = 200;
+/** Inside the pull's own transaction, fewer: the pull must stay under its timeout (`PULL_TRANSACTION_OPTIONS`). The job and the queue screen take the rest. */
+export const PULL_ROUNDS_RELEASE_LIMIT = 25;
+/** Held orders read per pass. A pass that reads a full page carries on from there next time, so every held order is read in turn. */
+export const ROUNDS_SCAN_PAGE = 500;
+const roundsScanCursor = new Map<string, string>();
+
+/**
+ * R1 — LET GO WHAT NOBODY ANSWERED FOR THREE WORKING HOURS (`no-answer-rounds.ts`).
+ *
+ * Linear and bounded: the two cut-offs are placed ONCE for the pass, the database narrows to the held orders that can
+ * qualify (a no-answer since the switch went on and three working hours old, or nothing logged for ninety working minutes),
+ * one page of them is read with their attempts, and each is one pure verdict. The writes are the ninety-minute release's,
+ * line for line, with their own reason in the claim history — and the customer's other orders held for her are let go in
+ * the same step, so whoever takes the order next takes him whole (`twins-follow-the-pull.ts`).
+ */
+async function releaseByRounds(
+  tx: Tx,
+  scope: QueueScope,
+  cal: BusinessCalendar,
+  now: Date,
+  sw: RoundsSwitch & { enabledAt: Date },
+  limit: number
+): Promise<number> {
+  const clock = workClock(cal);
+  const cut = releaseCutoffs(now, clock);
+  // Switched on less than ninety working minutes ago: nothing logged since can be old enough yet (the round cut-off is earlier still).
+  if (sw.enabledAt.getTime() > cut.repull.getTime()) return 0;
+
+  const key = `${scope.companyId}:${scope.storeId}`;
+  const cursor = roundsScanCursor.get(key);
+  const rows = await tx.order.findMany({
+    where: {
+      ...scope,
+      claimedById: { not: null },
+      claimedAt: { not: null, lte: cut.repull },
+      confirmationStatus: { in: OPEN_CONFIRMATION },
+      // Never shipped — the contact door's own reading of «still ours to move».
+      shippingStatus: 'NOT_READY',
+      shippingBatchId: null,
+      trackingNumber: null,
+      labelPrintedAt: null,
+      // No attempt at all is the ninety-minute rule's, above.
+      contactAttempts: { some: {} },
+      AND: [
+        // A date ahead — a postponement, a callback he asked for — keeps it with her.
+        { OR: [{ postponedUntil: null }, { postponedUntil: { lte: now } }] },
+        { OR: [{ nextFollowUpAt: null }, { nextFollowUpAt: { lte: now } }] },
+        {
+          OR: [
+            { contactAttempts: { some: { result: { in: [...NO_ANSWER_RESULTS] }, createdAt: { gte: sw.enabledAt, lte: cut.round } } } },
+            { contactAttempts: { none: { createdAt: { gt: cut.repull } } } },
+          ],
+        },
+      ],
+      ...(cursor ? { id: { gt: cursor } } : {}),
+    },
+    orderBy: { id: 'asc' },
+    take: ROUNDS_SCAN_PAGE,
+    select: {
+      id: true,
+      claimedAt: true,
+      claimedById: true,
+      companyId: true,
+      customerId: true,
+      postponedUntil: true,
+      nextFollowUpAt: true,
+      contactAttempts: { select: { createdAt: true, result: true, attemptNumber: true } },
+    },
+  });
+  if (rows.length < ROUNDS_SCAN_PAGE) roundsScanCursor.delete(key);
+  else roundsScanCursor.set(key, rows[rows.length - 1].id);
+
+  let released = 0;
+  for (const order of rows) {
+    if (released >= limit) break;
+    const reason = roundsReleaseReason(
+      { claimedAt: order.claimedAt!, postponedUntil: order.postponedUntil, nextFollowUpAt: order.nextFollowUpAt },
+      order.contactAttempts,
+      sw,
+      cut,
+      now
+    );
+    if (!reason) continue;
+    const done = await tx.order.updateMany({
+      // Still hers, still the same claim, still open and not shipping — a press between the read and here wins.
+      where: {
+        id: order.id,
+        claimedById: order.claimedById,
+        claimedAt: order.claimedAt,
+        confirmationStatus: { in: OPEN_CONFIRMATION },
+        shippingStatus: 'NOT_READY',
+      },
+      // Exactly what the ninety-minute release writes.
+      data: { claimedById: null, claimedAt: null, currentOwnerId: null, signatureStatus: 'UNSIGNED', assignedAt: null },
+    });
+    if (done.count !== 1) continue;
+    await tx.orderClaimHistory.create({
+      data: { companyId: order.companyId, orderId: order.id, userId: order.claimedById!, action: 'RELEASED', reason },
+    });
+    // His other orders held for her go back too: one customer, one agent.
+    if (order.customerId) {
+      await tx.order.updateMany({
+        where: {
+          companyId: scope.companyId,
+          storeId: scope.storeId,
+          customerId: order.customerId,
+          id: { not: order.id },
+          claimedById: null,
+          confirmationStatus: 'NEW',
+          shippingStatus: 'NOT_READY',
+          claimHistory: { none: {} },
+          assignedToId: order.claimedById,
+        },
+        data: { assignedToId: null, assignedAt: null, version: { increment: 1 } },
+      });
+    }
+    released++;
+  }
+  return released;
 }
 
 /** How many orders are waiting to be pulled (the agent's only queue number). */
@@ -849,7 +991,7 @@ export async function pickNextCandidate(
   now = new Date(),
   forUserId?: string,
   /** The caller already asked `pickHeldForHer` and found none (the pull does, to know whether the cap grows). */
-  opts: { heldForHerAsked?: boolean } = {}
+  opts: { heldForHerAsked?: boolean; rounds?: RoundsSwitch } = {}
 ) {
   // THE ORDER HELD FOR HER COMES FIRST: the customer is a returning one and she is the person he spoke to.
   if (forUserId && !opts.heldForHerAsked) {
@@ -866,6 +1008,16 @@ export async function pickNextCandidate(
     select: { id: true },
   });
   if (duePostponed) return duePostponed.id;
+
+  // «نظام الجولات» (R4), with the switch ON only: an order nobody has rung yet comes before one that was rung already.
+  if (roundsOn(opts.rounds)) {
+    const neverRung = await tx.order.findFirst({
+      where: { ...readyToPullWhere(scope, forUserId, now), contactAttempts: { none: {} } },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    if (neverRung) return neverRung.id;
+  }
 
   const oldest = await tx.order.findFirst({
     where: readyToPullWhere(scope, forUserId, now),
@@ -912,8 +1064,10 @@ export async function pullNextOrder(
   cal: BusinessCalendar,
   now = new Date()
 ): Promise<PullResult> {
+  // «نظام الجولات»: read before the transaction (a cached read), so the pull never waits on a second connection for it.
+  const rounds = await roundsSwitch(db, scope.companyId);
   return db.$transaction(async (tx) => {
-    const released = await releaseStaleClaims(tx, scope, cal, now);
+    const released = await releaseStaleClaims(tx, scope, cal, now, { rounds, roundsLimit: PULL_ROUNDS_RELEASE_LIMIT });
 
     const counts = await ownedCounts(tx, scope, user.id, now);
     const refusal = pullRefusal(counts);
@@ -923,7 +1077,7 @@ export async function pullNextOrder(
 
     for (let attempt = 0; attempt < 5; attempt++) {
       const hers = await pickHeldForHer(tx, scope, user.id, now);
-      const candidate = hers ?? (atCap ? null : await pickNextCandidate(tx, scope, now, user.id, { heldForHerAsked: true }));
+      const candidate = hers ?? (atCap ? null : await pickNextCandidate(tx, scope, now, user.id, { heldForHerAsked: true, rounds }));
       if (!candidate) {
         // At the cap and nothing held for her is left to take (a hold let go between the count and here): the cap's sentence.
         if (atCap) return { ok: false, released, refusal: capRefusal(counts, false)! };

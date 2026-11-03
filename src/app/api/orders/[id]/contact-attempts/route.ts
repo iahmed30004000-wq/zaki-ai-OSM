@@ -11,6 +11,8 @@ import { endOrder } from '@/lib/order-cancel';
 import { can, authorize } from '@/lib/authorization';
 import { ORDER_NOT_FOUND } from '@/lib/order-refusals';
 import { mustHoldToWork, NOT_HELD_MESSAGE } from '@/lib/confirmation-queue';
+import { countedRounds, roundsClose, roundsOn, workClock } from '@/lib/no-answer-rounds';
+import { roundsSwitch } from '@/lib/no-answer-rounds-switch';
 
 /**
  * GET  /api/orders/[id]/contact-attempts — chronological attempt history
@@ -64,7 +66,7 @@ function parseFollowUpDate(
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const { user, companyId, storeId } = await requireContext();
+    const { user, companyId, storeId, country } = await requireContext();
 
     /**
      * ── THE TELEPHONE HAS ITS OWN PERMISSION NOW ──
@@ -138,6 +140,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     });
     const attemptNumber = (lastAttempt?.attemptNumber ?? 0) + 1;
 
+    // «نظام الجولات» — the owner's switch, read once (cached) before the transaction. OFF: the rule below is today's, line for line.
+    const rounds = await roundsSwitch(db, companyId);
+
     // ── The 1/2/3 no-answer rule ──
     // The third no-answer closes the order under its OWN reason, in the same
     // transaction as the attempt, and releases the reservation. It is not a
@@ -158,9 +163,32 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         include: { employee: { select: { id: true, name: true } } },
       });
 
-      const noAnswers = await tx.orderContactAttempt.count({
-        where: { orderId: id, result: { in: [...NO_ANSWER_RESULTS] } },
-      });
+      /*
+       * WITH THE SWITCH ON, THE COUNT IS ROUNDS (`no-answer-rounds.ts`, R2 · R3 · R5): presses within three working hours are
+       * one, a press with no «اتصل» before it is not counted, and three rounds on ONE day close nothing. The same function
+       * counts «جولة n من 3» on her desk, so the number she reads is the number that closes.
+       */
+      const roundsNow = roundsOn(rounds)
+        ? countedRounds(
+            await tx.orderContactAttempt.findMany({
+              where: { orderId: id },
+              select: { createdAt: true, result: true, employeeId: true, attemptNumber: true },
+            }),
+            workClock({
+              workHoursStart: country.workHoursStart,
+              workHoursEnd: country.workHoursEnd,
+              weekendDays: country.weekendDays,
+              timezone: country.timezone,
+            })
+          )
+        : null;
+      const noAnswers = roundsNow
+        ? roundsNow.counted.length
+        : await tx.orderContactAttempt.count({
+            where: { orderId: id, result: { in: [...NO_ANSWER_RESULTS] } },
+          });
+      // Three rounds, all on one day: not yet (R3). OFF this is always false.
+      const roundsOnOneDay = roundsNow ? !roundsClose(roundsNow) : false;
 
       const terminal = ['CONFIRMED', 'REJECTED', 'CANCELLED'].includes(order.confirmationStatus);
       /*
@@ -194,6 +222,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       if (
         (NO_ANSWER_RESULTS as readonly string[]).includes(result!) &&
         noAnswers >= NO_ANSWER_LIMIT &&
+        !roundsOnOneDay &&
         !terminal &&
         neverShipped
       ) {
