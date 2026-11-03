@@ -192,3 +192,54 @@ describe('the press', () => {
     expect(URL.createObjectURL).not.toHaveBeenCalled();
   });
 });
+
+describe('the ticked rows are the file (the owner, 3/11: «خليها تنزل الي بحددو من المؤجل او جاهز»)', () => {
+  const PICKED = /CSV المحدَّدة \(1\)/;
+  const tickTheRow = () => {
+    const boxes = screen.getAllByRole('checkbox');
+    fireEvent.click(boxes[boxes.length - 1]);
+  };
+
+  it('a ticked row on «مؤجَّلة الشحن»: the button counts it, and the press posts exactly its id with the courier', async () => {
+    apiFetch.mockResolvedValue(fileAnswer(0, 0, 1));
+    await draw();
+    fireEvent.change(screen.getByLabelText(/شركة الشحن/), { target: { value: 'p1' } });
+    fireEvent.click(screen.getByRole('button', { name: /مؤجَّلة الشحن/ }));
+    await waitFor(() => expect(apiJson.mock.calls.some(([u]) => String(u).includes('held=only'))).toBe(true), WAIT);
+    await waitFor(() => expect(screen.queryAllByText(/سامر خليل/).length).toBeGreaterThan(0), WAIT);
+    tickTheRow();
+    const button = await screen.findByRole('button', { name: PICKED }, WAIT);
+    await act(async () => {
+      fireEvent.click(button);
+    });
+
+    const [url, init] = apiFetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/ops/shipments/export');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({ courier: 'p1', ids: ['1'] });
+    expect((await screen.findByText('نزل الملف: 1 طلب من المحدَّدة', undefined, WAIT)).getAttribute('role')).toBe('status');
+  });
+
+  it('a ticked id that left the list since is said in its own words', async () => {
+    apiFetch.mockResolvedValue({ ...fileAnswer(0, 0, 1), headers: new Headers({ 'X-Rows': '1', 'X-Left-Gone': '1' }) });
+    await draw();
+    fireEvent.change(screen.getByLabelText(/شركة الشحن/), { target: { value: 'p1' } });
+    tickTheRow();
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: PICKED }, WAIT));
+    });
+    expect(await screen.findByText('نزل الملف: 1 طلب من المحدَّدة · 1 طلع من القائمة من وقت ما تحدّد (انشحن أو انلغى)', undefined, WAIT)).toBeTruthy();
+  });
+
+  it('NEGATIVE: nothing ticked — the whole ready tab, by the address, as before', async () => {
+    apiFetch.mockResolvedValue(fileAnswer(0, 0, 4));
+    await draw();
+    fireEvent.change(screen.getByLabelText(/شركة الشحن/), { target: { value: 'p1' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: BUTTON }));
+    });
+    const [url, init] = apiFetch.mock.calls[0] as [string, RequestInit | undefined];
+    expect(url.startsWith('/api/ops/shipments/export?')).toBe(true);
+    expect(init?.method).toBeUndefined();
+  });
+});
