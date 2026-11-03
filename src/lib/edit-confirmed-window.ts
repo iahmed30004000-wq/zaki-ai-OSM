@@ -1,5 +1,5 @@
 import type { SessionUser } from '@/types/auth';
-import { userCan } from './can';
+import { userCan, userHasFullAccess } from './can';
 import { EDIT_CONFIRMED_KEY } from './edit-confirmed-key';
 import { handedToCourier, orderSeal } from './order-seal';
 import type { ChangeIntent } from './change-request-intent';
@@ -22,6 +22,12 @@ import type { ChangeIntent } from './change-request-intent';
  * AND IT IS HERS: the window is open to the agent HOLDING the order (`claimedById`), nobody else. An agent acting on a
  * colleague's order still waits for a decision, exactly as before. The key and the holding are asked TOGETHER.
  *
+ * …AND THE OWNER'S (3/11): «انتا ادخل وعدل». The one person with FULL ACCESS (SUPER_ADMIN — `fullAccess` in the permission
+ * engine) has the same window on EVERY order, held or not: confirmed, on no trolley, not with the courier, and an edit still
+ * stopped by the seal. Not a manager, not a supervisor, not a moderator, whatever keys they hold — full access is not a key
+ * anybody can be ticked, it is the owner's role (role-names.ts reserves the name). The facts carry it as `fullAccess`, so the
+ * server (`holdsTheWindow`, from the engine's grants) and the screen (`editsNow`, from the session's role) ask ONE predicate.
+ *
  * WHAT THE WINDOW OPENS IS NOT A NEW DOOR. A change made inside it is still a change REQUEST — raised, decided (by her, on
  * the spot) and carried out through the doors that already do each thing (the order's own money path for an edit, `endOrder`
  * for a cancel, the hold for a postponement). The window only decides WHO MAY DECIDE: `mayDecide` (change-request-routing.ts)
@@ -36,9 +42,14 @@ import type { ChangeIntent } from './change-request-intent';
 export const EDIT_WINDOW_NOTE_AR =
   'طُبِّق مباشرةً — رافعه يملك «تعديل الطلب المؤكَّد قبل الدفعة» والطلب لم يدخل دفعة شحن بعد.';
 
+/** …and when it was the OWNER's window (full access, 3/11) — the same fact, said of him. */
+export const EDIT_WINDOW_OWNER_NOTE_AR = 'طُبِّق مباشرةً — المالك، والطلب لم يدخل دفعة شحن بعد.';
+
 export interface EditWindowFacts {
   /** The person asking — the window is hers only if she holds the order. */
   userId: string;
+  /** The person has FULL ACCESS (the owner): the window is his on any order, held or not. Absent reads as «no». */
+  fullAccess?: boolean;
   confirmationStatus: string;
   /** The agent who holds the order. */
   claimedById: string | null | undefined;
@@ -50,10 +61,10 @@ export interface EditWindowFacts {
 
 /** Is the window open for this person on this order? The key is asked beside this, never instead of it. */
 export function editWindowOpen(f: EditWindowFacts): boolean {
+  const hers = !!f.claimedById && f.claimedById === f.userId;
   return (
     f.confirmationStatus === 'CONFIRMED' &&
-    !!f.claimedById &&
-    f.claimedById === f.userId &&
+    (hers || f.fullAccess === true) &&
     f.inBatch === false &&
     f.handedToCourier === false
   );
@@ -93,6 +104,7 @@ export function editsNow(user: SessionUser | null | undefined, order: WindowOrde
   });
   const open = editWindowOpen({
     userId: user.id,
+    fullAccess: userHasFullAccess(user),
     confirmationStatus: order.confirmationStatus,
     claimedById: order.claimedById ?? null,
     inBatch,
