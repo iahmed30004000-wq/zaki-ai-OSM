@@ -146,7 +146,7 @@ export function StorefrontShell({
         «المعاينة الحقيقية» — said on the page itself, and kept out of every
         index. Only the seller's own frame over the draft ever draws this.
       */}
-      {store.preview && (
+      {store.quiet && (
         <>
           <meta name="robots" content="noindex, nofollow" />
           <p
@@ -156,7 +156,9 @@ export function StorefrontShell({
               background: 'var(--store-text)', color: 'var(--store-page)',
             }}
           >
-            معاينة المسوّدة — الزبون لسّا بيشوف المنشور
+            {store.preview
+              ? 'معاينة المسوّدة — الزبون لسّا بيشوف المنشور. الطلب من هون طلب حقيقي.'
+              : 'داخل من المعاينة: هالصفحة هي المنشورة، والطلب من هون طلب حقيقي.'}
           </p>
         </>
       )}

@@ -23,6 +23,7 @@ import { moneyText } from '@/lib/money';
 import { OfferCards } from '@/components/landing/blocks/OfferCards';
 import { LandingFormBridge } from '@/components/landing/LandingFormBridge';
 import OrderForm from '@/components/landing/OrderForm';
+import { PreviewOrderNote } from '@/components/storefront/PreviewOrderNote';
 import { ruleFor } from '@/lib/phone-rules';
 import type { Metadata } from 'next';
 import { publicOrigin, publicTitle, sharePreview, storeIcons } from '@/lib/public-metadata';
@@ -182,7 +183,7 @@ export default async function StorefrontProductPage({ params, searchParams }: Pr
       // of its own, and a full header over it is the shop arguing with
       // the page about what the shopper is looking at.
       <StorefrontShell store={store} back={back} thin>
-        <LandingPageView target={{ frontPageId: shownPage.id, storeId: store.id, campaign, inStore: true }} />
+        <LandingPageView target={{ frontPageId: shownPage.id, storeId: store.id, campaign, inStore: true, quiet: store.quiet }} />
       </StorefrontShell>
     );
   }
@@ -233,7 +234,7 @@ export default async function StorefrontProductPage({ params, searchParams }: Pr
   // A storefront page is a selling page: the store's company's pixels, the
   // ones not limited to landing pages.
   // «المعاينة الحقيقية» counts nothing: a seller looking at a draft is not a visitor to report.
-  const pixels = store.preview ? [] : await getTrackingPixelsForPage(store.companyId, 'PUBLIC', {
+  const pixels = store.quiet ? [] : await getTrackingPixelsForPage(store.companyId, 'PUBLIC', {
     storeId: store.id,
     countryId: store.countryId,
   });
@@ -325,6 +326,7 @@ export default async function StorefrontProductPage({ params, searchParams }: Pr
           }}
           product={product}
           content={content}
+          previewNote={store.quiet === true}
           offers={offerViews}
           compareAt={compareAt}
           regions={regions}
@@ -486,6 +488,7 @@ export default async function StorefrontProductPage({ params, searchParams }: Pr
           <h2 className="lp-h2">أكمل الطلب</h2>
           <p className="lp-sub">ادفع عند الاستلام — لا حاجة لبطاقة</p>
 
+          {store.quiet && <PreviewOrderNote />}
           <LandingFormBridge
             offers={offerViews.map((o) => ({ id: o.id, price: o.price }))}
             currency={store.currencyCode}

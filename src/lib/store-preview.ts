@@ -31,8 +31,28 @@ export const PREVIEW_COOKIE = 'zaki-store-preview';
 
 export async function previewStoreIdFor(slug: string): Promise<string | null> {
   try {
-    if (!(await draftMode()).isEnabled) return null;
     if ((await headers()).get('sec-fetch-dest') !== 'iframe') return null;
+  } catch {
+    return null;
+  }
+  return previewSessionStoreId(slug);
+}
+
+/**
+ * THE SAME FOUR CHECKS WITHOUT THE FRAME — the answer to «is this the seller
+ * who opened the preview door», which decides what is REPORTED, never what is
+ * drawn.
+ *
+ * A link clicked inside the frame, and the thank-you page an order pushes the
+ * frame to, are fetched by the page's own script: such a request is not a
+ * frame load (`Sec-Fetch-Dest: empty`), so it never gets the draft. But it is
+ * still the seller, and nothing about it may reach an ad account or a visit
+ * count. Erring this way is safe: at worst the seller's own tab, after they
+ * previewed, reports nothing either.
+ */
+export async function previewSessionStoreId(slug: string): Promise<string | null> {
+  try {
+    if (!(await draftMode()).isEnabled) return null;
     const named = (await cookies()).get(PREVIEW_COOKIE)?.value;
     if (!named) return null;
     const ctx = await requireContext();

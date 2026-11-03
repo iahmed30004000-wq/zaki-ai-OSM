@@ -112,7 +112,11 @@ export function StorePreviewFrame({ unsaved, onClose }: { unsaved: boolean; onCl
             style={{ width: device === 'mobile' ? 390 : '100%' }}
           />
         ) : (
-          <RiLoader4Line className="m-6 h-5 w-5 animate-spin text-[var(--sys-muted-foreground)]" />
+          // In a padded box rather than with a margin of its own: a margin class was the one utility this
+          // frame added to the first-load stylesheet (+37 bytes), and the padding one is already in it.
+          <span className="p-6">
+            <RiLoader4Line className="h-5 w-5 animate-spin text-[var(--sys-muted-foreground)]" />
+          </span>
         )}
       </div>
     </div>
