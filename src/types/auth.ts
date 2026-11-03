@@ -431,4 +431,6 @@ export interface SessionUser {
    * until when. Every key above is HERS; nothing can be written while this is set (the proxy refuses it).
    */
   preview?: { ownerId: string; ownerName: string; roleName: string; expiresAt: string } | null;
+  /** The owner, while a preview cookie is still on for somebody who may no longer be previewed: the banner says so. */
+  previewEnded?: boolean;
 }

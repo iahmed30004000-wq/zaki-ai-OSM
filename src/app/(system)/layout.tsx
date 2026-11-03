@@ -74,6 +74,7 @@ export default async function SystemLayout({ children }: { children: React.React
         {/* «عاين كـ» (src/lib/preview-mode.ts): on every page while the owner previews somebody — who, read-only, and
             the way back. Drawn from the session, so it cannot be on without the server having said so. */}
         {user?.preview && <PreviewBanner name={user.name} roleName={user.preview.roleName} />}
+        {user?.previewEnded && <PreviewBanner name={user.name} roleName="" ended />}
       </AppProvider>
     </SystemFrame>
   );

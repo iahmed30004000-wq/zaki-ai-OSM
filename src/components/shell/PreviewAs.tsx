@@ -108,7 +108,11 @@ export function PreviewPicker() {
   );
 }
 
-export function PreviewBanner({ name, roleName }: { name: string; roleName: string }) {
+/**
+ * `ended`: the preview cookie is still on, but the person may no longer be previewed (suspended, made an owner, moved
+ * company). The screens are already the owner's own; his writes stay refused until he presses the way back.
+ */
+export function PreviewBanner({ name, roleName, ended = false }: { name: string; roleName: string; ended?: boolean }) {
   const [busy, setBusy] = useState(false);
 
   async function leave() {
@@ -131,7 +135,7 @@ export function PreviewBanner({ name, roleName }: { name: string; roleName: stri
     >
       <RiEyeLine className="h-4 w-4 shrink-0 text-[var(--sys-warning)]" aria-hidden />
       <span>
-        عم تعاين كـ {name} ({roleName}) — قراءة بس
+        {ended ? 'انتهت المعاينة: هالحساب ما عاد ينعاين — ارجع لحسابك لتكمّل' : `عم تعاين كـ ${name} (${roleName}) — قراءة بس`}
       </span>
       <Button size="sm" variant="outline" onClick={leave} disabled={busy}>
         رجوع لحسابي

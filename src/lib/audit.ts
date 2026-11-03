@@ -33,12 +33,15 @@ export function redactSensitiveValues(value: unknown, depth = 0): unknown {
   return out;
 }
 
-/** Never throws: a module that cannot load here (a test's stub) means «not a preview», and the row is written. */
-async function previewRead(): Promise<boolean> {
+/**
+ * «عاين كـ» (preview-mode.ts): who is really looking on this request, or null. Never throws — a module that cannot
+ * load here (a test's stub) means «not a preview», and the row is written as given.
+ */
+async function previewOf(): Promise<{ ownerId: string; targetId: string } | null> {
   try {
-    return await (await import('./auth')).inPreviewRead();
+    return await (await import('./auth')).previewOfThisRequest();
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -60,13 +63,21 @@ export async function logAudit({
   newData?: any;
 }) {
   try {
-    // «عاين كـ» (preview-mode.ts): a read the owner makes AS somebody writes no row in her name. Only a read the proxy
-    // stamped answers true, so the preview's own start and end (a POST and a DELETE) are recorded like anything else.
-    if (await previewRead()) return;
+    // «عاين كـ» (preview-mode.ts): a row this request would write in the previewed person's name — an export, say — is
+    // written under the OWNER, with a note saying whose screen he was on. Never silent, never in her name. Only a
+    // request the proxy stamped is a preview; the preview's own start and end are recorded as they are.
+    let who = userId || null;
+    const preview = who ? await previewOf() : null;
+    if (preview && who === preview.targetId) {
+      const her = await db.user.findUnique({ where: { id: preview.targetId }, select: { name: true } });
+      who = preview.ownerId;
+      const base = newData && typeof newData === 'object' && !Array.isArray(newData) ? newData : newData === undefined ? {} : { value: newData };
+      newData = { ...base, duringPreview: `أثناء المعاينة كـ ${her?.name ?? preview.targetId}` };
+    }
     await db.auditLog.create({
       data: {
         companyId,
-        userId: userId || null,
+        userId: who,
         action,
         entity,
         entityId,

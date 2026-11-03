@@ -12,7 +12,7 @@ import {
   previewableTarget,
 } from '@/lib/auth';
 import { CONTEXT_COOKIE, contextCookieOptions, readSelection, signSelection, validateSelection } from '@/lib/geo-context';
-import { PREVIEW_COOKIE, PREVIEW_TTL_SECONDS } from '@/lib/preview-mode';
+import { PREVIEW_COOKIE, PREVIEW_CTX_STASH, PREVIEW_TTL_SECONDS } from '@/lib/preview-mode';
 import { ROLE_LABELS, type SessionUser, type UserRole } from '@/types/auth';
 
 /**
@@ -106,6 +106,11 @@ export async function POST(req: Request) {
     const previous = await currentPreviewClaims(owner.id);
     const res = NextResponse.json({ success: true, name: row.name });
     res.cookies.set(PREVIEW_COOKIE, token, previewCookieOptions(PREVIEW_TTL_SECONDS));
+    // The owner's OWN store choice waits beside the preview, so leaving puts him back exactly where he was — not on
+    // whichever store she was moved to while he looked. Switching from one person to another keeps the first stash.
+    const jar = await cookies();
+    const own = previous ? jar.get(PREVIEW_CTX_STASH)?.value : jar.get(CONTEXT_COOKIE)?.value;
+    if (own) res.cookies.set(PREVIEW_CTX_STASH, own, previewCookieOptions(PREVIEW_TTL_SECONDS));
     // The person the screens will be computed as — for her store, the engine needs her keys.
     const { computeEffectiveGrants } = await import('@/lib/permissions-core');
     const { attachGrants } = await import('@/lib/authorization');
@@ -135,11 +140,16 @@ export async function DELETE() {
     const res = NextResponse.json({ success: true });
     // Whoever asks, the cookie goes: leaving is never refused.
     res.cookies.set(PREVIEW_COOKIE, '', previewCookieOptions(0));
+    res.cookies.set(PREVIEW_CTX_STASH, '', previewCookieOptions(0));
     if (!owner) return res;
+    const jar = await cookies();
+    const stash = jar.get(PREVIEW_CTX_STASH)?.value;
     const claims = await currentPreviewClaims(owner.id);
     const companyId = await companyOf(owner);
+    // His own choice, as it was when he started; it was signed for him, so his next read takes it as it is.
+    if (stash && (await readSelection(owner.id, stash))) res.cookies.set(CONTEXT_COOKIE, stash, contextCookieOptions());
+    else if (claims && companyId) await carrySelection(res, claims.targetId, owner, companyId);
     if (claims && companyId) {
-      await carrySelection(res, claims.targetId, owner, companyId);
       const target = await db.user.findUnique({ where: { id: claims.targetId }, select: { name: true } });
       await logAudit({
         companyId,

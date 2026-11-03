@@ -16,7 +16,7 @@ import { SignJWT } from 'jose';
 
 type Row = Record<string, unknown>;
 
-const { state, db, SECRET, createNotification } = vi.hoisted(() => {
+const { state, db, SECRET, geo, createNotification } = vi.hoisted(() => {
   const SECRET = 'p'.repeat(48);
   process.env.JWT_SECRET = SECRET;
   const state = {
@@ -39,7 +39,15 @@ const { state, db, SECRET, createNotification } = vi.hoisted(() => {
     notification: { createMany: vi.fn(async () => ({ count: 0 })), updateMany: vi.fn() },
     attendanceMark: { create: vi.fn() },
   };
-  return { state, db, SECRET, createNotification: vi.fn(async () => 1) };
+  /** The store choice, as data: a token names the person it was signed for. */
+  const geo = {
+    readSelection: vi.fn(async (userId: string, token: string | undefined) =>
+      token && token.startsWith(`sel:${userId}:`) ? { countryId: '11111111-1111-4111-8111-111111111111', storeId: token.split(':')[2] } : null
+    ),
+    signSelection: vi.fn(async (userId: string, sel: { storeId: string | null }) => `sel:${userId}:${sel.storeId}`),
+    validateSelection: vi.fn(async (_u: unknown, _c: string, countryId: string, storeId: string | null) => ({ countryId, storeId })),
+  };
+  return { state, db, SECRET, geo, createNotification: vi.fn(async () => 1) };
 });
 
 vi.mock('@/lib/db', () => ({ db, default: db }));
@@ -58,9 +66,10 @@ vi.mock('@/lib/landing-domain', async (orig) => ({
 vi.mock('@/lib/geo-context', () => ({
   CONTEXT_COOKIE: 'salesflow_ctx',
   contextCookieOptions: () => ({ path: '/' }),
-  readSelection: async () => null,
-  signSelection: async () => 'sel',
-  validateSelection: async () => ({ countryId: 'co1', storeId: 's1' }),
+  readSelection: geo.readSelection,
+  signSelection: geo.signSelection,
+  validateSelection: geo.validateSelection,
+  resolveEntry: async () => ({ selection: null }),
 }));
 
 import { proxy } from '@/proxy';
@@ -71,6 +80,8 @@ import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { menuNav } from '@/lib/route-registry';
 import { PREVIEW_COOKIE, PREVIEW_STAMP_HEADER, previewStamp, signPreviewToken } from '@/lib/preview-mode';
 import * as previewRoute from '@/app/api/preview/route';
+import * as contextRoute from '@/app/api/context/route';
+import { PREVIEW_CTX_STASH } from '@/lib/preview-mode';
 
 const key = new TextEncoder().encode(SECRET);
 
@@ -100,6 +111,9 @@ const cookieHeader = (jar: Record<string, string>) => Object.entries(jar).map(([
 function call(method: string, path: string, jar: Record<string, string>, extra: Record<string, string> = {}) {
   return proxy(new Request(`https://app.example.com${path}`, { method, headers: { host: 'app.example.com', cookie: cookieHeader(jar), ...extra } }));
 }
+
+/** One audit row as written (the spy is typed without arguments). */
+const auditRow = (i: number) => (db.auditLog.create.mock.calls as unknown as [{ data: Record<string, any> }][])[i][0].data;
 
 const refused = async (res: Response) => res.status === 403 && (await res.clone().json()).code === 'PREVIEW_READ_ONLY';
 const stampOf = (res: Response) => res.headers.get(`x-middleware-request-${PREVIEW_STAMP_HEADER}`);
@@ -162,10 +176,15 @@ describe('the server refuses every write while the owner previews — before any
     expect(res.headers.get('x-middleware-next')).toBe('1');
   });
 
-  it('the three open doors still pass: leave the preview, sign out, pick a store', async () => {
-    for (const [m, p] of [['DELETE', '/api/preview'], ['POST', '/api/preview'], ['POST', '/api/auth/logout'], ['POST', '/api/context']]) {
-      expect(await refused(await call(m, p, ownerJar()))).toBe(false);
+  it('the open doors still pass: leave the preview, sign out (as the owner), pick a store (stamped: as HER)', async () => {
+    for (const [m, p] of [['DELETE', '/api/preview'], ['POST', '/api/preview'], ['POST', '/api/auth/logout']]) {
+      const res = await call(m, p, ownerJar());
+      expect(await refused(res)).toBe(false);
+      expect(stampOf(res)).toBeNull();
     }
+    const pick = await call('POST', '/api/context', ownerJar());
+    expect(await refused(pick)).toBe(false);
+    expect(stampOf(pick)).toBe(await previewStamp(preview, key));
   });
 
   it('a GET that writes by design (the ad account OAuth hand-off) is refused too', async () => {
@@ -289,16 +308,22 @@ describe('getCurrentUser answers HER only on a read the proxy stamped', () => {
 });
 
 describe('a preview read writes nothing in her name', () => {
-  it('the audit trail stays silent on a preview read, and writes as usual otherwise', async () => {
+  it('an export during the preview is recorded under the OWNER, «أثناء المعاينة كـ لينا» — never in her name, never lost', async () => {
     await serverSees(ownerJar());
     expect(await inPreviewRead()).toBe(true);
-    await logAudit({ companyId: 'c1', userId: 'lina', action: 'REPORT_EXPORTED', entity: 'Report', entityId: 'x' });
-    expect(db.auditLog.create).not.toHaveBeenCalled();
+    await logAudit({ companyId: 'c1', userId: 'lina', action: 'REPORT_EXPORTED', entity: 'Report', entityId: 'x', newData: { rows: 40 } });
+    expect(db.auditLog.create).toHaveBeenCalledTimes(1);
+    const row = auditRow(0);
+    expect(row).toMatchObject({ userId: 'owner', action: 'REPORT_EXPORTED' });
+    expect(JSON.parse(row.newData)).toEqual({ rows: 40, duringPreview: 'أثناء المعاينة كـ لينا' });
 
+    // A row that is not in her name is written as given; outside a preview, everything is.
+    await logAudit({ companyId: 'c1', userId: null, action: 'SYSTEM', entity: 'Y', entityId: 'z' });
+    expect(auditRow(1).userId).toBeNull();
     state.headers = new Headers();
     expect(await inPreviewRead()).toBe(false);
-    await logAudit({ companyId: 'c1', userId: 'owner', action: 'X', entity: 'Y', entityId: 'z' });
-    expect(db.auditLog.create).toHaveBeenCalledTimes(1);
+    await logAudit({ companyId: 'c1', userId: 'lina', action: 'X', entity: 'Y', entityId: 'z' });
+    expect(auditRow(2).userId).toBe('lina');
   });
 
   it('the «many customers read» tally and alarm are not hers to trip', async () => {
@@ -359,5 +384,51 @@ describe('the preview door — the owner alone, audited under his name', () => {
     expect(db.user.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { companyId: 'c1', status: 'ACTIVE', role: { not: 'SUPER_ADMIN' }, id: { not: 'owner' } } })
     );
+  });
+});
+
+describe('the store goes with the preview, and comes back with the owner', () => {
+  const COUNTRY = '11111111-1111-4111-8111-111111111111';
+  const STORE_B = '22222222-2222-4222-8222-222222222222';
+
+  it('a store picked during the preview is checked and signed for HER — her next read can use it', async () => {
+    await serverSees(ownerJar()); // the proxy stamps POST /api/context like a read (tested above)
+    const res = await contextRoute.POST(
+      new Request('http://x/api/context', { method: 'POST', body: JSON.stringify({ countryId: COUNTRY, storeId: STORE_B }) })
+    );
+    expect(res.status).toBe(200);
+    expect((geo.validateSelection.mock.calls[0][0] as { id: string }).id).toBe('lina');
+    expect(geo.signSelection).toHaveBeenCalledWith('lina', { countryId: COUNTRY, storeId: STORE_B });
+    expect(res.headers.get('set-cookie')).toContain(`salesflow_ctx=${encodeURIComponent(`sel:lina:${STORE_B}`)}`);
+  });
+
+  it('leaving puts the owner back on HIS own store, not on the one she was moved to', async () => {
+    // Start: his own choice (store A) is set aside beside the preview.
+    state.cookies = new Map([['salesflow_session', ownerSession], ['salesflow_ctx', 'sel:owner:A']]);
+    const start = await previewRoute.POST(new Request('http://x/api/preview', { method: 'POST', body: JSON.stringify({ userId: 'lina' }) }));
+    expect(start.headers.get('set-cookie')).toContain(`${PREVIEW_CTX_STASH}=${encodeURIComponent('sel:owner:A')}`);
+
+    // During: she was moved to store B. Leave: he gets A back, and the stash goes.
+    state.cookies = new Map([...Object.entries(ownerJar()), ['salesflow_ctx', `sel:lina:${STORE_B}`], [PREVIEW_CTX_STASH, 'sel:owner:A']]);
+    const end = await previewRoute.DELETE();
+    const set = end.headers.get('set-cookie')!;
+    expect(set).toContain(`salesflow_ctx=${encodeURIComponent('sel:owner:A')}`);
+    expect(set).toMatch(new RegExp(`${PREVIEW_CTX_STASH}=;`));
+  });
+});
+
+describe('the person stops being previewable mid-preview', () => {
+  it.each([
+    ['suspended', { status: 'SUSPENDED' }],
+    ['made an owner', { role: 'SUPER_ADMIN' }],
+    ['moved to another company', { companyId: 'c2' }],
+  ])('%s → the owner, told by the banner (previewEnded), and his own audit rows are written', async (_label, change) => {
+    Object.assign(state.users.lina, change);
+    await serverSees(ownerJar());
+    const seen = (await getCurrentUser())!;
+    expect(seen.id).toBe('owner');
+    expect(seen.previewEnded).toBe(true);
+    await logAudit({ companyId: 'c1', userId: 'owner', action: 'REPORT_EXPORTED', entity: 'Report', entityId: 'x' });
+    expect(auditRow(0).userId).toBe('owner');
   });
 });

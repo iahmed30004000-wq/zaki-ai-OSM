@@ -20,10 +20,12 @@ import { SignJWT, jwtVerify } from 'jose';
  *   1. THE PROXY (src/proxy.ts), before any handler runs: while a preview that
  *      binds to this session is on, every request that is not GET/HEAD/OPTIONS
  *      is refused 403 «وضع المعاينة — قراءة بس», except the three doors in
- *      `PREVIEW_OPEN_DOORS` (leave the preview, sign out, pick a store — the
- *      last writes only a cookie). A GET that writes by design (the ad
- *      account's OAuth hand-off) is refused too. For a read it stamps the
- *      request with `PREVIEW_STAMP_HEADER` = HMAC(key, cookie).
+ *      `PREVIEW_OPEN_DOORS` (leave the preview, sign out — both act as the
+ *      owner). Picking a store (`PREVIEW_HER_COOKIE_DOORS`) writes only a
+ *      cookie and is stamped like a read, so the choice is checked and signed
+ *      as HER. A GET that writes by design (the ad account's OAuth hand-off)
+ *      is refused too. For a read it stamps the request with
+ *      `PREVIEW_STAMP_HEADER` = HMAC(key, cookie).
  *   2. `getCurrentUser` (src/lib/auth.ts) answers HER only when the real
  *      session is an ACTIVE SUPER_ADMIN, the cookie verifies and binds, AND the
  *      proxy's stamp is on the request. No stamp — a request the proxy never
@@ -45,7 +47,17 @@ export const PREVIEW_REFUSAL = 'وضع المعاينة — قراءة بس. ا�
 export const PREVIEW_REFUSAL_CODE = 'PREVIEW_READ_ONLY';
 
 /** The doors a preview may still knock on with a write: leave it, sign out, pick a store (a cookie only). */
-export const PREVIEW_OPEN_DOORS: ReadonlyArray<string> = ['/api/preview', '/api/auth/logout', '/api/context'];
+export const PREVIEW_OPEN_DOORS: ReadonlyArray<string> = ['/api/preview', '/api/auth/logout'];
+
+/**
+ * Writes that change nothing but this browser's cookie, answered AS HER (stamped): the store picker. Unstamped it ran
+ * as the owner and signed the choice for HIS id, which her next read could not use — a store-picker loop for anybody
+ * with more than one store.
+ */
+export const PREVIEW_HER_COOKIE_DOORS: ReadonlyArray<string> = ['/api/context'];
+
+/** Where the owner's own store choice waits while he previews, so leaving puts him back where he was. */
+export const PREVIEW_CTX_STASH = 'zaki_preview_ctx';
 
 /**
  * GETs that write by design, refused in a preview like a POST. The OAuth hand-off records an audit row and then
@@ -64,6 +76,7 @@ export function previewVerdict(method: string, pathname: string): 'refuse' | 'st
   if (isReadMethod(method)) {
     return PREVIEW_CLOSED_READS.some((p) => pathname.startsWith(p)) ? 'refuse' : 'stamp';
   }
+  if (PREVIEW_HER_COOKIE_DOORS.some((p) => pathname === p)) return 'stamp';
   return PREVIEW_OPEN_DOORS.some((p) => pathname === p) ? 'pass' : 'refuse';
 }
 

@@ -199,9 +199,10 @@ export async function previewableTarget(owner: SessionUser, targetId: string): P
 /**
  * THE PREVIEW, IF THIS REQUEST IS ONE: the person being looked at, built exactly as her own session would be, with
  * `preview` naming who is really looking. Null when anything does not hold — and then the caller answers the owner
- * himself, never her.
+ * himself, never her. 'ended' when the preview is still on but she may no longer be previewed (suspended, made an
+ * owner, moved company): the owner, told so by the banner, because the proxy still refuses his writes until he leaves.
  */
-async function previewedUser(owner: SessionUser, sessionToken: string, previewToken: string): Promise<SessionUser | null> {
+async function previewedUser(owner: SessionUser, sessionToken: string, previewToken: string): Promise<SessionUser | 'ended' | null> {
   // Who may preview at all — an ACTIVE SUPER_ADMIN — is asked once, in `previewableTarget` below.
   const { verifyPreviewToken } = await import('./preview-mode');
   const claims = await verifyPreviewToken(previewToken, sessionToken, getJwtSecret());
@@ -209,7 +210,7 @@ async function previewedUser(owner: SessionUser, sessionToken: string, previewTo
   // The proxy's mark: it saw this request, and it was a read. Without it, the owner.
   if (!(await inPreviewRead())) return null;
   const row = await previewableTarget(owner, claims.targetId);
-  if (!row) return null;
+  if (!row) return 'ended';
   const seen = await sessionUserOf(row);
   seen.preview = {
     ownerId: owner.id,
@@ -252,7 +253,12 @@ export async function getCurrentUser(opts?: { preview?: 'ignore' }): Promise<Ses
     const { PREVIEW_COOKIE } = await import('./preview-mode');
     const previewToken = cookieStore.get(PREVIEW_COOKIE)?.value;
     if (!previewToken) return sessionUser;
-    return (await previewedUser(sessionUser, token, previewToken)) ?? sessionUser;
+    const seen = await previewedUser(sessionUser, token, previewToken);
+    if (seen === 'ended') {
+      sessionUser.previewEnded = true;
+      return sessionUser;
+    }
+    return seen ?? sessionUser;
   } catch (error: any) {
     if (error?.digest === 'DYNAMIC_SERVER_USAGE') {
       return null;
@@ -280,6 +286,18 @@ export async function inPreviewRead(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * WHO IS REALLY LOOKING, ON A STAMPED REQUEST — the owner and the person he previews — or null. The audit trail asks it
+ * so a row this request would write in HER name is written under HIS, with a note (audit.ts).
+ */
+export async function previewOfThisRequest(): Promise<{ ownerId: string; targetId: string } | null> {
+  if (!(await inPreviewRead())) return null;
+  const jar = await cookies();
+  const { PREVIEW_COOKIE, verifyPreviewToken } = await import('./preview-mode');
+  const claims = await verifyPreviewToken(jar.get(PREVIEW_COOKIE)?.value, jar.get(COOKIE_NAME)?.value, getJwtSecret());
+  return claims ? { ownerId: claims.ownerId, targetId: claims.targetId } : null;
 }
 
 /** Signs the preview cookie for the owner's CURRENT session (the preview door, src/app/api/preview). */
