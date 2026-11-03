@@ -68,6 +68,24 @@ describe('what it is asked about', () => {
     expect(report.mock.calls[0][0]).toMatchObject({ companyId: 'c1', storeId: 's1', timezone: 'Asia/Amman' });
   });
 
+  it('?part=report reads the report only — moving the dates never recomputes the board', async () => {
+    as('MANAGER', 'team.monitor');
+    const body = await (await get('?part=report&startDate=2026-09-01&endDate=2026-09-03')).json();
+    expect(board).not.toHaveBeenCalled();
+    expect(report).toHaveBeenCalledTimes(1);
+    expect(body.board).toBeUndefined();
+    expect(body.report).toBeDefined();
+  });
+
+  it('?part=board reads the board only', async () => {
+    as('MANAGER', 'team.monitor');
+    const body = await (await get('?part=board')).json();
+    expect(report).not.toHaveBeenCalled();
+    expect(board).toHaveBeenCalledTimes(1);
+    expect(body.report).toBeUndefined();
+    expect(body.board).toBeDefined();
+  });
+
   it('no dates: the last fourteen days, today included', async () => {
     as('MANAGER', 'team.monitor');
     await get();

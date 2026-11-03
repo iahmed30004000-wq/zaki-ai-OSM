@@ -31,28 +31,43 @@ function cond(value: any, cell: any): boolean {
     else if (op === 'in') { if (!(arg as unknown[]).includes(cell)) return false; }
     else if (op === 'gte') { if (!(cell instanceof Date) || cell < (arg as Date)) return false; }
     else if (op === 'lte') { if (!(cell instanceof Date) || cell > (arg as Date)) return false; }
+    else if (op === 'lt') { if (!(cell instanceof Date) || cell >= (arg as Date)) return false; }
     else throw new Error(`الفيك ما بيعرف ${op}`);
   }
   return true;
 }
+
+/** Built per query, so a fixture of thousands of rows stays linear. */
+function indexes() {
+  const orderById = new Map(store.orders.map((o) => [o.id, o]));
+  const attemptsOf = new Map<string, Row[]>();
+  for (const a of store.attempts) {
+    const list = attemptsOf.get(a.orderId);
+    if (list) list.push(a);
+    else attemptsOf.set(a.orderId, [a]);
+  }
+  return { orderById, attemptsOf };
+}
+type Ix = ReturnType<typeof indexes>;
+
 const ORDER_KEYS = ['companyId', 'storeId', 'claimedById', 'confirmationStatus', 'confirmedById', 'confirmedAt', 'createdAt'];
-function orderMatches(o: Row, where: Row): boolean {
+function orderMatches(o: Row, where: Row, ix: Ix): boolean {
   for (const [k, v] of Object.entries(where)) {
     if (k === 'contactAttempts') {
-      const mine = store.attempts.filter((a) => a.orderId === o.id);
-      if (!mine.some((a) => cond((v as Row).some.result, a.result))) return false;
+      const some = (v as Row).some;
+      if (!(ix.attemptsOf.get(o.id) ?? []).some((a) => attemptMatches(a, some, ix))) return false;
     } else if (ORDER_KEYS.includes(k)) {
       if (!cond(v, o[k])) return false;
     } else throw new Error(`الفيك ما بيعرف المفتاح ${k}`);
   }
   return true;
 }
-function attemptMatches(a: Row, where: Row): boolean {
+function attemptMatches(a: Row, where: Row, ix: Ix): boolean {
   for (const [k, v] of Object.entries(where)) {
     if (k === 'order') {
-      const o = store.orders.find((x) => x.id === a.orderId);
-      if (!o || !orderMatches(o, v as Row)) return false;
-    } else if (k === 'companyId' || k === 'createdAt') {
+      const o = ix.orderById.get(a.orderId);
+      if (!o || !orderMatches(o, v as Row, ix)) return false;
+    } else if (k === 'companyId' || k === 'createdAt' || k === 'result') {
       if (!cond(v, a[k])) return false;
     } else throw new Error(`الفيك ما بيعرف المفتاح ${k}`);
   }
@@ -62,35 +77,62 @@ const pick = (row: Row, select: Row) => {
   store.selects.push(Object.keys(select));
   return Object.fromEntries(Object.keys(select).map((k) => [k, row[k] ?? null]));
 };
+/** `orderBy` as Prisma reads it: one object or a list of them, each `{ field: 'asc' | 'desc' }`. */
+function sortBy(rows: Row[], orderBy: Row | Row[] | undefined): Row[] {
+  if (!orderBy) return rows;
+  const keys = (Array.isArray(orderBy) ? orderBy : [orderBy]).map((o) => Object.entries(o)[0] as [string, string]);
+  return [...rows].sort((a, b) => {
+    for (const [k, dir] of keys) {
+      const x = a[k] instanceof Date ? a[k].getTime() : a[k];
+      const y = b[k] instanceof Date ? b[k].getTime() : b[k];
+      if (x < y) return dir === 'asc' ? -1 : 1;
+      if (x > y) return dir === 'asc' ? 1 : -1;
+    }
+    return 0;
+  });
+}
 
 const { db } = vi.hoisted(() => ({ db: {} as Row }));
 vi.mock('./db', () => ({ db }));
 Object.assign(db, {
   order: {
-    findMany: vi.fn(async ({ where, select, take }: Row) =>
-      store.orders.filter((o) => orderMatches(o, where)).slice(0, take).map((o) => pick(o, select))),
-    count: vi.fn(async ({ where }: Row) => store.orders.filter((o) => orderMatches(o, where)).length),
+    findMany: vi.fn(async ({ where, select, take }: Row) => {
+      const ix = indexes();
+      return store.orders.filter((o) => orderMatches(o, where, ix)).slice(0, take).map((o) => pick(o, select));
+    }),
+    count: vi.fn(async ({ where }: Row) => {
+      const ix = indexes();
+      return store.orders.filter((o) => orderMatches(o, where, ix)).length;
+    }),
     groupBy: vi.fn(async ({ by, where }: Row) => {
       expect(by).toEqual(['confirmedById']);
+      const ix = indexes();
       const counts = new Map<string, number>();
-      for (const o of store.orders.filter((x) => orderMatches(x, where))) counts.set(o.confirmedById, (counts.get(o.confirmedById) ?? 0) + 1);
+      for (const o of store.orders.filter((x) => orderMatches(x, where, ix))) counts.set(o.confirmedById, (counts.get(o.confirmedById) ?? 0) + 1);
       return [...counts].map(([confirmedById, n]) => ({ confirmedById, _count: { _all: n } }));
     }),
   },
   orderContactAttempt: {
-    groupBy: vi.fn(async ({ by, where }: Row) => {
-      expect(by).toEqual(['orderId', 'result']);
+    groupBy: vi.fn(async ({ by, where, _max, _count, take }: Row) => {
+      const ix = indexes();
       const groups = new Map<string, Row>();
-      for (const a of store.attempts.filter((x) => attemptMatches(x, where))) {
-        const key = `${a.orderId}|${a.result}`;
-        const g = groups.get(key) ?? { orderId: a.orderId, result: a.result, _max: { createdAt: null } };
+      for (const a of store.attempts.filter((x) => attemptMatches(x, where, ix))) {
+        const key = by.map((k: string) => a[k]).join('|');
+        const g = groups.get(key) ?? { ...Object.fromEntries(by.map((k: string) => [k, a[k]])), _max: { createdAt: null }, _count: { _all: 0 } };
         if (!g._max.createdAt || a.createdAt > g._max.createdAt) g._max.createdAt = a.createdAt;
+        g._count._all++;
         groups.set(key, g);
       }
-      return [...groups.values()];
+      return [...groups.values()].slice(0, take).map((g) => ({
+        ...Object.fromEntries(by.map((k: string) => [k, g[k]])),
+        ...(_max ? { _max: g._max } : {}),
+        ...(_count ? { _count: g._count } : {}),
+      }));
     }),
-    findMany: vi.fn(async ({ where, select, take }: Row) =>
-      store.attempts.filter((a) => attemptMatches(a, where)).slice(0, take).map((a) => pick(a, select))),
+    findMany: vi.fn(async ({ where, select, take, orderBy }: Row) => {
+      const ix = indexes();
+      return sortBy(store.attempts.filter((a) => attemptMatches(a, where, ix)), orderBy).slice(0, take).map((a) => pick(a, select));
+    }),
   },
   user: {
     findMany: vi.fn(async ({ where }: Row) => store.users.filter((u) => where.id.in.includes(u.id))),
@@ -101,7 +143,8 @@ import {
   CONTACT_RESULTS,
   NO_ANSWER_RESULTS,
 } from './confirmation-workflow';
-import { answerRateReport, isStuck, noAnswerBoard, outcomeOf } from './no-answer-watch';
+import { businessMinutesBetween } from './business-calendar';
+import { answerRateReport, isStuck, noAnswerBoard, outcomeOf, stuckCutoff } from './no-answer-watch';
 
 /** Sunday to Thursday, 09:00–17:00, Amman — Friday and Saturday off. */
 const CAL = { workHoursStart: '09:00', workHoursEnd: '17:00', weekendDays: [5, 6], timezone: 'Asia/Amman' };
@@ -180,7 +223,8 @@ function seed() {
     attempt('o8', 2, 'OPENED', at(20, 13)),
     attempt('o8', 3, 'NO_ANSWER', at(21, 9)),
     attempt('o8', 4, 'CONFIRMED', at(22, 9, 30)),
-    attempt('o10', 1, 'ANSWERED', at(14, 10)), // قبل المدة
+    attempt('o10', 1, 'ANSWERED', at(14, 10)), // قبل المدة — بس بيخلّي اللي بعده الاتصال التاني
+    attempt('o10', 2, 'NO_ANSWER', at(16, 10)),
     attempt('x1', 1, 'NO_ANSWER', at(17, 9)),
     attempt('x3', 1, 'NO_ANSWER', at(21, 9)),
     attempt('y1', 1, 'NO_ANSWER', at(17, 9), 'c2'),
@@ -229,19 +273,19 @@ describe('reached or not — every value the contact door accepts', () => {
 
 describe('stuck — two WORKING days since the last attempt', () => {
   it('Thursday 16:00 to Sunday 16:00 is three days on the wall and one working day: not stuck', () => {
-    expect(isStuck(at(17, 16), at(20, 16), CAL)).toBe(false);
+    expect(isStuck(at(17, 16), stuckCutoff(at(20, 16), CAL))).toBe(false);
   });
 
   it('Thursday 16:00 to Monday 16:00 is exactly two working days: not yet', () => {
-    expect(isStuck(at(17, 16), at(21, 16), CAL)).toBe(false);
+    expect(isStuck(at(17, 16), stuckCutoff(at(21, 16), CAL))).toBe(false);
   });
 
   it('one minute past two working days: stuck', () => {
-    expect(isStuck(at(17, 16), at(21, 16, 1), CAL)).toBe(true);
+    expect(isStuck(at(17, 16), stuckCutoff(at(21, 16, 1), CAL))).toBe(true);
   });
 
   it('Thursday 16:00 to Tuesday 10:00: stuck', () => {
-    expect(isStuck(at(17, 16), at(22, 10), CAL)).toBe(true);
+    expect(isStuck(at(17, 16), stuckCutoff(at(22, 10), CAL))).toBe(true);
   });
 });
 
@@ -283,7 +327,7 @@ describe('the answer-rate report, against the hand count', () => {
   it('by local hour — only hours with an attempt, in order', async () => {
     expect((await report()).byHour.map(triple)).toEqual([
       ['9', 1, 3, 4, 0, 25],
-      ['10', 0, 4, 4, 2, 0],
+      ['10', 0, 5, 5, 2, 0],
       ['11', 1, 1, 2, 0, 50],
       ['12', 0, 1, 1, 0, 0],
       ['13', 0, 0, 0, 1, null],
@@ -291,19 +335,127 @@ describe('the answer-rate report, against the hand count', () => {
     ]);
   });
 
-  it('by attempt number — 1, 2, 3, 4+', async () => {
+  it('by call number — only rows with an outcome are numbered, after the calls the order had before the range', async () => {
     expect((await report()).byAttempt.map(triple)).toEqual([
-      ['1', 1, 7, 8, 2, 13],
-      ['2', 1, 2, 3, 1, 33],
-      ['3', 0, 2, 2, 0, 0],
-      ['4+', 1, 0, 1, 0, 100],
+      ['1', 1, 7, 8, 0, 13],
+      ['2', 1, 4, 5, 0, 20],
+      ['3', 1, 1, 2, 0, 50],
+      ['4+', 0, 0, 0, 0, null],
     ]);
   });
 
-  it('the whole range: three reached of fourteen, three outside the rate; the day before it is not read', async () => {
+  it('the whole range: three reached of fifteen, three outside the rate; the day before it is not read', async () => {
     const r = await report();
-    expect(triple(r.total)).toEqual(['الكل', 3, 11, 14, 3, 21]);
+    expect(triple(r.total)).toEqual(['الكل', 3, 12, 15, 3, 20]);
     expect(r.truncated).toBe(false);
+  });
+});
+
+describe('the call number is the number of the CALL, not of the row', () => {
+  it('OPENED #1 · NO_ANSWER #2 · OPENED #3 · ANSWERED #4 is «the first call: not answered, the second: answered»', async () => {
+    store.orders = [order('p1', { claimedById: SARA, confirmationStatus: 'IN_PROGRESS' })];
+    store.attempts = [
+      attempt('p1', 1, 'OPENED', at(20, 10)),
+      attempt('p1', 2, 'NO_ANSWER', at(20, 10, 1)),
+      attempt('p1', 3, 'OPENED', at(21, 11)),
+      attempt('p1', 4, 'ANSWERED', at(21, 11, 2)),
+    ];
+    const r = await report();
+    expect(r.byAttempt.map(({ key, reached, base, rate }) => [key, reached, base, rate])).toEqual([
+      ['1', 0, 1, 0],
+      ['2', 1, 1, 100],
+      ['3', 0, 0, null],
+      ['4+', 0, 0, null],
+    ]);
+    // The two presses are still counted — in the hour table, outside the rate.
+    expect(r.total.notACall).toBe(2);
+  });
+
+  it('a call before the range is counted in the number, and not in the figures', async () => {
+    store.orders = [order('p2', { claimedById: SARA, confirmationStatus: 'IN_PROGRESS' })];
+    store.attempts = [
+      attempt('p2', 1, 'NO_ANSWER', at(10, 10)), // before the range
+      attempt('p2', 2, 'MESSAGE_SENT', at(10, 11)), // before the range, and no call
+      attempt('p2', 3, 'BUSY', at(16, 10)),
+      attempt('p2', 4, 'NO_ANSWER', at(17, 10)),
+      attempt('p2', 5, 'CONFIRMED', at(20, 10)),
+    ];
+    const r = await report();
+    expect(r.byAttempt.map(({ key, reached, notReached }) => [key, reached, notReached])).toEqual([
+      ['1', 0, 0],
+      ['2', 0, 1],
+      ['3', 0, 1],
+      ['4+', 1, 0],
+    ]);
+    expect([r.total.reached, r.total.notReached]).toEqual([1, 2]);
+  });
+});
+
+describe('«عالق» from one cut-off per request', () => {
+  it('agrees with businessMinutesBetween(lastAt, now) > two working days, on hundreds of instants', () => {
+    // A fixed walk of pseudo-random instants: weekends, nights, seconds, and exact boundaries all turn up.
+    let seed = 7;
+    const next = () => (seed = (seed * 48271) % 2147483647) / 2147483647;
+    for (let i = 0; i < 400; i++) {
+      const now = new Date(at(14, 0).getTime() + Math.floor(next() * 21 * 1440) * 60_000 + Math.floor(next() * 60) * 1000);
+      const lastAt = new Date(now.getTime() - Math.floor(next() * 7 * 1440) * 60_000 - Math.floor(next() * 60) * 1000);
+      const expected = businessMinutesBetween(lastAt, now, CAL) > 2 * 480;
+      expect(isStuck(lastAt, stuckCutoff(now, CAL)), `${lastAt.toISOString()} → ${now.toISOString()}`).toBe(expected);
+    }
+  });
+});
+
+describe('the cost does not grow with the rows', () => {
+  /** Counts every `new Intl.DateTimeFormat` while `run` works — the thing that cost seconds per request. */
+  async function formattersDuring(run: () => Promise<unknown>): Promise<number> {
+    const Real = Intl.DateTimeFormat;
+    let built = 0;
+    const Counting = function (this: unknown, ...args: ConstructorParameters<typeof Intl.DateTimeFormat>) {
+      built++;
+      return new Real(...args);
+    } as unknown as typeof Intl.DateTimeFormat;
+    Object.assign(Counting, { supportedLocalesOf: Real.supportedLocalesOf });
+    Intl.DateTimeFormat = Counting;
+    try {
+      await run();
+    } finally {
+      Intl.DateTimeFormat = Real;
+    }
+    return built;
+  }
+
+  /** `n` held orders, each with an attempt somewhere in the last ninety days, and as many report rows. */
+  function synthetic(n: number) {
+    store.selects = [];
+    store.users = [{ id: SARA, name: 'سارة' }];
+    store.orders = [];
+    store.attempts = [];
+    for (let i = 0; i < n; i++) {
+      store.orders.push(order(`s${i}`, { claimedById: SARA, confirmationStatus: 'NO_ANSWER' }));
+      store.attempts.push(attempt(`s${i}`, 1, i % 3 ? 'NO_ANSWER' : 'OPENED', new Date(NOW.getTime() - (i % 90) * 86_400_000 - (i % 480) * 60_000)));
+    }
+  }
+
+  it('the board: the same handful of formatters for 300 held orders and for 3,000', async () => {
+    synthetic(300);
+    const few = await formattersDuring(board);
+    synthetic(3000);
+    let b: Awaited<ReturnType<typeof board>> | undefined;
+    const many = await formattersDuring(async () => (b = await board()));
+    expect(many).toBe(few);
+    expect(many).toBeLessThanOrEqual(40);
+    expect(b!.totals.held).toBe(3000);
+    // Every order whose one attempt is at or before the cut-off is stuck (the cut-off itself is checked against
+    // businessMinutesBetween above).
+    const cutoff = stuckCutoff(NOW, CAL);
+    expect(b!.totals.stuck).toBe(store.attempts.filter((a) => a.createdAt <= cutoff).length);
+  });
+
+  it('the report: one formatter for 5,000 rows', async () => {
+    synthetic(5000);
+    const built = await formattersDuring(() =>
+      answerRateReport({ companyId: 'c1', storeId: 's1', timezone: 'Asia/Amman', start: at(1, 0), end: at(22, 23, 59) }));
+    expect(built).toBe(1);
   });
 });
 

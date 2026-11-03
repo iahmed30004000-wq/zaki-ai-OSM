@@ -1,5 +1,5 @@
 import { db } from './db';
-import { businessMinutesBetween, zonedParts, type BusinessCalendar } from './business-calendar';
+import { zonedParts, zonedTimeToInstant, type BusinessCalendar } from './business-calendar';
 import { CONTACT_RESULTS, NO_ANSWER_RESULTS } from './confirmation-workflow';
 import { OPEN_CONFIRMATION } from './confirmation-queue';
 import { localDayKey, startOfLocalDay } from './local-day';
@@ -77,9 +77,59 @@ export function workdayMinutes(cal: BusinessCalendar): number {
   return span > 0 ? span : 8 * 60;
 }
 
-/** Is an order whose last attempt was at `lastAt` stuck at `now`? Working minutes, so a weekend is not waiting. */
-export function isStuck(lastAt: Date, now: Date, cal: BusinessCalendar): boolean {
-  return businessMinutesBetween(lastAt, now, cal) > STUCK_BUSINESS_DAYS * workdayMinutes(cal);
+/** «HH:mm» exactly as the business calendar reads it (`parseHhMm` there): the hour capped at 23, the minute at 59. */
+function windowTime(value: string, fallbackHour: number): { hour: number; minute: number } {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(value ?? '');
+  if (!m) return { hour: fallbackHour, minute: 0 };
+  return { hour: Math.min(23, Number(m[1])), minute: Math.min(59, Number(m[2])) };
+}
+
+/**
+ * THE LATEST INSTANT WITH AT LEAST `minutes` OF WORKING TIME BETWEEN IT AND `now`.
+ *
+ * Walked BACK from now over the same windows `businessMinutesBetween` walks forward (work hours, weekend days, the
+ * country's timezone), once per request. It used to be the other way round: `businessMinutesBetween` per held order, each
+ * walking every day since that order's last attempt and building a date formatter several times per day — 3.75 s of one
+ * Node process for 1,300 held orders, two minutes for 20,000, while the agents' pulls wait on the same process. Now it is
+ * a handful of days walked once, and each order is one comparison of two instants.
+ *
+ * A weekday is read from the calendar date itself (`Date.UTC(y, m, d).getUTCDay()`), so the walk builds no formatter for
+ * it; only the two edges of each working window are placed in the timezone.
+ */
+export function workingMinutesBack(now: Date, minutes: number, cal: BusinessCalendar): Date {
+  const local = zonedParts(now, cal.timezone);
+  const from = windowTime(cal.workHoursStart, 9);
+  const to = windowTime(cal.workHoursEnd, 17);
+  let remaining = minutes * 60_000;
+  for (let back = 0; back < 400; back++) {
+    const day = new Date(Date.UTC(local.year, local.month - 1, local.day - back));
+    if (cal.weekendDays.includes(day.getUTCDay())) continue;
+    const [y, m, d] = [day.getUTCFullYear(), day.getUTCMonth() + 1, day.getUTCDate()];
+    const start = zonedTimeToInstant(cal.timezone, y, m, d, from.hour, from.minute).getTime();
+    const close = zonedTimeToInstant(cal.timezone, y, m, d, to.hour, to.minute).getTime();
+    if (close <= start) continue; // no working window that day — the calendar's own rule
+    const end = Math.min(close, now.getTime());
+    if (end <= start) continue; // today, before the doors opened
+    if (end - start >= remaining) return new Date(end - remaining);
+    remaining -= end - start;
+  }
+  return new Date(-8.64e15); // a calendar with no working time: nothing is ever stuck
+}
+
+/**
+ * «عالق» FROM THIS INSTANT BACK: the last attempt at or before it is MORE than two working days old.
+ *
+ * Strictly more, as `businessMinutesBetween(lastAt, now) > 2 days` said it — that floors to whole minutes, so «more than
+ * N» is «at least N + 1», and the cut-off is walked back N + 1 minutes. `no-answer-watch.test.ts` checks the two
+ * readings agree on hundreds of instants.
+ */
+export function stuckCutoff(now: Date, cal: BusinessCalendar): Date {
+  return workingMinutesBack(now, STUCK_BUSINESS_DAYS * workdayMinutes(cal) + 1, cal);
+}
+
+/** Is an order whose last attempt was at `lastAt` stuck? One comparison against the request's cut-off. */
+export function isStuck(lastAt: Date, cutoff: Date): boolean {
+  return lastAt.getTime() <= cutoff.getTime();
 }
 
 // ───────────────────────── the board ─────────────────────────
@@ -144,6 +194,8 @@ export function tallyBoard(input: {
   now: Date;
 }): Pick<NoAnswerBoard, 'agents' | 'totals'> {
   const { held, attempts, confirmedToday, names, calendar, now } = input;
+  // Once per request, never per order — see `workingMinutesBack`.
+  const cutoff = stuckCutoff(now, calendar);
 
   // Per order: was anybody reached, was a no-answer logged, and when was the last attempt of any kind.
   const per = new Map<string, { reached: boolean; noAnswer: boolean; lastAt: Date | null }>();
@@ -174,7 +226,7 @@ export function tallyBoard(input: {
     const a = per.get(o.id);
     if (a?.noAnswer && !a.reached) r.onlyNoAnswer++;
     if (isPromise(o, now)) r.promisesDue++;
-    if (a?.lastAt && isStuck(a.lastAt, now, calendar)) r.stuck++;
+    if (a?.lastAt && isStuck(a.lastAt, cutoff)) r.stuck++;
   }
   for (const [id, n] of confirmedToday) rowOf(id).confirmedToday = n;
 
@@ -300,21 +352,60 @@ function close(row: RateRow): RateRow {
   return row;
 }
 
-/** The arithmetic of the report. Hours are the store country's local hours; only hours with an attempt are rows. */
+/** The results that are an outcome of a call — the ones the call number counts. */
+export const CALL_RESULTS = CONTACT_RESULTS.filter((r) => outcomeOf(r) !== 'NOT_A_CALL');
+
+/**
+ * The local hour of an instant, from ONE formatter per request. `zonedParts` builds a formatter per call, and once per
+ * row of a 50,000-row report that was seconds of one Node process.
+ */
+export function hourReader(timeZone: string): (at: Date) => number {
+  const fmt = new Intl.DateTimeFormat('en-US', { timeZone, hour12: false, hour: '2-digit' });
+  return (at) => Number(fmt.formatToParts(at).find((p) => p.type === 'hour')?.value ?? 0) % 24;
+}
+
+export interface AttemptRow {
+  orderId: string;
+  result: string;
+  createdAt: Date;
+  /** Only to order two rows of one order written in the same millisecond. */
+  attemptNumber: number;
+}
+
+/**
+ * THE ARITHMETIC OF THE REPORT.
+ *
+ * By hour: every row, in the store country's local hour; only hours with an attempt are rows.
+ *
+ * By call number — NOT the stored `attemptNumber`. Every press of «اتصال» writes `OPENED` under its own number, so an order
+ * rung as OPENED #1 · NO_ANSWER #2 · OPENED #3 · ANSWERED #4 read «رقم 1: base 0» and «4+: 100%» when the truth is «the
+ * first call was not answered, the second was». So only the rows that ARE an outcome (`CALL_RESULTS`) are numbered, per
+ * order, in time order, starting after the calls that order already had before the range (`priorCalls`). A button or a
+ * message gets no number; it is counted in the hour table, outside the rate.
+ */
 export function tallyAnswerRate(
-  rows: { result: string; attemptNumber: number; createdAt: Date }[],
+  rows: AttemptRow[],
+  priorCalls: Map<string, number>,
   timezone: string
 ): Omit<AnswerRateReport, 'truncated'> {
+  const hourOf = hourReader(timezone);
   const hours = new Map<number, RateRow>();
   const tries = new Map<string, RateRow>(ATTEMPT_BUCKETS.map((b) => [b, emptyRow(b)]));
   const total = emptyRow('الكل');
-  for (const r of rows) {
+  const callsSoFar = new Map(priorCalls);
+  const inOrder = [...rows].sort(
+    (a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.attemptNumber - b.attemptNumber
+  );
+  for (const r of inOrder) {
     const outcome = outcomeOf(r.result);
-    const hour = zonedParts(r.createdAt, timezone).hour;
+    const hour = hourOf(r.createdAt);
     if (!hours.has(hour)) hours.set(hour, emptyRow(String(hour)));
     add(hours.get(hour)!, outcome);
-    add(tries.get(bucketOf(r.attemptNumber))!, outcome);
     add(total, outcome);
+    if (outcome === 'NOT_A_CALL') continue;
+    const n = (callsSoFar.get(r.orderId) ?? 0) + 1;
+    callsSoFar.set(r.orderId, n);
+    add(tries.get(bucketOf(n))!, outcome);
   }
   return {
     byHour: [...hours.entries()].sort((a, b) => a[0] - b[0]).map(([, row]) => close(row)),
@@ -323,7 +414,13 @@ export function tallyAnswerRate(
   };
 }
 
-/** The report over a range, for one store. One bounded read of three columns. */
+/**
+ * The report over a range, for one store. Two bounded reads:
+ *
+ *   · the range's rows, OLDEST first, so that when the cap cuts it is the end of the range that goes and every row kept
+ *     still has all of its order's earlier rows in the range;
+ *   · per order with a row in the range, how many calls it had BEFORE the range — one grouped count, not the rows.
+ */
 export async function answerRateReport(input: {
   companyId: string;
   storeId: string;
@@ -332,11 +429,28 @@ export async function answerRateReport(input: {
   end: Date;
 }): Promise<AnswerRateReport> {
   const { companyId, storeId, timezone, start, end } = input;
-  const rows = await db.orderContactAttempt.findMany({
-    where: { companyId, order: { storeId }, createdAt: { gte: start, lte: end } },
-    select: { result: true, attemptNumber: true, createdAt: true },
-    orderBy: { createdAt: 'desc' },
-    take: REPORT_ROW_CAP,
-  });
-  return { ...tallyAnswerRate(rows, timezone), truncated: rows.length >= REPORT_ROW_CAP };
+  const inRange = { gte: start, lte: end };
+  const [rows, before] = await Promise.all([
+    db.orderContactAttempt.findMany({
+      where: { companyId, order: { storeId }, createdAt: inRange },
+      select: { orderId: true, result: true, createdAt: true, attemptNumber: true },
+      orderBy: [{ createdAt: 'asc' }, { attemptNumber: 'asc' }],
+      take: REPORT_ROW_CAP,
+    }),
+    db.orderContactAttempt.groupBy({
+      by: ['orderId'],
+      where: {
+        companyId,
+        createdAt: { lt: start },
+        result: { in: [...CALL_RESULTS] },
+        order: { storeId, contactAttempts: { some: { createdAt: inRange } } },
+      },
+      _count: { _all: true },
+      // At most one group per order with a row in the range — never more than the rows read beside it.
+      orderBy: { orderId: 'asc' },
+      take: REPORT_ROW_CAP,
+    }),
+  ]);
+  const priorCalls = new Map(before.map((b) => [b.orderId, b._count._all]));
+  return { ...tallyAnswerRate(rows, priorCalls, timezone), truncated: rows.length >= REPORT_ROW_CAP };
 }

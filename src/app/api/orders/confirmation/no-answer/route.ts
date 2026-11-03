@@ -13,7 +13,7 @@ import {
 } from '@/lib/no-answer-watch';
 
 /**
- * GET /api/orders/confirmation/no-answer?startDate=&endDate=
+ * GET /api/orders/confirmation/no-answer?startDate=&endDate=&part=board|report
  *
  * «لا رد والطلبات المحجوزة» — read only. The board is «now»; the dates are the
  * answer-rate report's alone (default: the last fourteen days, today included,
@@ -49,14 +49,17 @@ export async function GET(req: Request) {
       timezone: country.timezone,
     };
 
+    // `?part=board` / `?part=report`: the screen asks for the board once and for the report on every date change, so
+    // moving the dates never recomputes the board. Without `part`, both.
+    const part = searchParams.get('part');
     const [board, report] = await Promise.all([
-      noAnswerBoard({ companyId, storeId, calendar, now }),
-      answerRateReport({ companyId, storeId, timezone: country.timezone, start, end }),
+      part === 'report' ? undefined : noAnswerBoard({ companyId, storeId, calendar, now }),
+      part === 'board' ? undefined : answerRateReport({ companyId, storeId, timezone: country.timezone, start, end }),
     ]);
 
     return NextResponse.json({
-      board,
-      report,
+      ...(board ? { board } : {}),
+      ...(report ? { report } : {}),
       window: { start: start.toISOString(), end: end.toISOString(), timezone: country.timezone },
       rules: { stuckBusinessDays: STUCK_BUSINESS_DAYS, freshNewHours: FRESH_NEW_HOURS },
     });

@@ -12,15 +12,15 @@ import type { AgentRow, AnswerRateReport, NoAnswerBoard, RateRow } from '@/lib/n
 /**
  * «لا رد والطلبات المحجوزة» — WHAT EACH AGENT IS SITTING ON, AND WHEN CUSTOMERS PICK UP.
  *
- * Read only: nothing on this tab presses anything. The board is «now»; the
- * date picker belongs to the answer-rate report under it alone (default: the
- * last fourteen days). Every percentage stands beside the counts it was made
- * from, and a base of zero is a dash, never «0%».
+ * Read only: nothing on this tab presses anything. The board is «now» and is
+ * asked for once; the date picker belongs to the answer-rate report under it
+ * alone (default: the last fourteen days), and moving it asks for the report
+ * only. Every percentage stands beside the counts it was made from, and a base
+ * of zero is a dash, never «0%».
  */
 
-interface Answer {
+interface BoardAnswer {
   board: NoAnswerBoard;
-  report: AnswerRateReport;
   rules: { stuckBusinessDays: number; freshNewHours: number };
 }
 
@@ -35,34 +35,63 @@ function lastFourteenDays() {
 
 const rateText = (r: RateRow) => (r.rate === null ? '—' : `${r.rate}%`);
 
-function rateColumns(first: string, keyLabel: (key: string) => string) {
+function rateColumns(first: string, keyLabel: (key: string) => string, withNotACall: boolean) {
   return [
     { key: 'k', label: first, primary: true, render: (r: RateRow) => keyLabel(r.key) },
     { key: 'rate', label: 'نسبة الرد', primary: true, render: (r: RateRow) => <span className="tabular-nums font-bold">{rateText(r)}</span> },
     { key: 'reached', label: 'ردّ', render: (r: RateRow) => <span className="tabular-nums">{r.reached}</span> },
     { key: 'not', label: 'لم يرد', render: (r: RateRow) => <span className="tabular-nums">{r.notReached}</span> },
     { key: 'base', label: 'الأساس', render: (r: RateRow) => <span className="tabular-nums">{r.base}</span> },
-    { key: 'nc', label: 'زر أو رسالة — خارج النسبة', hideOnPhone: true, render: (r: RateRow) => <span className="tabular-nums">{r.notACall}</span> },
+    // A button or a message has no call number, so this column is the hour table's only.
+    ...(withNotACall
+      ? [{ key: 'nc', label: 'زر أو رسالة — خارج النسبة', hideOnPhone: true, render: (r: RateRow) => <span className="tabular-nums">{r.notACall}</span> }]
+      : []),
   ];
+}
+
+const FAILED = 'تعذّر تحميل أرقام «لا رد». أعد المحاولة بعد قليل.';
+const OFFLINE = 'تعذّر الاتصال. تحقق من الشبكة وأعد المحاولة.';
+
+/** One part of the door; a refusal or a failure comes back as its sentence. */
+async function ask<T>(query: string): Promise<{ ok: true; data: T } | { ok: false; said: string }> {
+  try {
+    const res = await apiFetch(`/api/orders/confirmation/no-answer?${query}`);
+    if (res.ok) return { ok: true, data: (await res.json()) as T };
+    return { ok: false, said: await saidBy(res, FAILED) };
+  } catch {
+    return { ok: false, said: OFFLINE };
+  }
 }
 
 export function NoAnswerWatch() {
   const [range, setRange] = useState(lastFourteenDays);
-  const [data, setData] = useState<Answer | null>(null);
+  const [board, setBoard] = useState<BoardAnswer | null>(null);
+  const [report, setReport] = useState<AnswerRateReport | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
 
+  // The board: once. It is «now», and the dates below have nothing to say about it.
   useEffect(() => {
     let live = true;
-    setData(null);
-    setRefusal(null);
-    const q = range.from && range.to ? `?startDate=${range.from}&endDate=${range.to}` : '';
-    apiFetch(`/api/orders/confirmation/no-answer${q}`)
-      .then(async (res) => {
-        if (!live) return;
-        if (res.ok) setData((await res.json()) as Answer);
-        else setRefusal(await saidBy(res, 'تعذّر تحميل أرقام «لا رد». أعد المحاولة بعد قليل.'));
-      })
-      .catch(() => live && setRefusal('تعذّر الاتصال. تحقق من الشبكة وأعد المحاولة.'));
+    void ask<BoardAnswer>('part=board').then((r) => {
+      if (!live) return;
+      if (r.ok) setBoard(r.data);
+      else setRefusal(r.said);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  // The report: on every change of the dates, and only the report.
+  useEffect(() => {
+    let live = true;
+    setReport(null);
+    const dates = range.from && range.to ? `&startDate=${range.from}&endDate=${range.to}` : '';
+    void ask<{ report: AnswerRateReport }>(`part=report${dates}`).then((r) => {
+      if (!live) return;
+      if (r.ok) setReport(r.data.report);
+      else setRefusal(r.said);
+    });
     return () => {
       live = false;
     };
@@ -77,15 +106,72 @@ export function NoAnswerWatch() {
       </Card>
     );
   }
-  if (!data) {
-    return (
-      <div aria-busy>
-        <SkeletonRows rows={6} />
-      </div>
-    );
-  }
 
-  const { board, report, rules } = data;
+  return (
+    <div className="space-y-6">
+      {!board ? (
+        <div aria-busy>
+          <SkeletonRows rows={6} />
+        </div>
+      ) : (
+        <BoardPart board={board.board} rules={board.rules} />
+      )}
+
+      <Card>
+        <CardHeader
+          title="متى يرد الزبون"
+          subtitle={
+            report
+              ? `نسبة الرد = ردّ ÷ (ردّ + لم يرد) — ${report.total.reached} من ${report.total.base}${report.total.rate === null ? '' : ` (${report.total.rate}%)`}`
+              : undefined
+          }
+          action={
+            <div className="w-56">
+              <DateRange value={range} onChange={setRange} label="آخر 14 يوم" />
+            </div>
+          }
+        />
+        <CardContent className="p-0">
+          {!report ? (
+            <div className="p-4" aria-busy>
+              <SkeletonRows rows={5} />
+            </div>
+          ) : (
+            <>
+              {report.truncated && (
+                <p className="px-5 pt-3 text-xs text-[var(--sys-warning)]">المدة أطول من حد القراءة — الأرقام لجزء منها. اختر مدة أقصر.</p>
+              )}
+              <Rows
+                rows={report.byHour}
+                keyOf={(r: RateRow) => r.key}
+                empty="لا محاولات اتصال في هذه المدة."
+                columns={rateColumns('الساعة', (k) => `${k.padStart(2, '0')}:00`, true)}
+              />
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {report && (
+        <Card>
+          <CardHeader
+            title="حسب رقم المحاولة"
+            subtitle="رقم الاتصال اللي إله نتيجة على الطلب، بترتيب وقته — ضغطة «اتصال» والرسالة ما إلهن رقم. الأول والتاني والتالت والرابع فما فوق، للمدة نفسها"
+          />
+          <CardContent className="p-0">
+            <Rows
+              rows={report.byAttempt}
+              keyOf={(r: RateRow) => r.key}
+              columns={rateColumns('المحاولة', (k) => (k === '4+' ? 'الرابعة فما فوق' : `رقم ${k}`), false)}
+            />
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function BoardPart({ board, rules }: BoardAnswer) {
   const t = board.totals;
   const team: [string, number][] = [
     ['بيد الموظفات الآن', t.held],
@@ -93,9 +179,8 @@ export function NoAnswerWatch() {
     [`طلبات جديدة بلا سحب — أحدث من ${rules.freshNewHours} ساعة`, board.team.freshUnclaimed],
     ['مفتوحة بلا صاحب وفيها لا رد', board.team.unclaimedWithNoAnswer],
   ];
-
   return (
-    <div className="space-y-6">
+    <>
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
         {team.map(([label, value]) => (
           <div key={label} className="bg-[var(--sys-card)] border border-[var(--sys-border)] p-4 rounded-lg">
@@ -129,40 +214,6 @@ export function NoAnswerWatch() {
           />
         </CardContent>
       </Card>
-
-      <Card>
-        <CardHeader
-          title="متى يرد الزبون"
-          subtitle={`نسبة الرد = ردّ ÷ (ردّ + لم يرد) — ${report.total.reached} من ${report.total.base}${report.total.rate === null ? '' : ` (${report.total.rate}%)`}`}
-          action={
-            <div className="w-56">
-              <DateRange value={range} onChange={setRange} label="آخر 14 يوم" />
-            </div>
-          }
-        />
-        <CardContent className="p-0">
-          {report.truncated && (
-            <p className="px-5 pt-3 text-xs text-[var(--sys-warning)]">المدة أطول من حد القراءة — الأرقام لجزء منها. اختر مدة أقصر.</p>
-          )}
-          <Rows
-            rows={report.byHour}
-            keyOf={(r: RateRow) => r.key}
-            empty="لا محاولات اتصال في هذه المدة."
-            columns={rateColumns('الساعة', (k) => `${k.padStart(2, '0')}:00`)}
-          />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader title="حسب رقم المحاولة" subtitle="المحاولة الأولى على الطلب، والثانية، والثالثة، والرابعة فما فوق — للمدة نفسها" />
-        <CardContent className="p-0">
-          <Rows
-            rows={report.byAttempt}
-            keyOf={(r: RateRow) => r.key}
-            columns={rateColumns('المحاولة', (k) => (k === '4+' ? 'الرابعة فما فوق' : `رقم ${k}`))}
-          />
-        </CardContent>
-      </Card>
-    </div>
+    </>
   );
 }
