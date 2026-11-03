@@ -65,6 +65,15 @@ function classesTheShopDraws(): Set<string> {
   for (const root of SHOP_ROOTS) {
     for (const file of walk(join(ROOT, root))) {
       if (file.endsWith('shop-block-slice.ts')) continue;
+      /*
+       * THE STORE-LOOKS SLICES NAME LANDING CLASSES WITHOUT DRAWING THEM.
+       * `extras-sheet.ts` recolours «الأوفر» (`lp-offer-tag`) and keeps the
+       * scroll reveal OFF anything holding the floating order bar
+       * (`lp-sticky-bar`): selectors about elements other code draws, inlined
+       * only for a shop that asked. Listing them here would put their rules in
+       * EVERY shop's sheet — the opposite of what this guard is for.
+       */
+      if (file.endsWith('extras-sheet.ts')) continue;
       for (const m of stripComments(readFileSync(file, 'utf8')).matchAll(/\blp-[a-z0-9-]+/g)) {
         found.add(m[0]);
       }

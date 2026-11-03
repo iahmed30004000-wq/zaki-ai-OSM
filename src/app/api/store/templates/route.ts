@@ -37,11 +37,11 @@ const applySchema = z.union([
    * puts forward. They are different units and both are templates, so they
    * are one gallery and two sources rather than two screens.
    */
-  z.object({ source: z.literal('skin'), key: z.string().trim().min(1).max(40) }),
+  z.object({ source: z.literal('skin'), key: z.string().trim().min(1).max(40), confirm: z.boolean().optional() }),
   // One of the eighteen home designs of the owner's other platform: its
   // page as OUR blocks into the home DRAFT, its look proposed unsaved — the
   // same two halves, and the same draft rule, as installing a skin.
-  z.object({ source: z.literal('design'), key: z.string().trim().min(1).max(40) }),
+  z.object({ source: z.literal('design'), key: z.string().trim().min(1).max(40), confirm: z.boolean().optional() }),
   z.object({ source: z.literal('file'), file: z.unknown() }),
 ]);
 
@@ -219,6 +219,27 @@ export async function POST(req: Request) {
     let label: string;
 
     const request = parsed.data;
+
+    /*
+     * A SKIN OR A DESIGN REPLACES THE WHOLE HOME DRAFT — SO IT ASKS FIRST.
+     *
+     * The review of #188, item 10: installing one wrote over the seller's
+     * saved home draft without a word. Over an empty draft nothing is lost and
+     * nothing is asked; over one with blocks in it the door answers 409 until
+     * the screen comes back with `confirm: true`, after the seller said yes.
+     * The fifteen page templates still install without asking, as before:
+     * the review named skins and designs, and that is noted in the PR.
+     */
+    if (
+      (request.source === 'skin' || request.source === 'design') &&
+      !request.confirm &&
+      parseSections(store.homeDraft).length > 0
+    ) {
+      return NextResponse.json(
+        { error: 'هالتثبيت بيستبدل مسودة الصفحة الرئيسية المحفوظة بالكامل — متأكد؟', code: 'REPLACES_HOME_DRAFT' },
+        { status: 409 }
+      );
+    }
     if (request.source === 'builtin') {
       const known = PAGE_TEMPLATES.find((t) => t.key === request.key);
       // buildTemplate falls back to the last template for an unknown key,

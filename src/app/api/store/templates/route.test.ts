@@ -408,3 +408,36 @@ describe('installing one of their home designs', () => {
     expect(db.store.update).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * THE REVIEW OF #188, ITEM 10: a skin or a design replaces the whole home
+ * draft, so over a draft that has blocks it asks first.
+ */
+describe('installing over a home draft that has blocks', () => {
+  const withDraft = () =>
+    db.store.findFirst.mockResolvedValue({ ...STORE, homeDraft: JSON.stringify([{ id: 'h1', type: 'text', title: 'كتبه البائع', body: 'نص' }]) });
+
+  it.each([
+    ['a design', { source: 'design', key: 'tech' }],
+    ['a skin', { source: 'skin', key: STORE_TEMPLATES[0].id }],
+  ])('%s is refused with the question, and writes nothing', async (_w, body) => {
+    withDraft();
+    const res = await post(body);
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('REPLACES_HOME_DRAFT');
+    expect(db.store.update).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a design', { source: 'design', key: 'tech', confirm: true }],
+    ['a skin', { source: 'skin', key: STORE_TEMPLATES[0].id, confirm: true }],
+  ])('%s goes through once the seller said yes', async (_w, body) => {
+    withDraft();
+    expect((await post(body)).status).toBe(200);
+    expect(db.store.update).toHaveBeenCalled();
+  });
+
+  it('over an empty draft nothing is lost, so nothing is asked', async () => {
+    expect((await post({ source: 'design', key: 'tech' })).status).toBe(200);
+  });
+});

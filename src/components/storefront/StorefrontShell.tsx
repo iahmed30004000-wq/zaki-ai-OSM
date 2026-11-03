@@ -1,7 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import type { Storefront } from '@/lib/storefront';
-import { cartBarApplies, familyOf, layoutOf, storeThemeVars } from '@/lib/store-theme';
+import { badgeColour, badgeVars, cartBarApplies, familyOf, layoutOf, storeThemeVars } from '@/lib/store-theme';
 import { telHref, whatsappHref } from '@/lib/store-contact';
 import { fontHref } from '@/components/landing/blocks/styles';
 import { FAMILY_SHEET, SHOP_SHEET } from './styles';
@@ -65,7 +65,7 @@ export function StorefrontShell({
   // Every variable the shop paints itself with, in one call: the palette
   // derived from the accent, plus the eight the seller may name and the
   // header's own height and colour. No component writes a hex.
-  const vars = storeThemeVars(store.theme);
+  const vars = { ...storeThemeVars(store.theme), ...badgeVars(store.theme) };
   /*
    * WHICH FAMILY, AND THE SLICE THAT GOES WITH IT.
    *
@@ -113,6 +113,7 @@ export function StorefrontShell({
       data-radius={store.theme.radius}
       data-motion={store.theme.motion}
       data-logo={store.theme.header?.logoHeight ? '' : undefined}
+      data-badge={badgeColour(store.theme) ? '' : undefined}
       style={vars as React.CSSProperties}
     >
       {/*
@@ -140,6 +141,27 @@ export function StorefrontShell({
       <style dangerouslySetInnerHTML={{ __html: SHOP_SHEET }} />
       <style dangerouslySetInnerHTML={{ __html: FAMILY_SHEET[family] }} />
       {extras && <style dangerouslySetInnerHTML={{ __html: extras }} />}
+
+      {/*
+        «المعاينة الحقيقية» — said on the page itself, and kept out of every
+        index. Only the seller's own frame over the draft ever draws this.
+      */}
+      {store.quiet && (
+        <>
+          <meta name="robots" content="noindex, nofollow" />
+          <p
+            role="status"
+            style={{
+              margin: 0, padding: '6px 12px', textAlign: 'center', fontSize: 12, fontWeight: 700,
+              background: 'var(--store-text)', color: 'var(--store-page)',
+            }}
+          >
+            {store.preview
+              ? 'معاينة المسوّدة — الزبون لسّا بيشوف المنشور. الطلب من هون طلب حقيقي.'
+              : 'داخل من المعاينة: هالصفحة هي المنشورة، والطلب من هون طلب حقيقي.'}
+          </p>
+        </>
+      )}
 
       {/* «شريط الإعلانات» — drawn only when the seller turned it on. */}
       {ticker && (

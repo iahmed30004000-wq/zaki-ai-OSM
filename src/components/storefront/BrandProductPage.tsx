@@ -4,6 +4,7 @@ import { ProductCard } from './ProductCard';
 import { OfferCards } from '@/components/landing/blocks/OfferCards';
 import { LandingFormBridge } from '@/components/landing/LandingFormBridge';
 import OrderForm from '@/components/landing/OrderForm';
+import { PreviewOrderNote } from './PreviewOrderNote';
 import { moneyText } from '@/lib/money';
 import { whatsappHref } from '@/lib/store-contact';
 import { worldVars } from '@/lib/store-world';
@@ -106,7 +107,10 @@ export function BrandProductPage({
    * by the route from the store's LIVE theme and handed in, like the endpoint: the page decides none of it.
    */
   checkout,
+  previewNote = false,
 }: {
+  /** «الطلب من المعاينة طلب حقيقي» beside the form — the preview door only (`store.quiet`). */
+  previewNote?: boolean;
   shop: BrandPageShop;
   product: StorefrontProduct & { gallery: string[] };
   content: BrandContent;
@@ -337,6 +341,7 @@ export function BrandProductPage({
           endpoint as every other door — `src/lib/public-order.ts` is
           untouchable and this is how a new look stays a look.
         */}
+        {previewNote && <PreviewOrderNote />}
         <LandingFormBridge
           offers={offers.map((o) => ({ id: o.id, price: o.price }))}
           currency={shop.currency}

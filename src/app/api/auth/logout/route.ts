@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { COOKIE_NAME } from '@/lib/auth';
+import { PREVIEW_COOKIE } from '@/lib/preview-mode';
 
 export async function POST(req: Request) {
   // Why the session ended. A person leaving and a phone left on a counter
@@ -22,7 +23,9 @@ export async function POST(req: Request) {
   try {
     // Invalidate the current session server-side via tokenVersion bump
     const { getCurrentUser } = await import('@/lib/auth');
-    const user = await getCurrentUser();
+    // The person really signed in — never the one an owner is previewing («عاين كـ», preview-mode.ts): signing out
+    // bumps THIS account's tokenVersion, and must not sign her out of her own phone.
+    const user = await getCurrentUser({ preview: 'ignore' });
     if (user) {
       await db.user.update({
         where: { id: user.id },
@@ -49,5 +52,7 @@ export async function POST(req: Request) {
     path: '/',
     maxAge: 0,
   });
+  // And the preview dies with the session (it is bound to it anyway — this only stops it riding in the jar).
+  response.cookies.set({ name: PREVIEW_COOKIE, value: '', httpOnly: true, path: '/', maxAge: 0 });
   return response;
 }

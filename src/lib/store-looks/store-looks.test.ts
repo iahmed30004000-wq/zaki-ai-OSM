@@ -117,6 +117,25 @@ describe('the customizer’s new keys, stored and read back', () => {
     expect(back.accent).toBe(DEFAULT_STORE_THEME.accent);
   });
 
+  it.each([
+    ['a look this build does not carry', { look: 'gone-look' }, 'look'],
+    ['a motion renamed', { motion: 'bold' }, 'motion'],
+    ['a ticker of a later version', { ticker: { enabled: 'yes' } }, 'ticker'],
+    ['a corner level renamed', { radius: 'pill' }, 'radius'],
+  ] as const)('%s drops ONLY that key — the template, the family and the packing promise survive', (_w, bad, key) => {
+    const row = { ...full, template: 'lab', family: 'clinic', discreetPacking: true, footer: { copyright: 'حقوقي' }, ...bad };
+    const back = parseStoreTheme(JSON.stringify(row));
+    expect(back[key]).toBeUndefined();
+    expect(back.template).toBe('lab');
+    expect(back.family).toBe('clinic');
+    expect(back.discreetPacking).toBe(true);
+    expect(back.footer?.copyright).toBe('حقوقي');
+    expect(back.accent).toBe(full.accent);
+    for (const other of ['look', 'radius', 'motion', 'ticker'] as const) {
+      if (other !== key) expect(back[other], other).toEqual((full as Record<string, unknown>)[other]);
+    }
+  });
+
   it('a theme that never set them gains no key and no variable', () => {
     const plain = parseStoreTheme(JSON.stringify({ accent: '#0d6ba8', mood: 'clean', font: 'ibm', corners: 'soft' }));
     for (const k of ['look', 'radius', 'motion', 'ticker', 'highlight'] as const) expect(plain[k], k).toBeUndefined();
@@ -148,6 +167,17 @@ describe('what a look and a corner level paint', () => {
     const soft = storeThemeVars({ ...DEFAULT_STORE_THEME, corners: 'soft' })['--store-radius'];
     expect(RADIUS_SCALE.sharp.card).toBe(sharp);
     expect(RADIUS_SCALE.soft.card).toBe(soft);
+  });
+
+  it.each([
+    [80, 72, 60],
+    [56, 72, 56],
+    [80, 120, 80],
+    [40, 48, 36],
+  ])('a %ipx logo in a %ipx header is drawn %ipx — never out of the bar', (logoHeight, height, drawn) => {
+    const theme = { ...DEFAULT_STORE_THEME, header: { height, sticky: true, onFrontPage: true, logoHeight } };
+    expect(storeThemeVars(theme)['--store-logo-h']).toBe(`${drawn}px`);
+    expect(drawn).toBeLessThanOrEqual(height - 12);
   });
 
   it('the highlight colours the badge unless the shop named the badge itself', () => {

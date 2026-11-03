@@ -181,6 +181,13 @@ export type LandingPageTarget = (
    * see `wearsShopChrome`.
    */
   inStore?: boolean;
+  /**
+   * «المعاينة الحقيقية» — the seller looking at their own shop through the
+   * preview door (shop-view.ts). The page is drawn as a visitor gets it, but
+   * nothing is reported: no pixel, no PageView or ViewContent, and no visit
+   * counted, by the server or by the browser. A seller is not a visitor.
+   */
+  quiet?: boolean;
 };
 
 export async function LandingPageView({ target }: { target: LandingPageTarget }) {
@@ -252,7 +259,7 @@ export async function LandingPageView({ target }: { target: LandingPageTarget })
     // Server-resolved pixels of the page's company, re-validated before any script may load. A preview loads none: the
     // seller checking their own page is not a PageView to report to their ad account. A campaign page may belong to no
     // shop (`LandingPage.storeId` is nullable); then only company-wide pixels reach it.
-    previewing
+    previewing || target.quiet === true
       ? Promise.resolve([] as Awaited<ReturnType<typeof getTrackingPixelsForPage>>)
       : getTrackingPixelsForPage(companyId, 'LANDING_PAGES', {
           storeId: page.storeId ?? null,
@@ -260,6 +267,8 @@ export async function LandingPageView({ target }: { target: LandingPageTarget })
         }),
   ]);
   const previewToken = previewing && 'previewToken' in target ? target.previewToken : undefined;
+  // Nothing reported — the dashboard's own preview, or the shop's preview door.
+  const silent = previewing || target.quiet === true;
   const cached = 'cached' in target && target.cached === true;
   // A visitor has no session: every stored image this page shows goes out
   // through the public media route, naming this page (public-media.ts). A
@@ -269,7 +278,7 @@ export async function LandingPageView({ target }: { target: LandingPageTarget })
   const forVisitors = <T,>(value: T): T => (previewing ? value : publicizeMedia(value, { via: lp.id }));
   const recommendations = forVisitors(recs);
 
-  if (!previewing && !cached) {
+  if (!silent && !cached) {
     // A visit: counted once in the page's lifetime total and once in its
     // day's row (device and campaign), both after the page has gone out. A
     // link-preview crawler is not a visitor and counts in neither.
@@ -483,7 +492,7 @@ export async function LandingPageView({ target }: { target: LandingPageTarget })
         {skin && <style dangerouslySetInnerHTML={{ __html: designCss(skin) }} />}
         {storeFonts.css && <style dangerouslySetInnerHTML={{ __html: storeFonts.css }} />}
         <LandingTrackingPixels pixels={trackingPixels} viewContent={viewContent} />
-        {!previewing && <BrowserVisit pageId={lp.id} official={cached} />}
+        {!silent && <BrowserVisit pageId={lp.id} official={cached} />}
         {/*
           ONE ATTRIBUTE IS THE WHOLE FAMILY, AND IT IS WHY THIS IS A WRAPPER
           AND NOT A CLASS ON EACH BLOCK.
@@ -574,7 +583,7 @@ export async function LandingPageView({ target }: { target: LandingPageTarget })
   return (
     <div dir="rtl" className="flex min-h-screen flex-col bg-[#f7f7f8]">
       <LandingTrackingPixels pixels={trackingPixels} viewContent={viewContent} />
-      {!previewing && <BrowserVisit pageId={lp.id} official={cached} />}
+      {!silent && <BrowserVisit pageId={lp.id} official={cached} />}
       <iframe
         src={rawSrc}
         title={lp.name}

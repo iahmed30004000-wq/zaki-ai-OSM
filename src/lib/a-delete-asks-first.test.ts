@@ -24,6 +24,8 @@ import { dashboardFiles, stripComments } from './guard-source';
 const EXEMPT: Record<string, string> = {
   'src/components/orders/OrderDetailModal.tsx':
     'releases the edit lock when the dialog closes — the system letting go of a hold it took, not a person deleting something',
+  'src/components/shell/PreviewAs.tsx#leave':
+    '«رجوع لحسابي» ends the owner’s read-only preview — it deletes no record, only the preview cookie, and nothing is lost by pressing it',
   'src/hooks/useOrderOwnership.ts#releaseLock':
     'releases the edit lock on an order — the same hold the dialog lets go of, taken by the system and not a person’s deletion',
   'src/components/orders/OrderResponsibility.tsx#run':

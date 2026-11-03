@@ -501,7 +501,7 @@ export function parseStoreTheme(raw: string | null | undefined): StoreTheme {
   }
   if (!parsed || typeof parsed !== 'object') return DEFAULT_STORE_THEME;
 
-  parsed = migrateLegacyColors(parsed as Record<string, unknown>);
+  parsed = dropInvalidPortKeys(migrateLegacyColors(parsed as Record<string, unknown>));
 
   const whole = storeThemeSchema.safeParse({ ...DEFAULT_THEME, ...(parsed as object) });
   if (whole.success) return { ...DEFAULT_STORE_THEME, ...asStoreTheme(whole.data) };
@@ -522,17 +522,37 @@ export function parseStoreTheme(raw: string | null | undefined): StoreTheme {
     const got = schema.safeParse(row[key] ?? {});
     if (got.success) (out as unknown as Record<string, unknown>)[key] = got.data;
   }
-  // The additions of the store-looks port, each on its own: a look id this
-  // build no longer carries loses the id, not the shop's ticker with it.
-  // Absent stays absent — a shop that never set one gains no key.
-  const optional = {
-    look: z.enum(LOOK_IDS), radius: z.enum(RADIUS_LEVELS), motion: z.enum(STORE_MOTIONS), ticker: storeTickerSchema,
-    highlight: hex,
-  } as const;
-  for (const [key, schema] of Object.entries(optional)) {
+  // The port's keys were already checked one by one before the whole parse
+  // (`dropInvalidPortKeys`), so what is left of them here is valid.
+  for (const [key, schema] of Object.entries(PORT_KEYS)) {
     if (row[key] === undefined) continue;
     const got = schema.safeParse(row[key]);
     if (got.success) (out as unknown as Record<string, unknown>)[key] = got.data;
+  }
+  return out;
+}
+
+/**
+ * THE STORE-LOOKS PORT'S KEYS, EACH JUDGED ON ITS OWN.
+ *
+ * A look id this build no longer carries, a motion renamed, a ticker saved
+ * by a later version — any one of them used to fail the WHOLE row, and the
+ * field-by-field fallback has no line for `template`, `family` or
+ * `discreetPacking`, so the shop lost those with it. Now the one bad key is
+ * dropped before the row is parsed, and only that key: everything else is
+ * read exactly as if it had never been there. Absent stays absent.
+ */
+const PORT_KEYS = {
+  look: z.enum(LOOK_IDS), radius: z.enum(RADIUS_LEVELS), motion: z.enum(STORE_MOTIONS), ticker: storeTickerSchema,
+  highlight: hex,
+} as const;
+
+function dropInvalidPortKeys(row: Record<string, unknown>): Record<string, unknown> {
+  let out = row;
+  for (const [key, schema] of Object.entries(PORT_KEYS)) {
+    if (row[key] === undefined || schema.safeParse(row[key]).success) continue;
+    if (out === row) out = { ...row };
+    delete out[key];
   }
   return out;
 }
@@ -848,7 +868,8 @@ export function storeThemeVars(theme: StoreTheme): Record<string, string> {
     // The badge's own colour, when the shop named one, wins below.
     vars['--store-offer-badge'] = highlight;
   }
-  if (theme.header?.logoHeight) vars['--store-logo-h'] = `${theme.header.logoHeight}px`;
+  const logo = logoHeightOf(theme);
+  if (logo) vars['--store-logo-h'] = `${logo}px`;
   // Every colour a shop can name, written over the derived one. Driven by
   // COLOR_VAR rather than by a line each, because a field with no line is
   // a colour picker that changes nothing — which is exactly what four of
@@ -860,6 +881,41 @@ export function storeThemeVars(theme: StoreTheme): Record<string, string> {
   return vars;
 }
 
+
+/**
+ * «حجم الشعار» AS THE HEADER CAN HOLD IT — null when the shop never set one.
+ *
+ * Their builder allows 28–80, and our header is 72px by default: an 80px
+ * logo hung out of the bar. The logo is capped at the header's own height
+ * less its breathing room (6px above and below), so a seller who wants a
+ * bigger logo raises the header — and the screen says so.
+ */
+export const LOGO_ROOM = 12;
+export function logoHeightOf(theme: StoreTheme): number | null {
+  const wanted = theme.header?.logoHeight;
+  if (!wanted) return null;
+  return Math.min(wanted, (theme.header?.height ?? 72) - LOGO_ROOM);
+}
+
+/**
+ * THE OFFER BADGE'S OWN COLOUR, IF THE SHOP GAVE IT ONE — «شارة العرض» first,
+ * then «لون التمييز». Null for a shop that set neither: its badges keep the
+ * accent they always had, and nothing about them is written (the storefront
+ * shell sets `data-badge` only when this is not null).
+ */
+export function badgeColour(theme: StoreTheme): string | null {
+  return theme.colors?.offerBadge || theme.highlight || null;
+}
+
+/**
+ * The ink ON that badge, measured — `{}` for a shop whose badge has no colour
+ * of its own. Apart from `storeThemeVars` on purpose: there, naming one colour
+ * moves exactly one variable, and the guard in store-theme.test.ts holds it.
+ */
+export function badgeVars(theme: StoreTheme): Record<string, string> {
+  const badge = badgeColour(theme);
+  return badge ? { '--store-offer-badge-ink': readableOn(badge) } : {};
+}
 
 /**
  * EVERY ROLE'S COLOUR, AS THE SHOP WILL ACTUALLY PAINT IT.

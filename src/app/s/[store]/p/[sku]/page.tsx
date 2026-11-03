@@ -6,7 +6,8 @@ import { notFound, redirect } from 'next/navigation';
 import { carryQuery } from '@/lib/query-string';
 import { db } from '@/lib/db';
 import { activeOffersFor } from '@/lib/offers';
-import { getStorefront, storefrontProduct } from '@/lib/storefront';
+import { storefrontProduct } from '@/lib/storefront';
+import { getShopView } from '@/lib/shop-view';
 import { StorefrontShell } from '@/components/storefront/StorefrontShell';
 import { LandingPageView } from '@/components/landing/LandingPageView';
 import Link from 'next/link';
@@ -22,6 +23,7 @@ import { moneyText } from '@/lib/money';
 import { OfferCards } from '@/components/landing/blocks/OfferCards';
 import { LandingFormBridge } from '@/components/landing/LandingFormBridge';
 import OrderForm from '@/components/landing/OrderForm';
+import { PreviewOrderNote } from '@/components/storefront/PreviewOrderNote';
 import { ruleFor } from '@/lib/phone-rules';
 import type { Metadata } from 'next';
 import { publicOrigin, publicTitle, sharePreview, storeIcons } from '@/lib/public-metadata';
@@ -75,7 +77,7 @@ export async function generateMetadata({ params }: Pick<Props, 'params'>): Promi
   const { store: slug, sku: raw } = await params;
   const sku = readable(raw);
   if (!/^[a-z0-9-]{2,60}$/.test(slug) || !HANDLE.test(sku)) return {};
-  const store = await getStorefront(slug);
+  const store = await getShopView(slug);
   if (!store) return {};
   const product = await storefrontProduct(store.companyId, store.id, sku);
   if (!product) return { title: publicTitle(null, store.name), icons: storeIcons(store) };
@@ -111,7 +113,7 @@ export default async function StorefrontProductPage({ params, searchParams }: Pr
   const sku = readable(raw);
   if (!/^[a-z0-9-]{2,60}$/.test(slug) || !HANDLE.test(sku)) notFound();
 
-  const store = await getStorefront(slug);
+  const store = await getShopView(slug);
   if (!store) notFound();
 
   // A store with a front page has no product pages: the front IS the shop.
@@ -181,7 +183,7 @@ export default async function StorefrontProductPage({ params, searchParams }: Pr
       // of its own, and a full header over it is the shop arguing with
       // the page about what the shopper is looking at.
       <StorefrontShell store={store} back={back} thin>
-        <LandingPageView target={{ frontPageId: shownPage.id, storeId: store.id, campaign, inStore: true }} />
+        <LandingPageView target={{ frontPageId: shownPage.id, storeId: store.id, campaign, inStore: true, quiet: store.quiet }} />
       </StorefrontShell>
     );
   }
@@ -231,7 +233,8 @@ export default async function StorefrontProductPage({ params, searchParams }: Pr
 
   // A storefront page is a selling page: the store's company's pixels, the
   // ones not limited to landing pages.
-  const pixels = await getTrackingPixelsForPage(store.companyId, 'PUBLIC', {
+  // «المعاينة الحقيقية» counts nothing: a seller looking at a draft is not a visitor to report.
+  const pixels = store.quiet ? [] : await getTrackingPixelsForPage(store.companyId, 'PUBLIC', {
     storeId: store.id,
     countryId: store.countryId,
   });
@@ -323,6 +326,7 @@ export default async function StorefrontProductPage({ params, searchParams }: Pr
           }}
           product={product}
           content={content}
+          previewNote={store.quiet === true}
           offers={offerViews}
           compareAt={compareAt}
           regions={regions}
@@ -484,6 +488,7 @@ export default async function StorefrontProductPage({ params, searchParams }: Pr
           <h2 className="lp-h2">أكمل الطلب</h2>
           <p className="lp-sub">ادفع عند الاستلام — لا حاجة لبطاقة</p>
 
+          {store.quiet && <PreviewOrderNote />}
           <LandingFormBridge
             offers={offerViews.map((o) => ({ id: o.id, price: o.price }))}
             currency={store.currencyCode}

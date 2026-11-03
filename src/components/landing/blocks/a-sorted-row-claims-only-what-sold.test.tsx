@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest';
-import { render } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
+import { cleanup, render } from '@testing-library/react';
+
+// Unmount what each test drew: a tree left mounted when the file ends is
+// still scheduled work, and it runs after the DOM is gone («window is not defined»).
+afterEach(cleanup);
 import { PageBlocks, catalogHeading, sortCatalog, type BlockContext, type CatalogItem } from './PageBlocks';
 import { newSection, type LandingSection } from '@/lib/landing-sections';
 
@@ -44,7 +48,10 @@ describe('a sorted catalogue row', () => {
   });
 
   it('writes «الأكثر مبيعاً» only over a row the orders prove, «مختارات» otherwise', () => {
-    expect(catalogHeading('best', items)).toBe('الأكثر مبيعاً');
+    // `a` was never proven: a row that needs it as a filler claims nothing.
+    expect(catalogHeading('best', items)).toBe('مختارات');
+    expect(catalogHeading('best', items.filter((i) => i.sold !== undefined))).toBe('الأكثر مبيعاً');
+    expect(catalogHeading('best', [])).toBe('مختارات');
     expect(catalogHeading('best', items.map(({ sold: _s, ...i }) => i))).toBe('مختارات');
     const html = render(<PageBlocks sections={[row({ sort: 'best' })]} ctx={ctx([item('a'), item('b')])} />).container;
     expect(html.textContent).toContain('مختارات');
@@ -52,10 +59,34 @@ describe('a sorted catalogue row', () => {
     expect(names(html)).toEqual(['a', 'b']);
   });
 
+  it('one proven product among unproven fillers is «مختارات», the proven one first', () => {
+    const html = render(<PageBlocks sections={[row({ sort: 'best' })]} ctx={ctx([item('x'), item('y', { sold: 5 }), item('z')])} />).container;
+    expect(html.textContent).toContain('مختارات');
+    expect(html.textContent).not.toContain('الأكثر مبيعاً');
+    expect(names(html)[0]).toBe('y');
+  });
+
+  it('and a row cut to its proven products by the limit is «الأكثر مبيعاً»', () => {
+    const html = render(<PageBlocks sections={[row({ sort: 'best', limit: 2 })]} ctx={ctx(items)} />).container;
+    expect(html.textContent).toContain('الأكثر مبيعاً');
+  });
+
   it('draws no count, ever', () => {
-    const html = render(<PageBlocks sections={[row({ sort: 'best' })]} ctx={ctx(items)} />).container;
+    const html = render(<PageBlocks sections={[row({ sort: 'best', limit: 2 })]} ctx={ctx(items)} />).container;
     expect(html.textContent).toContain('الأكثر مبيعاً');
     expect(html.textContent).not.toMatch(/\b(6|9)\b/);
+  });
+
+  it('«وصل حديثاً» only where every card carries when it was added — elsewhere the shelf’s order is «مختارات»', () => {
+    expect(catalogHeading('newest', items)).toBe('وصل حديثاً');
+    expect(catalogHeading('newest', [item('p'), item('q')])).toBe('مختارات');
+    expect(catalogHeading('newest', [item('p', { addedAt: 9 }), item('q')])).toBe('مختارات');
+    // the builder's placeholder frames name no product
+    expect(catalogHeading('newest', [])).toBe('وصل حديثاً');
+    const html = render(<PageBlocks sections={[row({ sort: 'newest' })]} ctx={ctx([item('p'), item('q')])} />).container;
+    expect(html.textContent).toContain('مختارات');
+    expect(html.textContent).not.toContain('وصل حديثاً');
+    expect(names(html)).toEqual(['p', 'q']);
   });
 
   it('keeps the seller’s own title over its own heading', () => {

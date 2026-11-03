@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { SkinGallery, type SkinCard } from '@/components/store/SkinGallery';
 import { LookGallery } from '@/components/store/LookGallery';
+import { StorePreviewFrame } from '@/components/store/StorePreviewFrame';
 import { applyLook } from '@/lib/store-looks';
 import { LayoutPanel } from '@/components/store/LayoutPanel';
 import { ContrastNotes } from '@/components/store/ContrastNotes';
@@ -13,7 +14,7 @@ import { apiJson } from '@/lib/api-client';
 import { DEFAULT_THEME, FONTS, MOODS, isValidHex } from '@/lib/landing-theme';
 import {
   CHECKOUT_FIELDS, DEFAULT_STORE_THEME, MANDATORY_CHECKOUT_FIELDS,
-  checkoutOrder, hiddenCheckoutFields, type CheckoutField, type StoreTheme,
+  checkoutOrder, hiddenCheckoutFields, logoHeightOf, type CheckoutField, type StoreTheme,
 } from '@/lib/store-theme';
 import { DEFAULT_SUBMIT as DEFAULT_SUBMIT_WORDS, DEFAULT_THANKS as DEFAULT_THANKS_LINE } from '@/lib/checkout-words';
 import { orderAfterDrag, reorderWithinGroup } from '@/lib/nav-arrangement';
@@ -193,6 +194,8 @@ export function StoreThemeScreen() {
   const [publishing, setPublishing] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [uploadingCover, setUploadingCover] = useState(false);
+  /** «المعاينة الحقيقية» — the shop itself over the saved draft, in a frame. */
+  const [realPreview, setRealPreview] = useState(false);
   // The shell already knows it; the theme endpoint does not return one.
   const currency = useStoreCurrency();
 
@@ -272,10 +275,23 @@ export function StoreThemeScreen() {
     setMsg(null);
     try {
       const body = source === 'file' ? { source, file: payload } : { source, key: payload };
-      const res = await apiJson<{ installed: string; theme: StoreTheme; themeApplied: boolean }>(
-        '/api/store/templates',
-        { method: 'POST', body: JSON.stringify(body) }
-      );
+      const send = (confirmed: boolean) =>
+        apiJson<{ installed: string; theme: StoreTheme; themeApplied: boolean }>('/api/store/templates', {
+          method: 'POST',
+          body: JSON.stringify(confirmed ? { ...body, confirm: true } : body),
+        });
+      let res: Awaited<ReturnType<typeof send>>;
+      try {
+        res = await send(false);
+      } catch (e) {
+        // A skin or a design over a home draft that has blocks: the door asks first, and so does this screen.
+        if ((e as { data?: { code?: string } }).data?.code !== 'REPLACES_HOME_DRAFT') throw e;
+        if (!confirm('هالتثبيت بيستبدل مسودة الصفحة الرئيسية المحفوظة بالكامل — متأكد؟')) {
+          setMsg({ ok: true, text: 'ما انثبّت شي — مسودة الصفحة الرئيسية زي ما هي' });
+          return;
+        }
+        res = await send(true);
+      }
       await load();
       // The palette comes back as a PROPOSAL, not something already saved:
       // stores.theme is what every live page renders from, so installing
@@ -968,6 +984,11 @@ export function StoreThemeScreen() {
               <span className={LABEL}>
                 حجم الشعار: {theme.header?.logoHeight ? `${theme.header.logoHeight} بكسل` : 'الافتراضي'}
               </span>
+              {theme.header?.logoHeight && logoHeightOf(theme) !== theme.header.logoHeight && (
+                <span className={HINT}>
+                  الترويسة {theme.header.height ?? 72} بكسل، فالشعار بيطلع {logoHeightOf(theme)} بكسل — كبّر ارتفاع الترويسة فوق لتكبّره.
+                </span>
+              )}
               <span className="flex items-center gap-2">
                 <input
                   type="range"
@@ -1302,6 +1323,10 @@ export function StoreThemeScreen() {
         {/* The shop as it is being set, at both widths, from the UNSAVED
             theme — so the seller sees the change before a customer does. */}
         <div className={`${previewPaneClass(pane)} min-h-0 flex-col`}>
+          <Button size="sm" variant="secondary" className="mb-2" onClick={() => setRealPreview(true)}>
+            <RiExternalLinkLine className="icon-mirror h-4 w-4" /> المعاينة الحقيقية — ست صفحات من المسوّدة
+          </Button>
+          {realPreview && <StorePreviewFrame unsaved={dirty} onClose={() => setRealPreview(false)} />}
           <StoreThemePreview
             theme={theme}
             products={shop?.sample ?? []}

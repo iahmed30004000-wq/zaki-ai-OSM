@@ -42,6 +42,7 @@ import { StoreCheckoutNote } from './StoreCheckoutNote';
 import { useDesignSkin } from '@/components/landing/designs/useDesignSkin';
 import { designCss } from '@/components/landing/designs/design-css';
 import { designFontHref, designRootVars } from '@/lib/landing-designs/load';
+import { BLANK_SLIDE, SlidesField } from './SlidesField';
 
 /**
  * The block builder.
@@ -1230,7 +1231,34 @@ function SectionFields({
       return (
         <div className="space-y-2.5">
           <Field label="العنوان" value={s.title} onChange={(v) => patch({ title: v })} placeholder="اختياري" />
-          <GalleryField images={s.images} onChange={(images) => patch({ images: images.slice(0, 10) })} onUpload={onUpload} />
+          {/* «الشرائح»: each picture its own title, line and button. A block
+              saved before has none and keeps the plain picture list; one
+              press turns its pictures into slides. `images` follows the
+              slides, so anything reading only the pictures sees the same. */}
+          {s.slides ? (
+            <SlidesField
+              slides={s.slides}
+              onUpload={onUpload}
+              onChange={(slides) => patch({ slides, images: slides.map((x) => x.image).filter(Boolean).slice(0, 10) })}
+            />
+          ) : (
+            <>
+              <GalleryField images={s.images} onChange={(images) => patch({ images: images.slice(0, 10) })} onUpload={onUpload} />
+              <button
+                type="button"
+                onClick={() =>
+                  patch({
+                    slides: s.images.length
+                      ? s.images.slice(0, 10).map((image) => ({ ...BLANK_SLIDE, image }))
+                      : [{ ...BLANK_SLIDE }],
+                  })
+                }
+                className="w-full rounded-lg border border-dashed border-[var(--sys-border-strong)] py-2 text-xs font-bold text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)]"
+              >
+                أضف لكل صورة عنواناً ونصاً وزراً
+              </button>
+            </>
+          )}
           <Check label="تتقلّب وحدها" checked={s.autoplay} onChange={(v) => patch({ autoplay: v })} />
           {s.autoplay && (
             <label className="flex items-center justify-between gap-2 text-xs font-semibold text-[var(--sys-heading)]">

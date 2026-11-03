@@ -4,6 +4,16 @@ import { jwtVerify } from 'jose';
 import { hostSite, inHostScope } from '@/lib/landing-domain';
 import { countRedirectHit, redirectFor } from '@/lib/store-redirects';
 import { cachedLandingPath, isCachedLandingPath } from '@/lib/landing-cache-path';
+import {
+  PREVIEW_COOKIE,
+  PREVIEW_REFUSAL,
+  PREVIEW_REFUSAL_CODE,
+  PREVIEW_STAMP_HEADER,
+  cookieFrom,
+  previewStamp,
+  previewVerdict,
+  verifyPreviewToken,
+} from '@/lib/preview-mode';
 
 let cachedJwtSecret: Uint8Array | null = null;
 function getJwtSecret(): Uint8Array {
@@ -111,6 +121,52 @@ function sellingRewrite(req: Request, pathname: string) {
   return res;
 }
 
+/**
+ * «عاين كـ» — THE OWNER'S READ-ONLY PREVIEW, ANSWERED BEFORE ANY HANDLER RUNS (src/lib/preview-mode.ts).
+ *
+ * Only a preview cookie that verifies AND binds to this very session counts: signed with the session key, naming
+ * the signed-in user as its owner, and carrying the fingerprint of this session cookie. A cookie copied into any
+ * other browser binds to nothing and is ignored — which also means it refuses nobody else's writes.
+ *
+ * While one binds: a write is refused (403, «وضع المعاينة — قراءة بس») unless it is one of the three open doors,
+ * and a read is stamped so `getCurrentUser` may answer as the person being previewed.
+ */
+async function previewGate(req: Request, pathname: string): Promise<{ refusal: NextResponse | null; stamp: string | null }> {
+  const none = { refusal: null, stamp: null };
+  const cookieHeader = req.headers.get('cookie');
+  const previewToken = cookieFrom(cookieHeader, PREVIEW_COOKIE);
+  if (!previewToken) return none;
+  const sessionToken = cookieFrom(cookieHeader, COOKIE_NAME);
+  const claims = await verifyPreviewToken(previewToken, sessionToken, getJwtSecret());
+  if (!claims) return none;
+  try {
+    const { payload } = await jwtVerify(sessionToken!, getJwtSecret());
+    if (payload.userId !== claims.ownerId) return none;
+  } catch {
+    return none;
+  }
+  const verdict = previewVerdict(req.method, pathname);
+  if (verdict === 'refuse') {
+    return {
+      refusal: NextResponse.json({ error: PREVIEW_REFUSAL, errorAr: PREVIEW_REFUSAL, code: PREVIEW_REFUSAL_CODE }, { status: 403 }),
+      stamp: null,
+    };
+  }
+  return { refusal: null, stamp: verdict === 'stamp' ? await previewStamp(previewToken, getJwtSecret()) : null };
+}
+
+/**
+ * On to the app — carrying the preview stamp when this is a preview read, and never a stamp the browser sent.
+ * (A forged one would fail its HMAC anyway; it is dropped so nothing downstream ever sees one.)
+ */
+function forward(req: Request, stamp: string | null) {
+  if (!stamp && !req.headers.has(PREVIEW_STAMP_HEADER)) return NextResponse.next();
+  const headers = new Headers(req.headers);
+  headers.delete(PREVIEW_STAMP_HEADER);
+  if (stamp) headers.set(PREVIEW_STAMP_HEADER, stamp);
+  return NextResponse.next({ request: { headers } });
+}
+
 export async function proxy(req: Request) {
   const url = new URL(req.url);
   const { pathname } = url;
@@ -119,6 +175,10 @@ export async function proxy(req: Request) {
   // Its internal route is reached only through the rewrite below; asked for by name it does not exist, so nobody can
   // reach a page by a second address that no count or redirect knows about.
   if (isCachedLandingPath(pathname)) return new NextResponse('Not found', { status: 404 });
+
+  // ── «عاين كـ»: no write while the owner previews somebody (see previewGate) ──
+  const preview = await previewGate(req, pathname);
+  if (preview.refusal) return preview.refusal;
 
   // ── A seller's own domain ──
   //
@@ -197,7 +257,7 @@ export async function proxy(req: Request) {
   if (pathname.startsWith('/api/')) {
     const originError = validateApiOrigin(req);
     if (originError) return originError;
-    return NextResponse.next();
+    return forward(req, preview.stamp);
   }
 
   // A visit to a landing page, answered from the cache when the owner has turned it on. Only a GET — an order is never
@@ -208,7 +268,7 @@ export async function proxy(req: Request) {
   }
 
   if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
-    return NextResponse.next();
+    return forward(req, preview.stamp);
   }
 
   // Read session token from the HTTP-only cookie (never from client storage)
@@ -238,12 +298,12 @@ export async function proxy(req: Request) {
 
   if (status === 'PENDING') {
     if (pathname === '/pending' || pathname === '/admin/profile') {
-      return NextResponse.next();
+      return forward(req, preview.stamp);
     }
     return redirectTo(req, '/pending');
   }
 
-  return NextResponse.next();
+  return forward(req, preview.stamp);
 }
 
 export const config = {

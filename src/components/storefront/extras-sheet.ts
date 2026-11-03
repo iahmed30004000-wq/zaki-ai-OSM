@@ -1,5 +1,5 @@
 import { minifyCss } from '@/lib/css-minify';
-import type { StoreTheme } from '@/lib/store-theme';
+import { badgeColour, type StoreTheme } from '@/lib/store-theme';
 
 /**
  * THE RULES OF THE STORE-LOOKS PORT — written into a page only for the
@@ -38,10 +38,15 @@ const SHAPE_CSS = `
  *
  *   none   — nothing moves: no lift, no zoom, and the ticker stands still.
  *   subtle — a card lifts a little under the pointer; a button gives when pressed.
- *   full   — a higher lift with their shadow, the photo zooms, and each part
- *            of the page rises into view as it is scrolled to (by the browser's
- *            own scroll timeline — no script, and nothing hidden where it is
- *            not supported).
+ *   full   — a higher lift with their shadow, the photo zooms, and each
+ *            CONTENT section rises into view as it is scrolled to (by the
+ *            browser's own scroll timeline — no script, and nothing hidden
+ *            where it is not supported). Never the order form, nor anything
+ *            fixed or sticky: a transform on an ancestor of a fixed bar pins
+ *            that bar to the moving section instead of the screen, so a
+ *            section holding a form, the floating order bar, the brand page's
+ *            sticky bar or the filter sheet does not move at all.
+ *   none   — also stops the slider turning by itself (Slider.tsx reads it).
  *
  * A device that asks for less motion gets none, whatever the seller chose.
  */
@@ -57,12 +62,12 @@ const MOTION_CSS = `
 .sf-root[data-motion='full'] :is(.sf-card-img, .lp-catalog-media img) { transition: transform 600ms var(--mo-ease); }
 .sf-root[data-motion='full'] :is(.sf-card:hover .sf-card-img, .lp-catalog-card:hover .lp-catalog-media img) { transform: scale(1.07); }
 @supports (animation-timeline: view()) {
-  .sf-root[data-motion='full'] main > * { animation: sf-mo-rise linear both; animation-timeline: view(); animation-range: entry 0% entry 35%; }
+  .sf-root[data-motion='full'] main > :is(.lp-section, .sf-grid-wrap):not(:has(form, .lp-sticky-bar, .sf-bp-sticky, .sf-sheet)) { animation: sf-mo-rise linear both; animation-timeline: view(); animation-range: entry 0% entry 35%; }
 }
 @keyframes sf-mo-rise { from { opacity: 0; transform: translate3d(0, 26px, 0); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
   .sf-root[data-motion] *, .sf-root[data-motion] *::before, .sf-root[data-motion] *::after { animation: none !important; transition: none !important; }
-  .sf-root[data-motion] :is(.sf-card, .lp-catalog-card):hover, .sf-root[data-motion] :is(.sf-card-img, .lp-catalog-media img) { transform: none !important; }
+  .sf-root[data-motion] :is(.sf-card, .lp-catalog-card):hover, .sf-root[data-motion] :is(.sf-card-img, .lp-catalog-media img), .sf-root[data-motion] .lp-cta:active { transform: none !important; }
 }
 `;
 
@@ -92,6 +97,18 @@ const TICKER_CSS = `
 }
 `;
 
+/**
+ * «شارة العرض» · «لون التمييز» — THE OFFER BADGES, IN THE COLOUR THE SHOP NAMED.
+ *
+ * `--store-offer-badge` was written and read by nothing, so both pickers
+ * coloured nothing. The badges a shopper sees are «الأوفر» on an offer card
+ * and «عرض خاص» on a catalogue card; they keep the accent unless the shop
+ * named a badge colour, and then wear it with measured ink.
+ */
+const BADGE_CSS = `
+.sf-root[data-badge] :is(.lp-offer-tag, .lp-catalog-tag) { background: var(--store-offer-badge); color: var(--store-offer-badge-ink); }
+`;
+
 /** «حجم الشعار». */
 const LOGO_CSS = `
 .sf-root[data-logo] .sf-logo { height: var(--store-logo-h); max-width: calc(var(--store-logo-h) * 4); }
@@ -103,6 +120,7 @@ export const EXTRAS_SLICES = Object.freeze({
   motion: minifyCss(MOTION_CSS),
   ticker: minifyCss(TICKER_CSS),
   logo: minifyCss(LOGO_CSS),
+  badge: minifyCss(BADGE_CSS),
 });
 
 /** The slices this shop's theme asks for, joined — '' when it asks for none. */
@@ -112,6 +130,7 @@ export function shopExtrasSheet(theme: StoreTheme): string {
   if (theme.motion) parts.push(EXTRAS_SLICES.motion);
   if (theme.ticker?.enabled) parts.push(EXTRAS_SLICES.ticker);
   if (theme.header?.logoHeight) parts.push(EXTRAS_SLICES.logo);
+  if (badgeColour(theme)) parts.push(EXTRAS_SLICES.badge);
   return parts.join('');
 }
 

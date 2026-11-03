@@ -1,8 +1,12 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { render } from '@testing-library/react';
+import { cleanup, render } from '@testing-library/react';
+
+// Unmount what each test drew: a tree left mounted when the file ends is
+// still scheduled work, and it runs after the DOM is gone («window is not defined»).
+afterEach(cleanup);
 import { StorefrontShell } from './StorefrontShell';
 import { PageBlocks } from '@/components/landing/blocks/PageBlocks';
 import { unchangedContext, unchangedHome, unchangedShops } from './unchanged-shop.fixture';
@@ -23,6 +27,11 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ push: () => {} }), usePa
  * with the new keys absent against itself would prove nothing; comparing it
  * with what main drew does: one attribute added to an untouched shop fails
  * it.
+ *
+ * RE-TAKEN ONCE, on the same commit and the same way, when the fixture's
+ * catalogue was put in an order no sort would give and given every sort's
+ * facts (the review of #188, item 7): a renderer whose default order changed
+ * to price, to newest or to best-selling now fails this — each checked.
  */
 const GOLDEN_FILE = join(__dirname, '__golden__', 'unchanged-shop.html');
 
