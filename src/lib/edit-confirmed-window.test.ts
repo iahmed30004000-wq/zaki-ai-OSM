@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionUser } from '@/types/auth';
 import { EDIT_CONFIRMED_KEY } from './edit-confirmed-key';
-import { EDIT_WINDOW_NOTE_AR, editWindowOpen, editsNow, type EditWindowFacts, type WindowOrder } from './edit-confirmed-window';
+import { EDIT_WINDOW_NOTE_AR, EDIT_WINDOW_OWNER_NOTE_AR, editWindowOpen, editsNow, type EditWindowFacts, type WindowOrder } from './edit-confirmed-window';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -33,6 +33,12 @@ describe('the key', () => {
     expect(EDIT_WINDOW_NOTE_AR).toBe('طُبِّق مباشرةً — رافعه يملك «تعديل الطلب المؤكَّد قبل الدفعة» والطلب لم يدخل دفعة شحن بعد.');
     expect(EDIT_WINDOW_NOTE_AR).not.toMatch(/[A-Za-z]/);
   });
+
+  it('the owner’s note says it was the owner, and before the batch — plain Arabic, its own sentence', () => {
+    expect(EDIT_WINDOW_OWNER_NOTE_AR).toBe('طُبِّق مباشرةً — المالك، والطلب لم يدخل دفعة شحن بعد.');
+    expect(EDIT_WINDOW_OWNER_NOTE_AR).not.toMatch(/[A-Za-z]/);
+    expect(EDIT_WINDOW_OWNER_NOTE_AR).not.toBe(EDIT_WINDOW_NOTE_AR);
+  });
 });
 
 describe('editWindowOpen — open only when ALL FIVE hold', () => {
@@ -61,6 +67,27 @@ describe('editWindowOpen — open only when ALL FIVE hold', () => {
 
   it('NEGATIVE: the courier has it ⇒ shut, even with no batch (a parcel marked shipped by hand sits in none)', () => {
     expect(editWindowOpen({ ...OPEN, inBatch: false, handedToCourier: true })).toBe(false);
+  });
+
+  it('THE OWNER (3/11): full access opens it on an order he does not hold — or that nobody holds', () => {
+    const owner: EditWindowFacts = { ...OPEN, userId: 'owner', fullAccess: true };
+    expect(editWindowOpen(owner)).toBe(true);
+    expect(editWindowOpen({ ...owner, claimedById: null })).toBe(true);
+    expect(editWindowOpen({ ...owner, claimedById: undefined })).toBe(true);
+    // Absent or false is «no»: a colleague's order stays shut for everybody else.
+    expect(editWindowOpen({ ...owner, fullAccess: false })).toBe(false);
+    expect(editWindowOpen({ ...owner, fullAccess: undefined })).toBe(false);
+  });
+
+  it('NEGATIVE: the owner’s window has the SAME limits — confirmed, no batch, not with the courier, and the safe defaults', () => {
+    const owner: EditWindowFacts = { ...OPEN, userId: 'owner', claimedById: 'salma', fullAccess: true };
+    for (const confirmationStatus of ['IN_PROGRESS', 'POSTPONED', 'REJECTED', 'CANCELLED']) {
+      expect(editWindowOpen({ ...owner, confirmationStatus }), confirmationStatus).toBe(false);
+    }
+    expect(editWindowOpen({ ...owner, inBatch: true })).toBe(false);
+    expect(editWindowOpen({ ...owner, handedToCourier: true })).toBe(false);
+    expect(editWindowOpen({ ...owner, inBatch: undefined })).toBe(false);
+    expect(editWindowOpen({ ...owner, handedToCourier: undefined })).toBe(false);
   });
 
   it('SAFE DEFAULTS: a caller that does not say reads as «in a batch» and «taken» ⇒ shut', () => {
@@ -111,12 +138,43 @@ describe('editsNow — the screen asks the same question, per ask', () => {
     expect(editsNow(person(), hers({ confirmationStatus: 'IN_PROGRESS' }))).toBe(false);
   });
 
-  it('NEGATIVE: the owner holds every key, and still holds no order he did not pull — the window is a holder’s', () => {
+  it('THE OWNER (SUPER_ADMIN, 3/11) — «انتا ادخل وعدل»: every ask applies at once on any confirmed order before the batch, held or not', () => {
     const owner = person({ id: 'owner', role: 'SUPER_ADMIN', permissions: [] });
-    expect(editsNow(owner, hers({ claimedById: null }))).toBe(false);
-    expect(editsNow(owner, hers({ claimedById: 'salma' }))).toBe(false);
-    expect(editsNow(owner, hers({ claimedById: 'owner' }))).toBe(true);
+    for (const intent of ['EDIT', 'CANCEL', 'POSTPONE'] as const) {
+      expect(editsNow(owner, hers({ claimedById: null }), intent), intent).toBe(true);
+      expect(editsNow(owner, hers({ claimedById: 'salma' }), intent), intent).toBe(true);
+      expect(editsNow(owner, hers({ claimedById: 'owner' }), intent), intent).toBe(true);
+    }
   });
+
+  it('NEGATIVE: the owner after the batch, or with the courier ⇒ the screen says «طلب», as for the agent', () => {
+    const owner = person({ id: 'owner', role: 'SUPER_ADMIN', permissions: [] });
+    for (const intent of ['EDIT', 'CANCEL', 'POSTPONE'] as const) {
+      expect(editsNow(owner, hers({ claimedById: 'salma', shippingBatchId: 'b1', shippingBatch: { status: 'READY' } }), intent)).toBe(false);
+      expect(editsNow(owner, hers({ claimedById: 'salma', shippingBatchId: null, shippingBatch: { status: 'READY' } }), intent)).toBe(false);
+      expect(editsNow(owner, hers({ claimedById: 'salma', shippingStatus: 'SHIPPED' }), intent)).toBe(false);
+      expect(editsNow(owner, hers({ claimedById: 'salma', confirmationStatus: 'IN_PROGRESS' }), intent)).toBe(false);
+    }
+  });
+
+  it('NEGATIVE: the owner on a PRINTED WAYBILL ⇒ an edit is a request (the seal), a cancel or a hold applies at once', () => {
+    const owner = person({ id: 'owner', role: 'SUPER_ADMIN', permissions: [] });
+    const labelled = hers({ claimedById: 'salma', labelPrintedAt: new Date('2026-11-01T08:00:00Z') });
+    expect(editsNow(owner, labelled, 'EDIT')).toBe(false);
+    expect(editsNow(owner, labelled, 'CANCEL')).toBe(true);
+    expect(editsNow(owner, labelled, 'POSTPONE')).toBe(true);
+  });
+
+  it.each(['MANAGER', 'COMPANY_ADMIN', 'CONFIRMATION_SUPERVISOR', 'DELIVERY_MANAGER', 'MODERATOR'])(
+    'NEGATIVE: %s with EVERY key but not full access, on an order he does not hold ⇒ never — the owner’s window is not a key',
+    (role) => {
+      const allKeys = person({ id: 'boss', role: role as SessionUser['role'], permissions: [EDIT_CONFIRMED_KEY, 'orders.request_change', 'control.change_requests', 'orders.change_price', 'ops.decide_changes', 'ops.ship', 'orders.unlock'] });
+      for (const intent of ['EDIT', 'CANCEL', 'POSTPONE'] as const) {
+        expect(editsNow(allKeys, hers({ claimedById: 'salma' }), intent)).toBe(false);
+        expect(editsNow(allKeys, hers({ claimedById: null }), intent)).toBe(false);
+      }
+    }
+  );
 
   it('NEGATIVE: in a batch, by the column or by the relation ⇒ never; by neither it opens', () => {
     for (const intent of ['EDIT', 'CANCEL', 'POSTPONE'] as const) {

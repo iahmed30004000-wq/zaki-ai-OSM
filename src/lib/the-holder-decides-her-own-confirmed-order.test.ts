@@ -204,15 +204,58 @@ describe('Ⅲ · it ADDS a decider and removes none — every other person’s v
     expect(holdsTheWindow(both, ON_A_TROLLEY)).toBe(false);
   });
 
-  it('the owner (SUPER_ADMIN, who holds every key) decides everything, as a supervisor; his window needs him to HOLD the order', async () => {
+  it('the owner (SUPER_ADMIN, who holds every key) decides everything, as a supervisor — the verdict is unchanged on every order', async () => {
     const owner = await person('owner', 'SUPER_ADMIN', []);
     for (const [name, order] of ORDERS) {
       const v = mayDecide(owner, order);
       expect(v.allowed, name).toBe(true);
+      expect(v.decider, name).toEqual(deciderFor(order));
+    }
+  });
+
+  it('THE OWNER’S WINDOW (3/11): open on any confirmed order before the batch, held by him, by a colleague or by nobody — «via» says so', async () => {
+    const owner = await person('owner', 'SUPER_ADMIN', []);
+    for (const order of [HERS, NOT_HERS, NOBODYS, mine({ claimedById: 'owner' })]) {
+      expect(holdsTheWindow(owner, order)).toBe(true);
+      expect(mayDecide(owner, order)).toMatchObject({ allowed: true, via: 'OWNER_WINDOW' });
+      expect(mayDecide(owner, order, { money: true })).toMatchObject({ allowed: true, via: 'OWNER_WINDOW' });
+    }
+  });
+
+  it('NEGATIVE: the owner’s window shuts where the agent’s does — on a trolley, with the courier, a caller silent, not confirmed', async () => {
+    const owner = await person('owner', 'SUPER_ADMIN', []);
+    for (const [name, order] of [
+      ['on a trolley', ON_A_TROLLEY],
+      ['pressed', PRESSED],
+      ['shipped by hand', SHIPPED_BY_HAND],
+      ['caller silent', SILENT],
+      ['not confirmed yet', mine({ confirmationStatus: 'IN_PROGRESS', claimedById: 'salma' })],
+    ] as const) {
+      expect(holdsTheWindow(owner, order), name).toBe(false);
+      // …and he still decides it as a supervisor, as he always did — with no «via».
+      const v = mayDecide(owner, order);
+      expect(v.allowed, name).toBe(true);
       expect(v.via, name).toBeUndefined();
     }
-    expect(holdsTheWindow(owner, HERS)).toBe(false);
-    expect(holdsTheWindow(owner, mine({ claimedById: 'owner' }))).toBe(true);
+  });
+
+  it.each(['MANAGER', 'COMPANY_ADMIN', 'CONFIRMATION_SUPERVISOR'])(
+    'NEGATIVE: %s with every key (the supervisor’s, the window’s, the price’s) but not full access ⇒ no owner’s window on an order he does not hold',
+    async (role) => {
+      const boss = await person('boss', role, [...SUPERVISOR, ...WAREHOUSE_HAND, 'orders.edit_confirmed', 'orders.unlock']);
+      for (const order of [HERS, NOBODYS]) {
+        expect(holdsTheWindow(boss, order)).toBe(false);
+        const v = mayDecide(boss, order);
+        expect(v.allowed).toBe(true);
+        expect(v.via).toBeUndefined();
+      }
+    }
+  );
+
+  it('NEGATIVE: a SUPER_ADMIN whose account is not active has no window (full access reads the status, as `can` does)', async () => {
+    const off = await person('owner', 'SUPER_ADMIN', []);
+    (off as unknown as { status: string }).status = 'SUSPENDED';
+    expect(holdsTheWindow(off, HERS)).toBe(false);
   });
 
   it('a person with neither role nor key is refused on every order, as she always was', async () => {
