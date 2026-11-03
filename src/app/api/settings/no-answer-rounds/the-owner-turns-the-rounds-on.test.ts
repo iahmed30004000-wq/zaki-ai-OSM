@@ -14,7 +14,7 @@ const { store, requirePermission, logAudit, db } = vi.hoisted(() => {
       }),
     },
   };
-  return { store, requirePermission: vi.fn(async () => undefined), logAudit: vi.fn(), db };
+  return { store, requirePermission: vi.fn(async (_key: string) => undefined), logAudit: vi.fn(), db };
 });
 
 vi.mock('@/lib/db', () => ({ db }));
