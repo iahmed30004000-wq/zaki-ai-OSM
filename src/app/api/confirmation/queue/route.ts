@@ -45,7 +45,8 @@ export async function GET() {
     const [waiting, counts, waitingOnADate, heldForColleagues] = await Promise.all([
       // For an agent: what SHE may take (hers first, never a colleague's). For a supervisor: the whole pool, as before.
       waitingCount(db, scope, now, mayPull ? user.id : undefined),
-      ownedCounts(db, scope, user.id),
+      // In her hands AND held for her (RV706): the cap counts both, and the screen shows both.
+      ownedCounts(db, scope, user.id, now),
       // Real work, none of it takeable today. Said out loud rather than
       // folded into a number that promises a pull.
       postponedNotDueCount(db, scope),
