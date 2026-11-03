@@ -267,7 +267,8 @@ describe('⑤ save, preview and publish are still three acts', () => {
     expect(src(PAGE_EDITOR), 'محرّر الصفحة ما بيمرّر المنتج').toMatch(/productId=\{/);
     // It is still in the create dialog too. A door is not moved, it is
     // added beside the one that was there.
-    expect(src('src/components/screens/LandingPagesScreen.tsx')).toMatch(
+    // (The dialog's code moved to the wizard on 3/11.)
+    expect(src('src/components/landing-flow/CreateWizard.tsx')).toMatch(
       /اكتب النصوص بالذكاء الاصطناعي/
     );
   });

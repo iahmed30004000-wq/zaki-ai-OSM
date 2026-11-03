@@ -15,7 +15,7 @@ import { CHANGEABLE_FIELDS, touchesMoney, withFrom } from '@/lib/change-request-
 import { CHANGE_INTENTS, INTENT_AR, INTENT_ASK_AR, carryOut, missingFor, type ChangeIntent } from '@/lib/change-request-intent';
 import { createNotification } from '@/lib/notification';
 import { deciderFor, mayDecide } from '@/lib/change-request-routing';
-import { EDIT_WINDOW_NOTE_AR } from '@/lib/edit-confirmed-window';
+import { EDIT_WINDOW_NOTE_AR, EDIT_WINDOW_OWNER_NOTE_AR } from '@/lib/edit-confirmed-window';
 import { orderSeal, handedToCourier } from '@/lib/order-seal';
 import { ORDER_NOT_FOUND } from '@/lib/order-refusals';
 import { previewDraftSchema } from '@/lib/order-line-edit';
@@ -422,9 +422,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     /*
      * WHICH RULE LET HER, said in the note. Only the holder's own window (`mine.via`) — a supervisor or the packing table
      * keeps the sentence they always had, byte for byte. The seal (an EDIT) and the handover (a cancel or a hold) above are
-     * ON TOP of the window: a labelled order is still a request somebody else decides.
+     * ON TOP of the window: a labelled order is still a request somebody else decides. The owner's window (3/11,
+     * `OWNER_WINDOW`) is the same window and says so in its own sentence.
      */
-    const viaEditWindow = readyToApply && mine.via === 'EDIT_CONFIRMED';
+    const viaEditWindow = readyToApply && (mine.via === 'EDIT_CONFIRMED' || mine.via === 'OWNER_WINDOW');
 
     if (readyToApply) {
       await db.orderChangeRequest.update({
@@ -434,7 +435,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           decidedById: user.id,
           decidedAt: new Date(),
           decisionNote: viaEditWindow
-            ? EDIT_WINDOW_NOTE_AR
+            ? mine.via === 'OWNER_WINDOW'
+              ? EDIT_WINDOW_OWNER_NOTE_AR
+              : EDIT_WINDOW_NOTE_AR
             : 'طُبِّق مباشرةً — رافعُه يملك البتَّ فيه، والطرد لم يُسلَّم لشركة الشحن بعد.',
         },
       });

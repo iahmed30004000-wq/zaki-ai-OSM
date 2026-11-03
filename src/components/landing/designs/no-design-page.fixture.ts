@@ -13,6 +13,8 @@ import type { BlockContext } from '../blocks/PageBlocks';
  * the renderer's no-design path.
  *
  * Uses only what main already had, so the same file can be rendered there.
+ * A .ts file, not .tsx: it is a test's data, and the unused-component guard
+ * counts every .tsx under components/ as something that must ship.
  */
 const at = <T extends LandingSection['type']>(type: T, id: string, over: Record<string, unknown> = {}) =>
   ({ ...newSection(type), id, ...over }) as LandingSection;
@@ -53,7 +55,7 @@ export function noDesignContext(): BlockContext {
       { id: 'o1', name: 'عبوتان', quantity: 2, freeQuantity: 1, price: 45, listPrice: 60, isDefault: true },
       { id: 'o2', name: 'ثلاث', quantity: 3, freeQuantity: 0, price: 60, isDefault: false },
     ],
-    form: <div id="zaki-order-form">FORM</div>,
+    form: React.createElement('div', { id: 'zaki-order-form' }, 'FORM'),
     trust: trustRow(),
     whatsapp: null,
     store: { name: 'متجر', logo: null, phone: null },

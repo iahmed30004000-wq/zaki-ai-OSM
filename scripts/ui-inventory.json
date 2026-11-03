@@ -259,6 +259,46 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/landing-flow/CreateWizard.tsx": {
+    "buttons": 11,
+    "inputs": 7,
+    "columns": 0,
+    "cards": 0,
+    "modals": 1,
+    "icons": 3,
+    "links": 0,
+    "tabs": 0
+  },
+  "src/components/landing-flow/DesignCards.tsx": {
+    "buttons": 1,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 0,
+    "links": 1,
+    "tabs": 0
+  },
+  "src/components/landing-flow/LandingTabs.tsx": {
+    "buttons": 0,
+    "inputs": 0,
+    "columns": 2,
+    "cards": 0,
+    "modals": 0,
+    "icons": 0,
+    "links": 1,
+    "tabs": 0
+  },
+  "src/components/landing-flow/PageSummary.tsx": {
+    "buttons": 4,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 1,
+    "modals": 0,
+    "icons": 0,
+    "links": 1,
+    "tabs": 0
+  },
   "src/components/ops/BatchBarcodePaste.tsx": {
     "buttons": 3,
     "inputs": 2,
@@ -1229,6 +1269,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/screens/LandingLibraryScreen.tsx": {
+    "buttons": 3,
+    "inputs": 2,
+    "columns": 0,
+    "cards": 1,
+    "modals": 1,
+    "icons": 1,
+    "links": 2,
+    "tabs": 0
+  },
   "src/components/screens/LandingPageDetailScreen.tsx": {
     "buttons": 11,
     "inputs": 6,
@@ -1250,13 +1300,13 @@
     "tabs": 0
   },
   "src/components/screens/LandingPagesScreen.tsx": {
-    "buttons": 19,
-    "inputs": 2,
-    "columns": 10,
+    "buttons": 13,
+    "inputs": 0,
+    "columns": 6,
     "cards": 1,
-    "modals": 2,
-    "icons": 14,
-    "links": 2,
+    "modals": 1,
+    "icons": 13,
+    "links": 3,
     "tabs": 0
   },
   "src/components/screens/ManufacturingScreen.tsx": {

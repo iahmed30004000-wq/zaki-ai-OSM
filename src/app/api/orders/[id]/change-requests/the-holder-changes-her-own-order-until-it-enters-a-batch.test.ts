@@ -45,7 +45,7 @@ vi.mock('@/lib/notify', () => ({ afterResponse: (fn: () => Promise<void>) => voi
 
 import { attachGrants } from '@/lib/authorization';
 import { computeEffectiveGrants } from '@/lib/permissions-core';
-import { EDIT_WINDOW_NOTE_AR } from '@/lib/edit-confirmed-window';
+import { EDIT_WINDOW_NOTE_AR, EDIT_WINDOW_OWNER_NOTE_AR } from '@/lib/edit-confirmed-window';
 import { POST } from './route';
 
 const LIVE_AGENT = [
@@ -352,10 +352,10 @@ describe('Ⅳ · everybody else is untouched — the old note, byte for byte, an
     expect(no.body.readyToApply).toBe(false);
   });
 
-  it('the owner (SUPER_ADMIN) decides his own request anywhere, with the old sentence', async () => {
+  it('the owner (SUPER_ADMIN) decides his own request on a trolley too, as a supervisor, with the old sentence', async () => {
     const owner = await person('owner', 'SUPER_ADMIN', []);
 
-    const res = await raise(owner, confirmed({ claimedById: 'someone-else' }), CANCEL);
+    const res = await raise(owner, confirmed({ claimedById: 'someone-else', shippingStatus: 'READY_FOR_PICKUP', shippingBatchId: 'b1' }), CANCEL, { status: 'READY', batchNumber: 'B-1' });
 
     expect(res.body).toMatchObject({ readyToApply: true, viaEditWindow: false });
     expect(decided()!.data).toMatchObject({ decidedById: 'owner', decisionNote: OLD_NOTE });
@@ -367,6 +367,93 @@ describe('Ⅳ · everybody else is untouched — the old note, byte for byte, an
     const res = await raise(mod, confirmed({ claimedById: null }), EDIT);
 
     expect(res.body.readyToApply).toBe(false);
+    expect(decided()).toBeUndefined();
+  });
+});
+
+const MANAGER_ALL = [...SUPERVISOR, ...WAREHOUSE_HAND, 'orders.edit_confirmed', 'orders.unlock', 'orders.edit', 'orders.view'];
+const freshMocks = () => {
+  vi.clearAllMocks();
+  db.orderChangeRequest.create.mockImplementation(async ({ data }: any) => ({ id: 'cr1', ...data }));
+  db.order.findFirst.mockResolvedValue({ quantity: 1, productId: 'p1', sellingPrice: 10, discountAmount: 0, customerNotes: null, regionId: null, deliveryAddress: null, customer: {} });
+  db.orderChangeRequest.findFirst.mockResolvedValue(null);
+  db.shippingBatch.findFirst.mockResolvedValue(null);
+};
+
+describe('Ⅴ · THE OWNER’S WINDOW (3/11) — «انتا ادخل وعدل»: full access, on any confirmed order before the batch', () => {
+  it.each([
+    ['an edit (the address)', EDIT],
+    ['an edit that moves a figure (the quantity)', EDIT_MONEY],
+    ['a postponement', POSTPONE],
+    ['a cancellation', CANCEL],
+  ])('%s on an order SALMA holds ⇒ applied at once by HIM, with the owner’s sentence', async (_name, body) => {
+    const owner = await person('owner', 'SUPER_ADMIN', []);
+
+    const res = await raise(owner, confirmed(), body);
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body).toMatchObject({ readyToApply: true, viaEditWindow: true });
+    expect(decided()!.data).toMatchObject({ status: 'APPROVED', decidedById: 'owner', decisionNote: EDIT_WINDOW_OWNER_NOTE_AR });
+    expect(createNotification).not.toHaveBeenCalled();
+  });
+
+  it('on an order NOBODY holds ⇒ the same', async () => {
+    const owner = await person('owner', 'SUPER_ADMIN', []);
+    const res = await raise(owner, confirmed({ claimedById: null }), EDIT);
+    expect(res.body).toMatchObject({ readyToApply: true, viaEditWindow: true });
+    expect(decided()!.data.decisionNote).toBe(EDIT_WINDOW_OWNER_NOTE_AR);
+  });
+
+  it('NEGATIVE: AFTER THE BATCH ⇒ not his window: no «via», the old sentence (he decides as the supervisor he always was)', async () => {
+    const owner = await person('owner', 'SUPER_ADMIN', []);
+    for (const body of [EDIT, CANCEL, POSTPONE]) {
+      freshMocks();
+      const res = await raise(owner, confirmed({ shippingStatus: 'READY_FOR_PICKUP', shippingBatchId: 'b1' }), body, { status: 'READY', batchNumber: 'B-1' });
+      expect(res.body.viaEditWindow, JSON.stringify(body)).toBe(false);
+      expect(decided()!.data.decisionNote).toBe(OLD_NOTE);
+    }
+  });
+
+  it('NEGATIVE: with the courier ⇒ an edit and a cancel wait, a postponement is refused at the door — as for everybody', async () => {
+    const owner = await person('owner', 'SUPER_ADMIN', []);
+    const byHand = confirmed({ shippingStatus: 'SHIPPED', shippedAt: new Date() });
+    expect((await raise(owner, byHand, EDIT)).body).toMatchObject({ readyToApply: false, viaEditWindow: false });
+    expect((await raise(owner, byHand, CANCEL)).body).toMatchObject({ readyToApply: false, viaEditWindow: false });
+    expect((await raise(owner, byHand, POSTPONE)).status).toBe(409);
+    expect(decided()).toBeUndefined();
+  });
+
+  it('A PRINTED WAYBILL ⇒ his EDIT waits (the seal is on top); his cancel or hold applies at once with his sentence — the agent’s rule', async () => {
+    const owner = await person('owner', 'SUPER_ADMIN', []);
+    const labelled = confirmed({ shippingStatus: 'READY_FOR_PICKUP', labelPrintedAt: new Date('2026-11-01T08:00:00Z') });
+
+    const edit = await raise(owner, labelled, EDIT);
+    expect(edit.body).toMatchObject({ readyToApply: false, viaEditWindow: false });
+    expect(decided()).toBeUndefined();
+
+    for (const body of [CANCEL, POSTPONE]) {
+      freshMocks();
+      const res = await raise(owner, labelled, body);
+      expect(res.body, JSON.stringify(body)).toMatchObject({ readyToApply: true, viaEditWindow: true });
+      expect(decided()!.data.decisionNote).toBe(EDIT_WINDOW_OWNER_NOTE_AR);
+    }
+  });
+
+  it.each(['MANAGER', 'COMPANY_ADMIN', 'CONFIRMATION_SUPERVISOR'])(
+    'NEGATIVE: %s with every key but not full access ⇒ never the owner’s window: no «via», never the owner’s sentence',
+    async (role) => {
+      const boss = await person('boss', role, MANAGER_ALL);
+      const res = await raise(boss, confirmed(), EDIT);
+      expect(res.body.viaEditWindow).toBe(false);
+      expect(decided()?.data.decisionNote).not.toBe(EDIT_WINDOW_OWNER_NOTE_AR);
+      expect(decided()?.data.decisionNote).toBe(OLD_NOTE);
+    }
+  );
+
+  it('NEGATIVE: an agent with the key on an order she does NOT hold ⇒ still waits (the owner’s window is not hers)', async () => {
+    const salma = await person('salma', 'CONFIRMATION_AGENT', WITH_KEY);
+    const res = await raise(salma, confirmed({ claimedById: 'owner' }), CANCEL);
+    expect(res.body).toMatchObject({ readyToApply: false, viaEditWindow: false });
     expect(decided()).toBeUndefined();
   });
 });
