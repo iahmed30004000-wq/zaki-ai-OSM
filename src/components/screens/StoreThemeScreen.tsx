@@ -2,6 +2,8 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { SkinGallery, type SkinCard } from '@/components/store/SkinGallery';
+import { LookGallery } from '@/components/store/LookGallery';
+import { applyLook } from '@/lib/store-looks';
 import { LayoutPanel } from '@/components/store/LayoutPanel';
 import { ContrastNotes } from '@/components/store/ContrastNotes';
 import type { SampleProduct } from '@/components/store/SkinPreview';
@@ -265,7 +267,7 @@ export function StoreThemeScreen() {
    * any customer does — so this reloads rather than pretending to know what
    * the server decided.
    */
-  async function install(source: 'builtin' | 'skin' | 'file', payload: string | unknown) {
+  async function install(source: 'builtin' | 'skin' | 'design' | 'file', payload: string | unknown) {
     setInstalling(typeof payload === 'string' ? payload : 'file');
     setMsg(null);
     try {
@@ -558,6 +560,24 @@ export function StoreThemeScreen() {
             page» means the second. Two units, one screen, in the order a
             shop is actually built.
           */}
+          {/*
+            THE OWNER'S OTHER PLATFORM'S THEMES AND HOME DESIGNS, FIRST —
+            his flow, «اسحبهم للمتجر». Ours follow, every one still here.
+          */}
+          {store?.cartBarApplies !== false && (
+            <div className={CARD}>
+              <LookGallery
+                current={theme.look}
+                installing={installing}
+                onTry={(look) => {
+                  setTheme((t) => applyLook(t, look));
+                  setMsg({ ok: true, text: 'الثيم ظاهر هون غير محفوظ — اضغط «احفظ المسوّدة» ثم «انشر» ليشوفه الزبون' });
+                }}
+                onInstallDesign={(id) => void install('design', id)}
+              />
+            </div>
+          )}
+
           {shop && shop.skins.length > 0 && (
             <div className={CARD}>
               <p className="text-sm font-bold text-[var(--sys-heading)]">قوالب المتجر</p>
@@ -645,6 +665,28 @@ export function StoreThemeScreen() {
 
           <div className={CARD}>
             <p className="mb-3 text-sm font-bold text-[var(--sys-heading)]">الخطوط</p>
+            {/* Their theme builder's six faces, one press each — all six are already in the library below. */}
+            <div className="mb-3 flex flex-wrap items-center gap-1.5" role="group" aria-label="خطوط الثيمات">
+              {QUICK_FONTS.map((key) => {
+                const f = FONTS.find((x) => x.key === key);
+                if (!f) return null;
+                const on = theme.font === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => set('font', key)}
+                    style={{ fontFamily: f.stack }}
+                    className={`rounded-full border px-3 py-1 text-xs font-bold ${
+                      on ? 'border-[var(--sys-primary)] text-[var(--sys-primary)]' : 'border-[var(--sys-border)] text-[var(--sys-foreground)]'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                );
+              })}
+            </div>
             <div className="grid gap-3 sm:grid-cols-3">
               <label className="block">
                 <span className={LABEL}>خط النص</span>
@@ -724,14 +766,57 @@ export function StoreThemeScreen() {
               >
                 {MOODS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
               </Select>
+              {/*
+                THE CORNERS AT THEIR SCALE: حادة · ناعمة · دائرية, plus «زوايا
+                الثيم» once a theme is tried. Without one, حادة and ناعمة write
+                `corners` exactly as this select always did; دائرية is new.
+              */}
               <Select
                 className="text-xs"
-                value={theme.corners}
-                onChange={(e) => set('corners', e.target.value as StoreTheme['corners'])}
+                aria-label="الزوايا"
+                value={theme.radius ?? (theme.look ? '' : theme.corners)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setTheme((t) =>
+                    v === ''
+                      ? { ...t, radius: undefined }
+                      : v === 'round'
+                        ? { ...t, radius: 'round', corners: 'soft' }
+                        : { ...t, corners: v as StoreTheme['corners'], radius: t.look ? (v as 'sharp' | 'soft') : undefined }
+                  );
+                }}
               >
+                {theme.look && <option value="">زوايا الثيم</option>}
                 <option value="soft">زوايا ناعمة</option>
                 <option value="sharp">زوايا حادّة</option>
+                <option value="round">زوايا دائرية</option>
               </Select>
+            </div>
+            {/* «لون التمييز» — their builder's second colour, in sight beside the first. */}
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <input
+                type="color"
+                aria-label="لون التمييز"
+                value={
+                  theme.highlight && isValidHex(theme.highlight)
+                    ? theme.highlight
+                    : isValidHex(theme.accent)
+                      ? theme.accent
+                      : DEFAULT_STORE_THEME.accent
+                }
+                onChange={(e) => set('highlight', e.target.value)}
+                className="h-11 md:h-8 w-10 cursor-pointer rounded-lg border border-[var(--sys-border)]"
+              />
+              <span className="text-xs text-[var(--sys-foreground)]">لون التمييز</span>
+              <span className="text-xs text-[var(--sys-muted)]">— شريط الإعلانات، وشارة الخصم إن ما حدّدت لونها</span>
+              <button
+                type="button"
+                disabled={!theme.highlight}
+                onClick={() => set('highlight', undefined)}
+                className="text-xs text-[var(--sys-muted)] underline disabled:opacity-40"
+              >
+                {theme.highlight ? 'بلا لون تمييز' : 'غير محدّد'}
+              </button>
             </div>
             {/*
               FOURTEEN PICKERS, FOLDED.
@@ -793,6 +878,25 @@ export function StoreThemeScreen() {
               />
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── الحركة — their builder's own panel ── */}
+      {tab === 'general' && (
+        <div className={CARD}>
+          <label className="block max-w-sm">
+            <span className={LABEL}>الحركة</span>
+            <Select
+              value={theme.motion ?? ''}
+              onChange={(e) => set('motion', (e.target.value || undefined) as StoreTheme['motion'])}
+            >
+              <option value="">كما هي الآن</option>
+              <option value="none">بدون — ولا شي بيتحرك، وشريط الإعلانات ثابت</option>
+              <option value="subtle">خفيفة — الكرت بيرتفع شوي تحت المؤشر</option>
+              <option value="full">قوية — ارتفاع أوضح، تكبير للصورة، والأقسام بتطلع مع النزول</option>
+            </Select>
+          </label>
+          <p className={HINT}>الزائر اللي موقّف الحركة على جهازه بيشوف المتجر بدون حركة دائماً.</p>
         </div>
       )}
 
@@ -860,6 +964,31 @@ export function StoreThemeScreen() {
                 تثبيتها عند التمرير
               </label>
             </div>
+            <label className="mt-3 block max-w-sm">
+              <span className={LABEL}>
+                حجم الشعار: {theme.header?.logoHeight ? `${theme.header.logoHeight} بكسل` : 'الافتراضي'}
+              </span>
+              <span className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min={28}
+                  max={80}
+                  step={2}
+                  aria-label="حجم الشعار"
+                  value={theme.header?.logoHeight ?? 38}
+                  onChange={(e) => setPart('header', { logoHeight: Number(e.target.value) })}
+                  className="w-full accent-[var(--sys-primary)]"
+                />
+                <button
+                  type="button"
+                  disabled={!theme.header?.logoHeight}
+                  onClick={() => setPart('header', { logoHeight: undefined })}
+                  className="text-xs text-[var(--sys-muted)] underline disabled:opacity-40"
+                >
+                  الافتراضي
+                </button>
+              </span>
+            </label>
             <p className={HINT}>
               الشعار المعروض في الترويسة هو شعار المتجر نفسه — يُضبط من «البلدان والمتاجر».
             </p>
@@ -892,6 +1021,8 @@ export function StoreThemeScreen() {
               </div>
             )}
           </div>
+
+          <TickerPanel theme={theme} onChange={(ticker) => set('ticker', ticker)} />
 
           <div className={CARD}>
             <p className="mb-3 text-sm font-bold text-[var(--sys-heading)]">التذييل</p>
@@ -1179,6 +1310,84 @@ export function StoreThemeScreen() {
           />
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ───────────────────────────── «شريط الإعلانات» ───────────────────────────── */
+
+/** Their theme builder's six faces. Every one is already a key of the font library. */
+const QUICK_FONTS = ['readex', 'ibm', 'cairo', 'tajawal', 'almarai', 'noto'] as const;
+
+type Ticker = NonNullable<StoreTheme['ticker']>;
+
+/**
+ * The band above the header: on or off, moving or still, with or without the
+ * shop's phone, and up to six of the seller's own lines. With none typed it
+ * says the two facts every shop here keeps — never a line of anybody else's.
+ */
+function TickerPanel({ theme, onChange }: { theme: StoreTheme; onChange: (t: Ticker) => void }) {
+  const t: Ticker = theme.ticker ?? { enabled: false, mode: 'scroll', phone: false, items: [] };
+  const put = (patch: Partial<Ticker>) => onChange({ ...t, ...patch });
+  return (
+    <div className={CARD}>
+      <p className="mb-3 text-sm font-bold text-[var(--sys-heading)]">شريط الإعلانات</p>
+      <label className="flex items-center gap-2 text-xs text-[var(--sys-foreground)]">
+        <input
+          type="checkbox"
+          checked={t.enabled}
+          onChange={(e) => put({ enabled: e.target.checked })}
+          className="h-4 w-4 accent-[var(--sys-primary)]"
+        />
+        أظهر شريط الإعلانات فوق الترويسة
+      </label>
+      {t.enabled && (
+        <div className="mt-3 space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className={LABEL}>الرسائل</span>
+              <Select value={t.mode} onChange={(e) => put({ mode: e.target.value as Ticker['mode'] })}>
+                <option value="scroll">متحركة</option>
+                <option value="static">ثابتة</option>
+              </Select>
+            </label>
+            <label className="flex items-center gap-2 self-end pb-2 text-xs text-[var(--sys-foreground)]">
+              <input
+                type="checkbox"
+                checked={t.phone}
+                onChange={(e) => put({ phone: e.target.checked })}
+                className="h-4 w-4 accent-[var(--sys-primary)]"
+              />
+              أضف رقم هاتف المتجر
+            </label>
+          </div>
+          <div className="space-y-2">
+            {t.items.map((line, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <Input
+                  maxLength={80}
+                  aria-label={`رسالة ${i + 1}`}
+                  value={line}
+                  onChange={(e) => put({ items: t.items.map((x, k) => (k === i ? e.target.value : x)) })}
+                />
+                <Button size="sm" variant="secondary" onClick={() => put({ items: t.items.filter((_, k) => k !== i) })}>
+                  احذف
+                </Button>
+              </div>
+            ))}
+            {t.items.length < 6 && (
+              <Button size="sm" variant="secondary" onClick={() => put({ items: [...t.items, ''] })}>
+                أضف رسالة
+              </Button>
+            )}
+          </div>
+          <p className={HINT}>
+            {t.items.length
+              ? 'حتى ست رسائل قصيرة.'
+              : 'بلا رسائل منك بيكتب الشريط «الدفع عند الاستلام · توصيل لكل المحافظات». الرقم هو رقم الدعم المضبوط مع المتجر.'}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

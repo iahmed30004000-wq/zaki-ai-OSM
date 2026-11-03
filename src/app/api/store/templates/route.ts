@@ -11,6 +11,8 @@ import { exportTemplate, importTemplate, templateDisposition } from '@/lib/store
 import { STORE_TEMPLATES } from '@/lib/store-templates';
 import { publicizeMedia } from '@/lib/public-media';
 import { resolveSkinPalette, skinToSections, skinToStoreTheme } from '@/lib/store-skin';
+import { applyLook, designSections, homeDesign, lookTokens } from '@/lib/store-looks';
+import { DESIGN_NAMES } from '@/lib/store-looks/names.generated';
 import { z } from 'zod';
 
 /**
@@ -36,6 +38,10 @@ const applySchema = z.union([
    * are one gallery and two sources rather than two screens.
    */
   z.object({ source: z.literal('skin'), key: z.string().trim().min(1).max(40) }),
+  // One of the eighteen home designs of the owner's other platform: its
+  // page as OUR blocks into the home DRAFT, its look proposed unsaved — the
+  // same two halves, and the same draft rule, as installing a skin.
+  z.object({ source: z.literal('design'), key: z.string().trim().min(1).max(40) }),
   z.object({ source: z.literal('file'), file: z.unknown() }),
 ]);
 
@@ -243,6 +249,13 @@ export async function POST(req: Request) {
       theme = { ...parseStoreTheme(store.theme), ...skinToStoreTheme(skin), template: skin.id };
       sections = skinToSections(skin);
       label = skin.name;
+    } else if (request.source === 'design') {
+      const plan = homeDesign(request.key);
+      const look = plan ? lookTokens(plan.look) : null;
+      if (!plan || !look) return NextResponse.json({ error: 'تصميم غير معروف' }, { status: 404 });
+      theme = applyLook(parseStoreTheme(store.themeDraft ?? store.theme), look);
+      sections = designSections(plan);
+      label = DESIGN_NAMES[plan.id] ?? plan.id;
     } else {
       const imported = importTemplate(request.file);
       if (!imported.ok) return NextResponse.json({ error: imported.error, code: 'BAD_TEMPLATE' }, { status: 400 });
