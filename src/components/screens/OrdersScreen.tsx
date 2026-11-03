@@ -78,8 +78,9 @@ export function OrdersScreen() {
     * landed on all of them, and a person clicking one order number landed
     * on the unfiltered list to look for it by hand.
     *
-    * READ ONCE, at the start. The filters are not written back to the URL:
-    * that would be saved views, which is a feature and not a repair.
+    * READ ONCE, at the start. The filters are not written back to the URL
+    * (that would be saved views) — except «متأخرة»'s number of days, which
+    * is asked to be kept there (`setLateDays` below).
     */
   const asked = useSearchParams();
   const askedState = asked.get('state');
@@ -252,15 +253,6 @@ export function OrdersScreen() {
       if (holderId !== 'all') params.set('holderId', holderId);
       if (showAll) params.set('limit', '500');
 
-      // The counts and the cards ask the same filters (not the page): `/api/orders/summary`, beside the list and never in its way.
-      const summaryParams = new URLSearchParams(params);
-      summaryParams.delete('page');
-      summaryParams.delete('limit');
-      const summaryAsked = Promise.resolve()
-        .then(() => apiFetch(`/api/orders/summary?${summaryParams.toString()}`))
-        .then(async (r) => (r?.ok ? readSummary(await r.json()) : null))
-        .catch(() => null);
-
       const res = await apiFetch(`/api/orders?${params.toString()}`);
       // Discard stale response — a newer request (filter change / poll) started
       // while this one was in flight
@@ -273,8 +265,6 @@ export function OrdersScreen() {
         if (data.currency) setCurrency(data.currency);
         setDialCode(data.dialCode ?? null);
         setPagination(data.pagination || { total: 0, page: 1, limit: 25, totalPages: 1 });
-        const s = await summaryAsked;
-        if (seq === loadOrdersSeq.current) setSummary(s);
       } else {
         // Show a visible error instead of silently keeping stale data
         // (401 is handled by apiFetch redirect)
@@ -304,6 +294,38 @@ export function OrdersScreen() {
     }, 250);
     return () => clearTimeout(timer);
   }, [loadOrders]);
+
+  /*
+   * THE COUNTS AND THE CARDS — asked when the FILTERS change, and only then.
+   *
+   * They are a grouped query and an aggregate over everything the filters match, so they are not asked again for a page
+   * turn, «إظهار الكل» or the thirty-second poll: those change which rows are drawn, never what the filters add up to.
+   * Apart from the list, so the list never waits for them; a newer question discards an older answer.
+   */
+  const summarySeq = useRef(0);
+  const summaryQuery = (() => {
+    const p = new URLSearchParams({ q: search, status, productId, source });
+    if (courierId !== 'all') p.set('courierId', courierId);
+    if (fromDate) p.set('from', fromDate);
+    if (toDate) p.set('to', toDate);
+    if (lateDays) p.set('lateDays', lateDays);
+    if (regionId !== 'all') p.set('regionId', regionId);
+    if (holderId !== 'all') p.set('holderId', holderId);
+    return p.toString();
+  })();
+  useEffect(() => {
+    const seq = ++summarySeq.current;
+    const timer = setTimeout(() => {
+      void Promise.resolve()
+        .then(() => apiFetch(`/api/orders/summary?${summaryQuery}`))
+        .then(async (r) => (r?.ok ? readSummary(await r.json()) : null))
+        .catch(() => null)
+        .then((answer) => {
+          if (seq === summarySeq.current) setSummary(answer);
+        });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [summaryQuery]);
 
   /*
    * Light polling, and a refresh the moment the person comes back —

@@ -71,22 +71,24 @@ export function OrdersSummary({
         </Figure>
         <Figure label="إجمالي القيمة">{money(cards.value)}</Figure>
         <Figure label="متوسط الطلب">{cards.average === null ? '—' : money(cards.average)}</Figure>
-        {cards.profit !== undefined && (
-          <Figure label="صافي الربح" hint={`من ${cards.profit.orders} طلب أُقفل مالياً`}>
-            {money(cards.profit.value)}
-          </Figure>
+        {/*
+          The net profit is written only when an order's finance is recorded (PATCH /api/orders/:id/finance), so most orders
+          carry none. A card that read «0 from 0 orders» would look like a loss; with nothing recorded there is no card, and
+          with something it says how many orders the figure covers.
+        */}
+        {cards.profit !== undefined && cards.profit.orders > 0 && (
+          <Figure label={`صافي الربح (من ${cards.profit.orders} طلب مسجّل ربحه)`}>{money(cards.profit.value)}</Figure>
         )}
       </div>
     </div>
   );
 }
 
-function Figure({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Figure({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-3">
       <p className="text-xs font-semibold text-[var(--sys-muted-foreground)]">{label}</p>
       <p className="mt-0.5 text-base">{children}</p>
-      {hint && <p className="mt-0.5 text-xs text-[var(--sys-muted)]">{hint}</p>}
     </div>
   );
 }

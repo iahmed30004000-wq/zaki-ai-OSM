@@ -19,7 +19,7 @@ import React from 'react';
 const { apiFetch, nav, answer } = vi.hoisted(() => ({
   apiFetch: vi.fn(),
   nav: { params: new URLSearchParams() },
-  answer: { profit: false },
+  answer: { profit: false, profitOrders: 3, totalPages: 1 },
 }));
 
 vi.mock('next/navigation', () => ({
@@ -57,6 +57,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   nav.params = new URLSearchParams();
   answer.profit = false;
+  answer.profitOrders = 3;
+  answer.totalPages = 1;
   window.history.replaceState(null, '', '/orders');
   apiFetch.mockImplementation(async (url: string) => {
     if (url.startsWith('/api/orders/summary?')) {
@@ -67,11 +69,16 @@ beforeEach(() => {
           { state: 'SHIPPED', count: 0 },
         ],
         countsTotal: 11,
-        cards: { orders: 11, value: 330, average: 30, ...(answer.profit ? { profit: { value: 55, orders: 3 } } : {}) },
+        cards: { orders: 11, value: 330, average: 30, ...(answer.profit ? { profit: { value: answer.profitOrders ? 55 : 0, orders: answer.profitOrders } } : {}) },
       });
     }
     if (url.startsWith('/api/orders?')) {
-      return json({ orders: [], pagination: { total: 0, page: 1, limit: 25, totalPages: 1 }, currency: { code: 'JOD', minorUnit: 3 } });
+      const page = Number(new URLSearchParams(url.split('?')[1]).get('page') ?? 1);
+      return json({
+        orders: [],
+        pagination: { total: answer.totalPages * 25, page, limit: 25, totalPages: answer.totalPages },
+        currency: { code: 'JOD', minorUnit: 3 },
+      });
     }
     if (url.startsWith('/api/delivery-providers')) return json({ providers: [] });
     if (url.startsWith('/api/orders/sources')) return json({ sources: [] });
@@ -118,11 +125,18 @@ describe('the counts above the list', () => {
     expect(screen.queryByText('صافي الربح')).toBeNull();
   });
 
-  it('the profit card, when the server sent it', async () => {
+  it('the profit card, when the server sent it, says how many orders it covers', async () => {
     answer.profit = true;
     render(<OrdersScreen />);
-    await screen.findByText('صافي الربح');
-    expect(screen.getByText('من 3 طلب أُقفل مالياً')).toBeTruthy();
+    expect(await screen.findByText('صافي الربح (من 3 طلب مسجّل ربحه)')).toBeTruthy();
+  });
+
+  it('NEGATIVE: no profit card when no order in the set has a profit recorded — never «0 من 0»', async () => {
+    answer.profit = true;
+    answer.profitOrders = 0;
+    render(<OrdersScreen />);
+    await screen.findByText('عدد الطلبات');
+    expect(screen.queryByText(/صافي الربح/)).toBeNull();
   });
 
   it('NEGATIVE: an answer that is not a summary draws nothing and breaks nothing', async () => {
@@ -137,6 +151,42 @@ describe('the counts above the list', () => {
     await waitFor(() => expect(calls('/api/orders?').length).toBeGreaterThan(0));
     expect(screen.queryByRole('tablist')).toBeNull();
     expect(screen.queryByText('عدد الطلبات')).toBeNull();
+  });
+});
+
+describe('the summary is asked when the filters change — not for a page, not for the poll', () => {
+  it('a page change asks the list again and the summary not at all', async () => {
+    answer.totalPages = 3;
+    render(<OrdersScreen />);
+    await screen.findByRole('tablist');
+    await waitFor(() => expect(calls('/api/orders/summary?').length).toBe(1));
+    fireEvent.click(await screen.findByRole('button', { name: 'الصفحة التالية' }));
+    await waitFor(() => expect(lastQuery('/api/orders?').get('page')).toBe('2'));
+    await new Promise((r) => setTimeout(r, 400));
+    expect(calls('/api/orders/summary?').length).toBe(1);
+  });
+
+  it('«إظهار كل النتائج» does not ask it either; a filter does', async () => {
+    answer.totalPages = 3;
+    render(<OrdersScreen />);
+    await waitFor(() => expect(calls('/api/orders/summary?').length).toBe(1));
+    fireEvent.click(await screen.findByRole('button', { name: /إظهار كل النتائج/ }));
+    await waitFor(() => expect(lastQuery('/api/orders?').get('limit')).toBe('500'));
+    await new Promise((r) => setTimeout(r, 400));
+    expect(calls('/api/orders/summary?').length).toBe(1);
+    fireEvent.change(screen.getByLabelText('فلتر الحالة'), { target: { value: 'CONFIRMED' } });
+    await waitFor(() => expect(calls('/api/orders/summary?').length).toBe(2));
+    expect(lastQuery('/api/orders/summary?').get('status')).toBe('CONFIRMED');
+  });
+
+  it('the list does not wait for the summary: an unanswered summary leaves no skeleton behind', async () => {
+    apiFetch.mockImplementation(async (url: string) => {
+      if (url.startsWith('/api/orders/summary')) return new Promise(() => undefined);
+      if (url.startsWith('/api/orders?')) return json({ orders: [], pagination: { total: 0, page: 1, limit: 25, totalPages: 1 } });
+      return json({});
+    });
+    render(<OrdersScreen />);
+    expect(await screen.findByText('لا طلبات في هذا المتجر بعد')).toBeTruthy();
   });
 });
 
