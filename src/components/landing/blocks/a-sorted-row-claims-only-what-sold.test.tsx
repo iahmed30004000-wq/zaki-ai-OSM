@@ -48,7 +48,10 @@ describe('a sorted catalogue row', () => {
   });
 
   it('writes «الأكثر مبيعاً» only over a row the orders prove, «مختارات» otherwise', () => {
-    expect(catalogHeading('best', items)).toBe('الأكثر مبيعاً');
+    // `a` was never proven: a row that needs it as a filler claims nothing.
+    expect(catalogHeading('best', items)).toBe('مختارات');
+    expect(catalogHeading('best', items.filter((i) => i.sold !== undefined))).toBe('الأكثر مبيعاً');
+    expect(catalogHeading('best', [])).toBe('مختارات');
     expect(catalogHeading('best', items.map(({ sold: _s, ...i }) => i))).toBe('مختارات');
     const html = render(<PageBlocks sections={[row({ sort: 'best' })]} ctx={ctx([item('a'), item('b')])} />).container;
     expect(html.textContent).toContain('مختارات');
@@ -56,8 +59,20 @@ describe('a sorted catalogue row', () => {
     expect(names(html)).toEqual(['a', 'b']);
   });
 
+  it('one proven product among unproven fillers is «مختارات», the proven one first', () => {
+    const html = render(<PageBlocks sections={[row({ sort: 'best' })]} ctx={ctx([item('x'), item('y', { sold: 5 }), item('z')])} />).container;
+    expect(html.textContent).toContain('مختارات');
+    expect(html.textContent).not.toContain('الأكثر مبيعاً');
+    expect(names(html)[0]).toBe('y');
+  });
+
+  it('and a row cut to its proven products by the limit is «الأكثر مبيعاً»', () => {
+    const html = render(<PageBlocks sections={[row({ sort: 'best', limit: 2 })]} ctx={ctx(items)} />).container;
+    expect(html.textContent).toContain('الأكثر مبيعاً');
+  });
+
   it('draws no count, ever', () => {
-    const html = render(<PageBlocks sections={[row({ sort: 'best' })]} ctx={ctx(items)} />).container;
+    const html = render(<PageBlocks sections={[row({ sort: 'best', limit: 2 })]} ctx={ctx(items)} />).container;
     expect(html.textContent).toContain('الأكثر مبيعاً');
     expect(html.textContent).not.toMatch(/\b(6|9)\b/);
   });

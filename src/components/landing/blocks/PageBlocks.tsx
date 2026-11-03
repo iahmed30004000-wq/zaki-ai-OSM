@@ -206,14 +206,15 @@ export function sortCatalog(items: CatalogItem[], sort: 'shelf' | 'newest' | 'be
 
 /**
  * The heading a sorted block writes when the seller wrote none. «الأكثر
- * مبيعاً» is a claim about other customers, so it is written only when at
- * least one item on the row is ranked by delivered orders; otherwise the
- * row is «مختارات», which claims nothing.
+ * مبيعاً» is a claim about EVERY card under it, so it is written only when
+ * every item on the row — after the limit — is ranked by delivered orders.
+ * A row that had to be filled with products nobody proved is «مختارات»,
+ * which claims nothing (the proven ones still lead it).
  */
 export function catalogHeading(sort: 'shelf' | 'newest' | 'best' | 'priceAsc', items: CatalogItem[]): string {
   if (sort === 'newest') return 'وصل حديثاً';
   if (sort === 'priceAsc') return 'الأقل سعراً';
-  if (sort === 'best') return items.some((i) => i.sold !== undefined) ? 'الأكثر مبيعاً' : 'مختارات';
+  if (sort === 'best') return items.length > 0 && items.every((i) => i.sold !== undefined) ? 'الأكثر مبيعاً' : 'مختارات';
   return '';
 }
 
