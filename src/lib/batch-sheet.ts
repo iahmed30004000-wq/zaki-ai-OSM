@@ -69,11 +69,17 @@ export async function batchSheetRows(
      * own list (`couriers/city-id`, the same answer the dispatch gets).
      */
     cityIds: Map<string, number>;
+    /**
+     * A sheet for sharing the orders out between couriers, before any courier is chosen (the owner, 3/11: «الهدف اسحب
+     * الطلبات فقط اوزع المناطق ع شركات الشحن»): no money at all. «المبلغ المطلوب» and «العملة» are left empty and nothing
+     * is read or worked out for them. Absent, the sheet is exactly what it always was.
+     */
+    withoutMoney?: boolean;
   }
 ): Promise<Cell[][]> {
   const rows: Cell[][] = [];
   for (const o of orders) {
-    const cod = await waybillCod(o, ctx.minorUnit);
+    const cod = ctx.withoutMoney ? null : await waybillCod(o, ctx.minorUnit);
     rows.push([
       o.merchantRef ?? o.orderNumber,
       o.trackingNumber ?? '',
@@ -85,8 +91,8 @@ export async function batchSheetRows(
       o.regionId ? (ctx.cityIds.get(o.regionId) ?? '') : '',
       placeLine(o.region?.name ?? o.customer.city, null, o.deliveryAddress ?? o.customer.address).replace(/^[^—]*—\s*/, ''),
       // A number cell, with the currency's own decimals: «32.5» stays 32.5, and a sum of the column adds up.
-      roundMinor(cod, ctx.minorUnit),
-      o.currency,
+      cod === null ? '' : roundMinor(cod, ctx.minorUnit),
+      cod === null ? '' : o.currency,
       [
         ...o.items.map((i) => `${i.productName} x${i.quantity + i.freeQuantity}`),
         ...o.addOns.map((a) => `${a.productName} x${a.quantity} (إضافة)`),
