@@ -1306,7 +1306,7 @@ export function StoreThemeScreen() {
             theme — so the seller sees the change before a customer does. */}
         <div className={`${previewPaneClass(pane)} min-h-0 flex-col`}>
           <Button size="sm" variant="secondary" className="mb-2" onClick={() => setRealPreview(true)}>
-            <RiExternalLinkLine className="h-4 w-4" /> المعاينة الحقيقية — ست صفحات من المسوّدة
+            <RiExternalLinkLine className="icon-mirror h-4 w-4" /> المعاينة الحقيقية — ست صفحات من المسوّدة
           </Button>
           {realPreview && <StorePreviewFrame unsaved={dirty} onClose={() => setRealPreview(false)} />}
           <StoreThemePreview

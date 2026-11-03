@@ -142,7 +142,7 @@ function SlideImage({
         )}
         <div className="flex flex-wrap gap-1">
           <label className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-[var(--sys-border)] px-2 py-1 text-xs font-bold text-[var(--sys-foreground)] hover:text-[var(--sys-primary)]">
-            {busy ? <RiLoader4Line className="h-3.5 w-3.5 animate-spin" /> : <RiUpload2Line className="h-3.5 w-3.5" />}
+            {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiUpload2Line className="h-4 w-4" />}
             ارفع
             <input ref={ref} type="file" accept="image/*" className="hidden" disabled={busy} onChange={(e) => void upload(e.target.files)} />
           </label>
