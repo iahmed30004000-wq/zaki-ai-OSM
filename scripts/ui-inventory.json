@@ -930,7 +930,7 @@
     "tabs": 0
   },
   "src/components/screens/ConfirmationMineScreen.tsx": {
-    "buttons": 10,
+    "buttons": 9,
     "inputs": 5,
     "columns": 6,
     "cards": 0,
@@ -1096,7 +1096,7 @@
     "cards": 0,
     "modals": 0,
     "icons": 3,
-    "links": 1,
+    "links": 0,
     "tabs": 0
   },
   "src/components/screens/finance/NotMentionedActions.tsx": {
@@ -1310,7 +1310,7 @@
     "tabs": 0
   },
   "src/components/screens/PreparationScreen.tsx": {
-    "buttons": 9,
+    "buttons": 8,
     "inputs": 0,
     "columns": 5,
     "cards": 0,

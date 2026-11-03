@@ -68,3 +68,26 @@ export function holdReservation(order: StateSource): HoldReservation {
 export function holdReleasedItsStock(order: StateSource & { shipHoldUntil?: Date | string | null }): boolean {
   return !!order.shipHoldUntil && holdReservation(order).releases;
 }
+
+/** What the order's timeline and the audit log call a lifted hold — «أرجِعه» (the hold door) writes it, and so does a batch (RV880). */
+export const SHIP_HOLD_RELEASED = 'SHIP_HOLD_RELEASED';
+
+/**
+ * ENTERING A BATCH ENDS THE HOLD (RV880 — the owner: «برجع للجاهز»).
+ *
+ * «مؤجَّلة الشحن» lists postponed parcels and lets them be ticked; «إنشاء شحنة» (`POST /api/ops/shipments`) then put one on a
+ * trolley and left its `shipHoldUntil` standing — an order in a batch that still said «postponed until Thursday». The batch is the
+ * decision that it goes now, so the same write that puts it on the trolley clears the date and the reason.
+ *
+ *   · `clears` — any hold date at all: a date already passed (a packed parcel «أرجِعه» moved to now, or one whose day came) is
+ *     cleared too, so no order on a trolley carries a hold.
+ *   · `lifted` — the date was still AHEAD: a postponement this batch cut short. Only then is it recorded as a lifted hold (the
+ *     timeline and the audit, as «أرجِعه» records one); a passed date ended by itself, or «أرجِعه» already said so.
+ *
+ * It decides nothing about who may enter a batch or about stock: the door's readiness check (`assertReadyToShip`) refuses any order
+ * whose units are not all reserved, so an order whose hold gave its goods back (`holdReleasedItsStock`) never gets this far.
+ */
+export function holdEndsInBatch(order: { shipHoldUntil?: Date | string | null }, now: Date): { clears: boolean; lifted: boolean } {
+  if (!order.shipHoldUntil) return { clears: false, lifted: false };
+  return { clears: true, lifted: new Date(order.shipHoldUntil).getTime() > now.getTime() };
+}

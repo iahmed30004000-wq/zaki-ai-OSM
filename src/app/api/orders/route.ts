@@ -20,7 +20,7 @@ import { ordersWhere } from '@/lib/order-filters';
 import { apiError } from '@/lib/api-error';
 import { requirePermission, getPermissionScope, can } from '@/lib/authorization';
 import {
-  entryOwnership, ownedCounts, recordEntryClaim, ENTRY_CAP_FULL_MESSAGE, claimsOwnEntry, mayConfirmNow, confirmNowReadiness,
+  entryOwnership, ownedCounts, capLoad, recordEntryClaim, ENTRY_CAP_FULL_MESSAGE, claimsOwnEntry, mayConfirmNow, confirmNowReadiness,
   recordConfirmNowAttempt,
 } from '@/lib/confirmation-queue';
 import { zodMessage } from '@/lib/zod-message';
@@ -598,7 +598,8 @@ export async function POST(req: Request) {
     const entry = entryOwnership({
       userId: user.id,
       holds,
-      heldTotal: keepsIt ? (await ownedCounts(db, { companyId, storeId }, user.id)).total : 0,
+      // In her hands AND held for her (RV706): the 300 counts both.
+      heldTotal: keepsIt ? capLoad(await ownedCounts(db, { companyId, storeId }, user.id)) : 0,
       now: new Date(),
       confirmNow: wantsNow,
     });

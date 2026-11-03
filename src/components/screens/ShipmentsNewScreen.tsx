@@ -211,7 +211,7 @@ export function ShipmentsNewScreen() {
    * «CSV الجاهزة للشحن» (the owner, 3/11: «csv عند انشاء الشحنة استخرج الطلبات الجاهزة للشحن مش المؤجلة»).
    *
    * The orders of the «جاهزة للشحن» tab under the filters and the search on the screen, as the file for making the parcels
-   * at the courier's portal; never one of «مؤجَّلة الشحن». The server decides what goes in and says how many it left out
+   * at the courier's portal; never one of «مؤجَّلة الشحن» unless it is ticked. The server decides what goes in and says how many it left out
    * and why, and the line under the tabs repeats it. Fetched, not linked: a refusal is said here, not saved as a file.
    */
   const exportReady = async () => {
@@ -224,18 +224,30 @@ export function ShipmentsNewScreen() {
       document.querySelector<HTMLSelectElement>('[data-courier-pick] select')?.focus();
       return;
     }
+    // TICKED ROWS ARE THE FILE (the owner, 3/11: «خليها تنزل الي بحددو من المؤجل او جاهز»): from whichever tab is open,
+    // exactly those, in a body. With nothing ticked it is the whole «جاهزة للشحن» tab under the filters, as before.
+    const picked = Object.entries(selected).filter(([, v]) => v).map(([k]) => k);
     setExporting(true);
     try {
-      const q = new URLSearchParams();
-      Object.entries(filters).forEach(([k, v]) => v && q.set(k, v));
-      const res = await apiFetch(`/api/ops/shipments/export?${q}`);
+      let res: Response;
+      if (picked.length > 0) {
+        res = await apiFetch('/api/ops/shipments/export', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ courier: filters.courier, ids: picked }),
+        });
+      } else {
+        const q = new URLSearchParams();
+        Object.entries(filters).forEach(([k, v]) => v && q.set(k, v));
+        res = await apiFetch(`/api/ops/shipments/export?${q}`);
+      }
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as {
-          errorAr?: string; error?: string; held?: number; unready?: number; blocked?: number;
+          errorAr?: string; error?: string; held?: number; unready?: number; blocked?: number; gone?: number;
         };
         const said = data.errorAr || data.error || 'تعذّر تجهيز الملف';
         if (res.status === 409) {
-          setFileNote([said, ...leftOutParts(data.held ?? 0, data.unready ?? 0, data.blocked ?? 0)].join(' · '));
+          setFileNote([said, ...leftOutParts(data.held ?? 0, data.unready ?? 0, data.blocked ?? 0, data.gone ?? 0)].join(' · '));
         }
         else toast.failed(said);
         return;
@@ -244,15 +256,17 @@ export function ShipmentsNewScreen() {
       const held = Number(res.headers.get('X-Left-Held') ?? 0);
       const unready = Number(res.headers.get('X-Left-Unready') ?? 0);
       const blocked = Number(res.headers.get('X-Left-Blocked') ?? 0);
+      const gone = Number(res.headers.get('X-Left-Gone') ?? 0);
       const url = URL.createObjectURL(await res.blob());
       const a = document.createElement('a');
       a.href = url;
-      a.download = `ready-to-ship-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `${picked.length > 0 ? 'picked' : 'ready'}-to-ship-${new Date().toISOString().slice(0, 10)}.csv`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 10_000);
-      setFileNote([`نزل الملف: ${count} طلب جاهز للشحن`, ...leftOutParts(held, unready, blocked)].join(' · '));
+      const what = picked.length > 0 ? `نزل الملف: ${count} طلب من المحدَّدة` : `نزل الملف: ${count} طلب جاهز للشحن`;
+      setFileNote([what, ...leftOutParts(held, unready, blocked, gone)].join(' · '));
     } catch (e) {
       toast.failed(e instanceof Error ? e.message : 'تعذّر تجهيز الملف');
     } finally {
@@ -792,21 +806,23 @@ export function ShipmentsNewScreen() {
             )}
           </button>
         ))}
-        {/* The file of the ready tab, whichever tab is open: it never carries a postponed order. */}
+        {/* The ticked rows of either tab, or — nothing ticked — the whole ready tab, which never carries a postponed order. */}
         {mayExport && (
           <button
             type="button"
             onClick={() => void exportReady()}
             disabled={exporting}
             title={
-              filters.courier
-                ? 'الطلبات الجاهزة للشحن بالفلاتر الحالية بملف CSV — بلا المؤجَّلة'
-                : 'اختر شركة الشحن أولاً — المبلغ ورمز المدينة بالملف من أجورها'
+              !filters.courier
+                ? 'اختر شركة الشحن أولاً — المبلغ ورمز المدينة بالملف من أجورها'
+                : selectedCount > 0
+                  ? 'الطلبات المحدَّدة بس بملف CSV — جاهزة أو مؤجَّلة'
+                  : 'الطلبات الجاهزة للشحن بالفلاتر الحالية بملف CSV — بلا المؤجَّلة. حدّد طلبات لتنزّلها هي بس'
             }
             className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1.5 disabled:opacity-40 ms-auto"
           >
             {exporting ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiDownload2Line className="w-4 h-4" />}
-            CSV الجاهزة للشحن
+            {selectedCount > 0 ? `CSV المحدَّدة (${selectedCount})` : 'CSV الجاهزة للشحن'}
           </button>
         )}
       </div>
@@ -1086,11 +1102,12 @@ export function ShipmentsNewScreen() {
 }
 
 /** What the file left out and why, in the words the line under the tabs says them. */
-function leftOutParts(held: number, unready: number, blocked: number): string[] {
+function leftOutParts(held: number, unready: number, blocked: number, gone = 0): string[] {
   return [
     ...(held > 0 ? [`${held} ${held === 1 ? 'مؤجّل' : 'مؤجّلين'} برّا الملف`] : []),
     ...(unready > 0 ? [`${unready} غير محجوز برّا الملف`] : []),
     ...(blocked > 0 ? [`${blocked} بلا محافظة أو أجرة توصيل برّا الملف`] : []),
+    ...(gone > 0 ? [`${gone} طلع من القائمة من وقت ما تحدّد (انشحن أو انلغى)`] : []),
   ];
 }
 
