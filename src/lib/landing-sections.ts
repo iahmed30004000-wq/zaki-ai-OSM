@@ -680,6 +680,17 @@ const catalog = z.object({
   showCategories: z.boolean().default(true),
   /** Nothing, or at most this many. Zero means all of them. */
   limit: z.number().int().min(0).max(60).default(0),
+  /**
+   * IN WHAT ORDER — the rows of a home design («وصل حديثاً», «الأكثر مبيعاً»,
+   * «الأقل سعراً»). `shelf` is the order every catalogue block always drew
+   * in, and a saved block reads as `shelf`, so nothing that exists moves.
+   *
+   * «الأكثر مبيعاً» is an ORDER and never a number: it ranks by this shop's
+   * DELIVERED orders above the sample floor (`bestSellers` in store-facts),
+   * shows no count, and with nothing proven it keeps the shelf's order under
+   * the heading «مختارات» — see `catalogHeading` in PageBlocks.
+   */
+  sort: z.enum(['shelf', 'newest', 'best', 'priceAsc']).default('shelf'),
 });
 
 export const landingSectionSchema = z.discriminatedUnion('type', [

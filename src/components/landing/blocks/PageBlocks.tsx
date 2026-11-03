@@ -175,6 +175,46 @@ export interface CatalogItem {
   /** Null when there is no one price to show. */
   price: number | null;
   categoryId: string | null;
+  /**
+   * For a block with a `sort`, and only filled when one asks: when the
+   * product was added (ms), and how many DELIVERED orders carried it —
+   * present only above the sample floor, absent otherwise. Never drawn.
+   */
+  addedAt?: number;
+  sold?: number;
+}
+
+/** A catalogue's items in the block's order. `shelf` returns them as they came. */
+export function sortCatalog(items: CatalogItem[], sort: 'shelf' | 'newest' | 'best' | 'priceAsc'): CatalogItem[] {
+  if (sort === 'shelf') return items;
+  const at = items.map((item, i) => ({ item, i }));
+  const by = (key: (x: CatalogItem) => number | null) =>
+    at
+      .sort((a, b) => {
+        const ka = key(a.item);
+        const kb = key(b.item);
+        if (ka === null && kb === null) return a.i - b.i;
+        if (ka === null) return 1;
+        if (kb === null) return -1;
+        return ka - kb || a.i - b.i;
+      })
+      .map((x) => x.item);
+  if (sort === 'newest') return by((x) => (x.addedAt === undefined ? null : -x.addedAt));
+  if (sort === 'priceAsc') return by((x) => (x.price !== null && x.price > 0 ? x.price : null));
+  return by((x) => (x.sold === undefined ? null : -x.sold));
+}
+
+/**
+ * The heading a sorted block writes when the seller wrote none. «الأكثر
+ * مبيعاً» is a claim about other customers, so it is written only when at
+ * least one item on the row is ranked by delivered orders; otherwise the
+ * row is «مختارات», which claims nothing.
+ */
+export function catalogHeading(sort: 'shelf' | 'newest' | 'best' | 'priceAsc', items: CatalogItem[]): string {
+  if (sort === 'newest') return 'وصل حديثاً';
+  if (sort === 'priceAsc') return 'الأقل سعراً';
+  if (sort === 'best') return items.some((i) => i.sold !== undefined) ? 'الأكثر مبيعاً' : 'مختارات';
+  return '';
 }
 
 /**
@@ -456,7 +496,11 @@ function Block({ section: s, ctx, lead = false }: { section: LandingSection; ctx
       const narrowed = cat?.activeCategory
         ? wanted.filter((i) => i.categoryId === cat.activeCategory)
         : wanted;
-      const items = s.limit > 0 ? narrowed.slice(0, s.limit) : narrowed;
+      const ordered = sortCatalog(narrowed, s.sort ?? 'shelf');
+      const items = s.limit > 0 ? ordered.slice(0, s.limit) : ordered;
+      // A sorted row with no title of the seller's writes its own; every
+      // block that existed before `sort` keeps exactly the title it had.
+      const title = s.sort && s.sort !== 'shelf' && !s.title.replace(/<[^>]*>/g, '').trim() ? catalogHeading(s.sort, items) : s.title;
 
       if (items.length === 0) {
         // In the builder, an empty shop must still show the seller what
@@ -464,7 +508,7 @@ function Block({ section: s, ctx, lead = false }: { section: LandingSection; ctx
         // they delete it. On a customer's screen it draws nothing.
         if (!ctx.placeholders) return null;
         return (
-          <Section title={s.title}>
+          <Section title={title}>
             <div className={`lp-catalog lp-catalog-${s.cardSize}`} style={{ '--store-cat-cols': s.columns } as React.CSSProperties}>
               {[0, 1, 2].map((i) => (
                 <span key={i} className="lp-catalog-card">
@@ -487,7 +531,7 @@ function Block({ section: s, ctx, lead = false }: { section: LandingSection; ctx
       const chips = s.showCategories && (cat?.categories.length ?? 0) > 0 ? cat!.categories : [];
 
       return (
-        <Section title={s.title}>
+        <Section title={title}>
           {chips.length > 0 && (
             <div className="lp-catalog-cats">
               {[{ id: '', name: 'الكل' }, ...chips].map((c) => {

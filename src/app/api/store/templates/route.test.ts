@@ -367,3 +367,44 @@ describe('the shop templates', () => {
     expect((await (await get()).json()).installed).toBeNull();
   });
 });
+
+/**
+ * THE EIGHTEEN HOME DESIGNS OF THE OWNER'S OTHER PLATFORM — the same two
+ * halves as a skin: the page into the home DRAFT, the look as a proposal.
+ */
+describe('installing one of their home designs', () => {
+  it('writes the home draft and nothing a customer sees, and proposes its look unsaved', async () => {
+    const res = await post({ source: 'design', key: 'nova-main' });
+    expect(res.status).toBe(200);
+    const data = db.store.update.mock.calls[0][0].data;
+    expect(Object.keys(data)).toEqual(['homeDraft']);
+    const sections = JSON.parse(data.homeDraft);
+    expect(sections[0].type).toBe('slider');
+    expect(sections.some((s: { type: string; sort?: string }) => s.type === 'catalog' && s.sort === 'best')).toBe(true);
+    const body = await res.json();
+    expect(body.themeApplied).toBe(false);
+    expect(body.theme.look).toBe('nova');
+    // the shop's own settings stay
+    expect(body.theme.footer.copyright).toBe('© صحة بلس');
+  });
+
+  it('builds on the saved draft, not on what is live', async () => {
+    db.store.findFirst.mockResolvedValue({ ...STORE, themeDraft: JSON.stringify({ ...DEFAULT_STORE_THEME, font: 'cairo' }) });
+    const body = await (await post({ source: 'design', key: 'tech' })).json();
+    expect(body.theme.font).toBe('cairo');
+  });
+
+  it('refuses a design it does not carry, and writes nothing', async () => {
+    const res = await post({ source: 'design', key: 'no-such-design' });
+    expect(res.status).toBe(404);
+    expect(db.store.update).not.toHaveBeenCalled();
+  });
+
+  it('needs storefront.manage, like every install', async () => {
+    requirePermission.mockRejectedValueOnce(Object.assign(new Error('forbidden'), { status: 403 }));
+    const res = await post({ source: 'design', key: 'tech' });
+    expect(res.status).not.toBe(200);
+    expect(requirePermission).toHaveBeenCalledWith('storefront.manage');
+    expect(db.store.update).not.toHaveBeenCalled();
+  });
+});
