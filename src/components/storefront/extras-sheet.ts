@@ -38,10 +38,14 @@ const SHAPE_CSS = `
  *
  *   none   — nothing moves: no lift, no zoom, and the ticker stands still.
  *   subtle — a card lifts a little under the pointer; a button gives when pressed.
- *   full   — a higher lift with their shadow, the photo zooms, and each part
- *            of the page rises into view as it is scrolled to (by the browser's
- *            own scroll timeline — no script, and nothing hidden where it is
- *            not supported).
+ *   full   — a higher lift with their shadow, the photo zooms, and each
+ *            CONTENT section rises into view as it is scrolled to (by the
+ *            browser's own scroll timeline — no script, and nothing hidden
+ *            where it is not supported). Never the order form, nor anything
+ *            fixed or sticky: a transform on an ancestor of a fixed bar pins
+ *            that bar to the moving section instead of the screen, so a
+ *            section holding a form, the floating order bar, the brand page's
+ *            sticky bar or the filter sheet does not move at all.
  *
  * A device that asks for less motion gets none, whatever the seller chose.
  */
@@ -57,7 +61,7 @@ const MOTION_CSS = `
 .sf-root[data-motion='full'] :is(.sf-card-img, .lp-catalog-media img) { transition: transform 600ms var(--mo-ease); }
 .sf-root[data-motion='full'] :is(.sf-card:hover .sf-card-img, .lp-catalog-card:hover .lp-catalog-media img) { transform: scale(1.07); }
 @supports (animation-timeline: view()) {
-  .sf-root[data-motion='full'] main > * { animation: sf-mo-rise linear both; animation-timeline: view(); animation-range: entry 0% entry 35%; }
+  .sf-root[data-motion='full'] main > :is(.lp-section, .sf-grid-wrap):not(:has(form, .lp-sticky-bar, .sf-bp-sticky, .sf-sheet)) { animation: sf-mo-rise linear both; animation-timeline: view(); animation-range: entry 0% entry 35%; }
 }
 @keyframes sf-mo-rise { from { opacity: 0; transform: translate3d(0, 26px, 0); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
