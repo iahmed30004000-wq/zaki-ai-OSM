@@ -12,7 +12,9 @@ import {
   ORDER_ALREADY_IN_QUEUE, ORDER_CLAIM_NOT_HELD, ORDER_NOT_FOUND, ORDER_PAST_CONFIRMATION, ORDER_STALE,
   ORDER_TAKEBACK_REASON, orderClaimedBy, orderDecidedStaysOut,
 } from '@/lib/order-refusals';
-import { claimByNumberMessage, mustHoldToWork, ownedCounts, pullRefusal, USE_THE_PULL_CODE } from '@/lib/confirmation-queue';
+import {
+  CLAIM_CAPS, capLoad, claimByNumberMessage, heldForHerWhere, mustHoldToWork, ownedCounts, pullRefusal, USE_THE_PULL_CODE,
+} from '@/lib/confirmation-queue';
 import { reservedForOthersWhere, reservedMessage } from '@/lib/order-reservation';
 import { reserveReturningCustomers } from '@/lib/reserve-returning-customers';
 
@@ -190,7 +192,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
      */
     if (order.claimedById !== user.id) {
       const counts = await ownedCounts(db, { companyId, storeId }, user.id);
-      const refusal = pullRefusal(counts);
+      // At 300 because of what is held for her (RV706), THIS order may still be taken if it is one of those — it is already
+      // counted. Asked only then: anywhere else the answer changes nothing.
+      const atCapByHolds = counts.total < CLAIM_CAPS.total && capLoad(counts) >= CLAIM_CAPS.total;
+      const takesHeldForHer =
+        atCapByHolds &&
+        !!(await db.order.findFirst({ where: { id, ...heldForHerWhere({ companyId, storeId }, user.id, new Date()) }, select: { id: true } }));
+      const refusal = pullRefusal(counts, takesHeldForHer);
       if (refusal) {
         return NextResponse.json(
           {

@@ -26,7 +26,8 @@ import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 
 export interface QueueResponse {
   waiting: number;
-  owned: { total: number; withoutAttempt: number };
+  /** `heldForHer`: held for her and not yet pulled — counted in the 300 with what is in her hands (RV706). */
+  owned: { total: number; withoutAttempt: number; heldForHer?: number };
   caps: { withoutAttempt: number; total: number };
   leadDays: number;
   waitingOnADate?: number;
@@ -193,6 +194,10 @@ export function PullPanel({
     </p>
   );
 
+  /** What the 300 counts (RV706): in her hands, and — said apart — what is held for her. */
+  const heldForHer = data.owned.heldForHer ?? 0;
+  const capShown = heldForHer > 0 ? `${data.owned.total} + ${heldForHer} محجوز لك` : `${data.owned.total}`;
+
   /** The caps are what bounds HER pulling. They mean nothing on a desk that does not pull. */
   const caps = !notMyDesk && (
     <div className={`${compact ? 'mt-3 flex flex-wrap gap-3' : 'mt-6 grid grid-cols-2 gap-3 text-right'}`}>
@@ -204,7 +209,7 @@ export function PullPanel({
       <Stat
         icon={<RiTimerFlashLine className="w-4 h-4" />}
         label="إجمالي ما بيدك"
-        value={`${data.owned.total} / ${data.caps.total}`}
+        value={`${capShown} / ${data.caps.total}`}
       />
     </div>
   );
@@ -274,7 +279,7 @@ export function PullPanel({
           <div className="mt-3">
             <AdvancedGroup
               label="التفاصيل"
-              holds={`بلا محاولة ${data.owned.withoutAttempt}/${data.caps.withoutAttempt} · بيدك ${data.owned.total}/${data.caps.total}`}
+              holds={`بلا محاولة ${data.owned.withoutAttempt}/${data.caps.withoutAttempt} · بيدك ${capShown}/${data.caps.total}`}
             >
               {caps}
               {rule}

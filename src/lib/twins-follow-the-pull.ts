@@ -28,11 +28,10 @@ type Tx = Prisma.TransactionClient | typeof db;
  *
  * ── THE CAP ──
  *
- * `CLAIM_CAPS.total` (300) counts what she HOLDS IN HER HANDS (`ownedCounts`: claimed by her, still open). A hold is not in her
- * hands — exactly as a returning customer's held order is not — so it is not counted there, and when she pulls one the pull's
- * own gate counts it like any other. What the cap promises is that holding never names her for more than she could take: the
- * caller passes the room left after this pull (`300 − what she held before − 1`), and no more than that is held. At the cap,
- * nothing is held and his other orders stay in the shared queue (the confirm guard is then the net).
+ * `CLAIM_CAPS.total` (300) counts what is in her hands AND what is held for her (`capLoad` in `confirmation-queue.ts` — RV706,
+ * the owner 3/11). So holding never names her for more than the cap: the caller passes the room left after this pull
+ * (`capRoom` before it, minus one when the pulled order came from the pool — none when it was already held for her), and no more
+ * than that is held. At the cap, nothing is held and his other orders stay in the shared queue (the confirm guard is then the net).
  *
  * ── THE LOCK ──
  *
@@ -103,7 +102,7 @@ export async function holdTwinsForPuller(
     customerId: string | null | undefined;
     pulled: { id: string; orderNumber?: string | null };
     agentId: string;
-    /** How many more she may be named for — `CLAIM_CAPS.total` minus what she holds after this pull. */
+    /** How many more she may be named for — `CLAIM_CAPS.total` minus what is in her hands and held for her after this pull. */
     room: number;
     now: Date;
   }
