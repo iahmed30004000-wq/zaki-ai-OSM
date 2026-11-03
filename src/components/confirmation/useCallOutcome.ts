@@ -89,8 +89,11 @@ export function useOutbox(userId: string | null, send: (item: Outgoing) => Promi
   const [items, setItems] = useState<Outgoing[]>([]);
   const itemsRef = useRef<Outgoing[]>([]);
   const sending = useRef(false);
+  // The newest sender (it reads the desk as drawn now), handed over after each render, never during one.
   const sendRef = useRef(send);
-  sendRef.current = send;
+  useEffect(() => {
+    sendRef.current = send;
+  });
   const [offline, setOffline] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
