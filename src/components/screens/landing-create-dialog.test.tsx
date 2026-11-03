@@ -470,6 +470,25 @@ describe('what leaves the wizard', () => {
     expect(dialog().getByText(/ارجع واختار منتج/)).toBeTruthy();
   });
 
+  it('keeps every slot, not only the last one typed', async () => {
+    const user = userEvent.setup();
+    render(<LandingPagesScreen />);
+    await toWords(user);
+    await dialog().findByDisplayValue('مكتوب بالذكاء');
+
+    const [first, second] = STRUCTURE_PROBLEM_SOLUTION.slots;
+    await user.clear(screen.getByLabelText(new RegExp(first.label)));
+    await user.type(screen.getByLabelText(new RegExp(first.label)), 'أوّل');
+    await user.clear(screen.getByLabelText(new RegExp(second.label)));
+    await user.type(screen.getByLabelText(new RegExp(second.label)), 'ثانٍ');
+    await toNaming(user);
+    await user.click(createButton());
+
+    const body = sentBody();
+    expect(body.copy[first.key].msa).toBe('أوّل');
+    expect(body.copy[second.key].msa).toBe('ثانٍ');
+  });
+
   it('keeps both dialects of one slot, so a second pass is not a replacement', async () => {
     const user = userEvent.setup();
     render(<LandingPagesScreen />);

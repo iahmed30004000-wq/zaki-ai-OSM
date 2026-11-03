@@ -99,15 +99,23 @@ export const NOTES_MAX = 300;
  *
  * The box is for the product — «ركّز على إنه بيدوم سنة». A phone number in
  * it is a customer's or the seller's, and neither belongs in a brief, so
- * seven digits in a row (spaces or dashes between them, Arabic-Indic or
- * Western) refuse the whole call rather than being sent.
+ * SEVEN DIGITS IN THE WHOLE NOTE refuse the call rather than being sent.
+ *
+ * Every non-digit is stripped before counting, on purpose. A pattern of
+ * «digits with one separator between» was walked round by a double space,
+ * a slash, or Persian digits; counting what is left cannot be. Arabic-Indic
+ * (U+0660–0669) and Persian (U+06F0–06F9) digits are read as Western. The
+ * price: a note that names «150 مل و3 قطع و2000 ليرة» is refused too — a
+ * note is for what to stress, and it can say so in words.
  */
 export function notesRefusal(notes: string | undefined | null): string | null {
   const text = String(notes ?? '');
   if (!text.trim()) return null;
   if (text.length > NOTES_MAX) return `الملاحظات أطول من ${NOTES_MAX} حرف — قصّرها.`;
-  const western = text.replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
-  if (/(?:[0-9][\s.-]?){7,}/.test(western)) {
+  const western = text
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0));
+  if (western.replace(/[^0-9]/g, '').length >= 7) {
     return 'بالملاحظات رقم طويل — ولا رقم زبون ولا تلفون بيروح لأي نموذج. شيله.';
   }
   return null;

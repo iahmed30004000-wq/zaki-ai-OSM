@@ -428,7 +428,7 @@ export function CreateWizard({ isOpen, onClose, products, start }: Props) {
                       way === key
                         ? 'border-[var(--sys-primary)] bg-[var(--sys-primary)]/5'
                         : 'border-[var(--sys-border)] hover:border-[var(--sys-primary)]'
-                    } ${off ? 'cursor-not-allowed opacity-60' : ''}`}
+                    } ${off ? 'opacity-60' : ''}`}
                   >
                     <span className="flex items-center gap-2">
                       <input
@@ -472,7 +472,7 @@ export function CreateWizard({ isOpen, onClose, products, start }: Props) {
                     {TONES.map((t) => (
                       <label
                         key={t}
-                        className={`inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full px-3 text-xs font-bold md:min-h-8 ${
+                        className={`inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full px-3 text-xs font-bold md:min-h-9 ${
                           tone === t
                             ? 'bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)]'
                             : 'border border-[var(--sys-border)] text-[var(--sys-muted-foreground)]'
@@ -497,7 +497,7 @@ export function CreateWizard({ isOpen, onClose, products, start }: Props) {
                     {DIALECTS.map((d) => (
                       <label
                         key={d}
-                        className={`inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full px-3 text-xs font-bold md:min-h-8 ${
+                        className={`inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full px-3 text-xs font-bold md:min-h-9 ${
                           dialect === d
                             ? 'bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)]'
                             : 'border border-[var(--sys-border)] text-[var(--sys-muted-foreground)]'
@@ -542,7 +542,7 @@ export function CreateWizard({ isOpen, onClose, products, start }: Props) {
             <p className="text-xs text-[var(--sys-muted-foreground)]">
               أو اختار بإيدك: البنية ترتيب وقصّة وخانات نص، واللون بيجي بالخطوة الجاية.
             </p>
-            <div className="max-h-[24rem] overflow-y-auto pe-1">
+            <div className="max-h-[22rem] overflow-y-auto pe-1">
               <StructureGallery
                 structures={LANDING_STRUCTURES}
                 value={structure || null}
@@ -581,7 +581,7 @@ export function CreateWizard({ isOpen, onClose, products, start }: Props) {
             {lookTab === 'designs' && (
               <>
                 <CategoryChips value={category} onChange={setCategory} />
-                <div role="radiogroup" aria-label="التصميم" className="grid max-h-[24rem] gap-2 overflow-y-auto pe-1 sm:grid-cols-3">
+                <div role="radiogroup" aria-label="التصميم" className="grid max-h-[22rem] gap-2 overflow-y-auto pe-1 sm:grid-cols-3">
                   {shownDesigns.map((d) => {
                     const on = look?.kind === 'design' && look.id === d.id;
                     return (
@@ -619,7 +619,7 @@ export function CreateWizard({ isOpen, onClose, products, start }: Props) {
                 <p className="text-xs text-[var(--sys-muted-foreground)]">
                   «{chosenStructure.name}» بعشرة مظاهر — نفس الترتيب ونفس النص، واللون والخط بس بيتغيّروا.
                 </p>
-                <div className="grid max-h-[24rem] gap-2 overflow-y-auto pe-1 sm:grid-cols-3">
+                <div className="grid max-h-[22rem] gap-2 overflow-y-auto pe-1 sm:grid-cols-3">
                   {STORE_TEMPLATES.map((t) => {
                     const picked = look?.kind === 'skin' && look.id === t.id;
                     return (
@@ -720,7 +720,7 @@ export function CreateWizard({ isOpen, onClose, products, start }: Props) {
                 {writeError} — بتقدر تكتب الخانات بإيدك تحت.
               </p>
             )}
-            <div className="max-h-[26rem] overflow-y-auto pe-1">
+            <div className="max-h-[22rem] overflow-y-auto pe-1">
               <SlotFields
                 structure={chosenStructure}
                 copy={copy}

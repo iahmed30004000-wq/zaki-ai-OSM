@@ -27,8 +27,8 @@ export function DesignSwatchThumb({ design, height = 72 }: { design: LandingDesi
       className="relative block overflow-hidden rounded-md"
       style={{ height, background: `linear-gradient(135deg, ${paper}, ${surface})` }}
     >
-      <span className="absolute inset-x-3 top-3 block h-2.5 rounded-full" style={{ background: accent, width: '55%' }} />
-      <span className="absolute inset-x-3 top-7 block h-1.5 rounded-full opacity-70" style={{ background: second, width: '35%' }} />
+      <span className="absolute block h-2.5 rounded-full" style={{ background: accent, width: '55%', insetInlineStart: 12, top: 12 }} />
+      <span className="absolute block h-1.5 rounded-full" style={{ background: second, width: '35%', insetInlineStart: 12, top: 28, opacity: 0.7 }} />
       <span className="absolute bottom-3 end-3 block h-5 w-12 rounded-md" style={{ background: accent }} />
     </span>
   );
@@ -113,7 +113,7 @@ export function CategoryChips({
             type="button"
             aria-pressed={on}
             onClick={() => onChange(c.id)}
-            className={`tap-safe inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 text-xs font-bold md:min-h-8 ${
+            className={`tap-safe inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 text-xs font-bold md:min-h-9 ${
               on
                 ? 'bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)]'
                 : 'border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:border-[var(--sys-primary)]'

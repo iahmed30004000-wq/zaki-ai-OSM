@@ -101,7 +101,8 @@ export function LandingLibraryScreen() {
         <LandingTabs current="library" />
 
         <Card className="mb-4">
-          <CardContent className="grid gap-3 p-4 sm:grid-cols-3">
+          <CardContent className="space-y-3 p-4">
+            <div className="grid gap-3 sm:grid-cols-3">
             {productSelect}
             <Select
               label="الأسلوب"
@@ -113,9 +114,8 @@ export function LandingLibraryScreen() {
               <option value="dark">{MOOD_LABEL.dark} ({moodCount('dark')})</option>
             </Select>
             <Input label="بحث بالاسم" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="مثال: روز غولد" />
-            <div className="sm:col-span-3">
-              <CategoryChips value={category} onChange={setCategory} among={beforeCategory} />
             </div>
+            <CategoryChips value={category} onChange={setCategory} among={beforeCategory} />
           </CardContent>
         </Card>
 
@@ -124,7 +124,7 @@ export function LandingLibraryScreen() {
             ما في قالب بهالفلاتر.
           </p>
         ) : (
-          <ul aria-label="القوالب" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <ul aria-label="القوالب" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {shown.map((d) => (
               <li key={d.id} className="flex flex-col gap-1.5 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-2.5">
                 <button
@@ -175,7 +175,7 @@ export function LandingLibraryScreen() {
                 title={`معاينة ${open.name}`}
                 src={designPreviewHref(open.id, productId)}
                 loading="lazy"
-                className="h-[28rem] border-0 bg-[var(--sys-card)]"
+                className="h-[550px] border-0 bg-[var(--sys-card)]"
                 style={{ width: device === 'mobile' ? 390 : '100%' }}
               />
             </div>

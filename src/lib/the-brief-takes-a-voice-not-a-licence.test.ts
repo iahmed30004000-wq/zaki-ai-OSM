@@ -66,6 +66,19 @@ describe('the notes', () => {
     expect(notesRefusal('0799-123-456')).toMatch(/رقم/);
   });
 
+  it('are refused whatever stands between the digits, and in Persian digits too', () => {
+    // The three that walked round the first version of this rule.
+    expect(notesRefusal('اتصل 07 99  12 34 56')).toMatch(/رقم/);
+    expect(notesRefusal('0799/123/456')).toMatch(/رقم/);
+    expect(notesRefusal('رقمه ۰۷۹۹۱۲۳۴۵۶')).toMatch(/رقم/);
+    // And digits scattered through words still add up.
+    expect(notesRefusal('07 الزبون 99 بيحكي 123 بكرا 456')).toMatch(/رقم/);
+  });
+
+  it('are let through at six digits, the line below the rule', () => {
+    expect(notesRefusal('١٢ قطعة و 3456 علبة')).toBeNull();
+  });
+
   it('are refused when too long', () => {
     expect(notesRefusal('ا'.repeat(301))).toMatch(/أطول/);
   });
