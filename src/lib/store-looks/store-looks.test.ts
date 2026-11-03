@@ -117,6 +117,25 @@ describe('the customizer’s new keys, stored and read back', () => {
     expect(back.accent).toBe(DEFAULT_STORE_THEME.accent);
   });
 
+  it.each([
+    ['a look this build does not carry', { look: 'gone-look' }, 'look'],
+    ['a motion renamed', { motion: 'bold' }, 'motion'],
+    ['a ticker of a later version', { ticker: { enabled: 'yes' } }, 'ticker'],
+    ['a corner level renamed', { radius: 'pill' }, 'radius'],
+  ] as const)('%s drops ONLY that key — the template, the family and the packing promise survive', (_w, bad, key) => {
+    const row = { ...full, template: 'lab', family: 'clinic', discreetPacking: true, footer: { copyright: 'حقوقي' }, ...bad };
+    const back = parseStoreTheme(JSON.stringify(row));
+    expect(back[key]).toBeUndefined();
+    expect(back.template).toBe('lab');
+    expect(back.family).toBe('clinic');
+    expect(back.discreetPacking).toBe(true);
+    expect(back.footer?.copyright).toBe('حقوقي');
+    expect(back.accent).toBe(full.accent);
+    for (const other of ['look', 'radius', 'motion', 'ticker'] as const) {
+      if (other !== key) expect(back[other], other).toEqual((full as Record<string, unknown>)[other]);
+    }
+  });
+
   it('a theme that never set them gains no key and no variable', () => {
     const plain = parseStoreTheme(JSON.stringify({ accent: '#0d6ba8', mood: 'clean', font: 'ibm', corners: 'soft' }));
     for (const k of ['look', 'radius', 'motion', 'ticker', 'highlight'] as const) expect(plain[k], k).toBeUndefined();

@@ -501,7 +501,7 @@ export function parseStoreTheme(raw: string | null | undefined): StoreTheme {
   }
   if (!parsed || typeof parsed !== 'object') return DEFAULT_STORE_THEME;
 
-  parsed = migrateLegacyColors(parsed as Record<string, unknown>);
+  parsed = dropInvalidPortKeys(migrateLegacyColors(parsed as Record<string, unknown>));
 
   const whole = storeThemeSchema.safeParse({ ...DEFAULT_THEME, ...(parsed as object) });
   if (whole.success) return { ...DEFAULT_STORE_THEME, ...asStoreTheme(whole.data) };
@@ -522,17 +522,37 @@ export function parseStoreTheme(raw: string | null | undefined): StoreTheme {
     const got = schema.safeParse(row[key] ?? {});
     if (got.success) (out as unknown as Record<string, unknown>)[key] = got.data;
   }
-  // The additions of the store-looks port, each on its own: a look id this
-  // build no longer carries loses the id, not the shop's ticker with it.
-  // Absent stays absent — a shop that never set one gains no key.
-  const optional = {
-    look: z.enum(LOOK_IDS), radius: z.enum(RADIUS_LEVELS), motion: z.enum(STORE_MOTIONS), ticker: storeTickerSchema,
-    highlight: hex,
-  } as const;
-  for (const [key, schema] of Object.entries(optional)) {
+  // The port's keys were already checked one by one before the whole parse
+  // (`dropInvalidPortKeys`), so what is left of them here is valid.
+  for (const [key, schema] of Object.entries(PORT_KEYS)) {
     if (row[key] === undefined) continue;
     const got = schema.safeParse(row[key]);
     if (got.success) (out as unknown as Record<string, unknown>)[key] = got.data;
+  }
+  return out;
+}
+
+/**
+ * THE STORE-LOOKS PORT'S KEYS, EACH JUDGED ON ITS OWN.
+ *
+ * A look id this build no longer carries, a motion renamed, a ticker saved
+ * by a later version — any one of them used to fail the WHOLE row, and the
+ * field-by-field fallback has no line for `template`, `family` or
+ * `discreetPacking`, so the shop lost those with it. Now the one bad key is
+ * dropped before the row is parsed, and only that key: everything else is
+ * read exactly as if it had never been there. Absent stays absent.
+ */
+const PORT_KEYS = {
+  look: z.enum(LOOK_IDS), radius: z.enum(RADIUS_LEVELS), motion: z.enum(STORE_MOTIONS), ticker: storeTickerSchema,
+  highlight: hex,
+} as const;
+
+function dropInvalidPortKeys(row: Record<string, unknown>): Record<string, unknown> {
+  let out = row;
+  for (const [key, schema] of Object.entries(PORT_KEYS)) {
+    if (row[key] === undefined || schema.safeParse(row[key]).success) continue;
+    if (out === row) out = { ...row };
+    delete out[key];
   }
   return out;
 }
