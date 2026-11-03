@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { SavedViews } from '@/components/ui/SavedViews';
-import { EMPTY_ORDER_FILTERS, orderFiltersFromQuery, orderFiltersToQuery } from '@/lib/order-filters';
+import { DEFAULT_LATE_DAYS, EMPTY_ORDER_FILTERS, lateChoices, lateFromUrl, orderFiltersFromQuery, orderFiltersToQuery, validLateDays } from '@/lib/order-filters';
 import { DismissButton } from '@/components/ui/DismissButton';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -29,6 +29,7 @@ import { ProductThumb } from '@/components/ui/ProductThumb';
 import { CreateOrderModal } from '@/components/orders/CreateOrderModal';
 import { AiOrderModal } from '@/components/orders/AiOrderModal';
 import { OrderDetailModal } from '@/components/orders/OrderDetailModal';
+import { OrdersSummary, readSummary, type OrdersSummaryData } from '@/components/orders/OrdersSummary';
 import { useApp } from '@/context/AppContext';
 import { apiFetch } from '@/lib/api-client';
 import { FILTERABLE_STATES, STATE_LABEL_AR } from '@/lib/order-state';
@@ -77,8 +78,9 @@ export function OrdersScreen() {
     * landed on all of them, and a person clicking one order number landed
     * on the unfiltered list to look for it by hand.
     *
-    * READ ONCE, at the start. The filters are not written back to the URL:
-    * that would be saved views, which is a feature and not a repair.
+    * READ ONCE, at the start. The filters are not written back to the URL
+    * (that would be saved views) — except «متأخرة»'s number of days, which
+    * is asked to be kept there (`setLateDays` below).
     */
   const asked = useSearchParams();
   const askedState = asked.get('state');
@@ -98,16 +100,31 @@ export function OrdersScreen() {
    * counts would have landed on the unfiltered list — the very defect the
    * note above records being fixed for `state`.
    *
-   * `late=1` and not `lateDays=10`: the screen owns the number of days (it
-   * is 10 in three places in this file), and a URL that could name its own
-   * threshold would be a second rule for «متأخرة».
+   * «متأخرة» TAKES A NUMBER OF DAYS NOW (3, 5, 7, 10 or 14 — ten by default).
+   * The number lives in ONE place, `lateDays` below, and the URL carries it:
+   * `?late=7` is seven days, and `?late=1` — every link and published view
+   * written before the number could change — still means ten (`lateFromUrl`).
+   * Changing it writes `late` back to the address, so a refresh or a copied
+   * link asks the same question.
    */
   const [productId, setProductId] = useState(asked.get('productId') ?? 'all');
   const [source, setSource] = useState('all');
   const [courierId, setCourierId] = useState('all');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
-  const [lateOnly, setLateOnly] = useState(asked.get('late') === '1');
+  /** Days late since shipping; `''` when the switch is off. */
+  const [lateDays, setLateDaysState] = useState(lateFromUrl(asked.get('late')));
+  const lateOnly = lateDays !== '';
+  /** The person changed it: the screen and the address both. Other filters are not written back — only this one is asked to be. */
+  const setLateDays = (days: string) => {
+    setLateDaysState(days);
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (days) params.set('late', days);
+    else params.delete('late');
+    const qs = params.toString();
+    window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
+  };
   const [regionId, setRegionId] = useState('all');
   /*
    * «ماسكه» — who holds the order right now. The names come from the server
@@ -121,6 +138,8 @@ export function OrdersScreen() {
   /** Show everything the filter matches, not just this page. */
   const [showAll, setShowAll] = useState(false);
   const [sources, setSources] = useState<{ name: string; count: number }[]>([]);
+  /** The counts per state and the figures of the filtered set (OrdersSummary); null until the server answers. */
+  const [summary, setSummary] = useState<OrdersSummaryData | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   // Metadata dropdowns
@@ -175,7 +194,7 @@ export function OrdersScreen() {
    */
   const closeOrder = () => {
     setSelectedOrderId(null);
-    if (highlight) router.replace('/orders', { scroll: false });
+    if (highlight) router.replace(lateDays ? `/orders?late=${lateDays}` : '/orders', { scroll: false });
   };
 
   const loadMetadata = async () => {
@@ -229,7 +248,7 @@ export function OrdersScreen() {
       if (courierId !== 'all') params.set('courierId', courierId);
       if (fromDate) params.set('from', fromDate);
       if (toDate) params.set('to', toDate);
-      if (lateOnly) params.set('lateDays', '10');
+      if (lateDays) params.set('lateDays', lateDays);
       if (regionId !== 'all') params.set('regionId', regionId);
       if (holderId !== 'all') params.set('holderId', holderId);
       if (showAll) params.set('limit', '500');
@@ -260,7 +279,7 @@ export function OrdersScreen() {
       // Only the latest request may clear the shared loading flag
       if (seq === loadOrdersSeq.current) setLoading(false);
     }
-  }, [search, status, productId, source, courierId, regionId, holderId, fromDate, toDate, lateOnly, showAll]);
+  }, [search, status, productId, source, courierId, regionId, holderId, fromDate, toDate, lateDays, showAll]);
 
   // Keep the ref in sync each render (after loadOrders exists)
   useEffect(() => { loadOrdersRef.current = loadOrders; }, [loadOrders]);
@@ -275,6 +294,38 @@ export function OrdersScreen() {
     }, 250);
     return () => clearTimeout(timer);
   }, [loadOrders]);
+
+  /*
+   * THE COUNTS AND THE CARDS — asked when the FILTERS change, and only then.
+   *
+   * They are a grouped query and an aggregate over everything the filters match, so they are not asked again for a page
+   * turn, «إظهار الكل» or the thirty-second poll: those change which rows are drawn, never what the filters add up to.
+   * Apart from the list, so the list never waits for them; a newer question discards an older answer.
+   */
+  const summarySeq = useRef(0);
+  const summaryQuery = (() => {
+    const p = new URLSearchParams({ q: search, status, productId, source });
+    if (courierId !== 'all') p.set('courierId', courierId);
+    if (fromDate) p.set('from', fromDate);
+    if (toDate) p.set('to', toDate);
+    if (lateDays) p.set('lateDays', lateDays);
+    if (regionId !== 'all') p.set('regionId', regionId);
+    if (holderId !== 'all') p.set('holderId', holderId);
+    return p.toString();
+  })();
+  useEffect(() => {
+    const seq = ++summarySeq.current;
+    const timer = setTimeout(() => {
+      void Promise.resolve()
+        .then(() => apiFetch(`/api/orders/summary?${summaryQuery}`))
+        .then(async (r) => (r?.ok ? readSummary(await r.json()) : null))
+        .catch(() => null)
+        .then((answer) => {
+          if (seq === summarySeq.current) setSummary(answer);
+        });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [summaryQuery]);
 
   /*
    * Light polling, and a refresh the moment the person comes back —
@@ -316,7 +367,7 @@ export function OrdersScreen() {
     holderId,
     from: fromDate,
     to: toDate,
-    lateDays: lateOnly ? '10' : '',
+    lateDays,
   });
 
   /**
@@ -347,7 +398,7 @@ export function OrdersScreen() {
     setCourierId(v.courierId);
     setFromDate(v.from);
     setToDate(v.to);
-    setLateOnly(v.lateDays !== '');
+    setLateDays(validLateDays(v.lateDays) ? v.lateDays : '');
     setRegionId(v.regionId);
     setHolderId(v.holderId);
     setShowAll(false);
@@ -493,7 +544,7 @@ export function OrdersScreen() {
     if (holderId !== 'all') params.set('holderId', holderId);
     if (fromDate) params.set('from', fromDate);
     if (toDate) params.set('to', toDate);
-    if (lateOnly) params.set('lateDays', '10');
+    if (lateDays) params.set('lateDays', lateDays);
     window.open(`/api/reports/export?${params.toString()}`, '_blank');
   };
 
@@ -520,17 +571,40 @@ export function OrdersScreen() {
    *
    * On a desk they sit in the search row, as they always have. On a phone they go inside the filter fold
    * with the filters they belong to — the search row is the search and nothing else (ORD-01).
+   *
+   * AND HOW MANY DAYS IS «LATE» — beside the switch, drawn only while it is on, so the row a desk reads every morning is
+   * the row it always was. The switch turns it on at the default (ten); the box changes the number.
    */
+  const shownLate = lateDays || DEFAULT_LATE_DAYS;
   const lateToggle = (
-    <Button
-      variant={lateOnly ? undefined : 'outline'}
-      onClick={() => setLateOnly((v) => !v)}
-      title="شُحنت منذ 10 أيام أو أكثر ولم تُسلَّم بعد — من تاريخ الشحن"
-      className="shrink-0 gap-1.5"
-    >
-      <RiTimerLine className="w-4 h-4" />
-      {phone ? 'متأخرة +10 أيام' : 'متأخرة 10 أيام+ من الشحن'}
-    </Button>
+    <span className="inline-flex shrink-0 items-center gap-1.5">
+      <Button
+        variant={lateOnly ? undefined : 'outline'}
+        onClick={() => setLateDays(lateOnly ? '' : DEFAULT_LATE_DAYS)}
+        title={`شُحنت منذ ${shownLate} أيام أو أكثر ولم تُسلَّم بعد — من تاريخ الشحن`}
+        className="shrink-0 gap-1.5"
+      >
+        <RiTimerLine className="w-4 h-4" />
+        {/* The ten-day words are written out: the guide quotes them, and the guide is held to what a screen says. */}
+        {shownLate === DEFAULT_LATE_DAYS
+          ? phone ? 'متأخرة +10 أيام' : 'متأخرة 10 أيام+ من الشحن'
+          : phone ? `متأخرة +${shownLate} أيام` : `متأخرة ${shownLate} أيام+ من الشحن`}
+      </Button>
+      {lateOnly && (
+        <select
+          value={lateDays}
+          onChange={(e) => setLateDays(e.target.value)}
+          aria-label="عدد أيام التأخير"
+          className="h-11 md:h-10 w-24 px-2 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] text-xs"
+        >
+          {lateChoices(lateDays).map((d) => (
+            <option key={d} value={d}>
+              {d} أيام
+            </option>
+          ))}
+        </select>
+      )}
+    </span>
   );
   const resetButton = activeFilters > 0 && (
     <Button variant="outline" onClick={resetFilters} className="shrink-0 gap-1.5 text-[var(--sys-destructive)]">
@@ -772,6 +846,9 @@ export function OrdersScreen() {
           </div>
           </FilterFold>
         </div>
+
+        {/* How many in each state, and what the filtered set adds up to — pressing a chip is the state filter above. */}
+        {summary && <OrdersSummary summary={summary} status={status} onStatus={setStatus} currency={currency} />}
 
         {/* Load error banner */}
         {error && (
@@ -1248,7 +1325,7 @@ export function OrdersScreen() {
           holderId,
           from: fromDate,
           to: toDate,
-          lateDays: lateOnly ? '10' : '',
+          lateDays,
         }}
       />
 
