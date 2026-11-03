@@ -24,10 +24,12 @@ import { STORE_LOGO_PREFIX } from './store-logo';
  *   rather than clip at random, each size tier says what it drops, in order
  *   of what a driver needs least.
  *
- *   THE PAPER DECIDES HOW BIG. The tier says what is shown; how large it is
- *   drawn follows the millimetres themselves, continuously — see fitFor().
- *   Four steps of one size each used to print A4 like A5 (small text in a
- *   big blank) and put a 100 mm wide label in the A4 step.
+ *   THE CODES FOLLOW THE PAPER; THE TYPE HAS A FLOOR. The barcode, the QR
+ *   and the padding follow the millimetres. The type starts at a floor a
+ *   thermal head prints legibly, drops lines before it shrinks, and grows
+ *   into whatever room the label's own text leaves — see fitFor(). On 2/11
+ *   the type followed the paper's ratio to 100×150 too, and a 100×100
+ *   sticker came out at 6 pt round an empty middle: «مو واضحة ابدا».
  *
  *   PRINTING — NOT OPENING — COMMITS THE LABEL. The page reports which orders
  *   went to the printer on `beforeprint`, which catches the print button,
@@ -110,12 +112,12 @@ export const PRINT_CHUNK = 50;
 export type Tier = 'tiny' | 'compact' | 'standard' | 'large';
 
 /**
- * What a label of this size can hold.
+ * What a label of this size can hold at most.
  *
  *   tiny      < 70 mm either way — barcode, COD, name, phone, one line of place
- *   compact   < 95 wide or < 110 tall (100×100, 150×100) — adds logo, QR, two item lines
+ *   compact   < 95 wide or < 110 tall (100×100, 150×100) — adds logo, QR, the item lines
  *   standard  the rest (100×150, A6, 100×200) — everything
- *   large     BOTH sides at least 140 (A5, A4) — everything, more lines
+ *   large     BOTH sides at least 140 (A5, A4) — everything, more note lines
  *
  * Large is decided by the SHORT side. It used to be «more than 110 wide or
  * more than 160 tall», so a 100 mm wide label 200 tall counted as A4.
@@ -128,58 +130,175 @@ export function tierFor(size: SheetSize): Tier {
   return 'standard';
 }
 
-/** What each tier SHOWS. How big it is drawn is fitFor()'s, not the tier's. */
+/** At most this many item lines, however tall the paper. */
+const MAX_ITEMS = 12;
+
+/**
+ * What each tier MAY show. Whether it does is fitFor()'s: a line the paper
+ * has no room for at the floor type size is dropped, never shrunk.
+ */
 const TIER = {
   tiny: { qr: false, items: 0, note: 0, place: 1 },
-  compact: { qr: true, items: 2, note: 1, place: 2 },
-  standard: { qr: true, items: 4, note: 2, place: 3 },
-  large: { qr: true, items: 8, note: 3, place: 3 },
+  compact: { qr: true, items: MAX_ITEMS, note: 1, place: 3 },
+  standard: { qr: true, items: MAX_ITEMS, note: 2, place: 3 },
+  large: { qr: true, items: MAX_ITEMS, note: 3, place: 3 },
 } as const;
 
 /**
- * The type sizes of one label at fit 1, in points. The stylesheet below is
- * written from these numbers and fitFor() measures with the same ones, so
- * what is measured is what is printed.
+ * The type sizes of one label at scale 1, in points — and scale 1 is the
+ * FLOOR. «مو واضحة ابدا»: on 2/11 the scale started following the paper's
+ * ratio to 100×150, so a 100×100 sticker printed its body at 6 pt and its
+ * COD at 9 — under what a 203-dpi thermal head draws legibly. These are
+ * the smallest a waybill prints at on any paper of 50 mm or more, every
+ * one at least what the pre-2/11 label printed at the same size.
  */
 const PT = {
-  body: 8.5,
+  body: 9,
   brand: 10,
-  courier: 7.5,
+  courier: 8,
   courierRef: 9,
-  name: 12.5,
-  phones: 10.5,
+  name: 13,
+  phones: 12,
   codLabel: 8,
-  codAmount: 13,
-  caption: 7,
-  foot: 7,
-  tag: 6.5,
+  codAmount: 15,
+  caption: 8,
+  foot: 8,
+  tag: 7,
 } as const;
+/** The floor the type never goes under where the paper can hold it (≥ 50 mm tall). */
+export const FLOOR_PT = { body: 9, name: 13, phones: 12, codAmount: 14 } as const;
+
 const PT_MM = 25.4 / 72;
 /** The label's line height, and the name's. */
 const LINE = 1.35;
 const NAME_LINE = 1.2;
-/** Millimetres at fit 1: the gap between rows, the paddings inside the rows. */
-const MM = { gap: 1.4, headPad: 1.2, headRule: 0.5, codPad: 1.2, captionTop: 0.4, footPad: 0.8, footRule: 0.2, bodyPad: 1, bodyRule: 0.2 } as const;
+/**
+ * Millimetres at scale 1: the gap between rows, the paddings inside the rows,
+ * the rules. Rules are black and do not scale — a hairline grey rule is
+ * what a thermal head drops first.
+ */
+const MM = {
+  gap: 1.4, tightGap: 0.6, headPad: 1.2, headRule: 0.5, codPad: 1.2, tightCodPad: 0.5, codBorder: 0.6, codSide: 2.2,
+  captionTop: 0.4, footPad: 0.8, footRule: 0.3, bodyPad: 1, bodyRule: 0.3, noteTop: 0.8,
+} as const;
 /** The dashed outline of a label, one CSS pixel each side. */
 const OUTLINE_MM = 25.4 / 96;
-/** At most this many item lines, however tall the paper. */
-const MAX_ITEMS = 12;
+/** The most a label is ever scaled up; A4 sits under it. */
+const MAX_SCALE = 2.2;
+/**
+ * Millimetres of width per unit of scale the type may grow to: a 100 mm
+ * label grows to about 1.55 (body 14 pt, name 20, COD 23) and no further —
+ * past that a waybill reads as a poster, and the COD and the phones wrap.
+ */
+const WIDTH_PER_SCALE = 60;
 
-/** One line of text this size, in millimetres, at fit `s`. */
+/**
+ * How wide one character is, as a share of the type size — set on the
+ * generous side, so a line is counted as wrapping a little before it does
+ * and the scale never grows into a clipped address. Measured in Chrome on
+ * Tahoma: bold Arabic 0.47–0.58 em a character (a short name is the
+ * widest), regular 0.44–0.50, phone digits 0.64.
+ */
+const ADV = { regular: 0.55, bold: 0.6, digits: 0.65 } as const;
+/** «المبلغ عند الاستلام» — the label of the COD box: 8.9 em in Tahoma bold, counted as 9.3. */
+const COD_LABEL = 'المبلغ عند الاستلام';
+const COD_LABEL_EM = 9.3;
+/** The same box on a sticker too narrow for both on one line: «المبلغ», 2.9 em, counted as 3.4. */
+const COD_SHORT = 'المبلغ';
+const COD_SHORT_EM = 3.4;
+const NOTE_LEAD = 'ملاحظة: ';
+
+/** One line of text this size, in millimetres, at scale `s`. */
 const lineMm = (pt: number, s: number, line = LINE) => pt * PT_MM * line * s;
+const charMm = (pt: number, s: number, adv: number) => pt * PT_MM * s * adv;
 const r2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * The scale the label printed at BEFORE 2/11, for this paper: four steps by
+ * size. Kept only as a floor: no paper prints smaller type than it did then.
+ * Every size in PT is at least the pre-2/11 one, so a scale at least this
+ * one is type at least that big.
+ */
+export function legacyScale(size: SheetSize): number {
+  const { width: w, height: h } = size;
+  if (w < 70 || h < 70) return 0.78;
+  if (w < 95 || h < 110) return 0.9;
+  if (w <= 110 && h <= 160) return 1;
+  return 1.3;
+}
+
+/**
+ * The scale of the barcode, the QR and the padding — the millimetres
+ * themselves, as on 2/11: min(width / 100, height / 150), 0.7 to 2.2. The
+ * codes keep exactly the size they print at today; only the TYPE is no
+ * longer tied to it.
+ */
+function codeScale(size: SheetSize): number {
+  return r2(Math.min(MAX_SCALE, Math.max(0.7, Math.min(size.width / 100, size.height / 150))));
+}
+
+/** What one label has to say — the parts whose length decides how many lines. */
+export interface LabelNeed {
+  name: string;
+  /** Our reference, printed under the QR. */
+  ref?: string;
+  phones: string[];
+  place: string;
+  note?: string | null;
+  /** How many item rows the order has. */
+  items: number;
+  cod: string;
+  /** The store has a support number for the footer. */
+  foot: boolean;
+}
+
+/** What the label shows; the plan the drop order works down. */
+interface Show {
+  head: boolean;
+  /** One-line header (the courier's name and the logo off) and narrower gaps between rows. */
+  tight: boolean;
+  /** The contents row: the item lines or the count line, and the note. */
+  body: boolean;
+  /** The COD box says «المبلغ», not «المبلغ عند الاستلام», so the amount keeps its line. */
+  codShort: boolean;
+  qr: boolean;
+  foot: boolean;
+  place: number;
+  note: number;
+  /** Item lines; 0 is the one count line («2 قطع»). */
+  items: number;
+}
 
 export interface LabelFit {
   tier: Tier;
-  /** The one number everything is drawn at: the stylesheet's `--s`. */
+  /** The scale the TYPE is drawn at: the label's `--s`. Never under 1 where the paper is 50 mm tall or more. */
   fit: number;
-  /** Millimetres; the QR is 0 when the tier leaves it off. */
+  /** The scale of the codes and the padding: today's min(w/100, h/150). */
+  codes: number;
+  /** Millimetres; the QR is 0 when it is left off. */
   qr: number;
   bar: number;
   pad: number;
+  /** Item lines shown — 0 means the count line only. */
   items: number;
   note: number;
   place: number;
+  head: boolean;
+  /** One-line header and narrow gaps — a short paper. */
+  tight: boolean;
+  /** The contents row is printed (items or count, note). */
+  body: boolean;
+  /** The COD box's short label. */
+  codShort: boolean;
+  foot: boolean;
+  /** The type sizes actually printed, in points. */
+  pt: { body: number; name: number; phones: number; codAmount: number };
+  /**
+   * The reference under the QR, in points: the caption size, or less where
+   * the QR is narrower than the reference at that size — the QR's width is
+   * the codes' and a bigger caption would be cut to «SY-1…».
+   */
+  qrCaptionPt: number;
   /** The height inside the padding and outline. */
   usableMm: number;
   /**
@@ -188,62 +307,241 @@ export interface LabelFit {
    * test can hold that they fit the paper.
    */
   reservedMm: number;
-  /** reservedMm plus every line the label may print: place, items, note. */
+  /** reservedMm plus every line the label prints: place, items, note. */
   fullMm: number;
 }
 
+/** The heaviest label a tier may print: the longest address, a note, every item line. */
+function worstNeed(tier: Tier): LabelNeed {
+  return {
+    name: 'عبد الرحمن محمد الشمري',
+    phones: ['0791234567', '0781111111'],
+    place: 'ع'.repeat(400),
+    note: TIER[tier].note > 0 ? 'ع'.repeat(400) : null,
+    items: TIER[tier].items + 1,
+    cod: '1,250.000 JOD',
+    foot: true,
+  };
+}
+
+interface Geometry {
+  size: SheetSize;
+  tier: Tier;
+  c: number;
+  qr: number;
+  bar: number;
+  pad: number;
+  innerW: number;
+  usable: number;
+}
+
+const wraps = (chars: number, perChar: number, width: number) => Math.max(1, Math.ceil((chars * perChar) / width));
+
+/** How many lines each wrapping part takes at scale `s`. */
+function linesAt(g: Geometry, need: LabelNeed, s: number, codShort = false) {
+  const phonesText = need.phones.filter(Boolean).join('  ·  ');
+  const codW =
+    charMm(PT.codLabel, s, codShort ? COD_SHORT_EM : COD_LABEL_EM) +
+    need.cod.length * charMm(PT.codAmount, s, ADV.digits) +
+    2 * MM.codSide * s + 2 * MM.codBorder + 2;
+  return {
+    place: wraps(need.place.length, charMm(PT.body, s, ADV.bold), g.innerW),
+    note: need.note ? wraps(NOTE_LEAD.length + need.note.length, charMm(PT.body, s, ADV.regular), g.innerW) : 0,
+    phones: phonesText ? wraps(phonesText.length, charMm(PT.phones, s, ADV.digits) + 0.11, g.innerW) : 0,
+    cod: codW > g.innerW ? 2 : 1,
+    nameFits: need.name.length * charMm(PT.name, s, ADV.bold) <= g.innerW,
+  };
+}
+
+/** The height of one label, in millimetres, at scale `s` with `show`. */
+function heightAt(g: Geometry, need: LabelNeed, s: number, show: Show) {
+  const L = linesAt(g, need, s, show.codShort);
+  const body = lineMm(PT.body, s);
+  const head = !show.head
+    ? 0
+    : (show.tight
+        ? Math.max(lineMm(PT.brand, s), lineMm(PT.courierRef, s))
+        : Math.max(lineMm(PT.courier, s) + lineMm(PT.courierRef, s), 7 * s)) +
+      MM.headPad * s + MM.headRule;
+  const cod =
+    (L.cod === 1 ? lineMm(PT.codAmount, s) : lineMm(PT.codAmount, s) + lineMm(PT.codLabel, s)) +
+    2 * (show.tight ? MM.tightCodPad : MM.codPad) * s + 2 * MM.codBorder;
+  const codes = Math.max(g.bar, show.qr ? g.qr : 0) + lineMm(PT.caption, s) + MM.captionTop;
+  const foot = show.foot ? lineMm(PT.foot, s) + MM.footPad * s + MM.footRule : 0;
+  // Six rows in the grid, five gaps — an empty row keeps its gap.
+  const gaps = 5 * (show.tight ? MM.tightGap : MM.gap) * s;
+  const who = lineMm(PT.name, s, NAME_LINE) + L.phones * lineMm(PT.phones, s);
+  const reserved = head + cod + codes + foot + gaps + who;
+
+  const place = Math.min(show.place, L.place);
+  const note = show.body ? Math.min(show.note, L.note) : 0;
+  const itemLines = !show.body
+    ? 0
+    : show.items === 0
+      ? 1
+      : Math.min(show.items, need.items) + (need.items > show.items ? 1 : 0);
+  const full =
+    reserved +
+    (place + note + itemLines) * body +
+    (note > 0 ? MM.noteTop * s : 0) +
+    (show.body ? MM.bodyPad * s + MM.bodyRule : 0);
+  return { reserved, full, lines: L };
+}
+
 /**
- * HOW BIG, FROM THE MILLIMETRES.
- *
- *   fit = min(width / 100, height / 150), held between 0.7 and 2.2
- *
- * 100×150 is the reference the type sizes were set on. The smaller of the
- * two ratios decides, because the label is a column: a wide label is not
- * taller for being wide. Below 0.7 the type stops being readable on a
- * thermal head; the upper bound is above anything the picker offers (A4 is
- * 1.98), so the ceiling never shrinks a real page.
- *
- * The QR (22 mm at fit 1), the barcode height (14) and the padding (3.5)
- * follow the same number. A taller-than-reference label — 100×200 — gets
- * the height it has over 150 as more item lines, up to twelve.
+ * What to give up, in order of what a driver needs least, when the paper
+ * cannot hold everything at the floor type size: the footer; item lines
+ * down to four; the note down to one line; items down to two; the note;
+ * items down to one; the third address line; then a one-line header and
+ * narrow gaps; the second address line; the item line for the count
+ * («2 قطع»); the QR (our reference — the courier scans the barcode); the
+ * count line; the header; and last the long words of the COD box. The name, the phones, one address line,
+ * the COD and the barcode are never given up.
  */
-export function fitFor(size: SheetSize): LabelFit {
+function* dropOrder(start: Show): Generator<Show> {
+  let s = { ...start };
+  if (s.foot) yield (s = { ...s, foot: false });
+  while (s.items > 4) yield (s = { ...s, items: s.items - 1 });
+  while (s.note > 1) yield (s = { ...s, note: s.note - 1 });
+  while (s.items > 2) yield (s = { ...s, items: s.items - 1 });
+  if (s.note > 0) yield (s = { ...s, note: 0 });
+  if (s.items > 1) yield (s = { ...s, items: 1 });
+  if (s.place > 2) yield (s = { ...s, place: 2 });
+  if (!s.tight) yield (s = { ...s, tight: true });
+  if (s.place > 1) yield (s = { ...s, place: 1 });
+  if (s.items > 0) yield (s = { ...s, items: 0 });
+  if (s.qr) yield (s = { ...s, qr: false });
+  if (s.body) yield (s = { ...s, body: false });
+  if (s.head) yield (s = { ...s, head: false });
+  if (!s.codShort) yield (s = { ...s, codShort: true });
+}
+
+/**
+ * HOW BIG, FROM WHAT THE LABEL SAYS AND THE PAPER IT IS ON.
+ *
+ *   1. The codes, the QR and the padding follow the millimetres — today's
+ *      min(width / 100, height / 150), unchanged.
+ *   2. The type starts at the floor: scale 1, or the pre-2/11 scale where
+ *      that was bigger (A5, A4, 100×200).
+ *   3. If what this label says does not fit at the floor, lines are dropped
+ *      in dropOrder() — the type is not shrunk. Only a paper under 50 mm
+ *      tall, which cannot hold a barcode and four lines at 9 pt, goes under
+ *      scale 1, and never under what it printed at before 2/11.
+ *   4. If it fits with room left, the type grows into the room — up to where
+ *      the name, the phones or the COD would start to wrap, or 2.2 — so a
+ *      100×100 sticker is not a few small lines round a big blank middle.
+ *
+ * Without `need`, the heaviest label the tier may print.
+ */
+export function fitFor(size: SheetSize, need?: LabelNeed): LabelFit {
   const tier = tierFor(size);
   const t = TIER[tier];
-  const s = r2(Math.min(2.2, Math.max(0.7, Math.min(size.width / 100, size.height / 150))));
-  const qr = t.qr ? r2(22 * s) : 0;
-  const bar = r2(14 * s);
-  const pad = r2(3.5 * s);
-  const body = lineMm(PT.body, s);
+  const c = codeScale(size);
+  const pad = r2(3.5 * c);
+  const g: Geometry = {
+    size,
+    tier,
+    c,
+    qr: t.qr ? r2(22 * c) : 0,
+    bar: r2(14 * c),
+    pad,
+    innerW: size.width - 2 * pad - 2 * OUTLINE_MM,
+    usable: size.height - 2 * pad - 2 * OUTLINE_MM,
+  };
+  const asked = need ?? worstNeed(tier);
+  // The smallest label prints the first number only (labelHtml).
+  const n = tier === 'tiny' ? { ...asked, phones: asked.phones.slice(0, 1) } : asked;
+  const floor = Math.max(1, legacyScale(size));
 
-  const extra = t.items > 0 ? Math.max(0, Math.floor((size.height / s - 150) / lineMm(PT.body, 1))) : 0;
-  const items = Math.min(MAX_ITEMS, t.items + extra);
+  const want: Show = {
+    head: true,
+    tight: false,
+    body: true,
+    codShort: false,
+    qr: t.qr,
+    foot: n.foot && tier !== 'tiny',
+    place: t.place,
+    note: n.note ? t.note : 0,
+    items: t.items === 0 ? 0 : Math.min(t.items, Math.max(1, n.items)),
+  };
+  const fits = (s: number, show: Show) => heightAt(g, n, s, show).full <= g.usable;
 
-  const head = Math.max(lineMm(PT.courier + PT.courierRef, s), 7 * s) + MM.headPad * s + MM.headRule;
-  const cod = lineMm(PT.codAmount, s) + 2 * MM.codPad * s;
-  const codes = Math.max(bar, qr) + lineMm(PT.caption, s) + MM.captionTop;
-  const foot = tier === 'tiny' ? 0 : lineMm(PT.foot, s) + MM.footPad * s + MM.footRule;
-  const gaps = 5 * MM.gap * s;
-  const who = lineMm(PT.name, s, NAME_LINE) + lineMm(PT.phones, s);
-  const reservedMm = head + cod + codes + foot + gaps + who;
+  let show = want;
+  let s = floor;
+  if (!fits(s, show)) {
+    for (const next of dropOrder(want)) {
+      show = next;
+      if (fits(s, show)) break;
+    }
+    // Nothing left to drop: a paper this short goes under the floor, never
+    // under what it printed at before 2/11.
+    const least = legacyScale(size);
+    while (!fits(s, show) && s - 0.01 >= least) s = r2(s - 0.01);
+  } else {
+    // Grow while it still fits, the name still fits its one line, and up to
+    // a size the width carries (a 100 mm label: about 1.55, body 14 pt).
+    const nameFitsAtFloor = linesAt(g, n, floor).nameFits;
+    const cap = Math.max(floor, Math.min(MAX_SCALE, g.innerW / WIDTH_PER_SCALE));
+    while (s + 0.01 <= cap) {
+      const next = r2(s + 0.01);
+      if (!fits(next, show)) break;
+      if (nameFitsAtFloor && !linesAt(g, n, next).nameFits) break;
+      s = next;
+    }
+  }
 
-  // Items: the lines shown, plus «و٣ أصناف أخرى»; none means the one count line.
-  const itemLines = items > 0 ? items + 1 : 1;
-  const fullMm =
-    reservedMm + (t.place + t.note + itemLines) * body + MM.bodyPad * s + MM.bodyRule;
-
+  const h = heightAt(g, n, s, show);
   return {
     tier,
     fit: s,
-    qr,
-    bar,
+    codes: c,
+    qr: show.qr ? g.qr : 0,
+    bar: g.bar,
     pad,
-    items,
-    note: t.note,
-    place: t.place,
-    usableMm: size.height - 2 * pad - 2 * OUTLINE_MM,
-    reservedMm,
-    fullMm,
+    items: show.items,
+    note: show.note,
+    place: show.place,
+    head: show.head,
+    tight: show.tight,
+    body: show.body,
+    codShort: show.codShort,
+    foot: show.foot,
+    qrCaptionPt: show.qr ? qrCaption(g.qr, n.ref ?? '', s, c) : 0,
+    pt: {
+      body: r2(PT.body * s),
+      name: r2(PT.name * s),
+      phones: r2(PT.phones * s),
+      codAmount: r2(PT.codAmount * s),
+    },
+    usableMm: g.usable,
+    reservedMm: h.reserved,
+    fullMm: h.full,
+  };
+}
+
+/**
+ * Bold capitals and digits with .3px spacing, counted generously: 0.68 em
+ * and 0.08 mm a character. Never under 2/11's caption (7 pt × the codes),
+ * where a long reference is still cut at the QR's edge — the same reference
+ * is printed in the header, bold, at 9 pt or more.
+ */
+function qrCaption(qrMm: number, ref: string, s: number, c: number): number {
+  const n = Math.max(1, ref.length);
+  const fits = (qrMm - n * 0.08) / (n * 0.68 * PT_MM);
+  return r2(Math.max(7 * c, Math.min(PT.caption * s, fits)));
+}
+
+/** What a label's own text asks of the paper. */
+export function needOf(l: LabelView, store: SheetStore): LabelNeed {
+  return {
+    name: l.name,
+    ref: l.ref,
+    phones: l.phones,
+    place: l.place,
+    note: l.note,
+    items: l.items.length,
+    cod: l.cod,
+    foot: Boolean(store.supportPhone),
   };
 }
 
@@ -313,39 +611,126 @@ function itemsHtml(items: LabelItem[], max: number): string {
   );
 }
 
-function labelHtml(l: LabelView, t: LabelFit, store: SheetStore): string {
+function labelHtml(l: LabelView, size: SheetSize, store: SheetStore): string {
+  // Each label is fitted to what IT says: a one-item order with a short
+  // address grows into the room a twelve-item one needs for its list.
+  const t = fitFor(size, needOf(l, store));
   const tier = t.tier;
   const code = encodableCode128(l.courierCode);
   const logo =
     store.logoUrl && tier !== 'tiny' ? `<img class="logo" src="${esc(store.logoUrl)}" alt="">` : '';
   const phones = (tier === 'tiny' ? l.phones.slice(0, 1) : l.phones).filter(Boolean);
 
-  return `<section class="label" data-order="${esc(l.orderId)}">
-  <header class="head">
+  return `<section class="label${t.tight ? ' tight' : ''}" data-order="${esc(l.orderId)}" style="--s: ${t.fit}${t.qr > 0 ? `; --qr: ${t.qr}mm; --qrcap: ${t.qrCaptionPt}pt` : ''}">
+  ${
+    t.head
+      ? `<header class="head">
     <div class="brand">${logo}<strong>${esc(store.name)}</strong></div>
     <div class="courier"><span>${esc(l.courier)}</span><b dir="ltr">${esc(l.ref)}</b></div>
-  </header>
+  </header>`
+      : ''
+  }
   <div class="who">
     <p class="name">${esc(l.name)}</p>
     ${phones.length ? `<p class="phones" dir="ltr">${phones.map(esc).join('  ·  ')}</p>` : ''}
     <p class="place" style="-webkit-line-clamp:${t.place}">${esc(l.place)}</p>
   </div>
-  <div class="body">
+  ${
+    t.body
+      ? `<div class="body">
     ${itemsHtml(l.items, t.items)}
     ${l.note && t.note > 0 ? `<p class="note" style="-webkit-line-clamp:${t.note}"><b>ملاحظة:</b> ${esc(l.note)}</p>` : ''}
-  </div>
-  <div class="cod"><span>المبلغ عند الاستلام</span><strong dir="ltr">${esc(l.cod)}</strong></div>
+  </div>`
+      : ''
+  }
+  <div class="cod"><span>${t.codShort ? COD_SHORT : COD_LABEL}</span><strong dir="ltr">${esc(l.cod)}</strong></div>
   <div class="codes">
     <figure class="barcode">${barcodeSvg(l.courierCode, t.bar)}<figcaption dir="ltr">${esc(code)}</figcaption></figure>
     ${t.qr > 0 ? `<figure class="qr">${l.qrSvg}<figcaption dir="ltr">${esc(l.ref)}</figcaption></figure>` : ''}
   </div>
   ${
-    store.supportPhone && tier !== 'tiny'
+    store.supportPhone && t.foot
       ? `<footer class="foot">للاستفسار: <span dir="ltr">${esc(store.supportPhone)}</span></footer>`
       : ''
   }
 </section>`;
 }
+
+/**
+ * The label's own stylesheet — the part that reaches the paper. Kept apart
+ * from the page chrome (toolbar, setup line) so a test can read exactly
+ * what prints, and hold it to black ink.
+ *
+ * Ink: every text and rule is #000. A grey rule (#d0d5dd) or a grey text
+ * (opacity .75) is dithered by a 203-dpi thermal head into dots that do
+ * not read; the name, the phones, the address and the COD are bold.
+ *
+ * The COD box was white type on a black background. Chrome's print dialog
+ * leaves «Background graphics» off by default, and then the amount is
+ * white on white — the one number the driver collects. It is now black
+ * bold type inside a thick black border: nothing to drop.
+ */
+export const LABEL_CSS = `  .label { overflow: hidden; display: grid; gap: calc(${MM.gap}mm * var(--s));
+           /* Header, COD, codes and footer always take their full height.
+              The recipient block and the contents give way — never the
+              barcode. Each part names its row, so a label that leaves the
+              header off does not slide the recipient into the header's row. */
+           grid-template-rows: auto minmax(0, max-content) minmax(0, 1fr) auto auto auto;
+           border: 1px dashed #000; color: #000; background: #fff;
+           font-size: calc(${PT.body}pt * var(--s)); line-height: ${LINE}; }
+  .label > .head { grid-row: 1; } .label > .who { grid-row: 2; } .label > .body { grid-row: 3; }
+  .label > .cod { grid-row: 4; } .label > .codes { grid-row: 5; } .label > .foot { grid-row: 6; }
+
+  .head { display: flex; justify-content: space-between; align-items: center; gap: 2mm;
+          padding-bottom: calc(${MM.headPad}mm * var(--s)); border-bottom: ${MM.headRule}mm solid #000; }
+  .brand { display: flex; align-items: center; gap: 1.5mm; min-width: 0; }
+  .brand strong { font-size: calc(${PT.brand}pt * var(--s)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .logo { height: calc(7mm * var(--s)); max-width: calc(22mm * var(--s)); object-fit: contain; }
+  .courier { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0;
+             font-size: calc(${PT.courier}pt * var(--s)); }
+  .courier b { font-size: calc(${PT.courierRef}pt * var(--s)); letter-spacing: .3px; }
+  /* A short paper: the header on one line, the rows closer together. */
+  .label.tight { gap: calc(${MM.tightGap}mm * var(--s)); }
+  .tight .logo, .tight .courier span { display: none; }
+  .tight .cod { padding-top: calc(${MM.tightCodPad}mm * var(--s)); padding-bottom: calc(${MM.tightCodPad}mm * var(--s)); }
+
+  .who { overflow: hidden; }
+  .who p { margin: 0; }
+  .name { font-size: calc(${PT.name}pt * var(--s)); font-weight: bold; line-height: ${NAME_LINE};
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .phones { font-size: calc(${PT.phones}pt * var(--s)); font-weight: bold; letter-spacing: .4px; text-align: right; }
+  .place { font-weight: bold; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+
+  .body { overflow: hidden; border-top: ${MM.bodyRule}mm solid #000; padding-top: calc(${MM.bodyPad}mm * var(--s)); }
+  .items { margin: 0; padding: 0; list-style: none; }
+  .items li { display: flex; align-items: baseline; gap: 1.5mm; }
+  .items .iname { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .items .qty { flex-shrink: 0; }
+  .tag { flex-shrink: 0; border: 0.3mm solid #000; border-radius: 0.8mm; padding: 0 1mm;
+         font-size: calc(${PT.tag}pt * var(--s)); font-weight: bold; }
+  .count { margin: 0; font-weight: bold; }
+  .note { margin: calc(${MM.noteTop}mm * var(--s)) 0 0; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+
+  /* The number the driver collects: a thick black frame, black bold type. */
+  .cod { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; column-gap: 2mm;
+         border: ${MM.codBorder}mm solid #000; border-radius: 1mm; background: #fff; color: #000; font-weight: bold;
+         padding: calc(${MM.codPad}mm * var(--s)) calc(${MM.codSide}mm * var(--s)); font-size: calc(${PT.codLabel}pt * var(--s)); }
+  .cod strong { font-size: calc(${PT.codAmount}pt * var(--s)); letter-spacing: .3px; white-space: nowrap; }
+
+  /* The gap beside the QR follows the codes, not the type: a bigger name
+     must not take width from the barcode's bars. */
+  .codes { display: flex; align-items: flex-end; gap: calc(2.5mm * var(--c)); }
+  figure { margin: 0; text-align: center; }
+  .barcode { flex: 1; min-width: 0; }
+  .qr { flex-shrink: 0; width: var(--qr); }
+  .qr svg { display: block; width: var(--qr); height: var(--qr); }
+  .qr figcaption { font-size: var(--qrcap); letter-spacing: .3px; }
+  figcaption { font-size: calc(${PT.caption}pt * var(--s)); font-weight: bold; letter-spacing: 1px; margin-top: ${MM.captionTop}mm;
+               white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .foot { font-size: calc(${PT.foot}pt * var(--s)); text-align: center; border-top: ${MM.footRule}mm solid #000;
+          padding-top: calc(${MM.footPad}mm * var(--s)); }
+`;
 
 export function renderLabelSheet(labels: LabelView[], size: SheetSize, opts: SheetOptions): string {
   const pageW = size.sheetWidth ?? size.width;
@@ -360,7 +745,7 @@ export function renderLabelSheet(labels: LabelView[], size: SheetSize, opts: She
     const chunk = labels.slice(p * perPage, (p + 1) * perPage);
     const run = Math.floor((p * perPage) / PRINT_CHUNK);
     sheets.push(
-      `<div class="page" data-run="${run}">${chunk.map((l) => labelHtml(l, t, opts.store)).join('')}</div>`
+      `<div class="page" data-run="${run}">${chunk.map((l) => labelHtml(l, size, opts.store)).join('')}</div>`
     );
   }
 
@@ -413,59 +798,13 @@ export function renderLabelSheet(labels: LabelView[], size: SheetSize, opts: She
           grid-auto-rows: ${size.height}mm; align-content: start; overflow: hidden;
           box-shadow: 0 1px 4px rgba(0,0,0,.12); contain: layout paint; }
 
-  /* ── one label ── */
-  .label { --s: ${t.fit}; --qr: ${t.qr}mm;
-           width: ${size.width}mm; height: ${size.height}mm; padding: ${t.pad}mm; overflow: hidden;
-           display: grid; gap: calc(${MM.gap}mm * var(--s));
-           /* Header, COD, codes and footer always take their full height.
-              The recipient block and the contents give way — never the
-              barcode. */
-           grid-template-rows: auto minmax(0, max-content) minmax(0, 1fr) auto auto auto;
-           border: 1px dashed #c3c9d2; font-size: calc(${PT.body}pt * var(--s)); line-height: ${LINE}; }
-
-  .head { display: flex; justify-content: space-between; align-items: center; gap: 2mm;
-          padding-bottom: calc(${MM.headPad}mm * var(--s)); border-bottom: ${MM.headRule}mm solid #000; }
-  .brand { display: flex; align-items: center; gap: 1.5mm; min-width: 0; }
-  .brand strong { font-size: calc(${PT.brand}pt * var(--s)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .logo { height: calc(7mm * var(--s)); max-width: calc(22mm * var(--s)); object-fit: contain; }
-  .courier { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0;
-             font-size: calc(${PT.courier}pt * var(--s)); }
-  .courier b { font-size: calc(${PT.courierRef}pt * var(--s)); letter-spacing: .3px; }
-
-  .who { overflow: hidden; }
-  .who p { margin: 0; }
-  .name { font-size: calc(${PT.name}pt * var(--s)); font-weight: bold; line-height: ${NAME_LINE};
-          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .phones { font-size: calc(${PT.phones}pt * var(--s)); font-weight: bold; letter-spacing: .4px; text-align: right; }
-  .place { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
-
-  .body { overflow: hidden; border-top: ${MM.bodyRule}mm solid #d0d5dd; padding-top: calc(${MM.bodyPad}mm * var(--s)); }
-  .items { margin: 0; padding: 0; list-style: none; }
-  .items li { display: flex; align-items: baseline; gap: 1.5mm; }
-  .items .iname { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .items .qty { flex-shrink: 0; }
-  .items .more { opacity: .75; }
-  .tag { flex-shrink: 0; border: 0.25mm solid #000; border-radius: 0.8mm; padding: 0 1mm;
-         font-size: calc(${PT.tag}pt * var(--s)); font-weight: bold; }
-  .count { margin: 0; font-weight: bold; }
-  .note { margin: calc(0.8mm * var(--s)) 0 0; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
-
-  /* The number the driver collects: black, so it cannot be missed. */
-  .cod { display: flex; justify-content: space-between; align-items: center; gap: 2mm;
-         background: #000; color: #fff; border-radius: 1mm;
-         padding: calc(${MM.codPad}mm * var(--s)) calc(2.2mm * var(--s)); font-size: calc(${PT.codLabel}pt * var(--s)); }
-  .cod strong { font-size: calc(${PT.codAmount}pt * var(--s)); letter-spacing: .3px; white-space: nowrap; }
-
-  .codes { display: flex; align-items: flex-end; gap: calc(2.5mm * var(--s)); }
-  figure { margin: 0; text-align: center; }
-  .barcode { flex: 1; min-width: 0; }
-  .qr { flex-shrink: 0; width: var(--qr); }
-  .qr svg { display: block; width: var(--qr); height: var(--qr); }
-  figcaption { font-size: calc(${PT.caption}pt * var(--s)); letter-spacing: 1px; margin-top: ${MM.captionTop}mm;
-               white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-  .foot { font-size: calc(${PT.foot}pt * var(--s)); text-align: center; border-top: ${MM.footRule}mm solid #d0d5dd;
-          padding-top: calc(${MM.footPad}mm * var(--s)); }
+  /* ── one label ──
+     LABEL_CSS: every colour in it is black or white, and no white is ever
+     drawn on black — Chrome prints without background graphics unless it
+     is told otherwise, and then white-on-black is white on nothing. */
+${LABEL_CSS}
+  .label { --s: ${t.fit}; --c: ${t.codes}; --qr: ${t.qr}mm;
+           width: ${size.width}mm; height: ${size.height}mm; padding: ${t.pad}mm; }
 
   @media print {
     ${runRules}
@@ -474,6 +813,9 @@ export function renderLabelSheet(labels: LabelView[], size: SheetSize, opts: She
     .page { margin: 0; box-shadow: none; break-after: page; }
     .page:last-child { break-after: auto; }
     .label { border-color: transparent; }
+    /* Nothing on the label leans on a background; this only keeps the
+       white page white if a printer driver is set to save toner. */
+    .label, .label * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     /* A thermal head prints black or nothing: a coloured logo becomes noise. */
     .logo { filter: grayscale(1) contrast(1.15); }
   }
