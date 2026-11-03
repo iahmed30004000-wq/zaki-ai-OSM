@@ -224,14 +224,14 @@ describe('the waybill is read off a thermal head', () => {
   // [paper, width, height, codes, heaviest label's type scale, a typical label's]
   const SIZES: [string, number, number, number, number, number][] = [
     ['100×150', 100, 150, 1, 1, 1.54],
-    ['100×100', 100, 100, 0.7, 1, 1.28],
+    ['100×100', 100, 100, 0.7, 1, 1.27],
     ['A6', 105, 148, 0.99, 1, 1.62],
-    ['A5 بالعرض', 210, 148, 0.99, 1.3, 2.1],
-    ['A4', 210, 297, 1.98, 1.83, 2.2],
+    ['A5 بالعرض', 210, 148, 0.99, 1.3, 2.08],
+    ['A4', 210, 297, 1.98, 1.82, 2.2],
     ['100×70', 100, 70, 0.7, 1, 1],
     ['75×50', 75, 50, 0.7, 1, 1],
     ['4×6 in', 101.6, 152.4, 1.02, 1, 1.56],
-    ['150×100', 150, 100, 0.7, 1, 1.38],
+    ['150×100', 150, 100, 0.7, 1, 1.37],
     ['100×200', 100, 200, 1, 1.3, 1.54],
   ];
 
@@ -349,6 +349,58 @@ describe('the waybill is read off a thermal head', () => {
   });
 });
 
+/**
+ * THE WHOLE NAME, ALWAYS.
+ *
+ * Review of #191: the growth loop stopped for the name only when the name
+ * fitted one line at scale 1, so a 39-letter name grew to 1.54 and its
+ * ellipsis cut the family name; a Latin name was measured at the Arabic
+ * width, and in the right-to-left box the ellipsis ate its START. Now the
+ * name wraps to two lines, is counted in the height, never grows past
+ * them, is measured at its own script's width, and sets its own direction.
+ */
+describe('the customer’s whole name is printed', () => {
+  const LONG_AR = 'عبد الرحمن محمد عبد الله الشمري الحسيني';
+  const LONG_LATIN = 'Mohammed Abdulrahman Al-Shammari';
+  const PAPERS: [string, number, number][] = [['100×150', 100, 150], ['100×70', 100, 70], ['75×50', 75, 50], ['100×100', 100, 100]];
+  const NAMES = [LONG_AR, LONG_LATIN, 'Jonathan Christopher Williamson', 'محمد عبد الرحمن الشمري الحسيني ابو'];
+
+  it.each(PAPERS)('%s: a 32–39 letter name, Arabic or Latin, takes at most its two lines', (_n, width, height) => {
+    for (const name of NAMES) {
+      const l = label(9, { name });
+      const f = fitFor({ width, height }, needOf(l, STORE));
+      expect(f.nameLines, `${name} on ${width}×${height}`).toBeLessThanOrEqual(2);
+      expect(f.fullMm).toBeLessThanOrEqual(f.usableMm);
+      expect(sheet([l], { width, height }, { store: STORE })).toContain(`<p class="name" dir="auto">${name}</p>`);
+    }
+  });
+
+  it('a name too long for one line at the floor does not grow into a third — 100×150', () => {
+    // 54 letters: two lines at scale 1, three at the 1.54 a short name reaches.
+    const name = 'عبد الرحمن محمد عبد الله الشمري الحسيني الدمشقي العلي';
+    const f = fitFor(thermal, needOf(label(9, { name }), STORE));
+    expect(f.nameLines).toBeLessThanOrEqual(2);
+    expect(f.fit).toBeLessThan(fitFor(thermal, needOf(typical, STORE)).fit);
+  });
+
+  it('a Latin name is measured at the Latin width — it wraps, it is not cut at scale 1.05', () => {
+    // 100×70 prints at scale 1. 32 bold Latin letters at 13 pt × 0.68 em:
+    // about 100 mm, wider than the 93 mm line — counted at the Arabic 0.6
+    // it read as 88 mm, one line, and the ellipsis cut it.
+    const f = fitFor({ width: 100, height: 70 }, needOf(label(9, { name: LONG_LATIN }), STORE));
+    expect(f.fit).toBe(1);
+    expect(f.nameLines).toBe(2);
+  });
+
+  it('the name wraps instead of an ellipsis, and sets its own direction', () => {
+    const rule = /\n {2}\.name \{[^}]*\}/.exec(LABEL_CSS)![0];
+    expect(rule).not.toContain('text-overflow');
+    expect(rule).not.toContain('nowrap');
+    expect(rule).toContain('-webkit-line-clamp: 2');
+    expect(sheet([label(0)])).toContain('<p class="name" dir="auto">');
+  });
+});
+
 describe('black ink only — what a thermal head can print', () => {
   it('the label’s stylesheet has no colour but black and white', () => {
     const colours = LABEL_CSS.match(/#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\)/g) ?? [];
@@ -400,7 +452,7 @@ describe('golden', () => {
           <div class="courier"><span>LogesTechs</span><b dir="ltr">SY-10001</b></div>
         </header>
         <div class="who">
-          <p class="name">أحمد سمير الخطيب</p>
+          <p class="name" dir="auto">أحمد سمير الخطيب</p>
           <p class="phones" dir="ltr">0933123456</p>
           <p class="place" style="-webkit-line-clamp:3">دمشق — المزة، شارع الجلاء، بناء 12 الطابق الثالث</p>
         </div>
@@ -421,7 +473,7 @@ describe('golden', () => {
           <div class="courier"><span>LogesTechs</span><b dir="ltr">SY-10002</b></div>
         </header>
         <div class="who">
-          <p class="name">محمد الشمري</p>
+          <p class="name" dir="auto">محمد الشمري</p>
           <p class="phones" dir="ltr">0933123456  ·  0944765432</p>
           <p class="place" style="-webkit-line-clamp:3">عمان — شارع المدينة</p>
         </div>
@@ -441,13 +493,13 @@ describe('golden', () => {
 
   it('100×100 — the smallest preset', () => {
     expect(labels(sheet([typical, heavy], { width: 100, height: 100 }, { store: STORE }))).toMatchInlineSnapshot(`
-      "<div class="page" data-run="0"><section class="label" data-order="00000000-0000-4000-8000-000000000001" style="--s: 1.28; --qr: 15.4mm; --qrcap: 7.69pt">
+      "<div class="page" data-run="0"><section class="label" data-order="00000000-0000-4000-8000-000000000001" style="--s: 1.27; --qr: 15.4mm; --qrcap: 7.69pt">
         <header class="head">
           <div class="brand"><strong>متجر</strong></div>
           <div class="courier"><span>LogesTechs</span><b dir="ltr">SY-10001</b></div>
         </header>
         <div class="who">
-          <p class="name">أحمد سمير الخطيب</p>
+          <p class="name" dir="auto">أحمد سمير الخطيب</p>
           <p class="phones" dir="ltr">0933123456</p>
           <p class="place" style="-webkit-line-clamp:3">دمشق — المزة، شارع الجلاء، بناء 12 الطابق الثالث</p>
         </div>
@@ -468,7 +520,7 @@ describe('golden', () => {
           <div class="courier"><span>LogesTechs</span><b dir="ltr">SY-10002</b></div>
         </header>
         <div class="who">
-          <p class="name">محمد الشمري</p>
+          <p class="name" dir="auto">محمد الشمري</p>
           <p class="phones" dir="ltr">0933123456  ·  0944765432</p>
           <p class="place" style="-webkit-line-clamp:3">عمان — شارع المدينة</p>
         </div>

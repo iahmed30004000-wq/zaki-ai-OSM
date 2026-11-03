@@ -199,9 +199,25 @@ const WIDTH_PER_SCALE = 60;
  * generous side, so a line is counted as wrapping a little before it does
  * and the scale never grows into a clipped address. Measured in Chrome on
  * Tahoma: bold Arabic 0.47–0.58 em a character (a short name is the
- * widest), regular 0.44–0.50, phone digits 0.64.
+ * widest), regular 0.44–0.50, phone digits 0.64; bold Latin 0.54–0.64
+ * (capitals and «m» widen it), regular 0.47. A Latin letter is counted at
+ * its own width — a Latin name measured as Arabic was cut at scale 1.05.
  */
 const ADV = { regular: 0.55, bold: 0.6, digits: 0.65 } as const;
+const LATIN_ADV = { regular: 0.6, bold: 0.68 } as const;
+/**
+ * A wrapped line breaks between words, so it holds less than the full
+ * width: a part counted as wrapping is counted on 90 % of it.
+ */
+const WRAP_SLACK = 0.9;
+/** The customer's name wraps to a second line rather than lose its end; never a third. */
+const NAME_MAX_LINES = 2;
+/**
+ * Height kept back from the paper when fitting: Chrome's line boxes and
+ * borders round up, and a two-line name on 75×50 measured 0.8 mm over the
+ * sum of its line heights.
+ */
+const FIT_SLACK_MM = 1;
 /** «المبلغ عند الاستلام» — the label of the COD box: 8.9 em in Tahoma bold, counted as 9.3. */
 const COD_LABEL = 'المبلغ عند الاستلام';
 const COD_LABEL_EM = 9.3;
@@ -213,6 +229,14 @@ const NOTE_LEAD = 'ملاحظة: ';
 /** One line of text this size, in millimetres, at scale `s`. */
 const lineMm = (pt: number, s: number, line = LINE) => pt * PT_MM * line * s;
 const charMm = (pt: number, s: number, adv: number) => pt * PT_MM * s * adv;
+/** The width of `text` on one line, each Latin letter at the Latin width. */
+function textMm(text: string, pt: number, s: number, weight: 'regular' | 'bold'): number {
+  const latin = (text.match(/[A-Za-z]/g) ?? []).length;
+  return charMm(pt, s, 1) * (latin * LATIN_ADV[weight] + (text.length - latin) * ADV[weight]);
+}
+/** Lines a wrapping part takes: one if it fits the width, else counted on the slack width. */
+const linesOf = (widthMm: number, innerW: number) =>
+  widthMm <= innerW ? 1 : Math.ceil(widthMm / (innerW * WRAP_SLACK));
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
@@ -293,6 +317,8 @@ export interface LabelFit {
   /** The COD box's short label. */
   codShort: boolean;
   foot: boolean;
+  /** Lines the customer's name takes at `fit` (it is printed on up to two). */
+  nameLines: number;
   /** The type sizes actually printed, in points. */
   pt: { body: number; name: number; phones: number; codAmount: number };
   /**
@@ -347,11 +373,11 @@ function linesAt(g: Geometry, need: LabelNeed, s: number, codShort = false) {
     need.cod.length * charMm(PT.codAmount, s, ADV.digits) +
     2 * MM.codSide * s + 2 * MM.codBorder + 2;
   return {
-    place: wraps(need.place.length, charMm(PT.body, s, ADV.bold), g.innerW),
-    note: need.note ? wraps(NOTE_LEAD.length + need.note.length, charMm(PT.body, s, ADV.regular), g.innerW) : 0,
+    place: linesOf(textMm(need.place, PT.body, s, 'bold'), g.innerW),
+    note: need.note ? linesOf(textMm(NOTE_LEAD + need.note, PT.body, s, 'regular'), g.innerW) : 0,
     phones: phonesText ? wraps(phonesText.length, charMm(PT.phones, s, ADV.digits) + 0.11, g.innerW) : 0,
     cod: codW > g.innerW ? 2 : 1,
-    nameFits: need.name.length * charMm(PT.name, s, ADV.bold) <= g.innerW,
+    name: linesOf(textMm(need.name, PT.name, s, 'bold'), g.innerW),
   };
 }
 
@@ -372,7 +398,7 @@ function heightAt(g: Geometry, need: LabelNeed, s: number, show: Show) {
   const foot = show.foot ? lineMm(PT.foot, s) + MM.footPad * s + MM.footRule : 0;
   // Six rows in the grid, five gaps — an empty row keeps its gap.
   const gaps = 5 * (show.tight ? MM.tightGap : MM.gap) * s;
-  const who = lineMm(PT.name, s, NAME_LINE) + L.phones * lineMm(PT.phones, s);
+  const who = Math.min(NAME_MAX_LINES, L.name) * lineMm(PT.name, s, NAME_LINE) + L.phones * lineMm(PT.phones, s);
   const reserved = head + cod + codes + foot + gaps + who;
 
   const place = Math.min(show.place, L.place);
@@ -466,7 +492,7 @@ export function fitFor(size: SheetSize, need?: LabelNeed): LabelFit {
     note: n.note ? t.note : 0,
     items: t.items === 0 ? 0 : Math.min(t.items, Math.max(1, n.items)),
   };
-  const fits = (s: number, show: Show) => heightAt(g, n, s, show).full <= g.usable;
+  const fits = (s: number, show: Show) => heightAt(g, n, s, show).full <= g.usable - FIT_SLACK_MM;
 
   let show = want;
   let s = floor;
@@ -480,14 +506,16 @@ export function fitFor(size: SheetSize, need?: LabelNeed): LabelFit {
     const least = legacyScale(size);
     while (!fits(s, show) && s - 0.01 >= least) s = r2(s - 0.01);
   } else {
-    // Grow while it still fits, the name still fits its one line, and up to
-    // a size the width carries (a 100 mm label: about 1.55, body 14 pt).
-    const nameFitsAtFloor = linesAt(g, n, floor).nameFits;
+    // Grow while it still fits (the name's lines counted), the name stays
+    // inside its two lines — it is wrapped, never cut — and up to a size
+    // the width carries (a 100 mm label: about 1.55, body 14 pt). A name
+    // already past two lines at the floor is not made any longer.
+    const nameLinesAtFloor = Math.max(NAME_MAX_LINES, linesAt(g, n, floor).name);
     const cap = Math.max(floor, Math.min(MAX_SCALE, g.innerW / WIDTH_PER_SCALE));
     while (s + 0.01 <= cap) {
       const next = r2(s + 0.01);
       if (!fits(next, show)) break;
-      if (nameFitsAtFloor && !linesAt(g, n, next).nameFits) break;
+      if (linesAt(g, n, next).name > nameLinesAtFloor) break;
       s = next;
     }
   }
@@ -508,6 +536,7 @@ export function fitFor(size: SheetSize, need?: LabelNeed): LabelFit {
     body: show.body,
     codShort: show.codShort,
     foot: show.foot,
+    nameLines: h.lines.name,
     qrCaptionPt: show.qr ? qrCaption(g.qr, n.ref ?? '', s, c) : 0,
     pt: {
       body: r2(PT.body * s),
@@ -633,7 +662,7 @@ function labelHtml(l: LabelView, size: SheetSize, store: SheetStore): string {
       : ''
   }
   <div class="who">
-    <p class="name">${esc(l.name)}</p>
+    <p class="name" dir="auto">${esc(l.name)}</p>
     ${phones.length ? `<p class="phones" dir="ltr">${phones.map(esc).join('  ·  ')}</p>` : ''}
     <p class="place" style="-webkit-line-clamp:${t.place}">${esc(l.place)}</p>
   </div>
@@ -698,8 +727,12 @@ export const LABEL_CSS = `  .label { overflow: hidden; display: grid; gap: calc(
 
   .who { overflow: hidden; }
   .who p { margin: 0; }
+  /* The name wraps to a second line rather than lose its end — an
+     ellipsis cut the family name, and in this right-to-left box the START
+     of a Latin name. dir="auto" on the element sets a Latin name left to right. */
   .name { font-size: calc(${PT.name}pt * var(--s)); font-weight: bold; line-height: ${NAME_LINE};
-          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+          display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: ${NAME_MAX_LINES};
+          overflow: hidden; overflow-wrap: anywhere; }
   .phones { font-size: calc(${PT.phones}pt * var(--s)); font-weight: bold; letter-spacing: .4px; text-align: right; }
   .place { font-weight: bold; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
 
