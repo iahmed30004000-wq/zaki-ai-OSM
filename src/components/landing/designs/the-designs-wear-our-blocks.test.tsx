@@ -11,6 +11,10 @@ import type { DesignSkin } from '@/lib/landing-designs/skin';
 import { repoFile, stripComments } from '@/lib/guard-source';
 import { PageBlocks, type BlockContext } from '../blocks/PageBlocks';
 import OrderForm from '../OrderForm';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { designIdOf, loadDesign } from '@/lib/landing-designs/load';
+import { noDesignContext, noDesignSections } from './no-design-page.fixture';
 
 /**
  * OUR BLOCKS, OUR FORM, THEIR LOOK — under every one of the designs.
@@ -58,14 +62,46 @@ const skins = async () => Promise.all(DESIGN_IDS.map(async (id) => (await DESIGN
 /** Their default copy, from the harvest — none of it may ever be on our page. */
 const THEIRS = ['+50K', 'عميل سعيد', 'ضمان استرداد', 'مشترية موثقة', 'مفحوص قبل الشحن', 'جودة عالية', 'كوزمتكس', 'تسوق آمن', 'ليش رح تحبه', 'كيف تطلب', 'عبّي النموذج'];
 
+/**
+ * TODAY'S PAGE, AS MAIN DREW IT BEFORE ANY OF THIS EXISTED.
+ *
+ * `__golden__/no-design.html` was rendered on `osm/main` (3be97444) by this
+ * same call — `render(<PageBlocks sections={noDesignSections()}
+ * ctx={noDesignContext()} />).container.innerHTML` — from a worktree with no
+ * design code in it. Comparing a missing `design` with `design: null` proved
+ * nothing (both take one path); comparing with what main drew does: one
+ * element added to the no-design path fails it (mutation-checked).
+ *
+ * If a later change to the plain renderer is meant, the golden copy is
+ * re-taken the same way, on the commit that changes it — never rewritten
+ * from this branch's own output.
+ */
+const GOLDEN = readFileSync(join(__dirname, '__golden__', 'no-design.html'), 'utf8').replace(/\r\n/g, '\n');
+
 describe('a page with no design is exactly today’s page', () => {
-  it('draws the same markup with the field absent, null, or naming nothing this build carries', () => {
-    const sections = page();
-    const plain = render(<PageBlocks sections={sections} ctx={ctx()} />).container.innerHTML;
-    cleanup();
-    const nulled = render(<PageBlocks sections={sections} ctx={ctx({ design: null })} />).container.innerHTML;
-    expect(nulled).toBe(plain);
-    expect(plain).not.toMatch(/data-zd-role|bpr-section|zd-order-section/);
+  it('with the field absent: the markup main drew, byte for byte', () => {
+    const html = render(<PageBlocks sections={noDesignSections()} ctx={noDesignContext()} />).container.innerHTML;
+    expect(html).toBe(GOLDEN);
+  });
+
+  it('with `design: null`: the same markup', () => {
+    const html = render(<PageBlocks sections={noDesignSections()} ctx={{ ...noDesignContext(), design: null }} />).container.innerHTML;
+    expect(html).toBe(GOLDEN);
+  });
+
+  it('with a theme naming a design this build does not carry: read as none, the same markup', async () => {
+    // The page's own path: `loadDesign(designIdOf(lp.theme))` in LandingPageView.
+    const design = await loadDesign(designIdOf(JSON.stringify({ accent: '#e11d48', design: 'no-such-design' })));
+    expect(design).toBeNull();
+    const html = render(<PageBlocks sections={noDesignSections()} ctx={{ ...noDesignContext(), design }} />).container.innerHTML;
+    expect(html).toBe(GOLDEN);
+  });
+
+  it('and the golden copy is a real page — every block drew, none of it designed', () => {
+    for (const w of ['طاقية الشعر الأصلية', 'ميزة كتبها البائع', 'سؤال كتبه البائع؟', 'مشتري مؤكَّد', 'zaki-order-form', 'lp-sticky', 'lp-compare', 'lp-quiz']) {
+      expect(GOLDEN, w).toContain(w);
+    }
+    expect(GOLDEN).not.toMatch(/data-design|data-zd-role|bpr-section|zd-order-section/);
   });
 });
 
@@ -122,6 +158,10 @@ describe('the designed first screen prices exactly as the plain one', () => {
     ['no default: the first bundle', [{ ...OFFER, isDefault: false, listPrice: null }, { ...OFFER, id: 'o2', price: 80, isDefault: false }]],
     ['a claimed old price only', [{ ...OFFER, listPrice: null, compareAtPrice: 70 }]],
     ['an «old» price under the new one is not struck', [{ ...OFFER, listPrice: 40 }]],
+    // The default is chosen by its flag, not by its place: the second bundle is the one preselected.
+    ['the default bundle is not the first one', [{ ...OFFER, isDefault: false }, { ...OFFER, id: 'o2', isDefault: true, price: 80 }]],
+    // Both struck figures known: the certain one (the bundle's own list price) wins over the claimed one.
+    ['the list price beats the claimed old price', [{ ...OFFER, listPrice: 60, compareAtPrice: 70 }]],
   ];
   it.each(shapes)('%s', async (_name, offers) => {
     const skin = (await DESIGN_LOADERS['cod-bold']()).default;
