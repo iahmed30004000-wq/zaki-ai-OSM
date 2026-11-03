@@ -513,9 +513,9 @@ export async function LandingPageView({ target }: { target: LandingPageTarget })
               dir={directionOf(lp.store?.language)}
               style={designRootVars(skin) as React.CSSProperties}
             >
-              {!wearsChrome && <DesignNavbar productName={productName} />}
+              {!wearsChrome && <DesignNavbar productName={productName} skin={skin} />}
               <PageBlocks sections={sections} ctx={{ ...blockCtx, design: skin }} />
-              <DesignMotion reveal={skin.reveal} />
+              <DesignMotion reveal={skin.reveal} animated={skin.animated} />
             </div>
           ) : (
             <PageBlocks sections={sections} ctx={blockCtx} />

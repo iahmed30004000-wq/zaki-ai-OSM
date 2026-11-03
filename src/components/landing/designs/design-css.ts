@@ -1,4 +1,5 @@
 import { SHELL_CSS } from './generated/shell';
+import { IMX_KIT_CSS } from './generated/imx-kit';
 import type { DesignSkin } from '@/lib/landing-designs/skin';
 
 /**
@@ -70,7 +71,11 @@ const SEAMS = [
   '[data-design] .zd-frame{aspect-ratio:1/0.8;width:100%;display:flex;align-items:center;justify-content:center;border:2px dashed var(--store-accent-border);background:var(--store-accent-tint);color:var(--store-accent);font-size:12px;font-weight:700;border-radius:18px}',
 ].join('');
 
-/** Everything a page wearing `skin` needs drawn, in cascade order. */
-export function designCss(skin: Pick<DesignSkin, 'css'>, extra = ''): string {
-  return REBOOT + SHELL_CSS + SEAMS + skin.css + extra;
+/**
+ * Everything a page wearing `skin` needs drawn, in cascade order. An animated
+ * design also wears the motion kit's stylesheet — the one all twenty-eight
+ * share, so it is written once (`generated/imx-kit.ts`) and sent only to them.
+ */
+export function designCss(skin: Pick<DesignSkin, 'css' | 'animated'>): string {
+  return REBOOT + SHELL_CSS + SEAMS + (skin.animated ? IMX_KIT_CSS : '') + skin.css;
 }

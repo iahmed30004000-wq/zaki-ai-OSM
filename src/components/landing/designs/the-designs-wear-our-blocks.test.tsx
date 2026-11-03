@@ -246,17 +246,21 @@ describe('the real order form, inside a design', () => {
   });
 });
 
-const { start } = vi.hoisted(() => ({ start: vi.fn() }));
+const { start, fx, kit } = vi.hoisted(() => ({ start: vi.fn(), fx: vi.fn(), kit: vi.fn() }));
 vi.mock('./motion/bpr-reveal', () => ({ start: () => start() }));
+vi.mock('./motion/imx-fx', () => ({ start: () => fx() }));
+vi.mock('./motion/mx-kit', () => ({ start: () => kit() }));
 
 describe('the motion is loaded lazily, and never for whoever asked for stillness', () => {
 
-  const mount = async (reduce: boolean, reveal = true) => {
+  const mount = async (reduce: boolean, reveal = true, animated = false) => {
     start.mockClear();
+    fx.mockClear();
+    kit.mockClear();
     window.matchMedia = ((q: string) => ({ matches: reduce && q.includes('reduce'), media: q, addEventListener() {}, removeEventListener() {} })) as never;
     const { DesignMotion } = await import('./DesignMotion');
     await act(async () => {
-      render(<DesignMotion reveal={reveal} />);
+      render(<DesignMotion reveal={reveal} animated={animated} />);
       // Long enough for a lazy chunk that WAS asked for to have arrived.
       await new Promise((r) => setTimeout(r, 150));
     });
@@ -272,6 +276,20 @@ describe('the motion is loaded lazily, and never for whoever asked for stillness
     expect(start).not.toHaveBeenCalled();
   });
 
+  it('an animated design loads its effect layer, then its kit — and not the static reveal', async () => {
+    await mount(false, false, true);
+    await vi.waitFor(() => expect(kit).toHaveBeenCalledTimes(1));
+    expect(fx).toHaveBeenCalledTimes(1);
+    expect(fx.mock.invocationCallOrder[0]).toBeLessThan(kit.mock.invocationCallOrder[0]);
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it('and loads none of it under prefers-reduced-motion', async () => {
+    await mount(true, false, true);
+    expect(fx).not.toHaveBeenCalled();
+    expect(kit).not.toHaveBeenCalled();
+  });
+
   it('loads nothing for a design with no motion', async () => {
     await mount(false, false);
     expect(start).not.toHaveBeenCalled();
@@ -284,5 +302,71 @@ describe('the motion is loaded lazily, and never for whoever asked for stillness
 
   it('and the uploaded-HTML sanitizer has nothing to do with any of it', () => {
     expect(repoFile('src/lib/landing-html-sanitize.ts')).not.toMatch(/landing-designs/);
+  });
+});
+
+describe('the animated designs, with our words', () => {
+  it('there are twenty-eight, each with its effect layer in the first screen and no text in it', async () => {
+    const animated = (await skins()).filter((s) => s.animated);
+    expect(animated).toHaveLength(28);
+    for (const skin of animated) {
+      const { container } = render(<PageBlocks sections={page()} ctx={ctx({ design: skin })} />);
+      const fxLayer = container.querySelector('[data-zd-role="hero"] .imx-fx');
+      expect(fxLayer, skin.id).not.toBeNull();
+      expect(fxLayer!.textContent?.trim(), skin.id).toBe('');
+      expect(fxLayer!.getAttribute('aria-hidden'), skin.id).toBe('true');
+      cleanup();
+    }
+  });
+
+  it('the running line runs the page’s own benefit titles — or the trust facts — never theirs', async () => {
+    const skin = (await DESIGN_LOADERS['imx-nebula']()).default;
+    const { container } = render(<PageBlocks sections={page()} ctx={ctx({ design: skin })} />);
+    const rows = container.querySelectorAll('.mx-marquee .mx-marquee-row');
+    expect(rows).toHaveLength(2);
+    expect(rows[0].textContent).toContain('ميزة كتبها البائع');
+    expect(rows[1].getAttribute('aria-hidden')).toBe('true');
+    cleanup();
+    const noBenefits = page().filter((s) => s.type !== 'benefits');
+    const r2 = render(<PageBlocks sections={noBenefits} ctx={ctx({ design: skin })} />);
+    expect(r2.container.querySelector('.mx-marquee-row')?.textContent).toContain(trustRow()[0].title);
+  });
+
+  it('a kit section of theirs carries a block of ours: benefits in the cascade, steps on the road', async () => {
+    const skin = (await DESIGN_LOADERS['imx-aurum']()).default;
+    const steps = { ...newSection('timeline'), title: 'مراحل كتبها البائع', points: [{ when: 'أول أسبوع', what: 'شي' }] } as LandingSection;
+    const { container } = render(<PageBlocks sections={[...page(), steps]} ctx={ctx({ design: skin })} />);
+    const card = container.querySelector('.mx-cascade .mx-cascade-card');
+    expect(card?.textContent).toContain('ميزة كتبها البائع');
+    expect(card?.querySelector('img')?.getAttribute('src')).toBe('/api/media/hero.jpg');
+    expect(container.querySelector('.mx-road .mx-road-title')?.textContent).toBe('مراحل كتبها البائع');
+    expect(container.querySelector('.mx-road .mx-road-step')?.textContent).toContain('أول أسبوع');
+  });
+
+  it('their top bar wears the product’s name and OUR order button, in place of ours', async () => {
+    const { DesignNavbar } = await import('./DesignedBlocks');
+    const skin = (await DESIGN_LOADERS['imx-aurum']()).default;
+    const { container } = render(<DesignNavbar productName="طاقية" skin={skin} />);
+    expect(container.querySelector('.mx-topbar .mx-topbar-brand')?.textContent).toBe('طاقية');
+    expect(container.querySelector('.mx-topbar a.mx-topbar-cta')?.getAttribute('href')).toBe('#zf-full_name');
+    expect(container.querySelector('.zd-navbar')).toBeNull();
+    cleanup();
+    const plain = render(<DesignNavbar productName="طاقية" skin={(await DESIGN_LOADERS['imx-nebula']()).default} />);
+    expect(plain.container.querySelector('.zd-navbar')).not.toBeNull();
+  });
+
+  it('the real order form inside an animated design keeps its fields, its offers and its bot trap — and no motion hook', async () => {
+    const skin = (await DESIGN_LOADERS['imx-nebula']()).default;
+    const form = (
+      <OrderForm slug="s" productName="طاقية" basePrice={30} currency="USD" offers={[OFFER]} recommendations={[]} regions={['دمشق']} />
+    );
+    const { container } = render(<PageBlocks sections={page()} ctx={ctx({ design: skin, form })} />);
+    const root = container.querySelector('.zd-order-section #zaki-order-form');
+    expect(root).not.toBeNull();
+    expect(root!.querySelector('#zf-full_name')).not.toBeNull();
+    expect(root!.querySelector('input[name="website"]')).not.toBeNull();
+    // The kit hides what carries its reveal classes until the script shows it; the form must never wait on a script.
+    expect(root!.closest('[class*="mx-"]')).toBeNull();
+    expect(root!.querySelector('[class*="mx-up"], [class*="mx-split"], [class*="mx-stagger"], [class*="mx-scale"], [class*="mx-clip"]')).toBeNull();
   });
 });

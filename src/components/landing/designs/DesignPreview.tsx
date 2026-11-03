@@ -67,7 +67,7 @@ export async function DesignPreview({ design, productId }: { design: string; pro
       <style dangerouslySetInnerHTML={{ __html: BLOCK_CSS_WITH_DEV_FONTS }} />
       <style dangerouslySetInnerHTML={{ __html: designCss(skin) }} />
       <div data-design={skin.id} dir="rtl" style={designRootVars(skin) as React.CSSProperties}>
-        <DesignNavbar productName={productName} />
+        <DesignNavbar productName={productName} skin={skin} />
         <PageBlocks
           sections={sections}
           ctx={{
@@ -86,7 +86,7 @@ export async function DesignPreview({ design, productId }: { design: string; pro
             design: skin,
           }}
         />
-        <DesignMotion reveal={skin.reveal} />
+        <DesignMotion reveal={skin.reveal} animated={skin.animated} />
       </div>
     </div>
   );

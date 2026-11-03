@@ -432,9 +432,13 @@ def html_widget(base, w):
         elif not ARABIC.search(n.text()) and not re.search(r'[A-Za-z]{3,}', n.text()):
             parts.append({'m': 'deco', 'node': deco(n)})
         else:
-            # A kit section that carries words (story, cascade, coverflow…):
-            # its words are theirs, so it is not drawn. See the PR's list.
-            parts.append({'m': 'kit', 'cls': ' '.join(n.cls)})
+            # A kit section that carries words (cascade, road, facts, story,
+            # coverflow…). Its words are theirs and stay behind; its shape is
+            # the kit stylesheet's, so the renderer redraws the ones that have
+            # a block of ours to fill them (cascade · road · facts) from the
+            # same classes, with the root's own colour variables.
+            kind = next((c[len('mx-'):] for c in n.cls if c.startswith('mx-')), '')
+            parts.append({'m': 'kit', 'kind': kind, 'cls': ' '.join(n.cls), 'style': style_obj(n.a.get('style'))})
     return {**base, 'k': 'html', 'parts': parts}
 
 

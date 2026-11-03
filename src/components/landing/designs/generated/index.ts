@@ -3,12 +3,40 @@
 import type { DesignSkin } from '@/lib/landing-designs/skin';
 
 /** Every design this build carries, in the harvest's order. */
-export const DESIGN_IDS = ["cod-bold", "quick-order", "orange-energy", "clean-minimal", "problem-solution", "fashion-lookbook", "street-style", "soft-beauty", "rose-gold", "natural-care", "tech-specs", "neon-gadget", "smart-home", "home-cozy", "kitchen-fresh", "kids-fun", "baby-soft", "dark-premium", "oud-luxury", "royal-purple", "sport-power", "wellness-calm", "food-tasty", "gift-joy", "watch-classic", "car-gear", "daybreak", "gentle-glow", "handmade", "fresh-pop", "kitchen-table", "gallery-white", "night-ride", "front-page", "playful", "colour-blocks"] as const;
+export const DESIGN_IDS = ["imx-dusk-field", "imx-golden-hour", "imx-nebula", "imx-blue-filament", "imx-chrome-night", "imx-lava", "imx-helix", "imx-hologram", "imx-deep-space", "imx-paper-crimson", "imx-steel-vault", "imx-autumn-sky", "imx-fizz-pop", "imx-cinematic", "imx-clinic-flow", "imx-studio-reel", "imx-atelier", "imx-orbit", "imx-showcase", "imx-showcase-light", "imx-orb-studio", "imx-aurum", "imx-particles", "imx-glass-blinds", "imx-warp", "imx-dither", "imx-dunes", "imx-nebula-film", "cod-bold", "quick-order", "orange-energy", "clean-minimal", "problem-solution", "fashion-lookbook", "street-style", "soft-beauty", "rose-gold", "natural-care", "tech-specs", "neon-gadget", "smart-home", "home-cozy", "kitchen-fresh", "kids-fun", "baby-soft", "dark-premium", "oud-luxury", "royal-purple", "sport-power", "wellness-calm", "food-tasty", "gift-joy", "watch-classic", "car-gear", "daybreak", "gentle-glow", "handmade", "fresh-pop", "kitchen-table", "gallery-white", "night-ride", "front-page", "playful", "colour-blocks"] as const;
 
 export type DesignId = (typeof DESIGN_IDS)[number];
 
 /** One lazy import per design: a page loads the one it wears. */
 export const DESIGN_LOADERS: Record<DesignId, () => Promise<{ default: DesignSkin }>> = {
+  "imx-dusk-field": () => import("./imx-dusk-field"),
+  "imx-golden-hour": () => import("./imx-golden-hour"),
+  "imx-nebula": () => import("./imx-nebula"),
+  "imx-blue-filament": () => import("./imx-blue-filament"),
+  "imx-chrome-night": () => import("./imx-chrome-night"),
+  "imx-lava": () => import("./imx-lava"),
+  "imx-helix": () => import("./imx-helix"),
+  "imx-hologram": () => import("./imx-hologram"),
+  "imx-deep-space": () => import("./imx-deep-space"),
+  "imx-paper-crimson": () => import("./imx-paper-crimson"),
+  "imx-steel-vault": () => import("./imx-steel-vault"),
+  "imx-autumn-sky": () => import("./imx-autumn-sky"),
+  "imx-fizz-pop": () => import("./imx-fizz-pop"),
+  "imx-cinematic": () => import("./imx-cinematic"),
+  "imx-clinic-flow": () => import("./imx-clinic-flow"),
+  "imx-studio-reel": () => import("./imx-studio-reel"),
+  "imx-atelier": () => import("./imx-atelier"),
+  "imx-orbit": () => import("./imx-orbit"),
+  "imx-showcase": () => import("./imx-showcase"),
+  "imx-showcase-light": () => import("./imx-showcase-light"),
+  "imx-orb-studio": () => import("./imx-orb-studio"),
+  "imx-aurum": () => import("./imx-aurum"),
+  "imx-particles": () => import("./imx-particles"),
+  "imx-glass-blinds": () => import("./imx-glass-blinds"),
+  "imx-warp": () => import("./imx-warp"),
+  "imx-dither": () => import("./imx-dither"),
+  "imx-dunes": () => import("./imx-dunes"),
+  "imx-nebula-film": () => import("./imx-nebula-film"),
   "cod-bold": () => import("./cod-bold"),
   "quick-order": () => import("./quick-order"),
   "orange-energy": () => import("./orange-energy"),
