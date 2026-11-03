@@ -163,3 +163,59 @@ describe('and finishing a claim she already holds is not a new order', () => {
     expect(db.order.count, 'حسب الطلبات رغم إنّه طلبها هي').not.toHaveBeenCalled();
   });
 });
+
+/**
+ * RV706 (the owner, 3/11: «اه»): the 300 counts what is held for her too. This door — a manager or a moderator taking one order by
+ * its id — asks the same cap: at 300 because of holds, only an order that is itself held for her may still be taken (it is already
+ * counted); anything new is refused, with a sentence that says the held ones count.
+ */
+describe('RV706 — what is held for her counts toward the 300 here too', () => {
+  /** Her desk, answered by what each query asks rather than by call order. */
+  function deskWithHolds({ total, held, thisOneIsHers }: { total: number; held: number; thisOneIsHers: boolean }) {
+    db.order.count.mockReset().mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
+      if ('contactAttempts' in where) return 0;
+      if (where.assignedToId === 'a1') return held;
+      return total;
+    });
+    db.order.findFirst.mockReset().mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
+      if (where.assignedToId === 'a1') return thisOneIsHers ? { id: 'o1' } : null;
+      return null;
+    });
+  }
+  const askedWhetherHeldForHer = () =>
+    (db.order.findFirst.mock.calls as unknown as [{ where: Record<string, unknown> }][]).some(
+      ([q]) => q.where.assignedToId === 'a1' && q.where.id === 'o1'
+    );
+
+  it('299 in her hands + 1 held for her = 300: a NEW order is refused, and the sentence says the held one counts', async () => {
+    deskWithHolds({ total: CLAIM_CAPS.total - 1, held: 1, thisOneIsHers: false });
+
+    const res = await take();
+    const body = await res.json();
+
+    expect(res.status, JSON.stringify(body)).toBe(409);
+    expect(body.code).toBe('CAP_TOTAL');
+    expect(body.errorAr).toContain('299 بين يديك و1 محجوز لك');
+    expect(body.errorAr).toContain('المحجوز لك بينعدّ من الحد');
+    expect(atomicClaim).not.toHaveBeenCalled();
+  });
+
+  it('at the same 300, the order that IS held for her is taken — it is already counted', async () => {
+    deskWithHolds({ total: CLAIM_CAPS.total - 1, held: 1, thisOneIsHers: true });
+
+    const res = await take();
+
+    expect(res.status, await res.clone().text()).toBeLessThan(400);
+    expect(atomicClaim).toHaveBeenCalledTimes(1);
+  });
+
+  it('NEGATIVE: 298 in her hands + 1 held = 299 takes a new order, and the extra question is never asked', async () => {
+    deskWithHolds({ total: CLAIM_CAPS.total - 2, held: 1, thisOneIsHers: false });
+
+    const res = await take();
+
+    expect(res.status, await res.clone().text()).toBeLessThan(400);
+    expect(atomicClaim).toHaveBeenCalledTimes(1);
+    expect(askedWhetherHeldForHer()).toBe(false);
+  });
+});

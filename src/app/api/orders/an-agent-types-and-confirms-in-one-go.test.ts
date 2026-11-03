@@ -352,8 +352,14 @@ describe('who the box is honoured for', () => {
 });
 
 describe('the 300 cap still binds', () => {
+  /** Her desk: `inHands` claimed by her, `held` held for her and not yet pulled (RV706: both count) — answered by what is asked. */
+  const desk = (inHands: number, held = 0) =>
+    (db.order.count as unknown as { mockImplementation(f: (q: { where?: Record<string, unknown> }) => Promise<number>): void }).mockImplementation(
+      async ({ where }) => (where?.assignedToId ? held : inHands)
+    );
+
   it('NEGATIVE: holding 300 — the order goes to the pool, NO call is written (whoever pulls it still rings), «ما اتأكد — وصلت للحد»', async () => {
-    db.order.count.mockResolvedValue(300);
+    desk(300);
     const abeer = await person('abeer', 'CONFIRMATION_AGENT', AGENT_TICKED);
     const r = await create(abeer, body({ confirmNow: true }));
     expect(r.status).toBe(200);
@@ -364,7 +370,24 @@ describe('the 300 cap still binds', () => {
   });
 
   it('holding 299 — still hers', async () => {
-    db.order.count.mockResolvedValue(299);
+    desk(299);
+    const abeer = await person('abeer', 'CONFIRMATION_AGENT', AGENT_TICKED);
+    const r = await create(abeer, body({ confirmNow: true }));
+    expect(r.row?.claimedById).toBe('abeer');
+    expect(attemptWrites).toHaveLength(1);
+  });
+
+  it('RV706: 299 in her hands + 1 held for her = 300 — «أكّده الآن» sends it to the pool, as at 300 in her hands', async () => {
+    desk(299, 1);
+    const abeer = await person('abeer', 'CONFIRMATION_AGENT', AGENT_TICKED);
+    const r = await create(abeer, body({ confirmNow: true }));
+    expect(r.row?.claimedById).toBeNull();
+    expect(attemptWrites).toEqual([]);
+    expect(r.json.confirmNow).toEqual({ ready: false, code: 'CAP_FULL', reason: ENTRY_CAP_FULL_MESSAGE });
+  });
+
+  it('RV706 NEGATIVE: 298 in her hands + 1 held = 299 — still hers', async () => {
+    desk(298, 1);
     const abeer = await person('abeer', 'CONFIRMATION_AGENT', AGENT_TICKED);
     const r = await create(abeer, body({ confirmNow: true }));
     expect(r.row?.claimedById).toBe('abeer');

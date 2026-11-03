@@ -185,7 +185,9 @@ vi.mock('./db', () => {
 });
 vi.mock('./notification-audience', () => ({ resolveAudience: vi.fn(async () => world.audience) }));
 
-import { CLAIM_CAPS, pullNextOrder, waitingCount, reservedForColleaguesCount } from './confirmation-queue';
+import {
+  CLAIM_CAPS, capLoad, capRefusal, capRoom, ownedCounts, pullNextOrder, pullRefusal, waitingCount, reservedForColleaguesCount,
+} from './confirmation-queue';
 import { MAX_TWINS_HELD, TWIN_HELD_ACTION, holdTwinsForPuller, pullLockKey, twinsToHoldWhere } from './twins-follow-the-pull';
 import { reserveReturningCustomers } from './reserve-returning-customers';
 import { isReservedNow, reservedWhere } from './order-reservation';
@@ -581,5 +583,158 @@ describe('the returning-customer rule is unchanged, and the two compose', () => 
 
     expect(await reserveReturningCustomers(scope, NOW)).toBe(1);
     expect([regular, first, ...pair, winback, old].map((r) => byId(r.id).assignedToId)).toEqual(['sara', null, null, null, null, null]);
+  });
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * RV706 — WHAT IS HELD FOR HER COUNTS TOWARD THE 300 (the owner, 3/11: «اه»).
+ *
+ * The load is in her hands + held for her (`capLoad`), asked from one place: the pull's refusal, the room a twin hold may take,
+ * and the returning-customer job's room. At the cap she is refused anything NEW; what is held for her is still hers to take
+ * (taking it moves it from one count to the other, the load does not grow).
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+describe('RV706 — what is held for her counts toward the 300', () => {
+  /** In her hands, every one rung. */
+  const inHands = (n: number, who = 'sara') => {
+    for (let i = 0; i < n; i++) {
+      order({ customerId: `mine-${who}-${i}`, confirmationStatus: 'IN_PROGRESS', claimedById: who, claimedAt: hoursAgo(1), contactAttempts: [{}], claimHistory: [{ action: 'CLAIMED' }] });
+    }
+  };
+  /** Held for her (a returning customer's order, or a twin), not yet pulled. */
+  const heldForHer = (n: number, over: Row = {}, who = 'sara') =>
+    Array.from({ length: n }, (_, i) =>
+      order({ customerId: `held-${who}-${i}`, createdAt: minutesAgo(100 + i), assignedToId: who, assignedAt: minutesAgo(30), assignee: world.users.get(who), ...over })
+    );
+
+  describe('the one helper', () => {
+    it('worked example: 290 in her hands + 10 held = 300, no room; the refusal says the held ones count', () => {
+      const counts = { total: 290, heldForHer: 10, withoutAttempt: 0 };
+      expect(capLoad(counts)).toBe(300);
+      expect(capRoom(counts)).toBe(0);
+      const refused = capRefusal(counts, false);
+      expect(refused?.code).toBe('CAP_TOTAL');
+      expect(refused?.message).toBe(
+        'بلغت الحد الأقصى (300 طلب): 290 بين يديك و10 محجوز لك — المحجوز لك بينعدّ من الحد. خلّص من اللي بإيدك أو اسحب المحجوز لك.'
+      );
+      // Taking one of the held ones does not grow the load.
+      expect(capRefusal(counts, true)).toBeNull();
+    });
+
+    it('the edge, 299 and 300', () => {
+      expect(capRefusal({ total: 298, heldForHer: 1, withoutAttempt: 0 }, false)).toBeNull(); // 299
+      expect(capRefusal({ total: 299, heldForHer: 1, withoutAttempt: 0 }, false)?.code).toBe('CAP_TOTAL'); // 300
+      expect(capRoom({ total: 298, heldForHer: 1, withoutAttempt: 0 })).toBe(1);
+    });
+
+    it('in her hands alone at 300 is refused whatever she takes, in the sentence it always had', () => {
+      expect(capRefusal({ total: 300, heldForHer: 4, withoutAttempt: 0 }, true)?.code).toBe('CAP_TOTAL');
+      expect(pullRefusal({ total: 300, withoutAttempt: 0 })).toEqual({ code: 'CAP_TOTAL', message: 'بلغت الحد الأقصى (300 طلب لديك).' });
+    });
+
+    it('NEGATIVE: below the cap with holds she may pull; no holds means no change at all', () => {
+      expect(pullRefusal({ total: 100, heldForHer: 50, withoutAttempt: 0 })).toBeNull();
+      expect(pullRefusal({ total: 299, withoutAttempt: 0 })).toBeNull();
+      expect(capRoom({ total: 300, heldForHer: 9, withoutAttempt: 0 }), 'never negative').toBe(0);
+    });
+
+    it('ownedCounts counts what is held for her — and not a colleague’s hold, a lapsed one, or one in another store', async () => {
+      inHands(3);
+      heldForHer(2);
+      heldForHer(1, {}, 'huda');
+      order({ customerId: 'lapsed', assignedToId: 'sara', assignedAt: hoursAgo(25), assignee: world.users.get('sara') });
+      order({ customerId: 'elsewhere', storeId: 's2', assignedToId: 'sara', assignedAt: minutesAgo(5), assignee: world.users.get('sara') });
+      expect(await ownedCounts(db as never, scope, 'sara', NOW)).toMatchObject({ total: 3, heldForHer: 2 });
+    });
+  });
+
+  describe('the pull', () => {
+    it('NEGATIVE: 298 in her hands + 1 held = 299 — she pulls; she is given the held one, and the room left (1) holds one twin', async () => {
+      inHands(CLAIM_CAPS.total - 2);
+      const [hers] = heldForHer(1, { customerId: 'dup' });
+      const twins = [20, 10].map((m) => order({ customerId: 'dup', createdAt: minutesAgo(m) }));
+
+      expect(await pullNextOrder(scope, agent('sara'), CAL, NOW)).toMatchObject({ ok: true, orderId: hers.id });
+      // Load before: 299. Taking the held one leaves it 299; one twin makes it 300 — and no more.
+      expect(twins.map((t) => byId(t.id).assignedToId)).toEqual(['sara', null]);
+      expect(capLoad(await ownedCounts(db as never, scope, 'sara', NOW))).toBe(CLAIM_CAPS.total);
+    });
+
+    it('299 in her hands + 1 held = 300 — nothing new: the pull gives her the held one and leaves the older pool order alone', async () => {
+      inHands(CLAIM_CAPS.total - 1);
+      const pool = order({ createdAt: hoursAgo(5) });
+      const [hers] = heldForHer(1);
+
+      expect(await pullNextOrder(scope, agent('sara'), CAL, NOW)).toMatchObject({ ok: true, orderId: hers.id });
+      expect(byId(pool.id)).toMatchObject({ claimedById: null, assignedToId: null });
+
+      // And now at 300 with nothing held: refused, and the pool order still nobody's.
+      rang(hers.id);
+      const again = await pullNextOrder(scope, agent('sara'), CAL, NOW);
+      expect(again.refusal?.code).toBe('CAP_TOTAL');
+      expect(byId(pool.id).claimedById).toBeNull();
+    });
+
+    it('300 in her hands + 2 held: refused, and the sentence says the held ones count', async () => {
+      inHands(CLAIM_CAPS.total);
+      heldForHer(2);
+      const out = await pullNextOrder(scope, agent('sara'), CAL, NOW);
+      expect(out.ok).toBe(false);
+      expect(out.refusal?.code).toBe('CAP_TOTAL');
+      expect(out.refusal?.message).toContain('300 بين يديك و2 محجوز لك');
+      expect(out.refusal?.message).toContain('المحجوز لك بينعدّ من الحد');
+    });
+
+    it('worked example: 290 in her hands + 7 held = 297 — the held one she is given leaves room for 3 of his 4 other orders, not 9', async () => {
+      inHands(290);
+      const [first] = heldForHer(1, { customerId: 'dup', createdAt: hoursAgo(9) });
+      heldForHer(6);
+      const twins = [40, 30, 20, 10].map((m) => order({ customerId: 'dup', createdAt: minutesAgo(m) }));
+
+      expect(await pullNextOrder(scope, agent('sara'), CAL, NOW)).toMatchObject({ ok: true, orderId: first.id });
+      // Before this change the room was 300 − 290 − 1 = 9 and all four were held: 291 in her hands + 10 held = 301 with her name.
+      expect(twins.map((t) => byId(t.id).assignedToId)).toEqual(['sara', 'sara', 'sara', null]);
+      expect(capLoad(await ownedCounts(db as never, scope, 'sara', NOW))).toBe(CLAIM_CAPS.total);
+    });
+  });
+
+  describe('the returning-customer job', () => {
+    const returningTo = (who: string, fresh: number) => {
+      order({ customerId: 'regular', confirmationStatus: 'CONFIRMED', status: 'CONFIRMED', createdAt: hoursAgo(40), claimedById: who });
+      return Array.from({ length: fresh }, (_, i) => order({ customerId: 'regular', createdAt: minutesAgo(30 - i) }));
+    };
+
+    it('holds no more than her room: 297 in her hands + 2 held = 299 → one of his three new orders, the oldest', async () => {
+      world.audience = [{ id: 'sara' }];
+      inHands(CLAIM_CAPS.total - 3);
+      heldForHer(2);
+      const fresh = returningTo('sara', 3);
+
+      expect(await reserveReturningCustomers(scope, NOW)).toBe(1);
+      expect(fresh.map((r) => byId(r.id).assignedToId)).toEqual(['sara', null, null]);
+      expect(capLoad(await ownedCounts(db as never, scope, 'sara', NOW))).toBe(CLAIM_CAPS.total);
+    });
+
+    it('at 300 by holds nothing is held for her; the orders stay in the shared queue', async () => {
+      world.audience = [{ id: 'sara' }];
+      inHands(CLAIM_CAPS.total - 5);
+      heldForHer(5);
+      const fresh = returningTo('sara', 2);
+
+      expect(await reserveReturningCustomers(scope, NOW)).toBe(0);
+      expect(fresh.map((r) => byId(r.id).assignedToId)).toEqual([null, null]);
+      expect(world.activities).toHaveLength(0);
+    });
+
+    it('NEGATIVE: far from the cap, every new order of his is held, as before; a colleague’s full desk does not stop her', async () => {
+      world.audience = [{ id: 'sara' }, { id: 'huda' }];
+      inHands(CLAIM_CAPS.total, 'huda');
+      inHands(10);
+      const fresh = returningTo('sara', 3);
+
+      expect(await reserveReturningCustomers(scope, NOW)).toBe(3);
+      expect(fresh.map((r) => byId(r.id).assignedToId)).toEqual(['sara', 'sara', 'sara']);
+    });
   });
 });

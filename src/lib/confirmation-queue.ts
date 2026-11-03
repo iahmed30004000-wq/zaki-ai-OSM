@@ -362,7 +362,14 @@ export interface QueueScope {
 }
 
 export interface OwnedCounts {
+  /** In her hands: claimed by her, still open. */
   total: number;
+  /**
+   * HELD FOR HER AND NOT YET PULLED (RV706) — a returning customer's order (`reserve-returning-customers.ts`) or a twin of one
+   * she pulled (`twins-follow-the-pull.ts`). They count toward the 300 (`capLoad`). Optional so the pure refusal rules can still
+   * be tested with a bare count literal; absent is none.
+   */
+  heldForHer?: number;
   withoutAttempt: number;
   /**
    * THE ORDER THE REFUSAL IS ABOUT.
@@ -405,10 +412,10 @@ export function heldWithoutAttemptWhere(scope: QueueScope, holderId?: string) {
   };
 }
 
-/** What this agent currently holds in the confirmation stage. */
-export async function ownedCounts(tx: Tx, scope: QueueScope, userId: string): Promise<OwnedCounts> {
+/** What this agent currently holds in the confirmation stage — in her hands, and held for her. */
+export async function ownedCounts(tx: Tx, scope: QueueScope, userId: string, now: Date = new Date()): Promise<OwnedCounts> {
   const untouchedWhere = heldWithoutAttemptWhere(scope, userId);
-  const [total, withoutAttempt, untouched] = await Promise.all([
+  const [total, withoutAttempt, untouched, heldForHer] = await Promise.all([
     tx.order.count({
       where: { ...scope, claimedById: userId, confirmationStatus: { in: OPEN_CONFIRMATION } },
     }),
@@ -418,8 +425,55 @@ export async function ownedCounts(tx: Tx, scope: QueueScope, userId: string): Pr
       orderBy: { claimedAt: 'asc' },
       select: { id: true, orderNumber: true },
     }),
+    // The very set «اسحب التالي» gives her first (`heldForHerWhere`), so the cap counts exactly what the pull would hand her.
+    tx.order.count({ where: heldForHerWhere(scope, userId, now) }),
   ]);
-  return { total, withoutAttempt, untouched: untouched ?? null };
+  return { total, heldForHer: heldForHer ?? 0, withoutAttempt, untouched: untouched ?? null };
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * THE 300 COUNTS WHAT IS HELD FOR HER TOO (RV706 — the owner, 3/11: «اه»).
+ *
+ * The cap used to count only what was in her hands, and a hold (a returning customer's order, a twin of the one she pulled) took
+ * only the room left after it — so across pulls and the scheduler's runs her name could stand on more than 300 orders. Now the
+ * load is in her hands + held for her, and every place the cap is asked reads it from here and nowhere else:
+ *
+ *   · the pull's refusal and the claim-by-id door (`pullRefusal` / `capRefusal`);
+ *   · her own entry and «أكّده الآن» (`entryOwnership`'s `heldTotal` is `capLoad`);
+ *   · the room a hold may take — the twins at the pull and the returning-customer job (`capRoom`).
+ *
+ * ── AT THE CAP, WHAT IS HELD FOR HER IS STILL HERS TO TAKE ──
+ *
+ * Pulling an order held for her moves it from «held» to «in her hands»: the load does not grow. So at the cap she is refused
+ * anything NEW, and the pull still gives her what is held for her (it gives that first anyway). Refusing that too would leave
+ * an agent with nothing in her hands and 300 held for her unable to work any of them for a day. In her hands alone at 300, she
+ * is refused everything, as before.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+export function capLoad(counts: OwnedCounts): number {
+  return counts.total + (counts.heldForHer ?? 0);
+}
+
+/** How many more orders may carry her name — in her hands or held for her. Never negative. */
+export function capRoom(counts: OwnedCounts): number {
+  return Math.max(0, CLAIM_CAPS.total - capLoad(counts));
+}
+
+/** The cap's sentence. When holds are part of the load it says so, and says they count. */
+export function capFullMessage(counts: OwnedCounts): string {
+  const held = counts.heldForHer ?? 0;
+  if (held <= 0) return `بلغت الحد الأقصى (${CLAIM_CAPS.total} طلب لديك).`;
+  return `بلغت الحد الأقصى (${CLAIM_CAPS.total} طلب): ${counts.total} بين يديك و${held} محجوز لك — المحجوز لك بينعدّ من الحد. خلّص من اللي بإيدك أو اسحب المحجوز لك.`;
+}
+
+/**
+ * MAY SHE TAKE ONE MORE? `takesHeldForHer` is true when what she is about to take is one of the orders held for her (it is
+ * already counted). In her hands at 300 is a refusal whatever she takes; at 300 with holds, only something new is refused.
+ */
+export function capRefusal(counts: OwnedCounts, takesHeldForHer: boolean): PullRefusal | null {
+  const full = counts.total >= CLAIM_CAPS.total || (!takesHeldForHer && capLoad(counts) >= CLAIM_CAPS.total);
+  return full ? { code: 'CAP_TOTAL', message: capFullMessage(counts) } : null;
 }
 
 /**
@@ -547,11 +601,14 @@ export type PullRefusal =
  * The operational rule is the strict one: finish contacting what you hold
  * before taking more. The two caps are the absolute ceilings that also bound
  * bulk assignment paths.
+ *
+ * The total cap counts what is held for her (`capLoad`, RV706). `takesHeldForHer` says whether what she is about to take is one
+ * of those: by default it is whenever she has any, because «اسحب التالي» gives them first — and the pull, at the cap, gives her
+ * nothing else (`pullNextOrder`). The claim-by-id door says it of the very order asked for.
  */
-export function pullRefusal(counts: OwnedCounts): PullRefusal | null {
-  if (counts.total >= CLAIM_CAPS.total) {
-    return { code: 'CAP_TOTAL', message: `بلغت الحد الأقصى (${CLAIM_CAPS.total} طلب لديك).` };
-  }
+export function pullRefusal(counts: OwnedCounts, takesHeldForHer: boolean = (counts.heldForHer ?? 0) > 0): PullRefusal | null {
+  const cap = capRefusal(counts, takesHeldForHer);
+  if (cap) return cap;
   if (counts.withoutAttempt >= CLAIM_CAPS.withoutAttempt) {
     return {
       code: 'CAP_WITHOUT_ATTEMPT',
@@ -765,18 +822,39 @@ export function readyToPullWhere(scope: QueueScope, forUserId?: string, now: Dat
 }
 
 /**
+ * HELD FOR HER, AND TAKEABLE — the set «اسحب التالي» gives her first, and the set the cap counts as held for her (`ownedCounts`).
+ * One filter for both, so the count and the pick cannot disagree.
+ */
+export function heldForHerWhere(scope: QueueScope, userId: string, now: Date) {
+  return { ...claimableWhere(scope), ...reservedForWhere(userId, now) };
+}
+
+/** The oldest order held for her, or null. */
+export async function pickHeldForHer(tx: Tx, scope: QueueScope, userId: string, now: Date): Promise<string | null> {
+  const mine = await tx.order.findFirst({
+    where: heldForHerWhere(scope, userId, now),
+    orderBy: { createdAt: 'asc' },
+    select: { id: true },
+  });
+  return mine?.id ?? null;
+}
+
+/**
  * The next order to work on: a postponed one that is due within the lead
  * days, otherwise the oldest waiting order.
  */
-export async function pickNextCandidate(tx: Tx, scope: QueueScope, now = new Date(), forUserId?: string) {
+export async function pickNextCandidate(
+  tx: Tx,
+  scope: QueueScope,
+  now = new Date(),
+  forUserId?: string,
+  /** The caller already asked `pickHeldForHer` and found none (the pull does, to know whether the cap grows). */
+  opts: { heldForHerAsked?: boolean } = {}
+) {
   // THE ORDER HELD FOR HER COMES FIRST: the customer is a returning one and she is the person he spoke to.
-  if (forUserId) {
-    const mine = await tx.order.findFirst({
-      where: { ...claimableWhere(scope), ...reservedForWhere(forUserId, now) },
-      orderBy: { createdAt: 'asc' },
-      select: { id: true },
-    });
-    if (mine) return mine.id;
+  if (forUserId && !opts.heldForHerAsked) {
+    const mine = await pickHeldForHer(tx, scope, forUserId, now);
+    if (mine) return mine;
   }
 
   // The same two predicates the counter uses — kept as two queries only
@@ -837,13 +915,18 @@ export async function pullNextOrder(
   return db.$transaction(async (tx) => {
     const released = await releaseStaleClaims(tx, scope, cal, now);
 
-    const counts = await ownedCounts(tx, scope, user.id);
+    const counts = await ownedCounts(tx, scope, user.id, now);
     const refusal = pullRefusal(counts);
     if (refusal) return { ok: false, refusal, released };
+    // AT THE CAP WITH HOLDS (RV706): only an order held for her — it is already counted, so taking it does not grow the load.
+    const atCap = capLoad(counts) >= CLAIM_CAPS.total;
 
     for (let attempt = 0; attempt < 5; attempt++) {
-      const candidate = await pickNextCandidate(tx, scope, now, user.id);
+      const hers = await pickHeldForHer(tx, scope, user.id, now);
+      const candidate = hers ?? (atCap ? null : await pickNextCandidate(tx, scope, now, user.id, { heldForHerAsked: true }));
       if (!candidate) {
+        // At the cap and nothing held for her is left to take (a hold let go between the count and here): the cap's sentence.
+        if (atCap) return { ok: false, released, refusal: capRefusal(counts, false)! };
         return {
           ok: false,
           released,
@@ -903,14 +986,15 @@ export async function pullNextOrder(
           note: 'سحب من الطابور',
         },
       });
-      // His other orders that are still waiting and nobody's come to her, never more than the cap leaves room for: `counts.total`
-      // is what she held before this pull, and this pull added one.
+      // His other orders that are still waiting and nobody's come to her, never more than the cap leaves room for (RV706): the room
+      // is counted before this pull over what is in her hands AND held for her; an order taken from the pool adds one, an order
+      // that was held for her only moves from one to the other.
       await holdTwinsForPuller(tx, {
         scope,
         customerId: picked?.customerId,
         pulled: { id: candidate, orderNumber: picked?.orderNumber },
         agentId: user.id,
-        room: CLAIM_CAPS.total - counts.total - 1,
+        room: capRoom(counts) - (hers ? 0 : 1),
         now,
       });
       return { ok: true, orderId: candidate, released };
