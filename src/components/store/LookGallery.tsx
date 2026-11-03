@@ -54,7 +54,7 @@ export function LookGallery({
                     ))}
                   </span>
                   <span className="flex items-center gap-1 text-xs text-[var(--sys-muted-foreground)]">
-                    {look.mode === 'dark' ? <RiMoonLine className="h-3.5 w-3.5" /> : <RiSunLine className="h-3.5 w-3.5" />}
+                    {look.mode === 'dark' ? <RiMoonLine className="h-4 w-4" /> : <RiSunLine className="h-4 w-4" />}
                     {look.mode === 'dark' ? 'غامق' : 'فاتح'}
                   </span>
                 </div>
