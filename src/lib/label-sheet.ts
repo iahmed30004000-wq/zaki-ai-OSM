@@ -144,6 +144,9 @@ const TIER = {
   large: { qr: true, items: MAX_ITEMS, note: 3, place: 3 },
 } as const;
 
+/** The floor the type never goes under where the paper can hold it (≥ 50 mm tall, ≥ 60 wide). */
+export const FLOOR_PT = { body: 9, name: 13, phones: 12, codAmount: 14 } as const;
+
 /**
  * The type sizes of one label at scale 1, in points — and scale 1 is the
  * FLOOR. «مو واضحة ابدا»: on 2/11 the scale started following the paper's
@@ -153,20 +156,19 @@ const TIER = {
  * one at least what the pre-2/11 label printed at the same size.
  */
 const PT = {
-  body: 9,
+  body: FLOOR_PT.body,
   brand: 10,
   courier: 8,
   courierRef: 9,
-  name: 13,
-  phones: 12,
+  name: FLOOR_PT.name,
+  phones: FLOOR_PT.phones,
   codLabel: 8,
-  codAmount: 15,
+  // One point over its floor: the number the driver collects stands out.
+  codAmount: FLOOR_PT.codAmount + 1,
   caption: 8,
   foot: 8,
   tag: 7,
 } as const;
-/** The floor the type never goes under where the paper can hold it (≥ 50 mm tall). */
-export const FLOOR_PT = { body: 9, name: 13, phones: 12, codAmount: 14 } as const;
 
 const PT_MM = 25.4 / 72;
 /** The label's line height, and the name's. */
