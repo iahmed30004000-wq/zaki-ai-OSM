@@ -62,6 +62,8 @@ interface Row {
 
 /** What «CSV الجاهزة للشحن» says when it is pressed under «الكل»: the file's amount and city code are the courier's. */
 const PICK_COURIER_FIRST = 'اختر شركة الشحن من «شركة الشحن (للشحنة)» فوق أولاً — المبلغ ورمز المدينة بالملف من أجورها.';
+/** What «CSV المحدَّدة» is under «الكل» (the owner, 3/11: «الهدف اسحب الطلبات فقط اوزع المناطق ع شركات الشحن»). */
+const NO_COURIER_FILE = 'بدون شركة: ملف للتوزيع بس — بلا مبلغ ولا رمز مدينة';
 
 export function ShipmentsNewScreen() {
   const ask = useAsk();
@@ -219,14 +221,15 @@ export function ShipmentsNewScreen() {
     // The press is never dead: with «الكل» as the courier the button says what is missing, on the line under the tabs
     // where the file's own answer is said, and puts the cursor on the very list to pick from (the owner, 3/11: «ليش تنزيل
     // ال CSV مش شغال» — a greyed button with its reason only in a hover title reads as broken).
-    if (!filters.courier) {
+    // TICKED ROWS ARE THE FILE (the owner, 3/11: «خليها تنزل الي بحددو من المؤجل او جاهز»): from whichever tab is open,
+    // exactly those, in a body. With nothing ticked it is the whole «جاهزة للشحن» tab under the filters, as before.
+    const picked = Object.entries(selected).filter(([, v]) => v).map(([k]) => k);
+    // Ticked rows go without a courier too — a sheet for sharing them out, with no money in it; the whole tab does not.
+    if (!filters.courier && picked.length === 0) {
       setFileNote(PICK_COURIER_FIRST);
       document.querySelector<HTMLSelectElement>('[data-courier-pick] select')?.focus();
       return;
     }
-    // TICKED ROWS ARE THE FILE (the owner, 3/11: «خليها تنزل الي بحددو من المؤجل او جاهز»): from whichever tab is open,
-    // exactly those, in a body. With nothing ticked it is the whole «جاهزة للشحن» tab under the filters, as before.
-    const picked = Object.entries(selected).filter(([, v]) => v).map(([k]) => k);
     setExporting(true);
     try {
       let res: Response;
@@ -234,7 +237,7 @@ export function ShipmentsNewScreen() {
         res = await apiFetch('/api/ops/shipments/export', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ courier: filters.courier, ids: picked }),
+          body: JSON.stringify(filters.courier ? { courier: filters.courier, ids: picked } : { ids: picked }),
         });
       } else {
         const q = new URLSearchParams();
@@ -257,15 +260,18 @@ export function ShipmentsNewScreen() {
       const unready = Number(res.headers.get('X-Left-Unready') ?? 0);
       const blocked = Number(res.headers.get('X-Left-Blocked') ?? 0);
       const gone = Number(res.headers.get('X-Left-Gone') ?? 0);
+      const noCourier = res.headers.get('X-No-Courier') === '1';
       const url = URL.createObjectURL(await res.blob());
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${picked.length > 0 ? 'picked' : 'ready'}-to-ship-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `${noCourier ? 'picked-no-courier' : picked.length > 0 ? 'picked' : 'ready'}-to-ship-${new Date().toISOString().slice(0, 10)}.csv`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 10_000);
-      const what = picked.length > 0 ? `نزل الملف: ${count} طلب من المحدَّدة` : `نزل الملف: ${count} طلب جاهز للشحن`;
+      const what = noCourier
+        ? `نزل الملف بدون شركة: ${count} طلب من المحدَّدة — للتوزيع بس، بلا مبلغ ولا رمز مدينة`
+        : picked.length > 0 ? `نزل الملف: ${count} طلب من المحدَّدة` : `نزل الملف: ${count} طلب جاهز للشحن`;
       setFileNote([what, ...leftOutParts(held, unready, blocked, gone)].join(' · '));
     } catch (e) {
       toast.failed(e instanceof Error ? e.message : 'تعذّر تجهيز الملف');
@@ -814,7 +820,9 @@ export function ShipmentsNewScreen() {
             disabled={exporting}
             title={
               !filters.courier
-                ? 'اختر شركة الشحن أولاً — المبلغ ورمز المدينة بالملف من أجورها'
+                ? selectedCount > 0
+                  ? NO_COURIER_FILE
+                  : 'اختر شركة الشحن أولاً — المبلغ ورمز المدينة بالملف من أجورها'
                 : selectedCount > 0
                   ? 'الطلبات المحدَّدة بس بملف CSV — جاهزة أو مؤجَّلة'
                   : 'الطلبات الجاهزة للشحن بالفلاتر الحالية بملف CSV — بلا المؤجَّلة. حدّد طلبات لتنزّلها هي بس'
@@ -822,7 +830,9 @@ export function ShipmentsNewScreen() {
             className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1.5 disabled:opacity-40 ms-auto"
           >
             {exporting ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiDownload2Line className="w-4 h-4" />}
-            {selectedCount > 0 ? `CSV المحدَّدة (${selectedCount})` : 'CSV الجاهزة للشحن'}
+            {selectedCount > 0
+              ? `CSV المحدَّدة (${selectedCount})${filters.courier ? '' : ' · للتوزيع بلا مبلغ'}`
+              : 'CSV الجاهزة للشحن'}
           </button>
         )}
       </div>
