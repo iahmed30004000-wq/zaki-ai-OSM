@@ -226,7 +226,7 @@ export function PageBlocks({
   // The first picture a visitor sees: the first gallery among the opening blocks. It is the page's largest paint, so it
   // loads at once and first — `lazy` held it back until layout, on the one image that should never wait.
   const lead = shown.slice(0, 3).find((s) => s.type === 'gallery')?.id;
-  const plan = ctx.design ? planDesign(ctx.design, shown) : null;
+  const plan = ctx.design ? planDesign(ctx.design, shown, ctx.trust ?? trustRow()) : null;
 
   return (
     <>

@@ -81,8 +81,12 @@ export type DesignHtmlPart =
   | { m: 'deco'; node: DecoNode }
   | { m: 'marquee'; cls: string; style: DesignStyle; sep: string }
   | { m: 'topbar'; cls: string; style: DesignStyle }
-  /** A kit section that carried their words; drawn by nothing (see the PR). */
-  | { m: 'kit'; cls: string };
+  /**
+   * A kit section that carried their words. Its shape is the kit stylesheet's;
+   * `DesignedBlocks.tsx` redraws the kinds that have a block of ours to fill
+   * them (`cascade`, `road`, `facts`) and draws nothing for the others.
+   */
+  | { m: 'kit'; kind: string; cls: string; style: DesignStyle };
 
 export interface DesignColumn {
   cls: string;

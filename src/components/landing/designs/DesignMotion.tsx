@@ -22,19 +22,28 @@ import { useEffect } from 'react';
  *     scripts rewrite the elements they animate; only the published page and
  *     the design preview mount this.
  */
-export function DesignMotion({ reveal }: { reveal: boolean }) {
+export function DesignMotion({ reveal, animated = false }: { reveal: boolean; animated?: boolean }) {
   useEffect(() => {
-    if (!reveal) return;
+    if (!reveal && !animated) return;
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
     let done = false;
     const run = () => {
       if (done) return;
       done = true;
-      import('./motion/bpr-reveal').then((m) => m.start()).catch(() => {});
+      if (reveal) import('./motion/bpr-reveal').then((m) => m.start()).catch(() => {});
+      if (animated) {
+        // The effect layer first, then the kit — the order their page ran them in. Two chunks, both lazy.
+        import('./motion/imx-fx')
+          .then((m) => m.start())
+          .catch(() => {})
+          .then(() => import('./motion/mx-kit'))
+          .then((m) => m.start())
+          .catch(() => {});
+      }
     };
     const idle = (window as Window & { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback;
     if (idle) idle(run);
     else window.setTimeout(run, 1);
-  }, [reveal]);
+  }, [reveal, animated]);
   return null;
 }
