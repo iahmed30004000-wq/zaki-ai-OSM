@@ -67,6 +67,17 @@ describe('the generated looks and designs carry none of their words', () => {
     expect(LOOK_NAMES.studio.line).not.toContain('عناوين أقسام');
   });
 
+  it('and no line names a part of their storefront that a look here does not draw', () => {
+    // The review of #188, item 9. A look is colours, corners and shadows.
+    const NOT_PORTED = ['إضافة سريعة', 'مع التمرير', 'متحرك', 'بانرات', 'صفوف كثيفة', 'فيديو', 'عدد المبيعات', 'لوك بوك', 'شريط تبويب'];
+    for (const [id, { line }] of Object.entries(LOOK_NAMES)) {
+      expect(NOT_PORTED.filter((w) => line.includes(w)), id).toEqual([]);
+      // and every line still says something, ending as a sentence
+      expect(line.length, id).toBeGreaterThan(12);
+      expect(line.endsWith('.'), id).toBe(true);
+    }
+  });
+
   it('and no shopper page imports the names file', () => {
     for (const rel of [
       '../../components/storefront/StorefrontShell.tsx',
