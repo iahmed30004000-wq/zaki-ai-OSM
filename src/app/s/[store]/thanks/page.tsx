@@ -70,7 +70,8 @@ export default async function ThanksPage({ params, searchParams }: Props) {
 
   const { o } = await searchParams;
   const reference = o && REFERENCE.test(o) ? o : null;
-  const pixels = await getTrackingPixelsForPage(store.companyId, 'PUBLIC', {
+  // «المعاينة الحقيقية» counts nothing: a seller looking at a draft is not a visitor to report.
+  const pixels = store.preview ? [] : await getTrackingPixelsForPage(store.companyId, 'PUBLIC', {
     storeId: store.id,
     countryId: store.countryId,
   });

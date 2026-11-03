@@ -193,6 +193,22 @@ const gallery = z.object({
 });
 
 /**
+ * A link a seller may put on their page.
+ *
+ * Only http(s) and same-site paths. `javascript:` and `data:` are the two
+ * that turn a footer link into a script running on the page, and a landing
+ * page is public, so the check lives in the schema — the one place both the
+ * editor and the server go through.
+ */
+const externalUrl = z
+  .string()
+  .max(2048)
+  .refine(
+    (v) => v === '' || /^https?:\/\//i.test(v) || /^\/[^/]/.test(v) || /^(mailto|tel):/i.test(v),
+    'رابط غير صالح'
+  );
+
+/**
  * Photos that turn by themselves — the first screen of a product, one image
  * at a time. The same uploads as the gallery; the difference is the
  * movement, and the visitor can always swipe or stop it.
@@ -206,6 +222,29 @@ const slider = z.object({
   autoplay: z.boolean().default(true),
   /** Seconds per slide. */
   seconds: z.number().int().min(2).max(10).default(4),
+  /**
+   * «الشرائح» — EACH SLIDE ITS OWN WORDS, as their slider has them: a title,
+   * a line, and a button that goes somewhere.
+   *
+   * OPTIONAL AND WITHOUT A DEFAULT, on purpose: a block saved before this
+   * existed parses with no `slides` key and is drawn from `images` exactly as
+   * it always was. Once present, the slides are the block's pictures (and
+   * `images` is kept in step with them by the editor, so anything that reads
+   * only `images` still sees the same photographs). The link is the footer's
+   * rule — http(s), a same-site path, mailto or tel; never `javascript:`.
+   */
+  slides: z
+    .array(
+      z.object({
+        image: z.string().max(2048).default(''),
+        title: z.string().trim().max(120).default(''),
+        text: z.string().trim().max(240).default(''),
+        button: z.string().trim().max(40).default(''),
+        link: externalUrl.default(''),
+      })
+    )
+    .max(10)
+    .optional(),
 });
 
 /** Long-form description — the one place free text belongs. */
@@ -551,22 +590,6 @@ const trust = z.object({
     text: richTextSchema(80).default(''),
   })).max(4).default([]),
 });
-
-/**
- * A link a seller may put on their page.
- *
- * Only http(s) and same-site paths. `javascript:` and `data:` are the two
- * that turn a footer link into a script running on the page, and a landing
- * page is public, so the check lives in the schema — the one place both the
- * editor and the server go through.
- */
-const externalUrl = z
-  .string()
-  .max(2048)
-  .refine(
-    (v) => v === '' || /^https?:\/\//i.test(v) || /^\/[^/]/.test(v) || /^(mailto|tel):/i.test(v),
-    'رابط غير صالح'
-  );
 
 const footer = z.object({
   ...base,

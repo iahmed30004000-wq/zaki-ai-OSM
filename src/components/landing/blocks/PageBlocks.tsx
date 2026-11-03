@@ -378,6 +378,16 @@ function Block({ section: s, ctx, lead = false }: { section: LandingSection; ctx
       return <Hero section={s} ctx={ctx} />;
 
     case 'slider': {
+      // A block with `slides` is drawn from them, each with its own words; one
+      // saved before they existed has none and takes the path it always took.
+      const slides = (s.slides ?? []).filter((x) => x.image);
+      if (slides.length) {
+        return (
+          <Section title={s.title}>
+            <Slider images={slides.map((x) => x.image)} captions={slides} autoplay={s.autoplay} seconds={s.seconds} />
+          </Section>
+        );
+      }
       const images = s.images.filter(Boolean);
       if (!images.length) {
         if (!ctx.building) return null;

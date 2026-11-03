@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { db } from '@/lib/db';
-import { getStorefront } from '@/lib/storefront';
+import { getShopView } from '@/lib/shop-view';
 import { StorefrontShell } from '@/components/storefront/StorefrontShell';
 import { CheckoutForm } from '@/components/storefront/CheckoutForm';
 import { LandingTrackingPixels } from '@/components/tracking/LandingTrackingPixels';
@@ -34,7 +34,7 @@ const SLUG = /^[a-z0-9-]{2,60}$/;
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { store: slug } = await params;
-  const store = SLUG.test(slug) ? await getStorefront(slug) : null;
+  const store = SLUG.test(slug) ? await getShopView(slug) : null;
   if (!store) return { title: 'غير متاح' };
   return {
     title: publicTitle('إتمام الطلب', store.name),
@@ -46,7 +46,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function CheckoutPage({ params }: Props) {
   const { store: slug } = await params;
   if (!SLUG.test(slug)) notFound();
-  const store = await getStorefront(slug);
+  const store = await getShopView(slug);
   if (!store || !cartBarApplies(store.type)) notFound();
 
   // The checkout is where the sale is reported, so the store's pixels are here even for a visitor who opened it first.
@@ -57,7 +57,8 @@ export default async function CheckoutPage({ params }: Props) {
       select: { name: true },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     }),
-    getTrackingPixelsForPage(store.companyId, 'PUBLIC', { storeId: store.id, countryId: store.countryId }),
+    // «المعاينة الحقيقية» counts nothing.
+    store.preview ? [] : getTrackingPixelsForPage(store.companyId, 'PUBLIC', { storeId: store.id, countryId: store.countryId }),
   ]);
 
   const theme = store.theme;

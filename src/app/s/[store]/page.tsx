@@ -5,7 +5,8 @@ import { LandingPageView } from '@/components/landing/LandingPageView';
 import { carryQuery } from '@/lib/query-string';
 import Link from 'next/link';
 import { db } from '@/lib/db';
-import { getStorefront, storeShelf, storefrontCatalog } from '@/lib/storefront';
+import { storeShelf, storefrontCatalog } from '@/lib/storefront';
+import { getShopView } from '@/lib/shop-view';
 import { parseSections } from '@/lib/landing-sections';
 import { paletteFor } from '@/lib/landing-theme';
 import { publicizeMedia } from '@/lib/public-media';
@@ -41,7 +42,7 @@ interface Props {
 
 export async function generateMetadata({ params }: Pick<Props, 'params'>): Promise<Metadata> {
   const { store: slug } = await params;
-  const store = /^[a-z0-9-]{2,60}$/.test(slug) ? await getStorefront(slug) : null;
+  const store = /^[a-z0-9-]{2,60}$/.test(slug) ? await getShopView(slug) : null;
   if (!store) return {};
   return { title: publicTitle(store.name, store.tagline), icons: storeIcons(store) };
 }
@@ -50,7 +51,7 @@ export default async function StorefrontHome({ params, searchParams }: Props) {
   const { store: slug } = await params;
   if (!/^[a-z0-9-]{2,60}$/.test(slug)) notFound();
 
-  const store = await getStorefront(slug);
+  const store = await getShopView(slug);
   if (!store) notFound();
 
   // ── A home page the seller built and PUBLISHED wins ──
@@ -82,7 +83,8 @@ export default async function StorefrontHome({ params, searchParams }: Props) {
     if (only.length === 1) redirect(`/s/${store.slug}/p/${only[0].sku}${carryQuery(await searchParams)}`);
   }
 
-  const pixelsForHome = await getTrackingPixelsForPage(store.companyId, 'PUBLIC', {
+  // «المعاينة الحقيقية» counts nothing: a seller looking at a draft is not a visitor to report.
+  const pixelsForHome = store.preview ? [] : await getTrackingPixelsForPage(store.companyId, 'PUBLIC', {
     storeId: store.id,
     countryId: store.countryId,
   });

@@ -114,3 +114,13 @@ describe('«شريط الإعلانات»', () => {
     expect(thin.querySelector('.sf-ticker')).toBeNull();
   });
 });
+
+describe('«المعاينة الحقيقية» on the page itself', () => {
+  it('says it is the draft and keeps out of every index — only in the preview', () => {
+    const inside = render(<StorefrontShell store={{ ...shop({}), preview: true }}>{null}</StorefrontShell>).container;
+    expect(inside.textContent).toContain('معاينة المسوّدة');
+    expect(document.querySelector('meta[name="robots"]')?.getAttribute('content') ?? inside.innerHTML).toContain('noindex');
+    const outside = render(<StorefrontShell store={shop({})}>{null}</StorefrontShell>).container;
+    expect(outside.textContent).not.toContain('معاينة المسوّدة');
+  });
+});

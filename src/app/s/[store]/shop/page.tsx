@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
-import { getStorefront, storeShelf } from '@/lib/storefront';
+import { storeShelf } from '@/lib/storefront';
+import { getShopView } from '@/lib/shop-view';
 import { StorefrontShell } from '@/components/storefront/StorefrontShell';
 import { publicTitle, storeIcons } from '@/lib/public-metadata';
 import { parseSynonyms, searchProducts } from '@/lib/store-search';
@@ -47,7 +48,7 @@ const one = (v: string | string[] | undefined): string =>
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { store: slug } = await params;
-  const store = SLUG.test(slug) ? await getStorefront(slug) : null;
+  const store = SLUG.test(slug) ? await getShopView(slug) : null;
   if (!store) return { title: 'غير متاح' };
   return { title: publicTitle('المتجر', store.name), icons: storeIcons(store) };
 }
@@ -55,7 +56,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function ShopPage({ params, searchParams }: Props) {
   const { store: slug } = await params;
   if (!SLUG.test(slug)) notFound();
-  const store = await getStorefront(slug);
+  const store = await getShopView(slug);
   if (!store) notFound();
 
   const sp = await searchParams;

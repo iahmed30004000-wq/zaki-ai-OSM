@@ -190,7 +190,7 @@
     "tabs": 0
   },
   "src/components/landing-editor/BlockBuilder.tsx": {
-    "buttons": 32,
+    "buttons": 33,
     "inputs": 17,
     "columns": 0,
     "cards": 0,
@@ -226,6 +226,16 @@
     "cards": 0,
     "modals": 0,
     "icons": 6,
+    "links": 0,
+    "tabs": 0
+  },
+  "src/components/landing-editor/SlidesField.tsx": {
+    "buttons": 4,
+    "inputs": 5,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 4,
     "links": 0,
     "tabs": 0
   },
@@ -1540,12 +1550,12 @@
     "tabs": 0
   },
   "src/components/screens/StoreThemeScreen.tsx": {
-    "buttons": 20,
+    "buttons": 21,
     "inputs": 33,
     "columns": 22,
     "cards": 0,
     "modals": 0,
-    "icons": 15,
+    "icons": 16,
     "links": 3,
     "tabs": 0
   },
