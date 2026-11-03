@@ -12,6 +12,7 @@ import { LandingAnalyticsTab } from '@/components/performance/LandingAnalyticsTa
 import { userCan } from '@/lib/can';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { ScoreBoard } from '@/components/performance/ScoreBoard';
+import { NoAnswerWatch } from '@/components/performance/NoAnswerWatch';
 import { findRoute, routeLabel } from '@/lib/route-registry';
 import { RiAlertLine, RiCopperCoinLine, RiEBike2Line, RiInboxUnarchiveLine, RiTrophyLine, RiTruckLine } from '@remixicon/react';
 import { Money } from '@/components/ui/Money';
@@ -35,7 +36,7 @@ function lastThirtyDays() {
   return { from: iso(from), to: iso(to) };
 }
 
-type Tab = 'team' | 'landing' | 'scores';
+type Tab = 'team' | 'landing' | 'scores' | 'noanswer';
 
 /** One courier as `/api/orders/shipping/performance` answers it. */
 interface CourierRow {
@@ -93,6 +94,7 @@ export function PerformanceScreen() {
     const asked = new URLSearchParams(window.location.search).get('tab');
     if (canLanding && asked === 'landing') setTab('landing');
     if (canScores && asked === 'scores') setTab('scores');
+    if (canScores && asked === 'noanswer') setTab('noanswer');
   }, [canLanding, canScores]);
   const pickTab = (next: Tab) => {
     setTab(next);
@@ -275,9 +277,12 @@ export function PerformanceScreen() {
             actions={
               <><div className="flex items-center gap-2 flex-wrap gap-y-2">
             <BackToDashboardLink />
+            {/* Not on «لا رد»: that tab carries its own dates, and two pickers on one screen would answer two windows. */}
+            {tab !== 'noanswer' && (
             <div className="w-56">
               <DateRange value={range} onChange={setRange} label="كل المدة" />
             </div>
+            )}
             {/* The «تصدير CSV» that stood here opened /api/reports/export with
                 no parameters: EVERY order, whatever range was picked in the box
                 beside it. The orders screen exports what its filters match. */}
@@ -290,6 +295,8 @@ export function PerformanceScreen() {
             {([
               ['team', 'المنتجات والفريق والقنوات'],
               ...(canScores ? [['scores', 'سكور الموظفين'] as [Tab, string]] : []),
+              // The same people as the team table (`team.monitor`): what each agent holds now, and when customers pick up.
+              ...(canScores ? [['noanswer', 'لا رد والطلبات المحجوزة'] as [Tab, string]] : []),
               ...(canLanding ? [['landing', 'تحليلات صفحات الهبوط'] as [Tab, string]] : []),
             ] as [Tab, string][]).map(([key, label]) => (
               <button
@@ -308,7 +315,10 @@ export function PerformanceScreen() {
           </div>
         )}
 
-        {tab === 'scores' && canScores ? (
+        {tab === 'noanswer' && canScores ? (
+          // Read only, and its own dates: the board is «now», and the answer-rate report under it defaults to fourteen days.
+          <NoAnswerWatch />
+        ) : tab === 'scores' && canScores ? (
           // Its OWN window — the week or month the owner set in the score
           // settings — not the date range above. The score is comparable
           // across months only if everybody's is measured over the same

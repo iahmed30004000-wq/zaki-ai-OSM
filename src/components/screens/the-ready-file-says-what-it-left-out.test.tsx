@@ -231,6 +231,34 @@ describe('the ticked rows are the file (the owner, 3/11: «خليها تنزل �
     expect(await screen.findByText('نزل الملف: 1 طلب من المحدَّدة · 1 طلع من القائمة من وقت ما تحدّد (انشحن أو انلغى)', undefined, WAIT)).toBeTruthy();
   });
 
+  it('no courier chosen, a row ticked: the button says the file is for sharing out with no money, and posts the id alone', async () => {
+    apiFetch.mockResolvedValue({ ...fileAnswer(0, 0, 1), headers: new Headers({ 'X-Rows': '1', 'X-No-Courier': '1' }) });
+    await draw();
+    tickTheRow();
+    const button = (await screen.findByRole('button', { name: /CSV المحدَّدة \(1\) · للتوزيع بلا مبلغ/ }, WAIT)) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    expect(button.title).toBe('بدون شركة: ملف للتوزيع بس — بلا مبلغ ولا رمز مدينة');
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    const [url, init] = apiFetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/ops/shipments/export');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({ ids: ['1'] });
+    expect(
+      (await screen.findByText('نزل الملف بدون شركة: 1 طلب من المحدَّدة — للتوزيع بس، بلا مبلغ ولا رمز مدينة', undefined, WAIT)).getAttribute('role')
+    ).toBe('status');
+  });
+
+  it('with a courier the ticked button is as it was: no «للتوزيع», the courier’s own title', async () => {
+    await draw();
+    fireEvent.change(screen.getByLabelText(/شركة الشحن/), { target: { value: 'p1' } });
+    tickTheRow();
+    const button = (await screen.findByRole('button', { name: PICKED }, WAIT)) as HTMLButtonElement;
+    expect(button.textContent).not.toContain('للتوزيع');
+    expect(button.title).toBe('الطلبات المحدَّدة بس بملف CSV — جاهزة أو مؤجَّلة');
+  });
+
   it('NEGATIVE: nothing ticked — the whole ready tab, by the address, as before', async () => {
     apiFetch.mockResolvedValue(fileAnswer(0, 0, 4));
     await draw();

@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  *     neither any more (shipped, cancelled, another store) is not printed and is counted in `X-Left-Gone`;
  *   · a postponed order that is ticked IS in the file — its units were given back on purpose, so the stock question is
  *     not asked of a ticked order — while the fee question still is;
- *   · the same two keys and the same courier rule as the tab's file; ids are uuids, at least one.
+ *   · the same two keys as the tab's file; a courier named must be the company's; ids are uuids, at least one.
  *
  * Worked example: three ticked — two from «جاهزة», one from «مؤجَّلة» whose units were handed back — the file has the three.
  * ═══════════════════════════════════════════════════════════════════════
@@ -165,8 +165,10 @@ describe('who may, and with what', () => {
     expect(db.order.findMany).not.toHaveBeenCalled();
   });
 
-  it('NEGATIVE: no ids, or an id that is not one, or no courier — 400, nothing read', async () => {
-    for (const body of [{ courier: COURIER, ids: [] }, { courier: COURIER, ids: ['o1'] }, { ids: [id(1)] }, null]) {
+  // No courier is no longer refused here: the ticked orders go without one, as a sheet with no money in it (the owner,
+  // 3/11) — held in `the-file-of-the-ticked-orders-goes-without-a-courier.test.ts`.
+  it('NEGATIVE: no ids, or an id that is not one, or no body — 400, nothing read', async () => {
+    for (const body of [{ courier: COURIER, ids: [] }, { courier: COURIER, ids: ['o1'] }, { ids: [] }, null]) {
       expect((await post(body)).status).toBe(400);
     }
     expect(db.order.findMany).not.toHaveBeenCalled();
