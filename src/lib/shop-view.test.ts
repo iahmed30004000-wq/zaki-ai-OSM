@@ -1,8 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const h = vi.hoisted(() => ({ previewId: null as string | null, findFirst: vi.fn(), getStorefront: vi.fn() }));
+const h = vi.hoisted(() => ({
+  previewId: null as string | null,
+  sessionId: null as string | null,
+  findFirst: vi.fn(),
+  getStorefront: vi.fn(),
+}));
 
-vi.mock('./store-preview', () => ({ previewStoreIdFor: async () => h.previewId }));
+// The frame's answer implies the session's: a test that sets one sets both unless it says otherwise.
+vi.mock('./store-preview', () => ({
+  previewStoreIdFor: async () => h.previewId,
+  previewSessionStoreId: async () => h.sessionId ?? h.previewId,
+}));
 vi.mock('./db', () => ({ db: { store: { findFirst: (a: unknown) => h.findFirst(a) } } }));
 vi.mock('./storefront', async (orig) => ({
   ...(await orig<typeof import('./storefront')>()),
@@ -20,6 +29,7 @@ const live = { id: 's1', companyId: 'c1', slug: 'my-shop', theme: parseStoreThem
 
 beforeEach(() => {
   h.previewId = null;
+  h.sessionId = null;
   h.getStorefront.mockReset().mockResolvedValue(live);
   h.findFirst.mockReset().mockResolvedValue({ theme: LIVE, themeDraft: DRAFT, homeDraft: '[{"x":1}]', homeLive: '[]' });
 });
@@ -67,5 +77,35 @@ describe('inside the seller’s preview frame', () => {
     const shop = await getShopView('my-shop');
     expect(shop?.theme.accent).toBe('#111111');
     expect(shop?.homeLive).toBe('[]');
+  });
+});
+
+describe('the preview door’s seller outside the frame (a link clicked in it, the thank-you page)', () => {
+  beforeEach(() => {
+    h.sessionId = 's1';
+    h.previewId = null;
+  });
+
+  it('gets the LIVE shop, marked quiet — nothing reported, nothing of the draft', async () => {
+    const shop = await getShopView('my-shop');
+    expect(shop?.quiet).toBe(true);
+    expect(shop?.preview).toBeUndefined();
+    expect(shop?.theme.accent).toBe('#111111');
+    expect(shop?.homeLive).toBe('[]');
+    expect(h.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('inside the frame the draft is drawn AND it is quiet', async () => {
+    h.previewId = 's1';
+    const shop = await getShopView('my-shop');
+    expect(shop?.preview).toBe(true);
+    expect(shop?.quiet).toBe(true);
+  });
+
+  it('a customer is neither', async () => {
+    h.sessionId = null;
+    const shop = await getShopView('my-shop');
+    expect(shop).toBe(live);
+    expect(shop && 'quiet' in shop).toBe(false);
   });
 });

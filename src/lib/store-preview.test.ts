@@ -18,7 +18,7 @@ vi.mock('./geo-context', () => ({ requireContext: () => h.requireContext() }));
 vi.mock('./authorization', () => ({ requirePermission: (k: string) => h.requirePermission(k) }));
 vi.mock('./db', () => ({ db: { store: { findFirst: (a: unknown) => h.findFirst(a) } } }));
 
-import { previewStoreIdFor } from './store-preview';
+import { previewSessionStoreId, previewStoreIdFor } from './store-preview';
 
 /**
  * «المعاينة الحقيقية» DRAWS A DRAFT ONLY FOR THE SELLER'S OWN FRAME.
@@ -60,5 +60,26 @@ describe('who gets the draft', () => {
   it('and never throws — outside a request it is simply no preview', async () => {
     h.findFirst.mockRejectedValue(new Error('db down'));
     await expect(previewStoreIdFor('my-shop')).resolves.toBeNull();
+  });
+});
+
+describe('who is QUIET — the preview door’s seller, framed or not', () => {
+  it('a client navigation inside the frame (not a frame load) is still the seller: quiet, never the draft', async () => {
+    h.dest = 'empty';
+    expect(await previewSessionStoreId('my-shop')).toBe('s1');
+    expect(await previewStoreIdFor('my-shop')).toBeNull();
+  });
+
+  it.each([
+    ['draft mode off — every customer', () => { h.draft = { isEnabled: false }; }],
+    ['no preview cookie', () => { h.cookie = undefined; }],
+    ['no session', () => { h.requireContext.mockRejectedValue(new Error('UNAUTHORIZED')); }],
+    ['no permission', () => { h.requirePermission.mockRejectedValue(new Error('FORBIDDEN')); }],
+    ['another store’s cookie', () => { h.cookie = 's2'; }],
+    ['another company’s shop', () => { h.findFirst.mockResolvedValue(null); }],
+  ])('and nobody else is: %s', async (_w, arrange) => {
+    h.dest = 'empty';
+    arrange();
+    expect(await previewSessionStoreId('my-shop')).toBeNull();
   });
 });

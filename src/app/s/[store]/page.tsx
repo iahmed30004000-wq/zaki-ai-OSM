@@ -67,7 +67,7 @@ export default async function StorefrontHome({ params, searchParams }: Props) {
       const { c } = await searchParams;
       return (
         <LandingPageView
-          target={{ frontPageId: store.landingPageId, storeId: store.id, campaign: typeof c === 'string' ? c : undefined }}
+          target={{ frontPageId: store.landingPageId, storeId: store.id, campaign: typeof c === 'string' ? c : undefined, quiet: store.quiet }}
         />
       );
     }
@@ -84,7 +84,7 @@ export default async function StorefrontHome({ params, searchParams }: Props) {
   }
 
   // «المعاينة الحقيقية» counts nothing: a seller looking at a draft is not a visitor to report.
-  const pixelsForHome = store.preview ? [] : await getTrackingPixelsForPage(store.companyId, 'PUBLIC', {
+  const pixelsForHome = store.quiet ? [] : await getTrackingPixelsForPage(store.companyId, 'PUBLIC', {
     storeId: store.id,
     countryId: store.countryId,
   });

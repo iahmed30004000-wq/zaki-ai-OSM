@@ -123,6 +123,12 @@ export interface Storefront {
    * draft (see shop-view.ts). Never set by `getStorefront`.
    */
   preview?: true;
+  /**
+   * True for every page the seller opens through the preview door — inside
+   * the frame or reached from it: nothing is reported (no pixel, no visit
+   * count). See store-preview.ts. Never set by `getStorefront`.
+   */
+  quiet?: true;
 }
 
 /**

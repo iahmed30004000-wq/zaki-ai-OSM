@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { getShopView } from '@/lib/shop-view';
 import { StorefrontShell } from '@/components/storefront/StorefrontShell';
 import { CheckoutForm } from '@/components/storefront/CheckoutForm';
+import { PreviewOrderNote } from '@/components/storefront/PreviewOrderNote';
 import { LandingTrackingPixels } from '@/components/tracking/LandingTrackingPixels';
 import { getTrackingPixelsForPage } from '@/lib/tracking/tracking-config';
 import { publicTitle, storeIcons } from '@/lib/public-metadata';
@@ -58,7 +59,7 @@ export default async function CheckoutPage({ params }: Props) {
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     }),
     // «المعاينة الحقيقية» counts nothing.
-    store.preview ? [] : getTrackingPixelsForPage(store.companyId, 'PUBLIC', { storeId: store.id, countryId: store.countryId }),
+    store.quiet ? [] : getTrackingPixelsForPage(store.companyId, 'PUBLIC', { storeId: store.id, countryId: store.countryId }),
   ]);
 
   const theme = store.theme;
@@ -74,6 +75,7 @@ export default async function CheckoutPage({ params }: Props) {
             <li key={line}>{line}</li>
           ))}
         </ul>
+        {store.quiet && <PreviewOrderNote />}
         <CheckoutForm
           slug={store.slug}
           minorUnit={country?.minorUnit ?? 2}

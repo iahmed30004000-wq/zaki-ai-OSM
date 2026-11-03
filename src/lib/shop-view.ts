@@ -1,7 +1,7 @@
 import { cache } from 'react';
 import { db } from './db';
 import { getStorefront, storeTheme, type Storefront } from './storefront';
-import { previewStoreIdFor } from './store-preview';
+import { previewSessionStoreId, previewStoreIdFor } from './store-preview';
 import type { StoreTheme } from './store-theme';
 
 /**
@@ -24,8 +24,12 @@ import type { StoreTheme } from './store-theme';
 export const getShopView = cache(async function getShopView(slug: string): Promise<Storefront | null> {
   const live = await getStorefront(slug);
   if (!live) return null;
+  // The seller who opened the preview door: nothing on this page is reported.
+  const sessionId = await previewSessionStoreId(slug);
+  if (!sessionId || sessionId !== live.id) return live;
+  // And only inside the frame itself is the DRAFT drawn.
   const previewId = await previewStoreIdFor(slug);
-  if (!previewId || previewId !== live.id) return live;
+  if (!previewId || previewId !== live.id) return { ...live, quiet: true };
 
   const row = await db.store.findFirst({
     where: { id: live.id, companyId: live.companyId },
@@ -37,6 +41,7 @@ export const getShopView = cache(async function getShopView(slug: string): Promi
     theme: previewTheme(row.theme, row.themeDraft),
     homeLive: row.homeDraft ?? row.homeLive,
     preview: true,
+    quiet: true,
   };
 });
 
