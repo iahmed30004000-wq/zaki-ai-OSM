@@ -275,10 +275,23 @@ export function StoreThemeScreen() {
     setMsg(null);
     try {
       const body = source === 'file' ? { source, file: payload } : { source, key: payload };
-      const res = await apiJson<{ installed: string; theme: StoreTheme; themeApplied: boolean }>(
-        '/api/store/templates',
-        { method: 'POST', body: JSON.stringify(body) }
-      );
+      const send = (confirmed: boolean) =>
+        apiJson<{ installed: string; theme: StoreTheme; themeApplied: boolean }>('/api/store/templates', {
+          method: 'POST',
+          body: JSON.stringify(confirmed ? { ...body, confirm: true } : body),
+        });
+      let res: Awaited<ReturnType<typeof send>>;
+      try {
+        res = await send(false);
+      } catch (e) {
+        // A skin or a design over a home draft that has blocks: the door asks first, and so does this screen.
+        if ((e as { data?: { code?: string } }).data?.code !== 'REPLACES_HOME_DRAFT') throw e;
+        if (!confirm('هالتثبيت بيستبدل مسودة الصفحة الرئيسية المحفوظة بالكامل — متأكد؟')) {
+          setMsg({ ok: true, text: 'ما انثبّت شي — مسودة الصفحة الرئيسية زي ما هي' });
+          return;
+        }
+        res = await send(true);
+      }
       await load();
       // The palette comes back as a PROPOSAL, not something already saved:
       // stores.theme is what every live page renders from, so installing
