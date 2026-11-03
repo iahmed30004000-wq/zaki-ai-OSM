@@ -23,7 +23,7 @@ import type { SessionUser } from '@/types/auth';
 type Row = Record<string, any>;
 
 const { tables, state } = vi.hoisted(() => ({
-  tables: { orders: [] as Row[] },
+  tables: { orders: [] as Row[], lastCountWhere: null as unknown },
   state: { user: null as unknown as SessionUser },
 }));
 
@@ -56,7 +56,10 @@ vi.mock('@/lib/db', () => {
   const hits = (where: unknown) => tables.orders.filter((r) => matches(r, where));
   const db = {
     order: {
-      count: async ({ where }: Row) => hits(where).length,
+      count: async ({ where }: Row) => {
+        tables.lastCountWhere = where;
+        return hits(where).length;
+      },
       findMany: async ({ where, skip = 0, take }: Row) =>
         hits(where).slice(skip, take ? skip + take : undefined).map((r) => ({ ...r })),
       groupBy: async ({ by, where }: Row) => {
@@ -96,6 +99,7 @@ vi.mock('@/lib/pii-alert', () => ({ noteCustomersHandedOut: vi.fn() }));
 import { GET as listGET } from '@/app/api/orders/route';
 import { GET as summaryGET } from '@/app/api/orders/summary/route';
 import { FILTERABLE_STATES } from '@/lib/order-state';
+import { orderListQuery } from '@/lib/order-list-query';
 
 type Scope = 'ALL_COMPANY' | 'ASSIGNED' | 'OWN';
 function person(id: string, role: string, grants: Record<string, Scope>): SessionUser {
@@ -239,4 +243,32 @@ describe('the owner’s cards carry the money', () => {
     const s = await summary();
     expect((s.counts as { state: string }[]).map((c) => c.state)).toEqual(FILTERABLE_STATES);
   });
+});
+
+describe('the summary’s question is the list’s, word for word', () => {
+  /*
+   * The list route builds its `where` inline; the summary through `orderListQuery`. The rows above prove they agree on this
+   * table; this proves they build the same `where` for every filter and queue a person can send — so a change to one that
+   * is not made to the other fails here, whatever the table holds. (`lateDays` is left out: its cutoff is `Date.now()`.)
+   */
+  const asks = [
+    '',
+    'status=CONFIRMED',
+    'q=0790&productId=p1&regionId=r1&courierId=none&source=Manual&holderId=u1',
+    'from=2026-11-01&to=2026-11-02&moderatorId=m1',
+    'queue=my_orders',
+    'queue=available',
+    'queue=all_company',
+  ];
+  for (const user of [AGENT, OWNER]) {
+    for (const qs of asks) {
+      it(`${user.id}: «${qs || 'بلا فلتر'}»`, async () => {
+        state.user = user;
+        await ask(listGET, '/api/orders', qs);
+        const built = orderListQuery({ user, companyId: 'c1', storeId: 's1' }, new URLSearchParams(qs));
+        expect(built.ok).toBe(true);
+        expect(built.ok && JSON.parse(JSON.stringify(built.where))).toEqual(JSON.parse(JSON.stringify(tables.lastCountWhere)));
+      });
+    }
+  }
 });

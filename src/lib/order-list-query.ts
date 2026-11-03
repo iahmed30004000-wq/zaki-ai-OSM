@@ -4,15 +4,18 @@ import { applyQueueFilter } from '@/lib/rbac';
 import { ordersWhere } from '@/lib/order-filters';
 
 /**
- * THE ORDERS LIST'S WHOLE QUESTION — the filters AND the person's envelope — WRITTEN ONCE.
+ * THE ORDERS LIST'S WHOLE QUESTION — the filters AND the person's envelope — FOR THE COUNTS AND THE CARDS ABOVE IT.
  *
- * `GET /api/orders` asked it inline. The counts above the list and the cards beside them (`GET /api/orders/summary`) must
- * ask exactly the same question, or a chip says «مؤكد (40)» to an agent whose list, pressed, shows 12: the counts would be a
- * window onto orders she cannot open. `orderVisibilityWhere` is the read permission as well as the list filter, so the
- * envelope is not something a second door may re-spell — it takes it from here, and the test that holds the two doors to the
- * same rows is `the-counts-are-the-rows-she-can-open.test.ts`.
+ * The counts above the list and the cards beside them (`GET /api/orders/summary`) must ask exactly the question
+ * `GET /api/orders` asks, or a chip says «مؤكد (40)» to an agent whose list, pressed, shows 12: the counts would be a window
+ * onto orders she cannot open. `orderVisibilityWhere` is the read permission as well as the list filter.
  *
- * What it does, in order — the same order the list always did it in:
+ * ⚠️ It is the list route's own steps, in its own order, with the same two shared builders (`ordersWhere`,
+ * `applyQueueFilter`). The list route keeps its inline copy on purpose for now (two source-text guards read it there);
+ * the two are held to the same ROWS by `the-counts-are-the-rows-she-can-open.test.ts`, which runs both real doors with the
+ * real envelope, and a change to one that is not made to the other fails it.
+ *
+ * What it does, in order — the same order the list does it in:
  *   · `from`/`to` become the created-at range (the whole closing day included);
  *   · `ordersWhere` builds every filter (src/lib/order-filters.ts);
  *   · the tenant goes around it;

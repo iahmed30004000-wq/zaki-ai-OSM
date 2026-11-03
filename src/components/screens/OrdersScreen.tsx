@@ -563,7 +563,10 @@ export function OrdersScreen() {
         className="shrink-0 gap-1.5"
       >
         <RiTimerLine className="w-4 h-4" />
-        {phone ? `متأخرة +${shownLate} أيام` : `متأخرة ${shownLate} أيام+ من الشحن`}
+        {/* The ten-day words are written out: the guide quotes them, and the guide is held to what a screen says. */}
+        {shownLate === DEFAULT_LATE_DAYS
+          ? phone ? 'متأخرة +10 أيام' : 'متأخرة 10 أيام+ من الشحن'
+          : phone ? `متأخرة +${shownLate} أيام` : `متأخرة ${shownLate} أيام+ من الشحن`}
       </Button>
       {lateOnly && (
         <select
