@@ -9,10 +9,13 @@ import {
   landingThemeSchema,
   paletteFor,
   paletteVars,
+  readableOn,
   type FontValue,
   type LandingTheme,
   type Palette,
 } from './landing-theme';
+import { LOOK_IDS } from './store-looks/ids.generated';
+import { RADIUS_LEVELS, lookVars } from './store-looks/paint';
 
 /**
  * WHAT A STORE LOOKS LIKE — one owner, one record.
@@ -261,7 +264,32 @@ export const storeHeaderSchema = z.object({
    * Other store types always wear it — their pages are shop pages.
    */
   onFrontPage: z.boolean().default(true),
+  /**
+   * «حجم الشعار» — the logo's height in the header, their builder's 28–80.
+   * Absent is the height the header always drew it at.
+   */
+  logoHeight: z.number().int().min(28).max(80).optional(),
 });
+
+/**
+ * «شريط الإعلانات» — the band of short lines above the header.
+ *
+ * The seller's own lines, up to six. With none, the band says the two facts
+ * the header's reassurance line already says (cash on delivery, delivery to
+ * every governorate) — never a line of anybody else's. `phone` adds the
+ * shop's support number, which is set once with the store. Off unless the
+ * seller turns it on: absent, no band is drawn at all.
+ */
+export const storeTickerSchema = z.object({
+  enabled: z.boolean().default(false),
+  mode: z.enum(['scroll', 'static']).default('scroll'),
+  phone: z.boolean().default(false),
+  // An empty line is kept as typed (the seller is mid-edit) and drawn as nothing.
+  items: z.array(z.string().trim().max(80)).max(6).default([]),
+});
+
+/** How much the shop moves. Absent is how it always moved. */
+export const STORE_MOTIONS = ['none', 'subtle', 'full'] as const;
 
 /**
  * The footer's COPYRIGHT — a line of text, and nothing else.
@@ -400,6 +428,33 @@ export const storeThemeSchema = landingThemeSchema.extend({
    * them. Default off, which is the honest default for a claim.
    */
   discreetPacking: z.boolean().optional(),
+  /**
+   * WHICH OF THE THIRTEEN LOOKS OF THE OWNER'S OTHER PLATFORM THIS SHOP
+   * TRIED LAST — recorded like `template`, so the gallery can mark it and
+   * the shop can draw the look's radii and shadows (`lookVars`). Its colours
+   * were copied into `colors` when it was tried; this only names it.
+   */
+  look: z.enum(LOOK_IDS).optional(),
+  /** «الزوايا» at their scale. Absent: the look's own, or `corners`. */
+  radius: z.enum(RADIUS_LEVELS).optional(),
+  /**
+   * «الحركة»: none · subtle · full. Absent is today's shop, unchanged. A
+   * visitor whose device asks for less motion gets none, whatever is set.
+   */
+  motion: z.enum(STORE_MOTIONS).optional(),
+  ticker: storeTickerSchema.optional(),
+  /**
+   * «لون التمييز» — THE SECOND COLOUR, the one their theme builder calls
+   * `secondary`: the announcement ticker's band, and the «-20%» badge when
+   * the shop has not named a badge colour of its own.
+   *
+   * Not `colors.secondary`: that key already means something on a stored
+   * row — it is the old name of the ink (`LEGACY_COLOR`), and would be read
+   * back as the text colour. And not in `colors` at all: every colour there
+   * has a value derived from the accent on every shop (`COLOR_VAR`), and a
+   * shop that never chose a second colour must not gain a variable for one.
+   */
+  highlight: hex.optional(),
 });
 
 /**
@@ -465,6 +520,18 @@ export function parseStoreTheme(raw: string | null | undefined): StoreTheme {
   } as const;
   for (const [key, schema] of Object.entries(parts)) {
     const got = schema.safeParse(row[key] ?? {});
+    if (got.success) (out as unknown as Record<string, unknown>)[key] = got.data;
+  }
+  // The additions of the store-looks port, each on its own: a look id this
+  // build no longer carries loses the id, not the shop's ticker with it.
+  // Absent stays absent — a shop that never set one gains no key.
+  const optional = {
+    look: z.enum(LOOK_IDS), radius: z.enum(RADIUS_LEVELS), motion: z.enum(STORE_MOTIONS), ticker: storeTickerSchema,
+    highlight: hex,
+  } as const;
+  for (const [key, schema] of Object.entries(optional)) {
+    if (row[key] === undefined) continue;
+    const got = schema.safeParse(row[key]);
     if (got.success) (out as unknown as Record<string, unknown>)[key] = got.data;
   }
   return out;
@@ -770,7 +837,18 @@ export function storeThemeVars(theme: StoreTheme): Record<string, string> {
     '--store-danger': STATE_COLORS.danger,
     '--store-header-h': `${theme.header?.height ?? 72}px`,
     '--store-header-bg': theme.header?.background ?? palette.cardBg,
+    // ── The store-looks port. Each line writes only for a shop that set
+    //    the thing; an untouched shop's variables are what they always were.
+    ...lookVars(theme),
   };
+  const highlight = theme.highlight;
+  if (highlight) {
+    vars['--store-highlight'] = highlight;
+    vars['--store-highlight-ink'] = readableOn(highlight);
+    // The badge's own colour, when the shop named one, wins below.
+    vars['--store-offer-badge'] = highlight;
+  }
+  if (theme.header?.logoHeight) vars['--store-logo-h'] = `${theme.header.logoHeight}px`;
   // Every colour a shop can name, written over the derived one. Driven by
   // COLOR_VAR rather than by a line each, because a field with no line is
   // a colour picker that changes nothing — which is exactly what four of

@@ -5,6 +5,7 @@ import { cartBarApplies, familyOf, layoutOf, storeThemeVars } from '@/lib/store-
 import { telHref, whatsappHref } from '@/lib/store-contact';
 import { fontHref } from '@/components/landing/blocks/styles';
 import { FAMILY_SHEET, SHOP_SHEET } from './styles';
+import { shopExtrasSheet, tickerLines } from './extras-sheet';
 // Six drawings from this shop's own file, not the package they came
 // from: a named import there still shipped 245 icons to a shopper.
 // See the note at the top of ./icons.
@@ -86,6 +87,10 @@ export function StorefrontShell({
   // why this is not `ContactButtons`.
   const contact = { whatsapp: whatsappHref(store.supportPhone), tel: telHref(store.supportPhone) };
   const footerMenu = store.menus.FOOTER ?? [];
+  // The store-looks port's rules, only the slices this shop asked for: '' —
+  // and no <style>, no attribute, no band — for a shop that asked for none.
+  const extras = shopExtrasSheet(store.theme);
+  const ticker = !thin && store.theme.ticker?.enabled ? store.theme.ticker : null;
 
   return (
     // The shop's own language and direction. This was written as rtl, so a
@@ -104,6 +109,10 @@ export function StorefrontShell({
       className="lp-root sf-root"
       data-family={family}
       data-frame={thin ? 'thin' : undefined}
+      data-look={store.theme.look}
+      data-radius={store.theme.radius}
+      data-motion={store.theme.motion}
+      data-logo={store.theme.header?.logoHeight ? '' : undefined}
       style={vars as React.CSSProperties}
     >
       {/*
@@ -130,6 +139,25 @@ export function StorefrontShell({
       )}
       <style dangerouslySetInnerHTML={{ __html: SHOP_SHEET }} />
       <style dangerouslySetInnerHTML={{ __html: FAMILY_SHEET[family] }} />
+      {extras && <style dangerouslySetInnerHTML={{ __html: extras }} />}
+
+      {/* «شريط الإعلانات» — drawn only when the seller turned it on. */}
+      {ticker && (
+        <div className="sf-ticker" data-mode={ticker.mode} role="region" aria-label="إعلانات المتجر">
+          <div className="sf-ticker-track">
+            {[false, true].map((copy) => (
+              <ul key={String(copy)} className="sf-ticker-list" aria-hidden={copy || undefined}>
+                {tickerLines(store.theme).map((line, i) => <li key={i}>{line}</li>)}
+                {ticker.phone && contact.tel && (
+                  <li>
+                    <a href={contact.tel} dir="ltr" tabIndex={copy ? -1 : undefined}>{store.supportPhone}</a>
+                  </li>
+                )}
+              </ul>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/*
         THE VARIANT IS AN ARRANGEMENT, NEVER A SUBTRACTION.

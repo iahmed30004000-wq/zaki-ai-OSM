@@ -191,7 +191,7 @@
   },
   "src/components/landing-editor/BlockBuilder.tsx": {
     "buttons": 32,
-    "inputs": 16,
+    "inputs": 17,
     "columns": 0,
     "cards": 0,
     "modals": 0,
@@ -1540,8 +1540,8 @@
     "tabs": 0
   },
   "src/components/screens/StoreThemeScreen.tsx": {
-    "buttons": 15,
-    "inputs": 26,
+    "buttons": 20,
+    "inputs": 33,
     "columns": 22,
     "cards": 0,
     "modals": 0,
@@ -2186,7 +2186,7 @@
     "cards": 0,
     "modals": 0,
     "icons": 0,
-    "links": 8,
+    "links": 9,
     "tabs": 0
   },
   "src/components/storefront/StoreHero.tsx": {
