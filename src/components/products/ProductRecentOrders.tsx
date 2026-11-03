@@ -7,6 +7,8 @@ import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Money } from '@/components/ui/Money';
 import { OrderStateBadge } from '@/components/orders/OrderStateBadge';
+import { CopyValue } from '@/components/orders/CopyValue';
+import { orderNumberToCopy } from '@/lib/copy-values';
 import { apiFetch } from '@/lib/api-client';
 import { arDate } from '@/lib/format';
 import { RiArrowUpCircleLine } from '@remixicon/react';
@@ -98,14 +100,18 @@ export function ProductRecentOrders({ productId }: { productId: string }) {
                 key: 'number',
                 label: 'الطلب',
                 primary: true,
+                // Its own link (the list, with the row lit), so not `OrderRef` — only its copy button beside it.
                 render: (o: RecentOrder) => (
-                  <Link
-                    href={`/orders?highlight=${encodeURIComponent(o.id)}`}
-                    className="font-medium text-[var(--sys-primary)] hover:underline"
-                    dir="ltr"
-                  >
-                    {o.orderNumber}
-                  </Link>
+                  <span className="inline-flex items-center gap-1">
+                    <Link
+                      href={`/orders?highlight=${encodeURIComponent(o.id)}`}
+                      className="font-medium text-[var(--sys-primary)] hover:underline"
+                      dir="ltr"
+                    >
+                      {o.orderNumber}
+                    </Link>
+                    <CopyValue text={orderNumberToCopy(o.orderNumber)} noun="رقم الطلب" shown={o.orderNumber} />
+                  </span>
                 ),
               },
               {

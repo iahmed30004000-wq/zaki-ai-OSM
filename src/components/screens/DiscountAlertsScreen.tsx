@@ -3,7 +3,7 @@
 import React, { useCallback, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { Rows } from '@/components/ui/Rows';
-import { OrderLink } from '@/components/orders/OrderLink';
+import { OrderRef } from '@/components/orders/OrderRef';
 import { ScreenTitle } from '@/components/shell/ScreenTitle';
 import { RiAlertLine, RiDiscountPercentLine, RiLoader4Line } from '@remixicon/react';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -180,7 +180,7 @@ export function DiscountAlertsScreen() {
                   label: 'الطلب',
                   primary: true,
                   render: (r) => (
-                    <OrderLink id={r.id} number={r.merchantRef ?? r.orderNumber} className="text-[var(--sys-primary)]" />
+                    <OrderRef id={r.id} number={r.merchantRef ?? r.orderNumber} className="text-[var(--sys-primary)]" />
                   ),
                 },
                 { key: 'customer', label: 'العميل', primary: true, render: (r) => r.customerName ?? '—' },

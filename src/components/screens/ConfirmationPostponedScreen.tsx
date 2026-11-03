@@ -12,7 +12,7 @@ import { arDate } from '@/lib/format';
 import { usePagedList, type PagedRead, type Paging } from '@/hooks/usePagedList';
 import { KINDS, KIND_AR, TIMES, TIMES_AR, WHENS, whenLabel } from '@/lib/postponed-filters';
 import type { PostponedFacts } from '@/lib/postponed-list';
-import { OrderLink } from '@/components/orders/OrderLink';
+import { OrderRef } from '@/components/orders/OrderRef';
 import { CustomerHistoryOffer } from '@/components/orders/CustomerHistory';
 import { POSTPONE_REASONS } from '@/lib/postpone-reasons';
 import { OrderGoods, OrderNotes, OrderPlace, streetOf } from '@/components/orders/OrderGoods';
@@ -223,7 +223,7 @@ export function ConfirmationPostponedScreen({ embedded = false }: { embedded?: b
               // scopes it to her claims, behind `confirmation.work`. So without
               // «عرض الطلبات» each number opens the order on her desk instead.
               render: (o) => (
-                <OrderLink
+                <OrderRef
                   id={o.id}
                   number={o.orderNumber}
                   opensOnHerDesk={!facts.agents}

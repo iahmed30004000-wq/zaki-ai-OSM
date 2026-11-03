@@ -259,6 +259,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/ops/BatchBarcodePaste.tsx": {
+    "buttons": 3,
+    "inputs": 2,
+    "columns": 0,
+    "cards": 0,
+    "modals": 1,
+    "icons": 2,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/ops/DelayShipmentDialog.tsx": {
     "buttons": 2,
     "inputs": 2,
@@ -930,7 +940,7 @@
     "tabs": 0
   },
   "src/components/screens/ConfirmationMineScreen.tsx": {
-    "buttons": 11,
+    "buttons": 10,
     "inputs": 5,
     "columns": 6,
     "cards": 0,
@@ -1096,7 +1106,7 @@
     "cards": 0,
     "modals": 0,
     "icons": 3,
-    "links": 1,
+    "links": 0,
     "tabs": 0
   },
   "src/components/screens/finance/NotMentionedActions.tsx": {
@@ -1310,7 +1320,7 @@
     "tabs": 0
   },
   "src/components/screens/PreparationScreen.tsx": {
-    "buttons": 9,
+    "buttons": 8,
     "inputs": 0,
     "columns": 5,
     "cards": 0,
@@ -1380,12 +1390,12 @@
     "tabs": 0
   },
   "src/components/screens/ShippingBatchesScreen.tsx": {
-    "buttons": 13,
+    "buttons": 14,
     "inputs": 1,
     "columns": 0,
     "cards": 0,
     "modals": 0,
-    "icons": 19,
+    "icons": 20,
     "links": 0,
     "tabs": 0
   },

@@ -10,7 +10,7 @@ import { RiAlertLine, RiForbidLine, RiLoader4Line, RiPencilLine } from '@remixic
 import { useToast } from '@/components/ui/Toast';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
-import { OrderLink } from '@/components/orders/OrderLink';
+import { OrderRef } from '@/components/orders/OrderRef';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
 import { CustomerHistoryOffer } from '@/components/orders/CustomerHistory';
@@ -265,7 +265,7 @@ export function ConfirmationIssuesScreen() {
               <span className="w-8 h-8 rounded-lg bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] flex items-center justify-center">
                 <RiAlertLine className="w-4 h-4 text-[var(--sys-destructive)]" />
               </span>
-              <OrderLink id={issue.order.id} number={issue.order.orderNumber} className="font-semibold text-[var(--sys-heading)]" />
+              <OrderRef id={issue.order.id} number={issue.order.orderNumber} className="font-semibold text-[var(--sys-heading)]" />
               <span className="text-xs px-2 py-0.5 rounded-md bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] font-medium">
                 {REASON_LABEL[issue.reason] ?? issue.reason}
               </span>

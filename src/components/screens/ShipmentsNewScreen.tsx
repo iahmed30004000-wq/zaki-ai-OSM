@@ -6,7 +6,9 @@ import { useAsk } from '@/components/ui/Confirm';
 import { apiFetch, apiJson } from '@/lib/api-client';
 import { ATTESTATION_AR } from '@/lib/shipment-cancel';
 import { CustomerHistoryButton } from '@/components/orders/CustomerHistory';
-import { OrderLink } from '@/components/orders/OrderLink';
+import { OrderRef } from '@/components/orders/OrderRef';
+import { CopyValue } from '@/components/orders/CopyValue';
+import { orderNumberToCopy } from '@/lib/copy-values';
 import { ScreenTitle } from '@/components/shell/ScreenTitle';
 import { BulkBar } from '@/components/shell/BulkBar';
 import { useIsPhone } from '@/hooks/useIsPhone';
@@ -752,7 +754,12 @@ export function ShipmentsNewScreen() {
           <ul className="text-xs text-[var(--sys-foreground)] space-y-1">
             {exceptions.map((e) => (
               <li key={e.orderNumber}>
-                <span dir="ltr">{e.orderNumber}</span> — {e.reasons.join(' · ')}
+                {/* The door sends the number without the order's id, so not `OrderRef` — only its copy button. */}
+                <span className="inline-flex items-center gap-1">
+                  <span dir="ltr">{e.orderNumber}</span>
+                  <CopyValue text={orderNumberToCopy(e.orderNumber)} noun="رقم الطلب" shown={e.orderNumber} />
+                </span>{' '}
+                — {e.reasons.join(' · ')}
               </li>
             ))}
           </ul>
@@ -860,7 +867,7 @@ export function ShipmentsNewScreen() {
                 label: 'الطلب',
                 primary: true,
                 render: (r) => (
-                  <OrderLink id={r.id} number={r.orderNumber} className="font-medium text-[var(--sys-heading)]" />
+                  <OrderRef id={r.id} number={r.orderNumber} className="font-medium text-[var(--sys-heading)]" />
                 ),
               },
               {

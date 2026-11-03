@@ -423,6 +423,8 @@ describe('«دفعات الشحن»', () => {
       'PDF',
       'CSV',
       'إكسل',
+      // «لصق الباركودات» (RV165, 3/11): the courier's barcodes pasted as lines — drawn for `ops.ship`, after the files.
+      'لصق الباركودات',
       SEND,
       'إغلاق الشحنة — سُلّمت للشركة',
     ]);

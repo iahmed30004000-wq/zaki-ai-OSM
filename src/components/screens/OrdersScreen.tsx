@@ -21,6 +21,8 @@ import { useRegions } from '@/hooks/useRegions';
 import { useProducts } from '@/hooks/useProducts';
 import { ProductPicker } from '@/components/ui/ProductPicker';
 import { OrderStateBadge } from '@/components/orders/OrderStateBadge';
+import { CopyValue } from '@/components/orders/CopyValue';
+import { orderNumberToCopy } from '@/lib/copy-values';
 import { CustomerHistoryButton } from '@/components/orders/CustomerHistory';
 import { ContactButtons } from '@/components/orders/ContactButtons';
 import { ProductThumb } from '@/components/ui/ProductThumb';
@@ -1029,7 +1031,11 @@ export function OrdersScreen() {
                       <div className="min-w-[180px] flex-1 space-y-1">
                         {/* Line 1 — which order, and where it stands. The number never breaks at its hyphens. */}
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                          <span className="font-bold text-[var(--sys-heading)] text-xs shrink-0 whitespace-nowrap" dir="ltr">{order.orderNumber}</span>
+                          {/* Text, not `OrderRef`: the whole row already opens the order, so the number takes only its copy button. */}
+                          <span className="inline-flex items-center gap-1 shrink-0">
+                            <span className="font-bold text-[var(--sys-heading)] text-xs shrink-0 whitespace-nowrap" dir="ltr">{order.orderNumber}</span>
+                            <CopyValue text={orderNumberToCopy(order.orderNumber)} noun="رقم الطلب" shown={order.orderNumber} />
+                          </span>
                           <OrderStateBadge state={order.state} />
                           {/*
                             A RETURNING CUSTOMER'S ORDER IS HELD FOR THE AGENT WHO WORKED HIM LAST — in her list and in a whole-company one, taken by her alone

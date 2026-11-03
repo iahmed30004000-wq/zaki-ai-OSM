@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ScreenTitle } from '@/components/shell/ScreenTitle';
 import { RiLoader4Line } from '@remixicon/react';
 import { Rows } from '@/components/ui/Rows';
-import { OrderLink } from '@/components/orders/OrderLink';
+import { OrderRef } from '@/components/orders/OrderRef';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PullPanel, useQueue } from '@/components/confirmation/PullPanel';
 import { CONFIRMATION_STATUS_AR, type ConfirmationStatus } from '@/lib/confirmation-workflow';
@@ -54,7 +54,7 @@ export function ConfirmationQueueScreen() {
                 label: 'الطلب',
                 primary: true,
                 render: (o) => (
-                  <OrderLink id={o.id} number={o.orderNumber} className="font-medium text-[var(--sys-heading)]" />
+                  <OrderRef id={o.id} number={o.orderNumber} className="font-medium text-[var(--sys-heading)]" />
                 ),
               },
               {

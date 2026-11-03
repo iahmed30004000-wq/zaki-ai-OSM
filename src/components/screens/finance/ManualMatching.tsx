@@ -22,7 +22,7 @@ import { Rows } from '@/components/ui/Rows';
 import { BulkBar } from '@/components/shell/BulkBar';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 import { useIsPhone } from '@/hooks/useIsPhone';
-import { OrderLink } from '@/components/orders/OrderLink';
+import { OrderRef } from '@/components/orders/OrderRef';
 import { FULL_SIGHT, NO_SIGHT, statesOffered, type TrackingSight } from '@/lib/parcel-tracking/sight';
 
 /**
@@ -571,7 +571,7 @@ export function ManualMatching() {
               primary: true,
               render: (o) => (
                 <>
-                  <OrderLink id={o.id} number={o.merchantRef ?? o.orderNumber} className="font-medium text-[var(--sys-heading)]" />
+                  <OrderRef id={o.id} number={o.merchantRef ?? o.orderNumber} className="font-medium text-[var(--sys-heading)]" />
                   {o.alert && (
                     <span className="block text-xs text-[var(--sys-destructive)]">
                       {ALERT_AR[o.alert.kind]}

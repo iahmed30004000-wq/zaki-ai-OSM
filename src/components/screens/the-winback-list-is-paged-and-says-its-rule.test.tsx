@@ -497,7 +497,8 @@ describe('a row', () => {
     expect(within(ok).getByRole('button', { name: 'اعرضه من جديد' })).toBeTruthy();
     expect(ok.textContent).toContain('أقصى خصم');
     const shipped = screen.getByText('ORD-SH').closest('article')!;
-    expect(within(shipped).queryByRole('button')).toBeNull();
+    // No action — only the copy button beside the number.
+    expect(within(shipped).queryAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['نسخ رقم الطلب ORD-SH']);
     expect(within(shipped).getByText('شُحن ولم يرجع إلينا — ما زال عند شركة الشحن أو عند العميل')).toBeTruthy();
   });
 
@@ -527,7 +528,8 @@ describe('a row', () => {
     expect(within(card).getByText('مرتجع بعد الشحن')).toBeTruthy();
     expect(within(card).getByText('لم يستلمه المستودع بعد')).toBeTruthy();
     expect(card.querySelector('footer')!.textContent).toBe('رجع ولم يستلمه المستودع بعد، أو أُغلق كخسارة ولن يعود');
-    expect(within(card).queryByRole('button')).toBeNull();
+    // No action — only the copy button beside the number.
+    expect(within(card).queryAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['نسخ رقم الطلب ORD-RN']);
   });
 
   it('and one still cooling says WHEN it becomes ready — and that is the only code that does', async () => {
