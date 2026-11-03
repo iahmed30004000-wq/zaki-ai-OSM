@@ -298,6 +298,19 @@ export function whatsappLink(phone: string, countryCode?: string | null, text?: 
   return text ? `https://wa.me/${to}?text=${encodeURIComponent(text)}` : `https://wa.me/${to}`;
 }
 
+/**
+ * THE SAME MESSAGE, HANDED STRAIGHT TO THE WHATSAPP APP ON A PHONE.
+ *
+ * `wa.me` on a phone goes through the browser first — a page, then a button, then the app. The app's own address opens it
+ * at once, with the same number (`waNumber`, the one normaliser) and the same text. A phone without the app opens nothing
+ * from it, so the caller keeps `whatsappLink` as the way through (the contact strip offers it when the page did not move).
+ */
+export function whatsappAppLink(phone: string, countryCode?: string | null, text?: string): string {
+  const to = waNumber(phone, countryCode);
+  if (!to) return '';
+  return text ? `whatsapp://send?phone=${to}&text=${encodeURIComponent(text)}` : `whatsapp://send?phone=${to}`;
+}
+
 export async function templatesFor(companyId: string): Promise<MessageTemplate[]> {
   const company = await db.company.findUnique({ where: { id: companyId }, select: { settings: true } });
   try {
