@@ -12,7 +12,7 @@ import { AiNotConfigured, aiChat } from '@/lib/ai-provider';
 import { assistantByKey } from '@/lib/ai-assistants';
 import { DIALECTS, type Dialect } from '@/lib/landing-structure';
 import { LANDING_STRUCTURES } from '@/lib/landing-structures';
-import { landingCopyBrief, parseProposal, proposalNoteAr, readProposal } from '@/lib/landing-copy-brief';
+import { NOTES_MAX, TONES, landingCopyBrief, notesRefusal, parseProposal, proposalNoteAr, readProposal } from '@/lib/landing-copy-brief';
 
 /**
  * POST /api/ai/landing-copy — the page's words, proposed.
@@ -46,6 +46,13 @@ const bodySchema = z.object({
   structureId: z.string().trim().min(1).max(60),
   productId: z.string().uuid(),
   dialect: z.enum(DIALECTS).optional(),
+  /**
+   * The wizard's «الأسلوب» — one sentence in the brief, nothing else. The
+   * rules after it are the same rules, so no voice can unlock a number.
+   */
+  tone: z.enum(TONES).optional(),
+  /** The wizard's optional notes, about the product only — read by `notesRefusal` before anything is sent. */
+  notes: z.string().max(NOTES_MAX + 50).optional(),
 });
 
 export async function POST(req: Request) {
@@ -59,6 +66,13 @@ export async function POST(req: Request) {
     const parsed = bodySchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
       return NextResponse.json({ error: zodMessage(parsed.error) }, { status: 400 });
+    }
+
+    // BEFORE ANY LOOKUP AND ANY CALL: a note carrying a phone number never
+    // leaves this server, whatever else the request holds.
+    const refusedNotes = notesRefusal(parsed.data.notes);
+    if (refusedNotes) {
+      return NextResponse.json({ error: refusedNotes, code: 'NOTES_REFUSED' }, { status: 400 });
     }
 
     const structure = LANDING_STRUCTURES.find((s) => s.id === parsed.data.structureId);
@@ -108,6 +122,8 @@ export async function POST(req: Request) {
     const brief = landingCopyBrief({
       structure,
       dialect,
+      tone: parsed.data.tone,
+      notes: parsed.data.notes,
       product: {
         name: product.name,
         description: product.description,

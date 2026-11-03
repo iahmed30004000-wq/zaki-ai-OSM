@@ -132,8 +132,8 @@ export const LANDING_HTML_PROMPT = `# صفحة هبوط لنظام Zaki — ال
  * which is all this needs — and it avoids pulling a .docx writer into the
  * bundle to produce one file that is ninety-five percent prose.
  */
-export function promptAsWordDocument(): string {
-  const body = LANDING_HTML_PROMPT
+export function promptAsWordDocument(text: string = LANDING_HTML_PROMPT): string {
+  const body = text
     .split('\n')
     .map((line) => {
       if (line.startsWith('# ')) return `<h1>${escapeHtml(line.slice(2))}</h1>`;
@@ -180,4 +180,42 @@ function inline(s: string): string {
   return escapeHtml(s)
     .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
     .replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+
+/** What a design prompt needs to know about one catalogue design. */
+export interface PromptDesign {
+  name: string;
+  description: string;
+  mood: 'light' | 'dark';
+  animated: boolean;
+  swatches: readonly string[];
+  font: string;
+}
+
+/**
+ * «انسخ البرومبت» FOR ONE DESIGN — the look in a few lines, then the
+ * whole brief above unchanged.
+ *
+ * The library's design view hands this to a seller who wants the design
+ * built somewhere else, or sent to a designer. The look is described from
+ * the catalogue's own fields and nothing else; the rules that make a page
+ * this system will serve follow it word for word, because a design brief
+ * that dropped them would produce a page the sanitizer strips.
+ */
+export function designPrompt(d: PromptDesign): string {
+  return [
+    `# التصميم المطلوب: «${d.name}»`,
+    '',
+    `- الفكرة: ${d.description}`,
+    `- الخلفية: ${d.mood === 'dark' ? 'غامقة' : 'فاتحة'}`,
+    `- الألوان بالترتيب (الأساسي، الثاني، الخلفية، السطح): ${d.swatches.join('، ')}`,
+    `- الخط: ${d.font}`,
+    d.animated
+      ? '- فيه حركة مع الماوس والسكرول — خلّيها خفيفة، وما تخبّي نص ولا زر الطلب ورا الحركة.'
+      : '- بدون حركة — ثابت ونظيف.',
+    '',
+    '---',
+    '',
+    LANDING_HTML_PROMPT,
+  ].join('\n');
 }

@@ -60,6 +60,57 @@ export interface BriefInput {
   structure: LandingStructure;
   product: ProductFacts;
   dialect: Dialect;
+  /** How the words should sound. One sentence in the brief; the rules below do not move. */
+  tone?: Tone;
+  /** What the seller wants stressed, about the product only. Checked by `notesRefusal` first. */
+  notes?: string;
+}
+
+/**
+ * THE FOUR VOICES THE WIZARD OFFERS — «الأسلوب».
+ *
+ * Taken from the owner's other platform as it names them. A voice changes
+ * how a sentence sounds and nothing it is allowed to claim: the rules are
+ * listed after it, unchanged, so «عرض مقنع» cannot become a licence to
+ * invent a discount.
+ */
+export const TONES = ['friendly', 'offer', 'premium', 'expert'] as const;
+export type Tone = (typeof TONES)[number];
+
+export const TONE_LABEL: Record<Tone, string> = {
+  friendly: 'ودود',
+  offer: 'عرض مقنع',
+  premium: 'فاخر',
+  expert: 'خبير وواقعي',
+};
+
+export const TONE_SENTENCE: Record<Tone, string> = {
+  friendly: 'الأسلوب: ودود وقريب، كأنك عم تحكي مع صاحبك.',
+  offer: 'الأسلوب: عرض مقنع — جمل قصيرة بتدفع للطلب، من غير ما تخترع خصم ولا رقم.',
+  premium: 'الأسلوب: فاخر وهادي، كلمات قليلة ومنتقاة.',
+  expert: 'الأسلوب: خبير وواقعي — حقائق المنتج كما هي، من غير مبالغة.',
+};
+
+/** The longest note the brief carries. */
+export const NOTES_MAX = 300;
+
+/**
+ * A NOTE GOES TO A MODEL, SO IT IS READ BEFORE IT GOES.
+ *
+ * The box is for the product — «ركّز على إنه بيدوم سنة». A phone number in
+ * it is a customer's or the seller's, and neither belongs in a brief, so
+ * seven digits in a row (spaces or dashes between them, Arabic-Indic or
+ * Western) refuse the whole call rather than being sent.
+ */
+export function notesRefusal(notes: string | undefined | null): string | null {
+  const text = String(notes ?? '');
+  if (!text.trim()) return null;
+  if (text.length > NOTES_MAX) return `الملاحظات أطول من ${NOTES_MAX} حرف — قصّرها.`;
+  const western = text.replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+  if (/(?:[0-9][\s.-]?){7,}/.test(western)) {
+    return 'بالملاحظات رقم طويل — ولا رقم زبون ولا تلفون بيروح لأي نموذج. شيله.';
+  }
+  return null;
 }
 
 /**
@@ -104,13 +155,15 @@ function slotBrief(slot: TextSlot): string {
  * prompt is that it describes last month's structure.
  */
 export function landingCopyBrief(input: BriefInput): string {
-  const { structure, product, dialect } = input;
+  const { structure, product, dialect, tone } = input;
+  const notes = input.notes?.trim();
   const attrs = Object.entries(product.attributes ?? {}).filter(([, v]) => String(v ?? '').trim() !== '');
 
   return [
     `اكتب نصوص صفحة هبوط بالبنية «${structure.name}».`,
     `لمن هذه البنية: ${structure.forWhom}`,
     `اللهجة المطلوبة: ${DIALECT_LABEL[dialect]} — اكتب بها، لا بالفصحى.`,
+    ...(tone ? [TONE_SENTENCE[tone]] : []),
     '',
     '## المنتج',
     `- الاسم: ${product.name}`,
@@ -119,6 +172,14 @@ export function landingCopyBrief(input: BriefInput): string {
       : '- لا وصف مكتوب له. لا تخترع له واحداً؛ اكتب عمّا تعرفه من اسمه فقط.',
     `- سعره: ${product.price} ${product.currency}`,
     ...attrs.map(([k, v]) => `- ${k}: ${v}`),
+    ...(notes
+      ? [
+          '',
+          '## ملاحظات البائع',
+          `${notes}`,
+          'خذ منها شو يركّز عليه النص بس. القواعد تحت أقوى منها: رقم أو خصم أو وعد مش بوصف المنتج ما بينكتب.',
+        ]
+      : []),
     '',
     '## القواعد',
     ...RULES.map((r, i) => `${i + 1}. ${r}`),

@@ -11,7 +11,7 @@ import { zodMessage } from '@/lib/zod-message';
 import { AiNotConfigured, aiChat, describeRoute, type AiImage } from '@/lib/ai-provider';
 import { assistantByKey } from '@/lib/ai-assistants';
 import { modelReadsImages, visionReasonAr } from '@/lib/ai-vision';
-import { parseProposal } from '@/lib/landing-copy-brief';
+import { TONES, parseProposal } from '@/lib/landing-copy-brief';
 import { parseCategoryAttributes, parseProductAttributes } from '@/lib/product-attributes';
 import { fiveAttributes } from '@/lib/landing-matcher';
 import {
@@ -72,6 +72,8 @@ const bodySchema = z.object({
     .object(Object.fromEntries(BUILD_QUESTIONS.map((q) => [q.key, answerShape])))
     .partial()
     .optional(),
+  /** The wizard's «الأسلوب» — one sentence in the brief, nothing else. */
+  tone: z.enum(TONES).optional(),
 });
 
 /** A picture this big is a label nobody needs more of — and a slow call. */
@@ -167,7 +169,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const brief = buildPageBrief({ specs, answers, hasImage: image !== null });
+    const brief = buildPageBrief({ specs, answers, hasImage: image !== null, tone: parsed.data.tone });
 
     try {
       const answer = await aiChat({

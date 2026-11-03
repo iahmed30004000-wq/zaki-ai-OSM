@@ -71,6 +71,9 @@ describe('every contract route has a page', () => {
       '/products/[id]',
       '/store/landing-pages/[id]',
       '/store/landing-pages/[id]/editor',
+      // «مكتبة القوالب» — the second tab of the landing pages' own entry,
+      // under its gate; the menu group stays at two entries by ruling.
+      '/store/landing-pages/library',
     ]);
   });
 
