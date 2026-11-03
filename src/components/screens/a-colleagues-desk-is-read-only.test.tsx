@@ -46,8 +46,8 @@ vi.mock('@/hooks/useMayOpen', () => ({ useMayOpen: () => () => true }));
 vi.mock('@/components/orders/OrderDetailModal', () => ({ OrderDetailModal: () => null }));
 vi.mock('@/components/orders/CustomerHistory', () => ({ CustomerHistoryButton: () => null, CustomerHistoryOffer: () => null }));
 vi.mock('@/components/orders/ContactButtons', () => ({ ContactButtons: () => <i data-testid="contact-strip" /> }));
-// The number's copy buttons carry their own status lines; these tests read the banner's.
-vi.mock('@/components/orders/OrderRef', () => ({ OrderRef: ({ number }: { number: string }) => <span>{number}</span> }));
+// The number's copy button carries its own status line; these tests read the banner's. OrderRef itself is real: the
+// confirmed list's «no opening number» check below must be able to fail.
 vi.mock('@/components/orders/CopyValue', () => ({ CopyValue: () => null }));
 vi.mock('@/components/screens/confirmation/AssistantDialog', () => ({ AssistantDialog: () => null }));
 vi.mock('@/components/screens/ConfirmationPostponedScreen', () => ({ ConfirmationPostponedScreen: () => <i data-testid="postponed-list" /> }));
