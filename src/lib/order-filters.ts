@@ -309,3 +309,29 @@ export function orderFiltersFromQuery(query: string): OrderFilterValues {
   }
   return out;
 }
+
+/*
+ * «متأخرة» IN DAYS — the screen's switch and its box, and the address that carries them (`?late=`).
+ * The rule itself is `lateDays` in `ordersWhere` above; these only say which numbers a screen offers and reads.
+ */
+/** «متأخرة» — the numbers of days offered, and the one the switch starts at. */
+export const LATE_DAY_CHOICES = ['3', '5', '7', '10', '14'] as const;
+export const DEFAULT_LATE_DAYS = '10';
+/** A whole number of days the builder accepts (`ordersWhere`: 1–365). */
+export function validLateDays(v: string | null | undefined): v is string {
+  if (!v || !/^\d{1,3}$/.test(v)) return false;
+  const n = Number(v);
+  return n >= 1 && n <= 365;
+}
+/** `?late=` as the address says it: `1` is every link written before the number could change, and means ten. */
+export function lateFromUrl(v: string | null): string {
+  if (v === null || v === '') return '';
+  if (v === '1') return DEFAULT_LATE_DAYS;
+  return validLateDays(v) ? v : '';
+}
+/** The choices, with a number a saved view or a link brought in kept among them so the box can show it. */
+export function lateChoices(current: string): string[] {
+  const all: string[] = [...LATE_DAY_CHOICES];
+  if (current && !all.includes(current)) all.push(current);
+  return all.sort((a, b) => Number(a) - Number(b));
+}
