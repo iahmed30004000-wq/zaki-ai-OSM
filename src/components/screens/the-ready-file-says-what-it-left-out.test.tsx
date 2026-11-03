@@ -84,11 +84,20 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('who is offered the file', () => {
-  it('the holder of both keys sees the button; it waits for a courier', async () => {
+  it('the holder of both keys sees the button; under «الكل» the press asks for a courier, out loud, and fetches nothing', async () => {
     await draw();
     const button = screen.getByRole('button', { name: BUTTON }) as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
+    // Never a dead greyed button (the owner, 3/11: «ليش تنزيل ال CSV مش شغال»): it presses, and says why there is no file.
+    expect(button.disabled).toBe(false);
     expect(button.title).toContain('اختر شركة الشحن');
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(apiFetch).not.toHaveBeenCalled();
+    const said = await screen.findByText(/اختر شركة الشحن من «شركة الشحن \(للشحنة\)» فوق أولاً/, undefined, WAIT);
+    expect(said.getAttribute('role')).toBe('status');
+    // And the cursor is put on the very list to pick from.
+    expect(document.activeElement).toBe(screen.getByLabelText(/شركة الشحن \(للشحنة\)/));
     fireEvent.change(screen.getByLabelText(/شركة الشحن/), { target: { value: 'p1' } });
     await waitFor(() => expect((screen.getByRole('button', { name: BUTTON }) as HTMLButtonElement).disabled).toBe(false));
   });

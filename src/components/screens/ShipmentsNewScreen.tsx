@@ -58,6 +58,9 @@ interface Row {
   shipHoldReason: string | null;
 }
 
+/** What «CSV الجاهزة للشحن» says when it is pressed under «الكل»: the file's amount and city code are the courier's. */
+const PICK_COURIER_FIRST = 'اختر شركة الشحن من «شركة الشحن (للشحنة)» فوق أولاً — المبلغ ورمز المدينة بالملف من أجورها.';
+
 export function ShipmentsNewScreen() {
   const ask = useAsk();
   const toast = useToast();
@@ -210,8 +213,16 @@ export function ShipmentsNewScreen() {
    * and why, and the line under the tabs repeats it. Fetched, not linked: a refusal is said here, not saved as a file.
    */
   const exportReady = async () => {
-    setExporting(true);
     setFileNote(null);
+    // The press is never dead: with «الكل» as the courier the button says what is missing, on the line under the tabs
+    // where the file's own answer is said, and puts the cursor on the very list to pick from (the owner, 3/11: «ليش تنزيل
+    // ال CSV مش شغال» — a greyed button with its reason only in a hover title reads as broken).
+    if (!filters.courier) {
+      setFileNote(PICK_COURIER_FIRST);
+      document.querySelector<HTMLSelectElement>('[data-courier-pick] select')?.focus();
+      return;
+    }
+    setExporting(true);
     try {
       const q = new URLSearchParams();
       Object.entries(filters).forEach(([k, v]) => v && q.set(k, v));
@@ -626,7 +637,9 @@ export function ShipmentsNewScreen() {
           onChange={(v) => setFilters({ ...filters, q: v })}
         />
         <div className="grid gap-3 md:grid-cols-5">
-        <Select label="شركة الشحن (للشحنة)" value={filters.courier} onChange={(v) => setFilters({ ...filters, courier: v })} options={providers.map((p) => ({ value: p.id, label: p.name }))} />
+        <div data-courier-pick>
+          <Select label="شركة الشحن (للشحنة)" value={filters.courier} onChange={(v) => setFilters({ ...filters, courier: v })} options={providers.map((p) => ({ value: p.id, label: p.name }))} />
+        </div>
         {/* On a phone the province and the dates fold behind one row that says what is inside: the search and the
             courier are what the next press cannot do without. On a desk the three cells are where they have always been. */}
         {phone ? (
@@ -777,7 +790,7 @@ export function ShipmentsNewScreen() {
           <button
             type="button"
             onClick={() => void exportReady()}
-            disabled={exporting || !filters.courier}
+            disabled={exporting}
             title={
               filters.courier
                 ? 'الطلبات الجاهزة للشحن بالفلاتر الحالية بملف CSV — بلا المؤجَّلة'
