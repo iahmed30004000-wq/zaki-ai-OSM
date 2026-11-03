@@ -126,7 +126,11 @@ const HER_BUTTONS = [/تأكيد الطلب/, /^تأجيل/, /^ألغِ$/, /^ل�
 
 const pick = (value: string) => fireEvent.change(screen.getByLabelText('شاشة موظفة'), { target: { value } });
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  // The desk being read is kept in the address now (`?agent=`); each test starts on a clean one.
+  window.history.replaceState(null, '', '/');
+});
 afterEach(cleanup);
 
 describe('the owner opens Sara’s desk', () => {

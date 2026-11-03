@@ -27,7 +27,7 @@ import { raiseChangeRequest } from '@/components/orders/raiseChangeRequest';
 import { TwinConfirmedDialog } from '@/components/orders/TwinConfirmedDialog';
 import { confirmAnywayBody, rejectAsDuplicateBody, twinsFromRefusal, type ConfirmedTwinView } from '@/lib/twin-refusal';
 import { AssistantDialog } from './confirmation/AssistantDialog';
-import { RiAddCircleLine, RiAlertLine, RiCheckboxCircleLine, RiCloseCircleLine, RiCloseLine, RiLoader4Line, RiPencilLine, RiPhoneLockLine, RiSearchLine, RiShieldFlashLine, RiSparkling2Line, RiTimerLine } from '@remixicon/react';
+import { RiAddCircleLine, RiAlertLine, RiCheckboxCircleLine, RiCloseCircleLine, RiCloseLine, RiLoader4Line, RiPencilLine, RiPhoneLockLine, RiRefreshLine, RiSearchLine, RiShieldFlashLine, RiSparkling2Line, RiTimerLine } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
 import { deskIsEmpty, openPreparationStep } from '@/lib/next-step';
 import { useMayOpen } from '@/hooks/useMayOpen';
@@ -380,20 +380,35 @@ export function ConfirmationMineScreen() {
   const mayWatch = userCan(currentUser, 'team.monitor');
   const [desks, setDesks] = useState<WatchableAgent[] | null>(null);
   const [watched, setWatched] = useState<{ id: string; name: string } | null>(null);
+  const loadDesks = useCallback(async (): Promise<WatchableAgent[] | null> => {
+    try {
+      const r = await apiJson<{ agents: WatchableAgent[] }>('/api/confirmation/desks');
+      setDesks(r.agents ?? []);
+      return r.agents ?? [];
+    } catch {
+      setDesks(null);
+      return null;
+    }
+  }, []);
+  /**
+   * THE DESK BEING READ SURVIVES A REFRESH (the owner, 3/11: «بس اعمل ريفريش بيوديني ع طلباتي»).
+   *
+   * Whose desk is open is kept in the address as `?agent=<id>`, written with `replaceState` (no navigation, no history
+   * entry), and read back once the picker's list is in — only an id the door listed opens; anything else is the reader's own.
+   */
   useEffect(() => {
     if (!mayWatch) return;
     let live = true;
-    apiJson<{ agents: WatchableAgent[] }>('/api/confirmation/desks')
-      .then((r) => {
-        if (live) setDesks(r.agents ?? []);
-      })
-      .catch(() => {
-        if (live) setDesks(null);
-      });
+    void loadDesks().then((agents) => {
+      if (!live || !agents) return;
+      const wanted = new URLSearchParams(window.location.search).get('agent');
+      const agent = wanted ? agents.find((d) => d.id === wanted) : undefined;
+      if (agent) setWatched((w) => w ?? { id: agent.id, name: agent.name });
+    });
     return () => {
       live = false;
     };
-  }, [mayWatch]);
+  }, [mayWatch, loadDesks]);
   const queue = useQueue(canPull);
   /* A phone lays the card's buttons in three rows and the tabs in one strip; a desk is as it was. */
   const phone = useIsPhone();
@@ -490,6 +505,21 @@ export function ConfirmationMineScreen() {
     setDonePage(1);
     setTab((t) => (t === 'postponed' ? 'work' : t));
     setWatched(agent ? { id: agent.id, name: agent.name } : null);
+    const url = new URL(window.location.href);
+    if (agent) url.searchParams.set('agent', agent.id);
+    else url.searchParams.delete('agent');
+    window.history.replaceState(window.history.state, '', url);
+  };
+
+  /** «تحديث»: the desk on screen and the counts in the picker, read again — without leaving the desk being read. */
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([load(), loadDesks()]);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   /**
@@ -810,6 +840,10 @@ export function ConfirmationMineScreen() {
               </option>
             ))}
           </select>
+          <Button variant="secondary" size="sm" onClick={() => void refresh()} disabled={refreshing}>
+            {refreshing ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiRefreshLine className="w-4 h-4" />}
+            تحديث
+          </Button>
         </div>
       )}
       {readOnly && (
