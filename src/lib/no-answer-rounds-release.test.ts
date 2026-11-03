@@ -194,7 +194,9 @@ describe('ON — a few thousand held orders', () => {
     expect(calls.business, 'businessMinutesBetween per order').toBe(0);
     expect(calls.zoned, 'the calendar placed per order').toBeLessThan(20);
     expect(calls.zoned, 'the cut-offs were placed').toBeGreaterThan(0);
-    expect(ms).toBeLessThan(1000);
+    // A wide bound on purpose: the counts above are the proof; the clock only catches a pass that went quadratic, and a
+    // loaded CI runner must not fail it.
+    expect(ms).toBeLessThan(10_000);
   });
 
   it('a full page is carried on from next time, so every held order is read in turn', async () => {
