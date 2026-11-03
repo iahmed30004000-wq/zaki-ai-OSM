@@ -46,6 +46,7 @@ const SHAPE_CSS = `
  *            that bar to the moving section instead of the screen, so a
  *            section holding a form, the floating order bar, the brand page's
  *            sticky bar or the filter sheet does not move at all.
+ *   none   — also stops the slider turning by itself (Slider.tsx reads it).
  *
  * A device that asks for less motion gets none, whatever the seller chose.
  */
@@ -66,7 +67,7 @@ const MOTION_CSS = `
 @keyframes sf-mo-rise { from { opacity: 0; transform: translate3d(0, 26px, 0); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
   .sf-root[data-motion] *, .sf-root[data-motion] *::before, .sf-root[data-motion] *::after { animation: none !important; transition: none !important; }
-  .sf-root[data-motion] :is(.sf-card, .lp-catalog-card):hover, .sf-root[data-motion] :is(.sf-card-img, .lp-catalog-media img) { transform: none !important; }
+  .sf-root[data-motion] :is(.sf-card, .lp-catalog-card):hover, .sf-root[data-motion] :is(.sf-card-img, .lp-catalog-media img), .sf-root[data-motion] .lp-cta:active { transform: none !important; }
 }
 `;
 

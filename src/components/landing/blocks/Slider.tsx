@@ -51,7 +51,11 @@ export function Slider({
 
   useEffect(() => {
     if (root.current) setRtl(getComputedStyle(root.current).direction === 'rtl');
-    setCalm(typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+    setCalm(
+      (typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) ||
+        // «الحركة: بدون» on the shop — nothing moves, the slider included.
+        !!root.current?.closest('[data-motion="none"]')
+    );
   }, []);
 
   const go = useCallback((to: number) => setIndex(((to % count) + count) % count), [count]);

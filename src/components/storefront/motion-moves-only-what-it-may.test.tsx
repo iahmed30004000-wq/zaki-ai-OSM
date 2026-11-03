@@ -1,13 +1,17 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, render } from '@testing-library/react';
 import { EXTRAS_SLICES } from './extras-sheet';
+import { Slider } from '@/components/landing/blocks/Slider';
 
 // Unmount what each test drew: a tree left mounted is still scheduled work.
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 /**
- * «الحركة» — THE REVIEW OF #188, ITEM 4.
+ * «الحركة» — THE REVIEW OF #188, ITEMS 4 AND 5.
  *
  * «قوية» moved every direct child of the page's main, the order form and the
  * fixed bars included — and a transform on an ancestor of a fixed bar pins
@@ -41,5 +45,34 @@ describe('«قوية» moves content sections only', () => {
     document.body.innerHTML = `<div class="sf-root" data-motion="full"><main>${html}</main></div>`;
     const el = document.querySelector('main > *')!;
     expect(el.matches(revealSelector())).toBe(moves);
+  });
+});
+
+describe('a device that asks for less motion', () => {
+  it('gets no press either, on every level', () => {
+    const reduce = motion.slice(motion.indexOf('@media (prefers-reduced-motion: reduce)'));
+    expect(reduce).toMatch(/\.sf-root\[data-motion\] \.lp-cta:active/);
+    expect(reduce).toMatch(/transform: ?none ?!important/);
+  });
+});
+
+describe('«بدون» stops the slider turning by itself', () => {
+  const images = ['/a.jpg', '/b.jpg', '/c.jpg'];
+  const shown = (c: HTMLElement) =>
+    [...c.querySelectorAll('.lp-slider-slide')].findIndex((s) => s.getAttribute('aria-hidden') === 'false');
+
+  it('a shop that set nothing: it turns, as it always did', () => {
+    vi.useFakeTimers();
+    const { container } = render(<div><Slider images={images} autoplay seconds={2} /></div>);
+    act(() => { vi.advanceTimersByTime(2100); });
+    expect(shown(container)).toBe(1);
+  });
+
+  it('under «بدون»: it stays where it is', () => {
+    vi.useFakeTimers();
+    const { container } = render(<div data-motion="none"><Slider images={images} autoplay seconds={2} /></div>);
+    // Two turns of the clock: a slider that turned would be on its third picture.
+    act(() => { vi.advanceTimersByTime(4100); });
+    expect(shown(container)).toBe(0);
   });
 });
