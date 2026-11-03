@@ -19,6 +19,7 @@ import { FAMILY_HERO_SHEET } from '@/components/storefront/styles';
 import { familyOf, layoutOf } from '@/lib/store-theme';
 import type { Metadata } from 'next';
 import { publicTitle, storeIcons } from '@/lib/public-metadata';
+import { sortFacts } from '@/lib/store-looks/sort-facts';
 
 /**
  * A store's front door — no login, no session, no cookies.
@@ -101,9 +102,14 @@ export default async function StorefrontHome({ params, searchParams }: Props) {
      * on the page.
      */
     const wantsCatalog = home.some((b) => b.type === 'catalog');
-    const catalogue = wantsCatalog
+    const shelf = wantsCatalog
       ? await storefrontCatalog(store.companyId, store.id, store.slug)
       : null;
+    // A row of a home design that is sorted asks two more facts of its
+    // products — when each was added, and what this shop delivered — and
+    // only such a row: a home whose blocks never chose an order reads
+    // nothing more than it always did.
+    const catalogue = shelf ? await sortFacts(shelf, home, { companyId: store.companyId, storeId: store.id }) : null;
 
     // The shopper's chosen category, from the query string. A link and a
     // server render rather than client state: this page is a server

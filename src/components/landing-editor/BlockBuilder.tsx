@@ -1199,6 +1199,23 @@ function SectionFields({
             </select>
           </label>
 
+          {/* The order a home design's row came with. «الأكثر مبيعاً» ranks by
+              delivered orders and shows no number; with none proven the row
+              keeps this order under «مختارات». */}
+          <label className="flex items-center justify-between gap-2 text-xs font-semibold text-[var(--sys-heading)]">
+            الترتيب
+            <select
+              value={s.sort ?? 'shelf'}
+              onChange={(e) => patch({ sort: e.target.value as 'shelf' | 'newest' | 'best' | 'priceAsc' })}
+              className="h-11 md:h-8 rounded-md border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-2 text-xs"
+            >
+              <option value="shelf">كما في المتجر</option>
+              <option value="newest">وصل حديثاً</option>
+              <option value="best">الأكثر مبيعاً (من الطلبات المسلَّمة)</option>
+              <option value="priceAsc">الأقل سعراً</option>
+            </select>
+          </label>
+
           <Check label="أظهر السعر" checked={s.showPrice} onChange={(v) => patch({ showPrice: v })} />
           <Check label="أظهر شريط التصنيفات" checked={s.showCategories} onChange={(v) => patch({ showCategories: v })} />
           {/* The chips are drawn only where there is something to filter;
