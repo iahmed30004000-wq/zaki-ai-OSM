@@ -44,7 +44,7 @@ function selectors(css: string): string[] {
   return out;
 }
 
-const SCOPED = /\[data-(look|radius|motion|logo)\]|\[data-(look|radius|motion|logo)=|\[data-(look|radius|motion|logo)\],|\.sf-ticker/;
+const SCOPED = /\[data-(look|radius|motion|logo|badge)\]|\[data-(look|radius|motion|logo|badge)=|\[data-(look|radius|motion|logo|badge)\],|\.sf-ticker/;
 
 describe('a look reaches the shop that chose it, and only that shop', () => {
   it('an untouched shop writes no sheet of these at all', () => {
@@ -68,10 +68,11 @@ describe('a look reaches the shop that chose it, and only that shop', () => {
     expect(EXTRAS_SLICES.ticker).toContain('prefers-reduced-motion');
   });
 
-  it('and all of it together stays small — under 4 KB, beside a 50 KB shop sheet', () => {
+  // 4.5 and not 4: the badge slice (the review of #188, «لون التمييز» coloured nothing) is the fifth.
+  it('and all of it together stays small — under 4.5 KB, beside a 50 KB shop sheet', () => {
     const all = Object.values(EXTRAS_SLICES).join('');
     console.log(`[shop] شرائح الثيمات: ${(Buffer.byteLength(all) / 1024).toFixed(2)} ك.ب`);
-    expect(Buffer.byteLength(all) / 1024).toBeLessThan(4);
+    expect(Buffer.byteLength(all) / 1024).toBeLessThan(4.5);
   });
 
   it('a tried look names itself on the root and writes its radii', () => {
@@ -147,5 +148,28 @@ describe('«الطلب من المعاينة طلب حقيقي» beside every or
     ['the brand product page', 'src/components/storefront/BrandProductPage.tsx', /\{previewNote && <PreviewOrderNote \/>\}\s*<LandingFormBridge/],
   ])('%s', (_w, rel, pattern) => {
     expect(stripComments(repoFile(rel))).toMatch(pattern);
+  });
+});
+
+describe('«شارة العرض» · «لون التمييز» colour the offer badges', () => {
+  it.each([
+    ['the highlight', { highlight: '#ffb020' }, '#ffb020'],
+    ['«شارة العرض»', { colors: { offerBadge: '#0b5f96' } }, '#0b5f96'],
+    ['«شارة العرض» over the highlight', { highlight: '#ffb020', colors: { offerBadge: '#0b5f96' } }, '#0b5f96'],
+  ] as const)('%s: the badge rule is on the page, with the colour and measured ink', (_w, theme, colour) => {
+    const root = draw(theme as Partial<StoreTheme>).firstElementChild as HTMLElement;
+    expect(root.hasAttribute('data-badge')).toBe(true);
+    expect(root.style.getPropertyValue('--store-offer-badge')).toBe(colour);
+    expect(root.style.getPropertyValue('--store-offer-badge-ink')).toMatch(/^#[0-9a-f]{6}$/);
+    expect(root.innerHTML).toContain(EXTRAS_SLICES.badge);
+    expect(EXTRAS_SLICES.badge).toMatch(/lp-offer-tag/);
+    expect(EXTRAS_SLICES.badge).toMatch(/lp-catalog-tag/);
+  });
+
+  it('a shop that set neither: no attribute, no rule, no ink', () => {
+    const root = draw({}).firstElementChild as HTMLElement;
+    expect(root.hasAttribute('data-badge')).toBe(false);
+    expect(root.style.getPropertyValue('--store-offer-badge-ink')).toBe('');
+    expect(root.innerHTML).not.toContain(EXTRAS_SLICES.badge);
   });
 });

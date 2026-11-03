@@ -279,6 +279,17 @@ CUT_AT = {
     'atelier': '، واجهة فيديو',
 }
 
+# And four more name a part of their storefront mid-sentence. The words are
+# taken out, never replaced (the review of #188, item 9): a quick «add»
+# button on the card, motion as you scroll (a look sets no motion — that is
+# «الحركة»), large banners, dense rows.
+DROP = {
+    'nova': [' مع إضافة سريعة'],
+    'pulse': [' متحرك', ' وحركات لطيفة مع التمرير'],
+    'voyage': ['بانرات كبيرة، '],
+    'mega': ['صفوف كثيفة و'],
+}
+
 
 def ts(value):
     return json.dumps(value, ensure_ascii=False, indent=2)
@@ -305,6 +316,10 @@ def main():
         line = meta['description']
         if tid in CUT_AT and CUT_AT[tid] in line:
             line = line.split(CUT_AT[tid])[0] + '.'
+        for words in DROP.get(tid, []):
+            if words not in line:
+                raise SystemExit(f'{tid}: the words to drop are not in the line any more: {words}')
+            line = line.replace(words, '')
         names['looks'][tid] = {'label': meta['label'], 'line': line}
 
     designs = []
