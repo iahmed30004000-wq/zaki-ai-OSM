@@ -14,7 +14,7 @@ import { apiJson } from '@/lib/api-client';
 import { DEFAULT_THEME, FONTS, MOODS, isValidHex } from '@/lib/landing-theme';
 import {
   CHECKOUT_FIELDS, DEFAULT_STORE_THEME, MANDATORY_CHECKOUT_FIELDS,
-  checkoutOrder, hiddenCheckoutFields, type CheckoutField, type StoreTheme,
+  checkoutOrder, hiddenCheckoutFields, logoHeightOf, type CheckoutField, type StoreTheme,
 } from '@/lib/store-theme';
 import { DEFAULT_SUBMIT as DEFAULT_SUBMIT_WORDS, DEFAULT_THANKS as DEFAULT_THANKS_LINE } from '@/lib/checkout-words';
 import { orderAfterDrag, reorderWithinGroup } from '@/lib/nav-arrangement';
@@ -971,6 +971,11 @@ export function StoreThemeScreen() {
               <span className={LABEL}>
                 حجم الشعار: {theme.header?.logoHeight ? `${theme.header.logoHeight} بكسل` : 'الافتراضي'}
               </span>
+              {theme.header?.logoHeight && logoHeightOf(theme) !== theme.header.logoHeight && (
+                <span className={HINT}>
+                  الترويسة {theme.header.height ?? 72} بكسل، فالشعار بيطلع {logoHeightOf(theme)} بكسل — كبّر ارتفاع الترويسة فوق لتكبّره.
+                </span>
+              )}
               <span className="flex items-center gap-2">
                 <input
                   type="range"

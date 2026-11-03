@@ -169,6 +169,17 @@ describe('what a look and a corner level paint', () => {
     expect(RADIUS_SCALE.soft.card).toBe(soft);
   });
 
+  it.each([
+    [80, 72, 60],
+    [56, 72, 56],
+    [80, 120, 80],
+    [40, 48, 36],
+  ])('a %ipx logo in a %ipx header is drawn %ipx — never out of the bar', (logoHeight, height, drawn) => {
+    const theme = { ...DEFAULT_STORE_THEME, header: { height, sticky: true, onFrontPage: true, logoHeight } };
+    expect(storeThemeVars(theme)['--store-logo-h']).toBe(`${drawn}px`);
+    expect(drawn).toBeLessThanOrEqual(height - 12);
+  });
+
   it('the highlight colours the badge unless the shop named the badge itself', () => {
     expect(storeThemeVars({ ...DEFAULT_STORE_THEME, highlight: '#ffb020' })['--store-offer-badge']).toBe('#ffb020');
     expect(

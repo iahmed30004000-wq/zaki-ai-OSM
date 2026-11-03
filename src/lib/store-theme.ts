@@ -868,7 +868,8 @@ export function storeThemeVars(theme: StoreTheme): Record<string, string> {
     // The badge's own colour, when the shop named one, wins below.
     vars['--store-offer-badge'] = highlight;
   }
-  if (theme.header?.logoHeight) vars['--store-logo-h'] = `${theme.header.logoHeight}px`;
+  const logo = logoHeightOf(theme);
+  if (logo) vars['--store-logo-h'] = `${logo}px`;
   // Every colour a shop can name, written over the derived one. Driven by
   // COLOR_VAR rather than by a line each, because a field with no line is
   // a colour picker that changes nothing — which is exactly what four of
@@ -880,6 +881,21 @@ export function storeThemeVars(theme: StoreTheme): Record<string, string> {
   return vars;
 }
 
+
+/**
+ * «حجم الشعار» AS THE HEADER CAN HOLD IT — null when the shop never set one.
+ *
+ * Their builder allows 28–80, and our header is 72px by default: an 80px
+ * logo hung out of the bar. The logo is capped at the header's own height
+ * less its breathing room (6px above and below), so a seller who wants a
+ * bigger logo raises the header — and the screen says so.
+ */
+export const LOGO_ROOM = 12;
+export function logoHeightOf(theme: StoreTheme): number | null {
+  const wanted = theme.header?.logoHeight;
+  if (!wanted) return null;
+  return Math.min(wanted, (theme.header?.height ?? 72) - LOGO_ROOM);
+}
 
 /**
  * THE OFFER BADGE'S OWN COLOUR, IF THE SHOP GAVE IT ONE — «شارة العرض» first,
