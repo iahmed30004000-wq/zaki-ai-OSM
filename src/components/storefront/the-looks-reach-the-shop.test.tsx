@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, render } from '@testing-library/react';
+
+// Unmount what each test drew: a tree left mounted when the file ends is
+// still scheduled work, and it runs after the DOM is gone («window is not defined»).
+afterEach(cleanup);
 import { StorefrontShell } from './StorefrontShell';
 import { EXTRAS_SLICES, shopExtrasSheet, tickerLines } from './extras-sheet';
 import { unchangedShops } from './unchanged-shop.fixture';
