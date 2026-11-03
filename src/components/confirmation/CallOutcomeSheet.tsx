@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import {
   RiArrowGoBackLine,
-  RiArrowLeftLine,
+  RiArrowRightLine,
   RiCheckboxCircleLine,
   RiCloseCircleLine,
   RiCloseLine,
@@ -236,7 +236,7 @@ export function CallOutcomeSheet({
               </SheetButton>
             </div>
             <SheetButton onClick={() => setStep('ask')}>
-              <RiArrowGoBackLine className="w-4 h-4" />
+              <RiArrowGoBackLine className="icon-mirror w-4 h-4" />
               رجوع
             </SheetButton>
           </div>
@@ -259,7 +259,7 @@ export function CallOutcomeSheet({
               ))}
             </div>
             <SheetButton onClick={() => setStep('ask')}>
-              <RiArrowGoBackLine className="w-4 h-4" />
+              <RiArrowGoBackLine className="icon-mirror w-4 h-4" />
               رجوع
             </SheetButton>
           </div>
@@ -279,7 +279,7 @@ export function CallOutcomeSheet({
                     setStep('ask');
                   }}
                 >
-                  <RiArrowGoBackLine className="w-4 h-4" />
+                  <RiArrowGoBackLine className="icon-mirror w-4 h-4" />
                   تراجع
                 </SheetButton>
               </div>
@@ -302,7 +302,7 @@ export function CallOutcomeSheet({
             )}
             {canPull ? (
               <SheetButton onClick={onNext} tone="primary" disabled={pulling}>
-                {pulling ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiArrowLeftLine className="w-4 h-4" />}
+                {pulling ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiArrowRightLine className="icon-mirror w-4 h-4" />}
                 التالي
               </SheetButton>
             ) : (
