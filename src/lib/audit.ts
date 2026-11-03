@@ -33,6 +33,15 @@ export function redactSensitiveValues(value: unknown, depth = 0): unknown {
   return out;
 }
 
+/** Never throws: a module that cannot load here (a test's stub) means «not a preview», and the row is written. */
+async function previewRead(): Promise<boolean> {
+  try {
+    return await (await import('./auth')).inPreviewRead();
+  } catch {
+    return false;
+  }
+}
+
 export async function logAudit({
   companyId,
   userId,
@@ -51,6 +60,9 @@ export async function logAudit({
   newData?: any;
 }) {
   try {
+    // «عاين كـ» (preview-mode.ts): a read the owner makes AS somebody writes no row in her name. Only a read the proxy
+    // stamped answers true, so the preview's own start and end (a POST and a DELETE) are recorded like anything else.
+    if (await previewRead()) return;
     await db.auditLog.create({
       data: {
         companyId,

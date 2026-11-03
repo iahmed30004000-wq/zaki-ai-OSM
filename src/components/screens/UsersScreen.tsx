@@ -10,7 +10,8 @@ import { Badge } from '@/components/ui/Badge';
 import { useApp } from '@/context/AppContext';
 import { useCreateIntent } from '@/hooks/useCreateIntent';
 import { arDate, arDateTime } from '@/lib/format';
-import { userCan } from '@/lib/can';
+import { userCan, userHasFullAccess } from '@/lib/can';
+import { PreviewPicker } from '@/components/shell/PreviewAs';
 import { apiJson } from '@/lib/api-client';
 import { CreateUserModal } from './users/CreateUserModal';
 import { useConfirm } from '@/components/ui/Confirm';
@@ -212,6 +213,9 @@ export function UsersScreen() {
         {error && (
           <div className="p-3 bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-xs rounded-lg">{error}</div>
         )}
+
+        {/* «عاين كـ» — the owner's alone (src/lib/preview-mode.ts). The door asks again; this is only where it is drawn. */}
+        {userHasFullAccess(currentUser) && !currentUser?.preview && <PreviewPicker />}
 
         {/* Filters */}
         <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 shadow-raised grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">

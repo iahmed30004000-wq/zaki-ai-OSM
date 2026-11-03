@@ -147,6 +147,9 @@ export async function noteCustomersHandedOut(input: {
   where: string;
   rows: ReadonlyArray<ContactBearingRow>;
 }): Promise<void> {
+  // «عاين كـ» (preview-mode.ts): the owner reading her screens is not HER reading them. Her tally does not move and no
+  // alarm goes out in her name.
+  if (input.user.preview) return;
   const { ids, anonymous } = tellApart(input.rows);
   if (ids.length + anonymous === 0) return;
 

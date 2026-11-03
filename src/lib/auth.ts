@@ -2,7 +2,7 @@
 import { SignJWT, jwtVerify } from 'jose';
 import bcrypt from 'bcryptjs';
 import { db } from './db';
-import { SessionUser, UserRole, UserStatus, Permission, ROLE_PERMISSIONS } from '@/types/auth';
+import { SessionUser, UserRole, UserStatus, Permission, ROLE_PERMISSIONS, ROLE_LABELS } from '@/types/auth';
 import { TRUST_DAYS, type DeviceTrustClaims } from './trusted-device';
 
 /**
@@ -108,8 +108,9 @@ export async function verifySessionToken(token: string): Promise<{
 } | null> {
   try {
     const { payload } = await jwtVerify(token, getJwtSecret());
-    // A trusted-device token is not a session, whatever else is true of it.
-    if (payload.typ === 'device') return null;
+    // A trusted-device token is not a session, whatever else is true of it — and nor is a preview token
+    // (preview-mode.ts), which is signed with the same key.
+    if (payload.typ === 'device' || payload.typ === 'preview') return null;
     return payload as unknown as {
       userId: string;
       email: string;
@@ -123,12 +124,113 @@ export async function verifySessionToken(token: string): Promise<{
   }
 }
 
+/** The user row with what a session reads beside it. */
+const SESSION_USER_INCLUDE = {
+  company: {
+    select: { id: true, name: true },
+  },
+  /*
+   * THE LOOK THIS PERSON'S ROLE OPENS ON.
+   *
+   * Read here, with the user, because the layout asks for it on
+   * every single page render and a second query per page for one
+   * nullable string is a round trip nobody needs. It is consulted
+   * ONLY when the person has not chosen a theme of their own — see
+   * `openingTheme`.
+   */
+  // `name` for the preview banner alone («عم تعاين كـ لينا (موظفة تأكيد)»), which names a custom role by its own name.
+  roleRef: { select: { systemTheme: true, name: true } },
+} as const;
+
+function loadSessionRow(id: string) {
+  return db.user.findUnique({ where: { id }, include: SESSION_USER_INCLUDE });
+}
+
+type SessionUserRow = NonNullable<Awaited<ReturnType<typeof loadSessionRow>>>;
+
+/** One user row → the SessionUser every door reads, with the engine's grants attached. */
+async function sessionUserOf(user: SessionUserRow): Promise<SessionUser> {
+  const role = user.role as UserRole;
+  // Permission Engine: effective grants from DB (role + overrides), legacy
+  // fallback for users without roleId. Permissions are re-read per request,
+  // so changes apply immediately (no stale session permissions).
+  const { computeEffectiveGrants } = await import('./permissions-core');
+  const { attachGrants } = await import('./authorization');
+  const effective = await computeEffectiveGrants({ id: user.id, role: user.role, roleId: user.roleId });
+
+  const sessionUser: SessionUser = {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role,
+    status: user.status as UserStatus,
+    avatar: user.avatar,
+    companyId: user.companyId,
+    companyName: user.company?.name,
+    commissionRate: user.commissionRate,
+    systemTheme: user.systemTheme,
+    /** Whether the one-time tour already ran for this person. */
+    tourDoneAt: user.tourDoneAt ? user.tourDoneAt.toISOString() : null,
+    /** The base their role opens on. Their own choice above wins over it. */
+    roleTheme: user.roleRef?.systemTheme ?? null,
+    permissions: Object.keys(effective.grants),
+    legacyPermissions: !user.roleId,
+  };
+  // Grants live in a WeakMap keyed on this per-request object — never serialized.
+  attachGrants(sessionUser, effective);
+  return sessionUser;
+}
+
+/**
+ * WHO THIS OWNER MAY PREVIEW (preview-mode.ts) — one rule, read by the start door and again by every request after
+ * it: an ACTIVE person of his company (his own, or the platform's first — the rule `tenantOf` uses) who is not an
+ * owner and not himself. Anything else is «not found».
+ */
+export async function previewableTarget(owner: SessionUser, targetId: string): Promise<SessionUserRow | null> {
+  if (owner.role !== 'SUPER_ADMIN' || owner.status !== 'ACTIVE') return null;
+  const companyId = owner.companyId ?? (await db.company.findFirst({ select: { id: true } }))?.id ?? null;
+  if (!companyId) return null;
+  const row = await loadSessionRow(targetId);
+  if (!row || row.id === owner.id) return null;
+  if (row.role === 'SUPER_ADMIN' || row.status !== 'ACTIVE' || row.companyId !== companyId) return null;
+  return row;
+}
+
+/**
+ * THE PREVIEW, IF THIS REQUEST IS ONE: the person being looked at, built exactly as her own session would be, with
+ * `preview` naming who is really looking. Null when anything does not hold — and then the caller answers the owner
+ * himself, never her.
+ */
+async function previewedUser(owner: SessionUser, sessionToken: string, previewToken: string): Promise<SessionUser | null> {
+  // Who may preview at all — an ACTIVE SUPER_ADMIN — is asked once, in `previewableTarget` below.
+  const { verifyPreviewToken } = await import('./preview-mode');
+  const claims = await verifyPreviewToken(previewToken, sessionToken, getJwtSecret());
+  if (!claims || claims.ownerId !== owner.id) return null;
+  // The proxy's mark: it saw this request, and it was a read. Without it, the owner.
+  if (!(await inPreviewRead())) return null;
+  const row = await previewableTarget(owner, claims.targetId);
+  if (!row) return null;
+  const seen = await sessionUserOf(row);
+  seen.preview = {
+    ownerId: owner.id,
+    ownerName: owner.name,
+    roleName: row.roleRef?.name ?? ROLE_LABELS[row.role as UserRole]?.ar ?? row.role,
+    expiresAt: claims.expiresAt.toISOString(),
+  };
+  return seen;
+}
+
 /**
  * Loads the session user. Returns the user regardless of status
  * so the UI can render the correct screen (pending / suspended / active).
  * Token version is verified server-side to support forced logout.
+ *
+ * WHILE THE OWNER PREVIEWS SOMEBODY (preview-mode.ts) this answers HER — on a
+ * read the proxy stamped, and on nothing else. `{ preview: 'ignore' }` answers
+ * the person who is really signed in whatever the cookie says: signing out and
+ * the preview door itself act as the owner.
  */
-export async function getCurrentUser(): Promise<SessionUser | null> {
+export async function getCurrentUser(opts?: { preview?: 'ignore' }): Promise<SessionUser | null> {
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get(COOKIE_NAME)?.value;
@@ -137,59 +239,20 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     const decoded = await verifySessionToken(token);
     if (!decoded) return null;
 
-    const user = await db.user.findUnique({
-      where: { id: decoded.userId },
-      include: {
-        company: {
-          select: { id: true, name: true },
-        },
-        /*
-         * THE LOOK THIS PERSON'S ROLE OPENS ON.
-         *
-         * Read here, with the user, because the layout asks for it on
-         * every single page render and a second query per page for one
-         * nullable string is a round trip nobody needs. It is consulted
-         * ONLY when the person has not chosen a theme of their own — see
-         * `openingTheme`.
-         */
-        roleRef: { select: { systemTheme: true } },
-      },
-    });
+    const user = await loadSessionRow(decoded.userId);
 
     if (!user) return null;
 
     // Forced logout: token issued before the last tokenVersion bump is invalid
     if (user.tokenVersion !== decoded.tv) return null;
 
-    const role = user.role as UserRole;
-    // Permission Engine: effective grants from DB (role + overrides), legacy
-    // fallback for users without roleId. Permissions are re-read per request,
-    // so changes apply immediately (no stale session permissions).
-    const { computeEffectiveGrants } = await import('./permissions-core');
-    const { attachGrants } = await import('./authorization');
-    const effective = await computeEffectiveGrants({ id: user.id, role: user.role, roleId: user.roleId });
+    const sessionUser = await sessionUserOf(user);
+    if (opts?.preview === 'ignore') return sessionUser;
 
-    const sessionUser: SessionUser = {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role,
-      status: user.status as UserStatus,
-      avatar: user.avatar,
-      companyId: user.companyId,
-      companyName: user.company?.name,
-      commissionRate: user.commissionRate,
-      systemTheme: user.systemTheme,
-      /** Whether the one-time tour already ran for this person. */
-      tourDoneAt: user.tourDoneAt ? user.tourDoneAt.toISOString() : null,
-      /** The base their role opens on. Their own choice above wins over it. */
-      roleTheme: user.roleRef?.systemTheme ?? null,
-      permissions: Object.keys(effective.grants),
-      legacyPermissions: !user.roleId,
-    };
-    // Grants live in a WeakMap keyed on this per-request object — never serialized.
-    attachGrants(sessionUser, effective);
-    return sessionUser;
+    const { PREVIEW_COOKIE } = await import('./preview-mode');
+    const previewToken = cookieStore.get(PREVIEW_COOKIE)?.value;
+    if (!previewToken) return sessionUser;
+    return (await previewedUser(sessionUser, token, previewToken)) ?? sessionUser;
   } catch (error: any) {
     if (error?.digest === 'DYNAMIC_SERVER_USAGE') {
       return null;
@@ -197,6 +260,42 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     console.error('Error getting current user:', error);
     return null;
   }
+}
+
+/**
+ * IS THIS REQUEST A PREVIEW READ? True only when the proxy stamped it (preview-mode.ts). The stamp is an HMAC of the
+ * preview cookie under the session key, so nobody without the key can claim it, and the proxy puts it on reads only.
+ * The places that write in the reader's name on a GET (the audit trail, the «many customers read» alarm) ask this and
+ * stay silent. Outside a request — a job, a script, a test — it is false.
+ */
+export async function inPreviewRead(): Promise<boolean> {
+  try {
+    const { headers } = await import('next/headers');
+    const { PREVIEW_COOKIE, PREVIEW_STAMP_HEADER, previewStamp, sameStamp } = await import('./preview-mode');
+    const stamp = (await headers()).get(PREVIEW_STAMP_HEADER);
+    if (!stamp) return false;
+    const token = (await cookies()).get(PREVIEW_COOKIE)?.value;
+    if (!token) return false;
+    return sameStamp(stamp, await previewStamp(token, getJwtSecret()));
+  } catch {
+    return false;
+  }
+}
+
+/** Signs the preview cookie for the owner's CURRENT session (the preview door, src/app/api/preview). */
+export async function issuePreviewToken(ownerId: string, targetId: string): Promise<string | null> {
+  const sessionToken = (await cookies()).get(COOKIE_NAME)?.value;
+  if (!sessionToken) return null;
+  const { signPreviewToken } = await import('./preview-mode');
+  return signPreviewToken({ ownerId, targetId, sessionToken }, getJwtSecret());
+}
+
+/** The preview this browser holds for this owner's session, as his own door reads it — or null. */
+export async function currentPreviewClaims(ownerId: string) {
+  const jar = await cookies();
+  const { PREVIEW_COOKIE, verifyPreviewToken } = await import('./preview-mode');
+  const claims = await verifyPreviewToken(jar.get(PREVIEW_COOKIE)?.value, jar.get(COOKIE_NAME)?.value, getJwtSecret());
+  return claims && claims.ownerId === ownerId ? claims : null;
 }
 
 /**
@@ -275,6 +374,17 @@ export function sessionCookieOptions(remember: boolean) {
     sameSite: 'lax' as const,
     path: '/',
     maxAge: 60 * 60 * 24 * (remember ? 30 : 7),
+  };
+}
+
+/** The preview cookie's settings (preview-mode.ts): httpOnly, this site only, gone in two hours whatever happens. */
+export function previewCookieOptions(maxAge: number) {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax' as const,
+    path: '/',
+    maxAge,
   };
 }
 

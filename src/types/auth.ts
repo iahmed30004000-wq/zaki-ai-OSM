@@ -426,4 +426,9 @@ export interface SessionUser {
   effectiveGrants?: { fullAccess: boolean; grants: Record<string, { scope: string; scopeIds?: unknown[] | null }> };
   /** Set when grants came from the legacy fallback (user without roleId). */
   legacyPermissions?: boolean;
+  /**
+   * Set ONLY while the owner previews this person («عاين كـ», src/lib/preview-mode.ts): who is really looking, and
+   * until when. Every key above is HERS; nothing can be written while this is set (the proxy refuses it).
+   */
+  preview?: { ownerId: string; ownerName: string; roleName: string; expiresAt: string } | null;
 }

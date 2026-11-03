@@ -7,6 +7,7 @@ import { RAIL_COOKIE } from '@/lib/sidebar-rail';
 import { DECOR_COOKIE } from '@/lib/theme-decoration';
 import { AppProvider } from '@/context/AppContext';
 import { GlobalTrackingProvider } from '@/components/tracking/GlobalTrackingProvider';
+import { PreviewBanner } from '@/components/shell/PreviewAs';
 
 export const metadata: Metadata = {
   title: 'Zaki AI OMS — نظام المبيعات والطلبات والأرباح الذكي',
@@ -70,6 +71,9 @@ export default async function SystemLayout({ children }: { children: React.React
             the pixels of the company that owns THAT page. The dashboard
             registers none. */}
         <GlobalTrackingProvider pixels={[]}>{children}</GlobalTrackingProvider>
+        {/* «عاين كـ» (src/lib/preview-mode.ts): on every page while the owner previews somebody — who, read-only, and
+            the way back. Drawn from the session, so it cannot be on without the server having said so. */}
+        {user?.preview && <PreviewBanner name={user.name} roleName={user.preview.roleName} />}
       </AppProvider>
     </SystemFrame>
   );
