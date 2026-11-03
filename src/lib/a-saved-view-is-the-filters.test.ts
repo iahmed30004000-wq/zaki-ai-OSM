@@ -239,7 +239,7 @@ describe('the orders screen is where it is wired', () => {
       'setCourierId(',
       'setFromDate(',
       'setToDate(',
-      'setLateOnly(',
+      'setLateDays(',
       'setRegionId(',
     ]) {
       expect(body, `${setter}: عرضٌ يُطبَّق ولا يَلمس هذا المُرشِّح`).toContain(setter);
