@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { getStorefront } from '@/lib/storefront';
+import { getShopView } from '@/lib/shop-view';
 
 /**
  * THE SHOP'S DIRECTION, HELD ONE LEVEL ABOVE THE PAGE.
@@ -31,7 +31,7 @@ export default async function StoreDirectionLayout({
   params: Promise<{ store: string }>;
 }) {
   const { store: slug } = await params;
-  const store = await getStorefront(slug).catch(() => null);
+  const store = await getShopView(slug).catch(() => null);
 
   /**
    * A SHOP THAT DOES NOT EXIST IS REFUSED HERE, NOT IN THE PAGE.

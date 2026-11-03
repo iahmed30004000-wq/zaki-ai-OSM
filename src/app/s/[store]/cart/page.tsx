@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { db } from '@/lib/db';
-import { getStorefront } from '@/lib/storefront';
+import { getShopView } from '@/lib/shop-view';
 import { StorefrontShell } from '@/components/storefront/StorefrontShell';
 import { CartView } from '@/components/storefront/CartView';
 import { publicTitle, storeIcons } from '@/lib/public-metadata';
@@ -28,7 +28,7 @@ const SLUG = /^[a-z0-9-]{2,60}$/;
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { store: slug } = await params;
-  const store = SLUG.test(slug) ? await getStorefront(slug) : null;
+  const store = SLUG.test(slug) ? await getShopView(slug) : null;
   if (!store) return { title: 'غير متاح' };
   return {
     title: publicTitle('السلة', store.name),
@@ -40,7 +40,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function CartPage({ params }: Props) {
   const { store: slug } = await params;
   if (!SLUG.test(slug)) notFound();
-  const store = await getStorefront(slug);
+  const store = await getShopView(slug);
   if (!store || !cartBarApplies(store.type)) notFound();
 
   const country = await db.country.findUnique({

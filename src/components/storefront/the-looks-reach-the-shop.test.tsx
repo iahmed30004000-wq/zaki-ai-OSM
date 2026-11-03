@@ -1,12 +1,17 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, render } from '@testing-library/react';
+
+// Unmount what each test drew: a tree left mounted when the file ends is
+// still scheduled work, and it runs after the DOM is gone («window is not defined»).
+afterEach(cleanup);
 import { StorefrontShell } from './StorefrontShell';
 import { EXTRAS_SLICES, shopExtrasSheet, tickerLines } from './extras-sheet';
 import { unchangedShops } from './unchanged-shop.fixture';
 import { applyLook, lookTokens } from '@/lib/store-looks';
 import { DEFAULT_STORE_THEME, type StoreTheme } from '@/lib/store-theme';
 import type { Storefront } from '@/lib/storefront';
+import { repoFile, stripComments } from '@/lib/guard-source';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: () => {} }), usePathname: () => '/s/golden-shop' }));
 
@@ -112,5 +117,35 @@ describe('«شريط الإعلانات»', () => {
     expect(draw({ ticker: { ...ticker, enabled: false } }).querySelector('.sf-ticker')).toBeNull();
     const thin = render(<StorefrontShell store={shop({ ticker })} thin>{null}</StorefrontShell>).container;
     expect(thin.querySelector('.sf-ticker')).toBeNull();
+  });
+});
+
+describe('«المعاينة الحقيقية» on the page itself', () => {
+  it('says it is the draft and keeps out of every index — only in the preview', () => {
+    const inside = render(<StorefrontShell store={{ ...shop({}), preview: true, quiet: true }}>{null}</StorefrontShell>).container;
+    expect(inside.textContent).toContain('معاينة المسوّدة');
+    // «الطلب من المعاينة طلب حقيقي» — the review of #189: said where the seller is looking.
+    expect(inside.textContent).toContain('الطلب من هون طلب حقيقي');
+    expect(document.querySelector('meta[name="robots"]')?.getAttribute('content') ?? inside.innerHTML).toContain('noindex');
+    const outside = render(<StorefrontShell store={shop({})}>{null}</StorefrontShell>).container;
+    expect(outside.textContent).not.toContain('معاينة المسوّدة');
+    expect(outside.textContent).not.toContain('طلب حقيقي');
+  });
+
+  it('a page reached from the frame (live, quiet) says it is the published one, and that an order is real', () => {
+    const page = render(<StorefrontShell store={{ ...shop({}), quiet: true }}>{null}</StorefrontShell>).container;
+    expect(page.textContent).toContain('هالصفحة هي المنشورة');
+    expect(page.textContent).toContain('طلب حقيقي');
+    expect(page.textContent).not.toContain('معاينة المسوّدة');
+  });
+});
+
+describe('«الطلب من المعاينة طلب حقيقي» beside every order form, for the preview door only', () => {
+  it.each([
+    ['the checkout', 'src/app/s/[store]/checkout/page.tsx', /\{store\.quiet && <PreviewOrderNote \/>\}\s*<CheckoutForm/],
+    ['the product page', 'src/app/s/[store]/p/[sku]/page.tsx', /\{store\.quiet && <PreviewOrderNote \/>\}\s*<LandingFormBridge/],
+    ['the brand product page', 'src/components/storefront/BrandProductPage.tsx', /\{previewNote && <PreviewOrderNote \/>\}\s*<LandingFormBridge/],
+  ])('%s', (_w, rel, pattern) => {
+    expect(stripComments(repoFile(rel))).toMatch(pattern);
   });
 });

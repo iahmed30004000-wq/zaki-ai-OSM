@@ -141,6 +141,27 @@ export function StorefrontShell({
       <style dangerouslySetInnerHTML={{ __html: FAMILY_SHEET[family] }} />
       {extras && <style dangerouslySetInnerHTML={{ __html: extras }} />}
 
+      {/*
+        «المعاينة الحقيقية» — said on the page itself, and kept out of every
+        index. Only the seller's own frame over the draft ever draws this.
+      */}
+      {store.quiet && (
+        <>
+          <meta name="robots" content="noindex, nofollow" />
+          <p
+            role="status"
+            style={{
+              margin: 0, padding: '6px 12px', textAlign: 'center', fontSize: 12, fontWeight: 700,
+              background: 'var(--store-text)', color: 'var(--store-page)',
+            }}
+          >
+            {store.preview
+              ? 'معاينة المسوّدة — الزبون لسّا بيشوف المنشور. الطلب من هون طلب حقيقي.'
+              : 'داخل من المعاينة: هالصفحة هي المنشورة، والطلب من هون طلب حقيقي.'}
+          </p>
+        </>
+      )}
+
       {/* «شريط الإعلانات» — drawn only when the seller turned it on. */}
       {ticker && (
         <div className="sf-ticker" data-mode={ticker.mode} role="region" aria-label="إعلانات المتجر">

@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { SkinGallery, type SkinCard } from '@/components/store/SkinGallery';
 import { LookGallery } from '@/components/store/LookGallery';
+import { StorePreviewFrame } from '@/components/store/StorePreviewFrame';
 import { applyLook } from '@/lib/store-looks';
 import { LayoutPanel } from '@/components/store/LayoutPanel';
 import { ContrastNotes } from '@/components/store/ContrastNotes';
@@ -193,6 +194,8 @@ export function StoreThemeScreen() {
   const [publishing, setPublishing] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [uploadingCover, setUploadingCover] = useState(false);
+  /** «المعاينة الحقيقية» — the shop itself over the saved draft, in a frame. */
+  const [realPreview, setRealPreview] = useState(false);
   // The shell already knows it; the theme endpoint does not return one.
   const currency = useStoreCurrency();
 
@@ -1302,6 +1305,10 @@ export function StoreThemeScreen() {
         {/* The shop as it is being set, at both widths, from the UNSAVED
             theme — so the seller sees the change before a customer does. */}
         <div className={`${previewPaneClass(pane)} min-h-0 flex-col`}>
+          <Button size="sm" variant="secondary" className="mb-2" onClick={() => setRealPreview(true)}>
+            <RiExternalLinkLine className="icon-mirror h-4 w-4" /> المعاينة الحقيقية — ست صفحات من المسوّدة
+          </Button>
+          {realPreview && <StorePreviewFrame unsaved={dirty} onClose={() => setRealPreview(false)} />}
           <StoreThemePreview
             theme={theme}
             products={shop?.sample ?? []}

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
-import { getStorefront } from '@/lib/storefront';
+import { getShopView } from '@/lib/shop-view';
 import { StorefrontShell } from '@/components/storefront/StorefrontShell';
 import { CartThankYouOffer } from '@/components/storefront/CartThankYouOffer';
 import { LandingTrackingPixels } from '@/components/tracking/LandingTrackingPixels';
@@ -52,7 +52,7 @@ const REFERENCE = /^[A-Za-z0-9-]{3,40}$/;
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { store: storeSlug } = await params;
-  const store = SLUG.test(storeSlug) ? await getStorefront(storeSlug) : null;
+  const store = SLUG.test(storeSlug) ? await getShopView(storeSlug) : null;
   if (!store) return { title: 'غير متاح' };
   return {
     title: publicTitle('تم استلام طلبك', store.name),
@@ -65,12 +65,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function ThanksPage({ params, searchParams }: Props) {
   const { store: storeSlug } = await params;
   if (!SLUG.test(storeSlug)) notFound();
-  const store = await getStorefront(storeSlug);
+  const store = await getShopView(storeSlug);
   if (!store) notFound();
 
   const { o } = await searchParams;
   const reference = o && REFERENCE.test(o) ? o : null;
-  const pixels = await getTrackingPixelsForPage(store.companyId, 'PUBLIC', {
+  // «المعاينة الحقيقية» counts nothing: a seller looking at a draft is not a visitor to report.
+  const pixels = store.quiet ? [] : await getTrackingPixelsForPage(store.companyId, 'PUBLIC', {
     storeId: store.id,
     countryId: store.countryId,
   });
