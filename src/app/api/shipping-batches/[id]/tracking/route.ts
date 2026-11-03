@@ -29,6 +29,7 @@ import {
  */
 
 const NO_KEY = 'لصق باركودات الشركة ليس من صلاحيّاتك — تحتاج «إنشاء الشحنات». اطلبها من مدير النظام إن كانت من عملك.';
+const SEND_FIRST = 'الدفعة لسا ما ترحّلت وشركتها مربوطة — «رحّل إلى الشركة» بيجيب الباركودات. اللصق بعد التسليم، أو لشركة بلا ربط.';
 const NO_SUCH_BATCH = 'الدفعة غير موجودة. أعد تحميل القائمة.';
 const EMPTY = 'الدفعة فاضية — ما في طرد ينكتب عليه باركود.';
 const BAD_BODY = 'الصق سطر واحد على الأقل: رقم الطلب وبعده الباركود.';
@@ -60,9 +61,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     const batch = await db.shippingBatch.findFirst({
       where: { id, companyId, storeId },
-      select: { id: true, batchNumber: true },
+      select: { id: true, batchNumber: true, status: true, provider: { select: { apiEnabled: true } } },
     });
     if (!batch) return NextResponse.json({ error: NO_SUCH_BATCH, errorAr: NO_SUCH_BATCH }, { status: 404 });
+    // A batch still READY at a courier we dispatch to by API gets its barcodes from «رحّل إلى الشركة»: a pasted one would make
+    // the dispatch skip that order (it sends only orders with no barcode), and no parcel would ever be made at the courier.
+    if (batch.status === 'READY' && batch.provider?.apiEnabled) {
+      return NextResponse.json({ error: SEND_FIRST, errorAr: SEND_FIRST, code: 'DISPATCH_FIRST' }, { status: 409 });
+    }
 
     const barcodes = pastedBarcodes(lines);
     /** The plan, read with whichever client is given: the database for «تحقّق», the transaction for the write. */

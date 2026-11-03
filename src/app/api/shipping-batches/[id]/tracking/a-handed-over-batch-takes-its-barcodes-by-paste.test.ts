@@ -172,6 +172,22 @@ describe('NEGATIVE — every guard refuses', () => {
     expect((await call({ text: 'ORD-2026-0722,1234567890' }, 'nope')).status).toBe(404);
   });
 
+  it('a batch still READY at a courier we dispatch to by API: 409, nothing read — «رحّل إلى الشركة» brings its barcodes', async () => {
+    // A pasted barcode would make the dispatch skip the order, and no parcel would ever be made at the courier.
+    Object.assign(world.batches[0], { status: 'READY', provider: { apiEnabled: true } });
+    const res = await call({ text: 'ORD-2026-0722,1234567890' });
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('DISPATCH_FIRST');
+    expect(db.order.findMany).not.toHaveBeenCalled();
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('a READY batch at a courier with no API link takes the paste — there is nothing to dispatch to', async () => {
+    Object.assign(world.batches[0], { status: 'READY', provider: { apiEnabled: false } });
+    const res = await call({ text: 'ORD-2026-0722,1234567890' });
+    expect(res.status).toBe(200);
+  });
+
   it('an order of ANOTHER batch is refused and not written', async () => {
     const body = await (await call({ text: 'ORD-2026-0555,1234567890\nORD-NOPE,1234567891' })).json();
     expect(body.lines.map((l: { code: string }) => l.code)).toEqual(['NOT_IN_BATCH', 'NOT_IN_BATCH']);
