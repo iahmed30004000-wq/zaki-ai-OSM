@@ -344,7 +344,7 @@ export async function GET(request: Request) {
        * «لا يرد» — one or two. Not three: the third is not work, it is a
        * closed order, and it is below.
        */
-      noAnswer: held.filter((o) => o.noAnswerCount > 0 && (rounds || o.noAnswerCount < NO_ANSWER_LIMIT)),
+      noAnswer: held.filter((o) => (o.noAnswerCount > 0 && o.noAnswerCount < NO_ANSWER_LIMIT) || (rounds && o.noAnswerCount > 0)),
       /** Closed by the third no-answer today — read-only, so it is not a surprise tomorrow. */
       closedToday: closedToday.map(decorate),
       /** «أكّدتها» — a day, a search, a page, and the size of what is behind them. */
