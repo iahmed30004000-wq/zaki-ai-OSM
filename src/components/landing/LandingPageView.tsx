@@ -33,6 +33,10 @@ import { deviceClassOf, recordLandingView } from '@/lib/landing-views';
 import { resolveCampaign } from '@/lib/campaigns-server';
 import { afterResponse } from '@/lib/notify';
 import { publicizeMedia } from '@/lib/public-media';
+import { designIdOf, designFontHref, designRootVars, loadDesign } from '@/lib/landing-designs/load';
+import { designCss } from '@/components/landing/designs/design-css';
+import { DesignNavbar } from '@/components/landing/designs/DesignedBlocks';
+import { DesignMotion } from '@/components/landing/designs/DesignMotion';
 
 /**
  * A LANDING PAGE, RENDERED — THE ONE RENDERER.
@@ -424,7 +428,7 @@ export async function LandingPageView({ target }: { target: LandingPageTarget })
      *     to invent one. The guarantee comes from the page's own objections block: the seller's words about their own
      *     guarantee beat a link to a policy page.
      */
-    const [storeFonts, stock, reviews, offerEndsAt, facts] = await Promise.all([
+    const [storeFonts, stock, reviews, offerEndsAt, facts, skin] = await Promise.all([
       loadStoreFonts(lp.storeId),
       product
         ? availableStock(db, companyId, product.id, undefined, lp.storeId).catch(() => null)
@@ -443,15 +447,40 @@ export async function LandingPageView({ target }: { target: LandingPageTarget })
         storeSlug: lp.store?.slug ?? null,
         guarantee: objections && objections.type === 'objections' ? objections.guarantee : null,
       }),
+      // THE PAGE'S OWN DESIGN, named in its own theme (`theme.design`) — never the store's: a design is chosen for
+      // one page. Its chunk is loaded only here, for a page that names one; no name is today's page, untouched.
+      loadDesign(designIdOf(lp.theme)),
     ]);
     // The look, derived from the template the seller chose — never stored
     // beside it. `familyOf` says why at length.
     const family = familyOf(parseStoreTheme(lp.store?.theme).template);
 
+    // Whether the shop's own header is drawn around this page — decided here, before the body, because a design's
+    // top bar must not stand under the shop's header. The rule itself is unchanged (`wearsShopChrome`).
+    const wearsChrome = wearsShopChrome({
+      asFront: 'frontPageId' in target,
+      inStore: target.inStore === true,
+      hasSlug: !!lp.store?.slug,
+      theme: parseStoreTheme(lp.store?.theme),
+    });
+    const blockCtx = {
+      palette, productName, price, currency, stock, offers, form: orderForm, family,
+      // The country's own decimals. Absent read as two, so a currency
+      // with three places was printed with none — on the first screen
+      // of the page that sells it, and in the offer cards under it.
+      minorUnit: lp.store?.country.minorUnit ?? 2,
+      trust: trustRow(facts), reviews, offerEndsAt,
+      whatsapp: whatsappHref(lp.store?.supportPhone),
+      store: lp.store ? { name: lp.store.name, logo: lp.store.logo, phone: lp.store.supportPhone } : null,
+    };
+    const designHref = skin ? designFontHref(skin) : null;
+
     const body = (
       <>
-        {href && <link rel="stylesheet" href={href} />}
+        {/* A design brings its own face; the theme's would be a second family the page never shows. */}
+        {skin ? designHref && <link rel="stylesheet" href={designHref} /> : href && <link rel="stylesheet" href={href} />}
         <style dangerouslySetInnerHTML={{ __html: BLOCK_CSS_WITH_DEV_FONTS }} />
+        {skin && <style dangerouslySetInnerHTML={{ __html: designCss(skin) }} />}
         {storeFonts.css && <style dangerouslySetInnerHTML={{ __html: storeFonts.css }} />}
         <LandingTrackingPixels pixels={trackingPixels} viewContent={viewContent} />
         {!previewing && <BrowserVisit pageId={lp.id} official={cached} />}
@@ -472,19 +501,25 @@ export async function LandingPageView({ target }: { target: LandingPageTarget })
           the storefront. One element, both paths, no second owner.
         */}
         <div className="lp-family" data-family={family}>
-          <PageBlocks
-            sections={sections}
-            ctx={{
-              palette, productName, price, currency, stock, offers, form: orderForm, family,
-              // The country's own decimals. Absent read as two, so a currency
-              // with three places was printed with none — on the first screen
-              // of the page that sells it, and in the offer cards under it.
-              minorUnit: lp.store?.country.minorUnit ?? 2,
-              trust: trustRow(facts), reviews, offerEndsAt,
-              whatsapp: whatsappHref(lp.store?.supportPhone),
-              store: lp.store ? { name: lp.store.name, logo: lp.store.logo, phone: lp.store.supportPhone } : null,
-            }}
-          />
+          {skin ? (
+            /*
+              A PAGE WEARING ONE OF THE SIXTY-FOUR DESIGNS — the design's root
+              inside the family wrapper, exactly as the builder's preview draws
+              it. The blocks, the form, the pixels above and the visit count
+              are the same ones a page with no design has.
+            */
+            <div
+              data-design={skin.id}
+              dir={directionOf(lp.store?.language)}
+              style={designRootVars(skin) as React.CSSProperties}
+            >
+              {!wearsChrome && <DesignNavbar productName={productName} />}
+              <PageBlocks sections={sections} ctx={{ ...blockCtx, design: skin }} />
+              <DesignMotion reveal={skin.reveal} />
+            </div>
+          ) : (
+            <PageBlocks sections={sections} ctx={blockCtx} />
+          )}
         </div>
       </>
     );
@@ -512,12 +547,6 @@ export async function LandingPageView({ target }: { target: LandingPageTarget })
     // One function decides it, in `store-theme.ts`, because the question
     // «who draws the header» now has three answers and a condition spelled
     // out at the one call site cannot be tested without a database.
-    const wearsChrome = wearsShopChrome({
-      asFront: 'frontPageId' in target,
-      inStore: target.inStore === true,
-      hasSlug: !!lp.store?.slug,
-      theme: parseStoreTheme(lp.store?.theme),
-    });
     const shop = wearsChrome ? await getStorefront(lp.store!.slug) : null;
     if (shop) {
       return (

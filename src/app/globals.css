@@ -1,6 +1,15 @@
 @import "tailwindcss";
 
 /*
+ * THE SIXTY-FOUR DESIGNS ARE DATA, NOT MARKUP OF OURS. Their generated templates and motion scripts hold
+ * their own class names and inline style values, and read as
+ * utility candidates they would grow the sheet every page loads by utilities nobody uses. A designed page
+ * wears its own stylesheet (design-css.ts), so the scanner skips them.
+ */
+@source not "../components/landing/designs/generated";
+@source not "../components/landing/designs/motion";
+
+/*
  * What EVERY page loads: the utility classes, and nothing that styles a
  * page by itself. The dashboard's own look is src/app/(system)/system.css;
  * a landing page's and a storefront's is their theme (--store-*). A rule here

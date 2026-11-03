@@ -20,10 +20,13 @@ export function OrderCta({
   className,
   children,
   ref,
+  style,
   ...rest
 }: {
   className: string;
   children: React.ReactNode;
+  /** A designed page's button carries its design's own inline look (`DesignedBlocks.tsx`). */
+  style?: React.CSSProperties;
   /** The floating one watches the form through this. React 19 takes a ref
       as an ordinary prop, so there is no forwardRef wrapper to explain. */
   ref?: React.Ref<HTMLAnchorElement>;
@@ -41,7 +44,7 @@ export function OrderCta({
   }
 
   return (
-    <a href="#zf-full_name" onClick={go} className={className} ref={ref} {...rest}>
+    <a href="#zf-full_name" onClick={go} className={className} ref={ref} style={style} {...rest}>
       {children}
     </a>
   );

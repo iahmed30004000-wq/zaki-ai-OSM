@@ -39,6 +39,9 @@ import type { SellingFamily } from '@/lib/selling-blocks';
 import { lookForType } from '@/lib/block-look';
 // Where the form's fields come from — a link to the store's «الدفع» for whoever may open it, words for anybody else.
 import { StoreCheckoutNote } from './StoreCheckoutNote';
+import { useDesignSkin } from '@/components/landing/designs/useDesignSkin';
+import { designCss } from '@/components/landing/designs/design-css';
+import { designFontHref, designRootVars } from '@/lib/landing-designs/load';
 
 /**
  * The block builder.
@@ -170,6 +173,9 @@ export function BlockBuilder(props: Props) {
   const confirm = useConfirm();
 
   const palette = useMemo(() => paletteFor(theme), [theme]);
+  // The design the page wears, if it names one (`theme.design`, the library's contract) — the preview draws it as the
+  // published page will.
+  const skin = useDesignSkin((theme as { design?: string }).design);
   // The page's own faces, in full, exactly as the published page asks for
   // them — a preview whose headings synthesise their bold is not a preview.
   const fontLink = useMemo(
@@ -901,9 +907,14 @@ export function BlockBuilder(props: Props) {
                 stack HERE and looked like the picker doing nothing. */}
             {fontLink && <link rel="stylesheet" href={fontLink} />}
             <style dangerouslySetInnerHTML={{ __html: BLOCK_CSS_WITH_DEV_FONTS }} />
+            {skin && designFontHref(skin) && <link rel="stylesheet" href={designFontHref(skin)!} />}
+            {skin && <style dangerouslySetInnerHTML={{ __html: designCss(skin) }} />}
             {/* The family wrapper the published page puts around its blocks (LandingPageView) — without it the
                 preview drew every page in the family-less shape and the published one looked different. */}
             <div className={props.family ? 'lp-family' : undefined} data-family={props.family ?? undefined}>
+            {/* A page wearing a design: the design's root inside it, as on the published page. No motion here — the
+                scripts rewrite the elements they animate, and the builder re-renders them on every key. */}
+            <div {...(skin ? { 'data-design': skin.id, dir: 'rtl', style: designRootVars(skin) as React.CSSProperties } : {})}>
             <PageBlocks
               sections={sections}
               /**
@@ -1020,8 +1031,10 @@ export function BlockBuilder(props: Props) {
                 building: true,
                 store: props.store ?? null,
                 family: props.family ?? undefined,
+                design: skin,
               }}
             />
+            </div>
             </div>
           </div>
         </div>
