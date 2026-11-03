@@ -91,6 +91,57 @@ export function commissionAmount(rule: RuleLike, orderRevenue: number, minorUnit
   return earned.amount;
 }
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * WHO GETS A LINE ON A DELIVERED ORDER — the one place it is decided.
+ *
+ * Two parties can earn on one order: its responsible moderator (`moderatorId` — for a person who does not hand orders out,
+ * whoever typed it: D10, `responsible-moderator.ts`) and whoever gave the yes (`confirmedById`). One person in both seats is
+ * one line (T-06, `who-types-and-confirms-is-paid-once.test.ts`).
+ *
+ * THE OWNER'S RULING, 3/11, on RV693: «التأكيد» — the commission goes to the one who CONFIRMS. An order a confirmation agent
+ * typed and a colleague confirmed (the «أكّده الآن» box unticked, or her cap full) paid the agent rate twice: a 45 JOD order,
+ * 2.100 + 2.100 = 4.200. So when the moderator seat holds a CONFIRMATION_AGENT and a DIFFERENT person confirmed, her line is
+ * not written — only the confirmer's: 2.100.
+ *
+ * WHAT IT DOES NOT CHANGE:
+ *   · an order a MODERATOR typed: the moderator's line stays (1.000 + 2.100 = 3.100) — bringing the order is her work;
+ *   · an order the agent typed and confirmed herself: one line, as before;
+ *   · an order nobody confirmed (no `confirmedById`): the moderator seat keeps its line, whoever sits in it;
+ *   · any rate, rounding or amount — this decides WHICH people, never HOW MUCH;
+ *   · an entry already written: nothing is rewritten or backfilled; the accrual's own guard still finds it.
+ *
+ * By the person's role at accrual time — the same `User.role` the rules themselves are matched on (`ruleFor`), so the
+ * question «is this an agent's line» is asked in the words the rule that would pay it was written in.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+export const PAID_BY_CONFIRMING_ROLES: readonly string[] = ['CONFIRMATION_AGENT'];
+
+type PartySeat = { id: string; role: string; commissionCurrency?: string | null } | null | undefined;
+
+export interface CommissionParty {
+  userId: string;
+  role: string;
+  currency: string | null;
+}
+
+export function partiesOf(order: { moderator?: PartySeat; confirmer?: PartySeat }): CommissionParty[] {
+  const moderator = order.moderator ?? null;
+  const confirmer = order.confirmer ?? null;
+  const confirmedByAnother = !!confirmer && confirmer.id !== moderator?.id;
+  // RV693: an agent's line in the moderator seat is earned by confirming — and somebody else confirmed.
+  const typistLosesTheLine = !!moderator && confirmedByAnother && PAID_BY_CONFIRMING_ROLES.includes(moderator.role);
+
+  const parties: CommissionParty[] = [];
+  if (moderator && !typistLosesTheLine) {
+    parties.push({ userId: moderator.id, role: moderator.role, currency: moderator.commissionCurrency ?? null });
+  }
+  if (confirmer && confirmedByAnother) {
+    parties.push({ userId: confirmer.id, role: confirmer.role, currency: confirmer.commissionCurrency ?? null });
+  }
+  return parties;
+}
+
 export interface AccrualResult {
   created: number;
   skipped: 'NOT_DELIVERED' | 'RETURNED' | 'NO_RULE' | 'ALREADY_ACCRUED' | null;
@@ -164,14 +215,7 @@ export async function accrueForOrder(
   // COD − fee is the net again. One expression covers both on purpose.
   const revenue = Number(order.totalAmount) - Number(order.deliveryFee ?? 0);
 
-  const parties = [
-    order.moderator
-      ? { userId: order.moderator.id, role: order.moderator.role, currency: order.moderator.commissionCurrency }
-      : null,
-    order.confirmer && order.confirmer.id !== order.moderator?.id
-      ? { userId: order.confirmer.id, role: order.confirmer.role, currency: order.confirmer.commissionCurrency }
-      : null,
-  ].filter(Boolean) as { userId: string; role: string; currency: string | null }[];
+  const parties = partiesOf(order);
 
   let created = 0;
   let total = 0;
