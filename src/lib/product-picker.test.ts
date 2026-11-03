@@ -146,7 +146,9 @@ describe('the row that means «not one product»', () => {
 describe('every product dropdown goes through the one picker', () => {
   const CONVERTED = [
     'src/components/screens/OrdersScreen.tsx',
-    'src/components/screens/LandingPagesScreen.tsx',
+    // The create dialog's product step moved to the wizard on 3/11.
+    'src/components/landing-flow/CreateWizard.tsx',
+    'src/components/screens/LandingLibraryScreen.tsx',
     'src/components/screens/LandingPageDetailScreen.tsx',
   ] as const;
 

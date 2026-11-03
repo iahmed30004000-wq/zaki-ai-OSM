@@ -16,6 +16,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { publicAddress } from '@/lib/public-address';
 import type { DomainCheck } from '@/lib/domain-verify';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
+import { PageSummary, type SummaryOffer } from '@/components/landing-flow/PageSummary';
 
 export function LandingPageDetailScreen() {
   const tell = useTell();
@@ -36,6 +37,8 @@ export function LandingPageDetailScreen() {
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [previewToken, setPreviewToken] = useState<string | null>(null);
+  /** The offers live for this page's product, as the page's GET read them. */
+  const [offers, setOffers] = useState<SummaryOffer[]>([]);
 
   /**
    * The page's own domain, as the server sees it: the records the seller must
@@ -95,6 +98,7 @@ export function LandingPageDetailScreen() {
     try {
       const data = await crmApi(`/api/landing-pages/${lpId}`);
       setLp(data.landingPage);
+      setOffers(Array.isArray(data.offers) ? data.offers : []);
       setForm({
         name: data.landingPage.name,
         slug: data.landingPage.slug,
@@ -260,6 +264,17 @@ export function LandingPageDetailScreen() {
   // and this company sells into more than one country.
   const currencyCode: string = lp.store?.country?.currencyCode || '';
 
+  /** «انسخ الصفحة» — the server decides what carries over; the copy opens on its own page. */
+  const duplicatePage = async () => {
+    try {
+      const d = await crmApi(`/api/landing-pages/${lpId}/duplicate`, { method: 'POST' });
+      if (d?.page?.id) window.location.href = `/store/landing-pages/${d.page.id}`;
+    } catch (e: any) {
+      void tell({ title: 'تعذّر نسخ الصفحة', body: e.message, tone: 'danger' });
+      throw e;
+    }
+  };
+
   return (
     <>
       <div className="p-4 sm:p-6 max-w-6xl mx-auto">
@@ -294,6 +309,17 @@ export function LandingPageDetailScreen() {
             </Button>
           </div>
         </div>
+
+        <PageSummary
+          lp={lp}
+          publicUrl={publicUrl}
+          offers={offers}
+          copied={copied}
+          onCopy={() => { void copyUrl(); }}
+          onEdit={() => { window.location.href = `/store/landing-pages/${lpId}/editor`; }}
+          onPreview={() => { window.open(lp.isPublished ? publicUrl : (previewToken || publicUrl), '_blank', 'noopener'); }}
+          onDuplicate={duplicatePage}
+        />
 
         {/* `min-w-0` on the columns is not cosmetic: a grid item's automatic
             minimum size is its min-content width, and a text input's is about

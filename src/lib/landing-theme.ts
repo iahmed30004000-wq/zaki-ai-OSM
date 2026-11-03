@@ -51,6 +51,13 @@ export interface LandingTheme {
    * and a clean page veils white — it never turns the photo grey.
    */
   pageVeil: number;
+  /**
+   * WHICH OF THE SIXTY-FOUR DESIGNS THE PAGE WAS STARTED FROM, if any —
+   * an id from `landing-designs/catalog.ts`, checked there at creation.
+   * The look itself is drawn from the catalogue; this only names it, so a
+   * reader that does not know the id draws the page as if it were absent.
+   */
+  design?: string;
 }
 
 export type ThemeMood = 'clean' | 'warm' | 'bold' | 'calm';
@@ -219,6 +226,9 @@ export const landingThemeSchema = z.object({
   // visitor to it; uploads go through the page's own media route.
   pageImage: z.string().regex(/^(|\/[A-Za-z0-9/_.\-]*)$/).max(300).default(''),
   pageVeil: z.number().min(0).max(0.95).default(0.82),
+  // A catalogue id. Optional and plain: the editor's save must carry it
+  // through, and a stale id is harmless — the catalogue is what draws it.
+  design: z.string().regex(/^[a-z0-9-]{1,60}$/).optional(),
 });
 
 
