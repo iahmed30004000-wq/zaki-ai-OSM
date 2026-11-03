@@ -15,7 +15,7 @@ vi.mock('@/lib/authorization', () => ({ requirePermission: (k: string) => h.requ
 vi.mock('@/lib/db', () => ({ db: { store: { findFirst: (a: unknown) => h.findFirst(a) } } }));
 vi.mock('@/lib/storefront', () => ({ storeShelf: (...a: unknown[]) => h.storeShelf(...a) }));
 
-import { DELETE, POST } from './route';
+import { POST } from './route';
 
 const post = (body: unknown) =>
   POST(new Request('http://localhost/api/store/preview', { method: 'POST', body: JSON.stringify(body) }));
@@ -77,9 +77,16 @@ describe('the door into the real preview', () => {
     expect((await (await post({ page: 'category' })).json()).href).toBe('/s/my-shop/shop');
   });
 
-  it('DELETE turns it off again', async () => {
-    const res = await DELETE();
+  it('`{ off: true }` turns it off again, for a signed-in seller', async () => {
+    const res = await post({ off: true });
     expect(res.status).toBe(204);
     expect(h.disable).toHaveBeenCalled();
+    expect(h.enable).not.toHaveBeenCalled();
+  });
+
+  it('and even turning it off asks who is calling', async () => {
+    h.requireContext.mockRejectedValue(new Error('UNAUTHORIZED'));
+    expect((await post({ off: true })).status).toBe(404);
+    expect(h.disable).not.toHaveBeenCalled();
   });
 });

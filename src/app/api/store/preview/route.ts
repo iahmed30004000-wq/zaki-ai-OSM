@@ -20,12 +20,13 @@ import { PREVIEW_COOKIE, PREVIEW_PAGES, type PreviewPage } from '@/lib/store-pre
  * learns nothing, not even that the door is here. Nothing is cached, and
  * nothing here is for an index.
  *
- * DELETE turns it off again.
+ * `{ off: true }` turns it off again — a POST like the rest, by the same
+ * signed-in seller: leaving a preview deletes nothing.
  */
 const NO_INDEX = { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow' } as const;
 const notFound = () => NextResponse.json({ error: 'غير موجود' }, { status: 404, headers: NO_INDEX });
 
-const bodySchema = z.object({ page: z.enum(PREVIEW_PAGES) });
+const bodySchema = z.union([z.object({ page: z.enum(PREVIEW_PAGES) }), z.object({ off: z.literal(true) })]);
 
 /** Which address of the shop each of the six is — drawn from THIS shop's own products. */
 async function addressOf(page: PreviewPage, store: { slug: string; companyId: string; id: string }) {
@@ -50,6 +51,13 @@ export async function POST(req: Request) {
   }
   const parsed = bodySchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return notFound();
+  if ('off' in parsed.data) {
+    (await draftMode()).disable();
+    const off = new NextResponse(null, { status: 204, headers: NO_INDEX });
+    off.cookies.delete(PREVIEW_COOKIE);
+    return off;
+  }
+  const page = parsed.data.page;
 
   const store = await db.store.findFirst({
     where: { id: ctx.storeId, companyId: ctx.companyId },
@@ -58,15 +66,8 @@ export async function POST(req: Request) {
   if (!store) return notFound();
 
   (await draftMode()).enable();
-  const res = NextResponse.json({ href: await addressOf(parsed.data.page, store) }, { headers: NO_INDEX });
+  const res = NextResponse.json({ href: await addressOf(page, store) }, { headers: NO_INDEX });
   // Names the ONE store this preview is of; a page of any other shop ignores it.
   res.cookies.set(PREVIEW_COOKIE, store.id, { httpOnly: true, sameSite: 'lax', path: '/', secure: process.env.NODE_ENV === 'production' });
-  return res;
-}
-
-export async function DELETE() {
-  (await draftMode()).disable();
-  const res = new NextResponse(null, { status: 204, headers: NO_INDEX });
-  res.cookies.delete(PREVIEW_COOKIE);
   return res;
 }

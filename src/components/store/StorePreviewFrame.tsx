@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { RiCloseLine, RiComputerLine, RiLoader4Line, RiRefreshLine, RiSmartphoneLine } from '@remixicon/react';
 import { Button } from '@/components/ui/Button';
-import { apiJson } from '@/lib/api-client';
+import { apiFetch, apiJson } from '@/lib/api-client';
 
 /**
  * «المعاينة الحقيقية» — the shop itself, in a frame, drawn from the saved DRAFT.
@@ -48,7 +48,7 @@ export function StorePreviewFrame({ unsaved, onClose }: { unsaved: boolean; onCl
 
   // Leaving the preview turns draft mode off again.
   const close = () => {
-    void fetch('/api/store/preview', { method: 'DELETE' }).catch(() => {});
+    void apiFetch('/api/store/preview', { method: 'POST', body: JSON.stringify({ off: true }) }).catch(() => {});
     onClose();
   };
 
