@@ -157,7 +157,29 @@ export interface Outgoing {
   sendAt: number;
   /** A send that may have reached the server before the line dropped. */
   uncertain?: boolean;
+  /**
+   * WRITTEN BEFORE THE SEND LEAVES (write-ahead). From this mark on it can no longer be taken back, and a tab that finds
+   * it marked — after a reload, a killed tab, or another tab's crash — does not know whether it arrived, so it asks the
+   * log first, exactly as for `uncertain`.
+   */
+  inFlight?: boolean;
 }
+
+/** Can this one still be taken back? Only while its five seconds run and nothing has left. */
+export function undoable(o: Outgoing, now = Date.now()): boolean {
+  return !o.inFlight && !o.uncertain && o.sendAt > now;
+}
+
+/** What the sheet says about the answer on its way. */
+export type OutgoingState = 'countdown' | 'sending' | 'line';
+export function outgoingState(o: Outgoing, offline: boolean, now = Date.now()): OutgoingState {
+  if (undoable(o, now)) return 'countdown';
+  if (o.uncertain || offline) return 'line';
+  return 'sending';
+}
+
+/** An answer still waiting after a day is about an order long since released: it is dropped, never sent that late. */
+export const OUTBOX_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 export const PENDING_KEY = 'osm.confirmation.pendingCall';
 export const OUTBOX_KEY = 'osm.confirmation.outbox';
@@ -169,6 +191,16 @@ function readJson(key: string): unknown {
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
+  }
+}
+
+/** Does this browser let us keep anything at all? (A private window may throw on every call.) */
+export function storageWorks(): boolean {
+  try {
+    window.localStorage.getItem(OUTBOX_KEY);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -192,7 +224,7 @@ export function writePending(p: PendingCall | null): void {
   writeJson(PENDING_KEY, p);
 }
 
-export function readOutbox(userId: string): Outgoing[] {
+export function readOutbox(userId: string, now = Date.now()): Outgoing[] {
   const list = readJson(OUTBOX_KEY);
   if (!Array.isArray(list)) return [];
   return list.filter(
@@ -203,8 +235,37 @@ export function readOutbox(userId: string): Outgoing[] {
       typeof (o as Outgoing).key === 'string' &&
       typeof (o as Outgoing).orderId === 'string' &&
       typeof (o as Outgoing).body === 'string' &&
-      ((o as Outgoing).door === 'attempt' || (o as Outgoing).door === 'followUp')
+      ((o as Outgoing).door === 'attempt' || (o as Outgoing).door === 'followUp') &&
+      typeof (o as Outgoing).startedAt === 'number' &&
+      now - (o as Outgoing).startedAt <= OUTBOX_MAX_AGE_MS
   );
+}
+
+// ───────────────────────── one tab sends ─────────────────────────
+
+export const LEASE_KEY = 'osm.confirmation.outbox.lease';
+/** Longer than one send (15 s request timeout, plus the log read before a resend). */
+export const LEASE_MS = 40_000;
+
+/**
+ * THE SENDER'S LEASE — for a browser without `navigator.locks`.
+ *
+ * Two desk tabs on one phone read the same waiting answers. Only the tab holding the lease sends; the other waits for it
+ * to be dropped or to expire (a tab killed mid-send cannot drop it). Storage that throws means there is no second tab to
+ * share it with: the lease is granted.
+ */
+export function takeLease(owner: string, now = Date.now()): boolean {
+  if (!storageWorks()) return true;
+  const held = readJson(LEASE_KEY) as { owner?: string; until?: number } | null;
+  if (held && held.owner !== owner && typeof held.until === 'number' && held.until > now) return false;
+  writeJson(LEASE_KEY, { owner, until: now + LEASE_MS });
+  const back = readJson(LEASE_KEY) as { owner?: string } | null;
+  return back?.owner === owner;
+}
+
+export function dropLease(owner: string): void {
+  const held = readJson(LEASE_KEY) as { owner?: string } | null;
+  if (held?.owner === owner) writeJson(LEASE_KEY, null);
 }
 
 /** Written whole for this person; another person's waiting lines on the same phone are kept, never sent as hers. */

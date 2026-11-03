@@ -13,7 +13,7 @@ import {
   RiTimerLine,
   RiWifiOffLine,
 } from '@remixicon/react';
-import { awayClock, callbackChips, outcomeOrder, type CallbackChip, type CallOutcome } from '@/lib/call-outcome';
+import { awayClock, callbackChips, outcomeOrder, type CallbackChip, type CallOutcome, type OutgoingState } from '@/lib/call-outcome';
 
 /**
  * «شو صار؟» — THE SHEET THAT WAITS AT THE BOTTOM OF HER PHONE WHILE SHE IS ON THE CALL.
@@ -121,8 +121,11 @@ export function CallOutcomeSheet({
   closesOnNext: boolean;
   /** Why «تأكيد الطلب» is shut, in the card's words — or null when it is open. */
   confirmLock: string | null;
-  /** The answer on its way, with the seconds left to take it back; null when nothing is waiting. */
-  waiting: { label: string; secondsLeft: number } | null;
+  /**
+   * The answer on its way: still in its five seconds (`countdown` — the only state «تراجع» is offered in), on its way
+   * (`sending`), or waiting for the line (`line`); null when nothing is waiting.
+   */
+  waiting: { label: string; state: OutgoingState; secondsLeft: number } | null;
   /** The door said no to the answer she gave, in its own words — said here, not «انحفظ». */
   refused: string | null;
   offline: boolean;
@@ -132,13 +135,15 @@ export function CallOutcomeSheet({
   whatsapp: React.ReactNode;
   /** «رد» was tapped: the desk is read again, so the card's locks reflect the call just logged. */
   onAnswered: () => void;
-  onLogged: (outcome: LoggedOutcome) => void;
-  onCallback: (chip: CallbackChip) => void;
+  /** `false` when the screen refused it (this call's answer already left) — the sheet then stays where it is. */
+  onLogged: (outcome: LoggedOutcome) => boolean;
+  onCallback: (chip: CallbackChip) => boolean;
   onNotCalled: () => void;
   onConfirm: () => void;
   onPostpone: () => void;
   onReject: () => void;
-  onUndo: () => void;
+  /** `false` when it had already left — nothing was taken back, and the sheet does not pretend it was. */
+  onUndo: () => boolean;
   onNext: () => void;
   onClose: () => void;
 }) {
@@ -154,8 +159,7 @@ export function CallOutcomeSheet({
       return setStep('answered');
     }
     if (o === 'CALLBACK') return setStep('callback');
-    onLogged(o);
-    setStep({ after: o });
+    if (onLogged(o)) setStep({ after: o });
   };
 
   const button = (o: CallOutcome, first: boolean) => (
@@ -208,6 +212,10 @@ export function CallOutcomeSheet({
           </p>
         )}
 
+        {refused && (
+          <p role="alert" className="text-xs text-[var(--sys-destructive)]">{refused}</p>
+        )}
+
         {step === 'ask' && (
           <div className="space-y-2">
             {button(order[0], true)}
@@ -250,8 +258,7 @@ export function CallOutcomeSheet({
                 <SheetButton
                   key={c.label}
                   onClick={() => {
-                    onCallback(c);
-                    setStep({ after: 'CALLBACK' });
+                    if (onCallback(c)) setStep({ after: 'CALLBACK' });
                   }}
                 >
                   <span dir="auto">{c.label}</span>
@@ -267,26 +274,28 @@ export function CallOutcomeSheet({
 
         {typeof step === 'object' && (
           <div className="space-y-2">
-            {waiting ? (
+            {/* «تراجع» only while nothing has left: once the send is on its way it cannot be taken back, and saying it can
+                would let a second answer of the same call reach the log. */}
+            {waiting?.state === 'countdown' ? (
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs text-[var(--sys-muted-foreground)]">
-                  {offline ? `«${waiting.label}» بيستنى الخط` : `بينحفظ «${waiting.label}» بعد `}
-                  {!offline && <span className="tabular-nums" dir="ltr">{waiting.secondsLeft}</span>}
+                  بينحفظ «{waiting.label}» بعد <span className="tabular-nums" dir="ltr">{waiting.secondsLeft}</span>
                 </p>
                 <SheetButton
                   onClick={() => {
-                    onUndo();
-                    setStep('ask');
+                    if (onUndo()) setStep('ask');
                   }}
                 >
                   <RiArrowGoBackLine className="icon-mirror w-4 h-4" />
                   تراجع
                 </SheetButton>
               </div>
-            ) : refused ? (
-              <p role="alert" className="text-xs text-[var(--sys-destructive)]">{refused}</p>
-            ) : (
-              <p role="status" className="text-xs text-[var(--sys-success)]">انحفظ.</p>
+            ) : waiting?.state === 'sending' ? (
+              <p role="status" className="text-xs text-[var(--sys-muted-foreground)]">عم ينبعت «{waiting.label}»…</p>
+            ) : waiting?.state === 'line' ? (
+              <p role="status" className="text-xs text-[var(--sys-warning)]">«{waiting.label}» بيستنى الخط — بينبعت لحاله لما يرجع.</p>
+            ) : refused ? null : (
+              <p role="status" className="text-xs text-[var(--sys-success)]">انبعت.</p>
             )}
             {(step.after === 'NO_ANSWER' || step.after === 'BUSY' || step.after === 'UNREACHABLE') && (
               <div className="space-y-1">

@@ -60,6 +60,7 @@ import {
   attemptBody,
   followUpBody,
   isNetworkFailure,
+  outgoingState,
   preferredClock,
   type CallbackChip,
   type Outgoing,
@@ -209,6 +210,9 @@ const lacksRegion = (order: { regionId?: string | null }) =>
 /** Why the call sheet's «تأكيد الطلب» is shut — the card's own two locks, in the card's own words. */
 const sheetConfirmLock = (order: { _count: { contactAttempts: number }; regionId?: string | null }) =>
   needsContact(order) ? CONTACT_FIRST_MESSAGE : lacksRegion(order) ? REGION_REQUIRED_MESSAGE : null;
+
+const ONE_ANSWER_PER_CALL = 'جواب هالمكالمة انبعت — ما بينحفظ جواب تاني لنفس المكالمة.';
+const SEND_BEFORE_REJECT = '«رقم غلط» لسا ما انبعت — استني الخط وبعدين ألغِ، حتى ما يوصل بعد الإلغاء.';
 
 /** What the call sheet's answers are called in the line that says one is on its way. */
 const LOGGED_WORDS: Record<LoggedOutcome, string> = {
@@ -785,11 +789,17 @@ export function ConfirmationMineScreen() {
   const callKey = call.pending ? `${call.pending.orderId}:${call.pending.startedAt}` : null;
   const waitingItem = callKey ? outbox.items.find((o) => o.key === callKey) ?? null : null;
 
-  const queueLogged = (order: OrderRow, outcome: LoggedOutcome) => {
-    if (!call.pending) return;
+  /** One answer per call: refused (and said) once this call's answer has left or can no longer be taken back. */
+  const queued = (ok: boolean) => {
+    if (ok) call.settle();
+    else setSheetRefusal(ONE_ANSWER_PER_CALL);
+    return ok;
+  };
+  const queueLogged = (order: OrderRow, outcome: LoggedOutcome): boolean => {
+    if (!call.pending) return false;
     setSheetRefusal(null);
     const result = ATTEMPT_RESULT[outcome]!;
-    outbox.add({
+    return queued(outbox.add({
       key: `${order.id}:${call.pending.startedAt}`,
       userId: call.pending.userId,
       orderId: order.id,
@@ -799,12 +809,12 @@ export function ConfirmationMineScreen() {
       result,
       label: LOGGED_WORDS[outcome],
       startedAt: call.pending.startedAt,
-    });
+    }));
   };
-  const queueCallback = (order: OrderRow, chip: CallbackChip) => {
-    if (!call.pending) return;
+  const queueCallback = (order: OrderRow, chip: CallbackChip): boolean => {
+    if (!call.pending) return false;
     setSheetRefusal(null);
-    outbox.add({
+    return queued(outbox.add({
       key: `${order.id}:${call.pending.startedAt}`,
       userId: call.pending.userId,
       orderId: order.id,
@@ -818,7 +828,22 @@ export function ConfirmationMineScreen() {
       }),
       label: `اتصل لاحقاً ${chip.label}`,
       startedAt: call.pending.startedAt,
-    });
+    }));
+  };
+  /**
+   * «ألغِ» FROM THE SHEET: the call's own line goes BEFORE the cancellation is asked — never after it. If it cannot leave
+   * now (no line), the cancellation waits and the sheet says why.
+   */
+  const rejectFromSheet = async (order: OrderRow) => {
+    if (callKey && outbox.has(callKey)) {
+      await outbox.sendNow();
+      if (outbox.has(callKey)) {
+        setSheetRefusal(SEND_BEFORE_REJECT);
+        return;
+      }
+    }
+    endCall();
+    setDialog({ kind: 'reject', order });
   };
   /** «التالي»: what she said goes now, then the next order is pulled — the desk's own pull. */
   const callNext = async () => {
@@ -1803,7 +1828,11 @@ export function ConfirmationMineScreen() {
           confirmLock={sheetConfirmLock(workable(callOrder.id) ?? callOrder)}
           waiting={
             waitingItem
-              ? { label: waitingItem.label, secondsLeft: Math.max(0, Math.ceil((waitingItem.sendAt - outbox.now) / 1000)) }
+              ? {
+                  label: waitingItem.label,
+                  state: outgoingState(waitingItem, outbox.offline, outbox.now),
+                  secondsLeft: Math.max(0, Math.ceil((waitingItem.sendAt - outbox.now) / 1000)),
+                }
               : null
           }
           refused={sheetRefusal}
@@ -1839,12 +1868,12 @@ export function ConfirmationMineScreen() {
             endCall();
             setDialog({ kind: 'postpone', order });
           }}
-          onReject={() => {
-            const order = workable(callOrder.id) ?? callOrder;
-            endCall();
-            setDialog({ kind: 'reject', order });
+          onReject={() => void rejectFromSheet(workable(callOrder.id) ?? callOrder)}
+          onUndo={() => {
+            const undone = !!callKey && outbox.undo(callKey);
+            if (undone) call.unsettle();
+            return undone;
           }}
-          onUndo={() => callKey && outbox.undo(callKey)}
           onNext={() => void callNext()}
           onClose={endCall}
         />

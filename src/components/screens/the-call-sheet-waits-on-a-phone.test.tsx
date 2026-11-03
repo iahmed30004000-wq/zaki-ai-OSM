@@ -101,6 +101,8 @@ let online = true;
 let sent: { url: string; method: string; body: unknown; raw?: string }[] = [];
 /** The next POST to the contact log fails as a dropped line does (no status). */
 let dropNextAttempt = false;
+/** A slow line: the POST for this result stays open until `held.release()`. */
+let held: { result: string; release?: () => void } | null = null;
 /** What the log answers a GET with — for the resend that asks first. */
 let logged: { result: string; employeeId: string; createdAt: string }[] = [];
 
@@ -117,6 +119,7 @@ beforeEach(() => {
   sent = [];
   dropNextAttempt = false;
   logged = [];
+  held = null;
   pulls.count = 0;
   window.localStorage.clear();
   apiJson.mockImplementation(async (url: string, init?: { method?: string; body?: string }) => {
@@ -144,6 +147,10 @@ beforeEach(() => {
     if (url.endsWith('/contact-attempts') && method === 'POST' && dropNextAttempt && body?.result !== 'OPENED') {
       dropNextAttempt = false;
       throw new TypeError('Failed to fetch');
+    }
+    if (url.endsWith('/contact-attempts') && method === 'POST' && held && body?.result === held.result) {
+      const h = held;
+      await new Promise<void>((r) => (h.release = r));
     }
     if (url.endsWith('/contact-attempts')) return { autoClosed: false, noAnswerCount: 1 };
     if (url === '/api/confirmation/pull') {
@@ -416,5 +423,84 @@ describe('375 pixels wide', () => {
       expect((el as HTMLElement).style.width, el.outerHTML.slice(0, 80)).toBe('');
     }
     for (const b of sheetButtons()) expect((b.getAttribute('class') ?? '').split(/\s+/)).toContain('w-full');
+  });
+});
+
+describe('THE BLOCKER: once the send has left, «تراجع» is not offered — one call, one line', () => {
+  it('a slow line: «ما رد» is on its way, «تراجع» is gone, and no second answer can follow it', async () => {
+    held = { result: 'NO_ANSWER' };
+    await draw();
+    ring();
+    fireEvent.click(within(sheet()).getByRole('button', { name: 'ما رد' }));
+    expect(within(sheet()).getByRole('button', { name: 'تراجع' })).toBeTruthy();
+    await letItGo();
+    await waitFor(() => expect(posts('NO_ANSWER')).toHaveLength(1));
+    // the POST is still open
+    await waitFor(() => expect(within(sheet()).getByText(/عم ينبعت «ما رد»/)).toBeTruthy());
+    expect(within(sheet()).queryByRole('button', { name: 'تراجع' })).toBeNull();
+    expect(within(sheet()).queryByRole('button', { name: 'مشغول' })).toBeNull();
+    await act(async () => {
+      held!.release!();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    await waitFor(() => expect(within(sheet()).getByText('انبعت.')).toBeTruthy());
+    expect(posts('NO_ANSWER')).toHaveLength(1);
+    expect(posts('BUSY')).toHaveLength(0);
+  });
+
+  it('waiting for the line: «بيستنى الخط», and no «تراجع»', async () => {
+    await draw();
+    ring();
+    dropNextAttempt = true;
+    fireEvent.click(within(sheet()).getByRole('button', { name: 'ما رد' }));
+    await letItGo();
+    await waitFor(() => expect(within(sheet()).getByText(/«ما رد» بيستنى الخط/)).toBeTruthy());
+    expect(within(sheet()).queryByRole('button', { name: 'تراجع' })).toBeNull();
+  });
+
+  it('a reload in the middle of the send: no sheet asking the same call again, and the log is asked before any resend', async () => {
+    held = { result: 'NO_ANSWER' };
+    await draw();
+    ring();
+    fireEvent.click(within(sheet()).getByRole('button', { name: 'ما رد' }));
+    await letItGo();
+    await waitFor(() => expect(posts('NO_ANSWER')).toHaveLength(1));
+    // the tab is killed with the POST open — and the server did write it
+    cleanup();
+    held = null;
+    logged = [{ result: 'NO_ANSWER', employeeId: 'u1', createdAt: new Date(clock.now - 2_000).toISOString() }];
+    expect(JSON.parse(window.localStorage.getItem(OUTBOX_KEY)!)[0].inFlight).toBe(true);
+    await draw();
+    // jsdom has no `navigator.locks`: the dead tab's lease runs out (a real tab's lock is let go the moment it dies).
+    clock.now += 41_000;
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 1_300));
+    });
+    await waitFor(() => expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull());
+    expect(posts('NO_ANSWER')).toHaveLength(1);
+    expect(screen.queryByRole('dialog', { name: 'شو صار؟' })).toBeNull();
+  });
+});
+
+describe('«رقم غلط» → «ألغِ»: the line goes before the cancellation is asked', () => {
+  it('inside the five seconds: the line is sent first, then the cancel dialog opens', async () => {
+    await draw();
+    ring();
+    fireEvent.click(within(sheet()).getByRole('button', { name: 'رقم غلط' }));
+    expect(posts('WRONG_NUMBER')).toHaveLength(0);
+    fireEvent.click(within(sheet()).getByRole('button', { name: 'ألغِ' }));
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'رفض الطلب' })).toBeTruthy());
+    expect(posts('WRONG_NUMBER')).toHaveLength(1);
+  });
+
+  it('with no line: the cancel dialog waits, and the sheet says why', async () => {
+    await draw();
+    ring();
+    fireEvent.click(within(sheet()).getByRole('button', { name: 'رقم غلط' }));
+    online = false;
+    fireEvent.click(within(sheet()).getByRole('button', { name: 'ألغِ' }));
+    await waitFor(() => expect(within(sheet()).getByText(/«رقم غلط» لسا ما انبعت/)).toBeTruthy());
+    expect(screen.queryByRole('dialog', { name: 'رفض الطلب' })).toBeNull();
+    expect(posts('WRONG_NUMBER')).toHaveLength(0);
   });
 });
