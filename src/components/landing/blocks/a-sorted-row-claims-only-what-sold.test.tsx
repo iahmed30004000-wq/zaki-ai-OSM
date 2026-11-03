@@ -77,6 +77,18 @@ describe('a sorted catalogue row', () => {
     expect(html.textContent).not.toMatch(/\b(6|9)\b/);
   });
 
+  it('«وصل حديثاً» only where every card carries when it was added — elsewhere the shelf’s order is «مختارات»', () => {
+    expect(catalogHeading('newest', items)).toBe('وصل حديثاً');
+    expect(catalogHeading('newest', [item('p'), item('q')])).toBe('مختارات');
+    expect(catalogHeading('newest', [item('p', { addedAt: 9 }), item('q')])).toBe('مختارات');
+    // the builder's placeholder frames name no product
+    expect(catalogHeading('newest', [])).toBe('وصل حديثاً');
+    const html = render(<PageBlocks sections={[row({ sort: 'newest' })]} ctx={ctx([item('p'), item('q')])} />).container;
+    expect(html.textContent).toContain('مختارات');
+    expect(html.textContent).not.toContain('وصل حديثاً');
+    expect(names(html)).toEqual(['p', 'q']);
+  });
+
   it('keeps the seller’s own title over its own heading', () => {
     const html = render(<PageBlocks sections={[row({ sort: 'newest', title: 'جديدنا' })]} ctx={ctx(items)} />).container;
     expect(html.textContent).toContain('جديدنا');

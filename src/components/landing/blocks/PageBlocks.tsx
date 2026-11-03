@@ -210,9 +210,15 @@ export function sortCatalog(items: CatalogItem[], sort: 'shelf' | 'newest' | 'be
  * every item on the row — after the limit — is ranked by delivered orders.
  * A row that had to be filled with products nobody proved is «مختارات»,
  * which claims nothing (the proven ones still lead it).
+ *
+ * «وصل حديثاً» the same way: only over a row whose every card carries when
+ * it was added. A surface that drew the cards without that fact (anything
+ * but the shop's home, which reads it — `sortFacts`) shows them in the
+ * shelf's order, and that order is «مختارات», not «وصل حديثاً». An empty row
+ * (the builder's placeholder frames) names no product, so it keeps the label.
  */
 export function catalogHeading(sort: 'shelf' | 'newest' | 'best' | 'priceAsc', items: CatalogItem[]): string {
-  if (sort === 'newest') return 'وصل حديثاً';
+  if (sort === 'newest') return items.every((i) => i.addedAt !== undefined) ? 'وصل حديثاً' : 'مختارات';
   if (sort === 'priceAsc') return 'الأقل سعراً';
   if (sort === 'best') return items.length > 0 && items.every((i) => i.sold !== undefined) ? 'الأكثر مبيعاً' : 'مختارات';
   return '';
