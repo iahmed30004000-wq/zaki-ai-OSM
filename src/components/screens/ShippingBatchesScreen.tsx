@@ -5,6 +5,7 @@ import { DispatchInterrupted, dispatchInChunks, type DispatchProgress } from '@/
 import { OrderLink } from '@/components/orders/OrderLink';
 import { OrderRef } from '@/components/orders/OrderRef';
 import { PrepEditSheet, type PrepParcel } from '@/components/ops/PrepEditSheet';
+import { BatchBarcodePaste } from '@/components/ops/BatchBarcodePaste';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch, apiJson } from '@/lib/api-client';
 import type { DispatchSummary } from '@/lib/couriers/dispatch';
@@ -14,7 +15,7 @@ import { LabelSizePicker, useLabelSize } from '@/components/labels/LabelSize';
 import { BLOCKED_WAYBILLS, describeRefused, openWaybills, WaybillError } from '@/components/labels/openWaybills';
 import { useAsk, useConfirm, useTell } from '@/components/ui/Confirm';
 import { ScanSheet } from '@/components/scan/ScanButton';
-import { RiBarcodeLine, RiDownload2Line, RiEBike2Line, RiFileExcel2Line, RiLoader4Line, RiLockLine, RiPencilLine, RiPrinterLine, RiQrScan2Line, RiRouteLine, RiSendPlaneLine, RiTruckLine } from '@remixicon/react';
+import { RiBarcodeLine, RiClipboardLine, RiDownload2Line, RiEBike2Line, RiFileExcel2Line, RiLoader4Line, RiLockLine, RiPencilLine, RiPrinterLine, RiQrScan2Line, RiRouteLine, RiSendPlaneLine, RiTruckLine } from '@remixicon/react';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 import { useIsPhone } from '@/hooks/useIsPhone';
@@ -123,6 +124,8 @@ export function ShippingBatchesScreen() {
   // scope of that key over each parcel): the button is drawn only for whoever holds both.
   const mayMove = useCan('orders.change_status');
   const mayDepart = mayBatches && mayMove;
+  // «لصق الباركودات» writes the courier's barcode — the dispatch's job done by hand — so it asks the dispatch's key (RV165).
+  const mayShip = useCan('ops.ship');
   const [batches, setBatches] = useState<Batch[] | null>(null);
   const [total, setTotal] = useState(0);
   const [filter, setFilter] = useState<'all' | 'READY' | 'SHIPPED' | 'CLOSED'>('all');
@@ -155,6 +158,8 @@ export function ShippingBatchesScreen() {
   const parcelSeq = useRef(0);
   // The parcel whose «عدّل» form is open (only ever offered to the holder of `ops.edit_in_batch`, on an open trolley).
   const [editing, setEditing] = useState<{ batchId: string; parcel: Parcel } | null>(null);
+  // The batch whose «لصق الباركودات» box is open.
+  const [pasting, setPasting] = useState<Batch | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -736,6 +741,20 @@ export function ShippingBatchesScreen() {
                     : 'رحّل إلى الشركة واجلب الباركود'}
                 </button>
               ) : null;
+            /* «لصق الباركودات» (RV165): a batch handed over before the dispatch, or a manual courier's, gets its barcodes as a
+               pasted list «رقم الطلب, الباركود» — checked first, then written. Any state, once the batch has parcels. */
+            const pasteBtn =
+              mayShip && b._count.orders > 0 ? (
+                <button
+                  onClick={() => setPasting(b)}
+                  disabled={busy === b.id}
+                  title="الصق «رقم الطلب, الباركود» سطر لكل طلب — بتتحقّق أول وبعدين بتكتب"
+                  className={BTN}
+                >
+                  <RiClipboardLine className="w-4 h-4" />
+                  لصق الباركودات
+                </button>
+              ) : null;
             const manualTitle = 'هذه الشركة غير مربوطة بنظامها — البوليصة تُطبع من عندنا والباركود يُدخَل يدوياً عند استلامه.';
             const manualNote =
               b.status === 'READY' && b.provider && !b.provider.apiEnabled ? (
@@ -980,6 +999,7 @@ export function ShippingBatchesScreen() {
                       {printBtn}
                       {verifyBtn}
                     </div>
+                    {pasteBtn}
                     <AdvancedGroup holds={xlsxBtn ? 'PDF · CSV · إكسل' : 'PDF · CSV'}>
                       {pdfBtn}
                       {csvBtn}
@@ -994,6 +1014,7 @@ export function ShippingBatchesScreen() {
                     {pdfBtn}
                     {csvBtn}
                     {xlsxBtn}
+                    {pasteBtn}
                     {dispatchBtn}
                     {manualNote}
                     {shipBtn}
@@ -1030,6 +1051,18 @@ export function ShippingBatchesScreen() {
           onStale={() => {
             void load();
             void loadParcels(editing.batchId, parcelQuery.trim());
+          }}
+        />
+      )}
+
+      {pasting && (
+        <BatchBarcodePaste
+          batch={pasting}
+          onClose={() => setPasting(null)}
+          onWritten={(n) => {
+            toast.done(`انكتب الباركود على ${ordersWord(n)} من ${pasting.batchNumber}`);
+            void load();
+            if (parcels?.batchId === pasting.id) void loadParcels(pasting.id, parcelQuery.trim());
           }}
         />
       )}
