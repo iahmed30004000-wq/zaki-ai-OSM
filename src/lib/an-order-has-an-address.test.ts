@@ -147,8 +147,10 @@ describe('every link of this shape lands on a page that exists', () => {
     // opens the order on her own desk now (`/confirmation/mine?open=`), because
     // `/orders/<id>` asks «عرض الطلبات» and the agent may work without it.
     // `OrderLink.tsx` — the one link every order number on a screen uses — stands in its place.
+    // `MatchingScreen.tsx` was one too: its order column goes through `OrderRef` (so `OrderLink`) now (3/11),
+    // and `NotMentionedActions.tsx` is the third the sweep sees.
     expect(names).toEqual(
-      expect.arrayContaining(['OrderLink.tsx', 'MatchingScreen.tsx', 'WhatsAppInboxScreen.tsx'])
+      expect.arrayContaining(['OrderLink.tsx', 'NotMentionedActions.tsx', 'WhatsAppInboxScreen.tsx'])
     );
   });
 

@@ -28,6 +28,8 @@ vi.mock('@/lib/api-client', () => ({
 }));
 vi.mock('next/navigation', () => ({ usePathname: () => '/control/change-requests' }));
 vi.mock('@/hooks/useMayOpen', () => ({ useMayOpen: () => () => false }));
+// Two hundred cards are about the check budget, not the number: its copy button is drawn by `OrderRef`'s own tests.
+vi.mock('@/components/orders/OrderRef', () => ({ OrderRef: ({ number }: { number: string }) => <span>{number}</span> }));
 vi.mock('@/components/ui/Toast', () => ({ useToast: () => ({ failed: vi.fn(), done: vi.fn() }) }));
 vi.mock('@/components/ui/Confirm', () => ({
   useConfirm: () => vi.fn(async () => true),

@@ -10,6 +10,9 @@ import { useOrderPatch } from '@/components/orders/useOrderPatch';
 import { humanMinutes, useElapsedMinutes } from '@/components/ui/Elapsed';
 import { CustomerHistoryButton } from '@/components/orders/CustomerHistory';
 import { OrderStateBadge } from '@/components/orders/OrderStateBadge';
+import { OrderRef } from '@/components/orders/OrderRef';
+import { CopyValue } from '@/components/orders/CopyValue';
+import { orderNumberToCopy } from '@/lib/copy-values';
 import { ContactButtons } from '@/components/orders/ContactButtons';
 import { OrderDetailModal } from '@/components/orders/OrderDetailModal';
 import { CreateOrderModal } from '@/components/orders/CreateOrderModal';
@@ -1147,7 +1150,12 @@ export function ConfirmationMineScreen() {
             return (
               <article key={order.id} className={`border rounded-lg p-4 space-y-3 ${cardTone(order.noAnswerCount, data.noAnswerLimit, closed)}`}>
                 <header className="flex flex-wrap items-center gap-2">
-                  <span className="font-semibold text-[var(--sys-heading)]" dir="ltr">{order.orderNumber}</span>
+                  {/* Text, not `OrderRef`: a number that opened the order would be the way around «افتح وعدّل»,
+                      which stays locked until she has rung the customer. Only the copy button is added. */}
+                  <span className="inline-flex items-center gap-1">
+                    <span className="font-semibold text-[var(--sys-heading)]" dir="ltr">{order.orderNumber}</span>
+                    <CopyValue text={orderNumberToCopy(order.orderNumber)} noun="رقم الطلب" shown={order.orderNumber} />
+                  </span>
                   <OrderStateBadge state={order.state} />
                   {/* Where it came from — see `sourceLabel`. It decides what
                       she can do about bad data, so it belongs beside the
@@ -1417,20 +1425,20 @@ export function ConfirmationMineScreen() {
             columns={[
               { key: 'c0', label: "الطلب", primary: true,
                 // The number opens the order's panel here, on her desk — only for
-                // whoever may read it (the work key, or «عرض الطلبات»); else text.
-                render: (order) =>
-                  !readOnly && (holderId !== null || userCan(currentUser, 'orders.view')) ? (
-                    <button
-                      type="button"
-                      onClick={() => setOpenOrderId(order.id)}
-                      className="min-h-11 md:min-h-0 underline"
-                      dir="ltr"
-                    >
-                      {order.orderNumber}
-                    </button>
-                  ) : (
-                    order.orderNumber
-                  ) },
+                // whoever may read it (the work key, or «عرض الطلبات»); else what
+                // `OrderLink` decides. The copy button sits beside it either way.
+                render: (order) => (
+                  <OrderRef
+                    id={order.id}
+                    number={order.orderNumber}
+                    onOpen={
+                      !readOnly && (holderId !== null || userCan(currentUser, 'orders.view'))
+                        ? () => setOpenOrderId(order.id)
+                        : undefined
+                    }
+                    className="min-h-11 md:min-h-0"
+                  />
+                ) },
               { key: 'c1', label: "العميل", primary: true,
                 render: (order) => (
                   <><span className="flex items-center gap-2">

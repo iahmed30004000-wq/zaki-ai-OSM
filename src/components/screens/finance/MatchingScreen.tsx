@@ -18,6 +18,7 @@ import { SwapDialog } from '@/components/screens/finance/SwapDialog';
 import { mayCorrectStatus } from '@/lib/not-mentioned';
 import { useToast } from '@/components/ui/Toast';
 import { Rows, type Column } from '@/components/ui/Rows';
+import { OrderRef } from '@/components/orders/OrderRef';
 import { Money } from '@/components/ui/Money';
 import { Tabs } from '@/components/ui/Tabs';
 import { useIsPhone } from '@/hooks/useIsPhone';
@@ -416,9 +417,7 @@ function Queue({
       primary: true,
       render: (m) =>
         m.order ? (
-          <a href={`/orders/${m.order.id}`} className="text-[var(--sys-primary)] hover:underline" dir="ltr">
-            {m.order.orderNumber}
-          </a>
+          <OrderRef id={m.order.id} number={m.order.orderNumber} className="text-[var(--sys-primary)]" />
         ) : (
           <span className="text-[var(--sys-muted)]">—</span>
         ),

@@ -15,7 +15,7 @@ import { RiAddCircleLine, RiArrowGoBackLine, RiMapPinLine, RiSearchLine } from '
 import { Money } from '@/components/ui/Money';
 import { HealthChip } from '@/components/ui/HealthChip';
 import { ContactButtons } from '@/components/orders/ContactButtons';
-import { OrderLink } from '@/components/orders/OrderLink';
+import { OrderRef } from '@/components/orders/OrderRef';
 import type { CustomerFacts } from '@/lib/customer-insights';
 import {
   DEFAULT_SORT,
@@ -574,7 +574,7 @@ export function CustomersScreen() {
               {selectedCustomer.orders?.map((ord: any) => (
                 <div key={ord.id} className={onPhone ? 'py-2.5 flex flex-wrap items-center justify-between gap-y-1 text-xs' : 'py-2.5 flex items-center justify-between text-xs'}>
                   <div className={onPhone ? 'min-w-0' : undefined}>
-                    <OrderLink id={ord.id} number={ord.orderNumber} className="font-bold text-[var(--sys-destructive)]" />
+                    <OrderRef id={ord.id} number={ord.orderNumber} className="font-bold text-[var(--sys-destructive)]" />
                     <span className="text-[var(--sys-muted-foreground)] ml-2 rtl:ml-0 rtl:mr-2">{ord.product?.name}</span>
                   </div>
                   <div className="flex items-center space-x-2 rtl:space-x-reverse">

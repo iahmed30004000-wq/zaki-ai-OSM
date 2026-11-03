@@ -2,7 +2,6 @@
 
 import { DispatchResult } from '@/components/ops/DispatchResult';
 import { DispatchInterrupted, dispatchInChunks, type DispatchProgress } from '@/components/ops/dispatchInChunks';
-import { OrderLink } from '@/components/orders/OrderLink';
 import { OrderRef } from '@/components/orders/OrderRef';
 import { PrepEditSheet, type PrepParcel } from '@/components/ops/PrepEditSheet';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -865,7 +864,7 @@ export function ShippingBatchesScreen() {
                   <ul className="divide-y divide-[var(--sys-border)] rounded-lg border border-[var(--sys-border)]">
                     {parcels.rows.map((o) => (
                       <li key={o.id} className="flex flex-wrap items-center gap-2 p-2">
-                        <OrderLink id={o.id} number={o.orderNumber} className="font-bold text-[var(--sys-heading)] text-xs" />
+                        <OrderRef id={o.id} number={o.orderNumber} className="font-bold text-[var(--sys-heading)] text-xs" />
                         {o.customer?.fullName && (
                           <span className="text-xs text-[var(--sys-muted-foreground)]">{o.customer.fullName}</span>
                         )}

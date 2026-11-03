@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
 import { OrderStateBadge } from './OrderStateBadge';
-import { OrderLink } from './OrderLink';
+import { OrderRef } from './OrderRef';
 import { arDate } from '@/lib/format';
 import { RiHistoryLine, RiLoader4Line, RiShieldFlashLine } from '@remixicon/react';
 import { Money } from '@/components/ui/Money';
@@ -167,7 +167,7 @@ export function CustomerHistoryModal({
           {history?.orders.map((o) => (
             <article key={o.id} className="border border-[var(--sys-border)] rounded-lg p-3">
               <header className="flex flex-wrap items-center gap-2 text-sm">
-                <OrderLink
+                <OrderRef
                   id={o.id}
                   number={o.orderNumber}
                   opensOnHerDesk={!!holderId && o.claimedById === holderId}

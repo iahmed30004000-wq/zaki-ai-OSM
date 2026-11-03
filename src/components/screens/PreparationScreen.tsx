@@ -4,6 +4,7 @@ import React, { useCallback, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { ChangeRequestReview } from '@/components/orders/ChangeRequestReview';
 import { OrderDetailModal } from '@/components/orders/OrderDetailModal';
+import { OrderRef } from '@/components/orders/OrderRef';
 import { RejectDialog } from '@/components/screens/confirmation/ActionDialogs';
 import { useApp } from '@/context/AppContext';
 import { PickingAssistant } from '@/components/screens/ops/PickingAssistant';
@@ -212,20 +213,16 @@ export function PreparationScreen() {
                     primary: true,
                     // The number opens the order's own panel (the same one the
                     // pencil opens), to whoever holds «عرض الطلبات»; for anyone
-                    // else it stays the text it always was.
-                    render: (l) =>
-                      mayOpenOrder ? (
-                        <button
-                          type="button"
-                          onClick={() => setOpenOrderId(l.orderId)}
-                          className="min-h-11 md:min-h-0 font-medium text-[var(--sys-heading)] underline"
-                          dir="ltr"
-                        >
-                          {l.orderNumber}
-                        </button>
-                      ) : (
-                        <span className="font-medium text-[var(--sys-heading)]" dir="ltr">{l.orderNumber}</span>
-                      ),
+                    // else it stays the text it always was. Either way the
+                    // copy button sits beside it (`OrderRef`).
+                    render: (l) => (
+                      <OrderRef
+                        id={l.orderId}
+                        number={l.orderNumber}
+                        onOpen={mayOpenOrder ? () => setOpenOrderId(l.orderId) : undefined}
+                        className="min-h-11 md:min-h-0 font-medium text-[var(--sys-heading)]"
+                      />
+                    ),
                   },
                   { key: 'customer', label: 'العميل', primary: true, render: (l) => l.customerName },
                   { key: 'region', label: 'المحافظة', render: (l) => l.regionName ?? '—' },
