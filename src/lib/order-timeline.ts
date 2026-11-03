@@ -151,6 +151,8 @@ const ACTIVITY_AR: Record<string, string> = {
   COURIER_SEND_CLEARED: 'فكّ إرسال عالق للشركة',
   COURIER_TOLD_TO_CANCEL: 'إبلاغ الشركة بإلغاء الطرد',
   TAKEN_OFF_BATCH: 'أُخرج من الدفعة',
+  // «لصق الباركودات»: the courier's barcode written from the batch screen's paste (batch-barcodes.ts).
+  TRACKING_PASTED: 'انكتب باركود الشركة من لصق الدفعة',
   LABEL_STALE_REPRINT: 'بوليصة الطرد لم تعد تطابق الطلب — تُطبع من جديد',
   // «التجهيز»: corrected at the trolley by the person holding the packing table's pen, before «إغلاق الشحنة».
   PREP_EDITED_BEFORE_CLOSE: 'عُدِّل قبل إغلاق الشحنة',
@@ -193,6 +195,8 @@ const METADATA_AR: Record<string, string> = {
   twins: 'الطلبات المؤكَّدة المشابهة',
   // The order of the same customer she pulled, which this one was held with (a number, never the customer).
   withOrder: 'مع الطلب',
+  // The paste of the courier's barcodes: which batch, and the barcode before and after.
+  inBatch: 'الدفعة', barcodeBefore: 'الباركود قبل', barcodeAfter: 'الباركود بعد',
 };
 
 /**
