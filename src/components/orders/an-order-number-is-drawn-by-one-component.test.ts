@@ -8,7 +8,7 @@ import { dashboardFiles, stripComments, stripTemplates } from '@/lib/guard-sourc
  * AN ORDER NUMBER IS DRAWN BY ONE COMPONENT — AND THE DEBT ONLY GOES DOWN.
  *
  * `OrderRef` draws the number with the buttons that copy it, the phone and
- * the courier's barcode. Fifteen files still draw it another way, so this is
+ * the courier's barcode. A few files still draw it another way, so this is
  * a ratchet, not a wall (the pattern of `bare-fetch-ratchet`): every
  * remaining place is written down BY NAME, a new one fails, an old one
  * moved to `OrderRef` fails until its number is lowered, and a ceiling pins
@@ -61,42 +61,40 @@ const rawCopies = (src: string): number =>
 type Ledger = ReadonlyMap<string, number>;
 
 /**
- * R1 — `<OrderLink` still drawn by the screen itself (17 places, 15 files).
- * Each moves to `OrderRef` in its own screen PR and its number falls with it.
+ * R1 — `<OrderLink` still drawn by the screen itself. It was 17 places in 15
+ * files; all of them moved to `OrderRef` (3/11), so the ledger is empty and
+ * the ceiling is nothing: a new `<OrderLink` on a screen fails.
  */
-const LINK_DEBT: Ledger = new Map<string, number>([
-  ['src/components/orders/CustomerHistory.tsx', 1],
-  ['src/components/screens/AgentCustodyScreen.tsx', 1],
-  ['src/components/screens/ChangeRequestsScreen.tsx', 1],
-  ['src/components/screens/ConfirmationIssuesScreen.tsx', 1],
-  ['src/components/screens/ConfirmationPostponedScreen.tsx', 1],
-  ['src/components/screens/ConfirmationQueueScreen.tsx', 1],
-  ['src/components/screens/CustomersScreen.tsx', 1],
-  ['src/components/screens/DiscountAlertsScreen.tsx', 1],
-  ['src/components/screens/finance/ManualMatching.tsx', 1],
-  ['src/components/screens/ReturnsScreen.tsx', 2],
-  ['src/components/screens/ShipmentsNewScreen.tsx', 1],
-  ['src/components/screens/ShippingBatchesScreen.tsx', 1],
-  ['src/components/screens/TelegramOrdersScreen.tsx', 2],
-  ['src/components/screens/TrackingScreen.tsx', 1],
-  ['src/components/screens/WinbackScreen.tsx', 1],
-]);
-const LINK_CEILING = 17;
+const LINK_DEBT: Ledger = new Map<string, number>([]);
+const LINK_CEILING = 0;
 
 /**
- * R2 — a number the screen prints with its own markup, and that CAN take
- * the component (10 places, 7 files). Same rule: each falls to zero.
+ * R2 — a number the screen prints with its own markup (10 places, 7 files at
+ * the start; 6 now). Each falls to zero when its reason goes:
+ *   · ProductRecentOrders — its link leads to the list with the row lit, not
+ *     to the order; the copy button sits beside it already;
+ *   · ConfirmationMineScreen (the card) — a number that opened the order would
+ *     be the way around «افتح وعدّل», locked until she has rung; the copy
+ *     button sits beside it already;
+ *   · OrdersScreen — the whole row already opens the order; a second
+ *     button that does the same is one more stop for the keyboard; the copy
+ *     button sits beside it already;
+ *   · MatchingScreen — the statement line's own reference under its barcode;
+ *     the order's number is in the next column, through `OrderRef`;
+ *   · ShipmentsNewScreen — the refusal list carries the number without the
+ *     order's id; the copy button sits beside it already;
+ *   · WhatsAppInboxScreen — the number is inside a row that is a link: a
+ *     button inside a link is a control inside a control.
  */
 const HAND_DEBT: Ledger = new Map<string, number>([
   ['src/components/products/ProductRecentOrders.tsx', 1],
-  ['src/components/screens/ConfirmationMineScreen.tsx', 2],
-  ['src/components/screens/finance/MatchingScreen.tsx', 2],
+  ['src/components/screens/ConfirmationMineScreen.tsx', 1],
+  ['src/components/screens/finance/MatchingScreen.tsx', 1],
   ['src/components/screens/OrdersScreen.tsx', 1],
-  ['src/components/screens/PreparationScreen.tsx', 2],
   ['src/components/screens/ShipmentsNewScreen.tsx', 1],
   ['src/components/screens/WhatsAppInboxScreen.tsx', 1],
 ]);
-const HAND_CEILING = 10;
+const HAND_CEILING = 6;
 
 /**
  * R3 — a number that stays plain, and WHY. These do not fall to zero: they
@@ -193,9 +191,14 @@ describe('R5 · the sweep is not empty', () => {
   });
 
   it('finds the places that draw an order number — through OrderRef or not', () => {
-    const throughOrderRef = tsx.filter((f) => /<OrderRef\b/.test(view(f.src)) && f.rel !== ORDER_REF).length;
-    // 17 + 17 at the start. A screen that moves to OrderRef leaves the first
-    // two sums and enters the third, so the whole never falls below it.
+    // Counted by PLACE, not by file: a file already through OrderRef that moves
+    // one more place would otherwise leave the first two sums and add nothing
+    // to the third.
+    const throughOrderRef = tsx
+      .filter((f) => f.rel !== ORDER_REF)
+      .reduce((n, f) => n + (view(f.src).match(/<OrderRef\b/g) ?? []).length, 0);
+    // 17 + 17 at the start. A place that moves to OrderRef leaves the first
+    // two sums and enters the third (two hand-drawn branches may become one).
     const everywhere = total(linkFound) + total(handFound) + throughOrderRef;
     expect(everywhere).toBeGreaterThanOrEqual(34);
   });
@@ -311,21 +314,27 @@ describe('the guard itself catches what it claims to', () => {
     expect(rawCopies('const t = await navigator.clipboard.readText()')).toBe(0);
   });
 
+  // A sample ledger: LINK_DEBT is empty now, and the judging must still be shown to work.
+  const SAMPLE: Ledger = new Map<string, number>([
+    ['src/components/screens/ReturnsScreen.tsx', 2],
+    ['src/components/screens/WinbackScreen.tsx', 1],
+  ]);
+
   it('a NEW place outside the ledger fails', () => {
-    const found = new Map<string, number>([...LINK_DEBT, ['src/components/screens/BrandNewScreen.tsx', 1]]);
-    expect(fresh(found, LINK_DEBT)).toEqual(['src/components/screens/BrandNewScreen.tsx: 1 > 0']);
+    const found = new Map<string, number>([...SAMPLE, ['src/components/screens/BrandNewScreen.tsx', 1]]);
+    expect(fresh(found, SAMPLE)).toEqual(['src/components/screens/BrandNewScreen.tsx: 1 > 0']);
   });
 
   it('a known file that grows fails', () => {
-    const found = new Map(LINK_DEBT);
+    const found = new Map(SAMPLE);
     found.set('src/components/screens/ReturnsScreen.tsx', 3);
-    expect(fresh(found, LINK_DEBT)).toHaveLength(1);
+    expect(fresh(found, SAMPLE)).toHaveLength(1);
   });
 
   it('a file that moved to OrderRef fails until its number is lowered', () => {
-    const found = new Map(LINK_DEBT);
+    const found = new Map(SAMPLE);
     found.delete('src/components/screens/WinbackScreen.tsx');
-    expect(stale(found, LINK_DEBT)).toHaveLength(1);
+    expect(stale(found, SAMPLE)).toHaveLength(1);
   });
 
   it('a ledger raised without raising the ceiling fails', () => {

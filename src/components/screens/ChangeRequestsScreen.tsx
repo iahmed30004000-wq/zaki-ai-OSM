@@ -6,7 +6,7 @@ import { CourierNotifyDialog, type CourierAsk } from '@/components/orders/Courie
 import { ChangeRequestReview } from '@/components/orders/ChangeRequestReview';
 import { LinesRequestReview, type Verdict } from '@/components/orders/LinesRequestReview';
 import { AUTO_CHECKED_CARDS, REVIEW_UNREADABLE_AR } from '@/lib/change-request-review';
-import { OrderLink } from '@/components/orders/OrderLink';
+import { OrderRef } from '@/components/orders/OrderRef';
 import { useConfirm, useTell } from '@/components/ui/Confirm';
 import { changeFieldLabel, describeLines, readLinesChange } from '@/lib/change-request-fields';
 import { INTENT_AR, type ChangeIntent } from '@/lib/change-request-intent';
@@ -551,7 +551,7 @@ export function ChangeRequestsScreen() {
                   <RiCheckboxCircleLine className="w-4 h-4 text-[var(--sys-success)]" />
                 )}
               </span>
-              <OrderLink id={r.order.id} number={r.order.orderNumber} className="font-semibold text-[var(--sys-heading)]" />
+              <OrderRef id={r.order.id} number={r.order.orderNumber} className="font-semibold text-[var(--sys-heading)]" />
               {/* WHICH OF THE THREE. Every row said «طلب تعديل» and a
                   cancellation read as a field edit — answered like one. */}
               <span

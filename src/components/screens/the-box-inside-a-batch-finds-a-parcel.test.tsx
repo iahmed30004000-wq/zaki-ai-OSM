@@ -37,6 +37,8 @@ vi.mock('@/components/labels/openWaybills', () => ({
 }));
 vi.mock('@/components/scan/ScanButton', () => ({ ScanSheet: () => null }));
 vi.mock('@/components/orders/OrderLink', () => ({ OrderLink: ({ number }: { number: string }) => <span>{number}</span> }));
+// The number's copy button carries its own status line; these tests read the box's.
+vi.mock('@/components/orders/OrderRef', () => ({ OrderRef: ({ number }: { number: string }) => <span>{number}</span> }));
 
 import { ShippingBatchesScreen } from './ShippingBatchesScreen';
 

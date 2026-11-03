@@ -14,7 +14,7 @@ import { SkeletonRows } from '@/components/ui/Skeleton';
 import { StatusChip } from '@/components/ui/StatusChip';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/Confirm';
-import { OrderLink } from '@/components/orders/OrderLink';
+import { OrderRef } from '@/components/orders/OrderRef';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
 import { apiJson } from '@/lib/api-client';
@@ -213,7 +213,7 @@ function TelegramOrdersList({ canManage, canConnect }: { canManage: boolean; can
         {m.twin && (
           <>
             {' '}
-            <OrderLink id={m.twin.id} number={m.twin.orderNumber} className="font-mono text-[var(--sys-primary)] font-semibold" />
+            <OrderRef id={m.twin.id} number={m.twin.orderNumber} className="font-mono text-[var(--sys-primary)] font-semibold" />
           </>
         )}
       </p>
@@ -247,7 +247,7 @@ function TelegramOrdersList({ canManage, canConnect }: { canManage: boolean; can
       render: (m) => (
         <div className="space-y-1">
           <StatusChip tone={STATE[m.processingStatus]?.tone ?? 'neutral'}>{STATE[m.processingStatus]?.label ?? 'غير معروفة'}</StatusChip>
-          {m.order && <OrderLink id={m.order.id} number={m.order.orderNumber} className="font-mono text-[var(--sys-primary)] font-semibold" />}
+          {m.order && <OrderRef id={m.order.id} number={m.order.orderNumber} className="font-mono text-[var(--sys-primary)] font-semibold" />}
           {/* On a phone the reason leads the card instead (`notice`), so it is drawn here for the desk only. */}
           {reasonLine(m, 'hidden md:block text-xs text-[var(--sys-destructive)] mt-0.5')}
         </div>

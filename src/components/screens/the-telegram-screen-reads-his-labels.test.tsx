@@ -362,7 +362,8 @@ describe('the actions on a row', () => {
     const [ignored, made] = within(desk()).getAllByRole('row').slice(1);
     expect(within(ignored).getByRole('button', { name: /إعادة المعالجة/ })).toBeTruthy();
     expect(within(ignored).queryByRole('button', { name: 'تجاهل' })).toBeNull();
-    expect(within(made).queryByRole('button')).toBeNull();
+    // …only the copy button beside the order's number.
+    expect(within(made).queryAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['نسخ رقم الطلب SY-2026-0009']);
     expect(within(made).getByText('SY-2026-0009')).toBeTruthy();
   });
 

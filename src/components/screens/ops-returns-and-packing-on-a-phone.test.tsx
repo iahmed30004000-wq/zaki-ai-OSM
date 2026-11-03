@@ -220,7 +220,8 @@ describe('«التجهيز»', () => {
   it('PHONE: someone who may neither open nor cancel gets no row of actions', async () => {
     user.current = { id: 'u2', status: 'ACTIVE', role: 'WAREHOUSE', permissions: ['inventory.view'] };
     await draw({ ...LINE, pendingChangeRequestId: null as unknown as string });
-    expect(within(card()).queryByRole('button')).toBeNull();
+    // …only the copy button beside the number, which reads nothing it was not already shown.
+    expect(within(card()).queryAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['نسخ رقم الطلب ORD-1']);
   });
 
   it('DESK: nothing changed — two icons with names and the change-request chip, among the actions; no notice', async () => {

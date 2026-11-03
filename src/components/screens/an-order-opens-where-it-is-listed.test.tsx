@@ -165,8 +165,6 @@ const ON_PURPOSE: Record<string, string> = {
   'ConfirmationMineScreen.tsx': 'the held card — opening is the locked button beside it',
   // The whole card is the control here: pressing it opens the order's panel (aria-label «افتح الطلب …»).
   'OrdersScreen.tsx': 'the row itself opens the order',
-  // The text branch of the ternary whose other branch is the button: for someone without «عرض الطلبات».
-  'PreparationScreen.tsx': 'the fallback for a viewer without the key',
   // Two dialogs that name the order they act on in a heading line; they open over the list the order was chosen from.
   'LinkLineDialog.tsx': 'a dialog naming the order it acts on',
   'SwapDialog.tsx': 'a dialog naming the orders it swaps',
