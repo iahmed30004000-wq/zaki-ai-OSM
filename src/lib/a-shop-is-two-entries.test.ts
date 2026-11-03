@@ -429,21 +429,25 @@ describe('the four things the owner found on the templates screen', () => {
     expect(look).toMatch(/setPart\('home', \{ coverImage: url \}\)/);
   });
 
-  it('and «إنشاء صفحة هبوط» is four steps, with the required fields on the last', () => {
-    const screen = stripComments(repoFile('src/components/screens/LandingPagesScreen.tsx'));
-    expect(screen).toMatch(/const CREATE_STEPS = \[/);
-    for (const label of ['المنتج', 'الشكل', 'النصّ', 'الاسم والرابط']) {
-      expect(screen, `خطوة «${label}» مفقودة`).toContain(`label: '${label}'`);
+  it('and «إنشاء صفحة هبوط» is steps, with the required fields on the last', () => {
+    /*
+     * THE STEPS WERE FOUR AND ARE NOW A PATH PER WAY — the owner's 3/11
+     * order took his other platform's wizard (product → three ways →
+     * design). The claims are the same three: the product first, the two
+     * required fields on the LAST step of every path, and creating is
+     * still not publishing. The behaviour is walked in
+     * `landing-create-dialog.test.tsx`; this holds the shape in the source.
+     */
+    const wizard = stripComments(repoFile('src/components/landing-flow/CreateWizard.tsx'));
+    for (const way of ['ai', 'design', 'blank']) {
+      const path = new RegExp(`  ${way}: \\[([^\\]]+)\\]`).exec(wizard)?.[1] ?? '';
+      const steps = path.split(',').map((x) => x.trim().replace(/'/g, ''));
+      expect(steps[0], `طريق «${way}» ما بيبلّش بالمنتج`).toBe('product');
+      expect(steps[steps.length - 1], `طريق «${way}» ما بيخلص بالاسم والرابط`).toBe('name');
     }
-    // The product is step one, because every preview after it is drawn
-    // selling that product.
-    expect(screen.indexOf("{ key: 'product'")).toBeLessThan(screen.indexOf("{ key: 'shape'"));
-    // The two fields the dialog cannot do without are on the last step,
-    // not at the bottom of two thousand pixels of previews.
-    const four = screen.slice(screen.indexOf('{step === 4 && ('));
-    expect(four).toContain('اسم الصفحة *');
-    expect(four).toContain('الرابط (slug) *');
-    // Creating is still not publishing.
-    expect(four).toMatch(/تُنشأ مسوّدةً/);
+    const last = wizard.slice(wizard.indexOf("{step === 'name' && ("));
+    expect(last).toContain('اسم الصفحة *');
+    expect(last).toContain('الرابط *');
+    expect(last).toMatch(/بتنعمل مسودة/);
   });
 });

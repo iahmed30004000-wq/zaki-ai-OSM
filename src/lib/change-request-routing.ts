@@ -1,5 +1,6 @@
 import type { SessionUser } from '@/types/auth';
 import { can } from './authorization';
+import { userHasFullAccess } from './can';
 import { PRICE_KEY_REQUIRED_AR } from './change-request-fields';
 import { editWindowOpen } from './edit-confirmed-window';
 
@@ -124,8 +125,11 @@ export interface RoutingVerdict {
    * WHICH RULE ALLOWED IT, when it was the holder's own window (`orders.edit_confirmed`) and no earlier rule: the raising route
    * writes a decision note that says so. Absent for every other decider — a supervisor or the packing table keeps its verdict
    * and its sentence exactly as before. (The two doors that carry out a cancel or a hold ask `holdsTheWindow`, not this.)
+   *
+   * `OWNER_WINDOW` (3/11): the same window, open to the owner (full access) on any order before it enters a batch. He decides
+   * as a supervisor anyway — this label changes no verdict, only the sentence the note says and the screen's «تم».
    */
-  via?: 'EDIT_CONFIRMED';
+  via?: 'EDIT_CONFIRMED' | 'OWNER_WINDOW';
 }
 
 /**
@@ -161,6 +165,9 @@ export function holdsTheWindow(user: SessionUser, order: RoutingSource): boolean
     can(user, 'orders.edit_confirmed') &&
     editWindowOpen({
       userId: user.id,
+      // The owner's window (3/11): full access opens it on an order he does not hold — the SAME helper the screen asks
+      // (`editsNow`). An account that is not active fails `can` on the line above, so no status is asked twice.
+      fullAccess: userHasFullAccess(user),
       confirmationStatus: order.confirmationStatus,
       claimedById: order.claimedById,
       inBatch: order.inBatch,
@@ -183,7 +190,17 @@ export function mayDecide(user: SessionUser, order: RoutingSource, opts: { money
 
   // Always available, so an escalation path never depends on one person
   // being at their desk.
-  if (isSupervisor(user)) return priceMissing ? refusedForPrice : { allowed: true, decider };
+  if (isSupervisor(user)) {
+    if (priceMissing) return refusedForPrice;
+    /*
+     * THE OWNER'S WINDOW (3/11) — «انتا ادخل وعدل». He is a supervisor (full access holds every key), so the verdict is the one he
+     * always had; what this adds is WHICH rule, when his window is open (confirmed, on no trolley, not with the courier — the
+     * holder's predicate, `holdsTheWindow`), so the note and the screen say «طُبِّق مباشرةً — المالك». Only full access: a manager
+     * or a supervisor with every key keeps the verdict and the sentence it had, with no «via».
+     */
+    if (userHasFullAccess(user) && holdsTheWindow(user, order)) return { allowed: true, decider, via: 'OWNER_WINDOW' };
+    return { allowed: true, decider };
+  }
 
   if (decider.kind === 'HOLDING_AGENT' && decider.userId === user.id) {
     return priceMissing ? refusedForPrice : { allowed: true, decider };

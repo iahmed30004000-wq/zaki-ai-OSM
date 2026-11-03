@@ -45,8 +45,9 @@ describe('the template gallery shows the template', () => {
     expect(preview).toMatch(/price: product\?\.price/);
 
     // The product is picked BEFORE the templates are shown — otherwise
-    // every preview advertises «منتجك» and answers nothing.
-    const screen = stripComments(repoFile('src/components/screens/LandingPagesScreen.tsx'));
+    // every preview advertises «منتجك» and answers nothing. The create
+    // dialog's code moved to the wizard on 3/11; the rule did not.
+    const screen = stripComments(repoFile('src/components/landing-flow/CreateWizard.tsx'));
     const productAt = screen.indexOf('<ProductPicker');
     const galleryAt = screen.indexOf('<TemplateGallery');
     expect(productAt).toBeGreaterThan(-1);
@@ -71,7 +72,7 @@ describe('the template gallery shows the template', () => {
      * `UNCATEGORISED_LABEL` is imported rather than retyped so the bucket
      * cannot be renamed out from under this test.
      */
-    const screen = stripComments(repoFile('src/components/screens/LandingPagesScreen.tsx'));
+    const screen = stripComments(repoFile('src/components/landing-flow/CreateWizard.tsx'));
     expect(screen, 'لا تجميع حسب التصنيف').toMatch(/groupByCategory/);
     expect(screen).toMatch(/<ProductPicker/);
 
@@ -87,7 +88,7 @@ describe('the template gallery shows the template', () => {
    */
   it('and both screens use the one gallery', () => {
     for (const file of [
-      'src/components/screens/LandingPagesScreen.tsx',
+      'src/components/landing-flow/CreateWizard.tsx',
       'src/components/screens/StoreThemeScreen.tsx',
     ]) {
       const src = stripComments(repoFile(file));

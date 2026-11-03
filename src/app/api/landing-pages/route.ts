@@ -16,6 +16,7 @@ import { isValidHex } from '@/lib/landing-theme';
 import { zodMessage } from '@/lib/zod-message';
 import { readLimit, readPage } from '@/lib/numeric-input';
 import { shownPageProductIds } from '@/lib/storefront';
+import { designById } from '@/lib/landing-designs/catalog';
 
 export async function GET(req: Request) {
   try {
@@ -149,12 +150,27 @@ export async function POST(req: Request) {
        * over, and the page is perfectly usable in the library's own.
        */
       accent: z.string().trim().max(9).optional(),
+      /**
+       * WHICH OF THE SIXTY-FOUR DESIGNS THE WIZARD CHOSE — a catalogue id.
+       *
+       * Stored in the page's theme as `design`, beside the colours it
+       * names, and REFUSED when the catalogue does not know it: a page
+       * that says it wears a design nobody can draw is a page whose look
+       * nobody can explain. Optional, so every caller that sends nothing
+       * creates exactly the page it created before.
+       */
+      design: z
+        .string()
+        .trim()
+        .max(60)
+        .refine((id) => designById(id) !== undefined, 'تصميم غير معروف')
+        .optional(),
     });
     const parsed = schema.safeParse(await req.json());
     if (!parsed.success) {
       return NextResponse.json({ error: zodMessage(parsed.error) }, { status: 400 });
     }
-    const { name, slug, productId, htmlContent, template, structure, skin, copy, dialect, accent } = parsed.data;
+    const { name, slug, productId, htmlContent, template, structure, skin, copy, dialect, accent, design } = parsed.data;
 
     const slugCheck = validateSlug(slug);
     if (!slugCheck.valid) return NextResponse.json({ error: slugCheck.error }, { status: 400 });
@@ -266,7 +282,9 @@ export async function POST(req: Request) {
           // The template's own colour and typeface as well as its blocks —
           // a template that only set the order would be the same page
           // fifteen times.
-          theme: htmlContent ? null : JSON.stringify(built.theme),
+          // The chosen design's id rides with the colours, where the editor's
+          // own save carries it through (`landingThemeSchema.design`).
+          theme: htmlContent ? null : JSON.stringify(design ? { ...(built.theme as object), design } : built.theme),
           sections: htmlContent ? null : JSON.stringify(built.sections),
           createdById: user.id,
           /**

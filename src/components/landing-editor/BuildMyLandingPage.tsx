@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { screenApi as crmApi } from '@/lib/screen-api';
 import { BUILD_QUESTIONS, SOURCE_LABEL, type BuildAnswers, type BuildSource } from '@/lib/landing-build';
+import type { Tone } from '@/lib/landing-copy-brief';
 import { worldColorsFrom, worldIsDark, type WorldColors } from '@/lib/landing-world-colors';
 import {
   RiAlertLine,
@@ -88,6 +89,8 @@ interface Props {
   /** For the empty state's sentence, so it names the product. */
   productName?: string;
   onApply: (proposal: BuiltProposal) => void;
+  /** The wizard's «الأسلوب», sent with the build when one was chosen. */
+  tone?: Tone;
 }
 
 /** How a field's provenance is shown. «اقتراح» is the one that waits. */
@@ -97,7 +100,7 @@ const SOURCE_TONE: Record<BuildSource, 'success' | 'info' | 'warning'> = {
   suggestion: 'warning',
 };
 
-export function BuildMyLandingPage({ productId, productName, onApply }: Props) {
+export function BuildMyLandingPage({ productId, productName, onApply, tone }: Props) {
   const [answers, setAnswers] = useState<BuildAnswers>({});
   const [picks, setPicks] = useState<Pick[] | null>(null);
   const [chosen, setChosen] = useState(0);
@@ -188,7 +191,7 @@ export function BuildMyLandingPage({ productId, productName, onApply }: Props) {
     try {
       const built = await crmApi('/api/ai/landing-build', {
         method: 'POST',
-        body: JSON.stringify({ productId, answers }),
+        body: JSON.stringify({ productId, answers, ...(tone ? { tone } : {}) }),
       });
       setFields(built.fields ?? []);
       setEdited(

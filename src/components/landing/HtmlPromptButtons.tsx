@@ -13,12 +13,12 @@ import { copyText } from '@/lib/clipboard';
  * or keep the file and edit the product description in it each time. The
  * copy is the same text in both, from one source.
  */
-export function HtmlPromptButtons() {
+export function HtmlPromptButtons({ prompt = LANDING_HTML_PROMPT }: { prompt?: string } = {}) {
   const [copied, setCopied] = useState(false);
 
   async function copy() {
     try {
-      if (!(await copyText(LANDING_HTML_PROMPT))) throw new Error('clipboard');
+      if (!(await copyText(prompt))) throw new Error('clipboard');
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     } catch {
@@ -27,7 +27,7 @@ export function HtmlPromptButtons() {
   }
 
   function download() {
-    const blob = new Blob(['﻿', promptAsWordDocument()], {
+    const blob = new Blob(['﻿', promptAsWordDocument(prompt)], {
       type: 'application/msword;charset=utf-8',
     });
     const url = URL.createObjectURL(blob);

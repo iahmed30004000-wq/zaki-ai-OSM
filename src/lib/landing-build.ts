@@ -1,4 +1,5 @@
 import { normalizeArabic } from './order-parser';
+import { TONE_SENTENCE, type Tone } from './landing-copy-brief';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -301,10 +302,12 @@ export interface BuildBriefInput {
    * told, and the screen is told too.
    */
   hasImage: boolean;
+  /** The wizard's «الأسلوب»: one sentence, and the rules below stay as they are. */
+  tone?: Tone;
 }
 
 export function buildPageBrief(input: BuildBriefInput): string {
-  const { specs, answers, hasImage } = input;
+  const { specs, answers, hasImage, tone } = input;
   const attrs = Object.entries(specs.attributes ?? {}).filter(([, v]) => String(v ?? '').trim() !== '');
   const said = BUILD_QUESTIONS.map((q) => [q, String(answers?.[q.key] ?? '').trim()] as const).filter(
     ([, v]) => v !== ''
@@ -312,6 +315,7 @@ export function buildPageBrief(input: BuildBriefInput): string {
 
   return [
     'املأ حقول صفحة هبوط لمنتج واحد، من مصدرين فقط: المواصفات المكتوبة تحت، وصورة العلبة المرفقة.',
+    ...(tone ? [TONE_SENTENCE[tone]] : []),
     '',
     '## المواصفات المكتوبة بصفحة المنتج',
     `- الاسم عربي: ${specs.name}`,
