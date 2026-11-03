@@ -15,8 +15,7 @@ import { normalizePhoneNumber } from '@/lib/phone';
 import { isValidPhoneFor, phoneErrorFor, ruleFor } from '@/lib/phone-rules';
 import { activeBlock } from '@/lib/blacklist';
 import { logAudit } from '@/lib/audit';
-import { applyQueueFilter } from '@/lib/rbac';
-import { ordersWhere } from '@/lib/order-filters';
+import { orderListQuery } from '@/lib/order-list-query';
 import { apiError } from '@/lib/api-error';
 import { requirePermission, getPermissionScope, can } from '@/lib/authorization';
 import {
@@ -57,40 +56,18 @@ export async function GET(req: Request) {
     const limit = readLimit(searchParams, 25, 500);
 
     /*
-     * THE FILTERS ARE BUILT IN ONE PLACE — see src/lib/order-filters.ts.
+     * THE FILTERS ARE BUILT IN ONE PLACE — see src/lib/order-filters.ts —
+     * AND THE WHOLE QUESTION, ENVELOPE INCLUDED, IN ANOTHER: order-list-query.ts.
      *
      * This route, the CSV export and the ‹previous›/‹next› arrows all ask
      * the same question of the same table, and each used to answer it in
-     * its own words. They had already drifted three ways.
+     * its own words. They had already drifted three ways. The counts and the
+     * cards above the list (`/api/orders/summary`) ask it through the same
+     * function as this list, so a chip never counts an order the list hides.
      */
-    // Created between two dates, inclusive of the whole closing day. The
-    // export applies its own ninety-day rule, so the range is the caller's.
-    const from = searchParams.get('from')?.trim();
-    const to = searchParams.get('to')?.trim();
-    const createdAt: { gte?: Date; lte?: Date } = {};
-    if (from) createdAt.gte = new Date(`${from}T00:00:00.000Z`);
-    if (to) createdAt.lte = new Date(`${to}T23:59:59.999Z`);
-
-    const built = ordersWhere(searchParams, { createdAt });
-    if (!built.ok) return NextResponse.json({ error: built.error }, { status: 400 });
-    const whereClause: any = { companyId, storeId, ...built.where };
-
-    // ─── Role-based visibility + workflow queues (backend-enforced) ───
-    // applyQueueFilter enforces per-role visibility envelopes; never trust the
-    // requested queue blindly — the server decides which queues a role may use.
-    /*
-     * EXCEPT THE ONE QUEUE THAT WIDENS.
-     *
-     * `available` is the unclaimed pool, the only queue that ADDS orders the
-     * person's own envelope leaves out. The arrows door already refuses it
-     * (orders/[id]/route.ts); this door honoured it, so an agent who typed
-     * `?queue=available&limit=500` got the whole pool with names, phones and
-     * addresses — the list the confirmation queue gives her only as a count.
-     * It is the supervisor's, or someone who sees every order anyway.
-     */
-    const queue = searchParams.get('queue');
-    const mayAskPool = can(user, 'confirmation.supervise') || getPermissionScope(user, 'orders.view')?.scope === 'ALL_COMPANY';
-    const visibleWhere = applyQueueFilter(user, whereClause, queue === 'available' && !mayAskPool ? null : queue);
+    const asked = orderListQuery({ user, companyId, storeId }, searchParams);
+    if (!asked.ok) return NextResponse.json({ error: asked.error }, { status: 400 });
+    const visibleWhere = asked.where;
 
     const [total, orders] = await Promise.all([
       db.order.count({ where: visibleWhere }),
