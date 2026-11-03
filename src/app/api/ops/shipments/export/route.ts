@@ -51,9 +51,16 @@ const MAX_ORDERS = 2000;
  * postponed one gave its units back on purpose, and a ready one that has not is drawn with no checkbox to tick. The fee
  * question IS asked — without a fee row the amount would print without the delivery. A body, not a query: three hundred ids
  * do not fit in an address.
+ *
+ * WITHOUT A COURIER (the owner, 3/11: «بدي بهاي الخانة فقط أقدر انزل ال csv بدون ما اختار شركة … الهدف اسحب الطلبات فقط
+ * اوزع المناطق ع شركات الشحن»): the ticked orders, and only they, may be had with no courier chosen — a sheet for sharing
+ * the governorates out between the couriers, not for collecting. It carries NO money: «المبلغ المطلوب» and «العملة» are
+ * empty for every order and nothing is read or worked out for them, and «رمز المدينة عند الشركة» is empty (it is a
+ * courier's own id). The fee question is a courier's, so it is not asked; the rest is the same sheet, the same keys, the
+ * same store and the same tally. The answer says so in `X-No-Courier: 1`. The whole tab (GET) still needs its courier.
  */
 const pickedSchema = z.object({
-  courier: z.string().min(1).max(64),
+  courier: z.string().min(1).max(64).optional(),
   ids: z.array(z.string().uuid()).min(1).max(MAX_ORDERS),
 });
 
@@ -63,7 +70,8 @@ export async function POST(req: Request) {
     const said = zodMessage(parsed.error);
     return NextResponse.json({ error: said, errorAr: said }, { status: 400 });
   }
-  return fileOf(new URLSearchParams({ courier: parsed.data.courier }), [...new Set(parsed.data.ids)]);
+  const q = new URLSearchParams(parsed.data.courier ? { courier: parsed.data.courier } : {});
+  return fileOf(q, [...new Set(parsed.data.ids)]);
 }
 
 export async function GET(req: Request) {
@@ -79,12 +87,19 @@ async function fileOf(q: URLSearchParams, picked: string[] | null) {
     if (!storeId) return NextResponse.json({ error: 'اختر المتجر أولاً.', errorAr: 'اختر المتجر أولاً.' }, { status: 400 });
 
     const courierId = q.get('courier');
-    if (!courierId) return NextResponse.json({ error: NO_COURIER, errorAr: NO_COURIER, code: 'NO_COURIER' }, { status: 400 });
-    const courier = await db.deliveryProvider.findFirst({
-      where: { id: courierId, companyId },
-      select: { id: true, code: true, adapterCode: true },
-    });
-    if (!courier) return NextResponse.json({ error: 'شركة الشحن غير موجودة', errorAr: 'شركة الشحن غير موجودة' }, { status: 404 });
+    // Only the ticked orders may go without a courier: the whole tab's file is still the courier's sheet.
+    if (!courierId && !picked) {
+      return NextResponse.json({ error: NO_COURIER, errorAr: NO_COURIER, code: 'NO_COURIER' }, { status: 400 });
+    }
+    const courier = courierId
+      ? await db.deliveryProvider.findFirst({
+          where: { id: courierId, companyId },
+          select: { id: true, code: true, adapterCode: true },
+        })
+      : null;
+    if (courierId && !courier) {
+      return NextResponse.json({ error: 'شركة الشحن غير موجودة', errorAr: 'شركة الشحن غير موجودة' }, { status: 404 });
+    }
 
     // The list's own filters, read the way the list reads them.
     const filters = {
@@ -122,9 +137,10 @@ async function fileOf(q: URLSearchParams, picked: string[] | null) {
     const unready = listed.length - reserved.length;
 
     // The door's two hard blocks about the fee, for THIS courier: the fee rows of all the governorates, read once.
+    // With no courier there is no fee to ask about and no amount in the file, so nothing is held back for it.
     const regionIds = [...new Set(reserved.map((o) => o.regionId).filter((id): id is string => !!id))];
     const priced = new Set(
-      regionIds.length > 0
+      courier && regionIds.length > 0
         ? (
             await db.deliveryFee.findMany({
               where: activeFeeRowWhere(courier.id, { in: regionIds }),
@@ -133,7 +149,9 @@ async function fileOf(q: URLSearchParams, picked: string[] | null) {
           ).map((f) => f.regionId)
         : []
     );
-    const ready = reserved.filter((o) => !deliveryFeeBlock(o.regionId, !!o.regionId && priced.has(o.regionId)));
+    const ready = courier
+      ? reserved.filter((o) => !deliveryFeeBlock(o.regionId, !!o.regionId && priced.has(o.regionId)))
+      : reserved;
     const blocked = reserved.length - ready.length;
 
     if (ready.length === 0) {
@@ -142,27 +160,31 @@ async function fileOf(q: URLSearchParams, picked: string[] | null) {
     }
 
     // The courier this shipment is for, as the shipment's creation will record it: the amount and the city id are its.
-    const rowsFor = ready.map((o) => ({ ...o, deliveryProviderId: courier.id }));
-    const cityIds = await sheetCityIds({ id: courier.id, identity: courier }, rowsFor);
+    // With none, no courier is written onto the rows and no city id is looked up: the column stays empty.
+    const rowsFor = courier ? ready.map((o) => ({ ...o, deliveryProviderId: courier.id })) : ready;
+    const cityIds = courier ? await sheetCityIds({ id: courier.id, identity: courier }, rowsFor) : new Map<string, number>();
 
     // Counted before the file is built, so the tally does not depend on what the file turns out to hold.
     await noteCustomersHandedOut({
       companyId, storeId, user, where: picked ? 'ملف الطلبات المحدَّدة للشحن' : 'ملف الطلبات الجاهزة للشحن', rows: rowsFor,
     });
 
-    const rows = await batchSheetRows(rowsFor, { minorUnit: country.minorUnit, countryCode: country.code, cityIds });
+    const rows = await batchSheetRows(rowsFor, {
+      minorUnit: country.minorUnit, countryCode: country.code, cityIds, ...(courier ? {} : { withoutMoney: true }),
+    });
     const csv = [BATCH_SHEET_HEADER.map(csvCell).join(','), ...rows.map((r) => r.map(csvCell).join(','))].join('\r\n');
 
     return new NextResponse(`﻿${csv}`, {
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',
-        'Content-Disposition': `attachment; filename="${picked ? 'picked' : 'ready'}-to-ship-${now.toISOString().slice(0, 10)}.csv"`,
+        'Content-Disposition': `attachment; filename="${!courier ? 'picked-no-courier' : picked ? 'picked' : 'ready'}-to-ship-${now.toISOString().slice(0, 10)}.csv"`,
         'Cache-Control': 'no-store',
         'X-Rows': String(ready.length),
         'X-Left-Held': String(held),
         'X-Left-Unready': String(unready),
         'X-Left-Blocked': String(blocked),
         'X-Left-Gone': String(gone),
+        ...(courier ? {} : { 'X-No-Courier': '1' }),
       },
     });
   } catch (error) {
