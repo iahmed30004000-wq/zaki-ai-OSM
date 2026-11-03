@@ -158,7 +158,8 @@ export function FirstRunTour() {
   // Opens at most once per mount, only for a user who has never dismissed it,
   // and plans only the steps whose elements are on THIS screen right now.
   useEffect(() => {
-    if (!currentUser || currentUser.tourDoneAt) return;
+    // Not during «عاين كـ»: the tour is HERS to see and dismiss, and the owner looking cannot dismiss it (read-only).
+    if (!currentUser || currentUser.tourDoneAt || currentUser.preview) return;
     if (skippedThisSession(currentUser.id)) return;
     // A dialog that is already open at first paint would sit UNDER the veil
     // (the Modal is z-50, the veil z-60) and could not be pressed. The tour
@@ -287,7 +288,7 @@ export function FirstRunTour() {
     if (open && rect) cardRef.current?.focus();
   }, [open, step, rect === null]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!open || !current || !currentUser || currentUser.tourDoneAt) return null;
+  if (!open || !current || !currentUser || currentUser.tourDoneAt || currentUser.preview) return null;
 
   return (
     <div dir="rtl" data-testid="first-run-tour">

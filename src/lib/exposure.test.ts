@@ -155,6 +155,13 @@ describe('what the browser is allowed to remember', () => {
     'shell/IdleGuard.tsx': 'a timestamp, shared between this account’s open tabs',
     'shell/InstallApp.tsx': 'when «ليس الآن» was pressed on the install strip — a timestamp, nothing about a person or a record',
     'ui/SavedViews.tsx': 'a name and a query string — a question to re-ask, never an answer or a record id',
+    /*
+     * «شو صار؟» (the call sheet of «طلباتي» on a phone): the call she opened (order id, when, her id) so a reload finds the
+     * sheet again, and the outcomes waiting to be sent (order id and number, the door, the exact body — a result word or a
+     * postponement time — and her id). A cheap phone drops the tab during a call; without this the answer is lost.
+     */
+    'lib/call-outcome.ts':
+      'the call she opened and the outcomes waiting for the connection — order ids, a result word or a time, her own id. Never a customer’s name, phone or address',
     'storefront/RecentlyViewed.tsx':
       'a shopper’s own «شوهد مؤخراً» — product ids, one key per shop. Never sent anywhere except to ask what those products are, never stored against a person, and nothing in it names one',
     'storefront/useCart.ts':

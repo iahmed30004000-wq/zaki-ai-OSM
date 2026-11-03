@@ -29,6 +29,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/confirmation/CallOutcomeSheet.tsx": {
+    "buttons": 2,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 19,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/confirmation/PullPanel.tsx": {
     "buttons": 1,
     "inputs": 0,
@@ -386,7 +396,7 @@
     "cards": 0,
     "modals": 0,
     "icons": 3,
-    "links": 1,
+    "links": 2,
     "tabs": 0
   },
   "src/components/orders/CopyValue.tsx": {
@@ -2076,6 +2086,16 @@
     "cards": 0,
     "modals": 0,
     "icons": 1,
+    "links": 0,
+    "tabs": 0
+  },
+  "src/components/shell/PreviewAs.tsx": {
+    "buttons": 2,
+    "inputs": 1,
+    "columns": 0,
+    "cards": 1,
+    "modals": 0,
+    "icons": 3,
     "links": 0,
     "tabs": 0
   },

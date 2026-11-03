@@ -41,7 +41,8 @@ export default async function ShellLayout({ children }: { children: React.ReactN
       groups={applyArrangement(menuNav(user, can), nav?.resolved ?? null)}
       userName={user.name}
       userRole={user.role}
-      viewer={{ name: user.name, id: user.id }}
+      // During «عاين كـ» the mark names who is really looking — the owner — never the person being previewed.
+      viewer={user.preview ? { name: user.preview.ownerName, id: user.preview.ownerId } : { name: user.name, id: user.id }}
       context={{
         storeName: store.name,
         storePaused: store.status !== 'ACTIVE',

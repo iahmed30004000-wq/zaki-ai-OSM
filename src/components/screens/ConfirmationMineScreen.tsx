@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { apiJson } from '@/lib/api-client';
 import { CONTACT_FIRST_MESSAGE, REGION_REQUIRED_MESSAGE } from '@/lib/confirmation-queue';
@@ -51,6 +51,20 @@ import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 import { OrderGoods, OrderNotes, OrderPlace, governorateOf, streetOf } from '@/components/orders/OrderGoods';
+import { CallOutcomeSheet, type LoggedOutcome } from '@/components/confirmation/CallOutcomeSheet';
+import { useOutbox, usePendingCall, type SendAnswer } from '@/components/confirmation/useCallOutcome';
+import {
+  ATTEMPT_RESULT,
+  CALLBACK_REASON,
+  alreadyLogged,
+  attemptBody,
+  followUpBody,
+  isNetworkFailure,
+  outgoingState,
+  preferredClock,
+  type CallbackChip,
+  type Outgoing,
+} from '@/lib/call-outcome';
 
 /**
  * /confirmation/mine — two sections: in-confirmation (workable) and
@@ -194,6 +208,21 @@ const needsContact = (order: { _count: { contactAttempts: number } }) =>
  */
 const lacksRegion = (order: { regionId?: string | null }) =>
   order.regionId === null || (typeof order.regionId === 'string' && order.regionId.trim() === '');
+
+/** Why the call sheet's «تأكيد الطلب» is shut — the card's own two locks, in the card's own words. */
+const sheetConfirmLock = (order: { _count: { contactAttempts: number }; regionId?: string | null }) =>
+  needsContact(order) ? CONTACT_FIRST_MESSAGE : lacksRegion(order) ? REGION_REQUIRED_MESSAGE : null;
+
+const ONE_ANSWER_PER_CALL = 'جواب هالمكالمة انبعت — ما بينحفظ جواب تاني لنفس المكالمة.';
+const SEND_BEFORE_REJECT = '«رقم غلط» لسا ما انبعت — استني الخط وبعدين ألغِ، حتى ما يوصل بعد الإلغاء.';
+
+/** What the call sheet's answers are called in the line that says one is on its way. */
+const LOGGED_WORDS: Record<LoggedOutcome, string> = {
+  NO_ANSWER: 'ما رد',
+  BUSY: 'مشغول',
+  UNREACHABLE: 'مسكّر',
+  WRONG_NUMBER: 'رقم غلط',
+};
 
 /**
  * WHAT THE SERVER SAID NO TO, IN WORDS THAT SAY WHAT TO DO.
@@ -467,6 +496,7 @@ export function ConfirmationMineScreen() {
   // order that came due, and the supervisor-only page's redirect all land on the fourth tab.
   const askedTab = asked.get('tab');
   const [tab, setTab] = useState<'work' | 'noAnswer' | 'done' | 'postponed'>(askedTab === 'postponed' ? 'postponed' : 'work');
+  const serverOffset = useRef(0);
 
   /**
    * Returns what it loaded — or `null` — so a caller that needs to know what
@@ -483,6 +513,9 @@ export function ConfirmationMineScreen() {
       if (watched) qs.set('agent', watched.id);
       const suffix = qs.toString();
       const fresh = await apiJson<MineResponse>(`/api/confirmation/mine${suffix ? `?${suffix}` : ''}`);
+      // The server's clock against this phone's — what «since the call started» means in the contact log.
+      const serverAt = Date.parse(fresh.serverNow);
+      if (!Number.isNaN(serverAt)) serverOffset.current = serverAt - Date.now();
       setData(fresh);
       return fresh;
     } catch (e) {
@@ -564,23 +597,25 @@ export function ConfirmationMineScreen() {
    * every counter on this system is concerned, and that is true wherever
    * the call is made from.
    */
+  /** One line in the contact log — the card's buttons and the call sheet send it through here, with `attemptBody`. */
+  const postAttempt = async (order: { id: string; orderNumber: string }, body: string) => {
+    const res = await apiJson<{ autoClosed: boolean; noAnswerCount: number }>(
+      `/api/orders/${order.id}/contact-attempts`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      }
+    );
+    setNotice(
+      res.autoClosed
+        ? `أُغلق الطلب ${order.orderNumber} تلقائياً بعد ${res.noAnswerCount} محاولات بلا رد.`
+        : null
+    );
+    return res;
+  };
   const logAttempt = (order: OrderRow, method: 'PHONE' | 'WHATSAPP' | 'SMS', result: string) =>
-    act(order.id, async () => {
-      const res = await apiJson<{ autoClosed: boolean; noAnswerCount: number }>(
-        `/api/orders/${order.id}/contact-attempts`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contactMethod: method, result }),
-        }
-      );
-      setNotice(
-        res.autoClosed
-          ? `أُغلق الطلب ${order.orderNumber} تلقائياً بعد ${res.noAnswerCount} محاولات بلا رد.`
-          : null
-      );
-      return res;
-    });
+    act(order.id, () => postAttempt(order, attemptBody(method, result)));
 
   /**
    * CONFIRMING WAS SILENT.
@@ -674,16 +709,152 @@ export function ConfirmationMineScreen() {
       apiJson(`/api/orders/${order.id}/confirmation`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'schedule_follow_up',
-          nextFollowUpAt: at.toISOString(),
-          followUpReason: value.reason,
+        body: followUpBody({
+          at,
+          reason: value.reason,
           preferredTime: value.preferredTime,
-          note: value.note || undefined,
+          note: value.note,
           expectedVersion: order.version,
         }),
       })
     );
+  };
+
+  /*
+   * «شو صار؟» — THE CALL SHEET OF A PHONE (the owner's plan: «اسحب التالي» → «اتصل» → back → one tap → «التالي»).
+   *
+   * Drawn only where the desk's own call buttons are: a phone, her own desk, `orders.contact_log`. A desk is as it was.
+   * Every answer on it goes through a door this screen already uses, with the body its buttons already send
+   * (`attemptBody` · `followUpBody`), after five seconds that «تراجع» can cancel — see `useOutbox`. Nothing new is
+   * counted: the doors count what they always counted.
+   */
+  const sheetOn = phone && canLogContact && !watched && !data?.viewing;
+  const call = usePendingCall(sheetOn ? currentUser?.id ?? null : null);
+  /** The order as it was when she rang — the sheet keeps its name even after the third no-answer closes it. */
+  const [callOrder, setCallOrder] = useState<OrderRow | null>(null);
+  const [sheetRefusal, setSheetRefusal] = useState<string | null>(null);
+  const workable = (id: string) => data?.work.find((o) => o.id === id) ?? data?.noAnswer.find((o) => o.id === id) ?? null;
+  const startCall = (order: OrderRow) => {
+    setCallOrder(order);
+    setSheetRefusal(null);
+    call.start(order.id);
+  };
+  const endCall = () => {
+    call.clear();
+    setCallOrder(null);
+    setSheetRefusal(null);
+  };
+  // Back after a reload: the call kept in the phone is the sheet again — if the order is still hers to work.
+  useEffect(() => {
+    if (!data || !call.pending || callOrder) return;
+    const order = workable(call.pending.orderId);
+    if (order) setCallOrder(order);
+    else call.clear();
+    // `workable` reads `data`, which is in the list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, call.pending, callOrder]);
+
+  const sendOutgoing = async (item: Outgoing): Promise<SendAnswer> => {
+    const mine = call.pending && item.key === `${call.pending.orderId}:${call.pending.startedAt}`;
+    try {
+      if (item.door === 'attempt') {
+        // Its first answer was lost on the way: ask the log before writing the same line twice.
+        if (item.uncertain) {
+          const r = await apiJson<{ attempts?: { result?: string; employeeId?: string; createdAt?: string }[] }>(
+            `/api/orders/${item.orderId}/contact-attempts`
+          );
+          if (alreadyLogged(r.attempts ?? [], item, serverOffset.current)) {
+            await load();
+            return 'sent';
+          }
+        }
+        await postAttempt({ id: item.orderId, orderNumber: item.orderNumber }, item.body);
+      } else {
+        await apiJson(`/api/orders/${item.orderId}/confirmation`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: item.body,
+        });
+      }
+      await load();
+      void queue.reload();
+      return 'sent';
+    } catch (e) {
+      if (isNetworkFailure(e)) return 'network';
+      const said = refusalText(e);
+      setError(said);
+      if (mine) setSheetRefusal(said);
+      return 'refused';
+    }
+  };
+  const outbox = useOutbox(sheetOn ? currentUser?.id ?? null : null, sendOutgoing);
+  const callKey = call.pending ? `${call.pending.orderId}:${call.pending.startedAt}` : null;
+  const waitingItem = callKey ? outbox.items.find((o) => o.key === callKey) ?? null : null;
+
+  /** One answer per call: refused (and said) once this call's answer has left or can no longer be taken back. */
+  const queued = (ok: boolean) => {
+    if (ok) call.settle();
+    else setSheetRefusal(ONE_ANSWER_PER_CALL);
+    return ok;
+  };
+  const queueLogged = (order: OrderRow, outcome: LoggedOutcome): boolean => {
+    if (!call.pending) return false;
+    setSheetRefusal(null);
+    const result = ATTEMPT_RESULT[outcome]!;
+    return queued(outbox.add({
+      key: `${order.id}:${call.pending.startedAt}`,
+      userId: call.pending.userId,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      door: 'attempt',
+      body: attemptBody('PHONE', result),
+      result,
+      label: LOGGED_WORDS[outcome],
+      startedAt: call.pending.startedAt,
+    }));
+  };
+  const queueCallback = (order: OrderRow, chip: CallbackChip): boolean => {
+    if (!call.pending) return false;
+    setSheetRefusal(null);
+    return queued(outbox.add({
+      key: `${order.id}:${call.pending.startedAt}`,
+      userId: call.pending.userId,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      door: 'followUp',
+      body: followUpBody({
+        at: chip.at,
+        reason: CALLBACK_REASON,
+        preferredTime: preferredClock(chip.at),
+        expectedVersion: order.version,
+      }),
+      label: `اتصل لاحقاً ${chip.label}`,
+      startedAt: call.pending.startedAt,
+    }));
+  };
+  /**
+   * «ألغِ» FROM THE SHEET: the call's own line goes BEFORE the cancellation is asked — never after it. If it cannot leave
+   * now (no line), the cancellation waits and the sheet says why.
+   */
+  const rejectFromSheet = async (order: OrderRow) => {
+    if (callKey && outbox.has(callKey)) {
+      await outbox.sendNow();
+      if (outbox.has(callKey)) {
+        setSheetRefusal(SEND_BEFORE_REJECT);
+        return;
+      }
+    }
+    endCall();
+    setDialog({ kind: 'reject', order });
+  };
+  /** «التالي»: what she said goes now, then the next order is pulled — the desk's own pull. */
+  const callNext = async () => {
+    await outbox.sendNow();
+    if (await queue.pull()) {
+      await queue.reload();
+      await load();
+    }
+    endCall();
   };
 
   const submitIssue = (order: OrderRow, value: { reason: string; note: string }) => {
@@ -1078,6 +1249,7 @@ export function ConfirmationMineScreen() {
                   region: order.customer.city,
                 }}
                 orderId={order.id}
+                onContacted={sheetOn ? (method) => method === 'PHONE' && startCall(order) : undefined}
               />
             );
             /*
@@ -1646,6 +1818,66 @@ export function ConfirmationMineScreen() {
           mayChangePrice={userCan(currentUser, 'orders.change_price')}
           onClose={() => setDialog(null)}
           onSubmit={(value) => submitChange(dialog.order, value)}
+        />
+      )}
+
+      {sheetOn && call.pending && callOrder && (
+        <CallOutcomeSheet
+          key={callKey ?? undefined}
+          customerName={callOrder.customer.fullName}
+          awayMs={call.awayMs}
+          closesOnNext={(workable(callOrder.id) ?? callOrder).noAnswerCount + 1 >= data.noAnswerLimit}
+          confirmLock={sheetConfirmLock(workable(callOrder.id) ?? callOrder)}
+          waiting={
+            waitingItem
+              ? {
+                  label: waitingItem.label,
+                  state: outgoingState(waitingItem, outbox.offline, outbox.now),
+                  secondsLeft: Math.max(0, Math.ceil((waitingItem.sendAt - outbox.now) / 1000)),
+                }
+              : null
+          }
+          refused={sheetRefusal}
+          offline={outbox.offline}
+          canPull={canPull}
+          pulling={queue.pulling}
+          whatsapp={
+            <ContactButtons
+              only="WHATSAPP"
+              preferApp
+              phone={callOrder.customer.rawPhone}
+              countryCode={data.dialCode}
+              context={{
+                orderNumber: callOrder.orderNumber,
+                customerName: callOrder.customer.fullName,
+                amount: callOrder.totalAmount,
+                region: callOrder.customer.city,
+              }}
+              orderId={callOrder.id}
+            />
+          }
+          onAnswered={() => void load()}
+          onLogged={(outcome) => queueLogged(workable(callOrder.id) ?? callOrder, outcome)}
+          onCallback={(chip) => queueCallback(workable(callOrder.id) ?? callOrder, chip)}
+          onNotCalled={endCall}
+          onConfirm={() => {
+            const order = workable(callOrder.id) ?? callOrder;
+            endCall();
+            void confirm(order);
+          }}
+          onPostpone={() => {
+            const order = workable(callOrder.id) ?? callOrder;
+            endCall();
+            setDialog({ kind: 'postpone', order });
+          }}
+          onReject={() => void rejectFromSheet(workable(callOrder.id) ?? callOrder)}
+          onUndo={() => {
+            const undone = !!callKey && outbox.undo(callKey);
+            if (undone) call.unsettle();
+            return undone;
+          }}
+          onNext={() => void callNext()}
+          onClose={endCall}
         />
       )}
 

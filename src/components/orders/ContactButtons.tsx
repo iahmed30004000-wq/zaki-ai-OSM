@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import {
-  fillTemplate, orderDetailsContext, usesOrderDetails, whatsappLink, whatsappReady, type FillContext, type MessageTemplate,
+  fillTemplate, orderDetailsContext, usesOrderDetails, whatsappAppLink, whatsappLink, whatsappReady, type FillContext, type MessageTemplate,
 } from '@/lib/message-templates';
 import { RiChat3Line, RiMessage3Line, RiPhoneLine } from '@remixicon/react';
 
@@ -35,6 +35,8 @@ export function ContactButtons({
   plain,
   orderId,
   onContacted,
+  only,
+  preferApp,
 }: {
   phone: string | null | undefined;
   context: FillContext;
@@ -80,11 +82,23 @@ export function ContactButtons({
    * and WhatsApp open empty, and SMS is dropped: there is nothing to pick.
    */
   plain?: boolean;
+  /**
+   * «ابعت واتساب» on the call sheet of «طلباتي»: the WhatsApp button alone — the same button, the same templates, the same
+   * line in the log — because the call it follows has just been made.
+   */
+  only?: 'WHATSAPP';
+  /**
+   * On a phone, hand the chosen message to the WhatsApp app itself (`whatsappAppLink`) instead of going through the
+   * browser. When the page has not moved a moment later (no app on this phone), the browser's link is offered beside it.
+   */
+  preferApp?: boolean;
 }) {
   const [templates, setTemplates] = useState<MessageTemplate[] | null>(null);
   const [open, setOpen] = useState<'SMS' | 'WHATSAPP' | null>(null);
   /** The log refused this press — said beside the strip, see `noteContact`. */
   const [notLogged, setNotLogged] = useState<string | null>(null);
+  /** The browser's WhatsApp link, offered when the app's own address opened nothing (`preferApp`). */
+  const [webFallback, setWebFallback] = useState<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -200,7 +214,15 @@ export function ContactButtons({
   const send = (t: MessageTemplate) => {
     if (waiting(t)) return;
     const text = fillTemplate(t.body, fillContext);
-    if (open === 'WHATSAPP') {
+    if (open === 'WHATSAPP' && preferApp && onPhone) {
+      const web = whatsappLink(phone!, countryCode, text);
+      window.location.href = whatsappAppLink(phone!, countryCode, text);
+      // Still here a moment later: no app answered the address. The browser's link is a tap away — a tap of hers,
+      // because a window opened by a timer is one every phone blocks.
+      window.setTimeout(() => {
+        if (document.visibilityState === 'visible') setWebFallback(web);
+      }, 1500);
+    } else if (open === 'WHATSAPP') {
       window.open(whatsappLink(phone!, countryCode, text), '_blank', 'noopener');
     } else {
       // `?body=` is what both iOS and Android accept today; older Nokia-era
@@ -243,15 +265,17 @@ export function ContactButtons({
       {/* A dialler is handed digits, not a formatted number: "+962 6 000
           0000" is how a person reads it, and some phones refuse it as a
           tel: target. The leading + is kept; everything decorative goes. */}
-      <a
-        href={`tel:${phone.replace(/[^\d+]/g, '')}`}
-        title="اتصال"
-        className={btn}
-        onClick={() => noteContact('PHONE', 'OPENED')}
-      >
-        <RiPhoneLine className="w-4 h-4" />
-        {!compact && 'اتصال'}
-      </a>
+      {!only && (
+        <a
+          href={`tel:${phone.replace(/[^\d+]/g, '')}`}
+          title="اتصال"
+          className={btn}
+          onClick={() => noteContact('PHONE', 'OPENED')}
+        >
+          <RiPhoneLine className="w-4 h-4" />
+          {!compact && 'اتصال'}
+        </a>
+      )}
       {/*
         SMS, AND WHY IT IS NOT A GREY BUTTON ON A DESK.
         `sms:` is a phone thing: on a desktop browser the link resolves to
@@ -264,7 +288,7 @@ export function ContactButtons({
         there is no room for a sentence and no room for a lie either, so
         the strip is simply shorter there.
       */}
-      {!plain && onPhone && (
+      {!plain && !only && onPhone && (
         <button
           type="button"
           title="رسالة نصية"
@@ -275,7 +299,7 @@ export function ContactButtons({
           {!compact && 'SMS'}
         </button>
       )}
-      {!plain && !onPhone && !compact && (
+      {!plain && !only && !onPhone && !compact && (
         <span className="text-xs text-[var(--sys-muted)]">الرسائل النصية من الموبايل</span>
       )}
       {/*
@@ -297,6 +321,12 @@ export function ContactButtons({
       </button>
       {/* On a phone there is no hover: the reason is written, in the compact strip too. */}
       {!waReady && <span className="text-xs text-[var(--sys-muted)]">{NO_COUNTRY}</span>}
+
+      {webFallback && (
+        <a href={webFallback} target="_blank" rel="noopener" className={btn} onClick={() => setWebFallback(null)}>
+          افتح واتساب من المتصفح
+        </a>
+      )}
 
       {notLogged && (
         <span role="alert" className="text-xs text-[var(--sys-destructive)]">
