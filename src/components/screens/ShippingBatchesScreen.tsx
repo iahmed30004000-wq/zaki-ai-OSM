@@ -259,7 +259,7 @@ export function ShippingBatchesScreen() {
         const mayDecide = mayOpen(CHANGE_REQUESTS_HREF);
         toast.failed(
           said.errorAr ?? 'تعذر التحديث',
-          mayDecide ? undefined : 'اطلب من المشرفة تحسمهم من «طلبات التعديل».',
+          mayDecide ? undefined : 'اطلب من المشرفة أو المدير يحسموهم من «طلبات التعديل».',
           mayDecide ? { label: 'افتح طلبات التعديل', href: CHANGE_REQUESTS_HREF } : undefined
         );
         return;

@@ -95,6 +95,7 @@ describe('a handover stopped by a cancel or a postponement still unanswered', ()
     const [text, detail, action] = failed.mock.calls[0];
     expect(text).toBe(SENTENCE);
     expect(detail).toContain('طلبات التعديل');
+    expect(detail).toContain('المشرفة أو المدير');
     expect(action).toBeUndefined();
     expect(confirm).not.toHaveBeenCalled();
     expect(patches()).toHaveLength(1);
