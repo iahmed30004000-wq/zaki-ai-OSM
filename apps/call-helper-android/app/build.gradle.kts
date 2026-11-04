@@ -29,6 +29,7 @@ android {
     defaultConfig {
         applicationId = "io.zakiai.callhelper"
         minSdk = 26
+        // 36 ends the edge-to-edge opt-out in values-v35/styles.xml: the pages must then take the bar insets themselves.
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
