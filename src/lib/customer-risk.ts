@@ -84,6 +84,18 @@ async function samePerson(tx: Tx, companyId: string, customerId: string) {
     where: { id: customerId, companyId },
     select: { phone: true },
   });
+  return personClause(me, customerId);
+}
+
+/**
+ * The clause itself, apart from the read, so the desk's grouped lookup
+ * (`customerRiskMany`) names the person in the very same words without one
+ * query per id.
+ */
+function personClause(
+  me: { phone: string } | null | undefined,
+  customerId: string
+): { customer: { phone: string } } | { customerId: string } {
   return me?.phone ? { customer: { phone: me.phone } } : { customerId };
 }
 
@@ -143,6 +155,18 @@ export async function customerRisk(tx: Tx, companyId: string, customerId: string
     }),
   ]);
 
+  return riskFrom(sixMonths, lastTen, now);
+}
+
+type RiskRow = { shippingStatus: string; returnedAt: Date | null; createdAt: Date };
+
+/**
+ * THE ARITHMETIC, ONCE. `customerRisk` and `customerRiskMany` read the two
+ * windows differently — one person at a time, or everybody in grouped
+ * queries — and hand them here, so the figure an agent sees cannot depend on
+ * which of the two asked.
+ */
+function riskFrom(sixMonths: RiskRow[], lastTen: RiskRow[], now: Date): CustomerRisk {
   // Whichever window says more about this customer.
   const window = sixMonths.length >= lastTen.length ? sixMonths : lastTen;
   const windowDays = window === sixMonths ? 182 : 0;
@@ -167,4 +191,114 @@ export async function customerRisk(tx: Tx, companyId: string, customerId: string
     requiresPrepaymentOrApproval: tier === 'HIGH',
     excludedFromAutomatedConfirmation: tier === 'HIGH',
   };
+}
+
+/**
+ * CUSTOMER RISK FOR A WHOLE DESK — THE SAME ANSWER, IN THREE QUERIES.
+ *
+ * «طلباتي» asked `customerRisk` once per distinct customer in a
+ * `Promise.all`: three queries each, up to ~750 at once into a pool of ten
+ * connections, every time an agent came back from a call. The pool queued,
+ * the next navigation waited for a connection, Prisma gave up (P2024) and the
+ * screen showed its error. The owner's ruling 4/11: the agents' screens must
+ * not hang.
+ *
+ * This asks the same two questions for everybody at once, and gives each id
+ * exactly what `customerRisk` would have given it (`customer-risk.test.ts`
+ * holds the two side by side on one fixture):
+ *
+ *   1. who each id IS — one `findMany` over the ids, the same «same person»
+ *      clause as `samePerson`: by phone, or by the id when no phone is read;
+ *   2. the six-month window — one `findMany` for every person;
+ *   3. the last-ten window — needed only for a person with FEWER than ten
+ *      orders in six months (ten or more and the six-month window wins
+ *      whatever the last ten hold). Their last ten are their six-month orders
+ *      plus their newest older ones, so only the older ones are asked for, in
+ *      one more `findMany`, and cut to ten in memory.
+ *
+ * The number of queries does not grow with the number of customers.
+ */
+export async function customerRiskMany(
+  tx: Tx,
+  companyId: string,
+  customerIds: readonly string[],
+  now = new Date()
+): Promise<Map<string, CustomerRisk>> {
+  const ids = [...new Set(customerIds)];
+  const out = new Map<string, CustomerRisk>();
+  if (ids.length === 0) return out;
+  const since = new Date(now.getTime() - SIX_MONTHS_MS);
+
+  // 1. WHO EACH ID IS — `samePerson`'s read and its very clause, for all of them.
+  const rows = await tx.customer.findMany({
+    where: { id: { in: ids }, companyId },
+    select: { id: true, phone: true },
+  });
+  const rowOf = new Map(rows.map((r) => [r.id, r]));
+  type Person = ReturnType<typeof personClause>;
+  const personOf = new Map<string, Person>(ids.map((id) => [id, personClause(rowOf.get(id), id)]));
+  const phonesOf = (ps: Person[]) => [...new Set(ps.flatMap((p) => ('customer' in p ? [p.customer.phone] : [])))];
+  const idsOf = (ps: Person[]) => ps.flatMap((p) => ('customerId' in p ? [p.customerId] : []));
+  const everybody = [...personOf.values()];
+  const phones = phonesOf(everybody);
+  const byIdOnly = idsOf(everybody);
+  const whose = (persons: { phones: string[]; ids: string[] }): Prisma.OrderWhereInput => ({
+    OR: [
+      ...(persons.phones.length ? [{ customer: { phone: { in: persons.phones } } }] : []),
+      ...(persons.ids.length ? [{ customerId: { in: persons.ids } }] : []),
+    ],
+  });
+  const select = { shippingStatus: true, returnedAt: true, createdAt: true, customerId: true, customer: { select: { phone: true } } } as const;
+  type Row = RiskRow & { customerId: string; customer: { phone: string } | null };
+  // An order belongs to a person by the same clause the per-person query
+  // used: its customer's phone, or — for a person read by id — its customer id.
+  // It is filed under both, so either kind of person finds it.
+  const keyOf = (p: Person) => ('customer' in p ? `p:${p.customer.phone}` : `i:${p.customerId}`);
+  const file = (list: Row[]) => {
+    const by = new Map<string, Row[]>();
+    for (const o of list) {
+      for (const k of [o.customer?.phone ? `p:${o.customer.phone}` : null, `i:${o.customerId}`]) {
+        if (!k) continue;
+        const bucket = by.get(k);
+        if (bucket) bucket.push(o);
+        else by.set(k, [o]);
+      }
+    }
+    return by;
+  };
+  const newestFirst = (a: Row, b: Row) => b.createdAt.getTime() - a.createdAt.getTime();
+
+  // 2. THE SIX-MONTH WINDOW, everybody. `notSuperseded` is a top-level NOT,
+  // so it goes inside an AND beside the OR instead of being spread.
+  const recent = file(
+    await tx.order.findMany({
+      where: { companyId, AND: [whose({ phones, ids: byIdOnly }), notSuperseded], createdAt: { gte: since } },
+      select,
+    })
+  );
+  const recentOf = (p: Person) => recent.get(keyOf(p)) ?? [];
+
+  // 3. THE LAST TEN — only for whoever has fewer than ten recent orders.
+  const short = everybody.filter((p) => recentOf(p).length < 10);
+  const shortPhones = phonesOf(short);
+  const shortIds = idsOf(short);
+  const older = file(
+    shortPhones.length || shortIds.length
+      ? await tx.order.findMany({
+          where: { companyId, AND: [whose({ phones: shortPhones, ids: shortIds }), notSuperseded], createdAt: { lt: since } },
+          orderBy: { createdAt: 'desc' },
+          select,
+        })
+      : []
+  );
+
+  for (const id of ids) {
+    const p = personOf.get(id)!;
+    const sixMonths = recentOf(p);
+    const lastTen = [...sixMonths, ...(sixMonths.length >= 10 ? [] : older.get(keyOf(p)) ?? [])]
+      .sort(newestFirst)
+      .slice(0, 10);
+    out.set(id, riskFrom(sixMonths, lastTen, now));
+  }
+  return out;
 }
