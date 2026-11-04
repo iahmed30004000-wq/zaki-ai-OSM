@@ -10,6 +10,7 @@ import { TWIN_CONFIRM_ACK_ACTION } from './confirmed-twin';
 import { TWIN_HELD_ACTION } from './twins-follow-the-pull';
 import { REPULL_RELEASE_REASON, ROUND_RELEASE_REASON } from './no-answer-rounds';
 import { CUSTOMER_CALLED_BACK_REASON } from './customer-on-the-line';
+import { NINETY_MINUTE_RELEASE_REASON, SYSTEM_ACTOR_AR, isAutomaticRelease } from './auto-release';
 import { POST_ORDER_ADDITION_AR } from './post-order-offer-copy';
 import { COURIER_SAID, courierSaidTitle } from './couriers/courier-said';
 
@@ -109,6 +110,8 @@ const CLAIM_REASON_AR: Record<string, string> = {
   MANUAL_CLAIM: 'استلام يدوي',
   ADMIN_OVERRIDE: 'تجاوز إداري',
   AUTO_RELEASE: 'تحرير تلقائي',
+  // The ninety-minute release (`releaseStaleClaims`) — it showed as its English code (the owner's ruling 4/11).
+  [NINETY_MINUTE_RELEASE_REASON]: 'تحرير تلقائي — ما انسجّلت عليه محاولة خلال 90 دقيقة عمل',
   // «نظام الجولات» (no-answer-rounds.ts): the two releases it adds, each with its reason in words.
   [ROUND_RELEASE_REASON]: 'تحرير تلقائي — مرّت 3 ساعات عمل على جولة بلا ردّ، ورجع للطابور',
   [REPULL_RELEASE_REASON]: 'تحرير تلقائي — انسحب من جديد وما انسجّلت عليه محاولة خلال 90 دقيقة عمل',
@@ -313,15 +316,22 @@ export async function orderTimeline(tx: Tx, orderId: string): Promise<TimelineEv
       actorId: row.changedById,
       actorName: nameOf.get(row.changedById) ?? null,
     })),
-    ...claims.map((row) => ({
-      id: `cl_${row.id}`,
-      kind: 'OWNERSHIP' as const,
-      at: row.createdAt,
-      title: CLAIM_LABEL[row.action] ?? row.action,
-      detail: row.reason ? ar(CLAIM_REASON_AR, row.reason) : null,
-      actorId: row.userId,
-      actorName: nameOf.get(row.userId) ?? null,
-    })),
+    ...claims.map((row) => {
+      /*
+       * A RELEASE NOBODY PRESSED IS THE SYSTEM'S (the owner's ruling 4/11). Its `userId` is the agent who held the order — the
+       * column cannot be empty — and drawn as the actor it read as though she had let it go. `auto-release.ts`.
+       */
+      const automatic = isAutomaticRelease(row);
+      return {
+        id: `cl_${row.id}`,
+        kind: 'OWNERSHIP' as const,
+        at: row.createdAt,
+        title: CLAIM_LABEL[row.action] ?? row.action,
+        detail: row.reason ? ar(CLAIM_REASON_AR, row.reason) : null,
+        actorId: automatic ? null : row.userId,
+        actorName: automatic ? SYSTEM_ACTOR_AR : nameOf.get(row.userId) ?? null,
+      };
+    }),
     ...contacts.map((row) => ({
       id: `ct_${row.id}`,
       kind: 'CONTACT' as const,

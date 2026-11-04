@@ -16,6 +16,7 @@
  */
 
 import { forgetDock } from '@/lib/dock-memory';
+import { forgetContactLines } from '@/lib/contact-line';
 
 export type SignOutReason = 'manual' | 'idle';
 
@@ -34,5 +35,7 @@ export async function signOut(reason: SignOutReason = 'manual'): Promise<void> {
   }
   // The assistant's conversation does not stay behind for the next person.
   forgetDock();
+  // Nor do her contact lines still waiting to land: the door would write them under the next person's name (`contact-line.ts`).
+  forgetContactLines();
   window.location.href = reason === 'idle' ? '/login?idle=1' : '/login';
 }

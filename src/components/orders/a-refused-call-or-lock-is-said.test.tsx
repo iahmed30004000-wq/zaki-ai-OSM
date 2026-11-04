@@ -83,7 +83,8 @@ afterEach(() => {
 
 describe('the call strip', () => {
   it('says the line was not recorded, in the server’s own Arabic', async () => {
-    apiJson.mockRejectedValue(new Error('الطلب غير موجود أو ليس بين يديك.'));
+    // As the real client throws it: the door's words, with its status (a refusal, not a dropped line — `contact-line.ts`).
+    apiJson.mockRejectedValue(Object.assign(new Error('الطلب غير موجود أو ليس بين يديك.'), { status: 404 }));
     render(<ContactButtons phone="0791234567" orderId="o1" context={CONTEXT} />);
     fireEvent.click(screen.getByTitle('اتصال'));
     const said = await screen.findByRole('alert');
@@ -92,7 +93,7 @@ describe('the call strip', () => {
   });
 
   it('and in its own words when the server’s are not Arabic', async () => {
-    apiJson.mockRejectedValue(new Error('Forbidden: cannot record contact attempts'));
+    apiJson.mockRejectedValue(Object.assign(new Error('Forbidden: cannot record contact attempts'), { status: 403 }));
     render(<ContactButtons phone="0791234567" orderId="o1" context={CONTEXT} />);
     fireEvent.click(screen.getByTitle('اتصال'));
     const said = await screen.findByRole('alert');

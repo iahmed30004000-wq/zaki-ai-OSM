@@ -207,6 +207,13 @@ describe('what the browser is allowed to remember', () => {
      */
     'lib/call-outcome.ts':
       'the call she opened and the outcomes waiting for the connection — order ids, a result word or a time, her own id. Never a customer’s name, phone or address',
+    /*
+     * «اتصال»'s own line in the contact log when it did not land (the owner's ruling 4/11): without it the order she is
+     * ringing is taken back ninety working minutes after she pulled it. Session storage — this tab only — and forgotten on
+     * sign-out.
+     */
+    'lib/contact-line.ts':
+      'a contact-log line still on its way — the order id, the method and result words, the moment of the press. This tab only, two hours at most, cleared on sign-out; never a customer’s name, phone or address',
     'storefront/RecentlyViewed.tsx':
       'a shopper’s own «شوهد مؤخراً» — product ids, one key per shop. Never sent anywhere except to ask what those products are, never stored against a person, and nothing in it names one',
     'storefront/useCart.ts':
