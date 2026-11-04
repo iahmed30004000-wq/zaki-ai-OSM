@@ -64,6 +64,7 @@ vi.mock('@/lib/whatsapp/connection', () => ({
 
 import { POST } from './route';
 import { forgetAfterNoAnswer } from '@/lib/whatsapp/after-no-answer';
+import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
 
 const fetchMock = vi.fn();
 
@@ -132,7 +133,7 @@ describe('who may press it', () => {
 
   it('asks the door the other call-sheet presses use', async () => {
     await post({ orderId: 'o1' });
-    expect(assertOrderAccess).toHaveBeenCalledWith('o1', expect.objectContaining({ id: 'agent1' }), { companyId: 'c1', storeId: 's1' }, expect.anything());
+    expect(assertOrderAccess).toHaveBeenCalledWith('o1', expect.objectContaining({ id: 'agent1' }), { companyId: 'c1', storeId: 's1' }, ORDER_WORK_DOOR);
   });
 });
 
@@ -157,6 +158,23 @@ describe('when the company number is not the way', () => {
     const res = await post({ orderId: 'o1' });
     expect(res.status).toBe(409);
     expect(await res.json()).toMatchObject({ fallback: true, code: 'NOT_CONNECTED' });
+    expectNothingWritten();
+  });
+
+  it('a customer with no phone at all — its own sentence, not «the country code is missing»', async () => {
+    db.customer.findFirst.mockImplementationOnce(async () => ({ id: 'cu1', fullName: 'سارة', rawPhone: '' }));
+    const res = await post({ orderId: 'o1' });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body).toMatchObject({ fallback: true, code: 'NO_PHONE' });
+    expect(body.error).toMatch(/ما في رقم للزبون/);
+    expect(body.error).not.toMatch(/رمز الدولة/);
+    expectNothingWritten();
+  });
+
+  it('a «number» with no digit in it is no number either', async () => {
+    db.customer.findFirst.mockImplementationOnce(async () => ({ id: 'cu1', fullName: 'سارة', rawPhone: ' — ' }));
+    expect(await (await post({ orderId: 'o1' })).json()).toMatchObject({ fallback: true, code: 'NO_PHONE' });
     expectNothingWritten();
   });
 
@@ -222,6 +240,14 @@ describe('COMPANY and connected', () => {
     expect(again.status).toBe(429);
     expect((await again.json()).fallback).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('a send Meta refused does not use up the order’s slot — the next press goes', async () => {
+    fetchMock.mockImplementationOnce(async () => new Response(JSON.stringify({ error: { message: 'x' } }), { status: 400 }));
+    expect((await post({ orderId: state.order!.id })).status).toBe(502);
+    expect((await post({ orderId: state.order!.id })).status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(db.whatsAppMessage.create).toHaveBeenCalledTimes(1);
   });
 
   it('a role without the contact-log key sends, and is told the line is missing', async () => {

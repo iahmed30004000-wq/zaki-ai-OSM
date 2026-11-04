@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
-import { requirePermission } from '@/lib/authorization';
+import { can, requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { customerRisk } from '@/lib/customer-risk';
 import { mayReadInsights } from '@/lib/insights-key';
@@ -285,8 +285,10 @@ export async function GET(request: Request) {
     const riskByCustomer = new Map(customerIds.map((id, i) => [id, risks[i]]));
     // «نظام الجولات» — OFF (the default), the count is every no-answer, as it always was.
     const rounds = roundsOn(await roundsSwitch(db, companyId));
-    // «واتساب بعد لا يرد» from the company's number for this country (`after-no-answer.ts`) — only on her own desk, the one with the sheet.
-    const fromCompany = !viewing && (await companySendsFor(db, companyId, ruleFor(country.code)?.dialCode ?? null));
+    // «واتساب بعد لا يرد» from the company's number for this country (`after-no-answer.ts`) — only on her own desk, the one with the sheet,
+    // and only for whoever holds `whatsapp.send`: the send door asks it, and a button that answers 403 is not offered.
+    const fromCompany =
+      !viewing && (await companySendsFor(db, companyId, ruleFor(country.code)?.dialCode ?? null)) && can(user, 'whatsapp.send');
     const noAnswer = rounds
       ? await roundCounts([...inConfirmation, ...closedToday].map((o) => o.id), {
           workHoursStart: country.workHoursStart,

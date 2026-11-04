@@ -5,7 +5,7 @@ import { requireContext } from '@/lib/geo-context';
 import { apiErrorResponse } from '@/lib/api-error';
 import { can } from '@/lib/authorization';
 import { logAudit } from '@/lib/audit';
-import { rateLimit } from '@/lib/rate-limit';
+import { peekRateLimit, rateLimit } from '@/lib/rate-limit';
 import { ORDER_ACCESS_STATUS, assertOrderAccess } from '@/lib/rbac';
 import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
 import { ORDER_NOT_FOUND } from '@/lib/order-refusals';
@@ -94,17 +94,22 @@ export async function POST(req: Request) {
       where: { id: order.customerId, companyId },
       select: { id: true, fullName: true, rawPhone: true },
     });
-    const to = customer ? waNumber(customer.rawPhone, dialCode) : '';
-    if (!customer || !to) {
-      return refuse(400, 'رقم الزبون ناقصه رمز الدولة — ابعتي من واتسابك.', 'NO_NUMBER');
+    // No digit at all (empty, «—»): there is no number, which is not the same as a number missing its country.
+    if (!customer || !/[0-9٠-٩۰-۹]/.test(customer.rawPhone ?? '')) {
+      return refuse(400, 'ما في رقم للزبون على هالطلب.', 'NO_PHONE');
+    }
+    const to = waNumber(customer.rawPhone, dialCode);
+    if (!to) {
+      return refuse(400, 'رقم الزبون ناقصه رمز الدولة — ابعتي من واتسابك.', 'NO_COUNTRY_CODE');
     }
 
     const rl = rateLimit(`wa-send:${companyId}:${user.id}`, PERSON_LIMIT, 60 * 1000);
     if (!rl.allowed) {
       return refuse(429, `محاولات إرسال كثيرة. أعيدي المحاولة بعد ${rl.retryAfterSec} ثانية.`, 'RATE_LIMIT');
     }
-    const once = rateLimit(`wa-template:${companyId}:${order.id}`, 1, ORDER_WINDOW_MS);
-    if (!once.allowed) {
+    // The order's one slot is ASKED here and TAKEN only once Meta said yes: a refused send leaves her free to try again.
+    const onceKey = `wa-template:${companyId}:${order.id}`;
+    if (peekRateLimit(onceKey, 1).blocked) {
       return refuse(429, 'انبعتت رسالة من رقم الشركة لهالطلب قبل شوي.', 'ALREADY_SENT');
     }
 
@@ -121,6 +126,8 @@ export async function POST(req: Request) {
       await db.whatsAppConnection.update({ where: { id: conn.id }, data: { lastError: safe } }).catch(() => {});
       return refuse(res.code === 'RATE_LIMIT' ? 429 : 502, `${safe} — ابعتي من واتسابك.`, 'META_REFUSED');
     }
+
+    rateLimit(onceKey, 1, ORDER_WINDOW_MS);
 
     /*
      * THE MESSAGE HAS LEFT. What follows is the record of it, and a failure here must not read as «not sent»: the agent would

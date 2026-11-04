@@ -101,6 +101,9 @@ export function WhatsAppAfterNoAnswerCard() {
         <p className="text-xs text-[var(--sys-muted-foreground)]">
           ميتا ما بتوصّل رسائل الشركات لأرقام سوريا — خلّي سوريا على واتساب الموظفة لحد ما توصل رسالة تجربة.
         </p>
+        <p className="text-xs text-[var(--sys-muted-foreground)]">
+          زر «ابعت من رقم الشركة» بيظهر بس للي معه صلاحية «إرسال رسائل واتساب» — الباقيين بيضلّوا يبعتوا من واتسابهم.
+        </p>
 
         {view.countries.length === 0 ? (
           <p className="text-xs text-[var(--sys-muted)]">ما في دول مسجّلة للشركة.</p>
@@ -160,7 +163,7 @@ export function WhatsAppAfterNoAnswerCard() {
         )}
 
         {canManage ? (
-          <Button onClick={() => void save()} loading={busy} disabled={busy}>
+          <Button onClick={() => void save()} loading={busy} disabled={!canManage || busy}>
             احفظ
           </Button>
         ) : (
