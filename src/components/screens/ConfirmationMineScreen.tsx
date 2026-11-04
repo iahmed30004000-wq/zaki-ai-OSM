@@ -57,6 +57,7 @@ import { WhatsAppAfterNoAnswer } from '@/components/confirmation/WhatsAppAfterNo
 import { useOutbox, usePendingCall, type SendAnswer } from '@/components/confirmation/useCallOutcome';
 import { CallHelperCard } from '@/components/confirmation/CallHelperCard';
 import { useHelperReading } from '@/components/confirmation/useHelperReading';
+import { onAndroid } from '@/lib/call-helper/android';
 import {
   ATTEMPT_RESULT,
   CALLBACK_REASON,
@@ -802,9 +803,11 @@ export function ConfirmationMineScreen() {
     }
   };
   const outbox = useOutbox(sheetOn ? currentUser?.id ?? null : null, sendOutgoing);
-  // «مساعد الاتصال»: back from a call the app placed — what the phone's call log said, once it has said it.
+  // «مساعد الاتصال»: back from a call the app placed — what the phone's call log said, once it has said it. Only on an
+  // Android phone: anywhere else «اتصال» was `tel:` (ContactButtons) and no app read anything. `call.pending` exists only
+  // after mount, so the browser is never asked during the server's render.
   const helperReading = useHelperReading(
-    sheetOn && call.pending && callOrder?.callHelperLink && call.awayMs !== null
+    sheetOn && call.pending && callOrder?.callHelperLink && call.awayMs !== null && onAndroid()
       ? { orderId: call.pending.orderId, startedAt: call.pending.startedAt }
       : null
   );

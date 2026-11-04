@@ -127,6 +127,8 @@ beforeEach(() => {
   pulls.count = 0;
   reading = null;
   withLink = true;
+  // The helper's link is used on an Android phone only (the-helper-link-is-for-android-only).
+  Object.defineProperty(window.navigator, 'userAgent', { configurable: true, get: () => 'Mozilla/5.0 (Linux; Android 14) Chrome/130' });
   window.localStorage.clear();
   apiJson.mockImplementation(async (url: string, init?: { method?: string; body?: string }) => {
     const method = init?.method ?? 'GET';
@@ -198,7 +200,7 @@ describe('«اتصال» with a paired phone', () => {
   it('opens the signed link in place of tel:, and the press still writes the same OPENED line', async () => {
     await draw();
     const call = screen.getByTitle('اتصال');
-    expect(call.getAttribute('href')).toBe(LINK);
+    await waitFor(() => expect(call.getAttribute('href')).toBe(LINK));
     ring();
     expect(sheet()).toBeTruthy();
     await waitFor(() => expect(posts('OPENED')).toHaveLength(1));

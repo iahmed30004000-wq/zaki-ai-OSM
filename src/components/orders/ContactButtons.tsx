@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
+import { onAndroid } from '@/lib/call-helper/android';
 import {
   fillTemplate, orderDetailsContext, usesOrderDetails, whatsappAppLink, whatsappLink, whatsappReady, type FillContext, type MessageTemplate,
 } from '@/lib/message-templates';
@@ -98,6 +99,9 @@ export function ContactButtons({
    * → `callHelperLink`). «اتصال» opens it in place of `tel:` — the app places the call and reads the call log; without the
    * app Chrome falls back to the same number in the dialler. Everything else about the press is unchanged: it is the same
    * anchor, and `noteContact('PHONE', 'OPENED')` writes the same line on the same click.
+   *
+   * ONLY ON AN ANDROID PHONE (`onAndroid`): on a laptop or an iPhone an `intent://` link does nothing, so there it is
+   * today's `tel:` whatever the desk sent.
    */
   callHref?: string | null;
 }) {
@@ -108,6 +112,17 @@ export function ContactButtons({
   /** The browser's WhatsApp link, offered when the app's own address opened nothing (`preferApp`). */
   const [webFallback, setWebFallback] = useState<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
+  /** Read after mount, never during a render: the server has no navigator (see `onAndroid`). */
+  const [android, setAndroid] = useState(false);
+  useEffect(() => setAndroid(onAndroid()), []);
+  /**
+   * THE DIALLER, WHEN THE HELPER DID NOT OPEN.
+   *
+   * Chrome ignores a fallback that is not http(s), so with the app uninstalled the helper's link does not reach the
+   * dialler. The same rule as WhatsApp's `preferApp`: still here and visible a moment after the press, the plain
+   * `tel:` is offered beside the strip — a tap of hers. It writes no second line: the press above already did.
+   */
+  const [telFallback, setTelFallback] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || templates) return;
@@ -212,6 +227,9 @@ export function ContactButtons({
     (navigator.maxTouchPoints > 1 || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
 
   const waReady = whatsappReady(phone, countryCode);
+  const tel = `tel:${phone.replace(/[^\d+]/g, '')}`;
+  /** The helper's signed link — on an Android phone only; anywhere else «اتصال» is `tel:` exactly as before. */
+  const helperHref = callHref && android ? callHref : null;
 
   /** WhatsApp with no message behind it — for a number that has no order. */
   const openPlainWhatsapp = () => {
@@ -275,10 +293,17 @@ export function ContactButtons({
           tel: target. The leading + is kept; everything decorative goes. */}
       {!only && (
         <a
-          href={callHref || `tel:${phone.replace(/[^\d+]/g, '')}`}
+          href={helperHref ?? tel}
           title="اتصال"
           className={btn}
-          onClick={() => noteContact('PHONE', 'OPENED')}
+          onClick={() => {
+            noteContact('PHONE', 'OPENED');
+            if (!helperHref) return;
+            setTelFallback(null);
+            window.setTimeout(() => {
+              if (document.visibilityState === 'visible') setTelFallback(tel);
+            }, 1500);
+          }}
         >
           <RiPhoneLine className="w-4 h-4" />
           {!compact && 'اتصال'}
@@ -329,6 +354,12 @@ export function ContactButtons({
       </button>
       {/* On a phone there is no hover: the reason is written, in the compact strip too. */}
       {!waReady && <span className="text-xs text-[var(--sys-muted)]">{NO_COUNTRY}</span>}
+
+      {telFallback && (
+        <a href={telFallback} className={btn} onClick={() => setTelFallback(null)}>
+          ما فتح المساعد؟ اتصل من التلفون
+        </a>
+      )}
 
       {webFallback && (
         <a href={webFallback} target="_blank" rel="noopener" className={btn} onClick={() => setWebFallback(null)}>

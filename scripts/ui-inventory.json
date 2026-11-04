@@ -426,7 +426,7 @@
     "cards": 0,
     "modals": 0,
     "icons": 3,
-    "links": 2,
+    "links": 3,
     "tabs": 0
   },
   "src/components/orders/CopyValue.tsx": {

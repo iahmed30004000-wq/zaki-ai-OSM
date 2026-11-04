@@ -52,7 +52,7 @@ export const PAIR_USER_INACTIVE = 'الحساب مش فعّال — راجعي �
 /**
  * SPEND THE CODE, ONCE, AND PAIR THE PHONE.
  *
- * In one transaction: the code is stamped used ONLY IF it is still unused and unexpired (a conditional update, so two
+ * In one transaction, under a lock on her user row: the code is stamped used ONLY IF it is still unused and unexpired (a conditional update, so two
  * presses of «اربط» racing each other pair once), every earlier device of hers is stamped revoked (one active phone per
  * person — the old phone's next reading is a 401 and it forgets the pairing), and the new device is written with the
  * token's hash and the callKey encrypted.
@@ -76,6 +76,9 @@ export async function redeemPairCode(code: string, deviceName: string, now: Date
   const callKeyEncrypted = encryptSecret(callKey);
 
   const paired = await db.$transaction(async (tx) => {
+    // HER ROW, LOCKED FOR THE PAIRING: two different codes of hers redeemed in the same instant would each revoke the
+    // devices they saw and each write one — two active phones. The second waits here and then revokes the first's.
+    await tx.$queryRaw`SELECT "id" FROM "users" WHERE "id" = ${row.userId} FOR UPDATE`;
     const spent = await tx.callHelperPairCode.updateMany({
       where: { id: row.id, usedAt: null, expiresAt: { gt: now } },
       data: { usedAt: now },

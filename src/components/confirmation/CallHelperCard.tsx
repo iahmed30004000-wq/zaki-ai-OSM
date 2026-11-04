@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { RiPhoneLine } from '@remixicon/react';
 import { apiJson } from '@/lib/api-client';
+import { onAndroid } from '@/lib/call-helper/android';
 import { Button } from '@/components/ui/Button';
 import { useConfirm } from '@/components/ui/Confirm';
 
@@ -68,7 +69,7 @@ export function CallHelperCard({ onChange }: { onChange?: () => void }) {
   }, []);
 
   useEffect(() => {
-    setAndroid(typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent));
+    setAndroid(onAndroid());
     const seeHash = () => setInstall(window.location.hash === INSTALL_HASH);
     seeHash();
     window.addEventListener('hashchange', seeHash);

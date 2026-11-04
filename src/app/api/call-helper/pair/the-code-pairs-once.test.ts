@@ -20,6 +20,7 @@ const { db, state } = vi.hoisted(() => {
     codes: [] as Code[],
     devices: [] as Device[],
     users: new Map<string, { name: string; status: string; companyId: string | null; role: string }>(),
+    locks: [] as { sql: string; values: unknown[]; devicesAtLock: number }[],
   };
   const matches = (row: Record<string, unknown>, where: Record<string, unknown>) =>
     Object.entries(where).every(([k, v]) => {
@@ -48,6 +49,11 @@ const { db, state } = vi.hoisted(() => {
       }),
     },
     user: { findUnique: vi.fn(async ({ where }: { where: { id: string } }) => state.users.get(where.id) ?? null) },
+    /** The lock on her user row — recorded, so the order of the transaction can be held. */
+    $queryRaw: vi.fn(async (sql: TemplateStringsArray, ...values: unknown[]) => {
+      state.locks.push({ sql: sql.join('?'), values, devicesAtLock: state.devices.length });
+      return [];
+    }),
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(db)),
   };
   return { db, state };
@@ -91,6 +97,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   state.codes = [];
   state.devices = [];
+  state.locks = [];
   state.users = new Map([['u1', { name: 'سارة', status: 'ACTIVE', companyId: 'co1', role: 'CONFIRMATION_AGENT' }]]);
 });
 
@@ -123,6 +130,16 @@ describe('a good code', () => {
     // A colleague's phone is not hers to revoke.
     expect(state.devices.find((d) => d.id === 'other')!.revokedAt).toBeNull();
     expect(state.devices.filter((d) => d.userId === 'u1' && !d.revokedAt)).toHaveLength(1);
+  });
+
+  it('locks her user row first, inside the transaction, so two codes at once leave one active phone', async () => {
+    expect((await pair(issue())).status).toBe(200);
+    expect(state.locks).toHaveLength(1);
+    expect(state.locks[0].sql).toMatch(/FROM "users" WHERE "id" = \? FOR UPDATE/);
+    expect(state.locks[0].values).toEqual(['u1']);
+    // Taken before the revoke and the new device are written.
+    expect(state.locks[0].devicesAtLock).toBe(0);
+    expect(db.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(db.callHelperDevice.updateMany.mock.invocationCallOrder[0]);
   });
 });
 
