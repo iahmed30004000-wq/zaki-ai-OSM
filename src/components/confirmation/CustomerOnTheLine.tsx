@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { RiPhoneLine } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
+import { OrderRef } from '@/components/orders/OrderRef';
 
 /**
  * «الزبون على الخط» — THE CUSTOMER RANG BACK; SHE FINDS HIS ORDER BY HIS NUMBER AND TAKES IT (`customer-on-the-line.ts`).
@@ -114,7 +115,7 @@ export function CustomerOnTheLine({ onTaken }: { onTaken: (orderId: string) => v
           {found.map((card) => (
             <li key={card.id} className="p-3 rounded-lg bg-[var(--sys-surface)] border border-[var(--sys-border)]">
               <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="font-semibold text-[var(--sys-heading)] tabular-nums" dir="ltr">{card.orderNumber}</span>
+                <OrderRef id={card.id} number={card.orderNumber} className="font-semibold text-[var(--sys-heading)] tabular-nums" />
                 {card.product && <span className="text-[var(--sys-foreground)]">{card.product}</span>}
                 {card.governorate && <span className="text-xs text-[var(--sys-muted-foreground)]">{card.governorate}</span>}
                 <span className="text-xs text-[var(--sys-muted-foreground)]">{card.status}</span>
