@@ -35,6 +35,7 @@ import { useToast } from '@/components/ui/Toast';
 import { deskIsEmpty, openPreparationStep } from '@/lib/next-step';
 import { useMayOpen } from '@/hooks/useMayOpen';
 import { PullPanel, useQueue } from '@/components/confirmation/PullPanel';
+import { CustomerOnTheLine } from '@/components/confirmation/CustomerOnTheLine';
 import { ConfirmationPostponedScreen } from '@/components/screens/ConfirmationPostponedScreen';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
@@ -393,6 +394,12 @@ export function ConfirmationMineScreen() {
    * 403 to anyone else, so for them nothing is asked and nothing is drawn.
    */
   const canPull = userCan(currentUser, 'confirmation.pull');
+  /*
+   * «الزبون على الخط» (customer-on-the-line.ts): the customer rang back and she takes his released order by his number. Drawn for
+   * the three keys its door asks — pull, work and «عرض الطلبات» (the search reads orders inside her envelope).
+   */
+  const canTakeOnTheLine =
+    canPull && userCan(currentUser, 'confirmation.work') && userCan(currentUser, 'orders.view');
   /*
    * «+ إنشاء طلب» ON HER OWN DESK (the owner, 2/11: «بنات التأكيد و المشرفة يظهرلهم انشاء طلب وتحت في خيار انو طلب مؤكد»).
    *
@@ -1028,6 +1035,15 @@ export function ConfirmationMineScreen() {
         </p>
       )}
       {canPull && !readOnly && <PullPanel queue={queue} compact onPulled={async () => void (await load())} />}
+      {canTakeOnTheLine && !readOnly && (
+        <CustomerOnTheLine
+          onTaken={async (orderId) => {
+            await load();
+            void queue.reload();
+            setOpenOrderId(orderId);
+          }}
+        />
+      )}
       {error && (
         <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>
       )}

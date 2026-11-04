@@ -9,6 +9,7 @@ import { TWIN_ACTION } from './recent-twin-order';
 import { TWIN_CONFIRM_ACK_ACTION } from './confirmed-twin';
 import { TWIN_HELD_ACTION } from './twins-follow-the-pull';
 import { REPULL_RELEASE_REASON, ROUND_RELEASE_REASON } from './no-answer-rounds';
+import { CUSTOMER_CALLED_BACK_REASON } from './customer-on-the-line';
 import { POST_ORDER_ADDITION_AR } from './post-order-offer-copy';
 import { COURIER_SAID, courierSaidTitle } from './couriers/courier-said';
 
@@ -103,6 +104,8 @@ export const STATUS_VALUE_AR: Record<string, string> = {
 
 const CLAIM_REASON_AR: Record<string, string> = {
   PULL_NEXT: 'سحب من الطابور',
+  // «الزبون على الخط» (customer-on-the-line.ts): the customer rang back and the agent who picked up took his order.
+  [CUSTOMER_CALLED_BACK_REASON]: 'الزبون اتصل — أخدته على الخط',
   MANUAL_CLAIM: 'استلام يدوي',
   ADMIN_OVERRIDE: 'تجاوز إداري',
   AUTO_RELEASE: 'تحرير تلقائي',
