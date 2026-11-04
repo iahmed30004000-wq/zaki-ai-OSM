@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
-import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
