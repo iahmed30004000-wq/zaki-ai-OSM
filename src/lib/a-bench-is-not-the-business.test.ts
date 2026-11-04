@@ -184,7 +184,8 @@ const ID_SCOPED: Record<string, Excuse> = {
   'lib/couriers/dispatch.ts': { reason: 'مقيَّد بـ shippingBatchId واحد', sites: 2 },
   // new (طلب التعديل م٢): قراءتا أسطر وإضافات طلبٍ واحد مُتحقَّق منه (orderId + companyId) لمعاينة التعديل — قراءةٌ صرفة.
   'lib/order-edit-facts.ts': { reason: 'مقيَّد بـ orderId واحد — سطورُ طلبٍ بعينه وإضافاتُه (معاينة التعديل)', sites: 2 },
-  'lib/customer-risk.ts': { reason: 'مقيَّد بالعميل نفسِه — تاريخُ شخصٍ لا رقمُ متجر', sites: 3 },
+  // old → new (4/11, طلباتي أخف): 3 → 5. The fourth and fifth are `customerRiskMany`'s two windows for a whole desk — still scoped by the named persons (phones / ids `in` the desk's own customers), one grouped read instead of one per customer.
+  'lib/customer-risk.ts': { reason: 'مقيَّد بالعميل نفسِه — تاريخُ شخصٍ لا رقمُ متجر (أو أشخاصِ مكتبٍ مُسمَّين)', sites: 5 },
   'lib/jobs/definitions/sync-courier-status.ts': { reason: 'مقيَّد بمندوبٍ واحد وبوليصةٍ موجودة', sites: 1 },
   'lib/landing-analytics.ts': { reason: 'مقيَّد بـ campaignIds مُسمّاة', sites: 1 },
   'lib/operations.ts': { reason: 'مقيَّد بالعميل نفسِه — طلباتُه الأخرى', sites: 2 },

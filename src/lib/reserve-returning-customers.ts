@@ -7,7 +7,7 @@ import { capRoom, ownedCounts } from './confirmation-queue';
  * HOLD A RETURNING CUSTOMER'S NEW ORDER FOR THE AGENT WHO WORKED HIM LAST.
  *
  * The rule and the words are `order-reservation.ts`; this is the one writer. It runs where an order is about to be taken —
- * «اسحب التالي», the queue read, taking one by id — and once a minute from the scheduler, so an order is held within the
+ * «اسحب التالي», taking one by id — and every two minutes from the scheduler (the queue read stopped writing 4/11), so an order is held within the
  * minute it arrives and the agent finds it in her «الطلبات» without anybody having pulled.
  *
  * ── WHY NOT IN THE CREATION DOORS ──

@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * DEFINITION OF DONE — «اسحب الطلب التالي» makes the hold before it picks
  *
  * A returning customer's order that has just arrived is held for the agent who worked him last (order-reservation.ts). The job runs
- * every two minutes and the queue read makes the hold too, but the header chip comes from «شغلي», which makes none — so an agent
+ * every two minutes (the queue read made the hold too until 4/11), but the header chip comes from «شغلي», which makes none — so an agent
  * pulls on the strength of a number, and in that window the pull is the only door that can hold the order before it is taken.
  *
  *  1. The hold is made for THIS store, BEFORE the pick. Moved after it, the first agent to press takes the order that was hers.

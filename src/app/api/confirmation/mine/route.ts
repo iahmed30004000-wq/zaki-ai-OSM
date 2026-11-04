@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { can, requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
-import { customerRisk } from '@/lib/customer-risk';
+import { customerRiskMany } from '@/lib/customer-risk';
 import { mayReadInsights } from '@/lib/insights-key';
 import { POSTPONE_LEAD_DAYS } from '@/lib/confirmation-queue';
 import { deriveCoreState, type StateSource } from '@/lib/order-state';
@@ -287,8 +287,11 @@ export async function GET(request: Request) {
     const customerIds = [...new Set([...inConfirmation, ...closedToday].map((o) => o.customer.id))];
     // The return-risk tier is a smart card (PR-10): `null` without `insights.view`, which the screen already draws as no chip
     // (a customer with no history has no tier either) — and the lookups are not made.
-    const risks = mayReadInsights(user) ? await Promise.all(customerIds.map((id) => customerRisk(db, companyId, id))) : customerIds.map(() => null);
-    const riskByCustomer = new Map(customerIds.map((id, i) => [id, risks[i]]));
+    // ONE GROUPED LOOKUP, NOT ONE PER CUSTOMER (the owner's ruling 4/11): a `Promise.all` of `customerRisk` sent up to
+    // ~750 queries at once into a pool of ten and the agent's next navigation waited for a connection until P2024.
+    // `customerRiskMany` gives every id the very figure `customerRisk` would have, in three queries whatever the count.
+    const risks = mayReadInsights(user) ? await customerRiskMany(db, companyId, customerIds) : null;
+    const riskByCustomer = new Map(customerIds.map((id) => [id, risks?.get(id) ?? null]));
     // «نظام الجولات» — OFF (the default), the count is every no-answer, as it always was.
     const rounds = roundsOn(await roundsSwitch(db, companyId));
     // «واتساب بعد لا يرد» from the company's number for this country (`after-no-answer.ts`) — only on her own desk, the one with the sheet,

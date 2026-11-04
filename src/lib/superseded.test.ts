@@ -358,9 +358,11 @@ describe('5 · nobody writes the question again in their own words', () => {
     expect(src, `${file} لا يستعمله`).toMatch(/\.\.\.notSuperseded\b|where: notSuperseded\b/);
   });
 
-  it('customer-risk reads it in all three of its queries', () => {
+  it('customer-risk reads it in all five of its queries', () => {
     const src = stripComments(repoFile('src/lib/customer-risk.ts'));
     expect(src.match(/\.\.\.notSuperseded\b/g)).toHaveLength(3);
+    // `customerRiskMany` (4/11): its two grouped windows carry an OR of persons, so the clause sits in an AND beside it.
+    expect(src.match(/AND: \[whose\(\{[^\]]*\}\), notSuperseded\]/g)).toHaveLength(2);
   });
 
   it('intelligence reads it in its four order-counting findings', () => {

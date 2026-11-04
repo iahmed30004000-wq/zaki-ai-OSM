@@ -78,7 +78,7 @@ vi.mock('@/lib/auth', () => ({ requireAuth: async () => state.user }));
 vi.mock('@/lib/notification-audience', () => ({ resolveAudience }));
 vi.mock('@/lib/pii-alert', () => ({ noteCustomersHandedOut: handedOut }));
 vi.mock('@/lib/response-clock', () => ({ firstActionTimes: async () => new Map() }));
-vi.mock('@/lib/customer-risk', () => ({ customerRisk: async () => null }));
+vi.mock('@/lib/customer-risk', () => ({ customerRisk: async () => null, customerRiskMany: async () => new Map() }));
 
 import { attachGrants } from '@/lib/authorization';
 import { computeEffectiveGrants } from '@/lib/permissions-core';
