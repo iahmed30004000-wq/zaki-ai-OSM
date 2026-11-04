@@ -44,6 +44,38 @@ class LinksTest {
         assertNull(Links.origin(null, debug = false))
     }
 
+    private val live = setOf("crm.zakiai.io")
+
+    @Test
+    fun aReleasePairsOnlyWithTheHostsItWasBuiltFor() {
+        val ok = Links.checkBase("https://crm.zakiai.io", debug = false, allowedHosts = live)
+        assertTrue(ok is BaseCheck.Ok && ok.origin == "https://crm.zakiai.io")
+
+        val other = Links.checkBase("https://evil.example", debug = false, allowedHosts = live)
+        assertTrue(other is BaseCheck.NotAllowed && other.host == "evil.example")
+        // A look-alike is not the host.
+        assertTrue(Links.checkBase("https://crm.zakiai.io.evil.example", debug = false, allowedHosts = live) is BaseCheck.NotAllowed)
+        // Local hosts are not on the list of a release build.
+        assertTrue(Links.checkBase("https://localhost", debug = false, allowedHosts = live) is BaseCheck.NotAllowed)
+
+        assertTrue(Links.checkBase("http://crm.zakiai.io", debug = false, allowedHosts = live) is BaseCheck.NotHttps)
+        assertTrue(Links.checkBase("https://crm.zakiai.io/api", debug = false, allowedHosts = live) is BaseCheck.Bad)
+        assertTrue(Links.checkBase(null, debug = false, allowedHosts = live) is BaseCheck.Bad)
+    }
+
+    @Test
+    fun aDebugBuildAlsoPairsWithItsLocalHosts() {
+        assertTrue(Links.checkBase("http://10.0.2.2:3001", debug = true, allowedHosts = live) is BaseCheck.Ok)
+        assertTrue(Links.checkBase("http://localhost:3001", debug = true, allowedHosts = live) is BaseCheck.Ok)
+        assertTrue(Links.checkBase("https://crm.zakiai.io", debug = true, allowedHosts = live) is BaseCheck.Ok)
+        assertTrue(Links.checkBase("https://evil.example", debug = true, allowedHosts = live) is BaseCheck.NotAllowed)
+    }
+
+    @Test
+    fun theBuildTimeListIsReadAsHosts() {
+        assertEquals(setOf("crm.zakiai.io", "staging.zakiai.io"), Links.hostList(" crm.zakiai.io, STAGING.zakiai.io ,"))
+    }
+
     @Test
     fun theHostIsWhatTheQuestionShows() {
         assertEquals("crm.zakiai.io", Links.host("https://crm.zakiai.io"))

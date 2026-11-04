@@ -40,20 +40,27 @@ class PairActivity : Activity() {
         val data = intent?.data
         val rawBase = data?.getQueryParameter("base")
         val code = data?.getQueryParameter("code")
-        val base = Links.origin(rawBase, BuildConfig.DEBUG)
-        if (base == null || !Links.isPairCode(code)) {
-            val plainHttp = base == null && rawBase?.trim()?.lowercase()?.startsWith("http://") == true
-            val why = if (plainHttp) {
-                R.string.pair_not_https
-            } else {
-                R.string.pair_bad_link
-            }
-            column.addView(Ui.text(this, getString(why), 17f, R.color.bad, bold = true))
+        val allowed = Links.hostList(BuildConfig.PAIR_HOSTS)
+        val check = Links.checkBase(rawBase, BuildConfig.DEBUG, allowed)
+        val why: String? = when {
+            check is BaseCheck.NotHttps -> getString(R.string.pair_not_https)
+            check is BaseCheck.NotAllowed ->
+                getString(R.string.pair_not_allowed, allowed.joinToString(getString(R.string.list_separator)), check.host)
+            check !is BaseCheck.Ok || !Links.isPairCode(code) -> getString(R.string.pair_bad_link)
+            else -> null
+        }
+        if (why != null || check !is BaseCheck.Ok) {
+            column.addView(Ui.text(this, why ?: getString(R.string.pair_bad_link), 17f, R.color.bad, bold = true))
             column.addView(Ui.button(this, getString(R.string.close)) { finish() })
             return
         }
+        val base = check.origin
 
         column.addView(Ui.text(this, getString(R.string.pair_question, Links.host(base)), 20f, bold = true))
+        // Already paired: say what pressing «اربط» throws away.
+        Store.pairing(this)?.let { old ->
+            column.addView(Ui.text(this, getString(R.string.pair_replaces, Links.host(old.base)), 15f, R.color.bad))
+        }
         val line = Ui.text(this, "", 15f, R.color.muted)
         val pair = Ui.button(this, getString(R.string.pair_button)) {}
         val cancel = Ui.button(this, getString(R.string.cancel)) { finish() }

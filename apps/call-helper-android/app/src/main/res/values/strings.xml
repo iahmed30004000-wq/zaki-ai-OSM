@@ -35,6 +35,8 @@
     <string name="paired_ok">انربط — %1$s</string>
     <string name="pair_bad_link">رابط الربط مش صالح — افتحيه من جديد من الموقع</string>
     <string name="pair_not_https">الربط بيقبل مواقع https بس</string>
+    <string name="pair_not_allowed">هالتطبيق بيربط بس مع %1$s — الرابط من %2$s مرفوض</string>
+    <string name="pair_replaces">مربوط هلق بـ %1$s — رح ينمسح الربط القديم</string>
     <string name="pair_no_route">الموقع لسا ما فيه جزء الربط — بيوصل مع تحديث الموقع</string>
     <string name="pair_refused">الموقع رفض الربط (رمز %1$s)</string>
     <string name="pair_bad_reply">رد الموقع مش مفهوم — جرّبي كمان مرة</string>

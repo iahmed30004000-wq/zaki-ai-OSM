@@ -15,6 +15,13 @@ plugins {
  */
 val keystoreFile: String? = System.getenv("ANDROID_KEYSTORE_FILE")?.takeIf { it.isNotBlank() }
 
+/*
+ * THE HOSTS A RELEASE BUILD WILL PAIR WITH, fixed when the APK is built.
+ * Default: the live site. A staging build passes -PcallHelperHosts=a.example,b.example.
+ */
+val pairHosts: String = (findProperty("callHelperHosts") as String?)?.trim()?.takeIf { it.isNotEmpty() } ?: "crm.zakiai.io"
+require(Regex("^[a-z0-9.-]+(,[a-z0-9.-]+)*$").matches(pairHosts)) { "callHelperHosts: host names only, comma-separated" }
+
 android {
     namespace = "io.zakiai.callhelper"
     compileSdk = 35
@@ -25,6 +32,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+        buildConfigField("String", "PAIR_HOSTS", "\"$pairHosts\"")
     }
 
     signingConfigs {

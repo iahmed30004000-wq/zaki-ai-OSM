@@ -41,6 +41,7 @@ object Store {
     private const val K_CALL_KEY = "call_key"
     private const val K_QUEUE = "queue"
     private const val K_PENDING = "pending"
+    private const val K_USED_SIGS = "used_sigs"
 
     private fun prefs(c: Context): SharedPreferences =
         c.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -134,11 +135,52 @@ object Store {
         prefs(c).edit().putString(K_PENDING, o.toString()).commit()
     }
 
-    /** Clear the call in flight — only if it is still the one placed at [startedAt], when given. */
+    /**
+     * Clear the call in flight — only if it is still the one placed at
+     * [startedAt], when given. True when this call took it off (so it is the
+     * caller's to report), false when somebody else already had.
+     */
     @Synchronized
-    fun clearPending(c: Context, startedAt: Long? = null) {
-        if (startedAt != null && pending(c)?.startedAt != startedAt) return
+    fun clearPending(c: Context, startedAt: Long? = null): Boolean {
+        val current = pending(c) ?: return false
+        if (startedAt != null && current.startedAt != startedAt) return false
         prefs(c).edit().remove(K_PENDING).commit()
+        return true
+    }
+
+    /** Record when the call placed at [startedAt] ended (0 = not seen), if it is still the one in flight. */
+    @Synchronized
+    fun updatePendingEnd(c: Context, startedAt: Long, endedAt: Long) {
+        val current = pending(c) ?: return
+        if (current.startedAt != startedAt) return
+        savePending(c, Pending(current.orderId, current.phone, current.startedAt, endedAt))
+    }
+
+    // ── the call links already dialled (a signature is single-use) ──
+
+    @Synchronized
+    fun sigUsed(c: Context, sig: String): Boolean = SigLedger.isUsed(readUsedSigs(c), sig)
+
+    @Synchronized
+    fun markSigUsed(c: Context, sig: String, exp: Long, nowSeconds: Long) {
+        val next = SigLedger.add(readUsedSigs(c), sig, exp, nowSeconds)
+        val arr = JSONArray()
+        for (u in next) arr.put(JSONObject().put("sig", u.sig).put("exp", u.exp))
+        prefs(c).edit().putString(K_USED_SIGS, arr.toString()).commit()
+    }
+
+    private fun readUsedSigs(c: Context): List<UsedSig> {
+        val raw = prefs(c).getString(K_USED_SIGS, null) ?: return emptyList()
+        return try {
+            val arr = JSONArray(raw)
+            (0 until arr.length()).mapNotNull { i ->
+                val o = arr.optJSONObject(i) ?: return@mapNotNull null
+                val sig = o.optString("sig").takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                UsedSig(sig, o.optLong("exp"))
+            }
+        } catch (e: JSONException) {
+            emptyList()
+        }
     }
 
     // ── which permissions she has been asked for (to know when only Settings can grant one) ──

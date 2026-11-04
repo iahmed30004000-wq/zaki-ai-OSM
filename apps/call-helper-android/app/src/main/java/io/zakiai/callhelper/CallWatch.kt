@@ -80,21 +80,29 @@ class LoggedCall(val date: Long, val durationSeconds: Long)
 
 object CallLogReader {
     /**
-     * The outgoing call to [phone] placed since [startedAt] (less five seconds
-     * of clock slack), newest first, or null.
+     * The FIRST outgoing call to [phone] that started near our dial — from
+     * five seconds before [startedAt] (clock slack) to a minute after it — or
+     * null.
      *
-     * Only OUTGOING rows inside that window are asked for, and of those only
-     * the one whose last eight digits are the number dialled is returned; the
-     * rest are compared in memory and dropped. Nothing else in the log is read.
+     * Oldest first and bounded above, so a later call she dialled by hand to
+     * the same customer (read when an orphan is recovered hours later) is
+     * never taken for ours. Only OUTGOING rows inside that window are asked
+     * for, and of those only the one whose last eight digits are the number
+     * dialled is returned; the rest are compared in memory and dropped.
+     * Nothing else in the log is read.
      */
     fun find(c: Context, phone: String, startedAt: Long): LoggedCall? {
         if (c.checkSelfPermission(Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) return null
         val projection = arrayOf(CallLog.Calls.NUMBER, CallLog.Calls.DATE, CallLog.Calls.DURATION)
-        val selection = "${CallLog.Calls.TYPE} = ? AND ${CallLog.Calls.DATE} >= ?"
-        val args = arrayOf(CallLog.Calls.OUTGOING_TYPE.toString(), (startedAt - 5_000).toString())
+        val selection = "${CallLog.Calls.TYPE} = ? AND ${CallLog.Calls.DATE} >= ? AND ${CallLog.Calls.DATE} <= ?"
+        val args = arrayOf(
+            CallLog.Calls.OUTGOING_TYPE.toString(),
+            (startedAt - 5_000).toString(),
+            (startedAt + 60_000).toString(),
+        )
         return try {
             c.contentResolver.query(
-                CallLog.Calls.CONTENT_URI, projection, selection, args, "${CallLog.Calls.DATE} DESC",
+                CallLog.Calls.CONTENT_URI, projection, selection, args, "${CallLog.Calls.DATE} ASC",
             )?.use { cur ->
                 var found: LoggedCall? = null
                 while (found == null && cur.moveToNext()) {

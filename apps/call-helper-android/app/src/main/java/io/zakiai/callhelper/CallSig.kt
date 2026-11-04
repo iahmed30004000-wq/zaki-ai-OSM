@@ -19,6 +19,27 @@ import javax.crypto.spec.SecretKeySpec
  *
  * Pure JVM, so the unit tests read it without a phone.
  */
+/** A call link's signature that has been dialled once, kept until its link expires. */
+data class UsedSig(val sig: String, val exp: Long)
+
+/**
+ * A SIGNATURE IS SINGLE-USE.
+ *
+ * A re-created activity, a link opened again from history, or the same link
+ * pressed twice re-reads a sig that still verifies. Once it has dialled, it
+ * is kept here until its `exp`, and a kept sig is treated as unsigned: she is
+ * asked. Expired ones are dropped (verify refuses them anyway), and at most
+ * [MAX] are kept — the oldest go first.
+ */
+object SigLedger {
+    const val MAX = 500
+
+    fun isUsed(used: List<UsedSig>, sig: String): Boolean = used.any { it.sig == sig }
+
+    fun add(used: List<UsedSig>, sig: String, exp: Long, nowSeconds: Long): List<UsedSig> =
+        (used.filter { it.exp >= nowSeconds && it.sig != sig } + UsedSig(sig, exp)).takeLast(MAX)
+}
+
 object CallSig {
     const val MAX_AHEAD_SECONDS = 24L * 60 * 60
 
