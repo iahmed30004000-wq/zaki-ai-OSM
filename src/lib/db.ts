@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { withPoolFloor } from './db-url';
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -8,6 +9,8 @@ export const db =
   globalForPrisma.prisma ??
   new PrismaClient({
     log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+    // At least twenty connections, whatever the URL says (`db-url.ts`).
+    datasourceUrl: withPoolFloor(process.env.DATABASE_URL),
   });
 
 /**
