@@ -6,7 +6,7 @@ import { can, requirePermission } from '@/lib/authorization';
 import { authorises } from '@/lib/change-request-apply';
 import { holdsTheWindow } from '@/lib/change-request-routing';
 import { EDIT_CONFIRMED_KEY } from '@/lib/edit-confirmed-key';
-import { handedToCourier } from '@/lib/order-seal';
+import { handedToCourier, onOpenTrolley, ON_OPEN_TROLLEY, ON_TROLLEY_AR } from '@/lib/order-seal';
 import { holdFromTrolley } from '@/lib/order-cancel';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
@@ -195,6 +195,8 @@ export async function POST(req: Request) {
         labelPrintedAt: true,
         // Whose order it is: the holder's own window (`orders.edit_confirmed`) is asked of it, just below.
         claimedById: true,
+        // The trolley's status, read with the order: on one still being filled a request is not carried out (4/11).
+        shippingBatch: { select: { status: true } },
       },
     });
     if (!order) return NextResponse.json({ error: 'الطلب غير موجود' }, { status: 404 });
@@ -211,6 +213,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'لا تملك صلاحية تنفيذ هذا القرار' }, { status: 403 });
     }
 
+    /*
+     * A REQUEST IS NOT CARRIED OUT ON AN OPEN TROLLEY (the owner's ruling 4/11 overturns M6 here). The batch screen's own
+     * «أجّل الشحن» — this door WITHOUT a request, under `ops.ship` — is what takes a parcel off; an approved postponement
+     * waits until it has. Asked before anything is written.
+     */
+    if (viaRequest && onOpenTrolley({ shippingBatchId: order.shippingBatchId, batchStatus: order.shippingBatch?.status ?? null })) {
+      return NextResponse.json({ error: ON_TROLLEY_AR, errorAr: ON_TROLLEY_AR, code: ON_OPEN_TROLLEY }, { status: 409 });
+    }
+
     /**
      * ON A TROLLEY: THE HOLD TAKES IT OFF, AND KEEPS THE GOODS AND THE LABEL.
      *
@@ -219,7 +230,8 @@ export async function POST(req: Request) {
      * (M6), so the hold is the way to say «not this trolley». The box is not
      * opened: no attestation and no stock moves. A parcel the company already
      * has a barcode for is cancelled THERE first — postponing an API parcel is
-     * cancelling it now and sending it again later.
+     * cancelling it now and sending it again later. Since 4/11 only the
+     * warehouse's own press does this (`warehouseOwnTool`); a request is refused above.
      */
     if (!release && order.shippingBatchId) {
       const held = await holdFromTrolley({
@@ -230,6 +242,8 @@ export async function POST(req: Request) {
         until: new Date(until as string),
         reason: reason?.trim() || null,
         viaRequest,
+        // The warehouse's own «أجّل الشحن» is this door without a request (the owner's ruling 4/11).
+        warehouseOwnTool: !viaRequest,
       });
       if (!held.ok) {
         return NextResponse.json({ error: held.error, errorAr: held.error, code: held.code }, { status: held.status });

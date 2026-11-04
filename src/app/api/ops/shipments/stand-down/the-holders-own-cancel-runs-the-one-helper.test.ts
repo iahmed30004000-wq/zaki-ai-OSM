@@ -309,10 +309,24 @@ describe('everybody else is untouched', () => {
     expect(emitAppEvent).toHaveBeenCalledTimes(1);
   });
 
-  it('the packing table (ops.ship) carries it out on an order on its trolley, as ever — the window is not what lets it', async () => {
+  // ruling 4/11 overturns M6 here: on its own open trolley the packing table cancels with the batch screen's «ألغِ» (no
+  // request — both-outcomes-go-to-the-one-helper.test.ts), and a REQUEST is not carried out there by anybody.
+  it('the packing table (ops.ship) does NOT carry a request out on an order on its open trolley — ON_OPEN_TROLLEY, nothing ended', async () => {
     const hand = await person('hand', 'WAREHOUSE', ['orders.view', 'ops.ship']);
     db.order.findFirst.mockResolvedValue(stored({ shippingStatus: 'READY_FOR_PICKUP', shippingBatchId: 'b1', shippingBatch: { status: 'READY', batchNumber: 'B-1' } }));
     db.shippingBatch.findFirst.mockResolvedValue({ status: 'READY' });
+
+    const res = await press(hand, { parcelInHand: true });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(409);
+    expect(res.body.code).toBe('ON_OPEN_TROLLEY');
+    expect(emitAppEvent).not.toHaveBeenCalled();
+  });
+
+  it('…and carries it out on the same parcel once it is off the trolley (held, still packed), as ever', async () => {
+    const hand = await person('hand', 'WAREHOUSE', ['orders.view', 'ops.ship']);
+    db.order.findFirst.mockResolvedValue(stored({ shippingStatus: 'READY_FOR_PICKUP', shippingBatchId: null, shippingBatch: null }));
+    db.shippingBatch.findFirst.mockResolvedValue(null);
 
     const res = await press(hand, { parcelInHand: true });
 

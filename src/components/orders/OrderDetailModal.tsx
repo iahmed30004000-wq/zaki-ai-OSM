@@ -17,7 +17,7 @@ import { DuplicateSuspectNotice } from '@/components/orders/DuplicateSuspectNoti
 import { STAGE_AR, STAGE_STATE_AR, type StageState } from '@/lib/order-closing';
 import { ChangeRequestDialog, type ChangeRequestValue } from '@/components/screens/confirmation/ActionDialogs';
 import { raiseChangeRequest } from '@/components/orders/raiseChangeRequest';
-import { handedToCourier } from '@/lib/order-seal';
+import { handedToCourier, onOpenTrolley, ON_TROLLEY_AR } from '@/lib/order-seal';
 import { editsNow } from '@/lib/edit-confirmed-window';
 import { ShippingSection } from '@/components/orders/ShippingSection';
 import { useApp } from '@/context/AppContext';
@@ -322,6 +322,14 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
     shippedAt: order.shippedAt ?? null,
     batchStatus: order.shippingBatch?.status ?? null,
   });
+  /**
+   * ON A TROLLEY STILL BEING FILLED (the owner's ruling 4/11): no edit, cancel or postponement is asked of it — the door
+   * refuses each with the same sentence, so the card says it instead of offering a press. The warehouse takes it off first.
+   */
+  const frozenOnTrolley = onOpenTrolley({
+    shippingBatchId: order.shippingBatchId ?? null,
+    batchStatus: order.shippingBatch?.status ?? null,
+  });
 
   /**
    * WHICH OF THE THREE ASKS WILL BE APPLIED AT ONCE — `orders.edit_confirmed`, 2/11.
@@ -425,19 +433,23 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
                   {windowOpen ? 'تعديل هذا الطلب' : 'طلبٌ على هذا الطلب'}
                 </h4>
                 <p className="text-xs text-[var(--sys-muted-foreground)]">
-                  {windowOpen
-                    ? 'الطلب مؤكَّد ولم يدخل دفعة شحن بعد — تعدّله أو تؤجّله أو تلغيه بنفسك وبينطبق فوراً. بعد ما يدخل دفعة بيصير طلباً لمن يبتّ فيه.'
-                    : handedOver
-                      ? 'الطرد عند شركة الشحن — التعديل والإلغاء يمرّان برسالةٍ إليهم بعد الموافقة.'
-                      : 'الطلب مؤكَّد وللقراءة فقط — تعديلُه أو إلغاؤه أو تأجيلُه يمرّ بقرار.'}
+                  {frozenOnTrolley
+                    ? ON_TROLLEY_AR
+                    : windowOpen
+                      ? 'الطلب مؤكَّد ولم يدخل دفعة شحن بعد — تعدّله أو تؤجّله أو تلغيه بنفسك وبينطبق فوراً. بعد ما يدخل دفعة بيصير طلباً لمن يبتّ فيه.'
+                      : handedOver
+                        ? 'الطرد عند شركة الشحن — التعديل والإلغاء يمرّان برسالةٍ إليهم بعد الموافقة.'
+                        : 'الطلب مؤكَّد وللقراءة فقط — تعديلُه أو إلغاؤه أو تأجيلُه يمرّ بقرار.'}
                 </p>
-                <button
-                  type="button"
-                  onClick={() => setAskOpen(true)}
-                  className="min-h-11 md:min-h-0 inline-flex items-center rounded-lg border border-[var(--sys-border)] px-4 py-1.5 text-xs font-medium text-[var(--sys-foreground)] hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)]"
-                >
-                  تعديل · إلغاء · تأجيل
-                </button>
+                {!frozenOnTrolley && (
+                  <button
+                    type="button"
+                    onClick={() => setAskOpen(true)}
+                    className="min-h-11 md:min-h-0 inline-flex items-center rounded-lg border border-[var(--sys-border)] px-4 py-1.5 text-xs font-medium text-[var(--sys-foreground)] hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)]"
+                  >
+                    تعديل · إلغاء · تأجيل
+                  </button>
+                )}
               </div>
             )}
 
@@ -993,6 +1005,7 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
           orderNumber={order.orderNumber}
           busy={asking}
           handedToCourier={handedOver}
+          onOpenTrolley={frozenOnTrolley}
           appliesNow={appliesNow}
           mayChangePrice={userCan(currentUser, 'orders.change_price')}
           onClose={() => setAskOpen(false)}

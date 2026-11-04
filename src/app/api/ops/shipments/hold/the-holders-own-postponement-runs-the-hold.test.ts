@@ -248,15 +248,29 @@ describe('every neighbour is refused 403 before anything moves — the window is
 });
 
 describe('everybody else is untouched', () => {
-  it('the packing table (ops.ship) holds a parcel off its trolley, as ever — the window is not what lets it', async () => {
+  // ruling 4/11 overturns M6 here: an approved postponement is not carried off an open trolley — the packing table holds it
+  // with the batch screen's own «أجّل الشحن» (no request — a-parcel-on-a-trolley-can-be-held.test.ts).
+  it('the packing table (ops.ship) does NOT carry a request out on a parcel on its open trolley — ON_OPEN_TROLLEY, nothing held', async () => {
     const hand = await person('hand', 'WAREHOUSE', ['orders.view', 'ops.ship']);
-    db.order.findFirst.mockResolvedValue(stored({ shippingStatus: 'READY_FOR_PICKUP', shippingBatchId: 'b1' }));
+    db.order.findFirst.mockResolvedValue(stored({ shippingStatus: 'READY_FOR_PICKUP', shippingBatchId: 'b1', shippingBatch: { status: 'READY' } }));
     holdFromTrolley.mockResolvedValue({ ok: true, orderNumber: 'SY-5', courierCancelled: false });
 
     const res = await press(hand);
 
-    expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(holdFromTrolley).toHaveBeenCalledTimes(1);
+    expect(res.status, JSON.stringify(res.body)).toBe(409);
+    expect(res.body.code).toBe('ON_OPEN_TROLLEY');
+    expect(holdFromTrolley).not.toHaveBeenCalled();
+  });
+
+  it('…and a trolley it names but nobody can read is an open one (fail closed)', async () => {
+    const hand = await person('hand', 'WAREHOUSE', ['orders.view', 'ops.ship']);
+    db.order.findFirst.mockResolvedValue(stored({ shippingStatus: 'READY_FOR_PICKUP', shippingBatchId: 'b1', shippingBatch: null }));
+
+    const res = await press(hand);
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('ON_OPEN_TROLLEY');
+    expect(holdFromTrolley).not.toHaveBeenCalled();
   });
 
   it('the desk (control.change_requests) carries the same request out on a colleague’s order, as ever', async () => {

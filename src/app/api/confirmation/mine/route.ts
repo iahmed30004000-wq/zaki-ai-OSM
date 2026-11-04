@@ -110,6 +110,9 @@ const ORDER_SELECT = {
 const WHERE_IT_IS = {
   claimedById: true,
   shippingBatchId: true,
+  // The trolley's status: on one still being filled nothing is asked of the order at all (the owner's ruling 4/11), and the
+  // row says so instead of offering «طلب تعديل». Optional to the screen — an older response simply lacks it.
+  shippingBatch: { select: { status: true } },
   shippedAt: true,
   labelPrintedAt: true,
 } as const;

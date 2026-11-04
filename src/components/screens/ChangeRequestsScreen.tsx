@@ -7,7 +7,7 @@ import { ChangeRequestReview } from '@/components/orders/ChangeRequestReview';
 import { LinesRequestReview, type Verdict } from '@/components/orders/LinesRequestReview';
 import { AUTO_CHECKED_CARDS, REVIEW_UNREADABLE_AR } from '@/lib/change-request-review';
 import { OrderRef } from '@/components/orders/OrderRef';
-import { useConfirm, useTell } from '@/components/ui/Confirm';
+import { useAsk, useConfirm, useTell } from '@/components/ui/Confirm';
 import { changeFieldLabel, describeLines, readLinesChange } from '@/lib/change-request-fields';
 import { INTENT_AR, type ChangeIntent } from '@/lib/change-request-intent';
 import { ATTESTATION_AR } from '@/lib/shipment-cancel';
@@ -137,6 +137,8 @@ export function ChangeRequestsScreen() {
   const [reviewing, setReviewing] = useState<string | null>(null);
   const [applying, setApplying] = useState<string | null>(null);
   const [withdrawing, setWithdrawing] = useState<string | null>(null);
+  /** The approved request being taken back («تراجع عن الموافقة»), while its press is in the air. */
+  const [revoking, setRevoking] = useState<string | null>(null);
   /** The request whose parcel is already with the courier, and what to send them. */
   /** The country's calling code, for the courier's WhatsApp. */
   const [dialCode, setDialCode] = useState<string | null>(null);
@@ -144,6 +146,7 @@ export function ChangeRequestsScreen() {
   /** The reason picked on each old cancellation that was stored without one, by request. */
   const [chosen, setChosen] = useState<Record<string, string>>({});
   const confirm = useConfirm();
+  const ask = useAsk();
   const tell = useTell();
 
   const load = useCallback(async () => {
@@ -197,6 +200,42 @@ export function ChangeRequestsScreen() {
       });
     } finally {
       setWithdrawing(null);
+    }
+  }
+
+  /**
+   * «تراجع عن الموافقة» — AN APPROVAL NOBODY CARRIED OUT, TAKEN BACK (the owner's ruling 4/11).
+   *
+   * ORD-2026-1584: a cancel on a trolley still being filled was approved by mistake, never carried out, and the press
+   * «إغلاق الشحنة» refused the whole trolley for it — with nothing on any screen that could take the approval back. The
+   * reason is required, as a rejection's is: it goes to the asker, who may have told the customer it was done.
+   */
+  async function revoke(r: ChangeRequest) {
+    const note = await ask({
+      title: `تراجع عن الموافقة على ${r.order.orderNumber}؟`,
+      body: 'الطلب بيرجع مرفوض وما بيتنفّذ، وبيوصل لرافعه إشعار بسببك. التراجع ما بيغيّر شي على الطلب نفسه.',
+      confirmLabel: 'تراجع عن الموافقة',
+      tone: 'danger',
+      input: { label: 'سبب التراجع', required: true, multiline: true, maxLength: 500 },
+    });
+    if (!note) return;
+
+    setRevoking(r.id);
+    try {
+      await apiJson(`/api/control/change-requests/${r.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision: 'REVOKED', note }),
+      });
+      await load();
+    } catch (e) {
+      await tell({
+        title: 'تعذر التراجع عن الموافقة',
+        body: e instanceof Error ? e.message : 'حدث خطأ',
+        tone: 'danger',
+      });
+    } finally {
+      setRevoking(null);
     }
   }
 
@@ -728,15 +767,41 @@ export function ChangeRequestsScreen() {
                   </button>
                 )
               ) : (
-                <button
-                  onClick={() => void apply(r)}
-                  disabled={applying === r.id || (needsReason(r) && !chosen[r.id]) || gateShut(r) !== null}
-                  title={gateShut(r) ?? undefined}
-                  className="min-h-11 md:min-h-0 inline-flex items-center flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-[var(--sys-success)] text-[var(--sys-primary-foreground)] text-xs font-medium disabled:opacity-50"
-                >
-                  {applying === r.id && <RiLoader4Line className="w-4 h-4 animate-spin" />}
-                  {CARRY_LABEL[r.carryOut?.kind] ?? 'نفِّذ القرار'}
-                </button>
+                <>
+                  <button
+                    onClick={() => void apply(r)}
+                    disabled={
+                      applying === r.id ||
+                      r.carryOut?.kind === 'REFUSED' ||
+                      (needsReason(r) && !chosen[r.id]) ||
+                      gateShut(r) !== null
+                    }
+                    title={(r.carryOut?.kind === 'REFUSED' ? r.carryOut.reason : gateShut(r)) ?? undefined}
+                    className="min-h-11 md:min-h-0 inline-flex items-center flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-[var(--sys-success)] text-[var(--sys-primary-foreground)] text-xs font-medium disabled:opacity-50"
+                  >
+                    {applying === r.id && <RiLoader4Line className="w-4 h-4 animate-spin" />}
+                    {CARRY_LABEL[r.carryOut?.kind] ?? 'نفِّذ القرار'}
+                  </button>
+                  {/* Where the decide buttons are drawn — never on her own request: nobody decides their own (the door refuses). */}
+                  {!r.isMine && (
+                    <button
+                      onClick={() => void revoke(r)}
+                      disabled={revoking === r.id}
+                      className="min-h-11 md:min-h-0 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-foreground)] text-xs font-medium transition-colors hover:border-[var(--sys-destructive-border)] hover:text-[var(--sys-destructive)] disabled:opacity-50"
+                    >
+                      {revoking === r.id ? (
+                        <RiLoader4Line className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <RiArrowGoBackLine className="icon-mirror w-4 h-4" />
+                      )}
+                      تراجع عن الموافقة
+                    </button>
+                  )}
+                  {/* Why «نفِّذ» is shut when the door would refuse it — a trolley still being filled, say (4/11). */}
+                  {r.carryOut?.kind === 'REFUSED' && r.carryOut.reason && (
+                    <span className="text-xs text-[var(--sys-muted-foreground)]">{r.carryOut.reason}</span>
+                  )}
+                </>
               )}
             </footer>
           </article>

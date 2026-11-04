@@ -142,13 +142,26 @@ describe('a parcel on a trolley', () => {
 });
 
 describe('an approved «أجّل الطلب» request is carried out HERE, as a hold', () => {
+  // ruling 4/11 overturns M6 here: an approved request is not carried off an OPEN trolley — the press above (no request) is.
+  it('is NOT carried out on a parcel still on an open trolley — ON_OPEN_TROLLEY, nothing held, nothing stamped', async () => {
+    db.order.findFirst.mockResolvedValue(stored({ shippingBatch: { status: 'READY' } }));
+
+    const res = await press({ changeRequestId: REQUEST_ID });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(409);
+    expect(res.body.code).toBe('ON_OPEN_TROLLEY');
+    expect(holdFromTrolley).not.toHaveBeenCalled();
+    expect(db.orderChangeRequest.updateMany).not.toHaveBeenCalled();
+  });
+
   it('takes the date and the reason from the approved request — never from the body', async () => {
+    db.order.findFirst.mockResolvedValue(stored({ shippingBatchId: null, shippingStatus: 'NOT_READY', labelPrintedAt: null }));
+    db.order.update.mockResolvedValue({ id: ORDER_ID, orderNumber: 'SY-5', shipHoldUntil: NEXT_WEEK, shipHoldReason: 'الزبون مسافر' });
+
     const res = await press({ changeRequestId: REQUEST_ID });
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(holdFromTrolley.mock.calls[0][0]).toMatchObject({
-      until: NEXT_WEEK, reason: 'الزبون مسافر', viaRequest: { id: REQUEST_ID },
-    });
+    expect(db.order.update.mock.calls[0][0].data).toMatchObject({ shipHoldUntil: NEXT_WEEK, shipHoldReason: 'الزبون مسافر' });
   });
 
   it('on an unbatched order marks the request carried out inside the same transaction, once', async () => {

@@ -6,6 +6,7 @@ import { releaseOrderLines } from './reservation';
 import { resolveDeliveryFee } from './delivery-fees';
 import { roundMinor } from './money';
 import { SHIPPING_GONE } from './order-state';
+import { ON_OPEN_TROLLEY, ON_TROLLEY_AR, onOpenTrolley } from './order-seal';
 import {
   ATTESTATION_AR,
   ATTESTATION_NEEDED_AR,
@@ -96,6 +97,12 @@ export interface EndOrderInput {
   parcelInHand?: boolean;
   /** An approved change request being carried out: marked applied in the same transaction. */
   viaRequest?: { id: string } | null;
+  /**
+   * THE WAREHOUSE'S OWN TOOL — the batch screen's «ألغِ / أعِده للمتابعة» under `ops.ship`, WITHOUT a change request. Only
+   * such a caller may take an order off a trolley that has not been handed over (the owner's ruling 4/11): every other door
+   * is refused with ON_OPEN_TROLLEY, by default, so a door added tomorrow is refused too until somebody says otherwise.
+   */
+  warehouseOwnTool?: boolean;
   /**
    * Run the writes inside a transaction the caller already holds (the
    * contact-attempt door closes an order in the SAME transaction as the
@@ -232,6 +239,10 @@ export async function endOrder(input: EndOrderInput): Promise<EndOutcome> {
   };
   const verdict = cancelVerdict(facts);
   if (!verdict.allowed) return refuse(409, verdict.code, verdict.message);
+  // On a trolley still being filled only the warehouse's own tool ends it (the owner's ruling 4/11 overturns M6 here).
+  if (!input.warehouseOwnTool && onOpenTrolley({ shippingBatchId: facts.shippingBatchId, batchStatus: facts.batchStatus })) {
+    return refuse(409, ON_OPEN_TROLLEY, ON_TROLLEY_AR);
+  }
   if (verdict.needsAttestation && input.parcelInHand !== true) {
     return refuse(409, 'ATTESTATION_REQUIRED', ATTESTATION_NEEDED_AR, { attestation: ATTESTATION_AR });
   }
@@ -469,6 +480,8 @@ export interface HoldFromTrolleyInput {
   until: Date;
   reason: string | null;
   viaRequest?: { id: string } | null;
+  /** The batch screen's «أجّل الشحن» under `ops.ship`, without a change request — see `EndOrderInput.warehouseOwnTool`. */
+  warehouseOwnTool?: boolean;
   inject?: { adapter?: CourierAdapter; courierName?: string | null };
 }
 
@@ -501,6 +514,10 @@ export async function holdFromTrolley(input: HoldFromTrolleyInput): Promise<Hold
     batchStatus: o.shippingBatch?.status ?? null,
   });
   if (!verdict.allowed) return { ok: false, status: 409, code: verdict.code, error: verdict.message };
+  // A postponement is carried off an open trolley only by the warehouse's own «أجّل الشحن» (the owner's ruling 4/11).
+  if (!input.warehouseOwnTool && onOpenTrolley({ shippingBatchId: o.shippingBatchId, batchStatus: o.shippingBatch?.status ?? null })) {
+    return { ok: false, status: 409, code: ON_OPEN_TROLLEY, error: ON_TROLLEY_AR };
+  }
 
   const remote = await cancelAtCourier(
     {

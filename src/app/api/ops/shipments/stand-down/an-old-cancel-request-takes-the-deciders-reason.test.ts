@@ -53,7 +53,8 @@ const SAID = 'الزبون تراجع بالاتصال';
 const stored = (over: Record<string, unknown> = {}) => ({
   id: ORDER_ID, orderNumber: 'SY-5', version: 4, confirmationStatus: 'CONFIRMED',
   shippingStatus: 'READY_FOR_PICKUP', shippedAt: null, labelPrintedAt: new Date(),
-  shippingBatchId: 'b1', trackingNumber: null, deliveryProviderId: null,
+  // A packed parcel held OFF its trolley — ruling 4/11 overturns M6 here: on a trolley still being filled no request is carried out.
+  shippingBatchId: null, trackingNumber: null, deliveryProviderId: null,
   ...over,
 });
 
@@ -81,7 +82,7 @@ beforeEach(() => {
   requirePermission.mockResolvedValue({});
   can.mockReturnValue(true);
   db.order.findFirst.mockResolvedValue(stored());
-  db.shippingBatch.findFirst.mockResolvedValue({ status: 'READY' });
+  db.shippingBatch.findFirst.mockResolvedValue(null);
   db.orderChangeRequest.findFirst.mockResolvedValue(approved());
   endOrder.mockResolvedValue({ ok: true, orderNumber: 'SY-5', attested: false, tookOff: false, courierCancelled: false });
   courierCancelCarryOut.mockResolvedValue({ status: 200, body: { success: true } });
@@ -241,6 +242,7 @@ describe('the edges of the old request', () => {
   });
 
   it('a parcel the courier holds needs no reason from the decider: the message carries the customer’s sentence', async () => {
+    db.order.findFirst.mockResolvedValue(stored({ shippingBatchId: 'b1' }));
     db.shippingBatch.findFirst.mockResolvedValue({ status: 'SHIPPED' });
 
     const res = await press({});
@@ -252,9 +254,26 @@ describe('the edges of the old request', () => {
   });
 });
 
+describe('on a trolley still being filled (the owner’s ruling 4/11)', () => {
+  // ruling 4/11 overturns M6 here: the request is not carried out, and the decider's reason is not written onto it either.
+  it('the request is refused ON_OPEN_TROLLEY before anything is written — not even the reason the decider picked', async () => {
+    db.order.findFirst.mockResolvedValue(stored({ shippingBatchId: 'b1' }));
+    db.shippingBatch.findFirst.mockResolvedValue({ status: 'READY' });
+
+    const res = await press({ reason: 'CUSTOMER_CHANGED_MIND', parcelInHand: true });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('ON_OPEN_TROLLEY');
+    expect(endOrder).not.toHaveBeenCalled();
+    expect(db.orderChangeRequest.updateMany).not.toHaveBeenCalled();
+    expect(logAudit).not.toHaveBeenCalled();
+  });
+});
+
 describe('the direct door is untouched', () => {
   it('with no request, the body’s reason is what it always was — and nothing is written to any request', async () => {
     db.orderChangeRequest.findFirst.mockResolvedValue(null);
+    db.order.findFirst.mockResolvedValue(stored({ shippingBatchId: 'b1' }));
     db.shippingBatch.findFirst.mockResolvedValue({ status: 'READY' });
 
     const res = await press({ changeRequestId: undefined, reason: 'CUSTOMER_CHANGED_MIND' });

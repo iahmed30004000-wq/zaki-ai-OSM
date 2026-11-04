@@ -117,7 +117,6 @@ describe('rejecting a confirmed order that is packed but still on our floor', ()
   it.each([
     ['labelled', { labelPrintedAt: new Date() }],
     ['on the pickup shelf', { shippingStatus: 'READY_FOR_PICKUP' }],
-    ['on a trolley still being filled', { shippingStatus: 'READY_FOR_PICKUP', labelPrintedAt: new Date(), shippingBatchId: 'b1', shippingBatch: { status: 'READY', batchNumber: 'B-1' } }],
   ])('is refused when the parcel is %s — until a person says the box was opened — and frees nothing', async (_name, over) => {
     orderIs(over);
 
@@ -129,8 +128,20 @@ describe('rejecting a confirmed order that is packed but still on our floor', ()
     expect(db.order.updateMany).not.toHaveBeenCalled();
   });
 
-  it('and with that word it is rejected, off the trolley, and the units go back — once', async () => {
+  // ruling 4/11 overturns M6 here: on a trolley still being filled this door rejects nothing — only the batch screen's «ألغِ».
+  it.each([[{}], [{ parcelInHand: true }]])('is refused ON_OPEN_TROLLEY on a trolley still being filled — whatever is said (%o) — and frees nothing', async (said) => {
     orderIs({ shippingStatus: 'READY_FOR_PICKUP', labelPrintedAt: new Date(), shippingBatchId: 'b1', shippingBatch: { status: 'READY', batchNumber: 'B-1' } });
+
+    const res = await reject(said);
+
+    expect(res.status, JSON.stringify(res.body)).toBe(409);
+    expect(res.body.code).toBe('ON_OPEN_TROLLEY');
+    expect(releaseOrderLines).not.toHaveBeenCalled();
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('and with that word it is rejected, the label torn, and the units go back — once (a held parcel, off its trolley)', async () => {
+    orderIs({ shippingStatus: 'READY_FOR_PICKUP', labelPrintedAt: new Date() });
 
     const res = await reject({ parcelInHand: true });
 

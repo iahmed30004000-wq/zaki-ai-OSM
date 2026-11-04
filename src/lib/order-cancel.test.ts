@@ -79,9 +79,14 @@ const plain = (over: Record<string, unknown> = {}) =>
     shippingBatch: null, ...over,
   });
 
+/**
+ * The batch screen's own «ألغِ» — the stand-down WITHOUT a request, under `ops.ship`. Since the owner's ruling 4/11 it is the
+ * one door that may take a parcel off an OPEN trolley (`warehouseOwnTool`), so the claims below about cancelling a packed
+ * parcel on a trolley are claims about it; every other door is refused there (see «the owner's ruling 4/11» below).
+ */
 const input = (over: Partial<EndOrderInput> = {}): EndOrderInput => ({
   orderId: 'o1', companyId: 'c1', storeId: 's1', by: BY, door: 'STAND_DOWN', kind: 'CANCEL',
-  endAs: 'CANCELLED', reason: 'CUSTOMER_CHANGED_MIND', rejectionNote: 'الزبون تراجع', ...over,
+  endAs: 'CANCELLED', reason: 'CUSTOMER_CHANGED_MIND', rejectionNote: 'الزبون تراجع', warehouseOwnTool: true, ...over,
 });
 
 /** The company's adapter, with the one call that matters. */
@@ -301,7 +306,9 @@ describe('ONE end state', () => {
   });
 
   it('an approved request is marked carried out in the SAME transaction, once', async () => {
-    await endOrder(input({ parcelInHand: true, viaRequest: { id: 'r1' } }));
+    // ruling 4/11 overturns M6 here: a request is carried out off the trolley only — a packed parcel the warehouse held off it.
+    db.order.findFirst.mockResolvedValue(packed({ shippingBatchId: null, shippingBatch: null }));
+    await endOrder(input({ parcelInHand: true, viaRequest: { id: 'r1' }, warehouseOwnTool: false }));
 
     expect(db.orderChangeRequest.updateMany).toHaveBeenCalledWith({
       where: { id: 'r1', appliedAt: null },
@@ -537,9 +544,10 @@ describe('inside a transaction the caller already holds', () => {
 });
 
 describe('«أجّل الشحن» — a hold takes the parcel off the trolley and keeps the box as it is', () => {
+  // The batch screen's own «أجّل الشحن» (no request, `ops.ship`) — the one way off an open trolley since 4/11.
   const hold = (over: Partial<HoldFromTrolleyInput> = {}): HoldFromTrolleyInput => ({
     orderId: 'o1', companyId: 'c1', storeId: 's1', by: BY, until: new Date('2026-11-05T00:00:00Z'), reason: 'الزبون مسافر',
-    ...over,
+    warehouseOwnTool: true, ...over,
   });
 
   it('keeps the waybill, the courier and the goods; clears only the trolley; sets the date', async () => {
@@ -633,6 +641,77 @@ describe('«أجّل الشحن» — a hold takes the parcel off the trolley an
   });
 });
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * THE OWNER'S RULING 4/11 — «مجرد ما الطلبات تترحل ع الباتش ما حد يقدر يلغي أي شي».
+ *
+ * On a trolley that has not been handed over, only the warehouse's own tool (`warehouseOwnTool`) ends or holds a parcel.
+ * Every other door — the confirmation's cancel or reject, the shipping screen's CANCELLED, the PATCH, a request carried
+ * out — is refused with ON_OPEN_TROLLEY before the company is asked anything and before anything is written. The flag
+ * lifts nothing else: a trolley that cannot be read and a trolley that was pressed are refused as before.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+describe('the owner’s ruling 4/11 — on an open trolley only the warehouse’s own tool', () => {
+  const holdIn = (over: Partial<HoldFromTrolleyInput> = {}): HoldFromTrolleyInput => ({
+    orderId: 'o1', companyId: 'c1', storeId: 's1', by: BY, until: new Date('2026-11-05T00:00:00Z'), reason: 'الزبون مسافر',
+    ...over,
+  });
+
+  it.each(['CONFIRMATION', 'SHIPPING_STATUS', 'PATCH', 'STAND_DOWN'] as const)(
+    'the %s door, without the flag, ends nothing on a packed parcel on an open trolley — not even with the word',
+    async (door) => {
+      db.order.findFirst.mockResolvedValue(packed({ trackingNumber: 'LG-1', deliveryProviderId: 'p1' }));
+      const adapter = adapterWith(async () => undefined);
+
+      const out = await endOrder(input({ door, parcelInHand: true, warehouseOwnTool: undefined, inject: { adapter } }));
+
+      expect(out).toMatchObject({ ok: false, status: 409, code: 'ON_OPEN_TROLLEY' });
+      expect(adapter.cancelShipment, 'انطلب من الشركة إلغاء طرد ما رح ينلغى').not.toHaveBeenCalled();
+      expect(db.$transaction).not.toHaveBeenCalled();
+      expect(db.order.updateMany).not.toHaveBeenCalled();
+      expect(releaseOrderLines).not.toHaveBeenCalled();
+    }
+  );
+
+  it('nor does a request being carried out (no flag, `viaRequest`) — and the request is NOT marked applied', async () => {
+    db.order.findFirst.mockResolvedValue(packed());
+
+    const out = await endOrder(input({ parcelInHand: true, viaRequest: { id: 'r1' }, warehouseOwnTool: false }));
+
+    expect(out).toMatchObject({ ok: false, code: 'ON_OPEN_TROLLEY' });
+    expect(db.orderChangeRequest.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('the flag lifts nothing else: a pressed trolley is still the company’s, an unreadable one still refused', async () => {
+    db.order.findFirst.mockResolvedValue(packed({ shippingBatch: { status: 'SHIPPED', batchNumber: 'B' } }));
+    expect(await endOrder(input({ parcelInHand: true }))).toMatchObject({ ok: false, code: 'CANCEL_AFTER_SHIPPED' });
+
+    db.order.findFirst.mockResolvedValue(packed({ shippingBatch: null }));
+    expect(await endOrder(input({ parcelInHand: true }))).toMatchObject({ ok: false, code: 'UNKNOWN_BATCH' });
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE: an order on no trolley is ended by any door as before', async () => {
+    db.order.findFirst.mockResolvedValue(plain());
+
+    const out = await endOrder(input({ door: 'CONFIRMATION', warehouseOwnTool: undefined }));
+
+    expect(out).toMatchObject({ ok: true });
+    expect(db.order.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('a hold without the flag takes nothing off an open trolley; with it, the parcel comes off as ever', async () => {
+    db.order.findFirst.mockResolvedValue(packed());
+
+    expect(await holdFromTrolley(holdIn({ viaRequest: { id: 'r1' } }))).toMatchObject({ ok: false, status: 409, code: 'ON_OPEN_TROLLEY' });
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+    expect(db.orderChangeRequest.updateMany).not.toHaveBeenCalled();
+
+    expect(await holdFromTrolley(holdIn({ warehouseOwnTool: true }))).toMatchObject({ ok: true });
+    expect(db.order.updateMany).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('the trolley’s status is something every door must ask for', () => {
   it('reads null when there is no trolley, and the status when there is', async () => {
     db.shippingBatch.findFirst.mockResolvedValue({ status: 'READY' });
@@ -655,9 +734,10 @@ describe('the trolley’s status is something every door must ask for', () => {
  * ═══════════════════════════════════════════════════════════════════════
  */
 describe('hold, then cancel — the box does not become unpacked in between', () => {
+  // The batch screen's own «أجّل الشحن» (no request, `ops.ship`) — the one way off an open trolley since 4/11.
   const hold = (over: Partial<HoldFromTrolleyInput> = {}): HoldFromTrolleyInput => ({
     orderId: 'o1', companyId: 'c1', storeId: 's1', by: BY, until: new Date('2026-11-05T00:00:00Z'), reason: 'الزبون مسافر',
-    ...over,
+    warehouseOwnTool: true, ...over,
   });
 
   /** The row after the hold's own write has been applied to it. */

@@ -203,17 +203,18 @@ describe('every neighbour is refused at the last press — by the same predicate
 });
 
 describe('everybody else is untouched', () => {
-  it('a supervisor carries out the same request on a trolley that is still being filled, as ever', async () => {
+  // ruling 4/11 overturns M6 here: on a trolley still being filled not even a supervisor carries a request out.
+  it('a supervisor does NOT carry out the same request on a trolley that is still being filled — ON_OPEN_TROLLEY, nothing stamped', async () => {
     const sup = await person('sup', 'CONFIRMATION_SUPERVISOR', SUPERVISOR);
     db.shippingBatch.findFirst.mockResolvedValue({ status: 'READY', batchNumber: 'B-1' });
 
     const res = await patch(sup, confirmed({ shippingStatus: 'READY_FOR_PICKUP', shippingBatchId: 'b1' }), { changeRequestId: REQUEST_ID });
 
-    expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(db.orderChangeRequest.updateMany).toHaveBeenCalledWith({
-      where: { id: REQUEST_ID, appliedAt: null },
-      data: { appliedAt: expect.any(Date), appliedById: 'sup' },
-    });
+    expect(res.status, JSON.stringify(res.body)).toBe(409);
+    expect(res.body.code).toBe('ON_OPEN_TROLLEY');
+    expect(db.orderChangeRequest.updateMany).not.toHaveBeenCalled();
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+    expect(db.order.update).not.toHaveBeenCalled();
   });
 });
 

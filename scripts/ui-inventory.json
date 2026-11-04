@@ -950,12 +950,12 @@
     "tabs": 0
   },
   "src/components/screens/ChangeRequestsScreen.tsx": {
-    "buttons": 5,
+    "buttons": 6,
     "inputs": 1,
     "columns": 0,
     "cards": 0,
     "modals": 0,
-    "icons": 7,
+    "icons": 9,
     "links": 0,
     "tabs": 0
   },
