@@ -38,6 +38,13 @@ import { stripComments } from './guard-source';
 const ROOT = process.cwd();
 /** Everything that can render inside a shop page. */
 const SHOP_ROOTS = ['src/components/storefront', 'src/app/s', 'src/components/store'];
+/** Landing components a shop page renders as they are — swept too, see `classesTheShopDraws`. */
+const IMPORTED_WHOLE = [
+  'src/components/landing/blocks/OfferCards.tsx',
+  'src/components/landing/OrderForm.tsx',
+  'src/components/landing/ThankYouOfferCard.tsx',
+];
+const styledByBlocks = (cls: string) => new RegExp(`\\.${cls}(?![a-z0-9-])`).test(BLOCK_CSS);
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -91,6 +98,18 @@ function classesTheShopDraws(): Set<string> {
   const sizes = readFileSync(join(ROOT, 'src/lib/landing-sections.ts'), 'utf8').match(/cardSize:\s*z\.enum\(\[([^\]]+)\]/)?.[1] ?? '';
   // `md` is the default size and has no rule of its own: nothing to keep, so it is not in the list.
   for (const size of sizes.match(/'([a-z]+)'/g) ?? []) if (size !== "'md'") found.add(`lp-catalog-${size.replace(/'/g, '')}`);
+  /*
+   * AND THE THREE LANDING COMPONENTS A SHOP PAGE IMPORTS WHOLE. The product page draws `OfferCards` and
+   * `OrderForm`, the cart's thank-you draws `ThankYouOfferCard` — outside the roots above, so on the live shop
+   * «صحة بلس» (4/11) the bundles drew as one run-on line with no card behind them. Only a class the block sheet
+   * actually STYLES is required: a name with no rule anywhere in `BLOCK_CSS` (a hook for script, an inline-styled
+   * part) is not something the slice can have cut.
+   */
+  for (const rel of IMPORTED_WHOLE) {
+    for (const m of stripComments(readFileSync(join(ROOT, rel), 'utf8')).matchAll(/\blp-[a-z0-9-]+/g)) {
+      if (styledByBlocks(m[0])) found.add(m[0]);
+    }
+  }
   return found;
 }
 

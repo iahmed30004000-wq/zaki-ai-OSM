@@ -98,6 +98,39 @@ export const SHOP_BLOCK_CLASSES = [
   'lp-timeline',
   'lp-timeline-what',
   'lp-timeline-when',
+  /*
+   * ── THE THREE LANDING COMPONENTS A SHOP PAGE IMPORTS WHOLE ──
+   *
+   * The product page draws `OfferCards` («اختر العرض المناسب») and
+   * `OrderForm`; the cart's thank-you draws `ThankYouOfferCard`. All three
+   * live in `components/landing`, outside the sweep's roots, so none of
+   * their classes were ever read — and the slice cut every rule they stand
+   * on. Measured on the live shop «صحة بلس» (4/11): the bundles rendered as
+   * one run-on line («قطعتان + قطعة مجانيةالأوفر2 قطعة+1 مجاناً50 USD»),
+   * no card, no border, no «الأوفر» chip. The compact form's two columns,
+   * the payment radios, the cross-sell row and the after-order offer were
+   * bare the same way whenever a shop turned them on. The sweep now reads
+   * the three files, so a class added to any of them is caught here first.
+   */
+  'lp-offers',
+  'lp-offer',
+  'lp-offer-best',
+  'lp-offer-name',
+  'lp-offer-tag',
+  'lp-offer-qty',
+  'lp-offer-price',
+  'lp-offer-unit',
+  'lp-form-compact',
+  'lp-half',
+  'lp-radios',
+  'lp-radios-title',
+  'lp-radio',
+  'lp-after-banner',
+  'lp-xsell-items',
+  'lp-xsell-thumb',
+  'lp-upsell',
+  'lp-upsell-note',
+  'lp-upsell-yes',
 ] as const;
 
 /**

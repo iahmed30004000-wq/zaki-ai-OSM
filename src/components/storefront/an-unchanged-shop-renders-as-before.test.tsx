@@ -32,6 +32,14 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ push: () => {} }), usePa
  * catalogue was put in an order no sort would give and given every sort's
  * facts (the review of #188, item 7): a renderer whose default order changed
  * to price, to newest or to best-selling now fails this — each checked.
+ *
+ * RE-TAKEN A SECOND TIME (4/11, fix/storefront-saha-broken), from this
+ * branch, because the change is to EVERY shop's stylesheet on purpose: the
+ * slice now keeps the rules of the bundles («اختر العرض المناسب»), the
+ * order form's compact/radio layouts and the after-order offer, which it had
+ * been cutting. Checked before taking it: with every `<style>` emptied, the
+ * old and the new copy are byte-identical — the markup did not move, only
+ * those rules were added.
  */
 const GOLDEN_FILE = join(__dirname, '__golden__', 'unchanged-shop.html');
 

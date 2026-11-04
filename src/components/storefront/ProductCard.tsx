@@ -133,8 +133,12 @@ export function ProductCard({
           {/* The cheapest per unit across its bundles — the number a
               shopper compares, computed from the offers the order path
               charges from. */}
-          {product.basePrice !== undefined && product.fromPrice < product.basePrice && <small>من </small>}
+          {/* «من» AFTER the amount in this left-to-right pill, so it lands on
+              the amount's RIGHT — where an Arabic reader starts. Written
+              first, it sat on the left and the pill read «من 15.00 USD»
+              backwards, with the currency in the middle of the sentence. */}
           {moneyText(product.fromPrice, currency, minorUnit)}
+          {product.basePrice !== undefined && product.fromPrice < product.basePrice && <small> من</small>}
         </span>
         {isWorld ? <span className="sf-card-go">شوف المنتج</span> : null}
       </span>

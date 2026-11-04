@@ -7,6 +7,7 @@ import { directionOf } from './store-languages';
 import { liveOfferWhere } from './offers';
 import { parseCategoryAttributes, parseProductAttributes, type ProductAttributes } from './product-attributes';
 import { publicizeMedia } from './public-media';
+import { firstShown, missingStoredImages } from './storefront-images';
 import type { CatalogItem } from '@/components/landing/blocks/PageBlocks';
 
 /**
@@ -266,8 +267,13 @@ export async function storefrontProducts(
     },
   });
 
+  // A picture whose file storage no longer has is no picture — the card's
+  // designed empty state, not the browser's broken icon. See storefront-images.ts.
+  const missing = await missingStoredImages(products.flatMap((p) => [p.images[0]?.url, p.image]));
+
   // Shown to shoppers, who have no session: public image links.
-  return publicizeMedia(products).map((p) => {
+  return publicizeMedia(products).map((p, i) => {
+    const raw = products[i];
     const perUnit = p.offers
       .map((o) => {
         const units = o.quantity + o.freeQuantity;
@@ -281,7 +287,7 @@ export async function storefrontProducts(
       name: p.name,
       nameEn: p.nameEn,
       description: p.description,
-      image: p.images[0]?.url ?? p.image,
+      image: publicizeMedia(firstShown([raw.images[0]?.url, raw.image], missing)),
       basePrice: p.basePrice,
       fromPrice: perUnit.length ? Math.min(...perUnit) : p.basePrice,
       handle: p.slug || p.sku,
@@ -418,7 +424,10 @@ export const storefrontProduct = cache(async function storefrontProduct(
     })
     .filter((n) => n > 0);
 
-  const gallery = publicizeMedia(p.images.map((i) => i.url));
+  // Only the pictures storage still has: a gallery thumb and a main picture
+  // that answer 404 are the same broken icon the grid showed.
+  const missing = await missingStoredImages([...p.images.map((i) => i.url), p.image]);
+  const gallery = publicizeMedia(p.images.map((i) => i.url).filter((u) => !missing.has(u)));
 
   return {
     id: p.id,
@@ -426,7 +435,7 @@ export const storefrontProduct = cache(async function storefrontProduct(
     name: p.name,
     nameEn: p.nameEn,
     description: p.description,
-    image: gallery[0] ?? publicizeMedia(p.image),
+    image: gallery[0] ?? publicizeMedia(firstShown([p.image], missing)),
     basePrice: p.basePrice,
     fromPrice: perUnit.length ? Math.min(...perUnit) : p.basePrice,
     handle: p.slug || p.sku,
