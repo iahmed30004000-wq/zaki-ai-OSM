@@ -36,8 +36,16 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 ENV JWT_SECRET=build-time-placeholder-secret-value
 
+# ONE ID PER BUILD, read by `deploymentId` in next.config.ts. A tab still
+# running the build before a deploy sees a different id on its next press
+# and reloads the whole page, instead of asking for files the new build no
+# longer has. Coolify passes the commit as SOURCE_COMMIT when it is asked
+# to; when it is not, the build's own time is just as unique. Declared
+# here, in the builder alone, so the dependency layer above stays cached.
+ARG SOURCE_COMMIT
+
 # prisma generate + next build (via package.json build script)
-RUN npm run build
+RUN NEXT_DEPLOYMENT_ID="${SOURCE_COMMIT:-build-$(date +%s)}" npm run build
 
 # ========================================
 # Production Runner

@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { iconFor } from '@/components/shell/icons';
 import { visibleWork, type WorkItem } from '@/lib/my-work';
+import { pollSignal } from '@/lib/poll-timeout';
 
 /**
  * WHAT IS WAITING FOR ME, AT THE TOP OF EVERY SCREEN.
@@ -37,7 +38,8 @@ export function MyWork() {
       // apiJson answers a missing store by sending the whole tab to the
       // store picker, which is right for a click and wrong for a poll that
       // fires on its own and would throw away whatever is being typed.
-      const res = await fetch('/api/me/work', { credentials: 'same-origin' });
+      // With a time limit, so a server that does not answer cannot hold a connection the next press needs (poll-timeout.ts).
+      const res = await fetch('/api/me/work', { credentials: 'same-origin', signal: pollSignal() });
       if (res.ok) setItems(((await res.json()) as { items: WorkItem[] }).items ?? []);
     } catch {
       // A failed poll is not worth a message; the next one will do.

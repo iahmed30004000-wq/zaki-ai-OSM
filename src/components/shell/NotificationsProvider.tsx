@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { pollSignal } from '@/lib/poll-timeout';
 
 /**
  * ONE POLLER, THREE READERS.
@@ -90,7 +91,8 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/notifications');
+      // Plain fetch on purpose (a poll must not send the tab to /login), with a time limit (poll-timeout.ts).
+      const res = await fetch('/api/notifications', { signal: pollSignal() });
       if (!res.ok) return;
       const data = (await res.json()) as Payload;
       const rows = data.notifications ?? [];

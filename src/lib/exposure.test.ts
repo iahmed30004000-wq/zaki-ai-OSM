@@ -196,6 +196,8 @@ describe('what the browser is allowed to remember', () => {
     'shell/IdleGuard.tsx': 'a timestamp, shared between this account’s open tabs',
     // Ruling 4/11: the time on a call is not idle time. A time only — never the number called or whose order it was.
     'lib/exposure.ts': 'when «اتصال» was last pressed — a timestamp, read and cleared by IdleGuard on return',
+    'lib/stale-build.ts':
+      'when this tab last reloaded itself for a file from the build before a deploy — a timestamp, session storage, the guard that keeps it to one reload',
     'shell/InstallApp.tsx': 'when «ليس الآن» was pressed on the install strip — a timestamp, nothing about a person or a record',
     'ui/SavedViews.tsx': 'a name and a query string — a question to re-ask, never an answer or a record id',
     /*

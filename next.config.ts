@@ -125,6 +125,22 @@ const nextConfig: NextConfig = {
    */
   ...(process.env.NEXT_TURBOPACK_ROOT ? { turbopack: { root: process.env.NEXT_TURBOPACK_ROOT } } : {}),
   output: 'standalone',
+  /**
+   * WHICH BUILD A TAB IS RUNNING — SO A DEPLOY ENDS IN A RELOAD, NOT A FREEZE.
+   *
+   * Without it a tab opened before a deploy kept navigating with the old
+   * build's code against the new server: it asked for files the new build
+   * no longer has, and the press landed on an error screen or on nothing.
+   * With an id, Next stamps it on every file address (`?dpl=`) and on every
+   * navigation, and when the server's id differs from the tab's it does a
+   * full page load instead of a client one — the tab picks up the new build
+   * by itself, at the next press.
+   *
+   * The Dockerfile sets one per build (the commit, or the build's time when
+   * the commit is not passed). Unset — `next dev`, a local `next build` —
+   * means no id, which is exactly what it was before.
+   */
+  deploymentId: process.env.NEXT_DEPLOYMENT_ID || undefined,
   serverExternalPackages: ['sharp'],
   // Do not advertise the framework version
   poweredByHeader: false,
