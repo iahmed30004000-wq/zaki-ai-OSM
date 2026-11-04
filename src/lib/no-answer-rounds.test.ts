@@ -187,6 +187,29 @@ describe('R1 — when a held order goes back to the queue', () => {
     expect(roundsReleaseReason(thursday, attempts, on, cutAt(t(7, 15)), t(7, 15))).toBeNull();
   });
 
+  it('SHE IS ON THE CALL: a «اتصل» of hers in the last 15 working minutes keeps it (the 11:58 case)', () => {
+    // The run started at 9:00, so 12:00 is three working hours. She pressed «اتصل» at 11:58 and is talking.
+    const hers = { claimedAt: t(1, 8, 30), claimedById: 'sara' };
+    const attempts = [...call(t(1, 9)), opened(t(1, 11, 58))];
+    expect(roundsReleaseReason(hers, attempts, on, cutAt(t(1, 12)), t(1, 12))).toBeNull();
+    expect(roundsReleaseReason(hers, attempts, on, cutAt(t(1, 12, 12)), t(1, 12, 12))).toBeNull();
+    // Fifteen working minutes after her press, with nothing logged since: it goes.
+    expect(roundsReleaseReason(hers, attempts, on, cutAt(t(1, 12, 13)), t(1, 12, 13))).toBe(ROUND_RELEASE_REASON);
+  });
+
+  it('and the fifteen minutes are working minutes: a press at 16:58 does not keep it the next morning', () => {
+    const hers = { claimedAt: t(1, 8, 30), claimedById: 'sara' };
+    const attempts = [...call(t(1, 9)), opened(t(1, 16, 58))];
+    expect(roundsReleaseReason(hers, attempts, on, cutAt(t(2, 9, 12)), t(2, 9, 12))).toBeNull();
+    expect(roundsReleaseReason(hers, attempts, on, cutAt(t(2, 9, 13)), t(2, 9, 13))).toBe(ROUND_RELEASE_REASON);
+  });
+
+  it('a colleague’s press does not keep it in her hands', () => {
+    const hers = { claimedAt: t(1, 8, 30), claimedById: 'sara' };
+    const attempts = [...call(t(1, 9)), opened(t(1, 11, 58), 'huda')];
+    expect(roundsReleaseReason(hers, attempts, on, cutAt(t(1, 12)), t(1, 12))).toBe(ROUND_RELEASE_REASON);
+  });
+
   it('a date ahead keeps it with her', () => {
     const attempts = call(t(1, 9, 30));
     const now = t(1, 16);

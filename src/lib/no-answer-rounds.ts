@@ -43,6 +43,11 @@ export const ROUND_GAP_BUSINESS_MINUTES = 180;
 export const ROUND_RELEASE_BUSINESS_MINUTES = 180;
 /** A re-pulled order nobody touched goes back after the same time as an untouched one (`AUTO_RELEASE_BUSINESS_MINUTES`). */
 export const REPULL_RELEASE_BUSINESS_MINUTES = 90;
+/**
+ * She is on it: an attempt of any kind (a «اتصل» included) by the agent who holds the order, this many working minutes ago or
+ * less, keeps it with her for this pass — a release never takes an order out of her hands in the middle of a call.
+ */
+export const HOLDER_ACTIVE_BUSINESS_MINUTES = 15;
 /** The counted rounds must fall on at least this many different days before they close an order. */
 export const ROUND_CLOSE_MIN_DAYS = 2;
 
@@ -213,6 +218,8 @@ export function roundsClose(rounds: Rounds): boolean {
 
 export interface HeldFacts {
   claimedAt: Date | string;
+  /** Who holds it — an attempt of hers in the last `HOLDER_ACTIVE_BUSINESS_MINUTES` keeps it. */
+  claimedById?: string | null;
   postponedUntil?: Date | string | null;
   nextFollowUpAt?: Date | string | null;
 }
@@ -223,12 +230,15 @@ export interface ReleaseCutoffs {
   round: Date;
   /** A re-pulled claim taken at or before this is ninety working minutes old. */
   repull: Date;
+  /** An attempt by the holder AFTER this is «she is on it right now». */
+  recent: Date;
 }
 
 export function releaseCutoffs(now: Date, clock: WorkClock): ReleaseCutoffs {
   return {
     round: clock.back(now, ROUND_RELEASE_BUSINESS_MINUTES),
     repull: clock.back(now, REPULL_RELEASE_BUSINESS_MINUTES),
+    recent: clock.back(now, HOLDER_ACTIVE_BUSINESS_MINUTES),
   };
 }
 
@@ -237,6 +247,7 @@ export function releaseCutoffs(now: Date, clock: WorkClock): ReleaseCutoffs {
  * pass's cut-offs.
  *
  *   · a date ahead (a postponement or a callback the customer asked for) keeps it, whatever else;
+ *   · so does an attempt by the agent who holds it in the last `HOLDER_ACTIVE_BUSINESS_MINUTES` working minutes;
  *   · no attempt at all is the ninety-minute rule's (`releaseStaleClaims`), not this one's;
  *   · worked before, and nothing logged since she took it: `REPULL_RELEASE_REASON`, ninety working minutes after she took
  *     it or after the switch went on, whichever is later;
@@ -253,6 +264,10 @@ export function roundsReleaseReason(
   const ahead = (v: Date | string | null | undefined) => !!v && new Date(v).getTime() > now.getTime();
   if (ahead(order.postponedUntil) || ahead(order.nextFollowUpAt)) return null;
   if (attempts.length === 0) return null;
+  // She is on the call (or just was): not this pass.
+  if (order.claimedById && attempts.some((a) => a.employeeId === order.claimedById && at(a).getTime() > cut.recent.getTime())) {
+    return null;
+  }
 
   const claimedAt = new Date(order.claimedAt).getTime();
   const enabledAt = sw.enabledAt.getTime();

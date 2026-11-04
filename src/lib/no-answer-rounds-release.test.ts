@@ -247,3 +247,20 @@ describe('R4 — the pull', () => {
     for (const [q] of db.order.findFirst.mock.calls) expect(q.where).not.toHaveProperty('contactAttempts');
   });
 });
+
+describe('R1 — she is on the call', () => {
+  it('an attempt of hers in the last fifteen working minutes keeps the order this pass', async () => {
+    roundsRows = [
+      heldRow(1, {
+        contactAttempts: [
+          { createdAt: t(1, 9, 29), result: 'OPENED', attemptNumber: 1, employeeId: 'sara' },
+          { createdAt: t(1, 9, 30), result: 'NO_ANSWER', attemptNumber: 2, employeeId: 'sara' },
+          { createdAt: t(1, 12, 25), result: 'OPENED', attemptNumber: 3, employeeId: 'sara' },
+        ],
+      }),
+    ];
+    expect(await releaseStaleClaims(db as never, scope, JO, t(1, 12, 30), { rounds: ON })).toBe(0);
+    const read = db.order.findMany.mock.calls.find(([a]) => isRoundsQuery(a))![0];
+    expect(read.select.contactAttempts.select, 'who pressed is read').toHaveProperty('employeeId', true);
+  });
+});

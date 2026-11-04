@@ -343,8 +343,13 @@ export async function GET(request: Request) {
       /**
        * «لا يرد» — one or two. Not three: the third is not work, it is a
        * closed order, and it is below.
+       *
+       * AND AN ORDER STILL OPEN PAST THE LIMIT STAYS HERE. `held` is open orders only (the closed ones are `closedToday`), so
+       * a count of three or more on an open order is one the close did not take: «نظام الجولات» (three rounds on one day, or
+       * presses left behind when the owner turned it off again) or a close the helper refused. Dropped from both tabs it would
+       * be in her hands, counted toward her cap, and on no list she can see.
        */
-      noAnswer: held.filter((o) => (o.noAnswerCount > 0 && o.noAnswerCount < NO_ANSWER_LIMIT) || (rounds && o.noAnswerCount > 0)),
+      noAnswer: held.filter((o) => (o.noAnswerCount > 0 && o.noAnswerCount < NO_ANSWER_LIMIT) || o.noAnswerCount >= NO_ANSWER_LIMIT),
       /** Closed by the third no-answer today — read-only, so it is not a surprise tomorrow. */
       closedToday: closedToday.map(decorate),
       /** «أكّدتها» — a day, a search, a page, and the size of what is behind them. */

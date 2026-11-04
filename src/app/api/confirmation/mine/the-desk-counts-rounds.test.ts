@@ -75,11 +75,19 @@ describe('OFF — today’s desk', () => {
     ]);
   });
 
-  it('every no-answer counts, the third is not listed, and the attempts are not read', async () => {
+  it('every no-answer counts, and the attempts are not read', async () => {
     const data = await (await GET(new Request('http://localhost/api/confirmation/mine'))).json();
     expect(data).not.toHaveProperty('rounds');
     expect(data.work.map((o: { id: string }) => o.id)).toEqual(['fresh']);
-    expect(data.noAnswer.map((o: { id: string; noAnswerCount: number }) => [o.id, o.noAnswerCount])).toEqual([['twice', 2]]);
+    expect(data.noAnswer.map((o: { id: string; noAnswerCount: number }) => o.noAnswerCount).sort()).toEqual([2, 3]);
     expect(db.orderContactAttempt.findMany).not.toHaveBeenCalled();
+  });
+
+  it('OFF AFTER ON: an order still open with four presses stays under «لا يرد» — never on no list at all', async () => {
+    db.orderContactAttempt.groupBy.mockResolvedValue([{ orderId: 'oneDay', _count: { _all: 4 } }]);
+    const data = await (await GET(new Request('http://localhost/api/confirmation/mine'))).json();
+    const listed = [...data.work, ...data.noAnswer].map((o: { id: string }) => o.id).sort();
+    expect(listed).toEqual(['fresh', 'oneDay', 'twice']);
+    expect(data.noAnswer.find((o: { id: string }) => o.id === 'oneDay').noAnswerCount).toBe(4);
   });
 });

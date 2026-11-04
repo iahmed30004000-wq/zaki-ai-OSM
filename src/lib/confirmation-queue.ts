@@ -718,9 +718,23 @@ export async function releaseStaleClaims(
     });
   }
   // «نظام الجولات» (R1) — only with the owner's switch ON; OFF, the lines above are the whole rule, as they always were.
+  return expired.length + (await releaseNoAnswerRounds(tx, scope, cal, now, opts));
+}
+
+/**
+ * The rounds release alone (R1) — what `releaseStaleClaims` runs after the ninety-minute release. The five-minute job calls it in
+ * a transaction of its own, so a pass that runs out of time can never roll back the ninety-minute releases with it.
+ */
+export async function releaseNoAnswerRounds(
+  tx: Tx,
+  scope: QueueScope,
+  cal: BusinessCalendar,
+  now = new Date(),
+  opts: { rounds?: RoundsSwitch; roundsLimit?: number } = {}
+): Promise<number> {
   const rounds = opts.rounds ?? (await roundsSwitch(tx, scope.companyId));
-  if (!roundsOn(rounds)) return expired.length;
-  return expired.length + (await releaseByRounds(tx, scope, cal, now, rounds, opts.roundsLimit ?? ROUNDS_RELEASE_LIMIT));
+  if (!roundsOn(rounds)) return 0;
+  return releaseByRounds(tx, scope, cal, now, rounds, opts.roundsLimit ?? ROUNDS_RELEASE_LIMIT);
 }
 
 /** How many orders one pass of the rounds release may let go — the same bound as the ninety-minute release above. */
@@ -791,7 +805,7 @@ async function releaseByRounds(
       customerId: true,
       postponedUntil: true,
       nextFollowUpAt: true,
-      contactAttempts: { select: { createdAt: true, result: true, attemptNumber: true } },
+      contactAttempts: { select: { createdAt: true, result: true, attemptNumber: true, employeeId: true } },
     },
   });
   if (rows.length < ROUNDS_SCAN_PAGE) roundsScanCursor.delete(key);
@@ -801,7 +815,12 @@ async function releaseByRounds(
   for (const order of rows) {
     if (released >= limit) break;
     const reason = roundsReleaseReason(
-      { claimedAt: order.claimedAt!, postponedUntil: order.postponedUntil, nextFollowUpAt: order.nextFollowUpAt },
+      {
+        claimedAt: order.claimedAt!,
+        claimedById: order.claimedById,
+        postponedUntil: order.postponedUntil,
+        nextFollowUpAt: order.nextFollowUpAt,
+      },
       order.contactAttempts,
       sw,
       cut,
