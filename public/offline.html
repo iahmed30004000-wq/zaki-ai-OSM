@@ -30,8 +30,8 @@
   </head>
   <body>
     <div class="card">
-      <h1>لا اتصال بالإنترنت</h1>
-      <p>تعذّر الوصول إلى الخادم. التطبيق مفتوح، لكن لا شيء يُقرأ ولا يُكتب الآن.</p>
+      <h1 id="title">لا اتصال بالإنترنت</h1>
+      <p id="why">تعذّر الوصول إلى الخادم. التطبيق مفتوح، لكن لا شيء يُقرأ ولا يُكتب الآن.</p>
 
       <!--
         The sentence that matters. Somebody who thinks their tap was "saved
@@ -45,12 +45,30 @@
       </div>
 
       <button type="button" onclick="location.reload()">أعد المحاولة</button>
-      <small>تعود الصفحة تلقائياً حين يرجع الاتصال.</small>
+      <small id="back">تعود الصفحة تلقائياً حين يرجع الاتصال.</small>
     </div>
 
     <script>
       // Comes back on its own, so nobody is left tapping a button to find out.
       addEventListener('online', () => location.reload());
+
+      /*
+       * THE LINE IS UP, AND THE SERVER IS THE ONE NOT ANSWERING.
+       *
+       * The worker serves this page both when the phone has no network and
+       * when the server did not answer in time — right after a deploy, most
+       * of all. «لا اتصال بالإنترنت» on a phone whose wifi is fine sends the
+       * person to restart the router. So when the browser says it is online,
+       * the page says what is really true, and asks again by itself every
+       * thirty seconds: no `online` event will ever come to bring it back.
+       */
+      if (navigator.onLine) {
+        document.getElementById('title').textContent = 'الخادم لا يردّ الآن';
+        document.getElementById('why').textContent =
+          'الاتصال بالإنترنت يعمل، لكن الخادم لم يُجب في الوقت. غالباً يكون مشغولاً بتحديث، ويعود خلال دقائق.';
+        document.getElementById('back').textContent = 'تُعاد المحاولة تلقائياً كل ثلاثين ثانية.';
+        setTimeout(() => location.reload(), 30000);
+      }
     </script>
   </body>
 </html>

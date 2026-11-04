@@ -153,6 +153,8 @@ describe('what the browser is allowed to remember', () => {
     'shell/Sidebar.tsx': 'which menu groups this person leaves open',
     'growth/CampaignsBoard.tsx': 'which of the three campaign views this person last picked — a word, never a record',
     'shell/IdleGuard.tsx': 'a timestamp, shared between this account’s open tabs',
+    'lib/stale-build.ts':
+      'when this tab last reloaded itself for a file from the build before a deploy — a timestamp, session storage, the guard that keeps it to one reload',
     'shell/InstallApp.tsx': 'when «ليس الآن» was pressed on the install strip — a timestamp, nothing about a person or a record',
     'ui/SavedViews.tsx': 'a name and a query string — a question to re-ask, never an answer or a record id',
     /*

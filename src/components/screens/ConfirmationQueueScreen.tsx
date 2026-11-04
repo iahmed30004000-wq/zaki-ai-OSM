@@ -7,6 +7,7 @@ import { RiLoader4Line } from '@remixicon/react';
 import { Rows } from '@/components/ui/Rows';
 import { OrderRef } from '@/components/orders/OrderRef';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { LoadFailed } from '@/components/ui/LoadFailed';
 import { PullPanel, useQueue } from '@/components/confirmation/PullPanel';
 import { CONFIRMATION_STATUS_AR, type ConfirmationStatus } from '@/lib/confirmation-workflow';
 
@@ -28,6 +29,10 @@ export function ConfirmationQueueScreen() {
   const { data } = queue;
 
   if (!data) {
+    // The first load failed: say so, with a way to ask again — never a spinner that turns forever (LoadFailed.tsx).
+    if (queue.error) {
+      return <LoadFailed message={queue.error} onRetry={() => void queue.reload()} />;
+    }
     return (
       <div className="flex items-center justify-center gap-2 text-[var(--sys-muted-foreground)] text-sm py-16">
         <RiLoader4Line className="w-4 h-4 animate-spin" /> جارٍ التحميل…

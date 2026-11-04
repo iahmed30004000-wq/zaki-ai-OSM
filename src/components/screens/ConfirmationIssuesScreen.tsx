@@ -15,6 +15,7 @@ import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
 import { CustomerHistoryOffer } from '@/components/orders/CustomerHistory';
 import { useIsPhone } from '@/hooks/useIsPhone';
+import { LoadFailed } from '@/components/ui/LoadFailed';
 
 /**
  * /confirmation/issues — entry issues on moderator-entered orders only.
@@ -220,6 +221,18 @@ export function ConfirmationIssuesScreen() {
   }
 
   if (!issues) {
+    // The first load failed: say so, with a way to ask again — never a spinner that turns forever (LoadFailed.tsx).
+    if (error) {
+      return (
+        <LoadFailed
+          message={error}
+          onRetry={() => {
+            setError(null);
+            void load();
+          }}
+        />
+      );
+    }
     return (
       <div className="flex items-center justify-center gap-2 text-[var(--sys-muted-foreground)] text-sm py-16">
         <RiLoader4Line className="w-4 h-4 animate-spin" /> جارٍ التحميل…

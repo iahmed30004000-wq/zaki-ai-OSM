@@ -59,6 +59,7 @@ import { useOutbox, usePendingCall, type SendAnswer } from '@/components/confirm
 import { CallHelperCard } from '@/components/confirmation/CallHelperCard';
 import { useHelperReading } from '@/components/confirmation/useHelperReading';
 import { onAndroid } from '@/lib/call-helper/android';
+import { LoadFailed } from '@/components/ui/LoadFailed';
 import {
   ATTEMPT_RESULT,
   CALLBACK_REASON,
@@ -943,6 +944,18 @@ export function ConfirmationMineScreen() {
   };
 
   if (!data) {
+    // The first load failed: say so, with a way to ask again — never a spinner that turns forever (LoadFailed.tsx).
+    if (error) {
+      return (
+        <LoadFailed
+          message={error}
+          onRetry={() => {
+            setError(null);
+            void load();
+          }}
+        />
+      );
+    }
     return (
       <div className="flex items-center justify-center gap-2 text-[var(--sys-muted-foreground)] text-sm py-16">
         <RiLoader4Line className="w-4 h-4 animate-spin" /> جارٍ التحميل…
