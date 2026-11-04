@@ -10,6 +10,12 @@
 @source not "../components/landing/designs/motion";
 
 /*
+ * The Android call helper is Kotlin and XML for a phone, not markup of this site: its words would
+ * read as utility candidates, so the scanner skips the whole apps folder.
+ */
+@source not "../../apps";
+
+/*
  * What EVERY page loads: the utility classes, and nothing that styles a
  * page by itself. The dashboard's own look is src/app/(system)/system.css;
  * a landing page's and a storefront's is their theme (--store-*). A rule here
