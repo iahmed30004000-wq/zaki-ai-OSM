@@ -1,0 +1,11 @@
+# Gradle and build output — the APK is built by GitHub Actions only.
+.gradle/
+build/
+app/build/
+local.properties
+.idea/
+*.iml
+# A signing key never lives in the repository: it reaches CI as a secret.
+*.jks
+*.keystore
+*.p12

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">مساعد الاتصال</string>
+
+    <!-- الشاشة الرئيسية -->
+    <string name="main_title">مساعد الاتصال</string>
+    <string name="main_intro">بيتصل بالزبون من هاتفك، وبعد المكالمة بيخبّر النظام إذا رد، وقديش حكيتوا، وقديش رنّ. ما بيقرا غير المكالمة اللي عملها هو.</string>
+    <string name="status_paired">مربوط بـ %1$s</string>
+    <string name="status_paired_user">الحساب: %1$s</string>
+    <string name="status_unpaired">مش مربوط — افتحي صفحة الربط من الموقع على هالهاتف</string>
+    <string name="perms_title">الأذونات</string>
+    <string name="perm_call">الاتصال</string>
+    <string name="perm_call_why">ليفتح المكالمة مباشرة بلا ما تنسخي الرقم</string>
+    <string name="perm_state">حالة الهاتف</string>
+    <string name="perm_state_why">ليعرف إمتى خلصت المكالمة</string>
+    <string name="perm_log">سجل المكالمات</string>
+    <string name="perm_log_why">ليقرا مدة المكالمة اللي عملها هو بس</string>
+    <string name="perm_granted">مسموح</string>
+    <string name="perm_missing">مش مسموح</string>
+    <string name="grant">اسمح</string>
+    <string name="open_settings">افتحي الإعدادات</string>
+    <string name="restricted_hint">إذا زر الإذن ما اشتغل وطلعلك «إعداد محظور»: من معلومات التطبيق اضغطي ⋮ ثم «السماح بالإعدادات المحظورة»، وارجعي اسمحي.</string>
+    <string name="queue_count">نتائج ناطرة تنبعت: %1$s</string>
+    <string name="disconnect">افصل</string>
+    <string name="disconnect_question">تفصلي هالهاتف عن الحساب؟</string>
+    <string name="disconnected">انفصل</string>
+    <string name="cancel">إلغاء</string>
+    <string name="close">سكّر</string>
+    <string name="version">النسخة %1$s</string>
+
+    <!-- الربط -->
+    <string name="pair_question">ربط هذا الهاتف بحساب %1$s؟</string>
+    <string name="pair_button">اربط</string>
+    <string name="pairing">عم نربط…</string>
+    <string name="paired_ok">انربط — %1$s</string>
+    <string name="pair_bad_link">رابط الربط مش صالح — افتحيه من جديد من الموقع</string>
+    <string name="pair_not_https">الربط بيقبل مواقع https بس</string>
+    <string name="pair_no_route">الموقع لسا ما فيه جزء الربط — بيوصل مع تحديث الموقع</string>
+    <string name="pair_refused">الموقع رفض الربط (رمز %1$s)</string>
+    <string name="pair_bad_reply">رد الموقع مش مفهوم — جرّبي كمان مرة</string>
+    <string name="net_error">ما قدرنا نوصل للموقع — تأكدي من النت وجرّبي كمان مرة</string>
+
+    <!-- الاتصال -->
+    <string name="call_bad_link">رابط الاتصال مش صالح</string>
+    <string name="call_need_pair">التطبيق مش مربوط بحسابك — اربطيه من الموقع أول</string>
+    <string name="call_need_perms">لازم تسمحي بـ: %1$s</string>
+    <string name="call_fix_pair">افتحي التطبيق</string>
+    <string name="call_fix_perms">اسمح بالأذونات</string>
+    <string name="dial_without">اتصل بدون المساعد</string>
+    <string name="calling">عم نتصل بـ %1$s…</string>
+    <string name="reading_log">خلصت المكالمة — عم نقرا السجل…</string>
+    <string name="call_failed">ما قدر الهاتف يفتح المكالمة</string>
+    <string name="call_busy">في مكالمة شغّالة من المساعد — خلّصيها أول</string>
+    <string name="answered_line">رد — %1$s</string>
+    <string name="not_answered_line">ما رد — رنّ %1$s ث</string>
+    <string name="not_found">ما لقينا المكالمة بسجل الهاتف — سجّلي النتيجة بإيدك</string>
+    <string name="queued_suffix">(انحفظت، وبتنبعت لما يرجع النت)</string>
+    <string name="token_revoked">انفصل الربط من الموقع — اربطي الهاتف من جديد</string>
+    <string name="list_separator">، </string>
+</resources>
