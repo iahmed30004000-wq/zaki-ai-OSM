@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CourierRefusal } from './couriers/logestechs';
 import { markOutcomeUnknown } from './couriers/types';
 import { ATTESTATION_AR } from './shipment-cancel';
+import { DECIDED_MEANWHILE_AR } from './order-seal';
 import { assertVoidable } from './order-state';
 import { holdReservation } from './shipment-hold';
 import { readContract, validate } from './apps/contract';
@@ -311,7 +312,7 @@ describe('ONE end state', () => {
     await endOrder(input({ parcelInHand: true, viaRequest: { id: 'r1' }, warehouseOwnTool: false }));
 
     expect(db.orderChangeRequest.updateMany).toHaveBeenCalledWith({
-      where: { id: 'r1', appliedAt: null },
+      where: { id: 'r1', status: 'APPROVED', appliedAt: null },
       data: { appliedAt: expect.any(Date), appliedById: 'u1' },
     });
   });
@@ -709,6 +710,48 @@ describe('the owner’s ruling 4/11 — on an open trolley only the warehouse’
 
     expect(await holdFromTrolley(holdIn({ warehouseOwnTool: true }))).toMatchObject({ ok: true });
     expect(db.order.updateMany).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * A REQUEST THAT STOPPED SAYING YES WHILE IT WAS BEING CARRIED OUT (the owner's ruling 4/11, «تراجع عن الموافقة»).
+ *
+ * The carry-out passed `authorises` (APPROVED, not applied) and then a take-back committed. The stamp is written on the
+ * condition «still APPROVED, still not applied»; finding nothing there throws inside the transaction, so the order is not
+ * ended or held under a REJECTED request, and the door answers REQUEST_DECIDED_MEANWHILE.
+ */
+describe('the stamp asks the request still says yes — a take-back that landed first rolls the write back', () => {
+  const held = () => packed({ shippingBatchId: null, shippingBatch: null });
+
+  it('the cancel stamps only an APPROVED, unapplied request', async () => {
+    db.order.findFirst.mockResolvedValue(held());
+
+    await endOrder(input({ parcelInHand: true, viaRequest: { id: 'r1' }, warehouseOwnTool: false }));
+
+    expect(db.orderChangeRequest.updateMany.mock.calls[0][0]).toMatchObject({ where: { id: 'r1', status: 'APPROVED', appliedAt: null } });
+  });
+
+  it('finding nothing (taken back meanwhile): the cancel is refused REQUEST_DECIDED_MEANWHILE, and nothing is announced', async () => {
+    db.order.findFirst.mockResolvedValue(held());
+    db.orderChangeRequest.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    const out = await endOrder(input({ parcelInHand: true, viaRequest: { id: 'r1' }, warehouseOwnTool: false }));
+
+    expect(out).toMatchObject({ ok: false, status: 409, code: 'REQUEST_DECIDED_MEANWHILE', error: DECIDED_MEANWHILE_AR });
+    expect(emitAppEvent).not.toHaveBeenCalled();
+  });
+
+  it('the hold the same way', async () => {
+    db.order.findFirst.mockResolvedValue(packed());
+    db.orderChangeRequest.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    const out = await holdFromTrolley({
+      orderId: 'o1', companyId: 'c1', storeId: 's1', by: BY, until: new Date('2026-11-05T00:00:00Z'), reason: 'x',
+      viaRequest: { id: 'r1' }, warehouseOwnTool: true,
+    });
+
+    expect(out).toMatchObject({ ok: false, status: 409, code: 'REQUEST_DECIDED_MEANWHILE' });
+    expect(db.orderChangeRequest.updateMany.mock.calls[0][0]).toMatchObject({ where: { id: 'r1', status: 'APPROVED', appliedAt: null } });
   });
 });
 

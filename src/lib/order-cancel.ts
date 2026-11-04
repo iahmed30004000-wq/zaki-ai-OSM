@@ -6,7 +6,7 @@ import { releaseOrderLines } from './reservation';
 import { resolveDeliveryFee } from './delivery-fees';
 import { roundMinor } from './money';
 import { SHIPPING_GONE } from './order-state';
-import { ON_OPEN_TROLLEY, ON_TROLLEY_AR, onOpenTrolley } from './order-seal';
+import { DECIDED_MEANWHILE_AR, ON_OPEN_TROLLEY, ON_TROLLEY_AR, onOpenTrolley } from './order-seal';
 import {
   ATTESTATION_AR,
   ATTESTATION_NEEDED_AR,
@@ -167,6 +167,17 @@ class OrderMovedOn extends Error {
 }
 
 const MOVED_AR = 'تغيّر الطلب أثناء العمل عليه (أو سُلّمت دفعته للتو) — حدّث الصفحة وجرّب من جديد.';
+
+/**
+ * THE REQUEST BEING CARRIED OUT WAS DECIDED AGAIN MEANWHILE — taken back («تراجع عن الموافقة», the owner's ruling 4/11) or
+ * carried out by somebody else. Its stamp is written on the condition «still APPROVED, still not applied»; finding nothing
+ * there rolls the whole write back, so an order is never ended or held under a request that no longer says yes.
+ */
+class RequestDecidedMeanwhile extends Error {
+  constructor() {
+    super('REQUEST_DECIDED_MEANWHILE');
+  }
+}
 
 /** What a conditional write must still find, or find nothing. */
 function stillAsRead(o: {
@@ -359,18 +370,25 @@ export async function endOrder(input: EndOrderInput): Promise<EndOutcome> {
         await tx.customer.update({ where: { id: o.customerId }, data: { cancelledOrders: { increment: 1 } } });
       }
       if (input.viaRequest) {
-        // ONCE: `appliedAt: null` makes a second, concurrent carry-out a no-op.
-        await tx.orderChangeRequest.updateMany({
-          where: { id: input.viaRequest.id, appliedAt: null },
+        // ONCE, and only while it still says yes: `status: 'APPROVED', appliedAt: null`. A take-back or a second carry-out that
+        // landed first makes this find nothing, and the whole write goes back.
+        const stamped = await tx.orderChangeRequest.updateMany({
+          where: { id: input.viaRequest.id, status: 'APPROVED', appliedAt: null },
           data: { appliedAt: new Date(), appliedById: input.by.id },
         });
+        if (stamped.count !== 1) throw new RequestDecidedMeanwhile();
       }
-      return true;
+      return true as const;
     })
     .catch((e: unknown) => {
-      if (e instanceof OrderMovedOn) return false;
+      if (e instanceof OrderMovedOn) return false as const;
+      if (e instanceof RequestDecidedMeanwhile) return 'DECIDED' as const;
       throw e;
     });
+  // The company may already have said yes to the cancel: then it is said loudly, as any lost write is.
+  if (wrote === 'DECIDED') {
+    return remote.kind === 'CANCELLED' ? movedOn(input, o, remote) : refuse(409, 'REQUEST_DECIDED_MEANWHILE', DECIDED_MEANWHILE_AR);
+  }
   if (!wrote) return movedOn(input, o, remote);
 
   let announced = false;
@@ -567,18 +585,24 @@ export async function holdFromTrolley(input: HoldFromTrolleyInput): Promise<Hold
         },
       });
       if (input.viaRequest) {
-        await tx.orderChangeRequest.updateMany({
-          where: { id: input.viaRequest.id, appliedAt: null },
+        // Only while the request still says yes — see `RequestDecidedMeanwhile`.
+        const stamped = await tx.orderChangeRequest.updateMany({
+          where: { id: input.viaRequest.id, status: 'APPROVED', appliedAt: null },
           data: { appliedAt: new Date(), appliedById: input.by.id },
         });
+        if (stamped.count !== 1) throw new RequestDecidedMeanwhile();
       }
-      return true;
+      return true as const;
     })
     .catch((e: unknown) => {
-      if (e instanceof OrderMovedOn) return false;
+      if (e instanceof OrderMovedOn) return false as const;
+      if (e instanceof RequestDecidedMeanwhile) return 'DECIDED' as const;
       throw e;
     });
-  if (!wrote) {
+  if (wrote === 'DECIDED' && remote.kind !== 'CANCELLED') {
+    return { ok: false, status: 409, code: 'REQUEST_DECIDED_MEANWHILE', error: DECIDED_MEANWHILE_AR };
+  }
+  if (wrote !== true) {
     const lost = await movedOn({ ...input, door: 'HOLD' }, o, remote);
     return { ok: false, status: 409, code: lost.ok ? 'ORDER_MOVED_ON' : lost.code, error: lost.ok ? MOVED_AR : lost.error };
   }

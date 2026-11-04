@@ -94,6 +94,13 @@ export const ON_TROLLEY_AR =
   'الطلب على دفعة شحن جاهزة — ما بيصير إلغاء ولا تأجيل ولا تعديل عليه. إذا لازم، المستودع بيطلّعه من الدفعة أوّل («أجّل الشحن» من شاشة الدفعات).';
 
 /**
+ * A request being carried out was decided again meanwhile — its approval taken back («تراجع عن الموافقة», 4/11) or carried
+ * out by somebody else. Said by every door that stamps a request applied on the condition «still APPROVED, still not applied».
+ */
+export const DECIDED_MEANWHILE_AR =
+  'طلب التعديل اتغيّر قراره أثناء التنفيذ (حدا تراجع عن الموافقة أو نفّذه قبلك) — ما انكتب شي. حدّث الصفحة.';
+
+/**
  * `handedToCourier`, ASKED OF THE DATABASE AND TURNED INSIDE OUT: the orders that are still on OUR side of the handover.
  *
  * A query that must FIND the orders the courier has not taken cannot call the function above — it has no row in hand —

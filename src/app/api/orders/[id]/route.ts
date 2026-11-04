@@ -2172,8 +2172,9 @@ export async function PATCH(
        * pressing «طبّق» on one approval a race with one winner: the loser's whole write goes back (ALREADY_APPLIED).
        */
       if (viaRequest) {
+        // …and only while it still says yes: a take-back («تراجع عن الموافقة», 4/11) that landed first rolls this back too.
         const stamp = await tx.orderChangeRequest.updateMany({
-          where: { id: viaRequest.id, appliedAt: null },
+          where: { id: viaRequest.id, status: 'APPROVED', appliedAt: null },
           data: { appliedAt: new Date(), appliedById: user.id },
         });
         if (stamp.count !== 1) throw new AppliedMeanwhile();

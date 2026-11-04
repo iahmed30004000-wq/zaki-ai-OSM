@@ -175,7 +175,7 @@ describe('the holder, with the key, on her own confirmed order in no batch — h
     await press(salma);
 
     expect(db.orderChangeRequest.updateMany).toHaveBeenCalledWith({
-      where: { id: REQUEST_ID, appliedAt: null },
+      where: { id: REQUEST_ID, status: 'APPROVED', appliedAt: null },
       data: { appliedAt: expect.any(Date), appliedById: 'salma' },
     });
     const activity = db.orderActivity.create.mock.calls.map((c: any[]) => c[0].data).find((d: any) => d.action === 'STATUS_CHANGED');

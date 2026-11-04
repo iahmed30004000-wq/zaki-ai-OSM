@@ -22,6 +22,8 @@ const { db, requireContext, can, authorize, assertOrderAccess, logAudit, release
     orderStatusLog: { create: vi.fn() },
     orderActivity: { create: vi.fn() },
     user: { findUnique: vi.fn() },
+    // The trolley the override is asked about (4/11).
+    shippingBatch: { findFirst: vi.fn() },
     $transaction: vi.fn(),
   },
   requireContext: vi.fn(),
@@ -89,11 +91,13 @@ function orderIs(over: Record<string, unknown>) {
   db.order.findFirst.mockResolvedValue(o);
 }
 
-const onTrolley = (status: string | null) =>
+const onTrolley = (status: string | null) => {
   orderIs({
     shippingStatus: 'READY_FOR_PICKUP', labelPrintedAt: new Date(), shippingBatchId: 'b1',
     shippingBatch: status ? { status, batchNumber: 'B-1' } : null,
   });
+  db.shippingBatch.findFirst.mockResolvedValue(status ? { status } : null);
+};
 
 const cancel = (extra: Record<string, unknown> = {}) =>
   reject({ action: 'cancel', rejectionReason: undefined, note: 'الزبون اتصل وألغى الطلب', ...extra });
@@ -168,5 +172,58 @@ describe('the negatives', () => {
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(db.order.updateMany).toHaveBeenCalledTimes(1);
     expect(db.order.updateMany.mock.calls[0][0].data).toMatchObject({ confirmationStatus: 'CANCELLED' });
+  });
+});
+
+/*
+ * THE OVERRIDE (`orders.unlock` with a reason) MOVES NO CONFIRMED ORDER OFF «CONFIRMED» ON AN OPEN TROLLEY (review of #202).
+ *
+ * «CALLBACK_REQUESTED» is CONFIRMED → FOLLOW_UP_REQUIRED and «ANSWERED» is CONFIRMED → IN_PROGRESS: the table refuses both,
+ * and the override let them through — leaving an unconfirmed order on a trolley the press then hands to the courier.
+ */
+describe('the override on a trolley still being filled', () => {
+  const TOMORROW = () => new Date(Date.now() + 86_400_000).toISOString();
+  const result = (r: string, extra: Record<string, unknown> = {}) =>
+    reject({ action: 'contact_result', result: r, rejectionReason: undefined, note: 'المدير بعد اتصال بالزبون', ...extra });
+
+  it.each([
+    ['CALLBACK_REQUESTED', { nextFollowUpAt: TOMORROW() }],
+    ['ANSWERED', {}],
+  ])('«%s» with the override is refused ON_OPEN_TROLLEY — and nothing is written', async (r, extra) => {
+    onTrolley('READY');
+
+    const res = await result(r, extra);
+
+    expect(res.status, JSON.stringify(res.body)).toBe(409);
+    expect(res.body.code).toBe('ON_OPEN_TROLLEY');
+    nothingWritten();
+    expect(db.orderStatusLog.create).not.toHaveBeenCalled();
+  });
+
+  it('a trolley it names but nobody can read is an open one (fail closed)', async () => {
+    onTrolley(null);
+
+    const res = await result('CALLBACK_REQUESTED', { nextFollowUpAt: TOMORROW() });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('ON_OPEN_TROLLEY');
+    nothingWritten();
+  });
+
+  it('NEGATIVE: an order on no trolley keeps the override as it always was — the transition is written', async () => {
+    const res = await result('CALLBACK_REQUESTED', { nextFollowUpAt: TOMORROW() });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(db.order.updateMany).toHaveBeenCalledTimes(1);
+    expect(db.order.updateMany.mock.calls[0][0].data).toMatchObject({ confirmationStatus: 'FOLLOW_UP_REQUIRED', followUpStatus: 'SCHEDULED' });
+  });
+
+  it('NEGATIVE: after the handover the trolley is not what answers (the override goes through, as before)', async () => {
+    onTrolley('SHIPPED');
+
+    const res = await result('ANSWERED');
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(db.order.updateMany.mock.calls[0][0].data).toMatchObject({ confirmationStatus: 'IN_PROGRESS' });
   });
 });

@@ -162,7 +162,7 @@ describe('the holder, with the key, on her own confirmed order in no batch — h
     await press(salma);
 
     expect(db.orderChangeRequest.updateMany).toHaveBeenCalledWith({
-      where: { id: REQUEST_ID, appliedAt: null },
+      where: { id: REQUEST_ID, status: 'APPROVED', appliedAt: null },
       data: { appliedAt: expect.any(Date), appliedById: 'salma' },
     });
     expect(logAudit.mock.calls[0][0]).toMatchObject({ action: 'SHIP_HOLD_SET', entityId: ORDER_ID, userId: 'salma' });

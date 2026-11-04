@@ -127,7 +127,7 @@ describe('the holder, with the key, on her own confirmed order in no batch — t
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(JSON.stringify(db.customer.update.mock.calls)).toContain('شارع جديد');
     expect(db.orderChangeRequest.updateMany).toHaveBeenCalledWith({
-      where: { id: REQUEST_ID, appliedAt: null },
+      where: { id: REQUEST_ID, status: 'APPROVED', appliedAt: null },
       data: { appliedAt: expect.any(Date), appliedById: 'salma' },
     });
     const entry = logAudit.mock.calls.map((c) => c[0]).find((e) => e.entity === 'Order');

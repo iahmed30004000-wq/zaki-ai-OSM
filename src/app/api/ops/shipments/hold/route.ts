@@ -6,7 +6,7 @@ import { can, requirePermission } from '@/lib/authorization';
 import { authorises } from '@/lib/change-request-apply';
 import { holdsTheWindow } from '@/lib/change-request-routing';
 import { EDIT_CONFIRMED_KEY } from '@/lib/edit-confirmed-key';
-import { handedToCourier, onOpenTrolley, ON_OPEN_TROLLEY, ON_TROLLEY_AR } from '@/lib/order-seal';
+import { DECIDED_MEANWHILE_AR, handedToCourier, onOpenTrolley, ON_OPEN_TROLLEY, ON_TROLLEY_AR } from '@/lib/order-seal';
 import { holdFromTrolley } from '@/lib/order-cancel';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
@@ -322,11 +322,13 @@ export async function POST(req: Request) {
         select: { id: true, orderNumber: true, shipHoldUntil: true, shipHoldReason: true },
       });
       if (viaRequest) {
-        // ONCE: `appliedAt: null` makes a second, concurrent carry-out a no-op.
-        await tx.orderChangeRequest.updateMany({
-          where: { id: viaRequest.id, appliedAt: null },
+        // ONCE, and only while it still says yes (`status: 'APPROVED'`): a take-back («تراجع عن الموافقة», 4/11) or a second
+        // carry-out that landed first makes this find nothing, and the hold goes back with it.
+        const stamped = await tx.orderChangeRequest.updateMany({
+          where: { id: viaRequest.id, status: 'APPROVED', appliedAt: null },
           data: { appliedAt: new Date(), appliedById: user.id },
         });
+        if (stamped.count !== 1) throw new Error('REQUEST_DECIDED_MEANWHILE');
       }
       if (release) {
         // Back in the shipment list, so its units are taken again — against
@@ -372,6 +374,12 @@ export async function POST(req: Request) {
         : `${order.orderNumber} مؤجَّل حتى ${String(until).slice(0, 10)} — ويعود إلى قائمة الشحن يومَها وحده. ${reservation.why}.`,
     });
   } catch (error) {
+    if (error instanceof Error && error.message === 'REQUEST_DECIDED_MEANWHILE') {
+      return NextResponse.json(
+        { error: DECIDED_MEANWHILE_AR, errorAr: DECIDED_MEANWHILE_AR, code: 'REQUEST_DECIDED_MEANWHILE' },
+        { status: 409 }
+      );
+    }
     return apiErrorResponse(error);
   }
 }

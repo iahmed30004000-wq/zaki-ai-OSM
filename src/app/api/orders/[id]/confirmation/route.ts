@@ -10,6 +10,7 @@ import { logAudit } from '@/lib/audit';
 import { apiError } from '@/lib/api-error';
 import { can, authorize } from '@/lib/authorization';
 import { endOrder } from '@/lib/order-cancel';
+import { ON_OPEN_TROLLEY, ON_TROLLEY_AR, onOpenTrolley } from '@/lib/order-seal';
 import { reserveOrderLines } from '@/lib/reservation';
 import { emitAppEvent } from '@/lib/apps/events';
 import { queueConversions } from '@/lib/conversions/emit';
@@ -306,6 +307,25 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           },
           { status: 409 }
         );
+      }
+    }
+
+    /*
+     * ── NOTHING MOVES AN ORDER OFF «CONFIRMED» WHILE IT SITS ON AN OPEN TROLLEY (the owner's ruling 4/11 overturns M6 here) ──
+     *
+     * The override above (`orders.unlock` with a reason) passes transitions the table refuses — CONFIRMED → FOLLOW_UP_REQUIRED by
+     * «CALLBACK_REQUESTED», CONFIRMED → IN_PROGRESS by «ANSWERED» — and a follow-up or postponement date rides on several actions.
+     * On a trolley still being filled either one leaves an unconfirmed (or postponed) order on it, and the press then hands that
+     * order to the courier. So, before any write: a target other than CONFIRMED, or any date, is refused ON_OPEN_TROLLEY. The
+     * trolley is read like every other door's (one it names but nobody can read is an open one). An ending (CANCELLED,
+     * REJECTED) is `endOrder`'s, which asks the same question on its own read; a plain «confirm» changes nothing the press reads.
+     */
+    const movesOffConfirmed = !!target && target !== 'CONFIRMED' && target !== 'CANCELLED' && target !== 'REJECTED';
+    const writesADate = updateData.nextFollowUpAt !== undefined || updateData.postponedUntil !== undefined;
+    if (order.shippingBatchId && (movesOffConfirmed || writesADate)) {
+      const trolley = await db.shippingBatch.findFirst({ where: { id: order.shippingBatchId, companyId }, select: { status: true } });
+      if (onOpenTrolley({ shippingBatchId: order.shippingBatchId, batchStatus: trolley?.status ?? null })) {
+        return NextResponse.json({ error: ON_TROLLEY_AR, errorAr: ON_TROLLEY_AR, code: ON_OPEN_TROLLEY }, { status: 409 });
       }
     }
 
