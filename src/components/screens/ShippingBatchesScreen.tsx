@@ -22,6 +22,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/Toast';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { useCan } from '@/hooks/useCan';
+import { useMayOpen } from '@/hooks/useMayOpen';
 import { MissionDone, NextStepButton } from '@/components/ui/NextStep';
 
 /**
@@ -110,6 +111,9 @@ const STATUS: Record<string, { ar: string; cls: string }> = {
   CLOSED: { ar: 'مُنتهية', cls: 'bg-[var(--sys-surface)] text-[var(--sys-muted-foreground)] border-[var(--sys-border)]' },
 };
 
+/** Where a cancel or a postponement that stops the handover is decided. */
+const CHANGE_REQUESTS_HREF = '/control/change-requests';
+
 export function ShippingBatchesScreen() {
   const toast = useToast();
   const phone = useIsPhone();
@@ -125,6 +129,7 @@ export function ShippingBatchesScreen() {
   const mayDepart = mayBatches && mayMove;
   // «لصق الباركودات» writes the courier's barcode — the dispatch's job done by hand — so it asks the dispatch's key (RV165).
   const mayShip = useCan('ops.ship');
+  const mayOpen = useMayOpen();
   const [batches, setBatches] = useState<Batch[] | null>(null);
   const [total, setTotal] = useState(0);
   const [filter, setFilter] = useState<'all' | 'READY' | 'SHIPPED' | 'CLOSED'>('all');
@@ -246,6 +251,17 @@ export function ShippingBatchesScreen() {
           tone: 'danger',
         });
         if (go) await setStatus(batch, status, true);
+        return;
+      }
+      // A cancel or a postponement still unanswered: the sentence names the orders, and the way out is the requests screen —
+      // offered only to whoever may open it; anyone else is told who decides there.
+      if (said?.code === 'PENDING_CHANGES') {
+        const mayDecide = mayOpen(CHANGE_REQUESTS_HREF);
+        toast.failed(
+          said.errorAr ?? 'تعذر التحديث',
+          mayDecide ? undefined : 'اطلب من المشرفة أو المدير يحسموهم من «طلبات التعديل».',
+          mayDecide ? { label: 'افتح طلبات التعديل', href: CHANGE_REQUESTS_HREF } : undefined
+        );
         return;
       }
       toast.failed(e instanceof Error ? e.message : 'تعذر التحديث');
