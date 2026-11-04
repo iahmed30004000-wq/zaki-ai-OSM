@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { db, queue, sw } = vi.hoisted(() => ({
   db: { $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn('tx')) },
-  queue: { releaseStaleClaims: vi.fn(async () => 2), releaseNoAnswerRounds: vi.fn(async () => 3) },
+  queue: { releaseStaleClaims: vi.fn(async (..._a: unknown[]) => 2), releaseNoAnswerRounds: vi.fn(async (..._a: unknown[]) => 3) },
   sw: { value: { enabled: false, enabledAt: null } as { enabled: boolean; enabledAt: Date | null } },
 }));
 
