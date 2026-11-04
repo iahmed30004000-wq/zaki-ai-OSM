@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
-import { requirePermission } from '@/lib/authorization';
+import { can, requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { customerRisk } from '@/lib/customer-risk';
 import { mayReadInsights } from '@/lib/insights-key';
@@ -18,6 +18,7 @@ import { DESK_NOT_FOUND, DESK_WATCH_REFUSAL, mayWatchDesks, watchedAgent } from 
 import type { BusinessCalendar } from '@/lib/business-calendar';
 import { countedRounds, roundsOn, workClock, type AttemptFact } from '@/lib/no-answer-rounds';
 import { roundsSwitch } from '@/lib/no-answer-rounds-switch';
+import { companySendsFor } from '@/lib/whatsapp/after-no-answer';
 
 /**
  * GET /api/confirmation/mine — the agent's own desk, in THREE groups.
@@ -284,6 +285,10 @@ export async function GET(request: Request) {
     const riskByCustomer = new Map(customerIds.map((id, i) => [id, risks[i]]));
     // «نظام الجولات» — OFF (the default), the count is every no-answer, as it always was.
     const rounds = roundsOn(await roundsSwitch(db, companyId));
+    // «واتساب بعد لا يرد» from the company's number for this country (`after-no-answer.ts`) — only on her own desk, the one with the sheet,
+    // and only for whoever holds `whatsapp.send`: the send door asks it, and a button that answers 403 is not offered.
+    const fromCompany =
+      !viewing && (await companySendsFor(db, companyId, ruleFor(country.code)?.dialCode ?? null)) && can(user, 'whatsapp.send');
     const noAnswer = rounds
       ? await roundCounts([...inConfirmation, ...closedToday].map((o) => o.id), {
           workHoursStart: country.workHoursStart,
@@ -330,6 +335,9 @@ export async function GET(request: Request) {
       leadDays: POSTPONE_LEAD_DAYS,
       // The country's calling code — the rows carry a local number («09…») and WhatsApp needs it in full.
       dialCode: ruleFor(country.code)?.dialCode ?? null,
+      // The sheet offers «ابعت من رقم الشركة» for this country: COMPANY, a template, and the number connected. Absent otherwise —
+      // the agent's own WhatsApp, as it always was.
+      ...(fromCompany ? { whatsappRoute: 'COMPANY' as const } : {}),
       /** Postponed to a later day — off her desk, not gone. */
       waitingLater,
       noAnswerLimit: NO_ANSWER_LIMIT,

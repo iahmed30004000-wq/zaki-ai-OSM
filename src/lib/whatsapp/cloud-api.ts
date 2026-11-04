@@ -87,6 +87,41 @@ export async function sendTextMessage(opts: {
   return { ok: true, wamid };
 }
 
+/**
+ * Send an approved TEMPLATE — the only message Meta accepts from a business outside the 24-hour window (after a call nobody
+ * answered, the customer has written nothing). `bodyValues` fill the body's {{1}}, {{2}} … in order; none = no components.
+ * Same error mapping as `sendTextMessage`: the token never appears in what comes back.
+ */
+export async function sendTemplateMessage(opts: {
+  phoneNumberId: string;
+  token: string;
+  to: string; // customer wa_id, digits
+  templateName: string;
+  templateLang: string;
+  bodyValues: string[];
+}): Promise<{ ok: boolean; wamid?: string; error?: string; code?: string }> {
+  const url = `${GRAPH_BASE}/${GRAPH_VERSION}/${opts.phoneNumberId}/messages`;
+  const template: Record<string, unknown> = { name: opts.templateName, language: { code: opts.templateLang } };
+  if (opts.bodyValues.length > 0) {
+    template.components = [{ type: 'body', parameters: opts.bodyValues.map((text) => ({ type: 'text', text })) }];
+  }
+  const res = await metaFetch(url, {
+    method: 'POST',
+    headers: authHeaders(opts.token),
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: opts.to,
+      type: 'template',
+      template,
+    }),
+  });
+  if (!res.ok) return { ok: false, error: res.error, code: res.status === 429 ? 'RATE_LIMIT' : 'META_ERROR' };
+  const wamid = res.data?.messages?.[0]?.id;
+  if (!wamid) return { ok: false, error: 'تعذر إرسال الرسالة', code: 'NO_WAMID' };
+  return { ok: true, wamid };
+}
+
 /** Mark an inbound message as read on Meta (best-effort). */
 export async function markMessageRead(opts: {
   phoneNumberId: string;
