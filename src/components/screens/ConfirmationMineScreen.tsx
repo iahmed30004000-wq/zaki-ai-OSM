@@ -53,6 +53,7 @@ import { useIsPhone } from '@/hooks/useIsPhone';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 import { OrderGoods, OrderNotes, OrderPlace, governorateOf, streetOf } from '@/components/orders/OrderGoods';
 import { CallOutcomeSheet, type LoggedOutcome } from '@/components/confirmation/CallOutcomeSheet';
+import { WhatsAppAfterNoAnswer } from '@/components/confirmation/WhatsAppAfterNoAnswer';
 import { useOutbox, usePendingCall, type SendAnswer } from '@/components/confirmation/useCallOutcome';
 import {
   ATTEMPT_RESULT,
@@ -159,6 +160,8 @@ interface MineResponse {
   rounds?: boolean;
   /** The country's calling code («963») — WhatsApp needs the number in full. */
   dialCode?: string | null;
+  /** «ابعت من رقم الشركة» is offered on the call sheet for this country (`after-no-answer.ts`). Absent = her own WhatsApp. */
+  whatsappRoute?: 'COMPANY';
   /** The server's clock, so a wrong clock on her machine changes nothing. */
   serverNow: string;
   /** Nobody has failed to reach this customer yet — these are calls. */
@@ -1858,19 +1861,21 @@ export function ConfirmationMineScreen() {
           canPull={canPull}
           pulling={queue.pulling}
           whatsapp={
-            <ContactButtons
-              only="WHATSAPP"
-              preferApp
-              phone={callOrder.customer.rawPhone}
-              countryCode={data.dialCode}
-              context={{
-                orderNumber: callOrder.orderNumber,
-                customerName: callOrder.customer.fullName,
-                amount: callOrder.totalAmount,
-                region: callOrder.customer.city,
-              }}
-              orderId={callOrder.id}
-            />
+            <WhatsAppAfterNoAnswer key={callOrder.id} fromCompany={data.whatsappRoute === 'COMPANY'} orderId={callOrder.id}>
+              <ContactButtons
+                only="WHATSAPP"
+                preferApp
+                phone={callOrder.customer.rawPhone}
+                countryCode={data.dialCode}
+                context={{
+                  orderNumber: callOrder.orderNumber,
+                  customerName: callOrder.customer.fullName,
+                  amount: callOrder.totalAmount,
+                  region: callOrder.customer.city,
+                }}
+                orderId={callOrder.id}
+              />
+            </WhatsAppAfterNoAnswer>
           }
           onAnswered={() => void load()}
           onLogged={(outcome) => queueLogged(workable(callOrder.id) ?? callOrder, outcome)}

@@ -9,6 +9,7 @@ import { RiCheckboxCircleLine, RiCloseCircleLine, RiErrorWarningLine, RiRefreshL
 import { PageHeader } from '@/components/ui/PageHeader';
 import { arDateTime } from '@/lib/format';
 import { userCan } from '@/lib/can';
+import { WhatsAppAfterNoAnswerCard } from '@/components/settings/WhatsAppAfterNoAnswerCard';
 
 /**
  * `embedded` — a card of «الربط» (`/settings/links`), which owns the page's title: the
@@ -150,6 +151,9 @@ export function WhatsAppSettingsScreen({ embedded = false }: { embedded?: boolea
             {message.text}
           </div>
         )}
+
+        {/* «واتساب بعد لا يرد» — from the agent's WhatsApp or the company's number, per country. */}
+        <WhatsAppAfterNoAnswerCard />
 
         {/* Details */}
         <Card>
