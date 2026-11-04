@@ -45,7 +45,7 @@ import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { arDate } from '@/lib/format';
 import { Money } from '@/components/ui/Money';
-import { cardTone, noAnswerWords } from '@/lib/no-answer-tone';
+import { cardTone, noAnswerWords, roundWords } from '@/lib/no-answer-tone';
 import { POST_ORDER_ADDITION_AR } from '@/lib/post-order-offer-copy';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { useIsPhone } from '@/hooks/useIsPhone';
@@ -154,6 +154,8 @@ interface MineResponse {
   /** Postponed to a later day — off her desk, not gone. */
   waitingLater: number;
   noAnswerLimit: number;
+  /** «نظام الجولات» is on: the counter is a round («جولة n من 3»). */
+  rounds?: boolean;
   /** The country's calling code («963») — WhatsApp needs the number in full. */
   dialCode?: string | null;
   /** The server's clock, so a wrong clock on her machine changes nothing. */
@@ -1371,7 +1373,7 @@ export function ConfirmationMineScreen() {
                       never be the only place it is said. */}
                   {order.noAnswerCount > 0 && !closed && (
                     <span className="text-xs font-medium text-[var(--sys-warning)]">
-                      {noAnswerWords(order.noAnswerCount)}
+                      {data.rounds ? roundWords(order.noAnswerCount, data.noAnswerLimit) : noAnswerWords(order.noAnswerCount)}
                       <span className="tabular-nums" dir="ltr"> ({order.noAnswerCount}/{data.noAnswerLimit})</span>
                     </span>
                   )}

@@ -15,6 +15,9 @@ import { readPage } from '@/lib/numeric-input';
 import { typed } from '@/lib/text-search';
 import { ruleFor } from '@/lib/phone-rules';
 import { DESK_NOT_FOUND, DESK_WATCH_REFUSAL, mayWatchDesks, watchedAgent } from '@/lib/desk-watch';
+import type { BusinessCalendar } from '@/lib/business-calendar';
+import { countedRounds, roundsOn, workClock, type AttemptFact } from '@/lib/no-answer-rounds';
+import { roundsSwitch } from '@/lib/no-answer-rounds-switch';
 
 /**
  * GET /api/confirmation/mine — the agent's own desk, in THREE groups.
@@ -116,6 +119,22 @@ async function noAnswerCounts(orderIds: string[]) {
     _count: { _all: true },
   });
   return new Map(rows.map((r) => [r.orderId, r._count._all]));
+}
+
+/**
+ * «نظام الجولات» ON: the counter is the ROUND, from the same function the close reads (`countedRounds`), so «جولة n من 3» on
+ * the card is the number that closes the order. One read of the attempts and one working clock for the whole desk.
+ */
+async function roundCounts(orderIds: string[], cal: BusinessCalendar) {
+  if (orderIds.length === 0) return new Map<string, number>();
+  const rows = await db.orderContactAttempt.findMany({
+    where: { orderId: { in: orderIds } },
+    select: { orderId: true, createdAt: true, result: true, employeeId: true, attemptNumber: true },
+  });
+  const byOrder = new Map<string, AttemptFact[]>();
+  for (const row of rows) byOrder.set(row.orderId, [...(byOrder.get(row.orderId) ?? []), row]);
+  const clock = workClock(cal);
+  return new Map([...byOrder].map(([orderId, list]) => [orderId, countedRounds(list, clock).counted.length]));
 }
 
 export async function GET(request: Request) {
@@ -263,7 +282,16 @@ export async function GET(request: Request) {
     // (a customer with no history has no tier either) — and the lookups are not made.
     const risks = mayReadInsights(user) ? await Promise.all(customerIds.map((id) => customerRisk(db, companyId, id))) : customerIds.map(() => null);
     const riskByCustomer = new Map(customerIds.map((id, i) => [id, risks[i]]));
-    const noAnswer = await noAnswerCounts([...inConfirmation, ...closedToday].map((o) => o.id));
+    // «نظام الجولات» — OFF (the default), the count is every no-answer, as it always was.
+    const rounds = roundsOn(await roundsSwitch(db, companyId));
+    const noAnswer = rounds
+      ? await roundCounts([...inConfirmation, ...closedToday].map((o) => o.id), {
+          workHoursStart: country.workHoursStart,
+          workHoursEnd: country.workHoursEnd,
+          weekendDays: country.weekendDays,
+          timezone: country.timezone,
+        })
+      : await noAnswerCounts([...inConfirmation, ...closedToday].map((o) => o.id));
 
     // The response clock: how long each order has been waiting on her.
     // "How long since I took anything new" is the header chip's question,
@@ -305,6 +333,8 @@ export async function GET(request: Request) {
       /** Postponed to a later day — off her desk, not gone. */
       waitingLater,
       noAnswerLimit: NO_ANSWER_LIMIT,
+      // «نظام الجولات» is on: the counter is «جولة n من 3». Absent when it is off.
+      ...(rounds ? { rounds: true } : {}),
       // The server's own clock, so a wrong clock on her machine cannot make
       // an order look answered or overdue.
       serverNow: new Date().toISOString(),
@@ -313,8 +343,13 @@ export async function GET(request: Request) {
       /**
        * «لا يرد» — one or two. Not three: the third is not work, it is a
        * closed order, and it is below.
+       *
+       * AND AN ORDER STILL OPEN PAST THE LIMIT STAYS HERE. `held` is open orders only (the closed ones are `closedToday`), so
+       * a count of three or more on an open order is one the close did not take: «نظام الجولات» (three rounds on one day, or
+       * presses left behind when the owner turned it off again) or a close the helper refused. Dropped from both tabs it would
+       * be in her hands, counted toward her cap, and on no list she can see.
        */
-      noAnswer: held.filter((o) => o.noAnswerCount > 0 && o.noAnswerCount < NO_ANSWER_LIMIT),
+      noAnswer: held.filter((o) => (o.noAnswerCount > 0 && o.noAnswerCount < NO_ANSWER_LIMIT) || o.noAnswerCount >= NO_ANSWER_LIMIT),
       /** Closed by the third no-answer today — read-only, so it is not a surprise tomorrow. */
       closedToday: closedToday.map(decorate),
       /** «أكّدتها» — a day, a search, a page, and the size of what is behind them. */

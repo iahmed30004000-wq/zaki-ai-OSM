@@ -35,3 +35,12 @@ export function noAnswerWords(count: number): string {
   if (count === 2) return 'ما ردّ مرّتين';
   return `ما ردّ ${count} مرّات`;
 }
+
+/**
+ * «نظام الجولات» ON (`no-answer-rounds.ts`): the count is ROUNDS, not presses — presses within three working hours are one
+ * round, and the third round closes the order only on a second day. The words say a round so she is not told «ما ردّ مرّة
+ * واحدة» about an order she rang four times this morning.
+ */
+export function roundWords(rounds: number, limit: number): string {
+  return `جولة ${rounds} من ${limit}`;
+}

@@ -8,6 +8,7 @@ import { SWAP_ACTION } from './superseded';
 import { TWIN_ACTION } from './recent-twin-order';
 import { TWIN_CONFIRM_ACK_ACTION } from './confirmed-twin';
 import { TWIN_HELD_ACTION } from './twins-follow-the-pull';
+import { REPULL_RELEASE_REASON, ROUND_RELEASE_REASON } from './no-answer-rounds';
 import { POST_ORDER_ADDITION_AR } from './post-order-offer-copy';
 import { COURIER_SAID, courierSaidTitle } from './couriers/courier-said';
 
@@ -105,6 +106,9 @@ const CLAIM_REASON_AR: Record<string, string> = {
   MANUAL_CLAIM: 'استلام يدوي',
   ADMIN_OVERRIDE: 'تجاوز إداري',
   AUTO_RELEASE: 'تحرير تلقائي',
+  // «نظام الجولات» (no-answer-rounds.ts): the two releases it adds, each with its reason in words.
+  [ROUND_RELEASE_REASON]: 'تحرير تلقائي — مرّت 3 ساعات عمل على جولة بلا ردّ، ورجع للطابور',
+  [REPULL_RELEASE_REASON]: 'تحرير تلقائي — انسحب من جديد وما انسجّلت عليه محاولة خلال 90 دقيقة عمل',
   LOCK_EXPIRED: 'انتهت مدة القفل',
   REASSIGNED: 'إعادة إسناد',
 };
