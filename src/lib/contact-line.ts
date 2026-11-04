@@ -20,7 +20,11 @@ import { isNetworkFailure } from '@/lib/call-outcome';
  *     and the moment the connection is back, until it lands;
  *   · a resend ASKS THE LOG FIRST, as the call sheet's outbox does (`alreadyLogged` in call-outcome.ts): the first send may
  *     have reached the server and lost only its answer, and the same press must never become two lines. The door has no
- *     idempotency key and no column for one; the log itself is the key — her line of this result, since the press;
+ *     idempotency key and no column for one; the log itself is the key — HER line (the employee who pressed, kept on the
+ *     line), of this result, since the press with half a minute of clock slack. Anybody else's line, or an earlier press of
+ *     hers, is not this press: a colleague's «اتصال» before the order changed hands, or her own before she re-pulled it,
+ *     says nothing about the claim she holds now — and counting it would drop her line and let the re-pull release
+ *     (`REPULL_RELEASE_REASON`) take the order ninety minutes later;
  *   · a definitive refusal (403 not hers, 404, 400) is said beside the strip, as it always was, and not retried.
  *
  * ── WHY NOT THE CALL SHEET'S OUTBOX ITSELF (`useOutbox`) ──
@@ -42,11 +46,11 @@ export const LINE_RETRY_MS = 15_000;
 /** A line still waiting after this long is about a call long over: dropped, never sent that late. */
 export const LINE_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 /**
- * How far before the press the log is searched for the line already landed. The phone's clock and the server's are not the
- * same clock; a margin too small writes the same press twice, and too large can only find an earlier press of hers on the
- * same order — which has already told the release she is working it.
+ * How far before the press the log is searched for the line already landed: the phone's clock and the server's are not the
+ * same clock. Half a minute, as the call sheet's `alreadyLogged` — wider would find an EARLIER press (hers before a re-pull)
+ * and drop this one, which is the one thing this module exists to prevent.
  */
-export const LINE_CLOCK_SLACK_MS = 10 * 60 * 1000;
+export const LINE_CLOCK_SLACK_MS = 30_000;
 
 export type LineMethod = 'PHONE' | 'SMS' | 'WHATSAPP';
 export type LineResult = 'OPENED' | 'MESSAGE_SENT';
@@ -55,6 +59,8 @@ export type LineResult = 'OPENED' | 'MESSAGE_SENT';
 export interface WaitingLine {
   key: string;
   orderId: string;
+  /** Who pressed — the only employee whose line in the log can be this press, and the only session that may send it. */
+  userId: string | null;
   method: LineMethod;
   result: LineResult;
   pressedAt: number;
@@ -77,15 +83,33 @@ export function worthAnotherTry(e: unknown): boolean {
   return status === 408 || status === 429 || status >= 500;
 }
 
-/** Her line of this result, since the press (with the clocks' margin) — the same press, already landed. */
+/**
+ * Her line of this result, since the press (with the clocks' margin) — the same press, already landed. Nobody else's: with
+ * no presser known, nothing in the log is this press, and the line is sent.
+ */
 export function lineLanded(
-  attempts: { result?: string; createdAt?: string }[],
-  line: Pick<WaitingLine, 'result' | 'pressedAt'>
+  attempts: { result?: string; employeeId?: string; createdAt?: string }[],
+  line: Pick<WaitingLine, 'result' | 'pressedAt' | 'userId'>
 ): boolean {
   const since = line.pressedAt - LINE_CLOCK_SLACK_MS;
   return attempts.some(
-    (a) => a.result === line.result && typeof a.createdAt === 'string' && Date.parse(a.createdAt) >= since
+    (a) =>
+      a.result === line.result &&
+      a.employeeId === line.userId &&
+      typeof a.createdAt === 'string' &&
+      Date.parse(a.createdAt) >= since
   );
+}
+
+/**
+ * WHO IS SIGNED IN ON THIS TAB — told by the app's provider (`AppContext.tsx`), so the strip needs no context of its own.
+ * Null until it is known; a line is sent only under the session of the one who pressed it.
+ */
+let owner: string | null = null;
+export function setContactLineOwner(userId: string | null): void {
+  const changed = owner !== userId;
+  owner = userId;
+  if (changed && userId) resumeContactLines();
 }
 
 // ───────────────────────── kept in this tab ─────────────────────────
@@ -109,6 +133,7 @@ function read(now = Date.now()): WaitingLine[] {
       typeof (l as WaitingLine).key === 'string' &&
       typeof (l as WaitingLine).orderId === 'string' &&
       typeof (l as WaitingLine).pressedAt === 'number' &&
+      ((l as WaitingLine).userId === null || typeof (l as WaitingLine).userId === 'string') &&
       now - (l as WaitingLine).pressedAt <= LINE_MAX_AGE_MS
   );
 }
@@ -174,6 +199,8 @@ function said(e: unknown): string | null {
  */
 export function sendContactLine(v: { orderId: string; method: LineMethod; result: LineResult; now?: number }): Promise<LineAnswer> {
   const pressedAt = v.now ?? Date.now();
+  // Read at the press, not at the failure: whoever was signed in when she pressed.
+  const presser = owner;
   return post(v.orderId, v.method, v.result).then(
     (): LineAnswer => {
       refusals.delete(v.orderId);
@@ -185,6 +212,7 @@ export function sendContactLine(v: { orderId: string; method: LineMethod; result
       const line: WaitingLine = {
         key: `${v.orderId}:${pressedAt}`,
         orderId: v.orderId,
+        userId: presser,
         method: v.method,
         result: v.result,
         pressedAt,
@@ -203,14 +231,21 @@ let flushing: Promise<void> | null = null;
  * there is done without a second POST.
  */
 export function flushContactLines(force = false): Promise<void> {
-  if (flushing) return flushing;
+  // A pass already running: a tick leaves it to that one; a forced send (the connection back) waits for it, then goes.
+  if (flushing) return force ? flushing.then(() => flushContactLines(true)) : flushing;
   const run = (async () => {
     for (;;) {
       const at = Date.now();
-      const due = read(at).find((l) => force || l.sendAt <= at);
+      // Another person's line (a session that ended and a different one signed in on this tab) is never sent as this one's.
+      const signedIn = owner;
+      if (signedIn && read(at).some((l) => l.userId && l.userId !== signedIn)) {
+        write(read(at).filter((l) => !l.userId || l.userId === signedIn));
+      }
+      // Until the tab knows who is signed in, a line with a presser waits: it may not be this session's.
+      const due = read(at).find((l) => (force || l.sendAt <= at) && (!l.userId || l.userId === owner));
       if (!due) break;
       try {
-        const log = await apiJson<{ attempts?: { result?: string; createdAt?: string }[] }>(
+        const log = await apiJson<{ attempts?: { result?: string; employeeId?: string; createdAt?: string }[] }>(
           `/api/orders/${due.orderId}/contact-attempts`
         );
         if (!lineLanded(log.attempts ?? [], due)) await post(due.orderId, due.method, due.result);

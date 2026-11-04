@@ -23,12 +23,15 @@ const { apiJson } = vi.hoisted(() => ({ apiJson: vi.fn() }));
 vi.mock('@/lib/api-client', () => ({ apiJson: (...a: unknown[]) => apiJson(...a) }));
 
 import { ContactButtons, LINE_RETRYING } from './ContactButtons';
+import { AppProvider } from '@/context/AppContext';
+import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import {
   CONTACT_LINES_KEY,
   LINE_RETRY_MS,
   flushContactLines,
   forgetContactLines,
   sendContactLine,
+  setContactLineOwner,
 } from '@/lib/contact-line';
 
 const CONTEXT = { orderNumber: 'ORD-1', customerName: 'أبو محمد', amount: 25 };
@@ -43,7 +46,9 @@ const refused = (status: number, msg: string) => Object.assign(new Error(msg), {
 
 /** The answers the door gives, in order; the log read answers `log`. */
 let answers: (unknown | Error)[] = [];
-let log: { result: string; createdAt: string }[] = [];
+let log: { result: string; employeeId: string; createdAt: string }[] = [];
+/** A line in the log, `ms` from now, by whom. */
+const logged = (employeeId: string, ms: number, result = 'OPENED') => ({ result, employeeId, createdAt: new Date(Date.now() + ms).toISOString() });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -51,6 +56,9 @@ beforeEach(() => {
   sessionStorage.clear();
   answers = [];
   log = [];
+  // Sara is signed in on this tab (the provider says so in the app — `AppContext.tsx`).
+  setContactLineOwner(null);
+  setContactLineOwner('sara');
   vi.stubGlobal('open', vi.fn());
   apiJson.mockImplementation(async (url: string, init?: Init) => {
     if (url === URL_ && init?.method === 'POST') {
@@ -121,7 +129,7 @@ describe('a line that did not land is kept and sent again', () => {
     render(<ContactButtons phone="0791234567" orderId="o1" context={CONTEXT} />);
     fireEvent.click(screen.getByTitle('اتصال'));
     await screen.findByText(LINE_RETRYING);
-    log = [{ result: 'OPENED', createdAt: new Date().toISOString() }];
+    log = [logged('sara', 0)];
 
     await flushContactLines(true);
     expect(posts(), 'نفس الضغطة انكتبت سطرين').toHaveLength(1);
@@ -131,7 +139,55 @@ describe('a line that did not land is kept and sent again', () => {
   it('NEGATIVE: an OLDER line of another result is not this press — it is sent', async () => {
     answers = [dropped()];
     await sendContactLine({ orderId: 'o1', method: 'PHONE', result: 'OPENED' });
-    log = [{ result: 'NO_ANSWER', createdAt: new Date().toISOString() }];
+    log = [logged('sara', 0, 'NO_ANSWER')];
+    await flushContactLines(true);
+    expect(posts()).toHaveLength(2);
+  });
+
+  it('A COLLEAGUE’S LINE IS NOT HER PRESS: Sara rang at 10:00, the order went to Huda, Huda’s 10:06 line dropped — it IS sent', async () => {
+    // Sara's «اتصال» six minutes before, and one of hers a second after Huda's press — neither is Huda's.
+    log = [logged('sara', -6 * 60_000), logged('sara', 1_000)];
+    setContactLineOwner('huda');
+    answers = [dropped()];
+    await sendContactLine({ orderId: 'o1', method: 'PHONE', result: 'OPENED' });
+    await flushContactLines(true);
+    expect(posts(), 'سطر هدى انرمى بسبب سطر سارة — والطلب برجع بعد 90 دقيقة').toHaveLength(2);
+    expect(sessionStorage.getItem(CONTACT_LINES_KEY)).toBeNull();
+  });
+
+  it('AN EARLIER PRESS OF HERS IS NOT THIS ONE: she re-pulled it within minutes — her new line is sent', async () => {
+    log = [logged('sara', -6 * 60_000)];
+    answers = [dropped()];
+    await sendContactLine({ orderId: 'o1', method: 'PHONE', result: 'OPENED' });
+    await flushContactLines(true);
+    expect(posts(), 'ضغطتها القديمة انحسبت مكان الجديدة').toHaveLength(2);
+  });
+
+  it('and within the clocks’ half minute, her own line is still this press — not sent twice', async () => {
+    log = [logged('sara', -20_000)];
+    answers = [dropped()];
+    await sendContactLine({ orderId: 'o1', method: 'PHONE', result: 'OPENED' });
+    await flushContactLines(true);
+    expect(posts()).toHaveLength(1);
+  });
+
+  it('NEGATIVE: never sent under another session — a line Sara pressed is dropped once Huda is signed in', async () => {
+    answers = [dropped()];
+    await sendContactLine({ orderId: 'o1', method: 'PHONE', result: 'OPENED' });
+    setContactLineOwner('huda');
+    await flushContactLines(true);
+    expect(posts(), 'سطر سارة انبعت بجلسة هدى').toHaveLength(1);
+    expect(sessionStorage.getItem(CONTACT_LINES_KEY)).toBeNull();
+  });
+
+  it('and while nobody is known to be signed in, it waits — kept, not sent', async () => {
+    answers = [dropped()];
+    await sendContactLine({ orderId: 'o1', method: 'PHONE', result: 'OPENED' });
+    setContactLineOwner(null);
+    await flushContactLines(true);
+    expect(posts()).toHaveLength(1);
+    expect(sessionStorage.getItem(CONTACT_LINES_KEY)).not.toBeNull();
+    setContactLineOwner('sara');
     await flushContactLines(true);
     expect(posts()).toHaveLength(2);
   });
@@ -157,7 +213,7 @@ describe('a line that did not land is kept and sent again', () => {
   });
 
   it('a reload: what this tab kept is sent by the next strip drawn', async () => {
-    const kept = { key: 'o1:1', orderId: 'o1', method: 'PHONE', result: 'OPENED', pressedAt: Date.now(), sendAt: 0 };
+    const kept = { key: 'o1:1', orderId: 'o1', userId: 'sara', method: 'PHONE', result: 'OPENED', pressedAt: Date.now(), sendAt: 0 };
     sessionStorage.setItem(CONTACT_LINES_KEY, JSON.stringify([kept]));
     render(<ContactButtons phone="0791234567" orderId="o1" context={CONTEXT} />);
     await waitFor(() => expect(posts()).toHaveLength(1));
@@ -193,5 +249,25 @@ describe('NEGATIVE: a refusal is final', () => {
     forgetContactLines();
     await flushContactLines(true);
     expect(posts()).toHaveLength(1);
+  });
+});
+
+describe('who pressed is known from the app itself', () => {
+  it('the provider tells the strip who is signed in — the waiting line is hers', async () => {
+    setContactLineOwner(null);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })));
+    const huda = { id: 'huda', email: 'h@x.y', name: 'هدى', role: 'CONFIRMATION_AGENT', status: 'ACTIVE', companyId: 'c1', permissions: [] };
+    render(
+      <AppRouterContext.Provider value={{ refresh: vi.fn() } as never}>
+        <AppProvider initialUser={huda as never}>
+          <ContactButtons phone="0791234567" orderId="o1" context={CONTEXT} />
+        </AppProvider>
+      </AppRouterContext.Provider>
+    );
+    answers = [dropped()];
+    fireEvent.click(screen.getByTitle('اتصال'));
+    await screen.findByText(LINE_RETRYING);
+    const kept = JSON.parse(sessionStorage.getItem(CONTACT_LINES_KEY)!);
+    expect(kept[0].userId, 'السطر ما بيعرف مين كبس').toBe('huda');
   });
 });

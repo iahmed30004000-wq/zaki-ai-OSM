@@ -6,6 +6,7 @@ import { translations } from '@/lib/i18n';
 import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { pollSignal } from '@/lib/poll-timeout';
+import { setContactLineOwner } from '@/lib/contact-line';
 
 /**
  * App-wide client context. The interface is Arabic RTL only (contract
@@ -64,6 +65,10 @@ export function AppProvider({
   initialUser?: SessionUser | null;
 }) {
   const [currentUser, setCurrentUser] = useState<SessionUser | null>(initialUser || null);
+  // The contact strip's waiting lines are sent only under the session of the one who pressed them (`contact-line.ts`,
+  // the owner's ruling 4/11) — told here, so the strip needs no context of its own.
+  const signedInId = currentUser?.id ?? null;
+  useEffect(() => setContactLineOwner(signedInId), [signedInId]);
 
   /*
    * THE SERVER'S USER IS ADOPTED WHEN IT CHANGES — NOT ONLY WHEN THE PAGE FIRST OPENS.

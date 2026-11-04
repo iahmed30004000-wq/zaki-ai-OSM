@@ -121,6 +121,14 @@ describe('the ninety-minute release tells her', () => {
     expect(db.notification.createMany).not.toHaveBeenCalled();
   });
 
+  it('NEGATIVE: the write matched nothing (the order changed hands since the read) — no history line, no notice', async () => {
+    ninetyRows = [{ id: 'o1', orderNumber: 'ORD-7', claimedAt: t(1, 9), claimedById: 'sara', companyId: 'c1' }];
+    db.order.updateMany.mockResolvedValueOnce({ count: 0 });
+    expect(await releaseStaleClaims(db as never, scope, JO, t(1, 11))).toBe(0);
+    expect(db.notification.createMany, 'انبعت إشعار عن تحرير ما صار').not.toHaveBeenCalled();
+    expect(db.orderClaimHistory.create).not.toHaveBeenCalled();
+  });
+
   it('two released, two told — each the one who held it', async () => {
     ninetyRows = [
       { id: 'o1', orderNumber: 'ORD-7', claimedAt: t(1, 9), claimedById: 'sara', companyId: 'c1' },
