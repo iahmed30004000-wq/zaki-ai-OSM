@@ -11,7 +11,7 @@ import { cancelVerdict } from '@/lib/shipment-cancel';
 import { batchStatusOf, endOrder } from '@/lib/order-cancel';
 import { holdsTheWindow } from '@/lib/change-request-routing';
 import { EDIT_CONFIRMED_KEY } from '@/lib/edit-confirmed-key';
-import { handedToCourier } from '@/lib/order-seal';
+import { handedToCourier, onOpenTrolley, ON_OPEN_TROLLEY, ON_TROLLEY_AR } from '@/lib/order-seal';
 import { REJECTION_REASONS } from '@/lib/confirmation-workflow';
 import { cancelReasonProblem } from '@/lib/change-request-intent';
 import { courierCancelCarryOut } from '@/lib/couriers/cancel-carryout';
@@ -241,6 +241,19 @@ export async function POST(req: Request) {
       shippingBatchId: order.shippingBatchId,
       batchStatus: await batchStatusOf(db, order.shippingBatchId),
     });
+
+    /*
+     * A REQUEST IS NOT CARRIED OUT ON AN OPEN TROLLEY (the owner's ruling 4/11 overturns M6 here). Only the batch screen's own
+     * «ألغِ / أعِده للمتابعة» — this door WITHOUT a request, under `ops.ship` — takes a parcel off a trolley still being
+     * filled. Asked before anything is written, the reason a decider picks for an old request included.
+     */
+    if (
+      viaRequest &&
+      order.shippingBatchId &&
+      onOpenTrolley({ shippingBatchId: order.shippingBatchId, batchStatus: await batchStatusOf(db, order.shippingBatchId) })
+    ) {
+      return NextResponse.json({ error: ON_TROLLEY_AR, errorAr: ON_TROLLEY_AR, code: ON_OPEN_TROLLEY }, { status: 409 });
+    }
     if (!gate.allowed) {
       /*
        * AN APPROVED CANCEL IS NOT A DEAD END.
@@ -399,6 +412,8 @@ export async function POST(req: Request) {
       expectedVersion: order.version,
       parcelInHand: parcelInHand === true,
       viaRequest,
+      // The warehouse's own tool is this door without a request: the one way off an open trolley (the owner's ruling 4/11).
+      warehouseOwnTool: !viaRequest,
     });
     if (!ended.ok) {
       return NextResponse.json(

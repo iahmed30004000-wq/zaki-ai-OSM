@@ -57,6 +57,7 @@ vi.mock('@/lib/api-error', () => ({
   apiErrorResponse: (e: unknown) => Response.json({ error: `UNEXPECTED: ${(e as Error)?.message}` }, { status: 500 }),
 }));
 
+import { ON_TROLLEY_AR } from '@/lib/order-seal';
 import { POST } from './route';
 
 const line = (over: Record<string, unknown> = {}) => ({ quantity: 1, freeQuantity: 0, unitPrice: 20, discountShare: 0, lineTotal: 20, ...over });
@@ -64,12 +65,16 @@ const line = (over: Record<string, unknown> = {}) => ({ quantity: 1, freeQuantit
 const USER = { id: 'u1', role: 'MANAGER' };
 const ACCESS_ORDER = { id: 'o1', companyId: 'c1' };
 
-/** ORD-2026-1711: a 20$ line, in an open trolley, the courier's fee 3 snapshotted, collected at 23. */
+/**
+ * ORD-2026-1711: a 20$ line, the courier's fee 3 snapshotted, collected at 23 — packed and held OFF its trolley.
+ * (old → new, ruling 4/11 overturns M6 here) It sat on an open trolley in the first version of this file; on one the flag is
+ * no longer told at all (ON_OPEN_TROLLEY, its own block below) — the warehouse takes the parcel off first.
+ */
 const ORDER = {
   id: 'o1', orderNumber: 'ORD-2026-1711', version: 3, confirmationStatus: 'CONFIRMED', shippingStatus: 'READY_FOR_PICKUP',
   shippedAt: null, labelPrintedAt: null, trackingNumber: null, courierSendStartedAt: null, priceIncludesDelivery: false,
   totalAmount: 23, deliveryFee: 3, shippingCost: 0, currency: 'USD', lockedById: null, lockExpiresAt: null,
-  shippingBatch: { status: 'READY', batchNumber: 'BATCH-2026-0005' },
+  shippingBatchId: null as string | null, shippingBatch: null as { status: string; batchNumber: string } | null,
   items: [line()], addOns: [] as { quantity: number; price: number }[],
 };
 
@@ -107,7 +112,7 @@ describe('the total is what the calculator says for the new flag — asked fresh
     const res = await flip(true, { reason: 'العرض شامل التوصيل' });
     const out = await res.json();
     expect(res.status).toBe(200);
-    expect(out).toMatchObject({ changed: true, included: true, totalBefore: 23, totalAfter: 20, delta: -3, inBatch: true, version: 4 });
+    expect(out).toMatchObject({ changed: true, included: true, totalBefore: 23, totalAfter: 20, delta: -3, inBatch: false, version: 4 });
 
     const w = tx.order.updateMany.mock.calls[0][0];
     expect(w.data).toEqual({ priceIncludesDelivery: true, totalAmount: 20, version: { increment: 1 } });
@@ -259,7 +264,7 @@ describe('an order whose total no longer follows its fee is for a person to reco
 describe('dryRun says it, and writes nothing', () => {
   it('the two figures, the difference and the trolley, with nothing written, no timeline row, no audit row', async () => {
     const out = await (await flip(true, { dryRun: true })).json();
-    expect(out).toMatchObject({ dryRun: true, included: true, totalBefore: 23, totalAfter: 20, delta: -3, inBatch: true, currency: 'USD' });
+    expect(out).toMatchObject({ dryRun: true, included: true, totalBefore: 23, totalAfter: 20, delta: -3, inBatch: false, currency: 'USD' });
     expectNothingWritten();
   });
 
@@ -271,7 +276,7 @@ describe('dryRun says it, and writes nothing', () => {
 
   it('the same flag as the order has: nothing to do, said as such, and nothing written', async () => {
     const out = await (await flip(false)).json();
-    expect(out).toMatchObject({ unchanged: true, included: false, totalBefore: 23, totalAfter: 23, inBatch: true });
+    expect(out).toMatchObject({ unchanged: true, included: false, totalBefore: 23, totalAfter: 23, inBatch: false });
     expectNothingWritten();
   });
 
@@ -280,6 +285,33 @@ describe('dryRun says it, and writes nothing', () => {
     expect((await (await flip(true, { dryRun: true })).json()).code).toBe('ORDER_SEALED');
     given({ lockedById: 'u2', lockExpiresAt: new Date(Date.now() + 60_000) });
     expect((await (await flip(true, { dryRun: true })).json()).code).toBe('ORDER_LOCKED');
+  });
+});
+
+describe('on a trolley still being filled the flag is not told at all (the owner’s ruling 4/11)', () => {
+  // ruling 4/11 overturns M6 here: «ما حد يقدر يلغي أي شي… ولا تعديل» once the order is on the batch.
+  it('the press is refused ON_OPEN_TROLLEY, in the one sentence, and nothing is written', async () => {
+    given({ shippingBatchId: 'b1', shippingBatch: { status: 'READY', batchNumber: 'BATCH-2026-0005' } });
+    const res = await flip(true);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ code: 'ON_OPEN_TROLLEY', errorAr: ON_TROLLEY_AR });
+    expectNothingWritten();
+  });
+
+  it('…and so is the dry run, so the screen never states a figure the press would refuse', async () => {
+    given({ shippingBatchId: 'b1', shippingBatch: { status: 'READY', batchNumber: 'BATCH-2026-0005' } });
+    const res = await flip(true, { dryRun: true });
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('ON_OPEN_TROLLEY');
+    expectNothingWritten();
+  });
+
+  it('a trolley the order names but nobody can read is an open one (fail closed)', async () => {
+    given({ shippingBatchId: 'b1', shippingBatch: null });
+    const res = await flip(true);
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('ON_OPEN_TROLLEY');
+    expectNothingWritten();
   });
 });
 

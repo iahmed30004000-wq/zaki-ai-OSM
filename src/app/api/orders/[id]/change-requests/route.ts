@@ -16,7 +16,7 @@ import { CHANGE_INTENTS, INTENT_AR, INTENT_ASK_AR, carryOut, missingFor, type Ch
 import { createNotification } from '@/lib/notification';
 import { deciderFor, mayDecide } from '@/lib/change-request-routing';
 import { EDIT_WINDOW_NOTE_AR, EDIT_WINDOW_OWNER_NOTE_AR } from '@/lib/edit-confirmed-window';
-import { orderSeal, handedToCourier } from '@/lib/order-seal';
+import { orderSeal, handedToCourier, onOpenTrolley } from '@/lib/order-seal';
 import { ORDER_NOT_FOUND } from '@/lib/order-refusals';
 import { previewDraftSchema } from '@/lib/order-line-edit';
 import { previewOrderEdit, type EditableOrderRow } from '@/lib/order-edit-facts';
@@ -209,9 +209,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
      * not the printer (M6): a labelled parcel still on our floor can be
      * held, and a cancel of it is ours to make.
      */
-    const refusal = carryOut(intent, { handedToCourier: handed });
+    /*
+     * AND NOTHING AT ALL WHILE IT SITS ON AN OPEN TROLLEY — the owner's ruling 4/11 overturns M6 here. Every intent, before
+     * anything is written: a request on it is one the press «إغلاق الشحنة» would have to wait for. The order's own column and
+     * the trolley read above — a trolley named by the column but unreadable is refused, not assumed open to asks.
+     */
+    const frozen = onOpenTrolley({
+      shippingBatchId: (order as { shippingBatchId?: string | null }).shippingBatchId ?? null,
+      batchStatus: batch?.status ?? null,
+    });
+    const refusal = carryOut(intent, { handedToCourier: handed, onOpenTrolley: frozen });
     if (refusal.kind === 'REFUSED') {
-      return NextResponse.json({ error: refusal.reason, code: 'INTENT_IMPOSSIBLE' }, { status: 409 });
+      return NextResponse.json(
+        { error: refusal.reason, errorAr: refusal.reason, code: refusal.code ?? 'INTENT_IMPOSSIBLE' },
+        { status: 409 }
+      );
     }
 
     const open = await db.orderChangeRequest.findFirst({

@@ -189,17 +189,20 @@ describe('a parcel the courier has taken', () => {
     expect(db.order.updateMany).not.toHaveBeenCalled();
   });
 
-  it('while the SAME parcel on a trolley still being filled is ours to cancel', async () => {
+  // ruling 4/11 overturns M6 here: on a trolley still being filled the PATCH ends nothing — only the batch screen's «ألغِ» does.
+  it.each(ENDINGS)('and the SAME parcel on a trolley still being filled is not ended by %s: %s either — nothing is written', async (field, value) => {
     orderIs({
       shippingStatus: 'READY_FOR_PICKUP', labelPrintedAt: new Date(),
       shippingBatchId: 'b1', shippingBatch: { status: 'READY', batchNumber: 'B-1' },
     });
     db.order.updateMany.mockResolvedValue({ count: 1 });
 
-    const res = await patch({ confirmationStatus: 'CANCELLED', parcelInHand: true });
+    const res = await patch({ [field]: value, parcelInHand: true });
 
-    expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(db.order.updateMany.mock.calls[0][0].data.shippingBatchId).toBeNull();
+    expect(res.status, JSON.stringify(res.body)).toBe(409);
+    expect(res.body.code).toBe('ON_OPEN_TROLLEY');
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+    expect(db.$transaction).not.toHaveBeenCalled();
   });
 });
 

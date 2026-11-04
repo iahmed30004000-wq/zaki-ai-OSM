@@ -28,7 +28,7 @@ import { CHANGEABLE_FIELDS, CHANGE_FIELD_AR } from '@/lib/change-request-fields'
 import { TERMINAL_CONFIRMATION_STATUSES } from '@/lib/confirmation-workflow';
 import { CONTACT_FIRST_MESSAGE, needsContactFirst, needsRegionFirst, REGION_REQUIRED_MESSAGE } from '@/lib/confirmation-queue';
 
-import { orderSeal, sealedFieldsIn, sealMessage, handedToCourier } from '@/lib/order-seal';
+import { orderSeal, sealedFieldsIn, sealMessage, handedToCourier, onOpenTrolley, ON_OPEN_TROLLEY, ON_TROLLEY_AR } from '@/lib/order-seal';
 import { UNKNOWN_BATCH_AR } from '@/lib/shipment-cancel';
 import { courierActionAr, courierActionFor, courierMessage, sealedAmong } from '@/lib/couriers/change';
 import { expandApproved, mayApply, strayFields } from '@/lib/change-request-apply';
@@ -733,6 +733,29 @@ export async function PATCH(
 
     /*
      * ═══════════════════════════════════════════════════════════════════
+     * AN ORDER ON AN OPEN TROLLEY IS FROZEN — the owner's ruling 4/11 overturns M6 here.
+     *
+     * «مجرد ما الطلبات تترحل ع الباتش ما حد يقدر يلغي أي شي… عشان اقدر اغلق الشحنة». Read once (the trolley named by the
+     * order's own column; one that cannot be read counts as open), and asked of everything this door would carry out on it:
+     * an approved request (here, before its lines are even planned), and below, after the ending block, the override of the
+     * statuses and a postponement date — an ending itself is `endOrder`'s, which refuses it on its own read. The packing
+     * table's own pen (`prep`, `ops.edit_in_batch`) is the warehouse's tool and is not asked. A direct edit of a confirmed
+     * order's fields keeps its own answer (CHANGE_REQUEST_REQUIRED, further down) — and the request it points to is refused
+     * at the raising door.
+     * ═══════════════════════════════════════════════════════════════════
+     */
+    const trolleyRow =
+      !prep && existing.shippingBatchId
+        ? await db.shippingBatch.findFirst({ where: { id: existing.shippingBatchId, companyId }, select: { status: true } })
+        : null;
+    const frozenOnTrolley =
+      !prep && onOpenTrolley({ shippingBatchId: existing.shippingBatchId, batchStatus: trolleyRow?.status ?? null });
+    const refuseOnTrolley = () =>
+      NextResponse.json({ error: ON_TROLLEY_AR, errorAr: ON_TROLLEY_AR, code: ON_OPEN_TROLLEY }, { status: 409 });
+    if (frozenOnTrolley && viaRequest) return refuseOnTrolley();
+
+    /*
+     * ═══════════════════════════════════════════════════════════════════
      * AN APPROVED REQUEST THAT TOUCHES THE GOODS IS CARRIED OUT THROUGH THE LINES (طلب التعديل متعدد الحقول، المرحلة ٤).
      *
      * The owner: «الكمية أكيد بتتطلب أغير معها السعر… وأي تأثير مالي أو مخزون بدك تاخدو بعين الاعتبار» and «اي قرار بعد الان
@@ -1183,6 +1206,12 @@ export async function PATCH(
         orderId: existing.id,
       });
       return NextResponse.json({ success: true, order: endedOrder });
+    }
+
+    // The trolley's freeze (read above): no override of the statuses and no postponement date on an order on an open trolley.
+    // An ending never reaches here — it went to `endOrder` just above, which refuses it on its own fresh read of the trolley.
+    if (frozenOnTrolley && (changingCombined || changingConfirmation || postponedUntil !== undefined)) {
+      return refuseOnTrolley();
     }
 
     const previousStatus = existing.status;
@@ -2143,8 +2172,9 @@ export async function PATCH(
        * pressing «طبّق» on one approval a race with one winner: the loser's whole write goes back (ALREADY_APPLIED).
        */
       if (viaRequest) {
+        // …and only while it still says yes: a take-back («تراجع عن الموافقة», 4/11) that landed first rolls this back too.
         const stamp = await tx.orderChangeRequest.updateMany({
-          where: { id: viaRequest.id, appliedAt: null },
+          where: { id: viaRequest.id, status: 'APPROVED', appliedAt: null },
           data: { appliedAt: new Date(), appliedById: user.id },
         });
         if (stamp.count !== 1) throw new AppliedMeanwhile();

@@ -284,13 +284,14 @@ const seed = (over: { order?: Row; lines?: Row[] } = {}) => {
   fake.writes = [];
 };
 
-/** The same order CONFIRMED, its one unit held on the shelf, in a batch still on our floor: the request door's. */
+/** The same order CONFIRMED, its one unit held on the shelf, packed and still on our floor: the request door's. */
+// ruling 4/11 overturns M6 here: OFF any trolley — on one still being filled the request door carries out nothing.
 const seedConfirmed = (over: { order?: Row; lines?: Row[] } = {}) => {
   seed({
-    order: { status: 'CONFIRMED', confirmationStatus: 'CONFIRMED', shippingStatus: 'READY_FOR_PICKUP', settlementStatus: 'PENDING_COLLECTION', shippingBatchId: 'b1', ...over.order },
+    order: { status: 'CONFIRMED', confirmationStatus: 'CONFIRMED', shippingStatus: 'READY_FOR_PICKUP', settlementStatus: 'PENDING_COLLECTION', shippingBatchId: null, ...over.order },
     lines: over.lines ?? [line({ id: 'line-cream-01', productId: CREAM, productName: 'كريم', quantity: 1, unitPrice: 15, lineTotal: 15, reservedQty: 1 })],
   });
-  fake.batch = { status: 'READY', batchNumber: 'B-7' };
+  fake.batch = null;
 };
 
 /** ORD-2026-0733's shape: the columns say ten for 150 (152.500 with the fee), the line still says one for 15. */

@@ -116,18 +116,19 @@ beforeEach(() => {
   });
   authorize.mockReturnValue({ allowed: false, reason: 'OUT_OF_SCOPE' });
   can.mockImplementation(() => true);
-  // A packed, confirmed parcel with its waybill printed, on a trolley still being filled.
+  // A packed, confirmed parcel with its waybill printed, held OFF its trolley (the warehouse's «أجّل الشحن» kept the label).
+  // ruling 4/11 overturns M6 here: on a trolley still being filled no request is carried out at all — the block below says so.
   ORDER = {
     id: ORDER_ID, companyId: 'c1', storeId: 's1', customerId: 'cu1', version: 3, orderNumber: 'SY-1',
     confirmationStatus: 'CONFIRMED', shippingStatus: 'READY_FOR_PICKUP', shippedAt: null,
-    labelPrintedAt: new Date('2026-10-28T08:00:00Z'), shippingBatchId: 'b1', deliveryProviderId: 'co1',
+    labelPrintedAt: new Date('2026-10-28T08:00:00Z'), shippingBatchId: null, deliveryProviderId: 'co1',
     trackingNumber: null, courierSendStartedAt: null, settlementStatus: 'PENDING_COLLECTION',
     claimedById: null, lockedById: null, lockExpiresAt: null, shippingCost: 3,
     quantity: 1, sellingPrice: 20, discountAmount: 0, totalAmount: 23, productId: 'p1',
     priceIncludesDelivery: false,
   };
   db.order.findUnique.mockResolvedValue(ORDER);
-  db.shippingBatch.findFirst.mockResolvedValue({ status: 'READY', batchNumber: 'BATCH-7' });
+  db.shippingBatch.findFirst.mockResolvedValue(null);
   db.$transaction.mockImplementation(async (fn: never) =>
     typeof fn === 'function' ? (fn as (tx: unknown) => unknown)(db) : fn
   );
@@ -141,6 +142,39 @@ beforeEach(() => {
   db.orderItem.findFirst.mockResolvedValue({ id: 'line-1' });
   db.deliveryProvider.findFirst.mockResolvedValue({ name: 'أرامكس', phone: '0700000000' });
   adapterFor.mockReturnValue({ automated: false, code: 'MANUAL', name: 'يدوي' });
+});
+
+/** Put the order on trolley b1 in the given state. */
+const onTrolley = (status: string | null) => {
+  ORDER = { ...ORDER, shippingBatchId: 'b1' };
+  db.order.findUnique.mockResolvedValue(ORDER);
+  db.shippingBatch.findFirst.mockResolvedValue(status ? { status, batchNumber: 'BATCH-7' } : null);
+};
+
+describe('on a trolley still being filled, nothing is carried out (the owner’s ruling 4/11)', () => {
+  // ruling 4/11 overturns M6 here: this file's first version made the edit in place on a READY trolley.
+  it('an approved address is refused ON_OPEN_TROLLEY, and nothing is written or applied', async () => {
+    onTrolley('READY');
+
+    const res = await patch({ expectedVersion: 3, changeRequestId: REQUEST_ID });
+
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('ON_OPEN_TROLLEY');
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+    expect(db.order.update).not.toHaveBeenCalled();
+    expect(db.orderChangeRequest.updateMany).not.toHaveBeenCalled();
+    expect(db.orderActivity.create).not.toHaveBeenCalled();
+  });
+
+  it('…even when somebody says the courier was told — there is no courier yet', async () => {
+    onTrolley('READY');
+
+    const res = await patch({ expectedVersion: 3, changeRequestId: REQUEST_ID, courierNotified: true });
+
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('ON_OPEN_TROLLEY');
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
 });
 
 describe('an approved edit on a parcel the company has not taken', () => {
@@ -314,7 +348,7 @@ describe('a quantity or a product is NOT made in place on a reserved order of mo
 
 describe('once the company has the parcel — as before', () => {
   it('a pressed trolley still owes the courier a message', async () => {
-    db.shippingBatch.findFirst.mockResolvedValue({ status: 'SHIPPED', batchNumber: 'BATCH-7' });
+    onTrolley('SHIPPED');
 
     const res = await patch({ expectedVersion: 3, changeRequestId: REQUEST_ID });
 
@@ -334,7 +368,7 @@ describe('once the company has the parcel — as before', () => {
   });
 
   it('and told, a pressed trolley’s order is written without touching its waybill', async () => {
-    db.shippingBatch.findFirst.mockResolvedValue({ status: 'SHIPPED', batchNumber: 'BATCH-7' });
+    onTrolley('SHIPPED');
 
     const res = await patch({ expectedVersion: 3, changeRequestId: REQUEST_ID, courierNotified: true });
 
@@ -421,7 +455,7 @@ describe('a barcode the company already holds is cancelled there first', () => {
   });
 
   it('FAILS CLOSED when the trolley it names cannot be read', async () => {
-    db.shippingBatch.findFirst.mockResolvedValue(null);
+    onTrolley(null);
 
     const res = await patch({ expectedVersion: 3, changeRequestId: REQUEST_ID });
 

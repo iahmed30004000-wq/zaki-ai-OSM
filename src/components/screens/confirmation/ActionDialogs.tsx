@@ -317,6 +317,7 @@ export function ChangeRequestDialog({
   orderNumber,
   busy,
   handedToCourier = false,
+  onOpenTrolley = false,
   appliesNow,
   mayChangePrice = false,
   onClose,
@@ -325,6 +326,11 @@ export function ChangeRequestDialog({
   open: boolean;
   orderNumber: string;
   busy?: boolean;
+  /**
+   * On a trolley that has not been handed over (`onOpenTrolley`, the owner's ruling 4/11): none of the three is asked, the
+   * server refuses each with the same sentence — so every button is greyed with it, and nothing can be sent.
+   */
+  onOpenTrolley?: boolean;
   /**
    * The courier has taken the parcel («إغلاق الشحنة — سُلّمت للشركة» was
    * pressed) — what that rules out is shown, not hidden. A printed waybill is
@@ -364,7 +370,10 @@ export function ChangeRequestDialog({
    * hook, one fetch, the whole catalogue: see hooks/useProducts.
    */
   const { products, loading: productsLoading } = useProducts();
-  const blockedPostpone = refusalFor('POSTPONE', { handedToCourier });
+  const facts = { handedToCourier, onOpenTrolley };
+  // On an open trolley the sentence is said once, below the buttons — not again as the postponement's.
+  const blockedPostpone = onOpenTrolley ? null : refusalFor('POSTPONE', facts);
+  const frozen = onOpenTrolley ? refusalFor(intent, facts) : null;
   /**
    * THE GOVERNORATES, FOR THE ONE FIELD THAT IS A CHOICE.
    *
@@ -395,7 +404,7 @@ export function ChangeRequestDialog({
         <Buttons
           onCancel={onClose}
           busy={busy}
-          disabled={intent === 'EDIT' && !to.trim()}
+          disabled={!!frozen || (intent === 'EDIT' && !to.trim())}
           submitLabel={now ? 'طبّق الآن' : 'إرسال الطلب'}
           formId={formId}
         />
@@ -405,6 +414,8 @@ export function ChangeRequestDialog({
         id={formId}
         onSubmit={(e) => {
           e.preventDefault();
+          // Enter in a field submits the form too: on an open trolley nothing is sent, whatever the button says.
+          if (frozen) return;
           onSubmit({ intent, field, to, postponeDate, cancelReason, reason });
         }}
         className="space-y-3"
@@ -412,7 +423,7 @@ export function ChangeRequestDialog({
         {/* WHAT YOU ARE ASKING FOR — first, because it decides the rest. */}
         <div className="grid grid-cols-3 gap-1 rounded-lg bg-[var(--sys-surface-strong)] p-0.5">
           {CHANGE_INTENTS.map((k) => {
-            const blocked = refusalFor(k, { handedToCourier });
+            const blocked = refusalFor(k, facts);
             return (
               <button
                 key={k}
@@ -432,7 +443,15 @@ export function ChangeRequestDialog({
           })}
         </div>
 
-        {handedToCourier && intent !== 'POSTPONE' && (
+        {frozen && (
+          <p
+            role="alert"
+            className="text-xs text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg p-2"
+          >
+            {frozen}
+          </p>
+        )}
+        {!frozen && handedToCourier && intent !== 'POSTPONE' && (
           <p className="text-xs text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg p-2">
             الطرد عند شركة الشحن — يُنفَّذ برسالةٍ إليهم بعد الموافقة، لا بتعديلٍ عندنا.
           </p>
@@ -441,11 +460,13 @@ export function ChangeRequestDialog({
           <p className="text-xs text-[var(--sys-muted-foreground)]">{blockedPostpone}</p>
         )}
 
-        <p className="text-xs text-[var(--sys-muted-foreground)]">
-          {now
-            ? 'الطلب لم يدخل دفعة شحن بعد — التغيير بينطبق فوراً وبيتسجّل باسمك مع السبب. بعد ما يدخل دفعة بيصير طلباً لمن يبتّ فيه.'
-            : 'الطلب المؤكد للقراءة فقط. يراجع المشرف الطلب، ويتوقف تقدّم الطلب حتى صدور القرار.'}
-        </p>
+        {!frozen && (
+          <p className="text-xs text-[var(--sys-muted-foreground)]">
+            {now
+              ? 'الطلب لم يدخل دفعة شحن بعد — التغيير بينطبق فوراً وبيتسجّل باسمك مع السبب. بعد ما يدخل دفعة بيصير طلباً لمن يبتّ فيه.'
+              : 'الطلب المؤكد للقراءة فقط. يراجع المشرف الطلب، ويتوقف تقدّم الطلب حتى صدور القرار.'}
+          </p>
+        )}
 
         {intent === 'EDIT' && (
           <>

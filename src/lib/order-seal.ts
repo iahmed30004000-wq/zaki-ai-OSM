@@ -58,6 +58,49 @@ export function handedToCourier(order: {
 }
 
 /**
+ * A PARCEL ON A TROLLEY THAT IS STILL BEING FILLED IS FROZEN — the owner's ruling 4/11.
+ *
+ * «مجرد ما الطلبات تترحل ع الباتش ما حد يقدر يلغي أي شي، ولا يترحل طلب الغاء او طلب تأجيل او تعديل، عشان اقدر اغلق الشحنة».
+ *
+ * Production case: ORD-2026-1584 sat on a READY trolley, a cancel was raised and approved by mistake, nobody carried it out,
+ * and the press «إغلاق الشحنة — سُلّمت للشركة» refused the whole trolley for it (PENDING_CHANGES) with no way to take the
+ * approval back. So from the moment an order is on a trolley and until the trolley is handed over, nobody raises, approves
+ * or carries out a cancel, a postponement or an edit of it, and no direct door ends or edits it either.
+ *
+ * It overturns M6 (28/10, «الغاء و التأجيل لغاية ما اضغط اغلاق الشحنة») for everybody EXCEPT the warehouse's own tools on
+ * the batch screen — «ألغِ / أعِده للمتابعة / أجّل الشحن» without a change request under `ops.ship`, the packing table's
+ * pen (`ops.edit_in_batch`) and the transfer door. Those are the only way a parcel leaves a trolley, and they never block
+ * the press: they take the parcel off, and the trolley closes without it.
+ *
+ * FAILS CLOSED, as `cancelVerdict` does with UNKNOWN_BATCH: an order that names a trolley whose status cannot be read (or
+ * reads as anything but handed over) is treated as on an open trolley. After the handover (SHIPPED / CLOSED) this is false
+ * and nothing changes: a cancel there is still a request that tells the courier.
+ *
+ * Pure and client-safe: the screens read it to decide what to offer, the doors read the same function to refuse.
+ */
+export function onOpenTrolley(order: {
+  shippingBatchId: string | null | undefined;
+  batchStatus: string | null | undefined;
+}): boolean {
+  if (!order.shippingBatchId) return false;
+  return !SEALED_BATCH_STATUSES.includes((order.batchStatus ?? '') as (typeof SEALED_BATCH_STATUSES)[number]);
+}
+
+/** The code every door answers with when `onOpenTrolley` refuses. */
+export const ON_OPEN_TROLLEY = 'ON_OPEN_TROLLEY' as const;
+
+/** The one sentence every door and every screen says for it. */
+export const ON_TROLLEY_AR =
+  'الطلب على دفعة شحن جاهزة — ما بيصير إلغاء ولا تأجيل ولا تعديل عليه. إذا لازم، المستودع بيطلّعه من الدفعة أوّل («أجّل الشحن» من شاشة الدفعات).';
+
+/**
+ * A request being carried out was decided again meanwhile — its approval taken back («تراجع عن الموافقة», 4/11) or carried
+ * out by somebody else. Said by every door that stamps a request applied on the condition «still APPROVED, still not applied».
+ */
+export const DECIDED_MEANWHILE_AR =
+  'طلب التعديل اتغيّر قراره أثناء التنفيذ (حدا تراجع عن الموافقة أو نفّذه قبلك) — ما انكتب شي. حدّث الصفحة.';
+
+/**
  * `handedToCourier`, ASKED OF THE DATABASE AND TURNED INSIDE OUT: the orders that are still on OUR side of the handover.
  *
  * A query that must FIND the orders the courier has not taken cannot call the function above — it has no row in hand —

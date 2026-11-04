@@ -5,7 +5,7 @@ import { requireContext } from '@/lib/geo-context';
 import { ORDER_ACCESS_STATUS, assertOrderAccess } from '@/lib/rbac';
 import { authorize, can } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
-import { orderSeal, type Seal } from '@/lib/order-seal';
+import { orderSeal, onOpenTrolley, ON_OPEN_TROLLEY, ON_TROLLEY_AR, type Seal } from '@/lib/order-seal';
 import { codForOrder } from '@/lib/delivery-fees';
 import { roundMinor } from '@/lib/money';
 import { logAudit } from '@/lib/audit';
@@ -81,6 +81,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         labelPrintedAt: true, trackingNumber: true, courierSendStartedAt: true, priceIncludesDelivery: true,
         totalAmount: true, deliveryFee: true, shippingCost: true, currency: true, lockedById: true, lockExpiresAt: true,
         shippingBatch: { select: { status: true, batchNumber: true } },
+        // The column too: a trolley it names but that cannot be read is an open one (the owner's ruling 4/11).
+        shippingBatchId: true,
         items: { select: { quantity: true, freeQuantity: true, unitPrice: true, discountShare: true, lineTotal: true } },
         addOns: { select: { quantity: true, price: true } },
       },
@@ -97,6 +99,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       labelPrintedAt: order.labelPrintedAt,
     });
     if (seal.sealed) return refuse(sealedSentence(seal), 'ORDER_SEALED');
+    /*
+     * NOR ON A TROLLEY STILL BEING FILLED — the owner's ruling 4/11: nothing is changed on an order once it is on a batch, so
+     * the press can close it. The warehouse takes it off first («أجّل الشحن»), and then this door answers as before.
+     */
+    if (onOpenTrolley({ shippingBatchId: order.shippingBatchId, batchStatus: order.shippingBatch?.status ?? null })) {
+      return refuse(ON_TROLLEY_AR, ON_OPEN_TROLLEY);
+    }
     if (order.trackingNumber || order.courierSendStartedAt) {
       return refuse('الطلب انرحّل للشركة بمبلغه — ما بيتغيّر من هون.', 'ALREADY_WITH_COURIER');
     }
