@@ -115,12 +115,12 @@ describe('the handover of a batch that was never sent to its courier', () => {
 
   it('any other refusal is the toast it always was, with no question', async () => {
     apiJson.mockImplementation(async (_url: string, init?: RequestInit) => {
-      if (init?.method === 'PATCH') throw refusal({ code: 'PENDING_CHANGES', errorAr: 'على هالطلبات إلغاء أو تأجيل لسّا ما انحسم' });
+      if (init?.method === 'PATCH') throw refusal({ code: 'BATCH_MOVED', errorAr: 'الدفعة تحرّكت — حدّث الصفحة' });
       return { batches: [batch], pagination: { total: 1 } };
     });
     await press();
 
-    await waitFor(() => expect(failed).toHaveBeenCalledWith('على هالطلبات إلغاء أو تأجيل لسّا ما انحسم'));
+    await waitFor(() => expect(failed).toHaveBeenCalledWith('الدفعة تحرّكت — حدّث الصفحة'));
     expect(confirm).not.toHaveBeenCalled();
     expect(patches()).toHaveLength(1);
   });
