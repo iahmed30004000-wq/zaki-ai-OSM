@@ -24,3 +24,7 @@ fonts-local/
 .next-verify/
 .next-measure/
 **/*.local.json
+
+# Not part of the web app: the Android call helper (apps/call-helper-android)
+# is built by its own workflow, never by `docker build`.
+apps/
