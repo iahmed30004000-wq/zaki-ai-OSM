@@ -67,7 +67,14 @@ describe('what every variant keeps', () => {
   });
 
   it('and says «من» only when the bundles beat the base price', () => {
-    expect(card()).toMatch(/product\.fromPrice < product\.basePrice && <small>من <\/small>/);
+    expect(card()).toMatch(/product\.fromPrice < product\.basePrice && <small> من<\/small>/);
+  });
+
+  it('and «من» comes after the amount, so the left-to-right pill puts it on the right', () => {
+    // Before the amount it drew on the LEFT of «15.00 USD» — read from the
+    // right, the pill said the currency, then the number, then «من».
+    const src = card();
+    expect(src.indexOf('<small> من</small>')).toBeGreaterThan(src.indexOf('moneyText(product.fromPrice'));
   });
 
   /**

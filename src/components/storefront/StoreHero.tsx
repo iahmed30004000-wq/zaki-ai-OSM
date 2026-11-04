@@ -2,6 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import type { HeroVariant } from '@/lib/layout-slots';
 import { moneyText } from '@/lib/money';
+import { SIZES_CARD, SIZES_HERO, srcSetFor } from '@/lib/responsive-image';
 import type { ProductAttributes } from '@/lib/product-attributes';
 import { latinWord } from '@/lib/store-brand-template';
 import { worldVars, worldOf } from '@/lib/store-world';
@@ -86,12 +87,33 @@ export interface StoreHeroProps {
 }
 
 /** A product's picture, or its initial — the shop-wide answer to «no photo yet». */
-function Thumb({ product }: { product: HeroProduct }) {
+/**
+ * THE FIRST PICTURE OF THE FIRST SCREEN IS ASKED FOR FIRST.
+ *
+ * Every thumb was `loading="lazy"` with the full 1200px file and no
+ * `srcSet`. Measured on «صحة بلس» (4/11) at 375px: the first screen opened
+ * on an empty white frame the width of the phone, and the picture arrived
+ * last — a lazy image is fetched after layout, the full file after that.
+ * The lead picture is now eager and high-priority, and every thumb asks
+ * our media route for the width it is drawn at, as the grid's cards do.
+ * The dashboard's miniature stays lazy: it draws eleven of these on one
+ * screen, and none of them is anybody's first paint.
+ */
+function Thumb({ product, lead = false }: { product: HeroProduct; lead?: boolean }) {
+  const set = srcSetFor(product.image);
   return (
     <span className="sf-hx-img" data-letter={(product.name ?? '').trim().charAt(0)}>
       {product.image ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={product.image} alt="" loading="lazy" decoding="async" />
+        <img
+          src={product.image}
+          srcSet={set ?? undefined}
+          sizes={set ? (lead ? SIZES_HERO : SIZES_CARD) : undefined}
+          alt=""
+          loading={lead ? 'eager' : 'lazy'}
+          fetchPriority={lead ? 'high' : undefined}
+          decoding="async"
+        />
       ) : null}
     </span>
   );
@@ -129,9 +151,9 @@ export function StoreHero({
        * on something a shopper can tap.
        */
       case 'productFirst':
-        return products.slice(0, 3).map((p) => (
+        return products.slice(0, 3).map((p, i) => (
           <Wrap key={p.id} href={`/s/${slug}/p/${encodeURIComponent(p.handle)}`} className="sf-hx-feature">
-            <Thumb product={p} />
+            <Thumb product={p} lead={i === 0 && !mini} />
             <span className="sf-hx-name">{p.name}</span>
             <span className="sf-hx-price">{price(p)}</span>
           </Wrap>
