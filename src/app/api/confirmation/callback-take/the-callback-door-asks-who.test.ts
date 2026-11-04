@@ -36,7 +36,8 @@ vi.mock('@/lib/authorization', async (orig) => {
 
 import { attachGrants } from '@/lib/authorization';
 import { computeEffectiveGrants } from '@/lib/permissions-core';
-import { GET, POST } from './route';
+import { POST } from './route';
+import { POST as SEARCH } from './search/route';
 import { CALLBACK_SEARCHES_PER_WINDOW } from '@/lib/customer-on-the-line';
 
 let n = 0;
@@ -54,7 +55,8 @@ async function as(keys: string[], scope: 'ALL_COMPANY' | 'ASSIGNED' = 'ALL_COMPA
 }
 
 const AGENT = ['confirmation.pull', 'confirmation.work', 'orders.view', 'orders.confirm', 'orders.claim', 'confirmation.supervise'];
-const find = (phone = '0966793918') => GET(new Request(`http://x/api/confirmation/callback-take?phone=${encodeURIComponent(phone)}`));
+const find = (phone = '0966793918') =>
+  SEARCH(new Request('http://x/api/confirmation/callback-take/search', { method: 'POST', body: JSON.stringify({ phone }), headers: { 'Content-Type': 'application/json' } }));
 const press = (orderId: unknown = 'o1') =>
   POST(new Request('http://x/api/confirmation/callback-take', { method: 'POST', body: JSON.stringify({ orderId }), headers: { 'Content-Type': 'application/json' } }));
 

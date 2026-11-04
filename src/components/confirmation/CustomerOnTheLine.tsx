@@ -40,7 +40,10 @@ export function CustomerOnTheLine({ onTaken }: { onTaken: (orderId: string) => v
     setBusy('search');
     setSaid(null);
     try {
-      const r = await apiJson<{ orders: OnTheLineCard[] }>(`/api/confirmation/callback-take?phone=${encodeURIComponent(typed.trim())}`);
+      const r = await apiJson<{ orders: OnTheLineCard[] }>('/api/confirmation/callback-take/search', {
+        method: 'POST',
+        body: JSON.stringify({ phone: typed.trim() }),
+      });
       setFound(r.orders);
       if (r.orders.length === 0) setSaid('ما في طلبات على هالرقم بمتجرك');
     } catch (err) {

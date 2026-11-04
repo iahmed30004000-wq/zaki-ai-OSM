@@ -183,6 +183,7 @@ const { takeOnTheLine, searchOnTheLine, callbackVerdict, CUSTOMER_CALLED_BACK_RE
   './customer-on-the-line'
 );
 const { db } = await import('./db');
+const rbac = await import('./rbac');
 
 const NOW = new Date('2026-11-04T09:00:00Z');
 const AGO = (h: number) => new Date(NOW.getTime() - h * 3_600_000);
@@ -209,6 +210,11 @@ function order(over: Row = {}): Row {
     shippingBatchId: null,
     trackingNumber: null,
     labelPrintedAt: null,
+    signatureStatus: 'UNSIGNED',
+    lockedById: null,
+    lockExpiresAt: null,
+    createdById: null,
+    moderatorId: null,
     replacesOrderId: null,
     createdAt: AGO(30),
     regionName: 'دمشق',
@@ -307,12 +313,14 @@ describe('what stays refused', () => {
     }
   });
 
-  it('another store’s order, and one outside her «عرض الطلبات» envelope — not found', async () => {
+  it('another store’s order, and one outside her «عرض الطلبات» envelope that is no released retry — not found', async () => {
     const elsewhere = releasedRetry({ storeId: 's2' });
     expect(await take(elsewhere.id)).toMatchObject({ ok: false, code: 'NOT_FOUND' });
-    const here = releasedRetry();
-    expect(await take(here.id, SARA, { id: '__no_access__' })).toMatchObject({ ok: false, code: 'NOT_FOUND' });
-    expect(here.claimedById).toBeNull();
+    const fresh = order({ confirmationStatus: 'NEW' });
+    expect(await take(fresh.id, SARA, { id: '__no_access__' })).toMatchObject({ ok: false, code: 'NOT_FOUND' });
+    const hers = releasedRetry({ claimedById: 'hind', confirmationStatus: 'IN_PROGRESS' });
+    expect(await take(hers.id, SARA, { id: '__no_access__' })).toMatchObject({ ok: false, code: 'NOT_FOUND' });
+    expect([fresh.claimedById, hers.claimedById]).toEqual([null, 'hind']);
   });
 
   it('held for a colleague (a hold that stands) — her name, no take', async () => {
@@ -401,7 +409,48 @@ describe('the search', () => {
     const cards = (await search('0966793918'))!;
     expect(cards).toHaveLength(CALLBACK_SEARCH_LIMIT);
     expect(cards.every((c) => world.orders.find((o) => o.id === c.id)!.storeId === 's1')).toBe(true);
-    expect(await search('0966793918', { id: '__no_access__' })).toEqual([]);
+    // Outside her envelope she still reads the released retries — exactly what she may take — and nothing else.
+    order({ confirmationStatus: 'NEW' });
+    const outside = (await search('0966793918', { id: '__no_access__' }))!;
+    expect(outside.length).toBeGreaterThan(0);
+    expect(outside.every((c) => c.takeable)).toBe(true);
+  });
+});
+
+describe('the live agent’s envelope (orders.view at ASSIGNED), through the REAL orderVisibilityWhere — review of #197', () => {
+  const { orderVisibilityWhere } = rbac;
+  const ASSIGNED_SARA = {
+    id: 'sara', email: 's@x.test', name: 'سارة', role: 'CONFIRMATION_AGENT', status: 'ACTIVE', companyId: 'c1',
+    permissions: ['orders.view', 'confirmation.work', 'confirmation.pull'],
+    effectiveGrants: {
+      fullAccess: false,
+      grants: {
+        'orders.view': { scope: 'ASSIGNED', scopeIds: null },
+        'confirmation.work': { scope: 'ALL_COMPANY', scopeIds: null },
+        'confirmation.pull': { scope: 'ALL_COMPANY', scopeIds: null },
+      },
+    },
+  } as never;
+  const envelope = () => orderVisibilityWhere(ASSIGNED_SARA) as Row;
+  const roundReleased = () => releasedRetry({ confirmationStatus: 'IN_PROGRESS' });
+
+  it('a round-released order left IN_PROGRESS — outside the ASSIGNED envelope by itself — is found and taken', async () => {
+    const o = roundReleased();
+    expect(tri(view(o), envelope()), 'the envelope alone does not admit it — the case the review found').not.toBe(true);
+    const cards = (await searchOnTheLine(db as never, { scope: SCOPE, userId: 'sara', phone: '0966793918', countryCode: 'SY', visibility: envelope(), now: NOW }))!;
+    expect(cards.map((c) => [c.id, c.takeable])).toEqual([[o.id, true]]);
+    expect(await take(o.id, SARA, envelope())).toMatchObject({ ok: true, orderId: o.id });
+    expect(o.claimedById).toBe('sara');
+  });
+
+  it('NEGATIVE: never-called is still refused, and a colleague’s is neither listed nor taken', async () => {
+    const fresh = order({ confirmationStatus: 'NEW' });
+    const hers = releasedRetry({ claimedById: 'hind', claimedAt: AGO(1), confirmationStatus: 'IN_PROGRESS' });
+    const cards = (await searchOnTheLine(db as never, { scope: SCOPE, userId: 'sara', phone: '0966793918', countryCode: 'SY', visibility: envelope(), now: NOW }))!;
+    expect(cards.map((c) => [c.id, c.code])).toEqual([[fresh.id, 'NEVER_CALLED']]);
+    expect(await take(fresh.id, SARA, envelope())).toMatchObject({ ok: false, code: 'NEVER_CALLED' });
+    expect(await take(hers.id, SARA, envelope())).toMatchObject({ ok: false, code: 'NOT_FOUND' });
+    expect([fresh.claimedById, hers.claimedById]).toEqual([null, 'hind']);
   });
 });
 

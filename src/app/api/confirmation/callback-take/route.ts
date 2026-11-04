@@ -5,21 +5,14 @@ import { requireContext } from '@/lib/geo-context';
 import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { orderVisibilityWhere } from '@/lib/rbac';
-import { rateLimit } from '@/lib/rate-limit';
-import {
-  CALLBACK_MESSAGES,
-  CALLBACK_SEARCHES_PER_WINDOW,
-  CALLBACK_SEARCH_WINDOW_MS,
-  searchOnTheLine,
-  takeOnTheLine,
-} from '@/lib/customer-on-the-line';
+import { CALLBACK_MESSAGES, takeOnTheLine } from '@/lib/customer-on-the-line';
 
 /**
  * «الزبون على الخط» — `customer-on-the-line.ts` holds the rule; this door asks who is calling and says the answer.
  *
- *   GET  ?phone=…        the orders of that number in her store and in her `orders.view` envelope — at most ten, no name, phone
- *                        or address on them — each with whether she may take it and, if not, why. Counted per person.
- *   POST { orderId }     take one, if it is a released retry (see the rule). The pull's write, reason `CUSTOMER_CALLED_BACK`.
+ *   POST /search { phone }   the orders of that number (`search/route.ts`) — in the BODY, never the address: a customer's number
+ *                            does not belong in a URL, a server log or a browser history.
+ *   POST { orderId }         take one, if it is a released retry (see the rule). The pull's write, reason `CUSTOMER_CALLED_BACK`.
  *
  * Both ask the three keys an agent works with: `confirmation.pull` (she is somebody the queue gives orders to),
  * `confirmation.work` (she works what she holds) and `orders.view` (the search reads orders, inside her envelope).
@@ -27,44 +20,13 @@ import {
 
 const QUEUE_BUSY_MESSAGE = 'الطابور مشغول لحظة — جرّبي مرة تانية';
 
+/** The three keys — asked word for word by the search door too (`search/route.ts`). */
 async function asked() {
   const ctx = await requireContext();
   await requirePermission('confirmation.pull');
   await requirePermission('confirmation.work');
   await requirePermission('orders.view');
   return ctx;
-}
-
-export async function GET(req: Request) {
-  try {
-    const { user, companyId, storeId, country } = await asked();
-    const phone = (new URL(req.url).searchParams.get('phone') ?? '').slice(0, 40);
-
-    const limit = rateLimit(`callback-search:${user.id}`, CALLBACK_SEARCHES_PER_WINDOW, CALLBACK_SEARCH_WINDOW_MS);
-    if (!limit.allowed) {
-      return NextResponse.json(
-        { error: CALLBACK_MESSAGES.SEARCH_LIMIT, errorAr: CALLBACK_MESSAGES.SEARCH_LIMIT, code: 'SEARCH_LIMIT' },
-        { status: 429, headers: { 'Retry-After': String(limit.retryAfterSec) } }
-      );
-    }
-
-    const orders = await searchOnTheLine(db, {
-      scope: { companyId, storeId },
-      userId: user.id,
-      phone,
-      countryCode: country.code,
-      visibility: orderVisibilityWhere(user),
-    });
-    if (orders === null) {
-      return NextResponse.json(
-        { error: CALLBACK_MESSAGES.PHONE_TOO_SHORT, errorAr: CALLBACK_MESSAGES.PHONE_TOO_SHORT, code: 'PHONE_TOO_SHORT' },
-        { status: 400 }
-      );
-    }
-    return NextResponse.json({ orders });
-  } catch (error) {
-    return apiErrorResponse(error);
-  }
 }
 
 export async function POST(req: Request) {

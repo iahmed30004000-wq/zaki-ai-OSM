@@ -246,7 +246,7 @@ export async function searchOnTheLine(
   if (keys.length === 0) return null;
   const now = args.now ?? new Date();
   const rows = await tx.order.findMany({
-    where: { ...args.scope, customer: { phone: { in: keys } }, AND: [args.visibility] },
+    where: { ...args.scope, customer: { phone: { in: keys } }, AND: [onTheLineReadable(args.visibility, args.userId, now)] },
     orderBy: { createdAt: 'desc' },
     take: CALLBACK_SEARCH_LIMIT,
     select: {
@@ -283,10 +283,18 @@ export async function searchOnTheLine(
   });
 }
 
-/** The write's own guard — every clause of the verdict a database can say, asked again at the moment of the write. */
-export function callbackTakeWhere(orderId: string, userId: string, now: Date) {
+/**
+ * A RELEASED RETRY, as a database filter — every clause of the verdict a database can say. It is the write's own guard
+ * (`callbackTakeWhere`) and, ORed with her `orders.view` envelope, what the search and the take may READ.
+ *
+ * WHY THE ENVELOPE IS WIDENED BY EXACTLY THIS (review of #197): the live agents hold `orders.view` at ASSIGNED, and that envelope
+ * admits a pool order only while it is NEW and UNSIGNED (`orderVisibilityWhere`, rbac.ts). A round release and the ninety-minute
+ * release leave the order IN_PROGRESS / NO_ANSWER — the very orders this feature is for — so the search found nothing and the take
+ * answered NOT_FOUND. Widening by the predicate the write already demands shows her nothing she could not take, and the cards carry
+ * no customer field.
+ */
+export function releasedRetryWhere(userId: string, now: Date) {
   return {
-    id: orderId,
     claimedById: null,
     confirmationStatus: { in: OPEN_CONFIRMATION },
     shippingStatus: 'NOT_READY',
@@ -296,6 +304,16 @@ export function callbackTakeWhere(orderId: string, userId: string, now: Date) {
     contactAttempts: { some: { result: { in: [...NO_ANSWER_RESULTS] } } },
     AND: [notHeldForOthersWhere(userId, now)],
   };
+}
+
+/** The write's own guard: this order, and a released retry at the moment of the write. */
+export function callbackTakeWhere(orderId: string, userId: string, now: Date) {
+  return { id: orderId, ...releasedRetryWhere(userId, now) };
+}
+
+/** What she may read here: her own envelope, or a released retry she could take. */
+export function onTheLineReadable(visibility: Record<string, unknown>, userId: string, now: Date) {
+  return { OR: [visibility, releasedRetryWhere(userId, now)] };
 }
 
 export type TakeOutcome =
@@ -317,7 +335,7 @@ export async function takeOnTheLine(args: {
   const now = args.now ?? new Date();
   return db.$transaction(async (tx) => {
     const seen = await tx.order.findFirst({
-      where: { id: orderId, ...scope, AND: [args.visibility] },
+      where: { id: orderId, ...scope, AND: [onTheLineReadable(args.visibility, user.id, now)] },
       select: { id: true, customerId: true },
     });
     if (!seen) return { ok: false, code: 'NOT_FOUND', message: CALLBACK_MESSAGES.NOT_FOUND };
