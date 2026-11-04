@@ -10,6 +10,7 @@ const { db, calls } = vi.hoisted(() => {
   const db = {
     order: { findMany: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn(), count: vi.fn() },
     orderClaimHistory: { create: vi.fn() },
+    notification: { createMany: vi.fn() },
     $transaction: vi.fn(),
   };
   return { db, calls };
@@ -94,7 +95,15 @@ describe('ON — R1', () => {
     expect(write.data).toEqual({ claimedById: null, claimedAt: null, currentOwnerId: null, signatureStatus: 'UNSIGNED', assignedAt: null });
     expect(write.where).toMatchObject({ id: 'o00001', claimedById: 'sara', claimedAt: t(1, 9) });
     expect(db.orderClaimHistory.create).toHaveBeenCalledWith({
-      data: { companyId: 'c1', orderId: 'o00001', userId: 'sara', action: 'RELEASED', reason: ROUND_RELEASE_REASON },
+      data: {
+        companyId: 'c1',
+        orderId: 'o00001',
+        userId: 'sara',
+        action: 'RELEASED',
+        reason: ROUND_RELEASE_REASON,
+        // Nobody pressed it — the system did (the owner's ruling 4/11, `auto-release.ts`).
+        metadata: JSON.stringify({ automatic: true, holder: 'sara' }),
+      },
     });
   });
 

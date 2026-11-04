@@ -96,7 +96,9 @@ describe('the contact strip', () => {
    */
   it('records its own presses, through one door', () => {
     const src = stripComments(repoFile('src/components/orders/ContactButtons.tsx'));
-    expect(src, 'الشريط ما بيسجّل لحاله').toContain('contact-attempts');
+    // The door is written once, in the line's own module, which sends it first and keeps it until it lands (4/11).
+    expect(src, 'الشريط ما بيسجّل لحاله').toContain('sendContactLine(');
+    expect(stripComments(repoFile('src/lib/contact-line.ts'))).toContain('contact-attempts');
     expect((src.match(/noteContact\(/g) ?? []).length, 'في باب ما بيمرّ على المسجّل').toBe(3);
   });
 

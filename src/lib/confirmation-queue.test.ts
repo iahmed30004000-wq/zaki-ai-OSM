@@ -6,6 +6,7 @@ const { db } = vi.hoisted(() => ({
   db: {
     order: { count: vi.fn(), findMany: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
     orderClaimHistory: { create: vi.fn() },
+    notification: { createMany: vi.fn() },
     orderStatusLog: { create: vi.fn() },
     $transaction: vi.fn(),
   },

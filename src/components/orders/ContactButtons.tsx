@@ -5,12 +5,15 @@ import { apiJson } from '@/lib/api-client';
 import { onAndroid } from '@/lib/call-helper/android';
 import { markOnCall } from '@/lib/exposure';
 import {
+  lineRefusal, lineWaiting, resumeContactLines, sendContactLine, subscribeLines,
+} from '@/lib/contact-line';
+import {
   fillTemplate, orderDetailsContext, usesOrderDetails, whatsappAppLink, whatsappLink, whatsappReady, type FillContext, type MessageTemplate,
 } from '@/lib/message-templates';
 import { RiChat3Line, RiMessage3Line, RiPhoneLine } from '@remixicon/react';
 
-/** Does a refusal already speak to her? (the Arabic block, as `api-error.ts` asks it) */
-const ARABIC = /[؀-ۿ]/;
+/** A press whose line did not land and is being sent again (`contact-line.ts`, the owner's ruling 4/11). */
+export const LINE_RETRYING = 'ما انسجّلت المحاولة — عم نعيد';
 
 /** Why WhatsApp is shut on a local number — said beside the button, not guessed at. */
 const NO_COUNTRY = 'رمز الدولة ناقص';
@@ -125,6 +128,23 @@ export function ContactButtons({
    */
   const [telFallback, setTelFallback] = useState<string | null>(null);
 
+  /**
+   * A LINE KEPT FOR ANOTHER TRY IS SAID WHILE IT WAITS (`contact-line.ts`), and a refusal a resend met is said as the
+   * first refusal is. What this tab kept before a reload is picked up and sent from here.
+   */
+  const [retrying, setRetrying] = useState(false);
+  useEffect(() => {
+    if (!orderId) return;
+    const look = () => {
+      setRetrying(lineWaiting(orderId));
+      const refused = lineRefusal(orderId);
+      if (refused !== undefined) setNotLogged(notLoggedWords(refused));
+    };
+    look();
+    resumeContactLines();
+    return subscribeLines(look);
+  }, [orderId]);
+
   useEffect(() => {
     if (!open || templates) return;
     apiJson<{ templates: MessageTemplate[] }>('/api/settings/messages')
@@ -188,10 +208,15 @@ export function ContactButtons({
    * app with its text — more is known in that case, and it is already not
    * an outcome either.
    *
-   * It never blocks the press. The dialler opens first and the line is
-   * written after; a refusal (a role the owner has not given
-   * `orders.contact_log`) or a dropped connection must not stop somebody
-   * ringing a customer.
+   * It never blocks the press — and it is SENT FIRST (the owner's ruling
+   * 4/11). The request starts here, in the click, before the link's own
+   * navigation opens the dialler, with `keepalive` so it outlives the page
+   * being left; nothing is awaited first, so the call is not delayed. A
+   * dropped connection or a failing server keeps the line and sends it
+   * again until it lands (`contact-line.ts`) — with no line, the order she
+   * is ringing is taken back ninety working minutes after she pulled it.
+   * A refusal (a role the owner has not given `orders.contact_log`) must
+   * not stop somebody ringing a customer.
    *
    * BUT A REFUSED LINE IS SAID, NOT SWALLOWED. On «طلباتي» this line is what
    * unlocks «تأكيد» and «تأجيل», and a refusal (403, 404) used to vanish: she
@@ -201,17 +226,11 @@ export function ContactButtons({
   const noteContact = (method: 'PHONE' | 'SMS' | 'WHATSAPP', result: 'OPENED' | 'MESSAGE_SENT') => {
     onContacted?.(method);
     if (!orderId) return;
-    void apiJson(`/api/orders/${orderId}/contact-attempts`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contactMethod: method, result }),
-    })
-      .then(() => setNotLogged(null))
-      .catch((e: unknown) => {
-        // The call matters more than its line in the log — but she is told the line is missing.
-        const why = e instanceof Error && ARABIC.test(e.message) ? e.message : null;
-        setNotLogged(why ? `ما انسجّلت المحاولة على الطلب — ${why}` : 'ما انسجّلت المحاولة على الطلب.');
-      });
+    void sendContactLine({ orderId, method, result }).then((answer) => {
+      // The call matters more than its line in the log — but she is told the line is missing, or on its way again.
+      if (answer.state === 'refused') setNotLogged(notLoggedWords(answer.said));
+      else setNotLogged(null);
+    });
   };
 
   /**
@@ -375,6 +394,11 @@ export function ContactButtons({
           {notLogged}
         </span>
       )}
+      {retrying && !notLogged && (
+        <span role="status" className="text-xs text-[var(--sys-destructive)]">
+          {LINE_RETRYING}
+        </span>
+      )}
 
       {open && (
         <>
@@ -422,4 +446,9 @@ export function ContactButtons({
       )}
     </div>
   );
+}
+
+/** The refusal beside the strip: the server's Arabic when it spoke Arabic, our own words when it did not. */
+function notLoggedWords(why: string | null): string {
+  return why ? `ما انسجّلت المحاولة على الطلب — ${why}` : 'ما انسجّلت المحاولة على الطلب.';
 }

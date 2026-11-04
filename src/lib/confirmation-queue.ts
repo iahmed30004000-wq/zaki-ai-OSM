@@ -13,6 +13,7 @@ import {
   type RoundsSwitch,
 } from './no-answer-rounds';
 import { roundsSwitch } from './no-answer-rounds-switch';
+import { automaticReleaseMetadata, releaseNotice } from './auto-release';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -694,31 +695,57 @@ export async function releaseStaleClaims(
       contactAttempts: { none: {} },
       claimedAt: { not: null },
     },
-    select: { id: true, claimedAt: true, claimedById: true, companyId: true },
+    select: { id: true, claimedAt: true, claimedById: true, companyId: true, orderNumber: true },
     take: 200,
   });
 
   const expired = stale.filter(
     (o) => businessMinutesBetween(new Date(o.claimedAt!), now, cal) >= AUTO_RELEASE_BUSINESS_MINUTES
   );
+  const reason = `AUTO_RELEASE_${AUTO_RELEASE_BUSINESS_MINUTES}_BUSINESS_MINUTES`;
+  /** What was actually let go — a write that matched nothing released nothing, and tells nobody. */
+  const released: typeof expired = [];
   for (const order of expired) {
-    await tx.order.updateMany({
+    const done = await tx.order.updateMany({
       where: { id: order.id, claimedById: order.claimedById },
       // `assignedAt: null` as well: an order she let go of unworked is the shared queue's, not held for her a second time.
       data: { claimedById: null, claimedAt: null, currentOwnerId: null, signatureStatus: 'UNSIGNED', assignedAt: null },
     });
+    // Somebody else's hands since the read (a transfer, a pull-back): no release happened — no history line, no notice
+    // (the owner's ruling 4/11). The rule that chose it is unchanged; only a release that did not happen is not recorded.
+    if (done.count !== 1) continue;
+    released.push(order);
     await tx.orderClaimHistory.create({
       data: {
         companyId: order.companyId,
         orderId: order.id,
+        // Still whose order it was — the column is NOT NULL — and `metadata` says nobody pressed it (`auto-release.ts`).
         userId: order.claimedById!,
         action: 'RELEASED',
-        reason: `AUTO_RELEASE_${AUTO_RELEASE_BUSINESS_MINUTES}_BUSINESS_MINUTES`,
+        reason,
+        metadata: automaticReleaseMetadata(order.claimedById!),
       },
     });
   }
+  /*
+   * SHE IS TOLD IT WENT BACK (the owner's ruling 4/11): the card used to leave «طلباتي» with no word, and her next press on it
+   * was refused. One line per release, in this transaction — a release rolled back tells nobody. See `auto-release.ts`.
+   */
+  if (released.length) {
+    await tx.notification.createMany({
+      data: released.map((order) =>
+        releaseNotice({
+          companyId: order.companyId,
+          storeId: scope.storeId,
+          holderId: order.claimedById!,
+          orderNumber: order.orderNumber,
+          reason,
+        })
+      ),
+    });
+  }
   // «نظام الجولات» (R1) — only with the owner's switch ON; OFF, the lines above are the whole rule, as they always were.
-  return expired.length + (await releaseNoAnswerRounds(tx, scope, cal, now, opts));
+  return released.length + (await releaseNoAnswerRounds(tx, scope, cal, now, opts));
 }
 
 /**
@@ -803,6 +830,7 @@ async function releaseByRounds(
       claimedById: true,
       companyId: true,
       customerId: true,
+      orderNumber: true,
       postponedUntil: true,
       nextFollowUpAt: true,
       contactAttempts: { select: { createdAt: true, result: true, attemptNumber: true, employeeId: true } },
@@ -812,6 +840,8 @@ async function releaseByRounds(
   else roundsScanCursor.set(key, rows[rows.length - 1].id);
 
   let released = 0;
+  /** The holders to tell, one line per release — written once, after the loop, in this same transaction. */
+  const notices: { holderId: string; orderNumber: string; reason: string }[] = [];
   for (const order of rows) {
     if (released >= limit) break;
     const reason = roundsReleaseReason(
@@ -841,8 +871,17 @@ async function releaseByRounds(
     });
     if (done.count !== 1) continue;
     await tx.orderClaimHistory.create({
-      data: { companyId: order.companyId, orderId: order.id, userId: order.claimedById!, action: 'RELEASED', reason },
+      data: {
+        companyId: order.companyId,
+        orderId: order.id,
+        userId: order.claimedById!,
+        action: 'RELEASED',
+        reason,
+        // Nobody pressed it: the timeline writes «النظام», not her name (the owner's ruling 4/11, `auto-release.ts`).
+        metadata: automaticReleaseMetadata(order.claimedById!),
+      },
     });
+    notices.push({ holderId: order.claimedById!, orderNumber: order.orderNumber, reason });
     // His other orders held for her go back too: one customer, one agent.
     if (order.customerId) {
       await tx.order.updateMany({
@@ -861,6 +900,12 @@ async function releaseByRounds(
       });
     }
     released++;
+  }
+  // She is told, as the ninety-minute release tells her (the owner's ruling 4/11).
+  if (notices.length) {
+    await tx.notification.createMany({
+      data: notices.map((n) => releaseNotice({ companyId: scope.companyId, storeId: scope.storeId, ...n })),
+    });
   }
   return released;
 }
