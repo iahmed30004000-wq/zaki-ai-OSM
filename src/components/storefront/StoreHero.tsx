@@ -2,7 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import type { HeroVariant } from '@/lib/layout-slots';
 import { moneyText } from '@/lib/money';
-import { SIZES_CARD, SIZES_HERO, srcSetFor } from '@/lib/responsive-image';
+import { SIZES_HERO, srcSetFor } from '@/lib/responsive-image';
 import type { ProductAttributes } from '@/lib/product-attributes';
 import { latinWord } from '@/lib/store-brand-template';
 import { worldVars, worldOf } from '@/lib/store-world';
@@ -94,13 +94,16 @@ export interface StoreHeroProps {
  * `srcSet`. Measured on «صحة بلس» (4/11) at 375px: the first screen opened
  * on an empty white frame the width of the phone, and the picture arrived
  * last — a lazy image is fetched after layout, the full file after that.
- * The lead picture is now eager and high-priority, and every thumb asks
- * our media route for the width it is drawn at, as the grid's cards do.
- * The dashboard's miniature stays lazy: it draws eleven of these on one
- * screen, and none of them is anybody's first paint.
+ * The lead picture is now eager and high-priority, and asks our media
+ * route for the width it is drawn at. The other thumbs are left exactly as
+ * they were: `Thumb` serves five variants, and in some of them a thumb is
+ * nearly the phone's width — one `sizes` for all of them would fetch a
+ * render too narrow for those (the review of #203). The dashboard's
+ * miniature stays lazy: it draws eleven of these on one screen, and none
+ * of them is anybody's first paint.
  */
 function Thumb({ product, lead = false }: { product: HeroProduct; lead?: boolean }) {
-  const set = srcSetFor(product.image);
+  const set = lead ? srcSetFor(product.image) : null;
   return (
     <span className="sf-hx-img" data-letter={(product.name ?? '').trim().charAt(0)}>
       {product.image ? (
@@ -108,7 +111,7 @@ function Thumb({ product, lead = false }: { product: HeroProduct; lead?: boolean
         <img
           src={product.image}
           srcSet={set ?? undefined}
-          sizes={set ? (lead ? SIZES_HERO : SIZES_CARD) : undefined}
+          sizes={set ? SIZES_HERO : undefined}
           alt=""
           loading={lead ? 'eager' : 'lazy'}
           fetchPriority={lead ? 'high' : undefined}
