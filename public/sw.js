@@ -111,13 +111,22 @@ self.addEventListener('fetch', (event) => {
   // Navigations: network first, and the offline page when there is none —
   // or when the server has not answered in NAVIGATION_TIMEOUT_MS. A page is
   // a read, so giving up on one loses nothing.
+  //
+  // A race, not an AbortSignal: `fetch(request, { signal })` would build a
+  // NEW request from the navigation one, and a non-empty init turns its
+  // mode from 'navigate' into 'same-origin' — the sign-in redirect and the
+  // browser's own navigation handling ride on that mode. The request goes
+  // out exactly as the browser made it; only the wait is limited. Once the
+  // headers are in, the page streams as long as it needs.
   if (request.mode === 'navigate') {
     event.respondWith(
       (async () => {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), NAVIGATION_TIMEOUT_MS);
+        let timer;
+        const late = new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error('navigation timed out')), NAVIGATION_TIMEOUT_MS);
+        });
         try {
-          return await fetch(request, { signal: controller.signal });
+          return await Promise.race([fetch(request), late]);
         } catch {
           const cache = await caches.open(SHELL);
           return (await cache.match(OFFLINE_URL)) ?? Response.error();

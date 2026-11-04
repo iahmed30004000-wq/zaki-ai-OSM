@@ -148,16 +148,14 @@ describe('a page the server does not answer', () => {
     vi.useFakeTimers();
     const w = boot();
     await w.install();
-    w.fetchMock.mockImplementation(
-      (_req, init) =>
-        new Promise((_, reject) => {
-          init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
-        })
-    );
+    // A server that took the connection and never answered.
+    w.fetchMock.mockImplementation(() => new Promise(() => {}));
     const answered = w.dispatch('/orders', { mode: 'navigate' });
     await vi.advanceTimersByTimeAsync(20_000);
     const res = await (await answered)!;
     expect(await res.text()).toBe('cached /offline.html');
+    // The navigation request went out as the browser made it — no init that would rewrite its mode.
+    expect(w.fetchMock.mock.calls[0]).toHaveLength(1);
   });
 
   it('and a page that answers in time is the page', async () => {
