@@ -419,6 +419,8 @@ const REACHED_BUT_UNSEEN: Record<string, string> = {
   '/api/v1/orders/[id]': 'نظامُ الردود يتابع حالةَ الطلبِ الذي رحّله — المستدعي في مستودعٍ آخر',
   '/api/v1/orders/[id]/notes': 'نظامُ الردود يكتب ما عرفه من المحادثةِ على الطلب — المستدعي في مستودعٍ آخر',
   '/api/v1/orders/attribution': 'الميديا باير (zaki-mediabuyer → src/adapters/oms.ts) يقرأ مصدرَ الطلباتِ وحالتَها كلَّ ساعة بتوكن — المستدعي في مستودعٍ آخر',
+  '/api/call-helper/pair':
+    'تطبيقُ «مساعد الاتصال» على أندرويد (apps/call-helper-android → PairActivity.kt) يبادل رمزَ الربطِ بتوكن — المستدعي برنامج Kotlin لا يقرؤه هذا المسح',
 };
 
 /**

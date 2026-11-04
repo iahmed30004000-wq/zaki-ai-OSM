@@ -387,6 +387,10 @@ const ALLOWED: Record<string, string[]> = {
   // «ابعت من رقم الشركة» on the call sheet: the same door and hold rule as contact-attempts beside it, behind `whatsapp.send`
   // too. It writes a WhatsApp message and the WHATSAPP · MESSAGE_SENT line in the contact log — never the order itself.
   'src/app/api/confirmation/whatsapp-template/route.ts': ['POST'],
+  // «مساعد الاتصال»: the paired phone's reading of a call she placed from «طلباتي» — the same door and hold rule as
+  // contact-attempts, asked as the person the bearer token names. It writes only its own evidence row: no contact
+  // attempt, nothing on the order.
+  'src/app/api/call-helper/reading/route.ts': ['POST'],
 };
 
 /** Where the door is defined — not callers of it. */

@@ -66,6 +66,9 @@ model Company {
   penalties             Penalty[]
   productReviews        ProductReview[]
   systemTokens          SystemToken[]
+  callHelperDevices     CallHelperDevice[]
+  callHelperPairCodes   CallHelperPairCode[]
+  callHelperReadings    CallHelperReading[]
   idempotencyRecords    IdempotencyRecord[]
 
   @@map("companies")
@@ -323,6 +326,10 @@ model User {
   passkeys                      Passkey[]
   navArrangement                NavArrangement[]
   passkeyChallenges             PasskeyChallenge[]
+  /// «مساعد الاتصال» — her paired phone, the codes that pair it, and what it read of her calls.
+  callHelperDevices             CallHelperDevice[]
+  callHelperPairCodes           CallHelperPairCode[]
+  callHelperReadings            CallHelperReading[]
   company                       Company?                @relation(fields: [companyId], references: [id], onDelete: Cascade)
   enteredOrders                 Order[]                 @relation("OrderCreator")
   assignedOrders                Order[]                 @relation("ModeratorOrders")
@@ -3838,4 +3845,77 @@ model SystemSetting {
   createdAt   DateTime @default(now())
 
   @@map("system_settings")
+}
+
+/// «مساعد الاتصال» — HER PAIRED PHONE (docs/call-helper/CONTRACT.md; the Android app is PR #198).
+///
+/// The app holds a bearer token and a callKey. The token is kept here only as its SHA-256 (hex): a copy of this table
+/// opens no door. The callKey is the HMAC key a call link is signed with, so the server must be able to use it again —
+/// it is encrypted at rest (`encryptSecret`, src/lib/secrets.ts). One ACTIVE device per person: pairing a new phone
+/// stamps the old one revoked; it is never deleted.
+model CallHelperDevice {
+  id               String    @id @default(uuid())
+  companyId        String
+  userId           String
+  /// «Build.MANUFACTURER Build.MODEL», as the app sent it.
+  deviceName       String
+  tokenHash        String    @unique
+  callKeyEncrypted String
+  createdAt        DateTime  @default(now())
+  lastSeenAt       DateTime?
+  revokedAt        DateTime?
+
+  company  Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user     User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  readings CallHelperReading[]
+
+  @@index([userId, revokedAt])
+  @@index([companyId])
+  @@map("call_helper_devices")
+}
+
+/// THE ONE-TIME CODE IN THE PAIRING LINK — its SHA-256, ten minutes, spent once.
+model CallHelperPairCode {
+  id        String    @id @default(uuid())
+  companyId String
+  userId    String
+  codeHash  String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("call_helper_pair_codes")
+}
+
+/// WHAT THE PHONE'S CALL LOG SAID ABOUT ONE CALL SHE PLACED FROM «طلباتي».
+///
+/// EVIDENCE ONLY: no contact attempt is written from it, and no order field, count, round or commission reads it. The
+/// «شو صار؟» sheet shows it in one line and puts the matching answer first — she still taps. NO PHONE NUMBER is stored:
+/// the number the app sent is compared with the order's customer and dropped. The same reading sent twice (the app
+/// retries) is one row. No foreign key to orders on purpose: a reading never stands in the way of anything done to one.
+model CallHelperReading {
+  id          String   @id @default(uuid())
+  companyId   String
+  userId      String
+  deviceId    String
+  orderId     String
+  /// When the app placed the call (its own clock, epoch ms as sent).
+  startedAt   DateTime
+  answered    Boolean
+  talkSeconds Int
+  ringSeconds Int
+  receivedAt  DateTime @default(now())
+
+  company Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device  CallHelperDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, orderId, startedAt])
+  @@index([userId, orderId, startedAt])
+  @@index([companyId])
+  @@map("call_helper_readings")
 }

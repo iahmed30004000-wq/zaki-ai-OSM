@@ -19,6 +19,9 @@ import type { BusinessCalendar } from '@/lib/business-calendar';
 import { countedRounds, roundsOn, workClock, type AttemptFact } from '@/lib/no-answer-rounds';
 import { roundsSwitch } from '@/lib/no-answer-rounds-switch';
 import { companySendsFor } from '@/lib/whatsapp/after-no-answer';
+import { waNumber } from '@/lib/message-templates';
+import { deskCallKey } from '@/lib/call-helper/desk';
+import { deskCallIntent } from '@/lib/call-helper/core';
 
 /**
  * GET /api/confirmation/mine — the agent's own desk, in THREE groups.
@@ -289,6 +292,18 @@ export async function GET(request: Request) {
     // and only for whoever holds `whatsapp.send`: the send door asks it, and a button that answers 403 is not offered.
     const fromCompany =
       !viewing && (await companySendsFor(db, companyId, ruleFor(country.code)?.dialCode ?? null)) && can(user, 'whatsapp.send');
+    /*
+     * «مساعد الاتصال» — HER PAIRED PHONE SIGNS THE CALL LINKS (contract v1.1). Only on her own desk, and only when she has
+     * an active device: one indexed lookup, nothing more without one. The number signed is exactly what the WhatsApp button
+     * builds (`waNumber` with this desk's calling code), so the app dials the number the strip shows. Absent = today's `tel:`.
+     */
+    const callKey = viewing ? null : await deskCallKey(companyId, user.id);
+    const deskDialCode = ruleFor(country.code)?.dialCode ?? null;
+    const helperLink = (o: { id: string; customer: { rawPhone: string | null } }) => {
+      if (!callKey) return {};
+      const link = deskCallIntent(callKey, o.id, waNumber(o.customer.rawPhone ?? '', deskDialCode), now.getTime());
+      return link ? { callHelperLink: link } : {};
+    };
     const noAnswer = rounds
       ? await roundCounts([...inConfirmation, ...closedToday].map((o) => o.id), {
           workHoursStart: country.workHoursStart,
@@ -327,7 +342,8 @@ export async function GET(request: Request) {
       noAnswerCount: noAnswer.get(o.id) ?? 0,
       firstActionAt: firstAction.get(o.id) ?? null,
     });
-    const held = inConfirmation.map(decorate);
+    // Only the rows she rings from carry the helper's link; «أكّدتها» and today's closed ones are not called from here.
+    const held = inConfirmation.map((o) => ({ ...decorate(o), ...helperLink(o) }));
 
     return NextResponse.json({
       // Whose desk this is, when it is not the reader's own — the screen draws it read-only. Absent on her own desk.
