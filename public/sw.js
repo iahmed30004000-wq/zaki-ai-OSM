@@ -20,9 +20,56 @@
  * later is not.
  */
 
-const VERSION = 'v2';
+const VERSION = 'v3';
 const SHELL = `shell-${VERSION}`;
 const OFFLINE_URL = '/offline.html';
+
+/**
+ * HOW LONG A PAGE MAY TAKE BEFORE THE PERSON IS TOLD.
+ *
+ * A server that is down answers at once and the offline page follows. A
+ * server that is busy — right after a deploy, while the build starves it —
+ * may hold the request open for minutes, and the tab draws nothing at all:
+ * a white screen that looks like the system has died. Past this long the
+ * person gets the page that says the server is not answering, which comes
+ * back by itself.
+ */
+const NAVIGATION_TIMEOUT_MS = 20_000;
+
+/**
+ * ONE CACHE PER BUILD FOR THE FRAMEWORK'S FILES.
+ *
+ * `/_next/static/` used to go into the one shell cache, whose name never
+ * changed, so every deploy's files piled up on the phone beside the last
+ * one's, for ever. Each build now stamps its files with its own id
+ * (`?dpl=<id>`, from `deploymentId` in next.config.ts), and the files go
+ * into a cache named after that id. The first file of a NEW build that
+ * arrives empties every other build's cache: from then on this phone holds
+ * one build's files, the one it is running.
+ *
+ * A build without an id (none set) shares one fixed cache, exactly as
+ * before. Only a good answer opens a cache, so an old tab asking for a file
+ * the new build no longer has gets its 404 and empties nothing.
+ */
+const STATIC_PREFIX = 'static-';
+
+function staticCacheName(url) {
+  const id = url.searchParams.get('dpl');
+  return STATIC_PREFIX + (id && /^[\w.-]{1,128}$/.test(id) ? id : 'unversioned');
+}
+
+let currentStatic = null;
+
+async function openStaticCache(name) {
+  if (currentStatic !== name) {
+    currentStatic = name;
+    const keys = await caches.keys();
+    await Promise.all(
+      keys.filter((k) => k.startsWith(STATIC_PREFIX) && k !== name).map((k) => caches.delete(k))
+    );
+  }
+  return caches.open(name);
+}
 
 /** Only what is safe to serve from yesterday. */
 const PRECACHE = [OFFLINE_URL, '/logo.svg', '/manifest.webmanifest', '/icons/icon-192.png'];
@@ -61,13 +108,32 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.pathname.startsWith('/api/')) return;
 
-  // Navigations: network first, and the offline page when there is none.
+  // Navigations: network first, and the offline page when there is none —
+  // or when the server has not answered in NAVIGATION_TIMEOUT_MS. A page is
+  // a read, so giving up on one loses nothing.
+  //
+  // A race, not an AbortSignal: `fetch(request, { signal })` would build a
+  // NEW request from the navigation one, and a non-empty init turns its
+  // mode from 'navigate' into 'same-origin' — the sign-in redirect and the
+  // browser's own navigation handling ride on that mode. The request goes
+  // out exactly as the browser made it; only the wait is limited. Once the
+  // headers are in, the page streams as long as it needs.
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request).catch(async () => {
-        const cache = await caches.open(SHELL);
-        return (await cache.match(OFFLINE_URL)) ?? Response.error();
-      })
+      (async () => {
+        let timer;
+        const late = new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error('navigation timed out')), NAVIGATION_TIMEOUT_MS);
+        });
+        try {
+          return await Promise.race([fetch(request), late]);
+        } catch {
+          const cache = await caches.open(SHELL);
+          return (await cache.match(OFFLINE_URL)) ?? Response.error();
+        } finally {
+          clearTimeout(timer);
+        }
+      })()
     );
     return;
   }
@@ -96,14 +162,20 @@ self.addEventListener('fetch', (event) => {
       /\.(?:woff2?|png|svg|ico)$/.test(url.pathname));
 
   if (immutable) {
+    // The framework's files go to their build's own cache; fonts and icons
+    // stay in the shell cache, where nothing replaces them.
+    const framework = url.pathname.startsWith('/_next/static/');
+    const name = framework ? staticCacheName(url) : SHELL;
     event.respondWith(
-      caches.match(request).then(
+      caches.match(request, { cacheName: name }).then(
         (hit) =>
           hit ??
           fetch(request).then((res) => {
             if (res.ok) {
               const copy = res.clone();
-              caches.open(SHELL).then((cache) => cache.put(request, copy));
+              (framework ? openStaticCache(name) : caches.open(SHELL))
+                .then((cache) => cache.put(request, copy))
+                .catch(() => undefined);
             }
             return res;
           })

@@ -5,6 +5,7 @@ import { SessionUser } from '@/types/auth';
 import { translations } from '@/lib/i18n';
 import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
+import { pollSignal } from '@/lib/poll-timeout';
 
 /**
  * App-wide client context. The interface is Arabic RTL only (contract
@@ -109,7 +110,8 @@ export function AppProvider({
 
   /** The one door to «who am I» — a 401 is a real answer (signed out), anything else says nothing. */
   const readMe = useCallback(async () => {
-    const res = await fetch('/api/auth/me');
+    // With a time limit (poll-timeout.ts): a read that times out throws, which every caller already treats as «said nothing».
+    const res = await fetch('/api/auth/me', { signal: pollSignal() });
     if (res.status === 401) return { user: null, answered: true as const };
     if (!res.ok) return { user: null, answered: false as const };
     return { user: ((await res.json()).user ?? null) as SessionUser | null, answered: true as const };

@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import Link from 'next/link';
 import { RiErrorWarningLine } from '@remixicon/react';
+import { reloadOnceForStaleBuild } from '@/lib/stale-build';
 
 /**
  * ONE BOUNDARY FOR THE WHOLE SYSTEM SIDE, AND WHY ONE IS ENOUGH.
@@ -48,6 +49,15 @@ export default function SystemError({
   error: Error & { digest?: string };
   retry: () => void;
 }) {
+  /*
+   * A file from the build before a deploy: one full reload fetches the new
+   * build, which a retry cannot (src/lib/stale-build.ts). Once — the guard
+   * there is what stops a reload loop; a second one is drawn as below.
+   */
+  useEffect(() => {
+    reloadOnceForStaleBuild(error, window);
+  }, [error]);
+
   useEffect(() => {
     /**
      * A Server Component's real message never reaches the browser in
@@ -92,13 +102,16 @@ export default function SystemError({
             العودة إلى شاشتك الأولى
           </Link>
           {/*
-            The retry is the SECOND offer, never the only one. It re-renders
-            this subtree without a round trip, which recovers a transient
-            render fault and does nothing at all for an expired session —
-            and a screen whose single control can do nothing is a screen
-            that strands the person on it. `/` re-resolves the session on
-            the server and sends them to the first screen their role holds,
-            which is a door that always opens.
+            The retry is the SECOND offer, never the only one. `retry()`
+            asks the server for this segment again and re-renders it (it is
+            `reset()` that re-renders without a round trip), so it recovers
+            a server answer that failed for a moment. It cannot recover an
+            expired session, nor a file from the build before a deploy (the
+            effect above reloads once for that) — and a screen whose single
+            control can do nothing is a screen that strands the person on
+            it. `/` re-resolves the session on the server and sends them to
+            the first screen their role holds, which is a door that always
+            opens.
           */}
           <button
             type="button"
