@@ -6,8 +6,12 @@ import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 
-/** The phone's pairing with one account. */
-class Pairing(val base: String, val token: String, val userName: String)
+/**
+ * The phone's pairing with one account. [callKey] signs the call links the
+ * site sends (contract v1.1); empty when the site gave none, and then every
+ * call link is asked about before it dials.
+ */
+class Pairing(val base: String, val token: String, val userName: String, val callKey: String)
 
 /** The call the app placed and has not reported yet. [endedAt] is 0 until the end was seen. */
 class Pending(val orderId: String, val phone: String, val startedAt: Long, val endedAt: Long)
@@ -17,7 +21,7 @@ class Pending(val orderId: String, val phone: String, val startedAt: Long, val e
  *
  * MODE_PRIVATE shared preferences: no other app can read them, backup and
  * device-to-device transfer are switched off in the manifest, and the file
- * holds the pairing, the readings waiting to be sent, and the one call in
+ * holds the pairing (with its call key), the readings waiting to be sent, and the one call in
  * flight — nothing else. No call that the app did not place is ever kept.
  *
  * (EncryptedSharedPreferences was left out on purpose: it is a deprecated
@@ -34,6 +38,7 @@ object Store {
     private const val K_BASE = "base"
     private const val K_TOKEN = "token"
     private const val K_USER = "user_name"
+    private const val K_CALL_KEY = "call_key"
     private const val K_QUEUE = "queue"
     private const val K_PENDING = "pending"
 
@@ -50,16 +55,17 @@ object Store {
         val p = prefs(c)
         val base = p.getString(K_BASE, null) ?: return null
         val token = p.getString(K_TOKEN, null) ?: return null
-        return Pairing(base, token, p.getString(K_USER, "") ?: "")
+        return Pairing(base, token, p.getString(K_USER, "") ?: "", p.getString(K_CALL_KEY, "") ?: "")
     }
 
     /** A new pairing replaces the old one, and everything that belonged to it. */
     @Synchronized
-    fun savePairing(c: Context, base: String, token: String, userName: String) {
+    fun savePairing(c: Context, base: String, token: String, userName: String, callKey: String) {
         prefs(c).edit().clear()
             .putString(K_BASE, base)
             .putString(K_TOKEN, token)
             .putString(K_USER, userName)
+            .putString(K_CALL_KEY, callKey)
             .commit()
     }
 

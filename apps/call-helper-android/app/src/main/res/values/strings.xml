@@ -57,4 +57,10 @@
     <string name="queued_suffix">(انحفظت، وبتنبعت لما يرجع النت)</string>
     <string name="token_revoked">انفصل الربط من الموقع — اربطي الهاتف من جديد</string>
     <string name="list_separator">، </string>
+
+    <!-- رابط ما عليه ختم الموقع: بيسأل، وما بيتصل لحاله أبداً -->
+    <string name="confirm_title">اتصال بـ %1$s؟</string>
+    <string name="confirm_why">الرابط ما عليه ختم الموقع، أو خلص وقته — تأكدي من الرقم قبل ما تتصلي</string>
+    <string name="confirm_call">اتصل</string>
+    <string name="confirm_no">لا</string>
 </resources>

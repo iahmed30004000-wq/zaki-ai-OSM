@@ -10,6 +10,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.telephony.TelephonyManager
+import android.view.Gravity
+import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -20,12 +22,19 @@ import android.widget.Toast
  * Places the call, watches it end, reads THAT call from the log, tells the
  * server, and steps back so she lands in Chrome on the same tab.
  *
+ *   dials by itself ONLY when the link carries `exp` + `sig` signed with the
+ *   pairing's call key and is not expired (CallSig, contract v1.1). Any other
+ *   link — unsigned, tampered, expired, not paired — shows «اتصال بـ +…؟»
+ *   with the number big, and dials only on «اتصل».
+ *
  *   not paired / a permission missing → says why, offers the fix, and
  *   «اتصل بدون المساعد» (the dialler with the number typed in, nothing read).
  */
 class CallActivity : Activity() {
     private lateinit var column: LinearLayout
     private lateinit var line: TextView
+    private lateinit var title: TextView
+    private lateinit var number: TextView
     private val main = Handler(Looper.getMainLooper())
 
     private var orderId = ""
@@ -44,6 +53,14 @@ class CallActivity : Activity() {
         live = true
         column = Ui.page(this)
         line = Ui.text(this, "", 17f, bold = true)
+        title = Ui.text(this, "", 20f, bold = true)
+        number = Ui.text(this, "", 32f, R.color.brand, bold = true).apply {
+            // A phone number reads left to right, whatever the page around it does.
+            layoutDirection = View.LAYOUT_DIRECTION_LTR
+            textDirection = View.TEXT_DIRECTION_LTR
+            textAlignment = View.TEXT_ALIGNMENT_CENTER
+            gravity = Gravity.CENTER
+        }
         Outbox.flush(this, callActive = false)
         handle(intent)
     }
@@ -107,17 +124,20 @@ class CallActivity : Activity() {
         column.addView(line)
         val data = intent?.data
         val order = data?.getQueryParameter("order")
-        val number = data?.getQueryParameter("phone")
-        if (!Links.isOrderId(order) || !Links.isPhone(number)) {
+        val rawPhone = data?.getQueryParameter("phone")
+        if (!Links.isOrderId(order) || !Links.isPhone(rawPhone)) {
             line.text = getString(R.string.call_bad_link)
             line.setTextColor(getColor(R.color.bad))
             column.addView(Ui.button(this, getString(R.string.close)) { finish() })
             return
         }
         orderId = order!!
-        phone = number!!
+        phone = rawPhone!!
+        line.setTextColor(getColor(R.color.bad))
+        showNumber()
 
-        if (Store.pairing(this) == null) {
+        val pairing = Store.pairing(this)
+        if (pairing == null) {
             problem(getString(R.string.call_need_pair), getString(R.string.call_fix_pair)) {
                 startActivity(Intent(this, MainActivity::class.java))
                 finish()
@@ -132,7 +152,28 @@ class CallActivity : Activity() {
             }
             return
         }
-        place()
+        val signed = CallSig.verify(
+            pairing.callKey, orderId, phone,
+            data?.getQueryParameter("exp"), data?.getQueryParameter("sig"),
+            System.currentTimeMillis() / 1000,
+        )
+        if (signed) place() else confirm()
+    }
+
+    /** The number she is about to call, big and left to right, under «اتصال بـ +…؟». */
+    private fun showNumber() {
+        number.text = "+$phone"
+        title.text = getString(R.string.confirm_title, "\u2066+$phone\u2069")
+        column.addView(title, 0)
+        column.addView(number, 1)
+    }
+
+    /** A link the site did not sign (or that expired): ask, never dial by itself. */
+    private fun confirm() {
+        line.text = getString(R.string.confirm_why)
+        line.setTextColor(getColor(R.color.muted))
+        column.addView(Ui.button(this, getString(R.string.confirm_call)) { place() })
+        column.addView(Ui.button(this, getString(R.string.confirm_no)) { finish() })
     }
 
     /** Why the helper cannot call, the button that fixes it, and the plain dialler. */
@@ -149,6 +190,7 @@ class CallActivity : Activity() {
             }
             finish()
         })
+        column.addView(Ui.button(this, getString(R.string.confirm_no)) { finish() })
     }
 
     @SuppressLint("MissingPermission")
@@ -157,6 +199,12 @@ class CallActivity : Activity() {
             handle(intent)
             return
         }
+        if (placed) return // «اتصل» pressed twice
+        // Only the number and the line stay: no button is left to press during the call.
+        column.removeAllViews()
+        column.addView(title)
+        column.addView(number)
+        column.addView(line)
         line.setTextColor(getColor(R.color.brand))
         line.text = getString(R.string.calling, Reading.arabicDigits("+$phone"))
         seenOffhook = false

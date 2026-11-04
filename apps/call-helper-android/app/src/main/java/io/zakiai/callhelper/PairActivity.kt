@@ -84,7 +84,9 @@ class PairActivity : Activity() {
                             return@post
                         }
                         val userName = reply.json.optString("userName")
-                        Store.savePairing(this, base, token, userName)
+                        // No key, or one of the wrong shape: kept empty, so every call link asks first.
+                        val callKey = reply.json.optString("callKey").takeIf { CallSig.isCallKey(it) } ?: ""
+                        Store.savePairing(this, base, token, userName, callKey)
                         Toast.makeText(this, getString(R.string.paired_ok, userName.ifBlank { Links.host(base) }), Toast.LENGTH_LONG).show()
                         startActivity(Intent(this, MainActivity::class.java))
                         finish()
