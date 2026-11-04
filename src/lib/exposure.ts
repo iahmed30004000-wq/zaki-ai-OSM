@@ -94,6 +94,16 @@ export const ON_CALL_CAP_MS = 60 * 60 * 1000;
  */
 export const ON_CALL_LEAD_MS = 60 * 1000;
 
+/**
+ * THE MINUTE'S WARNING HAS A CEILING — the owner's ruling 4/11, as the review of #206 read it.
+ *
+ * The ruling asked two things: call time is not idle, and she SEES a warning before an idle sign-out. It did not ask
+ * that a hidden page never be signed out. So a page that comes back within an hour of running out shows the countdown;
+ * one that comes back later than that (idle ≥ IDLE_LIMIT_MS + this, after the call credit) is a phone left on a
+ * counter, and is signed out on return with no grace.
+ */
+export const HIDDEN_GRACE_CEILING_MS = 60 * 60 * 1000;
+
 /** «اتصال» was pressed. Written by the press itself (ContactButtons.tsx), read and cleared by IdleGuard on return. */
 export function markOnCall(now: number = Date.now()): void {
   try {

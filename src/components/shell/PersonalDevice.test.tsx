@@ -275,6 +275,41 @@ describe('a phone left on a counter', () => {
     expect(screen.getByTestId('idle-warning')).toBeTruthy();
   });
 
+  /*
+   * THE COUNTDOWN HAS A CEILING (review of #206). The ruling asked that call time not count and that she SEE a warning;
+   * not that a hidden page never be signed out. Within an hour of running out: the countdown. Later: signed out on
+   * return, no grace.
+   */
+  describe('the hour after running out', () => {
+    it('back at 25 minutes idle: the countdown', async () => {
+      render(<IdleGuard />);
+      await hide();
+      await pass(25 * 60_000);
+      await show();
+      expect(screen.getByTestId('idle-warning')).toBeTruthy();
+      expect(signOut).not.toHaveBeenCalled();
+    });
+
+    it('back at 85 minutes idle, no call: signed out at once', async () => {
+      render(<IdleGuard />);
+      await hide();
+      await pass(85 * 60_000);
+      await show();
+      expect(signOut, 'تلفون منسي ساعة وزيادة أخد عدّاد').toHaveBeenCalledWith('idle');
+      expect(signOut).toHaveBeenCalledTimes(1);
+    });
+
+    it('back at 85 minutes, but sixty of them on a call: the countdown', async () => {
+      render(<IdleGuard />);
+      localStorage.setItem(ON_CALL_KEY, String(Date.now()));
+      await hide();
+      await pass(85 * 60_000);
+      await show();
+      expect(signOut, 'وقت المكالمة انحسب خمول').not.toHaveBeenCalled();
+      expect(screen.getByTestId('idle-warning')).toBeTruthy();
+    });
+  });
+
   describe('a call started from «اتصال» (ruling 4/11)', () => {
     it('is not idle time', async () => {
       render(<IdleGuard />);

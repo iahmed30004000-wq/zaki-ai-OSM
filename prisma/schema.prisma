@@ -3936,7 +3936,7 @@ model UserSession {
   revokedAt    DateTime?
   /// The browser's own words, cut to 200 characters — enough to tell «the phone» from «the laptop».
   userAgent    String?
-  /// REPLACED (a third device signed in) · LOGOUT · IDLE.
+  /// REPLACED (a third device signed in) · STALE (unused longer than any cookie lives) · LOGOUT · IDLE.
   revokeReason String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

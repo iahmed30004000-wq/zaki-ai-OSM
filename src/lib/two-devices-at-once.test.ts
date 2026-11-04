@@ -68,11 +68,21 @@ const { db, jar, ua, rows, user } = vi.hoisted(() => {
       rows.push(row);
       return { id: row.id };
     }),
-    findMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
-      rows
-        .filter((r) => matches(r, where))
-        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (b.id < a.id ? -1 : 1))
-        .map((r) => ({ id: r.id }))
+    // Honours the `orderBy` the code asks for, key by key, as Postgres would.
+    findMany: vi.fn(
+      async ({ where, orderBy = [] }: { where: Record<string, unknown>; orderBy?: Record<string, 'asc' | 'desc'>[] }) =>
+        rows
+          .filter((r) => matches(r, where))
+          .sort((a, b) => {
+            for (const key of orderBy) {
+              const [field, dir] = Object.entries(key)[0] as [keyof Row, 'asc' | 'desc'];
+              const x = a[field] instanceof Date ? (a[field] as Date).getTime() : String(a[field]);
+              const y = b[field] instanceof Date ? (b[field] as Date).getTime() : String(b[field]);
+              if (x !== y) return (x < y ? -1 : 1) * (dir === 'desc' ? -1 : 1);
+            }
+            return 0;
+          })
+          .map((r) => ({ id: r.id, lastSeenAt: r.lastSeenAt, createdAt: r.createdAt }))
     ),
     updateMany: vi.fn(async ({ where, data }: { where: Record<string, unknown>; data: Partial<Row> }) => {
       const hit = rows.filter((r) => matches(r, where));
@@ -162,6 +172,42 @@ describe('ruling 4/11: two devices per account', () => {
   it('a fourth ends the next oldest — always two left', async () => {
     for (let i = 0; i < 4; i++) await signIn();
     expect(rows.filter((r) => !r.revokedAt).map((r) => r.id)).toEqual([rows[2].id, rows[3].id]);
+  });
+
+  /*
+   * A DEAD ROW MUST NOT PUSH OUT A LIVE DEVICE (review of #206). The laptop signs in at 08:00 and is worked on all
+   * morning; the phone signs in at 09:00, loses its cookie, and signs in again at 10:00. Ranked by creation, the laptop
+   * was «the oldest» and went — mid-work. Ranked by use, the dead 09:00 phone row goes.
+   */
+  it('keeps the device in use, not the newest rows: laptop + new phone stay, the dead phone row goes', async () => {
+    vi.setSystemTime(new Date('2026-11-04T08:00:00Z'));
+    const laptop = await signIn();
+    vi.setSystemTime(new Date('2026-11-04T09:00:00Z'));
+    const lostPhone = await signIn();
+    // The laptop is worked on until 09:55 (its lastSeenAt is refreshed by use).
+    vi.setSystemTime(new Date('2026-11-04T09:55:00Z'));
+    expect((await on(laptop)).user?.id).toBe('u1');
+    await Promise.resolve();
+    await Promise.resolve();
+    vi.setSystemTime(new Date('2026-11-04T10:00:00Z'));
+    const newPhone = await signIn();
+    expect((await on(laptop)).user?.id, 'اللابتوب اللي عم تشتغل عليه طلع بسبب صف ميت').toBe('u1');
+    expect((await on(newPhone)).user?.id).toBe('u1');
+    expect(await on(lostPhone)).toEqual({ user: null, reason: 'REPLACED' });
+  });
+
+  it('a row unused for longer than any cookie lives is STALE, and is not one of the two', async () => {
+    const forgotten = await signIn();
+    vi.setSystemTime(Date.now() + 31 * 24 * 60 * 60 * 1000);
+    const laptop = await signIn();
+    const phone = await signIn();
+    const forgottenRow = rows.find((r) => r.revokedAt && r.revokeReason === 'STALE');
+    expect(forgottenRow, 'الصف الميت ما انعلّم STALE').toBeTruthy();
+    expect(await on(forgotten)).toEqual({ user: null, reason: 'NONE' });
+    // Both live devices kept: the dead row was not counted against them.
+    expect((await on(laptop)).user?.id).toBe('u1');
+    expect((await on(phone)).user?.id).toBe('u1');
+    expect(rows.filter((r) => r.revokeReason === 'REPLACED')).toHaveLength(0);
   });
 
   it('does it in one transaction, the account row first (its lock queues two sign-ins at once)', async () => {

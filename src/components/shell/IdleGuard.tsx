@@ -1,7 +1,16 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { IDLE_WARN_MS, ON_CALL_KEY, creditForCall, idleState, secondsLeft, type IdleState } from '@/lib/exposure';
+import {
+  HIDDEN_GRACE_CEILING_MS,
+  IDLE_LIMIT_MS,
+  IDLE_WARN_MS,
+  ON_CALL_KEY,
+  creditForCall,
+  idleState,
+  secondsLeft,
+  type IdleState,
+} from '@/lib/exposure';
 import { signOut } from '@/lib/sign-out';
 import { RiEyeOffLine, RiLockLine } from '@remixicon/react';
 
@@ -124,6 +133,9 @@ export function IdleGuard() {
      *     and any touch cancels it. Before, the warning was drawn while the
      *     page was hidden — to nobody — and the sign-out came within five
      *     seconds of her coming back from a call.
+     *   · UNLESS it ran out more than an hour ago (HIDDEN_GRACE_CEILING_MS):
+     *     then it is a phone left on a counter, not a call, and it is signed
+     *     out on return with no grace. The countdown is for the hour after.
      */
     const cameBack = (now: number) => {
       const away = hiddenSince.current;
@@ -145,7 +157,16 @@ export function IdleGuard() {
           /* blocked storage costs the other tabs their share of this, nothing more */
         }
       }
-      if (idleState(lastActive.current, now) !== 'active' && !leaving.current) {
+      if (leaving.current) return;
+      if (now - lastActive.current >= IDLE_LIMIT_MS + HIDDEN_GRACE_CEILING_MS) {
+        graceUntil.current = 0;
+        leaving.current = true;
+        setLeft(0);
+        setPhase('expired');
+        void signOut('idle');
+        return;
+      }
+      if (idleState(lastActive.current, now) !== 'active') {
         graceUntil.current = now + IDLE_WARN_MS;
         setLeft(Math.ceil(IDLE_WARN_MS / 1000));
         setPhase('warning');

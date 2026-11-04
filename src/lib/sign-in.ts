@@ -27,6 +27,12 @@ import { DEVICE_COOKIE, TRUST_DAYS, claimsFor, deviceCookieOptions } from './tru
 /** How many devices one account may be signed in on at once — the owner's ruling 4/11. A third ends the oldest. */
 export const DEVICES_PER_ACCOUNT = 2;
 
+/**
+ * A session row unused for longer than the longest cookie («تذكّرني», 30 days — `sessionCookieOptions`) can no longer
+ * be presented by any device: it is stamped STALE at the next sign-in and never counted as one of the two.
+ */
+export const STALE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
+
 /** The browser's own description, cut to 200 characters — «the phone» or «the laptop» for a person reading the rows. */
 async function requestUserAgent(): Promise<string | null> {
   try {
@@ -131,14 +137,37 @@ export async function issueSession(input: {
       data: { userId: user.id, createdAt: now, lastSeenAt: now, userAgent },
       select: { id: true },
     });
+    /**
+     * KEPT BY USE, NOT BY BIRTH — the owner's ruling 4/11 is «two DEVICES», not «two rows».
+     *
+     * Ordered by creation, a dead row pushed out a live device: the laptop signs in at 08:00 and is worked on all
+     * morning, the phone at 09:00, the phone loses its cookie and signs in again at 10:00 — and the laptop, the one in
+     * use, was the «oldest». So the others are ranked by `lastSeenAt` (refreshed every five minutes of use), creation
+     * only breaking a tie; the 09:00 phone row, untouched since, is the one that goes.
+     *
+     * And a row nobody has used for longer than a cookie lives is no device at all: every cookie that could name it has
+     * expired. It is stamped STALE and not counted, so it can never be what keeps a real device out.
+     */
     const live = await tx.userSession.findMany({
       where: { userId: user.id, revokedAt: null },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      select: { id: true },
+      orderBy: [{ lastSeenAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+      select: { id: true, lastSeenAt: true },
     });
-    // This sign-in is kept whatever the clock says of it; of the others, the newest DEVICES_PER_ACCOUNT - 1.
-    const older = live.map((row) => row.id).filter((id) => id !== created.id);
-    const surplus = older.slice(DEVICES_PER_ACCOUNT - 1);
+    const others = live.filter((row) => row.id !== created.id);
+    const staleBefore = now.getTime() - STALE_AFTER_MS;
+    const stale = others.filter((row) => new Date(row.lastSeenAt).getTime() < staleBefore).map((row) => row.id);
+    // This sign-in is kept whatever the clock says of it; of the others still alive, the most recently used
+    // DEVICES_PER_ACCOUNT - 1.
+    const surplus = others
+      .filter((row) => !stale.includes(row.id))
+      .slice(DEVICES_PER_ACCOUNT - 1)
+      .map((row) => row.id);
+    if (stale.length > 0) {
+      await tx.userSession.updateMany({
+        where: { id: { in: stale }, revokedAt: null },
+        data: { revokedAt: now, revokeReason: 'STALE' },
+      });
+    }
     if (surplus.length > 0) {
       await tx.userSession.updateMany({
         where: { id: { in: surplus }, revokedAt: null },
