@@ -384,6 +384,9 @@ const ALLOWED: Record<string, string[]> = {
   'src/app/api/confirmation/issues/route.ts': ['POST'],
   'src/app/api/customers/[id]/history/route.ts': ['GET'],
   'src/app/api/ai/confirmation/route.ts': ['POST'],
+  // «ابعت من رقم الشركة» on the call sheet: the same door and hold rule as contact-attempts beside it, behind `whatsapp.send`
+  // too. It writes a WhatsApp message and the WHATSAPP · MESSAGE_SENT line in the contact log — never the order itself.
+  'src/app/api/confirmation/whatsapp-template/route.ts': ['POST'],
 };
 
 /** Where the door is defined — not callers of it. */

@@ -47,6 +47,7 @@ const NOT_THE_CUSTOMER_TABLE: [string, string][] = [
   ['src/app/api/orders/[id]/change-requests/route.ts', 'a tab of an order whose detail route already counted that customer'],
   ['src/app/api/orders/[id]/shipping/route.ts', 'a tab of an order whose detail route already counted that customer'],
   ['src/app/api/whatsapp/conversations/[id]/route.ts', 'one thread, reached from the inbox list, which is counted'],
+  ['src/app/api/confirmation/whatsapp-template/route.ts', 'reads the phone of the one order she holds only to send the company template to it; the answer is ok and logged — no contact detail leaves to the screen'],
 ];
 
 /**
