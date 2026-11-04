@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { onAndroid } from '@/lib/call-helper/android';
+import { markOnCall } from '@/lib/exposure';
 import {
   fillTemplate, orderDetailsContext, usesOrderDetails, whatsappAppLink, whatsappLink, whatsappReady, type FillContext, type MessageTemplate,
 } from '@/lib/message-templates';
@@ -298,6 +299,8 @@ export function ContactButtons({
           className={btn}
           onClick={() => {
             noteContact('PHONE', 'OPENED');
+            // The time on this call is not idle time (IdleGuard, the owner's ruling 4/11).
+            markOnCall();
             if (!helperHref) return;
             setTelFallback(null);
             window.setTimeout(() => {

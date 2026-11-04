@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { SystemFrame } from './SystemFrame';
 import { getCurrentUser } from '@/lib/auth';
+import { AuthBackendDown } from '@/lib/auth-errors';
 import { openingTheme, themeByKey } from '@/lib/system-themes';
 import { cookies } from 'next/headers';
 import { RAIL_COOKIE } from '@/lib/sidebar-rail';
@@ -41,7 +42,15 @@ export const viewport: Viewport = {
  * here, so none of it reaches a public page.
  */
 export default async function SystemLayout({ children }: { children: React.ReactNode }) {
-  const user = await getCurrentUser();
+  /*
+   * A DATABASE THAT DID NOT ANSWER (the owner's ruling 4/11): drawn as nobody HERE, for the frame and its theme only.
+   * The page's own guard (page-guard.ts) meets the same error a moment later and throws it to `(system)/error.tsx`,
+   * whose retry is the answer — that boundary cannot catch this layout, so this layout must not be what throws.
+   */
+  const user = await getCurrentUser().catch((error: unknown) => {
+    if (error instanceof AuthBackendDown) return null;
+    throw error;
+  });
   /**
    * Was the sidebar left folded? A cookie, read here, so the attribute is
    * in the HTML the browser parses — no script, no flash, and no «Scripts

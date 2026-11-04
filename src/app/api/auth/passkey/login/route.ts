@@ -160,7 +160,7 @@ export async function POST(req: Request) {
     /**
      * `remember` is the browser's to ask for and ours to honour, exactly as
      * on the password form. The session itself is issued by the one
-     * function every door uses — including its `tokenVersion` bump.
+     * function every door uses — including its session row (ruling 4/11: two devices).
      *
      * ── AND NO SECOND FACTOR IS ASKED FOR, BECAUSE THIS WAS ONE ──
      *

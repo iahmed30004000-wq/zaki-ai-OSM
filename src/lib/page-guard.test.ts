@@ -27,7 +27,18 @@ const { getCurrentUser, cookies, redirect, forbidden, notFound, db } = vi.hoiste
   },
 }));
 
-vi.mock('./auth', () => ({ getCurrentUser: (...a: unknown[]) => getCurrentUser(...a) }));
+/*
+ * Ruling 4/11: two devices. The guard now asks the VERDICT — who, and if nobody, why — so a device a newer sign-in
+ * ended can be told so. Here it is drawn from `getCurrentUser`'s mock, with the reason in `ended.reason`.
+ */
+const ended = vi.hoisted(() => ({ reason: 'NONE' as 'NONE' | 'REPLACED' }));
+vi.mock('./auth', () => ({
+  getCurrentUser: (...a: unknown[]) => getCurrentUser(...a),
+  getSessionVerdict: async (...a: unknown[]) => {
+    const user = await getCurrentUser(...a);
+    return user ? { user } : { user: null, reason: ended.reason };
+  },
+}));
 vi.mock('./db', () => ({ db }));
 vi.mock('next/headers', () => ({ cookies: (...a: unknown[]) => cookies(...a) }));
 vi.mock('next/navigation', () => ({
@@ -130,5 +141,25 @@ describe('guardRoute', () => {
   it('sends a signed-out visitor to login', async () => {
     getCurrentUser.mockResolvedValue(null);
     await expect(guardRoute('/orders')).rejects.toThrow('REDIRECT:/login');
+  });
+
+  /*
+   * THE OWNER'S RULING 4/11 — the two answers that used to be one «signed out».
+   */
+  it('tells a device a third sign-in ended why it is on the login page', async () => {
+    getCurrentUser.mockResolvedValue(null);
+    ended.reason = 'REPLACED';
+    try {
+      await expect(guardRoute('/orders')).rejects.toThrow('REDIRECT:/login?replaced=1');
+    } finally {
+      ended.reason = 'NONE';
+    }
+  });
+
+  it('a database that did not answer is the error screen, never the login page', async () => {
+    const { AuthBackendDown } = await import('./auth-errors');
+    getCurrentUser.mockRejectedValue(new AuthBackendDown());
+    await expect(guardRoute('/orders')).rejects.toBeInstanceOf(AuthBackendDown);
+    expect(redirect, 'خطأ بالقاعدة صار تسجيل خروج').not.toHaveBeenCalled();
   });
 });

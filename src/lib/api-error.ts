@@ -10,6 +10,7 @@
 import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { catalogItem } from './permission-catalog';
+import { AuthBackendDown, SESSION_REPLACED_AR, SessionEnded } from './auth-errors';
 
 export interface ApiErrorResult {
   body: { error: string; errorAr?: string; code?: string };
@@ -106,7 +107,27 @@ function ours(error: unknown): boolean {
 export function apiError(error: unknown): ApiErrorResult {
   const message = error instanceof Error ? error.message : String(error);
 
+  /*
+   * A BUSY SERVER IS NOT A SIGN-OUT — the owner's ruling 4/11.
+   *
+   * The session check could not reach the database (auth-errors.ts). Before, that was a 401, and `apiFetch` sent the
+   * agent to /login in the middle of a shift for a pool that was full for two seconds. 503 is what it is: try again.
+   */
+  if (error instanceof AuthBackendDown || (error instanceof Error && error.name === 'AuthBackendDown')) {
+    return {
+      body: { error: 'Service busy', errorAr: 'السيرفر مشغول هلّق — جرّبي كمان شوي', code: 'SERVICE_BUSY' },
+      status: 503,
+    };
+  }
+
   if (message === 'Unauthorized') {
+    // A newer sign-in on a third device ended this one (ruling 4/11): the code lets `apiFetch` say so on /login.
+    if (error instanceof SessionEnded && error.code === 'SESSION_REPLACED') {
+      return {
+        body: { error: 'Unauthorized', errorAr: SESSION_REPLACED_AR, code: 'SESSION_REPLACED' },
+        status: 401,
+      };
+    }
     return {
       body: { error: 'Unauthorized', errorAr: 'انتهت الجلسة. سجّل الدخول من جديد للمتابعة.' },
       status: 401,

@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { db } from './db';
 import { SessionUser, UserRole, UserStatus, Permission, ROLE_PERMISSIONS, ROLE_LABELS } from '@/types/auth';
 import { TRUST_DAYS, type DeviceTrustClaims } from './trusted-device';
+import { AuthBackendDown, SessionEnded, isBackendDown } from './auth-errors';
 
 /**
  * Resolved lazily on first use (request time), never at module load.
@@ -46,6 +47,11 @@ export async function createSessionToken(payload: {
   status: UserStatus;
   companyId: string | null;
   tv: number;
+  /**
+   * The `user_sessions` row this cookie is (the owner's ruling 4/11: two devices per account). Optional only because
+   * cookies issued before that ruling carry none and are still read by the old rule until they expire.
+   */
+  sid?: string;
   remember?: boolean;
 }): Promise<string> {
   return new SignJWT(payload)
@@ -105,6 +111,7 @@ export async function verifySessionToken(token: string): Promise<{
   status: UserStatus;
   companyId: string | null;
   tv: number;
+  sid?: string;
 } | null> {
   try {
     const { payload } = await jwtVerify(token, getJwtSecret());
@@ -118,6 +125,7 @@ export async function verifySessionToken(token: string): Promise<{
       status: UserStatus;
       companyId: string | null;
       tv: number;
+      sid?: string;
     };
   } catch {
     return null;
@@ -232,51 +240,119 @@ async function previewedUser(owner: SessionUser, sessionToken: string, previewTo
   return seen;
 }
 
+/** How often a live session's `lastSeenAt` is written — a request every few seconds must not be a write each. */
+export const SEEN_EVERY_MS = 5 * 60 * 1000;
+
+/** Why there is nobody: no/invalid cookie or ended everywhere ('NONE'), or THIS device was the oldest of three. */
+export type SessionVerdict = { user: SessionUser } | { user: null; reason: 'NONE' | 'REPLACED' };
+
+const NOBODY: SessionVerdict = { user: null, reason: 'NONE' };
+
 /**
- * Loads the session user. Returns the user regardless of status
- * so the UI can render the correct screen (pending / suspended / active).
- * Token version is verified server-side to support forced logout.
+ * WHO IS SIGNED IN ON THIS REQUEST, AND IF NOBODY, WHY.
  *
- * WHILE THE OWNER PREVIEWS SOMEBODY (preview-mode.ts) this answers HER — on a
- * read the proxy stamped, and on nothing else. `{ preview: 'ignore' }` answers
- * the person who is really signed in whatever the cookie says: signing out and
- * the preview door itself act as the owner.
+ * Returns the user regardless of status so the UI can render the correct screen (pending / suspended / active).
+ *
+ * TWO LOCKS, BOTH MUST HOLD (the owner's ruling 4/11 — two devices per account):
+ *   · `tv` — the account's «sign out everywhere» lever. A force-logout, a suspension, a password or 2FA reset bumps
+ *     `tokenVersion`, and every cookie of the account dies at once, whatever its session row says.
+ *   · `sid` — this device's own row in `user_sessions`. A sign-in on a third device stamps the oldest row REPLACED; a
+ *     sign-out stamps only its own. Before the ruling every sign-in bumped `tv`, so opening the system on the phone for
+ *     the call helper signed the laptop out.
+ *
+ * A COOKIE WITH NO `sid` was issued before the ruling. It is accepted by the `tv` rule alone until it expires, so the
+ * deploy signs nobody out; there is no row to check because none was ever written for it.
+ *
+ * A DATABASE THAT DOES NOT ANSWER IS NOT «NOBODY». It throws `AuthBackendDown` (auth-errors.ts), which the API maps to
+ * 503 and the page guard lets fall to the error screen — never to /login. Everything else that goes wrong (a forged or
+ * expired cookie, a call outside a request) is still «nobody», as before.
+ *
+ * WHILE THE OWNER PREVIEWS SOMEBODY (preview-mode.ts) this answers HER — on a read the proxy stamped, and on nothing
+ * else. `{ preview: 'ignore' }` answers the person who is really signed in whatever the cookie says: signing out and the
+ * preview door itself act as the owner.
  */
-export async function getCurrentUser(opts?: { preview?: 'ignore' }): Promise<SessionUser | null> {
+export async function getSessionVerdict(opts?: { preview?: 'ignore' }): Promise<SessionVerdict> {
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get(COOKIE_NAME)?.value;
-    if (!token) return null;
+    if (!token) return NOBODY;
 
     const decoded = await verifySessionToken(token);
-    if (!decoded) return null;
+    if (!decoded) return NOBODY;
 
-    const user = await loadSessionRow(decoded.userId);
+    // Side by side: the session row costs no extra round trip on the path every request walks.
+    const [user, session] = await Promise.all([
+      loadSessionRow(decoded.userId),
+      decoded.sid
+        ? db.userSession.findUnique({
+            where: { id: decoded.sid },
+            select: { userId: true, revokedAt: true, revokeReason: true, lastSeenAt: true },
+          })
+        : null,
+    ]);
 
-    if (!user) return null;
+    if (!user) return NOBODY;
 
-    // Forced logout: token issued before the last tokenVersion bump is invalid
-    if (user.tokenVersion !== decoded.tv) return null;
+    // Forced logout: token issued before the last tokenVersion bump is invalid — every device, sid or not.
+    if (user.tokenVersion !== decoded.tv) return NOBODY;
+
+    if (decoded.sid) {
+      // A row that is gone, or that is somebody else's, is a cookie this server did not issue to this person.
+      if (!session || session.userId !== user.id) return NOBODY;
+      if (session.revokedAt) return { user: null, reason: session.revokeReason === 'REPLACED' ? 'REPLACED' : 'NONE' };
+      if (Date.now() - new Date(session.lastSeenAt).getTime() >= SEEN_EVERY_MS) {
+        // FIRE AND FORGET. «When was this device last used» is worth a write every five minutes, never a wait: the
+        // request does not stand on it, and a failed write is the next request's to retry. `Promise.resolve().then`
+        // so that not even a synchronous throw can reach the request.
+        const sid = decoded.sid;
+        void Promise.resolve()
+          .then(() => db.userSession.updateMany({ where: { id: sid, revokedAt: null }, data: { lastSeenAt: new Date() } }))
+          .catch(() => undefined);
+      }
+    }
 
     const sessionUser = await sessionUserOf(user);
-    if (opts?.preview === 'ignore') return sessionUser;
+    if (opts?.preview === 'ignore') return { user: sessionUser };
 
     const { PREVIEW_COOKIE } = await import('./preview-mode');
     const previewToken = cookieStore.get(PREVIEW_COOKIE)?.value;
-    if (!previewToken) return sessionUser;
+    if (!previewToken) return { user: sessionUser };
     const seen = await previewedUser(sessionUser, token, previewToken);
     if (seen === 'ended') {
       sessionUser.previewEnded = true;
-      return sessionUser;
+      return { user: sessionUser };
     }
-    return seen ?? sessionUser;
+    return { user: seen ?? sessionUser };
   } catch (error: any) {
     if (error?.digest === 'DYNAMIC_SERVER_USAGE') {
-      return null;
+      return NOBODY;
+    }
+    if (isBackendDown(error)) {
+      console.error('Session check: the database did not answer:', error?.code ?? error?.name);
+      throw error instanceof AuthBackendDown ? error : new AuthBackendDown(error);
     }
     console.error('Error getting current user:', error);
-    return null;
+    return NOBODY;
   }
+}
+
+/**
+ * Loads the session user, or null when nobody is signed in on this cookie (both locks: `getSessionVerdict`).
+ * THROWS `AuthBackendDown` when the database cannot answer — the one thing that is not «nobody».
+ */
+export async function getCurrentUser(opts?: { preview?: 'ignore' }): Promise<SessionUser | null> {
+  return (await getSessionVerdict(opts)).user;
+}
+
+/**
+ * THE ROW THIS COOKIE NAMES, AS THE SIGN-OUT DOOR NEEDS IT: its `sid` and whose it is — or null for no cookie, a cookie
+ * this server did not sign, and a cookie from before the ruling 4/11 that carries no `sid`.
+ */
+export async function currentSessionClaims(): Promise<{ sid: string; userId: string } | null> {
+  const token = (await cookies()).get(COOKIE_NAME)?.value;
+  if (!token) return null;
+  const decoded = await verifySessionToken(token);
+  return decoded?.sid ? { sid: decoded.sid, userId: decoded.userId } : null;
 }
 
 /**
@@ -332,9 +408,11 @@ export async function currentPreviewClaims(ownerId: string) {
  * PENDING / SUSPENDED / DISABLED accounts are rejected here — never trust the client.
  */
 export async function requireAuth(): Promise<SessionUser> {
-  const user = await getCurrentUser();
+  const verdict = await getSessionVerdict();
+  const user = verdict.user;
   if (!user) {
-    throw new Error('Unauthorized');
+    // Still the word 'Unauthorized' (api-error.ts maps it to 401); the code says when it was a newer device.
+    throw new SessionEnded(verdict.reason === 'REPLACED' ? 'SESSION_REPLACED' : undefined);
   }
   if (user.status !== 'ACTIVE') {
     throw new Error(`ACCOUNT_${user.status}`);

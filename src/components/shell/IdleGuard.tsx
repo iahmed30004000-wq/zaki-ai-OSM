@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { idleState, secondsLeft, type IdleState } from '@/lib/exposure';
+import { IDLE_WARN_MS, ON_CALL_KEY, creditForCall, idleState, secondsLeft, type IdleState } from '@/lib/exposure';
 import { signOut } from '@/lib/sign-out';
 import { RiEyeOffLine, RiLockLine } from '@remixicon/react';
 
@@ -15,12 +15,17 @@ import { RiEyeOffLine, RiLockLine } from '@remixicon/react';
  * counter, in a repair shop, and in one case in a taxi.
  *
  * So the cookie stays long and the SCREEN gets short. Twenty minutes with
- * nothing touched and the account is signed out for real — the server bumps
- * the token version, so the cookie somebody kept a copy of is dead too, not
- * merely hidden.
+ * nothing touched and this device is signed out for real — the server stamps
+ * its session row ended, so the cookie somebody kept a copy of is dead too,
+ * not merely hidden (and, since the owner's ruling 4/11, the account's other
+ * device stays signed in).
  *
  * A minute of warning first, because signing somebody out silently in the
- * middle of a shift is how a safety measure gets switched off.
+ * middle of a shift is how a safety measure gets switched off. THE OWNER'S
+ * RULING 4/11 made that a promise: the warning is SEEN before any idle
+ * sign-out. A page that runs out while hidden is not signed out while
+ * hidden, nor on return; it shows the full minute's countdown first. And the
+ * time on a call started from «اتصال» is not idle at all (exposure.ts).
  *
  * THE BLUR IS NOT A PROMISE. When the app goes to the background the
  * content is covered, which is aimed at one specific thing: the thumbnail
@@ -51,11 +56,16 @@ export function IdleGuard() {
   const lastActive = useRef(0);
   const lastWrite = useRef(0);
   const leaving = useRef(false);
+  /** When the page went to the background; 0 while it is on screen. */
+  const hiddenSince = useRef(0);
+  /** The end of the minute's warning a return was given (ruling 4/11); 0 when none is running. */
+  const graceUntil = useRef(0);
 
   /** Somebody is here. */
   const touch = useCallback(() => {
     const now = Date.now();
     lastActive.current = now;
+    graceUntil.current = 0;
     if (now - lastWrite.current > WRITE_EVERY_MS) {
       lastWrite.current = now;
       try {
@@ -94,17 +104,63 @@ export function IdleGuard() {
       // a stale write must not resurrect a session that has run out.
       if (Number.isFinite(at) && at > lastActive.current) {
         lastActive.current = at;
+        graceUntil.current = 0;
         setPhase((p) => (p === 'active' ? p : 'active'));
       }
     };
     window.addEventListener('storage', fromOtherTab);
 
     /**
-     * Returning to the tab is deliberately NOT activity. Somebody picking up
-     * a phone that has been face-down for an hour reaches exactly this
-     * moment, and it is the moment the session must already be gone.
+     * BACK ON SCREEN — the owner's ruling 4/11.
+     *
+     * Returning to the tab is still NOT, by itself, activity: somebody picking
+     * up a phone that has been face-down for an hour reaches exactly this
+     * moment. What changed is what happens next.
+     *
+     *   · A call started from «اتصال» counts: from its mark until now, up to
+     *     an hour (`creditForCall`). The mark is spent either way.
+     *   · If the session has run out (or is in its last minute), she is NOT
+     *     signed out on the spot. The minute's countdown is drawn, in full,
+     *     and any touch cancels it. Before, the warning was drawn while the
+     *     page was hidden — to nobody — and the sign-out came within five
+     *     seconds of her coming back from a call.
      */
-    const onVisibility = () => setCovered(document.hidden);
+    const cameBack = (now: number) => {
+      const away = hiddenSince.current;
+      hiddenSince.current = 0;
+      let mark = NaN;
+      try {
+        mark = Number(localStorage.getItem(ON_CALL_KEY));
+        localStorage.removeItem(ON_CALL_KEY);
+      } catch {
+        /* blocked storage: no call is counted, exactly as before the ruling */
+      }
+      const credited = creditForCall(lastActive.current, mark, away, now);
+      if (credited > lastActive.current) {
+        lastActive.current = credited;
+        try {
+          // The other tabs are told too, the same way a touch tells them.
+          localStorage.setItem(KEY, String(credited));
+        } catch {
+          /* blocked storage costs the other tabs their share of this, nothing more */
+        }
+      }
+      if (idleState(lastActive.current, now) !== 'active' && !leaving.current) {
+        graceUntil.current = now + IDLE_WARN_MS;
+        setLeft(Math.ceil(IDLE_WARN_MS / 1000));
+        setPhase('warning');
+      }
+    };
+
+    const onVisibility = () => {
+      const hidden = document.hidden;
+      setCovered(hidden);
+      if (hidden) {
+        if (!hiddenSince.current) hiddenSince.current = Date.now();
+      } else if (hiddenSince.current) {
+        cameBack(Date.now());
+      }
+    };
     document.addEventListener('visibilitychange', onVisibility);
 
     /**
@@ -128,6 +184,29 @@ export function IdleGuard() {
 
     const id = setInterval(() => {
       const now = Date.now();
+      // NOBODY CAN SEE A HIDDEN PAGE, so nobody can see its warning: it is never signed out while hidden (ruling
+      // 4/11). The reckoning happens on return, with the minute's countdown on screen.
+      if (document.hidden) {
+        if (!hiddenSince.current) hiddenSince.current = now;
+        return;
+      }
+      // Back without any of the three events (see above): the same return, found by the clock.
+      if (hiddenSince.current) cameBack(now);
+      if (graceUntil.current) {
+        if (now < graceUntil.current) {
+          setLeft(Math.ceil((graceUntil.current - now) / 1000));
+          setPhase('warning');
+          return;
+        }
+        // The minute was on screen and nobody answered it.
+        setLeft(0);
+        setPhase('expired');
+        if (!leaving.current) {
+          leaving.current = true;
+          void signOut('idle');
+        }
+        return;
+      }
       const state = idleState(lastActive.current, now);
       setLeft(secondsLeft(lastActive.current, now));
       setPhase(state);

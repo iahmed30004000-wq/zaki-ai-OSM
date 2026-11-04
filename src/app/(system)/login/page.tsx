@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/Input';
 import { Card, CardContent } from '@/components/ui/Card';
 import { RiErrorWarningLine, RiFingerprintLine, RiLoader4Line, RiLoginBoxLine, RiTimerLine } from '@remixicon/react';
 import { BrandStage } from '@/components/shell/BrandStage';
+import { SESSION_REPLACED_AR } from '@/lib/auth-errors';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -77,6 +78,8 @@ export default function LoginPage() {
   // plainly is what stops somebody concluding the app signed them out at
   // random and asking for the whole measure to be removed.
   const [wasIdle, setWasIdle] = useState(false);
+  /** This device was the oldest of three and a newer sign-in ended it (the owner's ruling 4/11: two devices). */
+  const [wasReplaced, setWasReplaced] = useState(false);
   /**
    * The second step, for the roles whose password moves money.
    *
@@ -99,6 +102,7 @@ export default function LoginPage() {
       setError('تم إيقاف حسابك. يرجى التواصل مع المدير.');
     }
     if (window.location.search.includes('idle=1')) setWasIdle(true);
+    if (window.location.search.includes('replaced=1')) setWasReplaced(true);
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -150,6 +154,15 @@ export default function LoginPage() {
       <div className="space-y-6">
         <Card className="shadow-raised">
           <CardContent className="p-6 space-y-4">
+            {wasReplaced && !error && (
+              <div
+                data-testid="replaced-notice"
+                className="p-3 text-xs rounded-lg bg-[var(--sys-surface)] border border-[var(--sys-border)] text-[var(--sys-muted-foreground)]"
+              >
+                {SESSION_REPLACED_AR}
+              </div>
+            )}
+
             {wasIdle && !error && (
               <div
                 data-testid="idle-notice"

@@ -5,6 +5,9 @@ import {
   CUSTOMER_FIELDS,
   IDLE_LIMIT_MS,
   IDLE_WARN_MS,
+  ON_CALL_CAP_MS,
+  ON_CALL_LEAD_MS,
+  creditForCall,
   idleState,
   secondsLeft,
   watermarkText,
@@ -54,6 +57,44 @@ describe('a screen left untouched', () => {
     // A three-second warning is not a warning.
     expect(IDLE_WARN_MS).toBeGreaterThanOrEqual(30_000);
     expect(IDLE_LIMIT_MS).toBeGreaterThan(IDLE_WARN_MS);
+  });
+});
+
+/*
+ * A CALL IS WORK, NOT IDLENESS — the owner's ruling 4/11. The press of «اتصال» leaves a time; on return the time from
+ * it counts as activity, up to an hour.
+ */
+describe('the time on a call', () => {
+  const LEFT = 1_000_000_000; // when the page went to the background
+
+  it('counts from the press until the return', () => {
+    expect(creditForCall(LEFT - 5_000, LEFT, LEFT, LEFT + 30 * 60_000)).toBe(LEFT + 30 * 60_000);
+  });
+
+  it('up to an hour, and not a minute more', () => {
+    expect(creditForCall(LEFT, LEFT, LEFT, LEFT + 3 * ON_CALL_CAP_MS)).toBe(LEFT + ON_CALL_CAP_MS);
+  });
+
+  it('never moves the clock backwards', () => {
+    expect(creditForCall(LEFT + 10_000, LEFT, LEFT, LEFT + 5_000)).toBe(LEFT + 10_000);
+  });
+
+  it('a press long before the page went away is another call', () => {
+    expect(creditForCall(LEFT, LEFT - ON_CALL_LEAD_MS - 1, LEFT, LEFT + 30 * 60_000)).toBe(LEFT);
+    expect(creditForCall(LEFT, LEFT - ON_CALL_LEAD_MS, LEFT, LEFT + 30 * 60_000)).toBe(LEFT + 30 * 60_000);
+  });
+
+  it('a missing, garbled or future mark gives nothing', () => {
+    for (const mark of [NaN, 0, -5, LEFT + 99 * 60_000]) {
+      expect(creditForCall(LEFT, mark, LEFT, LEFT + 30 * 60_000)).toBe(LEFT);
+    }
+  });
+
+  it('and with a credited call, twenty minutes of nothing is still the limit', () => {
+    const back = LEFT + 30 * 60_000;
+    const last = creditForCall(LEFT, LEFT, LEFT, back);
+    expect(idleState(last, back + IDLE_LIMIT_MS - IDLE_WARN_MS - 1)).toBe('active');
+    expect(idleState(last, back + IDLE_LIMIT_MS)).toBe('expired');
   });
 });
 
@@ -153,6 +194,8 @@ describe('what the browser is allowed to remember', () => {
     'shell/Sidebar.tsx': 'which menu groups this person leaves open',
     'growth/CampaignsBoard.tsx': 'which of the three campaign views this person last picked — a word, never a record',
     'shell/IdleGuard.tsx': 'a timestamp, shared between this account’s open tabs',
+    // Ruling 4/11: the time on a call is not idle time. A time only — never the number called or whose order it was.
+    'lib/exposure.ts': 'when «اتصال» was last pressed — a timestamp, read and cleared by IdleGuard on return',
     'shell/InstallApp.tsx': 'when «ليس الآن» was pressed on the install strip — a timestamp, nothing about a person or a record',
     'ui/SavedViews.tsx': 'a name and a query string — a question to re-ask, never an answer or a record id',
     /*

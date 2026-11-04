@@ -330,6 +330,8 @@ model User {
   callHelperDevices             CallHelperDevice[]
   callHelperPairCodes           CallHelperPairCode[]
   callHelperReadings            CallHelperReading[]
+  /// The devices signed in to this account right now — at most two (the owner's ruling 4/11, src/lib/sign-in.ts).
+  sessions                      UserSession[]
   company                       Company?                @relation(fields: [companyId], references: [id], onDelete: Cascade)
   enteredOrders                 Order[]                 @relation("OrderCreator")
   assignedOrders                Order[]                 @relation("ModeratorOrders")
@@ -3918,4 +3920,27 @@ model CallHelperReading {
   @@index([userId, orderId, startedAt])
   @@index([companyId])
   @@map("call_helper_readings")
+}
+
+/// ONE SIGNED-IN DEVICE — the row a session cookie names by its `sid` (src/lib/sign-in.ts, src/lib/auth.ts).
+///
+/// The owner's ruling 4/11: an account may be open on TWO devices at once, and a third sign-in ends the oldest. A row
+/// is never deleted to end a session: it is stamped `revokedAt` with the reason, so «why was I signed out» has an
+/// answer. `tokenVersion` on the user stays the «sign out everywhere» lever above all of these rows.
+model UserSession {
+  id           String    @id @default(uuid())
+  userId       String
+  createdAt    DateTime  @default(now())
+  /// Refreshed at most once every five minutes by `getCurrentUser`, never on the request's own path.
+  lastSeenAt   DateTime  @default(now())
+  revokedAt    DateTime?
+  /// The browser's own words, cut to 200 characters — enough to tell «the phone» from «the laptop».
+  userAgent    String?
+  /// REPLACED (a third device signed in) · LOGOUT · IDLE.
+  revokeReason String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@map("user_sessions")
 }
