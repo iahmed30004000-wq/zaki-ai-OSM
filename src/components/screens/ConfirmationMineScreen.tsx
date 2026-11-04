@@ -55,6 +55,8 @@ import { OrderGoods, OrderNotes, OrderPlace, governorateOf, streetOf } from '@/c
 import { CallOutcomeSheet, type LoggedOutcome } from '@/components/confirmation/CallOutcomeSheet';
 import { WhatsAppAfterNoAnswer } from '@/components/confirmation/WhatsAppAfterNoAnswer';
 import { useOutbox, usePendingCall, type SendAnswer } from '@/components/confirmation/useCallOutcome';
+import { CallHelperCard } from '@/components/confirmation/CallHelperCard';
+import { useHelperReading } from '@/components/confirmation/useHelperReading';
 import {
   ATTEMPT_RESULT,
   CALLBACK_REASON,
@@ -87,6 +89,8 @@ interface RiskInfo {
 interface OrderRow {
   id: string;
   orderNumber: string;
+  /** «مساعد الاتصال»: the signed link «اتصل» opens when her phone is paired (`/api/confirmation/mine`). Absent = `tel:`. */
+  callHelperLink?: string;
   merchantRef: string | null;
   confirmationStatus: string;
   state: string;
@@ -798,6 +802,12 @@ export function ConfirmationMineScreen() {
     }
   };
   const outbox = useOutbox(sheetOn ? currentUser?.id ?? null : null, sendOutgoing);
+  // «مساعد الاتصال»: back from a call the app placed — what the phone's call log said, once it has said it.
+  const helperReading = useHelperReading(
+    sheetOn && call.pending && callOrder?.callHelperLink && call.awayMs !== null
+      ? { orderId: call.pending.orderId, startedAt: call.pending.startedAt }
+      : null
+  );
   const callKey = call.pending ? `${call.pending.orderId}:${call.pending.startedAt}` : null;
   const waitingItem = callKey ? outbox.items.find((o) => o.key === callKey) ?? null : null;
 
@@ -1038,6 +1048,9 @@ export function ConfirmationMineScreen() {
         </p>
       )}
       {canPull && !readOnly && <PullPanel queue={queue} compact onPulled={async () => void (await load())} />}
+      {/* «مساعد الاتصال» — on a phone (where the call sheet is), her own desk only, for the holder of «طلباتي»'s key (the
+          pair door asks the same). A desk at a computer has no phone to pair. */}
+      {phone && holderId && !readOnly && <CallHelperCard onChange={() => void load()} />}
       {canTakeOnTheLine && !readOnly && (
         <CustomerOnTheLine
           onTaken={async (orderId) => {
@@ -1268,6 +1281,7 @@ export function ConfirmationMineScreen() {
                   region: order.customer.city,
                 }}
                 orderId={order.id}
+                callHref={order.callHelperLink}
                 onContacted={sheetOn ? (method) => method === 'PHONE' && startCall(order) : undefined}
               />
             );
@@ -1845,6 +1859,7 @@ export function ConfirmationMineScreen() {
           key={callKey ?? undefined}
           customerName={callOrder.customer.fullName}
           awayMs={call.awayMs}
+          reading={helperReading}
           closesOnNext={(workable(callOrder.id) ?? callOrder).noAnswerCount + 1 >= data.noAnswerLimit}
           confirmLock={sheetConfirmLock(workable(callOrder.id) ?? callOrder)}
           waiting={

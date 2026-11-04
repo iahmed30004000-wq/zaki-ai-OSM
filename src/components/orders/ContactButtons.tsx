@@ -37,6 +37,7 @@ export function ContactButtons({
   onContacted,
   only,
   preferApp,
+  callHref,
 }: {
   phone: string | null | undefined;
   context: FillContext;
@@ -92,6 +93,13 @@ export function ContactButtons({
    * browser. When the page has not moved a moment later (no app on this phone), the browser's link is offered beside it.
    */
   preferApp?: boolean;
+  /**
+   * «مساعد الاتصال»: the signed `intent://` link «طلباتي» hands over when she has a paired phone (`/api/confirmation/mine`
+   * → `callHelperLink`). «اتصال» opens it in place of `tel:` — the app places the call and reads the call log; without the
+   * app Chrome falls back to the same number in the dialler. Everything else about the press is unchanged: it is the same
+   * anchor, and `noteContact('PHONE', 'OPENED')` writes the same line on the same click.
+   */
+  callHref?: string | null;
 }) {
   const [templates, setTemplates] = useState<MessageTemplate[] | null>(null);
   const [open, setOpen] = useState<'SMS' | 'WHATSAPP' | null>(null);
@@ -267,7 +275,7 @@ export function ContactButtons({
           tel: target. The leading + is kept; everything decorative goes. */}
       {!only && (
         <a
-          href={`tel:${phone.replace(/[^\d+]/g, '')}`}
+          href={callHref || `tel:${phone.replace(/[^\d+]/g, '')}`}
           title="اتصال"
           className={btn}
           onClick={() => noteContact('PHONE', 'OPENED')}

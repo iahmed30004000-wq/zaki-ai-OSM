@@ -13,7 +13,17 @@ import {
   RiTimerLine,
   RiWifiOffLine,
 } from '@remixicon/react';
-import { awayClock, callbackChips, outcomeOrder, type CallbackChip, type CallOutcome, type OutgoingState } from '@/lib/call-outcome';
+import {
+  awayClock,
+  callbackChips,
+  outcomeOrder,
+  readingLine,
+  readingOrder,
+  type CallbackChip,
+  type CallOutcome,
+  type HelperReading,
+  type OutgoingState,
+} from '@/lib/call-outcome';
 
 /**
  * «شو صار؟» — THE SHEET THAT WAITS AT THE BOTTOM OF HER PHONE WHILE SHE IS ON THE CALL.
@@ -91,6 +101,7 @@ export type LoggedOutcome = 'NO_ANSWER' | 'BUSY' | 'UNREACHABLE' | 'WRONG_NUMBER
 export function CallOutcomeSheet({
   customerName,
   awayMs,
+  reading,
   closesOnNext,
   confirmLock,
   waiting,
@@ -117,6 +128,11 @@ export function CallOutcomeSheet({
   customerName: string;
   /** How long she was away; `null` while she has not come back (or the browser never said). */
   awayMs: number | null;
+  /**
+   * «مساعد الاتصال»: what her paired phone's call log said about THIS call, once it has said it — shown in one line, and
+   * the matching answer goes first in place of the time-away order. Nothing is recorded from it: she still taps.
+   */
+  reading?: Pick<HelperReading, 'answered' | 'talkSeconds' | 'ringSeconds'> | null;
   /** The next unanswered call closes this order by the rule of three — said before she taps, not after. */
   closesOnNext: boolean;
   /** Why «تأكيد الطلب» is shut, in the card's words — or null when it is open. */
@@ -150,7 +166,7 @@ export function CallOutcomeSheet({
   const [step, setStep] = useState<'ask' | 'answered' | 'callback' | { after: LoggedOutcome | 'CALLBACK' }>('ask');
   // Read once, as the chips are drawn: «اليوم 6 م» is left out once six is past.
   const [chips] = useState(() => callbackChips(new Date()));
-  const order = outcomeOrder(awayMs);
+  const order = reading ? readingOrder(reading.answered) : outcomeOrder(awayMs);
 
   const tap = (o: CallOutcome) => {
     if (o === 'NOT_CALLED') return onNotCalled();
@@ -214,6 +230,12 @@ export function CallOutcomeSheet({
 
         {refused && (
           <p role="alert" className="text-xs text-[var(--sys-destructive)]">{refused}</p>
+        )}
+
+        {reading && (
+          <p role="status" data-helper-reading className="flex items-center gap-2 text-xs text-[var(--sys-muted-foreground)]">
+            <RiPhoneLine className="w-4 h-4" /> سجل التلفون: <span className="tabular-nums">{readingLine(reading)}</span>
+          </p>
         )}
 
         {step === 'ask' && (

@@ -182,6 +182,17 @@ async function sessionUserOf(user: SessionUserRow): Promise<SessionUser> {
 }
 
 /**
+ * THE SESSION USER OF A PERSON WHO PROVED THEMSELVES WITHOUT A COOKIE — the call helper's paired phone
+ * (src/lib/call-helper/door.ts), whose bearer token names the person. The same row and the same grants a cookie would
+ * give, so every door asked afterwards (`assertOrderAccess`, `can`) answers exactly as it would for her browser.
+ * Null when the person no longer exists. Status is NOT checked here: the caller refuses anyone not ACTIVE.
+ */
+export async function sessionUserFor(userId: string): Promise<SessionUser | null> {
+  const row = await loadSessionRow(userId);
+  return row ? sessionUserOf(row) : null;
+}
+
+/**
  * WHO THIS OWNER MAY PREVIEW (preview-mode.ts) — one rule, read by the start door and again by every request after
  * it: an ACTIVE person of his company (his own, or the platform's first — the rule `tenantOf` uses) who is not an
  * owner and not himself. Anything else is «not found».

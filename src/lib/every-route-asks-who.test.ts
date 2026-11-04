@@ -36,9 +36,15 @@ const root = process.cwd();
  * It is listed here rather than exempted under `PUBLIC` below, because the
  * door is not public — it is guarded differently. `verifyCourierToken` is
  * the precedent: a token at the door is still a door.
+ *
+ * `requireCallHelperDevice` and `redeemPairCode` (src/lib/call-helper/door.ts)
+ * are the same kind: the call helper's Android app has no cookie, so its
+ * bearer token — or, once, its one-time pairing code — is the door. The
+ * token is proved against `CallHelperDevice.tokenHash`, refused when revoked
+ * or when its person is not ACTIVE, and the company comes FROM THE ROW.
  */
 const GUARD =
-  /require(?:Context|Permission|Auth|CompanyTenant|SystemToken)\s*\(|getCurrentUser\s*\(|guardRoute\s*\(|verifyCourierToken|verifyWebhookSignature|webhookToken/;
+  /require(?:Context|Permission|Auth|CompanyTenant|SystemToken|CallHelperDevice)\s*\(|getCurrentUser\s*\(|guardRoute\s*\(|redeemPairCode\s*\(|verifyCourierToken|verifyWebhookSignature|webhookToken/;
 
 /**
  * OPEN TO THE WORLD, DELIBERATELY — each with the reason it is.

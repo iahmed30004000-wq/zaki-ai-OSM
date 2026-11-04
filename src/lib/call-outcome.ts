@@ -42,6 +42,33 @@ export function outcomeOrder(awayMs: number | null): CallOutcome[] {
   return ['ANSWERED', 'CALLBACK', 'NO_ANSWER', 'BUSY', 'UNREACHABLE', 'WRONG_NUMBER', 'NOT_CALLED'];
 }
 
+/**
+ * «مساعد الاتصال» — WHAT HER PHONE'S CALL LOG SAID ABOUT THIS CALL (`/api/call-helper/reading`), when it said anything.
+ *
+ * It only moves the matching answer under her thumb, the same way `outcomeOrder` does from the time away: nothing is
+ * chosen for her and nothing is sent. Answered → «رد» first; not answered → «ما رد» first.
+ */
+export interface HelperReading {
+  startedAt: number;
+  answered: boolean;
+  talkSeconds: number;
+  ringSeconds: number;
+}
+
+export function readingOrder(answered: boolean): CallOutcome[] {
+  return answered
+    ? ['ANSWERED', 'CALLBACK', 'NO_ANSWER', 'BUSY', 'UNREACHABLE', 'WRONG_NUMBER', 'NOT_CALLED']
+    : ['NO_ANSWER', 'BUSY', 'UNREACHABLE', 'ANSWERED', 'WRONG_NUMBER', 'CALLBACK', 'NOT_CALLED'];
+}
+
+/**
+ * «رد — 2:13» · «ما رد — رنّ 25 ث» — the app's own words, in the digits every screen of this product reads in
+ * (western-digits.test.ts): the toast on the phone writes them its way, the sheet writes them the desk's way.
+ */
+export function readingLine(r: Pick<HelperReading, 'answered' | 'talkSeconds' | 'ringSeconds'>): string {
+  return r.answered ? `رد — ${awayClock(r.talkSeconds * 1000)}` : `ما رد — رنّ ${r.ringSeconds} ث`;
+}
+
 /** «0:42», «12:05», «1:02:09» — the time away, small, in the digits a clock uses. */
 export function awayClock(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
