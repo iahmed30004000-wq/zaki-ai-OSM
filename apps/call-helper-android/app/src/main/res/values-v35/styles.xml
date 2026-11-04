@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      ANDROID 15 DRAWS THE PAGE UNDER THE BAR.
+
+      With targetSdk 35 the system enforces edge-to-edge: the page starts at the
+      very top of the screen, under the status bar and the green title bar. Our
+      pages are a plain column from the top (Ui.page), so their first lines —
+      the pairing question and «اربط» — sat hidden under the bar and only
+      «إلغاء» showed (owner's phone, 4/11). Opting out puts the page below the
+      bar again, as on every older phone.
+
+      The opt-out is honoured up to targetSdk 35 only. Raising targetSdk to 36
+      means the pages must take the system-bar insets themselves instead.
+    -->
+    <style name="AppTheme" parent="@android:style/Theme.Material.Light.DarkActionBar">
+        <item name="android:colorPrimary">@color/brand</item>
+        <item name="android:colorPrimaryDark">@color/brand_dark</item>
+        <item name="android:colorAccent">@color/brand</item>
+        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
+    </style>
+</resources>
