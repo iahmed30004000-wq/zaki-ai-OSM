@@ -8,14 +8,12 @@ import {
   OPEN_CONFIRMATION,
   ownedCounts,
   pullPermission,
-  releaseStaleClaims,
   waitingCount,
   reservedForColleaguesCount,
   postponedNotDueCount,
   POSTPONE_LEAD_DAYS,
 } from '@/lib/confirmation-queue';
 import { heldFor } from '@/lib/order-reservation';
-import { reserveReturningCustomers } from '@/lib/reserve-returning-customers';
 
 /**
  * GET /api/confirmation/queue
@@ -26,19 +24,19 @@ import { reserveReturningCustomers } from '@/lib/reserve-returning-customers';
  */
 export async function GET() {
   try {
-    const { user, companyId, storeId, country } = await requireContext();
+    const { user, companyId, storeId } = await requireContext();
     await requirePermission('confirmation.pull').catch(async () => requirePermission('confirmation.supervise'));
 
     const scope = { companyId, storeId };
-    const cal = {
-      workHoursStart: country.workHoursStart,
-      workHoursEnd: country.workHoursEnd,
-      weekendDays: country.weekendDays,
-      timezone: country.timezone,
-    };
-    const released = await releaseStaleClaims(db, scope, cal);
-    // Held for the agent who worked the customer last — made before anything is counted, best-effort (order-reservation.ts).
-    await reserveReturningCustomers(scope).catch(() => 0);
+    /*
+     * A READ, AND ONLY A READ — the owner's ruling 4/11. Every agent's screen polls this every 30 seconds, and it used to
+     * write on each poll: the ninety-minute release (`releaseStaleClaims`) and the returning-customer hold
+     * (`reserveReturningCustomers`). A poll that writes holds a pool connection and row locks, and the agent's next
+     * navigation waited behind them. Both writes keep their clocks — the `release-stale-claims` job every 300 s and
+     * `reserve-returning-customers` every 120 s — and the pull makes both before it takes anything, so the rules are
+     * unchanged; only who runs them on a poll is. A stale claim may now go back up to five minutes later than it did.
+     * (`the-queue-read-writes-nothing.test.ts`.)
+     */
 
     const mayPull = can(user, 'confirmation.pull');
     const now = new Date();
@@ -89,7 +87,8 @@ export async function GET() {
       leadDays: POSTPONE_LEAD_DAYS,
       canPull: !refusal,
       refusal,
-      autoReleased: released,
+      // Kept for the screen's shape: this read releases nothing now, the job and the pull do (4/11).
+      autoReleased: 0,
       // Agents never see the list; supervisors see the same rows as data.
       orders: rows
         ? rows.map(({ assignee, claimedById, assignedToId, assignedAt, _count, ...row }) => ({

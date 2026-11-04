@@ -858,7 +858,8 @@ describe('every card door asks insights.view, and every cost door asks costs.vie
     expect(src('src/app/api/products/stats/route.ts')).toMatch(/mayReadInsights\(user\) \? answer : \{ unitsSold: answer\.unitsSold \}/);
     expect(src('src/app/api/growth/campaigns/route.ts')).toMatch(/\.\.\.\(mayReadInsights\(user\) \? \{ insights \} : \{\}\)/);
     expect(src('src/app/api/growth/landing-analytics/route.ts')).toMatch(/const withVerdicts = mayReadInsights\(user\)/);
-    expect(src('src/app/api/confirmation/mine/route.ts')).toMatch(/mayReadInsights\(user\) \? await Promise\.all/);
+    // old → new (4/11, طلباتي أخف): one grouped lookup for the desk instead of a `Promise.all` per customer — the key asked the same way.
+    expect(src('src/app/api/confirmation/mine/route.ts')).toMatch(/mayReadInsights\(user\) \? await customerRiskMany\(/);
     expect(src('src/app/api/customers/[id]/history/route.ts')).toMatch(/mayReadInsights\(user\) \? await customerRisk/);
     expect(src('src/app/api/palette/route.ts').match(/facts: mayReadInsights\(user\)/g)).toHaveLength(2);
     expect(src('src/lib/analytics-projection.ts')).toMatch(/can\(user, 'insights\.view'\)/);

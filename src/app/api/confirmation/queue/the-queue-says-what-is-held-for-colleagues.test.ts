@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  *     `reservedForColleagues`, so the first number is never a button that answers «لا توجد طلبات».
  *  2. The supervisor reads the whole pool, as before (no agent id on the counter), with each row's `reservedFor` — the name
  *     while the hold stands, `null` once it has let go.
- *  3. The hold is made before anything is counted, and a hold that could not be made never breaks the read.
+ *  3. (old → new, 4/11) The read makes no hold and releases nothing — the job and the pull do; see «the hold» below.
  *
  * Blockers: no money, no order creation.
  * ═══════════════════════════════════════════════════════════════════════
@@ -117,14 +117,20 @@ describe('a supervisor reading the queue', () => {
 });
 
 describe('the hold', () => {
-  it('is made before anything is counted', async () => {
+  /*
+   * old → new (the owner's ruling 4/11, «طلباتي أخف»): item 3 used to be «the hold is made before anything is counted»,
+   * by this read, on every 30-second poll. The read writes nothing now (`the-queue-read-writes-nothing.test.ts`): the hold
+   * is the `reserve-returning-customers` job's (every 120 s) and the pull's, which makes it before it takes anything — so
+   * a hold may reach this counter up to two minutes later, and never reaches a pull late.
+   */
+  it('is not made by the read — the job and the pull make it', async () => {
     as('huda', ['confirmation.pull']);
     await GET();
-    expect(reserve).toHaveBeenCalledTimes(1);
-    expect(reserve.mock.invocationCallOrder[0]).toBeLessThan(queue.waitingCount.mock.invocationCallOrder[0]);
+    expect(reserve).not.toHaveBeenCalled();
+    expect(queue.releaseStaleClaims).not.toHaveBeenCalled();
   });
 
-  it('never breaks the read when it could not be made', async () => {
+  it('and the read still answers whatever the hold would have done', async () => {
     as('huda', ['confirmation.pull']);
     reserve.mockRejectedValue(new Error('the audience query failed'));
     const res = await GET();

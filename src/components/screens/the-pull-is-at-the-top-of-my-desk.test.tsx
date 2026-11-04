@@ -137,7 +137,8 @@ describe('«طلباتي» — the fourth tab, «المؤجلة»', () => {
     await screen.findByRole('tab', { name: /المؤجلة/ });
     expect(screen.queryByTestId('postponed-list')).toBeNull();
     fireEvent.click(screen.getByRole('tab', { name: /المؤجلة/ }));
-    expect(screen.getByTestId('postponed-list').getAttribute('data-embedded')).toBe('true');
+    // `findBy`: the tab is its own chunk since the owner's ruling 4/11 («طلباتي أخف»), drawn the moment it arrives.
+    expect((await screen.findByTestId('postponed-list')).getAttribute('data-embedded')).toBe('true');
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
   });
 
