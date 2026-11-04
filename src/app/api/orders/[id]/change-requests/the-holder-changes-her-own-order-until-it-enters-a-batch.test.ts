@@ -225,24 +225,28 @@ describe('Ⅲ · every neighbour of that row is what it was — she waits for a 
     expect(decided()).toBeUndefined();
   });
 
-  it.each(PENDING_ALL)('%s on HER order once it is on a trolley still being filled (READY, not handed) ⇒ pending — the packing table decides, as today', async (_name, body) => {
+  // ruling 4/11 overturns M6 here: on a trolley still being filled nothing is asked at all — not pending, refused, nothing written.
+  it.each(PENDING_ALL)('%s on HER order once it is on a trolley still being filled (READY, not handed) ⇒ refused ON_OPEN_TROLLEY, nothing written', async (_name, body) => {
     const salma = await person('salma', 'CONFIRMATION_AGENT', WITH_KEY);
     const onTheTrolley = confirmed({ shippingStatus: 'READY_FOR_PICKUP', shippingBatchId: 'b1' });
 
     const res = await raise(salma, onTheTrolley, body, { status: 'READY', batchNumber: 'B-1' });
 
-    expect(res.status).toBe(201);
-    expect(res.body).toMatchObject({ readyToApply: false, viaEditWindow: false });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('ON_OPEN_TROLLEY');
+    expect(db.orderChangeRequest.create).not.toHaveBeenCalled();
     expect(decided()).toBeUndefined();
   });
 
-  it.each(PENDING_ALL)('%s when the order NAMES a trolley whose row cannot be read ⇒ pending — a batch named is a batch', async (_name, body) => {
+  // ruling 4/11 overturns M6 here: a trolley named but unreadable is an open one (fail closed).
+  it.each(PENDING_ALL)('%s when the order NAMES a trolley whose row cannot be read ⇒ refused ON_OPEN_TROLLEY — a batch named is a batch', async (_name, body) => {
     const salma = await person('salma', 'CONFIRMATION_AGENT', WITH_KEY);
 
     const res = await raise(salma, confirmed({ shippingBatchId: 'b-gone' }), body, null);
 
-    expect(res.body.readyToApply).toBe(false);
-    expect(decided()).toBeUndefined();
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('ON_OPEN_TROLLEY');
+    expect(db.orderChangeRequest.create).not.toHaveBeenCalled();
   });
 
   it('the trolley was pressed («سُلّمت للشركة») ⇒ an edit and a cancellation are pending; a postponement is refused at the door', async () => {
@@ -318,13 +322,24 @@ describe('Ⅲ · every neighbour of that row is what it was — she waits for a 
 });
 
 describe('Ⅳ · everybody else is untouched — the old note, byte for byte, and no «via»', () => {
-  it('a supervisor decides a request on a trolley, as ever', async () => {
+  it('a supervisor decides a request on a held parcel off its trolley, as ever', async () => {
+    const sup = await person('sup', 'CONFIRMATION_SUPERVISOR', SUPERVISOR);
+
+    const res = await raise(sup, confirmed({ shippingStatus: 'READY_FOR_PICKUP', shippingBatchId: null }), EDIT);
+
+    expect(res.body).toMatchObject({ readyToApply: true, viaEditWindow: false });
+    expect(decided()!.data).toMatchObject({ status: 'APPROVED', decidedById: 'sup', decisionNote: OLD_NOTE });
+  });
+
+  // ruling 4/11 overturns M6 here: on a trolley still being filled not even a supervisor raises one.
+  it('a supervisor raises nothing on a trolley still being filled — ON_OPEN_TROLLEY, nothing written', async () => {
     const sup = await person('sup', 'CONFIRMATION_SUPERVISOR', SUPERVISOR);
 
     const res = await raise(sup, confirmed({ shippingStatus: 'READY_FOR_PICKUP', shippingBatchId: 'b1' }), EDIT, { status: 'READY', batchNumber: 'B-1' });
 
-    expect(res.body).toMatchObject({ readyToApply: true, viaEditWindow: false });
-    expect(decided()!.data).toMatchObject({ status: 'APPROVED', decidedById: 'sup', decisionNote: OLD_NOTE });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('ON_OPEN_TROLLEY');
+    expect(db.orderChangeRequest.create).not.toHaveBeenCalled();
   });
 
   it('a supervisor who ALSO holds the key keeps the old sentence on her own order — the earlier rule let her', async () => {
@@ -340,7 +355,17 @@ describe('Ⅳ · everybody else is untouched — the old note, byte for byte, an
     const hand = await person('hand', 'WAREHOUSE', WAREHOUSE_HAND);
     const onTheTrolley = confirmed({ claimedById: 'salma', shippingStatus: 'READY_FOR_PICKUP', shippingBatchId: 'b1' });
 
-    const yes = await raise(hand, onTheTrolley, CANCEL, { status: 'READY', batchNumber: 'B-1' });
+    // ruling 4/11 overturns M6 here: on its own open trolley the packing table uses its batch-screen buttons, not a request.
+    const frozen = await raise(hand, onTheTrolley, CANCEL, { status: 'READY', batchNumber: 'B-1' });
+    expect(frozen.status).toBe(409);
+    expect(frozen.body.code).toBe('ON_OPEN_TROLLEY');
+
+    // A packed parcel held off its trolley is still on its floor: decided on the spot, as ever.
+    vi.clearAllMocks();
+    db.orderChangeRequest.create.mockImplementation(async ({ data }: any) => ({ id: 'cr1', ...data }));
+    db.order.findFirst.mockResolvedValue({ quantity: 1, productId: 'p1', sellingPrice: 10, discountAmount: 0, customerNotes: null, regionId: null, deliveryAddress: null, customer: {} });
+    db.orderChangeRequest.findFirst.mockResolvedValue(null);
+    const yes = await raise(hand, { ...onTheTrolley, shippingBatchId: null }, CANCEL);
     expect(yes.body).toMatchObject({ readyToApply: true, viaEditWindow: false });
     expect(decided()!.data.decisionNote).toBe(OLD_NOTE);
 
@@ -352,13 +377,15 @@ describe('Ⅳ · everybody else is untouched — the old note, byte for byte, an
     expect(no.body.readyToApply).toBe(false);
   });
 
-  it('the owner (SUPER_ADMIN) decides his own request on a trolley too, as a supervisor, with the old sentence', async () => {
+  // ruling 4/11 overturns M6 here: the owner too — «ما حد يقدر يلغي أي شي» once it is on the trolley.
+  it('the owner (SUPER_ADMIN) raises nothing on a trolley still being filled either — ON_OPEN_TROLLEY, nothing written', async () => {
     const owner = await person('owner', 'SUPER_ADMIN', []);
 
     const res = await raise(owner, confirmed({ claimedById: 'someone-else', shippingStatus: 'READY_FOR_PICKUP', shippingBatchId: 'b1' }), CANCEL, { status: 'READY', batchNumber: 'B-1' });
 
-    expect(res.body).toMatchObject({ readyToApply: true, viaEditWindow: false });
-    expect(decided()!.data).toMatchObject({ decidedById: 'owner', decisionNote: OLD_NOTE });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('ON_OPEN_TROLLEY');
+    expect(db.orderChangeRequest.create).not.toHaveBeenCalled();
   });
 
   it('a moderator with neither the key nor a deciding role is still pending on a confirmed order', async () => {
@@ -404,13 +431,15 @@ describe('Ⅴ · THE OWNER’S WINDOW (3/11) — «انتا ادخل وعدل»:
     expect(decided()!.data.decisionNote).toBe(EDIT_WINDOW_OWNER_NOTE_AR);
   });
 
-  it('NEGATIVE: AFTER THE BATCH ⇒ not his window: no «via», the old sentence (he decides as the supervisor he always was)', async () => {
+  // ruling 4/11 overturns M6 here: after the batch entry he is refused at the door like everybody, not decided as a supervisor.
+  it('NEGATIVE: AFTER THE BATCH ⇒ not his window, and not a request either: ON_OPEN_TROLLEY, nothing written', async () => {
     const owner = await person('owner', 'SUPER_ADMIN', []);
     for (const body of [EDIT, CANCEL, POSTPONE]) {
       freshMocks();
       const res = await raise(owner, confirmed({ shippingStatus: 'READY_FOR_PICKUP', shippingBatchId: 'b1' }), body, { status: 'READY', batchNumber: 'B-1' });
-      expect(res.body.viaEditWindow, JSON.stringify(body)).toBe(false);
-      expect(decided()!.data.decisionNote).toBe(OLD_NOTE);
+      expect(res.status, JSON.stringify(body)).toBe(409);
+      expect(res.body.code).toBe('ON_OPEN_TROLLEY');
+      expect(db.orderChangeRequest.create).not.toHaveBeenCalled();
     }
   });
 

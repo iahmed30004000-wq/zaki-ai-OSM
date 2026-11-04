@@ -168,7 +168,7 @@ describe('carrying out an approved request', () => {
   it('marks the request applied, once, by whom', async () => {
     await patch({ expectedVersion: 3, changeRequestId: REQUEST_ID, courierNotified: true });
     expect(db.orderChangeRequest.updateMany).toHaveBeenCalledWith({
-      where: { id: REQUEST_ID, appliedAt: null },
+      where: { id: REQUEST_ID, status: 'APPROVED', appliedAt: null },
       data: { appliedAt: expect.any(Date), appliedById: 'owner' },
     });
   });

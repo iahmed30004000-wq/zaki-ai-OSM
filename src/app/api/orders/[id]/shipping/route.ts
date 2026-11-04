@@ -5,7 +5,7 @@ import { zodMessage } from '@/lib/zod-message';
 import { SHIPPING_STATUS_AR } from '@/lib/shipping-workflow';
 import { notify } from '@/lib/notify';
 import { db } from '@/lib/db';
-import { SEALED_BATCH_STATUSES, handedToCourier } from '@/lib/order-seal';
+import { SEALED_BATCH_STATUSES, handedToCourier, onOpenTrolley, ON_OPEN_TROLLEY, ON_TROLLEY_AR } from '@/lib/order-seal';
 import { requireContext } from '@/lib/geo-context';
 import { consumeOrderStock } from '@/lib/stock-consumption';
 import { emitAppEvent, type AppEvent } from '@/lib/apps/events';
@@ -181,19 +181,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         // سُلّمت للشركة», not the printer; `endOrder` asks the same function
         // again, fresh, when it writes.
         if (newShippingStatus === 'CANCELLED') {
+          const batchStatus = await batchStatusOf(db, order.shippingBatchId);
           const gate = cancelVerdict({
             confirmationStatus: order.confirmationStatus,
             shippingStatus: order.shippingStatus,
             shippedAt: order.shippedAt,
             labelPrintedAt: order.labelPrintedAt,
             shippingBatchId: order.shippingBatchId,
-            batchStatus: await batchStatusOf(db, order.shippingBatchId),
+            batchStatus,
           });
           if (!gate.allowed) {
             return NextResponse.json(
               { error: gate.message, errorAr: gate.message, code: gate.code },
               { status: 409 }
             );
+          }
+          // And not off an open trolley either: that is the batch screen's own «ألغِ» (the owner's ruling 4/11 overturns M6 here).
+          if (onOpenTrolley({ shippingBatchId: order.shippingBatchId, batchStatus })) {
+            return NextResponse.json({ error: ON_TROLLEY_AR, errorAr: ON_TROLLEY_AR, code: ON_OPEN_TROLLEY }, { status: 409 });
           }
         }
 

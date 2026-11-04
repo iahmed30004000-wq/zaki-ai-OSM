@@ -6,7 +6,7 @@ import { BEFORE_OPERATIONS } from '@/lib/change-request-routing';
 import { readLinesChange, touchesMoney } from '@/lib/change-request-fields';
 import { apiErrorResponse } from '@/lib/api-error';
 import { carryOut, type ChangeIntent } from '@/lib/change-request-intent';
-import { handedToCourier } from '@/lib/order-seal';
+import { handedToCourier, onOpenTrolley } from '@/lib/order-seal';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { ruleFor } from '@/lib/phone-rules';
 
@@ -84,6 +84,9 @@ export async function GET(req: Request) {
             // The trolley's status: «the courier has taken it» is the press of
             // «إغلاق الشحنة — سُلّمت للشركة», not the printer.
             shippingBatch: { select: { status: true } },
+            // And the column naming it: on a trolley still being filled nothing is carried out (the owner's ruling 4/11),
+            // and a trolley named but unreadable counts as one.
+            shippingBatchId: true,
             customer: { select: { fullName: true, phone: true } },
           },
         },
@@ -150,6 +153,11 @@ export async function GET(req: Request) {
           handedToCourier: handedToCourier({
             shippingStatus: r.order.shippingStatus,
             shippedAt: r.order.shippedAt,
+            batchStatus: r.order.shippingBatch?.status ?? null,
+          }),
+          // «ممنوع وهو على الدفعة» is what the button says too, rather than a press the door would refuse.
+          onOpenTrolley: onOpenTrolley({
+            shippingBatchId: r.order.shippingBatchId,
             batchStatus: r.order.shippingBatch?.status ?? null,
           }),
         }),

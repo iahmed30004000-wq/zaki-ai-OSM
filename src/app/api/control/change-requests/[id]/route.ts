@@ -8,7 +8,7 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { zodMessage } from '@/lib/zod-message';
 import { createNotification } from '@/lib/notification';
-import { handedToCourier } from '@/lib/order-seal';
+import { handedToCourier, onOpenTrolley, ON_OPEN_TROLLEY, ON_TROLLEY_AR } from '@/lib/order-seal';
 import { afterResponse } from '@/lib/notify';
 
 /**
@@ -23,9 +23,25 @@ import { afterResponse } from '@/lib/notify';
  * never consent.
  */
 const decideSchema = z.object({
-  decision: z.enum(['APPROVED', 'REJECTED']),
+  /*
+   * REVOKED — «تراجع عن الموافقة» (the owner's ruling 4/11). An approval nobody carried out yet is taken back, and the
+   * request is STORED as REJECTED: every reader of `status` (the queue, the press's PENDING_CHANGES, the reports) already
+   * knows that word, and none has to learn a new one. The decision note says it was a take-back, and by whom.
+   */
+  decision: z.enum(['APPROVED', 'REJECTED', 'REVOKED']),
   note: z.string().trim().max(500).optional(),
 });
+
+/** What the request's own decision note says after a take-back. */
+function revokedNote(name: string | null | undefined, note: string): string {
+  return `${name ?? 'المشرف'} تراجع عن الموافقة: ${note}`;
+}
+
+class RevokeLost extends Error {
+  constructor() {
+    super('REVOKE_LOST');
+  }
+}
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -38,6 +54,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
     if (parsed.data.decision === 'REJECTED' && !parsed.data.note) {
       return NextResponse.json({ error: 'الرفض يتطلب سبباً' }, { status: 400 });
+    }
+    const revoking = parsed.data.decision === 'REVOKED';
+    if (revoking && !parsed.data.note) {
+      const ask = 'التراجع عن الموافقة بيحتاج سبباً مكتوباً.';
+      return NextResponse.json({ error: ask, errorAr: ask, code: 'REASON_REQUIRED' }, { status: 400 });
     }
 
     const request = await db.orderChangeRequest.findFirst({
@@ -61,7 +82,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       },
     });
     if (!request) return NextResponse.json({ error: 'طلب التعديل غير موجود' }, { status: 404 });
-    if (request.status !== 'PENDING') {
+    /*
+     * A TAKE-BACK IS OF AN APPROVAL THAT WAS NEVER CARRIED OUT, AND OF NOTHING ELSE. A pending request is rejected (that is
+     * already a decision); an applied one changed the order, and taking back the word would not take back the change.
+     */
+    if (revoking) {
+      if (request.status !== 'APPROVED' || request.appliedAt) {
+        const why = request.appliedAt
+          ? 'الطلب انطبّق على الطلب — ما في موافقة تتراجع عنها.'
+          : 'ما في موافقة على هذا الطلب تتراجع عنها — حدّث الصفحة.';
+        return NextResponse.json(
+          { error: why, errorAr: why, code: request.appliedAt ? 'ALREADY_APPLIED' : 'NOT_APPROVED' },
+          { status: 409 }
+        );
+      }
+    } else if (request.status !== 'PENDING') {
       return NextResponse.json({ error: 'تم البت في هذا الطلب مسبقاً', code: 'ALREADY_DECIDED' }, { status: 409 });
     }
     if (request.requestedById === user.id) {
@@ -87,7 +122,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       inBatch: !!request.order.shippingBatchId || request.order.shippingBatch !== null,
     }, {
       // APPROVING a request that moves a price, a discount, a quantity or a product needs `orders.change_price` too (PR-7).
-      // Rejecting never does: refusing a figure changes none.
+      // Rejecting never does: refusing a figure changes none — and neither does taking an approval back.
       money: parsed.data.decision === 'APPROVED' && touchesMoney(request.changes),
     });
     if (!routing.allowed) {
@@ -100,6 +135,24 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         },
         { status: 403 }
       );
+    }
+
+    /*
+     * NO APPROVAL OF AN ASK ON AN OPEN TROLLEY (the owner's ruling 4/11). The raising door refuses them now; one raised before
+     * it can still be REJECTED — that is how it is cleared so the press can close the trolley — but never approved.
+     */
+    if (
+      parsed.data.decision === 'APPROVED' &&
+      onOpenTrolley({
+        shippingBatchId: request.order.shippingBatchId,
+        batchStatus: request.order.shippingBatch?.status ?? null,
+      })
+    ) {
+      return NextResponse.json({ error: ON_TROLLEY_AR, errorAr: ON_TROLLEY_AR, code: ON_OPEN_TROLLEY }, { status: 409 });
+    }
+
+    if (revoking) {
+      return await revoke({ request, user, companyId, storeId, note: parsed.data.note as string });
     }
 
     const decided = await db.$transaction(async (tx) => {
@@ -185,6 +238,78 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 }
 
+/**
+ * «تراجع عن الموافقة» — AN APPROVAL NOBODY CARRIED OUT, TAKEN BACK (the owner's ruling 4/11).
+ *
+ * ORD-2026-1584: a cancel on a READY trolley, approved by mistake, never carried out — and nothing could take the approval
+ * back (this PATCH refused anything not PENDING, the DELETE is the requester's and PENDING-only), so the press refused the
+ * trolley for it with no way out. Now the person `mayDecide` names for this order (the same routing the approval used, and
+ * never the requester) takes it back, in writing. It only ever UN-blocks, so it is allowed whatever the trolley's state.
+ *
+ * Written CONDITIONALLY — still APPROVED, still not applied — so a carry-out that lands first wins and this press finds
+ * nothing (409), rather than marking «rejected» an ask that already changed the order.
+ */
+async function revoke(input: {
+  request: { id: string; orderId: string; requestedById: string; decidedById: string | null; order: { orderNumber: string } };
+  user: { id: string; name?: string | null };
+  companyId: string;
+  storeId: string;
+  note: string;
+}) {
+  const { request, user, companyId, storeId, note } = input;
+  const decisionNote = revokedNote(user.name, note);
+  try {
+    const decided = await db.$transaction(async (tx) => {
+      const res = await tx.orderChangeRequest.updateMany({
+        where: { id: request.id, status: 'APPROVED', appliedAt: null },
+        data: { status: 'REJECTED', decidedById: user.id, decidedAt: new Date(), decisionNote },
+      });
+      if (res.count !== 1) throw new RevokeLost();
+      await tx.orderNote.create({
+        data: {
+          companyId,
+          orderId: request.orderId,
+          authorId: user.id,
+          kind: 'internal',
+          body: `تراجع عن الموافقة على طلب التعديل: ${note}`,
+        },
+      });
+      return tx.orderChangeRequest.findFirst({ where: { id: request.id } });
+    });
+
+    await logAudit({
+      companyId,
+      userId: user.id,
+      action: 'CHANGE_REQUEST_APPROVAL_REVOKED',
+      entity: 'OrderChangeRequest',
+      entityId: request.id,
+      previousData: { status: 'APPROVED', decidedById: request.decidedById },
+      newData: { status: 'REJECTED', note },
+    });
+
+    // The asker hears it the way she hears a rejection: she may already have told the customer it was done.
+    afterResponse(async () => {
+      await createNotification({
+        companyId,
+        storeId,
+        actorId: user.id,
+        audience: { userIds: [request.requestedById] },
+        type: 'SYSTEM_ALERT',
+        title: `انسحبت الموافقة على تعديلك على ${request.order.orderNumber}`,
+        message: decisionNote,
+        link: ['/orders', '/confirmation/mine', '/control/change-requests'],
+      });
+    });
+
+    return NextResponse.json({ request: decided, fieldsToApply: null });
+  } catch (error) {
+    if (error instanceof RevokeLost) {
+      const why = 'الطلب تغيّر قبل التراجع (انطبّق أو حدا بتّ فيه) — حدّث الصفحة.';
+      return NextResponse.json({ error: why, errorAr: why, code: 'ALREADY_DECIDED' }, { status: 409 });
+    }
+    throw error;
+  }
+}
 
 /**
  * DELETE /api/control/change-requests/:id — take back a request you raised.

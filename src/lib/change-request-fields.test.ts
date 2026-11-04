@@ -108,7 +108,8 @@ describe('the raise dialog offers the whole list', () => {
   it('will not send an edit with no new value', () => {
     // `required` cannot guard the picker, so the button carries the rule —
     // and it says "not ready", not «جارٍ الحفظ…».
-    expect(dialog()).toMatch(/disabled=\{intent === 'EDIT' && !to\.trim\(\)\}/);
+    // (4/11) …and nothing at all on an open trolley (`frozen`): the same rule, with the trolley's beside it.
+    expect(dialog()).toMatch(/disabled=\{!!frozen \|\| \(intent === 'EDIT' && !to\.trim\(\)\)\}/);
   });
 });
 

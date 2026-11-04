@@ -27,6 +27,7 @@ import {
   type PostponeValue,
 } from './confirmation/ActionDialogs';
 import { raiseChangeRequest } from '@/components/orders/raiseChangeRequest';
+import { onOpenTrolley, ON_TROLLEY_AR } from '@/lib/order-seal';
 import { TwinConfirmedDialog } from '@/components/orders/TwinConfirmedDialog';
 import { confirmAnywayBody, rejectAsDuplicateBody, twinsFromRefusal, type ConfirmedTwinView } from '@/lib/twin-refusal';
 import { AssistantDialog } from './confirmation/AssistantDialog';
@@ -141,6 +142,8 @@ interface OrderRow {
   claimedById?: string | null;
   shippingStatus?: string;
   shippingBatchId?: string | null;
+  /** The trolley's status — on one still being filled nothing is asked of the order (the owner's ruling 4/11). */
+  shippingBatch?: { status: string } | null;
   shippedAt?: string | null;
   labelPrintedAt?: string | null;
 }
@@ -1741,6 +1744,11 @@ export function ConfirmationMineScreen() {
             actions={readOnly ? undefined : (order) => (
               <>{order.changeRequests && order.changeRequests.length > 0 ? (
                       <span className="text-xs text-[var(--sys-warning)]">طلب تعديل قيد المراجعة</span>
+                    ) : onOpenTrolley({ shippingBatchId: order.shippingBatchId, batchStatus: order.shippingBatch?.status }) ? (
+                      /* On a trolley still being filled: nothing to ask (the owner's ruling 4/11) — said, with the whole sentence on hover. */
+                      <span className="text-xs text-[var(--sys-muted-foreground)]" title={ON_TROLLEY_AR}>
+                        على دفعة شحن — ما في تعديل
+                      </span>
                     ) : (
                       <button
                         onClick={() => setDialog({ kind: 'change', order })}
@@ -1846,6 +1854,7 @@ export function ConfirmationMineScreen() {
           open
           orderNumber={dialog.order.orderNumber}
           busy={busyId === dialog.order.id}
+          onOpenTrolley={onOpenTrolley({ shippingBatchId: dialog.order.shippingBatchId, batchStatus: dialog.order.shippingBatch?.status })}
           appliesNow={{
             EDIT: editsNow(currentUser, dialog.order, 'EDIT'),
             CANCEL: editsNow(currentUser, dialog.order, 'CANCEL'),

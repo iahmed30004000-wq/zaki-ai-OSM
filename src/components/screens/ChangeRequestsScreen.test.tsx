@@ -28,6 +28,8 @@ vi.mock('@/hooks/useMayOpen', () => ({ useMayOpen: () => () => false }));
 vi.mock('@/components/ui/Toast', () => ({ useToast: () => ({ failed: vi.fn(), done: vi.fn() }) }));
 vi.mock('@/components/ui/Confirm', () => ({
   useConfirm: () => vi.fn(async () => true),
+  // The screen asks for a written reason before «تراجع عن الموافقة» (4/11); nothing here presses it.
+  useAsk: () => vi.fn(async () => null),
   useTell: () => vi.fn(),
 }));
 

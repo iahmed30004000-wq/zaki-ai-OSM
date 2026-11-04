@@ -25,6 +25,11 @@ vi.mock('@/lib/db', () => ({ db }));
 vi.mock('@/lib/storage', () => ({
   readStoredFile: (...a: unknown[]) => readStoredFile(...a),
   isSafeStorageKey: (k: string) => !k.includes('..'),
+  // Read by `storefront-images.ts` (the shelf asks storage before it hands a
+  // picture to a card). A folder that does not exist means «cannot judge»,
+  // so every link these tests assert on is kept — see storefront-images.test.ts.
+  STORAGE_PROVIDER: 'local',
+  LOCAL_STORAGE_DIR: '/no-such-uploads-folder-in-this-test',
 }));
 vi.mock('@/lib/landing-pages', () => ({ verifyPreviewToken: (...a: unknown[]) => verifyPreviewToken(...a) }));
 

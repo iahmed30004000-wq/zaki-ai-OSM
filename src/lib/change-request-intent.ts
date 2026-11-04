@@ -33,6 +33,7 @@
  */
 
 import { PICKABLE_REJECTION_REASONS } from './confirmation-workflow';
+import { ON_OPEN_TROLLEY, ON_TROLLEY_AR } from './order-seal';
 
 export const CHANGE_INTENTS = ['EDIT', 'CANCEL', 'POSTPONE'] as const;
 export type ChangeIntent = (typeof CHANGE_INTENTS)[number];
@@ -63,6 +64,12 @@ export const INTENT_ASK_AR: Record<ChangeIntent, string> = {
  */
 export interface ParcelFacts {
   handedToCourier: boolean;
+  /**
+   * On a trolley that has not been handed over yet (`onOpenTrolley`) — the owner's ruling 4/11 overturns M6 here: nothing
+   * is asked of such an order, of any of the three kinds, so the press can close the trolley. Optional only so a caller
+   * that asks about the handover alone keeps its answer; every door and screen that raises or carries out passes it.
+   */
+  onOpenTrolley?: boolean;
 }
 
 export type CarryOut =
@@ -82,9 +89,15 @@ export type CarryOut =
   | { kind: 'CANCEL_VIA_COURIER' }
   /** Still ours: held back to a date, confirmation untouched, the goods and the waybill kept. */
   | { kind: 'HOLD_SHIPMENT' }
-  | { kind: 'REFUSED'; reason: string };
+  | { kind: 'REFUSED'; reason: string; code?: typeof ON_OPEN_TROLLEY };
 
 export function carryOut(intent: ChangeIntent, facts: ParcelFacts): CarryOut {
+  /*
+   * A PARCEL ON AN OPEN TROLLEY IS ASKED NOTHING (the owner's ruling 4/11). First, and for all three: an edit, a cancel and
+   * a postponement of it are each a request the press would have to wait for. The warehouse takes it off the trolley first
+   * (its own «أجّل الشحن»), and then the ask is an ordinary one again.
+   */
+  if (facts.onOpenTrolley) return { kind: 'REFUSED', reason: ON_TROLLEY_AR, code: ON_OPEN_TROLLEY };
   if (intent === 'EDIT') return { kind: 'EDIT_ORDER' };
   if (intent === 'CANCEL') {
     return facts.handedToCourier ? { kind: 'CANCEL_VIA_COURIER' } : { kind: 'CANCEL_ORDER' };

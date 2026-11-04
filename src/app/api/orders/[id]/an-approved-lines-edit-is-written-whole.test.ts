@@ -302,7 +302,8 @@ const seed = (over: { order?: Row; lines?: Row[]; addOns?: Row[] } = {}) => {
     shippingCost: 2.5, deliveryFee: null, totalAmount: 52.5, priceIncludesDelivery: false, estimatedCostOfGoods: 0,
     version: 3, status: 'CONFIRMED', confirmationStatus: 'CONFIRMED', shippingStatus: 'READY_FOR_PICKUP',
     settlementStatus: 'PENDING_COLLECTION', shippedAt: null, labelPrintedAt: null, trackingNumber: null,
-    courierSendStartedAt: null, shippingBatchId: 'b1', deliveryProviderId: null, moderatorId: null, claimedById: null,
+    // OFF any trolley — ruling 4/11 overturns M6 here: on a trolley still being filled no request is carried out (Ⅴ, below).
+    courierSendStartedAt: null, shippingBatchId: null, deliveryProviderId: null, moderatorId: null, claimedById: null,
     lockedById: null, lockExpiresAt: null, offerId: null, regionId: null, customerNotes: null,
     ...over.order,
   };
@@ -318,7 +319,7 @@ const seed = (over: { order?: Row; lines?: Row[]; addOns?: Row[] } = {}) => {
   fake.elsewhere = {};
   fake.costs = { [CREAM]: 2.5, [SOAP]: 1.2, [P_A]: 1, [P_B]: 1, [P_C]: 1 };
   fake.figures = {};
-  fake.batch = { status: 'READY', batchNumber: 'B-7' };
+  fake.batch = null;
   fake.offerRow = null;
   fake.claims = 0;
   fake.activities = [];
@@ -672,6 +673,21 @@ describe('Ⅴ · a decision is carried out against the order it was about — or
     expect(fake.request.appliedAt).toBeNull();
   };
 
+  // ruling 4/11 overturns M6 here: an approved request is not carried out on a trolley still being filled — nothing written.
+  it('ON_OPEN_TROLLEY: the order sits on a READY trolley — the warehouse takes it off first', async () => {
+    seed({ order: { shippingBatchId: 'b1' } });
+    approve({ lines: lines([cream5]) });
+    fake.batch = { status: 'READY', batchNumber: 'B-7' };
+    await refused('ON_OPEN_TROLLEY');
+  });
+
+  it('ON_OPEN_TROLLEY: a trolley the order names but nobody can read counts as an open one (fail closed)', async () => {
+    seed({ order: { shippingBatchId: 'b1' } });
+    approve({ lines: lines([cream5]) });
+    fake.batch = null;
+    await refused('ON_OPEN_TROLLEY');
+  });
+
   it('LINES_STALE: the line the request names is not as it was', async () => {
     fake.lines[0] = { ...fake.lines[0], quantity: 4, lineTotal: 48, freeQuantity: 1 };
     await refused('LINES_STALE');
@@ -725,6 +741,7 @@ describe('Ⅴ · a decision is carried out against the order it was about — or
   });
 
   it('CANCEL_AND_REORDER: the company holds the parcel — even when somebody says the courier was told', async () => {
+    fake.order.shippingBatchId = 'b1';
     fake.batch = { status: 'SHIPPED', batchNumber: 'B-7' };
     await refused('CANCEL_AND_REORDER');
     const told = await apply({ courierNotified: true });

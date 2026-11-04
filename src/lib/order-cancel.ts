@@ -6,6 +6,7 @@ import { releaseOrderLines } from './reservation';
 import { resolveDeliveryFee } from './delivery-fees';
 import { roundMinor } from './money';
 import { SHIPPING_GONE } from './order-state';
+import { DECIDED_MEANWHILE_AR, ON_OPEN_TROLLEY, ON_TROLLEY_AR, onOpenTrolley } from './order-seal';
 import {
   ATTESTATION_AR,
   ATTESTATION_NEEDED_AR,
@@ -97,6 +98,12 @@ export interface EndOrderInput {
   /** An approved change request being carried out: marked applied in the same transaction. */
   viaRequest?: { id: string } | null;
   /**
+   * THE WAREHOUSE'S OWN TOOL — the batch screen's «ألغِ / أعِده للمتابعة» under `ops.ship`, WITHOUT a change request. Only
+   * such a caller may take an order off a trolley that has not been handed over (the owner's ruling 4/11): every other door
+   * is refused with ON_OPEN_TROLLEY, by default, so a door added tomorrow is refused too until somebody says otherwise.
+   */
+  warehouseOwnTool?: boolean;
+  /**
    * Run the writes inside a transaction the caller already holds (the
    * contact-attempt door closes an order in the SAME transaction as the
    * attempt that closed it). Only for an order that never entered the
@@ -160,6 +167,17 @@ class OrderMovedOn extends Error {
 }
 
 const MOVED_AR = 'تغيّر الطلب أثناء العمل عليه (أو سُلّمت دفعته للتو) — حدّث الصفحة وجرّب من جديد.';
+
+/**
+ * THE REQUEST BEING CARRIED OUT WAS DECIDED AGAIN MEANWHILE — taken back («تراجع عن الموافقة», the owner's ruling 4/11) or
+ * carried out by somebody else. Its stamp is written on the condition «still APPROVED, still not applied»; finding nothing
+ * there rolls the whole write back, so an order is never ended or held under a request that no longer says yes.
+ */
+class RequestDecidedMeanwhile extends Error {
+  constructor() {
+    super('REQUEST_DECIDED_MEANWHILE');
+  }
+}
 
 /** What a conditional write must still find, or find nothing. */
 function stillAsRead(o: {
@@ -232,6 +250,10 @@ export async function endOrder(input: EndOrderInput): Promise<EndOutcome> {
   };
   const verdict = cancelVerdict(facts);
   if (!verdict.allowed) return refuse(409, verdict.code, verdict.message);
+  // On a trolley still being filled only the warehouse's own tool ends it (the owner's ruling 4/11 overturns M6 here).
+  if (!input.warehouseOwnTool && onOpenTrolley({ shippingBatchId: facts.shippingBatchId, batchStatus: facts.batchStatus })) {
+    return refuse(409, ON_OPEN_TROLLEY, ON_TROLLEY_AR);
+  }
   if (verdict.needsAttestation && input.parcelInHand !== true) {
     return refuse(409, 'ATTESTATION_REQUIRED', ATTESTATION_NEEDED_AR, { attestation: ATTESTATION_AR });
   }
@@ -348,18 +370,25 @@ export async function endOrder(input: EndOrderInput): Promise<EndOutcome> {
         await tx.customer.update({ where: { id: o.customerId }, data: { cancelledOrders: { increment: 1 } } });
       }
       if (input.viaRequest) {
-        // ONCE: `appliedAt: null` makes a second, concurrent carry-out a no-op.
-        await tx.orderChangeRequest.updateMany({
-          where: { id: input.viaRequest.id, appliedAt: null },
+        // ONCE, and only while it still says yes: `status: 'APPROVED', appliedAt: null`. A take-back or a second carry-out that
+        // landed first makes this find nothing, and the whole write goes back.
+        const stamped = await tx.orderChangeRequest.updateMany({
+          where: { id: input.viaRequest.id, status: 'APPROVED', appliedAt: null },
           data: { appliedAt: new Date(), appliedById: input.by.id },
         });
+        if (stamped.count !== 1) throw new RequestDecidedMeanwhile();
       }
-      return true;
+      return true as const;
     })
     .catch((e: unknown) => {
-      if (e instanceof OrderMovedOn) return false;
+      if (e instanceof OrderMovedOn) return false as const;
+      if (e instanceof RequestDecidedMeanwhile) return 'DECIDED' as const;
       throw e;
     });
+  // The company may already have said yes to the cancel: then it is said loudly, as any lost write is.
+  if (wrote === 'DECIDED') {
+    return remote.kind === 'CANCELLED' ? movedOn(input, o, remote) : refuse(409, 'REQUEST_DECIDED_MEANWHILE', DECIDED_MEANWHILE_AR);
+  }
   if (!wrote) return movedOn(input, o, remote);
 
   let announced = false;
@@ -469,6 +498,8 @@ export interface HoldFromTrolleyInput {
   until: Date;
   reason: string | null;
   viaRequest?: { id: string } | null;
+  /** The batch screen's «أجّل الشحن» under `ops.ship`, without a change request — see `EndOrderInput.warehouseOwnTool`. */
+  warehouseOwnTool?: boolean;
   inject?: { adapter?: CourierAdapter; courierName?: string | null };
 }
 
@@ -501,6 +532,10 @@ export async function holdFromTrolley(input: HoldFromTrolleyInput): Promise<Hold
     batchStatus: o.shippingBatch?.status ?? null,
   });
   if (!verdict.allowed) return { ok: false, status: 409, code: verdict.code, error: verdict.message };
+  // A postponement is carried off an open trolley only by the warehouse's own «أجّل الشحن» (the owner's ruling 4/11).
+  if (!input.warehouseOwnTool && onOpenTrolley({ shippingBatchId: o.shippingBatchId, batchStatus: o.shippingBatch?.status ?? null })) {
+    return { ok: false, status: 409, code: ON_OPEN_TROLLEY, error: ON_TROLLEY_AR };
+  }
 
   const remote = await cancelAtCourier(
     {
@@ -550,18 +585,24 @@ export async function holdFromTrolley(input: HoldFromTrolleyInput): Promise<Hold
         },
       });
       if (input.viaRequest) {
-        await tx.orderChangeRequest.updateMany({
-          where: { id: input.viaRequest.id, appliedAt: null },
+        // Only while the request still says yes — see `RequestDecidedMeanwhile`.
+        const stamped = await tx.orderChangeRequest.updateMany({
+          where: { id: input.viaRequest.id, status: 'APPROVED', appliedAt: null },
           data: { appliedAt: new Date(), appliedById: input.by.id },
         });
+        if (stamped.count !== 1) throw new RequestDecidedMeanwhile();
       }
-      return true;
+      return true as const;
     })
     .catch((e: unknown) => {
-      if (e instanceof OrderMovedOn) return false;
+      if (e instanceof OrderMovedOn) return false as const;
+      if (e instanceof RequestDecidedMeanwhile) return 'DECIDED' as const;
       throw e;
     });
-  if (!wrote) {
+  if (wrote === 'DECIDED' && remote.kind !== 'CANCELLED') {
+    return { ok: false, status: 409, code: 'REQUEST_DECIDED_MEANWHILE', error: DECIDED_MEANWHILE_AR };
+  }
+  if (wrote !== true) {
     const lost = await movedOn({ ...input, door: 'HOLD' }, o, remote);
     return { ok: false, status: 409, code: lost.ok ? 'ORDER_MOVED_ON' : lost.code, error: lost.ok ? MOVED_AR : lost.error };
   }
