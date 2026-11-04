@@ -17,9 +17,9 @@ import type { UserStatus } from '@/types/auth';
  * and per user alone lets one address grind through every account.
  *
  * The session is issued by `issueSession`, the same function the plain login
- * uses — including the `tokenVersion` bump that makes an account work on one
- * device at a time. A second copy of that here is where the bump would one
- * day go missing.
+ * uses — including the session row that keeps an account to two devices at a
+ * time (the owner's ruling 4/11). A second copy of that here is where the row
+ * would one day go missing.
  */
 export async function POST(req: Request) {
   try {
@@ -94,7 +94,7 @@ export async function POST(req: Request) {
      * The cookie is written by `issueSession` and not here: the rule in
      * `two-factor.test.ts` is that neither door writes a cookie of its
      * own, so that the day one of them does, it is not the session cookie
-     * going out without the `tokenVersion` bump.
+     * going out without its session row (ruling 4/11: two devices).
      *
      * `user.totpEnabledAt` is non-null on this line — `checkSecondFactor`
      * refuses with NOT_ENROLLED otherwise, and that returned above.

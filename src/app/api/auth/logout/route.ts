@@ -21,16 +21,37 @@ export async function POST(req: Request) {
   }
 
   try {
-    // Invalidate the current session server-side via tokenVersion bump
-    const { getCurrentUser } = await import('@/lib/auth');
+    const { getCurrentUser, currentSessionClaims } = await import('@/lib/auth');
     // The person really signed in — never the one an owner is previewing («عاين كـ», preview-mode.ts): signing out
-    // bumps THIS account's tokenVersion, and must not sign her out of her own phone.
+    // ends THIS account's session, and must not sign her out of her own phone.
     const user = await getCurrentUser({ preview: 'ignore' });
     if (user) {
-      await db.user.update({
-        where: { id: user.id },
-        data: { tokenVersion: { increment: 1 } },
-      });
+      const claims = await currentSessionClaims();
+      if (claims) {
+        /**
+         * THIS DEVICE ONLY — THE OWNER'S RULING 4/11 (two devices per account).
+         *
+         * Signing out of the laptop must not sign her out of the phone she is calling from. The row is stamped, not
+         * deleted, so the copy of the cookie somebody kept dies with it all the same: `getCurrentUser` refuses a
+         * revoked `sid`. `tokenVersion` — every device at once — is left to the doors that mean every device.
+         */
+        // `userId` in the filter: a row that is not hers is not ended in her name (it cannot be — the session check
+        // already refused such a cookie — but a sign-out must not depend on that).
+        await db.userSession.updateMany({
+          where: { id: claims.sid, userId: user.id, revokedAt: null },
+          data: { revokedAt: new Date(), revokeReason: reason === 'idle' ? 'IDLE' : 'LOGOUT' },
+        });
+      } else {
+        /**
+         * A COOKIE FROM BEFORE THE RULING carries no `sid`: there is no row to stamp, and the version bump is the only
+         * way to make a kept copy of it die too. So it signs out every device of the account, as every sign-out did
+         * before — and only until the last of those cookies expires.
+         */
+        await db.user.update({
+          where: { id: user.id },
+          data: { tokenVersion: { increment: 1 } },
+        });
+      }
       await (await import('@/lib/audit')).logAudit({
         companyId: user.companyId || 'platform',
         userId: user.id,

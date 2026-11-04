@@ -71,6 +71,66 @@ export function idleState(lastActiveAt: number, now: number, limit = IDLE_LIMIT_
   return 'active';
 }
 
+/**
+ * A CALL IS WORK, NOT IDLENESS — THE OWNER'S RULING 4/11.
+ *
+ * A confirmation agent presses «اتصال» and the page goes to the background: the dialler or the call helper is in
+ * front, and she is talking to a customer. Counted as idle, a few long calls in a row came back to «signed out» within
+ * five seconds of returning — the one moment she most needed the order on the screen.
+ *
+ * So the press leaves a timestamp (a time, never a number or a name — see CUSTOMER_FIELDS below), and the time from it
+ * until the page is visible again counts as activity, up to an hour. An hour, because a call that long is not a call: a
+ * phone left in the dialler on a counter must still run out.
+ */
+export const ON_CALL_KEY = 'salesflow.onCall';
+
+/** The most a single press of «اتصال» may count as activity. */
+export const ON_CALL_CAP_MS = 60 * 60 * 1000;
+
+/**
+ * How long before the page went away the press may have been. The press and the dialler opening are one gesture; a
+ * mark older than this belongs to a call long finished (a desk phone, a `tel:` that opened nothing) and is not THIS
+ * absence.
+ */
+export const ON_CALL_LEAD_MS = 60 * 1000;
+
+/**
+ * THE MINUTE'S WARNING HAS A CEILING — the owner's ruling 4/11, as the review of #206 read it.
+ *
+ * The ruling asked two things: call time is not idle, and she SEES a warning before an idle sign-out. It did not ask
+ * that a hidden page never be signed out. So a page that comes back within an hour of running out shows the countdown;
+ * one that comes back later than that (idle ≥ IDLE_LIMIT_MS + this, after the call credit) is a phone left on a
+ * counter, and is signed out on return with no grace.
+ */
+export const HIDDEN_GRACE_CEILING_MS = 60 * 60 * 1000;
+
+/** «اتصال» was pressed. Written by the press itself (ContactButtons.tsx), read and cleared by IdleGuard on return. */
+export function markOnCall(now: number = Date.now()): void {
+  try {
+    localStorage.setItem(ON_CALL_KEY, String(now));
+  } catch {
+    /* blocked storage: the call counts as idle, exactly as before the ruling — nothing worse */
+  }
+}
+
+/**
+ * The «last active» moment after a return from a call: the call's time counted, capped, never moved backwards.
+ *
+ * A pure function of four numbers, like `idleState`. `hiddenAt` is when the page went away (0 when unknown). A mark that
+ * is missing, garbled, in the future, or older than `ON_CALL_LEAD_MS` before the page went away gives nothing.
+ */
+export function creditForCall(
+  lastActiveAt: number,
+  callMark: number,
+  hiddenAt: number,
+  now: number,
+  cap = ON_CALL_CAP_MS
+): number {
+  if (!Number.isFinite(callMark) || callMark <= 0 || callMark > now) return lastActiveAt;
+  if (hiddenAt > 0 && callMark < hiddenAt - ON_CALL_LEAD_MS) return lastActiveAt;
+  return Math.max(lastActiveAt, Math.min(now, callMark + cap));
+}
+
 /** Seconds left, for a countdown somebody is watching. Never negative. */
 export function secondsLeft(lastActiveAt: number, now: number, limit = IDLE_LIMIT_MS): number {
   return Math.max(0, Math.ceil((lastActiveAt + limit - now) / 1000));

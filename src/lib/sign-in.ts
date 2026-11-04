@@ -14,15 +14,37 @@ import { DEVICE_COOKIE, TRUST_DAYS, claimsFor, deviceCookieOptions } from './tru
  * the version bump, the attendance mark, the audit row and the cookie, all
  * in a line. Now a protected role signs in through `/api/auth/2fa/verify`
  * instead, and a second copy of that line would be the place where one of
- * them quietly stops bumping `tokenVersion` — which is the rule that makes
- * an account work on one device at a time.
+ * them quietly stops writing the session row — which is the rule that keeps
+ * an account to two devices at a time (the owner's ruling 4/11; it was one
+ * device, by a `tokenVersion` bump, before it).
  *
- * THE VERSION BUMP BELONGS HERE AND NOWHERE EARLIER. Bumping it when the
- * password is accepted would sign the person out of the device they are
- * already using, before they have proved anything — so a stolen password
- * alone could log an owner out of their own session, over and over, without
- * ever getting in.
+ * THE SESSION ROW, AND THE OLDEST DEVICE IT ENDS, BELONG HERE AND NOWHERE
+ * EARLIER. Ending a device when the password is accepted would sign the
+ * person out of a device they are already using, before they have proved
+ * anything — so a stolen password alone could log an owner out of their own
+ * session, over and over, without ever getting in.
  */
+/** How many devices one account may be signed in on at once — the owner's ruling 4/11. A third ends the oldest. */
+export const DEVICES_PER_ACCOUNT = 2;
+
+/**
+ * A session row unused for longer than the longest cookie («تذكّرني», 30 days — `sessionCookieOptions`) can no longer
+ * be presented by any device: it is stamped STALE at the next sign-in and never counted as one of the two.
+ */
+export const STALE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** The browser's own description, cut to 200 characters — «the phone» or «the laptop» for a person reading the rows. */
+async function requestUserAgent(): Promise<string | null> {
+  try {
+    const { headers } = await import('next/headers');
+    const said = (await headers()).get('user-agent')?.trim();
+    return said ? said.slice(0, 200) : null;
+  } catch {
+    // Outside a request (a script, a test): a session with no description is still a session.
+    return null;
+  }
+}
+
 export async function issueSession(input: {
   user: {
     id: string;
@@ -71,9 +93,9 @@ export async function issueSession(input: {
    * IT IS SET HERE AND NOT IN THE ROUTE, and the rule that put it here is
    * worth repeating: `two-factor.test.ts` forbids either door writing a
    * cookie of its own, because the day one route is allowed to set one is
-   * the day a route sets the SESSION cookie without the `tokenVersion`
-   * bump. So everything a successful sign-in grants is granted in this one
-   * function, and «no cookies in the routes» stays a rule with no
+   * the day a route sets the SESSION cookie without its session row (and
+   * so past the two-devices rule). So everything a successful sign-in
+   * grants is granted in this one function, and «no cookies in the routes» stays a rule with no
    * exception rather than a rule with one.
    */
   trustDevice?: boolean;
@@ -87,10 +109,72 @@ export async function issueSession(input: {
 }): Promise<NextResponse> {
   const { user, remember, ip } = input;
 
-  const refreshed = await db.user.update({
-    where: { id: user.id },
-    data: { lastLoginAt: new Date(), tokenVersion: { increment: 1 } },
-    select: { tokenVersion: true },
+  /**
+   * TWO DEVICES AT ONCE — THE OWNER'S RULING 4/11.
+   *
+   * This used to bump `tokenVersion`, which made an account work on ONE device: a confirmation agent who opened the
+   * system on her phone for the call helper was signed out of the laptop she was confirming on, mid-shift. Now a
+   * sign-in writes its own `user_sessions` row, and of the account's live rows it keeps this one and the newest one
+   * before it; anything older is stamped REPLACED (never deleted), and that device's login page says why.
+   *
+   * ONE TRANSACTION, AND THE USER ROW FIRST. The `lastLoginAt` write takes the account's row lock, so two sign-ins of
+   * the same account at the same instant queue behind each other, and the second one counts the first one's row —
+   * without that, two at once would each count two and leave three open.
+   *
+   * `tokenVersion` is NOT touched here any more. It stays the «sign out everywhere» lever — force-logout, suspension,
+   * password reset, 2FA reset, changing your own password — and the token carries its current value so that lever
+   * still reaches this cookie too.
+   */
+  const now = new Date();
+  const userAgent = await requestUserAgent();
+  const { refreshed, sid, replaced } = await db.$transaction(async (tx) => {
+    const refreshed = await tx.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: now },
+      select: { tokenVersion: true },
+    });
+    const created = await tx.userSession.create({
+      data: { userId: user.id, createdAt: now, lastSeenAt: now, userAgent },
+      select: { id: true },
+    });
+    /**
+     * KEPT BY USE, NOT BY BIRTH — the owner's ruling 4/11 is «two DEVICES», not «two rows».
+     *
+     * Ordered by creation, a dead row pushed out a live device: the laptop signs in at 08:00 and is worked on all
+     * morning, the phone at 09:00, the phone loses its cookie and signs in again at 10:00 — and the laptop, the one in
+     * use, was the «oldest». So the others are ranked by `lastSeenAt` (refreshed every five minutes of use), creation
+     * only breaking a tie; the 09:00 phone row, untouched since, is the one that goes.
+     *
+     * And a row nobody has used for longer than a cookie lives is no device at all: every cookie that could name it has
+     * expired. It is stamped STALE and not counted, so it can never be what keeps a real device out.
+     */
+    const live = await tx.userSession.findMany({
+      where: { userId: user.id, revokedAt: null },
+      orderBy: [{ lastSeenAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+      select: { id: true, lastSeenAt: true },
+    });
+    const others = live.filter((row) => row.id !== created.id);
+    const staleBefore = now.getTime() - STALE_AFTER_MS;
+    const stale = others.filter((row) => new Date(row.lastSeenAt).getTime() < staleBefore).map((row) => row.id);
+    // This sign-in is kept whatever the clock says of it; of the others still alive, the most recently used
+    // DEVICES_PER_ACCOUNT - 1.
+    const surplus = others
+      .filter((row) => !stale.includes(row.id))
+      .slice(DEVICES_PER_ACCOUNT - 1)
+      .map((row) => row.id);
+    if (stale.length > 0) {
+      await tx.userSession.updateMany({
+        where: { id: { in: stale }, revokedAt: null },
+        data: { revokedAt: now, revokeReason: 'STALE' },
+      });
+    }
+    if (surplus.length > 0) {
+      await tx.userSession.updateMany({
+        where: { id: { in: surplus }, revokedAt: null },
+        data: { revokedAt: now, revokeReason: 'REPLACED' },
+      });
+    }
+    return { refreshed, sid: created.id, replaced: surplus.length };
   });
 
   await markLogin(user.companyId, user.id);
@@ -101,7 +185,8 @@ export async function issueSession(input: {
     action: 'USER_LOGGED_IN',
     entity: 'User',
     entityId: user.id,
-    newData: { email: user.email, role: user.role, status: user.status, ip, factor: input.factor },
+    // `replaced`: how many older devices this sign-in ended — «why was I signed out» has an answer in the trail too.
+    newData: { email: user.email, role: user.role, status: user.status, ip, factor: input.factor, replaced },
   });
 
   const role = user.role as UserRole;
@@ -114,6 +199,7 @@ export async function issueSession(input: {
     status,
     companyId: user.companyId,
     tv: refreshed.tokenVersion,
+    sid,
     remember,
   });
 

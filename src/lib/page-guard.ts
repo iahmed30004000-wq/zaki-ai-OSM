@@ -1,7 +1,7 @@
 import { cache } from 'react';
 import { cookies } from 'next/headers';
 import { forbidden, notFound, redirect } from 'next/navigation';
-import { getCurrentUser } from './auth';
+import { getSessionVerdict } from './auth';
 import { findRoute, canAccessRoute, type RouteDef } from './route-registry';
 import { CONTEXT_COOKIE, readSelection, validateSelection } from './geo-context';
 import { db } from './db';
@@ -15,17 +15,28 @@ import { can } from './authorization';
  * country + store selection (otherwise -> /entry).
  */
 
+/** One session check per request, shared by the layout and the page. */
+const sessionVerdict = cache(() => getSessionVerdict());
+
 /** One user lookup per request, shared by the layout and the page. */
-export const sessionUser = cache(getCurrentUser);
+export const sessionUser = cache(async () => (await sessionVerdict()).user);
 
 /**
  * Signed-in, ACTIVE user with a company, or a redirect. The SessionUser
  * object is returned as-is: its effective grants live in a WeakMap keyed on
  * that exact object, so copying it would silently drop every scope.
+ *
+ * A DATABASE THAT DID NOT ANSWER IS NOT A SIGN-OUT (the owner's ruling 4/11).
+ * `getSessionVerdict` throws `AuthBackendDown` then, and it is deliberately NOT
+ * caught here: it falls to `(system)/error.tsx`, whose «جرّب مجدداً» is the
+ * right answer to a busy server. Redirecting to /login was what made a pool
+ * timeout look like «the system threw me out».
  */
 export async function requireActiveUser(): Promise<{ user: SessionUser; companyId: string }> {
-  const user = await sessionUser();
-  if (!user) redirect('/login');
+  const verdict = await sessionVerdict();
+  const user = verdict.user;
+  // A newer sign-in on a third device ended this one: the login page says so instead of saying nothing.
+  if (!user) redirect(verdict.reason === 'REPLACED' ? '/login?replaced=1' : '/login');
   if (user.status === 'PENDING') redirect('/pending');
   if (user.status !== 'ACTIVE') redirect('/login?suspended=1');
   const companyId =

@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
-import { IDLE_LIMIT_MS, IDLE_WARN_MS } from '@/lib/exposure';
+import { IDLE_LIMIT_MS, IDLE_WARN_MS, ON_CALL_CAP_MS, ON_CALL_KEY } from '@/lib/exposure';
 
 /**
  * THE TWO THINGS A WEB PAGE CAN HONESTLY DO ABOUT A PERSONAL PHONE.
@@ -204,22 +204,152 @@ describe('a phone left on a counter', () => {
     expect(signOut).not.toHaveBeenCalled();
   });
 
-  it('and coming BACK to the tab is not, by itself, being present', async () => {
-    // Somebody picking up a phone that has been face-down for an hour
-    // arrives at exactly this moment. It is the moment the session must
-    // already be gone.
-    render(<IdleGuard />);
+  /** Off screen, and back. */
+  async function hide() {
     await act(async () => {
       Object.defineProperty(document, 'hidden', { configurable: true, value: true });
       document.dispatchEvent(new Event('visibilitychange'));
     });
-    await pass(IDLE_LIMIT_MS - 1000);
+  }
+  async function show() {
     await act(async () => {
       Object.defineProperty(document, 'hidden', { configurable: true, value: false });
       document.dispatchEvent(new Event('visibilitychange'));
     });
+  }
+
+  it('and coming BACK to the tab is not, by itself, being present', async () => {
+    // Somebody picking up a phone that has been face-down for an hour
+    // arrives at exactly this moment. It is the moment the session must
+    // already be ending.
+    //
+    // RULING 4/11: the warning is SEEN first. This asserted a sign-out five
+    // seconds after the return — the countdown had run while the page was
+    // hidden, drawn to nobody. Now the return draws the full minute, and
+    // the return alone still buys nothing: unanswered, the minute ends it.
+    render(<IdleGuard />);
+    await hide();
+    await pass(IDLE_LIMIT_MS - 1000);
+    await show();
     await pass(5_000);
+    expect(signOut, 'طلعت قبل ما تشوف التحذير').not.toHaveBeenCalled();
+    expect(screen.getByTestId('idle-warning')).toBeTruthy();
+    await pass(IDLE_WARN_MS);
     expect(signOut).toHaveBeenCalledWith('idle');
+  });
+
+  it('a page that runs out while hidden is not signed out while hidden', async () => {
+    render(<IdleGuard />);
+    await hide();
+    await pass(2 * IDLE_LIMIT_MS);
+    expect(signOut, 'انعمل خروج والصفحة مخفية').not.toHaveBeenCalled();
+    await show();
+  });
+
+  it('and on return shows the full minute, which any touch cancels', async () => {
+    render(<IdleGuard />);
+    await hide();
+    await pass(2 * IDLE_LIMIT_MS);
+    await show();
+    await pass(5_000);
+    const warning = screen.getByTestId('idle-warning');
+    expect(warning.textContent).toMatch(/5[0-9]/); // a countdown in its first seconds, not «انتهت الجلسة»
+    expect(signOut).not.toHaveBeenCalled();
+
+    await act(async () => {
+      window.dispatchEvent(new Event('pointerdown'));
+    });
+    await pass(IDLE_WARN_MS + 10_000);
+    expect(screen.queryByTestId('idle-warning')).toBeNull();
+    expect(signOut).not.toHaveBeenCalled();
+  });
+
+  it('a return found by the clock alone (no event) is the same return', async () => {
+    render(<IdleGuard />);
+    await hide();
+    await pass(2 * IDLE_LIMIT_MS);
+    // Visible again, and nothing fired.
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    await pass(5_000);
+    expect(signOut).not.toHaveBeenCalled();
+    expect(screen.getByTestId('idle-warning')).toBeTruthy();
+  });
+
+  /*
+   * THE COUNTDOWN HAS A CEILING (review of #206). The ruling asked that call time not count and that she SEE a warning;
+   * not that a hidden page never be signed out. Within an hour of running out: the countdown. Later: signed out on
+   * return, no grace.
+   */
+  describe('the hour after running out', () => {
+    it('back at 25 minutes idle: the countdown', async () => {
+      render(<IdleGuard />);
+      await hide();
+      await pass(25 * 60_000);
+      await show();
+      expect(screen.getByTestId('idle-warning')).toBeTruthy();
+      expect(signOut).not.toHaveBeenCalled();
+    });
+
+    it('back at 85 minutes idle, no call: signed out at once', async () => {
+      render(<IdleGuard />);
+      await hide();
+      await pass(85 * 60_000);
+      await show();
+      expect(signOut, 'تلفون منسي ساعة وزيادة أخد عدّاد').toHaveBeenCalledWith('idle');
+      expect(signOut).toHaveBeenCalledTimes(1);
+    });
+
+    it('back at 85 minutes, but sixty of them on a call: the countdown', async () => {
+      render(<IdleGuard />);
+      localStorage.setItem(ON_CALL_KEY, String(Date.now()));
+      await hide();
+      await pass(85 * 60_000);
+      await show();
+      expect(signOut, 'وقت المكالمة انحسب خمول').not.toHaveBeenCalled();
+      expect(screen.getByTestId('idle-warning')).toBeTruthy();
+    });
+  });
+
+  describe('a call started from «اتصال» (ruling 4/11)', () => {
+    it('is not idle time', async () => {
+      render(<IdleGuard />);
+      await pass(60_000);
+      // She presses «اتصال»; the dialler takes the screen.
+      localStorage.setItem(ON_CALL_KEY, String(Date.now()));
+      await hide();
+      await pass(40 * 60_000); // a forty-minute call
+      await show();
+      await pass(5_000);
+      expect(screen.queryByTestId('idle-warning'), 'وقت المكالمة انحسب خمول').toBeNull();
+      expect(localStorage.getItem(ON_CALL_KEY), 'العلامة ما انمسحت عند الرجوع').toBeNull();
+      // And the clock starts from her return: another twenty minutes before anything is said.
+      await pass(IDLE_LIMIT_MS - IDLE_WARN_MS - 10_000);
+      expect(signOut).not.toHaveBeenCalled();
+    });
+
+    it('counts an hour at most — a phone left in the dialler still runs out, with its warning', async () => {
+      render(<IdleGuard />);
+      localStorage.setItem(ON_CALL_KEY, String(Date.now()));
+      await hide();
+      await pass(ON_CALL_CAP_MS + IDLE_LIMIT_MS + 60_000);
+      await show();
+      await pass(5_000);
+      expect(screen.getByTestId('idle-warning')).toBeTruthy();
+      expect(signOut).not.toHaveBeenCalled();
+      await pass(IDLE_WARN_MS);
+      expect(signOut).toHaveBeenCalledWith('idle');
+    });
+
+    it('a mark from a call long before the page went away counts for nothing', async () => {
+      render(<IdleGuard />);
+      localStorage.setItem(ON_CALL_KEY, String(Date.now()));
+      await pass(10 * 60_000); // she kept working on the page; the call was on a desk phone
+      await hide();
+      await pass(30 * 60_000);
+      await show();
+      await pass(5_000);
+      expect(screen.getByTestId('idle-warning'), 'علامة قديمة اشترت وقت').toBeTruthy();
+    });
   });
 });
 

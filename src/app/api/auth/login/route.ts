@@ -118,9 +118,9 @@ export async function POST(req: Request) {
      * THE PASSWORD IS THE FIRST FACTOR. FOR FIVE ROLES IT IS NO LONGER THE LAST.
      *
      * Nothing is issued and NOTHING IS CHANGED here — no session, and in
-     * particular no `tokenVersion` bump. Bumping it now would mean a stolen
-     * password alone could sign an owner out of the device they are working
-     * on, repeatedly, without ever getting in.
+     * particular no session row and no older device ended. Ending one now
+     * would mean a stolen password alone could sign an owner out of the
+     * device they are working on, repeatedly, without ever getting in.
      *
      * A protected role that has not enrolled yet is not turned away either:
      * on the morning this ships nobody is enrolled, and an owner locked out

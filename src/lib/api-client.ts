@@ -48,8 +48,16 @@ export async function apiFetch(input: string, init?: TimedInit): Promise<Respons
     throw e;
   }
   if (res.status === 401) {
-    // Session expired — hard redirect to login; keeps app dir/rtl untouched
-    window.location.href = '/login';
+    // Session expired — hard redirect to login; keeps app dir/rtl untouched.
+    // ONLY a real 401: a 503 (SERVICE_BUSY — the database did not answer, the owner's ruling 4/11) is returned to the
+    // caller like any other refusal, because a busy server is not a sign-out.
+    // When a newer sign-in on a third device ended this one, the login page says so (`?replaced=1`). Read through
+    // `Promise.resolve().then` so a response that cannot be cloned or parsed is the plain redirect, never a throw.
+    const code = await Promise.resolve()
+      .then(() => res.clone().json())
+      .then((d: { code?: string }) => d?.code)
+      .catch(() => undefined);
+    window.location.href = code === 'SESSION_REPLACED' ? '/login?replaced=1' : '/login';
     throw new Error('انتهت الجلسة، جارٍ إعادة التوجيه');
   }
   // Country/store selection missing or revoked (src/lib/geo-context.ts) —

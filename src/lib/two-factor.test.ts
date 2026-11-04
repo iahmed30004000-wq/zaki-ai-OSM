@@ -318,18 +318,26 @@ describe('the doors', () => {
   });
 
   /**
-   * AND NOTHING IS BUMPED BEFORE THE SECOND FACTOR PASSES.
+   * AND NO DEVICE IS ENDED BEFORE THE SECOND FACTOR PASSES.
    *
-   * `tokenVersion` is what makes an account work on one device at a time.
-   * Bumping it on a correct password alone would let a stolen password sign
-   * an owner out of the device they are working on, again and again, without
-   * ever getting in.
+   * Ruling 4/11: two devices. This pinned the `tokenVersion` bump inside the
+   * session issuer, which was what made an account work on ONE device — and
+   * signed the laptop out whenever the phone signed in. Now the issuer writes
+   * a session row and ends only the oldest of three; the reason this test
+   * exists is unchanged: ending a device on a correct password alone would
+   * let a stolen password sign an owner out of the device they are working
+   * on, again and again, without ever getting in. So the login route touches
+   * neither the version nor the session rows, and the issuer — the one place
+   * that does — no longer bumps the version at all.
    */
   it('and changes nothing about the account until it does', () => {
     const route = stripComments(repoFile('src/app/api/auth/login/route.ts'));
     expect(route, 'الدخول يرفع tokenVersion قبل العامل الثاني').not.toContain('tokenVersion');
+    expect(route, 'الدخول يلمس الجلسات قبل العامل الثاني').not.toContain('userSession');
     const signIn = stripComments(repoFile('src/lib/sign-in.ts'));
-    expect(signIn, 'الرفع ليس في مُصدِر الجلسة').toContain('tokenVersion: { increment: 1 }');
+    expect(signIn, 'مُصدِر الجلسة رجع يطلّع كل الأجهزة').not.toContain('tokenVersion: { increment: 1 }');
+    expect(signIn, 'مُصدِر الجلسة ما بيكتب صف الجلسة').toContain('userSession.create(');
+    expect(signIn, 'مُصدِر الجلسة ما بينهي الأقدم').toContain("revokeReason: 'REPLACED'");
   });
 
   /** One place issues a session, so the bump cannot go missing from one door. */

@@ -25,9 +25,9 @@ import {
  * stolen phone from being an open account, and no passkey skips it.
  *
  * THE SESSION IS ISSUED BY `issueSession`, the same function the password
- * login and the code both use — including the `tokenVersion` bump that
- * makes an account work on one device at a time. A third copy of that line
- * here is exactly where the bump would one day go missing.
+ * login and the code both use — including the session row that keeps an
+ * account to two devices at a time (the owner's ruling 4/11). A third copy of
+ * that line here is exactly where the row would one day go missing.
  *
  * Two shapes, one route: without an assertion it hands out a challenge,
  * with one it checks it. A separate «start» route would be a second place
