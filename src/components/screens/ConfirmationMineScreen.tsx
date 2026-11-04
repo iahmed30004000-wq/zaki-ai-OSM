@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { apiJson } from '@/lib/api-client';
 import { CONTACT_FIRST_MESSAGE, REGION_REQUIRED_MESSAGE } from '@/lib/confirmation-queue';
 import { useRegions } from '@/hooks/useRegions';
@@ -14,8 +15,6 @@ import { OrderRef } from '@/components/orders/OrderRef';
 import { CopyValue } from '@/components/orders/CopyValue';
 import { orderNumberToCopy } from '@/lib/copy-values';
 import { ContactButtons } from '@/components/orders/ContactButtons';
-import { OrderDetailModal } from '@/components/orders/OrderDetailModal';
-import { CreateOrderModal } from '@/components/orders/CreateOrderModal';
 import { Button } from '@/components/ui/Button';
 import { ScreenTitle } from '@/components/shell/ScreenTitle';
 import {
@@ -30,14 +29,12 @@ import { raiseChangeRequest } from '@/components/orders/raiseChangeRequest';
 import { onOpenTrolley, ON_TROLLEY_AR } from '@/lib/order-seal';
 import { TwinConfirmedDialog } from '@/components/orders/TwinConfirmedDialog';
 import { confirmAnywayBody, rejectAsDuplicateBody, twinsFromRefusal, type ConfirmedTwinView } from '@/lib/twin-refusal';
-import { AssistantDialog } from './confirmation/AssistantDialog';
 import { RiAddCircleLine, RiAlertLine, RiCheckboxCircleLine, RiCloseCircleLine, RiCloseLine, RiLoader4Line, RiPencilLine, RiPhoneLockLine, RiRefreshLine, RiSearchLine, RiShieldFlashLine, RiSparkling2Line, RiTimerLine } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
 import { deskIsEmpty, openPreparationStep } from '@/lib/next-step';
 import { useMayOpen } from '@/hooks/useMayOpen';
 import { PullPanel, useQueue } from '@/components/confirmation/PullPanel';
 import { CustomerOnTheLine } from '@/components/confirmation/CustomerOnTheLine';
-import { ConfirmationPostponedScreen } from '@/components/screens/ConfirmationPostponedScreen';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
 import { AI_ASSIST_KEY } from '@/lib/ai-assistants';
@@ -72,6 +69,37 @@ import {
   type CallbackChip,
   type Outgoing,
 } from '@/lib/call-outcome';
+
+/*
+ * THE BIG WINDOWS LOAD WHEN ONE IS OPENED — the owner's ruling 4/11 («طلباتي أخف»).
+ *
+ * The order window, the create-order window, the assistant and the whole «مؤجّلة» tab were static imports, so every
+ * agent downloaded all of them before the first card was drawn — on a phone, with a customer on the line. Each is drawn
+ * only behind a press (or, for the create window, closed until one), so each comes in its own chunk the first time it
+ * is rendered. Client-only (`ssr: false`): none has anything to say before the screen has loaded. While a chunk is on
+ * its way the place shows the screen's own small spinner — or nothing, for the create window, which is rendered closed.
+ *
+ * NOT THE CALL SHEET. «شو صار؟» must be there ON the press, before the dialler takes the phone
+ * (`the-call-sheet-waits-on-a-phone.test.tsx`); a chunk still on its way while the page is in the background is exactly
+ * the wait this ruling is against. It stays a static import. `staff-confirmation-first-load.test.ts` holds both shapes.
+ */
+const Opening = () => <RiLoader4Line className="w-4 h-4 animate-spin" aria-label="جارٍ التحميل…" />;
+const OrderDetailModal = dynamic(() => import('@/components/orders/OrderDetailModal').then((m) => m.OrderDetailModal), {
+  ssr: false,
+  loading: Opening,
+});
+const CreateOrderModal = dynamic(() => import('@/components/orders/CreateOrderModal').then((m) => m.CreateOrderModal), {
+  ssr: false,
+  loading: () => null,
+});
+const AssistantDialog = dynamic(() => import('./confirmation/AssistantDialog').then((m) => m.AssistantDialog), {
+  ssr: false,
+  loading: Opening,
+});
+const ConfirmationPostponedScreen = dynamic(
+  () => import('@/components/screens/ConfirmationPostponedScreen').then((m) => m.ConfirmationPostponedScreen),
+  { ssr: false, loading: Opening }
+);
 
 /**
  * /confirmation/mine — two sections: in-confirmation (workable) and

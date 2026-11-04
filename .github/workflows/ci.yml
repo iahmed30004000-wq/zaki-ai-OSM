@@ -108,8 +108,12 @@ jobs:
       # and was never in this step, so in CI it returned early, silently,
       # on every run: a guard that cannot measure reads exactly like one
       # that passed.
+      #
+      # `staff-confirmation-first-load.test.ts` — the agent's «طلباتي»
+      # (the owner's ruling 4/11): its big windows load on demand, and its
+      # first-load JavaScript is held under a measured ceiling.
       - name: Payload budget
-        run: npx vitest run src/lib/quality-gates.test.ts src/lib/public-first-load.test.ts src/lib/what-a-shopper-downloads.test.ts
+        run: npx vitest run src/lib/quality-gates.test.ts src/lib/public-first-load.test.ts src/lib/what-a-shopper-downloads.test.ts src/lib/staff-confirmation-first-load.test.ts
         env:
           NODE_ENV: test
           JWT_SECRET: ci-test-secret-not-used-anywhere
