@@ -6,7 +6,7 @@ import { activeStores } from './shared';
  * A returning customer's new order is held for the agent who worked him last.
  *
  * The rule is `order-reservation.ts` and the writer is `reserve-returning-customers.ts`; this is the minute's clock for
- * it. The pull, the queue read and the claim door make the same hold at the moment somebody is about to take an order, so
+ * it. The pull and the claim door make the same hold at the moment somebody is about to take an order (the queue read did too until 4/11), so
  * nothing waits on this job to be correct — it exists so the order is already in the agent's «الطلبات», with her name on it,
  * when she opens it, whether or not anybody has pulled.
  *
@@ -16,7 +16,7 @@ import { activeStores } from './shared';
 export const reserveReturning: JobDefinition = {
   name: 'reserve-returning-customers',
   // Not 60: the heartbeat watches exactly the 60-second jobs (heartbeat.ts), and a hold that is a minute late costs nothing —
-  // the pull, the queue read and the claim door make it at the moment it matters.
+  // the pull and the claim door make it at the moment it matters.
   everySeconds: 120,
   description: 'حجز طلب الزبون الراجع للموظفة التي تعاملت معه قبل',
   async run({ now }): Promise<JobResult> {
