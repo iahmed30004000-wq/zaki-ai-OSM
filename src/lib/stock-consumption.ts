@@ -655,6 +655,16 @@ export async function takeOffUnreturned(
   if ((await alreadyMoved(tx, input.orderId, SALE)) || (await alreadyMoved(tx, input.orderId, RETURN))) {
     return { ...none, skipped: 'CONSUMED' };
   }
+  /*
+   * AND A DELIVERY ON AN EMPTY SHELF WAS A CONSUMPTION TOO, though it wrote no SALE line — there was nothing to move. Its review
+   * line is the proof, exactly as `consumeOrderStock` reads it: a parcel written off (or partly delivered) on a shelf that held
+   * nothing has already been counted gone, and taking its units again when it turns up would count them twice.
+   */
+  const consumedShort = await tx.orderActivity.findFirst({
+    where: { orderId: input.orderId, companyId: input.companyId, action: STOCK_SHORT_ACTION },
+    select: { id: true },
+  });
+  if (consumedShort) return { ...none, skipped: 'CONSUMED' };
   if ((await alreadyMoved(tx, input.orderId, DAMAGE)) || (await alreadyMoved(tx, input.orderId, LOSS))) {
     return { ...none, skipped: 'ALREADY_DONE' };
   }
@@ -665,8 +675,7 @@ export async function takeOffUnreturned(
       orderNumber: true,
       storeId: true,
       source: true,
-      items: { select: { productId: true, quantity: true, freeQuantity: true, reservedQty: true } },
-      addOns: { select: { productId: true, quantity: true } },
+      items: { select: { productId: true, quantity: true, freeQuantity: true, reservedQty: true, deliveredQty: true } },
       store: { select: { country: { select: { minorUnit: true } } } },
     },
   });
@@ -674,10 +683,17 @@ export async function takeOffUnreturned(
   if (outsideTheCount(order)) return { ...none, skipped: 'OUTSIDE_COUNT' };
   const minorUnit = order.store?.country?.minorUnit ?? 2;
 
-  const lines = [
-    ...order.items.map((i) => ({ productId: i.productId, units: i.quantity + i.freeQuantity })),
-    ...(order.addOns ?? []).map((a) => ({ productId: a.productId, units: a.quantity })),
-  ];
+  /*
+   * THE LINES THE DESK COUNTED, AND ONLY WHAT EACH OWES BACK.
+   *
+   * The count is over `expectedBackTotal` (partial-delivery.ts): each LINE's shipped units less what the customer kept
+   * (`deliveredQty`), and no add-on. So the units are laid over the same thing — a line the customer kept whole owes nothing
+   * back and is never touched, which is the parcel swap's box Y: its kept units went to the new order and were consumed there.
+   */
+  const lines = order.items.map((i) => ({
+    productId: i.productId,
+    units: Math.max(0, i.quantity + i.freeQuantity - (i.deliveredQty ?? 0)),
+  }));
 
   let soundLeft = sound;
   let brokenLeft = broken;

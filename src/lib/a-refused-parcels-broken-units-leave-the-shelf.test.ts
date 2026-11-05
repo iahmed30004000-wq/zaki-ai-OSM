@@ -43,6 +43,10 @@ function world(opts: {
   addOns?: Row[];
   source?: string | null;
   sold?: boolean;
+  /** A RETURN line already written for the order (a restore ran) — with no SALE. */
+  returned?: boolean;
+  /** The review line a delivery on an empty shelf writes instead of a SALE (STOCK_SHORT_AT_DELIVERY). */
+  shortConsumed?: boolean;
 }) {
   const movements: Row[] = [];
   const shelf = opts.shelf.map((b) => ({ ...b }));
@@ -52,12 +56,17 @@ function world(opts: {
       findFirst: async ({ where }: any) => {
         if (movements.some((m) => m.referenceId === where.referenceId && m.type === where.type)) return { id: 'seen' };
         if (opts.sold && where.type === 'SALE') return { id: 'prior-sale' };
+        if (opts.returned && where.type === 'RETURN') return { id: 'prior-return' };
         return null;
       },
       create: async ({ data }: any) => {
         movements.push(data);
         return { id: `m${movements.length}`, ...data };
       },
+    },
+    orderActivity: {
+      findFirst: async ({ where }: any) =>
+        opts.shortConsumed && where.action === 'STOCK_SHORT_AT_DELIVERY' ? { id: 'short-1' } : null,
     },
     order: {
       findFirst: async () => ({
@@ -200,15 +209,32 @@ describe('a parcel refused at the door, counted back at the desk', () => {
     expect(w.movements).toEqual([expect.objectContaining({ productId: 'p2', type: 'DAMAGE', quantity: -1 })]);
   });
 
-  it('an add-on in the parcel counts as a line too', async () => {
+  it('the desk counts the lines and no add-on, so an add-on is never taken off', async () => {
     const w = world({
       shelf: [batch('a', 10, 4, '2026-01-01'), batch('x', 5, 1, '2026-01-01', { productId: 'p9' })],
-      items: [{ productId: 'p1', productName: 'كريم', quantity: 1, freeQuantity: 0, reservedQty: 1 }],
+      items: [{ productId: 'p1', productName: 'كريم', quantity: 2, freeQuantity: 0, reservedQty: 2 }],
       addOns: [{ productId: 'p9', quantity: 1 }],
     });
-    await count(w, 1, 0, 1); // p1 sound, the add-on missing
-    expect(w.units('p9')).toBe(4);
-    expect(w.units('p1')).toBe(10);
+    await count(w, 1, 0, 1); // the line: 1 sound + 1 missing
+    expect(w.units('p9')).toBe(5);
+    expect(w.units('p1')).toBe(9);
+  });
+
+  it('a line the customer kept owes nothing back: the count lands on the lines that came back (the parcel swap’s box Y)', async () => {
+    // A ×2 kept (consumed on the new order), B ×1 and C ×1 coming back. The desk counts 1 sound + 1 missing.
+    const w = world({
+      shelf: [batch('a', 8, 4, '2026-01-01'), batch('b', 10, 4, '2026-01-01', { productId: 'pB' }), batch('c', 10, 4, '2026-01-01', { productId: 'pC' })],
+      items: [
+        { productId: 'p1', productName: 'أ', quantity: 2, freeQuantity: 0, reservedQty: 0, deliveredQty: 2 },
+        { productId: 'pB', productName: 'ب', quantity: 1, freeQuantity: 0, reservedQty: 1, deliveredQty: 0 },
+        { productId: 'pC', productName: 'ج', quantity: 1, freeQuantity: 0, reservedQty: 1, deliveredQty: 0 },
+      ],
+    });
+    await count(w, 1, 0, 1);
+    expect(w.units('p1')).toBe(8); // not taken a second time
+    expect(w.units('pB')).toBe(10); // the sound one
+    expect(w.units('pC')).toBe(9); // the missing one
+    expect(w.movements).toEqual([expect.objectContaining({ productId: 'pC', type: 'LOSS', quantity: -1 })]);
   });
 });
 
@@ -221,13 +247,19 @@ describe('NEGATIVE: nothing is taken twice, or from a parcel that already left t
     expect(w.movements).toEqual([]);
   });
 
-  it('a consumed parcel after the restore ran in the same receipt: the RETURN it wrote is proof enough', async () => {
-    const w = world({ shelf: [batch('b1', 10, 4, '2026-01-01')], sold: true });
-    await restoreOrderStock(w.tx, { orderId: ORDER, companyId: 'c1', receivedQty: 2, damagedQty: 1 });
-    const afterRestore = w.units();
+  it('a RETURN line already on the order, with no SALE, is proof enough on its own', async () => {
+    const w = world({ shelf: [batch('b1', 10, 4, '2026-01-01')], returned: true });
     const r = await count(w, 2, 1, 0);
     expect(r.skipped).toBe('CONSUMED');
-    expect(w.units()).toBe(afterRestore);
+    expect(w.units()).toBe(10);
+  });
+
+  it('a parcel consumed on an EMPTY shelf (no SALE, only the short-shelf review line) is consumed — untouched when it turns up', async () => {
+    const w = world({ shelf: [batch('b1', 10, 4, '2026-01-01')], shortConsumed: true });
+    const r = await count(w, 2, 1, 0);
+    expect(r.skipped).toBe('CONSUMED');
+    expect(w.units()).toBe(10);
+    expect(w.movements).toEqual([]);
   });
 
   it('a second press takes nothing more', async () => {
