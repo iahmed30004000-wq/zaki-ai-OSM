@@ -296,6 +296,9 @@ const ORDER_ID_SHAPE = /^[A-Za-z0-9-]{1,64}$/;
 const askedOrderId = (value: string | null): string | null =>
   value && ORDER_ID_SHAPE.test(value) ? value : null;
 
+/** The DOM id of an order's card on her desk — what the refusal's link scrolls to. */
+const deskCardId = (orderId: string) => `desk-order-${orderId}`;
+
 /**
  * WHERE THE ORDER CAME FROM, IN THE WORDS THE AGENT USES.
  *
@@ -544,6 +547,33 @@ export function ConfirmationMineScreen() {
   const askedTab = asked.get('tab');
   const [tab, setTab] = useState<'work' | 'noAnswer' | 'done' | 'postponed'>(askedTab === 'postponed' ? 'postponed' : 'work');
   const serverOffset = useRef(0);
+  /**
+   * ── THE REFUSAL'S LINK TAKES HER DOWN TO THE CARD ──
+   *
+   * «افتح الطلب … وسجّل محاولة» opened the order window, over the desk. What
+   * she needs is the card: its contact buttons are where the attempt is
+   * written. So the pull panel hands the id to `showOrder` (below), which
+   * moves the desk to the tab that holds it and clears a search that could
+   * hide it; once that is drawn, this scrolls the card into the middle of
+   * the screen and rings it for a moment. An order that is on no card of
+   * hers (postponed, say) still opens in its window, as before.
+   */
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const [flashId, setFlashId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!focusId) return;
+    const t = window.setTimeout(() => {
+      document.getElementById(deskCardId(focusId))?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+      setFlashId(focusId);
+      setFocusId(null);
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [focusId]);
+  useEffect(() => {
+    if (!flashId) return;
+    const t = window.setTimeout(() => setFlashId(null), 2500);
+    return () => window.clearTimeout(t);
+  }, [flashId]);
 
   /**
    * Returns what it loaded — or `null` — so a caller that needs to know what
@@ -1038,6 +1068,19 @@ export function ConfirmationMineScreen() {
    * ones the third no-answer closed, that there is no footer at all: they
    * are read-only, and a disabled row of buttons reads as «try again».
    */
+  /** The refusal's link: down to the order's card on the tab that holds it, or its window if no card does. */
+  const showOrder = (orderId: string) => {
+    const holds = (list: { id: string }[]) => list.some((o) => o.id === orderId);
+    const wanted = holds(data.work) ? 'work' : holds(data.noAnswer) || holds(data.closedToday) ? 'noAnswer' : null;
+    if (!wanted) {
+      setOpenOrderId(orderId);
+      return;
+    }
+    setTab(wanted);
+    setFindOpen('');
+    setFocusId(orderId);
+  };
+
   const rows: { order: OrderRow; closed?: boolean }[] =
     tab === 'work'
       ? work.map((order) => ({ order }))
@@ -1094,7 +1137,7 @@ export function ConfirmationMineScreen() {
           عم تشوف شاشة {watchedName} — قراءة بس
         </p>
       )}
-      {canPull && !readOnly && <PullPanel queue={queue} compact onPulled={async () => void (await load())} />}
+      {canPull && !readOnly && <PullPanel queue={queue} compact onPulled={async () => void (await load())} onShowOrder={showOrder} />}
       {/* «مساعد الاتصال» — on a phone (where the call sheet is), her own desk only, for the holder of «طلباتي»'s key (the
           pair door asks the same). A desk at a computer has no phone to pair. */}
       {phone && holderId && !readOnly && <CallHelperCard onChange={() => void load()} />}
@@ -1436,7 +1479,11 @@ export function ConfirmationMineScreen() {
               .filter(Boolean)
               .join(' · ');
             return (
-              <article key={order.id} className={`border rounded-lg p-4 space-y-3 ${cardTone(order.noAnswerCount, data.noAnswerLimit, closed)}`}>
+              <article
+                key={order.id}
+                id={deskCardId(order.id)}
+                className={`scroll-mt-24 border rounded-lg p-4 space-y-3 transition-shadow ${cardTone(order.noAnswerCount, data.noAnswerLimit, closed)}${flashId === order.id ? ' ring-2 ring-[var(--sys-primary)]' : ''}`}
+              >
                 <header className="flex flex-wrap items-center gap-2">
                   {/* Text, not `OrderRef`: a number that opened the order would be the way around «افتح وعدّل»,
                       which stays locked until she has rung the customer. Only the copy button is added. */}

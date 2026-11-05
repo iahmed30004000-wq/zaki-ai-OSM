@@ -109,12 +109,19 @@ export function PullPanel({
   queue,
   onPulled,
   compact = false,
+  onShowOrder,
 }: {
   queue: ReturnType<typeof useQueue>;
   /** After a successful pull. The queue is reloaded before this runs. */
   onPulled: () => void | Promise<void>;
   /** The slim bar for the top of «طلباتي»; the full card is the supervisor's page. */
   compact?: boolean;
+  /**
+   * «طلباتي» answers the refusal's link itself: it scrolls to the order's card
+   * on her desk instead of reloading the page into the order window. Without
+   * it (the supervisor's page) the link is an ordinary address.
+   */
+  onShowOrder?: (orderId: string) => void;
 }) {
   const { data, error, pulling } = queue;
   /* The slim bar folds its numbers and its rule on a phone (ORD-07); the full card is a desk page. */
@@ -186,6 +193,12 @@ export function PullPanel({
       {!error && data.refusal?.code === 'UNTOUCHED_ORDER' && data.refusal.orderId && (
         <a
           href={`/confirmation/mine?open=${encodeURIComponent(data.refusal.orderId)}`}
+          onClick={(e) => {
+            const id = data.refusal?.orderId;
+            if (!onShowOrder || !id) return;
+            e.preventDefault();
+            onShowOrder(id);
+          }}
           className="mt-2 inline-flex min-h-11 items-center font-bold underline"
         >
           افتح الطلب {data.refusal.orderNumber ?? ''} وسجّل محاولة
