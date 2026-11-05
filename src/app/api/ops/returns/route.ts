@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
-import { restoreOrderStock } from '@/lib/stock-consumption';
+import { restoreOrderStock, takeOffUnreturned } from '@/lib/stock-consumption';
 import { requireContext } from '@/lib/geo-context';
 import { can, requirePermission } from '@/lib/authorization';
 import { redactCustomerForWarehouse } from '@/lib/operations';
@@ -404,6 +404,17 @@ export async function POST(req: Request) {
         companyId,
         receivedQty: input.receivedQty,
         damagedQty: input.damagedQty,
+        userId: user.id,
+      });
+
+      // A parcel refused at the door never left the shelf's books, so its broken and missing units are taken off here — before
+      // the reservation is released, or they become stock the next customer is sold (takeOffUnreturned, 5/11).
+      await takeOffUnreturned(tx, {
+        orderId: order.id,
+        companyId,
+        receivedQty: input.receivedQty,
+        damagedQty: input.damagedQty,
+        missingQty,
         userId: user.id,
       });
 

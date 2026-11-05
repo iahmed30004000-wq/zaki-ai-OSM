@@ -36,6 +36,7 @@ const TYPE_AR: Record<string, string> = {
   RETURN: 'مرتجع',
   MANUAL_ADJUSTMENT: 'تسوية يدوية',
   DAMAGE: 'تالف',
+  LOSS: 'ناقص — ما رجع',
   TRANSFER: 'نقل',
 };
 

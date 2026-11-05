@@ -29,7 +29,10 @@ vi.mock('@/lib/geo-context', () => ({ requireContext: (...a: unknown[]) => requi
 vi.mock('@/lib/authorization', () => ({ can: () => true, requirePermission: (...a: unknown[]) => requirePermission(...a) }));
 vi.mock('@/lib/audit', () => ({ logAudit: (...a: unknown[]) => logAudit(...a) }));
 vi.mock('@/lib/commission', () => ({ reverseForOrder }));
-vi.mock('@/lib/stock-consumption', () => ({ restoreOrderStock: (...a: unknown[]) => restoreOrderStock(...a) }));
+vi.mock('@/lib/stock-consumption', () => ({
+  restoreOrderStock: (...a: unknown[]) => restoreOrderStock(...a),
+  takeOffUnreturned: async () => ({ damaged: 0, missing: 0, absorbed: 0, skipped: 'CONSUMED' }),
+}));
 
 import { POST } from '@/app/api/ops/returns/route';
 

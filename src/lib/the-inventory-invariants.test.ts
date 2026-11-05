@@ -937,9 +937,10 @@ describe('the ledger balance comes from the shelf, not from the row being writte
     ]) {
       expect(paths, `${expected} يَكتُبُ حركةَ مخزونٍ ولم يَرَه الكنس`).toContain(expected);
     }
-    // And `stock-consumption.ts` writes TWO of them — the sale and the
-    // return — so a sweep that found one per file would be half blind.
-    expect(sites.filter((s) => s.rel === 'src/lib/stock-consumption.ts')).toHaveLength(2);
+    // And `stock-consumption.ts` writes THREE of them — the sale, the return,
+    // and (5/11) the broken / missing units of a refused parcel — so a sweep
+    // that found one per file would be blind to two.
+    expect(sites.filter((s) => s.rel === 'src/lib/stock-consumption.ts')).toHaveLength(3);
   });
 
   it('and every one of them takes the figure from `onHandTotal`', () => {
