@@ -5,7 +5,7 @@ import { can, requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { customerRiskMany } from '@/lib/customer-risk';
 import { mayReadInsights } from '@/lib/insights-key';
-import { POSTPONE_LEAD_DAYS } from '@/lib/confirmation-queue';
+import { CLAIM_CAPS, POSTPONE_LEAD_DAYS } from '@/lib/confirmation-queue';
 import { deriveCoreState, type StateSource } from '@/lib/order-state';
 import { NO_ANSWER_LIMIT , NO_ANSWER_RESULTS } from '@/lib/confirmation-workflow';
 import { firstActionTimes } from '@/lib/response-clock';
@@ -259,8 +259,17 @@ export async function GET(request: Request) {
             },
           ],
         },
-        orderBy: [{ nextFollowUpAt: 'asc' }, { claimedAt: 'asc' }],
-        take: 200,
+        /*
+         * ── EVERY ORDER IN HER HANDS REACHES HER DESK (5/11, سلوى) ──
+         *
+         * This read was `take: 200` by `nextFollowUpAt asc`, and Postgres puts a NULL last in an ascending sort. An order
+         * nobody has rung yet has no follow-up date, so with 200 no-answers in her hands every fresh pull was the row cut
+         * off: «للشغل (0)» while the pull refused her «سجّل محاولة على ORD-…» about an order on no card of hers — held,
+         * unreachable, and gone with the ninety-minute release under her own name. Now the undated come FIRST (they are
+         * the calls), and the page holds the whole cap: nothing she may hold is ever past the end of it.
+         */
+        orderBy: [{ nextFollowUpAt: { sort: 'asc', nulls: 'first' } }, { claimedAt: 'asc' }],
+        take: CLAIM_CAPS.total,
         select: ORDER_SELECT,
       }),
       db.order.findMany({
