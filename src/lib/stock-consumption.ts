@@ -584,3 +584,219 @@ export async function restoreOrderStock(
 
   return { restored, alreadyDone: false, absorbed: roundMinor(absorbedTotal, restoreUnit) };
 }
+
+/** A unit that came back broken from a parcel that never left the shelf's books. */
+const DAMAGE = 'DAMAGE';
+/** A unit the courier did not bring back, from a parcel that never left the shelf's books. */
+const LOSS = 'LOSS';
+
+export interface UnreturnedOutcome {
+  /** Units taken off the shelf as broken. */
+  damaged: number;
+  /** Units taken off the shelf as never brought back. */
+  missing: number;
+  /** The broken units' money, moved onto the sound units of the same parcel. */
+  absorbed: number;
+  /** Why nothing was done, when nothing was. */
+  skipped?: 'NOTHING_MISSING' | 'NOTHING_CAME_BACK' | 'CONSUMED' | 'ALREADY_DONE' | 'OUTSIDE_COUNT' | 'NO_ORDER';
+}
+
+/**
+ * ── A REFUSED PARCEL'S BROKEN AND MISSING UNITS LEAVE THE SHELF (the owner, 5/11: «إي، صلّحها») ──
+ *
+ * A parcel refused at the door was never consumed — the shelf never let its units go (see restoreOrderStock: «NOTHING COMES
+ * BACK THAT NEVER LEFT»). So when the returns desk counts it back as 2 sound + 1 broken, or 2 sound + 1 missing, the restore
+ * correctly adds nothing… and nothing took the broken or missing unit off either. The reservation is then released, and that
+ * unit was on the shelf, AVAILABLE, for the next customer: 13 where the room held 12.
+ *
+ * This takes them off, and only them, and only for such a parcel:
+ *
+ *   · MISSING — the courier did not bring it back. It leaves the shelf at the cost of the batch it came out of (oldest
+ *     first, as every draw-down does), written `LOSS`. The money leaves with it: the same thing the write-off of a whole
+ *     lost parcel does (`/api/ops/tracking/write-off`).
+ *
+ *   · BROKEN — the owner's ruling on damage stands («لازم تنقص من المخزون بس داخلة ضمن التكلفة»): the unit leaves, its money
+ *     stays on the product, carried by the SOUND units of the same parcel — exactly what a consumed parcel's return does
+ *     (`absorbDamaged`). Those sound units are still inside the old batches, so they are drawn out with the broken ones and put
+ *     back as a batch of their own holding the money of both. The shelf loses the broken units and not one unit of money. A
+ *     line with no sound unit has nothing to carry it, and its broken units leave with their cost, as `absorbDamaged` says.
+ *     Written `DAMAGE`, for the broken units only — the sound ones went out and came back in the same breath.
+ *
+ * Which line a broken or missing unit belongs to, the count does not say. They are laid over the lines in order — the sound
+ * units first, then the broken, then the missing: exact on a single-line parcel, and one fixed answer on any other.
+ *
+ * NOTHING HERE TOUCHES A PARCEL THAT WAS CONSUMED (a SALE, or a RETURN the restore wrote): its broken and missing units already
+ * left at delivery, and taking them again is the double count this whole file exists to prevent. Nor one whose goods left
+ * before the opening count (`outsideTheCount`): those units were never in it. Nor a count where nothing came back at all —
+ * that receipt stays open for the parcel to turn up (`receiptNothingCameBack`), and is left exactly as it was.
+ *
+ * Once per order: a DAMAGE or LOSS line already written for it is the proof, as SALE and RETURN are for theirs.
+ *
+ * MUST RUN BEFORE THE RECEIPT RELEASES THE RESERVATION — `outsideTheCount` reads «never reserved a unit».
+ */
+export async function takeOffUnreturned(
+  tx: Tx,
+  input: {
+    orderId: string;
+    companyId: string;
+    receivedQty: number;
+    damagedQty: number;
+    missingQty: number;
+    userId?: string | null;
+  }
+): Promise<UnreturnedOutcome> {
+  const none = { damaged: 0, missing: 0, absorbed: 0 };
+  const whole = (n: number) => Math.max(0, Math.trunc(Number.isFinite(n) ? n : 0));
+  const sound = whole(input.receivedQty);
+  const broken = whole(input.damagedQty);
+  const gone = whole(input.missingQty);
+  if (broken + gone <= 0) return { ...none, skipped: 'NOTHING_MISSING' };
+  if (sound + broken <= 0) return { ...none, skipped: 'NOTHING_CAME_BACK' };
+  if ((await alreadyMoved(tx, input.orderId, SALE)) || (await alreadyMoved(tx, input.orderId, RETURN))) {
+    return { ...none, skipped: 'CONSUMED' };
+  }
+  /*
+   * AND A DELIVERY ON AN EMPTY SHELF WAS A CONSUMPTION TOO, though it wrote no SALE line — there was nothing to move. Its review
+   * line is the proof, exactly as `consumeOrderStock` reads it: a parcel written off (or partly delivered) on a shelf that held
+   * nothing has already been counted gone, and taking its units again when it turns up would count them twice.
+   */
+  const consumedShort = await tx.orderActivity.findFirst({
+    where: { orderId: input.orderId, companyId: input.companyId, action: STOCK_SHORT_ACTION },
+    select: { id: true },
+  });
+  if (consumedShort) return { ...none, skipped: 'CONSUMED' };
+  if ((await alreadyMoved(tx, input.orderId, DAMAGE)) || (await alreadyMoved(tx, input.orderId, LOSS))) {
+    return { ...none, skipped: 'ALREADY_DONE' };
+  }
+
+  const order = await tx.order.findFirst({
+    where: { id: input.orderId, companyId: input.companyId },
+    select: {
+      orderNumber: true,
+      storeId: true,
+      source: true,
+      items: { select: { productId: true, quantity: true, freeQuantity: true, reservedQty: true, deliveredQty: true } },
+      store: { select: { country: { select: { minorUnit: true } } } },
+    },
+  });
+  if (!order) return { ...none, skipped: 'NO_ORDER' };
+  if (outsideTheCount(order)) return { ...none, skipped: 'OUTSIDE_COUNT' };
+  const minorUnit = order.store?.country?.minorUnit ?? 2;
+
+  /*
+   * THE LINES THE DESK COUNTED, AND ONLY WHAT EACH OWES BACK.
+   *
+   * The count is over `expectedBackTotal` (partial-delivery.ts): each LINE's shipped units less what the customer kept
+   * (`deliveredQty`), and no add-on. So the units are laid over the same thing — a line the customer kept whole owes nothing
+   * back and is never touched, which is the parcel swap's box Y: its kept units went to the new order and were consumed there.
+   */
+  const lines = order.items.map((i) => ({
+    productId: i.productId,
+    units: Math.max(0, i.quantity + i.freeQuantity - (i.deliveredQty ?? 0)),
+  }));
+
+  let soundLeft = sound;
+  let brokenLeft = broken;
+  let goneLeft = gone;
+  let damagedOut = 0;
+  let missingOut = 0;
+  let absorbed = 0;
+
+  const ledger = async (productId: string, type: string, quantity: number, reason: string, batchId?: string) =>
+    tx.inventoryMovement.create({
+      data: {
+        companyId: input.companyId,
+        storeId: order.storeId,
+        productId,
+        ...(batchId ? { batchId } : {}),
+        type,
+        quantity: -quantity,
+        balanceAfter: await onHandTotal(tx, input.companyId, productId),
+        referenceId: input.orderId,
+        reason,
+        createdById: input.userId ?? null,
+      },
+    });
+
+  for (const line of lines) {
+    let room = Math.max(0, line.units);
+    if (room <= 0) continue;
+    const s = Math.min(soundLeft, room);
+    room -= s;
+    soundLeft -= s;
+    const d = Math.min(brokenLeft, room);
+    room -= d;
+    brokenLeft -= d;
+    const m = Math.min(goneLeft, room);
+    goneLeft -= m;
+
+    if (d > 0) {
+      let off = 0;
+      let carriedBy: string | undefined;
+      if (s > 0) {
+        // The sound units and the broken ones leave together; the sound ones come back carrying the money of both.
+        const drawn = await drawDownStock(tx, {
+          companyId: input.companyId,
+          storeId: order.storeId,
+          productId: line.productId,
+          quantity: s + d,
+          allowNegative: true,
+        });
+        const back = Math.min(s, drawn.taken);
+        off = drawn.taken - back;
+        if (back > 0) {
+          const totalCost = roundMinor(drawn.cost, minorUnit);
+          const batch = await tx.productionBatch.create({
+            data: {
+              companyId: input.companyId,
+              storeId: order.storeId,
+              productId: line.productId,
+              batchNumber: `DMG-${order.orderNumber}-${line.productId.slice(0, 6)}`,
+              quantityProduced: back,
+              quantityRemaining: back,
+              quantitySold: 0,
+              manufacturingCost: 0,
+              totalProductionCost: totalCost,
+              costPerUnit: roundMinor(totalCost / back, minorUnit),
+              productionDate: new Date(),
+              notes: `مرتجع الطلب ${order.orderNumber} — رُفض عند الباب. ${off} تالفة خرجت من الرف وكلفتُها محمولةٌ على ${back} السليمة`,
+              status: 'COMPLETED',
+            },
+          });
+          carriedBy = batch.id;
+          if (off > 0 && drawn.taken > 0) absorbed += (drawn.cost * off) / drawn.taken;
+        }
+      } else {
+        // No sound unit on this line to carry it: the broken ones leave with their cost (absorbDamaged's own rule).
+        const drawn = await drawDownStock(tx, {
+          companyId: input.companyId,
+          storeId: order.storeId,
+          productId: line.productId,
+          quantity: d,
+          allowNegative: true,
+        });
+        off = drawn.taken;
+      }
+      if (off > 0) {
+        await ledger(line.productId, DAMAGE, off, `تالف من مرتجع ${order.orderNumber} — رُفض عند الباب`, carriedBy);
+        damagedOut += off;
+      }
+    }
+
+    if (m > 0) {
+      const drawn = await drawDownStock(tx, {
+        companyId: input.companyId,
+        storeId: order.storeId,
+        productId: line.productId,
+        quantity: m,
+        allowNegative: true,
+      });
+      if (drawn.taken > 0) {
+        await ledger(line.productId, LOSS, drawn.taken, `ناقص من مرتجع ${order.orderNumber} — ما رجع مع الطرد`);
+        missingOut += drawn.taken;
+      }
+    }
+  }
+
+  return { damaged: damagedOut, missing: missingOut, absorbed: roundMinor(absorbed, minorUnit) };
+}

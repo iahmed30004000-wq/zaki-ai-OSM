@@ -118,12 +118,14 @@ describe('one rounding rule, and the money that is written goes through it', () 
      *
      * `roundMinor(cost, 2)` is not either spelling above and is the same
      * mistake — a mutation replacing the lookup with a literal passed every
-     * check in this file. Both functions in `stock-consumption` write money,
-     * and both must take the currency from the order they are writing about.
+     * check in this file. Three functions in `stock-consumption` write money —
+     * the sale, the restore, and the refused parcel's broken units whose cost
+     * the survivors carry (`takeOffUnreturned`) — and all three must take the
+     * currency from the order they are writing about.
      */
     const stock = stripComments(repoFile('src/lib/stock-consumption.ts'));
     const derived = stock.match(/const \w*[Uu]nit = order\.store\?\.country\?\.minorUnit \?\? 2;/g) ?? [];
-    expect(derived, 'وحدةٌ مفترضةٌ بدل مقروءة').toHaveLength(2);
+    expect(derived, 'وحدةٌ مفترضةٌ بدل مقروءة').toHaveLength(3);
   });
 
   it('and the damaged units’ cost lands on the survivors at the currency’s precision', () => {
