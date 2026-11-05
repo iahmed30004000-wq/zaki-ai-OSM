@@ -333,11 +333,11 @@ describe('6 · on a phone', () => {
 
     expect(b.className).toContain('min-h-11');
     expect(b.className).toContain('w-full');
-    // The group of presses that move the batch on: this one, then «أنهِ الدفعة بعد التسوية», one per line.
+    // The group of presses that move the batch on: this one alone now — «أنهِ الدفعة بعد التسوية» is gone (5/11).
     const group = b.parentElement as HTMLElement;
     expect(group.className).toContain('flex-col');
     const inGroup = Array.from(group.querySelectorAll('button')).map((x) => x.textContent?.trim());
-    expect(inGroup).toEqual(['خرج للتوصيل لكل الدفعة (158)', 'أنهِ الدفعة بعد التسوية']);
+    expect(inGroup).toEqual(['خرج للتوصيل لكل الدفعة (158)']);
   });
 
   it('on a desk it sits in the wrapping row beside the other presses, not full width', async () => {
@@ -349,7 +349,8 @@ describe('6 · on a phone', () => {
     expect(b.className).toContain('md:min-h-0');
     expect((b.parentElement as HTMLElement).className).toContain('flex-wrap');
     const row = Array.from((b.parentElement as HTMLElement).querySelectorAll('button')).map((x) => x.textContent?.trim());
-    expect(row.indexOf('خرج للتوصيل لكل الدفعة (158)')).toBeLessThan(row.indexOf('أنهِ الدفعة بعد التسوية'));
+    expect(row).toContain('خرج للتوصيل لكل الدفعة (158)');
+    expect(row).not.toContain('أنهِ الدفعة بعد التسوية');
   });
 
   it('the answer is the same on both', async () => {
@@ -367,7 +368,8 @@ describe('7 · nothing else on the card changed', () => {
     render(<ShippingBatchesScreen />);
     await screen.findByText('BATCH-2026-0007', undefined, WAIT);
     const names = screen.getAllByRole('button').map((b) => b.textContent?.trim());
-    expect(names).toContain('أنهِ الدفعة بعد التسوية');
+    // «أنهِ الدفعة بعد التسوية» is gone (5/11): the courier settles orders, not batches.
+    expect(names).not.toContain('أنهِ الدفعة بعد التسوية');
     expect(names.some((n) => LABEL.test(n ?? ''))).toBe(false);
   });
 });

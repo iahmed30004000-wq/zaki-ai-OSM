@@ -14,7 +14,7 @@ import { LabelSizePicker, useLabelSize } from '@/components/labels/LabelSize';
 import { BLOCKED_WAYBILLS, describeRefused, openWaybills, WaybillError } from '@/components/labels/openWaybills';
 import { useAsk, useConfirm, useTell } from '@/components/ui/Confirm';
 import { ScanSheet } from '@/components/scan/ScanButton';
-import { RiBarcodeLine, RiClipboardLine, RiDownload2Line, RiEBike2Line, RiFileExcel2Line, RiLoader4Line, RiLockLine, RiPencilLine, RiPrinterLine, RiQrScan2Line, RiRouteLine, RiSendPlaneLine, RiTruckLine } from '@remixicon/react';
+import { RiBarcodeLine, RiClipboardLine, RiDownload2Line, RiEBike2Line, RiFileExcel2Line, RiLoader4Line, RiPencilLine, RiPrinterLine, RiQrScan2Line, RiRouteLine, RiSendPlaneLine, RiTruckLine } from '@remixicon/react';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 import { useIsPhone } from '@/hooks/useIsPhone';
@@ -615,7 +615,7 @@ export function ShippingBatchesScreen() {
   return (
     <div className="max-w-4xl space-y-4">
       <PageHeader title="دفعات الشحن"
-          description="ما يتسلّمه المندوب دفعةً واحدة — تُجمَّع، تُسلَّم، ثم تنتهي بعد التسوية."
+          description="ما يتسلّمه المندوب دفعةً واحدة — تُجمَّع، ثم تُسلَّم للشركة. التسوية بالكشف، طلباً طلباً، لا بالدفعة."
         />
 
       {/* A phone: the four states are one strip that slides sideways, as every other tab strip does, and the paper
@@ -625,7 +625,8 @@ export function ShippingBatchesScreen() {
           ['all', `الكل (${total})`],
           ['READY', `قيد التجميع (${counts.READY})`],
           ['SHIPPED', `سُلّمت (${counts.SHIPPED})`],
-          ['CLOSED', `مُنتهية (${counts.CLOSED})`],
+          // Only a batch closed before the press was removed (5/11) is «مُنتهية»; with none, the chip is not drawn.
+          ...(counts.CLOSED > 0 ? ([['CLOSED', `مُنتهية (${counts.CLOSED})`]] as const) : []),
         ] as const).map(([key, label]) => (
           <button
             key={key}
@@ -814,17 +815,9 @@ export function ShippingBatchesScreen() {
                   خرج للتوصيل لكل الدفعة ({b.shippedCount})
                 </button>
               ) : null;
-            const closeBtn =
-              b.status === 'SHIPPED' ? (
-                <button
-                  onClick={() => setStatus(b, 'CLOSED')}
-                  disabled={busy === b.id}
-                  className={`min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-heading)] inline-flex items-center gap-1.5 disabled:opacity-50${wide}`}
-                >
-                  <RiLockLine className="w-4 h-4" />
-                  أنهِ الدفعة بعد التسوية
-                </button>
-              ) : null;
+            /* «أنهِ الدفعة بعد التسوية» was here. The owner, 5/11: the courier never settles a batch — a statement pays
+               orders from many batches at once — so a batch has nothing to «end» on. The press is gone from the card; the
+               server's SHIPPED → CLOSED step stays, and a batch closed before is still listed under «مُنتهية». */
             return (
               <li key={b.id} className="p-4 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
@@ -1002,12 +995,11 @@ export function ShippingBatchesScreen() {
                     and the line that says the courier is manual is a sentence, not a pill that looks pressable.
                   */
                   <div className="space-y-2 pt-1">
-                    {(dispatchBtn || shipBtn || outBtn || closeBtn) && (
+                    {(dispatchBtn || shipBtn || outBtn) && (
                       <div className="flex flex-col gap-2">
                         {dispatchBtn}
                         {shipBtn}
                         {outBtn}
-                        {closeBtn}
                       </div>
                     )}
                     <div className="grid grid-cols-2 gap-2">
@@ -1034,7 +1026,6 @@ export function ShippingBatchesScreen() {
                     {manualNote}
                     {shipBtn}
                     {outBtn}
-                    {closeBtn}
                   </div>
                 )}
               </li>
