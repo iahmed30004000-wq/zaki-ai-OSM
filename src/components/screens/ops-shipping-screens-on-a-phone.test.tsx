@@ -348,11 +348,10 @@ describe('«دفعات الشحن»', () => {
     expect(screen.queryByRole('button', { name: SEND })).toBeNull();
   });
 
-  it('PHONE: a batch already handed over offers only «أنهِ الدفعة بعد التسوية», across the card', async () => {
+  it('PHONE: a batch already handed over offers no «أنهِ الدفعة بعد التسوية» (5/11) and no second handover', async () => {
     serve(batch({ status: 'SHIPPED', shippedAt: '2026-10-29T08:00:00.000Z' }));
     await draw();
-    const close = screen.getByRole('button', { name: /أنهِ الدفعة بعد التسوية/ });
-    expect(close.className).toContain('w-full');
+    expect(screen.queryByRole('button', { name: /أنهِ الدفعة/ })).toBeNull();
     expect(screen.queryByRole('button', { name: SHIP })).toBeNull();
   });
 
