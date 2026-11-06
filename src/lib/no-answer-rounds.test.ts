@@ -219,17 +219,37 @@ describe('R1 — when a held order goes back to the queue', () => {
     expect(roundsReleaseReason({ ...held, nextFollowUpAt: t(1, 9) }, attempts, on, cutAt(now), now)).toBe(ROUND_RELEASE_REASON);
   });
 
-  it('SWITCH-ON TIME: what was logged before it never moves an order', () => {
-    // Held since Thursday with two no-answers on Thursday; switched on Sunday at noon.
+  it('SWITCH-ON TIME (6/11): the pile from before it goes back too — three working hours after the switch, not at once', () => {
+    // Held since Thursday with two no-answers on Thursday; switched on Sunday at noon. Salwa's 237 were this order.
     const old = { claimedAt: t(5, 9) };
     const attempts = [...call(t(5, 10)), ...call(t(5, 14))];
     const sw = { enabledAt: t(8, 12) };
-    expect(roundsReleaseReason(old, attempts, sw, cutAt(t(8, 12)), t(8, 12))).toBeNull();
-    expect(roundsReleaseReason(old, attempts, sw, cutAt(t(9, 16)), t(9, 16)), 'old attempts started a run').toBeNull();
-    // A no-answer after the switch starts the clock.
+    expect(roundsReleaseReason(old, attempts, sw, cutAt(t(8, 12)), t(8, 12)), 'nothing leaves the moment it is pressed').toBeNull();
+    expect(roundsReleaseReason(old, attempts, sw, cutAt(t(8, 14, 59)), t(8, 14, 59))).toBeNull();
+    expect(roundsReleaseReason(old, attempts, sw, cutAt(t(8, 15)), t(8, 15)), 'the old run, counted from the switch').toBe(ROUND_RELEASE_REASON);
+    // A no-answer after the switch does not push it later: the run began on Thursday.
     const after = [...attempts, ...call(t(8, 13))];
-    expect(roundsReleaseReason(old, after, sw, cutAt(t(8, 15, 59)), t(8, 15, 59))).toBeNull();
-    expect(roundsReleaseReason(old, after, sw, cutAt(t(8, 16)), t(8, 16))).toBe(ROUND_RELEASE_REASON);
+    expect(roundsReleaseReason(old, after, sw, cutAt(t(8, 15)), t(8, 15))).toBe(ROUND_RELEASE_REASON);
+  });
+
+  it('SWITCH-ON TIME: a call that reached somebody before the switch still ends the old run', () => {
+    const old = { claimedAt: t(5, 9) };
+    const reached = [...call(t(5, 10)), { createdAt: t(5, 11), result: 'ANSWERED', employeeId: 'sara' }];
+    const sw = { enabledAt: t(8, 12) };
+    // Nothing after the answered call: no run, and the re-pull rule does not apply (she worked it after taking it).
+    expect(roundsReleaseReason(old, reached, sw, cutAt(t(9, 16)), t(9, 16))).toBeNull();
+    // A no-answer after the answered call, still before the switch: a run, counted from the switch.
+    const again = [...reached, ...call(t(5, 14))];
+    expect(roundsReleaseReason(old, again, sw, cutAt(t(8, 14, 59)), t(8, 14, 59))).toBeNull();
+    expect(roundsReleaseReason(old, again, sw, cutAt(t(8, 15)), t(8, 15))).toBe(ROUND_RELEASE_REASON);
+  });
+
+  it('SWITCH-ON TIME: an old run still waits for a date ahead and for her being on the call', () => {
+    const old = { claimedAt: t(5, 9), claimedById: 'sara' };
+    const attempts = call(t(5, 10));
+    const sw = { enabledAt: t(8, 12) };
+    expect(roundsReleaseReason({ ...old, nextFollowUpAt: t(9, 10) }, attempts, sw, cutAt(t(8, 16)), t(8, 16))).toBeNull();
+    expect(roundsReleaseReason(old, [...attempts, opened(t(8, 15, 50))], sw, cutAt(t(8, 16)), t(8, 16))).toBeNull();
   });
 
   it('a no-answer from before she took it is not hers', () => {

@@ -776,7 +776,8 @@ const roundsScanCursor = new Map<string, string>();
  * R1 — LET GO WHAT NOBODY ANSWERED FOR THREE WORKING HOURS (`no-answer-rounds.ts`).
  *
  * Linear and bounded: the two cut-offs are placed ONCE for the pass, the database narrows to the held orders that can
- * qualify (a no-answer since the switch went on and three working hours old, or nothing logged for ninety working minutes),
+ * qualify (a no-answer three working hours old once the switch itself is that old, or nothing logged for ninety working
+ * minutes),
  * one page of them is read with their attempts, and each is one pure verdict. The writes are the ninety-minute release's,
  * line for line, with their own reason in the claim history — and the customer's other orders held for her are let go in
  * the same step, so whoever takes the order next takes him whole (`twins-follow-the-pull.ts`).
@@ -815,7 +816,11 @@ async function releaseByRounds(
         { OR: [{ nextFollowUpAt: null }, { nextFollowUpAt: { lte: now } }] },
         {
           OR: [
-            { contactAttempts: { some: { result: { in: [...NO_ANSWER_RESULTS] }, createdAt: { gte: sw.enabledAt, lte: cut.round } } } },
+            // A run's three hours count from the switch when the run is older (6/11, `roundsReleaseReason`): none can be due
+            // until the switch itself is three working hours old, and then any no-answer that old may be one.
+            ...(sw.enabledAt.getTime() <= cut.round.getTime()
+              ? [{ contactAttempts: { some: { result: { in: [...NO_ANSWER_RESULTS] }, createdAt: { lte: cut.round } } } }]
+              : []),
             { contactAttempts: { none: { createdAt: { gt: cut.repull } } } },
           ],
         },

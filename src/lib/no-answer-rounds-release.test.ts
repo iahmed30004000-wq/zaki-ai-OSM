@@ -171,6 +171,31 @@ describe('ON — R1', () => {
     roundsRows = Array.from({ length: 60 }, (_, i) => heldRow(i));
     expect(await releaseStaleClaims(db as never, scope, JO, t(1, 12, 30), { rounds: ON, roundsLimit: 25 })).toBe(25);
   });
+
+  /*
+   * SALWA'S 237 (6/11): «لا يرد» pressed on Sunday 1/11, the switch turned on Monday 2/11 at 10:00. Before this they never
+   * moved — every run was older than the switch. Now: three working hours after the switch, and not a minute before.
+   */
+  it('THE PILE FROM BEFORE THE SWITCH goes back three working hours after it went on', async () => {
+    const switchedOn = { enabled: true, enabledAt: t(2, 10) };
+    roundsRows = Array.from({ length: 3 }, (_, i) => heldRow(i));
+    expect(await releaseStaleClaims(db as never, scope, JO, t(2, 12, 59), { rounds: switchedOn })).toBe(0);
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+    expect(await releaseStaleClaims(db as never, scope, JO, t(2, 13), { rounds: switchedOn })).toBe(3);
+    expect(db.orderClaimHistory.create.mock.calls.map(([a]) => a.data.reason)).toEqual(Array(3).fill(ROUND_RELEASE_REASON));
+  });
+
+  it('and the database is asked for no-answers of any age once the switch is three working hours old — none before', async () => {
+    const switchedOn = { enabled: true, enabledAt: t(2, 10) };
+    const roundsWhere = () => JSON.stringify(db.order.findMany.mock.calls.find(([a]) => isRoundsQuery(a))![0].where.AND);
+    await releaseStaleClaims(db as never, scope, JO, t(2, 13), { rounds: switchedOn });
+    expect(roundsWhere()).toContain('NO_ANSWER');
+    expect(roundsWhere()).not.toContain('"gte"');
+    vi.clearAllMocks();
+    db.order.findMany.mockImplementation(async (q: { where: Row; take?: number }) => (isRoundsQuery(q) ? roundsRows : []));
+    await releaseStaleClaims(db as never, scope, JO, t(2, 12), { rounds: switchedOn });
+    expect(roundsWhere(), 'the switch is not three working hours old yet').not.toContain('NO_ANSWER');
+  });
 });
 
 describe('ON — a few thousand held orders', () => {
