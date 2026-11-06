@@ -11,8 +11,9 @@ import { NO_ANSWER_LIMIT, NO_ANSWER_RESULTS } from './confirmation-workflow';
  *
  * With it ON:
  *
- *   R1 · LET GO — an order whose trailing run of no-answers (after the last call that reached somebody, after she took it,
- *        and after the switch went on) started three WORKING hours ago goes back to the shared queue, and the customer's
+ *   R1 · LET GO — an order whose trailing run of no-answers (after the last call that reached somebody and after she took
+ *        it) started three WORKING hours ago — counted from the switch when the run is older than it (6/11) — goes back to
+ *        the shared queue, and the customer's
  *        other orders held for her go with it. So does a re-pulled order nobody has touched since it was taken, after the
  *        same ninety working minutes as an untouched one.
  *   R2 · A ROUND — presses of «لا يرد» within three working hours of the round's first count once. ONE function
@@ -55,7 +56,10 @@ export const ROUND_CLOSE_MIN_DAYS = 2;
 export const ROUND_RELEASE_REASON = 'AUTO_RELEASE_NO_ANSWER_ROUND';
 export const REPULL_RELEASE_REASON = 'AUTO_RELEASE_REPULLED_UNTOUCHED';
 
-/** What the switch says: off, or on since a moment. Attempts before that moment never move an order. */
+/**
+ * What the switch says: off, or on since a moment. No clock of R1 runs before that moment — a run older than the switch
+ * starts its three working hours when it went on (6/11) — and the close (R3) counts what the desk shows.
+ */
 export interface RoundsSwitch {
   enabled: boolean;
   enabledAt: Date | null;
@@ -251,8 +255,8 @@ export function releaseCutoffs(now: Date, clock: WorkClock): ReleaseCutoffs {
  *   · no attempt at all is the ninety-minute rule's (`releaseStaleClaims`), not this one's;
  *   · worked before, and nothing logged since she took it: `REPULL_RELEASE_REASON`, ninety working minutes after she took
  *     it or after the switch went on, whichever is later;
- *   · otherwise the no-answers after the last call that reached somebody, after she took it and after the switch went on:
- *     the first of them three working hours ago is `ROUND_RELEASE_REASON`.
+ *   · otherwise the no-answers after the last call that reached somebody and after she took it: three working hours after
+ *     the first of them, or after the switch went on when that is later, is `ROUND_RELEASE_REASON`.
  */
 export function roundsReleaseReason(
   order: HeldFacts,
@@ -277,9 +281,15 @@ export function roundsReleaseReason(
     return Math.max(claimedAt, enabledAt) <= cut.repull.getTime() ? REPULL_RELEASE_REASON : null;
   }
 
-  let anchor = Math.max(claimedAt, enabledAt);
+  /*
+   * THE PILE FROM BEFORE THE SWITCH GOES BACK TOO (the owner, 6/11: «ع الفاضي ما انسحب منها الطلبات»). A run of no-answers
+   * that started before the switch went on is still a run — 237 orders on one desk said so — but its three working hours
+   * are counted FROM THE SWITCH, never from the old press: turning it on gives every desk three working hours' notice, and
+   * nothing leaves the moment it is pressed. A call that reached somebody before the switch still ends the run before it.
+   */
+  let anchor = claimedAt;
   for (const a of sorted) if (isReaching(a.result)) anchor = Math.max(anchor, at(a).getTime() + 1);
   const run = sorted.find((a) => isNoAnswer(a.result) && at(a).getTime() >= anchor);
   if (!run) return null;
-  return at(run).getTime() <= cut.round.getTime() ? ROUND_RELEASE_REASON : null;
+  return Math.max(at(run).getTime(), enabledAt) <= cut.round.getTime() ? ROUND_RELEASE_REASON : null;
 }

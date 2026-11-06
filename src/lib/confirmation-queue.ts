@@ -815,7 +815,11 @@ async function releaseByRounds(
         { OR: [{ nextFollowUpAt: null }, { nextFollowUpAt: { lte: now } }] },
         {
           OR: [
-            { contactAttempts: { some: { result: { in: [...NO_ANSWER_RESULTS] }, createdAt: { gte: sw.enabledAt, lte: cut.round } } } },
+            // A run's three hours count from the switch when the run is older (6/11, `roundsReleaseReason`): none can be due
+            // until the switch itself is three working hours old, and then any no-answer that old may be one.
+            ...(sw.enabledAt.getTime() <= cut.round.getTime()
+              ? [{ contactAttempts: { some: { result: { in: [...NO_ANSWER_RESULTS] }, createdAt: { lte: cut.round } } } }]
+              : []),
             { contactAttempts: { none: { createdAt: { gt: cut.repull } } } },
           ],
         },
