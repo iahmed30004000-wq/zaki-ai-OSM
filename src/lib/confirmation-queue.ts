@@ -776,7 +776,8 @@ const roundsScanCursor = new Map<string, string>();
  * R1 — LET GO WHAT NOBODY ANSWERED FOR THREE WORKING HOURS (`no-answer-rounds.ts`).
  *
  * Linear and bounded: the two cut-offs are placed ONCE for the pass, the database narrows to the held orders that can
- * qualify (a no-answer since the switch went on and three working hours old, or nothing logged for ninety working minutes),
+ * qualify (a no-answer three working hours old once the switch itself is that old, or nothing logged for ninety working
+ * minutes),
  * one page of them is read with their attempts, and each is one pure verdict. The writes are the ninety-minute release's,
  * line for line, with their own reason in the claim history — and the customer's other orders held for her are let go in
  * the same step, so whoever takes the order next takes him whole (`twins-follow-the-pull.ts`).
