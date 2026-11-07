@@ -370,6 +370,17 @@ describe('R1b — a dated order that nobody opened after its date', () => {
     expect(verdict(order(), [...beforeTheDate, later], on, t(2, 13))).toBeNull();
   });
 
+  it('the boundary is the date’s own instant: an attempt logged AT it counts as started, one a millisecond earlier does not', () => {
+    // Review of PR #217: `>` instead of `>=` passed every test. An «اتصل» pressed in the very millisecond of the date is the agent
+    // answering the promise; the same press a millisecond before it is not.
+    const atTheDate = new Date(D.getTime());
+    const justBefore = new Date(D.getTime() - 1);
+    const justAfter = new Date(D.getTime() + 1);
+    expect(verdict(order(), [...beforeTheDate, opened(atTheDate)], on, t(2, 13)), 'at the date').toBeNull();
+    expect(verdict(order(), [...beforeTheDate, opened(justAfter)], on, t(2, 13)), 'a millisecond after').toBeNull();
+    expect(verdict(order(), [...beforeTheDate, opened(justBefore)], on, t(2, 13)), 'a millisecond before').toBe(DUE_RELEASE_REASON);
+  });
+
   it('a call that REACHED the customer before the date does not keep it — the case nothing released', () => {
     const reached: AttemptFact[] = [opened(t(1, 9, 29)), logged(t(1, 9, 30), 'ANSWERED'), logged(t(1, 9, 31), 'CALLBACK_REQUESTED')];
     expect(verdict(order({ postponedUntil: null, nextFollowUpAt: D }), reached, on, t(2, 13))).toBe(DUE_RELEASE_REASON);
