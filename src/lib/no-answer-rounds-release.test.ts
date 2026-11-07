@@ -371,17 +371,20 @@ describe('ON — R1b: a dated order nobody opened after its date', () => {
 
 describe('ON — a few thousand held orders', () => {
   it('one pass is linear: one page read, the calendar placed a handful of times, never per order', async () => {
+    // The instants are placed once for the whole fixture (a few thousand rows, each calling the calendar five times, made this
+    // test the slowest of the file on a loaded machine); the pass below is what is counted.
+    const [at0929, at0930, at1000, at1100, at1101, at1200] = [t(1, 9, 29), t(1, 9, 30), t(1, 10), t(1, 11), t(1, 11, 1), t(1, 12)];
     roundsRows = Array.from({ length: 3000 }, (_, i) =>
       heldRow(i, {
         contactAttempts: [
-          { createdAt: t(1, 9, 29), result: 'OPENED', attemptNumber: 1 },
-          { createdAt: t(1, 9, 30), result: 'NO_ANSWER', attemptNumber: 2 },
-          { createdAt: t(1, 10), result: 'ANSWERED', attemptNumber: 3 },
-          { createdAt: t(1, 11), result: 'OPENED', attemptNumber: 4 },
-          { createdAt: t(1, 11, 1), result: i % 2 ? 'NO_ANSWER' : 'CALLBACK_REQUESTED', attemptNumber: 5 },
+          { createdAt: at0929, result: 'OPENED', attemptNumber: 1 },
+          { createdAt: at0930, result: 'NO_ANSWER', attemptNumber: 2 },
+          { createdAt: at1000, result: 'ANSWERED', attemptNumber: 3 },
+          { createdAt: at1100, result: 'OPENED', attemptNumber: 4 },
+          { createdAt: at1101, result: i % 2 ? 'NO_ANSWER' : 'CALLBACK_REQUESTED', attemptNumber: 5 },
         ],
         // A third of them carry a date too: the pass places the calendar for the dates once, not for each of them.
-        postponedUntil: i % 3 === 0 ? t(1, 12) : null,
+        postponedUntil: i % 3 === 0 ? at1200 : null,
       })
     );
     // The rows above were built with the same calendar function: count only the pass.
