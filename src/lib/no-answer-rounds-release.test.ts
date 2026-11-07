@@ -325,6 +325,34 @@ describe('ON — R1b: a dated order nobody opened after its date', () => {
     expect(db.orderClaimHistory.create.mock.calls[0][0].data.reason).toBe(DUE_RELEASE_REASON);
   });
 
+  it('the grace is in WORKING hours: a Thursday-afternoon date is three working hours old on Sunday at 10:00, not before', async () => {
+    roundsRows = [dated(1, { postponedUntil: t(5, 15) })];
+    expect(await releaseStaleClaims(db as never, scope, JO, t(5, 17), { rounds: ON }), 'the day it closes').toBe(0);
+    expect(await releaseStaleClaims(db as never, scope, JO, t(7, 15), { rounds: ON }), 'Saturday afternoon: nothing moves').toBe(0);
+    expect(await releaseStaleClaims(db as never, scope, JO, t(8, 9, 59), { rounds: ON })).toBe(0);
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+    expect(await releaseStaleClaims(db as never, scope, JO, t(8, 10), { rounds: ON })).toBe(1);
+  });
+
+  it('NOT A LOOP: a dated order let go and pulled again is not taken back at once — the re-pull has its ninety minutes', async () => {
+    // Let go on Monday, pulled again by Huda at 14:00 (its date, Monday 10:00, is old; nothing is logged since she took it).
+    roundsRows = [dated(1, { claimedAt: t(2, 14), claimedById: 'huda' })];
+    expect(await releaseStaleClaims(db as never, scope, JO, t(2, 14, 5), { rounds: ON })).toBe(0);
+    expect(await releaseStaleClaims(db as never, scope, JO, t(2, 15, 29), { rounds: ON })).toBe(0);
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+    expect(await releaseStaleClaims(db as never, scope, JO, t(2, 15, 30), { rounds: ON })).toBe(1);
+    expect(db.orderClaimHistory.create.mock.calls[0][0].data.reason).toBe(REPULL_RELEASE_REASON);
+  });
+
+  it('a date older than the switch waits three working hours from the SWITCH — the same notice a run gets', async () => {
+    const switchedOn = { enabled: true, enabledAt: t(3, 9) };
+    roundsRows = [dated(1)];
+    expect(await releaseStaleClaims(db as never, scope, JO, t(3, 11, 59), { rounds: switchedOn })).toBe(0);
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+    expect(await releaseStaleClaims(db as never, scope, JO, t(3, 12), { rounds: switchedOn })).toBe(1);
+    expect(db.orderClaimHistory.create.mock.calls[0][0].data.reason).toBe(DUE_RELEASE_REASON);
+  });
+
   it('the five-minute job’s own pass (`releaseNoAnswerRounds`) releases it just the same', async () => {
     roundsRows = [dated(1)];
     expect(await releaseNoAnswerRounds(db as never, scope, JO, t(2, 13), { rounds: ON })).toBe(1);
