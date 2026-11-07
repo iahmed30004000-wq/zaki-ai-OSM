@@ -58,6 +58,29 @@ export function isAutomaticRelease(row: { action: string; reason?: string | null
   }
 }
 
+/**
+ * A release that carries her name and that she did NOT press — so it is not work anybody saw her do.
+ *
+ * Two kinds: the system's (`isAutomaticRelease`, above), and a colleague's take «على الخط»
+ * (`{ automatic: false, takenBy }`, written in the HOLDER's name because the line says whose order it was). Attendance
+ * reads the claim history as «what the system SAW her do»; counting these made a day she never came look like a day she
+ * was there — her held orders going back by the clock wrote lines in her name — and pulled an arrival she had marked
+ * back to the line's moment, so she read as less late than she was (or on time, when the line fell before the shift).
+ *
+ * A release she pressed herself (the button, or a supervisor pulling an order back — written in the presser's name)
+ * carries neither mark and still counts.
+ */
+export function isReleaseSheDidNotPress(row: { action: string; reason?: string | null; metadata?: string | null }): boolean {
+  if (isAutomaticRelease(row)) return true;
+  if (row.action !== 'RELEASED' || !row.metadata) return false;
+  try {
+    const m = JSON.parse(row.metadata) as { takenBy?: unknown } | null;
+    return !!m && typeof m.takenBy === 'string' && m.takenBy !== '';
+  } catch {
+    return false;
+  }
+}
+
 /** The one notification a release writes to the agent who held the order. */
 export function releaseNotice(v: {
   companyId: string;

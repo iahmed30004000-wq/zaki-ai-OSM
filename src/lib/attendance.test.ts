@@ -11,6 +11,8 @@ const { db } = vi.hoisted(() => ({
 vi.mock('./db', () => ({ db }));
 
 import { attendance, markLogin } from './attendance';
+import { NINETY_MINUTE_RELEASE_REASON, automaticReleaseMetadata } from './auto-release';
+import { DUE_RELEASE_REASON, REPULL_RELEASE_REASON, ROUND_RELEASE_REASON } from './no-answer-rounds';
 
 /**
  * The fingerprint. These numbers decide whether somebody is called late, so
@@ -253,5 +255,97 @@ describe('an arrival nobody marked', () => {
     expect(row.days[0].arrivalFromWork).toBe(false);
     expect(row.daysLate).toBe(1);
     expect(row.daysLateEstimated).toBe(0);
+  });
+});
+
+describe('a line written in her name that she did not write', () => {
+  /*
+   * The clock gives an order back in the HOLDER's name (the line says whose order it was), and a colleague's take «على
+   * الخط» does too. Neither is work anybody saw her do. Counted as work, a day she never came looked like a day she was
+   * there (present, "worked"), and an arrival she had marked was pulled back to the line's moment, so she read as less late
+   * than she was.
+   */
+  const line = (extra: { action?: string; reason?: string | null; metadata?: string | null }, when: Date) => ({
+    userId: SARA,
+    createdAt: when,
+    action: 'RELEASED',
+    reason: null,
+    metadata: null,
+    ...extra,
+  });
+
+  it('a day nobody came is still a day nobody came when the clock gave her orders back', async () => {
+    db.orderClaimHistory.findMany.mockResolvedValue([
+      line({ reason: NINETY_MINUTE_RELEASE_REASON, metadata: automaticReleaseMetadata(SARA) }, at(20, 10, 0)),
+    ]);
+    const row = await rowOf();
+    expect(row.days).toEqual([]);
+    expect(row.daysPresent).toBe(0);
+  });
+
+  it.each([ROUND_RELEASE_REASON, REPULL_RELEASE_REASON, DUE_RELEASE_REASON])('and so is every round of the rounds (%s)', async (reason) => {
+    db.orderClaimHistory.findMany.mockResolvedValue([line({ reason, metadata: automaticReleaseMetadata(SARA) }, at(20, 10, 0))]);
+    expect((await rowOf()).days).toEqual([]);
+  });
+
+  it('a release written before the line carried a mark is read by its reason', async () => {
+    db.orderClaimHistory.findMany.mockResolvedValue([line({ reason: NINETY_MINUTE_RELEASE_REASON, metadata: null }, at(20, 10, 0))]);
+    expect((await rowOf()).days).toEqual([]);
+  });
+
+  it('a colleague taking the order on the line is not work of the one it was taken from', async () => {
+    db.orderClaimHistory.findMany.mockResolvedValue([
+      line({ reason: 'TAKEN_ON_THE_LINE', metadata: JSON.stringify({ automatic: false, takenBy: 'user-noor' }) }, at(20, 10, 0)),
+    ]);
+    expect((await rowOf()).days).toEqual([]);
+  });
+
+  it('an arrival is not moved before her login by a line the clock wrote', async () => {
+    // Her login is 09:30 — half an hour late. The clock gave an order back at 09:05, before she came; taken as work it
+    // pulled her arrival to 09:05 and she read as 5 minutes late instead of 30.
+    db.attendanceMark.findMany.mockResolvedValue([mark('LOGIN', at(20, 9, 30))]);
+    db.orderClaimHistory.findMany.mockResolvedValue([
+      line({ reason: NINETY_MINUTE_RELEASE_REASON, metadata: automaticReleaseMetadata(SARA) }, at(20, 9, 5)),
+    ]);
+    const day = await dayOf('2026-09-20');
+    expect(day.arrivedAt).toEqual(at(20, 9, 30));
+    expect(day.lateMinutes).toBe(30);
+    expect(day.workStartedAt).toBeNull();
+  });
+
+  it('what she really did on the same day still counts, from its own moment', async () => {
+    db.orderClaimHistory.findMany.mockResolvedValue([
+      line({ reason: NINETY_MINUTE_RELEASE_REASON, metadata: automaticReleaseMetadata(SARA) }, at(20, 8, 0)),
+      { userId: SARA, createdAt: at(20, 11, 0), action: 'CLAIMED', reason: 'PULL_NEXT', metadata: null },
+    ]);
+    const day = await dayOf('2026-09-20');
+    expect(day.workStartedAt).toEqual(at(20, 11, 0));
+    expect(day.workEndedAt).toEqual(at(20, 11, 0));
+  });
+
+  it('NEGATIVE: a release she pressed herself is still hers', async () => {
+    db.orderClaimHistory.findMany.mockResolvedValue([
+      line({ reason: 'MANUAL_RELEASE', metadata: JSON.stringify({ previousOwner: SARA }) }, at(20, 10, 0)),
+    ]);
+    const day = await dayOf('2026-09-20');
+    expect(day.workStartedAt).toEqual(at(20, 10, 0));
+  });
+
+  it('NEGATIVE: and so is a supervisor pulling an order back, written in the presser’s name', async () => {
+    db.orderClaimHistory.findMany.mockResolvedValue([
+      line({ reason: 'PULLED_BACK', metadata: JSON.stringify({ previousOwner: 'user-noor', pulledBackBy: SARA }) }, at(20, 10, 0)),
+    ]);
+    expect((await dayOf('2026-09-20')).workStartedAt).toEqual(at(20, 10, 0));
+  });
+
+  it('asks for the columns the rule reads', async () => {
+    await attendance(base);
+    expect(db.orderClaimHistory.findMany.mock.calls[0][0].select).toEqual({
+      userId: true,
+      createdAt: true,
+      action: true,
+      reason: true,
+      metadata: true,
+    });
   });
 });

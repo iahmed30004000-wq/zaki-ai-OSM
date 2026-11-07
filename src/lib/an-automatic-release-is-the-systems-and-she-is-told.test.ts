@@ -38,7 +38,7 @@ vi.mock('./db', () => ({ db }));
 
 import { AUTO_RELEASE_BUSINESS_MINUTES, releaseStaleClaims } from './confirmation-queue';
 import { DUE_RELEASE_REASON, REPULL_RELEASE_REASON, ROUND_RELEASE_REASON } from './no-answer-rounds';
-import { AUTO_RELEASE_WHY, NINETY_MINUTE_RELEASE_REASON, isAutomaticRelease } from './auto-release';
+import { AUTO_RELEASE_WHY, NINETY_MINUTE_RELEASE_REASON, isAutomaticRelease, isReleaseSheDidNotPress } from './auto-release';
 import { orderTimeline } from './order-timeline';
 import { zonedTimeToInstant } from './business-calendar';
 
@@ -243,5 +243,30 @@ describe('the timeline writes «النظام», not her name', () => {
     expect(isAutomaticRelease({ action: 'CLAIMED', reason: 'PULL_NEXT', metadata: JSON.stringify({ automatic: true }) })).toBe(false);
     expect(isAutomaticRelease({ action: 'RELEASED', reason: null, metadata: '{not json' })).toBe(false);
     expect(isAutomaticRelease({ action: 'RELEASED', reason: null, metadata: JSON.stringify({ automatic: true }) })).toBe(true);
+  });
+
+  it('a release she did not press is the system’s or a colleague’s take — nothing else', () => {
+    const rel = (metadata: unknown, reason: string | null = null, action = 'RELEASED') => ({
+      action,
+      reason,
+      metadata: metadata === null ? null : typeof metadata === 'string' ? metadata : JSON.stringify(metadata),
+    });
+    // The system's, by its mark and by its reason alone.
+    expect(isReleaseSheDidNotPress(rel({ automatic: true, holder: 'sara' }))).toBe(true);
+    expect(isReleaseSheDidNotPress(rel(null, NINETY_MINUTE_RELEASE_REASON))).toBe(true);
+    // A colleague's take on the line.
+    expect(isReleaseSheDidNotPress(rel({ automatic: false, takenBy: 'noor' }, 'TAKEN_ON_THE_LINE'))).toBe(true);
+    // NEGATIVE: the ones somebody pressed.
+    expect(isReleaseSheDidNotPress(rel({ previousOwner: 'sara' }, 'MANUAL_RELEASE'))).toBe(false);
+    expect(isReleaseSheDidNotPress(rel({ previousOwner: 'noor', pulledBackBy: 'sara' }, 'PULLED_BACK'))).toBe(false);
+    expect(isReleaseSheDidNotPress(rel(null, 'MANUAL_RELEASE'))).toBe(false);
+    // NEGATIVE: only a release can be one — a claim that happens to carry the same keys is her pull.
+    expect(isReleaseSheDidNotPress(rel({ takenBy: 'noor' }, 'PULL_NEXT', 'CLAIMED'))).toBe(false);
+    expect(isReleaseSheDidNotPress(rel({ automatic: true }, 'PULL_NEXT', 'CLAIMED'))).toBe(false);
+    // NEGATIVE: a mark that says nothing, or cannot be read, is not a reason to drop her work.
+    expect(isReleaseSheDidNotPress(rel({ takenBy: '' }))).toBe(false);
+    expect(isReleaseSheDidNotPress(rel({ takenBy: 7 }))).toBe(false);
+    expect(isReleaseSheDidNotPress(rel('{not json'))).toBe(false);
+    expect(isReleaseSheDidNotPress(rel('null'))).toBe(false);
   });
 });

@@ -1,6 +1,7 @@
 import { db } from './db';
 import { zonedParts, type BusinessCalendar } from './business-calendar';
 import { shiftCalendar, type PersonShift } from './employee-shift';
+import { isReleaseSheDidNotPress } from './auto-release';
 
 /**
  * WHO CAME, WHEN, AND FOR HOW LONG.
@@ -176,9 +177,11 @@ export async function attendance(input: {
     }),
     // What the system SAW them do, from the same append-only records the
     // performance report reads. Presence is claimed; this is observed.
+    // The action, reason and metadata come too: some lines carry a person's
+    // name that the person never wrote (see below).
     db.orderClaimHistory.findMany({
       where: { companyId, userId: { in: userIds }, order: { storeId }, createdAt: when },
-      select: { userId: true, createdAt: true },
+      select: { userId: true, createdAt: true, action: true, reason: true, metadata: true },
     }),
     db.orderStatusLog.findMany({
       where: { companyId, changedById: { in: userIds }, order: { storeId }, createdAt: when },
@@ -246,7 +249,11 @@ export async function attendance(input: {
     day.workStartedAt = earliest(day.workStartedAt, at);
     day.workEndedAt = latest(day.workEndedAt, at);
   };
-  for (const c of claims) sawWork(c.userId, c.createdAt);
+  // A release the clock wrote, or a colleague's take on the line, is filed
+  // under the HOLDER (the line says whose order it was) — but she did nothing.
+  // Counted as work, a day she never came looked like a day she was there, and
+  // a late arrival could be pulled back to the line's moment.
+  for (const c of claims) if (!isReleaseSheDidNotPress(c)) sawWork(c.userId, c.createdAt);
   for (const d of decisions) if (d.changedById) sawWork(d.changedById, d.createdAt);
   for (const a of attempts) sawWork(a.employeeId, a.createdAt);
 
