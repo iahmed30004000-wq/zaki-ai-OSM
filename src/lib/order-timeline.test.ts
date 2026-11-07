@@ -287,3 +287,86 @@ describe('«زبون واحد، موظفة وحدة» — the history says why t
     expect(`${event.title} ${event.detail}`).not.toMatch(/HELD_WITH|u-sara|cuid-123|\{|"/);
   });
 });
+
+describe('«الزبون على الخط» — an order taken from a colleague names both of them (the owner, 7/11)', () => {
+  const PEOPLE = [{ id: 'u1', name: 'سارة' }, { id: 'u2', name: 'هند' }];
+  const claim = (over: Record<string, unknown>) => ({
+    id: 'c1', createdAt: at('2026-11-07T10:00:00Z'), action: 'CLAIMED', userId: 'u1', reason: null, metadata: null, ...over,
+  });
+  beforeEach(() => {
+    // The lookup answers only the ids it is asked for — a name nobody asked for is not found.
+    db.user.findMany.mockImplementation(async ({ where }: { where: { id: { in: string[] } } }) => PEOPLE.filter((u) => where.id.in.includes(u.id)));
+  });
+
+  it('the CLAIMED line says who it was taken from, by name', async () => {
+    db.orderClaimHistory.findMany.mockResolvedValue([
+      claim({ reason: 'CUSTOMER_CALLED_BACK', metadata: JSON.stringify({ role: 'CONFIRMATION_AGENT', fromUserId: 'u2' }) }),
+    ]);
+    const [line] = await orderTimeline(db as never, 'o1');
+    expect(line.title).toBe('استلام الطلب');
+    expect(line.detail).toBe('الزبون اتصل — أخدته على الخط من هند');
+    expect(line.actorName).toBe('سارة');
+    // Her name had to be asked for: the line's own user is Sara, and Hind is named only in its metadata.
+    expect(db.user.findMany.mock.calls[0][0].where.id.in).toEqual(expect.arrayContaining(['u1', 'u2']));
+  });
+
+  it('the RELEASED line is the taker’s act, not the colleague’s and not the system’s — and names the colleague', async () => {
+    db.orderClaimHistory.findMany.mockResolvedValue([
+      claim({ id: 'c0', action: 'RELEASED', userId: 'u2', reason: 'TAKEN_ON_THE_LINE', metadata: JSON.stringify({ automatic: false, takenBy: 'u1' }) }),
+    ]);
+    const [line] = await orderTimeline(db as never, 'o1');
+    expect(line.title).toBe('تحرير الطلب');
+    expect(line.detail).toBe('اتسحب من هند على الخط — الزبون اتصل وما كانت اتصلت فيه');
+    expect(line.actorName, 'كأنو هند حرّرته').toBe('سارة');
+    expect(line.actorId).toBe('u1');
+    expect(line.actorName).not.toBe('النظام');
+  });
+
+  it('read together, the two lines come out in the order they were written, in words and with no code', async () => {
+    const t = at('2026-11-07T10:00:00Z');
+    db.orderClaimHistory.findMany.mockResolvedValue([
+      claim({ id: 'c0', createdAt: t, action: 'RELEASED', userId: 'u2', reason: 'TAKEN_ON_THE_LINE', metadata: JSON.stringify({ automatic: false, takenBy: 'u1' }) }),
+      claim({ id: 'c1', createdAt: t, reason: 'CUSTOMER_CALLED_BACK', metadata: JSON.stringify({ role: 'CONFIRMATION_AGENT', fromUserId: 'u2' }) }),
+    ]);
+    const lines = await orderTimeline(db as never, 'o1');
+    expect(lines.map((l) => l.title)).toEqual(['تحرير الطلب', 'استلام الطلب']);
+    expect(JSON.stringify(lines)).not.toMatch(/TAKEN_ON_THE_LINE|CUSTOMER_CALLED_BACK|takenBy|fromUserId|automatic/);
+  });
+
+  it('NEGATIVE: a line written before this rule (no fromUserId) keeps its static words', async () => {
+    db.orderClaimHistory.findMany.mockResolvedValue([
+      claim({ reason: 'CUSTOMER_CALLED_BACK', metadata: JSON.stringify({ role: 'CONFIRMATION_AGENT' }) }),
+      claim({ id: 'c2', reason: 'CUSTOMER_CALLED_BACK', metadata: null }),
+    ]);
+    const lines = await orderTimeline(db as never, 'o1');
+    expect(lines.map((l) => l.detail)).toEqual(['الزبون اتصل — أخدته على الخط', 'الزبون اتصل — أخدته على الخط']);
+  });
+
+  it('NEGATIVE: metadata that is not JSON, or names a person who is gone, breaks nothing and keeps the static words', async () => {
+    db.orderClaimHistory.findMany.mockResolvedValue([
+      claim({ reason: 'CUSTOMER_CALLED_BACK', metadata: '{not json' }),
+      claim({ id: 'c2', reason: 'CUSTOMER_CALLED_BACK', metadata: JSON.stringify({ fromUserId: 'u-deleted' }) }),
+    ]);
+    const lines = await orderTimeline(db as never, 'o1');
+    expect(lines.map((l) => l.detail)).toEqual(['الزبون اتصل — أخدته على الخط', 'الزبون اتصل — أخدته على الخط']);
+    expect(JSON.stringify(lines)).not.toMatch(/undefined|u-deleted/);
+  });
+
+  it('NEGATIVE: a RELEASED line that does not say who took it keeps the colleague as its actor and the static words', async () => {
+    db.orderClaimHistory.findMany.mockResolvedValue([
+      claim({ action: 'RELEASED', userId: 'u2', reason: 'TAKEN_ON_THE_LINE', metadata: null }),
+    ]);
+    const [line] = await orderTimeline(db as never, 'o1');
+    expect(line.detail).toBe('اتسحب منها على الخط — الزبون اتصل وما كانت اتصلت فيه');
+    expect(line.actorName).toBe('هند');
+  });
+
+  it('NEGATIVE: the new reasons change no other line — her own release is still hers, a pull is still a pull', async () => {
+    db.orderClaimHistory.findMany.mockResolvedValue([
+      claim({ action: 'RELEASED', userId: 'u2', reason: 'MANUAL_RELEASE', metadata: JSON.stringify({ takenBy: 'u1', fromUserId: 'u1' }) }),
+      claim({ id: 'c2', reason: 'PULL_NEXT', metadata: JSON.stringify({ role: 'CONFIRMATION_AGENT', fromUserId: 'u2' }) }),
+    ]);
+    const lines = await orderTimeline(db as never, 'o1');
+    expect(lines.map((l) => [l.actorName, l.detail])).toEqual([['هند', 'MANUAL_RELEASE'], ['سارة', 'سحب من الطابور']]);
+  });
+});
