@@ -23,14 +23,22 @@ export type ConfirmationStatus = (typeof CONFIRMATION_STATUSES)[number];
  * postponement sits in NO_ANSWER / FOLLOW_UP_REQUIRED / POSTPONED, and from there «ألغِ» (the `reject` action) was
  * refused with INVALID_TRANSITION although the contact-first rule was met. The only way out was to open the order,
  * record «العميل أجاب» (→ IN_PROGRESS) and cancel afterwards. None of the three is confirmed, so there is no stock
- * reserved that `endOrder` does not already release. CONFIRMED stays closed from them: only the cancel was asked for.
+ * reserved that `endOrder` does not already release.
+ *
+ * ── «تأكيد» FROM A WAITING STATE (7/11, the owner: «الطلب ما بيتأكد حتى لو الزبون أكد معهم») ──
+ * CONFIRMED was left closed from those three on 30/10 («only the cancel was asked for») and nothing opened it. But the desk
+ * draws such an order back on her list the day its date comes (a postponement, a callback the customer asked for) with
+ * «تأكيد الطلب» alive, and the customer says yes on that very call: the press was refused INVALID_TRANSITION, and the only
+ * way through was to open the order, press «العميل أجاب» and confirm after it — a step no card of the desk offers. A yes is
+ * a yes from wherever the order waits. Every other question the door asks of a yes is still asked, first and in the same
+ * order (she holds it, she has rung, the governorate, the twin guard, the version): only the table opens.
  */
 export const CONFIRMATION_TRANSITIONS: Record<ConfirmationStatus, ConfirmationStatus[]> = {
   NEW: ['IN_PROGRESS', 'NO_ANSWER', 'FOLLOW_UP_REQUIRED', 'POSTPONED', 'CONFIRMED', 'REJECTED'],
   IN_PROGRESS: ['NO_ANSWER', 'FOLLOW_UP_REQUIRED', 'POSTPONED', 'CONFIRMED', 'REJECTED'],
-  NO_ANSWER: ['IN_PROGRESS', 'FOLLOW_UP_REQUIRED', 'REJECTED'],
-  FOLLOW_UP_REQUIRED: ['IN_PROGRESS', 'REJECTED'],
-  POSTPONED: ['IN_PROGRESS', 'REJECTED'],
+  NO_ANSWER: ['IN_PROGRESS', 'FOLLOW_UP_REQUIRED', 'CONFIRMED', 'REJECTED'],
+  FOLLOW_UP_REQUIRED: ['IN_PROGRESS', 'CONFIRMED', 'REJECTED'],
+  POSTPONED: ['IN_PROGRESS', 'CONFIRMED', 'REJECTED'],
   CONFIRMED: [],            // terminal for confirmation stage (D2 shipping takes over)
   REJECTED: [],             // terminal
   CANCELLED: [],            // terminal

@@ -142,7 +142,7 @@ docs/                         ARCHITECTURE.md · ops/DEPLOY.md · ops/PRE-DEPLOY
 
 ### 3.2 حالات التأكيد
 
-الجدول الرسمي: `CONFIRMATION_TRANSITIONS` (`src/lib/confirmation-workflow.ts:28-37`). أي انتقال مش بالجدول بيرفضه الباب بـ`409 INVALID_TRANSITION` (`src/app/api/orders/[id]/confirmation/route.ts:278-292`)، إلا لصاحب `orders.unlock` مع ملاحظة 5 أحرف على الأقل.
+الجدول الرسمي: `CONFIRMATION_TRANSITIONS` (`src/lib/confirmation-workflow.ts:36-45`). أي انتقال مش بالجدول بيرفضه الباب بـ`409 INVALID_TRANSITION` (`src/app/api/orders/[id]/confirmation/route.ts:294-311`)، إلا لصاحب `orders.unlock` مع ملاحظة 5 أحرف على الأقل. «مؤكَّد» بيُفتح من خمس حالات: جديد، قيد التأكيد، لا يرد، يحتاج متابعة، مؤجّل (من 7/11).
 
 ```mermaid
 stateDiagram-v2
@@ -160,11 +160,14 @@ stateDiagram-v2
   IN_PROGRESS --> REJECTED
   NO_ANSWER --> IN_PROGRESS
   NO_ANSWER --> FOLLOW_UP_REQUIRED
+  NO_ANSWER --> CONFIRMED: confirm (من 7/11)
   NO_ANSWER --> REJECTED
   NO_ANSWER --> CANCELLED: تلقائي بعد 3 محاولات
   FOLLOW_UP_REQUIRED --> IN_PROGRESS
+  FOLLOW_UP_REQUIRED --> CONFIRMED: confirm (من 7/11)
   FOLLOW_UP_REQUIRED --> REJECTED
   POSTPONED --> IN_PROGRESS
+  POSTPONED --> CONFIRMED: confirm (من 7/11)
   POSTPONED --> REJECTED
   CONFIRMED --> [*]
   REJECTED --> [*]
@@ -173,11 +176,11 @@ stateDiagram-v2
 
 تفاصيل لازم تعرفها:
 
-- `CONFIRMED` و`REJECTED` و`CANCELLED` نهائية **لمحور التأكيد** (`TERMINAL_CONFIRMATION_STATUSES`، `:39`). بعد `CONFIRMED`، الشحن بيستلم.
-- `CANCELLED` ما إلها سهم بالجدول. بتوصلها بطريقين: `action: 'cancel'` بمفتاح `orders.cancel` وسبب 5 أحرف (`confirmation/route.ts:225-239`)، أو الإغلاق التلقائي بعد 3 «لا يرد» (`src/app/api/orders/[id]/contact-attempts/route.ts:187-205`، سببه `NO_ANSWER_3_ATTEMPTS`، والحد `NO_ANSWER_LIMIT = 3` بـ`confirmation-workflow.ts:181`). شو بيتعدّ؟ `NO_ANSWER_RESULTS = NO_ANSWER · BUSY · UNREACHABLE` (`:252`).
-- **الرفض بلا مكالمة** مسموح لتلات أسباب بس: `DUPLICATE_ORDER · WRONG_NUMBER · OUT_OF_SERVICE_AREA` (`NO_CONVERSATION_REJECTION_REASONS`، `:114`). `FAKE_ORDER` برّا عن قصد، لأنه بيحطّ الرقم بالقائمة السوداء (`confirmation/route.ts:439`).
-- أسباب ما بيختارها إنسان: `NO_ANSWER_3_ATTEMPTS · MODERATOR_DATA_ERROR` (`SYSTEM_ONLY_REJECTION_REASONS`، `:90`).
-- الكلمات العربية للحالات بمكان واحد: `CONFIRMATION_STATUS_AR` (`:154`). لا تكتب نسخة بشاشة.
+- `CONFIRMED` و`REJECTED` و`CANCELLED` نهائية **لمحور التأكيد** (`TERMINAL_CONFIRMATION_STATUSES`، `:47`). بعد `CONFIRMED`، الشحن بيستلم.
+- `CANCELLED` ما إلها سهم بالجدول. بتوصلها بطريقين: `action: 'cancel'` بمفتاح `orders.cancel` وسبب 5 أحرف (`confirmation/route.ts:225-239`)، أو الإغلاق التلقائي بعد 3 «لا يرد» (`src/app/api/orders/[id]/contact-attempts/route.ts:187-205`، سببه `NO_ANSWER_3_ATTEMPTS`، والحد `NO_ANSWER_LIMIT = 3` بـ`confirmation-workflow.ts:189`). شو بيتعدّ؟ `NO_ANSWER_RESULTS = NO_ANSWER · BUSY · UNREACHABLE` (`:260`).
+- **الرفض بلا مكالمة** مسموح لتلات أسباب بس: `DUPLICATE_ORDER · WRONG_NUMBER · OUT_OF_SERVICE_AREA` (`NO_CONVERSATION_REJECTION_REASONS`، `:122`). `FAKE_ORDER` برّا عن قصد، لأنه بيحطّ الرقم بالقائمة السوداء (`confirmation/route.ts:439`).
+- أسباب ما بيختارها إنسان: `NO_ANSWER_3_ATTEMPTS · MODERATOR_DATA_ERROR` (`SYSTEM_ONLY_REJECTION_REASONS`، `:98`).
+- الكلمات العربية للحالات بمكان واحد: `CONFIRMATION_STATUS_AR` (`:162`). لا تكتب نسخة بشاشة.
 
 **الرفض والإلغاء بيمرقوا بـ`endOrder` دايماً** (`confirmation/route.ts:340-367`). هو اللي بيفكّ الحجز، وبينزّل الطرد عن العربة، وبيبلّغ نظام 7. ممنوع تكتب `confirmationStatus: 'CANCELLED'` بإيدك من باب جديد.
 
