@@ -15,9 +15,10 @@ import { OrderRef } from '@/components/orders/OrderRef';
  * says why (a colleague holds it and has started on it, it was never rung, it is past the desk). The door asks everything again
  * when she presses.
  *
- * A card she may take FROM A COLLEAGUE (who pulled it and has done nothing on it, 7/11) says so above the button — «عند <name> ولسا
- * ما اتصلت فيه — بتنسحب منها» — so the take is never a surprise to the one pressing it; the colleague is told too, by the server.
- * A refused card keeps the holder's name in its row and the server's sentence under it.
+ * A card she may take FROM A COLLEAGUE (who pulled it and has logged nothing on it, 7/11) says so above the button — «عند <name> ولسا
+ * ما سجّلت عليه شي — بتنسحب منها» — so the take is never a surprise to the one pressing it; the colleague is told too, by the server.
+ * The words say what the system knows (nothing is logged), never that she did not call. A refused card keeps the holder's name in
+ * its row and the server's sentence under it.
  */
 
 export interface OnTheLineCard {
@@ -115,8 +116,8 @@ export function CustomerOnTheLine({ onTaken }: { onTaken: (orderId: string) => v
         </button>
       </form>
       <p className="mt-3 text-xs text-[var(--sys-muted)]">
-        بتاخدي على الخط طلب رجع للطابور بعد «لا يرد»، أو طلب سحبته زميلتك وما بدأت عليه. الطلب الجديد اللي ما حدا اتصل فيه بيوصل بالسحب،
-        واللي زميلتك بدأت عليه بيضل معها.
+        بتاخدي على الخط طلب رجع للطابور بعد «لا يرد»، أو طلب سحبته زميلتك وما سجّلت عليه شي. الطلب الجديد اللي ما حدا اتصل فيه بيوصل
+        بالسحب، واللي زميلتك سجّلت عليه شي بيضل معها.
       </p>
       {said && (
         <p className="mt-3 text-sm rounded-lg p-3 text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)]">{said}</p>
@@ -126,7 +127,7 @@ export function CustomerOnTheLine({ onTaken }: { onTaken: (orderId: string) => v
           {found.map((card) => (
             <li key={card.id} className="p-3 rounded-lg bg-[var(--sys-surface)] border border-[var(--sys-border)]">
               {card.takeable && card.fromColleague && (
-                <p className="mb-1 text-xs text-[var(--sys-warning)]">عند {card.fromColleague} ولسا ما اتصلت فيه — بتنسحب منها</p>
+                <p className="mb-1 text-xs text-[var(--sys-warning)]">عند {card.fromColleague} ولسا ما سجّلت عليه شي — بتنسحب منها</p>
               )}
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <OrderRef id={card.id} number={card.orderNumber} className="font-semibold text-[var(--sys-heading)] tabular-nums" />

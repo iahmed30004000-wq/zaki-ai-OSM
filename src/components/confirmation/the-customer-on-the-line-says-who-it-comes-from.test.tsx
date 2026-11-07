@@ -9,8 +9,8 @@ import React from 'react';
  * The customer rang the FIRST agent; a colleague pulled his order after the first agent's «لا يرد» and has logged nothing on it.
  * The server now lets the first agent take it (`customer-on-the-line.ts`), and the card must never make that a surprise:
  *
- *   · a card she may take FROM A COLLEAGUE says so above the button — «عند <name> ولسا ما اتصلت فيه — بتنسحب منها» — and keeps the
- *     same button, «خده — الزبون على الخط» (no new one);
+ *   · a card she may take FROM A COLLEAGUE says so above the button — «عند <name> ولسا ما سجّلت عليه شي — بتنسحب منها» (what the
+ *     system knows: nothing is logged on it, not that nobody rang) — and keeps the same button, «خده — الزبون على الخط» (no new one);
  *   · a card she may take from the pool says nothing of the kind;
  *   · a refused card shows the holder's name in its row and the server's own sentence under it, and no button;
  *   · pressing the button asks the one door with the order's id, and a refusal (the colleague started on it meanwhile) shows the
@@ -34,7 +34,7 @@ vi.mock('next/link', () => ({
 
 import { CustomerOnTheLine, type OnTheLineCard } from './CustomerOnTheLine';
 
-const NOTE = 'عند هند ولسا ما اتصلت فيه — بتنسحب منها';
+const NOTE = 'عند هند ولسا ما سجّلت عليه شي — بتنسحب منها';
 const TAKE = 'خده — الزبون على الخط';
 const STARTED = 'الطلب مع هند وهي بدأت عليه — حوّلي الزبون إلها أو للمشرفة';
 
@@ -106,7 +106,7 @@ describe('a card she may take from the pool, and the ones she may not', () => {
   it('NEGATIVE: a card from the pool carries no such note — the button alone', async () => {
     await searchFor([card()]);
     expect(takeButton()).not.toBeNull();
-    expect(screen.queryByText(/ولسا ما اتصلت فيه/)).toBeNull();
+    expect(screen.queryByText(/ولسا ما سجّلت عليه شي/)).toBeNull();
     expect(screen.queryByText(/بتنسحب منها/)).toBeNull();
   });
 
@@ -147,13 +147,42 @@ describe('a card she may take from the pool, and the ones she may not', () => {
 });
 
 describe('the words above the box', () => {
-  it('say that a colleague’s pull she has not started on can be taken, and one she has started on stays with her', async () => {
+  it('say that a colleague’s pull with nothing logged on it can be taken, and one she logged on stays with her', async () => {
     render(<CustomerOnTheLine onTaken={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: 'الزبون على الخط' }));
     const intro = screen.getByText(/بتاخدي على الخط/);
-    expect(intro.textContent).toContain('طلب سحبته زميلتك وما بدأت عليه');
-    expect(intro.textContent).toContain('زميلتك بدأت عليه بيضل معها');
+    expect(intro.textContent).toContain('طلب سحبته زميلتك وما سجّلت عليه شي');
+    expect(intro.textContent).toContain('زميلتك سجّلت عليه شي بيضل معها');
     // The old sentence promised the opposite for every order a colleague holds.
     expect(intro.textContent).not.toContain('واللي مع زميلتك بيضل معها');
+  });
+
+  it('NEGATIVE: none of the copy says she did NOT call — the system knows what is logged, not what was dialled', async () => {
+    // A call nobody logged, or her own no-answer from before she pulled it again, would make "she did not call" a lie.
+    await searchFor([fromHind()]);
+    const page = document.body.textContent ?? '';
+    expect(page).not.toMatch(/ما اتصلت|ما كانت اتصلت|ما كنتِ اتصلتِ/);
+    expect(page).toContain('ما سجّلت عليه شي');
+  });
+});
+
+describe('a take in flight', () => {
+  it('shuts the button — a second press asks nothing, and the one that is out comes back to the desk once', async () => {
+    const onTaken = await searchFor([fromHind()]);
+    let finish!: (value: unknown) => void;
+    api.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)));
+    fireEvent.click(takeButton() as HTMLElement);
+
+    // The same button, now saying it is working — and shut.
+    const working = (await screen.findByRole('button', { name: 'عم ياخده…' })) as HTMLButtonElement;
+    expect(working.disabled).toBe(true);
+    fireEvent.click(working);
+    fireEvent.click(working);
+    const asked = api.mock.calls.filter((call) => call[0] === '/api/confirmation/callback-take');
+    expect(asked, 'ضغطة تانية طلبت الأخد مرة تانية').toHaveLength(1);
+
+    finish({ ok: true, orderId: 'o1', orderNumber: 'ORD-1' });
+    await waitFor(() => expect(onTaken).toHaveBeenCalledTimes(1));
+    expect(onTaken).toHaveBeenCalledWith('o1');
   });
 });
