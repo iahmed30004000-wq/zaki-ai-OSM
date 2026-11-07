@@ -67,6 +67,17 @@ type Tx = Prisma.TransactionClient | typeof db;
  * colleague. And the claim she takes from must be the one she SAW before she waited at the customer's lock: if it changed hands
  * meanwhile, nothing is taken (two agents pressing at once: the first takes it, the second is told who has it).
  *
+ * THE ORDER IS HANDED OVER WHOLE, as the transfer door hands one over (review of #216): the same update writes her name on it
+ * (`assignedToId`, `assignedAt` — the colleague's name would keep it in her ASSIGNED envelope) and clears the editing lock the
+ * colleague held (`lockedById`, `lockedAt`, `lockExpiresAt` — else the confirmation door answers the taker 423 `ORDER_LOCKED`); and
+ * the customer's other NEW orders held for the colleague are let go the way `releaseByRounds` lets a holder's go, so that
+ * `holdTwinsForPuller` holds them for the taker inside her cap room. All of it in the one transaction. An order out of the pool
+ * has none of that to hand over, and its write is the pull's, field for field.
+ *
+ * WHAT THE WORDS MAY SAY: the system knows what is LOGGED, not what was dialled. Every sentence here says «ما سجّلت عليه شي»
+ * (nothing is logged on it), never that she did not call — a call nobody logged, or her own no-answer before a re-pull, would make
+ * that false.
+ *
  * ── NO CALL IS RECORDED FOR HER ──
  *
  * Every result in `CONTACT_RESULTS` is a result of a call WE made: `ANSWERED` is what the answer rate counts as «our call was
@@ -154,9 +165,13 @@ export function colleagueStartedMessage(name?: string | null): string {
   return `الطلب مع ${colleagueWord(name)} وهي بدأت عليه — حوّلي الزبون إلها أو للمشرفة`;
 }
 
-/** A colleague holds it and has NOT started on it, but the take is refused all the same — `why` is the sentence that says for what. */
+/**
+ * A colleague holds it and NOTHING IS LOGGED on it since she pulled it, but the take is refused all the same — `why` is the sentence
+ * that says for what. It says what the system KNOWS («ما سجّلت عليه شي»), never that she did not call: a call nobody logged, or her own
+ * earlier no-answer before she pulled it again, would make that a lie (review of #216).
+ */
 export function colleagueNotStartedMessage(name: string | null | undefined, why: string): string {
-  return `الطلب مع ${colleagueWord(name)} ولسا ما بدأت عليه. ${why}`;
+  return `الطلب مع ${colleagueWord(name)} ولسا ما سجّلت عليه شي. ${why}`;
 }
 
 export function closedMessage(confirmationStatus: string, shipped: boolean): string {
@@ -193,7 +208,7 @@ const hasNoAnswer = (attempts: CallbackFacts['attempts']): boolean =>
 
 /**
  * A COLLEAGUE HOLDS IT (the owner, 7/11): hers to lose only if she pulled it and has done NOTHING on it. Every refusal here is
- * `HELD_BY_COLLEAGUE` and says which of the two it is — «وهي بدأت عليه», or «ولسا ما بدأت عليه» with what else stops the take.
+ * `HELD_BY_COLLEAGUE` and says which of the two it is — «وهي بدأت عليه», or «ولسا ما سجّلت عليه شي» with what else stops the take.
  * "Started" is any attempt AT or after her `claimedAt` — a call, a message, a no-answer, an answer, a dialler opened — by anybody.
  */
 function colleagueVerdict(holderId: string, f: CallbackFacts): CallbackVerdict {
@@ -324,7 +339,7 @@ export interface CallbackCard {
   takeable: boolean;
   /**
    * The colleague she would take it FROM, by name — set only on a card that is takeable while a colleague holds it
-   * («عند X ولسا ما اتصلت فيه — بتنسحب منها»). A name already on the card as `holder`; no new fact about the customer.
+   * («عند X ولسا ما سجّلت عليه شي — بتنسحب منها»). A name already on the card as `holder`; no new fact about the customer.
    */
   fromColleague: string | null;
   code: CallbackCode | null;
@@ -461,7 +476,9 @@ export function takenFromYouNotice(v: { companyId: string; storeId: string; hold
     storeId: v.storeId,
     userId: v.holderId,
     title: `انسحب ${v.orderNumber} منك`,
-    message: `الطلب ${v.orderNumber} انسحب منك: الزبون اتصل بزميلتك وما كنتِ اتصلتِ فيه`,
+    // What the system knows, not what she did: nothing was logged on it since she pulled it (a call nobody logged would make
+    // "you had not called" a lie).
+    message: `الطلب ${v.orderNumber} انسحب منك: الزبون اتصل بزميلتك وما كنتِ سجّلتِ عليه شي`,
     type: 'SYSTEM_ALERT',
     link: RELEASE_NOTICE_LINK,
   };
@@ -544,6 +561,13 @@ export async function takeOnTheLine(args: {
         confirmationStatus: 'IN_PROGRESS',
         status: 'IN_PROGRESS',
         version: { increment: 1 },
+        /*
+         * FROM A COLLEAGUE THE ORDER IS HANDED OVER WHOLE, as the transfer door hands one over (review of #216): it carries HER name
+         * now (`assignedToId` — the colleague's name on it kept it in her ASSIGNED envelope, so she could still open an order that
+         * is no longer hers), and the editing lock the colleague held goes with her (while it stands the confirmation door answers
+         * the taker 423 `ORDER_LOCKED`, and the colleague's open form keeps renewing it). An order out of the pool has neither.
+         */
+        ...(from ? { assignedToId: user.id, assignedAt: now, lockedById: null, lockedAt: null, lockExpiresAt: null } : {}),
       },
     });
     if (taken.count !== 1) {
@@ -610,6 +634,28 @@ export async function takeOnTheLine(args: {
       await tx.notification.create({
         data: takenFromYouNotice({ companyId: scope.companyId, storeId: scope.storeId, holderId: from.id, orderNumber: row.orderNumber }),
       });
+      /*
+       * HIS OTHER ORDERS HELD FOR HER GO BACK, so that the next step holds them for the taker — one customer, one agent. The pull
+       * holds only unnamed twins (`twinsToHoldWhere`: `assignedToId` empty), and the customer who sent his order twice has exactly
+       * that: a NEW twin named for the colleague. The same write `releaseByRounds` makes when it lets a holder's order go, bounded
+       * the same way (his, NEW, never claimed, never shipped, named for HER and nobody else). Held again inside the taker's cap room.
+       */
+      if (seen.customerId) {
+        await tx.order.updateMany({
+          where: {
+            companyId: scope.companyId,
+            storeId: scope.storeId,
+            customerId: seen.customerId,
+            id: { not: orderId },
+            claimedById: null,
+            confirmationStatus: 'NEW',
+            shippingStatus: 'NOT_READY',
+            claimHistory: { none: {} },
+            assignedToId: from.id,
+          },
+          data: { assignedToId: null, assignedAt: null, version: { increment: 1 } },
+        });
+      }
     }
     // His other waiting orders follow her, never past the cap: the room before this take, minus the one just taken from the pool.
     await holdTwinsForPuller(tx, {

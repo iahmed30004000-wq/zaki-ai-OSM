@@ -49,6 +49,14 @@ const { world } = vi.hoisted(() => ({
     notifications: [] as Row[],
     /** Every `updateMany` the database was asked for, as asked — so a test can read the guard a write carried. */
     writes: [] as { where: Row; data: Row }[],
+    /**
+     * Every WRITE and through which client: `tx` is the transaction's own client (what `db.$transaction(fn)` hands `fn`), `root` is
+     * the shared `db`. `duringTx` is true when a transaction was open at that moment — a write on `root` then has left the
+     * transaction it belonged in, and a take that does that is not one transaction any more.
+     */
+    ops: [] as { op: string; via: 'tx' | 'root'; duringTx: boolean }[],
+    /** Transactions open right now. */
+    openTx: 0,
     /** The customer locks taken, by key. */
     locks: [] as string[],
     /** Runs once, inside a write, after the transaction's reads and before the database evaluates it: somebody else's commit in that gap. */
@@ -147,6 +155,7 @@ vi.mock('./db', () => {
   const hits = (where: Row) => world.orders.filter((o) => tri(view(o), where ?? {}) === true);
 
   function client(tx: TxState) {
+    const record = (op: string) => void world.ops.push({ op, via: tx ? 'tx' : 'root', duringTx: world.openTx > 0 });
     return {
       order: {
         findMany: async ({ where, orderBy, take, select }: Row) => {
@@ -164,6 +173,7 @@ vi.mock('./db', () => {
           return hits(where).length;
         },
         updateMany: async ({ where, data }: Row) => {
+          record('order.updateMany');
           await tick();
           world.writes.push({ where, data });
           const hook = world.beforeWrite;
@@ -176,10 +186,30 @@ vi.mock('./db', () => {
           return { count: rows.length };
         },
       },
-      orderClaimHistory: { create: async ({ data }: Row) => void world.history.push({ ...data, createdAt: data.createdAt ?? new Date() }) },
-      orderStatusLog: { create: async ({ data }: Row) => void world.statusLogs.push(data) },
-      orderActivity: { create: async ({ data }: Row) => void world.activities.push(data) },
-      notification: { create: async ({ data }: Row) => void world.notifications.push({ ...data, createdAt: new Date() }) },
+      orderClaimHistory: {
+        create: async ({ data }: Row) => {
+          record('orderClaimHistory.create');
+          world.history.push({ ...data, createdAt: data.createdAt ?? new Date() });
+        },
+      },
+      orderStatusLog: {
+        create: async ({ data }: Row) => {
+          record('orderStatusLog.create');
+          world.statusLogs.push(data);
+        },
+      },
+      orderActivity: {
+        create: async ({ data }: Row) => {
+          record('orderActivity.create');
+          world.activities.push(data);
+        },
+      },
+      notification: {
+        create: async ({ data }: Row) => {
+          record('notification.create');
+          world.notifications.push({ ...data, createdAt: new Date() });
+        },
+      },
       $executeRaw: async (_strings: TemplateStringsArray, key: string) => {
         if (!tx) return 0;
         world.locks.push(key);
@@ -204,9 +234,11 @@ vi.mock('./db', () => {
       ...root,
       $transaction: async (fn: (c: unknown) => Promise<unknown>) => {
         const state = { releases: [] as (() => void)[] };
+        world.openTx++;
         try {
           return await fn(client(state));
         } finally {
+          world.openTx--;
           state.releases.forEach((r) => r());
         }
       },
@@ -297,6 +329,31 @@ const touch = (o: Row, result: string, createdAt: Date) => void world.attempts.p
 const claimLines = (o: Row) => world.history.filter((h) => h.orderId === o.id);
 /** The lines the story itself has written before any take: Sara pulled it, it went back, Hind pulled it. */
 const STORY_LINES = 3;
+/** What the take wrote on the TRANSACTION'S OWN client, by kind — the fake tells that client from the shared `db`. */
+const wroteInTransaction = () => {
+  const by: Record<string, number> = {};
+  for (const w of world.ops) if (w.via === 'tx') by[w.op] = (by[w.op] ?? 0) + 1;
+  return by;
+};
+/** ONE TRANSACTION: not one write on the shared client, and in particular none while a transaction was open. */
+const nothingLeftTheTransaction = () => {
+  expect(world.ops.length, 'the take wrote nothing at all').toBeGreaterThan(0);
+  expect(world.ops.filter((w) => w.via === 'root'), 'a write left the transaction').toEqual([]);
+};
+/** `orders.view` at ASSIGNED — the live agents' envelope — through the REAL `orderVisibilityWhere`. */
+const assignedEnvelope = (id: string) =>
+  rbac.orderVisibilityWhere({
+    id, email: `${id}@x.test`, name: id, role: 'CONFIRMATION_AGENT', status: 'ACTIVE', companyId: 'c1',
+    permissions: ['orders.view', 'confirmation.work', 'confirmation.pull'],
+    effectiveGrants: {
+      fullAccess: false,
+      grants: {
+        'orders.view': { scope: 'ASSIGNED', scopeIds: null },
+        'confirmation.work': { scope: 'ALL_COMPANY', scopeIds: null },
+        'confirmation.pull': { scope: 'ALL_COMPANY', scopeIds: null },
+      },
+    },
+  } as never) as Row;
 const take = (orderId: string, user = SARA, visibility: Row = {}) =>
   takeOnTheLine({ scope: SCOPE, user, orderId, visibility, now: NOW });
 
@@ -309,6 +366,8 @@ beforeEach(() => {
   world.activities = [];
   world.notifications = [];
   world.writes = [];
+  world.ops = [];
+  world.openTx = 0;
   world.locks = [];
   world.beforeWrite = null;
   world.onLock = null;
@@ -584,7 +643,7 @@ describe('the verdict for an order a colleague holds — pure (the owner, 7/11)'
   });
 
   it('NEGATIVE: not one no-answer on the order — "not started", and why it still stays with her', () => {
-    const why = 'الطلب مع هند ولسا ما بدأت عليه. هالطلب ما حدا اتصل فيه لسا — بيضل معها، مش على الخط';
+    const why = 'الطلب مع هند ولسا ما سجّلت عليه شي. هالطلب ما حدا اتصل فيه لسا — بيضل معها، مش على الخط';
     expect(verdict({ attempts: [] })).toEqual({ ok: false, code: 'HELD_BY_COLLEAGUE', message: why });
     // An answer before she pulled it is not a no-answer either.
     expect(verdict({ attempts: [{ result: 'ANSWERED', createdAt: AGO(5) }] })).toEqual({ ok: false, code: 'HELD_BY_COLLEAGUE', message: why });
@@ -601,7 +660,7 @@ describe('the verdict for an order a colleague holds — pure (the owner, 7/11)'
     const got = verdict(over);
     expect(got).toMatchObject({ ok: false, code: 'HELD_BY_COLLEAGUE' });
     const message = (got as { message: string }).message;
-    expect(message).toContain('الطلب مع هند ولسا ما بدأت عليه.');
+    expect(message).toContain('الطلب مع هند ولسا ما سجّلت عليه شي.');
     expect(message).toContain(piece);
   });
 
@@ -665,7 +724,7 @@ describe('a colleague pulled it and has done nothing on it — taken from her (t
         type: 'SYSTEM_ALERT',
         link: '/confirmation/mine',
         title: `انسحب ${o.orderNumber} منك`,
-        message: `الطلب ${o.orderNumber} انسحب منك: الزبون اتصل بزميلتك وما كنتِ اتصلتِ فيه`,
+        message: `الطلب ${o.orderNumber} انسحب منك: الزبون اتصل بزميلتك وما كنتِ سجّلتِ عليه شي`,
       }),
     ]);
 
@@ -762,6 +821,157 @@ describe('a colleague pulled it and has done nothing on it — taken from her (t
     expect(back).toMatchObject({ ok: true });
     expect(o.claimedById).toBe('hind');
     expect(world.notifications.map((n) => n.userId)).toEqual(['hind', 'sara']);
+  });
+});
+
+/*
+ * REVIEW OF #216 — A TAKE FROM A COLLEAGUE HANDS THE ORDER OVER WHOLE, AS THE TRANSFER DOOR DOES, AND IS ONE TRANSACTION.
+ *
+ * The first version changed the holder and left everything that still pointed at the colleague pointing at her: her name on the
+ * order (`assignedToId` — which keeps the order in her ASSIGNED envelope), her editing lock (the confirmation door answers the
+ * taker 423 while it stands), and the customer's other orders held for her (`holdTwinsForPuller` takes only unnamed ones).
+ */
+describe('taken from a colleague, the order is handed over whole — as the transfer door hands one over', () => {
+  it('the order is the taker’s BY NAME: the colleague keeps no reach to it through her own name', async () => {
+    // She reached it through a hold (the customer sent it twice), so the order carries her name — and her name opens an order.
+    const o = pulledByColleague({ assignedToId: 'hind', assignedAt: AGO(2) });
+    expect(tri(view(o), assignedEnvelope('hind')), 'before the take, her name opens it').toBe(true);
+    expect(await take(o.id)).toMatchObject({ ok: true });
+    expect(o).toMatchObject({ assignedToId: 'sara', assignedAt: NOW });
+    expect(tri(view(o), assignedEnvelope('hind')), 'after the take, nothing opens it for her').not.toBe(true);
+    expect(tri(view(o), assignedEnvelope('sara')), 'and it is the taker’s').toBe(true);
+  });
+
+  it('his other order held FOR THE COLLEAGUE follows the taker; one held for a THIRD agent does not; a free one follows as before', async () => {
+    const o = pulledByColleague({ assignedToId: 'hind', assignedAt: AGO(2) });
+    const heldForHind = order({ confirmationStatus: 'NEW', assignedToId: 'hind', assignedAt: AGO(1.5), createdAt: AGO(40) });
+    const heldForNoor = order({ confirmationStatus: 'NEW', assignedToId: 'noor', assignedAt: AGO(1.5), createdAt: AGO(41) });
+    const free = order({ confirmationStatus: 'NEW', createdAt: AGO(20) });
+    expect(await take(o.id)).toMatchObject({ ok: true });
+    expect(heldForHind).toMatchObject({ assignedToId: 'sara', assignedAt: NOW, claimedById: null });
+    expect(free).toMatchObject({ assignedToId: 'sara', assignedAt: NOW, claimedById: null });
+    // A third agent's hold is hers and stays hers — untouched, not even its version moved.
+    expect(heldForNoor).toMatchObject({ assignedToId: 'noor', version: 1 });
+    // Each order that followed says why on its own history, naming the order she took.
+    expect(world.activities.map((a) => JSON.parse(a.metadata).withOrder)).toEqual([o.orderNumber, o.orderNumber]);
+    expect(world.activities.map((a) => a.orderId).sort()).toEqual([heldForHind.id, free.id].sort());
+  });
+
+  it('NEGATIVE: the release is bounded — another customer’s order, one already worked, one in her hands: still the colleague’s', async () => {
+    const o = pulledByColleague({ assignedToId: 'hind', assignedAt: AGO(2) });
+    const otherCustomer = order({ customerId: 'cust2', confirmationStatus: 'NEW', assignedToId: 'hind', assignedAt: AGO(1) });
+    const workedBefore = order({ confirmationStatus: 'NEW', assignedToId: 'hind', assignedAt: AGO(1) });
+    world.history.push({ orderId: workedBefore.id, action: 'RELEASED', userId: 'noor', createdAt: AGO(5) });
+    const inHerHands = order({ claimedById: 'hind', claimedAt: AGO(1), confirmationStatus: 'IN_PROGRESS', assignedToId: 'hind' });
+    expect(await take(o.id)).toMatchObject({ ok: true });
+    for (const [name, still] of [['another customer’s', otherCustomer], ['one already worked', workedBefore], ['one in her hands', inHerHands]] as const) {
+      expect(still.assignedToId, name).toBe('hind');
+      expect(still.version, name).toBe(1);
+    }
+    expect(inHerHands.claimedById).toBe('hind');
+  });
+
+  it('the twins follow INSIDE the taker’s cap room: with room for one, the oldest follows and the other does not', async () => {
+    // Her load is two short of the cap; the order she takes is one, so there is room for exactly one of his others.
+    for (let i = 0; i < CLAIM_CAPS.total - 2; i++) order({ customerId: null, claimedById: 'sara', confirmationStatus: 'IN_PROGRESS' });
+    const o = pulledByColleague({ assignedToId: 'hind', assignedAt: AGO(2) });
+    const oldest = order({ confirmationStatus: 'NEW', assignedToId: 'hind', assignedAt: AGO(1.5), createdAt: AGO(40) });
+    const newer = order({ confirmationStatus: 'NEW', createdAt: AGO(20) });
+    expect(await take(o.id)).toMatchObject({ ok: true });
+    expect(oldest.assignedToId).toBe('sara');
+    expect(newer.assignedToId).toBeNull();
+    expect(world.activities).toHaveLength(1);
+  });
+
+  it('with no room left, none follows — and the colleague’s held twin goes back to the pool, not to a taker who is full', async () => {
+    for (let i = 0; i < CLAIM_CAPS.total - 1; i++) order({ customerId: null, claimedById: 'sara', confirmationStatus: 'IN_PROGRESS' });
+    const o = pulledByColleague({ assignedToId: 'hind', assignedAt: AGO(2) });
+    const heldForHind = order({ confirmationStatus: 'NEW', assignedToId: 'hind', assignedAt: AGO(1.5) });
+    const free = order({ confirmationStatus: 'NEW' });
+    expect(await take(o.id)).toMatchObject({ ok: true });
+    expect(heldForHind).toMatchObject({ assignedToId: null, assignedAt: null });
+    expect(free.assignedToId).toBeNull();
+    expect(world.activities).toHaveLength(0);
+  });
+
+  it('the colleague’s editing lock goes with the order — the taker is not answered «ORDER_LOCKED» by a lock that is no longer hers', async () => {
+    const o = pulledByColleague({ lockedById: 'hind', lockedAt: AGO(0.1), lockExpiresAt: new Date(NOW.getTime() + 300_000) });
+    expect(await take(o.id)).toMatchObject({ ok: true });
+    expect(o).toMatchObject({ lockedById: null, lockedAt: null, lockExpiresAt: null });
+  });
+
+  it('the write that hands it over carries the name and the lock, in the very update that claims it', async () => {
+    const o = pulledByColleague();
+    await take(o.id);
+    const main = world.writes.filter((w) => w.data.claimedById === 'sara');
+    expect(main).toHaveLength(1);
+    expect(main[0].data).toMatchObject({
+      assignedToId: 'sara',
+      assignedAt: NOW,
+      lockedById: null,
+      lockedAt: null,
+      lockExpiresAt: null,
+    });
+  });
+
+  it('NEGATIVE: the take of an UNHELD order is exactly the pull’s write — no name, no lock, nobody’s twins let go', async () => {
+    const o = releasedRetry({ lockedById: 'hind', lockedAt: AGO(3), lockExpiresAt: AGO(2) });
+    const heldForHind = order({ confirmationStatus: 'NEW', assignedToId: 'hind', assignedAt: AGO(1) });
+    expect(await take(o.id)).toMatchObject({ ok: true });
+    const main = world.writes.filter((w) => w.data.claimedById === 'sara');
+    expect(main).toHaveLength(1);
+    expect(Object.keys(main[0].data).sort()).toEqual(['claimedAt', 'claimedById', 'confirmationStatus', 'currentOwnerId', 'status', 'version']);
+    expect(o.lockedById, 'a lock left on an unheld order is as the pull leaves it').toBe('hind');
+    expect(heldForHind.assignedToId, 'her colleague’s hold stands: it is not the taker’s to take').toBe('hind');
+    expect(world.writes.some((w) => w.data.assignedToId === null)).toBe(false);
+  });
+});
+
+describe('ONE TRANSACTION — every write of a take goes through the transaction’s own client', () => {
+  it('the fake can tell the two clients apart, so the assertions below mean something', async () => {
+    await (db as unknown as { $transaction: (fn: (c: Row) => Promise<void>) => Promise<void> }).$transaction(async (inside) => {
+      await inside.notification.create({ data: {} });
+      await (db as unknown as Row).notification.create({ data: {} });
+    });
+    expect(world.ops.map((w) => [w.via, w.duringTx])).toEqual([['tx', true], ['root', true]]);
+    expect(() => nothingLeftTheTransaction()).toThrow();
+  });
+
+  it('from a colleague: the guarded claim, her release, her claim, the note, the notice and his twins — none on the shared client', async () => {
+    const o = pulledByColleague({ assignedToId: 'hind', assignedAt: AGO(2) });
+    order({ confirmationStatus: 'NEW', assignedToId: 'hind', assignedAt: AGO(1.5) });
+    order({ confirmationStatus: 'NEW' });
+    expect(await take(o.id)).toMatchObject({ ok: true });
+    nothingLeftTheTransaction();
+    expect(wroteInTransaction()).toEqual({
+      'order.updateMany': 4, // the guarded claim · the colleague's held twin let go · two twins held for the taker
+      'orderClaimHistory.create': 2, // the colleague's RELEASED line · the taker's CLAIMED line
+      'orderStatusLog.create': 1,
+      'notification.create': 1,
+      'orderActivity.create': 2, // one line on each twin that followed
+    });
+    // ...and the customer's lock was taken inside it too (the shared client takes none).
+    expect(world.locks).toEqual([pullLockKey('cust1')]);
+  });
+
+  it('from the pool: the claim, its line, the note and his twin — none on the shared client', async () => {
+    const o = releasedRetry();
+    order({ confirmationStatus: 'NEW' });
+    expect(await take(o.id)).toMatchObject({ ok: true });
+    nothingLeftTheTransaction();
+    expect(wroteInTransaction()).toEqual({
+      'order.updateMany': 2,
+      'orderClaimHistory.create': 1,
+      'orderStatusLog.create': 1,
+      'orderActivity.create': 1,
+    });
+  });
+
+  it('a take that is REFUSED writes nothing, on either client', async () => {
+    const o = pulledByColleague();
+    touch(o, 'OPENED', AGO(0.5));
+    expect(await take(o.id)).toMatchObject({ ok: false });
+    expect(world.ops).toEqual([]);
   });
 });
 
@@ -959,7 +1169,7 @@ describe('the search finds an unanswered order a colleague holds, and names her 
     expect(ids).toContain(typedByHer.id);
     const card = (await cardsFor()).find((c) => c.id === typedByHer.id)!;
     expect(card).toMatchObject({ takeable: false, holder: 'هند', fromColleague: null, code: 'HELD_BY_COLLEAGUE' });
-    expect(card.message).toContain('ولسا ما بدأت عليه');
+    expect(card.message).toContain('ولسا ما سجّلت عليه شي');
   });
 
   it('NEGATIVE: another store’s or another company’s order, and another customer’s — never, whoever holds them', async () => {
