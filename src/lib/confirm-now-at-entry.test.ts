@@ -45,7 +45,7 @@ describe('who keeps what she types', () => {
     expect(entryOwnership({ userId: 'u', holds: LIVE_AGENT, heldTotal: 0, now }).claimedById).toBeNull();
   });
 
-  it('NEGATIVE: the cap still binds — 299 hers, 300 the pool', () => {
+  it('NEGATIVE: the cap still binds — one under it hers, the cap the pool', () => {
     expect(own(LIVE_AGENT, true, CLAIM_CAPS.total - 1).claimedById).toBe('u');
     expect(own(LIVE_AGENT, true, CLAIM_CAPS.total)).toEqual({ claimedById: null, claimedAt: null, currentOwnerId: null, capFull: true });
   });
@@ -90,7 +90,7 @@ describe('will the confirmation door say yes', () => {
     expect(ask({ wanted: false })).toEqual({ ready: false, code: 'MAY_NOT_CONFIRM', reason: MAY_NOT_CONFIRM_NOW_MESSAGE });
   });
   it('NEGATIVE: the cap sent it to the pool', () => {
-    expect(ask({ entry: own(LIVE_AGENT, true, 300) })).toEqual({ ready: false, code: 'CAP_FULL', reason: ENTRY_CAP_FULL_MESSAGE });
+    expect(ask({ entry: own(LIVE_AGENT, true, CLAIM_CAPS.total) })).toEqual({ ready: false, code: 'CAP_FULL', reason: ENTRY_CAP_FULL_MESSAGE });
   });
   it('NEGATIVE: no governorate', () => {
     expect(ask({ regionId: null })).toEqual({ ready: false, code: 'REGION_REQUIRED', reason: REGION_REQUIRED_MESSAGE });

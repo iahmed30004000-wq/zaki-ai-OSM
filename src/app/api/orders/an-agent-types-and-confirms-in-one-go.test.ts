@@ -12,7 +12,7 @@ import type { SessionUser } from '@/types/auth';
  * Measured before the change (phase 1, the same engine): the live agent — the 22 keys read on the live site on 1/11, with
  * `confirmation.supervise` — had her entry sent to the pool and was refused `NOT_HELD`, even with a call logged; an agent without
  * supervise held it and was refused `CONTACT_FIRST`. The change: with the box ticked, a bound agent keeps what she typed (under the
- * 300 cap) and the call she is on is recorded in the same transaction. Neither refusal of the confirmation door is loosened.
+ * cap, `CLAIM_CAPS.total`) and the call she is on is recorded in the same transaction. Neither refusal of the confirmation door is loosened.
  *
  * ⚠️ ORDER CREATION CHANGED — at the owner's explicit request. What must NOT change is checked here too: the money and stock
  * columns are identical with and without the box, and the creation door announces nothing (`order.created` stays the storefront's).
@@ -88,7 +88,7 @@ vi.mock('@/lib/order-ref', () => ({ orderRefFields: async () => ({ orderNumber: 
 
 import { attachGrants } from '@/lib/authorization';
 import { computeEffectiveGrants } from '@/lib/permissions-core';
-import { CONFIRM_NOW_NOTE, ENTRY_CAP_FULL_MESSAGE, MANUAL_ENTRY_REASON, NOT_HELD_MESSAGE, REGION_REQUIRED_MESSAGE } from '@/lib/confirmation-queue';
+import { CLAIM_CAPS, CONFIRM_NOW_NOTE, ENTRY_CAP_FULL_MESSAGE, MANUAL_ENTRY_REASON, NOT_HELD_MESSAGE, REGION_REQUIRED_MESSAGE } from '@/lib/confirmation-queue';
 import { POST as CREATE } from './route';
 import { POST as CONFIRM } from './[id]/confirmation/route';
 
@@ -351,15 +351,15 @@ describe('who the box is honoured for', () => {
   });
 });
 
-describe('the 300 cap still binds', () => {
+describe('the cap still binds', () => {
   /** Her desk: `inHands` claimed by her, `held` held for her and not yet pulled (RV706: both count) — answered by what is asked. */
   const desk = (inHands: number, held = 0) =>
     (db.order.count as unknown as { mockImplementation(f: (q: { where?: Record<string, unknown> }) => Promise<number>): void }).mockImplementation(
       async ({ where }) => (where?.assignedToId ? held : inHands)
     );
 
-  it('NEGATIVE: holding 300 — the order goes to the pool, NO call is written (whoever pulls it still rings), «ما اتأكد — وصلت للحد»', async () => {
-    desk(300);
+  it('NEGATIVE: holding the cap — the order goes to the pool, NO call is written (whoever pulls it still rings), «ما اتأكد — وصلت للحد»', async () => {
+    desk(CLAIM_CAPS.total);
     const abeer = await person('abeer', 'CONFIRMATION_AGENT', AGENT_TICKED);
     const r = await create(abeer, body({ confirmNow: true }));
     expect(r.status).toBe(200);
@@ -369,16 +369,16 @@ describe('the 300 cap still binds', () => {
     expect(r.json.confirmNow).toEqual({ ready: false, code: 'CAP_FULL', reason: ENTRY_CAP_FULL_MESSAGE });
   });
 
-  it('holding 299 — still hers', async () => {
-    desk(299);
+  it('holding the cap less one — still hers', async () => {
+    desk(CLAIM_CAPS.total - 1);
     const abeer = await person('abeer', 'CONFIRMATION_AGENT', AGENT_TICKED);
     const r = await create(abeer, body({ confirmNow: true }));
     expect(r.row?.claimedById).toBe('abeer');
     expect(attemptWrites).toHaveLength(1);
   });
 
-  it('RV706: 299 in her hands + 1 held for her = 300 — «أكّده الآن» sends it to the pool, as at 300 in her hands', async () => {
-    desk(299, 1);
+  it('RV706: the cap less 1 in her hands + 1 held for her = the cap — «أكّده الآن» sends it to the pool, as at the cap in her hands', async () => {
+    desk(CLAIM_CAPS.total - 1, 1);
     const abeer = await person('abeer', 'CONFIRMATION_AGENT', AGENT_TICKED);
     const r = await create(abeer, body({ confirmNow: true }));
     expect(r.row?.claimedById).toBeNull();
@@ -386,8 +386,8 @@ describe('the 300 cap still binds', () => {
     expect(r.json.confirmNow).toEqual({ ready: false, code: 'CAP_FULL', reason: ENTRY_CAP_FULL_MESSAGE });
   });
 
-  it('RV706 NEGATIVE: 298 in her hands + 1 held = 299 — still hers', async () => {
-    desk(298, 1);
+  it('RV706 NEGATIVE: the cap less 2 in her hands + 1 held = the cap less 1 — still hers', async () => {
+    desk(CLAIM_CAPS.total - 2, 1);
     const abeer = await person('abeer', 'CONFIRMATION_AGENT', AGENT_TICKED);
     const r = await create(abeer, body({ confirmNow: true }));
     expect(r.row?.claimedById).toBe('abeer');
