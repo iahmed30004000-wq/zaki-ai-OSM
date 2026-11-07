@@ -7,6 +7,7 @@ import {
   noteCustomerAccess,
   type AccessWindow,
 } from './pii-access';
+import { CLAIM_CAPS } from './confirmation-queue';
 
 /**
  * READING EVERY CUSTOMER USED TO LEAVE NO TRACE AT ALL.
@@ -84,11 +85,44 @@ describe('the moment it stops looking like work', () => {
 });
 
 describe('the numbers it ships with', () => {
-  it('are five full pages of the largest list the API returns', () => {
-    // The list endpoint takes 100. Five loads in a quarter of an hour is
-    // not a person making calls.
-    expect(BULK_VIEW_RECORDS).toBe(500);
+  it('are seven hundred customers in a quarter of an hour — more than a full desk', () => {
+    expect(BULK_VIEW_RECORDS).toBe(700);
     expect(BULK_VIEW_WINDOW_MS).toBe(15 * 60 * 1000);
+  });
+
+  /*
+   * A FULL DESK MUST NEVER BE THE CROSSING (review of PR #217).
+   *
+   * One load of «طلباتي» hands out everything she may hold (the cap) + the fifty closed today + the twenty-five confirmed on the
+   * page, one customer each. With the cap at 500 and the alarm at 500 the busiest ordinary request there is crossed the line by
+   * itself — an audit row and an alert to every `users.edit` holder each quarter hour for an agent doing her job. The two numbers
+   * are tied here so that raising the cap again fails THIS test and not the alarm's audience.
+   */
+  it('is above everything one load of the desk hands out: the cap + 50 closed today + 25 confirmed', () => {
+    expect(BULK_VIEW_RECORDS).toBeGreaterThan(CLAIM_CAPS.total + 50 + 25);
+  });
+
+  it('and the desk’s two other pages are the 50 and the 25 that sum counts — read from the route, so growing one fails here', () => {
+    const route = readFileSync(join(process.cwd(), 'src', 'app', 'api', 'confirmation', 'mine', 'route.ts'), 'utf8');
+    const confirmedPage = Number(/const CONFIRMED_PAGE_SIZE = (\d+);/.exec(route)?.[1]);
+    const closedToday = Number(/where: closedScope,[\s\S]*?take: (\d+),/.exec(route)?.[1]);
+    expect(confirmedPage, 'ما لقيت حجم صفحة المؤكَّدة بالباب').toBeGreaterThan(0);
+    expect(closedToday, 'ما لقيت عدد المسكَّرة اليوم بالباب').toBeGreaterThan(0);
+    expect(BULK_VIEW_RECORDS).toBeGreaterThan(CLAIM_CAPS.total + closedToday + confirmedPage);
+    // The same sum, as the desk really adds it: 500 + 50 + 25.
+    expect(CLAIM_CAPS.total + closedToday + confirmedPage).toBe(575);
+  });
+
+  it('a full desk handed out in ONE request does not cross the alarm — through the real counter', () => {
+    const fullDesk = Array.from({ length: CLAIM_CAPS.total + 50 + 25 }, (_, i) => `customer-${i}`);
+    const out = noteCustomerAccess('pii:agent', 0, { store, now: NOW, ids: fullDesk });
+    expect(out.records).toBe(575);
+    expect(out.crossed, 'الشاشة الكاملة صارت هي التجاوز').toBe(false);
+  });
+
+  it('and reading the customer table is still what crosses it: 700 different people', () => {
+    const harvest = Array.from({ length: BULK_VIEW_RECORDS }, (_, i) => `customer-${i}`);
+    expect(noteCustomerAccess('pii:other', 0, { store, now: NOW, ids: harvest }).crossed).toBe(true);
   });
 });
 
