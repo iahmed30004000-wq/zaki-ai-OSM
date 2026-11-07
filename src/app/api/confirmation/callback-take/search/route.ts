@@ -9,8 +9,9 @@ import { CALLBACK_MESSAGES, CALLBACK_SEARCHES_PER_WINDOW, CALLBACK_SEARCH_WINDOW
 
 /**
  * POST /api/confirmation/callback-take/search { phone } — «الزبون على الخط»: the orders of that number in her store, inside her
- * `orders.view` envelope or a released retry she could take (`customer-on-the-line.ts`) — at most ten, no name, phone or address on
- * them — each with whether she may take it and, if not, why. The same three keys as the take (`../route.ts`); counted per person.
+ * `orders.view` envelope or unanswered and still at the desk, whoever holds them (`customer-on-the-line.ts`) — at most ten, no name,
+ * phone or address on them — each with whether she may take it and, if not, why. The same three keys as the take (`../route.ts`);
+ * counted per person.
  *
  * POST and not GET: the number travels in the body, so it never sits in an address, a server log or a browser history.
  */

@@ -9,7 +9,7 @@ import { TWIN_ACTION } from './recent-twin-order';
 import { TWIN_CONFIRM_ACK_ACTION } from './confirmed-twin';
 import { TWIN_HELD_ACTION } from './twins-follow-the-pull';
 import { DUE_RELEASE_REASON, REPULL_RELEASE_REASON, ROUND_RELEASE_REASON } from './no-answer-rounds';
-import { CUSTOMER_CALLED_BACK_REASON } from './customer-on-the-line';
+import { CUSTOMER_CALLED_BACK_REASON, TAKEN_ON_THE_LINE_REASON } from './customer-on-the-line';
 import { NINETY_MINUTE_RELEASE_REASON, SYSTEM_ACTOR_AR, isAutomaticRelease } from './auto-release';
 import { POST_ORDER_ADDITION_AR } from './post-order-offer-copy';
 import { COURIER_SAID, courierSaidTitle } from './couriers/courier-said';
@@ -107,6 +107,8 @@ const CLAIM_REASON_AR: Record<string, string> = {
   PULL_NEXT: 'سحب من الطابور',
   // «الزبون على الخط» (customer-on-the-line.ts): the customer rang back and the agent who picked up took his order.
   [CUSTOMER_CALLED_BACK_REASON]: 'الزبون اتصل — أخدته على الخط',
+  // ...and the release it caused for the colleague who held it: nobody pressed it for her (`onTheLineWords` below names who did).
+  [TAKEN_ON_THE_LINE_REASON]: 'اتسحب منها على الخط — الزبون اتصل وما كانت سجّلت عليه شي',
   MANUAL_CLAIM: 'استلام يدوي',
   ADMIN_OVERRIDE: 'تجاوز إداري',
   AUTO_RELEASE: 'تحرير تلقائي',
@@ -268,6 +270,44 @@ function readableMetadata(metadata: unknown): string | null {
   return parts.length ? parts.join(' · ') : null;
 }
 
+/**
+ * «الزبون على الخط» — A TAKE FROM A COLLEAGUE WRITES TWO LINES (customer-on-the-line.ts), AND EACH NAMES THE OTHER PERSON.
+ *
+ *   · the CLAIMED line of the one who took it carries `fromUserId` in its metadata: «الزبون اتصل — أخدته على الخط من <name>»;
+ *   · the RELEASED line of the one it was taken from keeps her in `userId` (the column cannot be empty) and `takenBy` in its
+ *     metadata. The actor of THAT line is the one who pressed, not the one who lost the order, so it never reads as though she
+ *     had let it go: «تحرير الطلب — <taker>: اتسحب من <name> على الخط…».
+ *
+ * The words say what the system KNOWS — nothing was logged on the order since she pulled it («ما سجّلت عليه شي») — and never that she
+ * did not call: a call nobody logged would make that a permanent lie on the order's history (review of #216).
+ *
+ * Read from the metadata TEXT, inside a try: a row that is not JSON keeps its static label and breaks nothing.
+ */
+function onTheLinePeople(row: { reason?: string | null; metadata?: string | null }): { fromUserId?: string; takenBy?: string } {
+  if (row.reason !== CUSTOMER_CALLED_BACK_REASON && row.reason !== TAKEN_ON_THE_LINE_REASON) return {};
+  try {
+    const m = JSON.parse(row.metadata ?? 'null') as { fromUserId?: unknown; takenBy?: unknown } | null;
+    return {
+      ...(m && typeof m.fromUserId === 'string' ? { fromUserId: m.fromUserId } : {}),
+      ...(m && typeof m.takenBy === 'string' ? { takenBy: m.takenBy } : {}),
+    };
+  } catch {
+    return {};
+  }
+}
+
+/** A claim-history row in the words of «الزبون على الخط»: the other person named, the taker as the actor of the release she caused. */
+function onTheLineWords<T extends { userId: string; reason: string | null; metadata: string | null }>(row: T, nameOf: Map<string, string>): T {
+  const { fromUserId, takenBy } = onTheLinePeople(row);
+  if (row.reason === CUSTOMER_CALLED_BACK_REASON && fromUserId && nameOf.has(fromUserId)) {
+    return { ...row, reason: `الزبون اتصل — أخدته على الخط من ${nameOf.get(fromUserId)}` };
+  }
+  if (row.reason === TAKEN_ON_THE_LINE_REASON && takenBy && nameOf.has(takenBy) && nameOf.has(row.userId)) {
+    return { ...row, userId: takenBy, reason: `اتسحب من ${nameOf.get(row.userId)} على الخط — الزبون اتصل وما كانت سجّلت عليه شي` };
+  }
+  return row;
+}
+
 export async function orderTimeline(tx: Tx, orderId: string): Promise<TimelineEvent[]> {
   const [statusLogs, claims, contacts, callLogs, deliveries, notes, activities, changeRequests, issues] = await Promise.all([
     tx.orderStatusLog.findMany({ where: { orderId }, orderBy: { createdAt: 'asc' } }),
@@ -284,6 +324,8 @@ export async function orderTimeline(tx: Tx, orderId: string): Promise<TimelineEv
   const actorIds = new Set<string>();
   for (const row of statusLogs) actorIds.add(row.changedById);
   for (const row of claims) actorIds.add(row.userId);
+  // «الزبون على الخط»: the colleague an order was taken from, and the one who took it, are named in the two lines of a take.
+  for (const row of claims) for (const id of Object.values(onTheLinePeople(row))) actorIds.add(id);
   for (const row of contacts) actorIds.add(row.employeeId);
   for (const row of callLogs) if (row.moderatorId) actorIds.add(row.moderatorId);
   for (const row of notes) if (row.authorId) actorIds.add(row.authorId);
@@ -295,6 +337,7 @@ export async function orderTimeline(tx: Tx, orderId: string): Promise<TimelineEv
     ? await tx.user.findMany({ where: { id: { in: [...actorIds] } }, select: { id: true, name: true } })
     : [];
   const nameOf = new Map(users.map((u) => [u.id, u.name]));
+  const claimRows = claims.map((row) => onTheLineWords(row, nameOf));
 
   const CLAIM_LABEL: Record<string, string> = {
     CLAIMED: 'استلام الطلب',
@@ -320,7 +363,7 @@ export async function orderTimeline(tx: Tx, orderId: string): Promise<TimelineEv
       actorId: row.changedById,
       actorName: nameOf.get(row.changedById) ?? null,
     })),
-    ...claims.map((row) => {
+    ...claimRows.map((row) => {
       /*
        * A RELEASE NOBODY PRESSED IS THE SYSTEM'S (the owner's ruling 4/11). Its `userId` is the agent who held the order — the
        * column cannot be empty — and drawn as the actor it read as though she had let it go. `auto-release.ts`.

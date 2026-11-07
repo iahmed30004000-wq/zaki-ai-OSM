@@ -12,7 +12,13 @@ import { OrderRef } from '@/components/orders/OrderRef';
  * Closed until she opens it: one button beside the pull, so the desk is as it was. Open, it is one box for the number and the
  * orders it found — the order number, the product, the governorate, the status and who holds it, nothing of the customer's. The
  * button «خده — الزبون على الخط» is drawn only where the server said she may take it; everywhere else the server's own sentence
- * says why (a colleague holds it, it was never rung, it is past the desk). The door asks everything again when she presses.
+ * says why (a colleague holds it and has started on it, it was never rung, it is past the desk). The door asks everything again
+ * when she presses.
+ *
+ * A card she may take FROM A COLLEAGUE (who pulled it and has logged nothing on it, 7/11) says so above the button — «عند <name> ولسا
+ * ما سجّلت عليه شي — بتنسحب منها» — so the take is never a surprise to the one pressing it; the colleague is told too, by the server.
+ * The words say what the system knows (nothing is logged), never that she did not call. A refused card keeps the holder's name in
+ * its row and the server's sentence under it.
  */
 
 export interface OnTheLineCard {
@@ -23,6 +29,8 @@ export interface OnTheLineCard {
   status: string;
   holder: string;
   takeable: boolean;
+  /** The colleague she would take it from — set only on a takeable card that a colleague holds. */
+  fromColleague?: string | null;
   code: string | null;
   message: string | null;
 }
@@ -108,7 +116,8 @@ export function CustomerOnTheLine({ onTaken }: { onTaken: (orderId: string) => v
         </button>
       </form>
       <p className="mt-3 text-xs text-[var(--sys-muted)]">
-        بتاخدي على الخط طلب رجع للطابور بعد «لا يرد» بس. الطلب الجديد اللي ما حدا اتصل فيه بيوصل بالسحب، واللي مع زميلتك بيضل معها.
+        بتاخدي على الخط طلب رجع للطابور بعد «لا يرد»، أو طلب سحبته زميلتك وما سجّلت عليه شي. الطلب الجديد اللي ما حدا اتصل فيه بيوصل
+        بالسحب، واللي زميلتك سجّلت عليه شي بيضل معها.
       </p>
       {said && (
         <p className="mt-3 text-sm rounded-lg p-3 text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)]">{said}</p>
@@ -117,6 +126,9 @@ export function CustomerOnTheLine({ onTaken }: { onTaken: (orderId: string) => v
         <ul className="mt-3 space-y-2">
           {found.map((card) => (
             <li key={card.id} className="p-3 rounded-lg bg-[var(--sys-surface)] border border-[var(--sys-border)]">
+              {card.takeable && card.fromColleague && (
+                <p className="mb-1 text-xs text-[var(--sys-warning)]">عند {card.fromColleague} ولسا ما سجّلت عليه شي — بتنسحب منها</p>
+              )}
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <OrderRef id={card.id} number={card.orderNumber} className="font-semibold text-[var(--sys-heading)] tabular-nums" />
                 {card.product && <span className="text-[var(--sys-foreground)]">{card.product}</span>}

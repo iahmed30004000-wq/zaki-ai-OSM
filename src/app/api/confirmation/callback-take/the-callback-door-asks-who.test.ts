@@ -123,6 +123,45 @@ describe('what it says', () => {
     expect((await press(42)).status).toBe(404);
     expect(take).not.toHaveBeenCalled();
   });
+
+  /*
+   * 7/11 — taking an order from a colleague adds no code and no status to the door: every refusal the rule can give still
+   * travels as 409 (404 for «not found») with its code and its own sentence, and a take is 201.
+   */
+  it.each([
+    ['NOT_FOUND', 404],
+    ['HELD_BY_COLLEAGUE', 409],
+    ['TAKEN_MEANWHILE', 409],
+    ['CAP_TOTAL', 409],
+    ['NEVER_CALLED', 409],
+    ['REACHED_SINCE_RELEASE', 409],
+  ])('a refusal %s answers %i, with its code and the rule’s own sentence', async (code, status) => {
+    await as(AGENT);
+    take.mockResolvedValue({ ok: false, code, message: `جملة ${code}` });
+    const res = await press();
+    expect(res.status).toBe(status);
+    expect(await res.json()).toMatchObject({ code, error: `جملة ${code}`, errorAr: `جملة ${code}` });
+  });
+
+  it('a take — from the pool or from a colleague — is a 201 with the order it gave her', async () => {
+    await as(AGENT);
+    take.mockResolvedValue({ ok: true, orderId: 'o9', orderNumber: 'ORD-9' });
+    const res = await press('o9');
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual({ ok: true, orderId: 'o9', orderNumber: 'ORD-9' });
+  });
+
+  it('the search hands the cards back as the rule made them — the colleague named, and nothing added by the door', async () => {
+    await as(AGENT);
+    const cards = [
+      { id: 'o1', orderNumber: 'ORD-1', product: 'ساعة', governorate: 'دمشق', status: 'قيد التأكيد', holder: 'هند', takeable: true, fromColleague: 'هند', code: null, message: null },
+      { id: 'o2', orderNumber: 'ORD-2', product: null, governorate: null, status: 'قيد التأكيد', holder: 'هند', takeable: false, fromColleague: null, code: 'HELD_BY_COLLEAGUE', message: 'الطلب مع هند وهي بدأت عليه' },
+    ];
+    search.mockResolvedValue(cards);
+    const res = await find();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ orders: cards });
+  });
 });
 
 describe('the claim-by-number door is as it was', () => {

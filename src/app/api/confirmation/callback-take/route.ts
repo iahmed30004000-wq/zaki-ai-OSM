@@ -11,7 +11,8 @@ import { CALLBACK_MESSAGES, takeOnTheLine } from '@/lib/customer-on-the-line';
  *
  *   POST /search { phone }   the orders of that number (`search/route.ts`) — in the BODY, never the address: a customer's number
  *                            does not belong in a URL, a server log or a browser history.
- *   POST { orderId }         take one, if it is a released retry (see the rule). The pull's write, reason `CUSTOMER_CALLED_BACK`.
+ *   POST { orderId }         take one, if it is a released retry or a colleague's pull she has not started on (see the rule). The
+ *                            pull's write, reason `CUSTOMER_CALLED_BACK`; from a colleague it also tells her (`customer-on-the-line.ts`).
  *
  * Both ask the three keys an agent works with: `confirmation.pull` (she is somebody the queue gives orders to),
  * `confirmation.work` (she works what she holds) and `orders.view` (the search reads orders, inside her envelope).

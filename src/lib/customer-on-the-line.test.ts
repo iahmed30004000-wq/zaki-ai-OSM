@@ -9,13 +9,28 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  *
  *   · a released retry (≥1 no-answer, nobody reached since the release) is taken: the pull's fields, IN_PROGRESS, history
  *     `CUSTOMER_CALLED_BACK`, and his other waiting orders held for her;
- *   · never rung → NEVER_CALLED; a colleague holds it → HELD_BY_COLLEAGUE with her name; shipped → CLOSED; another store or
- *     outside her envelope → NOT_FOUND; held for a colleague → RESERVED_FOR_COLLEAGUE; at the cap → CAP_TOTAL;
+ *   · never rung → NEVER_CALLED; a colleague holds it and HAS STARTED → HELD_BY_COLLEAGUE with her name; shipped → CLOSED; another
+ *     store or outside her envelope and not unanswered → NOT_FOUND; held for a colleague → RESERVED_FOR_COLLEAGUE; at the cap →
+ *     CAP_TOTAL;
  *   · two agents at once: one wins, the other is told who has it — with the customer lock, and with the write's own guard when
  *     the lock serialises nothing (the control);
  *   · the search: exact number only, ten at most, her store and her envelope, no customer field on a card.
  *
- * WHAT THIS CANNOT PROVE: that Postgres's advisory lock behaves as the mutex here does (the pull's own test says the same).
+ * AND (the owner, 7/11 — «حلّ الثغرتين») THE ORDER A COLLEAGUE PULLED AND HAS NOT STARTED ON IS TAKEN FROM HER:
+ *
+ *   · the search finds an unanswered order at the desk whoever holds it, and the card names her; the write is NOT widened;
+ *   · the verdict table — hers · a colleague's untouched (takeable) · touched by OPENED / a message / a no-answer / an answer, an
+ *     attempt exactly AT `claimedAt` · no no-answer on the order · closed or shipped · claim time unknown · an unheld retry as it was;
+ *   · the one guarded write — the claim she READ (holder, `claimedAt`, nothing logged since): a colleague who re-pulled, an attempt
+ *     that landed between the read and the write, a third agent's claim and a shipment each leave the order where it was;
+ *   · what it writes: a RELEASED line for her, the CLAIMED line with `fromUserId`, the status note, ONE notice, his twins follow;
+ *   · the cap and the customer's lock bind on that path too, and the claim she takes from is the one she saw before she waited.
+ *
+ * Four assertions of the earlier rule were changed by that decision, each marked where it stands: a colleague's order is no longer
+ * "neither listed nor taken" when it is unanswered, and one she has not started on is no longer refused.
+ *
+ * WHAT THIS CANNOT PROVE: that Postgres's advisory lock behaves as the mutex here does (the pull's own test says the same), nor
+ * that a transaction in flight on another connection is invisible to the write's snapshot the way a hook between statements is.
  * ═══════════════════════════════════════════════════════════════════════
  */
 
@@ -31,6 +46,23 @@ const { world } = vi.hoisted(() => ({
     history: [] as Row[],
     statusLogs: [] as Row[],
     activities: [] as Row[],
+    notifications: [] as Row[],
+    /** Every `updateMany` the database was asked for, as asked — so a test can read the guard a write carried. */
+    writes: [] as { where: Row; data: Row }[],
+    /**
+     * Every WRITE and through which client: `tx` is the transaction's own client (what `db.$transaction(fn)` hands `fn`), `root` is
+     * the shared `db`. `duringTx` is true when a transaction was open at that moment — a write on `root` then has left the
+     * transaction it belonged in, and a take that does that is not one transaction any more.
+     */
+    ops: [] as { op: string; via: 'tx' | 'root'; duringTx: boolean }[],
+    /** Transactions open right now. */
+    openTx: 0,
+    /** The customer locks taken, by key. */
+    locks: [] as string[],
+    /** Runs once, inside a write, after the transaction's reads and before the database evaluates it: somebody else's commit in that gap. */
+    beforeWrite: null as null | (() => void),
+    /** Runs once, when a transaction is granted the customer's lock: what committed while it waited. */
+    onLock: null as null | (() => void),
     lockless: false,
   },
 }));
@@ -123,6 +155,7 @@ vi.mock('./db', () => {
   const hits = (where: Row) => world.orders.filter((o) => tri(view(o), where ?? {}) === true);
 
   function client(tx: TxState) {
+    const record = (op: string) => void world.ops.push({ op, via: tx ? 'tx' : 'root', duringTx: world.openTx > 0 });
     return {
       order: {
         findMany: async ({ where, orderBy, take, select }: Row) => {
@@ -140,7 +173,12 @@ vi.mock('./db', () => {
           return hits(where).length;
         },
         updateMany: async ({ where, data }: Row) => {
+          record('order.updateMany');
           await tick();
+          world.writes.push({ where, data });
+          const hook = world.beforeWrite;
+          world.beforeWrite = null;
+          hook?.();
           const rows = hits(where);
           for (const o of rows) {
             for (const [k, v] of Object.entries(data)) o[k] = v && typeof v === 'object' && 'increment' in (v as Row) ? (o[k] ?? 0) + (v as Row).increment : v;
@@ -148,17 +186,44 @@ vi.mock('./db', () => {
           return { count: rows.length };
         },
       },
-      orderClaimHistory: { create: async ({ data }: Row) => void world.history.push({ ...data, createdAt: data.createdAt ?? new Date() }) },
-      orderStatusLog: { create: async ({ data }: Row) => void world.statusLogs.push(data) },
-      orderActivity: { create: async ({ data }: Row) => void world.activities.push(data) },
+      orderClaimHistory: {
+        create: async ({ data }: Row) => {
+          record('orderClaimHistory.create');
+          world.history.push({ ...data, createdAt: data.createdAt ?? new Date() });
+        },
+      },
+      orderStatusLog: {
+        create: async ({ data }: Row) => {
+          record('orderStatusLog.create');
+          world.statusLogs.push(data);
+        },
+      },
+      orderActivity: {
+        create: async ({ data }: Row) => {
+          record('orderActivity.create');
+          world.activities.push(data);
+        },
+      },
+      notification: {
+        create: async ({ data }: Row) => {
+          record('notification.create');
+          world.notifications.push({ ...data, createdAt: new Date() });
+        },
+      },
       $executeRaw: async (_strings: TemplateStringsArray, key: string) => {
-        if (world.lockless || !tx) return 0;
-        const before = tails.get(key) ?? Promise.resolve();
-        let release!: () => void;
-        const mine = new Promise<void>((r) => (release = r));
-        tails.set(key, before.then(() => mine));
-        tx.releases.push(release);
-        await before;
+        if (!tx) return 0;
+        world.locks.push(key);
+        if (!world.lockless) {
+          const before = tails.get(key) ?? Promise.resolve();
+          let release!: () => void;
+          const mine = new Promise<void>((r) => (release = r));
+          tails.set(key, before.then(() => mine));
+          tx.releases.push(release);
+          await before;
+        }
+        const hook = world.onLock;
+        world.onLock = null;
+        hook?.();
         return 0;
       },
     };
@@ -169,9 +234,11 @@ vi.mock('./db', () => {
       ...root,
       $transaction: async (fn: (c: unknown) => Promise<unknown>) => {
         const state = { releases: [] as (() => void)[] };
+        world.openTx++;
         try {
           return await fn(client(state));
         } finally {
+          world.openTx--;
           state.releases.forEach((r) => r());
         }
       },
@@ -179,18 +246,28 @@ vi.mock('./db', () => {
   };
 });
 
-const { takeOnTheLine, searchOnTheLine, callbackVerdict, CUSTOMER_CALLED_BACK_REASON, CALLBACK_SEARCH_LIMIT } = await import(
-  './customer-on-the-line'
-);
+const {
+  takeOnTheLine,
+  searchOnTheLine,
+  callbackVerdict,
+  callbackTakeFromColleagueWhere,
+  callbackTakeWhere,
+  CUSTOMER_CALLED_BACK_REASON,
+  TAKEN_ON_THE_LINE_REASON,
+  CALLBACK_SEARCH_LIMIT,
+} = await import('./customer-on-the-line');
+const { CLAIM_CAPS, OPEN_CONFIRMATION } = await import('./confirmation-queue');
+const { NO_ANSWER_RESULTS } = await import('./confirmation-workflow');
+const { pullLockKey } = await import('./twins-follow-the-pull');
 const { db } = await import('./db');
 const rbac = await import('./rbac');
-const { CLAIM_CAPS } = await import('./confirmation-queue');
 
 const NOW = new Date('2026-11-04T09:00:00Z');
 const AGO = (h: number) => new Date(NOW.getTime() - h * 3_600_000);
 const SCOPE = { companyId: 'c1', storeId: 's1' };
 const SARA = { id: 'sara', role: 'CONFIRMATION_AGENT' };
 const HIND = { id: 'hind', role: 'CONFIRMATION_AGENT' };
+const NOOR = { id: 'noor', role: 'CONFIRMATION_AGENT' };
 
 let seq = 0;
 function order(over: Row = {}): Row {
@@ -234,6 +311,49 @@ function releasedRetry(over: Row = {}): Row {
   world.history.push({ orderId: o.id, action: 'RELEASED', userId: 'hind', createdAt: AGO(2) });
   return o;
 }
+/**
+ * THE OWNER'S CASE (7/11): Sara rang him, nobody answered, the order went back to the pool, HIND pulled it at `claimedAt` — and
+ * now the customer rings SARA. Hind has logged nothing on it unless a test says so.
+ */
+const CLAIMED_AT = AGO(1);
+function pulledByColleague(over: Row = {}): Row {
+  const o = order({ claimedById: 'hind', claimedAt: CLAIMED_AT, currentOwnerId: 'hind', confirmationStatus: 'IN_PROGRESS', status: 'IN_PROGRESS', ...over });
+  world.history.push({ orderId: o.id, action: 'CLAIMED', userId: 'sara', createdAt: AGO(6) });
+  world.attempts.push({ orderId: o.id, result: 'NO_ANSWER', createdAt: AGO(5) });
+  world.history.push({ orderId: o.id, action: 'RELEASED', userId: 'sara', createdAt: AGO(2) });
+  world.history.push({ orderId: o.id, action: 'CLAIMED', userId: 'hind', reason: 'PULL_NEXT', createdAt: CLAIMED_AT });
+  return o;
+}
+/** One more attempt on the order — by whoever, of whatever kind. */
+const touch = (o: Row, result: string, createdAt: Date) => void world.attempts.push({ orderId: o.id, result, createdAt });
+const claimLines = (o: Row) => world.history.filter((h) => h.orderId === o.id);
+/** The lines the story itself has written before any take: Sara pulled it, it went back, Hind pulled it. */
+const STORY_LINES = 3;
+/** What the take wrote on the TRANSACTION'S OWN client, by kind — the fake tells that client from the shared `db`. */
+const wroteInTransaction = () => {
+  const by: Record<string, number> = {};
+  for (const w of world.ops) if (w.via === 'tx') by[w.op] = (by[w.op] ?? 0) + 1;
+  return by;
+};
+/** ONE TRANSACTION: not one write on the shared client, and in particular none while a transaction was open. */
+const nothingLeftTheTransaction = () => {
+  expect(world.ops.length, 'the take wrote nothing at all').toBeGreaterThan(0);
+  expect(world.ops.filter((w) => w.via === 'root'), 'a write left the transaction').toEqual([]);
+};
+/** `orders.view` at ASSIGNED — the live agents' envelope — through the REAL `orderVisibilityWhere`. */
+const assignedEnvelope = (id: string) =>
+  rbac.orderVisibilityWhere({
+    id, email: `${id}@x.test`, name: id, role: 'CONFIRMATION_AGENT', status: 'ACTIVE', companyId: 'c1',
+    permissions: ['orders.view', 'confirmation.work', 'confirmation.pull'],
+    effectiveGrants: {
+      fullAccess: false,
+      grants: {
+        'orders.view': { scope: 'ASSIGNED', scopeIds: null },
+        'confirmation.work': { scope: 'ALL_COMPANY', scopeIds: null },
+        'confirmation.pull': { scope: 'ALL_COMPANY', scopeIds: null },
+      },
+    },
+  } as never) as Row;
 const take = (orderId: string, user = SARA, visibility: Row = {}) =>
   takeOnTheLine({ scope: SCOPE, user, orderId, visibility, now: NOW });
 
@@ -244,10 +364,18 @@ beforeEach(() => {
   world.history = [];
   world.statusLogs = [];
   world.activities = [];
+  world.notifications = [];
+  world.writes = [];
+  world.ops = [];
+  world.openTx = 0;
+  world.locks = [];
+  world.beforeWrite = null;
+  world.onLock = null;
   world.lockless = false;
   world.users = new Map([
     ['sara', { id: 'sara', name: 'سارة', status: 'ACTIVE' }],
     ['hind', { id: 'hind', name: 'هند', status: 'ACTIVE' }],
+    ['noor', { id: 'noor', name: 'نور', status: 'ACTIVE' }],
   ]);
   world.customers = new Map([
     ['cust1', { id: 'cust1', phone: '966793918', fullName: 'زبون', address: 'شارع' }],
@@ -268,6 +396,11 @@ describe('a released retry is taken — the pull’s write, and its history says
     expect(twin).toMatchObject({ assignedToId: 'sara', assignedAt: NOW, claimedById: null });
     // No call is invented for her: the attempts are what they were.
     expect(world.attempts).toHaveLength(1);
+    // The take of an UNHELD order is as it was (7/11): nobody to tell, nobody to name, no release written for a colleague.
+    expect(world.notifications).toHaveLength(0);
+    expect(world.history.some((h) => h.reason === TAKEN_ON_THE_LINE_REASON)).toBe(false);
+    expect(JSON.parse(claim!.metadata)).toEqual({ role: 'CONFIRMATION_AGENT' });
+    expect(world.statusLogs[0].note).toBe('الزبون اتصل — أخدته على الخط');
   });
 
   it('works for an order she gave back by hand (NEW again) as for one a round let go', async () => {
@@ -295,8 +428,11 @@ describe('what stays refused', () => {
     expect(await take(o.id)).toMatchObject({ ok: false, code: 'NEVER_CALLED' });
   });
 
-  it('a colleague’s — with her name, and nothing written', async () => {
+  it('a colleague’s that she HAS STARTED on — with her name, and nothing written (7/11: one she has not started on is taken, below)', async () => {
+    // Overturned by the owner on 7/11: this order used to be refused for a colleague's claim alone. It is refused now because she
+    // has logged something on it since she pulled it.
     const o = releasedRetry({ claimedById: 'hind', claimedAt: AGO(1), confirmationStatus: 'IN_PROGRESS' });
+    touch(o, 'OPENED', AGO(0.5));
     const got = await take(o.id);
     expect(got).toMatchObject({ ok: false, code: 'HELD_BY_COLLEAGUE', heldBy: 'هند' });
     expect(got.ok === false && got.message).toContain('هند');
@@ -319,9 +455,10 @@ describe('what stays refused', () => {
     expect(await take(elsewhere.id)).toMatchObject({ ok: false, code: 'NOT_FOUND' });
     const fresh = order({ confirmationStatus: 'NEW' });
     expect(await take(fresh.id, SARA, { id: '__no_access__' })).toMatchObject({ ok: false, code: 'NOT_FOUND' });
-    const hers = releasedRetry({ claimedById: 'hind', confirmationStatus: 'IN_PROGRESS' });
-    expect(await take(hers.id, SARA, { id: '__no_access__' })).toMatchObject({ ok: false, code: 'NOT_FOUND' });
-    expect([fresh.claimedById, hers.claimedById]).toEqual([null, 'hind']);
+    // 7/11: a colleague's order that carries a no-answer is readable now (below); one nobody ever rang is still not found.
+    const quiet = order({ claimedById: 'hind', claimedAt: AGO(1), confirmationStatus: 'IN_PROGRESS' });
+    expect(await take(quiet.id, SARA, { id: '__no_access__' })).toMatchObject({ ok: false, code: 'NOT_FOUND' });
+    expect([fresh.claimedById, quiet.claimedById]).toEqual([null, 'hind']);
   });
 
   it('held for a colleague (a hold that stands) — her name, no take', async () => {
@@ -393,7 +530,7 @@ describe('the search', () => {
   it('carries no name, phone or address — the keys of a card are these and no others', async () => {
     releasedRetry();
     const [card] = (await search('0966793918'))!;
-    expect(Object.keys(card).sort()).toEqual(['code', 'governorate', 'holder', 'id', 'message', 'orderNumber', 'product', 'status', 'takeable']);
+    expect(Object.keys(card).sort()).toEqual(['code', 'fromColleague', 'governorate', 'holder', 'id', 'message', 'orderNumber', 'product', 'status', 'takeable']);
     expect(JSON.stringify(card)).not.toMatch(/966793918|زبون|شارع/);
   });
 
@@ -444,9 +581,11 @@ describe('the live agent’s envelope (orders.view at ASSIGNED), through the REA
     expect(o.claimedById).toBe('sara');
   });
 
-  it('NEGATIVE: never-called is still refused, and a colleague’s is neither listed nor taken', async () => {
+  it('NEGATIVE: never-called is still refused, and a colleague’s order nobody ever rang is neither listed nor taken', async () => {
+    // 7/11: "a colleague's is neither listed nor taken" held while any colleague-held order was outside this envelope. One that
+    // carries a no-answer is listed now (below); this one has none, so it is exactly as before.
     const fresh = order({ confirmationStatus: 'NEW' });
-    const hers = releasedRetry({ claimedById: 'hind', claimedAt: AGO(1), confirmationStatus: 'IN_PROGRESS' });
+    const hers = order({ claimedById: 'hind', claimedAt: AGO(1), confirmationStatus: 'IN_PROGRESS' });
     const cards = (await searchOnTheLine(db as never, { scope: SCOPE, userId: 'sara', phone: '0966793918', countryCode: 'SY', visibility: envelope(), now: NOW }))!;
     expect(cards.map((c) => [c.id, c.code])).toEqual([[fresh.id, 'NEVER_CALLED']]);
     expect(await take(fresh.id, SARA, envelope())).toMatchObject({ ok: false, code: 'NEVER_CALLED' });
@@ -460,5 +599,613 @@ describe('the verdict, pure', () => {
   it('a reach BEFORE the last release does not stop it — only one after', () => {
     expect(callbackVerdict('sara', { ...base, attempts: [...base.attempts, { result: 'ANSWERED', createdAt: AGO(4) }], lastReleasedAt: AGO(2) }).ok).toBe(true);
     expect(callbackVerdict('sara', { ...base, attempts: [...base.attempts, { result: 'ANSWERED', createdAt: AGO(1) }], lastReleasedAt: AGO(2) }).ok).toBe(false);
+  });
+});
+
+/* ════════════════ 7/11 — A COLLEAGUE PULLED IT AND HAS DONE NOTHING ON IT ════════════════ */
+
+const STARTED = 'الطلب مع هند وهي بدأت عليه — حوّلي الزبون إلها أو للمشرفة';
+const PLAIN = 'الطلب مع هند — ما بتاخديه، حوّلي الزبون إلها أو للمشرفة';
+
+describe('the verdict for an order a colleague holds — pure (the owner, 7/11)', () => {
+  const base = {
+    claimedById: 'hind',
+    claimerName: 'هند',
+    claimedAt: CLAIMED_AT,
+    confirmationStatus: 'IN_PROGRESS',
+    shippingStatus: 'NOT_READY',
+    attempts: [{ result: 'NO_ANSWER', createdAt: AGO(5) }] as { result: string; createdAt: Date }[],
+  };
+  const verdict = (over: Row = {}) => callbackVerdict('sara', { ...base, ...over } as never);
+
+  it('hers is hers — said as hers', () => {
+    expect(verdict({ claimedById: 'sara' })).toMatchObject({ ok: false, code: 'ALREADY_YOURS' });
+  });
+
+  it('a colleague’s with nothing logged since she pulled it is takeable, and names her and her claim', () => {
+    expect(verdict()).toEqual({ ok: true, fromColleague: { id: 'hind', name: 'هند', claimedAt: CLAIMED_AT } });
+  });
+
+  it.each(['OPENED', 'MESSAGE_SENT', 'NO_ANSWER', 'BUSY', 'UNREACHABLE', 'ANSWERED', 'CALLBACK_REQUESTED', 'WRONG_NUMBER', 'CONFIRMED', 'OTHER'])(
+    'NEGATIVE: %s logged since she pulled it — she has started on it, and the sentence says so',
+    (result) => {
+      expect(verdict({ attempts: [...base.attempts, { result, createdAt: AGO(0.5) }] })).toEqual({ ok: false, code: 'HELD_BY_COLLEAGUE', message: STARTED });
+    }
+  );
+
+  it('an attempt exactly AT claimedAt counts as started; one a millisecond earlier does not', () => {
+    expect(verdict({ attempts: [...base.attempts, { result: 'OPENED', createdAt: CLAIMED_AT }] })).toEqual({ ok: false, code: 'HELD_BY_COLLEAGUE', message: STARTED });
+    expect(verdict({ attempts: [...base.attempts, { result: 'OPENED', createdAt: new Date(CLAIMED_AT.getTime() - 1) }] }).ok).toBe(true);
+  });
+
+  it('what happened BEFORE she pulled it does not make her start: the first agent’s no-answer is what makes it takeable', () => {
+    expect(verdict({ attempts: [{ result: 'NO_ANSWER', createdAt: AGO(5) }, { result: 'ANSWERED', createdAt: AGO(4) }] }).ok).toBe(true);
+  });
+
+  it('NEGATIVE: not one no-answer on the order — "not started", and why it still stays with her', () => {
+    const why = 'الطلب مع هند ولسا ما سجّلت عليه شي. هالطلب ما حدا اتصل فيه لسا — بيضل معها، مش على الخط';
+    expect(verdict({ attempts: [] })).toEqual({ ok: false, code: 'HELD_BY_COLLEAGUE', message: why });
+    // An answer before she pulled it is not a no-answer either.
+    expect(verdict({ attempts: [{ result: 'ANSWERED', createdAt: AGO(5) }] })).toEqual({ ok: false, code: 'HELD_BY_COLLEAGUE', message: why });
+  });
+
+  it.each<[string, Row, string]>([
+    ['decided', { confirmationStatus: 'CONFIRMED' }, 'خلص من التأكيد'],
+    ['cancelled', { confirmationStatus: 'CANCELLED' }, 'ملغى'],
+    ['shipped', { shippingStatus: 'READY_TO_SHIP' }, 'للشحن'],
+    ['in a batch', { shippingBatchId: 'b1' }, 'للشحن'],
+    ['with a tracking number', { trackingNumber: 'T-1' }, 'للشحن'],
+    ['with a printed label', { labelPrintedAt: AGO(1) }, 'للشحن'],
+  ])('NEGATIVE: %s — "not started", and what closed it', (_name, over, piece) => {
+    const got = verdict(over);
+    expect(got).toMatchObject({ ok: false, code: 'HELD_BY_COLLEAGUE' });
+    const message = (got as { message: string }).message;
+    expect(message).toContain('الطلب مع هند ولسا ما سجّلت عليه شي.');
+    expect(message).toContain(piece);
+  });
+
+  it('NEGATIVE: "started" is said before "closed" — what she did is the first fact', () => {
+    expect(verdict({ shippingStatus: 'READY_TO_SHIP', attempts: [...base.attempts, { result: 'OPENED', createdAt: AGO(0.5) }] })).toMatchObject({ message: STARTED });
+  });
+
+  it('NEGATIVE: nobody recorded when she pulled it — nobody can say she has done nothing since: the plain sentence, no take', () => {
+    expect(verdict({ claimedAt: null })).toEqual({ ok: false, code: 'HELD_BY_COLLEAGUE', message: PLAIN });
+    expect(verdict({ claimedAt: undefined })).toEqual({ ok: false, code: 'HELD_BY_COLLEAGUE', message: PLAIN });
+    expect(verdict({ claimedAt: 'not a date' })).toEqual({ ok: false, code: 'HELD_BY_COLLEAGUE', message: PLAIN });
+  });
+
+  it('her name is «موظفة تانية» when the account has none', () => {
+    expect(verdict({ claimerName: null, attempts: [...base.attempts, { result: 'OPENED', createdAt: AGO(0.5) }] })).toMatchObject({
+      message: 'الطلب مع موظفة تانية وهي بدأت عليه — حوّلي الزبون إلها أو للمشرفة',
+    });
+  });
+
+  it('an UNHELD retry is exactly as it was: takeable, naming nobody', () => {
+    expect(verdict({ claimedById: null, claimerName: null, claimedAt: null, confirmationStatus: 'NO_ANSWER' })).toEqual({ ok: true });
+  });
+});
+
+describe('a colleague pulled it and has done nothing on it — taken from her (the owner, 7/11)', () => {
+  it('she gets it: the pull’s fields, Hind’s RELEASED line, the CLAIMED line naming Hind, the note, ONE notice — and his twin follows her', async () => {
+    const o = pulledByColleague();
+    const twin = order({ confirmationStatus: 'NEW' });
+    expect(await take(o.id)).toEqual({ ok: true, orderId: o.id, orderNumber: o.orderNumber });
+    expect(o).toMatchObject({ claimedById: 'sara', currentOwnerId: 'sara', claimedAt: NOW, confirmationStatus: 'IN_PROGRESS', status: 'IN_PROGRESS', version: 2 });
+
+    // The two lines the take wrote, Hind’s side first — after the lines the story already had.
+    const lines = claimLines(o);
+    expect(lines).toHaveLength(STORY_LINES + 2);
+    expect(lines.slice(-2).map((l) => [l.action, l.userId, l.reason])).toEqual([
+      ['RELEASED', 'hind', TAKEN_ON_THE_LINE_REASON],
+      ['CLAIMED', 'sara', CUSTOMER_CALLED_BACK_REASON],
+    ]);
+    expect(lines[STORY_LINES]).toMatchObject({ companyId: 'c1', orderId: o.id });
+    expect(lines[STORY_LINES + 1]).toMatchObject({ companyId: 'c1', orderId: o.id });
+    // Nobody released it: the metadata says so, and says who took it.
+    expect(JSON.parse(lines[STORY_LINES].metadata)).toEqual({ automatic: false, takenBy: 'sara' });
+    expect(JSON.parse(lines[STORY_LINES + 1].metadata)).toEqual({ role: 'CONFIRMATION_AGENT', fromUserId: 'hind' });
+
+    expect(world.statusLogs).toEqual([
+      expect.objectContaining({
+        orderId: o.id,
+        previousValue: 'IN_PROGRESS',
+        newValue: 'IN_PROGRESS',
+        changedById: 'sara',
+        note: 'الزبون اتصل — أخدته على الخط من هند',
+      }),
+    ]);
+
+    // ONE notice, to the colleague, in the shape of the release notice (`auto-release.ts`).
+    expect(world.notifications).toEqual([
+      expect.objectContaining({
+        companyId: 'c1',
+        storeId: 's1',
+        userId: 'hind',
+        type: 'SYSTEM_ALERT',
+        link: '/confirmation/mine',
+        title: `انسحب ${o.orderNumber} منك`,
+        message: `الطلب ${o.orderNumber} انسحب منك: الزبون اتصل بزميلتك وما كنتِ سجّلتِ عليه شي`,
+      }),
+    ]);
+
+    // His other waiting order follows her, exactly as at the pull; and no call is invented for her.
+    expect(twin).toMatchObject({ assignedToId: 'sara', assignedAt: NOW, claimedById: null });
+    expect(world.attempts).toHaveLength(1);
+  });
+
+  it('the ONE write is guarded on the claim she read: that holder, that moment, still open, never shipped, nothing logged since', async () => {
+    const o = pulledByColleague();
+    await take(o.id);
+    const main = world.writes.filter((w) => w.data.claimedById === 'sara');
+    expect(main).toHaveLength(1);
+    expect(main[0].where).toMatchObject({
+      id: o.id,
+      companyId: 'c1',
+      storeId: 's1',
+      claimedById: 'hind',
+      claimedAt: CLAIMED_AT,
+      confirmationStatus: { in: OPEN_CONFIRMATION },
+      shippingStatus: 'NOT_READY',
+      shippingBatchId: null,
+      trackingNumber: null,
+      labelPrintedAt: null,
+      contactAttempts: { none: { createdAt: { gte: CLAIMED_AT } } },
+    });
+    // ...and the no-answer it was granted for is asked again, in the write.
+    expect(main[0].where.AND).toEqual([{ contactAttempts: { some: { result: { in: [...NO_ANSWER_RESULTS] } } } }]);
+    expect(main[0].data).toMatchObject({ claimedById: 'sara', claimedAt: NOW, currentOwnerId: 'sara', confirmationStatus: 'IN_PROGRESS', status: 'IN_PROGRESS', version: { increment: 1 } });
+  });
+
+  it('under the customer’s lock — the very key the pull takes', async () => {
+    const o = pulledByColleague();
+    await take(o.id);
+    expect(world.locks).toEqual([pullLockKey('cust1')]);
+  });
+
+  it('whatever open status the order stands in, only what she logged matters', async () => {
+    for (const status of OPEN_CONFIRMATION) {
+      const o = pulledByColleague({ confirmationStatus: status });
+      expect((await take(o.id)).ok, status).toBe(true);
+      expect(o, status).toMatchObject({ claimedById: 'sara', confirmationStatus: 'IN_PROGRESS' });
+    }
+  });
+
+  it('NEGATIVE: one she HAS started on — refused with her name and the "started" sentence; nothing written, nobody told', async () => {
+    for (const result of ['OPENED', 'MESSAGE_SENT', 'NO_ANSWER', 'ANSWERED']) {
+      const o = pulledByColleague();
+      touch(o, result, AGO(0.5));
+      expect(await take(o.id), result).toMatchObject({ ok: false, code: 'HELD_BY_COLLEAGUE', heldBy: 'هند', message: STARTED });
+      expect(o.claimedById, result).toBe('hind');
+      expect(o.version).toBe(1);
+    }
+    expect(world.statusLogs).toHaveLength(0);
+    expect(world.notifications).toHaveLength(0);
+  });
+
+  it('NEGATIVE: a brand-new order a colleague pulled (not one no-answer on it) stays with her — the pull’s rule, not the phone’s', async () => {
+    const o = order({ claimedById: 'hind', claimedAt: CLAIMED_AT, confirmationStatus: 'IN_PROGRESS' });
+    expect(await take(o.id)).toMatchObject({ ok: false, code: 'HELD_BY_COLLEAGUE', heldBy: 'هند' });
+    expect(o.claimedById).toBe('hind');
+    expect(world.notifications).toHaveLength(0);
+  });
+
+  it('NEGATIVE: one that has left the desk — shipped or decided — is not taken from her', async () => {
+    for (const over of [{ shippingStatus: 'READY_TO_SHIP' }, { confirmationStatus: 'CONFIRMED' }, { trackingNumber: 'T-9' }]) {
+      const o = pulledByColleague(over);
+      expect(await take(o.id), JSON.stringify(over)).toMatchObject({ ok: false, code: 'HELD_BY_COLLEAGUE' });
+      expect(o.claimedById).toBe('hind');
+    }
+    expect(world.notifications).toHaveLength(0);
+  });
+
+  it('NEGATIVE: at the cap — the cap’s sentence, and nothing is taken from her', async () => {
+    for (let i = 0; i < CLAIM_CAPS.total; i++) order({ customerId: null, claimedById: 'sara', confirmationStatus: 'IN_PROGRESS' });
+    const o = pulledByColleague();
+    expect(await take(o.id)).toMatchObject({ ok: false, code: 'CAP_TOTAL' });
+    expect(o.claimedById).toBe('hind');
+    expect(world.notifications).toHaveLength(0);
+    expect(claimLines(o)).toHaveLength(STORY_LINES);
+  });
+
+  it('NEGATIVE: another store’s — not found, and not taken', async () => {
+    const o = pulledByColleague({ storeId: 's2' });
+    expect(await take(o.id)).toMatchObject({ ok: false, code: 'NOT_FOUND' });
+    expect(o.claimedById).toBe('hind');
+  });
+
+  it('taking it back: the colleague who was robbed can take it from the one who took it, while she has done nothing on it', async () => {
+    const o = pulledByColleague();
+    await take(o.id, SARA);
+    // Time passes; Hind’s customer rings Hind. Sara has logged nothing, so the rule is the same in both directions.
+    const back = await takeOnTheLine({ scope: SCOPE, user: HIND, orderId: o.id, visibility: {}, now: new Date(NOW.getTime() + 60_000) });
+    expect(back).toMatchObject({ ok: true });
+    expect(o.claimedById).toBe('hind');
+    expect(world.notifications.map((n) => n.userId)).toEqual(['hind', 'sara']);
+  });
+});
+
+/*
+ * REVIEW OF #216 — A TAKE FROM A COLLEAGUE HANDS THE ORDER OVER WHOLE, AS THE TRANSFER DOOR DOES, AND IS ONE TRANSACTION.
+ *
+ * The first version changed the holder and left everything that still pointed at the colleague pointing at her: her name on the
+ * order (`assignedToId` — which keeps the order in her ASSIGNED envelope), her editing lock (the confirmation door answers the
+ * taker 423 while it stands), and the customer's other orders held for her (`holdTwinsForPuller` takes only unnamed ones).
+ */
+describe('taken from a colleague, the order is handed over whole — as the transfer door hands one over', () => {
+  it('the order is the taker’s BY NAME: the colleague keeps no reach to it through her own name', async () => {
+    // She reached it through a hold (the customer sent it twice), so the order carries her name — and her name opens an order.
+    const o = pulledByColleague({ assignedToId: 'hind', assignedAt: AGO(2) });
+    expect(tri(view(o), assignedEnvelope('hind')), 'before the take, her name opens it').toBe(true);
+    expect(await take(o.id)).toMatchObject({ ok: true });
+    expect(o).toMatchObject({ assignedToId: 'sara', assignedAt: NOW });
+    expect(tri(view(o), assignedEnvelope('hind')), 'after the take, nothing opens it for her').not.toBe(true);
+    expect(tri(view(o), assignedEnvelope('sara')), 'and it is the taker’s').toBe(true);
+  });
+
+  it('his other order held FOR THE COLLEAGUE follows the taker; one held for a THIRD agent does not; a free one follows as before', async () => {
+    const o = pulledByColleague({ assignedToId: 'hind', assignedAt: AGO(2) });
+    const heldForHind = order({ confirmationStatus: 'NEW', assignedToId: 'hind', assignedAt: AGO(1.5), createdAt: AGO(40) });
+    const heldForNoor = order({ confirmationStatus: 'NEW', assignedToId: 'noor', assignedAt: AGO(1.5), createdAt: AGO(41) });
+    const free = order({ confirmationStatus: 'NEW', createdAt: AGO(20) });
+    expect(await take(o.id)).toMatchObject({ ok: true });
+    expect(heldForHind).toMatchObject({ assignedToId: 'sara', assignedAt: NOW, claimedById: null });
+    expect(free).toMatchObject({ assignedToId: 'sara', assignedAt: NOW, claimedById: null });
+    // A third agent's hold is hers and stays hers — untouched, not even its version moved.
+    expect(heldForNoor).toMatchObject({ assignedToId: 'noor', version: 1 });
+    // Each order that followed says why on its own history, naming the order she took.
+    expect(world.activities.map((a) => JSON.parse(a.metadata).withOrder)).toEqual([o.orderNumber, o.orderNumber]);
+    expect(world.activities.map((a) => a.orderId).sort()).toEqual([heldForHind.id, free.id].sort());
+  });
+
+  it('NEGATIVE: the release is bounded — another customer’s order, one already worked, one in her hands: still the colleague’s', async () => {
+    const o = pulledByColleague({ assignedToId: 'hind', assignedAt: AGO(2) });
+    const otherCustomer = order({ customerId: 'cust2', confirmationStatus: 'NEW', assignedToId: 'hind', assignedAt: AGO(1) });
+    const workedBefore = order({ confirmationStatus: 'NEW', assignedToId: 'hind', assignedAt: AGO(1) });
+    world.history.push({ orderId: workedBefore.id, action: 'RELEASED', userId: 'noor', createdAt: AGO(5) });
+    const inHerHands = order({ claimedById: 'hind', claimedAt: AGO(1), confirmationStatus: 'IN_PROGRESS', assignedToId: 'hind' });
+    expect(await take(o.id)).toMatchObject({ ok: true });
+    for (const [name, still] of [['another customer’s', otherCustomer], ['one already worked', workedBefore], ['one in her hands', inHerHands]] as const) {
+      expect(still.assignedToId, name).toBe('hind');
+      expect(still.version, name).toBe(1);
+    }
+    expect(inHerHands.claimedById).toBe('hind');
+  });
+
+  it('the twins follow INSIDE the taker’s cap room: with room for one, the oldest follows and the other does not', async () => {
+    // Her load is two short of the cap; the order she takes is one, so there is room for exactly one of his others.
+    for (let i = 0; i < CLAIM_CAPS.total - 2; i++) order({ customerId: null, claimedById: 'sara', confirmationStatus: 'IN_PROGRESS' });
+    const o = pulledByColleague({ assignedToId: 'hind', assignedAt: AGO(2) });
+    const oldest = order({ confirmationStatus: 'NEW', assignedToId: 'hind', assignedAt: AGO(1.5), createdAt: AGO(40) });
+    const newer = order({ confirmationStatus: 'NEW', createdAt: AGO(20) });
+    expect(await take(o.id)).toMatchObject({ ok: true });
+    expect(oldest.assignedToId).toBe('sara');
+    expect(newer.assignedToId).toBeNull();
+    expect(world.activities).toHaveLength(1);
+  });
+
+  it('with no room left, none follows — and the colleague’s held twin goes back to the pool, not to a taker who is full', async () => {
+    for (let i = 0; i < CLAIM_CAPS.total - 1; i++) order({ customerId: null, claimedById: 'sara', confirmationStatus: 'IN_PROGRESS' });
+    const o = pulledByColleague({ assignedToId: 'hind', assignedAt: AGO(2) });
+    const heldForHind = order({ confirmationStatus: 'NEW', assignedToId: 'hind', assignedAt: AGO(1.5) });
+    const free = order({ confirmationStatus: 'NEW' });
+    expect(await take(o.id)).toMatchObject({ ok: true });
+    expect(heldForHind).toMatchObject({ assignedToId: null, assignedAt: null });
+    expect(free.assignedToId).toBeNull();
+    expect(world.activities).toHaveLength(0);
+  });
+
+  it('the colleague’s editing lock goes with the order — the taker is not answered «ORDER_LOCKED» by a lock that is no longer hers', async () => {
+    const o = pulledByColleague({ lockedById: 'hind', lockedAt: AGO(0.1), lockExpiresAt: new Date(NOW.getTime() + 300_000) });
+    expect(await take(o.id)).toMatchObject({ ok: true });
+    expect(o).toMatchObject({ lockedById: null, lockedAt: null, lockExpiresAt: null });
+  });
+
+  it('the write that hands it over carries the name and the lock, in the very update that claims it', async () => {
+    const o = pulledByColleague();
+    await take(o.id);
+    const main = world.writes.filter((w) => w.data.claimedById === 'sara');
+    expect(main).toHaveLength(1);
+    expect(main[0].data).toMatchObject({
+      assignedToId: 'sara',
+      assignedAt: NOW,
+      lockedById: null,
+      lockedAt: null,
+      lockExpiresAt: null,
+    });
+  });
+
+  it('NEGATIVE: the take of an UNHELD order is exactly the pull’s write — no name, no lock, nobody’s twins let go', async () => {
+    const o = releasedRetry({ lockedById: 'hind', lockedAt: AGO(3), lockExpiresAt: AGO(2) });
+    const heldForHind = order({ confirmationStatus: 'NEW', assignedToId: 'hind', assignedAt: AGO(1) });
+    expect(await take(o.id)).toMatchObject({ ok: true });
+    const main = world.writes.filter((w) => w.data.claimedById === 'sara');
+    expect(main).toHaveLength(1);
+    expect(Object.keys(main[0].data).sort()).toEqual(['claimedAt', 'claimedById', 'confirmationStatus', 'currentOwnerId', 'status', 'version']);
+    expect(o.lockedById, 'a lock left on an unheld order is as the pull leaves it').toBe('hind');
+    expect(heldForHind.assignedToId, 'her colleague’s hold stands: it is not the taker’s to take').toBe('hind');
+    expect(world.writes.some((w) => w.data.assignedToId === null)).toBe(false);
+  });
+});
+
+describe('ONE TRANSACTION — every write of a take goes through the transaction’s own client', () => {
+  it('the fake can tell the two clients apart, so the assertions below mean something', async () => {
+    await (db as unknown as { $transaction: (fn: (c: Row) => Promise<void>) => Promise<void> }).$transaction(async (inside) => {
+      await inside.notification.create({ data: {} });
+      await (db as unknown as Row).notification.create({ data: {} });
+    });
+    expect(world.ops.map((w) => [w.via, w.duringTx])).toEqual([['tx', true], ['root', true]]);
+    expect(() => nothingLeftTheTransaction()).toThrow();
+  });
+
+  it('from a colleague: the guarded claim, her release, her claim, the note, the notice and his twins — none on the shared client', async () => {
+    const o = pulledByColleague({ assignedToId: 'hind', assignedAt: AGO(2) });
+    order({ confirmationStatus: 'NEW', assignedToId: 'hind', assignedAt: AGO(1.5) });
+    order({ confirmationStatus: 'NEW' });
+    expect(await take(o.id)).toMatchObject({ ok: true });
+    nothingLeftTheTransaction();
+    expect(wroteInTransaction()).toEqual({
+      'order.updateMany': 4, // the guarded claim · the colleague's held twin let go · two twins held for the taker
+      'orderClaimHistory.create': 2, // the colleague's RELEASED line · the taker's CLAIMED line
+      'orderStatusLog.create': 1,
+      'notification.create': 1,
+      'orderActivity.create': 2, // one line on each twin that followed
+    });
+    // ...and the customer's lock was taken inside it too (the shared client takes none).
+    expect(world.locks).toEqual([pullLockKey('cust1')]);
+  });
+
+  it('from the pool: the claim, its line, the note and his twin — none on the shared client', async () => {
+    const o = releasedRetry();
+    order({ confirmationStatus: 'NEW' });
+    expect(await take(o.id)).toMatchObject({ ok: true });
+    nothingLeftTheTransaction();
+    expect(wroteInTransaction()).toEqual({
+      'order.updateMany': 2,
+      'orderClaimHistory.create': 1,
+      'orderStatusLog.create': 1,
+      'orderActivity.create': 1,
+    });
+  });
+
+  it('a take that is REFUSED writes nothing, on either client', async () => {
+    const o = pulledByColleague();
+    touch(o, 'OPENED', AGO(0.5));
+    expect(await take(o.id)).toMatchObject({ ok: false });
+    expect(world.ops).toEqual([]);
+  });
+});
+
+describe('the write is the claim she read — and nothing since', () => {
+  /** Nothing was written: the order is where it was, its version unmoved, and not one line or notice exists beyond the story's own. */
+  const nothingWritten = (o: Row, holder = 'hind') => {
+    expect(o.claimedById).toBe(holder);
+    expect(o.version).toBe(1);
+    expect(world.statusLogs).toHaveLength(0);
+    expect(world.notifications).toHaveLength(0);
+    expect(claimLines(o)).toHaveLength(STORY_LINES);
+  };
+
+  it('an attempt that lands between her read and her write: refused — and the sentence says she has started', async () => {
+    const o = pulledByColleague();
+    world.beforeWrite = () => touch(o, 'OPENED', NOW);
+    expect(await take(o.id)).toMatchObject({ ok: false, code: 'HELD_BY_COLLEAGUE', heldBy: 'هند', message: STARTED });
+    nothingWritten(o);
+  });
+
+  it('…even one logged in the very instant she pulled it (the filter is >=, not >)', async () => {
+    const o = pulledByColleague();
+    world.beforeWrite = () => touch(o, 'OPENED', CLAIMED_AT);
+    expect(await take(o.id)).toMatchObject({ ok: false, code: 'HELD_BY_COLLEAGUE', message: STARTED });
+    nothingWritten(o);
+  });
+
+  it('the colleague let it go and pulled it AGAIN since: a new claim — TAKEN_MEANWHILE, nothing written', async () => {
+    const o = pulledByColleague();
+    world.beforeWrite = () => void (o.claimedAt = AGO(0.2));
+    expect(await take(o.id)).toMatchObject({ ok: false, code: 'TAKEN_MEANWHILE' });
+    nothingWritten(o);
+  });
+
+  it('another agent holds it by then: the take is refused and says who', async () => {
+    const o = pulledByColleague();
+    world.beforeWrite = () => {
+      o.claimedById = 'noor';
+      o.claimedAt = AGO(0.2);
+    };
+    const got = await take(o.id);
+    expect(got).toMatchObject({ ok: false, code: 'HELD_BY_COLLEAGUE', heldBy: 'نور' });
+    expect(got.ok === false && got.message).toContain('نور');
+    nothingWritten(o, 'noor');
+  });
+
+  it('nobody holds it by then (she let go of it): TAKEN_MEANWHILE — this is the unheld door’s order now', async () => {
+    const o = pulledByColleague();
+    world.beforeWrite = () => {
+      o.claimedById = null;
+      o.claimedAt = null;
+    };
+    expect(await take(o.id)).toMatchObject({ ok: false, code: 'TAKEN_MEANWHILE' });
+    expect(o.claimedById).toBeNull();
+    expect(world.notifications).toHaveLength(0);
+  });
+
+  it.each<[string, string, unknown, string]>([
+    ['shipped', 'shippingStatus', 'READY_TO_SHIP', 'للشحن'],
+    ['given a tracking number', 'trackingNumber', 'T-9', 'للشحن'],
+    ['given a label', 'labelPrintedAt', AGO(0.1), 'للشحن'],
+    ['put in a batch', 'shippingBatchId', 'b1', 'للشحن'],
+    ['decided', 'confirmationStatus', 'CONFIRMED', 'خلص من التأكيد'],
+  ])('it is %s between the read and the write: refused, and what closed it is said', async (_name, field, value, piece) => {
+    const o = pulledByColleague();
+    world.beforeWrite = () => void (o[field] = value);
+    const got = await take(o.id);
+    expect(got).toMatchObject({ ok: false, code: 'HELD_BY_COLLEAGUE', heldBy: 'هند' });
+    expect(got.ok === false && got.message).toContain(piece);
+    expect(o.claimedById).toBe('hind');
+    expect(o.version).toBe(1);
+    expect(world.notifications).toHaveLength(0);
+    expect(claimLines(o)).toHaveLength(STORY_LINES);
+  });
+});
+
+describe('the claim she takes from is the one she saw before she waited at the customer’s lock', () => {
+  it('the colleague pulled it again while she waited: nothing is taken — look again', async () => {
+    const o = pulledByColleague();
+    world.onLock = () => void (o.claimedAt = AGO(0.4));
+    expect(await take(o.id)).toMatchObject({ ok: false, code: 'TAKEN_MEANWHILE' });
+    expect(o.claimedById).toBe('hind');
+    expect(o.version).toBe(1);
+    expect(world.notifications).toHaveLength(0);
+  });
+
+  it('another agent pulled it while she waited: nothing is taken, and she is told who has it', async () => {
+    const o = pulledByColleague();
+    world.onLock = () => {
+      o.claimedById = 'noor';
+      o.claimedAt = AGO(0.4);
+    };
+    expect(await take(o.id)).toMatchObject({ ok: false, code: 'HELD_BY_COLLEAGUE', heldBy: 'نور' });
+    expect(o.claimedById).toBe('noor');
+    expect(world.notifications).toHaveLength(0);
+    expect(claimLines(o)).toHaveLength(STORY_LINES);
+  });
+
+  it('two agents press at once on the same colleague’s order: one takes it, the other is told who has it, and the colleague hears once', async () => {
+    const o = pulledByColleague();
+    const [a, b] = await Promise.all([take(o.id, SARA), take(o.id, NOOR)]);
+    expect([a, b].filter((r) => r.ok)).toHaveLength(1);
+    const winner = a.ok ? SARA : NOOR;
+    const lost = [a, b].find((r) => !r.ok)!;
+    expect(lost).toMatchObject({ ok: false, code: 'HELD_BY_COLLEAGUE', heldBy: winner === SARA ? 'سارة' : 'نور' });
+    expect(o.claimedById).toBe(winner.id);
+    expect(world.notifications).toHaveLength(1);
+    expect(world.notifications[0].userId).toBe('hind');
+    expect(world.history.filter((h) => h.reason === TAKEN_ON_THE_LINE_REASON)).toHaveLength(1);
+  });
+
+  it('CONTROL — the lock serialising nothing: the write’s own guard still lets only one through, and the colleague is told once', async () => {
+    world.lockless = true;
+    const o = pulledByColleague();
+    const [a, b] = await Promise.all([take(o.id, SARA), take(o.id, NOOR)]);
+    expect([a, b].filter((r) => r.ok)).toHaveLength(1);
+    expect([a, b].find((r) => !r.ok)).toMatchObject({ code: 'HELD_BY_COLLEAGUE' });
+    expect(world.notifications).toHaveLength(1);
+    expect(world.history.filter((h) => h.reason === TAKEN_ON_THE_LINE_REASON)).toHaveLength(1);
+  });
+});
+
+describe('the write is as strict as it was for an unheld order, and exact for a colleague’s (the read was widened, the write was not)', () => {
+  it('callbackTakeWhere — the unheld guard — matches a released retry and NOT a colleague’s pull, however untouched', () => {
+    const retry = releasedRetry();
+    const pulled = pulledByColleague();
+    expect(tri(view(retry), callbackTakeWhere(retry.id, 'sara', NOW))).toBe(true);
+    expect(tri(view(pulled), callbackTakeWhere(pulled.id, 'sara', NOW))).not.toBe(true);
+    expect(callbackTakeWhere(retry.id, 'sara', NOW)).toMatchObject({ claimedById: null });
+  });
+
+  it('callbackTakeFromColleagueWhere matches THAT claim and nothing else: the holder, the moment, the desk, the attempts', () => {
+    const pulled = pulledByColleague();
+    const where = (id = 'hind', at: Date = CLAIMED_AT) => callbackTakeFromColleagueWhere(pulled.id, { id, claimedAt: at });
+    expect(tri(view(pulled), where())).toBe(true);
+    expect(tri(view(pulled), where('noor')), 'another holder').not.toBe(true);
+    expect(tri(view(pulled), where('hind', AGO(0.5))), 'another moment').not.toBe(true);
+    for (const [k, v] of [['shippingStatus', 'READY_TO_SHIP'], ['confirmationStatus', 'CANCELLED'], ['trackingNumber', 'T']] as const) {
+      const saved = pulled[k];
+      pulled[k] = v;
+      expect(tri(view(pulled), where()), k).not.toBe(true);
+      pulled[k] = saved;
+    }
+    // The no-answer it was granted for is asked again: without one on the order, the write matches nothing.
+    const kept = world.attempts.filter((a) => a.orderId === pulled.id);
+    world.attempts = world.attempts.filter((a) => a.orderId !== pulled.id);
+    expect(tri(view(pulled), where()), 'no no-answer on the order').not.toBe(true);
+    world.attempts.push(...kept);
+    touch(pulled, 'OPENED', CLAIMED_AT);
+    expect(tri(view(pulled), where()), 'an attempt in the instant she pulled it').not.toBe(true);
+  });
+});
+
+describe('the search finds an unanswered order a colleague holds, and names her (the owner, 7/11)', () => {
+  const ASSIGNED_SARA = {
+    id: 'sara', email: 's@x.test', name: 'سارة', role: 'CONFIRMATION_AGENT', status: 'ACTIVE', companyId: 'c1',
+    permissions: ['orders.view', 'confirmation.work', 'confirmation.pull'],
+    effectiveGrants: {
+      fullAccess: false,
+      grants: {
+        'orders.view': { scope: 'ASSIGNED', scopeIds: null },
+        'confirmation.work': { scope: 'ALL_COMPANY', scopeIds: null },
+        'confirmation.pull': { scope: 'ALL_COMPANY', scopeIds: null },
+      },
+    },
+  } as never;
+  const envelope = () => rbac.orderVisibilityWhere(ASSIGNED_SARA) as Row;
+  const cardsFor = async (visibility: Row = envelope()) =>
+    (await searchOnTheLine(db as never, { scope: SCOPE, userId: 'sara', phone: '0966793918', countryCode: 'SY', visibility, now: NOW }))!;
+
+  it('an untouched colleague’s order is a card with her name and a button; one she has started on is a card with her name and the reason', async () => {
+    const untouched = pulledByColleague();
+    const started = pulledByColleague();
+    touch(started, 'OPENED', AGO(0.5));
+    expect(tri(view(untouched), envelope()), 'her envelope alone does not admit a colleague’s order').not.toBe(true);
+    const by = Object.fromEntries((await cardsFor()).map((c) => [c.id, c]));
+    expect(by[untouched.id]).toMatchObject({ takeable: true, holder: 'هند', fromColleague: 'هند', code: null, message: null, product: 'ساعة', governorate: 'دمشق' });
+    expect(by[started.id]).toMatchObject({ takeable: false, holder: 'هند', fromColleague: null, code: 'HELD_BY_COLLEAGUE', message: STARTED });
+  });
+
+  it('NEGATIVE: a card that is not takeable from a colleague names nobody as the one it is taken from', async () => {
+    const retry = releasedRetry();
+    const hers = order({ claimedById: 'sara', claimedAt: AGO(1), confirmationStatus: 'IN_PROGRESS' });
+    touch(hers, 'NO_ANSWER', AGO(3));
+    const by = Object.fromEntries((await cardsFor()).map((c) => [c.id, c]));
+    expect(by[retry.id]).toMatchObject({ takeable: true, fromColleague: null, holder: 'بالطابور' });
+    expect(by[hers.id]).toMatchObject({ takeable: false, fromColleague: null, holder: 'معك', code: 'ALREADY_YOURS' });
+  });
+
+  it('NEGATIVE: an order that carries no no-answer is listed only where it is already in her envelope', async () => {
+    const quiet = order({ claimedById: 'hind', claimedAt: AGO(1), confirmationStatus: 'IN_PROGRESS' });
+    const typedByHer = order({ claimedById: 'hind', claimedAt: AGO(1), confirmationStatus: 'IN_PROGRESS', createdById: 'sara' });
+    const ids = (await cardsFor()).map((c) => c.id);
+    expect(ids).not.toContain(quiet.id);
+    expect(ids).toContain(typedByHer.id);
+    const card = (await cardsFor()).find((c) => c.id === typedByHer.id)!;
+    expect(card).toMatchObject({ takeable: false, holder: 'هند', fromColleague: null, code: 'HELD_BY_COLLEAGUE' });
+    expect(card.message).toContain('ولسا ما سجّلت عليه شي');
+  });
+
+  it('NEGATIVE: another store’s or another company’s order, and another customer’s — never, whoever holds them', async () => {
+    const mine = pulledByColleague();
+    pulledByColleague({ storeId: 's2' });
+    pulledByColleague({ companyId: 'c2' });
+    pulledByColleague({ customerId: 'cust2' });
+    expect((await cardsFor()).map((c) => c.id)).toEqual([mine.id]);
+  });
+
+  it('carries no name, phone or address: the colleague’s name is HER account’s, and the keys of a card are the same', async () => {
+    pulledByColleague();
+    const cards = await cardsFor();
+    expect(cards).toHaveLength(1);
+    expect(Object.keys(cards[0]).sort()).toEqual(['code', 'fromColleague', 'governorate', 'holder', 'id', 'message', 'orderNumber', 'product', 'status', 'takeable']);
+    expect(JSON.stringify(cards)).not.toMatch(/966793918|زبون|شارع/);
+    expect(cards[0].holder).toBe('هند');
+  });
+
+  it('the take’s first read agrees with the search: found and taken, found and refused, or not found', async () => {
+    const untouched = pulledByColleague();
+    const started = pulledByColleague();
+    touch(started, 'OPENED', AGO(0.5));
+    const quiet = order({ claimedById: 'hind', claimedAt: AGO(1), confirmationStatus: 'IN_PROGRESS' });
+    expect(await take(started.id, SARA, envelope())).toMatchObject({ ok: false, code: 'HELD_BY_COLLEAGUE', heldBy: 'هند' });
+    expect(await take(quiet.id, SARA, envelope())).toMatchObject({ ok: false, code: 'NOT_FOUND' });
+    expect(await take(untouched.id, SARA, envelope())).toMatchObject({ ok: true, orderId: untouched.id });
+    expect([started.claimedById, quiet.claimedById, untouched.claimedById]).toEqual(['hind', 'hind', 'sara']);
+  });
+
+  it('a decided colleague’s order is outside her envelope and is no unanswered order at the desk: not found; for a wider envelope, refused with why', async () => {
+    const decided = pulledByColleague({ confirmationStatus: 'CONFIRMED' });
+    expect((await cardsFor()).map((c) => c.id)).not.toContain(decided.id);
+    expect(await take(decided.id, SARA, envelope())).toMatchObject({ ok: false, code: 'NOT_FOUND' });
+    const wide = (await cardsFor({})).find((c) => c.id === decided.id)!;
+    expect(wide).toMatchObject({ takeable: false, code: 'HELD_BY_COLLEAGUE' });
+    expect(wide.message).toContain('خلص من التأكيد');
   });
 });
