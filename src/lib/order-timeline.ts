@@ -108,7 +108,7 @@ const CLAIM_REASON_AR: Record<string, string> = {
   // «الزبون على الخط» (customer-on-the-line.ts): the customer rang back and the agent who picked up took his order.
   [CUSTOMER_CALLED_BACK_REASON]: 'الزبون اتصل — أخدته على الخط',
   // ...and the release it caused for the colleague who held it: nobody pressed it for her (`onTheLineWords` below names who did).
-  [TAKEN_ON_THE_LINE_REASON]: 'اتسحب منها على الخط — الزبون اتصل وما كانت اتصلت فيه',
+  [TAKEN_ON_THE_LINE_REASON]: 'اتسحب منها على الخط — الزبون اتصل وما كانت سجّلت عليه شي',
   MANUAL_CLAIM: 'استلام يدوي',
   ADMIN_OVERRIDE: 'تجاوز إداري',
   AUTO_RELEASE: 'تحرير تلقائي',
@@ -274,6 +274,9 @@ function readableMetadata(metadata: unknown): string | null {
  *     metadata. The actor of THAT line is the one who pressed, not the one who lost the order, so it never reads as though she
  *     had let it go: «تحرير الطلب — <taker>: اتسحب من <name> على الخط…».
  *
+ * The words say what the system KNOWS — nothing was logged on the order since she pulled it («ما سجّلت عليه شي») — and never that she
+ * did not call: a call nobody logged would make that a permanent lie on the order's history (review of #216).
+ *
  * Read from the metadata TEXT, inside a try: a row that is not JSON keeps its static label and breaks nothing.
  */
 function onTheLinePeople(row: { reason?: string | null; metadata?: string | null }): { fromUserId?: string; takenBy?: string } {
@@ -296,7 +299,7 @@ function onTheLineWords<T extends { userId: string; reason: string | null; metad
     return { ...row, reason: `الزبون اتصل — أخدته على الخط من ${nameOf.get(fromUserId)}` };
   }
   if (row.reason === TAKEN_ON_THE_LINE_REASON && takenBy && nameOf.has(takenBy) && nameOf.has(row.userId)) {
-    return { ...row, userId: takenBy, reason: `اتسحب من ${nameOf.get(row.userId)} على الخط — الزبون اتصل وما كانت اتصلت فيه` };
+    return { ...row, userId: takenBy, reason: `اتسحب من ${nameOf.get(row.userId)} على الخط — الزبون اتصل وما كانت سجّلت عليه شي` };
   }
   return row;
 }

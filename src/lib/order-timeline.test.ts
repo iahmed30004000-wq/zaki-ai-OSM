@@ -316,7 +316,7 @@ describe('«الزبون على الخط» — an order taken from a colleague n
     ]);
     const [line] = await orderTimeline(db as never, 'o1');
     expect(line.title).toBe('تحرير الطلب');
-    expect(line.detail).toBe('اتسحب من هند على الخط — الزبون اتصل وما كانت اتصلت فيه');
+    expect(line.detail).toBe('اتسحب من هند على الخط — الزبون اتصل وما كانت سجّلت عليه شي');
     expect(line.actorName, 'كأنو هند حرّرته').toBe('سارة');
     expect(line.actorId).toBe('u1');
     expect(line.actorName).not.toBe('النظام');
@@ -357,7 +357,7 @@ describe('«الزبون على الخط» — an order taken from a colleague n
       claim({ action: 'RELEASED', userId: 'u2', reason: 'TAKEN_ON_THE_LINE', metadata: null }),
     ]);
     const [line] = await orderTimeline(db as never, 'o1');
-    expect(line.detail).toBe('اتسحب منها على الخط — الزبون اتصل وما كانت اتصلت فيه');
+    expect(line.detail).toBe('اتسحب منها على الخط — الزبون اتصل وما كانت سجّلت عليه شي');
     expect(line.actorName).toBe('هند');
   });
 
