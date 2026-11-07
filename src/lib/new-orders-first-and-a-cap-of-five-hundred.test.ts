@@ -82,12 +82,17 @@ const sorted = (rows: Row[], orderBy?: Row | Row[]) => {
 };
 
 vi.mock('./db', () => {
+  // A read hands back COPIES, as Prisma does: a release writes the row and then reads `claimedById` from what it read before, and a
+  // fake that returned the stored object would show it already cleared (a history line "by nobody") — a fault of the fake.
   const order = {
     findMany: vi.fn(async ({ where, orderBy, take }: Row) => {
       const found = sorted(world.orders.filter((r) => matches(r, where ?? {})), orderBy);
-      return take ? found.slice(0, take) : found;
+      return (take ? found.slice(0, take) : found).map((r) => ({ ...r }));
     }),
-    findFirst: vi.fn(async ({ where, orderBy }: Row) => sorted(world.orders.filter((r) => matches(r, where ?? {})), orderBy)[0] ?? null),
+    findFirst: vi.fn(async ({ where, orderBy }: Row) => {
+      const hit = sorted(world.orders.filter((r) => matches(r, where ?? {})), orderBy)[0];
+      return hit ? { ...hit } : null;
+    }),
     count: vi.fn(async ({ where }: Row) => world.orders.filter((r) => matches(r, where ?? {})).length),
     updateMany: vi.fn(async ({ where, data }: Row) => {
       const hit = world.orders.filter((r) => matches(r, where));
@@ -121,9 +126,10 @@ import {
   pickNextCandidate,
   pullNextOrder,
   pullRefusal,
+  releaseStaleClaims,
   waitingCount,
 } from './confirmation-queue';
-import { ROUNDS_OFF } from './no-answer-rounds';
+import { DUE_RELEASE_REASON, ROUNDS_OFF } from './no-answer-rounds';
 import { db } from './db';
 
 const NOW = new Date('2026-11-07T12:00:00.000Z');
@@ -266,6 +272,81 @@ describe.each([
   it('a decided order is in no step of it', async () => {
     for (const status of ['REJECTED', 'CANCELLED', 'CONFIRMED']) order({ confirmationStatus: status, status, createdAt: hoursAgo(99) });
     expect(await pickNextCandidate(db as never, scope, NOW, 'sara')).toBeNull();
+  });
+});
+
+/**
+ * R1b END TO END: a postponed order its holder never opened goes back by itself, stays POSTPONED, and — being due — is offered by
+ * the pull. The release query is answered by a database that applies its filters, so a narrowing that wrongly leaves the order
+ * out (or lets one in too early) shows here and not only in the verdict.
+ */
+describe('a dated order nobody opened (R1b), against a database that applies the filters', () => {
+  const ON_SINCE = { enabled: true, enabledAt: hoursAgo(300) };
+  /** Sara took it 30 hours ago, rang, and the customer asked for a call four hours ago. She has not been back. */
+  const heldDated = (over: Row = {}) =>
+    order({
+      customerId: 'dated-1', createdAt: hoursAgo(31),
+      confirmationStatus: 'POSTPONED', status: 'POSTPONED',
+      claimedById: 'sara', currentOwnerId: 'sara', claimedAt: hoursAgo(30),
+      postponedUntil: hoursAgo(4), nextFollowUpAt: hoursAgo(4),
+      contactAttempts: [
+        { createdAt: hoursAgo(29.5), result: 'OPENED', employeeId: 'sara', attemptNumber: 1 },
+        { createdAt: hoursAgo(29.4), result: 'POSTPONED', employeeId: 'sara', attemptNumber: 2 },
+      ],
+      claimHistory: [{ action: 'CLAIMED' }],
+      ...over,
+    });
+
+  it('three working hours after its date it goes back — still POSTPONED, its dates untouched — and the pull offers it as a due order', async () => {
+    const o = heldDated();
+    expect(await releaseStaleClaims(db as never, scope, CAL, NOW, { rounds: ON_SINCE })).toBe(1);
+
+    expect(byId(o.id)).toMatchObject({
+      claimedById: null, claimedAt: null, currentOwnerId: null, assignedAt: null,
+      confirmationStatus: 'POSTPONED', status: 'POSTPONED',
+    });
+    expect(byId(o.id).postponedUntil).toEqual(hoursAgo(4));
+    expect(byId(o.id).nextFollowUpAt).toEqual(hoursAgo(4));
+    expect(world.history).toEqual([expect.objectContaining({ action: 'RELEASED', reason: DUE_RELEASE_REASON, userId: 'sara' })]);
+
+    expect(await waitingCount(db as never, scope, NOW, 'huda')).toBe(1);
+    expect(await pickNextCandidate(db as never, scope, NOW, 'huda')).toBe(o.id);
+  });
+
+  it('inside its three hours it is not even looked at: still hers', async () => {
+    const o = heldDated({ postponedUntil: hoursAgo(2), nextFollowUpAt: hoursAgo(2) });
+    expect(await releaseStaleClaims(db as never, scope, CAL, NOW, { rounds: ON_SINCE })).toBe(0);
+    expect(byId(o.id)).toMatchObject({ claimedById: 'sara', confirmationStatus: 'POSTPONED' });
+    expect(world.history).toHaveLength(0);
+  });
+
+  it('anything logged after the date keeps it: here a «اتصل» of hers an hour after', async () => {
+    const o = heldDated();
+    o.contactAttempts.push({ createdAt: hoursAgo(3), result: 'OPENED', employeeId: 'sara', attemptNumber: 3 });
+    expect(await releaseStaleClaims(db as never, scope, CAL, NOW, { rounds: ON_SINCE })).toBe(0);
+    expect(byId(o.id).claimedById).toBe('sara');
+  });
+
+  it('the pull of a colleague lets it go and hands it to her in the same press', async () => {
+    sw.value = ON_SINCE;
+    const o = heldDated();
+    const out = await pullNextOrder(scope, agent('huda'), CAL, NOW);
+    expect(out).toMatchObject({ ok: true, orderId: o.id, released: 1 });
+    expect(byId(o.id)).toMatchObject({ claimedById: 'huda', confirmationStatus: 'IN_PROGRESS' });
+    expect(world.history.map((h) => [h.action, h.userId, h.reason])).toEqual([
+      ['RELEASED', 'sara', DUE_RELEASE_REASON],
+      ['CLAIMED', 'huda', 'PULL_NEXT'],
+    ]);
+  });
+
+  it('with the switch OFF nothing of it runs: she keeps it for ever, as today', async () => {
+    const o = heldDated();
+    expect(await releaseStaleClaims(db as never, scope, CAL, NOW, { rounds: ROUNDS_OFF })).toBe(0);
+    const out = await pullNextOrder(scope, agent('huda'), CAL, NOW);
+    expect(out.ok).toBe(false);
+    expect(out.refusal?.code).toBe('QUEUE_EMPTY');
+    expect(byId(o.id)).toMatchObject({ claimedById: 'sara', confirmationStatus: 'POSTPONED' });
+    expect(world.history).toHaveLength(0);
   });
 });
 
