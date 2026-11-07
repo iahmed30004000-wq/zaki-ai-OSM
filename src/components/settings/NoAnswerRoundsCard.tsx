@@ -9,10 +9,12 @@ import { useCan } from '@/hooks/useCan';
 /**
  * «نظام الجولات (تجريبي)» — THE OWNER'S SWITCH (`no-answer-rounds.ts`).
  *
- * Off, the desk works exactly as it always has. On, presses of «لا يرد» within three working hours are one round, an order
- * nobody answered for six working hours goes back to the queue (so does a dated one nobody opened three working hours after
- * its date), and the third round closes the order only on a second day. Seen by whoever opens the settings; turned by
- * whoever holds `settings.manage` — the server asks it again.
+ * Off, the rotation and the rounds are the old rules (one logged attempt keeps an order with its agent; the third no-answer of
+ * all time closes it). On, presses of «لا يرد» within three working hours are one round, an order nobody answered for six
+ * working hours goes back to the queue (so does a dated one with nothing logged on it three working hours after its date), and
+ * the third round closes the order only on a second day. The pull's order (a new order first) and the cap on what one agent
+ * holds do NOT depend on the switch — the subtitle says so. Seen by whoever opens the settings; turned by whoever holds
+ * `settings.manage` — the server asks it again.
  */
 interface RoundsView {
   enabled: boolean;
@@ -60,7 +62,7 @@ export function NoAnswerRoundsCard() {
     <Card>
       <CardHeader
         title="نظام الجولات (تجريبي)"
-        subtitle="«لا يرد» خلال 3 ساعات عمل = جولة وحدة، الطلب اللي ما حدا ردّ عليه 6 ساعات عمل بيرجع للطابور، والمؤجّل اللي ما حدا فتحه بعد موعده بـ3 ساعات عمل بيرجع كمان، وما بينلغى إلا بعد 3 جولات بيومين مختلفين. مطفي = القواعد الحالية تماماً."
+        subtitle="«لا يرد» خلال 3 ساعات عمل = جولة وحدة، الطلب اللي ما حدا ردّ عليه 6 ساعات عمل بيرجع للطابور، والمؤجّل اللي ما انسجّلت عليه محاولة بعد موعده بـ3 ساعات عمل بيرجع كمان، وما بينلغى إلا بعد 3 جولات بيومين مختلفين. مطفي = قواعد التدوير والجولات القديمة (ترتيب السحب والحد ما بيتأثروا بالمفتاح)."
       />
       <CardContent className="space-y-4">
         <label className="flex items-center gap-1 text-xs text-[var(--sys-muted-foreground)]">

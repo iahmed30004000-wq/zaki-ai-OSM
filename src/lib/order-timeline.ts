@@ -113,9 +113,12 @@ const CLAIM_REASON_AR: Record<string, string> = {
   // The ninety-minute release (`releaseStaleClaims`) — it showed as its English code (the owner's ruling 4/11).
   [NINETY_MINUTE_RELEASE_REASON]: 'تحرير تلقائي — ما انسجّلت عليه محاولة خلال 90 دقيقة عمل',
   // «نظام الجولات» (no-answer-rounds.ts): the three releases it adds, each with its reason in words.
-  [ROUND_RELEASE_REASON]: 'تحرير تلقائي — مرّت 6 ساعات عمل على جولة بلا ردّ، ورجع للطابور',
+  // No number in this one: rows written under the old three-hour rule carry the same reason, and a label that names the rule of
+  // TODAY would tell their readers something that was not true when they were written (RV1413). The notice for a NEW release
+  // (`AUTO_RELEASE_WHY`) may name its hours.
+  [ROUND_RELEASE_REASON]: 'تحرير تلقائي — مرّت مدة التحرير على جولة بلا ردّ، ورجع للطابور',
   [REPULL_RELEASE_REASON]: 'تحرير تلقائي — انسحب من جديد وما انسجّلت عليه محاولة خلال 90 دقيقة عمل',
-  [DUE_RELEASE_REASON]: 'تحرير تلقائي — مرّت 3 ساعات عمل على موعد الطلب وما حدا فتحه، ورجع للطابور',
+  [DUE_RELEASE_REASON]: 'تحرير تلقائي — مرّت 3 ساعات عمل على موعد الطلب وما انسجّلت عليه محاولة بعد الموعد، ورجع للطابور',
   LOCK_EXPIRED: 'انتهت مدة القفل',
   REASSIGNED: 'إعادة إسناد',
 };

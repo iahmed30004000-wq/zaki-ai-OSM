@@ -271,7 +271,7 @@ describe('ON — R1b: a dated order nobody opened after its date', () => {
         storeId: 's1',
         userId: 'sara',
         title: 'رجع ORD-1 للطابور',
-        message: 'رجع ORD-1 للطابور: مرّت 3 ساعات عمل على موعد الطلب وما حدا فتحه',
+        message: 'رجع ORD-1 للطابور: مرّت 3 ساعات عمل على موعد الطلب وما انسجّلت عليه محاولة بعد الموعد',
         link: '/confirmation/mine',
       }),
     ]);

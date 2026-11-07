@@ -777,7 +777,7 @@ export const ROUNDS_SCAN_PAGE = 500;
 const roundsScanCursor = new Map<string, string>();
 
 /**
- * R1 — LET GO WHAT NOBODY ANSWERED FOR SIX WORKING HOURS, AND WHAT NOBODY OPENED AFTER ITS DATE (`no-answer-rounds.ts`).
+ * R1 — LET GO WHAT NOBODY ANSWERED FOR SIX WORKING HOURS, AND A DATE WITH NOTHING LOGGED AFTER IT (`no-answer-rounds.ts`).
  *
  * Linear and bounded: the cut-offs are placed ONCE for the pass, the database narrows to the held orders that can
  * qualify (a no-answer six working hours old once the switch itself is that old, or nothing logged for ninety working
@@ -824,7 +824,7 @@ async function releaseByRounds(
           OR: [
             // A run's six hours count from the switch when the run is older (6/11, `roundsReleaseReason`): none can be due
             // until the switch itself is six working hours old, and then any no-answer that old may be one. (A dated order
-            // nobody opened since its date has no attempt in the last ninety minutes, so the next line takes it in.)
+            // with nothing logged since its date has no attempt in the last ninety minutes, so the next line takes it in.)
             ...(sw.enabledAt.getTime() <= cut.round.getTime()
               ? [{ contactAttempts: { some: { result: { in: [...NO_ANSWER_RESULTS] }, createdAt: { lte: cut.round } } } }]
               : []),

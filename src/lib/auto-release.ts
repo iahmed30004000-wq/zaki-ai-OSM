@@ -5,7 +5,7 @@ import { DUE_RELEASE_REASON, REPULL_RELEASE_REASON, ROUND_RELEASE_REASON } from 
  *
  * Four releases let a held order go without anybody pressing anything: the ninety-minute release (nothing logged on it),
  * and the three of «نظام الجولات» (a round nobody answered, a re-pull nobody touched, and — since 7/11 — a dated order
- * nobody opened after its date). Each wrote its claim-history line with
+ * with no attempt logged after its date). Each wrote its claim-history line with
  * `userId` = the agent who held it, and an English code for a reason. So the order's history read «تحرير الطلب — <her name>»
  * — she had released it, as far as anybody reading could tell — and she herself heard nothing: the card left «طلباتي»,
  * and her next press on it was refused «اسحب الطلب أولاً».
@@ -31,7 +31,7 @@ export const AUTO_RELEASE_WHY: Record<string, string> = {
   [NINETY_MINUTE_RELEASE_REASON]: 'ما انسجّلت عليه محاولة خلال 90 دقيقة عمل',
   [ROUND_RELEASE_REASON]: 'مرّت 6 ساعات عمل على جولة بلا ردّ',
   [REPULL_RELEASE_REASON]: 'انسحب من جديد وما انسجّلت عليه محاولة خلال 90 دقيقة عمل',
-  [DUE_RELEASE_REASON]: 'مرّت 3 ساعات عمل على موعد الطلب وما حدا فتحه',
+  [DUE_RELEASE_REASON]: 'مرّت 3 ساعات عمل على موعد الطلب وما انسجّلت عليه محاولة بعد الموعد',
 };
 
 /** The actor the timeline writes for a release nobody pressed. */

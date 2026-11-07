@@ -174,7 +174,7 @@ describe('the rounds releases tell her too', () => {
     expect(await releaseStaleClaims(db as never, scope, JO, t(2, 13), { rounds: ON })).toBe(1);
     expect(told()).toHaveLength(1);
     expect(told()[0]).toMatchObject({ userId: 'sara', storeId: 's1', link: '/confirmation/mine' });
-    expect(told()[0].message).toBe('رجع ORD-2 للطابور: مرّت 3 ساعات عمل على موعد الطلب وما حدا فتحه');
+    expect(told()[0].message).toBe('رجع ORD-2 للطابور: مرّت 3 ساعات عمل على موعد الطلب وما انسجّلت عليه محاولة بعد الموعد');
     expect(told()[0].message).toBe(`رجع ORD-2 للطابور: ${AUTO_RELEASE_WHY[DUE_RELEASE_REASON]}`);
     const line = db.orderClaimHistory.create.mock.calls[0][0].data;
     expect(line.reason).toBe(DUE_RELEASE_REASON);
@@ -211,13 +211,25 @@ describe('the timeline writes «النظام», not her name', () => {
     }
   });
 
-  it('and each reason is said in its own words, six hours and three', async () => {
+  it('and each reason is said in its own words', async () => {
     const said = async (reason: string) => {
       db.orderClaimHistory.findMany.mockResolvedValue([claimRow({ reason })]);
       return (await orderTimeline(db as never, 'o1'))[0].detail;
     };
-    expect(await said(ROUND_RELEASE_REASON)).toBe('تحرير تلقائي — مرّت 6 ساعات عمل على جولة بلا ردّ، ورجع للطابور');
-    expect(await said(DUE_RELEASE_REASON)).toBe('تحرير تلقائي — مرّت 3 ساعات عمل على موعد الطلب وما حدا فتحه، ورجع للطابور');
+    expect(await said(DUE_RELEASE_REASON)).toBe(
+      'تحرير تلقائي — مرّت 3 ساعات عمل على موعد الطلب وما انسجّلت عليه محاولة بعد الموعد، ورجع للطابور'
+    );
+    // The word «محاولة» and not «فتحه»: the rule measures what was LOGGED after the date, not whether somebody looked at the card.
+    expect(await said(DUE_RELEASE_REASON)).not.toContain('فتحه');
+  });
+
+  it('RV1413: the round label names NO number — a row written under the old three-hour rule must not be read as six', async () => {
+    db.orderClaimHistory.findMany.mockResolvedValue([claimRow({ reason: ROUND_RELEASE_REASON })]);
+    const [line] = await orderTimeline(db as never, 'o1');
+    expect(line.detail).toBe('تحرير تلقائي — مرّت مدة التحرير على جولة بلا ردّ، ورجع للطابور');
+    expect(line.detail, 'رقم بتسمية قاعدة اليوم على سطر انكتب بقاعدة غيرها').not.toMatch(/[0-9٠-٩]/);
+    // While the notice for a NEW release may say its hours.
+    expect(AUTO_RELEASE_WHY[ROUND_RELEASE_REASON]).toBe('مرّت 6 ساعات عمل على جولة بلا ردّ');
   });
 
   it('NEGATIVE: her own release is still hers', async () => {
