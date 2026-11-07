@@ -22,7 +22,7 @@ import { capRoom, ownedCounts } from './confirmation-queue';
  *   2. Each one's customer's earlier orders (this store only — a customer is a store's), newest first.
  *   3. The agent who worked the newest of them — and only if she is ACTIVE, may pull and can enter the store.
  *   4. One conditional write per order: it names her only if the order is STILL unclaimed and unassigned.
- *   5. Never past her cap (RV706, the owner 3/11): the 300 counts what is in her hands AND what is held for her (`capRoom`). An
+ *   5. Never past her cap (RV706, the owner 3/11): the cap counts what is in her hands AND what is held for her (`capRoom`). An
  *      agent with no room left is not named; the order is the shared queue's, as an order of a first-time customer is. Her room
  *      is read once per run and spent as holds are written, so one run cannot overfill it.
  *

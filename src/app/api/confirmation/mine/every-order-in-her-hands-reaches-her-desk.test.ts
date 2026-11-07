@@ -87,7 +87,7 @@ describe('«طلباتي» — every order in her hands reaches her desk', () =>
     expect(data.noAnswer).toHaveLength(232);
   });
 
-  it('at the cap — 299 dated and one undated — all 300 are listed, nothing past the end', async () => {
+  it('at the cap — all but one dated and one undated — every one is listed, nothing past the end', async () => {
     rows.value = [...Array.from({ length: CLAIM_CAPS.total - 1 }, (_, i) => noAnswer(i)), fresh];
     const data = await (await GET(new Request('http://localhost/api/confirmation/mine'))).json();
     expect(data.work.length + data.noAnswer.length).toBe(CLAIM_CAPS.total);

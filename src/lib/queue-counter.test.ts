@@ -155,6 +155,22 @@ describe('the picker and the counter', () => {
     expect(body, 'المنتقي يكتب شرطَه بنفسه').not.toMatch(/claimedById: null/);
   });
 
+  it('and the picker gives them in the owner’s order (7/11): a new order, then a due postponed one, then the rest', () => {
+    const src = stripComments(repoFile('src/lib/confirmation-queue.ts'));
+    const at = src.indexOf('export async function pickNextCandidate');
+    const body = src.slice(at, src.indexOf('\nexport', at + 10));
+    const neverRung = body.indexOf('contactAttempts: { none: {} }');
+    const due = body.indexOf('duePostponedWhere(scope, now)');
+    const rest = body.lastIndexOf('readyToPullWhere(scope, forUserId, now)');
+    expect(neverRung, 'الطلب الجديد ما انكتب').toBeGreaterThan(-1);
+    expect(neverRung, 'الطلب الجديد قبل المؤجَّل المستحق').toBeLessThan(due);
+    expect(due, 'المؤجَّل المستحق قبل الباقي').toBeLessThan(rest);
+    // The new order is the ready pile with «nobody has rung», not a second definition of the pile.
+    expect(body.slice(Math.max(0, neverRung - 120), neverRung)).toContain('readyToPullWhere(scope, forUserId, now)');
+    // And it stands behind no switch: the picker does not know «نظام الجولات» at all.
+    expect(body).not.toMatch(/rounds/i);
+  });
+
   it('and the screen says which number is which', () => {
     const src = stripComments(repoFile('src/components/confirmation/PullPanel.tsx'));
     expect(src).toContain('طلب جاهز للسحب الآن');

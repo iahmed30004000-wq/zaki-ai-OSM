@@ -247,8 +247,9 @@ describe('what is still waiting is still handed out', () => {
     expect(byId(waiting.id)).toMatchObject({ confirmationStatus: 'IN_PROGRESS', claimedById: 'rawda' });
   });
 
-  it('a due postponement still comes before an older waiting order; a far one is counted apart and not handed out', async () => {
-    const older = order({ createdAt: hoursAgo(20) });
+  it('a due postponement still comes before an older waiting order that was RUNG; a far one is counted apart and not handed out', async () => {
+    // Rung once, nobody answered, let go: it has an attempt, so it is not a «new» order (the owner, 7/11: new ones come first).
+    const older = order({ createdAt: hoursAgo(20), contactAttempts: [{ createdAt: hoursAgo(12), result: 'NO_ANSWER' }] });
     const due = order({ confirmationStatus: 'POSTPONED', status: 'POSTPONED', postponedUntil: hoursAhead(3), createdAt: hoursAgo(1) });
     order({ confirmationStatus: 'POSTPONED', status: 'POSTPONED', postponedUntil: hoursAhead(24 * 10), createdAt: hoursAgo(60) });
 
@@ -257,6 +258,18 @@ describe('what is still waiting is still handed out', () => {
 
     byId(due.id).claimedById = 'salwa';
     expect(await pickNextCandidate(db as never, scope, NOW, 'rawda')).toBe(older.id);
+  });
+
+  it('but a NEW order — one nobody has rung — comes before a due postponement, the younger one too (7/11)', async () => {
+    const due = order({ confirmationStatus: 'POSTPONED', status: 'POSTPONED', postponedUntil: hoursAhead(3), createdAt: hoursAgo(40) });
+    const fresh = order({ createdAt: hoursAgo(1) });
+
+    // The counter is unchanged: both are in the pile she can take, whichever order they come in.
+    expect(await counters('rawda')).toEqual({ waiting: 2, colleagues: 0, later: 0 });
+    expect(await pickNextCandidate(db as never, scope, NOW, 'rawda')).toBe(fresh.id);
+
+    byId(fresh.id).claimedById = 'salwa';
+    expect(await pickNextCandidate(db as never, scope, NOW, 'rawda')).toBe(due.id);
   });
 
   it('a pool of nothing but far postponements: none handed out, all of them counted apart', async () => {

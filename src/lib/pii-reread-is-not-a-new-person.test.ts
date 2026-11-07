@@ -89,18 +89,22 @@ describe('noteCustomersHandedOut, the door every list goes through', () => {
     expect(logAudit).not.toHaveBeenCalled();
   });
 
-  it('five hundred DIFFERENT people still raise it, exactly once', async () => {
-    await hand(rows(300));
-    await hand(rows(300, 300));
-    await hand(rows(300, 600));
-    expect(BULK_VIEW_RECORDS).toBe(500);
+  it('enough DIFFERENT people (the whole threshold) still raise it, exactly once', async () => {
+    // Three loads of different people, each half the threshold: the second one crosses, the third adds more and says nothing.
+    const half = Math.ceil(BULK_VIEW_RECORDS / 2);
+    await hand(rows(half));
+    expect(logAudit, 'half of it is not yet').not.toHaveBeenCalled();
+    await hand(rows(half, half));
+    await hand(rows(half, 2 * half));
     expect(logAudit).toHaveBeenCalledTimes(1);
     expect(createNotification).toHaveBeenCalledTimes(1);
   });
 
   it('a list that names nobody is counted row by row, as before', async () => {
-    const nameless = Array.from({ length: 300 }, () => ({}));
+    // Two loads of half the threshold each: rows that name nobody cannot be recognised on the second read, so they add up.
+    const nameless = Array.from({ length: Math.ceil(BULK_VIEW_RECORDS / 2) }, () => ({}));
     await hand(nameless);
+    expect(logAudit).not.toHaveBeenCalled();
     await hand(nameless);
     expect(logAudit).toHaveBeenCalledTimes(1);
   });

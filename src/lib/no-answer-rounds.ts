@@ -5,24 +5,31 @@ import { NO_ANSWER_LIMIT, NO_ANSWER_RESULTS } from './confirmation-workflow';
  * ═══════════════════════════════════════════════════════════════════════
  * «لا رد» IN ROUNDS — THE RULES, WITH NOTHING READ (the owner, 4/11: «بنمشي ع اخر خطة»).
  *
- * Behind a switch that is OFF unless the owner turns it on (`no-answer-rounds-switch.ts`). With it OFF none of this is
- * asked and every door works exactly as before: an order with one logged attempt stays with its agent, and the third
- * no-answer of all time closes it at once.
+ * Behind a switch that is OFF unless the owner turns it on (`no-answer-rounds-switch.ts`). With it OFF none of R1, R1b, R2, R3
+ * and R5 is asked and the rotation works exactly as before: an order with one logged attempt stays with its agent, and the
+ * third no-answer of all time closes it at once. R4, the pull's order, and the cap on what one agent holds
+ * (`CLAIM_CAPS`) are NOT behind the switch since 7/11 — they are the same with it on or off.
  *
  * With it ON:
  *
  *   R1 · LET GO — an order whose trailing run of no-answers (after the last call that reached somebody and after she took
- *        it) started three WORKING hours ago — counted from the switch when the run is older than it (6/11) — goes back to
- *        the shared queue, and the customer's
- *        other orders held for her go with it. So does a re-pulled order nobody has touched since it was taken, after the
- *        same ninety working minutes as an untouched one.
+ *        it) started SIX WORKING hours ago (the owner, 7/11: «يبقى 6 ساعات عمل») — counted from the switch when the run is
+ *        older than it (6/11) — goes back to the shared queue, and the customer's other orders held for her go with it. So
+ *        does a re-pulled order nobody has touched since it was taken, after the same ninety working minutes as an
+ *        untouched one.
+ *   R1b · A DATE WITH NOTHING LOGGED AFTER IT (7/11) — an order held with a date (a postponement, a callback the customer asked
+ *        for) stays with her until three working hours after the LATER of its dates; if she held it through that date and
+ *        nothing at all was logged on it from that instant on (`OPENED` included, anybody's), it goes back too, with its own reason
+ *        (`DUE_RELEASE_REASON`). Its status and dates are not touched: a postponed order stays postponed and, being due, the
+ *        pull offers it. The same three hours are a grace for R1: no run releases a dated order before them.
  *   R2 · A ROUND — presses of «لا يرد» within three working hours of the round's first count once. ONE function
  *        (`countedRounds`) answers it for the close, the desk's counter and the desk's two tabs.
  *   R3 · THE CLOSE — the third counted round closes the order only when the rounds fall on at least two different days.
- *   R4 · THE PULL — after what is held for her and what is due today, an order nobody has rung yet comes before one that
- *        was rung already.
+ *   R4 · THE PULL — after what is held for her, an order nobody has rung yet comes first: before a due postponed one and
+ *        before one that was rung already (the owner, 7/11: «الأولوية دائما للطلبات الجديدة»). R4 is the one rule here that
+ *        is NOT behind the switch any more — the pull is the same with it on or off (`pickNextCandidate`).
  *   R5 · A DIAL FIRST — a no-answer counts as a round only if the same agent pressed «اتصل» (an `OPENED` line) on the
- *        order since the previous counted round. Otherwise it is kept and shown, and still starts the three hours of R1.
+ *        order since the previous counted round. Otherwise it is kept and shown, and still starts the six hours of R1.
  *
  * ── «REACHED» ──
  *
@@ -40,10 +47,15 @@ import { NO_ANSWER_LIMIT, NO_ANSWER_RESULTS } from './confirmation-workflow';
 
 /** Presses within this many working minutes of a round's first are the same round. */
 export const ROUND_GAP_BUSINESS_MINUTES = 180;
-/** A trailing run of no-answers this many working minutes old lets the order go back to the queue. */
-export const ROUND_RELEASE_BUSINESS_MINUTES = 180;
+/** A trailing run of no-answers this many working minutes old lets the order go back to the queue: six hours (the owner, 7/11). */
+export const ROUND_RELEASE_BUSINESS_MINUTES = 360;
 /** A re-pulled order nobody touched goes back after the same time as an untouched one (`AUTO_RELEASE_BUSINESS_MINUTES`). */
 export const REPULL_RELEASE_BUSINESS_MINUTES = 90;
+/**
+ * A held order with a date stays with her until this many working minutes after the LATER of its dates (R1b). After that it
+ * goes back if nothing was logged on it since the date; before it, no run releases it.
+ */
+export const DUE_RELEASE_BUSINESS_MINUTES = 180;
 /**
  * She is on it: an attempt of any kind (a «اتصل» included) by the agent who holds the order, this many working minutes ago or
  * less, keeps it with her for this pass — a release never takes an order out of her hands in the middle of a call.
@@ -52,13 +64,15 @@ export const HOLDER_ACTIVE_BUSINESS_MINUTES = 15;
 /** The counted rounds must fall on at least this many different days before they close an order. */
 export const ROUND_CLOSE_MIN_DAYS = 2;
 
-/** The claim-history reasons of the two releases — named in Arabic in the order timeline (`order-timeline.ts`). */
+/** The claim-history reasons of the three releases — named in Arabic in the order timeline (`order-timeline.ts`). */
 export const ROUND_RELEASE_REASON = 'AUTO_RELEASE_NO_ANSWER_ROUND';
 export const REPULL_RELEASE_REASON = 'AUTO_RELEASE_REPULLED_UNTOUCHED';
+/** R1b: a dated order with no attempt logged on it after its date. */
+export const DUE_RELEASE_REASON = 'AUTO_RELEASE_DATE_PASSED';
 
 /**
  * What the switch says: off, or on since a moment. No clock of R1 runs before that moment — a run older than the switch
- * starts its three working hours when it went on (6/11) — and the close (R3) counts what the desk shows.
+ * starts its working hours when it went on (6/11) — and the close (R3) counts what the desk shows.
  */
 export interface RoundsSwitch {
   enabled: boolean;
@@ -228,12 +242,14 @@ export interface HeldFacts {
   nextFollowUpAt?: Date | string | null;
 }
 
-/** The two cut-offs of one release pass — computed once per call, never per order. */
+/** The cut-offs of one release pass — computed once per call, never per order. */
 export interface ReleaseCutoffs {
-  /** A trailing run that started at or before this is three working hours old. */
+  /** A trailing run that started at or before this is six working hours old. */
   round: Date;
   /** A re-pulled claim taken at or before this is ninety working minutes old. */
   repull: Date;
+  /** A date at or before this is three working hours old: the grace of a dated order is over (R1b). */
+  promise: Date;
   /** An attempt by the holder AFTER this is «she is on it right now». */
   recent: Date;
 }
@@ -242,39 +258,62 @@ export function releaseCutoffs(now: Date, clock: WorkClock): ReleaseCutoffs {
   return {
     round: clock.back(now, ROUND_RELEASE_BUSINESS_MINUTES),
     repull: clock.back(now, REPULL_RELEASE_BUSINESS_MINUTES),
+    promise: clock.back(now, DUE_RELEASE_BUSINESS_MINUTES),
     recent: clock.back(now, HOLDER_ACTIVE_BUSINESS_MINUTES),
   };
+}
+
+/** The LATER of the order's two dates (a postponement, a callback), or null when it has none. */
+function laterDate(order: HeldFacts): number | null {
+  const times = [order.postponedUntil, order.nextFollowUpAt]
+    .filter((v): v is Date | string => !!v)
+    .map((v) => new Date(v).getTime())
+    .filter((n) => !Number.isNaN(n));
+  return times.length ? Math.max(...times) : null;
 }
 
 /**
  * WHY THIS HELD ORDER GOES BACK TO THE QUEUE — or null when it stays with her. Pure: one comparison per attempt against the
  * pass's cut-offs.
  *
- *   · a date ahead (a postponement or a callback the customer asked for) keeps it, whatever else;
- *   · so does an attempt by the agent who holds it in the last `HOLDER_ACTIVE_BUSINESS_MINUTES` working minutes;
  *   · no attempt at all is the ninety-minute rule's (`releaseStaleClaims`), not this one's;
+ *   · a date (a postponement or a callback the customer asked for) keeps it until `DUE_RELEASE_BUSINESS_MINUTES` working
+ *     minutes after the LATER of its dates — ahead of now, or just passed — whatever else (R1b's grace, and the switch's
+ *     own notice, as for a run below);
+ *   · after that, held through the date (taken before it) and nothing logged on it from that instant on — by anybody,
+ *     `OPENED` included, an attempt AT the date's own instant counts — is `DUE_RELEASE_REASON`. An order taken AFTER its date
+ *     is not this one's: it has no date she held it through, and it gets the ninety minutes of a re-pull below, as before;
+ *   · an attempt by the agent who holds it in the last `HOLDER_ACTIVE_BUSINESS_MINUTES` working minutes keeps it;
  *   · worked before, and nothing logged since she took it: `REPULL_RELEASE_REASON`, ninety working minutes after she took
  *     it or after the switch went on, whichever is later;
- *   · otherwise the no-answers after the last call that reached somebody and after she took it: three working hours after
+ *   · otherwise the no-answers after the last call that reached somebody and after she took it: six working hours after
  *     the first of them, or after the switch went on when that is later, is `ROUND_RELEASE_REASON`.
  */
 export function roundsReleaseReason(
   order: HeldFacts,
   attempts: readonly AttemptFact[],
   sw: { enabledAt: Date },
-  cut: ReleaseCutoffs,
-  now: Date
-): typeof ROUND_RELEASE_REASON | typeof REPULL_RELEASE_REASON | null {
-  const ahead = (v: Date | string | null | undefined) => !!v && new Date(v).getTime() > now.getTime();
-  if (ahead(order.postponedUntil) || ahead(order.nextFollowUpAt)) return null;
+  cut: ReleaseCutoffs
+): typeof ROUND_RELEASE_REASON | typeof REPULL_RELEASE_REASON | typeof DUE_RELEASE_REASON | null {
   if (attempts.length === 0) return null;
+
+  const claimedAt = new Date(order.claimedAt).getTime();
+  const enabledAt = sw.enabledAt.getTime();
+
+  const dated = laterDate(order);
+  if (dated !== null) {
+    // The grace: three working hours after the date (after the switch, if that is later) it is still hers.
+    if (Math.max(dated, enabledAt) > cut.promise.getTime()) return null;
+    // Held through the date and nothing was logged on it from that instant on. It goes back; status and dates stay. An attempt
+    // logged at the very millisecond of the date counts as started (`>=`, as the re-pull branch below reads `claimedAt`).
+    if (claimedAt <= dated && !attempts.some((a) => at(a).getTime() >= dated)) return DUE_RELEASE_REASON;
+  }
+
   // She is on the call (or just was): not this pass.
   if (order.claimedById && attempts.some((a) => a.employeeId === order.claimedById && at(a).getTime() > cut.recent.getTime())) {
     return null;
   }
 
-  const claimedAt = new Date(order.claimedAt).getTime();
-  const enabledAt = sw.enabledAt.getTime();
   const sorted = chronological(attempts);
 
   if (!sorted.some((a) => at(a).getTime() >= claimedAt)) {
@@ -283,8 +322,8 @@ export function roundsReleaseReason(
 
   /*
    * THE PILE FROM BEFORE THE SWITCH GOES BACK TOO (the owner, 6/11: «ع الفاضي ما انسحب منها الطلبات»). A run of no-answers
-   * that started before the switch went on is still a run — 237 orders on one desk said so — but its three working hours
-   * are counted FROM THE SWITCH, never from the old press: turning it on gives every desk three working hours' notice, and
+   * that started before the switch went on is still a run — 237 orders on one desk said so — but its six working hours
+   * are counted FROM THE SWITCH, never from the old press: turning it on gives every desk six working hours' notice, and
    * nothing leaves the moment it is pressed. A call that reached somebody before the switch still ends the run before it.
    */
   let anchor = claimedAt;

@@ -9,9 +9,10 @@ import { forgetRoundsSwitch, roundsSwitch, saveRoundsSwitch } from '@/lib/no-ans
 /**
  * GET/PUT /api/settings/no-answer-rounds — «نظام الجولات (تجريبي)», the owner's switch (`no-answer-rounds.ts`).
  *
- * OFF by default, and OFF is today's rules exactly. ON changes who holds an order nobody answered and when three no-answers
- * close it — work an agent is paid on — so turning it is `settings.manage`, the box the owner holds for the company's keys,
- * and not a supervisor's. Seen by whoever opens the settings page (`settings.view`).
+ * OFF by default, and OFF is the old rotation and rounds exactly (the pull's order and the cap do not depend on it). ON changes
+ * who holds an order nobody answered and when three no-answers close it — work an agent is paid on — so turning it is
+ * `settings.manage`, the box the owner holds for the company's keys, and not a supervisor's. Seen by whoever opens the settings
+ * page (`settings.view`).
  *
  * The body is `{ enabled: boolean }` and nothing else: the moment it went on is the server's clock, never the client's,
  * because nothing logged before that moment may move an order.

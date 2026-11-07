@@ -56,15 +56,20 @@ export interface AccessWindow {
 }
 
 /**
- * FIVE FULL PAGES OF THE LARGEST LIST THE API WILL RETURN.
+ * MORE THAN ONE FULL DESK, AND STILL FAR FROM A HARVEST.
  *
- * The list endpoint caps at a hundred rows, so this is five unfiltered
- * loads inside a quarter of an hour. A day of calling does not reach it:
- * an agent works a queue of orders and opens the customers they are
- * calling. Reading five hundred people's contact details in fifteen
- * minutes is not calling anybody.
+ * The alarm counts the DISTINCT customers handed to one person inside a quarter of an hour, and the largest ordinary load there
+ * is one agent's desk («طلباتي», `GET /api/confirmation/mine`): everything she may hold (`CLAIM_CAPS.total`, 500 since 7/11) plus
+ * the fifty closed today and the twenty-five confirmed on the page — up to 575 customers in a single request, one each. At 500
+ * the full desk was the crossing: an audit row and an alert to every `users.edit` holder each quarter hour for an agent doing
+ * exactly her job, until the alert is read as noise. (It was five full pages of the customer list, 100 a page, when no desk could
+ * hold that many; the old desk of 375 never reached it.)
+ *
+ * So 700: above a full desk with room to spare, and still a number that ordinary calling does not reach by any other road. Reading
+ * seven hundred people's contact details in fifteen minutes is not calling anybody. `pii-access.test.ts` ties this number to the
+ * cap and the desk's two other pages, so the next raise of the cap fails there first instead of quietly turning the alarm to noise.
  */
-export const BULK_VIEW_RECORDS = 500;
+export const BULK_VIEW_RECORDS = 700;
 export const BULK_VIEW_WINDOW_MS = 15 * 60 * 1000;
 
 const windows = new Map<string, AccessWindow>();

@@ -32,8 +32,14 @@ describe('pullRefusal', () => {
     expect(pullRefusal({ total: 3, withoutAttempt: 1 })?.code).toBe('UNTOUCHED_ORDER');
   });
 
-  it('refuses at the 300 owned cap', () => {
+  it('refuses at the owned cap', () => {
     expect(pullRefusal({ total: CLAIM_CAPS.total, withoutAttempt: 0 })?.code).toBe('CAP_TOTAL');
+  });
+
+  it('the cap is 500 (the owner, 7/11): the 500th is allowed, the 501st is refused', () => {
+    expect(CLAIM_CAPS).toEqual({ withoutAttempt: 40, total: 500 });
+    expect(pullRefusal({ total: 499, withoutAttempt: 0 })).toBeNull();
+    expect(pullRefusal({ total: 500, withoutAttempt: 0 })?.code).toBe('CAP_TOTAL');
   });
 
   it('refuses at the 40 no-attempt cap', () => {
@@ -75,16 +81,24 @@ describe('releaseStaleClaims', () => {
 });
 
 describe('pickNextCandidate', () => {
-  it('prefers a postponed order that is due within the lead days', async () => {
-    db.order.findFirst.mockResolvedValueOnce({ id: 'postponed-1' });
+  it('prefers a NEW order — one nobody has rung yet — to anything else (the owner, 7/11)', async () => {
+    db.order.findFirst.mockResolvedValueOnce({ id: 'fresh' });
+    expect(await pickNextCandidate(db as never, scope)).toBe('fresh');
+    expect(db.order.findFirst.mock.calls[0][0].where.contactAttempts).toEqual({ none: {} });
+    expect(db.order.findFirst.mock.calls[0][0].orderBy).toEqual({ createdAt: 'asc' });
+  });
+
+  it('then a postponed order that is due within the lead days', async () => {
+    db.order.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'postponed-1' });
     expect(await pickNextCandidate(db as never, scope)).toBe('postponed-1');
-    expect(db.order.findFirst.mock.calls[0][0].where.confirmationStatus).toBe('POSTPONED');
+    expect(db.order.findFirst.mock.calls[1][0].where.confirmationStatus).toBe('POSTPONED');
   });
 
   it('falls back to the oldest waiting order', async () => {
-    db.order.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'oldest' });
+    db.order.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'oldest' });
     expect(await pickNextCandidate(db as never, scope)).toBe('oldest');
-    expect(db.order.findFirst.mock.calls[1][0].orderBy).toEqual({ createdAt: 'asc' });
+    expect(db.order.findFirst.mock.calls[2][0].orderBy).toEqual({ createdAt: 'asc' });
+    expect(db.order.findFirst.mock.calls[2][0].where).not.toHaveProperty('contactAttempts');
   });
 
   it('never offers an order someone already claimed', async () => {

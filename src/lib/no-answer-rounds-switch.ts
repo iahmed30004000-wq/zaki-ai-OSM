@@ -16,7 +16,8 @@ type Client = Prisma.TransactionClient | typeof db;
  * ── OFF UNLESS IT IS PLAINLY ON ──
  *
  * A missing key, a broken document, a stored value that is not a real `true` with a real date, and a read that FAILS are
- * all OFF — today's rules. An experiment must never turn itself on by an error.
+ * all OFF — the old rotation and rounds (the pull's order and the cap do not depend on it any more, 7/11). An experiment must
+ * never turn itself on by an error.
  *
  * ── READ ONCE IN A WHILE, NOT ONCE PER PRESS ──
  *

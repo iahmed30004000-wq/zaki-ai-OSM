@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  *   · a released retry (≥1 no-answer, nobody reached since the release) is taken: the pull's fields, IN_PROGRESS, history
  *     `CUSTOMER_CALLED_BACK`, and his other waiting orders held for her;
  *   · never rung → NEVER_CALLED; a colleague holds it → HELD_BY_COLLEAGUE with her name; shipped → CLOSED; another store or
- *     outside her envelope → NOT_FOUND; held for a colleague → RESERVED_FOR_COLLEAGUE; at the 300 → CAP_TOTAL;
+ *     outside her envelope → NOT_FOUND; held for a colleague → RESERVED_FOR_COLLEAGUE; at the cap → CAP_TOTAL;
  *   · two agents at once: one wins, the other is told who has it — with the customer lock, and with the write's own guard when
  *     the lock serialises nothing (the control);
  *   · the search: exact number only, ten at most, her store and her envelope, no customer field on a card.
@@ -184,6 +184,7 @@ const { takeOnTheLine, searchOnTheLine, callbackVerdict, CUSTOMER_CALLED_BACK_RE
 );
 const { db } = await import('./db');
 const rbac = await import('./rbac');
+const { CLAIM_CAPS } = await import('./confirmation-queue');
 
 const NOW = new Date('2026-11-04T09:00:00Z');
 const AGO = (h: number) => new Date(NOW.getTime() - h * 3_600_000);
@@ -338,8 +339,8 @@ describe('what stays refused', () => {
     expect(await take(o.id)).toMatchObject({ ok: false, code: 'REACHED_SINCE_RELEASE' });
   });
 
-  it('at the 300 — the cap’s own sentence', async () => {
-    for (let i = 0; i < 300; i++) order({ customerId: null, claimedById: 'sara', confirmationStatus: 'IN_PROGRESS' });
+  it('at the cap — the cap’s own sentence', async () => {
+    for (let i = 0; i < CLAIM_CAPS.total; i++) order({ customerId: null, claimedById: 'sara', confirmationStatus: 'IN_PROGRESS' });
     const o = releasedRetry();
     expect(await take(o.id)).toMatchObject({ ok: false, code: 'CAP_TOTAL' });
     expect(o.claimedById).toBeNull();

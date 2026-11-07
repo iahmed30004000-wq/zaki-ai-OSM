@@ -192,7 +192,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
      */
     if (order.claimedById !== user.id) {
       const counts = await ownedCounts(db, { companyId, storeId }, user.id);
-      // At 300 because of what is held for her (RV706), THIS order may still be taken if it is one of those — it is already
+      // At the cap because of what is held for her (RV706), THIS order may still be taken if it is one of those — it is already
       // counted. Asked only then: anywhere else the answer changes nothing.
       const atCapByHolds = counts.total < CLAIM_CAPS.total && capLoad(counts) >= CLAIM_CAPS.total;
       const takesHeldForHer =
