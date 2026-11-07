@@ -4,7 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * ═══════════════════════════════════════════════════════════════════════
  * AN ORDER THE SYSTEM TAKES BACK IS TAKEN BY THE SYSTEM — AND SHE IS TOLD (the owner's ruling 4/11).
  *
- * The ninety-minute release and the two releases of «نظام الجولات» wrote their history line under the agent's own id and
+ * The ninety-minute release and the three releases of «نظام الجولات» (a round, a re-pull, and — 7/11 — a dated order nobody
+ * opened) wrote their history line under the agent's own id and
  * an English code: the order's history read «تحرير الطلب — سارة · AUTO_RELEASE_90_BUSINESS_MINUTES», as though she had let
  * it go. And she heard nothing — the card left «طلباتي», and her next press on it was refused «اسحب الطلب أولاً».
  *
@@ -36,7 +37,7 @@ const { db } = vi.hoisted(() => ({
 vi.mock('./db', () => ({ db }));
 
 import { AUTO_RELEASE_BUSINESS_MINUTES, releaseStaleClaims } from './confirmation-queue';
-import { REPULL_RELEASE_REASON, ROUND_RELEASE_REASON } from './no-answer-rounds';
+import { DUE_RELEASE_REASON, REPULL_RELEASE_REASON, ROUND_RELEASE_REASON } from './no-answer-rounds';
 import { AUTO_RELEASE_WHY, NINETY_MINUTE_RELEASE_REASON, isAutomaticRelease } from './auto-release';
 import { orderTimeline } from './order-timeline';
 import { zonedTimeToInstant } from './business-calendar';
@@ -143,12 +144,13 @@ describe('the ninety-minute release tells her', () => {
 });
 
 describe('the rounds releases tell her too', () => {
-  it('a round nobody answered for three working hours', async () => {
+  it('a round nobody answered for six working hours', async () => {
     roundsRows = [heldRow()];
-    expect(await releaseStaleClaims(db as never, scope, JO, t(1, 12, 30), { rounds: ON })).toBe(1);
+    expect(await releaseStaleClaims(db as never, scope, JO, t(1, 15, 30), { rounds: ON })).toBe(1);
     expect(told()).toHaveLength(1);
     expect(told()[0]).toMatchObject({ userId: 'sara', storeId: 's1', link: '/confirmation/mine' });
     expect(told()[0].message).toBe(`رجع ORD-2 للطابور: ${AUTO_RELEASE_WHY[ROUND_RELEASE_REASON]}`);
+    expect(told()[0].message).toBe('رجع ORD-2 للطابور: مرّت 6 ساعات عمل على جولة بلا ردّ');
     expect(JSON.parse(db.orderClaimHistory.create.mock.calls[0][0].data.metadata)).toEqual({ automatic: true, holder: 'sara' });
   });
 
@@ -159,10 +161,30 @@ describe('the rounds releases tell her too', () => {
     expect(told()[0].message).toBe(`رجع ORD-2 للطابور: ${AUTO_RELEASE_WHY[REPULL_RELEASE_REASON]}`);
   });
 
+  it('a dated order nobody opened after its date (7/11)', async () => {
+    roundsRows = [
+      heldRow({
+        postponedUntil: t(2, 10),
+        contactAttempts: [
+          { createdAt: t(1, 9, 29), result: 'OPENED', attemptNumber: 1, employeeId: 'sara' },
+          { createdAt: t(1, 9, 30), result: 'POSTPONED', attemptNumber: 2, employeeId: 'sara' },
+        ],
+      }),
+    ];
+    expect(await releaseStaleClaims(db as never, scope, JO, t(2, 13), { rounds: ON })).toBe(1);
+    expect(told()).toHaveLength(1);
+    expect(told()[0]).toMatchObject({ userId: 'sara', storeId: 's1', link: '/confirmation/mine' });
+    expect(told()[0].message).toBe('رجع ORD-2 للطابور: مرّت 3 ساعات عمل على موعد الطلب وما انسجّلت عليه محاولة بعد الموعد');
+    expect(told()[0].message).toBe(`رجع ORD-2 للطابور: ${AUTO_RELEASE_WHY[DUE_RELEASE_REASON]}`);
+    const line = db.orderClaimHistory.create.mock.calls[0][0].data;
+    expect(line.reason).toBe(DUE_RELEASE_REASON);
+    expect(JSON.parse(line.metadata)).toEqual({ automatic: true, holder: 'sara' });
+  });
+
   it('NEGATIVE: a press that won the race keeps the order — and nobody is told it went', async () => {
     roundsRows = [heldRow()];
     db.order.updateMany.mockResolvedValueOnce({ count: 0 });
-    expect(await releaseStaleClaims(db as never, scope, JO, t(1, 12, 30), { rounds: ON })).toBe(0);
+    expect(await releaseStaleClaims(db as never, scope, JO, t(1, 15, 30), { rounds: ON })).toBe(0);
     expect(db.notification.createMany).not.toHaveBeenCalled();
   });
 });
@@ -180,13 +202,34 @@ describe('the timeline writes «النظام», not her name', () => {
     expect(line.detail).toBe('تحرير تلقائي — ما انسجّلت عليه محاولة خلال 90 دقيقة عمل');
   });
 
-  it('a row written before this rule (no metadata) is read by its reason — all three', async () => {
-    for (const reason of [NINETY_MINUTE_RELEASE_REASON, ROUND_RELEASE_REASON, REPULL_RELEASE_REASON]) {
+  it('a row written before this rule (no metadata) is read by its reason — all four', async () => {
+    for (const reason of [NINETY_MINUTE_RELEASE_REASON, ROUND_RELEASE_REASON, REPULL_RELEASE_REASON, DUE_RELEASE_REASON]) {
       db.orderClaimHistory.findMany.mockResolvedValue([claimRow({ reason })]);
       const [line] = await orderTimeline(db as never, 'o1');
       expect(line.actorName, reason).toBe('النظام');
       expect(line.detail, `${reason} طلع بالإنجليزي`).not.toMatch(/[A-Z_]{6,}/);
     }
+  });
+
+  it('and each reason is said in its own words', async () => {
+    const said = async (reason: string) => {
+      db.orderClaimHistory.findMany.mockResolvedValue([claimRow({ reason })]);
+      return (await orderTimeline(db as never, 'o1'))[0].detail;
+    };
+    expect(await said(DUE_RELEASE_REASON)).toBe(
+      'تحرير تلقائي — مرّت 3 ساعات عمل على موعد الطلب وما انسجّلت عليه محاولة بعد الموعد، ورجع للطابور'
+    );
+    // The word «محاولة» and not «فتحه»: the rule measures what was LOGGED after the date, not whether somebody looked at the card.
+    expect(await said(DUE_RELEASE_REASON)).not.toContain('فتحه');
+  });
+
+  it('RV1413: the round label names NO number — a row written under the old three-hour rule must not be read as six', async () => {
+    db.orderClaimHistory.findMany.mockResolvedValue([claimRow({ reason: ROUND_RELEASE_REASON })]);
+    const [line] = await orderTimeline(db as never, 'o1');
+    expect(line.detail).toBe('تحرير تلقائي — مرّت مدة التحرير على جولة بلا ردّ، ورجع للطابور');
+    expect(line.detail, 'رقم بتسمية قاعدة اليوم على سطر انكتب بقاعدة غيرها').not.toMatch(/[0-9٠-٩]/);
+    // While the notice for a NEW release may say its hours.
+    expect(AUTO_RELEASE_WHY[ROUND_RELEASE_REASON]).toBe('مرّت 6 ساعات عمل على جولة بلا ردّ');
   });
 
   it('NEGATIVE: her own release is still hers', async () => {

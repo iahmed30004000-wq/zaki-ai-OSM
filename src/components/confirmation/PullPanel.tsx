@@ -26,7 +26,7 @@ import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 
 export interface QueueResponse {
   waiting: number;
-  /** `heldForHer`: held for her and not yet pulled — counted in the 300 with what is in her hands (RV706). */
+  /** `heldForHer`: held for her and not yet pulled — counted in the cap with what is in her hands (RV706). */
   owned: { total: number; withoutAttempt: number; heldForHer?: number };
   caps: { withoutAttempt: number; total: number };
   leadDays: number;
@@ -207,7 +207,7 @@ export function PullPanel({
     </p>
   );
 
-  /** What the 300 counts (RV706): in her hands, and — said apart — what is held for her. */
+  /** What the cap counts (RV706): in her hands, and — said apart — what is held for her. */
   const heldForHer = data.owned.heldForHer ?? 0;
   const capShown = heldForHer > 0 ? `${data.owned.total} + ${heldForHer} محجوز لك` : `${data.owned.total}`;
 
@@ -229,7 +229,7 @@ export function PullPanel({
 
   const rule = !notMyDesk && (
     <p className={`${compact ? 'mt-3' : 'mt-4'} text-xs text-[var(--sys-muted)]`}>
-      طلب الزبون الراجع التابع لك يأتيك أولاً. الأولوية للطلبات المؤجلة المستحقة خلال {data.leadDays} يوم، ثم الأقدم. يُحرَّر أي طلب بلا محاولة اتصال بعد 90 دقيقة عمل.
+      طلب الزبون الراجع اللي تابع إلك بيجيك أول، وبعده الطلب الجديد اللي ما حدا اتصل فيه، وبعده المؤجّل اللي موعده خلال {data.leadDays} يوم، وبعده الأقدم. أي طلب بلا محاولة اتصال بيرجع للطابور بعد 90 دقيقة عمل.
     </p>
   );
 

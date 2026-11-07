@@ -476,8 +476,8 @@ describe('what stays refused', () => {
     expect(await take(o.id)).toMatchObject({ ok: false, code: 'REACHED_SINCE_RELEASE' });
   });
 
-  it('at the 300 — the cap’s own sentence', async () => {
-    for (let i = 0; i < 300; i++) order({ customerId: null, claimedById: 'sara', confirmationStatus: 'IN_PROGRESS' });
+  it('at the cap — the cap’s own sentence', async () => {
+    for (let i = 0; i < CLAIM_CAPS.total; i++) order({ customerId: null, claimedById: 'sara', confirmationStatus: 'IN_PROGRESS' });
     const o = releasedRetry();
     expect(await take(o.id)).toMatchObject({ ok: false, code: 'CAP_TOTAL' });
     expect(o.claimedById).toBeNull();

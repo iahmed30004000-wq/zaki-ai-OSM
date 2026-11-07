@@ -374,7 +374,7 @@ describe('«طلباتي» — the tabs, the pull panel and the card', () => {
     await draw();
     await screen.findByText('طلب جاهز للسحب الآن');
     expect(screen.getByText('لديك بلا محاولة اتصال')).toBeTruthy();
-    expect(screen.getByText(/الأولوية للطلبات المؤجلة المستحقة/)).toBeTruthy();
+    expect(screen.getByText(/الطلب الجديد اللي ما حدا اتصل فيه/)).toBeTruthy();
     const deskPull = screen.getByRole('button', { name: 'اسحب الطلب التالي' });
     expect(tokens(deskPull)).toEqual(expect.arrayContaining(['min-h-11', 'md:min-h-0']));
     expect(deskPull.closest('section')!.querySelector('details')).toBeNull();
@@ -389,7 +389,7 @@ describe('«طلباتي» — the tabs, the pull panel and the card', () => {
     expect(fold.querySelector('summary')!.textContent).toContain('بلا محاولة 2/3');
     expect(fold.querySelector('summary')!.textContent).toContain('بيدك 3/10');
     expect(fold.contains(screen.getByText('لديك بلا محاولة اتصال'))).toBe(true);
-    expect(fold.contains(screen.getByText(/الأولوية للطلبات المؤجلة المستحقة/))).toBe(true);
+    expect(fold.contains(screen.getByText(/الطلب الجديد اللي ما حدا اتصل فيه/))).toBe(true);
     // the button is outside it
     expect(fold.contains(screen.getByRole('button', { name: 'اسحب الطلب التالي' }))).toBe(false);
   });

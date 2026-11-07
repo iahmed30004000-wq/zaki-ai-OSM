@@ -97,6 +97,16 @@ describe.each([
     expect(screen.getByText('3 / 10')).toBeTruthy();
   });
 
+  it('says the order the pull gives: hers, then a new order, then a due postponed one, then the oldest (the owner, 7/11)', async () => {
+    render(<Harness compact={compact} />);
+    const rule = (await screen.findByText(/الطلب الجديد اللي ما حدا اتصل فيه/)).textContent ?? '';
+    const at = ['الراجع', 'الطلب الجديد', 'المؤجّل', 'الأقدم'].map((p) => rule.indexOf(p));
+    expect(at.every((i) => i >= 0), rule).toBe(true);
+    expect([...at].sort((a, b) => a - b), rule).toEqual(at);
+    // The lead days travel with the postponed ones (POOL says 2).
+    expect(rule).toContain('خلال 2 يوم');
+  });
+
   it('pulls once, reloads the pool, and only then says it is done', async () => {
     const order: string[] = [];
     api.mockImplementation(async (_url: string, init?: RequestInit) => {

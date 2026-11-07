@@ -20,14 +20,17 @@ type Tx = Prisma.TransactionClient | typeof db;
 /**
  * CONFIRMATION QUEUE — agents never see a list, they pull the next order.
  *
- * Priority: postponed orders due within the lead days first, then the oldest
- * waiting order. An agent cannot pull while holding an order they have not
- * tried to contact yet, and a claim with no attempt is auto-released after
- * 90 BUSINESS minutes (frozen outside work hours and on weekends).
+ * Priority (`pickNextCandidate`, the owner 7/11: «الأولوية دائما للطلبات الجديدة»): what is held for her; then a NEW order —
+ * one nobody has rung yet — the oldest first; then a postponed order due within the lead days; then the oldest of the rest.
+ * An agent cannot pull while holding an order they have not tried to contact yet, and a claim with no attempt is
+ * auto-released after 90 BUSINESS minutes (frozen outside work hours and on weekends).
  */
 
-/** Caps from the contract. */
-export const CLAIM_CAPS = { withoutAttempt: 40, total: 300 } as const;
+/**
+ * Caps from the contract. `total` is 500 (the owner, 7/11: «الحد 500 أفضل شي») — it was 300; every sentence that names it
+ * reads this constant, so nothing else says the number.
+ */
+export const CLAIM_CAPS = { withoutAttempt: 40, total: 500 } as const;
 /** A claim with zero logged attempts expires after this many business minutes. */
 export const AUTO_RELEASE_BUSINESS_MINUTES = 90;
 /** How far ahead a postponed order becomes actionable. */
@@ -54,9 +57,10 @@ export const POSTPONE_LEAD_DAYS = 2;
  *
  * ── AND THE CAP STILL BINDS ──
  *
- * 300 is the ceiling on what one person may hold. An entry that would
- * cross it goes to the queue instead, and the screen says so — silently
- * handing her a 121st order would make the cap a suggestion.
+ * The cap (`CLAIM_CAPS.total`, 500) is the ceiling on what one person may
+ * hold. An entry that would cross it goes to the queue instead, and the
+ * screen says so — silently handing her one more would make the cap a
+ * suggestion.
  * ════════════════════════════════════════════════════════════════════════
  */
 export const MANUAL_ENTRY_REASON = 'MANUAL_ENTRY';
@@ -203,7 +207,7 @@ export function pullFirstNotice(args: {
  * The live agents hold `confirmation.supervise`, so `keepsOwnEntry` sends what they type to the pool — and the confirmation door
  * then refuses them `NOT_HELD`, because they are bound by `mustHoldToWork`. Neither rule is loosened here. Instead, when she ticks
  * the box and may confirm, the order she has just typed is HERS — the same kind of claim an agent without supervise gets for every
- * entry (`MANUAL_ENTRY`), under the same 300 cap. An account the hold rule does not bind (whoever holds `orders.unlock` or
+ * entry (`MANUAL_ENTRY`), under the same cap (`CLAIM_CAPS.total`). An account the hold rule does not bind (whoever holds `orders.unlock` or
  * `orders.assign`, or works no queue) is not given a claim it does not need: the confirmation door never asked it to hold.
  *
  * And the contact-first rule (`needsContactFirst`) is met by the truth, not by an exemption: the customer was on the line, so the
@@ -376,7 +380,7 @@ export interface OwnedCounts {
   total: number;
   /**
    * HELD FOR HER AND NOT YET PULLED (RV706) — a returning customer's order (`reserve-returning-customers.ts`) or a twin of one
-   * she pulled (`twins-follow-the-pull.ts`). They count toward the 300 (`capLoad`). Optional so the pure refusal rules can still
+   * she pulled (`twins-follow-the-pull.ts`). They count toward the cap (`capLoad`). Optional so the pure refusal rules can still
    * be tested with a bare count literal; absent is none.
    */
   heldForHer?: number;
@@ -443,10 +447,10 @@ export async function ownedCounts(tx: Tx, scope: QueueScope, userId: string, now
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * THE 300 COUNTS WHAT IS HELD FOR HER TOO (RV706 — the owner, 3/11: «اه»).
+ * THE CAP COUNTS WHAT IS HELD FOR HER TOO (RV706 — the owner, 3/11: «اه»).
  *
  * The cap used to count only what was in her hands, and a hold (a returning customer's order, a twin of the one she pulled) took
- * only the room left after it — so across pulls and the scheduler's runs her name could stand on more than 300 orders. Now the
+ * only the room left after it — so across pulls and the scheduler's runs her name could stand on more than the cap. Now the
  * load is in her hands + held for her, and every place the cap is asked reads it from here and nowhere else:
  *
  *   · the pull's refusal and the claim-by-id door (`pullRefusal` / `capRefusal`);
@@ -457,8 +461,8 @@ export async function ownedCounts(tx: Tx, scope: QueueScope, userId: string, now
  *
  * Pulling an order held for her moves it from «held» to «in her hands»: the load does not grow. So at the cap she is refused
  * anything NEW, and the pull still gives her what is held for her (it gives that first anyway). Refusing that too would leave
- * an agent with nothing in her hands and 300 held for her unable to work any of them for a day. In her hands alone at 300, she
- * is refused everything, as before.
+ * an agent with nothing in her hands and the whole cap held for her unable to work any of them for a day. In her hands alone at
+ * the cap, she is refused everything, as before.
  * ═══════════════════════════════════════════════════════════════════════
  */
 export function capLoad(counts: OwnedCounts): number {
@@ -479,7 +483,7 @@ export function capFullMessage(counts: OwnedCounts): string {
 
 /**
  * MAY SHE TAKE ONE MORE? `takesHeldForHer` is true when what she is about to take is one of the orders held for her (it is
- * already counted). In her hands at 300 is a refusal whatever she takes; at 300 with holds, only something new is refused.
+ * already counted). In her hands at the cap is a refusal whatever she takes; at the cap with holds, only something new is refused.
  */
 export function capRefusal(counts: OwnedCounts, takesHeldForHer: boolean): PullRefusal | null {
   const full = counts.total >= CLAIM_CAPS.total || (!takesHeldForHer && capLoad(counts) >= CLAIM_CAPS.total);
@@ -773,14 +777,15 @@ export const ROUNDS_SCAN_PAGE = 500;
 const roundsScanCursor = new Map<string, string>();
 
 /**
- * R1 — LET GO WHAT NOBODY ANSWERED FOR THREE WORKING HOURS (`no-answer-rounds.ts`).
+ * R1 — LET GO WHAT NOBODY ANSWERED FOR SIX WORKING HOURS, AND A DATE WITH NOTHING LOGGED AFTER IT (`no-answer-rounds.ts`).
  *
- * Linear and bounded: the two cut-offs are placed ONCE for the pass, the database narrows to the held orders that can
- * qualify (a no-answer three working hours old once the switch itself is that old, or nothing logged for ninety working
- * minutes),
- * one page of them is read with their attempts, and each is one pure verdict. The writes are the ninety-minute release's,
- * line for line, with their own reason in the claim history — and the customer's other orders held for her are let go in
- * the same step, so whoever takes the order next takes him whole (`twins-follow-the-pull.ts`).
+ * Linear and bounded: the cut-offs are placed ONCE for the pass, the database narrows to the held orders that can
+ * qualify (a no-answer six working hours old once the switch itself is that old, or nothing logged for ninety working
+ * minutes — a dated order only once its date is three working hours old), one page of them is read with their attempts, and
+ * each is one pure verdict. The writes are the ninety-minute release's, line for line, with their own reason in the claim
+ * history — and the customer's other orders held for her are let go in the same step, so whoever takes the order next takes
+ * him whole (`twins-follow-the-pull.ts`). A release never touches the order's status or its dates: a postponed order that
+ * goes back is still postponed, and being due it is offered by the pull.
  */
 async function releaseByRounds(
   tx: Tx,
@@ -792,7 +797,7 @@ async function releaseByRounds(
 ): Promise<number> {
   const clock = workClock(cal);
   const cut = releaseCutoffs(now, clock);
-  // Switched on less than ninety working minutes ago: nothing logged since can be old enough yet (the round cut-off is earlier still).
+  // Switched on less than ninety working minutes ago: nothing logged since can be old enough yet (the round and date cut-offs are earlier still).
   if (sw.enabledAt.getTime() > cut.repull.getTime()) return 0;
 
   const key = `${scope.companyId}:${scope.storeId}`;
@@ -811,13 +816,15 @@ async function releaseByRounds(
       // No attempt at all is the ninety-minute rule's, above.
       contactAttempts: { some: {} },
       AND: [
-        // A date ahead — a postponement, a callback he asked for — keeps it with her.
-        { OR: [{ postponedUntil: null }, { postponedUntil: { lte: now } }] },
-        { OR: [{ nextFollowUpAt: null }, { nextFollowUpAt: { lte: now } }] },
+        // A date — a postponement, a callback he asked for — keeps it with her until it is three working hours old (R1b's grace):
+        // ahead of now, or just passed, it is not scanned at all.
+        { OR: [{ postponedUntil: null }, { postponedUntil: { lte: cut.promise } }] },
+        { OR: [{ nextFollowUpAt: null }, { nextFollowUpAt: { lte: cut.promise } }] },
         {
           OR: [
-            // A run's three hours count from the switch when the run is older (6/11, `roundsReleaseReason`): none can be due
-            // until the switch itself is three working hours old, and then any no-answer that old may be one.
+            // A run's six hours count from the switch when the run is older (6/11, `roundsReleaseReason`): none can be due
+            // until the switch itself is six working hours old, and then any no-answer that old may be one. (A dated order
+            // with nothing logged since its date has no attempt in the last ninety minutes, so the next line takes it in.)
             ...(sw.enabledAt.getTime() <= cut.round.getTime()
               ? [{ contactAttempts: { some: { result: { in: [...NO_ANSWER_RESULTS] }, createdAt: { lte: cut.round } } } }]
               : []),
@@ -858,8 +865,7 @@ async function releaseByRounds(
       },
       order.contactAttempts,
       sw,
-      cut,
-      now
+      cut
     );
     if (!reason) continue;
     const done = await tx.order.updateMany({
@@ -917,7 +923,8 @@ async function releaseByRounds(
 
 /** How many orders are waiting to be pulled (the agent's only queue number). */
 export async function waitingCount(tx: Tx, scope: QueueScope, now = new Date(), forUserId?: string) {
-  // Exactly the set `pickNextCandidate` draws from — see the note there.
+  // Exactly the set `pickNextCandidate` draws from — see the note there: what is held for her, a new order, and the rest
+  // are all inside `readyToPullWhere`; a due postponed order is the other half. The order they are given in changes nothing here.
   const [due, ready] = await Promise.all([
     tx.order.count({ where: duePostponedWhere(scope, now) }),
     tx.order.count({ where: readyToPullWhere(scope, forUserId, now) }),
@@ -1051,8 +1058,15 @@ export async function pickHeldForHer(tx: Tx, scope: QueueScope, userId: string, 
 }
 
 /**
- * The next order to work on: a postponed one that is due within the lead
- * days, otherwise the oldest waiting order.
+ * The next order to work on, in this order (the owner, 7/11: «الأولوية دائما للطلبات الجديدة لما يسحبو الطلبات»):
+ *
+ *   1. what is held for her (a returning customer's order, a twin of the one she pulled) — still first;
+ *   2. a NEW order — one nobody has rung yet — the oldest first. Not behind any switch: with «نظام الجولات» on or off alike;
+ *   3. a postponed order due within the lead days, the nearest date first;
+ *   4. the oldest of the rest — the ones that were rung already.
+ *
+ * Every step draws from the two predicates the counter uses (`duePostponedWhere` and `readyToPullWhere`), so the number
+ * `waitingCount` shows is exactly the pile this picks from — the steps only decide the ORDER inside it.
  */
 export async function pickNextCandidate(
   tx: Tx,
@@ -1060,7 +1074,7 @@ export async function pickNextCandidate(
   now = new Date(),
   forUserId?: string,
   /** The caller already asked `pickHeldForHer` and found none (the pull does, to know whether the cap grows). */
-  opts: { heldForHerAsked?: boolean; rounds?: RoundsSwitch } = {}
+  opts: { heldForHerAsked?: boolean } = {}
 ) {
   // THE ORDER HELD FOR HER COMES FIRST: the customer is a returning one and she is the person he spoke to.
   if (forUserId && !opts.heldForHerAsked) {
@@ -1068,7 +1082,15 @@ export async function pickNextCandidate(
     if (mine) return mine;
   }
 
-  // The same two predicates the counter uses — kept as two queries only
+  // A NEW ORDER BEFORE ANY OTHER: nobody has rung the customer yet. A due postponed order waits behind it.
+  const neverRung = await tx.order.findFirst({
+    where: { ...readyToPullWhere(scope, forUserId, now), contactAttempts: { none: {} } },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true },
+  });
+  if (neverRung) return neverRung.id;
+
+  // The same two predicates the counter uses — kept as separate queries only
   // because they are ordered differently: a promise by its date, and
   // everything else by its age.
   const duePostponed = await tx.order.findFirst({
@@ -1077,16 +1099,6 @@ export async function pickNextCandidate(
     select: { id: true },
   });
   if (duePostponed) return duePostponed.id;
-
-  // «نظام الجولات» (R4), with the switch ON only: an order nobody has rung yet comes before one that was rung already.
-  if (roundsOn(opts.rounds)) {
-    const neverRung = await tx.order.findFirst({
-      where: { ...readyToPullWhere(scope, forUserId, now), contactAttempts: { none: {} } },
-      orderBy: { createdAt: 'asc' },
-      select: { id: true },
-    });
-    if (neverRung) return neverRung.id;
-  }
 
   const oldest = await tx.order.findFirst({
     where: readyToPullWhere(scope, forUserId, now),
@@ -1146,7 +1158,7 @@ export async function pullNextOrder(
 
     for (let attempt = 0; attempt < 5; attempt++) {
       const hers = await pickHeldForHer(tx, scope, user.id, now);
-      const candidate = hers ?? (atCap ? null : await pickNextCandidate(tx, scope, now, user.id, { heldForHerAsked: true, rounds }));
+      const candidate = hers ?? (atCap ? null : await pickNextCandidate(tx, scope, now, user.id, { heldForHerAsked: true }));
       if (!candidate) {
         // At the cap and nothing held for her is left to take (a hold let go between the count and here): the cap's sentence.
         if (atCap) return { ok: false, released, refusal: capRefusal(counts, false)! };
