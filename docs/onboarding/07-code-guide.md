@@ -142,7 +142,7 @@ docs/                         ARCHITECTURE.md · ops/DEPLOY.md · ops/PRE-DEPLOY
 
 ### 3.2 حالات التأكيد
 
-الجدول الرسمي: `CONFIRMATION_TRANSITIONS` (`src/lib/confirmation-workflow.ts:28-37`). أي انتقال مش بالجدول بيرفضه الباب بـ`409 INVALID_TRANSITION` (`src/app/api/orders/[id]/confirmation/route.ts:278-292`)، إلا لصاحب `orders.unlock` مع ملاحظة 5 أحرف على الأقل.
+الجدول الرسمي: `CONFIRMATION_TRANSITIONS` (`src/lib/confirmation-workflow.ts:36-45`). أي انتقال مش بالجدول بيرفضه الباب بـ`409 INVALID_TRANSITION` (`src/app/api/orders/[id]/confirmation/route.ts:294-311`)، إلا لصاحب `orders.unlock` مع ملاحظة 5 أحرف على الأقل. «مؤكَّد» بيُفتح من خمس حالات: جديد، قيد التأكيد، لا يرد، يحتاج متابعة، مؤجّل (من 7/11).
 
 ```mermaid
 stateDiagram-v2

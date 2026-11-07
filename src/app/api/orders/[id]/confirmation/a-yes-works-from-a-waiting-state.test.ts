@@ -32,9 +32,13 @@ import {
  * ═══════════════════════════════════════════════════════════════════════
  */
 
-const { db, requireContext, can, authorize, assertOrderAccess, releaseOrderLines, reserveOrderLines } = vi.hoisted(() => ({
+const {
+  db, requireContext, can, authorize, assertOrderAccess, releaseOrderLines, reserveOrderLines,
+  emitAppEvent, queueConversions, logAudit, notify,
+} = vi.hoisted(() => ({
   db: {
-    order: { updateMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(async () => []) },
+    // `Promise<unknown[]>`: a bare `async () => []` is typed `never[]` and the twin test below cannot give it a row (the CI typecheck).
+    order: { updateMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(async (): Promise<unknown[]> => []) },
     customer: { findUnique: vi.fn(async () => null), update: vi.fn() },
     orderNote: { create: vi.fn() },
     orderContactAttempt: { count: vi.fn(async () => 1) },
@@ -51,6 +55,10 @@ const { db, requireContext, can, authorize, assertOrderAccess, releaseOrderLines
   assertOrderAccess: vi.fn(),
   releaseOrderLines: vi.fn(async () => undefined),
   reserveOrderLines: vi.fn(async () => undefined),
+  emitAppEvent: vi.fn(async () => undefined),
+  queueConversions: vi.fn(async () => undefined),
+  logAudit: vi.fn(async () => undefined),
+  notify: vi.fn(),
 }));
 
 vi.mock('@/lib/db', () => ({ db }));
@@ -64,14 +72,14 @@ vi.mock('@/lib/rbac', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   assertOrderAccess: (...a: unknown[]) => assertOrderAccess(...a),
 }));
-vi.mock('@/lib/audit', () => ({ logAudit: vi.fn() }));
-vi.mock('@/lib/notify', () => ({ notify: vi.fn() }));
+vi.mock('@/lib/audit', () => ({ logAudit: (...a: unknown[]) => logAudit(...(a as [])) }));
+vi.mock('@/lib/notify', () => ({ notify: (...a: unknown[]) => notify(...a) }));
 vi.mock('@/lib/reservation', () => ({
   releaseOrderLines: (...a: unknown[]) => releaseOrderLines(...(a as [])),
   reserveOrderLines: (...a: unknown[]) => reserveOrderLines(...(a as [])),
 }));
-vi.mock('@/lib/apps/events', () => ({ emitAppEvent: vi.fn() }));
-vi.mock('@/lib/conversions/emit', () => ({ queueConversions: vi.fn() }));
+vi.mock('@/lib/apps/events', () => ({ emitAppEvent: (...a: unknown[]) => emitAppEvent(...(a as [])) }));
+vi.mock('@/lib/conversions/emit', () => ({ queueConversions: (...a: unknown[]) => queueConversions(...(a as [])) }));
 vi.mock('@/lib/blacklist', () => ({ AlreadyBlocked: class extends Error {}, blockPhone: vi.fn() }));
 
 import { POST } from './route';
@@ -113,6 +121,10 @@ function expectUntouched() {
   expect(db.order.updateMany).not.toHaveBeenCalled();
   expect(db.orderStatusLog.create).not.toHaveBeenCalled();
   expect(reserveOrderLines).not.toHaveBeenCalled();
+  // And nobody outside was told: no app event, no conversion, no supervisor notice.
+  expect(emitAppEvent).not.toHaveBeenCalled();
+  expect(queueConversions).not.toHaveBeenCalled();
+  expect(notify).not.toHaveBeenCalled();
 }
 
 beforeEach(() => {
@@ -142,9 +154,17 @@ describe('the table', () => {
     expect(TERMINAL_CONFIRMATION_STATUSES).toContain(from);
   });
 
-  it.each(WAITING)('opens nothing else from %s: the moves it had it still has', (from) => {
-    expect(CONFIRMATION_TRANSITIONS[from]).toEqual(expect.arrayContaining(['IN_PROGRESS', 'REJECTED']));
-    expect(isValidTransition(from, 'CANCELLED')).toBe(false);
+  it('the WHOLE table: the yes opened from the three waiting states and nothing else moved (7/11)', () => {
+    expect(CONFIRMATION_TRANSITIONS).toEqual({
+      NEW: ['IN_PROGRESS', 'NO_ANSWER', 'FOLLOW_UP_REQUIRED', 'POSTPONED', 'CONFIRMED', 'REJECTED'],
+      IN_PROGRESS: ['NO_ANSWER', 'FOLLOW_UP_REQUIRED', 'POSTPONED', 'CONFIRMED', 'REJECTED'],
+      NO_ANSWER: ['IN_PROGRESS', 'FOLLOW_UP_REQUIRED', 'CONFIRMED', 'REJECTED'],
+      FOLLOW_UP_REQUIRED: ['IN_PROGRESS', 'CONFIRMED', 'REJECTED'],
+      POSTPONED: ['IN_PROGRESS', 'CONFIRMED', 'REJECTED'],
+      CONFIRMED: [],
+      REJECTED: [],
+      CANCELLED: [],
+    });
   });
 });
 
@@ -161,12 +181,31 @@ describe.each(WAITING)('«تأكيد الطلب» on an order that is %s', (stat
       confirmationStatus: 'CONFIRMED',
       status: 'CONFIRMED',
       confirmedById: ME.id,
+      confirmedAt: expect.any(Date),
     });
     expect(db.order.updateMany.mock.calls[0][0].where).toMatchObject({ id: 'o1', version: 3 });
     expect(reserveOrderLines).toHaveBeenCalledTimes(1);
     // The history says where it came from, in the table's own words.
     expect(db.orderStatusLog.create.mock.calls[0][0].data).toMatchObject({ previousValue: status, newValue: 'CONFIRMED' });
     expect(db.orderActivity.create.mock.calls[0][0].data).toMatchObject({ previousStatus: status, newStatus: 'CONFIRMED' });
+    // The same side effects as a yes from IN_PROGRESS: the app event (its `previousStatus` is the state it waited in), the
+    // conversion, the audit line and the supervisors' notice — each once.
+    expect(emitAppEvent).toHaveBeenCalledTimes(1);
+    expect(emitAppEvent).toHaveBeenCalledWith(
+      'c1',
+      'order.confirmed',
+      expect.objectContaining({ orderId: 'o1', orderNumber: 'ORD-2026-1513', confirmationStatus: 'CONFIRMED', previousStatus: status })
+    );
+    expect(queueConversions).toHaveBeenCalledWith('c1', 'order.confirmed', 'o1');
+    expect(logAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'ORDER_CONFIRMED',
+        entityId: 'o1',
+        previousData: expect.objectContaining({ confirmationStatus: status }),
+        newData: expect.objectContaining({ confirmationStatus: 'CONFIRMED', action: 'confirm' }),
+      })
+    );
+    expect(notify).toHaveBeenCalledTimes(1);
   });
 
   it('a follow-up that was still scheduled is completed by the yes', async () => {
@@ -224,6 +263,8 @@ describe.each(WAITING)('«تأكيد الطلب» on an order that is %s', (stat
     expect(res.body.code).toBe('TWIN_CONFIRMED');
     expect(db.order.updateMany).not.toHaveBeenCalled();
     expect(reserveOrderLines).not.toHaveBeenCalled();
+    expect(emitAppEvent).not.toHaveBeenCalled();
+    expect(queueConversions).not.toHaveBeenCalled();
   });
 
   it('NEGATIVE: a stale version is still a conflict, and nothing is reserved', async () => {
@@ -235,6 +276,8 @@ describe.each(WAITING)('«تأكيد الطلب» on an order that is %s', (stat
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('VERSION_CONFLICT');
     expect(reserveOrderLines).not.toHaveBeenCalled();
+    expect(emitAppEvent).not.toHaveBeenCalled();
+    expect(queueConversions).not.toHaveBeenCalled();
   });
 
 });
@@ -248,7 +291,6 @@ describe('NEGATIVE: an end is still an end', () => {
 
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('INVALID_TRANSITION');
-    expect(db.order.updateMany).not.toHaveBeenCalled();
-    expect(reserveOrderLines).not.toHaveBeenCalled();
+    expectUntouched();
   });
 });

@@ -73,8 +73,9 @@ const ORDER = {
   nextFollowUpAt: null, followUpStatus: null, moderatorId: null,
   shippingBatchId: null, shippingBatch: null, deliveryProviderId: null, trackingNumber: null,
   courierSendStartedAt: null, totalAmount: 10, currency: 'JOD',
-  // CHANGED 30/10 (no confirmation without a governorate) — was: no `regionId`. The «تأكيد» test below is about the TRANSITION table;
-  // without a governorate it would be refused earlier, for a different reason, and stop testing what it says it tests.
+  // CHANGED 30/10 (no confirmation without a governorate) — was: no `regionId`. A «تأكيد» test used to stand below (removed 7/11, see
+  // the note in the reject describe): it was about the TRANSITION table, and without a governorate it would have been refused
+  // earlier, for a different reason. The rejects below keep the governorate, as they never needed it.
   regionId: 'r1',
 };
 
@@ -247,9 +248,9 @@ describe('POST /api/orders/[id]/confirmation — reject', () => {
     expect(releaseOrderLines).not.toHaveBeenCalled();
   });
 
-  // 7/11: «تأكيد» from a waiting state used to be refused here (INVALID_TRANSITION). The owner asked for the yes to work
-  // («الطلب ما بيتأكد حتى لو الزبون أكد معهم»); it is proved, with the confirm path's own mocks, in
-  // `a-yes-works-from-a-waiting-state.test.ts`.
+  // 7/11: the test that stood here — «تأكيد» from a waiting state is refused INVALID_TRANSITION — was REMOVED, not flipped: the owner
+  // asked for the yes to work («الطلب ما بيتأكد حتى لو الزبون أكد معهم»), and the success path needs the confirm path's own mocks
+  // (the twin guard's lock and reads), which this file does not have. It is proved in `a-yes-works-from-a-waiting-state.test.ts`.
 
   it('NEGATIVE: the «cancel» action keeps its own rule — an agent without the key is refused', async () => {
     orderIs({ confirmationStatus: 'NO_ANSWER' });
