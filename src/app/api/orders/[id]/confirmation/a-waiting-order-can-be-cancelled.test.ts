@@ -17,7 +17,10 @@ import {
  *
  * The decision (the owner, 28/10: «اي قرار بعد الان اتخذو دون الرجوع الي»): open REJECTED from those three — none is
  * confirmed, so there is no stock held that `endOrder` does not release — and change nothing else: contact-first stays,
- * the reason is still demanded, CONFIRMED stays closed from them, and the three ends stay ends.
+ * the reason is still demanded, CONFIRMED stayed closed from them (until 7/11, see below), and the three ends stay ends.
+ *
+ * 7/11 — the owner: «الطلب ما بيتأكد حتى لو الزبون أكد معهم»: the yes opened from those three too. Only the table changed; the
+ * confirm path is proved in `a-yes-works-from-a-waiting-state.test.ts`.
  * ═══════════════════════════════════════════════════════════════════════
  */
 
@@ -120,9 +123,9 @@ describe('the table', () => {
     expect(TERMINAL_CONFIRMATION_STATUSES).toContain(from);
   });
 
-  it('opens nothing else: CONFIRMED is still reachable only from NEW and IN_PROGRESS', () => {
+  it('CONFIRMED is reachable from every OPEN state and from no end (7/11: the yes opened too — `a-yes-works-from-a-waiting-state.test.ts`)', () => {
     const into = CONFIRMATION_STATUSES.filter((s) => isValidTransition(s, 'CONFIRMED'));
-    expect(into).toEqual(['NEW', 'IN_PROGRESS']);
+    expect(into).toEqual(['NEW', 'IN_PROGRESS', 'NO_ANSWER', 'FOLLOW_UP_REQUIRED', 'POSTPONED']);
   });
 });
 
@@ -244,15 +247,9 @@ describe('POST /api/orders/[id]/confirmation — reject', () => {
     expect(releaseOrderLines).not.toHaveBeenCalled();
   });
 
-  it('NEGATIVE: opening the way to REJECTED does not open «تأكيد» from a waiting state', async () => {
-    orderIs({ confirmationStatus: 'NO_ANSWER' });
-
-    const res = await send({ action: 'confirm' });
-
-    expect(res.status).toBe(409);
-    expect(res.body.code).toBe('INVALID_TRANSITION');
-    expect(db.order.updateMany).not.toHaveBeenCalled();
-  });
+  // 7/11: «تأكيد» from a waiting state used to be refused here (INVALID_TRANSITION). The owner asked for the yes to work
+  // («الطلب ما بيتأكد حتى لو الزبون أكد معهم»); it is proved, with the confirm path's own mocks, in
+  // `a-yes-works-from-a-waiting-state.test.ts`.
 
   it('NEGATIVE: the «cancel» action keeps its own rule — an agent without the key is refused', async () => {
     orderIs({ confirmationStatus: 'NO_ANSWER' });

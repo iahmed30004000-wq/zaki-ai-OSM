@@ -164,7 +164,7 @@ describe('«تأكيد الطلب» on an order with no governorate', () => {
     expectUntouched();
   });
 
-  it('and it is asked even where the transition table would have refused first (the override path out of a wrong state)', async () => {
+  it('and it is asked from a waiting state too, for a holder of every key (the table opened CONFIRMED from there on 7/11; the governorate still comes first)', async () => {
     can.mockImplementation(() => true);
     orderIs({ regionId: null, confirmationStatus: 'NO_ANSWER' });
 
