@@ -130,6 +130,7 @@ import {
   waitingCount,
 } from './confirmation-queue';
 import { DUE_RELEASE_REASON, ROUNDS_OFF } from './no-answer-rounds';
+import { GUIDE_TEXTS } from './route-guide-texts';
 import { db } from './db';
 
 const NOW = new Date('2026-11-07T12:00:00.000Z');
@@ -272,6 +273,50 @@ describe.each([
   it('a decided order is in no step of it', async () => {
     for (const status of ['REJECTED', 'CANCELLED', 'CONFIRMED']) order({ confirmationStatus: status, status, createdAt: hoursAgo(99) });
     expect(await pickNextCandidate(db as never, scope, NOW, 'sara')).toBeNull();
+  });
+});
+
+/**
+ * WHAT THE SCREENS TELL PEOPLE ABOUT THE ORDER (review of PR #217).
+ *
+ * The guide lines that state the pull's order were rewritten with the rule — and putting the OLD sentences back passed every
+ * test, because nothing read them. These pin the three places (the supervisor's queue screen, «طلباتي», the follow-up screen)
+ * to the order the pull really gives, which the tests above run: a new order, then a due postponed one, then the oldest.
+ */
+describe('the guide says the order the pull gives', () => {
+  /** Where each phrase stands in the line, in the order asked — every one present, each after the one before. */
+  const inOrder = (line: string, phrases: string[]) => {
+    const at = phrases.map((p) => line.indexOf(p));
+    expect(at.every((i) => i >= 0), `${phrases.join(' < ')} in «${line}»`).toBe(true);
+    expect([...at].sort((a, b) => a - b), `الترتيب بالسطر «${line}»`).toEqual(at);
+  };
+
+  it('the supervisor’s queue screen: the new order, then the postponed one whose day came, then the oldest', () => {
+    const line = GUIDE_TEXTS['/confirmation/queue'].steps.find((l) => l.includes('يعطيك الخادم'))!;
+    expect(line).toBeTruthy();
+    inOrder(line, ['الطلب الجديد', 'المؤجَّل', 'الأقدم']);
+  });
+
+  it('«طلباتي»: the new order, then the due postponed one, then the oldest', () => {
+    const line = GUIDE_TEXTS['/confirmation/mine'].steps.find((l) => l.includes('اسحب الطلب التالي'))!;
+    expect(line).toBeTruthy();
+    inOrder(line, ['الجديد الذي لم يتصل به أحد', 'المؤجَّل المستحق', 'الأقدم']);
+  });
+
+  it('the follow-up screen: the postponed one is taken AFTER the new orders and before the oldest', () => {
+    const line = GUIDE_TEXTS['/confirmation/follow-up'].watch!;
+    inOrder(line, ['المؤجَّل', 'بعد الطلبات الجديدة', 'قبل الأقدم']);
+    // …and it still promises that the old order keeps counting as a loss (`superseded.test.ts` holds that sentence too).
+    expect(line).toContain('فتبقى الخسارة محسوبة');
+  });
+
+  it('and no guide line puts the postponed order first any more', () => {
+    for (const [path, g] of Object.entries(GUIDE_TEXTS)) {
+      for (const line of [...g.steps, ...(g.watch ? [g.watch] : [])]) {
+        expect(line, `${path}: «${line}»`).not.toMatch(/المؤجَّل[^.]*أولاً ثم الأقدم/);
+        expect(line, `${path}: «${line}»`).not.toContain('يُقدَّم عند السحب');
+      }
+    }
   });
 });
 
