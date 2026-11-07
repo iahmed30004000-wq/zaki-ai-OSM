@@ -905,6 +905,11 @@ describe('the write is as strict as it was for an unheld order, and exact for a 
       expect(tri(view(pulled), where()), k).not.toBe(true);
       pulled[k] = saved;
     }
+    // The no-answer it was granted for is asked again: without one on the order, the write matches nothing.
+    const kept = world.attempts.filter((a) => a.orderId === pulled.id);
+    world.attempts = world.attempts.filter((a) => a.orderId !== pulled.id);
+    expect(tri(view(pulled), where()), 'no no-answer on the order').not.toBe(true);
+    world.attempts.push(...kept);
     touch(pulled, 'OPENED', CLAIMED_AT);
     expect(tri(view(pulled), where()), 'an attempt in the instant she pulled it').not.toBe(true);
   });
