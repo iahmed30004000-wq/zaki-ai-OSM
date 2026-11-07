@@ -8,7 +8,7 @@ import { SWAP_ACTION } from './superseded';
 import { TWIN_ACTION } from './recent-twin-order';
 import { TWIN_CONFIRM_ACK_ACTION } from './confirmed-twin';
 import { TWIN_HELD_ACTION } from './twins-follow-the-pull';
-import { REPULL_RELEASE_REASON, ROUND_RELEASE_REASON } from './no-answer-rounds';
+import { DUE_RELEASE_REASON, REPULL_RELEASE_REASON, ROUND_RELEASE_REASON } from './no-answer-rounds';
 import { CUSTOMER_CALLED_BACK_REASON } from './customer-on-the-line';
 import { NINETY_MINUTE_RELEASE_REASON, SYSTEM_ACTOR_AR, isAutomaticRelease } from './auto-release';
 import { POST_ORDER_ADDITION_AR } from './post-order-offer-copy';
@@ -112,9 +112,10 @@ const CLAIM_REASON_AR: Record<string, string> = {
   AUTO_RELEASE: 'تحرير تلقائي',
   // The ninety-minute release (`releaseStaleClaims`) — it showed as its English code (the owner's ruling 4/11).
   [NINETY_MINUTE_RELEASE_REASON]: 'تحرير تلقائي — ما انسجّلت عليه محاولة خلال 90 دقيقة عمل',
-  // «نظام الجولات» (no-answer-rounds.ts): the two releases it adds, each with its reason in words.
-  [ROUND_RELEASE_REASON]: 'تحرير تلقائي — مرّت 3 ساعات عمل على جولة بلا ردّ، ورجع للطابور',
+  // «نظام الجولات» (no-answer-rounds.ts): the three releases it adds, each with its reason in words.
+  [ROUND_RELEASE_REASON]: 'تحرير تلقائي — مرّت 6 ساعات عمل على جولة بلا ردّ، ورجع للطابور',
   [REPULL_RELEASE_REASON]: 'تحرير تلقائي — انسحب من جديد وما انسجّلت عليه محاولة خلال 90 دقيقة عمل',
+  [DUE_RELEASE_REASON]: 'تحرير تلقائي — مرّت 3 ساعات عمل على موعد الطلب وما حدا فتحه، ورجع للطابور',
   LOCK_EXPIRED: 'انتهت مدة القفل',
   REASSIGNED: 'إعادة إسناد',
 };

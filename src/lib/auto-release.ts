@@ -1,10 +1,11 @@
-import { REPULL_RELEASE_REASON, ROUND_RELEASE_REASON } from './no-answer-rounds';
+import { DUE_RELEASE_REASON, REPULL_RELEASE_REASON, ROUND_RELEASE_REASON } from './no-answer-rounds';
 
 /**
  * AN ORDER THE SYSTEM TAKES BACK IS TAKEN BY THE SYSTEM — AND SHE IS TOLD (the owner's ruling 4/11).
  *
- * Three releases let a held order go without anybody pressing anything: the ninety-minute release (nothing logged on it),
- * and the two of «نظام الجولات» (a round nobody answered, a re-pull nobody touched). Each wrote its claim-history line with
+ * Four releases let a held order go without anybody pressing anything: the ninety-minute release (nothing logged on it),
+ * and the three of «نظام الجولات» (a round nobody answered, a re-pull nobody touched, and — since 7/11 — a dated order
+ * nobody opened after its date). Each wrote its claim-history line with
  * `userId` = the agent who held it, and an English code for a reason. So the order's history read «تحرير الطلب — <her name>»
  * — she had released it, as far as anybody reading could tell — and she herself heard nothing: the card left «طلباتي»,
  * and her next press on it was refused «اسحب الطلب أولاً».
@@ -28,8 +29,9 @@ export const NINETY_MINUTE_RELEASE_REASON = 'AUTO_RELEASE_90_BUSINESS_MINUTES';
 /** Why the order went back, in her words — the notification's sentence after «رجع ORD-… للطابور:». */
 export const AUTO_RELEASE_WHY: Record<string, string> = {
   [NINETY_MINUTE_RELEASE_REASON]: 'ما انسجّلت عليه محاولة خلال 90 دقيقة عمل',
-  [ROUND_RELEASE_REASON]: 'مرّت 3 ساعات عمل على جولة بلا ردّ',
+  [ROUND_RELEASE_REASON]: 'مرّت 6 ساعات عمل على جولة بلا ردّ',
   [REPULL_RELEASE_REASON]: 'انسحب من جديد وما انسجّلت عليه محاولة خلال 90 دقيقة عمل',
+  [DUE_RELEASE_REASON]: 'مرّت 3 ساعات عمل على موعد الطلب وما حدا فتحه',
 };
 
 /** The actor the timeline writes for a release nobody pressed. */

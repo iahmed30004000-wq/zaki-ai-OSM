@@ -34,7 +34,7 @@ type Tx = Prisma.TransactionClient | typeof db;
  *   · a brand-new order nobody rang yet is the pull's (the 1/11 rule stands: she never picks the good ones out of the pool);
  *   · an order a colleague holds is hers — «الطلب مع <name>», and no take;
  *   · a decided, cancelled or shipped order is not at the desk any more (a cancelled one: a new order, or «الاسترجاع»);
- *   · the 300 cap binds (`capRefusal`), exactly as at the pull.
+ *   · the cap (`CLAIM_CAPS.total`) binds (`capRefusal`), exactly as at the pull.
  *
  * It works whether «نظام الجولات» is on or off: what matters is that the order is a released retry, not which release made it one.
  *
