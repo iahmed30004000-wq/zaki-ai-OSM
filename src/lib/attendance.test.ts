@@ -262,7 +262,8 @@ describe('a line written in her name that she did not write', () => {
   /*
    * The clock gives an order back in the HOLDER's name (the line says whose order it was), and a colleague's take «على
    * الخط» does too. Neither is work anybody saw her do. Counted as work, a day she never came looked like a day she was
-   * there (present, "worked"), and an arrival marked late was pulled back to the line's moment, so she read as on time.
+   * there (present, "worked"), and an arrival she had marked was pulled back to the line's moment, so she read as less late
+   * than she was.
    */
   const line = (extra: { action?: string; reason?: string | null; metadata?: string | null }, when: Date) => ({
     userId: SARA,
@@ -301,7 +302,7 @@ describe('a line written in her name that she did not write', () => {
 
   it('an arrival is not moved before her login by a line the clock wrote', async () => {
     // Her login is 09:30 — half an hour late. The clock gave an order back at 09:05, before she came; taken as work it
-    // pulled her arrival to 09:05 and she read as on time.
+    // pulled her arrival to 09:05 and she read as 5 minutes late instead of 30.
     db.attendanceMark.findMany.mockResolvedValue([mark('LOGIN', at(20, 9, 30))]);
     db.orderClaimHistory.findMany.mockResolvedValue([
       line({ reason: NINETY_MINUTE_RELEASE_REASON, metadata: automaticReleaseMetadata(SARA) }, at(20, 9, 5)),

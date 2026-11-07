@@ -65,7 +65,7 @@ export function isAutomaticRelease(row: { action: string; reason?: string | null
  * (`{ automatic: false, takenBy }`, written in the HOLDER's name because the line says whose order it was). Attendance
  * reads the claim history as «what the system SAW her do»; counting these made a day she never came look like a day she
  * was there — her held orders going back by the clock wrote lines in her name — and pulled an arrival she had marked
- * late back to the line's moment, so she read as on time.
+ * back to the line's moment, so she read as less late than she was (or on time, when the line fell before the shift).
  *
  * A release she pressed herself (the button, or a supervisor pulling an order back — written in the presser's name)
  * carries neither mark and still counts.
