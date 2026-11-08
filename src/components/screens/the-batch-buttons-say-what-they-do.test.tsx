@@ -194,13 +194,19 @@ describe('the parcels list: the presses drawn on a parcel are the presses the he
     expect(said).not.toContain('«عدّل»');
   });
 
-  it('the sentence of each way off the trolley is the one its own dialog says', () => {
+  it('the sentence of each way off the trolley is what the code does — the dialog’s own wording is not trusted where it says more', () => {
     const said = (key: string) => batchHelpItems(facts()).find((i) => i.key === 'parcels')!.does.split('؛').find((s) => s.includes(key))!;
     expect(said('«ألغِ»')).toContain('بيلغي الطلب');
     expect(said('«ألغِ»')).toContain('بتكتب السبب');
     expect(said('«أعِده للمتابعة»')).toContain('لفريق التأكيد');
     expect(said('«أجّل الشحن»')).toContain('مؤكَّد');
-    expect(said('«أجّل الشحن»')).toContain('بوليصته محفوظتين');
+    // The hold keeps the GOODS. The waybill is kept only for a manual courier or a parcel with no barcode: a parcel already sent to a
+    // connected courier is cancelled there, and its barcode and printed waybill are cleared (`holdFromTrolley`, order-cancel.ts) —
+    // so the sentence must not promise «وبوليصته محفوظتين» to everyone.
+    expect(said('«أجّل الشحن»')).toContain('بضاعته محفوظة');
+    expect(said('«أجّل الشحن»')).toContain('بيلغيه عندها');
+    expect(said('«أجّل الشحن»')).toContain('بيمسح باركوده وبوليصته');
+    expect(said('«أجّل الشحن»')).not.toContain('بوليصته محفوظتين');
     expect(batchHelpItems(facts()).find((i) => i.key === 'parcels')!.does).toContain('ما بيغيّر سعراً ولا خصماً');
   });
 });

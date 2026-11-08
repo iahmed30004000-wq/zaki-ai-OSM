@@ -50,7 +50,10 @@ export const LEAVE_PRESSES = [
 const LEAVE_SAYS: Record<(typeof LEAVE_PRESSES)[number][0], string> = {
   CANCEL: 'بيطلّع الطرد من الدفعة وبيلغي الطلب (بتكتب السبب، وإذا بوليصته مطبوعة بيسألك إذا الطرد بإيدك)',
   FOLLOW_UP: 'بيطلّع الطرد من الدفعة وبيرجّع الطلب لفريق التأكيد يكلّموا الزبون من جديد (بتحدد بعد كم يوم، من 1 لـ30)',
-  HOLD: 'بيطلّع الطرد من الدفعة ويبقى الطلب مؤكَّد وبضاعته وبوليصته محفوظتين (بتحدد بعد كم يوم، من 1 لـ30)',
+  // The dialog says «وبوليصته محفوظتين», but `holdFromTrolley` (order-cancel.ts) cancels a parcel already sent to a connected courier AT
+  // the courier and clears its barcode, its send mark and its printed waybill — the waybill stays only for a manual courier or a
+  // parcel with no barcode. The route's own reply says both («وألغينا الطرد عند الشركة، وبينرسل من جديد بيومه»). The help says what the code does.
+  HOLD: 'بيطلّع الطرد من الدفعة ويبقى الطلب مؤكَّد وبضاعته محفوظة (بتحدد بعد كم يوم، من 1 لـ30) — وإذا الطرد كان مرحَّل لشركة مربوطة بيلغيه عندها وبيمسح باركوده وبوليصته وبينرحّل من جديد بيومه',
 };
 
 interface Item {
