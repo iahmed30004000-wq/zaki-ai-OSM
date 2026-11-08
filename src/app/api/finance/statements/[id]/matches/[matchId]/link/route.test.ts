@@ -69,8 +69,10 @@ describe('the search', () => {
     const res = await get('q=0790000001&storeId=other&companyId=other');
     expect(res.status).toBe(200);
     expect(requirePermission).toHaveBeenCalledWith('settlement.review');
+    // The store's country too, as the phone search always had it: the line's phone is read the way THIS store's customers
+    // are stored, so each candidate can be told «same phone» or «not».
     expect(findLinkCandidates).toHaveBeenCalledWith(db, {
-      companyId: 'c1', storeId: 's1', statementId: 'st1', matchId: 'm1', query: '0790000001', minorUnit: 3,
+      companyId: 'c1', storeId: 's1', statementId: 'st1', matchId: 'm1', query: '0790000001', minorUnit: 3, countryCode: 'SY',
     });
     expect(await res.json()).toMatchObject({ header: found.header, counts: found.counts });
   });

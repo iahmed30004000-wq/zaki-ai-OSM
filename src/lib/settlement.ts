@@ -68,9 +68,24 @@ export interface ParsedStatementRow {
    * zero we put there, not one they stated. Kept, not dropped: they did name the parcel.
    */
   amountBlank: boolean;
+  /** Who the parcel went to, under the headings the file wrote them (`StatementLine.receiver*`). Display only. */
+  receiver: ParsedReceiver;
 }
 
-type HeaderField = 'merchantRef' | 'barcode' | 'net' | 'collected' | 'fee' | 'status' | 'notes';
+/** The receiver as the company's own columns say it: each piece is what the cell held, or null when the file had no such column or it was empty. */
+export interface ParsedReceiver {
+  name: string | null;
+  phone: string | null;
+  address: string | null;
+  /** The company's governorate («مدينة المستلم»). */
+  city: string | null;
+  /** The area under it («منطقة المستلم»). */
+  area: string | null;
+}
+
+type HeaderField =
+  | 'merchantRef' | 'barcode' | 'net' | 'collected' | 'fee' | 'status' | 'notes'
+  | 'receiverName' | 'receiverPhone' | 'receiverAddress' | 'receiverCity' | 'receiverArea';
 
 const HEADER_ALIASES: Record<HeaderField, string[]> = {
   merchantRef: ['merchant_ref', 'merchantref', 'reference', 'ref', 'order_number', 'ordernumber', 'invoice', 'invoicenumber', 'invoice_number', 'المرجع', 'رقم الطلب', 'رقم الفاتورة', 'رقم الإرسالية', 'رقم الارسالية'],
@@ -83,7 +98,33 @@ const HEADER_ALIASES: Record<HeaderField, string[]> = {
   // Couriers who have no reference column put the merchant's order number at
   // the start of the notes; that is where it is read from.
   notes: ['notes', 'note', 'remarks', 'الملاحظات', 'ملاحظات'],
+  /*
+   * WHO THE PARCEL WENT TO — read so the screen can say it and the hand link can search by it.
+   *
+   * Whole headings only, like every field above: a heading that merely CONTAINS «هاتف» may be the sender's («هاتف المرسل»).
+   * «اسم الزبون» is NOT here on purpose — in a Basha sheet it holds the merchant's own account name on every line, and
+   * «اسم المستلم» is the receiver. «اسم» with and without the hamza under the alef are both written: the same file
+   * spells «إسم المرسل» and «اسم المستلم» side by side.
+   */
+  receiverName: [
+    'اسم المستلم', 'إسم المستلم', 'المستلم', 'اسم العميل', 'إسم العميل',
+    'receiver_name', 'receivername', 'receiver name', 'receiver', 'recipient_name', 'recipient', 'consignee', 'customer_name',
+  ],
+  receiverPhone: [
+    'هاتف المستلم', 'رقم هاتف المستلم', 'موبايل المستلم', 'جوال المستلم', 'هاتف العميل', 'رقم هاتف العميل', 'هاتف الزبون',
+    'الهاتف', 'رقم الهاتف', 'موبايل', 'الموبايل', 'رقم الموبايل', 'جوال', 'الجوال', 'رقم الجوال',
+    'phone', 'phone_number', 'mobile', 'tel', 'receiver_phone', 'recipient_phone', 'customer_phone',
+  ],
+  receiverAddress: [
+    'عنوان المستلم', 'العنوان', 'عنوان العميل', 'عنوان الزبون',
+    'address', 'receiver_address', 'recipient_address', 'delivery_address', 'customer_address',
+  ],
+  receiverCity: ['مدينة المستلم', 'محافظة المستلم', 'المدينة', 'المحافظة', 'city', 'governorate', 'receiver_city', 'recipient_city'],
+  receiverArea: ['منطقة المستلم', 'المنطقة', 'area', 'district', 'region', 'receiver_area', 'recipient_area'],
 };
+
+/** What one receiver cell may hold at most: a cell is a field, not a paragraph — and the row it came from is kept whole anyway. */
+const RECEIVER_MAX = { name: 120, phone: 40, address: 300, city: 80, area: 80 } as const;
 
 function normalizeHeader(value: string): string {
   return value.trim().toLowerCase().replace(/^﻿/, '').replace(/\s+/g, ' ');
@@ -217,6 +258,11 @@ export function parseStatementRows(header: string[], dataRows: string[][]): Pars
     fee: columnIndex(header, 'fee'),
     status: columnIndex(header, 'status'),
     notes: columnIndex(header, 'notes'),
+    receiverName: columnIndex(header, 'receiverName'),
+    receiverPhone: columnIndex(header, 'receiverPhone'),
+    receiverAddress: columnIndex(header, 'receiverAddress'),
+    receiverCity: columnIndex(header, 'receiverCity'),
+    receiverArea: columnIndex(header, 'receiverArea'),
   };
 
   if (idx.net < 0 && idx.collected < 0) {
@@ -227,6 +273,8 @@ export function parseStatementRows(header: string[], dataRows: string[][]): Pars
   }
 
   const at = (cells: string[], i: number) => (i >= 0 ? (cells[i] ?? '').toString().trim() : '');
+  // An empty cell, or a column the file does not have, is null — never an empty string standing for «nobody wrote this».
+  const piece = (cells: string[], i: number, max: number) => at(cells, i).slice(0, max) || null;
 
   const rows: ParsedStatementRow[] = [];
   for (const [rowIndex, cells] of dataRows.entries()) {
@@ -320,6 +368,13 @@ export function parseStatementRows(header: string[], dataRows: string[][]): Pars
       status: at(cells, idx.status) || null,
       rawRow: cells.join(' | ').slice(0, 500),
       amountBlank: stated === null,
+      receiver: {
+        name: piece(cells, idx.receiverName, RECEIVER_MAX.name),
+        phone: piece(cells, idx.receiverPhone, RECEIVER_MAX.phone),
+        address: piece(cells, idx.receiverAddress, RECEIVER_MAX.address),
+        city: piece(cells, idx.receiverCity, RECEIVER_MAX.city),
+        area: piece(cells, idx.receiverArea, RECEIVER_MAX.area),
+      },
     });
   }
 

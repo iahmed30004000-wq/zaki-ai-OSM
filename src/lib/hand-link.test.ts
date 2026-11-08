@@ -922,3 +922,144 @@ describe('a link pressed on a page older than the line', () => {
     }
   });
 });
+
+/**
+ * «كيف بدي أقارن بين الطلب الموجود والطلب اللي عنا عشان أعرف إنو هو ولا لأ» — and «زر المطابقة عبر الهاتف مش شغال».
+ *
+ * The dialog used to show an order's number, phone, name and what we expect — and nothing of what the company wrote, so there
+ * was nothing to hold the one against the other. Both searches now answer with the company's line (`line`), and each order
+ * with its own details and where it agrees with the line (`compare`) for the three fields that can be compared without
+ * guessing: the phone, the governorate, the net. A line whose phone is a number of another country is found by that phone.
+ *
+ * Every name, phone and address below is invented.
+ */
+describe('the line is held against each order', () => {
+  const headed = (over: Row = {}) => {
+    w.matches[0].statementLine = {
+      rawRow: 'BC-1 | x', merchantRef: '20001', barcode: 'BC-1', amount: 12, collected: 15, fee: 3, status: 'تم توصيلها',
+      receiverName: 'سلمى الاختبار', receiverPhone: '+963 900 000 001', receiverAddress: 'حماة - حي الوسط - بجانب الفرن',
+      receiverCity: 'حماة', receiverArea: 'حماة', ...over,
+    };
+    w.matches[0].statementAmount = (over.amount as number | undefined) ?? 12;
+  };
+  const ours = (over: Row = {}) =>
+    order({
+      id: 'o9', orderNumber: 'ORD-9', shippingStatus: 'SHIPPED', totalAmount: 15, deliveryFee: 3,
+      customer: { id: 'cu9', fullName: 'Salma Test', phone: '900000001', rawPhone: '0900000001', address: 'عنوان الزبون', city: 'حماة' },
+      deliveryAddress: 'حماة - حي الوسط - بجانب الفرن', region: { name: 'حماة' }, ...over,
+    });
+  const byPhone = (countryCode: string | null = 'SY') => findLinkCandidatesByLinePhone(makeTx(w) as never, { ...scope, countryCode });
+  const byText = (query: string, countryCode: string | null = 'SY') => findLinkCandidates(makeTx(w) as never, { ...scope, query, countryCode });
+
+  it('both searches answer with what the company wrote on the line, in its own words and figures', async () => {
+    headed();
+    w.orders = [ours()];
+    const expected = {
+      status: 'تم توصيلها', name: 'سلمى الاختبار', phone: '0900000001', governorate: 'حماة',
+      address: 'حماة - حي الوسط - بجانب الفرن', net: 12, collected: 15, fee: 3,
+    };
+    expect((await byPhone()).line).toEqual(expected);
+    expect((await byText('ORD-9')).line).toEqual(expected);
+  });
+
+  it('a line with no phone, or no stored row, still answers — with the line it has, never a throw', async () => {
+    headed({ receiverPhone: null, rawRow: 'BC-1 | x' });
+    w.orders = [ours()];
+    const r = await byPhone();
+    expect(r.phone).toBeNull();
+    expect(r.line).toMatchObject({ phone: null, status: 'تم توصيلها' });
+    w.matches[0].statementLine = null;
+    const t = await byText('ORD-9');
+    expect(t.line).toBeNull();
+    // The net is the match row's own figure, so the amount can still be compared with no stored line (12 against 15 − 3).
+    expect(t.candidates[0].compare).toEqual({ phone: 'UNKNOWN', governorate: 'UNKNOWN', amount: 'SAME' });
+  });
+
+  it('the order says itself: name, phone as typed, the parcel’s own address first, governorate, our word for where it is', async () => {
+    headed();
+    w.orders = [ours()];
+    const [c] = (await byPhone()).candidates;
+    expect(c.details).toEqual({
+      name: 'Salma Test', phone: '0900000001', address: 'حماة - حي الوسط - بجانب الفرن', governorate: 'حماة',
+      shipping: 'مشحون', totalAmount: 15, deliveryFee: 3,
+    });
+  });
+
+  it('the customer’s own address is used when the parcel has none; blank counts as none', async () => {
+    headed();
+    w.orders = [ours({ deliveryAddress: '   ' })];
+    expect((await byPhone()).candidates[0].details.address).toBe('عنوان الزبون');
+    w.orders = [ours({ deliveryAddress: null, customer: { id: 'cu9', fullName: 'Salma Test', phone: '900000001', rawPhone: '0900000001', address: '  ', city: 'حماة' } })];
+    expect((await byPhone()).candidates[0].details.address).toBeNull();
+  });
+
+  it('the customer object keeps the three fields the handed-out tally reads — the address travels in `details` only', async () => {
+    headed();
+    w.orders = [ours()];
+    const [c] = (await byPhone()).candidates;
+    expect(Object.keys(c.customer!).sort()).toEqual(['fullName', 'id', 'phone']);
+  });
+
+  it('same phone, same governorate, same net: all three say SAME', async () => {
+    headed({ amount: 12 });
+    w.orders = [ours({ totalAmount: 15, deliveryFee: 3 })]; // expected net = 15 − 3 = 12
+    expect((await byPhone()).candidates[0].compare).toEqual({ phone: 'SAME', governorate: 'SAME', amount: 'SAME' });
+  });
+
+  it('another governorate and another net say DIFFERENT; another phone says DIFFERENT — this is not the parcel', async () => {
+    headed({ receiverCity: 'إدلب', receiverArea: 'إدلب', amount: 16 });
+    w.orders = [ours({ totalAmount: 32, deliveryFee: 0, region: { name: 'حلب' } })];
+    expect((await byText('ORD-9')).candidates[0].compare).toEqual({ phone: 'SAME', governorate: 'DIFFERENT', amount: 'DIFFERENT' });
+    headed({ receiverPhone: '0944111222', amount: 16 });
+    expect((await byText('ORD-9')).candidates[0].compare.phone).toBe('DIFFERENT');
+  });
+
+  it('the governorate is compared as a name: hamza and ة/ه fold, a leading «محافظة» goes — but «دمشق» is not «ريف دمشق»', async () => {
+    w.orders = [ours({ region: { name: 'محافظة إدلب' } })];
+    headed({ receiverCity: 'ادلب', receiverArea: 'ادلب' });
+    expect((await byPhone()).candidates[0].compare.governorate).toBe('SAME');
+    w.orders = [ours({ region: { name: 'حماه' } })];
+    headed({ receiverCity: 'حماة' });
+    expect((await byPhone()).candidates[0].compare.governorate).toBe('SAME');
+    w.orders = [ours({ region: { name: 'دمشق' } })];
+    headed({ receiverCity: 'ريف دمشق', receiverArea: 'ريف دمشق' });
+    expect((await byPhone()).candidates[0].compare.governorate).toBe('DIFFERENT');
+    w.orders = [ours({ region: null })];
+    expect((await byPhone()).candidates[0].compare.governorate).toBe('UNKNOWN');
+  });
+
+  it('«زر المطابقة عبر الهاتف»: a line whose phone is a number of another country is found by that phone', async () => {
+    headed({ receiverPhone: '+353 87 123 4567' });
+    // How the address book stores a foreign line: the whole number with its country code.
+    w.orders = [ours({ customer: { id: 'cu7', fullName: 'Foreign Test', phone: '353871234567', rawPhone: '+353 87 123 4567' } })];
+    const r = await byPhone();
+    expect(r.phone).toEqual({ shown: '+353871234567', country: 'OTHER' });
+    expect(r.candidates.map((c) => c.id)).toEqual(['o9']);
+    expect(r.candidates[0].compare.phone).toBe('SAME');
+  });
+
+  it('…and so is a line imported before the columns were kept, when its raw row holds the number as a cell of its own', async () => {
+    w.matches[0].statementLine = { rawRow: 'BC-1 | 1.0 | +353 87 123 4567 | 46322.5', merchantRef: null, barcode: 'BC-1', amount: 12, fee: null, status: null };
+    w.orders = [ours({ customer: { id: 'cu7', fullName: 'Foreign Test', phone: '353871234567', rawPhone: '+353 87 123 4567' } })];
+    expect((await byPhone()).phone).toEqual({ shown: '+353871234567', country: 'OTHER' });
+  });
+
+  it('a column the company headed «phone» that holds no phone gives no search — it does not borrow another cell’s number', async () => {
+    headed({ receiverPhone: 'لا يوجد', rawRow: 'BC-1 | 0900000009' });
+    w.orders = [ours({ customer: { id: 'cu0', fullName: 'Other', phone: '900000009', rawPhone: '0900000009' } })];
+    const tx = makeTx(w);
+    const r = await findLinkCandidatesByLinePhone(tx as never, { ...scope, countryCode: 'SY' });
+    expect(r).toMatchObject({ phone: null, candidates: [], hint: NO_LINE_PHONE_SENTENCE });
+    expect(tx.order.findMany).not.toHaveBeenCalled();
+  });
+
+  it('comparing writes nothing and judges nothing: the same orders are offered, in the same order, with or without marks', async () => {
+    headed();
+    w.orders = [ours({ id: 'a', orderNumber: 'A-1', totalAmount: 15, deliveryFee: 3 }), ours({ id: 'b', orderNumber: 'B-1', totalAmount: 40, deliveryFee: 3 })];
+    const tx = makeTx(w);
+    const r = await findLinkCandidatesByLinePhone(tx as never, { ...scope, countryCode: 'SY' });
+    expect(r.candidates.map((c) => c.id)).toEqual(['a', 'b']);
+    expect(tx.counts['match.updateMany']).toBeUndefined();
+    expect(tx.counts['note.create']).toBeUndefined();
+  });
+});

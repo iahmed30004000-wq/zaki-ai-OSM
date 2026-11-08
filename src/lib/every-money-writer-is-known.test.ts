@@ -209,6 +209,13 @@ const READS_ONLY: Record<string, string> = {
   'src/lib/settlement.ts': 'تسوية — مالها مالُ كشفٍ لا طلب',
   'src/lib/manual-statement.ts': 'الكشف اليدوي: يكتب إجمالي الكشف (مجموع أسطره) وأسطره، لا إجمالي طلب ولا حركة محفظة — المال يتحرك عند الاعتماد',
   /*
+   * «اربطه بطلب» (8/11) — IT READS `totalAmount` AND WRITES NONE OF THE FOUR. The dialog lays the order's own figure (what it asks
+   * the customer to pay) beside what the company wrote, so a person can tell whether it is the same parcel: a read of the stored
+   * number, shown and never changed. The link's one write is a MATCH row whose verdict is `judgeLine`'s — the matcher's own
+   * function — and the order is never written, only noted (`orderNote`).
+   */
+  'src/lib/hand-link.ts': 'يقرأ إجمالي الطلب ليعرضه جنب ما كتبته الشركة في حوار الربط؛ وكتابته الوحيدة صفّ مطابقة يحكم عليه judgeLine — لا يكتب مالاً على طلب',
+  /*
    * ترحيل طلبات قديمة (قرار المالك، الخيار B): يكتب مبلغ الملف كما هو لطلبٍ انشحن وانقبض فعلاً خارج النظام، ولا يحسب
    * شيئاً — حسابه اليوم من جدول أجور اليوم كان سيغيّر مبلغاً دفعه زبون. ليس باب طلبات يومي: للمالك وحده، ويكتب من ملف.
    */

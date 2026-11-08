@@ -101,7 +101,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
             },
             // The status word and the whole row as the company wrote it: its own reason, in its own words.
             // `collected` and `fee` too: the screen lays the row out under its own names (`readCourierRow`), display only.
-            statementLine: { select: { merchantRef: true, barcode: true, amount: true, collected: true, fee: true, status: true, rawRow: true } },
+            // The receiver's five cells too (name, phone, address, governorate, area): the screen names them instead of
+            // dumping the row. A line imported before they were kept sends them as null.
+            statementLine: {
+              select: {
+                merchantRef: true, barcode: true, amount: true, collected: true, fee: true, status: true, rawRow: true,
+                receiverName: true, receiverPhone: true, receiverAddress: true, receiverCity: true, receiverArea: true,
+              },
+            },
           },
         },
       },

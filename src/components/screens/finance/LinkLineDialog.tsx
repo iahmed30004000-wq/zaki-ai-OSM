@@ -6,7 +6,8 @@ import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
 import { Money } from '@/components/ui/Money';
 import { useToast } from '@/components/ui/Toast';
-import type { CandidateSearch, LinkCandidate, LinePhoneSearch } from '@/lib/hand-link';
+import type { CandidateSearch, LinkCandidate, LinePhoneSearch, LineSummary } from '@/lib/hand-link';
+import type { Agreement } from '@/lib/line-compare';
 
 /**
  * «اربطه بطلب» — A LINE THE MATCHER COULD NOT PLACE, PLACED BY A PERSON.
@@ -31,6 +32,116 @@ import type { CandidateSearch, LinkCandidate, LinePhoneSearch } from '@/lib/hand
 
 /** The refusals after which the list behind the dialog no longer says the truth: offer to refresh it. */
 export const STALE_CODES: readonly string[] = ['NOT_LINKABLE', 'NOT_FOUND', 'ALREADY_APPROVED'];
+
+/*
+ * «كيف بدي أقارن بين الطلب الموجود والطلب اللي عنا عشان أعرف إنو هو ولا لأ» (the owner, 8/11).
+ *
+ * The dialog showed an order's number, phone, name and what we expect — and nothing of what the company wrote on the line, so
+ * there was nothing to hold the one against the other. It now shows the company's line on top, a mark beside each order for the
+ * three fields that can be compared without guessing (phone, governorate, net), and — for the order the person has picked — the
+ * two sides of every field in one table. The marks are the server's (`lib/line-compare`); nothing here works out a figure. A
+ * name and an address are laid side by side and never marked: a person reads those.
+ */
+const MARK: Record<Agreement, { text: string; tone: string }> = {
+  SAME: { text: '✓ مطابق', tone: 'text-[var(--sys-success)]' },
+  DIFFERENT: { text: '≠ مختلف', tone: 'text-[var(--sys-destructive)]' },
+  UNKNOWN: { text: '؟ غير معروف', tone: 'text-[var(--sys-muted-foreground)]' },
+};
+
+function AgreementMark({ label, value }: { label: string; value: Agreement | undefined }) {
+  const mark = MARK[value ?? 'UNKNOWN'];
+  return (
+    <span className={`text-xs font-medium ${mark.tone}`}>
+      {label}: {mark.text}
+    </span>
+  );
+}
+
+/** What the company wrote on the line — the same card whichever way the person searched. */
+function CompanyLineCard({ line, currency }: { line: LineSummary; currency: string }) {
+  const facts: [string, React.ReactNode][] = [
+    ['الحالة', line.status],
+    ['الاسم', line.name],
+    ['الهاتف', line.phone ? <b dir="ltr">{line.phone}</b> : null],
+    ['المحافظة', line.governorate],
+    ['العنوان', line.address],
+  ];
+  const figures: [string, number | null][] = [
+    ['المحصَّل من الزبون', line.collected],
+    ['أجرة الشركة', line.fee],
+    ['الصافي في الكشف', line.net],
+  ];
+  return (
+    <section aria-label="ما كتبته الشركة" className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3 space-y-1">
+      <h3 className="text-xs font-medium text-[var(--sys-heading)]">ما كتبته الشركة عن هذا السطر</h3>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+        {facts.filter(([, v]) => v).map(([k, v]) => (
+          <React.Fragment key={k}>
+            <dt className="text-[var(--sys-muted-foreground)]">{k}</dt>
+            <dd dir="auto">{v}</dd>
+          </React.Fragment>
+        ))}
+        {figures.filter(([, v]) => v !== null).map(([k, v]) => (
+          <React.Fragment key={k}>
+            <dt className="text-[var(--sys-muted-foreground)]">{k}</dt>
+            <dd><Money value={v as number} currency={currency} /></dd>
+          </React.Fragment>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+/** The two sides of every field, for the one order the person has picked. */
+function CompareTable({ line, c, currency }: { line: LineSummary | null | undefined; c: LinkCandidate; currency: string }) {
+  type Cell = React.ReactNode;
+  const text = (v: string | null | undefined, ltr = false): Cell => (v ? <span dir={ltr ? 'ltr' : 'auto'}>{v}</span> : '—');
+  const money = (v: number | null | undefined): Cell => (v === null || v === undefined ? '—' : <Money value={v} currency={currency} />);
+  const rows: { k: string; company: Cell; ours: Cell; mark?: Agreement }[] = [
+    { k: 'الهاتف', company: text(line?.phone, true), ours: text(c.details?.phone, true), mark: c.compare?.phone },
+    { k: 'المحافظة', company: text(line?.governorate), ours: text(c.details?.governorate), mark: c.compare?.governorate },
+    { k: 'العنوان', company: text(line?.address), ours: text(c.details?.address) },
+    { k: 'الاسم', company: text(line?.name), ours: text(c.details?.name) },
+    { k: 'الحالة', company: text(line?.status), ours: text(c.details?.shipping) },
+    { k: 'الصافي', company: money(line?.net), ours: money(c.expected), mark: c.compare?.amount },
+    { k: 'المحصَّل من الزبون', company: money(line?.collected), ours: money(c.details?.totalAmount) },
+    { k: 'أجرة التوصيل', company: money(line?.fee), ours: money(c.details?.deliveryFee) },
+  ];
+  const marks = rows.map((r) => r.mark).filter((m): m is Agreement => !!m && m !== 'UNKNOWN');
+  const same = marks.filter((m) => m === 'SAME').length;
+  return (
+    <div className="mt-1 rounded-lg border border-[var(--sys-border)] p-2 space-y-1">
+      <table className="w-full text-xs">
+        <caption className="text-start font-medium text-[var(--sys-heading)] pb-1">الشركة مقابل طلبنا {c.orderNumber}</caption>
+        <thead className="text-[var(--sys-muted-foreground)]">
+          <tr>
+            <th scope="col" className="text-start font-medium py-0.5 pe-2" />
+            <th scope="col" className="text-start font-medium py-0.5 pe-2">الشركة</th>
+            <th scope="col" className="text-start font-medium py-0.5 pe-2">طلبنا</th>
+            <th scope="col" className="text-start font-medium py-0.5" />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.k} className="border-t border-[var(--sys-border)] align-top">
+              <th scope="row" className="text-start font-medium py-0.5 pe-2 text-[var(--sys-muted-foreground)]">{r.k}</th>
+              <td className="py-0.5 pe-2 break-words">{r.company}</td>
+              <td className="py-0.5 pe-2 break-words">{r.ours}</td>
+              <td className="py-0.5 whitespace-nowrap">
+                {r.mark && <span className={`font-medium ${MARK[r.mark].tone}`}>{MARK[r.mark].text}</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {marks.length > 0 && (
+        <p className="text-xs text-[var(--sys-muted-foreground)]">
+          يتفقان في {same} من {marks.length} من الحقول اللي بتنقارن (الهاتف والمحافظة والصافي). الاسم والعنوان اقرأهم بنفسك.
+        </p>
+      )}
+    </div>
+  );
+}
 
 const codeOf = (e: unknown): string | null => {
   const data = (e as { data?: { code?: unknown } } | null)?.data;
@@ -220,6 +331,7 @@ export function LinkLineDialog({ statementId, matchId, reference, amount, curren
 
             {found && (
               <div className="space-y-2">
+                {found.line && <CompanyLineCard line={found.line} currency={currency} />}
                 <p className="text-sm font-medium text-[var(--sys-heading)]">{found.header}</p>
                 {found.hint && <p className="text-xs text-[var(--sys-muted-foreground)]">{found.hint}</p>}
                 <ul className="space-y-2">
@@ -251,6 +363,13 @@ export function LinkLineDialog({ statementId, matchId, reference, amount, curren
                               المتوقَّع <Money value={c.expected} currency={currency} />
                             </span>
                           )}
+                          {c.compare && (
+                            <span className="flex flex-wrap gap-x-3 gap-y-0.5 pt-1">
+                              <AgreementMark label="الهاتف" value={c.compare.phone} />
+                              <AgreementMark label="المحافظة" value={c.compare.governorate} />
+                              <AgreementMark label="المبلغ" value={c.compare.amount} />
+                            </span>
+                          )}
                           {c.otherCourier && (
                             <span className="flex items-center gap-1 text-xs text-[var(--sys-warning)]">
                               <RiAlertLine className="h-4 w-4" />
@@ -261,6 +380,8 @@ export function LinkLineDialog({ statementId, matchId, reference, amount, curren
                             <span className="block text-xs text-[var(--sys-destructive)]">{c.blockedBy.join(' · ')}</span>
                           )}
                         </button>
+                        {/* The two sides of every field, for the order picked — a person tells whether it is the parcel. */}
+                        {picked?.id === c.id && <CompareTable line={found.line} c={c} currency={currency} />}
                       </li>
                     );
                   })}

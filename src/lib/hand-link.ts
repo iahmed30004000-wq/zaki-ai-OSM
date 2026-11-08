@@ -7,7 +7,9 @@ import { claimingRowWhere, integrityNotes, MANUAL_MATCH, openRequestWhere, type 
 import { expectedAmountFor, judgeLine, SETTLEMENT_ORDER_SELECT } from './settlement';
 import { closedStatementRefusal, isMatchingClosed } from './settlement-gates';
 import { IN_FLIGHT, openClaimsFor } from './settlement-decisions';
-import { phoneFromRawRow, type LinePhone } from './statement-line-reading';
+import { lineEssentials, type LineEssentials, type LinePhone } from './statement-line-reading';
+import { compareAmounts, compareGovernorates, comparePhones, type Agreement } from './line-compare';
+import { SHIPPING_STATUS_AR } from './shipping-workflow';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -173,8 +175,43 @@ const ORDER_FACTS = {
   ...SETTLEMENT_ORDER_SELECT,
 } as const;
 
-const CANDIDATE_SELECT = { ...ORDER_FACTS, customer: { select: { id: true, fullName: true, phone: true } } } as const;
+/**
+ * What the company's line is read from: the figures it parsed, the status word, the raw row, and the five cells the import
+ * kept under the company's own headings (`StatementLine.receiver*`). One select for both searches, so the dialog's card
+ * of «ما كتبته الشركة» is the same whichever way the person searched.
+ */
+const LINE_SELECT = {
+  rawRow: true, merchantRef: true, barcode: true, amount: true, collected: true, fee: true, status: true,
+  receiverName: true, receiverPhone: true, receiverAddress: true, receiverCity: true, receiverArea: true,
+} as const;
+
+const CANDIDATE_SELECT = {
+  ...ORDER_FACTS,
+  // The parcel's own address wins over the customer's, as the dispatch reads them (`couriers/dispatch.ts`).
+  deliveryAddress: true,
+  region: { select: { name: true } },
+  customer: { select: { id: true, fullName: true, phone: true, rawPhone: true, address: true, city: true } },
+} as const;
 type CandidateRow = Prisma.OrderGetPayload<{ select: typeof CANDIDATE_SELECT }>;
+
+/**
+ * WHAT OUR ORDER SAYS, field by field — to be held against what the company wrote (`LineSummary`). Display only: a person
+ * reads it, the server's own rules still judge the link. The figures are the order's own, never computed here.
+ */
+export interface CandidateDetails {
+  name: string | null;
+  /** As the customer typed it, else the stored form. */
+  phone: string | null;
+  /** The parcel's own address, else the customer's. */
+  address: string | null;
+  /** The delivery region of the order (a row of the fee table): its governorate. */
+  governorate: string | null;
+  /** Our own word for where the parcel is: «مشحون»، «خرج للتوصيل»… */
+  shipping: string;
+  /** What the order asks the customer to pay at the door, and the delivery fee inside it. */
+  totalAmount: number;
+  deliveryFee: number | null;
+}
 
 export interface LinkCandidate {
   id: string;
@@ -193,6 +230,25 @@ export interface LinkCandidate {
   otherCourier: boolean;
   /** Why the rules would refuse it, in Arabic. Empty means a person may pick it. */
   blockedBy: string[];
+  /** What the order says about itself, beside what the company wrote about the line. */
+  details: CandidateDetails;
+  /** Where the order and the line agree, for the three fields that can be compared without guessing. */
+  compare: { phone: Agreement; governorate: Agreement; amount: Agreement };
+}
+
+/** What the company wrote on the line — the card at the top of the dialog. Every piece is the company's own, or null. */
+export interface LineSummary {
+  /** The company's own status word. */
+  status: string | null;
+  name: string | null;
+  /** The phone as read off the line (`shown`), or null when the line carries none. */
+  phone: string | null;
+  governorate: string | null;
+  address: string | null;
+  /** The company's figures for the line, as it stated them: the net it hands over, what it collected, the fee it kept. */
+  net: number | null;
+  collected: number | null;
+  fee: number | null;
 }
 
 export interface CandidateSearch {
@@ -203,6 +259,28 @@ export interface CandidateSearch {
   hint: string | null;
   /** The warning shown beside an order of another courier. */
   otherCourierWarning: string;
+  /** What the company wrote on the line being tied, so the person can hold each order against it. Absent on an old answer. */
+  line?: LineSummary | null;
+}
+
+/** The figures of a line as a database row or a mock carries them (decimals or strings or numbers): read through `numberOrNull`. */
+type LineRow = { amount?: unknown; collected?: unknown; fee?: unknown };
+
+const numberOrNull = (v: unknown): number | null => (v === null || v === undefined || v === '' ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+
+/** The card of the company's line, from the row the select read. */
+function summarizeLine(row: LineRow | null | undefined, essentials: LineEssentials | null): LineSummary | null {
+  if (!row || !essentials) return null;
+  return {
+    status: essentials.status,
+    name: essentials.name,
+    phone: essentials.phone?.shown ?? null,
+    governorate: essentials.governorate,
+    address: essentials.address,
+    net: numberOrNull(row.amount),
+    collected: numberOrNull(row.collected),
+    fee: numberOrNull(row.fee),
+  };
 }
 
 /**
@@ -214,16 +292,12 @@ export interface CandidateSearch {
  */
 export async function findLinkCandidates(
   tx: Tx,
-  p: { companyId: string; storeId: string; statementId: string; matchId: string; query: string; minorUnit: number }
+  p: {
+    companyId: string; storeId: string; statementId: string; matchId: string; query: string; minorUnit: number;
+    /** The store's country, so the line's phone is read the way this store's customers are stored. */
+    countryCode?: string | null;
+  }
 ): Promise<CandidateSearch> {
-  const empty = (hint: string | null): CandidateSearch => ({
-    header: candidatesHeader(0, 0),
-    counts: { total: 0, closed: 0, open: 0 },
-    candidates: [],
-    hint,
-    otherCourierWarning: OTHER_COURIER_WARNING,
-  });
-
   const statement = await tx.courierStatement.findFirst({
     where: { id: p.statementId, companyId: p.companyId, storeId: p.storeId },
     select: { id: true, deliveryProviderId: true },
@@ -232,12 +306,25 @@ export async function findLinkCandidates(
 
   const match = await tx.settlementMatch.findFirst({
     where: { id: p.matchId, statementId: p.statementId, companyId: p.companyId },
-    select: { id: true, result: true, orderId: true, statementAmount: true },
+    select: { id: true, result: true, orderId: true, statementAmount: true, statementLine: { select: LINE_SELECT } },
   });
   if (!match) throw new LinkRefused(404, { error: 'سطر المطابقة غير موجود', code: 'NOT_FOUND' });
   if (match.result !== 'MISSING_IN_SYSTEM' || match.orderId) {
     throw new LinkRefused(409, { error: 'هذا السطر ليس من «في الكشف وليس عندنا»، أو رُبط بطلب من قبل', code: 'NOT_LINKABLE' });
   }
+
+  // What the company wrote on this line: shown at the top of the dialog whichever way the person searched, and what each
+  // candidate is held against (the phone, the governorate).
+  const essentials = match.statementLine ? lineEssentials(match.statementLine, p.countryCode) : null;
+  const line = summarizeLine(match.statementLine, essentials);
+  const empty = (hint: string | null): CandidateSearch => ({
+    header: candidatesHeader(0, 0),
+    counts: { total: 0, closed: 0, open: 0 },
+    candidates: [],
+    hint,
+    otherCourierWarning: OTHER_COURIER_WARNING,
+    line,
+  });
 
   const query = p.query.trim();
   if (query.length < MIN_QUERY) return empty(`اكتب ${MIN_QUERY} خانات على الأقل: هاتف الزبون، أو رقم طلبنا، أو رقم الشحنة`);
@@ -276,9 +363,14 @@ export async function findLinkCandidates(
   return {
     header: candidatesHeader(total, closed),
     counts: { total, closed, open: Math.max(0, total - closed) },
-    candidates: await candidatesOf(tx, { companyId: p.companyId, statementId: p.statementId, deliveryProviderId: statement.deliveryProviderId, minorUnit: p.minorUnit, lineAmount, rows }),
+    candidates: await candidatesOf(tx, {
+      companyId: p.companyId, statementId: p.statementId, deliveryProviderId: statement.deliveryProviderId,
+      minorUnit: p.minorUnit, lineAmount, rows,
+      lineFacts: { phoneKeys: essentials?.phone?.keys ?? null, city: essentials?.city ?? null }, storeCountry: p.countryCode,
+    }),
     hint: null,
     otherCourierWarning: OTHER_COURIER_WARNING,
+    line,
   };
 }
 
@@ -289,7 +381,12 @@ export async function findLinkCandidates(
  */
 async function candidatesOf(
   tx: Tx,
-  p: { companyId: string; statementId: string; deliveryProviderId: string | null; minorUnit: number; lineAmount: number; rows: CandidateRow[] }
+  p: {
+    companyId: string; statementId: string; deliveryProviderId: string | null; minorUnit: number; lineAmount: number; rows: CandidateRow[];
+    /** What the line says that an order can be compared with: the keys of its phone and its governorate. Absent: nothing to compare. */
+    lineFacts?: { phoneKeys: string[] | null; city: string | null };
+    storeCountry?: string | null;
+  }
 ): Promise<LinkCandidate[]> {
   const integrity = await integrityOf(tx, { companyId: p.companyId, statementId: p.statementId, orderIds: p.rows.map((r) => r.id) });
 
@@ -307,11 +404,15 @@ async function candidatesOf(
         otherStatements: integrity.elsewhere.get(o.id) ?? [],
       });
       if (!hasLeftWarehouse(o)) blockedBy.unshift(NOT_SHIPPED_SENTENCE);
+      const distance = expected === null ? null : Math.abs(expected - p.lineAmount);
+      const governorate = o.region?.name?.trim() || null;
       return {
         id: o.id,
         orderNumber: o.orderNumber,
         merchantRef: o.merchantRef,
-        customer: o.customer,
+        // Exactly the three fields it always carried: the people-handed-out tally reads this, and the rest of what the
+        // customer row holds goes into `details` below.
+        customer: o.customer ? { id: o.customer.id, fullName: o.customer.fullName, phone: o.customer.phone } : null,
         shippingStatus: o.shippingStatus,
         settlementStatus: o.settlementStatus,
         closed: closingStages({
@@ -321,9 +422,23 @@ async function candidatesOf(
           confirmationStatus: o.confirmationStatus,
         }).closed,
         expected,
-        distance: expected === null ? null : Math.abs(expected - p.lineAmount),
+        distance,
         otherCourier: o.deliveryProviderId !== p.deliveryProviderId,
         blockedBy,
+        details: {
+          name: o.customer?.fullName?.trim() || null,
+          phone: o.customer?.rawPhone?.trim() || o.customer?.phone?.trim() || null,
+          address: o.deliveryAddress?.trim() || o.customer?.address?.trim() || null,
+          governorate,
+          shipping: (SHIPPING_STATUS_AR as Record<string, string>)[o.shippingStatus] ?? o.shippingStatus,
+          totalAmount: Number(o.totalAmount),
+          deliveryFee: o.deliveryFee === null || o.deliveryFee === undefined ? null : Number(o.deliveryFee),
+        },
+        compare: {
+          phone: comparePhones(p.lineFacts?.phoneKeys, o.customer, p.storeCountry),
+          governorate: compareGovernorates(p.lineFacts?.city, governorate),
+          amount: compareAmounts(distance, p.minorUnit),
+        },
         linkable: blockedBy.length === 0,
       };
     })
@@ -352,8 +467,9 @@ export function inFlightHeader(total: number): string {
  * «بهاتف السطر» — THE ORDERS OF THE PHONE THE COMPANY WROTE, STILL ON THE ROAD.
  *
  * The owner's words: take the phone of that very line by itself, show the orders still being shipped, and let me
- * pick. So the phone is never taken from the request: it is read off the line's own row (`phoneFromRawRow`). A line
- * that may be linked has no order (that is what makes it linkable), so there is no order's phone to read first.
+ * pick. So the phone is never taken from the request: it is read off the line itself (`lineEssentials`: the column the
+ * company headed as the receiver's phone, else its raw row) and may be a number of any country. A line that may be
+ * linked has no order (that is what makes it linkable), so there is no order's phone to read first.
  *
  * Scope is the text search's, unwidened: this company, this statement's store, this statement's courier — and only
  * orders still in flight (`IN_FLIGHT`: shipped, out for delivery, ready for pickup, failed delivery). A delivered,
@@ -372,18 +488,20 @@ export async function findLinkCandidatesByLinePhone(
 
   const match = await tx.settlementMatch.findFirst({
     where: { id: p.matchId, statementId: p.statementId, companyId: p.companyId },
-    select: {
-      id: true, result: true, orderId: true, statementAmount: true,
-      statementLine: { select: { rawRow: true, merchantRef: true, barcode: true } },
-    },
+    select: { id: true, result: true, orderId: true, statementAmount: true, statementLine: { select: LINE_SELECT } },
   });
   if (!match) throw new LinkRefused(404, { error: 'سطر المطابقة غير موجود', code: 'NOT_FOUND' });
   if (match.result !== 'MISSING_IN_SYSTEM' || match.orderId) {
     throw new LinkRefused(409, { error: 'هذا السطر ليس من «في الكشف وليس عندنا»، أو رُبط بطلب من قبل', code: 'NOT_LINKABLE' });
   }
 
-  const base = { candidates: [] as LinkCandidate[], otherCourierWarning: OTHER_COURIER_WARNING };
-  const phone = match.statementLine ? phoneFromRawRow(match.statementLine, p.countryCode) : null;
+  // The phone of the company's line: the column it headed «هاتف المستلم» when the file was imported; for a line imported
+  // before that was kept, the first mobile (or number written with + / 00) in its raw row. Either way a number of any
+  // country — a foreign line is a phone too (`lineEssentials`).
+  const essentials = match.statementLine ? lineEssentials(match.statementLine, p.countryCode) : null;
+  const line = summarizeLine(match.statementLine, essentials);
+  const base = { candidates: [] as LinkCandidate[], otherCourierWarning: OTHER_COURIER_WARNING, line };
+  const phone = essentials?.phone ?? null;
   if (!phone) {
     return { ...base, header: inFlightHeader(0), counts: { total: 0, closed: 0, open: 0 }, hint: NO_LINE_PHONE_SENTENCE, phone: null };
   }
@@ -413,6 +531,7 @@ export async function findLinkCandidatesByLinePhone(
     candidates: await candidatesOf(tx, {
       companyId: p.companyId, statementId: p.statementId, deliveryProviderId: statement.deliveryProviderId,
       minorUnit: p.minorUnit, lineAmount: Number(match.statementAmount ?? 0), rows,
+      lineFacts: { phoneKeys: phone.keys, city: essentials?.city ?? null }, storeCountry: p.countryCode,
     }),
     hint: null,
     phone: shown,

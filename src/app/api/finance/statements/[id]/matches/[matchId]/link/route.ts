@@ -59,6 +59,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
           })
         : await findLinkCandidates(db, {
             companyId, storeId, statementId: id, matchId, query: sp.get('q') ?? '', minorUnit: country.minorUnit,
+            countryCode: country.code,
           });
 
     // Names and phones left the building; the tally is the person's, not this screen's.
