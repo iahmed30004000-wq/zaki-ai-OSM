@@ -11,7 +11,8 @@ import { join } from 'node:path';
  *  1. The pull refuses `WORK_FIRST` while she holds an order she owes a call on (`work-first.ts`): the sentence says how many,
  *     the refusal carries the OLDEST one's id and number, nothing is taken, nothing is written.
  *  2. After every refusal the pull already had — the cap, the untouched order (which keeps winning for a fresh pull) — and
- *     before anything is picked.
+ *     before anything is picked. And BEFORE the pace (#224): forty pulls this hour with a call owed is WORK_FIRST, the sentence
+ *     she can act on; with nothing owed it is PULL_TOO_FAST. The order is: caps · untouched order · WORK_FIRST · the pace.
  *  3. Only «نظام الجولات» on. Off, the pull is today's.
  *  4. The first deploy must not wall a desk that already holds a pile: an order the next release pass will take is not owed.
  *  5. Cheap: one read of her held orders however many there are; nothing per order.
@@ -29,7 +30,7 @@ import { join } from 'node:path';
 type Row = Record<string, any>;
 
 const { world, sw } = vi.hoisted(() => ({
-  world: { orders: [] as Row[], users: new Map<string, Row>(), history: [] as Row[], logs: [] as Row[] },
+  world: { orders: [] as Row[], users: new Map<string, Row>(), history: [] as Row[], logs: [] as Row[], clock: new Date('2026-11-07T12:00:00.000Z') },
   sw: { value: { enabled: false, enabledAt: null } as { enabled: boolean; enabledAt: Date | null } },
 }));
 
@@ -107,8 +108,18 @@ vi.mock('./db', () => {
   };
   const db = {
     order,
-    // `findMany` is the pace limit's read of her pulls of the last hour (#224, inside the pull's transaction): none here.
-    orderClaimHistory: { create: vi.fn(async ({ data }: Row) => void world.history.push(data)), findMany: vi.fn(async () => []) },
+    // `findMany` is the pace limit's read of her pulls of the last hour (#224, inside the pull's transaction). The `where` is APPLIED to
+    // `world.history` — a test that wants her to have pulled forty times writes forty lines, and the answer comes from the query's own
+    // text (her `userId`, `CLAIMED`, `PULL_NEXT`, newer than the window), not from a mock that was told it. A line the pull writes
+    // carries the pull's clock, as the database's default would.
+    orderClaimHistory: {
+      create: vi.fn(async ({ data }: Row) => void world.history.push({ createdAt: world.clock, ...data })),
+      findMany: vi.fn(async ({ where, select }: Row) =>
+        world.history
+          .filter((h) => matches(h, where ?? {}))
+          .map((h) => (select ? Object.fromEntries(Object.keys(select).filter((k) => select[k]).map((k) => [k, h[k] ?? null])) : { ...h }))
+      ),
+    },
     notification: { createMany: vi.fn(async () => ({ count: 1 })) },
     orderStatusLog: { create: vi.fn(async ({ data }: Row) => void world.logs.push(data)) },
     orderActivity: { create: vi.fn(async () => undefined) },
@@ -120,13 +131,13 @@ vi.mock('./db', () => {
 // The switch the pull reads before its transaction — the test says what it is.
 vi.mock('./no-answer-rounds-switch', () => ({ roundsSwitch: async () => sw.value }));
 
-import { CLAIM_CAPS, OPEN_CONFIRMATION, pullNextOrder, pullRefusal } from './confirmation-queue';
+import { CLAIM_CAPS, OPEN_CONFIRMATION, PULL_PACE, pullNextOrder, pullRefusal } from './confirmation-queue';
 import { ROUNDS_OFF, type RoundsSwitch } from './no-answer-rounds';
 import { workFirstGate } from './work-first';
 import { zonedTimeToInstant } from './business-calendar';
 import { db } from './db';
 
-const NOW = new Date('2026-11-07T12:00:00.000Z');
+const NOW = world.clock;
 const minutesAgo = (m: number) => new Date(NOW.getTime() - m * 60_000);
 const hoursAgo = (h: number) => minutesAgo(h * 60);
 const hoursAhead = (h: number) => new Date(NOW.getTime() + h * 3_600_000);
@@ -268,6 +279,68 @@ describe('2 · the order of the refusals: every old one first, unchanged', () =>
     await pullNextOrder(scope, agent('sara'), CAL, NOW);
     const updates = (db as unknown as Row).order.updateMany.mock.calls.filter(([q]: [Row]) => q.data?.claimedById === 'sara');
     expect(updates, 'a claim was attempted').toHaveLength(0);
+  });
+});
+
+describe('2b · the pace (#224) comes AFTER it — caps · untouched order · WORK_FIRST · PULL_TOO_FAST', () => {
+  /** `n` pulls of hers (or `who`'s) — what the pace counts: the `userId`, `CLAIMED`, `PULL_NEXT`, newer than the window. */
+  const pulledTimes = (n: number, { who = 'sara', newestAgo = 1 } = {}) => {
+    for (let i = 0; i < n; i++) {
+      world.history.push({ companyId: 'c1', orderId: `earlier-${who}-${i}`, userId: who, action: 'CLAIMED', reason: 'PULL_NEXT', createdAt: minutesAgo(newestAgo + i) });
+    }
+  };
+  const FORTY = PULL_PACE.perHour;
+
+  it('forty pulls this hour AND a call owed: the answer is WORK_FIRST — the sentence she can act on — not PULL_TOO_FAST', async () => {
+    const owed = mine(300);
+    const pool = order({ createdAt: hoursAgo(2) });
+    pulledTimes(FORTY);
+
+    const out = await pullNextOrder(scope, agent('sara'), CAL, NOW);
+    expect(out.refusal).toMatchObject({ code: 'WORK_FIRST', orderId: owed.id, orderNumber: owed.orderNumber, count: 1 });
+    expect(byId(pool.id).claimedById).toBeNull();
+  });
+
+  it('forty pulls this hour and NOTHING owed: PULL_TOO_FAST — the pace still brakes a desk that is up to date', async () => {
+    mine(60); // rung an hour ago: waiting for its three hours, owes nothing
+    const pool = order({ createdAt: hoursAgo(2) });
+    pulledTimes(FORTY);
+
+    const out = await pullNextOrder(scope, agent('sara'), CAL, NOW);
+    expect(out.refusal?.code).toBe('PULL_TOO_FAST');
+    expect(byId(pool.id).claimedById).toBeNull();
+  });
+
+  it('and the fake is not blind: forty pulls that left the hour, or are a colleague’s, make no pace', async () => {
+    pulledTimes(FORTY, { newestAgo: 61 });
+    pulledTimes(FORTY, { who: 'huda' });
+    const pool = order({ createdAt: hoursAgo(2) });
+    expect(await pullNextOrder(scope, agent('sara'), CAL, NOW)).toMatchObject({ ok: true, orderId: pool.id });
+  });
+
+  it('once she has rung what she owed, the pace speaks — in its own words', async () => {
+    const owed = mine(300);
+    order({ createdAt: hoursAgo(2) });
+    pulledTimes(FORTY);
+    expect((await pullNextOrder(scope, agent('sara'), CAL, NOW)).refusal?.code).toBe('WORK_FIRST');
+
+    owed.contactAttempts.push(...call(minutesAgo(1)));
+    const out = await pullNextOrder(scope, agent('sara'), CAL, NOW);
+    expect(out.refusal?.code).toBe('PULL_TOO_FAST');
+    expect(out.refusal?.message).toContain(`سحبت ${FORTY} طلباً`);
+  });
+
+  it('the untouched order and the cap keep their own sentence over BOTH', async () => {
+    pulledTimes(FORTY);
+    const fresh = mine(null, { claimedAt: minutesAgo(5) });
+    mine(300); // owed as well
+    order({ createdAt: hoursAgo(2) });
+    expect((await pullNextOrder(scope, agent('sara'), CAL, NOW)).refusal).toMatchObject({ code: 'UNTOUCHED_ORDER', orderId: fresh.id });
+
+    world.orders = [];
+    for (let i = 0; i < CLAIM_CAPS.total; i++) mine(300, { customerId: `cap${i}`, claimedAt: hoursAgo(10) });
+    order({ createdAt: hoursAgo(2) });
+    expect((await pullNextOrder(scope, agent('sara'), CAL, NOW)).refusal?.code).toBe('CAP_TOTAL');
   });
 });
 
