@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { RiInboxLine, RiPhoneLockLine, RiTimerFlashLine } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
+import { WORK_FIRST_BUTTON } from '@/lib/work-first';
 
 /**
  * «اسحب الطلب التالي» — THE PULL, WHERE THE AGENT WORKS.
@@ -60,6 +61,15 @@ export interface QueueResponse {
 }
 
 /**
+ * What the server said no to on the pull she pressed: its code, and the order it is about when it is about one
+ * (`UNTOUCHED_ORDER`, and `WORK_FIRST` — «الشغل أول»). The sentence was already said (the toast); this is what a screen acts on.
+ */
+export interface PullRefusalInfo {
+  code: string;
+  orderId: string | null;
+}
+
+/**
  * The pool's state and the pull itself.
  *
  * `enabled: false` reads nothing — «طلباتي» is also drawn for people who may
@@ -74,6 +84,8 @@ export function useQueue(enabled: boolean) {
   const [data, setData] = useState<QueueResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pulling, setPulling] = useState(false);
+  /** The last pull's refusal — read by whoever pressed it, right after `pull()` answers false. Null after a pull that went through. */
+  const lastRefusal = useRef<PullRefusalInfo | null>(null);
 
   const load = useCallback(async () => {
     if (!enabled) return;
@@ -90,10 +102,16 @@ export function useQueue(enabled: boolean) {
   /** Resolves true when an order was pulled, so the caller can go on — or stay. */
   const pull = useCallback(async (): Promise<boolean> => {
     setPulling(true);
+    lastRefusal.current = null;
     try {
       await apiJson('/api/confirmation/pull', { method: 'POST' });
       return true;
     } catch (e) {
+      const body = (e as { data?: { code?: unknown; orderId?: unknown } } | null)?.data;
+      lastRefusal.current = {
+        code: typeof body?.code === 'string' ? body.code : '',
+        orderId: typeof body?.orderId === 'string' ? body.orderId : null,
+      };
       toast.failed(e instanceof Error ? e.message : 'تعذر سحب طلب');
       void load();
       return false;
@@ -102,7 +120,7 @@ export function useQueue(enabled: boolean) {
     }
   }, [load, toast]);
 
-  return { data, error, pulling, reload: load, pull };
+  return { data, error, pulling, reload: load, pull, lastRefusal };
 }
 
 export function PullPanel({
@@ -110,6 +128,8 @@ export function PullPanel({
   onPulled,
   compact = false,
   onShowOrder,
+  workFirst = null,
+  onWorkFirst,
 }: {
   queue: ReturnType<typeof useQueue>;
   /** After a successful pull. The queue is reloaded before this runs. */
@@ -122,6 +142,14 @@ export function PullPanel({
    * it (the supervisor's page) the link is an ordinary address.
    */
   onShowOrder?: (orderId: string) => void;
+  /**
+   * «الشغل أول»: she owes calls right now — how many, and the oldest (the desk's own answer, `due`). The button stays pressable
+   * (a dead button teaches nothing; the server is the enforcement) but says so, and a press OPENS that order through
+   * `onShowOrder` instead of asking the server for another. Absent = the pull is as it was.
+   */
+  workFirst?: { count: number; orderId: string; orderNumber: string } | null;
+  /** A pull the server refused with `WORK_FIRST` anyway (a stale tab): the order it names, to open — the desk reads itself again first. */
+  onWorkFirst?: (orderId: string) => void | Promise<void>;
 }) {
   const { data, error, pulling } = queue;
   /* The slim bar folds its numbers and its rule on a phone (ORD-07); the full card is a desk page. */
@@ -131,11 +159,22 @@ export function PullPanel({
   /** The server's word for «this account does not pull, it supervises». */
   const notMyDesk = data.refusal?.code === 'NOT_YOUR_DESK';
 
+  /** She owes calls AND this screen can take her to one of them: the button is a way to it, not a pull. */
+  const owes = !!workFirst && workFirst.count > 0 && !!onShowOrder;
+
   const doPull = async () => {
+    if (owes && workFirst) {
+      onShowOrder?.(workFirst.orderId);
+      return;
+    }
     if (await queue.pull()) {
       await queue.reload();
       await onPulled();
+      return;
     }
+    // A stale tab: the server knew she owes calls and this screen had not heard. It names the order — go there, as for a fresh one.
+    const refused = queue.lastRefusal?.current;
+    if (refused?.code === 'WORK_FIRST' && refused.orderId) await onWorkFirst?.(refused.orderId);
   };
 
   const message = error ?? data.refusal?.message ?? null;
@@ -143,14 +182,14 @@ export function PullPanel({
   const button = !notMyDesk && (
     <button
       onClick={doPull}
-      disabled={!data.canPull || pulling || data.waiting === 0}
+      disabled={owes ? pulling : !data.canPull || pulling || data.waiting === 0}
       className={
         compact
           ? 'min-h-11 md:min-h-0 px-5 py-2.5 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-semibold disabled:opacity-50'
           : 'mt-6 px-8 py-3 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-semibold disabled:opacity-50'
       }
     >
-      {pulling ? 'جارٍ السحب…' : 'اسحب الطلب التالي'}
+      {pulling ? 'جارٍ السحب…' : owes ? WORK_FIRST_BUTTON : 'اسحب الطلب التالي'}
     </button>
   );
 

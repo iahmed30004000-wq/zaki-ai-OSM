@@ -45,6 +45,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { arDate } from '@/lib/format';
 import { Money } from '@/components/ui/Money';
 import { cardTone, noAnswerWords, roundWords } from '@/lib/no-answer-tone';
+import { CAUGHT_UP_SENTENCE } from '@/lib/work-first';
 import { POST_ORDER_ADDITION_AR } from '@/lib/post-order-offer-copy';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { useIsPhone } from '@/hooks/useIsPhone';
@@ -137,6 +138,15 @@ interface OrderRow {
   postponeCount: number;
   noAnswerCount: number;
   /**
+   * «الشغل أول» (`work-first.ts`): a call is owed on this order right now, why, when it falls due if it is waiting — and the
+   * line the card prints about it («جديد — سحبتيه هلّق», «جاهز الساعة 14:00»…). Decided and worded on the server, with the very
+   * verdict the pull's refusal asks; the screen only prints them. Absent on a response from before they were sent.
+   */
+  dueNow?: boolean;
+  dueReason?: 'NEW' | 'PROMISE' | 'ROUND' | null;
+  dueAt?: string | null;
+  dueWords?: string | null;
+  /**
    * WHERE IT CAME FROM — four fields, because it takes four.
    *
    * `source` and `channel` name the door; `moderator` and `createdBy` name
@@ -195,15 +205,17 @@ interface MineResponse {
   noAnswerLimit: number;
   /** «نظام الجولات» is on: the counter is a round («جولة n من 3»). */
   rounds?: boolean;
+  /** «الشغل أول»: how many calls she owes right now, the oldest of them, and the banner's sentence — the banner and the pull button. */
+  due?: { count: number; first: { id: string; orderNumber: string } | null; sentence?: string | null };
   /** The country's calling code («963») — WhatsApp needs the number in full. */
   dialCode?: string | null;
   /** «ابعت من رقم الشركة» is offered on the call sheet for this country (`after-no-answer.ts`). Absent = her own WhatsApp. */
   whatsappRoute?: 'COMPANY';
   /** The server's clock, so a wrong clock on her machine changes nothing. */
   serverNow: string;
-  /** Nobody has failed to reach this customer yet — these are calls. */
+  /** «اتصلي هلّق» — a call is owed on these right now (and the orders whose last call reached the customer and need a decision). */
   work: OrderRow[];
-  /** One or two no-answers — these are decisions. */
+  /** «بانتظار» — they did not answer and are not due to be rung again yet. */
   noAnswer: OrderRow[];
   /** The third no-answer closed it today. Read-only, and shown so it is not a surprise. */
   closedToday: OrderRow[];
@@ -298,6 +310,12 @@ const askedOrderId = (value: string | null): string | null =>
 
 /** The DOM id of an order's card on her desk — what the refusal's link scrolls to. */
 const deskCardId = (orderId: string) => `desk-order-${orderId}`;
+
+/** Which working tab holds an order, from the desk as the server last sent it — null when no card of hers does. */
+function tabHolding(desk: Pick<MineResponse, 'work' | 'noAnswer' | 'closedToday'>, orderId: string): 'work' | 'noAnswer' | null {
+  const holds = (list: { id: string }[]) => list.some((o) => o.id === orderId);
+  return holds(desk.work) ? 'work' : holds(desk.noAnswer) || holds(desk.closedToday) ? 'noAnswer' : null;
+}
 
 /**
  * WHERE THE ORDER CAME FROM, IN THE WORDS THE AGENT USES.
@@ -932,12 +950,50 @@ export function ConfirmationMineScreen() {
     endCall();
     setDialog({ kind: 'reject', order });
   };
-  /** «التالي»: what she said goes now, then the next order is pulled — the desk's own pull. */
+  /**
+   * Take her to an order's card: the tab that holds it, a search that cannot hide it, and the scroll and ring — or its window when
+   * no card of hers holds it. `desk` is the desk as it is NOW (a reload's answer), so a card that has only just arrived is found.
+   */
+  const openCard = (desk: Pick<MineResponse, 'work' | 'noAnswer' | 'closedToday'> | null, orderId: string) => {
+    const wanted = desk ? tabHolding(desk, orderId) : null;
+    if (!wanted) {
+      setOpenOrderId(orderId);
+      return;
+    }
+    setTab(wanted);
+    setFindOpen('');
+    setFocusId(orderId);
+  };
+  /**
+   * «التالي»: what she said goes now, then the next order is pulled — the desk's own pull.
+   *
+   * «الشغل أول»: unless she still owes calls. The desk is read again once her answer has left; if a call is owed, «التالي» is the
+   * next of them (the oldest), not a pull. And a pull the server refuses for that reason anyway (a desk that had not heard) is
+   * answered the same way: the desk is read and the order it names is opened.
+   */
   const callNext = async () => {
     await outbox.sendNow();
+    const fresh = await load();
+    const owed = fresh?.due && fresh.due.count > 0 ? fresh.due.first : null;
+    if (fresh && owed) {
+      endCall();
+      openCard(fresh, owed.id);
+      return;
+    }
     if (await queue.pull()) {
       await queue.reload();
       await load();
+      // What she has just pulled is a call she owes: it is under «اتصلي هلّق».
+      setTab('work');
+      setFindOpen('');
+    } else {
+      const refused = queue.lastRefusal?.current;
+      if (refused?.code === 'WORK_FIRST' && refused.orderId) {
+        const again = await load();
+        endCall();
+        openCard(again, refused.orderId);
+        return;
+      }
     }
     endCall();
   };
@@ -1053,8 +1109,9 @@ export function ConfirmationMineScreen() {
   const confirmed = data.confirmed;
   /** What each tab holds, in a sentence — under the tab's label on a desk, once under the strip on a phone. */
   const tabNotes = {
-    work: 'ما حدا اتّصل فيهم بعد',
-    noAnswer: `محاولة أو محاولتين — التالية تُغلق${data.closedToday.length > 0 ? ` · و${data.closedToday.length} أُغلقت اليوم` : ''}`,
+    work: 'اللي لازم ترني عليه هلّق',
+    // With «نظام الجولات» off nothing falls due by the clock: the old sentence is the true one.
+    noAnswer: `${data.rounds ? 'ما ردّ — بيصير جاهز بوقتو' : 'محاولة أو محاولتين — التالية تُغلق'}${data.closedToday.length > 0 ? ` · و${data.closedToday.length} أُغلقت اليوم` : ''}`,
     done: confirmed.q ? `بحث «${confirmed.q}»` : 'يوم واحد في كلّ مرّة',
     postponed: 'ما أجّلتَه لموعد — تعمل على ما حلّ موعده',
   };
@@ -1069,17 +1126,12 @@ export function ConfirmationMineScreen() {
    * are read-only, and a disabled row of buttons reads as «try again».
    */
   /** The refusal's link: down to the order's card on the tab that holds it, or its window if no card does. */
-  const showOrder = (orderId: string) => {
-    const holds = (list: { id: string }[]) => list.some((o) => o.id === orderId);
-    const wanted = holds(data.work) ? 'work' : holds(data.noAnswer) || holds(data.closedToday) ? 'noAnswer' : null;
-    if (!wanted) {
-      setOpenOrderId(orderId);
-      return;
-    }
-    setTab(wanted);
-    setFindOpen('');
-    setFocusId(orderId);
-  };
+  const showOrder = (orderId: string) => openCard(data, orderId);
+  /** «الشغل أول»: the calls she owes and the oldest of them, as the desk says it — what the banner and the pull button show. */
+  const owedNow =
+    data.due && data.due.count > 0 && data.due.first
+      ? { count: data.due.count, orderId: data.due.first.id, orderNumber: data.due.first.orderNumber }
+      : null;
 
   const rows: { order: OrderRow; closed?: boolean }[] =
     tab === 'work'
@@ -1137,7 +1189,36 @@ export function ConfirmationMineScreen() {
           عم تشوف شاشة {watchedName} — قراءة بس
         </p>
       )}
-      {canPull && !readOnly && <PullPanel queue={queue} compact onPulled={async () => void (await load())} onShowOrder={showOrder} />}
+      {/*
+        «الشغل أول»: WHAT SHE OWES, AT THE TOP. The count is the server's (`due`, the verdict the pull's refusal asks too): a call
+        owed on a new pull, on a «لا يرد» whose round came, or on a date that arrived. With none owed and a pull possible it says so.
+        Her own desk only: on a colleague's desk it would be her sentence about somebody else's orders.
+      */}
+      {!readOnly && data.due && data.due.count > 0 && (
+        <p className="text-sm text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg p-3">
+          {data.due.sentence}
+        </p>
+      )}
+      {!readOnly && data.due && data.due.count === 0 && queue.data?.canPull && queue.data.waiting > 0 && (
+        <p className="text-sm text-[var(--sys-success)] bg-[var(--sys-success-soft)] border border-[var(--sys-success)]/30 rounded-lg p-3">
+          {CAUGHT_UP_SENTENCE}
+        </p>
+      )}
+      {canPull && !readOnly && (
+        <PullPanel
+          queue={queue}
+          compact
+          onPulled={async () => {
+            await load();
+            // What she has just pulled is a call she owes: it is under «اتصلي هلّق», and she is looking at it.
+            setTab('work');
+            setFindOpen('');
+          }}
+          onShowOrder={showOrder}
+          workFirst={owedNow}
+          onWorkFirst={async (orderId) => openCard(await load(), orderId)}
+        />
+      )}
       {/* «مساعد الاتصال» — on a phone (where the call sheet is), her own desk only, for the holder of «طلباتي»'s key (the
           pair door asks the same). A desk at a computer has no phone to pair. */}
       {phone && holderId && !readOnly && <CallHelperCard onChange={() => void load()} />}
@@ -1181,7 +1262,7 @@ export function ConfirmationMineScreen() {
         <TabButton
           active={tab === 'work'}
           onClick={() => setTab('work')}
-          label="للشغل"
+          label="اتصلي هلّق"
           count={data.work.length}
           note={tabNotes.work}
           phone={phone}
@@ -1189,7 +1270,7 @@ export function ConfirmationMineScreen() {
         <TabButton
           active={tab === 'noAnswer'}
           onClick={() => setTab('noAnswer')}
-          label="لا يرد"
+          label="بانتظار"
           count={data.noAnswer.length}
           tone={data.noAnswer.length > 0 ? 'warning' : undefined}
           note={tabNotes.noAnswer}
@@ -1222,7 +1303,7 @@ export function ConfirmationMineScreen() {
       {(tab === 'work' || tab === 'noAnswer') && (
       <section>
         <SectionHead
-          title={tab === 'work' ? 'للشغل' : 'لا يرد'}
+          title={tab === 'work' ? 'اتصلي هلّق' : 'بانتظار'}
           count={rows.length}
           total={tab === 'work' ? data.work.length : data.noAnswer.length + data.closedToday.length}
           value={findOpen}
@@ -1252,13 +1333,19 @@ export function ConfirmationMineScreen() {
               {findOpen.trim() ? (
                 <EmptyState
                   title="لا طلبَ في هذا التبويب يطابق هذا البحث"
-                  why={`لا شيءَ من الـ${tab === 'work' ? data.work.length : data.noAnswer.length + data.closedToday.length} في «${tab === 'work' ? 'للشغل' : 'لا يرد'}» يطابق «${findOpen.trim()}» — البحث يمرّ على رقم الطلب والاسم والهاتف.`}
+                  why={`لا شيءَ من الـ${tab === 'work' ? data.work.length : data.noAnswer.length + data.closedToday.length} في «${tab === 'work' ? 'اتصلي هلّق' : 'بانتظار'}» يطابق «${findOpen.trim()}» — البحث يمرّ على رقم الطلب والاسم والهاتف.`}
                   action={{ label: 'امسح البحث', onClick: () => setFindOpen('') }}
                 />
               ) : tab === 'noAnswer' ? (
                 <EmptyState
                   title="ما في طلب ما ردّ عليه حدا"
                   why="هذا التبويب يجمع الطلبات التي جرت محاولة أو محاولتان معها بلا رد — ويخلو عندما تُجاب كلّها أو تُغلَق."
+                />
+              ) : data.noAnswer.length > 0 ? (
+                /* Orders she holds, none of them due: they are under «بانتظار» — «no order in your hands» would be false. */
+                <EmptyState
+                  title="ما في طلب لازم ترني عليه هلّق"
+                  why="باقي طلباتك بتنتظر وقتها في «بانتظار» — كل واحد بيطلع هون لما يحين."
                 />
               ) : (
                 <EmptyState
@@ -1498,10 +1585,24 @@ export function ConfirmationMineScreen() {
                   <span className="text-xs text-[var(--sys-muted-foreground)]">{sourceLabel(order)}</span>
                   {/* ⚠️ The count in words, because the card's colour must
                       never be the only place it is said. */}
-                  {order.noAnswerCount > 0 && !closed && (
+                  {order.noAnswerCount > 0 && !closed && !(order.dueNow && order.dueReason === 'ROUND' && !readOnly) && (
                     <span className="text-xs font-medium text-[var(--sys-warning)]">
                       {data.rounds ? roundWords(order.noAnswerCount, data.noAnswerLimit) : noAnswerWords(order.noAnswerCount)}
                       <span className="tabular-nums" dir="ltr"> ({order.noAnswerCount}/{data.noAnswerLimit})</span>
+                    </span>
+                  )}
+                  {/* «الشغل أول»: what she pulled, in a few words (written by the server) — a new order, a «لا يرد» that came back
+                      (with its round, so the chip above is not said twice), a customer's date that arrived; a waiting card says when
+                      it is ready. */}
+                  {!closed && !readOnly && order.dueWords && (
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded-md border ${
+                        order.dueNow
+                          ? 'bg-[var(--sys-warning-soft)] text-[var(--sys-warning)] border-[var(--sys-warning)]/30'
+                          : 'bg-[var(--sys-surface)] text-[var(--sys-muted-foreground)] border-[var(--sys-border)] tabular-nums'
+                      }`}
+                    >
+                      {order.dueWords}
                     </span>
                   )}
                   {closed && (

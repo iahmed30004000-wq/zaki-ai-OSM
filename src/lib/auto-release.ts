@@ -29,7 +29,7 @@ export const NINETY_MINUTE_RELEASE_REASON = 'AUTO_RELEASE_90_BUSINESS_MINUTES';
 /** Why the order went back, in her words — the notification's sentence after «رجع ORD-… للطابور:». */
 export const AUTO_RELEASE_WHY: Record<string, string> = {
   [NINETY_MINUTE_RELEASE_REASON]: 'ما انسجّلت عليه محاولة خلال 90 دقيقة عمل',
-  [ROUND_RELEASE_REASON]: 'مرّت 6 ساعات عمل على جولة بلا ردّ',
+  [ROUND_RELEASE_REASON]: 'مرّت 12 ساعة عمل على جولة بلا ردّ',
   [REPULL_RELEASE_REASON]: 'انسحب من جديد وما انسجّلت عليه محاولة خلال 90 دقيقة عمل',
   [DUE_RELEASE_REASON]: 'مرّت 3 ساعات عمل على موعد الطلب وما انسجّلت عليه محاولة بعد الموعد',
 };

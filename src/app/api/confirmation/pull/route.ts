@@ -50,9 +50,20 @@ export async function POST() {
     );
 
     if (!result.ok) {
+      const refusal = result.refusal;
       return NextResponse.json(
-        { error: result.refusal?.message, code: result.refusal?.code, autoReleased: result.released },
-        { status: result.refusal?.code === 'QUEUE_EMPTY' ? 404 : 409 }
+        {
+          error: refusal?.message,
+          code: refusal?.code,
+          autoReleased: result.released,
+          // A refusal that is about an order names it, as the claim-by-id door does for `UNTOUCHED_ORDER` — so a screen that
+          // reaches it on a stale tab (a pull pressed before she learned she owes calls: «الشغل أول») can open that order.
+          ...(refusal && (refusal.code === 'UNTOUCHED_ORDER' || refusal.code === 'WORK_FIRST')
+            ? { orderId: refusal.orderId, orderNumber: refusal.orderNumber }
+            : {}),
+          ...(refusal?.code === 'WORK_FIRST' ? { count: refusal.count } : {}),
+        },
+        { status: refusal?.code === 'QUEUE_EMPTY' ? 404 : 409 }
       );
     }
 

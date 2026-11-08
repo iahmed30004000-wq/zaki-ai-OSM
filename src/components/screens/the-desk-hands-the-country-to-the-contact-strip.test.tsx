@@ -109,7 +109,7 @@ afterEach(cleanup);
 describe('the desk passes the calling code it was sent', () => {
   it('Syria: «لا يرد» order SY-0002, phone 0952554562 → the strip gets 963', async () => {
     await draw('963');
-    fireEvent.click(screen.getByRole('tab', { name: /^لا يرد/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /^بانتظار/ }));
     await screen.findByText('SY-0002');
     const strip = seen.props.find((p) => p.orderId === '0002');
     expect(strip, 'ما انرسم شريط الاتصال للطلب').toBeTruthy();
