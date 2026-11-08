@@ -17,6 +17,7 @@ import { ScanSheet } from '@/components/scan/ScanButton';
 import { RiBarcodeLine, RiClipboardLine, RiDownload2Line, RiEBike2Line, RiFileExcel2Line, RiLoader4Line, RiPencilLine, RiPrinterLine, RiQrScan2Line, RiRouteLine, RiSendPlaneLine, RiTruckLine } from '@remixicon/react';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
+import { BatchButtonsHelp } from '@/components/screens/BatchButtonsHelp';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/Toast';
@@ -1028,6 +1029,17 @@ export function ShippingBatchesScreen() {
                     {outBtn}
                   </div>
                 )}
+                {/* «وظيفة كل زر ومتى بضغطو؟» — the same facts that decide which buttons are drawn above decide which are described. */}
+                <BatchButtonsHelp
+                  facts={{
+                    dispatch: !!dispatchBtn,
+                    paste: !!pasteBtn,
+                    ship: !!shipBtn,
+                    out: outBtn ? b.shippedCount ?? 0 : null,
+                    courierSendsStatus: b.provider?.apiEnabled === true,
+                    xlsx: !!xlsxBtn,
+                  }}
+                />
               </li>
             );
           })}
