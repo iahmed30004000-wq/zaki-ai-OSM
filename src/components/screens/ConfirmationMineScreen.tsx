@@ -31,6 +31,7 @@ import { TwinConfirmedDialog } from '@/components/orders/TwinConfirmedDialog';
 import { confirmAnywayBody, rejectAsDuplicateBody, twinsFromRefusal, type ConfirmedTwinView } from '@/lib/twin-refusal';
 import { RiAddCircleLine, RiAlertLine, RiCheckboxCircleLine, RiCloseCircleLine, RiCloseLine, RiLoader4Line, RiPencilLine, RiPhoneLockLine, RiRefreshLine, RiSearchLine, RiShieldFlashLine, RiSparkling2Line, RiTimerLine } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
+import { useConfirm } from '@/components/ui/Confirm';
 import { deskIsEmpty, openPreparationStep } from '@/lib/next-step';
 import { useMayOpen } from '@/hooks/useMayOpen';
 import { PullPanel, useQueue } from '@/components/confirmation/PullPanel';
@@ -210,6 +211,11 @@ interface MineResponse {
   confirmed: ConfirmedPage;
   /** Present only on a colleague's desk read through «شاشة موظفة» — whose it is. Never on her own. */
   viewing?: { id: string; name: string; readOnly: true };
+  /**
+   * What «أرجِع «لا يرد» للطابور» would do from here — the server's count and arithmetic (`return-no-answer-pile.ts`), present only
+   * on a colleague's desk and only for a holder of the key its door asks. The screen draws the button from it and never counts.
+   */
+  returnPile?: { eligible: number; limit: number; thisPress: number; remainingAfter: number };
 }
 
 /** One name in the «شاشة موظفة» picker, with what she holds open now. */
@@ -407,6 +413,8 @@ function sourceLabel(order: OrderRow): string {
 
 export function ConfirmationMineScreen() {
   const toast = useToast();
+  // The shared yes/no dialog — «أرجِع «لا يرد» للطابور» asks before it lets a pile go. (Not `confirm`: that is the order's «تأكيد» below.)
+  const askFirst = useConfirm();
   // Saves the governorate the way the order screen saves it — and asks why when the server says this authority owes a reason.
   const patchOrder = useOrderPatch();
   const mayOpen = useMayOpen();
@@ -634,6 +642,46 @@ export function ConfirmationMineScreen() {
       await Promise.all([load(), loadDesks()]);
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  /**
+   * «أرجِع «لا يرد» للطابور» — THE ONE PRESS A WATCHER MAKES ON A COLLEAGUE'S DESK (the owner, 8/11: «واذا ساحبيتو رجعهم»).
+   *
+   * One agent held 479 «لا يرد» orders and the others had nothing to pull. The count and the arithmetic are the server's
+   * (`data.returnPile`); this asks in the shared dialog, naming how many the press returns and what happens to them, sends the
+   * one request, says what came back — and how many remain, because a press returns at most 200 — and reads the desk again.
+   * Everything else on the desk stays unpressable, and the door decides who may (`desk-watch.ts` and `orders.unlock`).
+   */
+  const [returning, setReturning] = useState(false);
+  const returnHerPile = async () => {
+    const viewing = data?.viewing;
+    const plan = data?.returnPile;
+    if (!viewing || !plan || plan.eligible === 0 || returning) return;
+    const ok = await askFirst({
+      title: `إرجاع ${plan.thisPress} طلب «لا يرد» للطابور`,
+      body:
+        `من شاشة ${viewing.name}. بيرجعوا للطابور وبتنبّه الموظفة، وبتضل بإيدها اللي عليهم موعد أو اللي ردّ زبونهم.` +
+        (plan.remainingAfter > 0
+          ? `\nهالضغطة بترجع ${plan.thisPress} من ${plan.eligible}، وبيضل ${plan.remainingAfter} — اضغط تاني لباقيهم.`
+          : ''),
+      confirmLabel: 'أرجِعهم للطابور',
+    });
+    if (!ok) return;
+    setReturning(true);
+    try {
+      const res = await apiJson<{ returned: number; message: string }>(
+        `/api/confirmation/desks/${encodeURIComponent(viewing.id)}/return-no-answer`,
+        { method: 'POST', timeoutMs: 60_000 }
+      );
+      if (res.returned > 0) toast.done(res.message);
+      else toast.warn(res.message);
+      // The desk, and the picker's counts, as they are now.
+      await refresh();
+    } catch (e) {
+      toast.failed(e instanceof Error && e.message ? e.message : 'تعذّر إرجاع الطلبات');
+    } finally {
+      setReturning(false);
     }
   };
 
@@ -1136,6 +1184,28 @@ export function ConfirmationMineScreen() {
         <p role="status" className="text-sm text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg p-3">
           عم تشوف شاشة {watchedName} — قراءة بس
         </p>
+      )}
+      {/* The one press a watcher makes here. Drawn only on a colleague's desk, for the holder of the key its door asks, and only when the
+          server sent the plan; the door decides again. */}
+      {data.viewing && data.returnPile && userCan(currentUser, 'orders.unlock') && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => void returnHerPile()}
+            disabled={returning || data.returnPile.eligible === 0}
+          >
+            {returning && <RiLoader4Line className="w-4 h-4 animate-spin" />}
+            أرجِع «لا يرد» للطابور
+          </Button>
+          <span className="text-xs font-medium text-[var(--sys-muted-foreground)]">
+            {data.returnPile.eligible === 0
+              ? 'ما في «لا يرد» يرجع هلأ — اللي عليه موعد أو اللي ردّ زبونه بيضل عندها'
+              : data.returnPile.remainingAfter > 0
+                ? `${data.returnPile.eligible} طلب «لا يرد» يرجعوا — ${data.returnPile.thisPress} بكل ضغطة`
+                : `${data.returnPile.eligible} طلب «لا يرد» يرجعوا`}
+          </span>
+        </div>
       )}
       {canPull && !readOnly && <PullPanel queue={queue} compact onPulled={async () => void (await load())} onShowOrder={showOrder} />}
       {/* «مساعد الاتصال» — on a phone (where the call sheet is), her own desk only, for the holder of «طلباتي»'s key (the
