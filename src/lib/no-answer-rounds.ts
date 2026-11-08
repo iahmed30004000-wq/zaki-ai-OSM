@@ -13,10 +13,10 @@ import { NO_ANSWER_LIMIT, NO_ANSWER_RESULTS } from './confirmation-workflow';
  * With it ON:
  *
  *   R1 · LET GO — an order whose trailing run of no-answers (after the last call that reached somebody and after she took
- *        it) started SIX WORKING hours ago (the owner, 7/11: «يبقى 6 ساعات عمل») — counted from the switch when the run is
- *        older than it (6/11) — goes back to the shared queue, and the customer's other orders held for her go with it. So
- *        does a re-pulled order nobody has touched since it was taken, after the same ninety working minutes as an
- *        untouched one.
+ *        it) started TWELVE WORKING hours ago (the owner, 8/11: «12 ساعة عمل» — it was six on 7/11) — counted from the
+ *        switch when the run is older than it (6/11) — goes back to the shared queue, and the customer's other orders held
+ *        for her go with it. So does a re-pulled order nobody has touched since it was taken, after the same ninety
+ *        working minutes as an untouched one.
  *   R1b · A DATE WITH NOTHING LOGGED AFTER IT (7/11) — an order held with a date (a postponement, a callback the customer asked
  *        for) stays with her until three working hours after the LATER of its dates; if she held it through that date and
  *        nothing at all was logged on it from that instant on (`OPENED` included, anybody's), it goes back too, with its own reason
@@ -29,7 +29,7 @@ import { NO_ANSWER_LIMIT, NO_ANSWER_RESULTS } from './confirmation-workflow';
  *        before one that was rung already (the owner, 7/11: «الأولوية دائما للطلبات الجديدة»). R4 is the one rule here that
  *        is NOT behind the switch any more — the pull is the same with it on or off (`pickNextCandidate`).
  *   R5 · A DIAL FIRST — a no-answer counts as a round only if the same agent pressed «اتصل» (an `OPENED` line) on the
- *        order since the previous counted round. Otherwise it is kept and shown, and still starts the six hours of R1.
+ *        order since the previous counted round. Otherwise it is kept and shown, and still starts the twelve hours of R1.
  *
  * ── «REACHED» ──
  *
@@ -47,8 +47,12 @@ import { NO_ANSWER_LIMIT, NO_ANSWER_RESULTS } from './confirmation-workflow';
 
 /** Presses within this many working minutes of a round's first are the same round. */
 export const ROUND_GAP_BUSINESS_MINUTES = 180;
-/** A trailing run of no-answers this many working minutes old lets the order go back to the queue: six hours (the owner, 7/11). */
-export const ROUND_RELEASE_BUSINESS_MINUTES = 360;
+/**
+ * A trailing run of no-answers this many working minutes old lets the order go back to the queue: TWELVE working hours (the
+ * owner, 8/11 — it was six since 7/11, and three before). A «لا يرد» order stays with the agent who rang it for that long
+ * before it returns to the queue by itself; the «اتصلي هلّق» rule (`work-first.ts`) is what makes her ring it in the meantime.
+ */
+export const ROUND_RELEASE_BUSINESS_MINUTES = 720;
 /** A re-pulled order nobody touched goes back after the same time as an untouched one (`AUTO_RELEASE_BUSINESS_MINUTES`). */
 export const REPULL_RELEASE_BUSINESS_MINUTES = 90;
 /**
@@ -103,6 +107,12 @@ export interface WorkClock {
   minutesBetween(a: Date, b: Date): number;
   /** The latest instant with at least `minutes` working minutes between it and `from`. */
   back(from: Date, minutes: number): Date;
+  /**
+   * The earliest instant with at least `minutes` working minutes between `from` and it — the mirror of `back`. A `from` outside
+   * working hours starts counting when the next day opens. Answers the end of time (8.64e15 ms) when the calendar has no
+   * working day at all, so nothing is ever ready.
+   */
+  forward(from: Date, minutes: number): Date;
   /** The local calendar date of an instant, `yyyy-mm-dd`. */
   dayKey(at: Date): string;
 }
@@ -169,6 +179,19 @@ export function workClock(cal: BusinessCalendar): WorkClock {
       }
       return new Date(-8.64e15); // no working time at all: nothing is ever old enough
     },
+    forward(at, minutes) {
+      let remaining = minutes * 60_000;
+      const first = localDay(at);
+      for (let day = first; day < first + 400; day++) {
+        const win = windowOf(day);
+        if (!win) continue;
+        const start = Math.max(win.start, at.getTime());
+        if (win.end <= start) continue;
+        if (win.end - start >= remaining) return new Date(start + remaining);
+        remaining -= win.end - start;
+      }
+      return new Date(8.64e15); // no working time at all: nothing is ever ready
+    },
     dayKey(at) {
       return new Date(localDay(at) * DAY_MS).toISOString().slice(0, 10);
     },
@@ -232,6 +255,21 @@ export function roundsClose(rounds: Rounds): boolean {
   return rounds.counted.length >= NO_ANSWER_LIMIT && rounds.days >= ROUND_CLOSE_MIN_DAYS;
 }
 
+/**
+ * THE CYCLE: the attempts since the last call that reached somebody, oldest first — nothing in it but no-answers and presses
+ * (a «اتصل», a sent message). Empty when the last attempt reached the customer (a decision to take, not a call to make) or when
+ * the order has no attempt at all. `work-first.ts` asks it to tell an order that is still in the no-answer cycle from one that
+ * is not.
+ */
+export function sinceLastReached(attempts: readonly AttemptFact[]): AttemptFact[] {
+  const sorted = chronological(attempts);
+  let from = 0;
+  sorted.forEach((a, i) => {
+    if (isReaching(a.result)) from = i + 1;
+  });
+  return sorted.slice(from);
+}
+
 // ───────────────────────── R1: letting go ─────────────────────────
 
 export interface HeldFacts {
@@ -244,7 +282,7 @@ export interface HeldFacts {
 
 /** The cut-offs of one release pass — computed once per call, never per order. */
 export interface ReleaseCutoffs {
-  /** A trailing run that started at or before this is six working hours old. */
+  /** A trailing run that started at or before this is twelve working hours old. */
   round: Date;
   /** A re-pulled claim taken at or before this is ninety working minutes old. */
   repull: Date;
@@ -286,7 +324,7 @@ function laterDate(order: HeldFacts): number | null {
  *   · an attempt by the agent who holds it in the last `HOLDER_ACTIVE_BUSINESS_MINUTES` working minutes keeps it;
  *   · worked before, and nothing logged since she took it: `REPULL_RELEASE_REASON`, ninety working minutes after she took
  *     it or after the switch went on, whichever is later;
- *   · otherwise the no-answers after the last call that reached somebody and after she took it: six working hours after
+ *   · otherwise the no-answers after the last call that reached somebody and after she took it: twelve working hours after
  *     the first of them, or after the switch went on when that is later, is `ROUND_RELEASE_REASON`.
  */
 export function roundsReleaseReason(
@@ -322,8 +360,8 @@ export function roundsReleaseReason(
 
   /*
    * THE PILE FROM BEFORE THE SWITCH GOES BACK TOO (the owner, 6/11: «ع الفاضي ما انسحب منها الطلبات»). A run of no-answers
-   * that started before the switch went on is still a run — 237 orders on one desk said so — but its six working hours
-   * are counted FROM THE SWITCH, never from the old press: turning it on gives every desk six working hours' notice, and
+   * that started before the switch went on is still a run — 237 orders on one desk said so — but its twelve working hours
+   * are counted FROM THE SWITCH, never from the old press: turning it on gives every desk twelve working hours' notice, and
    * nothing leaves the moment it is pressed. A call that reached somebody before the switch still ends the run before it.
    */
   let anchor = claimedAt;

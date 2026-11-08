@@ -229,7 +229,8 @@ describe('WITHOUT `?agent=` the door is what it was', () => {
     expect(ids(body)).toEqual(['O-ME-1']);
     expect(body).not.toHaveProperty('viewing');
     expect(Object.keys(body).sort()).toEqual(
-      ['closedToday', 'confirmed', 'dialCode', 'leadDays', 'noAnswer', 'noAnswerLimit', 'serverNow', 'waitingLater', 'work'].sort()
+      // `due` is «الشغل أول» (8/11): how many calls she owes, the oldest, and the banner's sentence.
+      ['closedToday', 'confirmed', 'dialCode', 'due', 'leadDays', 'noAnswer', 'noAnswerLimit', 'serverNow', 'waitingLater', 'work'].sort()
     );
     for (const w of state.wheres) expect(w).toMatchObject({ claimedById: 'abeer' });
     expect((handedOut.mock.calls[0][0] as { where: string }).where).toBe('طلباتي');

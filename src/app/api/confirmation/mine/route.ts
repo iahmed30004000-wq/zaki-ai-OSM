@@ -16,8 +16,21 @@ import { typed } from '@/lib/text-search';
 import { ruleFor } from '@/lib/phone-rules';
 import { DESK_NOT_FOUND, DESK_WATCH_REFUSAL, mayWatchDesks, watchedAgent } from '@/lib/desk-watch';
 import type { BusinessCalendar } from '@/lib/business-calendar';
-import { countedRounds, roundsOn, workClock, type AttemptFact } from '@/lib/no-answer-rounds';
+import { countedRounds, roundsOn, workClock, type AttemptFact, type WorkClock } from '@/lib/no-answer-rounds';
 import { roundsSwitch } from '@/lib/no-answer-rounds-switch';
+import {
+  CAUGHT_UP_SENTENCE,
+  WORK_FIRST_BUTTON,
+  deskTab,
+  dueContext,
+  dueLabel,
+  dueSentence,
+  dueVerdict,
+  oldestFirst,
+  summariseDue,
+  verdictFromCount,
+  type DueVerdict,
+} from '@/lib/work-first';
 import { companySendsFor } from '@/lib/whatsapp/after-no-answer';
 import { waNumber } from '@/lib/message-templates';
 import { deskCallKey } from '@/lib/call-helper/desk';
@@ -31,16 +44,18 @@ import { RETURN_PILE_KEY, countReturnable, pressPlan } from '@/lib/return-no-ans
  * ever confirmed under it. Both halves had the same fault — they mixed
  * things she must act on with things she must not.
  *
- * ── «للشغل» AND «لا يرد» ARE DIFFERENT WORK ──
+ * ── «اتصلي هلّق» AND «بانتظار» ARE DIFFERENT WORK (they were «للشغل» and «لا يرد», decided by a count) ──
  *
- * An order nobody has reached is a call. An order rung twice with nothing
- * is a decision — ring once more and it closes itself. Mixed together, the
- * second kind is invisible until the counter says «2/3», and the three
- * she could still save sit under eleven she cannot.
+ * An order she owes a call on right now is one list; an order that did not answer and is not due to be rung again yet is
+ * the other. The split used to be BY COUNT alone, so a returned «لا يرد» she had just pulled landed under «لا يرد», «للشغل»
+ * said 0, and she pulled another (the owner, 8/11: 479 of 489 orders in one tab). Now ONE verdict decides it — the same
+ * one the pull's refusal asks (`work-first.ts`, «الشغل أول»): due now → «اتصلي هلّق»; in the no-answer cycle and not due →
+ * «بانتظار» (each row carries `dueAt`, when it is due); and what the verdict leaves open — an order whose last call reached
+ * the customer and that needs a decision — goes where its count always put it.
  *
- * The split is BY COUNT and nothing else, so a postponed order that is due
- * and has one no-answer appears where its count puts it: «لا يرد». The
- * date moved it off her desk; the count is about the phone.
+ * The response also carries `due` (how many are owed, the oldest, and the banner's sentence) and each row's `dueNow`,
+ * `dueReason`, `dueAt` and `dueWords` — the line the card prints («جديد — سحبتيه هلّق», «جاهز الساعة 14:00»…). The words are
+ * written here, once, so the screen ships no wording logic (its first-load JavaScript is held under a ceiling).
  *
  * ── AND «أكّدتها» IS A SEARCH, NOT A FEED ──
  *
@@ -130,18 +145,29 @@ async function noAnswerCounts(orderIds: string[]) {
 }
 
 /**
- * «نظام الجولات» ON: the counter is the ROUND, from the same function the close reads (`countedRounds`), so «جولة n من 3» on
- * the card is the number that closes the order. One read of the attempts and one working clock for the whole desk.
+ * «نظام الجولات» ON: every attempt of the desk's orders, grouped by order — ONE read, whatever the number of orders. The
+ * counter and the «due now» verdict are both made from it, so the number on a card and the tab it sits in cannot disagree.
  */
-async function roundCounts(orderIds: string[], cal: BusinessCalendar) {
-  if (orderIds.length === 0) return new Map<string, number>();
+async function attemptsByOrder(orderIds: string[]) {
+  const byOrder = new Map<string, AttemptFact[]>();
+  if (orderIds.length === 0) return byOrder;
   const rows = await db.orderContactAttempt.findMany({
     where: { orderId: { in: orderIds } },
     select: { orderId: true, createdAt: true, result: true, employeeId: true, attemptNumber: true },
   });
-  const byOrder = new Map<string, AttemptFact[]>();
-  for (const row of rows) byOrder.set(row.orderId, [...(byOrder.get(row.orderId) ?? []), row]);
-  const clock = workClock(cal);
+  for (const row of rows) {
+    const list = byOrder.get(row.orderId);
+    if (list) list.push(row);
+    else byOrder.set(row.orderId, [row]);
+  }
+  return byOrder;
+}
+
+/**
+ * The counter is the ROUND, from the same function the close reads (`countedRounds`), so «جولة n من 3» on the card is the
+ * number that closes the order. One working clock for the whole desk.
+ */
+function roundCounts(byOrder: Map<string, AttemptFact[]>, clock: WorkClock) {
   return new Map([...byOrder].map(([orderId, list]) => [orderId, countedRounds(list, clock).counted.length]));
 }
 
@@ -303,7 +329,8 @@ export async function GET(request: Request) {
     const risks = mayReadInsights(user) ? await customerRiskMany(db, companyId, customerIds) : null;
     const riskByCustomer = new Map(customerIds.map((id) => [id, risks?.get(id) ?? null]));
     // «نظام الجولات» — OFF (the default), the count is every no-answer, as it always was.
-    const rounds = roundsOn(await roundsSwitch(db, companyId));
+    const roundsSw = await roundsSwitch(db, companyId);
+    const rounds = roundsOn(roundsSw);
     // «واتساب بعد لا يرد» from the company's number for this country (`after-no-answer.ts`) — only on her own desk, the one with the sheet,
     // and only for whoever holds `whatsapp.send`: the send door asks it, and a button that answers 403 is not offered.
     const fromCompany =
@@ -320,14 +347,39 @@ export async function GET(request: Request) {
       const link = deskCallIntent(callKey, o.id, waNumber(o.customer.rawPhone ?? '', deskDialCode), now.getTime());
       return link ? { callHelperLink: link } : {};
     };
-    const noAnswer = rounds
-      ? await roundCounts([...inConfirmation, ...closedToday].map((o) => o.id), {
-          workHoursStart: country.workHoursStart,
-          workHoursEnd: country.workHoursEnd,
-          weekendDays: country.weekendDays,
-          timezone: country.timezone,
-        })
-      : await noAnswerCounts([...inConfirmation, ...closedToday].map((o) => o.id));
+    // The working calendar is placed once for the whole desk — only with the switch on, the only time anything below asks it.
+    const cal: BusinessCalendar = {
+      workHoursStart: country.workHoursStart,
+      workHoursEnd: country.workHoursEnd,
+      weekendDays: country.weekendDays,
+      timezone: country.timezone,
+    };
+    const clock = rounds ? workClock(cal) : null;
+    const shownIds = [...inConfirmation, ...closedToday].map((o) => o.id);
+    const attempts = rounds && clock ? await attemptsByOrder(shownIds) : null;
+    const noAnswer = attempts && clock ? roundCounts(attempts, clock) : await noAnswerCounts(shownIds);
+
+    /*
+     * ── «الشغل أول»: ONE VERDICT PER HELD ORDER ──
+     *
+     * Is a call owed on it right now? The very function the pull's refusal asks (`work-first.ts`), so the tab an order sits in,
+     * the banner's count and the pull's «اسحب طلب جديد — خلّصي اللي فوق أول» can never disagree. Evaluated once per order,
+     * from the attempts already read above — no query per order. With the switch off the attempts are not read at all: the only
+     * case there is, an order nobody has tried to reach, is told from the count the row already carries.
+     */
+    const dueCtx = attempts && clock ? dueContext({ now, cal, rounds: roundsSw, clock }) : null;
+    const verdictOf = new Map<string, DueVerdict>(
+      inConfirmation.map((o) => [
+        o.id,
+        attempts && dueCtx
+          ? dueVerdict(
+              { claimedAt: o.claimedAt, claimedById: deskOf, postponedUntil: o.postponedUntil, nextFollowUpAt: o.nextFollowUpAt },
+              attempts.get(o.id) ?? [],
+              dueCtx
+            )
+          : verdictFromCount(o._count?.contactAttempts ?? 1),
+      ])
+    );
 
     // The response clock: how long each order has been waiting on her.
     // "How long since I took anything new" is the header chip's question,
@@ -352,8 +404,8 @@ export async function GET(request: Request) {
     /*
      * ── THE SPLIT ──
      *
-     * One pass over the rows she holds, decided by the count the row
-     * already carries. Done here and not in the browser for the reason
+     * One pass over the rows she holds, decided by the verdict above (`deskTab`: due → «اتصلي هلّق», waiting → «بانتظار», and
+     * what the verdict leaves open by the count the row already carries). Done here and not in the browser for the reason
      * every other number on this screen is: two places that each decide
      * which tab an order belongs in eventually disagree, and the tab
      * headings would then count differently from the lists under them.
@@ -367,7 +419,24 @@ export async function GET(request: Request) {
       firstActionAt: firstAction.get(o.id) ?? null,
     });
     // Only the rows she rings from carry the helper's link; «أكّدتها» and today's closed ones are not called from here.
-    const held = inConfirmation.map((o) => ({ ...decorate(o), ...helperLink(o) }));
+    const held = inConfirmation.map((o) => {
+      const verdict = verdictOf.get(o.id)!;
+      const row = decorate(o);
+      return {
+        ...row,
+        ...helperLink(o),
+        // «الشغل أول»: a call is owed on it right now, why — and, for one that is waiting, when it falls due.
+        dueNow: verdict.due,
+        dueReason: verdict.reason,
+        dueAt: verdict.dueAt ? verdict.dueAt.toISOString() : null,
+        // …and the line the card prints about it, on the store's clock (null when it has nothing to say).
+        dueWords: dueLabel(verdict, { rounds: row.noAnswerCount, limit: NO_ANSWER_LIMIT, now, timeZone: country.timezone }),
+      };
+    });
+    const owedSummary = summariseDue(held.map((o) => ({ id: o.id, orderNumber: o.orderNumber, claimedAt: o.claimedAt, due: o.dueNow })));
+    const tabOf = (o: (typeof held)[number]) => deskTab(verdictOf.get(o.id)!, o.noAnswerCount);
+    /** The calls she owes first, the one that has waited longest at the top — what the pull button opens. With the switch off the query's own order stays. */
+    const dueFirst = (a: (typeof held)[number], b: (typeof held)[number]) => Number(b.dueNow) - Number(a.dueNow) || oldestFirst(a, b);
 
     return NextResponse.json({
       // Whose desk this is, when it is not the reader's own — the screen draws it read-only. Absent on her own desk.
@@ -388,18 +457,28 @@ export async function GET(request: Request) {
       // The server's own clock, so a wrong clock on her machine cannot make
       // an order look answered or overdue.
       serverNow: new Date().toISOString(),
-      /** «للشغل» — nobody has failed to reach this customer yet. */
-      work: held.filter((o) => o.noAnswerCount === 0),
       /**
-       * «لا يرد» — one or two. Not three: the third is not work, it is a
-       * closed order, and it is below.
+       * «الشغل أول» — how many calls she owes right now, and the oldest of them: the banner says it and the pull button opens
+       * it. Counted from the same verdicts as the tab below, so the number and the list cannot differ.
+       */
+      // …and the words of that state, written here: the banner («عندك N طلبات…», or «خلّصتي. اسحبي التالي» — the screen shows
+      // the second only when a pull is possible) and the pull button's label while she owes. None of it is client JavaScript.
+      due: {
+        ...owedSummary,
+        sentence: owedSummary.count > 0 ? dueSentence(owedSummary.count) : CAUGHT_UP_SENTENCE,
+        button: owedSummary.count > 0 ? WORK_FIRST_BUTTON : null,
+      },
+      /** «اتصلي هلّق» — a call is owed on it right now (a new pull, a «لا يرد» whose round came, a date that arrived), and the orders that need a decision. */
+      work: held.filter((o) => tabOf(o) === 'work').sort(rounds ? dueFirst : () => 0),
+      /**
+       * «بانتظار» — it did not answer and it is not due to be rung again yet; each row says when (`dueAt`).
        *
        * AND AN ORDER STILL OPEN PAST THE LIMIT STAYS HERE. `held` is open orders only (the closed ones are `closedToday`), so
        * a count of three or more on an open order is one the close did not take: «نظام الجولات» (three rounds on one day, or
        * presses left behind when the owner turned it off again) or a close the helper refused. Dropped from both tabs it would
        * be in her hands, counted toward her cap, and on no list she can see.
        */
-      noAnswer: held.filter((o) => (o.noAnswerCount > 0 && o.noAnswerCount < NO_ANSWER_LIMIT) || o.noAnswerCount >= NO_ANSWER_LIMIT),
+      noAnswer: held.filter((o) => tabOf(o) === 'noAnswer'),
       /** Closed by the third no-answer today — read-only, so it is not a surprise tomorrow. */
       closedToday: closedToday.map(decorate),
       /** «أكّدتها» — a day, a search, a page, and the size of what is behind them. */

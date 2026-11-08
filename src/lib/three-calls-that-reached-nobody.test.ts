@@ -182,16 +182,21 @@ describe('«طلباتي» in three tabs', () => {
      * pass over the rows, by the count the row already carries.
      */
     const src = route();
-    expect(src, 'ما في تبويب «للشغل» بالباب').toMatch(/work:\s*held\.filter/);
-    expect(src, 'ما في تبويب «لا يرد» بالباب').toMatch(/noAnswer:\s*held\.filter/);
+    expect(src, 'ما في تبويب «اتصلي هلّق» بالباب').toMatch(/work:\s*held\.filter/);
+    expect(src, 'ما في تبويب «بانتظار» بالباب').toMatch(/noAnswer:\s*held\.filter/);
     expect(src).toContain('closedToday:');
   });
 
-  it('and «لا يرد» is one or two — never the third', () => {
+  it('and «بانتظار» is made by the verdict (8/11) — an open order past the limit stays in it, never on no list', () => {
     // The third is not work. It is a cancelled order, and it is below.
     const src = route();
     const at = src.indexOf('noAnswer: held.filter');
-    expect(src.slice(at, at + 160)).toMatch(/noAnswerCount > 0 && o\.noAnswerCount < NO_ANSWER_LIMIT/);
+    // The tab was decided here by the count alone; the verdict decides it now (`deskTab`, `work-first.ts`, tested on its own) and the
+    // count only settles what the verdict leaves open — one or two, or an open order past the limit, are in «بانتظار».
+    expect(src.slice(at, at + 160)).toMatch(/noAnswer: held\.filter\(\(o\) => tabOf\(o\) === 'noAnswer'\)/);
+    expect(src).toMatch(/const tabOf = [^\n]*deskTab\(/);
+    const rule = stripComments(repoFile('src/lib/work-first.ts'));
+    expect(rule, 'an open order past the limit must stay in «بانتظار»').toContain("return noAnswerCount > 0 ? 'noAnswer' : 'work';");
   });
 
   it('and the third’s closure is found by its log entry, not by updatedAt', () => {
@@ -283,7 +288,7 @@ describe('and the card says the count, not only the colour', () => {
   it('and the screen draws three tabs, each with its count', () => {
     const screen = stripComments(repoFile('src/components/screens/ConfirmationMineScreen.tsx'));
     expect(screen).toContain('role="tablist"');
-    for (const label of ['للشغل', 'لا يرد', 'أكّدتها']) {
+    for (const label of ['اتصلي هلّق', 'بانتظار', 'أكّدتها']) {
       expect(screen, `ما في تبويب «${label}»`).toContain(`label="${label}"`);
     }
     expect(screen, 'التبويب بلا عدد — والقرار بينعمل قبل ما تفتحه').toMatch(/count=\{data\.work\.length\}/);

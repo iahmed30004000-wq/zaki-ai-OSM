@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { businessMinutesBetween, zonedTimeToInstant } from './business-calendar';
+import { addBusinessMinutes, businessMinutesBetween, zonedTimeToInstant } from './business-calendar';
 import {
   DUE_RELEASE_BUSINESS_MINUTES,
   DUE_RELEASE_REASON,
@@ -15,6 +15,7 @@ import {
   roundsClose,
   roundsOn,
   roundsReleaseReason,
+  sinceLastReached,
   workClock,
   type AttemptFact,
   type HeldFacts,
@@ -40,9 +41,9 @@ const call = (at: Date, by = 'sara', outcome = 'NO_ANSWER'): AttemptFact[] => [
   noAnswer(at, by, outcome),
 ];
 
-describe('the numbers of the rules — the owner, 7/11: six hours to let a run go, a hundred and eighty minutes for a round', () => {
+describe('the numbers of the rules — the owner, 8/11: twelve hours to let a run go (it was six), a hundred and eighty minutes for a round', () => {
   it('are written once, and the ones that did not change did not change', () => {
-    expect(ROUND_RELEASE_BUSINESS_MINUTES, 'يبقى 6 ساعات عمل').toBe(360);
+    expect(ROUND_RELEASE_BUSINESS_MINUTES, 'يبقى 12 ساعة عمل').toBe(720);
     expect(ROUND_GAP_BUSINESS_MINUTES, 'ما يعدّ جولة وحدة بقي 3 ساعات').toBe(180);
     expect(REPULL_RELEASE_BUSINESS_MINUTES).toBe(90);
     expect(HOLDER_ACTIVE_BUSINESS_MINUTES).toBe(15);
@@ -53,7 +54,8 @@ describe('the numbers of the rules — the owner, 7/11: six hours to let a run g
   it('and the cut-offs of one pass are each that many working minutes back from now', () => {
     const now = t(2, 17);
     const cut = releaseCutoffs(now, clock());
-    expect(cut.round).toEqual(t(2, 11));
+    // Twelve working hours back from Monday 17:00: the 8 of Monday and 4 of Sunday.
+    expect(cut.round).toEqual(t(1, 13));
     expect(cut.promise).toEqual(t(2, 14));
     expect(cut.repull).toEqual(t(2, 15, 30));
     expect(cut.recent).toEqual(t(2, 16, 45));
@@ -82,6 +84,57 @@ describe('the working clock agrees with businessMinutesBetween', () => {
         expect(businessMinutesBetween(new Date(cut.getTime() + 60_000), now, JO)).toBeLessThan(minutes);
       }
     }
+  });
+
+  it('and «forward» is the earliest instant with that many working minutes after the start — the mirror of «back»', () => {
+    const c = clock();
+    for (const from of [t(1, 10), t(1, 20), t(8, 9, 30), t(8, 11), t(6, 12), t(5, 16, 59), t(9, 9), t(1, 17)]) {
+      for (const minutes of [90, 180, 360, 720]) {
+        const ready = c.forward(from, minutes);
+        const label = `${from.toISOString()} +${minutes}`;
+        expect(businessMinutesBetween(from, ready, JO), label).toBe(minutes);
+        expect(businessMinutesBetween(from, new Date(ready.getTime() - 60_000), JO), label).toBeLessThan(minutes);
+      }
+    }
+  });
+
+  it('and, on random instants with seconds on them, it is exact to the millisecond against the clock’s own minutes', () => {
+    const c = clock();
+    let seed = 29;
+    const rnd = () => ((seed = (seed * 48271) % 2147483647) / 2147483647);
+    const base = t(1, 0).getTime();
+    for (let i = 0; i < 80; i++) {
+      const from = new Date(base + Math.floor(rnd() * 20 * 86_400_000));
+      for (const minutes of [1, 90, 180, 360, 720]) {
+        const ready = c.forward(from, minutes);
+        const label = `${from.toISOString()} +${minutes}`;
+        // Never fewer working minutes than asked — and one millisecond earlier there were fewer.
+        expect(c.minutesBetween(from, ready), label).toBeGreaterThanOrEqual(minutes);
+        expect(c.minutesBetween(from, new Date(ready.getTime() - 1)), label).toBeLessThan(minutes);
+        // The calendar's own "add business minutes" says the same instant (to the float rounding of its minutes).
+        expect(Math.abs(ready.getTime() - addBusinessMinutes(from, minutes, JO).getTime()), label).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+
+  it('«forward» across the end of the day, a night and a weekend', () => {
+    const c = clock();
+    expect(c.forward(t(1, 10), 180)).toEqual(t(1, 13));
+    // 16:00 Sunday: one hour left that day, two on Monday.
+    expect(c.forward(t(1, 16), 180)).toEqual(t(2, 11));
+    // After closing, counting starts when the day opens.
+    expect(c.forward(t(1, 20), 180)).toEqual(t(2, 12));
+    expect(c.forward(t(1, 3), 60)).toEqual(t(1, 10));
+    // Thursday 15:00: two hours that day, Friday and Saturday frozen, one on Sunday.
+    expect(c.forward(t(5, 15), 180)).toEqual(t(8, 10));
+    // A moment on the closing minute counts nothing that day.
+    expect(c.forward(t(1, 17), 1)).toEqual(t(2, 9, 1));
+  });
+
+  it('«forward» with no working day at all answers the end of time, as «back» answers the beginning of it', () => {
+    const never = workClock({ ...JO, weekendDays: [0, 1, 2, 3, 4, 5, 6] });
+    expect(never.forward(t(1, 10), 180).getTime()).toBe(8.64e15);
+    expect(never.back(t(1, 10), 180).getTime()).toBe(-8.64e15);
   });
 
   it('and names the local day, not the UTC one', () => {
@@ -180,6 +233,27 @@ describe('R3 — the close', () => {
   });
 });
 
+describe('the cycle — what has happened since the last call that reached somebody', () => {
+  it('is every attempt when nobody was reached, oldest first, whatever order they come in', () => {
+    const attempts = [noAnswer(t(1, 12)), opened(t(1, 9, 59)), noAnswer(t(1, 10))];
+    expect(sinceLastReached(attempts).map((a) => a.createdAt)).toEqual([t(1, 9, 59), t(1, 10), t(1, 12)]);
+  });
+
+  it('starts after the last call that reached somebody — and is empty when that was the last thing that happened', () => {
+    const reached = [...call(t(1, 9, 30)), logged(t(1, 10), 'ANSWERED')];
+    expect(sinceLastReached(reached)).toEqual([]);
+    expect(sinceLastReached([...reached, ...call(t(1, 11))])).toHaveLength(2);
+    expect(sinceLastReached([])).toEqual([]);
+  });
+
+  it('a sent message and a «اتصل» do not end it; a wrong number and a callback request do', () => {
+    expect(sinceLastReached([...call(t(1, 9, 30)), logged(t(1, 10), 'MESSAGE_SENT')])).toHaveLength(3);
+    for (const result of ['WRONG_NUMBER', 'CALLBACK_REQUESTED', 'ANSWERED', 'OTHER']) {
+      expect(sinceLastReached([...call(t(1, 9, 30)), logged(t(1, 10), result)]), result).toEqual([]);
+    }
+  });
+});
+
 /** The verdict at `now`, with the cut-offs that pass would have placed. */
 const verdict = (order: HeldFacts, attempts: readonly AttemptFact[], sw: { enabledAt: Date }, now: Date) =>
   roundsReleaseReason(order, attempts, sw, releaseCutoffs(now, clock()));
@@ -188,82 +262,87 @@ describe('R1 — when a held order goes back to the queue', () => {
   const on = { enabledAt: t(1, 8) };
   const held = { claimedAt: t(1, 9) };
 
-  it('SIX working hours after the first no-answer of the run: 5h59 stays, 6h00 goes', () => {
+  it('TWELVE working hours after the first no-answer of the run: 11h59 stays, 12h00 goes (the owner, 8/11)', () => {
     const attempts = call(t(1, 9, 30));
-    expect(verdict(held, attempts, on, t(1, 15, 29))).toBeNull();
-    expect(verdict(held, attempts, on, t(1, 15, 30))).toBe(ROUND_RELEASE_REASON);
-    // Three hours — what it used to be — is no longer enough.
-    expect(verdict(held, attempts, on, t(1, 12, 30))).toBeNull();
+    // Sunday 09:30 to 17:00 is 7h30; the other 4h30 end on Monday at 13:30.
+    expect(verdict(held, attempts, on, t(2, 13, 29))).toBeNull();
+    expect(verdict(held, attempts, on, t(2, 13, 30))).toBe(ROUND_RELEASE_REASON);
+    // Six hours — what it was — is no longer enough; nor is the rest of the working day.
+    expect(verdict(held, attempts, on, t(1, 15, 30))).toBeNull();
+    expect(verdict(held, attempts, on, t(1, 17))).toBeNull();
+    expect(verdict(held, attempts, on, t(2, 9))).toBeNull();
   });
 
-  it('presses inside the six hours do not restart them', () => {
-    const attempts = [...call(t(1, 9, 30)), ...call(t(1, 11)), ...call(t(1, 12)), ...call(t(1, 14))];
-    expect(verdict(held, attempts, on, t(1, 15, 30))).toBe(ROUND_RELEASE_REASON);
+  it('presses inside the twelve hours do not restart them', () => {
+    const attempts = [...call(t(1, 9, 30)), ...call(t(1, 11)), ...call(t(1, 12)), ...call(t(1, 14)), ...call(t(2, 10))];
+    expect(verdict(held, attempts, on, t(2, 13, 30))).toBe(ROUND_RELEASE_REASON);
   });
 
-  it('a no-answer with no «اتصل» still starts the six hours', () => {
-    expect(verdict(held, [noAnswer(t(1, 9, 30))], on, t(1, 15, 29))).toBeNull();
-    expect(verdict(held, [noAnswer(t(1, 9, 30))], on, t(1, 15, 30))).toBe(ROUND_RELEASE_REASON);
+  it('a no-answer with no «اتصل» still starts the twelve hours', () => {
+    expect(verdict(held, [noAnswer(t(1, 9, 30))], on, t(2, 13, 29))).toBeNull();
+    expect(verdict(held, [noAnswer(t(1, 9, 30))], on, t(2, 13, 30))).toBe(ROUND_RELEASE_REASON);
   });
 
   it('a call that reached somebody ends the run, and a no-answer after it starts a new one', () => {
     const reached = [...call(t(1, 9, 30)), logged(t(1, 10), 'ANSWERED')];
-    expect(verdict(held, reached, on, t(1, 16))).toBeNull();
-    // The new run began at 11:00; six working hours later is 17:00, the minute the day closes.
+    expect(verdict(held, reached, on, t(2, 16))).toBeNull();
+    // The new run began at 11:00; twelve working hours later is Monday 15:00 (6h on Sunday, 6h on Monday).
     const again = [...reached, ...call(t(1, 11))];
-    expect(verdict(held, again, on, t(1, 16, 59))).toBeNull();
-    expect(verdict(held, again, on, t(1, 17))).toBe(ROUND_RELEASE_REASON);
+    expect(verdict(held, again, on, t(2, 14, 59))).toBeNull();
+    expect(verdict(held, again, on, t(2, 15))).toBe(ROUND_RELEASE_REASON);
   });
 
   it('«اتصل» and a sent message are neither: they do not end the run', () => {
     const attempts = [...call(t(1, 9, 30)), logged(t(1, 10), 'MESSAGE_SENT')];
-    expect(verdict(held, attempts, on, t(1, 15, 30))).toBe(ROUND_RELEASE_REASON);
+    expect(verdict(held, attempts, on, t(2, 13, 30))).toBe(ROUND_RELEASE_REASON);
   });
 
-  it('the weekend is frozen: 1h on Thursday + 5h on Sunday', () => {
+  it('the weekend is frozen: 1h on Thursday + 8h on Sunday + 3h on Monday', () => {
     const thursday = { claimedAt: t(5, 15) };
     const attempts = call(t(5, 16));
-    expect(verdict(thursday, attempts, on, t(8, 13, 59))).toBeNull();
-    expect(verdict(thursday, attempts, on, t(8, 14))).toBe(ROUND_RELEASE_REASON);
-    // Nothing moves on Saturday afternoon either.
+    expect(verdict(thursday, attempts, on, t(9, 11, 59))).toBeNull();
+    expect(verdict(thursday, attempts, on, t(9, 12))).toBe(ROUND_RELEASE_REASON);
+    // Nothing moves on Saturday afternoon, nor all of Sunday.
     expect(verdict(thursday, attempts, on, t(7, 15))).toBeNull();
+    expect(verdict(thursday, attempts, on, t(8, 17))).toBeNull();
   });
 
-  it('SHE IS ON THE CALL: a «اتصل» of hers in the last 15 working minutes keeps it (the 14:58 case)', () => {
-    // The run started at 9:00, so 15:00 is six working hours. She pressed «اتصل» at 14:58 and is talking.
+  it('SHE IS ON THE CALL: a «اتصل» of hers in the last 15 working minutes keeps it (the 12:58 case)', () => {
+    // The run started on Sunday at 9:00, so Monday 13:00 is twelve working hours. She pressed «اتصل» at 12:58 and is talking.
     const hers = { claimedAt: t(1, 8, 30), claimedById: 'sara' };
-    const attempts = [...call(t(1, 9)), opened(t(1, 14, 58))];
-    expect(verdict(hers, attempts, on, t(1, 15))).toBeNull();
-    expect(verdict(hers, attempts, on, t(1, 15, 12))).toBeNull();
+    const attempts = [...call(t(1, 9)), opened(t(2, 12, 58))];
+    expect(verdict(hers, [...call(t(1, 9))], on, t(2, 13)), 'the control: without her press it goes').toBe(ROUND_RELEASE_REASON);
+    expect(verdict(hers, attempts, on, t(2, 13))).toBeNull();
+    expect(verdict(hers, attempts, on, t(2, 13, 12))).toBeNull();
     // Fifteen working minutes after her press, with nothing logged since: it goes.
-    expect(verdict(hers, attempts, on, t(1, 15, 13))).toBe(ROUND_RELEASE_REASON);
+    expect(verdict(hers, attempts, on, t(2, 13, 13))).toBe(ROUND_RELEASE_REASON);
   });
 
   it('and the fifteen minutes are working minutes: a press at 16:58 does not keep it the next morning', () => {
     const hers = { claimedAt: t(1, 8, 30), claimedById: 'sara' };
-    const attempts = [...call(t(1, 9)), opened(t(1, 16, 58))];
-    expect(verdict(hers, attempts, on, t(2, 9, 12))).toBeNull();
-    expect(verdict(hers, attempts, on, t(2, 9, 13))).toBe(ROUND_RELEASE_REASON);
+    const attempts = [...call(t(1, 9)), opened(t(2, 16, 58))];
+    expect(verdict(hers, attempts, on, t(3, 9, 12))).toBeNull();
+    expect(verdict(hers, attempts, on, t(3, 9, 13))).toBe(ROUND_RELEASE_REASON);
   });
 
   it('a colleague’s press does not keep it in her hands', () => {
     const hers = { claimedAt: t(1, 8, 30), claimedById: 'sara' };
-    const attempts = [...call(t(1, 9)), opened(t(1, 14, 58), 'huda')];
-    expect(verdict(hers, attempts, on, t(1, 15))).toBe(ROUND_RELEASE_REASON);
+    const attempts = [...call(t(1, 9)), opened(t(2, 12, 58), 'huda')];
+    expect(verdict(hers, attempts, on, t(2, 13))).toBe(ROUND_RELEASE_REASON);
   });
 
-  it('SWITCH-ON TIME (6/11): the pile from before it goes back too — six working hours after the switch, not at once', () => {
+  it('SWITCH-ON TIME (6/11): the pile from before it goes back too — twelve working hours after the switch, not at once', () => {
     // Held since Thursday with two no-answers on Thursday; switched on Sunday at noon. Salwa's 237 were this order.
     const old = { claimedAt: t(5, 9) };
     const attempts = [...call(t(5, 10)), ...call(t(5, 14))];
     const sw = { enabledAt: t(8, 12) };
     expect(verdict(old, attempts, sw, t(8, 12)), 'nothing leaves the moment it is pressed').toBeNull();
-    // Five working hours of Sunday after the switch, and one on Monday morning.
-    expect(verdict(old, attempts, sw, t(9, 9, 59))).toBeNull();
-    expect(verdict(old, attempts, sw, t(9, 10)), 'the old run, counted from the switch').toBe(ROUND_RELEASE_REASON);
+    // Five working hours of Sunday after the switch, and seven on Monday: 16:00.
+    expect(verdict(old, attempts, sw, t(9, 15, 59))).toBeNull();
+    expect(verdict(old, attempts, sw, t(9, 16)), 'the old run, counted from the switch').toBe(ROUND_RELEASE_REASON);
     // A no-answer after the switch does not push it later: the run began on Thursday.
     const after = [...attempts, ...call(t(8, 13))];
-    expect(verdict(old, after, sw, t(9, 10))).toBe(ROUND_RELEASE_REASON);
+    expect(verdict(old, after, sw, t(9, 16))).toBe(ROUND_RELEASE_REASON);
   });
 
   it('SWITCH-ON TIME: a call that reached somebody before the switch still ends the old run', () => {
@@ -271,30 +350,30 @@ describe('R1 — when a held order goes back to the queue', () => {
     const reached = [...call(t(5, 10)), logged(t(5, 11), 'ANSWERED')];
     const sw = { enabledAt: t(8, 12) };
     // Nothing after the answered call: no run, and the re-pull rule does not apply (she worked it after taking it).
-    expect(verdict(old, reached, sw, t(9, 16))).toBeNull();
+    expect(verdict(old, reached, sw, t(10, 16))).toBeNull();
     // A no-answer after the answered call, still before the switch: a run, counted from the switch.
     const again = [...reached, ...call(t(5, 14))];
-    expect(verdict(old, again, sw, t(9, 9, 59))).toBeNull();
-    expect(verdict(old, again, sw, t(9, 10))).toBe(ROUND_RELEASE_REASON);
+    expect(verdict(old, again, sw, t(9, 15, 59))).toBeNull();
+    expect(verdict(old, again, sw, t(9, 16))).toBe(ROUND_RELEASE_REASON);
   });
 
   it('SWITCH-ON TIME: an old run still waits for a date ahead and for her being on the call', () => {
     const old = { claimedAt: t(5, 9), claimedById: 'sara' };
     const attempts = call(t(5, 10));
     const sw = { enabledAt: t(8, 12) };
-    // The control: with nothing in the way, Monday 10:00 is when it goes.
-    expect(verdict(old, attempts, sw, t(9, 10))).toBe(ROUND_RELEASE_REASON);
-    expect(verdict({ ...old, nextFollowUpAt: t(9, 12) }, attempts, sw, t(9, 10))).toBeNull();
-    expect(verdict(old, [...attempts, opened(t(9, 9, 50))], sw, t(9, 10))).toBeNull();
+    // The control: with nothing in the way, Monday 16:00 is when it goes.
+    expect(verdict(old, attempts, sw, t(9, 16))).toBe(ROUND_RELEASE_REASON);
+    expect(verdict({ ...old, nextFollowUpAt: t(10, 12) }, attempts, sw, t(9, 16))).toBeNull();
+    expect(verdict(old, [...attempts, opened(t(9, 15, 50))], sw, t(9, 16))).toBeNull();
   });
 
   it('a no-answer from before she took it is not hers', () => {
     const repulled = { claimedAt: t(1, 14) };
     const attempts = [...call(t(1, 10)), ...call(t(1, 14, 30))];
     expect(verdict(repulled, attempts, on, t(1, 16))).toBeNull();
-    // 2h30 on Sunday after 14:30, and 3h30 on Monday: 12:30.
-    expect(verdict(repulled, attempts, on, t(2, 12, 29))).toBeNull();
-    expect(verdict(repulled, attempts, on, t(2, 12, 30))).toBe(ROUND_RELEASE_REASON);
+    // 2h30 on Sunday after 14:30, the 8h of Monday, and 1h30 on Tuesday: 10:30.
+    expect(verdict(repulled, attempts, on, t(3, 10, 29))).toBeNull();
+    expect(verdict(repulled, attempts, on, t(3, 10, 30))).toBe(ROUND_RELEASE_REASON);
   });
 
   it('re-pulled and untouched: ninety working minutes after she took it', () => {
@@ -414,14 +493,16 @@ describe('R1b — a dated order that nobody opened after its date', () => {
     expect(verdict(repulled, beforeTheDate, on, t(2, 15, 30))).toBe(REPULL_RELEASE_REASON);
   });
 
-  it('THE GRACE IS FOR THE RUN-BASED RELEASE TOO: the minute the date passes, a six-hour run no longer takes it', () => {
-    // Sunday's no-answer is far older than six hours by Monday 10:30; a colleague's press after the date stops this being R1b's.
-    const run = [...call(t(1, 9, 30)), noAnswer(t(2, 10, 1), 'huda')];
-    const dated = order({ postponedUntil: null, nextFollowUpAt: D });
-    expect(verdict(order({ postponedUntil: null }), run, on, t(2, 10, 30)), 'without the date it goes').toBe(ROUND_RELEASE_REASON);
-    expect(verdict(dated, run, on, t(2, 10, 30)), 'with it, the grace').toBeNull();
-    expect(verdict(dated, run, on, t(2, 12, 59))).toBeNull();
-    expect(verdict(dated, run, on, t(2, 13)), 'and after the grace, the run').toBe(ROUND_RELEASE_REASON);
+  it('THE GRACE IS FOR THE RUN-BASED RELEASE TOO: the minute the date passes, a twelve-hour run no longer takes it', () => {
+    // Sunday's no-answer matures at twelve working hours on Monday 13:30; the date is Monday 15:00, and a colleague's press after
+    // the date stops this being R1b's. Its three working hours of grace end on Tuesday at 10:00 (2h on Monday, 1h on Tuesday).
+    const date = t(2, 15);
+    const run = [...call(t(1, 9, 30)), noAnswer(t(2, 15, 1), 'huda')];
+    const dated = order({ postponedUntil: null, nextFollowUpAt: date });
+    expect(verdict(order({ postponedUntil: null }), run, on, t(2, 15, 30)), 'without the date it goes').toBe(ROUND_RELEASE_REASON);
+    expect(verdict(dated, run, on, t(2, 15, 30)), 'with it, the grace').toBeNull();
+    expect(verdict(dated, run, on, t(3, 9, 59))).toBeNull();
+    expect(verdict(dated, run, on, t(3, 10)), 'and after the grace, the run').toBe(ROUND_RELEASE_REASON);
   });
 
   it('and for the re-pull: a dated order taken early and untouched waits for its date plus the grace', () => {

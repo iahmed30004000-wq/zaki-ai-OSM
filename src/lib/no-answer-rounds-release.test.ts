@@ -4,8 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * «نظام الجولات» R1 and R1b through the queue's own functions (`confirmation-queue.ts`), the database a fake that answers by
  * the `where` it is asked: the ninety-minute query (no attempt at all) and the rounds query are told apart by their keys.
  *
- * The owner, 7/11: six working hours to let a run go (it was three), and a dated order that nobody opened after its date goes
- * back too. The pull's order (a new order first) is not behind the switch any more — see `the pull` below and
+ * The owner, 8/11: twelve working hours to let a run go (it was six on 7/11, three before), and a dated order that nobody opened
+ * after its date goes back too (7/11). The pull's order (a new order first) is not behind the switch any more — see `the pull` below and
  * `new-orders-first-and-a-cap-of-five-hundred.test.ts`, which runs it against a database that applies the filters.
  */
 
@@ -91,7 +91,7 @@ describe('OFF — the release is today’s, and asks nothing more', () => {
     expect(db.order.findMany).toHaveBeenCalledTimes(1);
   });
 
-  it('and a run six hours old, a dated order nobody opened: nothing is released, nothing is even read', async () => {
+  it('and a run twelve hours old, a dated order nobody opened: nothing is released, nothing is even read', async () => {
     // The very rows that go back with the switch ON (below) — the fake would hand them over if they were asked for.
     roundsRows = [heldRow(1), heldRow(2, { postponedUntil: t(2, 10) })];
     expect(await releaseStaleClaims(db as never, scope, JO, t(2, 16), { rounds: ROUNDS_OFF })).toBe(0);
@@ -103,9 +103,10 @@ describe('OFF — the release is today’s, and asks nothing more', () => {
 });
 
 describe('ON — R1', () => {
-  it('lets go a run six working hours old, writing exactly what the ninety-minute release writes', async () => {
+  it('lets go a run twelve working hours old, writing exactly what the ninety-minute release writes', async () => {
     roundsRows = [heldRow(1)];
-    expect(await releaseStaleClaims(db as never, scope, JO, t(1, 15, 30), { rounds: ON })).toBe(1);
+    // The run began on Sunday at 09:30: 7h30 that day and 4h30 on Monday.
+    expect(await releaseStaleClaims(db as never, scope, JO, t(2, 13, 30), { rounds: ON })).toBe(1);
     const write = db.order.updateMany.mock.calls[0][0];
     expect(write.data).toEqual({ claimedById: null, claimedAt: null, currentOwnerId: null, signatureStatus: 'UNSIGNED', assignedAt: null });
     expect(write.where).toMatchObject({ id: 'o00001', claimedById: 'sara', claimedAt: t(1, 9) });
@@ -124,7 +125,7 @@ describe('ON — R1', () => {
 
   it('and lets go his other orders held for her in the same step — one customer, one agent', async () => {
     roundsRows = [heldRow(1)];
-    await releaseStaleClaims(db as never, scope, JO, t(1, 15, 30), { rounds: ON });
+    await releaseStaleClaims(db as never, scope, JO, t(2, 13, 30), { rounds: ON });
     const twins = db.order.updateMany.mock.calls[1][0];
     expect(twins.where).toEqual({
       companyId: 'c1',
@@ -140,16 +141,17 @@ describe('ON — R1', () => {
     expect(twins.data).toEqual({ assignedToId: null, assignedAt: null, version: { increment: 1 } });
   });
 
-  it('not a minute before: 5h59 stays, 6h00 goes', async () => {
+  it('not a minute before: 11h59 stays, 12h00 goes', async () => {
     roundsRows = [heldRow(1)];
-    expect(await releaseStaleClaims(db as never, scope, JO, t(1, 15, 29), { rounds: ON })).toBe(0);
+    expect(await releaseStaleClaims(db as never, scope, JO, t(2, 13, 29), { rounds: ON })).toBe(0);
     expect(db.order.updateMany).not.toHaveBeenCalled();
-    expect(await releaseStaleClaims(db as never, scope, JO, t(1, 15, 30), { rounds: ON })).toBe(1);
+    expect(await releaseStaleClaims(db as never, scope, JO, t(2, 13, 30), { rounds: ON })).toBe(1);
   });
 
-  it('three hours — what it used to be — is no longer enough', async () => {
+  it('three hours, and six — what it used to be — are no longer enough', async () => {
     roundsRows = [heldRow(1)];
     expect(await releaseStaleClaims(db as never, scope, JO, t(1, 12, 30), { rounds: ON })).toBe(0);
+    expect(await releaseStaleClaims(db as never, scope, JO, t(1, 15, 30), { rounds: ON })).toBe(0);
     expect(db.order.updateMany).not.toHaveBeenCalled();
   });
 
@@ -162,7 +164,7 @@ describe('ON — R1', () => {
   it('a press that won the race keeps it (the conditional write missed): no history, no twins', async () => {
     roundsRows = [heldRow(1)];
     db.order.updateMany.mockResolvedValueOnce({ count: 0 });
-    expect(await releaseStaleClaims(db as never, scope, JO, t(1, 15, 30), { rounds: ON })).toBe(0);
+    expect(await releaseStaleClaims(db as never, scope, JO, t(2, 13, 30), { rounds: ON })).toBe(0);
     expect(db.orderClaimHistory.create).not.toHaveBeenCalled();
     expect(db.order.updateMany).toHaveBeenCalledTimes(1);
   });
@@ -195,32 +197,33 @@ describe('ON — R1', () => {
 
   it('inside the pull, fewer: the limit it is given', async () => {
     roundsRows = Array.from({ length: 60 }, (_, i) => heldRow(i));
-    expect(await releaseStaleClaims(db as never, scope, JO, t(1, 15, 30), { rounds: ON, roundsLimit: 25 })).toBe(25);
+    expect(await releaseStaleClaims(db as never, scope, JO, t(2, 13, 30), { rounds: ON, roundsLimit: 25 })).toBe(25);
   });
 
   /*
    * SALWA'S 237 (6/11): «لا يرد» pressed on Sunday 1/11, the switch turned on Monday 2/11 at 10:00. Before this they never
-   * moved — every run was older than the switch. Now: six working hours after the switch, and not a minute before.
+   * moved — every run was older than the switch. Now: twelve working hours after the switch (six until 8/11), and not a minute before.
    */
-  it('THE PILE FROM BEFORE THE SWITCH goes back six working hours after it went on', async () => {
+  it('THE PILE FROM BEFORE THE SWITCH goes back twelve working hours after it went on', async () => {
     const switchedOn = { enabled: true, enabledAt: t(2, 10) };
     roundsRows = Array.from({ length: 3 }, (_, i) => heldRow(i));
-    expect(await releaseStaleClaims(db as never, scope, JO, t(2, 15, 59), { rounds: switchedOn })).toBe(0);
+    // Monday 10:00 to 17:00 is 7h; the other 5h end on Tuesday at 14:00.
+    expect(await releaseStaleClaims(db as never, scope, JO, t(3, 13, 59), { rounds: switchedOn })).toBe(0);
     expect(db.order.updateMany).not.toHaveBeenCalled();
-    expect(await releaseStaleClaims(db as never, scope, JO, t(2, 16), { rounds: switchedOn })).toBe(3);
+    expect(await releaseStaleClaims(db as never, scope, JO, t(3, 14), { rounds: switchedOn })).toBe(3);
     expect(db.orderClaimHistory.create.mock.calls.map(([a]) => a.data.reason)).toEqual(Array(3).fill(ROUND_RELEASE_REASON));
   });
 
-  it('and the database is asked for no-answers of any age once the switch is six working hours old — none before', async () => {
+  it('and the database is asked for no-answers of any age once the switch is twelve working hours old — none before', async () => {
     const switchedOn = { enabled: true, enabledAt: t(2, 10) };
     const roundsWhere = () => JSON.stringify(db.order.findMany.mock.calls.find(([a]) => isRoundsQuery(a))![0].where.AND);
-    await releaseStaleClaims(db as never, scope, JO, t(2, 16), { rounds: switchedOn });
+    await releaseStaleClaims(db as never, scope, JO, t(3, 14), { rounds: switchedOn });
     expect(roundsWhere()).toContain('NO_ANSWER');
     expect(roundsWhere()).not.toContain('"gte"');
     vi.clearAllMocks();
     db.order.findMany.mockImplementation(async (q: { where: Row; take?: number }) => (isRoundsQuery(q) ? roundsRows : []));
-    await releaseStaleClaims(db as never, scope, JO, t(2, 15, 59), { rounds: switchedOn });
-    expect(roundsWhere(), 'the switch is not six working hours old yet').not.toContain('NO_ANSWER');
+    await releaseStaleClaims(db as never, scope, JO, t(3, 13, 59), { rounds: switchedOn });
+    expect(roundsWhere(), 'the switch is not twelve working hours old yet').not.toContain('NO_ANSWER');
   });
 });
 
@@ -478,19 +481,19 @@ describe('R1 — she is on the call', () => {
         contactAttempts: [
           { createdAt: t(1, 9, 29), result: 'OPENED', attemptNumber: 1, employeeId: 'sara' },
           { createdAt: t(1, 9, 30), result: 'NO_ANSWER', attemptNumber: 2, employeeId: 'sara' },
-          ...(withPress ? [{ createdAt: t(1, 15, 25), result: 'OPENED', attemptNumber: 3, employeeId: 'sara' }] : []),
+          ...(withPress ? [{ createdAt: t(2, 13, 25), result: 'OPENED', attemptNumber: 3, employeeId: 'sara' }] : []),
         ],
       }),
     ];
-    // The control: the same order, without her press, goes at 15:30 — six working hours after 09:30.
+    // The control: the same order, without her press, goes on Monday at 13:30 — twelve working hours after Sunday 09:30.
     roundsRows = rows(false);
-    expect(await releaseStaleClaims(db as never, scope, JO, t(1, 15, 30), { rounds: ON })).toBe(1);
+    expect(await releaseStaleClaims(db as never, scope, JO, t(2, 13, 30), { rounds: ON })).toBe(1);
     vi.clearAllMocks();
     db.order.findMany.mockImplementation(async (q: { where: Row; take?: number }) => (isRoundsQuery(q) ? roundsRows : []));
     db.order.updateMany.mockResolvedValue({ count: 1 });
 
     roundsRows = rows(true);
-    expect(await releaseStaleClaims(db as never, scope, JO, t(1, 15, 30), { rounds: ON })).toBe(0);
+    expect(await releaseStaleClaims(db as never, scope, JO, t(2, 13, 30), { rounds: ON })).toBe(0);
     const read = db.order.findMany.mock.calls.find(([a]) => isRoundsQuery(a))![0];
     expect(read.select.contactAttempts.select, 'who pressed is read').toHaveProperty('employeeId', true);
   });

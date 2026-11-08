@@ -105,6 +105,9 @@ let dropNextAttempt = false;
 let held: { result: string; release?: () => void } | null = null;
 /** What the log answers a GET with — for the resend that asks first. */
 let logged: { result: string; employeeId: string; createdAt: string }[] = [];
+/** «الشغل أول»: what the desk adds to its answer (`work`, `due`…), and a pull the server refuses (with the desk as it then is). */
+let deskOverride: Record<string, unknown> = {};
+let pullRefusal: { error: Error; after: Record<string, unknown> } | null = null;
 
 const posts = (result: string) =>
   sent.filter((s) => s.url.endsWith('/contact-attempts') && s.method === 'POST' && (s.body as { result?: string })?.result === result);
@@ -120,6 +123,8 @@ beforeEach(() => {
   dropNextAttempt = false;
   logged = [];
   held = null;
+  deskOverride = {};
+  pullRefusal = null;
   pulls.count = 0;
   window.localStorage.clear();
   apiJson.mockImplementation(async (url: string, init?: { method?: string; body?: string }) => {
@@ -136,6 +141,7 @@ beforeEach(() => {
         noAnswer: [],
         closedToday: [],
         confirmed: { day: '', q: '', page: 1, pageSize: 25, total: 0, pages: 1, rows: [] },
+        ...deskOverride,
       };
     }
     if (url === '/api/confirmation/queue') {
@@ -154,6 +160,10 @@ beforeEach(() => {
     }
     if (url.endsWith('/contact-attempts')) return { autoClosed: false, noAnswerCount: 1 };
     if (url === '/api/confirmation/pull') {
+      if (pullRefusal) {
+        deskOverride = pullRefusal.after;
+        throw pullRefusal.error;
+      }
       pulls.count += 1;
       return { ok: true };
     }
@@ -406,6 +416,62 @@ describe('after a call nobody answered: WhatsApp, then «التالي»', () => 
     const order = sent.map((s) => s.url);
     expect(order.indexOf('/api/orders/o-1/contact-attempts', order.indexOf('/api/orders/o-1/contact-attempts') + 1)).toBeLessThan(order.indexOf('/api/confirmation/pull'));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'شو صار؟' })).toBeNull());
+  });
+});
+
+describe('«الشغل أول»: «التالي» is the next call she owes, not a pull, while she owes one (the owner, 8/11)', () => {
+  const OWED = { ...ROW, id: 'o-2', orderNumber: 'SY-26-1002', noAnswerCount: 1, dueNow: true, dueReason: 'ROUND', dueAt: null };
+  const scrolled: string[] = [];
+  beforeEach(() => {
+    scrolled.length = 0;
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this.id);
+    };
+  });
+
+  it('her answer is sent, the desk is read again, and when a call is still owed «التالي» opens the oldest of them — no pull', async () => {
+    deskOverride = { work: [ROW, OWED], due: { count: 1, first: { id: 'o-2', orderNumber: 'SY-26-1002' } } };
+    await draw();
+    // Two cards now: she rings the first.
+    fireEvent.click(screen.getAllByTitle('اتصال')[0]);
+    fireEvent.click(within(sheet()).getByRole('button', { name: 'مشغول' }));
+    fireEvent.click(within(sheet()).getByRole('button', { name: 'التالي' }));
+    await waitFor(() => expect(posts('BUSY')).toHaveLength(1));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'شو صار؟' })).toBeNull());
+    await waitFor(() => expect(scrolled).toEqual(['desk-order-o-2']));
+    expect(document.getElementById('desk-order-o-2')?.className).toContain('ring-2');
+    expect(pulls.count, 'it asked the server for another order').toBe(0);
+    // Her answer left BEFORE the desk was read — otherwise the call she has just logged would still be "owed".
+    const order = sent.map((x) => x.url);
+    expect(order.indexOf('/api/orders/o-1/contact-attempts', order.indexOf('/api/orders/o-1/contact-attempts') + 1)).toBeGreaterThan(-1);
+  });
+
+  it('with nothing owed it pulls, as it always did — and what she pulled is under «اتصلي هلّق»', async () => {
+    deskOverride = { due: { count: 0, first: null } };
+    await draw();
+    ring();
+    fireEvent.click(within(sheet()).getByRole('button', { name: 'مشغول' }));
+    fireEvent.click(within(sheet()).getByRole('button', { name: 'التالي' }));
+    await waitFor(() => expect(pulls.count).toBe(1));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'شو صار؟' })).toBeNull());
+    expect(screen.getByRole('tab', { name: /اتصلي هلّق/ }).getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('a desk that had not heard: the server refuses «الشغل أول», the desk is read again and the order it names is opened', async () => {
+    pullRefusal = {
+      error: Object.assign(new Error('عندك طلب واحد لازم ترني عليه هلّق قبل سحب طلب جديد — أولها الطلب SY-26-1002.'), {
+        status: 409,
+        data: { code: 'WORK_FIRST', orderId: 'o-2', orderNumber: 'SY-26-1002', count: 1 },
+      }),
+      after: { work: [ROW, OWED], due: { count: 1, first: { id: 'o-2', orderNumber: 'SY-26-1002' } } },
+    };
+    await draw();
+    ring();
+    fireEvent.click(within(sheet()).getByRole('button', { name: 'ما رد' }));
+    fireEvent.click(within(sheet()).getByRole('button', { name: 'التالي' }));
+    await waitFor(() => expect(scrolled).toEqual(['desk-order-o-2']));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'شو صار؟' })).toBeNull());
+    expect(pulls.count).toBe(0);
   });
 });
 
