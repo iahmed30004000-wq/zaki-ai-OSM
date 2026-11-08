@@ -28,14 +28,19 @@ import {
  *   · the desk is a colleague's: her id is an ACTIVE person of this company who reaches this store (`watchedAgent`, 404
  *     otherwise — an id from another company says nothing about whether it exists), and never the presser's own.
  *
- * THIS DOOR NAMES A DESK, AND ACTS AS NOBODY BUT THE PRESSER. The agent is a filter on whose pile it is: the claim-history line
- * carries the presser's id and name, the notification and the audit row say who pressed, and no write is made «as» her. That is
- * why `no-write-door-acts-as-the-agent.test.ts` lists this file as its one exception, and asserts these facts about it.
+ * THIS DOOR NAMES A DESK, AND ACTS AS NOBODY BUT THE PRESSER. The agent is a filter on whose pile it is. Each claim-history line
+ * keeps HER id in `userId` (whose order it was — the column cannot be empty) and names the presser, id and name, in its
+ * `metadata`; the notification goes TO her and says in its sentence who pressed; the audit row is written under HIS id. No write
+ * is made «as» her. That is why `no-write-door-acts-as-the-agent.test.ts` lists this file as its one exception, and asserts
+ * these facts about it.
+ *
+ * AND THE STORE'S WORKING CALENDAR decides which orders are «just taken» or «on the phone» (`pileCutoffs`), as it does for the
+ * releases: built from the four fields of the store's country, here as everywhere else.
  */
 export async function POST(_req: Request, { params }: { params: Promise<{ agentId: string }> }) {
   try {
     const { agentId } = await params;
-    const { user, companyId, storeId } = await requireContext();
+    const { user, companyId, storeId, country } = await requireContext();
 
     if (!mayWatchDesks(user)) {
       return NextResponse.json({ error: 'Forbidden: cannot watch desks', errorAr: DESK_WATCH_REFUSAL }, { status: 403 });
@@ -59,6 +64,12 @@ export async function POST(_req: Request, { params }: { params: Promise<{ agentI
           scope: { companyId, storeId },
           agentId: agent.id,
           by: { id: user.id, name: user.name },
+          calendar: {
+            workHoursStart: country.workHoursStart,
+            workHoursEnd: country.workHoursEnd,
+            weekendDays: country.weekendDays,
+            timezone: country.timezone,
+          },
         }),
       RETURN_TRANSACTION_OPTIONS
     );

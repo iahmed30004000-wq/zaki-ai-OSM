@@ -474,7 +474,7 @@ export function ConfirmationMineScreen() {
   // door asked for the issues LIST she was never given.
   const canRaiseIssue = userCan(currentUser, 'confirmation.raise_issue');
   /**
-   * «شاشة موظفة» — THE OWNER READS A COLLEAGUE'S DESK, AND PRESSES NOTHING ON IT.
+   * «شاشة موظفة» — THE OWNER READS A COLLEAGUE'S DESK. THE ONE PRESS HE MAY MAKE ON IT IS «أرجِع «لا يرد» للطابور» (below).
    *
    * Asked of `team.monitor` here only to spare a request; the door
    * (`/api/confirmation/desks`) decides, and the picker is drawn only when it
@@ -1113,7 +1113,7 @@ export function ConfirmationMineScreen() {
     );
   }
 
-  /** A colleague's desk, opened through «شاشة موظفة»: drawn whole, and nothing on it can be pressed. */
+  /** A colleague's desk, opened through «شاشة موظفة»: drawn whole, and none of HER presses is drawn on it — the viewer's own «أرجِع «لا يرد» للطابور» is the one. */
   const readOnly = watched !== null || !!data.viewing;
   const watchedName = data.viewing?.name ?? watched?.name ?? '';
   // Digits only, both sides: she types 0999 or 999 and the stored number

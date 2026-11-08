@@ -24,8 +24,11 @@ import { repoFile, stripComments } from '@/lib/guard-source';
  *      «أرجِع «لا يرد» للطابور». It names a desk — the agent is in the PATH, as whose pile it is — and so it imports the
  *      watching rule. It is the exception, not the rule: it is listed here by name (`NAMES_A_DESK`), the list is asserted to be
  *      exactly that one file, and the file is asserted to ask BOTH the watching rule and `orders.unlock`, to take the agent only
- *      from the path, and to act as nobody but the presser (its history line, notice and audit row carry HIS id; nothing is
- *      written «as» her). Behaviour — the refusals, the counts — is `the-manager-returns-her-pile-through-the-real-engine.test.ts`.
+ *      from the path, and to act as nobody but the presser (the PRESSER is HIM: the audit row is written under his id and the
+ *      press is passed on `by: { id: user.id, … }`, which the history line carries in its metadata — the line's own `userId`
+ *      stays HERS, whose order it was, and the notice goes to her naming him; nothing is written «as» her). It reads the source
+ *      for those words only; what really lands in the rows — the refusals, the counts, whose id is in which column — is
+ *      `the-manager-returns-her-pile-through-the-real-engine.test.ts`.
  * ═══════════════════════════════════════════════════════════════════════
  */
 
