@@ -49,6 +49,11 @@ interface Row {
   customer: { id: string; fullName: string; phone: string; city: string };
   previousOrders: number;
   region: { id: string; name: string } | null;
+  /**
+   * Where the parcel goes. ABSENT unless the server sent it — it does, only to a holder of `customers.view` — and
+   * `null` is «this order has none». The two are different news; see `ShipAddress`.
+   */
+  address?: string | null;
   items: { productName: string; quantity: number; freeQuantity: number }[];
   cod: { subtotal: number; discount: number; deliveryFee: number; cod: number; currency: string; feeSource: string };
   blocks: Block[];
@@ -64,6 +69,28 @@ interface Row {
 const PICK_COURIER_FIRST = 'اختر شركة الشحن من «شركة الشحن (للشحنة)» فوق أولاً — المبلغ ورمز المدينة بالملف من أجورها.';
 /** What «CSV المحدَّدة» is under «الكل» (the owner, 3/11: «الهدف اسحب الطلبات فقط اوزع المناطق ع شركات الشحن»). */
 const NO_COURIER_FILE = 'بدون شركة: ملف للتوزيع بس — بلا مبلغ ولا رمز مدينة';
+
+/**
+ * WHERE THE PARCEL GOES, IN FULL (the owner, 8/11: «اظهر العنوان بالخانات»).
+ *
+ * An address is a sentence, so it wraps: nothing is cut with an ellipsis, because a packer who reads half a street
+ * ships to half a street. The box is capped, so a long address makes its cell taller and never the table wider, and
+ * the text picks its own direction, so a street typed in Latin letters reads left to right inside the Arabic page.
+ *
+ * NONE IS SAID, NOT LEFT BLANK. Dispatch refuses an order with no address (`NO_ADDRESS`), and an empty cell reads as
+ * «not loaded», so the order says it in the colour the unset governorate beside it uses. `undefined` is another thing —
+ * the server did not send it — and is a dash: «بلا عنوان» there would tell the packer an order has none when nobody looked.
+ */
+function ShipAddress({ address }: { address: string | null | undefined }) {
+  if (address === undefined) return <span className="text-[var(--sys-muted)]">—</span>;
+  const street = address?.trim();
+  if (!street) return <span className="text-[var(--sys-destructive)]">بلا عنوان</span>;
+  return (
+    <div dir="auto" className="max-w-xs break-words">
+      {street}
+    </div>
+  );
+}
 
 export function ShipmentsNewScreen() {
   const ask = useAsk();
@@ -111,6 +138,9 @@ export function ShipmentsNewScreen() {
   // The file is names, phones and addresses: its door asks the screen's key AND the address-book key, so the button is
   // drawn only for whoever it will answer.
   const mayExport = userCan(currentUser, 'ops.ship') && userCan(currentUser, 'customers.view');
+  // The «العنوان» column is drawn for the address-book key alone, as the list door gives the street to nobody else
+  // (`GET /api/ops/shipments`): the packing key does not open it, and a column the server fills for no one is not drawn.
+  const mayReadAddress = userCan(currentUser, 'customers.view');
   const [exporting, setExporting] = useState(false);
   /** What the last file held and what it left out, said under the tabs until the next file. */
   const [fileNote, setFileNote] = useState<string | null>(null);
@@ -913,6 +943,18 @@ export function ShipmentsNewScreen() {
                     </span>
                   ),
               },
+              // WHERE IT GOES, right after the governorate it is in. Only for the address-book key (`mayReadAddress`). `wide`:
+              // an address is a sentence, so on a card its label sits above it and it takes the card's full width.
+              ...(mayReadAddress
+                ? [
+                    {
+                      key: 'address',
+                      label: 'العنوان',
+                      wide: true,
+                      render: (r: Row) => <ShipAddress address={r.address} />,
+                    },
+                  ]
+                : []),
               {
                 key: 'cod',
                 label: 'تفصيل التحصيل',

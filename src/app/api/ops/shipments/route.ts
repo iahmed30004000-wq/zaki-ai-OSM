@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
-import { requirePermission } from '@/lib/authorization';
+import { can, requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { shipmentBlocks, type OrderBlock } from '@/lib/operations';
@@ -49,6 +49,16 @@ export async function GET(req: Request) {
     const { user, companyId, storeId, country } = await requireContext();
     await requirePermission('ops.ship');
 
+    /**
+     * THE ADDRESS IS THE ADDRESS BOOK'S, NOT THE PACKING KEY'S.
+     *
+     * «اظهر العنوان بالخانات» (the owner, 8/11): the table shows where each parcel goes. A street is a customer's
+     * contact detail like the phone, and `ops.ship` is the packing key — the warehouse holds it without
+     * `customers.view` (`ops/labels` says it the same way). So the address is put in the row only for whoever holds
+     * the address-book key; for everyone else the key is not there at all, so the payload provably does not carry it.
+     */
+    const maySeeAddress = can(user, 'customers.view');
+
     const q = new URL(req.url).searchParams;
     const from = q.get('from') ? new Date(q.get('from')!) : null;
     const to = q.get('to') ? new Date(q.get('to')!) : null;
@@ -94,7 +104,9 @@ export async function GET(req: Request) {
         // Read so the row can say whether standing the order down is
         // still possible. A printed waybill is already out of our hands.
         labelPrintedAt: true, shippingBatchId: true,
-        customer: { select: { id: true, fullName: true, phone: true, city: true, totalOrders: true } },
+        // `deliveryAddress` and the customer's `address` are read only to be folded into the row's one `address` below.
+        deliveryAddress: true,
+        customer: { select: { id: true, fullName: true, phone: true, city: true, totalOrders: true, address: true } },
         region: { select: { id: true, name: true } },
         items: { select: { productName: true, quantity: true, freeQuantity: true, unitPrice: true, discountShare: true, lineTotal: true, reservedQty: true } },
         // `reservedQty` of the add-ons too: the door asks about them, so the row must (one select, no query per row).
@@ -155,14 +167,25 @@ export async function GET(req: Request) {
             },
           ];
 
+      // The customer as the row has always carried it: the street read for the row's `address` is not part of it, or
+      // it would reach the people who may not have it by this door (`customer.address`).
+      const { address: customerAddress, ...customer } = order.customer;
+
       rows.push({
         id: order.id,
         orderNumber: order.orderNumber,
         merchantRef: order.merchantRef,
         createdAt: order.createdAt,
-        customer: order.customer,
+        customer,
         previousOrders: Math.max(0, (order.customer.totalOrders ?? 1) - 1),
         region: order.region,
+        /*
+         * WHERE THE PARCEL GOES — by the rule dispatch applies (`couriers/dispatch.ts`, «NO ADDRESS TO DELIVER TO»): the
+         * parcel's own address first, then the customer's; a blank or spaces-only one counts as none. `null` is «this
+         * order has none», and dispatch refuses such an order (`NO_ADDRESS`), so the screen says so in red.
+         * ABSENT, not null, without the address-book key: a missing key and an empty address are different news.
+         */
+        ...(maySeeAddress ? { address: order.deliveryAddress?.trim() || customerAddress?.trim() || null } : {}),
         items: order.items.map((i) => ({ productName: i.productName, quantity: i.quantity, freeQuantity: i.freeQuantity })),
         cod: { ...money, currency: order.currency, feeSource: fee.source },
         blocks,
