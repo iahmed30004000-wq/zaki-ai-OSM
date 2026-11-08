@@ -158,7 +158,7 @@ export async function GET(request: Request) {
      * only with the watching keys (desk-watch.ts), only a colleague of this
      * company and this store (404 otherwise), and only for reading: this door
      * has no write verb. The one press a watcher makes on a colleague's desk is
-     * its own door (`desks/[agentId]/return-no-answer`, «أرجِع «لا يرد» للطابور»),
+     * its own door (`/api/confirmation/desks/[agentId]/return-no-answer`, «أرجِع «لا يرد» للطابور»),
      * which takes the agent from its path and writes under the presser's own
      * keys; no other door that writes reads `agent`.
      */

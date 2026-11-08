@@ -59,7 +59,7 @@ const ACTION_AR: Record<string, string> = {
   COURIER_SEND_CLEARED: 'فكّ إرسال عالق للشركة', SHIPMENT_CANCEL_COURIER_TOLD: 'إبلاغ الشركة بإلغاء طرد', PARCEL_ATTESTED_IN_HAND: 'تأكيد أن الطرد بين يدي المستودع', SHIP_HOLD_SET: 'إيقاف شحن طلب', SHIP_HOLD_RELEASED: 'رفع إيقاف شحن طلب', RETURN_RECEIVED: 'استلام مرتجع', LABELS_PRINTED: 'طباعة بوالص',
   CHANGE_REQUEST_APPROVED: 'اعتماد طلب تعديل', CHANGE_REQUEST_REJECTED: 'رفض طلب تعديل', CHANGE_REQUEST_RAISED: 'رفع طلب تعديل',
   CHANGE_REQUEST_WITHDRAWN: 'سحب طلب تعديل', POSTPONED_RETURNED_TO_QUEUE: 'إرجاع مؤجَّل للطابور',
-  // «أرجِع «لا يرد» للطابور» (`desks/[agentId]/return-no-answer`): a supervisor returned a colleague's pile; the row's record is her.
+  // «أرجِع «لا يرد» للطابور» (`/api/confirmation/desks/[agentId]/return-no-answer`): a supervisor returned a colleague's pile; the row's record is her.
   DESK_NO_ANSWER_RETURNED: 'إرجاع كومة «لا يرد» لموظفة للطابور',
   WALLET_TRANSFER: 'تحويل بين محافظ', WALLET_MOVEMENT_RECORDED: 'تسجيل حركة محفظة', WALLET_MOVEMENT_REVERSED: 'عكس حركة محفظة',
   WALLET_OPENING_COUNTED: 'جرد افتتاحي لمحفظة', WALLET_STOPPED: 'إيقاف محفظة', DAILY_CLOSING_RECORDED: 'تسجيل إغلاق يومي',
