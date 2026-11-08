@@ -289,7 +289,9 @@ export function InventoryBalancesScreen() {
   const receiveFor = receiving ?? linked.row;
 
   const selected = stockSummary.find((s) => s.id === productId);
-  const systemQty = selected?.remaining ?? 0;
+  // The count is of the AVAILABLE (the owner, 8/11): the server's own figure — shelf minus what open orders hold — never a
+  // subtraction made here. `remaining` is what the batches hold, which still includes units out with a courier.
+  const systemQty = selected?.health.available ?? 0;
   /** No arithmetic on a box that says nothing — `null`, not a zero. */
   const counted = typedNumber(countedTyped);
   const difference = typeof counted === 'number' ? counted - systemQty : null;
@@ -603,7 +605,7 @@ export function InventoryBalancesScreen() {
         isOpen={adjustModalOpen}
         onClose={() => setAdjustModalOpen(false)}
         title="جرد مخزون"
-        subtitle="عندما يختلف الرف عن النظام — تُدخل ما عددته، والفرق يُحسب ويُسجَّل"
+        subtitle="عندما يختلف المتاح عن النظام — تُدخل ما عددته منه، والفرق يُحسب ويُسجَّل"
       >
         <form onSubmit={handleAdjustStock} className="space-y-4">
           <div>
@@ -631,13 +633,18 @@ export function InventoryBalancesScreen() {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-[var(--sys-heading)]">رصيد النظام</label>
+              <label className="mb-1.5 block text-xs font-medium text-[var(--sys-heading)]">المتاح في النظام</label>
               <div className={`rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] px-3 ${phone ? 'flex h-11 items-center' : 'py-2'} text-sm font-bold tabular-nums text-[var(--sys-muted-foreground)]`} dir="ltr">
                 {systemQty}
               </div>
+              {selected && (
+                <p className="mt-0.5 text-xs text-[var(--sys-muted-foreground)]">
+                  على الرف {selected.remaining} · محجوز {selected.reserved}
+                </p>
+              )}
             </div>
             <Input
-              label="الكمية المعدودة *"
+              label="الكمية المتاحة المعدودة *"
               type="number"
               min="0"
               dir="ltr"
@@ -646,6 +653,10 @@ export function InventoryBalancesScreen() {
               required
             />
           </div>
+
+          <p className="text-xs text-[var(--sys-muted-foreground)]">
+            عُدَّ ما يمكن بيعه فقط — دون المحجوز لطلبات مفتوحة، ومنها طلبات خرجت مع شركة الشحن ولم تُسلَّم بعد.
+          </p>
 
           {/* The difference is shown, not typed: it is the number that will
               actually be written, so it should be read before it is. */}

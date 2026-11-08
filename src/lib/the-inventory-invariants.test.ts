@@ -113,7 +113,7 @@ describe('4 · stock enters by a batch or a reasoned adjustment, and nothing els
   it('the adjustment door refuses to move stock without a reason', () => {
     const inv = stripComments(repoFile('src/app/api/inventory/route.ts'));
     // The reason reaches the ledger row, not just the request body.
-    expect(inv).toMatch(/reason: `جرد: عُدّ \$\{input\.countedQuantity\}/);
+    expect(inv).toMatch(/reason: `جرد المتاح: عُدّ \$\{input\.countedQuantity\}[^`]*\$\{input\.reason\.trim\(\)\}`/);
   });
 
   it('and a surplus with no cost to stand on is refused, not invented', () => {
