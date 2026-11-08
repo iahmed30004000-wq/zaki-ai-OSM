@@ -74,6 +74,11 @@ vi.mock('@/lib/db', () => ({ db }));
 vi.mock('@/lib/geo-context', () => ({ requireContext: (...a: unknown[]) => requireContext(...a) }));
 vi.mock('@/lib/authorization', () => ({ requirePermission: (...a: unknown[]) => requirePermission(...a) }));
 vi.mock('@/lib/audit', () => ({ logAudit: (...a: unknown[]) => logAudit(...a) }));
+// The stocktake asks which units open orders hold (`reservedElsewhere`): none here, so the available is the shelf — what these tests assume.
+vi.mock('@/lib/reservation', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/reservation')>()),
+  reservedElsewhere: async () => 0,
+}));
 
 import { Prisma } from '@prisma/client';
 import { apiError } from './api-error';
