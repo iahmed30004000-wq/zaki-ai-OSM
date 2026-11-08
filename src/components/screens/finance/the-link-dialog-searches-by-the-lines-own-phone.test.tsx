@@ -12,7 +12,7 @@ import React from 'react';
  * · a link is one press: a second click while the first is on its way sends nothing;
  * · a refusal that means the page is older than the line offers «حدّث الصفحة», which reloads the list behind;
  *   a refusal about the ORDER (settled, held elsewhere) does not — there is nothing stale to refresh.
- * · «سبب الشركة» is laid out under its own names, with the whole row one press away.
+ * · «سبب الشركة» says four things — status, phone, governorate, address — with the whole row one press away.
  */
 const { api } = vi.hoisted(() => ({ api: vi.fn() }));
 vi.mock('@/lib/api-client', () => ({ apiJson: (...a: unknown[]) => api(...a), apiFetch: vi.fn() }));
@@ -206,43 +206,80 @@ describe('a page older than the line', () => {
   });
 });
 
-describe('«سبب الشركة» laid out', () => {
+describe('«سبب الشركة» says four things', () => {
   const line = {
     merchantRef: 'ORD-2026-1711', barcode: 'BSH-55012', amount: '23000', collected: '25000', fee: '2000', status: 'مؤجل',
-    rawRow: 'BSH-55012 | ORD-2026-1711 | 25000 | 2000 | 23000 | مؤجل | العميل طلب التأجيل',
+    rawRow: 'BSH-55012 | ORD-2026-1711 | 25000 | 2000 | 23000 | مؤجل | العميل طلب التأجيل | 0900000001',
+  };
+  const headed = {
+    ...line,
+    receiverName: 'سلمى الاختبار', receiverPhone: '+353 87 123 4567', receiverAddress: 'حماة - حي الوسط - بجانب الفرن',
+    receiverCity: 'حماة', receiverArea: 'حماة',
   };
   const word = { phrase: 'مؤجل', outcome: 'POSTPONED', known: true, label: 'تأجيل' };
+  // What a person SEES: the text outside the folded «النص الأصلي», which is the whole row and says everything.
+  const seen = (c: HTMLElement) => {
+    const clone = c.cloneNode(true) as HTMLElement;
+    clone.querySelector('details')?.remove();
+    return clone.textContent ?? '';
+  };
 
-  it('the status word, our order number, the amount with what was collected and kept, and the company’s note — each under its name', () => {
-    const { container } = render(<CourierReason m={{ courierWord: word, statementLine: line }} currency={null as never} />);
-    const text = container.textContent ?? '';
+  it('«هاي كلها لغي»: the status word, the phone, the governorate and the address — and none of the rest of the row', () => {
+    const { container } = render(<CourierReason m={{ courierWord: word, statementLine: headed }} />);
+    const text = seen(container);
     expect(text).toContain('«مؤجل»');
-    expect(text).toContain('رقم الطلب: ORD-2026-1711');
-    expect(text).toMatch(/المبلغ: .*23[,٬]?000/);
-    expect(text).toMatch(/المحصَّل .*25[,٬]?000/);
-    expect(text).toMatch(/الأجرة .*2[,٬]?000/);
-    expect(text).toContain('ملاحظة الشركة: العميل طلب التأجيل');
+    expect(text).toContain('الهاتف: +353871234567');
+    expect(text).toContain('المحافظة: حماة');
+    expect(text).toContain('العنوان: حماة - حي الوسط - بجانب الفرن');
+    // The figures are the columns beside it, the order number is under the barcode, the notes are in the raw row.
+    for (const gone of ['رقم الطلب', 'المبلغ', 'المحصَّل', 'الأجرة', 'ملاحظة الشركة', 'العميل طلب التأجيل', 'سلمى الاختبار']) {
+      expect(text, gone).not.toContain(gone);
+    }
+  });
+
+  it('the area is read with the governorate only when it says something more', () => {
+    const { container } = render(
+      <CourierReason m={{ courierWord: word, statementLine: { ...headed, receiverCity: 'ريف دمشق', receiverArea: 'ضواحي دمشق' } }} />
+    );
+    expect(seen(container)).toContain('المحافظة: ريف دمشق — ضواحي دمشق');
+  });
+
+  it('a line imported before the headings were kept: its status and the phone read from its row — the rest is behind «النص الأصلي»', () => {
+    const { container } = render(<CourierReason m={{ courierWord: word, statementLine: line }} />);
+    const text = seen(container);
+    expect(text).toContain('«مؤجل»');
+    expect(text).toContain('الهاتف: 0900000001');
+    expect(text).not.toContain('المحافظة');
+    expect(text).not.toContain('العنوان');
+    expect(container.querySelector('details')!.textContent).toContain('العميل طلب التأجيل');
   });
 
   it('the whole row as written is kept, behind «النص الأصلي»', () => {
-    const { container } = render(<CourierReason m={{ courierWord: word, statementLine: line }} currency={null as never} />);
+    const { container } = render(<CourierReason m={{ courierWord: word, statementLine: headed }} />);
     const details = container.querySelector('details')!;
     expect(details).toBeTruthy();
     expect(details.querySelector('summary')!.textContent).toBe('النص الأصلي');
     expect(details.textContent).toContain(line.rawRow);
   });
 
-  it('a line with no word and no row shows a dash, not empty labels', () => {
+  it('a line with no word, no facts and no row shows a dash, not empty labels', () => {
     const { container } = render(
-      <CourierReason m={{ courierWord: null, statementLine: { ...line, status: null, rawRow: null } }} currency={null as never} />
+      <CourierReason m={{ courierWord: null, statementLine: { merchantRef: 'R', barcode: 'B', amount: '0', status: null, rawRow: null } }} />
     );
     expect(container.textContent).toBe('—');
   });
 
   it('a status the phrase table does not hold is still shown, under its name', () => {
     const { container } = render(
-      <CourierReason m={{ courierWord: null, statementLine: { ...line, status: 'حالة جديدة', rawRow: 'X | حالة جديدة' } }} currency={null as never} />
+      <CourierReason m={{ courierWord: null, statementLine: { ...line, status: 'حالة جديدة', rawRow: 'X | حالة جديدة' } }} />
     );
-    expect(container.textContent).toContain('الحالة: حالة جديدة');
+    expect(seen(container)).toContain('الحالة: حالة جديدة');
+  });
+
+  it('a phone the company wrote in another country’s form is shown as written, not hidden for being foreign', () => {
+    const { container } = render(
+      <CourierReason m={{ courierWord: word, statementLine: { ...headed, receiverPhone: '00966 50 123 4567' } }} />
+    );
+    expect(seen(container)).toContain('الهاتف: +966501234567');
   });
 });

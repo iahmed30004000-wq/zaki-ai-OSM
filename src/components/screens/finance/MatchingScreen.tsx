@@ -25,7 +25,8 @@ import { useIsPhone } from '@/hooks/useIsPhone';
 import { ManualMatching } from '@/components/screens/finance/ManualMatching';
 import { STATEMENT_CLOSED_SENTENCE, isApproved, isMatchingClosed } from '@/lib/settlement-gates';
 import { countOpenLines } from '@/lib/statement-open-lines';
-import { readCourierRow } from '@/lib/statement-line-reading';
+import { lineEssentials, readCourierRow } from '@/lib/statement-line-reading';
+import { StatementTally } from '@/components/screens/finance/StatementTally';
 
 /**
  * /finance/matching — the outcome of matching, read as four queues: agreed,
@@ -79,6 +80,12 @@ interface Match {
     /** The company's own status cell, and the whole row as it wrote it (notes column included). */
     status: string | null;
     rawRow: string | null;
+    /** Who the parcel went to, under the headings the file wrote them. Null on a line imported before they were kept. */
+    receiverName?: string | null;
+    receiverPhone?: string | null;
+    receiverAddress?: string | null;
+    receiverCity?: string | null;
+    receiverArea?: string | null;
   } | null;
   /** The status word read through the one phrase table: what it says, and whether the table knows it. */
   courierWord: { phrase: string; outcome: string; known: boolean; label: string } | null;
@@ -267,6 +274,9 @@ export function MatchingScreen() {
         />
       ) : (
         <div className="space-y-3">
+          {/* What the company wrote on its lines and where each kind landed — so a returned parcel is never «missing»: it is
+              counted here whatever queue it fell into. */}
+          <StatementTally matches={matches} />
           {/* The sum of the answers given below it: who keeps arriving short. */}
           <DifferencesByPerson currency={statement?.currencyCode ?? ''} />
           <Queue
@@ -304,6 +314,8 @@ export function MatchingScreen() {
           <Queue
             title="في الكشف وليس عندنا"
             reason
+            fromLine
+            noOrder
             linkable={mayReview && !closed}
             parkable={mayReview}
             locked={closed}
@@ -312,14 +324,16 @@ export function MatchingScreen() {
             tone="amber"
             currency={statement?.currencyCode ?? ''}
             rows={queue('MISSING_IN_SYSTEM')}
-            hint="مرجع لا يقابله طلب في هذا المتجر — غالباً كشف شركة أخرى أو مرجع مكتوب خطأً. لا رقمين هنا يُختار بينهما؛ اقرأ سبب الشركة بكلامها، أو اربط السطر بطلبه: بهاتف الزبون أو برقم طلبنا. وإن لم يكن لنا فاكتب سببه وقل «قيد المراجعة» ليتابع الاعتماد."
+            hint="ما لقينا طلباً عندنا بهالباركود أو المرجع في هذا المتجر — غالباً الطرد انعمل خارج النظام، أو هو من كشف شركة أخرى، أو المرجع مكتوب غلط. لهيك ما في «متوقَّع» ولا «فرق»: بنعرض اللي كتبته الشركة نفسها (المحصَّل والأجرة والصافي). اربط السطر بطلبه بهاتف الزبون أو برقم طلبنا — وقدام كل طلب مقترح بتشوف شو كتبت الشركة جنب شو عندنا. وإن لم يكن لنا فاكتب سببه وقل «قيد المراجعة» ليتابع الاعتماد."
           />
           <Queue
             title="مستبعدة — مرتجع أو مؤجل"
+            reason
+            fromLine
             tone="amber"
             currency={statement?.currencyCode ?? ''}
             rows={queue('EXCLUDED')}
-            hint="كتبتها الشركة بصفر وقالت إن الطرد رجع أو تأجّل. مش مصاري ولا سؤال: ما بتوقّف الاعتماد ولا بتتسوّى. المرتجع بيتابعه قسم المرتجعات، والمؤجل بيجي بكشف جاي."
+            hint="كتبتها الشركة بصفر وقالت إن الطرد رجع أو تأجّل، ولهالطرد طلب عندنا وهو على الطريق أو راجع. مش مصاري ولا سؤال: ما بتوقّف الاعتماد ولا بتتسوّى. المرتجع بيتابعه قسم المرتجعات، والمؤجل بيجي بكشف جاي. الراجع اللي ما عندنا طلب له مش هون: بتلاقيه في «في الكشف وليس عندنا»."
           />
           <Queue
             title="طلبات لم يذكرها أي كشف"
@@ -330,7 +344,7 @@ export function MatchingScreen() {
             tone="amber"
             currency={statement?.currencyCode ?? ''}
             rows={queue('MISSING_IN_STATEMENT')}
-            hint="طلبات سُلِّمت عندنا ولم يذكرها أي كشف من الشركة بعد. لكل طلب كلمة نتيجته، وما تقرره بشأنه يُسجَّل على الطلب نفسه ولا يُحسب فرقاً في المبلغ."
+            hint="هاي طلباتنا نحنا، مش أسطر الكشف: نظامنا بيعتبرها مسلَّمة مع شركة هالكشف، ولسا ما انذكرت بأي كشف منها. العدد بيتغيّر من كشف لكشف لأنو بينحسب لحظة تشغيل المطابقة لشركة الكشف ومتجره وفترته، وكل كشف جديد بيذكر طلبات فبيشيلها من القائمة عند مطابقته. لكل طلب كلمة نتيجته، وما تقرره بشأنه (انتظر كشفاً لاحقاً / طالِب الشركة / لم يُسلَّم) بيُسجَّل على الطلب نفسه ولا يُحسب فرقاً في المبلغ ولا بيحرّك مصاري."
           />
         </div>
       )}
@@ -357,6 +371,8 @@ function Queue({
   swappable,
   reason,
   unmentioned,
+  fromLine,
+  noOrder,
   linkable,
   parkable,
   canUnlock,
@@ -369,6 +385,14 @@ function Queue({
   rows: Match[];
   hint: string;
   currency: string;
+  /**
+   * The company's line is all there is to read: no figure of ours was written on the row (a line no order carries, a line
+   * the matching excluded). The money columns then show what the company WROTE — what it collected, the fee it kept, the net
+   * it hands over — instead of dashes under «المتوقَّع» and «الفرق», which have no figure to show.
+   */
+  fromLine?: boolean;
+  /** No order of ours is tied to the row at all: no «الطلب», no «طوبق عبر» — they would be a dash on every row. */
+  noOrder?: boolean;
   /** A difference in money: two figures, and the person says which one stands. Only «فرق في المبلغ». */
   resolvable?: boolean;
   /** The courier handed the box to another customer: «كان من طرد طلب آخر». Only a line with money and no answer yet. */
@@ -404,30 +428,49 @@ function Queue({
         <span dir="ltr">
           <span className="block font-medium">{m.statementLine?.barcode ?? '—'}</span>
           {(m.statementLine?.merchantRef ?? m.order?.merchantRef) && (
-            <span className="block text-xs text-[var(--sys-muted)]">
-              {m.statementLine?.merchantRef ?? m.order?.merchantRef}
-            </span>
+            <>
+              {/* Where no order of ours is tied to the row, this number is THE COMPANY'S: say whose it is. */}
+              {fromLine && (
+                <span dir="rtl" className="block text-xs text-[var(--sys-muted)]">
+                  رقم الطلب عندهم:
+                </span>
+              )}
+              <span className="block text-xs text-[var(--sys-muted)]">
+                {m.statementLine?.merchantRef ?? m.order?.merchantRef}
+              </span>
+            </>
           )}
         </span>
       ),
     },
-    {
-      key: 'order',
-      label: 'الطلب',
-      primary: true,
-      render: (m) =>
-        m.order ? (
-          <OrderRef id={m.order.id} number={m.order.orderNumber} className="text-[var(--sys-primary)]" />
-        ) : (
-          <span className="text-[var(--sys-muted)]">—</span>
-        ),
-    },
-    {
-      key: 'expected',
-      label: 'المتوقَّع',
-      align: 'end',
-      render: (m) => (num(m.expectedAmount) === null ? '—' : <Money value={num(m.expectedAmount)!} currency={currency} />),
-    },
+    // «ليش مش حاط الطلب» — a line no order carries has no order to show: the column would be a dash on every row.
+    ...(noOrder
+      ? []
+      : [
+          {
+            key: 'order',
+            label: 'الطلب',
+            primary: true,
+            render: (m: Match) =>
+              m.order ? (
+                <OrderRef id={m.order.id} number={m.order.orderNumber} className="text-[var(--sys-primary)]" />
+              ) : (
+                <span className="text-[var(--sys-muted)]">—</span>
+              ),
+          },
+        ]),
+    // Nor has it a figure of ours: «المتوقَّع» and «الفرق» are what an ORDER says, and a line with no order has none.
+    ...(fromLine
+      ? []
+      : [
+          {
+            key: 'expected',
+            label: 'المتوقَّع',
+            align: 'end' as const,
+            render: (m: Match) =>
+              num(m.expectedAmount) === null ? '—' : <Money value={num(m.expectedAmount)!} currency={currency} />,
+          },
+        ]),
     // The order's OWN outcome word — «تم التسليم — بانتظار التحصيل», «مغلق» — read from the order, never stored.
     ...(unmentioned
       ? [
@@ -437,7 +480,43 @@ function Queue({
             render: (m: Match) => m.orderOutcome?.label ?? '—',
           },
         ]
-      : [
+      : fromLine
+        ? [
+            // What the company wrote about the money of the line, as it wrote it — read off the line, never worked out here.
+            {
+              key: 'collected',
+              label: 'المحصَّل من الزبون',
+              align: 'end' as const,
+              render: (m: Match) =>
+                num(m.statementLine?.collected) === null ? '—' : <Money value={num(m.statementLine?.collected)!} currency={currency} />,
+            },
+            {
+              key: 'stated',
+              label: 'الصافي في الكشف',
+              align: 'end' as const,
+              render: (m: Match) =>
+                num(m.statementAmount) === null ? '—' : <Money value={num(m.statementAmount)!} currency={currency} />,
+            },
+            {
+              key: 'fee',
+              label: 'أجرة الشركة',
+              align: 'end' as const,
+              // The row's own fee when the matching wrote one; otherwise the one on the company's line.
+              render: (m: Match) => {
+                const fee = num(m.statementFee) ?? num(m.statementLine?.fee);
+                return fee === null ? <span className="text-[var(--sys-muted)]">—</span> : <Money value={fee} currency={currency} />;
+              },
+            },
+          ]
+        : [
+          // What the customer paid, as the company says it: the figure the reason cell used to carry, now in a column of its own.
+          {
+            key: 'collected',
+            label: 'المحصَّل من الزبون',
+            align: 'end' as const,
+            render: (m: Match) =>
+              num(m.statementLine?.collected) === null ? '—' : <Money value={num(m.statementLine?.collected)!} currency={currency} />,
+          },
           {
             key: 'stated',
             label: 'في الكشف',
@@ -475,11 +554,11 @@ function Queue({
      * THE COMPANY'S OWN REASON, IN ITS OWN WORDS — LAID OUT.
      *
      * Its status word, read through the one phrase table — and, whatever the table says, the word itself,
-     * so an unknown word is shown rather than hidden. Under it the line's pieces under their own names: our
-     * order number as the company wrote it, the amount (and what it collected and kept, when its
-     * file said), then what the row says besides — the notes column, «15132 - العميل طلب التأجيل», is the
-     * reason, not decoration. The whole row as the company wrote it stays one press away («النص الأصلي»).
-     * (The barcode is not repeated here: it is the row's first column already.)
+     * so an unknown word is shown rather than hidden. Under it FOUR things, and only these (the owner, 8/11, shown the
+     * whole row dumped here: «هاي كلها لغي، بدي بس الأشياء الأساسية — العنوان والمحافظة ورقم الهاتف والحالة»): the
+     * phone, the governorate, the address and the status. The figures went to the columns beside it and the order number
+     * under the barcode; the whole row as the company wrote it stays one press away («النص الأصلي»), so nothing the
+     * company said is hidden behind the tidy version.
      */
     ...(reason
       ? [
@@ -488,7 +567,7 @@ function Queue({
             label: 'سبب الشركة بكلامها',
             // A sentence in the company's own words: the width of the card, not what the label left over.
             wide: true,
-            render: (m: Match) => <CourierReason m={m} currency={currency} />,
+            render: (m: Match) => <CourierReason m={m} />,
           },
         ]
       : []),
@@ -606,7 +685,7 @@ function Queue({
           },
         ]
       : []),
-    ...(unmentioned
+    ...(unmentioned || noOrder
       ? []
       : [
           {
@@ -661,54 +740,60 @@ function Queue({
   );
 }
 
-/** «سبب الشركة» as pieces under their own names, with the row as written one press away. Display only. */
-export function CourierReason({ m, currency }: { m: Pick<Match, 'courierWord' | 'statementLine'>; currency: string }) {
+/**
+ * «سبب الشركة» — WHAT THE COMPANY SAID ABOUT THE LINE, IN THE FOUR THINGS THE OWNER ASKED FOR.
+ *
+ * «هاي كلها لغي، بدي بس الأشياء الأساسية: العنوان والمحافظة ورقم الهاتف والحالة» (8/11), said of a cell that dumped every
+ * other cell of the row — the sender, the store, two dates as spreadsheet serial numbers, the payment method, the parcel's
+ * content. So the cell says: the company's status word (and what we make of it), the phone, the governorate, the address.
+ *
+ * The figures are not here (they are the columns beside it) and neither is the order number (under the barcode). Nothing is
+ * hidden by that: the whole row as the company wrote it stays one press away, behind «النص الأصلي».
+ *
+ * A line imported before the file's headings were kept (`StatementLine.receiver*`) has no governorate or address to show: it
+ * shows its status and the phone read from its row, and the rest is behind «النص الأصلي». Display only.
+ */
+export function CourierReason({ m }: { m: Pick<Match, 'courierWord' | 'statementLine'> }) {
   const word = m.courierWord;
   const line = m.statementLine;
-  if (!word && !m.statementLine?.rawRow) return <span className="text-[var(--sys-muted)]">—</span>;
-  const r = line ? readCourierRow(line) : null;
+  const e = line ? lineEssentials(line) : null;
+  // The row exactly as the company wrote it (`readCourierRow` hands it back whole, untouched).
+  const raw = m.statementLine?.rawRow ? readCourierRow(m.statementLine).raw : null;
+  const hasFacts = !!(e?.phone || e?.governorate || e?.address);
+  if (!word && !e?.status && !hasFacts && !raw) return <span className="text-[var(--sys-muted)]">—</span>;
   return (
     <span className="block">
-      {word && (
+      {word ? (
         <span className="block font-medium">
           «{word.phrase}» <span className="text-xs text-[var(--sys-muted-foreground)]">{word.label}</span>
         </span>
+      ) : (
+        e?.status && <span className="block text-xs text-[var(--sys-muted-foreground)]">الحالة: {e.status}</span>
       )}
-      {r && (
+      {hasFacts && (
         <span className="block text-xs text-[var(--sys-muted-foreground)]">
-          {r.orderRef && (
+          {e?.phone && (
             <span className="block">
-              رقم الطلب: <b dir="ltr">{r.orderRef}</b>
+              الهاتف: <b dir="ltr">{e.phone.shown}</b>
             </span>
           )}
-          {r.amount !== null && (
+          {e?.governorate && (
             <span className="block">
-              المبلغ: <Money value={r.amount} currency={currency} />
-              {r.collected !== null && (
-                <>
-                  {' '}· المحصَّل <Money value={r.collected} currency={currency} />
-                </>
-              )}
-              {r.fee !== null && (
-                <>
-                  {' '}· الأجرة <Money value={r.fee} currency={currency} />
-                </>
-              )}
+              المحافظة: <span dir="auto">{e.governorate}</span>
             </span>
           )}
-          {!word && r.status && <span className="block">الحالة: {r.status}</span>}
-          {r.rest.length > 0 && (
+          {e?.address && (
             <span className="block" dir="auto">
-              ملاحظة الشركة: {r.rest.join(' · ')}
+              العنوان: {e.address}
             </span>
           )}
         </span>
       )}
-      {r?.raw && (
+      {raw && (
         <details>
           <summary className="cursor-pointer text-xs text-[var(--sys-muted)]">النص الأصلي</summary>
           <span className="block text-xs text-[var(--sys-muted)]" dir="auto">
-            {r.raw}
+            {raw}
           </span>
         </details>
       )}

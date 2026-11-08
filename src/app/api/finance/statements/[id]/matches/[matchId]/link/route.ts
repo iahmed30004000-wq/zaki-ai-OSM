@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
-import { requirePermission } from '@/lib/authorization';
+import { can, requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { zodMessage } from '@/lib/zod-message';
@@ -52,13 +52,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     await requirePermission('settlement.review');
 
     const sp = new URL(req.url).searchParams;
+    // The order's ADDRESS is contact data: it is in a candidate only for somebody who holds the address-book key, as on the
+    // labels, returns and batch doors. (`settlement.review` is the accountant's key, and the accountant often has no other.)
+    const maySeeContact = can(user, 'customers.view');
     const found =
       sp.get('by') === 'phone'
         ? await findLinkCandidatesByLinePhone(db, {
             companyId, storeId, statementId: id, matchId, minorUnit: country.minorUnit, countryCode: country.code,
+            maySeeContact,
           })
         : await findLinkCandidates(db, {
             companyId, storeId, statementId: id, matchId, query: sp.get('q') ?? '', minorUnit: country.minorUnit,
+            countryCode: country.code, maySeeContact,
           });
 
     // Names and phones left the building; the tally is the person's, not this screen's.
