@@ -7,7 +7,6 @@ import { useToast } from '@/components/ui/Toast';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
-import { WORK_FIRST_BUTTON } from '@/lib/work-first';
 
 /**
  * «اسحب الطلب التالي» — THE PULL, WHERE THE AGENT WORKS.
@@ -107,11 +106,8 @@ export function useQueue(enabled: boolean) {
       await apiJson('/api/confirmation/pull', { method: 'POST' });
       return true;
     } catch (e) {
-      const body = (e as { data?: { code?: unknown; orderId?: unknown } } | null)?.data;
-      lastRefusal.current = {
-        code: typeof body?.code === 'string' ? body.code : '',
-        orderId: typeof body?.orderId === 'string' ? body.orderId : null,
-      };
+      const body = (e as { data?: { code?: string; orderId?: string } } | null)?.data;
+      lastRefusal.current = { code: body?.code ?? '', orderId: body?.orderId ?? null };
       toast.failed(e instanceof Error ? e.message : 'تعذر سحب طلب');
       void load();
       return false;
@@ -147,7 +143,7 @@ export function PullPanel({
    * (a dead button teaches nothing; the server is the enforcement) but says so, and a press OPENS that order through
    * `onShowOrder` instead of asking the server for another. Absent = the pull is as it was.
    */
-  workFirst?: { count: number; orderId: string; orderNumber: string } | null;
+  workFirst?: { count: number; first: { id: string } | null; button?: string | null } | null;
   /** A pull the server refused with `WORK_FIRST` anyway (a stale tab): the order it names, to open — the desk reads itself again first. */
   onWorkFirst?: (orderId: string) => void | Promise<void>;
 }) {
@@ -160,11 +156,11 @@ export function PullPanel({
   const notMyDesk = data.refusal?.code === 'NOT_YOUR_DESK';
 
   /** She owes calls AND this screen can take her to one of them: the button is a way to it, not a pull. */
-  const owes = !!workFirst && workFirst.count > 0 && !!onShowOrder;
+  const owes = !!workFirst?.count && !!workFirst.first && !!workFirst.button && !!onShowOrder;
 
   const doPull = async () => {
-    if (owes && workFirst) {
-      onShowOrder?.(workFirst.orderId);
+    if (owes && workFirst?.first) {
+      onShowOrder?.(workFirst.first.id);
       return;
     }
     if (await queue.pull()) {
@@ -189,7 +185,7 @@ export function PullPanel({
           : 'mt-6 px-8 py-3 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-semibold disabled:opacity-50'
       }
     >
-      {pulling ? 'جارٍ السحب…' : owes ? WORK_FIRST_BUTTON : 'اسحب الطلب التالي'}
+      {pulling ? 'جارٍ السحب…' : owes ? workFirst?.button : 'اسحب الطلب التالي'}
     </button>
   );
 

@@ -47,7 +47,7 @@ const POOL: QueueResponse = {
 
 let pool: QueueResponse;
 let pullFails: Error | null;
-const OWED = { count: 3, orderId: 'o-1', orderNumber: 'JO-1' };
+const OWED = { count: 3, first: { id: 'o-1' }, button: 'اسحب طلب جديد — خلّصي اللي فوق أول' };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -66,7 +66,7 @@ afterEach(cleanup);
 
 function Harness(props: {
   compact?: boolean;
-  workFirst?: typeof OWED | null;
+  workFirst?: { count: number; first: { id: string } | null; button?: string | null } | null;
   onShowOrder?: (id: string) => void;
   onWorkFirst?: (id: string) => void;
   onPulled?: () => void;
@@ -120,7 +120,7 @@ describe.each([
   it('with nothing owed it is the pull it was: the old label, the old greying, one POST', async () => {
     const onShowOrder = vi.fn();
     const onPulled = vi.fn();
-    render(<Harness compact={compact} workFirst={{ ...OWED, count: 0 }} onShowOrder={onShowOrder} onPulled={onPulled} />);
+    render(<Harness compact={compact} workFirst={{ count: 0, first: null, button: null }} onShowOrder={onShowOrder} onPulled={onPulled} />);
     const button = (await screen.findByRole('button', { name: 'اسحب الطلب التالي' })) as HTMLButtonElement;
     expect(button.disabled).toBe(false);
     fireEvent.click(button);
@@ -133,6 +133,11 @@ describe.each([
     pool = { ...POOL, waiting: 0 };
     render(<Harness compact={compact} workFirst={null} onShowOrder={vi.fn()} />);
     expect(((await screen.findByRole('button', { name: 'اسحب الطلب التالي' })) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('NEGATIVE: an older server that sends no label for the button leaves the pull as it was — never an empty button', async () => {
+    render(<Harness compact={compact} workFirst={{ count: 2, first: { id: 'o-1' } }} onShowOrder={vi.fn()} />);
+    expect(await screen.findByRole('button', { name: 'اسحب الطلب التالي' })).toBeTruthy();
   });
 
   it('NEGATIVE: on a page that cannot take her to an order (no way to show one) the button is the pull, owed or not', async () => {

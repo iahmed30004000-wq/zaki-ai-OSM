@@ -18,7 +18,19 @@ import { DESK_NOT_FOUND, DESK_WATCH_REFUSAL, mayWatchDesks, watchedAgent } from 
 import type { BusinessCalendar } from '@/lib/business-calendar';
 import { countedRounds, roundsOn, workClock, type AttemptFact, type WorkClock } from '@/lib/no-answer-rounds';
 import { roundsSwitch } from '@/lib/no-answer-rounds-switch';
-import { deskTab, dueContext, dueLabel, dueSentence, dueVerdict, oldestFirst, summariseDue, verdictFromCount, type DueVerdict } from '@/lib/work-first';
+import {
+  CAUGHT_UP_SENTENCE,
+  WORK_FIRST_BUTTON,
+  deskTab,
+  dueContext,
+  dueLabel,
+  dueSentence,
+  dueVerdict,
+  oldestFirst,
+  summariseDue,
+  verdictFromCount,
+  type DueVerdict,
+} from '@/lib/work-first';
 import { companySendsFor } from '@/lib/whatsapp/after-no-answer';
 import { waNumber } from '@/lib/message-templates';
 import { deskCallKey } from '@/lib/call-helper/desk';
@@ -438,7 +450,13 @@ export async function GET(request: Request) {
        * «الشغل أول» — how many calls she owes right now, and the oldest of them: the banner says it and the pull button opens
        * it. Counted from the same verdicts as the tab below, so the number and the list cannot differ.
        */
-      due: { ...owedSummary, sentence: owedSummary.count > 0 ? dueSentence(owedSummary.count) : null },
+      // …and the words of that state, written here: the banner («عندك N طلبات…», or «خلّصتي. اسحبي التالي» — the screen shows
+      // the second only when a pull is possible) and the pull button's label while she owes. None of it is client JavaScript.
+      due: {
+        ...owedSummary,
+        sentence: owedSummary.count > 0 ? dueSentence(owedSummary.count) : CAUGHT_UP_SENTENCE,
+        button: owedSummary.count > 0 ? WORK_FIRST_BUTTON : null,
+      },
       /** «اتصلي هلّق» — a call is owed on it right now (a new pull, a «لا يرد» whose round came, a date that arrived), and the orders that need a decision. */
       work: held.filter((o) => tabOf(o) === 'work').sort(rounds ? dueFirst : () => 0),
       /**

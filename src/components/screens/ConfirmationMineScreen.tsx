@@ -45,7 +45,6 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { arDate } from '@/lib/format';
 import { Money } from '@/components/ui/Money';
 import { cardTone, noAnswerWords, roundWords } from '@/lib/no-answer-tone';
-import { CAUGHT_UP_SENTENCE } from '@/lib/work-first';
 import { POST_ORDER_ADDITION_AR } from '@/lib/post-order-offer-copy';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { useIsPhone } from '@/hooks/useIsPhone';
@@ -206,7 +205,7 @@ interface MineResponse {
   /** «نظام الجولات» is on: the counter is a round («جولة n من 3»). */
   rounds?: boolean;
   /** «الشغل أول»: how many calls she owes right now, the oldest of them, and the banner's sentence — the banner and the pull button. */
-  due?: { count: number; first: { id: string; orderNumber: string } | null; sentence?: string | null };
+  due?: { count: number; first: { id: string; orderNumber: string } | null; sentence?: string | null; button?: string | null };
   /** The country's calling code («963») — WhatsApp needs the number in full. */
   dialCode?: string | null;
   /** «ابعت من رقم الشركة» is offered on the call sheet for this country (`after-no-answer.ts`). Absent = her own WhatsApp. */
@@ -311,11 +310,6 @@ const askedOrderId = (value: string | null): string | null =>
 /** The DOM id of an order's card on her desk — what the refusal's link scrolls to. */
 const deskCardId = (orderId: string) => `desk-order-${orderId}`;
 
-/** Which working tab holds an order, from the desk as the server last sent it — null when no card of hers does. */
-function tabHolding(desk: Pick<MineResponse, 'work' | 'noAnswer' | 'closedToday'>, orderId: string): 'work' | 'noAnswer' | null {
-  const holds = (list: { id: string }[]) => list.some((o) => o.id === orderId);
-  return holds(desk.work) ? 'work' : holds(desk.noAnswer) || holds(desk.closedToday) ? 'noAnswer' : null;
-}
 
 /**
  * WHERE THE ORDER CAME FROM, IN THE WORDS THE AGENT USES.
@@ -955,7 +949,8 @@ export function ConfirmationMineScreen() {
    * no card of hers holds it. `desk` is the desk as it is NOW (a reload's answer), so a card that has only just arrived is found.
    */
   const openCard = (desk: Pick<MineResponse, 'work' | 'noAnswer' | 'closedToday'> | null, orderId: string) => {
-    const wanted = desk ? tabHolding(desk, orderId) : null;
+    const holds = (list: { id: string }[]) => list.some((o) => o.id === orderId);
+    const wanted = !desk ? null : holds(desk.work) ? 'work' : holds(desk.noAnswer) || holds(desk.closedToday) ? 'noAnswer' : null;
     if (!wanted) {
       setOpenOrderId(orderId);
       return;
@@ -973,29 +968,23 @@ export function ConfirmationMineScreen() {
    */
   const callNext = async () => {
     await outbox.sendNow();
-    const fresh = await load();
-    const owed = fresh?.due && fresh.due.count > 0 ? fresh.due.first : null;
-    if (fresh && owed) {
-      endCall();
-      openCard(fresh, owed.id);
-      return;
-    }
-    if (await queue.pull()) {
-      await queue.reload();
-      await load();
-      // What she has just pulled is a call she owes: it is under «اتصلي هلّق».
-      setTab('work');
-      setFindOpen('');
-    } else {
-      const refused = queue.lastRefusal?.current;
-      if (refused?.code === 'WORK_FIRST' && refused.orderId) {
-        const again = await load();
-        endCall();
-        openCard(again, refused.orderId);
-        return;
+    let desk = await load();
+    let owed = desk?.due?.count ? desk.due.first?.id : undefined;
+    if (!owed) {
+      const refused = (await queue.pull()) ? null : queue.lastRefusal?.current;
+      if (refused === null) {
+        await queue.reload();
+        await load();
+        // What she has just pulled is a call she owes: it is under «اتصلي هلّق».
+        setTab('work');
+        setFindOpen('');
+      } else if (refused?.code === 'WORK_FIRST') {
+        owed = refused.orderId ?? undefined;
+        desk = await load();
       }
     }
     endCall();
+    if (owed) openCard(desk, owed);
   };
 
   const submitIssue = (order: OrderRow, value: { reason: string; note: string }) => {
@@ -1128,10 +1117,7 @@ export function ConfirmationMineScreen() {
   /** The refusal's link: down to the order's card on the tab that holds it, or its window if no card does. */
   const showOrder = (orderId: string) => openCard(data, orderId);
   /** «الشغل أول»: the calls she owes and the oldest of them, as the desk says it — what the banner and the pull button show. */
-  const owedNow =
-    data.due && data.due.count > 0 && data.due.first
-      ? { count: data.due.count, orderId: data.due.first.id, orderNumber: data.due.first.orderNumber }
-      : null;
+
 
   const rows: { order: OrderRow; closed?: boolean }[] =
     tab === 'work'
@@ -1194,14 +1180,15 @@ export function ConfirmationMineScreen() {
         owed on a new pull, on a «لا يرد» whose round came, or on a date that arrived. With none owed and a pull possible it says so.
         Her own desk only: on a colleague's desk it would be her sentence about somebody else's orders.
       */}
-      {!readOnly && data.due && data.due.count > 0 && (
-        <p className="text-sm text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg p-3">
+      {!readOnly && data.due && (data.due.count > 0 || (queue.data?.canPull && queue.data.waiting > 0)) && (
+        <p
+          className={`text-sm border rounded-lg p-3 ${
+            data.due.count > 0
+              ? 'text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border-[var(--sys-warning)]/30'
+              : 'text-[var(--sys-success)] bg-[var(--sys-success-soft)] border-[var(--sys-success)]/30'
+          }`}
+        >
           {data.due.sentence}
-        </p>
-      )}
-      {!readOnly && data.due && data.due.count === 0 && queue.data?.canPull && queue.data.waiting > 0 && (
-        <p className="text-sm text-[var(--sys-success)] bg-[var(--sys-success-soft)] border border-[var(--sys-success)]/30 rounded-lg p-3">
-          {CAUGHT_UP_SENTENCE}
         </p>
       )}
       {canPull && !readOnly && (
@@ -1215,7 +1202,7 @@ export function ConfirmationMineScreen() {
             setFindOpen('');
           }}
           onShowOrder={showOrder}
-          workFirst={owedNow}
+          workFirst={data.due}
           onWorkFirst={async (orderId) => openCard(await load(), orderId)}
         />
       )}
@@ -1345,7 +1332,7 @@ export function ConfirmationMineScreen() {
                 /* Orders she holds, none of them due: they are under «بانتظار» — «no order in your hands» would be false. */
                 <EmptyState
                   title="ما في طلب لازم ترني عليه هلّق"
-                  why="باقي طلباتك بتنتظر وقتها في «بانتظار» — كل واحد بيطلع هون لما يحين."
+                  why="الباقي بينتظر وقته في «بانتظار»."
                 />
               ) : (
                 <EmptyState

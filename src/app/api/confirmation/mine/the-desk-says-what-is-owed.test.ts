@@ -159,7 +159,8 @@ describe('1 + 2 · the tabs come from the verdict', () => {
     const again = await desk();
     expect(again.work).toHaveLength(1);
     expect(again.work[0]).toMatchObject({ id: 'clean', dueNow: false, dueAt: null });
-    expect(again.due).toEqual({ count: 0, first: null, sentence: null });
+    // Nothing owed: the caught-up line (the screen shows it only when a pull is possible) and no button label.
+    expect(again.due).toEqual({ count: 0, first: null, sentence: 'خلّصتي. اسحبي التالي', button: null });
     expect(again.work[0].dueWords).toBeNull();
   });
 
@@ -173,7 +174,13 @@ describe('1 + 2 · the tabs come from the verdict', () => {
 describe('3 · what the response says about it', () => {
   it('how many she owes, the oldest, and the banner’s sentence — what the banner and the button say', async () => {
     const data = await desk();
-    expect(data.due).toEqual({ count: 3, first: { id: 'promise', orderNumber: 'ORD-promise' }, sentence: 'عندك 3 طلبات لازم ترني عليهم هلّق' });
+    expect(data.due).toEqual({
+      count: 3,
+      first: { id: 'promise', orderNumber: 'ORD-promise' },
+      sentence: 'عندك 3 طلبات لازم ترني عليهم هلّق',
+      // The pull button's label while she owes: written here, so it is no client JavaScript.
+      button: 'اسحب طلب جديد — خلّصي اللي فوق أول',
+    });
   });
 
   it('«جاهز الساعة» is the store’s clock (the country’s timezone, not the machine’s — work-first.test.ts holds three zones apart)', async () => {
@@ -241,7 +248,12 @@ describe('5 · «نظام الجولات» off — today’s tabs', () => {
 
   it('only a new pull is owed (case 1 is today’s rule: it blocks the pull); no round, no promise, no time', async () => {
     const data = await desk();
-    expect(data.due).toEqual({ count: 1, first: { id: 'fresh', orderNumber: 'ORD-fresh' }, sentence: 'عندك طلب واحد لازم ترني عليه هلّق' });
+    expect(data.due).toEqual({
+      count: 1,
+      first: { id: 'fresh', orderNumber: 'ORD-fresh' },
+      sentence: 'عندك طلب واحد لازم ترني عليه هلّق',
+      button: 'اسحب طلب جديد — خلّصي اللي فوق أول',
+    });
     expect(data.work.map((o: { dueWords: string | null }) => o.dueWords)).toEqual(['جديد — سحبتيه هلّق', null]);
     expect(data.work.map((o: { dueNow: boolean }) => o.dueNow)).toEqual([true, false]);
     expect(data.work[0].dueReason).toBe('NEW');

@@ -126,7 +126,7 @@ const SERVER_NOW = '2026-11-02T11:00:00.000Z';
 const desk = (over: Row = {}) => ({
   leadDays: 2, waitingLater: 0, noAnswerLimit: 3, rounds: true, serverNow: SERVER_NOW,
   work: [], noAnswer: [], closedToday: [],
-  due: { count: 0, first: null, sentence: null },
+  due: { count: 0, first: null, sentence: 'خلّصتي. اسحبي التالي', button: null },
   confirmed: { day: '', q: '', page: 1, pageSize: 25, total: 0, pages: 1, rows: [] },
   ...over,
 });
@@ -136,8 +136,8 @@ const deskOwing = (works: Row[], waiting: Row[] = [], over: Row = {}) =>
     work: works,
     noAnswer: waiting,
     due: works.length
-      ? { count: works.length, first: { id: works[0].id, orderNumber: works[0].orderNumber }, sentence: dueSentence(works.length) }
-      : { count: 0, first: null, sentence: null },
+      ? { count: works.length, first: { id: works[0].id, orderNumber: works[0].orderNumber }, sentence: dueSentence(works.length), button: 'اسحب طلب جديد — خلّصي اللي فوق أول' }
+      : { count: 0, first: null, sentence: 'خلّصتي. اسحبي التالي', button: null },
     ...over,
   });
 const pool = (over: Row = {}) => ({
@@ -399,5 +399,24 @@ describe('5 · a pull the server refuses «الشغل أول» (a stale tab)', (
     await waitFor(() => expect(toast.failed).toHaveBeenCalledWith('بلغت الحد الأقصى (500 طلب لديك).'));
     expect(scrolled).toEqual([]);
     expect(screen.queryByTestId('order-window')).toBeNull();
+  });
+});
+
+/**
+ * THE WORDS ARE THE SERVER'S — AND THAT IS HELD WITHOUT A BUILD.
+ *
+ * «طلباتي» is the agents' first-load JavaScript, held under a ceiling gzipped (`staff-confirmation-first-load.test.ts`) with about
+ * a kilobyte to spare. The banner, the caught-up line, the pull button's label and each card's line are written by the server
+ * (`work-first.ts`, `/api/confirmation/mine`); the screen prints what it is sent. The day the screen imports the wording helpers
+ * again (a formatter, a sentence-builder), every agent's phone downloads them — and the budget step, which needs a build, is the
+ * one that says so, late.
+ */
+describe('the screen ships no wording logic', () => {
+  it('neither the desk nor the pull panel imports the wording helpers (types are erased and cost nothing)', async () => {
+    const { repoFile, stripComments } = await import('@/lib/guard-source');
+    for (const file of ['src/components/screens/ConfirmationMineScreen.tsx', 'src/components/confirmation/PullPanel.tsx']) {
+      const code = stripComments(repoFile(file));
+      expect(code, file).not.toMatch(/import (?!type)[^;]*from '@\/lib\/work-first'/);
+    }
   });
 });
