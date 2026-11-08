@@ -10,7 +10,7 @@ import { TWIN_CONFIRM_ACK_ACTION } from './confirmed-twin';
 import { TWIN_HELD_ACTION } from './twins-follow-the-pull';
 import { DUE_RELEASE_REASON, REPULL_RELEASE_REASON, ROUND_RELEASE_REASON } from './no-answer-rounds';
 import { CUSTOMER_CALLED_BACK_REASON, TAKEN_ON_THE_LINE_REASON } from './customer-on-the-line';
-import { NINETY_MINUTE_RELEASE_REASON, SYSTEM_ACTOR_AR, isAutomaticRelease } from './auto-release';
+import { MANAGER_RETURNED_REASON, NINETY_MINUTE_RELEASE_REASON, SYSTEM_ACTOR_AR, isAutomaticRelease, managerReturnedBy } from './auto-release';
 import { POST_ORDER_ADDITION_AR } from './post-order-offer-copy';
 import { COURIER_SAID, courierSaidTitle } from './couriers/courier-said';
 
@@ -121,6 +121,9 @@ const CLAIM_REASON_AR: Record<string, string> = {
   [ROUND_RELEASE_REASON]: 'تحرير تلقائي — مرّت مدة التحرير على جولة بلا ردّ، ورجع للطابور',
   [REPULL_RELEASE_REASON]: 'تحرير تلقائي — انسحب من جديد وما انسجّلت عليه محاولة خلال 90 دقيقة عمل',
   [DUE_RELEASE_REASON]: 'تحرير تلقائي — مرّت 3 ساعات عمل على موعد الطلب وما انسجّلت عليه محاولة بعد الموعد، ورجع للطابور',
+  // «أرجِع «لا يرد» للطابور» (return-no-answer-pile.ts): a supervisor let go of her pile. This is the fallback for a line that
+  // does not say who (`managerReturnWords` below names the person when it does).
+  [MANAGER_RETURNED_REASON]: 'أرجعها مشرف للطابور — ما حدا وصل لزبونها',
   LOCK_EXPIRED: 'انتهت مدة القفل',
   REASSIGNED: 'إعادة إسناد',
 };
@@ -308,6 +311,28 @@ function onTheLineWords<T extends { userId: string; reason: string | null; metad
   return row;
 }
 
+/**
+ * «أرجِع «لا يرد» للطابور» — A SUPERVISOR'S RETURN IS THE SUPERVISOR'S (return-no-answer-pile.ts).
+ *
+ * The line is written in the HOLDER's name (`userId`: the column cannot be empty), so drawn as it stands it reads as though she
+ * had let her own order go — the very misreading `auto-release.ts` closed for the system's releases. Its metadata names who
+ * pressed: the actor becomes that person, and the sentence says it («أرجعها <name>»). Nobody to name (a line without a readable
+ * `by`) keeps the static label above and the holder as the actor.
+ *
+ * The name the line was written with is the fallback: an account hard-deleted since is not in the users read, and the history
+ * must still say who.
+ */
+function managerReturnWords<T extends { action: string; userId: string; reason: string | null; metadata: string | null }>(
+  row: T,
+  nameOf: Map<string, string>
+): T {
+  const by = managerReturnedBy(row);
+  if (!by) return row;
+  const name = nameOf.get(by.id) ?? by.name;
+  if (name && !nameOf.has(by.id)) nameOf.set(by.id, name);
+  return { ...row, userId: by.id, ...(name ? { reason: `أرجعها ${name} للطابور — ما حدا وصل لزبونها` } : {}) };
+}
+
 export async function orderTimeline(tx: Tx, orderId: string): Promise<TimelineEvent[]> {
   const [statusLogs, claims, contacts, callLogs, deliveries, notes, activities, changeRequests, issues] = await Promise.all([
     tx.orderStatusLog.findMany({ where: { orderId }, orderBy: { createdAt: 'asc' } }),
@@ -326,6 +351,11 @@ export async function orderTimeline(tx: Tx, orderId: string): Promise<TimelineEv
   for (const row of claims) actorIds.add(row.userId);
   // «الزبون على الخط»: the colleague an order was taken from, and the one who took it, are named in the two lines of a take.
   for (const row of claims) for (const id of Object.values(onTheLinePeople(row))) actorIds.add(id);
+  // «أرجِع «لا يرد» للطابور»: the supervisor who pressed it (the line itself is in the holder's name).
+  for (const row of claims) {
+    const by = managerReturnedBy(row);
+    if (by) actorIds.add(by.id);
+  }
   for (const row of contacts) actorIds.add(row.employeeId);
   for (const row of callLogs) if (row.moderatorId) actorIds.add(row.moderatorId);
   for (const row of notes) if (row.authorId) actorIds.add(row.authorId);
@@ -337,7 +367,7 @@ export async function orderTimeline(tx: Tx, orderId: string): Promise<TimelineEv
     ? await tx.user.findMany({ where: { id: { in: [...actorIds] } }, select: { id: true, name: true } })
     : [];
   const nameOf = new Map(users.map((u) => [u.id, u.name]));
-  const claimRows = claims.map((row) => onTheLineWords(row, nameOf));
+  const claimRows = claims.map((row) => managerReturnWords(onTheLineWords(row, nameOf), nameOf));
 
   const CLAIM_LABEL: Record<string, string> = {
     CLAIMED: 'استلام الطلب',
