@@ -25,6 +25,7 @@ const { db } = vi.hoisted(() => ({
     orderClaimHistory: { findMany: vi.fn() },
     orderContactAttempt: { findMany: vi.fn() },
     callLog: { findMany: vi.fn() },
+    callHelperReading: { findMany: vi.fn() },
     deliveryAttempt: { findMany: vi.fn() },
     orderNote: { findMany: vi.fn() },
     orderActivity: { findMany: vi.fn() },
@@ -58,7 +59,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   for (const table of [
     db.orderStatusLog, db.orderClaimHistory, db.orderContactAttempt, db.deliveryAttempt,
-    db.orderNote, db.orderActivity, db.orderChangeRequest, db.orderIssue, db.callLog, db.attendanceMark,
+    db.orderNote, db.orderActivity, db.orderChangeRequest, db.orderIssue, db.callLog, db.callHelperReading, db.attendanceMark,
   ]) {
     table.findMany.mockResolvedValue([]);
   }
