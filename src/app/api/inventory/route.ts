@@ -206,10 +206,20 @@ class UncostedSurplus extends Error {}
  *              that is actually bought; a made one goes through a production
  *              run, where its costs are broken down.
  *
- *   recount  — the shelf disagrees with the system. You enter what you
- *              COUNTED, not a difference, and the correction is derived.
+ *   recount  — what is AVAILABLE disagrees with the system. You enter what
+ *              you COUNTED, not a difference, and the correction is derived.
  *              Typing a delta means doing the subtraction in your head at
  *              the exact moment you are already unsure of the number.
+ *
+ *              THE COUNT IS OF THE AVAILABLE, NOT OF «ON THE SHELF» (the
+ *              owner, 8/11: «الجرد بدي اياه للمتاح وليس على الرف»). The shelf
+ *              figure is what the batches hold, and the batches still hold
+ *              the units of an order that has left in a courier's bag but
+ *              not been delivered — nobody can count those on the shelf.
+ *              What a person standing at the shelf counts is the free stock:
+ *              the available, shelf minus what open orders hold
+ *              (`reservedElsewhere`). The correction moves the shelf by the
+ *              difference, so the available afterwards is what was counted.
  */
 export async function POST(req: Request) {
   try {
@@ -238,9 +248,9 @@ export async function POST(req: Request) {
         z.object({
           action: z.literal('recount'),
           productId: z.string().min(10).max(64),
-          /** What was physically counted on the shelf. */
+          /** The AVAILABLE stock that was physically counted — what is free, not what open orders already hold. */
           countedQuantity: count(1_000_000),
-          /** Why the shelf and the system disagree. Never optional. */
+          /** Why the count and the system disagree. Never optional. */
           reason: z.string().min(3).max(200),
         }),
       ])
@@ -324,7 +334,30 @@ export async function POST(req: Request) {
 
     // ── recount ──
     const onHand = await onHandTotal(db, companyId, product.id);
-    const difference = input.countedQuantity - onHand;
+    // What open orders already hold: the very figure the balances screen prints as «محجوز», so the two cannot disagree.
+    const reserved = await reservedElsewhere(db, companyId, product.id, undefined, storeId);
+    const available = onHand - reserved;
+
+    /*
+     * A SHELF THAT HOLDS LESS THAN WHAT IS PROMISED CANNOT BE COUNTED BY ITS AVAILABLE.
+     *
+     * With `reserved` above `onHand` the available is negative, and `counted − available` would add units to the shelf to
+     * cover the promises — stock that nobody found, entering at a cost. That is a reservation without goods, a fact about the
+     * open orders, not a count. It is refused by name; goods really received go through «استلام».
+     */
+    if (available < 0) {
+      return NextResponse.json(
+        {
+          error:
+            `«${product.name}»: المحجوز لطلبات مفتوحة (${reserved}) أكبر مما على الرف (${onHand}). ` +
+            'صحّح الطلبات المحجوزة أوّلاً، ثمّ اجرد المتاح.',
+          code: 'RESERVED_EXCEEDS_SHELF',
+        },
+        { status: 409 }
+      );
+    }
+
+    const difference = input.countedQuantity - available;
 
     if (difference === 0) {
       return NextResponse.json({
@@ -402,7 +435,7 @@ export async function POST(req: Request) {
           type: 'MANUAL_ADJUSTMENT',
           quantity: difference,
           balanceAfter: await onHandTotal(tx, companyId, product.id),
-          reason: `جرد: عُدّ ${input.countedQuantity} والنظام ${onHand} — ${input.reason.trim()}`,
+          reason: `جرد المتاح: عُدّ ${input.countedQuantity} والنظام ${available} (الرف ${onHand}، محجوز ${reserved}) — ${input.reason.trim()}`,
           createdById: user.id,
         },
       });
@@ -414,8 +447,8 @@ export async function POST(req: Request) {
       action: 'STOCK_RECOUNTED',
       entity: 'Product',
       entityId: product.id,
-      previousData: { onHand },
-      newData: { counted: input.countedQuantity, difference, reason: input.reason },
+      previousData: { onHand, reserved, available },
+      newData: { counted: input.countedQuantity, basis: 'AVAILABLE', difference, reason: input.reason },
     });
 
     return NextResponse.json({

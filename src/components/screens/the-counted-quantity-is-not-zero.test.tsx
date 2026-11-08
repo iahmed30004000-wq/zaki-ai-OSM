@@ -110,7 +110,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const COUNTED = 'الكمية المعدودة *';
+const COUNTED = 'الكمية المتاحة المعدودة *';
 const REASON = 'سبب الفرق *';
 const box = () => screen.getByLabelText(COUNTED) as HTMLInputElement;
 const save = () => screen.getByRole('button', { name: 'سجّل الجرد' }) as HTMLButtonElement;
@@ -204,6 +204,67 @@ describe('a quantity that was typed', () => {
     await user.type(screen.getByLabelText(REASON), 'جرد مطابق');
     expect(save().disabled).toBe(true);
     expect(screen.getByText(/لن يُسجَّل شيء/)).toBeTruthy();
+  });
+});
+
+/**
+ * «الجرد بدي اياه للمتاح وليس على الرف» (the owner, 8/11): the system figure the count is compared with is the AVAILABLE the server
+ * sends (`health.available` = the shelf less what open orders hold), shown with the shelf and the held units beside it so the
+ * counter can see how it is made — never a subtraction made on this screen.
+ */
+describe('the count is of the available, not of the shelf', () => {
+  const HELD = { ...PRODUCT, remaining: 480, reserved: 100, health: { ...HEALTH, available: 380 } };
+
+  const serveHeld = () =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const method = init?.method ?? 'GET';
+        if (method !== 'GET') {
+          sent.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : null });
+          return { ok: true, json: async () => ({ success: true }) } as any;
+        }
+        return { ok: true, json: async () => ({ stockSummary: [HELD], alerts: [], ledgerDays: 13 }) } as any;
+      })
+    );
+
+  it('«المتاح في النظام» is the available the server sent — not the shelf — and the shelf and the held units stand beside it', async () => {
+    serveHeld();
+    const user = userEvent.setup();
+    await openCount(user);
+    const system = screen.getByText('المتاح في النظام').nextElementSibling as HTMLElement;
+    expect(system.textContent).toBe('380');
+    expect(screen.getByText(/على الرف 480 · محجوز 100/)).toBeTruthy();
+    // the old label is gone from the dialog
+    expect(screen.queryByText('رصيد النظام')).toBeNull();
+  });
+
+  it('the difference is against the available: 400 counted is +20 (the shelf figure would have said −80)', async () => {
+    serveHeld();
+    const user = userEvent.setup();
+    await openCount(user);
+    await user.type(box(), '400');
+    expect(screen.getByText('+20')).toBeTruthy();
+    expect(screen.queryByText('-80')).toBeNull();
+  });
+
+  it('a count equal to the available agrees: nothing to record, nothing sent', async () => {
+    serveHeld();
+    const user = userEvent.setup();
+    await openCount(user);
+    await user.type(box(), '380');
+    await user.type(screen.getByLabelText(REASON), 'جرد مطابق');
+    expect(save().disabled).toBe(true);
+    expect(screen.getByText(/لن يُسجَّل شيء/)).toBeTruthy();
+    expect(posts()).toHaveLength(0);
+  });
+
+  it('says to count what can be sold — without the units held for open orders, ones out with a courier included', async () => {
+    serveHeld();
+    const user = userEvent.setup();
+    await openCount(user);
+    expect(screen.getByText(/عُدَّ ما يمكن بيعه فقط/)).toBeTruthy();
+    expect(screen.getByText(/لم تُسلَّم بعد/)).toBeTruthy();
   });
 });
 

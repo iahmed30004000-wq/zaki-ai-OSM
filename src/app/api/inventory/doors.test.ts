@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * remaining two shut against the wrong product.
  */
 
-const { db, requireContext, requirePermission, logAudit, receiveStock, drawDownStock, onHandTotal } =
+const { db, requireContext, requirePermission, logAudit, receiveStock, drawDownStock, onHandTotal, reservedElsewhere } =
   vi.hoisted(() => ({
     db: {
       product: { findFirst: vi.fn() },
@@ -25,12 +25,14 @@ const { db, requireContext, requirePermission, logAudit, receiveStock, drawDownS
     receiveStock: vi.fn(),
     drawDownStock: vi.fn(),
     onHandTotal: vi.fn(),
+    reservedElsewhere: vi.fn(),
   }));
 
 vi.mock('@/lib/db', () => ({ db }));
 vi.mock('@/lib/geo-context', () => ({ requireContext: (...a: unknown[]) => requireContext(...a) }));
 vi.mock('@/lib/authorization', () => ({ requirePermission: (...a: unknown[]) => requirePermission(...a) }));
 vi.mock('@/lib/audit', () => ({ logAudit: (...a: unknown[]) => logAudit(...a) }));
+vi.mock('@/lib/reservation', () => ({ reservedElsewhere: (...a: unknown[]) => reservedElsewhere(...a) }));
 vi.mock('@/lib/receiving', () => ({
   receiveStock: (...a: unknown[]) => receiveStock(...a),
   drawDownStock: (...a: unknown[]) => drawDownStock(...a),
@@ -59,6 +61,8 @@ beforeEach(() => {
   db.productionBatch.findFirst.mockResolvedValue({ costPerUnit: 6 });
   receiveStock.mockResolvedValue({ batch: { batchNumber: 'RCV-1' }, movement: {}, balanceAfter: 10 });
   onHandTotal.mockResolvedValue(10);
+  // Nothing held by open orders unless a test says so: the available is then the shelf, as it was.
+  reservedElsewhere.mockResolvedValue(0);
 });
 
 describe('receiving', () => {

@@ -210,17 +210,17 @@ describe('«أرصدة المخزون»', () => {
     expect(chip.className).toContain('min-h-11');
   });
 
-  it('the count dialog: PHONE «رصيد النظام» stands at the height of the box beside it; DESK keeps its padding', async () => {
+  it('the count dialog: PHONE «المتاح في النظام» stands at the height of the box beside it; DESK keeps its padding', async () => {
     await draw(2);
     fireEvent.click(screen.getAllByRole('button', { name: /جرد مخزون/ })[0]);
-    const box = within(screen.getByRole('dialog')).getByText('رصيد النظام').nextElementSibling as HTMLElement;
+    const box = within(screen.getByRole('dialog')).getByText('المتاح في النظام').nextElementSibling as HTMLElement;
     expect(box.className).toContain('h-11');
     expect(box.className).not.toContain('py-2');
     cleanup();
     phone.value = false;
     await draw(2);
     fireEvent.click(screen.getAllByRole('button', { name: /جرد مخزون/ })[0]);
-    const desk = within(screen.getByRole('dialog')).getByText('رصيد النظام').nextElementSibling as HTMLElement;
+    const desk = within(screen.getByRole('dialog')).getByText('المتاح في النظام').nextElementSibling as HTMLElement;
     expect(desk.className).toContain('py-2');
     expect(desk.className).not.toContain('h-11');
   });

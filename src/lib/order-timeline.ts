@@ -13,6 +13,7 @@ import { CUSTOMER_CALLED_BACK_REASON, TAKEN_ON_THE_LINE_REASON } from './custome
 import { MANAGER_RETURNED_REASON, NINETY_MINUTE_RELEASE_REASON, SYSTEM_ACTOR_AR, isAutomaticRelease, managerReturnedBy } from './auto-release';
 import { POST_ORDER_ADDITION_AR } from './post-order-offer-copy';
 import { COURIER_SAID, courierSaidTitle } from './couriers/courier-said';
+import { readingLine } from './call-outcome';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -24,6 +25,11 @@ type Tx = Prisma.TransactionClient | typeof db;
  * notes. Reading only one of them is how a screen ends up showing a history
  * that disagrees with the order's actual state, so the timeline merges all
  * of them and sorts once.
+ *
+ * «مساعد الاتصال» adds one more line: what the phone's own call log said about a
+ * call she placed from «طلباتي» — picked up and for how long, or rang and
+ * nobody answered. It is EVIDENCE and never an attempt: it is only read here,
+ * and the attempt count and the rounds still come from what a person pressed.
  */
 
 export type TimelineKind =
@@ -197,6 +203,9 @@ const ACTIVITY_AR: Record<string, string> = {
   ...NOT_MENTIONED_ACTIVITY_AR,
 };
 
+/** Under the words of a helper reading: where it comes from, and that it is not a logged attempt. */
+const HELPER_READING_SOURCE_AR = 'من سجلّ مكالمات الهاتف — لا تُحسب محاولة';
+
 const ar = (table: Record<string, string>, key: string | null | undefined): string =>
   (key && table[key]) || key || '—';
 
@@ -334,11 +343,12 @@ function managerReturnWords<T extends { action: string; userId: string; reason: 
 }
 
 export async function orderTimeline(tx: Tx, orderId: string): Promise<TimelineEvent[]> {
-  const [statusLogs, claims, contacts, callLogs, deliveries, notes, activities, changeRequests, issues] = await Promise.all([
+  const [statusLogs, claims, contacts, callLogs, readings, deliveries, notes, activities, changeRequests, issues] = await Promise.all([
     tx.orderStatusLog.findMany({ where: { orderId }, orderBy: { createdAt: 'asc' } }),
     tx.orderClaimHistory.findMany({ where: { orderId }, orderBy: { createdAt: 'asc' } }),
     tx.orderContactAttempt.findMany({ where: { orderId }, orderBy: { createdAt: 'asc' } }),
     tx.callLog.findMany({ where: { orderId }, orderBy: { createdAt: 'asc' } }),
+    tx.callHelperReading.findMany({ where: { orderId }, orderBy: { startedAt: 'asc' } }),
     tx.deliveryAttempt.findMany({ where: { orderId }, orderBy: { createdAt: 'asc' } }),
     tx.orderNote.findMany({ where: { orderId }, orderBy: { createdAt: 'asc' } }),
     tx.orderActivity.findMany({ where: { orderId }, orderBy: { createdAt: 'asc' } }),
@@ -358,6 +368,7 @@ export async function orderTimeline(tx: Tx, orderId: string): Promise<TimelineEv
   }
   for (const row of contacts) actorIds.add(row.employeeId);
   for (const row of callLogs) if (row.moderatorId) actorIds.add(row.moderatorId);
+  for (const row of readings) actorIds.add(row.userId);
   for (const row of notes) if (row.authorId) actorIds.add(row.authorId);
   for (const row of activities) if (row.userId) actorIds.add(row.userId);
   for (const row of changeRequests) actorIds.add(row.requestedById);
@@ -426,6 +437,17 @@ export async function orderTimeline(tx: Tx, orderId: string): Promise<TimelineEv
       detail: row.notes,
       actorId: row.moderatorId,
       actorName: row.moderatorId ? nameOf.get(row.moderatorId) ?? null : null,
+    })),
+    // «مساعد الاتصال»: the same words the call sheet shows (`readingLine`), at the moment the call was placed, in the name of the
+    // one who placed it. A CONTACT line with no attempt number: nothing here is counted, and nothing is written.
+    ...readings.map((row) => ({
+      id: `ch_${row.id}`,
+      kind: 'CONTACT' as const,
+      at: row.startedAt,
+      title: `مساعد الاتصال: ${readingLine(row)}`,
+      detail: HELPER_READING_SOURCE_AR,
+      actorId: row.userId,
+      actorName: nameOf.get(row.userId) ?? null,
     })),
     ...deliveries.map((row) => ({
       id: `dl_${row.id}`,
