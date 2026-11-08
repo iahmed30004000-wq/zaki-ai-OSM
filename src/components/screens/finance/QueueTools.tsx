@@ -65,7 +65,7 @@ export function QueueTools({
             value={view.query}
             onChange={(e) => onView({ ...view, query: e.target.value })}
             placeholder="باركود، رقم طلب، هاتف، اسم، محافظة، عنوان…"
-            className="h-10 w-full rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] ps-8 pe-2 text-sm"
+            className="h-11 md:h-10 w-full rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] ps-8 pe-2 text-sm"
           />
         </span>
       </label>
@@ -76,7 +76,7 @@ export function QueueTools({
           <select
             value={view.kind}
             onChange={(e) => onView({ ...view, kind: e.target.value })}
-            className="h-10 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-2 text-sm"
+            className="h-11 md:h-10 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-2 text-sm"
           >
             <option value="">الكل ({total})</option>
             {kinds.map((k) => (
@@ -89,7 +89,7 @@ export function QueueTools({
       )}
 
       {openCount > 0 && (
-        <label className="inline-flex h-10 items-center gap-1.5 text-xs text-[var(--sys-foreground)]">
+        <label className="inline-flex h-11 md:h-10 items-center gap-1.5 text-xs text-[var(--sys-foreground)]">
           <input
             type="checkbox"
             checked={view.onlyOpen}
@@ -105,7 +105,7 @@ export function QueueTools({
           aria-pressed={pin.pinned}
           onClick={() => pin.onChange(!pin.pinned)}
           title={pin.pinned ? 'عناوين الجدول ثابتة وانت بتمرّر — اضغط لتفكّها' : 'ثبّت عناوين الجدول لتضل ظاهرة وانت بتمرّر'}
-          className={`inline-flex h-10 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium ${
+          className={`inline-flex h-11 md:h-10 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium ${
             pin.pinned
               ? 'border-[var(--sys-primary)] bg-[var(--sys-surface)] text-[var(--sys-primary)]'
               : 'border-[var(--sys-border)] text-[var(--sys-muted-foreground)]'
@@ -123,7 +123,7 @@ export function QueueTools({
         <button
           type="button"
           onClick={() => onView(NO_VIEW)}
-          className="h-10 rounded-lg border border-[var(--sys-border)] px-3 text-xs text-[var(--sys-muted-foreground)]"
+          className="h-11 md:h-10 rounded-lg border border-[var(--sys-border)] px-3 text-xs text-[var(--sys-muted-foreground)]"
         >
           امسح البحث والفلتر
         </button>

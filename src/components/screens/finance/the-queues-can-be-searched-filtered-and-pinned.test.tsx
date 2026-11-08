@@ -110,6 +110,20 @@ describe('the box narrows ONE queue by what a person has in hand', () => {
     expect(text(bodyRows(MISSING)[0])).toContain('100000000002');
   });
 
+  it('a phone as it arrives from a chat or a contacts list — country code with spaces, dashes, brackets, invisible direction marks — finds the same row', async () => {
+    render(<MatchingScreen />);
+    await screen.findAllByText(MISSING);
+    const LRM = String.fromCharCode(0x200e);
+    const RLM = String.fromCharCode(0x200f);
+    for (const q of ['+963 900 000 002', '0900-000-002', '(0900) 000002', '00963 900 000 002', `${LRM}0900000002${RLM}`, `${LRM}+963 900 000 002${RLM}`]) {
+      type(MISSING, q);
+      expect(bodyRows(MISSING), q).toHaveLength(1);
+      expect(text(bodyRows(MISSING)[0]), q).toContain('100000000002');
+    }
+    type(MISSING, '+963 900 000 009'); // a number none of the six lines has
+    expect(bodyRows(MISSING)).toHaveLength(0);
+  });
+
   it('a barcode, the company’s own order number, a name, an address and a governorate each find their row', async () => {
     render(<MatchingScreen />);
     await screen.findAllByText(MISSING);

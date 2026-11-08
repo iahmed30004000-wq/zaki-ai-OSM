@@ -29,7 +29,7 @@ import { lineEssentials, readCourierRow } from '@/lib/statement-line-reading';
 import { StatementTally } from '@/components/screens/finance/StatementTally';
 import { NO_VIEW, QueueTools, type QueueKind, type QueueView } from '@/components/screens/finance/QueueTools';
 import { matchesQuery } from '@/lib/queue-search';
-import { COMPANY_WORD_AR, COMPANY_WORD_ORDER } from '@/lib/courier-word-names';
+import { COMPANY_WORD_AR, COMPANY_WORD_ORDER } from '@/lib/couriers/word-names';
 
 /**
  * /finance/matching — the outcome of matching, read as four queues: agreed,

@@ -15,7 +15,7 @@ import { Rows, type Column } from '@/components/ui/Rows';
  * Drawn by the shared table (`Rows`): a table on a desk, a card per kind in a hand.
  */
 
-import { COMPANY_WORD_AR, COMPANY_WORD_ORDER } from '@/lib/courier-word-names';
+import { COMPANY_WORD_AR, COMPANY_WORD_ORDER } from '@/lib/couriers/word-names';
 
 /** The part of a match row the count reads: what the matching made of it, and what the company's word says. */
 export interface TallyRow {
