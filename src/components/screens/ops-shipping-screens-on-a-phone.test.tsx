@@ -412,7 +412,9 @@ describe('«دفعات الشحن»', () => {
     phone.value = false;
     serve(batch({ provider: { id: 'dp1', name: 'الباشا', code: 'B', kind: 'COMPANY', apiEnabled: true } }));
     await draw();
-    expect(document.querySelector('details')).toBeNull();
+    // No fold FOR THE PRESSES (the group a phone folds the files into). The card's own help («شو بيعمل كل زر ومتى بتضغطو؟») is a
+    // different fold, about the buttons, and is there on a desk too.
+    expect(document.querySelector('details[data-advanced-group]')).toBeNull();
     const send = screen.getByRole('button', { name: SEND });
     const row = send.parentElement as HTMLElement;
     expect(row.className).toContain('flex-wrap');
