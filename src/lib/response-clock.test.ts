@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  */
 type Attempt = { orderId: string; createdAt: Date };
 type StatusLog = { orderId: string; statusType: string; newValue: string; createdAt: Date };
-type ValueFilter = { in?: string[]; notIn?: string[] } | undefined;
+type ValueCond = { in?: string[] } | undefined;
 
 const fake = vi.hoisted(() => {
   const state = { attempts: [] as Attempt[], logs: [] as StatusLog[] };
@@ -22,8 +22,8 @@ const fake = vi.hoisted(() => {
     }
     return [...least].map(([orderId, createdAt]) => ({ orderId, _min: { createdAt } }));
   };
-  const matches = (value: string, filter: ValueFilter) =>
-    !filter || ((!filter.in || filter.in.includes(value)) && (!filter.notIn || !filter.notIn.includes(value)));
+  // Prisma's `in`: an absent condition matches everything — the same for `statusType` below.
+  const matches = (value: string, cond: ValueCond) => !cond || !cond.in || cond.in.includes(value);
   const db = {
     orderContactAttempt: {
       groupBy: vi.fn(async ({ where }: { where: { orderId: { in: string[] } } }) =>
@@ -31,10 +31,13 @@ const fake = vi.hoisted(() => {
       ),
     },
     orderStatusLog: {
-      groupBy: vi.fn(async ({ where }: { where: { orderId: { in: string[] }; statusType: string; newValue?: ValueFilter } }) =>
+      groupBy: vi.fn(async ({ where }: { where: { orderId: { in: string[] }; statusType?: string; newValue?: ValueCond } }) =>
         groupMin(
           state.logs.filter(
-            (l) => where.orderId.in.includes(l.orderId) && l.statusType === where.statusType && matches(l.newValue, where.newValue)
+            (l) =>
+              where.orderId.in.includes(l.orderId) &&
+              (where.statusType === undefined || l.statusType === where.statusType) &&
+              matches(l.newValue, where.newValue)
           )
         )
       ),
@@ -95,8 +98,9 @@ describe('the first action on an order is something a person did after the pull 
     }
   );
 
-  it('a status log of another kind (shipping) is not an action on the confirmation desk', async () => {
-    fake.state.logs = [log('o1', 'SHIPPED', at(2), 'SHIPPING'), log('o1', 'IN_PROGRESS', T0)];
+  it('a status log of another kind is not an action on the confirmation desk — even one whose value is among the six', async () => {
+    // SHIPPING and SETTLEMENT both have a `CANCELLED` value: only the `statusType: 'CONFIRMATION'` filter keeps them out.
+    fake.state.logs = [log('o1', 'CANCELLED', at(2), 'SHIPPING'), log('o1', 'CANCELLED', at(3), 'SETTLEMENT'), log('o1', 'IN_PROGRESS', T0)];
     expect((await firstActionTimes(['o1'])).has('o1')).toBe(false);
   });
 
