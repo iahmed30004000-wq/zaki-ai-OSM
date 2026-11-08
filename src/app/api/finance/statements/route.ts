@@ -215,6 +215,13 @@ export async function POST(req: Request) {
           fee: r.fee,
           status: r.status,
           rawRow: r.rawRow,
+          // Who the parcel went to, under the headings the file wrote them: the raw row above keeps every cell but
+          // cannot say which is the phone. Shown and searched by the hand link; never a matching key.
+          receiverName: r.receiver.name,
+          receiverPhone: r.receiver.phone,
+          receiverAddress: r.receiver.address,
+          receiverCity: r.receiver.city,
+          receiverArea: r.receiver.area,
         })),
       });
       return created;

@@ -2786,6 +2786,17 @@ model StatementLine {
   fee         Decimal? @db.Decimal(14, 3)
   status      String? // the courier's own status word
   rawRow      String?
+  // WHO THE PARCEL WENT TO, as the company's own column headings name it («هاتف المستلم»، «عنوان المستلم»،
+  // «مدينة المستلم»). `rawRow` keeps every cell but no heading, so it cannot say which cell is the phone; the import
+  // knows, and writes it here. Shown on the matching screen and read by the hand link («بهاتف السطر») and nothing else:
+  // never a matching key, never money. Null on a line imported before these columns, and on a line whose file had no
+  // such column.
+  receiverName    String?
+  receiverPhone   String?
+  receiverAddress String?
+  // The company's governorate («مدينة المستلم») and the area under it («منطقة المستلم»).
+  receiverCity    String?
+  receiverArea    String?
   createdAt   DateTime @default(now())
 
   statement CourierStatement  @relation(fields: [statementId], references: [id], onDelete: Cascade)

@@ -1,5 +1,5 @@
 import { toLatinDigits } from './latin-digits';
-import { nationalDigits, ruleFor } from './phone-rules';
+import { canonicalPhone, nationalDigits, phoneKeys, phoneKeysAnyStore, ruleFor } from './phone-rules';
 
 /**
  * A COURIER'S LINE, READ FOR A PERSON — what the matching screen shows under «سبب الشركة», and the phone the link
@@ -25,6 +25,16 @@ export interface LineForReading {
   fee?: string | number | null;
   status: string | null;
   rawRow: string | null;
+  /**
+   * Who the parcel went to, as the company's own headings said it when the file was imported (`StatementLine.receiver*`).
+   * Absent or null on a line imported before they were kept, and on a file that had no such column: such a line is read
+   * from its raw row exactly as it always was.
+   */
+  receiverName?: string | null;
+  receiverPhone?: string | null;
+  receiverAddress?: string | null;
+  receiverCity?: string | null;
+  receiverArea?: string | null;
 }
 
 export interface CourierRowReading {
@@ -108,10 +118,13 @@ const MOBILE: Record<string, RegExp> = {
 };
 
 export interface LinePhone {
-  /** As a person reads it: the trunk zero in front of the national number. */
+  /** As a person reads it: the trunk zero in front of the national number — or «+code…» for a number of another country. */
   shown: string;
-  /** The country whose mobile it is. */
-  country: 'SY' | 'JO';
+  /**
+   * The country whose MOBILE it is. `OTHER` is any other number the company wrote as a phone: a foreign line («+353…»,
+   * «00966…» — the north of Syria runs on Turkish lines and families abroad order for home) or a landline.
+   */
+  country: 'SY' | 'JO' | 'OTHER';
   /** Every form a customer's stored phone may take for this number (own country: national; abroad: with its code). */
   keys: string[];
 }
@@ -141,7 +154,12 @@ function mobileInRun(run: string, order: ('SY' | 'JO')[]): LinePhone | null {
   const whole = readMobile(run, order);
   if (whole) return whole;
   const pieces = run.split(/\s+[-–—]\s+|\s+/).filter(Boolean);
+  // A number written WITH its country code («+353 78 123 4567», «00966 …») is read from its beginning only. Its tail is not a
+  // second number: «78 123 4567» is a Jordanian mobile and «91 234 5678» a Syrian one, and cutting an Irish or a Libyan line
+  // into them would show a customer who is somebody else as «the same phone».
+  const international = /^\s*(?:\+|00)/.test(run);
   for (let start = 0; start < pieces.length; start++) {
+    if (international && start > 0) break;
     for (let end = pieces.length; end > start; end--) {
       if (start === 0 && end === pieces.length) continue;
       const found = readMobile(pieces.slice(start, end).join(' '), order);
@@ -150,6 +168,16 @@ function mobileInRun(run: string, order: ('SY' | 'JO')[]): LinePhone | null {
   }
   return null;
 }
+
+/**
+ * A CELL THAT IS, FROM END TO END, A NUMBER WRITTEN INTERNATIONALLY — «+353 87 123 4567», «00966 5X XXX XXXX».
+ *
+ * The one shape a foreign phone is read from a row with NO heading: it starts with `+` or `00` and holds nothing else. A
+ * date («46322.57921296296»), a quantity («1.0»), a parcel number and a note never start that way, so reading these cannot
+ * turn one of them into somebody's phone — which is why a Syrian or Jordanian mobile is still looked for FIRST, anywhere
+ * in the row, and this is only the last resort.
+ */
+const INTERNATIONAL_CELL = /^(?:\+|00)\s*\d[\d\s\-().]{7,17}\d$/;
 
 export function phoneFromRawRow(
   line: Pick<LineForReading, 'rawRow' | 'merchantRef' | 'barcode'>,
@@ -164,5 +192,112 @@ export function phoneFromRawRow(
       if (found) return found;
     }
   }
+  // No Syrian or Jordanian mobile anywhere in the row. A foreign customer's number written with + or 00 as a cell of
+  // its own is still the customer's phone («زر المطابقة عبر الهاتف مش شغال» — five lines of a real Basha file).
+  for (const cell of splitRawRow(line.rawRow)) {
+    if (!cell || same(line.merchantRef, cell) || same(line.barcode, cell)) continue;
+    const text = toLatinDigits(cell).replace(BIDI, '').trim();
+    if (!INTERNATIONAL_CELL.test(text)) continue;
+    // A Syrian or Jordanian code was judged by its own country's rule above and refused («+962 71…» is no mobile head):
+    // it does not come back in through here as «a foreign number».
+    if (/^96[23]/.test(text.replace(/\D/g, '').replace(/^00/, ''))) continue;
+    const found = phoneFromCell(text, storeCountry);
+    if (found) return found;
+  }
   return null;
+}
+
+/**
+ * THE PHONE OF A CELL THE COMPANY HEADED AS A PHONE («هاتف المستلم») — read as a phone, whatever country it is from.
+ *
+ * `phoneFromRawRow` has no heading to go by, so it accepts only a Syrian or Jordanian MOBILE: anything looser would turn
+ * a parcel number into a customer. A cell whose own heading says «phone» needs no such suspicion, so the same readings
+ * come first (a Syrian or Jordanian mobile keeps its keys exactly as before) and what is left is read as the address book
+ * writes a number: a foreign line with its country code, a landline with its trunk zero gone (`canonicalPhone`), and the
+ * other stored form of each (`phoneKeys`) — so a customer saved before the country code was kept is found too.
+ *
+ * Seven to fifteen digits once a leading `00` is gone (E.164 stops at fifteen); a cell that holds two numbers
+ * («0933620102 - 0944111222») is read from its first one. Anything else — «لا يوجد», a date — is no phone.
+ */
+export function phoneFromCell(text: string | null | undefined, storeCountry?: string | null): LinePhone | null {
+  const clean = toLatinDigits(String(text ?? '')).replace(BIDI, '').trim();
+  if (!clean) return null;
+  const own = String(storeCountry ?? '').toUpperCase();
+  const order: ('SY' | 'JO')[] = own === 'JO' ? ['JO', 'SY'] : ['SY', 'JO'];
+
+  for (const m of clean.matchAll(RUN)) {
+    const run = m[0];
+    const digits = run.replace(/\D/g, '');
+    // More digits than any one number has: two numbers share this run, and the stretches are tried leftmost first.
+    if (digits.length > 15) {
+      const found = mobileInRun(run, order);
+      if (found) return found;
+      continue;
+    }
+    // The WHOLE run as one number — never a stretch of it: «+353 78 123 4567» is an Irish number, not a Jordanian «78 123 4567».
+    const mobile = readMobile(run, order);
+    if (mobile) return mobile;
+    const national = digits.replace(/^00/, '');
+    if (national.length < 7 || national.length > 15) continue;
+    const canonical = canonicalPhone(run, storeCountry);
+    if (!canonical) continue;
+    const international = run.trim().startsWith('+') || digits.startsWith('00');
+    return {
+      shown: international ? `+${national}` : digits,
+      country: 'OTHER',
+      keys: [...new Set([...phoneKeys(canonical), ...phoneKeysAnyStore(run)])],
+    };
+  }
+  return null;
+}
+
+/**
+ * WHAT THE SCREEN SAYS ABOUT A COMPANY'S LINE — the four things the owner asked for («العنوان والمحافظة ورقم الهاتف
+ * والحالة»), and the name beside them, which is what a person compares first.
+ *
+ * Read from the five cells the import kept under the company's own headings. A line imported before they were kept has
+ * none of them: its phone is looked for in the raw row as it always was (a Syrian or Jordanian mobile, or a cell that is
+ * wholly a number written with + or 00), and its name, address and governorate are simply not known — the raw row is
+ * still one press away.
+ *
+ * A column that WAS in the file and holds something that is no phone gives no phone: the row is not searched for
+ * another number to put in its place (BACKLOG RV762 — that is how the sender's number came to be searched).
+ */
+export interface LineEssentials {
+  /** The company's own status word, as it wrote it. */
+  status: string | null;
+  phone: LinePhone | null;
+  name: string | null;
+  address: string | null;
+  /** The company's governorate and the area under it, apart — for the comparison. */
+  city: string | null;
+  area: string | null;
+  /** «حماة»، or «ريف دمشق — ضواحي دمشق» when the area says something more than the governorate does. */
+  governorate: string | null;
+  /** The pieces came from the company's headings (a line imported with them), not from the raw row. */
+  fromHeadings: boolean;
+}
+
+export const GOVERNORATE_JOIN = ' — ';
+
+/** What `lineEssentials` reads: no figures at all (a database row carries them as decimals, a screen's as strings). */
+export type LineForEssentials = Pick<
+  LineForReading,
+  'merchantRef' | 'barcode' | 'status' | 'rawRow' | 'receiverName' | 'receiverPhone' | 'receiverAddress' | 'receiverCity' | 'receiverArea'
+>;
+
+export function lineEssentials(line: LineForEssentials, storeCountry?: string | null): LineEssentials {
+  const clean = (v: string | null | undefined) => v?.trim() || null;
+  const name = clean(line.receiverName);
+  const address = clean(line.receiverAddress);
+  const city = clean(line.receiverCity);
+  const area = clean(line.receiverArea);
+  const phoneCell = clean(line.receiverPhone);
+  const fromHeadings = !!(name || address || city || area || phoneCell);
+
+  const phone = phoneCell ? phoneFromCell(phoneCell, storeCountry) : phoneFromRawRow(line, storeCountry);
+  const sameText = (a: string, b: string) => a.replace(/\s+/g, ' ').toLowerCase() === b.replace(/\s+/g, ' ').toLowerCase();
+  const governorate = city ? (area && !sameText(area, city) ? `${city}${GOVERNORATE_JOIN}${area}` : city) : area;
+
+  return { status: clean(line.status), phone, name, address, city, area, governorate, fromHeadings };
 }

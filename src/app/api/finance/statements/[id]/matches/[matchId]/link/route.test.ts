@@ -8,10 +8,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * that is counted in the person's tally, the refusal's own status, and one audit row per link.
  */
 
-const { db, requireContext, requirePermission, logAudit, noteCustomersHandedOut, findLinkCandidates, findLinkCandidatesByLinePhone, linkLineToOrder } = vi.hoisted(() => ({
+const { db, requireContext, requirePermission, can, logAudit, noteCustomersHandedOut, findLinkCandidates, findLinkCandidatesByLinePhone, linkLineToOrder } = vi.hoisted(() => ({
   db: { $transaction: vi.fn() },
   requireContext: vi.fn(),
   requirePermission: vi.fn(),
+  // The address-book key: a candidate carries the order's address only when it is held.
+  can: vi.fn(),
   logAudit: vi.fn(),
   noteCustomersHandedOut: vi.fn(),
   findLinkCandidates: vi.fn(),
@@ -20,7 +22,10 @@ const { db, requireContext, requirePermission, logAudit, noteCustomersHandedOut,
 }));
 vi.mock('@/lib/db', () => ({ db }));
 vi.mock('@/lib/geo-context', () => ({ requireContext: (...a: unknown[]) => requireContext(...a) }));
-vi.mock('@/lib/authorization', () => ({ requirePermission: (...a: unknown[]) => requirePermission(...a) }));
+vi.mock('@/lib/authorization', () => ({
+  requirePermission: (...a: unknown[]) => requirePermission(...a),
+  can: (...a: unknown[]) => can(...a),
+}));
 vi.mock('@/lib/audit', () => ({ logAudit: (...a: unknown[]) => logAudit(...a) }));
 vi.mock('@/lib/pii-alert', () => ({ noteCustomersHandedOut: (...a: unknown[]) => noteCustomersHandedOut(...a) }));
 vi.mock('@/lib/api-error', () => ({ apiErrorResponse: (e: unknown) => new Response(String(e), { status: 500 }) }));
@@ -58,6 +63,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   requireContext.mockResolvedValue({ user: { id: 'u1' }, companyId: 'c1', storeId: 's1', country: { minorUnit: 3, code: 'SY' } });
   requirePermission.mockResolvedValue({ id: 'u1' });
+  can.mockReturnValue(true);
   findLinkCandidates.mockResolvedValue(found);
   findLinkCandidatesByLinePhone.mockResolvedValue({ ...found, phone: { shown: '0933620102', country: 'SY' } });
   linkLineToOrder.mockResolvedValue(linked);
@@ -69,8 +75,10 @@ describe('the search', () => {
     const res = await get('q=0790000001&storeId=other&companyId=other');
     expect(res.status).toBe(200);
     expect(requirePermission).toHaveBeenCalledWith('settlement.review');
+    // The store's country too, as the phone search always had it: the line's phone is read the way THIS store's customers
+    // are stored, so each candidate can be told «same phone» or «not».
     expect(findLinkCandidates).toHaveBeenCalledWith(db, {
-      companyId: 'c1', storeId: 's1', statementId: 'st1', matchId: 'm1', query: '0790000001', minorUnit: 3,
+      companyId: 'c1', storeId: 's1', statementId: 'st1', matchId: 'm1', query: '0790000001', minorUnit: 3, countryCode: 'SY', maySeeContact: true,
     });
     expect(await res.json()).toMatchObject({ header: found.header, counts: found.counts });
   });
@@ -164,7 +172,7 @@ describe('the search by the line’s own phone (?by=phone)', () => {
     expect(res.status).toBe(200);
     expect(requirePermission).toHaveBeenCalledWith('settlement.review');
     expect(findLinkCandidatesByLinePhone).toHaveBeenCalledWith(db, {
-      companyId: 'c1', storeId: 's1', statementId: 'st1', matchId: 'm1', minorUnit: 3, countryCode: 'SY',
+      companyId: 'c1', storeId: 's1', statementId: 'st1', matchId: 'm1', minorUnit: 3, countryCode: 'SY', maySeeContact: true,
     });
     // The free search is not run beside it.
     expect(findLinkCandidates).not.toHaveBeenCalled();
@@ -203,5 +211,30 @@ describe('the search by the line’s own phone (?by=phone)', () => {
     await get('by=PHONE&q=0790000001');
     expect(findLinkCandidatesByLinePhone).not.toHaveBeenCalled();
     expect(findLinkCandidates).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the order’s address leaves only with the address-book key', () => {
+  it('without customers.view neither search is asked to carry the address', async () => {
+    can.mockReturnValue(false);
+    await get('q=0790000001');
+    await get('by=phone');
+    expect(can).toHaveBeenCalledWith({ id: 'u1' }, 'customers.view');
+    expect(findLinkCandidates.mock.calls[0][1]).toMatchObject({ maySeeContact: false });
+    expect(findLinkCandidatesByLinePhone.mock.calls[0][1]).toMatchObject({ maySeeContact: false });
+  });
+
+  it('with customers.view both are', async () => {
+    can.mockReturnValue(true);
+    await get('q=0790000001');
+    await get('by=phone');
+    expect(findLinkCandidates.mock.calls[0][1]).toMatchObject({ maySeeContact: true });
+    expect(findLinkCandidatesByLinePhone.mock.calls[0][1]).toMatchObject({ maySeeContact: true });
+  });
+
+  it('the key asked is the address book’s — not settlement.review, which the screen itself already requires', async () => {
+    await get();
+    const keys = can.mock.calls.map((c) => c[1]);
+    expect(keys).toEqual(['customers.view']);
   });
 });
