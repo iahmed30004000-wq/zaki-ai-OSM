@@ -88,8 +88,20 @@ export interface Column<T> {
   className?: string;
 }
 
+/**
+ * What a heading cell carries to stay at the top of a scrolling table. On the CELLS, not on the row group: a sticky row group is
+ * dropped by some browsers, a sticky cell never is. It paints its own background, or the rows would show through it.
+ */
+const PINNED_HEAD = ' sticky top-0 z-10 bg-[var(--sys-surface)]';
+
 export interface RowsProps<T> {
   columns: Column<T>[];
+  /**
+   * Keep the column headings in view while a long list scrolls («بدي أثبّت هاد عشان أفهم» — the owner, 8/11, on a statement of
+   * 116 lines: by the fortieth row nobody can tell which figure is the fee). The desk's table then becomes a scroll area of its
+   * own, as tall as most of the window, and its headings stay at the top of it. Cards have no headings to keep.
+   */
+  pinHeader?: boolean;
   /** Absent while the request is in the air; drawn as empty. */
   rows: T[] | null | undefined;
   keyOf: (row: T) => string;
@@ -150,7 +162,7 @@ export interface RowsProps<T> {
   notice?: (row: T) => React.ReactNode;
 }
 
-export function Rows<T>({ columns, rows, keyOf, onRowClick, empty, actions, selection, alert, notice }: RowsProps<T>) {
+export function Rows<T>({ columns, rows, keyOf, onRowClick, empty, actions, selection, alert, notice, pinHeader }: RowsProps<T>) {
   /**
    * ONE READING OF `alert`, used by both shapes.
    *
@@ -208,12 +220,15 @@ export function Rows<T>({ columns, rows, keyOf, onRowClick, empty, actions, sele
   return (
     <>
       {/* The desk. */}
-      <div className="hidden overflow-x-auto rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] md:block">
+      <div
+        data-pinned={pinHeader ? 'true' : undefined}
+        className={`hidden overflow-x-auto rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] md:block${pinHeader ? ' max-h-[70vh] overflow-y-auto' : ''}`}
+      >
         <table className="w-full text-sm">
           <thead className="bg-[var(--sys-surface)] text-xs text-[var(--sys-muted-foreground)]">
             <tr>
               {selection && (
-                <th className="w-10 px-3 py-2">
+                <th className={`w-10 px-3 py-2${pinHeader ? PINNED_HEAD : ''}`}>
                   {selection.onToggleAll && selectable.length > 0 && (
                     <input
                       type="checkbox"
@@ -227,12 +242,12 @@ export function Rows<T>({ columns, rows, keyOf, onRowClick, empty, actions, sele
               {columns.map((c) => (
                 <th
                   key={c.key}
-                  className={`px-3 py-2 font-medium ${c.align === 'end' ? 'text-left' : 'text-right'}`}
+                  className={`px-3 py-2 font-medium ${c.align === 'end' ? 'text-left' : 'text-right'}${pinHeader ? PINNED_HEAD : ''}`}
                 >
                   {c.label}
                 </th>
               ))}
-              {actions && <th className="px-3 py-2" />}
+              {actions && <th className={`px-3 py-2${pinHeader ? PINNED_HEAD : ''}`} />}
             </tr>
           </thead>
           {/*

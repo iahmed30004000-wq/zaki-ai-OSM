@@ -15,25 +15,14 @@ import { Rows, type Column } from '@/components/ui/Rows';
  * Drawn by the shared table (`Rows`): a table on a desk, a card per kind in a hand.
  */
 
+import { COMPANY_WORD_AR, COMPANY_WORD_ORDER } from '@/lib/couriers/word-names';
+
 /** The part of a match row the count reads: what the matching made of it, and what the company's word says. */
 export interface TallyRow {
   result: string;
   statementLine: unknown;
   courierWord: { outcome: string } | null;
 }
-
-const COMPANY_WORD_AR: Record<string, string> = {
-  DELIVERED: 'سُلِّمت',
-  PARTIAL: 'سُلِّمت جزئياً',
-  RETURNED: 'رجعت',
-  POSTPONED: 'مؤجَّلة',
-  CANCELLED: 'مُلغاة',
-  IN_TRANSIT: 'ما زالت عند الشركة',
-  OTHER: 'كلمة معروفة أخرى',
-  UNKNOWN: 'كلمة ما نعرفها بعد',
-  NONE: 'بلا كلمة',
-};
-const COMPANY_WORD_ORDER = ['DELIVERED', 'PARTIAL', 'RETURNED', 'POSTPONED', 'CANCELLED', 'IN_TRANSIT', 'OTHER', 'UNKNOWN', 'NONE'];
 
 interface Landed {
   key: string;

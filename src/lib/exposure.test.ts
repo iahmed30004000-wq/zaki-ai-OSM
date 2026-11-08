@@ -193,6 +193,7 @@ describe('what the browser is allowed to remember', () => {
     'landing/OrderForm.tsx': 'which campaign a visitor arrived from',
     'shell/Sidebar.tsx': 'which menu groups this person leaves open',
     'growth/CampaignsBoard.tsx': 'which of the three campaign views this person last picked — a word, never a record',
+    'finance/MatchingScreen.tsx': 'whether the matching tables’ headings stay pinned while scrolling — the word on or off, never a record or a figure',
     'shell/IdleGuard.tsx': 'a timestamp, shared between this account’s open tabs',
     // Ruling 4/11: the time on a call is not idle time. A time only — never the number called or whose order it was.
     'lib/exposure.ts': 'when «اتصال» was last pressed — a timestamp, read and cleared by IdleGuard on return',
