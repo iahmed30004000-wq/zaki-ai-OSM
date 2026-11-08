@@ -171,7 +171,8 @@ const { fake, state, aiChat, reserveOrderLines } = vi.hoisted(() => {
     user: table('users', 'user'),
     shippingBatch: { findFirst: async () => null },
     returnReceipt: { count: async () => 0 },
-    orderClaimHistory: recorded('orderClaimHistory'),
+    // `findMany`: the pull's pace reads her pulls of the last hour (`pullPaceRefusal`); this table has none, the pace has its own test.
+    orderClaimHistory: { ...recorded('orderClaimHistory'), findMany: async () => [] },
     orderActivity: recorded('orderActivity'),
     orderStatusLog: recorded('orderStatusLog'),
     // The confirm guard reads the order's own lines (their products are part of «the same product»).

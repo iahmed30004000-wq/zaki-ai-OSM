@@ -101,7 +101,8 @@ vi.mock('./db', () => {
   };
   const db = {
     order,
-    orderClaimHistory: { create: vi.fn(async ({ data }: Row) => void world.history.push(data)) },
+    // `findMany`: the pull's pace reads her pulls of the last hour (`pullPaceRefusal`); this world has none, the pace has its own test.
+    orderClaimHistory: { create: vi.fn(async ({ data }: Row) => void world.history.push(data)), findMany: vi.fn(async () => []) },
     notification: { createMany: vi.fn(async () => ({ count: 1 })) },
     orderStatusLog: { create: vi.fn(async ({ data }: Row) => void world.logs.push(data)) },
     // The pull's per-customer lock and the hold of his other orders (`twins-follow-the-pull.ts`): one agent at a time here.

@@ -1,0 +1,21 @@
+-- للسحب سرعة مسموحة — the owner, 8/11: «كيف نمنعهم يسحبو طلبات بسرعة مهولة». One agent held 489 orders, 479 of them at «لا يرد»: she pulled, logged
+-- one no-answer, pressed «التالي», and the queue was gone in minutes. The pull now refuses the 41st pull in any rolling hour
+-- (`pullPaceRefusal`, src/lib/confirmation-queue.ts); this migration is the index that count rides on.
+--
+-- ONE NEW INDEX ON ONE TABLE, NOTHING ELSE. No column, no default, no row written or changed, no existing index touched: the code that ran
+-- before it never reads this index and is not affected by its being there. Hand-written; applied locally with `prisma db execute`, recorded
+-- with `prisma migrate resolve --applied`, and in production by `prisma migrate deploy` at the owner's Redeploy:
+--   npx prisma db execute --file prisma/migrations/20261108190000_claim_history_pace_index/migration.sql --schema prisma/schema.prisma
+--   npx prisma migrate resolve --applied 20261108190000_claim_history_pace_index
+--
+--   order_claim_history ("userId", "action", "createdAt")
+--       «her pulls of the last hour» = userId = ? AND action = 'CLAIMED' AND createdAt > ?. The table had only (orderId, createdAt) and
+--       (companyId, userId), so the count would have read every history line the agent ever wrote.
+--
+-- The statement is what `prisma migrate diff` prints for `@@index([userId, action, createdAt])` on OrderClaimHistory, with IF NOT EXISTS added; the
+-- name is Prisma's own default, so a later `migrate diff` finds nothing to do. It is a plain CREATE INDEX: the build holds a share lock on the table,
+-- so a history line written meanwhile waits for it — a build of moments on a table of this size, at a Redeploy.
+--
+-- Idempotent (IF NOT EXISTS). Rollback: rollback.sql beside this file.
+
+CREATE INDEX IF NOT EXISTS "order_claim_history_userId_action_createdAt_idx" ON "order_claim_history"("userId", "action", "createdAt");

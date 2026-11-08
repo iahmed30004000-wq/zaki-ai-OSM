@@ -1524,6 +1524,8 @@ model OrderClaimHistory {
 
   @@index([orderId, createdAt])
   @@index([companyId, userId])
+  // «Her pulls of the last hour» (the pull's pace, `pullPaceRefusal` in lib/confirmation-queue.ts): userId + action + a range on createdAt.
+  @@index([userId, action, createdAt])
   @@map("order_claim_history")
 }
 
