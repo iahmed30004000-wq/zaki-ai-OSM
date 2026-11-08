@@ -26,7 +26,8 @@ const { db, requireContext, requirePermission, noteCustomersHandedOut } = vi.hoi
 
 vi.mock('@/lib/db', () => ({ db }));
 vi.mock('@/lib/geo-context', () => ({ requireContext: (...a: unknown[]) => requireContext(...a) }));
-vi.mock('@/lib/authorization', () => ({ requirePermission: (...a: unknown[]) => requirePermission(...a) }));
+// `can`: the list now asks the address-book key (the address column); nothing in this file is about the address.
+vi.mock('@/lib/authorization', () => ({ requirePermission: (...a: unknown[]) => requirePermission(...a), can: () => false }));
 vi.mock('@/lib/pii-alert', () => ({ noteCustomersHandedOut: (...a: unknown[]) => noteCustomersHandedOut(...a) }));
 vi.mock('@/lib/operations', () => ({ shipmentBlocks: () => ({ hard: [], soft: [] }) }));
 vi.mock('@/lib/delivery-fees', () => ({

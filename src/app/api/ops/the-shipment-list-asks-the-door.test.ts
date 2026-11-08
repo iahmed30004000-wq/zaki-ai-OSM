@@ -23,7 +23,8 @@ const { db, requireContext, shipmentBlocks, resolveDeliveryFee } = vi.hoisted(()
 
 vi.mock('@/lib/db', () => ({ db }));
 vi.mock('@/lib/geo-context', () => ({ requireContext: (...a: unknown[]) => requireContext(...a) }));
-vi.mock('@/lib/authorization', () => ({ requirePermission: vi.fn() }));
+// `can`: the list now asks the address-book key (the address column) — a warehouse user holds none of it.
+vi.mock('@/lib/authorization', () => ({ requirePermission: vi.fn(), can: () => false }));
 vi.mock('@/lib/audit', () => ({ logAudit: vi.fn() }));
 vi.mock('@/lib/pii-alert', () => ({ noteCustomersHandedOut: vi.fn() }));
 vi.mock('@/lib/operations', () => ({ shipmentBlocks: (...a: unknown[]) => shipmentBlocks(...a) }));
