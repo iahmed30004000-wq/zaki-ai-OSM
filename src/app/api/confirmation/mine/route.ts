@@ -35,6 +35,7 @@ import { companySendsFor } from '@/lib/whatsapp/after-no-answer';
 import { waNumber } from '@/lib/message-templates';
 import { deskCallKey } from '@/lib/call-helper/desk';
 import { deskCallIntent } from '@/lib/call-helper/core';
+import { RETURN_PILE_KEY, countReturnable, pressPlan } from '@/lib/return-no-answer-pile';
 
 /**
  * GET /api/confirmation/mine — the agent's own desk, in THREE groups.
@@ -388,6 +389,14 @@ export async function GET(request: Request) {
       where: { ...scope, confirmationStatus: { in: WAITING }, postponedUntil: { gt: now } },
     });
 
+    /*
+     * «أرجِع «لا يرد» للطابور» — HOW MANY OF HER ORDERS A PRESS WOULD RETURN, asked only on a colleague's desk and only of
+     * whoever the return door would let press it (`orders.unlock`, see `return-no-answer-pile.ts`). The screen draws the
+     * button and its question from this and never counts; the door decides again when it is pressed. Absent on her own desk.
+     */
+    const returnPile =
+      viewing && can(user, RETURN_PILE_KEY) ? pressPlan(await countReturnable(db, { companyId, storeId }, deskOf, now)) : null;
+
     // Contact details left the building; the tally is the person's, not
     // this screen's. See noteCustomersHandedOut.
     await noteCustomersHandedOut({ companyId, storeId, user, where: viewing ? 'شاشة موظفة' : 'طلباتي', rows: [...inConfirmation, ...closedToday, ...confirmed] });
@@ -432,6 +441,8 @@ export async function GET(request: Request) {
     return NextResponse.json({
       // Whose desk this is, when it is not the reader's own — the screen draws it read-only. Absent on her own desk.
       ...(viewing ? { viewing } : {}),
+      // What «أرجِع «لا يرد» للطابور» would do from here — only for whoever holds its key, and only on a colleague's desk.
+      ...(returnPile ? { returnPile } : {}),
       leadDays: POSTPONE_LEAD_DAYS,
       // The country's calling code — the rows carry a local number («09…») and WhatsApp needs it in full.
       dialCode: ruleFor(country.code)?.dialCode ?? null,

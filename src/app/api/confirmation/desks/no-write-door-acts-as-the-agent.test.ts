@@ -20,6 +20,12 @@ import { repoFile, stripComments } from '@/lib/guard-source';
  *      `agent` / `asUserId` in the body, answers exactly as it does without them:
  *      a bound watcher is refused NOT_HELD on the colleague's order and nothing is
  *      written; the owner's confirmation is written under HIS id, never hers.
+ *   5. THE ONE EXCEPTION (the owner, 8/11: «واذا ساحبيتو رجعهم»): `POST /api/confirmation/desks/[agentId]/return-no-answer`,
+ *      «أرجِع «لا يرد» للطابور». It names a desk — the agent is in the PATH, as whose pile it is — and so it imports the
+ *      watching rule. It is the exception, not the rule: it is listed here by name (`NAMES_A_DESK`), the list is asserted to be
+ *      exactly that one file, and the file is asserted to ask BOTH the watching rule and `orders.unlock`, to take the agent only
+ *      from the path, and to act as nobody but the presser (its history line, notice and audit row carry HIS id; nothing is
+ *      written «as» her). Behaviour — the refusals, the counts — is `the-manager-returns-her-pile-through-the-real-engine.test.ts`.
  * ═══════════════════════════════════════════════════════════════════════
  */
 
@@ -37,6 +43,12 @@ function routes(dir: string): string[] {
 
 const WRITE_VERB = /export\s+(async\s+)?function\s+(POST|PUT|PATCH|DELETE)\b|export\s+const\s+(POST|PUT|PATCH|DELETE)\b/;
 
+/**
+ * The only write door that names a desk (point 5 above). Growing this list is deciding that another door may be pointed at a
+ * colleague’s desk — a decision for the owner, and a new line in the test below that says why it acts as nobody but the presser.
+ */
+const NAMES_A_DESK = ['src/app/api/confirmation/desks/[agentId]/return-no-answer/route.ts'];
+
 describe('the source: no write door reads whom to act as', () => {
   const all = routes(API);
 
@@ -50,6 +62,8 @@ describe('the source: no write door reads whom to act as', () => {
   it('none of them reads `agent` from the address or the body, or reaches for the watching rule', () => {
     const offenders: string[] = [];
     for (const f of all) {
+      // The one named exception (point 5) is held to its own, narrower, assertions below.
+      if (NAMES_A_DESK.includes(f)) continue;
       const src = stripComments(repoFile(f));
       if (!WRITE_VERB.test(src)) continue;
       if (/\.get\(\s*['"]agent['"]\s*\)/.test(src) || /\bbody\.agent\b|\bagent\s*:\s*z\./.test(src) || src.includes('desk-watch')) {
@@ -57,6 +71,32 @@ describe('the source: no write door reads whom to act as', () => {
       }
     }
     expect(offenders, `بابُ كتابةٍ يقرأ «agent»:\n${offenders.join('\n')}`).toEqual([]);
+  });
+
+  it('the exception is ONE file, it is a write door, and it is found by the walk (an exception that matches nothing excuses nothing)', () => {
+    expect(NAMES_A_DESK).toHaveLength(1);
+    for (const f of NAMES_A_DESK) {
+      expect(all, f).toContain(f);
+      expect(WRITE_VERB.test(stripComments(repoFile(f))), f).toBe(true);
+    }
+  });
+
+  it('and the exception is narrow: it asks the watching rule AND `orders.unlock`, takes the agent from the path alone, and acts as nobody but the presser', () => {
+    const src = stripComments(repoFile(NAMES_A_DESK[0]));
+    // both halves of the question are asked, and the desk is checked the way the desk door checks it
+    expect(src).toMatch(/mayWatchDesks\(\s*user\s*\)/);
+    expect(src).toMatch(/watchedAgent\(\s*companyId\s*,\s*storeId\s*,\s*agentId\s*\)/);
+    expect(src).toMatch(/can\(\s*user\s*,\s*RETURN_PILE_KEY\s*\)/);
+    // the agent comes from the path segment, never from the address or the body
+    expect(src).toMatch(/params:\s*Promise<\{\s*agentId:\s*string\s*\}>/);
+    expect(src).not.toMatch(/\.get\(\s*['"]agent(Id)?['"]\s*\)/);
+    expect(src).not.toMatch(/\bbody\.agent|req\.json\(|request\.json\(|\.formData\(/);
+    // every write is made under the presser’s own identity
+    expect(src).toMatch(/by:\s*\{\s*id:\s*user\.id\s*,\s*name:\s*user\.name\s*\}/);
+    expect(src).toMatch(/userId:\s*user\.id/);
+    expect(src, 'the agent’s id must never be the actor of a write').not.toMatch(/userId:\s*agent(Id)?\b|by:\s*\{\s*id:\s*agent/);
+    // and it never reaches for a way to hold the agent’s identity
+    expect(src).not.toMatch(/asUserId|impersonat|signIn|createSession|requireAuth\(\s*agent/);
   });
 
   it('the two desk doors answer GET and nothing else', () => {

@@ -141,7 +141,8 @@ vi.mock('./db', () => {
     return {
       order,
       orderActivity: { create: vi.fn(async ({ data }: Row) => void world.activities.push(data)) },
-      orderClaimHistory: { create: vi.fn(async ({ data }: Row) => void world.history.push(data)) },
+      // `findMany`: the pull's pace reads her pulls of the last hour (`pullPaceRefusal`); this world has none, the pace has its own test.
+      orderClaimHistory: { create: vi.fn(async ({ data }: Row) => void world.history.push(data)), findMany: vi.fn(async () => []) },
       orderStatusLog: { create: vi.fn(async () => undefined) },
       $executeRaw: vi.fn(async (strings: TemplateStringsArray, ...values: unknown[]) => {
         if (!tx) throw new Error('an advisory lock taken outside a transaction protects nothing');

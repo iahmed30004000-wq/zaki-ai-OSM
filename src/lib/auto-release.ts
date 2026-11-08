@@ -21,6 +21,16 @@ import { DUE_RELEASE_REASON, REPULL_RELEASE_REASON, ROUND_RELEASE_REASON } from 
  *
  * One notification per release, to the holder, written beside the release itself — a release that is rolled back tells
  * nobody, and one that commits is never silent. The bell polls, so it reaches her shell within the minute.
+ *
+ * ── A THIRD KIND: A SUPERVISOR RETURNED HER PILE (the owner, 8/11) ──
+ *
+ * «أرجِع «لا يرد» للطابور» on a watched desk (`return-no-answer-pile.ts`) lets go of a pile of her «لا يرد» orders by a
+ * PERSON's press: not the system's, and not hers. The line keeps `userId` = the holder (the column cannot be empty, and the
+ * per-agent reports read a release that way) and says in `metadata` who pressed: `{ pulledBack: true, from, by: { id, name } }`.
+ * The timeline writes THAT person as the actor («أرجعها <name>»), never «النظام» and never her; attendance does not read it as
+ * work of hers (`isReleaseSheDidNotPress`); and she gets ONE notification for the whole press (`managerReturnNotice`), not one
+ * per order. `releaseNotice` above is one order's sentence by the system's clock, so it is not reused: a summary names the
+ * person and the count — and borrows its shape, its type and its link.
  */
 
 /** The ninety-minute release's reason, exactly as `releaseStaleClaims` writes it (`AUTO_RELEASE_${90}_BUSINESS_MINUTES`). */
@@ -36,6 +46,32 @@ export const AUTO_RELEASE_WHY: Record<string, string> = {
 
 /** The actor the timeline writes for a release nobody pressed. */
 export const SYSTEM_ACTOR_AR = 'النظام';
+
+/** The claim-history reason of a supervisor's return of her pile — named in Arabic on the timeline (`order-timeline.ts`). */
+export const MANAGER_RETURNED_REASON = 'MANAGER_RETURNED';
+
+/** The claim-history metadata of a supervisor's return: not the system's (`automatic`), and who pressed it — and whose order it was. */
+export function managerReturnMetadata(holderId: string, by: { id: string; name: string }): string {
+  return JSON.stringify({ pulledBack: true, from: holderId, by: { id: by.id, name: by.name } });
+}
+
+/**
+ * Who returned the pile, when this claim-history line is a supervisor's return that says who: `{ id, name }` (the name is what
+ * the line was written with — empty when it carried none), else null. Read inside a try: a line that is not JSON is not a return
+ * we can name, and breaks nothing.
+ */
+export function managerReturnedBy(row: { action: string; reason?: string | null; metadata?: string | null }): { id: string; name: string | null } | null {
+  if (row.action !== 'RELEASED' || row.reason !== MANAGER_RETURNED_REASON || !row.metadata) return null;
+  try {
+    const m = JSON.parse(row.metadata) as { by?: { id?: unknown; name?: unknown } | null } | null;
+    const id = m?.by?.id;
+    if (typeof id !== 'string' || id === '') return null;
+    const name = m?.by?.name;
+    return { id, name: typeof name === 'string' && name.trim() !== '' ? name.trim() : null };
+  } catch {
+    return null;
+  }
+}
 
 /** Where the notification leads: her own desk, where the order was. */
 export const RELEASE_NOTICE_LINK = '/confirmation/mine';
@@ -69,9 +105,14 @@ export function isAutomaticRelease(row: { action: string; reason?: string | null
  *
  * A release she pressed herself (the button, or a supervisor pulling an order back — written in the presser's name)
  * carries neither mark and still counts.
+ *
+ * A third kind (8/11): a supervisor's return of her «لا يرد» pile (`MANAGER_RETURNED_REASON`) is written in HER name too —
+ * and she did not press it. Read by its reason alone, as the automatic ones are: a line whose metadata cannot be read is
+ * still a supervisor's.
  */
 export function isReleaseSheDidNotPress(row: { action: string; reason?: string | null; metadata?: string | null }): boolean {
   if (isAutomaticRelease(row)) return true;
+  if (row.action === 'RELEASED' && row.reason === MANAGER_RETURNED_REASON) return true;
   if (row.action !== 'RELEASED' || !row.metadata) return false;
   try {
     const m = JSON.parse(row.metadata) as { takenBy?: unknown } | null;
@@ -96,6 +137,30 @@ export function releaseNotice(v: {
     userId: v.holderId,
     title: `رجع ${v.orderNumber} للطابور`,
     message: `رجع ${v.orderNumber} للطابور: ${why}`,
+    type: 'SYSTEM_ALERT',
+    link: RELEASE_NOTICE_LINK,
+  };
+}
+
+/**
+ * The ONE notification a supervisor's return writes to the agent whose pile it was — for the whole press, not per order.
+ * `releaseNotice` names one order and a clock-written reason, so it cannot say who pressed or how many; this has its shape
+ * (store, recipient, `SYSTEM_ALERT`, a link to her own desk) and a sentence of its own.
+ */
+export function managerReturnNotice(v: {
+  companyId: string;
+  storeId: string;
+  holderId: string;
+  by: { name: string };
+  returned: number;
+}) {
+  const who = v.by.name.trim() || 'المشرف';
+  return {
+    companyId: v.companyId,
+    storeId: v.storeId,
+    userId: v.holderId,
+    title: `${who} أرجع ${v.returned} طلب «لا يرد» للطابور`,
+    message: `${who} أرجع ${v.returned} طلب «لا يرد» من طلباتك للطابور. بتضل بإيدك اللي عليهم موعد أو اللي ردّ زبونهم.`,
     type: 'SYSTEM_ALERT',
     link: RELEASE_NOTICE_LINK,
   };

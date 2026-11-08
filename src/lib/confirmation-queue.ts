@@ -24,7 +24,8 @@ type Tx = Prisma.TransactionClient | typeof db;
  * Priority (`pickNextCandidate`, the owner 7/11: «الأولوية دائما للطلبات الجديدة»): what is held for her; then a NEW order —
  * one nobody has rung yet — the oldest first; then a postponed order due within the lead days; then the oldest of the rest.
  * An agent cannot pull while holding an order they have not tried to contact yet, and a claim with no attempt is
- * auto-released after 90 BUSINESS minutes (frozen outside work hours and on weekends).
+ * auto-released after 90 BUSINESS minutes (frozen outside work hours and on weekends). Nor can she pull faster than
+ * `PULL_PACE` (40 in any rolling hour, the owner 8/11) — that refusal comes last (`pullPaceRefusal`).
  */
 
 /**
@@ -32,6 +33,17 @@ type Tx = Prisma.TransactionClient | typeof db;
  * reads this constant, so nothing else says the number.
  */
 export const CLAIM_CAPS = { withoutAttempt: 40, total: 500 } as const;
+
+/**
+ * HOW FAST SHE MAY PULL (the owner, 8/11: «كيف نمنعهم يسحبو طلبات بسرعة مهولة»): at most `perHour` pulls in any rolling
+ * `windowMinutes`. The caps above bound how MANY she holds, not how FAST she takes them. The only place the numbers live —
+ * `pullPaceRefusal` and its sentence read them here.
+ */
+export const PULL_PACE = { perHour: 40, windowMinutes: 60 } as const;
+
+/** The reason the pull writes on the history line of the order it hands out — and the one the pace counts. */
+const PULL_NEXT_REASON = 'PULL_NEXT';
+
 /** A claim with zero logged attempts expires after this many business minutes. */
 export const AUTO_RELEASE_BUSINESS_MINUTES = 90;
 /** How far ahead a postponed order becomes actionable. */
@@ -610,6 +622,8 @@ export type PullRefusal =
   | WorkFirstRefusal
   | { code: 'CAP_WITHOUT_ATTEMPT'; message: string }
   | { code: 'CAP_TOTAL'; message: string }
+  /** Too many pulls in the last hour (`PULL_PACE`): the last refusal the pull makes, and only the pull makes it. */
+  | { code: 'PULL_TOO_FAST'; message: string }
   | { code: 'QUEUE_EMPTY'; message: string };
 
 /**
@@ -680,6 +694,79 @@ export function pullPermission(mayPull: boolean, counts: OwnedCounts): PullRefus
     };
   }
   return pullRefusal(counts);
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * THE PACE OF THE PULL (the owner, 8/11: «كيف نمنعهم يسحبو طلبات بسرعة مهولة»).
+ *
+ * THE CASE: one agent held 489 orders, 479 of them at «لا يرد» (round 1 of 3, one logged no-answer each). Logging «لا يرد» is one
+ * click and the call sheet's «التالي» pulls the next order at once, so pull → «لا يرد» → «التالي» swept the queue in minutes, up to
+ * the cap. The two caps (`CLAIM_CAPS`) bound how MANY she holds; nothing bound how FAST she takes them.
+ *
+ * THE RULE: at most `PULL_PACE.perHour` pulls in any rolling `PULL_PACE.windowMinutes`. What is counted is what the pull itself
+ * wrote — her `CLAIMED / PULL_NEXT` history rows — and nothing else:
+ *
+ *   · whether or not the order was let go since: giving it back does not give the pull back, the SPEED is what is limited;
+ *   · an order held for her that she takes through the same pull counts: it is the same pull;
+ *   · a pull that found the queue empty wrote no row, and a refused one writes none — so pressing again never pushes the opening away;
+ *   · the claim-by-number door, «الزبون على الخط», a transfer and her own entries write other lines: they are not «pulling from the
+ *     queue» and are not limited.
+ *
+ * WHERE IT SITS: LAST among the refusals of the pull (`pullNextOrder`) — an untouched order she must work anyway, and the caps, are
+ * the more useful sentence, and they keep their codes and their words. It is not part of `pullRefusal` (the claim-by-number door asks
+ * that one) nor of `pullPermission`.
+ *
+ * THE WINDOW: a pull counts while it is STRICTLY inside it; one made exactly `windowMinutes` ago has left. So everyone counted still has
+ * something left to wait, and the sentence never says «بعد 0 دقيقة». The minutes are rounded UP: she is told a time she can trust.
+ *
+ * WHEN THE PULL OPENS: when the pull whose leaving brings her back UNDER the limit leaves the window. With exactly `perHour` pulls that is
+ * the oldest. With more (two presses of the same agent in one instant both pass the count, or the hour before this rule existed) it is
+ * the one `N - perHour + 1` places from the oldest — promising the time the oldest leaves would be a time at which she is still refused.
+ *
+ * THE READ: `order_claim_history` had no index for «her pulls of the last hour» — only (orderId, createdAt) and (companyId, userId).
+ * It rides on (userId, action, createdAt), added by migration `20261108190000_claim_history_pace_index`, so it touches her rows of
+ * the window and never her whole history. `reason` is filtered on top. No `companyId`: a person belongs to one company.
+ *
+ * A SOFT EDGE, SAID PLAINLY: the count is read inside the pull's transaction but not under a lock, so two pulls of the SAME agent in the
+ * same instant (two devices) can both pass and leave her one over. The caps above have the same edge. A lock per agent would close it
+ * (`twins-follow-the-pull.ts` takes one per customer); this is a brake on a habit, not a ledger.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+
+/** A number of minutes as an Arabic sentence says it: «دقيقة» · «دقيقتين» · «3 دقائق» … «10 دقائق» · «11 دقيقة». */
+function minutesInArabic(minutes: number): string {
+  if (minutes === 1) return 'دقيقة';
+  if (minutes === 2) return 'دقيقتين';
+  return minutes <= 10 ? `${minutes} دقائق` : `${minutes} دقيقة`;
+}
+
+/** What she pulled, the limit, and when the pull opens — and what to do meanwhile. */
+function pullTooFastMessage(pulled: number, opensInMinutes: number): string {
+  return `سحبت ${pulled} طلباً خلال آخر ${PULL_PACE.windowMinutes} دقيقة — الحد ${PULL_PACE.perHour}. اشتغل على اللي بإيدك، والسحب بيفتح بعد ${minutesInArabic(opensInMinutes)}.`;
+}
+
+/**
+ * Is she pulling faster than the pace allows? `pulledAt` are the times of her pulls inside the window, in any order
+ * (`recentPullTimes` reads them). Pure: the same rule answers the pull and its tests.
+ */
+export function pullPaceRefusal(pulledAt: readonly Date[], now: Date): PullRefusal | null {
+  if (pulledAt.length < PULL_PACE.perHour) return null;
+  // The pull whose leaving brings her back under the limit: the `perHour`-th newest — the oldest, when she is exactly at the limit.
+  const mustLeave = [...pulledAt].sort((a, b) => b.getTime() - a.getTime())[PULL_PACE.perHour - 1];
+  const opensAt = mustLeave.getTime() + PULL_PACE.windowMinutes * 60_000;
+  const opensInMinutes = Math.max(1, Math.ceil((opensAt - now.getTime()) / 60_000));
+  return { code: 'PULL_TOO_FAST', message: pullTooFastMessage(pulledAt.length, opensInMinutes) };
+}
+
+/** The times of her pulls inside the window: the lines `pullNextOrder` wrote (`CLAIMED` / `PULL_NEXT`), released since or not. */
+async function recentPullTimes(tx: Tx, userId: string, now: Date): Promise<Date[]> {
+  const since = new Date(now.getTime() - PULL_PACE.windowMinutes * 60_000);
+  const rows = await tx.orderClaimHistory.findMany({
+    where: { userId, action: 'CLAIMED', reason: PULL_NEXT_REASON, createdAt: { gt: since } },
+    select: { createdAt: true },
+  });
+  return rows.map((row) => row.createdAt);
 }
 
 /**
@@ -1160,6 +1247,10 @@ export async function pullNextOrder(
     // on only; one read of her held orders, the predicate shared with the desk (`work-first.ts`). Claim-by-id never asks it.
     const owed = await workFirstGate(tx, { scope, userId: user.id, cal, now, rounds, open: OPEN_CONFIRMATION, room: CLAIM_CAPS.total, held: counts.total });
     if (owed) return { ok: false, refusal: owed, released };
+    // THE PACE, LAST among the refusals (the owner, 8/11): the untouched order and the caps above are the more useful sentence, and keep
+    // theirs. A refusal here returns before anything is picked — no lock, no claim, no row.
+    const tooFast = pullPaceRefusal(await recentPullTimes(tx, user.id, now), now);
+    if (tooFast) return { ok: false, refusal: tooFast, released };
     // AT THE CAP WITH HOLDS (RV706): only an order held for her — it is already counted, so taking it does not grow the load.
     const atCap = capLoad(counts) >= CLAIM_CAPS.total;
 
@@ -1212,7 +1303,7 @@ export async function pullNextOrder(
           orderId: candidate,
           userId: user.id,
           action: 'CLAIMED',
-          reason: 'PULL_NEXT',
+          reason: PULL_NEXT_REASON,
           metadata: JSON.stringify({ role: user.role }),
         },
       });

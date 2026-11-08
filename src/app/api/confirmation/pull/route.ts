@@ -27,7 +27,8 @@ function ranOutOfTime(error: unknown): boolean {
  *
  * Requires confirmation.pull, which moderators never hold: pulling orders is
  * not the moderator's job. Refusals are explicit (untouched order, caps,
- * empty queue) so the screen can say why instead of showing a dead button.
+ * a pace over `PULL_PACE`, empty queue) so the screen can say why instead of showing a dead button. Every one of them is
+ * a 409 with its code and its sentence — only the empty queue is a 404 — and the screen says the sentence as it came.
  */
 export async function POST() {
   try {
