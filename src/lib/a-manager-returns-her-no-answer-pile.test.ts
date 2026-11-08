@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { CONTACT_RESULTS } from './confirmation-workflow';
 import { HOLDER_ACTIVE_BUSINESS_MINUTES, isReaching, releaseCutoffs, workClock } from './no-answer-rounds';
 import { AUTO_RELEASE_BUSINESS_MINUTES } from './confirmation-queue';
-import { zonedTimeToInstant } from './business-calendar';
+import { zonedTimeToInstant, type BusinessCalendar } from './business-calendar';
 import { isAutomaticRelease, isReleaseSheDidNotPress, managerReturnNotice, managerReturnedBy, MANAGER_RETURNED_REASON } from './auto-release';
 import {
   NOBODY_REACHED_RESULTS,
@@ -106,6 +106,7 @@ interface World {
 function memoryTx(world: World) {
   const order = {
     findMany: async ({ where, orderBy, take, select }: Row) => {
+      asked.push(where);
       const found = sorted(world.orders.filter((r) => matches(r, where ?? {})), orderBy);
       const page = (take ? found.slice(0, take) : found).map((r) =>
         Object.fromEntries(Object.keys(select).filter((k) => select[k]).map((k) => [k, r[k]]))
@@ -115,8 +116,12 @@ function memoryTx(world: World) {
       gap?.();
       return page;
     },
-    count: async ({ where }: Row) => world.orders.filter((r) => matches(r, where ?? {})).length,
+    count: async ({ where }: Row) => {
+      asked.push(where);
+      return world.orders.filter((r) => matches(r, where ?? {})).length;
+    },
     updateMany: async ({ where, data }: Row) => {
+      asked.push(where);
       world.writes.push('order.updateMany');
       const hit = world.orders.filter((r) => matches(r, where));
       for (const r of hit) {
@@ -211,7 +216,10 @@ function order(id: string, over: Row = {}): Row {
 }
 
 let world: World;
+/** Every `where` the in-memory database was handed since the test began — the dates a real database would have been sent. */
+let asked: Row[] = [];
 beforeEach(() => {
+  asked = [];
   world = { orders: [], history: [], notices: [], writes: [], afterRead: null };
 });
 
@@ -885,6 +893,64 @@ describe('the clock is the store’s WORKING clock — a Friday, and the evening
     expect((await press({ calendar: JO })).returned).toBe(1);
     world = { orders: [mk()], history: [], notices: [], writes: [], afterRead: null };
     expect((await press({ calendar: { ...JO, weekendDays: [0, 6] } })).returned).toBe(0);
+  });
+});
+
+describe('a calendar with no working time at all never sends a sentinel to the database', () => {
+  /** The shapes the settings accept (each HH:mm is checked alone) that leave a store with no working minute whatever. */
+  const NO_WORKING_TIME: [string, BusinessCalendar][] = [
+    ['closing before opening (22:00-06:00)', { ...JO, workHoursStart: '22:00', workHoursEnd: '06:00' }],
+    ['opening and closing at the same minute (09:00-09:00)', { ...JO, workHoursStart: '09:00', workHoursEnd: '09:00' }],
+    ['every day of the week a weekend', { ...JO, weekendDays: [0, 1, 2, 3, 4, 5, 6] }],
+  ];
+  /** Every Date anywhere inside a value — what a real database would have been sent. */
+  const datesIn = (v: unknown): Date[] =>
+    v instanceof Date ? [v] : Array.isArray(v) ? v.flatMap(datesIn) : v && typeof v === 'object' ? Object.values(v).flatMap(datesIn) : [];
+
+  it.each(NO_WORKING_TIME)('%s: the raw working clock does answer a date before 1970 — the premise of the clamp', (_name, calendar) => {
+    expect(workClock(calendar).back(NOW, HOLDER_ACTIVE_BUSINESS_MINUTES).getTime()).toBeLessThan(0);
+    expect(workClock(calendar).back(NOW, AUTO_RELEASE_BUSINESS_MINUTES).getTime()).toBeLessThan(0);
+  });
+
+  it.each(NO_WORKING_TIME)('%s: both edges are held at the epoch — «nothing is old enough», as a date a database can compare', (_name, calendar) => {
+    const cut = pileCutoffs(NOW, calendar);
+    expect(cut.quiet.getTime()).toBe(0);
+    expect(cut.held.getTime()).toBe(0);
+  });
+
+  it.each(NO_WORKING_TIME)('%s: the press answers the ordinary clean zero — nothing returned, nothing written, and not one date before 1970 in any question', async (_name, calendar) => {
+    world.orders = [order('a'), order('b')]; // long held and quiet: both would go on a working calendar
+    const before = copy(world.orders);
+    const out = await press({ calendar });
+    expect(out).toEqual({ returned: 0, skipped: 0, remaining: 0, limit: 200 });
+    expect(world.writes).toEqual([]);
+    expect(world.history).toEqual([]);
+    expect(world.notices).toEqual([]);
+    expect(copy(world.orders)).toEqual(before);
+    // …asked the database something, and only with dates it can compare
+    const sent = asked.flatMap(datesIn);
+    expect(sent.length).toBeGreaterThan(0);
+    for (const d of sent) expect(d.getTime(), 'تاريخ قبل 1970 انبعت للقاعدة').toBeGreaterThanOrEqual(0);
+  });
+
+  it.each(NO_WORKING_TIME)('%s: the desk plan says zero, with the same dates', async (_name, calendar) => {
+    world.orders = [order('a'), order('b')];
+    expect(await countReturnable(memoryTx(world), SCOPE, HERS, calendar, NOW)).toBe(0);
+    const sent = asked.flatMap(datesIn);
+    expect(sent.length).toBeGreaterThan(0);
+    for (const d of sent) expect(d.getTime()).toBeGreaterThanOrEqual(0);
+  });
+
+  it('and the zero is the CALENDAR\'s: the very same orders go on a working one', async () => {
+    world.orders = [order('a'), order('b')];
+    expect((await press({ calendar: JO })).returned).toBe(2);
+  });
+
+  it('a calendar with working time is not clamped: the edges are the real instants, after the epoch', () => {
+    const cut = pileCutoffs(NOW, JO);
+    expect(cut.quiet.getTime()).toBeGreaterThan(0);
+    expect(cut.held.getTime()).toBeGreaterThan(0);
+    expect(cut.quiet.getTime()).toBeGreaterThan(cut.held.getTime());
   });
 });
 

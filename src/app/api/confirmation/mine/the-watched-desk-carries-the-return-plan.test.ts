@@ -27,11 +27,18 @@ const { state, db, resolveAudience } = vi.hoisted(() => {
     orders: [] as Row[],
     /** What the press’s own filter would find on her desk. */
     returnable: 0,
+    /** Since when those orders have been held — a cut-off at or after this qualifies them; an epoch cut-off (a calendar with no working time) does not. */
+    heldSince: new Date('2026-01-01T00:00:00.000Z'),
     /** The store’s country: its work hours and weekend are the calendar «on the phone» and «just taken» are counted on. */
     country: { id: 'co1', code: 'JO', name: 'الأردن', currencyCode: 'JOD', minorUnit: 3, timezone: 'Asia/Amman', workHoursStart: '09:00', workHoursEnd: '17:00', weekendDays: [5, 6] },
   };
   const pick = (where: Row) => state.orders.filter((o) => o.claimedById === where.claimedById && o.storeId === where.storeId);
   const isThePilesFilter = (where: Row) => !!(where.contactAttempts as { some?: unknown } | undefined)?.some;
+  /** The filter's own age guard — `{ claimedAt: { lte: cut-off } }` inside its `AND`. */
+  const ageGuardPasses = (where: Row) => {
+    const clause = (where.AND as Row[] | undefined)?.find((c) => 'claimedAt' in c) as { claimedAt: { lte: Date } } | undefined;
+    return !clause || state.heldSince.getTime() <= clause.claimedAt.lte.getTime();
+  };
   const db = {
     order: {
       findMany: vi.fn(async (q: { where: Row }) => {
@@ -40,7 +47,7 @@ const { state, db, resolveAudience } = vi.hoisted(() => {
       }),
       count: vi.fn(async (q: { where: Row }) => {
         state.wheres.push(q.where);
-        return isThePilesFilter(q.where) ? state.returnable : pick(q.where).length;
+        return isThePilesFilter(q.where) ? (ageGuardPasses(q.where) ? state.returnable : 0) : pick(q.where).length;
       }),
     },
     orderContactAttempt: { groupBy: vi.fn(async () => []) },
@@ -162,6 +169,72 @@ describe('the count is what a press would take — the press’s own filter, on 
       expect(where).not.toEqual(returnablePileWhere({ companyId: 'c1', storeId: 's1' }, 'sara', NOW, pileCutoffs(NOW, mineCountry)));
     } finally {
       state.country = mineCountry;
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('the store’s OPENING and CLOSING hours reach the question — each pinned', () => {
+  it('a 10:00-18:00 store asked at 10:30 counts back across the night to Thursday’s close — start and end each decide it', async () => {
+    const NOW = new Date('2026-11-08T07:30:00.000Z'); // Sunday 10:30 in Amman, half an hour into a 10:00 shift
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    const mineCountry = state.country;
+    try {
+      state.country = { ...mineCountry, workHoursStart: '10:00', workHoursEnd: '18:00' };
+      state.user = await person('owner', 'SUPER_ADMIN', []);
+      await mine('?agent=sara');
+      const where = pileCounts()[0][0].where;
+      // 15 working minutes back is 10:15 today; 90 is 30 minutes today and 60 more: Thursday 17:00 (the shop closed at 18:00)
+      const cut = { quiet: new Date('2026-11-08T07:15:00.000Z'), held: new Date('2026-11-05T14:00:00.000Z') };
+      expect(pileCutoffs(NOW, state.country)).toEqual(cut);
+      expect(where).toEqual(returnablePileWhere({ companyId: 'c1', storeId: 's1' }, 'sara', NOW, cut));
+    } finally {
+      state.country = mineCountry;
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('a store calendar with no working time at all: the desk says zero and asks only for dates a database stores', () => {
+  const NOW = new Date('2026-11-08T12:00:00.000Z');
+  const SHAPES: [string, Partial<typeof state.country>][] = [
+    ['closing before opening (22:00-06:00)', { workHoursStart: '22:00', workHoursEnd: '06:00' }],
+    ['every day of the week a weekend', { weekendDays: [0, 1, 2, 3, 4, 5, 6] }],
+  ];
+  const datesIn = (v: unknown): Date[] =>
+    v instanceof Date ? [v] : Array.isArray(v) ? v.flatMap(datesIn) : v && typeof v === 'object' ? Object.values(v).flatMap(datesIn) : [];
+
+  it.each(SHAPES)('%s: the plan is a plan of zero (the read still answers 200), and no date before 1970 was asked', async (_name, shape) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    const mineCountry = state.country;
+    try {
+      state.country = { ...mineCountry, ...shape };
+      state.returnable = 479; // held since January: on a working calendar all of them would be offered
+      state.user = await person('owner', 'SUPER_ADMIN', []);
+      const res = await mine('?agent=sara');
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.returnPile).toEqual({ eligible: 0, limit: 200, thisPress: 0, remainingAfter: 0 });
+      expect(body.viewing).toEqual({ id: 'sara', name: 'سارة', readOnly: true });
+      const sent = pileCounts().flatMap((c) => datesIn(c[0]));
+      expect(sent.length).toBeGreaterThan(0);
+      for (const d of sent) expect(d.getTime(), 'تاريخ قبل 1970 انبعت للقاعدة').toBeGreaterThanOrEqual(0);
+    } finally {
+      state.country = mineCountry;
+      vi.useRealTimers();
+    }
+  });
+
+  it('and the same desk on the working calendar offers all 479 (so the zero above is the calendar\'s)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    try {
+      state.returnable = 479;
+      state.user = await person('owner', 'SUPER_ADMIN', []);
+      expect((await (await mine('?agent=sara')).json()).returnPile).toMatchObject({ eligible: 479, thisPress: 200 });
+    } finally {
       vi.useRealTimers();
     }
   });

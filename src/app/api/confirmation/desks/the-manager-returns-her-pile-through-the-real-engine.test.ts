@@ -444,3 +444,69 @@ describe('what the door passes on, and what it says', () => {
     expect(logAudit).not.toHaveBeenCalled();
   });
 });
+
+describe('a store calendar with no working time at all — through the door', () => {
+  /*
+   * The settings check each HH:mm alone, so a store can be saved with no working minute whatever. The raw working clock then
+   * answers year -271821 for «how long ago is fifteen working minutes», which PostgreSQL does not store (its floor is 4713 BC):
+   * the press and the owner's watched-desk read would have answered 500. `pileCutoffs` holds both edges at the epoch instead.
+   */
+  const NOW = new Date('2026-11-08T12:00:00.000Z');
+  const NO_WORKING_TIME: [string, Partial<typeof state.country>][] = [
+    ['closing before opening (22:00-06:00)', { workHoursStart: '22:00', workHoursEnd: '06:00' }],
+    ['every day of the week a weekend', { weekendDays: [0, 1, 2, 3, 4, 5, 6] }],
+  ];
+  const datesIn = (v: unknown): Date[] =>
+    v instanceof Date ? [v] : Array.isArray(v) ? v.flatMap(datesIn) : v && typeof v === 'object' ? Object.values(v).flatMap(datesIn) : [];
+  /** The age guard of a filter: a claim at or before this qualifies — the one clause a database would apply to the rows below. */
+  const claimedBefore = (q: Record<string, unknown>): Date =>
+    ((q.where as { AND: Record<string, { lte?: Date }>[] }).AND.find((c) => 'claimedAt' in c)!.claimedAt as { lte: Date }).lte;
+
+  it.each(NO_WORKING_TIME)('%s: the press answers 200 with the ordinary zero, asks only for dates a database stores, and writes nothing', async (_name, shape) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    const mine = state.country;
+    // a database that applies the age guard to two orders held since January: with a cut-off at the epoch, neither qualifies
+    const held = [new Date('2026-01-05T08:00:00.000Z'), new Date('2026-01-06T08:00:00.000Z')];
+    try {
+      state.country = { ...mine, ...shape };
+      state.rows = state.rows.map((r, i) => ({ ...r, claimedAt: held[i] }));
+      tx.order.findMany.mockImplementation(async (q) => state.rows.filter((r) => r.claimedAt.getTime() <= claimedBefore(q).getTime()));
+      tx.order.count.mockImplementation(async (q) => state.rows.filter((r) => r.claimedAt.getTime() <= claimedBefore(q).getTime()).length);
+      state.user = await person('owner', 'SUPER_ADMIN', []);
+
+      const res = await press('sara');
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ returned: 0, skipped: 0, remaining: 0 });
+      const sent = [...tx.order.findMany.mock.calls, ...tx.order.count.mock.calls].flatMap((c) => datesIn(c[0]));
+      expect(sent.length).toBeGreaterThan(0);
+      for (const d of sent) expect(d.getTime(), 'تاريخ قبل 1970 انبعت للقاعدة').toBeGreaterThanOrEqual(0);
+      expect(tx.order.updateMany).not.toHaveBeenCalled();
+      expect(tx.orderClaimHistory.createMany).not.toHaveBeenCalled();
+      expect(tx.notification.create).not.toHaveBeenCalled();
+      expect(logAudit).not.toHaveBeenCalled();
+    } finally {
+      state.country = mine;
+      tx.order.findMany.mockImplementation(async () => state.rows);
+      tx.order.count.mockImplementation(async () => state.remaining);
+      vi.useRealTimers();
+    }
+  });
+
+  it('and the same two orders, on the working calendar, are what the press returns (so the zero above is the calendar\'s)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    const held = [new Date('2026-01-05T08:00:00.000Z'), new Date('2026-01-06T08:00:00.000Z')];
+    try {
+      state.rows = state.rows.map((r, i) => ({ ...r, claimedAt: held[i] }));
+      tx.order.findMany.mockImplementation(async (q) => state.rows.filter((r) => r.claimedAt.getTime() <= claimedBefore(q).getTime()));
+      state.user = await person('owner', 'SUPER_ADMIN', []);
+      const body = await (await press('sara')).json();
+      expect(body).toMatchObject({ returned: 2, skipped: 0 });
+    } finally {
+      tx.order.findMany.mockImplementation(async () => state.rows);
+      vi.useRealTimers();
+    }
+  });
+});

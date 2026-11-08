@@ -13,11 +13,12 @@ type Tx = Prisma.TransactionClient | typeof db;
  * «أرجِع «لا يرد» للطابور» — A SUPERVISOR RETURNS A HOARDED PILE NOW (the owner, 8/11: «واذا ساحبيتو رجعهم»).
  *
  * One agent held 489 orders, 479 of them in «لا يرد», each rung once. The other agents had nothing to pull, and the only ways
- * out were a press per order (`DELETE /api/orders/[id]/claim`, 479 times) or the rounds release after six working hours. On the
+ * out were a press per order (`DELETE /api/orders/[id]/claim`, 479 times) or the rounds release after twelve working hours
+ * (`ROUND_RELEASE_BUSINESS_MINUTES`; it was six when this was written, and the rounds' clock is theirs to change). On the
  * watched desk (`desk-watch.ts`) a holder of `orders.unlock` returns up to `RETURN_PILE_LIMIT` of HER «لا يرد» orders per press,
  * is told how many remain, and presses again for the rest.
  *
- * ── WHICH ORDERS (`returnablePileWhere`) — the same «still ours» guards as the rounds release, WITHOUT its six-hour clocks ──
+ * ── WHICH ORDERS (`returnablePileWhere`) — the same «still ours» guards as the rounds release, WITHOUT its round clock ──
  *
  *   · held by her, still at the confirmation desk (`OPEN_CONFIRMATION`), never shipped (NOT_READY, no batch, no tracking
  *     number, no printed label);
@@ -95,13 +96,24 @@ export interface PileCutoffs {
 }
 
 /**
- * The cut-offs, from the store's business calendar — `workClock`, exactly as `releaseByRounds` and `releaseStaleClaims` count: a
- * Friday, or the hours after closing, add no minutes. (A calendar with no working time at all answers «nothing is ever old
- * enough», as it does for the releases: nothing returns.)
+ * The cut-offs, from the store's business calendar — `workClock`, as `releaseByRounds` and `releaseStaleClaims` count: a Friday,
+ * or the hours after closing, add no minutes.
+ *
+ * ⚠️ A CALENDAR WITH NO WORKING TIME AT ALL never reaches the database as a sentinel. Closing before opening (22:00-06:00; the
+ * settings check each HH:mm alone), or all seven days a weekend, makes `clock.back` answer `new Date(-8.64e15)` — «nothing is ever
+ * old enough», year -271821. The releases never send that to PostgreSQL (`releaseByRounds` returns before it queries and
+ * `no-answer-watch.ts` compares in JS); this door's filter is where it would have gone, and a timestamp that far back is not one
+ * PostgreSQL stores (its floor is 4713 BC), so the owner's watched-desk read and the press would have answered 500. Both edges are
+ * therefore held at the epoch: every real attempt is «recent» and no real claim is old enough — the same «nothing is old enough»,
+ * as a date a database can compare. The answer is the ordinary clean zero: nothing to return, nothing written.
  */
 export function pileCutoffs(now: Date, calendar: BusinessCalendar): PileCutoffs {
   const clock = workClock(calendar);
-  return { quiet: releaseCutoffs(now, clock).recent, held: clock.back(now, AUTO_RELEASE_BUSINESS_MINUTES) };
+  const atEpochAtLeast = (edge: Date) => new Date(Math.max(edge.getTime(), 0));
+  return {
+    quiet: atEpochAtLeast(releaseCutoffs(now, clock).recent),
+    held: atEpochAtLeast(clock.back(now, AUTO_RELEASE_BUSINESS_MINUTES)),
+  };
 }
 
 /**

@@ -350,7 +350,8 @@ export async function GET(request: Request) {
       const link = deskCallIntent(callKey, o.id, waNumber(o.customer.rawPhone ?? '', deskDialCode), now.getTime());
       return link ? { callHelperLink: link } : {};
     };
-    // The working calendar is placed once for the whole desk — only with the switch on, the only time anything below asks it.
+    // The working calendar is placed once for the whole desk: the rounds counter below asks it (switch on), and so does the count on
+    // the return button (a holder of `orders.unlock`, on a colleague's desk) — the same calendar, never a second copy of it.
     const cal: BusinessCalendar = {
       workHoursStart: country.workHoursStart,
       workHoursEnd: country.workHoursEnd,
@@ -401,20 +402,7 @@ export async function GET(request: Request) {
      */
     const returnPile =
       viewing && can(user, RETURN_PILE_KEY)
-        ? pressPlan(
-            await countReturnable(
-              db,
-              { companyId, storeId },
-              deskOf,
-              {
-                workHoursStart: country.workHoursStart,
-                workHoursEnd: country.workHoursEnd,
-                weekendDays: country.weekendDays,
-                timezone: country.timezone,
-              },
-              now
-            )
-          )
+        ? pressPlan(await countReturnable(db, { companyId, storeId }, deskOf, cal, now))
         : null;
 
     // Contact details left the building; the tally is the person's, not
