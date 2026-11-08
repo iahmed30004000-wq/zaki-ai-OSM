@@ -5,14 +5,16 @@ import type { SessionUser } from '@/types/auth';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * «شاشة موظفة» — THE OWNER READS AN AGENT'S DESK, AND TOUCHES NOTHING ON IT.
+ * «شاشة موظفة» — THE OWNER READS AN AGENT'S DESK. THE ONE THING HE MAY PRESS ON IT IS RETURNING HER «لا يرد» PILE (8/11).
  *
  * The owner, 2/11: «مركز التأكيد ضروري اشوف انا ك مالك شاشات البنات… أو خلي
  * الحساب يدخلو أكثر من شخص». Decided: no shared account and no change to the
  * session (one person, one cookie — a «tokenVersion» bump still signs out every
  * device, by design). Instead the desk door (`GET /api/confirmation/mine`) reads
  * `?agent=<id>` for a viewer this file allows, and answers that agent's desk —
- * the same three groups, the same counts — for reading only.
+ * the same three groups, the same counts — for reading only. Since 8/11 («واذا
+ * ساحبيتو رجعهم») a watcher who also holds `orders.unlock` has one press on it,
+ * «أرجِع «لا يرد» للطابور», in a door of its own (see the last paragraph).
  *
  * WHO MAY WATCH: `team.monitor` («متابعة أداء الفريق»), AND every order in sight.
  *
@@ -32,10 +34,15 @@ import type { SessionUser } from '@/types/auth';
  * use (`resolveAudience` → `usersReachingStore`). Anybody else is «not found»,
  * so an id from another company says nothing about whether it exists.
  *
- * AND NO WRITE DOOR READS IT. Nothing here hands out an identity: the desk door
+ * AND NO WRITE DOOR ACTS AS HER. Nothing here hands out an identity: the desk door
  * only swaps WHOSE `claimedById` it reads. Every door that changes an order
  * keeps asking the session user, so a press made «as» the agent is a press made
- * by the viewer under his own keys — and the screen draws no such press.
+ * by the viewer under his own keys. ONE write door names her desk —
+ * `POST /api/confirmation/desks/[agentId]/return-no-answer` (`return-no-answer-pile.ts`):
+ * it asks this rule AND `orders.unlock`, takes her id from its path as a filter on
+ * WHOSE pile it returns, and writes under the presser's own id (her id stays in
+ * `userId` of the history line only as whose order it was, with him in its
+ * metadata). The screen draws that one press on a watched desk, and no other.
  * ═══════════════════════════════════════════════════════════════════════
  */
 

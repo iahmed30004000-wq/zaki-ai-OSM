@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { CONTACT_RESULTS } from './confirmation-workflow';
-import { isReaching } from './no-answer-rounds';
-import { isAutomaticRelease, isReleaseSheDidNotPress, managerReturnedBy, MANAGER_RETURNED_REASON } from './auto-release';
+import { HOLDER_ACTIVE_BUSINESS_MINUTES, isReaching, releaseCutoffs, workClock } from './no-answer-rounds';
+import { AUTO_RELEASE_BUSINESS_MINUTES } from './confirmation-queue';
+import { zonedTimeToInstant } from './business-calendar';
+import { isAutomaticRelease, isReleaseSheDidNotPress, managerReturnNotice, managerReturnedBy, MANAGER_RETURNED_REASON } from './auto-release';
 import {
   NOBODY_REACHED_RESULTS,
   RETURN_PILE_LIMIT,
   countReturnable,
+  pileCutoffs,
   pileMessage,
   pressPlan,
   returnNoAnswerPile,
@@ -65,6 +68,7 @@ function tri(row: Row, where: Row): Tri {
             case 'in': return value === null ? null : (arg as unknown[]).includes(value);
             case 'notIn': return value === null ? null : !(arg as unknown[]).includes(value);
             case 'lte': return value === null ? null : (value as Date).getTime() <= (arg as Date).getTime();
+            case 'gt': return value === null ? null : (value as Date).getTime() > (arg as Date).getTime();
             case 'none': return !(row[key] ?? []).some((c: Row) => tri(c, arg as Row) === true);
             case 'some': return (row[key] ?? []).some((c: Row) => tri(c, arg as Row) === true);
             default: throw new Error(`the in-memory database does not know «${op}»`);
@@ -163,12 +167,21 @@ const NOW = new Date('2026-11-08T12:00:00.000Z');
 const minutesAgo = (n: number) => new Date(NOW.getTime() - n * 60_000);
 const minutesAhead = (n: number) => new Date(NOW.getTime() + n * 60_000);
 const SCOPE = { companyId: 'c1', storeId: 's1' };
+/** The store's calendar: Amman, Sunday to Thursday 09:00-17:00 (Friday and Saturday off). NOW is Sunday 15:00 local. */
+const JO = { workHoursStart: '09:00', workHoursEnd: '17:00', weekendDays: [5, 6], timezone: 'Asia/Amman' };
 const HERS = 'salwa';
 const BY = { id: 'owner', name: 'أحمد' };
 
 const attempt = (result: string, n: number) => ({ result, createdAt: minutesAgo(400 - n), attemptNumber: n });
 /** What a real desk carries: the dialler press, then the no-answer she logged. */
 const REAL_SHAPE = () => [attempt('OPENED', 1), attempt('NO_ANSWER', 2)];
+/** An attempt logged at a given moment — the recent ones the two working-clock guards read. */
+const attemptAt = (result: string, n: number, when: Date) => ({ result, createdAt: when, attemptNumber: n });
+/** The two cut-offs of NOW, drawn from the rounds system's own constant and the queue's own on the store's calendar. */
+const CLOCK = workClock(JO);
+const QUIET_AT = CLOCK.back(NOW, HOLDER_ACTIVE_BUSINESS_MINUTES); // an attempt AT it is old enough
+const HELD_AT = CLOCK.back(NOW, AUTO_RELEASE_BUSINESS_MINUTES); // a claim AT it is old enough
+const msAfter = (d: Date, ms = 1) => new Date(d.getTime() + ms);
 
 function order(id: string, over: Row = {}): Row {
   return {
@@ -202,7 +215,7 @@ beforeEach(() => {
   world = { orders: [], history: [], notices: [], writes: [], afterRead: null };
 });
 
-const press = (over: Row = {}) => returnNoAnswerPile(memoryTx(world), { scope: SCOPE, agentId: HERS, by: BY, now: NOW, ...over });
+const press = (over: Row = {}) => returnNoAnswerPile(memoryTx(world), { scope: SCOPE, agentId: HERS, by: BY, calendar: JO, now: NOW, ...over });
 const byId = (id: string) => world.orders.find((o) => o.id === id)!;
 const copy = (rows: Row[]) => JSON.parse(JSON.stringify(rows)) as Row[];
 const goneIds = () => world.history.map((h) => h.orderId).sort();
@@ -226,6 +239,11 @@ describe('which of her orders go back', () => {
     ['follow-up-date-passed', order('follow-up-date-passed', { nextFollowUpAt: minutesAgo(5) })],
     ['follow-up-date-is-now', order('follow-up-date-is-now', { nextFollowUpAt: NOW })],
     ['postponed-and-due', order('postponed-and-due', { confirmationStatus: 'POSTPONED', postponedUntil: minutesAgo(60) })],
+    // the working-clock guards, from the allowed side: a quiet quarter of an hour, a claim that has had its ninety minutes
+    ['last-press-exactly-the-window-ago', order('last-press-exactly-the-window-ago', { contactAttempts: [...REAL_SHAPE(), attemptAt('OPENED', 3, QUIET_AT)] })],
+    ['last-press-sixteen-minutes-ago', order('last-press-sixteen-minutes-ago', { contactAttempts: [...REAL_SHAPE(), attemptAt('NO_ANSWER', 3, minutesAgo(16))] })],
+    ['pulled-exactly-ninety-minutes-ago', order('pulled-exactly-ninety-minutes-ago', { claimedAt: HELD_AT })],
+    ['pulled-two-hours-ago', order('pulled-two-hours-ago', { claimedAt: minutesAgo(120) })],
   ];
   const stays = (): [string, Row][] => [
     // not «لا يرد» at all
@@ -260,6 +278,17 @@ describe('which of her orders go back', () => {
     ['in-the-queue', order('in-the-queue', { claimedById: null, claimedAt: null, currentOwnerId: null })],
     ['her-desk-in-another-store', order('her-desk-in-another-store', { storeId: 's2' })],
     ['her-desk-in-another-company', order('her-desk-in-another-company', { companyId: 'c2' })],
+    // a hand that is on the phone: an attempt of ANY kind in the last quarter of an hour (the customer may be answering now)
+    ['dialled-again-a-minute-ago', order('dialled-again-a-minute-ago', { contactAttempts: [...REAL_SHAPE(), attemptAt('OPENED', 3, minutesAgo(1))] })],
+    ['message-two-minutes-ago', order('message-two-minutes-ago', { contactAttempts: [...REAL_SHAPE(), attemptAt('MESSAGE_SENT', 3, minutesAgo(2))] })],
+    ['no-answer-logged-three-minutes-ago', order('no-answer-logged-three-minutes-ago', { contactAttempts: [...REAL_SHAPE(), attemptAt('NO_ANSWER', 3, minutesAgo(3))] })],
+    ['busy-logged-thirty-seconds-ago', order('busy-logged-thirty-seconds-ago', { contactAttempts: [...REAL_SHAPE(), attemptAt('BUSY', 3, minutesAgo(0.5))] })],
+    ['last-press-one-millisecond-inside-the-window', order('last-press-one-millisecond-inside-the-window', { contactAttempts: [...REAL_SHAPE(), attemptAt('OPENED', 3, msAfter(QUIET_AT))] })],
+    // an order she has just taken: it still carries the PREVIOUS holder's old no-answer, and she has had no chance yet
+    ['pulled-thirty-seconds-ago-with-a-previous-holders-no-answer', order('pulled-thirty-seconds-ago-with-a-previous-holders-no-answer', { claimedAt: minutesAgo(0.5) })],
+    ['pulled-eighty-nine-minutes-ago', order('pulled-eighty-nine-minutes-ago', { claimedAt: minutesAgo(89) })],
+    ['pulled-one-millisecond-inside-the-ninety', order('pulled-one-millisecond-inside-the-ninety', { claimedAt: msAfter(HELD_AT) })],
+    ['pulled-at-a-time-nobody-recorded', order('pulled-at-a-time-nobody-recorded', { claimedAt: null })],
   ];
 
   it('the fixture table is not vacuous: it has orders that go AND orders that stay, of every kind', () => {
@@ -286,10 +315,10 @@ describe('which of her orders go back', () => {
 
   it('the count a desk shows is the very set a press takes (one filter for both)', async () => {
     world.orders = [...goes(), ...stays()].map(([, o]) => o);
-    expect(await countReturnable(memoryTx(world), SCOPE, HERS, NOW)).toBe(goes().length);
+    expect(await countReturnable(memoryTx(world), SCOPE, HERS, JO, NOW)).toBe(goes().length);
     // each agent's count is her own desk's: the colleague's one order that qualifies is hers, nobody else's
-    expect(await countReturnable(memoryTx(world), SCOPE, 'hind', NOW)).toBe(1);
-    expect(await countReturnable(memoryTx(world), SCOPE, 'nobody', NOW)).toBe(0);
+    expect(await countReturnable(memoryTx(world), SCOPE, 'hind', JO, NOW)).toBe(1);
+    expect(await countReturnable(memoryTx(world), SCOPE, 'nobody', JO, NOW)).toBe(0);
   });
 
   it('a date that passes by the clock of the press is passed; a date a minute ahead is not', async () => {
@@ -476,6 +505,10 @@ describe('an order she acted on between the read and the write is skipped, count
     ['it was handed to the courier', (o) => { o.shippingStatus = 'SHIPPED'; }],
     ['a colleague took it over', (o) => { o.claimedById = 'hind'; }],
     ['she gave it back and pulled it again (a new claim)', (o) => { o.claimedAt = minutesAgo(1); }],
+    // (e) the call that begins in the gap: a press of «اتصال», a message, a result she has just logged — all after the read
+    ['she pressed «اتصال» and the customer picked up — nothing logged yet', (o) => { o.contactAttempts.push(attemptAt('OPENED', 9, NOW)); }],
+    ['a message went out to the customer', (o) => { o.contactAttempts.push(attemptAt('MESSAGE_SENT', 9, NOW)); }],
+    ['she logged one more no-answer — a call she has just made', (o) => { o.contactAttempts.push(attemptAt('NO_ANSWER', 9, NOW)); }],
   ];
 
   it.each(ACTS)('%s', async (_name, act) => {
@@ -497,9 +530,9 @@ describe('an order she acted on between the read and the write is skipped, count
     expect(world.notices[0].title).toBe('أحمد أرجع 1 طلب «لا يرد» للطابور');
   });
 
-  it('she kept working but nothing that matters: one more no-answer does not stop the return', async () => {
+  it('the window is TIME, not «anything changed in the log»: a line dated before it, landing in the gap, does not stop the return', async () => {
     world.orders = [order('hit')];
-    world.afterRead = () => { byId('hit').contactAttempts.push(attempt('NO_ANSWER', 9)); };
+    world.afterRead = () => { byId('hit').contactAttempts.push(attemptAt('NO_ANSWER', 9, minutesAgo(16))); };
     expect(await press()).toMatchObject({ returned: 1, skipped: 0 });
   });
 
@@ -625,14 +658,249 @@ describe('a line that says who pressed, and a line that cannot', () => {
 
 describe('the filter, read as text', () => {
   it('names every clause the definition lists (a change to any of them is a change to the definition)', () => {
-    const w = returnablePileWhere(SCOPE, HERS, NOW);
+    const cut = pileCutoffs(NOW, JO);
+    const w = returnablePileWhere(SCOPE, HERS, NOW, cut);
     expect(w).toMatchObject({
       companyId: 'c1', storeId: 's1', claimedById: HERS, shippingStatus: 'NOT_READY',
       shippingBatchId: null, trackingNumber: null, labelPrintedAt: null,
     });
     expect(w.confirmationStatus.in).toEqual(['NEW', 'IN_PROGRESS', 'NO_ANSWER', 'FOLLOW_UP_REQUIRED', 'POSTPONED']);
     expect(w.contactAttempts.some.result.in).toEqual(['NO_ANSWER', 'BUSY', 'UNREACHABLE']);
-    expect(w.contactAttempts.none.result.notIn).toEqual(expect.arrayContaining(['NO_ANSWER', 'BUSY', 'UNREACHABLE']));
-    expect(w.AND).toHaveLength(2);
+    // nobody reached, AND nothing of any kind in the window: one `none`, two ways to be disqualified
+    expect(w.contactAttempts.none.OR).toHaveLength(2);
+    const [reachedClause, recentClause] = w.contactAttempts.none.OR as [{ result: { notIn: string[] } }, unknown];
+    expect(reachedClause.result.notIn).toEqual(expect.arrayContaining(['NO_ANSWER', 'BUSY', 'UNREACHABLE']));
+    expect(recentClause).toEqual({ createdAt: { gt: cut.quiet } });
+    // the two dates, and the claim old enough — inside AND, so the write's own `claimedAt` cannot replace it
+    expect(w.AND).toHaveLength(3);
+    expect(w.AND).toContainEqual({ claimedAt: { lte: cut.held } });
+    expect(w).not.toHaveProperty('claimedAt');
+  });
+});
+
+/* ───────────────────────── 7 · NOT out of a hand that is on the phone, and not an order she has just taken ───────────────────────── */
+
+describe('NOT out of a hand that is on the phone', () => {
+  it('(a) she dialled again a minute ago and the customer picked up — nothing is logged yet, so nothing is taken, and her result press will not meet NOT_HELD', async () => {
+    world.orders = [order('on-the-call', { contactAttempts: [...REAL_SHAPE(), attemptAt('OPENED', 3, minutesAgo(1))] })];
+    const before = copy(world.orders);
+    const out = await press();
+    expect(out).toEqual({ returned: 0, skipped: 0, remaining: 0, limit: 200 });
+    expect(world.writes).toEqual([]);
+    expect(world.history).toEqual([]);
+    expect(world.notices).toEqual([]);
+    expect(copy(world.orders)).toEqual(before);
+    // …and the number on the desk's button agrees: it does not offer what the press would not take
+    expect(await countReturnable(memoryTx(world), SCOPE, HERS, JO, NOW)).toBe(0);
+  });
+
+  it.each([
+    ['(a) a dialler press a minute ago', 'OPENED', 1],
+    ['(c) a message while the customer answers on WhatsApp, two minutes ago', 'MESSAGE_SENT', 2],
+    ['a no-answer she has just logged, three minutes ago', 'NO_ANSWER', 3],
+    ['a busy line, five minutes ago', 'BUSY', 5],
+    ['an unreachable phone, ten minutes ago', 'UNREACHABLE', 10],
+    ['the last minute of the window (fourteen minutes and fifty-nine seconds ago)', 'OPENED', 14.98],
+  ])('stays with her: %s', async (_name, result, ago) => {
+    world.orders = [order('hit', { contactAttempts: [...REAL_SHAPE(), attemptAt(result, 3, minutesAgo(ago))] })];
+    expect((await press()).returned).toBe(0);
+    expect(world.writes).toEqual([]);
+    expect(await countReturnable(memoryTx(world), SCOPE, HERS, JO, NOW)).toBe(0);
+  });
+
+  it('and the same order goes once the quarter of an hour has passed — nothing else about it changed', async () => {
+    world.orders = [order('hit', { contactAttempts: [...REAL_SHAPE(), attemptAt('OPENED', 3, minutesAgo(16))] })];
+    expect((await press()).returned).toBe(1);
+  });
+
+  it('the window is anyone’s line, not only hers: a colleague’s press on the order counts the same (the order is hers now)', async () => {
+    world.orders = [order('hit', { contactAttempts: [...REAL_SHAPE(), { ...attemptAt('OPENED', 3, minutesAgo(2)), employeeId: 'hind' }] })];
+    expect((await press()).returned).toBe(0);
+  });
+
+  it('only the order on the call is held back: the rest of the pile goes', async () => {
+    world.orders = [
+      order('on-the-call', { contactAttempts: [...REAL_SHAPE(), attemptAt('OPENED', 3, minutesAgo(1))] }),
+      order('quiet-1'),
+      order('quiet-2'),
+    ];
+    expect(await press()).toEqual({ returned: 2, skipped: 0, remaining: 0, limit: 200 });
+    expect(goneIds()).toEqual(['quiet-1', 'quiet-2']);
+    expect(byId('on-the-call').claimedById).toBe(HERS);
+    expect(world.notices[0].title).toBe('أحمد أرجع 2 طلب «لا يرد» للطابور');
+  });
+});
+
+describe('NOT an order she has just taken', () => {
+  it('(b) re-pulled thirty seconds ago, still carrying the PREVIOUS holder’s old no-answer: it stays, however old the no-answer is', async () => {
+    world.orders = [order('just-pulled', { claimedAt: minutesAgo(0.5), contactAttempts: REAL_SHAPE() })];
+    const before = copy(world.orders);
+    expect(await press()).toEqual({ returned: 0, skipped: 0, remaining: 0, limit: 200 });
+    expect(world.writes).toEqual([]);
+    expect(copy(world.orders)).toEqual(before);
+    expect(await countReturnable(memoryTx(world), SCOPE, HERS, JO, NOW)).toBe(0);
+  });
+
+  it.each([
+    ['one minute ago', minutesAgo(1)],
+    ['an hour ago', minutesAgo(60)],
+    ['eighty-nine minutes ago', minutesAgo(89)],
+  ])('stays until she has had her ninety working minutes: pulled %s', async (_name, claimedAt) => {
+    world.orders = [order('hit', { claimedAt })];
+    expect((await press()).returned).toBe(0);
+  });
+
+  it('and goes once she has: pulled ninety-one minutes ago', async () => {
+    world.orders = [order('hit', { claimedAt: minutesAgo(91) })];
+    expect((await press()).returned).toBe(1);
+  });
+});
+
+describe('the boundary minute of each window', () => {
+  it('(i) an attempt AT the edge of the quarter of an hour is old enough; one millisecond inside it is not', async () => {
+    world.orders = [
+      order('at-the-edge', { contactAttempts: [...REAL_SHAPE(), attemptAt('OPENED', 3, QUIET_AT)] }),
+      order('one-ms-inside', { contactAttempts: [...REAL_SHAPE(), attemptAt('OPENED', 3, msAfter(QUIET_AT))] }),
+      order('one-ms-outside', { contactAttempts: [...REAL_SHAPE(), attemptAt('OPENED', 3, msAfter(QUIET_AT, -1))] }),
+    ];
+    await press();
+    expect(goneIds()).toEqual(['at-the-edge', 'one-ms-outside']);
+  });
+
+  it('(ii) a claim AT the ninety-minute edge is old enough; one millisecond inside it is not', async () => {
+    world.orders = [
+      order('at-the-edge', { claimedAt: HELD_AT }),
+      order('one-ms-inside', { claimedAt: msAfter(HELD_AT) }),
+      order('one-ms-outside', { claimedAt: msAfter(HELD_AT, -1) }),
+    ];
+    await press();
+    expect(goneIds()).toEqual(['at-the-edge', 'one-ms-outside']);
+  });
+
+  it('the two edges are the rounds system’s own: 15 and 90 working minutes — in the middle of a working day, the wall clock’s', () => {
+    expect(HOLDER_ACTIVE_BUSINESS_MINUTES).toBe(15);
+    expect(AUTO_RELEASE_BUSINESS_MINUTES).toBe(90);
+    expect(NOW.getTime() - QUIET_AT.getTime()).toBe(15 * 60_000);
+    expect(NOW.getTime() - HELD_AT.getTime()).toBe(90 * 60_000);
+  });
+
+  it('pileCutoffs is exactly the rounds release’s «recent» cut-off and the queue’s ninety minutes, on the same working clock', () => {
+    expect(pileCutoffs(NOW, JO)).toEqual({ quiet: releaseCutoffs(NOW, CLOCK).recent, held: CLOCK.back(NOW, AUTO_RELEASE_BUSINESS_MINUTES) });
+  });
+});
+
+describe('the guard is in the READ and in the WRITE, each on its own', () => {
+  it('READ: orders on a call do not use up the 200 — the hundred oldest are on the phone, and the other hundred and fifty all go in one press', async () => {
+    world.orders = Array.from({ length: 250 }, (_, i) =>
+      order(`p${String(i).padStart(3, '0')}`, {
+        claimedAt: minutesAgo(1000 - i),
+        contactAttempts: i < 100 ? [...REAL_SHAPE(), attemptAt('OPENED', 3, minutesAgo(2))] : REAL_SHAPE(),
+      })
+    );
+    const out = await press();
+    // without the guard in the read, the 200 oldest are read (a hundred of them blocked) and this would be 100 returned, 100 skipped, 50 remaining
+    expect(out).toEqual({ returned: 150, skipped: 0, remaining: 0, limit: 200 });
+    expect(goneIds()).toEqual(Array.from({ length: 150 }, (_, i) => `p${String(i + 100).padStart(3, '0')}`));
+  });
+
+  it('READ: the count on the desk skips them too (the same filter)', async () => {
+    world.orders = [order('on-the-call', { contactAttempts: [...REAL_SHAPE(), attemptAt('OPENED', 3, minutesAgo(1))] }), order('quiet'), order('fresh', { claimedAt: minutesAgo(2) })];
+    expect(await countReturnable(memoryTx(world), SCOPE, HERS, JO, NOW)).toBe(1);
+    expect(pressPlan(await countReturnable(memoryTx(world), SCOPE, HERS, JO, NOW))).toMatchObject({ eligible: 1, thisPress: 1 });
+  });
+
+  it('WRITE: (e) a press of «اتصال» that lands between the read and the write stops that order, counted as skipped, and nothing is written on it', async () => {
+    world.orders = [order('hit'), order('quiet')];
+    world.afterRead = () => byId('hit').contactAttempts.push(attemptAt('OPENED', 9, msAfter(NOW, 5_000)));
+    const before = copy([byId('hit')])[0];
+    const out = await press();
+    expect(out).toMatchObject({ returned: 1, skipped: 1 });
+    expect(goneIds()).toEqual(['quiet']);
+    expect(copy([byId('hit')])[0]).toEqual({ ...before, contactAttempts: [...before.contactAttempts, expect.objectContaining({ result: 'OPENED' })] });
+  });
+
+  it('WRITE: a claim re-pulled in the gap is stopped (the new claim is neither the one she read nor ninety minutes old)', async () => {
+    world.orders = [order('hit')];
+    world.afterRead = () => { byId('hit').claimedAt = minutesAgo(5); };
+    expect(await press()).toMatchObject({ returned: 0, skipped: 1 });
+  });
+});
+
+describe('the clock is the store’s WORKING clock — a Friday, and the evening, add no minutes', () => {
+  /** A moment in Amman. 2026-11-12 is a Thursday, 11-13 a Friday (the weekend), 11-08 the Sunday NOW falls on. */
+  const at = (day: number, hour: number, minute = 0) => zonedTimeToInstant('Asia/Amman', 2026, 11, day, hour, minute);
+  const FRIDAY_NOON = at(13, 12);
+  /**
+   * An order that is hers and long taken on `now`'s own WORKING clock (three days back: a weekend's wall-clock hours are not
+   * working minutes, so «ten hours ago» on a Friday would be no time at all) — so only the guard under test can stop it.
+   */
+  const hers = (now: Date, id: string, over: Row = {}) => {
+    const longAgo = new Date(now.getTime() - 3 * 24 * 60 * 60_000);
+    return order(id, {
+      claimedAt: longAgo,
+      contactAttempts: [attemptAt('OPENED', 1, msAfter(longAgo, 60_000)), attemptAt('NO_ANSWER', 2, msAfter(longAgo, 120_000))],
+      ...over,
+    });
+  };
+
+  it('on a Friday, a press logged ten working minutes before Thursday’s close is still «right now» — the wall clock says nineteen hours', async () => {
+    world.orders = [hers(FRIDAY_NOON, 'pressed-1650', { contactAttempts: [attemptAt('NO_ANSWER', 0, at(12, 10)), attemptAt('OPENED', 1, at(12, 16, 50))] })];
+    expect(FRIDAY_NOON.getTime() - at(12, 16, 50).getTime()).toBeGreaterThan(18 * 60 * 60_000);
+    expect((await press({ now: FRIDAY_NOON })).returned).toBe(0);
+  });
+
+  it('…and thirty working minutes before the close is old enough', async () => {
+    world.orders = [hers(FRIDAY_NOON, 'pressed-1630', { contactAttempts: [attemptAt('NO_ANSWER', 0, at(12, 10)), attemptAt('OPENED', 1, at(12, 16, 30))] })];
+    expect((await press({ now: FRIDAY_NOON })).returned).toBe(1);
+  });
+
+  it('on a Friday, a claim taken at 16:30 on Thursday has had thirty working minutes, not ninety — it stays; taken at 15:30 it has had exactly ninety — it goes', async () => {
+    world.orders = [hers(FRIDAY_NOON, 'taken-1630', { claimedAt: at(12, 16, 30) }), hers(FRIDAY_NOON, 'taken-1531', { claimedAt: at(12, 15, 31) }), hers(FRIDAY_NOON, 'taken-1530', { claimedAt: at(12, 15, 30) })];
+    await press({ now: FRIDAY_NOON });
+    expect(goneIds()).toEqual(['taken-1530']);
+  });
+
+  it('after closing the minutes do not run either: at 18:30 a press at 17:30 is after the 16:45 edge — it stays; one at 16:40 goes', async () => {
+    const evening = at(8, 18, 30);
+    world.orders = [
+      hers(evening, 'pressed-1730', { contactAttempts: [attemptAt('NO_ANSWER', 0, at(8, 10)), attemptAt('OPENED', 1, at(8, 17, 30))] }),
+      hers(evening, 'pressed-1640', { contactAttempts: [attemptAt('NO_ANSWER', 0, at(8, 10)), attemptAt('OPENED', 1, at(8, 16, 40))] }),
+    ];
+    await press({ now: evening });
+    expect(goneIds()).toEqual(['pressed-1640']);
+  });
+
+  it('the plan on the desk reads the same clock: on a Friday the count is what the press would take', async () => {
+    world.orders = [
+      hers(FRIDAY_NOON, 'pressed-1650', { contactAttempts: [attemptAt('NO_ANSWER', 0, at(12, 10)), attemptAt('OPENED', 1, at(12, 16, 50))] }),
+      hers(FRIDAY_NOON, 'quiet'),
+    ];
+    expect(await countReturnable(memoryTx(world), SCOPE, HERS, JO, FRIDAY_NOON)).toBe(1);
+  });
+
+  it('it is the STORE’S calendar: a store whose weekend is Sunday-Saturday has a press at 16:50 on Friday still inside the quarter of an hour on Sunday afternoon; ours does not', async () => {
+    const lastFriday = at(6, 16, 50);
+    const mk = () => order('hit', { claimedAt: minutesAgo(5 * 24 * 60), contactAttempts: [...REAL_SHAPE(), attemptAt('OPENED', 3, lastFriday)] });
+    world.orders = [mk()];
+    expect((await press({ calendar: JO })).returned).toBe(1);
+    world = { orders: [mk()], history: [], notices: [], writes: [], afterRead: null };
+    expect((await press({ calendar: { ...JO, weekendDays: [0, 6] } })).returned).toBe(0);
+  });
+});
+
+describe('a supervisor with no name', () => {
+  it('the notice calls him «المشرف» — never a blank before «أرجع» — and a name is trimmed', () => {
+    for (const name of ['', '   ']) {
+      const n = managerReturnNotice({ companyId: 'c1', storeId: 's1', holderId: HERS, by: { name }, returned: 4 });
+      expect(n.title).toBe('المشرف أرجع 4 طلب «لا يرد» للطابور');
+      expect(n.message.startsWith('المشرف أرجع 4 طلب «لا يرد» من طلباتك للطابور.')).toBe(true);
+    }
+    expect(managerReturnNotice({ companyId: 'c1', storeId: 's1', holderId: HERS, by: { name: '  أحمد  ' }, returned: 1 }).title).toBe('أحمد أرجع 1 طلب «لا يرد» للطابور');
+  });
+
+  it('and through a real press: a supervisor whose account has no name is still told to her as «المشرف»', async () => {
+    world.orders = [order('o1')];
+    await press({ by: { id: 'owner', name: '' } });
+    expect(world.notices[0].title).toBe('المشرف أرجع 1 طلب «لا يرد» للطابور');
   });
 });

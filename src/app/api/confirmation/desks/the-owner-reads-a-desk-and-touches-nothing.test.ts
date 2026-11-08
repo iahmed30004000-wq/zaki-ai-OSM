@@ -70,7 +70,8 @@ vi.mock('@/lib/geo-context', () => ({
     companyId: 'c1',
     storeId: state.storeId,
     countryId: 'co1',
-    country: { id: 'co1', code: 'JO', name: 'الأردن', currencyCode: 'JOD', minorUnit: 3, timezone: 'Asia/Amman' },
+    // The store's calendar too (the schema gives every country one): the owner's desk now counts what a return would take, on it.
+    country: { id: 'co1', code: 'JO', name: 'الأردن', currencyCode: 'JOD', minorUnit: 3, timezone: 'Asia/Amman', workHoursStart: '09:00', workHoursEnd: '17:00', weekendDays: [5, 6] },
   }),
 }));
 // `requirePermission` is the real one; only the session it reads is this test's.

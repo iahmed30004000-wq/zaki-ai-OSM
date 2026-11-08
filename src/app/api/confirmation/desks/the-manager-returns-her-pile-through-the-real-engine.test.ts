@@ -18,7 +18,9 @@ import type { SessionUser } from '@/types/auth';
  *  1. Who may: a watcher with `orders.unlock` — the owner, a manager. Nobody else, and every refusal writes and reads nothing.
  *  2. Whose desk: an ACTIVE colleague of this company who reaches this store. Not the presser’s own, not another company’s,
  *     not an id nobody has, not something that is not an id.
- *  3. Acting as nobody but the presser: the line, the notice and the audit row all carry HIS id; the agent is only whose pile.
+ *  3. Acting as nobody but the presser: the history line keeps HER id in `userId` (whose order it was) and names HIM in its
+ *     metadata; the notice goes TO her and names him in its sentence; the audit row is written under HIS id. The agent is
+ *     only whose pile.
  *  4. One audit row per press that moved something — none for a refusal and none for a press that moved nothing.
  *
  * Blockers: no money, no order creation, no migration, no customer data to a model.
@@ -32,6 +34,8 @@ const { state, db, tx, logAudit, resolveAudience, pressSpy } = vi.hoisted(() => 
     user: null as unknown as SessionUser,
     storeId: 's1',
     contextError: null as Error | null,
+    /** The store's country: its work hours and weekend are the calendar the press counts «just taken» and «on the phone» on. */
+    country: { id: 'co1', code: 'JO', workHoursStart: '09:00', workHoursEnd: '17:00', weekendDays: [5, 6], timezone: 'Asia/Amman' },
     people: [] as { id: string; name: string; companyId: string; stores: string[]; status: string }[],
     /** What the light transaction reads: her returnable orders. */
     rows: [] as { id: string; claimedAt: Date; customerId: string | null }[],
@@ -42,9 +46,9 @@ const { state, db, tx, logAudit, resolveAudience, pressSpy } = vi.hoisted(() => 
   };
   const tx = {
     order: {
-      findMany: vi.fn(async () => state.rows),
-      updateMany: vi.fn(async () => ({ count: 1 })),
-      count: vi.fn(async () => state.remaining),
+      findMany: vi.fn<(q: Record<string, unknown>) => Promise<typeof state.rows>>(async () => state.rows),
+      updateMany: vi.fn<(q: Record<string, unknown>) => Promise<{ count: number }>>(async () => ({ count: 1 })),
+      count: vi.fn<(q: Record<string, unknown>) => Promise<number>>(async () => state.remaining),
     },
     orderClaimHistory: { createMany: vi.fn(async () => ({ count: 0 })) },
     notification: { create: vi.fn(async () => ({})) },
@@ -66,7 +70,7 @@ vi.mock('@/lib/db', () => ({ db }));
 vi.mock('@/lib/geo-context', () => ({
   requireContext: async () => {
     if (state.contextError) throw state.contextError;
-    return { user: state.user, companyId: 'c1', storeId: state.storeId, countryId: 'co1', country: { id: 'co1', code: 'JO' } };
+    return { user: state.user, companyId: 'c1', storeId: state.storeId, countryId: 'co1', country: state.country };
   },
 }));
 vi.mock('@/lib/notification-audience', () => ({ resolveAudience }));
@@ -80,7 +84,13 @@ vi.mock('@/lib/return-no-answer-pile', async (orig) => {
 import { attachGrants } from '@/lib/authorization';
 import { computeEffectiveGrants } from '@/lib/permissions-core';
 import { DESK_NOT_FOUND, DESK_WATCH_REFUSAL } from '@/lib/desk-watch';
-import { OWN_DESK_REFUSAL, RETURN_PILE_REFUSAL, RETURN_TRANSACTION_OPTIONS } from '@/lib/return-no-answer-pile';
+import {
+  OWN_DESK_REFUSAL,
+  RETURN_PILE_REFUSAL,
+  RETURN_TRANSACTION_OPTIONS,
+  pileCutoffs,
+  returnablePileWhere,
+} from '@/lib/return-no-answer-pile';
 import * as door from '@/app/api/confirmation/desks/[agentId]/return-no-answer/route';
 
 /** CONFIRMATION_AGENT, live, 1/11: all 22 keys, every one at the whole company. No `team.monitor`, no `orders.unlock`. */
@@ -152,7 +162,13 @@ describe('who may press', () => {
     expect(res.status).toBe(200);
     expect(pressSpy).toHaveBeenCalledTimes(1);
     expect(db.$transaction).toHaveBeenCalledTimes(1);
-    expect(db.$transaction.mock.calls[0][1]).toEqual(RETURN_TRANSACTION_OPTIONS);
+    // The literals, not the module's own constant: 200 statements need more than the default 5 seconds a transaction is given,
+    // and a wait for a connection longer than a few seconds is a press that hangs.
+    expect(db.$transaction.mock.calls[0][1]).toEqual({ maxWait: 5_000, timeout: 30_000 });
+  });
+
+  it('the options the door passes are the module’s own constant, and the constant is those literals', () => {
+    expect(RETURN_TRANSACTION_OPTIONS).toEqual({ maxWait: 5_000, timeout: 30_000 });
   });
 
   it('a manager with «متابعة أداء الفريق», every order in sight and «تجاوز أقفال التحرير» does too — without `confirmation.work`', async () => {
@@ -299,6 +315,51 @@ describe('what the door passes on, and what it says', () => {
     expect(args.scope).toEqual({ companyId: 'c1', storeId: 's1' });
     expect(args.agentId).toBe('sara');
     expect(args.by).toEqual({ id: 'owner', name: 'أحمد' });
+  });
+
+  it('the store’s working calendar goes down with the press — the four fields of its country, nothing else', async () => {
+    state.user = await person('owner', 'SUPER_ADMIN', []);
+    await press('sara');
+    const [, args] = pressSpy.mock.calls[0] as [unknown, { calendar: Row }];
+    expect(args.calendar).toEqual({ workHoursStart: '09:00', workHoursEnd: '17:00', weekendDays: [5, 6], timezone: 'Asia/Amman' });
+  });
+
+  it('the READ, the WRITE and the COUNT after it all carry the working-clock guard, drawn from that calendar at the press’s own moment', async () => {
+    const NOW = new Date('2026-11-08T12:00:00.000Z'); // Sunday 15:00 in Amman
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    try {
+      state.user = await person('owner', 'SUPER_ADMIN', []);
+      await press('sara');
+      const expected = returnablePileWhere({ companyId: 'c1', storeId: 's1' }, 'sara', NOW, pileCutoffs(NOW, state.country));
+      expect(tx.order.findMany.mock.calls[0][0]).toMatchObject({ where: expected, take: 200 });
+      // the write asks everything the read asked, for this order and the claim it read — and the guard is still in it
+      expect(tx.order.updateMany.mock.calls[0][0]).toMatchObject({ where: { ...expected, id: 'o1', claimedAt: state.rows[0].claimedAt } });
+      expect(tx.order.count.mock.calls[0][0]).toEqual({ where: expected });
+      // …and the guard is the 15-minute and the 90-minute edges, on the working clock of Sunday afternoon
+      expect(pileCutoffs(NOW, state.country)).toEqual({ quiet: new Date('2026-11-08T11:45:00.000Z'), held: new Date('2026-11-08T10:30:00.000Z') });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('it is the STORE’S calendar: another country’s hours give other edges, through the same door', async () => {
+    const NOW = new Date('2026-11-08T12:00:00.000Z');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    const other = { ...state.country, weekendDays: [0, 6] };
+    const mine = state.country;
+    try {
+      state.country = other;
+      state.user = await person('owner', 'SUPER_ADMIN', []);
+      await press('sara');
+      const expected = returnablePileWhere({ companyId: 'c1', storeId: 's1' }, 'sara', NOW, pileCutoffs(NOW, other));
+      expect(tx.order.findMany.mock.calls[0][0]).toMatchObject({ where: expected });
+      expect(expected).not.toEqual(returnablePileWhere({ companyId: 'c1', storeId: 's1' }, 'sara', NOW, pileCutoffs(NOW, mine)));
+    } finally {
+      state.country = mine;
+      vi.useRealTimers();
+    }
   });
 
   it('the transaction hands the press its own client, not the global one', async () => {

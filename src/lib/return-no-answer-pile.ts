@@ -1,8 +1,9 @@
 import type { Prisma } from '@prisma/client';
 import type { db } from './db';
+import type { BusinessCalendar } from './business-calendar';
 import { CONTACT_RESULTS, NO_ANSWER_RESULTS } from './confirmation-workflow';
-import { OPEN_CONFIRMATION, type QueueScope } from './confirmation-queue';
-import { isReaching } from './no-answer-rounds';
+import { AUTO_RELEASE_BUSINESS_MINUTES, OPEN_CONFIRMATION, type QueueScope } from './confirmation-queue';
+import { isReaching, releaseCutoffs, workClock } from './no-answer-rounds';
 import { MANAGER_RETURNED_REASON, managerReturnMetadata, managerReturnNotice } from './auto-release';
 
 type Tx = Prisma.TransactionClient | typeof db;
@@ -16,14 +17,21 @@ type Tx = Prisma.TransactionClient | typeof db;
  * watched desk (`desk-watch.ts`) a holder of `orders.unlock` returns up to `RETURN_PILE_LIMIT` of HER «لا يرد» orders per press,
  * is told how many remain, and presses again for the rest.
  *
- * ── WHICH ORDERS (`returnablePileWhere`) — the same «still ours» guards as the rounds release, WITHOUT its clocks ──
+ * ── WHICH ORDERS (`returnablePileWhere`) — the same «still ours» guards as the rounds release, WITHOUT its six-hour clocks ──
  *
  *   · held by her, still at the confirmation desk (`OPEN_CONFIRMATION`), never shipped (NOT_READY, no batch, no tracking
  *     number, no printed label);
  *   · somebody rang and NOBODY WAS REACHED: at least one real no-answer (`NO_ANSWER_RESULTS`), and no attempt of any other
  *     kind — an answer, a callback asked for, a decision, a wrong number or an «other» keeps the order with her;
  *   · NO DATE AHEAD: `postponedUntil` and `nextFollowUpAt` are each empty or already passed. A promise made to a customer is
- *     never taken from the person who made it.
+ *     never taken from the person who made it;
+ *   · NOT OUT OF A HAND THAT IS ON THE PHONE, AND NOT ONE SHE HAS JUST TAKEN (`pileCutoffs`, below). The rounds release has
+ *     always kept both: «a release never takes an order out of her hands in the middle of a call» (`HOLDER_ACTIVE_BUSINESS_MINUTES`),
+ *     and a claim gets its ninety working minutes before anything takes it back (`AUTO_RELEASE_BUSINESS_MINUTES`). Without them
+ *     the door could return an order whose customer was answering at that moment — her result press would then meet NOT_HELD and
+ *     the call's outcome would be lost — or one she pulled thirty seconds ago that still carries the PREVIOUS holder's no-answer.
+ *     The two cut-offs are the SAME ones, counted on the store's working calendar exactly as the releases count them (a Friday, or
+ *     six in the evening, adds no minutes).
  *
  * ⚠️ «NOBODY WAS REACHED» IS NOT «EVERY ATTEMPT IS A NO-ANSWER» — read this before changing `NOBODY_REACHED_RESULTS`.
  * The call button writes `OPENED` into the order's contact log before every call (`contact-line.ts`: «اتصال» writes OPENED), and a
@@ -38,10 +46,11 @@ type Tx = Prisma.TransactionClient | typeof db;
  * ── WHAT IS WRITTEN — one transaction per press, the ninety-minute release's own write ──
  *
  *   · at most `RETURN_PILE_LIMIT` orders, oldest hold first, each by a CONDITIONAL update that asks again everything the read
- *     asked (hers, the same claim, still open, not shipping, no date ahead, nobody reached): an order she acted on between the
- *     read and the write is skipped and counted, never overwritten. (The rounds release re-asks five of these; the date and the
- *     contact log are asked again here because a postpone or a customer's callback logged in that gap is exactly a promise this
- *     door must not break.)
+ *     asked (hers, the same claim, still open, not shipping, no date ahead, nobody reached, nothing logged in the last quarter of
+ *     an hour, taken long enough ago): an order she acted on between the read and the write — a postpone, a callback, a press of
+ *     «اتصال» that opened a call — is skipped and counted, never overwritten. (The rounds release re-asks five of these; the date,
+ *     the contact log and the clock are asked again here because a promise to a customer, or a call that has just begun, in that
+ *     gap is exactly what this door must not break.)
  *   · the data is `{ claimedById: null, claimedAt: null, currentOwnerId: null, signatureStatus: 'UNSIGNED', assignedAt: null }` and
  *     nothing else: the status, the dates, the money and the lines stay as they were;
  *   · a `RELEASED` claim-history line per order that went (`MANAGER_RETURNED`, in `auto-release.ts` with its metadata and the
@@ -73,12 +82,36 @@ export const OWN_DESK_REFUSAL = 'هالإرجاع لشاشة موظفة تاني
  */
 export const NOBODY_REACHED_RESULTS: readonly string[] = CONTACT_RESULTS.filter((result) => !isReaching(result));
 
+/** The two working-clock cut-offs of one press — placed ONCE, from the store's calendar, never per order. */
+export interface PileCutoffs {
+  /**
+   * An attempt of ANY kind after this is «she is on it right now»: the rounds release's own window
+   * (`releaseCutoffs().recent`, `HOLDER_ACTIVE_BUSINESS_MINUTES` working minutes back). A dialler press (`OPENED`) and a message
+   * count — a customer answering on WhatsApp, or on a call whose result is not logged yet, is exactly this.
+   */
+  quiet: Date;
+  /** A claim taken at or before this is `AUTO_RELEASE_BUSINESS_MINUTES` working minutes old: she has had her chance. */
+  held: Date;
+}
+
+/**
+ * The cut-offs, from the store's business calendar — `workClock`, exactly as `releaseByRounds` and `releaseStaleClaims` count: a
+ * Friday, or the hours after closing, add no minutes. (A calendar with no working time at all answers «nothing is ever old
+ * enough», as it does for the releases: nothing returns.)
+ */
+export function pileCutoffs(now: Date, calendar: BusinessCalendar): PileCutoffs {
+  const clock = workClock(calendar);
+  return { quiet: releaseCutoffs(now, clock).recent, held: clock.back(now, AUTO_RELEASE_BUSINESS_MINUTES) };
+}
+
 /**
  * HER «لا يرد» PILE, as a database filter — the read, the count on the desk and the write's own guard all use this one.
  * `now` is the press's clock: a date that has passed at the read has passed at the write, and a date set ahead in between
- * (she postponed it) fails the write and the order stays with her.
+ * (she postponed it) fails the write and the order stays with her. `cut` is the same: an attempt logged in the gap (a press of
+ * «اتصال») is after `cut.quiet` and fails the write too. Boundaries as the releases read them: an attempt AT `quiet` is old
+ * enough (`gt`), a claim AT `held` is old enough (`lte`).
  */
-export function returnablePileWhere(scope: QueueScope, agentId: string, now: Date) {
+export function returnablePileWhere(scope: QueueScope, agentId: string, now: Date, cut: PileCutoffs) {
   return {
     ...scope,
     claimedById: agentId,
@@ -89,11 +122,15 @@ export function returnablePileWhere(scope: QueueScope, agentId: string, now: Dat
     labelPrintedAt: null,
     contactAttempts: {
       some: { result: { in: [...NO_ANSWER_RESULTS] } },
-      none: { result: { notIn: [...NOBODY_REACHED_RESULTS] } },
+      // Nobody was reached, AND nothing of any kind was logged in the last quarter of an hour: no attempt that is either
+      // of another kind or recent.
+      none: { OR: [{ result: { notIn: [...NOBODY_REACHED_RESULTS] } }, { createdAt: { gt: cut.quiet } }] },
     },
     AND: [
       { OR: [{ postponedUntil: null }, { postponedUntil: { lte: now } }] },
       { OR: [{ nextFollowUpAt: null }, { nextFollowUpAt: { lte: now } }] },
+      // Taken long enough ago. (Inside `AND`, so the write's own `claimedAt` — the claim it read — does not replace it.)
+      { claimedAt: { lte: cut.held } },
     ],
   };
 }
@@ -104,9 +141,15 @@ export function pressPlan(eligible: number, limit: number = RETURN_PILE_LIMIT) {
   return { eligible: total, limit, thisPress: Math.min(total, limit), remainingAfter: Math.max(0, total - limit) };
 }
 
-/** How many of her orders qualify right now. */
-export function countReturnable(tx: Tx, scope: QueueScope, agentId: string, now: Date = new Date()): Promise<number> {
-  return tx.order.count({ where: returnablePileWhere(scope, agentId, now) });
+/** How many of her orders qualify right now — the number on the desk's button is what a press would take. */
+export function countReturnable(
+  tx: Tx,
+  scope: QueueScope,
+  agentId: string,
+  calendar: BusinessCalendar,
+  now: Date = new Date()
+): Promise<number> {
+  return tx.order.count({ where: returnablePileWhere(scope, agentId, now, pileCutoffs(now, calendar)) });
 }
 
 export interface PileReturn {
@@ -150,14 +193,15 @@ async function releaseTwinsHeldFor(
  */
 export async function returnNoAnswerPile(
   tx: Tx,
-  args: { scope: QueueScope; agentId: string; by: { id: string; name: string }; now?: Date; limit?: number }
+  args: { scope: QueueScope; agentId: string; by: { id: string; name: string }; calendar: BusinessCalendar; now?: Date; limit?: number }
 ): Promise<PileReturn> {
   const { scope, agentId, by } = args;
   const now = args.now ?? new Date();
   const limit = args.limit ?? RETURN_PILE_LIMIT;
+  const cut = pileCutoffs(now, args.calendar);
 
   const rows = await tx.order.findMany({
-    where: returnablePileWhere(scope, agentId, now),
+    where: returnablePileWhere(scope, agentId, now, cut),
     orderBy: [{ claimedAt: 'asc' }, { id: 'asc' }],
     take: limit,
     select: { id: true, claimedAt: true, customerId: true },
@@ -168,7 +212,7 @@ export async function returnNoAnswerPile(
   for (const row of rows) {
     const done = await tx.order.updateMany({
       // Still hers, still the same claim, still returnable: whatever she did since the read wins.
-      where: { ...returnablePileWhere(scope, agentId, now), id: row.id, claimedAt: row.claimedAt },
+      where: { ...returnablePileWhere(scope, agentId, now, cut), id: row.id, claimedAt: row.claimedAt },
       // Exactly what the ninety-minute release writes.
       data: { claimedById: null, claimedAt: null, currentOwnerId: null, signatureStatus: 'UNSIGNED', assignedAt: null },
     });
@@ -197,7 +241,7 @@ export async function returnNoAnswerPile(
     });
   }
 
-  const remaining = await tx.order.count({ where: returnablePileWhere(scope, agentId, now) });
+  const remaining = await tx.order.count({ where: returnablePileWhere(scope, agentId, now, cut) });
   return { returned: gone.length, skipped, remaining, limit };
 }
 

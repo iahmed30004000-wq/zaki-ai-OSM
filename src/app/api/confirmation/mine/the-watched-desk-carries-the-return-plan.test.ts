@@ -27,6 +27,8 @@ const { state, db, resolveAudience } = vi.hoisted(() => {
     orders: [] as Row[],
     /** What the press’s own filter would find on her desk. */
     returnable: 0,
+    /** The store’s country: its work hours and weekend are the calendar «on the phone» and «just taken» are counted on. */
+    country: { id: 'co1', code: 'JO', name: 'الأردن', currencyCode: 'JOD', minorUnit: 3, timezone: 'Asia/Amman', workHoursStart: '09:00', workHoursEnd: '17:00', weekendDays: [5, 6] },
   };
   const pick = (where: Row) => state.orders.filter((o) => o.claimedById === where.claimedById && o.storeId === where.storeId);
   const isThePilesFilter = (where: Row) => !!(where.contactAttempts as { some?: unknown } | undefined)?.some;
@@ -59,7 +61,7 @@ vi.mock('@/lib/geo-context', () => ({
     companyId: 'c1',
     storeId: 's1',
     countryId: 'co1',
-    country: { id: 'co1', code: 'JO', name: 'الأردن', currencyCode: 'JOD', minorUnit: 3, timezone: 'Asia/Amman' },
+    country: state.country,
   }),
 }));
 vi.mock('@/lib/auth', () => ({ requireAuth: async () => state.user }));
@@ -71,6 +73,7 @@ vi.mock('@/lib/customer-risk', () => ({ customerRisk: async () => null, customer
 import { attachGrants } from '@/lib/authorization';
 import { computeEffectiveGrants } from '@/lib/permissions-core';
 import * as mineRoute from '@/app/api/confirmation/mine/route';
+import { pileCutoffs, returnablePileWhere } from '@/lib/return-no-answer-pile';
 
 async function person(id: string, role: string, keys: string[], scope: Record<string, string> = {}): Promise<SessionUser> {
   const base = { id, email: `${id}@x`, name: id, role, roleId: `r-${id}`, status: 'ACTIVE', companyId: 'c1', permissions: [] } as unknown as SessionUser;
@@ -124,6 +127,43 @@ describe('the plan rides on a colleague’s desk', () => {
     state.user = await person('owner', 'SUPER_ADMIN', []);
     state.returnable = 0;
     expect((await (await mine('?agent=sara')).json()).returnPile).toEqual({ eligible: 0, limit: 200, thisPress: 0, remainingAfter: 0 });
+  });
+});
+
+describe('the count is what a press would take — the press’s own filter, on the store’s working calendar', () => {
+  const NOW = new Date('2026-11-08T12:00:00.000Z'); // Sunday 15:00 in Amman
+  const asked = async () => {
+    state.user = await person('owner', 'SUPER_ADMIN', []);
+    await mine('?agent=sara');
+    return pileCounts()[0][0].where;
+  };
+
+  it('the very filter, with the cut-offs of the store’s calendar at the moment of the read: an order on a call, or just taken, is not in the number', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    try {
+      const where = await asked();
+      expect(where).toEqual(returnablePileWhere({ companyId: 'c1', storeId: 's1' }, 'sara', NOW, pileCutoffs(NOW, state.country)));
+      // the two edges themselves, so a different clock cannot hide behind the helper: a quarter of an hour, and ninety minutes
+      expect(pileCutoffs(NOW, state.country)).toEqual({ quiet: new Date('2026-11-08T11:45:00.000Z'), held: new Date('2026-11-08T10:30:00.000Z') });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('and it is the STORE’S calendar: another weekend gives other edges in the same question', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    const mineCountry = state.country;
+    try {
+      state.country = { ...mineCountry, weekendDays: [0, 6] };
+      const where = await asked();
+      expect(where).toEqual(returnablePileWhere({ companyId: 'c1', storeId: 's1' }, 'sara', NOW, pileCutoffs(NOW, state.country)));
+      expect(where).not.toEqual(returnablePileWhere({ companyId: 'c1', storeId: 's1' }, 'sara', NOW, pileCutoffs(NOW, mineCountry)));
+    } finally {
+      state.country = mineCountry;
+      vi.useRealTimers();
+    }
   });
 });
 
