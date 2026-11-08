@@ -17,7 +17,7 @@ import { ScanSheet } from '@/components/scan/ScanButton';
 import { RiBarcodeLine, RiClipboardLine, RiDownload2Line, RiEBike2Line, RiFileExcel2Line, RiLoader4Line, RiPencilLine, RiPrinterLine, RiQrScan2Line, RiRouteLine, RiSendPlaneLine, RiTruckLine } from '@remixicon/react';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
-import { BatchButtonsHelp } from '@/components/screens/BatchButtonsHelp';
+import { BatchButtonsHelp, LEAVE_PRESSES } from '@/components/screens/BatchButtonsHelp';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/Toast';
@@ -816,6 +816,10 @@ export function ShippingBatchesScreen() {
                   خرج للتوصيل لكل الدفعة ({b.shippedCount})
                 </button>
               ) : null;
+            /* The list of the batch's parcels opens on every batch that has any; only an OPEN trolley (still ready) offers the ways off
+               it. The help under the card reads these two same facts, not a copy of them. */
+            const hasParcels = b._count.orders > 0;
+            const openTrolley = b.status === 'READY';
             /* «أنهِ الدفعة بعد التسوية» was here. The owner, 5/11: the courier never settles a batch — a statement pays
                orders from many batches at once — so a batch has nothing to «end» on. The press is gone from the card; the
                server's SHIPPED → CLOSED step stays, and a batch closed before is still listed under «مُنتهية». */
@@ -849,7 +853,7 @@ export function ShippingBatchesScreen() {
                 {b.notes && <p className="text-xs text-[var(--sys-muted-foreground)]">{b.notes}</p>}
 
                 {/* Every batch with parcels opens its list — to search it (3/11). Only an OPEN trolley offers the ways off it. */}
-                {b._count.orders > 0 && (
+                {hasParcels && (
                   <button
                     onClick={() => void toggleParcels(b)}
                     disabled={busy === b.id}
@@ -857,7 +861,7 @@ export function ShippingBatchesScreen() {
                   >
                     {parcels?.batchId === b.id
                       ? 'أخفِ الطرود'
-                      : b.status === 'READY'
+                      : openTrolley
                         ? 'طرود الدفعة وتفاصيلها — ألغِ أو أجّل قبل التسليم'
                         : 'طرود الدفعة — ابحث عن طلب'}
                   </button>
@@ -931,9 +935,9 @@ export function ShippingBatchesScreen() {
                             عدّل
                           </button>
                         )}
-                        {b.status === 'READY' && (
+                        {openTrolley && (
                         <span className={phone ? 'grid w-full grid-cols-3 gap-2' : 'ms-auto flex flex-wrap gap-1.5'}>
-                          {([['CANCEL', 'ألغِ'], ['FOLLOW_UP', 'أعِده للمتابعة'], ['HOLD', 'أجّل الشحن']] as const).map(([how, label]) => (
+                          {LEAVE_PRESSES.map(([how, label]) => (
                             <button
                               key={how}
                               onClick={() => void leave(b.id, o, how)}
@@ -1038,6 +1042,8 @@ export function ShippingBatchesScreen() {
                     out: outBtn ? b.shippedCount ?? 0 : null,
                     courierSendsStatus: b.provider?.apiEnabled === true,
                     xlsx: !!xlsxBtn,
+                    parcels: hasParcels,
+                    leave: openTrolley,
                   }}
                 />
               </li>

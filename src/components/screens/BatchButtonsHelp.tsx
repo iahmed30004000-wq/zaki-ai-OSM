@@ -10,6 +10,11 @@ import React from 'react';
  * It lists ONLY the presses this card has: the screen passes the same facts that decide whether each button is drawn, so the
  * help can never describe a button that is not there — and every sentence is what the code does (`PATCH /api/shipping-batches/:id`,
  * `…/out-for-delivery`, the dispatch, the paste), not what one would guess from the name.
+ *
+ * The first independent review of this file found four sentences that said more than the code does: a postponement after the
+ * handover (the code REFUSES it; only a cancellation becomes a request), a paste the server refuses (a batch still ready at a
+ * courier connected by API), «all the parcels» where a parcel can be refused and stays at «مشحون», and the list of the batch's
+ * parcels with its own presses left out. Each is held in the test by what the code answers, not only by the words.
  */
 
 export interface BatchHelpFacts {
@@ -25,7 +30,28 @@ export interface BatchHelpFacts {
   courierSendsStatus: boolean;
   /** The Excel file is drawn (the address-book key is held). */
   xlsx: boolean;
+  /** The list of the batch's parcels can be opened (the batch has any). */
+  parcels: boolean;
+  /** The batch is still an open trolley: its parcels list offers the ways off it, not only a search. */
+  leave: boolean;
 }
+
+/**
+ * The three ways a parcel leaves an open trolley. The screen DRAWS these buttons from this list and the help NAMES them from it,
+ * so the help cannot forget one — and `LEAVE_SAYS` below is typed by the same keys, so a press without a sentence does not compile.
+ */
+export const LEAVE_PRESSES = [
+  ['CANCEL', 'ألغِ'],
+  ['FOLLOW_UP', 'أعِده للمتابعة'],
+  ['HOLD', 'أجّل الشحن'],
+] as const;
+
+/** What each press does, in the words of its own confirmation dialog on the screen (`leave()`), not in a guess from the name. */
+const LEAVE_SAYS: Record<(typeof LEAVE_PRESSES)[number][0], string> = {
+  CANCEL: 'بيطلّع الطرد من الدفعة وبيلغي الطلب (بتكتب السبب، وإذا بوليصته مطبوعة بيسألك إذا الطرد بإيدك)',
+  FOLLOW_UP: 'بيطلّع الطرد من الدفعة وبيرجّع الطلب لفريق التأكيد يكلّموا الزبون من جديد (بتحدد بعد كم يوم، من 1 لـ30)',
+  HOLD: 'بيطلّع الطرد من الدفعة ويبقى الطلب مؤكَّد وبضاعته وبوليصته محفوظتين (بتحدد بعد كم يوم، من 1 لـ30)',
+};
 
 interface Item {
   key: string;
@@ -43,14 +69,20 @@ export function batchHelpItems(f: BatchHelpFacts): Item[] {
       key: 'dispatch',
       name: 'رحّل إلى الشركة واجلب الباركود',
       when: 'لما الدفعة جاهزة وقبل ما تسلّمها — لشركة مربوطة بنظامها بس.',
-      does: 'بيبعت كل طرد للشركة، والشركة بترجّع باركوده وبينحفظ على الطلب. والطرد اللي إله باركود من قبل بيتخطّاه (ما بينرحّل مرتين).',
+      does: 'بيبعت طلبات الدفعة للشركة، والشركة بترجّع باركود كل طرد وبينحفظ على الطلب. والطلب اللي إله باركود من قبل بيتخطّاه (ما بينرحّل مرتين)، واللي ما انرحّل بيطلع بنتيجة الترحيل مع سببه.',
     });
   }
   if (f.paste) {
+    // The server answers 409 «DISPATCH_FIRST» to a paste on a batch still ready at a courier connected by API: the dispatch brings
+    // those barcodes, and a pasted one would make the dispatch skip the order. `dispatch` is the same fact that draws that press.
     items.push({
       key: 'paste',
       name: 'لصق الباركودات',
-      when: 'لشركة يدوية، أو لباركودات إجتك من طريق تاني.',
+      when: f.dispatch
+        ? 'مش هلّق: الدفعة لسا ما ترحّلت وشركتها مربوطة، فالنظام بيرفض اللصق — «رحّل إلى الشركة» هو اللي بيجيب الباركودات. اللصق بعد التسليم.'
+        : f.courierSendsStatus
+          ? 'لدفعة سُلّمت قبل ما ترحّلها: الصق باركودات إجتك من طريق تاني.'
+          : 'لشركة يدوية، لما تستلم منها باركودات الطرود.',
       does: 'بتلصق «رقم الطلب, الباركود» سطر لكل طلب؛ بيتحقّق منها أول وبعدين بيكتبها على الطلبات.',
     });
   }
@@ -74,7 +106,9 @@ export function batchHelpItems(f: BatchHelpFacts): Item[] {
       name: 'إغلاق الشحنة — سُلّمت للشركة',
       when: 'لما الشركة تاخد الدفعة فعلاً.',
       does: 'الدفعة وكل طرودها بتصير «مشحون» مع وقت التسليم وسطر بسجل كل طلب. بيرفض كله ولا بيكتب شي إذا الدفعة فاضية، أو في طرد إله طلب إلغاء أو تأجيل ما انجاوب، أو طرد تغيّر لحظتها، أو في طرد بلا باركود لشركة مربوطة (بيسألك تأكّد).',
-      undo: 'ما بيرجع. من بعده الإلغاء والتأجيل بيصيروا «طلب تغيير» بينبلّغ للشركة.',
+      // After the handover the code answers a cancellation with «tell the courier» (a change request) and REFUSES a postponement:
+      // «الطرد سُلّم لشركة الشحن — لم يبقَ ما يُؤجَّل. اطلب الإلغاء» (`carryOut`, `change-request-intent.ts`).
+      undo: 'ما بيرجع. من بعده الإلغاء بيصير طلب تغيير لازم تبلّغ فيه شركة الشحن، والتأجيل ما بيصير (الطرد صار عند الشركة) — اطلب الإلغاء.',
     });
   }
   if (f.out !== null && f.out > 0) {
@@ -84,8 +118,25 @@ export function batchHelpItems(f: BatchHelpFacts): Item[] {
       when: f.courierSendsStatus
         ? 'الشركة مربوطة بنظامها: بتحرّك كل طرد لحالها لما السائق يمسحه بالمركبة، فما بتحتاجه إلا إذا ضلت الطرود «مشحون» وانت متأكد إنو السائق طلع فيها.'
         : 'لشركة يدوية، لما السائق ياخد الدفعة ويطلع فيها — بدل ضغطة لكل طرد.',
-      does: `${f.out} = عدد طرود الدفعة اللي حالتها «مشحون» هلّق. بينقلها كلها لـ«خرج للتوصيل» بضغطة وحدة. ما بيبعت شي للزبون ولا للتطبيقات ولا بيحرّك مصاري.`,
+      // Each parcel is asked what the order's own door asks (whose it is, who is editing it, confirmed, the table, a blocking
+      // request): a parcel that is refused stays at «مشحون» and is named with its reason (`batch-out-for-delivery.ts`).
+      does: `${f.out} = عدد طرود الدفعة اللي حالتها «مشحون» هلّق. بينقل كل طرد بيسمح طلبه بضغطة وحدة؛ واللي ما تحرّك (مثلاً مش من طلباتك، أو موظف تاني بيعدّله، أو عليه طلب تعديل ما انبتّ فيه) بينذكر بالاسم مع السبب وبيضل «مشحون». ما بيبعت شي للزبون ولا للتطبيقات ولا بيحرّك مصاري.`,
       undo: 'ما بيرجع: من «خرج للتوصيل» الطرد إما يتسلّم أو يفشل أو يرجع.',
+    });
+  }
+  if (f.parcels) {
+    items.push({
+      key: 'parcels',
+      name: 'طرود الدفعة',
+      when: f.leave
+        ? 'قبل تسليم الدفعة: لما طرد لازم يطلع منها أو يتصحّح، أو لما بدك تدوّر على طلب جواها.'
+        : 'لما بدك تدوّر على طلب جوّا الدفعة.',
+      does: f.leave
+        ? 'بيفتح قائمة طرود الدفعة ومعها مربع بحث. على كل طرد: ' +
+          LEAVE_PRESSES.map(([key, label]) => `«${label}» ${LEAVE_SAYS[key]}`).join('؛ ') +
+          '. و«عدّل» (لمن معه مفتاح التعديل داخل الدفعة) بيصحّح الاسم أو الهاتف أو المحافظة أو العنوان أو كمية، وبينكتب على الطلب فوراً، وما بيغيّر سعراً ولا خصماً ولا أجرة ولا منتجاً.'
+        : 'بيفتح قائمة طرود الدفعة ومعها مربع بحث. بعد التسليم القائمة للبحث بس: ما فيها إلغاء ولا تأجيل ولا تعديل.',
+      undo: f.leave ? 'هالأزرار بتختفي لما تضغط «إغلاق الشحنة — سُلّمت للشركة»، وبتضل القائمة للبحث بس.' : undefined,
     });
   }
   return items;
