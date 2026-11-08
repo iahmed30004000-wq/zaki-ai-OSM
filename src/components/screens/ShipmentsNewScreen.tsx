@@ -946,7 +946,14 @@ export function ShipmentsNewScreen() {
               // WHERE IT GOES, right after the governorate it is in. Only for the address-book key (`mayReadAddress`). `wide`:
               // an address is a sentence, so on a card its label sits above it and it takes the card's full width.
               ...(mayReadAddress
-                ? [{ key: 'address', label: 'العنوان', wide: true, render: (r: Row) => <ShipAddress address={r.address} /> }]
+                ? [
+                    {
+                      key: 'address',
+                      label: 'العنوان',
+                      wide: true,
+                      render: (r: Row) => <ShipAddress address={r.address} />,
+                    },
+                  ]
                 : []),
               {
                 key: 'cod',
