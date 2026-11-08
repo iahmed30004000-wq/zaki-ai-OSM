@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { apiJson } from '@/lib/api-client';
 import { useApp } from '@/context/AppContext';
@@ -24,9 +24,12 @@ import { Tabs } from '@/components/ui/Tabs';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { ManualMatching } from '@/components/screens/finance/ManualMatching';
 import { STATEMENT_CLOSED_SENTENCE, isApproved, isMatchingClosed } from '@/lib/settlement-gates';
-import { countOpenLines } from '@/lib/statement-open-lines';
+import { countOpenLines, isOpenLine } from '@/lib/statement-open-lines';
 import { lineEssentials, readCourierRow } from '@/lib/statement-line-reading';
 import { StatementTally } from '@/components/screens/finance/StatementTally';
+import { NO_VIEW, QueueTools, type QueueKind, type QueueView } from '@/components/screens/finance/QueueTools';
+import { matchesQuery } from '@/lib/queue-search';
+import { COMPANY_WORD_AR, COMPANY_WORD_ORDER } from '@/lib/courier-word-names';
 
 /**
  * /finance/matching — the outcome of matching, read as four queues: agreed,
@@ -111,6 +114,64 @@ interface StatementRow {
 
 const num = (v: string | number | null | undefined) => (v === null || v === undefined ? null : Number(v));
 
+/**
+ * THE PIN IS A PER-PERSON CONVENIENCE, NOT SHARED STATE: «ثبّت العناوين» is remembered in this browser only, and the screen
+ * works the same when it cannot be (a private window, blocked site data) — pinned, as the owner asked, until somebody unpins.
+ */
+const PIN_KEY = 'osm.matching.pinHeader';
+const readPinned = (): boolean => {
+  try {
+    return window.localStorage.getItem(PIN_KEY) !== 'off';
+  } catch {
+    return true;
+  }
+};
+const writePinned = (on: boolean) => {
+  try {
+    window.localStorage.setItem(PIN_KEY, on ? 'on' : 'off');
+  } catch {
+    /* not remembered: the pin itself still works for this visit */
+  }
+};
+
+/** What kind of line a row is, for the filter above its queue: the company's word, or — for an order no statement names — the order's own outcome word. */
+const kindOf = (m: Match): { key: string; label: string } =>
+  m.statementLine
+    ? { key: m.courierWord?.outcome ?? 'NONE', label: COMPANY_WORD_AR[m.courierWord?.outcome ?? 'NONE'] ?? COMPANY_WORD_AR.NONE }
+    : m.orderOutcome
+      ? { key: m.orderOutcome.key, label: m.orderOutcome.label }
+      : { key: 'NONE', label: COMPANY_WORD_AR.NONE };
+
+/** The kinds present in a queue, with their counts: the company's order first (what was delivered, then what came back…). */
+function queueKinds(rows: Match[]): QueueKind[] {
+  const counted = new Map<string, QueueKind>();
+  for (const m of rows) {
+    const k = kindOf(m);
+    const seen = counted.get(k.key);
+    if (seen) seen.count++;
+    else counted.set(k.key, { ...k, count: 1 });
+  }
+  const rank = (key: string) => {
+    const i = COMPANY_WORD_ORDER.indexOf(key);
+    return i < 0 ? COMPANY_WORD_ORDER.length : i;
+  };
+  return [...counted.values()].sort((a, b) => rank(a.key) - rank(b.key) || a.label.localeCompare(b.label, 'ar'));
+}
+
+/** What a typed word is looked for in: the barcodes and numbers, the receiver's pieces, the status, our outcome word — and the company's whole row as free text. */
+function searchPartsOf(m: Match) {
+  const l = m.statementLine;
+  const e = l ? lineEssentials(l) : null;
+  return {
+    fields: [
+      l?.barcode, l?.merchantRef, m.order?.orderNumber, m.order?.merchantRef,
+      l?.receiverName, l?.receiverPhone, ...(e?.phone ? [e.phone.shown, ...e.phone.keys] : []),
+      l?.receiverAddress, l?.receiverCity, l?.receiverArea, l?.status, kindOf(m).label,
+    ],
+    text: [l?.rawRow],
+  };
+}
+
 export function MatchingScreen() {
   const toast = useToast();
   const { currentUser } = useApp();
@@ -122,6 +183,19 @@ export function MatchingScreen() {
   const [matches, setMatches] = useState<Match[] | null>(null);
   const [busy, setBusy] = useState(false);
   const phone = useIsPhone();
+  // What each queue of each statement is narrowed to — kept HERE, not in the queue, because the screen reloads its rows after
+  // every answer and a queue that forgot its search each time would be a queue nobody could work through.
+  const [views, setViews] = useState<Record<string, QueueView>>({});
+  const [pinned, setPinned] = useState(readPinned);
+  const viewOf = (queueKey: string) => ({
+    view: views[`${selected}|${queueKey}`] ?? NO_VIEW,
+    onView: (next: QueueView) => setViews((all) => ({ ...all, [`${selected}|${queueKey}`]: next })),
+    pinned,
+    onPinned: (next: boolean) => {
+      setPinned(next);
+      writePinned(next);
+    },
+  });
 
   useEffect(() => {
     void apiJson<{ statements: StatementRow[] }>('/api/finance/statements')
@@ -281,6 +355,7 @@ export function MatchingScreen() {
           <DifferencesByPerson currency={statement?.currencyCode ?? ''} />
           <Queue
             title="مطابق"
+            {...viewOf('MATCHED')}
             tone="emerald"
             currency={statement?.currencyCode ?? ''}
             rows={queue('MATCHED')}
@@ -300,6 +375,7 @@ export function MatchingScreen() {
           )}
           <Queue
             title="فرق في المبلغ"
+            {...viewOf('MISMATCHED')}
             resolvable
             swappable={mayReview && !closed}
             locked={closed}
@@ -313,6 +389,7 @@ export function MatchingScreen() {
           />
           <Queue
             title="في الكشف وليس عندنا"
+            {...viewOf('MISSING_IN_SYSTEM')}
             reason
             fromLine
             noOrder
@@ -328,6 +405,7 @@ export function MatchingScreen() {
           />
           <Queue
             title="مستبعدة — مرتجع أو مؤجل"
+            {...viewOf('EXCLUDED')}
             reason
             fromLine
             tone="amber"
@@ -337,6 +415,7 @@ export function MatchingScreen() {
           />
           <Queue
             title="طلبات لم يذكرها أي كشف"
+            {...viewOf('MISSING_IN_STATEMENT')}
             unmentioned
             canUnlock={userCan(currentUser, 'orders.unlock')}
             statementId={selected}
@@ -379,10 +458,20 @@ function Queue({
   locked,
   statementId,
   onResolved,
+  view,
+  onView,
+  pinned,
+  onPinned,
 }: {
   title: string;
   tone: string;
   rows: Match[];
+  /** What this queue is narrowed to (search, kind, only-unanswered) — kept by the screen so it survives a reload of the rows. */
+  view: QueueView;
+  onView: (next: QueueView) => void;
+  /** The column headings stay in view while a long list scrolls. Shared by every queue; remembered per browser. */
+  pinned: boolean;
+  onPinned: (next: boolean) => void;
   hint: string;
   currency: string;
   /**
@@ -414,7 +503,20 @@ function Queue({
 }) {
   const [open, setOpen] = useState(rows.length > 0 && tone !== 'emerald');
   // The lines of this queue still a question — by the same rule the approval counts (`statement-open-lines`).
+  // Counted on ALL the rows: a search hides rows from view and never from the gate.
   const unanswered = resolvable || parkable ? countOpenLines(rows) : 0;
+  const onPhone = useIsPhone();
+  const kinds = useMemo(() => queueKinds(rows), [rows]);
+  const shown = useMemo(
+    () =>
+      rows.filter(
+        (m) =>
+          (view.kind === '' || kindOf(m).key === view.kind) &&
+          (!view.onlyOpen || isOpenLine(m)) &&
+          matchesQuery(searchPartsOf(m), view.query)
+      ),
+    [rows, view]
+  );
 
   const columns: Column<Match>[] = [
     {
@@ -726,13 +828,33 @@ function Queue({
           {rows.length === 0 ? (
             <EmptyState title="لا شيء في هذه المجموعة" why={hint} />
           ) : (
-            <Rows
-              rows={rows}
-              keyOf={(m) => m.id}
-              alert={(m) => num(m.difference) !== null && num(m.difference) !== 0}
-              columns={columns}
-              empty={<EmptyState title="لا أسطر في هذه المجموعة" why={hint} />}
-            />
+            <>
+              <QueueTools
+                view={view}
+                onView={onView}
+                kinds={kinds}
+                kindLabel={unmentioned ? 'كلمة نتيجته' : 'ما كتبته الشركة'}
+                // A closed statement has no question left to answer: no counter, and no «بلا بتّ فقط» either.
+                openCount={locked ? 0 : unanswered}
+                shown={shown.length}
+                total={rows.length}
+                pin={onPhone ? undefined : { pinned, onChange: onPinned }}
+              />
+              <Rows
+                rows={shown}
+                pinHeader={pinned && !onPhone}
+                keyOf={(m) => m.id}
+                alert={(m) => num(m.difference) !== null && num(m.difference) !== 0}
+                columns={columns}
+                empty={
+                  shown.length === 0 && rows.length > 0 ? (
+                    <EmptyState title="ما في سطر بهالبحث أو الفلتر" why="غيّر الكلمة أو الفلتر، أو اضغط «امسح البحث والفلتر»." />
+                  ) : (
+                    <EmptyState title="لا أسطر في هذه المجموعة" why={hint} />
+                  )
+                }
+              />
+            </>
           )}
         </div>
       )}
