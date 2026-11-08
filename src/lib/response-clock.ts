@@ -25,11 +25,20 @@ import { db } from './db';
  */
 
 /**
+ * The confirmation statuses a PERSON's decision writes after she has done something about the order.
+ *
+ * NOT `NEW` (the order's creation, or its release back to the pool) and NOT `IN_PROGRESS`: the pull writes that one the instant
+ * it claims the order (`pullNextOrder`, the line «سحب من الطابور»). Counting it made every pulled order read «رددت خلال الآن»
+ * whatever she did — and the «بانتظار أول اتصال» chip, which only shows while there is NO first action, could never show.
+ */
+const DECISION_STATUSES = ['NO_ANSWER', 'FOLLOW_UP_REQUIRED', 'POSTPONED', 'CONFIRMED', 'REJECTED', 'CANCELLED'] as const;
+
+/**
  * The first recorded action on each of these orders.
  *
  * Two sources because either can come first: an agent who calls and logs a
  * no-answer has an attempt and no decision; an agent who confirms straight
- * away has a decision and no attempt.
+ * away has a decision and no attempt. Being pulled is neither.
  */
 export async function firstActionTimes(orderIds: string[]): Promise<Map<string, Date>> {
   const out = new Map<string, Date>();
@@ -43,7 +52,7 @@ export async function firstActionTimes(orderIds: string[]): Promise<Map<string, 
     }),
     db.orderStatusLog.groupBy({
       by: ['orderId'],
-      where: { orderId: { in: orderIds }, statusType: 'CONFIRMATION' },
+      where: { orderId: { in: orderIds }, statusType: 'CONFIRMATION', newValue: { in: [...DECISION_STATUSES] } },
       _min: { createdAt: true },
     }),
   ]);
