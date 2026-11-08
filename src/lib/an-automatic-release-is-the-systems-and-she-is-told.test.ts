@@ -38,7 +38,7 @@ const { db } = vi.hoisted(() => ({
 vi.mock('./db', () => ({ db }));
 
 import { AUTO_RELEASE_BUSINESS_MINUTES, releaseStaleClaims } from './confirmation-queue';
-import { DUE_RELEASE_REASON, REPULL_RELEASE_REASON, ROUND_RELEASE_REASON } from './no-answer-rounds';
+import { DUE_RELEASE_REASON, REPULL_RELEASE_REASON, ROUND_RELEASE_BUSINESS_MINUTES, ROUND_RELEASE_REASON } from './no-answer-rounds';
 import { AUTO_RELEASE_WHY, NINETY_MINUTE_RELEASE_REASON, isAutomaticRelease, isReleaseSheDidNotPress } from './auto-release';
 import { orderTimeline } from './order-timeline';
 import { zonedTimeToInstant } from './business-calendar';
@@ -145,13 +145,14 @@ describe('the ninety-minute release tells her', () => {
 });
 
 describe('the rounds releases tell her too', () => {
-  it('a round nobody answered for six working hours', async () => {
+  it('a round nobody answered for twelve working hours (8/11 — it was six)', async () => {
     roundsRows = [heldRow()];
-    expect(await releaseStaleClaims(db as never, scope, JO, t(1, 15, 30), { rounds: ON })).toBe(1);
+    // The run began on Sunday at 09:30: 7h30 that day and 4h30 on Monday.
+    expect(await releaseStaleClaims(db as never, scope, JO, t(2, 13, 30), { rounds: ON })).toBe(1);
     expect(told()).toHaveLength(1);
     expect(told()[0]).toMatchObject({ userId: 'sara', storeId: 's1', link: '/confirmation/mine' });
     expect(told()[0].message).toBe(`رجع ORD-2 للطابور: ${AUTO_RELEASE_WHY[ROUND_RELEASE_REASON]}`);
-    expect(told()[0].message).toBe('رجع ORD-2 للطابور: مرّت 6 ساعات عمل على جولة بلا ردّ');
+    expect(told()[0].message).toBe('رجع ORD-2 للطابور: مرّت 12 ساعة عمل على جولة بلا ردّ');
     expect(JSON.parse(db.orderClaimHistory.create.mock.calls[0][0].data.metadata)).toEqual({ automatic: true, holder: 'sara' });
   });
 
@@ -230,7 +231,12 @@ describe('the timeline writes «النظام», not her name', () => {
     expect(line.detail).toBe('تحرير تلقائي — مرّت مدة التحرير على جولة بلا ردّ، ورجع للطابور');
     expect(line.detail, 'رقم بتسمية قاعدة اليوم على سطر انكتب بقاعدة غيرها').not.toMatch(/[0-9٠-٩]/);
     // While the notice for a NEW release may say its hours.
-    expect(AUTO_RELEASE_WHY[ROUND_RELEASE_REASON]).toBe('مرّت 6 ساعات عمل على جولة بلا ردّ');
+    expect(AUTO_RELEASE_WHY[ROUND_RELEASE_REASON]).toBe('مرّت 12 ساعة عمل على جولة بلا ردّ');
+  });
+
+  it('RV1425: the hours the notice says ARE the constant’s — changing the one without the other fails here', () => {
+    const said = Number(/\d+/.exec(AUTO_RELEASE_WHY[ROUND_RELEASE_REASON])?.[0]);
+    expect(said * 60).toBe(ROUND_RELEASE_BUSINESS_MINUTES);
   });
 
   it('NEGATIVE: her own release is still hers', async () => {

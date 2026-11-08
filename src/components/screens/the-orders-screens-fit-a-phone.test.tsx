@@ -320,7 +320,7 @@ describe('«طلباتي» — the tabs, the pull panel and the card', () => {
     await draw();
     let strip = screen.getByRole('tablist', { name: 'طلباتي' });
     expect(strip.getAttribute('class')).toBe('flex flex-wrap items-center gap-2 border-b border-[var(--sys-border)]');
-    expect(within(strip).getByText('ما حدا اتّصل فيهم بعد')).toBeTruthy();
+    expect(within(strip).getByText('اللي لازم ترني عليه هلّق')).toBeTruthy();
     expect(within(strip).getAllByRole('tab')).toHaveLength(4);
     cleanup();
 
@@ -333,13 +333,13 @@ describe('«طلباتي» — the tabs, the pull panel and the card', () => {
       expect(tokens(tab), tab.textContent!).toEqual(expect.arrayContaining(['shrink-0', 'whitespace-nowrap']));
     }
     // the tab's sentence is its title, and the open tab's sentence is printed once, OUTSIDE the strip
-    expect(within(strip).queryByText('ما حدا اتّصل فيهم بعد')).toBeNull();
-    expect(screen.getAllByText('ما حدا اتّصل فيهم بعد')).toHaveLength(1);
-    expect(screen.getByRole('tab', { name: /للشغل/ }).getAttribute('title')).toBe('ما حدا اتّصل فيهم بعد');
+    expect(within(strip).queryByText('اللي لازم ترني عليه هلّق')).toBeNull();
+    expect(screen.getAllByText('اللي لازم ترني عليه هلّق')).toHaveLength(1);
+    expect(screen.getByRole('tab', { name: /اتصلي هلّق/ }).getAttribute('title')).toBe('اللي لازم ترني عليه هلّق');
     // switching tab changes the sentence — it is the OPEN tab's
-    fireEvent.click(screen.getByRole('tab', { name: /لا يرد/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /بانتظار/ }));
     expect(await screen.findByText(/محاولة أو محاولتين — التالية تُغلق/)).toBeTruthy();
-    expect(screen.queryByText('ما حدا اتّصل فيهم بعد')).toBeNull();
+    expect(screen.queryByText('اللي لازم ترني عليه هلّق')).toBeNull();
   });
 
   it('A PHONE: the section sentence is dropped and the search box takes the line; A DESK keeps both', async () => {

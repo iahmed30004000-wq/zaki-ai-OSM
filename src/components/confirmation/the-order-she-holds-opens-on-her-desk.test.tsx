@@ -133,14 +133,14 @@ describe('«طلباتي» opens `?open=<id>` in its own order window', () => {
 
   it('NEGATIVE: no `?open=`, no window', async () => {
     render(<ConfirmationMineScreen />);
-    await screen.findByRole('tab', { name: /للشغل/ });
+    await screen.findByRole('tab', { name: /اتصلي هلّق/ });
     expect(screen.queryByTestId('order-window')).toBeNull();
   });
 
   it('NEGATIVE: a value that is not an id is not put into a request path', async () => {
     params.current = new URLSearchParams('open=../../api/users');
     render(<ConfirmationMineScreen />);
-    await screen.findByRole('tab', { name: /للشغل/ });
+    await screen.findByRole('tab', { name: /اتصلي هلّق/ });
     expect(screen.queryByTestId('order-window')).toBeNull();
   });
 });

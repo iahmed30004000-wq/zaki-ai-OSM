@@ -145,7 +145,7 @@ const openTab = (label: string) => fireEvent.click(screen.getByRole('tab', { nam
 /** Rows draws a table and the cards both; the desk's table is the one with a header row. */
 const table = () => document.querySelector('table') as HTMLElement;
 
-describe('«للشغل» and «لا يرد» — the working card', () => {
+describe('«اتصلي هلّق» and «بانتظار» — the working card', () => {
   it('(أ) lists every line with the gift and the add-on, and names the governorate, the street and the notes', async () => {
     await draw();
     expect(screen.getByText(/كريم مرطب × 3/)).toBeTruthy();
@@ -184,9 +184,9 @@ describe('«للشغل» and «لا يرد» — the working card', () => {
     expect(screen.queryByText(/المحافظة/)).toBeNull();
   });
 
-  it('(ج) «لا يرد» carries the same', async () => {
+  it('(ج) «بانتظار» carries the same', async () => {
     await draw();
-    openTab('لا يرد');
+    openTab('بانتظار');
     expect(await screen.findByText('ORD-N1')).toBeTruthy();
     expect(screen.getByText(/كريم مرطب × 3/)).toBeTruthy();
     expect(screen.getByText('المحافظة: دمشق')).toBeTruthy();
@@ -207,7 +207,7 @@ describe('the team’s note is not on any list', () => {
     const key = note.slice(0, 12);
     await draw();
     expect(screen.queryByText(new RegExp(key))).toBeNull();
-    openTab('لا يرد');
+    openTab('بانتظار');
     expect(screen.queryByText(new RegExp(key))).toBeNull();
     openTab('أكّدتها');
     expect(screen.queryByText(new RegExp(key))).toBeNull();

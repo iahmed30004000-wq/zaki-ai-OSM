@@ -14,6 +14,7 @@ import {
 } from './no-answer-rounds';
 import { roundsSwitch } from './no-answer-rounds-switch';
 import { automaticReleaseMetadata, releaseNotice } from './auto-release';
+import { workFirstGate, type WorkFirstRefusal } from './work-first';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -617,6 +618,8 @@ export type PullRefusal =
   | { code: 'NOT_YOUR_DESK'; message: string }
   /** Carries the order it is about, so the screen can open it. */
   | { code: 'UNTOUCHED_ORDER'; message: string; orderId: string | null; orderNumber: string | null }
+  /** «الشغل أول» (`work-first.ts`): she owes calls — the oldest is named so the screen opens it; only the pull asks it. */
+  | WorkFirstRefusal
   | { code: 'CAP_WITHOUT_ATTEMPT'; message: string }
   | { code: 'CAP_TOTAL'; message: string }
   /** Too many pulls in the last hour (`PULL_PACE`): the last refusal the pull makes, and only the pull makes it. */
@@ -864,10 +867,10 @@ export const ROUNDS_SCAN_PAGE = 500;
 const roundsScanCursor = new Map<string, string>();
 
 /**
- * R1 — LET GO WHAT NOBODY ANSWERED FOR SIX WORKING HOURS, AND A DATE WITH NOTHING LOGGED AFTER IT (`no-answer-rounds.ts`).
+ * R1 — LET GO WHAT NOBODY ANSWERED FOR TWELVE WORKING HOURS, AND A DATE WITH NOTHING LOGGED AFTER IT (`no-answer-rounds.ts`).
  *
  * Linear and bounded: the cut-offs are placed ONCE for the pass, the database narrows to the held orders that can
- * qualify (a no-answer six working hours old once the switch itself is that old, or nothing logged for ninety working
+ * qualify (a no-answer twelve working hours old once the switch itself is that old, or nothing logged for ninety working
  * minutes — a dated order only once its date is three working hours old), one page of them is read with their attempts, and
  * each is one pure verdict. The writes are the ninety-minute release's, line for line, with their own reason in the claim
  * history — and the customer's other orders held for her are let go in the same step, so whoever takes the order next takes
@@ -909,8 +912,8 @@ async function releaseByRounds(
         { OR: [{ nextFollowUpAt: null }, { nextFollowUpAt: { lte: cut.promise } }] },
         {
           OR: [
-            // A run's six hours count from the switch when the run is older (6/11, `roundsReleaseReason`): none can be due
-            // until the switch itself is six working hours old, and then any no-answer that old may be one. (A dated order
+            // A run's twelve hours count from the switch when the run is older (6/11, `roundsReleaseReason`): none can be due
+            // until the switch itself is twelve working hours old, and then any no-answer that old may be one. (A dated order
             // with nothing logged since its date has no attempt in the last ninety minutes, so the next line takes it in.)
             ...(sw.enabledAt.getTime() <= cut.round.getTime()
               ? [{ contactAttempts: { some: { result: { in: [...NO_ANSWER_RESULTS] }, createdAt: { lte: cut.round } } } }]
@@ -1240,6 +1243,10 @@ export async function pullNextOrder(
     const counts = await ownedCounts(tx, scope, user.id, now);
     const refusal = pullRefusal(counts);
     if (refusal) return { ok: false, refusal, released };
+    // «الشغل أول» — after every refusal above, before anything is taken: the calls she owes come before a new order. «نظام الجولات»
+    // on only; one read of her held orders, the predicate shared with the desk (`work-first.ts`). Claim-by-id never asks it.
+    const owed = await workFirstGate(tx, { scope, userId: user.id, cal, now, rounds, open: OPEN_CONFIRMATION, room: CLAIM_CAPS.total, held: counts.total });
+    if (owed) return { ok: false, refusal: owed, released };
     // THE PACE, LAST among the refusals (the owner, 8/11): the untouched order and the caps above are the more useful sentence, and keep
     // theirs. A refusal here returns before anything is picked — no lock, no claim, no row.
     const tooFast = pullPaceRefusal(await recentPullTimes(tx, user.id, now), now);

@@ -153,7 +153,7 @@ describe('«طلباتي» — the fourth tab, «المؤجلة»', () => {
     params.current = new URLSearchParams('tab=postponed');
     render(<ConfirmationMineScreen />);
     await screen.findByTestId('postponed-list');
-    fireEvent.click(screen.getByRole('tab', { name: /للشغل/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /اتصلي هلّق/ }));
     expect(screen.queryByTestId('postponed-list')).toBeNull();
   });
 });
