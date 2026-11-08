@@ -296,6 +296,8 @@ export async function findLinkCandidates(
     companyId: string; storeId: string; statementId: string; matchId: string; query: string; minorUnit: number;
     /** The store's country, so the line's phone is read the way this store's customers are stored. */
     countryCode?: string | null;
+    /** May this person see the customer's contact data (`customers.view`)? Absent means no: the order's ADDRESS is then left out. */
+    maySeeContact?: boolean;
   }
 ): Promise<CandidateSearch> {
   const statement = await tx.courierStatement.findFirst({
@@ -367,6 +369,7 @@ export async function findLinkCandidates(
       companyId: p.companyId, statementId: p.statementId, deliveryProviderId: statement.deliveryProviderId,
       minorUnit: p.minorUnit, lineAmount, rows,
       lineFacts: { phoneKeys: essentials?.phone?.keys ?? null, city: essentials?.city ?? null }, storeCountry: p.countryCode,
+      maySeeContact: p.maySeeContact,
     }),
     hint: null,
     otherCourierWarning: OTHER_COURIER_WARNING,
@@ -386,6 +389,8 @@ async function candidatesOf(
     /** What the line says that an order can be compared with: the keys of its phone and its governorate. Absent: nothing to compare. */
     lineFacts?: { phoneKeys: string[] | null; city: string | null };
     storeCountry?: string | null;
+    /** The order's address is contact data: it leaves only for somebody who holds `customers.view`, as on the labels, returns and batch doors. */
+    maySeeContact?: boolean;
   }
 ): Promise<LinkCandidate[]> {
   const integrity = await integrityOf(tx, { companyId: p.companyId, statementId: p.statementId, orderIds: p.rows.map((r) => r.id) });
@@ -428,7 +433,7 @@ async function candidatesOf(
         details: {
           name: o.customer?.fullName?.trim() || null,
           phone: o.customer?.rawPhone?.trim() || o.customer?.phone?.trim() || null,
-          address: o.deliveryAddress?.trim() || o.customer?.address?.trim() || null,
+          address: p.maySeeContact ? o.deliveryAddress?.trim() || o.customer?.address?.trim() || null : null,
           governorate,
           shipping: (SHIPPING_STATUS_AR as Record<string, string>)[o.shippingStatus] ?? o.shippingStatus,
           totalAmount: Number(o.totalAmount),
@@ -478,7 +483,11 @@ export function inFlightHeader(total: number): string {
  */
 export async function findLinkCandidatesByLinePhone(
   tx: Tx,
-  p: { companyId: string; storeId: string; statementId: string; matchId: string; minorUnit: number; countryCode?: string | null }
+  p: {
+    companyId: string; storeId: string; statementId: string; matchId: string; minorUnit: number; countryCode?: string | null;
+    /** `customers.view`: without it the order's address is left out of each candidate. */
+    maySeeContact?: boolean;
+  }
 ): Promise<LinePhoneSearch> {
   const statement = await tx.courierStatement.findFirst({
     where: { id: p.statementId, companyId: p.companyId, storeId: p.storeId },
@@ -532,6 +541,7 @@ export async function findLinkCandidatesByLinePhone(
       companyId: p.companyId, statementId: p.statementId, deliveryProviderId: statement.deliveryProviderId,
       minorUnit: p.minorUnit, lineAmount: Number(match.statementAmount ?? 0), rows,
       lineFacts: { phoneKeys: phone.keys, city: essentials?.city ?? null }, storeCountry: p.countryCode,
+      maySeeContact: p.maySeeContact,
     }),
     hint: null,
     phone: shown,

@@ -100,3 +100,34 @@ describe('the import writes who the parcel went to, by the file’s own headings
     expect(total).toBe(12);
   });
 });
+
+describe('which column is the receiver’s — by how specific the heading is, never by which comes first', () => {
+  it('a generic «الهاتف» before «هاتف المستلم» (the sender’s, say) does not win', () => {
+    const header = ['باركود الشحنة', 'الهاتف', 'هاتف المستلم', 'الصافي'];
+    const { rows } = parseStatementRows(header, [['100000000005', '0911111111', '0922222222', '10']]);
+    expect(rows[0].receiver.phone).toBe('0922222222');
+  });
+
+  it('the same for the address and the city: «العنوان» and «المدينة» give way to the receiver’s own headings', () => {
+    const header = ['باركود الشحنة', 'العنوان', 'المدينة', 'عنوان المستلم', 'مدينة المستلم', 'الصافي'];
+    const { rows } = parseStatementRows(header, [['100000000006', 'عنوان المرسل', 'دمشق', 'عنوان الزبون الحقيقي', 'حماة', '10']]);
+    expect(rows[0].receiver).toMatchObject({ address: 'عنوان الزبون الحقيقي', city: 'حماة' });
+  });
+
+  it('with only the generic heading the generic one is read — a file with nothing better is not left blind', () => {
+    const { rows } = parseStatementRows(['باركود الشحنة', 'الهاتف', 'الصافي'], [['100000000007', '0933333333', '10']]);
+    expect(rows[0].receiver.phone).toBe('0933333333');
+  });
+
+  it('«الزبون», «العميل» and customer_* are NOT the receiver: in a LogesTechs sheet they name the merchant', () => {
+    const header = ['باركود الشحنة', 'اسم الزبون', 'اسم العميل', 'هاتف العميل', 'هاتف الزبون', 'عنوان العميل', 'عنوان الزبون', 'customer_name', 'customer_phone', 'customer_address', 'الصافي'];
+    const { rows } = parseStatementRows(header, [['100000000008', 'حساب التاجر', 'حساب التاجر', '0900000009', '0900000009', 'مكتب التاجر', 'مكتب التاجر', 'Merchant', '0900000009', 'Office', '10']]);
+    expect(rows[0].receiver).toEqual({ name: null, phone: null, address: null, city: null, area: null });
+  });
+
+  it('the money columns are still found by position, exactly as before — a receiver alias never moves them', () => {
+    const header = ['الهاتف', 'باركود الشحنة', 'التحصيل', 'السعر', 'الصافي', 'الحالة'];
+    const { rows } = parseStatementRows(header, [['0900000001', '100000000009', '15', '3', '12', 'تم توصيلها']]);
+    expect(rows[0]).toMatchObject({ amount: 12, collected: 15, fee: 3, status: 'تم توصيلها', barcode: '100000000009' });
+  });
+});

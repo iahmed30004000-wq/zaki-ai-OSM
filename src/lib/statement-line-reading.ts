@@ -154,7 +154,12 @@ function mobileInRun(run: string, order: ('SY' | 'JO')[]): LinePhone | null {
   const whole = readMobile(run, order);
   if (whole) return whole;
   const pieces = run.split(/\s+[-–—]\s+|\s+/).filter(Boolean);
+  // A number written WITH its country code («+353 78 123 4567», «00966 …») is read from its beginning only. Its tail is not a
+  // second number: «78 123 4567» is a Jordanian mobile and «91 234 5678» a Syrian one, and cutting an Irish or a Libyan line
+  // into them would show a customer who is somebody else as «the same phone».
+  const international = /^\s*(?:\+|00)/.test(run);
   for (let start = 0; start < pieces.length; start++) {
+    if (international && start > 0) break;
     for (let end = pieces.length; end > start; end--) {
       if (start === 0 && end === pieces.length) continue;
       const found = readMobile(pieces.slice(start, end).join(' '), order);

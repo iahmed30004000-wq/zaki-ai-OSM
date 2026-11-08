@@ -428,11 +428,17 @@ function Queue({
         <span dir="ltr">
           <span className="block font-medium">{m.statementLine?.barcode ?? '—'}</span>
           {(m.statementLine?.merchantRef ?? m.order?.merchantRef) && (
-            <span className="block text-xs text-[var(--sys-muted)]">
+            <>
               {/* Where no order of ours is tied to the row, this number is THE COMPANY'S: say whose it is. */}
-              {fromLine && <span dir="rtl">رقم الطلب عندهم: </span>}
-              {m.statementLine?.merchantRef ?? m.order?.merchantRef}
-            </span>
+              {fromLine && (
+                <span dir="rtl" className="block text-xs text-[var(--sys-muted)]">
+                  رقم الطلب عندهم:
+                </span>
+              )}
+              <span className="block text-xs text-[var(--sys-muted)]">
+                {m.statementLine?.merchantRef ?? m.order?.merchantRef}
+              </span>
+            </>
           )}
         </span>
       ),
@@ -503,6 +509,14 @@ function Queue({
             },
           ]
         : [
+          // What the customer paid, as the company says it: the figure the reason cell used to carry, now in a column of its own.
+          {
+            key: 'collected',
+            label: 'المحصَّل من الزبون',
+            align: 'end' as const,
+            render: (m: Match) =>
+              num(m.statementLine?.collected) === null ? '—' : <Money value={num(m.statementLine?.collected)!} currency={currency} />,
+          },
           {
             key: 'stated',
             label: 'في الكشف',
@@ -744,7 +758,7 @@ export function CourierReason({ m }: { m: Pick<Match, 'courierWord' | 'statement
   const line = m.statementLine;
   const e = line ? lineEssentials(line) : null;
   // The row exactly as the company wrote it (`readCourierRow` hands it back whole, untouched).
-  const raw = line ? readCourierRow(line).raw : null;
+  const raw = m.statementLine?.rawRow ? readCourierRow(m.statementLine).raw : null;
   const hasFacts = !!(e?.phone || e?.governorate || e?.address);
   if (!word && !e?.status && !hasFacts && !raw) return <span className="text-[var(--sys-muted)]">—</span>;
   return (

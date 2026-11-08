@@ -1,3 +1,5 @@
+import { Rows, type Column } from '@/components/ui/Rows';
+
 /**
  * «هاد الكشف فيه مرتجع، لما رفعته ما ظهر المرتجع ليش؟» — WHERE EACH KIND OF THE COMPANY'S LINES LANDED.
  *
@@ -9,6 +11,8 @@
  * So the count is by what the COMPANY wrote (its status word, read through the one phrase table) and says, for each kind,
  * how many lines went where — counted off the lines the screen already holds, nothing fetched and nothing worked out in
  * money. A row with no line is not counted: it is an order of ours the company never named, in its own queue.
+ *
+ * Drawn by the shared table (`Rows`): a table on a desk, a card per kind in a hand.
  */
 
 /** The part of a match row the count reads: what the matching made of it, and what the company's word says. */
@@ -32,12 +36,23 @@ const COMPANY_WORD_AR: Record<string, string> = {
 const COMPANY_WORD_ORDER = ['DELIVERED', 'PARTIAL', 'RETURNED', 'POSTPONED', 'CANCELLED', 'IN_TRANSIT', 'OTHER', 'UNKNOWN', 'NONE'];
 
 interface Landed {
+  key: string;
+  word: string;
   total: number;
   matched: number;
   mismatched: number;
   notOurs: number;
   excluded: number;
 }
+
+const COLUMNS: Column<Landed>[] = [
+  { key: 'word', label: 'الشركة كتبت', primary: true, render: (r) => r.word },
+  { key: 'total', label: 'العدد', align: 'end', render: (r) => r.total },
+  { key: 'matched', label: 'مطابق', align: 'end', render: (r) => r.matched },
+  { key: 'mismatched', label: 'فيه فرق', align: 'end', render: (r) => r.mismatched },
+  { key: 'notOurs', label: 'ما عندنا طلب', align: 'end', render: (r) => r.notOurs },
+  { key: 'excluded', label: 'مستبعد', align: 'end', render: (r) => r.excluded },
+];
 
 export function StatementTally({ matches }: { matches: TallyRow[] }) {
   const lines = matches.filter((m) => m.statementLine);
@@ -46,7 +61,7 @@ export function StatementTally({ matches }: { matches: TallyRow[] }) {
   const landed = new Map<string, Landed>();
   for (const m of lines) {
     const key = m.courierWord?.outcome ?? 'NONE';
-    const row = landed.get(key) ?? { total: 0, matched: 0, mismatched: 0, notOurs: 0, excluded: 0 };
+    const row = landed.get(key) ?? { key, word: COMPANY_WORD_AR[key] ?? COMPANY_WORD_AR.NONE, total: 0, matched: 0, mismatched: 0, notOurs: 0, excluded: 0 };
     row.total++;
     if (m.result === 'MATCHED') row.matched++;
     else if (m.result === 'MISMATCHED') row.mismatched++;
@@ -54,41 +69,13 @@ export function StatementTally({ matches }: { matches: TallyRow[] }) {
     else if (m.result === 'EXCLUDED') row.excluded++;
     landed.set(key, row);
   }
-  const kinds = COMPANY_WORD_ORDER.filter((k) => landed.has(k));
+  const kinds = COMPANY_WORD_ORDER.filter((k) => landed.has(k)).map((k) => landed.get(k)!);
   const returned = landed.get('RETURNED');
 
   return (
     <section aria-label="شو كتبت الشركة وين صار" className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-3 space-y-2">
       <h2 className="text-sm font-medium text-[var(--sys-heading)]">شو كتبت الشركة، ووين صار كل نوع</h2>
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead className="text-[var(--sys-muted-foreground)]">
-            <tr>
-              <th scope="col" className="text-start font-medium py-1 pe-3">الشركة كتبت</th>
-              <th scope="col" className="text-end font-medium py-1 px-2">العدد</th>
-              <th scope="col" className="text-end font-medium py-1 px-2">مطابق</th>
-              <th scope="col" className="text-end font-medium py-1 px-2">فيه فرق</th>
-              <th scope="col" className="text-end font-medium py-1 px-2">ما عندنا طلب</th>
-              <th scope="col" className="text-end font-medium py-1 ps-2">مستبعد</th>
-            </tr>
-          </thead>
-          <tbody className="tabular-nums">
-            {kinds.map((k) => {
-              const r = landed.get(k)!;
-              return (
-                <tr key={k} className="border-t border-[var(--sys-border)]">
-                  <th scope="row" className="text-start font-medium py-1 pe-3">{COMPANY_WORD_AR[k]}</th>
-                  <td className="text-end py-1 px-2">{r.total}</td>
-                  <td className="text-end py-1 px-2">{r.matched}</td>
-                  <td className="text-end py-1 px-2">{r.mismatched}</td>
-                  <td className="text-end py-1 px-2">{r.notOurs}</td>
-                  <td className="text-end py-1 ps-2">{r.excluded}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      <Rows rows={kinds} columns={COLUMNS} keyOf={(r) => r.key} />
       {returned && returned.notOurs > 0 && (
         <p className="text-xs text-[var(--sys-muted-foreground)]">
           من {returned.total} سطر قالت الشركة إنو رجع: {returned.notOurs} ما عندنا طلب لها، فبتلاقيها في «في الكشف وليس عندنا»

@@ -948,8 +948,8 @@ describe('the line is held against each order', () => {
       customer: { id: 'cu9', fullName: 'Salma Test', phone: '900000001', rawPhone: '0900000001', address: 'عنوان الزبون', city: 'حماة' },
       deliveryAddress: 'حماة - حي الوسط - بجانب الفرن', region: { name: 'حماة' }, ...over,
     });
-  const byPhone = (countryCode: string | null = 'SY') => findLinkCandidatesByLinePhone(makeTx(w) as never, { ...scope, countryCode });
-  const byText = (query: string, countryCode: string | null = 'SY') => findLinkCandidates(makeTx(w) as never, { ...scope, query, countryCode });
+  const byPhone = (countryCode: string | null = 'SY') => findLinkCandidatesByLinePhone(makeTx(w) as never, { ...scope, countryCode, maySeeContact: true });
+  const byText = (query: string, countryCode: string | null = 'SY') => findLinkCandidates(makeTx(w) as never, { ...scope, query, countryCode, maySeeContact: true });
 
   it('both searches answer with what the company wrote on the line, in its own words and figures', async () => {
     headed();
@@ -1061,5 +1061,49 @@ describe('the line is held against each order', () => {
     expect(r.candidates.map((c) => c.id)).toEqual(['a', 'b']);
     expect(tx.counts['match.updateMany']).toBeUndefined();
     expect(tx.counts['note.create']).toBeUndefined();
+  });
+});
+
+describe('the order’s address is contact data: it leaves only with the address-book key', () => {
+  const order9 = () =>
+    order({
+      id: 'o9', orderNumber: 'ORD-9', shippingStatus: 'SHIPPED', totalAmount: 15, deliveryFee: 3,
+      customer: { id: 'cu9', fullName: 'Salma Test', phone: '900000001', rawPhone: '0900000001', address: 'عنوان الزبون' },
+      deliveryAddress: 'حماة - حي الوسط', region: { name: 'حماة' },
+    });
+  const setup = () => {
+    w.matches[0].statementLine = { rawRow: 'BC-1 | x', merchantRef: null, barcode: 'BC-1', amount: 12, collected: 15, fee: 3, status: null, receiverPhone: '+963 900 000 001', receiverCity: 'حماة' };
+    w.matches[0].statementAmount = 12; // the net the match row holds: 12 against our 15 − 3
+    w.orders = [order9()];
+  };
+
+  it('without the key neither search carries the address; everything else is still there', async () => {
+    setup();
+    const phone = await findLinkCandidatesByLinePhone(makeTx(w) as never, { ...scope, countryCode: 'SY' });
+    const text = await findLinkCandidates(makeTx(w) as never, { ...scope, query: 'ORD-9', countryCode: 'SY' });
+    for (const c of [phone.candidates[0], text.candidates[0]]) {
+      expect(c.details.address).toBeNull();
+      expect(c.details).toMatchObject({ name: 'Salma Test', governorate: 'حماة', shipping: 'مشحون', totalAmount: 15, deliveryFee: 3 });
+      expect(c.compare).toEqual({ phone: 'SAME', governorate: 'SAME', amount: 'SAME' });
+    }
+  });
+
+  it('with the key both do: the parcel’s own address first, then the customer’s', async () => {
+    setup();
+    const phone = await findLinkCandidatesByLinePhone(makeTx(w) as never, { ...scope, countryCode: 'SY', maySeeContact: true });
+    const text = await findLinkCandidates(makeTx(w) as never, { ...scope, query: 'ORD-9', countryCode: 'SY', maySeeContact: true });
+    expect(phone.candidates[0].details.address).toBe('حماة - حي الوسط');
+    expect(text.candidates[0].details.address).toBe('حماة - حي الوسط');
+    w.orders = [{ ...order9(), deliveryAddress: null }];
+    const fallback = await findLinkCandidatesByLinePhone(makeTx(w) as never, { ...scope, countryCode: 'SY', maySeeContact: true });
+    expect(fallback.candidates[0].details.address).toBe('عنوان الزبون');
+  });
+
+  it('the address of the order appears nowhere else in the answer without the key', async () => {
+    setup();
+    const r = await findLinkCandidatesByLinePhone(makeTx(w) as never, { ...scope, countryCode: 'SY' });
+    const wire = JSON.stringify(r);
+    expect(wire).not.toContain('حي الوسط');
+    expect(wire).not.toContain('عنوان الزبون');
   });
 });

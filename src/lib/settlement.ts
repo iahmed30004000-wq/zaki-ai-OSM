@@ -102,22 +102,27 @@ const HEADER_ALIASES: Record<HeaderField, string[]> = {
    * WHO THE PARCEL WENT TO — read so the screen can say it and the hand link can search by it.
    *
    * Whole headings only, like every field above: a heading that merely CONTAINS «هاتف» may be the sender's («هاتف المرسل»).
-   * «اسم الزبون» is NOT here on purpose — in a Basha sheet it holds the merchant's own account name on every line, and
-   * «اسم المستلم» is the receiver. «اسم» with and without the hamza under the alef are both written: the same file
-   * spells «إسم المرسل» and «اسم المستلم» side by side.
+   * NO «الزبون», NO «العميل» and no `customer_*` is here, on purpose: in a LogesTechs sheet those words name the MERCHANT
+   * (its own account name sits under «اسم الزبون» on every line, and «تم تسليمها إلى العميل» is «handed back to the sender»),
+   * and the receiver is «المستلم». «اسم» with and without the hamza under the alef are both written: the same file spells
+   * «إسم المرسل» and «اسم المستلم» side by side.
+   *
+   * THE LIST IS IN ORDER OF HOW SPECIFIC A HEADING IS, and a sheet is read by that order, not by which column comes first:
+   * a bare «الهاتف» or «المدينة» placed before «هاتف المستلم» (the sender's, say) must not win (`columnIndexByPriority`).
    */
   receiverName: [
-    'اسم المستلم', 'إسم المستلم', 'المستلم', 'اسم العميل', 'إسم العميل',
-    'receiver_name', 'receivername', 'receiver name', 'receiver', 'recipient_name', 'recipient', 'consignee', 'customer_name',
+    'اسم المستلم', 'إسم المستلم', 'المستلم',
+    'receiver_name', 'receivername', 'receiver name', 'receiver', 'recipient_name', 'recipient', 'consignee',
   ],
   receiverPhone: [
-    'هاتف المستلم', 'رقم هاتف المستلم', 'موبايل المستلم', 'جوال المستلم', 'هاتف العميل', 'رقم هاتف العميل', 'هاتف الزبون',
+    'هاتف المستلم', 'رقم هاتف المستلم', 'موبايل المستلم', 'جوال المستلم',
+    'receiver_phone', 'recipient_phone',
     'الهاتف', 'رقم الهاتف', 'موبايل', 'الموبايل', 'رقم الموبايل', 'جوال', 'الجوال', 'رقم الجوال',
-    'phone', 'phone_number', 'mobile', 'tel', 'receiver_phone', 'recipient_phone', 'customer_phone',
+    'phone', 'phone_number', 'mobile', 'tel',
   ],
   receiverAddress: [
-    'عنوان المستلم', 'العنوان', 'عنوان العميل', 'عنوان الزبون',
-    'address', 'receiver_address', 'recipient_address', 'delivery_address', 'customer_address',
+    'عنوان المستلم', 'receiver_address', 'recipient_address', 'delivery_address',
+    'العنوان', 'address',
   ],
   receiverCity: ['مدينة المستلم', 'محافظة المستلم', 'المدينة', 'المحافظة', 'city', 'governorate', 'receiver_city', 'recipient_city'],
   receiverArea: ['منطقة المستلم', 'المنطقة', 'area', 'district', 'region', 'receiver_area', 'recipient_area'],
@@ -133,6 +138,20 @@ function normalizeHeader(value: string): string {
 function columnIndex(header: string[], field: HeaderField): number {
   const names = HEADER_ALIASES[field].map(normalizeHeader);
   return header.findIndex((h) => names.includes(normalizeHeader(h)));
+}
+
+/**
+ * The column whose heading is the EARLIEST alias of the list — the most specific one the file has — instead of the first column
+ * in the file that matches any of them. Used for who the parcel went to, where a generic heading («الهاتف») and a specific one
+ * («هاتف المستلم») may both be there and the generic one may be the sender's. The money fields keep `columnIndex`, untouched.
+ */
+function columnIndexByPriority(header: string[], field: HeaderField): number {
+  const headings = header.map(normalizeHeader);
+  for (const alias of HEADER_ALIASES[field].map(normalizeHeader)) {
+    const at = headings.indexOf(alias);
+    if (at >= 0) return at;
+  }
+  return -1;
 }
 
 /**
@@ -258,11 +277,11 @@ export function parseStatementRows(header: string[], dataRows: string[][]): Pars
     fee: columnIndex(header, 'fee'),
     status: columnIndex(header, 'status'),
     notes: columnIndex(header, 'notes'),
-    receiverName: columnIndex(header, 'receiverName'),
-    receiverPhone: columnIndex(header, 'receiverPhone'),
-    receiverAddress: columnIndex(header, 'receiverAddress'),
-    receiverCity: columnIndex(header, 'receiverCity'),
-    receiverArea: columnIndex(header, 'receiverArea'),
+    receiverName: columnIndexByPriority(header, 'receiverName'),
+    receiverPhone: columnIndexByPriority(header, 'receiverPhone'),
+    receiverAddress: columnIndexByPriority(header, 'receiverAddress'),
+    receiverCity: columnIndexByPriority(header, 'receiverCity'),
+    receiverArea: columnIndexByPriority(header, 'receiverArea'),
   };
 
   if (idx.net < 0 && idx.collected < 0) {

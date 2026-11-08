@@ -30,6 +30,13 @@ export function comparePhones(
   storeCountry?: string | null
 ): Agreement {
   if (!lineKeys || lineKeys.length === 0) return 'UNKNOWN';
+  // The line's number in EVERY form the address book may hold it in — the long form with its country code and the national one —
+  // so «963900000001» finds a customer stored as «900000001» and the other way round, by the same expansion the search uses.
+  const theirs = new Set<string>();
+  for (const key of lineKeys) {
+    theirs.add(key);
+    for (const form of phoneKeysAnyStore(key)) theirs.add(form);
+  }
   const ours = new Set<string>();
   for (const raw of [customer?.phone, customer?.rawPhone]) {
     if (!raw) continue;
@@ -38,16 +45,22 @@ export function comparePhones(
     if (canonical) for (const key of phoneKeys(canonical)) ours.add(key);
   }
   if (ours.size === 0) return 'UNKNOWN';
-  return lineKeys.some((key) => ours.has(key)) ? 'SAME' : 'DIFFERENT';
+  return [...theirs].some((key) => ours.has(key)) ? 'SAME' : 'DIFFERENT';
 }
 
 const governorateKey = (name: string) => normalizePhrase(name).replace(/^محافظه\s+/, '');
 
-/** Is it the same governorate? A governorate is a name, not a prefix: «دمشق» and «ريف دمشق» are two. */
+const HAS_ARABIC = /[؀-ۿ]/;
+
+/**
+ * Is it the same governorate? A governorate is a name, not a prefix: «دمشق» and «ريف دمشق» are two. A name in Latin letters
+ * against one in Arabic letters cannot be compared by spelling («Idlib» is «إدلب»), so that is «unknown» — never a red «مختلف».
+ */
 export function compareGovernorates(line: string | null | undefined, order: string | null | undefined): Agreement {
   const a = line?.trim();
   const b = order?.trim();
   if (!a || !b) return 'UNKNOWN';
+  if (HAS_ARABIC.test(a) !== HAS_ARABIC.test(b)) return 'UNKNOWN';
   return governorateKey(a) === governorateKey(b) ? 'SAME' : 'DIFFERENT';
 }
 

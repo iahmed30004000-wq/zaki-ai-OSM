@@ -141,3 +141,26 @@ describe('lineEssentials — what the screen says about a company’s line', () 
     expect(e).toEqual({ status: null, phone: null, name: null, address: null, city: null, area: null, governorate: null, fromHeadings: false });
   });
 });
+
+describe('a number written with its country code is one number: its tail is never read as a second one', () => {
+  const row = (rawRow: string) => ({ rawRow, merchantRef: null, barcode: null });
+
+  it('«+353 78 123 4567» is an Irish line in a row with no heading — not the Jordanian mobile 078…', () => {
+    expect(phoneFromRawRow(row('x | +353 78 123 4567 | y'), 'SY')).toMatchObject({ shown: '+353781234567', country: 'OTHER' });
+  });
+
+  it('«+218 91 234 5678» is a Libyan line — not the Syrian mobile 091…', () => {
+    expect(phoneFromRawRow(row('+218 91 234 5678'), 'SY')).toMatchObject({ shown: '+218912345678', country: 'OTHER' });
+    expect(phoneFromRawRow(row('00218 91 234 5678'), 'SY')).toMatchObject({ shown: '+218912345678', country: 'OTHER' });
+  });
+
+  it('two numbers in one cell are still read from the first one: a number written with + keeps its own beginning', () => {
+    expect(phoneFromCell('+963 900 000 001 - 0944111222', 'SY')?.shown).toBe('0900000001');
+    expect(phoneFromRawRow(row('+963 900 000 001 - 0944111222'), 'SY')?.shown).toBe('0900000001');
+  });
+
+  it('a number WITHOUT a country code beside an amount is cut as before: «0933620102 - 25000»', () => {
+    expect(phoneFromRawRow(row('0933620102 - 25000'), 'SY')?.shown).toBe('0933620102');
+    expect(phoneFromRawRow(row('هاتف 0944111222 0933620102'), 'SY')?.shown).toBe('0944111222');
+  });
+});

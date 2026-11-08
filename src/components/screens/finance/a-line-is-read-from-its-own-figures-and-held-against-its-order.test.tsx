@@ -91,8 +91,9 @@ describe('«المرتجع ما ظهر» — the tally says where each kind of t
     render(<MatchingScreen />);
     const tally = await screen.findByRole('region', { name: 'شو كتبت الشركة وين صار' });
     const cells = (word: string) => {
-      const row = within(tally).getByRole('rowheader', { name: word }).closest('tr')!;
-      return Array.from(row.querySelectorAll('td')).map((td) => td.textContent);
+      const row = Array.from(tally.querySelectorAll('tbody tr')).find((tr) => tr.querySelector('td')?.textContent === word)!;
+      // word · total · matched · a difference · no order of ours · excluded — the word itself is not a count
+      return Array.from(row.querySelectorAll('td')).slice(1).map((td) => td.textContent);
     };
     // total · matched · a difference · no order of ours · excluded
     expect(cells('سُلِّمت')).toEqual(['2', '0', '0', '2', '0']);
@@ -109,7 +110,7 @@ describe('«المرتجع ما ظهر» — the tally says where each kind of t
 
   it('does not count an order of ours that no statement names — it has no line', () => {
     const { container } = render(<StatementTally matches={rows as never} />);
-    const total = Array.from(container.querySelectorAll('tbody tr')).reduce((n, tr) => n + Number(tr.querySelectorAll('td')[0].textContent), 0);
+    const total = Array.from(container.querySelectorAll('tbody tr')).reduce((n, tr) => n + Number(tr.querySelectorAll('td')[1].textContent), 0);
     expect(total).toBe(6);
   });
 
@@ -148,7 +149,8 @@ describe('«ليش مش حاط الطلب ولا السعر ولا أجرة ال
     expect(text(row)).toMatch(/15\.00/); // collected
     expect(text(row)).toMatch(/12\.00/); // net
     expect(text(row)).toMatch(/3\.00/); // the fee the company kept — the match row never stored it for a line with no order
-    expect(text(row)).toContain('رقم الطلب عندهم: 20001');
+    expect(text(row)).toContain('رقم الطلب عندهم:');
+    expect(text(row)).toContain('20001');
   });
 
   it('a returned line that carries a return fee shows the fee and the negative net as the company wrote them', async () => {
@@ -245,16 +247,17 @@ describe('«كيف بدي أقارن» — the dialog lays the company’s line 
   it('each order carries a mark for the phone, the governorate and the net — in words, not only in colour', async () => {
     const dialog = await openIt();
     await within(dialog).findByText('ORD-A');
-    expect(text(dialog)).toContain('الهاتف: ≠ مختلف');
-    expect(text(dialog)).toContain('المحافظة: ≠ مختلف');
-    expect(text(dialog)).toContain('المبلغ: ≠ مختلف');
+    expect(text(dialog)).toContain('الهاتف: مختلف');
+    expect(text(dialog)).toContain('المحافظة: مختلف');
+    expect(text(dialog)).toContain('المبلغ: مختلف');
   });
 
   it('a pick opens the two sides of every field in one table, and the count of agreements', async () => {
     const dialog = await openIt();
     fireEvent.click(await within(dialog).findByText('ORD-A'));
-    const table = within(dialog).getByRole('table');
-    const row = (name: string) => within(table).getByRole('rowheader', { name }).closest('tr')!;
+    const group = within(dialog).getByRole('group', { name: 'الشركة مقابل طلبنا' });
+    // one item to a field: its name first, then what the company wrote, then what we have
+    const row = (name: string) => Array.from(group.querySelectorAll('li')).find((li) => li.firstElementChild?.textContent === name)!;
     expect(text(row('الهاتف'))).toContain('+353871234567');
     expect(text(row('الهاتف'))).toContain('0900000001');
     expect(text(row('المحافظة'))).toContain('إدلب');
@@ -266,15 +269,15 @@ describe('«كيف بدي أقارن» — the dialog lays the company’s line 
     expect(text(row('الصافي'))).toMatch(/16\.00.*32\.00/);
     expect(text(row('المحصَّل من الزبون'))).toMatch(/20\.00.*35\.00/);
     expect(text(row('أجرة التوصيل'))).toMatch(/4\.00.*3\.00/);
-    expect(text(table.parentElement!)).toContain('يتفقان في 0 من 3');
+    expect(text(group)).toContain('يتفقان في 0 من 3');
   });
 
   it('a name and an address are laid side by side and never marked — only the phone, the governorate and the net are', async () => {
     const dialog = await openIt();
     fireEvent.click(await within(dialog).findByText('ORD-A'));
-    const table = within(dialog).getByRole('table');
-    const marked = Array.from(table.querySelectorAll('tbody tr')).filter((tr) => /مطابق|مختلف|غير معروف/.test(text(tr)));
-    expect(marked.map((tr) => tr.querySelector('th')!.textContent)).toEqual(['الهاتف', 'المحافظة', 'الصافي']);
+    const group = within(dialog).getByRole('group', { name: 'الشركة مقابل طلبنا' });
+    const marked = Array.from(group.querySelectorAll('li')).filter((li) => /مطابق|مختلف|غير معروف/.test(text(li)));
+    expect(marked.map((li) => li.firstElementChild!.textContent)).toEqual(['الهاتف', 'المحافظة', 'الصافي']);
   });
 
   it('an order that agrees on all three says so', async () => {
@@ -285,8 +288,8 @@ describe('«كيف بدي أقارن» — the dialog lays the company’s line 
     );
     const dialog = await openIt();
     fireEvent.click(await within(dialog).findByText('ORD-A'));
-    expect(text(dialog)).toContain('الهاتف: ✓ مطابق');
-    expect(text(within(dialog).getByRole('table').parentElement!)).toContain('يتفقان في 3 من 3');
+    expect(text(dialog)).toContain('الهاتف: مطابق');
+    expect(text(within(dialog).getByRole('group', { name: 'الشركة مقابل طلبنا' }))).toContain('يتفقان في 3 من 3');
   });
 
   it('a field the server could not compare is «غير معروف», and does not count either way', async () => {
@@ -297,8 +300,8 @@ describe('«كيف بدي أقارن» — the dialog lays the company’s line 
     );
     const dialog = await openIt();
     fireEvent.click(await within(dialog).findByText('ORD-A'));
-    expect(text(dialog)).toContain('الهاتف: ؟ غير معروف');
-    expect(text(within(dialog).getByRole('table').parentElement!)).toContain('يتفقان في 1 من 1');
+    expect(text(dialog)).toContain('الهاتف: غير معروف');
+    expect(text(within(dialog).getByRole('group', { name: 'الشركة مقابل طلبنا' }))).toContain('يتفقان في 1 من 1');
   });
 
   it('an answer in the old shape (no line, no details, no marks) still draws the dialog and still lets a person pick', async () => {

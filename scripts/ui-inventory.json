@@ -1212,7 +1212,7 @@
   "src/components/screens/finance/MatchingScreen.tsx": {
     "buttons": 2,
     "inputs": 1,
-    "columns": 16,
+    "columns": 20,
     "cards": 0,
     "modals": 0,
     "icons": 3,
@@ -1235,6 +1235,16 @@
     "columns": 0,
     "cards": 0,
     "modals": 1,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
+  "src/components/screens/finance/StatementTally.tsx": {
+    "buttons": 0,
+    "inputs": 0,
+    "columns": 6,
+    "cards": 0,
+    "modals": 0,
     "icons": 0,
     "links": 0,
     "tabs": 0
