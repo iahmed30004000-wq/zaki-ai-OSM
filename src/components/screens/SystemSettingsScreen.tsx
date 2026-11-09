@@ -8,6 +8,7 @@ import { PerformanceSettingsCard } from '@/components/settings/PerformanceSettin
 import { PostOrderOfferCard } from '@/components/settings/PostOrderOfferCard';
 import { PenaltyRulesCard } from '@/components/settings/PenaltyRulesCard';
 import { NoAnswerRoundsCard } from '@/components/settings/NoAnswerRoundsCard';
+import { NoAnswerReturnsCard } from '@/components/settings/NoAnswerReturnsCard';
 import { RiBuildingLine, RiCheckLine, RiLoader4Line } from '@remixicon/react';
 import { PageHeader } from '@/components/ui/PageHeader';
 
@@ -144,6 +145,9 @@ export function SystemSettingsScreen() {
 
       {/* «نظام الجولات (تجريبي)» — how «لا يرد» counts and when an unanswered order goes back to the queue. Off by default. */}
       <NoAnswerRoundsCard />
+
+      {/* «الطلب يرجع للطابور فوراً (تجريبي)» — «لا يرد» or a date takes the order out of her hand at once. Needs the rounds on. Off by default. */}
+      <NoAnswerReturnsCard />
 
     </div>
   );

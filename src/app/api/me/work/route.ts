@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { ContextError, requireContext } from '@/lib/geo-context';
 import { can } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
-import { POSTPONE_LEAD_DAYS, awaitingConfirmationCount, waitingCount } from '@/lib/confirmation-queue';
+import { POSTPONE_LEAD_DAYS, awaitingConfirmationCount, readReturnsMode, waitingCount } from '@/lib/confirmation-queue';
 import { postponedScope } from '@/lib/postponed-list';
 import { whenWhere } from '@/lib/postponed-filters';
 import { kindsFor, type WorkItem, type WorkKey } from '@/lib/my-work';
@@ -35,7 +35,7 @@ export async function GET() {
       if (e instanceof ContextError) return NextResponse.json({ items: [] });
       throw e;
     }
-    const { user, companyId, storeId } = context;
+    const { user, companyId, storeId, country } = context;
     const scope = { companyId, storeId };
     const kinds = kindsFor((p) => can(user, p));
     if (kinds.length === 0) return NextResponse.json({ items: [] });
@@ -60,7 +60,18 @@ export async function GET() {
 
     // What SHE may take: an order held for a colleague is not waiting for her (order-reservation.ts), and a chip that counts it is a
     // number that promises a pull the button answers «لا توجد طلبات». A supervisor, who pulls nothing, reads the whole pool.
-    if (wanted.has('CONFIRM_POOL')) count('CONFIRM_POOL', waitingCount(db, scope, new Date(), can(user, 'confirmation.pull') ? user.id : undefined));
+    // «الطلب يرجع للطابور فوراً»: where it is on, the chip counts what the pull can hand out under ITS readiness (a returned order from its
+    // ready-time, a dated one from its date) — the very predicates of the pull, so the chip and the button cannot disagree. Off, as ever.
+    if (wanted.has('CONFIRM_POOL')) {
+      count('CONFIRM_POOL', (async () => {
+        const now = new Date();
+        const returns = await readReturnsMode(db, companyId, {
+          now,
+          calendar: () => ({ workHoursStart: country.workHoursStart, workHoursEnd: country.workHoursEnd, weekendDays: country.weekendDays, timezone: country.timezone }),
+        });
+        return waitingCount(db, scope, now, can(user, 'confirmation.pull') ? user.id : undefined, returns);
+      })());
+    }
     if (wanted.has('MY_UNCONFIRMED')) count('MY_UNCONFIRMED', awaitingConfirmationCount(db, scope, user.id));
 
     if (wanted.has('READY_TO_SHIP')) {

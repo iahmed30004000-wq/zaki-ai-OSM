@@ -61,6 +61,8 @@ const ACTION_AR: Record<string, string> = {
   CHANGE_REQUEST_WITHDRAWN: 'سحب طلب تعديل', POSTPONED_RETURNED_TO_QUEUE: 'إرجاع مؤجَّل للطابور',
   // «أرجِع «لا يرد» للطابور» (`/api/confirmation/desks/[agentId]/return-no-answer`): a supervisor returned a colleague's pile; the row's record is her.
   DESK_NO_ANSWER_RETURNED: 'إرجاع كومة «لا يرد» لموظفة للطابور',
+  // «الطلب يرجع للطابور فوراً (تجريبي)» (`/api/settings/no-answer-returns`): the owner's second switch beside «نظام الجولات».
+  NO_ANSWER_RETURNS_SWITCHED: 'تشغيل أو إيقاف «الطلب يرجع للطابور فوراً»',
   WALLET_TRANSFER: 'تحويل بين محافظ', WALLET_MOVEMENT_RECORDED: 'تسجيل حركة محفظة', WALLET_MOVEMENT_REVERSED: 'عكس حركة محفظة',
   WALLET_OPENING_COUNTED: 'جرد افتتاحي لمحفظة', WALLET_STOPPED: 'إيقاف محفظة', DAILY_CLOSING_RECORDED: 'تسجيل إغلاق يومي',
   DAILY_CLOSING_APPROVED: 'اعتماد إغلاق يومي', STATEMENT_APPROVED: 'اعتماد كشف', STATEMENT_IMPORTED: 'استيراد كشف',
