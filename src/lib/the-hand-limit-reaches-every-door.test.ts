@@ -21,8 +21,10 @@ import { workClock } from './no-answer-rounds';
  * THE HAND LIMIT IS A PARAMETER EVERY CAP QUESTION IS HANDED — NEVER A CHANGE TO THE 500 (the owner, 9/11)
  *
  * «الطلب يرجع للطابور فوراً» makes a hand five. The cap of 500 and the 40 untouched are asked by the pull, the claim-by-number door,
- * «الزبون على الخط», her own entries and the returning-customer hold; with the mode ON each is handed `RETURNS_MODE.handLimit`, and
- * with it OFF is handed nothing and asks 500 in the old words. This file holds the pure rules; the doors have their own tests
+ * «الزبون على الخط» and the returning-customer hold; with the mode ON each is handed `RETURNS_MODE.handLimit`, and with it OFF is
+ * handed nothing and asks 500 in the old words. Her own typed entries (`entryOwnership`, `confirmNowReadiness`) take the same optional
+ * `limit` and it is held below as a PURE rule — but NO creation door passes it in this PR (BACKLOG RV1658), so with `limit` undefined
+ * nothing changes there. This file holds the pure rules; the doors have their own tests
  * (`the-order-leaves-her-hand.test.ts`, `the-hand-limit-binds-taking-by-number.test.ts`,
  * `the-customer-on-the-line-finds-a-returned-order.test.ts`).
  * ═══════════════════════════════════════════════════════════════════════
@@ -95,7 +97,7 @@ describe('capRefusal and pullRefusal — the same rule against five, in the owne
   });
 });
 
-describe('her own entry — the order she types is hers only while the hand has room', () => {
+describe('the own-entry rule, given a limit (no creation door passes one yet — RV1658)', () => {
   const agent = holds('confirmation.work');
   const entry = (heldTotal: number, limit?: number) => entryOwnership({ userId: 'sara', holds: agent, heldTotal, now: new Date('2026-11-09T09:00:00Z'), limit });
 

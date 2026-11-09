@@ -21,7 +21,8 @@ import { ROUND_GAP_BUSINESS_MINUTES, roundsOn, type RoundsSwitch, type WorkClock
  *     (d) a decision (confirm · reject · cancel) ends it, as ever;
  *     (e) the third COUNTED round on two different days still closes it — that counting is the rounds', unchanged.
  *
- *   HER HAND is at most `RETURNS_MODE.handLimit`, in her hands plus held for her (`capLoad`). She pulls one at a time.
+ *   HER HAND is at most `RETURNS_MODE.handLimit`, in her hands plus held for her (`capLoad`). She pulls one at a time. (That is what
+ *   the queue hands her: the orders she types herself are not counted against it — the creation doors are untouched, BACKLOG RV1658.)
  *
  *   THE POOL, in the order a pull takes it (`pickNextCandidate`; «الأولوية دائما للطلبات الجديدة» stays):
  *     1 · held for her (a returning customer, a twin)    2 · NEW — nobody has rung — oldest first

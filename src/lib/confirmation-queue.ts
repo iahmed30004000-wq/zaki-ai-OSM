@@ -50,8 +50,10 @@ export const CLAIM_CAPS = { withoutAttempt: 40, total: 500 } as const;
  * «الطلب يرجع للطابور فوراً (تجريبي)» — THE TWO NUMBERS OF THE MODE, IN ONE PLACE (the owner, 9/11; rules in `no-answer-returns.ts`).
  *
  *   · `handLimit` — the most one agent holds, in her hands plus held for her (`capLoad`). Where the mode is on, the pull, the
- *     claim-by-number door, «الزبون على الخط» and her own entries read THIS in place of `CLAIM_CAPS.total` — a parameter they are
- *     handed, never a change to that constant: with the mode off the 500 and the 40 are asked exactly as before.
+ *     claim-by-number door, «الزبون على الخط» and the returning-customer hold read THIS in place of `CLAIM_CAPS.total` — a parameter
+ *     they are handed, never a change to that constant: with the mode off the 500 and the 40 are asked exactly as before. The
+ *     creation doors (the order form, the AI intake) are NOT handed it: `entryOwnership` and `confirmNowReadiness` accept an
+ *     optional `limit` (nothing changes when it is absent), and wiring it is the owner's decision (BACKLOG RV1658).
  *   · `idleBusinessMinutes` — nothing logged on an order in her hand for this many WORKING minutes lets it go back.
  *
  * The ready-time of a «لا يرد» is `ROUND_GAP_BUSINESS_MINUTES` (`no-answer-rounds.ts`): the same three hours that make a round.
@@ -102,7 +104,7 @@ export const POSTPONE_LEAD_DAYS = 2;
  */
 export const MANUAL_ENTRY_REASON = 'MANUAL_ENTRY';
 
-/** Said to the agent when her own entry had to go to the queue — with the number of whichever limit applies (`RETURNS_MODE.handLimit` where that mode is on). */
+/** Said to the agent when her own entry had to go to the queue — with the number of whichever limit applies. Only the cap of 500 reaches it today: no creation door passes the mode's hand limit (BACKLOG RV1658). */
 export function entryCapFullMessage(limit: number): string {
   return `وصلت للحد (${limit}) — الطلب راح للطابور`;
 }
@@ -296,7 +298,7 @@ export function confirmNowReadiness(args: {
   userId: string;
   entry: EntryOwnership;
   regionId: string | null;
-  /** The hand limit where «الطلب يرجع للطابور فوراً» is on (`RETURNS_MODE.handLimit`); absent = the cap of 500, as ever. */
+  /** The hand limit where «الطلب يرجع للطابور فوراً» is on (`RETURNS_MODE.handLimit`); absent = the cap of 500, as ever. No creation door passes it yet (RV1658). */
   limit?: number;
 }): ConfirmNowReadiness {
   if (!args.wanted) return { ready: false, code: 'MAY_NOT_CONFIRM', reason: MAY_NOT_CONFIRM_NOW_MESSAGE };
@@ -353,7 +355,7 @@ export function entryOwnership(args: {
   now: Date;
   /** «الزبون على الخط — أكّده الآن», already weighed by `mayConfirmNow`. Absent = false: the AI-intake door never sends it. */
   confirmNow?: boolean;
-  /** The hand limit where «الطلب يرجع للطابور فوراً» is on (`RETURNS_MODE.handLimit`); absent = `CLAIM_CAPS.total`, as ever. */
+  /** The hand limit where «الطلب يرجع للطابور فوراً» is on (`RETURNS_MODE.handLimit`); absent = `CLAIM_CAPS.total`, as ever. No creation door passes it yet (RV1658). */
   limit?: number;
 }): EntryOwnership {
   const unclaimed: EntryOwnership = {
