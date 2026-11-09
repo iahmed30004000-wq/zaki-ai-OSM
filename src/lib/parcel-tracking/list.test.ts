@@ -1,8 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LEAN_CAP, LEAN_SELECT, NO_COURIER_AR, NO_REGION_AR, TRACKING_ORDER_BY, readTrackingList, type LeanParcel } from './list';
-import { TASKS } from './filters';
+import { TASKS, searchWhere } from './filters';
 import { TRACKING_ACK_ACTION } from './alert';
-import { COURIER_SAID } from '../couriers/courier-said';
+import { COURIER_SAID, SAID_STATUSES } from '../couriers/courier-said';
 import { wordLine } from '../couriers/courier-said-lines.fixture';
 import { MATCHES, byUrgency } from './priority';
 import type { ConditionKey } from './priority';
@@ -50,16 +50,56 @@ interface World {
   changed?: Record<string, Date>;
   /** Acknowledgements: orderId → when. */
   acked?: Record<string, Date>;
-  /** The company's words (COURIER_SAID lines), in any order — the fake sorts them the way it is asked to. */
-  said?: { id?: string; orderId: string; newStatus: string | null; metadata: string | null; createdAt: Date }[];
+  /**
+   * The company's words (COURIER_SAID lines), in any order — the fake sorts them the way it is asked to. `companyId` is the
+   * company the line belongs to; left out, it is THE company's (`COMPANY`). A line of another company is in the table too.
+   */
+  said?: { id?: string; orderId: string; companyId?: string; newStatus: string | null; metadata: string | null; createdAt: Date }[];
+  /** Acknowledgements ANOTHER company wrote on the very same order ids: orderId → when. */
+  foreignAcked?: Record<string, Date>;
+  /** A read that fails: the key is the read, the value is what it throws (the fake is async, so a throw is a rejected promise). */
+  fails?: Partial<Record<'order' | 'fee' | 'log' | 'change' | 'said' | 'ack' | 'provider' | 'region', unknown>>;
   providers?: Record<string, string>;
   /** The companies that hand out a barcode through their API (`apiEnabled` with an adapter). The rest are manual. */
   api?: string[];
   regions?: Record<string, string>;
 }
 
+/** The company whose list is read; the lines the fake holds are this company's unless a test says otherwise. */
+const COMPANY = 'c1';
+const OTHER_COMPANY = 'c2';
+
+/** The database sorts by what it is asked to and by nothing else: no `orderBy`, no order. */
+function sortedAs<T extends object>(rows: T[], orderBy: unknown): T[] {
+  const keys = ([] as Record<string, 'asc' | 'desc'>[]).concat((orderBy ?? []) as Record<string, 'asc' | 'desc'>[]);
+  const cell = (row: T, field: string) => {
+    const v = (row as Record<string, unknown>)[field];
+    return v instanceof Date ? v.getTime() : String(v ?? '');
+  };
+  return [...rows].sort((a, b) => {
+    for (const k of keys) {
+      const [field, dir] = Object.entries(k)[0];
+      const x = cell(a, field);
+      const y = cell(b, field);
+      if (x !== y) return (x < y ? -1 : 1) * (dir === 'desc' ? -1 : 1);
+    }
+    return 0;
+  });
+}
+
 function dbOf(w: World) {
   const calls: Record<string, any[]> = { order: [], fee: [], log: [], change: [], ack: [], said: [], provider: [], region: [] };
+  /** Every read goes through here: it is written down (so a test can read what was asked), then fails if the world says this read fails. */
+  const asked = (key: keyof NonNullable<World['fails']>, args: unknown) => {
+    calls[key].push(args);
+    if (w.fails && key in w.fails) throw w.fails[key];
+  };
+  /** The activity table's only index that starts with an order starts with the company, and PostgreSQL 16 cannot skip a first column: a read that does not name the company is refused. */
+  const company = (args: { where: { companyId?: unknown } }): string => {
+    const named = args.where.companyId;
+    if (typeof named !== 'string' || named === '') throw new Error('fake db: the activity table was read without naming the company');
+    return named;
+  };
   const sorted = [...w.parcels].sort((a, b) => {
     // oldest shipped first, nulls last, then createdAt desc, then id — the order the list asks for
     const as = a.shippedAt?.getTime() ?? Infinity;
@@ -73,13 +113,13 @@ function dbOf(w: World) {
   const db = {
     order: {
       findMany: vi.fn(async (args: any) => {
-        calls.order.push(args);
+        asked('order', args);
         return sorted.slice(0, args.take);
       }),
     },
     deliveryFee: {
       findMany: vi.fn(async (args: any) => {
-        calls.fee.push(args);
+        asked('fee', args);
         const wanted = new Set<string>(args.where.OR.map((p: any) => `${p.deliveryProviderId}|${p.regionId}`));
         return Object.entries(w.fees ?? {})
           .filter(([k]) => wanted.has(k))
@@ -91,7 +131,7 @@ function dbOf(w: World) {
     },
     orderStatusLog: {
       findMany: vi.fn(async (args: any) => {
-        calls.log.push(args);
+        asked('log', args);
         return Object.entries(w.cancelled ?? {})
           .filter(([id]) => args.where.orderId.in.includes(id))
           .map(([orderId, createdAt]) => ({ orderId, createdAt }));
@@ -99,7 +139,7 @@ function dbOf(w: World) {
     },
     orderChangeRequest: {
       findMany: vi.fn(async (args: any) => {
-        calls.change.push(args);
+        asked('change', args);
         return Object.entries(w.changed ?? {})
           .filter(([id]) => args.where.orderId.in.includes(id))
           .map(([orderId, appliedAt]) => ({ orderId, appliedAt }));
@@ -109,35 +149,29 @@ function dbOf(w: World) {
       findMany: vi.fn(async (args: any) => {
         // One table, two kinds of line the list reads — each with its own world and its own call log. A kind the fake was not taught is refused.
         if (args.where.action === COURIER_SAID) {
-          calls.said.push(args);
+          asked('said', args);
+          // …and a read that does not name the company is refused, and one that does gets that company's lines only.
+          const named = company(args);
           const wanted: string[] = args.where.orderId.in;
-          const lines = (w.said ?? []).filter((l) => wanted.includes(l.orderId));
-          // The database sorts by what it is asked to and by nothing else: no `orderBy`, no order.
-          const keys: Record<string, 'asc' | 'desc'>[] = [].concat(args.orderBy ?? []);
-          const cell = (line: (typeof lines)[number], field: string) => {
-            const v = (line as Record<string, unknown>)[field];
-            return v instanceof Date ? v.getTime() : String(v ?? '');
-          };
-          return [...lines].sort((a, b) => {
-            for (const k of keys) {
-              const [field, dir] = Object.entries(k)[0];
-              const x = cell(a, field);
-              const y = cell(b, field);
-              if (x !== y) return (x < y ? -1 : 1) * (dir === 'desc' ? -1 : 1);
-            }
-            return 0;
-          });
+          const lines = (w.said ?? []).filter((l) => wanted.includes(l.orderId) && (l.companyId ?? COMPANY) === named);
+          return sortedAs(lines, args.orderBy);
         }
         if (args.where.action !== TRACKING_ACK_ACTION) throw new Error(`fake db: the activity table was asked for an action it was not taught: ${args.where.action}`);
-        calls.ack.push(args);
-        return Object.entries(w.acked ?? {})
-          .filter(([id]) => args.where.orderId.in.includes(id))
-          .map(([orderId, createdAt]) => ({ orderId, createdAt }));
+        asked('ack', args);
+        const named = company(args);
+        const lines = [
+          ...Object.entries(w.acked ?? {}).map(([orderId, createdAt]) => ({ orderId, createdAt, companyId: COMPANY })),
+          ...Object.entries(w.foreignAcked ?? {}).map(([orderId, createdAt]) => ({ orderId, createdAt, companyId: OTHER_COMPANY })),
+        ];
+        return sortedAs(
+          lines.filter((l) => args.where.orderId.in.includes(l.orderId) && l.companyId === named),
+          args.orderBy
+        ).map(({ orderId, createdAt }) => ({ orderId, createdAt }));
       }),
     },
     deliveryProvider: {
       findMany: vi.fn(async (args: any) => {
-        calls.provider.push(args);
+        asked('provider', args);
         return Object.entries(w.providers ?? {}).filter(([id]) => args.where.id.in.includes(id)).map(([id, name]) => ({
           id,
           name,
@@ -148,7 +182,7 @@ function dbOf(w: World) {
     },
     region: {
       findMany: vi.fn(async (args: any) => {
-        calls.region.push(args);
+        asked('region', args);
         return Object.entries(w.regions ?? {}).filter(([id]) => args.where.id.in.includes(id)).map(([id, name]) => ({ id, name }));
       }),
     },
@@ -156,10 +190,11 @@ function dbOf(w: World) {
   return { db, calls };
 }
 
-const WHERE = { companyId: 'c1', storeId: 's1', AND: [] } as Parameters<typeof readTrackingList>[1]['where'];
-const read = (w: World, over: Partial<Parameters<typeof readTrackingList>[1]> = {}) => {
+const WHERE = { companyId: COMPANY, storeId: 's1', AND: [] } as Parameters<typeof readTrackingList>[1]['where'];
+const read = (w: World, over: Partial<Parameters<typeof readTrackingList>[1]> = {}, tweak?: (db: ReturnType<typeof dbOf>['db']) => void) => {
   const { db, calls } = dbOf(w);
-  const list = readTrackingList(db, { where: WHERE, now: NOW, task: null, courier: null, region: null, age: null, page: 1, limit: 25, ...over });
+  tweak?.(db);
+  const list = readTrackingList(db, { companyId: COMPANY, where: WHERE, now: NOW, task: null, courier: null, region: null, age: null, page: 1, limit: 25, ...over });
   return list.then((l) => ({ ...l, calls }));
 };
 
@@ -803,5 +838,294 @@ describe('the bound is the same bound', () => {
     // The parcel past the bound is not on the list, so its word is on nobody's row and in no number.
     expect(l.facts.said.DELIVERED).toBe(1);
     expect(l.ids).toEqual([id(0)]);
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+ * THE ACTIVITY TABLE IS READ WITH THE COMPANY NAMED — AND THE COMPANY'S WORD IS THE ONE READ THAT MAY FAIL QUIETLY.
+ *
+ * `order_activities` has one index that starts with an order, and it starts with the company: `(companyId, orderId)`.
+ * PostgreSQL 16 cannot skip a first column, so a read that asks `orderId IN (…)` for up to twenty thousand ids and never
+ * names the company cannot use it. The fake database of this file is as strict as that index: a read of the table that does
+ * not name the company is REFUSED, and one that does gets that company's lines only — so a line of another company on the
+ * very same order id is never in an answer.
+ *
+ * And the word is decoration. While nobody asked for it, a failed read of it draws the list without words and says so once
+ * in the log; when the person asked for it, the question cannot be answered and the error goes through. Every other read of
+ * the list still fails it.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/** What an answer says, without the record of the reads that made it — the words as rows, so two answers compare by value. */
+const answerOf = (l: Awaited<ReturnType<typeof read>>) => ({
+  ids: l.ids,
+  total: l.total,
+  page: l.page,
+  limit: l.limit,
+  totalPages: l.totalPages,
+  capped: l.capped,
+  facts: l.facts,
+  words: [...l.courierSaid].map(([id, s]) => [id, s.status, s.label, s.note, s.ageMinutes]),
+});
+
+describe('the fake database is as strict as the index: a read of the activity table must name the company', () => {
+  it('— refused without it (the words and the acknowledgements alike, an empty name too); with another company’s name it holds none of this company’s lines', async () => {
+    const { db } = dbOf({ ...shopWithWords(), foreignAcked: { changed: ago(0) } });
+    const orderId = { in: ['late', 'changed', 'cancelled'] };
+    for (const action of [COURIER_SAID, TRACKING_ACK_ACTION]) {
+      await expect(db.orderActivity.findMany({ where: { orderId, action } }), action).rejects.toThrow('without naming the company');
+      await expect(db.orderActivity.findMany({ where: { companyId: '', orderId, action } }), action).rejects.toThrow('without naming the company');
+    }
+    expect(await db.orderActivity.findMany({ where: { companyId: OTHER_COMPANY, orderId, action: COURIER_SAID } })).toEqual([]);
+    // The other company reads ITS acknowledgement and none of ours (`cancelled` was acknowledged by nobody; ours is on `cancelled-seen`).
+    expect(await db.orderActivity.findMany({ where: { companyId: OTHER_COMPANY, orderId, action: TRACKING_ACK_ACTION } })).toEqual([{ orderId: 'changed', createdAt: expect.any(Date) }]);
+    expect(await db.orderActivity.findMany({ where: { companyId: COMPANY, orderId, action: TRACKING_ACK_ACTION } })).toEqual([]);
+  });
+});
+
+describe('every read of the activity table names the company — the one the door handed in', () => {
+  const FROM_THE_DOOR = 'company-from-the-door';
+  // A `where` that names ANOTHER company: the list takes the company from its input, never by reading it out of the question.
+  const FROM_THE_WHERE = { companyId: 'company-from-the-where', storeId: 's1', AND: [] } as Parameters<typeof readTrackingList>[1]['where'];
+
+  it('— the company’s words: named, and it is the input’s — not the one the `where` says', async () => {
+    const { calls } = await read(shopWithWords(), { companyId: FROM_THE_DOOR, where: FROM_THE_WHERE });
+    expect(calls.said).toHaveLength(1);
+    expect(calls.said[0].where).toEqual({ companyId: FROM_THE_DOOR, orderId: { in: expect.any(Array) }, action: COURIER_SAID });
+  });
+
+  it('— the list’s acknowledgements: named, the same company', async () => {
+    const { calls } = await read(shopWithWords(), { companyId: FROM_THE_DOOR, where: FROM_THE_WHERE });
+    expect(calls.ack).toHaveLength(1);
+    expect(calls.ack[0].where).toEqual({ companyId: FROM_THE_DOOR, orderId: { in: expect.any(Array) }, action: TRACKING_ACK_ACTION });
+  });
+
+  it('— and with the company named, the company’s own lines are what the list reads: the words on the rows, the alerts it hushes', async () => {
+    const l = await read(shopWithWords(), { limit: 100 });
+    expect([...l.courierSaid.keys()].sort()).toEqual(['late', 'late-old', 'nobarcode', 'quiet', 'returning']);
+    // `cancelled-seen` was acknowledged by this company: its alert has faded, `cancelled`’s has not.
+    expect(l.facts.tasks.CANCELLED).toBe(1);
+  });
+
+  it('— a line of ANOTHER company on the very same orders reaches nobody: not a word, not a number, not a hushed alert — the answer is the one without them', async () => {
+    const crowded: World = {
+      ...shopWithWords(),
+      said: [
+        ...shopWithWords().said!,
+        // Newer than every line of ours: on a parcel that has a word, and on parcels that have none.
+        { ...say('late', 'POSTPONED_DELIVERY', 0.5), companyId: OTHER_COMPANY },
+        { ...say('quiet', 'DELIVERED_TO_RECIPIENT', 0.5), companyId: OTHER_COMPANY },
+        { ...say('failed', 'DELIVERED_TO_RECIPIENT', 0.5), companyId: OTHER_COMPANY },
+        { ...say('pickup-nobarcode', 'CANCELLED', 0.5), companyId: OTHER_COMPANY },
+      ],
+      // …and the acknowledgements that would hush the two alerts of this company.
+      foreignAcked: { cancelled: ago(0), changed: ago(0) },
+    };
+    const alone = answerOf(await read(shopWithWords(), { limit: 100 }));
+    const withStrangers = await read(crowded, { limit: 100 });
+    expect(answerOf(withStrangers)).toEqual(alone);
+    // They were in the table and the list asked about those very parcels: the answer is what it is because the read named the company.
+    expect(withStrangers.calls.said[0].where.orderId.in).toEqual(expect.arrayContaining(['late', 'quiet', 'failed', 'pickup-nobarcode']));
+    expect(withStrangers.facts.tasks).toMatchObject({ CANCELLED: 1, CHANGED: 1 });
+    expect(withStrangers.facts.said).toEqual({ DELIVERED: 2, PARTIALLY_DELIVERED: 0, RETURNED: 2, CANCELLED: 1, FAILED_DELIVERY: 0 });
+  });
+
+  it('— the input REQUIRES the company: a caller that forgets it does not compile, and at run time the table refuses the list', async () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const { db } = dbOf(shopWithWords());
+      // @ts-expect-error — `companyId` is required
+      const forgot = readTrackingList(db, { where: WHERE, now: NOW, task: null, courier: null, region: null, age: null, page: 1, limit: 25 });
+      await expect(forgot).rejects.toThrow('without naming the company');
+    } finally {
+      quiet.mockRestore();
+    }
+  });
+});
+
+describe('the company’s word is decoration — a failed read of it draws the list without words, and no other read is soft', () => {
+  const boom = new Error('canceling statement due to statement timeout');
+  const quiet = () => vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  let logged: ReturnType<typeof quiet>;
+  beforeEach(() => {
+    logged = quiet();
+  });
+  afterEach(() => {
+    logged.mockRestore();
+  });
+
+  /** The shop as it is when the poll has never written a line. */
+  const wordless = async () => answerOf(await read(shop(), { limit: 100 }));
+
+  it.each([
+    ['left out', undefined],
+    ['null — what the door sends when nobody chose', null],
+  ] as const)('— nobody asked for the word (%s): the list is the one of a shop the poll has never written a line for', async (_how, said) => {
+    const w = shopWithWords();
+    w.fails = { said: boom };
+    const l = await read(w, { limit: 100, said });
+    // Same rows, same order, same chips, same badge, same dropdowns — and no word on any row, in any number.
+    expect(answerOf(l)).toEqual(await wordless());
+    expect(l.courierSaid.size).toBe(0);
+    expect(l.facts.said).toEqual({ DELIVERED: 0, PARTIALLY_DELIVERED: 0, RETURNED: 0, CANCELLED: 0, FAILED_DELIVERY: 0 });
+    // The read WAS made: one question over every parcel the list holds.
+    expect(l.calls.said).toHaveLength(1);
+    expect(l.calls.said[0].where.orderId.in).toHaveLength(w.parcels.length);
+  });
+
+  it.each(SAID_STATUSES)('— the person asked for the word (%s): the question cannot be answered, so the error goes through as it is — never an unfiltered list, never an empty one', async (said) => {
+    const w = shopWithWords();
+    w.fails = { said: boom };
+    await expect(read(w, { said })).rejects.toBe(boom);
+    // The door’s own error answer says it; the list does not say it a second time.
+    expect(logged).not.toHaveBeenCalled();
+  });
+
+  const OTHER_READS = [
+    ['the parcels themselves', 'order'],
+    ['the companies’ names', 'provider'],
+    ['the lateness lines', 'fee'],
+    ['the cancellation log', 'log'],
+    ['the applied changes', 'change'],
+    ['the acknowledgements', 'ack'],
+    ['the governorates’ names', 'region'],
+  ] as const;
+
+  it.each(OTHER_READS)('— %s failing still fails the whole list, with its own error', async (_what, key) => {
+    const w = shopWithWords();
+    w.fails = { [key]: boom } as World['fails'];
+    await expect(read(w, { limit: 100 })).rejects.toBe(boom);
+    expect(logged).not.toHaveBeenCalled();
+  });
+
+  it.each(OTHER_READS.filter(([, key]) => ['log', 'change', 'ack', 'region'].includes(key)))(
+    '— %s failing TOGETHER with the word: the other read’s error is the answer — the word’s quiet failure does not swallow it',
+    async (_what, key) => {
+      const other = new Error(`the other read: ${key}`);
+      const w = shopWithWords();
+      w.fails = { said: boom, [key]: other } as World['fails'];
+      await expect(read(w, { limit: 100 })).rejects.toBe(other);
+    }
+  );
+
+  it('— when nothing fails nothing is logged', async () => {
+    await read(shopWithWords(), { limit: 100 });
+    expect(logged).not.toHaveBeenCalled();
+  });
+
+  it('— the log line is written ONCE per list, and is the reason and the number of parcels — never what the question was, never the error whole', async () => {
+    // A database error can carry the statement that failed (a driver puts the SQL and its values in `meta`): only its message may be logged.
+    const driverError = Object.assign(new Error('canceling statement due to statement timeout'), {
+      code: 'P2010',
+      meta: { query: `SELECT "orderId" FROM "order_activities" WHERE "orderId" IN ('late-old') AND "customerPhone" = '0912345678'` },
+    });
+    const w = shopWithWords();
+    w.fails = { said: driverError };
+    // What a person typed in the search box is in the `where`: a phone and a name. The log must not be able to carry them.
+    const where = {
+      companyId: COMPANY,
+      storeId: 's1',
+      AND: [searchWhere('0912345678'), searchWhere('زبون الفحص الوهمي')],
+    } as Parameters<typeof readTrackingList>[1]['where'];
+    const l = await read(w, { where, limit: 100 });
+    expect(l.ids).toHaveLength(14);
+    expect(logged).toHaveBeenCalledTimes(1);
+    // Exactly three things: that it failed, why (the message — a string), and over how many parcels.
+    expect(logged.mock.calls[0]).toEqual([expect.stringContaining('could not be read'), driverError.message, '(14 parcels)']);
+    const everything = JSON.stringify(logged.mock.calls);
+    for (const leak of ['0912345678', 'زبون الفحص', 'الوهمي', 'P2010', 'order_activities', 'companyId', 'storeId', 'TRK-', 'cancelled-seen', 'late-old']) {
+      expect(everything, leak).not.toContain(leak);
+    }
+  });
+
+  it('— a read that throws before it returns a promise is the same failure: quiet without the choice, through with it', async () => {
+    const throwsAtOnce = (db: Parameters<NonNullable<Parameters<typeof read>[2]>>[0]) => {
+      // The first read of the activity table is the word's; the acknowledgements are read after it.
+      vi.mocked(db.orderActivity.findMany).mockImplementationOnce((() => {
+        throw boom;
+      }) as never);
+    };
+    const l = await read(shopWithWords(), { limit: 100 }, throwsAtOnce);
+    expect(l.courierSaid.size).toBe(0);
+    expect(logged).toHaveBeenCalledTimes(1);
+    await expect(read(shopWithWords(), { said: 'DELIVERED' }, throwsAtOnce)).rejects.toBe(boom);
+  });
+
+  it('— a list of no parcels reads nothing about words, so there is nothing to fail: no read, no log', async () => {
+    const l = await read({ parcels: [], fails: { said: boom } });
+    expect(l).toMatchObject({ ids: [], total: 0 });
+    expect(l.calls.said).toHaveLength(0);
+    expect(logged).not.toHaveBeenCalled();
+  });
+
+  it('— at the bound: the failed read was asked about exactly the parcels the list holds, the list says it is capped, and the choice still goes through', async () => {
+    const parcels = Array.from({ length: LEAN_CAP + 1 }, (_, i) => parcel({ id: `h${String(i).padStart(6, '0')}` }));
+    const l = await read({ parcels, fails: { said: boom } }, { limit: 100 });
+    expect(l.capped).toBe(true);
+    expect(l.facts.total).toBe(LEAN_CAP);
+    expect(l.calls.said[0].where.orderId.in).toHaveLength(LEAN_CAP);
+    expect(l.calls.said[0].where.companyId).toBe(COMPANY);
+    expect(logged).toHaveBeenCalledTimes(1);
+    expect(logged.mock.calls[0]).toEqual([expect.stringContaining('could not be read'), boom.message, `(${LEAN_CAP} parcels)`]);
+    await expect(read({ parcels, fails: { said: boom } }, { limit: 100, said: 'DELIVERED' })).rejects.toBe(boom);
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+ * THE SAME ANSWER AS BEFORE THE COMPANY WAS NAMED.
+ *
+ * Naming the company only tells the database what it needs; the answer must not move. What is pinned here was RECORDED from
+ * the list as it stood on main (6804dc77, the reads without the company) by running that very function on `shopWithWords()`
+ * — three questions, whole answers: the rows and their order, every number, every word. A second, wider comparison was run
+ * when this was written (that old function against this one over 504 questions on the two shops of this file and 2,400 on
+ * 300 random worlds, reads and answers alike): not a difference.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════ */
+
+describe('the same answer as before the company was named — recorded from main', () => {
+  const DROPDOWNS = {
+    couriers: [{ id: 'p1', name: 'أبو علي', count: 12 }, { id: 'p2', name: 'أمان', count: 1 }, { id: 'none', name: NO_COURIER_AR, count: 1 }],
+    regions: [{ id: 'r1', name: 'عمّان', count: 12 }, { id: 'r2', name: 'إربد', count: 1 }, { id: 'none', name: NO_REGION_AR, count: 1 }],
+    ages: { fresh: 4, few: 7, week: 0, old: 2 },
+    said: { DELIVERED: 2, PARTIALLY_DELIVERED: 0, RETURNED: 2, CANCELLED: 1, FAILED_DELIVERY: 0 },
+  };
+  const CHIPS = { CANCELLED: 1, CHANGED: 1, FAILED: 1, RETURNING: 1, LATE: 2, NO_BARCODE: 1, COLLECT: 2 };
+  const THE_LATE_ONES = [
+    ['late-old', 'DELIVERED', 'تم التوصيل', 'العميل استلم من الجارة', 240],
+    ['late', 'DELIVERED', 'تم التوصيل', null, 1800],
+  ];
+  const WHOLE = { page: 1, limit: 100, totalPages: 1, capped: false };
+
+  it('— the whole shop: 14 parcels worst first, every chip, every dropdown, five words', async () => {
+    expect(answerOf(await read(shopWithWords(), { limit: 100 }))).toEqual({
+      ...WHOLE,
+      ids: ['cancelled', 'changed', 'failed', 'returning', 'late-old', 'late', 'nobarcode', 'collect', 'collect-partial', 'cancelled-seen', 'no-courier', 'other-courier', 'quiet', 'pickup-nobarcode'],
+      total: 14,
+      facts: { total: 14, tasks: CHIPS, lateCount: 2, notLate: 10, ...DROPDOWNS },
+      words: [
+        ['returning', 'RETURNED', 'مسلمة الى المرسل', null, 60],
+        ...THE_LATE_ONES,
+        ['nobarcode', 'CANCELLED', 'ملغاة', null, 120],
+        ['quiet', 'RETURNED', 'تم ارجاعها', null, 180],
+      ],
+    });
+  });
+
+  it('— the company’s «delivered»: the two parcels it names, the chips and the badge over those two, the dropdowns over the whole shop', async () => {
+    expect(answerOf(await read(shopWithWords(), { said: 'DELIVERED', limit: 100 }))).toEqual({
+      ...WHOLE,
+      ids: ['late-old', 'late'],
+      total: 2,
+      facts: { total: 2, tasks: { ...CHIPS, CANCELLED: 0, CHANGED: 0, FAILED: 0, RETURNING: 0, NO_BARCODE: 0, COLLECT: 0 }, lateCount: 2, notLate: 0, ...DROPDOWNS },
+      words: THE_LATE_ONES,
+    });
+  });
+
+  it('— the «late» chip: its two parcels, with the chips and the badge still describing the whole list', async () => {
+    expect(answerOf(await read(shopWithWords(), { task: 'LATE', limit: 100 }))).toEqual({
+      ...WHOLE,
+      ids: ['late-old', 'late'],
+      total: 2,
+      facts: { total: 14, tasks: CHIPS, lateCount: 2, notLate: 10, ...DROPDOWNS },
+      words: THE_LATE_ONES,
+    });
   });
 });
