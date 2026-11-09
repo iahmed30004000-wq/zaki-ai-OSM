@@ -103,6 +103,20 @@ export function closedStatementRefusal(): Refusal {
 }
 
 /**
+ * A ROW THE APPROVAL ALREADY SETTLED TAKES NO ANSWER, NO LINK, NO SWAP AND NO NEW MATCHING — «تسوية السطور النظيفة عند الاعتماد».
+ *
+ * With that switch on, the approval settles a statement's clean rows while its matching is still open and marks each one
+ * `appliedAt`. The order of such a row is settled and delivered: the row is as final as a row of a closed statement, a moment
+ * earlier. Every door that writes a match row says it with this one sentence, and repeats it in its write (`appliedAt: null`).
+ * The code is its own (not `ALREADY_APPROVED`): the statement itself is still open for the other lines.
+ */
+export const ROW_APPLIED_SENTENCE = 'هالسطر مطابق وطلبه تسوّى لحظة اعتماد الكشف — ما بينبتّ فيه ولا بيتغيّر';
+
+export function appliedRowRefusal(): Refusal {
+  return { code: 'ROW_APPLIED', error: ROW_APPLIED_SENTENCE };
+}
+
+/**
  * May this statement's MONEY side still be changed by a door? Not once it is APPROVED. Every such door asks THIS,
  * and then repeats it in the write itself (`approvedAt: null`), so an approval that lands between the two still
  * stops it.
@@ -212,6 +226,21 @@ export function closeRefusal(s: CloseState): Refusal | null {
    */
   if (s.openLines > 0) {
     return { code: 'OPEN_LINES', error: openLinesSentence(s.openLines) };
+  }
+  return null;
+}
+
+/**
+ * MAY THE CLEAN LINES OF THIS STATEMENT BE SETTLED NOW — «سوّي الطلبات النظيفة هلّق»? Only after the money is posted and while the
+ * matching is still open. (That the owner's switch is on is the door's own question: it reads the setting, this reads the statement.)
+ * Pure, like the others: the route answers with it.
+ */
+export function settleCleanRefusal(s: Parameters<typeof isMatchingClosed>[0]): Refusal | null {
+  if (!isApproved({ status: s.status ?? '', approvedAt: s.approvedAt })) {
+    return { code: 'MONEY_NOT_POSTED', error: 'اعتمد الكشف أول — الطلبات النظيفة بتتسوّى بعد ما تدخل المصاري المحفظة' };
+  }
+  if (isMatchingClosed(s)) {
+    return { code: 'MATCHING_ALREADY_CLOSED', error: MATCHING_ALREADY_CLOSED_SENTENCE };
   }
   return null;
 }

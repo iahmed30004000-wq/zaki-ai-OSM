@@ -5,7 +5,7 @@ import { claimingRowWhere, MANUAL_MATCH } from './match-integrity';
 import { accrueForOrder } from './commission';
 import { consumeOrderStock } from './stock-consumption';
 import { releaseOrderLines } from './reservation';
-import { STATEMENT_CLOSED_SENTENCE, isMatchingClosed } from './settlement-gates';
+import { ROW_APPLIED_SENTENCE, STATEMENT_CLOSED_SENTENCE, isMatchingClosed } from './settlement-gates';
 import { isManualDraftHash, isManualHash } from './manual-statement-rules';
 import { expectedAmountFor, judgeLine, SETTLEMENT_ORDER_SELECT } from './settlement';
 import { COMING_BACK, IN_FLIGHT, stateGroup } from './settlement-decisions';
@@ -383,10 +383,13 @@ export async function recordParcelSwap(tx: Tx, p: SwapInput): Promise<SwapResult
     where: { id: p.matchId, statementId: p.statementId, companyId: p.companyId },
     select: {
       id: true, result: true, matchedBy: true, resolution: true, orderId: true, statementLineId: true,
+      // Set when the approval already settled this clean row («تسوية السطور النظيفة عند الاعتماد»): a row like that is final.
+      appliedAt: true,
       statementLine: { select: { amount: true, fee: true, status: true } },
     },
   });
   if (!match) return refuse(404, 'NOT_FOUND', SWAP_WHY.notFound);
+  if (match.appliedAt) return refuse(409, 'ROW_APPLIED', ROW_APPLIED_SENTENCE);
   if (match.resolution) return refuse(409, 'DECIDED', SWAP_WHY.decided);
   if (match.result !== 'MISMATCHED' || !match.orderId || !match.statementLine || match.matchedBy === MANUAL_MATCH) {
     return refuse(409, 'NOT_SWAPPABLE', SWAP_WHY.notAMoneyLine);
@@ -607,7 +610,7 @@ export async function recordParcelSwap(tx: Tx, p: SwapInput): Promise<SwapResult
   const verdict = judgeLine({ order: saleFacts, line, minorUnit: p.minorUnit, integrity: clean, openClaim: null });
   const linked = await tx.settlementMatch.updateMany({
     where: {
-      id: match.id, statementId: p.statementId, orderId: y.id, result: 'MISMATCHED', resolution: null,
+      id: match.id, statementId: p.statementId, orderId: y.id, result: 'MISMATCHED', resolution: null, appliedAt: null,
       statement: { matchingClosedAt: null },
     },
     data: {
@@ -628,7 +631,7 @@ export async function recordParcelSwap(tx: Tx, p: SwapInput): Promise<SwapResult
   // X's own line, if the company wrote one: judged again, now against a parcel that is coming back.
   const ownerRows = await tx.settlementMatch.findMany({
     where: {
-      companyId: p.companyId, statementId: p.statementId, orderId: x.id, resolution: null,
+      companyId: p.companyId, statementId: p.statementId, orderId: x.id, resolution: null, appliedAt: null,
       result: 'MISMATCHED', statementLineId: { not: null },
     },
     select: { id: true, statementLine: { select: { amount: true, fee: true, status: true } } },
@@ -639,7 +642,7 @@ export async function recordParcelSwap(tx: Tx, p: SwapInput): Promise<SwapResult
       if (!row.statementLine) continue;
       const v = judgeLine({ order: ownerFacts, line: row.statementLine, minorUnit: p.minorUnit, integrity: clean, openClaim: null });
       await tx.settlementMatch.updateMany({
-        where: { id: row.id, statementId: p.statementId, resolution: null, statement: { matchingClosedAt: null } },
+        where: { id: row.id, statementId: p.statementId, resolution: null, appliedAt: null, statement: { matchingClosedAt: null } },
         data: {
           result: v.result,
           expectedAmount: v.expected,
@@ -777,9 +780,10 @@ export async function findSwapCandidates(
   if (!statement) return refuse(404, 'NOT_FOUND', SWAP_WHY.notFound);
   const match = await tx.settlementMatch.findFirst({
     where: { id: p.matchId, statementId: p.statementId, companyId: p.companyId },
-    select: { id: true, result: true, orderId: true, matchedBy: true, resolution: true },
+    select: { id: true, result: true, orderId: true, matchedBy: true, resolution: true, appliedAt: true },
   });
   if (!match) return refuse(404, 'NOT_FOUND', SWAP_WHY.notFound);
+  if (match.appliedAt) return refuse(409, 'ROW_APPLIED', ROW_APPLIED_SENTENCE);
   if (match.result !== 'MISMATCHED' || !match.orderId || match.matchedBy === MANUAL_MATCH || match.resolution) {
     return refuse(409, 'NOT_SWAPPABLE', SWAP_WHY.notAMoneyLine);
   }

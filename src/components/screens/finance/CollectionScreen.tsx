@@ -78,9 +78,20 @@ interface StatementRow {
   totalAmount: number;
   createdAt: string;
   /** `openLines`: the lines still a question nobody answered — the same count the approval waits for. */
-  counts: { lines: number; receipts: number; matches: number; openLines?: number };
+  counts: { lines: number; receipts: number; matches: number; openLines?: number; cleanWaiting?: number };
   receipts: ReceiptRow[];
   gap: Gap;
+}
+
+/**
+ * «تسوية السطور النظيفة عند الاعتماد» — the sentences the server sends ONLY while the owner's switch is on (`per-line-settlement-words`).
+ * Absent otherwise, and the screen says what it always said.
+ */
+interface Settling {
+  button: string;
+  confirmTitle: string;
+  confirmBody: string;
+  closeTitle: string;
 }
 
 interface ReceiptRow {
@@ -170,6 +181,7 @@ export function CollectionScreen() {
   const mayApprove = userCan(currentUser, 'settlement.approve');
   const phone = useIsPhone();
   const [rows, setRows] = useState<StatementRow[] | null>(null);
+  const [settling, setSettling] = useState<Settling | null>(null);
   const [providers, setProviders] = useState<{ id: string; name: string }[]>([]);
   const [wallets, setWallets] = useState<{ id: string; name: string; currencyCode: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -188,8 +200,9 @@ export function CollectionScreen() {
 
   const load = useCallback(async () => {
     try {
-      const data = await apiJson<{ statements: StatementRow[] }>('/api/finance/statements');
+      const data = await apiJson<{ statements: StatementRow[]; settling?: Settling }>('/api/finance/statements');
       setRows(data.statements);
+      setSettling(data.settling ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'تعذر التحميل');
     }
@@ -205,13 +218,13 @@ export function CollectionScreen() {
       .catch(() => undefined);
   }, [load]);
 
-  async function act(id: string, label: string, run: () => Promise<unknown>) {
+  async function act(id: string, label: string | ((answer: unknown) => string), run: () => Promise<unknown>) {
     setBusy(id);
     setError(null);
     setDone(null);
     try {
-      await run();
-      setDone(label);
+      const answer = await run();
+      setDone(typeof label === 'function' ? label(answer) : label);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'تعذر التنفيذ');
@@ -256,7 +269,7 @@ export function CollectionScreen() {
       const data = (await res.json().catch(() => ({}))) as {
         code?: string; error?: string; errorAr?: string; rows?: HandRow[];
         lines?: UnnamedShortfall[]; candidates?: ShortfallPerson[];
-        matchingClosed?: boolean; openLines?: number;
+        matchingClosed?: boolean; openLines?: number; earlySettlement?: { message?: string };
       };
       if (res.status === 409 && data.code === 'POSSIBLE_DOUBLE') {
         setNamingFor(null);
@@ -276,7 +289,7 @@ export function CollectionScreen() {
         mode === 'close'
           ? 'تسكّرت المطابقة وتسوّت الطلبات — بلا أي حركة جديدة بالمحفظة'
           : data.matchingClosed === false
-            ? `دخلت المصاري المحفظة، والمطابقة بقيت مفتوحة: ${data.openLines ?? 0} سطر بلا بتّ — ابتّ فيها ثم اضغط «إغلاق المطابقة»`
+            ? `${data.earlySettlement?.message ? `${data.earlySettlement.message} — ` : ''}دخلت المصاري المحفظة، والمطابقة بقيت مفتوحة: ${data.openLines ?? 0} سطر بلا بتّ — ابتّ فيها ثم اضغط «إغلاق المطابقة»`
             : 'اعتُمد الكشف وسُجِّلت حركة المحفظة'
       );
       await load();
@@ -306,6 +319,8 @@ export function CollectionScreen() {
     });
     const rematch = () =>
       act(s.id, 'تمت المطابقة', () => apiJson(`/api/finance/statements/${s.id}/match`, { method: 'POST' }));
+    // Offered only while the owner's switch is on (the server sends the words and the count) and a clean line is waiting.
+    const waiting = settling && mayApprove ? s.counts.cleanWaiting ?? 0 : 0;
     if (phone) {
       return (
         <div className="flex w-full flex-col gap-2">
@@ -313,6 +328,11 @@ export function CollectionScreen() {
             <Button size="sm" variant="outline" disabled={busy === s.id} onClick={() => void rematch()}>
               مطابقة
             </Button>
+            {waiting > 0 && settling && (
+              <Button size="sm" variant="outline" disabled={busy === s.id} onClick={() => void settleClean(s)}>
+                {settling.button} ({waiting})
+              </Button>
+            )}
             {mayApprove && (
               <Button size="sm" variant="primary" disabled={!!refusal || busy === s.id} onClick={() => void approve(s, false, undefined, 'close')}>
                 إغلاق المطابقة
@@ -333,10 +353,20 @@ export function CollectionScreen() {
         >
           مطابقة
         </button>
+        {waiting > 0 && settling && (
+          <button
+            disabled={busy === s.id}
+            title={settling.confirmBody}
+            onClick={() => void settleClean(s)}
+            className="text-xs font-medium text-[var(--sys-success)] hover:underline disabled:text-[var(--sys-border-strong)] disabled:no-underline"
+          >
+            {settling.button} ({waiting})
+          </button>
+        )}
         {mayApprove && (
           <button
             disabled={!!refusal || busy === s.id}
-            title={refusal?.error ?? 'إغلاق المطابقة — عندها تتسوّى الطلبات، بلا أي حركة جديدة بالمحفظة'}
+            title={refusal?.error ?? settling?.closeTitle ?? 'إغلاق المطابقة — عندها تتسوّى الطلبات، بلا أي حركة جديدة بالمحفظة'}
             onClick={() => void approve(s, false, undefined, 'close')}
             className="text-xs font-medium text-[var(--sys-success)] hover:underline disabled:text-[var(--sys-border-strong)] disabled:no-underline"
           >
@@ -344,6 +374,19 @@ export function CollectionScreen() {
           </button>
         )}
       </span>
+    );
+  }
+
+  /**
+   * «سوّي الطلبات النظيفة هلّق» — the press for a statement ALREADY approved and stuck open (the owner's switch is on). It settles only the
+   * lines that matched, moves no money, and says so before it does anything; the server answers with how many it settled.
+   */
+  async function settleClean(s: StatementRow) {
+    if (!settling) return;
+    const ok = await confirm({ title: settling.confirmTitle, body: settling.confirmBody });
+    if (!ok) return;
+    await act(s.id, (answer) => (answer as { message?: string }).message ?? settling.button, () =>
+      apiJson(`/api/finance/statements/${s.id}/settle-clean`, { method: 'POST' })
     );
   }
 

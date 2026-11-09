@@ -52,7 +52,7 @@
 | الربح والكلفة | `src/lib/financial.ts` · `src/lib/unit-cost.ts` · `src/lib/profit-summary.ts` |
 | العمولة | `src/lib/commission*.ts` (القواعد بيانات بتاريخ سريان) · مهمة `accrue-commission` |
 | المحافظ (قيد عكسي، ما في حذف) | `src/lib/wallets.ts` · `src/lib/pay-from-wallet.ts` · أبواب `src/app/api/finance/wallets/` |
-| كشف الشركة والمطابقة | `src/lib/settlement.ts` · `settlement-decisions.ts` · `settlement-difference.ts` · `match-integrity.ts` · `manual-statement.ts` · `hand-link.ts` · أبواب `src/app/api/finance/statements/` |
+| كشف الشركة والمطابقة | `src/lib/settlement.ts` · `settlement-decisions.ts` · `settlement-difference.ts` · `match-integrity.ts` · `manual-statement.ts` · `hand-link.ts` · `statement-close.ts` (تسوية الطلبات عند الإغلاق، وعند الاعتماد لو مفتاح `per-line-settlement-switch.ts` شغّال؛ جملتو بـ`per-line-settlement-words.ts`) · أبواب `src/app/api/finance/statements/` |
 | فرق التحصيل والخصومات | `src/lib/shortfall.ts` · `penalties.ts` · `penalty-service.ts` · مهمة `propose-penalties` |
 | المخزون | `src/lib/stock-ledger.ts` · `stock-consumption.ts` · `reservation.ts` |
 

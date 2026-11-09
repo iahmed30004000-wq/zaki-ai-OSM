@@ -7,6 +7,7 @@ import { markPayableForOrders } from './commission';
 import { paidGross, stillAcceptableWhere, stillSettlableWhere } from './settlement-decisions';
 import { proposeShortfalls, type ShortfallCharge } from './shortfall';
 import { notify } from './notify';
+import { earlyMessage } from './per-line-settlement-words';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -22,6 +23,13 @@ type Tx = Prisma.TransactionClient | typeof db;
  *
  * THIS FILE NEVER WRITES A WALLET MOVEMENT. It does not import the wallet writer, and a test reads this file to hold
  * it to that: closing a matching after the money was posted can settle an order, never pay for it a second time.
+ *
+ * ── «تسوية السطور النظيفة عند الاعتماد» (the owner's switch, OFF by default; 9/11) ──
+ *
+ * «طلبات بتاخد أسبوع تفسير»: with the switch ON the CLEAN rows of a statement are settled earlier — at the approval, or by the press
+ * «سوّي الطلبات النظيفة هلّق» — by `settleCleanLines`, which calls `settleStatement` below on the clean rows with `early` set. The body is
+ * the close's own, written once; a settled row is marked `appliedAt`, and the close then leaves those rows (and their orders) alone,
+ * so the end of a statement is the same whichever way it went (`the-same-statement-ends-the-same-either-way.test.ts` holds that).
  */
 
 /** The in-flight states a matched line promotes to «مُسلَّم» when the matching is closed. */
@@ -67,6 +75,8 @@ export function closeRowsSelect(statementId: string) {
   return {
     id: true, orderId: true, result: true, resolution: true, resolutionNote: true, resolvedById: true,
     statementAmount: true, statementFee: true, expectedAmount: true, expectedFee: true,
+    // Set only by the early step (per-line settlement): a row that has it was settled at the approval and is not settled again.
+    appliedAt: true,
     order: {
       select: {
         orderNumber: true,
@@ -92,6 +102,8 @@ export interface CloseRow {
   statementFee: Num;
   expectedAmount: Num;
   expectedFee: Num;
+  /** The moment the early step settled this row's order (per-line settlement). Absent or null: it did not. */
+  appliedAt?: Date | string | null;
   order?: { orderNumber: string; settlementMatches?: { statementAmount: Num; statementFee: Num }[] } | null;
 }
 
@@ -105,6 +117,12 @@ export interface CloseInput {
   matches: CloseRow[];
   /** «من يتحمّل الفرق؟» — the person's answers for the short lines the door could not name. */
   shortfallPeople?: Record<string, string>;
+  /**
+   * THE EARLY STEP — «تسوية السطور النظيفة عند الاعتماد» (see `settleCleanLines` below). Set only by that function, with the clean
+   * rows only: the claims are taken order by order and an order that cannot be claimed is left (not an error), and the rows that
+   * were settled are marked applied in the same transaction. Absent: the close, exactly as it always was.
+   */
+  early?: { at: Date };
 }
 
 export interface CloseResult {
@@ -114,6 +132,10 @@ export interface CloseResult {
   claimCount: number;
   shortfalls: ShortfallCharge[];
   shortfallsOnCompany: number;
+  /** Orders this call did NOT settle because an earlier early step already had (their rows carry `appliedAt`). */
+  settledEarlier: number;
+  /** The early step only: orders whose claim took nothing (settled by another door, a cancel or a postponement asked for). */
+  heldBack: string[];
 }
 
 /**
@@ -140,13 +162,25 @@ export async function settleStatement(tx: Tx, p: CloseInput): Promise<CloseResul
    */
   const matched = matches.filter((m) => m.result === 'MATCHED' && m.orderId);
   const matchedIds = new Set(matched.map((m) => m.orderId as string));
-  const accepted = matches.filter(
-    (m) => m.result === 'MISMATCHED' && m.resolution === 'ACCEPTED_COURIER' && m.orderId && !matchedIds.has(m.orderId)
-  );
+  /**
+   * AN ORDER THE EARLY STEP ALREADY SETTLED IS DONE, AND ITS ROW WITH IT.
+   *
+   * With «تسوية السطور النظيفة عند الاعتماد» on, the approval settles the clean rows before the matching closes and marks each
+   * one applied. This close then leaves them out: a second claim on a settled order would stop it on «تغيّر وضع طلب», and a second
+   * promotion would count the stock and the customer out twice. They stay in `matchedIds` above on purpose — an order a clean row
+   * holds is never ALSO settled by a decision on another line, exactly as when the clean row was settled here. With no applied row
+   * (the switch never on, or a statement approved before it) this set is empty and nothing below changes.
+   */
+  const appliedIds = new Set(matched.filter((m) => m.appliedAt).map((m) => m.orderId as string));
+  const accepted = p.early
+    ? []
+    : matches.filter(
+        (m) => m.result === 'MISMATCHED' && m.resolution === 'ACCEPTED_COURIER' && m.orderId && !matchedIds.has(m.orderId)
+      );
   // The order of the rows is the order of the file; an order two rows name is settled once, by the first.
-  const settling = [...matched, ...accepted].filter(
-    (m, i, all) => all.findIndex((o) => o.orderId === m.orderId) === i
-  );
+  const settling = [...matched, ...accepted]
+    .filter((m, i, all) => all.findIndex((o) => o.orderId === m.orderId) === i)
+    .filter((m) => !appliedIds.has(m.orderId as string));
   const settledOrderIds = settling.map((m) => m.orderId as string);
   // An order two accepted rows name (an old statement, answered before the door refused it) is one order.
   const acceptedIds = [...new Set(accepted.filter((m) => settledOrderIds.includes(m.orderId as string)).map((m) => m.orderId as string))];
@@ -173,13 +207,47 @@ export async function settleStatement(tx: Tx, p: CloseInput): Promise<CloseResul
    * settle by this line» is therefore the WHERE of the claim itself (`stillSettlableWhere`), not a read
    * before it: there is no gap for the answer to go stale in. A claim that takes fewer orders than were
    * asked for stops the whole close, rolls back what it wrote and names the orders.
+   *
+   * THE EARLY STEP ASKS THE SAME QUESTION WITH THE SAME FILTER (`stillSettlableWhere`), ONE ORDER AT A TIME, and an order that
+   * fails it is not an error: it is left, untouched and unmarked, for the close — which will report it exactly as it always
+   * did. One claim per order is what makes the answer exact (a count over several orders cannot say WHICH one was not taken),
+   * and what keeps the approval's money out of it: nothing here throws for a changed order, so nothing here can roll the
+   * approval back.
    */
+  const heldBack: string[] = [];
   const claimWheres: Array<{ ids: string[]; where: Prisma.OrderWhereInput }> = [];
-  if (cleanIds.length > 0) claimWheres.push({ ids: cleanIds, where: stillSettlableWhere(companyId, cleanIds) });
+  if (p.early) {
+    // One claim per order: the answer is exact (a count over several orders cannot say WHICH one was not taken).
+    for (const oid of cleanIds) claimWheres.push({ ids: [oid], where: stillSettlableWhere(companyId, [oid]) });
+  } else if (cleanIds.length > 0) claimWheres.push({ ids: cleanIds, where: stillSettlableWhere(companyId, cleanIds) });
   if (acceptedIds.length > 0) claimWheres.push({ ids: acceptedIds, where: stillAcceptableWhere(companyId, acceptedIds, zeroLineIds) });
   for (const claim of claimWheres) {
     const taken = await tx.order.updateMany({ where: claim.where, data: { settlementStatus: 'SETTLED' } });
+    // The early step leaves an order it could not take, untouched and unmarked, for the close to report; the close itself stops.
+    if (taken.count !== claim.ids.length && p.early) {
+      heldBack.push(...claim.ids);
+      continue;
+    }
     if (taken.count !== claim.ids.length) throw new OrdersChanged(claim.ids, claim.where);
+  }
+  if (p.early) {
+    // Everything below reads these two lists and must see only the orders this call really took — dropped IN PLACE.
+    const held = new Set(heldBack);
+    for (let i = settling.length - 1; i >= 0; i--) if (held.has(settling[i].orderId as string)) settling.splice(i, 1);
+    for (let i = settledOrderIds.length - 1; i >= 0; i--) if (held.has(settledOrderIds[i])) settledOrderIds.splice(i, 1);
+    // THE MARK IS WRITTEN WITH THE CLAIM, in the same transaction, and only for the orders this call really took. Every clean
+    // row that names a taken order is marked (an order two lines name has two): the close skips by order, and by row.
+    if (settledOrderIds.length > 0) {
+      const marked = await tx.settlementMatch.updateMany({
+        where: {
+          statementId: statement.id, companyId, result: 'MATCHED', appliedAt: null, orderId: { in: settledOrderIds },
+          statement: { matchingClosedAt: null },
+        },
+        data: { appliedAt: p.early.at },
+      });
+      // An order settled with no row to say so would be settled a second time at the close: that is a stop, not a shrug.
+      if (marked.count < settledOrderIds.length) throw new Error('EARLY_MARK_SHORT');
+    }
   }
 
   // Settled orders make their commission payable — not before.
@@ -374,7 +442,8 @@ export async function settleStatement(tx: Tx, p: CloseInput): Promise<CloseResul
     });
   }
   const claims = matches.filter((m) => m.result === 'MISMATCHED' && m.resolution === 'OURS_STANDS' && m.orderId);
-  for (const m of claims) {
+  // A claim on the company is opened by the close, never by the early step (which is given the clean rows only).
+  for (const m of p.early ? [] : claims) {
     await tx.orderActivity.create({
       data: {
         companyId,
@@ -395,10 +464,154 @@ export async function settleStatement(tx: Tx, p: CloseInput): Promise<CloseResul
     deliveredCount: inFlight.length,
     settledCount: settledOrderIds.length,
     acceptedCount: acceptedIds.length,
-    claimCount: claims.length,
+    claimCount: p.early ? 0 : claims.length,
     shortfalls: shortfall.charges,
     shortfallsOnCompany: shortfall.onCompany.length,
+    settledEarlier: appliedIds.size,
+    heldBack,
   };
+}
+
+/* ─────────────────── THE EARLY STEP — «تسوية السطور النظيفة عند الاعتماد» ─────────────────── */
+
+/** Why an order was left for the close, in the words a person reads on the report. */
+export const HELD_BACK_WHY = {
+  settled: 'سُوِّي بباب آخر (تحصيل يدوي أو كشف ثاني)',
+  openRequest: 'عليه طلب إلغاء أو تأجيل مفتوح',
+  changed: 'تغيّرت حالته قبل لحظات',
+} as const;
+
+/** One clean row, and what became of its order. */
+export interface EarlyRow {
+  matchId: string;
+  orderId: string;
+  orderNumber: string;
+  outcome: 'SETTLED' | 'HELD_BACK';
+  /** Why the order was left for the close; null when it was settled. */
+  why: string | null;
+}
+
+/**
+ * THE MOST CLEAN ROWS ONE EARLY STEP TAKES IN ONE TRANSACTION.
+ *
+ * The approval is one transaction with a 30-second budget, and the early step does for each order what the close does — a claim, a
+ * delivery, the stock (a dozen queries), the customer, the timeline. A statement of a thousand clean lines would spend that budget
+ * and the transaction would time out, taking the MONEY with it: exactly what the brief forbids. So the step takes the first rows of
+ * the file up to this number and says how many are left (`remaining`); those are settled by the close as ever, or by the press
+ * «سوّي الطلبات النظيفة هلّق», which takes the next of them in its own transaction. A real statement is a hundred or two lines.
+ */
+export const EARLY_STEP_CAP = 300;
+
+export interface EarlyOutcome {
+  /** There were clean rows waiting and the step went through them. */
+  ran: boolean;
+  /** Orders settled now, and of them the parcels the statement delivered. */
+  settled: number;
+  delivered: number;
+  /** Orders left for the close — nothing was written for them. */
+  heldBack: number;
+  /** Clean rows beyond `EARLY_STEP_CAP`: not looked at, still waiting. */
+  remaining: number;
+  /** The step met an error nobody expected: it was undone to the last write and every row waits for the close. */
+  failed: boolean;
+  /** The error's name only — never its message, which can carry a value. */
+  failure: string | null;
+  rows: EarlyRow[];
+}
+
+/** The rows the early step is for: clean (a figure on both sides agrees), with an order, and not settled early already. */
+export function cleanPendingRows<T extends CloseRow>(matches: T[]): T[] {
+  return matches.filter((m) => m.result === 'MATCHED' && !!m.orderId && !m.appliedAt);
+}
+
+/**
+ * What the approval's answer and its audit row say of the early step: the counts, and the orders left for the close with the
+ * reason — never the whole list of the settled ones, which can be a thousand.
+ */
+export function earlyAnswer(e: EarlyOutcome) {
+  return {
+    ran: e.ran,
+    settled: e.settled,
+    delivered: e.delivered,
+    // One entry per ORDER (an order two lines name has two rows, and one reason).
+    heldBack: e.rows
+      .filter((r) => r.outcome === 'HELD_BACK')
+      .filter((r, i, all) => all.findIndex((o) => o.orderId === r.orderId) === i)
+      .map((r) => ({ orderNumber: r.orderNumber, why: r.why })),
+    failed: e.failed,
+    ...(e.remaining > 0 ? { remaining: e.remaining } : {}),
+    ...(e.failed ? { failure: e.failure } : {}),
+    // The one sentence the screen shows after the press (empty when there was nothing to say).
+    message: earlyMessage(e),
+  };
+}
+
+/**
+ * SETTLE THE CLEAN LINES NOW — and leave every line that is still a question, and its order, for the close.
+ *
+ * «طلبات بتاخد أسبوع تفسير» (the owner, 9/11): one line that needs a week of explanation held every order of the statement,
+ * although the money had arrived at the approval and never waited on a line. This settles the CLEAN rows — `MATCHED`, with an
+ * order, not applied yet — and nothing else: a figure accepted from the company, a claim kept, a line parked or excluded all wait
+ * for the close, because they carry the shortfall naming and the explanations that can stop a close.
+ *
+ * ── IT IS THE CLOSE'S OWN BODY, NOT A SECOND COPY ──
+ *
+ * It calls `settleStatement` on the clean rows with `early` set. The claim, the promotion to «مُسلَّم», the stock, the customer's
+ * counters, the commission and the timeline are the lines above, written once. The two differences are exactly two: a claim
+ * that takes nothing is left instead of stopping, and a settled row is marked `appliedAt` in the same transaction.
+ *
+ * ── IT CAN NEVER STOP THE APPROVAL ──
+ *
+ * It runs inside a SAVEPOINT. A changed order is not an error (above). Anything else — a deadlock, a stock write that the
+ * database refuses, a bug — is undone to the savepoint and reported (`failed`): the rows stay unmarked, the approval goes on
+ * with its money, and the close settles them later as it always would. The approval's money is written BEFORE this runs.
+ *
+ * The caller holds the statement (the approval's claim, or the lock of the on-demand door) and passes the rows it read INSIDE
+ * that transaction, so no door can change a row between the read and the write.
+ */
+export async function settleCleanLines(
+  tx: Tx,
+  p: Omit<CloseInput, 'matches' | 'shortfallPeople' | 'early'> & { matches: CloseRow[]; at?: Date }
+): Promise<EarlyOutcome> {
+  const waiting = cleanPendingRows(p.matches);
+  if (waiting.length === 0) return { ran: false, settled: 0, delivered: 0, heldBack: 0, remaining: 0, failed: false, failure: null, rows: [] };
+  const clean = waiting.slice(0, EARLY_STEP_CAP);
+  const remaining = waiting.length - clean.length;
+
+  await tx.$executeRaw`SAVEPOINT per_line_settlement`;
+  try {
+    const result = await settleStatement(tx, { ...p, matches: clean, early: { at: p.at ?? new Date() } });
+
+    // Why each left order was left: asked of the orders as they are NOW, after the claims, which only ever touched the others.
+    const why = new Map<string, string>();
+    if (result.heldBack.length > 0) {
+      // (The statement's own store: an order of another store is not one this statement can be about.)
+      const left = await tx.order.findMany({
+        where: { id: { in: result.heldBack }, companyId: p.companyId, storeId: p.storeId },
+        select: { id: true, settlementStatus: true },
+      });
+      for (const o of Array.isArray(left) ? left : []) {
+        why.set(o.id, o.settlementStatus === 'SETTLED' ? HELD_BACK_WHY.settled : HELD_BACK_WHY.openRequest);
+      }
+    }
+    const left = new Set(result.heldBack);
+    const rows: EarlyRow[] = clean.map((m) => ({
+      matchId: m.id,
+      orderId: m.orderId as string,
+      orderNumber: m.order?.orderNumber ?? (m.orderId as string),
+      outcome: left.has(m.orderId as string) ? 'HELD_BACK' : 'SETTLED',
+      why: left.has(m.orderId as string) ? why.get(m.orderId as string) ?? HELD_BACK_WHY.changed : null,
+    }));
+
+    await tx.$executeRaw`RELEASE SAVEPOINT per_line_settlement`;
+    return { ran: true, settled: result.settledCount, delivered: result.deliveredCount, heldBack: result.heldBack.length, remaining, failed: false, failure: null, rows };
+  } catch (e) {
+    await tx.$executeRaw`ROLLBACK TO SAVEPOINT per_line_settlement`;
+    // The name and the database's own code only: a message can carry a value, and a log is no place for a customer's.
+    const name = e instanceof Error ? e.name : 'Error';
+    console.error('[per-line-settlement] the early step was undone; its rows wait for the close:', name, (e as { code?: unknown } | null)?.code ?? '');
+    return { ran: true, settled: 0, delivered: 0, heldBack: 0, remaining: waiting.length, failed: true, failure: name, rows: [] };
+  }
 }
 
 /** Each employee hears of a «فرق تحصيل» once the close is committed — never from a transaction that might roll back. */

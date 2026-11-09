@@ -7,7 +7,7 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { zodMessage } from '@/lib/zod-message';
 import { isDifference, MISSING_RESULTS, PARKED, shortfall } from '@/lib/settlement-difference';
-import { closedStatementRefusal, isMatchingClosed } from '@/lib/settlement-gates';
+import { appliedRowRefusal, closedStatementRefusal, isMatchingClosed } from '@/lib/settlement-gates';
 import { mayOnlyBeParked } from '@/lib/statement-open-lines';
 import {
   DECISIONS,
@@ -102,6 +102,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         id: true,
         result: true,
         resolution: true,
+        // Set when the approval already settled this clean row («تسوية السطور النظيفة عند الاعتماد»): it takes no answer.
+        appliedAt: true,
         orderId: true,
         expectedAmount: true,
         statementAmount: true,
@@ -113,6 +115,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       },
     });
     if (!match) return NextResponse.json({ error: 'سطر المطابقة غير موجود' }, { status: 404 });
+    if (match.appliedAt) return NextResponse.json(appliedRowRefusal(), { status: 409 });
 
     // A clean match has nothing to answer. Recording a reason on one would
     // put it in the count of differences and in somebody's statistics.
@@ -195,6 +198,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           where: {
             id: match.id, statementId: id, companyId,
             result: match.result, orderId: match.orderId,
+            // A row the approval settled meanwhile is not written (it was read as open; the write says it again).
+            appliedAt: null,
             statement: { matchingClosedAt: null },
           },
           data,

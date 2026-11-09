@@ -23,8 +23,10 @@ import { SWAP_BLOCKS_UNDO_AR, swapTiedToLine } from '@/lib/superseded';
 import { POSSIBLE_DOUBLE_SENTENCE, findPossibleDoubles, handWindowStart, type HandMovement } from '@/lib/possible-double';
 import { ON_THE_COMPANY, type ShortfallCharge } from '@/lib/shortfall';
 import {
-  OrdersChanged, StatementStopped, closeRowsSelect, ordersChangedBody, settleStatement, tellShortfalls, type CloseResult,
+  OrdersChanged, StatementStopped, closeRowsSelect, earlyAnswer, ordersChangedBody, settleCleanLines, settleStatement,
+  tellShortfalls, type CloseResult, type EarlyOutcome,
 } from '@/lib/statement-close';
+import { perLineSettlementOn } from '@/lib/per-line-settlement-switch';
 
 /**
  * One statement.
@@ -40,6 +42,10 @@ import {
  * cash that arrived, and no answer to a line changes them. The ORDERS (settled, delivered, commission payable) wait
  * for the lines: when none is open the approval closes the matching in the same transaction, as it always did;
  * otherwise «إغلاق المطابقة» (`./close`) does it once they are answered, and writes no money.
+ *
+ * «طلبات بتاخد أسبوع تفسير» (the owner, 9/11): with the switch «تسوية السطور النظيفة عند الاعتماد» ON, a statement whose matching
+ * stays open ALSO settles its CLEAN lines at this press, right after the money — a line still a question holds only its own order
+ * (`settleCleanLines`, which cannot stop this approval). OFF, none of that runs and this file is what it was.
  */
 
 const patchSchema = z.object({
@@ -291,6 +297,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     // The hand rows the approval itself reversed, because the person said they are the same money as the receipts.
     let reversedDoubles: string[] = [];
 
+    // «تسوية السطور النظيفة عند الاعتماد»: the owner's switch, OFF unless plainly on (and OFF on any failure to read it). Read once,
+    // here, before the transaction — the approval below is the same transaction in both modes.
+    const perLine = await perLineSettlementOn(db, companyId);
+
     let approved;
     try {
       approved = await db.$transaction(async (tx) => {
@@ -474,9 +484,28 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
        * stays open and «إغلاق المطابقة» does it later — and writes no money, because only this branch does.
        *
        * Counted on the rows THIS transaction read, after the claim (and after a manual statement's re-match).
+       *
+       * ── «تسوية السطور النظيفة عند الاعتماد» (the owner's switch, OFF by default) ──
+       *
+       * When the matching stays OPEN because a line is a question, the switch ON also settles every CLEAN line right here, after
+       * the money above and before this press returns — so one line that needs a week of explanation holds its own order only
+       * (`settleCleanLines`). The money is already written when it runs and nothing in it can roll that back: a changed order is
+       * left for the close, and any other failure is undone to a savepoint. With NO open line the matching closes below with every
+       * row at once, exactly as in the other mode — the early step would only add a way to fail.
        */
       const openLines = countOpenLines(matches);
       let closed: CloseResult | null = null;
+      let early: EarlyOutcome | null = null;
+      if (openLines > 0 && perLine) {
+        early = await settleCleanLines(tx, {
+          companyId, storeId, userId: user.id, minorUnit: country.minorUnit, at: approvedAt,
+          statement: {
+            id, reference: statement.reference, currencyCode: statement.currencyCode,
+            createdAt: statement.createdAt, periodTo: statement.periodTo,
+          },
+          matches,
+        });
+      }
       if (openLines === 0) {
         // One winner, as for the money: a close already taken (it cannot be, before this approval) is not taken twice.
         const closing = await tx.courierStatement.updateMany({
@@ -508,6 +537,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         claimCount: closed?.claimCount ?? 0,
         shortfalls: closed?.shortfalls ?? [],
         shortfallsOnCompany: closed?.shortfallsOnCompany ?? 0,
+        early,
       };
       }, { timeout: 30_000 });
     } catch (e) {
@@ -557,6 +587,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         ...(confirmedDoubles.length > 0 ? { confirmedPossibleDouble: true, handRows: confirmedDoubles } : {}),
         // The hand rows the approval reversed itself: the person said they were this statement's money.
         ...(reversedDoubles.length > 0 ? { reversedHandRows: reversedDoubles } : {}),
+        // «تسوية السطور النظيفة عند الاعتماد»: written only when the switch was on, and what the early step did (or that it had nothing to do).
+        ...(perLine ? { perLineSettlement: approved.early ? earlyAnswer(approved.early) : { ran: false } } : {}),
       },
     });
 
@@ -574,6 +606,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       // The money is in either way; the matching stays open while a line is a question («إغلاق المطابقة» after).
       matchingClosed: approved.matchingClosed,
       openLines: approved.openLines,
+      // What the early step settled while the matching stays open (switch on only) — beside the fields above, which are what they were.
+      ...(approved.early ? { earlySettlement: earlyAnswer(approved.early) } : {}),
     });
   } catch (error) {
     return apiErrorResponse(error);

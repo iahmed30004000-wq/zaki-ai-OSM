@@ -179,6 +179,8 @@ export function MatchingScreen() {
   const mayReview = userCan(currentUser, 'settlement.review');
   const [mode, setMode] = useState<'statement' | 'manual'>(useSearchParams().get('mode') === 'manual' ? 'manual' : 'statement');
   const [statements, setStatements] = useState<StatementRow[] | null>(null);
+  // «تسوية السطور النظيفة عند الاعتماد»: the two sentences the server sends only while the owner's switch is on, in place of the ones below.
+  const [settling, setSettling] = useState<{ moneyIn: string; matchedHint: string } | null>(null);
   const [selected, setSelected] = useState<string>('');
   const [matches, setMatches] = useState<Match[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -198,10 +200,11 @@ export function MatchingScreen() {
   });
 
   useEffect(() => {
-    void apiJson<{ statements: StatementRow[] }>('/api/finance/statements')
+    void apiJson<{ statements: StatementRow[]; settling?: { moneyIn: string; matchedHint: string } }>('/api/finance/statements')
       .then((payload) => {
         const d = { statements: payload.statements.filter((s) => !s.draft) };
         setStatements(d.statements);
+        setSettling(payload.settling ?? null);
         const withMatches = d.statements.find((s) => s.counts.matches > 0) ?? d.statements[0];
         if (withMatches) setSelected(withMatches.id);
       })
@@ -331,8 +334,8 @@ export function MatchingScreen() {
 
       {moneyIn && (
         <p className="text-xs text-[var(--sys-muted-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3">
-          المصاري دخلت المحفظة باعتماد الكشف، والمطابقة لسا مفتوحة: ابتّ بالأسطر هون، وبعدها اضغط «إغلاق المطابقة» من
-          «التحصيل والكشوف» — عندها تتسوّى الطلبات بلا أي حركة جديدة بالمحفظة.
+          {settling?.moneyIn ??
+            'المصاري دخلت المحفظة باعتماد الكشف، والمطابقة لسا مفتوحة: ابتّ بالأسطر هون، وبعدها اضغط «إغلاق المطابقة» من «التحصيل والكشوف» — عندها تتسوّى الطلبات بلا أي حركة جديدة بالمحفظة.'}
         </p>
       )}
 
@@ -359,7 +362,7 @@ export function MatchingScreen() {
             tone="emerald"
             currency={statement?.currencyCode ?? ''}
             rows={queue('MATCHED')}
-            hint="المبلغ في الكشف يساوي المتوقَّع — تتسوّى هذه الطلبات وتصبح عمولتها مستحقة عند إغلاق المطابقة (بنفس ضغطة الاعتماد إذا ما ضل سطر بلا بتّ)."
+            hint={settling?.matchedHint ?? 'المبلغ في الكشف يساوي المتوقَّع — تتسوّى هذه الطلبات وتصبح عمولتها مستحقة عند إغلاق المطابقة (بنفس ضغطة الاعتماد إذا ما ضل سطر بلا بتّ).'}
           />
           {mayReview && !closed && (
             <BulkDecide

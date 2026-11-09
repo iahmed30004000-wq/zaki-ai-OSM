@@ -44,6 +44,12 @@ import {
  * door only stamps it: settling its orders again would stop on «تغيّر وضع طلب» for ever. No second backfill is run.
  *
  * The key is the approval's own (`settlement.approve`): closing makes commission payable and proposes shortfalls.
+ *
+ * ── ROWS THE APPROVAL ALREADY SETTLED ──
+ *
+ * With «تسوية السطور النظيفة عند الاعتماد» on, the approval settled the clean rows of a statement whose matching stayed open, and
+ * marked each one `appliedAt`. This door leaves those rows and their orders alone (`settleStatement` skips them) and settles
+ * the rest; the count it answers with includes them, so it is the number the same statement would have given with the switch off.
  */
 
 const schema = z.object({
@@ -151,6 +157,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       throw e;
     }
 
+    // Orders the early step settled at the approval are settled orders of THIS statement too: the count says so (it is what the same
+    // statement would have said with the switch off), and `settledEarlier` says how many of them were settled before this press.
+    const settledEarlier = done.legacy ? 0 : done.settledEarlier;
     await logAudit({
       companyId, userId: user.id, action: 'STATEMENT_MATCHING_CLOSED',
       entity: 'CourierStatement', entityId: id,
@@ -158,10 +167,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         ? { reference: statement.reference, approvedBeforeTheSplit: true }
         : {
             reference: statement.reference,
-            settled: done.settledCount, acceptedByDecision: done.acceptedCount, claimsOpened: done.claimCount,
+            settled: done.settledCount + settledEarlier, acceptedByDecision: done.acceptedCount, claimsOpened: done.claimCount,
             deliveredByStatement: done.deliveredCount,
             shortfalls: done.shortfalls.map((c) => ({ penaltyId: c.penaltyId, employeeId: c.userId, amount: c.amount, currency: c.currencyCode })),
             shortfallsOnCompany: done.shortfallsOnCompany,
+            ...(settledEarlier > 0 ? { settledEarlier } : {}),
           },
     });
     if (!done.legacy) {
@@ -172,8 +182,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       matchingClosed: true,
       approvedBeforeTheSplit: done.legacy,
       deliveredByStatement: done.legacy ? 0 : done.deliveredCount,
-      settledOrders: done.legacy ? 0 : done.settledCount,
+      settledOrders: done.legacy ? 0 : done.settledCount + settledEarlier,
       claimsOpened: done.legacy ? 0 : done.claimCount,
+      ...(settledEarlier > 0 ? { settledEarlier } : {}),
     });
   } catch (error) {
     return apiErrorResponse(error);
