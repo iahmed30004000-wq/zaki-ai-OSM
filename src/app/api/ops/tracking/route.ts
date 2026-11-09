@@ -124,6 +124,8 @@ export async function GET(req: Request) {
     // Every parcel the question matches is read lean and judged (the chips, the badge, the dropdowns' numbers, the
     // order); only the page's own parcels are read in full, below.
     const list = await readTrackingList(db, {
+      // The list's own reads of the activity table name the company too: handed in here, never read out of the `where` below.
+      companyId,
       where: {
         companyId,
         storeId,
@@ -195,8 +197,9 @@ export async function GET(req: Request) {
             orderBy: { appliedAt: 'desc' },
             select: { orderId: true, appliedAt: true },
           }),
+          // The company leads the table's only index that starts with an order: without it the read cannot use it.
           db.orderActivity.findMany({
-            where: { orderId: { in: ids }, action: TRACKING_ACK_ACTION },
+            where: { companyId, orderId: { in: ids }, action: TRACKING_ACK_ACTION },
             orderBy: { createdAt: 'desc' },
             select: { orderId: true, createdAt: true },
           }),

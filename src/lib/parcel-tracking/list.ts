@@ -6,7 +6,7 @@ import { MATCHES, byUrgency, expectsBarcode, matchesChip, notLate, type ChipKey,
 import { NOBODY, TASKS } from './filters';
 import { transitOf } from '../transit';
 import { COURIER_SAID, SAID_STATUSES, type SaidStatus } from '../couriers/courier-said';
-import { courierSaidAgainst, type CourierSaid } from '../couriers/courier-said-read';
+import { courierSaidAgainst, type CourierSaid, type CourierSaidRow } from '../couriers/courier-said-read';
 
 /**
  * THE PARCELS UNDER FOLLOW-UP — ALL OF THEM, READ ONCE, AND EVERY NUMBER COUNTED OVER THE SAME ROWS.
@@ -39,6 +39,18 @@ import { courierSaidAgainst, type CourierSaid } from '../couriers/courier-said-r
  * (`couriers/courier-said-read`), so the dropdown's numbers, the filter and the chip drawn on the row are the same
  * answer. It is a FIELD of the row and a question the list can be narrowed by; it is never an input of the chips or of
  * the ranking, and it changes no state.
+ *
+ * Because it only decorates, it is the ONE read of the list that may fail quietly: while nobody asked for the word, a
+ * failed read draws the list without words (as if the poll had never written a line) and says so once in the log; when
+ * the person asked for it (`said`), the error goes through — see `readSaidLines`.
+ *
+ * ── THE COMPANY IS NAMED IN EVERY READ OF THE ACTIVITY TABLE ──
+ *
+ * `order_activities` has one index that starts with an order, and it starts with the company: `(companyId, orderId)`.
+ * PostgreSQL 16 cannot skip the first column, so a read that says `orderId IN (…)` for up to `LEAN_CAP` ids and never
+ * names the company cannot use it. Both reads of that table here carry `companyId` — handed in by the door, never
+ * parsed out of `where`. It only tells the database what it needs: an order id belongs to one company, so no row the
+ * read returned before is dropped.
  *
  * ── NO SILENT CAP ──
  *
@@ -144,9 +156,47 @@ const countBy = <K extends string | null>(rows: readonly { key: K }[]) => {
   return m;
 };
 
+/** One COURIER_SAID line, with the parcel it is about. */
+type SaidLine = CourierSaidRow & { orderId: string };
+
+/**
+ * WHAT THE COMPANY SAID, FOR EVERY PARCEL THE LIST HOLDS — one grouped read, newest first (the id ends a tie).
+ *
+ * The word is decoration: a badge, and a question the list can be narrowed by. It is never an input of the chips, the
+ * lateness or the order. So while nobody asked for it (`asked` false), a read that times out or is locked must not take
+ * the whole follow-up screen down with it: it answers no words — every parcel's `said` is null, as if the poll had never
+ * written a line — and says so ONCE in the log: that the read failed, why, and over how many parcels. Never the
+ * question itself: its `where` holds what the person typed in the search box, a name or a phone.
+ *
+ * When the person DID ask for it, the question cannot be answered without the lines. The error goes through, as it is,
+ * to the door's usual error answer: an unfiltered list for a filtered question would be a wrong answer, and an empty one
+ * would be a false «nobody».
+ *
+ * Only THIS read is soft. Every other read of the list still fails it, as it always did.
+ */
+async function readSaidLines(db: Client, companyId: string, ids: string[], asked: boolean): Promise<SaidLine[]> {
+  try {
+    return await db.orderActivity.findMany({
+      where: { companyId, orderId: { in: ids }, action: COURIER_SAID },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: { orderId: true, newStatus: true, metadata: true, createdAt: true },
+    });
+  } catch (error) {
+    if (asked) throw error;
+    console.error(
+      '[tracking] the courier word could not be read, so the list is drawn without it:',
+      error instanceof Error ? error.message : String(error),
+      `(${ids.length} parcels)`
+    );
+    return [];
+  }
+}
+
 export async function readTrackingList(
   db: Client,
   input: {
+    /** The company the question is asked for — it leads the activity table's only index that starts with an order. */
+    companyId: string;
     /** Scope + the state + the search, built by the door: the one question the database is asked. */
     where: Where;
     now: Date;
@@ -207,12 +257,8 @@ export async function readTrackingList(
           orderBy: { appliedAt: 'desc' },
           select: { orderId: true, appliedAt: true },
         }),
-        // What the company said, for every parcel the list holds: ONE grouped read, newest first (the id ends a tie).
-        db.orderActivity.findMany({
-          where: { orderId: { in: l0.map((o) => o.id) }, action: COURIER_SAID },
-          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-          select: { orderId: true, newStatus: true, metadata: true, createdAt: true },
-        }),
+        // What the company said, for every parcel the list holds — the one read here that may fail quietly.
+        readSaidLines(db, input.companyId, l0.map((o) => o.id), !!input.said),
       ])
     : [[], [], []];
 
@@ -229,14 +275,14 @@ export async function readTrackingList(
   const candidates = l0.filter((o) => DEAD_CONFIRMATION.includes(o.confirmationStatus) || changedAt.has(o.id)).map((o) => o.id);
   const acks = candidates.length
     ? await db.orderActivity.findMany({
-        where: { orderId: { in: candidates }, action: TRACKING_ACK_ACTION },
+        where: { companyId: input.companyId, orderId: { in: candidates }, action: TRACKING_ACK_ACTION },
         orderBy: { createdAt: 'desc' },
         select: { orderId: true, createdAt: true },
       })
     : [];
   const ackedAt = newest(acks, (r) => r.createdAt);
   // The same pattern, keeping the whole line: the first seen per order is the company's latest word.
-  const lastWord = new Map<string, (typeof saidLines)[number]>();
+  const lastWord = new Map<string, SaidLine>();
   for (const line of saidLines) if (!lastWord.has(line.orderId)) lastWord.set(line.orderId, line);
 
   const judged: Judged[] = l0.map((o) => {
