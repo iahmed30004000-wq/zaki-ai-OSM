@@ -244,6 +244,8 @@ describe('a box is drawn on a row exactly when the door would take its word', ()
       orderActivity: {
         findMany: async (args: any) => {
           if (args.where.action !== COURIER_SAID) return [];
+          // The list names the company in this question (the table's only index that starts with an order leads with it).
+          if (args.where.companyId !== 'c1') throw new Error('the fake database: the activity read does not name the company');
           const keys = [].concat(args.orderBy ?? []) as Record<string, 'asc' | 'desc'>[];
           return table
             .filter((l) => args.where.orderId.in.includes(l.orderId))
@@ -261,7 +263,7 @@ describe('a box is drawn on a row exactly when the door would take its word', ()
       deliveryProvider: { findMany: async () => [] },
       region: { findMany: async () => [] },
     };
-    const list = await readTrackingList(db as never, { where: {}, now: NOW, task: null, courier: null, region: null, age: null, page: 1, limit: 100 });
+    const list = await readTrackingList(db as never, { companyId: 'c1', where: {}, now: NOW, task: null, courier: null, region: null, age: null, page: 1, limit: 100 });
     expect(list.ids).toHaveLength(cases.length);
 
     let boxes = 0;
@@ -293,5 +295,32 @@ describe('every unit, as the single door’s `outcome: ALL` expands it', () => {
     const src = stripComments(repoFile('src/app/api/ops/tracking/deliver/route.ts'));
     expect(src).toMatch(/asked\.outcome === 'ALL' \? i\.quantity \+ i\.freeQuantity : 0/);
     expect(stripComments(repoFile('src/lib/parcel-tracking/deliver-many.ts'))).toMatch(/deliveredQty: i\.quantity \+ i\.freeQuantity/);
+  });
+});
+
+describe('the list, its door and the single door know nothing of the press — what they answer is what they answered', () => {
+  it('no file the press reads from mentions it: the list’s wire shape and the single door are the ones they were', () => {
+    for (const file of [
+      'src/app/api/ops/tracking/route.ts',
+      'src/app/api/ops/tracking/deliver/route.ts',
+      'src/lib/parcel-tracking/list.ts',
+      'src/lib/parcel-tracking/sight.ts',
+      'src/lib/parcel-tracking/said.ts',
+      'src/lib/couriers/courier-said.ts',
+      'src/lib/couriers/courier-said-read.ts',
+      'src/lib/partial-delivery.ts',
+    ]) {
+      expect(repoFile(file), file).not.toMatch(/deliver-many|bulk-deliver|deliverMany|canBulkDeliver|BULK_DELIVER|BulkDeliver/);
+    }
+  });
+
+  it('the press reads the company’s word and writes the delivery only through the two functions the rest of the product already uses', () => {
+    const src = stripComments(repoFile('src/lib/parcel-tracking/deliver-many.ts'));
+    expect(src).toMatch(/courierSaidAgainst\(/);
+    expect(src).toMatch(/recordPartialDelivery\(tx, \{/);
+    expect((src.match(/recordPartialDelivery\(/g) ?? []).length).toBe(1);
+    // It reaches for no stock function, no wallet and no statement of its own.
+    expect(src).not.toMatch(/consumeOrderStock|drawDownStock|recordMovement|settleStatement|markPayableForOrders/);
+    expect(src).not.toMatch(/wallet|collectedAmount|settlementStatus/i);
   });
 });

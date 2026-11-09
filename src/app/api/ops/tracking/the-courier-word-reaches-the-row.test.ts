@@ -160,7 +160,10 @@ beforeEach(() => {
     async ({ where }: Loose) => [...table].reverse().find((r) => r.orderId === where.orderId && r.action === where.action) ?? null
   );
   db.orderActivity.findMany.mockImplementation(async (args: Loose) => {
-    const rows = table.filter((r) => args.where.orderId.in.includes(r.orderId) && r.action === args.where.action);
+    // The table's only index that starts with an order starts with the company, and PostgreSQL 16 cannot skip a first column:
+    // a read that does not name the company is refused, and one that does gets that company's lines only.
+    if (typeof args.where.companyId !== 'string' || args.where.companyId === '') throw new Error('fake db: the activity table was read without naming the company');
+    const rows = table.filter((r) => r.companyId === args.where.companyId && args.where.orderId.in.includes(r.orderId) && r.action === args.where.action);
     // Newest first, and only when the question says so.
     return args.orderBy ? rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id)) : rows;
   });
