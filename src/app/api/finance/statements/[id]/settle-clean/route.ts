@@ -26,6 +26,12 @@ import { StatementStopped, approvedBeforeTheSplit, closeRowsSelect, earlyAnswer,
  *
  * ── THE GATES ── the owner's switch on · the money posted · the matching not closed — in that order, with a sentence each.
  *
+ * ── ONE TRANSACTION, WITH A CLOCK ──
+ *
+ * It runs in one database transaction with a hard timeout, like the approval, and `settleCleanLines` works in slices that start only
+ * while its share of that timeout is not spent (counted from the first line of this transaction, `startedAt`). What the clock does not
+ * reach stays for the next press — the answer says how many are left and, when the time was the reason, `stoppedForTime`.
+ *
  * ── ONE WINNER, HOWEVER MANY PRESSES ──
  *
  * The statement's row is locked first (the lock the answer doors, the hand link, the swap and the close's own claim all wait on) and
@@ -60,6 +66,9 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     try {
       done = await db.$transaction(
         async (tx) => {
+          // WHEN THIS TRANSACTION BEGAN — the step is given a share of the timeout below, counted from here, so a wait for the lock
+          // that follows is in the count (`settleCleanLines`).
+          const startedAt = Date.now();
           // The lock first, then everything is read: a close or an answer that began before waits for this to commit, and one that
           // begins after reads what this wrote.
           await tx.$queryRaw`SELECT "id" FROM "courier_statements" WHERE "id" = ${id} FOR UPDATE`;
@@ -80,12 +89,14 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 
           const rows = await tx.settlementMatch.findMany({ where: { statementId: id, companyId }, select: closeRowsSelect(id) });
           const early = await settleCleanLines(tx, {
-            companyId, storeId, userId: user.id, minorUnit: country.minorUnit, at: new Date(),
+            companyId, storeId, userId: user.id, minorUnit: country.minorUnit, at: new Date(), startedAt,
             statement: { id, reference: now.reference, currencyCode: now.currencyCode, createdAt: now.createdAt, periodTo: now.periodTo },
             matches: rows,
           });
-          // Never a half answer: the step undid itself to its savepoint, and this press says so instead of claiming it settled.
-          if (early.failed) {
+          // Never a half answer: when the very first slice failed it undid itself to its savepoint and NOTHING was settled — this press
+          // says so instead of claiming it did. A later slice that failed leaves the earlier ones settled (each is complete): that is
+          // answered as it is, with what went through, what is left and `failed`.
+          if (early.failed && early.settled === 0) {
             throw new StatementStopped(409, {
               code: 'CLEAN_SETTLE_FAILED',
               error: 'تعذّرت تسوية الطلبات النظيفة هلّق وما انكتب شي — جرّب بعد شوي، أو اضغط «إغلاق المطابقة» لما تخلص الأسطر',
@@ -116,6 +127,9 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       heldBack: early.heldBack,
       remaining: early.remaining,
       rows: early.rows.map((r) => ({ matchId: r.matchId, orderNumber: r.orderNumber, outcome: r.outcome, why: r.why })),
+      // Said only when it happened: the step ran out of its share of the transaction's time (press again), or a later slice failed.
+      ...(early.stoppedForTime ? { stoppedForTime: true } : {}),
+      ...(early.failed ? { failed: true } : {}),
       message: pressMessage(early),
     });
   } catch (error) {
