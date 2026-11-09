@@ -160,6 +160,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           statementAmount: m.statementAmount == null ? null : Number(m.statementAmount),
           // A row takes an answer until the MATCHING is closed — the money may already be in the wallet.
           approvedAt: statement.matchingClosedAt,
+          // The company's own word on the line, read by the matrix like at the two doors that answer.
+          status: m.statementLine?.status ?? null,
         })),
     });
     const matches = statement.matches.map((m) => {

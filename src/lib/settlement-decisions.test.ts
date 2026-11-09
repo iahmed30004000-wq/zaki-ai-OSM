@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   BULK_LIMIT,
   COMING_BACK,
@@ -9,12 +9,14 @@ import {
   EXPLANATION_SENTENCE,
   IN_FLIGHT,
   MIN_EXPLANATION,
+  WHY,
   claimOf,
   claimsFromRows,
   decisionData,
   decisionMatrix,
   decisionNoteBody,
   explanationOf,
+  loadDecisionFacts,
   paidGross,
   stateGroup,
   stillAcceptableWhere,
@@ -23,6 +25,8 @@ import {
   type DecisionFacts,
 } from './settlement-decisions';
 import { shortfall } from './settlement-difference';
+import { COURIER_OUTCOMES, type CourierOutcome } from './couriers/words';
+import { GUIDE_TEXTS } from './route-guide-texts';
 
 /**
  * THE DECISION ON A DIFFERENCE — the matrix, the explanation, the claim and the filters.
@@ -40,6 +44,7 @@ const facts = (over: Partial<DecisionFacts> = {}): DecisionFacts => ({
   statementApproved: false,
   expectedAmount: 20,
   statementAmount: 18,
+  courierOutcome: null,
   minorUnit: 3,
   ...over,
 });
@@ -225,11 +230,269 @@ describe('the matrix — a decision against the state of the order', () => {
   });
 });
 
+/**
+ * THE COMPANY SAYS «PARTIAL» AND OUR ORDER WAS NEVER RECORDED PARTIAL.
+ *
+ * The matcher measured such a line against the whole order, so it is a difference; answering «اعتُمد رقم الشركة» would settle
+ * the order at their figure, the close would promote it to a FULL delivery and take the whole ordered quantity off the shelf,
+ * and the units that physically came back would later be refused by the returns desk. The road is «استلم جزءاً» first.
+ * This rule only REFUSES — every test below that is not about that one cell says «unchanged».
+ */
+describe('a parcel the company calls «partial» that our door never recorded as partial', () => {
+  const ON_THE_ROAD = ['SHIPPED', 'OUT_FOR_DELIVERY', 'READY_FOR_PICKUP', 'FAILED_DELIVERY'];
+  const ALL_STATES = [
+    'NOT_READY', 'READY_FOR_SHIPPING', 'PACKING', 'READY_FOR_PICKUP', 'SHIPPED', 'OUT_FOR_DELIVERY', 'DELIVERED',
+    'FAILED_DELIVERY', 'PARTIALLY_DELIVERED', 'RETURN_REQUESTED', 'RETURNED', 'CANCELLED', null,
+  ];
+  const READINGS: (CourierOutcome | null)[] = [...COURIER_OUTCOMES, null];
+
+  it('the sentence says what to do, in plain Arabic, and names the button and the answer', () => {
+    expect(WHY.partialFirst).toBe(
+      'الشركة بتقول إنو سُلّم جزئياً وطلبنا لسا مش مسجَّل جزئي — سجّل «استلم جزءاً» عليه بالبنود أولاً، وبعدين اعتمد رقم الشركة'
+    );
+    expect(WHY.partialFirst).not.toMatch(/[A-Za-z]/);
+  });
+
+  it('on the road, their figure is closed in every state of the road — and only that saying', () => {
+    for (const shippingStatus of ON_THE_ROAD) {
+      const m = decisionMatrix(facts({ shippingStatus, courierOutcome: 'PARTIAL' }));
+      expect(m.ACCEPTED_COURIER, shippingStatus).toEqual({ allowed: false, why: WHY.partialFirst });
+      // «رقمنا» was already shut for a parcel on the road, with its own sentence; the parking is the valve and stays open.
+      expect(m.OURS_STANDS, shippingStatus).toEqual({ allowed: false, why: WHY.notDeliveredYet });
+      expect(m.UNDER_REVIEW, shippingStatus).toEqual({ allowed: true, why: null });
+    }
+  });
+
+  it('every state against every reading: only the road beside «partial» moved; the other groups are exactly what they were', () => {
+    for (const courierOutcome of READINGS) {
+      const partial = courierOutcome === 'PARTIAL';
+      for (const shippingStatus of ON_THE_ROAD) {
+        expect(allowed(facts({ shippingStatus, courierOutcome })), `${shippingStatus} / ${courierOutcome}`).toEqual(
+          partial ? ['UNDER_REVIEW'] : ['ACCEPTED_COURIER', 'UNDER_REVIEW']
+        );
+      }
+      // Recorded delivered — whole or partial — whatever the company says: unchanged (a product decision, see the backlog).
+      for (const shippingStatus of ['DELIVERED', 'PARTIALLY_DELIVERED']) {
+        expect(allowed(facts({ shippingStatus, courierOutcome })), `${shippingStatus} / ${courierOutcome}`).toEqual([
+          'ACCEPTED_COURIER', 'OURS_STANDS', 'UNDER_REVIEW',
+        ]);
+      }
+      // Coming back: their figure only as a line of zero, with money it is refused — with or without the word.
+      for (const shippingStatus of ['RETURN_REQUESTED', 'RETURNED']) {
+        expect(allowed(facts({ shippingStatus, statementAmount: 0, expectedAmount: -1.5, courierOutcome })), `${shippingStatus} / ${courierOutcome}`).toEqual([
+          'ACCEPTED_COURIER', 'UNDER_REVIEW',
+        ]);
+        expect(allowed(facts({ shippingStatus, statementAmount: 5, expectedAmount: 0, courierOutcome })), `${shippingStatus} / ${courierOutcome}`).toEqual(['UNDER_REVIEW']);
+      }
+      // Never left, cancelled, no status at all: only the parking.
+      for (const shippingStatus of ['NOT_READY', 'READY_FOR_SHIPPING', 'PACKING', 'CANCELLED', null]) {
+        expect(allowed(facts({ shippingStatus, courierOutcome })), `${shippingStatus} / ${courierOutcome}`).toEqual(['UNDER_REVIEW']);
+      }
+    }
+  });
+
+  it('the road to open it again: once the follow-up records «استلم جزءاً» the order is PARTIALLY_DELIVERED and the same line is answerable', () => {
+    expect(decisionMatrix(facts({ shippingStatus: 'SHIPPED', courierOutcome: 'PARTIAL' })).ACCEPTED_COURIER.allowed).toBe(false);
+    for (const shippingStatus of ['PARTIALLY_DELIVERED', 'DELIVERED']) {
+      expect(decisionMatrix(facts({ shippingStatus, courierOutcome: 'PARTIAL' })).ACCEPTED_COURIER, shippingStatus).toEqual({ allowed: true, why: null });
+    }
+  });
+
+  it('«قيد المراجعة» is the valve and is never closed by it — on the road, with the word, whatever else is true of an open order', () => {
+    for (const shippingStatus of ON_THE_ROAD) {
+      for (const over of [{}, { statementAmount: 0 }, { claimedElsewhere: true }, { openRequests: ['CANCEL'] }, { settlementStatus: 'SETTLED' }]) {
+        expect(decisionMatrix(facts({ shippingStatus, courierOutcome: 'PARTIAL', ...over })).UNDER_REVIEW, `${shippingStatus} ${JSON.stringify(over)}`).toEqual({
+          allowed: true, why: null,
+        });
+      }
+    }
+  });
+
+  it('what already stopped the order keeps its own sentence: the new one speaks only when nothing else does', () => {
+    const base = { shippingStatus: 'SHIPPED', courierOutcome: 'PARTIAL' as const };
+    // A closed statement is asked FIRST: all three sayings say the closed sentence — the parking too.
+    for (const saying of DECISIONS) {
+      expect(decisionMatrix(facts({ ...base, statementApproved: true }))[saying], saying).toEqual({ allowed: false, why: WHY.approved });
+    }
+    expect(decisionMatrix(facts({ ...base, hasOrder: false })).ACCEPTED_COURIER.why).toBe(WHY.noOrder);
+    expect(decisionMatrix(facts({ ...base, settlementStatus: 'SETTLED' })).ACCEPTED_COURIER.why).toBe(WHY.settled);
+    expect(decisionMatrix(facts({ ...base, openRequests: ['POSTPONE'] })).ACCEPTED_COURIER.why).toBe(WHY.openRequest);
+    expect(decisionMatrix(facts({ ...base, claimedElsewhere: true })).ACCEPTED_COURIER.why).toBe(WHY.heldElsewhere);
+    expect(decisionMatrix(facts({ shippingStatus: 'PACKING', courierOutcome: 'PARTIAL' })).ACCEPTED_COURIER.why).toBe(WHY.notSent);
+    // A line of ZERO on the road was already refused with its own sentence; it keeps it (no «no» changes its words).
+    expect(decisionMatrix(facts({ ...base, statementAmount: 0 })).ACCEPTED_COURIER).toEqual({ allowed: false, why: WHY.zeroOnTheRoad });
+  });
+
+  it('the matching screen’s own guide says it in one sentence, so a grey button is never a surprise', () => {
+    const guide = GUIDE_TEXTS['/finance/matching'];
+    expect([...guide.steps, guide.watch ?? ''].join('\n')).toContain('إلا «جزئي» على طرد بالطريق: سجّل «استلم جزءاً» أولاً');
+  });
+
+  it('it only ever REFUSES: over every combination of the other facts a reading moves ONE cell and loosens nothing', () => {
+    const settlements = ['PENDING_COLLECTION', 'SETTLED'];
+    const requests = [[], ['CANCEL'], ['POSTPONE'], ['EDIT']];
+    const amounts: [number | null, number | null][] = [[20, 18], [20, 20], [20, 23], [20, 0], [-1.5, 0], [null, 18], [20, null]];
+    const offenders: string[] = [];
+    let compared = 0;
+    let moved = 0;
+
+    // «before» is the reading-less fact (null: the matrix exactly as it was); «after» carries one of the eight readings.
+    const compare = (other: Partial<DecisionFacts>) => {
+      const before = decisionMatrix(facts(other));
+      for (const courierOutcome of COURIER_OUTCOMES) {
+        const after = decisionMatrix(facts({ ...other, courierOutcome }));
+        compared += 1;
+        const thisCell = courierOutcome === 'PARTIAL' && stateGroup(other.shippingStatus) === 'IN_FLIGHT' && before.ACCEPTED_COURIER.allowed;
+        for (const saying of DECISIONS) {
+          const moves = saying === 'ACCEPTED_COURIER' && thisCell;
+          if (moves) moved += 1;
+          const want = moves ? { allowed: false, why: WHY.partialFirst } : before[saying];
+          const tag = `${JSON.stringify(other)} / ${courierOutcome} / ${saying}`;
+          if (JSON.stringify(after[saying]) !== JSON.stringify(want)) offenders.push(tag);
+          if (after[saying].allowed && !before[saying].allowed) offenders.push(`LOOSENED ${tag}`);
+        }
+      }
+    };
+
+    for (const hasOrder of [true, false]) {
+      for (const shippingStatus of ALL_STATES) {
+        for (const settlementStatus of settlements) {
+          for (const openRequests of requests) {
+            for (const claimedElsewhere of [true, false]) {
+              for (const statementApproved of [true, false]) {
+                for (const [expectedAmount, statementAmount] of amounts) {
+                  compare({ hasOrder, shippingStatus, settlementStatus, openRequests, claimedElsewhere, statementApproved, expectedAmount, statementAmount });
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    expect(offenders).toEqual([]);
+    // …and the check looks at what it claims to: 5 824 combinations of the other facts × the 8 readings, and the one cell
+    // really moves — worked out by hand: 4 states of the road × a parcel not settled × 2 harmless request sets (none, an
+    // edit) × no other row holding it × a statement still open × the 5 figures that are not a zero line = 40.
+    expect(compared).toBe(5824 * 8);
+    expect(moved).toBe(40);
+  });
+});
+
+describe('the reading is taken from the real line, through the one phrase table', () => {
+  const TATWEEL = String.fromCharCode(0x0640);
+  const DAMMA = String.fromCharCode(0x064f);
+  const SHADDA = String.fromCharCode(0x0651);
+  const ALEF_MAKSURA = String.fromCharCode(0x0649);
+  const NBSP = String.fromCharCode(0x00a0);
+  const THE_WORD = 'تم توصيلها بشكل جزئي';
+
+  const tx = (shippingStatus: string | null) => ({
+    order: {
+      findMany: vi.fn(async () => (shippingStatus ? [{ id: 'o1', shippingStatus, settlementStatus: 'PENDING_COLLECTION' }] : [])),
+    },
+    orderChangeRequest: { findMany: vi.fn(async () => []) },
+    settlementMatch: { findMany: vi.fn(async () => []) },
+  });
+  const row = (status: string | null, over: Record<string, unknown> = {}) => ({
+    id: 'm1', orderId: 'o1', expectedAmount: 20, statementAmount: 18, approvedAt: null, status, ...over,
+  });
+  const read = async (status: string | null, shippingStatus: string | null = 'SHIPPED', over: Record<string, unknown> = {}) => {
+    const out = await loadDecisionFacts(tx(shippingStatus) as never, { companyId: 'c1', storeId: 's1', minorUnit: 3, rows: [row(status, over)] });
+    return out.get('m1')!;
+  };
+
+  it('the company’s own word, and every spelling the normaliser folds, reads PARTIAL and closes their figure on the road', async () => {
+    const spellings = [
+      THE_WORD,
+      `  ${THE_WORD}  `,
+      'تم   توصيلها  بشكل جزئي',
+      `تم${NBSP}توصيلها بشكل جزئي`,
+      'تم توصيلها بشكل جزئ' + ALEF_MAKSURA,
+      `تم توصيلها بشكل ج${DAMMA}زئي`,
+      `تـ${TATWEEL}م توصيلها بشكل جزئي`,
+      `تم توصيلها بش${SHADDA}كل جزئي`,
+    ];
+    for (const status of spellings) {
+      const f = await read(status);
+      expect(f.courierOutcome, JSON.stringify(status)).toBe('PARTIAL');
+      expect(decisionMatrix(f).ACCEPTED_COURIER, JSON.stringify(status)).toEqual({ allowed: false, why: WHY.partialFirst });
+      expect(decisionMatrix(f).UNDER_REVIEW.allowed, JSON.stringify(status)).toBe(true);
+    }
+  });
+
+  it('every other word, a half-word, a blank cell and no line at all decide nothing — their figure stays open on the road', async () => {
+    const others: [string | null, string | null][] = [
+      ['تم توصيلها', 'DELIVERED'], ['تم التوصيل', 'DELIVERED'], ['مؤجلة', 'POSTPONED'], ['مؤجل', 'POSTPONED'],
+      ['تم ارجاعها', 'RETURNED'], ['ملغاة', 'CANCELLED'], ['قيد التوصيل', 'IN_TRANSIT'],
+      ['كلمة غريبة', 'UNKNOWN'],
+      // A piece of the word is not the word: the table holds whole phrases, so these read UNKNOWN and guard nothing.
+      ['جزئي', 'UNKNOWN'], ['تم توصيلها جزئياً', 'UNKNOWN'], ['تم توصيلها بشكل جزيي', 'UNKNOWN'], ['partial', 'UNKNOWN'],
+      ['', null], ['   ', null], [null, null],
+    ];
+    for (const [status, reading] of others) {
+      const f = await read(status);
+      expect(f.courierOutcome, JSON.stringify(status)).toBe(reading);
+      expect(decisionMatrix(f).ACCEPTED_COURIER, JSON.stringify(status)).toEqual({ allowed: true, why: null });
+    }
+  });
+
+  it('the same line on an order recorded partial or delivered is answerable — the word alone never closes it there', async () => {
+    for (const shippingStatus of ['PARTIALLY_DELIVERED', 'DELIVERED']) {
+      const f = await read(THE_WORD, shippingStatus);
+      expect(f.courierOutcome).toBe('PARTIAL');
+      expect(decisionMatrix(f).ACCEPTED_COURIER, shippingStatus).toEqual({ allowed: true, why: null });
+    }
+  });
+
+  it('a row with no order, or an order of another store, says the no-order sentence — the word is read but opens nothing', async () => {
+    const none = await loadDecisionFacts(tx(null) as never, {
+      companyId: 'c1', storeId: 's1', minorUnit: 3, rows: [row(THE_WORD, { orderId: null })],
+    });
+    expect(none.get('m1')!.courierOutcome).toBe('PARTIAL');
+    expect(decisionMatrix(none.get('m1')!).ACCEPTED_COURIER.why).toBe(WHY.noOrder);
+    const foreign = await read(THE_WORD, null);
+    expect(foreign.hasOrder).toBe(false);
+    expect(decisionMatrix(foreign).ACCEPTED_COURIER.why).toBe(WHY.noOrder);
+  });
+
+  it('a closed statement says its own sentence first, for the word too', async () => {
+    const f = await read(THE_WORD, 'SHIPPED', { approvedAt: new Date('2026-11-03T00:00:00Z') });
+    for (const saying of DECISIONS) expect(decisionMatrix(f)[saying], saying).toEqual({ allowed: false, why: WHY.approved });
+  });
+
+  it('each row of a press carries ITS OWN line’s word: three lines, three readings, one query for the orders', async () => {
+    const t = {
+      order: {
+        findMany: vi.fn(async () => [
+          { id: 'o1', shippingStatus: 'SHIPPED', settlementStatus: 'PENDING_COLLECTION' },
+          { id: 'o2', shippingStatus: 'SHIPPED', settlementStatus: 'PENDING_COLLECTION' },
+          { id: 'o3', shippingStatus: 'PARTIALLY_DELIVERED', settlementStatus: 'PENDING_COLLECTION' },
+        ]),
+      },
+      orderChangeRequest: { findMany: vi.fn(async () => []) },
+      settlementMatch: { findMany: vi.fn(async () => []) },
+    };
+    const out = await loadDecisionFacts(t as never, {
+      companyId: 'c1', storeId: 's1', minorUnit: 3,
+      rows: [
+        row(THE_WORD, { id: 'a', orderId: 'o1' }),
+        row('تم توصيلها', { id: 'b', orderId: 'o2' }),
+        row(THE_WORD, { id: 'c', orderId: 'o3' }),
+      ],
+    });
+    expect(['a', 'b', 'c'].map((id) => decisionMatrix(out.get(id)!).ACCEPTED_COURIER.allowed)).toEqual([false, true, true]);
+    expect(t.order.findMany).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('the matrix that is PUBLISHED is the matrix that is enforced', () => {
   const yes = (cell: string) => cell.startsWith('نعم');
 
   const probe: Record<string, DecisionFacts> = {
     'في الطريق': facts({ shippingStatus: 'SHIPPED' }),
+    // The same parcel, with the company calling it «partial» on a line: its own row, because its cell is different.
+    'في الطريق والشركة تقول «سُلِّم جزئياً»': facts({ shippingStatus: 'SHIPPED', courierOutcome: 'PARTIAL' }),
     'مسلَّم': facts(),
     'راجع': facts({ shippingStatus: 'RETURN_REQUESTED', statementAmount: 0, expectedAmount: -1.5 }),
     'لم يُشحن أو مُلغى': facts({ shippingStatus: 'CANCELLED' }),
