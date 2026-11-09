@@ -7,7 +7,7 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { zodMessage } from '@/lib/zod-message';
 import { isDifference, shortfall } from '@/lib/settlement-difference';
-import { closedStatementRefusal, isMatchingClosed } from '@/lib/settlement-gates';
+import { appliedRowRefusal, closedStatementRefusal, isMatchingClosed } from '@/lib/settlement-gates';
 import {
   BULK_LIMIT,
   DECISIONS,
@@ -84,6 +84,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         where: { id: { in: ids }, statementId: id, companyId },
         select: {
           id: true, result: true, orderId: true, expectedAmount: true, statementAmount: true, difference: true,
+          // Set when the approval already settled the row («تسوية السطور النظيفة عند الاعتماد»): a row like that takes no answer.
+          appliedAt: true,
           statementLine: { select: { status: true } },
           order: { select: { orderNumber: true } },
         },
@@ -91,6 +93,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       if (rows.length !== ids.length) {
         throw new BulkRefused(404, { error: 'بعض الأسطر ليست من هذا الكشف', code: 'NOT_FOUND' });
       }
+      if (rows.some((r) => r.appliedAt)) throw new BulkRefused(409, { ...appliedRowRefusal() });
       if (rows.some((r) => !isDifference(r))) {
         throw new BulkRefused(409, { error: 'البتّ الجماعي لأسطر «فرق في المبلغ» وحدها', code: 'NOT_A_DIFFERENCE' });
       }
@@ -144,7 +147,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         // Each write says it again: an open statement, and the row still the row that was read. One that fails
         // rolls back the whole press — nothing is half-decided.
         const written = await tx.settlementMatch.updateMany({
-          where: { id: r.id, statementId: id, companyId, result: r.result, statement: { matchingClosedAt: null } },
+          where: { id: r.id, statementId: id, companyId, result: r.result, appliedAt: null, statement: { matchingClosedAt: null } },
           data: decisionData({ resolution, note, userId: user.id, at }),
         });
         if (written.count !== 1) {

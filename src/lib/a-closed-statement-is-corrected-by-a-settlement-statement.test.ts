@@ -326,6 +326,8 @@ const WRITERS: Record<string, { how: 'own' | 'claim' | 'claim-last' | 'close' | 
   '/src/lib/parcel-swap.ts': { how: 'own', why: '«كان من طرد طلب آخر»' },
   '/src/lib/manual-statement.ts': { how: 'claim-last', why: 'the manual statement: press 1 writes the draft’s lines, press 2 gathers it (its own claim)' },
   '/src/lib/settlement.ts': { how: 'engine', why: 'runMatching: rewrites the machine’s rows; called under a claim' },
+  // new (9/11, «تسوية السطور النظيفة عند الاعتماد»): the early step marks the clean rows it settled — its one edit says in its own call that the matching is still open.
+  '/src/lib/statement-close.ts': { how: 'own', why: 'the early step marks the clean rows it settled (appliedAt), only while the matching is open' },
 };
 
 describe('every door that writes a statement is known — and a new one is a decision, not a diff', () => {

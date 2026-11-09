@@ -8,6 +8,8 @@ import { logAudit } from '@/lib/audit';
 import { fileHash, parseStatement, receiptGap } from '@/lib/settlement';
 import { isManualDraftHash, isManualHash } from '@/lib/manual-statement-rules';
 import { openLineWhere } from '@/lib/statement-open-lines';
+import { perLineSettlementOn } from '@/lib/per-line-settlement-switch';
+import { SETTLING_WORDS } from '@/lib/per-line-settlement-words';
 import { roundMinor } from '@/lib/money';
 import { zodMessage } from '@/lib/zod-message';
 
@@ -91,6 +93,26 @@ export async function GET() {
         });
     const openOf = new Map(openRows.map((r): [string, number] => [r.statementId, r._count._all]));
 
+    /*
+     * «تسوية السطور النظيفة عند الاعتماد» — read ONLY while the owner's switch is on, so that with it off this answer is what it was.
+     * `cleanWaiting`: the clean lines of an approved, still-open statement whose orders are not settled yet — the number on «سوّي
+     * الطلبات النظيفة هلّق» (a statement approved before the switch, or with an order that was not settlable at the time). And the words
+     * the screens show in place of their own, which would be false in this mode (`per-line-settlement-words`).
+     */
+    const perLine = await perLineSettlementOn(db, companyId);
+    const waitingRows = !perLine || statements.length === 0
+      ? []
+      : await db.settlementMatch.groupBy({
+          by: ['statementId'],
+          where: {
+            companyId, statementId: { in: statements.map((s) => s.id) },
+            result: 'MATCHED', orderId: { not: null }, appliedAt: null,
+            statement: { approvedAt: { not: null }, matchingClosedAt: null },
+          },
+          _count: { _all: true },
+        });
+    const waitingOf = new Map(waitingRows.map((r): [string, number] => [r.statementId, r._count._all]));
+
     return NextResponse.json({
       statements: await Promise.all(
         statements.map(async (s) => ({
@@ -113,7 +135,7 @@ export async function GET() {
           createdAt: s.createdAt,
           periodFrom: s.periodFrom,
           periodTo: s.periodTo,
-          counts: { ...s._count, openLines: openOf.get(s.id) ?? 0 },
+          counts: { ...s._count, openLines: openOf.get(s.id) ?? 0, ...(perLine ? { cleanWaiting: waitingOf.get(s.id) ?? 0 } : {}) },
           receipts: s.receipts.map((r) => ({
             id: r.id,
             amount: Number(r.amount),
@@ -128,6 +150,8 @@ export async function GET() {
           gap: await receiptGap(db, s.id, country.minorUnit),
         }))
       ),
+      // The words the screens show in place of their own while the owner's switch is on (absent otherwise).
+      ...(perLine ? { settling: SETTLING_WORDS } : {}),
     });
   } catch (error) {
     return apiErrorResponse(error);

@@ -398,7 +398,7 @@ describe('what a link refuses', () => {
     const tx = makeTx(w);
     await link(tx);
     expect(tx.settlementMatch.updateMany.mock.calls[0][0].where).toEqual({
-      id: 'm1', statementId: 'st1', result: 'MISSING_IN_SYSTEM', orderId: null, statement: { matchingClosedAt: null },
+      id: 'm1', statementId: 'st1', result: 'MISSING_IN_SYSTEM', orderId: null, appliedAt: null, statement: { matchingClosedAt: null },
     });
   });
 

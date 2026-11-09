@@ -672,7 +672,8 @@ export async function linkLineToOrder(
   // Claimed on the row's own state, so two people pressing at once cannot both link the one line.
   const claimed = await tx.settlementMatch.updateMany({
     // An open statement, and the row still unlinked: the write itself says so, not only the reads before it.
-    where: { id: match.id, statementId: p.statementId, result: 'MISSING_IN_SYSTEM', orderId: null, statement: { matchingClosedAt: null } },
+    // (`appliedAt: null`: a row the approval settled is final — it is never a row to link, whatever its other columns say.)
+    where: { id: match.id, statementId: p.statementId, result: 'MISSING_IN_SYSTEM', orderId: null, appliedAt: null, statement: { matchingClosedAt: null } },
     data: {
       orderId: order.id,
       result: v.result,
@@ -705,7 +706,7 @@ export async function linkLineToOrder(
 
   // The order is now named by a line of this statement: it is no longer «a parcel no statement names» here.
   await tx.settlementMatch.deleteMany({
-    where: { statementId: p.statementId, orderId: order.id, result: 'MISSING_IN_STATEMENT', resolution: null, statement: { matchingClosedAt: null } },
+    where: { statementId: p.statementId, orderId: order.id, result: 'MISSING_IN_STATEMENT', resolution: null, appliedAt: null, statement: { matchingClosedAt: null } },
   });
 
   await tx.orderNote.create({

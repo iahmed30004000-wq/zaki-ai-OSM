@@ -1150,7 +1150,7 @@
     "tabs": 0
   },
   "src/components/screens/finance/CollectionScreen.tsx": {
-    "buttons": 26,
+    "buttons": 28,
     "inputs": 12,
     "columns": 7,
     "cards": 0,
@@ -1936,6 +1936,16 @@
     "cards": 1,
     "modals": 0,
     "icons": 4,
+    "links": 0,
+    "tabs": 0
+  },
+  "src/components/settings/PerLineSettlementCard.tsx": {
+    "buttons": 0,
+    "inputs": 1,
+    "columns": 0,
+    "cards": 1,
+    "modals": 0,
+    "icons": 0,
     "links": 0,
     "tabs": 0
   },

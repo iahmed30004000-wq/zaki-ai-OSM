@@ -9,6 +9,7 @@ import { PostOrderOfferCard } from '@/components/settings/PostOrderOfferCard';
 import { PenaltyRulesCard } from '@/components/settings/PenaltyRulesCard';
 import { NoAnswerRoundsCard } from '@/components/settings/NoAnswerRoundsCard';
 import { NoAnswerReturnsCard } from '@/components/settings/NoAnswerReturnsCard';
+import { PerLineSettlementCard } from '@/components/settings/PerLineSettlementCard';
 import { RiBuildingLine, RiCheckLine, RiLoader4Line } from '@remixicon/react';
 import { PageHeader } from '@/components/ui/PageHeader';
 
@@ -148,6 +149,9 @@ export function SystemSettingsScreen() {
 
       {/* «الطلب يرجع للطابور فوراً (تجريبي)» — «لا يرد» or a date takes the order out of her hand at once. Needs the rounds on. Off by default. */}
       <NoAnswerReturnsCard />
+
+      {/* «تسوية السطور النظيفة عند الاعتماد (تجريبي)» — the approval also settles every clean line; a line still a question holds only its own order. Off by default. */}
+      <PerLineSettlementCard />
 
     </div>
   );

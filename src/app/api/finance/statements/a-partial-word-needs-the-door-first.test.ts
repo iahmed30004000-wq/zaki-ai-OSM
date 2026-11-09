@@ -206,7 +206,7 @@ function scene(specs: Spec[]) {
     }
     return {
       id: uid(n), statementId: 'st1', companyId: 'c1', orderId, statementLineId, result: 'MISMATCHED', matchedBy: 'MERCHANT_REF',
-      resolution: null, resolutionNote: null, resolvedById: null, resolvedAt: null,
+      resolution: null, resolutionNote: null, resolvedById: null, resolvedAt: null, appliedAt: null,
       expectedAmount: 20, statementAmount: 18, difference: -2, expectedFee: null, statementFee: null, feeDifference: null, note: null,
       createdAt: new Date('2026-11-05T10:00:00Z'), ...s.match,
     };

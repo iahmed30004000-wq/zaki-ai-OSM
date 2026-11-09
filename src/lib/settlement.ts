@@ -954,11 +954,17 @@ export async function runMatching(
    *
    * `matchedBy` is null on the sweep and on the unmatched rows, and SQL's `<>` drops NULL — so the null case is
    * named, or those rows would never be rebuilt and would pile up.
+   *
+   * AND A ROW THE APPROVAL ALREADY SETTLED IS NEVER REBUILT (`appliedAt`, «تسوية السطور النظيفة عند الاعتماد»). Its order is
+   * settled and its line has been answered by that; rebuilding it would judge a settled order afresh ("collected by hand") and
+   * hand the close a second, contradicting row. It stays exactly as it is — in `kept` below, so its line and its order are not
+   * matched a second time, and a later line for the same order is still flagged as the second claim it is.
    */
   await tx.settlementMatch.deleteMany({
     where: {
       statementId,
       resolution: null,
+      appliedAt: null,
       OR: [{ matchedBy: null }, { matchedBy: { not: MANUAL_MATCH } }],
     },
   });
