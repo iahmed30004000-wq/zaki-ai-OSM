@@ -20,7 +20,7 @@ export function CourierSaidChip({ said }: { said: SaidOnTheRow }) {
   return (
     <>
       <HealthChip className="mt-1 flex" health={{ tone: SAID_TONE[said.status], label: saidChipLabel(said), why: saidTitle(said) }} />
-      <span className="mt-1 block text-xs font-normal text-[var(--sys-muted-foreground)]">{saidWhen(said)}</span>
+      <span className="mt-1 block max-w-xs break-words text-xs font-normal text-[var(--sys-muted-foreground)]">{saidWhen(said)}</span>
       {hint && <span className="mt-1 block text-xs font-medium text-[var(--sys-warning)]">{hint}</span>}
     </>
   );

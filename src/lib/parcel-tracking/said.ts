@@ -51,8 +51,8 @@ export const SAID_OPTION_AR: Record<SaidStatus, string> = {
 export const NO_SAID_COUNTS: Record<SaidStatus, number> = Object.fromEntries(SAID_STATUSES.map((s) => [s, 0])) as Record<SaidStatus, number>;
 
 /**
- * A part delivery must be recorded AT THE DOOR before the statement closes: the company's word gives no lines and no
- * amounts, and a statement that closes first settles the parcel as if it had come whole.
+ * A part delivery must be recorded AT THE DOOR («استلم جزءاً», with the lines) before the statement closes: the company's
+ * word gives no lines and no amounts, so nothing but the person who stood there can say what was taken.
  */
 export const SAID_PARTIAL_HINT = 'سجّلي «استلم جزءاً» بالبنود';
 

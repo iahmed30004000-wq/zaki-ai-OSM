@@ -549,7 +549,9 @@ describe('كلُّ مسارِ API إمّا يستدعيه شيءٌ أو يُقا
 const LIB_VALUE_DECL = /^export\s+(?:declare\s+)?(?:async\s+)?(?:function\*?|const|let|var|class|enum)\s+([A-Za-z_$][\w$]*)/gm;
 const LIB_EXPORT_LIST = /^export\s+(?:type\s+)?\{([^}]*)\}(?!\s*from)/gm;
 const WORD = /[A-Za-z_$][\w$]*/g;
-const LIB_TEST_TOOLBOX = ['src/lib/guard-source.ts'];
+// Test support, read by tests alone by design: the guards' own toolbox, and the courier word's fixture (`wordLine` and
+// `theCompanySends` build what the real feed writes, for the tests that read it back).
+const LIB_TEST_TOOLBOX = ['src/lib/guard-source.ts', 'src/lib/couriers/courier-said-lines.fixture.ts'];
 
 /** Exported by `src/lib`, referenced by no production file and not by its own file either. */
 function deadLibExports(): string[] {
