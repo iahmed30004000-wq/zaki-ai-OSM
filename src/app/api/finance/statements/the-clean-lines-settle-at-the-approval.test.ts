@@ -729,6 +729,17 @@ describe('the close settles the rest and leaves the applied rows alone — nothi
     expect(world.stock.filter((id) => id === 'oA')).toHaveLength(1);
   });
 
+  it('an UNAPPLIED clean row that is read BEFORE the applied one for the same order (a row rebuilt later, returned first): the close skips the ORDER, not just the row', async () => {
+    await approve();
+    world.rows.unshift(row('mA0', 'oA')); // a clean row for an order the approval already settled — and the first the close reads
+    const q = world.rows.findIndex((r) => r.id === 'mQ');
+    world.rows[q] = { ...world.rows[q], resolution: 'UNDER_REVIEW', resolutionNote: 'نراجع', resolvedById: 'u-decider' };
+    const res = await close();
+    expect(res.status).toBe(200);
+    expect(world.stock.filter((id) => id === 'oA')).toHaveLength(1);
+    expect(ops('order.updateMany').filter((e) => ((e.args as any).where.id.in as string[]).includes('oA'))).toHaveLength(1);
+  });
+
   it('a claim paid by an earlier statement: the early step writes the same amount the close would (the earlier gross plus this net)', async () => {
     world.rows[0] = row('mA', 'oA', {
       expectedAmount: 8, statementAmount: 8, statementFee: 0,
