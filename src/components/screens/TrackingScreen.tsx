@@ -11,6 +11,7 @@ import { CollectDialog } from '@/components/screens/tracking/CollectDialog';
 import { CourierSaidChip } from '@/components/screens/tracking/CourierSaidChip';
 import { ParcelCopy } from '@/components/screens/tracking/ParcelCopy';
 import { DeliverDialog } from '@/components/screens/tracking/DeliverDialog';
+import { BulkDeliverReport, type BulkDeliverLine } from '@/components/screens/tracking/BulkDeliverReport';
 import { WriteOffDialog } from '@/components/screens/tracking/WriteOffDialog';
 import { apiJson } from '@/lib/api-client';
 import { ScreenTitle } from '@/components/shell/ScreenTitle';
@@ -34,6 +35,7 @@ import type { TrackingListFacts } from '@/lib/parcel-tracking/list';
 import { FULL_SIGHT, NO_SIGHT, statesOffered, type TrackingSight } from '@/lib/parcel-tracking/sight';
 import { SAID_STATUSES } from '@/lib/couriers/courier-said';
 import { NO_SAID_COUNTS, SAID_OPTION_AR, SAID_PREFIX, type SaidOnTheRow } from '@/lib/parcel-tracking/said';
+import { BULK_DELIVER_CONFIRM_AR, BULK_DELIVER_MOST, canBulkDeliver, hasDeliverBox, type BulkDeliverReport as BulkReport } from '@/lib/parcel-tracking/bulk-deliver';
 
 /**
  * /ops/tracking — search by order, reference, barcode, customer or phone.
@@ -229,6 +231,9 @@ export function TrackingScreen() {
   /** The order whose door outcome is being written, so its buttons wait. */
   const [settling, setSettling] = useState<string | null>(null);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
+  /** «استلم المحدد» is in the air; and the report of the last one, kept until the person says «تمام». */
+  const [bulking, setBulking] = useState(false);
+  const [bulkReport, setBulkReport] = useState<{ lines: BulkDeliverLine[]; delivered: number; refused: number } | null>(null);
   const [collecting, setCollecting] = useState(false);
   /** The row whose alert is being acknowledged right now. */
   const [acking, setAcking] = useState<string | null>(null);
@@ -438,6 +443,56 @@ export function TrackingScreen() {
   /** Every owed parcel the question matches — counted by the server over the whole list, not over this page. */
   const collectOwed = facts?.tasks.COLLECT ?? 0;
 
+  /*
+   * ── «استلم المحدد»: THE ROWS WHOSE NEWEST WORD, AS THE SERVER JUDGED IT, IS «تم التوصيل» ──
+   *
+   * A box on exactly those rows — and only for whoever holds `ops.deliver`, the single «استلم»'s own box. It is manners: the
+   * door judges every parcel again at the moment of the press, and says which it took and which it left, and why.
+   */
+  const deliverable = acts.deliver ? visible.filter(canBulkDeliver) : [];
+  const toDeliver = deliverable.filter((o) => selected[o.id]);
+  /** «حدّد كل اللي الشركة بتقول عنهم «تم التوصيل» بهالصفحة»: this page's, and no more than one press may carry. */
+  const pickDelivered = () => setSelected(Object.fromEntries(deliverable.slice(0, BULK_DELIVER_MOST).map((o) => [o.id, true])));
+  /** The two bars never stand together: a tick on one kind of row puts the other kind's ticks away. */
+  const tickRow = (o: Row, next: boolean) =>
+    setSelected((sel) => {
+      const kind = canBulkDeliver(o);
+      const kept = Object.fromEntries(visible.filter((r) => sel[r.id] && canBulkDeliver(r) === kind).map((r) => [r.id, true]));
+      return { ...kept, [o.id]: next };
+    });
+  const deliverChosen = async () => {
+    const picked = toDeliver.slice(0, BULK_DELIVER_MOST);
+    if (picked.length === 0) return;
+    const ok = await confirm({
+      title: `استلم ${picked.length} طرد دفعة وحدة؟`,
+      body: BULK_DELIVER_CONFIRM_AR,
+      confirmLabel: 'نعم، سجّلها',
+    });
+    if (!ok) return;
+    setBulking(true);
+    setError(null);
+    setBulkReport(null);
+    try {
+      const res = await apiJson<BulkReport>('/api/ops/tracking/deliver-many', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderIds: picked.map((o) => o.id) }),
+      });
+      const nameOf = new Map(picked.map((o) => [o.id, o.merchantRef ?? o.orderNumber]));
+      setBulkReport({
+        delivered: res.delivered,
+        refused: res.refused,
+        lines: res.results.map((r) => ({ id: r.orderId, label: nameOf.get(r.orderId) ?? r.orderNumber ?? '', ok: r.ok, reason: r.reason })),
+      });
+      setSelected({});
+      await list.reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'تعذر التسجيل');
+    } finally {
+      setBulking(false);
+    }
+  };
+
   /** What narrows the list beyond the state it opens on: the word, the dropdowns, the chip. */
   const narrowing = [courier, region, age, said].filter((v) => v !== 'all').length + (term.trim() ? 1 : 0) + (task !== 'all' ? 1 : 0);
   const activeCount = narrowing + (status !== '' ? 1 : 0);
@@ -591,6 +646,9 @@ export function TrackingScreen() {
         </p>
       )}
       {done && <p className="text-sm text-[var(--sys-success)] bg-[var(--sys-success-soft)] border border-[var(--sys-success)]/30 rounded-lg p-3">{done}</p>}
+      {bulkReport && (
+        <BulkDeliverReport lines={bulkReport.lines} delivered={bulkReport.delivered} refused={bulkReport.refused} onClose={() => setBulkReport(null)} />
+      )}
 
       {facts && facts.total > 0 && (
         // A phone: eight 44px chips wrapped into three rows pushed the first parcel below the fold. One strip that
@@ -677,37 +735,98 @@ export function TrackingScreen() {
       )}
 
       {/*
+        «استلم المحدد»: the parcels the company itself calls «تم التوصيل», recorded with one press. The strip offers the
+        choice before a tick; after it, a desk keeps the press here and a phone gets it in the bar below. The ticks, the
+        choosing of them and the press are the same ones «استلمت منه» uses.
+      */}
+      {deliverable.length > 0 && (
+        <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-3 flex flex-wrap items-center gap-3">
+          <span className="text-xs text-[var(--sys-muted-foreground)]">
+            {!phone && toDeliver.length > 0
+              ? `مختار ${toDeliver.length} طرد`
+              : `الشركة بتقول «تم التوصيل» على ${deliverable.length} طرد بهالصفحة`}
+          </span>
+          {(!phone || toDeliver.length === 0) && toDeliver.length < deliverable.length && (
+            <button onClick={pickDelivered} className="min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline">
+              حدّد كل اللي الشركة بتقول عنهم «تم التوصيل» بهالصفحة
+            </button>
+          )}
+          {!phone && toDeliver.length > 0 && (
+            <>
+              <button onClick={() => setSelected({})} className="text-xs text-[var(--sys-muted-foreground)] hover:underline">
+                إلغاء الاختيار
+              </button>
+              <button
+                onClick={() => void deliverChosen()}
+                disabled={bulking}
+                className="h-11 md:h-8 px-3 rounded-lg bg-[var(--sys-success)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5 mr-auto disabled:opacity-50"
+              >
+                {bulking ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiCheckLine className="w-4 h-4" aria-hidden />}
+                {`استلم المحدد (${toDeliver.length})`}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/*
         «استلمت منه» WHERE THE THUMB IS.
         The rows are ticked far down a list of cards, and the button that
         records them used to sit in the strip above it, off the screen by then.
         On a phone the bar owns the bottom of the screen while something is
         ticked. On a desk there is no bar: the strip above is where it always was.
+        The same bar carries «استلم المحدد» when it is parcels the company calls delivered that are ticked (the two kinds are
+        never ticked together), so there is one bar and one place for the thumb.
       */}
-      <BulkBar show={phone && access.collect && chosen.length > 0}>
-        <span className="me-auto text-xs font-semibold text-[var(--sys-primary)]">
-          {`مختار ${chosen.length} طلب · صافي ${netOfChosen}`}
-        </span>
-        {collectable.length > chosen.length && (
-          <button onClick={pickAll} className="min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline">
-            اختر الكل
-          </button>
+      <BulkBar show={phone && ((access.collect && chosen.length > 0) || toDeliver.length > 0)}>
+        {toDeliver.length > 0 ? (
+          <>
+            <span className="me-auto text-xs font-semibold text-[var(--sys-primary)]">{`مختار ${toDeliver.length} طرد`}</span>
+            {deliverable.length > toDeliver.length && (
+              <button onClick={pickDelivered} className="min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline">
+                حدّد كل اللي الشركة بتقول عنهم «تم التوصيل» بهالصفحة
+              </button>
+            )}
+            <button onClick={() => setSelected({})} className="min-h-11 md:min-h-0 text-xs text-[var(--sys-muted-foreground)] hover:underline">
+              إلغاء الاختيار
+            </button>
+            <button
+              onClick={() => void deliverChosen()}
+              disabled={bulking}
+              className="h-11 md:h-8 px-3 rounded-lg bg-[var(--sys-success)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-50"
+            >
+              {bulking ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiCheckLine className="w-4 h-4" aria-hidden />}
+              {`استلم المحدد (${toDeliver.length})`}
+            </button>
+          </>
+        ) : (
+          <>
+            <span className="me-auto text-xs font-semibold text-[var(--sys-primary)]">
+              {`مختار ${chosen.length} طلب · صافي ${netOfChosen}`}
+            </span>
+            {collectable.length > chosen.length && (
+              <button onClick={pickAll} className="min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline">
+                اختر الكل
+              </button>
+            )}
+            <button
+              onClick={() => setSelected({})}
+              className="min-h-11 md:min-h-0 text-xs text-[var(--sys-muted-foreground)] hover:underline"
+            >
+              إلغاء الاختيار
+            </button>
+            {mixedCouriers && (
+              <span role="alert" className="w-full text-xs text-[var(--sys-destructive)]">اختر طرود شركة وحدة</span>
+            )}
+            <button
+              onClick={() => setCollecting(true)}
+              disabled={mixedCouriers}
+              className="h-11 md:h-8 px-3 rounded-lg bg-[var(--sys-success)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <RiHandCoinLine className="w-4 h-4" /> استلمت منه
+            </button>
+          </>
         )}
-        <button
-          onClick={() => setSelected({})}
-          className="min-h-11 md:min-h-0 text-xs text-[var(--sys-muted-foreground)] hover:underline"
-        >
-          إلغاء الاختيار
-        </button>
-        {mixedCouriers && (
-          <span role="alert" className="w-full text-xs text-[var(--sys-destructive)]">اختر طرود شركة وحدة</span>
-        )}
-        <button
-          onClick={() => setCollecting(true)}
-          disabled={mixedCouriers}
-          className="h-11 md:h-8 px-3 rounded-lg bg-[var(--sys-success)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-50"
-        >
-          <RiHandCoinLine className="w-4 h-4" /> استلمت منه
-        </button>
       </BulkBar>
 
       {!extra ? (
@@ -792,11 +911,13 @@ export function TrackingScreen() {
             )
           }
           selection={
-            access.collect
+            // The column of boxes exists for whoever may collect (as it always did) and, besides, while a parcel on this page
+            // has a box of the other kind: the company's «تم التوصيل» for whoever holds the single «استلم»'s key.
+            access.collect || deliverable.length > 0
               ? {
-                  canSelect: canCollect,
+                  canSelect: (o) => (access.collect && canCollect(o)) || (acts.deliver && canBulkDeliver(o)),
                   isSelected: (o) => !!selected[o.id],
-                  onToggle: (o, next) => setSelected((sel) => ({ ...sel, [o.id]: next })),
+                  onToggle: tickRow,
                 }
               : undefined
           }
@@ -1065,7 +1186,7 @@ export function TrackingScreen() {
                 the courier's statement is matched. Both buttons go to the
                 one endpoint that has always known that.
               */}
-              {acts.deliver && ['SHIPPED', 'OUT_FOR_DELIVERY'].includes(o.shippingStatus) && (
+              {acts.deliver && hasDeliverBox(o.shippingStatus) && (
                 <>
                   {/*
                     AND THEY STOP LOOKING LIKE THE SAME LINK.
