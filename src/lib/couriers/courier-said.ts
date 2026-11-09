@@ -34,3 +34,15 @@ export function courierSaidWord(note: string | null | undefined, fallback: strin
   const word = (note ?? '').trim();
   return (word || fallback).slice(0, MOST_CHARACTERS);
 }
+
+/**
+ * THE FIVE THINGS A COURIER CAN SAY THAT THE FEED KEEPS AND NEVER WRITES.
+ *
+ * `keepWhatTheCourierSaid` (apply-event) runs for exactly these: the four a feed may never assert
+ * (`COURIER_CANNOT_ASSERT`) and «مؤجلة», which the map turns into FAILED_DELIVERY and the feed keeps as a word. So every
+ * COURIER_SAID row carries one of them in `newStatus`, and a list that shows or filters by the word offers exactly these.
+ * A test drives the real writer over every status and holds this list to what it writes — the two cannot drift.
+ */
+export const SAID_STATUSES = ['DELIVERED', 'PARTIALLY_DELIVERED', 'RETURNED', 'CANCELLED', 'FAILED_DELIVERY'] as const;
+export type SaidStatus = (typeof SAID_STATUSES)[number];
+export const isSaidStatus = (v: unknown): v is SaidStatus => typeof v === 'string' && (SAID_STATUSES as readonly string[]).includes(v);

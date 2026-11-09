@@ -8,6 +8,8 @@ import { ContactButtons } from '@/components/orders/ContactButtons';
 import { OrderRef } from '@/components/orders/OrderRef';
 import { TransferDialog } from '@/components/screens/tracking/TransferDialog';
 import { CollectDialog } from '@/components/screens/tracking/CollectDialog';
+import { CourierSaidChip } from '@/components/screens/tracking/CourierSaidChip';
+import { ParcelCopy } from '@/components/screens/tracking/ParcelCopy';
 import { DeliverDialog } from '@/components/screens/tracking/DeliverDialog';
 import { WriteOffDialog } from '@/components/screens/tracking/WriteOffDialog';
 import { apiJson } from '@/lib/api-client';
@@ -17,7 +19,7 @@ import { useIsPhone } from '@/hooks/useIsPhone';
 import { Rows, type RowTone } from '@/components/ui/Rows';
 import { RiAlertLine, RiChat1Line, RiCheckLine, RiCloseLine, RiEBike2Line, RiEyeLine, RiHandCoinLine, RiLoader4Line, RiTimerLine, RiTruckLine } from '@remixicon/react';
 import { ALERT_AR, ALERT_CONFIRM_AR, type TrackingAlertKind } from '@/lib/parcel-tracking/alert';
-import { useAsk, useConfirm } from '@/components/ui/Confirm';
+import { useAsk, useConfirm, useTell } from '@/components/ui/Confirm';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { HealthChip } from '@/components/ui/HealthChip';
 import { NOT_LATE, NOT_LATE_FACTS, URGENCY, canCollect, trackingUrgency, type ChipKey } from '@/lib/parcel-tracking/priority';
@@ -30,6 +32,8 @@ import { AGES, AGE_AR } from '@/lib/age-piles';
 import { EVERY_STATUS, TASKS } from '@/lib/parcel-tracking/filters';
 import type { TrackingListFacts } from '@/lib/parcel-tracking/list';
 import { FULL_SIGHT, NO_SIGHT, statesOffered, type TrackingSight } from '@/lib/parcel-tracking/sight';
+import { SAID_STATUSES } from '@/lib/couriers/courier-said';
+import { NO_SAID_COUNTS, SAID_OPTION_AR, SAID_PREFIX, type SaidOnTheRow } from '@/lib/parcel-tracking/said';
 
 /**
  * /ops/tracking — search by order, reference, barcode, customer or phone.
@@ -85,6 +89,8 @@ interface Row {
   _count?: { deliveryAttempts: number; notes: number };
   /** Cancelled while the parcel moves, or changed after it left. */
   alert?: { kind: TrackingAlertKind; at: string; acknowledged: boolean } | null;
+  /** What the delivery company itself says about the parcel when it disagrees with our state — the server judged it; this only draws it. */
+  courierSaid?: SaidOnTheRow | null;
 }
 
 interface Extra {
@@ -113,7 +119,7 @@ const ALL_ACTS: TrackingActs = { deliver: true, transfer: true, writeOff: true }
 const read = (body: unknown): PagedRead<Row, Extra> => {
   const b = body as { orders: Row[]; pagination: Paging; facts: TrackingListFacts; lateCount: number; dialCode?: string | null; capped?: boolean; access?: TrackingSight; acts?: Partial<TrackingActs> };
   // The door always says; an answer that does not is read as the whole screen, since drawing less would hide work, and the door is what refuses.
-  return { rows: b.orders, pagination: b.pagination, extra: { facts: b.facts, lateCount: b.lateCount, dialCode: b.dialCode ?? null, capped: !!b.capped, access: b.access ?? FULL_SIGHT, acts: { ...ALL_ACTS, ...b.acts } } };
+  return { rows: b.orders, pagination: b.pagination, extra: { facts: b.facts && { ...b.facts, said: b.facts.said ?? NO_SAID_COUNTS }, lateCount: b.lateCount, dialCode: b.dialCode ?? null, capped: !!b.capped, access: b.access ?? FULL_SIGHT, acts: { ...ALL_ACTS, ...b.acts } } };
 };
 
 /**
@@ -211,6 +217,8 @@ export function TrackingScreen() {
   const [courier, setCourier] = useState('all');
   const [region, setRegion] = useState('all');
   const [age, setAge] = useState('all');
+  /** What the delivery company itself says: `all`, or one of the five words a poll keeps. */
+  const [said, setSaid] = useState('all');
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [transferFor, setTransferFor] = useState<Row | null>(null);
@@ -227,6 +235,9 @@ export function TrackingScreen() {
   const [task, setTask] = useState<TaskFilter>('all');
 
   const ask = useAsk();
+  // A copy the browser refuses is handed to a field to select by hand, not to a warning that goes away.
+  const tell = useTell();
+  const copyRefused = (value: string) => void tell({ title: 'تعذّر النسخ — انسخه يدوياً', value });
   // A plain yes/no: refusing a parcel needs a confirmation, not a sentence.
   const confirm = useConfirm();
 
@@ -344,7 +355,7 @@ export function TrackingScreen() {
    */
   const list = usePagedList<Row, Extra>({
     url: '/api/ops/tracking',
-    params: { q: term.trim() || undefined, status, task, courier, region, age },
+    params: { q: term.trim() || undefined, status, task, courier, region, age, said },
     read,
   });
   const { extra, rows, pagination } = list;
@@ -428,7 +439,7 @@ export function TrackingScreen() {
   const collectOwed = facts?.tasks.COLLECT ?? 0;
 
   /** What narrows the list beyond the state it opens on: the word, the dropdowns, the chip. */
-  const narrowing = [courier, region, age].filter((v) => v !== 'all').length + (term.trim() ? 1 : 0) + (task !== 'all' ? 1 : 0);
+  const narrowing = [courier, region, age, said].filter((v) => v !== 'all').length + (term.trim() ? 1 : 0) + (task !== 'all' ? 1 : 0);
   const activeCount = narrowing + (status !== '' ? 1 : 0);
   /** A new question starts a new selection: the boxes ticked were on a page that is not on screen any more. */
   const choose = (set: (v: string) => void) => (v: string) => {
@@ -441,6 +452,7 @@ export function TrackingScreen() {
     setCourier('all');
     setRegion('all');
     setAge('all');
+    setSaid('all');
     setTask('all');
     setSelected({});
   };
@@ -490,6 +502,17 @@ export function TrackingScreen() {
               { value: 'all', label: 'أيّ مدّة' },
               ...AGES.map((a) => ({ value: a, label: `${AGE_AR[a]} (${facts.ages[a]})` })),
             ],
+          },
+          {
+            // What the company already says about the parcel — its own five words, each with how many parcels hold it.
+            key: 'said',
+            label: SAID_PREFIX,
+            value: said,
+            onChange: choose(setSaid),
+            options: withChosen(said, [
+              { value: 'all', label: 'أيّ كلمة' },
+              ...SAID_STATUSES.map((k) => ({ value: k, label: `${SAID_OPTION_AR[k]} (${facts.said[k]})` })),
+            ]),
           },
         ]
       : []),
@@ -803,6 +826,12 @@ export function TrackingScreen() {
                     />
                   )}
                   {/*
+                    WHAT THE COMPANY ALREADY SAYS, right under the reason the row is here: «الشركة بتقول: تم التوصيل» for a
+                    parcel our own state still shows on the road. Only drawn when the word disagrees with the state; it
+                    changes no rank, no chip and no state.
+                  */}
+                  {o.courierSaid && <CourierSaidChip said={o.courierSaid} />}
+                  {/*
                     On the desk the alert is a cell read at a glance beside
                     everything else. On a phone it is the card's notice, at the
                     top and full width with its own button — so this one is the
@@ -832,8 +861,12 @@ export function TrackingScreen() {
               // The «بلا باركود» chip is how the missing ones are found.
               hideOnPhone: true,
               render: (o) => (
-                <span dir="ltr" className="text-[var(--sys-muted-foreground)]">
-                  {o.trackingNumber ?? '—'}
+                // The barcode and, beside it, the one button that copies it (the reference when there is none).
+                <span className="inline-flex items-center gap-1">
+                  <span dir="ltr" className="text-[var(--sys-muted-foreground)]">
+                    {o.trackingNumber ?? '—'}
+                  </span>
+                  <ParcelCopy row={o} onRefused={copyRefused} />
                 </span>
               ),
             },
@@ -1113,6 +1146,13 @@ export function TrackingScreen() {
                 تحويل
               </button>
               )}
+              {/*
+                THE SAME COPY BUTTON, ON THE CARD. The barcode column is not drawn on a phone (it read «—» on most
+                cards), so the one tap to copy it lives here, in words — the desk has it in the column.
+              */}
+              <span className="md:hidden">
+                <ParcelCopy row={o} label onRefused={copyRefused} />
+              </span>
               {/* The third one, and the only one that settles nothing. */}
               <button
                 onClick={() => void addNote(o)}

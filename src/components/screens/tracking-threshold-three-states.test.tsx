@@ -47,6 +47,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/components/ui/Confirm', () => ({
   useAsk: () => async () => null,
   useConfirm: () => async () => false,
+  useTell: () => async () => undefined,
 }));
 // The three dialogs are other screens' subjects; none of them opens here.
 vi.mock('@/components/screens/tracking/TransferDialog', () => ({ TransferDialog: () => null }));

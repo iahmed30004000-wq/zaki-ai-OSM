@@ -66,3 +66,19 @@ export function phoneToCopy(shown: string | null | undefined): string {
 export function barcodeToCopy(shown: string | null | undefined): string {
   return clean(shown);
 }
+
+/**
+ * THE ONE BUTTON IN THE «الباركود» COLUMN OF THE SHIPMENT FOLLOW-UP: the courier's barcode, to paste on the courier's own
+ * site or send on; and when the parcel has none — a company that hands none out, or a parcel not sent yet — the reference
+ * the same site can be searched by instead: the merchant reference, else the order number (what the row prints as its
+ * number). `kind` says which, so the button can say so; `text` is what lands on the clipboard, cleaned like the rest.
+ */
+export function parcelIdToCopy(row: {
+  trackingNumber?: string | null;
+  merchantRef?: string | null;
+  orderNumber: string;
+}): { kind: 'barcode' | 'reference'; text: string } {
+  const barcode = barcodeToCopy(row.trackingNumber);
+  if (barcode) return { kind: 'barcode', text: barcode };
+  return { kind: 'reference', text: clean(row.merchantRef) || clean(row.orderNumber) };
+}
