@@ -36,20 +36,40 @@ export const SETTLING_WORDS: SettlingWords = {
     'بتتسوّى بس الأسطر اللي طابقت: بتصير عمولة طلباتها مستحقة وبينسحب مخزونها. ما بتتحرك أي مصاري، والأسطر اللي بدها بتّ بتضل تنتظر هي وطلباتها. لاحقاً بتضغط «إغلاق المطابقة» لباقي الطلبات.',
 };
 
+/**
+ * WHAT THE TIME STOP SAYS (the early step has a clock — `EARLY_STEP_BUDGET_MS` in `statement-close.ts`). Short, spoken, and it always says
+ * what to do next: the rest is settled by pressing the button again, or when the matching closes. Said only when the step stopped for time.
+ */
+const TIME_STOP = 'وقفت التسوية لأن الوقت خلص';
+
 /** What «سوّي الطلبات النظيفة هلّق» answers: how many were settled and how many were left for the close. */
-export function pressMessage(e: { settled: number; heldBack: number; remaining?: number }): string {
+export function pressMessage(e: { settled: number; heldBack: number; remaining?: number; failed?: boolean; stoppedForTime?: boolean }): string {
   if (e.settled === 0 && e.heldBack === 0 && !e.remaining) return 'ما في طلبات نظيفة بتنتظر التسوية';
   const left = e.heldBack > 0 ? `، و${e.heldBack} بقوا للإغلاق (تغيّر وضعهم)` : '';
+  // A slice that failed after others went through: what is done stays done, and the press says what is left to try again.
+  if (e.failed) return `تسوّى ${e.settled} طلب نظيف${left}، وبعدها تعذّرت تسوية الباقي (بقي ${e.remaining ?? 0}) — جرّب مرة تانية بعد شوي`;
+  if (e.stoppedForTime) {
+    const head = e.settled === 0 && e.heldBack === 0 ? 'ما لحق يتسوّى شي' : `تسوّى ${e.settled} طلب نظيف${left}`;
+    return `${head}. ${TIME_STOP} وبقي ${e.remaining ?? 0} نظيف — اضغط مرة تانية، أو بتتسوّى لما تتسكّر المطابقة`;
+  }
   const more = e.remaining ? `. بقي ${e.remaining} نظيف — اضغط مرة تانية` : '';
   return `تسوّى ${e.settled} طلب نظيف${left}${more}`;
 }
 
 /** What the approval says of its early step, in one sentence for the screen's toast. Empty when it had nothing to say. */
-export function earlyMessage(e: { ran: boolean; settled: number; heldBack: number; failed: boolean; remaining?: number }): string {
+export function earlyMessage(e: { ran: boolean; settled: number; heldBack: number; failed: boolean; remaining?: number; stoppedForTime?: boolean }): string {
   if (!e.ran) return '';
-  if (e.failed) return 'تعذّرت تسوية الطلبات النظيفة مع الاعتماد — بتتسوّى كلها عند «إغلاق المطابقة»';
-  if (e.settled === 0 && e.heldBack === 0 && !e.remaining) return '';
   const left = e.heldBack > 0 ? `، و${e.heldBack} بقوا للإغلاق (تغيّر وضعهم)` : '';
+  if (e.failed) {
+    // The first slice failed: nothing was settled, and it is said as it always was. A later one: what went through stays settled.
+    if (e.settled === 0 && e.heldBack === 0) return 'تعذّرت تسوية الطلبات النظيفة مع الاعتماد — بتتسوّى كلها عند «إغلاق المطابقة»';
+    return `تسوّى ${e.settled} طلب نظيف مع الاعتماد${left}، وبعدها تعذّرت تسوية الباقي — بتتسوّى عند «إغلاق المطابقة»`;
+  }
+  if (e.stoppedForTime) {
+    const head = e.settled === 0 && e.heldBack === 0 ? 'ما لحق يتسوّى شي مع الاعتماد' : `تسوّى ${e.settled} طلب نظيف مع الاعتماد${left}`;
+    return `${head}. ${TIME_STOP} وبقي ${e.remaining ?? 0} نظيف — زر «سوّي الطلبات النظيفة» أو بتتسوّى لما تتسكّر المطابقة`;
+  }
+  if (e.settled === 0 && e.heldBack === 0 && !e.remaining) return '';
   const more = e.remaining ? `. بقي ${e.remaining} نظيف — زر «سوّي الطلبات النظيفة»` : '';
   return `تسوّى ${e.settled} طلب نظيف مع الاعتماد${left}${more}`;
 }

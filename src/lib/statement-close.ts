@@ -30,6 +30,8 @@ type Tx = Prisma.TransactionClient | typeof db;
  * «سوّي الطلبات النظيفة هلّق» — by `settleCleanLines`, which calls `settleStatement` below on the clean rows with `early` set. The body is
  * the close's own, written once; a settled row is marked `appliedAt`, and the close then leaves those rows (and their orders) alone,
  * so the end of a statement is the same whichever way it went (`the-same-statement-ends-the-same-either-way.test.ts` holds that).
+ * It works in slices of a few orders and starts a new one only while the transaction's clock allows (`EARLY_STEP_BUDGET_MS`), so it
+ * can never be what runs the approval out of its timeout — the rows it did not reach wait for the press and the close.
  */
 
 /** The in-flight states a matched line promotes to «مُسلَّم» when the matching is closed. */
@@ -492,15 +494,48 @@ export interface EarlyRow {
 }
 
 /**
- * THE MOST CLEAN ROWS ONE EARLY STEP TAKES IN ONE TRANSACTION.
+ * THE MOST CLEAN ROWS ONE EARLY STEP TAKES IN ONE TRANSACTION — the second, total limit (the first is the clock, below).
  *
- * The approval is one transaction with a 30-second budget, and the early step does for each order what the close does — a claim, a
- * delivery, the stock (a dozen queries), the customer, the timeline. A statement of a thousand clean lines would spend that budget
- * and the transaction would time out, taking the MONEY with it: exactly what the brief forbids. So the step takes the first rows of
+ * The early step does for each order what the close does — a claim, a delivery, the stock (a dozen queries), the customer, the
+ * timeline. A statement of a thousand clean lines is far more than one transaction should carry, so the step takes the first rows of
  * the file up to this number and says how many are left (`remaining`); those are settled by the close as ever, or by the press
  * «سوّي الطلبات النظيفة هلّق», which takes the next of them in its own transaction. A real statement is a hundred or two lines.
  */
 export const EARLY_STEP_CAP = 300;
+
+/**
+ * THE EARLY STEP HAS A CLOCK — the money reviewer's RV1830 on the first version of the step.
+ *
+ * The approval (and the press) is ONE database transaction with a hard timeout. When that runs out every later query of the
+ * transaction throws — `ROLLBACK TO SAVEPOINT` included — so a savepoint cannot save it: the WHOLE approval, the money with it, is rolled
+ * back and the owner gets a generic error. The cap alone was no protection: an order in flight costs 15 to 23 queries (measured on the
+ * real code in a strict world: one, two, three item lines), so the 300 of the cap are 4.5 to 6.9 thousand queries — 5 to 14 seconds at one
+ * or two milliseconds a query, and over the timeout from 4.3 to 6.6 milliseconds a query.
+ *
+ * So the step works in SLICES of `EARLY_STEP_SLICE` orders, each in a savepoint of its own, and STARTS a new slice only while less than
+ * `EARLY_STEP_BUDGET_MS` of the transaction has passed — counted from the first line of the transaction (`startedAt`), so the money loop
+ * and whatever came before the step are in the count. A slice that has started is never cut short: it is complete, or it is undone. The
+ * worst case is therefore the budget + ONE slice + the commit; with 10 s + 25 orders of three item lines (584 queries measured) that stays
+ * under the timeout up to about 34 ms a query whatever the alignment of the slices — against the 4 ms at which the step without a clock
+ * broke (slices of equal cost live to about 50 ms in the strict world, where one slice alone fills the timeout). What the clock does not
+ * reach, it leaves unmarked: the press (or the close) settles it exactly as it settles anything the step did not take.
+ */
+export const EARLY_STEP_BUDGET_MS = 10_000;
+/** Orders in one slice: the unit of work, of atomicity (one savepoint, its marks inside it) and of the clock's check. */
+export const EARLY_STEP_SLICE = 25;
+
+/**
+ * HOW LONG ONE LOCK WAIT MAY LAST INSIDE A SLICE (the money reviewer's RV1834).
+ *
+ * The step takes row locks on orders, customers and stock batches. Another door holding the same rows (the bulk «استلم», a hand delivery,
+ * the courier's hook, another statement) would make a query WAIT, and the wait is paid out of the transaction's 30 seconds. Inside a slice a
+ * wait longer than this is an error of the slice — undone to its savepoint, absorbed, the rest left for the press — instead of an approval
+ * that dies. It is set with `set_config(…, true)`, the parameterised form of `SET LOCAL`, AFTER the slice's savepoint and put back BEFORE its
+ * release: a failed slice takes the setting down with it (Postgres undoes a setting made after a savepoint when it rolls back to it), a
+ * released one has already been given back its value, so nothing of it reaches the rest of the transaction. And only when the lock
+ * timeout is off ('0') to begin with: a limit somebody set on purpose is never loosened or replaced.
+ */
+export const EARLY_STEP_LOCK_WAIT = '3s';
 
 export interface EarlyOutcome {
   /** There were clean rows waiting and the step went through them. */
@@ -510,13 +545,23 @@ export interface EarlyOutcome {
   delivered: number;
   /** Orders left for the close — nothing was written for them. */
   heldBack: number;
-  /** Clean rows beyond `EARLY_STEP_CAP`: not looked at, still waiting. */
+  /** Clean rows not taken now: beyond `EARLY_STEP_CAP`, or not reached because the clock (or a failed slice) stopped the step. Still waiting. */
   remaining: number;
-  /** The step met an error nobody expected: it was undone to the last write and every row waits for the close. */
+  /** The step met an error nobody expected: the slice it was in was undone to its savepoint and its rows (and those after it) wait for the close. */
   failed: boolean;
   /** The error's name only — never its message, which can carry a value. */
   failure: string | null;
   rows: EarlyRow[];
+  /** Present (true) only when the step stopped because its share of the transaction's time was spent; the rows it did not reach wait. */
+  stoppedForTime?: boolean;
+}
+
+/** The clock the early step reads — the transaction's start and `now`. Both are optional: a direct call times itself from its own start. */
+export interface EarlyStepClock {
+  /** `Date.now()` taken at the FIRST line of the transaction that carries the step. Absent: the moment the step itself began. */
+  startedAt?: number;
+  /** The clock; `Date.now` unless a test drives its own. */
+  now?: () => number;
 }
 
 /** The rows the early step is for: clean (a figure on both sides agrees), with an order, and not settled early already. */
@@ -541,6 +586,8 @@ export function earlyAnswer(e: EarlyOutcome) {
     failed: e.failed,
     ...(e.remaining > 0 ? { remaining: e.remaining } : {}),
     ...(e.failed ? { failure: e.failure } : {}),
+    // Said only when it happened: the step ran out of its share of the transaction's time, and the rest waits for the press.
+    ...(e.stoppedForTime ? { stoppedForTime: true } : {}),
     // The one sentence the screen shows after the press (empty when there was nothing to say).
     message: earlyMessage(e),
   };
@@ -562,56 +609,130 @@ export function earlyAnswer(e: EarlyOutcome) {
  *
  * ── IT CAN NEVER STOP THE APPROVAL ──
  *
- * It runs inside a SAVEPOINT. A changed order is not an error (above). Anything else — a deadlock, a stock write that the
- * database refuses, a bug — is undone to the savepoint and reported (`failed`): the rows stay unmarked, the approval goes on
- * with its money, and the close settles them later as it always would. The approval's money is written BEFORE this runs.
+ * Every slice runs inside a SAVEPOINT of its own. A changed order is not an error (above). Anything else — a deadlock, a stock write
+ * that the database refuses, a lock that was waited for too long, a bug — undoes THAT SLICE to its savepoint and is reported (`failed`):
+ * the slices before it stay applied (each is complete, and its marks were written inside it, in the same breath as its settlements), the
+ * slices after it are not started, and the rows of all of them stay unmarked for the press and the close, which settle them as they
+ * settle anything the step did not take. The approval goes on with its money, which was written BEFORE this runs.
+ *
+ * And it can never SPEND the approval: it starts a slice only while the transaction's clock (`EARLY_STEP_BUDGET_MS`, counted from
+ * `startedAt`) says there is time, and says so on the outcome (`stoppedForTime`) when it stopped for that. See `EARLY_STEP_BUDGET_MS`.
  *
  * The caller holds the statement (the approval's claim, or the lock of the on-demand door) and passes the rows it read INSIDE
  * that transaction, so no door can change a row between the read and the write.
  */
 export async function settleCleanLines(
   tx: Tx,
-  p: Omit<CloseInput, 'matches' | 'shortfallPeople' | 'early'> & { matches: CloseRow[]; at?: Date }
+  p: Omit<CloseInput, 'matches' | 'shortfallPeople' | 'early'> & EarlyStepClock & { matches: CloseRow[]; at?: Date }
 ): Promise<EarlyOutcome> {
   const waiting = cleanPendingRows(p.matches);
   if (waiting.length === 0) return { ran: false, settled: 0, delivered: 0, heldBack: 0, remaining: 0, failed: false, failure: null, rows: [] };
   const clean = waiting.slice(0, EARLY_STEP_CAP);
-  const remaining = waiting.length - clean.length;
 
-  await tx.$executeRaw`SAVEPOINT per_line_settlement`;
-  try {
-    const result = await settleStatement(tx, { ...p, matches: clean, early: { at: p.at ?? new Date() } });
+  // THE CLOCK. A time that cannot be read, or a start that is not a time, says the time is up: it never lets the step run unwatched.
+  const clock = p.now ?? Date.now;
+  const startedAt = p.startedAt ?? clock();
+  const spent = (): number => {
+    const t = clock();
+    return Number.isFinite(t) && Number.isFinite(startedAt) ? t - startedAt : Number.POSITIVE_INFINITY;
+  };
 
-    // Why each left order was left: asked of the orders as they are NOW, after the claims, which only ever touched the others.
-    const why = new Map<string, string>();
-    if (result.heldBack.length > 0) {
-      // (The statement's own store: an order of another store is not one this statement can be about.)
-      const left = await tx.order.findMany({
-        where: { id: { in: result.heldBack }, companyId: p.companyId, storeId: p.storeId },
-        select: { id: true, settlementStatus: true },
-      });
-      for (const o of Array.isArray(left) ? left : []) {
-        why.set(o.id, o.settlementStatus === 'SETTLED' ? HELD_BACK_WHY.settled : HELD_BACK_WHY.openRequest);
-      }
+  // The orders of the clean rows in the order of the file. A slice is the next EARLY_STEP_SLICE of them with EVERY row that names them,
+  // so an order two lines name travels whole — a later slice never meets a row of an order an earlier slice already settled.
+  const orderIds = [...new Set(clean.map((m) => m.orderId as string))];
+  const at = p.at ?? new Date();
+  const input = { companyId: p.companyId, storeId: p.storeId, userId: p.userId, minorUnit: p.minorUnit, statement: p.statement };
+
+  let settled = 0;
+  let delivered = 0;
+  /** The orders of the slices that went through, and of them those the claim could not take (with the reason). */
+  const reached = new Set<string>();
+  const heldBack = new Map<string, string>();
+  let failed = false;
+  let failure: string | null = null;
+  let stoppedForTime = false;
+  let limitLockWait: boolean | undefined;
+
+  for (let from = 0; from < orderIds.length; from += EARLY_STEP_SLICE) {
+    // The ONE place the clock decides: before a slice starts, never inside it.
+    if (!(spent() < EARLY_STEP_BUDGET_MS)) {
+      stoppedForTime = true;
+      break;
     }
-    const left = new Set(result.heldBack);
-    const rows: EarlyRow[] = clean.map((m) => ({
+    const these = new Set(orderIds.slice(from, from + EARLY_STEP_SLICE));
+    const rows = clean.filter((m) => these.has(m.orderId as string));
+
+    await tx.$executeRaw`SAVEPOINT per_line_settlement`;
+    try {
+      // (Asked once, inside the first savepoint: a failure of the question is a failure of the slice, like any other.)
+      if (limitLockWait === undefined) limitLockWait = await lockTimeoutIsOff(tx);
+      if (limitLockWait) await setLockTimeout(tx, EARLY_STEP_LOCK_WAIT);
+
+      const result = await settleStatement(tx, { ...input, matches: rows, early: { at } });
+
+      // Why each left order was left: asked of the orders as they are NOW, after the claims, which only ever touched the others.
+      const why = new Map<string, string>();
+      if (result.heldBack.length > 0) {
+        // (The statement's own store: an order of another store is not one this statement can be about.)
+        const left = await tx.order.findMany({
+          where: { id: { in: result.heldBack }, companyId: p.companyId, storeId: p.storeId },
+          select: { id: true, settlementStatus: true },
+        });
+        for (const o of Array.isArray(left) ? left : []) {
+          why.set(o.id, o.settlementStatus === 'SETTLED' ? HELD_BACK_WHY.settled : HELD_BACK_WHY.openRequest);
+        }
+      }
+
+      // Given back BEFORE the release: a setting made inside a savepoint outlives its release, so it is put right while it is still inside.
+      if (limitLockWait) await setLockTimeout(tx, LOCK_TIMEOUT_OFF);
+      await tx.$executeRaw`RELEASE SAVEPOINT per_line_settlement`;
+
+      // Counted only now that the savepoint is released: a slice that did not get here is undone, and counts for nothing.
+      settled += result.settledCount;
+      delivered += result.deliveredCount;
+      for (const id of these) reached.add(id);
+      for (const id of result.heldBack) heldBack.set(id, why.get(id) ?? HELD_BACK_WHY.changed);
+    } catch (e) {
+      await tx.$executeRaw`ROLLBACK TO SAVEPOINT per_line_settlement`;
+      // The name and the database's own code only: a message can carry a value, and a log is no place for a customer's.
+      failure = e instanceof Error ? e.name : 'Error';
+      console.error('[per-line-settlement] a slice of the early step was undone; its rows and the ones after it wait for the close:', failure, (e as { code?: unknown } | null)?.code ?? '');
+      failed = true;
+      break;
+    }
+  }
+
+  // The per-row report, in the order of the file: the rows of the slices that went through (a row that was not reached is not on it).
+  const rows: EarlyRow[] = clean
+    .filter((m) => reached.has(m.orderId as string))
+    .map((m) => ({
       matchId: m.id,
       orderId: m.orderId as string,
       orderNumber: m.order?.orderNumber ?? (m.orderId as string),
-      outcome: left.has(m.orderId as string) ? 'HELD_BACK' : 'SETTLED',
-      why: left.has(m.orderId as string) ? why.get(m.orderId as string) ?? HELD_BACK_WHY.changed : null,
+      outcome: heldBack.has(m.orderId as string) ? 'HELD_BACK' : 'SETTLED',
+      why: heldBack.get(m.orderId as string) ?? null,
     }));
+  return {
+    ran: true, settled, delivered, heldBack: heldBack.size,
+    // Beyond the cap, plus the rows of the slices that were not reached (the clock stopped the step, or a slice failed).
+    remaining: waiting.length - rows.length,
+    failed, failure, rows,
+    ...(stoppedForTime ? { stoppedForTime: true } : {}),
+  };
+}
 
-    await tx.$executeRaw`RELEASE SAVEPOINT per_line_settlement`;
-    return { ran: true, settled: result.settledCount, delivered: result.deliveredCount, heldBack: result.heldBack.length, remaining, failed: false, failure: null, rows };
-  } catch (e) {
-    await tx.$executeRaw`ROLLBACK TO SAVEPOINT per_line_settlement`;
-    // The name and the database's own code only: a message can carry a value, and a log is no place for a customer's.
-    const name = e instanceof Error ? e.name : 'Error';
-    console.error('[per-line-settlement] the early step was undone; its rows wait for the close:', name, (e as { code?: unknown } | null)?.code ?? '');
-    return { ran: true, settled: 0, delivered: 0, heldBack: 0, remaining: waiting.length, failed: true, failure: name, rows: [] };
-  }
+/** The database's lock timeout as it stands when it is OFF: a wait for a lock has no end. */
+const LOCK_TIMEOUT_OFF = '0';
+
+/** Is the lock timeout off for this transaction? Anything else — a limit somebody set on purpose, or no answer — is left exactly as it is. */
+async function lockTimeoutIsOff(tx: Tx): Promise<boolean> {
+  const answer = await tx.$queryRaw<{ value?: unknown }[]>`SELECT current_setting('lock_timeout') AS "value"`;
+  return Array.isArray(answer) && answer[0]?.value === LOCK_TIMEOUT_OFF;
+}
+
+/** `SET LOCAL lock_timeout`, in its parameterised form (a `SET` cannot take a parameter; this function can): gone with the transaction. */
+async function setLockTimeout(tx: Tx, value: string): Promise<void> {
+  await tx.$queryRaw`SELECT set_config('lock_timeout', ${value}, true)`;
 }
 
 /** Each employee hears of a «فرق تحصيل» once the close is committed — never from a transaction that might roll back. */

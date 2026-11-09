@@ -1088,7 +1088,8 @@ describe('the engine called directly — the early step takes the clean rows and
     expect(out).toMatchObject({ ran: true, failed: true, failure: 'Error', settled: 0 });
     expect(settledIds()).toEqual([]);
     expect(world.orders.get('oA')!.shippingStatus).toBe('SHIPPED');
-    expect(world.sql).toEqual(['SAVEPOINT per_line_settlement', 'ROLLBACK TO SAVEPOINT per_line_settlement']);
+    // (The savepoint statements only: the slice also asks the database one question about its lock timeout — see the-early-step-has-a-clock.test.ts.)
+    expect(world.sql.filter((s) => /SAVEPOINT/.test(s))).toEqual(['SAVEPOINT per_line_settlement', 'ROLLBACK TO SAVEPOINT per_line_settlement']);
   });
 
   it('the close called directly with only applied rows makes no claim at all and settles nothing', async () => {

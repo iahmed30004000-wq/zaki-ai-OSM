@@ -304,6 +304,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     let approved;
     try {
       approved = await db.$transaction(async (tx) => {
+      // WHEN THIS TRANSACTION BEGAN — the early step is given a share of the timeout below, counted from here (`settleCleanLines`).
+      const startedAt = Date.now();
       /**
        * ONE APPROVAL, HOWEVER MANY PRESSES.
        *
@@ -498,7 +500,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       let early: EarlyOutcome | null = null;
       if (openLines > 0 && perLine) {
         early = await settleCleanLines(tx, {
-          companyId, storeId, userId: user.id, minorUnit: country.minorUnit, at: approvedAt,
+          companyId, storeId, userId: user.id, minorUnit: country.minorUnit, at: approvedAt, startedAt,
           statement: {
             id, reference: statement.reference, currencyCode: statement.currencyCode,
             createdAt: statement.createdAt, periodTo: statement.periodTo,
