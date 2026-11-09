@@ -106,6 +106,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         expectedAmount: true,
         statementAmount: true,
         difference: true,
+        // The company's own word on this line: the matrix reads it (a parcel they call «partial» that we never recorded so).
+        statementLine: { select: { status: true } },
         statement: { select: { reference: true } },
         order: { select: { orderNumber: true } },
       },
@@ -173,6 +175,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
                 expectedAmount: match.expectedAmount === null ? null : Number(match.expectedAmount),
                 statementAmount: match.statementAmount === null ? null : Number(match.statementAmount),
                 approvedAt: statement.matchingClosedAt,
+                status: match.statementLine?.status ?? null,
               },
             ],
           });
