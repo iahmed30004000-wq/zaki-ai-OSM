@@ -87,6 +87,9 @@ const { db, world, requireContext, requirePermission, logAudit, recordMovement, 
     return true;
   };
   const log = (op: string, args: unknown) => world.log.push({ op, args });
+  /** What a database does with `select`: only the columns asked for come back — a door that forgets one does not see it. */
+  const pick = (r: WRow, select?: Record<string, unknown>) =>
+    select ? Object.fromEntries(Object.keys(select).map((k) => [k, r[k]])) : r;
   const snapshot = () =>
     structuredClone({
       statement: world.statement, rows: world.rows, orders: world.orders, customers: world.customers, activities: world.activities,
@@ -98,13 +101,16 @@ const { db, world, requireContext, requirePermission, logAudit, recordMovement, 
     world.activities = s.activities; world.movements = s.movements; world.payable = s.payable; world.stock = s.stock;
     world.penalties = s.penalties; world.audits = s.audits; world.log = s.log;
   };
-  const statementRead = () => ({
-    ...world.identity, gapExplanation: null,
-    createdAt: new Date('2026-10-20T10:00:00Z'), periodTo: new Date('2026-10-20T00:00:00Z'),
-    ...world.statement,
-    receipts: world.receipts,
-    matches: world.rows,
-  });
+  const statementRead = (a?: { include?: { matches?: { select?: Record<string, unknown> } }; select?: { matches?: { select?: Record<string, unknown> } } }) => {
+    const sel = a?.include?.matches?.select ?? a?.select?.matches?.select;
+    return {
+      ...world.identity, gapExplanation: null,
+      createdAt: new Date('2026-10-20T10:00:00Z'), periodTo: new Date('2026-10-20T00:00:00Z'),
+      ...world.statement,
+      receipts: world.receipts,
+      matches: world.rows.map((r) => pick(r, sel)),
+    };
+  };
 
   const db = {
     company: {
@@ -114,7 +120,7 @@ const { db, world, requireContext, requirePermission, logAudit, recordMovement, 
       }),
     },
     courierStatement: {
-      findFirst: vi.fn(async () => statementRead()),
+      findFirst: vi.fn(async (a?: never) => statementRead(a)),
       /** The conditional writes of both stamps, one winner each, exactly as the WHERE says. */
       updateMany: vi.fn(async ({ where, data }: { where: Record<string, any>; data: Record<string, any> }) => {
         const st = world.statement;
@@ -128,9 +134,9 @@ const { db, world, requireContext, requirePermission, logAudit, recordMovement, 
       }),
     },
     settlementMatch: {
-      findMany: vi.fn(async ({ where }: { where: Record<string, any> }) => {
+      findMany: vi.fn(async ({ where, select }: { where: Record<string, any>; select?: Record<string, unknown> }) => {
         for (const key of Object.keys(where)) if (!['statementId', 'companyId'].includes(key)) throw new Error('the fake does not know: ' + key);
-        return world.rows;
+        return world.rows.map((r) => pick(r, select));
       }),
       updateMany: vi.fn(async ({ where, data }: { where: Record<string, any>; data: Record<string, any> }) => {
         const hit = world.rows.filter((r) => rowMatches(r, where));
@@ -1008,7 +1014,7 @@ describe('the early step writes no money and changes no rule — read from the s
   });
 
   it('the sentences of the new words live on the server alone — no component imports them', () => {
-    const found = spawnSync('git', ['grep', '-lE', "from ['\"].*per-line-settlement-words", '--', 'src/components'], { cwd: process.cwd(), encoding: 'utf8' });
+    const found = spawnSync('git', ['grep', '-lE', "from ['\"].*per-line-settlement-words", '--', 'src/components', ':!*.test.ts', ':!*.test.tsx'], { cwd: process.cwd(), encoding: 'utf8' });
     expect(found.stdout.trim()).toBe('');
   });
 });

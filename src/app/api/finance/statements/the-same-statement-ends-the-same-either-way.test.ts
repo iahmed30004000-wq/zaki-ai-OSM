@@ -87,19 +87,25 @@ const { db, world, requireContext, requirePermission, logAudit, recordMovement, 
     }
     return true;
   };
+  /** What a database does with `select`: only the columns asked for come back — a door that forgets one does not see it. */
+  const pick = (r: WRow, select?: Record<string, unknown>) =>
+    select ? Object.fromEntries(Object.keys(select).map((k) => [k, r[k]])) : r;
   const snapshot = () =>
     structuredClone({
       statement: world.statement, rows: world.rows, orders: world.orders, customers: world.customers, activities: world.activities,
       movements: world.movements, payable: world.payable, stock: world.stock, penalties: world.penalties,
     });
   const restore = (s: any) => Object.assign(world, s);
-  const statementRead = () => ({
-    ...world.identity, gapExplanation: null,
-    createdAt: new Date('2026-10-20T10:00:00Z'), periodTo: new Date('2026-10-20T00:00:00Z'),
-    ...world.statement,
-    receipts: world.receipts,
-    matches: world.rows,
-  });
+  const statementRead = (a?: { include?: { matches?: { select?: Record<string, unknown> } }; select?: { matches?: { select?: Record<string, unknown> } } }) => {
+    const sel = a?.include?.matches?.select ?? a?.select?.matches?.select;
+    return {
+      ...world.identity, gapExplanation: null,
+      createdAt: new Date('2026-10-20T10:00:00Z'), periodTo: new Date('2026-10-20T00:00:00Z'),
+      ...world.statement,
+      receipts: world.receipts,
+      matches: world.rows.map((r) => pick(r, sel)),
+    };
+  };
 
   const db = {
     company: {
@@ -108,7 +114,7 @@ const { db, world, requireContext, requirePermission, logAudit, recordMovement, 
       }),
     },
     courierStatement: {
-      findFirst: async () => statementRead(),
+      findFirst: async (a?: never) => statementRead(a),
       updateMany: async ({ where, data }: { where: Record<string, any>; data: Record<string, any> }) => {
         const st = world.statement;
         if ('approvedAt' in where && where.approvedAt === null && st.approvedAt) return { count: 0 };
@@ -121,9 +127,9 @@ const { db, world, requireContext, requirePermission, logAudit, recordMovement, 
       },
     },
     settlementMatch: {
-      findMany: async ({ where }: { where: Record<string, any> }) => {
+      findMany: async ({ where, select }: { where: Record<string, any>; select?: Record<string, unknown> }) => {
         for (const key of Object.keys(where)) if (!['statementId', 'companyId'].includes(key)) throw new Error('the fake does not know: ' + key);
-        return world.rows;
+        return world.rows.map((r) => pick(r, select));
       },
       updateMany: async ({ where, data }: { where: Record<string, any>; data: Record<string, any> }) => {
         const hit = world.rows.filter((r) => rowMatches(r, where));

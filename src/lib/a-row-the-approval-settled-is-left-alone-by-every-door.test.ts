@@ -165,11 +165,16 @@ const { ddb, dworld, requireContext, requirePermission, logAudit } = vi.hoisted(
     writes: [] as Record<string, any>[],
     notes: [] as unknown[],
   };
+  /** What a database does with `select`: only the columns asked for come back — a door that forgets one does not see it. */
+  const pick = (r: Record<string, any> | null, select?: Record<string, unknown>) =>
+    r && select ? Object.fromEntries(Object.keys(select).map((k) => [k, r[k]])) : r;
   const ddb = {
     courierStatement: { findFirst: vi.fn(async () => dworld.statement) },
     settlementMatch: {
-      findFirst: vi.fn(async () => dworld.match),
-      findMany: vi.fn(async (a: { where: Record<string, any> }) => (a.where.OR ? [] : dworld.matches)),
+      findFirst: vi.fn(async (a: { select?: Record<string, unknown> }) => pick(dworld.match, a?.select)),
+      findMany: vi.fn(async (a: { where: Record<string, any>; select?: Record<string, unknown> }) =>
+        a.where.OR ? [] : dworld.matches.map((r) => pick(r, a.select))
+      ),
       updateMany: vi.fn(async (a: { where: Record<string, any>; data: Record<string, any> }) => {
         dworld.writes.push(a);
         return { count: 1 };
@@ -288,6 +293,10 @@ describe('the bulk answer door', () => {
 import { linkLineToOrder, LinkRefused } from './hand-link';
 import { findSwapCandidates, recordParcelSwap } from './parcel-swap';
 
+/** What a database does with `select`: only the columns asked for come back — a door that forgets one does not see it. */
+const pickOf = (r: Record<string, any> | null, select?: Record<string, unknown>) =>
+  r && select ? Object.fromEntries(Object.keys(select).map((k) => [k, r[k]])) : r;
+
 function tx(over: { match: Record<string, any> | null }) {
   return {
     $queryRaw: vi.fn(async () => []),
@@ -297,7 +306,12 @@ function tx(over: { match: Record<string, any> | null }) {
         currencyCode: 'JOD', fileHash: 'ab'.repeat(32), periodTo: null, storeId: 's1',
       })),
     },
-    settlementMatch: { findFirst: vi.fn(async () => over.match), findMany: vi.fn(async () => []), updateMany: vi.fn(), count: vi.fn(async () => 0) },
+    settlementMatch: {
+      findFirst: vi.fn(async (a?: { select?: Record<string, unknown> }) => pickOf(over.match, a?.select)),
+      findMany: vi.fn(async () => []),
+      updateMany: vi.fn(),
+      count: vi.fn(async () => 0),
+    },
     order: { findFirst: vi.fn(async () => ({ id: 'o1', orderNumber: 'ORD-1' })), findMany: vi.fn(async () => []) },
   };
 }
