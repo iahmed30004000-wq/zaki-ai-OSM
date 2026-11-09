@@ -380,6 +380,28 @@ describe('7 · a press that wins the race wins', () => {
     const spy = (db as unknown as { order: { updateMany: { mock: { calls: Row[][] } } } }).order.updateMany;
     await releaseIdleReturns(db as never, scope, mode);
     const guard = spy.mock.calls[0][0].where;
-    expect(guard).toMatchObject({ id: o.id, claimedById: 'sara', claimedAt: expect.any(Date), shippingStatus: 'NOT_READY', shippingBatchId: null, trackingNumber: null, labelPrintedAt: null });
+    expect(guard).toMatchObject({
+      id: o.id, claimedById: 'sara', claimedAt: expect.any(Date), shippingStatus: 'NOT_READY', shippingBatchId: null, trackingNumber: null, labelPrintedAt: null,
+      // …and `nothing logged since the cut` is asked AGAIN at the write, not only at the read.
+      contactAttempts: { none: { createdAt: { gt: mode.idleCut } } },
+    });
+  });
+
+  it('a press of «اتصل» that lands between the read and the write keeps the order in her hand — and tells nobody it went', async () => {
+    const o = held(60, []);
+    const mode = (await readReturnsMode(db as never, 'c1', { now: NOW, calendar: () => JO, rounds: ON }))!;
+    // The gap: she dialled after the read. The database evaluates the write’s own filter, as it would.
+    (db as unknown as { order: { updateMany: { mockImplementationOnce: (f: (q: Row) => Promise<{ count: number }>) => void } } }).order.updateMany.mockImplementationOnce(
+      async ({ where, data }: Row) => {
+        o.contactAttempts.push(att(NOW, 'OPENED'));
+        const hit = world.orders.filter((r) => matches(r, where));
+        for (const r of hit) Object.assign(r, data);
+        return { count: hit.length };
+      }
+    );
+    expect(await releaseIdleReturns(db as never, scope, mode)).toBe(0);
+    expect(o.claimedById).toBe('sara');
+    expect(world.history).toHaveLength(0);
+    expect(world.notices).toHaveLength(0);
   });
 });

@@ -956,6 +956,11 @@ export async function returnToThePool(
     reason: ReturnsReason;
     /** The claim the caller read — the idle release guards on it, so a claim made again since is not released. */
     claimedAt?: Date | null;
+    /**
+     * The idle release asks its own question AGAIN at the write: no attempt of any kind logged after this instant. A press of «اتصل»
+     * that lands between its read and its write keeps the order in her hand — a release never takes an order out of a call in progress.
+     */
+    notLoggedSince?: Date;
   }
 ): Promise<boolean> {
   const done = await tx.order.updateMany({
@@ -964,6 +969,7 @@ export async function returnToThePool(
       companyId: args.companyId,
       claimedById: args.holderId,
       ...(args.claimedAt ? { claimedAt: args.claimedAt } : {}),
+      ...(args.notLoggedSince ? { contactAttempts: { none: { createdAt: { gt: args.notLoggedSince } } } } : {}),
       confirmationStatus: { in: OPEN_CONFIRMATION },
       shippingStatus: 'NOT_READY',
       shippingBatchId: null,
@@ -1054,6 +1060,7 @@ export async function releaseIdleReturns(tx: Tx, scope: QueueScope, returns: Ret
       holderId: row.claimedById!,
       reason: IDLE_RETURNED_REASON,
       claimedAt: row.claimedAt,
+      notLoggedSince: returns.idleCut,
     });
     if (!gone) continue;
     told.push({ holderId: row.claimedById!, orderNumber: row.orderNumber });
