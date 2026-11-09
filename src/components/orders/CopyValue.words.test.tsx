@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, configure, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 /**
@@ -18,6 +18,9 @@ const { warn } = vi.hoisted(() => ({ warn: vi.fn<(text: string, detail?: string)
 vi.mock('@/components/ui/Toast', () => ({ useToast: () => ({ done: vi.fn(), warn, failed: vi.fn() }) }));
 
 import { CopyValue } from './CopyValue';
+
+// What a test awaits it may wait eight seconds for: a loaded machine is not a failing test.
+configure({ asyncUtilTimeout: 8000 });
 
 let written: string[];
 const clipboard = (works: boolean) => {

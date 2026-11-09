@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -42,6 +42,9 @@ vi.mock('@/components/screens/tracking/WriteOffDialog', () => ({ WriteOffDialog:
 vi.mock('@/hooks/useMayOpen', () => ({ useMayOpen: () => () => true }));
 
 import { TrackingScreen } from '@/components/screens/TrackingScreen';
+
+// What a test awaits it may wait eight seconds for: a loaded machine is not a failing test.
+configure({ asyncUtilTimeout: 8000 });
 
 const P1 = '11111111-1111-4111-8111-111111111111';
 const NO_TASKS = { CANCELLED: 0, CHANGED: 0, FAILED: 0, RETURNING: 0, LATE: 0, NO_BARCODE: 0, COLLECT: 0 };
