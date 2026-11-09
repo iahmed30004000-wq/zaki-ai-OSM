@@ -12,6 +12,7 @@ import {
   trackingFilters,
 } from './filters';
 import { SHIPPING_STATUS_AR } from '../shipping-workflow';
+import { SAID_STATUSES } from '../couriers/courier-said';
 import { URGENCIES } from './priority';
 import { repoFile, stripComments } from '../guard-source';
 
@@ -29,12 +30,12 @@ const REGION = '33333333-3333-4333-8333-333333333333';
 
 describe('nothing chosen', () => {
   it('— is the screen’s own job description: the default state, no chip, no company, no governorate, no age, no word', () => {
-    expect(ask()).toEqual({ ok: true, applied: { status: DEFAULT_STATUS, task: null, courier: null, region: null, age: null, product: null, q: null } });
+    expect(ask()).toEqual({ ok: true, applied: { status: DEFAULT_STATUS, task: null, courier: null, region: null, age: null, said: null, product: null, q: null } });
   });
 
   it('and «all» and blanks are no choice — except in the state, where `all` keeps the meaning it always had', () => {
-    for (const q of ['task=all', 'courier=all', 'region=all', 'age=all', 'task=', 'courier=%20', 'q=%20%20']) {
-      expect(ask(q), q).toEqual({ ok: true, applied: { status: DEFAULT_STATUS, task: null, courier: null, region: null, age: null, product: null, q: null } });
+    for (const q of ['task=all', 'courier=all', 'region=all', 'age=all', 'said=all', 'task=', 'courier=%20', 'said=%20', 'q=%20%20']) {
+      expect(ask(q), q).toEqual({ ok: true, applied: { status: DEFAULT_STATUS, task: null, courier: null, region: null, age: null, said: null, product: null, q: null } });
     }
   });
 });
@@ -125,6 +126,38 @@ describe('the company, the governorate and the age', () => {
     const r = ask('age=ancient');
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toBe('Unknown age: ancient');
+  });
+});
+
+describe('what the company says', () => {
+  it('— is one of the five words a poll keeps, or no choice: «all», blanks and nothing are none', () => {
+    expect([...SAID_STATUSES]).toEqual(['DELIVERED', 'PARTIALLY_DELIVERED', 'RETURNED', 'CANCELLED', 'FAILED_DELIVERY']);
+    for (const said of SAID_STATUSES) expect(ask(`said=${said}`), said).toMatchObject({ ok: true, applied: { said } });
+    for (const q of ['said=all', 'said=', 'said=%20', '']) expect(ask(q), q).toMatchObject({ ok: true, applied: { said: null } });
+  });
+
+  it('and spaces around a word are trimmed, as for every other choice', () => {
+    expect(ask('said=%20RETURNED%20')).toMatchObject({ ok: true, applied: { said: 'RETURNED' } });
+  });
+
+  it('and what is not one of the five is refused in Arabic, saying which — a raw code of the company, a state of ours, a case, a word', () => {
+    // Not a quiet «everything», and not an empty list answered as if it were true.
+    for (const bad of ['DELIVERED_TO_RECIPIENT', 'POSTPONED_DELIVERY', 'SHIPPED', 'OUT_FOR_DELIVERY', 'RETURN_REQUESTED', 'delivered', 'none', 'NONE', 'IN_TRANSIT', '1', 'سُلِّمت']) {
+      const r = ask(`said=${encodeURIComponent(bad)}`);
+      expect(r.ok, bad).toBe(false);
+      if (!r.ok) {
+        expect(r.errorAr, bad).toBe(`كلمة الشركة غير معروف: ${bad}`);
+        expect(r.error, bad).toBe(`Unknown said: ${bad}`);
+      }
+    }
+  });
+
+  it('and it is one more choice among the others — the order of the parameters is still no part of the question', () => {
+    expect(JSON.stringify(ask('said=DELIVERED&age=old&courier=none&task=LATE'))).toBe(JSON.stringify(ask('task=LATE&courier=none&age=old&said=DELIVERED')));
+    expect(ask(`said=CANCELLED&courier=${COURIER}&region=${REGION}&age=week&task=COLLECT&status=DELIVERED&q=ab`)).toEqual({
+      ok: true,
+      applied: { status: 'DELIVERED', task: 'COLLECT', courier: COURIER, region: REGION, age: 'week', said: 'CANCELLED', product: null, q: 'ab' },
+    });
   });
 });
 

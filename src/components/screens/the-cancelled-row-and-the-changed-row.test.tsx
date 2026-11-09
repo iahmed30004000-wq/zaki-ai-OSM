@@ -34,6 +34,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/components/ui/Confirm', () => ({
   useAsk: () => async () => null,
   useConfirm: () => async () => false,
+  useTell: () => async () => undefined,
 }));
 vi.mock('@/components/screens/tracking/TransferDialog', () => ({ TransferDialog: () => null }));
 vi.mock('@/components/screens/tracking/CollectDialog', () => ({ CollectDialog: () => null }));

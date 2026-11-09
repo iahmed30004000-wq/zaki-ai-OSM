@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { LEAN_CAP, LEAN_SELECT, NO_COURIER_AR, NO_REGION_AR, TRACKING_ORDER_BY, readTrackingList, type LeanParcel } from './list';
 import { TASKS } from './filters';
 import { TRACKING_ACK_ACTION } from './alert';
+import { COURIER_SAID } from '../couriers/courier-said';
+import { wordLine } from '../couriers/courier-said-lines.fixture';
 import { MATCHES, byUrgency } from './priority';
 import type { ConditionKey } from './priority';
 import type { Age } from '../age-piles';
@@ -48,6 +50,8 @@ interface World {
   changed?: Record<string, Date>;
   /** Acknowledgements: orderId → when. */
   acked?: Record<string, Date>;
+  /** The company's words (COURIER_SAID lines), in any order — the fake sorts them the way it is asked to. */
+  said?: { id?: string; orderId: string; newStatus: string | null; metadata: string | null; createdAt: Date }[];
   providers?: Record<string, string>;
   /** The companies that hand out a barcode through their API (`apiEnabled` with an adapter). The rest are manual. */
   api?: string[];
@@ -55,7 +59,7 @@ interface World {
 }
 
 function dbOf(w: World) {
-  const calls: Record<string, any[]> = { order: [], fee: [], log: [], change: [], ack: [], provider: [], region: [] };
+  const calls: Record<string, any[]> = { order: [], fee: [], log: [], change: [], ack: [], said: [], provider: [], region: [] };
   const sorted = [...w.parcels].sort((a, b) => {
     // oldest shipped first, nulls last, then createdAt desc, then id — the order the list asks for
     const as = a.shippedAt?.getTime() ?? Infinity;
@@ -103,6 +107,28 @@ function dbOf(w: World) {
     },
     orderActivity: {
       findMany: vi.fn(async (args: any) => {
+        // One table, two kinds of line the list reads — each with its own world and its own call log. A kind the fake was not taught is refused.
+        if (args.where.action === COURIER_SAID) {
+          calls.said.push(args);
+          const wanted: string[] = args.where.orderId.in;
+          const lines = (w.said ?? []).filter((l) => wanted.includes(l.orderId));
+          // The database sorts by what it is asked to and by nothing else: no `orderBy`, no order.
+          const keys: Record<string, 'asc' | 'desc'>[] = [].concat(args.orderBy ?? []);
+          const cell = (line: (typeof lines)[number], field: string) => {
+            const v = (line as Record<string, unknown>)[field];
+            return v instanceof Date ? v.getTime() : String(v ?? '');
+          };
+          return [...lines].sort((a, b) => {
+            for (const k of keys) {
+              const [field, dir] = Object.entries(k)[0];
+              const x = cell(a, field);
+              const y = cell(b, field);
+              if (x !== y) return (x < y ? -1 : 1) * (dir === 'desc' ? -1 : 1);
+            }
+            return 0;
+          });
+        }
+        if (args.where.action !== TRACKING_ACK_ACTION) throw new Error(`fake db: the activity table was asked for an action it was not taught: ${args.where.action}`);
         calls.ack.push(args);
         return Object.entries(w.acked ?? {})
           .filter(([id]) => args.where.orderId.in.includes(id))
@@ -383,6 +409,7 @@ describe('the pages — worst first, cut after the sort', () => {
       couriers: [],
       regions: [],
       ages: { fresh: 0, few: 0, week: 0, old: 0 },
+      said: { DELIVERED: 0, PARTIALLY_DELIVERED: 0, RETURNED: 0, CANCELLED: 0, FAILED_DELIVERY: 0 },
     });
     expect(l.calls.fee).toHaveLength(0);
     expect(l.calls.change).toHaveLength(0);
@@ -569,5 +596,212 @@ describe('the truth about arrived parcels, manual companies and the owed money',
     const { calls } = await read(world([parcel({ deliveryProviderId: 'p1' }), parcel({ deliveryProviderId: 'm1' })]));
     expect(calls.provider).toHaveLength(1);
     expect(calls.provider[0].select).toEqual({ id: true, name: true, apiEnabled: true, adapterCode: true });
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+ * «الشركة بتقول» — WHAT THE COMPANY ITSELF SAID, READ WITH THE REST OF THE LIST.
+ *
+ * The poll keeps the company's word as a COURIER_SAID line; a parcel our state shows on the road may have been "delivered"
+ * for days. The list reads the newest line of every parcel ONCE, judges it against the parcel's own state, counts it for
+ * the dropdown, narrows by it, and hands the page's words to the door. The lines come from `wordLine`, which is held to
+ * the real feed's writer (`couriers/courier-said-read.test.ts`).
+ * ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════ */
+
+const HOUR = 3_600_000;
+const say = (orderId: string, code: string, hoursAgo = 2, notes?: string) =>
+  wordLine({ orderId, code, notes, at: new Date(NOW.getTime() - hoursAgo * HOUR) });
+
+/** The shop of this file, with the company having said something about seven of its parcels. */
+function shopWithWords(): World {
+  const w = shop();
+  w.said = [
+    say('late', 'DELIVERED_TO_RECIPIENT', 30),
+    say('late-old', 'DELIVERED_TO_RECIPIENT', 4, 'العميل استلم من الجارة'),
+    say('quiet', 'RETURNED_BY_RECIPIENT', 3),
+    say('nobarcode', 'CANCELLED', 2),
+    // A return the company says is back with the sender, on a parcel our state calls «طلب إرجاع».
+    say('returning', 'DELIVERED_TO_SENDER', 1),
+    // Words that AGREE with the parcel's own state say nothing new.
+    say('collect', 'DELIVERED_TO_RECIPIENT', 6),
+    say('collect-partial', 'PARTIALLY_DELIVERED', 6),
+  ];
+  return w;
+}
+
+describe('the company’s word — read once, with the rest of the list', () => {
+  it('— one grouped read over EVERY parcel the list holds, newest first, only the columns it needs; never a read per parcel', async () => {
+    const w = shopWithWords();
+    const { calls } = await read(w);
+    expect(calls.said).toHaveLength(1);
+    expect([...calls.said[0].where.orderId.in].sort()).toEqual(w.parcels.map((p) => p.id).sort());
+    expect(calls.said[0].where.action).toBe(COURIER_SAID);
+    expect(calls.said[0].orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
+    expect(Object.keys(calls.said[0].select).sort()).toEqual(['createdAt', 'metadata', 'newStatus', 'orderId']);
+    // …and the acknowledgements are still their own read, for their own parcels.
+    expect(calls.ack).toHaveLength(1);
+  });
+
+  it('and a list with no parcel asks nothing about words', async () => {
+    expect((await read({ parcels: [] })).calls.said).toHaveLength(0);
+  });
+
+  it('and the page carries the word of the parcels ON IT that have one to show — the company’s name for the code, the note apart', async () => {
+    const { courierSaid, ids } = await read(shopWithWords(), { limit: 100 });
+    expect(ids).toHaveLength(14);
+    expect([...courierSaid.keys()].sort()).toEqual(['late', 'late-old', 'nobarcode', 'quiet', 'returning']);
+    expect(courierSaid.get('late')).toMatchObject({ status: 'DELIVERED', label: 'تم التوصيل', note: null, ageMinutes: 30 * 60 });
+    expect(courierSaid.get('late-old')).toMatchObject({ status: 'DELIVERED', label: 'تم التوصيل', note: 'العميل استلم من الجارة' });
+    expect(courierSaid.get('quiet')).toMatchObject({ status: 'RETURNED', label: 'تم ارجاعها' });
+    expect(courierSaid.get('returning')).toMatchObject({ status: 'RETURNED', label: 'مسلمة الى المرسل' });
+  });
+
+  it('and only the page’s own — a word on another page is not on this one', async () => {
+    const w = shopWithWords();
+    const first = await read(w, { limit: 4, page: 1 });
+    const seen = new Set<string>();
+    for (let page = 1; page <= first.totalPages; page++) {
+      const { ids, courierSaid } = await read(w, { limit: 4, page });
+      for (const id of courierSaid.keys()) {
+        expect(ids, `${id} on page ${page}`).toContain(id);
+        expect(seen.has(id), `${id} twice`).toBe(false);
+        seen.add(id);
+      }
+    }
+    expect([...seen].sort()).toEqual(['late', 'late-old', 'nobarcode', 'quiet', 'returning']);
+  });
+});
+
+describe('the newest line is the company’s word — and only while it disagrees with the parcel’s state', () => {
+  it('— two lines for one parcel: the newest wins, whatever order the table gives them in', async () => {
+    const w = shopWithWords();
+    // Inserted newest, oldest, middle — so neither insertion order nor its reverse is "newest first".
+    w.said = [say('late', 'POSTPONED_DELIVERY', 1), say('late', 'DELIVERED_TO_RECIPIENT', 9), say('late', 'RETURNED_BY_RECIPIENT', 5)];
+    const { courierSaid } = await read(w, { limit: 100 });
+    expect(courierSaid.get('late')).toMatchObject({ status: 'FAILED_DELIVERY', label: 'مؤجلة', ageMinutes: 60 });
+  });
+
+  it('and an OLDER word that differs does not come back when the newest agrees with the state: the company took it back', async () => {
+    const w = shopWithWords();
+    // «failed» is in FAILED_DELIVERY. The company said «delivered» yesterday, and «postponed» an hour ago.
+    w.said = [say('failed', 'DELIVERED_TO_RECIPIENT', 24), say('failed', 'POSTPONED_DELIVERY', 1)];
+    const { courierSaid, facts } = await read(w, { limit: 100 });
+    expect(courierSaid.has('failed')).toBe(false);
+    expect(facts.said).toEqual({ DELIVERED: 0, PARTIALLY_DELIVERED: 0, RETURNED: 0, CANCELLED: 0, FAILED_DELIVERY: 0 });
+  });
+
+  it('and a word equal to the state is nobody’s word: not on the row, not in the numbers', async () => {
+    const { courierSaid, facts } = await read(shopWithWords(), { limit: 100 });
+    expect(courierSaid.has('collect')).toBe(false);
+    expect(courierSaid.has('collect-partial')).toBe(false);
+    expect(facts.said.PARTIALLY_DELIVERED).toBe(0);
+  });
+
+  it('and a newest line that cannot be read says nothing — the older readable one does not stand in for it', async () => {
+    const w = shopWithWords();
+    w.said = [say('late', 'DELIVERED_TO_RECIPIENT', 9), { ...say('late', 'RETURNED_BY_RECIPIENT', 1), metadata: 'not json' }];
+    const { courierSaid, facts } = await read(w, { limit: 100 });
+    expect(courierSaid.has('late')).toBe(false);
+    expect(facts.said.DELIVERED).toBe(0);
+  });
+
+  it('and a line for a parcel that is not on the list is not read into it', async () => {
+    const w = shopWithWords();
+    w.said = [...(w.said ?? []), say('somewhere-else', 'DELIVERED_TO_RECIPIENT')];
+    const { courierSaid, facts } = await read(w, { limit: 100 });
+    expect(courierSaid.has('somewhere-else')).toBe(false);
+    expect(facts.said.DELIVERED).toBe(2);
+  });
+});
+
+describe('the dropdown — its numbers over the whole list, and the choice narrows what the chips describe', () => {
+  it('— each word has its number, counted over every parcel the question matches', async () => {
+    const { facts } = await read(shopWithWords());
+    expect(facts.said).toEqual({ DELIVERED: 2, PARTIALLY_DELIVERED: 0, RETURNED: 2, CANCELLED: 1, FAILED_DELIVERY: 0 });
+    expect(Object.keys(facts.said)).toEqual(['DELIVERED', 'PARTIALLY_DELIVERED', 'RETURNED', 'CANCELLED', 'FAILED_DELIVERY']);
+  });
+
+  it('and a number is how many rows its choice brings — for every one of the five', async () => {
+    const w = shopWithWords();
+    const { facts } = await read(w);
+    for (const k of Object.keys(facts.said) as (keyof typeof facts.said)[]) {
+      const chosen = await read(w, { said: k, limit: 100 });
+      expect(chosen.total, k).toBe(facts.said[k]);
+      expect(chosen.ids, k).toHaveLength(facts.said[k]);
+      for (const id of chosen.ids) expect(chosen.courierSaid.get(id)?.status, `${k}: ${id}`).toBe(k);
+    }
+  });
+
+  it('and the choice narrows «الكل», the chips and the badge like a company or an age does — they describe the list the choice leaves', async () => {
+    const w = shopWithWords();
+    const narrowed = await read(w, { said: 'DELIVERED', limit: 100 });
+    expect(narrowed.ids.slice().sort()).toEqual(['late', 'late-old']);
+    expect(narrowed.facts.total).toBe(2);
+    expect(narrowed.facts.tasks).toEqual({ CANCELLED: 0, CHANGED: 0, FAILED: 0, RETURNING: 0, LATE: 2, NO_BARCODE: 0, COLLECT: 0 });
+    expect(narrowed.facts.lateCount).toBe(2);
+    // …and a chip inside the choice is the intersection of the two questions.
+    const inside = await read(w, { said: 'DELIVERED', task: 'LATE', limit: 100 });
+    expect(inside.ids.slice().sort()).toEqual(['late', 'late-old']);
+    expect((await read(w, { said: 'RETURNED', task: 'LATE', limit: 100 })).ids).toEqual([]);
+  });
+
+  it('and choosing a word does not change ANY dropdown’s numbers — a company’s, a governorate’s, an age’s or the words’ own', async () => {
+    const w = shopWithWords();
+    const plain = (await read(w)).facts;
+    for (const over of [{ said: 'DELIVERED' as const }, { said: 'CANCELLED' as const }, { courier: 'p2' }, { age: 'old' as Age }, { task: 'LATE' as ConditionKey }]) {
+      const f = (await read(w, over)).facts;
+      expect(f.said, JSON.stringify(over)).toEqual(plain.said);
+      expect(f.couriers, JSON.stringify(over)).toEqual(plain.couriers);
+      expect(f.regions, JSON.stringify(over)).toEqual(plain.regions);
+      expect(f.ages, JSON.stringify(over)).toEqual(plain.ages);
+    }
+  });
+
+  it('and a word nobody holds is an empty page — not an error, and the number beside it said zero', async () => {
+    const l = await read(shopWithWords(), { said: 'PARTIALLY_DELIVERED' });
+    expect(l).toMatchObject({ ids: [], total: 0, page: 1, totalPages: 1 });
+    expect(l.courierSaid.size).toBe(0);
+  });
+
+  it('and no choice at all — left out, null — is the whole list', async () => {
+    const w = shopWithWords();
+    const plain = await read(w, { limit: 100 });
+    expect((await read(w, { said: null, limit: 100 })).ids).toEqual(plain.ids);
+  });
+});
+
+describe('the word is shown and filtered — it never ranks, never counts a chip, never changes a state', () => {
+  it('— the same shop with and without the company’s words: the same pages in the same order, the same chips, the same badge, the same «الكل»', async () => {
+    const without = await read(shop(), { limit: 100 });
+    const withWords = await read(shopWithWords(), { limit: 100 });
+    expect(withWords.ids).toEqual(without.ids);
+    // `toEqual` takes an undefined field for a missing one: the numbers of the words are the only thing set aside.
+    expect({ ...withWords.facts, said: undefined }).toEqual({ ...without.facts, said: undefined });
+    expect(withWords.total).toBe(without.total);
+  });
+
+  it('and a word cannot make a parcel late, unbarcoded, an alert or owed: its state and its dates are what they were', async () => {
+    const w = shopWithWords();
+    const { facts } = await read(w);
+    // «quiet» (inside its time, with a barcode) is "returned" by the company's word and still not late.
+    expect((await read(w, { task: 'LATE', limit: 100 })).ids).toEqual(['late-old', 'late']);
+    expect(facts.tasks.COLLECT).toBe(2);
+    expect(facts.tasks.NO_BARCODE).toBe(1);
+  });
+});
+
+describe('the bound is the same bound', () => {
+  it('— a list that reaches it asks about words for exactly the parcels it holds, not the one that proved it was too long', async () => {
+    // Zero-padded ids, so the database's order (oldest, newest, then id) is the order they were made in and the last one is the one past the bound.
+    const id = (i: number) => `h${String(i).padStart(6, '0')}`;
+    const parcels = Array.from({ length: LEAN_CAP + 1 }, (_, i) => parcel({ id: id(i) }));
+    const w: World = { parcels, said: [say(id(0), 'DELIVERED_TO_RECIPIENT'), say(id(LEAN_CAP), 'DELIVERED_TO_RECIPIENT')] };
+    const l = await read(w, { limit: 100, said: 'DELIVERED' });
+    expect(l.capped).toBe(true);
+    expect(l.calls.said).toHaveLength(1);
+    expect(l.calls.said[0].where.orderId.in).toHaveLength(LEAN_CAP);
+    // The parcel past the bound is not on the list, so its word is on nobody's row and in no number.
+    expect(l.facts.said.DELIVERED).toBe(1);
+    expect(l.ids).toEqual([id(0)]);
   });
 });
