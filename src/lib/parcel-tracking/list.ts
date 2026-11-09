@@ -5,6 +5,8 @@ import { DEAD_CONFIRMATION, TRACKING_ACK_ACTION, trackingAlert, type TrackingAle
 import { MATCHES, byUrgency, expectsBarcode, matchesChip, notLate, type ChipKey, type ConditionKey, type TrackingFacts } from './priority';
 import { NOBODY, TASKS } from './filters';
 import { transitOf } from '../transit';
+import { COURIER_SAID, SAID_STATUSES, type SaidStatus } from '../couriers/courier-said';
+import { courierSaidAgainst, type CourierSaid } from '../couriers/courier-said-read';
 
 /**
  * THE PARCELS UNDER FOLLOW-UP — ALL OF THEM, READ ONCE, AND EVERY NUMBER COUNTED OVER THE SAME ROWS.
@@ -23,11 +25,20 @@ import { transitOf } from '../transit';
  * ── ONE READ, EVERY NUMBER IN AGREEMENT ──
  *
  *   L0  what the question (scope + state + search) brought back
- *   L1  L0 narrowed by the company, the governorate and the age  — the list the chips and the «late» badge describe
+ *   L1  L0 narrowed by the company, the governorate, the age and the company's word — the list the chips and the «late» badge describe
  *   L2  L1 narrowed by the chip, sorted worst-first               — the pages
  *
  * The dropdowns' numbers are counted over L0 (a company's number is how many parcels it holds under this state and
  * search, not how many survive the other dropdowns); the chips' over L1; the page is cut from L2.
+ *
+ * ── THE COMPANY'S WORD, READ WITH THE REST ──
+ *
+ * The poll keeps what the company says about a parcel as a COURIER_SAID line (`couriers/courier-said`); a parcel our own
+ * state still shows on the road may have been "delivered" for days. The newest line of each parcel is read ONCE, in the
+ * same grouped read as the applied changes — one query over the ids the list holds, never one per row — and judged here
+ * (`couriers/courier-said-read`), so the dropdown's numbers, the filter and the chip drawn on the row are the same
+ * answer. It is a FIELD of the row and a question the list can be narrowed by; it is never an input of the chips or of
+ * the ranking, and it changes no state.
  *
  * ── NO SILENT CAP ──
  *
@@ -87,6 +98,8 @@ export interface Judged extends TrackingFacts {
   id: string;
   parcel: LeanParcel;
   alert: { kind: TrackingAlert['kind']; acknowledged: boolean } | null;
+  /** What the company's newest line says when it disagrees with the parcel's own state — shown and filterable, never ranked. */
+  said: CourierSaid | null;
 }
 
 export interface TrackingListFacts {
@@ -104,6 +117,8 @@ export interface TrackingListFacts {
   regions: { id: string; name: string; count: number }[];
   /** Over L0: whole days since it shipped, in the four piles; a parcel with no shipping date is in none. */
   ages: Record<Age, number>;
+  /** Over L0: how many parcels the company's word puts in each of its five kinds; a parcel whose word agrees with its state, or with none, is in no kind. */
+  said: Record<SaidStatus, number>;
 }
 
 export interface TrackingList {
@@ -116,6 +131,8 @@ export interface TrackingList {
   facts: TrackingListFacts;
   /** True when L0 hit `LEAN_CAP`: the list is the first `LEAN_CAP` parcels, and says so. */
   capped: boolean;
+  /** The company's word for the parcels ON THIS PAGE that have one to show — the server puts it on their rows. */
+  courierSaid: ReadonlyMap<string, CourierSaid>;
 }
 
 export const NO_COURIER_AR = 'بلا شركة شحن';
@@ -137,6 +154,8 @@ export async function readTrackingList(
     courier: string | null;
     region: string | null;
     age: Age | null;
+    /** What the company says about the parcel; left out it is no choice. */
+    said?: SaidStatus | null;
     page: number;
     limit: number;
   }
@@ -174,7 +193,7 @@ export async function readTrackingList(
 
   // ── the alerts: a cancellation, an applied change, an acknowledgement — read for the parcels that can carry one ──
   const dead = l0.filter((o) => DEAD_CONFIRMATION.includes(o.confirmationStatus)).map((o) => o.id);
-  const [cancelLogs, applied] = l0.length
+  const [cancelLogs, applied, saidLines] = l0.length
     ? await Promise.all([
         dead.length
           ? db.orderStatusLog.findMany({
@@ -188,8 +207,14 @@ export async function readTrackingList(
           orderBy: { appliedAt: 'desc' },
           select: { orderId: true, appliedAt: true },
         }),
+        // What the company said, for every parcel the list holds: ONE grouped read, newest first (the id ends a tie).
+        db.orderActivity.findMany({
+          where: { orderId: { in: l0.map((o) => o.id) }, action: COURIER_SAID },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          select: { orderId: true, newStatus: true, metadata: true, createdAt: true },
+        }),
       ])
-    : [[], []];
+    : [[], [], []];
 
   // Newest first above, so the first seen per order is the latest.
   const newest = <T extends { orderId: string }>(rows: T[], pick: (r: T) => Date | null) => {
@@ -210,6 +235,9 @@ export async function readTrackingList(
       })
     : [];
   const ackedAt = newest(acks, (r) => r.createdAt);
+  // The same pattern, keeping the whole line: the first seen per order is the company's latest word.
+  const lastWord = new Map<string, (typeof saidLines)[number]>();
+  for (const line of saidLines) if (!lastWord.has(line.orderId)) lastWord.set(line.orderId, line);
 
   const judged: Judged[] = l0.map((o) => {
     const threshold = thresholdOf.get(`${o.deliveryProviderId}|${o.regionId}`) ?? null;
@@ -235,6 +263,7 @@ export async function readTrackingList(
       returnedAt: o.returnedAt,
       barcodeExpected: expectsBarcode(o.deliveryProviderId ? providerOf.get(o.deliveryProviderId) : null),
       alert: alert && { kind: alert.kind, acknowledged: alert.acknowledged },
+      said: courierSaidAgainst(o.shippingStatus, lastWord.get(o.id), input.now),
     };
   });
 
@@ -243,6 +272,7 @@ export async function readTrackingList(
   const regionCounts = countBy(judged.map((j) => ({ key: j.parcel.regionId })));
   const ageOfParcel = (j: Judged) => ageOf(daysWaitedOf(j.parcel.shippedAt, input.now));
   const ages = Object.fromEntries(AGES.map((a) => [a, judged.filter((j) => ageOfParcel(j) === a).length])) as Record<Age, number>;
+  const said = Object.fromEntries(SAID_STATUSES.map((k) => [k, judged.filter((j) => j.said?.status === k).length])) as Record<SaidStatus, number>;
 
   const names = async <T extends { id: string; name: string }>(ids: string[], lookup: (ids: string[]) => Promise<T[]>) =>
     new Map((ids.length ? await lookup(ids) : []).map((r) => [r.id, r.name]));
@@ -260,7 +290,8 @@ export async function readTrackingList(
     (j) =>
       (input.courier === null || (input.courier === NOBODY ? j.parcel.deliveryProviderId === null : j.parcel.deliveryProviderId === input.courier)) &&
       (input.region === null || (input.region === NOBODY ? j.parcel.regionId === null : j.parcel.regionId === input.region)) &&
-      (input.age === null || ageOfParcel(j) === input.age)
+      (input.age === null || ageOfParcel(j) === input.age) &&
+      (!input.said || j.said?.status === input.said)
   );
 
   // ── the chips and the badge: over L1 ──
@@ -272,8 +303,10 @@ export async function readTrackingList(
   const totalPages = Math.max(1, Math.ceil(l2.length / input.limit));
   const page = Math.min(Math.max(input.page, 1), totalPages);
 
+  const pageRows = l2.slice((page - 1) * input.limit, page * input.limit);
+
   return {
-    ids: l2.slice((page - 1) * input.limit, page * input.limit).map((j) => j.id),
+    ids: pageRows.map((j) => j.id),
     total: l2.length,
     page,
     limit: input.limit,
@@ -286,7 +319,9 @@ export async function readTrackingList(
       couriers: ranked(courierCounts, (id) => courierNames.get(id) ?? '—', NO_COURIER_AR),
       regions: ranked(regionCounts, (id) => regionNames.get(id) ?? '—', NO_REGION_AR),
       ages,
+      said,
     },
     capped,
+    courierSaid: new Map(pageRows.flatMap((j): [string, CourierSaid][] => (j.said ? [[j.id, j.said]] : []))),
   };
 }

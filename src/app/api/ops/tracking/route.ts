@@ -15,7 +15,7 @@ import { readTrackingList } from '@/lib/parcel-tracking/list';
 import { sightWhere, unseenKey, withoutMoney, type TrackingSight } from '@/lib/parcel-tracking/sight';
 
 /**
- * GET /api/ops/tracking?q=&status=&task=&courier=&region=&age=&page=&limit=
+ * GET /api/ops/tracking?q=&status=&task=&courier=&region=&age=&said=&page=&limit=
  *
  * Search by order number, merchant reference, courier barcode, customer name
  * or phone. Days in transit and the late flag are computed here against the
@@ -31,8 +31,16 @@ import { sightWhere, unseenKey, withoutMoney, type TrackingSight } from '@/lib/p
  *   ?status=   nothing: what is moving plus what arrived and is still owed · a state · `every` (or the old `all`)
  *   ?task=     one of the seven chips          ?courier= ?region=   an id, or `none`
  *   ?age=      fresh|few|week|old, by the shipping date
+ *   ?said=     what the delivery company itself says about the parcel when it disagrees with our state:
+ *              DELIVERED|PARTIALLY_DELIVERED|RETURNED|CANCELLED|FAILED_DELIVERY
  *
  * An unknown value is a 400 in Arabic, never a quiet «everything».
+ *
+ * EACH ROW CARRIES `courierSaid` — the delivery company's NEWEST word about the parcel (`COURIER_SAID`, kept by the poll,
+ * `couriers/apply-event`) while it disagrees with the parcel's own state: `{ status, label, note, at, ageMinutes }`, or
+ * null. It is read once for the whole list (`lib/parcel-tracking/list.ts`) and only SHOWN: it changes no state, no
+ * lateness, no rank and no chip, and it is not money — it is on every row the person may read, never on a row they may
+ * not (the sight levels below decide the rows, not the word).
  *
  * TWO LEVELS OF SIGHT (see `lib/parcel-tracking/sight.ts`). Whoever holds `ops.track` sees the parcels on the road. The
  * delivered parcels, the «بانتظار التحصيل» chip and the courier's figures need «عرض التسويات» or «إدارة الصناديق
@@ -68,7 +76,7 @@ export async function GET(req: Request) {
     const now = new Date();
     const parsed = trackingFilters(q);
     if (!parsed.ok) return NextResponse.json({ error: parsed.error, errorAr: parsed.errorAr }, { status: 400 });
-    const { status, task, courier, region, age, product, q: term } = parsed.applied;
+    const { status, task, courier, region, age, said, product, q: term } = parsed.applied;
     // A state or a chip that is only the other level's rows: refused in the door's own sentence, not answered with nothing.
     const unseen = unseenKey({ status, task }, sight);
     if (unseen) throw new Error(`Forbidden: missing required permission ${unseen}`);
@@ -133,6 +141,7 @@ export async function GET(req: Request) {
       courier,
       region,
       age,
+      said,
       page: readPage(q),
       limit: readLimit(q, 25, 100),
     });
@@ -255,6 +264,8 @@ export async function GET(req: Request) {
         late: transit.late,
         // Delivery, settlement and collection stay three separate facts.
         collectionStatus: o.settlementStatus,
+        // What the company itself says, when it disagrees with our state: judged once for the whole list, only shown here.
+        courierSaid: list.courierSaid.get(o.id) ?? null,
         /**
          * WHAT THE COURIER OWES ON THIS ORDER, by the settlement matcher's
          * own rule — computed here, where that rule lives.

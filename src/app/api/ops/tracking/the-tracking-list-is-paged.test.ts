@@ -273,7 +273,7 @@ describe('the numbers it sends with the page', () => {
     expect(body.facts.couriers).toEqual([{ id: P1, name: 'أبو علي', count: 31 }]);
     expect(body.facts.regions).toEqual([{ id: R1, name: 'دمشق', count: 31 }]);
     expect(body.facts.ages).toEqual({ fresh: 1, few: 0, week: 0, old: 30 });
-    expect(Object.keys(body.facts)).toEqual(['total', 'tasks', 'lateCount', 'notLate', 'couriers', 'regions', 'ages']);
+    expect(Object.keys(body.facts)).toEqual(['total', 'tasks', 'lateCount', 'notLate', 'couriers', 'regions', 'ages', 'said']);
   });
 
   it('and a row’s own «late» is the list’s: the parcel the chip counts is the parcel that says late', async () => {
@@ -286,7 +286,7 @@ describe('the numbers it sends with the page', () => {
   it('and it says what was applied, and whether the bound was reached — a list is never silently shorter than it looks', async () => {
     world = [parcel('a')];
     const body = await (await get(`status=RETURNED&courier=${P1}&age=fresh&q=ab`)).json();
-    expect(body.applied).toEqual({ status: 'RETURNED', task: null, courier: P1, region: null, age: 'fresh', product: null, q: 'ab' });
+    expect(body.applied).toEqual({ status: 'RETURNED', task: null, courier: P1, region: null, age: 'fresh', said: null, product: null, q: 'ab' });
     expect(body.capped).toBe(false);
   });
 

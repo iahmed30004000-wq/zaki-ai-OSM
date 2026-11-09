@@ -27,6 +27,10 @@ import { useToast } from '@/components/ui/Toast';
  *
  * THE PRESS DOES NOT REACH THE ROW. A list row that opens the order on click
  * would otherwise open it every time someone copied a number.
+ *
+ * TWO OPTIONAL WORDS FOR A SCREEN THAT NEEDS THEM (the shipment follow-up): `title` when the tooltip is a sentence of its
+ * own («انسخ المرجع»), and `onRefused` when a refused copy should be handed to something better than a warning —
+ * a dialog with the value in a field to select. Left out, both do what they always did.
  */
 const SHOWN_MS = 1500;
 
@@ -35,6 +39,8 @@ export function CopyValue({
   noun,
   shown,
   label,
+  title,
+  onRefused,
 }: {
   /** What goes on the clipboard — already cleaned. Empty draws nothing. */
   text: string;
@@ -44,6 +50,10 @@ export function CopyValue({
   shown?: string;
   /** Visible words beside the icon. Without it the button is the icon alone. */
   label?: string;
+  /** The tooltip, when «نسخ <noun>» is not the sentence. */
+  title?: string;
+  /** What to do when neither way of copying worked. Left out: the warning toast that carries the value. */
+  onRefused?: (text: string) => void;
 }) {
   const toast = useToast();
   const [copied, setCopied] = useState(false);
@@ -67,7 +77,8 @@ export function CopyValue({
     e.stopPropagation();
     const ok = await copyText(text);
     if (!ok) {
-      toast.warn('تعذّر النسخ — انسخه يدوياً', text);
+      if (onRefused) onRefused(text);
+      else toast.warn('تعذّر النسخ — انسخه يدوياً', text);
       return;
     }
     if (!alive.current) return;
@@ -88,7 +99,7 @@ export function CopyValue({
         type="button"
         onClick={(e) => void press(e)}
         aria-label={copied ? `تم نسخ ${name}` : `نسخ ${name}`}
-        title={copied ? 'تم النسخ' : `نسخ ${noun}`}
+        title={copied ? 'تم النسخ' : (title ?? `نسخ ${noun}`)}
         className={look}
       >
         <Icon className="w-4 h-4" aria-hidden />

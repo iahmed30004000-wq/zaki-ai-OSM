@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { isAge, type Age } from '../age-piles';
+import { isSaidStatus, type SaidStatus } from '../couriers/courier-said';
 import { orderSearchOr } from '../order-filters';
 import { SHIPPING_STATUS_AR } from '../shipping-workflow';
 import { NOT_LATE, URGENCIES, type ChipKey, type ConditionKey } from './priority';
@@ -14,7 +15,8 @@ import { NOT_LATE, URGENCIES, type ChipKey, type ConditionKey } from './priority
  *
  * Everything a person can choose is read here: the state (the default is the screen's job description; «every» is
  * every state), the chip (one of the seven conditions `parcel-tracking/priority.ts` defines — never a second list of them),
- * the delivery company, the governorate, how long it has been out, and the word searched. A value this module does not
+ * the delivery company, the governorate, how long it has been out, what the company itself says about the parcel
+ * (`said` — the five words a poll keeps, `couriers/courier-said`), and the word searched. A value this module does not
  * know is REFUSED, in Arabic, rather than ignored: ignoring it answers a question nobody asked with a list nobody
  * filtered.
  *
@@ -65,6 +67,8 @@ export interface TrackingApplied {
   courier: string | null;
   region: string | null;
   age: Age | null;
+  /** What the company says about the parcel when it disagrees with our state — narrows the list like the company and the governorate do. */
+  said: SaidStatus | null;
   /** The product the order is for — a question for the database, like the state and the search. */
   product: string | null;
   q: string | null;
@@ -95,7 +99,7 @@ export function trackingFilters(params: URLSearchParams): TrackingFilterResult {
     return raw && raw !== 'all' ? raw : undefined;
   };
 
-  const applied: TrackingApplied = { status: DEFAULT_STATUS, task: null, courier: null, region: null, age: null, product: null, q: null };
+  const applied: TrackingApplied = { status: DEFAULT_STATUS, task: null, courier: null, region: null, age: null, said: null, product: null, q: null };
 
   const status = word('status');
   if (status) {
@@ -127,6 +131,13 @@ export function trackingFilters(params: URLSearchParams): TrackingFilterResult {
   if (age) {
     if (!isAge(age)) return refuse('age', 'مدّة الشحن', age);
     applied.age = age;
+  }
+
+  const said = choice('said');
+  if (said) {
+    // One of the five words a poll keeps — a value that is not one is refused, not answered with an empty list.
+    if (!isSaidStatus(said)) return refuse('said', 'كلمة الشركة', said);
+    applied.said = said;
   }
 
   const product = choice('product');
