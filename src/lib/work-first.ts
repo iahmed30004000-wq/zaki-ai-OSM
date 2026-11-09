@@ -14,6 +14,7 @@ import {
   type RoundsSwitch,
   type WorkClock,
 } from './no-answer-rounds';
+import type { ReturnsMode } from './no-answer-returns';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -346,9 +347,16 @@ export async function workFirstGate(
     room: number;
     /** How many open orders she holds, when the caller already counted — none means nothing to read. */
     held?: number;
+    /**
+     * «الطلب يرجع للطابور فوراً» on (`no-answer-returns.ts`): the rule goes quiet by construction, not by deletion. An order she rang
+     * to no answer is not in her hand to be owed, and she pulls one at a time (`UNTOUCHED_ORDER`) — so nothing holds the pull back here.
+     * Absent or null, the gate is exactly what it was.
+     */
+    returns?: ReturnsMode | null;
   }
 ): Promise<WorkFirstRefusal | null> {
   if (!roundsOn(args.rounds)) return null;
+  if (args.returns) return null;
   if (args.held === 0) return null;
   const ctx = dueContext({ now: args.now, cal: args.cal, rounds: args.rounds });
   const rows = await tx.order.findMany({

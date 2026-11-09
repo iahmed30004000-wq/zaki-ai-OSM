@@ -1,7 +1,7 @@
 import { db } from './db';
 import { resolveAudience } from './notification-audience';
 import { agentForReturningCustomer, reservationCutoff, type PriorOrder } from './order-reservation';
-import { capRoom, ownedCounts } from './confirmation-queue';
+import { RETURNS_MODE, capRoom, ownedCounts, returnsModeOn } from './confirmation-queue';
 
 /**
  * HOLD A RETURNING CUSTOMER'S NEW ORDER FOR THE AGENT WHO WORKED HIM LAST.
@@ -89,12 +89,17 @@ export async function reserveReturningCustomers(
   );
 
   // Her room under the cap, read the first time she is chosen in this run and spent as her holds are written.
+  // Where «الطلب يرجع للطابور فوراً» is on, the cap is its hand limit (`RETURNS_MODE.handLimit`) — asked once, the first time it is needed.
   const room = new Map<string, number>();
+  let limit: number | undefined | null = null;
   let held = 0;
   for (const candidate of candidates) {
     const agent = agentForReturningCustomer(priors.get(candidate.customerId) ?? [], eligible);
     if (!agent) continue;
-    if (!room.has(agent)) room.set(agent, capRoom(await ownedCounts(db, scope, agent, now)));
+    if (!room.has(agent)) {
+      if (limit === null) limit = (await returnsModeOn(db, scope.companyId)) ? RETURNS_MODE.handLimit : undefined;
+      room.set(agent, capRoom(await ownedCounts(db, scope, agent, now), limit));
+    }
     if ((room.get(agent) ?? 0) <= 0) continue;
 
     const won = await db.order.updateMany({

@@ -5,7 +5,7 @@ import { can, requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { customerRiskMany } from '@/lib/customer-risk';
 import { mayReadInsights } from '@/lib/insights-key';
-import { CLAIM_CAPS, POSTPONE_LEAD_DAYS } from '@/lib/confirmation-queue';
+import { CLAIM_CAPS, POSTPONE_LEAD_DAYS, returnsModeOn } from '@/lib/confirmation-queue';
 import { deriveCoreState, type StateSource } from '@/lib/order-state';
 import { NO_ANSWER_LIMIT , NO_ANSWER_RESULTS } from '@/lib/confirmation-workflow';
 import { firstActionTimes } from '@/lib/response-clock';
@@ -334,6 +334,10 @@ export async function GET(request: Request) {
     // «نظام الجولات» — OFF (the default), the count is every no-answer, as it always was.
     const roundsSw = await roundsSwitch(db, companyId);
     const rounds = roundsOn(roundsSw);
+    // «الطلب يرجع للطابور فوراً»: asked only while the rounds are on. The pull no longer holds her back for calls she owes (`workFirstGate`
+    // is quiet), so the desk must not say it does: no banner and no «خلّصي اللي فوق أول» button — the screen draws both from `due` and
+    // draws neither when it is absent. Everything else on the desk — the cards, their words, the tabs — is what it was.
+    const returnsMode = rounds && (await returnsModeOn(db, companyId, roundsSw));
     // «واتساب بعد لا يرد» from the company's number for this country (`after-no-answer.ts`) — only on her own desk, the one with the sheet,
     // and only for whoever holds `whatsapp.send`: the send door asks it, and a button that answers 403 is not offered.
     const fromCompany =
@@ -471,11 +475,15 @@ export async function GET(request: Request) {
        */
       // …and the words of that state, written here: the banner («عندك N طلبات…», or «خلّصتي. اسحبي التالي» — the screen shows
       // the second only when a pull is possible) and the pull button's label while she owes. None of it is client JavaScript.
-      due: {
-        ...owedSummary,
-        sentence: owedSummary.count > 0 ? dueSentence(owedSummary.count) : CAUGHT_UP_SENTENCE,
-        button: owedSummary.count > 0 ? WORK_FIRST_BUTTON : null,
-      },
+      ...(returnsMode
+        ? {}
+        : {
+            due: {
+              ...owedSummary,
+              sentence: owedSummary.count > 0 ? dueSentence(owedSummary.count) : CAUGHT_UP_SENTENCE,
+              button: owedSummary.count > 0 ? WORK_FIRST_BUTTON : null,
+            },
+          }),
       /** «اتصلي هلّق» — a call is owed on it right now (a new pull, a «لا يرد» whose round came, a date that arrived), and the orders that need a decision. */
       work: held.filter((o) => tabOf(o) === 'work').sort(rounds ? dueFirst : () => 0),
       /**

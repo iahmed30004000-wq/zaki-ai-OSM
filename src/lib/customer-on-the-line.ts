@@ -5,9 +5,11 @@ import { CONFIRMATION_STATUS_AR, NO_ANSWER_RESULTS } from './confirmation-workfl
 import {
   OPEN_CONFIRMATION,
   PULL_TRANSACTION_OPTIONS,
+  RETURNS_MODE,
   capRefusal,
   capRoom,
   ownedCounts,
+  returnsModeOn,
   type QueueScope,
 } from './confirmation-queue';
 import { heldFor, notHeldForOthersWhere, reservedMessage } from './order-reservation';
@@ -51,6 +53,16 @@ type Tx = Prisma.TransactionClient | typeof db;
  *
  * It works whether «نظام الجولات» is on or off: what matters is that the order is a released retry (or a colleague's untouched pull
  * of one), not which release made it one.
+ *
+ * ── «الطلب يرجع للطابور فوراً» WIDENS WHAT COUNTS AS A RETURNED ORDER (the owner, 9/11) ──
+ *
+ * With that mode on, an order leaves the agent's hand the moment she presses «لا يرد» OR saves a date, so what sits in the pool after a
+ * call is no longer only "has a no-answer on it": a postponed order sent back by the mode carries a date and perhaps an answered call
+ * and not one no-answer — and the customer ringing back for it would have been refused `NEVER_CALLED`, or not found at all. So in the
+ * mode an open, never-shipped order that has ANY attempt, or a promised date, is a returned order — in the verdict, in the search's
+ * read and in the take's own guards (`returned` below). Nothing else moves: the colleague who has started on it still keeps it, an order
+ * held for a colleague is still refused, every refusal keeps its sentence, a card still shows no name, phone or address — and the
+ * take IGNORES THE READY-TIME (the customer is on the line now): the hand limit binds it (`RETURNS_MODE.handLimit`), the pace does not.
  *
  * ── THE WRITE IS THE PULL'S ──
  *
@@ -197,6 +209,9 @@ export interface CallbackFacts {
   attempts: { result: string; createdAt: Date | string }[];
   /** When it last went back to the pool (the latest RELEASED in its claim history), or null. */
   lastReleasedAt?: Date | string | null;
+  /** A promised date, when it carries one — read only by the verdict of «الطلب يرجع للطابور فوراً» (`returned`), where a date is evidence too. */
+  postponedUntil?: Date | string | null;
+  nextFollowUpAt?: Date | string | null;
 }
 
 export function neverShipped(f: Pick<CallbackFacts, 'shippingStatus' | 'shippingBatchId' | 'trackingNumber' | 'labelPrintedAt'>): boolean {
@@ -207,11 +222,21 @@ const hasNoAnswer = (attempts: CallbackFacts['attempts']): boolean =>
   attempts.some((a) => (NO_ANSWER_RESULTS as readonly string[]).includes(a.result));
 
 /**
+ * Has anybody worked this order and let it go? With «الطلب يرجع للطابور فوراً» on, the evidence is ANY attempt — a call that was
+ * answered, a message, a press of «اتصل» — or a promised date: the doors of that mode send an order back after either, not only after a
+ * no-answer. With it off, the evidence is what it always was (`hasNoAnswer`).
+ */
+function hasEvidence(f: Pick<CallbackFacts, 'attempts' | 'postponedUntil' | 'nextFollowUpAt'>, returned: boolean): boolean {
+  if (!returned) return hasNoAnswer(f.attempts);
+  return f.attempts.length > 0 || !!f.postponedUntil || !!f.nextFollowUpAt;
+}
+
+/**
  * A COLLEAGUE HOLDS IT (the owner, 7/11): hers to lose only if she pulled it and has done NOTHING on it. Every refusal here is
  * `HELD_BY_COLLEAGUE` and says which of the two it is — «وهي بدأت عليه», or «ولسا ما سجّلت عليه شي» with what else stops the take.
  * "Started" is any attempt AT or after her `claimedAt` — a call, a message, a no-answer, an answer, a dialler opened — by anybody.
  */
-function colleagueVerdict(holderId: string, f: CallbackFacts): CallbackVerdict {
+function colleagueVerdict(holderId: string, f: CallbackFacts, returned: boolean): CallbackVerdict {
   const refuse = (message: string): CallbackVerdict => ({ ok: false, code: 'HELD_BY_COLLEAGUE', message });
   const claimedAt = f.claimedAt ? new Date(f.claimedAt) : null;
   // Nobody can say she has done nothing since a moment nobody recorded: it stays with her.
@@ -223,7 +248,7 @@ function colleagueVerdict(holderId: string, f: CallbackFacts): CallbackVerdict {
   if (shipped || !OPEN_CONFIRMATION.includes(f.confirmationStatus)) {
     return refuse(colleagueNotStartedMessage(f.claimerName, closedMessage(f.confirmationStatus, shipped)));
   }
-  if (!hasNoAnswer(f.attempts)) {
+  if (!hasEvidence(f, returned)) {
     return refuse(colleagueNotStartedMessage(f.claimerName, CALLBACK_MESSAGES.COLLEAGUE_NEVER_CALLED));
   }
   return { ok: true, fromColleague: { id: holderId, name: f.claimerName ?? null, claimedAt } };
@@ -232,10 +257,11 @@ function colleagueVerdict(holderId: string, f: CallbackFacts): CallbackVerdict {
 /**
  * MAY SHE TAKE IT ON THE LINE? Pure: the search draws its button from this, and the take asks it again under the customer's lock.
  * The order of the questions is the order of what is true first: hers, a colleague's, past the desk, held, never rung, reached.
+ * `returned` is «الطلب يرجع للطابور فوراً» being on (`returnsModeOn`): any attempt or a promised date counts as «rung», as above.
  */
-export function callbackVerdict(userId: string, f: CallbackFacts): CallbackVerdict {
+export function callbackVerdict(userId: string, f: CallbackFacts, returned: boolean = false): CallbackVerdict {
   if (f.claimedById === userId) return { ok: false, code: 'ALREADY_YOURS', message: CALLBACK_MESSAGES.ALREADY_YOURS };
-  if (f.claimedById) return colleagueVerdict(f.claimedById, f);
+  if (f.claimedById) return colleagueVerdict(f.claimedById, f, returned);
   const shipped = !neverShipped(f);
   if (shipped || !OPEN_CONFIRMATION.includes(f.confirmationStatus)) {
     return { ok: false, code: 'CLOSED', message: closedMessage(f.confirmationStatus, shipped) };
@@ -243,7 +269,7 @@ export function callbackVerdict(userId: string, f: CallbackFacts): CallbackVerdi
   if (f.heldFor && f.heldFor.id !== userId) {
     return { ok: false, code: 'RESERVED_FOR_COLLEAGUE', message: reservedMessage(f.heldFor.name) };
   }
-  if (!hasNoAnswer(f.attempts)) return { ok: false, code: 'NEVER_CALLED', message: CALLBACK_MESSAGES.NEVER_CALLED };
+  if (!hasEvidence(f, returned)) return { ok: false, code: 'NEVER_CALLED', message: CALLBACK_MESSAGES.NEVER_CALLED };
   const since = f.lastReleasedAt ? new Date(f.lastReleasedAt).getTime() : null;
   const reached = f.attempts.some(
     (a) =>
@@ -280,6 +306,9 @@ export const CALLBACK_FACTS_SELECT = {
   assignedToId: true,
   assignedAt: true,
   assignee: { select: { id: true, name: true, status: true } },
+  // The promised dates: evidence that the order was sent back, for «الطلب يرجع للطابور فوراً» only (`hasEvidence`).
+  postponedUntil: true,
+  nextFollowUpAt: true,
   contactAttempts: { select: { result: true, createdAt: true } },
   claimHistory: { where: { action: 'RELEASED' }, orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true } },
   _count: { select: { claimHistory: true } },
@@ -297,6 +326,8 @@ interface FactsRow {
   assignedToId: string | null;
   assignedAt: Date | null;
   assignee: { id: string; name: string; status?: string | null } | null;
+  postponedUntil?: Date | null;
+  nextFollowUpAt?: Date | null;
   contactAttempts: { result: string; createdAt: Date }[];
   claimHistory: { createdAt: Date }[];
   _count: { claimHistory: number };
@@ -325,6 +356,8 @@ export function factsOf(row: FactsRow, now: Date): CallbackFacts {
     ),
     attempts: row.contactAttempts,
     lastReleasedAt: row.claimHistory[0]?.createdAt ?? null,
+    postponedUntil: row.postponedUntil,
+    nextFollowUpAt: row.nextFollowUpAt,
   };
 }
 
@@ -352,13 +385,23 @@ export interface CallbackCard {
  */
 export async function searchOnTheLine(
   tx: Tx,
-  args: { scope: QueueScope; userId: string; phone: string; countryCode?: string | null; visibility: Record<string, unknown>; now?: Date }
+  args: {
+    scope: QueueScope;
+    userId: string;
+    phone: string;
+    countryCode?: string | null;
+    visibility: Record<string, unknown>;
+    now?: Date;
+    /** «الطلب يرجع للطابور فوراً» on (`returnsModeOn`). Left out, it is asked here — a cached read, off on any failure. */
+    returned?: boolean;
+  }
 ): Promise<CallbackCard[] | null> {
   const keys = phoneSearchKeys(args.phone, args.countryCode);
   if (keys.length === 0) return null;
   const now = args.now ?? new Date();
+  const returned = args.returned ?? (await returnsModeOn(tx, args.scope.companyId));
   const rows = await tx.order.findMany({
-    where: { ...args.scope, customer: { phone: { in: keys } }, AND: [onTheLineReadable(args.visibility)] },
+    where: { ...args.scope, customer: { phone: { in: keys } }, AND: [onTheLineReadable(args.visibility, returned)] },
     orderBy: { createdAt: 'desc' },
     take: CALLBACK_SEARCH_LIMIT,
     select: {
@@ -369,7 +412,7 @@ export async function searchOnTheLine(
   });
   return rows.map((row) => {
     const facts = factsOf(row as unknown as FactsRow, now);
-    const verdict = callbackVerdict(args.userId, facts);
+    const verdict = callbackVerdict(args.userId, facts, returned);
     const items = (row as { items: { productName: string }[] }).items;
     const holder =
       facts.claimedById === args.userId
@@ -411,6 +454,17 @@ function openAndNeverShippedWhere() {
 const someNoAnswerWhere = () => ({ contactAttempts: { some: { result: { in: [...NO_ANSWER_RESULTS] } } } });
 
 /**
+ * «الطلب يرجع للطابور فوراً»: ANY attempt, or a promised date (`hasEvidence`) — the evidence that somebody worked the order and sent it
+ * back. One `OR` of its own, so spread beside the other clauses it can never replace a key they set (`AND`, `contactAttempts`).
+ */
+const workedAndSentBackWhere = () => ({
+  OR: [{ contactAttempts: { some: {} } }, { postponedUntil: { not: null } }, { nextFollowUpAt: { not: null } }],
+});
+
+/** The evidence clause of a read or a write: the mode's (any attempt or a date) or, off, today's (a no-answer). */
+const evidenceWhere = (returned: boolean) => (returned ? workedAndSentBackWhere() : someNoAnswerWhere());
+
+/**
  * AN UNANSWERED ORDER STILL AT THE DESK, whoever holds it or nobody — what the search and the take may READ beyond her envelope
  * (the owner, 7/11). At the desk (`OPEN_CONFIRMATION`), never shipped, and at least one no-answer on it.
  *
@@ -424,26 +478,29 @@ const someNoAnswerWhere = () => ({ contactAttempts: { some: { result: { in: [...
  * the order number, the product, the governorate, the status and the holder's name — no customer field is selected, so none can be
  * returned. `orderVisibilityWhere` and every other door's envelope stay as they were (the pull's `GET /api/orders/:id` still 404s a
  * colleague's order), and the WRITE is not widened (`callbackTakeWhere` / `callbackTakeFromColleagueWhere` below).
+ *
+ * `returned` is «الطلب يرجع للطابور فوراً» being on: «unanswered» then reads «worked and sent back» — any attempt or a promised date.
  */
-export function unansweredAtTheDeskWhere() {
-  return { ...openAndNeverShippedWhere(), ...someNoAnswerWhere() };
+export function unansweredAtTheDeskWhere(returned: boolean = false) {
+  return { ...openAndNeverShippedWhere(), ...evidenceWhere(returned) };
 }
 
 /**
  * A RELEASED RETRY, as a database filter — every clause of the verdict a database can say. It is the write's own guard
  * (`callbackTakeWhere`) and the unheld half of `unansweredAtTheDeskWhere`: nobody holds it, and it is not held for a colleague.
+ * It asks nothing about WHEN the order is ready again: taking is the customer on the line, not the pool's clock.
  */
-export function releasedRetryWhere(userId: string, now: Date) {
+export function releasedRetryWhere(userId: string, now: Date, returned: boolean = false) {
   return {
     claimedById: null,
-    ...unansweredAtTheDeskWhere(),
+    ...unansweredAtTheDeskWhere(returned),
     AND: [notHeldForOthersWhere(userId, now)],
   };
 }
 
 /** The write's own guard: this order, and a released retry at the moment of the write. Strict — the colleague's write has its own. */
-export function callbackTakeWhere(orderId: string, userId: string, now: Date) {
-  return { id: orderId, ...releasedRetryWhere(userId, now) };
+export function callbackTakeWhere(orderId: string, userId: string, now: Date, returned: boolean = false) {
+  return { id: orderId, ...releasedRetryWhere(userId, now, returned) };
 }
 
 /**
@@ -453,20 +510,20 @@ export function callbackTakeWhere(orderId: string, userId: string, now: Date) {
  * instant is a start), so an attempt that lands between her read and her write is not overwritten. The no-answer it needs is asked
  * again as well: the verdict said so, and a write that does not repeat what it was granted for is a guess.
  */
-export function callbackTakeFromColleagueWhere(orderId: string, holder: { id: string; claimedAt: Date }) {
+export function callbackTakeFromColleagueWhere(orderId: string, holder: { id: string; claimedAt: Date }, returned: boolean = false) {
   return {
     id: orderId,
     claimedById: holder.id,
     claimedAt: holder.claimedAt,
     ...openAndNeverShippedWhere(),
     contactAttempts: { none: { createdAt: { gte: holder.claimedAt } } },
-    AND: [someNoAnswerWhere()],
+    AND: [evidenceWhere(returned)],
   };
 }
 
 /** What she may read here: her own envelope, or an unanswered order at the desk (see `unansweredAtTheDeskWhere`). */
-export function onTheLineReadable(visibility: Record<string, unknown>) {
-  return { OR: [visibility, unansweredAtTheDeskWhere()] };
+export function onTheLineReadable(visibility: Record<string, unknown>, returned: boolean = false) {
+  return { OR: [visibility, unansweredAtTheDeskWhere(returned)] };
 }
 
 /** The one notification the colleague gets when an order is taken from her — the shape of the release notice (`auto-release.ts`). */
@@ -508,13 +565,18 @@ export async function takeOnTheLine(args: {
   orderId: string;
   visibility: Record<string, unknown>;
   now?: Date;
+  /** «الطلب يرجع للطابور فوراً» on (`returnsModeOn`). Left out, it is asked here, before the transaction. */
+  returned?: boolean;
 }): Promise<TakeOutcome> {
   const { scope, user, orderId } = args;
   const now = args.now ?? new Date();
+  // The mode widens what counts as a returned order (see the header) and hands the take its hand limit; the pace is not asked here, ever.
+  const returned = args.returned ?? (await returnsModeOn(db, scope.companyId));
+  const hand = returned ? RETURNS_MODE.handLimit : undefined;
   return db.$transaction(async (tx) => {
     // Who holds it, and since when, is read here too: a take from a colleague is a take of THAT claim (see below).
     const seen = await tx.order.findFirst({
-      where: { id: orderId, ...scope, AND: [onTheLineReadable(args.visibility)] },
+      where: { id: orderId, ...scope, AND: [onTheLineReadable(args.visibility, returned)] },
       select: { id: true, customerId: true, claimedById: true, claimedAt: true },
     });
     if (!seen) return { ok: false, code: 'NOT_FOUND', message: CALLBACK_MESSAGES.NOT_FOUND };
@@ -524,7 +586,7 @@ export async function takeOnTheLine(args: {
 
     const row = await tx.order.findFirst({ where: { id: orderId, ...scope }, select: CALLBACK_FACTS_SELECT });
     if (!row) return { ok: false, code: 'NOT_FOUND', message: CALLBACK_MESSAGES.NOT_FOUND };
-    const verdict = callbackVerdict(user.id, factsOf(row as unknown as FactsRow, now));
+    const verdict = callbackVerdict(user.id, factsOf(row as unknown as FactsRow, now), returned);
     if (!verdict.ok) {
       if (verdict.code === 'ALREADY_YOURS') return { ok: true, orderId, orderNumber: row.orderNumber, alreadyYours: true };
       return {
@@ -549,11 +611,11 @@ export async function takeOnTheLine(args: {
     }
 
     const counts = await ownedCounts(tx, scope, user.id, now);
-    const cap = capRefusal(counts, false);
+    const cap = capRefusal(counts, false, hand);
     if (cap) return { ok: false, code: 'CAP_TOTAL', message: cap.message };
 
     const taken = await tx.order.updateMany({
-      where: { ...(from ? callbackTakeFromColleagueWhere(orderId, from) : callbackTakeWhere(orderId, user.id, now)), ...scope },
+      where: { ...(from ? callbackTakeFromColleagueWhere(orderId, from, returned) : callbackTakeWhere(orderId, user.id, now, returned)), ...scope },
       data: {
         claimedById: user.id,
         claimedAt: now,
@@ -581,7 +643,7 @@ export async function takeOnTheLine(args: {
           }
           // The same claim and a write that missed (she has started since I read, or it left the desk), or another agent's claim:
           // the sentence that is true now, and her name.
-          const again = callbackVerdict(user.id, factsOf(fresh as unknown as FactsRow, now));
+          const again = callbackVerdict(user.id, factsOf(fresh as unknown as FactsRow, now), returned);
           const name = fresh.claimer?.name ?? null;
           return { ok: false, code: 'HELD_BY_COLLEAGUE', message: again.ok ? heldByColleagueMessage(name) : again.message, heldBy: name };
         }
@@ -663,7 +725,7 @@ export async function takeOnTheLine(args: {
       customerId: seen.customerId,
       pulled: { id: orderId, orderNumber: row.orderNumber },
       agentId: user.id,
-      room: capRoom(counts) - 1,
+      room: capRoom(counts, hand) - 1,
       now,
     });
     return { ok: true, orderId, orderNumber: row.orderNumber };
