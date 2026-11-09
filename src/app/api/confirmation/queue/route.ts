@@ -6,8 +6,10 @@ import { apiErrorResponse } from '@/lib/api-error';
 import {
   CLAIM_CAPS,
   OPEN_CONFIRMATION,
+  RETURNS_MODE,
   ownedCounts,
   pullPermission,
+  readReturnsMode,
   waitingCount,
   reservedForColleaguesCount,
   postponedNotDueCount,
@@ -24,7 +26,7 @@ import { heldFor } from '@/lib/order-reservation';
  */
 export async function GET() {
   try {
-    const { user, companyId, storeId } = await requireContext();
+    const { user, companyId, storeId, country } = await requireContext();
     await requirePermission('confirmation.pull').catch(async () => requirePermission('confirmation.supervise'));
 
     const scope = { companyId, storeId };
@@ -40,14 +42,29 @@ export async function GET() {
 
     const mayPull = can(user, 'confirmation.pull');
     const now = new Date();
+    /*
+     * «الطلب يرجع للطابور فوراً»: where it is on, every number below is the mode's — a returned order counts from its ready-time, a dated one
+     * from its date, and the limit is five — the very predicates the pull picks from, so a number shown is what the pull can hand out.
+     * Off (the default, and on any failure to read the switches) none of this runs and the answer is what it always was.
+     */
+    const returns = await readReturnsMode(db, companyId, {
+      now,
+      calendar: () => ({
+        workHoursStart: country.workHoursStart,
+        workHoursEnd: country.workHoursEnd,
+        weekendDays: country.weekendDays,
+        timezone: country.timezone,
+      }),
+    });
+    const hand = returns ? RETURNS_MODE.handLimit : undefined;
     const [waiting, counts, waitingOnADate, heldForColleagues] = await Promise.all([
       // For an agent: what SHE may take (hers first, never a colleague's). For a supervisor: the whole pool, as before.
-      waitingCount(db, scope, now, mayPull ? user.id : undefined),
+      waitingCount(db, scope, now, mayPull ? user.id : undefined, returns),
       // In her hands AND held for her (RV706): the cap counts both, and the screen shows both.
       ownedCounts(db, scope, user.id, now),
       // Real work, none of it takeable today. Said out loud rather than
       // folded into a number that promises a pull.
-      postponedNotDueCount(db, scope),
+      returns ? postponedNotDueCount(db, scope, now, returns) : postponedNotDueCount(db, scope),
       // In the queue, seen and not takeable: said apart, so «بانتظارك» never promises a pull that answers «لا توجد طلبات».
       mayPull ? reservedForColleaguesCount(db, scope, user.id, now) : Promise.resolve(0),
     ]);
@@ -57,7 +74,8 @@ export async function GET() {
      * this screen and `POST /api/confirmation/pull` refuses her — the screen
      * must know that from here rather than discover it on the press.
      */
-    const refusal = pullPermission(can(user, 'confirmation.pull'), counts);
+    // The mode hands its own hand limit to the same rule; off, the call is exactly what it always was.
+    const refusal = hand === undefined ? pullPermission(can(user, 'confirmation.pull'), counts) : pullPermission(can(user, 'confirmation.pull'), counts, hand);
 
     const isSupervisor = can(user, 'confirmation.supervise');
     const rows = isSupervisor
@@ -83,7 +101,8 @@ export async function GET() {
       waitingOnADate,
       reservedForColleagues: heldForColleagues,
       owned: counts,
-      caps: CLAIM_CAPS,
+      // The mode's hand limit stands in for the cap of 500 on the panel («بيدك 3 / 5»); off, the caps are what they were.
+      caps: hand === undefined ? CLAIM_CAPS : { ...CLAIM_CAPS, total: hand },
       leadDays: POSTPONE_LEAD_DAYS,
       canPull: !refusal,
       refusal,

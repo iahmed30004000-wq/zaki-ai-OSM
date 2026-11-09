@@ -49,6 +49,8 @@ vi.mock('@/lib/notification-audience', () => ({ resolveAudience: vi.fn(async () 
 vi.mock('@/lib/wallets', () => ({ blockingClosing: vi.fn(async () => null) }));
 vi.mock('@/lib/confirmation-queue', () => ({
   POSTPONE_LEAD_DAYS: 2,
+  // «الطلب يرجع للطابور فوراً»: the work route now asks whether the mode is on — a fake taught the new question (off: the counts are today's).
+  readReturnsMode: async () => null,
   waitingCount: vi.fn(async () => 0),
   awaitingConfirmationCount: vi.fn(async () => 0),
 }));

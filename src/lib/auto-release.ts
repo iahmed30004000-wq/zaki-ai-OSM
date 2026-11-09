@@ -1,4 +1,5 @@
 import { DUE_RELEASE_REASON, REPULL_RELEASE_REASON, ROUND_RELEASE_REASON } from './no-answer-rounds';
+import { IDLE_RETURNED_REASON } from './no-answer-returns';
 
 /**
  * AN ORDER THE SYSTEM TAKES BACK IS TAKEN BY THE SYSTEM — AND SHE IS TOLD (the owner's ruling 4/11).
@@ -31,6 +32,13 @@ import { DUE_RELEASE_REASON, REPULL_RELEASE_REASON, ROUND_RELEASE_REASON } from 
  * work of hers (`isReleaseSheDidNotPress`); and she gets ONE notification for the whole press (`managerReturnNotice`), not one
  * per order. `releaseNotice` above is one order's sentence by the system's clock, so it is not reused: a summary names the
  * person and the count — and borrows its shape, its type and its link.
+ *
+ * ── A FOURTH KIND: «الطلب يرجع للطابور فوراً» (the owner, 9/11) ──
+ *
+ * With that mode on, her own press of «لا يرد» (`NO_ANSWER_RETURNED`), a date she saves (`DATE_RETURNED`) and thirty idle working
+ * minutes (`AUTO_RELEASE_IDLE_RETURNED`) each write a `RELEASED` line (`no-answer-returns.ts`) in the shape of the system's releases above:
+ * `userId` = the holder, `{ automatic: true, holder }`, «النظام» on the timeline, and never counted as work of hers. Only the idle one
+ * tells her (`AUTO_RELEASE_WHY`): the other two are her own presses.
  */
 
 /** The ninety-minute release's reason, exactly as `releaseStaleClaims` writes it (`AUTO_RELEASE_${90}_BUSINESS_MINUTES`). */
@@ -42,6 +50,8 @@ export const AUTO_RELEASE_WHY: Record<string, string> = {
   [ROUND_RELEASE_REASON]: 'مرّت 12 ساعة عمل على جولة بلا ردّ',
   [REPULL_RELEASE_REASON]: 'انسحب من جديد وما انسجّلت عليه محاولة خلال 90 دقيقة عمل',
   [DUE_RELEASE_REASON]: 'مرّت 3 ساعات عمل على موعد الطلب وما انسجّلت عليه محاولة بعد الموعد',
+  // «الطلب يرجع للطابور فوراً» (`no-answer-returns.ts`): the only one of that mode's three ways out that she did not press herself.
+  [IDLE_RETURNED_REASON]: 'ما انسجّلت عليه أي محاولة خلال 30 دقيقة عمل',
 };
 
 /** The actor the timeline writes for a release nobody pressed. */

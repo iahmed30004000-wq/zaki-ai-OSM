@@ -29,6 +29,8 @@ vi.mock('@/lib/geo-context', () => ({
 vi.mock('@/lib/authorization', () => ({ can: (_u: unknown, p: string) => grants.allows(p) }));
 vi.mock('@/lib/confirmation-queue', () => ({
   POSTPONE_LEAD_DAYS: 2,
+  // «الطلب يرجع للطابور فوراً»: the work route now asks whether the mode is on — a fake taught the new question (off: the counts are today's).
+  readReturnsMode: async () => null,
   waitingCount: (...a: unknown[]) => waitingCount(...a),
   awaitingConfirmationCount: (...a: unknown[]) => awaitingConfirmationCount(...a),
 }));
