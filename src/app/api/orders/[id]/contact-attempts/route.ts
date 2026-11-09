@@ -10,7 +10,8 @@ import { NO_ANSWER_LIMIT } from '@/lib/confirmation-workflow';
 import { endOrder } from '@/lib/order-cancel';
 import { can, authorize } from '@/lib/authorization';
 import { ORDER_NOT_FOUND } from '@/lib/order-refusals';
-import { mustHoldToWork, NOT_HELD_MESSAGE } from '@/lib/confirmation-queue';
+import { mustHoldToWork, NOT_HELD_MESSAGE, returnToThePool, returnsModeOn } from '@/lib/confirmation-queue';
+import { NO_ANSWER_RETURNED_REASON } from '@/lib/no-answer-returns';
 import { countedRounds, roundsClose, roundsOn, workClock } from '@/lib/no-answer-rounds';
 import { roundsSwitch } from '@/lib/no-answer-rounds-switch';
 
@@ -142,12 +143,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     // «نظام الجولات» — the owner's switch, read once (cached) before the transaction. OFF: the rule below is today's, line for line.
     const rounds = await roundsSwitch(db, companyId);
+    // «الطلب يرجع للطابور فوراً» — on only with the rounds on as well (their counting is what closes), cached, and OFF on any failure.
+    const returnsOn = await returnsModeOn(db, companyId, rounds);
 
     // ── The 1/2/3 no-answer rule ──
     // The third no-answer closes the order under its OWN reason, in the same
     // transaction as the attempt, and releases the reservation. It is not a
     // customer rejection and must never be reported as one.
-    const { attempt, autoClosed, noAnswerCount, announce } = await db.$transaction(async (tx) => {
+    const { attempt, autoClosed, noAnswerCount, announce, returned } = await db.$transaction(async (tx) => {
       const created = await tx.orderContactAttempt.create({
         data: {
           companyId,            // from session — never client
@@ -252,9 +255,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           autoClosed: closed.ok,
           noAnswerCount: noAnswers,
           announce: closed.ok ? closed.afterCommit : undefined,
+          returned: false,
         };
       }
-      return { attempt: created, autoClosed: false, noAnswerCount: noAnswers, announce: undefined };
+      /*
+       * «الطلب يرجع للطابور فوراً» — HER «لا يرد» TAKES THE ORDER OUT OF HER HAND (the owner, 9/11). The close above came first: an order the
+       * third round closed is not released. Only the HOLDER's press releases — a supervisor logging a call on a colleague's order lets
+       * nothing go — and only a result that reached nobody; a press of «اتصل» or a sent message is activity, not an answer. It is one
+       * more write in THIS transaction (`returnToThePool`: conditional, so a transfer or a shipment in the same instant wins), and
+       * her twins held for her stay held for her. The order is ready again three working hours after this attempt (`no-answer-returns.ts`).
+       */
+      const returned =
+        returnsOn &&
+        order.claimedById === user.id &&
+        (NO_ANSWER_RESULTS as readonly string[]).includes(result!) &&
+        (await returnToThePool(tx, { companyId, orderId: id, holderId: user.id, reason: NO_ANSWER_RETURNED_REASON }));
+      return { attempt: created, autoClosed: false, noAnswerCount: noAnswers, announce: undefined, returned };
     });
     // The transaction has committed: only now does anybody hear the order closed.
     await announce?.();
@@ -271,6 +287,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       noAnswerCount,
       noAnswerLimit: NO_ANSWER_LIMIT,
       autoClosed,
+      // Said only when it happened (the mode is off otherwise, and the answer is what it always was): the order is out of her hand.
+      ...(returned ? { returnedToQueue: true } : {}),
     });
   } catch (error: any) {
     return apiErrorResponse(error);

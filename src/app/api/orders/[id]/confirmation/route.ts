@@ -16,7 +16,9 @@ import { emitAppEvent } from '@/lib/apps/events';
 import { queueConversions } from '@/lib/conversions/emit';
 import {
   needsContactFirst, CONTACT_FIRST_MESSAGE, needsRegionFirst, REGION_REQUIRED_MESSAGE, mustHoldToWork, NOT_HELD_MESSAGE,
+  returnToThePool, returnsModeOn, returnedByHerOwnPress,
 } from '@/lib/confirmation-queue';
+import { DATE_RETURNED_REASON } from '@/lib/no-answer-returns';
 import {
   TwinConfirmedRefusal, guardConfirmAgainstTwins, recordTwinAcknowledged, twinConfirmedBody, type ConfirmedTwin,
 } from '@/lib/confirmed-twin';
@@ -62,6 +64,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // The work door: the order she holds is decided without «عرض الطلبات».
     const access = await assertOrderAccess(id, user, { companyId, storeId }, ORDER_WORK_DOOR);
     if (!access.allowed) {
+      if (await isTheSecondHalfOfHerReturn(req, { companyId, orderId: id, userId: user.id })) return NextResponse.json(SECOND_HALF_ANSWER);
       return NextResponse.json({ error: 'الطلب غير موجود أو ليس بين يديك' }, { status: ORDER_ACCESS_STATUS[access.reason] });
     }
     const order = access.order;
@@ -78,6 +81,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
      * `orders.assign`) is not bound — and `confirmation.supervise` does NOT excuse anybody: the live agent role holds it.
      */
     if (mustHoldToWork((permission) => can(user, permission)) && order.claimedById !== user.id) {
+      if (await isTheSecondHalfOfHerReturn(req, { companyId, orderId: id, userId: user.id })) return NextResponse.json(SECOND_HALF_ANSWER);
       return NextResponse.json({ error: NOT_HELD_MESSAGE, errorAr: NOT_HELD_MESSAGE, code: 'NOT_HELD' }, { status: 403 });
     }
 
@@ -404,6 +408,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         );
       }
     } else {
+      /*
+       * «الطلب يرجع للطابور فوراً» — A DATE SHE SAVES TAKES THE ORDER OUT OF HER HAND (the owner, 9/11). A postponement, «اتصل لاحقاً»,
+       * or a result that carries a date: the order goes back to the shared queue in the same transaction as the write, and is ready AT its
+       * date. Only the HOLDER's press (a supervisor setting a date on a colleague's order lets nothing go), and only with the mode on:
+       * it is asked of the switches only when a date is being saved at all. The write below is untouched — status and dates are what the
+       * action made them — and `returnToThePool` is conditional, so an order that moved in the same instant is left where it is.
+       */
+      const releasesOnDate = writesADate && order.claimedById === user.id && (await returnsModeOn(db, companyId));
       await db.$transaction(async (tx) => {
         /*
          * ── THE SECOND «نعم» FOR THE SAME CUSTOMER (the owner, 2/11) ──
@@ -477,6 +489,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
               metadata: JSON.stringify({ by: user.name, role: user.role, workflow: 'CONFIRMATION' }),
             },
           });
+        }
+        if (releasesOnDate) {
+          await returnToThePool(tx, { companyId, orderId: id, holderId: user.id, reason: DATE_RETURNED_REASON });
         }
         return res;
       });
@@ -609,6 +624,29 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const { body, status } = apiError(error);
     return NextResponse.json(body, { status });
   }
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * THE ORDER SHEET’S «لا يرد» IS TWO CALLS, AND THE FIRST ONE MAY HAVE SENT THE ORDER BACK («الطلب يرجع للطابور فوراً»).
+ *
+ * `ConfirmationActions.submitAction` records the attempt (the contact door) and THEN asks this door to move the status to «لا يرد».
+ * With the mode on, the contact door has already let the order go on her press — so this call finds an order that is no longer in her
+ * hand, and would answer «ليس بين يديك» to a press that worked. The sheet would then say the status update failed.
+ *
+ * So, and only then, the second half of her own press is answered as done and WRITES NOTHING: the body must be exactly
+ * `contact_result` with a result that reached nobody and no date (a date is `DATE_RETURNED`'s own door, a confirmation or a postponement
+ * is refused as ever), the mode must be on, and the history must hold HER OWN `NO_ANSWER_RETURNED` line from the last two minutes. The
+ * status stays what the pull made it: in the pool it decides nothing — readiness reads the attempts.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+const SECOND_HALF_ANSWER = { success: true, returnedToQueue: true } as const;
+
+async function isTheSecondHalfOfHerReturn(req: Request, args: { companyId: string; orderId: string; userId: string }): Promise<boolean> {
+  const body = (await req.clone().json().catch(() => null)) as { action?: unknown; result?: unknown; nextFollowUpAt?: unknown } | null;
+  if (!body || body.action !== 'contact_result' || (body.result !== 'NO_ANSWER' && body.result !== 'BUSY') || body.nextFollowUpAt) return false;
+  if (!(await returnsModeOn(db, args.companyId))) return false;
+  return returnedByHerOwnPress(db, args);
 }
 
 /**

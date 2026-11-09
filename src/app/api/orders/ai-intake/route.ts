@@ -20,7 +20,7 @@ import { activeBlock } from '@/lib/blacklist';
 import { logAudit } from '@/lib/audit';
 import { apiError } from '@/lib/api-error';
 import { requirePermission, can, getPermissionScope } from '@/lib/authorization';
-import { entryOwnership, ownedCounts, capLoad, recordEntryClaim, ENTRY_CAP_FULL_MESSAGE } from '@/lib/confirmation-queue';
+import { entryOwnership, ownedCounts, capLoad, recordEntryClaim, ENTRY_CAP_FULL_MESSAGE, RETURNS_MODE, entryCapFullMessage, returnsModeOn } from '@/lib/confirmation-queue';
 import { zodMessage } from '@/lib/zod-message';
 import { AiEndpointMissing, AiNotConfigured, AiNotLocal, aiChat, aiSettings } from '@/lib/ai-provider';
 import { resolvePrompt } from '@/lib/ai-prompts';
@@ -364,12 +364,15 @@ export async function POST(req: Request) {
        * entering an order exactly as much as one who types it into the form.
        */
       const keepsIt = can(user, 'confirmation.work') && !can(user, 'confirmation.supervise');
+      // «الطلب يرجع للطابور فوراً»: where it is on, her own entry is held to its hand limit — asked only when the rule needs it.
+      const handLimit = keepsIt && (await returnsModeOn(db, companyId)) ? RETURNS_MODE.handLimit : undefined;
       const entry = entryOwnership({
         userId: user.id,
         holds: (perm) => can(user, perm as Parameters<typeof can>[1]),
         // In her hands AND held for her (RV706): the 300 counts both.
         heldTotal: keepsIt ? capLoad(await ownedCounts(db, { companyId, storeId }, user.id)) : 0,
         now: new Date(),
+        limit: handLimit,
       });
       // Yourself needs no lookup — the session is this company's by construction. Only somebody else is checked.
       if (assignedModeratorId && assignedModeratorId !== user.id) {
@@ -630,6 +633,8 @@ export async function POST(req: Request) {
         // reader without «عرض المالية» (order-projection.ts).
         order: projectOrder(order, user),
         ...(entry.capFull ? { notice: ENTRY_CAP_FULL_MESSAGE } : {}),
+        // «الطلب يرجع للطابور فوراً»: the same sentence with its own number (five), where that mode is on.
+        ...(entry.capFull && handLimit !== undefined ? { notice: entryCapFullMessage(handLimit) } : {}),
       });
     }
 

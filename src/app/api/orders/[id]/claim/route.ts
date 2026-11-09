@@ -13,7 +13,7 @@ import {
   ORDER_TAKEBACK_REASON, orderClaimedBy, orderDecidedStaysOut,
 } from '@/lib/order-refusals';
 import {
-  CLAIM_CAPS, capLoad, claimByNumberMessage, heldForHerWhere, mustHoldToWork, ownedCounts, pullRefusal, USE_THE_PULL_CODE,
+  CLAIM_CAPS, RETURNS_MODE, capLoad, claimByNumberMessage, heldForHerWhere, mustHoldToWork, ownedCounts, pullRefusal, returnsModeOn, USE_THE_PULL_CODE,
 } from '@/lib/confirmation-queue';
 import { reservedForOthersWhere, reservedMessage } from '@/lib/order-reservation';
 import { reserveReturningCustomers } from '@/lib/reserve-returning-customers';
@@ -192,13 +192,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
      */
     if (order.claimedById !== user.id) {
       const counts = await ownedCounts(db, { companyId, storeId }, user.id);
+      // «الطلب يرجع للطابور فوراً»: where it is on, the limit is its hand limit and the refusal says so; off, the cap of 500 as ever.
+      const hand = (await returnsModeOn(db, companyId)) ? RETURNS_MODE.handLimit : undefined;
+      const limit = hand ?? CLAIM_CAPS.total;
       // At the cap because of what is held for her (RV706), THIS order may still be taken if it is one of those — it is already
       // counted. Asked only then: anywhere else the answer changes nothing.
-      const atCapByHolds = counts.total < CLAIM_CAPS.total && capLoad(counts) >= CLAIM_CAPS.total;
+      const atCapByHolds = counts.total < limit && capLoad(counts) >= limit;
       const takesHeldForHer =
         atCapByHolds &&
         !!(await db.order.findFirst({ where: { id, ...heldForHerWhere({ companyId, storeId }, user.id, new Date()) }, select: { id: true } }));
-      const refusal = pullRefusal(counts, takesHeldForHer);
+      const refusal = pullRefusal(counts, takesHeldForHer, hand);
       if (refusal) {
         return NextResponse.json(
           {

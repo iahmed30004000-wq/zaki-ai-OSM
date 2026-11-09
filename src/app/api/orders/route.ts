@@ -21,7 +21,7 @@ import { apiError } from '@/lib/api-error';
 import { requirePermission, getPermissionScope, can } from '@/lib/authorization';
 import {
   entryOwnership, ownedCounts, capLoad, recordEntryClaim, ENTRY_CAP_FULL_MESSAGE, claimsOwnEntry, mayConfirmNow, confirmNowReadiness,
-  recordConfirmNowAttempt,
+  recordConfirmNowAttempt, RETURNS_MODE, entryCapFullMessage, returnsModeOn,
 } from '@/lib/confirmation-queue';
 import { zodMessage } from '@/lib/zod-message';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
@@ -595,6 +595,8 @@ export async function POST(req: Request) {
     const wantsNow = askedNow && mayConfirmNow(holds, body?.viaImport === true);
     // The ONE rule, asked for the read and for the decision alike (a second copy of it here once drifted from the first).
     const keepsIt = claimsOwnEntry(holds, wantsNow);
+    // «الطلب يرجع للطابور فوراً»: where it is on, her own entry is held to its hand limit — asked only when the rule needs it, like the count.
+    const handLimit = keepsIt && (await returnsModeOn(db, companyId)) ? RETURNS_MODE.handLimit : undefined;
     const entry = entryOwnership({
       userId: user.id,
       holds,
@@ -602,6 +604,7 @@ export async function POST(req: Request) {
       heldTotal: keepsIt ? capLoad(await ownedCounts(db, { companyId, storeId }, user.id)) : 0,
       now: new Date(),
       confirmNow: wantsNow,
+      limit: handLimit,
     });
     // The call she is on is recorded only when the order is hers: a colleague who pulls what the cap sent to the pool still rings.
     const recordsTheCall = wantsNow && entry.claimedById === user.id;
@@ -847,9 +850,11 @@ export async function POST(req: Request) {
       // reader without «عرض المالية» (order-projection.ts).
       order: projectOrder(order, user),
       ...(entry.capFull ? { notice: ENTRY_CAP_FULL_MESSAGE } : {}),
+      // «الطلب يرجع للطابور فوراً»: the same sentence with its own number (five), where that mode is on.
+      ...(entry.capFull && handLimit !== undefined ? { notice: entryCapFullMessage(handLimit) } : {}),
       // Asked only when the box was ticked: will the confirmation door say yes? «ما اتأكد» with the reason, before any doomed call.
       ...(askedNow
-        ? { confirmNow: confirmNowReadiness({ wanted: wantsNow, holds, userId: user.id, entry, regionId: resolvedRegionId }) }
+        ? { confirmNow: confirmNowReadiness({ wanted: wantsNow, holds, userId: user.id, entry, regionId: resolvedRegionId, limit: handLimit }) }
         : {}),
     });
   } catch (error) {
