@@ -11,7 +11,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  *  3. Working minutes: an evening and a Friday add none.
  *  4. Never an order that is decided, on a trolley, with a tracking number, with a printed label or already shipping.
  *  5. Bounded: 200 a pass in the job, 25 inside a pull — so the first time the mode is switched on, the old piles come back a page
- *     at a time, and the pull says how many went.
+ *     at a time, and the pull says how many went. ONE bound for the pass (RV1660): the idle release gets what the rounds release
+ *     left of it, so the two together never let go of more than 200 (25) however many old orders meet both rules.
  *  6. It runs where every release runs — in `releaseStaleClaims` (before every pull) and in the five-minute job’s second
  *     transaction (`releaseNoAnswerRounds`) — and ONLY with the mode on: the mode off, not one query for it is asked.
  *  7. A press that wins the race wins: the write is conditional on the very claim that was read.
@@ -217,6 +218,34 @@ describe('1 · thirty working minutes with nothing logged: the order goes back',
   });
 });
 
+describe('1b · only HER holds go back with the order it lets go', () => {
+  /** An order of the customer, named for somebody (a returning customer’s hold): nobody holds it, it was never claimed. */
+  const holdFor = (customerId: string, who: string, over: Row = {}) =>
+    held(0, [], {
+      customerId, claimedById: null, claimedAt: null, currentOwnerId: null, confirmationStatus: 'NEW', status: 'NEW',
+      assignedToId: who, assignedAt: minutesAgo(25), assignee: { id: who, name: who, status: 'ACTIVE' }, claimHistory: [], ...over,
+    });
+
+  it('the same customer’s order named for a COLLEAGUE stays named for her: the release lets go of Sara’s holds, nobody else’s', async () => {
+    const o = held(31, [], { customerId: 'X' });
+    const saras = holdFor('X', 'sara');
+    const noors = holdFor('X', 'noor');
+    await run();
+    expect(o.claimedById).toBeNull();
+    expect(saras).toMatchObject({ assignedToId: null, assignedAt: null, version: 4 });
+    // Not touched at all: still named for Noor, with the very moment she was named, and the version it had.
+    expect(noors).toMatchObject({ assignedToId: 'noor', assignedAt: minutesAgo(25), version: 3 });
+  });
+
+  it('a twin that was claimed before is not a hold of the queue: it keeps its name', async () => {
+    const o = held(31, [], { customerId: 'X' });
+    const worked = holdFor('X', 'sara', { claimHistory: [{ action: 'CLAIMED' }, { action: 'RELEASED' }] });
+    await run();
+    expect(o.claimedById).toBeNull();
+    expect(worked).toMatchObject({ assignedToId: 'sara', version: 3 });
+  });
+});
+
 describe('2 · any attempt is activity', () => {
   it.each(['OPENED', 'MESSAGE_SENT', 'NO_ANSWER', 'ANSWERED', 'BUSY', 'WRONG_NUMBER'])('a %s ten minutes ago keeps it in her hand', async (result) => {
     const o = held(120, [att(minutesAgo(10), result)]);
@@ -312,6 +341,71 @@ describe('5 · bounded: 200 a pass in the job, 25 inside a pull — the oldest f
     expect(out.released).toBe(25);
     expect(world.orders.filter((o) => o.claimedById === 'sara')).toHaveLength(15);
     expect(out.refusal?.code).toBe('CAP_TOTAL');
+  });
+});
+
+describe('5b · ONE bound for the pass: the rounds release and the idle release never let go of more than it, together (RV1660)', () => {
+  /**
+   * Old orders that meet BOTH rules: worked before (a call from yesterday), taken again two hours ago or more, nothing logged since —
+   * the rounds release’s «ninety working minutes untouched» and this release’s thirty. Nine different holders, so no hand speaks.
+   */
+  const bothRules = (n: number) => Array.from({ length: n }, (_, i) => held(120 + i, [att(minutesAgo(1500 + i), 'OPENED')], { claimedById: `agent-${i % 9}` }));
+  const inHands = () => world.orders.filter((o) => o.claimedById !== null).length;
+
+  it.each([
+    ['a pull', 25, 300],
+    ['a pull', 25, 700],
+    ['the job', 200, 300],
+    ['the job', 200, 700],
+  ])('%s (limit %i) with %i old orders that meet both rules: every pass lets go of the limit, never of more, until none is left', async (_who, limit, n) => {
+    bothRules(n);
+    let total = 0;
+    for (let pass = 1; ; pass++) {
+      const before = inHands();
+      const went = await run(NOW, { roundsLimit: limit });
+      // Exactly the limit while more than the limit is left, then what is left — never the double the two rules gave apart.
+      expect(went, `pass ${pass}`).toBe(Math.min(limit, before));
+      // …and what the pass says it let go of is what it wrote: not one more order left a hand.
+      expect(before - inHands(), `pass ${pass}: orders that left a hand`).toBe(went);
+      total += went;
+      if (!went) break;
+    }
+    expect(total).toBe(n);
+    expect(world.notices).toHaveLength(n);
+  });
+
+  it('when the rounds release lets go of FEWER than the limit, the idle release gets the REST of it — not zero, not a limit of its own', async () => {
+    // 60 orders that meet both rules, and 300 that never had a call (the rounds release leaves those to the idle one): held 400+ minutes.
+    const both = bothRules(60);
+    const idleOnly = Array.from({ length: 300 }, (_, i) => held(400 + i, [], { claimedById: `agent-${i % 9}` }));
+    expect(await run(NOW, { roundsLimit: 200 })).toBe(200);
+    expect(both.every((o) => o.claimedById === null)).toBe(true);
+    // 140 more — the rest of the 200 — and the OLDEST claims of the 300 (the later ones in the list were taken longest ago).
+    const gone = idleOnly.filter((o) => o.claimedById === null);
+    expect(gone.map((o) => o.id).sort()).toEqual(idleOnly.slice(160).map((o) => o.id).sort());
+    expect(world.history.filter((h) => h.reason === IDLE_RETURNED_REASON)).toHaveLength(140);
+    expect(world.history.filter((h) => h.reason !== IDLE_RETURNED_REASON)).toHaveLength(60);
+  });
+
+  it('inside a pull the same: 300 old orders that meet both rules, and the pull says 25 went — not 50', async () => {
+    bothRules(300);
+    const out = await pullNextOrder(scope, { id: 'sara', role: 'CONFIRMATION_AGENT' }, JO, NOW);
+    expect(out.released).toBe(PULL_ROUNDS_RELEASE_LIMIT);
+    expect(world.history.filter((h) => h.action === 'RELEASED')).toHaveLength(PULL_ROUNDS_RELEASE_LIMIT);
+  });
+
+  it('when the rounds release has used the whole bound, the idle release is not even asked — no room is no query', async () => {
+    bothRules(300);
+    expect(await run(NOW, { roundsLimit: 200 })).toBe(200);
+    expect(db.order.findMany).toHaveBeenCalledTimes(1); // the rounds release’s scan, and nothing else
+  });
+
+  it.each([0, -1])('releaseIdleReturns with room %i asks nothing and lets nothing go — it is not “no limit”', async (room) => {
+    const o = held(300, []);
+    const mode = (await readReturnsMode(db as never, 'c1', { now: NOW, calendar: () => JO, rounds: ON }))!;
+    expect(await releaseIdleReturns(db as never, scope, mode, room)).toBe(0);
+    expect(db.order.findMany).not.toHaveBeenCalled();
+    expect(o.claimedById).toBe('sara');
   });
 });
 

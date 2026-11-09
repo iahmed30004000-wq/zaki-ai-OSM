@@ -896,8 +896,10 @@ export async function releaseStaleClaims(
  * a transaction of its own, so a pass that runs out of time can never roll back the ninety-minute releases with it.
  *
  * With «الطلب يرجع للطابور فوراً» on as well, the idle release (`releaseIdleReturns`) follows it in the same pass and under the same
- * bound — so the five-minute job and every pull (which run exactly this) return the orders nobody has touched, and the first time
- * the mode is switched on they return the old piles a page at a time. The mode off, this is the rounds release and nothing else.
+ * bound — ONE bound, shared: it gets what the rounds release left of `limit`, so a pass lets go of `limit` orders at most, however
+ * many old ones meet both rules. The five-minute job and every pull (which run exactly this) return the orders nobody has touched,
+ * and the first time the mode is switched on they return the old piles a page at a time. The mode off, this is the rounds release
+ * and nothing else.
  */
 export async function releaseNoAnswerRounds(
   tx: Tx,
@@ -911,7 +913,9 @@ export async function releaseNoAnswerRounds(
   const limit = opts.roundsLimit ?? ROUNDS_RELEASE_LIMIT;
   const released = await releaseByRounds(tx, scope, cal, now, rounds, limit);
   const returns = opts.returns !== undefined ? opts.returns : await readReturnsMode(tx, scope.companyId, { now, calendar: () => cal, rounds });
-  return returns ? released + (await releaseIdleReturns(tx, scope, returns, limit)) : released;
+  // ONE bound for the pass (RV1660): the idle release takes only what the rounds release left of `limit`, so a pass never lets go of
+  // more than `limit` in all — 200 in the job’s one short transaction, 25 inside a pull — whichever of the two rules an old order meets.
+  return returns ? released + (await releaseIdleReturns(tx, scope, returns, Math.max(0, limit - released))) : released;
 }
 
 // ───────────────────────── «الطلب يرجع للطابور فوراً» ─────────────────────────
@@ -1044,10 +1048,13 @@ export function idleHeldWhere(scope: QueueScope, returns: Pick<ReturnsMode, 'idl
 /**
  * THE IDLE RELEASE: an order in somebody's hand with nothing logged on it for `RETURNS_MODE.idleBusinessMinutes` working minutes goes
  * back as it was (a never-rung order is NEW again to the pull), and she is told — one line each, in this transaction. Bounded: the
- * oldest `limit` per pass, 200 in the job and 25 inside a pull. The customer's other orders held for her go back with it, as the
- * rounds release lets them go: nobody is working this customer, so whoever takes the order next takes him whole.
+ * oldest `limit` per pass, 200 in the job and 25 inside a pull — and in a pass of `releaseNoAnswerRounds` that `limit` is what the
+ * rounds release left, so the two together never pass the pass's bound. No room (`limit` 0) is no query and no release. The
+ * customer's other orders held for her go back with it, as the rounds release lets them go: nobody is working this customer, so
+ * whoever takes the order next takes him whole.
  */
 export async function releaseIdleReturns(tx: Tx, scope: QueueScope, returns: ReturnsMode, limit: number = ROUNDS_RELEASE_LIMIT): Promise<number> {
+  if (limit <= 0) return 0;
   const rows = await tx.order.findMany({
     where: idleHeldWhere(scope, returns),
     orderBy: { claimedAt: 'asc' },

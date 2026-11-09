@@ -243,6 +243,10 @@ describe('the mode is on only when BOTH switches are', () => {
     ['its own switch off', () => { rsw.value = OFF; }],
     ['the rounds off (whatever the mode’s own switch holds)', () => { sw.value = OFF; }],
     ['both off', () => { sw.value = OFF; rsw.value = OFF; }],
+    // «On» is a real `true` WITH a real date, here as in the settings store: a half-written value is off, never “on since 1970”.
+    ['its own switch stored “on” with NO date', () => { rsw.value = { enabled: true, enabledAt: null }; }],
+    ['its own switch “on” with a date that is not a date', () => { rsw.value = { enabled: true, enabledAt: new Date('nope') }; }],
+    ['the rounds “on” with NO date (whatever the mode’s own switch holds)', () => { sw.value = { enabled: true, enabledAt: null }; }],
   ])('%s: no mode, and the calendar is not even read', async (_name, set) => {
     set();
     const calendar = vi.fn(() => JO);
@@ -507,6 +511,18 @@ describe('6 · the number shown is what the pull can hand out', () => {
     expect(await postponedNotDueCount(db as never, scope, NOW, mode)).toBe(3);
     // OFF: the old complement — only the postponed ones, with the two-day lead (tomorrow’s promise is inside it, so just the dateless one).
     expect(await postponedNotDueCount(db as never, scope, NOW)).toBe(1);
+  });
+
+  it('the SUPERVISOR’s number (no agent) is the mode’s too: the whole pool, but only what is READY', async () => {
+    pool();
+    const mode = await readReturnsMode(db as never, 'c1', { now: NOW, calendar: () => JO });
+    // What an agent reads is five. A supervisor pulls nothing, so the order held for Noor is part of the pool she reads: six. Not: the
+    // one pressed an hour ago, tomorrow’s promise, the dateless one, today’s later follow-up, the confirmed one.
+    expect(await waitingCount(db as never, scope, NOW, 'sara', mode)).toBe(5);
+    expect(await waitingCount(db as never, scope, NOW, undefined, mode)).toBe(6);
+    // The same world with the mode off is the old nine: the readiness is the mode’s, and a supervisor’s number does not escape it.
+    expect(await waitingCount(db as never, scope, NOW, undefined, null)).toBe(9);
+    expect(await waitingCount(db as never, scope, NOW)).toBe(9);
   });
 
   it('OFF: the numbers are the old ones — a returned order pressed ten minutes ago counts, a postponed one inside the lead counts', async () => {

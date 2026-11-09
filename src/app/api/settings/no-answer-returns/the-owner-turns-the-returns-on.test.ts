@@ -158,6 +158,22 @@ describe('what is stored is read strictly', () => {
     expect(parseReturnsSwitch(STORED)).toEqual({ enabled: true, enabledAt: new Date(STORED.enabledAt) });
   });
 
+  it('«on» with NO date is OFF: a null, an empty string, a number and a flag are not a date — never “on since 1970”', () => {
+    // `new Date(null)` and `new Date(0)` are the epoch, a perfectly valid date: only a real string may be the moment it went on.
+    for (const enabledAt of [null, '', 0, 1_762_000_000_000, true]) {
+      expect(parseReturnsSwitch({ enabled: true, enabledAt }), JSON.stringify(enabledAt)).toEqual({ enabled: false, enabledAt: null });
+    }
+  });
+
+  it('…and the settings page draws it OFF too, from the stored document itself', async () => {
+    for (const enabledAt of [null, 0]) {
+      forgetReturnsSwitch();
+      store.doc.noAnswerReturns = { enabled: true, enabledAt };
+      expect(await (await GET()).json()).toEqual({ returns: { enabled: false, enabledAt: null }, roundsOn: true });
+      expect((await returnsSwitch(db as never, 'c1')).enabled).toBe(false);
+    }
+  });
+
   it('is read once in a while, not once per press', async () => {
     await returnsSwitch(db as never, 'c1', 1_000);
     await returnsSwitch(db as never, 'c1', 5_000);
@@ -169,5 +185,42 @@ describe('what is stored is read strictly', () => {
   it('and the rounds’ own key is not the mode’s: one switch on does not turn the other on', async () => {
     store.doc = { noAnswerRounds: STORED };
     expect((await returnsSwitch(db as never, 'c1')).enabled).toBe(false);
+  });
+});
+
+describe('what this process remembers never outlives a save', () => {
+  it('turning it ON: the very next read — inside the cache’s seconds — is ON, and costs no second look at the database', async () => {
+    expect((await returnsSwitch(db as never, 'c1')).enabled).toBe(false); // this process remembers: off
+    await put({ enabled: true });
+    const looked = db.company.findUnique.mock.calls.length;
+    const now = await returnsSwitch(db as never, 'c1');
+    expect(now.enabled).toBe(true);
+    expect(now.enabledAt).toBeInstanceOf(Date);
+    // The save REPLACED the cached value with the new one; it did not just forget it (which would cost the next door a read).
+    expect(db.company.findUnique.mock.calls.length).toBe(looked);
+  });
+
+  it('turning it OFF, after it was on: the next read is OFF at once, the same way', async () => {
+    store.doc.noAnswerReturns = STORED;
+    expect((await returnsSwitch(db as never, 'c1')).enabled).toBe(true);
+    await put({ enabled: false });
+    const looked = db.company.findUnique.mock.calls.length;
+    expect((await returnsSwitch(db as never, 'c1')).enabled).toBe(false);
+    expect(db.company.findUnique.mock.calls.length).toBe(looked);
+  });
+
+  it('the audit row’s “before” is what is STORED, not what this process remembered a moment ago', async () => {
+    expect((await returnsSwitch(db as never, 'c1')).enabled).toBe(false); // remembered: off
+    store.doc.noAnswerReturns = STORED; // another instance turned it on meanwhile
+    await put({ enabled: false });
+    expect(logAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ previousData: { enabled: true, enabledAt: STORED.enabledAt }, newData: { enabled: false, enabledAt: null } })
+    );
+  });
+
+  it('the settings page shows what is STORED, not what this process remembered a moment ago', async () => {
+    expect((await returnsSwitch(db as never, 'c1')).enabled).toBe(false); // remembered: off
+    store.doc.noAnswerReturns = STORED; // another instance turned it on meanwhile
+    expect((await (await GET()).json()).returns).toEqual({ enabled: true, enabledAt: STORED.enabledAt });
   });
 });
