@@ -235,7 +235,7 @@ describe('one sentence, from one function', () => {
   });
 
   it('a decision on a closed statement is refused for every saying, whatever the order is', () => {
-    const f = { hasOrder: true, shippingStatus: 'DELIVERED', settlementStatus: 'PENDING_COLLECTION', openRequests: [], claimedElsewhere: false, statementApproved: true, expectedAmount: 20, statementAmount: 18, minorUnit: 3 };
+    const f = { hasOrder: true, shippingStatus: 'DELIVERED', settlementStatus: 'PENDING_COLLECTION', openRequests: [], claimedElsewhere: false, statementApproved: true, expectedAmount: 20, statementAmount: 18, courierOutcome: null, minorUnit: 3 };
     for (const v of Object.values(decisionMatrix(f))) {
       expect(v).toEqual({ allowed: false, why: STATEMENT_CLOSED_SENTENCE });
     }
