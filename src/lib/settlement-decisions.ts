@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import type { db } from './db';
 import { roundMinor } from './money';
 import { claimingRowWhere, openRequestWhere } from './match-integrity';
-import { normalizePhrase, readCourierWord } from './couriers/words';
+import { normalizePhrase, readCourierWord, type CourierOutcome } from './couriers/words';
 import { PARKED, PARKED_AR, RESOLUTIONS, RESOLUTION_AR, type Resolution } from './settlement-difference';
 import { STATEMENT_CLOSED_SENTENCE } from './settlement-gates';
 
@@ -84,6 +84,12 @@ export interface DecisionFacts {
   expectedAmount: number | null;
   /** Theirs, net. */
   statementAmount: number | null;
+  /**
+   * What the company's own status cell on THIS line says, read through the one phrase table (`readCourierWord`) — the
+   * same reading the import and the matching use. Null when the line has no word at all (an empty cell, or no line).
+   * The matrix looks at one reading only: «سُلِّم جزئياً» beside a parcel our own door has not recorded as partial.
+   */
+  courierOutcome: CourierOutcome | null;
   minorUnit: number;
 }
 
@@ -106,6 +112,8 @@ export const WHY = {
   returnedNoClaim: 'طلب مرتجع — لا مبلغ نطالب به',
   amountOnReturn: 'سطر بمبلغ على طلب مرتجع — راجعه',
   zeroOnTheRoad: 'سطر صفر لطرد لم يُسجَّل مسلَّماً — ليس دليل تسليم',
+  partialFirst:
+    'الشركة بتقول إنو سُلّم جزئياً وطلبنا لسا مش مسجَّل جزئي — سجّل «استلم جزءاً» عليه بالبنود أولاً، وبعدين اعتمد رقم الشركة',
 } as const;
 
 const yes: Verdict = { allowed: true, why: null };
@@ -126,6 +134,7 @@ export function claimOf(row: { expectedAmount: number | null; statementAmount: n
  *   state of the order                    اعتُمد رقم الشركة          رقمنا هو المعتمد         قيد المراجعة
  *   ───────────────────────────────────   ────────────────────────   ──────────────────────   ────────────
  *   في الطريق (شُحن · عند الشركة · فشل)   نعم بمبلغ — دليل التسليم  لا                       نعم
+ *   في الطريق والشركة تقول «جزئياً»       لا — سجّل «استلم جزءاً»    لا                       نعم
  *   مسلَّم (كلي أو جزئي)                  نعم                        نعم إن كان عندنا نقص      نعم
  *   راجع (طلب إرجاع · مُرجَع)              نعم إن كان سطر الصفر       لا                       نعم
  *   غير ذلك (لم يُشحن · مُلغى)             لا                         لا                       نعم
@@ -137,6 +146,16 @@ export function claimOf(row: { expectedAmount: number | null; statementAmount: n
  * WHY EACH «NO»: a figure can only be accepted or claimed for a parcel the money is about. An order that never
  * left, or is settled, or has a cancel waiting, or is held by another row, is not that parcel yet — and the
  * third saying exists exactly so that such a row is not left looking unanswered.
+ *
+ * THE COMPANY SAYS «PARTIAL», OUR ORDER DOES NOT: the follow-up records it first. A parcel on the road whose line
+ * reads «تم توصيلها بشكل جزئي» was never recorded as partial at OUR door, so the matcher measured the line against the
+ * whole order and it came out a difference. Answering «اعتُمد رقم الشركة» would settle that order at their figure, and
+ * the close (`statement-close`) would promote it to a FULL delivery and take the whole ordered quantity off the shelf —
+ * while the units that physically came back are later refused by the returns desk, because the order is by then
+ * delivered and settled. The honest road is the other way round: «استلم جزءاً» records which lines were taken
+ * (`partial-delivery`), the order becomes PARTIALLY_DELIVERED, the matcher rebuilds its figure from those lines, and the
+ * answer is open again. So that one cell is closed until then. It only ever REFUSES: «قيد المراجعة» stays, «رقمنا» was
+ * already refused for a parcel on the road, and every other order state is untouched.
  */
 export function decisionMatrix(f: DecisionFacts): Matrix {
   /*
@@ -176,6 +195,8 @@ export function decisionMatrix(f: DecisionFacts): Matrix {
     // A statement is the proof of delivery of a parcel on the road only by stating money for it: a line of zero
     // beside «مؤجلة» is the company saying it did NOT deliver, and accepting it would deliver the parcel for nothing.
     else if (group === 'IN_FLIGHT' && f.statementAmount === 0) accepted = no(WHY.zeroOnTheRoad);
+    // After the zero line on purpose: a verdict that was already «no» keeps the sentence it always had.
+    else if (group === 'IN_FLIGHT' && f.courierOutcome === 'PARTIAL') accepted = no(WHY.partialFirst);
     else accepted = yes;
 
     if (group === 'IN_FLIGHT') ours = no(WHY.notDeliveredYet);
@@ -192,6 +213,7 @@ export function decisionMatrix(f: DecisionFacts): Matrix {
  */
 export const DECISION_MATRIX: { state: string; accepted: string; ours: string; parked: string }[] = [
   { state: 'في الطريق', accepted: 'نعم بمبلغ — والكشف دليل التسليم', ours: 'لا', parked: 'نعم' },
+  { state: 'في الطريق والشركة تقول «سُلِّم جزئياً»', accepted: 'لا — سجّل «استلم جزءاً» أولاً', ours: 'لا', parked: 'نعم' },
   { state: 'مسلَّم', accepted: 'نعم', ours: 'نعم إن كان عندنا نقص', parked: 'نعم' },
   { state: 'راجع', accepted: 'نعم إن كان سطر الصفر', ours: 'لا', parked: 'نعم' },
   { state: 'لم يُشحن أو مُلغى', accepted: 'لا', ours: 'لا', parked: 'نعم' },
@@ -242,6 +264,12 @@ export interface DecisionRow {
   statementAmount: number | null;
   /** The stamp after which the statement takes no answer: since the split, its matching's close (`matchingClosedAt`). */
   approvedAt: Date | string | null;
+  /**
+   * The company's status cell of the LINE this row came from (`StatementLine.status`), as it was written: the matrix
+   * reads it through `readCourierWord`. Null for a row with no line or an empty cell. Required, not optional, so a door
+   * that forgets to hand it over is a type error and not a guard that silently stops guarding.
+   */
+  status: string | null;
 }
 
 /**
@@ -309,6 +337,7 @@ function factsOf(
     statementApproved: r.approvedAt != null,
     expectedAmount: r.expectedAmount,
     statementAmount: r.statementAmount,
+    courierOutcome: readCourierWord(r.status)?.outcome ?? null,
     minorUnit,
   };
 }

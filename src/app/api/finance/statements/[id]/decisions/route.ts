@@ -112,6 +112,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           expectedAmount: r.expectedAmount === null ? null : Number(r.expectedAmount),
           statementAmount: r.statementAmount === null ? null : Number(r.statementAmount),
           approvedAt: statement.matchingClosedAt,
+          status: r.statementLine?.status ?? null,
         })),
       });
       /*
