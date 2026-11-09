@@ -264,7 +264,7 @@ describe('the press: asks first, then sends what was ticked, once', () => {
     expect(asked.body).toContain('كشف الشركة');
     expect(asked.body).toContain('كلمة الشركة مجرد كلمة، والكشف هو الإثبات');
     // …and that the server looks at each one.
-    expect(asked.body).toContain('السيرفر بيفحص كل طرد لحاله');
+    expect(asked.body).toContain('النظام بيفحص كل طرد لحاله');
   });
 
   it('NEGATIVE: «لا» sends nothing, and the ticks stay', async () => {

@@ -62,7 +62,7 @@ export const REFUSAL_AR: Record<Exclude<RefusalCode, 'OTHER_WORD'>, string> = {
   NO_LINES: 'لا بنود لهذا الطلب',
   ALREADY_RECORDED: 'سُجِّل تسليم هذا الطلب مسبقاً',
   NOT_AT_DOOR: 'لا يمكن تسجيل التسليم قبل خروج الشحنة للتوصيل',
-  NO_BOX: `حالته عندنا «${SHIPPING_STATUS_AR.FAILED_DELIVERY}» — سجّل تسليمه لحاله، مش بالجملة`,
+  NO_BOX: `حالته عندنا «${SHIPPING_STATUS_AR.FAILED_DELIVERY}» — ما في «استلم» لهالحالة بالشاشة`,
   NO_WORD: 'الشركة ما قالت شي عن هالطرد',
   UNCLEAR_WORD: 'ما في كلمة واضحة من الشركة على هالطرد',
   CHANGE_PENDING: 'عليه طلب تعديل أو إلغاء أو تأجيل ما انجاوب — جاوبه أول',

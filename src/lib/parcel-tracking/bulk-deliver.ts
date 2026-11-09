@@ -62,7 +62,7 @@ export interface BulkDeliverReport {
 export const BULK_DELIVER_CONFIRM_AR = [
   'الشركة بتقول إنها وصّلت هالطرود. بالضغط بينسجّل إنها انسلّمت للزبون وبتنزل من المخزون.',
   'ما رح ينكتب أي مبلغ: المبلغ بيجي لما يتطابق كشف الشركة. كلمة الشركة مجرد كلمة، والكشف هو الإثبات.',
-  'السيرفر بيفحص كل طرد لحاله: اللي تغيّرت كلمة الشركة عنو أو انسجّل قبل بيتخطّاه وبيقولك ليش.',
+  'النظام بيفحص كل طرد لحاله: اللي تغيّرت كلمة الشركة عنو أو انسجّل قبل بيتخطّاه وبيقولك ليش.',
 ].join('\n');
 
 /** The internal note each recorded order carries, so a later reader knows how its delivery came to be written. */
