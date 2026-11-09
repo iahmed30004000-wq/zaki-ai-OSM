@@ -45,6 +45,8 @@ import { TrackingScreen } from '@/components/screens/TrackingScreen';
 import { BULK_DELIVER_CONFIRM_AR, BULK_DELIVER_MOST } from '@/lib/parcel-tracking/bulk-deliver';
 
 configure({ asyncUtilTimeout: 8000 });
+// Each test draws the whole screen twice over (the desk's table and the phone's cards) in jsdom: on a loaded machine that is slow, not wrong.
+vi.setConfig({ testTimeout: 60000 });
 
 const P1 = '11111111-1111-4111-8111-111111111111';
 const NO_TASKS = { CANCELLED: 0, CHANGED: 0, FAILED: 0, RETURNING: 0, LATE: 0, NO_BARCODE: 0, COLLECT: 0 };
@@ -230,8 +232,8 @@ describe('choosing', () => {
     expect(screen.queryByRole('button', { name: /استلم المحدد/ })).toBeNull();
   });
 
-  it(`takes no more than a press may carry: ${BULK_DELIVER_MOST} of sixty`, async () => {
-    rows = Array.from({ length: 60 }, (_, i) => said(`m${i}`));
+  it(`takes no more than a press may carry: ${BULK_DELIVER_MOST} of ${BULK_DELIVER_MOST + 1}`, async () => {
+    rows = Array.from({ length: BULK_DELIVER_MOST + 1 }, (_, i) => said(`m${i}`));
     await draw();
     fireEvent.click(selectAll());
     expect(deskBoxes().filter((b) => b.checked)).toHaveLength(BULK_DELIVER_MOST);

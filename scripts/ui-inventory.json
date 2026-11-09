@@ -1679,6 +1679,16 @@
     "links": 2,
     "tabs": 0
   },
+  "src/components/screens/tracking/BulkDeliverReport.tsx": {
+    "buttons": 1,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 2,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/screens/tracking/CollectDialog.tsx": {
     "buttons": 2,
     "inputs": 5,
@@ -1720,12 +1730,12 @@
     "tabs": 0
   },
   "src/components/screens/TrackingScreen.tsx": {
-    "buttons": 17,
+    "buttons": 23,
     "inputs": 0,
     "columns": 15,
     "cards": 0,
     "modals": 0,
-    "icons": 16,
+    "icons": 20,
     "links": 0,
     "tabs": 0
   },
