@@ -13,6 +13,18 @@ import {
   type RoundsSwitch,
 } from './no-answer-rounds';
 import { roundsSwitch } from './no-answer-rounds-switch';
+import { returnsSwitch } from './no-answer-returns-switch';
+import {
+  IDLE_RETURNED_REASON,
+  NO_ANSWER_RETURNED_REASON,
+  handLimitMessage,
+  noRecentNoAnswerWhere,
+  returnsMode,
+  returnsReadyAnd,
+  returnsSwitchOn,
+  type ReturnsMode,
+  type ReturnsReason,
+} from './no-answer-returns';
 import { automaticReleaseMetadata, releaseNotice } from './auto-release';
 import { workFirstGate, type WorkFirstRefusal } from './work-first';
 
@@ -33,6 +45,18 @@ type Tx = Prisma.TransactionClient | typeof db;
  * reads this constant, so nothing else says the number.
  */
 export const CLAIM_CAPS = { withoutAttempt: 40, total: 500 } as const;
+
+/**
+ * «الطلب يرجع للطابور فوراً (تجريبي)» — THE TWO NUMBERS OF THE MODE, IN ONE PLACE (the owner, 9/11; rules in `no-answer-returns.ts`).
+ *
+ *   · `handLimit` — the most one agent holds, in her hands plus held for her (`capLoad`). Where the mode is on, the pull, the
+ *     claim-by-number door, «الزبون على الخط» and her own entries read THIS in place of `CLAIM_CAPS.total` — a parameter they are
+ *     handed, never a change to that constant: with the mode off the 500 and the 40 are asked exactly as before.
+ *   · `idleBusinessMinutes` — nothing logged on an order in her hand for this many WORKING minutes lets it go back.
+ *
+ * The ready-time of a «لا يرد» is `ROUND_GAP_BUSINESS_MINUTES` (`no-answer-rounds.ts`): the same three hours that make a round.
+ */
+export const RETURNS_MODE = { handLimit: 5, idleBusinessMinutes: 30 } as const;
 
 /**
  * HOW FAST SHE MAY PULL (the owner, 8/11: «كيف نمنعهم يسحبو طلبات بسرعة مهولة»): at most `perHour` pulls in any rolling
@@ -78,8 +102,11 @@ export const POSTPONE_LEAD_DAYS = 2;
  */
 export const MANUAL_ENTRY_REASON = 'MANUAL_ENTRY';
 
-/** Said to the agent when her own entry had to go to the queue. */
-export const ENTRY_CAP_FULL_MESSAGE = `وصلت للحد (${CLAIM_CAPS.total}) — الطلب راح للطابور`;
+/** Said to the agent when her own entry had to go to the queue — with the number of whichever limit applies (`RETURNS_MODE.handLimit` where that mode is on). */
+export function entryCapFullMessage(limit: number): string {
+  return `وصلت للحد (${limit}) — الطلب راح للطابور`;
+}
+export const ENTRY_CAP_FULL_MESSAGE = entryCapFullMessage(CLAIM_CAPS.total);
 
 /** Does this account keep the orders it enters? */
 export function keepsOwnEntry(holds: (permission: string) => boolean): boolean {
@@ -269,10 +296,12 @@ export function confirmNowReadiness(args: {
   userId: string;
   entry: EntryOwnership;
   regionId: string | null;
+  /** The hand limit where «الطلب يرجع للطابور فوراً» is on (`RETURNS_MODE.handLimit`); absent = the cap of 500, as ever. */
+  limit?: number;
 }): ConfirmNowReadiness {
   if (!args.wanted) return { ready: false, code: 'MAY_NOT_CONFIRM', reason: MAY_NOT_CONFIRM_NOW_MESSAGE };
   if (mustHoldToWork(args.holds) && args.entry.claimedById !== args.userId) {
-    return { ready: false, code: 'CAP_FULL', reason: ENTRY_CAP_FULL_MESSAGE };
+    return { ready: false, code: 'CAP_FULL', reason: args.limit === undefined ? ENTRY_CAP_FULL_MESSAGE : entryCapFullMessage(args.limit) };
   }
   if (needsRegionFirst({ regionId: args.regionId })) return { ready: false, code: 'REGION_REQUIRED', reason: REGION_REQUIRED_MESSAGE };
   return { ready: true };
@@ -324,6 +353,8 @@ export function entryOwnership(args: {
   now: Date;
   /** «الزبون على الخط — أكّده الآن», already weighed by `mayConfirmNow`. Absent = false: the AI-intake door never sends it. */
   confirmNow?: boolean;
+  /** The hand limit where «الطلب يرجع للطابور فوراً» is on (`RETURNS_MODE.handLimit`); absent = `CLAIM_CAPS.total`, as ever. */
+  limit?: number;
 }): EntryOwnership {
   const unclaimed: EntryOwnership = {
     claimedById: null,
@@ -332,7 +363,7 @@ export function entryOwnership(args: {
     capFull: false,
   };
   if (!claimsOwnEntry(args.holds, args.confirmNow === true)) return unclaimed;
-  if (args.heldTotal >= CLAIM_CAPS.total) return { ...unclaimed, capFull: true };
+  if (args.heldTotal >= (args.limit ?? CLAIM_CAPS.total)) return { ...unclaimed, capFull: true };
   return {
     claimedById: args.userId,
     claimedAt: args.now,
@@ -482,9 +513,12 @@ export function capLoad(counts: OwnedCounts): number {
   return counts.total + (counts.heldForHer ?? 0);
 }
 
-/** How many more orders may carry her name — in her hands or held for her. Never negative. */
-export function capRoom(counts: OwnedCounts): number {
-  return Math.max(0, CLAIM_CAPS.total - capLoad(counts));
+/**
+ * How many more orders may carry her name — in her hands or held for her. Never negative. `limit` is the hand limit where
+ * «الطلب يرجع للطابور فوراً» is on (`RETURNS_MODE.handLimit`); absent, it is the cap of 500.
+ */
+export function capRoom(counts: OwnedCounts, limit?: number): number {
+  return Math.max(0, (limit ?? CLAIM_CAPS.total) - capLoad(counts));
 }
 
 /** The cap's sentence. When holds are part of the load it says so, and says they count. */
@@ -497,10 +531,15 @@ export function capFullMessage(counts: OwnedCounts): string {
 /**
  * MAY SHE TAKE ONE MORE? `takesHeldForHer` is true when what she is about to take is one of the orders held for her (it is
  * already counted). In her hands at the cap is a refusal whatever she takes; at the cap with holds, only something new is refused.
+ *
+ * `handLimit` is the limit of «الطلب يرجع للطابور فوراً» (`RETURNS_MODE.handLimit`), handed in by whoever knows the mode is on: the
+ * same rule against a smaller number, and its own sentence (`handLimitMessage`). Absent, it is the cap of 500 and today's words.
  */
-export function capRefusal(counts: OwnedCounts, takesHeldForHer: boolean): PullRefusal | null {
-  const full = counts.total >= CLAIM_CAPS.total || (!takesHeldForHer && capLoad(counts) >= CLAIM_CAPS.total);
-  return full ? { code: 'CAP_TOTAL', message: capFullMessage(counts) } : null;
+export function capRefusal(counts: OwnedCounts, takesHeldForHer: boolean, handLimit?: number): PullRefusal | null {
+  const limit = handLimit ?? CLAIM_CAPS.total;
+  const full = counts.total >= limit || (!takesHeldForHer && capLoad(counts) >= limit);
+  if (!full) return null;
+  return { code: 'CAP_TOTAL', message: handLimit === undefined ? capFullMessage(counts) : handLimitMessage(handLimit) };
 }
 
 /**
@@ -637,8 +676,13 @@ export type PullRefusal =
  * of those: by default it is whenever she has any, because «اسحب التالي» gives them first — and the pull, at the cap, gives her
  * nothing else (`pullNextOrder`). The claim-by-id door says it of the very order asked for.
  */
-export function pullRefusal(counts: OwnedCounts, takesHeldForHer: boolean = (counts.heldForHer ?? 0) > 0): PullRefusal | null {
-  const cap = capRefusal(counts, takesHeldForHer);
+export function pullRefusal(
+  counts: OwnedCounts,
+  takesHeldForHer: boolean = (counts.heldForHer ?? 0) > 0,
+  /** The hand limit where «الطلب يرجع للطابور فوراً» is on (`RETURNS_MODE.handLimit`); absent = the cap of 500. */
+  handLimit?: number
+): PullRefusal | null {
+  const cap = capRefusal(counts, takesHeldForHer, handLimit);
   if (cap) return cap;
   if (counts.withoutAttempt >= CLAIM_CAPS.withoutAttempt) {
     return {
@@ -686,14 +730,14 @@ export function pullRefusal(counts: OwnedCounts, takesHeldForHer: boolean = (cou
  * «سجّل محاولة اتصال» before pulling would be advice about a thing she is
  * never going to be allowed to do.
  */
-export function pullPermission(mayPull: boolean, counts: OwnedCounts): PullRefusal | null {
+export function pullPermission(mayPull: boolean, counts: OwnedCounts, handLimit?: number): PullRefusal | null {
   if (!mayPull) {
     return {
       code: 'NOT_YOUR_DESK',
       message: 'السحب من عمل موظّف التأكيد — هذه الشاشة للإشراف على الطابور لا للعمل عليه.',
     };
   }
-  return pullRefusal(counts);
+  return pullRefusal(counts, undefined, handLimit);
 }
 
 /**
@@ -778,8 +822,11 @@ export async function releaseStaleClaims(
   scope: QueueScope,
   cal: BusinessCalendar,
   now = new Date(),
-  /** «نظام الجولات»: the switch when the caller already read it (the pull reads it before its transaction), and how many it may let go. */
-  opts: { rounds?: RoundsSwitch; roundsLimit?: number } = {}
+  /**
+   * «نظام الجولات»: the switch when the caller already read it (the pull reads it before its transaction), and how many it may let go.
+   * `returns` is the same for «الطلب يرجع للطابور فوراً»: the mode when the caller already read it (`null` = off), left out = read here.
+   */
+  opts: { rounds?: RoundsSwitch; roundsLimit?: number; returns?: ReturnsMode | null } = {}
 ) {
   const stale = await tx.order.findMany({
     where: {
@@ -845,17 +892,194 @@ export async function releaseStaleClaims(
 /**
  * The rounds release alone (R1) — what `releaseStaleClaims` runs after the ninety-minute release. The five-minute job calls it in
  * a transaction of its own, so a pass that runs out of time can never roll back the ninety-minute releases with it.
+ *
+ * With «الطلب يرجع للطابور فوراً» on as well, the idle release (`releaseIdleReturns`) follows it in the same pass and under the same
+ * bound — so the five-minute job and every pull (which run exactly this) return the orders nobody has touched, and the first time
+ * the mode is switched on they return the old piles a page at a time. The mode off, this is the rounds release and nothing else.
  */
 export async function releaseNoAnswerRounds(
   tx: Tx,
   scope: QueueScope,
   cal: BusinessCalendar,
   now = new Date(),
-  opts: { rounds?: RoundsSwitch; roundsLimit?: number } = {}
+  opts: { rounds?: RoundsSwitch; roundsLimit?: number; returns?: ReturnsMode | null } = {}
 ): Promise<number> {
   const rounds = opts.rounds ?? (await roundsSwitch(tx, scope.companyId));
   if (!roundsOn(rounds)) return 0;
-  return releaseByRounds(tx, scope, cal, now, rounds, opts.roundsLimit ?? ROUNDS_RELEASE_LIMIT);
+  const limit = opts.roundsLimit ?? ROUNDS_RELEASE_LIMIT;
+  const released = await releaseByRounds(tx, scope, cal, now, rounds, limit);
+  const returns = opts.returns !== undefined ? opts.returns : await readReturnsMode(tx, scope.companyId, { now, calendar: () => cal, rounds });
+  return returns ? released + (await releaseIdleReturns(tx, scope, returns, limit)) : released;
+}
+
+// ───────────────────────── «الطلب يرجع للطابور فوراً» ─────────────────────────
+
+/**
+ * IS THE MODE ON? Both switches plainly on — the mode's own and «نظام الجولات»', whose counting the close uses. A read that fails is
+ * off (each switch says so for itself), and the second switch is not even asked while the rounds are off.
+ */
+export async function returnsModeOn(client: Tx, companyId: string, rounds?: RoundsSwitch): Promise<boolean> {
+  if (!roundsOn(rounds ?? (await roundsSwitch(client, companyId)))) return false;
+  return returnsSwitchOn(await returnsSwitch(client, companyId));
+}
+
+/** The mode with its cut-offs placed once from the store's calendar — or null when it is off. `calendar` is called only when it is on. */
+export async function readReturnsMode(
+  client: Tx,
+  companyId: string,
+  args: { now: Date; calendar: () => BusinessCalendar; rounds?: RoundsSwitch }
+): Promise<ReturnsMode | null> {
+  if (!(await returnsModeOn(client, companyId, args.rounds))) return null;
+  return returnsMode(args.now, workClock(args.calendar()), RETURNS_MODE.idleBusinessMinutes);
+}
+
+/**
+ * THE ONE WRITER OF «THE ORDER LEAVES HER HAND» — the contact door (her «لا يرد»), the confirmation door (her date) and the idle
+ * release all call it, inside the transaction of the press that caused it.
+ *
+ * It is the other releases' write, field for field (`claimedById`, `claimedAt`, `currentOwnerId` cleared, `signatureStatus`
+ * UNSIGNED, `assignedAt` cleared — an order she let go is the shared queue's, not held for her a second time), guarded at the write:
+ * still HERS (and the same claim, when the caller read one), still at the desk, never shipped — NOT_READY, no batch, no tracking
+ * number, no label — so a press that raced a transfer, a close or a shipment releases nothing and writes nothing. Status and dates
+ * are not touched. The history line says nobody pressed «release» (`automaticReleaseMetadata`): the timeline writes «النظام», and
+ * attendance does not read it as work of hers.
+ *
+ * Her twins HELD FOR HER are not touched: the press releases the order she worked, and what is named for her stays named for her.
+ * Returns whether it went.
+ */
+export async function returnToThePool(
+  tx: Tx,
+  args: {
+    companyId: string;
+    orderId: string;
+    holderId: string;
+    reason: ReturnsReason;
+    /** The claim the caller read — the idle release guards on it, so a claim made again since is not released. */
+    claimedAt?: Date | null;
+  }
+): Promise<boolean> {
+  const done = await tx.order.updateMany({
+    where: {
+      id: args.orderId,
+      companyId: args.companyId,
+      claimedById: args.holderId,
+      ...(args.claimedAt ? { claimedAt: args.claimedAt } : {}),
+      confirmationStatus: { in: OPEN_CONFIRMATION },
+      shippingStatus: 'NOT_READY',
+      shippingBatchId: null,
+      trackingNumber: null,
+      labelPrintedAt: null,
+    },
+    data: { claimedById: null, claimedAt: null, currentOwnerId: null, signatureStatus: 'UNSIGNED', assignedAt: null },
+  });
+  if (done.count !== 1) return false;
+  await tx.orderClaimHistory.create({
+    data: {
+      companyId: args.companyId,
+      orderId: args.orderId,
+      // Still whose order it was — the column is NOT NULL — and `metadata` says nobody pressed «release» (`auto-release.ts`).
+      userId: args.holderId,
+      action: 'RELEASED',
+      reason: args.reason,
+      metadata: automaticReleaseMetadata(args.holderId),
+    },
+  });
+  return true;
+}
+
+/** How long after her «لا يرد» the order sheet’s second call (the status) is still read as the second half of that very press. */
+export const RETURNED_PRESS_GRACE_MS = 120_000;
+
+/**
+ * DID HER OWN PRESS OF «لا يرد» SEND THIS ORDER BACK A MOMENT AGO? Asked by the confirmation door, and only for the one call the order
+ * sheet makes right after the contact door (`ConfirmationActions.submitAction`: the attempt, then the status). The attempt door has
+ * already let the order go (`returnToThePool`), so the status call finds an order that is no longer hers; this is how it knows that
+ * is the consequence of her own press and not somebody working an order she does not hold.
+ */
+export async function returnedByHerOwnPress(
+  tx: Tx,
+  args: { companyId: string; orderId: string; userId: string; now?: Date }
+): Promise<boolean> {
+  const since = new Date((args.now ?? new Date()).getTime() - RETURNED_PRESS_GRACE_MS);
+  const line = await tx.orderClaimHistory.findFirst({
+    where: {
+      companyId: args.companyId,
+      orderId: args.orderId,
+      userId: args.userId,
+      action: 'RELEASED',
+      reason: NO_ANSWER_RETURNED_REASON,
+      createdAt: { gt: since },
+    },
+    select: { id: true },
+  });
+  return !!line;
+}
+
+/**
+ * HELD, AND NOTHING HAPPENED: the claim is `idleBusinessMinutes` working minutes old and no attempt of any kind — a call, a message, a
+ * press of «اتصل» — was logged in them. Never shipped. Asked of the database in full: every row it returns qualifies.
+ */
+export function idleHeldWhere(scope: QueueScope, returns: Pick<ReturnsMode, 'idleCut'>) {
+  return {
+    ...scope,
+    claimedById: { not: null },
+    claimedAt: { not: null, lte: returns.idleCut },
+    confirmationStatus: { in: OPEN_CONFIRMATION },
+    shippingStatus: 'NOT_READY',
+    shippingBatchId: null,
+    trackingNumber: null,
+    labelPrintedAt: null,
+    contactAttempts: { none: { createdAt: { gt: returns.idleCut } } },
+  };
+}
+
+/**
+ * THE IDLE RELEASE: an order in somebody's hand with nothing logged on it for `RETURNS_MODE.idleBusinessMinutes` working minutes goes
+ * back as it was (a never-rung order is NEW again to the pull), and she is told — one line each, in this transaction. Bounded: the
+ * oldest `limit` per pass, 200 in the job and 25 inside a pull. The customer's other orders held for her go back with it, as the
+ * rounds release lets them go: nobody is working this customer, so whoever takes the order next takes him whole.
+ */
+export async function releaseIdleReturns(tx: Tx, scope: QueueScope, returns: ReturnsMode, limit: number = ROUNDS_RELEASE_LIMIT): Promise<number> {
+  const rows = await tx.order.findMany({
+    where: idleHeldWhere(scope, returns),
+    orderBy: { claimedAt: 'asc' },
+    take: limit,
+    select: { id: true, claimedAt: true, claimedById: true, companyId: true, customerId: true, orderNumber: true },
+  });
+  const told: { holderId: string; orderNumber: string }[] = [];
+  for (const row of rows) {
+    const gone = await returnToThePool(tx, {
+      companyId: row.companyId,
+      orderId: row.id,
+      holderId: row.claimedById!,
+      reason: IDLE_RETURNED_REASON,
+      claimedAt: row.claimedAt,
+    });
+    if (!gone) continue;
+    told.push({ holderId: row.claimedById!, orderNumber: row.orderNumber });
+    if (row.customerId) {
+      await tx.order.updateMany({
+        where: {
+          companyId: scope.companyId,
+          storeId: scope.storeId,
+          customerId: row.customerId,
+          id: { not: row.id },
+          claimedById: null,
+          confirmationStatus: 'NEW',
+          shippingStatus: 'NOT_READY',
+          claimHistory: { none: {} },
+          assignedToId: row.claimedById,
+        },
+        data: { assignedToId: null, assignedAt: null, version: { increment: 1 } },
+      });
+    }
+  }
+  if (told.length) {
+    await tx.notification.createMany({
+      data: told.map((n) => releaseNotice({ companyId: scope.companyId, storeId: scope.storeId, ...n, reason: IDLE_RETURNED_REASON })),
+    });
+  }
+  return told.length;
 }
 
 /** How many orders one pass of the rounds release may let go — the same bound as the ninety-minute release above. */
@@ -1011,13 +1235,19 @@ async function releaseByRounds(
   return released;
 }
 
-/** How many orders are waiting to be pulled (the agent's only queue number). */
-export async function waitingCount(tx: Tx, scope: QueueScope, now = new Date(), forUserId?: string) {
+/**
+ * How many orders are waiting to be pulled (the agent's only queue number).
+ *
+ * `returns` is the mode of «الطلب يرجع للطابور فوراً» when the caller read it (`readReturnsMode`; null or absent = off). Handed to
+ * the same two predicates the pick uses, it makes the number exactly what the pull can hand out: a returned order counts from its
+ * ready-time, a dated one from its date.
+ */
+export async function waitingCount(tx: Tx, scope: QueueScope, now = new Date(), forUserId?: string, returns?: ReturnsMode | null) {
   // Exactly the set `pickNextCandidate` draws from — see the note there: what is held for her, a new order, and the rest
   // are all inside `readyToPullWhere`; a due postponed order is the other half. The order they are given in changes nothing here.
   const [due, ready] = await Promise.all([
-    tx.order.count({ where: duePostponedWhere(scope, now) }),
-    tx.order.count({ where: readyToPullWhere(scope, forUserId, now) }),
+    tx.order.count({ where: duePostponedWhere(scope, now, returns) }),
+    tx.order.count({ where: readyToPullWhere(scope, forUserId, now, returns) }),
   ]);
   return due + ready;
 }
@@ -1036,8 +1266,24 @@ export async function reservedForColleaguesCount(tx: Tx, scope: QueueScope, user
  * Waiting on a date that has not arrived — real work, and none of it
  * takeable today. Counted separately so the screen can say so instead of
  * hiding it inside a number that promises a pull.
+ *
+ * With «الطلب يرجع للطابور فوراً» on (`returns`) it is every order in the pool that a date holds back — whatever its status, since the
+ * mode honours a date on all of them — with no two-day lead: it is the complement of what `waitingCount` counts, date by date.
  */
-export async function postponedNotDueCount(tx: Tx, scope: QueueScope, now = new Date()) {
+export async function postponedNotDueCount(tx: Tx, scope: QueueScope, now = new Date(), returns?: ReturnsMode | null) {
+  if (returns) {
+    return tx.order.count({
+      where: {
+        ...claimableWhere(scope),
+        OR: [
+          { postponedUntil: { gt: now } },
+          { nextFollowUpAt: { gt: now } },
+          // As ever: a postponed order with no date at all is not takeable, and is said here rather than lost.
+          { confirmationStatus: 'POSTPONED', postponedUntil: null, nextFollowUpAt: null },
+        ],
+      },
+    });
+  }
   const leadEnd = new Date(now.getTime() + POSTPONE_LEAD_DAYS * 24 * 60 * 60 * 1000);
   return tx.order.count({
     where: {
@@ -1100,8 +1346,10 @@ function claimableWhere(scope: QueueScope) {
  * promises work and a button that never yields any. Both read these two
  * predicates now, so they cannot disagree.
  */
-export function duePostponedWhere(scope: QueueScope, now: Date) {
-  const leadEnd = new Date(now.getTime() + POSTPONE_LEAD_DAYS * 24 * 60 * 60 * 1000);
+export function duePostponedWhere(scope: QueueScope, now: Date, returns?: ReturnsMode | null) {
+  // «الطلب يرجع للطابور فوراً»: a promise is due AT its date — no lead — and, like every order of the pool in that mode, only once
+  // no «لا يرد» is newer than three working hours (a postponed order pressed «لا يرد» on its day waits those hours).
+  const leadEnd = new Date(now.getTime() + (returns ? 0 : POSTPONE_LEAD_DAYS * 24 * 60 * 60 * 1000));
   return {
     ...claimableWhere(scope),
     confirmationStatus: 'POSTPONED',
@@ -1109,10 +1357,16 @@ export function duePostponedWhere(scope: QueueScope, now: Date) {
     // is one; the follow-up date counts only for an order that has none. Either date alone made the counter and the
     // «اسحب» button call due an order the postponed list showed with a far date. `postponed-filters.ts` reads it the same way.
     OR: [{ postponedUntil: { lte: leadEnd } }, { postponedUntil: null, nextFollowUpAt: { lte: leadEnd } }],
+    // In the mode a date that has not arrived holds the order whichever of the two columns carries it (the later of the two, as the
+    // rounds read it): a stale postponement date beside a fresh follow-up date must not make it due.
+    ...(returns ? { AND: [{ OR: [{ nextFollowUpAt: null }, { nextFollowUpAt: { lte: leadEnd } }] }, noRecentNoAnswerWhere(returns)] } : {}),
   };
 }
 
-export function readyToPullWhere(scope: QueueScope, forUserId?: string, now: Date = new Date()) {
+export function readyToPullWhere(scope: QueueScope, forUserId?: string, now: Date = new Date(), returns?: ReturnsMode | null) {
+  // For an agent: not what is held for a colleague; in the mode, also only what is READY — every date arrived, no «لا يرد» newer than
+  // three working hours (`returnsReadyAnd`). Appended to the same `AND`, so the first member is today's, byte for byte.
+  const and = [...(forUserId ? [notHeldForOthersWhere(forUserId, now)] : []), ...(returns ? returnsReadyAnd(returns) : [])];
   return {
     ...claimableWhere(scope),
     /*
@@ -1125,7 +1379,7 @@ export function readyToPullWhere(scope: QueueScope, forUserId?: string, now: Dat
     confirmationStatus: { in: READY_CONFIRMATION },
     // For an agent: not what is held for a colleague — the POSITIVE form (`notHeldForOthersWhere`), because `NOT (…)` over nullable
     // columns drops a released order that kept its name. Without `forUserId` it is the whole pool, as the supervisor reads it.
-    ...(forUserId ? { AND: [notHeldForOthersWhere(forUserId, now)] } : {}),
+    ...(and.length > 0 ? { AND: and } : {}),
   };
 }
 
@@ -1157,6 +1411,10 @@ export async function pickHeldForHer(tx: Tx, scope: QueueScope, userId: string, 
  *
  * Every step draws from the two predicates the counter uses (`duePostponedWhere` and `readyToPullWhere`), so the number
  * `waitingCount` shows is exactly the pile this picks from — the steps only decide the ORDER inside it.
+ *
+ * «الطلب يرجع للطابور فوراً» (`opts.returns`, the mode when the caller read it) changes only READINESS and the lead of a date, never the
+ * order of the four steps: step 3 is a promise whose date has ARRIVED (no two-day lead), step 4 a returned order whose three
+ * working hours are over, and an order a date or a «لا يرد» still holds back is in neither — nobody pulls from that bucket.
  */
 export async function pickNextCandidate(
   tx: Tx,
@@ -1164,8 +1422,9 @@ export async function pickNextCandidate(
   now = new Date(),
   forUserId?: string,
   /** The caller already asked `pickHeldForHer` and found none (the pull does, to know whether the cap grows). */
-  opts: { heldForHerAsked?: boolean } = {}
+  opts: { heldForHerAsked?: boolean; returns?: ReturnsMode | null } = {}
 ) {
+  const returns = opts.returns ?? undefined;
   // THE ORDER HELD FOR HER COMES FIRST: the customer is a returning one and she is the person he spoke to.
   if (forUserId && !opts.heldForHerAsked) {
     const mine = await pickHeldForHer(tx, scope, forUserId, now);
@@ -1174,7 +1433,7 @@ export async function pickNextCandidate(
 
   // A NEW ORDER BEFORE ANY OTHER: nobody has rung the customer yet. A due postponed order waits behind it.
   const neverRung = await tx.order.findFirst({
-    where: { ...readyToPullWhere(scope, forUserId, now), contactAttempts: { none: {} } },
+    where: { ...(returns ? readyToPullWhere(scope, forUserId, now, returns) : readyToPullWhere(scope, forUserId, now)), contactAttempts: { none: {} } },
     orderBy: { createdAt: 'asc' },
     select: { id: true },
   });
@@ -1184,14 +1443,14 @@ export async function pickNextCandidate(
   // because they are ordered differently: a promise by its date, and
   // everything else by its age.
   const duePostponed = await tx.order.findFirst({
-    where: duePostponedWhere(scope, now),
+    where: returns ? duePostponedWhere(scope, now, returns) : duePostponedWhere(scope, now),
     orderBy: [{ postponedUntil: 'asc' }, { nextFollowUpAt: 'asc' }],
     select: { id: true },
   });
   if (duePostponed) return duePostponed.id;
 
   const oldest = await tx.order.findFirst({
-    where: readyToPullWhere(scope, forUserId, now),
+    where: returns ? readyToPullWhere(scope, forUserId, now, returns) : readyToPullWhere(scope, forUserId, now),
     orderBy: { createdAt: 'asc' },
     select: { id: true },
   });
@@ -1237,29 +1496,35 @@ export async function pullNextOrder(
 ): Promise<PullResult> {
   // «نظام الجولات»: read before the transaction (a cached read), so the pull never waits on a second connection for it.
   const rounds = await roundsSwitch(db, scope.companyId);
+  // «الطلب يرجع للطابور فوراً»: read the same way (a cached read, and not even asked while the rounds are off). `null` = off, and then
+  // everything below is today's, line for line.
+  const returns = await readReturnsMode(db, scope.companyId, { now, calendar: () => cal, rounds });
+  // The hand limit the mode hands to every cap question below; left out, each one asks the cap of 500 and says today's words.
+  const hand = returns ? RETURNS_MODE.handLimit : undefined;
   return db.$transaction(async (tx) => {
-    const released = await releaseStaleClaims(tx, scope, cal, now, { rounds, roundsLimit: PULL_ROUNDS_RELEASE_LIMIT });
+    const released = await releaseStaleClaims(tx, scope, cal, now, { rounds, roundsLimit: PULL_ROUNDS_RELEASE_LIMIT, returns });
 
     const counts = await ownedCounts(tx, scope, user.id, now);
-    const refusal = pullRefusal(counts);
+    const refusal = hand === undefined ? pullRefusal(counts) : pullRefusal(counts, undefined, hand);
     if (refusal) return { ok: false, refusal, released };
     // «الشغل أول» — after every refusal above, before anything is taken: the calls she owes come before a new order. «نظام الجولات»
     // on only; one read of her held orders, the predicate shared with the desk (`work-first.ts`). Claim-by-id never asks it.
-    const owed = await workFirstGate(tx, { scope, userId: user.id, cal, now, rounds, open: OPEN_CONFIRMATION, room: CLAIM_CAPS.total, held: counts.total });
+    // «الطلب يرجع للطابور فوراً» silences it: her hand holds at most five and nothing waits in it, so nothing is owed to hold her back.
+    const owed = await workFirstGate(tx, { scope, userId: user.id, cal, now, rounds, open: OPEN_CONFIRMATION, room: CLAIM_CAPS.total, held: counts.total, returns });
     if (owed) return { ok: false, refusal: owed, released };
     // THE PACE, LAST among the refusals (the owner, 8/11): the untouched order and the caps above are the more useful sentence, and keep
     // theirs. A refusal here returns before anything is picked — no lock, no claim, no row.
     const tooFast = pullPaceRefusal(await recentPullTimes(tx, user.id, now), now);
     if (tooFast) return { ok: false, refusal: tooFast, released };
     // AT THE CAP WITH HOLDS (RV706): only an order held for her — it is already counted, so taking it does not grow the load.
-    const atCap = capLoad(counts) >= CLAIM_CAPS.total;
+    const atCap = capLoad(counts) >= (hand ?? CLAIM_CAPS.total);
 
     for (let attempt = 0; attempt < 5; attempt++) {
       const hers = await pickHeldForHer(tx, scope, user.id, now);
-      const candidate = hers ?? (atCap ? null : await pickNextCandidate(tx, scope, now, user.id, { heldForHerAsked: true }));
+      const candidate = hers ?? (atCap ? null : await pickNextCandidate(tx, scope, now, user.id, { heldForHerAsked: true, returns }));
       if (!candidate) {
         // At the cap and nothing held for her is left to take (a hold let go between the count and here): the cap's sentence.
-        if (atCap) return { ok: false, released, refusal: capRefusal(counts, false)! };
+        if (atCap) return { ok: false, released, refusal: capRefusal(counts, false, hand)! };
         return {
           ok: false,
           released,
@@ -1327,7 +1592,7 @@ export async function pullNextOrder(
         customerId: picked?.customerId,
         pulled: { id: candidate, orderNumber: picked?.orderNumber },
         agentId: user.id,
-        room: capRoom(counts) - (hers ? 0 : 1),
+        room: capRoom(counts, hand) - (hers ? 0 : 1),
         now,
       });
       return { ok: true, orderId: candidate, released };

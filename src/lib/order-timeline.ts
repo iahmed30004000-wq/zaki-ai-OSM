@@ -9,6 +9,7 @@ import { TWIN_ACTION } from './recent-twin-order';
 import { TWIN_CONFIRM_ACK_ACTION } from './confirmed-twin';
 import { TWIN_HELD_ACTION } from './twins-follow-the-pull';
 import { DUE_RELEASE_REASON, REPULL_RELEASE_REASON, ROUND_RELEASE_REASON } from './no-answer-rounds';
+import { DATE_RETURNED_REASON, IDLE_RETURNED_REASON, NO_ANSWER_RETURNED_REASON } from './no-answer-returns';
 import { CUSTOMER_CALLED_BACK_REASON, TAKEN_ON_THE_LINE_REASON } from './customer-on-the-line';
 import { MANAGER_RETURNED_REASON, NINETY_MINUTE_RELEASE_REASON, SYSTEM_ACTOR_AR, isAutomaticRelease, managerReturnedBy } from './auto-release';
 import { POST_ORDER_ADDITION_AR } from './post-order-offer-copy';
@@ -130,6 +131,10 @@ const CLAIM_REASON_AR: Record<string, string> = {
   // «أرجِع «لا يرد» للطابور» (return-no-answer-pile.ts): a supervisor let go of her pile. This is the fallback for a line that
   // does not say who (`managerReturnWords` below names the person when it does).
   [MANAGER_RETURNED_REASON]: 'أرجعها مشرف للطابور — ما حدا وصل لزبونها',
+  // «الطلب يرجع للطابور فوراً» (no-answer-returns.ts): the order left her hand with her press — the system wrote the line, not she.
+  [NO_ANSWER_RETURNED_REASON]: 'رجع للطابور فوراً بعد «لا يرد» — بيجهز بعد 3 ساعات دوام',
+  [DATE_RETURNED_REASON]: 'رجع للطابور بعد ما انحدد موعد — بيجهز بالموعد',
+  [IDLE_RETURNED_REASON]: 'تحرير تلقائي — مرّت 30 دقيقة عمل وما انسجّلت عليه أي محاولة، ورجع للطابور',
   LOCK_EXPIRED: 'انتهت مدة القفل',
   REASSIGNED: 'إعادة إسناد',
 };

@@ -1,4 +1,5 @@
 import { DUE_RELEASE_REASON, REPULL_RELEASE_REASON, ROUND_RELEASE_REASON } from './no-answer-rounds';
+import { IDLE_RETURNED_REASON } from './no-answer-returns';
 
 /**
  * AN ORDER THE SYSTEM TAKES BACK IS TAKEN BY THE SYSTEM — AND SHE IS TOLD (the owner's ruling 4/11).
@@ -42,6 +43,8 @@ export const AUTO_RELEASE_WHY: Record<string, string> = {
   [ROUND_RELEASE_REASON]: 'مرّت 12 ساعة عمل على جولة بلا ردّ',
   [REPULL_RELEASE_REASON]: 'انسحب من جديد وما انسجّلت عليه محاولة خلال 90 دقيقة عمل',
   [DUE_RELEASE_REASON]: 'مرّت 3 ساعات عمل على موعد الطلب وما انسجّلت عليه محاولة بعد الموعد',
+  // «الطلب يرجع للطابور فوراً» (`no-answer-returns.ts`): the only one of that mode's three ways out that she did not press herself.
+  [IDLE_RETURNED_REASON]: 'ما انسجّلت عليه أي محاولة خلال 30 دقيقة عمل',
 };
 
 /** The actor the timeline writes for a release nobody pressed. */
