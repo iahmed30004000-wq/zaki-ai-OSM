@@ -1281,7 +1281,7 @@
   },
   "src/components/screens/finance/WalletsScreen.tsx": {
     "buttons": 20,
-    "inputs": 14,
+    "inputs": 16,
     "columns": 11,
     "cards": 0,
     "modals": 4,
