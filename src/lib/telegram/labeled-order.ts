@@ -22,8 +22,12 @@ import { readPhoneText, type PhoneReading } from './phone-text';
  *
  *     رقم الطلب · تاريخ الطلب · إسم العميل · رقم الهاتف · عنوان العميل · إسم المنتج · إسم العرض · السعر · الكمية
  *
- * and then: «تجاهل رقم الطلب لانه مش مهم عندنا ولا تحطو». So «رقم الطلب» is read and DROPPED: it is not a field of the
- * result, it is never stored, never compared and never shown, and a message without it is still an order.
+ * and then: «تجاهل رقم الطلب لانه مش مهم عندنا ولا تحطو». So «رقم الطلب» is not one of the eight fields: it is never
+ * stored on an order, never compared by the duplicate check and never shown, and a message without it is still an order.
+ *
+ * ONE USE CAME BACK (10/11, the upsell brief): the site sends an upsell order as TWO messages with the same «رقم الطلب», and
+ * the number is the only thing that ties them. So a reading that is ok carries `orderNumber` — a PAIRING KEY and nothing
+ * else (`inbound.ts` pairs the two messages by it, `upsell-pair.ts` judges the pair). It is still written nowhere.
  *
  * PURE. No I/O and no model — the text a seller pastes carries a customer's name, phone and address.
  *
@@ -157,6 +161,11 @@ export type LabeledReading =
       quantity: number;
       /** «رقم الهاتف», cleaned: the number the customer is made from, and any others in the line. */
       phone: PhoneReading;
+      /**
+       * «رقم الطلب» as a PAIRING KEY only (`orderNumberOf`): Latin digits, trimmed, a leading «#» taken off; null when the
+       * line is absent or is not a plain number/code. Never written on an order, never shown, never compared by the twin check.
+       */
+      orderNumber: string | null;
     };
 
 const MAX_TEXT_LENGTH = 4000;
@@ -166,6 +175,8 @@ interface Scan {
   /** Distinct labels found at the start of a line. */
   labels: number;
   values: Partial<Record<LabeledField, string>>;
+  /** «رقم الطلب» as written (digits already Latin) — read for pairing only. */
+  orderNumber?: string;
   /** The first label (in the order it was written) that stood twice. */
   repeated: LabeledField | 'orderNumber' | null;
   /** A line that belongs to no label, or to a label that takes one line only. */
@@ -196,6 +207,7 @@ function scan(text: string): Scan {
         seen.add(name);
         out.labels++;
         if (key) out.values[key] = line.slice(colon + 1).trim();
+        else out.orderNumber = line.slice(colon + 1).trim();
       }
       current = name;
       continue;
@@ -211,6 +223,15 @@ function scan(text: string): Scan {
     }
   }
   return out;
+}
+
+/**
+ * «رقم الطلب» as a key two messages can be paired by: 1..32 of Latin letters, digits and «- _ /», after the digits were made
+ * Latin and a leading «#» was taken off. Anything else is no number at all — a message with no usable number is never paired.
+ */
+export function orderNumberOf(value: string | null | undefined): string | null {
+  const v = toLatinDigits(value ?? '').replace(/\s+/g, '').replace(/^#/, '');
+  return /^[0-9A-Za-z_/-]{1,32}$/.test(v) ? v : null;
 }
 
 /** «25», «25 $», «$25», «25 دولار», «25.5»: a number and, at most, one currency word — and nothing else. */
@@ -310,7 +331,7 @@ export function readLabeledOrder(text: string, store?: LabeledStore): LabeledRea
   const quantity = /^\d{1,5}$/.test(fields.quantity) ? Number(fields.quantity) : NaN;
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > MAX_QUANTITY) return refused('INVALID_QUANTITY');
 
-  return { claimed: true, ok: true, fields, place, priceText: price.priceText, quantity, phone };
+  return { claimed: true, ok: true, fields, place, priceText: price.priceText, quantity, phone, orderNumber: orderNumberOf(read.orderNumber) };
 }
 
 /** What the «طلبات تلجرام» columns show for one message: the fields as it wrote them, when it claims the format. */

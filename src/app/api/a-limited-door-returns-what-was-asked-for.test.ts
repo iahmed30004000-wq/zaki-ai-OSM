@@ -57,6 +57,8 @@ vi.mock('@/lib/auth', () => ({
 }));
 // `can` for the telegram door's store scoping, which this file does not test.
 vi.mock('@/lib/authorization', () => ({ requirePermission: (...a: unknown[]) => requirePermission(...a), can: () => true }));
+// The lazy release of expired upsell waits (`holds.ts`, 10/11) is its own query, not the list's page: answered nothing here.
+vi.mock('@/lib/telegram/holds', () => ({ releaseExpiredHolds: async () => 0 }));
 vi.mock('@/lib/analytics', () => ({ getCompanyAnalytics: (...a: unknown[]) => getCompanyAnalytics(...a) }));
 
 import { GET as PROFITABILITY } from './finance/profitability/route';

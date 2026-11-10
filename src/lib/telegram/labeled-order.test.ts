@@ -27,7 +27,9 @@ const text = (over: Record<string, string | null> = {}, extra = '') =>
     .join('\n') + extra;
 
 describe('his example', () => {
-  it('is claimed and read, field by field — and the order number is not among them', () => {
+  // CHANGED DELIBERATELY (10/11, the upsell brief): the order number is still not one of the eight fields, but an ok reading
+  // carries it as `orderNumber` — the key two messages of one YouCan upsell order are paired by. Written nowhere.
+  it('is claimed and read, field by field — and the order number is not among them (it is the pairing key only)', () => {
     const r = readLabeledOrder(text(), store);
     expect(r).toMatchObject({ claimed: true, ok: true, place: 'دمشق', priceText: '25', quantity: 1 });
     if (!r.claimed || !r.ok) throw new Error('not read');
@@ -41,7 +43,21 @@ describe('his example', () => {
       price: '25',
       quantity: '1',
     });
-    expect(JSON.stringify(r)).not.toContain('26842');
+    expect(JSON.stringify(r.fields)).not.toContain('26842');
+    expect(r.orderNumber).toBe('26842');
+  });
+
+  it('reads «رقم الطلب» as a pairing key: Latin digits, a leading «#» off, and nothing that is not a plain code', () => {
+    const numberOf = (value: string | null) => {
+      const r = readLabeledOrder(text({ 'رقم الطلب': value }), store);
+      return r.claimed && r.ok ? r.orderNumber : 'refused';
+    };
+    expect(numberOf('٣٠٠٥١')).toBe('30051');
+    expect(numberOf('#30051')).toBe('30051');
+    expect(numberOf(' YC-30051/2 ')).toBe('YC-30051/2');
+    expect(numberOf('طلب 30051')).toBeNull();
+    expect(numberOf('1'.repeat(33))).toBeNull();
+    expect(numberOf(null)).toBeNull();
   });
 
   it('is read without a store too: the same fields, no judgment that needs the store', () => {

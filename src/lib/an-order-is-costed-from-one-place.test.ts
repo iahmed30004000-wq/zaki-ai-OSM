@@ -236,7 +236,10 @@ describe('the rules the figure follows are written once, in the one file, and ea
 
   it('Telegram asks the one function and reads no batch of its own — the newest batch’s unit cost is gone (RV574)', () => {
     const tg = code('src/lib/telegram/order-creation.ts');
-    expect(tg).toMatch(/const unitCost = \(await unitCostsOf\(db, companyId, \[productRow\.id\]\)\)\.get\(productRow\.id\) \?\? 0;/);
+    // 10/11 (the upsell merge): an order may carry the upsell's line too, so the one function is asked for every product of the
+    // order at once and the cost is the sum over the lines — still `unitCostsOf`, still no batch of its own.
+    expect(tg).toMatch(/const unitCosts = await unitCostsOf\(db, companyId, \[\.\.\.rowsById\.keys\(\)\]\);/);
+    expect(tg).toMatch(/\(unitCosts\.get\(l\.product\.id\) \?\? 0\) \* \(l\.quantity \+ l\.freeQuantity\)/);
     expect(tg, 'تلجرام لسا بيقرأ دفعة لحاله').not.toMatch(/batches|costPerUnit|productionDate/);
   });
 

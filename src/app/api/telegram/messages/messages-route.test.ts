@@ -21,6 +21,9 @@ vi.mock('@/lib/geo-context', () => ({
 }));
 vi.mock('@/lib/authorization', () => ({ requirePermission: vi.fn(async () => undefined), can: () => ctx.manage }));
 vi.mock('@/lib/audit', () => ({ logAudit: vi.fn() }));
+// The lazy release of expired upsell waits (`holds.ts`) is its own query, proved in `upsell-merge.test.ts`; here it answers nothing.
+const { releaseExpiredHolds } = vi.hoisted(() => ({ releaseExpiredHolds: vi.fn(async () => 0) }));
+vi.mock('@/lib/telegram/holds', () => ({ releaseExpiredHolds }));
 
 import { GET } from './route';
 import { POST as IGNORE } from './[id]/ignore/route';

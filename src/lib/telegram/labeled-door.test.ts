@@ -87,6 +87,8 @@ const { db, state, gate } = vi.hoisted(() => {
           })
       ),
     },
+    // «أسماء المنتجات» (10/11): none in this file — the upsell pair and the old names are proved in `upsell-merge.test.ts`.
+    telegramUpsellProduct: { findMany: vi.fn(async () => []) },
     telegramSource: {
       findUnique: vi.fn(async ({ where }: Row) => {
         const s = state.sources.find((x) => x.id === where.id);

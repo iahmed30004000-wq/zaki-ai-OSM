@@ -13,6 +13,9 @@ import { REVIEW_REASONS, reviewReason, reviewReasonText } from './review-reasons
 const door = stripComments(repoFile('src/lib/telegram/inbound.ts'));
 const reader = stripComments(repoFile('src/lib/telegram/labeled-order.ts'));
 const creator = stripComments(repoFile('src/lib/telegram/order-creation.ts'));
+// The upsell pair's verdict (10/11) returns its codes to the door, which writes them with `review(verdict.reason)`: they are
+// read from the list the pair module declares, as the reader's refusals are.
+const pair = stripComments(repoFile('src/lib/telegram/upsell-pair.ts'));
 
 // `review('…')` sends a message to a person; `ignore('…')` sets it aside. Both write a code a person may read — and a code
 // that carries a detail is written as a template, `review(`PRICE_MISMATCH:${…}`)`: the code before the colon is the one.
@@ -21,12 +24,16 @@ const refusals = (() => {
   const union = reader.slice(reader.indexOf('export type LabeledRefusal'));
   return [...union.slice(0, union.indexOf(';')).matchAll(/'([A-Z_]+)'/g)].map((m) => m[1]);
 })();
+const pairRefusals = (() => {
+  const union = pair.slice(pair.indexOf('export type PairRefusal'));
+  return [...union.slice(0, union.indexOf(';')).matchAll(/'([A-Z_]+)'/g)].map((m) => m[1]);
+})();
 const created = (() => {
   const result = creator.slice(creator.indexOf('export type CreateTelegramOrderResult'));
   return [...result.slice(0, result.indexOf('};')).matchAll(/'([A-Z_]+)'/g)].map((m) => m[1]);
 })();
 // ALREADY_LINKED is never shown: the door turns it into PROCESSED, by the order the other press made.
-const written = [...new Set([...reviewed, ...refusals, ...created.filter((c) => c !== 'ALREADY_LINKED')])];
+const written = [...new Set([...reviewed, ...refusals, ...pairRefusals, ...created.filter((c) => c !== 'ALREADY_LINKED')])];
 
 describe('the codes the door writes', () => {
   it('are found at all — a sweep over nothing proves nothing', () => {
@@ -35,6 +42,9 @@ describe('the codes the door writes', () => {
     expect(reviewed).toEqual(expect.arrayContaining(['OFFER_NOT_FOUND', 'OFFER_AMBIGUOUS', 'QUANTITY_NOT_OFFER', 'PRICE_MISMATCH']));
     expect(refusals).toContain('MISSING_PHONE');
     expect(created).toContain('NO_SYSTEM_ACTOR');
+    expect(pairRefusals).toEqual(expect.arrayContaining(['WAITING_FOR_UPSELL', 'WAITING_FOR_BASE', 'UPSELL_PRICE_MISMATCH', 'ALIAS_PRODUCT_UNAVAILABLE']));
+    // The door writes the waits and the pair's own refusals itself, by name.
+    expect(reviewed).toEqual(expect.arrayContaining(['WAITING_FOR_UPSELL', 'WAITING_FOR_BASE', 'UPSELL_WITHOUT_BASE', 'UPSELL_PAIR_AMBIGUOUS', 'ALIAS_PRODUCT_UNAVAILABLE']));
     expect(written).toEqual(
       expect.arrayContaining(['NO_STORE', 'CUSTOMER_BLOCKED', 'DUPLICATE_ORDER', 'PRODUCT_GUESSED', 'NOT_IN_FORMAT', 'MISSING_PHONE'])
     );
@@ -81,6 +91,16 @@ describe('what a person reads', () => {
     // A detail on a code that takes none changes nothing, and a code nobody wrote is still said in Arabic.
     expect(reviewReasonText('NO_STORE:x')).toBe('المجموعة مش مربوطة بمتجر');
     expect(reviewReasonText('SOMETHING_NEW:x')).toBe('سبب ما منعرفه');
+  });
+
+  it('says until when a half of an upsell pair waits, and the total the pair really comes to', () => {
+    expect(reviewReasonText('WAITING_FOR_UPSELL:2026-11-10T12:10:00.000Z')).toMatch(/^السعر أعلى من العرض — عم تستنّى رسالة الأب سيل بنفس رقم الطلب لحد \d\d:\d\d$/);
+    expect(reviewReasonText('WAITING_FOR_BASE:2026-11-10T12:10:00.000Z')).toMatch(/^رسالة أب سيل — عم تستنّى رسالة الطلب الأساسي/);
+    expect(reviewReasonText('UPSELL_PRICE_MISMATCH:60.00')).toBe('سعر العرض مع سعر الأب سيل مش هو السعر المكتوب (60.00)');
+    expect(reviewReason('WAITING_FOR_UPSELL:2026-11-10T12:10:00.000Z')?.field).toBe('priceQuantity');
+    for (const code of ['WAITING_FOR_UPSELL', 'WAITING_FOR_BASE', 'UPSELL_WITHOUT_BASE', 'UPSELL_PAIR_MISMATCH', 'UPSELL_PAIR_AMBIGUOUS', 'UPSELL_PRICE_MISMATCH', 'ALIAS_PRODUCT_UNAVAILABLE']) {
+      expect(reviewReason(code)?.retry, code).toBe(true);
+    }
   });
 
   it('marks the cell the field lives in', () => {

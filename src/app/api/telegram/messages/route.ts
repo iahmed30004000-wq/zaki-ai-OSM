@@ -22,6 +22,7 @@ import { findTwinOrder } from '@/lib/telegram/twin';
 import { toLatinDigits } from '@/lib/latin-digits';
 import { apiErrorResponse } from '@/lib/api-error';
 import { readLimit, readPage } from '@/lib/numeric-input';
+import { releaseExpiredHolds } from '@/lib/telegram/holds';
 
 /** Which statuses each tab holds. «للمراجعة» is everything a person still has to look at. */
 const TABS: Record<string, string[]> = {
@@ -46,6 +47,8 @@ export async function GET(req: Request) {
   try {
     const { user, companyId, storeId } = await requireContext();
     await requirePermission('telegram.view');
+    // Half of an upsell pair whose ten minutes are over stops waiting before the list is counted (`holds.ts`).
+    await releaseExpiredHolds(companyId);
 
     const params = new URL(req.url).searchParams;
     const tab = params.get('tab')?.trim() ?? '';

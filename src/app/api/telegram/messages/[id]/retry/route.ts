@@ -13,12 +13,15 @@ import { telegramStoreWhere } from '@/lib/telegram/store-scope';
 import { requirePermission } from '@/lib/authorization';
 import { processStoredMessage } from '@/lib/telegram/inbound';
 import { apiErrorResponse } from '@/lib/api-error';
+import { releaseExpiredHolds } from '@/lib/telegram/holds';
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const { companyId, storeId } = await requireContext();
     await requirePermission('telegram.manage');
+    // Half of an upsell pair whose ten minutes are over stops waiting first (`holds.ts`) — this one included.
+    await releaseExpiredHolds(companyId);
 
     // A message of this store's sources (or of no store — the manager's to place).
     const message = await db.telegramMessage.findFirst({ where: { id, companyId, ...telegramStoreWhere(storeId, true) } });

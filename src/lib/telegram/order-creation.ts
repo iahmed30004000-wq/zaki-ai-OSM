@@ -29,6 +29,7 @@ import { orderRefFields } from '../order-ref';
 import { computeCod, roundMinor } from '../money';
 import { unitCostsOf } from '../product-fixed-cost';
 import { basketDiscount, type ResolvedLine } from '../public-order';
+import { priceLines } from './upsell-pair';
 
 export interface CreateTelegramOrderInput {
   companyId: string;
@@ -61,6 +62,20 @@ export interface CreateTelegramOrderInput {
    * order: two presses of «إعادة المعالجة» at the same moment make one order, and the second one rolls back.
    */
   linkMessageId?: string;
+  /**
+   * THE YOUCAN UPSELL (10/11): the lines a SECOND message of the same order adds — priced by the door (`upsell-pair.ts`), no
+   * offer, no gift. The order is then ONE `computeCod` over `line` and these, the head is the principal line exactly as
+   * `createPublicOrder` takes it, and the cost of goods is the sum over every line. Absent, the order is the one line, as always.
+   */
+  extraLines?: ResolvedLine[];
+  /**
+   * Every TelegramMessage the order is made from, when it is more than one (the base and its upsell). Each is linked inside the
+   * transaction, only while it has no order: if ANY of them already has one, the whole order rolls back (`ALREADY_LINKED`).
+   * Takes the place of `linkMessageId` when given.
+   */
+  linkMessageIds?: string[];
+  /** One line for the internal notes and the timeline when the order was merged: «دمج أب سيل: … · +n عبوات · المبلغ». */
+  mergeNote?: string;
   telegram: {
     messageId: string;
     chatId: string;
@@ -147,13 +162,19 @@ export function priceTelegramLine(line: ResolvedLine, minorUnit: number) {
   });
 }
 
+/** The same calculator over every line of a merged order (the base and its upsell) — `upsell-pair.ts` asked it first. */
+export function priceTelegramLines(lines: ResolvedLine[], minorUnit: number) {
+  return priceLines(lines, minorUnit);
+}
+
 export async function createTelegramOrder(input: CreateTelegramOrderInput): Promise<CreateTelegramOrderResult> {
   const actor = await resolveSystemActor(input.companyId);
   if (!actor) return { ok: false, reason: 'NO_SYSTEM_ACTOR' };
 
   const { companyId, storeId, customer, product, line, address, notes, priceText, pageName, telegram } = input;
-  const quantity = line.quantity;
-  const freeQuantity = line.freeQuantity;
+  const extraLines = input.extraLines ?? [];
+  // Every line of the order: the offer's line first, then what an upsell message added (none, for every order but a merge).
+  const lines: ResolvedLine[] = [line, ...extraLines];
 
   if (!storeId) return { ok: false, reason: 'NO_STORE' };
   const store = await db.store.findFirst({
@@ -164,11 +185,33 @@ export async function createTelegramOrder(input: CreateTelegramOrderInput): Prom
 
   const productRow = await db.product.findFirst({ where: { id: product.id, companyId } });
   if (!productRow) return { ok: false, reason: 'PRODUCT_NOT_FOUND' };
+  // The product row of every line, this company's only (an upsell line names a product of the same store; the door checked it).
+  const rowsById = new Map([[productRow.id, productRow]]);
+  for (const extra of extraLines) {
+    if (rowsById.has(extra.product.id)) continue;
+    const row = await db.product.findFirst({ where: { id: extra.product.id, companyId } });
+    if (!row) return { ok: false, reason: 'PRODUCT_NOT_FOUND' };
+    rowsById.set(row.id, row);
+  }
 
-  // ONE COD function (contract PART 5), over the offer's line. The total is what it says — the message's «السعر» is a
-  // claim the door has already checked against this very figure, and it is only an audit note on the order.
-  const money = priceTelegramLine(line, store.country.minorUnit);
+  // ONE COD function (contract PART 5), over the offer's line — and, for a merged upsell order, over every line at once. The
+  // total is what it says — the message's «السعر» is a claim the door has already checked against this very figure, and it is
+  // only an audit note on the order.
+  const money = extraLines.length
+    ? priceTelegramLines(lines, store.country.minorUnit)
+    : priceTelegramLine(line, store.country.minorUnit);
   const totalAmount = money.cod;
+
+  // THE HEAD OF THE ORDER IS ITS PRINCIPAL LINE (as `createPublicOrder`): the largest line total, a tie going to the earlier
+  // line — so the offer's line heads a merged order unless the upsell is worth more. One line: the line itself.
+  let principal = 0;
+  for (let i = 1; i < lines.length; i++) {
+    if ((money.lineTotals[i] ?? 0) > (money.lineTotals[principal] ?? 0)) principal = i;
+  }
+  const head = lines[principal];
+  const headRow = rowsById.get(head.product.id) ?? productRow;
+  const quantity = head.quantity;
+  const freeQuantity = head.freeQuantity;
 
   // The gift is a real unit in the box: the goods cost what the paid pieces AND the gift cost (as `createPublicOrder`).
   //
@@ -178,8 +221,13 @@ export async function createTelegramOrder(input: CreateTelegramOrderInput): Prom
   // This door used to read the unit cost of the product's NEWEST batch instead (`batches[0]` by `productionDate desc`, an empty
   // batch included): the same product, raised the same minute, cost one figure from Telegram and another from the manual door
   // (RV574). The batches are not read here any more, so nothing of that reading is left to drift back.
-  const unitCost = (await unitCostsOf(db, companyId, [productRow.id])).get(productRow.id) ?? 0;
-  const estimatedCostOfGoods = roundMinor(unitCost * (quantity + freeQuantity), store.country.minorUnit);
+  // Every line, gift units included: the sum of unit cost x (paid + gift) over the order's lines, rounded once by the currency.
+  const unitCosts = await unitCostsOf(db, companyId, [...rowsById.keys()]);
+  const estimatedCostOfGoods = roundMinor(
+    lines.reduce((sum, l) => sum + (unitCosts.get(l.product.id) ?? 0) * (l.quantity + l.freeQuantity), 0),
+    store.country.minorUnit
+  );
+  const linkIds = input.linkMessageIds?.length ? input.linkMessageIds : input.linkMessageId ? [input.linkMessageId] : [];
   const now = new Date();
 
   try {
@@ -205,19 +253,19 @@ export async function createTelegramOrder(input: CreateTelegramOrderInput): Prom
               regionId: resolvedRegionId,
               ...refs,
               customerId: customer.id,
-              productId: productRow.id,
+              productId: headRow.id,
               quantity,
               freeQuantity,
-              offerId: line.offer?.id ?? null,
-              sellingPrice: money.lineTotals[0] ?? money.subtotal,
+              offerId: head.offer?.id ?? null,
+              sellingPrice: money.lineTotals[principal] ?? money.subtotal,
               shippingCost: 0,
               priceIncludesDelivery,
               totalAmount,
               currency: store.country.currencyCode,
               moderatorId: null,
               estimatedCostOfGoods,
-              productNameSnapshot: productRow.name,
-              productImageSnapshot: productRow.image || null,
+              productNameSnapshot: headRow.name,
+              productImageSnapshot: headRow.image || null,
               status: 'NEW',
               confirmationStatus: 'NEW',
               shippingStatus: 'NOT_READY',
@@ -237,6 +285,7 @@ export async function createTelegramOrder(input: CreateTelegramOrderInput): Prom
                 pageName?.trim() ? `page: ${pageName.trim().slice(0, 60)}` : null,
                 priceText?.trim() ? `advertised total price: ${priceText.trim().slice(0, 30)}` : null,
                 input.sourceNote?.trim() ? input.sourceNote.trim().slice(0, 300) : null,
+                input.mergeNote?.trim() ? input.mergeNote.trim().slice(0, 300) : null,
                 telegram.chatTitle ? `group: ${telegram.chatTitle.slice(0, 60)}` : null,
               ].filter(Boolean).join(' | '),
             },
@@ -251,29 +300,34 @@ export async function createTelegramOrder(input: CreateTelegramOrderInput): Prom
 
       // One message, one order. The row lock taken here makes a second, simultaneous press wait; when it reads the row
       // again the order is already set, it touches nothing, and its whole transaction — its order included — rolls back.
-      if (input.linkMessageId) {
+      // A merged order links BOTH its messages here, and either one already linked rolls the whole of it back.
+      for (const messageRowId of linkIds) {
         const linked = await tx.telegramMessage.updateMany({
-          where: { id: input.linkMessageId, orderId: null },
+          where: { id: messageRowId, orderId: null },
           data: { orderId: created.id, processingStatus: 'PROCESSED', processedAt: now, reviewReason: null },
         });
         if (linked.count !== 1) throw new MessageAlreadyLinked();
       }
 
-      // Order line: the offer's, gift units included (real stock at zero price), the reduction as its discount share.
-      await tx.orderItem.create({
-        data: {
-          companyId,
-          orderId: created.id,
-          productId: productRow.id,
-          productName: productRow.name,
-          quantity,
-          freeQuantity,
-          unitPrice: line.unitPrice,
-          discountShare: money.discountShares[0] ?? 0,
-          lineTotal: money.lineTotals[0] ?? money.subtotal,
-          addedStage: 'INTAKE',
-        },
-      });
+      // Order lines: the offer's, gift units included (real stock at zero price), the reduction as its discount share — and,
+      // for a merged order, the upsell's line after it. One `create` per line, in order.
+      for (const [i, line] of lines.entries()) {
+        const row = rowsById.get(line.product.id) ?? productRow;
+        await tx.orderItem.create({
+          data: {
+            companyId,
+            orderId: created.id,
+            productId: row.id,
+            productName: row.name,
+            quantity: line.quantity,
+            freeQuantity: line.freeQuantity,
+            unitPrice: line.unitPrice,
+            discountShare: money.discountShares[i] ?? 0,
+            lineTotal: money.lineTotals[i] ?? (lines.length === 1 ? money.subtotal : 0),
+            addedStage: 'INTAKE',
+          },
+        });
+      }
 
       await tx.customer.update({
         where: { id: customer.id },
@@ -296,6 +350,7 @@ export async function createTelegramOrder(input: CreateTelegramOrderInput): Prom
             telegramMessageId: telegram.messageId,
             telegramChatId: telegram.chatId,
             telegramThreadId: telegram.threadId,
+            ...(linkIds.length > 1 ? { telegramMessageRowIds: linkIds, merge: input.mergeNote ?? null } : {}),
           }),
         },
       });
@@ -329,6 +384,7 @@ export async function createTelegramOrder(input: CreateTelegramOrderInput): Prom
         telegramMessageId: telegram.messageId,
         telegramChatId: telegram.chatId,
         telegramThreadId: telegram.threadId,
+        ...(linkIds.length > 1 ? { telegramMessageRowIds: linkIds, merge: input.mergeNote ?? null } : {}),
       },
     });
 
@@ -337,7 +393,7 @@ export async function createTelegramOrder(input: CreateTelegramOrderInput): Prom
       companyId,
       orderId: order.id,
       customerId: customer.id,
-      productIds: [product.id],
+      productIds: [...new Set([product.id, ...extraLines.map((l) => l.product.id)])],
       at: (order as any).createdAt ?? now,
       userId: actor.id,
     });

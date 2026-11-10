@@ -102,6 +102,8 @@ export const STORE_TABLES: readonly StoreTable[] = [
   { model: 'adAccount', label: 'الحسابات الإعلانية', how: 'blocks' },
   { model: 'trackingPixel', label: 'بكسلات التتبّع', how: 'blocks' },
   { model: 'telegramSource', label: 'مصادر تلجرام', how: 'blocks' },
+  // «أسماء المنتجات» of the Telegram door (10/11): switched off, never deleted — a store that has them is not empty.
+  { model: 'telegramUpsellProduct', label: 'أسماء منتجات تلجرام', how: 'blocks' },
   { model: 'productReview', label: 'تقييمات المنتجات', how: 'blocks' },
   // The shop window.
   { model: 'storeMenu', label: 'قوائم المتجر', how: 'blocks' },
