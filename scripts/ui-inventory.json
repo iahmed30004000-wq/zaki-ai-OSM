@@ -1270,8 +1270,8 @@
     "tabs": 0
   },
   "src/components/screens/finance/TransfersScreen.tsx": {
-    "buttons": 1,
-    "inputs": 5,
+    "buttons": 2,
+    "inputs": 4,
     "columns": 8,
     "cards": 0,
     "modals": 0,
@@ -2587,6 +2587,16 @@
     "modals": 0,
     "icons": 1,
     "links": 1,
+    "tabs": 0
+  },
+  "src/components/ui/WalletChip.tsx": {
+    "buttons": 1,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 0,
+    "links": 0,
     "tabs": 0
   },
   "src/app/(system)/error.tsx": {
