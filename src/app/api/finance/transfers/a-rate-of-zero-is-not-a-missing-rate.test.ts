@@ -222,13 +222,31 @@ describe('the guard and the schema are a pair, and the pair is checked', () => {
     expect(source()).toMatch(/exchangeRate:\s*z\s*\.number\(\)\s*\.positive\(\)/);
   });
 
+  /*
+   * CHANGED ON PURPOSE, AND SAID SO IN THE PULL REQUEST.
+   *
+   * The presence question moved. It used to be asked inline in the route
+   * (`input.exchangeRate === undefined`); with a second way to give the
+   * exchange (the amount that arrived) it is asked where the two are judged
+   * together, `resolveTransferAmounts` in lib/transfer-rate — «a rate AND an
+   * amount», «neither», «one currency and either». The hazard this test
+   * guards is the same and so is the rule: ask whether a rate was GIVEN,
+   * never whether it is truthy. The route may not bring the old spelling
+   * back, and the resolver has to say it the right way.
+   */
   it('and the presence check asks about presence, so the schema is not load-bearing twice', () => {
-    const src = source();
-    expect(
-      src,
-      'الحارس يسأل «هل الرقم صادق» لا «هل كُتِب» — وصفرٌ ليس غياباً'
-    ).not.toMatch(/!\s*sameCurrency\s*&&\s*!\s*input\.exchangeRate\b/);
-    expect(src).toMatch(/input\.exchangeRate === undefined/);
+    const resolver = readFileSync(join(process.cwd(), 'src/lib/transfer-rate.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+      .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+    for (const [where, src] of [['route.ts', source()], ['transfer-rate.ts', resolver]] as const) {
+      expect(
+        src,
+        `${where}: الحارس يسأل «هل الرقم صادق» لا «هل كُتِب» — وصفرٌ ليس غياباً`
+      ).not.toMatch(/!\s*sameCurrency\s*&&\s*!\s*(?:input|i)\.exchangeRate\b/);
+      expect(src, `${where}: سؤال «هل الرقم صادق» عن سعرٍ`).not.toMatch(/!\s*(?:input|i)\.exchangeRate\b/);
+    }
+    expect(resolver).toMatch(/i\.exchangeRate !== undefined/);
+    expect(resolver).toMatch(/i\.amountIn !== undefined/);
   });
 });
 
