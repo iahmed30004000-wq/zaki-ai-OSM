@@ -23,13 +23,16 @@ import { usePagedList, type PagedRead, type Paging } from '@/hooks/usePagedList'
 import { reviewReason, reviewReasonText, type ReasonField } from '@/lib/telegram/review-reasons';
 import type { MessageColumns } from '@/lib/telegram/labeled-order';
 import { TelegramCorrectDialog } from './TelegramCorrectDialog';
+import { TelegramAliasesDialog } from './TelegramAliasesDialog';
+import { TelegramUpsellMergeDialog } from './TelegramUpsellMergeDialog';
 
 /**
  * «طلبات تلجرام» — THE MESSAGES, IN THE ORDER OF HIS LABELS.
  *
  * The owner, 28/10: «أريده يسحب الطلبات بهذه الصيغة»: nine labels, one per line. The columns are what the labels say,
  * read on the server by the same reader the door uses: تاريخ الطلب · العميل · الهاتف · العنوان · المنتج · العرض ·
- * السعر × الكمية, then الحالة. «رقم الطلب» is dropped by the reader and has no column. Then:
+ * السعر × الكمية, then الحالة. «رقم الطلب» has no column: it is only the key two messages of one YouCan upsell order are
+ * merged by (10/11). Then:
  *
  *   · a message that is not in the format is set aside under «متجاهلة» with «الرسالة مش بصيغة الطلب»; one that claims
  *     the format and is wrong waits under «للمراجعة», and the reason names the field — whose cell is marked;
@@ -40,7 +43,10 @@ import { TelegramCorrectDialog } from './TelegramCorrectDialog';
  *     it through the same door: it becomes an order, or the form says the new reason;
  *   · the message as it arrived is folded under «نص الرسالة», closed until asked for;
  *   · the offer's text is tied to a real offer: once the order exists the cell shows «مربوط بالعرض: …», and the phone is
- *     drawn as the seller wrote it (every form is accepted; a number that fails the store's rule waits here, named).
+ *     drawn as the seller wrote it (every form is accepted; a number that fails the store's rule waits here, named);
+ *   · «منتجات الأب سيل» (10/11) opens the store's own names — the upsell names and the old product names — for everyone who
+ *     reads this screen (changing them is `telegram.manage`), and «دمج الأب سيل — تجربة» (`telegram.manage`) shows what the
+ *     new rules would do with the waiting messages before «نعم».
  *
  * The bot's status asks Telegram twice, so it is read when the screen opens and on «تحديث» — never on a tab, a search or
  * a page.
@@ -137,6 +143,8 @@ function TelegramOrdersList({ canManage, canConnect }: { canManage: boolean; can
   const [busyId, setBusyId] = useState<string | null>(null);
   const [bot, setBot] = useState<'on' | 'off' | 'unknown' | null>(null);
   const [correcting, setCorrecting] = useState<Message | null>(null);
+  const [names, setNames] = useState(false);
+  const [merging, setMerging] = useState(false);
 
   const list = usePagedList<Message, Facts>({
     url: '/api/telegram/messages',
@@ -318,7 +326,15 @@ function TelegramOrdersList({ canManage, canConnect }: { canManage: boolean; can
         title="طلبات تلجرام"
         description="الرسالة المكتوبة بصيغة الطلب بتصير طلب لحالها، واللي فيها غلط بتستنّى هون للمراجعة."
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setNames(true)}>
+              منتجات الأب سيل
+            </Button>
+            {canManage && (
+              <Button variant="outline" size="sm" onClick={() => setMerging(true)}>
+                دمج الأب سيل — تجربة
+              </Button>
+            )}
             {canConnect && (
               <Link href="/settings/links#telegram">
                 <Button variant="outline" size="sm"><RiEqualizer2Line className="w-4 h-4 ml-1" /> الإعدادات</Button>
@@ -338,7 +354,7 @@ function TelegramOrdersList({ canManage, canConnect }: { canManage: boolean; can
       </PageHeader>
 
       <p className="text-sm text-[var(--sys-muted-foreground)]">
-        الرسالة لازم تكون بهالعناوين، سطر لكل معلومة: رقم الطلب (يُتجاهل) · تاريخ الطلب · إسم العميل · رقم الهاتف · عنوان العميل · إسم المنتج · إسم العرض · السعر · الكمية. غير هيك ما بتصير طلب.
+        الرسالة لازم تكون بهالعناوين، سطر لكل معلومة: رقم الطلب (بيُستعمل لدمج رسالتي الأب سيل فقط) · تاريخ الطلب · إسم العميل · رقم الهاتف · عنوان العميل · إسم المنتج · إسم العرض · السعر · الكمية. غير هيك ما بتصير طلب.
       </p>
 
       <Tabs tabs={TABS.map((t) => ({ ...t, count: facts?.[t.key] }))} value={tab} onChange={(k) => setTab(k as Tab)} />
@@ -382,6 +398,10 @@ function TelegramOrdersList({ canManage, canConnect }: { canManage: boolean; can
           }}
         />
       )}
+
+      {names && <TelegramAliasesDialog canManage={canManage} onClose={() => setNames(false)} />}
+
+      {merging && <TelegramUpsellMergeDialog canManage={canManage} onClose={() => setMerging(false)} onApplied={() => list.reload()} />}
 
       {pagination.total > 0 && (
         <Pager

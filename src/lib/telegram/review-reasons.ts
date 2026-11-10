@@ -70,6 +70,34 @@ export const REVIEW_REASONS = {
   QUANTITY_NOT_OFFER: { field: 'priceQuantity', text: 'الكمية ما بتطابق قطع العرض', retry: true },
   CURRENCY_MISMATCH: { field: 'priceQuantity', text: 'عملة السعر غير عملة المتجر — ما منحوّل', retry: true },
   DUPLICATE_ORDER: { text: 'نفس الزبون والمنتج والوقت صار طلب', retry: false },
+  // ── The upsell pair and the old names (10/11): two messages with the same «رقم الطلب» are one order (`upsell-pair.ts`),
+  //    and a product's old name is the product (`aliases.ts`). A wait carries its until-time; everything here can be pressed
+  //    again, because the other message, the names list or the catalogue may have changed since.
+  WAITING_FOR_UPSELL: {
+    field: 'priceQuantity',
+    text: 'السعر أعلى من العرض — عم تستنّى رسالة الأب سيل بنفس رقم الطلب',
+    retry: true,
+    withDetail: (d) => `السعر أعلى من العرض — عم تستنّى رسالة الأب سيل بنفس رقم الطلب لحد ${untilText(d)}`,
+  },
+  WAITING_FOR_BASE: {
+    field: 'product',
+    text: 'رسالة أب سيل — عم تستنّى رسالة الطلب الأساسي بنفس رقم الطلب',
+    retry: true,
+    withDetail: (d) => `رسالة أب سيل — عم تستنّى رسالة الطلب الأساسي بنفس رقم الطلب لحد ${untilText(d)}`,
+  },
+  UPSELL_WITHOUT_BASE: { field: 'product', text: 'رسالة أب سيل بلا طلب أساسي بنفس رقم الطلب', retry: true },
+  UPSELL_BASE_REFUSED: { field: 'product', text: 'رسالة الطلب الأساسي (نفس رقم الطلب) إلها مشكلة لحالها — صلّحوها أول', retry: true },
+  UPSELL_PRICE_MISMATCH: {
+    field: 'priceQuantity',
+    text: 'سعر العرض مع سعر الأب سيل مش هو السعر المكتوب',
+    retry: true,
+    withDetail: (d) => `سعر العرض مع سعر الأب سيل مش هو السعر المكتوب (${d})`,
+  },
+  UPSELL_PAIR_MISMATCH: { field: 'phone', text: 'الرسالتين بنفس رقم الطلب بس الهاتف أو السعر مختلف', retry: true },
+  UPSELL_PAIR_AMBIGUOUS: { text: 'في أكتر من رسالة بنفس رقم الطلب — ما منعرف أي وحدة', retry: true },
+  UPSELL_PRODUCT_UNAVAILABLE: { field: 'product', text: 'منتج الأب سيل مش فعّال بهالمتجر', retry: true },
+  UPSELL_QUANTITY_INVALID: { field: 'priceQuantity', text: 'كمية الأب سيل لازم تكون من 1 لـ20', retry: true },
+  ALIAS_PRODUCT_UNAVAILABLE: { field: 'product', text: 'الاسم القديم مربوط بمنتج مش فعّال بهالمتجر', retry: true },
   NO_STORE: { text: 'المجموعة مش مربوطة بمتجر', retry: true },
   NO_SYSTEM_ACTOR: { text: 'ما في مدير شركة فعّال ينسجّل الطلب باسمه', retry: true },
   CREATION_FAILED: { text: 'ما زبط إنشاء الطلب — جرّب كمان مرة', retry: true },
@@ -78,6 +106,14 @@ export const REVIEW_REASONS = {
 } satisfies Record<string, ReviewReason>;
 
 export type ReviewReasonCode = keyof typeof REVIEW_REASONS;
+
+/** «2026-11-10T12:10:00.000Z» → the time a person reads (Latin digits, the machine's own clock), or the text as stored. */
+function untilText(iso: string): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return iso;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(at.getHours())}:${pad(at.getMinutes())}`;
+}
 
 /** A code no version of the door wrote — still said in Arabic, and a press is allowed: it costs nothing to ask again. */
 const UNKNOWN: ReviewReason = { text: 'سبب ما منعرفه', retry: true };

@@ -52,6 +52,7 @@ model Company {
   whatsappMessages      WhatsAppMessage[]
   telegramSources       TelegramSource[]
   telegramMessages      TelegramMessage[]
+  telegramUpsells       TelegramUpsellProduct[]
   trackingPixels        TrackingPixel[]
   countries             Country[]
   customerBlocks        CustomerBlock[]
@@ -459,6 +460,7 @@ model Product {
   addOns             OrderAddOn[]
   images             ProductImage[]
   reviews            ProductReview[]
+  telegramUpsells    TelegramUpsellProduct[]
   /// The fixed cost, when an admin has set one. A row of its OWN table and not a column here, on purpose: every read of a product
   /// takes the whole row, and a cost on it would ride out in whatever answer returns the row — including the ones a customer sees.
   fixedCost          ProductFixedCost?
@@ -2012,6 +2014,49 @@ model TelegramMessage {
   @@map("telegram_messages")
 }
 
+/// «أسماء المنتجات» — the product names a Telegram message may carry that are NOT the catalogue's own, per store. Two kinds:
+///
+///   UPSELL  — the name YouCan's upsell step writes in «إسم المنتج» of the SECOND message of one order («كورس طنين: عبوتين
+///             إضافيات 🎁»), and what it adds to the base order: a product of the same store, `extraUnits` units for `linePrice`.
+///             The door merges it with the base message that carries the same «رقم الطلب» (`upsell-pair.ts`).
+///   RENAMED — an OLD name of a catalogue product (orders received before the rename of 2026-11-10), and, optionally, the old
+///             offer texts (`offerAliases`: `{ name, foldedName, quantity, price }[]`) — each only NAMES which real active offer
+///             of the product (same quantity, same price) the old text meant; the money is always the offer row's.
+///
+/// The door (`src/lib/telegram/inbound.ts`) matches by `foldedName` (= `foldOfferText(incomingName)`) among the ACTIVE rows of
+/// the message's store, BEFORE the generic product matcher. Rows are never deleted from the screen or the API: a name that is no longer sold is switched off (`isActive = false`),
+/// so a message read again later still finds out what it was. Per STORE: two stores may sell different things under one name.
+model TelegramUpsellProduct {
+  id           String   @id @default(uuid())
+  companyId    String
+  storeId      String
+  /// The name exactly as the site writes it («كورس طنين: عبوتين إضافيات 🎁»).
+  incomingName String
+  /// The match key: `foldOfferText(incomingName)` — spelling, marks, emoji and spaces folded away.
+  foldedName   String
+  productId    String
+  /// 'UPSELL' | 'RENAMED'.
+  kind         String   @default("UPSELL")
+  /// UPSELL only: units this line adds to the order (1..50), per one «الكمية». NULL for RENAMED.
+  extraUnits   Int?
+  /// UPSELL only: what the line costs, in the store's currency, per one «الكمية» (> 0, ≤ 100000). NULL for RENAMED.
+  linePrice    Decimal? @db.Decimal(14, 3)
+  /// RENAMED only: the old offer texts, `[{ name, foldedName, quantity, price }]` (at most 30). NULL for UPSELL.
+  offerAliases Json?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  store   Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, storeId, foldedName])
+  @@index([companyId, storeId, isActive])
+  @@index([productId])
+  @@map("telegram_upsell_products")
+}
+
 // ─── GEO CONTEXT (Stage 1, additive) ───
 // Company -> Country -> Store. A store inherits currency, minor unit,
 // regions, work hours, weekend days, order prefix and allowNegativeStock
@@ -2207,6 +2252,7 @@ model Store {
   access            UserStoreAccess[]
   landingPages      LandingPage[]      @relation("StorePages")
   telegramSources   TelegramSource[]
+  telegramUpsells   TelegramUpsellProduct[]
   shippingBatches   ShippingBatch[]
   couriers          DeliveryProvider[]
   fonts             StoreFont[]

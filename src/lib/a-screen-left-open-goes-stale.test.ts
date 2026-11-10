@@ -42,6 +42,8 @@ const EXEMPT: Record<string, string> = {
   // Loads once into a form the person then edits — a refresh on return
   // would overwrite what they have typed but not yet saved.
   'ProfileScreen.tsx': 'يحمّل مرّةً داخل نموذجٍ يُحرَّر — والتحديثُ يمسحُ ما كُتِب ولم يُحفَظ',
+  // A dialog over «طلبات تلجرام»: read when it opens and after each change it makes, and closed when the person goes back.
+  'TelegramAliasesDialog.tsx': 'نافذة بتنقرأ لما تنفتح وبعد كل تعديل فيها، وبتتسكّر لما ترجع للشاشة — والتحديث بيمسح الفورم اللي عم ينكتب',
   'PermissionsScreen.tsx': 'شجرةُ صلاحيّاتٍ تُحرَّر قبل الحفظ — التحديثُ يُلغي التعديلَ الجاري',
   'UserDetailScreen.tsx': 'بياناتُ موظّفٍ تُحرَّر في مكانها',
   'SystemSettingsScreen.tsx': 'نموذجُ إعداداتٍ يُحرَّر قبل الحفظ',

@@ -131,11 +131,12 @@ describe('opening it', () => {
     expect(screen.queryByRole('status', { name: 'جارٍ التحميل' })).toBeNull();
   });
 
-  it('— prints the rule, one line: the nine labels, with the order number marked as ignored', async () => {
+  // CHANGED DELIBERATELY (10/11): the order number is no longer «ignored» — it pairs the two messages of a YouCan upsell order.
+  it('— prints the rule, one line: the nine labels, with the order number marked as the upsell pairing key only', async () => {
     await draw();
     expect(
       screen.getByText(
-        /^الرسالة لازم تكون بهالعناوين، سطر لكل معلومة: رقم الطلب \(يُتجاهل\) · تاريخ الطلب · إسم العميل · رقم الهاتف · عنوان العميل · إسم المنتج · إسم العرض · السعر · الكمية\. غير هيك ما بتصير طلب\./
+        /^الرسالة لازم تكون بهالعناوين، سطر لكل معلومة: رقم الطلب \(بيُستعمل لدمج رسالتي الأب سيل فقط\) · تاريخ الطلب · إسم العميل · رقم الهاتف · عنوان العميل · إسم المنتج · إسم العرض · السعر · الكمية\. غير هيك ما بتصير طلب\./
       )
     ).toBeTruthy();
   });
