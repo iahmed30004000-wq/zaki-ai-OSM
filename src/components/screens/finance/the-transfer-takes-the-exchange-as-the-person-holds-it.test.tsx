@@ -351,6 +351,20 @@ describe('«عكس الاتجاه» turns the transfer round and keeps the deal'
     expect(valueBox().value).toBe('1290000');
   });
 
+  it('a deal the door would refuse is not carried over: the wallets turn, the figures stay as typed', async () => {
+    await draw();
+    pick('من محفظة', 'صندوق الدولار');
+    pick('إلى محفظة', 'صندوق الليرة');
+    type(amountBox(), '100');
+    fireEvent.click(radio('المبلغ المستلم'));
+    // a third decimal for a currency that counts two: refused, so there is no «what arrived» to turn round
+    type(valueBox(), '1290000.123');
+    expect(text()).toContain('لا يقبل أكثر من خانتين عشريتين');
+    fireEvent.click(screen.getByRole('button', { name: 'عكس الاتجاه' }));
+    expect(side('من محفظة').getByRole('button', { name: /صندوق الليرة/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(amountBox().value).toBe('100');
+  });
+
   it('there is nothing to turn round until both wallets are chosen', async () => {
     await draw();
     expect((screen.getByRole('button', { name: 'عكس الاتجاه' }) as HTMLButtonElement).disabled).toBe(true);

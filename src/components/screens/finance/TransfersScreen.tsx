@@ -221,7 +221,9 @@ export function TransfersScreen() {
   /** Reverse the direction and keep the deal: what arrived becomes what leaves, and the rate stays the same rate. */
   const swap = () => {
     if (!from || !to) return;
-    if (deal && deal.amountIn !== null && deal.amountOut !== null) {
+    // Only a deal the door would accept is carried over: a refused one (a rate that leaves nothing, an amount with too
+    // many decimals) has no «what arrived» to turn into «what leaves».
+    if (deal && verdict?.ok && deal.amountIn !== null && deal.amountOut !== null) {
       // The amount that arrived was typed: the two figures change places. A rate is tied to the currencies,
       // not to the direction, so it stays as it is.
       if (typed.face === 'C') setTypedFor({ face: 'C', text: String(deal.amountOut), pair });
