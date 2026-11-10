@@ -16,8 +16,9 @@ import { stripComments } from '@/lib/guard-source';
  *     wait for the statement; a row with no word draws nothing;
  *   • offers «الشركة بتقول» as a dropdown with the server's number beside each of the five words, sends only what was
  *     chosen, and puts it back with the other choices;
- *   • has ONE copy button on the «الباركود» column — the barcode, and the reference for a parcel with none — that is a
- *     44px words-and-all button on a phone card, and hands the value to a field to select when the browser refuses;
+ *   • has the small copy button of the barcode (10/11: off when the parcel has none — it no longer turns into a «انسخ المرجع»
+ *     button), and the customer's phone WRITTEN on the row with its own small copy button, on the desk and on the phone card;
+ *     a copy the browser refuses is handed to a field to select;
  *   • and changes nothing else on the screen (the rest is the old tests', all still green).
  */
 
@@ -316,7 +317,7 @@ describe('the copy button of the «الباركود» column', () => {
     expect(written).toEqual(['KSA-77']);
   });
 
-  it('— a parcel with no barcode (a manual company, or not sent yet) copies the reference, and the tooltip says so', async () => {
+  it('— a parcel with no barcode (a manual company, or not sent yet) keeps the button in its place, OFF: not pressable, and it says why', async () => {
     clipboardThatWorks();
     rows = [
       parcel('a', { trackingNumber: null, merchantRef: 'M-77', deliveryProvider: { id: P1, name: 'مندوب', kind: 'AGENT' } }),
@@ -324,15 +325,30 @@ describe('the copy button of the «الباركود» column', () => {
     ];
     await draw();
     expect(within(desk()).getAllByText('—').length).toBeGreaterThanOrEqual(2);
-    const ref = deskButton('نسخ مرجع الطلب M-77');
-    expect(ref.getAttribute('title')).toBe('انسخ المرجع');
-    await press(ref);
-    expect(written).toEqual(['M-77']);
-    // …and with no merchant reference, the order number the row prints.
-    const number = deskButton('نسخ مرجع الطلب ORD-b');
-    expect(number.getAttribute('title')).toBe('انسخ المرجع');
-    fireEvent.click(number);
-    await waitFor(() => expect(written).toEqual(['M-77', 'ORD-b']));
+    const off = within(desk()).getAllByRole('button', { name: 'نسخ باركود الشحنة — ما في باركود للشحنة' });
+    expect(off).toHaveLength(2);
+    for (const button of off) {
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+      expect(button.getAttribute('title')).toBe('ما في باركود للشحنة');
+    }
+    fireEvent.click(off[0]);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(written).toEqual([]);
+    expect(tell).not.toHaveBeenCalled();
+    expect(toast.warn).not.toHaveBeenCalled();
+  });
+
+  it('— and it no longer turns into «انسخ المرجع»: nothing falls back to the reference, which the button beside the order number copies, as it always did', async () => {
+    clipboardThatWorks();
+    rows = [parcel('a', { trackingNumber: null, merchantRef: 'M-77' }), parcel('b', { trackingNumber: null, merchantRef: null })];
+    await draw();
+    expect(document.body.textContent).not.toContain('انسخ المرجع');
+    expect(document.querySelector('[title="انسخ المرجع"]')).toBeNull();
+    expect(screen.queryByRole('button', { name: /نسخ مرجع الطلب/ })).toBeNull();
+    // The reference is one tap away where it always was: the small button right beside the number the row prints.
+    const refButton = within(desk()).getByRole('button', { name: 'نسخ رقم الطلب M-77' });
+    fireEvent.click(refButton);
+    await waitFor(() => expect(written).toEqual(['M-77']));
   });
 
   it('— when the browser refuses, the value goes to a field to select by hand (the dialog), not to a warning that goes away', async () => {
@@ -352,33 +368,39 @@ describe('the copy button of the «الباركود» column', () => {
   });
 
   it('— and where there is no clipboard at all (a plain-HTTP office server) it is the same: the field', async () => {
-    rows = [parcel('a', { trackingNumber: null, merchantRef: 'M-9' })];
+    rows = [parcel('a', { trackingNumber: 'TRK-9' })];
     await draw();
-    fireEvent.click(deskButton('نسخ مرجع الطلب M-9'));
-    await waitFor(() => expect(tell).toHaveBeenCalledWith({ title: 'تعذّر النسخ — انسخه يدوياً', value: 'M-9' }));
+    fireEvent.click(deskButton('نسخ باركود الشحنة TRK-9'));
+    await waitFor(() => expect(tell).toHaveBeenCalledWith({ title: 'تعذّر النسخ — انسخه يدوياً', value: 'TRK-9' }));
   });
 
-  it('— on a phone card it has WORDS and is a 44px target; the desk keeps the small icon in the column', async () => {
+  it('— the phone card draws the barcode as a line of its own, with the same SMALL icon button (a 44px target, no words) — off when there is none', async () => {
     clipboardThatWorks();
-    rows = [parcel('a'), parcel('b', { trackingNumber: null, merchantRef: 'M-1' })];
+    rows = [parcel('a'), parcel('b', { trackingNumber: null })];
     await draw();
 
     const onCard = within(cards()).getByRole('button', { name: 'نسخ باركود الشحنة TRK-a' });
-    expect(onCard.textContent).toBe('انسخ الباركود');
+    expect(onCard.textContent).toBe('');
     expect(onCard.className).toMatch(/(^|\s)h-11(\s|$)/);
-    expect(onCard.className).toContain('md:h-8');
-    // …inside a wrapper that the desk does not draw, since the desk has the column.
-    expect(onCard.closest('span.md\\:hidden')).not.toBeNull();
-    expect(within(cards()).getByRole('button', { name: 'نسخ مرجع الطلب M-1' }).textContent).toBe('انسخ المرجع');
+    expect(onCard.className).toContain('md:h-7');
+    // The value is written beside the button, labelled «الباركود», in the card's own list of fields.
+    const line = onCard.closest('div') as HTMLElement;
+    expect(within(line).getByText('الباركود')).toBeTruthy();
+    expect(within(line).getByText('TRK-a').getAttribute('dir')).toBe('ltr');
+
+    // The parcel with none: «—» and the button OFF, on the card as on the desk.
+    const off = within(cards()).getByRole('button', { name: 'نسخ باركود الشحنة — ما في باركود للشحنة' }) as HTMLButtonElement;
+    expect(off.disabled).toBe(true);
+    expect(within(off.closest('div') as HTMLElement).getByText('—')).toBeTruthy();
+
+    // No labelled button at the foot of the card any more.
+    expect(within(cards()).queryByText('انسخ الباركود')).toBeNull();
 
     const onDesk = deskButton('نسخ باركود الشحنة TRK-a');
     expect(onDesk.textContent).toBe('');
     expect(onDesk.className).toMatch(/(^|\s)h-11(\s|$)/);
     expect(onDesk.className).toContain('md:h-7');
     expect(onDesk.closest('td')).not.toBeNull();
-
-    // The card still does not draw the barcode column itself — only the button that copies it.
-    expect(within(cards()).queryByText('TRK-a')).toBeNull();
     expect(within(desk()).getByText('TRK-a')).toBeTruthy();
 
     fireEvent.click(onCard);
@@ -390,6 +412,76 @@ describe('the copy button of the «الباركود» column', () => {
     await draw();
     const printed = within(desk()).getByText('TRK-a');
     expect(printed.getAttribute('dir')).toBe('ltr');
+  });
+});
+
+describe('the customer’s phone — written on the row, with its own small copy button', () => {
+  let written: string[];
+  const clipboardThatWorks = () => {
+    written = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn(async (t: string) => void written.push(t)) },
+    });
+  };
+
+  it('— on the desk it is a column «الهاتف» right after the customer, written left-to-right as the row holds it', async () => {
+    rows = [parcel('a', { customer: { fullName: 'سارة', phone: '0790000000', city: 'عمّان' } })];
+    await draw();
+    const headers = within(desk())
+      .getAllByRole('columnheader')
+      .map((h) => (h.textContent ?? '').trim());
+    expect(headers).toContain('الهاتف');
+    expect(headers.indexOf('الهاتف')).toBe(headers.indexOf('العميل') + 1);
+    expect(within(desk()).getByText('0790000000').getAttribute('dir')).toBe('ltr');
+  });
+
+  it('— on a phone card it is a line of the card (the first under the heading), the small button beside it, a 44px target with no words', async () => {
+    rows = [parcel('a')];
+    await draw();
+    const button = within(cards()).getByRole('button', { name: 'نسخ رقم هاتف الزبون' });
+    expect(button.textContent).toBe('');
+    expect(button.className).toMatch(/(^|\s)h-11(\s|$)/);
+    expect(button.className).toContain('md:h-7');
+    const line = button.closest('div') as HTMLElement;
+    expect(within(line).getByText('الهاتف')).toBeTruthy();
+    expect(within(line).getByText('0790000000').getAttribute('dir')).toBe('ltr');
+    // The first line under the heading: before the barcode's.
+    const labels = Array.from(cards().querySelectorAll('dt')).map((d) => (d.textContent ?? '').trim());
+    expect(labels.indexOf('الهاتف')).toBe(0);
+    expect(labels.indexOf('الباركود')).toBe(1);
+  });
+
+  it('— the copy hands over what a dialler is given (Latin digits, no invisible marks), and writes nothing to the server', async () => {
+    clipboardThatWorks();
+    const LRM = String.fromCharCode(0x200e);
+    rows = [parcel('a', { customer: { fullName: 'سارة', phone: `${LRM}٠٧٩٠٠٠٠٠٠٠${LRM}`, city: 'عمّان' } })];
+    await draw();
+    fireEvent.click(within(desk()).getByRole('button', { name: 'نسخ رقم هاتف الزبون' }));
+    await waitFor(() => expect(written).toEqual(['0790000000']));
+    // A copy is not a call: no contact attempt, no audit line — the only request was the list's own read.
+    expect(writes()).toHaveLength(0);
+    expect(gets()).toHaveLength(1);
+  });
+
+  it('— and a copy the browser refuses goes to the field to select by hand, as the barcode’s does', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn(async () => Promise.reject(new Error('NotAllowedError'))) },
+    });
+    document.execCommand = vi.fn(() => false);
+    rows = [parcel('a')];
+    await draw();
+    fireEvent.click(within(desk()).getByRole('button', { name: 'نسخ رقم هاتف الزبون' }));
+    await waitFor(() => expect(tell).toHaveBeenCalledWith({ title: 'تعذّر النسخ — انسخه يدوياً', value: '0790000000' }));
+    expect(toast.warn).not.toHaveBeenCalled();
+  });
+
+  it('— a row with no phone draws a dash and no button (an order always has one; this is only a row that came without)', async () => {
+    rows = [parcel('a', { customer: { fullName: 'سارة', phone: '', city: 'عمّان' } })];
+    await draw();
+    expect(screen.queryByRole('button', { name: 'نسخ رقم هاتف الزبون' })).toBeNull();
+    expect(within(desk()).getAllByText('—').length).toBeGreaterThanOrEqual(1);
   });
 });
 
