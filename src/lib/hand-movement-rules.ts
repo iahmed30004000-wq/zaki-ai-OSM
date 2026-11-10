@@ -46,9 +46,18 @@ const HAND_DIRECTIONS: Record<string, readonly HandDirection[]> = {
 export const COURIER_MONEY_HINT =
   'تحصيل شركة الشحن لا يُكتب هنا: يُسجَّل عند اعتماد الكشف (إيصال الاستلام) أو من «استلمت منه».';
 
+/** The half of the second line that is the same for everyone: where the commission and the salary are written. */
+const COMMISSION_AND_SALARY_POINTER = 'والعمولة من «صرف» في «العمولات»، والراتب من صفحة الموظف.';
+
 /** The second line: where the two ledgers that used to be typable here are written now. */
-export const OWN_LEDGER_HINT =
-  'المصروف من «سجّل مصروفاً» في «الأرباح»، والعمولة من «صرف» في «العمولات»، والراتب من صفحة الموظف.';
+export const OWN_LEDGER_HINT = `المصروف من «سجّل مصروفاً» في «الأرباح»، ${COMMISSION_AND_SALARY_POINTER}`;
+
+/**
+ * The same second line for a person who holds the expense door's key (`finance.create`): the dialog itself records
+ * the expense, through that door — a real expense, so it counts in profit once and leaves this wallet once. It is a
+ * line for the screen only: the movements door below still refuses a typed «مصروف», and says so.
+ */
+export const EXPENSE_HERE_HINT = `المصروف بتسجّله من هون: اختر «صادر» ثم «مصروف» — بيتسجّل مصروفاً حقيقياً بينخصم من الربح وبيطلع من هالمحفظة. ${COMMISSION_AND_SALARY_POINTER}`;
 
 /**
  * Categories with a ledger of their own: refused at the hand door in BOTH directions, each with the
