@@ -1,26 +1,29 @@
 /**
  * WHAT KIND OF TRANSFER THIS IS — decided by the two wallets, not chosen.
  *
- * The owner thinks of three separate things: moving money inside a store,
- * moving it between stores, and moving it between countries. They ARE three
- * different acts — the middle one crosses two sets of books, the last one
- * crosses a currency as well.
+ * The owner thinks of four separate things: moving money inside a store,
+ * moving it between stores, moving it between countries, and changing it from
+ * one currency to another inside one store of one country («صرفت ليرة
+ * لدولار»). They ARE four different acts — the second crosses two sets of
+ * books, the third crosses a currency as well, and the fourth is the third
+ * without the border.
  *
- * But they are not three screens. Three screens means three forms to learn,
- * three places for a rule to drift, and a person who picked the wrong one
+ * But they are not four screens. Four screens means four forms to learn,
+ * four places for a rule to drift, and a person who picked the wrong one
  * before they started. Instead there is one act — money leaves this wallet
  * and arrives in that one — and the system reads the two wallets and says
- * which of the three you are about to do, before you commit.
+ * which of them you are about to do, before you commit.
  *
  * That also makes the rate impossible to misapply: it is asked for in
- * exactly one case, the only one where the currency changes.
+ * exactly one case, the only one where the currency changes — whichever of
+ * the four it happens to be.
  *
  * The answer is recorded on the transfer when it happens. Deriving it again
  * later would let a wallet moved to another store rewrite what every past
  * transfer meant, and a transfer is a thing that happened.
  */
 
-export type TransferKind = 'INTERNAL' | 'BETWEEN_STORES' | 'BETWEEN_COUNTRIES';
+export type TransferKind = 'INTERNAL' | 'BETWEEN_STORES' | 'BETWEEN_COUNTRIES' | 'EXCHANGE';
 
 export interface TransferSide {
   id: string;
@@ -46,6 +49,7 @@ const LABELS: Record<TransferKind, string> = {
   INTERNAL: 'تحويل داخلي',
   BETWEEN_STORES: 'بين متجرين',
   BETWEEN_COUNTRIES: 'بين دولتين',
+  EXCHANGE: 'صرف داخل البلد',
 };
 
 export function transferKind(from: TransferSide, to: TransferSide): TransferKind {
@@ -53,6 +57,11 @@ export function transferKind(from: TransferSide, to: TransferSide): TransferKind
   // Same country. A wallet with no store yet is nobody's, so pairing it with
   // one that has a store is still a move between two sets of books.
   if (from.storeId !== to.storeId) return 'BETWEEN_STORES';
+  // One country AND one set of books, and the currency still changes: nothing
+  // is moving anywhere, one currency is being turned into another («صرفت
+  // ليرة لدولار»). It used to be refused as a setup error; it is a thing a
+  // shop does every day.
+  if (from.currencyCode !== to.currencyCode) return 'EXCHANGE';
   return 'INTERNAL';
 }
 
@@ -68,7 +77,9 @@ export function readTransfer(from: TransferSide, to: TransferSide): TransferRead
       ? `داخل ${store(from)} — ${from.name} ← ${to.name}`
       : kind === 'BETWEEN_STORES'
         ? `من ${store(from)} إلى ${store(to)} — دفتران مختلفان`
-        : `من ${country(from)} (${from.currencyCode}) إلى ${country(to)} (${to.currencyCode})`;
+        : kind === 'EXCHANGE'
+          ? `صرف عملة داخل ${store(from)} — من ${from.currencyCode} إلى ${to.currencyCode}، بلد واحد ودفتر واحد`
+          : `من ${country(from)} (${from.currencyCode}) إلى ${country(to)} (${to.currencyCode})`;
 
   return { kind, label: LABELS[kind], detail, needsRate };
 }
@@ -80,16 +91,15 @@ export const TRANSFER_KIND_LABEL = LABELS;
  *
  * Returns the Arabic reason, or null when the pair is fine. These are the
  * cases where going ahead would produce a record nobody can later explain.
+ *
+ * Two wallets of one country holding two currencies is NOT one of them any
+ * more. It was refused as «the data is wrong» — one country, one currency —
+ * but a shop in Syria keeps dollars and liras side by side, and changing one
+ * for the other is a transfer with a rate like any other. The rate is still
+ * asked for, and still stored with the transfer (see `EXCHANGE`).
  */
 export function transferRefusal(from: TransferSide, to: TransferSide): string | null {
   if (from.id === to.id) return 'لا يمكن التحويل إلى نفس المحفظة';
-
-  // One country, one currency — so two wallets in the same country holding
-  // different ones means the data is wrong, and a rate entered here would
-  // bury that rather than surface it.
-  if (from.countryId === to.countryId && from.currencyCode !== to.currencyCode) {
-    return `محفظتان في بلد واحد بعملتين مختلفتين (${from.currencyCode} و${to.currencyCode}) — راجع إعداد المحفظتين`;
-  }
 
   return null;
 }

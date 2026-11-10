@@ -1,37 +1,67 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { recordMovement } from '@/lib/wallets';
-import { roundMinor } from '@/lib/money';
+import { moneyText } from '@/lib/money';
 import { zodMessage } from '@/lib/zod-message';
 import { readTransfer, transferRefusal, TRANSFER_KIND_LABEL, type TransferSide } from '@/lib/transfer-kind';
+import { resolveTransferAmounts } from '@/lib/transfer-rate';
 
 /**
- * Wallet-to-wallet transfers — internal, between stores, or between
- * countries. Which of the three it is comes from the two wallets rather
- * than from a choice, and is recorded so a wallet moved later cannot
- * rewrite what a past transfer meant. See lib/transfer-kind.
+ * Wallet-to-wallet transfers — internal, between stores, between countries,
+ * or an exchange of one currency for another inside one store of one
+ * country. Which of the four it is comes from the two wallets rather than
+ * from a choice, and is recorded so a wallet moved later cannot rewrite what
+ * a past transfer meant. See lib/transfer-kind.
  *
- * The exchange rate is ENTERED BY THE USER and stored with the transfer. It
- * is never recalculated later: the money changed hands at one rate, on one
- * day, and the books must keep saying so.
+ * WHEN THE CURRENCY CHANGES, THE PERSON GIVES ONE OF TWO THINGS — never both,
+ * never neither:
+ *
+ *   `exchangeRate`  units of the destination per ONE of the source, as it
+ *                   has always been; the arriving amount is worked out here.
+ *   `amountIn`      the final amount that arrived, in the destination
+ *                   currency («استلمت 1,290,000»); the rate is derived from
+ *                   the two amounts and stored beside them.
+ *
+ * Either way it is stored with the transfer and never recalculated later:
+ * the money changed hands at one rate, on one day, and the books must keep
+ * saying so. `amountIn` is the authoritative number — the stored rate is six
+ * decimals and SYP→USD is 0.0000769…, so nothing may multiply it back into
+ * money. All of that arithmetic, and every refusal that comes of it, is
+ * `resolveTransferAmounts` in lib/transfer-rate.
  *
  * A transfer is two movements — OUT of one wallet, IN to the other — written
  * in one transaction, so a wallet can never be left short by half a transfer.
  */
 const createSchema = z.object({
+  /**
+   * The caller's id for THIS attempt, reused on every retry of it — the same arrangement as a receipt's `receiptId`.
+   * A transfer is not something the server can tell from a double-click: two identical ones, seconds apart, are also
+   * a person moving the same sum twice. Optional so an existing caller keeps working; and a caller that sends one is
+   * safe against the 15-second timeout, where the answer is lost and the button is pressed again.
+   *
+   * A retry is answered only when it is the deal that was recorded (the wallets and both amounts): the same id with
+   * another deal is a 409, so a deal changed after the answer was lost is never swallowed by the old row.
+   */
+  transferId: z.string().uuid().optional(),
   fromWalletId: z.string().uuid(),
   toWalletId: z.string().uuid(),
   amountOut: z.number().positive().max(1_000_000_000),
-  /** Required only when the two wallets hold different currencies. */
+  /** Units of the destination per one of the source. Exclusive with `amountIn`; one of them when the currencies differ. */
   exchangeRate: z.number().positive().max(1_000_000).optional(),
+  /**
+   * The final amount that arrived, in the destination currency. Bounds are the resolver's, not the schema's: a
+   * zero, a figure with too many decimals or one the column cannot hold each get their own Arabic sentence there.
+   */
+  amountIn: z.number().optional(),
   note: z.string().trim().min(3, 'الملاحظة إلزامية').max(300),
   /** What the screen told the person they were doing, checked server-side. */
-  expectKind: z.enum(['INTERNAL', 'BETWEEN_STORES', 'BETWEEN_COUNTRIES']).optional(),
+  expectKind: z.enum(['INTERNAL', 'BETWEEN_STORES', 'BETWEEN_COUNTRIES', 'EXCHANGE']).optional(),
 });
 
 export async function GET() {
@@ -71,6 +101,76 @@ export async function GET() {
   }
 }
 
+/** The transfer row as the screen reads it: Prisma hands back `Decimal`s, and JSON would print them as strings. */
+const asNumbers = <T extends { amountOut: unknown; amountIn: unknown; exchangeRate: unknown }>(t: T) => ({
+  ...t,
+  amountOut: Number(t.amountOut),
+  amountIn: Number(t.amountIn),
+  exchangeRate: Number(t.exchangeRate),
+});
+
+/**
+ * THE MONEY OF A TRANSFER: the four things that say WHICH deal it was.
+ *
+ * A replay is a success to repeat only for the deal it recorded. The same id carrying ANOTHER deal (the person
+ * changed the amount, or the wallet, after the answer was lost) is not a retry: it is a new request that would be
+ * answered with the old row, the new deal lost and the screen saying «تم». So the stored row is compared with the
+ * request on these four, and anything else is a conflict.
+ *
+ * The note is not among them, on purpose: it is words, and a retry that mends a typo in it is still the same money,
+ * which must not be moved twice.
+ */
+interface Deal {
+  fromWalletId: string;
+  toWalletId: string;
+  amountOut: number;
+  amountIn: number;
+}
+
+const sameDeal = (row: { fromWalletId: string; toWalletId: string; amountOut: unknown; amountIn: unknown }, deal: Deal) =>
+  row.fromWalletId === deal.fromWalletId &&
+  row.toWalletId === deal.toWalletId &&
+  Number(row.amountOut) === deal.amountOut &&
+  Number(row.amountIn) === deal.amountIn;
+
+/**
+ * The id is taken: by a different deal of this company, or by another company's row. Nothing is written, and
+ * nothing of the row that holds the id is said: not its amounts, not its wallets, not whose it is.
+ */
+const taken = () =>
+  NextResponse.json(
+    { error: 'هالتحويل انسجّل من قبل بصفقة تانية — حدّث الصفحة وراجع قبل ما تعيد', code: 'TRANSFER_EXISTS' },
+    { status: 409 }
+  );
+
+/**
+ * WHAT A REQUEST WOULD RECORD, in the fields a stored transfer keeps, or `null` when that cannot be said.
+ *
+ * An arriving amount that was typed is the deal as it stands. A rate, or one currency, is worked out from the two
+ * wallets by the very function the write uses: the wallets as they are, stopped ones included, because the transfer
+ * being repeated may be the reason they were stopped.
+ */
+async function askedDeal(companyId: string, input: z.infer<typeof createSchema>): Promise<Deal | null> {
+  const ends = { fromWalletId: input.fromWalletId, toWalletId: input.toWalletId };
+  if (input.amountIn !== undefined) return { ...ends, amountOut: input.amountOut, amountIn: input.amountIn };
+
+  const pick = (id: string) =>
+    db.wallet.findFirst({ where: { id, companyId }, include: { country: { select: { minorUnit: true } } } });
+  const [from, to] = await Promise.all([pick(input.fromWalletId), pick(input.toWalletId)]);
+  if (!from || !to) return null;
+  const money = resolveTransferAmounts({
+    fromCode: from.currencyCode,
+    toCode: to.currencyCode,
+    fromName: from.name,
+    toName: to.name,
+    amountOut: input.amountOut,
+    exchangeRate: input.exchangeRate,
+    fromMinor: from.country.minorUnit,
+    toMinor: to.country.minorUnit,
+  });
+  return money.ok ? { ...ends, amountOut: money.amountOut, amountIn: money.amountIn } : null;
+}
+
 export async function POST(req: Request) {
   try {
     const { user, companyId } = await requireContext();
@@ -83,6 +183,30 @@ export async function POST(req: Request) {
     const input = parsed.data;
     if (input.fromWalletId === input.toWalletId) {
       return NextResponse.json({ error: 'لا يمكن التحويل إلى نفس المحفظة' }, { status: 400 });
+    }
+
+    /*
+     * A REPLAY FINDS ITS OWN ROW AND WRITES NOTHING, BUT ONLY FOR THE DEAL IT RECORDED.
+     *
+     * Asked FIRST, before the wallets are read and judged: the first attempt may have succeeded and the wallet been
+     * stopped since, and a retry of a transfer that happened is a success to repeat, not a «المحفظة غير موجودة».
+     * Scoped to the company, so another tenant's id is not even looked at.
+     *
+     * The row is then compared with the request (`sameDeal`). The same id with another deal is answered 409 and
+     * nothing is written: never the old row under a new request, which is how a changed amount was lost behind a
+     * «تم». (The wallets are compared first: another pair needs no arithmetic to be another deal.)
+     */
+    if (input.transferId) {
+      const already = await db.walletTransfer.findFirst({ where: { id: input.transferId, companyId } });
+      if (already) {
+        const asked =
+          already.fromWalletId === input.fromWalletId && already.toWalletId === input.toWalletId
+            ? await askedDeal(companyId, input)
+            : null;
+        return asked && sameDeal(already, asked)
+          ? NextResponse.json({ transfer: asNumbers(already), replay: true }, { status: 200 })
+          : taken();
+      }
     }
 
     const [from, to] = await Promise.all([
@@ -116,7 +240,7 @@ export async function POST(req: Request) {
 
     const reading = readTransfer(fromSide, toSide);
 
-    // The client says which of the three it believes it is doing. If the
+    // The client says which of the four it believes it is doing. If the
     // server reads it differently, something moved between the screen being
     // drawn and the button being pressed, and nobody should find out from
     // the ledger a month later.
@@ -127,95 +251,91 @@ export async function POST(req: Request) {
       );
     }
 
-    const sameCurrency = from.currencyCode === to.currencyCode;
     /*
-     * «WAS A RATE GIVEN» IS A QUESTION ABOUT PRESENCE, NOT ABOUT TRUTH.
+     * THE MONEY: what leaves, what arrives, and the rate that is stored beside them.
      *
-     * This read `!input.exchangeRate`, and it was correct only by the luck of
-     * the line above: the schema says `.positive()`, so by here the value is
-     * `undefined` or greater than zero and `!x` happens to coincide with
-     * `x === undefined`. Loosen the schema to `.min(0)` one day and a rate of
-     * **0** — a number somebody typed — is answered «يتطلب سعر صرف», which
-     * sends the reader looking for an empty box they have just filled in. The
-     * same conflation `c119e31` removed from the expense door.
-     *
-     * AND THE `.positive()` IS RIGHT, from the column and the arithmetic:
-     * `exchangeRate` is `Decimal(14,6)` and NOT NULL, `amountIn` is
-     * `amountOut * rate`, and `recordMovement` refuses an amount of zero —
-     * so a rate of 0 can never produce a transfer that is written. There is
-     * no legitimate rate of zero: it would mean money left one wallet and
-     * none arrived in the other.
+     * «WAS A RATE GIVEN» IS A QUESTION ABOUT PRESENCE, NOT ABOUT TRUTH — the resolver asks `=== undefined`, never
+     * `!rate` (c119e31 took the same conflation out of the expense door). And `.positive()` on the rate is right
+     * from the column and the arithmetic: `exchangeRate` is `Decimal(14,6)` and NOT NULL, and `recordMovement`
+     * refuses an amount of zero, so a rate of 0 could never produce a transfer that is written.
      */
-    if (!sameCurrency && input.exchangeRate === undefined) {
-      return NextResponse.json(
-        {
-          error: `التحويل من ${from.currencyCode} إلى ${to.currencyCode} يتطلب سعر صرف`,
-          code: 'EXCHANGE_RATE_REQUIRED',
-        },
-        { status: 400 }
-      );
-    }
-
-    const rate = sameCurrency ? 1 : (input.exchangeRate as number);
-    const amountIn = roundMinor(input.amountOut * rate, to.country.minorUnit);
-    const amountOut = roundMinor(input.amountOut, from.country.minorUnit);
-
-    /*
-     * A RATE SMALL ENOUGH TO ROUND THE ARRIVING AMOUNT TO NOTHING IS REFUSED
-     * HERE, WITH A 400 — because `recordMovement`'s own guard
-     * (`amount <= 0` → `throw`) fires inside the transaction and comes back
-     * as the generic **500 «حدث خطأ داخلي»**, which tells the person to call
-     * the administrator about a rate they can fix themselves. Measured:
-     * `.positive()` admits `0.000001`, and 100 at that rate into a 3-decimal
-     * currency is `roundMinor(0.0001, 3) === 0`. Nothing was ever written
-     * wrongly — the transaction rolls back — but the sentence was wrong, and
-     * `0aea050`'s rule for a bad money value is a 400 that names it.
-     */
-    if (amountIn <= 0) {
-      return NextResponse.json(
-        {
-          error: `سعر الصرف ${rate} يجعل المبلغ الواصل إلى ${to.name} صفراً. راجع سعر الصرف.`,
-          code: 'EXCHANGE_RATE_TOO_SMALL',
-        },
-        { status: 400 }
-      );
-    }
-
-    const transfer = await db.$transaction(async (tx) => {
-      const created = await tx.walletTransfer.create({
-        data: {
-          companyId,
-          fromWalletId: from.id,
-          toWalletId: to.id,
-          amountOut,
-          amountIn,
-          // Stored as entered; nothing recalculates it later.
-          exchangeRate: rate,
-          kind: reading.kind,
-          note: input.note,
-          createdById: user.id,
-        },
-      });
-
-      await recordMovement(tx, {
-        companyId, walletId: from.id, direction: 'OUT', amount: amountOut,
-        party: `تحويل إلى ${to.name}`, category: 'TRANSFER_OUT',
-        note: input.note, referenceType: 'TRANSFER', referenceId: created.id, createdById: user.id,
-      });
-      await recordMovement(tx, {
-        companyId, walletId: to.id, direction: 'IN', amount: amountIn,
-        party: `تحويل من ${from.name}`, category: 'TRANSFER_IN',
-        note: `${input.note}${sameCurrency ? '' : ` (سعر الصرف ${rate})`}`,
-        referenceType: 'TRANSFER', referenceId: created.id, createdById: user.id,
-      });
-
-      return created;
+    const money = resolveTransferAmounts({
+      fromCode: from.currencyCode,
+      toCode: to.currencyCode,
+      fromName: from.name,
+      toName: to.name,
+      amountOut: input.amountOut,
+      exchangeRate: input.exchangeRate,
+      amountIn: input.amountIn,
+      fromMinor: from.country.minorUnit,
+      toMinor: to.country.minorUnit,
     });
+    if (!money.ok) return NextResponse.json({ error: money.error, code: money.code }, { status: 400 });
+    const { amountOut, amountIn, rate, entered } = money;
+
+    // What the arriving movement says about the exchange. A typed RATE keeps the line it has always had; a typed
+    // AMOUNT says what was exchanged for what, because the derived rate is six decimals (SYP→USD reads 0.000077).
+    const exchangeNote =
+      entered === 'RATE'
+        ? ` (سعر الصرف ${rate})`
+        : entered === 'AMOUNT_IN'
+          ? ` (صُرِف ${moneyText(amountOut, from.currencyCode, from.country.minorUnit)} إلى ${moneyText(amountIn, to.currencyCode, to.country.minorUnit)})`
+          : '';
+
+    let transfer;
+    try {
+      transfer = await db.$transaction(async (tx) => {
+        const created = await tx.walletTransfer.create({
+          data: {
+            ...(input.transferId ? { id: input.transferId } : {}),
+            companyId,
+            fromWalletId: from.id,
+            toWalletId: to.id,
+            amountOut,
+            amountIn,
+            // Stored as entered for a rate, derived from the two amounts for an amount; nothing recalculates it later.
+            exchangeRate: rate,
+            kind: reading.kind,
+            note: input.note,
+            createdById: user.id,
+          },
+        });
+
+        await recordMovement(tx, {
+          companyId, walletId: from.id, direction: 'OUT', amount: amountOut,
+          party: `تحويل إلى ${to.name}`, category: 'TRANSFER_OUT',
+          note: input.note, referenceType: 'TRANSFER', referenceId: created.id, createdById: user.id,
+        });
+        await recordMovement(tx, {
+          companyId, walletId: to.id, direction: 'IN', amount: amountIn,
+          party: `تحويل من ${from.name}`, category: 'TRANSFER_IN',
+          note: `${input.note}${exchangeNote}`,
+          referenceType: 'TRANSFER', referenceId: created.id, createdById: user.id,
+        });
+
+        return created;
+      });
+    } catch (e) {
+      /*
+       * Two requests carrying the same id at the same moment: the check above saw nothing, the database saw the second
+       * one, and its transaction rolled back whole (the transfer row is the first write). P2002 here can only be that
+       * id. If the row is this company's AND it is this very deal, it is the twin's: a success to repeat. A different
+       * deal under the id, or another company's row, is a conflict that says nothing about the row.
+       */
+      if (input.transferId && e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        const twin = await db.walletTransfer.findFirst({ where: { id: input.transferId, companyId } });
+        return twin && sameDeal(twin, { fromWalletId: from.id, toWalletId: to.id, amountOut, amountIn })
+          ? NextResponse.json({ transfer: asNumbers(twin), replay: true }, { status: 200 })
+          : taken();
+      }
+      throw e;
+    }
 
     await logAudit({
       companyId, userId: user.id, action: 'WALLET_TRANSFER',
       entity: 'WalletTransfer', entityId: transfer.id,
-      newData: { kind: reading.kind, from: from.name, to: to.name, amountOut, amountIn, rate },
+      // `entered` is how the person gave the exchange: a rate, the amount that arrived, or nothing (one currency).
+      newData: { kind: reading.kind, from: from.name, to: to.name, amountOut, amountIn, rate, entered },
     });
 
     return NextResponse.json(
