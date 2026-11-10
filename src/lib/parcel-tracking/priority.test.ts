@@ -218,11 +218,23 @@ describe('the tracking card on a phone', () => {
     expect(columns.map((c) => c.key)).toContain('contact');
   });
 
-  it('hides the three fields measured to carry no information', () => {
-    for (const key of ['barcode', 'attempts', 'collection']) {
+  it('hides the two fields measured to carry no information', () => {
+    // «barcode» was the third until 10/11: the owner wants its small copy button on the card (off when there is none),
+    // so it is drawn — see the next test.
+    for (const key of ['attempts', 'collection']) {
       const col = columns.find((c) => c.key === key);
       expect(col, `العمود «${key}» اختفى من الشاشة`).toBeTruthy();
       expect(col!.hidden, `«${key}» يظهر على الهاتف بلا معلومة فيه`).toBe(true);
+    }
+  });
+
+  it('draws the phone and the barcode as lines of the card — the two things the girl chasing a parcel works from (owner, 10/11)', () => {
+    // Each carries its own small copy button; the barcode's is OFF when the parcel has none, so the line is always there.
+    for (const key of ['phone', 'barcode']) {
+      const col = columns.find((c) => c.key === key);
+      expect(col, `العمود «${key}» اختفى من الشاشة`).toBeTruthy();
+      expect(col!.hidden, `«${key}» اختفى من الكرت — طلب المالك أن يظهر`).toBe(false);
+      expect(col!.primary, `«${key}» صار عنواناً`).toBe(false);
     }
   });
 
@@ -236,9 +248,10 @@ describe('the tracking card on a phone', () => {
     const onCard = columns.filter((c) => !c.hidden);
     const details = onCard.filter((c) => !c.primary);
     // It was 2 titles and 9 labelled lines. Nine is the sideways scroll
-    // turned vertical, which is the thing `Rows` exists to avoid.
-    expect(onCard.length, 'الكرت عاد إلى صفٍّ لكلِّ عمود').toBeLessThanOrEqual(7);
-    expect(details.length, 'أسطرٌ أكثر من أن تُقرأ بيدٍ واحدة').toBeLessThanOrEqual(5);
+    // turned vertical, which is the thing `Rows` exists to avoid. The ceiling rose by exactly TWO on 10/11, the two the
+    // owner asked for by name: the phone and the barcode (each with its small copy button). Nothing else was added.
+    expect(onCard.length, 'الكرت عاد إلى صفٍّ لكلِّ عمود').toBeLessThanOrEqual(9);
+    expect(details.length, 'أسطرٌ أكثر من أن تُقرأ بيدٍ واحدة').toBeLessThanOrEqual(7);
     expect(onCard.filter((c) => c.primary).length, 'عنوانُ الكرت أكثر من حقلين').toBeLessThanOrEqual(2);
   });
 

@@ -10,6 +10,7 @@ import { TransferDialog } from '@/components/screens/tracking/TransferDialog';
 import { CollectDialog } from '@/components/screens/tracking/CollectDialog';
 import { CourierSaidChip } from '@/components/screens/tracking/CourierSaidChip';
 import { ParcelCopy } from '@/components/screens/tracking/ParcelCopy';
+import { ParcelPhone } from '@/components/screens/tracking/ParcelPhone';
 import { DeliverDialog } from '@/components/screens/tracking/DeliverDialog';
 import { BulkDeliverReport, type BulkDeliverLine } from '@/components/screens/tracking/BulkDeliverReport';
 import { WriteOffDialog } from '@/components/screens/tracking/WriteOffDialog';
@@ -975,14 +976,20 @@ export function TrackingScreen() {
             },
             { key: 'customer', label: 'العميل', primary: true, render: (o) => o.customer.fullName },
             {
+              // THE PHONE IS WRITTEN ON THE ROW (the owner, 10/11: «لازم تظهر رقم التلفون»), with the small button that
+              // copies it. On the desk a column; on the card the first line under the heading, where the thumb is.
+              key: 'phone',
+              label: 'الهاتف',
+              render: (o) => <ParcelPhone phone={o.customer.phone} onRefused={copyRefused} />,
+            },
+            {
               key: 'barcode',
               label: 'الباركود',
-              // Measured: null on 100% of the default in-flight view and 15%
-              // overall, so on a phone this was a labelled line reading «—».
-              // The «بلا باركود» chip is how the missing ones are found.
-              hideOnPhone: true,
+              // It was left off the card because it read «—» on most cards (null on 15% overall). The owner wants the
+              // small copy button on the card as well (10/11), OFF when there is no barcode — so the line is drawn, and
+              // «—» beside a dimmed button says what is missing. The «بلا باركود» chip is still how the missing ones are found.
               render: (o) => (
-                // The barcode and, beside it, the one button that copies it (the reference when there is none).
+                // The barcode and, beside it, the small button that copies it — off when there is none.
                 <span className="inline-flex items-center gap-1">
                   <span dir="ltr" className="text-[var(--sys-muted-foreground)]">
                     {o.trackingNumber ?? '—'}
@@ -1267,13 +1274,6 @@ export function TrackingScreen() {
                 تحويل
               </button>
               )}
-              {/*
-                THE SAME COPY BUTTON, ON THE CARD. The barcode column is not drawn on a phone (it read «—» on most
-                cards), so the one tap to copy it lives here, in words — the desk has it in the column.
-              */}
-              <span className="md:hidden">
-                <ParcelCopy row={o} label onRefused={copyRefused} />
-              </span>
               {/* The third one, and the only one that settles nothing. */}
               <button
                 onClick={() => void addNote(o)}

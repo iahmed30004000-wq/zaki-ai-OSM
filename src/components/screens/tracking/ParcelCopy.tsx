@@ -2,40 +2,38 @@
 
 import React from 'react';
 import { CopyValue } from '@/components/orders/CopyValue';
-import { parcelIdToCopy } from '@/lib/copy-values';
+import { barcodeToCopy } from '@/lib/copy-values';
 
 /**
- * THE COPY BUTTON OF THE «الباركود» COLUMN — one tap to take the barcode to the courier's own site, or to send it.
+ * THE SMALL BUTTON THAT COPIES THE BARCODE — one tap to take it to the courier's own site, or to send it.
  *
  * It is the product's one copy button (`CopyValue`: the clipboard, then the old selection trick, the icon turning to a tick
- * on success) told two things about this column: the tooltip says WHICH value it holds, and a copy the browser refuses is
- * handed to `onRefused` — the screen opens the value in a field to select by hand. What is copied is decided in
- * `copy-values.ts` (`parcelIdToCopy`): the barcode, and for a parcel with none the reference — so the button is there on
- * every row, and says «انسخ المرجع» when it is the reference it holds.
+ * on success) told three things about this value: the tooltip says WHICH value it holds, a copy the browser refuses is
+ * handed to `onRefused` (the screen opens the value in a field to select by hand), and — the owner's words, 10/11 — a
+ * parcel with NO barcode keeps the button in its place, OFF: dimmed, not pressable, «ما في باركود للشحنة» on it.
  *
- * It writes nothing and asks nothing (the copy guards hold that for `CopyValue`). `label` gives it words beside the icon:
- * the phone card has no column for the barcode and no hover to read a tooltip on, so there the button speaks.
+ * It copies the barcode and nothing else. It used to turn into «انسخ المرجع» for a parcel with none; that copied what the
+ * button beside the order number (`OrderRef`) already copies, and a button that changes what it holds from row to row is
+ * one the girl has to read before she presses. The reference is still one tap away, where it always was.
+ *
+ * It writes nothing and asks nothing (the copy guards hold that for `CopyValue`). The same button is drawn in the desk's
+ * column and as a line of the phone card, where it is a 44px target.
  */
 export function ParcelCopy({
   row,
-  label = false,
   onRefused,
 }: {
-  row: { trackingNumber?: string | null; merchantRef?: string | null; orderNumber: string };
-  /** Words beside the icon (the phone card). Without them the button is the icon alone (the desk's column). */
-  label?: boolean;
+  row: { trackingNumber?: string | null };
   onRefused: (value: string) => void;
 }) {
-  const copy = parcelIdToCopy(row);
-  const barcode = copy.kind === 'barcode';
-  const words = barcode ? 'انسخ الباركود' : 'انسخ المرجع';
+  const barcode = barcodeToCopy(row.trackingNumber);
   return (
     <CopyValue
-      text={copy.text}
-      noun={barcode ? 'باركود الشحنة' : 'مرجع الطلب'}
-      shown={copy.text}
-      title={words}
-      label={label ? words : undefined}
+      text={barcode}
+      noun="باركود الشحنة"
+      shown={barcode}
+      title="انسخ الباركود"
+      whenEmpty="ما في باركود للشحنة"
       onRefused={onRefused}
     />
   );
