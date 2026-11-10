@@ -598,6 +598,115 @@ describe('a second press, and a retry', () => {
   });
 });
 
+/*
+ * A RETRY IS A RETRY ONLY WHILE THE DEAL IS THE SAME.
+ *
+ * The id of an attempt survives a failed press, because the answer may have been lost to a transfer that WAS written —
+ * and the door answers a repeated id with the transfer it recorded. So an id kept across an EDIT would be answered with
+ * the old deal while the new one was lost behind a «تم». The id is therefore tied to the money that is sent (the two
+ * wallets and the two amounts, which is what the door compares a retry with): change any of them and the next press is
+ * a new attempt; change only the words, or give the same money another way, and it is still the same one.
+ */
+describe('the id of an attempt follows the deal it was minted for', () => {
+  const TIMEOUT = 'انتهت مهلة الطلب. تحقق من الاتصال وحاول مجدداً.';
+
+  /** A first press that is lost (the answer never comes back), and then everything is answered. */
+  async function afterALostAnswer(edit: () => void) {
+    let first = true;
+    answer = async () => {
+      if (first) {
+        first = false;
+        throw new Error(TIMEOUT);
+      }
+      return { transfer: {} };
+    };
+    await draw();
+    pick('من محفظة', 'صندوق الدولار');
+    pick('إلى محفظة', 'صندوق الليرة');
+    type(amountBox(), '100');
+    type(valueBox(), '13000');
+    type(noteBox(), 'صرف');
+    fireEvent.click(submit());
+    await waitFor(() => expect(text()).toContain(TIMEOUT));
+    expect(posted).toHaveLength(1);
+    edit();
+    fireEvent.click(submit());
+    await waitFor(() => expect(posted).toHaveLength(2));
+    return posted.map((b) => b.transferId);
+  }
+
+  it('NOTHING changed: the press is repeated with the SAME id — a pure retry', async () => {
+    const [first, second] = await afterALostAnswer(() => {});
+    expect(second).toBe(first);
+    expect(first).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('the AMOUNT edited: a NEW id — the reviewer’s case, 100 changed to 200 after the answer was lost', async () => {
+    const [first, second] = await afterALostAnswer(() => type(amountBox(), '200'));
+    expect(second).not.toBe(first);
+    expect(posted[1]).toMatchObject({ amountOut: 200, amountIn: 2_600_000 });
+  });
+
+  it('the DESTINATION wallet changed: a NEW id', async () => {
+    const [first, second] = await afterALostAnswer(() => pick('إلى محفظة', 'ليرة حلب'));
+    expect(second).not.toBe(first);
+    expect(posted[1]).toMatchObject({ toWalletId: 'w-sypb', amountIn: 1_300_000 });
+  });
+
+  it('the SOURCE wallet changed: a NEW id', async () => {
+    const [first, second] = await afterALostAnswer(() => pick('من محفظة', 'حساب الدولار البنكي'));
+    expect(second).not.toBe(first);
+    expect(posted[1]).toMatchObject({ fromWalletId: 'w-usd2' });
+  });
+
+  it('the TYPED RATE changed: a NEW id', async () => {
+    const [first, second] = await afterALostAnswer(() => type(valueBox(), '13500'));
+    expect(second).not.toBe(first);
+    expect(posted[1]).toMatchObject({ amountOut: 100, amountIn: 1_350_000 });
+  });
+
+  it('the way of giving it changed to the amount that arrived, and ANOTHER figure typed: a NEW id', async () => {
+    const [first, second] = await afterALostAnswer(() => {
+      fireEvent.click(radio('المبلغ المستلم'));
+      type(valueBox(), '1290000');
+    });
+    expect(second).not.toBe(first);
+    expect(posted[1]).toMatchObject({ amountIn: 1_290_000 });
+  });
+
+  it('the way of giving it changed but the MONEY comes out the same: still the same attempt — a new id there could write it twice', async () => {
+    const [first, second] = await afterALostAnswer(() => {
+      fireEvent.click(radio('المبلغ المستلم'));
+      type(valueBox(), '1300000');
+    });
+    expect(second).toBe(first);
+    expect(posted[1]).toMatchObject({ amountOut: 100, amountIn: 1_300_000 });
+  });
+
+  it('only the VIEW flipped, nothing typed: the same deal, the same id', async () => {
+    const [first, second] = await afterALostAnswer(() => fireEvent.click(radio(B_USD_SYP)));
+    expect(second).toBe(first);
+  });
+
+  it('only the NOTE mended: words are not money — the same id, so the money is not moved twice', async () => {
+    const [first, second] = await afterALostAnswer(() => type(noteBox(), 'صرف دولار — بعد التصحيح'));
+    expect(second).toBe(first);
+    expect(posted[1]).toMatchObject({ note: 'صرف دولار — بعد التصحيح' });
+  });
+
+  it('a transfer that is SAVED ends the attempt: the next one, even of the same deal, is a new id', async () => {
+    await draw();
+    const first = await transfer({ from: 'صندوق الدولار', to: 'صندوق الليرة', amount: '100', value: '13000' });
+    await waitFor(() => expect(text()).toContain('تم صرف داخل البلد'));
+    type(amountBox(), '100');
+    type(valueBox(), '13000');
+    type(noteBox(), 'صرف مرة ثانية');
+    fireEvent.click(submit());
+    await waitFor(() => expect(posted).toHaveLength(2));
+    expect(posted[1].transferId).not.toBe(first.transferId);
+  });
+});
+
 describe('the button and the history are where they were', () => {
   it('phone: a line of its own, the width of it', async () => {
     await draw();

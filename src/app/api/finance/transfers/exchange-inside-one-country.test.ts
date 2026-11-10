@@ -62,7 +62,7 @@ type Wallet = typeof USD;
 const wallets: Record<string, Wallet> = {};
 
 /** What the code under test hands to a query, and to a write. */
-type Query = { where: { id: string; companyId?: string } };
+type Query = { where: { id: string; companyId?: string; isActive?: boolean } };
 type Write = { data: Record<string, unknown> };
 type Row = Record<string, unknown>;
 
@@ -70,16 +70,24 @@ type Row = Record<string, unknown>;
 let committed: Array<{ kind: 'transfer' | 'movement'; data: Row }> = [];
 /** Make the n-th movement of a transaction fail (1 = the OUT, 2 = the IN). */
 let failMovement: number | null = null;
+/** Transfer ids that exist in ANOTHER company: the database holds them too, and refuses a second row with one. */
+let foreignIds: string[] = [];
 
 beforeEach(() => {
   vi.clearAllMocks();
   committed = [];
   failMovement = null;
+  foreignIds = [];
   requireContext.mockResolvedValue({ user: { id: 'u1', name: 'سامر' }, companyId: 'co1', storeId: 's1' });
   requirePermission.mockResolvedValue(undefined);
 
   for (const w of [USD, SYP, SYP_B, JOD, USD2]) wallets[w.id] = w;
-  db.wallet.findFirst.mockImplementation(async ({ where }: Query) => wallets[where.id] ?? null);
+  // A stopped wallet is found only by a query that does not ask for active ones, as in the real database.
+  db.wallet.findFirst.mockImplementation(async ({ where }: Query) => {
+    const w = wallets[where.id];
+    if (!w) return null;
+    return where.isActive === true && !w.isActive ? null : w;
+  });
 
   // A fake with a REAL commit: writes are buffered and kept only if the whole function returns.
   db.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
@@ -89,6 +97,11 @@ beforeEach(() => {
       wallet: db.wallet,
       walletTransfer: {
         create: async ({ data }: Write) => {
+          // The primary key: a second row with an id that exists — in any company — is a unique violation (P2002).
+          const id = data.id as string | undefined;
+          if (id && (foreignIds.includes(id) || committed.some((c) => c.kind === 'transfer' && c.data.id === id))) {
+            throw new Prisma.PrismaClientKnownRequestError('Unique constraint failed', { code: 'P2002', clientVersion: 'test' });
+          }
           pending.push({ kind: 'transfer', data });
           return { id: data.id ?? 'tr-1', createdAt: new Date('2026-11-10T10:00:00Z'), ...data };
         },
@@ -428,6 +441,8 @@ describe('the two movements and the transfer row are one transaction', () => {
 describe('a retry, or a second press, does not move the money twice', () => {
   const ATTEMPT = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
   const body = { transferId: ATTEMPT, fromWalletId: USD.id, toWalletId: SYP.id, amountOut: 100, amountIn: 1_300_000, note: NOTE };
+  /** The sentence of the conflict: the id is taken by another deal. */
+  const TAKEN = 'هالتحويل انسجّل من قبل بصفقة تانية — حدّث الصفحة وراجع قبل ما تعيد';
 
   it('the attempt’s id is the row’s own id, so the database enforces it', async () => {
     const res = await post(body);
@@ -453,18 +468,31 @@ describe('a retry, or a second press, does not move the money twice', () => {
   it('a retry still succeeds when a wallet has been stopped since: the transfer happened', async () => {
     await post(body);
     wallets[SYP.id] = { ...SYP, isActive: false };
-    db.wallet.findFirst.mockImplementation(async ({ where }: Query) => (wallets[where.id]?.isActive ? wallets[where.id] : null));
     const again = await post(body);
     expect(again.status).toBe(200);
     expect(transferRows()).toHaveLength(1);
   });
 
+  it('…and so does one that gave a RATE, whose arriving amount is worked out from wallets that are now stopped', async () => {
+    const byRate = { transferId: ATTEMPT, fromWalletId: USD.id, toWalletId: SYP.id, amountOut: 100, exchangeRate: 13_000, note: NOTE };
+    expect((await post(byRate)).status).toBe(201);
+    wallets[SYP.id] = { ...SYP, isActive: false };
+    wallets[USD.id] = { ...USD, isActive: false };
+    const again = await post(byRate);
+    expect(again.status).toBe(200);
+    expect((await again.json()).replay).toBe(true);
+    expect(transferRows()).toHaveLength(1);
+  });
+
   it('two presses at the same moment: the database saw the second, and it is told the transfer exists', async () => {
     const conflict = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', { code: 'P2002', clientVersion: 'test' });
-    // the first check saw nothing, the write lost the race, and the winner's row is there when it is read again
+    // the first check saw nothing, the write lost the race, and the winner's row — the same deal — is there when it is read again
     db.walletTransfer.findFirst
       .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ id: ATTEMPT, createdAt: new Date('2026-11-10T10:00:00Z'), amountOut: '100', amountIn: '1300000', exchangeRate: '13000', kind: 'EXCHANGE' });
+      .mockResolvedValueOnce({
+        id: ATTEMPT, createdAt: new Date('2026-11-10T10:00:00Z'), fromWalletId: USD.id, toWalletId: SYP.id,
+        amountOut: '100', amountIn: '1300000', exchangeRate: '13000', kind: 'EXCHANGE',
+      });
     db.$transaction.mockRejectedValueOnce(conflict);
     const res = await post(body);
     expect(res.status).toBe(200);
@@ -472,15 +500,6 @@ describe('a retry, or a second press, does not move the money twice', () => {
     expect(said.replay).toBe(true);
     expect(said.transfer).toMatchObject({ amountOut: 100, amountIn: 1_300_000, exchangeRate: 13_000 });
     expect(logAudit).not.toHaveBeenCalled();
-  });
-
-  it('an id that is taken by somebody else’s row is refused, not answered with their transfer', async () => {
-    const conflict = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', { code: 'P2002', clientVersion: 'test' });
-    db.walletTransfer.findFirst.mockResolvedValue(null);
-    db.$transaction.mockRejectedValueOnce(conflict);
-    const res = await post(body);
-    expect(res.status).toBe(409);
-    expect((await res.json()).code).toBe('TRANSFER_EXISTS');
   });
 
   it('another company’s id is not even looked at: the replay query is scoped to this company', async () => {
@@ -509,6 +528,159 @@ describe('a retry, or a second press, does not move the money twice', () => {
     const res = await post(body);
     expect(res.status).not.toBe(200);
     expect(res.status).not.toBe(201);
+  });
+
+  /*
+   * THE SAME ID WITH ANOTHER DEAL IS NOT A RETRY.
+   *
+   * The money reviewer's scenario, which was answered 200 with `replay: true` and the OLD deal while the new one was
+   * lost behind a «تم»: 100 USD → 1,300,000 SYP is written, but the answer takes 15 seconds and is lost; the person
+   * changes the amount (or the wallet) and presses again with the same id. A replay is a success to repeat only for
+   * the deal that was recorded — wallets and both amounts — and anything else under the id is a 409, with nothing
+   * written and the first transfer left exactly as it was.
+   */
+  describe('the same id carrying ANOTHER deal is a conflict, and the first deal is left as it was', () => {
+    const exactlyTheFirstDeal = () => {
+      expect(transferRows()).toHaveLength(1);
+      expect(transferRows()[0]).toMatchObject({ id: ATTEMPT, fromWalletId: USD.id, toWalletId: SYP.id, amountOut: 100, amountIn: 1_300_000 });
+      expect(movementRows().map((m) => m.amount)).toEqual([100, 1_300_000]);
+      expect(db.$transaction).toHaveBeenCalledTimes(1);
+      expect(logAudit).toHaveBeenCalledTimes(1);
+    };
+    const refused = async (res: Response) => {
+      expect(res.status).toBe(409);
+      const said = await res.json();
+      expect(said).toEqual({ error: TAKEN, code: 'TRANSFER_EXISTS' });
+      exactlyTheFirstDeal();
+    };
+
+    it('the reviewer’s case: 100 USD recorded, then 200 under the same id — a 409, not «replay» of the 100', async () => {
+      expect((await post(body)).status).toBe(201);
+      await refused(await post({ ...body, amountOut: 200, amountIn: 2_600_000 }));
+    });
+
+    it('another destination wallet', async () => {
+      await post(body);
+      await refused(await post({ ...body, toWalletId: SYP_B.id }));
+    });
+
+    it('another source wallet, the direction turned round', async () => {
+      await post(body);
+      await refused(await post({ ...body, fromWalletId: SYP.id, toWalletId: USD.id, amountOut: 1_300_000, amountIn: 100 }));
+    });
+
+    it('the same wallets and amount going out, another amount arriving', async () => {
+      await post(body);
+      await refused(await post({ ...body, amountIn: 1_290_000 }));
+    });
+
+    it('the same wallets and amount arriving, another amount going out', async () => {
+      await post(body);
+      await refused(await post({ ...body, amountOut: 101 }));
+    });
+
+    it('a different RATE for the same wallets: the arriving amount it would give is compared, and it differs', async () => {
+      const byRate = { transferId: ATTEMPT, fromWalletId: USD.id, toWalletId: SYP.id, amountOut: 100, exchangeRate: 13_000, note: NOTE };
+      expect((await post(byRate)).status).toBe(201);
+      await refused(await post({ ...byRate, exchangeRate: 13_500 }));
+    });
+
+    it('a rate that gives the same arriving amount is the same deal — and so is the amount it gave, typed', async () => {
+      const byRate = { transferId: ATTEMPT, fromWalletId: USD.id, toWalletId: SYP.id, amountOut: 100, exchangeRate: 13_000, note: NOTE };
+      expect((await post(byRate)).status).toBe(201);
+      for (const same of [byRate, { ...byRate, exchangeRate: undefined, amountIn: 1_300_000 }]) {
+        const again = await post(same);
+        expect(again.status).toBe(200);
+        expect((await again.json()).replay).toBe(true);
+      }
+      expect(transferRows()).toHaveLength(1);
+      expect(db.$transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('one currency: the same amount is the same deal, another amount is not', async () => {
+      const plain = { transferId: ATTEMPT, fromWalletId: USD.id, toWalletId: USD2.id, amountOut: 100, note: 'إيداع' };
+      expect((await post(plain)).status).toBe(201);
+      expect((await post(plain)).status).toBe(200);
+      const other = await post({ ...plain, amountOut: 150 });
+      expect(other.status).toBe(409);
+      expect((await other.json()).code).toBe('TRANSFER_EXISTS');
+      expect(transferRows()).toHaveLength(1);
+      expect(transferRows()[0]).toMatchObject({ amountOut: 100, amountIn: 100 });
+    });
+
+    it('the NOTE is words, not money: a retry that mends it is the same transfer, and answers with the one recorded', async () => {
+      await post(body);
+      const again = await post({ ...body, note: 'صرف دولار — بعد التصحيح' });
+      expect(again.status).toBe(200);
+      const said = await again.json();
+      expect(said.replay).toBe(true);
+      expect(said.transfer.note).toBe(NOTE);
+      exactlyTheFirstDeal();
+    });
+
+    it('the loser of a race with ANOTHER deal under the same id is refused, and is not answered with the winner’s row', async () => {
+      const conflict = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', { code: 'P2002', clientVersion: 'test' });
+      db.walletTransfer.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({
+          id: ATTEMPT, createdAt: new Date('2026-11-10T10:00:00Z'), fromWalletId: USD.id, toWalletId: SYP.id,
+          amountOut: '200', amountIn: '2600000', exchangeRate: '13000', kind: 'EXCHANGE',
+        });
+      db.$transaction.mockRejectedValueOnce(conflict);
+      const res = await post(body);
+      expect(res.status).toBe(409);
+      const said = await res.json();
+      expect(said).toEqual({ error: TAKEN, code: 'TRANSFER_EXISTS' });
+      expect('transfer' in said).toBe(false);
+      expect(logAudit).not.toHaveBeenCalled();
+    });
+
+    it('…and so is the winner that went to ANOTHER pair of wallets', async () => {
+      const conflict = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', { code: 'P2002', clientVersion: 'test' });
+      db.walletTransfer.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({
+          id: ATTEMPT, fromWalletId: USD.id, toWalletId: SYP_B.id, amountOut: '100', amountIn: '1300000', exchangeRate: '13000', kind: 'BETWEEN_STORES',
+        });
+      db.$transaction.mockRejectedValueOnce(conflict);
+      const res = await post(body);
+      expect(res.status).toBe(409);
+      expect((await res.json()).code).toBe('TRANSFER_EXISTS');
+    });
+  });
+
+  describe('an id that exists in ANOTHER company is a conflict, and nothing of it is said', () => {
+    it('refused with the same sentence as any other conflict — no row, no amount, no wallet, no company', async () => {
+      foreignIds = [ATTEMPT];
+      const res = await post(body);
+      expect(res.status).toBe(409);
+      const said = await res.json();
+      // exactly the two keys of every conflict: nothing that belongs to the row that holds the id
+      expect(said).toEqual({ error: TAKEN, code: 'TRANSFER_EXISTS' });
+      expect(JSON.stringify(said)).not.toMatch(/co2|other|1300000|replay|transfer"/);
+      // nothing was written, nothing was audited
+      expect(committed).toEqual([]);
+      expect(logAudit).not.toHaveBeenCalled();
+    });
+
+    it('both lookups for the id are scoped to THIS company, so the other company’s row is never read', async () => {
+      foreignIds = [ATTEMPT];
+      await post(body);
+      const lookups = db.walletTransfer.findFirst.mock.calls.map((c: unknown[]) => c[0]);
+      expect(lookups).toHaveLength(2);
+      for (const q of lookups) expect(q).toEqual({ where: { id: ATTEMPT, companyId: 'co1' } });
+    });
+
+    it('and the other company is told the same about THIS company’s id', async () => {
+      expect((await post(body)).status).toBe(201);
+      requireContext.mockResolvedValue({ user: { id: 'u9', name: 'غريب' }, companyId: 'co2', storeId: 's9' });
+      // (this fake's wallets answer to any company: what is asked here is only what the id check says about the row)
+      const res = await post(body);
+      expect([404, 409]).toContain(res.status);
+      const said = await res.json();
+      expect(JSON.stringify(said)).not.toMatch(/1300000|replay|"transfer"/);
+      expect(transferRows()).toHaveLength(1);
+    });
   });
 });
 

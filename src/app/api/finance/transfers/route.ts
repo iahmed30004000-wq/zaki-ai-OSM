@@ -44,6 +44,9 @@ const createSchema = z.object({
    * A transfer is not something the server can tell from a double-click: two identical ones, seconds apart, are also
    * a person moving the same sum twice. Optional so an existing caller keeps working; and a caller that sends one is
    * safe against the 15-second timeout, where the answer is lost and the button is pressed again.
+   *
+   * A retry is answered only when it is the deal that was recorded (the wallets and both amounts): the same id with
+   * another deal is a 409, so a deal changed after the answer was lost is never swallowed by the old row.
    */
   transferId: z.string().uuid().optional(),
   fromWalletId: z.string().uuid(),
@@ -106,6 +109,68 @@ const asNumbers = <T extends { amountOut: unknown; amountIn: unknown; exchangeRa
   exchangeRate: Number(t.exchangeRate),
 });
 
+/**
+ * THE MONEY OF A TRANSFER: the four things that say WHICH deal it was.
+ *
+ * A replay is a success to repeat only for the deal it recorded. The same id carrying ANOTHER deal (the person
+ * changed the amount, or the wallet, after the answer was lost) is not a retry: it is a new request that would be
+ * answered with the old row, the new deal lost and the screen saying «تم». So the stored row is compared with the
+ * request on these four, and anything else is a conflict.
+ *
+ * The note is not among them, on purpose: it is words, and a retry that mends a typo in it is still the same money,
+ * which must not be moved twice.
+ */
+interface Deal {
+  fromWalletId: string;
+  toWalletId: string;
+  amountOut: number;
+  amountIn: number;
+}
+
+const sameDeal = (row: { fromWalletId: string; toWalletId: string; amountOut: unknown; amountIn: unknown }, deal: Deal) =>
+  row.fromWalletId === deal.fromWalletId &&
+  row.toWalletId === deal.toWalletId &&
+  Number(row.amountOut) === deal.amountOut &&
+  Number(row.amountIn) === deal.amountIn;
+
+/**
+ * The id is taken: by a different deal of this company, or by another company's row. Nothing is written, and
+ * nothing of the row that holds the id is said: not its amounts, not its wallets, not whose it is.
+ */
+const taken = () =>
+  NextResponse.json(
+    { error: 'هالتحويل انسجّل من قبل بصفقة تانية — حدّث الصفحة وراجع قبل ما تعيد', code: 'TRANSFER_EXISTS' },
+    { status: 409 }
+  );
+
+/**
+ * WHAT A REQUEST WOULD RECORD, in the fields a stored transfer keeps, or `null` when that cannot be said.
+ *
+ * An arriving amount that was typed is the deal as it stands. A rate, or one currency, is worked out from the two
+ * wallets by the very function the write uses: the wallets as they are, stopped ones included, because the transfer
+ * being repeated may be the reason they were stopped.
+ */
+async function askedDeal(companyId: string, input: z.infer<typeof createSchema>): Promise<Deal | null> {
+  const ends = { fromWalletId: input.fromWalletId, toWalletId: input.toWalletId };
+  if (input.amountIn !== undefined) return { ...ends, amountOut: input.amountOut, amountIn: input.amountIn };
+
+  const pick = (id: string) =>
+    db.wallet.findFirst({ where: { id, companyId }, include: { country: { select: { minorUnit: true } } } });
+  const [from, to] = await Promise.all([pick(input.fromWalletId), pick(input.toWalletId)]);
+  if (!from || !to) return null;
+  const money = resolveTransferAmounts({
+    fromCode: from.currencyCode,
+    toCode: to.currencyCode,
+    fromName: from.name,
+    toName: to.name,
+    amountOut: input.amountOut,
+    exchangeRate: input.exchangeRate,
+    fromMinor: from.country.minorUnit,
+    toMinor: to.country.minorUnit,
+  });
+  return money.ok ? { ...ends, amountOut: money.amountOut, amountIn: money.amountIn } : null;
+}
+
 export async function POST(req: Request) {
   try {
     const { user, companyId } = await requireContext();
@@ -121,15 +186,27 @@ export async function POST(req: Request) {
     }
 
     /*
-     * A REPLAY FINDS ITS OWN ROW AND WRITES NOTHING.
+     * A REPLAY FINDS ITS OWN ROW AND WRITES NOTHING, BUT ONLY FOR THE DEAL IT RECORDED.
      *
      * Asked FIRST, before the wallets are read and judged: the first attempt may have succeeded and the wallet been
      * stopped since, and a retry of a transfer that happened is a success to repeat, not a «المحفظة غير موجودة».
      * Scoped to the company, so another tenant's id is not even looked at.
+     *
+     * The row is then compared with the request (`sameDeal`). The same id with another deal is answered 409 and
+     * nothing is written: never the old row under a new request, which is how a changed amount was lost behind a
+     * «تم». (The wallets are compared first: another pair needs no arithmetic to be another deal.)
      */
     if (input.transferId) {
       const already = await db.walletTransfer.findFirst({ where: { id: input.transferId, companyId } });
-      if (already) return NextResponse.json({ transfer: asNumbers(already), replay: true }, { status: 200 });
+      if (already) {
+        const asked =
+          already.fromWalletId === input.fromWalletId && already.toWalletId === input.toWalletId
+            ? await askedDeal(companyId, input)
+            : null;
+        return asked && sameDeal(already, asked)
+          ? NextResponse.json({ transfer: asNumbers(already), replay: true }, { status: 200 })
+          : taken();
+      }
     }
 
     const [from, to] = await Promise.all([
@@ -242,12 +319,14 @@ export async function POST(req: Request) {
       /*
        * Two requests carrying the same id at the same moment: the check above saw nothing, the database saw the second
        * one, and its transaction rolled back whole (the transfer row is the first write). P2002 here can only be that
-       * id. If the row is this company's it is the twin's — a success to repeat; otherwise the id is taken.
+       * id. If the row is this company's AND it is this very deal, it is the twin's: a success to repeat. A different
+       * deal under the id, or another company's row, is a conflict that says nothing about the row.
        */
       if (input.transferId && e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
         const twin = await db.walletTransfer.findFirst({ where: { id: input.transferId, companyId } });
-        if (twin) return NextResponse.json({ transfer: asNumbers(twin), replay: true }, { status: 200 });
-        return NextResponse.json({ error: 'هذا التحويل مسجَّلٌ سلفاً', code: 'TRANSFER_EXISTS' }, { status: 409 });
+        return twin && sameDeal(twin, { fromWalletId: from.id, toWalletId: to.id, amountOut, amountIn })
+          ? NextResponse.json({ transfer: asNumbers(twin), replay: true }, { status: 200 })
+          : taken();
       }
       throw e;
     }

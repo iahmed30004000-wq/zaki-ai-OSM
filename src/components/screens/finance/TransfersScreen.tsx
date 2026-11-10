@@ -94,13 +94,20 @@ export function TransfersScreen() {
   const [saving, setSaving] = useState(false);
 
   /**
-   * ONE ID PER ATTEMPT, KEPT ACROSS RETRIES.
+   * ONE ID PER DEAL, KEPT ACROSS RETRIES OF IT.
    *
    * The 15-second timeout can lose the answer to a transfer that was written, and the button is pressed again. This id
    * is what lets the door tell a retry from a second transfer of the same sum: it survives a failed press and is
-   * renewed only after a transfer is actually saved. (The same arrangement as a receipt's `receiptId`.)
+   * renewed after a transfer is actually saved, and whenever the deal it was minted for changes. (The same
+   * arrangement as a receipt's `receiptId`.)
+   *
+   * THE DEAL IS THE MONEY THAT IS SENT: the two wallets and the two amounts, which is exactly what the door compares
+   * a retry with. Change any of them after a failed press and the id is renewed — the first attempt may have been
+   * written, and the same id on another deal would be answered with the old row while the new one was lost. Change
+   * only the words (the note), or the way the rate is given while the money comes out the same, and it is still a
+   * retry: a new id there could write the same money twice.
    */
-  const attemptId = useRef('');
+  const attempt = useRef<{ id: string; deal: string } | null>(null);
   /** A second press while the first is on the wire: state is read after the next paint, this is read now. */
   const inFlight = useRef(false);
 
@@ -257,7 +264,9 @@ export function TransfersScreen() {
             return;
           }
           inFlight.current = true;
-          if (!attemptId.current) attemptId.current = crypto.randomUUID();
+          const dealKey = [fromId, toId, deal!.amountOut, crossCurrency ? deal!.amountIn : ''].join('|');
+          let current = attempt.current;
+          if (!current || current.deal !== dealKey) current = attempt.current = { id: crypto.randomUUID(), deal: dealKey };
           setSaving(true);
           setError(null);
           setDone(null);
@@ -265,7 +274,7 @@ export function TransfersScreen() {
             await apiJson('/api/finance/transfers', {
               method: 'POST',
               body: JSON.stringify({
-                transferId: attemptId.current,
+                transferId: current.id,
                 fromWalletId: fromId,
                 toWalletId: toId,
                 amountOut: deal!.amountOut,
@@ -283,7 +292,7 @@ export function TransfersScreen() {
             setTypedFor({ face: typed.face, text: '', pair });
             setNote('');
             // The next transfer is a new attempt.
-            attemptId.current = '';
+            attempt.current = null;
             await load();
           } catch (err) {
             setError(err instanceof Error ? err.message : 'تعذر التحويل');
