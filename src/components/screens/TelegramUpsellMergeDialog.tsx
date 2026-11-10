@@ -35,6 +35,12 @@ interface ApplyRow {
   reason?: string;
 }
 
+/**
+ * «رقم الطلب» here is the SITE's number from the message (the pairing key), not one of our orders — so it is drawn as plain text
+ * and never through `OrderRef`, which links to an order of ours.
+ */
+const siteNumberOf = (r: PlanRow) => r.orderNumber ?? '—';
+
 export function TelegramUpsellMergeDialog({ canManage, onClose, onApplied }: { canManage: boolean; onClose: () => void; onApplied: () => void | Promise<void> }) {
   const toast = useToast();
   const confirm = useConfirm();
@@ -88,7 +94,7 @@ export function TelegramUpsellMergeDialog({ canManage, onClose, onApplied }: { c
   };
 
   const columns: Column<PlanRow>[] = [
-    { key: 'orderNumber', label: 'رقم الطلب', primary: true, render: (r) => <span dir="ltr" className="tabular-nums">{r.orderNumber ?? '—'}</span> },
+    { key: 'orderNumber', label: 'رقم الطلب', primary: true, render: (r) => <span dir="ltr" className="tabular-nums">{siteNumberOf(r)}</span> },
     { key: 'product', label: 'المنتج', primary: true, render: (r) => r.product },
     { key: 'units', label: 'العبوات', align: 'end', render: (r) => (r.units == null ? '—' : <span className="tabular-nums">{r.units}</span>) },
     { key: 'amount', label: 'المبلغ', align: 'end', render: (r) => (r.amount == null ? '—' : <span dir="ltr" className="tabular-nums">{r.amount}</span>) },
