@@ -895,3 +895,98 @@ describe('«دمج الأب سيل — تجربة»: the plan over the waiting m
     expect(state.orders).toHaveLength(1);
   });
 });
+
+/**
+ * FROM THE MONEY REVIEW OF #242 (10/11): a resent half, and the lines no other test held.
+ *
+ * Blocker 1 — the site resent one half: from the single other half there are two partners (ambiguous), but from EACH resent
+ * copy there is one, so whichever copy was read first (at release, in the preview) made the order on its own. A pair is now
+ * judged from both sides. Blocker 2 — four lines whose mutation no test killed: delivery-included from the BASE offer when the
+ * upsell heads the order, the blacklist on the merge path (both numbers of both messages), and the hold written only while the
+ * message has no order.
+ */
+describe('a resent half: the pair is judged from both sides, and nobody makes the order on their own', () => {
+  const scope = { OR: [{ source: { storeId: 'store-A' } }] };
+
+  it('two upsells and one base: ambiguous live, and still no order after every wait is released', async () => {
+    const first = arrive(upsellMessage());
+    await processStoredMessage(first, { now: at(0) });
+    const resent = arrive(upsellMessage(), { createdAt: at(0.5), messageId: '7777' });
+    await processStoredMessage(resent, { now: at(0.5) });
+    const base = arrive(message(), { createdAt: at(2) });
+    expect(await processStoredMessage(base, { now: at(2) })).toEqual({ status: 'NEEDS_REVIEW', reason: 'UPSELL_PAIR_AMBIGUOUS' });
+    await releaseExpiredHolds('c1', at(30));
+    nothingWritten();
+    expect([first, resent, base].map((id) => row(id).reviewReason)).toEqual(['UPSELL_PAIR_AMBIGUOUS', 'UPSELL_PAIR_AMBIGUOUS', 'UPSELL_PAIR_AMBIGUOUS']);
+  });
+
+  it('two bases and one upsell: the same, the other way round', async () => {
+    const first = arrive(message());
+    await processStoredMessage(first, { now: at(0) });
+    const resent = arrive(message(), { createdAt: at(0.5), messageId: '7777' });
+    await processStoredMessage(resent, { now: at(0.5) });
+    const upsell = arrive(upsellMessage(), { createdAt: at(2) });
+    expect(await processStoredMessage(upsell, { now: at(2) })).toEqual({ status: 'NEEDS_REVIEW', reason: 'UPSELL_PAIR_AMBIGUOUS' });
+    await releaseExpiredHolds('c1', at(30));
+    nothingWritten();
+    expect([first, resent].map((id) => row(id).reviewReason)).toEqual(['UPSELL_PAIR_AMBIGUOUS', 'UPSELL_PAIR_AMBIGUOUS']);
+  });
+
+  it('the preview shows no merge for them, and apply — planning again — makes nothing', async () => {
+    const { planWaitingMessages, applyWaitingMessages } = await import('./upsell-plan');
+    arrive(upsellMessage(), { processingStatus: 'NEEDS_REVIEW', reviewReason: 'UPSELL_WITHOUT_BASE' });
+    arrive(upsellMessage(), { processingStatus: 'NEEDS_REVIEW', reviewReason: 'UPSELL_WITHOUT_BASE', createdAt: at(1), messageId: '7777' });
+    arrive(message(), { processingStatus: 'NEEDS_REVIEW', reviewReason: 'UPSELL_PAIR_AMBIGUOUS', createdAt: at(2) });
+    const rows = await planWaitingMessages('c1', scope);
+    expect(rows.filter((r) => r.kind !== 'review')).toEqual([]);
+    expect(rows.map((r) => r.reason)).toEqual(['UPSELL_PAIR_AMBIGUOUS', 'UPSELL_PAIR_AMBIGUOUS', 'UPSELL_PAIR_AMBIGUOUS']);
+    const applied = await applyWaitingMessages('c1', scope);
+    expect(applied.every((r) => r.status === 'SKIPPED')).toBe(true);
+    nothingWritten();
+  });
+});
+
+describe('the lines of a merge no other test held', () => {
+  it('an upsell worth more than the offer heads the order — and delivery-included still comes from the BASE offer', async () => {
+    state.storePolicy = false;
+    state.aliases[0] = { ...state.aliases[0], extraUnits: 3, linePrice: 40 };
+    const base = arrive(message({ 'السعر': '60' }));
+    await processStoredMessage(base, { now: at(0) });
+    const upsell = arrive(upsellMessage({ 'السعر': '60' }), { createdAt: at(1) });
+    await processStoredMessage(upsell, { now: at(1) });
+    const order = theMergedOrder(base, upsell);
+    // The head has no offer (the upsell line), the store's policy is off: only the base offer can say «included».
+    expect(order).toMatchObject({ totalAmount: 60, offerId: null, quantity: 3, sellingPrice: 40, priceIncludesDelivery: true });
+    expect(state.items.map((i) => [i.quantity, i.lineTotal, i.discountShare])).toEqual([[1, 20, 0], [3, 40, 0]]);
+  });
+
+  it('a blocked phone stops the pair at the second message — nothing written', async () => {
+    state.blocks = [{ companyId: 'c1', phone: '933111222' }];
+    const base = arrive(message());
+    await processStoredMessage(base, { now: at(0) });
+    const upsell = arrive(upsellMessage(), { createdAt: at(1) });
+    expect(await processStoredMessage(upsell, { now: at(1) })).toEqual({ status: 'NEEDS_REVIEW', reason: 'CUSTOMER_BLOCKED' });
+    nothingWritten();
+  });
+
+  it('a blocked SECOND number written only on the upsell message stops the pair too', async () => {
+    state.blocks = [{ companyId: 'c1', phone: '944000111' }];
+    const base = arrive(message());
+    await processStoredMessage(base, { now: at(0) });
+    const upsell = arrive(upsellMessage({ 'رقم الهاتف': '0933111222 - 0944000111' }), { createdAt: at(1) });
+    expect(await processStoredMessage(upsell, { now: at(1) })).toEqual({ status: 'NEEDS_REVIEW', reason: 'CUSTOMER_BLOCKED' });
+    nothingWritten();
+  });
+
+  it('a wait is never written over a message the other half linked while this one was being read', async () => {
+    const base = arrive(message());
+    const real = db.telegramUpsellProduct.findMany.getMockImplementation()!;
+    db.telegramUpsellProduct.findMany.mockImplementationOnce(async (args: Row) => {
+      // The other half's transaction commits in between: this message now has its order.
+      Object.assign(row(base), { orderId: 'o-other', processingStatus: 'PROCESSED', reviewReason: null });
+      return real(args);
+    });
+    expect(await processStoredMessage(base, { now: at(0) })).toEqual({ status: 'PROCESSED', orderId: 'o-other' });
+    expect(row(base)).toMatchObject({ processingStatus: 'PROCESSED', orderId: 'o-other', reviewReason: null });
+  });
+});

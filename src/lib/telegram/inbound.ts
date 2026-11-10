@@ -488,11 +488,37 @@ async function prepareMessage(message: StoredMessage, info: DecisionInfo): Promi
  * base, a base for an upsell). The same phone makes a partner; the same number with another phone is a mismatch, two partners
  * are ambiguous. Read again with the same reader, so the key is compared exactly as the door read it.
  */
-async function findPartners(
-  self: Extract<Prepared, { kind: 'upsell' | 'base' }>,
-  want: 'base' | 'upsell',
-  windowMs: number
-): Promise<{ kind: 'none' } | { kind: 'mismatch' } | { kind: 'ambiguous' } | { kind: 'one'; message: StoredMessage }> {
+/** What the partner search needs to know about the message it searches FROM. */
+interface PartnerSeeker {
+  message: StoredMessage;
+  reading: OkReading;
+  country: Country;
+  aliases: AliasRow[];
+}
+
+type PartnerSearch = { kind: 'none' } | { kind: 'mismatch' } | { kind: 'ambiguous' } | { kind: 'one'; message: StoredMessage; reading: OkReading };
+
+/**
+ * ONE PARTNER, FROM BOTH SIDES (the money review of #242, blocker 1). The site resent the upsell: two upsell messages and one
+ * base share the number. From the base there are two partners (ambiguous); but from EACH upsell there is exactly one base, so
+ * whichever upsell was read first — released by `holds.ts`, planned by the preview — made the order on its own, and the same
+ * three messages were «ambiguous» or «an order» depending on who was read first. So a pair is a pair only when the partner,
+ * searched from ITS side, finds no other message of this one's kind: otherwise both stay UPSELL_PAIR_AMBIGUOUS, and nothing is
+ * created — live, at release, in the preview and at apply alike.
+ */
+async function findPartners(self: PartnerSeeker, want: 'base' | 'upsell', windowMs: number): Promise<PartnerSearch> {
+  const found = await partnersOf(self, want, windowMs);
+  if (found.kind !== 'one') return found;
+  const back = await partnersOf(
+    { message: found.message, reading: found.reading, country: self.country, aliases: self.aliases },
+    want === 'upsell' ? 'base' : 'upsell',
+    windowMs
+  );
+  if (back.kind === 'ambiguous' || (back.kind === 'one' && back.message.id !== self.message.id)) return { kind: 'ambiguous' };
+  return found;
+}
+
+async function partnersOf(self: PartnerSeeker, want: 'base' | 'upsell', windowMs: number): Promise<PartnerSearch> {
   const number = self.reading.orderNumber;
   if (!number || !self.message.sourceId) return { kind: 'none' };
   const at = self.message.createdAt.getTime();
@@ -512,7 +538,7 @@ async function findPartners(
     select: STORED_MESSAGE_SELECT,
   });
   const phone = phoneKeyOf(self.reading.fields.phone, self.country.code);
-  const partners: StoredMessage[] = [];
+  const partners: Array<{ message: StoredMessage; reading: OkReading }> = [];
   let otherPhone = false;
   for (const row of rows) {
     const other = readLabeledOrder(row.text ?? '', { country: self.country, receivedAt: row.createdAt });
@@ -523,10 +549,10 @@ async function findPartners(
       otherPhone = true;
       continue;
     }
-    partners.push(row);
+    partners.push({ message: row, reading: other });
   }
   if (partners.length > 1) return { kind: 'ambiguous' };
-  if (partners.length === 1) return { kind: 'one', message: partners[0] };
+  if (partners.length === 1) return { kind: 'one', message: partners[0].message, reading: partners[0].reading };
   return otherPhone ? { kind: 'mismatch' } : { kind: 'none' };
 }
 
@@ -587,6 +613,8 @@ async function decideLabeledMessage(message: StoredMessage, options: ProcessOpti
   if (written > expected && prepared.reading.orderNumber && sellsUpsells) {
     info.role = 'base';
     const found = await findPartners(prepared, 'upsell', windowMs);
+    // A partner was in sight (one, two, or another phone): the preview lists this base too.
+    if (found.kind !== 'none') info.via = 'pair';
     if (found.kind === 'ambiguous') return review('UPSELL_PAIR_AMBIGUOUS');
     if (found.kind === 'mismatch') return review('UPSELL_PAIR_MISMATCH');
     if (found.kind === 'one') {
