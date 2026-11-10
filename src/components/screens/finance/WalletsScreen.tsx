@@ -17,7 +17,14 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { arDateTime } from '@/lib/format';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
-import { COURIER_MONEY_HINT, OWN_LEDGER, OWN_LEDGER_HINT, handCategoriesFor, ownLedgerCategories } from '@/lib/hand-movement-rules';
+import { COURIER_MONEY_HINT, EXPENSE_HERE_HINT, OWN_LEDGER, OWN_LEDGER_HINT, handCategoriesFor, ownLedgerCategories } from '@/lib/hand-movement-rules';
+import {
+  EXPENSE_CATEGORY_AR,
+  EXPENSE_FORM_HINT,
+  EXPENSE_FORM_LABEL,
+  EXPENSE_FORM_ORDER,
+  type ExpenseCategory,
+} from '@/lib/expense-grade';
 
 /**
  * /finance/wallets — balances and the movement ledger. A recorded movement is
@@ -72,12 +79,35 @@ const CATEGORY_AR: Record<string, string> = {
   OTHER: 'أخرى',
 };
 
+/** The movement category the dialog opens the EXPENSE door for — the key `OWN_LEDGER` lists it under. */
+const EXPENSE = 'EXPENSE';
+
+/** The type the expense box opens on: the profit screen's own default, so the two forms start the same way. */
+const DEFAULT_EXPENSE_TYPE: ExpenseCategory = 'MARKETING';
+
+/** What the greyed «مصروف» says when it is greyed ONLY because the money is coming IN (the person holds the key). */
+const EXPENSE_IN_POINTER = 'صادر فقط — الراجع «تسوية» واردة';
+
+/**
+ * TODAY, AS THE PERSON'S OWN CALENDAR READS IT — what a date box holds.
+ * `toISOString` is UTC: after midnight in Amman it still says yesterday, and an expense typed at 01:00 on the first
+ * of the month would land in the month before.
+ */
+function todayForTheBox(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 export function WalletsScreen() {
   const { currentUser } = useApp();
   // The screen opens on the cash box's VIEW key (PR-9). Managing the wallets and recording the cash are two keys of their
   // own, and a control is drawn only for the key its door asks — so nobody is offered a press that ends in a refusal.
   const mayManage = userCan(currentUser, 'finance.wallets_manage');
   const mayCash = userCan(currentUser, 'finance.cashbox');
+  // «مصروف» in the movement dialog is written by the EXPENSE door, whose key is `finance.create` — a third key, asked by that
+  // door and not by the movements one. The dialog opens on the cash key; the option inside it is offered for this one.
+  const mayExpense = userCan(currentUser, 'finance.create');
   const ask = useConfirm();
   const toast = useToast();
   // The phone draws a different SET of controls (the day's press first, the upkeep folded under it), not the desk's
@@ -555,10 +585,12 @@ export function WalletsScreen() {
       {recordOpen && wallet && (
         <RecordDialog
           wallet={wallet}
+          mayExpense={mayExpense}
+          storeCurrency={store?.code ?? null}
           onClose={() => setRecordOpen(false)}
-          onSaved={async () => {
+          onSaved={async (message) => {
             setRecordOpen(false);
-            await refresh('سُجِّلت الحركة');
+            await refresh(message);
           }}
         />
       )}
@@ -715,22 +747,50 @@ function OpeningCountDialog({
   );
 }
 
+/**
+ * «حركة جديدة» — A MOVEMENT TYPED BY HAND, OR A REAL EXPENSE.
+ *
+ * Two doors sit behind this one dialog and the category chosen picks between them:
+ *
+ *   · «تسوية» and «أخرى» go to the MOVEMENTS door: a person writing down money that has no ledger of its own.
+ *   · «مصروف» goes to the EXPENSE door (`POST /api/finance`, the key `finance.create`). That door writes the expense
+ *     row AND this wallet's movement in ONE transaction, so the profit subtracts it once and the wallet loses it once.
+ *     A movement filed under EXPENSE and typed at the movements door would leave the profit untouched — or count it
+ *     twice — which is why that door refuses it, and why this dialog never sends one there.
+ *
+ * «عمولة» stays greyed: its ledger is the commission entries, paid from «صرف».
+ */
 function RecordDialog({
   wallet,
+  mayExpense,
+  storeCurrency,
   onClose,
   onSaved,
 }: {
   wallet: WalletRow;
+  /** `finance.create`, the key the EXPENSE door asks. The server asks it again; this only decides what is offered. */
+  mayExpense: boolean;
+  /** The selected store's currency, when the shell knows it — used only to say so when the wallet's is another. */
+  storeCurrency: string | null;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (message: string) => void;
 }) {
   const [direction, setDirection] = useState<'IN' | 'OUT'>('OUT');
   const [amount, setAmount] = useState('');
   const [party, setParty] = useState('');
   const [category, setCategory] = useState(handCategoriesFor('OUT')[0]);
   const [note, setNote] = useState('');
+  const [expenseType, setExpenseType] = useState<ExpenseCategory>(DEFAULT_EXPENSE_TYPE);
+  const [expenseDate, setExpenseDate] = useState(todayForTheBox);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Offered going OUT only, and only to who holds the key of the expense door.
+  const expenseHere = mayExpense && direction === 'OUT';
+  const isExpense = category === EXPENSE;
+  // The expense row carries no currency, so the profit subtracts the typed number as it is, whatever the wallet holds.
+  // That is how the door has always behaved and it is not this dialog's to change — it is said once, before saving.
+  const otherCurrency = isExpense && !!storeCurrency && storeCurrency !== wallet.currencyCode;
 
   return (
     <Modal isOpen onClose={onClose} title={`حركة جديدة — ${wallet.name}`}>
@@ -740,6 +800,24 @@ function RecordDialog({
           setSaving(true);
           setError(null);
           try {
+            if (isExpense) {
+              // THE EXPENSE DOOR, never the movements one. The wallet is the one this dialog was opened on; the door
+              // checks it is this store's and answers in Arabic when it is not, and so does it for the key.
+              await apiJson('/api/finance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  title: party.trim(),
+                  category: expenseType,
+                  amount: Number(amount),
+                  expenseDate,
+                  notes: note.trim(),
+                  walletId: wallet.id,
+                }),
+              });
+              onSaved('سُجِّل المصروف — خُصم من الربح وخرج من المحفظة');
+              return;
+            }
             await apiJson(`/api/finance/wallets/${wallet.id}/movements`, {
               method: 'POST',
               body: JSON.stringify({
@@ -750,7 +828,7 @@ function RecordDialog({
                 note: note.trim(),
               }),
             });
-            onSaved();
+            onSaved('سُجِّلت الحركة');
           } catch (err) {
             setError(err instanceof Error ? err.message : 'تعذر الحفظ');
           } finally {
@@ -766,8 +844,10 @@ function RecordDialog({
               type="button"
               onClick={() => {
                 setDirection(d);
-                // The pair must stay one the door accepts.
-                if (!handCategoriesFor(d).includes(category)) setCategory(handCategoriesFor(d)[0]);
+                // The pair must stay one a door accepts: a movement typed for this direction, or the expense going OUT
+                // for who may write it. Anything else goes back to the first category of the direction.
+                const stays = handCategoriesFor(d).includes(category) || (category === EXPENSE && d === 'OUT' && mayExpense);
+                if (!stays) setCategory(handCategoriesFor(d)[0]);
               }}
               className={`flex-1 h-11 md:h-10 rounded-lg border text-sm font-medium ${
                 direction === d
@@ -796,14 +876,21 @@ function RecordDialog({
           />
         </label>
 
+        {otherCurrency && (
+          <p className="text-xs text-[var(--sys-warning)]">
+            انتبه: عملة هالمحفظة ({wallet.currencyCode}) غير عملة المتجر ({storeCurrency}) — المبلغ بينخصم من الربح بنفس رقمو بلا تحويل.
+          </p>
+        )}
+
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">الطرف</span>
+          {/* An expense's statement is the party its movement is written under, so the one box serves both. */}
+          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">{isExpense ? 'البيان' : 'الطرف'}</span>
           <input
             value={party}
             onChange={(e) => setParty(e.target.value)}
             required
             minLength={2}
-            placeholder="اسم الشخص أو الجهة"
+            placeholder={isExpense ? 'مثلاً: إيجار المستودع، حملة تيك توك رقم 4' : 'اسم الشخص أو الجهة'}
             className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm"
           />
         </label>
@@ -820,21 +907,57 @@ function RecordDialog({
               .map(([key, label]) => (
                 <option key={key} value={key}>{label}</option>
               ))}
-            {/* Listed, not removed: the pointer beside each one says which door writes it. */}
-            {ownLedgerCategories().map((key) => (
-              <option key={key} value={key} disabled>{CATEGORY_AR[key]} — {OWN_LEDGER[key].short}</option>
-            ))}
+            {/* Listed, not removed: the pointer beside each one says which door writes it. The expense is the one that
+                opens here — going OUT, for who holds the key of its door. */}
+            {ownLedgerCategories().map((key) => {
+              if (key === EXPENSE && expenseHere) return <option key={key} value={key}>{CATEGORY_AR[key]}</option>;
+              const pointer = key === EXPENSE && mayExpense ? EXPENSE_IN_POINTER : OWN_LEDGER[key].short;
+              return <option key={key} value={key} disabled>{CATEGORY_AR[key]} — {pointer}</option>;
+            })}
           </select>
-          <span className="block text-xs text-[var(--sys-muted)] mt-1">{COURIER_MONEY_HINT} {OWN_LEDGER_HINT} التحويلات من شاشة التحويلات.</span>
+          <span className="block text-xs text-[var(--sys-muted)] mt-1">{COURIER_MONEY_HINT} {mayExpense ? EXPENSE_HERE_HINT : OWN_LEDGER_HINT} التحويلات من شاشة التحويلات.</span>
         </label>
 
+        {isExpense && (
+          <>
+            <label className="block">
+              <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">نوع المصروف</span>
+              <select
+                value={expenseType}
+                onChange={(e) => setExpenseType(e.target.value as ExpenseCategory)}
+                className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm bg-[var(--sys-card)]"
+              >
+                {/* The profit screen's own list: the two types the profit already counts on a delivered order say so. */}
+                {EXPENSE_FORM_ORDER.map((c) => (
+                  <option key={c} value={c}>{EXPENSE_FORM_LABEL[c] ?? EXPENSE_CATEGORY_AR[c]}</option>
+                ))}
+              </select>
+              {EXPENSE_FORM_HINT[expenseType] && (
+                <span className="block text-xs text-[var(--sys-muted)] mt-1">{EXPENSE_FORM_HINT[expenseType]}</span>
+              )}
+            </label>
+
+            <label className="block">
+              <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">التاريخ</span>
+              <input
+                type="date"
+                value={expenseDate}
+                onChange={(e) => setExpenseDate(e.target.value)}
+                required
+                className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm"
+                dir="ltr"
+              />
+            </label>
+          </>
+        )}
+
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">الملاحظة (إلزامية)</span>
+          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">{isExpense ? 'الملاحظة (اختيارية)' : 'الملاحظة (إلزامية)'}</span>
           <input
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            required
-            minLength={3}
+            required={!isExpense}
+            minLength={isExpense ? undefined : 3}
             className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm"
           />
         </label>
@@ -850,7 +973,7 @@ function RecordDialog({
             disabled={saving}
             className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
           >
-            {saving ? 'جارٍ الحفظ…' : 'تسجيل'}
+            {saving ? 'جارٍ الحفظ…' : isExpense ? 'تسجيل المصروف' : 'تسجيل'}
           </button>
         </div>
       </form>
