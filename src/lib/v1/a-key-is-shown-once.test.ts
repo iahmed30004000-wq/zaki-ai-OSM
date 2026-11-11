@@ -45,7 +45,7 @@ vi.mock('@/lib/authorization', () => ({
 vi.mock('@/lib/audit', () => ({ logAudit: (...a: unknown[]) => h.logAudit(...a) }));
 
 import { DELETE, GET, POST } from '@/app/api/settings/system-tokens/route';
-import { MEDIABUYER_SCOPES, REPLIES_SCOPES, V1_SCOPES, hashToken } from './system-token';
+import { LANDING_SCOPES, MEDIABUYER_SCOPES, REPLIES_SCOPES, V1_SCOPES, hashToken } from './system-token';
 
 const body = (value: unknown) =>
   new Request('https://oms.test/api/settings/system-tokens', {
@@ -249,6 +249,7 @@ describe('what the list says about each key', () => {
     expect(shelf.systems).toEqual([
       { key: 'replies', ar: 'نظام الردود', scopes: REPLIES_SCOPES, rateLimitPerMin: 60 },
       { key: 'mediabuyer', ar: 'الميديا باير', scopes: MEDIABUYER_SCOPES, rateLimitPerMin: 30 },
+      { key: 'landing', ar: 'نظام صفحات الهبوط', scopes: LANDING_SCOPES, rateLimitPerMin: 600 },
     ]);
     // Each with Arabic, because a checkbox labelled `orders.note` is a
     // checkbox a seller does not tick.

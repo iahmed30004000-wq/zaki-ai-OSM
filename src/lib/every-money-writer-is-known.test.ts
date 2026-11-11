@@ -122,6 +122,8 @@ const WRITERS = [
    * number by construction.
    */
   'src/lib/post-order-offer.ts',
+  // The landing system replacing the offer of an order nobody has worked on: the same computeCod call as createPublicOrder.
+  'src/lib/v1/landing-door.ts',
 ];
 
 /**
