@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useId, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
@@ -477,6 +477,16 @@ function ReceiveAllDialog({
   const [running, setRunning] = useState(false);
   const [totals, setTotals] = useState<ReceiveAllTotals>(emptyTotals());
   const stop = useRef(false);
+  // Leaving the screen is the same as «إيقاف»: the piece in flight finishes, no other piece is asked, and nothing is said to a
+  // screen that is no longer there. (Set again on every mount, so a development double-mount does not leave it off.)
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      stop.current = true;
+    };
+  }, []);
 
   const run = async () => {
     setRunning(true);
@@ -499,7 +509,7 @@ function ReceiveAllDialog({
       broke = true;
       toast.failed(e instanceof Error ? e.message : 'تعذّر إكمال الاستلام');
     }
-    onDone(receiveAllLine(t, { stopped: !broke && !!cursor && stop.current, broke }));
+    if (alive.current) onDone(receiveAllLine(t, { stopped: !broke && !!cursor && stop.current, broke }));
   };
 
   const progress = total > 0 ? Math.min(100, Math.round(((totals.received + skippedTotal(totals)) / total) * 100)) : 0;

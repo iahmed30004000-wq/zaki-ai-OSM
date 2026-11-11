@@ -187,6 +187,32 @@ describe('the walk, the progress and the one line', () => {
     expect(posts()).toHaveLength(1);
   });
 
+  it('leaving the screen mid-run is «إيقاف»: the piece in flight finishes, no other is asked, and a screen that is gone is told nothing', async () => {
+    let release: () => void = () => {};
+    api.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        await new Promise<void>((r) => (release = r));
+        return answers.shift();
+      }
+      return {
+        count: 1, orders: [ROW], pagination: { total, page: 1, limit: 25, totalPages: 15 }, facts: FACTS,
+        applied: { view: 'pending', status: null, courier: null, age: null, q: null }, mayChargeFee: true, mayReceiveAll: true,
+      };
+    });
+    await start();
+    await screen.findByText('استلمت 0 من 374');
+    const readsBefore = gets().length;
+    cleanup(); // the owner went to another screen while the first piece was on its way
+    await act(async () => release());
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    // The first answer said «there is more» (a cursor), and still nothing walked on: one piece asked, one only.
+    expect(posts()).toHaveLength(1);
+    // And nobody reloaded a list that is not on any screen.
+    expect(gets()).toHaveLength(readsBefore);
+  });
+
   it('a half-failed run says so plainly and can be pressed again', async () => {
     answers = [{ received: 50, skipped: {}, nextCursor: 'c-50' }];
     await start();
