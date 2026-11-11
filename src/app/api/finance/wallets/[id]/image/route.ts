@@ -29,6 +29,8 @@ import { WALLET_IMAGE_MAX_BYTES, WALLET_IMAGE_SIDE, WALLET_IMAGE_TOO_BIG } from 
 
 const UPLOAD_RATE_LIMIT = 20;
 const UPLOAD_RATE_WINDOW_MS = 5 * 60_000;
+/** What a multipart form weighs besides the file itself: the boundaries and the part's headers are a few hundred bytes. */
+const FORM_FRAMING_BYTES = 64 * 1024;
 
 const ARABIC = /[؀-ۿ]/;
 
@@ -52,6 +54,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     if (!(req.headers.get('content-type') || '').includes('multipart/form-data')) {
       return NextResponse.json({ error: 'لازم يوصل الملف كنموذج ملفات، مش كنص' }, { status: 400 });
+    }
+    // Said BEFORE the body is read: reading a form buffers all of it, and a form is the picture plus a little framing. A
+    // client that declares more than the limit allows is refused without being listened to. (A body of no declared length
+    // is still held to the limit below, once it is read.)
+    const declared = Number(req.headers.get('content-length') ?? 0);
+    if (declared > WALLET_IMAGE_MAX_BYTES + FORM_FRAMING_BYTES) {
+      return NextResponse.json({ error: WALLET_IMAGE_TOO_BIG }, { status: 413 });
     }
     const form = await req.formData().catch(() => null);
     const file = form?.get('file');

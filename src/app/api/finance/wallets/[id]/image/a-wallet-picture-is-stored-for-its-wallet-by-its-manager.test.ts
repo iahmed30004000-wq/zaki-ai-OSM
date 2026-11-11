@@ -125,6 +125,15 @@ describe('the file — png, jpeg, webp, and not large', () => {
     expect((await post(picture('image/png', 5 * 1024 * 1024))).status).toBe(200);
   });
 
+  it('NEGATIVE: a form that DECLARES more than the limit allows is refused before it is read (413), and nothing is stored', async () => {
+    const res = await post(picture(), WALLET, { 'content-length': String(6 * 1024 * 1024) });
+    expect(res.status).toBe(413);
+    expect(res.body.error).toContain('5 ميجابايت');
+    expect(saveProductImage).not.toHaveBeenCalled();
+    // A form that declares the limit plus its framing is a 5 MB picture in a form, and is read as usual.
+    expect((await post(picture(), WALLET, { 'content-length': String(5 * 1024 * 1024 + 1000) })).status).toBe(200);
+  });
+
   it('NEGATIVE: no file, or a body that is not a form, is a 400 and nothing is stored', async () => {
     expect((await post(null)).status).toBe(400);
     const res = await POST(
