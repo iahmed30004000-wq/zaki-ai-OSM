@@ -2598,6 +2598,14 @@ model Wallet {
   /// Balance the wallet started with; every change after it is a movement.
   openingBalance Decimal  @default(0) @db.Decimal(14, 3)
   isActive       Boolean  @default(true)
+  /// THE WALLET'S OWN LOOK — all three optional, and none of them is money. A wallet with none of them looks the way
+  /// `walletLook` (src/lib/wallet-look.ts) says: the icon its currency names and a colour picked from its id.
+  ///   imageKey — the storage key of the picture the owner uploaded (`companies/{company}/products/{wallet}/{uuid}.webp`,
+  ///              served by /api/media). Only the wallet-picture door writes one, and the PATCH door accepts no other.
+  ///   iconKey  — one of WALLET_ICON_KEYS.   colorKey — one of WALLET_COLOR_KEYS (a `--sys-*` theme variable).
+  imageKey       String?  @map("image_key")
+  iconKey        String?  @map("icon_key")
+  colorKey       String?  @map("color_key")
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

@@ -78,7 +78,11 @@ export async function GET() {
     const wallets = walletIds.length
       ? await db.wallet.findMany({
           where: { id: { in: walletIds } },
-          select: { id: true, name: true, currencyCode: true, store: { select: { name: true } } },
+          // The look beside the name, so a row of the history is recognised the way its chip was (lib/wallet-look).
+          select: {
+            id: true, name: true, currencyCode: true, store: { select: { name: true } },
+            imageKey: true, iconKey: true, colorKey: true,
+          },
         })
       : [];
     const walletOf = new Map(wallets.map((w) => [w.id, w]));

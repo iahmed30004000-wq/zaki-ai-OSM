@@ -75,6 +75,10 @@ export async function GET(req: Request) {
           currencyCode: w.currencyCode,
           isActive: w.isActive,
           country: w.country,
+          // The look is not a figure: whoever may pick a wallet may recognise it (lib/wallet-look).
+          imageKey: w.imageKey,
+          iconKey: w.iconKey,
+          colorKey: w.colorKey,
         })),
       });
     }
@@ -92,6 +96,10 @@ export async function GET(req: Request) {
         currencyCode: w.currencyCode,
         isActive: w.isActive,
         country: w.country,
+        // How it looks: a picture, an icon, a colour — each null until somebody chooses (lib/wallet-look).
+        imageKey: w.imageKey,
+        iconKey: w.iconKey,
+        colorKey: w.colorKey,
         // Which books this wallet's money belongs to — what makes a transfer
         // readable as internal, between stores, or between countries.
         countryId: w.countryId,
