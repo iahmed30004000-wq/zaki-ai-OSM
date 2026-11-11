@@ -319,8 +319,10 @@ describe('absorbDamaged — the cost of what broke', () => {
  */
 describe('the returns desk passes the damaged count to the shelf', () => {
   it('hands both counts to restoreOrderStock', () => {
-    const src = stripComments(repoFile('src/app/api/ops/returns/route.ts'));
+    // The receipt the returns door writes lives in lib/return-receipt.ts since «استلام الكل» (11/11) — one function, both doors.
+    const src = stripComments(repoFile('src/lib/return-receipt.ts'));
     expect(src.length).toBeGreaterThan(200);
+    expect(repoFile('src/app/api/ops/returns/route.ts')).toContain('receiveReturn(');
     expect(src).toMatch(/restoreOrderStock\(tx, \{[\s\S]{0,200}?damagedQty: input\.damagedQty/);
   });
 });

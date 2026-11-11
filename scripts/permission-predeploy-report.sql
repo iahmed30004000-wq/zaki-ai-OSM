@@ -116,7 +116,9 @@ WITH req(action, needs) AS (VALUES
   -- 2/11: the holder's own window. Granted by no migration — a pair here would be a person the owner ticked it for who lost the request key.
   ('orders.edit_confirmed','orders.request_change'),
   -- 3/11 (T-09): the Telegram bot's connection. Granted by no migration — a pair here would be a person the owner ticked it for who lost the message key.
-  ('telegram.connect','telegram.manage')
+  ('telegram.connect','telegram.manage'),
+  -- 11/11: «استلام الكل» on the returns desk. Granted by no migration — a pair here would be a person the owner ticked it for who lost the returns key.
+  ('ops.returns_receive_all','ops.returns')
 )
 SELECT 'role_permissions' AS "table", r."name" AS "role", r."companyId", q.action, q.needs
 FROM "role_permissions" rp

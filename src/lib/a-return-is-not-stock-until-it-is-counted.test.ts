@@ -97,7 +97,8 @@ describe('a returned parcel keeps holding its units', () => {
 });
 
 describe('and the desk is the only door back onto the shelf', () => {
-  const desk = () => stripComments(repoFile('src/app/api/ops/returns/route.ts'));
+  // The desk is its door AND the one receipt function both doors call (lib/return-receipt.ts, «استلام الكل» 11/11).
+  const desk = () => stripComments(repoFile('src/app/api/ops/returns/route.ts') + repoFile('src/lib/return-receipt.ts'));
 
   it('— it refuses to restore anything without an explicit count', () => {
     // Not a checkbox that defaults to true: a literal the caller must
