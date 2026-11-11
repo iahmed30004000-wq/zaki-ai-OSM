@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { TRUST_DAYS } from '@/lib/trusted-device';
 import Image from 'next/image';
 import { RiFingerprintLine, RiLoader4Line, RiShieldKeyholeLine } from '@remixicon/react';
 import { passkeySupported, signWithPasskey } from '@/lib/passkey-browser';
@@ -34,15 +33,22 @@ interface Props {
    * owner will meet: a wrong password at this account minutes ago.
    */
   askedBecause?: string;
+  /**
+   * How many days «لا تطلب الرمز على هذا الجهاز» lasts — the server's number (`trustDays()`, from the same place the
+   * cookie's life comes from), handed down by the login page. It is a prop and not an import because the browser has no
+   * environment: the figure depends on a switch the server reads (`AUTH_SHORT_SESSIONS`).
+   */
+  trustDays: number;
   onSignedIn: (status: string) => void;
   onCancel: () => void;
 }
 
-export function SecondFactor({ step, challenge, email, askedBecause, onSignedIn, onCancel }: Props) {
+export function SecondFactor({ step, challenge, email, askedBecause, trustDays, onSignedIn, onCancel }: Props) {
   return step === 'verify' ? (
     <VerifyStep
       challenge={challenge}
       askedBecause={askedBecause}
+      trustDays={trustDays}
       onSignedIn={onSignedIn}
       onCancel={onCancel}
     />
@@ -54,11 +60,13 @@ export function SecondFactor({ step, challenge, email, askedBecause, onSignedIn,
 function VerifyStep({
   challenge,
   askedBecause,
+  trustDays,
   onSignedIn,
   onCancel,
 }: {
   challenge: string;
   askedBecause?: string;
+  trustDays: number;
   onSignedIn: (status: string) => void;
   onCancel: () => void;
 }) {
@@ -222,7 +230,7 @@ function VerifyStep({
       </label>
 
       {/*
-        THIRTY DAYS, AND IT REPLACES THE CODE — NEVER THE PASSWORD.
+        THE TRUST DAYS (thirty, or a year while sign-ins are long), AND IT REPLACES THE CODE — NEVER THE PASSWORD.
         Said on the box itself, because a person agreeing to «remember this
         device» deserves to know exactly what they are agreeing to.
       */}
@@ -236,7 +244,7 @@ function VerifyStep({
           />
         </span>
         <span className="text-xs leading-relaxed text-[var(--sys-foreground)]">
-          لا تطلب الرمز على هذا الجهاز لمدة {TRUST_DAYS} يوماً
+          لا تطلب الرمز على هذا الجهاز لمدة {trustDays} يوماً
           <span className="mt-0.5 block text-[var(--sys-muted-foreground)]">
             كلمة المرور تبقى مطلوبة في كل مرة، والرمز يُطلب فوراً إن حدث نشاط غير معتاد أو أُعيد ضبط التحقّق.
           </span>

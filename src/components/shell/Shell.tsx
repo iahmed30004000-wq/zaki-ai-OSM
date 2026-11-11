@@ -27,6 +27,7 @@ export function Shell({
   userRole,
   viewer,
   context,
+  idleSignOut = true,
   children,
 }: {
   groups: NavGroup[];
@@ -35,6 +36,12 @@ export function Shell({
   /** Whose screen this is — for the mark a photograph of it will carry. */
   viewer: { name: string; id: string };
   context: ShellContextInfo;
+  /**
+   * Whether a screen left untouched signs this device out — `AUTH_IDLE_SIGN_OUT` as the SERVER read it (the layout asks
+   * `idleSignOutOn()`; the browser has no environment). Defaults to ON: only the layout says otherwise, and it says it
+   * from the switch. See IdleGuard.
+   */
+  idleSignOut?: boolean;
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -139,7 +146,7 @@ export function Shell({
         off is a mark for the honest.
       */}
       {userRole !== 'SUPER_ADMIN' && <Watermark viewer={viewer} />}
-      <IdleGuard />
+      <IdleGuard idleSignOut={idleSignOut} />
     </div>
     </ScreenGuideProvider>
     </NotificationsProvider>

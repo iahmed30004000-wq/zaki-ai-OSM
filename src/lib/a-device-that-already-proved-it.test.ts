@@ -1,18 +1,24 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   DEVICE_COOKIE,
   SUSPICION_WINDOW_MS,
-  TRUST_DAYS,
   claimsFor,
   deviceCookieOptions,
   forgetBadPasswords,
   judgeTrust,
   noteBadPassword,
   recentBadPassword,
+  trustDays,
 } from './trusted-device';
-import { createDeviceToken, verifyDeviceToken, createSessionToken, verifySessionToken } from './auth';
+import {
+  createDeviceToken,
+  verifyDeviceToken,
+  createSessionToken,
+  verifySessionToken,
+  sessionCookieOptions,
+} from './auth';
 import { IDLE_LIMIT_MS } from './exposure';
 import { stripComments } from './guard-source';
 import { SignJWT } from 'jose';
@@ -39,6 +45,9 @@ const ENROLLED = new Date('2026-10-01T08:00:00.000Z');
 const user = { id: 'u-1', totpEnabledAt: ENROLLED };
 
 beforeEach(forgetBadPasswords);
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe('Ⅰ · what a trusted device replaces', () => {
   it('a · the password is checked BEFORE the verdict is even asked for', () => {
@@ -291,10 +300,24 @@ describe('Ⅴ · the cookie', () => {
   });
 
   it('lasts the thirty days «تذكرني» lasts — two numbers that disagree is a bug nobody sees', () => {
-    expect(TRUST_DAYS).toBe(30);
+    // 11/11 (the owner's ruling: «يحتفظ بتسجيل الدخول ع طول»): «تذكرني» is thirty days only under `AUTH_SHORT_SESSIONS=on` now,
+    // so this is the rule as it was, under that switch — the trust must still equal the longest sign-in. The default (a year)
+    // is the test below. Modified, not removed.
+    vi.stubEnv('AUTH_SHORT_SESSIONS', 'on');
+    expect(trustDays()).toBe(30);
     expect(deviceCookieOptions().maxAge).toBe(60 * 60 * 24 * 30);
+    expect(deviceCookieOptions().maxAge, 'الثقة غير «تذكرني»').toBe(sessionCookieOptions(true).maxAge);
+    // The number is read from ONE place (session-length.ts), not written a second time in auth.ts.
     const auth = read('src/lib/auth.ts');
-    expect(auth).toMatch(/maxAge: 60 \* 60 \* 24 \* \(remember \? 30 : 7\)/);
+    expect(auth).toMatch(/maxAge: 60 \* 60 \* 24 \* sessionDays\(remember\)/);
+    expect(auth).not.toMatch(/\(remember \? 30 : 7\)/);
+  });
+
+  it('and under the owner’s rule (the default) it lasts the year every sign-in lasts — still agreeing', () => {
+    expect(trustDays()).toBe(365);
+    expect(deviceCookieOptions().maxAge).toBe(60 * 60 * 24 * 365);
+    expect(deviceCookieOptions().maxAge, 'الثقة غير أطول جلسة').toBe(sessionCookieOptions(true).maxAge);
+    expect(deviceCookieOptions().maxAge).toBe(sessionCookieOptions(false).maxAge);
   });
 
   it('and is http-only and strict — the login endpoint is the only reader', () => {
@@ -394,8 +417,16 @@ describe('Ⅶ · and the person is told why, when they are asked anyway', () => 
     // forbids Arabic-Indic digits in anything a person reads, and a label
     // that hard-codes «30» is a label that keeps saying 30 after the
     // constant is changed to 14.
-    expect(src).toContain('لا تطلب الرمز على هذا الجهاز لمدة {TRUST_DAYS} يوماً');
-    expect(src, 'الصندوقُ يُحدِّدُ المدّةَ بنفسِه').toMatch(/import \{ TRUST_DAYS \} from '@\/lib\/trusted-device'/);
+    // 11/11: the number is the SERVER's now — a year or thirty days by `AUTH_SHORT_SESSIONS` — and the browser has no
+    // environment, so the box takes it as a prop (`trustDays`) the login page hands down from the login layout; it is still
+    // interpolated and never written in. Modified, not removed: the promise of the test is the same.
+    expect(src).toContain('لا تطلب الرمز على هذا الجهاز لمدة {trustDays} يوماً');
+    expect(src, 'الصندوقُ يُحدِّدُ المدّةَ بنفسِه').toMatch(/trustDays: number;/);
+    expect(src, 'الصندوقُ يقرأ الرقمَ من بيئةِ المتصفّحِ بدل الخادم').not.toMatch(/from '@\/lib\/trusted-device'/);
+    expect(read('src/app/(system)/login/page.tsx'), 'صفحةُ الدخولِ لا تُمرِّرُ رقمَ الخادم').toContain(
+      'trustDays={policy.trustDays}'
+    );
+    expect(read('src/app/(system)/login/layout.tsx'), 'الـlayout لا يقرأُ الرقمَ من مكانِه الواحد').toContain('trustDays()');
     expect(src, 'الصندوقُ لا يَقولُ إنَّ كلمةَ المرورِ تَبقى مطلوبة').toContain('كلمة المرور تبقى مطلوبة');
   });
 });

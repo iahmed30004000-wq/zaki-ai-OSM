@@ -27,6 +27,7 @@ vi.mock('./two-factor', async (orig) => ({
 import {
   bootstrapGuardOn,
   enrolCodeRequired,
+  idleSignOutOn,
   loginEmailLimitOn,
   offUnlessOn,
   onUnlessOff,
@@ -34,6 +35,8 @@ import {
   passkeyWipeOn,
   publicMediaStrict,
   selfSignupOn,
+  shortSessionsOn,
+  twoFactorRequired,
 } from './auth-switches';
 import { mayBootstrapOwner } from './bootstrap-owner';
 import { showForgotLink } from './forgot-link';
@@ -52,6 +55,10 @@ const SWITCHES = [
   'AUTH_SELF_SIGNUP',
   'AUTH_ENROL_CODE_REQUIRED',
   'PUBLIC_MEDIA_STRICT',
+  // 11/11 — the three that give the old protection back (`the-sign-in-stays-open.test.ts` holds their behaviour)
+  'AUTH_TWO_FACTOR_REQUIRED',
+  'AUTH_IDLE_SIGN_OUT',
+  'AUTH_SHORT_SESSIONS',
 ];
 beforeEach(() => {
   vi.clearAllMocks();
@@ -65,6 +72,25 @@ describe('the switches', () => {
   it('start where the plan put them: the closers on, the ones that need the owner ready off', () => {
     expect([passkeyStepUpOn(), passkeyWipeOn(), bootstrapGuardOn(), loginEmailLimitOn()]).toEqual([true, true, true, true]);
     expect([selfSignupOn(), enrolCodeRequired(), publicMediaStrict()]).toEqual([false, false, false]);
+  });
+
+  it('and the three that give the old protection back start OFF — the owner’s ruling 11/11 — and a typo leaves them off', () => {
+    expect([twoFactorRequired(), idleSignOutOn(), shortSessionsOn()]).toEqual([false, false, false]);
+    for (const [name, read] of [
+      ['AUTH_TWO_FACTOR_REQUIRED', twoFactorRequired],
+      ['AUTH_IDLE_SIGN_OUT', idleSignOutOn],
+      ['AUTH_SHORT_SESSIONS', shortSessionsOn],
+    ] as const) {
+      for (const word of ['on', 'ON', '1', 'true', 'yes', ' on ']) {
+        process.env[name] = word;
+        expect(read(), `${name}=${word}`).toBe(true);
+      }
+      for (const word of ['', 'onn', 'enabled', 'y', 'off', '0', 'garbage']) {
+        process.env[name] = word;
+        expect(read(), `${name}=${word}`).toBe(false);
+      }
+      delete process.env[name];
+    }
   });
 
   it('an «on by default» part goes off only by an explicit word, and a typo leaves it on', () => {

@@ -47,7 +47,12 @@ interface GradesData {
   readiness: RosterReadiness;
 }
 
-export function UsersScreen() {
+/**
+ * @param twoFactorRequired whether the second code is asked at sign-in right now — `AUTH_TWO_FACTOR_REQUIRED` as the SERVER
+ *   read it (the page asks `twoFactorRequired()`), because the words in the «التحقّق بخطوتين» column are only true while it
+ *   is. Defaults to true — the rule before 11/11 — so a caller that says nothing keeps the old words.
+ */
+export function UsersScreen({ twoFactorRequired = true }: { twoFactorRequired?: boolean } = {}) {
   const { currentUser } = useApp();
   const [users, setUsers] = useState<any[]>([]);
   const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 25, totalPages: 1 });
@@ -355,11 +360,17 @@ export function UsersScreen() {
                      yet — and «بانتظار أوّل دخول» says the honest
                      thing: nothing is missing, it happens when they next
                      sign in. The date is read, never the secret.
+
+                     WITH THE SWITCH OFF (11/11, `AUTH_TWO_FACTOR_REQUIRED`)
+                     nothing happens at the next sign-in, so «بانتظار أوّل
+                     دخول» would be a promise nobody keeps: an account that
+                     never enrolled reads «غير مطلوب», and an enrolled one
+                     still reads «مفعّل» (it has one; it is just not asked).
                   */
                   { key: 'c2fa', label: "التحقّق بخطوتين",
                     render: (u) => (
                       <span className={`inline-flex items-center gap-1 text-xs font-semibold ${u.totpEnabledAt ? 'text-[var(--sys-success)]' : 'text-[var(--sys-muted-foreground)]'}`}>
-                        {u.totpEnabledAt ? 'مفعّل' : 'بانتظار أوّل دخول'}
+                        {u.totpEnabledAt ? 'مفعّل' : twoFactorRequired ? 'بانتظار أوّل دخول' : 'غير مطلوب'}
                       </span>
                     ) },
                   { key: 'c5', label: "عيّنه",

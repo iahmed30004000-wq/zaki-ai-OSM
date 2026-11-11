@@ -46,7 +46,12 @@ import { EmptyState } from '@/components/ui/EmptyState';
 /** A role picked by name (the fallback list), not by its row id. */
 const BY_NAME = 'name:';
 
-export function UserDetailScreen() {
+/**
+ * @param twoFactorRequired whether the second code is asked at sign-in right now — `AUTH_TWO_FACTOR_REQUIRED` as the SERVER
+ *   read it (the page asks `twoFactorRequired()`). Several sentences below («كلّ حساب صار عليه تحقّق»، «لا يدخل أحدٌ بلا تحقّق»)
+ *   are true only while it is. Defaults to true — the rule before 11/11 — so a caller that says nothing keeps the old words.
+ */
+export function UserDetailScreen({ twoFactorRequired = true }: { twoFactorRequired?: boolean } = {}) {
   const { locale, isRtl, currentUser } = useApp();
   const confirm = useConfirm();
   const ar = locale === 'ar';
@@ -148,9 +153,11 @@ export function UserDetailScreen() {
     if (!userId) return;
     const ok = await confirm({
       title: `إعادة ضبط التحقّق بخطوتين لـ${user?.name ?? 'هذا الموظّف'}؟`,
-      body:
-        'يُمسح تسجيلُ هاتفه الحالي ورموزُ الاسترداد، ويُطلب منه تسجيلُ هاتفٍ جديد عند الدخول القادم — ' +
-        'ولا يدخل بلا تحقّق. يُسجَّل هذا باسمك في سجلّ التدقيق.',
+      body: twoFactorRequired
+        ? 'يُمسح تسجيلُ هاتفه الحالي ورموزُ الاسترداد، ويُطلب منه تسجيلُ هاتفٍ جديد عند الدخول القادم — ' +
+          'ولا يدخل بلا تحقّق. يُسجَّل هذا باسمك في سجلّ التدقيق.'
+        : 'يُمسح تسجيلُ هاتفه الحالي ورموزُ الاسترداد، وتُغلَق جلساته المفتوحة. التحقّق بخطوتين غير مطلوب الآن، ' +
+          'فيدخل بكلمة السرّ وحدها. يُسجَّل هذا باسمك في سجلّ التدقيق.',
       confirmLabel: 'أعِد الضبط',
       tone: 'danger',
     });
@@ -510,9 +517,13 @@ export function UserDetailScreen() {
                 <RiShieldKeyholeLine className="w-4 h-4" />
                 التحقّق بخطوتين
               </h3>
-              <p className="text-xs font-semibold text-[var(--sys-muted-foreground)]">بانتظار أوّل دخول</p>
+              <p className="text-xs font-semibold text-[var(--sys-muted-foreground)]">
+                {twoFactorRequired ? 'بانتظار أوّل دخول' : 'غير مطلوب'}
+              </p>
               <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
-                كلّ حساب صار عليه تحقّق بخطوتين. هذا الموظّف رح يُطلَب منه يسجّله أوّل مرّة يدخل فيها بكلمة السرّ — لازم يكون منزّل تطبيق Google Authenticator على جواله.
+                {twoFactorRequired
+                  ? 'كلّ حساب صار عليه تحقّق بخطوتين. هذا الموظّف رح يُطلَب منه يسجّله أوّل مرّة يدخل فيها بكلمة السرّ — لازم يكون منزّل تطبيق Google Authenticator على جواله.'
+                  : 'التحقّق بخطوتين غير مطلوب على أي حساب الآن، فيدخل هذا الموظّف بكلمة السرّ وحدها.'}
               </p>
               {mayIssueEnrolCode(currentUser as never, user.id).ok && (
                 <>
@@ -552,8 +563,9 @@ export function UserDetailScreen() {
                 التحقّق بخطوتين
               </h3>
               <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
-                مسجَّلٌ على جهاز هذا الموظّف. إن فقد هاتفه، تُعيد الضبطَ فيُطلب منه تسجيلُه من
-                جديد عند الدخول القادم — ولا يدخل أحدٌ بلا تحقّق.
+                {twoFactorRequired
+                  ? 'مسجَّلٌ على جهاز هذا الموظّف. إن فقد هاتفه، تُعيد الضبطَ فيُطلب منه تسجيلُه من جديد عند الدخول القادم — ولا يدخل أحدٌ بلا تحقّق.'
+                  : 'مسجَّلٌ على جهاز هذا الموظّف، لكنّ التحقّق بخطوتين غير مطلوب عند الدخول الآن — فيدخل بكلمة السرّ وحدها.'}
               </p>
               {twoFaMsg && (
                 <p

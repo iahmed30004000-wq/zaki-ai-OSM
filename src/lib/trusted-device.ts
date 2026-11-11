@@ -26,7 +26,7 @@
  *   · resetting or re-enrolling 2FA changes `totpEnabledAt` and every
  *     trusted device in the world stops being trusted, at once
  *   · a different person signing in on the device finds `sub` is not theirs
- *   · thirty days pass and the token expires on its own
+ *   · `trustDays()` pass (thirty, or a year — see below) and the token expires on its own
  *
  * No table to keep in step, and nothing to forget to clean up. What it
  * cannot do is revoke ONE device from a screen — that needs a row, and it
@@ -37,8 +37,17 @@
  * laptop». The password is still asked for on the way back in.
  */
 
-/** Thirty days, to agree with «تذكرني» — two numbers that disagree is a bug nobody can see. */
-export const TRUST_DAYS = 30;
+import { longestSessionDays } from './session-length';
+
+/**
+ * Days a trusted device skips the six digits — the LONGEST sign-in there is, to agree with «تذكرني» (two numbers that
+ * disagree is a bug nobody can see). Thirty while sign-ins are short (`AUTH_SHORT_SESSIONS=on`, exactly as before 11/11),
+ * and a year while they are long, which is the owner's ruling of 11/11; see session-length.ts. A function, not a constant:
+ * it follows a switch the environment holds, and a constant read at import would not follow one a test sets.
+ */
+export function trustDays(): number {
+  return longestSessionDays();
+}
 
 /**
  * A WRONG PASSWORD IN THE LAST QUARTER OF AN HOUR IS THE SUSPICIOUS ACTIVITY.
@@ -174,6 +183,6 @@ export function deviceCookieOptions() {
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict' as const,
     path: '/',
-    maxAge: 60 * 60 * 24 * TRUST_DAYS,
+    maxAge: 60 * 60 * 24 * trustDays(),
   };
 }

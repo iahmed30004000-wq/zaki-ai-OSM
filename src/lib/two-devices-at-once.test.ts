@@ -148,6 +148,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   vi.useRealTimers();
 });
 
@@ -197,6 +198,10 @@ describe('ruling 4/11: two devices per account', () => {
   });
 
   it('a row unused for longer than any cookie lives is STALE, and is not one of the two', async () => {
+    // 11/11: «longer than any cookie lives» is 30 days only while sign-ins are short (`AUTH_SHORT_SESSIONS=on`); under the
+    // owner's rule (the default) a cookie lives a year and the line moved with it — the two tests after this one. This is
+    // the rule as it was, under the switch. Modified, not removed.
+    vi.stubEnv('AUTH_SHORT_SESSIONS', 'on');
     const forgotten = await signIn();
     vi.setSystemTime(Date.now() + 31 * 24 * 60 * 60 * 1000);
     const laptop = await signIn();
@@ -207,6 +212,27 @@ describe('ruling 4/11: two devices per account', () => {
     // Both live devices kept: the dead row was not counted against them.
     expect((await on(laptop)).user?.id).toBe('u1');
     expect((await on(phone)).user?.id).toBe('u1');
+    expect(rows.filter((r) => r.revokeReason === 'REPLACED')).toHaveLength(0);
+  });
+
+  it('under the long rule (the default) a row unused for 31 days is NOT stale — its cookie is still good for a year', async () => {
+    // The mutation this catches: leaving the line at 30 days while cookies live 365 — a laptop left for five weeks would be
+    // counted dead at somebody else's sign-in and signed out, with a cookie that is still valid.
+    const laptopFiveWeeksAgo = await signIn();
+    vi.setSystemTime(Date.now() + 31 * 24 * 60 * 60 * 1000);
+    const phone = await signIn();
+    expect(rows.filter((r) => r.revokeReason === 'STALE'), 'صف عمره 31 يوم انعلّم STALE والكوكي لسا صالح').toHaveLength(0);
+    expect((await on(laptopFiveWeeksAgo)).user?.id, 'اللابتوب طلع بعد 31 يوم').toBe('u1');
+    expect((await on(phone)).user?.id).toBe('u1');
+  });
+
+  it('and one unused for more than a year IS stale — no cookie can name it any more', async () => {
+    const forgotten = await signIn();
+    vi.setSystemTime(Date.now() + 366 * 24 * 60 * 60 * 1000);
+    await signIn();
+    await signIn();
+    expect(rows.find((r) => r.revokedAt && r.revokeReason === 'STALE'), 'الصف الميت (366 يوم) ما انعلّم STALE').toBeTruthy();
+    expect(await on(forgotten)).toEqual({ user: null, reason: 'NONE' });
     expect(rows.filter((r) => r.revokeReason === 'REPLACED')).toHaveLength(0);
   });
 

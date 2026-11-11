@@ -302,7 +302,7 @@ flowchart TD
 | `/admin/permissions` | الأدوار: نظامية (إلها افتراضي) ودور شركة؛ نطاق لكل صلاحية | `roles.view`؛ `roles.create` · `roles.edit` · `roles.edit_system` · `roles.delete` | «دور جديد» · «إرجاع للافتراضي» · «نسخ» · «حذف» ← «دورًا بديلًا» | `/api/roles` · `/api/roles/[id]` · `/default` · `/duplicate` | `STALE_VERSION` · `ORPHAN_ACTION` (إجراء بلا شاشته) · ز-01 · ز-02 | `screens/PermissionsScreen.tsx` · `lib/permission-catalog.ts` |
 | `/admin/profile` | اسمي وكلمة سري و«ترتيب القائمة» | لكل حساب فعّال (بلا مفتاح) | «حفظ التغييرات» | `/api/profile` · `/api/nav/arrangement` | — | `screens/ProfileScreen.tsx` |
 
-**الدخول:** `/login` · `/register` (بينتظر اعتماد ← `/pending`) · `/forgot-password` · `/entry` (اختيار البلد والمتجر) · `/no-access` (ما في ولا شاشة). كل حساب بيسجّل التحقق بخطوتين أول دخول (`01b-test-data-setup.md`).
+**الدخول:** `/login` · `/register` (بينتظر اعتماد ← `/pending`) · `/forgot-password` · `/entry` (اختيار البلد والمتجر) · `/no-access` (ما في ولا شاشة). كل حساب بيسجّل التحقق بخطوتين أول دخول — لما يكون `AUTH_TWO_FACTOR_REQUIRED=on` بس، وهو مطفأ افتراضياً من 11/11 — (`01b-test-data-setup.md`).
 
 ---
 

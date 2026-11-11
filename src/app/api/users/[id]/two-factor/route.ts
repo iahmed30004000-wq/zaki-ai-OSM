@@ -4,6 +4,7 @@ import { requireContext } from '@/lib/geo-context';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { wipePasskeys } from '@/lib/passkey-guard';
+import { twoFactorRequired } from '@/lib/auth-switches';
 import { manageableUserWhere, mayActOnUser } from '@/lib/manageable-user';
 import { mayResetTwoFactor } from '@/lib/two-factor-reset';
 import { canActOnUser } from '@/lib/user-permissions';
@@ -160,7 +161,10 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     return NextResponse.json({
       ok: true,
       employee: target.name,
-      message: `أُعيد ضبط التحقّق بخطوتين لـ${target.name} — أُغلقت جلساته، وسيُطلب منه تسجيله من جديد عند الدخول القادم.`,
+      // The second sentence is true only while the second code is asked at sign-in (`AUTH_TWO_FACTOR_REQUIRED`, 11/11).
+      message: twoFactorRequired()
+        ? `أُعيد ضبط التحقّق بخطوتين لـ${target.name} — أُغلقت جلساته، وسيُطلب منه تسجيله من جديد عند الدخول القادم.`
+        : `أُعيد ضبط التحقّق بخطوتين لـ${target.name} — أُغلقت جلساته. التحقّق غير مطلوب عند الدخول الآن، فيدخل بكلمة السرّ وحدها.`,
     });
   } catch (error) {
     return apiErrorResponse(error);

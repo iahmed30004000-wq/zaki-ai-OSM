@@ -4,6 +4,7 @@ import type { Prisma } from '@prisma/client';
 import type { db as prismaDb } from './db';
 import { decryptSecret, encryptSecret, encryptionAvailable } from './secrets';
 import { generateSecret, otpauthUri, verifyCode } from './totp';
+import { twoFactorRequired } from './auth-switches';
 
 type Tx = Prisma.TransactionClient | typeof prismaDb;
 
@@ -69,6 +70,19 @@ export function wasOriginallyRequired(role: string): boolean {
 export type TwoFactorStep = 'none' | 'enrol' | 'verify';
 
 export function stepFor(user: { role: string; totpEnabledAt: Date | null }): TwoFactorStep {
+  /*
+   * ═══ THE OWNER'S SWITCH, 11/11 — «بدي الغي ال 2fa» ═══
+   *
+   * Off (the default, `AUTH_TWO_FACTOR_REQUIRED` unset or not «on»): NOBODY is asked for the second code, and nobody is
+   * sent to set one up — not an enrolled account (its secret, its recovery codes, its trusted-device token and its
+   * fingerprints are all still there, untouched), and not one that never enrolled. The password alone opens the account.
+   * This is the ONE place that decides it: the login door asks `stepFor`, and the second-factor doors (`/2fa/start`,
+   * `/2fa/enrol`, `/2fa/verify`, `/passkey/assert`) only open on a challenge ticket that the login issues when this says
+   * 'enrol' or 'verify' — so with the switch off none of them is reachable, and nobody is held at a step.
+   *
+   * On: exactly the rule that was here before, below. Putting it back is a changed variable and a restart.
+   */
+  if (!twoFactorRequired()) return 'none';
   /*
    * `requiresTwoFactor` is true for every role now, so this is «have you
    * enrolled yet». It is left reading the function rather than being
