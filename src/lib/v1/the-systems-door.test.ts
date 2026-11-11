@@ -89,6 +89,14 @@ describe('the door was found at all — a sweep over nothing proves nothing', ()
     // media buyer — `the-media-buyers-door.test.ts` holds what it answers.
     expect(ROUTES).toEqual([
       'src/app/api/v1/customers/lookup/route.ts',
+      // The standalone landing system's seven — `the-landing-door.test.ts`.
+      'src/app/api/v1/landing/geo/[country]/route.ts',
+      'src/app/api/v1/landing/health/route.ts',
+      'src/app/api/v1/landing/orders/[orderNumber]/post-order-offer/route.ts',
+      'src/app/api/v1/landing/orders/route.ts',
+      'src/app/api/v1/landing/products/[id]/route.ts',
+      'src/app/api/v1/landing/products/route.ts',
+      'src/app/api/v1/landing/quote/route.ts',
       'src/app/api/v1/orders/[id]/notes/route.ts',
       'src/app/api/v1/orders/[id]/route.ts',
       'src/app/api/v1/orders/attribution/route.ts',

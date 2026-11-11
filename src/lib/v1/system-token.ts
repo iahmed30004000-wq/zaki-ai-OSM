@@ -69,6 +69,9 @@ export const REPLIES_SCOPES: V1Scope[] = [
  */
 export const MEDIABUYER_SCOPES: V1Scope[] = ['products.read', 'products.costs.read', 'orders.attribution.read'];
 
+/** The standalone landing system: reads the catalogue and places orders, and nothing about a customer or a cost. */
+export const LANDING_SCOPES: V1Scope[] = ['products.read', 'orders.create'];
+
 /**
  * The outside systems a key may be made for, each with its default scopes.
  *
@@ -81,6 +84,8 @@ export const V1_SYSTEMS = [
   // An hourly sync needs a handful of calls; thirty a minute is room for a
   // retry and none for a runaway loop.
   { key: 'mediabuyer', ar: 'الميديا باير', scopes: MEDIABUYER_SCOPES, rateLimitPerMin: 30 },
+  // Every visitor choosing a city is a quote, so its traffic is the shop's own, not one system's.
+  { key: 'landing', ar: 'نظام صفحات الهبوط', scopes: LANDING_SCOPES, rateLimitPerMin: 600 },
 ] as const;
 
 /** The per-minute allowance a new key starts with, by system — 60 for anything not listed. */

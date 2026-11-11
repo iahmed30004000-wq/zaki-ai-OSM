@@ -348,7 +348,7 @@ describe('each key reads what it was given and nothing else', () => {
     expect(REPLIES_SCOPES).not.toContain('orders.attribution.read');
     expect(REPLIES_SCOPES).not.toContain('products.costs.read');
     for (const s of MEDIABUYER_SCOPES) expect(V1_SCOPES).toContain(s);
-    expect(V1_SYSTEMS.map((s) => s.key)).toEqual(['replies', 'mediabuyer']);
+    expect(V1_SYSTEMS.map((s) => s.key)).toEqual(['replies', 'mediabuyer', 'landing']);
   });
 
   it('a key with orders.attribution.read alone may not read the catalogue', async () => {

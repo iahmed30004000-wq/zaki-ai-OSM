@@ -160,6 +160,7 @@ const ISSUE_REASON_AR: Record<string, string> = {
 
 const ACTIVITY_AR: Record<string, string> = {
   ORDER_CREATED: 'إنشاء الطلب',
+  LANDING_OFFER_SWAPPED: 'الزبون بدّل العرض بعد الطلب',
   ORDER_UPDATED: 'تعديل بيانات الطلب',
   // What the customer added on the thank-you screen: the same words the order dialog and the confirmation card use.
   UPSELL_ADDED: POST_ORDER_ADDITION_AR,
