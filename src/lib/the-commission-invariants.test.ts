@@ -182,7 +182,9 @@ describe('5 and 7 · what is excluded, and how a closed month is corrected', () 
   });
 
   it('and the returns door is what reverses, when the goods come back', () => {
-    expect(stripComments(repoFile('src/app/api/ops/returns/route.ts'))).toMatch(/reverseForOrder\(tx, \{/);
+    // The returns door's receipt is lib/return-receipt.ts since «استلام الكل» (11/11): the door and the bulk door both call it.
+    expect(stripComments(repoFile('src/lib/return-receipt.ts'))).toMatch(/reverseForOrder\(tx, \{/);
+    expect(repoFile('src/app/api/ops/returns/route.ts')).toContain('receiveReturn(');
   });
 
   it('and an entry only becomes PAYABLE, never PAID, outside a payout', () => {

@@ -373,6 +373,12 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       { key: 'ops.transfer', requires: 'ops.track', ar: 'تحويل طرد لشركة شحن أو مندوب آخر', en: 'Transfer a parcel to another courier' },
       { key: 'ops.write_off', requires: 'ops.track', ar: 'إغلاق طرد ضائع كخسارة (تخرج بضاعته من المخزون)', en: 'Close a lost parcel as a loss' },
       { key: 'ops.return_fee', requires: 'ops.returns', ar: 'احتساب أجرة الإرجاع على شركة الشحن', en: 'Charge the courier a return fee' },
+      /*
+       * «بدي زر استلام الكل مع صلاحية للمالك» (11/11). One press receives every pending return the list's filters select,
+       * whole and sound, back on the shelf, commission reversed — with no undo. Granted to NOBODY by any migration, seed or
+       * fallback: the owner's full access holds it, and he ticks it for whoever he wants.
+       */
+      { key: 'ops.returns_receive_all', requires: 'ops.returns', ar: 'استلام كل المرتجعات دفعة واحدة', en: 'Receive every pending return at once' },
       // Seeing the return rows on «متابعة الشحن» — NOT receiving the stock, which stays «المرتجعات» above.
       { key: 'ops.returns_view', ar: 'عرض المرتجعات في المتابعة (بلا استلام)', en: 'See return rows in tracking (no receiving)' },
       /*

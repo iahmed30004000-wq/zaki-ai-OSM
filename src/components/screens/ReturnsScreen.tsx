@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useId, useState } from 'react';
+import React, { useId, useRef, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
@@ -24,6 +24,7 @@ import { arabicDays } from '@/lib/transit';
 import { RETURN_REASON_LABELS } from '@/lib/shipping-workflow';
 import { AGES, AGE_AR, DEFAULT_VIEW, RETURN_STATUSES, STATUS_AR, VIEWS, VIEW_AR, type View } from '@/lib/returns-filters';
 import type { ReturnsFacts } from '@/lib/returns-list';
+import { addAnswer, emptyTotals, receiveAllLine, skippedTotal, type ReceiveAllAnswer, type ReceiveAllTotals } from '@/lib/returns-receive-all';
 
 /**
  * The reason column. A CODE (CUSTOMER_REFUSED) is shown by its Arabic label, and a code nobody labelled reads «أخرى».
@@ -133,12 +134,14 @@ interface Extra {
   view: View;
   /** The fee tick-box's own key (`ops.return_fee`). Absent from an older server: the door itself still asks. */
   mayChargeFee: boolean;
+  /** «استلام الكل»'s own key (`ops.returns_receive_all`). Only a server that says yes draws the button. */
+  mayReceiveAll: boolean;
 }
 
 /** Module-level, so the hook's loader keeps one identity — see `usePagedList`. */
 const read = (body: unknown): PagedRead<Row, Extra> => {
-  const b = body as { orders: Row[]; pagination: Paging; facts: ReturnsFacts; applied: { view: View }; mayChargeFee?: boolean };
-  return { rows: b.orders, pagination: b.pagination, extra: { facts: b.facts, view: b.applied.view, mayChargeFee: b.mayChargeFee !== false } };
+  const b = body as { orders: Row[]; pagination: Paging; facts: ReturnsFacts; applied: { view: View }; mayChargeFee?: boolean; mayReceiveAll?: boolean };
+  return { rows: b.orders, pagination: b.pagination, extra: { facts: b.facts, view: b.applied.view, mayChargeFee: b.mayChargeFee !== false, mayReceiveAll: b.mayReceiveAll === true } };
 };
 
 const since = (days: number | null) => (days === null ? '—' : days === 0 ? 'اليوم' : `منذ ${arabicDays(days)}`);
@@ -152,6 +155,7 @@ export function ReturnsScreen() {
   const [age, setAge] = useState('all');
   const [active, setActive] = useState<PendingRow | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [receivingAll, setReceivingAll] = useState(false);
 
   /*
    * ── PAGES, AND WHAT WAS CHOSEN ──
@@ -181,6 +185,15 @@ export function ReturnsScreen() {
   };
 
   const { extra, rows, pagination } = list;
+
+  /*
+   * «استلام الكل» — DRAWN ONLY WHERE THE DOOR WOULD SAY YES.
+   *
+   * The server's own word (`mayReceiveAll`, the key `ops.returns_receive_all`), the work view, and something in it. A
+   * control the door would refuse is not drawn. The number on it is the list's own total — every page of the filters
+   * that are chosen now — because that is the set the door walks.
+   */
+  const receiveAllTotal = extra?.mayReceiveAll && extra.view === 'pending' ? pagination.total : 0;
 
   const filters: ToolbarFilter[] | undefined = extra && [
     {
@@ -249,17 +262,24 @@ export function ReturnsScreen() {
         // A phone is the scanner a warehouse already owns. It keeps
         // scanning: a returned pallet is twenty parcels, not one.
         searchExtra={
-          <ScanButton
-            title="امسح بوليصة المرتجع — QR أو باركود"
-            continuous
-            onScan={(code) => {
-              // Putting it in the box IS the search — the list reloads whenever the
-              // box changes, so there is one request and one code path, the same
-              // one a typed search takes.
-              setTerm(code);
-              return code;
-            }}
-          />
+          <>
+            <ScanButton
+              title="امسح بوليصة المرتجع — QR أو باركود"
+              continuous
+              onScan={(code) => {
+                // Putting it in the box IS the search — the list reloads whenever the
+                // box changes, so there is one request and one code path, the same
+                // one a typed search takes.
+                setTerm(code);
+                return code;
+              }}
+            />
+            {receiveAllTotal > 0 && (
+              <Button size="md" className="shrink-0" onClick={() => setReceivingAll(true)}>
+                استلام الكل ({receiveAllTotal})
+              </Button>
+            )}
+          </>
         }
         filters={filters ?? []}
         activeCount={activeCount}
@@ -417,7 +437,132 @@ export function ReturnsScreen() {
           }}
         />
       )}
+
+      {receivingAll && (
+        <ReceiveAllDialog
+          total={receiveAllTotal}
+          filters={{ view, status, courier, age, q: term.trim() || undefined }}
+          onClose={() => setReceivingAll(false)}
+          onDone={async (line) => {
+            setReceivingAll(false);
+            setDone(line);
+            await list.reload();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * «استلام الكل» — ASK, THEN WALK THE SET IN PIECES OF FIFTY, THEN SAY ONE LINE.
+ *
+ * It says, in plain words, what one press does to every parcel, and that it cannot be undone; the confirm stays off until
+ * the tick. Then the same filters go back to the door with each answer's cursor until the cursor is null or «إيقاف» is
+ * pressed. Nothing here picks the parcels: the door derives them from the filters, the same way the list did.
+ */
+function ReceiveAllDialog({
+  total,
+  filters,
+  onClose,
+  onDone,
+}: {
+  total: number;
+  filters: Record<string, string | undefined>;
+  onClose: () => void;
+  onDone: (line: string) => void;
+}) {
+  const toast = useToast();
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [totals, setTotals] = useState<ReceiveAllTotals>(emptyTotals());
+  const stop = useRef(false);
+
+  const run = async () => {
+    setRunning(true);
+    stop.current = false;
+    let t = emptyTotals();
+    let cursor: string | null = null;
+    let broke = false;
+    try {
+      do {
+        const answer: ReceiveAllAnswer = await apiJson<ReceiveAllAnswer>('/api/ops/returns/receive-all', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...filters, countedAndInspected: true, cursor }),
+        });
+        t = addAnswer(t, answer);
+        setTotals(t);
+        cursor = answer.nextCursor;
+      } while (cursor && !stop.current);
+    } catch (e) {
+      broke = true;
+      toast.failed(e instanceof Error ? e.message : 'تعذّر إكمال الاستلام');
+    }
+    onDone(receiveAllLine(t, { stopped: !broke && !!cursor && stop.current, broke }));
+  };
+
+  const progress = total > 0 ? Math.min(100, Math.round(((totals.received + skippedTotal(totals)) / total) * 100)) : 0;
+
+  return (
+    <Modal
+      isOpen
+      // While it runs, closing is the same as «إيقاف»: the piece in flight finishes and the line is said.
+      onClose={() => (running ? (stop.current = true) : onClose())}
+      title={`استلام الكل (${total})`}
+      maxWidth="sm"
+      footer={
+        <div className="flex gap-2">
+          {running ? (
+            <Button key="stop" size="md" variant="secondary" className="flex-1" onClick={() => void (stop.current = true)}>
+              إيقاف
+            </Button>
+          ) : (
+            <>
+              <Button key="yes" size="md" className="flex-1" disabled={!acknowledged} onClick={() => void run()}>
+                نعم، استلم الكل
+              </Button>
+              <Button key="cancel" size="md" variant="secondary" onClick={onClose}>
+                إلغاء
+              </Button>
+            </>
+          )}
+        </div>
+      }
+    >
+      {running ? (
+        <div className="space-y-2" aria-live="polite">
+          <p className="text-sm font-medium text-[var(--sys-heading)] tabular-nums">
+            استلمت {totals.received} من {total}
+          </p>
+          <div className="h-2 rounded-full bg-[var(--sys-surface)] overflow-hidden">
+            <div className="h-2 rounded-full bg-[var(--sys-primary)]" style={{ width: `${progress}%` }} />
+          </div>
+          <p className="text-xs text-[var(--sys-muted-foreground)] tabular-nums">تركت {skippedTotal(totals)} لحد هلق</p>
+        </div>
+      ) : (
+        <div className="space-y-3 text-sm text-[var(--sys-foreground)]">
+          <p className="font-medium text-[var(--sys-heading)]">رح أستلم {total} مرتجع، كل اللي بالقائمة بالفلاتر الحالية — مش بس هالصفحة.</p>
+          <ul className="space-y-1">
+            <li>كل طرد بينستلم كامل وسليم: لا تالف ولا ناقص.</li>
+            <li>البضاعة بترجع على الرف.</li>
+            <li>عمولة الطلب بتنعكس.</li>
+            <li>بلا أجرة إرجاع على شركة الشحن.</li>
+            <li>التوصيل الجزئي بينترك، بينستلم من نافذته لحاله.</li>
+          </ul>
+          <p className="font-medium text-[var(--sys-destructive)]">ما في تراجع بعد الضغطة.</p>
+          <label className="flex min-h-11 items-start gap-2 text-sm text-[var(--sys-heading)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg p-2 md:min-h-0">
+            <input
+              type="checkbox"
+              checked={acknowledged}
+              onChange={(e) => setAcknowledged(e.target.checked)}
+              className="h-5 w-5 mt-1 shrink-0 accent-[var(--sys-primary)]"
+            />
+            <span>أقرّ إني عددت وفحصت المرتجعات</span>
+          </label>
+        </div>
+      )}
+    </Modal>
   );
 }
 
