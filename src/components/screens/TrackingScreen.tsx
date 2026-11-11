@@ -29,6 +29,7 @@ import { Money } from '@/components/ui/Money';
 import { Pager } from '@/components/ui/Pager';
 import { NextStepButton } from '@/components/ui/NextStep';
 import { ListToolbar, withChosen, type ToolbarFilter } from '@/components/ui/ListToolbar';
+import { ScanButton } from '@/components/scan/ScanButton';
 import { usePagedList, type PagedRead, type Paging } from '@/hooks/usePagedList';
 import { AGES, AGE_AR } from '@/lib/age-piles';
 import { EVERY_STATUS, TASKS } from '@/lib/parcel-tracking/filters';
@@ -629,6 +630,16 @@ export function TrackingScreen() {
         onSearch={choose(setTerm)}
         placeholder="رقم الطلب، المرجع، الباركود، اسم العميل أو الهاتف"
         searchLabel="بحث"
+        // The camera fills the same box a person types into, and the same request goes out: a scan is a search, so it
+        // sees exactly the parcels this account may see. One scan finds one parcel, so the sheet closes after a hit.
+        // The box has a label above it, so the button sits on the input's line (`self-end`), not between the two.
+        searchExtra={
+          <ScanButton
+            title="امسح بوليصة الشحنة — QR أو باركود"
+            onScan={(code) => choose(setTerm)(code)}
+            className="self-end shrink-0 h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border)] text-sm text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1.5"
+          />
+        }
         filters={filters}
         activeCount={activeCount}
         onReset={reset}
