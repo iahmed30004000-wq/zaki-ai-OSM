@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { stripComments } from '@/lib/guard-source';
+import type { ScanButtonProps } from '@/components/scan/ScanButton';
 
 /**
  * «متابعة الشحن» — A SCAN BUTTON BESIDE THE SEARCH, THE SAME ONE THE OTHER SCREENS HAVE.
@@ -23,7 +24,7 @@ import { stripComments } from '@/lib/guard-source';
 const { api, search, scanned } = vi.hoisted(() => ({
   api: vi.fn(),
   search: { value: '' },
-  scanned: { props: null as null | { onScan: (code: string) => unknown; title?: string; continuous?: boolean; className?: string } },
+  scanned: { props: null as null | ScanButtonProps },
 }));
 vi.mock('@/lib/api-client', () => ({ apiJson: (...a: unknown[]) => api(...a), apiFetch: vi.fn() }));
 vi.mock('next/navigation', () => ({
@@ -47,7 +48,7 @@ vi.mock('@/components/scan/ScanButton', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/components/scan/ScanButton')>();
   return {
     ...real,
-    ScanButton: (props: NonNullable<typeof scanned.props>) => {
+    ScanButton: (props: ScanButtonProps) => {
       scanned.props = props;
       return <real.ScanButton {...props} />;
     },
@@ -162,6 +163,32 @@ describe('what a scan does', () => {
     });
     await waitFor(() => expect(gets().at(-1)!.get('q')).toBe('SY-019461'));
     expect(posts()).toHaveLength(0);
+  });
+
+  it('a scan puts the ticks away, exactly as a typed word does — what was ticked belonged to the question before it', async () => {
+    const owed = { ...PARCEL, shippingStatus: 'DELIVERED', settlementStatus: 'PENDING_COLLECTION', collectionStatus: 'PENDING_COLLECTION' };
+    api.mockImplementation(async () => ({
+      count: 2,
+      orders: [
+        { ...owed, id: 'A1', orderNumber: 'ORD-A1' },
+        { ...owed, id: 'A2', orderNumber: 'ORD-A2' },
+      ],
+      lateCount: 0,
+      dialCode: '962',
+      pagination: { total: 2, page: 1, limit: 25, totalPages: 1 },
+      facts: { ...FACTS, total: 2, tasks: { ...NO_TASKS, COLLECT: 2 } },
+      applied: {},
+      capped: false,
+    }));
+    render(<TrackingScreen />);
+    await screen.findAllByText('ORD-A1');
+    fireEvent.click(screen.getByRole('button', { name: 'اختر الكل' }));
+    expect(screen.getByText(/مختار 2 طلب/)).toBeTruthy();
+    await act(async () => {
+      scanned.props!.onScan('SY-019461');
+    });
+    await waitFor(() => expect(gets().at(-1)!.get('q')).toBe('SY-019461'));
+    expect(screen.queryByText(/مختار \d+ طلب/)).toBeNull();
   });
 
   it('a second scan replaces the first in the box, and «إعادة تعيين» is offered because a word now narrows the list', async () => {
