@@ -1279,13 +1279,23 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/screens/finance/WalletLookDialog.tsx": {
+    "buttons": 7,
+    "inputs": 1,
+    "columns": 0,
+    "cards": 0,
+    "modals": 1,
+    "icons": 3,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/screens/finance/WalletsScreen.tsx": {
-    "buttons": 20,
+    "buttons": 21,
     "inputs": 16,
     "columns": 11,
     "cards": 0,
     "modals": 4,
-    "icons": 13,
+    "icons": 14,
     "links": 0,
     "tabs": 0
   },
