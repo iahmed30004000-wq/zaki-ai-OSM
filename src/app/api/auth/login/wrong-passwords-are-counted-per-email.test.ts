@@ -56,6 +56,10 @@ const account = (email: string) => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // 11/11: the second code is a switch now (`AUTH_TWO_FACTOR_REQUIRED`), OFF by default — the owner's ruling. Everything in
+  // this file is about the sign-in as it is WITH the second step (the honest case «reaches the second step»), so it runs under
+  // the switch ON; the sign-in with it off is `the-second-code-is-a-switch.test.ts`. Modified, not removed.
+  vi.stubEnv('AUTH_TWO_FACTOR_REQUIRED', 'on');
   process.env.TRUST_PROXY = 'true';
   delete process.env.AUTH_LOGIN_EMAIL_LIMIT;
   db.user.findUnique.mockImplementation(async ({ where }: { where: { email: string } }) =>
@@ -65,6 +69,7 @@ beforeEach(() => {
 afterEach(() => {
   delete process.env.TRUST_PROXY;
   delete process.env.AUTH_LOGIN_EMAIL_LIMIT;
+  vi.unstubAllEnvs();
   vi.useRealTimers();
 });
 

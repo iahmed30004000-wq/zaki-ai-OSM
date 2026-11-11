@@ -3,7 +3,8 @@ import { SignJWT, jwtVerify } from 'jose';
 import bcrypt from 'bcryptjs';
 import { db } from './db';
 import { SessionUser, UserRole, UserStatus, Permission, ROLE_PERMISSIONS, ROLE_LABELS } from '@/types/auth';
-import { TRUST_DAYS, type DeviceTrustClaims } from './trusted-device';
+import { trustDays, type DeviceTrustClaims } from './trusted-device';
+import { sessionDays } from './session-length';
 import { AuthBackendDown, SessionEnded, isBackendDown } from './auth-errors';
 
 /**
@@ -57,7 +58,8 @@ export async function createSessionToken(payload: {
   return new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime(payload.remember ? '30d' : '7d')
+    // One number for the token, the cookie, the stale-row line and the trusted device: session-length.ts.
+    .setExpirationTime(`${sessionDays(!!payload.remember)}d`)
     .sign(getJwtSecret());
 }
 
@@ -84,7 +86,7 @@ export async function createDeviceToken(claims: {
   return new SignJWT(claims)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime(`${TRUST_DAYS}d`)
+    .setExpirationTime(`${trustDays()}d`)
     .sign(getJwtSecret());
 }
 
@@ -473,14 +475,14 @@ export const requirePermission: (permission: Permission) => Promise<SessionUser>
 // these is the real one?» asked of the most sensitive function here.
 // Call `can()` from './authorization'.
 
-/** Builds the HTTP-only session cookie settings */
+/** Builds the HTTP-only session cookie settings. The days come from session-length.ts — the same number the token carries. */
 export function sessionCookieOptions(remember: boolean) {
   return {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax' as const,
     path: '/',
-    maxAge: 60 * 60 * 24 * (remember ? 30 : 7),
+    maxAge: 60 * 60 * 24 * sessionDays(remember),
   };
 }
 

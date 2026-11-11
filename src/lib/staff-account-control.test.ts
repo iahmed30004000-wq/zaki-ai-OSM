@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionUser } from '@/types/auth';
 import { maySetPassword, mayResetTwoFactor, generatePassword } from './two-factor-reset';
 import { passwordProblems } from './password-rules';
@@ -107,6 +107,15 @@ describe('a generated password', () => {
 });
 
 describe('every account carries a second factor', () => {
+  // 11/11: «every account carries one» is the rule WITH THE SWITCH ON now (`AUTH_TWO_FACTOR_REQUIRED`, off by default — the
+  // owner's ruling). These three keep asserting that rule, under the switch; the switch off is `the-sign-in-stays-open.test.ts`.
+  beforeEach(() => {
+    vi.stubEnv('AUTH_TWO_FACTOR_REQUIRED', 'on');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('including the default role for a new account', () => {
     // MODERATOR is what a new account gets, and it was the one role the
     // old list left out.

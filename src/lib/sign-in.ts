@@ -5,7 +5,8 @@ import { ROLE_PERMISSIONS, type UserRole, type UserStatus } from '@/types/auth';
 import { logAudit } from './audit';
 import { markLogin } from './attendance';
 import { createDeviceToken } from './auth';
-import { DEVICE_COOKIE, TRUST_DAYS, claimsFor, deviceCookieOptions } from './trusted-device';
+import { DEVICE_COOKIE, claimsFor, deviceCookieOptions, trustDays } from './trusted-device';
+import { longestSessionDays } from './session-length';
 
 /**
  * ISSUING A SESSION — ONE PLACE, BECAUSE THERE ARE NOW TWO DOORS.
@@ -28,10 +29,17 @@ import { DEVICE_COOKIE, TRUST_DAYS, claimsFor, deviceCookieOptions } from './tru
 export const DEVICES_PER_ACCOUNT = 2;
 
 /**
- * A session row unused for longer than the longest cookie («تذكّرني», 30 days — `sessionCookieOptions`) can no longer
- * be presented by any device: it is stamped STALE at the next sign-in and never counted as one of the two.
+ * A session row unused for longer than the longest cookie can no longer be presented by any device: it is stamped STALE at
+ * the next sign-in and never counted as one of the two.
+ *
+ * THE LONGEST COOKIE IS WHATEVER `session-length.ts` SAYS NOW — 365 days while sign-ins are long (the owner's ruling
+ * 11/11), 30 («تذكّرني») under `AUTH_SHORT_SESSIONS=on`. It has to follow it: with a line at 30 days and cookies that live
+ * a year, a laptop left for five weeks would be counted dead at the next sign-in on the account while its cookie is still
+ * good, and signed out for it. A function and not a constant, because the switch is read when the sign-in happens.
  */
-export const STALE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
+function staleAfterMs(): number {
+  return longestSessionDays() * 24 * 60 * 60 * 1000;
+}
 
 /** The browser's own description, cut to 200 characters — «the phone» or «the laptop» for a person reading the rows. */
 async function requestUserAgent(): Promise<string | null> {
@@ -154,7 +162,7 @@ export async function issueSession(input: {
       select: { id: true, lastSeenAt: true },
     });
     const others = live.filter((row) => row.id !== created.id);
-    const staleBefore = now.getTime() - STALE_AFTER_MS;
+    const staleBefore = now.getTime() - staleAfterMs();
     const stale = others.filter((row) => new Date(row.lastSeenAt).getTime() < staleBefore).map((row) => row.id);
     // This sign-in is kept whatever the clock says of it; of the others still alive, the most recently used
     // DEVICES_PER_ACCOUNT - 1.
@@ -253,7 +261,7 @@ export async function issueSession(input: {
       action: 'TWO_FACTOR_DEVICE_TRUSTED',
       entity: 'User',
       entityId: user.id,
-      newData: { ip, days: TRUST_DAYS },
+      newData: { ip, days: trustDays() },
     });
   }
 

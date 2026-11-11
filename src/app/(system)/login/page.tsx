@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { SecondFactor } from '@/components/shell/SecondFactor';
+import { useSignInPolicy } from '@/components/shell/SignInPolicy';
 import { loginWithPasskey, passkeySupported } from '@/lib/passkey-browser';
 import { forgetDock } from '@/lib/dock-memory';
 import { showForgotLink } from '@/lib/forgot-link';
@@ -19,6 +20,11 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(true);
+  /**
+   * WHAT THE SERVER SAYS A SIGN-IN LASTS (the layout reads the switches — SignInPolicy.tsx). While every sign-in lasts a
+   * year «تذكرني» would do nothing, so it is not drawn; `remember` is still sent (true), and the server ignores it then.
+   */
+  const policy = useSignInPolicy();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingFlag, setPendingFlag] = useState(false);
@@ -205,6 +211,7 @@ export default function LoginPage() {
                 challenge={second.challenge}
                 email={second.email}
                 askedBecause={second.askedBecause}
+                trustDays={policy.trustDays}
                 onSignedIn={(status) => {
                   router.push(status === 'PENDING' ? '/pending' : '/');
                   router.refresh();
@@ -235,15 +242,21 @@ export default function LoginPage() {
               />
 
               <div className="flex items-center justify-between text-xs">
-                <label className="flex items-center space-x-2 rtl:space-x-reverse text-[var(--sys-foreground)] cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={remember}
-                    onChange={(e) => setRemember(e.target.checked)}
-                    className="w-3.5 h-3.5 rounded-lg border-[var(--sys-border)] bg-[var(--sys-card)] accent-[var(--sys-primary)]"
-                  />
-                  <span>تذكرني</span>
-                </label>
+                {/* Drawn only while a sign-in is short (7 days, 30 with this box). Under the long rule it would do nothing. */}
+                {policy.rememberBox ? (
+                  <label className="flex items-center space-x-2 rtl:space-x-reverse text-[var(--sys-foreground)] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={remember}
+                      onChange={(e) => setRemember(e.target.checked)}
+                      className="w-3.5 h-3.5 rounded-lg border-[var(--sys-border)] bg-[var(--sys-card)] accent-[var(--sys-primary)]"
+                    />
+                    <span>تذكرني</span>
+                  </label>
+                ) : (
+                  // Keeps «نسيت كلمة المرور» at the far end of the row, where it always was.
+                  <span />
+                )}
                 {/*
                   «نسيت كلمة المرور» DOES NOTHING ON A REAL SERVER (A5). No mail is sent from here, so the link led a person to
                   a promise nobody keeps; the owner sets a new password from the user's page. It stays in development, where

@@ -25,6 +25,9 @@
  *   The IDLE LIMIT does not stop a thief. It shortens the window in which a
  *   phone left on a counter is an open account, from the seven days the
  *   cookie lasts to the minutes somebody would have to notice it.
+ *   (11/11, the owner's ruling: it is a SWITCH now — `AUTH_IDLE_SIGN_OUT`, off
+ *   by default, see auth-switches.ts. The constants below are all still here
+ *   and `on` gives back exactly what they say; with it off nothing reads them.)
  *
  *   The AUDIT of bulk extraction does not stop an export. It means one
  *   happened in the open rather than invisibly.

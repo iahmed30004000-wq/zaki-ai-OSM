@@ -28,13 +28,33 @@ describe('bootAlarms', () => {
     expect(bootAlarms({ APP_ENCRYPTION_KEY: 'p'.repeat(MIN_ENCRYPTION_KEY_LENGTH) })).toEqual([]);
   });
 
-  it('speaks when the key is absent or empty', () => {
+  it('speaks when the key is absent or empty — and, with the second code required, says it locks everybody out', () => {
+    // 11/11: «nobody can sign in» is true only while the second code is required (`AUTH_TWO_FACTOR_REQUIRED=on`, off by
+    // default — the owner's ruling). Under the switch ON this is the alarm as it was; OFF is the test below. Modified, not removed.
     for (const env of [{}, { APP_ENCRYPTION_KEY: '' }, { APP_ENCRYPTION_KEY: undefined }]) {
-      const alarms = bootAlarms(env);
+      const alarms = bootAlarms({ ...env, AUTH_TWO_FACTOR_REQUIRED: 'on' });
       expect(alarms, JSON.stringify(env)).toHaveLength(1);
       expect(alarms[0]).toContain('APP_ENCRYPTION_KEY');
       expect(alarms[0]).toContain('تسجيل الدخول');
     }
+  });
+
+  it('with the second code OFF (the default) it does not cry wolf: nobody is locked out, and it says only what is still true', () => {
+    for (const env of [{}, { APP_ENCRYPTION_KEY: '' }, { AUTH_TWO_FACTOR_REQUIRED: 'no' }, { AUTH_TWO_FACTOR_REQUIRED: 'onn' }]) {
+      const alarms = bootAlarms(env);
+      expect(alarms, JSON.stringify(env)).toHaveLength(1);
+      expect(alarms[0], 'الإنذار بيقول إنو ما حدا بيقدر يدخل وهو مش صحيح').not.toContain('تسجيل الدخول');
+      expect(alarms[0], 'الإنذار بيقول إنو التحقق الثنائي مفروض وهو مطفأ').not.toContain('مفروض');
+      expect(alarms[0]).toContain('APP_ENCRYPTION_KEY');
+      expect(alarms[0], 'اللي بيضل صحيح: كلمات سر شركات الشحن').toContain('كلمة سر أي شركة شحن');
+    }
+    // a short key, the same
+    const short = bootAlarms({ APP_ENCRYPTION_KEY: 'p'.repeat(MIN_ENCRYPTION_KEY_LENGTH - 1) });
+    expect(short).toHaveLength(1);
+    expect(short[0]).not.toContain('تسجيل الدخول');
+    // and a good key is silent in both states
+    expect(bootAlarms({ APP_ENCRYPTION_KEY: 'a'.repeat(64) })).toEqual([]);
+    expect(bootAlarms({ APP_ENCRYPTION_KEY: 'a'.repeat(64), AUTH_TWO_FACTOR_REQUIRED: 'on' })).toEqual([]);
   });
 
   it('speaks when the key is one character short', () => {

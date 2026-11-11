@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest';
 import bcrypt from 'bcryptjs';
 
 /**
@@ -38,6 +38,10 @@ import {
 import { currentCode, generateSecret, stepAt } from './totp';
 import { repoFile, stripComments } from './guard-source';
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe('who must carry one', () => {
   it('covers the owner, the manager, the accountant — and the settlement officer', () => {
     for (const role of ['SUPER_ADMIN', 'COMPANY_ADMIN', 'MANAGER', 'ACCOUNTANT', 'SETTLEMENT_OFFICER']) {
@@ -76,6 +80,9 @@ describe('who must carry one', () => {
    * exactly how a second factor gets switched off for everyone.
    */
   it('sends a protected role to enrol when it has none yet', () => {
+    // 11/11: the rule is a switch now, off by default (the owner's ruling). THIS is the rule with the switch ON — the
+    // one that stood before; the switch OFF is `the-sign-in-stays-open.test.ts`. Modified, not removed.
+    vi.stubEnv('AUTH_TWO_FACTOR_REQUIRED', 'on');
     expect(stepFor({ role: 'ACCOUNTANT', totpEnabledAt: null })).toBe('enrol');
     expect(stepFor({ role: 'ACCOUNTANT', totpEnabledAt: new Date() })).toBe('verify');
     // And a warehouse keeper is sent to enrol now too, where he used to

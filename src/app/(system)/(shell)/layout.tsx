@@ -9,6 +9,7 @@ import { menuNav, visibleNav } from '@/lib/route-registry';
 import { applyArrangement } from '@/lib/nav-arrangement';
 import { readArrangement } from '@/lib/nav-arrangement-store';
 import { listAccessibleCountries, listAccessibleStores } from '@/lib/geo-context';
+import { idleSignOutOn } from '@/lib/auth-switches';
 
 /**
  * Every contract screen lives under this layout. It resolves the session and
@@ -43,6 +44,9 @@ export default async function ShellLayout({ children }: { children: React.ReactN
       userRole={user.role}
       // During «عاين كـ» the mark names who is really looking — the owner — never the person being previewed.
       viewer={user.preview ? { name: user.preview.ownerName, id: user.preview.ownerId } : { name: user.name, id: user.id }}
+      // Read here, on the server, at request time: the browser has no environment, and a `NEXT_PUBLIC_` variable is baked
+      // in at build, out of reach of a changed variable in Coolify. Off by default — the owner's ruling 11/11.
+      idleSignOut={idleSignOutOn()}
       context={{
         storeName: store.name,
         storePaused: store.status !== 'ACTIVE',

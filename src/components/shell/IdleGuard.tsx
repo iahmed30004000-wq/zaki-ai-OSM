@@ -42,6 +42,16 @@ import { RiEyeOffLine, RiLockLine } from '@remixicon/react';
  * next to you. It is best effort — some systems take that picture before
  * the page is told it is hidden — and it stops no screenshot, no recording
  * and no camera. See the note in src/lib/exposure.ts.
+ *
+ * ═══ THE OWNER'S SWITCH, 11/11 — «قصة انو يطلع كل ١٥ دقيقة» ═══
+ *
+ * `idleSignOut` is `AUTH_IDLE_SIGN_OUT` as the SERVER read it (the layout hands it down through the shell): the browser
+ * has no environment, and a `NEXT_PUBLIC_` variable would be baked in at build time, out of reach of a changed variable in
+ * Coolify. Off (the default): nothing here counts, nothing warns, nothing signs anybody out, however long the screen sits —
+ * not even an hour hidden. ONLY THE CURTAIN stays, because it is not a sign-out: it covers the content while the page is in
+ * the background and lifts when it is back, as before. On: all of the above, unchanged. The prop defaults to ON, so a
+ * caller that says nothing (every test, any future screen) keeps the protection; the one place that says otherwise is the
+ * layout, and it says it from the switch.
  */
 
 /** A timestamp, shared between this account's open tabs. Never anything else. */
@@ -55,7 +65,7 @@ const WRITE_EVERY_MS = 10_000;
 
 const WATCHED = ['pointerdown', 'keydown', 'scroll', 'wheel', 'touchstart'] as const;
 
-export function IdleGuard() {
+export function IdleGuard({ idleSignOut = true }: { idleSignOut?: boolean }) {
   const [phase, setPhase] = useState<IdleState>('active');
   const [left, setLeft] = useState(0);
   const [covered, setCovered] = useState(false);
@@ -89,6 +99,19 @@ export function IdleGuard() {
   }, []);
 
   useEffect(() => {
+    if (!idleSignOut) {
+      // THE CURTAIN ALONE (see the owner's switch, above): no clock, no touch listeners, no warning, no sign-out.
+      const cover = () => setCovered(document.hidden);
+      document.addEventListener('visibilitychange', cover);
+      window.addEventListener('focus', cover);
+      window.addEventListener('pageshow', cover);
+      return () => {
+        document.removeEventListener('visibilitychange', cover);
+        window.removeEventListener('focus', cover);
+        window.removeEventListener('pageshow', cover);
+      };
+    }
+
     // Arriving here IS somebody acting: they opened or reloaded the app.
     // A timestamp another tab wrote is adopted only when it is NEWER —
     // never older, or opening the app after a week away would read last
@@ -245,7 +268,7 @@ export function IdleGuard() {
       window.removeEventListener('pageshow', onVisibility);
       clearInterval(id);
     };
-  }, [touch]);
+  }, [touch, idleSignOut]);
 
   return (
     <>
@@ -267,7 +290,7 @@ export function IdleGuard() {
         </div>
       )}
 
-      {phase !== 'active' && (
+      {idleSignOut && phase !== 'active' && (
         <div
           role="alertdialog"
           aria-live="assertive"
