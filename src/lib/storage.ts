@@ -178,6 +178,24 @@ export async function readStoredFile(
   }
 }
 
+/**
+ * DOES THE VOLUME HOLD A FILE UNDER THIS KEY? — asked before a key is written onto a record.
+ *
+ * A key is only ever MADE by `saveProductImage` (a random uuid in a company's own folder), so «the file exists» is what
+ * «an uploader of ours produced it» comes to: a key typed by hand, mistyped, or taken from another install holds nothing.
+ * It opens no stream and reads no byte, and an unsafe key (a dot segment, a backslash) is no key at all.
+ */
+export async function storedFileExists(storageKey: string): Promise<boolean> {
+  if (STORAGE_PROVIDER !== 'local') return false;
+  if (!isSafeStorageKey(storageKey)) return false;
+  try {
+    const stat = await fs.promises.stat(path.resolve(LOCAL_STORAGE_DIR, storageKey));
+    return stat.isFile();
+  } catch {
+    return false;
+  }
+}
+
 export async function deleteStoredFile(storageKey: string): Promise<void> {
   if (STORAGE_PROVIDER === 'local') {
     if (!isSafeStorageKey(storageKey)) return; // canonical traversal guard

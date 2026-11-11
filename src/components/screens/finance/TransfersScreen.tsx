@@ -20,6 +20,7 @@ import { RiArrowUpDownLine, RiLoader4Line, RiRepeatLine } from '@remixicon/react
 import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { WalletChip } from '@/components/ui/WalletChip';
+import { WalletPicture } from '@/components/ui/WalletPicture';
 import { arDateTime } from '@/lib/format';
 import { Money } from '@/components/ui/Money';
 import { useIsPhone } from '@/hooks/useIsPhone';
@@ -43,6 +44,21 @@ interface WalletRow {
   storeId: string | null;
   store: { id: string; name: string } | null;
   country: { id: string; name: string; minorUnit?: number };
+  /** The look saved on the wallet (lib/wallet-look): the chip wears it, whatever it is. */
+  imageKey?: string | null;
+  iconKey?: string | null;
+  colorKey?: string | null;
+}
+
+/** One end of a transfer as the history names it: the wallet, with the look it wears everywhere else. */
+interface TransferEnd {
+  id: string;
+  name: string;
+  currencyCode: string;
+  store?: { name: string } | null;
+  imageKey?: string | null;
+  iconKey?: string | null;
+  colorKey?: string | null;
 }
 
 interface TransferRow {
@@ -53,8 +69,22 @@ interface TransferRow {
   note: string | null;
   createdAt: string;
   kindLabel?: string;
-  from: { id: string; name: string; currencyCode: string; store?: { name: string } | null } | null;
-  to: { id: string; name: string; currencyCode: string; store?: { name: string } | null } | null;
+  from: TransferEnd | null;
+  to: TransferEnd | null;
+}
+
+/** A transfer end as a line of the history: its face, its name, and the store under it. */
+function EndOfTransfer({ wallet }: { wallet: TransferEnd | null }) {
+  if (!wallet) return <>—</>;
+  return (
+    <span className="inline-flex items-center gap-2">
+      <WalletPicture wallet={wallet} size="sm" />
+      <span className="min-w-0">
+        {wallet.name}
+        {wallet.store && <span className="block text-xs text-[var(--sys-muted)]">{wallet.store.name}</span>}
+      </span>
+    </span>
+  );
 }
 
 /** A wallet row, as the reader of the four transfer kinds needs it. */
@@ -484,19 +514,9 @@ export function TransfersScreen() {
                     </span></>
                 ) },
               { key: 'c2', label: "من",
-                render: (t) => (
-                  <>{t.from?.name ?? '—'}
-                    {t.from?.store && (
-                      <span className="block text-xs text-[var(--sys-muted)]">{t.from.store.name}</span>
-                    )}</>
-                ) },
+                render: (t) => <EndOfTransfer wallet={t.from} /> },
               { key: 'c3', label: "إلى",
-                render: (t) => (
-                  <>{t.to?.name ?? '—'}
-                    {t.to?.store && (
-                      <span className="block text-xs text-[var(--sys-muted)]">{t.to.store.name}</span>
-                    )}</>
-                ) },
+                render: (t) => <EndOfTransfer wallet={t.to} /> },
               { key: 'c4', label: "الصادر", align: 'end',
                 render: (t) => (
                   <Money value={t.amountOut} currency={t.from?.currencyCode} />

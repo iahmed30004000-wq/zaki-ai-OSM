@@ -5,10 +5,12 @@ import { requireContext } from '@/lib/geo-context';
 import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
+import { storedFileExists } from '@/lib/storage';
 import { zodMessage } from '@/lib/zod-message';
+import { WALLET_COLOR_KEYS, WALLET_ICON_KEYS, WALLET_IMAGE_NOT_OURS, isOwnWalletImageKey } from '@/lib/wallet-look';
 
 /**
- * PATCH  — rename a wallet, or stop and restart it.
+ * PATCH  — rename a wallet, stop and restart it, or change how it looks (a picture, an icon, a colour).
  * DELETE — retire it. It does NOT erase what the money did.
  *
  * A wallet's movements are the ledger. Deleting a wallet that has any
@@ -24,6 +26,16 @@ import { zodMessage } from '@/lib/zod-message';
 const patchSchema = z.object({
   name: z.string().trim().min(2).max(80).optional(),
   isActive: z.boolean().optional(),
+  /**
+   * THE WALLET'S LOOK (lib/wallet-look) — each one absent to leave it, `null` to clear it back to the default.
+   *
+   * The icon and the colour are checked against the lists the screen draws its choices from, so a client cannot save a
+   * look the screen cannot show. The picture is a storage KEY, never a URL: it is checked below, against the company and
+   * the wallet, because a string that merely looks like a path is not a file this company's door wrote.
+   */
+  imageKey: z.string().max(200).nullable().optional(),
+  iconKey: z.enum(WALLET_ICON_KEYS, { error: 'الأيقونة مش من القائمة الجاهزة' }).nullable().optional(),
+  colorKey: z.enum(WALLET_COLOR_KEYS, { error: 'اللون مش من الألوان الجاهزة' }).nullable().optional(),
 });
 
 /**
@@ -88,7 +100,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const wallet = await db.wallet.findFirst({
       where: { id, companyId },
-      select: { id: true, name: true, isActive: true, storeId: true },
+      select: { id: true, name: true, isActive: true, storeId: true, imageKey: true, iconKey: true, colorKey: true },
     });
     if (!wallet) return NextResponse.json({ error: 'المحفظة غير موجودة' }, { status: 404 });
 
@@ -96,7 +108,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (!parsed.success) {
       return NextResponse.json({ error: zodMessage(parsed.error) }, { status: 400 });
     }
-    const { name, isActive } = parsed.data;
+    const { name, isActive, imageKey, iconKey, colorKey } = parsed.data;
+
+    /**
+     * A PICTURE IS SAVED ONLY IF THIS COMPANY'S DOOR WROTE IT FOR THIS WALLET.
+     *
+     * Three questions, one sentence for every «no» so the answer says nothing about which one failed or whether
+     * anybody else's file exists: is it the shape the door writes (`companies/{company}/products/{wallet}/{uuid}`),
+     * is the company this one and the folder this wallet's, and does the volume really hold it. A URL, a path with
+     * dots, another company's key, another wallet's key, and a key nobody uploaded all stop at the first or second.
+     */
+    if (typeof imageKey === 'string') {
+      const ours = isOwnWalletImageKey(imageKey, { companyId, walletId: id }) && (await storedFileExists(imageKey));
+      if (!ours) return NextResponse.json({ error: WALLET_IMAGE_NOT_OURS, code: 'IMAGE_NOT_OURS' }, { status: 400 });
+    }
 
     // The name is the store's to reuse — every store has a «الصندوق النقدي».
     if (name && name !== wallet.name) {
@@ -111,15 +136,29 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const updated = await db.wallet.update({
       where: { id },
-      data: { ...(name ? { name } : {}), ...(typeof isActive === 'boolean' ? { isActive } : {}) },
-      select: { id: true, name: true, isActive: true },
+      data: {
+        ...(name ? { name } : {}),
+        ...(typeof isActive === 'boolean' ? { isActive } : {}),
+        // `undefined` leaves a part of the look alone; `null` clears it back to the default.
+        ...(imageKey !== undefined ? { imageKey } : {}),
+        ...(iconKey !== undefined ? { iconKey } : {}),
+        ...(colorKey !== undefined ? { colorKey } : {}),
+      },
+      select: { id: true, name: true, isActive: true, imageKey: true, iconKey: true, colorKey: true },
     });
 
     await logAudit({
       companyId, userId: user.id, action: 'WALLET_UPDATED',
       entity: 'Wallet', entityId: id,
-      previousData: { name: wallet.name, isActive: wallet.isActive },
-      newData: { name: updated.name, isActive: updated.isActive, by: user.name },
+      previousData: {
+        name: wallet.name, isActive: wallet.isActive,
+        imageKey: wallet.imageKey, iconKey: wallet.iconKey, colorKey: wallet.colorKey,
+      },
+      newData: {
+        name: updated.name, isActive: updated.isActive,
+        imageKey: updated.imageKey, iconKey: updated.iconKey, colorKey: updated.colorKey,
+        by: user.name,
+      },
     });
 
     return NextResponse.json({ wallet: updated });

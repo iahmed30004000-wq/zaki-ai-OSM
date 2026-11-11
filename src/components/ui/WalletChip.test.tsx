@@ -64,6 +64,46 @@ describe('the chip', () => {
   });
 });
 
+describe('the chip wears the wallet’s own face', () => {
+  const KEY = 'companies/4f1c2a8e-7b3d-4e56-9a10-5c2d8e7f6a31/products/9d0e6b12-3c45-4f78-8a9b-0c1d2e3f4a5b/0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d.webp';
+  const faceOf = () => screen.getByRole('button').querySelector('[data-wallet-picture]') as HTMLElement;
+
+  it('draws a face beside the name: the currency’s icon in a colour from its id, when nothing was chosen', () => {
+    render(<WalletChip wallet={W} selected={false} onPick={() => {}} />);
+    expect(faceOf().dataset.icon).toBe('dollar');
+    expect(faceOf().style.width).toBe('32px');
+    // A face is not a word: the chip still says exactly what it said.
+    expect(screen.getByRole('button').textContent).toContain('صندوق الدولار');
+  });
+
+  it('wears what was chosen — the icon and the colour — and two wallets are told apart at a glance', () => {
+    const { rerender } = render(<WalletChip wallet={{ ...W, iconKey: 'bank', colorKey: 'warning' }} selected={false} onPick={() => {}} />);
+    expect(faceOf().dataset.icon).toBe('bank');
+    expect(faceOf().dataset.color).toBe('warning');
+    rerender(<WalletChip wallet={{ ...W, id: 'w9', iconKey: 'crypto', colorKey: 'chart-3' }} selected={false} onPick={() => {}} />);
+    expect(faceOf().dataset.icon).toBe('crypto');
+    expect(faceOf().dataset.color).toBe('chart-3');
+  });
+
+  it('shows the picture when there is one, and falls back to the icon when it will not load', () => {
+    render(<WalletChip wallet={{ ...W, imageKey: KEY, iconKey: 'card', colorKey: 'success' }} selected={false} onPick={() => {}} />);
+    const img = faceOf().querySelector('img') as HTMLImageElement;
+    expect(img.getAttribute('src')).toBe(`/api/media/${KEY}`);
+    expect(img.getAttribute('alt')).toBe('');
+    fireEvent.error(img);
+    expect(faceOf().querySelector('img')).toBeNull();
+    expect(faceOf().dataset.icon).toBe('card');
+    expect(faceOf().dataset.color).toBe('success');
+  });
+
+  it('pressing the face presses the chip — the face is not a control of its own', () => {
+    const onPick = vi.fn();
+    render(<WalletChip wallet={W} selected={false} onPick={onPick} />);
+    fireEvent.click(faceOf());
+    expect(onPick).toHaveBeenCalledWith('w1');
+  });
+});
+
 describe('the glyph, chosen in one place', () => {
   it('a dollar for dollars, coins for any other currency, a wallet for a code that is not one', () => {
     expect(walletGlyph('USD')).toBe(RiMoneyDollarCircleLine);

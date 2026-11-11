@@ -6,10 +6,12 @@ import { Modal } from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/Confirm';
 import { ScreenTitle } from '@/components/shell/ScreenTitle';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
-import { RiAddCircleLine, RiArrowGoBackLine, RiCheckLine, RiCloseLine, RiDeleteBinLine, RiLoader4Line, RiPencilLine, RiScales3Line, RiShutDownLine, RiWallet3Line } from '@remixicon/react';
+import { RiAddCircleLine, RiArrowGoBackLine, RiCheckLine, RiCloseLine, RiDeleteBinLine, RiImageEditLine, RiLoader4Line, RiPencilLine, RiScales3Line, RiShutDownLine, RiWallet3Line } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
 import { Rows, type Column } from '@/components/ui/Rows';
 import { Money } from '@/components/ui/Money';
+import { WalletPicture } from '@/components/ui/WalletPicture';
+import { WalletLookDialog } from './WalletLookDialog';
 import { useStoreCurrency } from '@/context/StoreCurrency';
 import { moneyDigits } from '@/lib/money';
 import { useIsPhone } from '@/hooks/useIsPhone';
@@ -44,6 +46,10 @@ interface WalletRow {
   balance: number;
   movements: number;
   country: { id: string; name: string } | null;
+  /** The look saved on the wallet (lib/wallet-look): each null until somebody chooses, and `walletLook` fills the gap. */
+  imageKey?: string | null;
+  iconKey?: string | null;
+  colorKey?: string | null;
   /** The signed physical count behind `opening`, once one has been taken. */
   openingCount: {
     countedAmount: number;
@@ -136,6 +142,7 @@ export function WalletsScreen() {
   const [newName, setNewName] = useState('');
   const [recordOpen, setRecordOpen] = useState(false);
   const [countOpen, setCountOpen] = useState(false);
+  const [lookOpen, setLookOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [reverseFor, setReverseFor] = useState<Movement | null>(null);
 
@@ -248,7 +255,7 @@ export function WalletsScreen() {
       <AdvancedGroup
         key={wallet.id}
         className={phone ? 'w-full' : undefined}
-        holds={wallet.isActive ? 'تعديل الاسم · إيقاف · حذف' : 'تعديل الاسم · حذف'}
+        holds={wallet.isActive ? 'تعديل الاسم · الشكل · إيقاف · حذف' : 'تعديل الاسم · الشكل · حذف'}
       >
         <button
           onClick={() => { setRenaming(true); setNewName(wallet.name); }}
@@ -256,6 +263,13 @@ export function WalletsScreen() {
           className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 cursor-pointer rounded-lg p-1.5 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-primary-soft)] hover:text-[var(--sys-primary)]"
         >
           <RiPencilLine className="w-4 h-4" />
+        </button>
+        {/* The wallet's face — a picture, or an icon and a colour. Drawn for the same key as the rename beside it. */}
+        <button
+          onClick={() => setLookOpen(true)}
+          className="h-11 md:h-8 px-3 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] text-xs font-medium inline-flex items-center gap-1.5 hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)]"
+        >
+          <RiImageEditLine className="w-4 h-4" /> تعديل شكل المحفظة
         </button>
         {wallet.isActive && (
           <button
@@ -409,9 +423,18 @@ export function WalletsScreen() {
                   w.id === active ? 'border-[var(--sys-primary)] ring-1 ring-[var(--sys-primary)]/20' : 'border-[var(--sys-border)]'
                 }`}
               >
-                <span className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-[var(--sys-heading)]">{w.name}</span>
-                  {!w.isActive && <span className="text-xs text-[var(--sys-muted)] border border-[var(--sys-border)] rounded-full px-2 py-0.5">موقوفة</span>}
+                {/* The wallet's face, then who it is: the name, and «البلد · العملة» as the transfer chips say it. */}
+                <span className="flex items-center gap-3">
+                  <WalletPicture wallet={w} size="md" />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-[var(--sys-heading)]">{w.name}</span>
+                      {!w.isActive && <span className="text-xs text-[var(--sys-muted)] border border-[var(--sys-border)] rounded-full px-2 py-0.5">موقوفة</span>}
+                    </span>
+                    <span className="block text-xs text-[var(--sys-muted-foreground)]">
+                      {[w.country?.name, w.currencyCode].filter(Boolean).join(' · ')}
+                    </span>
+                  </span>
                 </span>
                 {phone ? (
                   /* A card a finger scrolls past, six of them: the balance with its thousands separators and its code,
@@ -490,7 +513,10 @@ export function WalletsScreen() {
                   </button>
                 </span>
               ) : (
-                <h2 className="text-sm font-medium text-[var(--sys-heading)]">حركات {wallet?.name ?? ''}</h2>
+                <h2 className="flex items-center gap-2 text-sm font-medium text-[var(--sys-heading)]">
+                  {wallet && <WalletPicture wallet={wallet} size="sm" />}
+                  <span>حركات {wallet?.name ?? ''}</span>
+                </h2>
               )}
 
               {/* The desk keeps the row it always had: upkeep, the count, a divider, then the day's press. On a phone the
@@ -591,6 +617,18 @@ export function WalletsScreen() {
           onSaved={async (message) => {
             setRecordOpen(false);
             await refresh(message);
+          }}
+        />
+      )}
+
+      {lookOpen && wallet && (
+        <WalletLookDialog
+          wallet={wallet}
+          onClose={() => setLookOpen(false)}
+          onSaved={(message) => {
+            setLookOpen(false);
+            setDone(message);
+            void loadWallets();
           }}
         />
       )}
@@ -837,6 +875,14 @@ function RecordDialog({
         }}
         className="space-y-3"
       >
+        {/* Whose money moves, by its face — the title above says the name, and a wallet is recognised by what it looks like. */}
+        <div className="flex items-center gap-3 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-2.5">
+          <WalletPicture wallet={wallet} size="sm" />
+          <span className="text-xs text-[var(--sys-muted-foreground)]">
+            {[wallet.country?.name, wallet.currencyCode].filter(Boolean).join(' · ')}
+          </span>
+        </div>
+
         <div className="flex gap-2">
           {(['IN', 'OUT'] as const).map((d) => (
             <button
