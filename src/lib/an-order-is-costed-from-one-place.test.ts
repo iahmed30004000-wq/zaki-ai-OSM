@@ -62,6 +62,7 @@ const DOORS: Array<{ file: string; asks: RegExp; names: string[]; what: string; 
   { file: 'src/app/api/orders/ai-intake/route.ts', asks: /unitCostsOf\(\s*db\b/, names: ['unitCostsOf'], what: 'the pasted order' },
   { file: 'src/lib/public-order.ts', asks: /unitCostsOf\(\s*db\b/, names: ['unitCostsOf'], what: 'the storefront and the sales page' },
   { file: 'src/lib/v1/order-intake.ts', asks: /unitCostsOf\(\s*db\b/, names: ['unitCostsOf'], what: 'the systems door' },
+  { file: 'src/lib/v1/landing-door.ts', asks: /unitCostsOf\(\s*db\b/, names: ['unitCostsOf'], what: 'the landing system replacing the offer of an untouched order' },
   // The writer of a migrated order is `order-migration.ts`; this route hands it the question (its `unitCost` dependency).
   { file: 'src/app/api/orders/import/migrate/route.ts', asks: /unitCostsOf\(\s*tx\b/, names: ['unitCostsOf'], what: 'the migration of old orders (the dependency it hands the writer)', writes: false },
   { file: 'src/app/api/orders/[id]/route.ts', asks: /unitCostsOf\(\s*db\b[\s\S]*fixedCostsOf\(\s*db\b/, names: ['unitCostsOf', 'fixedCostsOf'], what: 'the lines edit — the units that go on' },
@@ -83,7 +84,7 @@ describe('each door that writes an order’s cost asks the owner’s figure — 
     expect(readers, 'بابٌ يحسب كلفة الطلب من متوسط الدفعات بنفسه — اسأل unitCostsOf').toEqual([]);
   });
 
-  it('and the seven doors that price a unit say so with `unitCostsOf`, the one place the figure beats the average', () => {
+  it('and the eight doors that price a unit say so with `unitCostsOf`, the one place the figure beats the average', () => {
     const pricing = DOORS.filter((d) => d.names.includes('unitCostsOf')).map((d) => d.file);
     expect(pricing.sort()).toEqual([
       'src/app/api/orders/[id]/route.ts',
@@ -92,6 +93,7 @@ describe('each door that writes an order’s cost asks the owner’s figure — 
       'src/app/api/orders/route.ts',
       'src/lib/public-order.ts',
       'src/lib/telegram/order-creation.ts',
+      'src/lib/v1/landing-door.ts',
       'src/lib/v1/order-intake.ts',
     ].sort());
   });
