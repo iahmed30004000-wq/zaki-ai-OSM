@@ -53,6 +53,12 @@ const { db, state } = vi.hoisted(() => {
       }
       if (typeof cond === 'object') {
         const c = cond as Record<string, unknown>;
+        // A to-many relation: `none` — no related row may match (an order with no rows at all passes).
+        if ('none' in c) {
+          const related = Array.isArray(value) ? (value as unknown[]) : [];
+          if (related.some((x) => matches(x, c.none))) return false;
+          continue;
+        }
         if ('in' in c) {
           if (!(c.in as unknown[]).includes(value)) return false;
           continue;
@@ -524,12 +530,56 @@ describe('what a person is owed is what the door will pay', () => {
 
 /** The filter is one object, read by both the balance and the promotion. */
 describe('the condition is written once', () => {
-  it('names the state, not the moment', () => {
+  it('names the state, not the moment — and leaves out an order closed as collected before the system', () => {
     expect(PROMOTABLE_BY_PAYOUT).toEqual({
       status: 'ACCRUED',
       payoutId: null,
       reversedBy: { is: null },
-      order: { settlementStatus: 'SETTLED' },
+      order: { settlementStatus: 'SETTLED', activities: { none: { action: 'LEGACY_CLOSED_NO_MONEY' } } },
     });
+  });
+});
+
+/**
+ * «أقفل القديمة بلا باركود» (12/11): the owner closes old delivered orders as collected WITHOUT a wallet movement and said
+ * «بدون ما تأثر على المالية». SETTLED would make their commission payable at the next payout — so an order carrying the close's
+ * mark is not promotable, however settled it looks. The control in every test: an ordinary settled order next to it still is.
+ */
+describe('an order the owner closed as collected before the system', () => {
+  const MARK = [{ action: 'LEGACY_CLOSED_NO_MONEY' }];
+
+  beforeEach(() => {
+    order('closed', { activities: MARK });
+    order('ordinary', { activities: [{ action: 'ORDER_UPDATED' }] });
+    entry('e-closed', { orderId: 'closed', amount: 300 });
+    entry('e-ordinary', { orderId: 'ordinary', amount: 200 });
+  });
+
+  it('is not on the balance — only the ordinary settled order is owed', async () => {
+    const owed = await owedTo(db as never, { companyId: 'c1', userId: 'sara' });
+    expect(owed).toEqual([{ currencyCode: 'EGP', amount: 200, entries: ['e-ordinary'] }]);
+  });
+
+  it('is not promoted by the payout, and the payout is refused as not payable', async () => {
+    await expect(pay(['e-closed'])).rejects.toMatchObject({ reason: 'NOT_PAYABLE' });
+    expect(statusOf('e-closed')).toBe('ACCRUED');
+    expect(state.movements).toEqual([]);
+  });
+
+  it('is not promoted by the promotion itself; the ordinary one next to it is', async () => {
+    const n = await promoteSettledToPayable(db as never, {
+      companyId: 'c1',
+      userId: 'sara',
+      entryIds: ['e-closed', 'e-ordinary'],
+    });
+    expect(n).toBe(1);
+    expect([statusOf('e-closed'), statusOf('e-ordinary')]).toEqual(['ACCRUED', 'PAYABLE']);
+  });
+
+  it('stays out even when its entry was written AFTER the close (the nightly job runs later)', async () => {
+    entry('e-late', { orderId: 'closed', amount: 50 });
+    const owed = await owedTo(db as never, { companyId: 'c1', userId: 'sara' });
+    expect(owed[0].entries).toEqual(['e-ordinary']);
+    await expect(pay(['e-late'])).rejects.toMatchObject({ reason: 'NOT_PAYABLE' });
   });
 });

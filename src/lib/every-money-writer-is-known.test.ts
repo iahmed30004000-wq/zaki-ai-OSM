@@ -222,6 +222,13 @@ const READS_ONLY: Record<string, string> = {
    * شيئاً — حسابه اليوم من جدول أجور اليوم كان سيغيّر مبلغاً دفعه زبون. ليس باب طلبات يومي: للمالك وحده، ويكتب من ملف.
    */
   'src/lib/order-migration.ts': 'ترحيل: يكتب مبلغ الملف كما هو، لا حساب — طلبات قديمة انقبضت',
+  /*
+   * «أقفل القديمة بلا باركود» (12/11) — IT READS `totalAmount` AND WRITES NONE OF THE FOUR. The press adds up the orders' own value only
+   * to tell the owner how big it is («قيمة الطلبات، مش مصاري رح تنزل»). Its one order write is `settlementStatus`; the rest is a line on
+   * the settlement log and a mark. No figure is computed, rounded, written or moved — `legacy-closeout.test.ts` holds it to naming
+   * no wallet, commission, amount-collected or stock writer at all.
+   */
+  'src/lib/legacy-closeout.ts': 'يقرأ إجمالي الطلب ليجمعه ويقول للمالك كم حجم الضغطة؛ وكتابته الوحيدة حالة التسوية وسطر سجلّ وعلامة — لا يحسب مالاً ولا يكتب أيّاً من الأربعة',
 };
 
 describe('every file that could write an order’s money is on one of two lists', () => {

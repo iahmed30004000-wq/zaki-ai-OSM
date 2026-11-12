@@ -93,14 +93,17 @@ const EXPECTED: ReadonlyArray<readonly [string, string]> = [
   // 11/11: «استلام الكل» on the returns desk (no migration grants it — the owner ticks it; his full access holds it). It sits
   // behind the returns key. 87 -> 88.
   ['ops.returns_receive_all', 'ops.returns'],
+  // 12/11: «أقفل القديمة بلا باركود» on the tracking screen (no migration grants it — the owner ticks it; his full access holds it).
+  // It sits behind the tracking key. 88 -> 89.
+  ['ops.close_legacy', 'ops.track'],
 ];
 
 const items = PERMISSION_MODULES.flatMap((m) => m.items);
 
 describe('the catalog names what each action needs', () => {
-  it('holds exactly the 88 pairs — none lost, none invented', () => {
+  it('holds exactly the 89 pairs — none lost, none invented', () => {
     const actual = items.filter((i) => i.requires).map((i) => [i.key, i.requires] as const);
-    expect(EXPECTED).toHaveLength(88);
+    expect(EXPECTED).toHaveLength(89);
     expect(actual.length, 'عدد الأزواج').toBe(EXPECTED.length);
     for (const [action, view] of EXPECTED) {
       expect(catalogItem(action)?.requires, `${action} لازم يطلب ${view}`).toBe(view);

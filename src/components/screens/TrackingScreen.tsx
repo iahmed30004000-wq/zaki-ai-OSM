@@ -14,6 +14,7 @@ import { ParcelPhone } from '@/components/screens/tracking/ParcelPhone';
 import { DeliverDialog } from '@/components/screens/tracking/DeliverDialog';
 import { BulkDeliverReport, type BulkDeliverLine } from '@/components/screens/tracking/BulkDeliverReport';
 import { WriteOffDialog } from '@/components/screens/tracking/WriteOffDialog';
+import { CloseLegacyDialog } from '@/components/screens/tracking/CloseLegacyDialog';
 import { apiJson } from '@/lib/api-client';
 import { ScreenTitle } from '@/components/shell/ScreenTitle';
 import { BulkBar } from '@/components/shell/BulkBar';
@@ -109,15 +110,20 @@ interface Extra {
   acts: TrackingActs;
 }
 
-/** `ops.deliver`, `ops.transfer`, `ops.write_off`: what the server says this person may press on a parcel. */
+/** `ops.deliver`, `ops.transfer`, `ops.write_off`: what the server says this person may press on a parcel; `ops.close_legacy` on the strip. */
 interface TrackingActs {
   deliver: boolean;
   transfer: boolean;
   writeOff: boolean;
+  /** «أقفل القديمة بلا باركود»: the owner's own key. Only a server that says yes draws the button. */
+  closeLegacy: boolean;
 }
 
-/** An answer that does not say is read as «all»: drawing less would hide work, and the door is what refuses. */
-const ALL_ACTS: TrackingActs = { deliver: true, transfer: true, writeOff: true };
+/**
+ * An answer that does not say is read as «all»: drawing less would hide work, and the door is what refuses. EXCEPT the owner's
+ * one-time press: a button for a door nobody was told they hold is not «work hidden», and an answer that does not name it is read as «no».
+ */
+const ALL_ACTS: TrackingActs = { deliver: true, transfer: true, writeOff: true, closeLegacy: false };
 
 /** Module-level, so the hook's loader keeps one identity — see `usePagedList`. */
 const read = (body: unknown): PagedRead<Row, Extra> => {
@@ -237,6 +243,7 @@ export function TrackingScreen() {
   const [bulking, setBulking] = useState(false);
   const [bulkReport, setBulkReport] = useState<{ lines: BulkDeliverLine[]; delivered: number; refused: number } | null>(null);
   const [collecting, setCollecting] = useState(false);
+  const [closingLegacy, setClosingLegacy] = useState(false);
   /** The row whose alert is being acknowledged right now. */
   const [acking, setAcking] = useState<string | null>(null);
   const [task, setTask] = useState<TaskFilter>('all');
@@ -724,6 +731,15 @@ export function TrackingScreen() {
               className="min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline"
             >
               اختر الكل
+            </button>
+          )}
+          {/* The owner's one-time press for the old orders no statement will ever name (`ops.close_legacy`): the dialog measures first. */}
+          {acts.closeLegacy && chosen.length === 0 && (
+            <button
+              onClick={() => setClosingLegacy(true)}
+              className="min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline"
+            >
+              أقفل القديمة بلا باركود…
             </button>
           )}
           {!phone && chosen.length > 0 && (
@@ -1327,6 +1343,19 @@ export function TrackingScreen() {
           onClose={() => setCollecting(false)}
           onDone={async (message) => {
             setCollecting(false);
+            setSelected({});
+            setDone(message);
+            setError(null);
+            await list.reload();
+          }}
+        />
+      )}
+
+      {closingLegacy && (
+        <CloseLegacyDialog
+          onClose={() => setClosingLegacy(false)}
+          onDone={async (message) => {
+            setClosingLegacy(false);
             setSelected({});
             setDone(message);
             setError(null);

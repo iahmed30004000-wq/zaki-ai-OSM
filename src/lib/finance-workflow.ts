@@ -22,7 +22,9 @@ export const SETTLEMENT_TRANSITIONS: Record<SettlementStatus, SettlementStatus[]
   PARTIALLY_SETTLED: ['SETTLED', 'REFUNDED', 'PARTIALLY_REFUNDED'],
   // Every row below that LISTS 'SETTLED' lists what the map allows, not what PATCH /api/orders/:id/finance
   // accepts: that door refuses SETTLED outright (SETTLE_THROUGH_COLLECTION), because it moves no money into a
-  // wallet. The only writers of SETTLED are the approval of a courier statement and «استلمت منه».
+  // wallet. The writers of SETTLED are the approval of a courier statement and «استلمت منه» — which put the money in a wallet — and, by
+  // the owner's word of 12/11, ONE deliberate exception: «أقفل القديمة بلا باركود» (`ops/tracking/close-legacy`), which closes old orders
+  // collected before the system existed with NO money moved and marks them, so their commission never becomes payable.
   SETTLED: ['REFUNDED', 'PARTIALLY_REFUNDED'], // post-settlement refund possible
   REFUNDED: [],                                 // terminal
   PARTIALLY_REFUNDED: ['SETTLED', 'REFUNDED'],

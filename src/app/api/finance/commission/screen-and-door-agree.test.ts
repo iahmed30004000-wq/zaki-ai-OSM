@@ -59,6 +59,13 @@ const { db, state } = vi.hoisted(() => {
       }
       if (typeof cond === 'object') {
         const c = cond as Record<string, unknown>;
+        // A to-many relation: `none` — no related row may match (an order with no rows at all passes). The promotable filter
+        // carries it since «أقفل القديمة بلا باركود»; no order in this file carries the close's mark.
+        if ('none' in c) {
+          const related = Array.isArray(value) ? (value as unknown[]) : [];
+          if (related.some((x) => matches(x, c.none))) return false;
+          continue;
+        }
         if ('in' in c) {
           if (!(c.in as unknown[]).includes(value)) return false;
           continue;

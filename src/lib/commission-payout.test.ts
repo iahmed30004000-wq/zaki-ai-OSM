@@ -178,7 +178,8 @@ describe('what a person is owed', () => {
         status: 'ACCRUED',
         payoutId: null,
         reversedBy: { is: null },
-        order: { settlementStatus: 'SETTLED' },
+        // ...and never an order the owner closed as collected before the system («أقفل القديمة بلا باركود», 12/11).
+        order: { settlementStatus: 'SETTLED', activities: { none: { action: 'LEGACY_CLOSED_NO_MONEY' } } },
       },
     ]);
   });

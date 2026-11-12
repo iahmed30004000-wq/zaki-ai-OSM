@@ -2,6 +2,7 @@ import { earnedBy, parseTiers, type CommissionType } from './commission-rules';
 import type { Prisma } from '@prisma/client';
 import { db } from './db';
 import { roundMinor } from './money';
+import { LEGACY_CLOSE_ACTION } from './legacy-closeout-words';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -434,8 +435,17 @@ export const PROMOTABLE_BY_PAYOUT: Prisma.CommissionEntryWhereInput = {
    * relation as "the related row exists AND matches". That is the right
    * answer and not an accident: no statement covers a period entry, so
    * there is no settlement for the door to find. See the report below.
+   *
+   * AND NEVER AN ORDER THE OWNER CLOSED AS «COLLECTED BEFORE THE SYSTEM».
+   *
+   * «أقفل القديمة بلا باركود» (12/11) marks old orders SETTLED with no wallet movement: their money was collected before the
+   * barcode and the settlement existed, and the owner said «بدون ما تأثر على المالية». SETTLED here would otherwise make the
+   * commission of those orders payable — a payout the owner never asked for, and for a commission he may have paid long ago
+   * in the old way. Such an order carries one activity row, `LEGACY_CLOSE_ACTION`, written in the same transaction as the
+   * close; the entry stays ACCRUED exactly as it was before the close (and as one the nightly job writes later will). The
+   * order's own rows are the only thing read: no flag was added to the order.
    */
-  order: { settlementStatus: 'SETTLED' },
+  order: { settlementStatus: 'SETTLED', activities: { none: { action: LEGACY_CLOSE_ACTION } } },
 };
 
 /**

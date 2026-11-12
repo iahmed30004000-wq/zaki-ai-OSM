@@ -1719,6 +1719,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/screens/tracking/CloseLegacyDialog.tsx": {
+    "buttons": 2,
+    "inputs": 2,
+    "columns": 0,
+    "cards": 0,
+    "modals": 1,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/screens/tracking/CollectDialog.tsx": {
     "buttons": 2,
     "inputs": 5,
@@ -1760,7 +1770,7 @@
     "tabs": 0
   },
   "src/components/screens/TrackingScreen.tsx": {
-    "buttons": 23,
+    "buttons": 24,
     "inputs": 0,
     "columns": 15,
     "cards": 0,

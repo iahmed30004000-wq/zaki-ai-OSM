@@ -254,6 +254,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
        * The only two writers are the ones that put the money in a wallet in the same transaction: the
        * approval of a courier statement, and «استلمت منه». Routing this to either would make a third
        * door to the same money, so it is refused and says where to go. Nothing is written.
+       *
+       * (One deliberate exception exists and is NOT a door to money: «أقفل القديمة بلا باركود», the owner's own press of 12/11 —
+       * `ops/tracking/close-legacy` — closes old orders collected before the system existed, with no wallet movement, and marks them
+       * so their commission never becomes payable. It is the owner's key alone; this door stays closed to everybody.)
        */
       if (settlementStatus === 'SETTLED') {
         return NextResponse.json(

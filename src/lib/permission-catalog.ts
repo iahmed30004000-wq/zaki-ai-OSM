@@ -372,6 +372,13 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       { key: 'ops.deliver', requires: 'ops.track', ar: 'تسجيل نتيجة التسليم (سُلّم، جزئياً، رفض)', en: 'Record the delivery outcome' },
       { key: 'ops.transfer', requires: 'ops.track', ar: 'تحويل طرد لشركة شحن أو مندوب آخر', en: 'Transfer a parcel to another courier' },
       { key: 'ops.write_off', requires: 'ops.track', ar: 'إغلاق طرد ضائع كخسارة (تخرج بضاعته من المخزون)', en: 'Close a lost parcel as a loss' },
+      /*
+       * «سوّيها تم تحصيلها بدون ما تأثر على المالية» (12/11). One press closes the old delivered parcels that have no barcode as
+       * collected — with NO wallet movement and no commission made payable: their money was collected before the barcode and the
+       * settlement existed. Granted to NOBODY by any migration, seed or fallback: the owner's full access holds it, and he ticks it
+       * for whoever he wants.
+       */
+      { key: 'ops.close_legacy', requires: 'ops.track', ar: 'إقفال الطلبات القديمة بلا باركود كمحصَّلة بلا حركة مال', en: 'Close old no-barcode parcels as collected, with no money moved' },
       { key: 'ops.return_fee', requires: 'ops.returns', ar: 'احتساب أجرة الإرجاع على شركة الشحن', en: 'Charge the courier a return fee' },
       /*
        * «بدي زر استلام الكل مع صلاحية للمالك» (11/11). One press receives every pending return the list's filters select,

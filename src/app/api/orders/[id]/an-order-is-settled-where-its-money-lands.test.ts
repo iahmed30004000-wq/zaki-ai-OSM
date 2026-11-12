@@ -13,8 +13,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  *   commission.ts           makes its commission PAYABLE
  *
  * So one person could settle an order with not one coin received, pay out its commission, and leave the real
- * collection refused as «already settled». The only two writers of SETTLED are the ones that put the money in
- * a wallet in the same transaction: the approval of a courier statement and «استلمت منه».
+ * collection refused as «already settled». The only two writers of SETTLED that put money in are the ones that do it in
+ * a wallet in the same transaction: the approval of a courier statement and «استلمت منه». (The third, by the owner's word of
+ * 12/11, is «أقفل القديمة بلا باركود» — old orders collected before the system, no money, a mark that keeps their commission
+ * unpayable; it is the owner's key alone and has its own tests: `ops/tracking/close-legacy/close-legacy.test.ts`.)
  *
  * Each test asserts that NOTHING was written — the order, the ledger, the status log, the activity and the
  * audit — because a refusal that wrote half of it is the defect again.
