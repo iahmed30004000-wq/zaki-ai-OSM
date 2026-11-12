@@ -100,8 +100,14 @@ describe('what an agent downloads before «طلباتي» draws', () => {
    * The ceiling sits a little over the measured «after», so the modals
    * creeping back into the first load trips it, and an ordinary change to
    * the screen does not.
+   *
+   * MOVED 2026-11-12, 410 → 411, MEASURED AGAIN. By then ordinary changes had used the room up: main read 409.9 KB (0.1 KB left,
+   * CI «Payload budget», 52b00864 and 2c2cd6d7), and the pull panel's two boxes and one line («جديد» / «راجع», the owner's
+   * «لسا مش مفصولة») cost +0.3 KB — 410.2 KB, 28 files, the same CI step (run 43245663332). The modals are still absent from the
+   * chunks; this guard exists for the 35 KB they weighed, not for a third of a kilobyte. The line moves by the same rule —
+   * measured, a little over, with the date and the cause beside it.
    */
-  const CEILING_KB = 410;
+  const CEILING_KB = 411;
 
   it(`keeps /confirmation/mine at or under ${CEILING_KB} KB of JS, gzipped`, () => {
     if (!measurable()) return noBuild();

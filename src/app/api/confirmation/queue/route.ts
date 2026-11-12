@@ -10,7 +10,7 @@ import {
   ownedCounts,
   pullPermission,
   readReturnsMode,
-  waitingCount,
+  waitingBreakdown,
   reservedForColleaguesCount,
   postponedNotDueCount,
   POSTPONE_LEAD_DAYS,
@@ -57,9 +57,11 @@ export async function GET() {
       }),
     });
     const hand = returns ? RETURNS_MODE.handLimit : undefined;
-    const [waiting, counts, waitingOnADate, heldForColleagues] = await Promise.all([
+    const [pool, counts, waitingOnADate, heldForColleagues] = await Promise.all([
       // For an agent: what SHE may take (hers first, never a colleague's). For a supervisor: the whole pool, as before.
-      waitingCount(db, scope, now, mayPull ? user.id : undefined, returns),
+      // Said in PARTS (the owner, 12/11: «طلب جديد وخانة تانية طلب الراجع») — the big number is their sum, so it cannot disagree with
+      // them; and they are asked over the very predicates the pull picks from (`waitingBreakdown`), so neither can it with the button.
+      waitingBreakdown(db, scope, now, mayPull ? user.id : undefined, returns),
       // In her hands AND held for her (RV706): the cap counts both, and the screen shows both.
       ownedCounts(db, scope, user.id, now),
       // Real work, none of it takeable today. Said out loud rather than
@@ -97,7 +99,12 @@ export async function GET() {
       : null;
 
     return NextResponse.json({
-      waiting,
+      // What the pull can hand out: never rung + rung before and back + a promise whose date came. The three follow, so the screen
+      // can say them apart under the one figure — still ONE button, and the order it gives is unchanged.
+      waiting: pool.fresh + pool.returned + pool.due,
+      waitingNew: pool.fresh,
+      waitingReturned: pool.returned,
+      waitingDue: pool.due,
       waitingOnADate,
       reservedForColleagues: heldForColleagues,
       owned: counts,

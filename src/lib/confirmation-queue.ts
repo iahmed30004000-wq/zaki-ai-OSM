@@ -1269,6 +1269,49 @@ export async function waitingCount(tx: Tx, scope: QueueScope, now = new Date(), 
 }
 
 /**
+ * THE SAME NUMBER, SAID IN PARTS (the owner, 12/11: «لسا مش مفصولة», over a screenshot of «422 طلب جاهز للسحب الآن» — one figure
+ * above one button — after his question the day before: «طلب جديد وخانة تانية طلب الراجع … زر اسحب واحد»).
+ *
+ * The big number mixes three things an agent treats differently:
+ *
+ *   · `fresh`    — an order NOBODY HAS RUNG. The urgent one: the pull hands it out first (after what is held for her).
+ *   · `returned` — an order that WAS rung and is back in the pool: a «لا يرد» whose wait is over, a released order that carries
+ *                  attempts. The backlog — patient work.
+ *   · `due`      — a postponed order whose date has come.
+ *
+ * They are told apart by the one question the pull itself asks to find the first of them (`pickNextCandidate`:
+ * `contactAttempts: { none: {} }`), over the SAME two predicates the counter and the pick read — so the three parts add up to
+ * `waitingCount` and to what the pull can hand out, and cannot disagree with either. `ready` is cut into `none` and `some`, which are
+ * complements: nothing falls between them and nothing is counted twice.
+ *
+ * NOT a second rule. Nothing here decides who may pull what, and the order the pull gives is untouched — it is still ONE button.
+ */
+export interface WaitingBreakdown {
+  /** Never rung: no contact attempt on it at all. */
+  fresh: number;
+  /** Rung before, and ready to be pulled again. */
+  returned: number;
+  /** A postponed order whose date has arrived. */
+  due: number;
+}
+
+export async function waitingBreakdown(
+  tx: Tx,
+  scope: QueueScope,
+  now = new Date(),
+  forUserId?: string,
+  returns?: ReturnsMode | null
+): Promise<WaitingBreakdown> {
+  const ready = readyToPullWhere(scope, forUserId, now, returns);
+  const [due, fresh, returned] = await Promise.all([
+    tx.order.count({ where: duePostponedWhere(scope, now, returns) }),
+    tx.order.count({ where: { ...ready, contactAttempts: { none: {} } } }),
+    tx.order.count({ where: { ...ready, contactAttempts: { some: {} } } }),
+  ]);
+  return { fresh, returned, due };
+}
+
+/**
  * THE ORDERS SHE CAN SEE AND CANNOT TAKE: held for a colleague who worked the customer last.
  *
  * Said apart from the number that promises a pull — «بانتظارك» counts what she may take, and this counts what is in the
