@@ -21,7 +21,7 @@ const { db, requireContext, can, reserve, queue } = vi.hoisted(() => ({
   reserve: vi.fn(),
   queue: {
     releaseStaleClaims: vi.fn(),
-    waitingCount: vi.fn(),
+    waitingBreakdown: vi.fn(),
     ownedCounts: vi.fn(),
     postponedNotDueCount: vi.fn(),
     reservedForColleaguesCount: vi.fn(),
@@ -35,7 +35,7 @@ vi.mock('@/lib/reserve-returning-customers', () => ({ reserveReturningCustomers:
 vi.mock('@/lib/confirmation-queue', async (orig) => ({
   ...(await orig<typeof import('@/lib/confirmation-queue')>()),
   releaseStaleClaims: (...a: unknown[]) => queue.releaseStaleClaims(...a),
-  waitingCount: (...a: unknown[]) => queue.waitingCount(...a),
+  waitingBreakdown: (...a: unknown[]) => queue.waitingBreakdown(...a),
   ownedCounts: (...a: unknown[]) => queue.ownedCounts(...a),
   postponedNotDueCount: (...a: unknown[]) => queue.postponedNotDueCount(...a),
   reservedForColleaguesCount: (...a: unknown[]) => queue.reservedForColleaguesCount(...a),
@@ -60,7 +60,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   reserve.mockResolvedValue(0);
   queue.releaseStaleClaims.mockResolvedValue(0);
-  queue.waitingCount.mockResolvedValue(4);
+  queue.waitingBreakdown.mockResolvedValue({ fresh: 1, returned: 2, due: 1 });
   queue.ownedCounts.mockResolvedValue({ total: 0, withoutAttempt: 0, untouched: null });
   queue.postponedNotDueCount.mockResolvedValue(0);
   queue.reservedForColleaguesCount.mockResolvedValue(3);
@@ -72,7 +72,7 @@ describe('an agent reading the queue', () => {
     as('huda', ['confirmation.pull']);
     const body = await (await GET()).json();
 
-    expect(queue.waitingCount.mock.calls[0][3]).toBe('huda');
+    expect(queue.waitingBreakdown.mock.calls[0][3]).toBe('huda');
     expect(queue.reservedForColleaguesCount.mock.calls[0][2]).toBe('huda');
     expect(body.waiting).toBe(4);
     expect(body.reservedForColleagues).toBe(3);
@@ -93,7 +93,7 @@ describe('a supervisor reading the queue', () => {
 
     const body = await (await GET()).json();
 
-    expect(queue.waitingCount.mock.calls[0][3]).toBeUndefined();
+    expect(queue.waitingBreakdown.mock.calls[0][3]).toBeUndefined();
     expect(queue.reservedForColleaguesCount).not.toHaveBeenCalled();
     expect(body.reservedForColleagues).toBe(0);
     expect(body.orders.map((o: { id: string; reservedFor: unknown }) => [o.id, o.reservedFor])).toEqual([

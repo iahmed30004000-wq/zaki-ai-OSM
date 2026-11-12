@@ -26,6 +26,14 @@ import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 
 export interface QueueResponse {
   waiting: number;
+  /**
+   * THE BIG NUMBER, IN PARTS (the owner, 12/11: «لسا مش مفصولة» — «طلب جديد وخانة تانية طلب الراجع»). They add up to `waiting`:
+   * never rung · rung before and back in the pool · a postponed order whose date has come. Optional on purpose: an answer from a
+   * server that does not send them yet (a tab left open over a deploy) draws the one figure alone, as it always did.
+   */
+  waitingNew?: number;
+  waitingReturned?: number;
+  waitingDue?: number;
   /** `heldForHer`: held for her and not yet pulled — counted in the cap with what is in her hands (RV706). */
   owned: { total: number; withoutAttempt: number; heldForHer?: number };
   caps: { withoutAttempt: number; total: number };
@@ -269,6 +277,41 @@ export function PullPanel({
   );
 
   /*
+    THE BIG NUMBER, SAID IN PARTS — «طلب جديد وخانة تانية طلب الراجع» (the owner, 12/11).
+
+    One figure over one button hid the one thing that tells urgent work from patient work: 422 could be three orders nobody has
+    rung or four hundred that were rung and came back. The pull's ORDER is not touched (still one button, the new ones first — his
+    ruling of 7/11); only the figure is cut, in the server's own parts, which add up to it. Drawn only when the server sent them,
+    and only when there is something to pull: three zeroes over a greyed button say nothing.
+  */
+  const hasParts = data.waitingNew !== undefined && data.waitingReturned !== undefined;
+  const showParts = hasParts && data.waiting > 0;
+  const due = data.waitingDue ?? 0;
+  const parts = showParts && (
+    <div
+      role="group"
+      aria-label="تفصيل الطلبات الجاهزة للسحب"
+      className={`${compact ? 'mt-3' : 'mt-4'} grid gap-3 text-center ${due > 0 ? 'grid-cols-3' : 'grid-cols-2'}`}
+    >
+      <Part strong label="جديد" hint="ما حدا اتصل فيه" value={data.waitingNew ?? 0} />
+      <Part label="راجع" hint="اتّصلوا فيه ورجع للطابور" value={data.waitingReturned ?? 0} />
+      {due > 0 && <Part label="مؤجَّل حان موعده" hint="موعده وصل" value={due} />}
+    </div>
+  );
+  /** The slim bar sits above the first order on every visit: the same parts, as ONE line instead of three tiles. */
+  const partsLine = showParts && (
+    <p role="group" aria-label="تفصيل الطلبات الجاهزة للسحب" className="mt-3 text-xs text-[var(--sys-muted-foreground)]">
+      منها <b className="text-[var(--sys-heading)] tabular-nums">{data.waitingNew ?? 0}</b> جديد ·{' '}
+      <b className="text-[var(--sys-heading)] tabular-nums">{data.waitingReturned ?? 0}</b> راجع
+      {due > 0 && (
+        <>
+          {' '}· <b className="text-[var(--sys-heading)] tabular-nums">{due}</b> مؤجَّل حان موعده
+        </>
+      )}
+    </p>
+  );
+
+  /*
     WAITING ON A DATE IS NOT WAITING FOR YOU.
 
     The big number used to include postponed orders whose day has not
@@ -313,6 +356,7 @@ export function PullPanel({
           </div>
           <div className="ms-auto">{button}</div>
         </div>
+        {partsLine}
         {onADate}
         {heldForColleagues}
         {sentence}
@@ -350,12 +394,30 @@ export function PullPanel({
       </div>
       <p className="mt-4 text-4xl font-bold text-[var(--sys-heading)] tabular-nums">{data.waiting}</p>
       <p className="mt-1 text-sm text-[var(--sys-muted-foreground)]">طلب جاهز للسحب الآن</p>
+      {parts}
       {onADate}
       {heldForColleagues}
       {button}
       {sentence}
       {caps}
       {rule}
+    </div>
+  );
+}
+
+/** One part of the big number. `strong` is the new orders: the urgent part, drawn in the primary colour so it is the first thing read. */
+function Part({ label, hint, value, strong = false }: { label: string; hint: string; value: number; strong?: boolean }) {
+  return (
+    <div
+      className={`p-3 rounded-lg border ${
+        strong
+          ? 'border-[var(--sys-primary)] bg-[var(--sys-primary-soft)]'
+          : 'border-[var(--sys-border)] bg-[var(--sys-surface)]'
+      }`}
+    >
+      <p className="text-xs font-semibold text-[var(--sys-muted-foreground)]">{label}</p>
+      <p className="mt-1 text-2xl font-bold text-[var(--sys-heading)] tabular-nums leading-none">{value}</p>
+      <p className="mt-1 text-xs text-[var(--sys-muted)]">{hint}</p>
     </div>
   );
 }

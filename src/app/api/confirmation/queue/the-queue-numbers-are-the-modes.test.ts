@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * DEFINITION OF DONE — THE QUEUE’S NUMBERS ARE THE MODE’S WHEN IT IS ON (the owner, 9/11: «الطلب يرجع للطابور فوراً»)
  *
  * `GET /api/confirmation/queue` is what the pull panel draws: «بانتظارك», «مؤجَّلة حتى موعدها», «بيدك 3 / 5» and the pull button’s
- * state. With the mode on the route hands the mode to the very counters the pull picks from (`waitingCount`, `postponedNotDueCount`
+ * state. With the mode on the route hands the mode to the very counters the pull picks from (`waitingBreakdown`, `postponedNotDueCount`
  * read `readyToPullWhere` / `duePostponedWhere`), so the number it shows is what the pull can hand out; the limit it reports is five,
  * and a hand at five cannot pull (`canPull`, with the owner’s sentence). With the mode OFF the route asks the counters exactly as it
  * always did and reports the cap of 500.
@@ -20,7 +20,7 @@ const { db, requireContext, can, queue, sw, rsw } = vi.hoisted(() => ({
   db: { order: { findMany: vi.fn() } },
   requireContext: vi.fn(),
   can: vi.fn(),
-  queue: { waitingCount: vi.fn(), ownedCounts: vi.fn(), postponedNotDueCount: vi.fn(), reservedForColleaguesCount: vi.fn() },
+  queue: { waitingBreakdown: vi.fn(), ownedCounts: vi.fn(), postponedNotDueCount: vi.fn(), reservedForColleaguesCount: vi.fn() },
   sw: { value: { enabled: false, enabledAt: null } as { enabled: boolean; enabledAt: Date | null } },
   rsw: { value: { enabled: false, enabledAt: null } as { enabled: boolean; enabledAt: Date | null } },
 }));
@@ -32,7 +32,7 @@ vi.mock('@/lib/no-answer-rounds-switch', () => ({ roundsSwitch: async () => sw.v
 vi.mock('@/lib/no-answer-returns-switch', () => ({ returnsSwitch: async () => rsw.value }));
 vi.mock('@/lib/confirmation-queue', async (orig) => ({
   ...(await orig<typeof import('@/lib/confirmation-queue')>()),
-  waitingCount: (...a: unknown[]) => queue.waitingCount(...a),
+  waitingBreakdown: (...a: unknown[]) => queue.waitingBreakdown(...a),
   ownedCounts: (...a: unknown[]) => queue.ownedCounts(...a),
   postponedNotDueCount: (...a: unknown[]) => queue.postponedNotDueCount(...a),
   reservedForColleaguesCount: (...a: unknown[]) => queue.reservedForColleaguesCount(...a),
@@ -55,7 +55,7 @@ beforeEach(() => {
   can.mockImplementation((_u: unknown, k: string) => k === 'confirmation.pull');
   sw.value = ON;
   rsw.value = ON;
-  queue.waitingCount.mockResolvedValue(4);
+  queue.waitingBreakdown.mockResolvedValue({ fresh: 1, returned: 2, due: 1 });
   queue.ownedCounts.mockResolvedValue(owned(0));
   queue.postponedNotDueCount.mockResolvedValue(2);
   queue.reservedForColleaguesCount.mockResolvedValue(0);
@@ -65,7 +65,7 @@ beforeEach(() => {
 describe('ON — the counters are asked the mode’s question', () => {
   it('the mode is handed to the waiting number and to the “waiting on a date” number, with the cut-offs of the store’s calendar', async () => {
     await GET();
-    const mode = queue.waitingCount.mock.calls[0][4];
+    const mode = queue.waitingBreakdown.mock.calls[0][4];
     expect(mode.readyCut.getTime()).toBe(t(2, 9).getTime()); // Monday noon looks back three working hours
     expect(mode.idleCut.getTime()).toBe(t(2, 11, 30).getTime());
     expect(queue.postponedNotDueCount.mock.calls[0].slice(2)).toEqual([expect.any(Date), mode]);
@@ -95,8 +95,8 @@ describe('ON — the counters are asked the mode’s question', () => {
   it('a supervisor (who pulls nothing) reads the whole pool, and the mode’s numbers too', async () => {
     can.mockImplementation((_u: unknown, k: string) => k === 'confirmation.supervise');
     await GET();
-    expect(queue.waitingCount.mock.calls[0][3]).toBeUndefined();
-    expect(queue.waitingCount.mock.calls[0][4]).toMatchObject({ readyCut: expect.any(Date) });
+    expect(queue.waitingBreakdown.mock.calls[0][3]).toBeUndefined();
+    expect(queue.waitingBreakdown.mock.calls[0][4]).toMatchObject({ readyCut: expect.any(Date) });
   });
 });
 
@@ -108,7 +108,7 @@ describe('OFF — the route asks the counters exactly as it always did', () => {
     set();
     queue.ownedCounts.mockResolvedValue(owned(5));
     const body = await (await GET()).json();
-    expect(queue.waitingCount.mock.calls[0][4]).toBeNull();
+    expect(queue.waitingBreakdown.mock.calls[0][4]).toBeNull();
     expect(queue.postponedNotDueCount.mock.calls[0]).toHaveLength(2);
     expect(body.caps).toEqual({ withoutAttempt: 40, total: 500 });
     // Five in her hands is nothing against 500.
