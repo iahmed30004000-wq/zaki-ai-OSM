@@ -476,7 +476,7 @@ describe('«المطابقة»', () => {
     apiJson.mockImplementation(async (url: string) =>
       String(url) === '/api/finance/statements' ? { statements: [s] } : { statement: { matches: [] } }
     );
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     return screen.findByRole('button', { name: 'تشغيل المطابقة' });
   };
 

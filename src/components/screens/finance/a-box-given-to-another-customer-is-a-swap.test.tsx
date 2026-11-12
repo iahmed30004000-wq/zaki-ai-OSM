@@ -100,7 +100,7 @@ afterEach(cleanup);
 
 const buttons = () => screen.queryAllByRole('button', { name: /كان من طرد طلب آخر/ });
 const open = async () => {
-  render(<MatchingScreen />);
+  render(<MatchingScreen queuesStartOpen />);
   await screen.findAllByText('فرق في المبلغ');
 };
 

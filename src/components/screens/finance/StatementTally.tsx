@@ -1,4 +1,5 @@
 import { Rows, type Column } from '@/components/ui/Rows';
+import { FoldCard } from '@/components/screens/finance/FoldCard';
 
 /**
  * «هاد الكشف فيه مرتجع، لما رفعته ما ظهر المرتجع ليش؟» — WHERE EACH KIND OF THE COMPANY'S LINES LANDED.
@@ -62,15 +63,17 @@ export function StatementTally({ matches }: { matches: TallyRow[] }) {
   const returned = landed.get('RETURNED');
 
   return (
-    <section aria-label="شو كتبت الشركة وين صار" className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-3 space-y-2">
-      <h2 className="text-sm font-medium text-[var(--sys-heading)]">شو كتبت الشركة، ووين صار كل نوع</h2>
-      <Rows rows={kinds} columns={COLUMNS} keyOf={(r) => r.key} />
-      {returned && returned.notOurs > 0 && (
-        <p className="text-xs text-[var(--sys-muted-foreground)]">
-          من {returned.total} سطر قالت الشركة إنو رجع: {returned.notOurs} ما عندنا طلب لها، فبتلاقيها في «في الكشف وليس عندنا»
-          {returned.excluded > 0 ? `، و${returned.excluded} مستبعدة` : ''}. قسم «مستبعدة» ما بيشيل إلا الراجع الصفري اللي إله طلب عندنا.
-        </p>
-      )}
+    <section aria-label="شو كتبت الشركة وين صار">
+      {/* Folded, closed (the owner, 12/11: «هدول يكونو مخفيات … أصلاً ما في زر إخفاء») — the count of each kind stays on the heading. */}
+      <FoldCard title="شو كتبت الشركة، ووين صار كل نوع" holds={kinds.map((k) => `${k.total} ${k.word}`).join(' · ')}>
+        <Rows rows={kinds} columns={COLUMNS} keyOf={(r) => r.key} />
+        {returned && returned.notOurs > 0 && (
+          <p className="text-xs text-[var(--sys-muted-foreground)]">
+            من {returned.total} سطر قالت الشركة إنو رجع: {returned.notOurs} ما عندنا طلب لها، فبتلاقيها في «في الكشف وليس عندنا»
+            {returned.excluded > 0 ? `، و${returned.excluded} مستبعدة` : ''}. قسم «مستبعدة» ما بيشيل إلا الراجع الصفري اللي إله طلب عندنا.
+          </p>
+        )}
+      </FoldCard>
     </section>
   );
 }

@@ -81,13 +81,13 @@ const loaded = () => screen.findAllByText('طلبات لم يذكرها أي ك�
 
 describe('the queues', () => {
   it('names the fourth «طلبات لم يذكرها أي كشف», and the old name is gone', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     expect((await loaded()).length).toBeGreaterThan(0);
     expect(screen.queryByText('مسلَّم عندنا وليس في الكشف')).toBeNull();
   });
 
   it('offers رقمنا / رقمهم once per row of «فرق في المبلغ» — the desk and the card — and nowhere else', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await loaded();
     // One mismatched row, drawn twice (table + card). Before: three queues carried it, six buttons.
     expect(screen.getAllByRole('button', { name: /رقمنا هو المعتمد/ })).toHaveLength(2);
@@ -95,7 +95,7 @@ describe('the queues', () => {
   });
 
   it('shows the company’s word and its whole row on a mismatch and on a line with no order', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await loaded();
     expect(screen.getAllByText(/«مؤجلة»/).length).toBeGreaterThan(0);
     expect(screen.getAllByText('BC2 | 15132 - العميل طلب التأجيل | | | | مؤجلة').length).toBeGreaterThan(0);
@@ -107,7 +107,7 @@ describe('the queues', () => {
   });
 
   it('and shows each unmentioned order’s own outcome word', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await loaded();
     expect(screen.getAllByText('تم التسليم — بانتظار التحصيل').length).toBeGreaterThan(0);
     expect(screen.getAllByText('تسليم جزئي — بانتظار المال أو المرجع').length).toBeGreaterThan(0);
@@ -116,7 +116,7 @@ describe('the queues', () => {
 
 describe('the three actions on an unmentioned order', () => {
   it('offers two of them to somebody who cannot correct a status, and all three to somebody who can', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await loaded();
     expect(screen.getAllByRole('button', { name: 'انتظر كشفاً لاحقاً' }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: 'طالِب الشركة به' }).length).toBeGreaterThan(0);
@@ -124,13 +124,13 @@ describe('the three actions on an unmentioned order', () => {
 
     cleanup();
     permissions.current = ['settlement.review', 'ops.track', 'orders.unlock'];
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await loaded();
     expect(screen.getAllByRole('button', { name: 'لم يُسلَّم — صحّح الحالة' }).length).toBeGreaterThan(0);
   });
 
   it('a press posts to the order-action door for THAT row, with the answer, and reloads the statement', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await loaded();
     const before = api.mock.calls.filter((c) => c[0] === '/api/finance/statements/s1').length;
     fireEvent.click(screen.getAllByRole('button', { name: 'طالِب الشركة به' })[0]);
@@ -144,7 +144,7 @@ describe('the three actions on an unmentioned order', () => {
   });
 
   it('what was last recorded stays on the row as a chip', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await loaded();
     // The fifth match carries a follow-up: the chip repeats the button's own words, beside the button.
     expect(screen.getAllByText('طالِب الشركة به').length).toBeGreaterThan(2);

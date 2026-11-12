@@ -172,7 +172,18 @@ function searchPartsOf(m: Match) {
   };
 }
 
-export function MatchingScreen() {
+/**
+ * ONE PRESS TO OPEN A QUEUE, NOT ONE PRESS TO CLOSE FIVE (the owner, 12/11: «هدول يكونو مخفيات لانو أول ما أفتح بيكونو معروضات» ·
+ * «الصفحة بتضل تنزل للمالانهاية وبيظهر أبيض»).
+ *
+ * Every queue that had a line in it opened itself, whole, the moment the statement loaded — and «طلبات لم يذكرها أي كشف» can hold
+ * hundreds (938 on the owner's statement) in a table that scrolls inside the page: the page seemed to have no bottom, and the
+ * browser painted white where it had not caught up. The queues start CLOSED now, each with its count and the number of lines still a
+ * question on its heading; the two summary cards above them fold the same way (`FoldCard`).
+ *
+ * `queuesStartOpen` is the old behaviour, kept for a caller that wants it (the tests of the queues' contents read rows at once).
+ */
+export function MatchingScreen({ queuesStartOpen = false }: { queuesStartOpen?: boolean } = {}) {
   const toast = useToast();
   const { currentUser } = useApp();
   const mayManual = userCan(currentUser, 'ops.track');
@@ -197,6 +208,7 @@ export function MatchingScreen() {
       setPinned(next);
       writePinned(next);
     },
+    startOpen: queuesStartOpen,
   });
 
   useEffect(() => {
@@ -437,6 +449,14 @@ export function MatchingScreen() {
   );
 }
 
+/**
+ * How many lines of a queue are drawn at a time. A queue can hold hundreds — «طلبات لم يذكرها أي كشف» held 938 on the owner's
+ * statement — and a table that long, inside a page, is the page that «بتضل تنزل للمالانهاية وبيظهر أبيض» (the owner, 12/11): the
+ * browser cannot paint it as fast as it is scrolled. The heading still counts ALL the lines, the search and the filters still look
+ * through ALL of them, and the gate counts all of them; only the DRAWING is paged.
+ */
+const PAGE_ROWS = 100;
+
 const TONE: Record<string, string> = {
   emerald: 'bg-[var(--sys-success-soft)] text-[var(--sys-success)] border-[var(--sys-success)]/40',
   rose: 'bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)] border-[var(--sys-destructive-border)]',
@@ -465,10 +485,13 @@ function Queue({
   onView,
   pinned,
   onPinned,
+  startOpen,
 }: {
   title: string;
   tone: string;
   rows: Match[];
+  /** Open itself when it has lines (the old behaviour). Absent — the screen's default — it starts closed, with its count on the heading. */
+  startOpen?: boolean;
   /** What this queue is narrowed to (search, kind, only-unanswered) — kept by the screen so it survives a reload of the rows. */
   view: QueueView;
   onView: (next: QueueView) => void;
@@ -504,7 +527,7 @@ function Queue({
   statementId?: string | null;
   onResolved?: () => void;
 }) {
-  const [open, setOpen] = useState(rows.length > 0 && tone !== 'emerald');
+  const [open, setOpen] = useState(!!startOpen && rows.length > 0 && tone !== 'emerald');
   // The lines of this queue still a question — by the same rule the approval counts (`statement-open-lines`).
   // Counted on ALL the rows: a search hides rows from view and never from the gate.
   const unanswered = resolvable || parkable ? countOpenLines(rows) : 0;
@@ -520,6 +543,13 @@ function Queue({
       ),
     [rows, view]
   );
+  // A PAGE AT A TIME (`PAGE_ROWS`). The page is kept per narrowing — a new search or filter starts again from the first page — and is
+  // READ from the view rather than reset in an effect: the screen reloads its rows after every answer, and a reset there would
+  // throw a person back to the top of a list she is working through.
+  const viewKey = `${view.kind}|${view.onlyOpen ? 1 : 0}|${view.query}`;
+  const [paged, setPaged] = useState<{ key: string; pages: number }>({ key: viewKey, pages: 1 });
+  const pages = paged.key === viewKey ? paged.pages : 1;
+  const drawn = shown.length > pages * PAGE_ROWS ? shown.slice(0, pages * PAGE_ROWS) : shown;
 
   const columns: Column<Match>[] = [
     {
@@ -815,6 +845,7 @@ function Queue({
     <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden">
       <button
         onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
         className="w-full flex items-center justify-between px-4 py-3 text-right"
       >
         <span className="flex items-center gap-2">
@@ -844,7 +875,7 @@ function Queue({
                 pin={onPhone ? undefined : { pinned, onChange: onPinned }}
               />
               <Rows
-                rows={shown}
+                rows={drawn}
                 pinHeader={pinned && !onPhone}
                 keyOf={(m) => m.id}
                 alert={(m) => num(m.difference) !== null && num(m.difference) !== 0}
@@ -857,6 +888,20 @@ function Queue({
                   )
                 }
               />
+              {drawn.length < shown.length && (
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--sys-border)] px-4 py-3">
+                  <span className="text-xs text-[var(--sys-muted-foreground)]">
+                    معروض {drawn.length} من {shown.length} سطر
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPaged({ key: viewKey, pages: pages + 1 })}
+                    className="min-h-11 md:min-h-0 inline-flex items-center rounded-lg border border-[var(--sys-border)] px-3 py-1.5 text-xs font-semibold text-[var(--sys-primary)] hover:border-[var(--sys-primary)]"
+                  >
+                    اعرض {Math.min(PAGE_ROWS, shown.length - drawn.length)} كمان
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>

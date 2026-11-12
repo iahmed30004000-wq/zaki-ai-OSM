@@ -902,7 +902,7 @@ describe('where it lives: the matching screen', () => {
 
   it('somebody who cannot follow a parcel sees the screen exactly as it was — no tabs, the statement picker', async () => {
     user.current = OFFICER;
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     expect(await screen.findByLabelText('الكشف')).toBeTruthy();
     expect(screen.queryByRole('tablist')).toBeNull();
     expect(screen.queryByText('يدوي — بلا كشف')).toBeNull();
@@ -910,7 +910,7 @@ describe('where it lives: the matching screen', () => {
   });
 
   it('somebody who can sees both halves named before any click, on the statement half', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     const tabs = await screen.findAllByRole('tab');
     expect(tabs.map((t) => t.textContent)).toEqual(['بكشف من الشركة', 'يدوي — بلا كشف']);
     expect(tabs[0].getAttribute('aria-selected')).toBe('true');
@@ -921,7 +921,7 @@ describe('where it lives: the matching screen', () => {
   });
 
   it('«يدوي — بلا كشف» swaps the statement picker for the manual panel, and back', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     fireEvent.click(await screen.findByRole('tab', { name: 'يدوي — بلا كشف' }));
     expect(await screen.findByLabelText('جهة الشحن')).toBeTruthy();
     expect(screen.queryByLabelText('الكشف')).toBeNull();
@@ -933,7 +933,7 @@ describe('where it lives: the matching screen', () => {
 
   it('`?mode=manual` — what the pointers carry — opens on the manual half', async () => {
     search.value = 'mode=manual';
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     expect(await screen.findByLabelText('جهة الشحن')).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'يدوي — بلا كشف' }).getAttribute('aria-selected')).toBe('true');
   });
@@ -941,7 +941,7 @@ describe('where it lives: the matching screen', () => {
   it('and `?mode=manual` for somebody who cannot follow a parcel changes nothing — the door would refuse them', async () => {
     search.value = 'mode=manual';
     user.current = OFFICER;
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     expect(await screen.findByLabelText('الكشف')).toBeTruthy();
     expect(gets()).toHaveLength(0);
   });

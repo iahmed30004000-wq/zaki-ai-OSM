@@ -89,7 +89,7 @@ afterEach(cleanup);
 
 describe('a statement still open', () => {
   it('the headings of the two queues say how many lines are still a question — and the answered row is not counted', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText('في الكشف وليس عندنا');
     // «فرق في المبلغ»: two rows, one answered → 1 open. «في الكشف وليس عندنا»: one row, open → 1.
     expect(screen.getAllByText('1 بلا بتّ')).toHaveLength(2);
@@ -97,12 +97,12 @@ describe('a statement still open', () => {
   });
 
   it('the statement’s own option in the list carries the number from the list', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     expect(await screen.findByRole('option', { name: /ST-1 — 3 مطابقة · 2 بلا بتّ/ })).toBeTruthy();
   });
 
   it('a line no order carries offers «قيد المراجعة» with a reason, and NO figure to choose', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText('في الكشف وليس عندنا');
     // The difference row offers the two figures (for «dif») — the stray line must offer only the park.
     const strayRow = screen.getAllByText('BC-77')[0].closest('tr') as HTMLElement;
@@ -112,7 +112,7 @@ describe('a statement still open', () => {
   });
 
   it('parking it asks for the reason first, and then posts «قيد المراجعة» to the door with it', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText('في الكشف وليس عندنا');
     const strayRow = screen.getAllByText('BC-77')[0].closest('tr') as HTMLElement;
 
@@ -162,7 +162,7 @@ describe('the money in, the matching open', () => {
   });
 
   it('the matching screen still takes answers — and says the money is in and where the close is', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText('في الكشف وليس عندنا');
     expect(screen.getByText(/المصاري دخلت المحفظة باعتماد الكشف/)).toBeTruthy();
     expect(screen.queryByText(CLOSED, { exact: false })).toBeNull();
@@ -177,7 +177,7 @@ describe('a statement approved', () => {
   });
 
   it('the screen says it is closed for good and where the correction goes; no counter, no decision, no link, no new matching', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText('في الكشف وليس عندنا');
     expect(screen.getAllByText(CLOSED, { exact: false }).length).toBeGreaterThan(0);
     expect(screen.queryByText(/بلا بتّ/)).toBeNull();
@@ -190,7 +190,7 @@ describe('a statement approved', () => {
   });
 
   it('the rows nobody answered carry the sentence in place of the form; an answered one still shows its answer, without «غيّر البتّ»', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText('في الكشف وليس عندنا');
     expect(screen.getAllByText(CLOSED).length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByText('رقمنا هو المعتمد').length).toBeGreaterThan(0);

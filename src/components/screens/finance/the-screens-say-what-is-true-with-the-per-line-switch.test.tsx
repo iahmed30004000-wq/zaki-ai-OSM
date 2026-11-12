@@ -96,7 +96,7 @@ const press = async () => (await screen.findAllByRole('button', { name: `${SETTL
 
 describe('the switch OFF — every sentence is the one it always was, to the letter', () => {
   it('the matching screen says the old note over the queues and the old hint of «مطابق»', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     expect(await screen.findByText(OLD_MONEY_IN)).toBeTruthy();
     await openTheMatchedQueue();
     expect(screen.getByText(OLD_MATCHED_HINT)).toBeTruthy();
@@ -116,7 +116,7 @@ describe('the switch ON — the sentences the server sends replace the ones that
   });
 
   it('the matching screen shows the server’s note over the queues and the server’s hint of «مطابق» — and not the old ones', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     expect(await screen.findByText(SETTLING_WORDS.moneyIn)).toBeTruthy();
     await openTheMatchedQueue();
     expect(screen.getByText(SETTLING_WORDS.matchedHint)).toBeTruthy();

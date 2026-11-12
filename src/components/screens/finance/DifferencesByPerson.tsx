@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { RiLoader4Line } from '@remixicon/react';
 import { apiJson } from '@/lib/api-client';
 import { Money } from '@/components/ui/Money';
+import { FoldCard } from '@/components/screens/finance/FoldCard';
 
 /**
  * WHOSE PARCELS ARRIVE SHORT.
@@ -70,11 +71,12 @@ export function DifferencesByPerson({ currency }: { currency: string }) {
   }
   if (!data || data.people.length === 0) return null;
 
+  // What is inside, said on the heading while the card is folded (the owner, 12/11): the sum of the people's rows below.
+  const differences = data.people.reduce((n, p) => n + p.differences, 0);
+  const open = data.people.reduce((n, p) => n + p.open, 0);
+
   return (
-    <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3 space-y-2">
-      <h4 className="text-xs font-black text-[var(--sys-heading)]">
-        الفروق حسب من أكّد الطلب
-      </h4>
+    <FoldCard title="الفروق حسب من أكّد الطلب" holds={`${differences} فرقاً · ${open} بانتظار البتّ`}>
       <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
         الفرقُ بين ما يقوله الطلب وما وصل — محسوبٌ على من أكّد الطلب، لأنّ المكالمة هي حيث يُعطى
         الخصم. والنسبةُ من الطلبات التي وصلت كشفاً، لا من كلّ طلباته.
@@ -108,6 +110,6 @@ export function DifferencesByPerson({ currency }: { currency: string }) {
           أحد.
         </p>
       )}
-    </div>
+    </FoldCard>
   );
 }

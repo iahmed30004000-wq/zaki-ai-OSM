@@ -88,7 +88,7 @@ const text = (e: Element) => e.textContent ?? '';
 
 describe('«المرتجع ما ظهر» — the tally says where each kind of the company’s lines landed', () => {
   it('counts the lines by what the COMPANY wrote, and where each kind went', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     const tally = await screen.findByRole('region', { name: 'شو كتبت الشركة وين صار' });
     const cells = (word: string) => {
       const row = Array.from(tally.querySelectorAll('tbody tr')).find((tr) => tr.querySelector('td')?.textContent === word)!;
@@ -101,7 +101,7 @@ describe('«المرتجع ما ظهر» — the tally says where each kind of t
   });
 
   it('says in a sentence that the returned lines no order carries are in «في الكشف وليس عندنا»', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     const tally = await screen.findByRole('region', { name: 'شو كتبت الشركة وين صار' });
     expect(text(tally)).toContain('من 4 سطر قالت الشركة إنو رجع: 3 ما عندنا طلب لها');
     expect(text(tally)).toContain('في الكشف وليس عندنا');
@@ -133,7 +133,7 @@ describe('«ليش مش حاط الطلب ولا السعر ولا أجرة ال
   };
 
   it('«في الكشف وليس عندنا» has no «الطلب» and no «المتوقَّع» and no «الفرق»: they would be a dash on every row', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText('في الكشف وليس عندنا');
     const headings = headingsOf('في الكشف وليس عندنا');
     expect(headings).toEqual(expect.arrayContaining(['باركود الشحنة', 'المحصَّل من الزبون', 'الصافي في الكشف', 'أجرة الشركة', 'سبب الشركة بكلامها']));
@@ -141,7 +141,7 @@ describe('«ليش مش حاط الطلب ولا السعر ولا أجرة ال
   });
 
   it('shows the company’s own collected, net and fee on the row — and its own order number under the barcode, said to be theirs', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText('في الكشف وليس عندنا');
     const tables = document.querySelectorAll('table');
     const missing = Array.from(tables).find((t) => text(t).includes('100000000001'))!;
@@ -154,7 +154,7 @@ describe('«ليش مش حاط الطلب ولا السعر ولا أجرة ال
   });
 
   it('a returned line that carries a return fee shows the fee and the negative net as the company wrote them', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText('في الكشف وليس عندنا');
     const missing = Array.from(document.querySelectorAll('table')).find((t) => text(t).includes('100000000005'))!;
     const row = Array.from(missing.querySelectorAll('tbody tr')).find((tr) => text(tr).includes('100000000005'))!;
@@ -163,7 +163,7 @@ describe('«ليش مش حاط الطلب ولا السعر ولا أجرة ال
   });
 
   it('«مستبعدة» keeps its order but takes the company’s figures and its reason, instead of dashes', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText('مستبعدة — مرتجع أو مؤجل');
     const headings = headingsOf('مستبعدة — مرتجع أو مؤجل');
     expect(headings).toEqual(expect.arrayContaining(['الطلب', 'المحصَّل من الزبون', 'الصافي في الكشف', 'أجرة الشركة', 'سبب الشركة بكلامها', 'طوبق عبر']));
@@ -172,7 +172,7 @@ describe('«ليش مش حاط الطلب ولا السعر ولا أجرة ال
   });
 
   it('the hint of «مستبعدة» says where the returned parcels with no order went', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     const hints = await screen.findAllByText(/الراجع اللي ما عندنا طلب له مش هون/);
     expect(hints.length).toBeGreaterThan(0);
   });
@@ -180,7 +180,7 @@ describe('«ليش مش حاط الطلب ولا السعر ولا أجرة ال
 
 describe('«طلبات لم يذكرها أي كشف» says what it is, and why it changes from statement to statement', () => {
   it('its hint says these are OUR orders, computed when the matching runs for the statement’s courier, store and period', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     // A queue with rows starts open, so its hint is already on the page.
     await screen.findAllByText('طلبات لم يذكرها أي كشف');
     const hint = await screen.findByText(/هاي طلباتنا نحنا، مش أسطر الكشف/);
@@ -192,7 +192,7 @@ describe('«طلبات لم يذكرها أي كشف» says what it is, and why 
 
 describe('«سبب الشركة» on the screen says four things', () => {
   it('the status, the phone, the governorate and the address — the dump of the rest of the row is gone from view', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText('في الكشف وليس عندنا');
     const missing = Array.from(document.querySelectorAll('table')).find((t) => text(t).includes('100000000001'))!;
     const row = Array.from(missing.querySelectorAll('tbody tr')).find((tr) => text(tr).includes('100000000001'))!;
