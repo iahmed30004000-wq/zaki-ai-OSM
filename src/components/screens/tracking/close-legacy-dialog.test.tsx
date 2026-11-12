@@ -257,6 +257,22 @@ describe('the press', () => {
     expect(screen.getByRole('alert').textContent).toContain('تغيّرت الأرقام');
   });
 
+  it('a refused press is a FAILED press on the button — never a success tick over the refusal', async () => {
+    api.mockImplementation(async (url: string, init?: { method?: string }) => {
+      if (init?.method === 'POST') throw Object.assign(new Error('تغيّرت الأرقام من لما فتحت النافذة — افتحها من جديد وراجعها قبل ما تقفل.'), { status: 409 });
+      return measureOf({ age: Number(new URL(url, 'http://x').searchParams.get('age')) as LegacyMeasure['age'] });
+    });
+    await open();
+    tick();
+    fireEvent.click(pressButton());
+    await screen.findByRole('alert');
+
+    const btn = document.querySelector('button.flex-1') as HTMLButtonElement;
+    await waitFor(() => expect(btn.getAttribute('aria-busy')).toBeNull());
+    // The button's own success mark is a tick drawn over its label; a refusal must leave neither the tick nor the spinner.
+    expect(btn.querySelector('svg'), 'a success tick over a refusal').toBeNull();
+  });
+
   it('cancel closes without a request', async () => {
     await open();
     fireEvent.click(screen.getByRole('button', { name: 'إلغاء' }));

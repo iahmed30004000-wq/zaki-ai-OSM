@@ -279,6 +279,8 @@ describe('the press — what it writes', () => {
       expect(a).toMatchObject({ companyId: 'c1', userId: 'u1', action: LEGACY_CLOSE_ACTION, newStatus: 'SETTLED' });
       expect(JSON.parse(a.metadata)).toMatchObject({ age: 14 });
     }
+    // The mark also records the state each order HAD — the rollback script reads it, and silently restores nothing without it.
+    expect(marks.map((a: { previousStatus: string }) => a.previousStatus).sort()).toEqual(['NOT_APPLICABLE', 'PENDING', 'PENDING_COLLECTION']);
 
     // THE AUDIT: one line for the press.
     expect(logAudit).toHaveBeenCalledTimes(1);
@@ -290,6 +292,24 @@ describe('the press — what it writes', () => {
       entityId: 's1',
       newData: { age: 14, closed: 3 },
     });
+  });
+
+  it('reads the statements BEFORE the claim and AGAIN after it — the second read is what sees a statement uploaded while the press waited for the rows', async () => {
+    db.order.findMany.mockResolvedValue([order({ merchantRef: 'SY-A' }), order({ merchantRef: 'SY-B' })]);
+    const { body: m } = await measure('14');
+
+    vi.clearAllMocks(); // a fresh call order for the press alone
+    const res = await press(m);
+    expect(res.status).toBe(200);
+
+    const claimedAt = Math.max(...db.order.updateMany.mock.invocationCallOrder);
+    const reads = db.statementLine.findMany.mock.invocationCallOrder;
+    expect(reads.length, 'one read before the claim and one after').toBeGreaterThanOrEqual(2);
+    expect(reads.some((n) => n < claimedAt), 'a read before the claim').toBe(true);
+    expect(reads.some((n) => n > claimedAt), 'a read AFTER the claim').toBe(true);
+    // And the log and the mark come only after both.
+    const logged = Math.min(...db.orderStatusLog.createMany.mock.invocationCallOrder);
+    expect(Math.max(...reads)).toBeLessThan(logged);
   });
 
   it('NEGATIVE: not one wallet movement, not one commission, no ledger line, no amount — nothing of the money', async () => {

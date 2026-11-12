@@ -13,9 +13,10 @@ import {
   type LegacyRead,
   type LegacyRow,
 } from './legacy-closeout';
-import { LEGACY_AGES, LEGACY_CLOSE_ACTION, LEGACY_MOST, readLegacyAge } from './legacy-closeout-words';
+import { LEGACY_AGES, LEGACY_CLOSE_ACTION, LEGACY_CLOSE_NOTE, LEGACY_MOST, readLegacyAge } from './legacy-closeout-words';
 import { SETTLEMENT_WITH_MONEY } from './written-off';
 import { canCollect } from './parcel-tracking/priority';
+import { describeAction } from './audit-view';
 
 /**
  * «أقفل القديمة بلا باركود» (12/11) — THE RULES, WITHOUT A DATABASE.
@@ -289,5 +290,50 @@ describe('«بدون ما تأثر على المالية» — the press has no 
   it('the mark the commission rule reads is the very one the press writes', () => {
     expect(LEGACY_CLOSE_ACTION).toBe('LEGACY_CLOSED_NO_MONEY');
     expect(sources['src/lib/legacy-closeout.ts']).toContain('action: LEGACY_CLOSE_ACTION');
+  });
+
+  it('the press reads the statements again AFTER the claim — the second read sits below the claim loop in the source', () => {
+    const src = sources['src/lib/legacy-closeout.ts'];
+    const claim = src.indexOf('tx.order.updateMany(');
+    const late = src.indexOf('const late = await readNamed(');
+    expect(claim).toBeGreaterThan(-1);
+    expect(late, 'the re-read is gone').toBeGreaterThan(claim);
+    // ...and the log and the mark are written only after it.
+    expect(src.indexOf('tx.orderStatusLog.createMany(')).toBeGreaterThan(late);
+    expect(src.indexOf('tx.orderActivity.createMany(')).toBeGreaterThan(late);
+  });
+});
+
+describe('the commission readers use the ONE definition of «payable now» — none restates it', () => {
+  const root = process.cwd();
+  it.each(['src/app/api/finance/commission/route.ts', 'src/lib/commission-payout.ts'])(
+    '%s reads PROMOTABLE_BY_PAYOUT and never spells «settlementStatus: SETTLED» itself (a restated copy would forget the mark)',
+    (file) => {
+      const src = stripComments(readFileSync(join(root, file), 'utf8'));
+      expect(src).toContain('PROMOTABLE_BY_PAYOUT');
+      expect(src).not.toMatch(/settlementStatus:\s*'SETTLED'/);
+    }
+  );
+});
+
+describe('every word the owner can see for the press is Arabic', () => {
+  const root = process.cwd();
+  const arabicOnly = (s: string) => /[؀-ۿ]/.test(s) && !/[A-Za-z]/.test(s);
+
+  it('the audit screen names the press in Arabic, not by its code', () => {
+    const said = describeAction(LEGACY_CLOSE_ACTION, 'Store');
+    expect(said).not.toBe(LEGACY_CLOSE_ACTION);
+    expect(arabicOnly(said), said).toBe(true);
+  });
+
+  it('the order timeline names the mark in Arabic — otherwise every closed order shows an English line', () => {
+    const src = readFileSync(join(root, 'src/lib/order-timeline.ts'), 'utf8');
+    const word = /LEGACY_CLOSED_NO_MONEY: '([^']+)'/.exec(src)?.[1];
+    expect(word, 'ACTIVITY_AR has no word for the mark').toBeTruthy();
+    expect(arabicOnly(word as string), word).toBe(true);
+  });
+
+  it('the sentence on every settlement-log line is Arabic', () => {
+    expect(arabicOnly(LEGACY_CLOSE_NOTE)).toBe(true);
   });
 });

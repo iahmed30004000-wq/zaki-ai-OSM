@@ -205,6 +205,9 @@ const ACTIVITY_AR: Record<string, string> = {
   // «فرق تحصيل»: the company paid less than expected and the approval accepted its figure.
   SHORTFALL_PROPOSED: 'دفعت الشركة أقل من المتوقَّع — فرق تحصيل بانتظار قرار المالك أو المحاسب',
   SHORTFALL_ON_COMPANY: 'دفعت الشركة أقل من المتوقَّع — الفرق على الشركة',
+  // «أقفل القديمة بلا باركود» (12/11): the mark the owner's press leaves on each order it closed. The settlement log line beside it says
+  // from what to what; this says what KIND of close it was — and that no money moved, so a reader never wonders where the wallet line is.
+  LEGACY_CLOSED_NO_MONEY: 'اتقفل كمحصَّل — طلب قديم قبل التسوية، بلا حركة مال',
   // «طلبات لم يذكرها أي كشف»: what a person decided about it, on the order itself.
   ...NOT_MENTIONED_ACTIVITY_AR,
 };

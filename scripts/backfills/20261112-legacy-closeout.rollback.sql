@@ -12,6 +12,10 @@
 --
 -- WHAT IT DOES NOT TOUCH: no wallet movement, no commission entry, no stock, no amount. The press wrote none, so there is none to undo.
 -- Safe to run twice: a second run finds no order that still carries the mark under the old name.
+-- IT IS GLOBAL: it puts back every order that ANY press closed, in EVERY store — there is no id per press. To undo only some, narrow the
+-- three statements the same way (a store through the order, or the mark's own "createdAt").
+-- ONE SCRIPT, ONE TRANSACTION: `prisma db execute` sends the whole file as one multi-statement query, which PostgreSQL runs as one implicit
+-- transaction — the three steps land together or not at all. (Run through `psql -f` instead, wrap the three in BEGIN … COMMIT yourself.)
 --
 -- HOW MANY ORDERS IT WILL PUT BACK (read-only; run it first):
 --   SELECT count(*) AS will_be_put_back

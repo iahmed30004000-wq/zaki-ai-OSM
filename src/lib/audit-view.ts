@@ -53,7 +53,7 @@ const ACTION_AR: Record<string, string> = {
   ORDER_UPDATED: 'تعديل طلب', ORDER_UPDATED_BY_CHANGE_REQUEST: 'تعديل طلب بموجب طلب تعديل', ORDER_UPDATED_IN_BATCH: 'تعديل طلب قبل إغلاق الشحنة', ORDER_CONFIRMED: 'تأكيد طلب',
   ORDER_REJECTED: 'رفض طلب', ORDER_STATUS_CHANGED: 'تغيير حالة طلب', ORDER_CLAIMED: 'سحب طلب', ORDER_RELEASED: 'إرجاع طلب للطابور',
   ORDER_TRANSFERRED: 'نقل طلب لموظف آخر', ORDER_LOCKED: 'قفل طلب', ORDER_UNLOCKED: 'فتح قفل طلب', ORDER_ISSUE_RAISED: 'رفع إشكال على طلب',
-  ORDER_ISSUE_CORRECTED: 'تصحيح إشكال طلب', ORDER_VOIDED_AFTER_ISSUE: 'إبطال طلب بعد إشكال', ORDER_WRITTEN_OFF: 'شطب طلب',
+  ORDER_ISSUE_CORRECTED: 'تصحيح إشكال طلب', ORDER_VOIDED_AFTER_ISSUE: 'إبطال طلب بعد إشكال', ORDER_WRITTEN_OFF: 'شطب طلب', LEGACY_CLOSED_NO_MONEY: 'قفل طلبات قديمة بلا باركود كمحصَّلة (بلا حركة مال)',
   ORDERS_EXPORTED: 'تصدير طلبات', SHIPPING_STATUS_CHANGED: 'تغيير حالة الشحن', SHIPPING_INFO_UPDATED: 'تعديل معلومات الشحن', DELIVERY_FEE_CHANGED: 'تغيير أجرة التوصيل',
   SHIPPING_BATCH_OUT_FOR_DELIVERY: 'خروج دفعة شحن للتوصيل',
   COURIER_SEND_CLEARED: 'فكّ إرسال عالق للشركة', SHIPMENT_CANCEL_COURIER_TOLD: 'إبلاغ الشركة بإلغاء طرد', PARCEL_ATTESTED_IN_HAND: 'تأكيد أن الطرد بين يدي المستودع', SHIP_HOLD_SET: 'إيقاف شحن طلب', SHIP_HOLD_RELEASED: 'رفع إيقاف شحن طلب', RETURN_RECEIVED: 'استلام مرتجع', RETURNS_RECEIVED_ALL: 'استلام كل المرتجعات دفعة واحدة', LABELS_PRINTED: 'طباعة بوالص',
