@@ -331,7 +331,7 @@ model User {
   callHelperDevices             CallHelperDevice[]
   callHelperPairCodes           CallHelperPairCode[]
   callHelperReadings            CallHelperReading[]
-  /// The devices signed in to this account right now — at most two (the owner's ruling 4/11, src/lib/sign-in.ts).
+  /// The devices signed in to this account right now — at most two, five for the owner's own account (the owner's rulings 4/11 and 12/11, src/lib/sign-in.ts).
   sessions                      UserSession[]
   company                       Company?                @relation(fields: [companyId], references: [id], onDelete: Cascade)
   enteredOrders                 Order[]                 @relation("OrderCreator")

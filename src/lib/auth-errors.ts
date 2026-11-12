@@ -11,10 +11,14 @@
  */
 
 /**
- * What the device that was ended reads on /login (the owner's ruling 4/11: two devices; a third ends the oldest). One
- * sentence, here, because three places say it: the login page, the API's 401 body, and nowhere else may invent its own.
+ * What the device that was ended reads on /login (the owner's ruling 4/11: two devices, and a third ends the oldest; since
+ * 12/11 five for the owner's own account — `devicesAllowed` in `sign-in.ts`). One sentence, here, because three places say
+ * it: the login page, the API's 401 body, and nowhere else may invent its own.
+ *
+ * IT NAMES NO NUMBER. The device that reads it is signed out, so nothing says whose account it was: an agent's two and the
+ * owner's five both end on this line, and «two devices … a third» was a false sentence for the second.
  */
-export const SESSION_REPLACED_AR = 'انفتح حسابك على جهازين غير هاد — دخلتِ من جهاز تالت فطلع الأقدم';
+export const SESSION_REPLACED_AR = 'انفتح حسابك على جهاز جديد وانتهى عدد الأجهزة المسموح — فطلع الأقدم، وهاد كان هو';
 
 /** The session could not be checked because the database (or its pool) did not answer. NOT «signed out». */
 export class AuthBackendDown extends Error {
@@ -30,7 +34,8 @@ export class AuthBackendDown extends Error {
  * Nobody is signed in on this cookie — with the reason when there is one worth telling her. `message` stays
  * 'Unauthorized' on purpose: every route, test and mapper that already reads that word keeps reading it.
  *
- *   SESSION_REPLACED — this device was the oldest of three and a newer sign-in ended it (the owner's ruling 4/11).
+ *   SESSION_REPLACED — this device was the oldest past the account's limit and a newer sign-in ended it (the owner's ruling
+ *   4/11: two devices; five for his own account since 12/11).
  */
 export class SessionEnded extends Error {
   constructor(readonly code?: 'SESSION_REPLACED') {

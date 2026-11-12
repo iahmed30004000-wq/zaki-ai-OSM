@@ -29,6 +29,28 @@ import { longestSessionDays } from './session-length';
 export const DEVICES_PER_ACCOUNT = 2;
 
 /**
+ * THE OWNER'S OWN ACCOUNT HOLDS FIVE (the owner, 12/11: «بدي ال OMS للمالك فقط لغاية 5 جلسات لانو بفتحو من 5 أجهزة»).
+ *
+ * He opens the system from five devices, and the two-device rule of 4/11 signed the oldest of them out every time he
+ * reached for another one. The rule stays at two for everybody else — it exists so that a confirmation agent's password
+ * is never on a third phone — and his word was «للمالك فقط». So the number belongs to the ROLE and is asked in one place,
+ * `devicesAllowed` below. `SUPER_ADMIN` is the owner's account: the one role whose access is full, centralized in
+ * `permissions-core.ts`. A person who merely holds many keys — a company admin with every box ticked — is not the owner
+ * and keeps two.
+ */
+export const OWNER_DEVICES = 5;
+
+/**
+ * HOW MANY DEVICES THIS ACCOUNT MAY HOLD AT ONCE — read at the sign-in, from the role the database has NOW.
+ *
+ * Pure, and strict by default: anything that is not exactly `SUPER_ADMIN` (a typo, a lower-case copy, a role that does not
+ * exist yet) gets the ordinary two, never the owner's five.
+ */
+export function devicesAllowed(role: string): number {
+  return role === 'SUPER_ADMIN' ? OWNER_DEVICES : DEVICES_PER_ACCOUNT;
+}
+
+/**
  * A session row unused for longer than the longest cookie can no longer be presented by any device: it is stamped STALE at
  * the next sign-in and never counted as one of the two.
  *
@@ -132,9 +154,15 @@ export async function issueSession(input: {
    * `tokenVersion` is NOT touched here any more. It stays the «sign out everywhere» lever — force-logout, suspension,
    * password reset, 2FA reset, changing your own password — and the token carries its current value so that lever
    * still reaches this cookie too.
+   *
+   * FIVE FOR THE OWNER'S ACCOUNT, TWO FOR EVERY OTHER (12/11) — `devicesAllowed(user.role)`, the role as the caller just
+   * read it from the database. A role changes the number at the NEXT sign-in, and the cut below ends every surplus row,
+   * not just one: an ex-owner who still holds five live rows signs in as an ordinary account and keeps this one and the
+   * newest one before it.
    */
   const now = new Date();
   const userAgent = await requestUserAgent();
+  const allowed = devicesAllowed(user.role);
   const { refreshed, sid, replaced } = await db.$transaction(async (tx) => {
     const refreshed = await tx.user.update({
       where: { id: user.id },
@@ -165,10 +193,10 @@ export async function issueSession(input: {
     const staleBefore = now.getTime() - staleAfterMs();
     const stale = others.filter((row) => new Date(row.lastSeenAt).getTime() < staleBefore).map((row) => row.id);
     // This sign-in is kept whatever the clock says of it; of the others still alive, the most recently used
-    // DEVICES_PER_ACCOUNT - 1.
+    // `allowed - 1`.
     const surplus = others
       .filter((row) => !stale.includes(row.id))
-      .slice(DEVICES_PER_ACCOUNT - 1)
+      .slice(allowed - 1)
       .map((row) => row.id);
     if (stale.length > 0) {
       await tx.userSession.updateMany({

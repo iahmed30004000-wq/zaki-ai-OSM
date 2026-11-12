@@ -115,10 +115,12 @@ vi.mock('./authorization', () => ({ attachGrants: () => undefined, requirePermis
 vi.mock('./audit', () => ({ logAudit: vi.fn() }));
 vi.mock('./attendance', () => ({ markLogin: vi.fn() }));
 
-import { issueSession } from './sign-in';
+import { DEVICES_PER_ACCOUNT, devicesAllowed, issueSession, OWNER_DEVICES } from './sign-in';
 import { COOKIE_NAME, createSessionToken, getCurrentUser, getSessionVerdict, requireAuth, SEEN_EVERY_MS } from './auth';
 import { AuthBackendDown, SESSION_REPLACED_AR, SessionEnded } from './auth-errors';
 import { apiError } from './api-error';
+import { logAudit } from './audit';
+import { ROLE_PERMISSIONS } from '@/types/auth';
 
 const T0 = new Date('2026-11-04T09:00:00Z').getTime();
 
@@ -144,6 +146,8 @@ beforeEach(() => {
   rows.length = 0;
   jar.clear();
   user.tokenVersion = 3;
+  // An ordinary account unless a test says otherwise: the owner's five (12/11) must be asked for, never inherited.
+  user.role = 'MODERATOR';
   vi.clearAllMocks();
 });
 
@@ -278,6 +282,132 @@ describe('ruling 4/11: two devices per account', () => {
     const { status, body } = apiError(await requireAuth().catch((e) => e));
     expect(status).toBe(401);
     expect(body.code).toBeUndefined();
+  });
+});
+
+/**
+ * THE OWNER'S OWN ACCOUNT HOLDS FIVE — 12/11: «بدي ال OMS للمالك فقط لغاية 5 جلسات لانو بفتحو من 5 أجهزة».
+ *
+ * The same sign-in, the same session table, the same ranking; only the number differs, and only for the owner's role. The
+ * negative half is the point of «للمالك فقط»: every other role is asked here too, by name, from the role table itself, so a
+ * role added next year is held to two without anybody remembering to write a test for it.
+ */
+describe('ruling 12/11: five devices for the owner’s own account, two for everybody else', () => {
+  /** Signs in `n` devices in a row and returns their cookies, oldest first. */
+  async function devices(n: number): Promise<string[]> {
+    const cookies: string[] = [];
+    for (let i = 0; i < n; i++) cookies.push(await signIn());
+    return cookies;
+  }
+
+  it('the owner: five sign-ins stay open together — the fifth device no longer ends the first', async () => {
+    user.role = 'SUPER_ADMIN';
+    const five = await devices(5);
+    for (const [i, cookie] of five.entries()) {
+      expect((await on(cookie)).user?.id, `الجهاز ${i + 1} طلع والحد 5`).toBe('u1');
+    }
+    expect(rows.filter((r) => !r.revokedAt)).toHaveLength(5);
+    expect(rows.filter((r) => r.revokeReason), 'انعلّم صف مع إنو ما وصلنا الحد').toHaveLength(0);
+  });
+
+  it('the owner: a sixth ends the OLDEST and only it — and that device is told why', async () => {
+    user.role = 'SUPER_ADMIN';
+    const six = await devices(6);
+    expect(await on(six[0])).toEqual({ user: null, reason: 'REPLACED' });
+    for (const cookie of six.slice(1)) expect((await on(cookie)).user?.id).toBe('u1');
+    expect(rows.filter((r) => r.revokedAt).map((r) => [r.id, r.revokeReason])).toEqual([[rows[0].id, 'REPLACED']]);
+    // The ended device reads the same sentence as an agent's, on the API too.
+    jar.set(COOKIE_NAME, six[0]);
+    const { status, body } = apiError(await requireAuth().catch((e) => e));
+    expect(status).toBe(401);
+    expect(body.code).toBe('SESSION_REPLACED');
+    expect(body.errorAr).toBe(SESSION_REPLACED_AR);
+  });
+
+  it('the owner: a seventh ends the next oldest — always five left', async () => {
+    user.role = 'SUPER_ADMIN';
+    await devices(7);
+    expect(rows.filter((r) => !r.revokedAt).map((r) => r.id)).toEqual(rows.slice(2).map((r) => r.id));
+  });
+
+  it('the owner: kept by use, not by birth — the device in use survives a sixth, the one nobody touched goes', async () => {
+    user.role = 'SUPER_ADMIN';
+    const five = await devices(5);
+    // The first device, the OLDEST by creation, is worked on ten minutes later (its last-seen moves up, as it does in use).
+    vi.setSystemTime(T0 + 10 * 60_000);
+    expect((await on(five[0])).user?.id).toBe('u1');
+    await Promise.resolve();
+    await Promise.resolve();
+    const sixth = await signIn();
+    expect((await on(five[0])).user?.id, 'الجهاز اللي عم تشتغل عليه طلع لأنو الأقدم بالميلاد').toBe('u1');
+    expect(await on(five[1]), 'الجهاز اللي ما حدا لمسو ما طلع').toEqual({ user: null, reason: 'REPLACED' });
+    expect((await on(sixth)).user?.id).toBe('u1');
+  });
+
+  it('the audit row says how many devices the sign-in ended: none up to five, one at the sixth', async () => {
+    user.role = 'SUPER_ADMIN';
+    await devices(5);
+    const replacedPerSignIn = () =>
+      (logAudit as unknown as { mock: { calls: [{ newData: { replaced: number } }][] } }).mock.calls.map(([a]) => a.newData.replaced);
+    expect(replacedPerSignIn()).toEqual([0, 0, 0, 0, 0]);
+    await signIn();
+    expect(replacedPerSignIn().at(-1)).toBe(1);
+  });
+
+  it('NEGATIVE: every role but SUPER_ADMIN still holds two — a third device ends the oldest, never a fifth', async () => {
+    const others = Object.keys(ROLE_PERMISSIONS).filter((role) => role !== 'SUPER_ADMIN');
+    // Not an empty loop by accident: the roles the owner named in his rulings are in the table being walked.
+    expect(others).toEqual(expect.arrayContaining(['COMPANY_ADMIN', 'MODERATOR', 'ACCOUNTANT', 'CONFIRMATION_AGENT']));
+    for (const role of others) {
+      rows.length = 0;
+      jar.clear();
+      user.role = role;
+      const [first, second, third] = await devices(3);
+      expect(await on(first), `${role}: الجهاز الأول ما طلع`).toEqual({ user: null, reason: 'REPLACED' });
+      expect((await on(second)).user?.id, `${role}: التاني طلع`).toBe('u1');
+      expect((await on(third)).user?.id, `${role}: التالت طلع`).toBe('u1');
+      expect(rows.filter((r) => !r.revokedAt), `${role}: لازم يضل جهازين بالضبط`).toHaveLength(DEVICES_PER_ACCOUNT);
+      // And the owner's number is out of reach: five sign-ins leave two, not five.
+      rows.length = 0;
+      jar.clear();
+      await devices(5);
+      expect(rows.filter((r) => !r.revokedAt), `${role}: أخد حد المالك`).toHaveLength(DEVICES_PER_ACCOUNT);
+    }
+  });
+
+  it('NEGATIVE: the number is the ROLE’s — an owner-like name, a lower-case copy or no role at all gets two', () => {
+    expect(devicesAllowed('SUPER_ADMIN')).toBe(OWNER_DEVICES);
+    expect(OWNER_DEVICES).toBe(5);
+    expect(DEVICES_PER_ACCOUNT, 'قاعدة الجهازين من 4/11 تغيّرت للكل').toBe(2);
+    for (const odd of ['super_admin', ' SUPER_ADMIN', 'SUPER_ADMIN ', 'SUPER', 'OWNER', 'ADMIN', 'COMPANY_ADMIN', '']) {
+      expect(devicesAllowed(odd), `«${odd}» أخد حد المالك`).toBe(DEVICES_PER_ACCOUNT);
+    }
+  });
+
+  it('a demoted ex-owner with five live devices signs in as an ordinary account: the newest of them and this one stay, the other four end', async () => {
+    user.role = 'SUPER_ADMIN';
+    const five = await devices(5);
+    user.role = 'COMPANY_ADMIN';
+    const sixth = await signIn();
+    expect(rows.filter((r) => !r.revokedAt)).toHaveLength(DEVICES_PER_ACCOUNT);
+    expect(rows.filter((r) => r.revokeReason === 'REPLACED'), 'لازم تنتهي الأربعة كلها مش وحدة').toHaveLength(4);
+    expect((await on(five[4])).user?.id).toBe('u1');
+    expect((await on(sixth)).user?.id).toBe('u1');
+    for (const cookie of five.slice(0, 4)) expect(await on(cookie)).toEqual({ user: null, reason: 'REPLACED' });
+  });
+
+  it('an account made owner keeps what it had and gains room: two live devices plus this one are three, and nobody ends', async () => {
+    user.role = 'MODERATOR';
+    const [a, b] = await devices(2);
+    user.role = 'SUPER_ADMIN';
+    const c = await signIn();
+    expect(rows.filter((r) => !r.revokedAt)).toHaveLength(3);
+    expect(rows.filter((r) => r.revokeReason)).toHaveLength(0);
+    for (const cookie of [a, b, c]) expect((await on(cookie)).user?.id).toBe('u1');
+  });
+
+  it('the sentence an ended device reads names no number — it is true for the owner’s five and for an agent’s two', () => {
+    expect(SESSION_REPLACED_AR).not.toMatch(/جهازين|تالت|ثالث|خمس|\d|[٠-٩]/);
   });
 });
 

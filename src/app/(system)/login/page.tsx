@@ -84,7 +84,7 @@ export default function LoginPage() {
   // plainly is what stops somebody concluding the app signed them out at
   // random and asking for the whole measure to be removed.
   const [wasIdle, setWasIdle] = useState(false);
-  /** This device was the oldest of three and a newer sign-in ended it (the owner's ruling 4/11: two devices). */
+  /** This device was the oldest past the account's limit and a newer sign-in ended it (the owner's ruling 4/11: two devices; five for his own account). */
   const [wasReplaced, setWasReplaced] = useState(false);
   /**
    * The second step, for the roles whose password moves money.
