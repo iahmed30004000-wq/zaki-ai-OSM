@@ -327,7 +327,7 @@ describe('the matching screen offers a statement to match, not a draft', () => {
       statement({ id: 'd1', draft: true }),
       statement({ id: 'g1', draft: false, reference: 'كشف الأحد', counts: { lines: 2, receipts: 1, matches: 2 } }),
     ];
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     const picker = (await screen.findByLabelText('الكشف')) as HTMLSelectElement;
     await waitFor(() => expect([...picker.options].some((o) => o.textContent?.includes('كشف الأحد'))).toBe(true));
     expect([...picker.options].map((o) => o.textContent)).not.toContain('مسوّدة كشف يدوي — 0 مطابقة');

@@ -102,7 +102,7 @@ const type = (title: string, value: string) => fireEvent.change(box(title), { ta
 
 describe('the box narrows ONE queue by what a person has in hand', () => {
   it('a phone, typed the way a person writes it, finds the row whose phone the company wrote with a plus and spaces', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText(MISSING);
     expect(bodyRows(MISSING)).toHaveLength(6);
     type(MISSING, '0900000002');
@@ -111,7 +111,7 @@ describe('the box narrows ONE queue by what a person has in hand', () => {
   });
 
   it('a phone as it arrives from a chat or a contacts list — country code with spaces, dashes, brackets, invisible direction marks — finds the same row', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText(MISSING);
     const LRM = String.fromCharCode(0x200e);
     const RLM = String.fromCharCode(0x200f);
@@ -125,7 +125,7 @@ describe('the box narrows ONE queue by what a person has in hand', () => {
   });
 
   it('a barcode, the company’s own order number, a name, an address and a governorate each find their row', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText(MISSING);
     for (const [q, barcode] of [['100000000003', '100000000003'], ['20003', '100000000003'], ['هدى', '100000000003'], ['سلقين', '100000000003']]) {
       type(MISSING, q);
@@ -137,7 +137,7 @@ describe('the box narrows ONE queue by what a person has in hand', () => {
   });
 
   it('narrows only the queue it is above — the others keep every row', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText(MISSING);
     type(MISSING, '0900000001');
     expect(bodyRows(MISSING)).toHaveLength(1);
@@ -146,7 +146,7 @@ describe('the box narrows ONE queue by what a person has in hand', () => {
   });
 
   it('says how many it shows out of how many, and the counter and the «بلا بتّ» label still count ALL the rows', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText(MISSING);
     const head = () => text(queue(MISSING).querySelector('button')!);
     expect(head()).toContain('6');
@@ -158,7 +158,7 @@ describe('the box narrows ONE queue by what a person has in hand', () => {
   });
 
   it('nothing found says so, and one press clears the search and the filter', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText(MISSING);
     type(MISSING, 'لا يوجد شي بهالاسم');
     expect(text(queue(MISSING))).toContain('ما في سطر بهالبحث أو الفلتر');
@@ -168,7 +168,7 @@ describe('the box narrows ONE queue by what a person has in hand', () => {
   });
 
   it('the search survives the reload the screen does after an answer (run the matching again)', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText(MISSING);
     type(MISSING, '0900000002');
     await act(async () => {
@@ -181,7 +181,7 @@ describe('the box narrows ONE queue by what a person has in hand', () => {
 
 describe('the filter by what the company wrote', () => {
   it('lists the kinds the queue holds with their counts, and narrows by one', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText(MISSING);
     const select = within(queue(MISSING)).getByLabelText('ما كتبته الشركة') as HTMLSelectElement;
     const options = Array.from(select.options).map((o) => o.textContent);
@@ -192,7 +192,7 @@ describe('the filter by what the company wrote', () => {
   });
 
   it('works together with the box: both have to hold', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText(MISSING);
     fireEvent.change(within(queue(MISSING)).getByLabelText('ما كتبته الشركة'), { target: { value: 'RETURNED' } });
     type(MISSING, '0900000004');
@@ -202,7 +202,7 @@ describe('the filter by what the company wrote', () => {
   });
 
   it('the queue of OUR orders filters by the order’s own outcome word, not the company’s', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText('طلبات لم يذكرها أي كشف');
     // One kind only: no filter to draw, and its label is the one for orders.
     expect(within(queue('طلبات لم يذكرها أي كشف')).queryByLabelText('كلمة نتيجته')).toBeNull();
@@ -213,7 +213,7 @@ describe('the filter by what the company wrote', () => {
   });
 
   it('«بلا بتّ فقط» hides the lines already answered, and is drawn only where something is still a question', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText(MISSING);
     const toggle = within(queue(MISSING)).getByLabelText(/بلا بتّ فقط \(5\)/) as HTMLInputElement;
     expect(bodyRows(MISSING)).toHaveLength(6);
@@ -229,7 +229,7 @@ describe('«ثبّت العناوين» — the headings stay in view while the 
   const pinned = (title: string) => queue(title).querySelector('[data-pinned]')?.getAttribute('data-pinned');
 
   it('is pinned from the start — the owner asked for it — and the button says so', async () => {
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText(MISSING);
     expect(pinned(MISSING)).toBe('true');
     const pin = within(queue(MISSING)).getByRole('button', { name: 'العناوين مثبّتة' });
@@ -237,7 +237,7 @@ describe('«ثبّت العناوين» — the headings stay in view while the 
   });
 
   it('one press unpins every queue, and the choice is remembered in this browser', async () => {
-    const first = render(<MatchingScreen />);
+    const first = render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText(MISSING);
     fireEvent.click(within(queue(MISSING)).getByRole('button', { name: 'العناوين مثبّتة' }));
     expect(pinned(MISSING)).toBeUndefined();
@@ -245,7 +245,7 @@ describe('«ثبّت العناوين» — the headings stay in view while the 
     expect(within(queue(MISSING)).getByRole('button', { name: 'ثبّت العناوين' }).getAttribute('aria-pressed')).toBe('false');
     expect(store['osm.matching.pinHeader']).toBe('off');
     first.unmount();
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText(MISSING);
     expect(pinned(MISSING)).toBeUndefined();
   });
@@ -255,7 +255,7 @@ describe('«ثبّت العناوين» — the headings stay in view while the 
       getItem: () => { throw new Error('blocked'); },
       setItem: () => { throw new Error('blocked'); },
     });
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText(MISSING);
     expect(pinned(MISSING)).toBe('true');
     fireEvent.click(within(queue(MISSING)).getByRole('button', { name: 'العناوين مثبّتة' }));
@@ -264,7 +264,7 @@ describe('«ثبّت العناوين» — the headings stay in view while the 
 
   it('a phone has cards and no headings: no pin to press, and nothing pinned', async () => {
     phone.value = true;
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText(MISSING);
     expect(within(queue(MISSING)).queryByRole('button', { name: /العناوين مثبّتة|ثبّت العناوين/ })).toBeNull();
     expect(pinned(MISSING)).toBeUndefined();

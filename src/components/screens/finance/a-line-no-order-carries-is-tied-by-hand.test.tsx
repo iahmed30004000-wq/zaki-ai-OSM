@@ -85,7 +85,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 const open = async () => {
-  render(<MatchingScreen />);
+  render(<MatchingScreen queuesStartOpen />);
   return screen.findAllByRole('button', { name: /اربطه بطلب/ });
 };
 
@@ -101,14 +101,14 @@ describe('where the button is', () => {
 
   it('is not offered to somebody without the review permission', async () => {
     permissions.current = ['ops.track'];
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText('في الكشف وليس عندنا');
     expect(screen.queryAllByRole('button', { name: /اربطه بطلب/ })).toEqual([]);
   });
 
   it('is not offered once the statement is approved', async () => {
     approved.current = true;
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText('في الكشف وليس عندنا');
     expect(screen.queryAllByRole('button', { name: /اربطه بطلب/ })).toEqual([]);
   });

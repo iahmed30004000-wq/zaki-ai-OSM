@@ -243,20 +243,20 @@ describe('on the matching screen', () => {
 
   it('offers the bulk press for the two lines nobody has answered — not the third, which is parked', async () => {
     serve(null);
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     expect(await screen.findByText(/«مؤجلة» — 2 أسطر/)).toBeTruthy();
   });
 
   it('and not after the approval, nor to somebody who may not review', async () => {
     serve('2026-10-29T10:00:00Z');
-    const { unmount } = render(<MatchingScreen />);
+    const { unmount } = render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText('فرق في المبلغ');
     expect(screen.queryByText(/أسطر بكلمة واحدة للشركة/)).toBeNull();
     unmount();
 
     serve(null);
     permissions.current = ['settlement.view'];
-    render(<MatchingScreen />);
+    render(<MatchingScreen queuesStartOpen />);
     await screen.findAllByText('فرق في المبلغ');
     expect(screen.queryByText(/أسطر بكلمة واحدة للشركة/)).toBeNull();
   });
