@@ -39,9 +39,10 @@ const schema = z.object({
   acknowledged: z.literal(true, { message: ACK_AR }),
 });
 
+// Both sentences in Arabic (the English-refusals ratchet only falls); the key is still in the message, so support can read it.
 const forbidden = () =>
   NextResponse.json(
-    { error: 'Forbidden: missing required permission ops.close_legacy', errorAr: FORBIDDEN_LEGACY_AR, code: 'FORBIDDEN' },
+    { error: 'ناقصك مفتاح ops.close_legacy', errorAr: FORBIDDEN_LEGACY_AR, code: 'FORBIDDEN' },
     { status: 403 }
   );
 
