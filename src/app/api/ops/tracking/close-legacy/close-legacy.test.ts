@@ -369,6 +369,21 @@ describe('the press — every refusal writes NOTHING', () => {
     nothingWritten();
   });
 
+  it('the right fingerprint with a count the dialog never showed is refused too — the number on the screen is the number', async () => {
+    db.order.findMany.mockResolvedValue([order(), order()]);
+    const { body: m } = await measure('14');
+    expect(m.closeable.count).toBe(2);
+
+    for (const count of [1, 3]) {
+      vi.clearAllMocks();
+      requireContext.mockResolvedValue({ user: { id: 'u1', name: 'المالك', role: 'SUPER_ADMIN' }, companyId: 'c1', storeId: 's1' });
+      const res = await press(m, { count });
+      expect(res.status, `count ${count}`).toBe(409);
+      expect((await res.json()).code).toBe('CHANGED');
+      nothingWritten();
+    }
+  });
+
   it('nothing to close at that age: a 409, not a silent 200', async () => {
     db.order.findMany.mockResolvedValue([order({ deliveredAt: daysAgo(2) })]);
     const res = await post({ age: 14, fingerprint: 'f'.repeat(24), count: 1, acknowledged: true });

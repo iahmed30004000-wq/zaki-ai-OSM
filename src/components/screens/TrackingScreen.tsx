@@ -1351,7 +1351,7 @@ export function TrackingScreen() {
         />
       )}
 
-      {closingLegacy && acts.closeLegacy && (
+      {closingLegacy && (
         <CloseLegacyDialog
           onClose={() => setClosingLegacy(false)}
           onDone={async (message) => {

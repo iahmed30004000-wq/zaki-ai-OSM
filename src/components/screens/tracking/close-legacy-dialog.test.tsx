@@ -2,6 +2,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 
 /**
  * «أقفل القديمة بلا باركود» — THE DIALOG SHOWS THE NUMBER BEFORE IT ASKS (12/11).
@@ -177,6 +179,44 @@ describe('the press', () => {
     expect(pressButton().disabled).toBe(true);
   });
 
+  it('while the answer for a new cut is on its way, the old cut’s numbers are GONE and the press is shut — nobody presses a number that is no longer the question', async () => {
+    let release: (m: LegacyMeasure) => void = () => undefined;
+    api.mockImplementation((url: string) => {
+      const age = Number(new URL(url, 'http://x').searchParams.get('age'));
+      if (age === 7) return new Promise<LegacyMeasure>((resolve) => (release = resolve));
+      return Promise.resolve(measureOf({ age: age as LegacyMeasure['age'] }));
+    });
+    await open();
+    tick();
+    expect(pressButton().disabled).toBe(false);
+
+    fireEvent.change(screen.getByLabelText('اقفل اللي أقدم من'), { target: { value: '7' } });
+    await waitFor(() => expect(gets().map((c) => c[0])).toContain('/api/ops/tracking/close-legacy?age=7'));
+
+    // The 14-day numbers (820) and its tick are not on the screen while the 7-day question is in the air.
+    expect(screen.queryByText('820')).toBeNull();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(screen.getByText('عم أعدّ…')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'أقفل' }) as HTMLButtonElement).disabled).toBe(true);
+
+    release(measureOf({ age: 7, closeable: { ...measureOf().closeable, count: 850 } }));
+    expect(await screen.findByText('850')).toBeTruthy();
+  });
+
+  it('after a success the press stays shut even when the parent is slow to close the dialog: a second click sends nothing', async () => {
+    await open();
+    tick();
+    fireEvent.click(pressButton());
+    await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
+
+    // This test's parent never closes the dialog, so the button is pressable again as soon as its own busy flag falls.
+    await waitFor(() => expect(pressButton().disabled).toBe(false));
+    fireEvent.click(pressButton());
+    await new Promise((r) => setTimeout(r, 30));
+    expect(posts()).toHaveLength(1);
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
   it('a late answer to an old question is never drawn: the numbers on the screen are the ones for the cut on the screen', async () => {
     let releaseOld: (m: LegacyMeasure) => void = () => undefined;
     api.mockImplementation((url: string) => {
@@ -262,5 +302,44 @@ describe('when there is nothing to close, or too much', () => {
     expect(screen.getByText('شركات تانية')).toBeTruthy();
     // The companies 7..9 are folded into one line: 46 + 37 + 28.
     expect(screen.getByText('111')).toBeTruthy();
+  });
+});
+
+describe('NO NEW CSS — every class the dialog and the strip button use is one the product already ships', () => {
+  /*
+   * The dashboard's first-load stylesheet is under a ratchet (`quality-gates.test.ts`, measured only on CI's build): a class
+   * nobody else ships grows it. So the dialog is written from classes the other tracking dialogs and the pull panel already use,
+   * and this holds it to that — the same scan the matching screen's fold was held to.
+   */
+  const root = join(process.cwd(), 'src');
+  const files: string[] = [];
+  (function walk(dir: string) {
+    for (const name of readdirSync(dir)) {
+      const p = join(dir, name);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (/\.(tsx|ts)$/.test(name) && !/\.test\./.test(name)) files.push(p);
+    }
+  })(root);
+  const classesOf = (src: string) => [...src.matchAll(/className="([^"]+)"/g)].flatMap((m) => m[1].split(/\s+/).filter(Boolean));
+
+  it('`CloseLegacyDialog`’s classes all appear in another source file', () => {
+    const own = join(root, 'components/screens/tracking/CloseLegacyDialog.tsx');
+    const used = new Set(classesOf(readFileSync(own, 'utf8')));
+    expect(used.size, 'the dialog has classes').toBeGreaterThan(20);
+    const elsewhere = new Set(files.filter((f) => f !== own).flatMap((f) => classesOf(readFileSync(f, 'utf8'))));
+    const brandNew = [...used].filter((c) => !elsewhere.has(c));
+    expect(brandNew, `classes nobody else ships: ${brandNew.join(' ')}`).toEqual([]);
+  });
+
+  it('the strip button in `TrackingScreen` wears the very classes of «اختر الكل» beside it', () => {
+    const src = readFileSync(join(root, 'components/screens/TrackingScreen.tsx'), 'utf8');
+    const at = src.indexOf('أقفل القديمة بلا باركود…');
+    expect(at, 'the strip button moved: update this test').toBeGreaterThan(0);
+    const before = src.slice(Math.max(0, at - 260), at);
+    const classes = /className="([^"]+)"/.exec(before)?.[1];
+    expect(classes).toBe('min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline');
+    // ...which is the string the other strip buttons carry (not a copy that could drift into something new).
+    const same = src.split(`className="${classes}"`).length - 1;
+    expect(same).toBeGreaterThanOrEqual(3);
   });
 });
