@@ -20,6 +20,9 @@ import { join, relative } from 'node:path';
  *     gate still count ALL the lines, the search and the filters still look through ALL of them, and a new search starts again from
  *     the first page.
  *  4. `queuesStartOpen` keeps the old behaviour for a caller that wants it. No new utility class: the stylesheet does not move.
+ *  5. WHAT A PERSON OPENED STAYS OPENED through the reload an answer causes: the screen swaps every queue and both cards for a spinner
+ *     while it reloads, which unmounts them, so the folds and the number of pages drawn are kept by the screen (the reviewer of #256 —
+ *     without this, «فرق في المبلغ» would be shut again after EVERY answer). Within a visit only; nothing is written anywhere.
  *
  * Blockers: no money, no order creation, no migration.
  * ═══════════════════════════════════════════════════════════════════════
@@ -110,6 +113,12 @@ afterEach(() => {
 
 const MISSING = 'في الكشف وليس عندنا';
 const MISMATCH = 'فرق في المبلغ';
+const EXCLUDED = 'مستبعدة — مرتجع أو مؤجل';
+/** A line the company wrote at zero for a parcel it says came back — the queue «مستبعدة»; drawn like the missing ones (no answer controls). */
+const excluded = (n: number) => ({
+  ...base, id: `x${n}`, result: 'EXCLUDED', statementAmount: '0', courierWord: returned, statementLine: lineOf(3000 + n),
+  order: { id: `q${n}`, orderNumber: `ORD-X${n}`, merchantRef: null, shippingStatus: 'RETURNED' },
+});
 /** The card of one queue, found by its title button (the structure the screen's other tests rely on). */
 const toggle = (title: string) =>
   screen.getAllByText(title).map((el) => el.closest('button')).find((b): b is HTMLButtonElement => !!b && b.hasAttribute('aria-expanded'))!;
@@ -140,9 +149,13 @@ describe('the queues start CLOSED, with their count on the heading', () => {
   it('the heading says how many lines the queue holds, and how many are still a question', async () => {
     render(<MatchingScreen />);
     await loaded();
-    expect(card(MISSING).textContent).toContain('3');
-    expect(card(MISMATCH).textContent).toContain('3');
-    expect(card(MISMATCH).textContent).toContain('3 بلا بتّ');
+    // The count badge itself (an element whose whole text is «3») — «3 بلا بتّ» is another element and does not stand in for it.
+    expect(within(toggle(MISSING)).getByText('3')).toBeTruthy();
+    expect(within(toggle(MISMATCH)).getByText('3')).toBeTruthy();
+    expect(within(toggle(MISMATCH)).getByText('3 بلا بتّ')).toBeTruthy();
+    // The green queue has no question to answer, so its heading carries no «بلا بتّ».
+    expect(within(toggle('مطابق')).getByText('2')).toBeTruthy();
+    expect(toggle('مطابق').textContent).not.toContain('بلا بتّ');
   });
 
   it('one press opens it — the rows are drawn, the word flips to «إخفاء» — and one press closes it again', async () => {
@@ -226,14 +239,108 @@ describe('a long queue is drawn a page at a time — the owner’s 938', { timeo
     expect(card(MISSING).textContent).toContain('معروض 100 من 130 سطر');
   });
 
-  it('the pages of a queue are the queue’s own: opening one never changes how many another draws', async () => {
-    rows = [...Array.from({ length: 130 }, (_, i) => missing(i + 1)), mismatch(1), mismatch(2)];
+  it('the pages of a queue are the queue’s own: «اعرض كمان» on one never changes how many another draws', async () => {
+    rows = [...Array.from({ length: 130 }, (_, i) => missing(i + 1)), ...Array.from({ length: 101 }, (_, i) => excluded(i + 1))];
     render(<MatchingScreen />);
     await loaded();
     fireEvent.click(toggle(MISSING));
-    fireEvent.click(toggle(MISMATCH));
+    fireEvent.click(toggle(EXCLUDED));
     expect(bodyRows(MISSING)).toHaveLength(100);
-    expect(bodyRows(MISMATCH)).toHaveLength(2);
+    expect(bodyRows(EXCLUDED)).toHaveLength(100);
+    // The button of the first draws the first’s rest — and ONLY the first’s.
+    fireEvent.click(within(card(MISSING)).getByRole('button', { name: 'اعرض 30 كمان' }));
+    expect(bodyRows(MISSING)).toHaveLength(130);
+    expect(bodyRows(EXCLUDED)).toHaveLength(100);
+    expect(card(EXCLUDED).textContent).toContain('معروض 100 من 101 سطر');
+    // …and the other one’s own button still says how many ITS rest is.
+    fireEvent.click(within(card(EXCLUDED)).getByRole('button', { name: 'اعرض 1 كمان' }));
+    expect(bodyRows(EXCLUDED)).toHaveLength(101);
+  });
+});
+
+describe('what a person opened STAYS opened through the reload an answer causes', { timeout: 60_000 }, () => {
+  /**
+   * Hold the GET that reloads the rows, so the spinner — the moment every queue and both cards are UNMOUNTED — can be seen, and then
+   * let it go. Installed only after the first load, so it intercepts the reload and nothing else. (A mock that answers at once could
+   * batch the two `setMatches` calls and hide the unmount; the network GET cannot.)
+   */
+  function holdTheReload(after: () => Record<string, unknown>[]) {
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
+    const before = api.getMockImplementation() as (url: string, init?: unknown) => Promise<unknown>;
+    api.mockImplementation(async (url: string, init?: unknown) => {
+      if (url === '/api/finance/statements/s1') {
+        await held;
+        return { statement: { matches: after() } };
+      }
+      return before(url, init);
+    });
+    return release;
+  }
+
+  it('an answer on a line: the queue she opened and both cards are open again when the rows come back — the queue she never opened is not', async () => {
+    render(<MatchingScreen />);
+    await loaded();
+    const tally = (await screen.findByText('شو كتبت الشركة، ووين صار كل نوع')).closest('summary') as HTMLElement;
+    const people = (await screen.findByText('الفروق حسب من أكّد الطلب')).closest('summary') as HTMLElement;
+    await userEvent.click(tally);
+    await userEvent.click(people);
+    await waitFor(() => expect(tally.getAttribute('aria-expanded')).toBe('true'));
+    await waitFor(() => expect(people.getAttribute('aria-expanded')).toBe('true'));
+    fireEvent.click(toggle(MISMATCH));
+    expect(bodyRows(MISMATCH)).toHaveLength(3);
+
+    // She answers the first line (d1): the answer is posted, the rows are fetched again, and on the way the screen shows a spinner.
+    const release = holdTheReload(() => rows.filter((m) => m.id !== 'd1'));
+    fireEvent.change(within(card(MISMATCH)).getAllByLabelText('تفسير القرار')[0], { target: { value: 'اتفقنا على رقم الشركة' } });
+    fireEvent.click(within(card(MISMATCH)).getAllByRole('button', { name: /رقمنا هو المعتمد/ })[0]);
+    expect(await screen.findByText('جارٍ التحميل…')).toBeTruthy();
+    // Everything is gone while it loads: this is the moment a fold kept INSIDE a queue or a card would be lost.
+    expect(screen.queryAllByText(MISMATCH)).toHaveLength(0);
+    expect(screen.queryAllByText('شو كتبت الشركة، ووين صار كل نوع')).toHaveLength(0);
+
+    release();
+    await screen.findAllByText(MISMATCH);
+    expect(toggle(MISMATCH).getAttribute('aria-expanded')).toBe('true');
+    expect(bodyRows(MISMATCH)).toHaveLength(2); // d1 is answered and gone; d2 and d3 are drawn without a press
+    expect(toggle(MISSING).getAttribute('aria-expanded')).toBe('false'); // she never opened it: it is still shut
+    expect(bodyRows(MISSING)).toHaveLength(0);
+    const tallyBack = (await screen.findByText('شو كتبت الشركة، ووين صار كل نوع')).closest('details') as HTMLDetailsElement;
+    expect(tallyBack.open).toBe(true);
+    const peopleBack = (await screen.findByText('الفروق حسب من أكّد الطلب')).closest('details') as HTMLDetailsElement;
+    expect(peopleBack.open).toBe(true);
+  });
+
+  it('a queue she SHUT stays shut across the reload — what is kept is HER choice, «shut» as much as «open» (with the old open-by-itself default)', async () => {
+    render(<MatchingScreen queuesStartOpen />);
+    await loaded();
+    expect(toggle(MISSING).getAttribute('aria-expanded')).toBe('true'); // opened itself (the old default)
+    fireEvent.click(toggle(MISSING)); // she shuts it: a touched queue remembers «shut» and the default no longer decides
+    expect(toggle(MISSING).getAttribute('aria-expanded')).toBe('false');
+    const release = holdTheReload(() => rows);
+    fireEvent.click(screen.getByRole('button', { name: 'تشغيل المطابقة' }));
+    expect(await screen.findByText('جارٍ التحميل…')).toBeTruthy();
+    release();
+    await screen.findAllByText(MISSING);
+    expect(toggle(MISSING).getAttribute('aria-expanded')).toBe('false');
+    expect(bodyRows(MISSING)).toHaveLength(0);
+  });
+
+  it('a long queue keeps its pages: 130 drawn before the re-run are 130 drawn after it, not the first 100 again', async () => {
+    rows = Array.from({ length: 130 }, (_, i) => missing(i + 1));
+    render(<MatchingScreen />);
+    await loaded();
+    fireEvent.click(toggle(MISSING));
+    fireEvent.click(within(card(MISSING)).getByRole('button', { name: 'اعرض 30 كمان' }));
+    expect(bodyRows(MISSING)).toHaveLength(130);
+    const release = holdTheReload(() => rows);
+    fireEvent.click(screen.getByRole('button', { name: 'تشغيل المطابقة' }));
+    expect(await screen.findByText('جارٍ التحميل…')).toBeTruthy();
+    release();
+    await screen.findAllByText(MISSING);
+    expect(toggle(MISSING).getAttribute('aria-expanded')).toBe('true');
+    expect(bodyRows(MISSING)).toHaveLength(130);
+    expect(card(MISSING).textContent).not.toContain('معروض');
   });
 });
 
@@ -302,6 +409,34 @@ describe('the two summary cards fold the same way — closed, with what is insid
     expect(screen.getByText('سطر واحد')).toBeTruthy();
     expect(screen.getByText('محتوى')).toBeTruthy();
   });
+
+  it('the BROWSER owns `open`: a card opened with no press (find-in-page, a script) says «إخفاء» — and shut again, «عرض»', () => {
+    render(<FoldCard title="عنوان"><p>محتوى</p></FoldCard>);
+    const details = screen.getByText('عنوان').closest('details') as HTMLDetailsElement;
+    const summary = details.querySelector('summary') as HTMLElement;
+    details.open = true;
+    fireEvent(details, new Event('toggle'));
+    expect(summary.getAttribute('aria-expanded')).toBe('true');
+    expect(summary.textContent).toContain('إخفاء');
+    details.open = false;
+    fireEvent(details, new Event('toggle'));
+    expect(summary.getAttribute('aria-expanded')).toBe('false');
+    expect(summary.textContent).toContain('عرض');
+  });
+
+  it('a caller that KEEPS it: `open` is where it starts, and every change the browser makes is told to `onOpenChange`', () => {
+    const told = vi.fn();
+    render(<FoldCard title="عنوان" open onOpenChange={told}><p>محتوى</p></FoldCard>);
+    const details = screen.getByText('عنوان').closest('details') as HTMLDetailsElement;
+    expect(details.open).toBe(true);
+    expect(details.querySelector('summary')!.getAttribute('aria-expanded')).toBe('true');
+    details.open = false;
+    fireEvent(details, new Event('toggle'));
+    expect(told).toHaveBeenLastCalledWith(false);
+    details.open = true;
+    fireEvent(details, new Event('toggle'));
+    expect(told).toHaveBeenLastCalledWith(true);
+  });
 });
 
 describe('NO NEW CSS — every class the fold and the page footer use is one the product already ships', () => {
@@ -323,5 +458,19 @@ describe('NO NEW CSS — every class the fold and the page footer use is one the
     const brandNew = [...used].filter((c) => !elsewhere.has(c));
     expect(brandNew, `classes nobody else ships: ${brandNew.join(' ')}`).toEqual([]);
     expect(relative(root, own)).toContain('FoldCard');
+  });
+
+  it('the page footer’s classes (inside `MatchingScreen`) all appear in another source file too', () => {
+    const own = join(root, 'components/screens/finance/MatchingScreen.tsx');
+    const src = readFileSync(own, 'utf8');
+    const from = src.indexOf('{drawn.length < shown.length && (');
+    const to = src.indexOf('اعرض {Math.min(PAGE_ROWS', from);
+    expect(from, 'the footer moved: update this test').toBeGreaterThan(0);
+    expect(to).toBeGreaterThan(from);
+    const used = new Set(classesOf(src.slice(from, to)));
+    expect(used.size, 'the footer has classes').toBeGreaterThan(5);
+    const elsewhere = new Set(files.filter((f) => f !== own).flatMap((f) => classesOf(readFileSync(f, 'utf8'))));
+    const brandNew = [...used].filter((c) => !elsewhere.has(c));
+    expect(brandNew, `classes nobody else ships: ${brandNew.join(' ')}`).toEqual([]);
   });
 });

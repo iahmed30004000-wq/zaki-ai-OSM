@@ -44,7 +44,16 @@ interface Payload {
   unattributed: { settledOrders: number; differences: number };
 }
 
-export function DifferencesByPerson({ currency }: { currency: string }) {
+export function DifferencesByPerson({
+  currency,
+  open: kept,
+  onOpenChange,
+}: {
+  currency: string;
+  /** Open or shut as the screen kept it across a reload (see `FoldCard`). */
+  open?: boolean;
+  onOpenChange?: (next: boolean) => void;
+}) {
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -76,7 +85,7 @@ export function DifferencesByPerson({ currency }: { currency: string }) {
   const open = data.people.reduce((n, p) => n + p.open, 0);
 
   return (
-    <FoldCard title="الفروق حسب من أكّد الطلب" holds={`${differences} فرقاً · ${open} بانتظار البتّ`}>
+    <FoldCard title="الفروق حسب من أكّد الطلب" holds={`${differences} فرقاً · ${open} بانتظار البتّ`} open={kept} onOpenChange={onOpenChange}>
       <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
         الفرقُ بين ما يقوله الطلب وما وصل — محسوبٌ على من أكّد الطلب، لأنّ المكالمة هي حيث يُعطى
         الخصم. والنسبةُ من الطلبات التي وصلت كشفاً، لا من كلّ طلباته.

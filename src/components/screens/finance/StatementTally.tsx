@@ -44,7 +44,16 @@ const COLUMNS: Column<Landed>[] = [
   { key: 'excluded', label: 'مستبعد', align: 'end', render: (r) => r.excluded },
 ];
 
-export function StatementTally({ matches }: { matches: TallyRow[] }) {
+export function StatementTally({
+  matches,
+  open,
+  onOpenChange,
+}: {
+  matches: TallyRow[];
+  /** Open or shut as the screen kept it across a reload (see `FoldCard`). */
+  open?: boolean;
+  onOpenChange?: (next: boolean) => void;
+}) {
   const lines = matches.filter((m) => m.statementLine);
   if (lines.length === 0) return null;
 
@@ -65,7 +74,12 @@ export function StatementTally({ matches }: { matches: TallyRow[] }) {
   return (
     <section aria-label="شو كتبت الشركة وين صار">
       {/* Folded, closed (the owner, 12/11: «هدول يكونو مخفيات … أصلاً ما في زر إخفاء») — the count of each kind stays on the heading. */}
-      <FoldCard title="شو كتبت الشركة، ووين صار كل نوع" holds={kinds.map((k) => `${k.total} ${k.word}`).join(' · ')}>
+      <FoldCard
+        title="شو كتبت الشركة، ووين صار كل نوع"
+        holds={kinds.map((k) => `${k.total} ${k.word}`).join(' · ')}
+        open={open}
+        onOpenChange={onOpenChange}
+      >
         <Rows rows={kinds} columns={COLUMNS} keyOf={(r) => r.key} />
         {returned && returned.notOurs > 0 && (
           <p className="text-xs text-[var(--sys-muted-foreground)]">

@@ -199,17 +199,32 @@ export function MatchingScreen({ queuesStartOpen = false }: { queuesStartOpen?: 
   // What each queue of each statement is narrowed to — kept HERE, not in the queue, because the screen reloads its rows after
   // every answer and a queue that forgot its search each time would be a queue nobody could work through.
   const [views, setViews] = useState<Record<string, QueueView>>({});
+  // And so is what a person has OPENED, and how far down a long queue she has drawn (the reviewer of #256, 12/11): the reload swaps
+  // every queue and both cards for a spinner, which UNMOUNTS them — a fold kept inside would be shut again after EVERY answer, and the
+  // owner would press «عرض» on «فرق في المبلغ» once per line. Kept for the visit only: nothing is written anywhere.
+  const [opened, setOpened] = useState<Record<string, boolean>>({});
+  const [paged, setPaged] = useState<Record<string, Paged>>({});
   const [pinned, setPinned] = useState(readPinned);
-  const viewOf = (queueKey: string) => ({
-    view: views[`${selected}|${queueKey}`] ?? NO_VIEW,
-    onView: (next: QueueView) => setViews((all) => ({ ...all, [`${selected}|${queueKey}`]: next })),
-    pinned,
-    onPinned: (next: boolean) => {
-      setPinned(next);
-      writePinned(next);
-    },
-    startOpen: queuesStartOpen,
+  const openOf = (key: string) => ({
+    open: opened[key],
+    onOpenChange: (next: boolean) => setOpened((all) => (all[key] === next ? all : { ...all, [key]: next })),
   });
+  const viewOf = (queueKey: string) => {
+    const key = `${selected}|${queueKey}`;
+    return {
+      view: views[key] ?? NO_VIEW,
+      onView: (next: QueueView) => setViews((all) => ({ ...all, [key]: next })),
+      pinned,
+      onPinned: (next: boolean) => {
+        setPinned(next);
+        writePinned(next);
+      },
+      startOpen: queuesStartOpen,
+      ...openOf(key),
+      paged: paged[key],
+      onPaged: (next: Paged) => setPaged((all) => ({ ...all, [key]: next })),
+    };
+  };
 
   useEffect(() => {
     void apiJson<{ statements: StatementRow[]; settling?: { moneyIn: string; matchedHint: string } }>('/api/finance/statements')
@@ -365,9 +380,9 @@ export function MatchingScreen({ queuesStartOpen = false }: { queuesStartOpen?: 
         <div className="space-y-3">
           {/* What the company wrote on its lines and where each kind landed — so a returned parcel is never «missing»: it is
               counted here whatever queue it fell into. */}
-          <StatementTally matches={matches} />
+          <StatementTally matches={matches} {...openOf('card|tally')} />
           {/* The sum of the answers given below it: who keeps arriving short. */}
-          <DifferencesByPerson currency={statement?.currencyCode ?? ''} />
+          <DifferencesByPerson currency={statement?.currencyCode ?? ''} {...openOf('card|people')} />
           <Queue
             title="مطابق"
             {...viewOf('MATCHED')}
@@ -457,6 +472,12 @@ export function MatchingScreen({ queuesStartOpen = false }: { queuesStartOpen?: 
  */
 const PAGE_ROWS = 100;
 
+/** How many pages of a queue are drawn, and the narrowing they were counted for — a new search or filter starts again from the first. */
+interface Paged {
+  key: string;
+  pages: number;
+}
+
 const TONE: Record<string, string> = {
   emerald: 'bg-[var(--sys-success-soft)] text-[var(--sys-success)] border-[var(--sys-success)]/40',
   rose: 'bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)] border-[var(--sys-destructive-border)]',
@@ -486,12 +507,22 @@ function Queue({
   pinned,
   onPinned,
   startOpen,
+  open,
+  onOpenChange,
+  paged,
+  onPaged,
 }: {
   title: string;
   tone: string;
   rows: Match[];
   /** Open itself when it has lines (the old behaviour). Absent — the screen's default — it starts closed, with its count on the heading. */
   startOpen?: boolean;
+  /** Open or shut as the person left it — kept by the screen (`viewOf`), because every reload unmounts the queue. Never touched: `startOpen` decides. */
+  open?: boolean;
+  onOpenChange: (next: boolean) => void;
+  /** How many pages are drawn — kept by the screen for the same reason. */
+  paged?: Paged;
+  onPaged: (next: Paged) => void;
   /** What this queue is narrowed to (search, kind, only-unanswered) — kept by the screen so it survives a reload of the rows. */
   view: QueueView;
   onView: (next: QueueView) => void;
@@ -527,7 +558,7 @@ function Queue({
   statementId?: string | null;
   onResolved?: () => void;
 }) {
-  const [open, setOpen] = useState(!!startOpen && rows.length > 0 && tone !== 'emerald');
+  const isOpen = open ?? (!!startOpen && rows.length > 0 && tone !== 'emerald');
   // The lines of this queue still a question — by the same rule the approval counts (`statement-open-lines`).
   // Counted on ALL the rows: a search hides rows from view and never from the gate.
   const unanswered = resolvable || parkable ? countOpenLines(rows) : 0;
@@ -544,11 +575,10 @@ function Queue({
     [rows, view]
   );
   // A PAGE AT A TIME (`PAGE_ROWS`). The page is kept per narrowing — a new search or filter starts again from the first page — and is
-  // READ from the view rather than reset in an effect: the screen reloads its rows after every answer, and a reset there would
-  // throw a person back to the top of a list she is working through.
+  // READ against the view rather than reset in an effect. It is kept BY THE SCREEN (`paged`, like `view`): the reload after an answer
+  // unmounts this queue, and a count kept in here would throw a person back to the first hundred of a list she is working through.
   const viewKey = `${view.kind}|${view.onlyOpen ? 1 : 0}|${view.query}`;
-  const [paged, setPaged] = useState<{ key: string; pages: number }>({ key: viewKey, pages: 1 });
-  const pages = paged.key === viewKey ? paged.pages : 1;
+  const pages = paged && paged.key === viewKey ? paged.pages : 1;
   const drawn = shown.length > pages * PAGE_ROWS ? shown.slice(0, pages * PAGE_ROWS) : shown;
 
   const columns: Column<Match>[] = [
@@ -844,8 +874,8 @@ function Queue({
   return (
     <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden">
       <button
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
+        onClick={() => onOpenChange(!isOpen)}
+        aria-expanded={isOpen}
         className="w-full flex items-center justify-between px-4 py-3 text-right"
       >
         <span className="flex items-center gap-2">
@@ -853,10 +883,10 @@ function Queue({
           <span className="text-sm font-medium text-[var(--sys-heading)]">{title}</span>
           {!locked && unanswered > 0 && <span className="text-xs text-[var(--sys-warning)]">{unanswered} بلا بتّ</span>}
         </span>
-        <span className="text-xs text-[var(--sys-muted)]">{open ? 'إخفاء' : 'عرض'}</span>
+        <span className="text-xs text-[var(--sys-muted)]">{isOpen ? 'إخفاء' : 'عرض'}</span>
       </button>
 
-      {open && (
+      {isOpen && (
         <div className="border-t border-[var(--sys-border)]">
           <p className="text-xs text-[var(--sys-muted-foreground)] px-4 py-2 bg-[var(--sys-surface)]">{hint}</p>
           {rows.length === 0 ? (
@@ -895,7 +925,7 @@ function Queue({
                   </span>
                   <button
                     type="button"
-                    onClick={() => setPaged({ key: viewKey, pages: pages + 1 })}
+                    onClick={() => onPaged({ key: viewKey, pages: pages + 1 })}
                     className="min-h-11 md:min-h-0 inline-flex items-center rounded-lg border border-[var(--sys-border)] px-3 py-1.5 text-xs font-semibold text-[var(--sys-primary)] hover:border-[var(--sys-primary)]"
                   >
                     اعرض {Math.min(PAGE_ROWS, shown.length - drawn.length)} كمان
