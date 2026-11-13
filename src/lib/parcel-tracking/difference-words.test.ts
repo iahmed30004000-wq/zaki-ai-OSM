@@ -115,7 +115,7 @@ describe('what is said after an answer, and what is said instead of the answers'
 
 describe('every word it says is Arabic', () => {
   it('no Latin letter in any sentence the module exports (the order number a person passes in apart)', () => {
-    const sentences = Object.values(words).filter((v): v is string => typeof v === 'string');
+    const sentences = (Object.values(words) as unknown[]).filter((v): v is string => typeof v === 'string');
     expect(sentences.length).toBeGreaterThanOrEqual(8);
     for (const s of sentences) expect(s, s).not.toMatch(/[A-Za-z]/);
     for (const s of [
