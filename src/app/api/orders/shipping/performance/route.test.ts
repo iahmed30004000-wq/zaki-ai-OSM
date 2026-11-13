@@ -29,7 +29,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 const { db, requireContext, can } = vi.hoisted(() => ({
-  db: { deliveryProvider: { findMany: vi.fn() }, order: { count: vi.fn(), findMany: vi.fn() } },
+  db: { deliveryProvider: { findMany: vi.fn() }, order: { groupBy: vi.fn(), findMany: vi.fn() } },
   requireContext: vi.fn(),
   can: vi.fn(),
 }));
@@ -49,31 +49,49 @@ interface Record_ {
   settled: number;
   /** Hours each sampled delivery took. Empty = no durations at all. */
   hours: number[];
+  /** Of `returned`: how many are still «RETURN_REQUESTED» (the courier was asked to bring it back) — they count as returned too. */
+  returnRequested?: number;
+  /** Settled orders that did NOT land (a returned parcel the books closed): they are not the courier's collection. */
+  settledNotLanded?: number;
 }
 
 const T0 = new Date('2026-09-01T00:00:00.000Z').getTime();
 
 /**
- * A world of couriers. `order.count` is answered by reading the `where` it
- * was handed — not by call order, because a fake that counts calls passes a
- * mutation that reorders the queries and then reports another courier's
- * numbers under this one's name.
+ * A world of couriers. The door asks the database ONE grouped question — courier × shipping status × settlement status
+ * (13/11: it used to start seven queries for each courier at once, which took the whole pool) — and reads every count from the
+ * answer. The fake answers it from the `where` it was handed, not from call order, so a mutation that asks about another courier
+ * reports nothing under this one's name. The fixtures must be CONSISTENT (shipped ≥ landed + failed + returned, assigned ≥ shipped):
+ * a grouped answer cannot say a courier finished more than it shipped.
  */
 function world(records: Record<string, Record_>) {
   db.deliveryProvider.findMany.mockResolvedValue(
     Object.keys(records).map((id) => ({ id, name: id, code: id, isActive: true }))
   );
-  db.order.count.mockImplementation(async ({ where }: any) => {
-    const r = records[where.deliveryProviderId];
-    if (!r) return 0;
-    const st = where.shippingStatus;
-    if (where.settlementStatus === 'SETTLED') return r.settled;
-    if (!st) return r.assigned;
-    const list: string[] = typeof st === 'string' ? [st] : (st.in ?? []);
-    if (list.includes('PARTIALLY_DELIVERED') && list.includes('DELIVERED')) return r.landed;
-    if (list.includes('FAILED_DELIVERY')) return r.failed;
-    if (list.includes('RETURNED')) return r.returned;
-    return r.shipped;
+  db.order.groupBy.mockImplementation(async ({ where }: any) => {
+    const ids: string[] = where.deliveryProviderId.in;
+    const out: { deliveryProviderId: string; shippingStatus: string; settlementStatus: string; _count: { _all: number } }[] = [];
+    for (const id of ids) {
+      const r = records[id];
+      if (!r) continue;
+      const add = (shippingStatus: string, settlementStatus: string, n: number) => {
+        if (n > 0) out.push({ deliveryProviderId: id, shippingStatus, settlementStatus, _count: { _all: n } });
+      };
+      const unsettled = r.landed - r.settled;
+      // A partial delivery is landed too (`whereDelivered()` is DELIVERED + PARTIALLY_DELIVERED).
+      const partial = Math.min(2, unsettled);
+      add('DELIVERED', 'SETTLED', r.settled);
+      add('DELIVERED', 'PENDING', unsettled - partial);
+      add('PARTIALLY_DELIVERED', 'PENDING', partial);
+      add('FAILED_DELIVERY', 'PENDING', r.failed);
+      const requested = Math.min(r.returnRequested ?? 0, r.returned);
+      add('RETURNED', 'PENDING', r.returned - requested - (r.settledNotLanded ?? 0));
+      add('RETURN_REQUESTED', 'PENDING', requested);
+      add('RETURNED', 'SETTLED', r.settledNotLanded ?? 0);
+      add('SHIPPED', 'PENDING', r.shipped - r.landed - r.failed - r.returned);
+      add('NOT_READY', 'PENDING', r.assigned - r.shipped);
+    }
+    return out;
   });
   db.order.findMany.mockImplementation(async ({ where }: any) => {
     const r = records[where.deliveryProviderId];
@@ -113,8 +131,9 @@ describe('Ⅰ · the score reaches the screen', () => {
   it('and the settled count is really asked for — the old shape never did', async () => {
     world({ aramex: { assigned: 26, shipped: 26, landed: 23, failed: 0, returned: 3, settled: 12, hours: [] } });
     await ask();
-    const settledQuery = db.order.count.mock.calls.find((c) => c[0]?.where?.settlementStatus === 'SETTLED');
-    expect(settledQuery, 'لا أحدَ يَسألُ عن المسوّى، فبندُ التحصيلِ مبنيٌّ على لا شيء').toBeTruthy();
+    // The grouped question carries the settlement status: that is how the settled count reaches the score (it is one column of the one answer).
+    const asked = db.order.groupBy.mock.calls.find((c) => (c[0]?.by ?? []).includes('settlementStatus'));
+    expect(asked, 'لا أحدَ يَسألُ عن المسوّى، فبندُ التحصيلِ مبنيٌّ على لا شيء').toBeTruthy();
     expect(of((await ask()).body, 'aramex').metrics.settled).toBe(12);
   });
 
@@ -223,14 +242,40 @@ describe('Ⅲ · «may collection be scored» is one answer for the shop', () =>
   });
 });
 
+describe('Ⅲ·ب · the grouped answer is read the way the six counts were', () => {
+  it('a settled order that did NOT land is not this courier’s collection — settled is counted out of what landed only', async () => {
+    world({ a: { assigned: 30, shipped: 30, landed: 20, failed: 0, returned: 10, settled: 8, settledNotLanded: 5, hours: [] } });
+    const m = of((await ask()).body, 'a').metrics;
+    expect(m.settled, 'a settled RETURNED order was added to the courier’s collection').toBe(8);
+    expect(m.returned).toBe(10);
+  });
+
+  it('a parcel the courier was asked to bring back (RETURN_REQUESTED) is returned too', async () => {
+    world({ a: { assigned: 30, shipped: 30, landed: 20, failed: 0, returned: 10, returnRequested: 4, settled: 0, hours: [] } });
+    expect(of((await ask()).body, 'a').metrics.returned).toBe(10);
+  });
+
+  it('the one grouped question is asked of THIS company and THIS store, for the couriers it lists — and nothing else is counted one by one', async () => {
+    world({ a: { assigned: 20, shipped: 20, landed: 20, failed: 0, returned: 0, settled: 0, hours: [] }, b: { assigned: 5, shipped: 5, landed: 5, failed: 0, returned: 0, settled: 0, hours: [] } });
+    await ask();
+    expect(db.order.groupBy).toHaveBeenCalledTimes(1);
+    const where = db.order.groupBy.mock.calls[0][0].where;
+    expect(where).toMatchObject({ companyId: 'c1', storeId: 's1', deliveryProviderId: { in: ['a', 'b'] } });
+    expect(db.order.groupBy.mock.calls[0][0].by).toEqual(['deliveryProviderId', 'shippingStatus', 'settlementStatus']);
+  });
+});
+
 describe('Ⅳ · the raw counts stay beside the score', () => {
   it('because a number nobody can check is a number nobody believes', async () => {
-    world({ aramex: { assigned: 26, shipped: 26, landed: 23, failed: 1, returned: 3, settled: 12, hours: [] } });
+    // 22 landed + 1 failed + 3 returned = the 26 it shipped (a grouped answer cannot say a courier finished more than it shipped).
+    world({ aramex: { assigned: 26, shipped: 26, landed: 22, failed: 1, returned: 3, settled: 12, hours: [] } });
     const m = of((await ask()).body, 'aramex').metrics;
     for (const key of ['assigned', 'shipped', 'delivered', 'failed', 'returned', 'settled']) {
       expect(m, `«${key}» اختفى من الأرقام الخام`).toHaveProperty(key);
     }
     expect(m.assigned).toBe(26);
     expect(m.returned).toBe(3);
+    // every count is exactly what the one grouped answer says (the old shape asked for each count apart)
+    expect(m).toMatchObject({ assigned: 26, shipped: 26, delivered: 22, failed: 1, returned: 3, settled: 12 });
   });
 });

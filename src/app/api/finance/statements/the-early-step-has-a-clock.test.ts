@@ -531,7 +531,9 @@ const ord = (id: string, items = 1, ship = 'SHIPPED', over: Any = {}): Any => ({
   ...over,
 });
 const mrow = (id: string, orderId: string | null, over: Any = {}): Any => ({
-  id, statementId: 'st1', orderId, result: 'MATCHED', resolution: null, resolutionNote: null, resolvedById: null, appliedAt: null, matchedBy: 'MERCHANT_REF',
+  // `resolutionKind` (13/11, «طلب تبديل»): the world holds the column the table now has — the close selects it, and a column this world
+  // does not hold is an error. Null on every row here: no answer in this file is an exchange, so nothing below reads differently.
+  id, statementId: 'st1', orderId, result: 'MATCHED', resolution: null, resolutionKind: null, resolutionNote: null, resolvedById: null, appliedAt: null, matchedBy: 'MERCHANT_REF',
   expectedAmount: 20, expectedFee: 5, statementAmount: 20, statementFee: 5, ...over,
 });
 /** A difference nobody answered — the line that holds the matching open. */

@@ -3,7 +3,7 @@ import type { db } from './db';
 import { roundMinor } from './money';
 import { claimingRowWhere, openRequestWhere } from './match-integrity';
 import { normalizePhrase, readCourierWord, type CourierOutcome } from './couriers/words';
-import { PARKED, PARKED_AR, RESOLUTIONS, RESOLUTION_AR, type Resolution } from './settlement-difference';
+import { EXCHANGE_AR, EXCHANGE_KIND, PARKED, PARKED_AR, RESOLUTIONS, RESOLUTION_AR, type Resolution } from './settlement-difference';
 import { STATEMENT_CLOSED_SENTENCE } from './settlement-gates';
 
 type Tx = Prisma.TransactionClient | typeof db;
@@ -143,6 +143,10 @@ export function claimOf(row: { expectedAmount: number | null; statementAmount: n
  *   محجوز بسطر آخر                         لا                         لا                       نعم
  *   الكشف معتمد (مغلق نهائياً)             لا (كشف تسوية)             لا (كشف تسوية)           لا (كشف تسوية)
  *
+ * «طلب تبديل» HAS NO COLUMN OF ITS OWN. It is «اعتُمد رقم الشركة» with a reason attached (`EXCHANGE_KIND`): the door that
+ * records it asks THIS matrix about `ACCEPTED_COURIER`, and the screen greys it with that cell's verdict and that cell's sentence —
+ * so it is allowed exactly where their figure is, and nowhere else.
+ *
  * WHY EACH «NO»: a figure can only be accepted or claimed for a parcel the money is about. An order that never
  * left, or is settled, or has a cancel waiting, or is held by another row, is not that parcel yet — and the
  * third saying exists exactly so that such a row is not left looking unanswered.
@@ -250,9 +254,27 @@ export function decisionData(p: { resolution: Decision; note: string; userId: st
   };
 }
 
-/** The internal note written on the order, where an agent who gave a discount would have written it. */
-export function decisionNoteBody(p: { statement: string; resolution: Decision; gap: number | null; note: string }): string {
-  return `مطابقة كشف ${p.statement}: ${DECISION_AR[p.resolution]}` + (p.gap !== null ? ` — الفرق ${p.gap}` : '') + `. ${p.note}`;
+/**
+ * THE QUALIFIER BESIDE AN ANSWER — WRITTEN BY EVERY DOOR THAT WRITES ONE.
+ *
+ * «طلب تبديل» is the courier's figure with a reason attached (`EXCHANGE_KIND`, see `settlement-difference`), and the reason is a
+ * column of its own beside `resolution`, never a second resolution word: every reader of `ACCEPTED_COURIER` keeps reading what it
+ * always read. Because it is a column of its own, an answer that does not say it must CLEAR it — a person who moves a line from
+ * «طلب تبديل» to «رقمنا هو المعتمد» (or the bulk press that answers it again) leaves no exchange mark standing beside the new
+ * answer. So both doors spread this into their write, always: `{ resolutionKind: 'EXCHANGE' }` for the exchange, `{ resolutionKind:
+ * null }` for everything else. `decisionData` is left exactly as it was (it is the answer's own shape); this is the qualifier's.
+ */
+export function decisionKind(exchange = false): { resolutionKind: typeof EXCHANGE_KIND | null } {
+  return { resolutionKind: exchange ? EXCHANGE_KIND : null };
+}
+
+/**
+ * The internal note written on the order, where an agent who gave a discount would have written it. An exchange says «طلب تبديل»,
+ * not «اعتُمد رقم الشركة»: a reader of the order's notes must not take it for a discount that was given.
+ */
+export function decisionNoteBody(p: { statement: string; resolution: Decision; gap: number | null; note: string; exchange?: boolean }): string {
+  const said = p.exchange && p.resolution === 'ACCEPTED_COURIER' ? EXCHANGE_AR : DECISION_AR[p.resolution];
+  return `مطابقة كشف ${p.statement}: ${said}` + (p.gap !== null ? ` — الفرق ${p.gap}` : '') + `. ${p.note}`;
 }
 
 /* ───────────────────────────── the reads ───────────────────────────── */

@@ -186,6 +186,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       }
       return {
         ...m,
+        // «طلب تبديل»: the qualifier beside the answer, said outright so a screen never has to guess where it comes from. A row
+        // from before the column existed reads as null: not an exchange.
+        resolutionKind: m.resolutionKind ?? null,
         courierWord: reading ? { ...reading, label: COURIER_OUTCOME_AR[reading.outcome] } : null,
         orderOutcome: outcome,
         followUp: m.orderId ? followUps.get(m.orderId) ?? null : null,

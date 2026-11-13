@@ -8,15 +8,17 @@ import { Rows } from '@/components/ui/Rows';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 import { apiFetch, saidBy } from '@/lib/api-client';
 import type { AgentRow, AnswerRateReport, NoAnswerBoard, RateRow } from '@/lib/no-answer-watch';
+import { HeldFlowPanel } from './HeldFlowPanel';
 
 /**
  * «لا رد والطلبات المحجوزة» — WHAT EACH AGENT IS SITTING ON, AND WHEN CUSTOMERS PICK UP.
  *
- * Read only: nothing on this tab presses anything. The board is «now» and is
- * asked for once; the date picker belongs to the answer-rate report under it
- * alone (default: the last fourteen days), and moving it asks for the report
- * only. Every percentage stands beside the counts it was made from, and a base
- * of zero is a dash, never «0%».
+ * Read only: nothing on this tab writes anything — its only buttons choose what
+ * is read. The board is «now» and is asked for once; the date picker belongs to
+ * the answer-rate report under it alone (default: the last fourteen days), and
+ * moving it asks for the report only; «حركة الطلبات» above them has its own
+ * window and asks for its own part (`HeldFlowPanel`). Every percentage stands
+ * beside the counts it was made from, and a base of zero is a dash, never «0%».
  */
 
 interface BoardAnswer {
@@ -109,6 +111,9 @@ export function NoAnswerWatch() {
 
   return (
     <div className="space-y-6">
+      {/* «حركة الطلبات»: asks for its own part and its own window, so the board below never waits for it and never fails with it. */}
+      <HeldFlowPanel />
+
       {!board ? (
         <div aria-busy>
           <SkeletonRows rows={6} />

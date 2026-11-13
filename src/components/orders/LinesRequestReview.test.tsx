@@ -188,7 +188,8 @@ describe('Ⅱ · the reasons it cannot be carried out shut the button', () => {
     apiJson.mockRejectedValueOnce(new Error('تعذر الاتصال'));
     const told = draw();
     await screen.findByText('تعذر الاتصال');
-    expect(told.at(-1)).toMatchObject({ checking: false, shut: REVIEW_UNAVAILABLE_AR });
+    // The state the card TELLS its parent is reported from an effect after the text is drawn: wait for it, as the lines below do.
+    await waitFor(() => expect(told.at(-1)).toMatchObject({ checking: false, shut: REVIEW_UNAVAILABLE_AR }));
 
     apiJson.mockResolvedValue(preview());
     fireEvent.click(screen.getByRole('button', { name: 'أعد الفحص' }));

@@ -119,6 +119,11 @@ export interface ShortfallCandidate {
   statementAmount: Num;
   statementFee?: Num;
   claimPayment?: boolean;
+  /**
+   * The line was answered «طلب تبديل» (`isExchange`): a replacement, or a piece sent to a customer whose order came short. It has no
+   * price to collect, so there is nothing a person could have kept — it is never a candidate (see `proposeShortfalls`).
+   */
+  exchange?: boolean;
   /** The reason the person wrote beside «اعتُمد رقم الشركة». */
   explanation: string | null;
 }
@@ -171,6 +176,14 @@ export interface ShortfallResult {
  * Reads nothing when no line is short, so an approval without a shortfall is exactly what it was. Everything it
  * writes is a PROPOSED row: nothing becomes a deduction until a person decides, or payday applies it in the
  * payer's name (payroll).
+ *
+ * ── AN EXCHANGE IS NOBODY'S SHORTFALL ──
+ *
+ * A line answered «طلب تبديل» (`exchange`) is dropped BEFORE anything is measured, named or written: it produces no charge, no
+ * «على الشركة» line, no `SHORTFALL_UNNAMED` question for the approver (so the dialog «من يتحمّل الفرق؟» never lists it) and no
+ * `SHORTFALL_BAD_PERSON` stop — whatever the approver's naming says about it. Its «difference» is the whole price of an order that
+ * was never meant to be paid for; charging the employee at the door for it would charge him for a gift. This is the ONLY writer of
+ * a «فرق تحصيل» from a statement line (a guard reads the source for any other), so the rule is held in one place.
  */
 export async function proposeShortfalls(
   tx: Tx,
@@ -180,6 +193,7 @@ export async function proposeShortfalls(
   const result: ShortfallResult = { charges: [], onCompany: [], stop: null };
 
   const owing = candidates
+    .filter((c) => !c.exchange)
     .map((c) => ({ c, amount: shortfallOf(c, scope.minorUnit) }))
     .filter((x) => x.amount > 0);
   if (owing.length === 0) return result;
