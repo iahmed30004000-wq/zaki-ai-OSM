@@ -41,10 +41,11 @@ import { InstallAppLine } from './InstallApp';
 
 const TAP = 'min-h-[44px] min-w-[44px]';
 
-export function MobileNav({ groups }: { groups: NavGroup[] }) {
+export function MobileNav({ groups, slots }: { groups: NavGroup[]; slots?: string[] }) {
   const pathname = usePathname();
   const [sheet, setSheet] = useState(false);
-  const { primary, rest } = mobileNav(groups, pathname);
+  // `slots` is the person's own four, when they chose them: a preference over `groups`, never a way to add a screen.
+  const { primary, rest } = mobileNav(groups, pathname, slots);
   /**
    * While something is selected, this strip belongs to the bar that acts on
    * it. Navigating away mid-selection is not what anybody is reaching for,

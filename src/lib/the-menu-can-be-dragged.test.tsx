@@ -214,9 +214,10 @@ describe('the card keeps everything it had', () => {
     mountCard();
     await screen.findAllByRole('listitem');
     const noScroll = Array.from(document.querySelectorAll<HTMLElement>('[style*="touch-action"]'));
-    expect(noScroll).toHaveLength(NAV_ROUTES.length);
+    // CHANGED ON PURPOSE (13/11): the groups got a grip of their own — one more per group, besides one per line.
+    expect(noScroll).toHaveLength(NAV_ROUTES.length + NAV.length);
     for (const el of noScroll) {
-      expect(el.getAttribute('aria-label'), 'غير المقبض بيمنع التمرير').toMatch(/^اسحب .* لتغيير ترتيبه$/);
+      expect(el.getAttribute('aria-label'), 'غير المقبض بيمنع التمرير').toMatch(/^اسحب .* لتغيير ترتيب(?:ه|ها)$/);
     }
     // …and never the row or the list around them.
     for (const el of [...rowsOf(), ...Array.from(document.querySelectorAll('ul'))]) {
@@ -378,7 +379,8 @@ describe('and a real drag — the pointer, the keyboard and Esc — goes through
      * race one run in a dozen; a person cannot press within a microsecond of
      * the screen appearing, so it was never a fault in the card.
      */
-    await until(() => expect(document.querySelectorAll('[id^="DndDescribedBy"]')).toHaveLength(NAV.length));
+    // CHANGED ON PURPOSE (13/11): one context per group for its lines, and now one more around the groups.
+    await until(() => expect(document.querySelectorAll('[id^="DndDescribedBy"]')).toHaveLength(NAV.length + 1));
     return inRow(rows[at]).getByLabelText(`اسحب ${a.label} لتغيير ترتيبه`);
   }
 
@@ -497,11 +499,13 @@ describe('and the wiring is the one that holds the rules', () => {
 
   it('— one drop zone per group, so a row cannot be dropped under another heading', () => {
     const s = src();
-    // One `<DndContext` in the markup, and it sits INSIDE the per-group map.
-    expect(s.match(/<DndContext\b/g)).toHaveLength(1);
+    // CHANGED ON PURPOSE (13/11): TWO `<DndContext` in the markup now — the one around the groups, which sits BEFORE the
+    // per-group map, and the one for a group's lines, which sits INSIDE it (and is still the only one a screen can be dropped in).
+    expect(s.match(/<DndContext\b/g)).toHaveLength(2);
     const mapAt = s.indexOf('ordered.map((group)');
     expect(mapAt, 'ما لقيت حلقة المجموعات').toBeGreaterThan(-1);
-    expect(s.indexOf('<DndContext'), 'الـDndContext خارج حلقة المجموعات').toBeGreaterThan(mapAt);
+    expect(s.lastIndexOf('<DndContext'), 'الـDndContext تبع الأسطر خارج حلقة المجموعات').toBeGreaterThan(mapAt);
+    expect(s.indexOf('<DndContext'), 'الـDndContext تبع المجموعات جوّا الحلقة').toBeLessThan(mapAt);
   });
 
   it('and the vertical axis is locked and the row kept inside its list', () => {
@@ -511,8 +515,9 @@ describe('and the wiring is the one that holds the rules', () => {
 
   it('and the drag listeners are on the grip and on nothing else', () => {
     const s = src();
-    expect(s.match(/\.\.\.listeners/g)).toHaveLength(1);
-    expect(s.match(/\.\.\.attributes/g)).toHaveLength(1);
+    // CHANGED ON PURPOSE (13/11): one grip for a line and one for a group — each carries its own, and nothing else does.
+    expect(s.match(/\.\.\.listeners/g)).toHaveLength(2);
+    expect(s.match(/\.\.\.attributes/g)).toHaveLength(2);
     // The row itself takes the node ref, never the listeners.
     expect(s).toMatch(/<li\s+ref=\{setNodeRef\}/);
     expect(s).toContain('ref={setActivatorNodeRef}');

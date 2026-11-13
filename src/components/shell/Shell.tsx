@@ -23,6 +23,7 @@ import { emptyFamilyOf } from '@/lib/theme-decoration';
 /** Frame for every contract screen: fixed RTL sidebar + context header. */
 export function Shell({
   groups,
+  phoneSlots,
   userName,
   userRole,
   viewer,
@@ -31,6 +32,11 @@ export function Shell({
   children,
 }: {
   groups: NavGroup[];
+  /**
+   * The screens the person put in the phone's bottom bar, as paths in order — their arrangement's `slots`, read on
+   * the server with the groups. Absent means the system's own four. Only a preference over `groups`: see `mobileNav`.
+   */
+  phoneSlots?: string[];
   userName: string;
   userRole: string;
   /** Whose screen this is — for the mark a photograph of it will carry. */
@@ -105,7 +111,7 @@ export function Shell({
         </main>
       </div>
 
-      <MobileNav groups={groups} />
+      <MobileNav groups={groups} slots={phoneSlots} />
 
       {/* The first-run walkthrough: once per person, on their row — see
           FirstRunTour.tsx. Mounted in the shell so it greets the person on
