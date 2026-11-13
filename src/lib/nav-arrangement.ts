@@ -288,20 +288,30 @@ export function applyArrangement(groups: NavGroup[], layout: NavLayout | null): 
  * groups of the menu being arranged; without it there is nothing to check a
  * key against, and an unchecked key is dropped rather than trusted — a caller
  * that forgot to pass it loses the groups loudly (a test) instead of storing
- * whatever was posted. The slots are checked against `allowed`, held to
- * `BOTTOM_SLOTS`, each screen once — the first place wins — and the cut comes
- * AFTER the screens that fell out, so one stale entry does not cost a slot.
+ * whatever was posted. The slots are held to `BOTTOM_SLOTS`, each screen once —
+ * the first place wins — and the cut comes AFTER the screens that fell out, so
+ * one stale entry does not cost a slot.
+ *
+ * A SLOT IS A SCREEN THE DRAWER DRAWS AS A LINE, and that is a smaller set than «what may be opened»: the
+ * assistant's page is openable and is no line of anybody's menu, and the board folded under the dashboard
+ * is a line only for somebody who cannot open the dashboard. `menuLines` is that set (the door builds it
+ * with `isMenuLine`); the three lists still follow `allowed`, as they always did, because arranging a
+ * screen that is folded away today must survive the day it comes back. A caller that does not tell the
+ * two apart passes nothing and gets `allowed` for both. A slot has to be BOTH, so a list handed in wrong
+ * can never put a screen in the bar that its owner may not open.
  */
 export function cleanLayout(
   layout: NavLayout,
   allowed: readonly string[],
-  groupKeys: readonly string[] = []
+  groupKeys: readonly string[] = [],
+  menuLines: readonly string[] = allowed
 ): NavLayout {
   const ok = new Set(allowed);
+  const lines = new Set(menuLines);
   const knownGroups = new Set(groupKeys);
   const groups = eachOnce(layout.groups).filter((key) => knownGroups.has(key));
   const slots = eachOnce(layout.slots)
-    .filter((path) => ok.has(path))
+    .filter((path) => lines.has(path) && ok.has(path))
     .slice(0, BOTTOM_SLOTS);
   return {
     order: layout.order.filter((p) => ok.has(p)),

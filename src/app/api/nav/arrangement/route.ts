@@ -4,7 +4,7 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { db } from '@/lib/db';
 import { requireCompanyTenant } from '@/lib/auth';
 import { can } from '@/lib/authorization';
-import { visibleNav } from '@/lib/route-registry';
+import { isMenuLine, visibleNav } from '@/lib/route-registry';
 import { carryUnsaid, cleanLayout, parseLayout, type NavLayout } from '@/lib/nav-arrangement';
 import {
   clearOwnArrangement,
@@ -63,10 +63,19 @@ const layoutSchema = z.object({
   slots: z.array(z.string()).max(200).optional(),
 });
 
-/** What this caller may arrange: the screens they may open and the keys of the groups that hold them. Never more. */
+/**
+ * What this caller may arrange: the screens they may open, the keys of the groups that hold them, and which of
+ * those screens the drawer draws as a LINE (`menuPaths` — the only ones the phone's bar can ever hold). Never more.
+ */
 function reachOf(user: SessionUser) {
   const visible = visibleNav(user, can);
-  return { paths: visible.flatMap((g) => g.routes.map((r) => r.path)), groupKeys: visible.map((g) => g.key) };
+  const paths = visible.flatMap((g) => g.routes.map((r) => r.path));
+  const openable = new Set(paths);
+  return {
+    paths,
+    groupKeys: visible.map((g) => g.key),
+    menuPaths: visible.flatMap((g) => g.routes.filter((r) => isMenuLine(r, openable)).map((r) => r.path)),
+  };
 }
 type Reach = ReturnType<typeof reachOf>;
 
@@ -74,7 +83,8 @@ type Reach = ReturnType<typeof reachOf>;
  * A layout on its way OUT — only what this caller's own menu holds, so the screen never meets a path
  * or a key that is not theirs, whatever a row happens to carry.
  */
-const readable = (layout: NavLayout, reach: Reach): NavLayout => cleanLayout(layout, reach.paths, reach.groupKeys);
+const readable = (layout: NavLayout, reach: Reach): NavLayout =>
+  cleanLayout(layout, reach.paths, reach.groupKeys, reach.menuPaths);
 
 /** GET — what this person's menu is arranged by, and what the base is. */
 export async function GET() {
@@ -106,7 +116,7 @@ export async function PUT(req: Request) {
     }
 
     const roleId = new URL(req.url).searchParams.get('roleId');
-    const { paths, groupKeys } = reachOf(user);
+    const { paths, groupKeys, menuPaths } = reachOf(user);
     const posted = parseLayout(parsed.data);
     // What the post CARRIED, by key — `parseLayout` cannot tell «absent» from «empty», this can.
     const said = { groups: parsed.data.groups !== undefined, slots: parsed.data.slots !== undefined };
@@ -115,7 +125,7 @@ export async function PUT(req: Request) {
 
     if (!roleId) {
       const stored = mayKeep ? await readOwnArrangement(companyId, user.id) : null;
-      const mine = cleanLayout(carryUnsaid(stored, posted, said), paths, groupKeys);
+      const mine = cleanLayout(carryUnsaid(stored, posted, said), paths, groupKeys, menuPaths);
       await saveOwnArrangement(companyId, user.id, mine);
       return NextResponse.json({ saved: 'own', layout: mine });
     }
@@ -139,7 +149,7 @@ export async function PUT(req: Request) {
     if (!role) return NextResponse.json({ errorAr: 'لا دور بهذا المعرّف.' }, { status: 404 });
 
     const stored = mayKeep ? await readRoleArrangement(companyId, role.id) : null;
-    const base = cleanLayout(carryUnsaid(stored, posted, said), paths, groupKeys);
+    const base = cleanLayout(carryUnsaid(stored, posted, said), paths, groupKeys, menuPaths);
     await saveRoleArrangement(companyId, role.id, base);
     await logAudit({
       companyId,

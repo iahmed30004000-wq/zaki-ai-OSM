@@ -96,13 +96,10 @@ export function mobileNav(
   const all = groups.flatMap((g) => g.routes);
   const byRank = [...all].sort((a, b) => rank(a.path) - rank(b.path));
 
-  const chosen: RouteDef[] = [];
-  for (const path of slots ?? []) {
-    const route = all.find((r) => r.path === path);
-    if (route && !chosen.includes(route)) chosen.push(route);
-    if (chosen.length === BOTTOM_SLOTS) break;
-  }
-  const primary = [...chosen, ...byRank.filter((r) => !chosen.includes(r))].slice(0, BOTTOM_SLOTS);
+  // The person's own first, in the order they put them — only screens THIS menu holds — then the ranking fills
+  // what is left. A `Set` keeps each screen once, at its first place; the cut comes after the stale ones fell out.
+  const wanted = (slots ?? []).flatMap((path) => all.filter((r) => r.path === path));
+  const primary = [...new Set([...wanted, ...byRank])].slice(0, BOTTOM_SLOTS);
 
   if (current) {
     const here = all.find((r) => current === r.path || current.startsWith(r.path + '/'));

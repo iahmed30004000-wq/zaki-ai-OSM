@@ -30,7 +30,7 @@ import { stripComments } from '@/lib/guard-source';
 
 type Row = { id: string; companyId: string; roleId: string | null; userId: string | null; surface: string | null; layout: string };
 
-const { db, rows, roles, session, audit, TABLE } = vi.hoisted(() => {
+const { db, rows, session, audit, TABLE } = vi.hoisted(() => {
   const rows: Row[] = [];
   const roles = [
     { id: 'role-mod', name: 'MODERATOR', companyId: 'c1' },
@@ -99,7 +99,7 @@ const { db, rows, roles, session, audit, TABLE } = vi.hoisted(() => {
       },
     },
   };
-  return { db, rows, roles, session: { user: null as unknown }, audit: vi.fn(), TABLE };
+  return { db, rows, session: { user: null as unknown }, audit: vi.fn(), TABLE };
 });
 
 vi.mock('@/lib/db', () => ({ db }));
@@ -139,8 +139,11 @@ const owner = () => ({
 const json = (body: unknown) => ({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 const put = (body: unknown, roleId?: string) =>
   PUT(new Request(`http://x/api/nav/arrangement${roleId ? `?roleId=${roleId}` : ''}`, json(body)));
-const get = async () => (await (await GET()).json()) as Record<string, any>;
-const del = async () => (await (await DELETE()).json()) as Record<string, any>;
+// A response body, read by the property a claim names — the shape under test is the claim, not a type.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Body = Record<string, any>;
+const get = async () => (await (await GET()).json()) as Body;
+const del = async () => (await (await DELETE()).json()) as Body;
 const post = (roleId: string) => POST(new Request(`http://x/api/nav/arrangement?roleId=${roleId}`, { method: 'POST' }));
 
 /** What a row holds, as the column holds it. */
@@ -148,7 +151,7 @@ const stored = (where: Partial<Row>) => {
   const row = rows.find((r) => Object.entries(where).every(([k, v]) => (r as Record<string, unknown>)[k] === v));
   return row ? (JSON.parse(row.layout) as Record<string, unknown>) : null;
 };
-const addRow = (row: Partial<Row> & { layout: Record<string, unknown> }) =>
+const addRow = (row: Omit<Partial<Row>, 'layout'> & { layout: Record<string, unknown> }) =>
   rows.push({ id: `seed-${rows.length}`, companyId: 'c1', roleId: null, userId: null, surface: 'nav', ...row, layout: JSON.stringify(row.layout) });
 
 beforeEach(() => {
@@ -224,6 +227,21 @@ describe('what a save stores', () => {
     expect(stored({ userId: 'u-salwa' })!.slots).toEqual(['/orders', '/ops/tracking', '/ops/preparation', '/confirmation/mine']);
   });
 
+  it('and a slot she may OPEN but that is no line of her menu — the assistant’s page, the board folded under the dashboard — is dropped too; her lines are not', async () => {
+    session.user = person(['ai.use', 'dashboard.view', 'reports.view', 'orders.view']);
+    const res = await put({
+      order: ['/assistant', '/growth/performance', '/dashboard'],
+      hidden: [],
+      pinned: [],
+      slots: ['/assistant', '/growth/performance', '/dashboard', '/orders'],
+    });
+    expect(res.status).toBe(200);
+    const row = stored({ userId: 'u-salwa' })!;
+    expect(row.slots).toEqual(['/dashboard', '/orders']);
+    // arranging a screen that is folded away today is still accepted: it has to survive the day it comes back
+    expect(row.order).toEqual(['/assistant', '/growth/performance', '/dashboard']);
+  });
+
   it('and what is left empty is not stored as an empty list', async () => {
     await put({ order: [], hidden: [], pinned: [], groups: ['nope'], slots: ['/nope'] });
     const row = stored({ userId: 'u-salwa' })!;
@@ -242,6 +260,7 @@ describe('what a save stores', () => {
     expect((await put({ order: [], hidden: [], pinned: [], slots: ['/orders', null] })).status).toBe(400);
     expect((await put({ order: [], hidden: [], pinned: [], groups: 'ops' })).status).toBe(400);
     expect((await put({ order: [], hidden: [], pinned: [], slots: Array.from({ length: 201 }, (_, i) => `/p${i}`) })).status).toBe(400);
+    expect((await put({ order: [], hidden: [], pinned: [], groups: Array.from({ length: 201 }, (_, i) => `g${i}`) })).status).toBe(400);
     const notJson = await PUT(new Request('http://x/api/nav/arrangement', { method: 'PUT', body: '{nope' }));
     expect(notJson.status).toBe(400);
     expect(rows, 'شي انحفظ من طلب مرفوض').toHaveLength(0);
@@ -338,6 +357,13 @@ describe('a role’s base — only roles.edit sets it, and it reaches the people
     expect(audit.mock.calls[0][0]).toMatchObject({ action: 'NAV_BASE_SET', entityId: 'role-mod', newData: { groups: 2, slots: 2 } });
   });
 
+  it('and a slot that is no LINE of the writer’s drawer is dropped from a role’s base too — the owner may open the assistant’s page, the bar can never draw it', async () => {
+    session.user = owner();
+    const res = await put({ ...BASE, slots: ['/assistant', '/growth/performance', '/orders', '/ops/tracking'] }, 'role-mod');
+    expect(res.status).toBe(200);
+    expect(stored({ roleId: 'role-mod' })!.slots).toEqual(['/orders', '/ops/tracking']);
+  });
+
   it('and it is bounded by the WRITER’S own menu, as the three lists always were — a narrow manager cannot name what he cannot see', async () => {
     session.user = person(['roles.edit', 'orders.view'], { id: 'u-manager' });
     await put({ ...BASE, groups: ['ops', 'main'], slots: ['/confirmation/mine', '/orders'] }, 'role-mod');
@@ -423,6 +449,14 @@ describe('what a read hands back', () => {
       expect(layout.slots).toEqual(['/orders', '/ops/tracking']);
       expect(layout.order).toEqual(['/orders']);
     }
+  });
+
+  it('and a stored slot that is no line of her menu is read WITHOUT it, even where she may open the screen', async () => {
+    session.user = person(['ai.use', 'dashboard.view', 'reports.view', 'orders.view']);
+    addRow({ userId: 'u-salwa', layout: { order: [], hidden: [], pinned: [], slots: ['/assistant', '/orders', '/growth/performance'] } });
+    const body = await get();
+    expect(body.resolved.slots).toEqual(['/orders']);
+    expect(body.own.slots).toEqual(['/orders']);
   });
 
   it('and another person’s row, and another company’s, are never read', async () => {

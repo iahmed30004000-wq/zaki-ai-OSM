@@ -421,6 +421,30 @@ describe('cleanLayout — what a save keeps', () => {
     expect(Object.keys(out).sort()).toEqual(['hidden', 'order', 'pinned']);
   });
 
+  it('and the slots are checked against the LINES of the menu when it is told which they are — openable is not enough for the bar', () => {
+    const lines = ['/orders', '/products', '/dashboard'];
+    const openable = [...allowed, '/assistant', '/growth/performance'];
+    const out = cleanLayout(
+      lay({ order: ['/assistant'], pinned: ['/growth/performance'], slots: ['/assistant', '/orders', '/growth/performance', '/dashboard'] }),
+      openable,
+      groupKeys,
+      lines
+    );
+    expect(out.slots).toEqual(['/orders', '/dashboard']);
+    // the three lists still follow what may be OPENED: a screen folded away today keeps its place for the day it comes back
+    expect(out.order).toEqual(['/assistant']);
+    expect(out.pinned).toEqual(['/growth/performance']);
+  });
+
+  it('and a slot has to be BOTH a line of the menu and a screen the writer may open — a list handed in wrong cannot put a stranger in the bar', () => {
+    expect(cleanLayout(lay({ slots: ['/a1', '/zzz'] }), ['/a1'], groupKeys, ['/zzz', '/a1']).slots).toEqual(['/a1']);
+  });
+
+  it('and with no list of lines it is the openable list for both — the old call is the old answer', () => {
+    expect(cleanLayout(lay({ slots: ['/orders', '/nope'] }), allowed, groupKeys).slots).toEqual(['/orders']);
+    expect(cleanLayout(lay({ slots: ['/orders', '/nope'] }), allowed).slots).toEqual(['/orders']);
+  });
+
   it('and it never changes what it was given', () => {
     const input = lay({ groups: ['d', 'nope'], slots: ['/orders', '/nope'] });
     const before = JSON.stringify(input);

@@ -578,6 +578,16 @@ describe('the phone’s four — what the rows show', () => {
     expect((screen.getByLabelText('ارفع الخانة الأولى') as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('and ONE reachable screen is still a bar of one — the section is drawn, with nowhere for its arrows to go', async () => {
+    mountCard({ paths: ['/admin/profile'] });
+    await screen.findAllByRole('listitem');
+    expect(slotSelects()).toHaveLength(1);
+    expect(slotValues()).toEqual(['/admin/profile']);
+    expect((screen.getByLabelText('ارفع الخانة الأولى') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText('انزل الخانة الأولى') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole('heading', { level: 3, name: 'خانات الهاتف الأربعة — اللي بتظهر تحت الشاشة' })).toBeTruthy();
+  });
+
   it('and with no screen the drawer draws there is nothing to arrange — the section is not drawn at all', async () => {
     mountCard({ paths: ['/assistant'] });
     await screen.findAllByRole('listitem');
@@ -841,9 +851,18 @@ describe('built for a thumb, in Arabic, from real controls', () => {
     mountCard({ paths: AGENT_PATHS });
     await screen.findAllByRole('listitem');
     const container = document.getElementById('menu-order')!;
-    // The hidden instructions and the live region are drawn by the library outside the card; what the card draws is held here.
-    const text = container.textContent!;
-    expect(text, 'كلمة إنجليزية بالنص الظاهر').not.toMatch(/[A-Za-z]/);
+    /*
+     * WHAT A PERSON SEES — NOT WHAT THE LIBRARY HIDES.
+     *
+     * The drag library draws its hidden instructions and its live region INLINE, inside each context, and only after its own
+     * first effect (`mounted`). So whether they are in the container's text depends on how fast the machine was when this
+     * read it — the first version of this test failed one run in four for that reason, naming «Esc» six times. They are held
+     * separately below (they are read aloud, not seen); the text a person SEES is the card's own.
+     */
+    const seen = container.cloneNode(true) as HTMLElement;
+    seen.querySelectorAll('[id^="DndDescribedBy"], [id^="DndLiveRegion"]').forEach((e) => e.remove());
+    const text = seen.textContent!;
+    expect(text, `كلمة إنجليزية بالنص الظاهر: ${(text.match(/[A-Za-z]+/g) ?? []).join(' ')}`).not.toMatch(/[A-Za-z]/);
     for (const el of Array.from(container.querySelectorAll('[aria-label], [title]'))) {
       for (const attr of ['aria-label', 'title', 'aria-roledescription']) {
         const v = el.getAttribute(attr);
@@ -908,6 +927,14 @@ describe('and the wiring is the one that holds the rules', () => {
     expect(s).toContain('mobileNav(barGroups, null, layout.slots)');
     expect(s).toContain('isMenuLine(r, openable)');
     expect(s).toContain('applyArrangement(');
+  });
+
+  it('and BOTH drag contexts lock the vertical axis and keep the item inside its list — the groups’ as well as the lines’', () => {
+    const s = src();
+    expect(s.match(/modifiers=\{\[restrictToVerticalAxis, restrictToParentElement\]\}/g), 'سياق بلا قفل عمودي').toHaveLength(2);
+    expect(s.match(/<DndContext\b/g)).toHaveLength(2);
+    // …and both use the one set of sensors, so a press means the same thing at both levels
+    expect(s.match(/sensors=\{sensors\}/g)).toHaveLength(2);
   });
 
   it('and a save always carries both keys — empty is «no opinion», absent would be «an older tab»', () => {
