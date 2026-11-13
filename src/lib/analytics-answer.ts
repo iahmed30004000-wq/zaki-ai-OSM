@@ -6,6 +6,7 @@ import type { SessionUser } from '@/types/auth';
 import { getCompanyAnalytics, reportRange, previousRange, DateFilter } from '@/lib/analytics';
 import { rateLimit } from '@/lib/rate-limit';
 import { db } from '@/lib/db';
+import { REPORT_TTL_MS, heavyOnce } from '@/lib/heavy-lane';
 import { expensesOf } from '@/lib/expense-scope';
 import { countOutcomes } from '@/lib/order-outcome';
 import { DELIVERED_SHIPPING, rateOf, whereDelivered } from '@/lib/order-state';
@@ -96,39 +97,15 @@ async function returnsByProduct(where: Record<string, unknown>): Promise<Product
 }
 
 /**
- * THE ANSWER BOTH BOARDS READ — and nothing else decides who may ask.
+ * EVERY NUMBER OF THE ANSWER, BEFORE ANYONE'S KEY DECIDES WHAT THEY MAY READ OF IT.
  *
- * The dashboard (`/api/analytics`) and the performance board
- * (`/api/analytics/performance`) read the same builder and the same
- * projection; each route asks `reports.view` itself BEFORE calling this (never
- * `dashboard.view`, which nearly every role holds). The rate window is per door
- * (`rateKey`) so two open boards do not share one.
+ * The user-independent half of `answerAnalytics`, moved here unchanged so it can be computed ONCE for a question and shared
+ * (`heavyOnce`, lib/heavy-lane.ts): the board, the dashboard and every open tab asking for the same company, store and window read
+ * the same bundle, and it runs in the reports' lane so its dozen parallel queries never take the pool the rest of the site uses.
+ * Who may see which part of it is decided AFTER, per person, by `answerAnalytics` — nothing here reads `user`.
  */
-export async function answerAnalytics(
-  req: Request,
-  who: { companyId: string; storeId: string; user: SessionUser },
-  rateKey: string,
-) {
-  try {
-    const { companyId, storeId, user } = who;
-
-    // Heavy analytics query — rate limit generously (30/min per user) so the
-    // dashboard's 30s polling never hits it, but runaway clients are capped.
-    const rl = rateLimit(`${rateKey}:${companyId}:${user.id}`, 30, 60 * 1000);
-    if (!rl.allowed) {
-      return NextResponse.json(
-        { errorAr: `طلبات كثيرة جداً. أعد المحاولة بعد ${rl.retryAfterSec} ثانية` },
-        { status: 429 }
-      );
-    }
-
-    const { searchParams } = new URL(req.url);
-
-    const period = (searchParams.get('period') as any) || 'all';
-    const startDate = searchParams.get('startDate') || undefined;
-    const endDate = searchParams.get('endDate') || undefined;
-
-    const filter: DateFilter = { period, startDate, endDate };
+async function computeBundle(scope: { companyId: string; storeId: string }, filter: DateFilter) {
+  const { companyId, storeId } = scope;
     // «الكل» on the dashboard is the whole history — asked for here, by
     // name, and not by the engine's default (see `reportRange`).
     const analytics = await getCompanyAnalytics({ companyId, storeId }, filter, reportRange(filter));
@@ -249,6 +226,59 @@ export async function answerAnalytics(
           returnRate: priorDoor?.returnRate ?? null,
         }))
       : null;
+
+  return { analytics, outcomes, previous, door, productReturns, deliveredCount, costedCount, expenseRows, outstanding, unrecorded };
+}
+
+/**
+ * THE ANSWER BOTH BOARDS READ — and nothing else decides who may ask.
+ *
+ * The dashboard (`/api/analytics`) and the performance board
+ * (`/api/analytics/performance`) read the same builder and the same
+ * projection; each route asks `reports.view` itself BEFORE calling this (never
+ * `dashboard.view`, which nearly every role holds). The rate window is per door
+ * (`rateKey`) so two open boards do not share one.
+ */
+export async function answerAnalytics(
+  req: Request,
+  who: { companyId: string; storeId: string; user: SessionUser },
+  rateKey: string,
+) {
+  try {
+    const { companyId, storeId, user } = who;
+
+    // Heavy analytics query — rate limit generously (30/min per user) so the
+    // dashboard's 30s polling never hits it, but runaway clients are capped.
+    const rl = rateLimit(`${rateKey}:${companyId}:${user.id}`, 30, 60 * 1000);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { errorAr: `طلبات كثيرة جداً. أعد المحاولة بعد ${rl.retryAfterSec} ثانية` },
+        { status: 429 }
+      );
+    }
+
+    const { searchParams } = new URL(req.url);
+
+    const period = (searchParams.get('period') as any) || 'all';
+    const startDate = searchParams.get('startDate') || undefined;
+    const endDate = searchParams.get('endDate') || undefined;
+
+    const filter: DateFilter = { period, startDate, endDate };
+    // ONE COMPUTATION PER QUESTION: the same company, store and window share it (and it is kept for a minute — `REPORT_TTL_MS`).
+    // What is shared is the user-independent bundle; the projection below is per person.
+    const range = reportRange(filter);
+    const key = [
+      'analytics',
+      companyId,
+      storeId ?? '',
+      filter.period ?? '',
+      filter.startDate ?? '',
+      filter.endDate ?? '',
+      range.start?.toISOString() ?? '',
+      range.end?.toISOString() ?? '',
+    ].join('|');
+    const { analytics, outcomes, previous, door, productReturns, deliveredCount, costedCount, expenseRows, outstanding, unrecorded } =
+      await heavyOnce(key, REPORT_TTL_MS, () => computeBundle({ companyId, storeId }, filter));
 
     const [collected, uncollected] = outstanding;
     const outstandingMoney =

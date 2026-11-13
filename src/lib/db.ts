@@ -1,16 +1,63 @@
 import { PrismaClient } from '@prisma/client';
-import { withPoolFloor } from './db-url';
+import { withHeavyPool, withPoolFloor } from './db-url';
+import { LANE_KEY } from './heavy-lane-key';
+
+/**
+ * IS THE CODE RUNNING HERE A REPORT? Read from the lane's own marker on `globalThis` (`heavy-lane.ts` puts it there) — NOT by importing
+ * `heavy-lane.ts`, which holds `node:async_hooks`: this file is reachable from a browser bundle (see `heavy-lane-key.ts`). Nothing in the
+ * lane has run yet (no marker): not a report.
+ */
+const laneSlot = globalThis as unknown as Record<string, { getStore(): { heavy?: boolean } | undefined } | undefined>;
+const inLane = (): boolean => laneSlot[LANE_KEY]?.getStore()?.heavy === true;
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
+  prismaReports: PrismaClient | undefined;
+  prismaDb: PrismaClient | undefined;
 };
 
-export const db =
+const main =
   globalForPrisma.prisma ??
   new PrismaClient({
     log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
     // At least twenty connections, whatever the URL says (`db-url.ts`).
     datasourceUrl: withPoolFloor(process.env.DATABASE_URL),
+  });
+
+/**
+ * THE REPORTS' OWN CLIENT — six connections, a long wait (`HEAVY_POOL` in `db-url.ts`).
+ *
+ * BUILT THE FIRST TIME A REPORT ASKS, not when the module loads: the worker, the middleware and every request that never runs a report
+ * build nothing, and `one-client-one-pool.test.ts` (RV187) still holds — evaluating this module builds ONE client. It lives on
+ * `globalThis` like the main one, so a second bundle's copy of this file finds it and builds no other. What runs on it is decided by
+ * `runInHeavyLane` (`heavy-lane.ts`); see there for the measured cause.
+ */
+function reportsClient(): PrismaClient {
+  return (globalForPrisma.prismaReports ??= new PrismaClient({
+    log: ['error'],
+    datasourceUrl: withHeavyPool(process.env.DATABASE_URL),
+  }));
+}
+
+/**
+ * ONE `db` FOR EVERYBODY, TWO CLIENTS BEHIND IT.
+ *
+ * Every file keeps writing `db.order.findMany(...)`. The proxy picks the client at the moment a property is read: inside a report
+ * (`inLane()`) the reports' client, everywhere else the main one — so no caller changed, and the type is still `PrismaClient`.
+ * Methods are bound to the client they were read from, so `db.$transaction(...)` runs on the same client as the models around it.
+ *
+ * THE PROXY IS KEPT ON `globalThis` TOO: a second copy of this module hands out the SAME object, as it did when `db` was the client
+ * itself (`one-client-one-pool.test.ts`). The lane's marker (`heavy-lane.ts`) is on `globalThis` for the same reason, so a proxy
+ * made by one bundle reads the mark that another bundle's route wrote.
+ */
+export const db: PrismaClient =
+  globalForPrisma.prismaDb ??
+  new Proxy(main, {
+    get(_target, prop) {
+      const client = inLane() ? reportsClient() : main;
+      const value = Reflect.get(client, prop, client);
+      return typeof value === 'function' ? value.bind(client) : value;
+    },
   });
 
 /**
@@ -25,6 +72,7 @@ export const db =
  * holding several times the connections it was being used for. `globalThis`
  * is shared across those copies; one client, one pool.
  */
-globalForPrisma.prisma = db;
+globalForPrisma.prisma = main;
+globalForPrisma.prismaDb = db;
 
 export default db;
