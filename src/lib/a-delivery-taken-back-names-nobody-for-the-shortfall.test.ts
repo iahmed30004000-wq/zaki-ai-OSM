@@ -422,12 +422,12 @@ describe('what it does not change in the approval’s other rules', () => {
 /* ═════════════════════════ 2 · DIFFERENTIAL — THE ENGINE AS IT WAS, AGAINST THE ENGINE NOW ═════════════════════════ */
 
 /*
- * THE ENGINE BEFORE THIS CHANGE, COPIED VERBATIM from `src/lib/shortfall.ts` at f9919977 (the main this change started from): the function from
+ * THE ENGINE BEFORE THIS CHANGE, COPIED VERBATIM from `src/lib/shortfall.ts` at b9fdab5b (the main this change was last merged with): the function from
  * `export async function proposeShortfalls(` to the end of the file, with only its name changed (`proposeShortfallsBefore`). To check the copy:
  *
- *     git show f9919977:src/lib/shortfall.ts | sed -n '175,$p' | tr -d '\r'
+ *     git show b9fdab5b:src/lib/shortfall.ts | tr -d '\r' | sed -n '/^export async function proposeShortfalls(/,$p'
  *
- * must equal the block below from `async function proposeShortfallsBefore(` on, except for that first line's name.
+ * must equal the block below from `async function proposeShortfallsBefore(` on, except for that first line's name (186 lines).
  */
 type Tx = {
   order: { findMany: (a: Row) => Promise<{ id: string; shippingStatus: string; deliveredAt: Date | null; moderatorId: string | null; confirmedById: string | null }[]> };
@@ -446,6 +446,7 @@ async function proposeShortfallsBefore(
   const result: ShortfallResult = { charges: [], onCompany: [], stop: null };
 
   const owing = candidates
+    .filter((c) => !c.exchange)
     .map((c) => ({ c, amount: shortfallOf(c, scope.minorUnit) }))
     .filter((x) => x.amount > 0);
   if (owing.length === 0) return result;
@@ -711,6 +712,8 @@ function randomCase(seed: number, withUndo: boolean): Case {
       statementAmount: expected - 6 + int(9),
       statementFee: chance(0.1) ? null : chance(0.6) ? fee : Math.max(0, fee - 1 + int(3)),
       claimPayment: chance(0.1),
+      // «طلب تبديل» (#267): a line answered so is no candidate at all — it rides along in the worlds so that rule is compared too
+      exchange: chance(0.08),
       explanation: chance(0.5) ? 'خصم' : null,
     });
     if (chance(0.1)) shelf.penalties.push({ id: `p${i}`, settlementMatchId: `m${i}`, status: pick(['PROPOSED', 'APPLIED', 'WAIVED', 'REVERSED']) });
@@ -741,7 +744,7 @@ describe('DIFFERENTIAL — the engine before (verbatim above) against the engine
   const CASES = 3000;
 
   it('P1 · with NO undo row anywhere, the two give the same answer and write the same rows — on 3000 seeded worlds', async () => {
-    const seen = { charged: 0, unnamed: 0, bad: 0, company: 0, written: 0, threw: 0, someDoor: 0 };
+    const seen = { charged: 0, unnamed: 0, bad: 0, company: 0, written: 0, threw: 0, someDoor: 0, exchange: 0 };
     for (let seed = 1; seed <= CASES; seed++) {
       const c = randomCase(seed, false);
       expect(c.shelf.activities.some((a) => a.action === DELIVERY_UNDO_ACTION)).toBe(false);
@@ -759,8 +762,9 @@ describe('DIFFERENTIAL — the engine before (verbatim above) against the engine
       }
       if (now.penalties.length) seen.written++;
       if (c.shelf.attempts.some((a) => a.companyId === 'c1' && (DOOR_RESULTS as readonly string[]).includes(a.result))) seen.someDoor++;
+      if (c.candidates.some((x) => x.exchange)) seen.exchange++;
     }
-    // not a vacuous comparison: every road of the engine was walked many times (measured: 1307 charged · 633 unnamed · 245 bad person · 196 «على الشركة»), and nothing threw
+    // not a vacuous comparison: every road of the engine was walked many times (measured: 1255 charged · 598 unnamed · 241 bad person · 181 «على الشركة» · 551 worlds with an «طلب تبديل» line), and nothing threw
     const said = JSON.stringify(seen);
     expect(seen.threw, said).toBe(0);
     expect(seen.charged, said).toBeGreaterThan(800);
@@ -769,6 +773,7 @@ describe('DIFFERENTIAL — the engine before (verbatim above) against the engine
     expect(seen.company, said).toBeGreaterThan(120);
     expect(seen.written, said).toBeGreaterThan(800);
     expect(seen.someDoor, said).toBeGreaterThan(2000);
+    expect(seen.exchange, said).toBeGreaterThan(300);
   });
 
   it('P2 · with undo rows, the answer is the OLD engine’s answer on the same world with the dead attempts taken out — on 3000 seeded worlds, and the undo changes the answer in many of them', async () => {
@@ -799,7 +804,7 @@ describe('DIFFERENTIAL — the engine before (verbatim above) against the engine
       if (r.stop?.code === 'SHORTFALL_UNNAMED') seen.unnamed++;
     }
     // not vacuous: the undo is present in most worlds, it really changed the engine's answer in hundreds, and the tie rule was exercised
-    // (measured: 2585 with an undo · 337 where the old engine's answer differs · 283 ties · 1224 charged · 692 unnamed)
+    // (measured: 2593 with an undo · 345 where the old engine's answer differs · 282 ties · 1196 charged · 661 unnamed)
     const said = JSON.stringify(seen);
     expect(seen.withUndo, said).toBeGreaterThan(2000);
     expect(seen.mattered, said).toBeGreaterThan(200);
