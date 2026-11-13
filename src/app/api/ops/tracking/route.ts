@@ -12,6 +12,7 @@ import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { readLimit, readPage } from '@/lib/numeric-input';
 import { searchWhere, trackingFilters } from '@/lib/parcel-tracking/filters';
 import { readTrackingList } from '@/lib/parcel-tracking/list';
+import { readDifferenceRows } from '@/lib/parcel-tracking/difference';
 import { sightWhere, unseenKey, withoutMoney, type TrackingSight } from '@/lib/parcel-tracking/sight';
 
 /**
@@ -33,6 +34,8 @@ import { sightWhere, unseenKey, withoutMoney, type TrackingSight } from '@/lib/p
  *   ?age=      fresh|few|week|old, by the shipping date
  *   ?said=     what the delivery company itself says about the parcel when it disagrees with our state:
  *              DELIVERED|PARTIALLY_DELIVERED|RETURNED|CANCELLED|FAILED_DELIVERY
+ *   ?task=DIFFERENCE   «فيه فرق»: the parcels whose matching came back with a difference — answered or not, the
+ *              unanswered first. The courier's money, so it asks the money sight (below) like the delivered rows do.
  *
  * An unknown value is a 400 in Arabic, never a quiet «everything».
  *
@@ -41,6 +44,14 @@ import { sightWhere, unseenKey, withoutMoney, type TrackingSight } from '@/lib/p
  * null. It is read once for the whole list (`lib/parcel-tracking/list.ts`) and only SHOWN: it changes no state, no
  * lateness, no rank and no chip, and it is not money — it is on every row the person may read, never on a row they may
  * not (the sight levels below decide the rows, not the word).
+ *
+ * «فيه فرق» (13/11) — EACH ROW OF A PERSON WHO HOLDS THE MONEY SIGHT CARRIES `difference`, or null: the parcel's matching
+ * came back with a difference, and this is the company's line against our figure — the two figures, the gap signed the way
+ * a shop reads it (`shortfall`), the company's own word, whether it is answered and whether its statement is closed
+ * (`lib/parcel-tracking/difference.ts`). For whoever may DECIDE (`settlement.review`; `acts.decide`) it also carries what the
+ * matching screen's matrix says about each answer for THIS order as it is now — the answer itself is written by that
+ * screen's own door (`POST /api/finance/statements/:id/matches/:matchId/resolve`), never from here, and a person without
+ * the money sight gets no field, no number in the chip and a 403 for `?task=DIFFERENCE`.
  *
  * TWO LEVELS OF SIGHT (see `lib/parcel-tracking/sight.ts`). Whoever holds `ops.track` sees the parcels on the road. The
  * delivered parcels, the «بانتظار التحصيل» chip and the courier's figures need «عرض التسويات» or «إدارة الصناديق
@@ -144,8 +155,22 @@ export async function GET(req: Request) {
       region,
       age,
       said,
+      // The company's line against our figure is the courier's money: asked only for a person who holds the money sight.
+      differences: sight.money ? { storeId } : null,
       page: readPage(q),
       limit: readLimit(q, 25, 100),
+    });
+    // Deciding is the matching screen's key; it is only ever drawn WITH the figures (a person cannot answer what she cannot see).
+    const mayDecide = sight.money && can(user, 'settlement.review');
+    // The page's own differences, whole — one read of the rows the list chose, the matrix besides it for whoever may decide.
+    const differenceRows = await readDifferenceRows(db, {
+      companyId,
+      storeId,
+      minorUnit: country.minorUnit,
+      chosen: list.differences,
+      decide: mayDecide,
+      // What the company wrote on its line is the statement's content: «عرض التسويات» opens it, the cash box alone does not.
+      lines: can(user, 'settlement.view'),
     });
 
     const found = list.ids.length
@@ -333,6 +358,8 @@ export async function GET(req: Request) {
           changeAppliedAt: changedAt.get(o.id) ?? null,
           acknowledgedAt: ackedAt.get(o.id) ?? null,
         }),
+        // «فيه فرق»: the company's line against our figure, or null — the courier's money, so only for whoever holds that sight.
+        ...(sight.money ? { difference: differenceRows.get(o.id) ?? null } : {}),
       };
     });
     // The courier's figures leave with the permission: every row is built whole by the one rule above, then they are taken off.
@@ -360,6 +387,8 @@ export async function GET(req: Request) {
         closeLegacy: can(user, 'ops.close_legacy'),
         // `undoDelivery` is «تراجع عن التسليم» (13/11): a button on a delivered parcel's row, the owner's own key; its door asks it again.
         undoDelivery: can(user, 'ops.undo_delivery'),
+        // «فيه فرق»: answering a difference from the row is `settlement.review` — the matching screen's own door asks it again.
+        decide: mayDecide,
       },
       // Over everything the list holds, not the page: the badge says how many parcels are late, not how many of these 25.
       lateCount: list.facts.lateCount,

@@ -9,7 +9,8 @@ import type { StatusChoice } from './filters';
  *
  *   SEEING   a delivered parcel (the collection rows), the «بانتظار التحصيل» chip and the courier's figures need
  *            «عرض التسويات» or «إدارة الصناديق النقدية». Without either, those rows are not read, not counted by the
- *            chips and the dropdowns, and the money fields are not in the answer. A return row (طلب إرجاع، مرتجع)
+ *            chips and the dropdowns, and the money fields are not in the answer. The mark «فيه فرق» — the company's
+ *            figure against ours, with its chip — is that level's too: not read, not counted, not drawn. A return row (طلب إرجاع، مرتجع)
  *            needs «عرض المرتجعات»; «المرتجعات» (`ops.returns`) stays the key that RECEIVES the stock, nothing more.
  *   ACTING   the bar, the boxes and «استلمت منه» need «إدارة الصناديق النقدية» — the key the collect door asks.
  *
@@ -38,6 +39,8 @@ export const MONEY_FIELDS = [
   'expectedCollection',
   'deliveryFee',
   'priceIncludesDelivery',
+  // «فيه فرق»: the two figures of the company's line against ours, its word and the decision — the courier's money, said by the statement.
+  'difference',
 ] as const;
 export type MoneyField = (typeof MONEY_FIELDS)[number];
 
@@ -65,7 +68,8 @@ const among = (list: readonly string[], v: string | null | undefined): boolean =
  * which leaves the other level's rows out.
  */
 export function unseenKey(applied: { status: StatusChoice; task: string | null }, sight: TrackingSight): 'settlement.view' | 'ops.returns_view' | null {
-  if (!sight.money && (among(COLLECTION_STATUSES, applied.status) || applied.task === 'COLLECT')) return 'settlement.view';
+  // «فيه فرق» is the statement's own figures against ours: the same level as the delivered rows and the collection chip.
+  if (!sight.money && (among(COLLECTION_STATUSES, applied.status) || applied.task === 'COLLECT' || applied.task === 'DIFFERENCE')) return 'settlement.view';
   if (!sight.returns && (among(RETURN_STATUSES, applied.status) || applied.task === 'RETURNING')) return 'ops.returns_view';
   return null;
 }

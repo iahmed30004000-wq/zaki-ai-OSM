@@ -19,6 +19,7 @@ const { db, requireContext, requirePermission, noteCustomersHandedOut } = vi.hoi
     deliveryFee: { findMany: vi.fn() },
     deliveryProvider: { findMany: vi.fn() },
     region: { findMany: vi.fn() },
+    settlementMatch: { findMany: vi.fn() },
   },
   requireContext: vi.fn(),
   requirePermission: vi.fn(),
@@ -93,6 +94,7 @@ beforeEach(() => {
   db.orderActivity.findMany.mockResolvedValue([]);
   db.deliveryFee.findMany.mockResolvedValue([{ deliveryProviderId: P1, regionId: R1, lateThresholdDays: 3 }]);
   db.deliveryProvider.findMany.mockResolvedValue([{ id: P1, name: 'أبو علي' }, { id: P2, name: 'أمان' }]);
+  db.settlementMatch.findMany.mockResolvedValue([]);
   db.region.findMany.mockResolvedValue([{ id: R1, name: 'دمشق' }]);
   noteCustomersHandedOut.mockResolvedValue(undefined);
 });
@@ -273,7 +275,8 @@ describe('the numbers it sends with the page', () => {
     expect(body.facts.couriers).toEqual([{ id: P1, name: 'أبو علي', count: 31 }]);
     expect(body.facts.regions).toEqual([{ id: R1, name: 'دمشق', count: 31 }]);
     expect(body.facts.ages).toEqual({ fresh: 1, few: 0, week: 0, old: 30 });
-    expect(Object.keys(body.facts)).toEqual(['total', 'tasks', 'lateCount', 'notLate', 'couriers', 'regions', 'ages', 'said']);
+    // `difference` is «فيه فرق»'s number — sent only to a person who holds the money sight, as the matching is the courier's money.
+    expect(Object.keys(body.facts)).toEqual(['total', 'tasks', 'lateCount', 'notLate', 'couriers', 'regions', 'ages', 'said', 'difference']);
   });
 
   it('and a row’s own «late» is the list’s: the parcel the chip counts is the parcel that says late', async () => {
