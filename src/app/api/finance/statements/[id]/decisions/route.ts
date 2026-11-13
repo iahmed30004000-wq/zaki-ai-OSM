@@ -6,7 +6,7 @@ import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { zodMessage } from '@/lib/zod-message';
-import { isDifference, shortfall } from '@/lib/settlement-difference';
+import { EXCHANGE_NOT_IN_BULK_SENTENCE, isDifference, shortfall } from '@/lib/settlement-difference';
 import { appliedRowRefusal, closedStatementRefusal, isMatchingClosed } from '@/lib/settlement-gates';
 import {
   BULK_LIMIT,
@@ -16,6 +16,7 @@ import {
   WHY,
   explanationOf,
   decisionData,
+  decisionKind,
   decisionMatrix,
   decisionNoteBody,
   loadDecisionFacts,
@@ -41,11 +42,19 @@ import {
  * One row refused refuses the whole press and names the row and the sentence, so nothing is half-decided.
  * Like the single door it moves no money and settles nothing: the approval carries the answers out — and, like
  * the single door, it answers a closed statement with the one sentence of a closed statement.
+ *
+ * ── «طلب تبديل» IS NOT HERE ──
+ *
+ * An exchange is one order at a time, each with its own reason (the owner, 13/11), so it is never a bulk answer: a body that asks
+ * for it (`exchange: true`) is refused with a sentence, and nothing is read or written — it is not quietly taken as the plain
+ * «اعتُمد رقم الشركة», which is the opposite thing. And every answer this door writes CLEARS the exchange qualifier
+ * (`decisionKind`), the way the single door does: the last answer on a row is the only one it carries.
  */
 const schema = z.object({
   matchIds: z.array(z.string().uuid()).min(1).max(BULK_LIMIT),
   resolution: z.enum(DECISIONS),
   note: z.string().trim().max(500).refine((s) => explanationOf(s) !== null, EXPLANATION_SENTENCE),
+  exchange: z.boolean().optional(),
 });
 
 class BulkRefused extends Error {
@@ -63,6 +72,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const parsed = schema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
       return NextResponse.json({ error: zodMessage(parsed.error) }, { status: 400 });
+    }
+    if (parsed.data.exchange === true) {
+      return NextResponse.json({ error: EXCHANGE_NOT_IN_BULK_SENTENCE, code: 'EXCHANGE_NOT_IN_BULK' }, { status: 400 });
     }
     const resolution = parsed.data.resolution as Decision;
     const note = parsed.data.note;
@@ -148,7 +160,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         // rolls back the whole press — nothing is half-decided.
         const written = await tx.settlementMatch.updateMany({
           where: { id: r.id, statementId: id, companyId, result: r.result, appliedAt: null, statement: { matchingClosedAt: null } },
-          data: decisionData({ resolution, note, userId: user.id, at }),
+          // The answer and its qualifier, together: a bulk answer is never an exchange, so it clears one a row may carry.
+          data: { ...decisionData({ resolution, note, userId: user.id, at }), ...decisionKind() },
         });
         if (written.count !== 1) {
           throw new BulkRefused(409, { error: 'تغيّر سطر قبل لحظات — حدّث الصفحة وأعد المحاولة', code: 'CHANGED' });
