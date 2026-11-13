@@ -385,6 +385,8 @@ export async function GET(req: Request) {
         transfer: can(user, 'ops.transfer'),
         writeOff: can(user, 'ops.write_off'),
         closeLegacy: can(user, 'ops.close_legacy'),
+        // `undoDelivery` is «تراجع عن التسليم» (13/11): a button on a delivered parcel's row, the owner's own key; its door asks it again.
+        undoDelivery: can(user, 'ops.undo_delivery'),
         // «فيه فرق»: answering a difference from the row is `settlement.review` — the matching screen's own door asks it again.
         decide: mayDecide,
       },

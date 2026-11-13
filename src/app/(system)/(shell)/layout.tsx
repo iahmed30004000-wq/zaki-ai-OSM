@@ -40,6 +40,9 @@ export default async function ShellLayout({ children }: { children: React.ReactN
   return (
     <Shell
       groups={applyArrangement(menuNav(user, can), nav?.resolved ?? null)}
+      // The phone's four, chosen by the person (their own, else the role's base). Read in the same pass as the groups, so the
+      // bar is right on the first frame too; the bar itself keeps only the ones this menu still holds.
+      phoneSlots={nav?.resolved.slots}
       userName={user.name}
       userRole={user.role}
       // During «عاين كـ» the mark names who is really looking — the owner — never the person being previewed.

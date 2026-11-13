@@ -66,6 +66,8 @@ const diff = (over: Any = {}): Any => ({
   gap: 3,
   answered: false,
   resolution: null,
+  // «طلب تبديل» (13/11): `EXCHANGE` beside `ACCEPTED_COURIER`; null for every other answer — the door always says.
+  resolutionKind: null,
   resolutionNote: null,
   claim: null,
   closed: false,
@@ -172,7 +174,7 @@ const draw = async () => {
 /** The desk's table, and the phone's cards — `Rows` draws both and the stylesheet shows one. */
 const desk = () => document.querySelector('table') as HTMLElement;
 const cards = () => document.querySelector('ul.md\\:hidden') as HTMLElement;
-const MARK = /فيه فرق|اعتُمد رقم الشركة|رقمنا هو المعتمد|قيد المراجعة/;
+const MARK = /فيه فرق|اعتُمد رقم الشركة|رقمنا هو المعتمد|قيد المراجعة|طلب تبديل/;
 const markIn = (root: HTMLElement) => within(root).getByRole('button', { name: MARK });
 const openDialog = async () => {
   await draw();
@@ -243,6 +245,56 @@ describe('the mark — beside the row’s other chips, on the desk and on the ca
       expect(mark.textContent).toContain('نقص');
       expect(mark.textContent).toContain('3.00 JOD');
       expect(mark.className).toContain(token);
+    }
+  });
+
+  it('an exchange — «اعتُمد رقم الشركة» with the EXCHANGE kind — wears «طلب تبديل» in place of the red word, in the settled green, with the figure beside it', async () => {
+    rows = [parcel('a', { difference: diff({ answered: true, resolution: 'ACCEPTED_COURIER', resolutionKind: 'EXCHANGE', resolutionNote: 'تبديل حبة ناقصة' }) })];
+    await draw();
+    for (const root of [desk(), cards()]) {
+      const mark = markIn(root);
+      expect(mark.textContent).toContain('طلب تبديل');
+      expect(mark.textContent).not.toContain('اعتُمد رقم الشركة');
+      expect(mark.textContent).not.toContain('فيه فرق');
+      // the difference still happened: the order stays marked, with what it was
+      expect(mark.textContent).toContain('نقص');
+      expect(mark.textContent).toContain('3.00 JOD');
+      expect(mark.className).toContain('--sys-success');
+      expect(mark.className).not.toContain('--sys-destructive');
+    }
+    // …and no code reaches the page
+    expect(document.body.textContent).not.toContain('EXCHANGE');
+  });
+
+  it('and its tooltip says what it was answered with — «طلب تبديل» — and that the statement is closed, when it is', async () => {
+    rows = [parcel('a', { difference: diff({ answered: true, resolution: 'ACCEPTED_COURIER', resolutionKind: 'EXCHANGE' }) })];
+    await draw();
+    expect(markIn(desk()).getAttribute('title')).toBe('انبتّ فيه: طلب تبديل — اضغط تشوف الرقمين وتبتّ فيه');
+    cleanup();
+    rows = [parcel('a', { difference: diff({ closed: true, answered: true, resolution: 'ACCEPTED_COURIER', resolutionKind: 'EXCHANGE' }) })];
+    await draw();
+    const title = markIn(desk()).getAttribute('title')!;
+    expect(title).toContain('انبتّ فيه: طلب تبديل');
+    expect(title).toContain('الكشف مغلق');
+    expect(title).not.toContain('وتبتّ فيه');
+  });
+
+  it('the kind alone is not an exchange: no kind (an older server), a null kind and a kind beside another answer all keep the answer’s own word', async () => {
+    for (const [over, word] of [
+      [{ answered: true, resolution: 'ACCEPTED_COURIER' }, 'اعتُمد رقم الشركة'],
+      [{ answered: true, resolution: 'ACCEPTED_COURIER', resolutionKind: null }, 'اعتُمد رقم الشركة'],
+      [{ answered: true, resolution: 'OURS_STANDS', resolutionKind: 'EXCHANGE' }, 'رقمنا هو المعتمد'],
+      [{ answered: true, resolution: 'UNDER_REVIEW', resolutionKind: 'EXCHANGE' }, 'قيد المراجعة'],
+      [{ resolutionKind: 'EXCHANGE' }, 'فيه فرق'],
+    ] as const) {
+      cleanup();
+      const difference = diff(over);
+      if (!('resolutionKind' in over)) delete difference.resolutionKind;
+      rows = [parcel('a', { difference })];
+      await draw();
+      const text = markIn(desk()).textContent!;
+      expect(text, JSON.stringify(over)).toContain(word);
+      expect(text, JSON.stringify(over)).not.toContain('طلب تبديل');
     }
   });
 
@@ -482,6 +534,87 @@ describe('the answers — the matching screen’s own, mounted, and offered only
     expect(within(d).getByRole('button', { name: /التعليقات الداخلية/ })).toBeTruthy();
   });
 
+  it('an unanswered difference also offers «طلب تبديل» — a real button beside the others — and pressing it sends the exchange to the SAME door', async () => {
+    const d = await openDialog();
+    const b = within(d).getByRole('button', { name: 'طلب تبديل' }) as HTMLButtonElement;
+    expect(b.tagName).toBe('BUTTON');
+    expect(b.disabled).toBe(false);
+    expect(b.getAttribute('title')).toBe('تبديل أو حبة ناقصة بعتناها للزبون — ما إلها ثمن؛ رقم الشركة هو الصحيح وما بينحسب خصم على حدا.');
+    fireEvent.change(within(d).getByLabelText('تفسير القرار'), { target: { value: '  تبديل حبة ناقصة بعتناها  ' } });
+    fireEvent.click(b);
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    const [url, init] = posts()[0] as [string, { method: string; body: string }];
+    expect(url).toBe(RESOLVE);
+    expect(JSON.parse(init.body)).toEqual({ resolution: 'ACCEPTED_COURIER', exchange: true, note: 'تبديل حبة ناقصة بعتناها' });
+    // and it is the ONLY write: nothing else is sent to any other address
+    expect(api.mock.calls.filter((c) => c[1] && (c[1] as RequestInit).method).map((c) => c[0])).toEqual([RESOLVE]);
+  });
+
+  it('the exchange needs the explanation too — four characters never leave the browser', async () => {
+    const d = await openDialog();
+    fireEvent.change(within(d).getByLabelText('تفسير القرار'), { target: { value: 'خصم' } });
+    fireEvent.click(within(d).getByRole('button', { name: 'طلب تبديل' }));
+    expect(await within(d).findByText(/اكتب تفسيراً واضحاً: 5 أحرف على الأقل/)).toBeTruthy();
+    expect(posts()).toHaveLength(0);
+  });
+
+  it('«طلب تبديل» is greyed by the verdict of «اعتُمد رقم الشركة» — the same cell, so the same sentence — not by the verdict of «رقمنا»', async () => {
+    rows = [
+      parcel('a', {
+        difference: diff({
+          decisions: { ACCEPTED_COURIER: { allowed: false, why: 'الطلب مُسوّى أصلاً (حُصّل يدوياً أو بكشف) — لا بتّ عليه' }, OURS_STANDS: OK, UNDER_REVIEW: OK },
+        }),
+      }),
+    ];
+    let d = await openDialog();
+    expect((within(d).getByRole('button', { name: 'طلب تبديل' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(d).getByRole('button', { name: /اعتُمد رقم الشركة/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(d).getByRole('button', { name: /رقمنا هو المعتمد/ }) as HTMLButtonElement).disabled).toBe(false);
+    expect(within(d).getByText('الطلب مُسوّى أصلاً (حُصّل يدوياً أو بكشف) — لا بتّ عليه')).toBeTruthy();
+    cleanup();
+    // …and where their figure is allowed but «رقمنا» is not (a parcel on the road), the exchange is allowed.
+    rows = [
+      parcel('a', {
+        shippingStatus: 'SHIPPED',
+        difference: diff({
+          decisions: { ACCEPTED_COURIER: OK, OURS_STANDS: { allowed: false, why: 'الطرد لم يُسجَّل مسلَّماً بعد — لا مطالبة قبل التسليم' }, UNDER_REVIEW: OK },
+        }),
+      }),
+    ];
+    d = await openDialog();
+    expect((within(d).getByRole('button', { name: 'طلب تبديل' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((within(d).getByRole('button', { name: /رقمنا هو المعتمد/ }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('what the list shows afterwards is the server’s: the row, read again WITH its kind, wears «طلب تبديل» and not «اعتُمد رقم الشركة»', async () => {
+    const d = await openDialog();
+    fireEvent.change(within(d).getByLabelText('تفسير القرار'), { target: { value: 'تبديل حبة ناقصة بعتناها' } });
+    rows = [parcel('a', { difference: diff({ answered: true, resolution: 'ACCEPTED_COURIER', resolutionKind: 'EXCHANGE', resolutionNote: 'تبديل حبة ناقصة بعتناها' }) })];
+    fireEvent.click(within(d).getByRole('button', { name: 'طلب تبديل' }));
+    await waitFor(() => expect(markIn(desk()).textContent).toContain('طلب تبديل'));
+    expect(markIn(desk()).textContent).not.toContain('اعتُمد رقم الشركة');
+    expect(markIn(desk()).textContent).not.toContain('فيه فرق');
+  });
+
+  it('an answered exchange shows its chip «طلب تبديل» and its reason in the dialog — and, until the statement closes, a way to answer again, to either figure', async () => {
+    rows = [parcel('a', { difference: diff({ answered: true, resolution: 'ACCEPTED_COURIER', resolutionKind: 'EXCHANGE', resolutionNote: 'تبديل حبة ناقصة بعتناها' }) })];
+    const d = await openDialog();
+    expect(within(d).getByText('طلب تبديل')).toBeTruthy();
+    expect(within(d).queryByText('اعتُمد رقم الشركة')).toBeNull();
+    expect(within(d).getByText('تبديل حبة ناقصة بعتناها')).toBeTruthy();
+    fireEvent.click(within(d).getByRole('button', { name: 'غيّر البتّ' }));
+    // the matching screen's own way to answer again: the field, and all four answers
+    expect(within(d).getByLabelText('تفسير القرار')).toBeTruthy();
+    for (const name of [/اعتُمد رقم الشركة/, /رقمنا هو المعتمد/, 'طلب تبديل', 'قيد المراجعة']) {
+      expect(within(d).getByRole('button', { name }), String(name)).toBeTruthy();
+    }
+    fireEvent.change(within(d).getByLabelText('تفسير القرار'), { target: { value: 'نطالب بالفرق' } });
+    fireEvent.click(within(d).getByRole('button', { name: /رقمنا هو المعتمد/ }));
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    // moving it to a figure sends the plain body: no `exchange` at all
+    expect(JSON.parse((posts()[0][1] as { body: string }).body)).toEqual({ resolution: 'OURS_STANDS', note: 'نطالب بالفرق' });
+  });
+
   it('the answer goes through the EXISTING door — the matching screen’s resolve — with the explanation, trimmed', async () => {
     const d = await openDialog();
     fireEvent.change(within(d).getByLabelText('تفسير القرار'), { target: { value: '  خصم اتفقت عليه الموظفة  ' } });
@@ -615,6 +748,40 @@ describe('who may decide — and the statement that is closed', () => {
     expect(within(d).getByText('خصم من الموظفة')).toBeTruthy();
     expect(within(d).queryByRole('button', { name: 'غيّر البتّ' })).toBeNull();
     expect(within(d).queryByText(NEEDS_REVIEW_KEY_AR)).toBeNull();
+  });
+
+  it('a person who may not decide still sees an answered exchange — read-only, as «طلب تبديل», with no way to change it', async () => {
+    acts = ACTS_VIEWER;
+    rows = [parcel('a', { difference: diff({ answered: true, resolution: 'ACCEPTED_COURIER', resolutionKind: 'EXCHANGE', resolutionNote: 'تبديل حبة ناقصة' }) })];
+    const d = await openDialog();
+    expect(within(d).getByText('طلب تبديل')).toBeTruthy();
+    expect(within(d).getByText('تبديل حبة ناقصة')).toBeTruthy();
+    expect(within(d).queryByText('اعتُمد رقم الشركة')).toBeNull();
+    expect(within(d).queryByRole('button', { name: 'غيّر البتّ' })).toBeNull();
+    expect(within(d).queryByRole('button', { name: 'طلب تبديل' })).toBeNull();
+  });
+
+  it('NEGATIVE: «طلب تبديل» is never a button where the others are not — a person who may not decide, and a closed statement', async () => {
+    acts = ACTS_VIEWER;
+    let d = await openDialog();
+    expect(within(d).queryByRole('button', { name: 'طلب تبديل' })).toBeNull();
+    cleanup();
+    acts = ACTS_DECIDER;
+    rows = [parcel('a', { difference: diff({ closed: true }) })];
+    d = await openDialog();
+    expect(within(d).queryByRole('button', { name: 'طلب تبديل' })).toBeNull();
+    expect(within(d).getByText(STATEMENT_CLOSED_SENTENCE)).toBeTruthy();
+  });
+
+  it('a closed statement with an exchange: the sentence once, «طلب تبديل» read-only, no «غيّر البتّ»', async () => {
+    rows = [parcel('a', { difference: diff({ closed: true, answered: true, resolution: 'ACCEPTED_COURIER', resolutionKind: 'EXCHANGE', resolutionNote: 'تبديل حبة ناقصة' }) })];
+    const d = await openDialog();
+    expect(within(d).getByText(STATEMENT_CLOSED_SENTENCE)).toBeTruthy();
+    expect(within(d).getByText('طلب تبديل')).toBeTruthy();
+    expect(within(d).getByText('تبديل حبة ناقصة')).toBeTruthy();
+    expect(within(d).queryByRole('button', { name: 'غيّر البتّ' })).toBeNull();
+    expect(within(d).queryByLabelText('تفسير القرار')).toBeNull();
+    expect(d.textContent!.split(STATEMENT_CLOSED_SENTENCE).length - 1).toBe(1);
   });
 
   it('a closed statement takes no answer: the door’s own sentence, and NO button the door would refuse — even for a person who may decide', async () => {

@@ -319,18 +319,27 @@ describe('which files may name the qualifier at all — a money path cannot star
       'src/app/api/finance/statements/[id]/route.ts',
       'src/components/screens/finance/DifferenceActions.tsx',
       'src/components/screens/finance/MatchingScreen.tsx',
+      // The follow-up screen's «فيه فرق» (13/11): it READS the qualifier from the match row for the answer's WORD — on the mark and in the dialog
+      // that mounts `DifferenceActions` — and hands it on. Display only: none of the three settles, pays, matches or counts anything.
+      'src/components/screens/tracking/DifferenceDialog.tsx',
+      'src/lib/parcel-tracking/difference-words.ts',
+      'src/lib/parcel-tracking/difference.ts',
       'src/lib/settlement-decisions.ts',
       'src/lib/settlement-difference.ts',
       'src/lib/statement-close.ts',
+      // The search across every statement READS the kind to say «طلب تبديل» beside a line it finds: a word on a card, no money.
+      'src/lib/statement-search.ts',
     ]);
     // (The bulk door writes the qualifier through `decisionKind()` and never names the column.)
   });
 
-  it('and only these ask `isExchange` or name the kind constant: the rule itself, the close (twice), the screen (the chip) and the doors that write it', () => {
+  it('and only these ask `isExchange` or name the kind constant: the rule itself, the close (twice), the screens (the chip, the follow-up mark’s word) and the doors that write it', () => {
     expect(namesIt(/\bisExchange\b/)).toEqual([
       'src/components/screens/finance/DifferenceActions.tsx',
+      'src/lib/parcel-tracking/difference-words.ts',
       'src/lib/settlement-difference.ts',
       'src/lib/statement-close.ts',
+      'src/lib/statement-search.ts',
     ]);
     expect(namesIt(/\bEXCHANGE_KIND\b/)).toEqual([
       'src/app/api/finance/statements/[id]/matches/[matchId]/resolve/route.ts',

@@ -182,6 +182,8 @@ const ID_SCOPED: Record<string, Excuse> = {
   'lib/commission-metrics.ts': { reason: 'مقيَّد بـ orderId: { in } ومستخدمٍ واحد', sites: 1 },
   // The send and its plan (`dispatchPlan`, the orders left to send): both read the orders of ONE batch, which was found in this store first.
   'lib/couriers/dispatch.ts': { reason: 'مقيَّد بـ shippingBatchId واحد', sites: 2 },
+  // new (13/11, تراجع عن التسليم): قراءةٌ صرفة لسطور دفتر المخزون لطلبٍ واحد وُجد بهالمتجر أصلاً (referenceId + companyId) ليقول للمالك كم قطعة طلعت — ما بتكتب شي.
+  'lib/delivery-undo.ts': { reason: 'مقيَّد بـ referenceId واحد — سطورُ دفترِ مخزونِ طلبٍ بعينه (قراءةٌ صرفة)', sites: 1 },
   // new (طلب التعديل م٢): قراءتا أسطر وإضافات طلبٍ واحد مُتحقَّق منه (orderId + companyId) لمعاينة التعديل — قراءةٌ صرفة.
   'lib/order-edit-facts.ts': { reason: 'مقيَّد بـ orderId واحد — سطورُ طلبٍ بعينه وإضافاتُه (معاينة التعديل)', sites: 2 },
   // old → new (4/11, طلباتي أخف): 3 → 5. The fourth and fifth are `customerRiskMany`'s two windows for a whole desk — still scoped by the named persons (phones / ids `in` the desk's own customers), one grouped read instead of one per customer.

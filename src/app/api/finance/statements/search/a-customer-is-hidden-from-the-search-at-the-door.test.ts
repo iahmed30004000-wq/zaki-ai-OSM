@@ -89,6 +89,12 @@ function load() {
   const m1 = { id: 'm1', companyId: 'c1', statementId: 'A', statementLineId: l1.id, orderId: 'o1', result: 'MATCHED', resolution: null, expectedAmount: '20', statementAmount: '20', difference: '0', createdAt: at('2026-11-01T10:00:00Z'), order: o1, statement: a };
   l1.matches.push(m1);
   rows.push(m1);
+  // A line answered «طلب تبديل»: the courier's figure stands (`ACCEPTED_COURIER`) and the kind beside it says why.
+  const oEx = { id: 'oE', companyId: 'c1', storeId: 's1', orderNumber: 'ORD-SWAP', merchantRef: null, trackingNumber: null, customer: null };
+  const lEx = line(a, { barcode: 'BC-SWAP' });
+  const mEx = { id: 'mE', companyId: 'c1', statementId: 'A', statementLineId: lEx.id, orderId: 'oE', result: 'MISMATCHED', resolution: 'ACCEPTED_COURIER', resolutionKind: 'EXCHANGE', expectedAmount: '30', statementAmount: '3', difference: '-27', createdAt: at('2026-11-01T10:00:00Z'), order: oEx, statement: a };
+  lEx.matches.push(mEx);
+  rows.push(mEx);
   line(other, { barcode: 'BC-1', receiverName: 'سارة', receiverPhone: PHONE });
   for (let k = 0; k < 60; k++) line(bulk, { barcode: `MANY-${String(k).padStart(2, '0')}`, createdAt: at(`2026-12-01T10:${String(k).padStart(2, '0')}:00Z`) });
   // …and three of OUR orders that statement did not name, whose number also says «MANY»: the count is lines and unnamed orders together.
@@ -163,6 +169,18 @@ describe('who may type a customer’s name or a phone — through the real door'
         expect(text.includes(secret), `${secret} (${may})`).toBe(false);
       }
     }
+  });
+});
+
+describe('an exchange — through the real door', () => {
+  it('a line answered with the courier’s figure and the exchange kind comes back as «طلب تبديل» — the kind itself is not sent, and an ordinary line is not called one', async () => {
+    const { status, body } = await search('BC-SWAP');
+    expect(status).toBe(200);
+    expect(body.total).toBe(1);
+    expect(body.hits[0]).toMatchObject({ answerAr: 'طلب تبديل', queue: 'MISMATCHED', expected: 30, stated: 3, difference: -27 });
+    expect(JSON.stringify(body)).not.toMatch(/resolutionKind|EXCHANGE/);
+    // The ordinary line of the same statement carries no answer, so it says none.
+    expect((await search('BC-1')).body.hits[0].answerAr).toBeNull();
   });
 });
 

@@ -59,8 +59,9 @@ const acts = async () => (await (await GET(new Request('http://localhost/api/ops
 describe('what the list tells the screen about the owner’s one-time press', () => {
   it('the holder of `ops.close_legacy` is told «yes» — and the three parcel acts keep following their own keys', async () => {
     held.add('ops.close_legacy');
-    // `decide` is «فيه فرق»'s own key (`settlement.review`): it is told, and it is «no» here like the other three.
-    expect(await acts()).toEqual({ deliver: false, transfer: false, writeOff: false, closeLegacy: true, decide: false });
+    // `undoDelivery` (13/11) is the second owner-only act and `decide` is «فيه فرق»'s own key (`settlement.review`): different keys, so
+    // holding this one says nothing about either — both are «no» here, like the other three.
+    expect(await acts()).toEqual({ deliver: false, transfer: false, writeOff: false, closeLegacy: true, undoDelivery: false, decide: false });
   });
 
   it('NEGATIVE: the keys that are near it do not stand in for it — tracking, courier money, settlement, the write-off box', async () => {
