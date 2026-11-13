@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 /**
@@ -184,7 +184,16 @@ describe.each([
   it('and says, separately, how many wait on a date — they are not «for you»', async () => {
     pool = { ...POOL, waitingOnADate: 4 };
     render(<Harness compact={compact} />);
-    await screen.findByText(/و4 مؤجَّلة حتى موعدها/);
+    if (compact) {
+      // The slim bar of «طلباتي» is one line on purpose: the postponed orders stay a line there.
+      await screen.findByText(/و4 مؤجَّلة حتى موعدها/);
+    } else {
+      // 13/11 (the owner: «يضيف عليهم المؤجل…»): on the full card they are a BOX under «مش جاهزة للسحب الآن», still outside the figure.
+      const box = await screen.findByRole('group', { name: 'طلبات مش جاهزة للسحب' });
+      expect(within(box).getByText('مؤجَّلة')).toBeTruthy();
+      expect(within(box).getByText('4')).toBeTruthy();
+      expect(screen.queryByText(/و4 مؤجَّلة حتى موعدها/)).toBeNull();
+    }
   });
 });
 
