@@ -358,6 +358,8 @@ export async function GET(req: Request) {
         transfer: can(user, 'ops.transfer'),
         writeOff: can(user, 'ops.write_off'),
         closeLegacy: can(user, 'ops.close_legacy'),
+        // `undoDelivery` is «تراجع عن التسليم» (13/11): a button on a delivered parcel's row, the owner's own key; its door asks it again.
+        undoDelivery: can(user, 'ops.undo_delivery'),
       },
       // Over everything the list holds, not the page: the badge says how many parcels are late, not how many of these 25.
       lateCount: list.facts.lateCount,
