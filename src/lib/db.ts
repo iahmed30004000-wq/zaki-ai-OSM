@@ -1,6 +1,14 @@
 import { PrismaClient } from '@prisma/client';
 import { withHeavyPool, withPoolFloor } from './db-url';
-import { inHeavyLane } from './heavy-lane';
+import { LANE_KEY } from './heavy-lane-key';
+
+/**
+ * IS THE CODE RUNNING HERE A REPORT? Read from the lane's own marker on `globalThis` (`heavy-lane.ts` puts it there) — NOT by importing
+ * `heavy-lane.ts`, which holds `node:async_hooks`: this file is reachable from a browser bundle (see `heavy-lane-key.ts`). Nothing in the
+ * lane has run yet (no marker): not a report.
+ */
+const laneSlot = globalThis as unknown as Record<string, { getStore(): { heavy?: boolean } | undefined } | undefined>;
+const inLane = (): boolean => laneSlot[LANE_KEY]?.getStore()?.heavy === true;
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -35,7 +43,7 @@ function reportsClient(): PrismaClient {
  * ONE `db` FOR EVERYBODY, TWO CLIENTS BEHIND IT.
  *
  * Every file keeps writing `db.order.findMany(...)`. The proxy picks the client at the moment a property is read: inside a report
- * (`inHeavyLane()`) the reports' client, everywhere else the main one — so no caller changed, and the type is still `PrismaClient`.
+ * (`inLane()`) the reports' client, everywhere else the main one — so no caller changed, and the type is still `PrismaClient`.
  * Methods are bound to the client they were read from, so `db.$transaction(...)` runs on the same client as the models around it.
  *
  * THE PROXY IS KEPT ON `globalThis` TOO: a second copy of this module hands out the SAME object, as it did when `db` was the client
@@ -46,7 +54,7 @@ export const db: PrismaClient =
   globalForPrisma.prismaDb ??
   new Proxy(main, {
     get(_target, prop) {
-      const client = inHeavyLane() ? reportsClient() : main;
+      const client = inLane() ? reportsClient() : main;
       const value = Reflect.get(client, prop, client);
       return typeof value === 'function' ? value.bind(client) : value;
     },

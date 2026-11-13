@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { LANE_KEY } from './heavy-lane-key';
 
 /**
  * THE REPORTS LANE — slow, many-query reads run apart from the work people are waiting on (the owner, 13/11).
@@ -44,11 +45,11 @@ interface Lane {
  * look for the mark in another, and nothing would ever be routed. `globalThis` is shared across those copies: one lane, one map.
  */
 const shared = globalThis as unknown as {
-  __osmReportsLane?: AsyncLocalStorage<Lane>;
+  [LANE_KEY]?: AsyncLocalStorage<Lane>;
   __osmReportsAnswers?: Map<string, Slot>;
 };
 
-const lane = (shared.__osmReportsLane ??= new AsyncLocalStorage<Lane>());
+const lane = (shared[LANE_KEY] ??= new AsyncLocalStorage<Lane>());
 
 /** Is the code running here a report? `db` reads this to pick its client. */
 export function inHeavyLane(): boolean {

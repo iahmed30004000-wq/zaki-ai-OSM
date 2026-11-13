@@ -75,7 +75,7 @@ describe('`db` has two clients behind it', () => {
 
   it('picks the client by the lane, through a proxy, at the moment a property is read', () => {
     expect(src).toMatch(/new Proxy\(main,/);
-    expect(src).toMatch(/inHeavyLane\(\)\s*\?\s*reportsClient\(\)\s*:\s*main/);
+    expect(src).toMatch(/inLane\(\)\s*\?\s*reportsClient\(\)\s*:\s*main/);
     expect(src).toMatch(/value\.bind\(client\)/);
   });
 
@@ -101,7 +101,7 @@ describe('`db` has two clients behind it', () => {
 describe('the lane lives on globalThis', () => {
   const src = read('src/lib/heavy-lane.ts');
   it('the storage and the answers are shared across copies of the module', () => {
-    expect(src).toMatch(/__osmReportsLane \?\?= new AsyncLocalStorage/);
+    expect(src).toMatch(/shared\[LANE_KEY\] \?\?= new AsyncLocalStorage/);
     expect(src).toMatch(/__osmReportsAnswers \?\?= new Map/);
   });
   it('a computation that fails is dropped, never kept', () => {
