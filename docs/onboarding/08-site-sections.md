@@ -20,7 +20,7 @@
 | شاشة خارج القائمة | «المساعد الذكي» بابه الفقاعة على كل شاشة | `offMenu` بـ`lib/route-registry.ts` |
 | الدليل ⓘ | خطوات كل شاشة بأسماء أزرارها الحرفية | `lib/route-guide-texts.ts` |
 | «شغلك اليوم» | بطاقات الشغل المنتظر حسب مفاتيحك (بانتظار التأكيد، طلب للتجهيز، كشف لم يُعتمد…) | `lib/my-work.ts` · `src/components/shell/MyWork.tsx` · `GET /api/me/work` |
-| ترتيب القائمة الشخصي | كل موظف بيسحب ويخفي ويثبّت أسطره | `src/components/settings/MenuOrderCard.tsx` · `POST /api/nav/arrangement` · `lib/nav-arrangement.ts` |
+| ترتيب القائمة الشخصي | كل موظف بيرتّب المجموعات الكبيرة بالقائمة، وأسطر كل مجموعة، وبيختار أربع شاشات الهاتف اللي بتظهر تحت الشاشة، وبيسحب ويخفي ويثبّت أسطره. بلا صلاحية جديدة: الترتيب ما بيفتح شاشة لحدا | `src/components/settings/MenuOrderCard.tsx` · `/api/nav/arrangement` · `lib/nav-arrangement.ts` (`groups` · `slots`) · `lib/mobile-nav.ts` |
 | البحث السريع | `Ctrl+K` | `src/components/shell/CommandPalette.tsx` |
 | إظهار الأزرار | الواجهة بتخفي الزر إذا ما معك المفتاح، بس **القرار للخادم** | `lib/can.ts` (`userCan`) · `lib/authorization.ts` |
 

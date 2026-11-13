@@ -7,6 +7,7 @@ import {
   resolveLayout,
   type NavLayout,
 } from './nav-arrangement';
+import { mobileNav } from './mobile-nav';
 import type { NavGroup } from './route-registry';
 
 /**
@@ -171,5 +172,81 @@ describe('a stored layout is read defensively', () => {
       hidden: ['/b'],
       pinned: [],
     });
+  });
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * THE SAME LINE, HELD FOR THE TWO NEWER OPINIONS (13/11) — THE GROUPS AND THE PHONE'S FOUR.
+ *
+ * «ترتيب القوائم والخانات الرئيسية» is still ARRANGING, and arranging opens nothing. A group
+ * key and a screen's path are both just names in a stored layout; neither is a door. What this
+ * holds is that a forged one — a group that is not in this person's menu, a screen they may not
+ * open — has nowhere to take effect: it is dropped when saved, and it is inert when read, because
+ * the two functions that apply a layout only reorder what they were handed.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+describe('and it cannot add a route — the groups and the phone’s four', () => {
+  it('a group key the viewer’s menu does not hold adds no group, and holds no place', () => {
+    const out = applyArrangement(groups(), { ...EMPTY_LAYOUT, groups: ['finance', 'control', 'settings', 'main', 'admin'] });
+    expect(out.map((g) => g.key), 'الترتيب أضاف مجموعة').toEqual(['settings', 'main']);
+    expect(paths(out).sort()).toEqual(paths(groups()).sort());
+  });
+
+  it('a screen the viewer may not open adds nothing to the phone’s bar — it is not in the menu the bar is handed', () => {
+    const { primary, rest } = mobileNav(groups(), null, ['/finance/wallets', '/control/audit', '/orders', '/ops/shipments/new']);
+    const menu = paths(groups());
+    for (const r of primary) expect(menu, `${r.path} دخل الشريط من خارج القائمة`).toContain(r.path);
+    expect(primary.map((r) => r.path)).not.toContain('/finance/wallets');
+    expect(primary.map((r) => r.path)).toContain('/orders');
+    // and the whole menu is still exactly the menu: the bar and the sheet together hold what was handed in, once
+    expect([...primary.map((r) => r.path), ...paths(rest)].sort()).toEqual([...menu].sort());
+  });
+
+  it('a layout full of forged groups and screens yields the very same SET of screens as no layout at all', () => {
+    const forged: NavLayout = {
+      order: ['/finance/matching', '/dashboard'],
+      hidden: [],
+      pinned: ['/finance/matching'],
+      groups: ['finance', 'settings', 'nope'],
+      slots: ['/finance/matching', '/control/audit', '/products', '/nope'],
+    };
+    const arranged = applyArrangement(groups(), forged);
+    expect(paths(arranged).sort()).toEqual(paths(groups()).sort());
+    const bar = mobileNav(arranged, null, forged.slots);
+    expect([...bar.primary.map((r) => r.path), ...paths(bar.rest)].sort()).toEqual(paths(groups()).sort());
+  });
+
+  it('and the saved layout is filtered down to the writer’s own groups and screens — the rest is dropped, not an error', () => {
+    const cleaned = cleanLayout(
+      {
+        order: ['/dashboard', '/finance'],
+        hidden: [],
+        pinned: [],
+        groups: ['settings', 'finance', 'main'],
+        slots: ['/finance/wallets', '/orders', '/dashboard'],
+      },
+      paths(groups()),
+      groups().map((g) => g.key)
+    );
+    expect(cleaned.groups).toEqual(['settings', 'main']);
+    expect(cleaned.slots).toEqual(['/orders', '/dashboard']);
+  });
+
+  it('and hiding stays stronger than choosing: a screen hidden from the menu cannot hold a slot', () => {
+    const layout: NavLayout = { ...EMPTY_LAYOUT, hidden: ['/orders'], slots: ['/orders', '/products'] };
+    const bar = mobileNav(applyArrangement(groups(), layout), null, layout.slots);
+    expect(bar.primary.map((r) => r.path)).not.toContain('/orders');
+  });
+
+  it('and a person who loses the right to open a screen loses it from their bar, with nothing stored changing', () => {
+    const stored: NavLayout = { ...EMPTY_LAYOUT, slots: ['/settings/geo', '/orders', '/dashboard', '/products'] };
+    const before = mobileNav(groups(), null, stored.slots).primary.map((r) => r.path);
+    expect(before).toEqual(['/settings/geo', '/orders', '/dashboard', '/products']);
+    // The same stored layout, handed the menu of somebody who can no longer open «البلدان»:
+    const lost = groups().map((g) => ({ ...g, routes: g.routes.filter((r) => r.path !== '/settings/geo') })).filter((g) => g.routes.length > 0);
+    const after = mobileNav(lost, null, stored.slots).primary.map((r) => r.path);
+    expect(after).toEqual(['/orders', '/dashboard', '/products']);
+    expect(stored.slots).toEqual(['/settings/geo', '/orders', '/dashboard', '/products']);
   });
 });
