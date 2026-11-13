@@ -262,15 +262,24 @@ function formatter(key: string, make: () => Intl.DateTimeFormat): Intl.DateTimeF
   return f;
 }
 
+/** Whether a zone name is a real one — asked once per name: a formatter is built to find out, and this ran once per waiting row. */
+const ZONE_OK = new Map<string, boolean>();
+
 /** The store's own timezone when it is a real one; the machine's otherwise. */
 function zoneOf(timeZone: string | undefined | null): string | undefined {
   if (!timeZone) return undefined;
-  try {
-    new Intl.DateTimeFormat('en-CA', { timeZone });
-    return timeZone;
-  } catch {
-    return undefined;
+  let ok = ZONE_OK.get(timeZone);
+  if (ok === undefined) {
+    try {
+      new Intl.DateTimeFormat('en-CA', { timeZone });
+      ok = true;
+    } catch {
+      ok = false;
+    }
+    if (ZONE_OK.size >= 500) ZONE_OK.clear();
+    ZONE_OK.set(timeZone, ok);
   }
+  return ok ? timeZone : undefined;
 }
 
 /**
