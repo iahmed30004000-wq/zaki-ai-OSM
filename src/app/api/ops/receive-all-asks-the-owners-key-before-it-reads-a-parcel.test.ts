@@ -126,6 +126,14 @@ describe('the gates, before anything is read', () => {
     nothingWasTouched();
   });
 
+  it('NEGATIVE: an unknown barcode word → 400 in Arabic, nothing read — never a quiet «every parcel»', async () => {
+    held.keys = new Set(OWNER);
+    const r = await send({ barcode: 'with', countedAndInspected: true });
+    expect(r.status).toBe(400);
+    expect(r.body.errorAr).toBe('فلتر الباركود غير معروف: with');
+    nothingWasTouched();
+  });
+
   it('NEGATIVE: a cursor that is not an id → 400', async () => {
     held.keys = new Set(OWNER);
     expect((await send({ countedAndInspected: true, cursor: "x' OR 1=1" })).status).toBe(400);
@@ -176,6 +184,10 @@ describe('the set it walks is the list’s own — the GET is the oracle', () =>
     ['q=0791234567', { q: '0791234567' }],
     [`status=RETURNED&courier=${COURIER}&age=week&q=سارة`, { status: 'RETURNED', courier: COURIER, age: 'week', q: 'سارة' }],
     ['status=all&courier=all&age=all', { status: 'all', courier: 'all', age: 'all' }],
+    // «بلا باركود» (13/11): the button walks exactly the parcels the list showed when it was counted.
+    ['barcode=none', { barcode: 'none' }],
+    [`courier=${COURIER}&barcode=none`, { courier: COURIER, barcode: 'none' }],
+    ['barcode=all', { barcode: 'all' }],
   ];
 
   it.each(CASES)('?%s — the same question as the list, word for word', async (query, body) => {
@@ -184,6 +196,14 @@ describe('the set it walks is the list’s own — the GET is the oracle', () =>
     expect(door).toEqual(list);
     // The scope is spread at the TOP, so no filter can widen it.
     expect(door).toMatchObject({ companyId: 'c1', storeId: 's1', returnReceipt: null });
+  });
+
+  it('«بلا باركود» narrows the walk: the door asks one clause more, and with it chosen the walk is never wider than without', async () => {
+    const without = await doorWhere({});
+    const narrowed = await doorWhere({ barcode: 'none' });
+    expect(narrowed.AND).toHaveLength(without.AND.length + 1);
+    expect(JSON.stringify(narrowed)).toContain('trackingNumber');
+    expect(JSON.stringify(without)).not.toContain('trackingNumber');
   });
 
   it('the cursor is ANDed on last — the list’s question with «after this id», and nothing else', async () => {

@@ -1512,7 +1512,7 @@
   "src/components/screens/ReturnsScreen.tsx": {
     "buttons": 10,
     "inputs": 5,
-    "columns": 15,
+    "columns": 17,
     "cards": 0,
     "modals": 2,
     "icons": 2,
