@@ -254,7 +254,9 @@ describe('who is offered «مصروف» in the category box', () => {
     who.role = 'SUPER_ADMIN';
     who.keys = [];
     const dialog = await openDialog();
-    expect(choosable(dialog)).toEqual(['ADJUSTMENT', 'OTHER', 'EXPENSE']);
+    // OLD → NEW (13/11): the owner holds every key, `finance.partners` included, so «سحب شريك» is offered to him right after «مصروف»
+    // (the partners' kind; nobody else is offered it — see the-wallet-dialog-records-a-partner-draw.test.tsx).
+    expect(choosable(dialog)).toEqual(['ADJUSTMENT', 'OTHER', 'EXPENSE', 'PARTNER_DRAW']);
   });
 
   it('every type the form can send is a type the expense door accepts', () => {

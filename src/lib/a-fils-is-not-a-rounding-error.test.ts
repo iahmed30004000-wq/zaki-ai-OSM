@@ -85,6 +85,18 @@ function decimalColumns(): Column[] {
  */
 const RATES = new Set(['exchangeRate']);
 
+/**
+ * A PERCENT IS NOT AN AMOUNT EITHER (13/11).
+ *
+ * `Partner.sharePercent` is a partner's share of the net profit — 15, 55, 33.33 — a ratio of a hundred, not a quantity of any
+ * currency. It needs two decimals and three digits, not a fils and eleven integer digits, and `Decimal(5,2)` is exactly that: the
+ * door refuses a third decimal and the migration holds 0 < x ≤ 100 with a CHECK. Named here, by model AND field so no future column
+ * is waved through by a vague name, and held to what a percent needs by its own test below. It is exempt from the three rules that
+ * are about AMOUNTS (the fils, the integer digits, and the migration walk), and from nothing else.
+ */
+const PERCENTS = new Set(['Partner.sharePercent']);
+const isPercent = (c: { model: string; field: string }) => PERCENTS.has(`${c.model}.${c.field}`);
+
 describe('every money column holds a fils', () => {
   const columns = decimalColumns();
 
@@ -101,7 +113,7 @@ describe('every money column holds a fils', () => {
      * column is where the third one is lost.
      */
     const thin = columns
-      .filter((c) => !RATES.has(c.field))
+      .filter((c) => !RATES.has(c.field) && !isPercent(c))
       .filter((c) => c.scale < WIDEST_MINOR_UNIT)
       .map((c) => `${c.model}.${c.field}  (${c.precision},${c.scale})  schema.prisma:${c.line}`);
     expect(
@@ -114,8 +126,18 @@ describe('every money column holds a fils', () => {
     // `numeric(3,3)` can hold nothing but a fraction. Not a real risk, and
     // a floor worth stating once: eleven integer digits is a hundred
     // billion, which is past any currency this product will meet.
-    for (const c of columns) {
+    for (const c of columns.filter((x) => !isPercent(x))) {
       expect(c.precision - c.scale, `${c.model}.${c.field}`).toBeGreaterThanOrEqual(8);
+    }
+  });
+
+  it('and a PERCENT is held to what a percent needs: two decimals, room for a hundred — and it is really a column', () => {
+    const percents = columns.filter(isPercent);
+    expect(percents.length, 'no percent column in the schema — the list above is dead').toBe(PERCENTS.size);
+    for (const c of percents) {
+      expect(c.scale, `${c.model}.${c.field}`).toBeGreaterThanOrEqual(2);
+      // three integer digits hold 100.00; fewer would not
+      expect(c.precision - c.scale, `${c.model}.${c.field}`).toBeGreaterThanOrEqual(3);
     }
   });
 
@@ -202,11 +224,18 @@ describe('and no migration after this one may narrow money again', () => {
     const offenders: string[] = [];
     for (const f of after) {
       const code = f.sql.replace(/^\s*--.*$/gm, '');
+      // The column a type is written for: the quoted name just before it. A PERCENT column is named in PERCENTS (by model.field) and
+      // is not money — the one place a two-decimal type is right, and only for the names listed there.
+      const columnOf = (at: number) => /"(\w+)"\s*$/.exec(code.slice(Math.max(0, at - 80), at))?.[1];
+      const isAPercent = (at: number) => {
+        const col = columnOf(at);
+        return !!col && [...PERCENTS].some((p) => p.endsWith(`.${col}`));
+      };
       for (const m of code.matchAll(/numeric\((\d+),\s*([012])\)/g)) {
-        offenders.push(`${f.name}: numeric(${m[1]},${m[2]})`);
+        if (!isAPercent(m.index!)) offenders.push(`${f.name}: numeric(${m[1]},${m[2]})`);
       }
       for (const m of code.matchAll(/DECIMAL\((\d+),\s*([012])\)/gi)) {
-        offenders.push(`${f.name}: DECIMAL(${m[1]},${m[2]})`);
+        if (!isAPercent(m.index!)) offenders.push(`${f.name}: DECIMAL(${m[1]},${m[2]})`);
       }
     }
     expect(

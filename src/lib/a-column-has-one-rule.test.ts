@@ -1150,6 +1150,8 @@ describe('no money or quantity field is read with z.coerce.number(), anywhere', 
  * validation.
  */
 const BARE_READS_WITH_A_REASON: Record<string, string> = {
+  'src/lib/partner-statement-core.ts':
+    'يقرأ نسبة شريك من خانةٍ بالمتصفّح أو من طلب: النصّ يُفحَص أولاً بتعبيرٍ نمطيٍّ لعددٍ عشريٍّ عاديٍّ بحت (فلا «0x10» ولا «1e1» ولا «2,5» ولا فراغ) ثم يُقرأ، والنتيجة تُحكَم بنطاق (0، 100] وبمنزلتين عشريتين على الأكثر — هو القارئُ الصارمُ نفسُه مكتوباً لحزمة متصفّح لا تستورد zod، وبابُ الحفظ يمرّ بـnumeric-input قبله أصلاً. وليست نسبةً مالاً: لا تُكتَب بعمود مبلغ',
   'src/app/api/users/[id]/profile/route.ts':
     'يُحوِّلُ Decimal مخزَّناً إلى رقمٍ ليُرسِلَه في JSON — قراءةُ عمودٍ لا كتابتُه، والقيمةُ لم تأتِ من طلبٍ أصلاً',
   'src/lib/campaigns.ts':

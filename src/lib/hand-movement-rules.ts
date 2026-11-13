@@ -103,6 +103,18 @@ export function handMovementRefusal(category: string, direction: HandDirection):
   if (category === 'TRANSFER_IN' || category === 'TRANSFER_OUT') {
     return { code: 'TRANSFER_NOT_BY_HAND', error: 'التحويل بين المحافظ من «تحويل»، مش من هون' };
   }
+  /*
+   * A PARTNER'S DRAW has a ledger of its own — the partners' statement — and a door of its own that names the partner, writes his
+   * share's worth in the store's currency and asks its own key (`finance.partners`). Typed here it would sit in the wallet with no
+   * partner, outside every statement, and be counted by nobody. It is NOT in `OWN_LEDGER`: that list is what the dialog prints
+   * greyed for everybody, and «سحب شريك» is offered only to the people who hold the key — to the others it is not there at all.
+   */
+  if (category === 'PARTNER_DRAW') {
+    return {
+      code: 'PARTNER_DRAW_NOT_BY_HAND',
+      error: 'سحب الشريك ما بينكتب من هون — بيتسجّل من «سحب شريك» بنافذة «حركة جديدة» لمن عنده صلاحية «الشركاء والسحوبات»، حتى يدخل بحساب الشريك.',
+    };
+  }
   if (Object.hasOwn(OWN_LEDGER, category)) {
     const own = OWN_LEDGER[category];
     return { code: own.code, error: own.error };

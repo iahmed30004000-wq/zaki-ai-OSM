@@ -38,6 +38,7 @@ import {
   type SpendDirection,
 } from '@/lib/expense-grade';
 import type { Trust } from '@/lib/cod-vitals';
+import { PartnersSection } from '@/components/screens/finance/PartnersSection';
 
 /**
  * ─── WHERE THE MONEY GOES, BY KIND OF SPENDING ───
@@ -460,6 +461,10 @@ export function FinanceProfitScreen() {
             )}
           </CardContent>
         </Card>
+
+        {/* «الشركاء» — each partner's share of the net profit above, what he has drawn, and «مكسور عليه». Only for who holds
+            `finance.partners`: nobody else is drawn the section or asked for its figures. */}
+        {userCan(currentUser, 'finance.partners') && <PartnersSection />}
 
         <SpendByType spend={data?.spend} currency={data?.currency} onRecord={() => setExpenseModalOpen(true)} />
 

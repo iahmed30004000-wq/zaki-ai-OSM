@@ -200,9 +200,12 @@ describe('the door', () => {
     const keys = [...ALL_CATALOG_KEYS].filter((k) => k.startsWith('finance.'));
     // PR-9 split the cash box on purpose (migration 20261030150000_finance_split_keys grants each new key): the view, the
     // wallets' management and the closing's approval. The opening count itself still asks the one it always asked.
+    // 13/11: `finance.partners` («الشركاء والسحوبات») joined — on purpose, and granted to NOBODY by any migration: it is the
+    // owner's (his full access holds it) and he ticks it for whoever he wants; `nobody-but-the-owner-holds-partners-on-the-day.test.ts`
+    // holds that. It is not a grant somebody has to remember before the cutover works, which is what this list guards against.
     expect(keys.sort(), 'مفتاح صلاحية جديد يحتاج منحاً').toEqual([
-      'finance.cashbox', 'finance.cashbox_view', 'finance.closing_approve', 'finance.create', 'finance.update', 'finance.view',
-      'finance.wallets_manage',
+      'finance.cashbox', 'finance.cashbox_view', 'finance.closing_approve', 'finance.create', 'finance.partners', 'finance.update',
+      'finance.view', 'finance.wallets_manage',
     ]);
   });
 

@@ -111,6 +111,23 @@ describe('what is refused', () => {
     }
     expect(recordMovement).not.toHaveBeenCalled();
   });
+
+  /*
+   * 13/11 — «سحب شريك». A partner's draw has a ledger of its own (the partners' statement) and a door that names the partner and
+   * asks the partners' key. Typed here — by anyone who holds only the cash box — it would sit in the wallet with no partner and be
+   * counted by nobody, so it is refused in BOTH directions and the sentence names the door.
+   */
+  it('a partner’s draw typed by hand — in either direction, even from somebody who holds every key', async () => {
+    for (const direction of ['IN', 'OUT']) {
+      const res = await post(entry('PARTNER_DRAW', direction));
+      expect(res.status).toBe(409);
+      const body = await res.json();
+      expect(body.code).toBe('PARTNER_DRAW_NOT_BY_HAND');
+      expect(body.error).toContain('سحب شريك');
+    }
+    expect(recordMovement).not.toHaveBeenCalled();
+    expect(logAudit).not.toHaveBeenCalled();
+  });
 });
 
 describe('what is still taken', () => {
@@ -138,7 +155,7 @@ describe('what is still taken', () => {
 
   it('and every category the schema knows is accounted for above', () => {
     expect([...MOVEMENT_CATEGORIES].sort()).toEqual(
-      ['ADJUSTMENT', 'COMMISSION', 'COURIER_SETTLEMENT', 'EXPENSE', 'OTHER', 'TRANSFER_IN', 'TRANSFER_OUT']
+      ['ADJUSTMENT', 'COMMISSION', 'COURIER_SETTLEMENT', 'EXPENSE', 'OTHER', 'PARTNER_DRAW', 'TRANSFER_IN', 'TRANSFER_OUT']
     );
   });
 });

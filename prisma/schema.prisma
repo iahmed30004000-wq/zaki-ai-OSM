@@ -71,6 +71,7 @@ model Company {
   callHelperPairCodes   CallHelperPairCode[]
   callHelperReadings    CallHelperReading[]
   idempotencyRecords    IdempotencyRecord[]
+  partners              Partner[]
 
   @@map("companies")
 }
@@ -2699,9 +2700,9 @@ model WalletMovement {
   currencyCode   String
   /// Who the money came from or went to (courier, employee, supplier...).
   party          String
-  category       String // COURIER_SETTLEMENT | COMMISSION | EXPENSE | TRANSFER_IN | TRANSFER_OUT | ADJUSTMENT | OTHER
+  category       String // COURIER_SETTLEMENT | COMMISSION | EXPENSE | TRANSFER_IN | TRANSFER_OUT | ADJUSTMENT | OTHER | PARTNER_DRAW
   note           String
-  referenceType  String? // STATEMENT | TRANSFER | COMMISSION_PERIOD | ORDER
+  referenceType  String? // STATEMENT | TRANSFER | COMMISSION_PERIOD | ORDER | PARTNER_DRAW
   referenceId    String?
   /// Set on a reversing entry; the original is never edited or deleted.
   reversalOfId   String?  @unique
@@ -2709,17 +2710,57 @@ model WalletMovement {
   /// The statement receipt this IN is the money of — one movement per receipt, held by the database. Null on
   /// every other movement, on a reversal, and on statement movements written before the split.
   statementReceiptId String? @unique
+  /// THE PARTNER A «PARTNER_DRAW» IS THE WITHDRAWAL OF (13/11) — «السحوبات لازم تنضاف بند». Null on every other movement.
+  /// A draw is written only through `recordMovement` (category PARTNER_DRAW, always OUT, referenceType PARTNER_DRAW,
+  /// referenceId = this id), and a reversing entry carries the same partner. RESTRICT: a partner who has a draw cannot be deleted.
+  partnerId      String?
+  /// WHAT THE DRAW IS WORTH IN THE STORE'S CURRENCY — the number the partner ledger adds up (`lib/partner-statement.ts`). The
+  /// profit is in the store's currency and a wallet may hold another one, so a draw from a wallet in a different currency carries
+  /// the equivalent the person typed; from a wallet in the store's own currency it is the amount. Null on every other movement.
+  valueInStoreCurrency Decimal? @db.Decimal(14, 3)
   createdById    String
   createdAt      DateTime @default(now())
 
   wallet     Wallet          @relation(fields: [walletId], references: [id], onDelete: Restrict)
   reversalOf WalletMovement? @relation("Reversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
   reversedBy WalletMovement? @relation("Reversal")
+  partner    Partner?        @relation(fields: [partnerId], references: [id], onDelete: Restrict)
 
   @@index([companyId, walletId, createdAt])
   @@index([companyId, category])
   @@index([referenceType, referenceId])
+  @@index([partnerId])
   @@map("wallet_movements")
+}
+
+/// THE PARTNERS AND THEIR SHARES OF THE NET PROFIT (13/11) — «هلأ احنا ٤ شركاء … الربح لازم يتم توزيعه وفق هاي النسب … والسحوبات
+/// لازم كمان تكون وفق هاي النسب».
+///
+/// One row per partner of a COMPANY (the shares are the company's, the profit and the draws are read per store). Never deleted:
+/// a partner who leaves is switched off, and a partner with a draw cannot be deleted at all (`wallet_movements.partnerId` RESTRICT).
+/// No row is written by a migration, a seed or the code: the owner saves the four from the settings card.
+///
+///   sharePercent — a percent of the net profit, 0 < x ≤ 100 (held by a CHECK in the migration, which this file cannot express),
+///                  two decimals. THE ACTIVE SHARES OF A COMPANY TOTAL EXACTLY 100.00 — held by the settings door when it saves
+///                  (`lib/partner-statement-core.ts` `sharesProblem`), not by the database: a share may be re-cut in two saves.
+///   isActive     — only the active partners are in the split. Shares are TODAY'S shares for all history (no share history).
+///   sortOrder    — the order the card and the table list them in; also the tie-break of the split's last cent.
+model Partner {
+  id           String   @id @default(uuid())
+  companyId    String
+  name         String
+  sharePercent Decimal  @db.Decimal(5, 2)
+  isActive     Boolean  @default(true)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company   Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  movements WalletMovement[]
+
+  @@unique([companyId, name])
+  @@index([companyId, isActive, sortOrder])
+  @@map("partners")
 }
 
 // Wallet to wallet, same or different country. The exchange rate is entered

@@ -94,6 +94,64 @@ export function allocateDiscount(lines: MoneyLine[], discount: number, minorUnit
 }
 
 /**
+ * A FIGURE AS A WHOLE NUMBER OF MINOR UNITS — and back.
+ *
+ * Money that is added and subtracted (a share of a profit, what a partner has drawn against it) is exact only in whole units:
+ * 0.1 + 0.2 is not 0.3 in floats, and a balance that is «equal» one day and a cent short the next is the defect. Rounded by
+ * `roundMinor`, the one rounding rule, and only then scaled — so a figure that is already a price (2.675, 12.345) lands where
+ * every other door puts it.
+ */
+export function toMinorUnits(value: number, minorUnit: number): number {
+  const factor = 10 ** Math.max(0, Math.min(6, Math.trunc(minorUnit)));
+  return Math.round(roundMinor(value, minorUnit) * factor);
+}
+
+export function fromMinorUnits(units: number, minorUnit: number): number {
+  const factor = 10 ** Math.max(0, Math.min(6, Math.trunc(minorUnit)));
+  return units / factor;
+}
+
+/**
+ * THE SHARES OF A WHOLE, SO THE PARTS ADD UP TO IT EXACTLY — largest remainder, on whole minor units.
+ *
+ * `allocateDiscount` spreads a discount over lines by their value and lands its drift on the largest line; that is right for a
+ * discount, where somebody has to absorb the odd cent and the order's own line is as good as another. A PARTNER'S SHARE is a
+ * different question: the odd cents must not always fall on the same person. Each part is first rounded DOWN to a whole unit, and the
+ * units still unspent (always fewer than the number of shares) go one each to the parts whose rounded-off fraction was largest;
+ * equal fractions go in the order the shares are given. So every part is within one unit of its exact share, the parts add up
+ * to `total` in whole units (never «off by a cent» after rounding), a larger share never gets less than a smaller one, and the same
+ * input always gives the same answer.
+ *
+ * `shares` are weights read in HUNDREDTHS (15, 55, 33.33): two decimals, like a percent column. A weight with more decimals,
+ * a negative one, or one that is not a number is a caller's bug and throws — it is not rounded behind the caller's back. A
+ * `total` that is not above zero, or weights that add to nothing, give zeros: there is nothing to share. The arithmetic is done in
+ * BigInt, so no input within the schema's bounds can overflow a float on the way.
+ */
+export function splitUnitsByShares(totalUnits: number, shares: readonly number[]): number[] {
+  const weights = shares.map((s) => {
+    if (typeof s !== 'number' || !Number.isFinite(s) || s < 0) throw new RangeError('A share is a number, not below zero');
+    const hundredths = Math.round(s * 100);
+    if (Math.abs(s * 100 - hundredths) > 1e-6) throw new RangeError('A share has at most two decimals');
+    return BigInt(hundredths);
+  });
+  const whole = weights.reduce((a, b) => a + b, BigInt(0));
+  if (!Number.isSafeInteger(totalUnits) || totalUnits <= 0 || whole === BigInt(0)) return shares.map(() => 0);
+
+  const total = BigInt(totalUnits);
+  const parts = weights.map((w) => (total * w) / whole);
+  const rest = weights.map((w) => (total * w) % whole);
+  let left = Number(total - parts.reduce((a, b) => a + b, BigInt(0)));
+  // The fractions, biggest first; a tie goes to whoever was given first (a stable sort keeps their order).
+  const order = rest.map((r, i) => ({ r, i })).sort((a, b) => (a.r === b.r ? a.i - b.i : a.r > b.r ? -1 : 1));
+  for (const { i } of order) {
+    if (left <= 0) break;
+    parts[i] += BigInt(1);
+    left -= 1;
+  }
+  return parts.map((p) => Number(p));
+}
+
+/**
  * WHAT EACH LINE COST BEFORE THE ORDER'S OWN DISCOUNT — the figure the lines
  * editor opens its price box on.
  *
