@@ -49,7 +49,7 @@ const owed = {
   orderNumber: 'ORD-1',
   merchantRef: null,
   // The barcode is NOT what decides: the owner may close an order that carries one.
-  trackingNumber: 'BP-1',
+  trackingNumber: 'BP-1' as string | null,
   shippingStatus: 'DELIVERED',
   settlementStatus: 'PENDING',
   collectionStatus: 'PENDING',

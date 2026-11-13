@@ -114,6 +114,8 @@ beforeEach(() => {
     if (!held.keys.has(k)) throw new Error(`Forbidden: missing required permission ${k}`);
   });
   can.mockImplementation((_u: unknown, k: string) => held.keys.has(k));
+  // `vi.clearAllMocks` keeps implementations: a test that hands out its own transaction client must not leave it for the next.
+  db.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn(db));
   db.order.findMany.mockResolvedValue([]);
   db.order.updateMany.mockImplementation(async (a: { where: { id: { in: string[] } } }) => ({ count: a.where.id.in.length }));
   db.statementLine.findMany.mockResolvedValue([]);
@@ -443,6 +445,76 @@ describe('the press — closes exactly what the measure showed, and only that', 
     expect(db.orderActivity.createMany).not.toHaveBeenCalled();
     expect(logAudit).not.toHaveBeenCalled();
     noMoneyTouched();
+  });
+
+  it('NEGATIVE: the second look reads EVERY order of the press — a statement that names only the SECOND of two is still seen, and nothing is logged', async () => {
+    const a = order({ merchantRef: 'ORD-A' });
+    const b = order({ merchantRef: 'ORD-B' });
+    db.order.findMany.mockResolvedValue([a, b]);
+    const { body: m } = await measure([a, b]);
+    db.statementLine.findMany.mockReset();
+    db.statementLine.findMany.mockResolvedValueOnce([]).mockResolvedValue([
+      { merchantRef: 'ORD-B', barcode: null, statement: { reference: 'ST-4', status: 'DRAFT', approvedAt: null, deliveryProviderId: 'p1' }, matches: [] },
+    ]);
+    const res = await press([a, b], m);
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.code).toBe('ON_A_STATEMENT');
+    expect(body.orders).toEqual([b.orderNumber]);
+    expect(db.orderStatusLog.createMany).not.toHaveBeenCalled();
+    expect(db.orderActivity.createMany).not.toHaveBeenCalled();
+  });
+
+  it('THE PRESS IS ONE TRANSACTION, AND EVERY WRITE GOES THROUGH ITS CLIENT: the claim is undone with the rest when a refusal comes after it', async () => {
+    const a = order();
+    db.order.findMany.mockResolvedValue([a]);
+    const { body: m } = await measure([a]);
+    // From here the transaction hands out a client that remembers which parts of it were used.
+    const touched = new Set<string>();
+    const tx = new Proxy(db, {
+      get(target, prop: string) {
+        touched.add(prop);
+        return (target as unknown as Record<string, unknown>)[prop];
+      },
+    });
+    db.$transaction.mockClear();
+    db.$transaction.mockImplementation(async (fn: (c: unknown) => unknown) => fn(tx));
+    const res = await press([a], m);
+    expect(res.status).toBe(200);
+    expect(db.$transaction, 'the press ran without a transaction: a refusal after the claim could not take it back').toHaveBeenCalledTimes(1);
+    // the claim, the log and the mark were all written through the transaction's own client — never through the module's `db`
+    for (const part of ['order', 'orderStatusLog', 'orderActivity', 'statementLine', 'settlementMatch']) {
+      expect(touched.has(part), `${part} was not reached through the transaction's client`).toBe(true);
+    }
+  });
+
+  it('the measure, on the other hand, opens no transaction at all and reads through the module’s db', async () => {
+    const a = order();
+    db.order.findMany.mockResolvedValue([a]);
+    await measure([a]);
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('exactly the most one press may carry (500) is welcome, and one more is a 400 before anything is read', async () => {
+    const ids = (n: number) => Array.from({ length: n }, (_, i) => `00000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`);
+    expect(PICKED_MOST).toBe(500);
+    const ok = await post({ action: 'measure', orderIds: ids(PICKED_MOST) });
+    expect(ok.status, 'the most the door allows was refused').toBe(200);
+    expect((await ok.json()).asked).toBe(PICKED_MOST);
+    db.order.findMany.mockClear();
+    const tooMany = await post({ action: 'measure', orderIds: ids(PICKED_MOST + 1) });
+    expect(tooMany.status).toBe(400);
+    expect(db.order.findMany).not.toHaveBeenCalled();
+  });
+
+  it('the refusals are said in the order the orders were TICKED, not the order the database happened to return them', async () => {
+    const a = order({ shippingStatus: 'SHIPPED' });
+    const b = order({ settlementStatus: 'SETTLED' });
+    const c = order({ settlementStatus: 'COLLECTED' });
+    // ticked c, a, b — answered by the database a, b, c
+    db.order.findMany.mockResolvedValue([a, b, c]);
+    const { body } = await measure([c, a, b]);
+    expect(body.left.map((l) => l.orderNumber)).toEqual([c.orderNumber, a.orderNumber, b.orderNumber]);
   });
 
   it('the press never claims an order the measure left out: the ids in the claim are the closeable ones only', async () => {

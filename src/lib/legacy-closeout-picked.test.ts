@@ -259,6 +259,18 @@ describe('the questions it asks the database', () => {
     expect([...(await readNamedBy(other as never, scope, [mine] as LegacyRow[])).keys()]).toEqual([]);
   });
 
+  it('the statement line is read WITH what the rule needs: its statement’s reference, status, approval and COURIER, and whether the matching excluded it — a fake that answers whole rows would hide the loss of any of them', async () => {
+    const t = tx([], []);
+    await readNamedBy(t as never, scope, [row({ merchantRef: 'SY-1', trackingNumber: 'BP-1' })] as LegacyRow[]);
+    const statementPart = { select: { reference: true, status: true, approvedAt: true, deliveryProviderId: true } };
+    expect(t.statementLine.findMany.mock.calls[0][0]).toMatchObject({
+      select: { merchantRef: true, barcode: true, statement: statementPart, matches: { select: { result: true } } },
+    });
+    expect(t.settlementMatch.findMany.mock.calls[0][0]).toMatchObject({
+      select: { orderId: true, result: true, statement: statementPart },
+    });
+  });
+
   it('an APPROVED statement is said differently from a draft one — its money is in', async () => {
     const a = row({ merchantRef: 'SY-100', orderNumber: 'SY-100' });
     const t = tx([{ merchantRef: 'SY-100', barcode: null, statement: statement(true), matches: [] }], []);
