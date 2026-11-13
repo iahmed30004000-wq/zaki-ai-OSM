@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 import { db } from '../db';
 import { activeOffersFor, activeOffersForProducts, type OfferView } from '../offers';
 import { availableStock } from '../reservation';
@@ -191,9 +192,9 @@ export async function readLandingRegions(companyId: string, code: string) {
   return { country: country.code, regions };
 }
 
-type Refusal = { ok: false; status: number; body: Record<string, unknown> };
+export type Refusal = { ok: false; status: number; body: Record<string, unknown> };
 
-const CITY_REFUSED: Refusal = {
+export const CITY_REFUSED: Refusal = {
   ok: false,
   status: 400,
   body: {
@@ -202,7 +203,7 @@ const CITY_REFUSED: Refusal = {
   },
 };
 
-async function deliveryQuote(params: {
+export async function deliveryQuote(params: {
   companyId: string;
   productRow: {
     id: string;
@@ -418,87 +419,94 @@ export const landingAddOnSchema = z.object({
 /** Names the swap on the order's history, and is how «once» is a fact on the row. */
 export const OFFER_SWAP_ACTION = 'LANDING_OFFER_SWAPPED';
 
+/** What a rewrite of the order's offer reads about the order, first and again under the row's lock. */
+const SWAP_SELECT = {
+  id: true,
+  status: true,
+  confirmationStatus: true,
+  createdAt: true,
+  currency: true,
+  productId: true,
+  offerId: true,
+  totalAmount: true,
+  discountAmount: true,
+  shippingCost: true,
+  deliveryFee: true,
+  shippingStatus: true,
+  shippingBatchId: true,
+  trackingNumber: true,
+  labelPrintedAt: true,
+  region: { select: { name: true } },
+  items: { select: { id: true, productId: true, quantity: true, freeQuantity: true, reservedQty: true, deliveredQty: true } },
+  _count: { select: { contactAttempts: true } },
+} as const;
+
+export type SwapRow = Prisma.OrderGetPayload<{ select: typeof SWAP_SELECT }>;
+type SwapClient = Pick<typeof db, 'orderAddOn' | 'orderActivity'>;
+
 /**
- * «أيوه»: THE ORDER'S OFFER BECOMES THE LARGER ONE. Same order, same line.
- *
- * Under the gates of the add-on it replaces (`postOrderGate`): still NEW, nobody
- * has contacted the customer, inside the window, once. So only an order nobody
- * has worked on can move, which is what makes rewriting its line safe: no stock
- * is reserved yet, no fee is written yet, no person has quoted a figure.
- *
- * The figures are the door's own. `resolvePublicLines`, `basketDiscount` and
- * `computeCod` are called the way `createPublicOrder` calls them, so the order
- * ends up exactly as if the customer had picked this offer in the first place.
- * The caller names an offer and a token; which offer is allowed is decided here.
+ * THE LINE IS STILL THE ONE THE DOOR WROTE: one line, carrying the order's offer, nothing reserved or delivered, no
+ * discount, no shipping cost and no fee written. Only such a line can be rewritten from the catalogue without
+ * overwriting something a person or the warehouse did to it.
  */
-export async function swapLandingOffer(
+export function lineUntouched(o: SwapRow): boolean {
+  const [line, ...more] = o.items;
+  return (
+    !!line && more.length === 0 && !!o.offerId && line.productId === o.productId && line.reservedQty === 0 && line.deliveredQty === null &&
+    Number(o.discountAmount) === 0 && Number(o.shippingCost) === 0 && o.deliveryFee === null
+  );
+}
+
+/** What differs between the two doors that rewrite an order's offer. The money does not. */
+export interface OfferRewriteRule {
+  /** Null when the order may move; the reason otherwise. Asked first, and again under the row's lock. */
+  blocked: (o: SwapRow, client: SwapClient) => Promise<string | null>;
+  /** The catalogue offer this door may write for the one the caller named, or null. */
+  pick: (offers: OfferView[], current: { units: number; price: number }, offerId: string) => OfferView | null;
+  /** The history line's action, and who it says did it. */
+  action: string;
+  by: string;
+  /** Shown on the order's history as «المصدر» when given. */
+  source?: string;
+}
+
+export type OfferRewrite =
+  | { ok: true; offer: OfferView; before: number; total: number; currency: string; productRow: NonNullable<Awaited<ReturnType<typeof sellableProduct>>>; regionName: string | null }
+  | { ok: false; reason: string };
+
+/**
+ * THE ORDER'S LINE TAKES ANOTHER CATALOGUE OFFER — the one write both offer doors share (the offer after the order,
+ * and the confirmation chat's «بدّل العرض»).
+ *
+ * The figures are the door's own. `resolvePublicLines`, `basketDiscount` and `computeCod` are called the way
+ * `createPublicOrder` calls them, so the order ends up exactly as if the customer had picked this offer in the first
+ * place. Which offer is allowed, and when, is the caller's rule; nothing else is.
+ */
+export async function rewriteLandingOffer(
   companyId: string,
-  orderNumber: string,
-  swap: z.infer<typeof landingAddOnSchema>,
+  orderId: string,
+  offerId: string,
+  rule: OfferRewriteRule,
   now: Date = new Date()
-): Promise<{ ok: true; body: Record<string, unknown> } | Refusal> {
-  const token = await verifyAddonToken(swap.token);
-  if (!token || token.orderNumber !== orderNumber) {
-    return { ok: false, status: 401, body: { error: 'رابط الإضافة غير صالح أو منتهي الصلاحية' } };
-  }
-  const select = {
-    id: true,
-    status: true,
-    confirmationStatus: true,
-    createdAt: true,
-    currency: true,
-    productId: true,
-    offerId: true,
-    totalAmount: true,
-    discountAmount: true,
-    shippingCost: true,
-    deliveryFee: true,
-    region: { select: { name: true } },
-    items: { select: { id: true, productId: true, quantity: true, freeQuantity: true, reservedQty: true, deliveredQty: true } },
-    _count: { select: { contactAttempts: true } },
-  } as const;
+): Promise<OfferRewrite> {
   // The signature proves the customer; the company comes from the calling system's key.
-  const order = await db.order.findFirst({ where: { companyId, id: token.orderId }, select });
+  const order = await db.order.findFirst({ where: { companyId, id: orderId }, select: SWAP_SELECT });
   if (!order) throw new V1Fault(404, V1_CODE.NOT_FOUND, 'No such order');
 
-  const refuse = (reason: PostOrderRefusal): Refusal => ({
-    ok: false,
-    status: reason === 'OFFER_GONE' || reason === 'NOT_IN_ORDER' ? 404 : 409,
-    body: { error: POST_ORDER_REFUSAL_AR[reason], reason },
-  });
-  const { windowMinutes } = await postOrderOfferSettings(companyId);
-  /** Everything that says the order is still the one the door wrote, read again under the lock. */
-  const blocked = async (o: typeof order, client: Pick<typeof db, 'orderAddOn' | 'orderActivity'>): Promise<PostOrderRefusal | null> => {
-    const [addOns, swaps] = await Promise.all([
-      client.orderAddOn.count({ where: { orderId: o.id, offerId: { not: null } } }),
-      client.orderActivity.count({ where: { companyId, orderId: o.id, action: OFFER_SWAP_ACTION } }),
-    ]);
-    const gate = postOrderGate(
-      { status: o.status, confirmationStatus: o.confirmationStatus, createdAt: o.createdAt, contactAttempts: o._count.contactAttempts, postOrderAddOns: addOns + swaps },
-      windowMinutes,
-      now
-    );
-    if (!gate.allowed) return gate.reason;
-    const [line, ...more] = o.items;
-    const untouched =
-      !!line && more.length === 0 && !!o.offerId && line.productId === o.productId && line.reservedQty === 0 && line.deliveredQty === null &&
-      Number(o.discountAmount) === 0 && Number(o.shippingCost) === 0 && o.deliveryFee === null;
-    return untouched ? null : 'NOT_NEW';
-  };
-
-  const first = await blocked(order, db);
-  if (first) return refuse(first);
+  const first = await rule.blocked(order, db);
+  if (first) return { ok: false, reason: first };
 
   const product = await sellableProduct(companyId, order.productId);
-  if (!product) return refuse('OFFER_GONE');
+  if (!product) return { ok: false, reason: 'OFFER_GONE' };
   const { minorUnit } = product.store.country;
   const line = order.items[0];
 
-  const allowed = pickUpgrade(await activeOffersFor(db, companyId, product.id, minorUnit, now), {
-    units: line.quantity + line.freeQuantity,
-    price: Number(order.totalAmount),
-  });
-  if (!allowed || allowed.id !== swap.offerId) return refuse('OFFER_GONE');
+  const allowed = rule.pick(
+    await activeOffersFor(db, companyId, product.id, minorUnit, now),
+    { units: line.quantity + line.freeQuantity, price: Number(order.totalAmount) },
+    offerId
+  );
+  if (!allowed) return { ok: false, reason: 'OFFER_GONE' };
 
   const resolved = await resolvePublicLines(
     companyId,
@@ -506,7 +514,7 @@ export async function swapLandingOffer(
     [{ productId: product.id, offerId: allowed.id, count: 1 }],
     minorUnit
   );
-  if (!resolved.ok) return refuse('OFFER_GONE');
+  if (!resolved.ok) return { ok: false, reason: 'OFFER_GONE' };
   const [next] = resolved.lines;
 
   // An add-on already on the order (a later door may write one) stays in the sum, as every reader counts it.
@@ -524,9 +532,9 @@ export async function swapLandingOffer(
   const refused = await db.$transaction(async (tx) => {
     // The row is locked first: two presses at the same moment swap once, and a staff save from an older copy is told.
     await tx.order.update({ where: { id: order.id }, data: { version: { increment: 1 } }, select: { id: true } });
-    const latest = await tx.order.findFirst({ where: { id: order.id }, select });
-    if (!latest || latest.offerId !== order.offerId) return 'ALREADY_ADDED' as const;
-    const again = await blocked(latest, tx);
+    const latest = await tx.order.findFirst({ where: { id: order.id }, select: SWAP_SELECT });
+    if (!latest || latest.offerId !== order.offerId) return 'ALREADY_ADDED';
+    const again = await rule.blocked(latest, tx);
     if (again) return again;
 
     await tx.orderItem.update({
@@ -556,30 +564,139 @@ export async function swapLandingOffer(
         companyId,
         orderId: order.id,
         userId: null,
-        action: OFFER_SWAP_ACTION,
+        action: rule.action,
         metadata: JSON.stringify({
           from: { offerId: order.offerId, quantity: line.quantity, freeQuantity: line.freeQuantity, total: before },
           to: { offerId: allowed.id, offer: allowed.name, quantity: next.quantity, freeQuantity: next.freeQuantity, total: money.cod },
-          by: 'public visitor',
+          by: rule.by,
+          ...(rule.source ? { source: rule.source, offerName: allowed.name, total: money.cod } : {}),
         }),
       },
     });
     return null;
   });
-  if (refused) return refuse(refused);
+  if (refused) return { ok: false, reason: refused };
+
+  return { ok: true, offer: allowed, before, total: money.cod, currency: order.currency, productRow: product, regionName: order.region?.name ?? null };
+}
+
+/**
+ * «أيوه»: THE ORDER'S OFFER BECOMES THE LARGER ONE. Same order, same line.
+ *
+ * Under the gates of the add-on it replaces (`postOrderGate`): still NEW, nobody
+ * has contacted the customer, inside the window, once. So only an order nobody
+ * has worked on can move, which is what makes rewriting its line safe: no stock
+ * is reserved yet, no fee is written yet, no person has quoted a figure.
+ *
+ * The write is `rewriteLandingOffer`'s. The caller names an offer and a token;
+ * which offer is allowed is decided here: the next larger one, `pickUpgrade`.
+ */
+export async function swapLandingOffer(
+  companyId: string,
+  orderNumber: string,
+  swap: z.infer<typeof landingAddOnSchema>,
+  now: Date = new Date()
+): Promise<{ ok: true; body: Record<string, unknown> } | Refusal> {
+  const token = await verifyAddonToken(swap.token);
+  if (!token || token.orderNumber !== orderNumber) {
+    return { ok: false, status: 401, body: { error: 'رابط الإضافة غير صالح أو منتهي الصلاحية' } };
+  }
+
+  const refuse = (reason: PostOrderRefusal): Refusal => ({
+    ok: false,
+    status: reason === 'OFFER_GONE' || reason === 'NOT_IN_ORDER' ? 404 : 409,
+    body: { error: POST_ORDER_REFUSAL_AR[reason], reason },
+  });
+  const { windowMinutes } = await postOrderOfferSettings(companyId);
+
+  const result = await rewriteLandingOffer(
+    companyId,
+    token.orderId,
+    swap.offerId,
+    {
+      /** Everything that says the order is still the one the door wrote. */
+      blocked: async (o, client) => {
+        const [addOns, swaps] = await Promise.all([
+          client.orderAddOn.count({ where: { orderId: o.id, offerId: { not: null } } }),
+          client.orderActivity.count({ where: { companyId, orderId: o.id, action: OFFER_SWAP_ACTION } }),
+        ]);
+        const gate = postOrderGate(
+          { status: o.status, confirmationStatus: o.confirmationStatus, createdAt: o.createdAt, contactAttempts: o._count.contactAttempts, postOrderAddOns: addOns + swaps },
+          windowMinutes,
+          now
+        );
+        if (!gate.allowed) return gate.reason;
+        return lineUntouched(o) ? null : 'NOT_NEW';
+      },
+      pick: (offers, current, offerId) => {
+        const up = pickUpgrade(offers, current);
+        return up && up.id === offerId ? up : null;
+      },
+      action: OFFER_SWAP_ACTION,
+      by: 'public visitor',
+    },
+    now
+  );
+  if (!result.ok) return refuse(result.reason as PostOrderRefusal);
+  const { offer: allowed } = result;
 
   // What the customer now pays at the door, by the quote the page already showed for this offer.
-  const figures = await deliveryQuote({ companyId, productRow: product, offerId: allowed.id, city: order.region?.name ?? '' }).catch(() => null);
+  const figures = await deliveryQuote({ companyId, productRow: result.productRow, offerId: allowed.id, city: result.regionName ?? '' }).catch(() => null);
   return {
     ok: true,
     body: {
-      total: money.cod,
-      added: roundMinor(money.cod - before, minorUnit),
-      currency: order.currency,
+      total: result.total,
+      added: roundMinor(result.total - result.before, result.productRow.store.country.minorUnit),
+      currency: result.currency,
       offer: { id: allowed.id, name: allowed.name, quantity: allowed.quantity, freeQuantity: allowed.freeQuantity, price: allowed.price },
       ...(figures && figures.ok
         ? { cod: figures.quote.cod, deliveryFee: figures.quote.deliveryFee, deliveryIncluded: figures.quote.deliveryIncluded, feeKnown: figures.quote.feeKnown, feeExact: figures.quote.feeExact }
         : {}),
     },
+  };
+}
+
+/**
+ * WHAT THE CONFIRMATION CHAT SHOWS ABOUT AN ORDER'S MONEY — read, never written.
+ *
+ * `total` is the order's stored figure, as it is. The fee beside it is the quote's (the highest active fee for the
+ * order's region at this store's couriers, `deliveryQuote`), and `cod` adds it to the stored total through the one
+ * `computeCod` — unless the order's own snapshot says delivery is included, when the goods are the whole amount.
+ * `offers` are the product's live catalogue offers, the ones the chat may switch between.
+ */
+export async function landingOrderFigures(
+  companyId: string,
+  o: { productId: string; offerId: string | null; regionName: string | null; totalAmount: number; priceIncludesDelivery: boolean }
+) {
+  const p = await db.product.findFirst({ where: { companyId, id: o.productId }, select: PRODUCT_SELECT });
+  const minorUnit = p?.store?.country.minorUnit ?? 2;
+  const offers = p ? await activeOffersFor(db, companyId, p.id, minorUnit) : [];
+  const quoted =
+    p?.store && o.offerId
+      ? await deliveryQuote({ companyId, productRow: { ...p, store: p.store }, offerId: o.offerId, city: o.regionName ?? '' }).catch(() => null)
+      : null;
+  const q = quoted && quoted.ok ? quoted.quote : null;
+
+  const included = o.priceIncludesDelivery;
+  // A quote that counts the fee in while the order does not is not a figure for this order: unknown, never «free».
+  const known = !!q && !q.deliveryIncluded && q.feeKnown;
+  const fee = included || !known ? 0 : q!.deliveryFee;
+  const money = computeCod({
+    lines: [{ quantity: 1, unitPrice: o.totalAmount, freeQuantity: 0 }],
+    discount: 0,
+    deliveryFee: fee,
+    priceIncludesDelivery: included,
+    minorUnit,
+  });
+
+  return {
+    storeName: p?.store?.name ?? '',
+    minorUnit,
+    offers: offers.map((f) => ({ id: f.id, name: f.name, quantity: f.quantity, freeQuantity: f.freeQuantity, price: f.price })),
+    cod: money.cod,
+    deliveryFee: fee,
+    deliveryIncluded: included,
+    feeKnown: included || known,
+    feeExact: included || (known && q!.feeExact),
   };
 }

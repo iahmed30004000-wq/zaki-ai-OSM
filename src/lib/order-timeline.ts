@@ -162,6 +162,12 @@ const ISSUE_REASON_AR: Record<string, string> = {
 const ACTIVITY_AR: Record<string, string> = {
   ORDER_CREATED: 'إنشاء الطلب',
   LANDING_OFFER_SWAPPED: 'الزبون بدّل العرض بعد الطلب',
+  // The landing confirmation chat's decisions (`v1/landing-chat.ts`, `CHAT_ACTION`), each in the assistant's name.
+  LANDING_CHAT_CONFIRMED: 'مساعد الطلبات الآلي (صفحة الهبوط): الزبون أكّد الطلب',
+  LANDING_CHAT_CANCELLED: 'مساعد الطلبات الآلي (صفحة الهبوط): الزبون تراجع عن الطلب',
+  LANDING_CHAT_ADDRESS_CHANGED: 'مساعد الطلبات الآلي (صفحة الهبوط): الزبون غيّر العنوان',
+  LANDING_CHAT_OFFER_CHANGED: 'مساعد الطلبات الآلي (صفحة الهبوط): الزبون غيّر العرض',
+  LANDING_CHAT_FOLLOW_UP: 'مساعد الطلبات الآلي (صفحة الهبوط): الزبون طلب اتصالًا أو موظفًا',
   ORDER_UPDATED: 'تعديل بيانات الطلب',
   // What the customer added on the thank-you screen: the same words the order dialog and the confirmation card use.
   UPSELL_ADDED: POST_ORDER_ADDITION_AR,

@@ -424,6 +424,13 @@ const REACHED_BUT_UNSEEN: Record<string, string> = {
   '/api/v1/landing/quote': 'نظامُ صفحات الهبوط يُري الزائرَ المبلغ وأجرة التوصيل قبل الإرسال — المستدعي في مستودعٍ آخر',
   '/api/v1/landing/orders': 'بابُ الطلب من صفحات الهبوط المنفردة، يمرّ بـcreatePublicOrder — المستدعي في مستودعٍ آخر',
   '/api/v1/landing/orders/[orderNumber]/post-order-offer': 'العرضُ بعد الطلب من صفحات الهبوط المنفردة — المستدعي في مستودعٍ آخر',
+  // The landing confirmation chat in Zaki pages (contract oms-lp.v1 §8) — six doors, all called from that repository.
+  '/api/v1/landing/orders/[orderNumber]': 'محادثةُ تأكيد الطلب في صفحات الهبوط تقرأ الطلب كما هو الآن — المستدعي في مستودعٍ آخر',
+  '/api/v1/landing/orders/[orderNumber]/confirm': 'محادثةُ تأكيد الطلب تؤكّده كما يؤكّده موظف التأكيد — المستدعي في مستودعٍ آخر',
+  '/api/v1/landing/orders/[orderNumber]/cancel': 'محادثةُ تأكيد الطلب: الزبون تراجع قبل التأكيد، عبر endOrder — المستدعي في مستودعٍ آخر',
+  '/api/v1/landing/orders/[orderNumber]/address': 'محادثةُ تأكيد الطلب تبدّل المحافظة والعنوان ما دام الطلب قابلًا للتعديل — المستدعي في مستودعٍ آخر',
+  '/api/v1/landing/orders/[orderNumber]/offer': 'محادثةُ تأكيد الطلب تبدّل العرض بعرضٍ آخر من الكتالوج بسعره — المستدعي في مستودعٍ آخر',
+  '/api/v1/landing/orders/[orderNumber]/follow-up': 'محادثةُ تأكيد الطلب تطلب اتصالًا أو موظفًا مع ملاحظة للمكتب — المستدعي في مستودعٍ آخر',
   '/api/call-helper/pair':
     'تطبيقُ «مساعد الاتصال» على أندرويد (apps/call-helper-android → PairActivity.kt) يبادل رمزَ الربطِ بتوكن — المستدعي برنامج Kotlin لا يقرؤه هذا المسح',
 };

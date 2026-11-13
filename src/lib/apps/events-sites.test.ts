@@ -48,11 +48,15 @@ const SRC = join(process.cwd(), 'src');
  *   · `lib/parcel-swap-events.ts` — `order.delivered` for the sale a parcel swap records and `order.returned` for
  *     the box's order, after the commit (29/10). Never `order.created`; `replacesOrderNumber` is an optional
  *     field inside `data`, which the contract allows.
+ *   · `lib/v1/landing-chat.ts` — `order.confirmed` when the landing confirmation chat confirms (contract oms-lp.v1 §8,
+ *     13/11): the agent's confirmation taken by the chat, announced after the commit with the confirmation door's own
+ *     fields. No new event and no new field.
  */
 const ALLOWED = [
   'lib/public-order.ts',
   'lib/order-cancel.ts',
   'lib/parcel-swap-events.ts',
+  'lib/v1/landing-chat.ts',
   'app/api/orders/[id]/confirmation/route.ts',
   'app/api/orders/[id]/shipping/route.ts',
   'app/api/shipping-batches/[id]/route.ts',

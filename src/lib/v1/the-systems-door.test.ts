@@ -89,10 +89,17 @@ describe('the door was found at all — a sweep over nothing proves nothing', ()
     // media buyer — `the-media-buyers-door.test.ts` holds what it answers.
     expect(ROUTES).toEqual([
       'src/app/api/v1/customers/lookup/route.ts',
-      // The standalone landing system's seven — `the-landing-door.test.ts`.
+      // The standalone landing system's seven — `the-landing-door.test.ts` — and its confirmation chat's six
+      // (contract §8, `the-landing-chat.test.ts`).
       'src/app/api/v1/landing/geo/[country]/route.ts',
       'src/app/api/v1/landing/health/route.ts',
+      'src/app/api/v1/landing/orders/[orderNumber]/address/route.ts',
+      'src/app/api/v1/landing/orders/[orderNumber]/cancel/route.ts',
+      'src/app/api/v1/landing/orders/[orderNumber]/confirm/route.ts',
+      'src/app/api/v1/landing/orders/[orderNumber]/follow-up/route.ts',
+      'src/app/api/v1/landing/orders/[orderNumber]/offer/route.ts',
       'src/app/api/v1/landing/orders/[orderNumber]/post-order-offer/route.ts',
+      'src/app/api/v1/landing/orders/[orderNumber]/route.ts',
       'src/app/api/v1/landing/orders/route.ts',
       'src/app/api/v1/landing/products/[id]/route.ts',
       'src/app/api/v1/landing/products/route.ts',
@@ -518,10 +525,24 @@ describe('the intake reuses every shared rule, and owns none of them', () => {
  * ─────────────────────────────────────────────────────────────────────────
  */
 describe('the event it does not announce, and why', () => {
+  /*
+   * ONE NAMED EXCEPTION (contract oms-lp.v1 §8, 13/11): the landing confirmation chat confirms an order the way the
+   * agent's door does, so it announces that door's own `order.confirmed` — the same event, the same fields, after the
+   * commit (`events-sites.test.ts` lists it). It announces nothing else, and no other file of the door announces anything.
+   */
+  const ANNOUNCES_A_CONFIRMATION = 'src/lib/v1/landing-chat.ts';
+
   it('emits nothing — the three announced sites are still three', () => {
     for (const file of [...ROUTES, ...LIBS]) {
+      if (file === ANNOUNCES_A_CONFIRMATION) continue;
       expect(read(join(ROOT, file)), file).not.toMatch(/emitAppEvent\s*\(/);
     }
+  });
+
+  it('and the chat’s exception announces order.confirmed, once, and nothing else', () => {
+    const calls = [...read(join(ROOT, ANNOUNCES_A_CONFIRMATION)).matchAll(/emitAppEvent\s*\(\s*companyId\s*,\s*'([^']+)'/g)].map((m) => m[1]);
+    expect(calls).toEqual(['order.confirmed']);
+    expect(read(join(ROOT, ANNOUNCES_A_CONFIRMATION)).match(/emitAppEvent\s*\(/g)).toHaveLength(1);
   });
 
   it('and the reason is written where the call would have gone', () => {
