@@ -25,6 +25,7 @@ const { db, requireContext, requirePermission, held } = vi.hoisted(() => ({
     deliveryFee: { findMany: vi.fn() },
     deliveryProvider: { findMany: vi.fn() },
     region: { findMany: vi.fn() },
+    settlementMatch: { findMany: vi.fn() },
   },
   requireContext: vi.fn(),
   requirePermission: vi.fn(),
@@ -101,6 +102,7 @@ beforeEach(() => {
   db.orderActivity.findMany.mockResolvedValue([]);
   db.deliveryFee.findMany.mockResolvedValue([{ deliveryProviderId: P1, regionId: R1, lateThresholdDays: 3 }]);
   db.deliveryProvider.findMany.mockResolvedValue([{ id: P1, name: 'أبو علي' }]);
+  db.settlementMatch.findMany.mockResolvedValue([]);
   db.region.findMany.mockResolvedValue([{ id: R1, name: 'دمشق' }]);
 });
 

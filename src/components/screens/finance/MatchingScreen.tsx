@@ -10,6 +10,7 @@ import { RiGitBranchLine, RiLoader4Line, RiScales3Line } from '@remixicon/react'
 import { EmptyState } from '@/components/ui/EmptyState';
 import { NextStepButton } from '@/components/ui/NextStep';
 import { DifferenceActions } from '@/components/screens/finance/DifferenceActions';
+import { CourierReason } from '@/components/screens/finance/CourierReason';
 import { BulkDecide } from '@/components/screens/finance/BulkDecide';
 import { DifferencesByPerson } from '@/components/screens/finance/DifferencesByPerson';
 import { NotMentionedActions } from '@/components/screens/finance/NotMentionedActions';
@@ -25,7 +26,7 @@ import { useIsPhone } from '@/hooks/useIsPhone';
 import { ManualMatching } from '@/components/screens/finance/ManualMatching';
 import { STATEMENT_CLOSED_SENTENCE, isApproved, isMatchingClosed } from '@/lib/settlement-gates';
 import { countOpenLines, isOpenLine } from '@/lib/statement-open-lines';
-import { lineEssentials, readCourierRow } from '@/lib/statement-line-reading';
+import { lineEssentials } from '@/lib/statement-line-reading';
 import { StatementTally } from '@/components/screens/finance/StatementTally';
 import { NO_VIEW, QueueTools, type QueueKind, type QueueView } from '@/components/screens/finance/QueueTools';
 import { matchesQuery } from '@/lib/queue-search';
@@ -941,62 +942,7 @@ function Queue({
 }
 
 /**
- * «سبب الشركة» — WHAT THE COMPANY SAID ABOUT THE LINE, IN THE FOUR THINGS THE OWNER ASKED FOR.
- *
- * «هاي كلها لغي، بدي بس الأشياء الأساسية: العنوان والمحافظة ورقم الهاتف والحالة» (8/11), said of a cell that dumped every
- * other cell of the row — the sender, the store, two dates as spreadsheet serial numbers, the payment method, the parcel's
- * content. So the cell says: the company's status word (and what we make of it), the phone, the governorate, the address.
- *
- * The figures are not here (they are the columns beside it) and neither is the order number (under the barcode). Nothing is
- * hidden by that: the whole row as the company wrote it stays one press away, behind «النص الأصلي».
- *
- * A line imported before the file's headings were kept (`StatementLine.receiver*`) has no governorate or address to show: it
- * shows its status and the phone read from its row, and the rest is behind «النص الأصلي». Display only.
+ * «سبب الشركة» lives in its own file since 13/11, so that the follow-up screen's «فيه فرق» dialog can draw the very same
+ * cell without dragging this whole screen into its page. This screen still draws it from there, and still exports it.
  */
-export function CourierReason({ m }: { m: Pick<Match, 'courierWord' | 'statementLine'> }) {
-  const word = m.courierWord;
-  const line = m.statementLine;
-  const e = line ? lineEssentials(line) : null;
-  // The row exactly as the company wrote it (`readCourierRow` hands it back whole, untouched).
-  const raw = m.statementLine?.rawRow ? readCourierRow(m.statementLine).raw : null;
-  const hasFacts = !!(e?.phone || e?.governorate || e?.address);
-  if (!word && !e?.status && !hasFacts && !raw) return <span className="text-[var(--sys-muted)]">—</span>;
-  return (
-    <span className="block">
-      {word ? (
-        <span className="block font-medium">
-          «{word.phrase}» <span className="text-xs text-[var(--sys-muted-foreground)]">{word.label}</span>
-        </span>
-      ) : (
-        e?.status && <span className="block text-xs text-[var(--sys-muted-foreground)]">الحالة: {e.status}</span>
-      )}
-      {hasFacts && (
-        <span className="block text-xs text-[var(--sys-muted-foreground)]">
-          {e?.phone && (
-            <span className="block">
-              الهاتف: <b dir="ltr">{e.phone.shown}</b>
-            </span>
-          )}
-          {e?.governorate && (
-            <span className="block">
-              المحافظة: <span dir="auto">{e.governorate}</span>
-            </span>
-          )}
-          {e?.address && (
-            <span className="block" dir="auto">
-              العنوان: {e.address}
-            </span>
-          )}
-        </span>
-      )}
-      {raw && (
-        <details>
-          <summary className="cursor-pointer text-xs text-[var(--sys-muted)]">النص الأصلي</summary>
-          <span className="block text-xs text-[var(--sys-muted)]" dir="auto">
-            {raw}
-          </span>
-        </details>
-      )}
-    </span>
-  );
-}
+export { CourierReason };

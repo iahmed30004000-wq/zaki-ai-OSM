@@ -16,6 +16,7 @@ const { db, requireContext, requirePermission, held } = vi.hoisted(() => ({
     deliveryFee: { findMany: vi.fn() },
     deliveryProvider: { findMany: vi.fn() },
     region: { findMany: vi.fn() },
+    settlementMatch: { findMany: vi.fn() },
   },
   requireContext: vi.fn(),
   requirePermission: vi.fn(),
@@ -49,6 +50,7 @@ beforeEach(() => {
   db.orderActivity.findMany.mockResolvedValue([]);
   db.deliveryFee.findMany.mockResolvedValue([]);
   db.deliveryProvider.findMany.mockResolvedValue([]);
+  db.settlementMatch.findMany.mockResolvedValue([]);
   db.region.findMany.mockResolvedValue([]);
 });
 
@@ -57,7 +59,8 @@ const acts = async () => (await (await GET(new Request('http://localhost/api/ops
 describe('what the list tells the screen about the owner’s one-time press', () => {
   it('the holder of `ops.close_legacy` is told «yes» — and the three parcel acts keep following their own keys', async () => {
     held.add('ops.close_legacy');
-    expect(await acts()).toEqual({ deliver: false, transfer: false, writeOff: false, closeLegacy: true });
+    // `decide` is «فيه فرق»'s own key (`settlement.review`): it is told, and it is «no» here like the other three.
+    expect(await acts()).toEqual({ deliver: false, transfer: false, writeOff: false, closeLegacy: true, decide: false });
   });
 
   it('NEGATIVE: the keys that are near it do not stand in for it — tracking, courier money, settlement, the write-off box', async () => {

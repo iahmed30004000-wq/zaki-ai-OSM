@@ -277,12 +277,10 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
    * exported so its test can draw the list with a role already in hand, without faking the whole user page.
    */
   /*
-   * Same shape again: «سبب الشركة» laid out — rendered by its own file (a column of the matching queues), and exported
-   * so its test can draw one line without faking the whole matching screen.
+   * `CourierReason` («سبب الشركة») CAME OFF THIS LIST (13/11): it moved into its own file, and the follow-up screen's
+   * «فيه فرق» dialog renders it from there as well as the matching screen — so it is rendered by another file, and
+   * an entry that said «only its own file draws it» was exactly what this test calls stale.
    */
-  'src/components/screens/finance/MatchingScreen.tsx:CourierReason':
-    'عمود «سبب الشركة» مرتّباً — ترسمه شاشة المطابقة نفسها، ويُصدَّر ليرسمه اختبارُه بسطرٍ واحد بلا شاشة كاملة.',
-
   'src/components/screens/UserDetailScreen.tsx:PermissionPicker':
     'قائمة الصلاحيات بنافذة «إضافة استثناء» — ترسمها شاشة المستخدم نفسها، وتُصدَّر ليرسمها اختبارُها بدور جاهز بلا صفحة كاملة.',
 };

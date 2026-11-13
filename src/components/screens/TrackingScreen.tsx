@@ -16,6 +16,8 @@ import { BulkDeliverReport, type BulkDeliverLine } from '@/components/screens/tr
 import { WriteOffDialog } from '@/components/screens/tracking/WriteOffDialog';
 import { CloseLegacyDialog } from '@/components/screens/tracking/CloseLegacyDialog';
 import { ClosePickedDialog } from '@/components/screens/tracking/ClosePickedDialog';
+import { DifferenceMark } from '@/components/screens/tracking/DifferenceMark';
+import { DifferenceDialog } from '@/components/screens/tracking/DifferenceDialog';
 import { apiJson } from '@/lib/api-client';
 import { ScreenTitle } from '@/components/shell/ScreenTitle';
 import { BulkBar } from '@/components/shell/BulkBar';
@@ -26,7 +28,7 @@ import { ALERT_AR, ALERT_CONFIRM_AR, type TrackingAlertKind } from '@/lib/parcel
 import { useAsk, useConfirm, useTell } from '@/components/ui/Confirm';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { HealthChip } from '@/components/ui/HealthChip';
-import { NOT_LATE, NOT_LATE_FACTS, URGENCY, canCollect, trackingUrgency, type ChipKey } from '@/lib/parcel-tracking/priority';
+import { DIFFERENCE_CHIP, DIFFERENCE_FACTS, NOT_LATE, NOT_LATE_FACTS, URGENCY, canCollect, trackingUrgency, type ChipKey } from '@/lib/parcel-tracking/priority';
 import { Money } from '@/components/ui/Money';
 import { Pager } from '@/components/ui/Pager';
 import { NextStepButton } from '@/components/ui/NextStep';
@@ -39,6 +41,7 @@ import type { TrackingListFacts } from '@/lib/parcel-tracking/list';
 import { FULL_SIGHT, NO_SIGHT, statesOffered, type TrackingSight } from '@/lib/parcel-tracking/sight';
 import { SAID_STATUSES } from '@/lib/couriers/courier-said';
 import { NO_SAID_COUNTS, SAID_OPTION_AR, SAID_PREFIX, type SaidOnTheRow } from '@/lib/parcel-tracking/said';
+import type { DifferenceOnTheRow } from '@/lib/parcel-tracking/difference-words';
 import { BULK_DELIVER_CONFIRM_AR, BULK_DELIVER_MOST, canBulkDeliver, hasDeliverBox, type BulkDeliverReport as BulkReport } from '@/lib/parcel-tracking/bulk-deliver';
 
 /**
@@ -97,6 +100,11 @@ interface Row {
   alert?: { kind: TrackingAlertKind; at: string; acknowledged: boolean } | null;
   /** What the delivery company itself says about the parcel when it disagrees with our state — the server judged it; this only draws it. */
   courierSaid?: SaidOnTheRow | null;
+  /**
+   * «فيه فرق»: the matching came back with a difference — the company's line against our figure. The courier's money, so it
+   * is on the row only for whoever holds the money sight (`access.money`); an older server sends none, and nothing is drawn.
+   */
+  difference?: DifferenceOnTheRow | null;
 }
 
 interface Extra {
@@ -118,19 +126,21 @@ interface TrackingActs {
   writeOff: boolean;
   /** «أقفل القديمة بلا باركود»: the owner's own key. Only a server that says yes draws the button. */
   closeLegacy: boolean;
+  /** «فيه فرق»: `settlement.review` — the answers in the dialog. Only a server that says yes draws them; absent is «no». */
+  decide: boolean;
 }
 
 /**
  * An answer that does not say is read as «all»: drawing less would hide work, and the door is what refuses. EXCEPT the owner's
  * one-time press: a button for a door nobody was told they hold is not «work hidden», and an answer that does not name it is read as «no».
  */
-const ALL_ACTS: TrackingActs = { deliver: true, transfer: true, writeOff: true, closeLegacy: false };
+const ALL_ACTS: TrackingActs = { deliver: true, transfer: true, writeOff: true, closeLegacy: false, decide: false };
 
 /** Module-level, so the hook's loader keeps one identity — see `usePagedList`. */
 const read = (body: unknown): PagedRead<Row, Extra> => {
   const b = body as { orders: Row[]; pagination: Paging; facts: TrackingListFacts; lateCount: number; dialCode?: string | null; capped?: boolean; access?: TrackingSight; acts?: Partial<TrackingActs> };
   // The door always says; an answer that does not is read as the whole screen, since drawing less would hide work, and the door is what refuses.
-  return { rows: b.orders, pagination: b.pagination, extra: { facts: b.facts && { ...b.facts, said: b.facts.said ?? NO_SAID_COUNTS }, lateCount: b.lateCount, dialCode: b.dialCode ?? null, capped: !!b.capped, access: b.access ?? FULL_SIGHT, acts: { ...ALL_ACTS, ...b.acts } } };
+  return { rows: b.orders, pagination: b.pagination, extra: { facts: b.facts && { ...b.facts, said: b.facts.said ?? NO_SAID_COUNTS, difference: b.facts.difference ?? 0 }, lateCount: b.lateCount, dialCode: b.dialCode ?? null, capped: !!b.capped, access: b.access ?? FULL_SIGHT, acts: { ...ALL_ACTS, ...b.acts } } };
 };
 
 /**
@@ -247,6 +257,8 @@ export function TrackingScreen() {
   const [closingLegacy, setClosingLegacy] = useState(false);
   /** The owner's press on the orders he ticked (`ops.close_legacy` too): any barcode, any age, nothing moves. */
   const [closingPicked, setClosingPicked] = useState(false);
+  /** The parcel whose difference at matching is open in the dialog — by id, so what it shows is always the page's current row. */
+  const [decidingId, setDecidingId] = useState<string | null>(null);
   /** The row whose alert is being acknowledged right now. */
   const [acking, setAcking] = useState<string | null>(null);
   const [task, setTask] = useState<TaskFilter>('all');
@@ -380,6 +392,10 @@ export function TrackingScreen() {
   const access = extra?.access ?? NO_SIGHT;
   /** The buttons that have a box of their own: delivered / refused, transfer, close as a loss (PR-8). */
   const acts = extra?.acts ?? ALL_ACTS;
+  /** The parcel in the «فيه فرق» dialog, as the page holds it now — a page read again while it is open shows its newest figures. */
+  const deciding = decidingId ? rows.find((r) => r.id === decidingId) ?? null : null;
+  // A parcel that left the page, or no longer carries a difference, takes its dialog with it — and does not bring it back if it returns.
+  if (decidingId && !deciding?.difference) setDecidingId(null);
 
   /**
    * THE WORK WAITING, FROM ONE DEFINITION OF EACH CONDITION.
@@ -432,11 +448,14 @@ export function TrackingScreen() {
   const tasks: { key: ChipKey; count: number }[] = facts
     ? [
         ...TASKS.map((key) => ({ key, count: facts.tasks[key] })),
+        // «فيه فرق»: the parcels whose matching came back with a difference — the server's number, and exactly the rows it brings.
+        // An older server, or a person without the money sight, sends none: it is a zero, and a chip nobody is in is not drawn.
+        { key: DIFFERENCE_CHIP, count: facts.difference ?? 0 },
         // «غير متأخرة» is the only chip that is not a fault: what is on the road and inside its time.
         { key: NOT_LATE, count: facts.notLate },
       ].filter((t) => t.count > 0)
     : [];
-  const chipFacts = (key: ChipKey) => (key === NOT_LATE ? NOT_LATE_FACTS : URGENCY[key]);
+  const chipFacts = (key: ChipKey) => (key === NOT_LATE ? NOT_LATE_FACTS : key === DIFFERENCE_CHIP ? DIFFERENCE_FACTS : URGENCY[key]);
 
   // A filter on a condition that no longer holds for any parcel is a dead end: its chip is gone, so the list reads as
   // empty with nothing highlighted to press back out of. Acknowledging the last alert does exactly that — so the
@@ -1001,6 +1020,14 @@ export function TrackingScreen() {
                   */}
                   {o.courierSaid && <CourierSaidChip said={o.courierSaid} />}
                   {/*
+                    «فيه فرق»: the matching came back with a difference. The mark is a button beside the other chips — on
+                    the desk and on the card alike (this column titles the card) — that opens the two figures and the
+                    answer. The server sends it only to a person who holds the money sight, so a row without it draws nothing.
+                  */}
+                  {o.difference && (
+                    <DifferenceMark difference={o.difference} currency={o.currency} mayDecide={acts.decide} onOpen={() => setDecidingId(o.id)} />
+                  )}
+                  {/*
                     On the desk the alert is a cell read at a glance beside
                     everything else. On a phone it is the card's notice, at the
                     top and full width with its own button — so this one is the
@@ -1378,6 +1405,20 @@ export function TrackingScreen() {
           onDone={async (message) => {
             setClosingPicked(false);
             setSelected({});
+            setDone(message);
+            setError(null);
+            await list.reload();
+          }}
+        />
+      )}
+
+      {deciding && deciding.difference && (
+        <DifferenceDialog
+          order={{ id: deciding.id, orderNumber: deciding.orderNumber, merchantRef: deciding.merchantRef, currency: deciding.currency, difference: deciding.difference }}
+          mayDecide={acts.decide}
+          onClose={() => setDecidingId(null)}
+          onDone={async (message) => {
+            setDecidingId(null);
             setDone(message);
             setError(null);
             await list.reload();
