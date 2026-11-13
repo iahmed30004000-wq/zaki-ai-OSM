@@ -3,7 +3,7 @@ import { isAge, type Age } from '../age-piles';
 import { isSaidStatus, type SaidStatus } from '../couriers/courier-said';
 import { orderSearchOr } from '../order-filters';
 import { SHIPPING_STATUS_AR } from '../shipping-workflow';
-import { NOT_LATE, URGENCIES, type ChipKey, type ConditionKey } from './priority';
+import { DIFFERENCE_CHIP, NOT_LATE, URGENCIES, type ChipKey, type ConditionKey } from './priority';
 
 /**
  * WHAT A FOLLOW-UP AGENT ASKS OF THE PARCELS IN THE FIELD — THE WORDS, READ ONCE, IN ONE PLACE.
@@ -37,8 +37,11 @@ export type StatusChoice = typeof DEFAULT_STATUS | typeof EVERY_STATUS | (typeof
 
 /** The seven chips, in the order they are drawn — the order of `URGENCIES`, minus «nothing». */
 export const TASKS = URGENCIES.filter((k): k is ConditionKey => k !== 'NONE');
-/** The chips the screen can press: the seven conditions, then «غير متأخرة» — which is a chip and never a reason. */
-export const CHIPS: readonly ChipKey[] = [...TASKS, NOT_LATE];
+/**
+ * The chips the screen can press: the seven conditions, then «غير متأخرة» and «فيه فرق» — which are chips and never a reason.
+ * `?task=DIFFERENCE` is the parcels whose matching came back with a difference; an unknown word is still a 400 in Arabic.
+ */
+export const CHIPS: readonly ChipKey[] = [...TASKS, NOT_LATE, DIFFERENCE_CHIP];
 
 /** «Nobody» as a courier or a governorate: the parcel has none on it. */
 export const NOBODY = 'none';
