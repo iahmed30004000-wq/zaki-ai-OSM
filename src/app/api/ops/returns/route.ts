@@ -54,6 +54,7 @@ const receiveSchema = z.object({
  *   ?status=<state>              RETURN_REQUESTED · RETURNED · FAILED_DELIVERY · PARTIALLY_DELIVERED   (pending only)
  *   ?courier=<id>|none           which delivery company carried it, or none
  *   ?age=fresh|few|week|old      how long since the courier last spoke of it                          (pending only)
+ *   ?barcode=none                only the parcels with NO barcode (13/11: «وضيف للفلتر بلا باركود»)    (either view)
  *   ?q=                          order number, reference, waybill, the customer's name — and phone, for whoever may read phones
  *   ?page= ?limit=               25 a page, 100 at most
  *

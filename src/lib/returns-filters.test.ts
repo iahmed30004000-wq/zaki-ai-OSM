@@ -16,7 +16,9 @@ import {
   ageWhere,
   courierWhere,
   daysWaitedOf,
+  isBarcodeFilter,
   isCourierFilter,
+  noBarcodeWhere,
   returnsFilters,
   returnsSearch,
   sinceOf,
@@ -238,6 +240,41 @@ describe('the address', () => {
 
   it('and the order of the parameters is no part of the question', () => {
     expect(JSON.stringify(ask(`age=old&status=RETURNED&courier=none`))).toBe(JSON.stringify(ask(`courier=none&status=RETURNED&age=old`)));
+    expect(JSON.stringify(ask(`barcode=none&age=old&courier=none`))).toBe(JSON.stringify(ask(`courier=none&barcode=none&age=old`)));
+  });
+
+  it('and «بلا باركود» is one clause — a barcode that is null or blank — in either view, and only when it was asked for', () => {
+    for (const view of ['pending', 'received']) {
+      const r = ask(`view=${view}&barcode=none`);
+      expect(r, view).toMatchObject({ ok: true, view });
+      if (!r.ok) return;
+      expect(r.clauses, view).toEqual([noBarcodeWhere]);
+      expect(r.applied.barcode, view).toBe('none');
+    }
+    // «all», blank and absent are no filter — and leave no word behind in what was applied.
+    for (const q of ['barcode=all', 'barcode=', 'barcode=%20', '']) {
+      const r = ask(q);
+      expect(r, q).toMatchObject({ ok: true, clauses: [] });
+      if (r.ok) expect(r.applied, q).not.toHaveProperty('barcode');
+    }
+  });
+
+  it('and the clause finds exactly the parcels that have none: null and blank, never one that has a barcode', () => {
+    const rows: Row[] = [{ trackingNumber: null }, { trackingNumber: '' }, { trackingNumber: '100550615867' }, { trackingNumber: 'x' }];
+    expect(rows.filter((r) => matches(noBarcodeWhere, r)).map((r) => r.trackingNumber)).toEqual([null, '']);
+  });
+
+  it('and it joins the other words — the company and the barcode are two clauses, both asked', () => {
+    const r = ask(`courier=${COURIER}&barcode=none`);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.clauses).toEqual([{ deliveryProviderId: COURIER }, noBarcodeWhere]);
+    expect(r.applied).toEqual({ view: 'pending', status: null, courier: COURIER, age: null, q: null, barcode: 'none' });
+  });
+
+  it('and the word is known to the screen by one name — «none» — and nothing else is', () => {
+    expect(isBarcodeFilter('none')).toBe(true);
+    for (const bad of ['', 'all', 'with', 'NONE', 'null', undefined, null, 0]) expect(isBarcodeFilter(bad), String(bad)).toBe(false);
   });
 
   it.each([
@@ -246,6 +283,8 @@ describe('the address', () => {
     ['status=returned', 'الحالة غير معروف: returned'],
     ['courier=dhl', 'شركة الشحن غير معروف: dhl'],
     ['age=yesterday', 'العمر غير معروف: yesterday'],
+    ['barcode=with', 'فلتر الباركود غير معروف: with'],
+    ['barcode=NONE', 'فلتر الباركود غير معروف: NONE'],
   ])('and a value it does not know is refused in Arabic, never ignored — %s', (query, arabic) => {
     const r = ask(query);
     expect(r).toMatchObject({ ok: false, errorAr: arabic });

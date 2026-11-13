@@ -166,6 +166,25 @@ describe('the walk, the progress and the one line', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  it('«بلا باركود» goes with it: the walk is asked of the SAME narrowing the list shows — and nothing is sent that was not chosen', async () => {
+    await draw();
+    fireEvent.change(screen.getByLabelText('الباركود'), { target: { value: 'none' } });
+    await waitFor(() => expect(gets().some((c) => new URL(c[0] as string, 'http://x').searchParams.get('barcode') === 'none')).toBe(true));
+    await waitFor(() => expect(theButton()).not.toBeNull());
+    fireEvent.click(theButton()!);
+    await screen.findByRole('dialog');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'أقرّ إني عددت وفحصت المرتجعات' }));
+    fireEvent.click(screen.getByRole('button', { name: 'نعم، استلم الكل' }));
+    await screen.findByText('استلمت 97 · تركت 3 توصيل جزئي · تخطيت 0');
+    for (const b of postBodies()) expect(b).toMatchObject({ view: 'pending', barcode: 'none', countedAndInspected: true });
+  });
+
+  it('and with «بلا باركود» not chosen the walk says «all», which the door reads as no narrowing at all', async () => {
+    await start();
+    await screen.findByText('استلمت 97 · تركت 3 توصيل جزئي · تخطيت 0');
+    for (const b of postBodies()) expect(b.barcode).toBe('all');
+  });
+
   it('shows «استلمت X من Y» while it walks, and «إيقاف» stops after the piece in flight', async () => {
     let release: () => void = () => {};
     api.mockImplementation(async (url: string, init?: RequestInit) => {
