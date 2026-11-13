@@ -13,6 +13,11 @@ import { customerFacts } from '@/lib/customer-insights';
 import { customerFilters } from '@/lib/customer-filters';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { typed } from '@/lib/text-search';
+import { shortMemo } from '@/lib/short-memo';
+import { REPORT_TTL_MS } from '@/lib/heavy-lane';
+
+/** The book's counters, per scope, for the window the reports are kept for (zero under test, so no test inherits another's). */
+const KEPT_FACTS = shortMemo<ReturnType<typeof customerFacts>>(REPORT_TTL_MS, 200);
 
 /**
  * Full PII projection for users holding 'customers.view'.
@@ -177,20 +182,32 @@ export async function GET(req: Request) {
      * not see a customer's history may not see the history of all of them
      * added up either.
      */
+    /*
+     * KEPT A MINUTE, PER BOOK — NOT PER REQUEST.
+     *
+     * These counters read EVERY customer of the book (no `take`) and score each one, and the list asked for them on every
+     * mount, every page turn and every pause in typing: the same answer, recomputed for the same scope, each time. They are
+     * kept for a minute under the book's own `where` — which holds the company, the store and, for a person who sees only
+     * their own customers, that person (`bookWhere.orders.some.moderatorId`) — so one scope can never be handed another's
+     * figures. Only the figures are kept: the page of rows above is read afresh every time, so a customer who was just added
+     * is on it at once and shows in the strip within the minute. A read that fails is not kept (`short-memo.ts`).
+     */
     const facts = canViewFull
-      ? customerFacts(
-          await db.customer.findMany({
-            where: bookWhere,
-            select: {
-              city: true,
-              totalOrders: true,
-              deliveredOrders: true,
-              cancelledOrders: true,
-              totalPurchaseValue: true,
-              lastOrderDate: true,
-            },
-          }),
-          new Date()
+      ? await KEPT_FACTS.get(JSON.stringify(bookWhere), async () =>
+          customerFacts(
+            await db.customer.findMany({
+              where: bookWhere,
+              select: {
+                city: true,
+                totalOrders: true,
+                deliveredOrders: true,
+                cancelledOrders: true,
+                totalPurchaseValue: true,
+                lastOrderDate: true,
+              },
+            }),
+            new Date()
+          )
         )
       : null;
 
