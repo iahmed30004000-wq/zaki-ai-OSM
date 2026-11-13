@@ -220,7 +220,12 @@ class World {
   }
 
   tx(): any {
-    const w = this;
+    return makeTx(this);
+  }
+}
+
+/** The client a transaction hands out: it reads and writes the world, and anything it was not told about is recorded as forbidden. */
+function makeTx(w: World): any {
     const touch = (n: string) => w.trace.push(n);
     const strict = (model: string, impl: Record<string, (...a: any[]) => any>) =>
       new Proxy(impl, {
@@ -382,7 +387,6 @@ class World {
       wallet: strict('wallet', {}),
       orderAddOn: strict('orderAddOn', {}),
     };
-  }
 }
 
 const SCOPE = { companyId: 'c1', storeId: 's1' };
