@@ -27,7 +27,7 @@ export const ENTITY_AR: Record<string, string> = {
   Region: 'منطقة', Country: 'دولة', AdAccount: 'حساب إعلانات', Campaign: 'حملة', TrackingPixel: 'بكسل تتبّع',
   CustomConversion: 'تحويل مخصّص', TelegramSource: 'مصدر تلجرام', TelegramWebhook: 'ويب هوك تلجرام', WhatsAppConnection: 'ربط واتساب',
   WhatsAppConversation: 'محادثة واتساب', WhatsAppMessage: 'رسالة واتساب', SystemToken: 'مفتاح نظام', SystemSetting: 'إعداد نظام',
-  App: 'تطبيق', AppInstall: 'تثبيت تطبيق', JobRun: 'مهمة مجدولة',
+  App: 'تطبيق', AppInstall: 'تثبيت تطبيق', JobRun: 'مهمة مجدولة', Partner: 'شريك',
 };
 
 /** The last word of an action code, as a verb. Applied to the row's own record kind. */
