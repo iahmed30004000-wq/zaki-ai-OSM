@@ -277,8 +277,11 @@ export async function answerAnalytics(
       range.start?.toISOString() ?? '',
       range.end?.toISOString() ?? '',
     ].join('|');
+    // «الكل» is the whole history and the dashboard asks for it every two minutes: it is kept five times longer than a named window,
+    // which stays at a minute (13/11). A window with both ends is exactly the question it was a minute ago.
+    const ttl = range.start && range.end ? REPORT_TTL_MS : 5 * REPORT_TTL_MS;
     const { analytics, outcomes, previous, door, productReturns, deliveredCount, costedCount, expenseRows, outstanding, unrecorded } =
-      await heavyOnce(key, REPORT_TTL_MS, () => computeBundle({ companyId, storeId }, filter));
+      await heavyOnce(key, ttl, () => computeBundle({ companyId, storeId }, filter));
 
     const [collected, uncollected] = outstanding;
     const outstandingMoney =

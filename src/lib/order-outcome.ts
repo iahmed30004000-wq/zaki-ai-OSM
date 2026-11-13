@@ -140,20 +140,39 @@ type Db = {
  *
  * Not the dashboard's 90-day window: «how did my orders end» is asked of
  * all of them. One GROUP BY over the four columns the reading uses, and —
- * only for the groups whose answer depends on the receipt — three counts
- * splitting them by «no receipt / no fee / fee». Every row is counted once,
- * so the outcomes add up to `total`.
+ * only when some group's answer depends on the receipt — three more GROUP BYs
+ * over the SAME four columns, each with one of the three receipt questions
+ * («nothing came back» / «no fee» / «fee»), read once for the whole scope
+ * instead of once per group (13/11: one read plus three counts for every
+ * group, groups in sequence, on every dashboard opening — four statements
+ * now). Every row is counted once, so the outcomes add up to `total`.
  */
 export async function countOutcomes(
   db: Db,
   scope: { companyId: string; storeId?: string | null }
 ): Promise<{ total: number; outcomes: { key: Outcome; label: string; count: number; closed: boolean }[] }> {
   const base: Prisma.OrderWhereInput = { companyId: scope.companyId, ...(scope.storeId ? { storeId: scope.storeId } : {}) };
-  const groups = await db.order.groupBy({
-    by: ['confirmationStatus', 'shippingStatus', 'settlementStatus', 'rejectionReason'],
-    where: base,
-    _count: { _all: true },
-  });
+  const by = ['confirmationStatus', 'shippingStatus', 'settlementStatus', 'rejectionReason'];
+  const groups = await db.order.groupBy({ by, where: base, _count: { _all: true } });
+
+  const dependsOnReceipt = (g: { shippingStatus: string }) => COMING_BACK.includes(g.shippingStatus) || g.shippingStatus === 'PARTIALLY_DELIVERED';
+  // Three questions about the receipt, each row in exactly one: nothing came back and no fee (a loss), no fee, a fee. Asked of the
+  // whole scope at once and looked up by the four columns below; skipped when no group needs them.
+  const grouped = (receipt: Prisma.ReturnReceiptWhereInput) =>
+    db.order.groupBy({ by, where: { ...base, returnReceipt: { is: receipt } }, _count: { _all: true } });
+  const [lostGroups, noFeeGroups, feeGroups] = groups.some(dependsOnReceipt)
+    ? await Promise.all([
+        grouped({ courierFeeCharged: false, ...receiptNothingCameBackWhere() }),
+        grouped({ courierFeeCharged: false }),
+        grouped({ courierFeeCharged: true }),
+      ])
+    : [[], [], []];
+  // The four columns are the key — null stays null, so a group with no rejection reason finds its own count.
+  const keyOf = (g: Record<string, unknown>) => JSON.stringify(by.map((c) => g[c] ?? null));
+  const tally = (rows: any[]) => new Map<string, number>(rows.map((r) => [keyOf(r), r._count._all as number]));
+  const lostOf = tally(lostGroups);
+  const noFeeOf = tally(noFeeGroups);
+  const feeOf = tally(feeGroups);
 
   const counts = new Map<Outcome, number>();
   const add = (k: Outcome, n: number) => counts.set(k, (counts.get(k) ?? 0) + n);
@@ -168,14 +187,11 @@ export async function countOutcomes(
       settlementStatus: g.settlementStatus,
       rejectionReason: g.rejectionReason,
     };
-    if (COMING_BACK.includes(g.shippingStatus) || g.shippingStatus === 'PARTIALLY_DELIVERED') {
-      const where = { ...base, ...src };
-      // Three questions about the receipt, each row in exactly one: nothing came back and no fee (a loss), no fee, a fee.
-      const [lostCount, noFeeAll, fee] = await Promise.all([
-        db.order.count({ where: { ...where, returnReceipt: { is: { courierFeeCharged: false, ...receiptNothingCameBackWhere() } } } }),
-        db.order.count({ where: { ...where, returnReceipt: { is: { courierFeeCharged: false } } } }),
-        db.order.count({ where: { ...where, returnReceipt: { is: { courierFeeCharged: true } } } }),
-      ]);
+    if (dependsOnReceipt(g)) {
+      const k = keyOf(src);
+      const lostCount = lostOf.get(k) ?? 0;
+      const noFeeAll = noFeeOf.get(k) ?? 0;
+      const fee = feeOf.get(k) ?? 0;
       const noFee = noFeeAll - lostCount;
       const none = n - noFeeAll - fee;
       if (none) add(orderOutcome({ ...src, returnReceipt: null }), none);

@@ -89,16 +89,23 @@ describe('«= مغلق» is said exactly where the «مغلق» filter says clos
 
 describe('the dashboard\'s counts add up to every order', () => {
   it('splits the receipt-dependent groups and loses nobody', async () => {
-    const groupBy = vi.fn().mockResolvedValue([
+    const main = [
       { confirmationStatus: 'CONFIRMED', shippingStatus: 'DELIVERED', settlementStatus: 'SETTLED', rejectionReason: null, _count: { _all: 10 } },
       { confirmationStatus: 'CONFIRMED', shippingStatus: 'RETURNED', settlementStatus: 'NOT_APPLICABLE', rejectionReason: null, _count: { _all: 7 } },
       { confirmationStatus: 'CONFIRMED', shippingStatus: 'CANCELLED', settlementStatus: 'CANCELLED', rejectionReason: 'DUPLICATE_ORDER', _count: { _all: 2 } },
       { confirmationStatus: 'POSTPONED', shippingStatus: 'NOT_READY', settlementStatus: 'NOT_APPLICABLE', rejectionReason: null, _count: { _all: 1 } },
-    ]);
+    ];
     // of the 7 returned: 4 counted with no fee, 1 with a fee, 2 not counted yet
-    // (the dashboard now also asks «how many of those say nothing came back» — none of these do)
-    const count = vi.fn(async ({ where }: any) => (where.returnReceipt.is.receivedQty === 0 ? 0 : where.returnReceipt.is.courierFeeCharged ? 1 : 4));
-    const r = await countOutcomes({ order: { groupBy, count } }, { companyId: 'c1', storeId: 's1' });
+    // (the dashboard also asks «how many of those say nothing came back» — none of these do).
+    // Since 13/11 the receipt questions are GROUPED reads of the same four columns, so each answers with the returned group's own key.
+    const returned = { confirmationStatus: 'CONFIRMED', shippingStatus: 'RETURNED', settlementStatus: 'NOT_APPLICABLE', rejectionReason: null };
+    const groupBy = vi.fn(async ({ where }: any) => {
+      const receipt = where.returnReceipt?.is;
+      if (!receipt) return main;
+      if (receipt.receivedQty === 0) return [];
+      return [{ ...returned, _count: { _all: receipt.courierFeeCharged ? 1 : 4 } }];
+    });
+    const r = await countOutcomes({ order: { groupBy, count: vi.fn() } }, { companyId: 'c1', storeId: 's1' });
     const by = Object.fromEntries(r.outcomes.map((x) => [x.key, x.count]));
     expect(r.total).toBe(20);
     expect(r.outcomes.reduce((s, x) => s + x.count, 0)).toBe(20);
@@ -157,16 +164,16 @@ describe('a parcel written off as lost reads «مفقود بعد الشحن — 
   });
 
   it('the dashboard counts it apart, and the outcomes still add up to every order', async () => {
-    const groupBy = vi.fn().mockResolvedValue([
-      { confirmationStatus: 'CONFIRMED', shippingStatus: 'RETURNED', settlementStatus: 'NOT_APPLICABLE', rejectionReason: null, _count: { _all: 9 } },
-    ]);
+    const key = { confirmationStatus: 'CONFIRMED', shippingStatus: 'RETURNED', settlementStatus: 'NOT_APPLICABLE', rejectionReason: null };
     // of the 9: 3 written off, 2 counted with no fee, 1 with a fee, 3 not counted yet
-    const count = vi.fn(async ({ where }: any) => {
-      const is = where.returnReceipt.is;
-      if (is.receivedQty === 0) return 3;
-      return is.courierFeeCharged ? 1 : 5; // «no fee» includes the 3 written off
+    // (grouped reads of the same four columns since 13/11 — each answers with this group's key)
+    const groupBy = vi.fn(async ({ where }: any) => {
+      const is = where.returnReceipt?.is;
+      if (!is) return [{ ...key, _count: { _all: 9 } }];
+      if (is.receivedQty === 0) return [{ ...key, _count: { _all: 3 } }];
+      return [{ ...key, _count: { _all: is.courierFeeCharged ? 1 : 5 } }]; // «no fee» includes the 3 written off
     });
-    const r = await countOutcomes({ order: { groupBy, count } }, { companyId: 'c1', storeId: 's1' });
+    const r = await countOutcomes({ order: { groupBy, count: vi.fn() } }, { companyId: 'c1', storeId: 's1' });
     const by = Object.fromEntries(r.outcomes.map((x) => [x.key, x.count]));
     expect(by).toEqual({ LOST_AFTER_SHIPPING_CLOSED: 3, RETURNED_NO_FEE_CLOSED: 2, RETURNED_FEE_CLOSED: 1, RETURN_AWAITING: 3 });
     expect(r.outcomes.reduce((s, x) => s + x.count, 0)).toBe(r.total);

@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { useApp } from '@/context/AppContext';
 import { apiFetch, apiJson, saidBy } from '@/lib/api-client';
@@ -148,8 +148,25 @@ export function PerformanceScreen() {
   /** Empty dates mean "the whole window"; the server clamps it to 90 days. */
   const dateQuery = range.from && range.to ? `startDate=${range.from}&endDate=${range.to}` : 'period=all';
 
-  useEffect(() => {
+  /**
+   * A TABLE THAT DID NOT COME IS NOT AN EMPTY TABLE, AND THE NEWEST ANSWER WINS (13/11).
+   *
+   * Each of the three tables below failed into «no rows» — a timeout read as «لا شركات شحن بعد» or an empty team, which says nobody
+   * worked. A failure is now its own state, drawn with the shared `EmptyState` and a retry, exactly as this screen already does for
+   * the vitals. And when the window changed while an old answer was still on its way, the old one used to land last and overwrite the
+   * new window's table: each loader numbers its calls and applies only the newest (a retry is just another call).
+   */
+  const teamSeq = useRef(0);
+  const attrSeq = useRef(0);
+  const couriersSeq = useRef(0);
+  const [teamFailed, setTeamFailed] = useState(false);
+  const [attrFailed, setAttrFailed] = useState(false);
+  const [couriersFailed, setCouriersFailed] = useState(false);
+
+  const loadTeam = useCallback(() => {
+    const mine = ++teamSeq.current;
     setTeam(null);
+    setTeamFailed(false);
     // The table of the confirmation team is `team.monitor`'s (PR-10): nobody is asked what they may not read, and a 403 is
     // never drawn as an empty table.
     if (!canScores) return;
@@ -160,41 +177,68 @@ export function PerformanceScreen() {
     // table's rows. Two states, two endpoints, swapped once.
     apiJson<{ employees: any[]; totals: any }>(`/api/orders/confirmation/team?${dateQuery}`, { timeoutMs: BOARD_WAIT_MS })
       .then((d) => {
+        if (mine !== teamSeq.current) return;
         setTeam(d.employees ?? []);
         setTotals(d.totals ?? null);
       })
-      .catch(() => setTeam([]));
+      .catch(() => {
+        if (mine !== teamSeq.current) return;
+        setTeam([]);
+        setTeamFailed(true);
+      });
   }, [dateQuery, canScores]);
-
   useEffect(() => {
+    loadTeam();
+  }, [loadTeam]);
+
+  const loadAttribution = useCallback(() => {
+    const mine = ++attrSeq.current;
     setModerators(null);
     setChannels(null);
     setAttrTotals(null);
+    setAttrFailed(false);
     apiJson<{
       moderators: AttributionRow[];
       channels: AttributionRow[];
       totals?: { moderators: AttributionRow; channels: AttributionRow };
     }>(`/api/growth/attribution?${dateQuery}`, { timeoutMs: BOARD_WAIT_MS })
       .then((d) => {
+        if (mine !== attrSeq.current) return;
         setModerators(d.moderators ?? []);
         setChannels(d.channels ?? []);
         setAttrTotals(d.totals ?? null);
       })
       .catch(() => {
+        if (mine !== attrSeq.current) return;
         setModerators([]);
         setChannels([]);
         setAttrTotals(null);
+        setAttrFailed(true);
       });
   }, [dateQuery]);
-
   useEffect(() => {
+    loadAttribution();
+  }, [loadAttribution]);
+
+  const loadCouriers = useCallback(() => {
+    const mine = ++couriersSeq.current;
+    setCouriers(null);
+    setCouriersFailed(false);
     apiJson<{ providers: CourierRow[]; collection: Trust }>('/api/orders/shipping/performance', { timeoutMs: BOARD_WAIT_MS })
       .then((d) => {
+        if (mine !== couriersSeq.current) return;
         setCouriers(d.providers ?? []);
         setCollection(d.collection ?? null);
       })
-      .catch(() => setCouriers([]));
+      .catch(() => {
+        if (mine !== couriersSeq.current) return;
+        setCouriers([]);
+        setCouriersFailed(true);
+      });
   }, []);
+  useEffect(() => {
+    loadCouriers();
+  }, [loadCouriers]);
 
   const loadData = async () => {
     setLoading(true);
@@ -563,7 +607,15 @@ export function PerformanceScreen() {
             subtitle="الأزمنة بدقائق العمل — خارج الدوام والعطلة لا يُحتسب — والقيم وسيط لا متوسط"
           />
           <CardContent className="p-0">
-            <TeamPerformanceTable rows={team as any} totals={totals} />
+            {teamFailed ? (
+              <EmptyState
+                title="تعذّر تحميل جدول الفريق"
+                why="لم يصل الجواب في الوقت المناسب — وهذا لا يعني أن أحداً لم يعمل. أعد المحاولة."
+                action={{ label: 'إعادة المحاولة', onClick: loadTeam }}
+              />
+            ) : (
+              <TeamPerformanceTable rows={team as any} totals={totals} />
+            )}
           </CardContent>
         </Card>
         )}
@@ -575,7 +627,15 @@ export function PerformanceScreen() {
             subtitle="ما جلبه كلٌّ منهم وما بقي منه — النسب من الخطوة التي قبلها، لا من أعلى القمع"
           />
           <CardContent className="p-0">
-            <AttributionTable rows={moderators} totals={attrTotals?.moderators} empty="لا طلبات منسوبة لمودريتر في هذه المدة." />
+            {attrFailed ? (
+              <EmptyState
+                title="تعذّر تحميل أرقام المودريتورية"
+                why="لم يصل الجواب في الوقت المناسب — وهذا لا يعني أنه لا توجد طلبات. أعد المحاولة."
+                action={{ label: 'إعادة المحاولة', onClick: loadAttribution }}
+              />
+            ) : (
+              <AttributionTable rows={moderators} totals={attrTotals?.moderators} empty="لا طلبات منسوبة لمودريتر في هذه المدة." />
+            )}
           </CardContent>
         </Card>
 
@@ -586,7 +646,15 @@ export function PerformanceScreen() {
             subtitle="الباب الذي جاء منه الطلب — وعمود «للطلب الواحد» يفرّق بين مصدر كبير ومصدر جيد"
           />
           <CardContent className="p-0">
-            <AttributionTable rows={channels} totals={attrTotals?.channels} empty="لا طلبات مرتبطة بقناة في هذه المدة." />
+            {attrFailed ? (
+              <EmptyState
+                title="تعذّر تحميل أرقام القنوات"
+                why="لم يصل الجواب في الوقت المناسب — وهذا لا يعني أنه لا توجد طلبات. أعد المحاولة."
+                action={{ label: 'إعادة المحاولة', onClick: loadAttribution }}
+              />
+            ) : (
+              <AttributionTable rows={channels} totals={attrTotals?.channels} empty="لا طلبات مرتبطة بقناة في هذه المدة." />
+            )}
           </CardContent>
         </Card>
 
@@ -602,6 +670,12 @@ export function PerformanceScreen() {
           <CardContent className="p-0">
             {couriers === null ? (
               <div className="p-4"><SkeletonRows rows={5} /></div>
+            ) : couriersFailed ? (
+              <EmptyState
+                title="تعذّر تحميل شركات الشحن"
+                why="لم يصل الجواب في الوقت المناسب — وهذا لا يعني أنه لا توجد شركات شحن. أعد المحاولة."
+                action={{ label: 'إعادة المحاولة', onClick: loadCouriers }}
+              />
             ) : couriers.length === 0 ? (
               <p className="p-6 text-sm text-[var(--sys-muted)] text-center">لا شركات شحن بعد.</p>
             ) : (
