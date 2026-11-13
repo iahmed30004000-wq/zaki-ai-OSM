@@ -38,6 +38,8 @@ interface Row {
   user: { id: string; name: string; role: string } | null;
   /** The server took the amounts out: this reader has no «عرض الرواتب». */
   payWithheld?: true;
+  /** The server took the names, shares and amounts out: this reader has no «الشركاء والسحوبات». */
+  partnersWithheld?: true;
 }
 interface Facts {
   users: { id: string; name: string; count: number }[];
@@ -174,6 +176,9 @@ export function AuditScreen() {
                       {/* Said, so a missing amount does not read as a missing record. */}
                       {l.payWithheld && (
                         <span className="block text-xs text-[var(--sys-muted)]">المبالغ لا تظهر إلا لمن معه صلاحية «عرض الرواتب».</span>
+                      )}
+                      {l.partnersWithheld && (
+                        <span className="block text-xs text-[var(--sys-muted)]">الأسماء والنسب والمبالغ لا تظهر إلا لمن معه صلاحية «الشركاء والسحوبات».</span>
                       )}
                     </>
                   ),

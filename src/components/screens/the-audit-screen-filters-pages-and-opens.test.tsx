@@ -91,6 +91,23 @@ describe('the rows', () => {
   });
 });
 
+describe('a row the server cut says so', () => {
+  it('a partners’ row without its figures says why they are missing, and which key opens them', async () => {
+    api.mockResolvedValue(BODY([ROW({ id: 'a3', action: 'PARTNERS_SAVED', entity: 'Partner', entityId: 'c1', newData: null, partnersWithheld: true })]));
+    render(<AuditScreen />);
+    // drawn once for the table and once for the phone's cards
+    expect((await screen.findAllByText(/الأسماء والنسب والمبالغ لا تظهر إلا لمن معه صلاحية «الشركاء والسحوبات»/)).length).toBeGreaterThan(0);
+    // the pay row's own note does not ride along on a partners' row
+    expect(screen.queryByText(/عرض الرواتب/)).toBeNull();
+  });
+
+  it('a row nobody cut carries no note', async () => {
+    render(<AuditScreen />);
+    await screen.findAllByText('تغيير حالة طلب');
+    expect(screen.queryByText(/لا تظهر إلا لمن معه صلاحية/)).toBeNull();
+  });
+});
+
 describe('the questions it asks', () => {
   it('opens with nothing chosen: page 1, 25 rows, no filter in the address', async () => {
     render(<AuditScreen />);
