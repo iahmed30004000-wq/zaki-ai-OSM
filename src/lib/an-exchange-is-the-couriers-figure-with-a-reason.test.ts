@@ -327,6 +327,8 @@ describe('which files may name the qualifier at all — a money path cannot star
       'src/lib/settlement-decisions.ts',
       'src/lib/settlement-difference.ts',
       'src/lib/statement-close.ts',
+      // The search across every statement READS the kind to say «طلب تبديل» beside a line it finds: a word on a card, no money.
+      'src/lib/statement-search.ts',
     ]);
     // (The bulk door writes the qualifier through `decisionKind()` and never names the column.)
   });
@@ -337,6 +339,7 @@ describe('which files may name the qualifier at all — a money path cannot star
       'src/lib/parcel-tracking/difference-words.ts',
       'src/lib/settlement-difference.ts',
       'src/lib/statement-close.ts',
+      'src/lib/statement-search.ts',
     ]);
     expect(namesIt(/\bEXCHANGE_KIND\b/)).toEqual([
       'src/app/api/finance/statements/[id]/matches/[matchId]/resolve/route.ts',
