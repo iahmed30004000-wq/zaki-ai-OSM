@@ -466,19 +466,28 @@ export function visibleNav(user: SessionUser, can: PermissionCheck): NavGroup[] 
  * the route as a line, so folding never takes a screen away.
  */
 export function menuNav(user: SessionUser, can: PermissionCheck): NavGroup[] {
-  // Two reasons a route is not a line: it is the DETAIL of a screen this person can open
-  // (`foldedUnder`), or its door is not the menu at all (`offMenu`).
-  return visibleNav(user, can)
-    .map((g) => ({
-      ...g,
-      routes: g.routes.filter((route) => {
-        if (route.offMenu) return false;
-        if (!route.foldedUnder) return true;
-        const parent = findRoute(route.foldedUnder);
-        return !(parent && canAccessRoute(user, parent, can));
-      }),
-    }))
+  const visible = visibleNav(user, can);
+  // «May open the screen it is the detail of» is «that screen is in what this person may open».
+  const openable = new Set(visible.flatMap((g) => g.routes.map((route) => route.path)));
+  return visible
+    .map((g) => ({ ...g, routes: g.routes.filter((route) => isMenuLine(route, openable)) }))
     .filter((g) => g.routes.length > 0);
+}
+
+/**
+ * IS THIS SCREEN A LINE OF THE MENU — FOR A CALLER THAT KNOWS ONLY WHICH SCREENS THIS PERSON MAY OPEN.
+ *
+ * Two reasons a route is not a line: it is the DETAIL of a screen this person can open (`foldedUnder`),
+ * or its door is not the menu at all (`offMenu`). This is that rule, written once: `menuNav` asks it on
+ * the server, and the arrangement card asks it in the browser — which has the list of openable paths
+ * (the arrangement door sends it) and no session to run `can` against. Two copies of «what is a menu
+ * line» would drift the first time a third reason is added, and the card would then offer, for the phone's
+ * bottom bar, a screen the bar can never draw.
+ */
+export function isMenuLine(route: RouteDef, openable: ReadonlySet<string>): boolean {
+  if (route.offMenu) return false;
+  if (!route.foldedUnder) return true;
+  return !openable.has(route.foldedUnder);
 }
 
 /**

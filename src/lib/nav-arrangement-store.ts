@@ -44,8 +44,17 @@ export async function readArrangement(
   const rows = await db.navArrangement.findMany({
     where: {
       companyId,
-      ...surfaceWhere(surface),
-      OR: [{ userId }, { role: { name: roleName } }],
+      /*
+       * TWO CONDITIONS, SO TWO ENTRIES OF `AND`.
+       *
+       * Both are an `OR`, and an object holds one key of that name: the
+       * surface's `OR` (for `nav`, «`nav` or the rows written before the
+       * column») was spread in and then replaced by the owner's `OR` below
+       * it, so a read of the MENU also read every other surface of the same
+       * person or role. A role that had views published to it (`view:orders`)
+       * could then hand its menu base the views row instead of the menu's.
+       */
+      AND: [surfaceWhere(surface), { OR: [{ userId }, { role: { name: roleName } }] }],
     },
     select: { userId: true, roleId: true, layout: true },
   });
@@ -56,6 +65,25 @@ export async function readArrangement(
   const own = ownRow ? parseLayout(ownRow.layout) : null;
 
   return { base, own, resolved: resolveLayout(base, own) };
+}
+
+/**
+ * This person's own row alone, as it is stored — `null` when they never saved one.
+ *
+ * Not the resolved layout: a save that did not mention the groups or the phone's bar must leave
+ * THEIR stored choice as it was (see `carryUnsaid`), and the role's base showing through would be
+ * copied into their row as if it had been theirs.
+ */
+export async function readOwnArrangement(
+  companyId: string,
+  userId: string,
+  surface = 'nav'
+): Promise<NavLayout | null> {
+  const row = await db.navArrangement.findFirst({
+    where: { companyId, userId, ...surfaceWhere(surface) },
+    select: { layout: true },
+  });
+  return row ? parseLayout(row.layout) : null;
 }
 
 /** This person's own arrangement, replacing whatever was there. */

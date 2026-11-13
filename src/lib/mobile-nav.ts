@@ -78,12 +78,31 @@ export interface MobileNav {
  * did not earn a slot: a tab bar that does not contain the page you are
  * looking at reads as broken, and somebody taps around trying to find where
  * they already are.
+ *
+ * `slots` is the person's own choice of the bar — paths, in the order they
+ * put them (the owner, 13/11: «الخانات الرئيسية»). It is a preference over
+ * `groups`, never a source of screens: only a path THIS menu holds can take a
+ * slot, each screen once, and what is left over is filled from the ranking
+ * above, so the bar is never shorter than the screens the person can reach.
+ * A screen the person may no longer open, or hid from the menu, is simply not
+ * in `groups` and so falls out without anybody being told. Without `slots`
+ * (or with an empty list) the bar is the ranking alone, exactly as it was.
  */
-export function mobileNav(groups: NavGroup[], current?: string | null): MobileNav {
+export function mobileNav(
+  groups: NavGroup[],
+  current?: string | null,
+  slots?: readonly string[]
+): MobileNav {
   const all = groups.flatMap((g) => g.routes);
   const byRank = [...all].sort((a, b) => rank(a.path) - rank(b.path));
 
-  const primary = byRank.slice(0, BOTTOM_SLOTS);
+  const chosen: RouteDef[] = [];
+  for (const path of slots ?? []) {
+    const route = all.find((r) => r.path === path);
+    if (route && !chosen.includes(route)) chosen.push(route);
+    if (chosen.length === BOTTOM_SLOTS) break;
+  }
+  const primary = [...chosen, ...byRank.filter((r) => !chosen.includes(r))].slice(0, BOTTOM_SLOTS);
 
   if (current) {
     const here = all.find((r) => current === r.path || current.startsWith(r.path + '/'));

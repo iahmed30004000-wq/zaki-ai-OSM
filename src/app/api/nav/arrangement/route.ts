@@ -5,15 +5,17 @@ import { db } from '@/lib/db';
 import { requireCompanyTenant } from '@/lib/auth';
 import { can } from '@/lib/authorization';
 import { visibleNav } from '@/lib/route-registry';
-import { cleanLayout, parseLayout } from '@/lib/nav-arrangement';
+import { carryUnsaid, cleanLayout, parseLayout, type NavLayout } from '@/lib/nav-arrangement';
 import {
   clearOwnArrangement,
   readArrangement,
+  readOwnArrangement,
   readRoleArrangement,
   saveOwnArrangement,
   saveRoleArrangement,
 } from '@/lib/nav-arrangement-store';
 import { logAudit } from '@/lib/audit';
+import type { SessionUser } from '@/types/auth';
 
 /**
  * THE MENU'S ARRANGEMENT — the owner's base per role, a person's own.
@@ -27,6 +29,17 @@ import { logAudit } from '@/lib/audit';
  * from `visibleNav` per viewer, and every door checks its own permission
  * when it is opened. Hiding is cosmetic; unhiding is cosmetic.
  *
+ * ── THE GROUPS AND THE PHONE'S FOUR RIDE THE SAME DOOR ──
+ *
+ * The order of the drawer's main entries (`groups`, keys) and the four
+ * screens of the phone's bottom bar (`slots`, paths) are stored in the same
+ * layout, by the same permission — whoever may save an arrangement may save
+ * these, and nobody needs a new key. They are checked the same way: a group
+ * key that is not one of the groups of THIS caller's menu, and a slot that is
+ * not a screen they may open, are DROPPED from what is stored, and the rest of
+ * the save goes through. And a save that does not mention them leaves them as
+ * they were (see `carryUnsaid`).
+ *
  * ── WHO MAY SET A ROLE'S BASE ──
  *
  * `roles.edit` — the permission that already means «decide what a role
@@ -39,20 +52,43 @@ const layoutSchema = z.object({
   order: z.array(z.string()).max(200).default([]),
   hidden: z.array(z.string()).max(200).default([]),
   pinned: z.array(z.string()).max(200).default([]),
+  /*
+   * NO `.default([])` ON THE TWO NEWER LISTS — ABSENT IS NOT EMPTY.
+   *
+   * A tab opened before they existed posts the three lists and nothing else,
+   * and that must not read as «clear them». A current client always posts both,
+   * an empty list meaning «no opinion of mine».
+   */
+  groups: z.array(z.string()).max(200).optional(),
+  slots: z.array(z.string()).max(200).optional(),
 });
+
+/** What this caller may arrange: the screens they may open and the keys of the groups that hold them. Never more. */
+function reachOf(user: SessionUser) {
+  const visible = visibleNav(user, can);
+  return { paths: visible.flatMap((g) => g.routes.map((r) => r.path)), groupKeys: visible.map((g) => g.key) };
+}
+type Reach = ReturnType<typeof reachOf>;
+
+/**
+ * A layout on its way OUT — only what this caller's own menu holds, so the screen never meets a path
+ * or a key that is not theirs, whatever a row happens to carry.
+ */
+const readable = (layout: NavLayout, reach: Reach): NavLayout => cleanLayout(layout, reach.paths, reach.groupKeys);
 
 /** GET — what this person's menu is arranged by, and what the base is. */
 export async function GET() {
   try {
     const { user, companyId } = await requireCompanyTenant();
     const { base, own, resolved } = await readArrangement(companyId, user.id, user.role);
+    const reach = reachOf(user);
     return NextResponse.json({
-      resolved,
-      base,
+      resolved: readable(resolved, reach),
+      base: base && readable(base, reach),
       /** Null means «رجّع الأساس» would change nothing — there is nothing of mine. */
-      own,
+      own: own && readable(own, reach),
       /** The paths this person may arrange: their own menu, nothing more. */
-      paths: visibleNav(user, can).flatMap((g) => g.routes.map((r) => r.path)),
+      paths: reach.paths,
       maySetRoleBase: can(user, 'roles.edit'),
     });
   } catch (error: unknown) {
@@ -70,12 +106,16 @@ export async function PUT(req: Request) {
     }
 
     const roleId = new URL(req.url).searchParams.get('roleId');
-    const mine = cleanLayout(
-      parseLayout(parsed.data),
-      visibleNav(user, can).flatMap((g) => g.routes.map((r) => r.path))
-    );
+    const { paths, groupKeys } = reachOf(user);
+    const posted = parseLayout(parsed.data);
+    // What the post CARRIED, by key — `parseLayout` cannot tell «absent» from «empty», this can.
+    const said = { groups: parsed.data.groups !== undefined, slots: parsed.data.slots !== undefined };
+    // Only a post that left something out can need the stored row: a current client says both.
+    const mayKeep = !said.groups || !said.slots;
 
     if (!roleId) {
+      const stored = mayKeep ? await readOwnArrangement(companyId, user.id) : null;
+      const mine = cleanLayout(carryUnsaid(stored, posted, said), paths, groupKeys);
       await saveOwnArrangement(companyId, user.id, mine);
       return NextResponse.json({ saved: 'own', layout: mine });
     }
@@ -98,16 +138,24 @@ export async function PUT(req: Request) {
     });
     if (!role) return NextResponse.json({ errorAr: 'لا دور بهذا المعرّف.' }, { status: 404 });
 
-    await saveRoleArrangement(companyId, role.id, mine);
+    const stored = mayKeep ? await readRoleArrangement(companyId, role.id) : null;
+    const base = cleanLayout(carryUnsaid(stored, posted, said), paths, groupKeys);
+    await saveRoleArrangement(companyId, role.id, base);
     await logAudit({
       companyId,
       userId: user.id,
       action: 'NAV_BASE_SET',
       entity: 'Role',
       entityId: role.id,
-      newData: { role: role.name, hidden: mine.hidden.length, pinned: mine.pinned.length },
+      newData: {
+        role: role.name,
+        hidden: base.hidden.length,
+        pinned: base.pinned.length,
+        groups: base.groups?.length ?? 0,
+        slots: base.slots?.length ?? 0,
+      },
     });
-    return NextResponse.json({ saved: 'role', role: role.name, layout: mine });
+    return NextResponse.json({ saved: 'role', role: role.name, layout: base });
   } catch (error: unknown) {
     return apiErrorResponse(error);
   }
@@ -125,7 +173,8 @@ export async function DELETE() {
     const { user, companyId } = await requireCompanyTenant();
     await clearOwnArrangement(companyId, user.id);
     const { resolved, base } = await readArrangement(companyId, user.id, user.role);
-    return NextResponse.json({ reset: true, resolved, base });
+    const reach = reachOf(user);
+    return NextResponse.json({ reset: true, resolved: readable(resolved, reach), base: base && readable(base, reach) });
   } catch (error: unknown) {
     return apiErrorResponse(error);
   }
@@ -145,7 +194,10 @@ export async function POST(req: Request) {
       select: { id: true, name: true },
     });
     if (!role) return NextResponse.json({ errorAr: 'لا دور بهذا المعرّف.' }, { status: 404 });
-    return NextResponse.json({ role: role.name, layout: await readRoleArrangement(companyId, role.id) });
+    return NextResponse.json({
+      role: role.name,
+      layout: readable(await readRoleArrangement(companyId, role.id), reachOf(user)),
+    });
   } catch (error: unknown) {
     return apiErrorResponse(error);
   }
