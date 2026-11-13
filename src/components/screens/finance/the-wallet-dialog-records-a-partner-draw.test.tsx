@@ -98,7 +98,8 @@ async function openDialog(storeCode = 'USD') {
       <WalletsScreen />
     </StoreCurrencyProvider>
   );
-  fireEvent.click(await screen.findByText('حركة جديدة'));
+  // The wallet's own press: the LAST «حركة جديدة» (the one at the top of the screen comes first, and is held by its own test file).
+  fireEvent.click((await screen.findAllByText('حركة جديدة')).at(-1)!);
   return screen.findByRole('dialog');
 }
 
@@ -409,6 +410,38 @@ describe('every OTHER kind still sends exactly what it sent', () => {
     expect(within(dialog).queryByLabelText('الشريك')).toBeNull();
     expect(noteBox(dialog).required).toBe(true);
     expect(within(dialog).getByRole('button', { name: 'تسجيل' })).toBeTruthy();
+  });
+});
+
+describe('the press from the TOP of the screen opens the same dialog — with the same kinds', () => {
+  /** The top button comes first in the page: the wallet's own press is the last «حركة جديدة». */
+  const openFromTop = async () => {
+    render(
+      <StoreCurrencyProvider code="USD">
+        <WalletsScreen />
+      </StoreCurrencyProvider>
+    );
+    fireEvent.click((await screen.findAllByText('حركة جديدة'))[0]);
+    return screen.findByRole('dialog');
+  };
+
+  it('a holder of finance.partners is offered «سحب شريك» there too, and records the draw on the wallet that was picked', async () => {
+    as('finance.partners');
+    const dialog = await openFromTop();
+    await chooseDraw(dialog);
+    fireEvent.change(partnerBox(dialog), { target: { value: 'mk' } });
+    fireEvent.change(amountBox(dialog), { target: { value: '40' } });
+    fireEvent.click(send(dialog));
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    expect(writes()[0]).toEqual({ url: '/api/finance/partners/draws', method: 'POST', body: { walletId: 'w1', partnerId: 'mk', amount: '40' } });
+  });
+
+  it('NEGATIVE: nobody else is offered it from the top either — and nobody without the key asks for the statement', async () => {
+    as('finance.create');
+    const dialog = await openFromTop();
+    await waitFor(() => expect(choosable(dialog)).toContain('EXPENSE'));
+    expect(options(dialog).some((o) => o.value === 'PARTNER_DRAW')).toBe(false);
+    expect(reads).not.toContain('/api/finance/partners/statement');
   });
 });
 

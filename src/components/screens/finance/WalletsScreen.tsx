@@ -669,6 +669,7 @@ export function WalletsScreen() {
           wallets={recordable}
           openId={active}
           mayExpense={mayExpense}
+          mayPartners={mayPartners}
           storeCurrency={store?.code ?? null}
           onClose={() => setTopOpen(false)}
           onSaved={async (message) => {
@@ -862,6 +863,7 @@ function RecordFromTop({
   wallets,
   openId,
   mayExpense,
+  mayPartners,
   storeCurrency,
   onClose,
   onSaved,
@@ -871,6 +873,8 @@ function RecordFromTop({
   /** The wallet the screen has open: offered first, when it is one of them. */
   openId: string;
   mayExpense: boolean;
+  /** `finance.partners`: «سحب شريك» is the dialog's kind, so the press from the top offers it exactly as the wallet's own press does. */
+  mayPartners: boolean;
   storeCurrency: string | null;
   onClose: () => void;
   onSaved: (message: string) => void;
@@ -908,7 +912,7 @@ function RecordFromTop({
     );
   }
   return (
-    <RecordDialog wallet={picked} mayExpense={mayExpense} storeCurrency={storeCurrency} chooser={chooser} onClose={onClose} onSaved={onSaved} />
+    <RecordDialog wallet={picked} mayExpense={mayExpense} mayPartners={mayPartners} storeCurrency={storeCurrency} chooser={chooser} onClose={onClose} onSaved={onSaved} />
   );
 }
 
