@@ -105,6 +105,9 @@ const HAND_ALLOWED = new Map<string, { n: number; because: string }>([
   ['src/components/confirmation/PullPanel.tsx', { n: 1, because: 'الرقم داخل جملة على زرّ — لا زرّ داخل زرّ' }],
   ['src/components/ops/DispatchResult.tsx', { n: 1, because: 'الرقم داخل جملة على زرّ — لا زرّ داخل زرّ' }],
   ['src/components/screens/finance/LinkLineDialog.tsx', { n: 1, because: 'صفٌّ يُختار بالنقر — لا زرّ داخل صفّ الاختيار' }],
+  // «بحث بكل الكشوف» (13/11): a result is a row PRESSED to open that statement, and it names the order and the company's reference
+  // in it (two places: the number and the reference). A button inside the row would be a control inside a control.
+  ['src/components/screens/finance/SearchAllStatements.tsx', { n: 2, because: 'صفُّ نتيجةٍ يُضغط ليفتح الكشف — لا زرّ داخل صفّ الضغط' }],
   ['src/components/screens/finance/ShortfallPeopleDialog.tsx', { n: 1, because: 'الرقم داخل جملة مالية تُقرأ كما هي' }],
   ['src/components/screens/finance/SwapDialog.tsx', { n: 2, because: 'ملصق خانة اختيار — لا زرّ داخل الملصق' }],
   ['src/components/settings/MessageTemplatesCard.tsx', { n: 1, because: 'عيّنة قالب رسالة وليست طلباً حقيقياً' }],
@@ -112,7 +115,7 @@ const HAND_ALLOWED = new Map<string, { n: number; because: string }>([
   // (and no customer data), so there is no order to open from the number — the number is what a person says out loud.
   ['src/components/orders/TwinConfirmedDialog.tsx', { n: 1, because: 'الرقم من جواب الباب الذي لا يحمل معرّف الطلب عن قصد — لا رابط يُفتح منه' }],
 ]);
-const HAND_ALLOWED_CEILING = 8;
+const HAND_ALLOWED_CEILING = 10;
 
 /**
  * R6 — raw `navigator.clipboard.writeText` still on screens. Seven copy a

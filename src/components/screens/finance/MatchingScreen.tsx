@@ -16,6 +16,7 @@ import { DifferencesByPerson } from '@/components/screens/finance/DifferencesByP
 import { NotMentionedActions } from '@/components/screens/finance/NotMentionedActions';
 import { LinkLineDialog } from '@/components/screens/finance/LinkLineDialog';
 import { SwapDialog } from '@/components/screens/finance/SwapDialog';
+import { SearchAllStatements, type OpenFromSearch } from '@/components/screens/finance/SearchAllStatements';
 import { mayCorrectStatus } from '@/lib/not-mentioned';
 import { useToast } from '@/components/ui/Toast';
 import { Rows, type Column } from '@/components/ui/Rows';
@@ -191,6 +192,9 @@ export function MatchingScreen({ queuesStartOpen = false }: { queuesStartOpen?: 
   const { currentUser } = useApp();
   const mayManual = userCan(currentUser, 'ops.track');
   const mayReview = userCan(currentUser, 'settlement.review');
+  // «بحث بكل الكشوف» reads with the key every read of this screen asks, and searches a customer's name or phone only for who is shown them.
+  const maySearch = userCan(currentUser, 'settlement.view');
+  const maySeeContact = userCan(currentUser, 'customers.view');
   const [mode, setMode] = useState<'statement' | 'manual'>(useSearchParams().get('mode') === 'manual' ? 'manual' : 'statement');
   const [statements, setStatements] = useState<StatementRow[] | null>(null);
   // «تسوية السطور النظيفة عند الاعتماد»: the two sentences the server sends only while the owner's switch is on, in place of the ones below.
@@ -227,6 +231,19 @@ export function MatchingScreen({ queuesStartOpen = false }: { queuesStartOpen?: 
       paged: paged[key],
       onPaged: (next: Paged) => setPaged((all) => ({ ...all, [key]: next })),
     };
+  };
+  /**
+   * A LINE FOUND BY «بحث بكل الكشوف», OPENED WHERE IT LIVES (the owner, 13/11): that statement is the one on the screen, the group the
+   * line is drawn in is open, and the word that found it is in that group's own search box. All it sets is what a person's own presses
+   * set — the choice of statement, a group's search and its fold — so the screen then does what it always does with them; the search
+   * inside the open statement is the one it was, and is only filled in.
+   */
+  const openFromSearch = (to: OpenFromSearch) => {
+    setSelected(to.statementId);
+    if (!to.queue) return;
+    const key = `${to.statementId}|${to.queue}`;
+    setViews((all) => ({ ...all, [key]: { ...NO_VIEW, query: to.word } }));
+    setOpened((all) => ({ ...all, [key]: true }));
   };
 
   useEffect(() => {
@@ -352,6 +369,15 @@ export function MatchingScreen({ queuesStartOpen = false }: { queuesStartOpen?: 
             its own paragraph under this card. */}
         {phone && !!selected && noReceipt && !closed && (
           <p className="w-full text-xs text-[var(--sys-muted-foreground)]">{whyNot}</p>
+        )}
+        {/* «اعمل زر بحث داخل كل الكشوف» (the owner, 13/11): the other question — not «what is in this statement» but «where did this
+            parcel appear», asked of every statement of the store. A press on a line opens that statement here. */}
+        {maySearch && (
+          <SearchAllStatements
+            maySeeContact={maySeeContact}
+            canOpen={(id) => !!statements?.some((s) => s.id === id)}
+            onOpen={openFromSearch}
+          />
         )}
       </div>
 

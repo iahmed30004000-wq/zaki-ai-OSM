@@ -1249,6 +1249,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/screens/finance/SearchAllStatements.tsx": {
+    "buttons": 3,
+    "inputs": 1,
+    "columns": 0,
+    "cards": 0,
+    "modals": 1,
+    "icons": 3,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/screens/finance/ShortfallPeopleDialog.tsx": {
     "buttons": 2,
     "inputs": 1,
