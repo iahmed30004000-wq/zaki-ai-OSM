@@ -163,7 +163,8 @@ describe('the list shows every wallet by its face', () => {
 
   it('the movement dialog shows the face of the wallet money moves on, and where it is', async () => {
     await draw();
-    fireEvent.click(await screen.findByRole('button', { name: 'حركة جديدة' }));
+    // The wallet's own press: the LAST «حركة جديدة» (the one at the top of the screen comes first, and is held by its own test file).
+    fireEvent.click((await screen.findAllByRole('button', { name: 'حركة جديدة' })).at(-1)!);
     const dialog = await screen.findByRole('dialog', { name: /حركة جديدة — بينانس/ });
     expect(faceIn(dialog).dataset.icon).toBe('wallet');
     expect(dialog.textContent).toContain('سوريا · USDT');
