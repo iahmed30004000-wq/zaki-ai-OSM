@@ -51,13 +51,22 @@ const shared = globalThis as unknown as {
 
 const lane = (shared[LANE_KEY] ??= new AsyncLocalStorage<Lane>());
 
-/** Is the code running here a report? `db` reads this to pick its client. */
+/**
+ * Is the code running here a report? (`db.ts` asks the same question of the same marker on `globalThis` by itself — it cannot import
+ * this file: see `heavy-lane-key.ts`.)
+ */
 export function inHeavyLane(): boolean {
   return lane.getStore()?.heavy === true;
 }
 
-/** Run `work` — and every query it starts, however deep — as a report. */
+/**
+ * Run `work` — and every query it starts, however deep — as a report.
+ *
+ * A report that asks for another report (the board's totals inside the board) stays in the lane it is already in: no second store is
+ * layered over the first, and the second computation is not a second lane.
+ */
 export function runInHeavyLane<T>(work: () => Promise<T>): Promise<T> {
+  if (inHeavyLane()) return work();
   return lane.run({ heavy: true }, work);
 }
 
