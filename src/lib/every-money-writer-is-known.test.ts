@@ -133,6 +133,12 @@ const WRITERS = [
 const READS_ONLY: Record<string, string> = {
   'src/app/api/confirmation/postponed/route.ts': 'يعرض إجمالي الطلب في قائمة',
   /*
+   * The landing confirmation chat (contract oms-lp.v1 §8). It READS `totalAmount` to show the order and to put it in the
+   * `order.confirmed` event; its writes are statuses, an address, notes and history lines. Its offer change is
+   * `rewriteLandingOffer` in `v1/landing-door.ts` (on the list above), and the figures it shows are that file's too.
+   */
+  'src/lib/v1/landing-chat.ts': 'يقرأ إجمالي الطلب ليعرضه في محادثة التأكيد وليضعه في حدث التأكيد؛ تبديل العرض وأرقامه في landing-door.ts — لا يحسب مالاً ولا يكتب أيّاً من الأربعة',
+  /*
    * THE ONE HELPER THAT ENDS AN ORDER. It READS `totalAmount` to put it in the
    * `order.cancelled` event and writes no figure of any order: its update sets a
    * status, takes the parcel off its trolley and clears the waybill — the COD

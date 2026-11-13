@@ -295,10 +295,13 @@ describe('4 — every door that announces a new order or a decision names the or
       .map((call) => ({ file: path.relative(root, f).split(path.sep).join('/'), call }))
   );
 
-  it('finds the eight it is about — five creation doors and three decision doors', () => {
+  it('finds the ten it is about — five creation doors and five decision doors', () => {
     expect(found.map((c) => c.file).sort()).toEqual(
       [
         'app/api/orders/[id]/confirmation/route.ts',
+        // The landing confirmation chat's confirm and cancel (contract oms-lp.v1 §8): the agent's two notices.
+        'lib/v1/landing-chat.ts',
+        'lib/v1/landing-chat.ts',
         'app/api/orders/[id]/route.ts',
         'app/api/orders/[id]/route.ts',
         'app/api/orders/ai-intake/route.ts',

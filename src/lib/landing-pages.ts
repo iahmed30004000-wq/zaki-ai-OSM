@@ -168,3 +168,33 @@ export async function verifyAddonToken(
     return null;
   }
 }
+
+/**
+ * THE SAME TOKEN, READ FOR A LONGER LIFE — the landing confirmation chat only (`src/lib/v1/landing-chat.ts`).
+ *
+ * The chat reviews the order with the customer for up to `hours` after it was placed, past the add-on link's own thirty
+ * minutes. The token is not re-issued and its `exp` is not changed (order creation stays as it is): its signature and kind
+ * are checked as above, `exp` is allowed to have passed, and its age is measured from `iat` here. The add-on doors keep
+ * calling `verifyAddonToken`, so their thirty minutes are untouched.
+ */
+export async function verifyAddonTokenWithin(
+  token: string,
+  hours: number,
+  now: Date = new Date()
+): Promise<{ orderId: string; orderNumber: string } | null> {
+  try {
+    const { payload } = await jwtVerify(token, jwtSecret(), { clockTolerance: `${hours}h`, currentDate: now });
+    if (
+      payload.kind !== 'lp_addon' ||
+      typeof payload.orderId !== 'string' ||
+      typeof payload.orderNumber !== 'string' ||
+      typeof payload.iat !== 'number' ||
+      now.getTime() - payload.iat * 1000 > hours * 3_600_000
+    ) {
+      return null;
+    }
+    return { orderId: payload.orderId, orderNumber: payload.orderNumber };
+  } catch {
+    return null;
+  }
+}
