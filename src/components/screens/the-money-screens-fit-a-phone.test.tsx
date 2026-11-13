@@ -139,7 +139,8 @@ describe('«المحافظ»', () => {
     await screen.findAllByText('شركة الشحن');
     return view;
   };
-  const record = () => screen.getByRole('button', { name: /حركة جديدة/ });
+  // The wallet's own press: the LAST «حركة جديدة» (the one at the top of the screen comes first, and is held by its own test file).
+  const record = () => screen.getAllByRole('button', { name: /حركة جديدة/ }).at(-1)!;
   const fold = () => document.querySelector('details[data-advanced-group]') as HTMLElement;
 
   it('FIN-01: the day’s press comes first and the row wraps, with the upkeep folded on a line of its own', async () => {
@@ -191,15 +192,16 @@ describe('«المحافظ»', () => {
   });
 
   it('FIN-12: the sentence takes the line and «محفظة جديدة» sits under it; the desk keeps them side by side', async () => {
+    // The row is the SENTENCE's parent: «محفظة جديدة» shares a pair with the new «حركة جديدة» at the top, and the pair is the row's child.
+    const rowOf = () => screen.getByText(/المحفظة تتبع متجراً واحداً/).parentElement!;
     await draw();
-    const row = screen.getByRole('button', { name: /محفظة جديدة/ }).parentElement!;
-    expect(row.className).toBe('flex flex-col gap-2');
+    expect(rowOf().className).toBe('flex flex-col gap-2');
+    expect(screen.getByRole('button', { name: /محفظة جديدة/ }).parentElement!.parentElement).toBe(rowOf());
     cleanup();
     phone.value = false;
     await draw();
-    expect(screen.getByRole('button', { name: /محفظة جديدة/ }).parentElement!.className).toBe(
-      'flex items-center justify-between gap-3'
-    );
+    expect(rowOf().className).toBe('flex items-center justify-between gap-3');
+    expect(screen.getByRole('button', { name: /محفظة جديدة/ }).parentElement!.parentElement).toBe(rowOf());
   });
 
   it('FIN-13: a wallet card is compact — the balance with separators, and the three figures each under its name', async () => {
