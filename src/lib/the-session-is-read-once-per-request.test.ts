@@ -435,23 +435,28 @@ describe.each(SITUATIONS)('what the first read says is what a fresh read says: $
     const costOfOne = { ...h.state.reads };
 
     resetReads();
-    const three = await inRequest(cookie, async () => [await auth.getSessionVerdict(), await auth.getCurrentUser(), await auth.getSessionVerdict()]);
+    const three = await inRequest(cookie, async () => {
+      const first = await auth.getSessionVerdict();
+      const user = await auth.getCurrentUser();
+      const last = await auth.getSessionVerdict();
+      return { first, user, last };
+    });
     expect(h.state.reads, 'ثلاث أبواب لازم تكلّف قد باب واحد').toEqual(costOfOne);
 
     const fresh = await inRequest(cookie, async () => auth.getSessionVerdict());
 
-    for (const verdict of [one, fresh, three[0]]) {
+    for (const verdict of [one, fresh, three.first]) {
       if (s.user) {
         expect(verdict.user?.id).toBe('u1');
       } else {
         expect(verdict).toEqual({ user: null, reason: s.reason });
       }
     }
-    expect(three[0]).toEqual(one);
+    expect(three.first).toEqual(one);
     expect(fresh).toEqual(one);
     if (s.user) {
-      expect(three[1], 'نفس الكائن للأبواب كلها').toBe(three[0].user);
-      expect(three[2]).toBe(three[0]);
+      expect(three.user, 'نفس الكائن للأبواب كلها').toBe(three.first.user);
+      expect(three.last).toBe(three.first);
     }
   });
 });
