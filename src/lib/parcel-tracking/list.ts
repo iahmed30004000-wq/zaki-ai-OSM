@@ -2,7 +2,8 @@ import type { Prisma } from '@prisma/client';
 import type { db as Db } from '../db';
 import { AGES, ageOf, daysWaitedOf, type Age } from '../age-piles';
 import { DEAD_CONFIRMATION, TRACKING_ACK_ACTION, trackingAlert, type TrackingAlert } from './alert';
-import { MATCHES, byUrgency, expectsBarcode, matchesChip, notLate, type ChipKey, type ConditionKey, type TrackingFacts } from './priority';
+import { DIFFERENCE_CHIP, MATCHES, byDifference, byUrgency, expectsBarcode, hasDifference, matchesChip, notLate, type ChipKey, type ConditionKey, type TrackingFacts } from './priority';
+import { readDifferences, type DifferenceLean } from './difference';
 import { NOBODY, TASKS } from './filters';
 import { transitOf } from '../transit';
 import { COURIER_SAID, SAID_STATUSES, type SaidStatus } from '../couriers/courier-said';
@@ -44,6 +45,15 @@ import { courierSaidAgainst, type CourierSaid, type CourierSaidRow } from '../co
  * failed read draws the list without words (as if the poll had never written a line) and says so once in the log; when
  * the person asked for it (`said`), the error goes through — see `readSaidLines`.
  *
+ * ── THE DIFFERENCE AT MATCHING, READ WITH THE REST — ONLY FOR WHOEVER MAY SEE THE COURIER'S MONEY ──
+ *
+ * «واذا المطابقة رجعت في فرق حط جنبو علامة … او اعمل قائمة» (the owner, 13/11). A parcel whose newest statement line
+ * disagreed with our figure carries a difference (`parcel-tracking/difference.ts` says which row, and why); it is found in
+ * two grouped reads over EVERY parcel the list holds — never one per row — so the chip «فيه فرق», the filter behind it and
+ * the mark on a row are one answer, counted over the same L1 as the other chips. It is asked for (`differences`) only by
+ * a door whose person holds the money sight: without it nothing is read and nothing is counted. And it is read hard — a
+ * failure fails the list, as every other read here does: a mark that silently vanishes reads as «no difference».
+ *
  * ── THE COMPANY IS NAMED IN EVERY READ OF THE ACTIVITY TABLE ──
  *
  * `order_activities` has one index that starts with an order, and it starts with the company: `(companyId, orderId)`.
@@ -60,7 +70,7 @@ import { courierSaidAgainst, type CourierSaid, type CourierSaidRow } from '../co
 
 type Client = Pick<
   typeof Db,
-  'order' | 'orderStatusLog' | 'orderChangeRequest' | 'orderActivity' | 'deliveryFee' | 'deliveryProvider' | 'region'
+  'order' | 'orderStatusLog' | 'orderChangeRequest' | 'orderActivity' | 'deliveryFee' | 'deliveryProvider' | 'region' | 'settlementMatch'
 >;
 type Where = Prisma.OrderWhereInput;
 
@@ -112,6 +122,8 @@ export interface Judged extends TrackingFacts {
   alert: { kind: TrackingAlert['kind']; acknowledged: boolean } | null;
   /** What the company's newest line says when it disagrees with the parcel's own state — shown and filterable, never ranked. */
   said: CourierSaid | null;
+  /** The parcel's difference at matching — which match row, whether it is answered, whether its statement is closed; null for none. */
+  difference: DifferenceLean | null;
 }
 
 export interface TrackingListFacts {
@@ -131,6 +143,11 @@ export interface TrackingListFacts {
   ages: Record<Age, number>;
   /** Over L0: how many parcels the company's word puts in each of its five kinds; a parcel whose word agrees with its state, or with none, is in no kind. */
   said: Record<SaidStatus, number>;
+  /**
+   * Of L1: how many parcels carry a difference at matching, answered or not — the «فيه فرق» chip, and exactly the rows it
+   * brings. Absent when the door did not ask for differences (a person without the money sight): there is no number to give.
+   */
+  difference?: number;
 }
 
 export interface TrackingList {
@@ -145,6 +162,8 @@ export interface TrackingList {
   capped: boolean;
   /** The company's word for the parcels ON THIS PAGE that have one to show — the server puts it on their rows. */
   courierSaid: ReadonlyMap<string, CourierSaid>;
+  /** The difference of the parcels ON THIS PAGE that carry one — which match row; the door reads those rows whole. */
+  differences: ReadonlyMap<string, DifferenceLean>;
 }
 
 export const NO_COURIER_AR = 'بلا شركة شحن';
@@ -206,6 +225,11 @@ export async function readTrackingList(
     age: Age | null;
     /** What the company says about the parcel; left out it is no choice. */
     said?: SaidStatus | null;
+    /**
+     * Ask for the difference at matching — the door says so only for a person who holds the money sight, and names the store
+     * whose statements count. Left out, nothing is read, no parcel carries one and nobody is counted.
+     */
+    differences?: { storeId: string } | null;
     page: number;
     limit: number;
   }
@@ -243,7 +267,7 @@ export async function readTrackingList(
 
   // ── the alerts: a cancellation, an applied change, an acknowledgement — read for the parcels that can carry one ──
   const dead = l0.filter((o) => DEAD_CONFIRMATION.includes(o.confirmationStatus)).map((o) => o.id);
-  const [cancelLogs, applied, saidLines] = l0.length
+  const [cancelLogs, applied, saidLines, differenceOf] = l0.length
     ? await Promise.all([
         dead.length
           ? db.orderStatusLog.findMany({
@@ -259,8 +283,12 @@ export async function readTrackingList(
         }),
         // What the company said, for every parcel the list holds — the one read here that may fail quietly.
         readSaidLines(db, input.companyId, l0.map((o) => o.id), !!input.said),
+        // The difference at matching, for whoever may see it: two grouped reads, and a failure is the list's.
+        input.differences
+          ? readDifferences(db, { companyId: input.companyId, storeId: input.differences.storeId, orderIds: l0.map((o) => o.id) })
+          : new Map<string, DifferenceLean>(),
       ])
-    : [[], [], []];
+    : [[], [], [], new Map<string, DifferenceLean>()];
 
   // Newest first above, so the first seen per order is the latest.
   const newest = <T extends { orderId: string }>(rows: T[], pick: (r: T) => Date | null) => {
@@ -310,6 +338,7 @@ export async function readTrackingList(
       barcodeExpected: expectsBarcode(o.deliveryProviderId ? providerOf.get(o.deliveryProviderId) : null),
       alert: alert && { kind: alert.kind, acknowledged: alert.acknowledged },
       said: courierSaidAgainst(o.shippingStatus, lastWord.get(o.id), input.now),
+      difference: differenceOf.get(o.id) ?? null,
     };
   });
 
@@ -345,6 +374,8 @@ export async function readTrackingList(
 
   // ── L2: the chip, then worst first — `Array.sort` is stable, so equal urgency keeps the database's order, oldest first ──
   const l2 = (input.task === null ? l1 : l1.filter(matchesChip(input.task))).slice().sort(byUrgency);
+  // Inside «فيه فرق» the differences nobody has answered come first, then the answered ones, each worst first as everywhere.
+  if (input.task === DIFFERENCE_CHIP) l2.sort(byDifference);
 
   const totalPages = Math.max(1, Math.ceil(l2.length / input.limit));
   const page = Math.min(Math.max(input.page, 1), totalPages);
@@ -366,8 +397,11 @@ export async function readTrackingList(
       regions: ranked(regionCounts, (id) => regionNames.get(id) ?? '—', NO_REGION_AR),
       ages,
       said,
+      // Only when asked: a door that did not ask (no money sight) has no number to give, and the answer is what it always was.
+      ...(input.differences ? { difference: l1.filter(hasDifference).length } : {}),
     },
     capped,
     courierSaid: new Map(pageRows.flatMap((j): [string, CourierSaid][] => (j.said ? [[j.id, j.said]] : []))),
+    differences: new Map(pageRows.flatMap((j): [string, DifferenceLean][] => (j.difference ? [[j.id, j.difference]] : []))),
   };
 }

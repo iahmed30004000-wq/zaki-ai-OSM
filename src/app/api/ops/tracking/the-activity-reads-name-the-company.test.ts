@@ -31,6 +31,7 @@ const { db, requireContext, requirePermission } = vi.hoisted(() => ({
     deliveryFee: { findMany: vi.fn() },
     deliveryProvider: { findMany: vi.fn() },
     region: { findMany: vi.fn() },
+    settlementMatch: { findMany: vi.fn() },
   },
   requireContext: vi.fn(),
   requirePermission: vi.fn(),
@@ -208,6 +209,7 @@ beforeEach(() => {
     gate('provider');
     return [{ id: BASHA, name: 'الباشا', apiEnabled: true, adapterCode: 'LOGESTECHS' }];
   });
+  db.settlementMatch.findMany.mockResolvedValue([]);
   db.region.findMany.mockImplementation(async () => {
     gate('region');
     return [{ id: R1, name: 'دمشق' }];

@@ -153,6 +153,12 @@ export interface TrackingFacts {
    * was judged before this was known; the list and the door always say it.
    */
   barcodeExpected?: boolean;
+  /**
+   * The parcel's current DIFFERENCE at matching (`parcel-tracking/difference.ts`): a statement line that disagreed with
+   * our figure and has not been superseded by a clean one — and whether somebody has answered it. Left out, or null, it
+   * has none (and a person who may not see the courier's money is never told: the list does not read it for them).
+   */
+  difference?: { answered: boolean } | null;
 }
 
 /** A company that creates the waybill through its API and so owes us a barcode. A manual company or an agent does not. */
@@ -204,16 +210,36 @@ export const MATCHES: Record<ConditionKey, (row: TrackingFacts) => boolean> = {
  * reason a row is in front of you (`URGENCIES`, `trackingUrgency` and the chips' counts do not know it).
  */
 export const NOT_LATE = 'NOT_LATE' as const;
-export type ChipKey = ConditionKey | typeof NOT_LATE;
+
+/**
+ * THE SECOND CHIP THAT IS NOT A RANK: «فيه فرق» (13/11).
+ *
+ *   «واذا المطابقة رجعت في فرق حط جنبو علامة … او اعمل قائمة ع محصل فيه فرق عشان بنت المتابعة تبث فيه وتعتمد رقمنا او رقم الشركة»
+ *
+ * The parcels whose matching came back with a difference — answered or not. Like «غير متأخرة» it is a chip and nothing
+ * else: it is never a reason a row is in front of you, so `URGENCIES`, `trackingUrgency` and the seven counts do not
+ * know it and the order of the list is what it was. Inside the chip the unanswered ones come first (`byDifference`):
+ * they are the work; the answered ones stay marked, as the owner asked («بس بضل الطلب معلّم»).
+ */
+export const DIFFERENCE_CHIP = 'DIFFERENCE' as const;
+export type ChipKey = ConditionKey | typeof NOT_LATE | typeof DIFFERENCE_CHIP;
 export const NOT_LATE_FACTS = {
   label: 'غير متأخرة',
   why: 'في الطريق وما تجاوزت مهلة محافظتها.',
   tone: 'unknown' as HealthTone,
 };
+export const DIFFERENCE_FACTS = {
+  label: 'فيه فرق',
+  why: 'سطر الشركة بالكشف بيختلف عن رقمنا — شوف الرقمين وابتّ فيه: رقمنا أو رقم الشركة.',
+  tone: 'bad' as HealthTone,
+};
 export const notLate = (row: TrackingFacts): boolean => onItsWay(row) && !row.late;
+/** A parcel whose matching came back with a difference, whatever the state of its journey: the statement is the proof, not the clock. */
+export const hasDifference = (row: TrackingFacts): boolean => !!row.difference;
 
-/** The predicate behind any chip — the seven conditions, or «غير متأخرة». */
-export const matchesChip = (key: ChipKey): ((row: TrackingFacts) => boolean) => (key === NOT_LATE ? notLate : MATCHES[key]);
+/** The predicate behind any chip — the seven conditions, «غير متأخرة», or «فيه فرق». */
+export const matchesChip = (key: ChipKey): ((row: TrackingFacts) => boolean) =>
+  key === NOT_LATE ? notLate : key === DIFFERENCE_CHIP ? hasDifference : MATCHES[key];
 
 /** In rank order, so the worst true thing is found first. */
 const IN_RANK_ORDER: ConditionKey[] = (URGENCIES.filter((k) => k !== 'NONE') as ConditionKey[]).sort(
@@ -271,6 +297,18 @@ export function byUrgency(a: TrackingFacts, b: TrackingFacts): number {
   if (da === null) return 1;
   if (db === null) return -1;
   return db - da;
+}
+
+/**
+ * INSIDE «فيه فرق»: THE DIFFERENCES NOBODY HAS ANSWERED FIRST, THEN THE ANSWERED ONES.
+ *
+ * The unanswered are the work — a decision is still to be taken; the answered stay in the chip because the order stays
+ * marked. Within each of the two groups the order is the list's own (`byUrgency`: worst first, longest waiting first), so
+ * the chip is never a second ranking of its own.
+ */
+export function byDifference(a: TrackingFacts, b: TrackingFacts): number {
+  const waiting = (r: TrackingFacts) => (r.difference && !r.difference.answered ? 0 : 1);
+  return waiting(a) - waiting(b) || byUrgency(a, b);
 }
 
 /** How many rows meet one condition — what a filter chip counts. */

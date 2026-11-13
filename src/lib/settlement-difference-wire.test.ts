@@ -82,7 +82,10 @@ describe('the screen', () => {
   it('shows the company’s own reason — its word and its whole row — and the order’s outcome word', () => {
     const src = screen();
     expect(src).toContain('سبب الشركة بكلامها');
-    expect(src).toMatch(/statementLine\?\.rawRow/);
+    // The cell moved into its own file on 13/11 (the follow-up screen's «فيه فرق» dialog draws it too): the screen still
+    // draws it, and the file it lives in still reads the company's whole row.
+    expect(src).toContain('<CourierReason m={m} />');
+    expect(stripComments(repoFile('src/components/screens/finance/CourierReason.tsx'))).toMatch(/statementLine\?\.rawRow/);
     expect(src).toContain('m.courierWord');
     expect(src).toContain('m.orderOutcome');
   });

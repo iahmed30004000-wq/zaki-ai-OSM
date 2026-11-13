@@ -58,7 +58,7 @@ const acts = async () => (await (await GET(new Request('http://localhost/api/ops
 describe('what the list tells the screen about the owner’s «تراجع عن التسليم»', () => {
   it('the holder of `ops.undo_delivery` is told «yes» — and the other acts keep following their own keys', async () => {
     held.add('ops.undo_delivery');
-    expect(await acts()).toEqual({ deliver: false, transfer: false, writeOff: false, closeLegacy: false, undoDelivery: true });
+    expect(await acts()).toEqual({ deliver: false, transfer: false, writeOff: false, closeLegacy: false, undoDelivery: true, decide: false });
   });
 
   it('NEGATIVE: the keys that are near it do not stand in for it — delivery, the old-ones press, courier money, settlement, write-off', async () => {

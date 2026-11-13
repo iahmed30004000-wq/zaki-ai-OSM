@@ -231,7 +231,7 @@ describe('the button is where the door can answer — read from the source, so t
   });
 
   it('and an answer that does not name the key is read as «no» (the default for the key is false)', () => {
-    expect(screenSrc).toMatch(/closeLegacy: false, undoDelivery: false \}/);
+    expect(screenSrc).toMatch(/closeLegacy: false, undoDelivery: false, decide: false \}/);
   });
 
   it('and those two states are the ones the follow-up list calls delivered', () => {
