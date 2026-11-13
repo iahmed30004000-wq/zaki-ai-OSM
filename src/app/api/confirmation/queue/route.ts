@@ -13,6 +13,7 @@ import {
   waitingBreakdown,
   reservedForColleaguesCount,
   postponedNotDueCount,
+  openIssuesCount,
   POSTPONE_LEAD_DAYS,
 } from '@/lib/confirmation-queue';
 import { heldFor } from '@/lib/order-reservation';
@@ -57,7 +58,7 @@ export async function GET() {
       }),
     });
     const hand = returns ? RETURNS_MODE.handLimit : undefined;
-    const [pool, counts, waitingOnADate, heldForColleagues] = await Promise.all([
+    const [pool, counts, waitingOnADate, heldForColleagues, openIssues] = await Promise.all([
       // For an agent: what SHE may take (hers first, never a colleague's). For a supervisor: the whole pool, as before.
       // Said in PARTS (the owner, 12/11: «طلب جديد وخانة تانية طلب الراجع») — the big number is their sum, so it cannot disagree with
       // them; and they are asked over the very predicates the pull picks from (`waitingBreakdown`), so neither can it with the button.
@@ -69,6 +70,9 @@ export async function GET() {
       returns ? postponedNotDueCount(db, scope, now, returns) : postponedNotDueCount(db, scope),
       // In the queue, seen and not takeable: said apart, so «بانتظارك» never promises a pull that answers «لا توجد طلبات».
       mayPull ? reservedForColleaguesCount(db, scope, user.id, now) : Promise.resolve(0),
+      // «الطلبات اللي عليها مشاكل» (the owner, 13/11): the open entry issues, said under the pool and not in it — and only to whoever may open
+      // that list (`confirmation.issues`), the number being the list's own. A person without the key gets no field, so the card draws no box.
+      can(user, 'confirmation.issues') ? openIssuesCount(db, scope) : Promise.resolve(undefined),
     ]);
     /**
      * The authority first, then the caps. A supervisor holds
@@ -106,6 +110,7 @@ export async function GET() {
       waitingReturned: pool.returned,
       waitingDue: pool.due,
       waitingOnADate,
+      ...(openIssues === undefined ? {} : { openIssues }),
       reservedForColleagues: heldForColleagues,
       owned: counts,
       // The mode's hand limit stands in for the cap of 500 on the panel («بيدك 3 / 5»); off, the caps are what they were.

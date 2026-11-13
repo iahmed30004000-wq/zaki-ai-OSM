@@ -81,6 +81,60 @@ export interface LegacyMeasure {
   };
 }
 
+/*
+ * ── THE PRESS ON THE ORDERS THE OWNER TICKED (13/11) ──
+ *
+ *   «اقدر اعمل هالحركة هاي لاي طلب حتى لو عليه باركود، بس بدي الزر هاد متاح للمالك فقط» (the owner)
+ *
+ * Same promise as the old-ones press (no money moves; the commission never becomes payable) and the same key, but the choice of
+ * orders is HIS: the ones he ticked on the list, with a barcode or without, of any age. What it still refuses, order by order and
+ * with the reason: not delivered, already settled, a settlement state that carries money, and an order a statement speaks for.
+ */
+
+/** The most orders one press on ticked orders may carry — the collect door's own ceiling, so «اختر الكل» on a page always fits. */
+export const PICKED_MOST = 500;
+
+/** The audit line of that press (the mark on each order is still `LEGACY_CLOSE_ACTION`: the commission rule reads ONE spelling). */
+export const PICKED_CLOSE_AUDIT = 'PICKED_CLOSED_NO_MONEY';
+
+/** The sentence on each order's settlement log for an order he ticked. */
+export const PICKED_CLOSE_NOTE = 'إقفال بقرار المالك على طلب محدَّد — انحصّل خارج النظام، بلا حركة مال';
+
+/** «Recent» for a ticked order: arrived less than this many days ago. The old press's default cut — one number, not a second opinion. */
+export const PICKED_RECENT_DAYS = DEFAULT_LEGACY_AGE;
+
+/** Why a ticked order is left alone. */
+export type PickedWhy = 'NOT_FOUND' | 'NOT_DELIVERED' | 'ALREADY_SETTLED' | 'MONEY_RECORDED' | 'ON_A_STATEMENT';
+
+/** What the press on ticked orders would do — and what it would leave, and why. The screen only draws it. */
+export interface PickedMeasure {
+  /** How many different orders were ticked. */
+  asked: number;
+  /** EXACTLY what the press closes. */
+  closeable: {
+    count: number;
+    /** What the screen saw: the press sends it back and the door refuses if the orders are no longer these. */
+    fingerprint: string;
+    oldestAt: string | null;
+    newestAt: string | null;
+    byCourier: { name: string; count: number }[];
+    /** The orders' own value, per currency — a measure of the size of the press, not money that moves. */
+    value: { currency: string; amount: number }[];
+    /** How many of them carry a barcode (a statement could still arrive for them). */
+    withBarcode: number;
+    /** How many arrived less than `recentDays` ago: the cash may still be in the courier's hand. */
+    recent: number;
+  };
+  recentDays: number;
+  /** The ticked orders it leaves alone, one line each in the order they were ticked (the first ones; `leftTotal` is all of them). */
+  left: { orderNumber: string | null; why: PickedWhy; text: string }[];
+  leftTotal: number;
+}
+
+export const PICKED_NOTHING_AR = 'ما في ولا طلب من المحدّدين ينقفل — شوف السبب جنب كل طلب.';
+export const PICKED_CHANGED_AR = 'تغيّر وضع طلب أو أكثر من المحدّدين وقت القفل (انحصّل أو انربط بكشف). ما انقفل شي — افتح النافذة من جديد.';
+export const PICKED_LATE_STATEMENT_AR = 'كشف ذكر طلباً من المحدّدين وقت القفل — الكشف هو اللي بيسوّيه. ما انقفل شي.';
+
 export const NOTHING_TO_CLOSE_AR = 'ما في طلب قديم بلا باركود بهالعمر ينقفل.';
 export const CHANGED_AR = 'تغيّرت الأرقام من لما فتحت النافذة — افتحها من جديد وراجعها قبل ما تقفل.';
 export const FORBIDDEN_LEGACY_AR = 'قفل الطلبات القديمة بلا باركود مش من صلاحياتك — اطلبها من المالك.';
