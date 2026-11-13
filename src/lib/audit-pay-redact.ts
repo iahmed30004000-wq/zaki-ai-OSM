@@ -65,7 +65,8 @@ function strip(value: unknown, isPay: (key: string) => boolean): { value: unknow
   return { value, touched: false };
 }
 
-function stripJson(raw: string | null, isPay: (key: string) => boolean): { raw: string | null; touched: boolean } {
+/** Also what the partners' redaction (audit-partners-redact.ts) cuts with: one way to take a field out of a row. */
+export function stripJson(raw: string | null, isPay: (key: string) => boolean): { raw: string | null; touched: boolean } {
   if (!raw) return { raw, touched: false };
   try {
     const parsed = JSON.parse(raw);

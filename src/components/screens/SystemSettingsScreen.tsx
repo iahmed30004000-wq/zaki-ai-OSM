@@ -10,6 +10,7 @@ import { PenaltyRulesCard } from '@/components/settings/PenaltyRulesCard';
 import { NoAnswerRoundsCard } from '@/components/settings/NoAnswerRoundsCard';
 import { NoAnswerReturnsCard } from '@/components/settings/NoAnswerReturnsCard';
 import { PerLineSettlementCard } from '@/components/settings/PerLineSettlementCard';
+import { PartnersCard } from '@/components/settings/PartnersCard';
 import { RiBuildingLine, RiCheckLine, RiLoader4Line } from '@remixicon/react';
 import { PageHeader } from '@/components/ui/PageHeader';
 
@@ -152,6 +153,9 @@ export function SystemSettingsScreen() {
 
       {/* «تسوية السطور النظيفة عند الاعتماد (تجريبي)» — the approval also settles every clean line; a line still a question holds only its own order. Off by default. */}
       <PerLineSettlementCard />
+
+      {/* «الشركاء والنسب» — each partner's share of the net profit. Drawn only for who holds `finance.partners` (the owner's to tick). */}
+      <PartnersCard />
 
     </div>
   );

@@ -20,6 +20,8 @@ import { arDateTime } from '@/lib/format';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
 import { COURIER_MONEY_HINT, EXPENSE_HERE_HINT, OWN_LEDGER, OWN_LEDGER_HINT, handCategoriesFor, ownLedgerCategories } from '@/lib/hand-movement-rules';
+import { afterDraw, type PartnerStatement } from '@/lib/partner-statement-core';
+import { onTheWire, typedFigure } from '@/lib/typed-box';
 import {
   EXPENSE_CATEGORY_AR,
   EXPENSE_FORM_HINT,
@@ -83,10 +85,15 @@ const CATEGORY_AR: Record<string, string> = {
   TRANSFER_OUT: 'تحويل صادر',
   ADJUSTMENT: 'تسوية',
   OTHER: 'أخرى',
+  // «السحوبات لازم تنضاف بند» (13/11): a partner's withdrawal, written by its own door and counted in the partners' statement.
+  PARTNER_DRAW: 'سحب شريك',
 };
 
 /** The movement category the dialog opens the EXPENSE door for — the key `OWN_LEDGER` lists it under. */
 const EXPENSE = 'EXPENSE';
+
+/** The movement category the dialog opens the PARTNERS' door for: «سحب شريك», offered only to the holders of `finance.partners`. */
+const PARTNER_DRAW = 'PARTNER_DRAW';
 
 /** The type the expense box opens on: the profit screen's own default, so the two forms start the same way. */
 const DEFAULT_EXPENSE_TYPE: ExpenseCategory = 'MARKETING';
@@ -114,6 +121,9 @@ export function WalletsScreen() {
   // «مصروف» in the movement dialog is written by the EXPENSE door, whose key is `finance.create` — a third key, asked by that
   // door and not by the movements one. The dialog opens on the cash key; the option inside it is offered for this one.
   const mayExpense = userCan(currentUser, 'finance.create');
+  // «سحب شريك» in the same dialog is written by the PARTNERS' door (`finance.partners`, and the cash box's key the dialog already
+  // opened on). The dialog is offered it only when the person holds that key.
+  const mayPartners = userCan(currentUser, 'finance.partners');
   const ask = useConfirm();
   const toast = useToast();
   // The phone draws a different SET of controls (the day's press first, the upkeep folded under it), not the desk's
@@ -643,6 +653,7 @@ export function WalletsScreen() {
         <RecordDialog
           wallet={wallet}
           mayExpense={mayExpense}
+          mayPartners={mayPartners}
           storeCurrency={store?.code ?? null}
           onClose={() => setRecordOpen(false)}
           onSaved={async (message) => {
@@ -658,6 +669,7 @@ export function WalletsScreen() {
           wallets={recordable}
           openId={active}
           mayExpense={mayExpense}
+          mayPartners={mayPartners}
           storeCurrency={store?.code ?? null}
           onClose={() => setTopOpen(false)}
           onSaved={async (message) => {
@@ -851,6 +863,7 @@ function RecordFromTop({
   wallets,
   openId,
   mayExpense,
+  mayPartners,
   storeCurrency,
   onClose,
   onSaved,
@@ -860,6 +873,8 @@ function RecordFromTop({
   /** The wallet the screen has open: offered first, when it is one of them. */
   openId: string;
   mayExpense: boolean;
+  /** `finance.partners`: «سحب شريك» is the dialog's kind, so the press from the top offers it exactly as the wallet's own press does. */
+  mayPartners: boolean;
   storeCurrency: string | null;
   onClose: () => void;
   onSaved: (message: string) => void;
@@ -897,7 +912,7 @@ function RecordFromTop({
     );
   }
   return (
-    <RecordDialog wallet={picked} mayExpense={mayExpense} storeCurrency={storeCurrency} chooser={chooser} onClose={onClose} onSaved={onSaved} />
+    <RecordDialog wallet={picked} mayExpense={mayExpense} mayPartners={mayPartners} storeCurrency={storeCurrency} chooser={chooser} onClose={onClose} onSaved={onSaved} />
   );
 }
 
@@ -920,6 +935,7 @@ function RecordFromTop({
 function RecordDialog({
   wallet,
   mayExpense,
+  mayPartners,
   storeCurrency,
   chooser,
   onClose,
@@ -928,6 +944,8 @@ function RecordDialog({
   wallet: WalletRow;
   /** `finance.create`, the key the EXPENSE door asks. The server asks it again; this only decides what is offered. */
   mayExpense: boolean;
+  /** `finance.partners`, the key of the PARTNERS' door — «سحب شريك» is offered to nobody without it. The server asks it again. */
+  mayPartners: boolean;
   /** The selected store's currency, when the shell knows it — used only to say so when the wallet's is another. */
   storeCurrency: string | null;
   /** «المحفظة» — which wallet, drawn above the first field. Only the press at the top of the screen passes one. */
@@ -945,12 +963,48 @@ function RecordDialog({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // «سحب شريك»: which partner, and what the draw is worth in the STORE's currency when the wallet holds another.
+  const [partnerId, setPartnerId] = useState('');
+  const [storeValue, setStoreValue] = useState('');
+  const [statement, setStatement] = useState<PartnerStatement | null>(null);
+  const [statementFailed, setStatementFailed] = useState(false);
+  // Read once, when the dialog opens, and only for the people who are offered the kind: nobody else asks the partners' door anything.
+  useEffect(() => {
+    if (!mayPartners) return;
+    let alive = true;
+    apiJson<PartnerStatement>('/api/finance/partners/statement')
+      .then((answer) => {
+        if (alive && answer && Array.isArray(answer.lines)) setStatement(answer);
+        else if (alive) setStatementFailed(true);
+      })
+      .catch(() => {
+        if (alive) setStatementFailed(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [mayPartners]);
+
   // Offered going OUT only, and only to who holds the key of the expense door.
   const expenseHere = mayExpense && direction === 'OUT';
   const isExpense = category === EXPENSE;
+  // Offered going OUT only, and only to who holds the partners' key.
+  const drawHere = mayPartners && direction === 'OUT';
+  const isDraw = category === PARTNER_DRAW && drawHere;
   // The expense row carries no currency, so the profit subtracts the typed number as it is, whatever the wallet holds.
   // That is how the door has always behaved and it is not this dialog's to change — it is said once, before saving.
   const otherCurrency = isExpense && !!storeCurrency && storeCurrency !== wallet.currencyCode;
+
+  // A draw's value is counted in the STORE's currency (the profit's). The server says which that is; the shell's answer is the fallback.
+  const storeCode = statement?.currency ?? storeCurrency;
+  const drawOtherCurrency = isDraw && !!storeCode && storeCode !== wallet.currencyCode;
+  const partners = (statement?.lines ?? []).filter((l) => l.isActive);
+  const partner = partners.find((l) => l.id === partnerId) ?? null;
+  const drawAmount = typedFigure(amount);
+  const drawValue = drawOtherCurrency ? typedFigure(storeValue) : drawAmount;
+  // «بعد هالسحب»: the statement's own subtraction (`afterDraw`), asked of the figures the server sent — nothing is worked out here.
+  const hint = isDraw && statement && partner && drawValue !== undefined && drawValue > 0 ? afterDraw(partner, drawValue, statement.minorUnit) : null;
+  const drawReady = !!statement && !!partner && drawAmount !== undefined && drawAmount > 0 && (!drawOtherCurrency || (drawValue !== undefined && drawValue > 0));
 
   return (
     <Modal isOpen onClose={onClose} title={`حركة جديدة — ${wallet.name}`}>
@@ -960,6 +1014,23 @@ function RecordDialog({
           setSaving(true);
           setError(null);
           try {
+            if (isDraw) {
+              // THE PARTNERS' DOOR, never the movements one: it names the partner, writes the draw as an OUT movement worth its
+              // equivalent in the store's currency, and asks its own key. The boxes' characters go on the wire as typed.
+              await apiJson('/api/finance/partners/draws', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  walletId: wallet.id,
+                  partnerId,
+                  amount: onTheWire(amount),
+                  ...(drawOtherCurrency ? { valueInStoreCurrency: onTheWire(storeValue) } : {}),
+                  ...(note.trim() ? { note: note.trim() } : {}),
+                }),
+              });
+              onSaved('سُجِّل السحب — ما دخل بالمصاريف ولا غيّر الربح، وانحسب على نصيب الشريك');
+              return;
+            }
             if (isExpense) {
               // THE EXPENSE DOOR, never the movements one. The wallet is the one this dialog was opened on; the door
               // checks it is this store's and answers in Arabic when it is not, and so does it for the key.
@@ -1014,8 +1085,12 @@ function RecordDialog({
               onClick={() => {
                 setDirection(d);
                 // The pair must stay one a door accepts: a movement typed for this direction, or the expense going OUT
-                // for who may write it. Anything else goes back to the first category of the direction.
-                const stays = handCategoriesFor(d).includes(category) || (category === EXPENSE && d === 'OUT' && mayExpense);
+                // for who may write it, or a partner's draw going OUT for who holds the partners' key. Anything else goes back to
+                // the first category of the direction.
+                const stays =
+                  handCategoriesFor(d).includes(category) ||
+                  (category === EXPENSE && d === 'OUT' && mayExpense) ||
+                  (category === PARTNER_DRAW && d === 'OUT' && mayPartners);
                 if (!stays) setCategory(handCategoriesFor(d)[0]);
               }}
               className={`flex-1 h-11 md:h-10 rounded-lg border text-sm font-medium ${
@@ -1051,18 +1126,88 @@ function RecordDialog({
           </p>
         )}
 
-        <label className="block">
-          {/* An expense's statement is the party its movement is written under, so the one box serves both. */}
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">{isExpense ? 'البيان' : 'الطرف'}</span>
-          <input
-            value={party}
-            onChange={(e) => setParty(e.target.value)}
-            required
-            minLength={2}
-            placeholder={isExpense ? 'مثلاً: إيجار المستودع، حملة تيك توك رقم 4' : 'اسم الشخص أو الجهة'}
-            className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm"
-          />
-        </label>
+        {/* «سحب شريك»: what the draw is worth in the STORE's currency, asked only when the wallet holds another — the profit is in the
+            store's currency, and a silent 1:1 between dinars and dollars would put a wrong number in a partner's account. */}
+        {isDraw && drawOtherCurrency && (
+          <label className="block">
+            <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">ما يعادله بعملة المتجر ({storeCode})</span>
+            <input
+              type="number"
+              step="0.001"
+              min="0.001"
+              value={storeValue}
+              onChange={(e) => setStoreValue(e.target.value)}
+              required
+              className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm"
+              dir="ltr"
+            />
+            <span className="block text-xs text-[var(--sys-warning)] mt-1">
+              عملة هالمحفظة ({wallet.currencyCode}) غير عملة المتجر ({storeCode}) — اكتب كم بيساوي المبلغ بعملة المتجر، وهاد الرقم اللي بينحسب على نصيب الشريك.
+            </span>
+          </label>
+        )}
+
+        {isDraw ? (
+          <div>
+            <label className="block">
+              <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">الشريك</span>
+              <select
+                value={partnerId}
+                onChange={(e) => setPartnerId(e.target.value)}
+                required
+                className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm bg-[var(--sys-card)]"
+              >
+                <option value="">اختر الشريك…</option>
+                {partners.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </label>
+            {statementFailed && (
+              <p className="text-xs text-[var(--sys-destructive)] mt-1">تعذّر تحميل الشركاء — سكّر النافذة وافتحها من جديد.</p>
+            )}
+            {statement && partners.length === 0 && (
+              <p className="text-xs text-[var(--sys-warning)] mt-1">ما في شركاء فعّالين — سجّلهم من «إعدادات النظام».</p>
+            )}
+            {/* «نصيبه من الصافي X · سحب لحد هلق Y · بعد هالسحب: مكسور عليه Z» — and the draw goes through either way. */}
+            {statement && partner && (
+              <p className="text-xs text-[var(--sys-muted)] mt-1">
+                {partner.entitlement === null ? (
+                  'الصافي ما انقسم لأن مجموع النسب مش 100 — السحب بيتسجّل وبيتحسب لما تنصلّح النسب.'
+                ) : (
+                  <>
+                    نصيبه من الصافي <Money value={partner.entitlement} currency={statement.currency} minorUnit={statement.minorUnit} /> · سحب لحد هلق{' '}
+                    <Money value={partner.draws} currency={statement.currency} minorUnit={statement.minorUnit} />
+                    {hint && hint.broken !== null && hint.balance !== null && (
+                      hint.broken > 0 ? (
+                        <span className="text-[var(--sys-destructive)]">
+                          {' '}· بعد هالسحب: مكسور عليه <Money value={hint.broken} currency={statement.currency} minorUnit={statement.minorUnit} />
+                        </span>
+                      ) : (
+                        <>
+                          {' '}· بعد هالسحب: بيضل له <Money value={hint.balance} currency={statement.currency} minorUnit={statement.minorUnit} />
+                        </>
+                      )
+                    )}
+                  </>
+                )}
+              </p>
+            )}
+          </div>
+        ) : (
+          <label className="block">
+            {/* An expense's statement is the party its movement is written under, so the one box serves both. */}
+            <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">{isExpense ? 'البيان' : 'الطرف'}</span>
+            <input
+              value={party}
+              onChange={(e) => setParty(e.target.value)}
+              required
+              minLength={2}
+              placeholder={isExpense ? 'مثلاً: إيجار المستودع، حملة تيك توك رقم 4' : 'اسم الشخص أو الجهة'}
+              className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm"
+            />
+          </label>
+        )}
 
         <label className="block">
           <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">البند</span>
@@ -1077,14 +1222,31 @@ function RecordDialog({
                 <option key={key} value={key}>{label}</option>
               ))}
             {/* Listed, not removed: the pointer beside each one says which door writes it. The expense is the one that
-                opens here — going OUT, for who holds the key of its door. */}
+                opens here — going OUT, for who holds the key of its door. «سحب شريك» sits right after it, going OUT, for who
+                holds the partners' key — and is not there at all for anybody else. */}
             {ownLedgerCategories().map((key) => {
-              if (key === EXPENSE && expenseHere) return <option key={key} value={key}>{CATEGORY_AR[key]}</option>;
-              const pointer = key === EXPENSE && mayExpense ? EXPENSE_IN_POINTER : OWN_LEDGER[key].short;
-              return <option key={key} value={key} disabled>{CATEGORY_AR[key]} — {pointer}</option>;
+              const option =
+                key === EXPENSE && expenseHere ? (
+                  <option key={key} value={key}>{CATEGORY_AR[key]}</option>
+                ) : (
+                  <option key={key} value={key} disabled>{CATEGORY_AR[key]} — {key === EXPENSE && mayExpense ? EXPENSE_IN_POINTER : OWN_LEDGER[key].short}</option>
+                );
+              return key === EXPENSE && drawHere ? (
+                <React.Fragment key={key}>
+                  {option}
+                  <option value={PARTNER_DRAW}>{CATEGORY_AR[PARTNER_DRAW]}</option>
+                </React.Fragment>
+              ) : (
+                option
+              );
             })}
           </select>
           <span className="block text-xs text-[var(--sys-muted)] mt-1">{COURIER_MONEY_HINT} {mayExpense ? EXPENSE_HERE_HINT : OWN_LEDGER_HINT} التحويلات من شاشة التحويلات.</span>
+          {mayPartners && (
+            <span className="block text-xs text-[var(--sys-muted)] mt-1">
+              سحب الشريك من «سحب شريك»: بيتحسب على نصيبه من صافي الربح، ولو زاد بيتسجّل «مكسور عليه» وما بينمنع.
+            </span>
+          )}
         </label>
 
         {isExpense && (
@@ -1121,12 +1283,12 @@ function RecordDialog({
         )}
 
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">{isExpense ? 'الملاحظة (اختيارية)' : 'الملاحظة (إلزامية)'}</span>
+          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">{isExpense || isDraw ? 'الملاحظة (اختيارية)' : 'الملاحظة (إلزامية)'}</span>
           <input
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            required={!isExpense}
-            minLength={isExpense ? undefined : 3}
+            required={!isExpense && !isDraw}
+            minLength={isExpense || isDraw ? undefined : 3}
             className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm"
           />
         </label>
@@ -1139,10 +1301,10 @@ function RecordDialog({
           </button>
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || (isDraw && !drawReady)}
             className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
           >
-            {saving ? 'جارٍ الحفظ…' : isExpense ? 'تسجيل المصروف' : 'تسجيل'}
+            {saving ? 'جارٍ الحفظ…' : isDraw ? 'تسجيل السحب' : isExpense ? 'تسجيل المصروف' : 'تسجيل'}
           </button>
         </div>
       </form>

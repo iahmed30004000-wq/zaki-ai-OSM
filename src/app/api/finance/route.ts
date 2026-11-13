@@ -1,11 +1,10 @@
 ﻿import { NextResponse } from 'next/server';
-import type { ProfitSummary } from '@/lib/profit-summary';
 import { apiErrorResponse } from '@/lib/api-error';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { logAudit } from '@/lib/audit';
 import { requirePermission } from '@/lib/authorization';
-import { commissionCostForOrders } from '@/lib/commission';
+import { profitToDate } from '@/lib/profit-to-date';
 import { expensesOf } from '@/lib/expense-scope';
 import { cancelExpense } from '@/lib/expense-void';
 import { ExpenseRefused } from '@/lib/wallets';
@@ -79,68 +78,13 @@ export async function GET(req: Request) {
     await requirePermission('finance.view');
 
     /*
-     * THIS STORE'S EXPENSES, AND THE ONES FROM BEFORE EXPENSES HAD A STORE.
+     * THE PROFIT FIGURES — ONE FUNCTION (lib/profit-to-date.ts), THE SAME ONE THE PARTNERS' STATEMENT READS (13/11).
      *
-     * This read `where: { companyId }`: every store's profit subtracted every store's expenses. A row that
-     * carries a store now counts for that store only; a row with none counts as it always did until the
-     * owner runs the backfill (expense-scope.ts). The list keeps the CANCELLED rows, marked; the money does not.
+     * The queries and the arithmetic that used to be written out here — this store's expenses (the cancelled ones listed,
+     * never counted), its delivered orders, their cost, shipping and commissions, and the `summary` below — moved there
+     * unchanged, so that «صافي الربح» on this screen and the partners' shares of it are one number made in one place.
      */
-    const expenses = await db.expense.findMany({
-      where: expensesOf(companyId, storeId, { withCancelled: true }),
-      orderBy: { expenseDate: 'desc' },
-    });
-    const liveExpenses = expenses.filter((e) => !e.voidedAt);
-
-    const deliveredOrders = await db.order.findMany({
-      where: { companyId, storeId, status: 'DELIVERED' },
-      select: {
-        id: true,
-        orderNumber: true,
-        totalAmount: true,
-        shippingCost: true,
-        estimatedCostOfGoods: true,
-        deliveredAt: true,
-      },
-      orderBy: { deliveredAt: 'desc' },
-    });
-
-    const totalRevenue = deliveredOrders.reduce((s, o) => s + o.totalAmount, 0);
-    const totalCOGS = deliveredOrders.reduce((s, o) => s + o.estimatedCostOfGoods, 0);
-    const totalShipping = deliveredOrders.reduce((s, o) => s + o.shippingCost, 0);
-    // From the LEDGER — the one commission source. Summing
-    // Order.moderatorCommission here gave this screen a different total
-    // from the commission screen for the same orders.
-    // NOTE: the delivered-order query above still selects on the legacy
-    // `status` column, so revenue and commission here are computed over
-    // slightly different sets of orders. That mismatch predates this change
-    // and is reported, not silently repaired — correcting it moves the
-    // revenue figure on this screen.
-    const totalCommissions = await commissionCostForOrders({ companyId, storeId, shippingStatus: 'DELIVERED' });
-    const totalOperationalExpenses = liveExpenses.reduce((s, e) => s + e.amount, 0);
-
-    const netProfit =
-      totalRevenue -
-      totalCOGS -
-      totalShipping -
-      totalCommissions -
-      totalOperationalExpenses;
-
-    // Typed against the one shape the screen also uses: a field added
-    // here without adding it there is a crash on the screen, so the two
-    // lists are the same list.
-    const summary: ProfitSummary = {
-      totalRevenue: Number(totalRevenue.toFixed(2)),
-      totalCOGS: Number(totalCOGS.toFixed(2)),
-      totalShipping: Number(totalShipping.toFixed(2)),
-      totalCommissions: Number(totalCommissions.toFixed(2)),
-      // The two are shown together on the profit screen, so they are
-      // added HERE. Added in the browser they disagreed with the books
-      // the moment either rule changed on this side.
-      shippingAndCommissions: Number((totalShipping + totalCommissions).toFixed(2)),
-      totalOperationalExpenses: Number(totalOperationalExpenses.toFixed(2)),
-      netProfit: Number(netProfit.toFixed(2)),
-      profitMargin: totalRevenue > 0 ? Number(((netProfit / totalRevenue) * 100).toFixed(1)) : 0,
-    };
+    const { expenses, liveExpenses, deliveredOrders, summary } = await profitToDate({ companyId, storeId });
 
     /**
      * ─── WHERE THE MONEY GOES, BY KIND OF SPENDING ───

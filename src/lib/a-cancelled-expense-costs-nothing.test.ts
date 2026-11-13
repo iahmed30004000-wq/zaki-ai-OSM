@@ -77,12 +77,17 @@ describe('every read of the expenses table says which expenses count', () => {
   });
 
   it('only the expense LIST asks for the cancelled ones', () => {
+    // MOVED (13/11): the profit screen's list and its total are read by `profitToDate` — the one function the screen and the
+    // partners' statement share — so the single asker is there now, and the route only hands its answer on.
     const asking = all.filter(({ src }) => /withCancelled:\s*true/.test(src)).map((f) => f.file);
-    expect(asking).toEqual(['app/api/finance/route.ts']);
-    const route = all.find((f) => f.file === 'app/api/finance/route.ts')!.src;
+    expect(asking).toEqual(['lib/profit-to-date.ts']);
+    const profit = all.find((f) => f.file === 'lib/profit-to-date.ts')!.src;
     // …and the total beside the list is summed from the live rows only.
-    expect(route).toMatch(/const liveExpenses = expenses\.filter\(\(e\) => !e\.voidedAt\)/);
-    expect(route).toMatch(/const totalOperationalExpenses = liveExpenses\.reduce/);
+    expect(profit).toMatch(/const liveExpenses = expenses\.filter\(\(e\) => !e\.voidedAt\)/);
+    expect(profit).toMatch(/const totalOperationalExpenses = liveExpenses\.reduce/);
+    // …and the route takes both from it, it does not ask for the cancelled ones itself.
+    const route = all.find((f) => f.file === 'app/api/finance/route.ts')!.src;
+    expect(route).toMatch(/const \{[^}]*\bexpenses\b[^}]*\bliveExpenses\b[^}]*\} = await profitToDate\(/);
   });
 
   it('no raw SQL reads the expenses table without leaving the cancelled out', () => {

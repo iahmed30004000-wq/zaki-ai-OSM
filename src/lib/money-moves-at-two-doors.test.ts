@@ -156,7 +156,8 @@ describe('a movement is undone by another movement', () => {
 describe('the categories are a closed list', () => {
   it('so a movement cannot be filed under a word somebody invented', () => {
     expect([...MOVEMENT_CATEGORIES]).toContain('COURIER_SETTLEMENT');
-    expect([...MOVEMENT_CATEGORIES]).toHaveLength(7);
+    // 7 -> 8 on 13/11: `PARTNER_DRAW`, a partner's withdrawal («السحوبات لازم تنضاف بند»), written by its own door through `recordMovement`.
+    expect([...MOVEMENT_CATEGORIES]).toHaveLength(8);
   });
 
   it('and every category a door actually writes is in the list', () => {

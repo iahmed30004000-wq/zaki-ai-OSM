@@ -87,6 +87,12 @@ const FIELDS: Record<string, string> = {
   sku: 'رمز المنتج',
   category: 'النوع',
   role: 'الدور',
+  // The partners' doors (13/11): the profit shares and the draws.
+  walletId: 'المحفظة',
+  partnerId: 'الشريك',
+  partners: 'الشركاء',
+  sharePercent: 'النسبة',
+  valueInStoreCurrency: 'ما يعادله بعملة المتجر',
 };
 
 /**

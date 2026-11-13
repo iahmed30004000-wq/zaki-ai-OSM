@@ -145,8 +145,11 @@ const READS_ONLY: Record<string, string> = {
    * through `findOrCreateCustomer`, where it belonged — so nothing in it looks
    * like a write any more. The name went with the reason, which is the half of
    * this guard that stops a list outliving what put it there.
+   *
+   * `src/app/api/finance/route.ts` was here too (13/11). The profit figures it read — revenue, cost, shipping, the total — moved
+   * unchanged into `src/lib/profit-to-date.ts`, which READS them and writes no row, so it is not in the sweep either; the route
+   * itself names no order money field any more. Both halves are held by `api/finance/the-profit-summary-is-pinned.test.ts`.
    */
-  'src/app/api/finance/route.ts': 'مصاريف وتقارير — لا يلمس مال طلب',
   'src/app/api/finance/statements/route.ts': 'إجمالي كشف المندوب، لا إجمالي طلب',
   'src/app/api/finance/statements/[id]/route.ts': 'إجمالي كشف المندوب في سجلّ إلغاء الاستيراد، لا إجمالي طلب',
   'src/app/api/growth/storefronts/route.ts': 'إيراد كل واجهة — قراءة',

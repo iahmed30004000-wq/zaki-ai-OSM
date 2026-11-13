@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { requireCompanyTenant } from '@/lib/auth';
 import { can, requirePermission } from '@/lib/authorization';
 import { withoutPay } from '@/lib/audit-pay-redact';
+import { withoutPartners } from '@/lib/audit-partners-redact';
 import { readPage, readLimit } from '@/lib/numeric-input';
 import { auditWhere, readAuditQuery } from '@/lib/audit-view';
 
@@ -51,10 +52,20 @@ export async function GET(req: Request) {
     });
     const nameOf = new Map(names.map((u) => [u.id, u.name]));
 
+    // Two keys, two cuts, each independent of the other: a reader may hold either, both or neither.
+    const mayPay = can(viewer, 'payroll.view');
+    const mayPartners = can(viewer, 'finance.partners');
+    const shown = logs.map((row) => {
+      const afterPay = mayPay ? row : withoutPay(row);
+      return mayPartners ? afterPay : withoutPartners(afterPay);
+    });
+
     return NextResponse.json({
       // Salaries, payslips, penalties and payouts keep their rows and lose
-      // their amounts for a reader without «عرض الرواتب» (audit-pay-redact.ts).
-      logs: can(viewer, 'payroll.view') ? logs : logs.map(withoutPay),
+      // their amounts for a reader without «عرض الرواتب» (audit-pay-redact.ts);
+      // the partners' names, shares and draws keep theirs and lose their
+      // figures for a reader without «الشركاء والسحوبات» (audit-partners-redact.ts).
+      logs: shown,
       pagination: { total, page, limit, totalPages },
       facts: {
         users: byUser

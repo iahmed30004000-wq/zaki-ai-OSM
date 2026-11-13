@@ -24,10 +24,20 @@ import { stripComments } from './guard-source';
  */
 
 const SCREEN = 'src/components/screens/FinanceProfitScreen.tsx';
-const API = 'src/app/api/finance/route.ts';
+// MOVED (13/11): the server's `summary` is built in `profitToDate` — the one function the profit screen and the partners'
+// statement both read — and the route hands it on. The guard follows the object to where it is made.
+const API = 'src/lib/profit-to-date.ts';
+const ROUTE = 'src/app/api/finance/route.ts';
 const read = (rel: string) => readFileSync(join(process.cwd(), rel), 'utf8');
 
 describe('the profit summary has one shape', () => {
+  it('and the route sends the one `profitToDate` made, not a second one of its own', () => {
+    const src = stripComments(read(ROUTE));
+    expect(src, 'الباب لم يعد يأخذ الملخّص من profitToDate').toMatch(/const \{[^}]*\bsummary\b[^}]*\} = await profitToDate\(/);
+    expect(src, 'عاد الباب يبني ملخّصاً بنفسه').not.toContain('const summary');
+    expect(src, 'عاد الباب يحسب الصافي بنفسه').not.toMatch(/\bnetProfit\s*=/);
+  });
+
   it('and the server fills exactly it', () => {
     const src = read(API);
     // The server's object is typed, so a missing field is a compile error

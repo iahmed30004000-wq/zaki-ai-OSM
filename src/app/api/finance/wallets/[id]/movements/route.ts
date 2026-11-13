@@ -7,7 +7,7 @@ import { requireContext } from '@/lib/geo-context';
 import { can, requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
-import { ExpenseRefused, MOVEMENT_CATEGORIES, recordMovement, reverseMovement, walletBalance } from '@/lib/wallets';
+import { ExpenseRefused, MOVEMENT_CATEGORIES, PartnerDrawRefused, recordMovement, reverseMovement, walletBalance } from '@/lib/wallets';
 import { zodMessage } from '@/lib/zod-message';
 import { handMovementRefusal } from '@/lib/hand-movement-rules';
 
@@ -78,6 +78,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       movements: movements.map((m) => ({
         ...m,
         amount: Number(m.amount),
+        // A partner draw's worth in the store's currency: a number, like the amount beside it (a Decimal is a string on the wire).
+        ...(m.valueInStoreCurrency != null ? { valueInStoreCurrency: Number(m.valueInStoreCurrency) } : {}),
         createdByName: nameOf.get(m.createdById) ?? null,
         isReversal: !!m.reversalOfId,
         wasReversed: !!m.reversedBy,
@@ -168,6 +170,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           reason: parsed.data.reason,
           createdById: user.id,
           mayCancelExpense: can(user, 'finance.update'),
+          // Taking a partner's draw back moves his balance in the partners' statement: that is the partners' key, not the cash box's.
+          mayReversePartnerDraw: can(user, 'finance.partners'),
         })
       );
       await logAudit({
@@ -190,6 +194,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     } catch (e) {
       if (e instanceof ExpenseRefused) {
         return NextResponse.json({ error: e.message, code: e.code }, { status: e.code === 'NOT_ALLOWED' ? 403 : 409 });
+      }
+      if (e instanceof PartnerDrawRefused) {
+        return NextResponse.json({ error: e.message, code: e.code }, { status: 403 });
       }
       return NextResponse.json({ error: e instanceof Error ? e.message : 'تعذر القيد العكسي' }, { status: 409 });
     }

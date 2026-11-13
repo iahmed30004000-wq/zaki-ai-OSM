@@ -16,8 +16,14 @@ type Tx = Prisma.TransactionClient | typeof db;
  * a statement.
  */
 
+/**
+ * `PARTNER_DRAW` (13/11) — a partner's withdrawal: «السحوبات لازم تنضاف بند». It is NOT an expense: it creates no `Expense`
+ * row and never enters the profit; it is measured against the partner's share of the net profit (`lib/partner-statement.ts`).
+ * Always OUT, always written by `POST /api/finance/partners/draws` (key `finance.partners`) through `recordMovement` below, and
+ * refused at the hand door with every other category that has a ledger of its own.
+ */
 export const MOVEMENT_CATEGORIES = [
-  'COURIER_SETTLEMENT', 'COMMISSION', 'EXPENSE', 'TRANSFER_IN', 'TRANSFER_OUT', 'ADJUSTMENT', 'OTHER',
+  'COURIER_SETTLEMENT', 'COMMISSION', 'EXPENSE', 'TRANSFER_IN', 'TRANSFER_OUT', 'ADJUSTMENT', 'OTHER', 'PARTNER_DRAW',
 ] as const;
 export type MovementCategory = (typeof MOVEMENT_CATEGORIES)[number];
 
@@ -72,11 +78,33 @@ export interface MovementInput {
   referenceId?: string;
   /** The statement receipt this IN is the money of: one movement per receipt, held by a unique index. */
   statementReceiptId?: string;
+  /** A partner draw's partner, and what it is worth in the STORE's currency. Both are required on a `PARTNER_DRAW` and refused on every other kind. */
+  partnerId?: string;
+  valueInStoreCurrency?: number;
   createdById: string;
 }
 
 /** Record one movement. Every field the contract lists is required. */
 export async function recordMovement(tx: Tx, input: MovementInput) {
+  /*
+   * A PARTNER'S DRAW NAMES ITS PARTNER AND ITS VALUE, AND GOES OUT.
+   *
+   * It is measured against the partner's share of the net profit, in the store's currency, so a draw with no partner belongs to
+   * nobody's ledger and a draw with no value cannot be added to one — and a draw coming IN is a reversal, which has its own door.
+   * The partners' door states all of it; this is the same rule where every writer has to pass. And the two fields mean nothing on
+   * any other kind of movement, so they are refused there rather than stored beside a category that never reads them.
+   */
+  if (input.category === 'PARTNER_DRAW') {
+    if (input.direction !== 'OUT') throw new Error('A partner draw only goes out of a wallet');
+    if (!input.partnerId || input.referenceType !== 'PARTNER_DRAW' || input.referenceId !== input.partnerId) {
+      throw new Error('A partner draw must name its partner');
+    }
+    if (!(typeof input.valueInStoreCurrency === 'number' && input.valueInStoreCurrency > 0)) {
+      throw new Error('A partner draw must carry its value in the store currency');
+    }
+  } else if (input.partnerId !== undefined || input.valueInStoreCurrency !== undefined) {
+    throw new Error('Only a partner draw carries a partner or a store value');
+  }
   /*
    * A MOVEMENT OF A CATEGORY WITH A LEDGER OF ITS OWN MUST NAME THAT LEDGER'S ROW.
    *
@@ -108,6 +136,7 @@ export async function recordMovement(tx: Tx, input: MovementInput) {
       referenceType: input.referenceType ?? null,
       referenceId: input.referenceId ?? null,
       ...(input.statementReceiptId ? { statementReceiptId: input.statementReceiptId } : {}),
+      ...(input.partnerId ? { partnerId: input.partnerId, valueInStoreCurrency: input.valueInStoreCurrency } : {}),
       createdById: input.createdById,
     },
   });
@@ -138,12 +167,20 @@ export async function reverseMovement(
      * holds it. Absent = no: a caller that never thought about expenses cannot cancel one by accident.
      */
     mayCancelExpense?: boolean;
+    /**
+     * May this caller take a PARTNER'S DRAW back? Reversing one changes his balance in the partners' statement, which is the
+     * partners' key (`finance.partners`), not the cash box's — so the door that calls this says whether the person holds it.
+     * Absent = no: a caller that never thought about partners cannot reverse a draw by accident.
+     */
+    mayReversePartnerDraw?: boolean;
   }
 ) {
   const original = await tx.walletMovement.findFirst({
     where: { id: params.movementId, companyId: params.companyId, walletId: params.walletId },
   });
   if (!original) throw new Error('Movement not found');
+  // FIRST, before anything about its state: whoever lacks the key is told no, and learns nothing about the draw.
+  if (original.category === 'PARTNER_DRAW' && !params.mayReversePartnerDraw) throw new PartnerDrawRefused('NOT_ALLOWED');
   if (original.reversalOfId) throw new Error('A reversing entry cannot be reversed');
 
   const already = await tx.walletMovement.findUnique({ where: { reversalOfId: original.id } });
@@ -183,6 +220,8 @@ export async function reverseMovement(
       referenceId: original.referenceId,
       reversalOfId: original.id,
       reversalReason: params.reason,
+      // A draw's reversal stays the partner's: his, and worth what the original was (the statement counts the pair as nothing).
+      ...(original.partnerId ? { partnerId: original.partnerId, valueInStoreCurrency: original.valueInStoreCurrency } : {}),
       createdById: params.createdById,
     },
   });
@@ -224,6 +263,20 @@ export class ExpenseRefused extends Error {
   constructor(public readonly code: ExpenseRefusal) {
     super(EXPENSE_REFUSAL_AR[code]);
     this.name = 'ExpenseRefused';
+  }
+}
+
+/** Why a partner's draw could not be taken back — with the sentence a person can act on. */
+export type PartnerDrawRefusal = 'NOT_ALLOWED';
+
+export const PARTNER_DRAW_REFUSAL_AR: Record<PartnerDrawRefusal, string> = {
+  NOT_ALLOWED: 'عكس سحب شريك بيغيّر رصيده عند الشركاء — بيحتاج «الشركاء والسحوبات»',
+};
+
+export class PartnerDrawRefused extends Error {
+  constructor(public readonly code: PartnerDrawRefusal) {
+    super(PARTNER_DRAW_REFUSAL_AR[code]);
+    this.name = 'PartnerDrawRefused';
   }
 }
 

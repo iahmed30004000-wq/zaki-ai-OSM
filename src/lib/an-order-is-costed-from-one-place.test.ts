@@ -154,7 +154,8 @@ const WRITES_A_ROW = /\.(create|update|updateMany|upsert|createMany)\(/;
 
 /** The files that name the cost and write a row but do not write an ORDER's cost from the shelf or from the figure. */
 const NOT_A_COSTING: Record<string, string> = {
-  'src/app/api/finance/route.ts': 'reports the cost of the delivered orders; it writes expenses and wallets, not an order’s cost',
+  // `src/app/api/finance/route.ts` was here until 13/11: the cost of the delivered orders it reported is read by
+  // `src/lib/profit-to-date.ts` now (it writes no row, so it is not in this sweep), and the route names no cost any more.
   'src/app/api/orders/[id]/finance/route.ts': 'writes the HAND-TYPED finance columns (`productCost`, packaging…); `estimatedCostOfGoods` is only read to show the profit',
 };
 
