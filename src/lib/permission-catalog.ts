@@ -375,10 +375,11 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       /*
        * «سوّيها تم تحصيلها بدون ما تأثر على المالية» (12/11). One press closes the old delivered parcels that have no barcode as
        * collected — with NO wallet movement and no commission made payable: their money was collected before the barcode and the
-       * settlement existed. Granted to NOBODY by any migration, seed or fallback: the owner's full access holds it, and he ticks it
-       * for whoever he wants.
+       * settlement existed. And since 13/11 a second press, on the orders he TICKS on the list (any barcode, any age): «اقدر اعمل
+       * هالحركة هاي لاي طلب حتى لو عليه باركود، بس بدي الزر هاد متاح للمالك فقط». Granted to NOBODY by any migration, seed or
+       * fallback: the owner's full access holds it, and he ticks it for whoever he wants.
        */
-      { key: 'ops.close_legacy', requires: 'ops.track', ar: 'إقفال الطلبات القديمة بلا باركود كمحصَّلة بلا حركة مال', en: 'Close old no-barcode parcels as collected, with no money moved' },
+      { key: 'ops.close_legacy', requires: 'ops.track', ar: 'إقفال طلبات كمحصَّلة بلا حركة مال (القديمة بلا باركود، أو المحدَّدة بالاختيار)', en: 'Close orders as collected with no money moved (old no-barcode ones, or ones ticked by hand)' },
       { key: 'ops.return_fee', requires: 'ops.returns', ar: 'احتساب أجرة الإرجاع على شركة الشحن', en: 'Charge the courier a return fee' },
       /*
        * «بدي زر استلام الكل مع صلاحية للمالك» (11/11). One press receives every pending return the list's filters select,
