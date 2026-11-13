@@ -194,6 +194,15 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       { key: 'finance.cashbox', requires: 'finance.cashbox_view', ar: 'تسجيل حركات الصندوق والتحويلات وعدّ الإغلاق واستلام نقد المندوب', en: 'Record cash movements, transfers, closing counts and take a courier’s cash' },
       { key: 'finance.wallets_manage', requires: 'finance.cashbox_view', ar: 'إنشاء المحافظ وتعديل أسمائها وإيقافها وحذفها', en: 'Create, rename, stop and delete wallets' },
       { key: 'finance.closing_approve', requires: 'finance.cashbox_view', ar: 'اعتماد الإغلاق اليومي', en: 'Approve a daily closing' },
+      /*
+       * «هلأ احنا ٤ شركاء … الربح لازم يتم توزيعه وفق هاي النسب … السحوبات لازم تنضاف بند … اذا حد تجاوز نسبة سحبة نسبة الربح بينعد
+       * مكسور عليه» (13/11). One key for the partners' whole business: saving the partners and their shares, reading the statement
+       * (each one's share of the net profit, what he has drawn, «مكسور عليه»), recording a partner's draw, and taking one back. It sits
+       * behind «عرض المالية» (the statement is drawn on the profit screen). Granted to NOBODY by any migration, seed or fallback: the
+       * owner's full access holds it, and he ticks it for whoever he wants. Recording a draw ALSO needs the cash box's key
+       * (`finance.cashbox`) — cash leaves a wallet — and reversing one needs the cash box's key as well as this.
+       */
+      { key: 'finance.partners', requires: 'finance.view', ar: 'الشركاء والسحوبات', en: 'Partners and their draws' },
     ],
   },
   {

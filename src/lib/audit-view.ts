@@ -67,6 +67,8 @@ const ACTION_AR: Record<string, string> = {
   PER_LINE_SETTLEMENT_SWITCHED: 'تشغيل أو إيقاف «تسوية السطور النظيفة عند الاعتماد»',
   STATEMENT_CLEAN_LINES_SETTLED: 'تسوية الطلبات النظيفة لكشف معتمد',
   WALLET_TRANSFER: 'تحويل بين محافظ', WALLET_MOVEMENT_RECORDED: 'تسجيل حركة محفظة', WALLET_MOVEMENT_REVERSED: 'عكس حركة محفظة',
+  // «الشركاء والنسب» and «سحب شريك» (`/api/finance/partners`, `/api/finance/partners/draws`): the shares of the net profit, and a partner's withdrawal.
+  PARTNERS_SAVED: 'حفظ الشركاء ونسبهم', PARTNER_DRAW_RECORDED: 'تسجيل سحب شريك',
   WALLET_OPENING_COUNTED: 'جرد افتتاحي لمحفظة', WALLET_STOPPED: 'إيقاف محفظة', DAILY_CLOSING_RECORDED: 'تسجيل إغلاق يومي',
   DAILY_CLOSING_APPROVED: 'اعتماد إغلاق يومي', STATEMENT_APPROVED: 'اعتماد كشف', STATEMENT_IMPORTED: 'استيراد كشف',
   STATEMENT_MATCHED: 'مطابقة كشف', SETTLEMENT_DIFFERENCE_RESOLVED: 'تسوية فرق كشف', SETTLEMENT_DIFFERENCES_RESOLVED_BULK: 'بتّ جماعي في فروق كشف', COMMISSION_PAID: 'صرف عمولات',

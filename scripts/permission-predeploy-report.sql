@@ -120,7 +120,9 @@ WITH req(action, needs) AS (VALUES
   -- 11/11: «استلام الكل» on the returns desk. Granted by no migration — a pair here would be a person the owner ticked it for who lost the returns key.
   ('ops.returns_receive_all','ops.returns'),
   -- 12/11: «أقفل القديمة بلا باركود» on the tracking screen. Granted by no migration — a pair here would be a person the owner ticked it for who lost the tracking key.
-  ('ops.close_legacy','ops.track')
+  ('ops.close_legacy','ops.track'),
+  -- 13/11: «الشركاء والسحوبات» (the partners' shares, statement and draws). Granted by no migration — a pair here would be a person the owner ticked it for who lost the finance view.
+  ('finance.partners','finance.view')
 )
 SELECT 'role_permissions' AS "table", r."name" AS "role", r."companyId", q.action, q.needs
 FROM "role_permissions" rp
