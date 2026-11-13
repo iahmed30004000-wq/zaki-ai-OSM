@@ -34,8 +34,10 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   may only reach a model running on the owner's own machine — see
   `localOnly` below. Ad tokens reach no model at all. One exception, the
   owner's decision of 2026-11-13: the landing confirmation chat in Zaki pages
-  (a separate system) may send the order and the customer's messages to the
-  Claude API; nothing in this repository sends data to a model because of it.
+  (a separate system) may send the order and the customer's messages to its
+  configured OpenAI-compatible model (AI_BASE_URL, by default
+  glm.erv.zakiai.io); nothing in this repository sends data to a model
+  because of it.
 - **Never accept a database reset.** If `prisma migrate dev` or any tool offers to reset, drop or wipe a database, answer no, STOP and report. A new migration is written by hand, applied with `prisma db execute`, and recorded with `prisma migrate resolve --applied`.
 - **Definition of Done before any work.** Every task starts with a DEFINITION OF DONE at the top of its PR — what must work · the tests · the edge cases that matter · the blockers. Reviews check against it and nothing else. Anything noticed outside it goes to `BACKLOG_P2.md` («من المراجعات») and is not fixed in the same PR. When every item is met and no blocker exists, stop. Fixed blockers in every task: CI red or an old test red · money arithmetic changed · order creation changed · customer data to an external model · a secret exposed · a destructive migration or a production write · a published contract broken · a feature removed instead of marked. At most two review rounds: «شيك» → fix the blockers only → a last «شيك» on those blockers.
 
