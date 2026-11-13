@@ -390,4 +390,113 @@ describe('the kept working days are only a memory', () => {
     expect(a).toBe(0);
     expect(b).toBe(360);
   });
+
+  it('two calendars whose hours are TYPED differently never share a day — not even when a bar in the text would join them (the review of 13/11)', () => {
+    // A opens at 08:00 and closes by a text that is not a time (→ 17:00). B opens by a text that is not a time (→ 09:00) and
+    // closes by one (→ 17:00). Typed side by side with a bar between, both read `8:00|x|y`: the first key was ONE key for two
+    // different working days, and whoever asked second was answered with the first one's window.
+    const A = { workHoursStart: '8:00', workHoursEnd: 'x|y', weekendDays: [5], timezone: 'Asia/Amman' };
+    const B = { workHoursStart: '8:00|x', workHoursEnd: 'y', weekendDays: [5], timezone: 'Asia/Amman' };
+    const same = (day: number) => {
+      const at0830 = kept.zonedTimeToInstant('Asia/Amman', 2026, 10, day, 8, 30);
+      const from = kept.zonedTimeToInstant('Asia/Amman', 2026, 10, day, 0, 0);
+      const to = kept.zonedTimeToInstant('Asia/Amman', 2026, 10, day, 23, 59);
+      const ask = (cal: typeof A) => ({ within: kept.isWithinBusinessHours(at0830, cal), minutes: kept.businessMinutesBetween(from, to, cal) });
+      const ref = (cal: typeof A) => ({ within: refIsWithinBusinessHours(at0830, cal), minutes: refBusinessMinutesBetween(from, to, cal) });
+      return { ask, ref };
+    };
+    // Wednesday 7th: A first, then B. Wednesday 14th: B first, then A.
+    const w7 = same(7);
+    expect(w7.ask(A)).toEqual(w7.ref(A));
+    expect(w7.ask(B)).toEqual(w7.ref(B));
+    const w14 = same(14);
+    expect(w14.ask(B)).toEqual(w14.ref(B));
+    expect(w14.ask(A)).toEqual(w14.ref(A));
+    // …and the numbers themselves, so the test cannot pass by both sides being wrong the same way.
+    expect(w7.ref(A)).toEqual({ within: true, minutes: 540 });
+    expect(w7.ref(B)).toEqual({ within: false, minutes: 480 });
+  });
+
+  it('the MINUTES of the hours are part of a day too: a calendar that opens at 09:00 and one that opens at 09:30 are not one window', () => {
+    const early = { workHoursStart: '09:00', workHoursEnd: '17:00', weekendDays: [5], timezone: 'Asia/Damascus' };
+    const late = { workHoursStart: '09:30', workHoursEnd: '17:30', weekendDays: [5], timezone: 'Asia/Damascus' };
+    // A Wednesday no earlier test has asked about, at ten past nine local: inside the first window, before the second opens.
+    const tenPastNine = kept.zonedTimeToInstant('Asia/Damascus', 2026, 11, 4, 9, 10);
+    expect(kept.isWithinBusinessHours(tenPastNine, early)).toBe(refIsWithinBusinessHours(tenPastNine, early));
+    expect(kept.isWithinBusinessHours(tenPastNine, late)).toBe(refIsWithinBusinessHours(tenPastNine, late));
+    expect(refIsWithinBusinessHours(tenPastNine, early)).toBe(true);
+    expect(refIsWithinBusinessHours(tenPastNine, late)).toBe(false);
+  });
+});
+
+// ───────────────────────── 5: the kept days are really kept (and really bounded) ─────────────────────────
+
+/** Counts every clock reading (`formatToParts`) while `run` works — what one kept working day saves four of. */
+function readingsOf(run: () => void): number {
+  const proto = Intl.DateTimeFormat.prototype as unknown as { formatToParts: (...args: unknown[]) => unknown };
+  const real = proto.formatToParts;
+  let n = 0;
+  proto.formatToParts = function (this: unknown, ...args: unknown[]) {
+    n++;
+    return real.apply(this, args);
+  };
+  try {
+    run();
+  } finally {
+    proto.formatToParts = real;
+  }
+  return n;
+}
+
+describe('the kept working days are really kept, and really bounded', () => {
+  // Each test has a zone, hours and dates of its own, so nothing an earlier test kept can make a cold ask look warm.
+
+  it('a working day is placed ONCE: the same span asked again costs one clock reading per day it walks, not five', () => {
+    const cal = { workHoursStart: '07:15', workHoursEnd: '15:45', weekendDays: [] as number[], timezone: 'Pacific/Auckland' };
+    const from = new Date(Date.UTC(2031, 2, 3, 0, 0));
+    const to = new Date(from.getTime() + 5 * DAY_MS);
+    const walked = Math.floor((to.getTime() + DAY_MS - (from.getTime() - DAY_MS)) / DAY_MS) + 1; // the days the span visits
+    let cold = 0;
+    let warm = 0;
+    let first = 0;
+    let again = 0;
+    cold = readingsOf(() => {
+      first = kept.businessMinutesBetween(from, to, cal);
+    });
+    warm = readingsOf(() => {
+      again = kept.businessMinutesBetween(from, to, cal);
+    });
+    expect(again).toBe(first);
+    expect(first).toBe(refBusinessMinutesBetween(from, to, cal));
+    expect(warm, 'اليوم انحسب من جديد بدل ما ينقرا من الذاكرة').toBeLessThanOrEqual(walked);
+    expect(cold, 'أول مرة لازم تكلّف أكتر بكتير (وإلا الفحص ما بيقيس شي)').toBeGreaterThan(warm * 4);
+  });
+
+  it('a day that never opens is kept as nothing too — it is not placed again each time it is asked', () => {
+    const cal = { workHoursStart: '08:30', workHoursEnd: '08:30', weekendDays: [] as number[], timezone: 'Pacific/Chatham' };
+    const at = kept.zonedTimeToInstant('Pacific/Chatham', 2031, 6, 9, 8, 30);
+    const cold = readingsOf(() => {
+      kept.isWithinBusinessHours(at, cal);
+    });
+    const warm = readingsOf(() => {
+      kept.isWithinBusinessHours(at, cal);
+    });
+    expect(warm, 'اليوم المسكّر انحسب من جديد').toBe(1);
+    expect(cold).toBeGreaterThan(warm);
+  });
+
+  it('the memory is BOUNDED: past 20,000 days it is dropped, and a day that was kept has to be placed again', () => {
+    const cal = { workHoursStart: '06:00', workHoursEnd: '14:00', weekendDays: [] as number[], timezone: 'Pacific/Fiji' };
+    const day0 = Date.UTC(2040, 0, 1, 10, 0);
+    kept.isWithinBusinessHours(new Date(day0), cal);
+    const stillKept = readingsOf(() => {
+      kept.isWithinBusinessHours(new Date(day0), cal);
+    });
+    expect(stillKept).toBe(1);
+    for (let d = 1; d <= 20_001; d++) kept.isWithinBusinessHours(new Date(day0 + d * DAY_MS), cal);
+    const afterOverflow = readingsOf(() => {
+      kept.isWithinBusinessHours(new Date(day0), cal);
+    });
+    expect(afterOverflow, 'الذاكرة ما انفرغت — ما إلها حد').toBeGreaterThan(stillKept);
+  }, 120_000);
 });

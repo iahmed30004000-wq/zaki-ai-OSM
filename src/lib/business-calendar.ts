@@ -104,7 +104,7 @@ function parseHhMm(value: string, fallbackHour: number): { hour: number; minute:
  * THE WORKING WINDOW OF EACH LOCAL DAY, KEPT.
  *
  * Placing a day's opening and closing instants costs four more clock readings, and every span walks at least three days.
- * The answer depends only on the zone, the hours and the local date, so it is kept under exactly those. The weekend test
+ * The answer depends only on the zone, the hours (as parsed) and the local date, so it is kept under exactly those. The weekend test
  * stays in front of it (the weekend days are therefore not part of the key). Bounded: past the bound the whole map is
  * dropped and the next ask places its day again — the answers never depend on what happens to be kept.
  */
@@ -115,12 +115,14 @@ const MAX_WINDOWS = 20_000;
 function windowFor(cal: BusinessCalendar, dayInstant: Date): { start: Date; end: Date } | null {
   const p = zonedParts(dayInstant, cal.timezone);
   if (cal.weekendDays.includes(p.weekday)) return null;
-  const key = `${cal.timezone}|${cal.workHoursStart}|${cal.workHoursEnd}|${p.year}-${p.month}-${p.day}`;
+  const from = parseHhMm(cal.workHoursStart, 9);
+  const to = parseHhMm(cal.workHoursEnd, 17);
+  // Keyed on the hours AS PARSED, not as typed: that is all the window below is made of, so two spellings that read alike are
+  // one window, and a typed text with a bar in it can never stand for another calendar's (the review of 13/11).
+  const key = `${cal.timezone}|${from.hour}:${from.minute}|${to.hour}:${to.minute}|${p.year}-${p.month}-${p.day}`;
   const kept = WINDOWS.get(key);
   // `null` is an answer too (a day whose closing is not after its opening): only `undefined` means «not placed yet».
   if (kept !== undefined) return kept;
-  const from = parseHhMm(cal.workHoursStart, 9);
-  const to = parseHhMm(cal.workHoursEnd, 17);
   const start = zonedTimeToInstant(cal.timezone, p.year, p.month, p.day, from.hour, from.minute);
   const end = zonedTimeToInstant(cal.timezone, p.year, p.month, p.day, to.hour, to.minute);
   const win = end > start ? { start, end } : null;
