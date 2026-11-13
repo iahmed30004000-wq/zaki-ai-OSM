@@ -168,6 +168,8 @@ const ON_PURPOSE: Record<string, string> = {
   // Two dialogs that name the order they act on in a heading line; they open over the list the order was chosen from.
   'LinkLineDialog.tsx': 'a dialog naming the order it acts on',
   'SwapDialog.tsx': 'a dialog naming the orders it swaps',
+  // «بحث بكل الكشوف» (13/11): a result is a row that is itself the control — pressing it opens that statement — and it names the order in it.
+  'SearchAllStatements.tsx': 'a result row that is itself the control — pressing it opens the statement',
   // The notice listing orders the batch refused: the exceptions carry the number and the reasons, no order id.
   'ShipmentsNewScreen.tsx': 'the refusals notice — the payload has no id to link',
 };
