@@ -382,6 +382,14 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       { key: 'ops.close_legacy', requires: 'ops.track', ar: 'إقفال طلبات كمحصَّلة بلا حركة مال (القديمة بلا باركود، أو المحدَّدة بالاختيار)', en: 'Close orders as collected with no money moved (old no-barcode ones, or ones ticked by hand)' },
       { key: 'ops.return_fee', requires: 'ops.returns', ar: 'احتساب أجرة الإرجاع على شركة الشحن', en: 'Charge the courier a return fee' },
       /*
+       * «هاد الطلب بالغلط حطيتو تم والشركة بتقول تم ارجاعها لازم يكون في زر تراجع مش محدود بمدة زمنية ويكون عليه صلاحية للمالك متاح» (13/11).
+       * A delivery recorded by mistake is taken back — the order returns to the state it had before, its counters and its still-accruing
+       * commission follow — with NO time window, refusing only on facts (money recorded, a statement, a counted return, a payable
+       * commission). Granted to NOBODY by any migration, seed or fallback: the owner's full access holds it, and he ticks it for whoever
+       * he wants.
+       */
+      { key: 'ops.undo_delivery', requires: 'ops.track', ar: 'التراجع عن تسجيل تسليم بالغلط (بلا مدة زمنية)', en: 'Take back a delivery that was recorded by mistake' },
+      /*
        * «بدي زر استلام الكل مع صلاحية للمالك» (11/11). One press receives every pending return the list's filters select,
        * whole and sound, back on the shelf, commission reversed — with no undo. Granted to NOBODY by any migration, seed or
        * fallback: the owner's full access holds it, and he ticks it for whoever he wants.

@@ -14,6 +14,7 @@ import { ParcelPhone } from '@/components/screens/tracking/ParcelPhone';
 import { DeliverDialog } from '@/components/screens/tracking/DeliverDialog';
 import { BulkDeliverReport, type BulkDeliverLine } from '@/components/screens/tracking/BulkDeliverReport';
 import { WriteOffDialog } from '@/components/screens/tracking/WriteOffDialog';
+import { UndoDeliveryDialog } from '@/components/screens/tracking/UndoDeliveryDialog';
 import { CloseLegacyDialog } from '@/components/screens/tracking/CloseLegacyDialog';
 import { ClosePickedDialog } from '@/components/screens/tracking/ClosePickedDialog';
 import { DifferenceMark } from '@/components/screens/tracking/DifferenceMark';
@@ -126,6 +127,8 @@ interface TrackingActs {
   writeOff: boolean;
   /** «أقفل القديمة بلا باركود»: the owner's own key. Only a server that says yes draws the button. */
   closeLegacy: boolean;
+  /** «تراجع عن التسليم» (13/11): the owner's own key, on a delivered parcel's row. Only a server that says yes draws the button. */
+  undoDelivery: boolean;
   /** «فيه فرق»: `settlement.review` — the answers in the dialog. Only a server that says yes draws them; absent is «no». */
   decide: boolean;
 }
@@ -134,7 +137,7 @@ interface TrackingActs {
  * An answer that does not say is read as «all»: drawing less would hide work, and the door is what refuses. EXCEPT the owner's
  * one-time press: a button for a door nobody was told they hold is not «work hidden», and an answer that does not name it is read as «no».
  */
-const ALL_ACTS: TrackingActs = { deliver: true, transfer: true, writeOff: true, closeLegacy: false, decide: false };
+const ALL_ACTS: TrackingActs = { deliver: true, transfer: true, writeOff: true, closeLegacy: false, undoDelivery: false, decide: false };
 
 /** Module-level, so the hook's loader keeps one identity — see `usePagedList`. */
 const read = (body: unknown): PagedRead<Row, Extra> => {
@@ -246,6 +249,8 @@ export function TrackingScreen() {
   const [deliverFor, setDeliverFor] = useState<Row | null>(null);
   /** The parcel somebody is about to stop waiting for. */
   const [writeOffFor, setWriteOffFor] = useState<Row | null>(null);
+  /** The delivered parcel whose delivery somebody is about to take back. */
+  const [undoFor, setUndoFor] = useState<Row | null>(null);
   const [noting, setNoting] = useState<string | null>(null);
   /** The order whose door outcome is being written, so its buttons wait. */
   const [settling, setSettling] = useState<string | null>(null);
@@ -1335,6 +1340,22 @@ export function TrackingScreen() {
                   أغلقه كخسارة
                 </button>
               )}
+              {/*
+                «هاد الطلب بالغلط حطيتو تم والشركة بتقول تم ارجاعها لازم يكون في زر تراجع» (the owner, 13/11).
+
+                ON A DELIVERED PARCEL, AND ONLY FOR WHOEVER HOLDS THE KEY. A delivery recorded by mistake is taken back: the dialog measures
+                first, and says what it would reverse and what it would refuse. There is no time limit on the button; the door refuses on facts
+                (money recorded, a statement, a counted return, a payable commission). The same quiet target as «تحويل» beside it.
+              */}
+              {acts.undoDelivery && (o.shippingStatus === 'DELIVERED' || o.shippingStatus === 'PARTIALLY_DELIVERED') && (
+                <button
+                  onClick={() => setUndoFor(o)}
+                  className={`inline-flex min-h-11 items-center text-xs text-[var(--sys-primary)] hover:underline md:min-h-0${quiet}`}
+                  title="رجّع الطلب لحالتو قبل التسليم — لما انسجّل تسليمو بالغلط"
+                >
+                  تراجع عن التسليم…
+                </button>
+              )}
               {acts.transfer && (
               <button
                 onClick={() => setTransferFor(o)}
@@ -1445,6 +1466,19 @@ export function TrackingScreen() {
           onClose={() => setDeliverFor(null)}
           onDone={async (message) => {
             setDeliverFor(null);
+            setDone(message);
+            setError(null);
+            await list.reload();
+          }}
+        />
+      )}
+
+      {undoFor && (
+        <UndoDeliveryDialog
+          order={undoFor}
+          onClose={() => setUndoFor(null)}
+          onDone={async (message) => {
+            setUndoFor(null);
             setDone(message);
             setError(null);
             await list.reload();

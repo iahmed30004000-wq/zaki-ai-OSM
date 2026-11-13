@@ -1809,6 +1809,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/screens/tracking/UndoDeliveryDialog.tsx": {
+    "buttons": 2,
+    "inputs": 2,
+    "columns": 0,
+    "cards": 0,
+    "modals": 1,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/screens/tracking/WriteOffDialog.tsx": {
     "buttons": 2,
     "inputs": 1,
@@ -1820,7 +1830,7 @@
     "tabs": 0
   },
   "src/components/screens/TrackingScreen.tsx": {
-    "buttons": 26,
+    "buttons": 27,
     "inputs": 0,
     "columns": 15,
     "cards": 0,
