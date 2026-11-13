@@ -38,10 +38,10 @@ import { NO_ANSWER_LIMIT, NO_ANSWER_RESULTS } from './confirmation-workflow';
  *
  * ── THE CALENDAR, ONCE ──
  *
- * `businessMinutesBetween` builds date formatters for every day it walks, and calling it per order once stalled the one
- * server process (`no-answer-watch.ts`, `workingMinutesBack`). `workClock` places each working day ONCE per request and
- * answers every pair from that, so a desk of 250 orders is a handful of days placed and arithmetic on instants.
- * `no-answer-rounds.test.ts` holds it to `businessMinutesBetween` on hundreds of instants.
+ * `businessMinutesBetween` used to build date formatters for every day it walks (it keeps them now, `business-calendar.ts`),
+ * and calling it per order once stalled the one server process (`no-answer-watch.ts`, `workingMinutesBack`). `workClock`
+ * places each working day ONCE per request and answers every pair from that, so a desk of 250 orders is a handful of days
+ * placed and arithmetic on instants. `no-answer-rounds.test.ts` holds it to `businessMinutesBetween` on hundreds of instants.
  * ═══════════════════════════════════════════════════════════════════════
  */
 

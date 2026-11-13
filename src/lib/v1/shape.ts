@@ -45,6 +45,26 @@ export function amountString(value: number, minorUnit: number): string {
   return value.toFixed(places);
 }
 
+/** One formatter per zone, kept: building one costs ten times what using one does (`business-calendar.ts` says why). */
+const OFFSET_FORMATTERS = new Map<string, Intl.DateTimeFormat>();
+function offsetFormatterFor(timeZone: string): Intl.DateTimeFormat {
+  let fmt = OFFSET_FORMATTERS.get(timeZone);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hour12: false,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+    OFFSET_FORMATTERS.set(timeZone, fmt);
+  }
+  return fmt;
+}
+
 /**
  * A MOMENT, WITH ITS OFFSET — never a bare `Z` and never a local string.
  *
@@ -72,16 +92,7 @@ export function isoWithOffset(at: Date, timeZone: string): string {
    * the offset, to the minute — which covers the half-hour and
    * three-quarter-hour zones a `+HH:00` assumption would mangle.
    */
-  const fmt = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    hour12: false,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
+  const fmt = offsetFormatterFor(timeZone);
   const part: Record<string, string> = {};
   for (const p of fmt.formatToParts(at)) part[p.type] = p.value;
   // `hour12: false` gives «24» for midnight in some ICU builds.

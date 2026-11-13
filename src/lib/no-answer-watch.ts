@@ -356,8 +356,8 @@ function close(row: RateRow): RateRow {
 export const CALL_RESULTS = CONTACT_RESULTS.filter((r) => outcomeOf(r) !== 'NOT_A_CALL');
 
 /**
- * The local hour of an instant, from ONE formatter per request. `zonedParts` builds a formatter per call, and once per
- * row of a 50,000-row report that was seconds of one Node process.
+ * The local hour of an instant, from ONE formatter per request. `zonedParts` used to build a formatter per call (it keeps
+ * them now), and once per row of a 50,000-row report that was seconds of one Node process.
  */
 export function hourReader(timeZone: string): (at: Date) => number {
   const fmt = new Intl.DateTimeFormat('en-US', { timeZone, hour12: false, hour: '2-digit' });

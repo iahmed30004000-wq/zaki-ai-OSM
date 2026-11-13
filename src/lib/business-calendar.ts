@@ -29,18 +29,37 @@ interface ZonedParts {
 
 const WEEKDAY_INDEX: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
+/**
+ * ONE FORMATTER PER TIMEZONE, KEPT.
+ *
+ * Building an `Intl.DateTimeFormat` is the expensive part of reading a clock in a zone — measured 13/11: 45 µs to build one
+ * against 4 µs to use one — and this file built one on every call. A span of five minutes asked for fifteen of them, and the
+ * team table asked for tens of thousands of spans in one go: the one server process answered nobody for 19.5 seconds.
+ * A handful of zones exist for the life of the process (the countries the company sells in), so they are kept.
+ */
+const FORMATTERS = new Map<string, Intl.DateTimeFormat>();
+function formatterFor(timeZone: string): Intl.DateTimeFormat {
+  let fmt = FORMATTERS.get(timeZone);
+  if (!fmt) {
+    // A name that is not a zone throws here, every time it is asked — nothing is kept for it.
+    fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hour12: false,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      weekday: 'short',
+    });
+    FORMATTERS.set(timeZone, fmt);
+  }
+  return fmt;
+}
+
 /** Local calendar parts of an instant in the given timezone. */
 export function zonedParts(instant: Date, timeZone: string): ZonedParts {
-  const fmt = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    hour12: false,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    weekday: 'short',
-  });
+  const fmt = formatterFor(timeZone);
   const parts = Object.fromEntries(fmt.formatToParts(instant).map((p) => [p.type, p.value]));
   return {
     year: Number(parts.year),
@@ -81,15 +100,33 @@ function parseHhMm(value: string, fallbackHour: number): { hour: number; minute:
   return { hour: Math.min(23, Number(m[1])), minute: Math.min(59, Number(m[2])) };
 }
 
+/**
+ * THE WORKING WINDOW OF EACH LOCAL DAY, KEPT.
+ *
+ * Placing a day's opening and closing instants costs four more clock readings, and every span walks at least three days.
+ * The answer depends only on the zone, the hours and the local date, so it is kept under exactly those. The weekend test
+ * stays in front of it (the weekend days are therefore not part of the key). Bounded: past the bound the whole map is
+ * dropped and the next ask places its day again — the answers never depend on what happens to be kept.
+ */
+const WINDOWS = new Map<string, { start: Date; end: Date } | null>();
+const MAX_WINDOWS = 20_000;
+
 /** Working window of one local day, or null when that day is a weekend. */
 function windowFor(cal: BusinessCalendar, dayInstant: Date): { start: Date; end: Date } | null {
   const p = zonedParts(dayInstant, cal.timezone);
   if (cal.weekendDays.includes(p.weekday)) return null;
+  const key = `${cal.timezone}|${cal.workHoursStart}|${cal.workHoursEnd}|${p.year}-${p.month}-${p.day}`;
+  const kept = WINDOWS.get(key);
+  // `null` is an answer too (a day whose closing is not after its opening): only `undefined` means «not placed yet».
+  if (kept !== undefined) return kept;
   const from = parseHhMm(cal.workHoursStart, 9);
   const to = parseHhMm(cal.workHoursEnd, 17);
   const start = zonedTimeToInstant(cal.timezone, p.year, p.month, p.day, from.hour, from.minute);
   const end = zonedTimeToInstant(cal.timezone, p.year, p.month, p.day, to.hour, to.minute);
-  return end > start ? { start, end } : null;
+  const win = end > start ? { start, end } : null;
+  if (WINDOWS.size >= MAX_WINDOWS) WINDOWS.clear();
+  WINDOWS.set(key, win);
+  return win;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
