@@ -81,7 +81,9 @@ export function DashboardScreen() {
     const seq = ++loadAnalyticsSeq.current;
     setLoading(true);
     try {
-      const res = await apiFetch(`/api/analytics?period=${period}`);
+      // A REPORT: it runs in the reports lane (six connections) beside the performance board's, so it may wait its turn — a minute, as the
+      // board does (`BOARD_WAIT_MS` in PerformanceScreen), not the fifteen seconds every ordinary call gets.
+      const res = await apiFetch(`/api/analytics?period=${period}`, { timeoutMs: 60_000 });
       if (seq !== loadAnalyticsSeq.current) return; // stale — discard
       if (res.ok) {
         setRefusal(null);

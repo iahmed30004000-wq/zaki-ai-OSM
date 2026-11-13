@@ -97,6 +97,7 @@ const FACTS = {
     { id: 'none', name: 'بلا شركة شحن', count: 5 },
   ],
   ages: { fresh: 12, few: 18, week: 20, old: 10 },
+  noBarcode: 9,
 };
 
 /** What the door says right now. */
@@ -183,7 +184,7 @@ describe('opening it', () => {
 
   it('and draws the waiting parcels with the columns of the work, and a button for each', async () => {
     await draw();
-    expect(headings()).toEqual(['المرجع', 'العميل', 'شركة الشحن', 'السبب', 'المدّة', 'المتوقَّع رجوعه', '']);
+    expect(headings()).toEqual(['المرجع', 'العميل', 'شركة الشحن', 'الباركود', 'السبب', 'المدّة', 'المتوقَّع رجوعه', '']);
     expect(screen.getAllByText('ORD-P1').length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: 'استلام' }).length).toBeGreaterThan(0);
   });
@@ -206,12 +207,13 @@ describe('opening it', () => {
 });
 
 describe('the toolbar', () => {
-  it('— four dropdowns for the work, each with the server’s number beside the word', async () => {
+  it('— five dropdowns for the work, each with the server’s number beside the word', async () => {
     await draw();
     expect(options('العرض')).toEqual(['بانتظار الاستلام (60)', 'تم استلامها (14)']);
     expect(options('الحالة')).toEqual(['كل الحالات', 'طلب إرجاع (5)', 'مرتجع (40)', 'فشل التوصيل (10)', 'مسلَّم جزئياً (5)']);
     expect(options('شركة الشحن')).toEqual(['كل الشركات', 'ناقل (35)', 'أمان (20)', 'بلا شركة شحن (5)']);
     expect(options('مدّة الانتظار')).toEqual(['أيّ مدّة', 'اليوم أو أمس (12)', 'منذ 2–3 أيام (18)', 'منذ 4–7 أيام (20)', 'أكثر من أسبوع (10)']);
+    expect(options('الباركود')).toEqual(['كل الطرود', 'بلا باركود (9)']);
   });
 
   it('and a company the new counts no longer hold is still in the box, with a zero — the box never snaps back behind the reader', async () => {
@@ -317,7 +319,7 @@ describe('the two views', () => {
   it('— the record has its own columns, and no button: what was counted, by whom and when', async () => {
     await draw();
     choose('العرض', 'received');
-    await waitFor(() => expect(headings()).toEqual(['المرجع', 'العميل', 'شركة الشحن', 'الاستلام', 'عُدَّ في']));
+    await waitFor(() => expect(headings()).toEqual(['المرجع', 'العميل', 'شركة الشحن', 'الباركود', 'الاستلام', 'عُدَّ في']));
     const row = screen.getAllByText('ORD-R1')[0].closest('tr')!;
     expect(row.textContent).toContain('2 من 3 · تالف 1');
     expect(row.textContent).not.toContain('ناقص');
@@ -365,7 +367,7 @@ describe('the two views', () => {
     choose('العرض', 'received');
     await waitFor(() => expect(gets().some((q) => q.get('view') === 'received')).toBe(true));
     // The answer has not come: nothing has crashed, and the old rows keep the old columns and their buttons.
-    expect(headings()).toEqual(['المرجع', 'العميل', 'شركة الشحن', 'السبب', 'المدّة', 'المتوقَّع رجوعه', '']);
+    expect(headings()).toEqual(['المرجع', 'العميل', 'شركة الشحن', 'الباركود', 'السبب', 'المدّة', 'المتوقَّع رجوعه', '']);
     expect(screen.getAllByRole('button', { name: 'استلام' }).length).toBeGreaterThan(0);
     release();
     await waitFor(() => expect(headings()).toContain('عُدَّ في'));

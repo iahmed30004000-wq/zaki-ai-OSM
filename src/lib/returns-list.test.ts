@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AGES, NO_COURIER, RETURN_STATUSES, ageWhere, viewScope, type Age } from './returns-filters';
+import { AGES, NO_COURIER, RETURN_STATUSES, ageWhere, noBarcodeWhere, viewScope, type Age } from './returns-filters';
 import { NO_COURIER_AR, returnsFacts } from './returns-list';
 
 /**
@@ -42,6 +42,8 @@ interface Row {
   companyId: string;
   storeId: string;
   shippingStatus: string;
+  /** The courier's barcode — null or blank is «no barcode». */
+  trackingNumber: string | null;
   returnReceipt: { id: string } | null;
   deliveryProviderId: string | null;
   returnedAt: Date | null;
@@ -56,6 +58,7 @@ const row = (over: Partial<Row> = {}): Row => ({
   companyId: 'c1',
   storeId: 's1',
   shippingStatus: 'RETURNED',
+  trackingNumber: `TRK-${n}`,
   returnReceipt: null,
   deliveryProviderId: 'p1',
   returnedAt: ago(1),
@@ -233,18 +236,72 @@ describe('the scope is in every question', () => {
   it('— every count is asked of this company and this store, spread at the top, with the view’s own clauses', async () => {
     const { db, counts } = dbOf(shop());
     await returnsFacts(db, { scope, view: 'pending', now: NOW });
-    expect(counts.length).toBe(2 + AGES.length);
+    // the two views, the four ages, and «بلا باركود» — seven questions, each with the scope in it
+    expect(counts.length).toBe(2 + AGES.length + 1);
     for (const where of counts) expect(where).toMatchObject({ companyId: 'c1', storeId: 's1' });
   });
 
   it('and the ages keep the pending scope at the TOP — an age clause beside it, never in its place', async () => {
     const { db, counts } = dbOf(shop());
     await returnsFacts(db, { scope, view: 'pending', now: NOW });
-    const aged = counts.filter((w) => w.AND);
+    // «بلا باركود» also carries an AND beside the scope; it is told apart by what it asks, not by its shape
+    const aged = counts.filter((w) => w.AND && !(w.AND as Any[]).includes(noBarcodeWhere));
     expect(aged).toHaveLength(AGES.length);
     for (const where of aged) {
       expect(where.shippingStatus).toEqual({ in: [...RETURN_STATUSES] });
       expect(where.returnReceipt).toBeNull();
     }
+  });
+});
+
+describe('the parcels with no barcode', () => {
+  /** A shop in which the barcode is missing in all three ways a database can miss it — and present in two. */
+  const mixed = (): Row[] => [
+    // waiting
+    row({ shippingStatus: 'RETURNED', trackingNumber: 'B1' }),
+    row({ shippingStatus: 'RETURNED', trackingNumber: null }),
+    row({ shippingStatus: 'RETURNED', trackingNumber: '' }),
+    row({ shippingStatus: 'FAILED_DELIVERY', trackingNumber: null, returnedAt: null, failedAt: ago(5) }),
+    // counted in
+    row({ returnReceipt: { id: 'r1' }, trackingNumber: 'B2' }),
+    row({ returnReceipt: { id: 'r2' }, trackingNumber: null }),
+    row({ returnReceipt: { id: 'r3' }, trackingNumber: '' }),
+    // not ours, and not a return
+    row({ companyId: 'c2', trackingNumber: null }),
+    row({ storeId: 's2', trackingNumber: null }),
+    row({ shippingStatus: 'SHIPPED', trackingNumber: null }),
+  ];
+
+  it('— counted inside the view that is open: the waiting ones when it is waiting, the counted ones when it is counted', async () => {
+    expect((await facts(mixed(), 'pending')).noBarcode).toBe(3);
+    expect((await facts(mixed(), 'received')).noBarcode).toBe(2);
+  });
+
+  it('and a blank barcode is no barcode, the same as none at all', async () => {
+    const only = [row({ trackingNumber: '' }), row({ trackingNumber: null }), row({ trackingNumber: 'B' })];
+    expect((await facts(only, 'pending')).noBarcode).toBe(2);
+  });
+
+  it('and it is exactly the rows the list brings when «بلا باركود» is chosen over the open view', async () => {
+    const rows = mixed();
+    for (const view of ['pending', 'received'] as const) {
+      const asked = rows.filter((r) => matches({ ...viewScope(view, scope), AND: [noBarcodeWhere] }, r as unknown as Any)).length;
+      expect((await facts(rows, view)).noBarcode).toBe(asked);
+    }
+  });
+
+  it('and a parcel of another company or another store, or one that is not a return, is in no number', async () => {
+    const base = (await facts(mixed(), 'pending')).noBarcode;
+    const more = [...mixed(), ...Array.from({ length: 4 }, () => row({ companyId: 'c2', trackingNumber: null })), ...Array.from({ length: 4 }, () => row({ storeId: 's2', trackingNumber: '' }))];
+    expect((await facts(more, 'pending')).noBarcode).toBe(base);
+  });
+
+  it('and the other dropdowns do not narrow it — like the companies, it counts the open view as a whole', async () => {
+    const rows = [row({ deliveryProviderId: 'p1', trackingNumber: null }), row({ deliveryProviderId: 'p2', trackingNumber: null }), row({ deliveryProviderId: null, trackingNumber: null })];
+    expect((await facts(rows, 'pending')).noBarcode).toBe(3);
+  });
+
+  it('and with every parcel carrying one the number is zero, not missing', async () => {
+    expect((await facts([row({ trackingNumber: 'A' }), row({ trackingNumber: 'B' })], 'pending')).noBarcode).toBe(0);
   });
 });

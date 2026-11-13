@@ -38,6 +38,17 @@ function lastThirtyDays() {
 
 type Tab = 'team' | 'landing' | 'scores' | 'noanswer';
 
+/**
+ * HOW LONG THE BOARD WAITS FOR A REPORT — a minute, not the fifteen seconds every other call gets (the owner, 13/11: «لوحة الأداء بتضل
+ * تعلق»).
+ *
+ * A page of this board asks for four reports at once. The server now runs them in their own small lane and shares one computation
+ * between the askers (`lib/heavy-lane.ts`), but a report is still real work, and giving up at fifteen seconds drew «تعذّر تحميل
+ * أرقام لوحة الأداء» over a computation that was about to finish. The server keeps computing after the client gives up, so «إعادة
+ * المحاولة» finds it done — and a minute is long enough that it rarely has to.
+ */
+const BOARD_WAIT_MS = 60_000;
+
 /** One courier as `/api/orders/shipping/performance` answers it. */
 interface CourierRow {
   provider: { id: string; name: string; code?: string; kind?: string; isActive?: boolean };
@@ -147,7 +158,7 @@ export function PerformanceScreen() {
     // the attribution endpoint's totals were being put into `totals`, which
     // is the team table's — so each table's footer was summing the other
     // table's rows. Two states, two endpoints, swapped once.
-    apiJson<{ employees: any[]; totals: any }>(`/api/orders/confirmation/team?${dateQuery}`)
+    apiJson<{ employees: any[]; totals: any }>(`/api/orders/confirmation/team?${dateQuery}`, { timeoutMs: BOARD_WAIT_MS })
       .then((d) => {
         setTeam(d.employees ?? []);
         setTotals(d.totals ?? null);
@@ -163,7 +174,7 @@ export function PerformanceScreen() {
       moderators: AttributionRow[];
       channels: AttributionRow[];
       totals?: { moderators: AttributionRow; channels: AttributionRow };
-    }>(`/api/growth/attribution?${dateQuery}`)
+    }>(`/api/growth/attribution?${dateQuery}`, { timeoutMs: BOARD_WAIT_MS })
       .then((d) => {
         setModerators(d.moderators ?? []);
         setChannels(d.channels ?? []);
@@ -177,7 +188,7 @@ export function PerformanceScreen() {
   }, [dateQuery]);
 
   useEffect(() => {
-    apiJson<{ providers: CourierRow[]; collection: Trust }>('/api/orders/shipping/performance')
+    apiJson<{ providers: CourierRow[]; collection: Trust }>('/api/orders/shipping/performance', { timeoutMs: BOARD_WAIT_MS })
       .then((d) => {
         setCouriers(d.providers ?? []);
         setCollection(d.collection ?? null);
@@ -190,7 +201,7 @@ export function PerformanceScreen() {
     try {
       // Its OWN door (`reports.view`) — not the dashboard's: a person who may open this board
       // and not the dashboard (a bookkeeper) reads the same numbers here.
-      const res = await apiFetch(`/api/analytics/performance?${dateQuery}`);
+      const res = await apiFetch(`/api/analytics/performance?${dateQuery}`, { timeoutMs: BOARD_WAIT_MS });
       if (res.ok) {
         const data = await res.json();
         setRefusal(null);

@@ -32,7 +32,7 @@ vi.mock('@/lib/commission', () => ({ reverseForOrder: vi.fn() }));
 vi.mock('@/lib/pii-alert', () => ({ noteCustomersHandedOut: (...a: unknown[]) => noteCustomersHandedOut(...a) }));
 
 import { GET } from '@/app/api/ops/returns/route';
-import { PENDING_ORDER_BY, RECEIVED_ORDER_BY } from '@/lib/returns-filters';
+import { PENDING_ORDER_BY, RECEIVED_ORDER_BY, noBarcodeWhere } from '@/lib/returns-filters';
 
 const DAY = 86_400_000;
 const COURIER = '22222222-2222-4222-8222-222222222222';
@@ -135,6 +135,26 @@ describe('what it asks for', () => {
     await get();
     expect(asked().select.returnReceipt).toBeUndefined();
   });
+
+  it('and «بلا باركود» is one more thing that must hold — null or blank — in either view, with the scope still on top', async () => {
+    for (const [query, scope] of [
+      ['barcode=none', { returnReceipt: null }],
+      ['view=received&barcode=none', { returnReceipt: { isNot: null } }],
+    ] as const) {
+      await get(query);
+      const q = asked();
+      expect(q.where, query).toMatchObject({ companyId: 'c1', storeId: 's1', ...scope });
+      expect(q.where.AND, query).toEqual([noBarcodeWhere]);
+    }
+    // …and asked for nothing, it is not there at all.
+    await get('barcode=all');
+    expect(asked().where.AND).toEqual([]);
+  });
+
+  it('and it is one question with the company: both are ANDed, each by its own word', async () => {
+    await get(`courier=${COURIER}&barcode=none`);
+    expect(asked().where.AND).toEqual([{ deliveryProviderId: COURIER }, noBarcodeWhere]);
+  });
 });
 
 describe('whose phone the search may confirm', () => {
@@ -183,6 +203,7 @@ describe('what it refuses', () => {
     ['status=SHIPPED', 'الحالة غير معروف: SHIPPED'],
     ['courier=dhl', 'شركة الشحن غير معروف: dhl'],
     ['age=yesterday', 'العمر غير معروف: yesterday'],
+    ['barcode=with', 'فلتر الباركود غير معروف: with'],
   ])('— %s: 400, in Arabic, and nothing was read', async (query, arabic) => {
     const res = await get(query);
     expect(res.status).toBe(400);
@@ -217,10 +238,30 @@ describe('the page', () => {
 
   it('and the numbers beside the options come back with it, over the same scope — and say what was applied', async () => {
     const body = await (await get('view=received&courier=none')).json();
-    expect(Object.keys(body.facts)).toEqual(['views', 'statuses', 'couriers', 'ages']);
+    expect(Object.keys(body.facts)).toEqual(['views', 'statuses', 'couriers', 'ages', 'noBarcode']);
     expect(Object.keys(body.facts.views)).toEqual(['pending', 'received']);
     for (const [arg] of db.order.count.mock.calls) expect((arg as { where: Record<string, unknown> }).where).toMatchObject({ companyId: 'c1', storeId: 's1' });
     expect(body.applied).toEqual({ view: 'received', status: null, courier: 'none', age: null, q: null });
+  });
+
+  it('and «بلا باركود (N)» is counted over the OPEN view, with the scope on top — so choosing it brings exactly N rows', async () => {
+    db.order.count.mockImplementation(async ({ where }: { where: Record<string, any> }) => ((where.AND ?? []).includes(noBarcodeWhere) ? 7 : 0));
+    for (const [view, scope] of [
+      ['pending', { returnReceipt: null }],
+      ['received', { returnReceipt: { isNot: null } }],
+    ] as const) {
+      db.order.count.mockClear();
+      const body = await (await get(`view=${view}`)).json();
+      expect(body.facts.noBarcode, view).toBe(7);
+      const asks = db.order.count.mock.calls.map((c) => (c[0] as { where: Record<string, any> }).where).filter((w) => (w.AND ?? []).includes(noBarcodeWhere));
+      expect(asks, view).toHaveLength(1);
+      expect(asks[0], view).toMatchObject({ companyId: 'c1', storeId: 's1', ...scope });
+    }
+  });
+
+  it('and what was applied says the barcode only when it was asked', async () => {
+    expect((await (await get('barcode=none')).json()).applied).toEqual({ view: 'pending', status: null, courier: null, age: null, q: null, barcode: 'none' });
+    expect((await (await get()).json()).applied).not.toHaveProperty('barcode');
   });
 
   it('and the contact details handed out are tallied for the page that was sent, in either view', async () => {

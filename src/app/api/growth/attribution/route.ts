@@ -4,6 +4,7 @@ import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { getDateRange, type DateFilter } from '@/lib/analytics';
 import { attributionTotals, channelPerformance, moderatorPerformance } from '@/lib/attribution-performance';
+import { REPORT_TTL_MS, heavyOnce } from '@/lib/heavy-lane';
 
 /**
  * GET /api/growth/attribution?period=&startDate=&endDate=
@@ -26,10 +27,12 @@ export async function GET(req: Request) {
     const { start, end } = getDateRange(filter);
     const scope = { companyId, storeId, start, end };
 
-    const [moderators, channels] = await Promise.all([
-      moderatorPerformance(scope),
-      channelPerformance(scope),
-    ]);
+    // One computation per question, in the reports' lane (`lib/heavy-lane.ts`): fourteen grouped counts that the board, the dashboard
+    // and every open tab would otherwise start again, in front of everybody else's queries. Nothing here depends on who asks.
+    const key = ['attribution', companyId, storeId, start?.toISOString() ?? '', end?.toISOString() ?? ''].join('|');
+    const [moderators, channels] = await heavyOnce(key, REPORT_TTL_MS, () =>
+      Promise.all([moderatorPerformance(scope), channelPerformance(scope)])
+    );
 
     return NextResponse.json({
       moderators,
