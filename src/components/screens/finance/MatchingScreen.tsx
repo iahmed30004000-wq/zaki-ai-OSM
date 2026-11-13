@@ -201,7 +201,7 @@ export function MatchingScreen({ queuesStartOpen = false }: { queuesStartOpen?: 
   // every answer and a queue that forgot its search each time would be a queue nobody could work through.
   const [views, setViews] = useState<Record<string, QueueView>>({});
   // And so is what a person has OPENED, and how far down a long queue she has drawn (the reviewer of #256, 12/11): the reload swaps
-  // every queue and both cards for a spinner, which UNMOUNTS them — a fold kept inside would be shut again after EVERY answer, and the
+  // every queue and all three cards (the two summaries and «بتّ جماعي») for a spinner, which UNMOUNTS them — a fold kept inside would be shut again after EVERY answer, and the
   // owner would press «عرض» on «فرق في المبلغ» once per line. Kept for the visit only: nothing is written anywhere.
   const [opened, setOpened] = useState<Record<string, boolean>>({});
   const [paged, setPaged] = useState<Record<string, Paged>>({});
@@ -392,10 +392,13 @@ export function MatchingScreen({ queuesStartOpen = false }: { queuesStartOpen?: 
             rows={queue('MATCHED')}
             hint={settling?.matchedHint ?? 'المبلغ في الكشف يساوي المتوقَّع — تتسوّى هذه الطلبات وتصبح عمولتها مستحقة عند إغلاق المطابقة (بنفس ضغطة الاعتماد إذا ما ضل سطر بلا بتّ).'}
           />
+          {/* Folded and closed like the two cards above (the owner, 13/11), and kept HERE for the same reason: every answer reloads
+              the rows, and the reload unmounts it. */}
           {mayReview && !closed && (
             <BulkDecide
               statementId={selected}
               onDone={() => void load(selected!)}
+              {...openOf('card|bulk')}
               rows={queue('MISMATCHED').map((m) => ({
                 id: m.id,
                 wordGroup: m.wordGroup ?? null,
