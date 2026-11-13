@@ -82,10 +82,10 @@ beforeEach(() => {
   commission.mockResolvedValue(12.7);
   requireContext.mockResolvedValue({ user: { id: 'u1' }, companyId: 'c1', storeId: 's1', country: { currencyCode: 'USD', minorUnit: 2 } });
   tables.partner.push(
-    { id: 'mk', companyId: 'c1', name: 'محمد كوري', sharePercent: 15, isActive: true, sortOrder: 0, createdAt: new Date(0) },
-    { id: 'ak', companyId: 'c1', name: 'عبدالله كيوان', sharePercent: 15, isActive: true, sortOrder: 1, createdAt: new Date(1) },
-    { id: 'mq', companyId: 'c1', name: 'محمد كيوان', sharePercent: 15, isActive: true, sortOrder: 2, createdAt: new Date(2) },
-    { id: 'ah', companyId: 'c1', name: 'احمد كيوان', sharePercent: 55, isActive: true, sortOrder: 3, createdAt: new Date(3) },
+    { id: 'pa', companyId: 'c1', name: 'شريك أ', sharePercent: 15, isActive: true, sortOrder: 0, createdAt: new Date(0) },
+    { id: 'pb', companyId: 'c1', name: 'شريك ب', sharePercent: 15, isActive: true, sortOrder: 1, createdAt: new Date(1) },
+    { id: 'pc', companyId: 'c1', name: 'شريك ج', sharePercent: 15, isActive: true, sortOrder: 2, createdAt: new Date(2) },
+    { id: 'pd', companyId: 'c1', name: 'شريك د', sharePercent: 55, isActive: true, sortOrder: 3, createdAt: new Date(3) },
   );
 });
 

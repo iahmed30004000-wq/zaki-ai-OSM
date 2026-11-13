@@ -8,10 +8,11 @@ import { join } from 'node:path';
 /**
  * «الشركاء والنسب» — THE SETTINGS CARD (13/11).
  *
- * «هلأ احنا ٤ شركاء: محمد كوري 15% · عبدالله كيوان 15% · محمد كيوان 15% · احمد كيوان 55%». With nothing saved the four are drawn as
- * EDITABLE rows and written nowhere until he presses «حفظ»; the total is printed as he types and must read exactly 100 before the
- * press can be made; the sentence under the list is the door's own; a partner is switched off, never deleted; and nobody without the
- * key is drawn the card or a request.
+ * «هلأ احنا ٤ شركاء …» (the owner). This repository is public and so is its image, so with nothing saved the card draws four EMPTY rows —
+ * a box for the name and a box for the share, each with a hint — and no name or share of anybody is written in the product or in these
+ * tests (the partners below are made up: شريك أ … شريك د). Nothing is written anywhere until he presses «حفظ»; the total is printed as he
+ * types and must read exactly 100 before the press can be made; the sentence under the list is the door's own; a partner is switched
+ * off, never deleted; and nobody without the key is drawn the card or a request.
  */
 
 const { api, can, toast } = vi.hoisted(() => ({
@@ -26,10 +27,10 @@ vi.mock('@/hooks/useCan', () => ({ useCan: (key: string) => can.value && key ===
 import { PartnersCard } from './PartnersCard';
 
 const SAVED = [
-  { id: 'p1', name: 'محمد كوري', sharePercent: 15, isActive: true, sortOrder: 0 },
-  { id: 'p2', name: 'عبدالله كيوان', sharePercent: 15, isActive: true, sortOrder: 1 },
-  { id: 'p3', name: 'محمد كيوان', sharePercent: 15, isActive: true, sortOrder: 2 },
-  { id: 'p4', name: 'احمد كيوان', sharePercent: 55, isActive: true, sortOrder: 3 },
+  { id: 'p1', name: 'شريك أ', sharePercent: 15, isActive: true, sortOrder: 0 },
+  { id: 'p2', name: 'شريك ب', sharePercent: 15, isActive: true, sortOrder: 1 },
+  { id: 'p3', name: 'شريك ج', sharePercent: 15, isActive: true, sortOrder: 2 },
+  { id: 'p4', name: 'شريك د', sharePercent: 55, isActive: true, sortOrder: 3 },
 ];
 const answer = (partners: typeof SAVED) => ({ partners, sharesTotal: 100 });
 
@@ -41,6 +42,17 @@ const open = async () => {
   render(<PartnersCard />);
   await screen.findByText('الشركاء والنسب');
   await waitFor(() => expect(screen.queryAllByLabelText('الاسم').length).toBeGreaterThan(0));
+};
+/** What the owner does with the four empty rows: types a name and a share into each. */
+const fillFour = () => {
+  SAVED.forEach((p, i) => {
+    fireEvent.change(screen.getAllByLabelText('الاسم')[i], { target: { value: p.name } });
+    fireEvent.change(screen.getAllByLabelText('النسبة (%)')[i], { target: { value: String(p.sharePercent) } });
+  });
+};
+const openFilled = async () => {
+  await open();
+  fillFour();
 };
 
 beforeEach(() => {
@@ -66,7 +78,7 @@ describe('who is drawn the card', () => {
     expect(api.mock.calls.map((c) => c[0])).toEqual(['/api/finance/partners']);
   });
 
-  it('a list that cannot be read says so, and draws no form — the four are not offered over partners that may exist', async () => {
+  it('a list that cannot be read says so, and draws no form — empty rows are not offered over partners that may exist', async () => {
     api.mockRejectedValue(new Error('x'));
     render(<PartnersCard />);
     expect(await screen.findByText(/تعذّر تحميل الشركاء/)).toBeTruthy();
@@ -74,33 +86,51 @@ describe('who is drawn the card', () => {
   });
 });
 
-describe('nothing saved yet: the owner’s four, as rows to edit', () => {
-  it('draws the four named, in his order, with his shares, as real boxes — and says they are not saved yet', async () => {
+describe('nothing saved yet: four EMPTY rows, with hints', () => {
+  it('draws four rows with nothing in them — a name box and a share box each, a hint in each — and says nothing is saved yet', async () => {
     await open();
-    expect(names()).toEqual(['محمد كوري', 'عبدالله كيوان', 'محمد كيوان', 'احمد كيوان']);
-    expect(shares()).toEqual(['15', '15', '15', '55']);
-    expect(screen.getByText(/ما في شركاء محفوظين لسا/)).toBeTruthy();
-    expect(screen.getByText('المجموع 100 — تمام')).toBeTruthy();
+    expect(names()).toEqual(['', '', '', '']);
+    expect(shares()).toEqual(['', '', '', '']);
+    expect(screen.getAllByPlaceholderText('اكتب اسم الشريك')).toHaveLength(4);
+    expect(screen.getAllByPlaceholderText('مثلاً 25')).toHaveLength(4);
+    expect((screen.getAllByRole('checkbox') as HTMLInputElement[]).map((b) => b.checked)).toEqual([true, true, true, true]);
+    expect(screen.getByText(/ما في شركاء محفوظين لسا — اكتب اسم كل شريك ونسبته/)).toBeTruthy();
   });
 
-  it('writes NOTHING until the press: the four are the form’s state, not the database’s', async () => {
+  it('there is nothing to save from empty boxes: the total reads 0, the sentence is the door’s own, and the press is shut', async () => {
     await open();
+    expect(screen.getByText('المجموع 0 — لازم يكون 100 بالضبط')).toBeTruthy();
+    expect(screen.getByText('اكتب اسم كل شريك (حرفين على الأقل).')).toBeTruthy();
+    expect(saveButton().disabled).toBe(true);
+    fireEvent.click(saveButton());
+    expect(puts()).toHaveLength(0);
+  });
+
+  it('a name typed with no share is refused with the share’s own sentence', async () => {
+    await open();
+    fireEvent.change(screen.getAllByLabelText('الاسم')[0], { target: { value: 'شريك أ' } });
+    expect(screen.getByText(/نسبة «شريك أ» لازم تكون رقم أكبر من صفر/)).toBeTruthy();
+    expect(saveButton().disabled).toBe(true);
+  });
+
+  it('writes NOTHING until the press: what is typed is the form’s state, not the database’s', async () => {
+    await openFilled();
     expect(puts()).toHaveLength(0);
     expect(saveButton().disabled).toBe(false);
   });
 
-  it('the press sends the four as the characters in the boxes, in order, with no id, and then shows what was saved', async () => {
-    await open();
+  it('the press sends what was typed — the characters in the boxes, in order, with no id — and then shows what was saved', async () => {
+    await openFilled();
     fireEvent.click(saveButton());
     await waitFor(() => expect(puts()).toHaveLength(1));
     const [url, init] = puts()[0] as [string, { body: string; method: string }];
     expect(url).toBe('/api/finance/partners');
     expect(JSON.parse(init.body)).toEqual({
       partners: [
-        { name: 'محمد كوري', sharePercent: '15', isActive: true },
-        { name: 'عبدالله كيوان', sharePercent: '15', isActive: true },
-        { name: 'محمد كيوان', sharePercent: '15', isActive: true },
-        { name: 'احمد كيوان', sharePercent: '55', isActive: true },
+        { name: 'شريك أ', sharePercent: '15', isActive: true },
+        { name: 'شريك ب', sharePercent: '15', isActive: true },
+        { name: 'شريك ج', sharePercent: '15', isActive: true },
+        { name: 'شريك د', sharePercent: '55', isActive: true },
       ],
     });
     await waitFor(() => expect(toast.done).toHaveBeenCalledWith('انحفظ الشركاء ونسبهم'));
@@ -109,22 +139,22 @@ describe('nothing saved yet: the owner’s four, as rows to edit', () => {
     await waitFor(() => expect(saveButton().disabled).toBe(true));
   });
 
-  it('the names are the owner’s to edit before he presses: a changed name and a changed share are what is sent', async () => {
-    await open();
-    fireEvent.change(screen.getAllByLabelText('الاسم')[0], { target: { value: 'محمد كوري الصغير' } });
+  it('a name and a share changed before the press are what is sent', async () => {
+    await openFilled();
+    fireEvent.change(screen.getAllByLabelText('الاسم')[0], { target: { value: 'شريك أ الصغير' } });
     fireEvent.change(screen.getAllByLabelText('النسبة (%)')[0], { target: { value: '20' } });
     fireEvent.change(screen.getAllByLabelText('النسبة (%)')[3], { target: { value: '50' } });
     fireEvent.click(saveButton());
     await waitFor(() => expect(puts()).toHaveLength(1));
     const sent = JSON.parse((puts()[0][1] as { body: string }).body).partners;
-    expect(sent[0]).toMatchObject({ name: 'محمد كوري الصغير', sharePercent: '20' });
+    expect(sent[0]).toMatchObject({ name: 'شريك أ الصغير', sharePercent: '20' });
     expect(sent[3]).toMatchObject({ sharePercent: '50' });
   });
 });
 
 describe('the total is live, and «حفظ» waits for exactly 100', () => {
   it('99 is not 100: the total says so in red, the refusal is the door’s own sentence, and the press is shut', async () => {
-    await open();
+    await openFilled();
     fireEvent.change(screen.getAllByLabelText('النسبة (%)')[3], { target: { value: '54' } });
     expect(screen.getByText('المجموع 99 — لازم يكون 100 بالضبط')).toBeTruthy();
     expect(screen.getByText('مجموع نسب الشركاء الفعّالين 99 — لازم يكون 100 بالضبط.')).toBeTruthy();
@@ -134,7 +164,7 @@ describe('the total is live, and «حفظ» waits for exactly 100', () => {
   });
 
   it('101 and 100.01 are refused, 100.00 is accepted — to the hundredth', async () => {
-    await open();
+    await openFilled();
     const last = () => screen.getAllByLabelText('النسبة (%)')[3];
     fireEvent.change(last(), { target: { value: '56' } });
     expect(saveButton().disabled).toBe(true);
@@ -147,7 +177,7 @@ describe('the total is live, and «حفظ» waits for exactly 100', () => {
   });
 
   it('a share of three decimals, zero or nothing is refused with its own sentence', async () => {
-    await open();
+    await openFilled();
     const first = () => screen.getAllByLabelText('النسبة (%)')[0];
     fireEvent.change(first(), { target: { value: '15.123' } });
     expect(screen.getByText(/لازم تكون رقم أكبر من صفر وما تزيد عن 100، وبخانتين عشريتين على الأكثر/)).toBeTruthy();
@@ -159,17 +189,18 @@ describe('the total is live, and «حفظ» waits for exactly 100', () => {
   });
 
   it('a name left empty, or repeated, is refused', async () => {
-    await open();
+    await openFilled();
     fireEvent.change(screen.getAllByLabelText('الاسم')[1], { target: { value: '' } });
     expect(screen.getByText('اكتب اسم كل شريك (حرفين على الأقل).')).toBeTruthy();
     expect(saveButton().disabled).toBe(true);
-    fireEvent.change(screen.getAllByLabelText('الاسم')[1], { target: { value: 'محمد   كوري' } });
+    // the same name with a different spacing is the same name
+    fireEvent.change(screen.getAllByLabelText('الاسم')[1], { target: { value: 'شريك   أ' } });
     expect(screen.getByText(/في اسمين متشابهين/)).toBeTruthy();
     expect(saveButton().disabled).toBe(true);
   });
 
   it('a partner switched off leaves the total: 100 among the active is what counts', async () => {
-    await open();
+    await openFilled();
     const box = () => screen.getAllByRole('checkbox')[0] as HTMLInputElement;
     expect(box().checked).toBe(true);
     fireEvent.click(box());
@@ -183,16 +214,17 @@ describe('the total is live, and «حفظ» waits for exactly 100', () => {
   });
 
   it('nobody active is refused', async () => {
-    await open();
+    await openFilled();
     for (const box of screen.getAllByRole('checkbox')) fireEvent.click(box);
     expect(screen.getByText('لازم يضل شريك فعّال واحد على الأقل.')).toBeTruthy();
     expect(saveButton().disabled).toBe(true);
   });
 
-  it('«إضافة شريك» adds a blank row that must be filled before the list can be saved', async () => {
-    await open();
+  it('«إضافة شريك» adds a blank row, with its hints, that must be filled before the list can be saved', async () => {
+    await openFilled();
     fireEvent.click(screen.getByRole('button', { name: 'إضافة شريك' }));
     expect(names()).toHaveLength(5);
+    expect(screen.getAllByPlaceholderText('اكتب اسم الشريك')).toHaveLength(5);
     expect(saveButton().disabled).toBe(true);
     fireEvent.change(screen.getAllByLabelText('النسبة (%)')[4], { target: { value: '10' } });
     fireEvent.change(screen.getAllByLabelText('النسبة (%)')[3], { target: { value: '45' } });
@@ -201,7 +233,7 @@ describe('the total is live, and «حفظ» waits for exactly 100', () => {
   });
 
   it('there is no way to delete a partner from here: no delete button, only the switch', async () => {
-    await open();
+    await openFilled();
     expect(screen.queryByRole('button', { name: /حذف|احذف|مسح/ })).toBeNull();
     expect(screen.getByText(/الشريك ما بينحذف، بينوقّف/)).toBeTruthy();
   });
@@ -217,7 +249,7 @@ describe('a list that is saved', () => {
 
   it('is shown as saved — no «not saved yet» line, and nothing to press until something changes', async () => {
     await open();
-    expect(names()).toEqual(['محمد كوري', 'عبدالله كيوان', 'محمد كيوان', 'احمد كيوان']);
+    expect(names()).toEqual(['شريك أ', 'شريك ب', 'شريك ج', 'شريك د']);
     expect(screen.queryByText(/ما في شركاء محفوظين لسا/)).toBeNull();
     expect(saveButton().disabled).toBe(true);
   });
@@ -245,35 +277,6 @@ describe('a list that is saved', () => {
     expect(await screen.findByText(/القائمة ناقصة/)).toBeTruthy();
     expect(shares()).toEqual(['10', '15', '15', '60']);
     expect(toast.done).not.toHaveBeenCalled();
-  });
-});
-
-describe('the four names live in this form and nowhere else', () => {
-  const root = join(process.cwd(), 'src');
-  const files: string[] = [];
-  (function walk(dir: string) {
-    for (const name of readdirSync(dir)) {
-      const p = join(dir, name);
-      if (statSync(p).isDirectory()) walk(p);
-      else if (/\.(tsx|ts)$/.test(name) && !/\.test\./.test(name)) files.push(p);
-    }
-  })(root);
-
-  it('no file of the product but the card carries a partner’s name — not a migration, a seed, a constant, a route', () => {
-    for (const name of ['محمد كوري', 'عبدالله كيوان', 'احمد كيوان']) {
-      const holders = files.filter((f) => readFileSync(f, 'utf8').includes(name)).map((f) => f.slice(root.length + 1).split('\\').join('/'));
-      expect(holders, name).toEqual(['components/settings/PartnersCard.tsx']);
-    }
-    const prisma = join(process.cwd(), 'prisma');
-    const sql: string[] = [];
-    (function walk(dir: string) {
-      for (const n of readdirSync(dir)) {
-        const p = join(dir, n);
-        if (statSync(p).isDirectory()) walk(p);
-        else if (/\.(sql|ts)$/.test(n)) sql.push(p);
-      }
-    })(prisma);
-    expect(sql.filter((f) => /محمد كوري|عبدالله كيوان|احمد كيوان/.test(readFileSync(f, 'utf8')))).toEqual([]);
   });
 });
 

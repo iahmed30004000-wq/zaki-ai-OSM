@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 /**
  * «الشركاء والنسب» — THE DOOR THAT SAVES THE PARTNERS (13/11).
  *
- * «هلأ احنا ٤ شركاء: محمد كوري 15% · عبدالله كيوان 15% · محمد كيوان 15% · احمد كيوان 55%». The list is saved as a whole and only if
+ * «هلأ احنا ٤ شركاء …» (the owner). The four partners in this file are made up — شريك أ 15% · شريك ب 15% · شريك ج 15% · شريك د 55% —
+ * because the repository is public and no real name or share is written in it. The list is saved as a whole and only if
  * it is whole: the active shares total exactly 100.00, every partner already saved is in the request, nobody is deleted, and the key
  * is asked before a byte of the body is read. Driven through the real GET and PUT over an in-memory partners table.
  */
@@ -48,10 +49,10 @@ vi.mock('@/lib/authorization', () => ({
 import { GET, PUT } from './route';
 
 const FOUR = [
-  { name: 'محمد كوري', sharePercent: 15, isActive: true },
-  { name: 'عبدالله كيوان', sharePercent: 15, isActive: true },
-  { name: 'محمد كيوان', sharePercent: 15, isActive: true },
-  { name: 'احمد كيوان', sharePercent: 55, isActive: true },
+  { name: 'شريك أ', sharePercent: 15, isActive: true },
+  { name: 'شريك ب', sharePercent: 15, isActive: true },
+  { name: 'شريك ج', sharePercent: 15, isActive: true },
+  { name: 'شريك د', sharePercent: 55, isActive: true },
 ];
 const ALL_FINANCE_BUT_PARTNERS = [
   'finance.view', 'finance.create', 'finance.update', 'finance.cashbox_view', 'finance.cashbox', 'finance.wallets_manage',
@@ -103,12 +104,12 @@ describe('the first save: the owner’s four, typed on the card', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.partners.map((p: Row) => [p.name, p.sharePercent, p.isActive, p.sortOrder])).toEqual([
-      ['محمد كوري', 15, true, 0], ['عبدالله كيوان', 15, true, 1], ['محمد كيوان', 15, true, 2], ['احمد كيوان', 55, true, 3],
+      ['شريك أ', 15, true, 0], ['شريك ب', 15, true, 1], ['شريك ج', 15, true, 2], ['شريك د', 55, true, 3],
     ]);
     expect(body.sharesTotal).toBe(100);
     expect(saved()).toHaveLength(4);
     expect(db.partner.create).toHaveBeenCalledTimes(4);
-    expect(db.partner.create.mock.calls[0][0].data).toMatchObject({ companyId: 'c1', name: 'محمد كوري', sharePercent: 15, sortOrder: 0 });
+    expect(db.partner.create.mock.calls[0][0].data).toMatchObject({ companyId: 'c1', name: 'شريك أ', sharePercent: 15, sortOrder: 0 });
   });
 
   it('is ONE transaction, and is written to the audit trail with before and after', async () => {
@@ -137,7 +138,7 @@ describe('the first save: the owner’s four, typed on the card', () => {
     expect(body.sharesTotal).toBe(100);
   });
 
-  it('GET on a company with no partners: an empty list and a total of zero — the card shows the four as rows to edit', async () => {
+  it('GET on a company with no partners: an empty list and a total of zero — the card shows four empty rows to fill', async () => {
     const body = await (await get()).json();
     expect(body).toEqual({ partners: [], sharesTotal: 0 });
   });

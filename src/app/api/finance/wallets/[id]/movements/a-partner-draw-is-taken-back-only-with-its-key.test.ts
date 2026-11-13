@@ -73,7 +73,7 @@ beforeEach(() => {
   tables.wallet.push({ id: WALLET, storeId: 's1', name: 'الصندوق', isActive: true, country: { minorUnit: 2 } });
   tables.walletMovement.push(
     {
-      id: DRAW, companyId: 'c1', walletId: WALLET, direction: 'OUT', amount: '100', currencyCode: 'USD', party: 'احمد كيوان', category: 'PARTNER_DRAW',
+      id: DRAW, companyId: 'c1', walletId: WALLET, direction: 'OUT', amount: '100', currencyCode: 'USD', party: 'شريك د', category: 'PARTNER_DRAW',
       note: 'سحب', referenceType: 'PARTNER_DRAW', referenceId: P, reversalOfId: null, partnerId: P, valueInStoreCurrency: '98.700',
       createdById: 'u1', createdAt: new Date('2026-11-12T10:00:00Z'),
     },

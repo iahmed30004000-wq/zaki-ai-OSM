@@ -20,8 +20,9 @@ import { activeSharesTotal, sharesProblem } from '@/lib/partner-statement-core';
  * must read exactly 100 before «حفظ» can be pressed. The refusal printed under the list is the very sentence the door would answer
  * with — it is the same function (`sharesProblem`) — so nothing is learned only after the press.
  *
- * WHEN NOTHING IS SAVED YET, the four the owner named are drawn as EDITABLE rows and are written nowhere until he presses «حفظ»: they
- * live in this form's initial state (`STARTING_ROWS`) and in no other file — no migration, no seed, no line of code writes them.
+ * WHEN NOTHING IS SAVED YET, four EMPTY rows are drawn: a box for the name and a box for the share, each with a hint and no value. This
+ * repository is public and so is its image, so no partner's name or share is written in it — not here, not in a migration, a seed or a
+ * test. The owner types them himself, and nothing is written anywhere until he presses «حفظ».
  */
 
 interface SavedPartner {
@@ -44,13 +45,8 @@ interface Row {
   isActive: boolean;
 }
 
-/** «محمد كوري 15% · عبدالله كيوان 15% · محمد كيوان 15% · احمد كيوان 55%» — the owner's own list, as a starting point to edit. */
-const STARTING_ROWS = [
-  { name: 'محمد كوري', share: '15' },
-  { name: 'عبدالله كيوان', share: '15' },
-  { name: 'محمد كيوان', share: '15' },
-  { name: 'احمد كيوان', share: '55' },
-];
+/** Four boxes to fill and nothing in them: the names and the shares are the owner's to type. */
+const STARTING_ROWS = Array.from({ length: 4 }, () => ({ name: '', share: '' }));
 
 const asShareRows = (rows: Row[]) => rows.map((r) => ({ name: r.name, sharePercent: r.share, isActive: r.isActive }));
 const snapshot = (rows: Row[]) => JSON.stringify(rows.map((r) => [r.id ?? '', r.name.trim(), r.share.trim(), r.isActive]));
@@ -102,7 +98,7 @@ function PartnersForm() {
   const problem = sharesProblem(asShareRows(rows));
   const total = activeSharesTotal(asShareRows(rows));
   const savedRows: Row[] = (saved ?? []).map((p) => ({ key: p.id, id: p.id, name: p.name, share: String(p.sharePercent), isActive: p.isActive }));
-  // Nothing saved yet counts as changed: the four on the screen are not the database's until the press.
+  // Nothing saved yet counts as changed: what is on the screen is not the database's until the press.
   const dirty = fresh || snapshot(rows) !== snapshot(savedRows);
 
   const save = async (e: React.FormEvent) => {
@@ -142,18 +138,19 @@ function PartnersForm() {
         ) : (
           <form onSubmit={save} className="space-y-4">
             {fresh && (
-              <p className="text-xs text-[var(--sys-warning)]">ما في شركاء محفوظين لسا — هدول الأربعة جاهزين للتعديل، اضغط «حفظ» لما تتأكد منهم.</p>
+              <p className="text-xs text-[var(--sys-warning)]">ما في شركاء محفوظين لسا — اكتب اسم كل شريك ونسبته بالخانات، وبعدين اضغط «حفظ».</p>
             )}
 
             <ul className="divide-y divide-[var(--sys-border)]">
               {rows.map((r) => (
                 <li key={r.key} className="flex flex-wrap items-end gap-3 py-3">
                   <div className="min-w-[220px] flex-1">
-                    <Input label="الاسم" value={r.name} maxLength={60} onChange={(e) => change(r.key, { name: e.target.value })} />
+                    <Input label="الاسم" placeholder="اكتب اسم الشريك" value={r.name} maxLength={60} onChange={(e) => change(r.key, { name: e.target.value })} />
                   </div>
                   <div className="w-28">
                     <Input
                       label="النسبة (%)"
+                      placeholder="مثلاً 25"
                       type="number"
                       inputMode="decimal"
                       step="0.01"

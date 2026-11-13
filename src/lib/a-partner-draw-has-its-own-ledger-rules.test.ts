@@ -22,7 +22,7 @@ vi.mock('./db', () => ({ db }));
 import { PartnerDrawRefused, recordMovement, reverseMovement } from './wallets';
 
 const P = '11111111-1111-4111-8111-111111111111';
-const base = { companyId: 'c1', walletId: 'w1', direction: 'OUT' as const, amount: 100, party: 'احمد كيوان', note: 'سحب', createdById: 'u1' };
+const base = { companyId: 'c1', walletId: 'w1', direction: 'OUT' as const, amount: 100, party: 'شريك د', note: 'سحب', createdById: 'u1' };
 const draw = (over: Record<string, unknown> = {}) => ({
   ...base, category: 'PARTNER_DRAW' as const, referenceType: 'PARTNER_DRAW', referenceId: P, partnerId: P, valueInStoreCurrency: 100, ...over,
 });
@@ -82,7 +82,7 @@ describe('recordMovement writes a partner draw only when it is whole', () => {
 
 describe('reverseMovement and a partner draw', () => {
   const original = (over: Record<string, unknown> = {}) => ({
-    id: 'orig', companyId: 'c1', walletId: 'w1', direction: 'OUT', amount: 100, currencyCode: 'USD', party: 'احمد كيوان', category: 'PARTNER_DRAW',
+    id: 'orig', companyId: 'c1', walletId: 'w1', direction: 'OUT', amount: 100, currencyCode: 'USD', party: 'شريك د', category: 'PARTNER_DRAW',
     note: 'سحب', referenceType: 'PARTNER_DRAW', referenceId: P, reversalOfId: null, partnerId: P, valueInStoreCurrency: 98.7, ...over,
   });
   const params = (over: Record<string, unknown> = {}) => ({ companyId: 'c1', walletId: 'w1', movementId: 'orig', reason: 'سُجِّل بالغلط', createdById: 'u1', ...over });

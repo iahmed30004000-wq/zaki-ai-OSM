@@ -51,7 +51,7 @@ const statementOf = (over: Record<string, unknown> = {}) => ({
   state: 'OK', sharesTotal: 100, currency: 'USD', minorUnit: 2, netProfit: 1000, uncounted: 0, draws: [],
   trust: { level: 'STATED', present: 10, population: 10, share: 100, ar: 'x' },
   totals: { entitlement: 1000, draws: 100, broken: 0 },
-  lines: [line('mk', 'محمد كوري', 15, 150, 100), line('ah', 'احمد كيوان', 55, 550, 0), line('old', 'شريك سابق', 10, 0, 0, false)],
+  lines: [line('pa', 'شريك أ', 15, 150, 100), line('pd', 'شريك د', 55, 550, 0), line('old', 'شريك سابق', 10, 0, 0, false)],
   ...over,
 });
 
@@ -183,7 +183,7 @@ describe('the draw form: partner, amount, note — and no «الطرف»', () =>
     as('finance.partners');
     const dialog = await openDialog();
     await chooseDraw(dialog);
-    expect(within(partnerBox(dialog)).getAllByRole('option').map((o) => o.textContent)).toEqual(['اختر الشريك…', 'محمد كوري', 'احمد كيوان']);
+    expect(within(partnerBox(dialog)).getAllByRole('option').map((o) => o.textContent)).toEqual(['اختر الشريك…', 'شريك أ', 'شريك د']);
     expect(within(dialog).queryByLabelText('الطرف')).toBeNull();
     expect(noteBox(dialog).required).toBe(false);
     expect(within(dialog).getByText('الملاحظة (اختيارية)')).toBeTruthy();
@@ -197,7 +197,7 @@ describe('the draw form: partner, amount, note — and no «الطرف»', () =>
     await chooseDraw(dialog);
     fireEvent.change(amountBox(dialog), { target: { value: '100' } });
     expect(send(dialog).disabled).toBe(true);
-    fireEvent.change(partnerBox(dialog), { target: { value: 'mk' } });
+    fireEvent.change(partnerBox(dialog), { target: { value: 'pa' } });
     expect(send(dialog).disabled).toBe(false);
     fireEvent.change(amountBox(dialog), { target: { value: '0' } });
     expect(send(dialog).disabled).toBe(true);
@@ -207,14 +207,14 @@ describe('the draw form: partner, amount, note — and no «الطرف»', () =>
     as('finance.partners');
     const dialog = await openDialog();
     await chooseDraw(dialog);
-    fireEvent.change(partnerBox(dialog), { target: { value: 'mk' } });
+    fireEvent.change(partnerBox(dialog), { target: { value: 'pa' } });
     fireEvent.change(amountBox(dialog), { target: { value: '100' } });
     fireEvent.click(send(dialog));
     await waitFor(() => expect(writes()).toHaveLength(1));
     expect(writes()[0]).toEqual({
       url: '/api/finance/partners/draws',
       method: 'POST',
-      body: { walletId: 'w1', partnerId: 'mk', amount: '100' },
+      body: { walletId: 'w1', partnerId: 'pa', amount: '100' },
     });
     // not the movements door and not the expense door
     expect(sent.some((s) => s.url.includes('/movements') || s.url === '/api/finance')).toBe(false);
@@ -224,12 +224,12 @@ describe('the draw form: partner, amount, note — and no «الطرف»', () =>
     as('finance.partners');
     const dialog = await openDialog();
     await chooseDraw(dialog);
-    fireEvent.change(partnerBox(dialog), { target: { value: 'ah' } });
+    fireEvent.change(partnerBox(dialog), { target: { value: 'pd' } });
     fireEvent.change(amountBox(dialog), { target: { value: '12.5' } });
     fireEvent.change(noteBox(dialog), { target: { value: '  مصروف البيت  ' } });
     fireEvent.click(send(dialog));
     await waitFor(() => expect(writes()).toHaveLength(1));
-    expect(writes()[0].body).toEqual({ walletId: 'w1', partnerId: 'ah', amount: '12.5', note: 'مصروف البيت' });
+    expect(writes()[0].body).toEqual({ walletId: 'w1', partnerId: 'pd', amount: '12.5', note: 'مصروف البيت' });
   });
 
   it('the door’s refusal is printed and the dialog stays open — nothing is said to have been saved', async () => {
@@ -237,7 +237,7 @@ describe('the draw form: partner, amount, note — and no «الطرف»', () =>
     answers.refusal = { status: 409, body: { error: 'سجّلت نفس السحب قبل لحظات — ما انسجّل مرتين.', code: 'DUPLICATE_DRAW' } };
     const dialog = await openDialog();
     await chooseDraw(dialog);
-    fireEvent.change(partnerBox(dialog), { target: { value: 'mk' } });
+    fireEvent.change(partnerBox(dialog), { target: { value: 'pa' } });
     fireEvent.change(amountBox(dialog), { target: { value: '100' } });
     fireEvent.click(send(dialog));
     expect(await within(dialog).findByText(/ما انسجّل مرتين/)).toBeTruthy();
@@ -281,7 +281,7 @@ describe('THE CURRENCY: a wallet in another currency than the store’s', () => 
     expect(box.required).toBe(true);
     expect(within(dialog).getByText('ما يعادله بعملة المتجر (USD)')).toBeTruthy();
     expect(within(dialog).getByText(/غير عملة المتجر \(USD\)/)).toBeTruthy();
-    fireEvent.change(partnerBox(dialog), { target: { value: 'mk' } });
+    fireEvent.change(partnerBox(dialog), { target: { value: 'pa' } });
     fireEvent.change(amountBox(dialog), { target: { value: '70' } });
     expect(send(dialog).disabled).toBe(true);
     fireEvent.change(box, { target: { value: '98.7' } });
@@ -292,19 +292,19 @@ describe('THE CURRENCY: a wallet in another currency than the store’s', () => 
     as('finance.partners');
     const dialog = await openDialog();
     await chooseDraw(dialog);
-    fireEvent.change(partnerBox(dialog), { target: { value: 'mk' } });
+    fireEvent.change(partnerBox(dialog), { target: { value: 'pa' } });
     fireEvent.change(amountBox(dialog), { target: { value: '70' } });
     fireEvent.change(valueBox(dialog)!, { target: { value: '98.7' } });
     fireEvent.click(send(dialog));
     await waitFor(() => expect(writes()).toHaveLength(1));
-    expect(writes()[0].body).toEqual({ walletId: 'w2', partnerId: 'mk', amount: '70', valueInStoreCurrency: '98.7' });
+    expect(writes()[0].body).toEqual({ walletId: 'w2', partnerId: 'pa', amount: '70', valueInStoreCurrency: '98.7' });
   });
 
   it('the live sentence counts the EQUIVALENT, not the dinars', async () => {
     as('finance.partners');
     const dialog = await openDialog();
     await chooseDraw(dialog);
-    fireEvent.change(partnerBox(dialog), { target: { value: 'mk' } });
+    fireEvent.change(partnerBox(dialog), { target: { value: 'pa' } });
     fireEvent.change(amountBox(dialog), { target: { value: '70' } });
     fireEvent.change(valueBox(dialog)!, { target: { value: '30' } });
     // 150 - 100 drawn = 50 left; 30 of it: 20 stays
@@ -319,7 +319,7 @@ describe('«نصيبه من الصافي · سحب لحد هلق · بعد ها�
     as('finance.partners');
     const dialog = await openDialog();
     await chooseDraw(dialog);
-    fireEvent.change(partnerBox(dialog), { target: { value: 'mk' } });
+    fireEvent.change(partnerBox(dialog), { target: { value: 'pa' } });
     return dialog;
   };
 
@@ -358,13 +358,13 @@ describe('«نصيبه من الصافي · سحب لحد هلق · بعد ها�
     expect(send(dialog).disabled).toBe(false);
     fireEvent.click(send(dialog));
     await waitFor(() => expect(writes()).toHaveLength(1));
-    expect(writes()[0].body).toMatchObject({ partnerId: 'mk', amount: '900' });
+    expect(writes()[0].body).toMatchObject({ partnerId: 'pa', amount: '900' });
   });
 
   it('it is the statement’s own subtraction: changing the partner changes the sentence, and a bad number says nothing', async () => {
     const dialog = await open();
     fireEvent.change(amountBox(dialog), { target: { value: '30' } });
-    fireEvent.change(partnerBox(dialog), { target: { value: 'ah' } });
+    fireEvent.change(partnerBox(dialog), { target: { value: 'pd' } });
     expect(hintText(dialog)).toContain('نصيبه من الصافي 550.00 USD · سحب لحد هلق 0.00 USD');
     expect(hintText(dialog)).toContain('بعد هالسحب: بيضل له 520.00 USD');
     fireEvent.change(amountBox(dialog), { target: { value: '-4' } });
@@ -373,10 +373,10 @@ describe('«نصيبه من الصافي · سحب لحد هلق · بعد ها�
 
   it('shares that cannot be cut: the sentence says so instead of figures — and the draw is still allowed', async () => {
     as('finance.partners');
-    answers.statement = statementOf({ state: 'SHARES_NOT_100', lines: [line('mk', 'محمد كوري', 15, null, 100), line('ah', 'احمد كيوان', 80, null, 0)] });
+    answers.statement = statementOf({ state: 'SHARES_NOT_100', lines: [line('pa', 'شريك أ', 15, null, 100), line('pd', 'شريك د', 80, null, 0)] });
     const dialog = await openDialog();
     await chooseDraw(dialog);
-    fireEvent.change(partnerBox(dialog), { target: { value: 'mk' } });
+    fireEvent.change(partnerBox(dialog), { target: { value: 'pa' } });
     fireEvent.change(amountBox(dialog), { target: { value: '30' } });
     expect(hintText(dialog)).toContain('الصافي ما انقسم لأن مجموع النسب مش 100');
     expect(send(dialog).disabled).toBe(false);
@@ -429,11 +429,11 @@ describe('the press from the TOP of the screen opens the same dialog — with th
     as('finance.partners');
     const dialog = await openFromTop();
     await chooseDraw(dialog);
-    fireEvent.change(partnerBox(dialog), { target: { value: 'mk' } });
+    fireEvent.change(partnerBox(dialog), { target: { value: 'pa' } });
     fireEvent.change(amountBox(dialog), { target: { value: '40' } });
     fireEvent.click(send(dialog));
     await waitFor(() => expect(writes()).toHaveLength(1));
-    expect(writes()[0]).toEqual({ url: '/api/finance/partners/draws', method: 'POST', body: { walletId: 'w1', partnerId: 'mk', amount: '40' } });
+    expect(writes()[0]).toEqual({ url: '/api/finance/partners/draws', method: 'POST', body: { walletId: 'w1', partnerId: 'pa', amount: '40' } });
   });
 
   it('NEGATIVE: nobody else is offered it from the top either — and nobody without the key asks for the statement', async () => {

@@ -86,11 +86,11 @@ import { profitToDate } from '@/lib/profit-to-date';
 
 const W_USD = '11111111-1111-4111-8111-111111111111';
 const W_JOD = '22222222-2222-4222-8222-222222222222';
-const P_AHMAD = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const P_D = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const P_OFF = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
 const post = (body: unknown) => POST(new Request('http://localhost/api/finance/partners/draws', { method: 'POST', body: JSON.stringify(body) }));
-const draw = (over: Record<string, unknown> = {}) => ({ walletId: W_USD, partnerId: P_AHMAD, amount: 100, ...over });
+const draw = (over: Record<string, unknown> = {}) => ({ walletId: W_USD, partnerId: P_D, amount: 100, ...over });
 const written = () => tables.walletMovement;
 
 beforeEach(() => {
@@ -106,7 +106,7 @@ beforeEach(() => {
     { id: '33333333-3333-4333-8333-333333333333', companyId: 'c1', storeId: 's2', name: 'صندوق متجر آخر', currencyCode: 'USD', minor: 2, isActive: true },
   );
   tables.partner.push(
-    { id: P_AHMAD, companyId: 'c1', name: 'احمد كيوان', sharePercent: 55, isActive: true },
+    { id: P_D, companyId: 'c1', name: 'شريك د', sharePercent: 55, isActive: true },
     { id: P_OFF, companyId: 'c1', name: 'شريك سابق', sharePercent: 10, isActive: false },
   );
   tables.order.push({ id: 'o1', orderNumber: 'o1', totalAmount: 400, shippingCost: 10, estimatedCostOfGoods: 50, deliveredAt: new Date() });
@@ -147,14 +147,14 @@ describe('a draw from a wallet in the store’s own currency', () => {
     expect(res.status).toBe(201);
     expect(written()).toHaveLength(1);
     expect(written()[0]).toMatchObject({
-      companyId: 'c1', walletId: W_USD, direction: 'OUT', amount: 100, currencyCode: 'USD', party: 'احمد كيوان', category: 'PARTNER_DRAW',
-      note: 'مصروف شخصي', referenceType: 'PARTNER_DRAW', referenceId: P_AHMAD, partnerId: P_AHMAD, valueInStoreCurrency: 100, createdById: 'u1',
+      companyId: 'c1', walletId: W_USD, direction: 'OUT', amount: 100, currencyCode: 'USD', party: 'شريك د', category: 'PARTNER_DRAW',
+      note: 'مصروف شخصي', referenceType: 'PARTNER_DRAW', referenceId: P_D, partnerId: P_D, valueInStoreCurrency: 100, createdById: 'u1',
     });
   });
 
   it('with no note, the movement still says what it is — `note` is NOT NULL in the ledger', async () => {
     await post(draw());
-    expect(written()[0].note).toBe('سحب احمد كيوان');
+    expect(written()[0].note).toBe('سحب شريك د');
   });
 
   it('is written to the audit trail with the partner, the wallet and both figures', async () => {
@@ -162,7 +162,7 @@ describe('a draw from a wallet in the store’s own currency', () => {
     expect(logAudit).toHaveBeenCalledTimes(1);
     expect(logAudit.mock.calls[0][0]).toMatchObject({
       action: 'PARTNER_DRAW_RECORDED', companyId: 'c1', userId: 'u1', entity: 'WalletMovement',
-      newData: { wallet: 'الصندوق', partner: 'احمد كيوان', amount: 100, currencyCode: 'USD', valueInStoreCurrency: 100, storeCurrency: 'USD' },
+      newData: { wallet: 'الصندوق', partner: 'شريك د', amount: 100, currencyCode: 'USD', valueInStoreCurrency: 100, storeCurrency: 'USD' },
     });
   });
 
@@ -200,7 +200,7 @@ describe('THE CURRENCY: a wallet in another currency than the store’s', () => 
   it('with it, the movement keeps the wallet’s amount and carries the store’s worth: 70 JOD = 98.70 USD', async () => {
     const res = await post(draw({ walletId: W_JOD, amount: 70, valueInStoreCurrency: 98.7 }));
     expect(res.status).toBe(201);
-    expect(written()[0]).toMatchObject({ walletId: W_JOD, amount: 70, currencyCode: 'JOD', valueInStoreCurrency: 98.7, partnerId: P_AHMAD });
+    expect(written()[0]).toMatchObject({ walletId: W_JOD, amount: 70, currencyCode: 'JOD', valueInStoreCurrency: 98.7, partnerId: P_D });
     expect(logAudit.mock.calls[0][0].newData).toMatchObject({ amount: 70, currencyCode: 'JOD', valueInStoreCurrency: 98.7, storeCurrency: 'USD' });
   });
 
@@ -317,7 +317,7 @@ describe('THE SAME PRESS TWICE draws once', () => {
   });
 
   it('a different amount, a different partner or a different person is NOT a twin', async () => {
-    tables.partner.push({ id: 'ffffffff-ffff-4fff-8fff-ffffffffffff', companyId: 'c1', name: 'محمد كوري', sharePercent: 15, isActive: true });
+    tables.partner.push({ id: 'ffffffff-ffff-4fff-8fff-ffffffffffff', companyId: 'c1', name: 'شريك أ', sharePercent: 15, isActive: true });
     expect((await post(draw())).status).toBe(201);
     expect((await post(draw({ amount: 101 }))).status).toBe(201);
     expect((await post(draw({ partnerId: 'ffffffff-ffff-4fff-8fff-ffffffffffff' }))).status).toBe(201);
@@ -338,7 +338,7 @@ describe('THE SAME PRESS TWICE draws once', () => {
   it('the twin is looked for inside the 30-second window, for the same wallet, partner, amount and person', async () => {
     await post(draw());
     const where = tx.walletMovement.findFirst.mock.calls[0][0].where;
-    expect(where).toMatchObject({ companyId: 'c1', walletId: W_USD, category: 'PARTNER_DRAW', direction: 'OUT', partnerId: P_AHMAD, amount: 100, createdById: 'u1', reversedBy: null });
+    expect(where).toMatchObject({ companyId: 'c1', walletId: W_USD, category: 'PARTNER_DRAW', direction: 'OUT', partnerId: P_D, amount: 100, createdById: 'u1', reversedBy: null });
     const windowMs = Date.now() - where.createdAt.gte.getTime();
     expect(windowMs).toBeGreaterThanOrEqual(0);
     expect(windowMs).toBeLessThan(31_000);

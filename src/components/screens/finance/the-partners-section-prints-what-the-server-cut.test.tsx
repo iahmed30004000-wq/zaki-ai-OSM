@@ -36,10 +36,10 @@ const statementOf = (over: Partial<PartnerStatement> = {}): PartnerStatement => 
   state: 'OK',
   sharesTotal: 100,
   lines: [
-    line('mk', 'محمد كوري', 15, 150, 200),
-    line('ak', 'عبدالله كيوان', 15, 150, 0),
-    line('mq', 'محمد كيوان', 15, 150, 150),
-    line('ah', 'احمد كيوان', 55, 550, 300),
+    line('pa', 'شريك أ', 15, 150, 200),
+    line('pb', 'شريك ب', 15, 150, 0),
+    line('pc', 'شريك ج', 15, 150, 150),
+    line('pd', 'شريك د', 55, 550, 300),
   ],
   totals: { entitlement: 1000, draws: 650, broken: 50 },
   currency: 'USD',
@@ -48,9 +48,9 @@ const statementOf = (over: Partial<PartnerStatement> = {}): PartnerStatement => 
   trust: { level: 'STATED', present: 10, population: 10, share: 100, ar: 'كلفة البضاعة مسجَّلة على 10 من 10 طلب — الرقم صالح.' },
   uncounted: 0,
   draws: [
-    { id: 'd2', walletId: 'w1', walletName: 'الصندوق', partnerId: 'ah', partnerName: 'احمد كيوان', amount: 300, currencyCode: 'USD', valueInStoreCurrency: 300, note: 'سحب شخصي', createdAt: '2026-11-12T10:00:00.000Z', createdByName: 'سارة', reversed: false },
-    { id: 'd1', walletId: 'w2', walletName: 'صندوق الدينار', partnerId: 'mk', partnerName: 'محمد كوري', amount: 70, currencyCode: 'JOD', valueInStoreCurrency: 98.7, note: 'سحب', createdAt: '2026-11-11T10:00:00.000Z', createdByName: 'أحمد', reversed: false },
-    { id: 'd0', walletId: 'w1', walletName: 'الصندوق', partnerId: 'mk', partnerName: 'محمد كوري', amount: 100, currencyCode: 'USD', valueInStoreCurrency: 100, note: 'غلط', createdAt: '2026-11-10T10:00:00.000Z', createdByName: 'أحمد', reversed: true },
+    { id: 'd2', walletId: 'w1', walletName: 'الصندوق', partnerId: 'pd', partnerName: 'شريك د', amount: 300, currencyCode: 'USD', valueInStoreCurrency: 300, note: 'سحب شخصي', createdAt: '2026-11-12T10:00:00.000Z', createdByName: 'سارة', reversed: false },
+    { id: 'd1', walletId: 'w2', walletName: 'صندوق الدينار', partnerId: 'pa', partnerName: 'شريك أ', amount: 70, currencyCode: 'JOD', valueInStoreCurrency: 98.7, note: 'سحب', createdAt: '2026-11-11T10:00:00.000Z', createdByName: 'أحمد', reversed: false },
+    { id: 'd0', walletId: 'w1', walletName: 'الصندوق', partnerId: 'pa', partnerName: 'شريك أ', amount: 100, currencyCode: 'USD', valueInStoreCurrency: 100, note: 'غلط', createdAt: '2026-11-10T10:00:00.000Z', createdByName: 'أحمد', reversed: true },
   ],
   ...over,
 });
@@ -73,7 +73,7 @@ afterEach(cleanup);
 /** The statement table is the first one on the section (the draws list is the second). */
 const tables = async () => {
   render(<PartnersSection />);
-  await screen.findAllByText('احمد كيوان');
+  await screen.findAllByText('شريك د');
   return screen.getAllByRole('table');
 };
 
@@ -88,13 +88,13 @@ describe('the table of the partners', () => {
     const rows = within(statement).getAllByRole('row').slice(1);
     expect(rows).toHaveLength(4);
     const first = within(rows[0]).getAllByRole('cell').map((c) => c.textContent);
-    expect(first[0]).toBe('محمد كوري');
+    expect(first[0]).toBe('شريك أ');
     expect(first[1]).toBe('15%');
     expect(first[2]).toBe('150.00 USD');
     expect(first[3]).toBe('200.00 USD');
     expect(first[4]).toBe('-50.00 USD');
     const last = within(rows[3]).getAllByRole('cell').map((c) => c.textContent);
-    expect(last.slice(0, 5)).toEqual(['احمد كيوان', '55%', '550.00 USD', '300.00 USD', '250.00 USD']);
+    expect(last.slice(0, 5)).toEqual(['شريك د', '55%', '550.00 USD', '300.00 USD', '250.00 USD']);
   });
 
   it('«مكسور عليه» is a red chip with the amount beside the one who is over — and nobody else gets one', async () => {
@@ -130,7 +130,7 @@ describe('the table of the partners', () => {
   it('a loss says there is nothing to divide, and every share reads zero', async () => {
     answer = statementOf({
       netProfit: -722.1,
-      lines: [line('ah', 'احمد كيوان', 100, 0, 10)],
+      lines: [line('pd', 'شريك د', 100, 0, 10)],
       totals: { entitlement: 0, draws: 10, broken: 10 },
     });
     await tables();
@@ -139,7 +139,7 @@ describe('the table of the partners', () => {
   });
 
   it('a switched-off partner who still has draws is listed with «موقوف»', async () => {
-    answer = statementOf({ lines: [line('mq', 'محمد كيوان', 15, 0, 25, { isActive: false }), line('ah', 'احمد كيوان', 100, 1000, 0)] });
+    answer = statementOf({ lines: [line('pc', 'شريك ج', 15, 0, 25, { isActive: false }), line('pd', 'شريك د', 100, 1000, 0)] });
     const [statement] = await tables();
     expect(within(statement).getByText('موقوف')).toBeTruthy();
   });
@@ -178,7 +178,7 @@ describe('when the shares cannot be cut', () => {
     answer = statementOf({
       state: 'SHARES_NOT_100',
       sharesTotal: 95,
-      lines: [line('mk', 'محمد كوري', 15, null, 30), line('ah', 'احمد كيوان', 80, null, 0)],
+      lines: [line('pa', 'شريك أ', 15, null, 30), line('pd', 'شريك د', 80, null, 0)],
       totals: { entitlement: null, draws: 30, broken: null },
     });
     const [statement] = await tables();
@@ -208,9 +208,9 @@ describe('the draws, with «عكس»', () => {
     expect(rows).toHaveLength(3);
     const cells = (r: HTMLElement) => within(r).getAllByRole('cell').map((c) => c.textContent);
     // a dollar draw from a dollar wallet: no equivalent column value
-    expect(cells(rows[0]).slice(1, 7)).toEqual(['احمد كيوان', '300.00 USD', '—', 'الصندوق', 'سحب شخصي', 'سارة']);
+    expect(cells(rows[0]).slice(1, 7)).toEqual(['شريك د', '300.00 USD', '—', 'الصندوق', 'سحب شخصي', 'سارة']);
     // dinars from a dinar wallet: the equivalent in the store's currency is printed
-    expect(cells(rows[1]).slice(1, 7)).toEqual(['محمد كوري', '70.00 JOD', '98.70 USD', 'صندوق الدينار', 'سحب', 'أحمد']);
+    expect(cells(rows[1]).slice(1, 7)).toEqual(['شريك أ', '70.00 JOD', '98.70 USD', 'صندوق الدينار', 'سحب', 'أحمد']);
   });
 
   it('a reversed draw is marked «معكوس» and has no «عكس»', async () => {
