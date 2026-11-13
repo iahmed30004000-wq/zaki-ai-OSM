@@ -4,7 +4,18 @@ import React, { useState } from 'react';
 import { RiCheckLine, RiLoader4Line, RiShieldCheckLine } from '@remixicon/react';
 import { apiJson } from '@/lib/api-client';
 import { OrderNotesPeek } from '@/components/orders/OrderNotesPeek';
-import { PARKED, PARKED_AR, RESOLUTION_AR, RESOLUTION_MEANING, RESOLUTIONS, type Resolution } from '@/lib/settlement-difference';
+import {
+  EXCHANGE_AR,
+  EXCHANGE_KIND,
+  EXCHANGE_MEANING,
+  PARKED,
+  PARKED_AR,
+  RESOLUTION_AR,
+  RESOLUTION_MEANING,
+  RESOLUTIONS,
+  isExchange,
+  type Resolution,
+} from '@/lib/settlement-difference';
 import { EXPLANATION_SENTENCE, explanationOf } from '@/lib/decision-words';
 import { STATEMENT_CLOSED_SENTENCE } from '@/lib/settlement-gates';
 import { useIsPhone } from '@/hooks/useIsPhone';
@@ -27,6 +38,14 @@ import { useIsPhone } from '@/hooks/useIsPhone';
  * the phone to save the sale and wrote it in the order's internal notes;
  * finance never reads those, because a note is prose and a statement is a
  * number. One press puts the prose beside the number.
+ *
+ * ── «طلب تبديل» IS THE THIRD BUTTON, AND IT IS THE FIRST ONE WITH A REASON ──
+ *
+ * «احيانا بيكون طلب تبديل او زبون وصلو الطلب ناقص فنبعثلو حبة» (the owner, 13/11). A replacement, or a piece sent to a customer whose
+ * order came short, has no price to collect — the «difference» is the whole price of an order nobody was to pay for. The button
+ * answers «اعتُمد رقم الشركة» and says WHY (`exchange: true`), so the line is not counted as a discount somebody gave and nobody is
+ * asked to carry its shortfall. It is allowed exactly where their figure is — it reads that button's verdict, and greys with that
+ * button's sentence — and it is offered here, one order at a time, and not in the bulk answer. «غيّر البتّ» moves a line to or from it.
  */
 
 /** What the server's matrix says about each saying, for THIS order as it is now: allowed, or the sentence why not. */
@@ -38,6 +57,8 @@ interface Props {
   orderId: string | null;
   orderNumber: string | null;
   resolution: string | null;
+  /** `EXCHANGE` beside «اعتُمد رقم الشركة» is «طلب تبديل». Absent (an older server) or null: not an exchange. */
+  resolutionKind?: string | null;
   resolutionNote: string | null;
   onResolved: () => void;
   /** The matrix for this row (settlement-decisions). Absent: every saying is offered and the door decides. */
@@ -64,6 +85,7 @@ export function DifferenceActions({
   orderId,
   orderNumber,
   resolution: saved,
+  resolutionKind,
   resolutionNote,
   onResolved,
   decisions,
@@ -72,7 +94,7 @@ export function DifferenceActions({
   locked,
   parkOnly,
 }: Props) {
-  const [busy, setBusy] = useState<Resolution | typeof PARKED | null>(null);
+  const [busy, setBusy] = useState<Resolution | typeof PARKED | typeof EXCHANGE_KIND | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState('');
   // The two money decisions say which is which WITHOUT a hover on a phone (there is none): each at rest wears the
@@ -83,20 +105,23 @@ export function DifferenceActions({
   // While a person changes the answer, the row is read as unanswered; once it is saved the new answer shows.
   const resolution = again ? null : saved;
 
-  const resolve = async (choice: Resolution | typeof PARKED) => {
+  const resolve = async (choice: Resolution | typeof PARKED, exchange = false) => {
     // The explanation is the person's, five characters at least: the same rule the door holds.
     const explanation = explanationOf(note);
     if (!explanation) {
       setError(EXPLANATION_SENTENCE);
       return;
     }
-    setBusy(choice);
+    setBusy(exchange ? EXCHANGE_KIND : choice);
     setError(null);
     try {
       await apiJson(`/api/finance/statements/${statementId}/matches/${matchId}/resolve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ resolution: choice, note: explanation }),
+        // «طلب تبديل» is «اعتُمد رقم الشركة» with a reason: the field is sent ONLY for it, so every other answer is the body it always was.
+        body: JSON.stringify(
+          exchange ? { resolution: choice, exchange: true, note: explanation } : { resolution: choice, note: explanation }
+        ),
       });
       setAgain(false);
       onResolved();
@@ -121,7 +146,13 @@ export function DifferenceActions({
       <span className="inline-flex flex-wrap items-center gap-1.5">
         <span className="inline-flex items-center gap-1 rounded-full border border-[var(--sys-success)]/40 bg-[var(--sys-success-soft)] px-2.5 py-1 text-xs font-semibold text-[var(--sys-success)]">
           <RiCheckLine className="h-4 w-4" />
-          {known ? RESOLUTION_AR[resolution as Resolution] : resolution === PARKED ? PARKED_AR : resolution}
+          {isExchange({ resolution, resolutionKind })
+            ? EXCHANGE_AR
+            : known
+              ? RESOLUTION_AR[resolution as Resolution]
+              : resolution === PARKED
+                ? PARKED_AR
+                : resolution}
         </span>
         {resolution === 'OURS_STANDS' && claim ? (
           <span className="text-xs font-medium text-[var(--sys-warning)]">
@@ -191,6 +222,19 @@ export function DifferenceActions({
           {RESOLUTION_AR[r]}
         </button>
       ))}
+      {/* «طلب تبديل»: their figure with a reason. It is greyed by THEIR figure's verdict — the same cell, so the same sentence below. */}
+      {!parkOnly && (
+        <button
+          type="button"
+          disabled={busy !== null || !verdict('ACCEPTED_COURIER').allowed}
+          title={EXCHANGE_MEANING}
+          onClick={() => void resolve('ACCEPTED_COURIER', true)}
+          className="min-h-11 md:min-h-0 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50 border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:border-[var(--sys-success)] hover:text-[var(--sys-success)]"
+        >
+          {busy === EXCHANGE_KIND ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : null}
+          {EXCHANGE_AR}
+        </button>
+      )}
       {/* Where neither figure can be settled yet, this is the answer that is always there. */}
       <button
         type="button"
@@ -210,6 +254,9 @@ export function DifferenceActions({
               <b className="font-semibold">{RESOLUTION_AR[r]}:</b> {RESOLUTION_MEANING[r]}
             </span>
           ))}
+          <span className="block">
+            <b className="font-semibold">{EXCHANGE_AR}:</b> {EXCHANGE_MEANING}
+          </span>
         </span>
       )}
       {orderId && (

@@ -37,18 +37,47 @@ export async function GET() {
     const { companyId, storeId } = await requireContext();
     await requirePermission('settlement.review');
 
+    /*
+     * «طلب تبديل» IS NOT A DISCOUNT, SO IT IS IN NONE OF THE THREE NUMBERS THAT SAY «DISCOUNT» — and has its own.
+     *
+     * A line answered as an exchange is `resolution = 'ACCEPTED_COURIER'` with `resolutionKind = 'EXCHANGE'` (the money paths read the
+     * first word and never changed). `differences`, `accepted` and `acceptedValue` leave it out, so `rate` (differences over the
+     * orders that reached a statement) leaves it out too; `exchanges` counts it. `settledOrders` is unchanged: the order did reach a
+     * statement, and that is all that number says.
+     *
+     * THE TEST IS `(…) IS TRUE`, NOT `<> 'EXCHANGE'`: almost every row has NO kind (NULL), and `NULL <> 'EXCHANGE'` is not true — a
+     * filter written that way would drop every plain row from the tally. `IS TRUE` turns NULL into false, so `NOT (… IS TRUE)` keeps
+     * the row. It is also the same rule as `isExchange` (the kind counts only beside the courier's figure).
+     */
     const rows = await db.$queryRaw<
-      { personId: string | null; settledOrders: bigint; differences: bigint; accepted: bigint; acceptedValue: Prisma.Decimal | null }[]
+      {
+        personId: string | null;
+        settledOrders: bigint;
+        differences: bigint;
+        accepted: bigint;
+        acceptedValue: Prisma.Decimal | null;
+        exchanges: bigint;
+      }[]
     >`
       SELECT COALESCE(o."confirmedById", o."moderatorId") AS "personId",
              COUNT(DISTINCT o.id) AS "settledOrders",
-             COUNT(*) FILTER (WHERE m.result = 'MISMATCHED') AS "differences",
-             COUNT(*) FILTER (WHERE m.resolution = 'ACCEPTED_COURIER') AS "accepted",
+             COUNT(*) FILTER (
+               WHERE m.result = 'MISMATCHED'
+                 AND NOT ((m.resolution = 'ACCEPTED_COURIER' AND m."resolutionKind" = 'EXCHANGE') IS TRUE)
+             ) AS "differences",
+             COUNT(*) FILTER (
+               WHERE m.resolution = 'ACCEPTED_COURIER'
+                 AND NOT ((m.resolution = 'ACCEPTED_COURIER' AND m."resolutionKind" = 'EXCHANGE') IS TRUE)
+             ) AS "accepted",
              COALESCE(SUM(
                CASE WHEN m.resolution = 'ACCEPTED_COURIER'
+                         AND NOT ((m.resolution = 'ACCEPTED_COURIER' AND m."resolutionKind" = 'EXCHANGE') IS TRUE)
                     THEN COALESCE(m."expectedAmount", 0) - COALESCE(m."statementAmount", 0)
                     ELSE 0 END
-             ), 0) AS "acceptedValue"
+             ), 0) AS "acceptedValue",
+             COUNT(*) FILTER (
+               WHERE (m.resolution = 'ACCEPTED_COURIER' AND m."resolutionKind" = 'EXCHANGE') IS TRUE
+             ) AS "exchanges"
       FROM settlement_matches m
       JOIN orders o ON o.id = m."orderId"
       WHERE m."companyId" = ${companyId}
@@ -66,6 +95,7 @@ export async function GET() {
         differences: Number(r.differences),
         accepted: Number(r.accepted),
         acceptedValue: Number(r.acceptedValue ?? 0),
+        exchanges: Number(r.exchanges ?? 0),
       }));
 
     const names = new Map(

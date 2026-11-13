@@ -67,6 +67,51 @@ export const RESOLUTION_MEANING: Record<Resolution, string> = {
 };
 
 /**
+ * THE THIRD THING A DIFFERENCE MAY BE CALLED: «طلب تبديل».
+ *
+ * «احيانا بيكون طلب تبديل او زبون وصلو الطلب ناقص فنبعثلو حبة فلازم يا تعمل خيار يعطيك انو طلب تبديل لاحظ الفرق شاسع
+ * اكيد مش طلب وهو طلب تبديل» (the owner, 13/11, over a line whose parcel had no price to collect — the courier took
+ * nothing and charged only the delivery, so the «difference» was the whole price of an order nobody was ever to pay for.)
+ *
+ * IT IS NOT A THIRD FIGURE. For the MONEY it is exactly «اعتُمد رقم الشركة» — their figure stands, the order is
+ * settled at what arrived at the approval — and it takes no money path of its own: the stored `resolution` stays
+ * `ACCEPTED_COURIER`, so every reader of that literal (the matcher, the close, the claim, the stats) keeps reading
+ * what it always read. What it adds is a QUALIFIER beside it, `resolutionKind`, that says WHY — and the qualifier
+ * does exactly two things:
+ *
+ *   · the line is not counted as a discount somebody gave away (the per-person tally leaves it out and counts it
+ *     as an exchange of its own);
+ *   · at the approval nobody is asked who carries the shortfall, and no «فرق تحصيل» is written for it — nothing was
+ *     owed, so nobody carries anything (`shortfall.ts`).
+ *
+ * The qualifier is written by EVERY door that writes an answer (`decisionKind` in `settlement-decisions`): `EXCHANGE`
+ * for this one, null for all the others, so an answer given over an exchange clears it. And it only means something
+ * BESIDE the courier's figure (`isExchange`): a kind standing next to any other answer is read as nothing.
+ */
+export const EXCHANGE_KIND = 'EXCHANGE' as const;
+export const EXCHANGE_AR = 'طلب تبديل';
+/**
+ * What the close writes on the order's timeline for an exchange line, where it writes `SETTLEMENT_DECISION_APPLIED` for any other
+ * accepted one — a name of its own because the timeline's sentence is chosen by the action, and «سُوّي الطلب برقم الشركة بعد بتّ
+ * مكتوب» would read, beside an exchange, as a discount somebody gave. The timeline gives it its Arabic (`order-timeline`).
+ */
+export const EXCHANGE_APPLIED_ACTION = 'SETTLEMENT_EXCHANGE_APPLIED';
+export const EXCHANGE_MEANING =
+  'تبديل أو حبة ناقصة بعتناها للزبون — ما إلها ثمن؛ رقم الشركة هو الصحيح وما بينحسب خصم على حدا.';
+
+/** The sentence a door answers with when «طلب تبديل» is asked together with another answer — it is the courier's figure and nothing else. */
+export const EXCHANGE_COMBINATION_SENTENCE =
+  'طلب التبديل يعني «اعتُمد رقم الشركة» مع سبب التبديل — لا يُجمع مع «رقمنا هو المعتمد» ولا مع «قيد المراجعة»';
+
+/** The sentence the bulk door answers with: an exchange is one order at a time, each with its own reason. */
+export const EXCHANGE_NOT_IN_BULK_SENTENCE = 'طلب التبديل يُجاب طلباً طلباً — لا بتّ جماعي له';
+
+/** Is this row answered as an exchange? The qualifier counts only beside «اعتُمد رقم الشركة»; a row from an older server carries none. */
+export function isExchange(m: { resolution?: string | null; resolutionKind?: string | null }): boolean {
+  return m.resolution === 'ACCEPTED_COURIER' && m.resolutionKind === EXCHANGE_KIND;
+}
+
+/**
  * THE ONE KIND OF ROW THAT IS A DIFFERENCE IN MONEY: the company's figure and ours disagree.
  *
  * «رقمنا / رقمهم» is an answer about TWO FIGURES. A parcel we delivered that no statement mentions has one
@@ -145,6 +190,11 @@ export interface PersonDifferences {
   rate: number | null;
   /** How many of their orders reached a statement at all. */
   settledOrders: number;
+  /**
+   * The lines answered «طلب تبديل»: counted HERE and in none of `differences`, `accepted`, `acceptedValue` or `rate` —
+   * a replacement or a missing piece sent to the customer is not a discount somebody gave away.
+   */
+  exchanges: number;
   why: string;
 }
 
@@ -159,9 +209,12 @@ export const MIN_SETTLED_ORDERS = 20;
 export interface PersonRow {
   personId: string;
   settledOrders: number;
+  /** Without the exchanges: the query leaves them out of this, of `accepted` and of `acceptedValue` (they have their own number). */
   differences: number;
   accepted: number;
   acceptedValue: number;
+  /** The lines answered «طلب تبديل». Absent (an older caller) is none. */
+  exchanges?: number;
 }
 
 /**
@@ -188,6 +241,7 @@ export function differencesByPerson(rows: PersonRow[]): PersonDifferences[] {
         open: Math.max(0, r.differences - r.accepted),
         acceptedValue: round2(r.acceptedValue),
         settledOrders: r.settledOrders,
+        exchanges: r.exchanges ?? 0,
         rate,
         why: enough
           ? `${r.differences} فرقاً على ${r.settledOrders} طلباً وصلت كشفاً`
