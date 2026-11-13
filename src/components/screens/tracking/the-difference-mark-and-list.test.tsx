@@ -537,10 +537,8 @@ describe('the answers — the matching screen’s own, mounted, and offered only
   });
 
   it('the door’s refusal is shown inside the dialog, which stays open — and the list is not read again', async () => {
-    api.mockImplementation(async (url: string, init?: RequestInit) => {
+    api.mockImplementation(async (_url: string, init?: RequestInit) => {
       if (init?.method === 'POST') throw new Error('الطلب مُسوّى أصلاً (حُصّل يدوياً أو بكشف) — لا بتّ عليه');
-      const q = new URL(url, 'http://x').searchParams;
-      void q;
       return {
         count: 1, orders: rows, lateCount: 0, dialCode: '962', pagination: { total: 1, page: 1, limit: 25, totalPages: 1 },
         facts: { total: 1, tasks: NO_TASKS, lateCount: 0, notLate: 0, couriers: [], regions: [], ages: { fresh: 0, few: 1, week: 0, old: 0 }, said: SAID_COUNTS, difference: 1 },
@@ -648,6 +646,48 @@ describe('who may decide — and the statement that is closed', () => {
     const d = await openDialog();
     expect(within(d).queryByText(STATEMENT_CLOSED_SENTENCE)).toBeNull();
     expect(within(d).queryByText(NEEDS_REVIEW_KEY_AR)).toBeNull();
+  });
+});
+
+describe('on a phone — the card, the thumb and the same answers', () => {
+  // The width the cards are drawn at (`useIsPhone`): below the desk's. jsdom has no `matchMedia`, so one is handed in.
+  const asPhone = () =>
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: (query: string) => ({
+        matches: true,
+        media: query,
+        onchange: null,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+        dispatchEvent: () => false,
+      }),
+    });
+  afterEach(() => {
+    delete (window as { matchMedia?: unknown }).matchMedia;
+  });
+
+  it('the card still carries the mark, a 44px target, and it opens the same dialog', async () => {
+    asPhone();
+    await draw();
+    const mark = markIn(cards());
+    expect(mark.className.split(/\s+/)).toContain('min-h-11');
+    fireEvent.click(mark);
+    const d = await screen.findByRole('dialog', { name: 'فيه فرق — ORD-a' });
+    expect(within(d).getByText('رقمنا').parentElement!.textContent).toContain('20.00 JOD');
+  });
+
+  it('and the matching screen’s own phone layout of the answers is what the dialog mounts: what each one means is written under them — there is no hover on a phone', async () => {
+    asPhone();
+    await draw();
+    fireEvent.click(markIn(cards()));
+    const d = await screen.findByRole('dialog');
+    expect(within(d).getByText(/الفرق مقبول — غالباً خصمٌ/)).toBeTruthy();
+    expect(within(d).getByText(/الفرق غير مقبول — يُطالَب به من الشركة/)).toBeTruthy();
+    // …and they are still the same buttons for the same door
+    expect(within(d).getByRole('button', { name: /اعتُمد رقم الشركة/ }).tagName).toBe('BUTTON');
   });
 });
 
