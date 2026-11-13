@@ -52,7 +52,9 @@ function matches(where: Any, row: Any): boolean {
     if ('some' in cond) return Array.isArray(value) && value.some((v) => matches(cond.some, v));
     if ('in' in cond) return (cond.in as unknown[]).includes(value);
     // A to-one relation written as a nested question (`statement: { storeId }`).
-    if (value !== null && typeof value === 'object') return matches(cond, value);
+    // A relation that is not there (an order with no customer) answers no question.
+    if (value === null || value === undefined) return false;
+    if (typeof value === 'object') return matches(cond, value);
     throw new Error(`the evaluator does not know «${JSON.stringify(cond)}» for ${key}`);
   });
 }
