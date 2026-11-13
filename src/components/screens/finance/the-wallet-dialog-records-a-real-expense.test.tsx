@@ -159,7 +159,8 @@ async function openDialog(opts: { storeCode?: string } = {}) {
       <WalletsScreen />
     )
   );
-  fireEvent.click(await screen.findByText('حركة جديدة'));
+  // The wallet's own press: the LAST «حركة جديدة» (the one at the top of the screen comes first, and is held by its own test file).
+  fireEvent.click((await screen.findAllByText('حركة جديدة')).at(-1)!);
   return screen.findByRole('dialog');
 }
 
