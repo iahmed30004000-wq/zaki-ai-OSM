@@ -167,7 +167,7 @@ describe('the statement route asks its key FIRST', () => {
     const body = await (await statement()).json();
     expect(body.currency).toBe('JOD');
     expect(body.minorUnit).toBe(3);
-    expect(db.order.findMany.mock.calls[0][0].where).toMatchObject({ companyId: 'c1', storeId: 's1' });
-    expect(db.walletMovement.findMany.mock.calls[0][0].where).toMatchObject({ wallet: { storeId: 's1' } });
+    expect(db.order.findMany.mock.calls[0][0]?.where).toMatchObject({ companyId: 'c1', storeId: 's1' });
+    expect(db.walletMovement.findMany.mock.calls[0][0]?.where).toMatchObject({ wallet: { storeId: 's1' } });
   });
 });

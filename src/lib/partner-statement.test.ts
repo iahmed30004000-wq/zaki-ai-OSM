@@ -173,7 +173,7 @@ describe('the draws: the ledger, cumulative, in the store’s currency', () => {
     const s = await partnerStatement(SCOPE);
     expect(lineOf(s, 'mk').draws).toBe(30);
     expect(s.draws.map((d) => d.id)).toEqual(['d1']);
-    expect(db.walletMovement.findMany.mock.calls[0][0].where).toMatchObject({ companyId: 'c1', category: 'PARTNER_DRAW', wallet: { storeId: 's1' } });
+    expect(db.walletMovement.findMany.mock.calls[0][0]?.where).toMatchObject({ companyId: 'c1', category: 'PARTNER_DRAW', wallet: { storeId: 's1' } });
   });
 
   it('only a PARTNER_DRAW: a movement of any other kind is not a draw', async () => {
