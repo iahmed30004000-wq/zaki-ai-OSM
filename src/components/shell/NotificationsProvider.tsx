@@ -2,6 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { pollSignal } from '@/lib/poll-timeout';
+import { pollGate } from '@/lib/poll-gate';
 
 /**
  * ONE POLLER, THREE READERS.
@@ -72,6 +73,8 @@ export function useNotifications(): Value {
 }
 
 const POLL_MS = 60_000;
+/** Two returns to the tab closer than this are one: the bell does not need the server twice in fifteen seconds. */
+const RETURN_GAP_MS = 15_000;
 
 export function NotificationsProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<NotificationRow[]>([]);
@@ -89,7 +92,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   /** The first load fills the bell without throwing a stack of cards up. */
   const primed = useRef(false);
 
-  const load = useCallback(async () => {
+  const [gate] = useState(pollGate);
+
+  const fetchOnce = useCallback(async () => {
     try {
       // Plain fetch on purpose (a poll must not send the tab to /login), with a time limit (poll-timeout.ts).
       const res = await fetch('/api/notifications', { signal: pollSignal() });
@@ -113,20 +118,37 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     }
   }, []);
 
+  /** Every call goes through here — the timer's, the return's and the press's — so the polls can see whether one is still out. */
+  const load = useCallback(() => {
+    const call = fetchOnce();
+    gate.follow(call, Date.now());
+    return call;
+  }, [fetchOnce, gate]);
+
+  const lastReturn = useRef(0);
+
   useEffect(() => {
     void load();
-    const timer = setInterval(() => {
-      if (!document.hidden) void load();
-    }, POLL_MS);
-    const onShow = () => {
-      if (!document.hidden) void load();
+    // A tick or a return waits for a call that is still out (13/11: a slow server was asked again by every open tab), and two
+    // returns to the tab within fifteen seconds are one.
+    const poll = (why: 'tick' | 'return') => {
+      if (document.hidden) return;
+      const now = Date.now();
+      if (gate.busy(now)) return;
+      if (why === 'return') {
+        if (now - lastReturn.current < RETURN_GAP_MS) return;
+        lastReturn.current = now;
+      }
+      void load();
     };
+    const timer = setInterval(() => poll('tick'), POLL_MS);
+    const onShow = () => poll('return');
     document.addEventListener('visibilitychange', onShow);
     return () => {
       clearInterval(timer);
       document.removeEventListener('visibilitychange', onShow);
     };
-  }, [load]);
+  }, [load, gate]);
 
   const dismiss = useCallback((id: string) => {
     setArriving((cur) => cur.filter((n) => n.id !== id));

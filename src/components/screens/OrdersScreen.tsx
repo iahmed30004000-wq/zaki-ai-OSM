@@ -288,7 +288,14 @@ export function OrdersScreen() {
     loadMetadata();
   }, []);
 
+  // The first run of this effect is the OPENING, and `useLiveRefresh` below asks for the first page at once — asking here as well
+  // was two identical requests for the orders on every opening (13/11). Every run after it is a changed filter.
+  const opening = useRef(true);
   useEffect(() => {
+    if (opening.current) {
+      opening.current = false;
+      return;
+    }
     const timer = setTimeout(() => {
       loadOrders(1);
     }, 250);

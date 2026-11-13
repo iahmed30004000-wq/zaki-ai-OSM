@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { pollGate } from '@/lib/poll-gate';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -38,6 +39,16 @@ import { useEffect, useRef } from 'react';
  * ANY of the triggers — not a debounce: the first one goes immediately,
  * because the whole point is that the screen is right the moment it is
  * looked at.
+ *
+ * ── AND WHY IT WAITS FOR THE ANSWER (13/11) ──
+ *
+ * The floor above stops three triggers in a second; it does not stop a trigger every four seconds while the server takes
+ * thirty to answer. Every return to the tab, every tick of the timer started a new request whether or not the last one had
+ * answered, and the server finished them all — so a slow server was asked MORE by every open screen, which is what made it
+ * slower. Now a tick or a return does nothing while the load before it is still out, and after a SLOW answer (over two
+ * seconds) it waits four times as long as that took — a minute at most — before asking by itself again. The first load and a
+ * changed `key` are never held back: a screen must not open empty, and a new filter wants its rows now. `lib/poll-gate.ts`
+ * holds the rule; a loader that returns nothing is not followed, and the screen behaves exactly as it did.
  *
  * ── AND WHY THE CALLBACK LIVES IN A REF ──
  *
@@ -123,6 +134,8 @@ export function useLiveRefresh(load: () => void | Promise<unknown>, options: Opt
   const loadRef = useRef(load);
   const returnRef = useRef(onReturnOption);
   const lastAt = useRef(0);
+  // What the last load told us (is it still out, was it slow). Kept for the life of the screen, across a changed `key`.
+  const [gate] = useState(pollGate);
 
   // Assigned in an effect and never during render: a ref written while
   // rendering is a side effect in a function React may call twice.
@@ -135,23 +148,25 @@ export function useLiveRefresh(load: () => void | Promise<unknown>, options: Opt
     if (!enabled) return;
 
     let cancelled = false;
-    const run = (force = false) => {
+    const run = (why: 'first' | 'tick' | 'return') => {
       if (cancelled) return;
       const now = Date.now();
-      if (!force && now - lastAt.current < MIN_GAP_MS) return;
+      // The answer is still on its way, or the last one was slow: a tick or a return waits (see «AND WHY IT WAITS»).
+      if (why !== 'first' && (gate.busy(now) || gate.tooSoonAfterSlow(now))) return;
+      if (why === 'return' && now - lastAt.current < MIN_GAP_MS) return;
       lastAt.current = now;
-      void loadRef.current();
+      gate.follow(loadRef.current(), now);
     };
 
     // The first load is forced: the throttle is about repeat triggers,
     // and a screen must never open empty because another screen asked a
     // second ago. Skipped entirely when the screen loads itself.
-    if (initial) run(true);
+    if (initial) run('first');
 
     const onReturn = () => {
       if (document.hidden) return;
       returnRef.current?.();
-      run();
+      run('return');
     };
     document.addEventListener('visibilitychange', onReturn);
     window.addEventListener('focus', onReturn);
@@ -162,7 +177,7 @@ export function useLiveRefresh(load: () => void | Promise<unknown>, options: Opt
 
     const interval = everyMs
       ? setInterval(() => {
-          if (!document.hidden) run(true);
+          if (!document.hidden) run('tick');
         }, everyMs)
       : undefined;
 
