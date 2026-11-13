@@ -75,7 +75,7 @@ describe('`db` has two clients behind it', () => {
 
   it('picks the client by the lane, through a proxy, at the moment a property is read', () => {
     expect(src).toMatch(/new Proxy\(main,/);
-    expect(src).toMatch(/inHeavyLane\(\)\s*\?\s*reports\s*:\s*main/);
+    expect(src).toMatch(/inHeavyLane\(\)\s*\?\s*reportsClient\(\)\s*:\s*main/);
     expect(src).toMatch(/value\.bind\(client\)/);
   });
 
@@ -86,7 +86,15 @@ describe('`db` has two clients behind it', () => {
 
   it('keeps both clients on globalThis (RV187), the main one under its old name', () => {
     expect(src).toMatch(/globalForPrisma\.prisma = main;/);
-    expect(src).toMatch(/globalForPrisma\.prismaReports = reports;/);
+    expect(src).toMatch(/globalForPrisma\.prismaReports \?\?= new PrismaClient\(/);
+    // …and the proxy that stands for `db` is one object per process, so a second copy of the module hands out the same one.
+    expect(src).toMatch(/globalForPrisma\.prismaDb \?\?\s*new Proxy\(main,/);
+    expect(src).toMatch(/globalForPrisma\.prismaDb = db;/);
+  });
+
+  it('builds the reports’ client when a report asks, not when the module loads', () => {
+    expect(src).toMatch(/function reportsClient\(\): PrismaClient \{/);
+    expect(src).not.toMatch(/^const reports =/m);
   });
 });
 

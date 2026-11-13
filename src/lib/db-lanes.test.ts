@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  * DEFINITION OF DONE — `db` IS ONE OBJECT WITH TWO CLIENTS BEHIND IT (the owner, 13/11: «لوحة الأداء بتضل تعلق والسايت بطيء»)
  *
  *  1. There are two Prisma clients: the main one (a pool of at least twenty, as since 4/11) and the REPORTS' one (exactly six
- *     connections, a two-minute wait). The reports' client opens nothing until a report asks (Prisma connects on first use).
+ *     connections, a two-minute wait). The reports' client is BUILT the first time a report asks — loading the module builds one
+ *     client only (`one-client-one-pool.test.ts` holds that), so a request that never runs a report pays nothing for it.
  *  2. A property read on `db` goes to the reports' client inside `runInHeavyLane` — however many queries a report starts at once —
  *     and to the main client everywhere else, so no caller changed. Methods run on the client they were read from
  *     (`db.$transaction` on the same client as the models around it).
@@ -38,7 +39,7 @@ vi.mock('@prisma/client', () => {
 });
 
 type Fake = { order: { client: string }; $transaction: (fn: (tx: { client: string }) => unknown) => unknown; $queryRaw: () => string };
-const g = globalThis as unknown as { prisma?: unknown; prismaReports?: unknown };
+const g = globalThis as unknown as { prisma?: unknown; prismaReports?: unknown; prismaDb?: unknown };
 
 async function load() {
   vi.resetModules();
@@ -51,16 +52,21 @@ beforeEach(() => {
   made.length = 0;
   delete g.prisma;
   delete g.prismaReports;
+  delete g.prismaDb;
   process.env.DATABASE_URL = ['postgresql://', ['u', 'p'].join(':'), '@localhost:5432/osm?schema=public&connection_limit=10'].join('');
 });
 afterEach(() => {
   delete g.prisma;
   delete g.prismaReports;
+  delete g.prismaDb;
 });
 
 describe('two clients, one `db`', () => {
-  it('opens a main client of at least twenty connections and a reports client of exactly six with a two-minute wait', async () => {
-    await load();
+  it('opens a main client of at least twenty connections and, when a report asks, a reports client of exactly six with a two-minute wait', async () => {
+    const { db, runInHeavyLane } = await load();
+    // loading the module builds the main client and nothing else
+    expect(made.map((m) => m.kind)).toEqual(['main']);
+    await runInHeavyLane(async () => db.order.client);
     expect(made.map((m) => m.kind).sort()).toEqual(['main', 'reports']);
     const main = new URL(made.find((m) => m.kind === 'main')!.url);
     const reports = new URL(made.find((m) => m.kind === 'reports')!.url);
@@ -113,11 +119,35 @@ describe('two clients, one `db`', () => {
   });
 
   it('the clients are kept on globalThis, and a second copy of the module opens no more', async () => {
-    await load();
+    const first = await load();
+    await first.runInHeavyLane(async () => first.db.order.client);
     expect(made).toHaveLength(2);
     expect((g.prisma as { kind: string }).kind).toBe('main');
     expect((g.prismaReports as { kind: string }).kind).toBe('reports');
-    await load();
+    const second = await load();
+    await second.runInHeavyLane(async () => second.db.order.client);
     expect(made, 'a second copy of the module must reuse the two clients').toHaveLength(2);
+  });
+
+  it('and `db` itself is ONE object per process: a second copy of the module hands out the same proxy', async () => {
+    const first = await load();
+    const second = await load();
+    expect(second.db).toBe(first.db);
+    expect(g.prismaDb).toBe(first.db);
+  });
+
+  it('the reports’ client is built once, however many queries a report starts and however many reports run', async () => {
+    const { db, runInHeavyLane } = await load();
+    await runInHeavyLane(() => Promise.all(Array.from({ length: 30 }, async () => db.order.client)));
+    await runInHeavyLane(async () => db.$queryRaw());
+    expect(made.filter((m) => m.kind === 'reports')).toHaveLength(1);
+  });
+
+  it('NEGATIVE: no read outside a report ever builds the reports’ client', async () => {
+    const { db } = await load();
+    for (let i = 0; i < 20; i++) db.order.client;
+    db.$queryRaw();
+    expect(made.map((m) => m.kind)).toEqual(['main']);
+    expect(g.prismaReports).toBeUndefined();
   });
 });
