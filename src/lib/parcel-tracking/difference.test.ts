@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DIFFERENCE_RESULT, currentDifference, readDifferences, type DifferenceRow } from './difference';
 import { CHIPS, TASKS, isChip, trackingFilters } from './filters';
-import { DIFFERENCE_CHIP, DIFFERENCE_FACTS, NOT_LATE, URGENCIES, byDifference, byUrgency, hasDifference, matchesChip, trackingUrgency, type TrackingFacts } from './priority';
+import { DIFFERENCE_CHIP, DIFFERENCE_FACTS, NOT_LATE, URGENCIES, byUrgency, differenceSorter, hasDifference, matchesChip, trackingUrgency, type TrackingFacts } from './priority';
 import { MONEY_FIELDS, unseenKey, withoutMoney, FULL_SIGHT, NO_SIGHT } from './sight';
 
 /**
@@ -373,10 +373,10 @@ describe('the chip «فيه فرق»', () => {
     const done1 = onTheRoad({ difference: { answered: true }, daysInTransit: 30 });
     const done2 = onTheRoad({ difference: { answered: true }, daysInTransit: 4 });
     // «done1» has waited longest of all, and still comes after both unanswered ones
-    expect([done2, open2, done1, open1].sort(byDifference)).toEqual([open1, open2, done1, done2]);
+    expect([done2, open2, done1, open1].sort(differenceSorter(byUrgency))).toEqual([open1, open2, done1, done2]);
     // the second key is the list’s own: with no answers anywhere it is exactly `byUrgency`
     const all = [open2, onTheRoad({ difference: { answered: false }, daysInTransit: 5 }), open1];
-    expect([...all].sort(byDifference)).toEqual([...all].sort(byUrgency));
+    expect([...all].sort(differenceSorter(byUrgency))).toEqual([...all].sort(byUrgency));
     expect(all.some((r) => byUrgency(r, open1) !== 0)).toBe(true);
   });
 });

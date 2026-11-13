@@ -2,10 +2,10 @@ import type { Prisma } from '@prisma/client';
 import type { db as Db } from '../db';
 import { AGES, ageOf, daysWaitedOf, type Age } from '../age-piles';
 import { DEAD_CONFIRMATION, TRACKING_ACK_ACTION, trackingAlert, type TrackingAlert } from './alert';
-import { DIFFERENCE_CHIP, MATCHES, byDifference, byUrgency, expectsBarcode, hasDifference, matchesChip, notLate, type ChipKey, type ConditionKey, type TrackingFacts } from './priority';
+import { DIFFERENCE_CHIP, MATCHES, differenceSorter, expectsBarcode, hasDifference, matchesChip, notLate, urgencySorter, type ChipKey, type ConditionKey, type TrackingFacts } from './priority';
 import { readDifferences, type DifferenceLean } from './difference';
 import { NOBODY, TASKS } from './filters';
-import { transitOf } from '../transit';
+import { isInFlight, transitOf } from '../transit';
 import { COURIER_SAID, SAID_STATUSES, type SaidStatus } from '../couriers/courier-said';
 import { courierSaidAgainst, type CourierSaid, type CourierSaidRow } from '../couriers/courier-said-read';
 
@@ -266,7 +266,10 @@ export async function readTrackingList(
   const thresholdOf = new Map(fees.map((f) => [`${f.deliveryProviderId}|${f.regionId}`, f.lateThresholdDays]));
 
   // ── the alerts: a cancellation, an applied change, an acknowledgement — read for the parcels that can carry one ──
-  const dead = l0.filter((o) => DEAD_CONFIRMATION.includes(o.confirmationStatus)).map((o) => o.id);
+  // An alert is about a parcel still ON ITS WAY: `trackingAlert` answers none for one that has arrived or come back. So what
+  // an alert is made of — the cancellation log, the applied change, the acknowledgement — is read for those parcels alone.
+  const flying = l0.filter((o) => isInFlight(o));
+  const dead = flying.filter((o) => DEAD_CONFIRMATION.includes(o.confirmationStatus)).map((o) => o.id);
   const [cancelLogs, applied, saidLines, differenceOf] = l0.length
     ? await Promise.all([
         dead.length
@@ -276,11 +279,13 @@ export async function readTrackingList(
               select: { orderId: true, createdAt: true },
             })
           : [],
-        db.orderChangeRequest.findMany({
-          where: { orderId: { in: l0.map((o) => o.id) }, appliedAt: { not: null } },
-          orderBy: { appliedAt: 'desc' },
-          select: { orderId: true, appliedAt: true },
-        }),
+        flying.length
+          ? db.orderChangeRequest.findMany({
+              where: { orderId: { in: flying.map((o) => o.id) }, appliedAt: { not: null } },
+              orderBy: { appliedAt: 'desc' },
+              select: { orderId: true, appliedAt: true },
+            })
+          : [],
         // What the company said, for every parcel the list holds — the one read here that may fail quietly.
         readSaidLines(db, input.companyId, l0.map((o) => o.id), !!input.said),
         // The difference at matching, for whoever may see it: two grouped reads, and a failure is the list's.
@@ -299,8 +304,8 @@ export async function readTrackingList(
   const cancelledAt = newest(cancelLogs, (r) => r.createdAt);
   const changedAt = newest(applied, (r) => r.appliedAt);
 
-  // An acknowledgement matters only to a parcel that has something to acknowledge.
-  const candidates = l0.filter((o) => DEAD_CONFIRMATION.includes(o.confirmationStatus) || changedAt.has(o.id)).map((o) => o.id);
+  // An acknowledgement matters only to a parcel on its way that has something to acknowledge.
+  const candidates = flying.filter((o) => DEAD_CONFIRMATION.includes(o.confirmationStatus) || changedAt.has(o.id)).map((o) => o.id);
   const acks = candidates.length
     ? await db.orderActivity.findMany({
         where: { companyId: input.companyId, orderId: { in: candidates }, action: TRACKING_ACK_ACTION },
@@ -373,9 +378,12 @@ export async function readTrackingList(
   const tasks = Object.fromEntries(TASKS.map((k) => [k, l1.filter(MATCHES[k]).length])) as Record<ConditionKey, number>;
 
   // ── L2: the chip, then worst first — `Array.sort` is stable, so equal urgency keeps the database's order, oldest first ──
-  const l2 = (input.task === null ? l1 : l1.filter(matchesChip(input.task))).slice().sort(byUrgency);
+  // Each row's reason is worked out once for the whole sort (`urgencySorter`), not seven predicates at every comparison.
+  const l2 = (input.task === null ? l1 : l1.filter(matchesChip(input.task))).slice();
+  const byRank = urgencySorter(l2);
+  l2.sort(byRank);
   // Inside «فيه فرق» the differences nobody has answered come first, then the answered ones, each worst first as everywhere.
-  if (input.task === DIFFERENCE_CHIP) l2.sort(byDifference);
+  if (input.task === DIFFERENCE_CHIP) l2.sort(differenceSorter(byRank));
 
   const totalPages = Math.max(1, Math.ceil(l2.length / input.limit));
   const page = Math.min(Math.max(input.page, 1), totalPages);

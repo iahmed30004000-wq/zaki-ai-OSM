@@ -218,7 +218,7 @@ export const NOT_LATE = 'NOT_LATE' as const;
  *
  * The parcels whose matching came back with a difference — answered or not. Like «غير متأخرة» it is a chip and nothing
  * else: it is never a reason a row is in front of you, so `URGENCIES`, `trackingUrgency` and the seven counts do not
- * know it and the order of the list is what it was. Inside the chip the unanswered ones come first (`byDifference`):
+ * know it and the order of the list is what it was. Inside the chip the unanswered ones come first (`differenceSorter`):
  * they are the work; the answered ones stay marked, as the owner asked («بس بضل الطلب معلّم»).
  */
 export const DIFFERENCE_CHIP = 'DIFFERENCE' as const;
@@ -284,12 +284,20 @@ function byDelivered(a: TrackingFacts, b: TrackingFacts): number {
  * one waiting longest; it sorts after those that have.
  */
 export function byUrgency(a: TrackingFacts, b: TrackingFacts): number {
-  const byRank = URGENCY[trackingUrgency(a)].rank - URGENCY[trackingUrgency(b)].rank;
+  return compareByRanks(a, b, URGENCY[trackingUrgency(a)].rank, URGENCY[trackingUrgency(b)].rank);
+}
+
+/**
+ * THE ORDER, GIVEN BOTH ROWS' RANKS — the one place it is decided. `byUrgency` works the ranks out on the spot;
+ * `urgencySorter` works them out once per row. Same comparison either way.
+ */
+function compareByRanks(a: TrackingFacts, b: TrackingFacts, rankA: number, rankB: number): number {
+  const byRank = rankA - rankB;
   if (byRank !== 0) return byRank;
 
   // Money waiting is worked in the order it became owed: the longest-delivered first. Its days-in-transit stops at the
   // delivery, so it says how long the trip took — not how long the cash has been waiting.
-  if (URGENCY[trackingUrgency(a)].rank === URGENCY.COLLECT.rank) return byDelivered(a, b);
+  if (rankA === URGENCY.COLLECT.rank) return byDelivered(a, b);
 
   const da = a.daysInTransit;
   const db = b.daysInTransit;
@@ -300,15 +308,31 @@ export function byUrgency(a: TrackingFacts, b: TrackingFacts): number {
 }
 
 /**
+ * `byUrgency` FOR A LIST — EACH ROW'S REASON WORKED OUT ONCE, NOT ONCE PER COMPARISON.
+ *
+ * Sorting 20,000 parcels asks for the order of two rows about three hundred thousand times, and `byUrgency` found each
+ * row's reason from scratch every time: seven predicates, up to four times per comparison. Here the rank of every row is read
+ * once (`rows` are the rows about to be sorted) and the comparison is the same one (`compareByRanks`), so the order is
+ * `byUrgency`'s, row for row, ties included — a stable sort keeps the database's order among equals, as it always did.
+ */
+export function urgencySorter<T extends TrackingFacts>(rows: readonly T[]): (a: T, b: T) => number {
+  const ranks = new Map<T, number>();
+  for (const row of rows) ranks.set(row, URGENCY[trackingUrgency(row)].rank);
+  const rankOf = (row: T) => ranks.get(row) ?? URGENCY[trackingUrgency(row)].rank;
+  return (a, b) => compareByRanks(a, b, rankOf(a), rankOf(b));
+}
+
+/**
  * INSIDE «فيه فرق»: THE DIFFERENCES NOBODY HAS ANSWERED FIRST, THEN THE ANSWERED ONES.
  *
  * The unanswered are the work — a decision is still to be taken; the answered stay in the chip because the order stays
  * marked. Within each of the two groups the order is the list's own (`byUrgency`: worst first, longest waiting first), so
  * the chip is never a second ranking of its own.
  */
-export function byDifference(a: TrackingFacts, b: TrackingFacts): number {
+/** «فيه فرق»'s order over any urgency order — over `byUrgency`, or over an `urgencySorter` that knows its rows. */
+export function differenceSorter<T extends TrackingFacts>(byUrgencyOfRows: (a: T, b: T) => number): (a: T, b: T) => number {
   const waiting = (r: TrackingFacts) => (r.difference && !r.difference.answered ? 0 : 1);
-  return waiting(a) - waiting(b) || byUrgency(a, b);
+  return (a, b) => waiting(a) - waiting(b) || byUrgencyOfRows(a, b);
 }
 
 /** How many rows meet one condition — what a filter chip counts. */

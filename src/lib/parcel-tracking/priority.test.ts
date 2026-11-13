@@ -7,7 +7,10 @@ import {
   byUrgency,
   canCollect,
   countMatching,
+  differenceSorter,
   trackingUrgency,
+  urgencySorter,
+  type ConditionKey,
   type TrackingFacts,
 } from './priority';
 
@@ -288,8 +291,10 @@ describe('the tracking card on a phone', () => {
     // longer holds the whole list (it asks for a page of 25), so a sort in the browser would only sort those 25. The
     // claim is the same — worst first, never arrival order — and `parcel-tracking/list.test.ts` proves it over a database that
     // holds the parcels; this pins WHERE it is written, and that the screen does not do it a second time.
-    expect(stripComments(repoFile('src/lib/parcel-tracking/list.ts'))).toMatch(/\.sort\(byUrgency\)/);
+    // (Worked out once for the whole sort — `urgencySorter` — and the sort is `byUrgency`'s order, held by «the sorter is byUrgency» below.)
+    expect(stripComments(repoFile('src/lib/parcel-tracking/list.ts'))).toMatch(/urgencySorter\(l2\)[\s\S]*\.sort\(byRank\)/);
     expect(src, 'عاد الفرزُ إلى المتصفّح — سيفرزُ خمساً وعشرين فقط').not.toMatch(/\.sort\(byUrgency\)/);
+    expect(src, 'عاد الفرزُ إلى المتصفّح — سيفرزُ خمساً وعشرين فقط').not.toMatch(/urgencySorter/);
   });
 
   it('and every action on the card is a target a thumb can hit', () => {
@@ -305,5 +310,129 @@ describe('the tracking card on a phone', () => {
     expect(buttons.length).toBeGreaterThanOrEqual(5);
     const short = buttons.filter((m) => !/min-h-11/.test(m[0]));
     expect(short.map((m) => m[0].slice(0, 60)), 'زرٌّ في الكرت دون 44 بكسل').toEqual([]);
+  });
+});
+
+/**
+ * THE SORTER IS byUrgency — WORKED OUT ONCE PER ROW INSTEAD OF SEVEN PREDICATES AT EVERY COMPARISON.
+ *
+ * The list sorts up to 20,000 parcels and byUrgency found each row's reason from scratch on every comparison (up to four
+ * times, seven predicates each). urgencySorter reads every row's rank once and compares with the same comparison. The
+ * old pair is frozen here as it was written, and the order of the sorter, of the live byUrgency and differenceSorter and of the
+ * frozen pair must be the same on random rows — ties and the money chip included — because a stable sort keeps the
+ * database's order among equals, and an order that differs by a single row would reach the screen.
+ */
+describe('the sorter is byUrgency', () => {
+  const oldByDelivered = (a: TrackingFacts, b: TrackingFacts) => {
+    const time = (v: Date | string | null | undefined) => (v ? new Date(v).getTime() : null);
+    const ta = time(a.deliveredAt);
+    const tb = time(b.deliveredAt);
+    if (ta === tb) return 0;
+    if (ta === null) return 1;
+    if (tb === null) return -1;
+    return ta - tb;
+  };
+  const oldByUrgency = (a: TrackingFacts, b: TrackingFacts): number => {
+    const byRank = URGENCY[trackingUrgency(a)].rank - URGENCY[trackingUrgency(b)].rank;
+    if (byRank !== 0) return byRank;
+    if (URGENCY[trackingUrgency(a)].rank === URGENCY.COLLECT.rank) return oldByDelivered(a, b);
+    const da = a.daysInTransit;
+    const db = b.daysInTransit;
+    if (da === db) return 0;
+    if (da === null) return 1;
+    if (db === null) return -1;
+    return db - da;
+  };
+  const oldByDifference = (a: TrackingFacts, b: TrackingFacts) => {
+    const waiting = (r: TrackingFacts) => (r.difference && !r.difference.answered ? 0 : 1);
+    return waiting(a) - waiting(b) || oldByUrgency(a, b);
+  };
+
+  function rng(seed: number) {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  /** Rows that meet every condition, some, and none — with many ties on days, and rows of the money chip with and without dates. */
+  function rows(seed: number, size: number): (TrackingFacts & { id: number })[] {
+    const r = rng(seed);
+    const pick = <T,>(xs: readonly T[]) => xs[Math.floor(r() * xs.length)];
+    const statuses = ['SHIPPED', 'SHIPPED', 'OUT_FOR_DELIVERY', 'FAILED_DELIVERY', 'READY_FOR_PICKUP', 'RETURN_REQUESTED', 'DELIVERED', 'DELIVERED', 'PARTIALLY_DELIVERED', 'RETURNED'];
+    return Array.from({ length: size }, (_, id) => {
+      const status = pick(statuses);
+      const ended = r() < 0.7 ? new Date(Date.UTC(2026, 9, 1 + Math.floor(r() * 10))) : null;
+      return {
+        id,
+        shippingStatus: status,
+        settlementStatus: pick(['PENDING_COLLECTION', 'SETTLED', 'NOT_APPLICABLE', null]),
+        trackingNumber: r() < 0.7 ? 'T-1' : null,
+        daysInTransit: r() < 0.15 ? null : Math.floor(r() * 12),
+        late: r() < 0.3,
+        alert: r() < 0.4 ? { kind: pick(['CANCELLED', 'CHANGED'] as const), acknowledged: r() < 0.4 } : null,
+        deliveredAt: status === 'DELIVERED' || status === 'PARTIALLY_DELIVERED' ? ended : null,
+        returnedAt: status === 'RETURNED' ? ended : null,
+        barcodeExpected: pick([true, false, undefined]),
+        difference: r() < 0.3 ? { answered: r() < 0.5 } : null,
+      };
+    });
+  }
+  const ids = (list: { id: number }[]) => list.map((x) => x.id);
+
+  for (const seed of [1, 2, 3, 77, 2026]) {
+    it('seed ' + seed + ': the sorter, the live byUrgency and the frozen one put every row in the same place', () => {
+      const all = rows(seed, 600);
+      const frozen = ids([...all].sort(oldByUrgency));
+      expect(ids([...all].sort(byUrgency))).toEqual(frozen);
+      expect(ids([...all].sort(urgencySorter(all)))).toEqual(frozen);
+    });
+
+    it('seed ' + seed + ': inside «فيه فرق» too — the unanswered first, then each group worst first', () => {
+      const all = rows(seed, 600);
+      const firstPass = [...all].sort(oldByUrgency);
+      const frozen = ids([...firstPass].sort(oldByDifference));
+      expect(ids([...firstPass].sort(differenceSorter(byUrgency)))).toEqual(frozen);
+      const sorter = urgencySorter(firstPass);
+      expect(ids([...firstPass].sort(differenceSorter(sorter)))).toEqual(frozen);
+    });
+  }
+
+  it('and a chip’s rows (a part of the list) are sorted the same way when the sorter is built from that part', () => {
+    const all = rows(9, 500);
+    const part = all.filter(MATCHES.LATE);
+    expect(part.length).toBeGreaterThan(5);
+    expect(ids([...part].sort(urgencySorter(part)))).toEqual(ids([...part].sort(oldByUrgency)));
+  });
+
+  it('a row the sorter was not built from is still placed correctly — it is worked out on the spot', () => {
+    const all = rows(4, 200);
+    const outsider = row({ shippingStatus: 'FAILED_DELIVERY', daysInTransit: 4 });
+    const sorter = urgencySorter<TrackingFacts>(all);
+    for (const other of all.slice(0, 60)) expect(Math.sign(sorter(outsider, other))).toBe(Math.sign(oldByUrgency(outsider, other)));
+  });
+
+  it('each row’s reason is worked out ONCE: the sort makes no more predicate calls than rows × conditions, where byUrgency makes many times more', () => {
+    const all = rows(5, 400);
+    const keys = Object.keys(MATCHES) as ConditionKey[];
+    const originals = Object.fromEntries(keys.map((k) => [k, MATCHES[k]])) as typeof MATCHES;
+    let calls = 0;
+    for (const k of keys) MATCHES[k] = (r) => (calls++, originals[k](r));
+    try {
+      const sorter = urgencySorter(all);
+      const built = calls;
+      [...all].sort(sorter);
+      expect(calls, 'the comparisons asked for predicates again').toBe(built);
+      expect(built).toBeLessThanOrEqual(all.length * keys.length);
+      calls = 0;
+      [...all].sort(byUrgency);
+      expect(calls).toBeGreaterThan(all.length * keys.length * 4);
+    } finally {
+      for (const k of keys) MATCHES[k] = originals[k];
+    }
   });
 });
