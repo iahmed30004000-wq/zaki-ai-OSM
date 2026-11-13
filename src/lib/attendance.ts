@@ -2,6 +2,7 @@ import { db } from './db';
 import { zonedParts, type BusinessCalendar } from './business-calendar';
 import { shiftCalendar, type PersonShift } from './employee-shift';
 import { isReleaseSheDidNotPress } from './auto-release';
+import { breatheEvery } from './breathe';
 
 /**
  * WHO CAME, WHEN, AND FOR HOW LONG.
@@ -193,6 +194,10 @@ export async function attendance(input: {
     }),
   ]);
 
+  // Four reads with no cap come back here, and every loop below runs over all of their rows without waiting for anything: each
+  // hands the thread back now and then (`breathe.ts`), so the rest of the site is answered while this is worked out.
+  const pause = breatheEvery();
+
   /** The hours THIS person is judged by: their own, or the country's. */
   const shiftOf = (userId: string) => {
     const cal = shiftCalendar(shifts?.get(userId), calendar);
@@ -232,6 +237,8 @@ export async function attendance(input: {
   };
 
   for (const m of marks) {
+    const turn = pause();
+    if (turn) await turn;
     const day = dayOf(m.userId, m.at);
     if (m.kind === 'CHECK_OUT') {
       day.leftAt = latest(day.leftAt, m.at);
@@ -253,9 +260,21 @@ export async function attendance(input: {
   // under the HOLDER (the line says whose order it was) — but she did nothing.
   // Counted as work, a day she never came looked like a day she was there, and
   // a late arrival could be pulled back to the line's moment.
-  for (const c of claims) if (!isReleaseSheDidNotPress(c)) sawWork(c.userId, c.createdAt);
-  for (const d of decisions) if (d.changedById) sawWork(d.changedById, d.createdAt);
-  for (const a of attempts) sawWork(a.employeeId, a.createdAt);
+  for (const c of claims) {
+    const turn = pause();
+    if (turn) await turn;
+    if (!isReleaseSheDidNotPress(c)) sawWork(c.userId, c.createdAt);
+  }
+  for (const d of decisions) {
+    const turn = pause();
+    if (turn) await turn;
+    if (d.changedById) sawWork(d.changedById, d.createdAt);
+  }
+  for (const a of attempts) {
+    const turn = pause();
+    if (turn) await turn;
+    sawWork(a.employeeId, a.createdAt);
+  }
 
   for (const userId of userIds) {
     const days = [...(byUser.get(userId)?.values() ?? [])].sort((a, b) => a.date.localeCompare(b.date));
@@ -269,6 +288,8 @@ export async function attendance(input: {
     let daysLateEstimated = 0;
 
     for (const day of days) {
+      const turn = pause();
+      if (turn) await turn;
       // Somebody who never marked but worked is present from their first
       // record: a missing button press is not a missing day.
       if (!day.arrivedAt && day.workStartedAt) day.arrivalFromWork = true;

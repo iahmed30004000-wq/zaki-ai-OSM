@@ -5,6 +5,7 @@ import { moderatorPerformance } from './attribution-performance';
 import { teamPerformance, type EmployeeRow } from './team-performance';
 import type { BusinessCalendar } from './business-calendar';
 import { bandsForRole, scoreOf, type ScoreInput, type ScoreResult } from './performance-score';
+import { REPORT_TTL_MS, heavyOnce } from './heavy-lane';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -35,6 +36,22 @@ export interface TeamScope {
   /** Exclusive: the first moment AFTER the window. */
   end: Date;
   calendar: BusinessCalendar;
+}
+
+/**
+ * THE QUESTION A TEAM SCOPE ASKS, AS ONE STRING — everything the answer depends on, so that two askers with the same string
+ * may share one computation (`heavyOnce`, `lib/heavy-lane.ts`). The window's end is optional: it is «now», and a kept answer
+ * is the moment of whoever asked first (`scoreRole` below).
+ */
+function teamQuestion(scope: TeamScope, withEnd: boolean): string {
+  const cal = scope.calendar;
+  return [
+    scope.companyId,
+    scope.storeId,
+    scope.start.toISOString(),
+    withEnd ? scope.end.toISOString() : '',
+    `${cal.timezone}|${cal.workHoursStart}|${cal.workHoursEnd}|${[...(cal.weekendDays ?? [])].sort().join('.')}`,
+  ].join('|');
 }
 
 /**
@@ -174,6 +191,29 @@ const CROSS_SELL_METRIC: Record<string, string> = {
 };
 
 /**
+ * Everybody in one role, scored together — ONCE FOR EVERYBODY WHO ASKS IN THE SAME MINUTE.
+ *
+ * A person's card, the score board and the users list all score the WHOLE role (a volume means nothing without the role's
+ * own numbers), and each used to do it for itself: somebody opening her profile recomputed the team for a month. Now the
+ * first to ask computes it — in the reports' lane, on the reports' six connections — and whoever asks within `REPORT_TTL_MS`
+ * reads that (`heavyOnce`, `lib/heavy-lane.ts`).
+ *
+ * The key is everything the answer depends on EXCEPT the window's end, which is «now»: a kept answer is the role's score as
+ * of the moment the first of them asked, at most a minute ago. Who may read whose row is decided by each door BEFORE it calls
+ * this, exactly as before; nothing here knows who is asking. The rows are shared between requests: READ them, never write
+ * to them.
+ */
+export function scoreRole(
+  scope: TeamScope,
+  role: string,
+  people: { id: string; name: string }[],
+  minSample: number
+): Promise<ScoredPerson[]> {
+  const key = ['score-role', role, String(minSample), teamQuestion(scope, false), people.map((p) => p.id).sort().join(',')].join('|');
+  return heavyOnce(key, REPORT_TTL_MS, () => scoreRoleFresh(scope, role, people, minSample));
+}
+
+/**
  * Everybody in one role, scored together.
  *
  * Together because a volume has no meaning on its own: twenty confirmed
@@ -182,7 +222,7 @@ const CROSS_SELL_METRIC: Record<string, string> = {
  * same store. Which also means the rank comes out of the same pass, instead
  * of a second query that could disagree with the first.
  */
-export async function scoreRole(
+async function scoreRoleFresh(
   scope: TeamScope,
   role: string,
   people: { id: string; name: string }[],
@@ -197,8 +237,12 @@ export async function scoreRole(
     role === 'MODERATOR'
       ? moderatorPerformance({ companyId: scope.companyId, storeId: scope.storeId, start: scope.start, end: scope.end })
       : Promise.resolve([]),
+    // The two agent roles both carry this band and ask for the SAME table in the same request: the second joins the first (a
+    // zero lifetime — shared only while it is being worked out, never kept), and it runs in the reports' lane.
     bands.has('response_time')
-      ? teamPerformance({ companyId: scope.companyId, storeId: scope.storeId, calendar: scope.calendar, start: scope.start, end: scope.end })
+      ? heavyOnce(['team-perf', teamQuestion(scope, true)].join('|'), 0, () =>
+          teamPerformance({ companyId: scope.companyId, storeId: scope.storeId, calendar: scope.calendar, start: scope.start, end: scope.end })
+        )
       : Promise.resolve({ employees: [] as EmployeeRow[], totals: {} as never }),
   ]);
 
