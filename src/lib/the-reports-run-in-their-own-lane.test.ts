@@ -109,6 +109,13 @@ describe('the lane lives on globalThis', () => {
   });
 });
 
+describe('the dashboard waits a minute for its report too', () => {
+  const src = read('src/components/screens/DashboardScreen.tsx');
+  it('its analytics call carries the longer wait — it queues in the same lane as the board', () => {
+    expect(src).toMatch(/apiFetch\(`\/api\/analytics\?period=\$\{period\}`, \{ timeoutMs: 60_000 \}\)/);
+  });
+});
+
 describe('the board waits a minute for a report', () => {
   const src = read('src/components/screens/PerformanceScreen.tsx');
   it('all four of its calls carry the longer wait', () => {
