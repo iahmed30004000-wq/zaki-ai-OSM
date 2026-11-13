@@ -139,6 +139,9 @@ const RICH = {
   orderId: true,
   result: true,
   resolution: true,
+  // «طلب تبديل» (the owner, 13/11): the qualifier beside «اعتُمد رقم الشركة» — the answer's own word on the mark and in the dialog.
+  // Read here, with the rest of the line, and sent as it is: it is not decided or counted from this screen.
+  resolutionKind: true,
   resolutionNote: true,
   expectedAmount: true,
   statementAmount: true,
@@ -236,6 +239,8 @@ export async function readDifferenceRows(
       gap: shortfall({ expectedAmount: ours, statementAmount: theirs, difference: num(m.difference) }, p.minorUnit),
       answered: !!m.resolution,
       resolution: m.resolution,
+      // `EXCHANGE` beside «اعتُمد رقم الشركة» is «طلب تبديل»; null for every other answer and for a row from before the column existed.
+      resolutionKind: m.resolutionKind ?? null,
       resolutionNote: m.resolutionNote,
       claim: m.resolution === 'OURS_STANDS' ? claimOf({ expectedAmount: ours, statementAmount: theirs }, p.minorUnit) : null,
       closed: isMatchingClosed({ matchingClosedAt: m.statement.matchingClosedAt }),

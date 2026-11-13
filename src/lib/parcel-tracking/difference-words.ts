@@ -1,5 +1,5 @@
 import type { HealthTone } from '../health';
-import { PARKED, PARKED_AR, RESOLUTIONS, RESOLUTION_AR, type Resolution } from '../settlement-difference';
+import { EXCHANGE_AR, PARKED, PARKED_AR, RESOLUTIONS, RESOLUTION_AR, isExchange, type Resolution } from '../settlement-difference';
 
 /**
  * «فيه فرق» — WHAT THE FOLLOW-UP SCREEN SAYS ABOUT A PARCEL WHOSE MATCHING CAME BACK WITH A DIFFERENCE, IN ONE PLACE.
@@ -58,6 +58,11 @@ export interface DifferenceOnTheRow {
   /** Somebody has answered it (any of the sayings) — the mark then wears the answer's word instead of the red one. */
   answered: boolean;
   resolution: string | null;
+  /**
+   * «طلب تبديل»: `EXCHANGE` beside «اعتُمد رقم الشركة» (`isExchange`) — the courier's figure with a reason, so the answer's own
+   * word is the exchange's. Null for every other answer; absent from an older server, which reads as «not an exchange».
+   */
+  resolutionKind?: string | null;
   resolutionNote: string | null;
   /** What the company still owes when our figure was the one that stood. */
   claim: number | null;
@@ -91,9 +96,16 @@ export function gapWord(gap: number | null | undefined): typeof SHORT_AR | typeo
   return gap > 0 ? SHORT_AR : OVER_AR;
 }
 
-/** The answer's own word — «اعتُمد رقم الشركة» · «رقمنا هو المعتمد» · «قيد المراجعة» — or null while nobody has answered. */
-export function answerWord(resolution: string | null | undefined): string | null {
+/**
+ * The answer's own word — «اعتُمد رقم الشركة» · «رقمنا هو المعتمد» · «قيد المراجعة» · «طلب تبديل» — or null while nobody has answered.
+ *
+ * «طلب تبديل» is the courier's figure with a reason (`isExchange`: `resolution` is `ACCEPTED_COURIER` AND the kind is `EXCHANGE`): the
+ * same answer for the money, and its own word for the person who reads it — on the mark, in its tooltip and in the dialog — so a
+ * replacement is never read as a discount somebody gave. The kind alone says nothing: beside any other answer it is ignored.
+ */
+export function answerWord(resolution: string | null | undefined, resolutionKind?: string | null): string | null {
   if (!resolution) return null;
+  if (isExchange({ resolution, resolutionKind })) return EXCHANGE_AR;
   if ((RESOLUTIONS as readonly string[]).includes(resolution)) return RESOLUTION_AR[resolution as Resolution];
   return resolution === PARKED ? PARKED_AR : ANSWERED_AR;
 }
@@ -107,12 +119,13 @@ export function markTone(d: Pick<DifferenceOnTheRow, 'resolution'>): HealthTone 
   return (RESOLUTIONS as readonly string[]).includes(d.resolution) ? 'good' : 'ok';
 }
 
-/** The mark's first words: the red «فيه فرق», or — once answered — the answer's own word in its place. */
-export const markHead = (d: Pick<DifferenceOnTheRow, 'resolution'>): string => answerWord(d.resolution) ?? DIFFERENCE_MARK;
+/** The mark's first words: the red «فيه فرق», or — once answered — the answer's own word in its place («طلب تبديل» for an exchange). */
+export const markHead = (d: Pick<DifferenceOnTheRow, 'resolution' | 'resolutionKind'>): string =>
+  answerWord(d.resolution, d.resolutionKind) ?? DIFFERENCE_MARK;
 
 /** The mark's tooltip: what it is, and what pressing it does for THIS person. */
-export function markTitle(d: Pick<DifferenceOnTheRow, 'resolution' | 'closed'>, mayDecide: boolean): string {
-  const word = answerWord(d.resolution);
+export function markTitle(d: Pick<DifferenceOnTheRow, 'resolution' | 'resolutionKind' | 'closed'>, mayDecide: boolean): string {
+  const word = answerWord(d.resolution, d.resolutionKind);
   const first = word ? `انبتّ فيه: ${word}` : 'سطر الشركة بالكشف بيختلف عن رقمنا';
   const closed = d.closed ? ' — الكشف مغلق، فما بيتغيّر' : '';
   const press = mayDecide && !d.closed ? ' — اضغط تشوف الرقمين وتبتّ فيه' : ' — اضغط تشوف الرقمين';
