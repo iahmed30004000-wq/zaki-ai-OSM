@@ -462,13 +462,13 @@ describe('the dialog «من يتحمّل الفرق؟» — drawn from what the 
     fireEvent.click(go);
     // The answer carries the plain line's key only: nobody names a person for the exchange.
     expect(onConfirm).toHaveBeenCalledWith({ 'm-PLAIN': 'u-sara' });
-  });
+  }, 30_000);
 
   it('an approval with only exchanges raises no stop at all — there is no dialog to draw', async () => {
     const { proposeShortfalls } = await import('@/lib/shortfall');
     const r = await proposeShortfalls(tx() as never, SCOPE, [cand('E1', { exchange: true }), cand('E2', { exchange: true })]);
     expect(r).toEqual({ charges: [], onCompany: [], stop: null });
-  });
+  }, 30_000);
 });
 
 describe('the per-person card says the exchanges apart — and they are in none of its discount numbers', () => {
@@ -536,6 +536,11 @@ describe('NO NEW CSS — every class the touched components use is one the produ
   // branches. Tailwind generates those from this very file, so a token reused from there adds nothing to the stylesheet.
   const holeTokens = (src: string) =>
     [...src.matchAll(/className=\{`([^`]*)`\}/g)].flatMap((m) => [...m[1].matchAll(/'([^']*)'/g)].flatMap((q) => q[1].split(/\s+/).filter(Boolean)));
+  // The classes of ~3,500 files, read ONCE (the first test pays for it, the others reuse it) — and each test is given room for a slow disk.
+  let byFile: Map<string, string[]> | null = null;
+  const staticByFile = () => (byFile ??= new Map(files.map((f) => [f, staticClasses(readFileSync(f, 'utf8'))] as [string, string[]])));
+  const shippedExcept = (skip: (file: string) => boolean) => new Set([...staticByFile()].filter(([f]) => !skip(f)).flatMap(([, classes]) => classes));
+  const ROOM = 60_000;
 
   it.each([
     'components/screens/finance/DifferenceActions.tsx',
@@ -545,13 +550,10 @@ describe('NO NEW CSS — every class the touched components use is one the produ
     const ownSrc = readFileSync(own, 'utf8');
     const used = new Set(allClasses(ownSrc));
     expect(used.size, 'the component has classes').toBeGreaterThan(10);
-    const elsewhere = new Set([
-      ...files.filter((f) => f !== own).flatMap((f) => staticClasses(readFileSync(f, 'utf8'))),
-      ...holeTokens(ownSrc),
-    ]);
+    const elsewhere = new Set([...shippedExcept((f) => f === own), ...holeTokens(ownSrc)]);
     const brandNew = [...used].filter((c) => !elsewhere.has(c));
     expect(brandNew, `classes nobody else ships: ${brandNew.join(' ')}`).toEqual([]);
-  });
+  }, ROOM);
 
   it('the new button’s class string is its sibling «قيد المراجعة»’s, with the courier’s figure’s own hover colour — and every token of it is shipped elsewhere', () => {
     const src = readFileSync(join(root, 'components/screens/finance/DifferenceActions.tsx'), 'utf8').replace(/\r\n/g, '\n');
@@ -570,12 +572,9 @@ describe('NO NEW CSS — every class the touched components use is one the produ
     expect(parked.filter((c) => !mine.includes(c))).toEqual(['hover:border-[var(--sys-warning)]', 'hover:text-[var(--sys-warning)]']);
     // Every token is one the product already ships — in another file's static string, or in this component's own accepted button (which
     // wears the two hover tokens on the desk): nothing here is new to the stylesheet.
-    const elsewhere = new Set([
-      ...files.filter((f) => !f.endsWith('DifferenceActions.tsx')).flatMap((f) => staticClasses(readFileSync(f, 'utf8'))),
-      ...holeTokens(src),
-    ]);
+    const elsewhere = new Set([...shippedExcept((f) => f.endsWith('DifferenceActions.tsx')), ...holeTokens(src)]);
     for (const c of mine) expect(elsewhere.has(c), c).toBe(true);
     // …and the two hover tokens are worn by the accepted button before this work (they are in its ternary), so they are not new either.
     expect(holeTokens(src)).toEqual(expect.arrayContaining(['hover:border-[var(--sys-success)]', 'hover:text-[var(--sys-success)]']));
-  });
+  }, ROOM);
 });

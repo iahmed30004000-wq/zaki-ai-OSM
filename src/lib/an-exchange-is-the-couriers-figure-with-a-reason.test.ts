@@ -271,7 +271,7 @@ describe('the order’s timeline reads the exchange in Arabic', () => {
     expect(exchange).toContain(EXCHANGE_AR);
     expect(arabicOnly(exchange), exchange).toBe(true);
     expect(exchange).toContain('لا يُحسب خصماً');
-  });
+  }, 30_000); // (the first import of the timeline pulls half the library: room for a cold, loaded machine)
 
   it('the action’s code is stable — it is what the close writes — and no Latin word reaches the page', async () => {
     expect(EXCHANGE_APPLIED_ACTION).toBe('SETTLEMENT_EXCHANGE_APPLIED');
@@ -280,7 +280,7 @@ describe('the order’s timeline reads the exchange in Arabic', () => {
     const [event] = await orderTimeline(db as never, 'o1');
     expect(event.title).not.toMatch(/[A-Z_]{6,}/);
     expect(event.actorName).toBe('المحاسب');
-  });
+  }, 30_000);
 });
 
 describe('the audit trail reads the exchange in Arabic', () => {
