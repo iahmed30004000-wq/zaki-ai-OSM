@@ -16,6 +16,35 @@
  */
 export const MIN_POOL = 20;
 
+/**
+ * THE REPORTS LANE: A SECOND, SMALL POOL FOR THE SLOW READS (the owner, 13/11: «لوحة الأداء بتضل تعلق والسايت بطيء بشكل عام»).
+ *
+ * One page of the performance board asks for four answers at once, and those four fan out into well over a hundred queries
+ * (seven per delivery company, fourteen for the totals, fourteen for the people…), all started in the same instant. With one pool of
+ * twenty they took every connection, so the girls' pulls, the follow-up list and every navigation's session check queued behind a
+ * report. The reports now run on their OWN client of `HEAVY_POOL` connections (`lib/heavy-lane.ts` decides who is in the lane):
+ * however many queries a report starts, at most six run at a time, and the twenty above are never touched by it.
+ */
+export const HEAVY_POOL = 6;
+
+/** A report's query may wait a long while for one of its six connections; it must not fail while it waits (Prisma's own default is 10 s). */
+export const HEAVY_POOL_TIMEOUT_SECONDS = 120;
+
+/** The same URL for the reports client: its `connection_limit` is EXACTLY `HEAVY_POOL` and its `pool_timeout` is long. */
+export function withHeavyPool(url: string | undefined): string | undefined {
+  if (!url) return url;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+  if (!/^postgres(ql)?:$/.test(parsed.protocol)) return url;
+  parsed.searchParams.set('connection_limit', String(HEAVY_POOL));
+  parsed.searchParams.set('pool_timeout', String(HEAVY_POOL_TIMEOUT_SECONDS));
+  return parsed.toString();
+}
+
 /** The URL the client should open: the same URL, its `connection_limit` raised to at least `MIN_POOL`. */
 export function withPoolFloor(url: string | undefined): string | undefined {
   if (!url) return url;

@@ -6,6 +6,7 @@ import { getDateRange, type DateFilter } from '@/lib/analytics';
 import { teamPerformance } from '@/lib/team-performance';
 import { attendance } from '@/lib/attendance';
 import { db } from '@/lib/db';
+import { REPORT_TTL_MS, heavyOnce } from '@/lib/heavy-lane';
 import type { PersonShift } from '@/lib/employee-shift';
 
 /**
@@ -44,27 +45,38 @@ export async function GET(req: Request) {
       timezone: country.timezone,
     };
 
-    const result = await teamPerformance({ companyId, storeId, calendar, start, end });
+    /*
+     * ONE COMPUTATION PER QUESTION, IN THE REPORTS' LANE (`lib/heavy-lane.ts`, the owner 13/11: «لوحة الأداء بتضل تعلق»).
+     *
+     * The table reads three append-only logs of a ninety-day window for every employee at once. Asked by two tabs, or again by a
+     * page that timed out, it is computed once and shared; and it runs on the reports' six connections, not on the pool every other
+     * screen waits in. The answer holds no figure that depends on who asks (the key `team.monitor` was checked above).
+     */
+    const key = ['team', companyId, storeId, start?.toISOString() ?? '', end?.toISOString() ?? ''].join('|');
+    const { result, marks } = await heavyOnce(key, REPORT_TTL_MS, async () => {
+      const result = await teamPerformance({ companyId, storeId, calendar, start, end });
 
-    // Attendance rides along on the same window, for the same people. Two
-    // requests for one table would let the halves disagree about the dates.
-    const userIds = result.employees.map((e) => e.id);
-    // Each person's own hours, where they have them. Without these the
-    // lateness column measures a noon shift against a nine o'clock country
-    // and reports three hours late, every day, forever.
-    const shifts = new Map<string, PersonShift>(
-      (
-        await db.user.findMany({
-          where: { id: { in: userIds } },
-          select: { id: true, shiftStart: true, shiftEnd: true, restDays: true },
-        })
-      ).map((u) => [u.id, { shiftStart: u.shiftStart, shiftEnd: u.shiftEnd, restDays: u.restDays }])
-    );
+      // Attendance rides along on the same window, for the same people. Two
+      // requests for one table would let the halves disagree about the dates.
+      const userIds = result.employees.map((e) => e.id);
+      // Each person's own hours, where they have them. Without these the
+      // lateness column measures a noon shift against a nine o'clock country
+      // and reports three hours late, every day, forever.
+      const shifts = new Map<string, PersonShift>(
+        (
+          await db.user.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, shiftStart: true, shiftEnd: true, restDays: true },
+          })
+        ).map((u) => [u.id, { shiftStart: u.shiftStart, shiftEnd: u.shiftEnd, restDays: u.restDays }])
+      );
 
-    const marks =
-      start && end
-        ? await attendance({ companyId, storeId, userIds, calendar, shifts, start, end })
-        : new Map();
+      const marks =
+        start && end
+          ? await attendance({ companyId, storeId, userIds, calendar, shifts, start, end })
+          : new Map();
+      return { result, marks };
+    });
 
     return NextResponse.json({
       ...result,

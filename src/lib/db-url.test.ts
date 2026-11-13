@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MIN_POOL, withPoolFloor } from './db-url';
+import { HEAVY_POOL, HEAVY_POOL_TIMEOUT_SECONDS, MIN_POOL, withHeavyPool, withPoolFloor } from './db-url';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -52,5 +52,33 @@ describe('the database pool has a floor of twenty', () => {
     const { readFileSync } = await import('node:fs');
     const src = readFileSync(new URL('./db.ts', import.meta.url), 'utf8');
     expect(src).toMatch(/datasourceUrl:\s*withPoolFloor\(process\.env\.DATABASE_URL\)/);
+  });
+});
+
+describe('the reports lane has a small pool of its own (the owner, 13/11)', () => {
+  it('opens exactly six connections and waits up to two minutes for one — whatever the URL asked for — and keeps the rest of the URL', () => {
+    expect(HEAVY_POOL).toBe(6);
+    expect(HEAVY_POOL_TIMEOUT_SECONDS).toBe(120);
+    for (const asked of ['connection_limit=10&pool_timeout=20', 'connection_limit=40', '']) {
+      const url = pg(CRED, `salesflow-db:5432/salesflow?schema=public${asked ? '&' + asked : ''}`);
+      const out = new URL(withHeavyPool(url)!);
+      expect(out.searchParams.get('connection_limit'), asked).toBe('6');
+      expect(out.searchParams.get('pool_timeout'), asked).toBe('120');
+      const a = new URL(url);
+      expect([out.username, out.password, out.host, out.pathname, out.searchParams.get('schema')]).toEqual([a.username, a.password, a.host, a.pathname, 'public']);
+    }
+  });
+
+  it('is NOT the main pool: the floor of twenty is still what the main client gets', () => {
+    const url = pg(CRED, 'h:5432/d?connection_limit=10');
+    expect(pool(withPoolFloor(url))).toBe('20');
+    expect(pool(withHeavyPool(url))).toBe('6');
+  });
+
+  it('hands back no URL, a non-postgres URL and an unreadable one untouched', () => {
+    expect(withHeavyPool(undefined)).toBeUndefined();
+    expect(withHeavyPool('')).toBe('');
+    expect(withHeavyPool('file:./dev.db')).toBe('file:./dev.db');
+    expect(withHeavyPool('not a url')).toBe('not a url');
   });
 });

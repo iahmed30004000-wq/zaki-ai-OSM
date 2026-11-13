@@ -1,6 +1,7 @@
-import { SHIPPING_GONE, rateOf, whereDelivered } from '@/lib/order-state';
+import { DELIVERED_SHIPPING, SHIPPING_GONE, rateOf, whereDelivered } from '@/lib/order-state';
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { REPORT_TTL_MS, heavyOnce } from '@/lib/heavy-lane';
 import { requireContext } from '@/lib/geo-context';
 import { can } from '@/lib/authorization';
 import { courierRates, courierCollectionTrust, scoreCourier, whyNoCourierScore } from '@/lib/couriers/score';
@@ -30,32 +31,62 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Forbidden', errorAr: 'هذا الإجراء ليس من صلاحياتك. راجع مدير النظام إن كان من عملك.' }, { status: 403 });
     }
 
+    /*
+     * ONE COMPUTATION PER QUESTION, IN THE REPORTS' LANE, AND ONE GROUPED COUNT FOR EVERY COMPANY (the owner, 13/11: «لوحة الأداء
+     * بتضل تعلق والسايت بطيء بشكل عام»).
+     *
+     * This answer used to start SEVEN queries for each delivery company — six counts and a sample — all in the same instant with
+     * `Promise.all`: about seventy at once for ten companies, which is more than three times the pool every other screen shares.
+     * Nothing else could get a connection while it ran. The counts are now ONE grouped query (company × shipping status × settlement
+     * status, a few hundred rows) read in memory, the per-company sample stays, and the whole answer runs on the reports' six
+     * connections (`lib/heavy-lane.ts`) and is shared between askers. Every figure is the count it always was.
+     */
+    const key = ['shipping-performance', companyId, storeId, providerId ?? ''].join('|');
+    const results = await heavyOnce(key, REPORT_TTL_MS, async () => {
     const providers = await db.deliveryProvider.findMany({
       where: { companyId, ...(providerId ? { id: providerId } : {}) },
       select: { id: true, name: true, code: true, isActive: true },
     });
 
-    const results = await Promise.all(
+    const groups =
+      providers.length > 0
+        ? await db.order.groupBy({
+            by: ['deliveryProviderId', 'shippingStatus', 'settlementStatus'],
+            where: { companyId, storeId, deliveryProviderId: { in: providers.map((p) => p.id) } },
+            _count: { _all: true },
+          })
+        : [];
+    const groupsOf = new Map<string, typeof groups>();
+    for (const g of groups) {
+      if (!g.deliveryProviderId) continue;
+      const list = groupsOf.get(g.deliveryProviderId);
+      if (list) list.push(g);
+      else groupsOf.set(g.deliveryProviderId, [g]);
+    }
+
+    return Promise.all(
       providers.map(async (p) => {
         const base = { companyId, storeId, deliveryProviderId: p.id };
-        const [assigned, shipped, delivered, failed, returned, settled] = await Promise.all([
-          db.order.count({ where: base }),
-          db.order.count({ where: { ...base, shippingStatus: { in: [...SHIPPING_GONE] } } }),
-          // A partial delivery counted in none of the three terms below, so
-          // it fell out of the denominator too: every rate was computed over
-          // a silently smaller population than "what this courier finished",
-          // and a courier who got most of the parcel to the door scored
-          // nothing for it.
-          db.order.count({ where: { ...base, ...whereDelivered() } }),
-          db.order.count({ where: { ...base, shippingStatus: 'FAILED_DELIVERY' } }),
-          db.order.count({ where: { ...base, shippingStatus: { in: ['RETURN_REQUESTED', 'RETURNED'] } } }),
-          /*
-           * AND WHETHER THE MONEY CAME BACK, which is the band the old
-           * shape had no number for at all. Out of what LANDED, counted
-           * here rather than derived in a browser: it is money.
-           */
-          db.order.count({ where: { ...base, ...whereDelivered(), settlementStatus: 'SETTLED' } }),
-        ]);
+        const mine = groupsOf.get(p.id) ?? [];
+        const count = (keep: (g: (typeof mine)[number]) => boolean) =>
+          mine.reduce((n, g) => (keep(g) ? n + g._count._all : n), 0);
+        const landed = (g: (typeof mine)[number]) => (DELIVERED_SHIPPING as readonly string[]).includes(g.shippingStatus);
+        const assigned = count(() => true);
+        const shipped = count((g) => (SHIPPING_GONE as readonly string[]).includes(g.shippingStatus));
+        // A partial delivery counted in none of the three terms below, so
+        // it fell out of the denominator too: every rate was computed over
+        // a silently smaller population than "what this courier finished",
+        // and a courier who got most of the parcel to the door scored
+        // nothing for it. (`landed` is `whereDelivered()`: delivered, whole or in part.)
+        const delivered = count(landed);
+        const failed = count((g) => g.shippingStatus === 'FAILED_DELIVERY');
+        const returned = count((g) => g.shippingStatus === 'RETURN_REQUESTED' || g.shippingStatus === 'RETURNED');
+        /*
+         * AND WHETHER THE MONEY CAME BACK, which is the band the old
+         * shape had no number for at all. Out of what LANDED, counted
+         * here rather than derived in a browser: it is money.
+         */
+        const settled = count((g) => landed(g) && g.settlementStatus === 'SETTLED');
 
         const decided = delivered + failed + returned;
         const successRate = rateOf(delivered, decided);
@@ -97,6 +128,7 @@ export async function GET(req: Request) {
         };
       })
     );
+    });
 
     /*
      * SPEED, RE-SCORED ONCE EVERY COURIER IS KNOWN.
