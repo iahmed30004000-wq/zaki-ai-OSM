@@ -480,6 +480,9 @@ describe('the groups — by the hand', () => {
     const groupGrips = noScroll.filter((el) => /^اسحب مجموعة /.test(el.getAttribute('aria-label') ?? ''));
     expect(groupGrips, 'مقبض لكل مجموعة').toHaveLength(NAV.length);
     for (const el of noScroll) expect(el.tagName, 'غير زر بيمنع التمرير').toBe('BUTTON');
+    // …and the property is `none` on every one of them. A grip that names it and sets it to something else would still be
+    // counted above, and a thumb on it would scroll the page instead of carrying the group.
+    for (const el of noScroll) expect(el.style.touchAction, el.getAttribute('aria-label') ?? '').toBe('none');
     for (const el of [...Array.from(document.querySelectorAll('[data-menu-group]')), ...Array.from(document.querySelectorAll('h3, ul, li'))]) {
       expect((el as HTMLElement).style.touchAction, 'عنوان أو صف أو قائمة بتمنع التمرير').not.toBe('none');
     }
