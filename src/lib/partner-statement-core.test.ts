@@ -18,10 +18,10 @@ import { toMinorUnits } from './money';
  */
 
 const FOUR: StatementPartner[] = [
-  { id: 'mk', name: 'محمد كوري', sharePercent: 15, isActive: true },
-  { id: 'ak', name: 'عبدالله كيوان', sharePercent: 15, isActive: true },
-  { id: 'mq', name: 'محمد كيوان', sharePercent: 15, isActive: true },
-  { id: 'ah', name: 'احمد كيوان', sharePercent: 55, isActive: true },
+  { id: 'pa', name: 'شريك أ', sharePercent: 15, isActive: true },
+  { id: 'pb', name: 'شريك ب', sharePercent: 15, isActive: true },
+  { id: 'pc', name: 'شريك ج', sharePercent: 15, isActive: true },
+  { id: 'pd', name: 'شريك د', sharePercent: 55, isActive: true },
 ];
 
 const lineOf = (lines: ReturnType<typeof partnerLines>, id: string) => lines.lines.find((l) => l.id === id)!;
@@ -100,7 +100,7 @@ describe('a list of partners may be saved only when it is whole', () => {
     expect(sharesProblem([{ ...four[0], name: 'ا' }, ...four.slice(1)])?.code).toBe('NAME_REQUIRED');
     expect(sharesProblem([{ ...four[0], name: '   ' }, ...four.slice(1)])?.code).toBe('NAME_REQUIRED');
     expect(sharesProblem([{ ...four[0], name: 'ا'.repeat(61) }, ...four.slice(1)])?.code).toBe('NAME_TOO_LONG');
-    expect(sharesProblem([four[0], { ...four[1], name: '  محمد   كوري ' }, four[2], four[3]])?.code).toBe('NAME_TWICE');
+    expect(sharesProblem([four[0], { ...four[1], name: '  شريك   أ ' }, four[2], four[3]])?.code).toBe('NAME_TWICE');
     expect(sharesProblem([{ ...four[0], sharePercent: 0 }, ...four.slice(1)])?.code).toBe('SHARE_INVALID');
     expect(sharesProblem([{ ...four[0], sharePercent: 15.123 }, ...four.slice(1)])?.code).toBe('SHARE_INVALID');
     expect(sharesProblem([{ ...four[0], sharePercent: 120 }, ...four.slice(1)])?.code).toBe('SHARE_INVALID');
@@ -160,25 +160,25 @@ describe('the statement over the owner’s four', () => {
   });
 
   it('the draws are measured against each share, and the balance is the share less the draws', () => {
-    const s = partnerLines({ netProfit: 1000, partners: FOUR, drawsUnits: { mk: 10000, ah: 30000 }, minorUnit: 2 });
-    expect(lineOf(s, 'mk')).toMatchObject({ entitlement: 150, draws: 100, balance: 50, broken: 0 });
-    expect(lineOf(s, 'ah')).toMatchObject({ entitlement: 550, draws: 300, balance: 250, broken: 0 });
+    const s = partnerLines({ netProfit: 1000, partners: FOUR, drawsUnits: { pa: 10000, pd: 30000 }, minorUnit: 2 });
+    expect(lineOf(s, 'pa')).toMatchObject({ entitlement: 150, draws: 100, balance: 50, broken: 0 });
+    expect(lineOf(s, 'pd')).toMatchObject({ entitlement: 550, draws: 300, balance: 250, broken: 0 });
     expect(s.totals).toEqual({ entitlement: 1000, draws: 400, broken: 0 });
   });
 
   it('a partner who draws past his share is «مكسور عليه» by the excess — and only he is', () => {
-    const s = partnerLines({ netProfit: 1000, partners: FOUR, drawsUnits: { mk: 20000, ah: 55000 }, minorUnit: 2 });
-    expect(lineOf(s, 'mk')).toMatchObject({ entitlement: 150, draws: 200, balance: -50, broken: 50 });
+    const s = partnerLines({ netProfit: 1000, partners: FOUR, drawsUnits: { pa: 20000, pd: 55000 }, minorUnit: 2 });
+    expect(lineOf(s, 'pa')).toMatchObject({ entitlement: 150, draws: 200, balance: -50, broken: 50 });
     // 550 drawn of an entitlement of 550 — equal, not broken
-    expect(lineOf(s, 'ah')).toMatchObject({ entitlement: 550, draws: 550, balance: 0, broken: 0 });
-    expect(lineOf(s, 'ak').broken).toBe(0);
+    expect(lineOf(s, 'pd')).toMatchObject({ entitlement: 550, draws: 550, balance: 0, broken: 0 });
+    expect(lineOf(s, 'pb').broken).toBe(0);
     expect(s.totals.broken).toBe(50);
   });
 
   it('A LOSS gives every partner an entitlement of zero — and every draw is then «مكسور عليه»', () => {
-    const s = partnerLines({ netProfit: -722.1, partners: FOUR, drawsUnits: { ah: 10000 }, minorUnit: 2 });
+    const s = partnerLines({ netProfit: -722.1, partners: FOUR, drawsUnits: { pd: 10000 }, minorUnit: 2 });
     expect(s.lines.map((l) => l.entitlement)).toEqual([0, 0, 0, 0]);
-    expect(lineOf(s, 'ah')).toMatchObject({ entitlement: 0, draws: 100, balance: -100, broken: 100 });
+    expect(lineOf(s, 'pd')).toMatchObject({ entitlement: 0, draws: 100, balance: -100, broken: 100 });
     expect(s.totals.entitlement).toBe(0);
   });
 
@@ -188,9 +188,9 @@ describe('the statement over the owner’s four', () => {
   });
 
   it('it carries forward by construction: the same draws against a bigger profit are no longer broken', () => {
-    const draws = { mk: 20000 };
-    expect(lineOf(partnerLines({ netProfit: 1000, partners: FOUR, drawsUnits: draws, minorUnit: 2 }), 'mk').broken).toBe(50);
-    expect(lineOf(partnerLines({ netProfit: 2000, partners: FOUR, drawsUnits: draws, minorUnit: 2 }), 'mk').broken).toBe(0);
+    const draws = { pa: 20000 };
+    expect(lineOf(partnerLines({ netProfit: 1000, partners: FOUR, drawsUnits: draws, minorUnit: 2 }), 'pa').broken).toBe(50);
+    expect(lineOf(partnerLines({ netProfit: 2000, partners: FOUR, drawsUnits: draws, minorUnit: 2 }), 'pa').broken).toBe(0);
   });
 
   it('a three-decimal currency keeps the fils: 100.01 JOD splits into fils that add to 100.010', () => {
@@ -206,32 +206,66 @@ describe('the statement over the owner’s four', () => {
   });
 
   it('a partner switched off is out of the split, and is listed only while he has draws that stand', () => {
-    const partners = [...FOUR.map((p) => (p.id === 'mq' ? { ...p, isActive: false } : p)), { id: 'x', name: 'شريك جديد', sharePercent: 15, isActive: true }];
+    const partners = [...FOUR.map((p) => (p.id === 'pc' ? { ...p, isActive: false } : p)), { id: 'x', name: 'شريك جديد', sharePercent: 15, isActive: true }];
     const without = partnerLines({ netProfit: 1000, partners, drawsUnits: {}, minorUnit: 2 });
-    expect(without.lines.map((l) => l.id)).toEqual(['mk', 'ak', 'ah', 'x']);
+    expect(without.lines.map((l) => l.id)).toEqual(['pa', 'pb', 'pd', 'x']);
     expect(without.state).toBe('OK');
-    const withDraws = partnerLines({ netProfit: 1000, partners, drawsUnits: { mq: 5000 }, minorUnit: 2 });
-    expect(withDraws.lines.map((l) => l.id)).toEqual(['mk', 'ak', 'mq', 'ah', 'x']);
+    const withDraws = partnerLines({ netProfit: 1000, partners, drawsUnits: { pc: 5000 }, minorUnit: 2 });
+    expect(withDraws.lines.map((l) => l.id)).toEqual(['pa', 'pb', 'pc', 'pd', 'x']);
     // he is out of the split: his entitlement is 0, so what he took stands as broken — today's shares for all history
-    expect(lineOf(withDraws, 'mq')).toMatchObject({ isActive: false, entitlement: 0, draws: 50, broken: 50 });
+    expect(lineOf(withDraws, 'pc')).toMatchObject({ isActive: false, entitlement: 0, draws: 50, broken: 50 });
   });
 
   it('SHARES NOT TOTALLING 100: nothing is split, and no one is called «مكسور عليه» on a guess', () => {
-    const partners = FOUR.map((p) => (p.id === 'ah' ? { ...p, sharePercent: 50 } : p));
-    const s = partnerLines({ netProfit: 1000, partners, drawsUnits: { mk: 99999 }, minorUnit: 2 });
+    const partners = FOUR.map((p) => (p.id === 'pd' ? { ...p, sharePercent: 50 } : p));
+    const s = partnerLines({ netProfit: 1000, partners, drawsUnits: { pa: 99999 }, minorUnit: 2 });
     expect(s.state).toBe('SHARES_NOT_100');
     expect(s.sharesTotal).toBe(95);
     expect(s.lines.every((l) => l.entitlement === null && l.balance === null && l.broken === null)).toBe(true);
     // what he took is still shown — the money does not vanish because the shares are wrong
-    expect(lineOf(s, 'mk').draws).toBe(999.99);
+    expect(lineOf(s, 'pa').draws).toBe(999.99);
     expect(s.totals).toEqual({ entitlement: null, draws: 999.99, broken: null });
+  });
+
+  it('99.99 AND 100.01 — one hundredth either side of whole — are not whole: nothing is split, exactly as at 95', () => {
+    for (const [pd, total] of [[54.99, 99.99], [55.01, 100.01]] as const) {
+      const partners = FOUR.map((p) => (p.id === 'pd' ? { ...p, sharePercent: pd } : p));
+      const s = partnerLines({ netProfit: 1000, partners, drawsUnits: { pa: 20000 }, minorUnit: 2 });
+      expect(s.state, `total ${total}`).toBe('SHARES_NOT_100');
+      expect(s.sharesTotal).toBe(total);
+      expect(s.lines.every((l) => l.entitlement === null && l.balance === null && l.broken === null), `total ${total}`).toBe(true);
+      // what he took is on the table, and nobody is «مكسور عليه» on a guess — a split by these shares would have called شريك أ broken by 50
+      expect(lineOf(s, 'pa').draws).toBe(200);
+      expect(s.totals).toEqual({ entitlement: null, draws: 200, broken: null });
+    }
+  });
+
+  it('the thirds: 33.33 three times is 99.99 and is refused; 33.33 + 33.33 + 33.34 is exactly 100 and splits to the cent', () => {
+    const third = (id: string, name: string, sharePercent: number): StatementPartner => ({ id, name, sharePercent, isActive: true });
+    const short = partnerLines({
+      netProfit: 100,
+      partners: [third('t1', 'شريك س', 33.33), third('t2', 'شريك ص', 33.33), third('t3', 'شريك ع', 33.33)],
+      drawsUnits: {},
+      minorUnit: 2,
+    });
+    expect(short.state).toBe('SHARES_NOT_100');
+    expect(short.sharesTotal).toBe(99.99);
+    const whole = partnerLines({
+      netProfit: 100,
+      partners: [third('t1', 'شريك س', 33.33), third('t2', 'شريك ص', 33.33), third('t3', 'شريك ع', 33.34)],
+      drawsUnits: {},
+      minorUnit: 2,
+    });
+    expect(whole.state).toBe('OK');
+    expect(whole.sharesTotal).toBe(100);
+    expect(whole.lines.map((l) => l.entitlement)).toEqual([33.33, 33.33, 33.34]);
   });
 
   it('no active partner: the state says so, and the draws of the switched-off ones are still shown', () => {
     const none = FOUR.map((p) => ({ ...p, isActive: false }));
-    const s = partnerLines({ netProfit: 1000, partners: none, drawsUnits: { mk: 1000 }, minorUnit: 2 });
+    const s = partnerLines({ netProfit: 1000, partners: none, drawsUnits: { pa: 1000 }, minorUnit: 2 });
     expect(s.state).toBe('NO_PARTNERS');
-    expect(s.lines.map((l) => l.id)).toEqual(['mk']);
+    expect(s.lines.map((l) => l.id)).toEqual(['pa']);
     expect(s.lines[0].broken).toBeNull();
     expect(partnerLines({ netProfit: 1000, partners: [], drawsUnits: {}, minorUnit: 2 }).lines).toEqual([]);
   });
@@ -239,7 +273,7 @@ describe('the statement over the owner’s four', () => {
   it('the order the partners come in is the order of the lines, and it breaks the tie of the last cent', () => {
     const reversed = [...FOUR].reverse();
     const s = partnerLines({ netProfit: 277.91, partners: reversed, drawsUnits: {}, minorUnit: 2 });
-    expect(s.lines.map((l) => l.id)).toEqual(['ah', 'mq', 'ak', 'mk']);
+    expect(s.lines.map((l) => l.id)).toEqual(['pd', 'pc', 'pb', 'pa']);
     expect(s.lines.map((l) => l.entitlement)).toEqual([152.85, 41.69, 41.69, 41.68]);
   });
 });
@@ -261,10 +295,10 @@ describe('«بعد هالسحب» — the very subtraction the statement makes',
   });
 
   it('it agrees with the statement: the line after the draw is the line of the statement with the draw in its draws', () => {
-    const before = partnerLines({ netProfit: 1000, partners: FOUR, drawsUnits: { mk: 10000 }, minorUnit: 2 });
-    const hint = afterDraw(lineOf(before, 'mk') as { entitlement: number; draws: number }, 75.5, 2);
-    const after = partnerLines({ netProfit: 1000, partners: FOUR, drawsUnits: { mk: 10000 + 7550 }, minorUnit: 2 });
-    expect(hint).toEqual({ draws: lineOf(after, 'mk').draws, balance: lineOf(after, 'mk').balance, broken: lineOf(after, 'mk').broken });
+    const before = partnerLines({ netProfit: 1000, partners: FOUR, drawsUnits: { pa: 10000 }, minorUnit: 2 });
+    const hint = afterDraw(lineOf(before, 'pa') as { entitlement: number; draws: number }, 75.5, 2);
+    const after = partnerLines({ netProfit: 1000, partners: FOUR, drawsUnits: { pa: 10000 + 7550 }, minorUnit: 2 });
+    expect(hint).toEqual({ draws: lineOf(after, 'pa').draws, balance: lineOf(after, 'pa').balance, broken: lineOf(after, 'pa').broken });
   });
 
   it('floats do not creep in: 0.1 + 0.2 against 0.3 is equal, not a cent broken', () => {

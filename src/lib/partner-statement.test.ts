@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * profit is the profit screen's own worked example (277.91 — see `api/finance/the-profit-summary-is-pinned.test.ts`), so the numbers
  * below can be checked against the screen by hand.
  *
- *   net 277.91 → the four's shares, by largest remainder:  محمد كوري 41.69 · عبدالله كيوان 41.69 · محمد كيوان 41.68 · احمد كيوان 152.85
+ *   net 277.91 → the four's shares, by largest remainder:  شريك أ 41.69 · شريك ب 41.69 · شريك ج 41.68 · شريك د 152.85
  */
 
 type Row = Record<string, any>;
@@ -30,13 +30,28 @@ const { db, tables, commission } = vi.hoisted(() => {
       }
       return row[key] === want;
     });
-  // Evaluates the `where`, and honours the one `orderBy` the statement asks for (newest first), as the database does.
+  const compare = (a: unknown, b: unknown): number => {
+    const x = a instanceof Date ? a.getTime() : a;
+    const y = b instanceof Date ? b.getTime() : b;
+    return x === y ? 0 : (x as number) < (y as number) ? -1 : 1;
+  };
+  // Evaluates the `where`, and honours the `orderBy` it is handed as the database does — one object or a list of them, ascending or
+  // descending, on a date, a number or a text, the next key breaking a tie in the one before. A mock that ignored it would leave the
+  // order the partners are read in (which decides who gets the last cent of the split) untested.
   const finder = (name: keyof typeof tables) =>
-    vi.fn(async ({ where = {}, orderBy }: { where?: Row; orderBy?: Row } = {}) => {
-      const hit = tables[name].filter((r) => matches(r, where));
-      const by = orderBy && !Array.isArray(orderBy) ? Object.entries(orderBy)[0] : undefined;
-      if (by && by[1] === 'desc') hit.sort((a, b) => (b[by[0]] as Date).getTime() - (a[by[0]] as Date).getTime());
-      return hit;
+    vi.fn(async ({ where = {}, orderBy }: { where?: Row; orderBy?: Row | Row[] } = {}) => {
+      const keys = (orderBy === undefined ? [] : Array.isArray(orderBy) ? orderBy : [orderBy]).flatMap(
+        (o) => Object.entries(o) as [string, 'asc' | 'desc'][]
+      );
+      return tables[name]
+        .filter((r) => matches(r, where))
+        .sort((a, b) => {
+          for (const [key, direction] of keys) {
+            const c = compare(a[key], b[key]);
+            if (c !== 0) return direction === 'desc' ? -c : c;
+          }
+          return 0;
+        });
     });
   const db = {
     partner: { findMany: finder('partner') },
@@ -81,7 +96,7 @@ beforeEach(() => {
   clock = 0;
   for (const t of Object.values(tables)) t.length = 0;
   tables.partner.push(
-    partner('mk', 'محمد كوري', 15, 0), partner('ak', 'عبدالله كيوان', 15, 1), partner('mq', 'محمد كيوان', 15, 2), partner('ah', 'احمد كيوان', 55, 3),
+    partner('pa', 'شريك أ', 15, 0), partner('pb', 'شريك ب', 15, 1), partner('pc', 'شريك ج', 15, 2), partner('pd', 'شريك د', 55, 3),
   );
   tables.order.push(order('o1', 100.1, 5.05, 30.3), order('o2', 250.55, 8.1, 0), order('o3', 49.99, 4, 12.345));
   tables.expense.push(expense('e1', 's1', 40.25), expense('e2', null, 9.99), expense('e3', 's1', 100, new Date('2026-11-09T00:00:00Z')), expense('e4', 's2', 77));
@@ -96,7 +111,7 @@ describe('the statement over the profit screen’s worked example', () => {
     expect(s.netProfit).toBe(277.91);
     expect(s.state).toBe('OK');
     expect(s.lines.map((l) => [l.name, l.entitlement])).toEqual([
-      ['محمد كوري', 41.69], ['عبدالله كيوان', 41.69], ['محمد كيوان', 41.68], ['احمد كيوان', 152.85],
+      ['شريك أ', 41.69], ['شريك ب', 41.69], ['شريك ج', 41.68], ['شريك د', 152.85],
     ]);
     expect(s.totals.entitlement).toBe(277.91);
     expect(s.currency).toBe('USD');
@@ -131,98 +146,163 @@ describe('the statement over the profit screen’s worked example', () => {
   });
 });
 
+describe('whose partners the statement reads', () => {
+  it('a partner of ANOTHER company is not in the statement — not in the lines, not in the total of the shares, not in the split', async () => {
+    // a company-wide partner row with a share of 100: were it read, the active shares would total 200 and nothing would be split
+    tables.partner.push({ ...partner('px', 'شريك من شركة أخرى', 100, 0), companyId: 'c2' });
+    const s = await partnerStatement(SCOPE);
+    expect(s.lines.map((l) => l.id)).toEqual(['pa', 'pb', 'pc', 'pd']);
+    expect(s.state).toBe('OK');
+    expect(s.sharesTotal).toBe(100);
+    expect(s.totals.entitlement).toBe(277.91);
+    // and what was asked of the database carried the company — the other one's rows were never there to be read
+    expect(db.partner.findMany.mock.calls[0][0]?.where).toEqual({ companyId: 'c1' });
+  });
+
+  it('even a switched-off partner of another company, with draws on his name, is not listed', async () => {
+    tables.partner.push({ ...partner('px', 'شريك من شركة أخرى', 40, 0, false), companyId: 'c2' });
+    tables.walletMovement.push(draw('dx', 'px', 30));
+    const s = await partnerStatement(SCOPE);
+    expect(s.lines.map((l) => l.id)).toEqual(['pa', 'pb', 'pc', 'pd']);
+  });
+});
+
+describe('the order the partners are read in decides who gets the last cent', () => {
+  // Four equal shares of 25 over 277.91: each is 69.4775, so every fraction is the same — three spare cents, and with equal fractions
+  // they go to the FIRST THREE in the order the partners come in. The one who comes last is the one left a cent short.
+  const equalFour = (rows: Array<{ id: string; sortOrder: number; createdMinute: number }>) => {
+    tables.partner.length = 0;
+    for (const r of rows) tables.partner.push({ ...partner(r.id, `شريك ${r.id}`, 25, r.sortOrder), createdAt: new Date(2026, 10, 13, 0, r.createdMinute) });
+  };
+  const cuts = (s: Awaited<ReturnType<typeof partnerStatement>>) => s.lines.map((l) => [l.id, l.entitlement]);
+
+  it('SORT ORDER first: stored in the opposite order, they still come out in the order they were saved in', async () => {
+    equalFour([
+      { id: 'pd', sortOrder: 3, createdMinute: 0 },
+      { id: 'pc', sortOrder: 2, createdMinute: 1 },
+      { id: 'pb', sortOrder: 1, createdMinute: 2 },
+      { id: 'pa', sortOrder: 0, createdMinute: 3 },
+    ]);
+    const s = await partnerStatement(SCOPE);
+    expect(cuts(s)).toEqual([['pa', 69.48], ['pb', 69.48], ['pc', 69.48], ['pd', 69.47]]);
+    expect(s.totals.entitlement).toBe(277.91);
+  });
+
+  it('then WHEN HE WAS ADDED: the same sort order is a tie, and the one added first comes first', async () => {
+    equalFour([
+      { id: 'pa', sortOrder: 0, createdMinute: 2 },
+      { id: 'pb', sortOrder: 0, createdMinute: 1 },
+      { id: 'pc', sortOrder: 0, createdMinute: 3 },
+      { id: 'pd', sortOrder: 0, createdMinute: 0 },
+    ]);
+    const s = await partnerStatement(SCOPE);
+    expect(cuts(s)).toEqual([['pd', 69.48], ['pb', 69.48], ['pa', 69.48], ['pc', 69.47]]);
+  });
+
+  it('the sort order beats the age: a partner added later but placed first is the first', async () => {
+    equalFour([
+      { id: 'pa', sortOrder: 1, createdMinute: 0 },
+      { id: 'pb', sortOrder: 0, createdMinute: 5 },
+      { id: 'pc', sortOrder: 2, createdMinute: 1 },
+      { id: 'pd', sortOrder: 3, createdMinute: 2 },
+    ]);
+    const s = await partnerStatement(SCOPE);
+    expect(cuts(s)).toEqual([['pb', 69.48], ['pa', 69.48], ['pc', 69.48], ['pd', 69.47]]);
+  });
+});
+
 describe('the draws: the ledger, cumulative, in the store’s currency', () => {
   it('a draw counts against its partner’s share, and the balance and «مكسور عليه» follow', async () => {
-    tables.walletMovement.push(draw('d1', 'mk', 30), draw('d2', 'mk', 20), draw('d3', 'ah', 100));
+    tables.walletMovement.push(draw('d1', 'pa', 30), draw('d2', 'pa', 20), draw('d3', 'pd', 100));
     const s = await partnerStatement(SCOPE);
-    expect(lineOf(s, 'mk')).toMatchObject({ entitlement: 41.69, draws: 50, balance: -8.31, broken: 8.31 });
-    expect(lineOf(s, 'ah')).toMatchObject({ entitlement: 152.85, draws: 100, balance: 52.85, broken: 0 });
+    expect(lineOf(s, 'pa')).toMatchObject({ entitlement: 41.69, draws: 50, balance: -8.31, broken: 8.31 });
+    expect(lineOf(s, 'pd')).toMatchObject({ entitlement: 152.85, draws: 100, balance: 52.85, broken: 0 });
     expect(s.totals.draws).toBe(150);
     expect(s.totals.broken).toBe(8.31);
   });
 
   it('EQUAL IS NOT BROKEN: a draw of exactly the share leaves a balance of zero', async () => {
-    tables.walletMovement.push(draw('d1', 'ah', 152.85));
+    tables.walletMovement.push(draw('d1', 'pd', 152.85));
     const s = await partnerStatement(SCOPE);
-    expect(lineOf(s, 'ah')).toMatchObject({ draws: 152.85, balance: 0, broken: 0 });
+    expect(lineOf(s, 'pd')).toMatchObject({ draws: 152.85, balance: 0, broken: 0 });
   });
 
   it('ONE CENT over is broken by one cent', async () => {
-    tables.walletMovement.push(draw('d1', 'ah', 152.86));
-    expect(lineOf(await partnerStatement(SCOPE), 'ah')).toMatchObject({ balance: -0.01, broken: 0.01 });
+    tables.walletMovement.push(draw('d1', 'pd', 152.86));
+    expect(lineOf(await partnerStatement(SCOPE), 'pd')).toMatchObject({ balance: -0.01, broken: 0.01 });
   });
 
   it('A DRAW REVERSED counts as nothing — the original and its reversing entry cancel, and the list marks it', async () => {
-    const d1 = draw('d1', 'mk', 30);
-    tables.walletMovement.push(d1, reversal('r1', d1), draw('d2', 'mk', 10));
+    const d1 = draw('d1', 'pa', 30);
+    tables.walletMovement.push(d1, reversal('r1', d1), draw('d2', 'pa', 10));
     const s = await partnerStatement(SCOPE);
-    expect(lineOf(s, 'mk').draws).toBe(10);
+    expect(lineOf(s, 'pa').draws).toBe(10);
     expect(s.draws.map((d) => [d.id, d.reversed])).toEqual([['d2', false], ['d1', true]]);
     // the reversing entry itself is not a draw of its own: two rows listed, not three
     expect(s.draws).toHaveLength(2);
   });
 
   it('a draw by the same partner reversed and drawn again is one draw', async () => {
-    const d1 = draw('d1', 'ah', 100);
-    tables.walletMovement.push(d1, reversal('r1', d1), draw('d2', 'ah', 100));
-    expect(lineOf(await partnerStatement(SCOPE), 'ah').draws).toBe(100);
+    const d1 = draw('d1', 'pd', 100);
+    tables.walletMovement.push(d1, reversal('r1', d1), draw('d2', 'pd', 100));
+    expect(lineOf(await partnerStatement(SCOPE), 'pd').draws).toBe(100);
   });
 
   it('only THIS store’s wallets: a draw from another store’s wallet is not here', async () => {
-    tables.walletMovement.push(draw('d1', 'mk', 30), draw('d-other', 'mk', 500, { wallet: { name: 'صندوق متجر آخر', storeId: 's2' }, walletId: 'w2' }));
+    tables.walletMovement.push(draw('d1', 'pa', 30), draw('d-other', 'pa', 500, { wallet: { name: 'صندوق متجر آخر', storeId: 's2' }, walletId: 'w2' }));
     const s = await partnerStatement(SCOPE);
-    expect(lineOf(s, 'mk').draws).toBe(30);
+    expect(lineOf(s, 'pa').draws).toBe(30);
     expect(s.draws.map((d) => d.id)).toEqual(['d1']);
     expect(db.walletMovement.findMany.mock.calls[0][0]?.where).toMatchObject({ companyId: 'c1', category: 'PARTNER_DRAW', wallet: { storeId: 's1' } });
   });
 
   it('only a PARTNER_DRAW: a movement of any other kind is not a draw', async () => {
-    tables.walletMovement.push(draw('d1', 'mk', 30), draw('x1', 'mk', 999, { category: 'EXPENSE' }));
-    expect(lineOf(await partnerStatement(SCOPE), 'mk').draws).toBe(30);
+    tables.walletMovement.push(draw('d1', 'pa', 30), draw('x1', 'pa', 999, { category: 'EXPENSE' }));
+    expect(lineOf(await partnerStatement(SCOPE), 'pa').draws).toBe(30);
   });
 
   it('is in the STORE’s currency: the equivalent counts, not the wallet’s amount', async () => {
     // 70 dinars from a dinar wallet, typed as worth 98.7 dollars — the ledger adds the dollars
-    tables.walletMovement.push(draw('d1', 'ah', 98.7, { amount: 70, currencyCode: 'JOD' }));
+    tables.walletMovement.push(draw('d1', 'pd', 98.7, { amount: 70, currencyCode: 'JOD' }));
     const s = await partnerStatement(SCOPE);
-    expect(lineOf(s, 'ah').draws).toBe(98.7);
+    expect(lineOf(s, 'pd').draws).toBe(98.7);
     expect(s.draws[0]).toMatchObject({ amount: 70, currencyCode: 'JOD', valueInStoreCurrency: 98.7 });
   });
 
   it('a draw with no store value, or no partner, cannot be added to a ledger: it is counted aside and said', async () => {
-    tables.walletMovement.push(draw('d1', 'mk', 30), draw('d2', 'mk', null), draw('d3', null, 40));
+    tables.walletMovement.push(draw('d1', 'pa', 30), draw('d2', 'pa', null), draw('d3', null, 40));
     const s = await partnerStatement(SCOPE);
     expect(s.uncounted).toBe(2);
-    expect(lineOf(s, 'mk').draws).toBe(30);
+    expect(lineOf(s, 'pa').draws).toBe(30);
     expect(s.totals.draws).toBe(30);
   });
 
   it('the list carries who recorded it, the wallet’s name and the partner’s CURRENT name', async () => {
-    tables.partner[0].name = 'محمد كوري (الشريك)';
-    tables.walletMovement.push(draw('d1', 'mk', 30, { createdById: 'u2', party: 'محمد كوري' }));
+    tables.partner[0].name = 'شريك أ (الشريك)';
+    tables.walletMovement.push(draw('d1', 'pa', 30, { createdById: 'u2', party: 'شريك أ' }));
     const [row] = (await partnerStatement(SCOPE)).draws;
-    expect(row).toMatchObject({ walletName: 'الصندوق', createdByName: 'سارة', partnerName: 'محمد كوري (الشريك)', note: 'سحب' });
+    expect(row).toMatchObject({ walletName: 'الصندوق', createdByName: 'سارة', partnerName: 'شريك أ (الشريك)', note: 'سحب' });
   });
 
   it('a partner switched off who still has draws is listed, out of the split, with what he took', async () => {
     tables.partner[2].isActive = false;
     tables.partner[3].sharePercent = 70;
-    tables.walletMovement.push(draw('d1', 'mq', 25));
+    tables.walletMovement.push(draw('d1', 'pc', 25));
     const s = await partnerStatement(SCOPE);
     expect(s.state).toBe('OK');
-    expect(lineOf(s, 'mq')).toMatchObject({ isActive: false, entitlement: 0, draws: 25, broken: 25 });
-    expect(lineOf(s, 'ah').entitlement).toBe(194.54);
+    expect(lineOf(s, 'pc')).toMatchObject({ isActive: false, entitlement: 0, draws: 25, broken: 25 });
+    expect(lineOf(s, 'pd').entitlement).toBe(194.54);
   });
 });
 
 describe('the shares not being cut', () => {
   it('shares that do not total 100 split nothing, and the draws are still shown', async () => {
     tables.partner[3].sharePercent = 50;
-    tables.walletMovement.push(draw('d1', 'mk', 30));
+    tables.walletMovement.push(draw('d1', 'pa', 30));
     const s = await partnerStatement(SCOPE);
     expect(s.state).toBe('SHARES_NOT_100');
     expect(s.lines.every((l) => l.entitlement === null && l.broken === null)).toBe(true);
-    expect(lineOf(s, 'mk').draws).toBe(30);
+    expect(lineOf(s, 'pa').draws).toBe(30);
   });
 
   it('no partner saved yet: the state says so', async () => {
@@ -237,11 +317,11 @@ describe('the shares not being cut', () => {
 describe('a loss, and a store that has sold nothing', () => {
   it('a LOSS gives everyone an entitlement of zero — the profit is reported as it is, the floor is the split’s', async () => {
     tables.expense.push(expense('e-big', 's1', 1000));
-    tables.walletMovement.push(draw('d1', 'ah', 10));
+    tables.walletMovement.push(draw('d1', 'pd', 10));
     const s = await partnerStatement(SCOPE);
     expect(s.netProfit).toBe(-722.1);
     expect(s.lines.map((l) => l.entitlement)).toEqual([0, 0, 0, 0]);
-    expect(lineOf(s, 'ah')).toMatchObject({ draws: 10, balance: -10, broken: 10 });
+    expect(lineOf(s, 'pd')).toMatchObject({ draws: 10, balance: -10, broken: 10 });
     expect(s.totals.entitlement).toBe(0);
   });
 

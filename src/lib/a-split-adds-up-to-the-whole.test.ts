@@ -186,3 +186,68 @@ describe('PROPERTY: over thousands of random profits and share sets', () => {
     expect(odd.reduce((a, b) => a + b, 0)).toBe(total + 1);
   });
 });
+
+/**
+ * A HUGE TOTAL — where a float is already wrong and the parts still add up.
+ *
+ * A billion at three decimals (above) fits a float: 1e12 × 5500 is under 2^53. This does not: a total of 7.35 quadrillion units times a
+ * weight of 1500 is 1.1e19, far past the 9.007e15 a float holds exactly, so a split done in floats misjudges which fraction is the
+ * biggest — and ends up ONE UNIT on the wrong partner while the parts still add up to the total, which is why a sum-check never
+ * sees it. The spare unit has to go to the biggest fraction, to the last digit. These are measured behaviours (found by running the
+ * float split against the exact one over random totals), not a look at how the function is written.
+ */
+describe('a HUGE total is split to the last unit', () => {
+  /** The same answer worked a different way: each share as an exact fraction, the spare units to the biggest fractions, ties in order. */
+  function exactSplit(total: number, hundredths: number[]): number[] {
+    const whole = hundredths.reduce((a, b) => a + b, 0);
+    const t = BigInt(total);
+    const cut = hundredths.map((h) => ({ floor: (t * BigInt(h)) / BigInt(whole), rest: (t * BigInt(h)) % BigInt(whole) }));
+    let spare = Number(t - cut.reduce((a, c) => a + c.floor, BigInt(0)));
+    const byFraction = cut.map((c, i) => ({ i, rest: c.rest })).sort((a, b) => (a.rest === b.rest ? a.i - b.i : a.rest > b.rest ? -1 : 1));
+    const parts = cut.map((c) => c.floor);
+    for (const { i } of byFraction) {
+      if (spare-- <= 0) break;
+      parts[i] += BigInt(1);
+    }
+    return parts.map(Number);
+  }
+
+  it('7 352 052 004 175 182 units: the 15% shares are …277.30 and the 55% is …350.10, so the one spare unit goes to the FIRST of the .30s', () => {
+    // 7352052004175182 × 15 / 100 = 1102807800626277.30 (three of them) · × 55 / 100 = 4043628602296350.10 · floors add to the total less one
+    expect(splitUnitsByShares(7352052004175182, [15, 15, 15, 55])).toEqual([1102807800626278, 1102807800626277, 1102807800626277, 4043628602296350]);
+  });
+
+  it('three more totals on which the float split puts the spare unit on the 55%, where the exact one does not', () => {
+    expect(splitUnitsByShares(7563622093274662, [15, 15, 15, 55])).toEqual([1134543313991200, 1134543313991199, 1134543313991199, 4159992151301064]);
+    expect(splitUnitsByShares(5281362370463422, [15, 15, 15, 55])).toEqual([792204355569514, 792204355569513, 792204355569513, 2904749303754882]);
+    expect(splitUnitsByShares(7115108993109582, [15, 15, 15, 55])).toEqual([1067266348966438, 1067266348966437, 1067266348966437, 3913309946210270]);
+  });
+
+  it('the biggest whole number a float holds exactly — 9 007 199 254 740 991 — splits and adds up, four shares or three thirds', () => {
+    const top = Number.MAX_SAFE_INTEGER;
+    // …× 15% = …148.65 (three) and × 55% = …545.05: floors fall two units short, and the two go to the first two .65s
+    expect(splitUnitsByShares(top, [15, 15, 15, 55])).toEqual([1351079888211149, 1351079888211149, 1351079888211148, 4953959590107545]);
+    // × 33.33% = …172.3003 (twice) and × 33.34% = …646.3994: floors fall one short, and the one goes to the biggest fraction — the last
+    expect(splitUnitsByShares(top, [33.33, 33.33, 33.34])).toEqual([3002099511605172, 3002099511605172, 3003000231530647]);
+    for (const shares of [[15, 15, 15, 55], [33.33, 33.33, 33.34]]) {
+      expect(splitUnitsByShares(top, shares).reduce((a, b) => a + b, 0)).toBe(top);
+    }
+  });
+
+  it('across a few hundred totals from 2^52 up to the top of the safe range, the split is the exact one and adds up to the total', () => {
+    const next = rng(13112026);
+    const sets = [[15, 15, 15, 55], [33.33, 33.33, 33.34], [1, 99], [20, 20, 20, 20, 20], [0.01, 99.99]];
+    for (let i = 0; i < 400; i++) {
+      const total = 2 ** 52 + Math.floor(next() * (2 ** 52 - 1));
+      const shares = sets[i % sets.length];
+      const parts = splitUnitsByShares(total, shares);
+      expect(parts, `total ${total} shares ${shares}`).toEqual(exactSplit(total, shares.map((s) => Math.round(s * 100))));
+      expect(parts.reduce((a, b) => a + b, 0), `total ${total}`).toBe(total);
+    }
+  });
+
+  it('a total past the largest safe whole number is not split on a guess: it comes back as nothing to share', () => {
+    expect(splitUnitsByShares(2 ** 53, [15, 15, 15, 55])).toEqual([0, 0, 0, 0]);
+    expect(splitUnitsByShares(Number.MAX_SAFE_INTEGER + 2, [100])).toEqual([0]);
+  });
+});
