@@ -39,6 +39,12 @@ export interface QueueResponse {
   caps: { withoutAttempt: number; total: number };
   leadDays: number;
   waitingOnADate?: number;
+  /**
+   * «الطلبات الي عليها مشاكل» (the owner, 13/11): the entry issues still OPEN in this store — orders that came back with a data
+   * error and wait for a correction. Said apart from the pool, never part of it. ABSENT for a person who may not open that list
+   * (`confirmation.issues`) and from a server that does not send it yet: then the card draws no box for it.
+   */
+  openIssues?: number;
   /** In the queue and held for a colleague who worked the customer: seen, not takeable. */
   reservedForColleagues?: number;
   canPull: boolean;
@@ -327,6 +333,32 @@ export function PullPanel({
   );
 
   /*
+    WHAT IS NOT READY TO PULL, IN BOXES TOO — «١ كمان يضيف عليهم المؤجل والطلبات الي عليها مشاكل» (the owner, 13/11, over the full
+    card: two boxes, «جديد» and «راجع», and the postponed orders as a line of small print).
+
+    The boxes above are what the button can hand out. Two more things live next to the pool: the postponed orders whose day has not
+    come (`waitingOnADate` — a promise, not a pull) and the entry issues that wait for a correction (`openIssues` — only for whoever
+    may open that list; for the rest the field is absent and so is the box). Neither is in the big number and the button never gives
+    them, so they stand apart under their own line — and the old line for the postponed gives way to its box. The slim bar of
+    «طلباتي» is one line on purpose and is untouched.
+  */
+  const farOnes = data.waitingOnADate ?? 0;
+  const issues = data.openIssues;
+  const notReady = (farOnes > 0 || (issues ?? 0) > 0) && (
+    <div className="mt-4">
+      <p className="text-xs text-[var(--sys-muted)]">مش جاهزة للسحب الآن</p>
+      <div
+        role="group"
+        aria-label="طلبات مش جاهزة للسحب"
+        className={`mt-2 grid gap-3 text-center ${issues !== undefined ? 'grid-cols-2' : 'grid-cols-1'}`}
+      >
+        <Part label="مؤجَّلة" hint="لسا ما حان موعدها" value={farOnes} />
+        {issues !== undefined && <Part label="عليها إشكال" hint="بتستنى تصحيح" value={issues} />}
+      </div>
+    </div>
+  );
+
+  /*
     HELD FOR A COLLEAGUE IS NOT WAITING FOR YOU EITHER — and it is said, not hidden.
 
     The orders of returning customers stay in the queue with the name of the agent who worked them. They are not in the big
@@ -395,7 +427,7 @@ export function PullPanel({
       <p className="mt-4 text-4xl font-bold text-[var(--sys-heading)] tabular-nums">{data.waiting}</p>
       <p className="mt-1 text-sm text-[var(--sys-muted-foreground)]">طلب جاهز للسحب الآن</p>
       {parts}
-      {onADate}
+      {notReady}
       {heldForColleagues}
       {button}
       {sentence}

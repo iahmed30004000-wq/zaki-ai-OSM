@@ -15,6 +15,7 @@ import { DeliverDialog } from '@/components/screens/tracking/DeliverDialog';
 import { BulkDeliverReport, type BulkDeliverLine } from '@/components/screens/tracking/BulkDeliverReport';
 import { WriteOffDialog } from '@/components/screens/tracking/WriteOffDialog';
 import { CloseLegacyDialog } from '@/components/screens/tracking/CloseLegacyDialog';
+import { ClosePickedDialog } from '@/components/screens/tracking/ClosePickedDialog';
 import { apiJson } from '@/lib/api-client';
 import { ScreenTitle } from '@/components/shell/ScreenTitle';
 import { BulkBar } from '@/components/shell/BulkBar';
@@ -244,6 +245,8 @@ export function TrackingScreen() {
   const [bulkReport, setBulkReport] = useState<{ lines: BulkDeliverLine[]; delivered: number; refused: number } | null>(null);
   const [collecting, setCollecting] = useState(false);
   const [closingLegacy, setClosingLegacy] = useState(false);
+  /** The owner's press on the orders he ticked (`ops.close_legacy` too): any barcode, any age, nothing moves. */
+  const [closingPicked, setClosingPicked] = useState(false);
   /** The row whose alert is being acknowledged right now. */
   const [acking, setAcking] = useState<string | null>(null);
   const [task, setTask] = useState<TaskFilter>('all');
@@ -747,6 +750,15 @@ export function TrackingScreen() {
               <button onClick={() => setSelected({})} className="text-xs text-[var(--sys-muted-foreground)] hover:underline">
                 إلغاء الاختيار
               </button>
+              {/* The owner's second press: the ticked orders, closed as collected with no money moved (`ops.close_legacy`). */}
+              {acts.closeLegacy && (
+                <button
+                  onClick={() => setClosingPicked(true)}
+                  className="min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline"
+                >
+                  أقفل المحدّد بلا حركة مال…
+                </button>
+              )}
               {mixedCouriers && (
                 <span role="alert" className="text-xs text-[var(--sys-destructive)]">اختر طرود شركة وحدة</span>
               )}
@@ -843,6 +855,14 @@ export function TrackingScreen() {
             >
               إلغاء الاختيار
             </button>
+            {acts.closeLegacy && (
+              <button
+                onClick={() => setClosingPicked(true)}
+                className="min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline"
+              >
+                أقفل المحدّد بلا حركة مال…
+              </button>
+            )}
             {mixedCouriers && (
               <span role="alert" className="w-full text-xs text-[var(--sys-destructive)]">اختر طرود شركة وحدة</span>
             )}
@@ -1343,6 +1363,20 @@ export function TrackingScreen() {
           onClose={() => setCollecting(false)}
           onDone={async (message) => {
             setCollecting(false);
+            setSelected({});
+            setDone(message);
+            setError(null);
+            await list.reload();
+          }}
+        />
+      )}
+
+      {closingPicked && chosen.length > 0 && (
+        <ClosePickedDialog
+          orders={chosen}
+          onClose={() => setClosingPicked(false)}
+          onDone={async (message) => {
+            setClosingPicked(false);
             setSelected({});
             setDone(message);
             setError(null);

@@ -76,7 +76,7 @@ export const stillCloseableWhere = (scope: LegacyScope, ids: string[]): Prisma.O
   settlementStatus: { in: [...NO_MONEY_SETTLEMENT] },
 });
 
-const LEGACY_ROW_SELECT = {
+export const LEGACY_ROW_SELECT = {
   id: true,
   orderNumber: true,
   merchantRef: true,
@@ -115,15 +115,29 @@ export interface LegacyRead {
   tooMany: boolean;
 }
 
-const chunks = <T,>(all: T[], size = PART): T[][] => {
+export const chunks = <T,>(all: T[], size = PART): T[][] => {
   const out: T[][] = [];
   for (let i = 0; i < all.length; i += size) out.push(all.slice(i, i + size));
   return out;
 };
 
-const hasNoMoney = (s: string) => (NO_MONEY_SETTLEMENT as readonly string[]).includes(s);
+export const hasNoMoney = (s: string) => (NO_MONEY_SETTLEMENT as readonly string[]).includes(s);
 
-const STATEMENT_SELECT = { reference: true, status: true, approvedAt: true, deliveryProviderId: true } as const;
+/** One order as the question reads it. Both presses read an order the same way: the age is counted from the day it arrived. */
+export const legacyRowOf = (o: Prisma.OrderGetPayload<{ select: typeof LEGACY_ROW_SELECT }>): LegacyRow => ({
+  id: o.id,
+  orderNumber: o.orderNumber,
+  merchantRef: o.merchantRef,
+  trackingNumber: o.trackingNumber,
+  deliveryProviderId: o.deliveryProviderId,
+  settlementStatus: o.settlementStatus,
+  at: o.deliveredAt ?? o.shippedAt ?? o.createdAt,
+  currency: o.currency,
+  value: Number(o.totalAmount),
+  courier: o.deliveryProvider?.name ?? 'بلا شركة شحن',
+});
+
+export const STATEMENT_SELECT = { reference: true, status: true, approvedAt: true, deliveryProviderId: true } as const;
 
 /**
  * THE ORDERS A STATEMENT SPEAKS FOR — the collect door's own rule (`statementNamingRefusal`), asked one order at a time.
@@ -173,18 +187,7 @@ export async function readLegacy(tx: Tx, scope: LegacyScope): Promise<LegacyRead
     select: LEGACY_ROW_SELECT,
   });
   const tooMany = found.length > LEGACY_MOST;
-  const rows: LegacyRow[] = found.slice(0, LEGACY_MOST).map((o) => ({
-    id: o.id,
-    orderNumber: o.orderNumber,
-    merchantRef: o.merchantRef,
-    trackingNumber: o.trackingNumber,
-    deliveryProviderId: o.deliveryProviderId,
-    settlementStatus: o.settlementStatus,
-    at: o.deliveredAt ?? o.shippedAt ?? o.createdAt,
-    currency: o.currency,
-    value: Number(o.totalAmount),
-    courier: o.deliveryProvider?.name ?? 'بلا شركة شحن',
-  }));
+  const rows: LegacyRow[] = found.slice(0, LEGACY_MOST).map(legacyRowOf);
   // A statement is only a question for the orders that could be closed at all.
   const named = tooMany ? new Set<string>() : await readNamed(tx, scope, rows.filter((r) => hasNoMoney(r.settlementStatus)));
   return { rows, named, tooMany };
@@ -318,7 +321,32 @@ export async function closeLegacy(tx: Tx, input: CloseLegacyInput): Promise<Lega
     });
   }
 
-  for (const part of chunks(rows)) {
+  await markClosed(tx, { scope, user, rows, note: LEGACY_CLOSE_NOTE, metadata: { age, note: LEGACY_CLOSE_NOTE } });
+  return measured;
+}
+
+export interface MarkClosedInput {
+  scope: LegacyScope;
+  user: { id: string; role: string };
+  /** The orders just claimed, each with the state it was in a moment ago: the log keeps it, and so does the rollback. */
+  rows: { id: string; settlementStatus: string }[];
+  /** The sentence on each order's settlement log. */
+  note: string;
+  /** What the mark carries beside the two states: which press wrote it, and why. */
+  metadata: Record<string, unknown>;
+}
+
+/**
+ * THE LOG AND THE MARK — what every order carries once it is closed, whichever press closed it.
+ *
+ * One line on the settlement log (before → «مسوّى», with the sentence) and the activity row the commission rule reads
+ * (`LEGACY_CLOSE_ACTION`). It is the same pair for the old-ones press and for the press the owner makes on the orders he ticked,
+ * so the commission rule and the rollback see one kind of mark, and there is one place that writes it. Called only after the claim
+ * and the second look at the statements; no wallet, no amount, no commission, no stock.
+ */
+export async function markClosed(tx: Tx, input: MarkClosedInput): Promise<void> {
+  const { scope, user, note } = input;
+  for (const part of chunks(input.rows)) {
     await tx.orderStatusLog.createMany({
       data: part.map((r) => ({
         companyId: scope.companyId,
@@ -328,7 +356,7 @@ export async function closeLegacy(tx: Tx, input: CloseLegacyInput): Promise<Lega
         newValue: 'SETTLED',
         changedById: user.id,
         changedByRole: user.role,
-        note: LEGACY_CLOSE_NOTE,
+        note,
       })),
     });
     await tx.orderActivity.createMany({
@@ -339,9 +367,8 @@ export async function closeLegacy(tx: Tx, input: CloseLegacyInput): Promise<Lega
         action: LEGACY_CLOSE_ACTION,
         previousStatus: r.settlementStatus,
         newStatus: 'SETTLED',
-        metadata: JSON.stringify({ age, note: LEGACY_CLOSE_NOTE }),
+        metadata: JSON.stringify(input.metadata),
       })),
     });
   }
-  return measured;
 }

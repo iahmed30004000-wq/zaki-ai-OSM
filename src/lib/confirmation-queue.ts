@@ -1359,6 +1359,18 @@ export async function postponedNotDueCount(tx: Tx, scope: QueueScope, now = new 
 }
 
 /**
+ * THE ORDERS THAT CAME BACK WITH A PROBLEM AND WAIT FOR A CORRECTION — «الطلبات اللي عليها مشاكل» (the owner, 13/11).
+ *
+ * The open entry issues of this store: what `/api/confirmation/issues` lists by default (status OPEN) and what the work card
+ * «إشكال بستنى تصحيح» counts (`ISSUES_OPEN` in `/api/me/work`) — ONE definition, so the box on the pull card, the card and the list
+ * cannot say three numbers. They are NOT in the pull's big number and the button never hands one out: they are said apart, under
+ * «مش جاهزة للسحب».
+ */
+export async function openIssuesCount(tx: Tx, scope: QueueScope) {
+  return tx.orderIssue.count({ where: { companyId: scope.companyId, status: 'OPEN', order: { storeId: scope.storeId } } });
+}
+
+/**
  * How many of ONE moderator's orders are still waiting to be confirmed.
  *
  * A moderator brings orders in and then has no way to know what became of
