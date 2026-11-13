@@ -5,8 +5,8 @@ import { requireContext } from '@/lib/geo-context';
 import { can, requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
-import { shipmentBlocks, type OrderBlock } from '@/lib/operations';
-import { codForOrder, resolveDeliveryFee } from '@/lib/delivery-fees';
+import { shipmentBlocks, shipmentBlocksBulk, type OrderBlock } from '@/lib/operations';
+import { codForOrder, feePairKey, resolveDeliveryFee, resolveDeliveryFeesFor } from '@/lib/delivery-fees';
 import { assertReadyToShip, type GuardResult, type StateSource } from '@/lib/order-state';
 import { guardLines } from '@/lib/reservation';
 import { cancelVerdict } from '@/lib/shipment-cancel';
@@ -108,9 +108,10 @@ export async function GET(req: Request) {
         deliveryAddress: true,
         customer: { select: { id: true, fullName: true, phone: true, city: true, totalOrders: true, address: true } },
         region: { select: { id: true, name: true } },
-        items: { select: { productName: true, quantity: true, freeQuantity: true, unitPrice: true, discountShare: true, lineTotal: true, reservedQty: true } },
+        // `productId` (and the add-ons' name) is read for the shelf question below, asked of the whole list at once; it is not in the row.
+        items: { select: { productId: true, productName: true, quantity: true, freeQuantity: true, unitPrice: true, discountShare: true, lineTotal: true, reservedQty: true } },
         // `reservedQty` of the add-ons too: the door asks about them, so the row must (one select, no query per row).
-        addOns: { select: { quantity: true, price: true, reservedQty: true } },
+        addOns: { select: { productId: true, productName: true, quantity: true, price: true, reservedQty: true } },
       },
     });
 
@@ -120,12 +121,39 @@ export async function GET(req: Request) {
       batchStatuses.set(batchId, await batchStatusOf(db, batchId));
     }
 
+    /*
+     * THE FEES AND THE BLOCKS OF THE WHOLE LIST, ASKED OF THE TABLES ONCE.
+     *
+     * This asked `resolveDeliveryFee` and `shipmentBlocks` of every order in turn — about 2,700 statements for 300 orders,
+     * again after each pause in typing and each return to the tab. The answers are the same functions' answers
+     * (`resolveDeliveryFeesFor` feeds `resolveDeliveryFee` from one read; `shipmentBlocksBulk` is held to `shipmentBlocks`
+     * by a test, order by order). The DOOR below (POST) is untouched: it still asks `shipmentBlocks` of each order inside its
+     * own transaction.
+     */
+    const providerOf = (o: { deliveryProviderId: string | null }) => providerId ?? o.deliveryProviderId;
+    const fees = await resolveDeliveryFeesFor(
+      db,
+      orders.flatMap((o) => {
+        const provider = providerOf(o);
+        return provider ? [{ deliveryProviderId: provider, regionId: o.regionId }] : [];
+      }),
+      country.minorUnit
+    );
+    const blocksOf = await shipmentBlocksBulk(
+      db,
+      orders.map((o) => ({
+        id: o.id, companyId: o.companyId, storeId: o.storeId, customerId: o.customerId, regionId: o.regionId,
+        deliveryProviderId: providerOf(o), items: o.items, addOns: o.addOns,
+      })),
+      { allowNegativeStock: country.allowNegativeStock, batchOrderIds: orders.map((o) => o.id) }
+    );
+
     const rows = [];
     for (const order of orders) {
-      const provider = providerId ?? order.deliveryProviderId;
-      const fee = provider
-        ? await resolveDeliveryFee(db, { deliveryProviderId: provider, regionId: order.regionId, minorUnit: country.minorUnit })
-        : { fee: 0, lateThresholdDays: 0, returnFee: 0, source: 'NONE' as const };
+      const provider = providerOf(order);
+      const fee = (provider ? fees.get(feePairKey(provider, order.regionId)) : undefined) ?? {
+        fee: 0, lateThresholdDays: 0, returnFee: 0, source: 'NONE' as const,
+      };
 
       const money = codForOrder({
         lines: order.items,
@@ -135,11 +163,7 @@ export async function GET(req: Request) {
         minorUnit: country.minorUnit,
       });
 
-      const found: OrderBlock[] = await shipmentBlocks(
-        db,
-        { id: order.id, companyId: order.companyId, storeId: order.storeId, customerId: order.customerId, regionId: order.regionId, deliveryProviderId: provider },
-        { allowNegativeStock: country.allowNegativeStock, batchOrderIds: orders.map((o) => o.id) }
-      );
+      const found: OrderBlock[] = blocksOf.get(order.id) ?? [];
 
       /**
        * THE ROW ASKS THE DOOR'S OWN QUESTION.

@@ -27,11 +27,25 @@ vi.mock('@/lib/geo-context', () => ({ requireContext: (...a: unknown[]) => requi
 vi.mock('@/lib/authorization', () => ({ requirePermission: vi.fn(), can: () => false }));
 vi.mock('@/lib/audit', () => ({ logAudit: vi.fn() }));
 vi.mock('@/lib/pii-alert', () => ({ noteCustomersHandedOut: vi.fn() }));
-vi.mock('@/lib/operations', () => ({ shipmentBlocks: (...a: unknown[]) => shipmentBlocks(...a) }));
-vi.mock('@/lib/delivery-fees', async (orig) => ({
-  ...(await orig<typeof import('@/lib/delivery-fees')>()),
-  resolveDeliveryFee: (...a: unknown[]) => resolveDeliveryFee(...a),
+vi.mock('@/lib/operations', () => ({
+  shipmentBlocks: (...a: unknown[]) => shipmentBlocks(...a),
+  // The list asks the whole list at once; here each order is answered by the same per-order mock the door's tests use.
+  shipmentBlocksBulk: async (tx: unknown, orders: { id: string }[], opts: unknown) =>
+    new Map(await Promise.all(orders.map(async (o) => [o.id, await shipmentBlocks(tx, o, opts)] as const))),
 }));
+vi.mock('@/lib/delivery-fees', async (orig) => {
+  const real = await orig<typeof import('@/lib/delivery-fees')>();
+  return {
+    ...real,
+    resolveDeliveryFee: (...a: unknown[]) => resolveDeliveryFee(...a),
+    // The list reads the fees of all its orders at once; here each pair is answered by the same per-pair mock.
+    resolveDeliveryFeesFor: async (tx: unknown, pairs: { deliveryProviderId: string; regionId: string | null }[], minorUnit: number) => {
+      const fees = new Map();
+      for (const p of pairs) fees.set(real.feePairKey(p.deliveryProviderId, p.regionId), await resolveDeliveryFee(tx, { ...p, minorUnit }));
+      return fees;
+    },
+  };
+});
 // The REAL assertReadyToShip and guardLines — they are what the row and the door must share.
 
 import { GET, POST } from '@/app/api/ops/shipments/route';

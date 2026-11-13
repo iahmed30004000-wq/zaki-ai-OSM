@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { db } from './db';
-import { availableStock } from './reservation';
+import { availableStock, freeFromPools, stockPoolsFor, type StockPools } from './reservation';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -288,6 +288,177 @@ export async function shipmentBlocks(
   }
 
   return blocks;
+}
+
+/** One order of a list and the lines it carries — everything `shipmentBlocksBulk` needs to answer for it. */
+export interface BlockedOrder {
+  id: string;
+  companyId: string;
+  storeId: string | null;
+  customerId: string;
+  regionId: string | null;
+  deliveryProviderId: string | null;
+  items: ReadonlyArray<{ productId: string; productName: string; quantity: number; freeQuantity: number }>;
+  addOns: ReadonlyArray<{ productId: string; productName: string; quantity: number }>;
+}
+
+/**
+ * `shipmentBlocks` FOR A WHOLE LIST — the same blocks, in the same order, in the same words, from a handful of reads.
+ *
+ * The list of orders ready to ship asked `shipmentBlocks` of each of up to 300 orders, one after the other: two counts,
+ * a fee row, the lines, the add-ons and three aggregates for every line — about 2,700 statements to draw one screen, again
+ * after every pause in typing and every return to the tab. The questions are the same for everyone; only the answers
+ * differ. So they are asked once, grouped, and each order takes its own answer out:
+ *
+ *   • the customer's other orders on the road, and returned lately — one read each for all the customers, and each order
+ *     leaves ITSELF out of its own count (`id: { not }` in the single version);
+ *   • whether an active fee row exists for each (courier, governorate) — one read;
+ *   • the shelf — `stockPoolsFor`, per store, which builds its `where` from the same builders `availableStock` does.
+ *
+ * It READS ONLY and is for the list. The door that creates a shipment keeps asking `shipmentBlocks` of each order inside
+ * its own transaction, so a list that says «متوفّر» and a door that refuses (or the reverse) can only differ by what
+ * changed between the two clicks — never by the rule. The test next to this file holds the two to the same answer,
+ * order by order, over a fixture with shared products, add-ons, a customer with a parcel on the road and one who
+ * returned one.
+ */
+export async function shipmentBlocksBulk(
+  tx: Tx,
+  orders: ReadonlyArray<BlockedOrder>,
+  opts: { allowNegativeStock: boolean; batchOrderIds?: string[] }
+): Promise<Map<string, OrderBlock[]>> {
+  const out = new Map<string, OrderBlock[]>();
+  if (orders.length === 0) return out;
+
+  const companyIds = [...new Set(orders.map((o) => o.companyId))];
+  const since = new Date(Date.now() - RECENT_RETURN_DAYS * 24 * 60 * 60 * 1000);
+
+  // The customer's OTHER orders on the road / returned lately: ids per customer, so an order can leave itself out.
+  // Keyed by company first: the single version asks `companyId: order.companyId`, and a list is one company's in practice.
+  const remember = (into: Map<string, string[]>, rows: { id: string; customerId: string }[]) => {
+    for (const r of rows) into.set(r.customerId, [...(into.get(r.customerId) ?? []), r.id]);
+  };
+  const road = new Map<string, Map<string, string[]>>();
+  const returned = new Map<string, Map<string, string[]>>();
+
+  // Active fee rows, one entry per (courier, governorate) that exists.
+  const priced = new Set<string>();
+  const wantedFees = new Map<string, Set<string>>();
+  for (const o of orders) {
+    if (!o.regionId || !o.deliveryProviderId) continue;
+    const regions = wantedFees.get(o.deliveryProviderId) ?? new Set<string>();
+    regions.add(o.regionId);
+    wantedFees.set(o.deliveryProviderId, regions);
+  }
+
+  const reads: Promise<unknown>[] = [];
+  for (const companyId of companyIds) {
+    const customerIds = [...new Set(orders.filter((o) => o.companyId === companyId).map((o) => o.customerId))];
+    reads.push(
+      tx.order
+        .findMany({
+          where: { companyId, customerId: { in: customerIds }, shippingStatus: { in: IN_TRANSIT } },
+          select: { id: true, customerId: true },
+        })
+        .then((rows) => {
+          const into = new Map<string, string[]>();
+          remember(into, rows);
+          road.set(companyId, into);
+        }),
+      tx.order
+        .findMany({
+          where: {
+            companyId,
+            customerId: { in: customerIds },
+            shippingStatus: { in: ['RETURNED', 'RETURN_REQUESTED'] },
+            OR: [{ returnedAt: { gte: since } }, { updatedAt: { gte: since } }],
+          },
+          select: { id: true, customerId: true },
+        })
+        .then((rows) => {
+          const into = new Map<string, string[]>();
+          remember(into, rows);
+          returned.set(companyId, into);
+        })
+    );
+  }
+  if (wantedFees.size > 0) {
+    reads.push(
+      tx.deliveryFee
+        .findMany({
+          where: { OR: [...wantedFees].map(([courier, regions]) => activeFeeRowWhere(courier, { in: [...regions] })) },
+          select: { deliveryProviderId: true, regionId: true },
+        })
+        .then((rows) => {
+          for (const r of rows) priced.add(`${r.deliveryProviderId}|${r.regionId}`);
+        })
+    );
+  }
+
+  // The shelf, per (company, store): the pool an order draws on is its store's, and a list may hold several stores' orders.
+  const shelves = new Map<string, StockPools>();
+  const shelfKey = (o: { companyId: string; storeId: string | null }) => `${o.companyId}|${o.storeId ?? '*'}`;
+  const needsOf = (o: BlockedOrder) => [
+    ...o.items.map((l) => ({ ...l, addOn: false, need: l.quantity + l.freeQuantity })),
+    ...o.addOns.map((a) => ({ productId: a.productId, productName: a.productName, quantity: a.quantity, freeQuantity: 0, addOn: true, need: a.quantity })),
+  ];
+  const poolOrders = new Map<string, BlockedOrder[]>();
+  for (const o of orders) poolOrders.set(shelfKey(o), [...(poolOrders.get(shelfKey(o)) ?? []), o]);
+  for (const [key, group] of poolOrders) {
+    // Only a line that needs something is asked about — as in the single version.
+    const productIds = group.flatMap((o) => needsOf(o).filter((l) => l.need > 0).map((l) => l.productId));
+    reads.push(
+      stockPoolsFor(tx, {
+        companyId: group[0].companyId,
+        storeId: group[0].storeId,
+        productIds,
+        orderIds: group.map((o) => o.id),
+      }).then((pools) => {
+        shelves.set(key, pools);
+      })
+    );
+  }
+  await Promise.all(reads);
+
+  for (const order of orders) {
+    const blocks: OrderBlock[] = [];
+
+    if (opts.batchOrderIds && opts.batchOrderIds.filter((id) => id === order.id).length > 1) {
+      blocks.push({ code: 'DUPLICATE_IN_BATCH', message: 'الطلب مكرر داخل نفس الدفعة', hard: false });
+    }
+
+    const inTransit = (road.get(order.companyId)?.get(order.customerId) ?? []).filter((id) => id !== order.id).length;
+    if (inTransit > 0) {
+      blocks.push({ code: 'PREVIOUS_SHIPMENT_IN_TRANSIT', message: `للعميل ${inTransit} شحنة قيد التوصيل`, hard: false });
+    }
+
+    const recentReturn = (returned.get(order.companyId)?.get(order.customerId) ?? []).filter((id) => id !== order.id).length;
+    if (recentReturn > 0) {
+      blocks.push({ code: 'RECENT_RETURN', message: `للعميل ${recentReturn} مرتجع خلال ${RECENT_RETURN_DAYS} يوماً`, hard: false });
+    }
+
+    if (!order.regionId) {
+      blocks.push(deliveryFeeBlock(null, false)!);
+    } else if (order.deliveryProviderId) {
+      const block = deliveryFeeBlock(order.regionId, priced.has(`${order.deliveryProviderId}|${order.regionId}`));
+      if (block) blocks.push(block);
+    }
+
+    const pools = shelves.get(shelfKey(order));
+    for (const line of needsOf(order)) {
+      if (line.need <= 0) continue;
+      const free = pools ? freeFromPools(pools, order.id, line.productId) : 0;
+      if (free < line.need) {
+        blocks.push({
+          code: 'STOCK_SHORTAGE',
+          message: `نقص مخزون: ${line.productName} (${line.addOn ? 'إضافة، ' : ''}ينقص ${line.need - Math.max(0, free)})`,
+          hard: !opts.allowNegativeStock,
+        });
+      }
+    }
+
+    out.set(order.id, blocks);
+  }
+  return out;
 }
 
 /**
