@@ -6,6 +6,9 @@ import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { OrderNotesPeek } from '@/components/orders/OrderNotesPeek';
 import { OrderRef } from '@/components/orders/OrderRef';
+import { ParcelCopy } from '@/components/screens/tracking/ParcelCopy';
+import { ParcelPhone } from '@/components/screens/tracking/ParcelPhone';
+import { useTell } from '@/components/ui/Confirm';
 import { ScreenTitle } from '@/components/shell/ScreenTitle';
 import { ScanButton } from '@/components/scan/ScanButton';
 import { RiCheckLine, RiInboxUnarchiveLine, RiTimeLine } from '@remixicon/react';
@@ -20,6 +23,7 @@ import { Pager } from '@/components/ui/Pager';
 import { ListToolbar, withChosen, type ToolbarFilter } from '@/components/ui/ListToolbar';
 import { usePagedList, type PagedRead, type Paging } from '@/hooks/usePagedList';
 import { arDate } from '@/lib/format';
+import { barcodeToCopy } from '@/lib/copy-values';
 import { arabicDays } from '@/lib/transit';
 import { RETURN_REASON_LABELS } from '@/lib/shipping-workflow';
 import { AGES, AGE_AR, DEFAULT_VIEW, RETURN_STATUSES, STATUS_AR, VIEWS, VIEW_AR, type View } from '@/lib/returns-filters';
@@ -148,11 +152,16 @@ const since = (days: number | null) => (days === null ? '—' : days === 0 ? 'ا
 
 export function ReturnsScreen() {
   const phone = useIsPhone();
+  // A copy the browser refuses is handed to a field to select by hand, not to a warning that goes away (as on the shipment follow-up).
+  const tell = useTell();
+  const copyRefused = (value: string) => void tell({ title: 'تعذّر النسخ — انسخه يدوياً', value });
   const [term, setTerm] = useState('');
   const [view, setView] = useState<View>(DEFAULT_VIEW);
   const [status, setStatus] = useState('all');
   const [courier, setCourier] = useState('all');
   const [age, setAge] = useState('all');
+  /** «بلا باركود» (the owner, 13/11): `all`, or `none` — only the parcels the courier gave no barcode. */
+  const [barcode, setBarcode] = useState('all');
   const [active, setActive] = useState<PendingRow | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [receivingAll, setReceivingAll] = useState(false);
@@ -168,12 +177,12 @@ export function ReturnsScreen() {
    */
   const list = usePagedList<Row, Extra>({
     url: '/api/ops/returns',
-    params: { q: term.trim() || undefined, view, status, courier, age },
+    params: { q: term.trim() || undefined, view, status, courier, age, barcode },
     read,
   });
 
   /** What narrows the view that is open: the state, the company, the age, the word typed or scanned. */
-  const narrowing = [status, courier, age].filter((v) => v !== 'all').length + (term.trim() ? 1 : 0);
+  const narrowing = [status, courier, age, barcode].filter((v) => v !== 'all').length + (term.trim() ? 1 : 0);
   /** …and the view itself, when it is not the work — what «إعادة تعيين» counts. */
   const activeCount = narrowing + (view !== DEFAULT_VIEW ? 1 : 0);
   const reset = () => {
@@ -182,9 +191,36 @@ export function ReturnsScreen() {
     setStatus('all');
     setCourier('all');
     setAge('all');
+    setBarcode('all');
   };
 
   const { extra, rows, pagination } = list;
+  /** Phones travel only to whoever may read them; with none on the page there is no column for them. */
+  const showPhone = rows.some((r) => !!r.customer.phone);
+
+  /*
+   * THE PHONE AND THE BARCODE, WRITTEN ON THE ROW, EACH WITH THE SMALL BUTTON THAT COPIES IT (the owner, 13/11: «اظهار الباركود والرقم
+   * وزر النسخ»). They are the shipment follow-up's own pieces, so a copy here is the same copy there — it writes nothing and counts
+   * for nothing. The phone column is drawn only when the list carried phones: a person who may not read them (the warehouse) is sent
+   * none, and a column of dashes is not a column. The barcode is always drawn: the text, and beside it the button, OFF when the
+   * courier gave none — which is also what «بلا باركود» in the toolbar finds. What is written is what the button copies (`barcodeToCopy`):
+   * a barcode of nothing but spaces or invisible marks is no barcode on the row, and the button is OFF for it.
+   */
+  const contactColumns = [
+    ...(showPhone ? [{ key: 'phone', label: 'الهاتف', render: (r: Row) => <ParcelPhone phone={r.customer.phone} onRefused={copyRefused} /> }] : []),
+    {
+      key: 'barcode',
+      label: 'الباركود',
+      render: (r: Row) => (
+        <span className="inline-flex items-center gap-1">
+          <span dir="ltr" className="text-[var(--sys-muted-foreground)]">
+            {barcodeToCopy(r.trackingNumber) || '—'}
+          </span>
+          <ParcelCopy row={r} onRefused={copyRefused} />
+        </span>
+      ),
+    },
+  ];
 
   /*
    * «استلام الكل» — DRAWN ONLY WHERE THE DOOR WOULD SAY YES.
@@ -231,6 +267,17 @@ export function ReturnsScreen() {
         { value: 'all', label: 'كل الشركات' },
         ...extra.facts.couriers.map((c) => ({ value: c.id, label: `${c.name} (${c.count})` })),
       ]),
+    },
+    {
+      key: 'barcode',
+      label: 'الباركود',
+      value: barcode,
+      onChange: setBarcode,
+      options: [
+        { value: 'all', label: 'كل الطرود' },
+        // «بلا باركود (N)» promises N rows when it is chosen — over the open view, like the companies. An older server sends no number.
+        { value: 'none', label: `بلا باركود (${extra.facts.noBarcode ?? 0})` },
+      ],
     },
     ...(view === DEFAULT_VIEW
       ? [
@@ -312,6 +359,7 @@ export function ReturnsScreen() {
                     },
                     { key: 'customer', label: 'العميل', primary: true, render: (r) => r.customer.fullName },
                     { key: 'courier', label: 'شركة الشحن', render: (r) => r.deliveryProvider?.name ?? '—' },
+                    ...contactColumns,
                     { key: 'reason', label: 'السبب', render: (r) => returnReasonText(r.returnReason) },
                     { key: 'since', label: 'المدّة', render: (r) => since((r as PendingRow).daysWaited) },
                     // NOT «المشحون». This column has always been what is coming
@@ -339,6 +387,7 @@ export function ReturnsScreen() {
                     },
                     { key: 'customer', label: 'العميل', primary: true, render: (r) => r.customer.fullName },
                     { key: 'courier', label: 'شركة الشحن', render: (r) => r.deliveryProvider?.name ?? '—' },
+                    ...contactColumns,
                     {
                       key: 'counted',
                       label: 'الاستلام',
@@ -441,7 +490,7 @@ export function ReturnsScreen() {
       {receivingAll && (
         <ReceiveAllDialog
           total={receiveAllTotal}
-          filters={{ view, status, courier, age, q: term.trim() || undefined }}
+          filters={{ view, status, courier, age, barcode, q: term.trim() || undefined }}
           onClose={() => setReceivingAll(false)}
           onDone={async (line) => {
             setReceivingAll(false);

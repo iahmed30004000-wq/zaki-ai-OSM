@@ -69,6 +69,15 @@ export const STATUS_AR: Record<ReturnStatus, string> = {
   PARTIALLY_DELIVERED: SHIPPING_STATUS_AR.PARTIALLY_DELIVERED,
 };
 
+/**
+ * «بلا باركود» (the owner, 13/11: «وضيف للفلتر بلا باركود»): the parcels the courier gave no barcode. A BLANK barcode is no barcode — the
+ * screen draws both as «—» and the copy button is OFF for both — so the question is «null or empty», the same one the tracking list and
+ * the owner's closeout ask. The filter has ONE value; «all» and an absent value mean no filter.
+ */
+export const BARCODE_FILTERS = ['none'] as const;
+export type BarcodeFilter = (typeof BARCODE_FILTERS)[number];
+export const isBarcodeFilter = (v: unknown): v is BarcodeFilter => typeof v === 'string' && (BARCODE_FILTERS as readonly string[]).includes(v);
+
 /** «Nobody» as a courier: the parcel has no delivery company on it. */
 export const NO_COURIER = 'none';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -125,6 +134,9 @@ export function viewScope(view: View, scope: ReturnsScope): Where {
 
 export const courierWhere = (courier: string): Where => ({ deliveryProviderId: courier === NO_COURIER ? null : courier });
 
+/** The parcels with no barcode: none written, or a blank one. */
+export const noBarcodeWhere: Where = { OR: [{ trackingNumber: null }, { trackingNumber: '' }] };
+
 /**
  * THE SHARED SEARCH, MINUS WHAT THIS PERSON MAY NOT CONFIRM.
  *
@@ -152,6 +164,8 @@ export interface ReturnsApplied {
   courier: string | null;
   age: Age | null;
   q: string | null;
+  /** Present only when the parcels with no barcode were asked for. */
+  barcode?: BarcodeFilter;
 }
 
 export type ReturnsFilterResult =
@@ -198,6 +212,14 @@ export function returnsFilters(params: URLSearchParams, input: ReturnsFilterInpu
     if (!isCourierFilter(courier)) return refuse('courier', 'شركة الشحن', courier);
     applied.courier = courier;
     clauses.push(courierWhere(courier));
+  }
+
+  // «بلا باركود» narrows either view: a parcel that was counted in has a barcode or not just the same.
+  const barcode = word('barcode');
+  if (barcode) {
+    if (!isBarcodeFilter(barcode)) return refuse('barcode filter', 'فلتر الباركود', barcode);
+    applied.barcode = barcode;
+    clauses.push(noBarcodeWhere);
   }
 
   const age = word('age');
