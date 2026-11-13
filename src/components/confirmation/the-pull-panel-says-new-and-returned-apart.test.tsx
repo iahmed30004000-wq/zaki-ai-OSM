@@ -125,8 +125,12 @@ describe('the full card', () => {
     await screen.findByText('422');
     expect(screen.getAllByRole('button', { name: /اسحب/ })).toHaveLength(1);
     expect(screen.getByText(/الطلب الجديد اللي ما حدا اتصل فيه/)).toBeTruthy();
-    // What was already under the figure stays: the promises waiting on their day.
-    expect(screen.getByText(/و67 مؤجَّلة حتى موعدها/)).toBeTruthy();
+    // What was already under the figure stays: the promises waiting on their day. Since 13/11 (the owner: «يضيف عليهم المؤجل…») on the
+    // FULL card they are a BOX under «مش جاهزة للسحب الآن» instead of a line of small print (`the-pull-panel-says-what-is-not-ready.test.tsx`).
+    const notReady = screen.getByRole('group', { name: 'طلبات مش جاهزة للسحب' });
+    expect(within(notReady).getByText('مؤجَّلة')).toBeTruthy();
+    expect(within(notReady).getByText('67')).toBeTruthy();
+    expect(screen.queryByText(/و67 مؤجَّلة حتى موعدها/)).toBeNull();
   });
 
   it('NEGATIVE: an empty pool draws no boxes (three zeroes say nothing), and the button is greyed as ever', async () => {
