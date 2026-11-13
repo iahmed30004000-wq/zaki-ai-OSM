@@ -11,7 +11,7 @@ import { maySeeCost } from '@/lib/cost-visibility';
 import { drawDownStock, onHandTotal, receiveStock } from '@/lib/receiving';
 import { zodMessage } from '@/lib/zod-message';
 import { resolveUnitCost } from '@/lib/unit-cost';
-import { reservedElsewhere } from '@/lib/reservation';
+import { reservedElsewhere, reservedForProducts } from '@/lib/reservation';
 import { MAX_WINDOW_DAYS, stockHealth, summariseStock, type StockFacts } from '@/lib/stock-health';
 import { DAY_MS, deliveredPerProduct, ledgerDepthDays } from '@/lib/stock-ledger';
 
@@ -71,24 +71,21 @@ export async function GET() {
       deliveredPerProduct(companyId, storeId, since),
     ]);
 
-    // RESERVED UNITS COME FROM `reservation.reservedElsewhere`, ONE PRODUCT
-    // AT A TIME, ON PURPOSE.
+    // RESERVED UNITS COME FROM `reservation.reservedForProducts` — ONE GROUPED
+    // READ, BUILT FROM THE SAME FILTER AS THE PER-PRODUCT ONE.
     //
-    // A single `groupBy` would be one query instead of these — measured at
-    // 2 ms against 425 ms for 114 products — but it would mean writing the
-    // "order still open" predicate a second time, in a route, beside the
-    // copy in `reservation.ts`. That predicate is five statuses long and it
-    // decides whether a unit may be promised twice; the day somebody adds a
-    // sixth status to one copy, this screen starts reporting stock that is
-    // already sold as available, and it will look like working software.
-    // Four hundred milliseconds is the price of the rule having one home.
-    const reserved = new Map<string, number>(
-      await Promise.all(
-        products.map(
-          async (p) => [p.id, await reservedElsewhere(db, companyId, p.id, undefined, storeId)] as const
-        )
-      )
-    );
+    // This asked `reservedElsewhere` of each product in turn on purpose: a
+    // `groupBy` written HERE would have been a second copy of the "order
+    // still open" predicate, in a route, beside the one in `reservation.ts`.
+    // That predicate is five statuses long and it decides whether a unit may
+    // be promised twice; the day somebody adds a sixth status to one copy,
+    // this screen starts reporting stock that is already sold as available,
+    // and it will look like working software. The price of the rule having
+    // one home was 425 ms for 114 products (228 statements, at once, on the
+    // main pool). The grouped read now lives in `reservation.ts` too and is
+    // built from the very same `holdingWhere`, so the rule still has one home
+    // and the screen asks twice instead of 228 times.
+    const reserved = await reservedForProducts(db, { companyId, storeId, productIds: products.map((p) => p.id) });
 
     const stockSummary = products.map((p) => {
       const produced = p.batches.reduce((sum, b) => sum + b.quantityProduced, 0);

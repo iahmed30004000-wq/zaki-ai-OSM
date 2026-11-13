@@ -945,7 +945,7 @@ describe('Ⅳ · 3 — the stock screen recovers «محجوز» by subtraction',
   it('and the server sends the figure it always knew exactly', () => {
     const route = stripComments(repoFile('src/app/api/inventory/route.ts'));
     // It was computed, named and passed into the verdict all along…
-    expect(route).toMatch(/reservedElsewhere\(db, companyId, p\.id, undefined, storeId\)/);
+    expect(route).toMatch(/reservedForProducts\(db, \{ companyId, storeId, productIds: products\.map\(\(p\) => p\.id\) \}\)/);
     expect(route).toMatch(/reserved: reserved\.get\(p\.id\) \?\? 0,/);
     // …and now it is on the response row too, which was the one-line fix.
     const payload = route.slice(route.indexOf('      return {\n        id: p.id,'));
