@@ -383,6 +383,7 @@ const REACHED_BUT_UNSEEN: Record<string, string> = {
   '/api/health': 'يستدعيه مراقبُ التشغيل وHEALTHCHECK في Dockerfile — لا ملفَّ مصدرٍ يسمّيه',
   '/api/health/live': 'HEALTHCHECK في Dockerfile يسأله: هل العمليةُ حيّة؟ بلا قاعدةٍ ولا عامل',
   '/api/health/worker': 'نفسُ الباب: نبضُ العاملِ يُقرأ من خارج المستودع لا من داخله',
+  '/api/admin/pulse': 'نبضُ الخادم: يفتحه المالكُ بنفسه في المتصفح (آخرُ توقّفاتِ الخادم وذاكرتُه) — لا شاشةَ له ولا ملفَّ يسمّيه بالقصد',
   '/api/geo/stores/[id]/favicon': 'StoreBrandField يبني `/api/geo/stores/${storeId}/${kind}` والمقطعُ الأخير محسوب',
   '/api/geo/stores/[id]/logo': 'StoreBrandField يبني `/api/geo/stores/${storeId}/${kind}` والمقطعُ الأخير محسوب',
   '/api/whatsapp/connection/reconnect': 'WhatsAppSettingsScreen يبني `/api/whatsapp/connection/${kind}` بمقطعٍ محسوب',
