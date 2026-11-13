@@ -66,6 +66,8 @@ interface Match {
   note: string | null;
   /** ACCEPTED_COURIER | OURS_STANDS | UNDER_REVIEW — null while nobody has answered. */
   resolution: string | null;
+  /** `EXCHANGE` beside ACCEPTED_COURIER is «طلب تبديل» (a qualifier beside the answer). Absent from an older server: not an exchange. */
+  resolutionKind?: string | null;
   resolutionNote: string | null;
   /** What may be said about this order as it is now (settlement-decisions), or null on a row that is no difference. */
   decisions?: Record<string, { allowed: boolean; why: string | null }> | null;
@@ -753,6 +755,7 @@ function Queue({
                 orderId={m.order?.id ?? null}
                 orderNumber={m.order?.orderNumber ?? null}
                 resolution={m.resolution}
+                resolutionKind={m.resolutionKind}
                 resolutionNote={m.resolutionNote}
                 decisions={m.decisions}
                 claim={m.claim}

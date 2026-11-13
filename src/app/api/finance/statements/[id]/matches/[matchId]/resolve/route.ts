@@ -6,7 +6,15 @@ import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { zodMessage } from '@/lib/zod-message';
-import { isDifference, MISSING_RESULTS, PARKED, shortfall } from '@/lib/settlement-difference';
+import {
+  EXCHANGE_AR,
+  EXCHANGE_COMBINATION_SENTENCE,
+  EXCHANGE_KIND,
+  isDifference,
+  MISSING_RESULTS,
+  PARKED,
+  shortfall,
+} from '@/lib/settlement-difference';
 import { appliedRowRefusal, closedStatementRefusal, isMatchingClosed } from '@/lib/settlement-gates';
 import { mayOnlyBeParked } from '@/lib/statement-open-lines';
 import {
@@ -15,6 +23,7 @@ import {
   EXPLANATION_SENTENCE,
   explanationOf,
   decisionData,
+  decisionKind,
   decisionMatrix,
   decisionNoteBody,
   loadDecisionFacts,
@@ -70,10 +79,21 @@ import {
  * agreed a discount on the phone and wrote it there, where finance never
  * looks. So the decision goes back the same way, to the same place, and the
  * person who reads the order sees that finance accepted it — or did not.
+ *
+ * ── «طلب تبديل»: THE COURIER'S FIGURE WITH A REASON, ASKED OF THE SAME MATRIX ──
+ *
+ * «احيانا بيكون طلب تبديل او زبون وصلو الطلب ناقص فنبعثلو حبة» (the owner, 13/11). It is sent as `exchange: true` BESIDE
+ * `resolution: 'ACCEPTED_COURIER'` and nowhere else: the answer that is stored is still the courier's figure (every money path
+ * reads that word), and the qualifier is a column of its own (`resolutionKind`, written by `decisionKind` on EVERY answer, so a
+ * new answer clears it). Because the stored answer IS `ACCEPTED_COURIER`, the matrix is asked about that answer and nothing
+ * else — «طلب تبديل» is allowed exactly where their figure is, with the same sentence when it is not, and a closed statement, a
+ * settled order, a line no order carries and a row that is no difference refuse it exactly as they refuse the plain answer.
+ * Any other combination — the exchange beside «رقمنا» or «قيد المراجعة» — is refused here, with a sentence, before anything is read.
  */
 const schema = z.object({
   resolution: z.enum(DECISIONS),
   note: z.string().trim().max(500).refine((s) => explanationOf(s) !== null, EXPLANATION_SENTENCE),
+  exchange: z.boolean().optional(),
 });
 
 /** A stop inside the transaction: it rolls back and this is the answer. */
@@ -95,6 +115,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
     const resolution = parsed.data.resolution as Decision;
     const note = parsed.data.note;
+    const exchange = parsed.data.exchange === true;
+    // «طلب تبديل» is the courier's figure with a reason and nothing else: beside any other answer it is refused, before a read.
+    if (exchange && resolution !== 'ACCEPTED_COURIER') {
+      return NextResponse.json({ error: EXCHANGE_COMBINATION_SENTENCE, code: 'EXCHANGE_NEEDS_THE_COURIER_FIGURE' }, { status: 400 });
+    }
 
     const match = await db.settlementMatch.findFirst({
       where: { id: matchId, statementId: id, companyId, statement: { storeId } },
@@ -193,7 +218,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
          * row is locked above, so this cannot lose to an approval — but the guard is on the write itself and not
          * only on the reads before it, so no later edit of this door can drop it without a test failing.
          */
-        const data = decisionData({ resolution, note, userId: user.id });
+        // The answer, and its qualifier: written TOGETHER and always, so «طلب تبديل» is set by this answer and cleared by any other.
+        const data = { ...decisionData({ resolution, note, userId: user.id }), ...decisionKind(exchange) };
         const written = await tx.settlementMatch.updateMany({
           where: {
             id: match.id, statementId: id, companyId,
@@ -207,7 +233,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         if (written.count !== 1) {
           throw new DecisionRefused(409, { error: 'تغيّر السطر قبل لحظات — حدّث الصفحة وأعد المحاولة', code: 'CHANGED' });
         }
-        const row = { id: match.id, resolution: data.resolution, resolutionNote: data.resolutionNote, resolvedAt: data.resolvedAt };
+        const row = {
+          id: match.id,
+          resolution: data.resolution,
+          resolutionNote: data.resolutionNote,
+          resolvedAt: data.resolvedAt,
+          resolutionKind: data.resolutionKind,
+        };
 
         if (match.orderId) {
           await tx.orderNote.create({
@@ -216,7 +248,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
               orderId: match.orderId,
               authorId: user.id,
               kind: 'internal',
-              body: decisionNoteBody({ statement: match.statement.reference, resolution, gap, note }),
+              body: decisionNoteBody({ statement: match.statement.reference, resolution, gap, note, exchange }),
             },
           });
         }
@@ -236,6 +268,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       previousData: { resolution: match.resolution },
       newData: {
         resolution,
+        // Named only where there is one, so a plain answer's audit row is what it always was; an exchange read back later (and then
+        // moved to a figure) is told by its OWN row, which says «طلب تبديل» — the door never rewrites a row it already wrote.
+        ...(exchange ? { kind: EXCHANGE_KIND, answer: EXCHANGE_AR } : {}),
         explanation: note,
         orderNumber: match.order?.orderNumber ?? null,
         statement: match.statement.reference,
@@ -247,7 +282,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       match: updated,
       gap,
       message: match.order?.orderNumber
-        ? `${DECISION_AR[resolution]} — ${match.order.orderNumber}. يبقى الطلب معلَّماً.`
+        ? `${exchange ? EXCHANGE_AR : DECISION_AR[resolution]} — ${match.order.orderNumber}. ${
+            exchange ? 'يُسوّى على رقم الشركة ولا يُحسب خصماً، ويبقى الطلب معلَّماً.' : 'يبقى الطلب معلَّماً.'
+          }`
         : `${DECISION_AR[resolution]} — السطر ليس لنا ولا يعلّق الاعتماد.`,
     });
   } catch (error) {
