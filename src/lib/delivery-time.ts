@@ -1,5 +1,6 @@
 import { db as prisma } from './db';
 import { foldArabic, stripLeadingGovernorate } from './address';
+import { shortMemo } from './short-memo';
 
 /**
  * HOW LONG THIS GOVERNORATE ACTUALLY TAKES.
@@ -110,7 +111,7 @@ export function summariseDays(days: number[]): DeliveryWindow | null {
  * from any status: an order whose status was rolled back and forward still
  * left on one day and arrived on another.
  */
-export async function deliveryWindows(scope: {
+async function readDeliveryWindows(scope: {
   companyId: string;
   storeId?: string | null;
   /** Deliveries older than this stop describing how the courier works now. */
@@ -191,6 +192,36 @@ export async function deliveryWindows(scope: {
   if (everywhere) out.set(EVERYWHERE, everywhere);
 
   return out;
+}
+
+/**
+ * THE SAME ANSWER FOR TEN MINUTES, AND ONE READ FOR WHOEVER ASKS WHILE IT IS BEING WORKED OUT (13/11, the site's slow-down).
+ *
+ * What `readDeliveryWindows` does is every delivered order of the last 180 days with each customer's address, and string work
+ * per row: 283 ms for 9,922 rows, of which 64–82 ms hold the whole server, measured. It ran on every landing-page view, every
+ * product-page view, every public tracking lookup, and every pause in typing in the new-order form's address box — five at once
+ * held the process for 189 ms.
+ *
+ * TEN MINUTES, because the answer describes six months of deliveries: one delivery recorded now moves a median that rests on
+ * dozens, and the public sentence «يوصل خلال…» that quotes it may be ten minutes behind. The memory is HERE, inside the library, so
+ * every caller has it without a changed line — the storefront's own pages included. The key is the caller's whole scope (company,
+ * store and look-back), so no tenant is ever handed another's answer; a read that fails is forgotten at once (`short-memo.ts`).
+ *
+ * THE MAP HANDED OUT IS NOW SHARED BETWEEN REQUESTS. Nobody writes to it: every caller passes it to `windowFor` /
+ * `windowWithLevel` or reads one key — and a test greps for the day somebody does not.
+ *
+ * Zero under test, so a test that changes its rows is never answered from the previous one.
+ */
+const WINDOWS_TTL_MS = process.env.NODE_ENV === 'test' ? 0 : 10 * 60_000;
+const KEPT_WINDOWS = shortMemo<Map<string, DeliveryWindow>>(WINDOWS_TTL_MS, 200);
+
+export function deliveryWindows(scope: {
+  companyId: string;
+  storeId?: string | null;
+  /** Deliveries older than this stop describing how the courier works now. */
+  lookbackDays?: number;
+}): Promise<Map<string, DeliveryWindow>> {
+  return KEPT_WINDOWS.get(`${scope.companyId}|${scope.storeId ?? ''}|${scope.lookbackDays ?? 180}`, () => readDeliveryWindows(scope));
 }
 
 /**
