@@ -36,6 +36,8 @@ const schema = z.object({
   status: z.string().max(40).optional(),
   courier: z.string().max(60).optional(),
   age: z.string().max(40).optional(),
+  /** «بلا باركود»: the screen sends the filter it draws, so the door walks exactly the parcels the button was counted from. */
+  barcode: z.string().max(20).optional(),
   q: z.string().max(200).optional(),
   countedAndInspected: z.literal(true, { message: 'يلزم إقرار العد والفحص قبل الاستلام' }),
   cursor: z.string().uuid().nullish(),
@@ -63,7 +65,7 @@ export async function POST(req: Request) {
 
     // The list's own reader, over the list's own words — never a second copy of the rule.
     const params = new URLSearchParams();
-    for (const k of ['view', 'status', 'courier', 'age', 'q'] as const) {
+    for (const k of ['view', 'status', 'courier', 'age', 'barcode', 'q'] as const) {
       const v = body[k];
       if (typeof v === 'string') params.set(k, v);
     }

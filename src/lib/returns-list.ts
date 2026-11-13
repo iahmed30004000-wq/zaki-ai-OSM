@@ -2,6 +2,7 @@ import type { db as Db } from './db';
 import {
   AGES,
   NO_COURIER,
+  noBarcodeWhere,
   RETURN_STATUSES,
   VIEWS,
   ageWhere,
@@ -32,6 +33,8 @@ export interface ReturnsFacts {
   couriers: { id: string; name: string; count: number }[];
   /** The pending parcels in each age pile. */
   ages: Record<Age, number>;
+  /** Inside the open view: how many carry no barcode — «بلا باركود (N)» promises exactly that many rows when it is chosen. */
+  noBarcode: number;
 }
 
 /** The label for a parcel that has no delivery company. */
@@ -45,12 +48,14 @@ export async function returnsFacts(db: Client, input: { scope: ReturnsScope; vie
   const pending = viewScope('pending', input.scope);
   const current = viewScope(input.view, input.scope);
 
-  const [views, byStatus, byCourier, ages] = await Promise.all([
+  const [views, byStatus, byCourier, ages, noBarcode] = await Promise.all([
     Promise.all(VIEWS.map((v) => db.order.count({ where: viewScope(v, input.scope) }))),
     db.order.groupBy({ by: ['shippingStatus'], where: pending, _count: { _all: true } }),
     db.order.groupBy({ by: ['deliveryProviderId'], where: current, _count: { _all: true } }),
     // The pile AND the pending scope, both: spreading `pending` and giving `AND` a new list keeps the scope at the top.
     Promise.all(AGES.map((a) => db.order.count({ where: { ...pending, AND: [ageWhere(a, input.now)] } }))),
+    // Of the OPEN view, like the companies: the other dropdowns do not narrow it, so with nothing else chosen it is exactly the rows.
+    db.order.count({ where: { ...current, AND: [noBarcodeWhere] } }),
   ]);
 
   const statusCount = new Map(byStatus.map((g) => [g.shippingStatus, g._count._all]));
@@ -74,5 +79,6 @@ export async function returnsFacts(db: Client, input: { scope: ReturnsScope; vie
       }))
       .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'ar')),
     ages: Object.fromEntries(AGES.map((a, i) => [a, ages[i]])) as Record<Age, number>,
+    noBarcode,
   };
 }
