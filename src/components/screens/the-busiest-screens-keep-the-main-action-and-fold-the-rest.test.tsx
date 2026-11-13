@@ -402,8 +402,10 @@ describe('what a fold promises is what is inside it, for THIS person', () => {
     const back = await screen.findByRole('button', { name: /أعِد تشغيلها/, hidden: true });
     expect(back.closest('[data-advanced-group]'), '«أعِد تشغيلها» مطوية تحت «متقدم»').toBeNull();
     expect(drawn(back)).toBe(true);
-    // the record button is the thing it unlocks, and it is disabled until then
-    expect((screen.getByRole('button', { name: 'حركة جديدة' }) as HTMLButtonElement).disabled).toBe(true);
+    // the record button is the thing it unlocks, and it is disabled until then — both of them: the wallet's own and the one at the top
+    const record = screen.getAllByRole('button', { name: 'حركة جديدة' }) as HTMLButtonElement[];
+    expect(record).toHaveLength(2);
+    expect(record.every((b) => b.disabled)).toBe(true);
     // and the fold no longer offers a «stop» for a wallet that is already stopped
     expect(screen.queryByRole('button', { name: 'أوقف المحفظة', hidden: true })).toBeNull();
   });
