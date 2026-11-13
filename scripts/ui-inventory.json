@@ -1229,6 +1229,16 @@
     "links": 1,
     "tabs": 0
   },
+  "src/components/screens/finance/PartnersSection.tsx": {
+    "buttons": 3,
+    "inputs": 1,
+    "columns": 14,
+    "cards": 4,
+    "modals": 1,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/screens/finance/QueueTools.tsx": {
     "buttons": 2,
     "inputs": 3,
@@ -1291,7 +1301,7 @@
   },
   "src/components/screens/finance/WalletsScreen.tsx": {
     "buttons": 23,
-    "inputs": 17,
+    "inputs": 19,
     "columns": 11,
     "cards": 0,
     "modals": 5,
@@ -1962,6 +1972,16 @@
   "src/components/settings/NoAnswerRoundsCard.tsx": {
     "buttons": 0,
     "inputs": 1,
+    "columns": 0,
+    "cards": 1,
+    "modals": 0,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
+  "src/components/settings/PartnersCard.tsx": {
+    "buttons": 2,
+    "inputs": 3,
     "columns": 0,
     "cards": 1,
     "modals": 0,
