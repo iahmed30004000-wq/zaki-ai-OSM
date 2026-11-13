@@ -4,6 +4,7 @@ import { STATE_LABEL_AR } from './order-state';
 import { SHIPPING_STATUS_AR } from './shipping-workflow';
 import { CONFIRMATION_STATUS_AR } from './confirmation-workflow';
 import { NOT_MENTIONED_ACTIVITY_AR } from './not-mentioned';
+import { EXCHANGE_APPLIED_ACTION } from './settlement-difference';
 import { SWAP_ACTION } from './superseded';
 import { TWIN_ACTION } from './recent-twin-order';
 import { TWIN_CONFIRM_ACK_ACTION } from './confirmed-twin';
@@ -201,6 +202,8 @@ const ACTIVITY_AR: Record<string, string> = {
   SWAP_BOX_GIVEN: 'بضاعة هذا الطرد سُلِّمت لزبون طلب آخر',
   // «فرق في المبلغ»: what the approval did with the answer a person gave, in that person's name.
   SETTLEMENT_DECISION_APPLIED: 'سُوّي الطلب برقم الشركة بعد بتّ مكتوب',
+  // «طلب تبديل»: the same settlement, under the name that says it was a replacement — so it is never read as a discount somebody gave.
+  [EXCHANGE_APPLIED_ACTION]: 'سُوّي الطلب برقم الشركة — طلب تبديل: لا ثمن على الزبون، ولا يُحسب خصماً على أحد',
   SETTLEMENT_CLAIM_OPENED: 'بقي الطلب مطالبة على الشركة بالباقي',
   // «فرق تحصيل»: the company paid less than expected and the approval accepted its figure.
   SHORTFALL_PROPOSED: 'دفعت الشركة أقل من المتوقَّع — فرق تحصيل بانتظار قرار المالك أو المحاسب',

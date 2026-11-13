@@ -35,6 +35,8 @@ interface Person {
   acceptedValue: number;
   settledOrders: number;
   rate: number | null;
+  /** The lines answered «طلب تبديل» — counted apart, and in none of the numbers above. Absent from an older server: none. */
+  exchanges?: number;
   why: string;
 }
 
@@ -101,6 +103,10 @@ export function DifferencesByPerson({
               <span className="text-[var(--sys-destructive)]">
                 <Money value={p.acceptedValue} currency={currency} />
               </span>
+            )}
+            {(p.exchanges ?? 0) > 0 && (
+              /* Said apart: a replacement sent to a customer is not a discount, so it is in none of the figures above. */
+              <span className="text-[var(--sys-muted-foreground)]">طلب تبديل {p.exchanges} — لا يُحسب خصماً</span>
             )}
             {p.rate !== null && (
               <span className="text-[var(--sys-muted-foreground)]">

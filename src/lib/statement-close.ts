@@ -5,6 +5,7 @@ import { roundMinor } from './money';
 import { explanationOf } from './decision-words';
 import { markPayableForOrders } from './commission';
 import { paidGross, stillAcceptableWhere, stillSettlableWhere } from './settlement-decisions';
+import { EXCHANGE_APPLIED_ACTION, EXCHANGE_KIND, isExchange } from './settlement-difference';
 import { proposeShortfalls, type ShortfallCharge } from './shortfall';
 import { notify } from './notify';
 import { earlyMessage } from './per-line-settlement-words';
@@ -76,6 +77,8 @@ export function ordersChangedBody(names: string[]) {
 export function closeRowsSelect(statementId: string) {
   return {
     id: true, orderId: true, result: true, resolution: true, resolutionNote: true, resolvedById: true,
+    // «طلب تبديل» (the qualifier beside «اعتُمد رقم الشركة»): read here, so the close can leave nobody to carry what was never owed.
+    resolutionKind: true,
     statementAmount: true, statementFee: true, expectedAmount: true, expectedFee: true,
     // Set only by the early step (per-line settlement): a row that has it was settled at the approval and is not settled again.
     appliedAt: true,
@@ -98,6 +101,8 @@ export interface CloseRow {
   orderId: string | null;
   result: string;
   resolution: string | null;
+  /** `EXCHANGE` beside «اعتُمد رقم الشركة» is «طلب تبديل». Absent or null (an older row, any other answer): not an exchange. */
+  resolutionKind?: string | null;
   resolutionNote: string | null;
   resolvedById: string | null;
   statementAmount: Num;
@@ -396,6 +401,9 @@ export async function settleStatement(tx: Tx, p: CloseInput): Promise<CloseResul
         // An order that an earlier closed statement left as a claim: this line pays the rest of it.
         claimPayment: (m.order?.settlementMatches?.length ?? 0) > 0,
         explanation: explanationOf(m.resolutionNote),
+        // «طلب تبديل»: a replacement or a missing piece sent to the customer has no price to collect — nobody carries what was never
+        // owed, so the line is no candidate at all: no charge, no «على الشركة», and no question put to the approver (`proposeShortfalls`).
+        exchange: isExchange(m),
       }))
   );
   if (shortfall.stop) {
@@ -427,15 +435,19 @@ export async function settleStatement(tx: Tx, p: CloseInput): Promise<CloseResul
   // `settling` holds one row per order, so an order answered twice gets one sentence.
   for (const m of settling) {
     if (!acceptedIds.includes(m.orderId as string)) continue;
+    // «طلب تبديل» is the same settlement said under its own name: the money written above is the plain answer's, to the figure; only the
+    // sentence on the timeline differs, so a reader does not take a replacement for a discount. Every other row is written as it always was.
+    const exchange = isExchange(m);
     await tx.orderActivity.create({
       data: {
         companyId,
         orderId: m.orderId as string,
         userId,
-        action: 'SETTLEMENT_DECISION_APPLIED',
+        action: exchange ? EXCHANGE_APPLIED_ACTION : 'SETTLEMENT_DECISION_APPLIED',
         metadata: JSON.stringify({
           statement: statement.reference,
           decision: 'ACCEPTED_COURIER',
+          ...(exchange ? { kind: EXCHANGE_KIND } : {}),
           explanation: m.resolutionNote ?? null,
           decidedBy: m.resolvedById ?? null,
           collected: collectedOf(m.orderId as string),

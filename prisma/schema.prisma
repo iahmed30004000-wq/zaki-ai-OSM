@@ -2941,6 +2941,12 @@ model SettlementMatch {
   resolutionNote  String?
   resolvedById    String?
   resolvedAt      DateTime?
+  /// A qualifier BESIDE the answer, never a second answer: `EXCHANGE` beside `ACCEPTED_COURIER` is «طلب تبديل» — a replacement or a
+  /// missing piece sent to the customer, so the courier's figure is the right one and no discount was given. Every money path keeps
+  /// reading `resolution` and nothing else; this only says WHY (the per-person tally leaves the line out, and nobody is asked to
+  /// carry its shortfall — src/lib/statement-close.ts, src/lib/shortfall.ts). Null for every row written before it existed and for
+  /// every answer that is not an exchange: each door that writes an answer writes this too (`decisionKind`), so a new answer clears it.
+  resolutionKind  String?
   /// «تسوية السطور النظيفة عند الاعتماد» (per-line settlement, an owner's switch, OFF by default): the moment this CLEAN row's
   /// order was settled before the statement's matching closed. Null for every row that was not (all rows while the switch is
   /// off, and every row of a statement closed the usual way). A row that carries it is final — the matching, the answer doors
