@@ -26,6 +26,10 @@ import { answerAr, orderClauses, searchAllStatements, statementState, type Searc
  *  · A customer's name or phone is searched only for who may read customers' numbers — in the order's clauses AND in the
  *    line's — and the company's whole row is never searched; the answer carries no name, no phone and no file hash.
  *  · At most 50 lines, with the true count of lines and of unnamed orders together.
+ *  · «طلب تبديل»: a line answered «اعتُمد رقم الشركة» with the exchange kind beside it is said «طلب تبديل» in the result; without
+ *    the kind — or from a database whose read returns no such field — it is said as it always was; the kind beside any other
+ *    answer, or none, is read as nothing. The read must ASK for the kind: the fake can answer as a real database does, with
+ *    only the columns that were named (`project: true`).
  *  · It reads and writes nothing else: the fake below offers `count` and `findMany` and nothing that writes.
  * ═══════════════════════════════════════════════════════════════════════
  *
@@ -155,19 +159,46 @@ function world() {
   return w;
 }
 
-/** The three tables the search reads, answering from `w`, and everything it was asked. */
-function dbOf(w: World) {
+/**
+ * What a real database does with `select`: the columns that were named come back, and no others — so a column the search forgot
+ * to ask for is MISSING from the row, as it is in production, not quietly there because the fake held the whole object. A column
+ * the row never had (a row from before the column existed) is missing too: the key is simply not there.
+ */
+function project(row: Any | null | undefined, select: Any): Any | null | undefined {
+  if (row === null || row === undefined) return row;
+  const out: Any = {};
+  for (const [key, want] of Object.entries(select)) {
+    if (want === true) {
+      if (key in row) out[key] = row[key];
+    } else if (want && typeof want === 'object' && 'select' in want) {
+      const inner = row[key];
+      out[key] = Array.isArray(inner) ? inner.map((x) => project(x, (want as Any).select)) : project(inner, (want as Any).select);
+    }
+  }
+  return out;
+}
+
+/**
+ * The three tables the search reads, answering from `w`, and everything it was asked.
+ * `project: true` makes the two `findMany`s answer only with the columns `select` names. It is opt-in: the other tests hand the
+ * search WHOLE rows on purpose — a customer behind every order — to prove it never lets the extra through.
+ */
+function dbOf(w: World, opts: { project?: boolean } = {}) {
   const asked: { table: string; method: string; where: Any }[] = [];
   const note = (table: string, method: string, where: Any) => asked.push({ table, method, where });
+  const shape = (rows: Any[], select: Any): Any[] => (opts.project ? rows.map((r) => project(r, select) as Any) : rows);
   const db = {
     statementLine: {
       count: async ({ where }: { where: Any }) => {
         note('statementLine', 'count', where);
         return w.lines.filter((r) => matches(where, r)).length;
       },
-      findMany: async ({ where, orderBy, take }: { where: Any; orderBy: Any[]; take: number }) => {
+      findMany: async ({ where, orderBy, take, select }: { where: Any; orderBy: Any[]; take: number; select: Any }) => {
         note('statementLine', 'findMany', where);
-        return sorted(w.lines.filter((r) => matches(where, r)), orderBy).slice(0, take).map((r) => ({ ...r, matches: sorted(r.matches, [{ createdAt: 'desc' }]).slice(0, 1) }));
+        return shape(
+          sorted(w.lines.filter((r) => matches(where, r)), orderBy).slice(0, take).map((r) => ({ ...r, matches: sorted(r.matches, [{ createdAt: 'desc' }]).slice(0, 1) })),
+          select
+        );
       },
     },
     settlementMatch: {
@@ -175,9 +206,9 @@ function dbOf(w: World) {
         note('settlementMatch', 'count', where);
         return w.matchRows.filter((r) => matches(where, r)).length;
       },
-      findMany: async ({ where, orderBy, take }: { where: Any; orderBy: Any[]; take: number }) => {
+      findMany: async ({ where, orderBy, take, select }: { where: Any; orderBy: Any[]; take: number; select: Any }) => {
         note('settlementMatch', 'findMany', where);
-        return sorted(w.matchRows.filter((r) => matches(where, r)), orderBy).slice(0, take);
+        return shape(sorted(w.matchRows.filter((r) => matches(where, r)), orderBy).slice(0, take), select);
       },
     },
     deliveryProvider: {
@@ -191,8 +222,8 @@ function dbOf(w: World) {
 }
 
 const scope = { companyId: 'c1', storeId: 's1' };
-const search = (q: string, maySeeContact = false, w = world()) => {
-  const { db, asked } = dbOf(w);
+const search = (q: string, maySeeContact = false, w = world(), opts: { project?: boolean } = {}) => {
+  const { db, asked } = dbOf(w, opts);
   return searchAllStatements(db, { scope, q, maySeeContact }).then((r) => ({ ...r, asked }));
 };
 const refs = (r: { hits: { statement: { reference: string } }[] }) => r.hits.map((h) => h.statement.reference);
@@ -255,14 +286,41 @@ describe('the state of a statement, by the same predicates the screens gate on',
 });
 
 describe('the answer a person gave, in the words the matching screen shows it with', () => {
+  /** The answer is read from the ROW: the stored answer and, beside it, the kind (absent on a row from before the column). */
+  const said = (resolution: string | null | undefined, resolutionKind?: string | null) => answerAr({ resolution, resolutionKind });
+
   it('the two figures, «قيد المراجعة», a word it does not know — and nothing', () => {
-    expect(answerAr('ACCEPTED_COURIER')).toBe('اعتُمد رقم الشركة');
-    expect(answerAr('OURS_STANDS')).toBe('رقمنا هو المعتمد');
-    expect(answerAr('UNDER_REVIEW')).toBe('قيد المراجعة');
-    expect(answerAr('A_NEW_ANSWER')).toBe('A_NEW_ANSWER');
+    expect(said('ACCEPTED_COURIER')).toBe('اعتُمد رقم الشركة');
+    expect(said('OURS_STANDS')).toBe('رقمنا هو المعتمد');
+    expect(said('UNDER_REVIEW')).toBe('قيد المراجعة');
+    expect(said('A_NEW_ANSWER')).toBe('A_NEW_ANSWER');
+    expect(said(null)).toBeNull();
+    expect(said(undefined)).toBeNull();
+    expect(said('')).toBeNull();
+    // No row at all (a line the matching has not been run over) is no answer.
     expect(answerAr(null)).toBeNull();
     expect(answerAr(undefined)).toBeNull();
-    expect(answerAr('')).toBeNull();
+  });
+
+  it('«طلب تبديل»: the courier’s figure WITH the exchange kind beside it — and the same figure without the kind, or with no kind field at all, as it always was', () => {
+    expect(said('ACCEPTED_COURIER', 'EXCHANGE')).toBe('طلب تبديل');
+    expect(said('ACCEPTED_COURIER', null)).toBe('اعتُمد رقم الشركة');
+    expect(said('ACCEPTED_COURIER', undefined)).toBe('اعتُمد رقم الشركة');
+    // A row object that has no `resolutionKind` key whatever: an older read.
+    expect(answerAr({ resolution: 'ACCEPTED_COURIER' })).toBe('اعتُمد رقم الشركة');
+  });
+
+  it('the kind counts only beside the courier’s figure — beside any other answer, or none, it is read as nothing', () => {
+    expect(said('OURS_STANDS', 'EXCHANGE')).toBe('رقمنا هو المعتمد');
+    expect(said('UNDER_REVIEW', 'EXCHANGE')).toBe('قيد المراجعة');
+    expect(said('A_NEW_ANSWER', 'EXCHANGE')).toBe('A_NEW_ANSWER');
+    expect(said(null, 'EXCHANGE')).toBeNull();
+    expect(said(undefined, 'EXCHANGE')).toBeNull();
+    expect(said('', 'EXCHANGE')).toBeNull();
+  });
+
+  it('a kind this screen does not know beside the courier’s figure is read as nothing — only the exchange kind changes the word', () => {
+    for (const kind of ['REPLACEMENT', 'SOMETHING_NEW', '']) expect(said('ACCEPTED_COURIER', kind), JSON.stringify(kind)).toBe('اعتُمد رقم الشركة');
   });
 });
 
@@ -332,6 +390,71 @@ describe('a barcode, a reference, an order number — found in every statement o
 
   it('nothing found is an empty answer with a zero — never an error', async () => {
     expect(await search('NOT-ANYWHERE')).toMatchObject({ hits: [], total: 0 });
+  });
+});
+
+describe('«طلب تبديل» through the search — the read asks for the kind, and the result says it', () => {
+  /**
+   * A line of the closed statement — or, with `orphan`, one of OUR orders that statement did not name — whose matching row was
+   * answered `resolution`, with `kind` beside it. `kind` left out writes no such key at all: a row from before the column existed.
+   */
+  function answeredWorld(resolution: string | null, kind?: string | null, orphan = false) {
+    const w = world();
+    const s = w.statements.find((x) => x.id === 'sA')!;
+    const o = order('oEx', { orderNumber: 'ORD-EX' });
+    const l = orphan ? null : line(w, s, { barcode: 'BC-EX' });
+    const m = match(w, s, l, o, {
+      result: orphan ? 'MISSING_IN_STATEMENT' : 'MISMATCHED',
+      resolution,
+      expectedAmount: '30.000',
+      statementAmount: orphan ? null : '3.000',
+      difference: orphan ? null : '-27.000',
+    });
+    if (kind !== undefined) m.resolutionKind = kind;
+    return w;
+  }
+  /** The hits, from a database that answers only with the columns the search named — so a column it forgot to name is missing. */
+  const read = async (w: World, q: string) => (await search(q, false, w, { project: true })).hits;
+
+  it('a line answered with the courier’s figure and the exchange kind is said «طلب تبديل» in the result — its figures are still the stored ones', async () => {
+    const hits = await read(answeredWorld('ACCEPTED_COURIER', 'EXCHANGE'), 'BC-EX');
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatchObject({ queue: 'MISMATCHED', resultAr: RESULT_AR.MISMATCHED, answerAr: 'طلب تبديل', barcode: 'BC-EX', order: { orderNumber: 'ORD-EX' }, expected: 30, stated: 3, difference: -27 });
+  });
+
+  it('the same line without the kind is said «اعتُمد رقم الشركة», as before', async () => {
+    const [hit] = await read(answeredWorld('ACCEPTED_COURIER', null), 'BC-EX');
+    expect(hit).toMatchObject({ answerAr: 'اعتُمد رقم الشركة', expected: 30, stated: 3, difference: -27 });
+  });
+
+  it('a row from a database that has no kind column — the read returns no such field — is not broken: it is said as it always was, and the rest of the hit is whole', async () => {
+    const w = answeredWorld('ACCEPTED_COURIER');
+    expect('resolutionKind' in w.matchRows.find((r) => r.order?.id === 'oEx')!).toBe(false);
+    const [hit] = await read(w, 'BC-EX');
+    expect(hit).toMatchObject({ queue: 'MISMATCHED', answerAr: 'اعتُمد رقم الشركة', barcode: 'BC-EX', expected: 30, stated: 3, difference: -27 });
+    // …and so is every older line of the ordinary world, none of which has the key.
+    expect((await read(world(), 'BC-1002'))[0]).toMatchObject({ answerAr: 'اعتُمد رقم الشركة', expected: 25, stated: 22, difference: -3 });
+  });
+
+  it('the kind beside another answer — or none — is read as nothing, through the whole search', async () => {
+    expect((await read(answeredWorld('OURS_STANDS', 'EXCHANGE'), 'BC-EX'))[0].answerAr).toBe('رقمنا هو المعتمد');
+    expect((await read(answeredWorld('UNDER_REVIEW', 'EXCHANGE'), 'BC-EX'))[0].answerAr).toBe('قيد المراجعة');
+    expect((await read(answeredWorld(null, 'EXCHANGE'), 'BC-EX'))[0].answerAr).toBeNull();
+  });
+
+  it('an order of ours that the statement did not name is read the same way — its row asks for the kind too', async () => {
+    const [exchange] = await read(answeredWorld('ACCEPTED_COURIER', 'EXCHANGE', true), 'ORD-EX');
+    expect(exchange).toMatchObject({ queue: 'MISSING_IN_STATEMENT', answerAr: 'طلب تبديل', barcode: null, expected: 30 });
+    const [plain] = await read(answeredWorld('ACCEPTED_COURIER', null, true), 'ORD-EX');
+    expect(plain.answerAr).toBe('اعتُمد رقم الشركة');
+  });
+
+  it('the kind is read to be turned into the word and never sent — what the door answers has no new field', async () => {
+    const r = await search('BC-EX', false, answeredWorld('ACCEPTED_COURIER', 'EXCHANGE'), { project: true });
+    expect('resolutionKind' in r.hits[0]).toBe(false);
+    const answer: Any = { ...r };
+    delete answer.asked;
+    expect(JSON.stringify(answer)).not.toMatch(/resolutionKind|EXCHANGE/);
   });
 });
 

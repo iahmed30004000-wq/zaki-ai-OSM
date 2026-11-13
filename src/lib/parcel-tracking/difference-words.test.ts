@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PARKED, PARKED_AR, RESOLUTIONS, RESOLUTION_AR } from '../settlement-difference';
+import { EXCHANGE_AR, PARKED, PARKED_AR, RESOLUTIONS, RESOLUTION_AR } from '../settlement-difference';
 import * as words from './difference-words';
 import {
   ANSWERED_AR,
@@ -56,6 +56,55 @@ describe('the answer’s word is the matching screen’s own', () => {
   it('a saying this screen has no word for is «انبتّ فيه» — never the code', () => {
     expect(answerWord('SOMETHING_NEW')).toBe(ANSWERED_AR);
     expect(ANSWERED_AR).toBe('انبتّ فيه');
+  });
+});
+
+describe('«طلب تبديل» — the courier’s figure with a reason has its own word (the owner, 13/11)', () => {
+  it('«اعتُمد رقم الشركة» beside the EXCHANGE kind says «طلب تبديل» — the same answer for the money, its own word for the reader', () => {
+    expect(answerWord('ACCEPTED_COURIER', 'EXCHANGE')).toBe('طلب تبديل');
+    expect(answerWord('ACCEPTED_COURIER', 'EXCHANGE')).toBe(EXCHANGE_AR);
+    expect(EXCHANGE_AR).toBe('طلب تبديل');
+  });
+
+  it('every other pairing keeps the answer’s own word: no kind, null, an older server that sends none, a kind nobody knows', () => {
+    for (const kind of [null, undefined, '', 'exchange', 'SOMETHING_ELSE']) {
+      expect(answerWord('ACCEPTED_COURIER', kind), String(kind)).toBe('اعتُمد رقم الشركة');
+    }
+    // …and the call as it was before the kind existed (one argument) is unchanged.
+    expect(answerWord('ACCEPTED_COURIER')).toBe('اعتُمد رقم الشركة');
+  });
+
+  it('a kind beside any OTHER answer is read as nothing — it never turns «رقمنا» or «قيد المراجعة» into an exchange', () => {
+    expect(answerWord('OURS_STANDS', 'EXCHANGE')).toBe('رقمنا هو المعتمد');
+    expect(answerWord('UNDER_REVIEW', 'EXCHANGE')).toBe('قيد المراجعة');
+    expect(answerWord('SOMETHING_NEW', 'EXCHANGE')).toBe(ANSWERED_AR);
+  });
+
+  it('nobody has answered: no word, whatever the kind says', () => {
+    for (const resolution of [null, undefined, '']) expect(answerWord(resolution, 'EXCHANGE'), String(resolution)).toBeNull();
+  });
+
+  it('the mark: the head is «طلب تبديل» in place of the red word, and the colour is the settled one — as for their figure', () => {
+    const exchange = { resolution: 'ACCEPTED_COURIER', resolutionKind: 'EXCHANGE' };
+    expect(markHead(exchange)).toBe('طلب تبديل');
+    expect(markTone(exchange)).toBe('good');
+    expect(markTone({ resolution: 'ACCEPTED_COURIER' })).toBe('good');
+    // The unanswered row is still the red «فيه فرق», and the plain answer still says its own word.
+    expect(markHead({ resolution: null, resolutionKind: 'EXCHANGE' })).toBe(DIFFERENCE_MARK);
+    expect(markHead({ resolution: 'ACCEPTED_COURIER', resolutionKind: null })).toBe('اعتُمد رقم الشركة');
+    expect(markHead({ resolution: 'OURS_STANDS', resolutionKind: 'EXCHANGE' })).toBe('رقمنا هو المعتمد');
+  });
+
+  it('the tooltip says what it was answered with — «طلب تبديل» — and what pressing it does, like any answered mark', () => {
+    expect(markTitle({ resolution: 'ACCEPTED_COURIER', resolutionKind: 'EXCHANGE', closed: false }, true)).toBe(
+      'انبتّ فيه: طلب تبديل — اضغط تشوف الرقمين وتبتّ فيه'
+    );
+    expect(markTitle({ resolution: 'ACCEPTED_COURIER', resolutionKind: 'EXCHANGE', closed: true }, true)).toBe(
+      'انبتّ فيه: طلب تبديل — الكشف مغلق، فما بيتغيّر — اضغط تشوف الرقمين'
+    );
+    expect(markTitle({ resolution: 'ACCEPTED_COURIER', resolutionKind: null, closed: false }, false)).toBe(
+      'انبتّ فيه: اعتُمد رقم الشركة — اضغط تشوف الرقمين'
+    );
   });
 });
 
@@ -123,6 +172,8 @@ describe('every word it says is Arabic', () => {
       markTitle({ resolution: 'UNDER_REVIEW', closed: true }, false),
       differenceDoneMessage('٧'),
       markHead({ resolution: 'WHATEVER' }),
+      markHead({ resolution: 'ACCEPTED_COURIER', resolutionKind: 'EXCHANGE' }),
+      markTitle({ resolution: 'ACCEPTED_COURIER', resolutionKind: 'EXCHANGE', closed: true }, true),
     ]) {
       expect(s, s).not.toMatch(/[A-Za-z]/);
     }

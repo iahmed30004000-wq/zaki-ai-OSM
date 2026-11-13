@@ -30,6 +30,10 @@ import {
  * `settlement.review`) and the same matrix, so a greyed answer carries the sentence the door would give. NOTHING of the
  * decision is written here: this draws, and the door decides.
  *
+ * «طلب تبديل» (the owner, 13/11) comes with those answers: the third button of `DifferenceActions`, and — once the line is
+ * answered that way — its chip. The row carries the qualifier beside the answer (`resolutionKind`); this hands it on and does
+ * not read it, so the dialog and the mark say the same word as the matching screen.
+ *
  * ── WHAT IS OFFERED, AND WHEN ──
  *
  *   · an answer is taken only BEFORE the statement's matching is closed. After it the dialog says so in the door's own
@@ -118,6 +122,7 @@ export function DifferenceDialog({
             orderId={order.id}
             orderNumber={order.orderNumber}
             resolution={d.resolution}
+            resolutionKind={d.resolutionKind}
             resolutionNote={d.resolutionNote}
             decisions={d.decisions}
             claim={d.claim}

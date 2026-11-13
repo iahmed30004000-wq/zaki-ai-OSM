@@ -4,7 +4,7 @@ import { normalizePhoneNumber } from './phone';
 import { typed } from './text-search';
 import { isManualDraftHash } from './manual-statement-rules';
 import { isApproved, isMatchingClosed } from './settlement-gates';
-import { PARKED, PARKED_AR, RESOLUTION_AR } from './settlement-difference';
+import { EXCHANGE_AR, PARKED, PARKED_AR, RESOLUTION_AR, isExchange } from './settlement-difference';
 import {
   MAX_HITS,
   NOT_MATCHED_YET_AR,
@@ -130,6 +130,9 @@ const MATCH_SELECT = {
   id: true,
   result: true,
   resolution: true,
+  // The qualifier beside «اعتُمد رقم الشركة» that makes the answer «طلب تبديل» (`isExchange`): without it, an exchange would be
+  // read here as an ordinary accepted figure — and said so.
+  resolutionKind: true,
   expectedAmount: true,
   statementAmount: true,
   difference: true,
@@ -194,11 +197,17 @@ export function statementState(s: {
 }
 
 /**
- * THE ANSWER A PERSON GAVE, in the words the matching screen shows it with: the two figures and «قيد المراجعة» from the one
- * table of `settlement-difference`; a word it does not know is shown as it is, never dropped.
+ * THE ANSWER A PERSON GAVE, in the words the matching screen shows it with: the two figures, «قيد المراجعة» and «طلب تبديل»
+ * from the one table of `settlement-difference`; a word it does not know is shown as it is, never dropped.
+ *
+ * It takes the ROW, not the word, because «طلب تبديل» is not an answer of its own: the stored answer is «اعتُمد رقم الشركة»
+ * and the kind beside it says why (`isExchange` — the kind counts only beside that answer, so a kind standing next to any
+ * other answer is read as nothing). A row from before the kind existed carries none, and is said as it always was.
  */
-export function answerAr(resolution: string | null | undefined): string | null {
-  if (!resolution) return null;
+export function answerAr(row: { resolution?: string | null; resolutionKind?: string | null } | null | undefined): string | null {
+  const resolution = row?.resolution;
+  if (!row || !resolution) return null;
+  if (isExchange(row)) return EXCHANGE_AR;
   if (resolution === PARKED) return PARKED_AR;
   return (RESOLUTION_AR as Record<string, string>)[resolution] ?? resolution;
 }
@@ -221,6 +230,8 @@ interface MatchRow {
   id: string;
   result: string;
   resolution: string | null;
+  /** Absent on a row read from a database that has no such column yet: read as «no kind». */
+  resolutionKind?: string | null;
   expectedAmount: Dec;
   statementAmount: Dec;
   difference: Dec;
@@ -248,7 +259,7 @@ function hitOf(
     statement: inStatement,
     queue: match && isQueue(match.result) ? match.result : null,
     resultAr: match ? (isQueue(match.result) ? RESULT_AR[match.result] : match.result) : NOT_MATCHED_YET_AR,
-    answerAr: answerAr(match?.resolution),
+    answerAr: answerAr(match),
     // Two fields and nothing beside them, whatever the query selected: an order drags its customer behind it.
     order: match?.order ? { id: match.order.id, orderNumber: match.order.orderNumber } : null,
     barcode: line?.barcode ?? null,

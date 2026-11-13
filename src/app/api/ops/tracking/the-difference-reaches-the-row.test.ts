@@ -108,6 +108,8 @@ const mrow = (orderId: string | null, over: Any = {}) => {
     orderId,
     result: 'MISMATCHED',
     resolution: null,
+    // (13/11) the table now has this column too — «طلب تبديل» is `EXCHANGE` beside `ACCEPTED_COURIER`; null for every other answer.
+    resolutionKind: null,
     resolutionNote: null,
     expectedAmount: '20',
     statementAmount: '17',
@@ -187,6 +189,7 @@ describe('what the row carries — for a person who holds the money sight', () =
       gap: 3,
       answered: false,
       resolution: null,
+      resolutionKind: null,
       resolutionNote: null,
       claim: null,
       closed: false,
@@ -279,6 +282,125 @@ describe('what the row carries — for a person who holds the money sight', () =
     world = [parcel('a', { shippingStatus: 'SHIPPED', settlementStatus: 'NOT_APPLICABLE', deliveredAt: null })];
     table = [mrow('a')];
     expect((await (await get()).json()).orders[0].difference).not.toBeNull();
+  });
+});
+
+/** What Prisma does with a `select`: ONLY the asked columns come back, and a nested `select` projects the relation. */
+const projected = (r: Any, select: Any): Any => {
+  const out: Any = {};
+  for (const [k, want] of Object.entries(select)) {
+    if (want === true) out[k] = r[k];
+    else if (want && typeof want === 'object' && 'select' in want) out[k] = r[k] == null ? null : projected(r[k], (want as Any).select);
+    else throw new Error(`the fake does not know how to read «${k}»`);
+  }
+  return out;
+};
+/** The match table, EVALUATING the question and answering only the columns it names — so a select that forgot a column loses it here. */
+const strictTable = () =>
+  db.settlementMatch.findMany.mockImplementation(async (args: Any) =>
+    table.filter((r) => holds(r, args.where)).map((r) => (args.select ? projected(r, args.select) : r))
+  );
+
+describe('an exchange — «طلب تبديل» — reaches the row with its kind, beside the answer (the owner, 13/11)', () => {
+  const exchanged = (over: Any = {}) =>
+    mrow('a', { resolution: 'ACCEPTED_COURIER', resolutionKind: 'EXCHANGE', resolutionNote: 'تبديل حبة ناقصة بعتناها للزبون', ...over });
+  beforeEach(() => {
+    strictTable();
+  });
+
+  it('carries `resolutionKind: "EXCHANGE"` beside `ACCEPTED_COURIER` — read through a select that returns ONLY the columns it names', async () => {
+    asMoney();
+    table = [exchanged()];
+    const d = (await (await get()).json()).orders[0].difference;
+    expect(d).toMatchObject({ answered: true, resolution: 'ACCEPTED_COURIER', resolutionKind: 'EXCHANGE', resolutionNote: 'تبديل حبة ناقصة بعتناها للزبون', claim: null });
+  });
+
+  it('a plain answer carries null, so does an unanswered difference, and so does a row from before the column — the key is always THERE', async () => {
+    asMoney();
+    const old = mrow('a', { resolution: 'ACCEPTED_COURIER', resolutionNote: 'سطر قبل الإضافة' });
+    delete (old as Any).resolutionKind;
+    for (const row of [mrow('a', { resolution: 'ACCEPTED_COURIER', resolutionKind: null, resolutionNote: 'خصم من الموظفة' }), mrow('a'), old]) {
+      table = [row];
+      const d = (await (await get()).json()).orders[0].difference;
+      expect(d, JSON.stringify(row.resolution)).toHaveProperty('resolutionKind', null);
+    }
+  });
+
+  it('the server sends it as it holds it: a kind standing beside another answer is for the words to ignore (`answerWord`), not for the door to rewrite', async () => {
+    asMoney();
+    table = [mrow('a', { resolution: 'OURS_STANDS', resolutionKind: 'EXCHANGE', resolutionNote: 'نطالب بالفرق' })];
+    expect((await (await get()).json()).orders[0].difference).toMatchObject({ resolution: 'OURS_STANDS', resolutionKind: 'EXCHANGE', claim: 3 });
+  });
+
+  it('it is part of the ANSWER, not of what the company wrote: the cash box alone (no «عرض التسويات») sees it — and still not the company’s line', async () => {
+    held.add('finance.cashbox');
+    table = [exchanged()];
+    const d = (await (await get()).json()).orders[0].difference;
+    expect(d).toMatchObject({ resolution: 'ACCEPTED_COURIER', resolutionKind: 'EXCHANGE' });
+    expect(d.courierWord).toBeNull();
+    expect(d.statementLine).toBeNull();
+  });
+
+  it('an exchange on a CLOSED statement is read-only and says so — the kind and `closed` travel together', async () => {
+    asDecider();
+    table = [exchanged({ statement: { matchingClosedAt: ago(1) } })];
+    const d = (await (await get()).json()).orders[0].difference;
+    expect(d).toMatchObject({ closed: true, answered: true, resolutionKind: 'EXCHANGE' });
+    for (const k of ['ACCEPTED_COURIER', 'OURS_STANDS', 'UNDER_REVIEW']) expect(d.decisions[k], k).toEqual({ allowed: false, why: STATEMENT_CLOSED_SENTENCE });
+  });
+
+  it('the page’s whole read asks for the column; the LEAN read (which parcels, answered or not) is exactly what it was', async () => {
+    asMoney();
+    table = [exchanged()];
+    await get();
+    const asked = askedOfMatches();
+    const rich = asked.filter((a) => a.select && 'statementLine' in a.select);
+    const lean = asked.filter((a) => a.select && 'createdAt' in a.select);
+    expect(rich).toHaveLength(1);
+    expect(rich[0].select.resolutionKind).toBe(true);
+    expect(lean.length).toBeGreaterThan(0);
+    for (const a of lean) {
+      expect(a.select).not.toHaveProperty('resolutionKind');
+      expect(Object.keys(a.select).sort()).toEqual(['createdAt', 'id', 'orderId', 'resolution', 'result', 'statement']);
+    }
+  });
+
+  it('DIFFERENTIAL: the same table with a plain answer and with an exchange gives the same chip, the same tasks and the same order of rows — only the row’s own kind differs', async () => {
+    asMoney();
+    world = [parcel('a'), parcel('b'), parcel('c')];
+    const run = async (kind: string | null) => {
+      table = [
+        mrow('a', { resolution: 'ACCEPTED_COURIER', resolutionKind: kind, resolutionNote: 'تبديل حبة ناقصة' }),
+        mrow('b'),
+        mrow('c', { resolution: 'OURS_STANDS', resolutionNote: 'نطالب بالفرق' }),
+      ];
+      const body = await (await get()).json();
+      return {
+        facts: body.facts,
+        pagination: body.pagination,
+        lateCount: body.lateCount,
+        rows: (body.orders as Any[]).map((o) => ({ id: o.id, difference: o.difference && { ...o.difference, matchId: '<id>', resolutionKind: undefined } })),
+        kinds: (body.orders as Any[]).map((o) => o.difference?.resolutionKind ?? null),
+      };
+    };
+    const plain = await run(null);
+    const exchange = await run('EXCHANGE');
+    expect(exchange.facts).toEqual(plain.facts);
+    expect(exchange.pagination).toEqual(plain.pagination);
+    expect(exchange.lateCount).toBe(plain.lateCount);
+    expect(exchange.rows).toEqual(plain.rows);
+    expect(plain.facts.difference).toBe(3);
+    // The only thing that moved is the one row’s own kind.
+    expect(plain.kinds.filter(Boolean)).toEqual([]);
+    expect(exchange.kinds.filter(Boolean)).toEqual(['EXCHANGE']);
+  });
+
+  it('NEGATIVE: without the money sight there is no field at all — so no kind either — and the match table is not read', async () => {
+    table = [exchanged()];
+    const body = await (await get()).json();
+    expect(body.orders[0]).not.toHaveProperty('difference');
+    expect(JSON.stringify(body)).not.toContain('EXCHANGE');
+    expect(db.settlementMatch.findMany).not.toHaveBeenCalled();
   });
 });
 
