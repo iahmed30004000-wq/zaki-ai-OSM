@@ -141,6 +141,8 @@ export function WalletsScreen() {
   const [renaming, setRenaming] = useState(false);
   const [newName, setNewName] = useState('');
   const [recordOpen, setRecordOpen] = useState(false);
+  // The same dialog opened from the TOP of the screen, where no wallet has been picked yet (see `RecordFromTop`).
+  const [topOpen, setTopOpen] = useState(false);
   const [countOpen, setCountOpen] = useState(false);
   const [lookOpen, setLookOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -313,6 +315,26 @@ export function WalletsScreen() {
       <RiAddCircleLine className="w-4 h-4" /> حركة جديدة
     </button>
   ) : null;
+  /*
+   * «حركة جديدة» AT THE TOP, BESIDE «محفظة جديدة» (the owner, 13/11, over a phone screenshot: «زر حركة جديدة بالاعلى»).
+   * The wallet's own press (above) sits in the ledger's header, under the wallet cards, and records on the wallet that is open. This
+   * one is where the screen starts: it opens THE SAME dialog and first asks which wallet (`RecordFromTop`). The same key draws it —
+   * `mayCash`, not widened — and it appears at the moment the wallet's own press does (once there are wallets), grey while every
+   * wallet is stopped, as the wallet's own press is for a stopped one. A stopped wallet is never offered in it.
+   */
+  const recordable = (wallets ?? []).filter((w) => w.isActive);
+  const topRecordButton =
+    mayCash && wallets && wallets.length > 0 ? (
+      <button
+        disabled={recordable.length === 0}
+        onClick={() => setTopOpen(true)}
+        className={`h-11 md:h-10 px-3 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-50 ${
+          phone ? 'flex-1 justify-center' : 'shrink-0'
+        }`}
+      >
+        <RiAddCircleLine className="w-4 h-4" /> حركة جديدة
+      </button>
+    ) : null;
 
   /*
    * THE LEDGER ON A CARD: WHO, HOW MUCH, THEN THE REST.
@@ -391,13 +413,22 @@ export function WalletsScreen() {
           المحفظة تتبع متجراً واحداً وتحمل عملته. حركاتها سجل دائم: ما مرّ بها مبلغ يُوقَف
           ولا يُحذف — ولا يُحذف فعلياً إلا ما لم يمرّ به شيء.
         </p>
-        {mayManage && (
-        <button
-          onClick={() => setCreating(true)}
-          className="h-11 md:h-10 px-3 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5 shrink-0"
-        >
-          <RiAddCircleLine className="w-4 h-4" /> محفظة جديدة
-        </button>
+        {/* The day's press first, then the upkeep's: two presses of one row. On a phone they SHARE it, 44px each; on a desk they
+            sit side by side at its end — never one button squeezed to make room for the other. */}
+        {(topRecordButton || mayManage) && (
+          <span className={phone ? 'flex gap-2' : 'flex items-center gap-2 shrink-0'}>
+            {topRecordButton}
+            {mayManage && (
+              <button
+                onClick={() => setCreating(true)}
+                className={`h-11 md:h-10 px-3 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5 ${
+                  phone ? 'flex-1 justify-center' : 'shrink-0'
+                }`}
+              >
+                <RiAddCircleLine className="w-4 h-4" /> محفظة جديدة
+              </button>
+            )}
+          </span>
         )}
       </div>
 
@@ -621,6 +652,21 @@ export function WalletsScreen() {
         />
       )}
 
+      {/* The same dialog, from the top of the screen: it asks which wallet first. Only the press that holds the key opens it. */}
+      {topOpen && (
+        <RecordFromTop
+          wallets={recordable}
+          openId={active}
+          mayExpense={mayExpense}
+          storeCurrency={store?.code ?? null}
+          onClose={() => setTopOpen(false)}
+          onSaved={async (message) => {
+            setTopOpen(false);
+            await refresh(message);
+          }}
+        />
+      )}
+
       {lookOpen && wallet && (
         <WalletLookDialog
           wallet={wallet}
@@ -786,6 +832,76 @@ function OpeningCountDialog({
 }
 
 /**
+ * «حركة جديدة» FROM THE TOP OF THE SCREEN — THE WALLET'S OWN DIALOG, AND THE ONE QUESTION ITS OWN PRESS NEVER ASKS: WHICH WALLET.
+ *
+ * The owner, 13/11, over a phone screenshot with only «محفظة جديدة» at the top: «زر حركة جديدة بالاعلى». The press beside the ledger
+ * records on the wallet that is open, so it is only to be found after a wallet has been picked and scrolled to. This one is where the
+ * screen starts. It opens THE SAME `RecordDialog` — nothing of it is copied, so the kinds, the currency sentence, the validation and
+ * the request are the dialog's, identical whichever press opened it — with a drop-down of the wallets above its first field.
+ *
+ *   · only RUNNING wallets are offered: the wallet's own press is grey for a stopped one, and a movement on it is refused;
+ *   · the wallet that is open is preselected when it is one of them, and so is the only running wallet there is;
+ *   · otherwise nothing is chosen for the person: money must not land on a wallet nobody named. The form is not drawn until one is
+ *     picked, so it cannot be submitted without one.
+ *
+ * What it records on is the wallet picked, and nothing about the screen follows it: the wallet that is open stays open, as after
+ * the wallet's own press, and the wallets' figures are read again.
+ */
+function RecordFromTop({
+  wallets,
+  openId,
+  mayExpense,
+  storeCurrency,
+  onClose,
+  onSaved,
+}: {
+  /** The wallets a movement may be recorded on — the RUNNING ones. */
+  wallets: WalletRow[];
+  /** The wallet the screen has open: offered first, when it is one of them. */
+  openId: string;
+  mayExpense: boolean;
+  storeCurrency: string | null;
+  onClose: () => void;
+  onSaved: (message: string) => void;
+}) {
+  const [pickedId, setPickedId] = useState(() => wallets.find((w) => w.id === openId)?.id ?? (wallets.length === 1 ? wallets[0].id : ''));
+  const picked = wallets.find((w) => w.id === pickedId) ?? null;
+  const chooser = (
+    <label className="block">
+      <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">المحفظة</span>
+      <select
+        value={picked?.id ?? ''}
+        onChange={(e) => setPickedId(e.target.value)}
+        className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm bg-[var(--sys-card)]"
+      >
+        {!picked && <option value="">اختر المحفظة…</option>}
+        {wallets.map((w) => (
+          <option key={w.id} value={w.id}>{w.name} — {w.currencyCode}</option>
+        ))}
+      </select>
+    </label>
+  );
+  if (!picked) {
+    return (
+      <Modal isOpen onClose={onClose} title="حركة جديدة">
+        <div className="space-y-3">
+          {chooser}
+          <p className="text-xs text-[var(--sys-muted)]">اختر المحفظة أول، وبعدها بيطلع نموذج الحركة.</p>
+          <div className="flex gap-2 justify-end pt-1">
+            <button type="button" onClick={onClose} className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm">
+              إلغاء
+            </button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+  return (
+    <RecordDialog wallet={picked} mayExpense={mayExpense} storeCurrency={storeCurrency} chooser={chooser} onClose={onClose} onSaved={onSaved} />
+  );
+}
+
+/**
  * «حركة جديدة» — A MOVEMENT TYPED BY HAND, OR A REAL EXPENSE.
  *
  * Two doors sit behind this one dialog and the category chosen picks between them:
@@ -797,11 +913,15 @@ function OpeningCountDialog({
  *     twice — which is why that door refuses it, and why this dialog never sends one there.
  *
  * «عمولة» stays greyed: its ledger is the commission entries, paid from «صرف».
+ *
+ * Two presses open it: the wallet's own, which knows the wallet, and the one at the top of the screen (`RecordFromTop`), which hands
+ * it a wallet picked in a `chooser` above the first field — nothing else of the dialog differs between them.
  */
 function RecordDialog({
   wallet,
   mayExpense,
   storeCurrency,
+  chooser,
   onClose,
   onSaved,
 }: {
@@ -810,6 +930,8 @@ function RecordDialog({
   mayExpense: boolean;
   /** The selected store's currency, when the shell knows it — used only to say so when the wallet's is another. */
   storeCurrency: string | null;
+  /** «المحفظة» — which wallet, drawn above the first field. Only the press at the top of the screen passes one. */
+  chooser?: React.ReactNode;
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
@@ -875,6 +997,7 @@ function RecordDialog({
         }}
         className="space-y-3"
       >
+        {chooser}
         {/* Whose money moves, by its face — the title above says the name, and a wallet is recognised by what it looks like. */}
         <div className="flex items-center gap-3 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-2.5">
           <WalletPicture wallet={wallet} size="sm" />
