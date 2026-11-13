@@ -38,6 +38,7 @@ import { stripComments } from './guard-source';
 import { recordPartialDelivery } from './partial-delivery';
 import { recordShippingMove, shippingMoveColumns } from './shipping-move';
 import { appendDeliveryAttempt } from './delivery-attempts';
+import { proposeShortfalls } from './shortfall';
 import { consumeOrderStock } from './stock-consumption';
 import { EXCLUDED_RESULT } from './statement-open-lines';
 import {
@@ -99,6 +100,8 @@ function matches(row: Row, where?: Row): boolean {
         if (!v.in.includes(have)) return false;
       } else if ('not' in v) {
         if (have === v.not) return false;
+      } else if ('notIn' in v) {
+        if (v.notIn.includes(have)) return false;
       } else if ('lt' in v) {
         if (!(have < v.lt)) return false;
       } else if ('gt' in v) {
@@ -394,8 +397,8 @@ const USER = { id: 'u1', role: 'SUPER_ADMIN' };
 const REASON = 'انسجّل تسليمو بالغلط — الشركة بتقول تم إرجاعها';
 
 /** The delivery as the REAL door recorder writes it (the «استلم» button, «استلم جزءاً», «استلم المحدد»). */
-async function recordAtTheDoor(w: World, lines: { itemId: string; deliveredQty: number }[], note: string | null = null) {
-  return w.transaction((tx) => recordPartialDelivery(tx, { companyId: 'c1', storeId: 's1', orderId: 'o1', lines, minorUnit: 2, userId: 'u1', note }));
+async function recordAtTheDoor(w: World, lines: { itemId: string; deliveredQty: number }[], note: string | null = null, userId = 'u1') {
+  return w.transaction((tx) => recordPartialDelivery(tx, { companyId: 'c1', storeId: 's1', orderId: 'o1', lines, minorUnit: 2, userId, note }));
 }
 
 /** The delivery as the order's own door writes it: the helpers it calls, in the order it calls them (`/api/orders/[id]/shipping`). */
@@ -868,6 +871,25 @@ describe('the measure — every line the press would write, and every line it wo
     expect(m.stays.find((l) => l.key === 'EVENTS')?.text).toBe(UNDO_STAYS_AR.events);
   });
 
+  it('what stays says the announcement is not recalled ONLY for a FULL delivery through the order’s own door — a partial one through it sent nothing, and the door never sends one', () => {
+    const eventsFor = (f: UndoFacts) => measureUndo(f).stays.some((l) => l.key === 'EVENTS');
+    const viaTheOrdersDoor = (status: 'DELIVERED' | 'PARTIALLY_DELIVERED') =>
+      facts({
+        order: { shippingStatus: status, ...(status === 'DELIVERED' ? { settlementStatus: 'COLLECTED', status: 'DELIVERED' } : {}) },
+        marks: [routeMark(status, status === 'DELIVERED' ? 'OUT_FOR_DELIVERY' : 'SHIPPED')],
+        shippingLog: [{ previousValue: status === 'DELIVERED' ? 'OUT_FOR_DELIVERY' : 'SHIPPED', newValue: status }],
+      });
+    const viaTheDoor = (status: 'DELIVERED' | 'PARTIALLY_DELIVERED') => facts({ order: { shippingStatus: status }, marks: [doorMark(status)] });
+
+    expect(eventsFor(viaTheOrdersDoor('DELIVERED'))).toBe(true);
+    expect(eventsFor(viaTheOrdersDoor('PARTIALLY_DELIVERED'))).toBe(false);
+    expect(eventsFor(viaTheDoor('DELIVERED'))).toBe(false);
+    expect(eventsFor(viaTheDoor('PARTIALLY_DELIVERED'))).toBe(false);
+    // …and when it is said, it is said in the one sentence, last among the things that stay
+    const said = measureUndo(viaTheOrdersDoor('DELIVERED')).stays;
+    expect(said[said.length - 1]).toEqual({ key: 'EVENTS', text: UNDO_STAYS_AR.events });
+  });
+
   it('the status line says when the «before» is not in the ledgers', () => {
     expect(measureUndo(facts()).lines[0].text).toContain('مش محفوظة بالسجل');
     const known = measureUndo(
@@ -1216,6 +1238,235 @@ describe('the press — a delivery recorded through the order’s own door, take
     await recordThroughTheShippingRoute(w, 'DELIVERED', 'FAILED_DELIVERY');
     await press(w);
     expect(w.state.order.shippingStatus).toBe('FAILED_DELIVERY');
+  });
+});
+
+describe('the announcement that stays — read from what the REAL recorders left', () => {
+  const eventsOf = async (w: World) => {
+    const { measure } = await measureOf(w);
+    expect(measure.allowed).toBe(true);
+    return measure.stays.some((l) => l.key === 'EVENTS');
+  };
+
+  it('a FULL delivery through the order’s own door sent an announcement, and the dialog says it stays', async () => {
+    const w = new World();
+    await recordThroughTheShippingRoute(w, 'DELIVERED');
+    expect(await eventsOf(w)).toBe(true);
+  });
+
+  it('a PARTIAL delivery through the same door sent none: the dialog does not say there is one to leave', async () => {
+    const w = new World({ order: { shippingStatus: 'SHIPPED' } });
+    await recordThroughTheShippingRoute(w, 'PARTIALLY_DELIVERED', 'SHIPPED');
+    expect(w.state.order.shippingStatus).toBe('PARTIALLY_DELIVERED');
+    expect(await eventsOf(w)).toBe(false);
+  });
+
+  it('a delivery at the door (whole or partial) sent none either', async () => {
+    const whole = new World();
+    await recordAtTheDoor(whole, allTaken(whole));
+    expect(await eventsOf(whole)).toBe(false);
+    const part = new World();
+    await recordAtTheDoor(part, [{ itemId: 'i1', deliveredQty: 2 }, { itemId: 'i2', deliveredQty: 0 }]);
+    expect(part.state.order.shippingStatus).toBe('PARTIALLY_DELIVERED');
+    expect(await eventsOf(part)).toBe(false);
+  });
+});
+
+describe('every read of the undo is for THIS order — another order’s rows sit in the same tables and change nothing', () => {
+  /** Rows of the order next door, written AFTER this one's (so a read that forgot its order meets them first), each shaped to flip the answer if it were read. */
+  const NEXT_DOOR = new Date(Date.UTC(2026, 10, 13, 1, 0, 0));
+  const neighbour = {
+    commission: () => [
+      accrued({ id: 'ce-n-payable', orderId: 'o2', userId: 'ag2', status: 'PAYABLE' }),
+      accrued({ id: 'ce-n-paid', orderId: 'o2', userId: 'ag2', status: 'PAID', payoutId: 'po9' }),
+      accrued({ id: 'ce-n-accrued', orderId: 'o2', userId: 'ag3' }),
+    ],
+    shippingLine: () => ({ id: 'l-n', companyId: 'c1', orderId: 'o2', statusType: 'SHIPPING', previousValue: 'FAILED_DELIVERY', newValue: 'DELIVERED', createdAt: NEXT_DOOR }),
+    rows: () => [
+      { id: 'a-n1', companyId: 'c1', orderId: 'o2', action: DELIVERY_UNDO_ACTION, previousStatus: 'DELIVERED', newStatus: 'SHIPPED', metadata: null, createdAt: NEXT_DOOR },
+      { id: 'a-n2', companyId: 'c1', orderId: 'o2', action: SHIPPING_MARK, previousStatus: 'FAILED_DELIVERY', newStatus: 'DELIVERED', metadata: null, createdAt: NEXT_DOOR },
+    ],
+  };
+  const theNeighbours = (s: State) => ({
+    commission: s.commission.filter((r) => r.orderId === 'o2'),
+    logs: s.logs.filter((r) => r.orderId === 'o2'),
+    activities: s.activities.filter((r) => r.orderId === 'o2'),
+  });
+
+  it('COMMISSION: another order’s PAYABLE or PAID entry does not refuse this undo, and its ACCRUED one is not counted among this order’s', async () => {
+    const w = new World();
+    w.state.commission.push(accrued());
+    await recordAtTheDoor(w, allTaken(w));
+    w.state.commission.push(...neighbour.commission());
+
+    const { facts: f, measure } = await measureOf(w);
+    expect(f.commission.map((e) => e.id)).toEqual(['ce1']);
+    expect(measure.allowed, 'a payable entry of ANOTHER order refused this one').toBe(true);
+    expect(measure.lines.find((l) => l.key === 'COMMISSION')?.text).toBe(UNDO_LINE_AR.commission(1));
+    expect(planOf(f).commission.map((e) => e.id)).toEqual(['ce1']);
+
+    // the press reads it again after the claim, with the transaction's client: the same answer, and the neighbour's entries are exactly as they were
+    const before = theNeighbours(w.snapshot());
+    const done = await press(w);
+    expect(done.voided).toBe(1);
+    expect(theNeighbours(w.snapshot())).toEqual(before);
+    expect(w.state.commission.filter((r) => r.reversalOfId)).toHaveLength(1);
+  });
+
+  it('THE «BEFORE» STATE: the state it goes back to is read from THIS order’s timeline, never from another order’s newer line', async () => {
+    const w = new World({ order: { shippingStatus: 'OUT_FOR_DELIVERY' } });
+    await recordThroughTheShippingRoute(w, 'DELIVERED', 'OUT_FOR_DELIVERY');
+    w.state.logs.push(neighbour.shippingLine());
+
+    const { facts: f, measure } = await measureOf(w);
+    expect(f.shippingLog.map((l) => [l.previousValue, l.newValue])).toEqual([['OUT_FOR_DELIVERY', 'DELIVERED']]);
+    expect(measure.to, 'the timeline of another order decided where this one goes back to').toBe('OUT_FOR_DELIVERY');
+    expect(measure.lines[0].text).toContain('«خرج للتوصيل»');
+
+    const before = theNeighbours(w.snapshot());
+    await press(w);
+    expect(w.state.order.shippingStatus).toBe('OUT_FOR_DELIVERY');
+    expect(theNeighbours(w.snapshot())).toEqual(before);
+  });
+
+  it('WHICH DOOR RECORDED IT: another order’s newer undo or delivery row does not decide the path — this order’s own newest row does', async () => {
+    const w = new World();
+    await recordAtTheDoor(w, allTaken(w));
+    w.state.activities.push(...neighbour.rows());
+
+    const { facts: f, measure } = await measureOf(w);
+    expect(f.marks.map((m) => m.action)).toEqual([DOOR_MARK]);
+    expect(measure.allowed, 'another order’s row blinded or redirected this one').toBe(true);
+    expect(planOf(f).path).toBe('DOOR');
+
+    const before = theNeighbours(w.snapshot());
+    await press(w);
+    expect(w.state.order.shippingStatus).toBe('SHIPPED');
+    expect(theNeighbours(w.snapshot())).toEqual(before);
+  });
+
+  it('the whole neighbourhood at once: with rows of another order in every one of those tables, the measure and the plan are the very ones the order gets alone', async () => {
+    const alone = new World();
+    alone.state.commission.push(accrued());
+    await recordThroughTheShippingRoute(alone, 'DELIVERED');
+    const crowded = new World();
+    crowded.state.commission.push(accrued());
+    await recordThroughTheShippingRoute(crowded, 'DELIVERED');
+    crowded.state.commission.push(...neighbour.commission());
+    crowded.state.logs.push(neighbour.shippingLine());
+    crowded.state.activities.push(...neighbour.rows());
+    crowded.state.movements.push({ id: 'mv-n', companyId: 'c1', type: 'SALE', quantity: -9, referenceId: 'o2' });
+
+    const a = await measureOf(alone);
+    const b = await measureOf(crowded);
+    expect(b.facts).toEqual(a.facts);
+    expect(b.measure).toEqual(a.measure);
+    expect(b.measure.fingerprint).toBe(a.measure.fingerprint);
+  });
+
+  it('and the COMPANY is named on every one of those reads: this order’s own id under another company (it cannot happen, so nothing else would notice) changes nothing either', async () => {
+    const alone = new World();
+    alone.state.commission.push(accrued());
+    await recordThroughTheShippingRoute(alone, 'DELIVERED');
+    const strangers = new World();
+    strangers.state.commission.push(accrued());
+    await recordThroughTheShippingRoute(strangers, 'DELIVERED');
+    strangers.state.commission.push(accrued({ id: 'ce-x', companyId: 'c2', orderId: 'o1', userId: 'agx', status: 'PAYABLE' }));
+    strangers.state.logs.push({ ...neighbour.shippingLine(), id: 'l-x', companyId: 'c2', orderId: 'o1' });
+    strangers.state.activities.push(...neighbour.rows().map((r) => ({ ...r, id: r.id + 'x', companyId: 'c2', orderId: 'o1' })));
+    strangers.state.movements.push({ id: 'mv-x', companyId: 'c2', type: 'SALE', quantity: -9, referenceId: 'o1' });
+
+    const a = await measureOf(alone);
+    const b = await measureOf(strangers);
+    expect(b.facts).toEqual(a.facts);
+    expect(b.measure).toEqual(a.measure);
+  });
+});
+
+describe('after an undo, the shortfall engine does not blame the one who pressed «استلم» by mistake — the REAL recorder, the REAL undo, the REAL engine', () => {
+  const PEOPLE: Row[] = [
+    { id: 'uA', companyId: 'c1', name: 'سارة', role: 'FOLLOW_UP_AGENT', status: 'ACTIVE' },
+    { id: 'uB', companyId: 'c1', name: 'منى', role: 'FOLLOW_UP_AGENT', status: 'ACTIVE' },
+    { id: 'u1', companyId: 'c1', name: 'المالك', role: 'SUPER_ADMIN', status: 'ACTIVE' },
+    { id: 'u-approver', companyId: 'c1', name: 'المحاسب', role: 'ACCOUNTANT', status: 'ACTIVE' },
+  ];
+  const SHORT_SCOPE = {
+    companyId: 'c1',
+    storeId: 's1',
+    approverId: 'u-approver',
+    statement: { id: 'st1', reference: 'JO-ST-7', currencyCode: 'JOD', importedAt: new Date(Date.UTC(2026, 10, 14)) },
+    fallbackDeliveredAt: new Date(Date.UTC(2026, 10, 13)),
+    minorUnit: 3,
+  };
+  /** The company's line says 38 + 2 against our 43 + 2: five dinars short. */
+  const FIVE_SHORT = { matchId: 'm1', orderId: 'o1', orderNumber: 'ORD-2026-1696', expectedAmount: 43, expectedFee: 2, statementAmount: 38, statementFee: 2, explanation: 'الشركة دفعت أقل' };
+
+  /** The engine's own client over the SAME world: it answers from the rows the real recorder and the real undo left, and honours select (a column it did not ask for is missing). */
+  function shortfallTx(w: World) {
+    const proposed: Row[] = [];
+    const newest = (rows: Row[]) => [...rows].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    const project = (row: Row, select: Row): Row => {
+      const out: Row = {};
+      for (const [k, spec] of Object.entries(select)) {
+        if (spec === true) out[k] = row[k];
+        else if (k === 'activities') out[k] = newest(w.state.activities.filter((a) => a.orderId === row.id && matches(a, spec.where))).slice(0, spec.take).map((a) => project(a, spec.select));
+        else throw new Error('the fake does not know the relation ' + k);
+      }
+      return out;
+    };
+    const tx = {
+      order: { findMany: async ({ where, select }: Row) => [w.state.order].filter((o) => matches(o, where)).map((o) => project(o, select)) },
+      deliveryAttempt: { findMany: async ({ where, select }: Row) => newest(w.state.attempts.filter((a) => matches(a, where))).map((a) => project(a, select)) },
+      user: { findMany: async ({ where, select }: Row) => PEOPLE.filter((u) => matches(u, where)).map((u) => project(u, select)) },
+      penalty: { findMany: async () => [], create: async ({ data }: Row) => (proposed.push(data), { id: 'pen' + proposed.length }) },
+      orderActivity: { create: async () => ({}) },
+    };
+    return { tx, proposed };
+  }
+  const approve = async (w: World, naming?: Record<string, string>) => {
+    const { tx, proposed } = shortfallTx(w);
+    const result = await proposeShortfalls(tx as never, { ...SHORT_SCOPE, naming }, [FIVE_SHORT]);
+    return { result, proposed };
+  };
+  const whoCarries = (r: Awaited<ReturnType<typeof approve>>) => r.result.charges.map((c) => [c.userId, c.amount]);
+
+  it('A presses «استلم» by mistake → the owner takes it back → the company delivers it and pays 38 + 2 against 43 + 2: A is charged NOTHING, and the approval asks who', async () => {
+    const w = new World();
+    await recordAtTheDoor(w, allTaken(w), null, 'uA');
+    expect(w.state.attempts.map((a) => [a.result, a.deliveryAgentId])).toEqual([['DELIVERED', 'uA']]);
+    await press(w);
+    expect(w.state.activities.some((a) => a.action === DELIVERY_UNDO_ACTION)).toBe(true);
+    w.state.order.shippingStatus = 'DELIVERED'; // the company's statement delivers it later (what the approval writes)
+
+    const r = await approve(w);
+    expect(r.result.charges).toEqual([]);
+    expect(r.result.stop).toMatchObject({ code: 'SHORTFALL_UNNAMED', lines: [{ matchId: 'm1', orderNumber: 'ORD-2026-1696', amount: 5, currencyCode: 'JOD' }] });
+    expect(r.proposed).toEqual([]);
+
+    // …and once the approver names the person who really followed the parcel, that person carries it
+    expect(whoCarries(await approve(w, { m1: 'uB' }))).toEqual([['uB', 5]]);
+  });
+
+  it('CONTROL: the same press WITHOUT the undo still names A — the engine charges whoever stood at the door when the delivery stands', async () => {
+    const w = new World();
+    await recordAtTheDoor(w, allTaken(w), null, 'uA');
+    const r = await approve(w);
+    expect(whoCarries(r)).toEqual([['uA', 5]]);
+    expect(r.proposed[0]).toMatchObject({ userId: 'uA', amount: 5, status: 'PROPOSED', settlementMatchId: 'm1' });
+  });
+
+  it('A (mistake) → undone → B presses it for real: B carries it, not A — and a second undo of B’s press names nobody again', async () => {
+    const w = new World();
+    await recordAtTheDoor(w, allTaken(w), null, 'uA');
+    await press(w);
+    await recordAtTheDoor(w, allTaken(w), null, 'uB');
+    expect(whoCarries(await approve(w))).toEqual([['uB', 5]]);
+
+    await press(w);
+    w.state.order.shippingStatus = 'DELIVERED';
+    const r = await approve(w);
+    expect(r.result.charges).toEqual([]);
+    expect(r.result.stop).toMatchObject({ code: 'SHORTFALL_UNNAMED' });
   });
 });
 

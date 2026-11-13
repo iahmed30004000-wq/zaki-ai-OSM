@@ -21,7 +21,7 @@ const { api } = vi.hoisted(() => ({ api: vi.fn() }));
 vi.mock('@/lib/api-client', () => ({ apiJson: (...a: unknown[]) => api(...a), apiFetch: vi.fn() }));
 
 import { UndoDeliveryDialog } from './UndoDeliveryDialog';
-import { UNDO_REASON_MAX, UNDO_REASON_MIN, type UndoMeasure } from '@/lib/delivery-undo-words';
+import { UNDO_REASON_MAX, UNDO_REASON_MIN, UNDO_STAYS_AR, type UndoMeasure } from '@/lib/delivery-undo-words';
 
 const DOOR = '/api/ops/tracking/undo-delivery';
 const ID = '11111111-1111-4111-8111-111111111111';
@@ -114,6 +114,25 @@ describe('what it will do comes before the press', () => {
     expect(screen.getByText(/لما تنعدّ بقسم المرتجعات/)).toBeTruthy();
     expect(screen.getByText('ما بينكتب ولا قرش: لا حركة محفظة ولا مبلغ محصَّل.')).toBeTruthy();
     expect(screen.getByText(/السجل ما بيتمسح منو شي/)).toBeTruthy();
+  });
+
+  it('the sentence about the announcement that is not recalled is drawn when the door sends it (a FULL delivery through the order’s own door) and is nowhere on the screen when it does not', async () => {
+    api.mockImplementation(async (_url: string, init?: { body: string }) => {
+      const body = JSON.parse(init?.body ?? '{}') as Sent;
+      if (body.action === 'undo') return { undone: true, message: 'تم' };
+      const base = measureOf();
+      return measureOf({ stays: [...base.stays, { key: 'EVENTS', text: UNDO_STAYS_AR.events }] });
+    });
+    await open();
+    expect(screen.getByText(UNDO_STAYS_AR.events)).toBeTruthy();
+    expect(UNDO_STAYS_AR.events).toContain('ما بينسحب');
+    cleanup();
+
+    // a partial delivery: the door sends no such line, so the dialog says nothing about an announcement
+    api.mockImplementation(async () => measureOf());
+    await open();
+    expect(screen.queryByText(UNDO_STAYS_AR.events)).toBeNull();
+    expect(screen.queryByText(/ما بينسحب/)).toBeNull();
   });
 
   it('says in plain words there is NO time limit, and what makes it refuse — facts, never a clock', async () => {

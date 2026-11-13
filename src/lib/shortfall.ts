@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import type { db } from './db';
 import { roundMinor } from './money';
 import { SHORTFALL_KIND_INFO } from './penalties';
+import { DELIVERY_UNDO_ACTION } from './delivery-undo-words';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -27,6 +28,11 @@ type Tx = Prisma.TransactionClient | typeof db;
  * the door recorded it, so it names the one who stood there. The owner and the managers never carry it. If the
  * door has none, the approver names a person per line or says «على الشركة». Never the confirmer and never the
  * moderator: they sold the order, they did not follow the parcel.
+ *
+ * An attempt only counts if it came AFTER the order's latest «تراجع عن التسليم» (13/11): an attempt older than an
+ * undo recorded a delivery the owner took back as a mistake, so the person on it pressed «استلم» for a parcel that
+ * had not been delivered, and never collected what the company later paid less for. An order that was never undone
+ * is read exactly as before.
  *
  * Every figure here is rounded by `roundMinor`, the one rounding the whole system uses.
  */
@@ -187,7 +193,11 @@ export async function proposeShortfalls(
   const orderIds = owing.map((x) => x.c.orderId);
   const orders = await tx.order.findMany({
     where: { id: { in: orderIds }, companyId: scope.companyId },
-    select: { id: true, shippingStatus: true, deliveredAt: true, moderatorId: true, confirmedById: true },
+    select: {
+      id: true, shippingStatus: true, deliveredAt: true, moderatorId: true, confirmedById: true,
+      // The order's latest «تراجع عن التسليم», if it ever had one: the door below counts only what came after it.
+      activities: { where: { action: DELIVERY_UNDO_ACTION }, orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true } },
+    },
   });
   const orderOf = new Map(orders.map((o) => [o.id, o]));
 
@@ -198,7 +208,8 @@ export async function proposeShortfalls(
   });
   if (collected.length === 0) return result;
 
-  // The door: the latest delivered attempt made BEFORE the import, by whoever pressed it.
+  // The door: the latest delivered attempt made BEFORE the import, by whoever pressed it — and AFTER the order's latest undo.
+  // An attempt older than an undo (or made at its very instant) recorded a delivery that was taken back: it names nobody.
   const attempts = await tx.deliveryAttempt.findMany({
     where: {
       companyId: scope.companyId,
@@ -207,10 +218,14 @@ export async function proposeShortfalls(
       createdAt: { lt: scope.statement.importedAt },
     },
     orderBy: { createdAt: 'desc' },
-    select: { orderId: true, deliveryAgentId: true },
+    select: { orderId: true, deliveryAgentId: true, createdAt: true },
   });
+  const standsAfterUndo = (a: { orderId: string; createdAt: Date }) => {
+    const undoneAt = orderOf.get(a.orderId)?.activities?.[0]?.createdAt;
+    return !undoneAt || a.createdAt > undoneAt;
+  };
   const doorOf = new Map<string, string | null>();
-  for (const a of attempts) if (!doorOf.has(a.orderId)) doorOf.set(a.orderId, a.deliveryAgentId);
+  for (const a of attempts) if (standsAfterUndo(a) && !doorOf.has(a.orderId)) doorOf.set(a.orderId, a.deliveryAgentId);
 
   // Everybody who could carry a line: the door's people and the ones the approver named.
   const naming = scope.naming ?? {};

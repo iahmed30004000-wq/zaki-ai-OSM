@@ -497,7 +497,9 @@ export function measureUndo(facts: UndoFacts): UndoMeasure {
     { key: 'HISTORY', text: UNDO_STAYS_AR.history },
   ];
   if (plan.commission.length === 0) stays.push({ key: 'COMMISSION', text: UNDO_STAYS_AR.noCommission });
-  if (plan.path === 'SHIPPING_ROUTE') stays.push({ key: 'EVENTS', text: UNDO_STAYS_AR.events });
+  // The order's own door announces a delivery (to the apps, and to the ad platforms as a sale) only when it is a FULL one: a partial
+  // delivery through it sends neither, so for a partial there is nothing that stays and the screen must not say there is.
+  if (plan.path === 'SHIPPING_ROUTE' && plan.from === 'DELIVERED') stays.push({ key: 'EVENTS', text: UNDO_STAYS_AR.events });
 
   return { ...base, allowed: true, refusal: null, fingerprint: fingerprintOf(order, plan), to: plan.to, lines, stays };
 }
