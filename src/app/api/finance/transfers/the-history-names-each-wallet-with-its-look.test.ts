@@ -9,7 +9,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 const { db, requireContext, requirePermission } = vi.hoisted(() => ({
-  db: { walletTransfer: { findMany: vi.fn() }, wallet: { findMany: vi.fn() } },
+  // `walletMovement` and `user`: the list also reads which transfers were reversed (their legs) and who wrote it — none here.
+  db: { walletTransfer: { findMany: vi.fn() }, wallet: { findMany: vi.fn() }, walletMovement: { findMany: vi.fn() }, user: { findMany: vi.fn() } },
   requireContext: vi.fn(),
   requirePermission: vi.fn(),
 }));
@@ -27,6 +28,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   requireContext.mockResolvedValue({ companyId: 'co' });
   requirePermission.mockResolvedValue(undefined);
+  db.walletMovement.findMany.mockResolvedValue([]);
+  db.user.findMany.mockResolvedValue([]);
   db.walletTransfer.findMany.mockResolvedValue([
     {
       id: 't1', companyId: 'co', fromWalletId: 'w1', toWalletId: 'w2', amountOut: '100', amountIn: '100', exchangeRate: '1',

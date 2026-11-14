@@ -1361,6 +1361,13 @@ function ReverseDialog({
           </p>
         )}
 
+        {movement.referenceType === 'TRANSFER' && (
+          <p className="text-sm text-[var(--sys-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3">
+            هذه حركة تحويل: القيد العكسي يعكس التحويل كله بمرة واحدة — الطرفين، كل واحد في محفظته — ويظهر في «التحويلات»
+            مكتوباً عليه «معكوس». الطرف المعكوس من قبل يُترك كما هو.
+          </p>
+        )}
+
         <label className="block">
           <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">سبب القيد العكسي (إلزامي)</span>
           <textarea

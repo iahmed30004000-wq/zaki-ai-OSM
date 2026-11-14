@@ -696,6 +696,8 @@ describe('the list reads an exchange as what it was', () => {
       { id: USD.id, name: USD.name, currencyCode: 'USD', store: { name: 'متجر دمشق' } },
       { id: SYP.id, name: SYP.name, currencyCode: 'SYP', store: { name: 'متجر دمشق' } },
     ]) } as unknown as typeof db.wallet;
+    // The list also reads which of the transfers were reversed (their legs): none here.
+    db.walletMovement = { ...db.walletMovement, findMany: vi.fn().mockResolvedValue([]) } as unknown as typeof db.walletMovement;
     const res = await GET();
     expect(res.status).toBe(200);
     const { transfers } = await res.json();

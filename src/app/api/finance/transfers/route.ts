@@ -10,6 +10,7 @@ import { recordMovement } from '@/lib/wallets';
 import { moneyText } from '@/lib/money';
 import { zodMessage } from '@/lib/zod-message';
 import { readTransfer, transferRefusal, TRANSFER_KIND_LABEL, type TransferSide } from '@/lib/transfer-kind';
+import { readTransferReversals } from '@/lib/transfer-reversal';
 import { resolveTransferAmounts } from '@/lib/transfer-rate';
 
 /**
@@ -87,18 +88,47 @@ export async function GET() {
       : [];
     const walletOf = new Map(wallets.map((w) => [w.id, w]));
 
+    /*
+     * WHAT HAS BEEN REVERSED OF EACH ROW — read from the legs, not from a flag (lib/transfer-reversal).
+     *
+     * The reversing entry used to be heard only by the wallet it was written in; this list kept saying «ساري» over a transfer
+     * whose money had been taken back. One read of the movements that carry these transfers' ids, on the index of
+     * `(referenceType, referenceId)`.
+     */
+    const legRows = transfers.length
+      ? await db.walletMovement.findMany({
+          where: { companyId, referenceType: 'TRANSFER', referenceId: { in: transfers.map((t) => t.id) } },
+          select: { id: true, referenceId: true, walletId: true, reversalOfId: true, reversalReason: true, createdAt: true, createdById: true },
+        })
+      : [];
+    const reversals = readTransferReversals(legRows);
+    const writerIds = [...new Set([...reversals.values()].flatMap((r) => (r.byId ? [r.byId] : [])))];
+    const writers = writerIds.length
+      ? await db.user.findMany({ where: { id: { in: writerIds } }, select: { id: true, name: true } })
+      : [];
+    const nameOf = new Map(writers.map((u) => [u.id, u.name]));
+
     return NextResponse.json({
-      transfers: transfers.map((t) => ({
-        ...t,
-        amountOut: Number(t.amountOut),
-        amountIn: Number(t.amountIn),
-        exchangeRate: Number(t.exchangeRate),
-        // The kind as it was RECORDED, not re-read now: a wallet moved to
-        // another store since must not change what this transfer was.
-        kindLabel: TRANSFER_KIND_LABEL[t.kind as keyof typeof TRANSFER_KIND_LABEL] ?? t.kind,
-        from: walletOf.get(t.fromWalletId) ?? null,
-        to: walletOf.get(t.toWalletId) ?? null,
-      })),
+      transfers: transfers.map((t) => {
+        const reading = reversals.get(t.id);
+        return {
+          ...t,
+          amountOut: Number(t.amountOut),
+          amountIn: Number(t.amountIn),
+          exchangeRate: Number(t.exchangeRate),
+          // The kind as it was RECORDED, not re-read now: a wallet moved to
+          // another store since must not change what this transfer was.
+          kindLabel: TRANSFER_KIND_LABEL[t.kind as keyof typeof TRANSFER_KIND_LABEL] ?? t.kind,
+          from: walletOf.get(t.fromWalletId) ?? null,
+          to: walletOf.get(t.toWalletId) ?? null,
+          state: reading?.state ?? 'ACTIVE',
+          reversedWalletIds: reading?.reversedWalletIds ?? [],
+          reversal:
+            reading && reading.state !== 'ACTIVE'
+              ? { reason: reading.reason, at: reading.at, byName: reading.byId ? (nameOf.get(reading.byId) ?? null) : null }
+              : null,
+        };
+      }),
     });
   } catch (error) {
     return apiErrorResponse(error);

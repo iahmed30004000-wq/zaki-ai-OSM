@@ -187,8 +187,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           newData: { reason: parsed.data.reason, moneyReturned: true, reversalId: reversal.id },
         });
       }
+      /*
+       * A leg of a TRANSFER was reversed: `reverseMovement` carried the other leg with it, in the same transaction (a
+       * transfer is never reversed half). The transfer's own trail says so, and the answer tells the screen, which says it
+       * to the person: «القيد العكسي ما بيسمع بالتحويلات» (14/11).
+       */
+      const ofTransfer = reversal.referenceType === 'TRANSFER' && !!reversal.referenceId;
+      if (ofTransfer) {
+        await logAudit({
+          companyId, userId: user.id, action: 'WALLET_TRANSFER_REVERSED',
+          entity: 'WalletTransfer', entityId: reversal.referenceId as string,
+          newData: { reason: parsed.data.reason, from: 'WALLET_MOVEMENT', walletId: id },
+        });
+      }
       return NextResponse.json(
-        { reversal, balance: await walletBalance(db, id, wallet.country.minorUnit) },
+        { reversal, balance: await walletBalance(db, id, wallet.country.minorUnit), ...(ofTransfer ? { transferReversed: true } : {}) },
         { status: 201 }
       );
     } catch (e) {
