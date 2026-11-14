@@ -696,9 +696,14 @@ export function WalletsScreen() {
           wallet={wallet}
           movement={reverseFor}
           onClose={() => setReverseFor(null)}
-          onSaved={async () => {
+          onSaved={async (transferReversed) => {
             setReverseFor(null);
-            await refresh('سُجِّل القيد العكسي — القيد الأصلي باقٍ كما هو');
+            // The door says when the leg it reversed carried its transfer with it (`transferReversed`): the person is told so.
+            await refresh(
+              transferReversed
+                ? 'سُجِّل القيد العكسي للتحويل كله — الطرفين، والقيدان الأصليان باقيان كما هما'
+                : 'سُجِّل القيد العكسي — القيد الأصلي باقٍ كما هو'
+            );
           }}
         />
       )}
@@ -1321,7 +1326,7 @@ function ReverseDialog({
   wallet: WalletRow;
   movement: Movement;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (transferReversed: boolean) => void;
 }) {
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -1335,11 +1340,11 @@ function ReverseDialog({
           setSaving(true);
           setError(null);
           try {
-            await apiJson(`/api/finance/wallets/${wallet.id}/movements`, {
+            const done = await apiJson<{ transferReversed?: boolean }>(`/api/finance/wallets/${wallet.id}/movements`, {
               method: 'PATCH',
               body: JSON.stringify({ movementId: movement.id, reason: reason.trim() }),
             });
-            onSaved();
+            onSaved(!!done?.transferReversed);
           } catch (err) {
             setError(err instanceof Error ? err.message : 'تعذر القيد العكسي');
           } finally {
@@ -1358,6 +1363,13 @@ function ReverseDialog({
           <p className="text-sm text-[var(--sys-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3">
             هذه حركة مصروف: عكسها يُلغي المصروف من الربح أيضاً، ويبقى في سجل المصاريف مكتوباً «ملغى».
             يحتاج صلاحية «تعديل المالية».
+          </p>
+        )}
+
+        {movement.referenceType === 'TRANSFER' && (
+          <p className="text-sm text-[var(--sys-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3">
+            هذه حركة تحويل: القيد العكسي يعكس التحويل كله بمرة واحدة — الطرفين، كل واحد في محفظته — ويظهر في «التحويلات»
+            مكتوباً عليه «معكوس». الطرف المعكوس من قبل يُترك كما هو.
           </p>
         )}
 

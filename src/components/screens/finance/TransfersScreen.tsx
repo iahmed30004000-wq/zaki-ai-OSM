@@ -16,7 +16,12 @@ import {
 } from '@/lib/transfer-rate';
 import { minorUnitFor } from '@/lib/currencies';
 import { ScreenTitle } from '@/components/shell/ScreenTitle';
-import { RiArrowUpDownLine, RiLoader4Line, RiRepeatLine } from '@remixicon/react';
+import { RiArrowGoBackLine, RiArrowUpDownLine, RiLoader4Line, RiRepeatLine } from '@remixicon/react';
+import { useApp } from '@/context/AppContext';
+import { userCan } from '@/lib/can';
+import { TRANSFER_STATE_AR, type TransferState } from '@/lib/transfer-reversal';
+import { ReverseTransferDialog } from './ReverseTransferDialog';
+import { useToast } from '@/components/ui/Toast';
 import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { WalletChip } from '@/components/ui/WalletChip';
@@ -71,6 +76,13 @@ interface TransferRow {
   kindLabel?: string;
   from: TransferEnd | null;
   to: TransferEnd | null;
+  /**
+   * What has been taken back of it, read from its two legs by the door (lib/transfer-reversal): «ساري» as it was made,
+   * «معكوس جزئياً» when one leg was reversed by hand and the other still stands, «معكوس» when both are undone.
+   */
+  state?: TransferState;
+  reversedWalletIds?: string[];
+  reversal?: { reason: string | null; at: string | null; byName: string | null } | null;
 }
 
 /** A transfer end as a line of the history: its face, its name, and the store under it. */
@@ -104,6 +116,11 @@ const minorOf = (w: WalletRow) => w.country?.minorUnit ?? minorUnitFor(w.currenc
 const inputClass = 'w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm';
 
 export function TransfersScreen() {
+  const { currentUser } = useApp();
+  // The key the reversal's door asks (the one that writes a transfer): a press is drawn only for who can finish it.
+  const mayCash = userCan(currentUser, 'finance.cashbox');
+  const toast = useToast();
+  const [reversing, setReversing] = useState<TransferRow | null>(null);
   const [wallets, setWallets] = useState<WalletRow[]>([]);
   const [rows, setRows] = useState<TransferRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -536,6 +553,57 @@ export function TransfersScreen() {
                 render: (t) => (t.exchangeRate) },
               { key: 'c7', label: "الملاحظة", wide: true,
                 render: (t) => (t.note ?? '—') },
+              // THE REVERSAL IS HEARD HERE (14/11: «القيد العكسي ما بيسمع بالتحويلات»): the row of a transfer whose money was
+              // taken back says so, with the reason and who wrote it; a standing one says «ساري» (an empty cell would read as unloaded).
+              // THE PRESS LIVES IN THIS CELL, not in a column of its own: a column of its own, beside a long reason, pushed the desk
+              // table past a 1254px window and clipped the button (measured by the independent screen review). The cell is capped, so
+              // a long reason wraps instead of widening the table, and a person who may not press gets no empty strip on a card.
+              { key: 'c8', label: "الحالة", wide: true,
+                render: (t) => {
+                  const state = t.state ?? 'ACTIVE';
+                  const press =
+                    mayCash && state !== 'REVERSED' ? (
+                      <span className="block">
+                        <button
+                          type="button"
+                          onClick={() => setReversing(t)}
+                          className="min-h-11 md:min-h-0 mt-1 text-xs text-[var(--sys-primary)] hover:underline inline-flex items-center gap-1"
+                        >
+                          <RiArrowGoBackLine className="icon-mirror w-4 h-4" /> قيد عكسي
+                        </button>
+                      </span>
+                    ) : null;
+                  if (state === 'ACTIVE') {
+                    return (
+                      <div className="max-w-[10rem] break-words">
+                        <span className="text-xs text-[var(--sys-muted)]">{TRANSFER_STATE_AR.ACTIVE}</span>
+                        {press}
+                      </div>
+                    );
+                  }
+                  const tone =
+                    state === 'REVERSED'
+                      ? 'border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)]'
+                      : 'border-[var(--sys-warning)] bg-[var(--sys-warning-soft)] text-[var(--sys-foreground)]';
+                  return (
+                    <div className="max-w-[10rem] break-words">
+                      <span className={`rounded-full border px-2 py-0.5 text-xs whitespace-nowrap ${tone}`}>{TRANSFER_STATE_AR[state]}</span>
+                      {t.reversal?.reason && <span className="block text-xs text-[var(--sys-destructive)]">قيد عكسي: {t.reversal.reason}</span>}
+                      {t.reversal?.byName && (
+                        <span className="block text-xs text-[var(--sys-muted)]">
+                          {t.reversal.byName}{t.reversal.at ? ` · ${arDateTime(t.reversal.at)}` : ''}
+                        </span>
+                      )}
+                      {state === 'PARTLY_REVERSED' && (
+                        // The way to finish it is said only to who has the press: nobody is pointed at a button they do not have.
+                        <span className="block text-xs text-[var(--sys-muted)]">
+                          الطرف الآخر لسا قائم{mayCash ? ' — «قيد عكسي» بيكمّل عكسه' : ''}
+                        </span>
+                      )}
+                      {press}
+                    </div>
+                  );
+                } },
             ]}
             empty={
               <EmptyState
@@ -546,6 +614,39 @@ export function TransfersScreen() {
           />
         )}
       </div>
+
+      {reversing && (
+        <ReverseTransferDialog
+          transfer={reversing}
+          onClose={() => setReversing(null)}
+          onSaved={async () => {
+            // The door has answered: this transfer IS reversed whole now, whatever the next read says. So the row is marked at once
+            // — a read that fails, or is slow, must never leave it saying «ساري» with a live press (a second press would meet the
+            // 409). The read that follows brings the reason and who wrote it.
+            const pressed = reversing;
+            setRows((now) =>
+              now && pressed
+                ? now.map((r) =>
+                    r.id === pressed.id
+                      ? {
+                          ...r,
+                          state: 'REVERSED' as const,
+                          reversedWalletIds: [r.from?.id, r.to?.id].filter((id): id is string => !!id),
+                          reversal: r.reversal ?? { reason: null, at: null, byName: null },
+                        }
+                      : r
+                  )
+                : now
+            );
+            // The list is read again BEFORE the dialog goes. The message is a toast — the form's own `done` line sits ~800px above
+            // the history, where a press on a lower row (or on a phone) is never looking.
+            setError(null);
+            await load();
+            setReversing(null);
+            toast.done('انعكس التحويل — الطرفان معاً');
+          }}
+        />
+      )}
     </div>
   );
 }

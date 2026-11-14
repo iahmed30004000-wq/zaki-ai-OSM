@@ -22,6 +22,8 @@ const { apiJson, phone } = vi.hoisted(() => ({
 vi.mock('@/lib/api-client', () => ({ apiJson: (...a: unknown[]) => apiJson(...a) }));
 vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>العنوان</h1> }));
 vi.mock('@/hooks/useIsPhone', () => ({ useIsPhone: () => phone.value }));
+// The screen asks who is signed in (the reversal's key). These tests are about the deal: the person holds no key.
+vi.mock('@/context/AppContext', () => ({ useApp: () => ({ currentUser: { id: 'u1', status: 'ACTIVE', role: 'CUSTOM', permissions: [] } }) }));
 
 import { TransfersScreen } from './TransfersScreen';
 

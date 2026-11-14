@@ -206,7 +206,7 @@ export async function reverseMovement(
     });
   }
 
-  return tx.walletMovement.create({
+  const reversal = await tx.walletMovement.create({
     data: {
       companyId: original.companyId,
       walletId: original.walletId,
@@ -225,6 +225,96 @@ export async function reverseMovement(
       createdById: params.createdById,
     },
   });
+
+  /*
+   * A LEG OF A TRANSFER IS NEVER REVERSED ALONE (14/11 — «القيد العكسي ما بيسمع بالتحويلات هاد خطأ عظيم»).
+   *
+   * A transfer is two movements written in ONE transaction precisely so that a wallet is never left with half of it. The
+   * reversing entry of one leg used to leave the other standing: «عكست من binance» and the 663,958 lira still sat outside
+   * the Sham Cash wallet, the transfer list saying nothing. So the reversal of a leg carries every leg of the same transfer
+   * that is still standing, in THIS transaction, with the same reason — each through this very function, so each is the
+   * opposite row of its own original, for its own amount, in its own wallet. A leg that was reversed before (the person
+   * did the first half by hand) is skipped, which is what lets the other half be finished.
+   */
+  if (original.referenceType === 'TRANSFER' && original.referenceId) {
+    const others = await tx.walletMovement.findMany({
+      where: {
+        companyId: original.companyId,
+        referenceType: 'TRANSFER',
+        referenceId: original.referenceId,
+        reversalOfId: null,
+        id: { not: original.id },
+      },
+      select: { id: true, walletId: true, reversedBy: { select: { id: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+    for (const other of others) {
+      if (other.reversedBy) continue;
+      await reverseMovement(tx, { ...params, walletId: other.walletId, movementId: other.id });
+    }
+  }
+  return reversal;
+}
+
+/** Why a transfer could not be reversed — each with a sentence a person can act on. */
+export type TransferReversalRefusal = 'NOT_FOUND' | 'NO_LEGS' | 'ALREADY_REVERSED';
+
+export const TRANSFER_REVERSAL_REFUSAL_AR: Record<TransferReversalRefusal, string> = {
+  NOT_FOUND: 'التحويل غير موجود',
+  NO_LEGS: 'لا حركات مسجّلة لهذا التحويل — لم يُعكس شيء',
+  ALREADY_REVERSED: 'هذا التحويل معكوس بالكامل من قبل',
+};
+
+export class TransferReversalRefused extends Error {
+  constructor(public readonly code: TransferReversalRefusal) {
+    super(TRANSFER_REVERSAL_REFUSAL_AR[code]);
+    this.name = 'TransferReversalRefused';
+  }
+}
+
+/**
+ * Reverse a TRANSFER — the transfers screen's door. Both legs, one transaction (the caller's), one reason.
+ *
+ * It is `reverseMovement` asked of the first leg still standing, because that function already carries the rest of the
+ * transfer with it; this one only finds the transfer (in THIS company), refuses what has nothing to reverse, and says
+ * what was written. A transfer one leg of which was reversed by hand before (the half-made reversal this door exists to
+ * finish) gets only the leg that is left; one that is reversed whole is refused, and nothing is written.
+ */
+export async function reverseTransfer(
+  tx: Tx,
+  params: { companyId: string; transferId: string; reason: string; createdById: string }
+) {
+  const transfer = await tx.walletTransfer.findFirst({
+    where: { id: params.transferId, companyId: params.companyId },
+    select: { id: true },
+  });
+  if (!transfer) throw new TransferReversalRefused('NOT_FOUND');
+
+  // The ORIGINAL legs only: a reversing entry carries the same reference and is not a leg.
+  const legs = await tx.walletMovement.findMany({
+    where: { companyId: params.companyId, referenceType: 'TRANSFER', referenceId: transfer.id, reversalOfId: null },
+    select: { id: true, walletId: true, reversedBy: { select: { id: true } } },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (legs.length === 0) throw new TransferReversalRefused('NO_LEGS');
+
+  const standing = legs.filter((leg) => !leg.reversedBy);
+  if (standing.length === 0) throw new TransferReversalRefused('ALREADY_REVERSED');
+
+  await reverseMovement(tx, {
+    companyId: params.companyId,
+    walletId: standing[0].walletId,
+    movementId: standing[0].id,
+    reason: params.reason,
+    createdById: params.createdById,
+  });
+
+  const standingIds = new Set(standing.map((leg) => leg.id));
+  const written = await tx.walletMovement.findMany({
+    where: { companyId: params.companyId, reversalOfId: { in: [...standingIds] } },
+    orderBy: { createdAt: 'asc' },
+  });
+  return { reversals: written, legs: legs.length, alreadyReversed: legs.length - standing.length };
 }
 
 /**
