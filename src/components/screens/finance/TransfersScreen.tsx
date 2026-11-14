@@ -567,7 +567,7 @@ export function TransfersScreen() {
                         <button
                           type="button"
                           onClick={() => setReversing(t)}
-                          className="mt-1 text-xs text-[var(--sys-primary)] hover:underline inline-flex items-center gap-1"
+                          className="min-h-11 md:min-h-0 mt-1 text-xs text-[var(--sys-primary)] hover:underline inline-flex items-center gap-1"
                         >
                           <RiArrowGoBackLine className="icon-mirror w-4 h-4" /> قيد عكسي
                         </button>
@@ -575,7 +575,7 @@ export function TransfersScreen() {
                     ) : null;
                   if (state === 'ACTIVE') {
                     return (
-                      <div className="max-w-xs break-words">
+                      <div className="max-w-[10rem] break-words">
                         <span className="text-xs text-[var(--sys-muted)]">{TRANSFER_STATE_AR.ACTIVE}</span>
                         {press}
                       </div>
@@ -586,7 +586,7 @@ export function TransfersScreen() {
                       ? 'border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)]'
                       : 'border-[var(--sys-warning)] bg-[var(--sys-warning-soft)] text-[var(--sys-foreground)]';
                   return (
-                    <div className="max-w-xs break-words">
+                    <div className="max-w-[10rem] break-words">
                       <span className={`rounded-full border px-2 py-0.5 text-xs whitespace-nowrap ${tone}`}>{TRANSFER_STATE_AR[state]}</span>
                       {t.reversal?.reason && <span className="block text-xs text-[var(--sys-destructive)]">قيد عكسي: {t.reversal.reason}</span>}
                       {t.reversal?.byName && (
@@ -620,9 +620,26 @@ export function TransfersScreen() {
           transfer={reversing}
           onClose={() => setReversing(null)}
           onSaved={async () => {
-            // The list is read again BEFORE the dialog goes: closed first, the row would still say «ساري» with its press until
-            // the answer came back, and a second press on it would meet the 409. The message is a toast — the form's own `done`
-            // line sits ~800px above the history, where a press on a lower row (or on a phone) is never looking.
+            // The door has answered: this transfer IS reversed whole now, whatever the next read says. So the row is marked at once
+            // — a read that fails, or is slow, must never leave it saying «ساري» with a live press (a second press would meet the
+            // 409). The read that follows brings the reason and who wrote it.
+            const pressed = reversing;
+            setRows((now) =>
+              now && pressed
+                ? now.map((r) =>
+                    r.id === pressed.id
+                      ? {
+                          ...r,
+                          state: 'REVERSED' as const,
+                          reversedWalletIds: [r.from?.id, r.to?.id].filter((id): id is string => !!id),
+                          reversal: r.reversal ?? { reason: null, at: null, byName: null },
+                        }
+                      : r
+                  )
+                : now
+            );
+            // The list is read again BEFORE the dialog goes. The message is a toast — the form's own `done` line sits ~800px above
+            // the history, where a press on a lower row (or on a phone) is never looking.
             setError(null);
             await load();
             setReversing(null);

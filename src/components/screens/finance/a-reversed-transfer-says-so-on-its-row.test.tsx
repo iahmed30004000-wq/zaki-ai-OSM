@@ -135,7 +135,7 @@ describe('the «الحالة» column — read from the legs, so the list agrees
     // The status cell is the one that holds a long reason; it is capped and wraps (classes the product already ships).
     const reason = within(await deskRow('تحويل نصف معكوس')).getByText('قيد عكسي: خطأ من البنت');
     const cell = reason.closest('div') as HTMLElement;
-    expect(cell.className).toContain('max-w-xs');
+    expect(cell.className).toContain('max-w-[10rem]');
     expect(cell.className).toContain('break-words');
     // And the press is inside that very cell — beside the reason, not in a column of its own.
     expect(pressIn(cell)).toBeTruthy();
@@ -180,6 +180,14 @@ describe('«قيد عكسي» on a row — drawn for the key its door asks', () 
     expect(pressIn(await card('تحويل ساري'))).toBeTruthy();
     expect(pressIn(await card('تحويل نصف معكوس'))).toBeTruthy();
     expect(pressIn(await card('تحويل معكوس كله'))).toBeNull();
+  });
+
+  it('under a finger the press is 44px tall on a phone and back to its own height on a desk — it left the actions strip that gave it that', async () => {
+    as('finance.cashbox_view', 'finance.cashbox');
+    render(<TransfersScreen />);
+    const press = pressIn(await card('تحويل ساري')) as HTMLElement;
+    expect(press.className).toContain('min-h-11');
+    expect(press.className).toContain('md:min-h-0');
   });
 
   it('the way to finish a half-reversed transfer is said ONLY to who has the press — nobody is pointed at a button they do not have', async () => {
@@ -280,11 +288,33 @@ describe('one press, both legs', () => {
     expect(screen.getByRole('dialog', { name: 'قيد عكسي' })).toBeTruthy();
     expect(dialog.getByRole('button', { name: 'جارٍ التسجيل…' })).toBeTruthy();
     expect(toast.done).not.toHaveBeenCalled();
+    // It cannot be closed meanwhile — by the cancel button or by the X: closed now, the row behind would still say «ساري» with a press.
+    expect((dialog.getByRole('button', { name: 'إلغاء' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(dialog.getByRole('button', { name: 'إغلاق' }));
+    expect(screen.getByRole('dialog', { name: 'قيد عكسي' })).toBeTruthy();
 
     release();
     await waitFor(() => expect(toast.done).toHaveBeenCalledWith('انعكس التحويل — الطرفان معاً'));
     expect(screen.queryByRole('dialog', { name: 'قيد عكسي' })).toBeNull();
     // The row now says what happened, and offers no second press.
+    const row = await deskRow('تحويل ساري');
+    expect(within(row).getByText('معكوس')).toBeTruthy();
+    expect(pressIn(row)).toBeNull();
+  });
+
+  it('if the list cannot be read again after a good press, the row still says «معكوس» with no press — it never keeps a live press', async () => {
+    const dialog = await openFor('تحويل ساري');
+    fireEvent.change(dialog.getByRole('textbox'), { target: { value: 'سبب مكتوب' } });
+    apiJson.mockImplementation(async (url: string) => {
+      if (String(url).startsWith('/api/finance/transfers/')) return { transferId: 't-live' };
+      if (String(url).startsWith('/api/finance/transfers')) throw new Error('انقطع الاتصال');
+      return { wallets: [SHAM, BINANCE] };
+    });
+    fireEvent.click(dialog.getByRole('button', { name: 'تسجيل القيد العكسي' }));
+
+    await waitFor(() => expect(toast.done).toHaveBeenCalledWith('انعكس التحويل — الطرفان معاً'));
+    expect(screen.queryByRole('dialog', { name: 'قيد عكسي' })).toBeNull();
+    // The door said yes, so the row says so at once — a second press on it would have met the 409.
     const row = await deskRow('تحويل ساري');
     expect(within(row).getByText('معكوس')).toBeTruthy();
     expect(pressIn(row)).toBeNull();

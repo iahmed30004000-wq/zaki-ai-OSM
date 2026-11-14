@@ -51,7 +51,9 @@ export function ReverseTransferDialog({
   const half = (transfer.from ? reversed.has(transfer.from.id) : false) || (transfer.to ? reversed.has(transfer.to.id) : false);
 
   return (
-    <Modal isOpen onClose={onClose} title="قيد عكسي">
+    // While the press is on the wire (and the list is being read again) the dialog cannot be closed — by the button, the X or
+    // Escape: closed then, the row behind would still say «ساري» with its press until the answer came back.
+    <Modal isOpen onClose={saving ? () => undefined : onClose} title="قيد عكسي">
       <form
         onSubmit={async (e) => {
           e.preventDefault();
@@ -110,7 +112,12 @@ export function ReverseTransferDialog({
         {error && <p className="text-sm text-[var(--sys-destructive)]">{error}</p>}
 
         <div className="flex gap-2 justify-end">
-          <button type="button" onClick={onClose} className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm disabled:opacity-50"
+          >
             إلغاء
           </button>
           <button
