@@ -1,5 +1,6 @@
 import { db } from './db';
 import { businessMinutesBetween, type BusinessCalendar } from './business-calendar';
+import { breatheEvery } from './breathe';
 
 /**
  * WHO DID THE WORK, AND HOW FAST.
@@ -187,8 +188,14 @@ export async function teamPerformance(input: {
       )
     : new Map();
 
+  // Every loop below can run over tens of thousands of rows and none of them waits for anything: each hands the thread back
+  // now and then (`breathe.ts`), so the rest of the site is answered while this is worked out.
+  const pause = breatheEvery();
+
   const firstActionSpans = new Map<string, number[]>();
   for (const a of attempts) {
+    const turn = pause();
+    if (turn) await turn;
     const order = claimedAtOf.get(a.orderId);
     const startedAt = order?.claimedAt;
     const firstAt = a._min.createdAt;
@@ -215,6 +222,8 @@ export async function teamPerformance(input: {
   const bump = (m: Map<string, number>, k: string) => m.set(k, (m.get(k) ?? 0) + 1);
 
   for (const d of decisions) {
+    const turn = pause();
+    if (turn) await turn;
     const who = d.changedById;
     if (!who) continue;
     if (d.newValue === 'CONFIRMED') {
@@ -237,7 +246,9 @@ export async function teamPerformance(input: {
   for (const a of attempts) attemptsOf.set(a.employeeId, (attemptsOf.get(a.employeeId) ?? 0) + a._count._all);
   const openOf = new Map(openNow.map((o) => [o.claimedById as string, o._count._all]));
 
-  const employees: EmployeeRow[] = [...ids].map((id) => {
+  // A loop and not a `.map`, so that it may wait its turn (the order of `ids` is the order `.map` had).
+  const employees: EmployeeRow[] = [];
+  for (const id of ids) {
     const person = personOf.get(id);
     const ok = confirmed.get(id) ?? 0;
     const no = rejected.get(id) ?? 0;
@@ -248,11 +259,13 @@ export async function teamPerformance(input: {
     // night and a weekend do not count as idleness.
     const gaps: number[] = [];
     for (let i = 1; i < times.length; i++) {
+      const turn = pause();
+      if (turn) await turn;
       gaps.push(businessMinutesBetween(times[i - 1], times[i], calendar));
     }
 
     const tries = attemptsOf.get(id) ?? 0;
-    return {
+    employees.push({
       id,
       name: person?.name ?? '—',
       role: person?.role ?? null,
@@ -271,8 +284,8 @@ export async function teamPerformance(input: {
       // plenty of confirming happens on a phone the system never sees, and
       // a column of zeros would read as an employee who called nobody.
       attemptsPerDecision: decided > 0 && tries > 0 ? Number((tries / decided).toFixed(1)) : null,
-    };
-  });
+    });
+  }
 
   // Busiest first; a tie goes to whoever decided more.
   employees.sort((a, b) => b.claimed - a.claimed || b.decided - a.decided);
