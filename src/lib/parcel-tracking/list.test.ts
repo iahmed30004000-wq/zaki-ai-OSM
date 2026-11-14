@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LEAN_CAP, LEAN_SELECT, NO_COURIER_AR, NO_REGION_AR, TRACKING_ORDER_BY, readTrackingList, type LeanParcel } from './list';
 import { TASKS, searchWhere } from './filters';
 import { TRACKING_ACK_ACTION } from './alert';
+import { isInFlight } from '../transit';
 import { COURIER_SAID, SAID_STATUSES } from '../couriers/courier-said';
 import { wordLine } from '../couriers/courier-said-lines.fixture';
 import { MATCHES, byUrgency } from './priority';
@@ -497,11 +498,12 @@ describe('the lookups — only what is needed, for the parcels that need it', ()
     expect(none.calls.log).toHaveLength(0);
   });
 
-  it('and the applied changes are read for every parcel in the list, once', async () => {
+  it('and the applied changes are read for the parcels still ON THEIR WAY, once — one that has arrived has no alert to make of them', async () => {
     const w = shop();
     const { calls } = await read(w);
     expect(calls.change).toHaveLength(1);
-    expect(calls.change[0].where.orderId.in).toHaveLength(w.parcels.length);
+    expect([...calls.change[0].where.orderId.in].sort()).toEqual(w.parcels.filter((p) => isInFlight(p)).map((p) => p.id).sort());
+    expect(w.parcels.filter((p) => !isInFlight(p)).length).toBeGreaterThan(0);
     expect(calls.change[0].where.appliedAt).toEqual({ not: null });
   });
 
@@ -1127,5 +1129,118 @@ describe('the same answer as before the company was named — recorded from main
       facts: { total: 14, tasks: CHIPS, lateCount: 2, notLate: 10, ...DROPDOWNS },
       words: THE_LATE_ONES,
     });
+  });
+});
+
+/**
+ * AN ALERT IS ABOUT A PARCEL ON ITS WAY — SO WHAT IT IS MADE OF IS READ FOR THOSE ALONE, AND THE REST CHANGES NOTHING.
+ *
+ * `trackingAlert` answers none for a parcel that has arrived or come back (`inFlight` false), yet the cancellation log, the
+ * applied changes and the acknowledgements were read for EVERY parcel of the list (up to 20,000). They are read for the
+ * parcels still on their way now. The proof is that the list's answer — the page, the total, every chip, every dropdown's
+ * number — is the same when the reads are answered as if they HAD been made for every parcel, with the rows of the ones
+ * that arrived present and ignored: nothing the list says depended on what is no longer asked.
+ */
+describe('the alert reads look only at parcels on their way, and nothing the list says depends on the rest', () => {
+  function rng(seed: number) {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  /** Every kind of parcel, and — on purpose — a cancellation log, a change and an acknowledgement for parcels that cannot carry an alert. */
+  function mixed(seed: number, size: number): World {
+    const r = rng(seed);
+    const pick = <T,>(xs: readonly T[]) => xs[Math.floor(r() * xs.length)];
+    const statuses = ['SHIPPED', 'SHIPPED', 'OUT_FOR_DELIVERY', 'FAILED_DELIVERY', 'READY_FOR_PICKUP', 'RETURN_REQUESTED', 'DELIVERED', 'PARTIALLY_DELIVERED', 'RETURNED', 'CANCELLED'];
+    const parcels = Array.from({ length: size }, () => {
+      const status = pick(statuses);
+      const when = ago(1 + Math.floor(r() * 6));
+      return parcel({
+        shippingStatus: status,
+        shippedAt: r() < 0.92 ? ago(Math.floor(r() * 16)) : null,
+        deliveredAt: status === 'DELIVERED' ? when : null,
+        returnedAt: status === 'RETURNED' ? when : null,
+        confirmationStatus: pick(['CONFIRMED', 'CONFIRMED', 'CONFIRMED', 'CANCELLED', 'REJECTED']),
+        settlementStatus: pick(['NOT_APPLICABLE', 'PENDING_COLLECTION']),
+        trackingNumber: r() < 0.8 ? 'T-1' : null,
+        deliveryProviderId: pick(['p1', 'p2', null]),
+        regionId: pick(['r1', 'r2', null]),
+      });
+    });
+    const cancelled: Record<string, Date> = {};
+    const changed: Record<string, Date> = {};
+    const acked: Record<string, Date> = {};
+    for (const p of parcels) {
+      if (r() < 0.5) cancelled[p.id] = ago(1 + Math.floor(r() * 4));
+      if (r() < 0.3) changed[p.id] = ago(1 + Math.floor(r() * 4));
+      if (r() < 0.3) acked[p.id] = ago(Math.floor(r() * 4));
+    }
+    return { parcels, fees: { 'p1|r1': 3, 'p2|r2': 5 }, cancelled, changed, acked, providers: { p1: 'أبو علي', p2: 'أمان' }, api: ['p1'], regions: { r1: 'عمّان', r2: 'إربد' } };
+  }
+
+  /** The reads answered for EVERY parcel, whatever ids they are asked about: the world as if the old, wider reads had been made. */
+  const asIfEverythingWereRead = (w: World) => (db: ReturnType<typeof dbOf>['db']) => {
+    const d = db as any;
+    d.orderStatusLog.findMany = vi.fn(async () => Object.entries(w.cancelled ?? {}).map(([orderId, createdAt]) => ({ orderId, createdAt })));
+    d.orderChangeRequest.findMany = vi.fn(async () => Object.entries(w.changed ?? {}).map(([orderId, appliedAt]) => ({ orderId, appliedAt })));
+    const narrow = d.orderActivity.findMany;
+    d.orderActivity.findMany = vi.fn(async (args: any) =>
+      args.where.action === TRACKING_ACK_ACTION ? Object.entries(w.acked ?? {}).map(([orderId, createdAt]) => ({ orderId, createdAt })) : narrow(args)
+    );
+  };
+  const answer = async (w: World, over: Partial<Parameters<typeof readTrackingList>[1]>, wide: boolean) => {
+    const { calls, ...list } = await read(w, over, wide ? asIfEverythingWereRead(w) : undefined);
+    void calls;
+    return list;
+  };
+
+  for (const seed of [1, 7, 42, 2026]) {
+    it(`seed ${seed}: the page, the total and every number are the same when the rows of the parcels that arrived are present and ignored`, async () => {
+      const w = mixed(seed, 160);
+      expect(w.parcels.filter((p) => !isInFlight(p)).length).toBeGreaterThan(20);
+      for (const task of [null, ...TASKS] as const) {
+        expect(await answer(w, { task, limit: 200 }, false), `chip ${String(task)}`).toEqual(await answer(w, { task, limit: 200 }, true));
+      }
+    });
+  }
+
+  it('the cancellation log, the changes and the acknowledgements are asked about exactly the parcels on their way that can carry them', async () => {
+    const w = mixed(3, 160);
+    const { calls } = await read(w);
+    const flying = w.parcels.filter((p) => isInFlight(p));
+    const dead = flying.filter((p) => ['REJECTED', 'CANCELLED'].includes(p.confirmationStatus)).map((p) => p.id);
+    expect([...calls.change[0].where.orderId.in].sort()).toEqual(flying.map((p) => p.id).sort());
+    expect([...calls.log[0].where.orderId.in].sort()).toEqual(dead.sort());
+    const changed = new Set(Object.keys(w.changed ?? {}));
+    const candidates = flying.filter((p) => ['REJECTED', 'CANCELLED'].includes(p.confirmationStatus) || changed.has(p.id)).map((p) => p.id);
+    expect([...calls.ack[0].where.orderId.in].sort()).toEqual(candidates.sort());
+  });
+
+  it('a list with nothing on its way reads none of the three', async () => {
+    const w: World = {
+      parcels: [parcel({ shippingStatus: 'DELIVERED', deliveredAt: ago(1), confirmationStatus: 'CANCELLED' }), parcel({ shippingStatus: 'RETURNED', returnedAt: ago(2) })],
+      cancelled: Object.fromEntries([]),
+      changed: {},
+    };
+    w.cancelled = { [w.parcels[0].id]: ago(1) };
+    w.changed = { [w.parcels[1].id]: ago(1) };
+    const { calls } = await read(w);
+    expect(calls.log).toHaveLength(0);
+    expect(calls.change).toHaveLength(0);
+    expect(calls.ack).toHaveLength(0);
+  });
+
+  it('and a parcel that has arrived is no alert, however many logs and changes it has — the very claim the narrower reads rest on', async () => {
+    const delivered = parcel({ id: 'arrived', shippingStatus: 'DELIVERED', deliveredAt: ago(1), confirmationStatus: 'CANCELLED' });
+    const w: World = { parcels: [delivered, parcel({ id: 'moving' })], cancelled: { arrived: ago(2) }, changed: { arrived: ago(1), moving: ago(1) } };
+    const { facts } = await read(w, { limit: 100 });
+    expect(facts.tasks.CANCELLED).toBe(0);
+    expect(facts.tasks.CHANGED).toBe(1);
   });
 });

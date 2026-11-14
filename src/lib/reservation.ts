@@ -29,14 +29,21 @@ type Tx = Prisma.TransactionClient | typeof db;
  * the callers pass it and the pool is separated for good.
  */
 
-/** Reserved units of a product across every order of this store still open. */
-export async function reservedElsewhere(
-  tx: Tx,
-  companyId: string,
-  productId: string,
-  exceptOrderId?: string,
-  storeId?: string | null
-) {
+/**
+ * WHICH ROWS STILL HOLD STOCK — ONE QUESTION, WRITTEN ONCE.
+ *
+ * Read by `reservedElsewhere` (one product) and by `stockPoolsFor` (a whole list of orders at once, grouped), and by
+ * nothing else: the day «what counts as held by an open order» changes, it changes here, and the shelf of one product
+ * and the shelf of a list cannot disagree. `orderId` narrows it: left out, every order; `{ not }`, every order but that
+ * one; `{ in }`, only those (what a list's own orders hold).
+ */
+export function holdingWhere(p: {
+  companyId: string;
+  productId: string | { in: string[] };
+  orderId?: string | { not: string } | { in: string[] };
+  storeId?: string | null;
+}) {
+  const { companyId, productId, orderId, storeId } = p;
   /*
    * THE SAME QUESTION OF THE ORDER'S ADD-ONS.
    *
@@ -48,7 +55,7 @@ export async function reservedElsewhere(
   const holding = {
     companyId,
     productId,
-    ...(exceptOrderId ? { orderId: { not: exceptOrderId } } : {}),
+    ...(orderId ? { orderId } : {}),
     reservedQty: { gt: 0 },
   };
   const order = {
@@ -86,17 +93,39 @@ export async function reservedElsewhere(
      */
     shippingStatus: { notIn: ['DELIVERED', 'CANCELLED'] },
   };
+  return { ...holding, order };
+}
+
+/** Reserved units of a product across every order of this store still open. */
+export async function reservedElsewhere(
+  tx: Tx,
+  companyId: string,
+  productId: string,
+  exceptOrderId?: string,
+  storeId?: string | null
+) {
+  const where = holdingWhere({
+    companyId,
+    productId,
+    ...(exceptOrderId ? { orderId: { not: exceptOrderId } } : {}),
+    storeId,
+  });
   const [lines, addOns] = await Promise.all([
-    tx.orderItem.aggregate({ where: { ...holding, order }, _sum: { reservedQty: true } }),
-    tx.orderAddOn.aggregate({ where: { ...holding, order }, _sum: { reservedQty: true } }),
+    tx.orderItem.aggregate({ where, _sum: { reservedQty: true } }),
+    tx.orderAddOn.aggregate({ where, _sum: { reservedQty: true } }),
   ]);
   return (lines._sum.reservedQty ?? 0) + (addOns._sum.reservedQty ?? 0);
+}
+
+/** What «units sitting in this store's production batches» asks of the table — read by `onHand` and by `stockPoolsFor`. */
+export function onHandWhere(companyId: string, productId: string | { in: string[] }, storeId?: string | null) {
+  return { companyId, productId, ...(storeId ? { storeId } : {}) };
 }
 
 /** Units sitting in this store's production batches (what physically exists). */
 export async function onHand(tx: Tx, companyId: string, productId: string, storeId?: string | null) {
   const agg = await tx.productionBatch.aggregate({
-    where: { companyId, productId, ...(storeId ? { storeId } : {}) },
+    where: onHandWhere(companyId, productId, storeId),
     _sum: { quantityRemaining: true },
   });
   return agg._sum.quantityRemaining ?? 0;
@@ -115,6 +144,94 @@ export async function availableStock(
     reservedElsewhere(tx, companyId, productId, exceptOrderId, storeId),
   ]);
   return physical - reserved;
+}
+
+/**
+ * `reservedElsewhere` FOR MANY PRODUCTS AT ONCE — the units open orders hold of each, grouped by product; none left out.
+ *
+ * The screen of the whole shelf asked `reservedElsewhere` of every product in turn (two aggregates each: 228 statements for
+ * 114 products). The filter is the same one — `holdingWhere` — so the shelf of one product and the shelf of the whole screen
+ * cannot disagree about what holds stock; only the grouping is new. Two statements, whatever the number of products. A product
+ * nothing holds is not in the answer (read it as zero).
+ */
+export async function reservedForProducts(
+  tx: Tx,
+  p: { companyId: string; storeId?: string | null; productIds: string[] }
+): Promise<Map<string, number>> {
+  const held = new Map<string, number>();
+  const productIds = [...new Set(p.productIds)];
+  if (productIds.length === 0) return held;
+  const where = holdingWhere({ companyId: p.companyId, productId: { in: productIds }, storeId: p.storeId });
+  const [lines, addOns] = await Promise.all([
+    tx.orderItem.groupBy({ by: ['productId'], where, _sum: { reservedQty: true } }),
+    tx.orderAddOn.groupBy({ by: ['productId'], where, _sum: { reservedQty: true } }),
+  ]);
+  for (const row of [...lines, ...addOns]) held.set(row.productId, (held.get(row.productId) ?? 0) + (row._sum?.reservedQty ?? 0));
+  return held;
+}
+
+/** What `stockPoolsFor` read: the shelf and the holds of a set of products, and what each listed order holds itself. */
+export interface StockPools {
+  /** Units sitting in the batches, per product. */
+  onHandOf: Map<string, number>;
+  /** Units every open order of the pool holds, per product (lines and add-ons). */
+  heldOf: Map<string, number>;
+  /** Units one listed order holds itself, per `orderId|productId`. */
+  ownOf: Map<string, number>;
+}
+
+/**
+ * THE SHELF OF MANY PRODUCTS, ASKED OF ONCE — for a LIST of orders.
+ *
+ * `availableStock` asks one product and spends three aggregates on it, one after the other: a list of 300 orders with a
+ * line each was 900 statements before the screen drew a row. This asks the same questions of every product together
+ * (grouped by product), and one more — what each listed order HOLDS ITSELF, because `availableStock(…, exceptOrderId)`
+ * leaves an order's own reservation out, and the way to do that for many orders at once is to take each one's own share
+ * off the total (`freeFromPools`).
+ *
+ * Every `where` here is `holdingWhere` / `onHandWhere` — the builders the per-product reads use — so what counts as held
+ * by an open order has one home. Reads only: no lock, no write; `reserveOrderLines` and every other writer keep asking
+ * `availableStock` inside their own transaction.
+ */
+export async function stockPoolsFor(
+  tx: Tx,
+  p: { companyId: string; storeId?: string | null; productIds: string[]; orderIds: string[] }
+): Promise<StockPools> {
+  const pools: StockPools = { onHandOf: new Map(), heldOf: new Map(), ownOf: new Map() };
+  const productIds = [...new Set(p.productIds)];
+  const orderIds = [...new Set(p.orderIds)];
+  if (productIds.length === 0) return pools;
+
+  const theseOrders = holdingWhere({
+    companyId: p.companyId,
+    productId: { in: productIds },
+    orderId: { in: orderIds },
+    storeId: p.storeId,
+  });
+  const [batches, heldOf, linesOwn, addOnsOwn] = await Promise.all([
+    tx.productionBatch.groupBy({
+      by: ['productId'],
+      where: onHandWhere(p.companyId, { in: productIds }, p.storeId),
+      _sum: { quantityRemaining: true },
+    }),
+    reservedForProducts(tx, { companyId: p.companyId, storeId: p.storeId, productIds }),
+    tx.orderItem.groupBy({ by: ['orderId', 'productId'], where: theseOrders, _sum: { reservedQty: true } }),
+    tx.orderAddOn.groupBy({ by: ['orderId', 'productId'], where: theseOrders, _sum: { reservedQty: true } }),
+  ]);
+  for (const row of batches) pools.onHandOf.set(row.productId, row._sum?.quantityRemaining ?? 0);
+  pools.heldOf = heldOf;
+  for (const row of [...linesOwn, ...addOnsOwn]) {
+    const key = `${row.orderId}|${row.productId}`;
+    pools.ownOf.set(key, (pools.ownOf.get(key) ?? 0) + (row._sum?.reservedQty ?? 0));
+  }
+  return pools;
+}
+
+/** What `availableStock(tx, companyId, productId, orderId, storeId)` answers, from pools read once for the whole list. */
+export function freeFromPools(pools: StockPools, orderId: string, productId: string): number {
+  const physical = pools.onHandOf.get(productId) ?? 0;
+  const reservedByOthers = (pools.heldOf.get(productId) ?? 0) - (pools.ownOf.get(`${orderId}|${productId}`) ?? 0);
+  return physical - reservedByOthers;
 }
 
 /**

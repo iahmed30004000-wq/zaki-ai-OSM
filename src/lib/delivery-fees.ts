@@ -41,6 +41,56 @@ export async function resolveDeliveryFee(
   };
 }
 
+/** How `resolveDeliveryFeesFor` names a (courier, governorate) pair in the map it hands back. */
+export const feePairKey = (deliveryProviderId: string, regionId: string | null) => `${deliveryProviderId}|${regionId ?? ''}`;
+
+/**
+ * THE FEES OF A LIST OF PARCELS, FROM ONE READ — each answer is `resolveDeliveryFee`'s own.
+ *
+ * A list of 300 orders asked `resolveDeliveryFee` 300 times, one row each, in sequence. The rows are few (one per courier
+ * per governorate: `@@unique([deliveryProviderId, regionId])`), so they are read once and each pair is answered by the
+ * SAME function, fed from that read instead of from the table: its rounding, its «no row» answer and its «no governorate»
+ * answer stay its own, and this file holds no second copy of them.
+ */
+export async function resolveDeliveryFeesFor(
+  tx: Tx,
+  pairs: ReadonlyArray<{ deliveryProviderId: string; regionId: string | null }>,
+  minorUnit: number
+): Promise<Map<string, ResolvedFee>> {
+  const regionsOf = new Map<string, Set<string>>();
+  for (const p of pairs) {
+    if (!p.regionId) continue;
+    regionsOf.set(p.deliveryProviderId, (regionsOf.get(p.deliveryProviderId) ?? new Set<string>()).add(p.regionId));
+  }
+  const rows =
+    regionsOf.size === 0
+      ? []
+      : await tx.deliveryFee.findMany({
+          where: {
+            OR: [...regionsOf].map(([deliveryProviderId, regions]) => ({
+              deliveryProviderId,
+              regionId: { in: [...regions] },
+              isActive: true,
+            })),
+          },
+          select: { deliveryProviderId: true, regionId: true, fee: true, lateThresholdDays: true, returnFee: true },
+        });
+  const rowOf = new Map(rows.map((r) => [feePairKey(r.deliveryProviderId, r.regionId), r]));
+  const served = {
+    deliveryFee: {
+      findFirst: async ({ where }: { where: { deliveryProviderId: string; regionId: string } }) =>
+        rowOf.get(feePairKey(where.deliveryProviderId, where.regionId)) ?? null,
+    },
+  } as unknown as Tx;
+
+  const out = new Map<string, ResolvedFee>();
+  for (const p of pairs) {
+    const key = feePairKey(p.deliveryProviderId, p.regionId);
+    if (!out.has(key)) out.set(key, await resolveDeliveryFee(served, { ...p, minorUnit }));
+  }
+  return out;
+}
+
 export interface OrderLineLike {
   quantity: number;
   unitPrice: number | Prisma.Decimal;
