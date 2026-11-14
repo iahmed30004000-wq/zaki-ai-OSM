@@ -1282,6 +1282,9 @@ model Notification {
 
   @@index([companyId, userId, isRead])
   @@index([storeId, type, createdAt])
+  // The bell's list (GET /api/notifications): a person's newest 50, ORDER BY createdAt DESC under companyId + userId. The (companyId, userId, isRead) index above
+  // reads ~1,050 entries per call to sort them (18,160 calls, measured 14/11); this one hands them over already in order.
+  @@index([companyId, userId, createdAt(sort: Desc)])
   @@map("notifications")
 }
 
@@ -1529,6 +1532,8 @@ model OrderClaimHistory {
   @@index([companyId, userId])
   // «Her pulls of the last hour» (the pull's pace, `pullPaceRefusal` in lib/confirmation-queue.ts): userId + action + a range on createdAt.
   @@index([userId, action, createdAt])
+  // The same window reads (team-performance, attendance, held-flow-read): companyId + a range on createdAt (5,230 full scans, 45.7 M rows, measured 14/11).
+  @@index([companyId, createdAt])
   @@map("order_claim_history")
 }
 
@@ -1573,6 +1578,9 @@ model OrderContactAttempt {
   @@unique([orderId, attemptNumber])
   @@index([companyId, orderId, createdAt])
   @@index([companyId, employeeId])
+  // «What the team did in a window» (team-performance, attendance, held-flow-read, no-answer-watch): companyId + a range on createdAt. The only index that
+  // starts with companyId has the ORDER second, so each of those reads scanned the whole table (14,082 full scans, 189 M rows, measured 14/11 — Appendix D).
+  @@index([companyId, createdAt])
   @@map("order_contact_attempts")
 }
 
