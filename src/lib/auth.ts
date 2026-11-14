@@ -251,6 +251,47 @@ export type SessionVerdict = { user: SessionUser } | { user: null; reason: 'NONE
 const NOBODY: SessionVerdict = { user: null, reason: 'NONE' };
 
 /**
+ * ONE READ OF «WHO IS THIS» PER REQUEST, NOT ONE PER DOOR (13/11, the site's slow-down research, plan PR-4).
+ *
+ * A request walks several doors and each asked again from the top — the account, its role, its grants, this device's row: eight
+ * to ten queries a time, and `requireContext`, `requirePermission` and a scope check are three doors for one person. Nothing in
+ * the middle of a request changes the answer unless that request changed it itself, so the first read is kept and the doors
+ * after it wait for that same one.
+ *
+ *   · KEPT ON THE REQUEST'S OWN COOKIE JAR. `await cookies()` is one object for the whole request and another one for the next
+ *     (Next's request store; a test runs the real thing, so the day an upgrade changes that, it fails). The map is weak: the
+ *     answer dies with its request, and nothing here reaches another request, another person or another browser tab. A jar
+ *     this code cannot hold on to — none, or a new one at every call — never hits, and that is the old path, read for read.
+ *   · AND ON WHAT THE COOKIES SAY: the session cookie's value, and the preview cookie's when a preview may speak. A cookie
+ *     replaced in the middle is a new question, and `{ preview: 'ignore' }` is its own question (signing out asks as the owner).
+ *   · A READ STILL UNDER WAY IS SHARED HOWEVER LONG IT TAKES — a second read on top of a slow one is exactly the pile-on this
+ *     exists to stop, and a slow database is when it matters most. AN ANSWER THAT HAS ARRIVED IS SHARED FOR FIVE SECONDS from
+ *     its arrival, no longer: the door after that asks again — the bound on «it changed under me».
+ *   · THE PROMISE IS KEPT AS IT IS, so doors asking at the same moment share one read, and they share one `SessionUser`
+ *     (no door writes to it — a test greps for that). A FAILURE IS NEVER KEPT: the doors already waiting on it share it,
+ *     and the next door asks again.
+ */
+const VERDICT_FRESH_MS = 5_000;
+/** `at` is when the answer ARRIVED; null while the read is still under way. */
+type KeptVerdict = { at: number | null; verdict: Promise<SessionVerdict> };
+const verdictsOfRequest = new WeakMap<object, Map<string, KeptVerdict>>();
+
+/** The jar and the question, or null when this request cannot be told apart from the next — and then nothing is kept. */
+async function whoIsAsking(opts?: { preview?: 'ignore' }): Promise<{ jar: object; key: string } | null> {
+  try {
+    const jar = await cookies();
+    if (!jar || typeof jar.get !== 'function') return null;
+    const token = jar.get(COOKIE_NAME)?.value;
+    if (!token) return null;
+    if (opts?.preview === 'ignore') return { jar, key: `self:${token}` };
+    const { PREVIEW_COOKIE } = await import('./preview-mode');
+    return { jar, key: `seen:${token}:${jar.get(PREVIEW_COOKIE)?.value ?? ''}` };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * WHO IS SIGNED IN ON THIS REQUEST, AND IF NOBODY, WHY.
  *
  * Returns the user regardless of status so the UI can render the correct screen (pending / suspended / active).
@@ -274,6 +315,33 @@ const NOBODY: SessionVerdict = { user: null, reason: 'NONE' };
  * preview door itself act as the owner.
  */
 export async function getSessionVerdict(opts?: { preview?: 'ignore' }): Promise<SessionVerdict> {
+  const asked = await whoIsAsking(opts);
+  if (!asked) return readSessionVerdict(opts);
+
+  const kept = verdictsOfRequest.get(asked.jar) ?? new Map<string, KeptVerdict>();
+  verdictsOfRequest.set(asked.jar, kept);
+  const now = Date.now();
+  const already = kept.get(asked.key);
+  // Under way, or arrived less than five seconds ago. `now >= at`: a clock that was put back is not trusted — the answer is
+  // asked again, not kept for the length of the jump.
+  if (already && (already.at === null || (now >= already.at && now - already.at < VERDICT_FRESH_MS))) return already.verdict;
+
+  const entry: KeptVerdict = { at: null, verdict: readSessionVerdict(opts) };
+  kept.set(asked.key, entry);
+  entry.verdict.then(
+    () => {
+      entry.at = Date.now();
+    },
+    // A failure is shared by the doors already waiting on it and never kept for the next one: that door asks again.
+    () => {
+      kept.delete(asked.key);
+    }
+  );
+  return entry.verdict;
+}
+
+/** THE READ ITSELF — the whole walk, every time it is asked. `getSessionVerdict` above decides how often that is. */
+async function readSessionVerdict(opts?: { preview?: 'ignore' }): Promise<SessionVerdict> {
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get(COOKIE_NAME)?.value;
