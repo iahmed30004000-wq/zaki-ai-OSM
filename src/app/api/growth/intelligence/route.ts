@@ -4,6 +4,7 @@ import { requireContext } from '@/lib/geo-context';
 import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { FAMILIES, MIN_SAMPLE, runDetectors } from '@/lib/intelligence';
+import { REPORT_TTL_MS, heavyOnce } from '@/lib/heavy-lane';
 
 /**
  * GET /api/growth/intelligence — what is bleeding, and what to do.
@@ -24,7 +25,14 @@ export async function GET() {
       currency: country.currencyCode,
     };
 
-    const { findings, skipped } = await runDetectors(db, scope);
+    // Eleven detectors over the whole history (about half a second, 21 statements) ran on EVERY dashboard mount. What they find does
+    // not depend on who asks — the key is checked above — so it is one computation per company and store, in the reports' lane, kept
+    // a minute (13/11).
+    const { findings, skipped } = await heavyOnce(
+      ['intelligence', companyId, storeId ?? '', String(country.minorUnit), country.currencyCode].join('|'),
+      REPORT_TTL_MS,
+      () => runDetectors(db, scope)
+    );
     const totalOrders = await db.order.count({ where: { companyId, storeId } });
 
     return NextResponse.json({

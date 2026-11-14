@@ -217,3 +217,64 @@ describe('what is shared holds no figure on anyone’s behalf', () => {
     vi.doUnmock('@/lib/heavy-lane');
   });
 });
+
+describe('«الكل» is kept five times as long as a named window (13/11 — plan PR-7, item 1)', () => {
+  // The dashboard asks for «الكل» every two minutes and the kept answer lasted one, so every poll recomputed the whole history. A window
+  // with both ends is exactly the question it was a minute ago and stays at a minute.
+  async function withTtl() {
+    vi.resetModules();
+    vi.doMock('@/lib/heavy-lane', async (orig) => ({ ...(await orig<typeof import('@/lib/heavy-lane')>()), REPORT_TTL_MS: 60_000 }));
+    vi.useFakeTimers({ toFake: ['Date'] });
+    held.keys = ['reports.view'];
+    const { answerAnalytics: answer } = await import('@/lib/analytics-answer');
+    const { laneAnswers: kept } = await import('@/lib/heavy-lane');
+    kept.clear();
+    const call = (qs: string, store: string, id: string) =>
+      answer(new Request(`http://localhost/api/analytics/performance?${qs}`), { companyId: 'c-ttl', storeId: store, user: user(id) }, `ttl-${id}`);
+    return { call, kept };
+  }
+  const done = (kept: { clear: () => void }) => {
+    vi.useRealTimers();
+    kept.clear();
+    vi.doUnmock('@/lib/heavy-lane');
+  };
+
+  it('«الكل»: at 4:59.999 the kept answer is read; at 5:00 it is computed again', async () => {
+    const { call, kept } = await withTtl();
+    vi.setSystemTime(new Date(2026, 10, 13, 10, 0, 0));
+    await call('period=all', 'all-store', 'a');
+    const first = analytics.mock.calls.length;
+    vi.setSystemTime(new Date(2026, 10, 13, 10, 4, 59, 999));
+    await call('period=all', 'all-store', 'b');
+    expect(analytics.mock.calls.length, 'قبل خمس دقايق').toBe(first);
+    vi.setSystemTime(new Date(2026, 10, 13, 10, 5, 0, 0));
+    await call('period=all', 'all-store', 'c');
+    expect(analytics.mock.calls.length, 'عند خمس دقايق').toBeGreaterThan(first);
+    done(kept);
+  });
+
+  it('a NAMED window stays at a minute: at 59.999 s the kept answer; at 60 s computed again', async () => {
+    const { call, kept } = await withTtl();
+    vi.setSystemTime(new Date(2026, 10, 13, 10, 0, 0));
+    await call('period=7d', 'week-store', 'a');
+    const first = analytics.mock.calls.length;
+    vi.setSystemTime(new Date(2026, 10, 13, 10, 0, 59, 999));
+    await call('period=7d', 'week-store', 'b');
+    expect(analytics.mock.calls.length, 'قبل الدقيقة').toBe(first);
+    vi.setSystemTime(new Date(2026, 10, 13, 10, 1, 0, 0));
+    await call('period=7d', 'week-store', 'c');
+    expect(analytics.mock.calls.length, 'عند الدقيقة').toBeGreaterThan(first);
+    done(kept);
+  });
+
+  it('an explicit pair of dates is a named window too — a minute', async () => {
+    const { call, kept } = await withTtl();
+    vi.setSystemTime(new Date(2026, 10, 13, 10, 0, 0));
+    await call('startDate=2026-10-01&endDate=2026-10-07', 'dates-store', 'a');
+    const first = analytics.mock.calls.length;
+    vi.setSystemTime(new Date(2026, 10, 13, 10, 1, 0, 0));
+    await call('startDate=2026-10-01&endDate=2026-10-07', 'dates-store', 'b');
+    expect(analytics.mock.calls.length).toBeGreaterThan(first);
+    done(kept);
+  });
+});

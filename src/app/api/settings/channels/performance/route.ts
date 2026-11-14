@@ -5,6 +5,7 @@ import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { insightsRefused, mayReadInsights } from '@/lib/insights-key';
 import { getDateRange } from '@/lib/analytics';
+import { REPORT_TTL_MS, heavyOnce } from '@/lib/heavy-lane';
 import { channelPerformance } from '@/lib/attribution-performance';
 import { DELIVERED_SHIPPING, whereDelivered } from '@/lib/order-state';
 import { DOOR_FAILED_SHIPPING, DOOR_RETURNED_SHIPPING, doorOutcome } from '@/lib/cod-vitals';
@@ -94,8 +95,13 @@ export async function GET() {
     const when = start && end ? { gte: start, lte: end } : undefined;
     const base = { companyId, storeId, ...(when ? { createdAt: when } : {}) };
 
-    const [rows, channels, failedBy, collectedBy, shopDelivered, shopCollected, total, withoutChannel] =
-      await Promise.all([
+    // Fifteen statements on the main pool, on every opening of the board and every return to the tab (13/11): one computation per company,
+    // store and window, in the reports' lane, kept a minute. Nothing in it reads the person — the two checks are above.
+    const [rows, channels, failedBy, collectedBy, shopDelivered, shopCollected, total, withoutChannel] = await heavyOnce(
+      ['channel-scores', companyId, storeId ?? '', start?.toISOString() ?? '', end?.toISOString() ?? ''].join('|'),
+      REPORT_TTL_MS,
+      () =>
+      Promise.all([
         channelPerformance({ companyId, storeId, start, end }),
         db.orderChannel.findMany({
           where: { companyId },
@@ -123,7 +129,8 @@ export async function GET() {
         }),
         db.order.count({ where: base }),
         db.order.count({ where: { ...base, channelId: null } }),
-      ]);
+      ])
+    );
 
     const failedOf = new Map(failedBy.map((g) => [g.channelId as string, g._count._all]));
     const collectedOf = new Map(collectedBy.map((g) => [g.channelId as string, g._count._all]));
