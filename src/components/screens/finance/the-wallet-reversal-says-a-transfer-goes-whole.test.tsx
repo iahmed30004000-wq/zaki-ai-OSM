@@ -42,7 +42,12 @@ const PLAIN = move({ id: 'm-plain', amount: 10, note: 'ملاحظة يدوية' 
 
 beforeEach(() => {
   vi.clearAllMocks();
-  api.mockImplementation(async (url: string) => {
+  api.mockImplementation(async (url: string, init?: { method?: string; body?: string }) => {
+    // The press itself: the door answers `transferReversed` only for a leg of a transfer (the movement the body names).
+    if (init?.method === 'PATCH') {
+      const named = JSON.parse(String(init.body)).movementId;
+      return named === 'm-leg' ? { reversal: { id: 'rev-1' }, transferReversed: true } : { reversal: { id: 'rev-2' } };
+    }
     if (String(url).includes('/movements')) return { movements: [LEG, PLAIN] };
     if (String(url).startsWith('/api/finance/wallets')) return { wallets: [WALLET] };
     return {};
@@ -71,5 +76,25 @@ describe('the dialog of «قيد عكسي»', () => {
     const dialog = await dialogFor('ملاحظة يدوية');
     expect(dialog.queryByText(/هذه حركة تحويل/)).toBeNull();
     expect(dialog.getByText(/القيد الأصلي لا يُحذف ولا يُعدَّل/)).toBeTruthy();
+  });
+});
+
+describe('after the press', () => {
+  const pressWith = async (note: string) => {
+    const dialog = await dialogFor(note);
+    fireEvent.change(dialog.getByRole('textbox'), { target: { value: 'خطأ من البنت' } });
+    fireEvent.click(dialog.getByRole('button', { name: 'تسجيل القيد العكسي' }));
+  };
+
+  it('says the transfer went whole when the door says so (`transferReversed`) — the answer is read, not ignored', async () => {
+    await pressWith('ملاحظة التحويل');
+    expect(await screen.findByText('سُجِّل القيد العكسي للتحويل كله — الطرفين، والقيدان الأصليان باقيان كما هما')).toBeTruthy();
+    expect(screen.queryByText('سُجِّل القيد العكسي — القيد الأصلي باقٍ كما هو')).toBeNull();
+  });
+
+  it('says what it always said for an ordinary movement', async () => {
+    await pressWith('ملاحظة يدوية');
+    expect(await screen.findByText('سُجِّل القيد العكسي — القيد الأصلي باقٍ كما هو')).toBeTruthy();
+    expect(screen.queryByText(/للتحويل كله/)).toBeNull();
   });
 });

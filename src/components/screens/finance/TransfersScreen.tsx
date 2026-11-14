@@ -21,6 +21,7 @@ import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
 import { TRANSFER_STATE_AR, type TransferState } from '@/lib/transfer-reversal';
 import { ReverseTransferDialog } from './ReverseTransferDialog';
+import { useToast } from '@/components/ui/Toast';
 import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { WalletChip } from '@/components/ui/WalletChip';
@@ -118,6 +119,7 @@ export function TransfersScreen() {
   const { currentUser } = useApp();
   // The key the reversal's door asks (the one that writes a transfer): a press is drawn only for who can finish it.
   const mayCash = userCan(currentUser, 'finance.cashbox');
+  const toast = useToast();
   const [reversing, setReversing] = useState<TransferRow | null>(null);
   const [wallets, setWallets] = useState<WalletRow[]>([]);
   const [rows, setRows] = useState<TransferRow[] | null>(null);
@@ -553,16 +555,38 @@ export function TransfersScreen() {
                 render: (t) => (t.note ?? '—') },
               // THE REVERSAL IS HEARD HERE (14/11: «القيد العكسي ما بيسمع بالتحويلات»): the row of a transfer whose money was
               // taken back says so, with the reason and who wrote it; a standing one says «ساري» (an empty cell would read as unloaded).
+              // THE PRESS LIVES IN THIS CELL, not in a column of its own: a column of its own, beside a long reason, pushed the desk
+              // table past a 1254px window and clipped the button (measured by the independent screen review). The cell is capped, so
+              // a long reason wraps instead of widening the table, and a person who may not press gets no empty strip on a card.
               { key: 'c8', label: "الحالة", wide: true,
                 render: (t) => {
                   const state = t.state ?? 'ACTIVE';
-                  if (state === 'ACTIVE') return <span className="text-xs text-[var(--sys-muted)]">{TRANSFER_STATE_AR.ACTIVE}</span>;
+                  const press =
+                    mayCash && state !== 'REVERSED' ? (
+                      <span className="block">
+                        <button
+                          type="button"
+                          onClick={() => setReversing(t)}
+                          className="mt-1 text-xs text-[var(--sys-primary)] hover:underline inline-flex items-center gap-1"
+                        >
+                          <RiArrowGoBackLine className="icon-mirror w-4 h-4" /> قيد عكسي
+                        </button>
+                      </span>
+                    ) : null;
+                  if (state === 'ACTIVE') {
+                    return (
+                      <div className="max-w-xs break-words">
+                        <span className="text-xs text-[var(--sys-muted)]">{TRANSFER_STATE_AR.ACTIVE}</span>
+                        {press}
+                      </div>
+                    );
+                  }
                   const tone =
                     state === 'REVERSED'
                       ? 'border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)]'
                       : 'border-[var(--sys-warning)] bg-[var(--sys-warning-soft)] text-[var(--sys-foreground)]';
                   return (
-                    <>
+                    <div className="max-w-xs break-words">
                       <span className={`rounded-full border px-2 py-0.5 text-xs whitespace-nowrap ${tone}`}>{TRANSFER_STATE_AR[state]}</span>
                       {t.reversal?.reason && <span className="block text-xs text-[var(--sys-destructive)]">قيد عكسي: {t.reversal.reason}</span>}
                       {t.reversal?.byName && (
@@ -571,23 +595,16 @@ export function TransfersScreen() {
                         </span>
                       )}
                       {state === 'PARTLY_REVERSED' && (
-                        <span className="block text-xs text-[var(--sys-muted)]">الطرف الآخر لسا قائم — «قيد عكسي» بيكمّل عكسه</span>
+                        // The way to finish it is said only to who has the press: nobody is pointed at a button they do not have.
+                        <span className="block text-xs text-[var(--sys-muted)]">
+                          الطرف الآخر لسا قائم{mayCash ? ' — «قيد عكسي» بيكمّل عكسه' : ''}
+                        </span>
                       )}
-                    </>
+                      {press}
+                    </div>
                   );
                 } },
             ]}
-            actions={(t) =>
-              mayCash && t.state !== 'REVERSED' ? (
-                <button
-                  type="button"
-                  onClick={() => setReversing(t)}
-                  className="text-xs text-[var(--sys-primary)] hover:underline inline-flex items-center gap-1"
-                >
-                  <RiArrowGoBackLine className="icon-mirror w-4 h-4" /> قيد عكسي
-                </button>
-              ) : null
-            }
             empty={
               <EmptyState
                 title="لا تحويلاتٍ في هذه الفترة"
@@ -602,10 +619,14 @@ export function TransfersScreen() {
         <ReverseTransferDialog
           transfer={reversing}
           onClose={() => setReversing(null)}
-          onSaved={() => {
+          onSaved={async () => {
+            // The list is read again BEFORE the dialog goes: closed first, the row would still say «ساري» with its press until
+            // the answer came back, and a second press on it would meet the 409. The message is a toast — the form's own `done`
+            // line sits ~800px above the history, where a press on a lower row (or on a phone) is never looking.
+            setError(null);
+            await load();
             setReversing(null);
-            setDone('انعكس التحويل — الطرفان معاً');
-            void load();
+            toast.done('انعكس التحويل — الطرفان معاً');
           }}
         />
       )}

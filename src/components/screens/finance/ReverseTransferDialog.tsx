@@ -10,6 +10,8 @@ interface End {
   id: string;
   name: string;
   currencyCode: string;
+  /** A wallet's name is unique only inside its store («الصندوق» can be two wallets), so the dialog says the store too. */
+  store?: { name: string } | null;
 }
 
 export interface ReversibleTransfer {
@@ -36,7 +38,8 @@ export function ReverseTransferDialog({
 }: {
   transfer: ReversibleTransfer;
   onClose: () => void;
-  onSaved: () => void;
+  /** Awaited: the dialog stays (its button busy) until the screen has read the list again. */
+  onSaved: () => void | Promise<void>;
 }) {
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +62,7 @@ export function ReverseTransferDialog({
               method: 'PATCH',
               body: JSON.stringify({ reason: reason.trim() }),
             });
-            onSaved();
+            await onSaved();
           } catch (err) {
             setError(err instanceof Error ? err.message : 'تعذر القيد العكسي');
           } finally {
@@ -71,17 +74,21 @@ export function ReverseTransferDialog({
         <div className="text-sm text-[var(--sys-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3 space-y-1">
           <p>
             {half
-              ? 'أحد طرفي هذا التحويل معكوس من قبل، فيُعكس الطرف الباقي فقط ويكتمل التحويل:'
+              ? 'أحد طرفي هذا التحويل معكوس من قبل، فيُعكس الطرف الباقي فقط ويكتمل عكس التحويل:'
               : 'سيُسجَّل قيدان معاكسان بمرة واحدة، واحد في كل محفظة:'}
           </p>
           {fromStands && transfer.from && (
             <p>
-              <b>{transfer.from.name}</b>: يرجع إليها <Money value={transfer.amountOut} currency={transfer.from.currencyCode} />
+              <b>{transfer.from.name}</b>
+              {transfer.from.store ? <span className="text-[var(--sys-muted)]"> ({transfer.from.store.name})</span> : null}: يرجع إليها{' '}
+              <Money value={transfer.amountOut} currency={transfer.from.currencyCode} />
             </p>
           )}
           {toStands && transfer.to && (
             <p>
-              <b>{transfer.to.name}</b>: يخرج منها <Money value={transfer.amountIn} currency={transfer.to.currencyCode} />
+              <b>{transfer.to.name}</b>
+              {transfer.to.store ? <span className="text-[var(--sys-muted)]"> ({transfer.to.store.name})</span> : null}: يخرج منها{' '}
+              <Money value={transfer.amountIn} currency={transfer.to.currencyCode} />
             </p>
           )}
           <p className="text-xs text-[var(--sys-muted)]">القيدان الأصليان لا يُحذفان ولا يُعدَّلان، ويبقى التحويل ظاهراً في القائمة مكتوباً عليه «معكوس».</p>
