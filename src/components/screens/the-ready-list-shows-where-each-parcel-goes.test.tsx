@@ -7,7 +7,8 @@ import React from 'react';
  * ═══════════════════════════════════════════════════════════════════════
  * «اظهر العنوان بالخانات» (the owner, 8/11) — THE «العنوان» COLUMN ON «إنشاء شحنة».
  *
- * The table says where each parcel goes: a column «العنوان» right after «المحافظة», drawn only for a holder of
+ * The table says where each parcel goes: a column «العنوان» after «المحافظة» (since 14/11 «المنتج» sits between the two —
+ * see `the-ready-list-shows-what-is-in-each-order.test.tsx`), drawn only for a holder of
  * `customers.view` (the list door gives the street to nobody else). The address wraps — never cut with an ellipsis, never
  * widening the table — and on a phone card it is a labelled line with the label above the full-width text. An order with
  * no address says «بلا عنوان» in red, because dispatch will refuse it (`NO_ADDRESS`); an address the server did not send
@@ -97,9 +98,9 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('the holder of the address-book key', () => {
-  it('has a «العنوان» column right after «المحافظة», and every other column where it was', async () => {
+  it('has a «العنوان» column after «المحافظة» and «المنتج», and every other column where it was', async () => {
     await draw([row('1', { address: 'شارع الجلاء 12' })]);
-    expect(headings()).toEqual(['الطلب', 'العميل', 'المحافظة', 'العنوان', 'تفصيل التحصيل', 'تنبيهات']);
+    expect(headings()).toEqual(['الطلب', 'العميل', 'المحافظة', 'المنتج', 'العنوان', 'تفصيل التحصيل', 'تنبيهات']);
   });
 
   it('reads the address in the cell', async () => {
@@ -192,7 +193,7 @@ describe('whoever lacks the address-book key', () => {
   it('has no «العنوان» column at all — the heading, the cell and the card line are all absent', async () => {
     user.current = PACKER;
     await draw([row('1')]);
-    expect(headings()).toEqual(['الطلب', 'العميل', 'المحافظة', 'تفصيل التحصيل', 'تنبيهات']);
+    expect(headings()).toEqual(['الطلب', 'العميل', 'المحافظة', 'المنتج', 'تفصيل التحصيل', 'تنبيهات']);
     expect(screen.queryByText('العنوان')).toBeNull();
     expect(screen.queryByText('بلا عنوان')).toBeNull();
   });

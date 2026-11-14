@@ -7,6 +7,7 @@ import { apiFetch, apiJson } from '@/lib/api-client';
 import { ATTESTATION_AR } from '@/lib/shipment-cancel';
 import { CustomerHistoryButton } from '@/components/orders/CustomerHistory';
 import { OrderRef } from '@/components/orders/OrderRef';
+import { goodsLines } from '@/components/orders/OrderGoods';
 import { CopyValue } from '@/components/orders/CopyValue';
 import { orderNumberToCopy } from '@/lib/copy-values';
 import { ScreenTitle } from '@/components/shell/ScreenTitle';
@@ -88,6 +89,36 @@ function ShipAddress({ address }: { address: string | null | undefined }) {
   return (
     <div dir="auto" className="max-w-xs break-words">
       {street}
+    </div>
+  );
+}
+
+/**
+ * WHAT IS IN THE PARCEL (the owner, 14/11: «حط المنتج بين المحافظة والعنوان» — the product that belongs to the order).
+ *
+ * The order's own lines, one under another, worded the way every other list words them (`goodsLines`: «الاسم × الكمية»,
+ * a gift beside its line). Like the address it is read at the packing bench, so nothing is cut: every line is drawn —
+ * there is no «+N أخرى» here — and a long name wraps and never ends in an ellipsis, because a packer who reads half a
+ * name takes the wrong product. The box is capped, so a long name makes its cell taller and never the table wider.
+ * An order that came with no lines is a dash: the list is whole, this order has nothing to show.
+ */
+function ShipGoods({ items }: { items: Row['items'] }) {
+  // The list door sends no line id and the shared wording wants one for its key: a line's place in the order is its id.
+  const { shown } = goodsLines(
+    items.map((line, place) => ({ id: String(place), ...line })),
+    null,
+    Math.max(1, items.length)
+  );
+  if (shown.length === 0) return <span className="text-[var(--sys-muted)]">—</span>;
+  // Lines are plain blocks, not a list: the phone tests take the first `li` of the page for a card, and the table is
+  // drawn before the cards.
+  return (
+    <div className="max-w-xs break-words">
+      {shown.map((line) => (
+        <div key={line.key} dir="auto">
+          {line.text}
+        </div>
+      ))}
     </div>
   );
 }
@@ -872,7 +903,7 @@ export function ShipmentsNewScreen() {
         </p>
       )}
       <div className={phone ? undefined : 'bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden'}>
-          {/* The picking list: seven columns, read on a phone at the
+          {/* The picking list: eight columns, read on a phone at the
               packing bench. `selection` puts the checkbox where a thumb is
               — in the card's heading — instead of in a first column
               somebody has to aim at. */}
@@ -943,7 +974,16 @@ export function ShipmentsNewScreen() {
                     </span>
                   ),
               },
-              // WHERE IT GOES, right after the governorate it is in. Only for the address-book key (`mayReadAddress`). `wide`:
+              // WHAT IS IN IT, between the governorate and the address (the owner, 14/11). Whoever opens this screen sees it: the
+              // order's lines are already in the list's payload and no extra key is needed to read what is being shipped. `wide`:
+              // a product name is a sentence, so on a card its label sits above it and it takes the card's full width.
+              {
+                key: 'goods',
+                label: 'المنتج',
+                wide: true,
+                render: (r) => <ShipGoods items={r.items} />,
+              },
+              // WHERE IT GOES, after the product. Only for the address-book key (`mayReadAddress`). `wide`:
               // an address is a sentence, so on a card its label sits above it and it takes the card's full width.
               ...(mayReadAddress
                 ? [

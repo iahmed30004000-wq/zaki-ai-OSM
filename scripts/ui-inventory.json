@@ -1562,7 +1562,7 @@
   "src/components/screens/ShipmentsNewScreen.tsx": {
     "buttons": 11,
     "inputs": 7,
-    "columns": 6,
+    "columns": 7,
     "cards": 0,
     "modals": 0,
     "icons": 9,
