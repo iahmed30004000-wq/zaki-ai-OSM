@@ -204,8 +204,11 @@ describe('and the header shows it instead of the old single number', () => {
    * passed with the interval's copy deleted, which is the one that matters.
    */
   it('and the interval itself stops while the tab is hidden', () => {
-    expect(strip(), 'المؤقّت يستطلع والتبويب مخفيّ').toMatch(
-      /setInterval\(\(\) => \{[\s\S]{0,160}document\.visibilityState === 'visible'[\s\S]{0,40}\}, POLL_MS\)/
+    // 13/11: the tick and the return share one `poll` (the answer-still-out rule and the fifteen-second floor live there), and the
+    // hidden-tab check is the FIRST thing it does — and the interval must go through it, not around it.
+    expect(strip(), 'المؤقّت يستطلع والتبويب مخفيّ').toMatch(/setInterval\(\(\) => poll\('tick'\), POLL_MS\)/);
+    expect(strip(), 'الاستطلاع بيفحص التبويب أول شي').toMatch(
+      /const poll = \(why: 'tick' \| 'return'\) => \{[\s\S]{0,120}document\.visibilityState !== 'visible'\) return;/
     );
   });
 });

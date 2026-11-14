@@ -151,7 +151,10 @@ describe('and the hook is the only copy of it', () => {
     const hook = stripComments(
       readFileSync(join(process.cwd(), 'src', 'hooks', 'useLiveRefresh.ts'), 'utf8')
     );
-    expect(hook).toMatch(/run\(true\)/);
-    expect(hook).toMatch(/if \(!force && now - lastAt\.current < MIN_GAP_MS\) return;/);
+    // 13/11: `run` knows WHY it is asked. The first load is `run('first')` and is never held back by anything; the floor applies to a
+    // RETURN only, and the waiting-for-an-answer rule to a tick or a return (see «AND WHY IT WAITS FOR THE ANSWER» in the hook).
+    expect(hook).toMatch(/run\('first'\)/);
+    expect(hook).toMatch(/if \(why === 'return' && now - lastAt\.current < MIN_GAP_MS\) return;/);
+    expect(hook).toMatch(/if \(why !== 'first' && \(/);
   });
 });

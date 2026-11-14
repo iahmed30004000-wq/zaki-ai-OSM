@@ -186,7 +186,9 @@ export function AppProvider({
       // A dropped connection is not «signed out».
     }
   }, [readMe, router]);
-  useLiveRefresh(followPermissions, { initial: false });
+  // `void`, so the hook does NOT follow this read (lib/poll-gate.ts): it has its own once-a-minute floor above, it keeps the buttons true to
+  // the server's answer, and it behaves exactly as it always did — a loader that returns nothing is not followed.
+  useLiveRefresh(() => void followPermissions(), { initial: false });
 
   return (
     <AppContext.Provider

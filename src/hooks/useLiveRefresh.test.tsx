@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
+import { useEffect, useRef } from 'react';
 import { useLiveRefresh } from './useLiveRefresh';
 
 /**
@@ -292,5 +293,237 @@ describe('a screen that wants to know it was returned to', () => {
     comeBack('focus');
     expect(first).not.toHaveBeenCalled();
     expect(second).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// A SCREEN NEVER ASKS TWICE AT ONCE (13/11 — the site's slow-down, plan PR-5).
+// When the server is slow the browser must ask LESS, not more: a tick or a return waits for the load before it, and a slow answer
+// makes the next automatic ask wait four times as long as it took (a minute at most). The first load and a changed `key` never wait.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * TODAY'S HOOK — copied word for word from the commit before this change, as the reference for the differential below.
+ * (`MIN_GAP_MS` is its 3 seconds.)
+ */
+function useLiveRefreshOld(
+  load: () => void | Promise<unknown>,
+  options: { everyMs?: number; enabled?: boolean; key?: string | number | boolean | null; initial?: boolean; onReturn?: () => void } = {}
+): void {
+  const MIN_GAP_MS = 3_000;
+  const { everyMs, enabled = true, key, initial = true, onReturn: onReturnOption } = options;
+  const loadRef = useRef(load);
+  const returnRef = useRef(onReturnOption);
+  const lastAt = useRef(0);
+
+  useEffect(() => {
+    loadRef.current = load;
+    returnRef.current = onReturnOption;
+  });
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    let cancelled = false;
+    const run = (force = false) => {
+      if (cancelled) return;
+      const now = Date.now();
+      if (!force && now - lastAt.current < MIN_GAP_MS) return;
+      lastAt.current = now;
+      void loadRef.current();
+    };
+
+    if (initial) run(true);
+
+    const onReturn = () => {
+      if (document.hidden) return;
+      returnRef.current?.();
+      run();
+    };
+    document.addEventListener('visibilitychange', onReturn);
+    window.addEventListener('focus', onReturn);
+    window.addEventListener('online', onReturn);
+
+    const interval = everyMs
+      ? setInterval(() => {
+          if (!document.hidden) run(true);
+        }, everyMs)
+      : undefined;
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onReturn);
+      window.removeEventListener('focus', onReturn);
+      window.removeEventListener('online', onReturn);
+      if (interval) clearInterval(interval);
+    };
+  }, [enabled, everyMs, key, initial]);
+}
+
+describe('a screen never asks twice at once', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    setHidden(false);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const pass = (ms: number) => act(() => void vi.advanceTimersByTime(ms));
+
+  /** A loader whose answers the test gives by hand. */
+  function handLoader() {
+    const waiting: Array<() => void> = [];
+    const load = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          waiting.push(resolve);
+        })
+    );
+    const answer = () => act(async () => void waiting.splice(0).forEach((r) => r()));
+    return { load, answer };
+  }
+  const never = () => new Promise<void>(() => undefined);
+
+  it('five returns to the window, four seconds apart, while the first load is still unanswered: ONE request (today\'s hook asks six times)', () => {
+    const fresh = vi.fn(never);
+    const old = vi.fn(never);
+    renderHook(() => useLiveRefresh(fresh));
+    renderHook(() => useLiveRefreshOld(old));
+    for (let i = 0; i < 5; i++) {
+      pass(4_000);
+      comeBack('focus');
+    }
+    expect(fresh).toHaveBeenCalledTimes(1);
+    expect(old, 'الهوك القديم: كل رجعة طلب جديد').toHaveBeenCalledTimes(6);
+  });
+
+  it('a tick while a load is out is skipped; the tick after it answered runs', async () => {
+    const { load, answer } = handLoader();
+    renderHook(() => useLiveRefresh(load, { everyMs: 1_000 }));
+    pass(1_000); // the tick finds the mount load still out
+    expect(load).toHaveBeenCalledTimes(1);
+    pass(500);
+    await answer(); // it answers after a second and a half: not slow
+    pass(500); // the next tick
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it('a load that took five seconds: returns within twenty are skipped, a return at twenty runs — to the millisecond', async () => {
+    const { load, answer } = handLoader();
+    renderHook(() => useLiveRefresh(load));
+    pass(5_000);
+    await answer(); // took 5 s: four times that is twenty
+    pass(1_000);
+    comeBack('focus');
+    pass(18_999); // 19.999 s after the answer
+    comeBack('focus');
+    expect(load).toHaveBeenCalledTimes(1);
+    pass(1);
+    comeBack('focus'); // 20.000 s after the answer
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it('a load that took a hundred milliseconds is today\'s hook: a return after the 3-second floor runs', async () => {
+    const { load, answer } = handLoader();
+    renderHook(() => useLiveRefresh(load));
+    pass(100);
+    await answer();
+    pass(3_000);
+    comeBack('focus');
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it('a changed key loads AT ONCE even while a load is out — a new filter wants its rows now', () => {
+    const { load } = handLoader();
+    const { rerender } = renderHook(({ k }: { k: string }) => useLiveRefresh(load, { key: k }), { initialProps: { k: 'a' } });
+    expect(load).toHaveBeenCalledTimes(1);
+    rerender({ k: 'b' });
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it('and an older load that answers after the newer one began does not say «nothing is out»', async () => {
+    const answers: Array<() => void> = [];
+    const load = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          answers.push(resolve);
+        })
+    );
+    const { rerender } = renderHook(({ k }: { k: string }) => useLiveRefresh(load, { key: k }), { initialProps: { k: 'a' } });
+    rerender({ k: 'b' }); // two loads out: the filter changed while the first was on its way
+    pass(100);
+    await act(async () => void answers[0]()); // only the OLDER one answers
+    pass(3_000);
+    comeBack('focus'); // the newer one is still out: a return waits for it
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it('a loader that never answers stops blocking after ninety seconds', () => {
+    const stuck = vi.fn(never);
+    renderHook(() => useLiveRefresh(stuck));
+    pass(89_999);
+    comeBack('focus');
+    expect(stuck).toHaveBeenCalledTimes(1);
+    pass(1);
+    comeBack('focus');
+    expect(stuck).toHaveBeenCalledTimes(2);
+  });
+
+  it('a screen whose loader returns nothing is today\'s hook exactly: a return after the floor runs, with or without «work» in flight', () => {
+    const load = vi.fn(); // returns undefined: not followed
+    renderHook(() => useLiveRefresh(load, { everyMs: 5_000 }));
+    pass(5_000);
+    pass(5_000);
+    pass(3_000); // past the floor of the last tick
+    comeBack('focus');
+    expect(load).toHaveBeenCalledTimes(4); // mount + two ticks + the return
+  });
+
+  it('DIFFERENTIAL: against today\'s hook, with a server that answers in 50 ms, the very same calls at the very same moments', async () => {
+    type Step = 'focus' | 'visibilitychange' | 'online' | 'hide' | 'show' | 'key';
+    const script: Array<[number, Step]> = [
+      [1_000, 'focus'],
+      [2_500, 'focus'], // inside the 3-second floor: both swallow it
+      [3_200, 'online'],
+      [8_000, 'visibilitychange'],
+      [8_500, 'focus'], // inside the floor again
+      [9_000, 'hide'],
+      [14_000, 'focus'], // hidden: both ignore it (and the tick)
+      [20_000, 'show'],
+      [20_400, 'visibilitychange'], // inside the floor
+      [26_000, 'key'], // a changed filter: both load at once
+      [31_000, 'focus'],
+      [40_000, 'online'],
+      [61_000, 'focus'],
+    ];
+    const base = Date.now();
+    const logNew: number[] = [];
+    const logOld: number[] = [];
+    const answerIn50 = (log: number[]) => () => {
+      log.push(Date.now() - base);
+      return new Promise<void>((resolve) => setTimeout(resolve, 50));
+    };
+    const a = renderHook(({ k }: { k: number }) => useLiveRefresh(answerIn50(logNew), { everyMs: 7_000, key: k }), { initialProps: { k: 0 } });
+    const b = renderHook(({ k }: { k: number }) => useLiveRefreshOld(answerIn50(logOld), { everyMs: 7_000, key: k }), { initialProps: { k: 0 } });
+    let at = 0;
+    for (const [when, step] of script) {
+      await act(async () => void (await vi.advanceTimersByTimeAsync(when - at)));
+      at = when;
+      if (step === 'key') {
+        a.rerender({ k: when });
+        b.rerender({ k: when });
+      } else if (step === 'hide') {
+        setHidden(true);
+      } else if (step === 'show') {
+        setHidden(false);
+        comeBack('visibilitychange');
+      } else {
+        comeBack(step);
+      }
+    }
+    await act(async () => void (await vi.advanceTimersByTimeAsync(30_000)));
+    expect(logOld.length, 'السيناريو فاضي — الفحص ما بيثبت شي').toBeGreaterThan(12);
+    expect(logNew).toEqual(logOld);
   });
 });

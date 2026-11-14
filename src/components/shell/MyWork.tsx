@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { iconFor } from '@/components/shell/icons';
 import { visibleWork, type WorkItem } from '@/lib/my-work';
+import { pollGate } from '@/lib/poll-gate';
 import { pollSignal } from '@/lib/poll-timeout';
 
 /**
@@ -28,11 +29,14 @@ import { pollSignal } from '@/lib/poll-timeout';
  */
 
 const POLL_MS = 60_000;
+/** Two returns to the tab closer than this are one: the chips do not need the server twice in fifteen seconds. */
+const RETURN_GAP_MS = 15_000;
 
 export function MyWork() {
   const [items, setItems] = useState<WorkItem[]>([]);
+  const [gate] = useState(pollGate);
 
-  const load = useCallback(async () => {
+  const fetchOnce = useCallback(async () => {
     try {
       // Plain fetch, on purpose — the same reasoning the counter had:
       // apiJson answers a missing store by sending the whole tab to the
@@ -46,21 +50,38 @@ export function MyWork() {
     }
   }, []);
 
+  /** Every call goes through here, so the polls can see whether one is still out. */
+  const load = useCallback(() => {
+    const call = fetchOnce();
+    gate.follow(call, Date.now());
+    return call;
+  }, [fetchOnce, gate]);
+
+  const lastReturn = useRef(0);
+
   useEffect(() => {
     void load();
-    const tick = setInterval(() => {
+    // A tick or a return waits for a call that is still out (13/11: a slow server was asked again by every open tab), and two
+    // returns to the tab within fifteen seconds are one.
+    const poll = (why: 'tick' | 'return') => {
       // Nothing is polled while nobody is looking.
-      if (document.visibilityState === 'visible') void load();
-    }, POLL_MS);
-    const onShow = () => {
-      if (document.visibilityState === 'visible') void load();
+      if (document.visibilityState !== 'visible') return;
+      const now = Date.now();
+      if (gate.busy(now)) return;
+      if (why === 'return') {
+        if (now - lastReturn.current < RETURN_GAP_MS) return;
+        lastReturn.current = now;
+      }
+      void load();
     };
+    const tick = setInterval(() => poll('tick'), POLL_MS);
+    const onShow = () => poll('return');
     document.addEventListener('visibilitychange', onShow);
     return () => {
       clearInterval(tick);
       document.removeEventListener('visibilitychange', onShow);
     };
-  }, [load]);
+  }, [load, gate]);
 
   const many = visibleWork(items, 3);
   if (many.length === 0) return null;

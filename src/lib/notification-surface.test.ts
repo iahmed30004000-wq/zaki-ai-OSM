@@ -30,7 +30,9 @@ describe('one poller', () => {
     // Anchored INSIDE the interval: the same line appears again in the
     // visibility handler, and asserting it loosely passed while the timer
     // itself had been left polling a hidden tab.
-    expect(src).toMatch(/setInterval\(\(\) => \{\s*if \(!document\.hidden\) void load\(\);/);
+    // 13/11: the tick and the return share one `poll` whose FIRST act is the hidden-tab check, and the interval goes through it.
+    expect(src).toMatch(/setInterval\(\(\) => poll\('tick'\), POLL_MS\)/);
+    expect(src).toMatch(/const poll = \(why: 'tick' \| 'return'\) => \{\s*if \(document\.hidden\) return;/);
     expect(src).toMatch(/visibilitychange/);
   });
 

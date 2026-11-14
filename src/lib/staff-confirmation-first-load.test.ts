@@ -106,8 +106,14 @@ describe('what an agent downloads before «طلباتي» draws', () => {
    * «لسا مش مفصولة») cost +0.3 KB — 410.2 KB, 28 files, the same CI step (run 43245663332). The modals are still absent from the
    * chunks; this guard exists for the 35 KB they weighed, not for a third of a kilobyte. The line moves by the same rule —
    * measured, a little over, with the date and the cause beside it.
+   *
+   * MOVED 2026-11-13, 411 → 412, MEASURED AGAIN. The room was almost gone before this change (main read 410.9 KB, 0.1 KB left, the same
+   * CI step), and the screens' polling gate — `lib/poll-gate.ts` and the three places that follow a request until it answers
+   * (`useLiveRefresh`, the bell, «شغلك اليوم») — costs +0.3 KB: 411.2 KB, 28 files (CI «Payload budget», run 43444353216, #281). Same
+   * reading as before: the order window, the create window, the assistant and the «مؤجّلة» tab are still absent from the chunks, and this
+   * guard still exists for the 35 KB they weighed, not for a third of a kilobyte.
    */
-  const CEILING_KB = 411;
+  const CEILING_KB = 412;
 
   it(`keeps /confirmation/mine at or under ${CEILING_KB} KB of JS, gzipped`, () => {
     if (!measurable()) return noBuild();
