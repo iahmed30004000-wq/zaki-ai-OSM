@@ -76,6 +76,8 @@ const NEW_BOXES = [
 
 const DOORS: Door[] = [
   { file: 'admin/jobs/route', method: 'POST', need: ['settings.jobs'], was: ['settings.manage'] },
+  // A door that never existed before (13/11, the stall report): nothing opened it «before», so nothing is listed as the old key.
+  { file: 'admin/pulse/route', method: 'GET', need: ['settings.jobs'], was: [] },
   { file: 'settings/messages/route', method: 'PUT', need: ['settings.messages'], was: ['settings.manage'] },
   { file: 'settings/messages/route', method: 'GET', query: '?sample=1', need: ['settings.messages'], was: ['settings.manage'] },
   { file: 'settings/penalty-rules/route', method: 'POST', need: ['penalties.rules'], was: ['settings.manage'] },

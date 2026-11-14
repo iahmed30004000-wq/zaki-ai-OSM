@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { LANE_KEY } from './heavy-lane-key';
+import { labelled } from './server-pulse';
 
 /**
  * THE REPORTS LANE — slow, many-query reads run apart from the work people are waiting on (the owner, 13/11).
@@ -127,7 +128,9 @@ export async function heavyOnce<T>(key: string, ttlMs: number, compute: () => Pr
   if (slot?.kept && ttlMs > 0 && now - slot.at < ttlMs) return slot.kept.value as T;
   if (slot?.flight) return slot.flight as Promise<T>;
 
-  const flight = runInHeavyLane(compute).then(
+  // The question's first word is OURS (`analytics`, `team`, `score-role`…), never an id: it names the computation in the pulse
+  // (`server-pulse.ts`), so that a stall says which report was running.
+  const flight = labelled(`report:${key.split('|', 1)[0]}`, () => runInHeavyLane(compute)).then(
     (value) => {
       if (ttlMs > 0) {
         answers.set(key, { at: Date.now(), kept: { value } });
