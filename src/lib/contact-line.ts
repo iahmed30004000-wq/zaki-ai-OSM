@@ -53,7 +53,17 @@ export const LINE_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 export const LINE_CLOCK_SLACK_MS = 30_000;
 
 export type LineMethod = 'PHONE' | 'SMS' | 'WHATSAPP';
-export type LineResult = 'OPENED' | 'MESSAGE_SENT';
+/**
+ * `ANSWERED` and `CALLBACK_REQUESTED` are the call sheet's «ردّ» and «اتصل لاحقاً» (step A of Confirmation Center v2: every outcome leaves a line, with the
+ * duration when one is known). They are sent only while «إثبات المكالمات» is on, through this same keep-and-retry path; the contact door never refuses them.
+ */
+export type LineResult = 'OPENED' | 'MESSAGE_SENT' | 'ANSWERED' | 'CALLBACK_REQUESTED';
+
+/**
+ * Told on `window` when an «اتصال» press has LANDED on the server (`detail: { orderId }`), so an open order window — which does not know about a press made
+ * from the strip beside it, or from another tab — can ask again what its «لا يرد» is waiting for.
+ */
+export const CALL_OPENED_EVENT = 'osm:call-opened';
 
 /** One line waiting to land. `key` is the order and the moment of the press: one line per press. */
 export interface WaitingLine {
@@ -65,6 +75,8 @@ export interface WaitingLine {
   result: LineResult;
   pressedAt: number;
   sendAt: number;
+  /** Whole seconds, when the screen knows them (an answered call's talk time) — sent only when present, so every older line's body is unchanged. */
+  durationSeconds?: number;
 }
 
 /** What the press came to, for the strip: landed, kept for another try, or refused — with the server's words. */
@@ -166,6 +178,14 @@ export function lineWaiting(orderId: string): boolean {
   return read().some((l) => l.orderId === orderId);
 }
 
+/**
+ * Is an «اتصال» press of this order still waiting to land? The call sheet asks it before it treats a refusal «no press is logged» as final: the press and the
+ * outcome travel in two independent queues, and after a reconnect the outcome may reach the server first.
+ */
+export function openedWaiting(orderId: string): boolean {
+  return read().some((l) => l.orderId === orderId && l.result === 'OPENED');
+}
+
 /** The refusal a resend of this order's line met, if any (`undefined` = none). */
 export function lineRefusal(orderId: string): string | null | undefined {
   return refusals.has(orderId) ? refusals.get(orderId) : undefined;
@@ -179,11 +199,17 @@ export function forgetContactLines(): void {
 
 // ───────────────────────── sending ─────────────────────────
 
-function post(orderId: string, method: LineMethod, result: LineResult): Promise<unknown> {
+/** An «اتصال» press landed: tell the screens that read what the next «لا يرد» waits for. */
+function announceOpened(orderId: string, result: LineResult): void {
+  if (result !== 'OPENED' || typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(CALL_OPENED_EVENT, { detail: { orderId } }));
+}
+
+function post(orderId: string, method: LineMethod, result: LineResult, durationSeconds?: number): Promise<unknown> {
   return apiJson(`/api/orders/${orderId}/contact-attempts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contactMethod: method, result }),
+    body: JSON.stringify(durationSeconds === undefined ? { contactMethod: method, result } : { contactMethod: method, result, durationSeconds }),
     // The page is about to be left for the dialler: the request must outlive it.
     keepalive: true,
   });
@@ -197,14 +223,15 @@ function said(e: unknown): string | null {
  * THE PRESS. The request is started HERE, synchronously — `apiJson` calls `fetch` before its first `await` — so a caller
  * that calls this and then lets the link open has sent the line first. Nothing is awaited before the link.
  */
-export function sendContactLine(v: { orderId: string; method: LineMethod; result: LineResult; now?: number }): Promise<LineAnswer> {
+export function sendContactLine(v: { orderId: string; method: LineMethod; result: LineResult; now?: number; durationSeconds?: number }): Promise<LineAnswer> {
   const pressedAt = v.now ?? Date.now();
   // Read at the press, not at the failure: whoever was signed in when she pressed.
   const presser = owner;
-  return post(v.orderId, v.method, v.result).then(
+  return post(v.orderId, v.method, v.result, v.durationSeconds).then(
     (): LineAnswer => {
       refusals.delete(v.orderId);
       for (const fn of listeners) fn();
+      announceOpened(v.orderId, v.result);
       return { state: 'sent' };
     },
     (e: unknown): LineAnswer => {
@@ -217,6 +244,7 @@ export function sendContactLine(v: { orderId: string; method: LineMethod; result
         result: v.result,
         pressedAt,
         sendAt: Date.now() + LINE_RETRY_MS,
+        ...(v.durationSeconds === undefined ? {} : { durationSeconds: v.durationSeconds }),
       };
       write([...read().filter((l) => l.key !== line.key), line]);
       return { state: 'waiting' };
@@ -248,8 +276,9 @@ export function flushContactLines(force = false): Promise<void> {
         const log = await apiJson<{ attempts?: { result?: string; employeeId?: string; createdAt?: string }[] }>(
           `/api/orders/${due.orderId}/contact-attempts`
         );
-        if (!lineLanded(log.attempts ?? [], due)) await post(due.orderId, due.method, due.result);
+        if (!lineLanded(log.attempts ?? [], due)) await post(due.orderId, due.method, due.result, due.durationSeconds);
         refusals.delete(due.orderId);
+        announceOpened(due.orderId, due.result);
         write(read().filter((l) => l.key !== due.key));
       } catch (e) {
         if (worthAnotherTry(e)) {

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   RiArrowGoBackLine,
   RiArrowRightLine,
@@ -14,6 +14,7 @@ import {
   RiWifiOffLine,
 } from '@remixicon/react';
 import {
+  PENDING_KEY,
   awayClock,
   callbackChips,
   outcomeOrder,
@@ -24,6 +25,8 @@ import {
   type HelperReading,
   type OutgoingState,
 } from '@/lib/call-outcome';
+import { sendContactLine } from '@/lib/contact-line';
+import { CALL_PROOF_WORDS, CLIENT_MARGIN_MS, MIN_CALL_MS, secondsLeft } from '@/lib/call-proof-words';
 
 /**
  * «شو صار؟» — THE SHEET THAT WAITS AT THE BOTTOM OF HER PHONE WHILE SHE IS ON THE CALL.
@@ -98,12 +101,38 @@ const ICON: Record<CallOutcome, React.ReactNode> = {
 
 export type LoggedOutcome = 'NO_ANSWER' | 'BUSY' | 'UNREACHABLE' | 'WRONG_NUMBER';
 
+/** «ما رد» · «مشغول» · «مسكّر» — the three the «إثبات المكالمات» rule can lock. */
+const PROOF_LOCKED: readonly CallOutcome[] = ['NO_ANSWER', 'BUSY', 'UNREACHABLE'];
+/** The longest call the contact door accepts a duration for (four hours). */
+const MAX_DURATION_S = 14_400;
+/** A pending call «started» further ahead than this on the phone's own clock has no usable start. */
+const FUTURE_TOLERANCE_MS = 60_000;
+
+/** The call this sheet is for, kept in the phone's storage from the press (`usePendingCall`) — read once, as the sheet opens. */
+function keptCall(): { orderId?: string; startedAt?: number } {
+  try {
+    const raw = window.localStorage.getItem(PENDING_KEY);
+    const p = raw ? (JSON.parse(raw) as { orderId?: unknown; startedAt?: unknown }) : null;
+    return {
+      orderId: typeof p?.orderId === 'string' ? p.orderId : undefined,
+      startedAt: typeof p?.startedAt === 'number' ? p.startedAt : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
+const wholeSeconds = (n: number) => Math.min(MAX_DURATION_S, Math.max(0, Math.round(n)));
+
 export function CallOutcomeSheet({
   customerName,
   awayMs,
   reading,
   closesOnNext,
   confirmLock,
+  proofOn = false,
+  orderId: orderIdProp,
+  startedAt: startedAtProp,
   waiting,
   refused,
   offline,
@@ -138,6 +167,17 @@ export function CallOutcomeSheet({
   /** Why «تأكيد الطلب» is shut, in the card's words — or null when it is open. */
   confirmLock: string | null;
   /**
+   * «إثبات المكالمات وجدول المحاولات» is on (the server said so). Off or absent: the sheet is exactly what it was. On: «ما رد» · «مشغول» · «مسكّر» stay shut
+   * until thirty seconds after the press (the phone's own clock — the server still decides), and «ردّ» and «اتصل لاحقاً» leave a line in the contact log.
+   */
+  proofOn?: boolean;
+  /**
+   * The order she rang and the moment of the press (`PendingCall.startedAt`). Both are optional: the sheet reads the phone's kept pending call when the screen
+   * does not say. Only used with `proofOn`.
+   */
+  orderId?: string;
+  startedAt?: number | null;
+  /**
    * The answer on its way: still in its five seconds (`countdown` — the only state «تراجع» is offered in), on its way
    * (`sending`), or waiting for the line (`line`); null when nothing is waiting.
    */
@@ -168,9 +208,57 @@ export function CallOutcomeSheet({
   const [chips] = useState(() => callbackChips(new Date()));
   const order = reading ? readingOrder(reading.answered) : outcomeOrder(awayMs);
 
+  // «إثبات المكالمات»: which call this is — read once, as the sheet opens (the sheet is keyed by the call).
+  const [call] = useState(() => {
+    if (!proofOn) return { orderId: undefined, startedAt: undefined };
+    const kept = orderIdProp === undefined || startedAtProp == null ? keptCall() : {};
+    return { orderId: orderIdProp ?? kept.orderId, startedAt: startedAtProp ?? kept.startedAt };
+  });
+  // The clock is STATE (a render never reads it); the ticker below moves it while a countdown is on screen.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  // «ردّ» / «اتصل لاحقاً» wrote an outcome line for this call: it used the press up (the server says so too), so «ما رد» needs a new «اتصال».
+  const [consumed, setConsumed] = useState(false);
+  const usableStart = typeof call.startedAt === 'number' && Number.isFinite(call.startedAt) && call.startedAt <= nowMs + FUTURE_TOLERANCE_MS;
+  const unlockAt = usableStart ? (call.startedAt as number) + MIN_CALL_MS.NO_ANSWER + CLIENT_MARGIN_MS : null;
+  const proofLock: string | null = !proofOn
+    ? null
+    : consumed || unlockAt === null
+      ? CALL_PROOF_WORDS.noOpened
+      : nowMs < unlockAt
+        ? CALL_PROOF_WORDS.wait(secondsLeft(unlockAt, nowMs))
+        : null;
+  // A locked outcome is on screen only on the question itself, and only a countdown has anything to tick.
+  const ticking = proofOn && step === 'ask' && unlockAt !== null && nowMs < unlockAt;
+  useEffect(() => {
+    if (!ticking) return;
+    setNowMs(Date.now());
+    const id = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [ticking]);
+
+  // One «ردّ» line and one «اتصل لاحقاً» line per call: going back and tapping again must not write a second one.
+  const recorded = useRef({ answered: false, callback: false });
+  const record = (result: 'ANSWERED' | 'CALLBACK_REQUESTED') => {
+    if (!proofOn || !call.orderId) return;
+    const key = result === 'ANSWERED' ? 'answered' : 'callback';
+    if (recorded.current[key]) return;
+    recorded.current[key] = true;
+    setConsumed(true);
+    // The helper's talk time when its reading says answered, else the time she was away; nothing when neither is known.
+    const seconds = reading?.answered ? reading.talkSeconds : awayMs !== null ? awayMs / 1000 : null;
+    void sendContactLine({
+      orderId: call.orderId,
+      method: 'PHONE',
+      result,
+      durationSeconds: seconds === null ? undefined : wholeSeconds(seconds),
+    });
+  };
+
   const tap = (o: CallOutcome) => {
     if (o === 'NOT_CALLED') return onNotCalled();
+    if (proofLock && PROOF_LOCKED.includes(o)) return;
     if (o === 'ANSWERED') {
+      record('ANSWERED');
       onAnswered();
       return setStep('answered');
     }
@@ -179,7 +267,7 @@ export function CallOutcomeSheet({
   };
 
   const button = (o: CallOutcome, first: boolean) => (
-    <SheetButton key={o} onClick={() => tap(o)} tone={first ? 'primary' : undefined}>
+    <SheetButton key={o} onClick={() => tap(o)} tone={first ? 'primary' : undefined} disabled={proofLock && PROOF_LOCKED.includes(o) ? true : undefined}>
       {ICON[o]}
       {WORDS[o]}
     </SheetButton>
@@ -242,6 +330,7 @@ export function CallOutcomeSheet({
           <div className="space-y-2">
             {button(order[0], true)}
             <div className="grid grid-cols-2 gap-2">{order.slice(1).map((o) => button(o, false))}</div>
+            {proofLock && <p className="text-xs text-[var(--sys-warning)]">{proofLock}</p>}
             {closesOnNext && (
               <p className="text-xs text-[var(--sys-warning)]">«ما رد» أو «مشغول» أو «مسكّر» هلق بيسكّر الطلب تلقائياً.</p>
             )}
@@ -280,7 +369,10 @@ export function CallOutcomeSheet({
                 <SheetButton
                   key={c.label}
                   onClick={() => {
-                    if (onCallback(c)) setStep({ after: 'CALLBACK' });
+                    if (onCallback(c)) {
+                      record('CALLBACK_REQUESTED');
+                      setStep({ after: 'CALLBACK' });
+                    }
                   }}
                 >
                   <span dir="auto">{c.label}</span>
