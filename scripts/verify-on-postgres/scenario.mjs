@@ -92,7 +92,8 @@ export function buildScenario(now) {
       key: 'SY-RETRY-E', country: 'SY', company: 'on', pool: true, status: 'NO_ANSWER', createdAt: ago(4 * 24 * 60), nextFollowUpAt: at(-60),
       lines: [line(1, 'NO_ANSWER', 400, at(-370)), line(2, 'NO_ANSWER', 180, at(-60))], expect: 'إعادة جاهزة (محاولتان) — الموعد -60د، الأقدم إنشاءً',
     },
-    { key: 'SY-RETRY-D', country: 'SY', company: 'on', pool: true, status: 'NO_ANSWER', createdAt: ago(24 * 60), nextFollowUpAt: at(10), lines: [line(1, 'NO_ANSWER', 20, at(10))], expect: 'إعادة لسا ما حان موعدها (ما بتنسحب)' },
+    // NOT YET DUE for about two hours: the second counted press was two minutes ago and the plan's wait after it is 2 h (#1 at -300, due -270; #2 at -2, due +118).
+    { key: 'SY-RETRY-D', country: 'SY', company: 'on', pool: true, status: 'NO_ANSWER', createdAt: ago(24 * 60), nextFollowUpAt: at(118), lines: [line(1, 'NO_ANSWER', 300, at(-270)), line(2, 'NO_ANSWER', 2, at(118))], expect: 'إعادة لسا ما حان موعدها بعد ساعتين (ما بتنسحب)' },
     // A «لا يرد» line from BEFORE the switch (three days ago): it carries no due and counts for nothing — the order falls to «the rest, oldest created».
     { key: 'SY-LEGACY', country: 'SY', company: 'on', pool: true, status: 'NO_ANSWER', createdAt: ago(6 * 24 * 60), nextFollowUpAt: null, lines: [line(1, 'NO_ANSWER', 5 * 24 * 60, null)], expect: 'سطر قديم قبل المفتاح — من «الباقي بالأقدم»' },
     // ── SY — in agent 1's hand ──
@@ -115,7 +116,7 @@ export function buildScenario(now) {
     // ── JO (the ON company's Jordan-like store) ──
     { key: 'JO-NEW-1', country: 'JO', company: 'on', pool: true, status: 'NEW', createdAt: ago(180), lines: [], expect: 'جديد' },
     { key: 'JO-RETRY-READY', country: 'JO', company: 'on', pool: true, status: 'NO_ANSWER', createdAt: ago(24 * 60), nextFollowUpAt: at(-60), lines: [line(1, 'NO_ANSWER', 90, at(-60))], expect: 'إعادة جاهزة' },
-    { key: 'JO-RETRY-WAIT', country: 'JO', company: 'on', pool: true, status: 'NO_ANSWER', createdAt: ago(24 * 60), nextFollowUpAt: at(45), lines: [line(1, 'NO_ANSWER', 15, at(45))], expect: 'إعادة لسا ما حان موعدها' },
+    { key: 'JO-RETRY-WAIT', country: 'JO', company: 'on', pool: true, status: 'NO_ANSWER', createdAt: ago(24 * 60), nextFollowUpAt: at(118), lines: [line(1, 'NO_ANSWER', 300, at(-270)), line(2, 'NO_ANSWER', 2, at(118))], expect: 'إعادة لسا ما حان موعدها بعد ساعتين' },
     { key: 'JO-HELD-NEW', country: 'JO', company: 'on', heldBy: 'agent2On', status: 'IN_PROGRESS', createdAt: ago(100), claimedAt: ago(12), lines: [], expect: 'ممسوك — اتصلي هلّق' },
   ];
 
