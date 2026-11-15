@@ -74,15 +74,21 @@ export interface ReturnsMode {
   readyCut: Date;
   /** A claim or a logged attempt at or before this is `idleBusinessMinutes` working minutes old: nothing happened since. Never before 1970. */
   idleCut: Date;
+  /**
+   * «جدول المحاولات» ON (step B, `no-answer-cadence.ts`): readiness is the plan's due instant written on the line, not the `ROUND_GAP_BUSINESS_MINUTES` gap. `since` is the switch's
+   * `enabledAt` — the FLOOR: a line at or before it holds nothing. The key is OMITTED, never `undefined`, when the cadence is off, so every older shape stays byte for byte.
+   */
+  cadence?: { since: Date };
 }
 
 const atEpochAtLeast = (edge: Date): Date => new Date(Math.max(edge.getTime(), 0));
 
-export function returnsMode(now: Date, clock: WorkClock, idleBusinessMinutes: number): ReturnsMode {
+export function returnsMode(now: Date, clock: WorkClock, idleBusinessMinutes: number, cadenceSince: Date | null = null): ReturnsMode {
   return {
     now,
     readyCut: atEpochAtLeast(clock.back(now, ROUND_GAP_BUSINESS_MINUTES)),
     idleCut: atEpochAtLeast(clock.back(now, idleBusinessMinutes)),
+    ...(cadenceSince ? { cadence: { since: cadenceSince } } : {}),
   };
 }
 
@@ -101,9 +107,27 @@ export function datesArrivedAnd(mode: Pick<ReturnsMode, 'now'>) {
   ];
 }
 
+/**
+ * THE CADENCE'S READINESS (step B): no «لا يرد» line, logged AFTER the switch went on, still carries a due instant in the future. The due is written by the door on the line itself
+ * (`nextFollowUpAt`, a COUNTED press only — an early press and the fifth write none), so the pool reads one stored instant and recomputes nothing. Only `none` / `in` / `gt`:
+ * NULL-safe (a NULL due is unknown, never true, and a row that is not true never blocks a `none`), and a line due exactly NOW is ready — the same comparison the pure plan counts with.
+ */
+export function cadenceReadyWhere(mode: { now: Date; cadence: { since: Date } }) {
+  return {
+    contactAttempts: {
+      none: { result: { in: [...NO_ANSWER_RESULTS] }, createdAt: { gt: mode.cadence.since }, nextFollowUpAt: { gt: mode.now } },
+    },
+  };
+}
+
+/** The «لا يرد» clause of «ready»: the plan's due when the cadence is on, the three working hours otherwise. */
+export function noAnswerReadyWhere(mode: ReturnsMode) {
+  return mode.cadence ? cadenceReadyWhere({ now: mode.now, cadence: mode.cadence }) : noRecentNoAnswerWhere(mode);
+}
+
 /** The two lines of «ready», as `AND` members — the pull's picks and the counters append exactly these. */
 export function returnsReadyAnd(mode: ReturnsMode) {
-  return [...datesArrivedAnd(mode), noRecentNoAnswerWhere(mode)];
+  return [...datesArrivedAnd(mode), noAnswerReadyWhere(mode)];
 }
 
 /**

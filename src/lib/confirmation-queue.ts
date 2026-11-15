@@ -14,11 +14,12 @@ import {
 } from './no-answer-rounds';
 import { roundsSwitch } from './no-answer-rounds-switch';
 import { returnsSwitch } from './no-answer-returns-switch';
+import { cadenceSince } from './no-answer-cadence-switch';
 import {
   IDLE_RETURNED_REASON,
   NO_ANSWER_RETURNED_REASON,
   handLimitMessage,
-  noRecentNoAnswerWhere,
+  noAnswerReadyWhere,
   returnsMode,
   returnsReadyAnd,
   returnsSwitchOn,
@@ -909,8 +910,12 @@ export async function releaseNoAnswerRounds(
   opts: { rounds?: RoundsSwitch; roundsLimit?: number; returns?: ReturnsMode | null } = {}
 ): Promise<number> {
   const rounds = opts.rounds ?? (await roundsSwitch(tx, scope.companyId));
-  if (!roundsOn(rounds)) return 0;
   const limit = opts.roundsLimit ?? ROUNDS_RELEASE_LIMIT;
+  if (!roundsOn(rounds)) {
+    // The cadence (step B) brings the returns mode with it, so ITS idle release runs without «نظام الجولات» — but only when the CALLER handed the cadence mode in (the pull does,
+    // through `releaseStaleClaims`; the job's first transaction passes no mode and still answers 0 without one query). R1 (`releaseByRounds`) stays the rounds' own.
+    return opts.returns?.cadence ? releaseIdleReturns(tx, scope, opts.returns, limit) : 0;
+  }
   const released = await releaseByRounds(tx, scope, cal, now, rounds, limit);
   const returns = opts.returns !== undefined ? opts.returns : await readReturnsMode(tx, scope.companyId, { now, calendar: () => cal, rounds });
   // ONE bound for the pass (RV1660): the idle release takes only what the rounds release left of `limit`, so a pass never lets go of
@@ -920,13 +925,19 @@ export async function releaseNoAnswerRounds(
 
 // ───────────────────────── «الطلب يرجع للطابور فوراً» ─────────────────────────
 
-/**
- * IS THE MODE ON? Both switches plainly on — the mode's own and «نظام الجولات»', whose counting the close uses. A read that fails is
- * off (each switch says so for itself), and the second switch is not even asked while the rounds are off.
- */
-export async function returnsModeOn(client: Tx, companyId: string, rounds?: RoundsSwitch): Promise<boolean> {
+/** The two legacy switches: both plainly on — «نظام الجولات» (whose counting the close uses) and the mode's own. The second is not asked while the first is off. */
+async function legacyReturnsModeOn(client: Tx, companyId: string, rounds?: RoundsSwitch): Promise<boolean> {
   if (!roundsOn(rounds ?? (await roundsSwitch(client, companyId)))) return false;
   return returnsSwitchOn(await returnsSwitch(client, companyId));
+}
+
+/**
+ * IS THE MODE ON? The cadence switch (step B, `no-answer-cadence-switch.ts`) brings it with it — the plan's re-entry, the hand limit and the idle release are this mode's
+ * behaviours — OR both legacy switches are plainly on: the mode's own and «نظام الجولات»', whose counting the close uses. A read that fails is off (each switch says so for
+ * itself), and the legacy switches are not even asked while the cadence is on or the rounds are off.
+ */
+export async function returnsModeOn(client: Tx, companyId: string, rounds?: RoundsSwitch): Promise<boolean> {
+  return !!(await cadenceSince(client, companyId)) || (await legacyReturnsModeOn(client, companyId, rounds));
 }
 
 /** The mode with its cut-offs placed once from the store's calendar — or null when it is off. `calendar` is called only when it is on. */
@@ -935,8 +946,10 @@ export async function readReturnsMode(
   companyId: string,
   args: { now: Date; calendar: () => BusinessCalendar; rounds?: RoundsSwitch }
 ): Promise<ReturnsMode | null> {
-  if (!(await returnsModeOn(client, companyId, args.rounds))) return null;
-  return returnsMode(args.now, workClock(args.calendar()), RETURNS_MODE.idleBusinessMinutes);
+  // The cadence is read ONCE per mode: the flag and the floor (`enabledAt`) cannot drift apart. Everything off → null, and the calendar callback is not called.
+  const since = await cadenceSince(client, companyId);
+  if (!since && !(await legacyReturnsModeOn(client, companyId, args.rounds))) return null;
+  return returnsMode(args.now, workClock(args.calendar()), RETURNS_MODE.idleBusinessMinutes, since);
 }
 
 /**
@@ -1430,7 +1443,7 @@ export function duePostponedWhere(scope: QueueScope, now: Date, returns?: Return
     OR: [{ postponedUntil: { lte: leadEnd } }, { postponedUntil: null, nextFollowUpAt: { lte: leadEnd } }],
     // In the mode a date that has not arrived holds the order whichever of the two columns carries it (the later of the two, as the
     // rounds read it): a stale postponement date beside a fresh follow-up date must not make it due.
-    ...(returns ? { AND: [{ OR: [{ nextFollowUpAt: null }, { nextFollowUpAt: { lte: leadEnd } }] }, noRecentNoAnswerWhere(returns)] } : {}),
+    ...(returns ? { AND: [{ OR: [{ nextFollowUpAt: null }, { nextFollowUpAt: { lte: leadEnd } }] }, noAnswerReadyWhere(returns)] } : {}),
   };
 }
 

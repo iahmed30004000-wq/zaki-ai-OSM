@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { NO_ANSWER_RESULTS } from './confirmation-workflow';
 import { zonedTimeToInstant } from './business-calendar';
 import { ROUND_GAP_BUSINESS_MINUTES, workClock } from './no-answer-rounds';
-import { returnsMode } from './no-answer-returns';
+import { cadenceReadyWhere, datesArrivedAnd, noRecentNoAnswerWhere, returnsMode, returnsReadyAnd } from './no-answer-returns';
 import { RETURNS_MODE, duePostponedWhere, postponedNotDueCount, readyToPullWhere } from './confirmation-queue';
 
 /**
@@ -203,5 +203,148 @@ describe('with the mode off the predicates are today’s, byte for byte', () => 
     const where = duePostponedWhere(scope, now, mode) as Row;
     expect(where.OR).toEqual([{ postponedUntil: { lte: now } }, { postponedUntil: null, nextFollowUpAt: { lte: now } }]);
     expect(where.AND).toHaveLength(2);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// STEP B — THE CADENCE'S READINESS (a due instant written on the line, not three working hours)
+//
+// With the cadence on, «ready» is: every date arrived, AND no «لا يرد» line logged after `since` (the switch's enabledAt) still carries a due in the future. The oracle below is
+// written the other way round: it never builds a where — it asks each line directly whether it holds the order. Nothing here alters an assertion above.
+// ═══════════════════════════════════════════════════════════════════════
+
+describe('the cadence: pullable, waiting on a date, waiting on the plan — exactly one, and the filters agree with the oracle', () => {
+  const SINCE = t(2, 8);
+  const NO_ANSWER_LIKE = [...NO_ANSWER_RESULTS] as string[];
+
+  function cadenceOracle(row: Row, now: Date) {
+    const dateAhead = [row.postponedUntil, row.nextFollowUpAt].some((d: Date | null) => d !== null && d.getTime() > now.getTime());
+    const planAhead = row.contactAttempts.some(
+      (a: Row) => NO_ANSWER_LIKE.includes(a.result) && a.createdAt.getTime() > SINCE.getTime() && a.nextFollowUpAt !== null && a.nextFollowUpAt.getTime() > now.getTime()
+    );
+    const hasDate = row.postponedUntil !== null || row.nextFollowUpAt !== null;
+    const postponed = row.confirmationStatus === 'POSTPONED';
+    return {
+      pullable: !dateAhead && !planAhead && (postponed ? hasDate : true),
+      dateWait: dateAhead || (postponed && !hasDate),
+      planWait: !dateAhead && planAhead && (postponed ? hasDate : true),
+    };
+  }
+
+  const line = (createdAt: Date, result: string, nextFollowUpAt: Date | null): Row => ({ createdAt, result, employeeId: 'sara', nextFollowUpAt });
+
+  it('every status × result × due offset × line time × date pair × moment: one verdict each, the same as the oracle’s', async () => {
+    const failures: string[] = [];
+    let compared = 0;
+    for (const now of MOMENTS) {
+      const mode = returnsMode(now, clock, RETURNS_MODE.idleBusinessMinutes, SINCE);
+      const ready = readyToPullWhere(scope, 'sara', now, mode);
+      const due = duePostponedWhere(scope, now, mode);
+      const waitsOnADate = await dateWaitWhere(now, mode);
+      const dues = [null, new Date(now.getTime() - 3_600_000), new Date(now.getTime() - 1), now, new Date(now.getTime() + 1), new Date(now.getTime() + 30 * 60_000)];
+      const times = [new Date(SINCE.getTime() - 3_600_000), SINCE, new Date(SINCE.getTime() + 1), new Date(now.getTime() - 60_000)];
+      const dates = [null, new Date(now.getTime() - 3_600_000), new Date(now.getTime() + 3_600_000)];
+      for (const status of STATUSES) {
+        for (const result of RESULTS) {
+          for (const dueAt of dues) {
+            for (const createdAt of times) {
+              for (const postponedUntil of dates) {
+                for (const nextFollowUpAt of dates) {
+                  const row = poolOrder(status, [line(createdAt, result, dueAt)], postponedUntil, nextFollowUpAt);
+                  const verdict = cadenceOracle(row, now);
+                  const handedOut = status === 'POSTPONED' ? matches(row, due) : matches(row, ready);
+                  const dateWait = matches(row, waitsOnADate);
+                  const overlap = status === 'POSTPONED' ? matches(row, ready) : matches(row, due);
+                  const parts = [verdict.pullable, verdict.dateWait, verdict.planWait].filter(Boolean).length;
+                  if (handedOut !== verdict.pullable || dateWait !== verdict.dateWait || overlap || parts !== 1) {
+                    failures.push(JSON.stringify({ now, status, result, dueAt, createdAt, postponedUntil, nextFollowUpAt, handedOut, dateWait, overlap, verdict }));
+                  }
+                  compared++;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    expect(failures.slice(0, 3)).toEqual([]);
+    expect(compared).toBeGreaterThan(30_000);
+  }, 120_000);
+
+  it('a line due exactly NOW is ready; due one millisecond later holds; a NULL due blocks nothing', () => {
+    const now = t(3, 12);
+    const mode = returnsMode(now, clock, RETURNS_MODE.idleBusinessMinutes, SINCE);
+    const ready = readyToPullWhere(scope, 'sara', now, mode);
+    const after = new Date(SINCE.getTime() + 60_000);
+    expect(matches(poolOrder('IN_PROGRESS', [line(after, 'NO_ANSWER', now)], null, null), ready)).toBe(true);
+    expect(matches(poolOrder('IN_PROGRESS', [line(after, 'NO_ANSWER', new Date(now.getTime() + 1))], null, null), ready)).toBe(false);
+    expect(matches(poolOrder('IN_PROGRESS', [line(after, 'NO_ANSWER', null)], null, null), ready)).toBe(true);
+  });
+
+  it('a line of another result carrying a future date blocks nothing (a callback line holds no order)', () => {
+    const now = t(3, 12);
+    const mode = returnsMode(now, clock, RETURNS_MODE.idleBusinessMinutes, SINCE);
+    const ready = readyToPullWhere(scope, 'sara', now, mode);
+    const after = new Date(SINCE.getTime() + 60_000);
+    const future = new Date(now.getTime() + 3_600_000);
+    for (const result of ['CALLBACK_REQUESTED', 'ANSWERED', 'OPENED', 'MESSAGE_SENT', 'WRONG_NUMBER']) {
+      expect(matches(poolOrder('IN_PROGRESS', [line(after, result, future)], null, null), ready)).toBe(true);
+    }
+  });
+
+  it('the floor: a no-answer line at or before the switch went on holds nothing, one millisecond after it does', () => {
+    const now = t(3, 12);
+    const mode = returnsMode(now, clock, RETURNS_MODE.idleBusinessMinutes, SINCE);
+    const ready = readyToPullWhere(scope, 'sara', now, mode);
+    const future = new Date(now.getTime() + 3_600_000);
+    expect(matches(poolOrder('IN_PROGRESS', [line(SINCE, 'NO_ANSWER', future)], null, null), ready)).toBe(true);
+    expect(matches(poolOrder('IN_PROGRESS', [line(new Date(SINCE.getTime() - 1), 'NO_ANSWER', future)], null, null), ready)).toBe(true);
+    expect(matches(poolOrder('IN_PROGRESS', [line(new Date(SINCE.getTime() + 1), 'NO_ANSWER', future)], null, null), ready)).toBe(false);
+  });
+
+  it('an overdue order (due long past) is pullable — nothing expires', () => {
+    const now = t(9, 12);
+    const mode = returnsMode(now, clock, RETURNS_MODE.idleBusinessMinutes, SINCE);
+    const ready = readyToPullWhere(scope, 'sara', now, mode);
+    expect(matches(poolOrder('IN_PROGRESS', [line(t(2, 10), 'NO_ANSWER', t(2, 10, 30))], null, null), ready)).toBe(true);
+  });
+
+  it('the order’s own dates still hold it, by AND — the later of the two wins', () => {
+    const now = t(3, 12);
+    const mode = returnsMode(now, clock, RETURNS_MODE.idleBusinessMinutes, SINCE);
+    const ready = readyToPullWhere(scope, 'sara', now, mode);
+    const after = new Date(SINCE.getTime() + 60_000);
+    // the plan is due (in the past) but the order carries a date ahead → held; no date, plan ahead → held; both arrived → ready
+    expect(matches(poolOrder('IN_PROGRESS', [line(after, 'NO_ANSWER', t(3, 10))], null, new Date(now.getTime() + 60_000)), ready)).toBe(false);
+    expect(matches(poolOrder('IN_PROGRESS', [line(after, 'NO_ANSWER', new Date(now.getTime() + 60_000))], null, null), ready)).toBe(false);
+    expect(matches(poolOrder('IN_PROGRESS', [line(after, 'NO_ANSWER', t(3, 10))], null, t(3, 11)), ready)).toBe(true);
+  });
+
+  it('the shapes: returnsReadyAnd(cadence mode) is the two dates and the exact cadence clause; a mode without the key is today’s three clauses', () => {
+    const now = t(3, 12);
+    const withCadence = returnsMode(now, clock, RETURNS_MODE.idleBusinessMinutes, SINCE);
+    expect(returnsReadyAnd(withCadence)).toEqual([...datesArrivedAnd(withCadence), cadenceReadyWhere({ now, cadence: { since: SINCE } })]);
+    expect(cadenceReadyWhere({ now, cadence: { since: SINCE } })).toEqual({
+      contactAttempts: { none: { result: { in: ['NO_ANSWER', 'BUSY', 'UNREACHABLE'] }, createdAt: { gt: SINCE }, nextFollowUpAt: { gt: now } } },
+    });
+    const legacy = returnsMode(now, clock, RETURNS_MODE.idleBusinessMinutes);
+    expect(returnsReadyAnd(legacy)).toEqual([...datesArrivedAnd(legacy), noRecentNoAnswerWhere(legacy)]);
+  });
+
+  it('returnsMode: no key without a floor (toStrictEqual to today’s three fields); with one it adds exactly cadence: { since }', () => {
+    const now = t(3, 12);
+    const legacy = returnsMode(now, clock, RETURNS_MODE.idleBusinessMinutes);
+    expect(Object.keys(legacy).sort()).toEqual(['idleCut', 'now', 'readyCut']);
+    expect(returnsMode(now, clock, RETURNS_MODE.idleBusinessMinutes, null)).toStrictEqual(legacy);
+    expect(returnsMode(now, clock, RETURNS_MODE.idleBusinessMinutes, SINCE)).toStrictEqual({ ...legacy, cadence: { since: SINCE } });
+  });
+
+  it('the due clause of a legacy mode is still the three working hours, and the cadence mode swaps exactly that member', () => {
+    const now = t(3, 12);
+    const legacy = returnsMode(now, clock, RETURNS_MODE.idleBusinessMinutes);
+    const where = duePostponedWhere(scope, now, legacy) as Row;
+    expect(where.AND).toEqual([{ OR: [{ nextFollowUpAt: null }, { nextFollowUpAt: { lte: now } }] }, noRecentNoAnswerWhere(legacy)]);
+    const planned = duePostponedWhere(scope, now, returnsMode(now, clock, RETURNS_MODE.idleBusinessMinutes, SINCE)) as Row;
+    expect(planned.AND).toEqual([{ OR: [{ nextFollowUpAt: null }, { nextFollowUpAt: { lte: now } }] }, cadenceReadyWhere({ now, cadence: { since: SINCE } })]);
   });
 });
