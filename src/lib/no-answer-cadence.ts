@@ -54,9 +54,9 @@ export const CADENCE_FLOORS_MS = { beforeFourth: 28_800_000, beforeFifth: 10_800
 export const CADENCE_WORKDAY_START = '10:00';
 /** #5's anchor: 18:00 local, on a working day. */
 export const CADENCE_EVENING_FROM = '18:00';
-/** WORDING ONLY (the window text of `cadenceWhen`, until it prints the real due): the dues are `CADENCE_WORKDAY_START` / `CADENCE_EVENING_FROM`. */
+/** SUPERSEDED: the words print the real due now, no window. Read only by the settings card's own test, which moves to the floors in the next change — then both constants go. */
 export const CADENCE_MORNING = { from: 9, to: 12 } as const;
-/** WORDING ONLY, as above. */
+/** SUPERSEDED, as above. */
 export const CADENCE_EVENING = { from: 18, to: 22 } as const;
 
 /** What the plan needs of the world: the floor (the switch's `enabledAt`), the Country's timezone and the Country's rest days. */
@@ -195,17 +195,18 @@ export function cadencePress(
   return { counted, dueAt: counted ? next.dueAt : null, next, closes: cadenceCloses(next) };
 }
 
+const WEEKDAY_AR = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'] as const;
+
 /**
- * WHEN THE NEXT ATTEMPT COUNTS, in the agent's words. `nextSlot` is its number (2…5); the day word is «بكرة» when the due is on the next local day. Western digits. The windows' ends
- * (12, 22) come from the constants and are wording only.
+ * WHEN THE NEXT ATTEMPT COUNTS, in the agent's words — the REAL due, one format for all four dues (there are no windows any more: after the 8 h and 3 h floors a window could lie, a #5 due at
+ * 20:55 read «بين 6 و10»). «الساعة 10:00» when it is today, «بكرة الساعة 18:00» tomorrow, and the weekday's name — «السبت الساعة 10:00» — when rest days put it two days or more away
+ * («بعد بكرة» is ambiguous, so it is not used). Western digits.
  */
-export function cadenceWhen(nextSlot: number, dueAt: Date, now: Date, timeZone: string): string {
+export function cadenceWhen(dueAt: Date, now: Date, timeZone: string): string {
   const p = zonedParts(dueAt, timeZone);
   const q = zonedParts(now, timeZone);
-  const gap = Math.round((Date.UTC(p.year, p.month - 1, p.day) - Date.UTC(q.year, q.month - 1, q.day)) / 86_400_000);
-  const day = gap >= 1 ? 'بكرة ' : '';
-  if (nextSlot === 4) return `${day}بين ${CADENCE_MORNING.from} و${CADENCE_MORNING.to}`;
-  if (nextSlot === 5) return `${day}بين ${CADENCE_EVENING.from - 12} و${CADENCE_EVENING.to - 12} مساءً`;
+  const gap = Math.round((Date.UTC(p.year, p.month - 1, p.day) - Date.UTC(q.year, q.month - 1, q.day)) / DAY_MS);
+  const day = gap <= 0 ? '' : gap === 1 ? 'بكرة ' : `${WEEKDAY_AR[p.weekday]} `;
   return `${day}الساعة ${pad2(p.hour)}:${pad2(p.minute)}`;
 }
 
@@ -218,14 +219,14 @@ export function cadencePressWords(a: { counted: boolean; closed: boolean; releas
   if (a.closed) return `انحسبت المحاولة ${a.attempt} من ${CADENCE_LIMIT} — أُغلق الطلب تلقائياً وراح على قائمة «ملغاة سابقاً».`;
   if (a.counted) {
     if (a.dueAt) {
-      const when = cadenceWhen(next, a.dueAt, a.now, a.timeZone);
+      const when = cadenceWhen(a.dueAt, a.now, a.timeZone);
       return a.released
         ? `انحسبت المحاولة ${a.attempt} من ${CADENCE_LIMIT} — رجع الطلب للطابور، والمحاولة الجاية ${when}.`
         : `انحسبت المحاولة ${a.attempt} من ${CADENCE_LIMIT} — المحاولة الجاية ${when}.`;
     }
     return `انحسبت المحاولة ${CADENCE_LIMIT} من ${CADENCE_LIMIT} — الطلب لسا مفتوح، والضغطة الجاية بتجرّب تسكّره من جديد.`;
   }
-  if (a.dueAt) return `سجّلنا الضغطة بس ما انحسبت محاولة — لسا بدري. المحاولة ${next} من ${CADENCE_LIMIT} بتنحسب ${cadenceWhen(next, a.dueAt, a.now, a.timeZone)}.`;
+  if (a.dueAt) return `سجّلنا الضغطة بس ما انحسبت محاولة — لسا بدري. المحاولة ${next} من ${CADENCE_LIMIT} بتنحسب ${cadenceWhen(a.dueAt, a.now, a.timeZone)}.`;
   return a.attempt >= CADENCE_LIMIT ? 'اكتملت المحاولات الخمس — الضغطة انسجّلت بس ما انحسبت.' : 'انسجّلت الضغطة بس ما انحسبت محاولة.';
 }
 
@@ -282,7 +283,7 @@ export function cadenceCardWords(desk: Pick<ReturnType<typeof cadenceDesk>, 'cou
   if (desk.counted < 1 || desk.counted >= CADENCE_LIMIT) return null;
   const next = desk.counted + 1;
   if (desk.due) return `لا يرد راجع — محاولة ${next} من ${CADENCE_LIMIT}`;
-  if (desk.waiting && desk.dueAt) return `محاولة ${next} من ${CADENCE_LIMIT} — جاهز ${cadenceWhen(next, desk.dueAt, now, timeZone)}`;
+  if (desk.waiting && desk.dueAt) return `محاولة ${next} من ${CADENCE_LIMIT} — جاهز ${cadenceWhen(desk.dueAt, now, timeZone)}`;
   return null;
 }
 

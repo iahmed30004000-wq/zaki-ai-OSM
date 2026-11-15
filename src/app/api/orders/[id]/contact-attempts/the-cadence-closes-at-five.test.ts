@@ -310,6 +310,7 @@ describe('ON — the Country’s rest days move #4 and #5 (Jordan’s live week:
     await pressAt(ms(THU, 30 * MIN));
     const third = await pressAt(ms(THU, 150 * MIN));
     expect(third.body.cadence).toMatchObject({ attempt: 3, of: 5, counted: true, dueAt: SUN_10.toISOString() });
+    expect(third.body.cadence.words).toBe('انحسبت المحاولة 3 من 5 — رجع الطلب للطابور، والمحاولة الجاية الأحد الساعة 10:00.');
     const stored = db.orderContactAttempt.create.mock.calls[2][0].data;
     expect(stored.nextFollowUpAt).toEqual(SUN_10);
     // the door and the desk share ONE builder: what was written equals the replay of the written lines under `cadenceCalOf`
@@ -323,6 +324,7 @@ describe('ON — the Country’s rest days move #4 and #5 (Jordan’s live week:
     calls.length = 0;
     const friday = await pressAt(new Date('2026-11-20T07:00:00.000Z')); // Friday 10:00
     expect(friday.body.cadence).toMatchObject({ attempt: 3, counted: false, dueAt: SUN_10.toISOString() });
+    expect(friday.body.cadence.words).toBe('سجّلنا الضغطة بس ما انحسبت محاولة — لسا بدري. المحاولة 4 من 5 بتنحسب الأحد الساعة 10:00.');
     expect(db.orderContactAttempt.create.mock.calls[3][0].data.nextFollowUpAt).toBeNull();
     expect(calls).not.toContain('release');
     const sunday = await pressAt(SUN_10);

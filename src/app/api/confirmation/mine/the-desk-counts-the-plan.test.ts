@@ -237,9 +237,9 @@ describe('ON — where each card sits and what it says', () => {
     expect(r.dueWords).toBe('جديد — سحبتيه هلّق');
   });
 
-  it('the evening window reads «بين 6 و10 مساءً» on the same day; five counted and still open says nothing and stays in «بانتظار»', async () => {
+  it('#5 reads its real due «جاهز الساعة 18:00» on the same day; five counted and still open says nothing and stays in «بانتظار»', async () => {
     const d = await desk();
-    expect(d.noAnswer.find((x) => x.id === 'f4w')!.dueWords).toBe('محاولة 5 من 5 — جاهز بين 6 و10 مساءً');
+    expect(d.noAnswer.find((x) => x.id === 'f4w')!.dueWords).toBe('محاولة 5 من 5 — جاهز الساعة 18:00');
     const c5 = d.noAnswer.find((x) => x.id === 'c5')!;
     expect(c5).toBeDefined();
     expect(c5.dueNow).toBe(false);
@@ -276,6 +276,7 @@ describe('ON — where each card sits and what it says', () => {
     expect(r.noAnswerCount).toBe(3);
     expect(r.dueNow).toBe(false);
     expect(r.dueAt).toBe('2026-11-22T07:00:00.000Z');
+    expect(r.dueWords).toBe('محاولة 4 من 5 — جاهز الأحد الساعة 10:00'); // the weekday, not «بكرة»: Friday and Saturday are skipped
     expect(d.work.some((x) => x.id === 'th')).toBe(false);
     // the door asks `cadencePress` with the lines before the press and the press itself, on the calendar `cadenceCalOf` builds — the same function the desk used
     const lines = attempts.filter((a) => a.orderId === 'th');

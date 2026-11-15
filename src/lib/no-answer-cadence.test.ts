@@ -41,7 +41,7 @@ import type { DueVerdict } from './work-first';
  *  5. The fifth counted attempt closes the order across at least two local days — and under the plan five counted attempts always span two, even on a 25-hour DST day (the first-day
  *     guard: #4 is never due on #1's local day), with or without rest days.
  *  6. Replaying the stored lines (`cadenceState`) equals deciding them one by one at the door (`cadencePress`), even when the clock and the attempt numbers disagree.
- *  7. The words are server-written, in Western digits, never say «جولة», and take their numbers from the constants.
+ *  7. The words are server-written, in Western digits, never say «جولة», and print the REAL due — «الساعة 10:00», «بكرة الساعة 18:00», «السبت الساعة 10:00» across a rest weekend; no windows.
  *
  * `no-answer-cadence-oracle.test.ts` holds the same rule a SECOND time, written the other way round.
  * ═══════════════════════════════════════════════════════════════════════
@@ -106,7 +106,7 @@ describe('the constants', () => {
     expect(CADENCE_FLOORS_MS).toEqual({ beforeFourth: 8 * 3_600_000, beforeFifth: 3 * 3_600_000 });
     expect(CADENCE_WORKDAY_START).toBe('10:00');
     expect(CADENCE_EVENING_FROM).toBe('18:00');
-    // the wording windows stay until the words print the real due
+    // the superseded wording windows: nothing prints them any more; they go with the settings card's sentence (next change)
     expect(CADENCE_MORNING).toEqual({ from: 9, to: 12 });
     expect(CADENCE_EVENING).toEqual({ from: 18, to: 22 });
     expect(NO_ANSWER_LIMIT).toBe(3);
@@ -594,13 +594,24 @@ describe('properties', () => {
 describe('the words', () => {
   const t = amman(3, 11);
 
-  it('cadenceWhen: a time today, «بكرة» across midnight, and the two windows from the constants', () => {
-    expect(cadenceWhen(2, ms(t, 1_800_000), t, AMMAN)).toBe('الساعة 11:30');
-    expect(cadenceWhen(2, amman(4, 0, 20), amman(3, 23, 50), AMMAN)).toBe('بكرة الساعة 00:20');
-    expect(cadenceWhen(4, amman(4, 9), amman(3, 12), AMMAN)).toBe('بكرة بين 9 و12');
-    expect(cadenceWhen(4, amman(4, 9), amman(4, 8), AMMAN)).toBe('بين 9 و12');
-    expect(cadenceWhen(5, amman(4, 18), amman(4, 10), AMMAN)).toBe('بين 6 و10 مساءً');
-    expect(cadenceWhen(5, amman(5, 18), amman(4, 19), AMMAN)).toBe('بكرة بين 6 و10 مساءً');
+  it('cadenceWhen prints the REAL due: a time today, «بكرة» across midnight, the weekday across a skipped weekend — no windows', () => {
+    expect(cadenceWhen(ms(t, 1_800_000), t, AMMAN)).toBe('الساعة 11:30');
+    expect(cadenceWhen(amman(4, 0, 20), amman(3, 23, 50), AMMAN)).toBe('بكرة الساعة 00:20');
+    expect(cadenceWhen(amman(4, 10), amman(3, 12), AMMAN)).toBe('بكرة الساعة 10:00');
+    expect(cadenceWhen(amman(4, 10), amman(4, 8), AMMAN)).toBe('الساعة 10:00');
+    expect(cadenceWhen(amman(4, 18), amman(4, 10), AMMAN)).toBe('الساعة 18:00');
+    expect(cadenceWhen(amman(5, 18), amman(4, 19), AMMAN)).toBe('بكرة الساعة 18:00');
+    expect(cadenceWhen(amman(4, 20, 55), amman(4, 17, 55), AMMAN)).toBe('الساعة 20:55'); // the 3 h floor: no «6 to 10» that would lie
+  });
+
+  it('cadenceWhen across two days or more says the weekday: Thursday → «السبت»… and Sunday after a Friday-and-Saturday weekend', () => {
+    expect(cadenceWhen(amman(21, 10), amman(19, 14), AMMAN)).toBe('السبت الساعة 10:00'); // Thursday 19/11 → Saturday 21/11
+    expect(cadenceWhen(amman(22, 10), amman(19, 14), AMMAN)).toBe('الأحد الساعة 10:00'); // → Sunday 22/11 (3 days)
+    expect(cadenceWhen(amman(23, 10), amman(19, 14), AMMAN)).toBe('الاثنين الساعة 10:00');
+    expect(cadenceWhen(amman(22, 18), amman(20, 9), AMMAN)).toBe('الأحد الساعة 18:00'); // Friday morning → Sunday evening
+    // every weekday name is the right one: 22/11/2026 is a Sunday, so 22…28/11 run Sunday…Saturday, all three days or more after Thursday 19/11
+    const names = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+    names.forEach((name, i) => expect(cadenceWhen(amman(22 + i, 10), amman(19, 9), AMMAN)).toBe(`${name} الساعة 10:00`));
   });
 
   it('cadencePressWords: every sentence, exactly', () => {
@@ -608,8 +619,14 @@ describe('the words', () => {
     expect(cadencePressWords({ ...base, counted: true, closed: false, released: true, attempt: 1, dueAt: ms(t, 1_800_000) })).toBe(
       'انحسبت المحاولة 1 من 5 — رجع الطلب للطابور، والمحاولة الجاية الساعة 11:30.'
     );
-    expect(cadencePressWords({ ...base, counted: true, closed: false, released: false, attempt: 3, dueAt: amman(4, 9), now: amman(3, 12) })).toBe(
-      'انحسبت المحاولة 3 من 5 — المحاولة الجاية بكرة بين 9 و12.'
+    expect(cadencePressWords({ ...base, counted: true, closed: false, released: false, attempt: 3, dueAt: amman(4, 10), now: amman(3, 12) })).toBe(
+      'انحسبت المحاولة 3 من 5 — المحاولة الجاية بكرة الساعة 10:00.'
+    );
+    expect(cadencePressWords({ ...base, counted: true, closed: false, released: true, attempt: 3, dueAt: amman(22, 10), now: amman(19, 15, 30) })).toBe(
+      'انحسبت المحاولة 3 من 5 — رجع الطلب للطابور، والمحاولة الجاية الأحد الساعة 10:00.'
+    );
+    expect(cadencePressWords({ ...base, counted: false, closed: false, released: false, attempt: 3, dueAt: amman(22, 10), now: amman(20, 10) })).toBe(
+      'سجّلنا الضغطة بس ما انحسبت محاولة — لسا بدري. المحاولة 4 من 5 بتنحسب الأحد الساعة 10:00.'
     );
     expect(cadencePressWords({ ...base, counted: false, closed: false, released: false, attempt: 1, dueAt: ms(t, 1_800_000) })).toBe(
       'سجّلنا الضغطة بس ما انحسبت محاولة — لسا بدري. المحاولة 2 من 5 بتنحسب الساعة 11:30.'
@@ -626,11 +643,12 @@ describe('the words', () => {
 
   it('Western digits only, no Latin letters, never the word «جولة»', () => {
     const sentences = [
-      cadenceWhen(2, ms(t, 1_800_000), t, AMMAN),
-      cadenceWhen(4, amman(4, 9), amman(3, 12), AMMAN),
-      cadenceWhen(5, amman(4, 18), amman(4, 10), AMMAN),
+      cadenceWhen(ms(t, 1_800_000), t, AMMAN),
+      cadenceWhen(amman(4, 10), amman(3, 12), AMMAN),
+      cadenceWhen(amman(4, 18), amman(4, 10), AMMAN),
+      cadenceWhen(amman(22, 10), amman(19, 14), AMMAN),
       cadencePressWords({ now: t, timeZone: AMMAN, counted: true, closed: false, released: true, attempt: 2, dueAt: ms(t, 7_200_000) }),
-      cadencePressWords({ now: t, timeZone: AMMAN, counted: false, closed: false, released: false, attempt: 3, dueAt: amman(4, 9) }),
+      cadencePressWords({ now: t, timeZone: AMMAN, counted: false, closed: false, released: false, attempt: 3, dueAt: amman(4, 10) }),
     ];
     for (const s of sentences) {
       expect(s).not.toMatch(/[٠-٩]/);
@@ -762,12 +780,13 @@ describe('closedCardWords: the closed-today card prints a number only when it re
 describe('cadenceCardWords: the line a held card prints', () => {
   const t = amman(3, 11);
 
-  it('due: «لا يرد راجع — محاولة n من 5»; waiting: «محاولة n من 5 — جاهز …» (today, tomorrow, the two windows)', () => {
+  it('due: «لا يرد راجع — محاولة n من 5»; waiting: «محاولة n من 5 — جاهز …» with the real due (today, tomorrow, the weekday after a rest weekend)', () => {
     expect(cadenceCardWords({ counted: 2, due: true, waiting: false, dueAt: t }, t, AMMAN)).toBe('لا يرد راجع — محاولة 3 من 5');
     expect(cadenceCardWords({ counted: 1, due: false, waiting: true, dueAt: amman(3, 17, 30) }, t, AMMAN)).toBe('محاولة 2 من 5 — جاهز الساعة 17:30');
     expect(cadenceCardWords({ counted: 1, due: false, waiting: true, dueAt: amman(4, 0, 20) }, amman(3, 23, 50), AMMAN)).toBe('محاولة 2 من 5 — جاهز بكرة الساعة 00:20');
-    expect(cadenceCardWords({ counted: 3, due: false, waiting: true, dueAt: amman(4, 9) }, amman(3, 12), AMMAN)).toBe('محاولة 4 من 5 — جاهز بكرة بين 9 و12');
-    expect(cadenceCardWords({ counted: 4, due: false, waiting: true, dueAt: amman(3, 18) }, t, AMMAN)).toBe('محاولة 5 من 5 — جاهز بين 6 و10 مساءً');
+    expect(cadenceCardWords({ counted: 3, due: false, waiting: true, dueAt: amman(4, 10) }, amman(3, 12), AMMAN)).toBe('محاولة 4 من 5 — جاهز بكرة الساعة 10:00');
+    expect(cadenceCardWords({ counted: 3, due: false, waiting: true, dueAt: amman(22, 10) }, amman(19, 17), AMMAN)).toBe('محاولة 4 من 5 — جاهز الأحد الساعة 10:00');
+    expect(cadenceCardWords({ counted: 4, due: false, waiting: true, dueAt: amman(3, 18) }, t, AMMAN)).toBe('محاولة 5 من 5 — جاهز الساعة 18:00');
   });
 
   it('null for no counted attempt (a NEW order keeps its own words) and for a complete plan', () => {
@@ -775,11 +794,11 @@ describe('cadenceCardWords: the line a held card prints', () => {
     expect(cadenceCardWords({ counted: 5, due: false, waiting: false, dueAt: null }, t, AMMAN)).toBeNull();
   });
 
-  it('Western digits, never «جولة», and a window changes with its constant’s numbers', () => {
-    const s = cadenceCardWords({ counted: 3, due: false, waiting: true, dueAt: amman(4, 9) }, amman(3, 12), AMMAN)!;
+  it('Western digits, never «جولة», and the due it prints is the constants’ own clock: 10:00 for #4, 18:00 for #5', () => {
+    const s = cadenceCardWords({ counted: 3, due: false, waiting: true, dueAt: amman(4, 10) }, amman(3, 12), AMMAN)!;
     expect(s).not.toMatch(/[٠-٩A-Za-z]/);
     expect(s).not.toContain('جولة');
-    expect(s).toContain(`${CADENCE_MORNING.from} و${CADENCE_MORNING.to}`);
-    expect(cadenceCardWords({ counted: 4, due: false, waiting: true, dueAt: amman(3, 18) }, t, AMMAN)).toContain(`${CADENCE_EVENING.from - 12} و${CADENCE_EVENING.to - 12}`);
+    expect(s).toContain(CADENCE_WORKDAY_START);
+    expect(cadenceCardWords({ counted: 4, due: false, waiting: true, dueAt: amman(3, 18) }, t, AMMAN)).toContain(CADENCE_EVENING_FROM);
   });
 });
