@@ -12,7 +12,7 @@ import { batchStatusOf, endOrder } from '@/lib/order-cancel';
 import { holdsTheWindow } from '@/lib/change-request-routing';
 import { EDIT_CONFIRMED_KEY } from '@/lib/edit-confirmed-key';
 import { handedToCourier, onOpenTrolley, ON_OPEN_TROLLEY, ON_TROLLEY_AR } from '@/lib/order-seal';
-import { REJECTION_REASONS } from '@/lib/confirmation-workflow';
+import { NO_ANSWER_CLOSE, REJECTION_REASONS } from '@/lib/confirmation-workflow';
 import { cancelReasonProblem } from '@/lib/change-request-intent';
 import { courierCancelCarryOut } from '@/lib/couriers/cancel-carryout';
 import { notify } from '@/lib/notify';
@@ -328,7 +328,8 @@ export async function POST(req: Request) {
       auditAction = 'SHIPMENT_STOOD_DOWN_POSTPONED';
       noteBody = `أُوقف شحنه وأُعيد إلى المتابعة حتى ${due.toISOString().slice(0, 10)}${note ? ` — ${note}` : ''}`;
     } else {
-      if (!reason || !(REJECTION_REASONS as readonly string[]).includes(reason)) {
+      // «خمس محاولات» is the plan's own close and did not exist before it: a hand that sends it gets the answer any unknown value always got, with the switch on or off (the confirmation door says the same).
+      if (!reason || !(REJECTION_REASONS as readonly string[]).includes(reason) || reason === NO_ANSWER_CLOSE.five.reason) {
         // Says what to DO, not only what is missing: the request was approved
         // and the next step is a choice, which the screen now offers.
         const ask = 'سبب الإلغاء مطلوب — اختر السبب من القائمة ثم اضغط «نفّذ» مرةً ثانية.';

@@ -152,12 +152,17 @@ describe('the server says the count is not the close’s (`closedWords`)', () =>
   });
 });
 
-describe('no `closedWords`: the count as always, with the CARD’s own number', () => {
-  it('the plan switched off after it closed the order (5 lines, limit 3): «ما ردّ 5 مرّات» and «أُغلق بعد 5 محاولات» — the footer no longer says 3', async () => {
+describe('no `closedWords`: the count as always — the plan prints the CARD’s own number, the other modes print what they always printed', () => {
+  it('the plan switched off after it closed the order (5 lines, limit 3): the screen reads exactly as before — «ما ردّ 5 مرّات» and «بعد 3 محاولات» (the OFF direction of RV2391 stays in the backlog, not here)', async () => {
     await draw({ noAnswerCount: 5 }, { noAnswerLimit: 3 });
     expect(header('أُغلق اليوم تلقائيّاً — ما ردّ 5 مرّات')).toBeTruthy();
-    expect(footer(`للقراءة فقط — أُغلق بعد 5 محاولات بلا رد${FOOT_TAIL}`)).toBeTruthy();
-    expect(document.body.textContent).not.toContain('بعد 3 محاولات');
+    expect(footer(`للقراءة فقط — أُغلق بعد 3 محاولات بلا رد${FOOT_TAIL}`)).toBeTruthy();
+  });
+
+  it('a rounds-only desk (no plan) with a count of 1: the footer is still the limit it always printed, never the rounds count', async () => {
+    await draw({ noAnswerCount: 1 }, { noAnswerLimit: 3, rounds: true });
+    expect(footer(`للقراءة فقط — أُغلق بعد 3 محاولات بلا رد${FOOT_TAIL}`)).toBeTruthy();
+    expect(document.body.textContent).not.toContain('بعد 1 محاولات');
   });
 
   it('a normal legacy close (3 of 3) and a normal plan close (5 of 5) read exactly as before', async () => {
@@ -185,6 +190,6 @@ describe('what did not change', () => {
     expect(src).not.toMatch(/from ['"]@\/lib\/work-first['"]/);
     expect(src).toMatch(/closedWords\?: string;/);
     expect(src).toMatch(/order\.closedWords \?\? noAnswerWords\(order\.noAnswerCount\)/);
-    expect(src).toMatch(/order\.closedWords \?\? `بعد \$\{order\.noAnswerCount\} محاولات بلا رد`/);
+    expect(src).toMatch(/order\.closedWords \?\? `بعد \$\{data\.cadenceOn \? order\.noAnswerCount : data\.noAnswerLimit\} محاولات بلا رد`/);
   });
 });

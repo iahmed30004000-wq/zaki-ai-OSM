@@ -31,8 +31,9 @@ import { afterNoAnswer, routeFor, templateBodyValues } from '@/lib/whatsapp/afte
  *
  * ── THE ORDER SHE JUST LET GO ──
  *
- * With the returns mode on (it comes with «جدول المحاولات»), her counted «لا يرد» sends the order back to the queue in the same
- * press, and the sheet offers this button AFTER the press landed. So an order she no longer holds is accepted here — but only
+ * With the returns mode on — «جدول المحاولات», OR the older «الطلب يرجع للطابور فوراً» mode (`returnsModeOn` reads both; a company on the older mode
+ * with the plan OFF gets the same exception, which also repairs RV1651 for it: a disclosed change, see the changelog) — her counted «لا يرد» sends the
+ * order back to the queue in the same press, and the sheet offers this button AFTER the press landed. So an order she no longer holds is accepted here — but only
  * when her own press released it in the last two minutes (`orderReleasedByHerOwnPress`), nobody has taken it since, and it is
  * still open at the desk. Every other unheld order is refused exactly as before; the audit row says `afterHerOwnPress`.
  *

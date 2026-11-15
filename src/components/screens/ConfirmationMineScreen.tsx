@@ -1872,7 +1872,7 @@ export function ConfirmationMineScreen() {
                 */}
                 {closed ? (
                   <p className="text-xs leading-relaxed text-[var(--sys-destructive)] pt-1 border-t border-[var(--sys-destructive-border)]">
-                    للقراءة فقط — أُغلق {order.closedWords ?? `بعد ${order.noAnswerCount} محاولات بلا رد`}. إعادةُ فتحِه من مركز التأكيد، بيد مَن يملك ذلك.
+                    للقراءة فقط — أُغلق {order.closedWords ?? `بعد ${data.cadenceOn ? order.noAnswerCount : data.noAnswerLimit} محاولات بلا رد`}. إعادةُ فتحِه من مركز التأكيد، بيد مَن يملك ذلك.
                   </p>
                 ) : readOnly ? (
                   /* A colleague's desk: not one button of hers — no call, no result, no confirm, no postpone, no cancel. */

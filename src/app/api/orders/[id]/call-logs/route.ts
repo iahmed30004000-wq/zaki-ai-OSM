@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { ORDER_ACCESS_STATUS, assertOrderAccess } from '@/lib/rbac';
-import { CONTACT_RESULTS, REJECTION_REASONS } from '@/lib/confirmation-workflow';
+import { CONTACT_RESULTS, NO_ANSWER_CLOSE, REJECTION_REASONS } from '@/lib/confirmation-workflow';
 import { apiError } from '@/lib/api-error';
 import { can, authorize } from '@/lib/authorization';
 import { ORDER_NOT_FOUND } from '@/lib/order-refusals';
@@ -102,7 +102,8 @@ export async function POST(
      * sentence. Two doors to the same shelf, one of them locked.
      */
     if (result === 'REJECTED') {
-      if (!rejectionReason || !(REJECTION_REASONS as readonly string[]).includes(rejectionReason)) {
+      // «خمس محاولات» is the plan's own close and did not exist before it: a hand that sends it gets the answer any unknown value always got.
+      if (!rejectionReason || !(REJECTION_REASONS as readonly string[]).includes(rejectionReason) || rejectionReason === NO_ANSWER_CLOSE.five.reason) {
         return NextResponse.json({ error: 'سبب الإلغاء مطلوب' }, { status: 400 });
       }
       if (rejectionReason === 'OTHER' && (!notes || String(notes).trim().length < 5)) {
