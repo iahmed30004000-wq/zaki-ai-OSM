@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { zonedParts, zonedTimeToInstant } from './business-calendar';
 import { NO_ANSWER_LIMIT } from './confirmation-workflow';
 import {
@@ -15,6 +15,7 @@ import {
   cadenceCardWords,
   cadenceCloses,
   cadenceDesk,
+  cadenceEveningAnchor,
   cadencePress,
   cadencePressWords,
   cadenceState,
@@ -33,11 +34,11 @@ import type { DueVerdict } from './work-first';
  * DEFINITION OF DONE — THE FIVE-ATTEMPT PLAN AS ONE PURE RULE (step B of Confirmation Center v2)
  *
  *  1. #1 counts and sets #2's due at +30 min; #2 sets #3's at +2 h (both elapsed time); #3 sets #4's at the Country's workHoursStart on the first WORKING day at least 8 h (elapsed, exactly
- *     8 h counts) after it; #4 sets #5's at the first 18:00 STRICTLY after it on a working day, never less than 3 h (elapsed) after it. Working days = all but the Country's rest days
- *     (`weekendDays`; none = skip nothing).
+ *     8 h counts) after it; #4 sets #5's at the first EVENING ANCHOR STRICTLY after it on a working day, never less than 3 h (elapsed) after it (anchor = min(18:00, workHoursEnd − 1 h), item 11).
+ *     Working days = all but the Country's rest days (`weekendDays`; none = skip nothing).
  *  2. WORK TIME (planner, ruling 12): #2's and #3's dues fall inside [workHoursStart, workHoursEnd) on a working day — the end EXCLUSIVE, the start inclusive. A raw due (press + 30 min / + 2 h)
  *     outside it becomes the FIRST COMING workHoursStart on a working day at or after it (before the start → that day's; at/after the end or on a rest day → the next working day's); a raw
- *     due inside it is untouched, to the millisecond. #5 is NOT moved into the window (ruling 3, literal).
+ *     due inside it is untouched, to the millisecond. (#5 has its own rule, item 11.)
  *  3. `cadenceWorkWindow` is the one reader of the two hours: a missing or unreadable value falls back to 10:00 / 22:00 on its own side, and an end that is not after the start (an overnight
  *     shift, equal hours, garbage) sends BOTH ends to the constants.
  *  4. A press at the due to the millisecond counts; one millisecond before is EARLY — kept, never counted, and the state (the due) does not move.
@@ -50,6 +51,15 @@ import type { DueVerdict } from './work-first';
  *  9. The words are server-written, in Western digits, never say «جولة», and print the REAL due — «الساعة 10:00», «بكرة الساعة 10:00», «السبت الساعة 10:00» across a rest weekend; no windows.
  * 10. THE CUSTOMER'S PROMISE (the planner 15/11, ruling 9): `cadenceVerdict` computes the promise fact itself (`promiseArrived`, work-first.ts) and a rung order with a date arrived and no line since is due
  *     PROMISE whatever the plan says (not counted, waiting, due, complete), with no rounds answer handed in; a never-rung order is NEW first; the date exactly now counts, a line at the date does not.
+ * 11. RULING 16 (15/11 22:30, option «ب») — #5 INSIDE the country's hours: the evening anchor is min(18:00, workHoursEnd − 1 h) in the country's clock, raised to workHoursStart when that would be before it
+ *     (a window under an hour, or one that starts after 18:00) — Syria 10-22 stays 18:00, Jordan 09-17 is 16:00, no readable hours is the 10-22 fallback so 18:00. #5 = max(first anchor strictly after #4
+ *     on a working day, #4 + 3 h elapsed); outside [start, end) (the end EXCLUSIVE: exactly the end is outside) or on a rest day → the anchor of the first working day after it. Always inside, never
+ *     within 3 h of #4, on a window of one hour or more with any rest set that leaves a work day (the independent oracle file holds the property over four zones).
+ * 12. RULING 18, the server half: `cadenceWorkWindow` keeps its fallback for a corrupt or night-shift value and now emits ONE `console.warn` per distinct bad input per process (a scan of 2000 rows does not spam),
+ *     carrying only the two hour strings (cut short) — never an order or a customer; a missing value (null, undefined, blank) and a valid window never warn.
+ *
+ * Edge cases that matter: #4 at 09:00 in a 09-12 day (the 3 h floor is the end itself → tomorrow); the floor a millisecond inside the end; an anchor before the start; 6 rest days of 7; a country with no hours.
+ * Blockers: any #5 outside its country's hours; Syria's #5 moving off 18:00; a warn per row; customer data in a log line; the switch-off path changing (nothing here is reachable with the key OFF).
  *
  * `no-answer-cadence-oracle.test.ts` holds the same rule a SECOND time, written the other way round.
  * ═══════════════════════════════════════════════════════════════════════
@@ -535,10 +545,10 @@ describe('rest days: #4 and #5 never land on one (Jordan’s live week: Friday a
   });
 });
 
-describe('Jordan’s live row (09:00-17:00, Friday and Saturday off): the whole plan inside Jordan’s own hours — but #5', () => {
+describe('Jordan’s live row (09:00-17:00, Friday and Saturday off): the whole plan inside Jordan’s own hours — #5 included (ruling 16)', () => {
   const jordan = cal(AMMAN, SINCE, REST_FRI_SAT, JORDAN_HOURS);
 
-  it('Thursday 16:40 → #2 Sunday 09:00 → #3 Sunday 11:00 → #4 Monday 09:00 → #5 Monday 18:00', () => {
+  it('Thursday 16:40 → #2 Sunday 09:00 → #3 Sunday 11:00 → #4 Monday 09:00 → #5 Monday 16:00', () => {
     const s1 = chain(jordan, [amman(19, 16, 40)]);
     expect(hhmm(s1.dueAt!)).toBe('2026-11-22 09:00'); // raw 17:10 is after Jordan’s 17:00
     const s2 = chain(jordan, [amman(19, 16, 40), amman(22, 9)]);
@@ -546,8 +556,31 @@ describe('Jordan’s live row (09:00-17:00, Friday and Saturday off): the whole 
     const s3 = chain(jordan, [amman(19, 16, 40), amman(22, 9), amman(22, 11)]);
     expect(hhmm(s3.dueAt!)).toBe('2026-11-23 09:00'); // the country’s own start of work, 8 h after Sunday 11:00 is 19:00
     const s4 = chain(jordan, [amman(19, 16, 40), amman(22, 9), amman(22, 11), amman(23, 9)]);
-    // #5 is the planner’s literal rule — the first 18:00 after #4 — NOT moved into Jordan’s 09:00-17:00: it lands an hour after Jordan’s work ends (a question for the planner)
-    expect(hhmm(s4.dueAt!)).toBe('2026-11-23 18:00');
+    // ruling 16: #5 is anchored to Jordan’s own hours — an hour before 17:00 — and no longer lands at 18:00, an hour after Jordan’s work ends
+    expect(hhmm(s4.dueAt!)).toBe('2026-11-23 16:00');
+  });
+
+  it('the whole chain to a close: the fifth is due at 16:00, a press at 16:00 closes the order, one millisecond before does not count', () => {
+    const s4 = chain(jordan, [amman(19, 16, 40), amman(22, 9), amman(22, 11), amman(23, 9)]);
+    expect(cadenceStep(s4, ms(amman(23, 16), -1), jordan).counted).toBe(false);
+    const closing = cadenceStep(s4, amman(23, 16), jordan);
+    expect(closing.counted).toBe(true);
+    expect(cadenceCloses(closing.next)).toBe(true);
+  });
+
+  it.each([
+    ['Sunday 09:00 → Sunday 16:00', [22, 9, 0, 0, 0], '2026-11-22 16:00'],
+    ['Sunday 13:00:00.000 (the 3 h floor IS the anchor)', [22, 13, 0, 0, 0], '2026-11-22 16:00'],
+    ['Sunday 13:00:00.001 (the floor binds, still inside: 16:00:00.001)', [22, 13, 0, 0, 1], '2026-11-22 16:00'],
+    ['Sunday 13:59:59.999 (the floor 16:59:59.999 is inside, the end is exclusive)', [22, 13, 59, 59, 999], '2026-11-22 16:59'],
+    ['Sunday 14:00:00.000 (the floor is exactly the end 17:00: outside → Monday’s anchor)', [22, 14, 0, 0, 0], '2026-11-23 16:00'],
+    ['Sunday 15:30 (the floor 18:30 is outside → Monday 16:00)', [22, 15, 30, 0, 0], '2026-11-23 16:00'],
+    ['Sunday 16:00 (pressed AT the anchor → strictly after: Monday 16:00)', [22, 16, 0, 0, 0], '2026-11-23 16:00'],
+    ['Thursday 16:30 (Friday and Saturday off → Sunday 16:00)', [19, 16, 30, 0, 0], '2026-11-22 16:00'],
+    ['Friday 10:00 (a late press on a rest day → Sunday 16:00)', [20, 10, 0, 0, 0], '2026-11-22 16:00'],
+    ['Thursday 22:00 (the small hours and the night: Sunday 16:00)', [19, 22, 0, 0, 0], '2026-11-22 16:00'],
+  ] as const)('#4 at %s', (_n, [d, h, mi, s, m], due) => {
+    expect(hhmm(upToFourth(jordan, amman(d, h, mi, s, m)).dueAt!)).toBe(due);
   });
 
   it('#2 and #3 never land outside 09:00-17:00 or on a rest day, over a week of first presses (every half hour)', () => {
@@ -561,6 +594,124 @@ describe('Jordan’s live row (09:00-17:00, Friday and Saturday off): the whole 
       const s2 = cadenceStep(s1.next, s1.next.dueAt!, jordan);
       expect(inside(s2.next.dueAt!), `#3 after #2 at ${s1.next.dueAt!.toISOString()}`).toBe(true);
     }
+  });
+});
+
+describe('cadenceEveningAnchor: #5’s clock is min(18:00, end − 1 h), never before the start (ruling 16)', () => {
+  it.each([
+    ['Syria 10:00-22:00', '10:00', '22:00', '18:00'],
+    ['Jordan 09:00-17:00', '09:00', '17:00', '16:00'],
+    ['the fallback window (no hours on the row)', CADENCE_WORKDAY_START, CADENCE_WORKDAY_END, '18:00'],
+    ['a 09:00-12:00 day', '09:00', '12:00', '11:00'],
+    ['19:00 end: one hour before is exactly the cap', '08:00', '19:00', '18:00'],
+    ['18:59 end: 17:59', '08:00', '18:59', '17:59'],
+    ['an odd 08:15-16:45 day', '08:15', '16:45', '15:45'],
+    ['a window of exactly one hour: the anchor is the start (end − 1 h = start)', '09:00', '10:00', '09:00'],
+    ['a window under an hour: end − 1 h is before the start → the start', '09:00', '09:45', '09:00'],
+    ['a window that starts after 18:00: the cap is before the start → the start', '19:00', '23:00', '19:00'],
+    ['the day’s first hour', '00:00', '00:30', '00:00'],
+    ['the whole day', '00:00', '23:59', '18:00'],
+  ])('%s → %s…%s anchors at %s', (_n, start, end, want) => {
+    expect(cadenceEveningAnchor({ start, end })).toBe(want);
+  });
+
+  it('through the plan: the same four attempts end in a different #5 under Syria’s and Jordan’s hours — the row’s hours ARE what the plan uses', () => {
+    const fifth = (hours: Hours) => hhmm(upToFourth(cadenceCalOf(SINCE, { timezone: AMMAN, weekendDays: [], ...hours }), amman(10, 9)).dueAt!);
+    expect(fifth({ workHoursStart: '10:00', workHoursEnd: '22:00' })).toBe('2026-11-10 18:00');
+    expect(fifth({ workHoursStart: '09:00', workHoursEnd: '17:00' })).toBe('2026-11-10 16:00');
+    expect(fifth({})).toBe('2026-11-10 18:00'); // no readable hours: the fallbacks, so 18:00
+    expect(fifth({ workHoursStart: '22:00', workHoursEnd: '06:00' })).toBe('2026-11-10 18:00'); // a night shift is the fallback too
+  });
+
+  it('a 09:00-12:00 day: #4 at 09:00 → #4 + 3 h is exactly the end (outside), so tomorrow 11:00; one millisecond earlier it is inside', () => {
+    const c = cal(AMMAN, SINCE, [], { workHoursStart: '09:00', workHoursEnd: '12:00' });
+    const nine = cadenceStep({ counted: [ms(amman(10, 9), -36_000_000), ms(amman(10, 9), -32_400_000), ms(amman(10, 9), -28_800_000)], days: 2, dueAt: null }, amman(10, 9), c);
+    expect(hhmm(nine.next.dueAt!)).toBe('2026-11-11 11:00');
+    const early = cadenceStep({ counted: [ms(amman(10, 9), -36_000_000), ms(amman(10, 9), -32_400_000), ms(amman(10, 9), -28_800_000)], days: 2, dueAt: null }, ms(amman(10, 9), -1), c);
+    expect(early.next.dueAt).toEqual(ms(amman(10, 12), -1)); // 11:59:59.999: the floor, inside
+  });
+
+  it('a window shorter than an hour never loops and is deterministic: #5 is at the start of work, the next work day’s when the floor is past the end', () => {
+    const c = cal(AMMAN, SINCE, [], { workHoursStart: '09:00', workHoursEnd: '09:45' });
+    const base = [ms(amman(10, 9), -36_000_000), ms(amman(10, 9), -32_400_000), ms(amman(10, 9), -28_800_000)];
+    expect(hhmm(cadenceStep({ counted: base, days: 2, dueAt: null }, amman(10, 5), c).next.dueAt!)).toBe('2026-11-10 09:00');
+    expect(hhmm(cadenceStep({ counted: base, days: 2, dueAt: null }, amman(10, 8), c).next.dueAt!)).toBe('2026-11-11 09:00');
+    expect(hhmm(cadenceStep({ counted: base, days: 2, dueAt: null }, amman(10, 9), c).next.dueAt!)).toBe('2026-11-11 09:00');
+  });
+
+  it('six rest days of seven (Jordan’s hours): #5 waits for the one working day and stays inside it', () => {
+    const c = cal(AMMAN, SINCE, [0, 1, 2, 3, 4, 5], JORDAN_HOURS); // only Saturday works
+    expect(hhmm(upToFourth(c, amman(21, 9)).dueAt!)).toBe('2026-11-21 16:00');
+    expect(hhmm(upToFourth(c, amman(21, 14)).dueAt!)).toBe('2026-11-28 16:00'); // the floor 17:00 is the end → next Saturday
+  });
+});
+
+describe('cadenceWorkWindow warns once per distinct bad input per process (ruling 18, the server half)', () => {
+  /** A fresh module each time: the dedupe set lives in the module, and the other tests of this file have already used some inputs. */
+  async function fresh() {
+    vi.resetModules();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const mod = await import('./no-answer-cadence');
+    return { warn, window: mod.cadenceWorkWindow, mod };
+  }
+  afterEach(() => vi.restoreAllMocks());
+
+  it('a corrupt pair still falls back to 10:00-22:00 and warns ONCE, however many rows are scanned', async () => {
+    const { warn, window } = await fresh();
+    for (let i = 0; i < 2000; i++) expect(window('garbage', '25:61')).toEqual({ start: '10:00', end: '22:00' });
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('a night shift and equal hours warn (once each); a different bad input is a different line', async () => {
+    const { warn, window } = await fresh();
+    for (let i = 0; i < 50; i++) window('22:00', '06:00');
+    expect(warn).toHaveBeenCalledTimes(1);
+    window('10:00', '10:00');
+    expect(warn).toHaveBeenCalledTimes(2);
+    window('22:00', '06:00');
+    window('10:00', '10:00');
+    expect(warn).toHaveBeenCalledTimes(2);
+  });
+
+  it('a present but unreadable side warns even when the pair stays ordered after its own fallback; the other side is kept', async () => {
+    const { warn, window } = await fresh();
+    expect(window('garbage', '18:30')).toEqual({ start: '10:00', end: '18:30' });
+    expect(window('12:00', 'later')).toEqual({ start: '12:00', end: '22:00' });
+    expect(warn).toHaveBeenCalledTimes(2);
+  });
+
+  it('a valid window never warns, and neither does a missing value (a row with no hours is ordinary)', async () => {
+    const { warn, window } = await fresh();
+    for (const [s, e] of [['09:00', '17:00'], ['10:00', '22:00'], ['9:30', ' 18:45 '], ['00:00', '23:59'], [undefined, undefined], [null, null], ['', ''], ['  ', undefined], [undefined, '17:00'], ['09:00', null]] as const) window(s, e);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('the message carries the two hour strings, cut short, and nothing else — no id, no customer, no order', async () => {
+    const { warn, window } = await fresh();
+    window('x'.repeat(5000), 12345);
+    expect(warn).toHaveBeenCalledTimes(1);
+    const line = String(warn.mock.calls[0][0]);
+    expect(warn.mock.calls[0]).toHaveLength(1); // one string, no extra object (no row, no order)
+    expect(line).toBe(`[cadence] the country work hours are corrupt or a night shift (start "${'x'.repeat(16)}", end number) — using 10:00-22:00`);
+    expect(line.length).toBeLessThan(160);
+  });
+
+  it('bounded: a stream of different garbage cannot grow the set or the log without end', async () => {
+    const { warn, window } = await fresh();
+    for (let i = 0; i < 1000; i++) window(`bad-${i}`, '17:00');
+    expect(warn.mock.calls.length).toBeLessThanOrEqual(100);
+    expect(warn.mock.calls.length).toBeGreaterThan(0);
+  });
+
+  it('the plan itself warns once for a corrupt country however many presses it decides — and the dues are those of the fallback window', async () => {
+    const { warn, mod } = await fresh();
+    const bad = { since: SINCE, timeZone: AMMAN, workHoursStart: '22:00', workHoursEnd: '06:00' } as CadenceCal;
+    const good = { since: SINCE, timeZone: AMMAN, workHoursStart: '10:00', workHoursEnd: '22:00' } as CadenceCal;
+    for (let i = 0; i < 300; i++) {
+      const t = ms(amman(3, 11), i * 60_000);
+      expect(mod.cadenceStep(CADENCE_START, t, bad).next.dueAt).toEqual(mod.cadenceStep(CADENCE_START, t, good).next.dueAt);
+    }
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 });
 

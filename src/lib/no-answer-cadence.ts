@@ -16,7 +16,7 @@ import { DUE_PROMISE, promiseArrived, verdictFromCount, type DueOrder, type DueV
  *   #1  now                                  → #2 is due 30 minutes later (elapsed time), brought INSIDE WORK TIME (below)
  *   #2  from its due on                      → #3 is due 2 hours later (elapsed time, so a DST jump inside the two hours does not move it), brought inside work time the same way
  *   #3  from its due on                      → #4 is due at the Country's workHoursStart on the first WORKING day, and not before 8 HOURS (elapsed; exactly 8 counts) after #3
- *   #4  from its due on                      → #5 is due at the first 18:00 local STRICTLY after #4 on a working day, and not before 3 HOURS (elapsed) after #4
+ *   #4  from its due on                      → #5 is due at the first EVENING ANCHOR (below) local STRICTLY after #4 on a working day, and not before 3 HOURS (elapsed) after #4 — always inside work time
  *   #5  → with attempts on two local days or more, the fifth COUNTED press closes the order (the door does that, `endOrder`; here it is `cadenceCloses`).
  *
  * WORK TIME (the planner's ruling 12 of 15/11 — «no work after 22:00») is a working day (not one of the Country's rest days) AND a local clock in [workHoursStart, workHoursEnd): the end is
@@ -26,8 +26,11 @@ import { DUE_PROMISE, promiseArrived, verdictFromCount, type DueOrder, type DueV
  *
  * REST DAYS are the Country's `weekendDays` (0 = Sunday … 6), read through `cadenceCalOf`; an empty list skips nothing. They move every day-anchored due — #2 and #3 through «work time», #4 and
  * #5 through their own day — but never the elapsed gaps themselves: a due that lands inside work time is exactly press + 30 min / + 2 h.
- * #4's clock is the Country's `workHoursStart` (ruling 1; 10:00 when the row has none) and #5's is 18:00. #5 is NOT moved into the window (ruling 3, literal: max(first 18:00 after #4 on a working
- * day, #4 + 3 h)), so a country whose work ends before 18:00 gets a #5 outside its hours — a question for the planner, not something decided here.
+ * #4's clock is the Country's `workHoursStart` (ruling 1; 10:00 when the row has none). #5's clock is the EVENING ANCHOR (the planner's ruling 16 of 15/11 22:30, option «ب»):
+ * `min(18:00, workHoursEnd − 1 hour)` in the Country's local clock — Syria (10:00-22:00) stays 18:00, Jordan (09:00-17:00) becomes 16:00 — and never before `workHoursStart` (a window shorter than an
+ * hour, or one that starts after 18:00, would otherwise put the anchor outside it: then the anchor IS the start). #5 = max(first anchor STRICTLY after #4 on a working day, #4 + 3 h elapsed); if that
+ * is outside work time (at or after `workHoursEnd` — the end is exclusive — before the start, or on a rest day) it becomes the anchor of the FIRST WORKING DAY after it instead, so #5 is always
+ * inside [workHoursStart, workHoursEnd) on a working day. A country with no readable hours has the fallbacks (10:00-22:00), so its anchor is 18:00.
  * The 8 h floor still makes #4 land on the next local day for a #3 that was PRESSED after 02:00 (the due of #3 is inside work time, but a press may come at any hour): a #3 at 02:00:00.000
  * waits 8 h for a 10:00 start, 02:00:00.001 waits 32 h — the literal «at least 8 hours», not a bug.
  *
@@ -64,8 +67,10 @@ export const CADENCE_FLOORS_MS = { beforeFourth: 28_800_000, beforeFifth: 10_800
 export const CADENCE_WORKDAY_START = '10:00';
 /** The end of work (exclusive) when the Country's `workHoursEnd` is missing or unreadable: «no work after 22:00» (planner, ruling 12 of 15/11). */
 export const CADENCE_WORKDAY_END = '22:00';
-/** #5's anchor: 18:00 local, on a working day. */
+/** The CAP of #5's evening anchor: 18:00 local, on a working day — the anchor is `min(18:00, workHoursEnd − 1 hour)` (see `cadenceEveningAnchor`). */
 export const CADENCE_EVENING_FROM = '18:00';
+/** The anchor stays this long before the end of work (planner, ruling 16): one hour. */
+const EVENING_BEFORE_END_MIN = 60;
 
 /** What the plan needs of the world: the floor (the switch's `enabledAt`), the Country's timezone, rest days and work hours. */
 export interface CadenceCal {
@@ -82,11 +87,48 @@ export interface CadenceCal {
  * THE WORK WINDOW of a local day — the ONE place the Country's two hours are read. Each value goes through the existing `parseHhMm` (`employee-shift.ts`); one that is missing or
  * unreadable falls back to its own constant (10:00 / 22:00). Then, if the end is not AFTER the start — an overnight shift («22:00-06:00»), equal hours, or garbage on one side — BOTH ends fall back
  * to the constants: a window that wraps midnight has no meaning for a plan that is due «inside work time», and half of one would be worse than none.
+ * A value that is present but unreadable, or a pair that falls back, ALSO emits one `console.warn` per distinct input per process (ruling 18; the settings page refuses to save such a window, so one that
+ * arrives is a row written another way). The message holds the two hour strings only — never an order or a customer. A missing value, and a valid window, never warn.
  */
 export function cadenceWorkWindow(start: unknown, end: unknown): { start: string; end: string } {
-  const from = parseHhMm(start) ?? CADENCE_WORKDAY_START;
-  const to = parseHhMm(end) ?? CADENCE_WORKDAY_END;
-  return to > from ? { start: from, end: to } : { start: CADENCE_WORKDAY_START, end: CADENCE_WORKDAY_END };
+  const readStart = parseHhMm(start);
+  const readEnd = parseHhMm(end);
+  const from = readStart ?? CADENCE_WORKDAY_START;
+  const to = readEnd ?? CADENCE_WORKDAY_END;
+  if (to > from) {
+    // A value that is there but not a clock is corrupt (it fell back on its own side); a MISSING side is not (a country row with no hours is ordinary) and stays silent.
+    if ((readStart === null && present(start)) || (readEnd === null && present(end))) warnBadHours(start, end);
+    return { start: from, end: to };
+  }
+  // The ruling 18 fallback — an overnight shift, equal hours, garbage — keeps working as before and now says so, once per distinct input per process.
+  warnBadHours(start, end);
+  return { start: CADENCE_WORKDAY_START, end: CADENCE_WORKDAY_END };
+}
+
+/** Is there something in the value at all — `null`, `undefined` and an empty or blank string are «no value», not a corrupt one. */
+const present = (v: unknown): boolean => v !== null && v !== undefined && !(typeof v === 'string' && v.trim() === '');
+
+/** The distinct bad inputs already warned about in this process: a scan of 2000 rows must not print 2000 lines. Capped, so a stream of different garbage cannot grow it without end. */
+const warnedHours = new Set<string>();
+const WARNED_HOURS_CAP = 100;
+/** How a bad hour is printed: the text itself cut to 16 characters (a clock is 5), or the TYPE of what is not text. Never an id — the inputs are the Country's two hour strings, not an order or a customer. */
+const shown = (v: unknown): string => (typeof v === 'string' ? JSON.stringify(v.slice(0, 16)) : v === null || v === undefined ? 'missing' : typeof v);
+function warnBadHours(start: unknown, end: unknown): void {
+  const key = `${shown(start)}|${shown(end)}`;
+  if (warnedHours.has(key) || warnedHours.size >= WARNED_HOURS_CAP) return;
+  warnedHours.add(key);
+  console.warn(`[cadence] the country work hours are corrupt or a night shift (start ${shown(start)}, end ${shown(end)}) — using ${CADENCE_WORKDAY_START}-${CADENCE_WORKDAY_END}`);
+}
+
+/**
+ * #5's EVENING ANCHOR for a work window (ruling 16): `min(18:00, end − 1 hour)`, raised to the start when that would fall before it — a window shorter than an hour (end − 1 h before the start) or one
+ * that starts after 18:00 — so the anchor is ALWAYS inside [start, end). «HH:mm», from a window that already went through `cadenceWorkWindow`.
+ */
+export function cadenceEveningAnchor(window: { start: string; end: string }): string {
+  const minutes = (hhmm: string): number => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3));
+  const cap = minutes(CADENCE_EVENING_FROM);
+  const t = Math.max(minutes(window.start), Math.min(cap, minutes(window.end) - EVENING_BEFORE_END_MIN));
+  return `${pad2(Math.floor(t / 60))}:${pad2(t % 60)}`;
 }
 
 /**
@@ -185,10 +227,13 @@ function dueAfter(times: readonly Date[], cal: CadenceCal): Date {
     // The first-day guard: five attempts over two local days must stay true on a 25-hour DST day, so #4 is never on #1's local day (defence in depth now: see the header — #2 and #3 inside work time already put #4 a day on).
     return dayKey(due, cal.timeZone) === dayKey(times[0], cal.timeZone) ? firstClockOnWorkday(due, start, rest, true, cal.timeZone) : due;
   }
-  // counted 4: the first 18:00 local STRICTLY after #4 on a working day, but never less than 3 hours (elapsed) after it.
-  const evening = firstClockOnWorkday(at, clockOf(CADENCE_EVENING_FROM), rest, true, cal.timeZone);
+  // counted 4: the first evening anchor local STRICTLY after #4 on a working day, but never less than 3 hours (elapsed) after it — and if that lands outside work time (the 3 h floor can carry it
+  // past the end of a short day), the anchor of the first working day AFTER it. Terminates: `firstClockOnWorkday` looks ahead a bounded sixteen days, and the anchor is inside the window.
+  const anchor = clockOf(cadenceEveningAnchor(window));
+  const evening = firstClockOnWorkday(at, anchor, rest, true, cal.timeZone);
   const floor = new Date(at.getTime() + CADENCE_FLOORS_MS.beforeFifth);
-  return evening.getTime() >= floor.getTime() ? evening : floor;
+  const due = evening.getTime() >= floor.getTime() ? evening : floor;
+  return insideWorkTime(due, window, rest, cal.timeZone) ? due : firstClockOnWorkday(due, anchor, rest, true, cal.timeZone);
 }
 
 /**

@@ -386,7 +386,7 @@ describe('ON — the Country’s rest days move #4 and #5 (Jordan’s live week:
     expect(cadenceState(rows, cadenceCalOf(cad.value.enabledAt!, country)).dueAt).toEqual(stored.nextFollowUpAt);
   });
 
-  it('a press on a rest day before that Sunday 10:00 is early (kept, told, no due written, nothing released); one AT Sunday 10:00 counts and sets #5 for Sunday 18:00', async () => {
+  it('a press on a rest day before that Sunday 10:00 is early (kept, told, no due written, nothing released); one AT Sunday 10:00 counts and sets #5 for Sunday 16:00 (ruling 16: the evening anchor is an hour before the 17:00 end, no longer 18:00)', async () => {
     await pressAt(THU);
     await pressAt(ms(THU, 30 * MIN));
     await pressAt(ms(THU, 150 * MIN));
@@ -397,8 +397,9 @@ describe('ON — the Country’s rest days move #4 and #5 (Jordan’s live week:
     expect(db.orderContactAttempt.create.mock.calls[3][0].data.nextFollowUpAt).toBeNull();
     expect(calls).not.toContain('release');
     const sunday = await pressAt(SUN_10);
-    expect(sunday.body.cadence).toMatchObject({ attempt: 4, counted: true, dueAt: '2026-11-22T15:00:00.000Z' });
-    expect(db.orderContactAttempt.create.mock.calls[4][0].data.nextFollowUpAt).toEqual(new Date('2026-11-22T15:00:00.000Z'));
+    // 16:00 Amman = 13:00Z: max(the anchor 16:00 = workHoursEnd 17:00 − 1 h, Sunday 10:00 + 3 h = 13:00 local) — the anchor wins
+    expect(sunday.body.cadence).toMatchObject({ attempt: 4, counted: true, dueAt: '2026-11-22T13:00:00.000Z' });
+    expect(db.orderContactAttempt.create.mock.calls[4][0].data.nextFollowUpAt).toEqual(new Date('2026-11-22T13:00:00.000Z'));
   });
 
   it('#4’s clock is the COUNTRY’S start of work: a row that says 09:00 gives Monday 09:00, the 10:00 row of the Thursday case above gave Sunday 10:00', async () => {

@@ -57,6 +57,10 @@ describe('the sentence of «إثبات المكالمات وجدول المحا�
     expect(Number(/من (\d+) الصبح لحد \d+ بالليل/.exec(text)?.[1])).toBe(Number(CADENCE_WORKDAY_START.slice(0, 2)));
     expect(Number(/من \d+ الصبح لحد (\d+) بالليل/.exec(text)?.[1])).toBe(Number(CADENCE_WORKDAY_END.slice(0, 2)) - 12);
     expect(Number(/الخامسة الساعة (\d+) مسا/.exec(text)?.[1])).toBe(Number(CADENCE_EVENING_FROM.slice(0, 2)) - 12);
+    // ruling 16: #5 stays inside the country's hours — an hour before the end of work when that is earlier than 18:00 (the cap is 18:00, so «7 مسا» is the cap + 1 h)
+    expect(text).toContain('أو قبل نهاية دوام البلد بساعة إذا دوامو بيخلص قبل 7 مسا');
+    expect(Number(/قبل (\d+) مسا\)/.exec(text)?.[1])).toBe(Number(CADENCE_EVENING_FROM.slice(0, 2)) - 12 + 1);
+    expect(text).toContain('وبتضل ضمن ساعات الدوام');
   });
 
   it('says the second and third attempts fall INSIDE the country’s work hours and work days, and move to the next start of work when they would not', async () => {

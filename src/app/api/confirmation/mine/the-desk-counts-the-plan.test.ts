@@ -148,7 +148,7 @@ beforeEach(() => {
   plan('c5', ['2026-11-08T10:00:00.000Z', '2026-11-08T10:30:00.000Z', '2026-11-08T12:30:00.000Z', '2026-11-09T06:00:00.000Z', '2026-11-09T15:00:00.000Z']);
   // f4d: four counted (Monday and Tuesday last week), the evening of #5 passed days ago — a press now would close it.
   plan('f4d', ['2026-11-09T10:00:00.000Z', '2026-11-09T10:30:00.000Z', '2026-11-09T12:30:00.000Z', '2026-11-10T06:00:00.000Z']);
-  // f4w: four counted — #3 was Thursday 15:00 (#1 12:30, #2 13:00, all inside the hours), Friday and Saturday are rest days, so #4 was this morning, Sunday, at 09:00 (06:00Z); #5 is due at 18:00 today,
+  // f4w: four counted — #3 was Thursday 15:00 (#1 12:30, #2 13:00, all inside the hours), Friday and Saturday are rest days, so #4 was this morning, Sunday, at 09:00 (06:00Z); #5 is due at 16:00 today (ruling 16: an hour before Jordan's 17:00 end),
   // so a press now is early and closes nothing.
   plan('f4w', ['2026-11-12T09:30:00.000Z', '2026-11-12T10:00:00.000Z', '2026-11-12T12:00:00.000Z', '2026-11-15T06:00:00.000Z']);
   // x1: today's closed card — its five counted attempts (Monday and Tuesday last week).
@@ -242,9 +242,9 @@ describe('ON — where each card sits and what it says', () => {
     expect(r.dueWords).toBe('جديد — سحبتيه هلّق');
   });
 
-  it('#5 reads its real due «جاهز الساعة 18:00» on the same day; five counted and still open says nothing and stays in «بانتظار»', async () => {
+  it('#5 reads its real due «جاهز الساعة 16:00» on the same day (ruling 16: an hour before Jordan’s 17:00 end); five counted and still open says nothing and stays in «بانتظار»', async () => {
     const d = await desk();
-    expect(d.noAnswer.find((x) => x.id === 'f4w')!.dueWords).toBe('محاولة 5 من 5 — جاهز الساعة 18:00');
+    expect(d.noAnswer.find((x) => x.id === 'f4w')!.dueWords).toBe('محاولة 5 من 5 — جاهز الساعة 16:00');
     const c5 = d.noAnswer.find((x) => x.id === 'c5')!;
     expect(c5).toBeDefined();
     expect(c5.dueNow).toBe(false);
