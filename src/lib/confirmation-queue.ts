@@ -30,7 +30,7 @@ import {
   type ReturnsReason,
 } from './no-answer-returns';
 import { automaticReleaseMetadata, releaseNotice } from './auto-release';
-import { workFirstGate, type WorkFirstRefusal } from './work-first';
+import { promiseArrived, workFirstGate, type WorkFirstRefusal } from './work-first';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -1360,6 +1360,74 @@ export async function waitingBreakdown(
 }
 
 /**
+ * THE SAME NUMBER, SAID IN THE PLAN'S FOUR (the planner 15/11, ruling 24) — ONLY WITH THE PLAN ON (`returns.cadence`).
+ *
+ * The pull's order under the plan is: held for her, then NEW, then the promise that arrived (`pickPromiseArrived`, any status), then the retry whose due came (`pickMostOverdueRetry`),
+ * then the rest by age. Said in four parts that follow that order, over the very predicates the pull picks from, and a PARTITION of the pool (`readyToPullWhere` + `duePostponedWhere`):
+ *
+ *   · `fresh`   — ready and nobody has rung it: the pull's step 2 (the same count as `waitingBreakdown`).
+ *   · `promise` — any other pullable order whose customer-asked date arrived with no line logged since (`promiseArrived`, the fact the desk's tag reads).
+ *   · `retry`   — any other order whose time came again: a ready order carrying a due on a «لا يرد» line (`cadenceDueLineWhere`), or a postponed order whose date came and was
+ *                 worked after it (the pull hands that one out right after the promises and before the retries, so it is counted with them).
+ *   · `rest`    — what is left: the pool minus the three, so the sum is always the pool (`waitingCount`).
+ *
+ * Two phases like the pick: the database counts what a filter can say, and the promise fact (the later of two dates against the newest line) is made here over the DATED orders of the pool,
+ * oldest-created first and bounded by `RETRY_SCAN_PAGE` like the pick's own scan — an order past the page is in `rest`, so the figure still adds up. Nothing is written, and nothing of an order is
+ * read into a log (this scan does not warn: it runs on every poll, and the pull's own scans say it once per pull).
+ */
+export interface WaitingByPlan {
+  fresh: number;
+  promise: number;
+  retry: number;
+  rest: number;
+}
+
+export async function waitingByPlan(
+  tx: Tx,
+  scope: QueueScope,
+  now: Date,
+  forUserId: string | undefined,
+  returns: ReturnsMode & { cadence: { since: Date } }
+): Promise<WaitingByPlan> {
+  const ready = readyToPullWhere(scope, forUserId, now, returns);
+  const duePostponed = duePostponedWhere(scope, now, returns);
+  const lines = cadenceDueLineWhere(returns.cadence.since);
+  const [dueTotal, readyTotal, fresh, undatedRetry, dated] = await Promise.all([
+    tx.order.count({ where: duePostponed }),
+    tx.order.count({ where: ready }),
+    tx.order.count({ where: { ...ready, contactAttempts: { none: {} } } }),
+    // A ready, rung order with a due and NO date: never a promise, so a retry outright.
+    tx.order.count({ where: { ...ready, postponedUntil: null, nextFollowUpAt: null, contactAttempts: { some: lines } } }),
+    // The dated orders of the pool that are not NEW: the promise fact is decided here, with only the newest line of each and a filtered count of its due lines.
+    tx.order.findMany({
+      where: {
+        AND: [
+          { OR: [{ ...ready, contactAttempts: { some: {} } }, duePostponed] },
+          { OR: [{ postponedUntil: { not: null } }, { nextFollowUpAt: { not: null } }] },
+        ],
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: RETRY_SCAN_PAGE,
+      select: {
+        confirmationStatus: true,
+        postponedUntil: true,
+        nextFollowUpAt: true,
+        contactAttempts: { orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true } },
+        _count: { select: { contactAttempts: { where: lines } } },
+      },
+    }),
+  ]);
+  let promise = 0;
+  let retry = undatedRetry;
+  for (const row of dated) {
+    if (promiseArrived(row, row.contactAttempts, now)) promise++;
+    else if (row.confirmationStatus === 'POSTPONED' || row._count.contactAttempts > 0) retry++;
+  }
+  const total = dueTotal + readyTotal;
+  return { fresh, promise, retry, rest: Math.max(0, total - fresh - promise - retry) };
+}
+
+/**
  * THE ORDERS SHE CAN SEE AND CANNOT TAKE: held for a colleague who worked the customer last.
  *
  * Said apart from the number that promises a pull — «بانتظارك» counts what she may take, and this counts what is in the
@@ -1523,16 +1591,24 @@ export async function pickHeldForHer(tx: Tx, scope: QueueScope, userId: string, 
 /**
  * How many ready orders EACH of the pick's two ranking scans reads (the promises, then the retries by due), OLDEST-CREATED first. Far above any real pile (the live pool the owner saw was 422);
  * a pool past it ranks its oldest-created page and the rest wait their turn — a bound on the pull's one transaction (`PULL_TRANSACTION_OPTIONS`), not a rule — and a FULL page is said once
- * in the log (`warnScanFull`, the planner 15/11, ruling 10). The upgrade, if ever needed, is `groupBy _max` or a column.
+ * in the log (`warnScan`, the planner 15/11, ruling 10; ruling 31 adds an early sentence from `RETRY_SCAN_WARN_AT` rows). The upgrade, if ever needed, is `groupBy _max` or a column.
  */
 export const RETRY_SCAN_PAGE = 2000;
 
 /**
- * A scan that came back FULL has probably left orders out of its ranking (the planner 15/11, ruling 10: «console.warn لما الصفحة تمتلي»): said once per scan, with the page size and a fixed sentence, so an
- * operator reading the log learns the pool outgrew the page BEFORE somebody notices a retry waiting out of turn. Never a name, a phone or an address — nothing of the orders is read into it.
+ * The scan is FILLING (the planner 15/11, ruling 31): from this many rows on, and before the page is full, the log says so once — an early warning, so the operator learns the pool is nearing
+ * `RETRY_SCAN_PAGE` BEFORE a full page starts leaving orders out of the ranking. The global retry ordering is NOT built now (the live pile is 422); it is built when this warning shows up.
  */
-function warnScanFull(scan: 'promise' | 'retry', page: number): void {
-  console.warn(`[confirmation/pull] ${scan} scan page is full (${page}) — ranking only the ${page} oldest-created; the rest wait their turn (RETRY_SCAN_PAGE)`);
+export const RETRY_SCAN_WARN_AT = 1500;
+
+/**
+ * A scan that came back FULL has probably left orders out of its ranking (the planner 15/11, ruling 10: «console.warn لما الصفحة تمتلي»): said once per scan, with the page size and a fixed sentence, so an
+ * operator reading the log learns the pool outgrew the page BEFORE somebody notices a retry waiting out of turn. A scan that read `RETRY_SCAN_WARN_AT` rows or more but is NOT full says its early
+ * sentence the same way (ruling 31) — one line per scan, never both. Never a name, a phone or an address — nothing of the orders is read into it, only the scan, the page size and the count.
+ */
+function warnScan(scan: 'promise' | 'retry', rows: number, page: number = RETRY_SCAN_PAGE): void {
+  if (rows >= page) console.warn(`[confirmation/pull] ${scan} scan page is full (${page}) — ranking only the ${page} oldest-created; the rest wait their turn (RETRY_SCAN_PAGE)`);
+  else if (rows >= RETRY_SCAN_WARN_AT) console.warn(`[confirmation/pull] ${scan} scan is filling: read ${rows} of a ${page} page — near full; a full page ranks only the ${page} oldest-created (RETRY_SCAN_PAGE)`);
 }
 
 /**
@@ -1561,7 +1637,7 @@ export async function pickPromiseArrived(
     // «No line at or after the date» is a question of the NEWEST line alone: one line per order is read, never the whole history.
     select: { id: true, createdAt: true, postponedUntil: true, nextFollowUpAt: true, contactAttempts: { orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true } } },
   });
-  if (rows.length >= RETRY_SCAN_PAGE) warnScanFull('promise', RETRY_SCAN_PAGE);
+  warnScan('promise', rows.length);
   return firstPromiseByDate(rows, now);
 }
 
@@ -1586,7 +1662,7 @@ export async function pickMostOverdueRetry(
     take: RETRY_SCAN_PAGE,
     select: { id: true, createdAt: true, contactAttempts: { where: lines, select: { result: true, createdAt: true, nextFollowUpAt: true } } },
   });
-  if (rows.length >= RETRY_SCAN_PAGE) warnScanFull('retry', RETRY_SCAN_PAGE);
+  warnScan('retry', rows.length);
   return firstRetryByDue(rows, since);
 }
 

@@ -11,12 +11,15 @@ import {
   pullPermission,
   readReturnsMode,
   waitingBreakdown,
+  waitingByPlan,
   reservedForColleaguesCount,
   postponedNotDueCount,
   openIssuesCount,
   POSTPONE_LEAD_DAYS,
 } from '@/lib/confirmation-queue';
 import { heldFor } from '@/lib/order-reservation';
+import { planWords } from '@/lib/pull-plan-words';
+import type { ReturnsMode } from '@/lib/no-answer-returns';
 
 /**
  * GET /api/confirmation/queue
@@ -58,11 +61,13 @@ export async function GET() {
       }),
     });
     const hand = returns ? RETURNS_MODE.handLimit : undefined;
+    // «جدول المحاولات» on (ruling 24, key only): the counter is said in the plan's four. Off, and the older mode, are the three they always were.
+    const planned = returns?.cadence ? (returns as ReturnsMode & { cadence: { since: Date } }) : null;
     const [pool, counts, waitingOnADate, heldForColleagues, openIssues] = await Promise.all([
       // For an agent: what SHE may take (hers first, never a colleague's). For a supervisor: the whole pool, as before.
       // Said in PARTS (the owner, 12/11: «طلب جديد وخانة تانية طلب الراجع») — the big number is their sum, so it cannot disagree with
       // them; and they are asked over the very predicates the pull picks from (`waitingBreakdown`), so neither can it with the button.
-      waitingBreakdown(db, scope, now, mayPull ? user.id : undefined, returns),
+      planned ? waitingByPlan(db, scope, now, mayPull ? user.id : undefined, planned) : waitingBreakdown(db, scope, now, mayPull ? user.id : undefined, returns),
       // In her hands AND held for her (RV706): the cap counts both, and the screen shows both.
       ownedCounts(db, scope, user.id, now),
       // Real work, none of it takeable today. Said out loud rather than
@@ -105,10 +110,20 @@ export async function GET() {
     return NextResponse.json({
       // What the pull can hand out: never rung + rung before and back + a promise whose date came. The three follow, so the screen
       // can say them apart under the one figure — still ONE button, and the order it gives is unchanged.
-      waiting: pool.fresh + pool.returned + pool.due,
-      waitingNew: pool.fresh,
-      waitingReturned: pool.returned,
-      waitingDue: pool.due,
+      ...('rest' in pool
+        ? // The plan's four, in the server's own words (`planWords`). The old keys stay for a tab left open over a deploy, and say what they always said: never rung · rung before.
+          {
+            waiting: pool.fresh + pool.promise + pool.retry + pool.rest,
+            waitingNew: pool.fresh,
+            waitingReturned: pool.promise + pool.retry + pool.rest,
+            waitingPlan: planWords(pool),
+          }
+        : {
+            waiting: pool.fresh + pool.returned + pool.due,
+            waitingNew: pool.fresh,
+            waitingReturned: pool.returned,
+            waitingDue: pool.due,
+          }),
       waitingOnADate,
       ...(openIssues === undefined ? {} : { openIssues }),
       reservedForColleagues: heldForColleagues,
