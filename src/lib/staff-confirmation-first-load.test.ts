@@ -112,8 +112,15 @@ describe('what an agent downloads before «طلباتي» draws', () => {
    * (`useLiveRefresh`, the bell, «شغلك اليوم») — costs +0.3 KB: 411.2 KB, 28 files (CI «Payload budget», run 43444353216, #281). Same
    * reading as before: the order window, the create window, the assistant and the «مؤجّلة» tab are still absent from the chunks, and this
    * guard still exists for the 35 KB they weighed, not for a third of a kilobyte.
+   *
+   * MOVED 2026-11-15, 412 → 414, MEASURED AGAIN. «إثبات المكالمات» (Confirmation Center v2, step A) puts its rule on the three places an agent records a «لا يرد» — the
+   * card (a lock, its sentence and a one-second tick that stops by itself), the call sheet (the same lock, and the «ردّ» / «اتصل لاحقاً» lines) and the postpone
+   * dialog — and its Arabic sentences travel in `call-proof-words.ts`, a file with no imports. Main read 411.2 KB (CI «Payload budget», run 43444353216, #281; not
+   * re-measured here: a second checkout cannot build under Turbopack through a symlinked node_modules); with the change a local `npm run build`, 15/11,
+   * reads 413.3 KB, 28 files: +2.1 KB. Same reading as before: the order window, the create window, the assistant and the «مؤجّلة» tab are still absent from the
+   * chunks (`ConfirmationActions` is the order window and is NOT in this route), and the ceiling sits a little over the measured value.
    */
-  const CEILING_KB = 412;
+  const CEILING_KB = 414;
 
   it(`keeps /confirmation/mine at or under ${CEILING_KB} KB of JS, gzipped`, () => {
     if (!measurable()) return noBuild();
