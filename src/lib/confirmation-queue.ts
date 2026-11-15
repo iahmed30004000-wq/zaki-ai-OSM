@@ -1043,15 +1043,18 @@ export async function returnedByHerOwnPress(
 }
 
 /**
- * THE ORDER SHE LET GO A MOMENT AGO, FOR A DOOR THAT ACTS ON IT (the company-WhatsApp template; the owner's ruling 7).
+ * THE ORDER SHE LET GO A MOMENT AGO, FOR A DOOR THAT ACTS ON IT (the company-WhatsApp template; the owner's ruling 7, narrowed by the planner 15/11, answer 14).
  * `returnedByHerOwnPress` only says her counted press released the order. A door that SENDS something must also be sure nobody has taken it since, and that it is still at the desk:
- * returns the order's four fields, or null. Asked only when the door would refuse (not held / not visible); OFF — `returnsModeOn` false — null before any other read.
+ * returns the order's four fields, or null. Asked only when the door would refuse (not held / not visible).
+ *
+ * ONLY WITH THE PLAN ON (`cadenceSince` non-null — «جدول المحاولات», the one switch). The older «الطلب يرجع للطابور فوراً» mode (`returnsModeOn` reads it too) also releases the order with her
+ * «لا يرد», but that mode keeps the door exactly as it was: NOT_HELD, and RV1651 stays open for it. So this asks the plan's switch and nothing else — null before any other read.
  */
 export async function orderReleasedByHerOwnPress(
   client: Tx,
   args: { companyId: string; storeId: string; orderId: string; userId: string; now?: Date }
 ): Promise<{ id: string; orderNumber: string; customerId: string; countryId: string | null } | null> {
-  if (!(await returnsModeOn(client, args.companyId))) return null;
+  if (!(await cadenceSince(client, args.companyId))) return null;
   if (!(await returnedByHerOwnPress(client, args))) return null;
   return client.order.findFirst({
     where: {

@@ -29,7 +29,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = Record<string, any>;
 
-const { world, sw, rsw } = vi.hoisted(() => ({
+const { world, sw, rsw, cad } = vi.hoisted(() => ({
+  // The plan's own switch («جدول المحاولات»): off for every test but the ones that say so — the whole file runs on the two LEGACY switches below.
+  cad: { since: null as Date | null },
   world: { orders: [] as Row[], history: [] as Row[], logs: [] as Row[], activities: [] as Row[], notices: [] as Row[][], audience: [] as { id: string }[], clock: new Date('2026-11-02T10:00:00.000Z') },
   sw: { value: { enabled: false, enabledAt: null } as { enabled: boolean; enabledAt: Date | null } },
   rsw: { value: { enabled: false, enabledAt: null } as { enabled: boolean; enabledAt: Date | null } },
@@ -136,6 +138,7 @@ vi.mock('./db', () => {
 // The two switches the pull reads before its transaction — the test says what they are.
 vi.mock('./no-answer-rounds-switch', () => ({ roundsSwitch: async () => sw.value }));
 vi.mock('./no-answer-returns-switch', () => ({ returnsSwitch: async () => rsw.value }));
+vi.mock('./no-answer-cadence-switch', () => ({ cadenceSince: async () => cad.since }));
 vi.mock('./notification-audience', () => ({ resolveAudience: vi.fn(async () => world.audience) }));
 
 import {
@@ -234,6 +237,7 @@ beforeEach(() => {
   world.clock = NOW;
   sw.value = ON;
   rsw.value = ON;
+  cad.since = null;
   vi.clearAllMocks();
 });
 
@@ -631,12 +635,20 @@ describe('the writer of «the order leaves her hand»', () => {
 });
 
 /**
- * THE ORDER SHE LET GO A MOMENT AGO — for a door that SENDS something (the company-WhatsApp template, ruling 7).
+ * THE ORDER SHE LET GO A MOMENT AGO — for a door that SENDS something (the company-WhatsApp template, ruling 7; narrowed to the plan by the planner 15/11, answer 14).
  *
  * `returnedByHerOwnPress` says only «her press released it». A door that acts on the order also needs it unheld, open and still at the desk — so a colleague who
- * pulled it since, a close and a shipment all answer null — and the question is not even asked when the mode is off.
+ * pulled it since, a close and a shipment all answer null.
+ *
+ * DEFINITION OF DONE (answer 14): the exception exists ONLY with the plan on (`cadenceSince` non-null). The older «الطلب يرجع للطابور فوراً» mode — both legacy switches
+ * plainly on, the world of the rest of this file — releases the order with her press too, but this answers null for it BEFORE any other read: the door refuses exactly as it
+ * did (RV1651 stays open for that mode). The plan on with both legacy switches off is enough. Blockers: any read of the history or the order without the plan.
  */
 describe('the order she let go, for a door that acts on it', () => {
+  // The plan is on for this block (the file's world is the legacy mode); the tests that are about the legacy mode say so.
+  beforeEach(() => {
+    cad.since = t(1, 8);
+  });
   const hers = (over: Row = {}) => mine(2, { assignedAt: minutesAgo(5), ...over });
   const ask = (o: Row, extra: Row = {}) =>
     orderReleasedByHerOwnPress(db as never, { companyId: 'c1', storeId: 's1', orderId: o.id, userId: 'sara', now: NOW, ...extra });
@@ -654,10 +666,21 @@ describe('the order she let go, for a door that acts on it', () => {
     expect(vi.mocked(db.order.findFirst).mock.calls[0][0]).toMatchObject({ select: { id: true, orderNumber: true, customerId: true, countryId: true } });
   });
 
-  it('the mode OFF (the rounds off, or the returns switch off): null before ANY other read', async () => {
+  it('the plan on is ENOUGH: both legacy switches off, and the exception still stands', async () => {
     const o = await pressed();
-    for (const off of [() => (sw.value = OFF), () => ((sw.value = ON), (rsw.value = OFF))]) {
-      off();
+    sw.value = OFF;
+    rsw.value = OFF;
+    expect(await ask(o)).toMatchObject({ id: o.id });
+  });
+
+  it('the plan OFF: null before ANY other read — whatever the legacy switches say (answer 14: the older mode keeps today’s refusal)', async () => {
+    const o = await pressed();
+    cad.since = null;
+    // The legacy returns mode PLAINLY ON (both switches) with the plan off is the case the exception used to cover and no longer does; then the other three states of the two switches.
+    const legacy: [typeof sw.value, typeof rsw.value][] = [[ON, ON], [OFF, ON], [ON, OFF], [OFF, OFF]];
+    for (const [rounds, returns] of legacy) {
+      sw.value = rounds;
+      rsw.value = returns;
       expect(await ask(o)).toBeNull();
       expect(db.orderClaimHistory.findFirst).not.toHaveBeenCalled();
       expect(db.order.findFirst).not.toHaveBeenCalled();

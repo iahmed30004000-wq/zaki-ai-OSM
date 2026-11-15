@@ -75,7 +75,9 @@ import { POST } from './route';
 import { forgetAfterNoAnswer } from '@/lib/whatsapp/after-no-answer';
 import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
 import { forgetCallProofSwitch } from '@/lib/call-proof-switch';
-import { OPEN_CONFIRMATION, RETURNED_PRESS_GRACE_MS } from '@/lib/confirmation-queue';
+import { forgetRoundsSwitch } from '@/lib/no-answer-rounds-switch';
+import { forgetReturnsSwitch } from '@/lib/no-answer-returns-switch';
+import { NOT_HELD_MESSAGE, OPEN_CONFIRMATION, RETURNED_PRESS_GRACE_MS } from '@/lib/confirmation-queue';
 import { NO_ANSWER_RETURNED_REASON } from '@/lib/no-answer-returns';
 
 const fetchMock = vi.fn();
@@ -292,7 +294,10 @@ describe('COMPANY and connected', () => {
  * With «جدول المحاولات» on, her counted «لا يرد» sends the order back to the queue in the same press, and the call sheet offers this button AFTER the press
  * landed. So the door that used to refuse an order she no longer holds accepts ONE kind of unheld order: the one her own press released in the last two
  * minutes (`RELEASED` / `NO_ANSWER_RETURNED`, her own `userId`), that nobody has pulled since, still open at the desk and never shipped. Both refusals —
- * 404 for a bound agent whose scope does not reach it, 403 NOT_HELD for one whose scope does — stay what they were for everything else; OFF asks nothing new.
+ * 404 for a bound agent whose scope does not reach it, 403 NOT_HELD for one whose scope does — stay what they were for everything else.
+ *
+ * ONLY THE PLAN'S (the planner 15/11, answer 14): the older «الطلب يرجع للطابور فوراً» mode with the plan off keeps both refusals as they were (RV1651 stays open for
+ * it) — pinned below — and with everything off the door reads nothing new on a refusal and nothing at all on a held order.
  */
 const PLAN_ON = { enabled: true, enabledAt: '2026-11-01T00:00:00.000Z' };
 const LET_GO = (id: string) => ({ id, orderNumber: 'ORD-2026-0042', customerId: 'cu1', countryId: 'jo' });
@@ -471,6 +476,33 @@ describe('OFF — the door is exactly what it was, and asks nothing new', () => 
     const held = await post({ orderId: state.order!.id });
     expect(held.status).toBe(403);
     expect((await held.json()).code).toBe('NOT_HELD');
+    neitherRead();
+
+    assertOrderAccess.mockImplementation(async () => ({ allowed: false, reason: 'NOT_ASSIGNED' }));
+    expect((await post({ orderId: state.order!.id })).status).toBe(404);
+    neitherRead();
+    expectNothingWritten();
+  });
+
+  /**
+   * ANSWER 14 (the planner 15/11): the exception is the PLAN's. A company on the older «الطلب يرجع للطابور فوراً» mode — «نظام الجولات» and its own switch both plainly
+   * on, the plan off — also lets the order go with her «لا يرد», but its door is what it was at b1df2af3: the 403 NOT_HELD and the 404, word for word, with her line and
+   * the order both there to be found (so a gate that asked `returnsModeOn` instead of the plan's own switch would send, and this would fail).
+   */
+  it('the OLDER returns mode on and the plan OFF: the 403 and the 404 are today’s — RV1651 stays open for it, and neither new read is made', async () => {
+    const LEGACY_ON = { enabled: true, enabledAt: '2026-11-01T00:00:00.000Z' };
+    state.settings = { whatsappAfterNoAnswer: COMPANY, noAnswerRounds: LEGACY_ON, noAnswerReturns: LEGACY_ON };
+    forgetCallProofSwitch();
+    forgetRoundsSwitch();
+    forgetReturnsSwitch();
+    forgetAfterNoAnswer();
+    state.line = { userId: 'agent1', reason: NO_ANSWER_RETURNED_REASON };
+    state.pullable = LET_GO(state.order!.id as string);
+    state.order = { ...state.order!, claimedById: null };
+
+    const held = await post({ orderId: state.order!.id });
+    expect(held.status).toBe(403);
+    expect(await held.json()).toMatchObject({ code: 'NOT_HELD', error: NOT_HELD_MESSAGE });
     neitherRead();
 
     assertOrderAccess.mockImplementation(async () => ({ allowed: false, reason: 'NOT_ASSIGNED' }));
