@@ -3,11 +3,14 @@ import { zonedParts, zonedTimeToInstant } from './business-calendar';
 import { NO_ANSWER_LIMIT } from './confirmation-workflow';
 import {
   CADENCE_EVENING,
+  CADENCE_EVENING_FROM,
+  CADENCE_FLOORS_MS,
   CADENCE_GAPS_MS,
   CADENCE_LIMIT,
   CADENCE_MIN_DAYS,
   CADENCE_MORNING,
   CADENCE_START,
+  CADENCE_WORKDAY_START,
   CLOSED_WITHOUT_COUNT_WORDS,
   cadenceCalOf,
   cadenceCardWords,
@@ -29,11 +32,14 @@ import type { DueVerdict } from './work-first';
  * ═══════════════════════════════════════════════════════════════════════
  * DEFINITION OF DONE — THE FIVE-ATTEMPT PLAN AS ONE PURE RULE (step B of Confirmation Center v2)
  *
- *  1. #1 counts and sets #2's due at +30 min; #2 sets #3's at +2 h (elapsed time); #3 sets #4's at 09:00 of the NEXT local day; #4 sets #5's at the first 18:00 STRICTLY after it.
+ *  1. #1 counts and sets #2's due at +30 min; #2 sets #3's at +2 h (elapsed time); #3 sets #4's at 10:00 on the first WORKING day at least 8 h (elapsed, exactly 8 h counts) after it; #4 sets
+ *     #5's at the first 18:00 STRICTLY after it on a working day, never less than 3 h (elapsed) after it. Working days = all but the Country's rest days (`weekendDays`; none = skip nothing),
+ *     and they move #4 and #5 only, never the 30-minute and 2-hour gaps. #4's clock is the constant 10:00, never the Country's `workHoursStart`.
  *  2. A press at the due to the millisecond counts; one millisecond before is EARLY — kept, never counted, and the state (the due) does not move.
  *  3. A line at or before the floor (`enabledAt`) never counts; a sixth press after the fifth never counts.
  *  4. Only NO_ANSWER / BUSY / UNREACHABLE are attempts; everything else neither counts nor resets. Any employee's line counts.
- *  5. The fifth counted attempt closes the order across at least two local days — and under the plan five counted attempts always span two.
+ *  5. The fifth counted attempt closes the order across at least two local days — and under the plan five counted attempts always span two, even on a 25-hour DST day (the first-day
+ *     guard: #4 is never due on #1's local day), with or without rest days.
  *  6. Replaying the stored lines (`cadenceState`) equals deciding them one by one at the door (`cadencePress`), even when the clock and the attempt numbers disagree.
  *  7. The words are server-written, in Western digits, never say «جولة», and take their numbers from the constants.
  *
@@ -43,7 +49,9 @@ import type { DueVerdict } from './work-first';
 
 const AMMAN = 'Asia/Amman';
 const SINCE = new Date('2026-11-01T00:00:00.000Z');
-const cal = (timeZone = AMMAN, since = SINCE): CadenceCal => ({ since, timeZone });
+const cal = (timeZone = AMMAN, since = SINCE, restDays?: readonly number[]): CadenceCal => ({ since, timeZone, ...(restDays ? { restDays } : {}) });
+/** Jordan's week as the live store has it: Friday and Saturday off. */
+const REST_FRI_SAT = [5, 6] as const;
 /** A local wall-clock instant, plus seconds and milliseconds on top (so a boundary can be hit to the millisecond). */
 const local = (tz: string, y: number, mo: number, d: number, h: number, mi = 0, s = 0, ms = 0): Date =>
   new Date(zonedTimeToInstant(tz, y, mo, d, h, mi).getTime() + s * 1000 + ms);
@@ -66,9 +74,12 @@ function chain(c: CadenceCal, times: Date[]): CadenceState {
 }
 /** A plan whose third attempt is exactly at `t3` (the second exactly at its due, the first exactly 30 minutes before that). */
 const upToThird = (c: CadenceCal, t3: Date) => chain(c, [ms(t3, -150 * 60_000), ms(t3, -120 * 60_000), t3]);
-/** A plan whose fourth attempt is exactly at `t4`, with the third two days before (so the 09:00 due has long passed). */
-function upToFourth(c: CadenceCal, t4: Date) {
-  const t3 = ms(t4, -48 * 3_600_000);
+/**
+ * A plan whose fourth attempt is exactly at `t4`, with the third `gapHours` before (default two days, so the 10:00 due has long passed). A rest-day wait is longer than two days
+ * (Thursday 14:00 → Sunday 10:00 is 68 h), so a test with rest days gives the gap it needs — `chain` asserts that every press counts.
+ */
+function upToFourth(c: CadenceCal, t4: Date, gapHours = 48) {
+  const t3 = ms(t4, -gapHours * 3_600_000);
   return chain(c, [ms(t3, -150 * 60_000), ms(t3, -120 * 60_000), t3, t4]);
 }
 
@@ -88,10 +99,14 @@ describe('cadenceCalOf: the one builder of the plan’s world', () => {
 });
 
 describe('the constants', () => {
-  it('five attempts over two days, 30 minutes and 2 hours, 9–12 and 18–22 — and the switch-off limit is still 3', () => {
+  it('five attempts over two days, 30 minutes and 2 hours, the 8 h and 3 h floors, #4 at 10:00 and #5 from 18:00 — and the switch-off limit is still 3', () => {
     expect(CADENCE_LIMIT).toBe(5);
     expect(CADENCE_MIN_DAYS).toBe(2);
     expect(CADENCE_GAPS_MS).toEqual({ afterFirst: 30 * 60_000, afterSecond: 2 * 3_600_000 });
+    expect(CADENCE_FLOORS_MS).toEqual({ beforeFourth: 8 * 3_600_000, beforeFifth: 3 * 3_600_000 });
+    expect(CADENCE_WORKDAY_START).toBe('10:00');
+    expect(CADENCE_EVENING_FROM).toBe('18:00');
+    // the wording windows stay until the words print the real due
     expect(CADENCE_MORNING).toEqual({ from: 9, to: 12 });
     expect(CADENCE_EVENING).toEqual({ from: 18, to: 22 });
     expect(NO_ANSWER_LIMIT).toBe(3);
@@ -145,48 +160,75 @@ describe('#1 and #2', () => {
   });
 });
 
-describe('#3 → #4: 09:00 of the next local day', () => {
+describe('#3 → #4: 10:00 on the first working day at least 8 hours (elapsed) later', () => {
   it.each([
-    ['08:59', [3, 8, 59, 0, 0], '2026-11-04 09:00'],
-    ['09:00', [3, 9, 0, 0, 0], '2026-11-04 09:00'],
-    ['23:59:59.999', [3, 23, 59, 59, 999], '2026-11-04 09:00'],
-    ['00:00:00.000 (~33 h)', [3, 0, 0, 0, 0], '2026-11-04 09:00'],
-    ['00:05 (~33 h)', [3, 0, 5, 0, 0], '2026-11-04 09:00'],
+    ['08:59', [3, 8, 59, 0, 0], '2026-11-04 10:00'],
+    ['09:00', [3, 9, 0, 0, 0], '2026-11-04 10:00'],
+    ['14:00', [3, 14, 0, 0, 0], '2026-11-04 10:00'],
+    ['23:59:59.999', [3, 23, 59, 59, 999], '2026-11-04 10:00'],
+    ['00:00:00.000 (8 h to 08:00: today’s 10:00)', [3, 0, 0, 0, 0], '2026-11-03 10:00'],
+    ['00:05 (today’s 10:00)', [3, 0, 5, 0, 0], '2026-11-03 10:00'],
+    ['01:59:59.999 (a millisecond under 8 h to 10:00)', [3, 1, 59, 59, 999], '2026-11-03 10:00'],
+    ['02:00:00.000 (EXACTLY 8 h to 10:00 counts)', [3, 2, 0, 0, 0], '2026-11-03 10:00'],
+    ['02:00:00.001 (a millisecond over: tomorrow’s 10:00, 32 h)', [3, 2, 0, 0, 1], '2026-11-04 10:00'],
   ] as const)('#3 at %s → %s', (_n, [d, h, mi, s, m], due) => {
     const state = upToThird(cal(), amman(d, h, mi, s, m));
     expect(hhmm(state.dueAt!)).toBe(due);
   });
 
-  it('carries month ends, year ends and leap days', () => {
-    expect(hhmm(upToThird(cal(), local(AMMAN, 2026, 11, 30, 20)).dueAt!)).toBe('2026-12-01 09:00');
-    expect(hhmm(upToThird(cal(), local(AMMAN, 2026, 12, 31, 20)).dueAt!)).toBe('2027-01-01 09:00');
-    expect(hhmm(upToThird(cal(), local(AMMAN, 2027, 1, 31, 20)).dueAt!)).toBe('2027-02-01 09:00');
-    expect(hhmm(upToThird(cal(), local(AMMAN, 2028, 2, 29, 20)).dueAt!)).toBe('2028-03-01 09:00');
+  it('the 8 hours are ELAPSED time: exactly at 10:00 a press counts, one millisecond before it is early', () => {
+    const s3 = upToThird(cal(), amman(3, 2, 0, 0, 0));
+    expect(s3.dueAt).toEqual(amman(3, 10));
+    expect(s3.dueAt!.getTime() - amman(3, 2).getTime()).toBe(CADENCE_FLOORS_MS.beforeFourth);
+    expect(cadenceStep(s3, ms(s3.dueAt!, -1), cal()).counted).toBe(false);
+    expect(cadenceStep(s3, s3.dueAt!, cal()).counted).toBe(true);
   });
 
-  it('Berlin, Saturday 22:00 on the night before the spring-forward → Sunday 09:00 CEST', () => {
+  it('carries month ends, year ends and leap days', () => {
+    expect(hhmm(upToThird(cal(), local(AMMAN, 2026, 11, 30, 20)).dueAt!)).toBe('2026-12-01 10:00');
+    expect(hhmm(upToThird(cal(), local(AMMAN, 2026, 12, 31, 20)).dueAt!)).toBe('2027-01-01 10:00');
+    expect(hhmm(upToThird(cal(), local(AMMAN, 2027, 1, 31, 20)).dueAt!)).toBe('2027-02-01 10:00');
+    expect(hhmm(upToThird(cal(), local(AMMAN, 2028, 2, 29, 20)).dueAt!)).toBe('2028-03-01 10:00');
+  });
+
+  it('Berlin, Saturday 22:00 on the night before the spring-forward → Sunday 10:00 CEST', () => {
     const BER = 'Europe/Berlin';
     const due = upToThird(cal(BER, new Date('2026-03-01T00:00:00Z')), local(BER, 2026, 3, 28, 22)).dueAt!;
-    expect(hhmm(due, BER)).toBe('2026-03-29 09:00');
-    expect(due.toISOString()).toBe('2026-03-29T07:00:00.000Z');
+    expect(hhmm(due, BER)).toBe('2026-03-29 10:00');
+    expect(due.toISOString()).toBe('2026-03-29T08:00:00.000Z');
+  });
+
+  it('the clock is the planner’s 10:00 whatever the country’s work hours say: the calendar is not told them', () => {
+    // `cadenceCalOf` copies no work hours, so a country row that still reads 09:00 cannot bring the nine back.
+    const c = cadenceCalOf(SINCE, { timezone: AMMAN, weekendDays: [], workHoursStart: '09:00' } as { timezone: string; weekendDays: number[] });
+    expect(hhmm(upToThird(c, amman(3, 14)).dueAt!)).toBe('2026-11-04 10:00');
   });
 });
 
-describe('#4 → #5: the first 18:00 strictly after', () => {
+describe('#4 → #5: the first 18:00 strictly after on a working day, and never less than 3 hours (elapsed) later', () => {
   it.each([
-    ['17:59:59.999', [10, 17, 59, 59, 999], '2026-11-10 18:00'],
+    ['17:59:59.999 (the floor: 20:59:59.999)', [10, 17, 59, 59, 999], '2026-11-10 20:59'],
     ['18:00:00.000 (strictly after → tomorrow)', [10, 18, 0, 0, 0], '2026-11-11 18:00'],
     ['18:00:00.001', [10, 18, 0, 0, 1], '2026-11-11 18:00'],
     ['23:59', [10, 23, 59, 0, 0], '2026-11-11 18:00'],
     ['00:00', [10, 0, 0, 0, 0], '2026-11-10 18:00'],
     ['09:00', [10, 9, 0, 0, 0], '2026-11-10 18:00'],
+    ['14:59:59.999 (a millisecond under 3 h to 18:00)', [10, 14, 59, 59, 999], '2026-11-10 18:00'],
+    ['15:00:00.000 (EXACTLY 3 h to 18:00: the floor equals the anchor)', [10, 15, 0, 0, 0], '2026-11-10 18:00'],
+    ['16:30 (the floor: 19:30)', [10, 16, 30, 0, 0], '2026-11-10 19:30'],
   ] as const)('#4 at %s → %s', (_n, [d, h, mi, s, m], due) => {
     expect(hhmm(upToFourth(cal(), amman(d, h, mi, s, m)).dueAt!)).toBe(due);
   });
 
-  it('a #4 counted at 17:55 makes #5 due five minutes later (the literal plan, planner question Q3)', () => {
+  it('#4 at 15:00:00.001 → the floor binds: the due is #4 + 3 h to the millisecond (18:00:00.001)', () => {
+    const t4 = amman(10, 15, 0, 0, 1);
+    expect(upToFourth(cal(), t4).dueAt).toEqual(ms(t4, CADENCE_FLOORS_MS.beforeFifth));
+    expect(upToFourth(cal(), t4).dueAt).toEqual(amman(10, 18, 0, 0, 1));
+  });
+
+  it('a #4 counted at 17:55 makes #5 due three hours later, 20:55 (the planner’s floor reverses the old «five minutes later»)', () => {
     const s = upToFourth(cal(), amman(10, 17, 55));
-    expect(s.dueAt).toEqual(amman(10, 18, 0));
+    expect(s.dueAt).toEqual(amman(10, 20, 55));
   });
 
   it('a late #4 (the morning after it was due) is still due at that evening’s 18:00', () => {
@@ -206,6 +248,144 @@ describe('#4 → #5: the first 18:00 strictly after', () => {
   });
 });
 
+describe('rest days: #4 and #5 never land on one (Jordan’s live week: Friday and Saturday off)', () => {
+  const rest = cal(AMMAN, SINCE, REST_FRI_SAT);
+
+  it.each([
+    ['T3 Thursday 14:00 → Sunday 10:00 (68 h)', [19, 14, 0], '2026-11-22 10:00'],
+    ['T3 Wednesday 23:50 → Thursday 10:00', [18, 23, 50], '2026-11-19 10:00'],
+    ['T3 Thursday 23:50 → Sunday 10:00 (58 h)', [19, 23, 50], '2026-11-22 10:00'],
+    ['T3 Friday 10:00 (pressed ON a rest day) → Sunday 10:00', [20, 10, 0], '2026-11-22 10:00'],
+    ['T3 Saturday 15:00 → Sunday 10:00', [21, 15, 0], '2026-11-22 10:00'],
+    ['T3 Sunday 00:30 (8 h to 08:30) → Sunday 10:00', [22, 0, 30], '2026-11-22 10:00'],
+    ['T3 Sunday 14:00 → Monday 10:00 (no rest day in the way)', [22, 14, 0], '2026-11-23 10:00'],
+  ] as const)('#4: %s', (_n, [d, h, mi], due) => {
+    expect(hhmm(upToThird(rest, amman(d, h, mi)).dueAt!)).toBe(due);
+  });
+
+  it.each([
+    ['T4 Thursday 16:30 → Thursday 19:30 (the 3 h floor, a working day)', [19, 16, 30], '2026-11-19 19:30'],
+    ['T4 Thursday 19:00 → Sunday 18:00 (Friday and Saturday skipped)', [19, 19, 0], '2026-11-22 18:00'],
+    ['T4 Friday 10:30 (a late press on a rest day) → Sunday 18:00', [20, 10, 30], '2026-11-22 18:00'],
+    ['T4 Sunday 10:00 → Sunday 18:00', [22, 10, 0], '2026-11-22 18:00'],
+  ] as const)('#5: %s', (_n, [d, h, mi], due) => {
+    expect(hhmm(upToFourth(rest, amman(d, h, mi)).dueAt!)).toBe(due);
+  });
+
+  it('a press on a rest day before its (Sunday) due is early; at Sunday 10:00 to the millisecond it counts', () => {
+    const s3 = upToThird(rest, amman(19, 14));
+    expect(cadenceStep(s3, amman(20, 10), rest).counted).toBe(false);
+    expect(cadenceStep(s3, amman(21, 12), rest).counted).toBe(false);
+    expect(cadenceStep(s3, amman(22, 9, 59, 59, 999), rest).counted).toBe(false);
+    expect(cadenceStep(s3, amman(22, 10), rest).counted).toBe(true);
+  });
+
+  it('the Jordanian week end to end: Thursday 20:00 → 20:30 → 22:30 → Sunday 10:00 → Sunday 18:00 closes the order over two local days (about 3.9 days)', () => {
+    const s = chain(rest, [amman(19, 20), amman(19, 20, 30), amman(19, 22, 30), amman(22, 10), amman(22, 18)]);
+    expect(s.days).toBe(2);
+    expect(cadenceCloses(s)).toBe(true);
+  });
+
+  it('the 30-minute and 2-hour gaps are elapsed time and never move for a rest day: Thursday 21:55 → #3 is due Friday 00:25', () => {
+    const t1 = amman(19, 21, 55);
+    const s1 = chain(rest, [t1]);
+    expect(s1.dueAt).toEqual(amman(19, 22, 25));
+    const s2 = chain(rest, [t1, s1.dueAt!]);
+    expect(hhmm(s2.dueAt!)).toBe('2026-11-20 00:25');
+  });
+
+  it.each([
+    ['no list at all (undefined)', undefined],
+    ['an empty list', []],
+    ['all seven days (nowhere to skip to)', [0, 1, 2, 3, 4, 5, 6]],
+    ['only invalid entries (7, -1, 5.5, "x")', [7, -1, 5.5, 'x'] as unknown as number[]],
+  ])('%s skips nothing: Thursday 14:00 → Friday 10:00', (_n, days) => {
+    expect(hhmm(upToThird(cal(AMMAN, SINCE, days), amman(19, 14)).dueAt!)).toBe('2026-11-20 10:00');
+    expect(hhmm(upToFourth(cal(AMMAN, SINCE, days), amman(20, 17, 55)).dueAt!)).toBe('2026-11-20 20:55');
+  });
+
+  it('invalid entries beside valid ones are dropped, the valid ones stay: [5, 6, 9, -1] reads as [5, 6]', () => {
+    expect(hhmm(upToThird(cal(AMMAN, SINCE, [5, 6, 9, -1]), amman(19, 14)).dueAt!)).toBe('2026-11-22 10:00');
+  });
+
+  it('six rest days: the plan terminates on the one working day', () => {
+    const sixOff = cal(AMMAN, SINCE, [0, 1, 2, 3, 4, 5]);
+    expect(hhmm(upToThird(sixOff, amman(19, 14)).dueAt!)).toBe('2026-11-21 10:00');
+    expect(hhmm(upToFourth(sixOff, amman(21, 10), 24 * 7).dueAt!)).toBe('2026-11-21 18:00');
+    expect(hhmm(upToFourth(sixOff, amman(21, 19), 24 * 7).dueAt!)).toBe('2026-11-28 18:00');
+  });
+});
+
+describe('five attempts over two local days, even on a 25-hour DST day: the first-day guard', () => {
+  /** The chain of presses each exactly at the due the last one set. */
+  function onTime(c: CadenceCal, t1: Date): CadenceState {
+    let s = CADENCE_START;
+    let at = t1;
+    for (let n = 0; n < CADENCE_LIMIT; n++) {
+      const r = cadenceStep(s, at, c);
+      if (!r.counted) throw new Error(`press ${n + 1} at ${at.toISOString()} did not count`);
+      s = r.next;
+      if (s.dueAt) at = s.dueAt;
+    }
+    return s;
+  }
+
+  it.each([
+    ['Europe/Berlin', [2026, 10, 25], '2026-10-26 10:00'],
+    ['America/New_York', [2026, 11, 1], '2026-11-02 10:00'],
+    ['Pacific/Auckland', [2026, 4, 5], '2026-04-06 10:00'],
+  ] as const)('%s: #1 at 00:00, #2 +30 min, #3 +2 h (02:30 on the wall) → #4 is on the NEXT local day, five counted, two days, it closes', (tz, [y, mo, d], due4) => {
+    const c = cal(tz, new Date('2026-01-01T00:00:00Z'));
+    const t1 = local(tz, y, mo, d, 0, 0);
+    const s = onTime(c, t1);
+    expect(s.counted).toHaveLength(5);
+    expect(hhmm(s.counted[3], tz)).toBe(due4);
+    expect(dayOf(s.counted[3], tz)).not.toBe(dayOf(t1, tz));
+    expect(s.days).toBeGreaterThanOrEqual(CADENCE_MIN_DAYS);
+    expect(cadenceCloses(s)).toBe(true);
+  });
+
+  const ZONES = ['Asia/Amman', 'Asia/Damascus', 'Europe/Berlin', 'America/New_York', 'Asia/Beirut', 'Australia/Lord_Howe', 'Pacific/Auckland', 'Pacific/Chatham', 'Asia/Kathmandu'];
+  /** The zone's offset from UTC at an instant, in ms — read from `zonedParts`, to the minute. */
+  const offsetOf = (at: number, tz: string): number => {
+    const p = zonedParts(new Date(at), tz);
+    return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute) - Math.floor(at / 60_000) * 60_000;
+  };
+  const dayOf = (d: Date, tz: string) => hhmm(d, tz).slice(0, 10);
+
+  it('9 zones × every offset transition of 2026 × T1 at every quarter-hour from 36 h before to 36 h after it × no rest day, Friday, Friday+Saturday: the on-time chain spans two local days and closes', () => {
+    const HOUR = 3_600_000;
+    const transitionsPerZone = new Map<string, number>();
+    let chains = 0;
+    for (const tz of ZONES) {
+      const c0 = cal(tz, new Date('2020-01-01T00:00:00Z'));
+      const transitions: number[] = [];
+      let prev = offsetOf(Date.UTC(2026, 0, 1), tz);
+      for (let at = Date.UTC(2026, 0, 1) + HOUR; at <= Date.UTC(2027, 0, 1); at += HOUR) {
+        const now = offsetOf(at, tz);
+        if (now !== prev) transitions.push(at);
+        prev = now;
+      }
+      transitionsPerZone.set(tz, transitions.length);
+      for (const transition of transitions) {
+        for (const restDays of [undefined, [5], REST_FRI_SAT] as const) {
+          const c: CadenceCal = restDays ? { ...c0, restDays } : c0;
+          for (let at = transition - 36 * HOUR; at <= transition + 36 * HOUR; at += 15 * 60_000) {
+            const s = onTime(c, new Date(at));
+            chains++;
+            if (s.days < CADENCE_MIN_DAYS || !cadenceCloses(s)) {
+              throw new Error(`${tz} T1 ${new Date(at).toISOString()} rest ${JSON.stringify(restDays)}: days ${s.days}, closes ${cadenceCloses(s)}`);
+            }
+          }
+        }
+      }
+    }
+    // The zones that change their clocks in 2026 did, twice each — otherwise the scan proved nothing about a 25-hour day.
+    for (const tz of ['Europe/Berlin', 'America/New_York', 'Pacific/Auckland', 'Australia/Lord_Howe', 'Pacific/Chatham', 'Asia/Beirut']) expect(transitionsPerZone.get(tz)).toBe(2);
+    expect(chains).toBeGreaterThan(10_000);
+  }, 120_000);
+});
+
 describe('the floor, the cap and the early rule', () => {
   it('a line at the floor does not count; one millisecond after does', () => {
     expect(cadenceStep(CADENCE_START, SINCE, cal()).counted).toBe(false);
@@ -219,7 +399,7 @@ describe('the floor, the cap and the early rule', () => {
 
   it('the sixth press after the fifth never counts, and counted stays 5', () => {
     const t = amman(3, 11);
-    const s5 = chain(cal(), [t, ms(t, 1_800_000), ms(t, 1_800_000 + 7_200_000), amman(4, 9), amman(4, 18)]);
+    const s5 = chain(cal(), [t, ms(t, 1_800_000), ms(t, 1_800_000 + 7_200_000), amman(4, 10), amman(4, 18)]);
     expect(s5.counted).toHaveLength(5);
     expect(s5.dueAt).toBeNull();
     const six = cadenceStep(s5, amman(5, 12), cal());
@@ -305,9 +485,9 @@ describe('cadenceState: the lines of an order, folded', () => {
 describe('cadenceCloses', () => {
   it('four counted: no; five over two days: yes; five on ONE day (hand-built): no', () => {
     const t = amman(3, 11);
-    const s4 = chain(cal(), [t, ms(t, 1_800_000), ms(t, 1_800_000 + 7_200_000), amman(4, 9)]);
+    const s4 = chain(cal(), [t, ms(t, 1_800_000), ms(t, 1_800_000 + 7_200_000), amman(4, 10)]);
     expect(cadenceCloses(s4)).toBe(false);
-    const s5 = chain(cal(), [t, ms(t, 1_800_000), ms(t, 1_800_000 + 7_200_000), amman(4, 9), amman(4, 18)]);
+    const s5 = chain(cal(), [t, ms(t, 1_800_000), ms(t, 1_800_000 + 7_200_000), amman(4, 10), amman(4, 18)]);
     expect(cadenceCloses(s5)).toBe(true);
     expect(cadenceCloses({ counted: Array.from({ length: 5 }, () => t), days: 1, dueAt: null })).toBe(false);
   });
@@ -338,14 +518,14 @@ describe('cadencePress: the door’s question', () => {
     const first = cadencePress([], { at: t, result: 'NO_ANSWER' }, cal());
     expect(first).toMatchObject({ counted: true, closes: false });
     expect(first.dueAt).toEqual(ms(t, 1_800_000));
-    const four = [t, ms(t, 1_800_000), ms(t, 1_800_000 + 7_200_000), amman(4, 9)].map((d, i) => row(d, 'NO_ANSWER', i + 1));
+    const four = [t, ms(t, 1_800_000), ms(t, 1_800_000 + 7_200_000), amman(4, 10)].map((d, i) => row(d, 'NO_ANSWER', i + 1));
     const fifth = cadencePress(four, { at: amman(4, 18), result: 'UNREACHABLE' }, cal());
     expect(fifth).toMatchObject({ counted: true, dueAt: null, closes: true });
   });
 
   it('a sixth no-answer after a refused close asks the close again', () => {
     const t = amman(3, 11);
-    const five = [t, ms(t, 1_800_000), ms(t, 1_800_000 + 7_200_000), amman(4, 9), amman(4, 18)].map((d, i) => row(d, 'NO_ANSWER', i + 1));
+    const five = [t, ms(t, 1_800_000), ms(t, 1_800_000 + 7_200_000), amman(4, 10), amman(4, 18)].map((d, i) => row(d, 'NO_ANSWER', i + 1));
     const sixth = cadencePress(five, { at: amman(5, 10), result: 'NO_ANSWER' }, cal());
     expect(sixth).toMatchObject({ counted: false, closes: true });
   });
@@ -380,9 +560,12 @@ function mulberry32(seed: number) {
 describe('properties', () => {
   const ZONES = ['Asia/Amman', 'Asia/Damascus', 'America/New_York'];
 
-  it('stepping press by press equals the replay of the stored rows, for 200 random sequences per zone (and 5 counted always span two days)', () => {
+  it.each([
+    ['no rest days', undefined],
+    ['Friday and Saturday off', REST_FRI_SAT],
+  ] as const)('stepping press by press equals the replay of the stored rows, for 200 random sequences per zone (and 5 counted always span two days — the guard), %s', (_n, restDays) => {
     for (const tz of ZONES) {
-      const c = cal(tz, new Date('2026-01-01T00:00:00Z'));
+      const c = cal(tz, new Date('2026-01-01T00:00:00Z'), restDays);
       for (let seed = 1; seed <= 200; seed++) {
         const rnd = mulberry32(seed * 7919 + tz.length);
         const rows: { createdAt: Date; result: string; attemptNumber: number }[] = [];
@@ -405,7 +588,7 @@ describe('properties', () => {
         expect(counted).toBeLessThanOrEqual(CADENCE_LIMIT);
       }
     }
-  });
+  }, 120_000);
 });
 
 describe('the words', () => {
@@ -461,7 +644,7 @@ describe('cadenceDesk: where a held order stands, on the server’s clock', () =
   const row = (createdAt: Date, attemptNumber: number, result = 'NO_ANSWER') => ({ createdAt, result, attemptNumber });
   const t = amman(3, 11);
   const one = [row(t, 1)];
-  const four = [t, ms(t, 1_800_000), ms(t, 1_800_000 + 7_200_000), amman(4, 9)].map((d, i) => row(d, i + 1));
+  const four = [t, ms(t, 1_800_000), ms(t, 1_800_000 + 7_200_000), amman(4, 10)].map((d, i) => row(d, i + 1));
   const five = [...four, row(amman(4, 18), 5)];
 
   it('a due exactly NOW is due; one millisecond before it is waiting (and a press then would not count)', () => {

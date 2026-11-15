@@ -64,8 +64,9 @@ vi.mock('@/lib/no-answer-returns-switch', () => ({ returnsSwitch: async () => rs
 vi.mock('@/lib/call-proof-switch', () => ({ callProofOn: async () => proof.on, callProofSwitch: async () => (proof.on ? cad.value : { enabled: false, enabledAt: null }) }));
 
 import { POST } from '@/app/api/orders/[id]/contact-attempts/route';
+import { cadenceCalOf, cadenceState } from '@/lib/no-answer-cadence';
 
-const T0 = new Date('2026-11-15T10:00:00.000Z'); // 13:00 in Amman (UTC+3)
+const T0= new Date('2026-11-15T10:00:00.000Z'); // 13:00 in Amman (UTC+3)
 const MIN = 60_000;
 const params = { params: Promise.resolve({ id: 'o1' }) };
 const send = (body: Record<string, unknown>) =>
@@ -83,8 +84,8 @@ async function pressAt(when: Date, result = 'NO_ANSWER', extra: Record<string, u
   return { res, body: await res.json() };
 }
 
-/** The five attempts of the plan, each on time: #1 13:00, #2 13:30, #3 15:30, #4 next day 09:00, #5 18:00 that day (Amman). */
-const PLAN = [T0, ms(T0, 30 * MIN), ms(T0, 150 * MIN), new Date('2026-11-16T06:00:00.000Z'), new Date('2026-11-16T15:00:00.000Z')];
+/** The five attempts of the plan, each on time: #1 Sunday 13:00, #2 13:30, #3 15:30, #4 Monday 10:00 (the planner's fixed clock, whatever the country's 09:00 says), #5 18:00 that day (Amman). */
+const PLAN = [T0, ms(T0, 30 * MIN), ms(T0, 150 * MIN), new Date('2026-11-16T07:00:00.000Z'), new Date('2026-11-16T15:00:00.000Z')];
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -291,6 +292,51 @@ describe('ON — the close at the fifth counted press', () => {
     expect(first.cadence.words).toBe('انحسبت المحاولة 1 من 5 — رجع الطلب للطابور، والمحاولة الجاية بكرة الساعة 00:29.');
     const { body: second } = await pressAt(ms(late, 30 * MIN));
     expect(second.cadence).toMatchObject({ attempt: 2, counted: true });
+  });
+});
+
+describe('ON — the Country’s rest days move #4 and #5 (Jordan’s live week: Friday and Saturday off)', () => {
+  const THU = new Date('2026-11-19T10:00:00.000Z'); // Thursday 13:00 in Amman
+  const SUN_10 = new Date('2026-11-22T07:00:00.000Z'); // Sunday 10:00 in Amman
+  const country = { workHoursStart: '10:00', workHoursEnd: '17:00', weekendDays: [5, 6], timezone: 'Asia/Amman' };
+
+  beforeEach(() => {
+    requireContext.mockResolvedValue({ user: { id: 'u1', name: 'Agent', role: 'CONFIRMATION_AGENT', status: 'ACTIVE' }, companyId: 'c1', storeId: 's1', country });
+    order.current = { ...order.current, claimedAt: new Date(THU.getTime() - 3_600_000) };
+  });
+
+  it('Thursday #1 13:00, #2 13:30, #3 15:30 → #4 is due SUNDAY 10:00: the line stores it, the answer says it, and it is the very due the pure plan computes for the same lines', async () => {
+    await pressAt(THU);
+    await pressAt(ms(THU, 30 * MIN));
+    const third = await pressAt(ms(THU, 150 * MIN));
+    expect(third.body.cadence).toMatchObject({ attempt: 3, of: 5, counted: true, dueAt: SUN_10.toISOString() });
+    const stored = db.orderContactAttempt.create.mock.calls[2][0].data;
+    expect(stored.nextFollowUpAt).toEqual(SUN_10);
+    // the door and the desk share ONE builder: what was written equals the replay of the written lines under `cadenceCalOf`
+    expect(cadenceState(rows, cadenceCalOf(cad.value.enabledAt!, country)).dueAt).toEqual(stored.nextFollowUpAt);
+  });
+
+  it('a press on a rest day before that Sunday 10:00 is early (kept, told, no due written, nothing released); one AT Sunday 10:00 counts and sets #5 for Sunday 18:00', async () => {
+    await pressAt(THU);
+    await pressAt(ms(THU, 30 * MIN));
+    await pressAt(ms(THU, 150 * MIN));
+    calls.length = 0;
+    const friday = await pressAt(new Date('2026-11-20T07:00:00.000Z')); // Friday 10:00
+    expect(friday.body.cadence).toMatchObject({ attempt: 3, counted: false, dueAt: SUN_10.toISOString() });
+    expect(db.orderContactAttempt.create.mock.calls[3][0].data.nextFollowUpAt).toBeNull();
+    expect(calls).not.toContain('release');
+    const sunday = await pressAt(SUN_10);
+    expect(sunday.body.cadence).toMatchObject({ attempt: 4, counted: true, dueAt: '2026-11-22T15:00:00.000Z' });
+    expect(db.orderContactAttempt.create.mock.calls[4][0].data.nextFollowUpAt).toEqual(new Date('2026-11-22T15:00:00.000Z'));
+  });
+
+  it('a country row that still says 09:00 does not bring the nine back: #4 is Monday 10:00', async () => {
+    requireContext.mockResolvedValue({ user: { id: 'u1', name: 'Agent', role: 'CONFIRMATION_AGENT', status: 'ACTIVE' }, companyId: 'c1', storeId: 's1', country: { ...country, workHoursStart: '09:00' } });
+    order.current = { ...order.current, claimedAt: new Date(T0.getTime() - 3_600_000) };
+    await pressAt(T0);
+    await pressAt(ms(T0, 30 * MIN));
+    const third = await pressAt(ms(T0, 150 * MIN));
+    expect(third.body.cadence.dueAt).toBe('2026-11-16T07:00:00.000Z'); // Monday 10:00 Amman
   });
 });
 

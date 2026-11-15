@@ -19,7 +19,7 @@ const ENABLED_AT = new Date('2026-11-01T00:00:00.000Z');
 const MIN = 60_000;
 const iso = (s: string) => new Date(s);
 
-const { db, cad, rsw, proof, attempts, closedWheres } = vi.hoisted(() => {
+const { db, cad, rsw, proof, attempts, closedWheres, extraOrders } = vi.hoisted(() => {
   const cad = { on: true };
   /** The `where` of every «أُغلقت اليوم» query the route made — what the mock filters by, and what the tests read back. */
   type ClosedWhere = { confirmationStatus: string; rejectionReason: unknown; statusLogs: { some: { note: unknown; createdAt: { gte: Date } } } };
@@ -27,6 +27,8 @@ const { db, cad, rsw, proof, attempts, closedWheres } = vi.hoisted(() => {
   const rsw = { value: { enabled: false, enabledAt: null } as { enabled: boolean; enabledAt: Date | null } };
   const proof = { on: false };
   const attempts: Array<{ orderId: string; createdAt: Date; result: string; employeeId: string; attemptNumber: number }> = [];
+  /** Held orders a single test adds to the desk (id → the order's own attempt count); emptied before each test. */
+  const extraOrders: Array<{ id: string; attemptCount: number }> = [];
   const row = (id: string, attemptCount: number) => ({
     id,
     orderNumber: `JO-${id}`,
@@ -62,7 +64,7 @@ const { db, cad, rsw, proof, attempts, closedWheres } = vi.hoisted(() => {
             .map((r) => ({ ...r.card, confirmationStatus: 'CANCELLED' }));
         }
         if (!('OR' in where)) return [];
-        return [row('nw', 0), row('wt', 1), row('dn', 1), row('c5', 5), row('f4d', 4), row('f4w', 4), row('old', 2)];
+        return [row('nw', 0), row('wt', 1), row('dn', 1), row('c5', 5), row('f4d', 4), row('f4w', 4), row('old', 2), ...extraOrders.map((o) => row(o.id, o.attemptCount))];
       }),
       count: vi.fn(async () => 0),
     },
@@ -73,7 +75,7 @@ const { db, cad, rsw, proof, attempts, closedWheres } = vi.hoisted(() => {
     company: { findUnique: vi.fn(async () => ({ settings: '{}' })) },
     callHelperDevice: { findFirst: vi.fn(async () => null) },
   };
-  return { db, cad, rsw, proof, attempts, closedWheres };
+  return { db, cad, rsw, proof, attempts, closedWheres, extraOrders };
 });
 
 vi.mock('@/lib/db', () => ({ db }));
@@ -107,6 +109,7 @@ vi.mock('@/lib/call-proof-switch', () => ({
 }));
 
 import { GET } from './route';
+import { cadenceCalOf, cadencePress } from '@/lib/no-answer-cadence';
 
 type Row = { id: string; noAnswerCount: number; dueNow: boolean; dueReason: string | null; dueAt: string | null; dueWords: string | null; closesOnNext?: boolean };
 type Desk = {
@@ -130,18 +133,21 @@ beforeEach(() => {
   rsw.value = { enabled: false, enabledAt: null };
   attempts.length = 0;
   closedWheres.length = 0;
+  extraOrders.length = 0;
   // wt: #1 ten minutes ago → #2 due in 20 minutes (13:20 Amman).
   plan('wt', ['2026-11-15T09:50:00.000Z']);
   // dn: #1 forty minutes ago → #2 was due ten minutes ago.
   plan('dn', ['2026-11-15T09:20:00.000Z']);
-  // c5: five counted over two days; still open (the close did not go through).
-  plan('c5', ['2026-11-12T10:00:00.000Z', '2026-11-12T10:30:00.000Z', '2026-11-12T12:30:00.000Z', '2026-11-13T06:00:00.000Z', '2026-11-13T15:00:00.000Z']);
-  // f4d: four counted, the evening window of #5 opened yesterday evening — a press now would close it.
-  plan('f4d', ['2026-11-13T10:00:00.000Z', '2026-11-13T10:30:00.000Z', '2026-11-13T12:30:00.000Z', '2026-11-14T06:00:00.000Z']);
-  // f4w: four counted this morning — #5 is due at 18:00 today, so a press now is early and closes nothing.
-  plan('f4w', ['2026-11-14T10:00:00.000Z', '2026-11-14T10:30:00.000Z', '2026-11-14T12:30:00.000Z', '2026-11-15T06:00:00.000Z']);
-  // x1: today's closed card — its five counted attempts.
-  plan('x1', ['2026-11-13T10:00:00.000Z', '2026-11-13T10:30:00.000Z', '2026-11-13T12:30:00.000Z', '2026-11-14T06:00:00.000Z', '2026-11-14T15:00:00.000Z']);
+  // The mocked country keeps Friday and Saturday off, and #4 is the planner's fixed 10:00 (07:00Z in Amman): the fixtures sit on working days at the plan's own hours — a press on a rest day before its
+  // due (the next working day) would be EARLY and would not count.
+  // c5: five counted over two working days (Sunday and Monday last week); still open (the close did not go through).
+  plan('c5', ['2026-11-08T10:00:00.000Z', '2026-11-08T10:30:00.000Z', '2026-11-08T12:30:00.000Z', '2026-11-09T07:00:00.000Z', '2026-11-09T15:00:00.000Z']);
+  // f4d: four counted (Monday and Tuesday last week), the evening of #5 passed days ago — a press now would close it.
+  plan('f4d', ['2026-11-09T10:00:00.000Z', '2026-11-09T10:30:00.000Z', '2026-11-09T12:30:00.000Z', '2026-11-10T07:00:00.000Z']);
+  // f4w: four counted — #3 was Saturday 15:30, Sunday is the first working day, so #4 was this morning at 10:00; #5 is due at 18:00 today, so a press now is early and closes nothing.
+  plan('f4w', ['2026-11-14T10:00:00.000Z', '2026-11-14T10:30:00.000Z', '2026-11-14T12:30:00.000Z', '2026-11-15T07:00:00.000Z']);
+  // x1: today's closed card — its five counted attempts (Monday and Tuesday last week).
+  plan('x1', ['2026-11-09T10:00:00.000Z', '2026-11-09T10:30:00.000Z', '2026-11-09T12:30:00.000Z', '2026-11-10T07:00:00.000Z', '2026-11-10T15:00:00.000Z']);
   // old: two lines from BEFORE the switch went on — invisible to the plan.
   plan('old', ['2026-10-20T08:00:00.000Z', '2026-10-20T08:30:00.000Z']);
 });
@@ -257,6 +263,24 @@ describe('ON — where each card sits and what it says', () => {
     expect(byId(d, 'dn').closesOnNext).toBe(false);
     expect(byId(d, 'nw').closesOnNext).toBe(false);
     expect(byId(d, 'old').closesOnNext).toBe(false);
+  });
+
+  it('on a THURSDAY with Friday and Saturday off: a card whose #3 was Thursday afternoon waits in «بانتظار» for SUNDAY 10:00 — and that is the very due the door would store for the same lines', async () => {
+    extraOrders.push({ id: 'th', attemptCount: 3 });
+    // #1 12:30, #2 13:00, #3 15:00 Amman; now is Thursday 17:00.
+    plan('th', ['2026-11-19T09:30:00.000Z', '2026-11-19T10:00:00.000Z', '2026-11-19T12:00:00.000Z']);
+    vi.setSystemTime(new Date('2026-11-19T14:00:00.000Z'));
+    const d = await desk();
+    const r = d.noAnswer.find((x) => x.id === 'th')!;
+    expect(r).toBeDefined();
+    expect(r.noAnswerCount).toBe(3);
+    expect(r.dueNow).toBe(false);
+    expect(r.dueAt).toBe('2026-11-22T07:00:00.000Z');
+    expect(d.work.some((x) => x.id === 'th')).toBe(false);
+    // the door asks `cadencePress` with the lines before the press and the press itself, on the calendar `cadenceCalOf` builds — the same function the desk used
+    const lines = attempts.filter((a) => a.orderId === 'th');
+    const door = cadencePress(lines.slice(0, 2), { at: lines[2].createdAt, result: 'NO_ANSWER' }, cadenceCalOf(ENABLED_AT, { timezone: 'Asia/Amman', weekendDays: [5, 6] }));
+    expect(door.dueAt?.toISOString()).toBe(r.dueAt);
   });
 
   it('the work tab puts the cards that are due first', async () => {
