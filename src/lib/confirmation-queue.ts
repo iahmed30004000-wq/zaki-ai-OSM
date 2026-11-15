@@ -18,6 +18,8 @@ import { cadenceSince } from './no-answer-cadence-switch';
 import {
   IDLE_RETURNED_REASON,
   NO_ANSWER_RETURNED_REASON,
+  cadenceDueLineWhere,
+  firstRetryByDue,
   handLimitMessage,
   noAnswerReadyWhere,
   returnsMode,
@@ -35,8 +37,8 @@ type Tx = Prisma.TransactionClient | typeof db;
  * CONFIRMATION QUEUE — agents never see a list, they pull the next order.
  *
  * Priority (`pickNextCandidate`, the owner 7/11: «الأولوية دائما للطلبات الجديدة»): what is held for her; then a NEW order —
- * one nobody has rung yet — the oldest first; then a postponed order due within the lead days; then the oldest of the rest.
- * An agent cannot pull while holding an order they have not tried to contact yet, and a claim with no attempt is
+ * one nobody has rung yet — the oldest first; then a postponed order due within the lead days; then the oldest of the rest — with the
+ * cadence on, first the retry with the OLDEST due (the planner's ruling 2, `pickMostOverdueRetry`). An agent cannot pull while holding an order they have not tried to contact yet, and a claim with no attempt is
  * auto-released after 90 BUSINESS minutes (frozen outside work hours and on weekends). Nor can she pull faster than
  * `PULL_PACE` (40 in any rolling hour, the owner 8/11) — that refusal comes last (`pullPaceRefusal`).
  */
@@ -1486,12 +1488,43 @@ export async function pickHeldForHer(tx: Tx, scope: QueueScope, userId: string, 
 }
 
 /**
+ * How many ready retries the pick reads to rank by due, OLDEST-CREATED first. Far above any real pile (the live pool the owner saw was 422); a pool past it ranks its oldest-created page
+ * and the rest wait their turn — a bound on the pull's one transaction (`PULL_TRANSACTION_OPTIONS`), not a rule. The upgrade, if ever needed, is `groupBy _max` or a column.
+ */
+export const RETRY_SCAN_PAGE = 2000;
+
+/**
+ * STEP 4a (the cadence only; the planner's ruling 2): of the READY orders that carry a due on a «لا يرد» line, the one whose due is the oldest. Two phases — Prisma cannot sort an order
+ * by a max over a relation: the database narrows to the ready orders with a due line (the very `readyToPullWhere` the counters read, plus one `some`), and the rank is made here.
+ * Nothing is written, and the claim that follows is the same compare-and-set as ever.
+ */
+export async function pickMostOverdueRetry(
+  tx: Tx,
+  scope: QueueScope,
+  now: Date,
+  forUserId: string | undefined,
+  returns: ReturnsMode
+): Promise<string | null> {
+  const since = returns.cadence?.since;
+  if (!since) return null;
+  const lines = cadenceDueLineWhere(since);
+  const rows = await tx.order.findMany({
+    where: { ...readyToPullWhere(scope, forUserId, now, returns), contactAttempts: { some: lines } },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    take: RETRY_SCAN_PAGE,
+    select: { id: true, createdAt: true, contactAttempts: { where: lines, select: { result: true, createdAt: true, nextFollowUpAt: true } } },
+  });
+  return firstRetryByDue(rows, since);
+}
+
+/**
  * The next order to work on, in this order (the owner, 7/11: «الأولوية دائما للطلبات الجديدة لما يسحبو الطلبات»):
  *
  *   1. what is held for her (a returning customer's order, a twin of the one she pulled) — still first;
  *   2. a NEW order — one nobody has rung yet — the oldest first. Not behind any switch: with «نظام الجولات» on or off alike;
  *   3. a postponed order due within the lead days, the nearest date first;
- *   4. the oldest of the rest — the ones that were rung already.
+ *   4. the oldest of the rest — the ones that were rung already. With the cadence on (`returns.cadence`): first the RETRY with the oldest
+ *      due (4a, `pickMostOverdueRetry` — ties: the older order), then the oldest of the rest (4b, today's query).
  *
  * Every step draws from the two predicates the counter uses (`duePostponedWhere` and `readyToPullWhere`), so the number
  * `waitingCount` shows is exactly the pile this picks from — the steps only decide the ORDER inside it.
@@ -1532,6 +1565,13 @@ export async function pickNextCandidate(
     select: { id: true },
   });
   if (duePostponed) return duePostponed.id;
+
+  // THE RETRIES BY THEIR DUE (the planner's ruling 2) — with the cadence on, a ready retry is ranked by the instant its last counted press made it due, not by its age. A new order and a
+  // due promise still come before it; an order with no due on a line (legacy returns, a promise, an idle release) falls through to the oldest-first query below, exactly as before.
+  if (returns?.cadence) {
+    const retry = await pickMostOverdueRetry(tx, scope, now, forUserId, returns);
+    if (retry) return retry;
+  }
 
   const oldest = await tx.order.findFirst({
     where: returns ? readyToPullWhere(scope, forUserId, now, returns) : readyToPullWhere(scope, forUserId, now),
