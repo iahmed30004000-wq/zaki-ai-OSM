@@ -2,17 +2,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * DEFINITION OF DONE — «الزبون طلب نكلمو هلّق» UNDER THE PLAN (RV2392, the planner's ruling 10)
+ * DEFINITION OF DONE — «الزبون طلب نكلمو هلّق» UNDER THE PLAN (RV2392 / RV2407, the planner's rulings 10 of 15/11 and then 9 of the second round: «وعد الزبون لازم يبيّن دايماً»)
  *
- * The customer asks for a call at a time; the day comes and nothing is logged on the order since. With «نظام الجولات» on, the rounds' desk tags that order and puts it in the due block. With «جدول المحاولات»
- * on as well the desk asked the plan alone, and the plan never reads a date: the tag vanished, and the order sat in «بانتظار» or under «اتصلي هلّق» with nothing to say.
+ * The customer asks for a call at a time; the day comes and nothing is logged on the order since. The promise is a FACT of the order (`promiseArrived`, work-first.ts), independent of «نظام الجولات»: under
+ * the plan `cadenceVerdict` computes it itself, so the tag shows with the rounds ON or OFF (it used to vanish with the rounds off — the plan's default state — and an order the pool handed out for its
+ * promise read as an ordinary plan card).
  *
- *  1. Rounds ON + plan ON: a PROMISE (the order's later date arrived, no line logged on it since — an attempt AT the date's instant counts as logged) is `dueNow`, reason PROMISE, in «اتصلي هلّق», with the words
- *     «الزبون طلب نكلمو هلّق», whatever the plan's own state (counted 0, counted with its due arrived, counted and still waiting).
+ *  1. Plan ON, rounds ON or OFF alike: a PROMISE (the order's later date arrived, no line logged on it since — an attempt AT the date's instant counts as logged) is `dueNow`, reason PROMISE, in «اتصلي هلّق»,
+ *     out of «بانتظار», with the words «الزبون طلب نكلمو هلّق», whatever the plan's own state (counted 0, counted with its due arrived, counted and still waiting, five counted and open).
  *  2. The plan's number is untouched: `noAnswerCount` stays the counted attempts. The plan's card line («لا يرد راجع — محاولة n من 5») does NOT mask the tag.
- *  3. Only the word PROMISE is taken from the rounds: no «جولة» appears anywhere in the response, and a date still AHEAD changes nothing (the decision of the planner: that half stays open).
- *  4. Rounds OFF + plan ON: no tag (parity with the OFF desk, which never had one). Plan OFF + rounds ON: the rounds-only path, as it was.
- *  5. No new query: the attempts are read ONCE, `groupBy` never; the verdict is asked for the WATCHED agent's orders on a colleague's desk; a closed-today card never gets a verdict.
+ *  3. No «جولة» appears anywhere in the response, and a date still AHEAD changes nothing (the half the planner left open: RV2392's second half).
+ *  4. The rounds' own exclusions (a release about to take the order, a third round) do NOT silence the tag under the plan: the customer's promise always shows. Plan OFF + rounds ON: the rounds-only path, as it
+ *     was (its exclusions still apply). Plan OFF + rounds OFF: no tag and no attempts read, byte for byte.
+ *  5. No new query: the attempts are read ONCE, `groupBy` never; the rounds' `dueVerdict` is not asked at all under the plan; a colleague's desk (`?agent=`) tags the same from the WATCHED agent's
+ *     orders; a closed-today card never gets a verdict; a never-rung order is NEW (not PROMISE), as in the rounds.
  *  6. The tag has no extra weight: the due block is ordered by how long the order has been held, a promise among the NEW and the ROUND.
  *
  * NOW = Sunday 15 November 2026, 13:00 in Amman (10:00Z), a working day 09:00–17:00. The plan has been on since 1 November.
@@ -129,7 +132,17 @@ beforeEach(() => {
   closed.length = 0;
 });
 
-describe('rounds ON + plan ON — the promise is back', () => {
+/** The promise is the plan's own fact: every test of the first two groups runs with «نظام الجولات» on AND off. */
+const ROUNDS_STATES = [
+  ['rounds ON', { enabled: true, enabledAt: ENABLED_AT }],
+  ['rounds OFF', { enabled: false, enabledAt: null }],
+] as const;
+
+describe.each(ROUNDS_STATES)('%s + plan ON — the promise shows', (_label, roundsState) => {
+  beforeEach(() => {
+    rsw.value = { ...roundsState };
+  });
+
   it('counted 0 (only a call that reached her), the date arrived two hours ago, nothing since → «اتصلي هلّق», PROMISE, with the words', async () => {
     held('p0', { date: '2026-11-15T08:00:00.000Z', claimedAt: '2026-11-15T08:30:00.000Z' });
     line('p0', '2026-11-15T07:30:00.000Z', 'ANSWERED');
@@ -177,7 +190,11 @@ describe('rounds ON + plan ON — the promise is back', () => {
   });
 });
 
-describe('the tag is the rounds’ own definition, not a second one', () => {
+describe.each(ROUNDS_STATES)('%s + plan ON — the tag is the rounds’ own definition of a promise, not a second one', (_label, roundsState) => {
+  beforeEach(() => {
+    rsw.value = { ...roundsState };
+  });
+
   it('a date still AHEAD gives no tag and moves nothing (the half the planner left open): counted 0 stays where its count puts it; counted 1 waiting keeps the plan’s words', async () => {
     held('ahead0', { date: '2026-11-15T12:00:00.000Z' });
     line('ahead0', '2026-11-15T07:30:00.000Z', 'ANSWERED');
@@ -210,17 +227,29 @@ describe('the tag is the rounds’ own definition, not a second one', () => {
     expect(find(d, 'after')).toMatchObject({ dueNow: true, dueReason: 'ROUND', dueWords: 'لا يرد راجع — محاولة 2 من 5', noAnswerCount: 1 });
   });
 
-  it('the rounds’ own exclusions hold: an order the release pass is about to take (a promise three working hours old, held through it, nothing since) has no tag', async () => {
-    // The date came at 09:00 Amman (06:00Z); its three working hours of grace ended at 12:00 Amman and it is 13:00 now — held through the date with nothing logged since, the release pass takes it.
+  it('the rounds’ own exclusions do NOT silence the tag under the plan: a promise three working hours old, held through it, nothing since — the order the rounds’ release is about to take — still shows (RV2409 resolved)', async () => {
+    // The date came at 09:00 Amman (06:00Z); the rounds' three working hours of grace ended at 12:00 Amman and it is 13:00 now. The rounds' desk calls such an order «leaving» and says nothing; the plan has no
+    // such rule, and the customer's promise must always show.
     held('stale', { date: '2026-11-15T06:00:00.000Z', claimedAt: '2026-11-14T08:00:00.000Z' });
     line('stale', '2026-11-14T08:30:00.000Z', 'ANSWERED');
     const d = await desk();
-    expect(find(d, 'stale')).toMatchObject({ dueNow: false, dueReason: null, dueWords: null });
+    expect(find(d, 'stale')).toMatchObject({ dueNow: true, dueReason: 'PROMISE', dueWords: PROMISE_WORDS });
+    expect(inWork(d, 'stale')).toBe(true);
+  });
+
+  it('a never-rung order with a date arrived is NEW, not PROMISE (the same first case as the rounds and the pull)', async () => {
+    held('fresh', { date: '2026-11-15T08:00:00.000Z', claimedAt: '2026-11-15T09:00:00.000Z' });
+    const d = await desk();
+    expect(find(d, 'fresh')).toMatchObject({ dueNow: true, dueReason: 'NEW', noAnswerCount: 0 });
   });
 });
 
-describe('only the word PROMISE crosses over', () => {
-  it('no «جولة» anywhere in the response, with a promise row on the desk; the attempts are read ONCE, groupBy never', async () => {
+describe.each(ROUNDS_STATES)('%s + plan ON — the plan never speaks the rounds’ language', (_label, roundsState) => {
+  beforeEach(() => {
+    rsw.value = { ...roundsState };
+  });
+
+  it('no «جولة» anywhere in the response, with a promise row on the desk; the attempts are read ONCE, groupBy never, and the rounds’ `dueVerdict` is never asked', async () => {
     held('p0', { date: '2026-11-15T08:00:00.000Z' });
     line('p0', '2026-11-15T07:30:00.000Z', 'ANSWERED');
     held('p2', { date: '2026-11-15T09:00:00.000Z' });
@@ -239,21 +268,51 @@ describe('only the word PROMISE crosses over', () => {
     expect(find(d, 'r2').dueReason).toBe('ROUND');
     expect(db.orderContactAttempt.findMany).toHaveBeenCalledTimes(1);
     expect(db.orderContactAttempt.groupBy).not.toHaveBeenCalled();
+    expect(spy.dueVerdict).not.toHaveBeenCalled();
   });
 });
 
-describe('the other two modes', () => {
-  it('rounds OFF + plan ON: no tag, parity with the desk that never had one (the plan decides alone)', async () => {
+describe('the other modes', () => {
+  it('rounds OFF + plan ON — the plan’s default state: the promise SHOWS (it had no tag before the planner’s ruling 9), and the plan’s other orders speak as ever', async () => {
     rsw.value = { enabled: false, enabledAt: null };
     held('p0', { date: '2026-11-15T08:00:00.000Z' });
     line('p0', '2026-11-15T07:30:00.000Z', 'ANSWERED');
     held('p2', { date: '2026-11-15T09:00:00.000Z' });
     line('p2', '2026-11-15T07:00:00.000Z', 'NO_ANSWER');
     line('p2', '2026-11-15T07:40:00.000Z', 'NO_ANSWER');
+    held('r2');
+    line('r2', '2026-11-15T07:00:00.000Z', 'NO_ANSWER');
+    line('r2', '2026-11-15T07:40:00.000Z', 'NO_ANSWER');
     const d = await desk();
     expect(spy.dueVerdict).not.toHaveBeenCalled();
+    expect(d.cadenceOn).toBe(true);
+    expect('rounds' in d).toBe(false);
+    expect(find(d, 'p0')).toMatchObject({ dueNow: true, dueReason: 'PROMISE', dueWords: PROMISE_WORDS, noAnswerCount: 0 });
+    expect(find(d, 'p2')).toMatchObject({ dueNow: true, dueReason: 'PROMISE', dueWords: PROMISE_WORDS, noAnswerCount: 2 });
+    expect(find(d, 'r2')).toMatchObject({ dueNow: true, dueReason: 'ROUND', dueWords: 'لا يرد راجع — محاولة 3 من 5' });
+    expect(d.work.map((r) => r.id).sort()).toEqual(['p0', 'p2', 'r2']);
+  });
+
+  it('plan OFF + rounds OFF: nothing is read and nothing is tagged — the OFF desk, byte for byte (a promise date on an order changes no key)', async () => {
+    cad.on = false;
+    rsw.value = { enabled: false, enabledAt: null };
+    held('p0', { date: '2026-11-15T08:00:00.000Z' });
+    line('p0', '2026-11-15T07:30:00.000Z', 'ANSWERED');
+    const d = await desk();
+    expect(db.orderContactAttempt.findMany).not.toHaveBeenCalled();
+    expect(spy.dueVerdict).not.toHaveBeenCalled();
+    expect('cadenceOn' in d).toBe(false);
+    expect('rounds' in d).toBe(false);
+    expect(d.noAnswerLimit).toBe(3);
     expect(find(d, 'p0')).toMatchObject({ dueNow: false, dueReason: null, dueWords: null });
-    expect(find(d, 'p2')).toMatchObject({ dueNow: true, dueReason: 'ROUND', dueWords: 'لا يرد راجع — محاولة 3 من 5' });
+  });
+
+  it('plan OFF + rounds ON: the rounds’ own exclusions still apply there (the rounds-only desk is untouched): the stale promise has no tag', async () => {
+    cad.on = false;
+    held('stale', { date: '2026-11-15T06:00:00.000Z', claimedAt: '2026-11-14T08:00:00.000Z' });
+    line('stale', '2026-11-14T08:30:00.000Z', 'ANSWERED');
+    const d = await desk();
+    expect(find(d, 'stale')).toMatchObject({ dueNow: false, dueReason: null, dueWords: null });
   });
 
   it('plan OFF + rounds ON: the rounds-only path still tags the promise, with the rounds’ own count', async () => {
@@ -312,13 +371,26 @@ describe('where it sits', () => {
     for (const key of ['dueNow', 'dueReason', 'dueWords']) expect(key in d.closedToday[0]).toBe(false);
   });
 
-  it('a colleague’s desk (`?agent=u2`) tags the same, and the verdict is asked for HER orders (claimedById = the watched agent)', async () => {
+  it.each(ROUNDS_STATES)('%s: a colleague’s desk (`?agent=u2`) tags the same — the fact is read from the WATCHED agent’s orders and their lines, one read', async (_label, roundsState) => {
+    rsw.value = { ...roundsState };
+    held('p0', { date: '2026-11-15T08:00:00.000Z' });
+    line('p0', '2026-11-15T07:30:00.000Z', 'ANSWERED');
+    const d = await desk('http://localhost/api/confirmation/mine?agent=u2');
+    expect((d as unknown as { viewing: { id: string } }).viewing.id).toBe('u2');
+    expect(find(d, 'p0')).toMatchObject({ dueNow: true, dueReason: 'PROMISE', dueWords: PROMISE_WORDS });
+    expect(db.orderContactAttempt.findMany).toHaveBeenCalledTimes(1);
+    // The orders read are the watched agent's, not the viewer's.
+    const read = db.order.findMany.mock.calls.find(([arg]) => 'OR' in (arg as { where: Record<string, unknown> }).where);
+    expect((read![0] as { where: { claimedById: string } }).where.claimedById).toBe('u2');
+  });
+
+  it('plan OFF + rounds ON on a colleague’s desk: the rounds’ verdict is asked for HER orders (claimedById = the watched agent), as it always was', async () => {
+    cad.on = false;
     held('p0', { date: '2026-11-15T08:00:00.000Z' });
     line('p0', '2026-11-15T07:30:00.000Z', 'ANSWERED');
     const d = await desk('http://localhost/api/confirmation/mine?agent=u2');
     expect(find(d, 'p0')).toMatchObject({ dueNow: true, dueReason: 'PROMISE', dueWords: PROMISE_WORDS });
     expect(spy.dueVerdict).toHaveBeenCalled();
     for (const call of spy.dueVerdict.mock.calls) expect(call[0]).toMatchObject({ claimedById: 'u2' });
-    expect(db.orderContactAttempt.findMany).toHaveBeenCalledTimes(1);
   });
 });

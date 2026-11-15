@@ -2,7 +2,7 @@ import { zonedParts, zonedTimeToInstant } from './business-calendar';
 import { NO_ANSWER_RESULTS } from './confirmation-workflow';
 import { parseHhMm } from './employee-shift';
 import type { AttemptFact } from './no-answer-rounds';
-import { verdictFromCount, type DueVerdict } from './work-first';
+import { DUE_PROMISE, promiseArrived, verdictFromCount, type DueOrder, type DueVerdict } from './work-first';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -303,20 +303,23 @@ export function cadenceDesk(
 }
 
 /**
- * The «الشغل أول» verdict of one held order under the plan, in the shape `deskTab` / `summariseDue` / `dueNow` already read (so `work-first.ts` is not edited): no counted attempt yet
+ * The «الشغل أول» verdict of one held order under the plan, in the shape `deskTab` / `summariseDue` / `dueNow` already read (so `work-first.ts`'s verdict is not edited): no counted attempt yet
  * → by the order's own attempt count (a NEW order is due NEW; an order with only «اتصال» lines, or only lines from before the switch, is not due and lands by its count); the due arrived →
  * «ROUND»; the due ahead → waiting; a plan complete and still open (five counted, a close that did not go through) → not due and not waiting, so it stays in «بانتظار» by its count.
- * The order's own dates are NOT read — parity with the rounds-off desk (`verdictFromCount`); the holder's own date releases the order anyway. One exception, and only when handed over:
- * the rounds' PROMISE («الزبون طلب نكلمو هلّق», RV2392) comes first — the customer named the time.
+ *
+ * ONE exception, and it comes first: THE CUSTOMER'S PROMISE («الزبون طلب نكلمو هلّق», the planner 15/11 ruling 9 — «وعد الزبون لازم يبيّن دايماً»). A rung order whose date has arrived with nothing
+ * logged since (`promiseArrived`, the very fact the rounds and the pull read) is due NOW, reason PROMISE, whatever the plan says (not counted, waiting, due, complete) and whether or not
+ * «نظام الجولات» is on: the plan computes the fact ITSELF from the order's dates and lines, it is not handed the rounds' answer. The rounds' own exclusions (a release about to take the order,
+ * a third round) do not apply to the plan. A never-rung order (`attemptCount` 0) is NEW first — as in the rounds, and as the pull's first group — whatever its dates. A date still ahead
+ * changes nothing here (RV2392's other half).
  */
 export function cadenceVerdict(
   desk: Pick<ReturnType<typeof cadenceDesk>, 'counted' | 'due' | 'waiting' | 'dueAt'>,
   attemptCount: number,
-  rounds: DueVerdict | null = null
+  /** The order's dates and ALL of its lines (any result), and the moment asked about — what `promiseArrived` needs. Required: a caller that forgot it would silently lose the tag. */
+  promise: { order: Pick<DueOrder, 'postponedUntil' | 'nextFollowUpAt'>; lines: readonly Pick<AttemptFact, 'createdAt'>[]; now: Date }
 ): DueVerdict {
-  // `rounds` is the rounds' own answer for this order, handed over only when «نظام الجولات» is on too. ONE word of it is taken — PROMISE (a date arrived, nothing logged since) — and it
-  // outranks the plan: the customer asked for this call. ROUND / NEW / waiting from the rounds are never used (the plan speaks, and never says «جولة»).
-  if (rounds?.reason === 'PROMISE') return rounds;
+  if (attemptCount > 0 && promiseArrived(promise.order, promise.lines, promise.now)) return DUE_PROMISE;
   if (desk.counted === 0) return verdictFromCount(attemptCount);
   if (desk.due) return { due: true, reason: 'ROUND', waiting: false, dueAt: null };
   if (desk.waiting) return { due: false, reason: null, waiting: true, dueAt: desk.dueAt };

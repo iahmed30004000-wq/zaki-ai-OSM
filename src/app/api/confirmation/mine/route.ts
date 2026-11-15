@@ -400,8 +400,9 @@ export async function GET(request: Request) {
      * from the attempts already read above — no query per order. With the switch off the attempts are not read at all: the only
      * case there is, an order nobody has tried to reach, is told from the count the row already carries.
      */
-    const dueCtx = attempts && clock ? dueContext({ now, cal, rounds: roundsSw, clock }) : null;
-    // The rounds' verdict of one held order — the very question the rounds-only desk asks. Null with the rounds off (no clock, no context): then the plan decides alone, as before.
+    // The rounds' verdict of one held order — the very question the rounds-only desk asks (plan OFF, rounds ON). Under the plan the PLAN decides, and the customer's promise it reads for itself
+    // (`cadenceVerdict`, the planner 15/11 ruling 9): with the rounds on or off alike, so there is no rounds context to build and no rounds answer to hand over.
+    const dueCtx = !desks && attempts && clock ? dueContext({ now, cal, rounds: roundsSw, clock }) : null;
     const roundsVerdictOf =
       attempts && dueCtx
         ? (o: (typeof inConfirmation)[number]) =>
@@ -415,7 +416,7 @@ export async function GET(request: Request) {
       inConfirmation.map((o) => [
         o.id,
         desks
-          ? cadenceVerdict(desks.get(o.id)!, o._count?.contactAttempts ?? 1, roundsVerdictOf ? roundsVerdictOf(o) : null)
+          ? cadenceVerdict(desks.get(o.id)!, o._count?.contactAttempts ?? 1, { order: o, lines: attempts?.get(o.id) ?? [], now })
           : roundsVerdictOf
           ? roundsVerdictOf(o)
           : verdictFromCount(o._count?.contactAttempts ?? 1),

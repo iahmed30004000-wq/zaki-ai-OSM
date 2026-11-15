@@ -48,6 +48,8 @@ import type { DueVerdict } from './work-first';
  *     state built by hand.
  *  8. Replaying the stored lines (`cadenceState`) equals deciding them one by one at the door (`cadencePress`), even when the clock and the attempt numbers disagree.
  *  9. The words are server-written, in Western digits, never say «جولة», and print the REAL due — «الساعة 10:00», «بكرة الساعة 10:00», «السبت الساعة 10:00» across a rest weekend; no windows.
+ * 10. THE CUSTOMER'S PROMISE (the planner 15/11, ruling 9): `cadenceVerdict` computes the promise fact itself (`promiseArrived`, work-first.ts) and a rung order with a date arrived and no line since is due
+ *     PROMISE whatever the plan says (not counted, waiting, due, complete), with no rounds answer handed in; a never-rung order is NEW first; the date exactly now counts, a line at the date does not.
  *
  * `no-answer-cadence-oracle.test.ts` holds the same rule a SECOND time, written the other way round.
  * ═══════════════════════════════════════════════════════════════════════
@@ -1003,66 +1005,77 @@ describe('cadenceDesk: where a held order stands, on the server’s clock', () =
 describe('cadenceVerdict: the shape deskTab already reads', () => {
   const t = amman(3, 11);
   const base = { counted: 1, due: false, waiting: false, dueAt: null as Date | null };
+  /** No date on the order and no line: nothing for the promise fact to say. */
+  const quiet = { order: {}, lines: [], now: t };
 
   it('no counted attempt → by the order’s own attempt count: a NEW order is due NEW; anything rung but invisible is not due', () => {
-    expect(cadenceVerdict({ ...base, counted: 0 }, 0)).toEqual({ due: true, reason: 'NEW', waiting: false, dueAt: null });
-    expect(cadenceVerdict({ ...base, counted: 0 }, 2)).toEqual({ due: false, reason: null, waiting: false, dueAt: null });
+    expect(cadenceVerdict({ ...base, counted: 0 }, 0, quiet)).toEqual({ due: true, reason: 'NEW', waiting: false, dueAt: null });
+    expect(cadenceVerdict({ ...base, counted: 0 }, 2, quiet)).toEqual({ due: false, reason: null, waiting: false, dueAt: null });
   });
 
   it('the due arrived → ROUND, due; the due ahead → waiting with its dueAt; five counted and open → not due, not waiting', () => {
-    expect(cadenceVerdict({ ...base, due: true, dueAt: t }, 1)).toEqual({ due: true, reason: 'ROUND', waiting: false, dueAt: null });
-    expect(cadenceVerdict({ ...base, waiting: true, dueAt: ms(t, 60_000) }, 1)).toEqual({ due: false, reason: null, waiting: true, dueAt: ms(t, 60_000) });
-    expect(cadenceVerdict({ counted: 5, due: false, waiting: false, dueAt: null }, 5)).toEqual({ due: false, reason: null, waiting: false, dueAt: null });
+    expect(cadenceVerdict({ ...base, due: true, dueAt: t }, 1, quiet)).toEqual({ due: true, reason: 'ROUND', waiting: false, dueAt: null });
+    expect(cadenceVerdict({ ...base, waiting: true, dueAt: ms(t, 60_000) }, 1, quiet)).toEqual({ due: false, reason: null, waiting: true, dueAt: ms(t, 60_000) });
+    expect(cadenceVerdict({ counted: 5, due: false, waiting: false, dueAt: null }, 5, quiet)).toEqual({ due: false, reason: null, waiting: false, dueAt: null });
   });
 });
 
-describe('cadenceVerdict: the rounds’ PROMISE comes first when it is handed over (RV2392)', () => {
+describe('cadenceVerdict: the customer’s PROMISE is the plan’s own fact — whatever the plan says, rounds or no rounds (the planner 15/11, ruling 9)', () => {
   const t = amman(3, 11);
+  const asked = amman(3, 9);
   const base = { counted: 1, due: false, waiting: false, dueAt: null as Date | null };
   const PROMISE: DueVerdict = { due: true, reason: 'PROMISE', waiting: false, dueAt: null };
+  /** The order carries the customer’s date and the lines it carries; asked at `t` (two hours after the date). */
+  const promised = (lines: { createdAt: Date }[] = [{ createdAt: amman(2, 15) }], dates: { postponedUntil?: Date | null; nextFollowUpAt?: Date | null } = { postponedUntil: asked }, now = t) => ({ order: dates, lines, now });
 
-  it('counted 0 (a line that reached her, or lines from before the switch) with a promise → the PROMISE verdict, not the count’s', () => {
-    expect(cadenceVerdict({ ...base, counted: 0 }, 2, PROMISE)).toEqual(PROMISE);
-    expect(cadenceVerdict({ ...base, counted: 0 }, 0, PROMISE)).toEqual(PROMISE);
+  it('counted 0 (a line that reached her, or lines from before the switch) with a date arrived → the PROMISE verdict, not the count’s', () => {
+    expect(cadenceVerdict({ ...base, counted: 0 }, 2, promised())).toEqual(PROMISE);
   });
 
   it('counted 2 with the plan’s due arrived → PROMISE, not ROUND (the tag beats the plan’s words)', () => {
-    expect(cadenceVerdict({ ...base, counted: 2, due: true, dueAt: t }, 2, PROMISE)).toEqual(PROMISE);
+    expect(cadenceVerdict({ ...base, counted: 2, due: true, dueAt: t }, 2, promised())).toEqual(PROMISE);
   });
 
   it('counted 1 with the plan still waiting → a due PROMISE and not waiting (the customer asked; the plan’s wait does not apply)', () => {
-    expect(cadenceVerdict({ ...base, waiting: true, dueAt: ms(t, 60_000) }, 1, PROMISE)).toEqual(PROMISE);
+    expect(cadenceVerdict({ ...base, waiting: true, dueAt: ms(t, 60_000) }, 1, promised())).toEqual(PROMISE);
   });
 
   it('five counted and still open → PROMISE', () => {
-    expect(cadenceVerdict({ counted: 5, due: false, waiting: false, dueAt: null }, 5, PROMISE)).toEqual(PROMISE);
+    expect(cadenceVerdict({ counted: 5, due: false, waiting: false, dueAt: null }, 5, promised())).toEqual(PROMISE);
   });
 
-  it('only the word PROMISE is read: a ROUND given by the rounds is ignored and the result equals the two-argument one (no «جولة» leaks into the plan)', () => {
-    const ROUND: DueVerdict = { due: true, reason: 'ROUND', waiting: false, dueAt: null };
-    for (const [desk, count] of [
-      [{ ...base, counted: 0 }, 2],
-      [{ ...base, due: true, dueAt: t }, 1],
-      [{ ...base, waiting: true, dueAt: ms(t, 60_000) }, 1],
-    ] as const) {
-      expect(cadenceVerdict(desk, count, ROUND)).toEqual(cadenceVerdict(desk, count));
-    }
+  it('a never-rung order (no attempt at all) is NEW first, date or not — as the rounds’ verdict and the pull’s first group read it', () => {
+    expect(cadenceVerdict({ ...base, counted: 0 }, 0, promised([]))).toEqual({ due: true, reason: 'NEW', waiting: false, dueAt: null });
   });
 
-  it('a NEW, a waiting and a not-due verdict from the rounds are ignored too', () => {
-    const NEW: DueVerdict = { due: true, reason: 'NEW', waiting: false, dueAt: null };
-    const WAITING: DueVerdict = { due: false, reason: null, waiting: true, dueAt: ms(t, 9 * 60_000) };
-    const NOT_DUE: DueVerdict = { due: false, reason: null, waiting: false, dueAt: null };
-    const desk = { ...base, due: true, dueAt: t };
-    for (const given of [NEW, WAITING, NOT_DUE]) {
-      expect(cadenceVerdict(desk, 1, given)).toEqual({ due: true, reason: 'ROUND', waiting: false, dueAt: null });
-      expect(cadenceVerdict({ ...base, counted: 0 }, 2, given)).toEqual({ due: false, reason: null, waiting: false, dueAt: null });
-    }
+  it('the date exactly NOW is a promise; one millisecond ahead it is not, and the plan speaks as before', () => {
+    const due = { ...base, due: true, dueAt: t };
+    expect(cadenceVerdict(due, 2, promised([{ createdAt: amman(2, 15) }], { postponedUntil: t }))).toEqual(PROMISE);
+    expect(cadenceVerdict(due, 2, promised([{ createdAt: amman(2, 15) }], { postponedUntil: ms(t, 1) }))).toEqual({ due: true, reason: 'ROUND', waiting: false, dueAt: null });
   });
 
-  it('`null` and an omitted third argument are what the function always was', () => {
-    expect(cadenceVerdict({ ...base, counted: 0 }, 0, null)).toEqual(cadenceVerdict({ ...base, counted: 0 }, 0));
-    expect(cadenceVerdict({ ...base, due: true, dueAt: t }, 1, null)).toEqual({ due: true, reason: 'ROUND', waiting: false, dueAt: null });
+  it('a line at the date’s own millisecond, or after it, ends the promise; one millisecond before it does not', () => {
+    const due = { ...base, due: true, dueAt: t };
+    const round = { due: true, reason: 'ROUND', waiting: false, dueAt: null };
+    expect(cadenceVerdict(due, 2, promised([{ createdAt: asked }]))).toEqual(round);
+    expect(cadenceVerdict(due, 2, promised([{ createdAt: ms(asked, 1) }]))).toEqual(round);
+    expect(cadenceVerdict(due, 2, promised([{ createdAt: ms(asked, -1) }]))).toEqual(PROMISE);
+  });
+
+  it('either date column makes the ask, the later of the two decides, and no date at all is no promise', () => {
+    const due = { ...base, due: true, dueAt: t };
+    const round = { due: true, reason: 'ROUND', waiting: false, dueAt: null };
+    expect(cadenceVerdict(due, 2, promised(undefined, { nextFollowUpAt: asked }))).toEqual(PROMISE);
+    expect(cadenceVerdict(due, 2, promised(undefined, { postponedUntil: asked, nextFollowUpAt: ms(t, 60_000) }))).toEqual(round);
+    expect(cadenceVerdict(due, 2, promised(undefined, { postponedUntil: null, nextFollowUpAt: null }))).toEqual(round);
+    expect(cadenceVerdict(due, 2, promised(undefined, {}))).toEqual(round);
+  });
+
+  it('it is the plan’s own words that remain when there is no promise: waiting stays waiting, a complete plan stays quiet (no «جولة» anywhere)', () => {
+    const waiting = { ...base, waiting: true, dueAt: ms(t, 60_000) };
+    expect(cadenceVerdict(waiting, 1, promised(undefined, {}))).toEqual({ due: false, reason: null, waiting: true, dueAt: ms(t, 60_000) });
+    expect(cadenceVerdict({ counted: 5, due: false, waiting: false, dueAt: null }, 5, promised(undefined, {}))).toEqual({ due: false, reason: null, waiting: false, dueAt: null });
+    expect(JSON.stringify(cadenceVerdict(waiting, 1, promised()))).not.toContain('ROUND');
   });
 });
 
