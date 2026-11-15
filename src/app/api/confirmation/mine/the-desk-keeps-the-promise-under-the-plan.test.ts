@@ -171,7 +171,7 @@ describe('rounds ON + plan ON — the promise is back', () => {
 
   it('five counted and still open, with a date arrived → PROMISE too', async () => {
     held('p5', { date: '2026-11-15T09:00:00.000Z' });
-    for (const at of ['2026-11-12T10:00:00.000Z', '2026-11-12T10:30:00.000Z', '2026-11-12T12:30:00.000Z', '2026-11-13T06:00:00.000Z', '2026-11-13T15:00:00.000Z']) line('p5', at, 'NO_ANSWER');
+    for (const at of ['2026-11-08T07:00:00.000Z', '2026-11-08T07:30:00.000Z', '2026-11-08T09:30:00.000Z', '2026-11-09T07:00:00.000Z', '2026-11-09T15:00:00.000Z']) line('p5', at, 'NO_ANSWER');
     const d = await desk();
     expect(find(d, 'p5')).toMatchObject({ dueNow: true, dueReason: 'PROMISE', dueWords: PROMISE_WORDS, noAnswerCount: 5 });
   });
