@@ -7,6 +7,7 @@ import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
 import type { Blocker } from '@/lib/geo-removal';
 import { currencyLabel } from '@/lib/currencies';
+import { workHoursError } from '@/lib/work-hours';
 import { CurrencyPicker, currencyChoiceReady, type CurrencyChoice } from '@/components/ui/CurrencyPicker';
 import { StorefrontSettings } from '@/components/settings/StorefrontSettings';
 import { StoreIdentityCard } from '@/components/settings/StoreIdentityCard';
@@ -98,7 +99,8 @@ export function GeoSettingsScreen() {
     if (wanted) setStorefrontFor(wanted);
   }, []);
 
-  const patchCountry = async (id: string, data: Record<string, unknown>) => {
+  /** True when the server took it; false after the message has been shown. */
+  const patchCountry = async (id: string, data: Record<string, unknown>): Promise<boolean> => {
     try {
       await apiJson(`/api/geo/countries/${id}`, {
         method: 'PATCH',
@@ -106,9 +108,29 @@ export function GeoSettingsScreen() {
         body: JSON.stringify(data),
       });
       await load();
+      return true;
     } catch (e: any) {
       toast.failed(e?.message || 'تعذر الحفظ');
+      return false;
     }
+  };
+
+  /**
+   * One half of the working day. There is no night shift, so the day must
+   * start before it ends: the screen says so at once, against the half that is
+   * stored, and the route says it again (it is the one that decides). Either
+   * refusal shows its message and returns false, so the field goes back.
+   */
+  const saveHours = async (c: CountryRow, half: 'workHoursStart' | 'workHoursEnd', value: string): Promise<boolean> => {
+    const reason = workHoursError(
+      half === 'workHoursStart' ? value : c.workHoursStart,
+      half === 'workHoursEnd' ? value : c.workHoursEnd
+    );
+    if (reason) {
+      toast.failed(reason);
+      return false;
+    }
+    return patchCountry(c.id, { [half]: value });
   };
 
   const patchStore = async (id: string, data: Record<string, unknown>) => {
@@ -222,8 +244,8 @@ export function GeoSettingsScreen() {
                 orders={c._count.orders ?? 0}
                 onSave={(currencyCode, minorUnit) => patchCountry(c.id, { currencyCode, minorUnit })}
               />
-              <TimeField label="بداية الدوام" value={c.workHoursStart} onSave={(v) => patchCountry(c.id, { workHoursStart: v })} />
-              <TimeField label="نهاية الدوام" value={c.workHoursEnd} onSave={(v) => patchCountry(c.id, { workHoursEnd: v })} />
+              <TimeField label="بداية الدوام" value={c.workHoursStart} onSave={(v) => saveHours(c, 'workHoursStart', v)} />
+              <TimeField label="نهاية الدوام" value={c.workHoursEnd} onSave={(v) => saveHours(c, 'workHoursEnd', v)} />
               <div className="md:col-span-2">
                 <p className="text-xs font-medium text-[var(--sys-foreground)] mb-2">أيام العطلة</p>
                 <div className="flex flex-wrap gap-2">
@@ -697,14 +719,19 @@ function TextField({
   );
 }
 
-function TimeField({ label, value, onSave }: { label: string; value: string; onSave: (v: string) => void }) {
+function TimeField({ label, value, onSave }: { label: string; value: string; onSave: (v: string) => Promise<boolean> }) {
   return (
     <label className="block">
       <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">{label}</span>
       <input
         type="time"
         defaultValue={value}
-        onBlur={(e) => e.target.value !== value && onSave(e.target.value)}
+        onBlur={async (e) => {
+          const input = e.target;
+          if (input.value === value) return;
+          // Refused (the message is already on screen): the field goes back to what is stored.
+          if (!(await onSave(input.value))) input.value = value;
+        }}
         dir="ltr"
         className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] text-sm focus:outline-none focus:border-[var(--sys-primary)]"
       />
