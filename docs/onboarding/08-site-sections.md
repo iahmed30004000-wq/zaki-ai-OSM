@@ -145,7 +145,7 @@ flowchart TD
 #### `/confirmation/follow-up` — المتابعة (للمشرف)
 - **ليش:** تبويبان: «مؤجلة» (وعد بالاتصال بموعد) و«ملغاة سابقاً» (استرجاع الزبون بخصم). **مين:** `confirmation.supervise`؛ العرض من جديد `confirmation.winback`؛ قاعدة الاسترجاع `offers.rules`.
 - **الأزرار:** «أعِدْه إلى الطابور» · «اعرضه من جديد» بخصم ≤ «أقصى خصم» (بيعمل **طلب جديد** بيدخل الطابور العادي، والقديم بيضل ملغى).
-- **بالخلفية:** `GET/POST /api/confirmation/postponed` · `GET/POST /api/confirmation/winback` · `PUT /api/confirmation/winback/rule`.
+- **بالخلفية:** `GET/POST /api/confirmation/postponed` · `GET/POST /api/confirmation/winback` · `PUT /api/confirmation/winback/rule`. `GET /api/confirmation/winback` بيبعت `cadenceOn: true` (لما يكون «جدول المحاولات» شغّال بس) فجملة القاعدة بتقول «أُغلق تلقائياً بعد محاولات بلا ردّ» بدل «… بعد ثلاث محاولات بلا ردّ».
 - **رفض شائع:** `NOT_DUE` «موعده لم يحن بعد — يعود إلى الطابور قبل موعده بـ2 يومين» · `ALREADY_IN_QUEUE` · `DISCOUNT_TOO_LARGE` «أقصى خصمٍ على هذا الطلب … — والمحسوم عليه سابقاً داخلٌ في الحساب».
 - **الكود:** `screens/ConfirmationFollowUpScreen.tsx` · `screens/ConfirmationPostponedScreen.tsx` · `screens/WinbackScreen.tsx` · **سيناريوهات:** أ-11 (الإلغاء من المؤجّل).
 
@@ -487,7 +487,7 @@ flowchart LR
 - الربح بيطلع «—» إذا الكلفة ناقصة (`lib/route-guide-texts.ts`، دليل `/dashboard`).
 
 **«وين بشوف سجل الطلب؟»**
-بنافذة الطلب: «سجل الأحداث»، مجموع من كل جداول الأحداث (`GET /api/orders/[id]/timeline` ← `lib/order-timeline.ts`). والتدقيق الكامل (مين، شو، إيمتى) بـ`/control/audit` لمين معه `audit.view`. رابط مباشر لطلب: `/orders/<id>`.
+بنافذة الطلب: «سجل الأحداث»، مجموع من كل جداول الأحداث (`GET /api/orders/[id]/timeline` ← `lib/order-timeline.ts`). والتدقيق الكامل (مين، شو، إيمتى) بـ`/control/audit` لمين معه `audit.view`. رابط مباشر لطلب: `/orders/<id>`. كلمة «رجع للطابور فوراً بعد «لا يرد»» بتتغيّر بحسب مفتاح الجدول: مطفي «… بيجهز بعد 3 ساعات دوام»، شغّال «… بيجهز لما يحين موعد محاولته الجاية».
 
 **«ليش موظفة ما بتشوف طلب موجود؟»**
 نطاق `orders.view`: كل الشركة / طلباته / المسندة إليه. الدالة `orderVisibilityWhere` (`lib/rbac.ts:37`) بتقرّر اللستة **و**إذن القراءة بنفس الوقت، فتضييقها بيكسر السحب. وبعدين: المتجر المختار، والفلاتر المفعّلة. الرسالة: «لا يوجد طلب بهذا المعرّف بين طلباتك. أعد تحميل القائمة.» (ملف 01، دور الموديريتور).
