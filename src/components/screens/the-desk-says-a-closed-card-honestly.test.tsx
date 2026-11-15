@@ -12,7 +12,7 @@ import { join } from 'node:path';
  * The server decides whether the count on a closed card is the close's (`closedWords`, only under the plan and only below the limit); the screen prints what it is told:
  *
  *  1. `closedWords` present → the header and the footer both say it («بعد عدّة محاولات بلا رد»), and neither prints a number («ما ردّ 0 مرّات», «5 محاولات»).
- *  2. Absent → the count as always: «ما ردّ N مرّات» and «أُغلق بعد N محاولات بلا رد» with the CARD's own N — the footer used to print the desk's limit, which was wrong the day the switch went off (5 lines, limit 3).
+ *  2. Absent → the count as always: «ما ردّ N مرّات» in the header, and in the footer «أُغلق بعد N محاولات بلا رد» with the CARD's own N under the plan (`cadenceOn`) — and with the plan off the desk's limit, exactly as before step B (review round 1: the OFF screen stays byte for byte; the OFF direction of RV2391 stays in the backlog).
  *  3. Where count and limit agree (every normal close) the text is exactly what it was.
  *  4. The closed card still has no footer buttons and no plan chip; the screen imports no plan logic.
  * ═══════════════════════════════════════════════════════════════════════

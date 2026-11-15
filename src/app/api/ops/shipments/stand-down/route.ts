@@ -328,8 +328,9 @@ export async function POST(req: Request) {
       auditAction = 'SHIPMENT_STOOD_DOWN_POSTPONED';
       noteBody = `أُوقف شحنه وأُعيد إلى المتابعة حتى ${due.toISOString().slice(0, 10)}${note ? ` — ${note}` : ''}`;
     } else {
-      // «خمس محاولات» is the plan's own close and did not exist before it: a hand that sends it gets the answer any unknown value always got, with the switch on or off (the confirmation door says the same).
-      if (!reason || !(REJECTION_REASONS as readonly string[]).includes(reason) || reason === NO_ANSWER_CLOSE.five.reason) {
+      // «خمس محاولات» is the plan's own close and did not exist before it: a hand that sends it is read as no reason at all and gets the answer any unknown value always got, with the switch on or off (the confirmation door says the same).
+      if (reason === NO_ANSWER_CLOSE.five.reason) reason = undefined;
+      if (!reason || !(REJECTION_REASONS as readonly string[]).includes(reason)) {
         // Says what to DO, not only what is missing: the request was approved
         // and the next step is a choice, which the screen now offers.
         const ask = 'سبب الإلغاء مطلوب — اختر السبب من القائمة ثم اضغط «نفّذ» مرةً ثانية.';
