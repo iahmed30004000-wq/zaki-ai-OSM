@@ -22,9 +22,17 @@ import { DATE_RETURNED_REASON } from '@/lib/no-answer-returns';
 import { callProofOn } from '@/lib/call-proof-switch';
 import { assertCallProven, answerCallProofRefusal } from '@/lib/call-proof-guard';
 import { CALL_PROOF_WORDS } from '@/lib/call-proof-words';
+import { cadenceSince } from '@/lib/no-answer-cadence-switch';
+import { CADENCE_LIMIT } from '@/lib/no-answer-cadence';
 import {
   TwinConfirmedRefusal, guardConfirmAgainstTwins, recordTwinAcknowledged, twinConfirmedBody, type ConfirmedTwin,
 } from '@/lib/confirmed-twin';
+
+/**
+ * With «جدول المحاولات» on, `NO_ANSWER_3_ATTEMPTS` is a reason only the system writes (the contact door closes at the fifth COUNTED attempt over two days, in its own transaction):
+ * nobody can meet that rule by hand. Arabic in both keys, through an identifier — this door is a fixed door of `arabic-refusals.test.ts`.
+ */
+const NO_ANSWER_BY_HAND_AR = `هالسبب النظام وحدو بيكتبو — بيسكّر الطلب لحالو بعد ${CADENCE_LIMIT} محاولات «لا يرد» محسوبة على يومين. اختر سبباً تانياً من القائمة.`;
 
 /**
  * POST /api/orders/[id]/confirmation — controlled confirmation workflow action.
@@ -228,6 +236,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         // could free the units of a parcel already labelled or on a trolley.
         if (!rejectionReason || !(REJECTION_REASONS as readonly string[]).includes(rejectionReason)) {
           return NextResponse.json({ error: 'اختر سبب الرفض من القائمة' }, { status: 400 });
+        }
+        // The switch is asked ONLY for this action and this reason: nothing else on this door reads it. Off, or unreadable: accepted exactly as it always was.
+        if (rejectionReason === 'NO_ANSWER_3_ATTEMPTS' && (await cadenceSince(db, companyId))) {
+          return NextResponse.json({ error: NO_ANSWER_BY_HAND_AR, errorAr: NO_ANSWER_BY_HAND_AR, code: 'SYSTEM_ONLY_REASON' }, { status: 409 });
         }
         if (rejectionReason === 'OTHER' && (!note || note.trim().length < 5)) {
           return NextResponse.json({ error: 'سبب الرفض «أخرى» يحتاج ملاحظة — خمسة أحرف على الأقل' }, { status: 400 });
