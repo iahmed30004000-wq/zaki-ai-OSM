@@ -8,7 +8,7 @@ import React from 'react';
  * THE CALL-PROOF CARD TELLS THE OWNER WHAT HIS ONE SWITCH CHANGES — STEP A AND STEP B (the planner's ruling: one switch, 15/11/2026).
  *
  * «إثبات المكالمات وجدول المحاولات (تجريبي)» is read by one person: the owner, in the settings. Its sentence is the only place the numbers he decided on live in words — five attempts,
- * half an hour, two hours, 9–12, 6–10 in the evening — and it must also tell him what he cannot see from the switch's name: that it ALSO brings «الطلب يرجع للطابور فوراً»
+ * half an hour, two hours, 10:00 and 6 in the evening with their 8 h and 3 h floors, and the rest days they skip — and it must also tell him what he cannot see from the switch's name: that it ALSO brings «الطلب يرجع للطابور فوراً»
  * (the hand limit, the idle release, the old piles coming back on the first turn-on). A sentence nothing reads goes stale when a number moves, so the numbers are held to the constants.
  * ═══════════════════════════════════════════════════════════════════════
  */
@@ -20,7 +20,7 @@ vi.mock('@/hooks/useCan', () => ({ useCan: () => can.value }));
 vi.mock('@/lib/db', () => ({ db: {} }));
 
 import { CallProofCard } from './CallProofCard';
-import { CADENCE_EVENING, CADENCE_GAPS_MS, CADENCE_LIMIT, CADENCE_MORNING } from '@/lib/no-answer-cadence';
+import { CADENCE_EVENING_FROM, CADENCE_FLOORS_MS, CADENCE_GAPS_MS, CADENCE_LIMIT, CADENCE_WORKDAY_START } from '@/lib/no-answer-cadence';
 import { RETURNS_MODE } from '@/lib/confirmation-queue';
 
 beforeEach(() => {
@@ -52,9 +52,21 @@ describe('the sentence of «إثبات المكالمات وجدول المحا�
     expect(CADENCE_GAPS_MS.afterFirst).toBe(30 * 60_000);
     expect(text).toContain('التالتة بعد ساعتين');
     expect(CADENCE_GAPS_MS.afterSecond).toBe(2 * 3_600_000);
-    const windows = [...text.matchAll(/بين (\d+) و(\d+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
-    expect(windows[0]).toEqual([CADENCE_MORNING.from, CADENCE_MORNING.to]);
-    expect(windows[1]).toEqual([CADENCE_EVENING.from - 12, CADENCE_EVENING.to - 12]);
+    // #4 at the planner's fixed 10:00 (the morning clock), #5 from 18:00 (the evening clock, said in 12-hour spoken form)
+    expect(Number(/الرابعة الساعة (\d+) الصبح/.exec(text)?.[1])).toBe(Number(CADENCE_WORKDAY_START.slice(0, 2)));
+    expect(Number(/الخامسة الساعة (\d+) مسا/.exec(text)?.[1])).toBe(Number(CADENCE_EVENING_FROM.slice(0, 2)) - 12);
+  });
+
+  it('names the two floors — 8 hours after the third, 3 hours after the fourth — and they ARE the constants', async () => {
+    const text = await subtitle();
+    expect(Number(/(\d+) ساعات على الأقل من التالتة/.exec(text)?.[1])).toBe(CADENCE_FLOORS_MS.beforeFourth / 3_600_000);
+    expect(Number(/(\d+) ساعات على الأقل من الرابعة/.exec(text)?.[1])).toBe(CADENCE_FLOORS_MS.beforeFifth / 3_600_000);
+  });
+
+  it('says the fourth and fifth skip the rest days the Country’s settings name — and skip nothing when none are named', async () => {
+    const text = await subtitle();
+    expect(text).toContain('الرابعة والخامسة بيتخطّوا أيام العطلة المحددة بإعدادات البلد');
+    expect(text).toContain('وإذا ما في أيام محددة ما بيتخطّوا شي');
   });
 
   it('says an early press is kept and not counted, that the fifth closes to «ملغاة سابقاً», and that earlier lines do not count', async () => {

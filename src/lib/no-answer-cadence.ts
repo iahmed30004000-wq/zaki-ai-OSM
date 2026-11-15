@@ -54,10 +54,6 @@ export const CADENCE_FLOORS_MS = { beforeFourth: 28_800_000, beforeFifth: 10_800
 export const CADENCE_WORKDAY_START = '10:00';
 /** #5's anchor: 18:00 local, on a working day. */
 export const CADENCE_EVENING_FROM = '18:00';
-/** SUPERSEDED: the words print the real due now, no window. Read only by the settings card's own test, which moves to the floors in the next change — then both constants go. */
-export const CADENCE_MORNING = { from: 9, to: 12 } as const;
-/** SUPERSEDED, as above. */
-export const CADENCE_EVENING = { from: 18, to: 22 } as const;
 
 /** What the plan needs of the world: the floor (the switch's `enabledAt`), the Country's timezone and the Country's rest days. */
 export interface CadenceCal {

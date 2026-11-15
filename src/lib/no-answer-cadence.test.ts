@@ -2,13 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { zonedParts, zonedTimeToInstant } from './business-calendar';
 import { NO_ANSWER_LIMIT } from './confirmation-workflow';
 import {
-  CADENCE_EVENING,
   CADENCE_EVENING_FROM,
   CADENCE_FLOORS_MS,
   CADENCE_GAPS_MS,
   CADENCE_LIMIT,
   CADENCE_MIN_DAYS,
-  CADENCE_MORNING,
   CADENCE_START,
   CADENCE_WORKDAY_START,
   CLOSED_WITHOUT_COUNT_WORDS,
@@ -106,9 +104,6 @@ describe('the constants', () => {
     expect(CADENCE_FLOORS_MS).toEqual({ beforeFourth: 8 * 3_600_000, beforeFifth: 3 * 3_600_000 });
     expect(CADENCE_WORKDAY_START).toBe('10:00');
     expect(CADENCE_EVENING_FROM).toBe('18:00');
-    // the superseded wording windows: nothing prints them any more; they go with the settings card's sentence (next change)
-    expect(CADENCE_MORNING).toEqual({ from: 9, to: 12 });
-    expect(CADENCE_EVENING).toEqual({ from: 18, to: 22 });
     expect(NO_ANSWER_LIMIT).toBe(3);
   });
 });
