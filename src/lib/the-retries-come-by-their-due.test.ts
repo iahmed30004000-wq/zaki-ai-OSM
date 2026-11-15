@@ -7,13 +7,14 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
  * «الإعادات اللي حان موعدها بتترتّب بالموعد»: with the five-attempt cadence ON, among the ready orders that WERE rung, the pull gives first the retry whose due —
  * the instant its last counted «لا يرد» made it due — is the oldest (a tie: the older order, then the smaller id). Then the rest, oldest first, as ever.
  *
- *  1. Under the cadence: held for her · a NEW order · a postponed promise whose date arrived · the retry with the OLDEST due · the rest oldest-created first. Nothing above the
- *     retries moves (the owner, 7/11: «الأولوية دائما للطلبات الجديدة»).
+ *  1. Under the cadence: held for her · a NEW order · the customer's PROMISE whose date arrived (any status — widened by the planner 15/11, ruling 13; its own file:
+ *     `the-promise-comes-before-the-retries.test.ts`) · the retry with the OLDEST due · the rest oldest-created first. Nothing above the retries moves (the owner, 7/11:
+ *     «الأولوية دائما للطلبات الجديدة»).
  *  2. A retry is ranked by the due of its LAST counted line; an early press and the fifth (no due) change nothing; a line at or before the floor, a callback and every
- *     other result never rank. An order with no due line (legacy return, a promise, an idle release) keeps today's oldest-first place, after the retries.
+ *     other result never rank. An order with no due line (legacy return, an idle release) keeps today's oldest-first place, after the retries.
  *  3. A due exactly NOW is ranked; a due one millisecond ahead is not pulled at all — and the number the queue shows is what a drain of the pull hands out.
  *  4. The cadence OFF, and the legacy returns mode, run the SAME four queries as before and no other (`findMany` is never asked): byte for byte.
- *  5. The one extra read the cadence makes is `readyToPullWhere` + one `some`, oldest-created first, bounded by `RETRY_SCAN_PAGE`.
+ *  5. The retry read the cadence makes is `readyToPullWhere` + one `some`, oldest-created first, bounded by `RETRY_SCAN_PAGE` (it comes after the promise read); a FULL page is said once in the log.
  *  6. The claim is the same compare-and-set: a lost race re-reads and gives the next due, never the same order twice; an order a colleague holds, a shipped, a decided
  *     or a foreign one with an overdue due is never returned.
  *
@@ -345,7 +346,7 @@ describe('an order is ranked by the due of its LAST counted press', () => {
 });
 
 describe('the rest of the rung orders keep today’s place: after the retries, oldest-created first', () => {
-  it('a legacy return and a promise whose date arrived come after every retry, and between themselves the older order first', async () => {
+  it('a promise whose date arrived comes BEFORE every retry (the planner 15/11, ruling 13); a legacy return (no date, no due) stays after them', async () => {
     const legacy = order({
       confirmationStatus: 'IN_PROGRESS', status: 'IN_PROGRESS', createdAt: hoursAgo(60),
       contactAttempts: [{ createdAt: hoursAgo(30), result: 'OPENED', nextFollowUpAt: null, employeeId: 'x', attemptNumber: 1 }],
@@ -356,8 +357,8 @@ describe('the rest of the rung orders keep today’s place: after the retries, o
     });
     const youngRetry = retry(-10, { createdAt: hoursAgo(1) });
     const oldRetry = retry(-5, { createdAt: hoursAgo(300) });
-    // The retries by their due (-10 before -5), then the two others oldest-created first.
-    expect(await drain('sara')).toEqual([youngRetry.id, oldRetry.id, followUp.id, legacy.id]);
+    // The follow-up is the customer's promise (its date arrived, nothing logged since): first. Then the retries by their due (-10 before -5), then the legacy return.
+    expect(await drain('sara')).toEqual([followUp.id, youngRetry.id, oldRetry.id, legacy.id]);
   });
 });
 
@@ -373,26 +374,38 @@ describe('the pull of the rest, in worlds nobody wrote by hand', () => {
   const pickOf = <T,>(next: () => number, xs: readonly T[]): T => xs[Math.floor(next() * xs.length)];
   const NA = ['NO_ANSWER', 'BUSY', 'UNREACHABLE'];
 
-  /** THE ORACLE, written the other way round: classify each order by its own facts, then sort by (step, key) — never calling the pull's rank. */
+  /**
+   * THE ORACLE, written the other way round: classify each order by its own facts, then sort by (step, key) — never calling the pull's rank. Steps: 0 a NEW order · 1 the customer's PROMISE (a date
+   * arrived, no line at or after the later date; the date that came first first, then the older order) · 2 a postponed order the promise group leaves (a line was logged after its date) · 3 the
+   * retries by due · 4 the rest by age.
+   */
   function expectedSequence(orders: Row[]): string[] {
     const ranked: { step: number; key: number[]; number: string }[] = [];
     orders.forEach((o, index) => {
       const holding = (o.contactAttempts as Row[]).filter((l) => NA.includes(l.result) && l.createdAt.getTime() > SINCE.getTime());
       if (holding.some((l) => l.nextFollowUpAt !== null && l.nextFollowUpAt.getTime() > NOW.getTime())) return; // a due still ahead holds the order
+      const dates = [o.postponedUntil, o.nextFollowUpAt].filter((d: Date | null): d is Date => d !== null).map((d) => d.getTime());
+      const asked = dates.length ? Math.max(...dates) : null;
+      const worked = asked !== null && (o.contactAttempts as Row[]).some((l) => l.createdAt.getTime() >= asked);
       if (o.confirmationStatus === 'POSTPONED') {
         if (o.postponedUntil.getTime() > NOW.getTime()) return;
-        ranked.push({ step: 1, key: [o.postponedUntil.getTime(), index], number: o.orderNumber });
+        if (asked !== null && !worked) ranked.push({ step: 1, key: [asked, o.createdAt.getTime(), index], number: o.orderNumber });
+        else ranked.push({ step: 2, key: [o.postponedUntil.getTime(), index], number: o.orderNumber });
         return;
       }
-      if ([o.postponedUntil, o.nextFollowUpAt].some((d: Date | null) => d !== null && d.getTime() > NOW.getTime())) return; // a date ahead holds it
+      if (dates.some((d) => d > NOW.getTime())) return; // a date ahead holds it
       if (o.contactAttempts.length === 0) {
         ranked.push({ step: 0, key: [o.createdAt.getTime(), index], number: o.orderNumber });
         return;
       }
+      if (asked !== null && !worked) {
+        ranked.push({ step: 1, key: [asked, o.createdAt.getTime(), index], number: o.orderNumber });
+        return;
+      }
       const dues = holding.filter((l) => l.nextFollowUpAt !== null).map((l) => l.nextFollowUpAt.getTime() as number);
       // 4a: the retries (by the latest due, then age, then id = insertion order); 4b: the rest by age (a tie: the order they were stored in, as the double sorts).
-      if (dues.length) ranked.push({ step: 2, key: [Math.max(...dues), o.createdAt.getTime(), index], number: o.orderNumber });
-      else ranked.push({ step: 3, key: [o.createdAt.getTime(), index], number: o.orderNumber });
+      if (dues.length) ranked.push({ step: 3, key: [Math.max(...dues), o.createdAt.getTime(), index], number: o.orderNumber });
+      else ranked.push({ step: 4, key: [o.createdAt.getTime(), index], number: o.orderNumber });
     });
     ranked.sort((a, b) => a.step - b.step || a.key.reduce((d, k, i) => d || k - (b.key[i] ?? 0), 0));
     return ranked.map((r) => r.number);
@@ -474,8 +487,8 @@ describe('OFF stays byte for byte: the four queries of today and no other', () =
   });
 });
 
-describe('the cadence ON: one extra read, exactly this one', () => {
-  it('with no due line anywhere it asks once (an empty answer) and then today’s step 4 gives the answer OFF would give', async () => {
+describe('the cadence ON: the retry read is exactly this one (it follows the promise read: `the-promise-comes-before-the-retries.test.ts`)', () => {
+  it('with no promise and no due line anywhere it asks twice — the promise read, then this one, both empty — and then today’s step 4 gives the answer OFF would give', async () => {
     // An order that was rung, but whose lines carry no due: a legacy return.
     const legacy = order({
       confirmationStatus: 'IN_PROGRESS', status: 'IN_PROGRESS', createdAt: hoursAgo(30),
@@ -485,12 +498,15 @@ describe('the cadence ON: one extra read, exactly this one', () => {
     const findFirst = db.order.findFirst as unknown as Mock;
 
     expect(await pick('sara', CADENCE)).toBe(legacy.id);
-    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(findMany).toHaveBeenCalledTimes(2);
     expect(await findMany.mock.results[0].value).toEqual([]);
+    expect(await findMany.mock.results[1].value).toEqual([]);
     expect(findFirst).toHaveBeenCalledTimes(4);
-    // The scan runs after step 3 and before the last query.
-    expect(findMany.mock.invocationCallOrder[0]).toBeGreaterThan(findFirst.mock.invocationCallOrder[2]);
-    expect(findMany.mock.invocationCallOrder[0]).toBeLessThan(findFirst.mock.invocationCallOrder[3]);
+    // The promise read runs after the NEW query and before step 3; the retry scan after step 3 and before the last query.
+    expect(findMany.mock.invocationCallOrder[0]).toBeGreaterThan(findFirst.mock.invocationCallOrder[1]);
+    expect(findMany.mock.invocationCallOrder[0]).toBeLessThan(findFirst.mock.invocationCallOrder[2]);
+    expect(findMany.mock.invocationCallOrder[1]).toBeGreaterThan(findFirst.mock.invocationCallOrder[2]);
+    expect(findMany.mock.invocationCallOrder[1]).toBeLessThan(findFirst.mock.invocationCallOrder[3]);
     // OFF gives the same order.
     expect(await pick('sara', LEGACY)).toBe(legacy.id);
   });
@@ -498,8 +514,9 @@ describe('the cadence ON: one extra read, exactly this one', () => {
   it('the read is `readyToPullWhere` plus one `some`, oldest-created first, bounded — the counters’ own predicate', async () => {
     await pick('sara', CADENCE);
     const findMany = db.order.findMany as unknown as Mock;
-    expect(findMany).toHaveBeenCalledTimes(1);
-    const scan = findMany.mock.calls[0][0];
+    expect(findMany).toHaveBeenCalledTimes(2);
+    // The second read of the pick (the first is the promise scan).
+    const scan = findMany.mock.calls[1][0];
     expect(scan.where).toEqual({ ...readyToPullWhere(scope, 'sara', NOW, CADENCE), contactAttempts: { some: cadenceDueLineWhere(SINCE) } });
     expect(scan.orderBy).toEqual([{ createdAt: 'asc' }, { id: 'asc' }]);
     expect(scan.take).toBe(RETRY_SCAN_PAGE);
@@ -522,13 +539,21 @@ describe('the cadence ON: one extra read, exactly this one', () => {
       ids.push(r.id);
     }
     const outside = retry(-9999, { createdAt: new Date(NOW.getTime() - (3_000_000 - RETRY_SCAN_PAGE) * 1000) });
+    // A full page is said in the log (the planner 15/11, ruling 10) — silenced here, asserted below.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
-    const first = await pick('sara', CADENCE);
-    expect(first).toBe(ids[49]);
-    expect(first).not.toBe(outside.id);
-    // Once one is taken the page has room again: the order that was outside is read, and as the most overdue of all it comes next.
-    byId(ids[49]).claimedById = 'taken';
-    expect(await pick('sara', CADENCE)).toBe(outside.id);
+    try {
+      const first = await pick('sara', CADENCE);
+      expect(first).toBe(ids[49]);
+      expect(first).not.toBe(outside.id);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toContain(String(RETRY_SCAN_PAGE));
+      // Once one is taken the page has room again: the order that was outside is read, and as the most overdue of all it comes next.
+      byId(ids[49]).claimedById = 'taken';
+      expect(await pick('sara', CADENCE)).toBe(outside.id);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 

@@ -1,5 +1,6 @@
 import { NO_ANSWER_RESULTS } from './confirmation-workflow';
 import { ROUND_GAP_BUSINESS_MINUTES, roundsOn, type RoundsSwitch, type WorkClock } from './no-answer-rounds';
+import { askedDate, promiseArrived } from './work-first';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -28,6 +29,8 @@ import { ROUND_GAP_BUSINESS_MINUTES, roundsOn, type RoundsSwitch, type WorkClock
  *     1 · held for her (a returning customer, a twin)    2 · NEW — nobody has rung — oldest first
  *     3 · a promise whose date arrived, nearest first     4 · a returned order whose ready-time arrived — with the cadence on: the
  *         retry with the OLDEST due first (ties: the older order), then the rest oldest first; otherwise oldest first
+ *   With the cadence on, step 3 widens (the planner 15/11, ruling 13): a PROMISE is any pullable order — of any status — whose customer-asked date arrived with
+ *   nothing logged since (`promiseArrived`, `firstPromiseByDate`), and it goes before the retries; an order that is both a promise and a retry is a promise.
  *     and a bucket nobody pulls from: «بينتظر وقتو» — a date not yet arrived, or a «لا يرد» not yet three working hours old.
  *
  * ── READY, WITH NO NEW COLUMN ──
@@ -166,6 +169,31 @@ export function firstRetryByDue(rows: readonly RetryRow[], since: Date): string 
     if (due === null) continue;
     const born = new Date(r.createdAt).getTime();
     if (best === null || due < best.due || (due === best.due && (born < best.born || (born === best.born && r.id < best.id)))) best = { id: r.id, due, born };
+  }
+  return best ? best.id : null;
+}
+
+/** One order as the promise ranking reads it: its dates and its NEWEST line (or all of them — `promiseArrived` asks the same question of either). */
+export interface PromiseRow {
+  id: string;
+  createdAt: Date | string;
+  postponedUntil?: Date | string | null;
+  nextFollowUpAt?: Date | string | null;
+  contactAttempts: readonly { createdAt: Date | string }[];
+}
+
+/**
+ * THE PROMISES, RANKED (the planner 15/11, ruling 13: «الوعد اللي وصل وقته أول»): of the rows, the id the pull gives first among those whose customer-asked date has ARRIVED with no line logged
+ * at or after it (`promiseArrived` — the same fact the desk's tag reads). The promise whose date came first goes first; equal date → the older order → the smaller id. Null when no row is a
+ * promise. The fact is applied here on purpose, to every row: the database only narrows (a date on the order), and a test double that ignores `select` hands over every line.
+ */
+export function firstPromiseByDate(rows: readonly PromiseRow[], now: Date): string | null {
+  let best: { id: string; asked: number; born: number } | null = null;
+  for (const r of rows) {
+    if (!promiseArrived(r, r.contactAttempts, now)) continue;
+    const asked = askedDate(r)!;
+    const born = new Date(r.createdAt).getTime();
+    if (best === null || asked < best.asked || (asked === best.asked && (born < best.born || (born === best.born && r.id < best.id)))) best = { id: r.id, asked, born };
   }
   return best ? best.id : null;
 }
