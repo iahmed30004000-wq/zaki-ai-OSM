@@ -133,14 +133,21 @@ const CLAIM_REASON_AR: Record<string, string> = {
   // does not say who (`managerReturnWords` below names the person when it does).
   [MANAGER_RETURNED_REASON]: 'أرجعها مشرف للطابور — ما حدا وصل لزبونها',
   // «الطلب يرجع للطابور فوراً» (no-answer-returns.ts): the order left her hand with her press — the system wrote the line, not she.
-  // No number, like the round label above (RV1413): the same reason is written by the three-hour mode AND by the plan («جدول المحاولات»),
-  // and a row must not tell its reader a rule that was not its own.
-  [NO_ANSWER_RETURNED_REASON]: 'رجع للطابور فوراً بعد «لا يرد» — بيجهز لما يحين موعد محاولته الجاية',
+  // THE WORD IS THE RULE'S, and the stored reason is one string for two rules (the planner 15/11, answer 15): this map holds the older mode's word, byte for byte
+  // as it was (`b1df2af3`) — what every company with the plan OFF reads. With the plan on, `orderTimeline` is handed `planOn` and swaps in `PLAN_RETURNED_WORDS_AR` below.
+  [NO_ANSWER_RETURNED_REASON]: 'رجع للطابور فوراً بعد «لا يرد» — بيجهز بعد 3 ساعات دوام',
   [DATE_RETURNED_REASON]: 'رجع للطابور بعد ما انحدد موعد — بيجهز بالموعد',
   [IDLE_RETURNED_REASON]: 'تحرير تلقائي — مرّت 30 دقيقة عمل وما انسجّلت عليه أي محاولة، ورجع للطابور',
   LOCK_EXPIRED: 'انتهت مدة القفل',
   REASSIGNED: 'إعادة إسناد',
 };
+
+/**
+ * THE SAME LINE UNDER THE PLAN («جدول المحاولات», `planOn`): no number, because the plan's next attempt is thirty minutes, two hours or the next 10:00 away — the older mode's
+ * «3 ساعات دوام» would be a rule that was not its own. The stored reason is the same string in both worlds (held-flow, `returnedByHerOwnPress`, the idle release read it).
+ * A row written under one rule and read under the other reads in the reader's world — the switch's own state is all the timeline knows.
+ */
+const PLAN_RETURNED_WORDS_AR = 'رجع للطابور فوراً بعد «لا يرد» — بيجهز لما يحين موعد محاولته الجاية';
 
 const CONTACT_METHOD_AR: Record<string, string> = {
   PHONE: 'هاتف', WHATSAPP: 'واتساب', TELEGRAM: 'تلجرام', SMS: 'رسالة نصية', OTHER: 'أخرى',
@@ -365,7 +372,12 @@ function managerReturnWords<T extends { action: string; userId: string; reason: 
   return { ...row, userId: by.id, ...(name ? { reason: `أرجعها ${name} للطابور — ما حدا وصل لزبونها` } : {}) };
 }
 
-export async function orderTimeline(tx: Tx, orderId: string): Promise<TimelineEvent[]> {
+/**
+ * `opts.planOn` says which WORD the «رجع للطابور فوراً» line wears: true only when the caller knows the company's plan is on (`cadenceSince`, read the normal way). Left out it is
+ * false — the older mode's word, exactly what the timeline printed before the plan — so a caller that cannot cheaply know the switch keeps today's line.
+ */
+export async function orderTimeline(tx: Tx, orderId: string, opts: { planOn?: boolean } = {}): Promise<TimelineEvent[]> {
+  const claimReasonAr = opts.planOn === true ? { ...CLAIM_REASON_AR, [NO_ANSWER_RETURNED_REASON]: PLAN_RETURNED_WORDS_AR } : CLAIM_REASON_AR;
   const [statusLogs, claims, contacts, callLogs, readings, deliveries, notes, activities, changeRequests, issues] = await Promise.all([
     tx.orderStatusLog.findMany({ where: { orderId }, orderBy: { createdAt: 'asc' } }),
     tx.orderClaimHistory.findMany({ where: { orderId }, orderBy: { createdAt: 'asc' } }),
@@ -438,7 +450,7 @@ export async function orderTimeline(tx: Tx, orderId: string): Promise<TimelineEv
         kind: 'OWNERSHIP' as const,
         at: row.createdAt,
         title: CLAIM_LABEL[row.action] ?? row.action,
-        detail: row.reason ? ar(CLAIM_REASON_AR, row.reason) : null,
+        detail: row.reason ? ar(claimReasonAr, row.reason) : null,
         actorId: automatic ? null : row.userId,
         actorName: automatic ? SYSTEM_ACTOR_AR : nameOf.get(row.userId) ?? null,
       };
