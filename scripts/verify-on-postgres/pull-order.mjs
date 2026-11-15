@@ -6,7 +6,7 @@
  * DEFINITION OF DONE:
  *   1. Runs only against the scratch database (`scratchUrl` + `assertScratchUrl`, the process's DATABASE_URL is set from it before the repo's
  *      `src/lib/db.ts` is imported — `db.ts` reads it at load time).
- *   2. Imports the repo's own TypeScript (`src/lib/confirmation-queue.ts`) through tsx's `tsImport`: no copy of any rule lives here.
+ *   2. Imports the repo's own TypeScript (`src/lib/confirmation-queue.ts`) under the tsx command (it relaunches itself under it): no copy of any rule lives here.
  *   3. Part 1 — the HAND-OUT ORDER of each desk: `pickNextCandidate` in a loop inside ONE transaction on a client that logs every SQL statement;
  *      each pick is claimed in that transaction (so the next pick moves on), and the transaction is ROLLED BACK at the end — nothing stays written.
  *   4. Part 2 — the QUERY OF `pickMostOverdueRetry` (the nested select, only ever checked by an in-memory double before): run alone, its SQL
@@ -20,9 +20,11 @@
  *     --no-real-pulls   skip Part 3
  */
 import * as prismaPackage from '@prisma/client';
-import { tsImport } from 'tsx/esm/api';
-import { argv, assertScratchUrl, scratchUrl } from './lib.mjs';
+import { argv, assertScratchUrl, relaunchUnderTsx, scratchUrl } from './lib.mjs';
 import { COMPANY_OFF, COMPANY_ON, USERS, buildScenario } from './scenario.mjs';
+
+// The repo's TypeScript is imported below, so this file must run under the tsx command; if it was started with plain `node`, it starts itself again that way.
+relaunchUnderTsx(import.meta.url);
 
 const PrismaClient = prismaPackage.PrismaClient ?? prismaPackage.default.PrismaClient;
 const args = argv({ sql: 'flag', 'no-real-pulls': 'flag' });
@@ -34,8 +36,8 @@ process.env.DATABASE_URL = url;
 for (const k of ['DIRECT_URL', 'SHADOW_DATABASE_URL']) delete process.env[k];
 if (process.env.NODE_ENV === 'production') delete process.env.NODE_ENV;
 
-const queue = await tsImport('../../src/lib/confirmation-queue.ts', import.meta.url);
-const { db } = await tsImport('../../src/lib/db.ts', import.meta.url);
+const queue = await import('../../src/lib/confirmation-queue.ts');
+const { db } = await import('../../src/lib/db.ts');
 
 // A client of the kit's own, only to SEE the SQL Prisma sends (the repo's `db` logs errors only).
 const sqlLog = [];

@@ -13,9 +13,11 @@
  *   node scripts/verify-on-postgres/scale-retries.mjs [--count 5000]
  */
 import * as prismaPackage from '@prisma/client';
-import { tsImport } from 'tsx/esm/api';
-import { argv, assertScratchUrl, scratchUrl } from './lib.mjs';
+import { argv, assertScratchUrl, relaunchUnderTsx, scratchUrl } from './lib.mjs';
 import { COMPANY_ON, USERS } from './scenario.mjs';
+
+// The repo's TypeScript is imported below, so this file must run under the tsx command; if it was started with plain `node`, it starts itself again that way.
+relaunchUnderTsx(import.meta.url);
 
 const PrismaClient = prismaPackage.PrismaClient ?? prismaPackage.default.PrismaClient;
 const args = argv();
@@ -25,8 +27,8 @@ const url = scratchUrl();
 assertScratchUrl(url);
 process.env.DATABASE_URL = url;
 
-const queue = await tsImport('../../src/lib/confirmation-queue.ts', import.meta.url);
-const { db } = await tsImport('../../src/lib/db.ts', import.meta.url);
+const queue = await import('../../src/lib/confirmation-queue.ts');
+const { db } = await import('../../src/lib/db.ts');
 const prisma = new PrismaClient({ datasourceUrl: url, log: [{ emit: 'event', level: 'query' }] });
 const statements = [];
 prisma.$on('query', (e) => statements.push(e));

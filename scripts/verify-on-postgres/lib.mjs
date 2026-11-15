@@ -53,6 +53,10 @@ export function assertScratchUrl(raw) {
   if (!LOCAL_HOSTS.has(url.hostname)) {
     die(`REFUSED: the database host must be localhost or 127.0.0.1 (got "${url.hostname}"). This kit never touches a remote database.`);
   }
+  // libpq (and prisma after it) read these from the query string and let them override the address above: a "local" URL that carries one is not local.
+  for (const key of ['host', 'hostaddr', 'dbname', 'service']) {
+    if (url.searchParams.has(key)) die(`REFUSED: the query parameter "${key}" can redirect the connection — this kit takes none of them.`);
+  }
   const name = decodeURIComponent(url.pathname.replace(/^\//, ''));
   if (!name.startsWith('scratch_')) {
     die(`REFUSED: the database name must start with "scratch_" (got "${name}"). This kit never touches a real database.`);
@@ -150,6 +154,23 @@ export function runNode(args, { env, cwd = REPO, capture = false } = {}) {
 /** The prisma CLI entry — run with `node`, so there is no `.cmd` shim and no shell on Windows. */
 export const PRISMA_CLI = resolve(REPO, 'node_modules', 'prisma', 'build', 'index.js');
 export const TSX_CLI = resolve(REPO, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+
+/**
+ * For a script that imports the repo's own TypeScript: if it is not already running under tsx, run itself again under it and exit with its code.
+ * Done through the tsx COMMAND (the way `db:seed` and the worker run) and not by importing tsx as a module — so `node <script>.mjs` keeps working, and
+ * the dependency stays what `nothing-unused-ships.test.ts` says it is: a tool the scripts run, not a library the tree imports.
+ */
+export function relaunchUnderTsx(metaUrl) {
+  if (process.env.KIT_UNDER_TSX === '1') return;
+  const r = spawnSync(process.execPath, [TSX_CLI, fileURLToPath(metaUrl), ...process.argv.slice(2)], {
+    cwd: REPO,
+    env: { ...process.env, KIT_UNDER_TSX: '1' },
+    stdio: 'inherit',
+    windowsHide: true,
+  });
+  if (r.error) die(`tsx ما اشتغل: ${r.error.message}`);
+  process.exit(r.status ?? 1);
+}
 
 /** One SQL statement through `psql` INSIDE the container (local socket, no password) — to the maintenance db or a scratch one. */
 export function psql(sql, db = 'postgres') {
