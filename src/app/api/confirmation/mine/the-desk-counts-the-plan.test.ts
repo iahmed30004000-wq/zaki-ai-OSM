@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  *   · each card's number is the COUNTED attempts (the same fold the door closes with), `groupBy` is not used, the attempts are read ONCE for the whole desk (the proof shares that read);
  *   · a card whose due is ahead sits in «بانتظار» with its due and its words; the moment the due arrives it is in «اتصلي هلّق» with «لا يرد راجع — محاولة n من 5»; a NEW order keeps its words;
  *   · `closesOnNext` is a fact of the server's clock: only when a press NOW would close it;
+ *   · the dues skip the Country's rest days (Friday and Saturday here) and print the real due — «جاهز الأحد الساعة 10:00» for a Thursday #3 — and are the very dues the door would store (`cadenceCalOf`);
  *   · lines from before the switch went on count nothing (the order is as if never rung: it lands by its attempt count);
  *   · a colleague's desk (`?agent=`) shows the same limit and numbers;
  *   · OFF (the switch off, or `callProofSwitch` missing from a mock) the desk is today's: limit 3, `groupBy`, no new key.

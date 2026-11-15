@@ -15,6 +15,8 @@ import { Prisma } from '@prisma/client';
  *     the write; a proof refusal reaches none of it.
  *  4. Lines at or before the switch's `enabledAt` never count; a call that reached somebody does not reset the plan; BUSY and UNREACHABLE count; any other result is recorded as before.
  *  5. The answer says the limit is 5 and carries `cadence { attempt, of, counted, dueAt, words }` for a no-answer-class line; the audit row logs what was STORED.
+ *  6. The Country's rest days (`weekendDays`) move #4 and #5: with Friday and Saturday off a Thursday #3 stores a due of SUNDAY 10:00, a press before it is early, and the stored due is the very one
+ *     the pure plan computes for the same lines (`cadenceCalOf`, the builder the desk shares). #4's clock is the fixed 10:00 whatever the country's `workHoursStart` says.
  *
  * With the switch OFF the door is today's, key for key: `count()`, never the plan's read, the five answer keys, limit 3, the third no-answer closes.
  *

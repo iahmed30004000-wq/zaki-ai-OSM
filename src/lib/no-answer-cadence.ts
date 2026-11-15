@@ -20,8 +20,7 @@ import { verdictFromCount, type DueVerdict } from './work-first';
  *
  * REST DAYS are the Country's `weekendDays` (0 = Sunday … 6), read through `cadenceCalOf`; an empty list skips nothing. They move the two day-anchored dues only (#4's day, #5's day):
  * never the 30-minute and 2-hour gaps, which are elapsed time from a real press. #4's clock is the planner's 10:00 — a constant, NOT the Country's `workHoursStart` — and #5's is 18:00.
- * A start clock at or after 18:00 (a night shift) is not designed for. The 8 h floor makes #4 land on the next local day for a #3 pressed after 02:00 (a #3 at 02:00:00.000 waits 8 h,
- * 02:00:00.001 waits 32 h): the literal «at least 8 hours», not a bug.
+ * The 8 h floor makes #4 land on the next local day for a #3 pressed after 02:00 (a #3 at 02:00:00.000 waits 8 h, 02:00:00.001 waits 32 h): the literal «at least 8 hours», not a bug.
  *
  * FIVE ATTEMPTS OVER TWO LOCAL DAYS stays true on a 25-hour DST day through a guard: #4 never lands on the local day of #1 (the next working-day start strictly after it is taken instead).
  *
