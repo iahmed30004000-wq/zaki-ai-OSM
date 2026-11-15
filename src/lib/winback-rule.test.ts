@@ -503,8 +503,9 @@ describe('the rule in a sentence', () => {
     for (const reason of [...WINBACK_REASONS, ...OPTIONAL_WINBACK_REASONS].filter((r) => r !== 'NO_ANSWER_3_ATTEMPTS')) {
       expect(winbackLabel(reason, { planOn: true }), reason).toBe(winbackLabel(reason));
     }
-    // `.map(winbackLabel)` hands the index as the second argument: it must never read as the flag.
-    expect(['NO_ANSWER_3_ATTEMPTS', 'NO_ANSWER_3_ATTEMPTS'].map(winbackLabel)).toEqual(['أُغلق بعد ثلاث محاولات بلا ردّ', 'أُغلق بعد ثلاث محاولات بلا ردّ']);
+    // A bare `.map(winbackLabel)` hands the index as the second argument: tsc refuses it (the options object is why), and at runtime a number must never read as the flag.
+    const bare = winbackLabel as (code: string, index?: number) => string;
+    expect(['NO_ANSWER_3_ATTEMPTS', 'NO_ANSWER_3_ATTEMPTS'].map(bare)).toEqual(['أُغلق بعد ثلاث محاولات بلا ردّ', 'أُغلق بعد ثلاث محاولات بلا ردّ']);
   });
 
   it('and it follows what the owner set — it can never say fourteen while the list says ten', () => {
