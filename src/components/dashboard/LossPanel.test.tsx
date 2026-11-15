@@ -28,8 +28,8 @@ import { LossPanel } from './LossPanel';
 
 afterEach(cleanup);
 
-function give(rows: Parameters<typeof summariseLoss>[0]) {
-  fetched.body = { ...summariseLoss(rows), period: 'all', scanned: 0, total: 0, truncated: false };
+function give(rows: Parameters<typeof summariseLoss>[0], extra: { cadenceOn?: boolean } = {}) {
+  fetched.body = { ...summariseLoss(rows), period: 'all', scanned: 0, total: 0, truncated: false, ...extra };
 }
 
 describe('the panel', () => {
@@ -167,5 +167,68 @@ describe('the no-answer close, drawn as one row', () => {
     await waitFor(() => expect(screen.getByText('أُغلق بعد خمس محاولات بلا ردّ')).toBeTruthy());
     expect(screen.queryByText('أُغلق بلا رد')).toBeNull();
     expect(container.querySelector('ul ul')).toBeNull();
+  });
+});
+
+/**
+ * RULING 27 (the planner 15/11 22:30, KEY ONLY): with «جدول المحاولات» on — the route says so with `cadenceOn: true` — the merged row and its detail line show even for ONE code.
+ * Key off (the flag absent, or false) the screen above is what it was.
+ */
+describe('the no-answer close, with the plan’s key on', () => {
+  const rejectionHalf = (container: HTMLElement) => container.querySelector('section') as HTMLElement;
+
+  it('only the older code: the merged row «أُغلق بلا رد» with ONE detail line — its own label and count', async () => {
+    give(
+      [
+        { field: 'rejectionReason', reason: 'NO_ANSWER_3_ATTEMPTS', count: 7, money: 0 },
+        { field: 'rejectionReason', reason: 'PRICE_TOO_HIGH', count: 3, money: 0 },
+      ],
+      { cadenceOn: true },
+    );
+    const { container } = render(<LossPanel period="all" />);
+    await waitFor(() => expect(screen.getByText('أُغلق بلا رد')).toBeTruthy());
+    const merged = [...rejectionHalf(container).querySelectorAll(':scope > ul > li')].find((li) => li.textContent?.includes('أُغلق بلا رد'))!;
+    expect(merged.querySelector(':scope > span')?.textContent).toBe('أُغلق بلا رد');
+    expect(merged.textContent).toContain('7 · 70%');
+    const nested = merged.querySelector(':scope > ul')!;
+    expect(nested.getAttribute('aria-label')).toBe('تفصيل «أُغلق بلا رد»');
+    expect([...nested.querySelectorAll(':scope > li')].map((li) => li.textContent)).toEqual([expect.stringMatching(/^أُغلق بعد ثلاث محاولات بلا ردّ7 · 70%$/)]);
+    // The code is not also drawn on its own at the top level.
+    expect([...rejectionHalf(container).querySelectorAll(':scope > ul > li')].filter((li) => li !== merged).some((li) => /ثلاث محاولات/.test(li.textContent ?? ''))).toBe(false);
+  });
+
+  it('only the new code: the same, with the new code’s label under the merged row', async () => {
+    give([{ field: 'rejectionReason', reason: 'NO_ANSWER_5_ATTEMPTS', count: 2, money: 0 }], { cadenceOn: true });
+    const { container } = render(<LossPanel period="all" />);
+    await waitFor(() => expect(screen.getByText('أُغلق بلا رد')).toBeTruthy());
+    expect(container.querySelectorAll('ul ul > li')).toHaveLength(1);
+    expect(container.querySelector('ul ul > li')?.textContent).toMatch(/^أُغلق بعد خمس محاولات بلا ردّ2 · 100%$/);
+  });
+
+  it('the flag false or absent: today’s single row, nothing merged, nothing nested (the OFF pin, through the screen)', async () => {
+    for (const extra of [{}, { cadenceOn: false }]) {
+      give([{ field: 'rejectionReason', reason: 'NO_ANSWER_3_ATTEMPTS', count: 7, money: 0 }], extra);
+      const { container, unmount } = render(<LossPanel period="all" />);
+      await waitFor(() => expect(screen.getByText('أُغلق بعد ثلاث محاولات بلا ردّ')).toBeTruthy());
+      expect(screen.queryByText('أُغلق بلا رد')).toBeNull();
+      expect(container.querySelector('ul ul')).toBeNull();
+      unmount();
+    }
+  });
+
+  it('both codes with the key on: the same merged row as with it off', async () => {
+    const rows = [
+      { field: 'rejectionReason' as const, reason: 'NO_ANSWER_3_ATTEMPTS', count: 6, money: 0 },
+      { field: 'rejectionReason' as const, reason: 'NO_ANSWER_5_ATTEMPTS', count: 4, money: 0 },
+    ];
+    const html: string[] = [];
+    for (const extra of [{}, { cadenceOn: true }]) {
+      give(rows, extra);
+      const { container, unmount } = render(<LossPanel period="all" />);
+      await waitFor(() => expect(screen.getByText('أُغلق بلا رد')).toBeTruthy());
+      html.push(container.innerHTML);
+      unmount();
+    }
+    expect(html[1]).toBe(html[0]);
   });
 });

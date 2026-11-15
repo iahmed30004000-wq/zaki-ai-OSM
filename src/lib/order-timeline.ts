@@ -10,7 +10,7 @@ import { TWIN_ACTION } from './recent-twin-order';
 import { TWIN_CONFIRM_ACK_ACTION } from './confirmed-twin';
 import { TWIN_HELD_ACTION } from './twins-follow-the-pull';
 import { DUE_RELEASE_REASON, REPULL_RELEASE_REASON, ROUND_RELEASE_REASON } from './no-answer-rounds';
-import { DATE_RETURNED_REASON, IDLE_RETURNED_REASON, NO_ANSWER_RETURNED_REASON } from './no-answer-returns';
+import { DATE_RETURNED_REASON, IDLE_RETURNED_REASON, NO_ANSWER_RETURNED_REASON, ruleOfLine } from './no-answer-returns';
 import { CUSTOMER_CALLED_BACK_REASON, TAKEN_ON_THE_LINE_REASON } from './customer-on-the-line';
 import { MANAGER_RETURNED_REASON, NINETY_MINUTE_RELEASE_REASON, SYSTEM_ACTOR_AR, isAutomaticRelease, managerReturnedBy } from './auto-release';
 import { POST_ORDER_ADDITION_AR } from './post-order-offer-copy';
@@ -134,7 +134,8 @@ const CLAIM_REASON_AR: Record<string, string> = {
   [MANAGER_RETURNED_REASON]: 'أرجعها مشرف للطابور — ما حدا وصل لزبونها',
   // «الطلب يرجع للطابور فوراً» (no-answer-returns.ts): the order left her hand with her press — the system wrote the line, not she.
   // THE WORD IS THE RULE'S, and the stored reason is one string for two rules (the planner 15/11, answer 15): this map holds the older mode's word, byte for byte
-  // as it was (`b1df2af3`) — what every company with the plan OFF reads. With the plan on, `orderTimeline` is handed `planOn` and swaps in `PLAN_RETURNED_WORDS_AR` below.
+  // as it was (`b1df2af3`) — what a line the older doors wrote reads, forever. A line the PLAN's door wrote carries `{ "rule": "plan" }` in its metadata (ruling 28, 15/11 22:30)
+  // and reads `PLAN_RETURNED_WORDS_AR` below (`claimReasonWords`) — the rule that wrote the line decides, never the switch at read time.
   [NO_ANSWER_RETURNED_REASON]: 'رجع للطابور فوراً بعد «لا يرد» — بيجهز بعد 3 ساعات دوام',
   [DATE_RETURNED_REASON]: 'رجع للطابور بعد ما انحدد موعد — بيجهز بالموعد',
   [IDLE_RETURNED_REASON]: 'تحرير تلقائي — مرّت 30 دقيقة عمل وما انسجّلت عليه أي محاولة، ورجع للطابور',
@@ -143,9 +144,10 @@ const CLAIM_REASON_AR: Record<string, string> = {
 };
 
 /**
- * THE SAME LINE UNDER THE PLAN («جدول المحاولات», `planOn`): no number, because the plan's next attempt is thirty minutes, two hours or the next 10:00 away — the older mode's
+ * THE SAME LINE UNDER THE PLAN («جدول المحاولات», a line with `rule: "plan"`): no number, because the plan's next attempt is thirty minutes, two hours or the next 10:00 away — the older mode's
  * «3 ساعات دوام» would be a rule that was not its own. The stored reason is the same string in both worlds (held-flow, `returnedByHerOwnPress`, the idle release read it).
- * A row written under one rule and read under the other reads in the reader's world — the switch's own state is all the timeline knows.
+ * A row's word is its OWN rule's (ruling 28): the plan's door stamped the line when it wrote it, so a plan line still reads this word with the switch since turned off, and an old line
+ * (no mark) keeps the older word with the switch since turned on. The reader holds no switch at all.
  */
 const PLAN_RETURNED_WORDS_AR = 'رجع للطابور فوراً بعد «لا يرد» — بيجهز لما يحين موعد محاولته الجاية';
 
@@ -373,11 +375,16 @@ function managerReturnWords<T extends { action: string; userId: string; reason: 
 }
 
 /**
- * `opts.planOn` says which WORD the «رجع للطابور فوراً» line wears: true only when the caller knows the company's plan is on (`cadenceSince`, read the normal way). Left out it is
- * false — the older mode's word, exactly what the timeline printed before the plan — so a caller that cannot cheaply know the switch keeps today's line.
+ * The words of a claim-history line's reason. Only «رجع للطابور فوراً» has two: the line's own metadata says which rule wrote it (`ruleOfLine`), a line with no mark — every line the
+ * older doors wrote — reads the older word, and every other reason reads its one word.
  */
-export async function orderTimeline(tx: Tx, orderId: string, opts: { planOn?: boolean } = {}): Promise<TimelineEvent[]> {
-  const claimReasonAr = opts.planOn === true ? { ...CLAIM_REASON_AR, [NO_ANSWER_RETURNED_REASON]: PLAN_RETURNED_WORDS_AR } : CLAIM_REASON_AR;
+function claimReasonWords(row: { reason: string | null; metadata: string | null }): string | null {
+  if (!row.reason) return null;
+  if (row.reason === NO_ANSWER_RETURNED_REASON && ruleOfLine(row) === 'plan') return PLAN_RETURNED_WORDS_AR;
+  return ar(CLAIM_REASON_AR, row.reason);
+}
+
+export async function orderTimeline(tx: Tx, orderId: string): Promise<TimelineEvent[]> {
   const [statusLogs, claims, contacts, callLogs, readings, deliveries, notes, activities, changeRequests, issues] = await Promise.all([
     tx.orderStatusLog.findMany({ where: { orderId }, orderBy: { createdAt: 'asc' } }),
     tx.orderClaimHistory.findMany({ where: { orderId }, orderBy: { createdAt: 'asc' } }),
@@ -450,7 +457,7 @@ export async function orderTimeline(tx: Tx, orderId: string, opts: { planOn?: bo
         kind: 'OWNERSHIP' as const,
         at: row.createdAt,
         title: CLAIM_LABEL[row.action] ?? row.action,
-        detail: row.reason ? ar(claimReasonAr, row.reason) : null,
+        detail: claimReasonWords(row),
         actorId: automatic ? null : row.userId,
         actorName: automatic ? SYSTEM_ACTOR_AR : nameOf.get(row.userId) ?? null,
       };

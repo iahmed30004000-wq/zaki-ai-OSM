@@ -11,7 +11,7 @@ import { endOrder } from '@/lib/order-cancel';
 import { can, authorize } from '@/lib/authorization';
 import { ORDER_NOT_FOUND } from '@/lib/order-refusals';
 import { mustHoldToWork, NOT_HELD_MESSAGE, returnToThePool, returnsModeOn } from '@/lib/confirmation-queue';
-import { NO_ANSWER_RETURNED_REASON } from '@/lib/no-answer-returns';
+import { NO_ANSWER_RETURNED_REASON, markPlanReturnLine } from '@/lib/no-answer-returns';
 import { countedRounds, roundsClose, roundsOn, workClock } from '@/lib/no-answer-rounds';
 import { roundsSwitch } from '@/lib/no-answer-rounds-switch';
 import { callProofOn } from '@/lib/call-proof-switch';
@@ -348,6 +348,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         // Under the plan only a COUNTED press releases: an early one is kept and told, and leaves the order where it was.
         (!cad || cad.counted) &&
         (await returnToThePool(tx, { companyId, orderId: id, holderId: user.id, reason: NO_ANSWER_RETURNED_REASON }));
+      /*
+       * THE LINE WEARS THE WORD OF THE RULE THAT WROTE IT (the planner 15/11 22:30, ruling 28). With the plan deciding this press (`cad`), the line just written is stamped
+       * `{ "rule": "plan" }` in its metadata, in this same transaction; the older doors (`cad` null) write nothing new, so their line reads the older word forever.
+       */
+      if (returned && cad) await markPlanReturnLine(tx, { companyId, orderId: id, holderId: user.id });
       return { attempt: created, autoClosed: false, noAnswerCount: noAnswers, announce: undefined, returned, cad, pressedAt };
     });
     // The transaction has committed: only now does anybody hear the order closed.

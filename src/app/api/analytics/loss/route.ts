@@ -8,6 +8,7 @@ import { insightsRefused, mayReadInsights } from '@/lib/insights-key';
 import { reportRange, type DateFilter } from '@/lib/analytics';
 import { summariseLoss, type LossRow } from '@/lib/loss-analysis';
 import { notSuperseded } from '@/lib/superseded';
+import { cadenceSince } from '@/lib/no-answer-cadence-switch';
 
 /**
  * GET /api/analytics/loss — why orders died, and which of it cost money.
@@ -84,7 +85,7 @@ export async function GET(req: Request) {
       ],
     };
 
-    const [orders, total, fees] = await Promise.all([
+    const [orders, total, fees, planSince] = await Promise.all([
       db.order.findMany({
         where,
         select: {
@@ -108,6 +109,8 @@ export async function GET(req: Request) {
         where: { companyId, isActive: true },
         select: { regionId: true, deliveryProviderId: true, fee: true, returnFee: true },
       }),
+      // «جدول المحاولات» — the plan's own switch, read the normal way (one cached read, off on any failure). It decides only how the SCREEN draws «أُغلق بلا رد»; the data below is the same either way.
+      cadenceSince(db, companyId),
     ]);
 
     /**
@@ -223,6 +226,8 @@ export async function GET(req: Request) {
     return NextResponse.json({
       ...(maySeeMoney ? summary : withoutMoney(summary)),
       ...(maySeeMoney ? {} : { moneyWithheld: true }),
+      // Present ONLY with the plan on, so the switch-off payload keeps the keys it always had (the winback payload's own rule): the panel reads `cadenceOn === true` and nothing else.
+      ...(planSince ? { cadenceOn: true } : {}),
       period: filter.period || 'all',
       // Never a silent cap: a report that quietly dropped rows reads exactly
       // like one that found nothing more.

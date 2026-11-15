@@ -5,7 +5,6 @@ import { ORDER_ACCESS_STATUS, assertOrderReadable } from '@/lib/rbac';
 import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
 import { apiErrorResponse } from '@/lib/api-error';
 import { orderTimeline } from '@/lib/order-timeline';
-import { cadenceSince } from '@/lib/no-answer-cadence-switch';
 import { deriveCoreState, getZone, type StateSource } from '@/lib/order-state';
 import { ORDER_NOT_FOUND } from '@/lib/order-refusals';
 
@@ -26,9 +25,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     }
     const order = access.order as StateSource & { orderNumber: string };
 
-    // «رجع للطابور فوراً» reads in the rule's words (the planner 15/11, answer 15): the plan's own switch, read the normal way — one cached read, off on any failure.
-    const planOn = !!(await cadenceSince(db, companyId));
-    const events = await orderTimeline(db, id, { planOn });
+    // «رجع للطابور فوراً» reads in the words of the rule that WROTE the line (the planner 15/11 22:30, ruling 28): the line carries its own mark, so the door reads no switch.
+    const events = await orderTimeline(db, id);
     const state = deriveCoreState(order);
 
     return NextResponse.json({

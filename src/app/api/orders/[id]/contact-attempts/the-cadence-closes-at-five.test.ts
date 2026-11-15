@@ -33,7 +33,7 @@ const { db, calls, rows, requireContext, assertOrderAccess, assertOrderReadable,
   const db = {
     orderContactAttempt: { findFirst: vi.fn(), create: vi.fn(), count: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     order: { update: vi.fn(), updateMany: vi.fn() },
-    orderClaimHistory: { create: vi.fn() },
+    orderClaimHistory: { create: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
     $transaction: vi.fn(),
   } as any;
   return {
@@ -124,6 +124,9 @@ beforeEach(() => {
   });
   db.order.updateMany.mockImplementation(async () => (calls.push('release'), { count: 1 }));
   db.orderClaimHistory.create.mockImplementation(async () => void calls.push('history'));
+  // The plan's door stamps the line it just wrote (ruling 28): one read of it, one write of its metadata — the stamp's own test is `the-plan-door-stamps-its-line.test.ts`.
+  db.orderClaimHistory.findFirst.mockImplementation(async () => ({ id: 'h1', metadata: JSON.stringify({ automatic: true, holder: 'u1' }) }));
+  db.orderClaimHistory.update.mockImplementation(async () => void calls.push('stamp'));
   db.$transaction.mockImplementation(async (fn: any) => {
     calls.push('begin');
     const out = await fn(db);
@@ -156,7 +159,7 @@ describe('ON — #1 counts, carries its due, and the order goes back to the queu
     expect(endOrder).not.toHaveBeenCalled();
   });
 
-  it('the statement order: begin, the guard’s read, the PLAN’s read, the line, the release, its history, commit — and the table is never updated, db never read', async () => {
+  it('the statement order: begin, the guard’s read, the PLAN’s read, the line, the release, its history, the plan’s stamp on it, commit — and the table is never updated, db never read', async () => {
     let reads = 0;
     const tx = {
       ...db,
@@ -175,7 +178,7 @@ describe('ON — #1 counts, carries its due, and the order goes back to the queu
       return out;
     });
     await pressAt(T0);
-    expect(calls).toEqual(['begin', 'guard-read', 'plan-read', 'attempt', 'release', 'history', 'commit']);
+    expect(calls).toEqual(['begin', 'guard-read', 'plan-read', 'attempt', 'release', 'history', 'stamp', 'commit']);
     const planRead = tx.orderContactAttempt.findMany.mock.calls[1][0] as any;
     expect(planRead.where).toEqual({ orderId: 'o1', companyId: 'c1' });
     expect(planRead.select).toEqual({ createdAt: true, result: true, attemptNumber: true });

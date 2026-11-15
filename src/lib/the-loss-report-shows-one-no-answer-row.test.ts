@@ -11,14 +11,24 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  *     today's single row, today's label, no detail.
  *  4. The merged row ranks where its SUM puts it; the displayed counts still add up to the half's total; nothing is mutated; other reasons and the after-shipping half are untouched.
  *
- * Blockers: any change to the payload or to a stored code; a merged row for a one-code company; a detail row that is not a code's own line; a wrong sum.
+ *  5. RULING 27 (the planner 15/11 22:30, KEY ONLY): with «جدول المحاولات» ON the merged row «أُغلق بلا رد» + its detail line shows EVEN WHEN ONLY ONE of the two codes holds orders
+ *     (one detail line, that code's own). With the key OFF — or the argument left out — point 3 is exactly as it was, byte for byte (the same objects back), and with BOTH codes the merged
+ *     row is exactly what point 1 says in both worlds. Neither code at all: nothing to merge in either world.
+ *  6. The route tells the screen the key is on by `cadenceOn: true`, present ONLY then — the key-off payload keeps the keys it always had, the data in it is the same two codes either way
+ *     (nothing merged, no `detail`), and a key that cannot be read is off.
+ *
+ * What is pinned as the OFF oracle: points 1-4 above (they ran before the key existed and still run unchanged), a deep-equality pin that off-with-one-code returns `half.lines` itself,
+ * and a pin that the key-on payload differs from the key-off one by that one key only.
+ *
+ * Blockers: any change to the payload beyond `cadenceOn`, or to a stored code; a merged row for a one-code company with the key OFF; a detail row that is not a code's own line; a wrong sum.
  * ═══════════════════════════════════════════════════════════════════════
  */
 
-const { db, requireContext, requirePermission } = vi.hoisted(() => ({
-  db: { order: { findMany: vi.fn(), count: vi.fn() }, deliveryFee: { findMany: vi.fn() } },
+const { db, requireContext, requirePermission, settings } = vi.hoisted(() => ({
+  db: { order: { findMany: vi.fn(), count: vi.fn() }, deliveryFee: { findMany: vi.fn() }, company: { findUnique: vi.fn() } },
   requireContext: vi.fn(),
   requirePermission: vi.fn(),
+  settings: { value: {} as Record<string, unknown> },
 }));
 
 vi.mock('@/lib/db', () => ({ db }));
@@ -28,6 +38,7 @@ vi.mock('@/lib/authorization', () => ({ can: () => true, requirePermission: (...
 import { GET } from '@/app/api/analytics/loss/route';
 import { NO_ANSWER_MERGED_AR, NO_ANSWER_MERGED_KEY, lossDisplayLines, summariseLoss, type LossRow } from './loss-analysis';
 import { REJECTION_REASON_AR } from './confirmation-workflow';
+import { forgetCallProofSwitch } from './call-proof-switch';
 
 const THREE = 'NO_ANSWER_3_ATTEMPTS';
 const FIVE = 'NO_ANSWER_5_ATTEMPTS';
@@ -118,12 +129,105 @@ describe('the merge, as a pure display', () => {
   });
 });
 
+describe('ruling 27 — with the key ON one code is enough; with it OFF nothing moved', () => {
+  const ON = { cadenceOn: true };
+  const OFF = { cadenceOn: false };
+
+  it('key ON, only the older code: the merged row «أُغلق بلا رد» with ONE detail line — that code’s own line', () => {
+    const half = before([rej(THREE, 7), rej('PRICE_TOO_HIGH', 3)]);
+    const shown = lossDisplayLines(half, ON);
+    expect(shown.map((l) => l.reason)).toEqual([NO_ANSWER_MERGED_KEY, 'PRICE_TOO_HIGH']);
+    const merged = shown[0];
+    expect(merged).toMatchObject({ field: 'rejectionReason', label: NO_ANSWER_MERGED_AR, fault: 'OUR_REACH', known: true, count: 7, money: 0, share: 70 });
+    expect(merged.detail).toEqual([half.lines.find((l) => l.reason === THREE)]);
+    expect(merged.detail![0].label).toBe('أُغلق بعد ثلاث محاولات بلا ردّ');
+    expect(shown.some((l) => l.reason === THREE)).toBe(false);
+  });
+
+  it('key ON, only the NEW code: the same — one merged row, one detail line with the new code’s own label', () => {
+    const half = before([rej(FIVE, 5)]);
+    const shown = lossDisplayLines(half, ON);
+    expect(shown).toHaveLength(1);
+    expect(shown[0]).toMatchObject({ reason: NO_ANSWER_MERGED_KEY, label: 'أُغلق بلا رد', count: 5, share: 100 });
+    expect(shown[0].detail!.map((d) => [d.reason, d.label, d.count])).toEqual([[FIVE, 'أُغلق بعد خمس محاولات بلا ردّ', 5]]);
+  });
+
+  it('key ON, BOTH codes: exactly the merged row the key-off world draws (same objects in value, same order, same detail)', () => {
+    const half = before([rej(THREE, 6), rej(FIVE, 4), rej('PRICE_TOO_HIGH', 10)]);
+    expect(lossDisplayLines(half, ON)).toEqual(lossDisplayLines(half));
+    expect(lossDisplayLines(half, ON)).toEqual(lossDisplayLines(half, OFF));
+    expect(lossDisplayLines(half, ON).find((l) => l.reason === NO_ANSWER_MERGED_KEY)!.detail!.map((d) => d.reason)).toEqual([THREE, FIVE]);
+  });
+
+  it('key ON, a one-code row ranks by its own sum and the counts still add up to the half’s total', () => {
+    const half = before([rej('PRICE_TOO_HIGH', 5), rej(THREE, 6), rej('OTHER', 2)]);
+    const shown = lossDisplayLines(half, ON);
+    expect(shown.map((l) => l.reason)).toEqual([NO_ANSWER_MERGED_KEY, 'PRICE_TOO_HIGH', 'OTHER']);
+    expect(shown.reduce((t, l) => t + l.count, 0)).toBe(half.count);
+    expect(shown[0].share).toBe(Math.round((6 / 13) * 10_000) / 100);
+  });
+
+  it('key ON, a zero line beside a real one is no data: the real one still gets exactly ONE detail line', () => {
+    const real = before([rej(THREE, 4)]);
+    const withZero = { count: real.count, lines: [...real.lines, { ...real.lines[0], reason: FIVE, count: 0, share: 0 }] };
+    const shown = lossDisplayLines(withZero, ON);
+    expect(shown).toHaveLength(2); // the merged row and the zero line, untouched
+    expect(shown.find((l) => l.reason === NO_ANSWER_MERGED_KEY)!.detail!.map((d) => d.reason)).toEqual([THREE]);
+  });
+
+  it('key ON, neither code, an empty half, and the after-shipping fields: nothing to merge — the lines come back as they are', () => {
+    const none = before([rej('PRICE_TOO_HIGH', 2)]);
+    expect(lossDisplayLines(none, ON)).toBe(none.lines);
+    expect(lossDisplayLines(before([]), ON)).toEqual([]);
+    const after = summariseLoss([rej(THREE, 2), { field: 'returnReason', reason: THREE, count: 1, money: 4 }]).after;
+    expect(lossDisplayLines(after, ON)).toBe(after.lines);
+  });
+
+  it('key ON does not mutate the half it was given', () => {
+    const half = before([rej(THREE, 7), rej('PRICE_TOO_HIGH', 3)]);
+    const snapshot = JSON.parse(JSON.stringify(half));
+    lossDisplayLines(half, ON);
+    expect(JSON.parse(JSON.stringify(half))).toEqual(snapshot);
+  });
+
+  // ── the OFF pins ──
+  it('key OFF (spelled, left out, or anything but a plain true), ONE code: the very same array back — today’s single row, no detail, no merged label', () => {
+    for (const one of [before([rej(THREE, 7), rej('PRICE_TOO_HIGH', 3)]), before([rej(FIVE, 5)])]) {
+      for (const opts of [OFF, {}, undefined, { cadenceOn: 'yes' as never }, { cadenceOn: 1 as never }]) {
+        const shown = lossDisplayLines(one, opts);
+        expect(shown, JSON.stringify(opts)).toBe(one.lines);
+        expect(shown.some((l) => l.reason === NO_ANSWER_MERGED_KEY || 'detail' in l)).toBe(false);
+      }
+    }
+  });
+
+  it('key OFF, BOTH codes: what it has always done — the merged row with both codes under it (pinned, not changed)', () => {
+    const half = before([rej(THREE, 6), rej(FIVE, 4), rej('PRICE_TOO_HIGH', 10)]);
+    for (const opts of [OFF, {}, undefined]) {
+      const shown = lossDisplayLines(half, opts);
+      expect(shown.map((l) => l.reason)).toEqual(['PRICE_TOO_HIGH', NO_ANSWER_MERGED_KEY]);
+      const merged = shown.find((l) => l.reason === NO_ANSWER_MERGED_KEY)!;
+      expect(merged).toMatchObject({ label: NO_ANSWER_MERGED_AR, count: 10, share: 50, fault: 'OUR_REACH' });
+      expect(merged.detail!.map((d) => [d.reason, d.count])).toEqual([[THREE, 6], [FIVE, 4]]);
+    }
+  });
+
+  it('key OFF, a zero line beside a real one: still no merge (today)', () => {
+    const real = before([rej(THREE, 4)]);
+    const withZero = { count: real.count, lines: [...real.lines, { ...real.lines[0], reason: FIVE, count: 0, share: 0 }] };
+    expect(lossDisplayLines(withZero, OFF)).toBe(withZero.lines);
+  });
+});
+
 describe('the payload keeps two codes — GET /api/analytics/loss', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requireContext.mockResolvedValue({ companyId: 'c1', storeId: 's1' });
     requirePermission.mockResolvedValue({});
     db.deliveryFee.findMany.mockResolvedValue([]);
+    settings.value = {};
+    forgetCallProofSwitch();
+    db.company.findUnique.mockImplementation(async () => ({ settings: JSON.stringify(settings.value) }));
   });
   const order = (rejectionReason: string) => ({
     rejectionReason, deliveryFailureReason: null, returnReason: null, deliveryFee: 0, productCost: null, estimatedCostOfGoods: null, quantity: 1, regionId: null, deliveryProviderId: null,
@@ -141,5 +245,51 @@ describe('the payload keeps two codes — GET /api/analytics/loss', () => {
     expect(Object.keys(body).sort()).toEqual(['after', 'before', 'period', 'preventable', 'scanned', 'total', 'truncated']);
     // The faults tally already adds them: both are our reach, so the fault row is one number either way.
     expect(body.before.byFault.find((f: { fault: string }) => f.fault === 'OUR_REACH').count).toBe(3);
+  });
+
+  it('the plan\'s key reaches the screen as `cadenceOn: true` — present ONLY with the key on, absent (not false) with it off, unreadable, or not plainly on', async () => {
+    db.order.findMany.mockResolvedValue([order(THREE)]);
+    db.order.count.mockResolvedValue(1);
+    const get = async () => (await GET(new Request('http://localhost/api/analytics/loss?period=all'))).json();
+
+    expect('cadenceOn' in (await get())).toBe(false);
+
+    for (const stored of [{ enabled: false, enabledAt: null }, { enabled: true }, { enabled: true, enabledAt: 'not a date' }, 'on', null]) {
+      settings.value = { callProofAndCadence: stored };
+      forgetCallProofSwitch();
+      expect('cadenceOn' in (await get()), JSON.stringify(stored)).toBe(false);
+    }
+
+    db.company.findUnique.mockRejectedValueOnce(new Error('db down'));
+    settings.value = { callProofAndCadence: { enabled: true, enabledAt: '2026-11-01T00:00:00.000Z' } };
+    forgetCallProofSwitch();
+    expect('cadenceOn' in (await get()), 'a failed read is off').toBe(false);
+
+    forgetCallProofSwitch();
+    expect((await get()).cadenceOn).toBe(true);
+  });
+
+  it('the key on changes the payload by that one key and nothing else — the same two codes, no merged line, no `detail`', async () => {
+    db.order.findMany.mockResolvedValue([order(THREE), order(THREE), order(FIVE), order('PRICE_TOO_HIGH')]);
+    db.order.count.mockResolvedValue(4);
+    const get = async () => (await GET(new Request('http://localhost/api/analytics/loss?period=all'))).json();
+    const off = await get();
+    settings.value = { callProofAndCadence: { enabled: true, enabledAt: '2026-11-01T00:00:00.000Z' } };
+    forgetCallProofSwitch();
+    const on = await get();
+    const { cadenceOn, ...rest } = on;
+    expect(cadenceOn).toBe(true);
+    expect(rest).toEqual(off);
+    expect(JSON.stringify(on)).not.toContain(NO_ANSWER_MERGED_KEY);
+    expect(JSON.stringify(on)).not.toContain('detail');
+  });
+
+  it('one code only, key on: the payload still has just that one code (the merge is the screen\'s, never the data\'s)', async () => {
+    settings.value = { callProofAndCadence: { enabled: true, enabledAt: '2026-11-01T00:00:00.000Z' } };
+    db.order.findMany.mockResolvedValue([order(FIVE), order(FIVE)]);
+    db.order.count.mockResolvedValue(2);
+    const body = await (await GET(new Request('http://localhost/api/analytics/loss?period=all'))).json();
+    expect(body.cadenceOn).toBe(true);
+    expect(body.before.lines.map((l: { reason: string }) => l.reason)).toEqual([FIVE]);
   });
 });

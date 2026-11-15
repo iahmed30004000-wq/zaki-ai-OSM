@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { NO_ANSWER_RESULTS } from './confirmation-workflow';
 import { ROUND_GAP_BUSINESS_MINUTES, roundsOn, type RoundsSwitch, type WorkClock } from './no-answer-rounds';
 import { askedDate, promiseArrived } from './work-first';
@@ -60,6 +61,57 @@ export const DATE_RETURNED_REASON = 'DATE_RETURNED';
 /** Starts with `AUTO_RELEASE` like the other releases nobody pressed, so every reader that tells the system's lines apart sees it as one. */
 export const IDLE_RETURNED_REASON = 'AUTO_RELEASE_IDLE_RETURNED';
 export type ReturnsReason = typeof NO_ANSWER_RETURNED_REASON | typeof DATE_RETURNED_REASON | typeof IDLE_RETURNED_REASON;
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * THE RULE THAT WROTE A LINE (the planner 15/11 22:30, ruling 28).
+ *
+ * `NO_ANSWER_RETURNED` is one stored reason for two rules (the three-hour mode and «جدول المحاولات»), and the timeline's word for it follows the rule that WROTE the line — not the
+ * switch at read time (flip the switch later and an old line must not change its story). So the PLAN's door stamps `{ "rule": "plan" }` into the line's own `metadata` (a JSON text
+ * column, merged with whatever it already carries: `automatic`, `holder`…) when it writes. The older doors write nothing new: a line with no mark reads the older word, byte for byte.
+ *
+ * Every reader of that column (`isAutomaticRelease`, `managerReturnedBy`, `onTheLinePeople`, attendance, held-flow) parses it and looks at its own keys; an extra key is invisible to them.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+export const PLAN_RULE_MARK = 'plan';
+
+/** The rule a claim-history line says wrote it — today only `'plan'` — or null: no metadata, metadata that is not JSON, or a line the older doors wrote. Never throws. */
+export function ruleOfLine(row: { metadata?: string | null }): typeof PLAN_RULE_MARK | null {
+  if (!row.metadata) return null;
+  try {
+    const m = JSON.parse(row.metadata) as { rule?: unknown } | null;
+    return m && typeof m === 'object' && m.rule === PLAN_RULE_MARK ? PLAN_RULE_MARK : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The line's metadata with the plan's mark merged in (every key it already had is kept). Metadata that is not a JSON object is replaced by just the mark. */
+export function withPlanRuleMark(metadata: string | null | undefined): string {
+  let base: Record<string, unknown> = {};
+  try {
+    const m = metadata ? (JSON.parse(metadata) as unknown) : null;
+    if (m && typeof m === 'object' && !Array.isArray(m)) base = m as Record<string, unknown>;
+  } catch {
+    // Not JSON: nothing worth keeping.
+  }
+  return JSON.stringify({ ...base, rule: PLAN_RULE_MARK });
+}
+
+/**
+ * THE PLAN'S DOOR STAMPS THE LINE IT JUST WROTE, in the same transaction (`returnToThePool` has returned true): the newest «NO_ANSWER_RETURNED» release of this holder on this order gets
+ * the mark merged into its metadata. Only the plan's door calls this — with the plan off nothing is read and nothing is written. Returns whether a line was marked.
+ */
+export async function markPlanReturnLine(tx: Prisma.TransactionClient, args: { companyId: string; orderId: string; holderId: string }): Promise<boolean> {
+  const row = await tx.orderClaimHistory.findFirst({
+    where: { companyId: args.companyId, orderId: args.orderId, userId: args.holderId, action: 'RELEASED', reason: NO_ANSWER_RETURNED_REASON },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    select: { id: true, metadata: true },
+  });
+  if (!row) return false;
+  await tx.orderClaimHistory.update({ where: { id: row.id }, data: { metadata: withPlanRuleMark(row.metadata) } });
+  return true;
+}
 
 /** What the switch says — the very shape of «نظام الجولات»' (`{ enabled, enabledAt }`), stored under its own key. */
 export type ReturnsSwitch = RoundsSwitch;

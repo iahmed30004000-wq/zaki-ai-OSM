@@ -2,16 +2,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * DEFINITION OF DONE — THE TIMELINE'S «رجع للطابور فوراً» LINE WEARS THE WORD OF THE RULE THAT IS ON (the planner 15/11, answer 15)
+ * DEFINITION OF DONE — THE TIMELINE'S «رجع للطابور فوراً» LINE WEARS THE WORD OF THE RULE THAT WROTE IT (the planner 15/11, answer 15; ruling 28 of 15/11 22:30)
  *
- *  1. Plan OFF (or the switch unreadable): the line reads «… بيجهز بعد 3 ساعات دوام» — the older mode's word, byte for byte as before the plan. The stored reason is the
- *     same string either way (`NO_ANSWER_RETURNED`): only the reader's word changes.
- *  2. Plan ON (`Company.settings.callProofAndCadence` plainly on): the same line reads «… بيجهز لما يحين موعد محاولته الجاية» — no number.
- *  3. The door pays ONE extra read for it (the company's settings, cached ten seconds — the switch's own reader), and asks nothing else new.
- *  4. Every other line of the history is the same in both worlds (the idle release, the date's return, the plain claim words).
+ *  1. A line the OLDER doors wrote (no rule mark in its metadata — any metadata, or none) reads «… بيجهز بعد 3 ساعات دوام», the older mode's word byte for byte as before the plan.
+ *     The stored reason is the same string either way (`NO_ANSWER_RETURNED`): only the reader's word differs.
+ *  2. A line the PLAN's door wrote (`{ "rule": "plan" }` merged into its metadata) reads «… بيجهز لما يحين موعد محاولته الجاية» — no number.
+ *  3. THE SWITCH AT READ TIME DECIDES NOTHING: flip «جدول المحاولات» after the lines were written and no line changes its word — a plan line read with the key now OFF still reads the
+ *     plan word, an old line read with the key now ON still reads the older word. The door reads no switch at all: no settings read, no cache, nothing extra to pay.
+ *  4. Every other line of the history is the same marked or not (the idle release, the date's return, the plain claim words), and the payload keeps its keys.
  *
  * Driven through the REAL route and the REAL `orderTimeline` over an in-memory history: the word on the page is the one that came out of the whole chain.
- * Blockers: any change to a stored value, a payload key or a status; the wrong word for the switch's state.
+ * Blockers: any change to a stored value, a payload key or a status; the wrong word for a line's own mark.
  * ═══════════════════════════════════════════════════════════════════════
  */
 
@@ -19,19 +20,16 @@ const { db, state } = vi.hoisted(() => {
   const state = {
     settings: {} as Record<string, unknown>,
     reason: 'NO_ANSWER_RETURNED',
-    settingsReads: 0,
+    metadata: null as string | null,
   };
   const at = new Date('2026-11-02T10:00:00Z');
   const none = () => ({ findMany: vi.fn(async () => []) });
   const db = {
     company: {
-      findUnique: vi.fn(async () => {
-        state.settingsReads += 1;
-        return { settings: JSON.stringify(state.settings) };
-      }),
+      findUnique: vi.fn(async () => ({ settings: JSON.stringify(state.settings) })),
     },
     orderClaimHistory: {
-      findMany: vi.fn(async () => [{ id: 'h1', createdAt: at, action: 'RELEASED', userId: 'sara', reason: state.reason, metadata: JSON.stringify({ automatic: true, holder: 'sara' }) }]),
+      findMany: vi.fn(async () => [{ id: 'h1', createdAt: at, action: 'RELEASED', userId: 'sara', reason: state.reason, metadata: state.metadata }]),
     },
     orderStatusLog: none(),
     orderContactAttempt: none(),
@@ -56,11 +54,14 @@ vi.mock('@/lib/rbac', () => ({
 
 import { GET } from './route';
 import { forgetCallProofSwitch } from '@/lib/call-proof-switch';
-import { DATE_RETURNED_REASON, IDLE_RETURNED_REASON, NO_ANSWER_RETURNED_REASON } from '@/lib/no-answer-returns';
+import { automaticReleaseMetadata } from '@/lib/auto-release';
+import { DATE_RETURNED_REASON, IDLE_RETURNED_REASON, NO_ANSWER_RETURNED_REASON, withPlanRuleMark } from '@/lib/no-answer-returns';
 
 const OLD_WORD = 'رجع للطابور فوراً بعد «لا يرد» — بيجهز بعد 3 ساعات دوام';
 const PLAN_WORD = 'رجع للطابور فوراً بعد «لا يرد» — بيجهز لما يحين موعد محاولته الجاية';
 const PLAN_ON = { enabled: true, enabledAt: '2026-11-01T00:00:00.000Z' };
+const OLD_LINE = automaticReleaseMetadata('sara');
+const PLAN_LINE = withPlanRuleMark(OLD_LINE);
 
 const read = async () => {
   const res = await GET(new Request('http://x/'), { params: Promise.resolve({ id: 'o1' }) });
@@ -73,61 +74,80 @@ beforeEach(() => {
   forgetCallProofSwitch();
   state.settings = {};
   state.reason = NO_ANSWER_RETURNED_REASON;
-  state.settingsReads = 0;
+  state.metadata = OLD_LINE;
 });
 
-describe('the «رجع للطابور فوراً» line, by the switch', () => {
-  it('the plan OFF (nothing stored): the older mode’s word, exactly', async () => {
+describe('the «رجع للطابور فوراً» line, by the mark on the line', () => {
+  it('a line with no mark: the older mode’s word, exactly', async () => {
     const body = await read();
     expect(body.events[0].detail).toBe(OLD_WORD);
     expect(body.events[0]).toMatchObject({ title: 'تحرير الطلب', actorName: 'النظام' });
   });
 
-  it('the plan stored but OFF, or stored as something that is not plainly on: still the older mode’s word', async () => {
-    for (const stored of [{ enabled: false, enabledAt: null }, { enabled: true }, { enabled: true, enabledAt: 'not a date' }, 'on', null]) {
-      state.settings = { callProofAndCadence: stored };
-      forgetCallProofSwitch();
-      expect((await read()).events[0].detail, JSON.stringify(stored)).toBe(OLD_WORD);
-    }
+  it('a line with no metadata at all (the oldest rows): the older mode’s word', async () => {
+    state.metadata = null;
+    expect((await read()).events[0].detail).toBe(OLD_WORD);
   });
 
-  it('the plan ON: the number-free word', async () => {
-    state.settings = { callProofAndCadence: PLAN_ON };
+  it('a line the plan wrote: the number-free word, and the system is still the actor', async () => {
+    state.metadata = PLAN_LINE;
     const body = await read();
     expect(body.events[0].detail).toBe(PLAN_WORD);
     expect(body.events[0].detail).not.toMatch(/\d|ساعات|ثلاث|خمس/);
+    expect(body.events[0]).toMatchObject({ title: 'تحرير الطلب', actorName: 'النظام' });
   });
 
-  it('the legacy returns mode on, the plan OFF: the older mode’s word (the older mode is the one it describes)', async () => {
+  /** THE REWRITTEN PINS (ruling 28): the key is flipped AFTER the lines were written, and the words stay. */
+  it('a PLAN line read with the key now OFF (stored off, never stored, turned back off, not plainly on) still reads the plan word', async () => {
+    state.metadata = PLAN_LINE;
+    for (const stored of [undefined, { enabled: false, enabledAt: null }, { enabled: true }, { enabled: true, enabledAt: 'not a date' }, 'on', null]) {
+      state.settings = stored === undefined ? {} : { callProofAndCadence: stored };
+      forgetCallProofSwitch();
+      expect((await read()).events[0].detail, JSON.stringify(stored)).toBe(PLAN_WORD);
+    }
+  });
+
+  it('an OLD line read with the key now ON still reads the older word — turning the plan on rewrites no history', async () => {
+    state.metadata = OLD_LINE;
+    state.settings = { callProofAndCadence: PLAN_ON };
+    expect((await read()).events[0].detail).toBe(OLD_WORD);
+  });
+
+  it('the legacy returns mode on, the plan off: an unmarked line reads the older word; a plan line the plan word', async () => {
     state.settings = { noAnswerRounds: PLAN_ON, noAnswerReturns: PLAN_ON };
     expect((await read()).events[0].detail).toBe(OLD_WORD);
+    state.metadata = PLAN_LINE;
+    expect((await read()).events[0].detail).toBe(PLAN_WORD);
   });
 
-  it('a switch that cannot be read is OFF, and so is the word — the page still answers', async () => {
-    db.company.findUnique.mockRejectedValueOnce(new Error('db down'));
+  it('a switch that cannot be read changes nothing — the door never asks it, and the page still answers', async () => {
+    db.company.findUnique.mockRejectedValue(new Error('db down'));
     expect((await read()).events[0].detail).toBe(OLD_WORD);
+    state.metadata = PLAN_LINE;
+    expect((await read()).events[0].detail).toBe(PLAN_WORD);
   });
 
-  it('ONE extra read for it: the company’s settings, and the second request inside the cache window pays none', async () => {
-    state.settings = { callProofAndCadence: PLAN_ON };
-    await read();
-    expect(state.settingsReads).toBe(1);
-    await read();
-    expect(state.settingsReads).toBe(1);
+  it('the door pays NO settings read for it: the company’s settings are never asked, with the key on, off or unreadable', async () => {
+    for (const settings of [{}, { callProofAndCadence: PLAN_ON }]) {
+      state.settings = settings;
+      forgetCallProofSwitch();
+      await read();
+    }
+    expect(db.company.findUnique).not.toHaveBeenCalled();
   });
 
-  it('the other lines read the same in both worlds, and the payload keeps its keys', async () => {
+  it('the other lines read the same marked or not, in both worlds, and the payload keeps its keys', async () => {
     for (const reason of [DATE_RETURNED_REASON, IDLE_RETURNED_REASON, 'PULL_NEXT']) {
       state.reason = reason;
-      state.settings = {};
-      forgetCallProofSwitch();
-      const off = await read();
+      state.metadata = OLD_LINE;
+      const unmarked = await read();
+      state.metadata = PLAN_LINE;
       state.settings = { callProofAndCadence: PLAN_ON };
       forgetCallProofSwitch();
-      const on = await read();
-      expect(on.events[0].detail, reason).toBe(off.events[0].detail);
-      expect(Object.keys(on).sort()).toEqual(['count', 'events', 'orderNumber', 'state', 'zone']);
-      expect(Object.keys(off).sort()).toEqual(Object.keys(on).sort());
+      const marked = await read();
+      expect(marked.events[0].detail, reason).toBe(unmarked.events[0].detail);
+      expect(Object.keys(marked).sort()).toEqual(['count', 'events', 'orderNumber', 'state', 'zone']);
+      expect(Object.keys(unmarked).sort()).toEqual(Object.keys(marked).sort());
     }
   });
 });

@@ -8,9 +8,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * column cannot be empty — saying in the metadata that nobody pressed «release». The timeline must not read as though she let her
  * own order go (`auto-release.ts`), and must not show an English code: the actor is «النظام» and the reason is said in words.
  *
- * THE WORD OF `NO_ANSWER_RETURNED` IS THE RULE'S (the planner 15/11, answer 15). The stored reason is one string for two rules, so the timeline is HANDED which one is
- * on (`opts.planOn`): left out (the switch OFF, or a caller that cannot cheaply know it) it is the older mode's «بيجهز بعد 3 ساعات دوام», byte for byte as before the plan;
- * `planOn: true` is the number-free «بيجهز لما يحين موعد محاولته الجاية». The other two lines are the same in both worlds. Blocker: the wrong word for the flag.
+ * THE WORD OF `NO_ANSWER_RETURNED` IS THE WORD OF THE RULE THAT WROTE THE LINE (the planner 15/11, answer 15; ruling 28 of 15/11 22:30 moved it from the switch at read time to the line).
+ * The stored reason is one string for two rules, so the plan's door stamps `{ "rule": "plan" }` in the line's metadata when it writes. A line WITH the mark reads the number-free
+ * «بيجهز لما يحين موعد محاولته الجاية»; a line WITHOUT it — everything the older doors wrote, with any metadata or none — reads the older «بيجهز بعد 3 ساعات دوام», byte for byte as before
+ * the plan. `orderTimeline` takes no switch and no option: the word is decided per row from the row alone. The other two lines are the same marked or not.
+ *
+ * What must work: the two words by the mark; every shape of an absent/unreadable/other mark reads the older word; the mark changes only that one reason's line; the actor and title are the
+ * system's either way. Blockers: the wrong word for a mark; an English code reaching the page.
  * ═══════════════════════════════════════════════════════════════════════
  */
 
@@ -32,7 +36,7 @@ const { db } = vi.hoisted(() => ({
 vi.mock('./db', () => ({ db }));
 
 import { orderTimeline } from './order-timeline';
-import { DATE_RETURNED_REASON, IDLE_RETURNED_REASON, NO_ANSWER_RETURNED_REASON } from './no-answer-returns';
+import { DATE_RETURNED_REASON, IDLE_RETURNED_REASON, NO_ANSWER_RETURNED_REASON, withPlanRuleMark } from './no-answer-returns';
 import { automaticReleaseMetadata } from './auto-release';
 
 const at = new Date('2026-11-02T10:00:00Z');
@@ -49,41 +53,62 @@ beforeEach(() => {
 });
 
 describe('on the timeline', () => {
-  const said = async (reason: string, metadata?: string | null, opts?: { planOn?: boolean }) => {
+  const said = async (reason: string, metadata?: string | null) => {
     db.orderClaimHistory.findMany.mockResolvedValue([metadata === undefined ? line(reason) : line(reason, metadata)]);
-    return (await (opts ? orderTimeline(db as never, 'o1', opts) : orderTimeline(db as never, 'o1')))[0];
+    return (await orderTimeline(db as never, 'o1'))[0];
   };
+  /** What the plan's door writes: the system's release metadata with the rule's mark merged in (`withPlanRuleMark`). */
+  const PLAN_MARKED = withPlanRuleMark(automaticReleaseMetadata('sara'));
 
   const OLD_WORD = 'رجع للطابور فوراً بعد «لا يرد» — بيجهز بعد 3 ساعات دوام';
   const PLAN_WORD = 'رجع للطابور فوراً بعد «لا يرد» — بيجهز لما يحين موعد محاولته الجاية';
 
-  it('her «لا يرد» that sent the order back, the switch OFF (nothing handed): the system is the actor, and the older mode’s word says when it is ready — as before the plan', async () => {
+  it('her «لا يرد» that sent the order back, NO mark on the line (the older doors’ line): the system is the actor, and the older mode’s word says when it is ready — as before the plan', async () => {
     const event = await said(NO_ANSWER_RETURNED_REASON);
     expect(event).toMatchObject({ title: 'تحرير الطلب', actorName: 'النظام', actorId: null });
     expect(event.detail).toBe(OLD_WORD);
   });
 
-  it('the flag spelled OFF — or anything but a plain true — is the same older word', async () => {
-    expect((await said(NO_ANSWER_RETURNED_REASON, undefined, { planOn: false })).detail).toBe(OLD_WORD);
-    expect((await said(NO_ANSWER_RETURNED_REASON, undefined, {})).detail).toBe(OLD_WORD);
-    expect((await said(NO_ANSWER_RETURNED_REASON, undefined, { planOn: 'yes' as never })).detail).toBe(OLD_WORD);
+  it('anything that is not plainly the plan’s mark is the same older word — no metadata, not JSON, not an object, another rule, another type, another key', async () => {
+    for (const metadata of [null, '', 'not json', '[]', 'null', '"plan"', JSON.stringify({ rule: 'three-hours' }), JSON.stringify({ rule: true }), JSON.stringify({ rules: 'plan' }), JSON.stringify({ automatic: true, holder: 'sara' })]) {
+      expect((await said(NO_ANSWER_RETURNED_REASON, metadata)).detail, String(metadata)).toBe(OLD_WORD);
+    }
   });
 
   /**
-   * NO NUMBER UNDER THE PLAN (the planner's ruling 6, RV1413; answer 15 gives it to the plan only). The same reason is written by the three-hour mode AND by
-   * «جدول المحاولات»; with the plan on, a «3 ساعات دوام» on a row whose next attempt is thirty minutes or two hours away would be a rule that was not its own.
+   * NO NUMBER ON A PLAN LINE (the planner's ruling 6, RV1413; answer 15 gives it to the plan only). The same reason is written by the three-hour mode AND by
+   * «جدول المحاولات»; a «3 ساعات دوام» on a row whose next attempt is thirty minutes or two hours away would be a rule that was not its own.
    */
-  it('the plan ON: the number-free word — no hours, no count', async () => {
-    const event = await said(NO_ANSWER_RETURNED_REASON, undefined, { planOn: true });
+  it('a line the PLAN wrote (marked): the number-free word — no hours, no count — and the system is still the actor', async () => {
+    const event = await said(NO_ANSWER_RETURNED_REASON, PLAN_MARKED);
     expect(event).toMatchObject({ title: 'تحرير الطلب', actorName: 'النظام', actorId: null });
     expect(event.detail).toBe(PLAN_WORD);
     expect(event.detail).not.toMatch(/ساعات|ثلاث|خمس|\d/);
   });
 
-  it('the flag changes ONLY that one line: the date’s return and the idle release read the same either way', async () => {
+  it('the mark carries other keys without losing them, and only the mark decides: an unmarked line with a stranger’s keys reads the older word', async () => {
+    expect((await said(NO_ANSWER_RETURNED_REASON, JSON.stringify({ rule: 'plan', automatic: true, holder: 'sara', extra: 1 }))).detail).toBe(PLAN_WORD);
+    expect((await said(NO_ANSWER_RETURNED_REASON, JSON.stringify({ extra: 1, automatic: true, holder: 'sara' }))).detail).toBe(OLD_WORD);
+  });
+
+  it('the mark changes ONLY that one line: the date’s return and the idle release read the same marked or not', async () => {
     for (const reason of [DATE_RETURNED_REASON, IDLE_RETURNED_REASON]) {
-      expect((await said(reason, undefined, { planOn: true })).detail, reason).toBe((await said(reason)).detail);
+      expect((await said(reason, PLAN_MARKED)).detail, reason).toBe((await said(reason)).detail);
     }
+  });
+
+  it('two lines in one history are read each by its own mark — the older word and the plan’s word side by side', async () => {
+    db.orderClaimHistory.findMany.mockResolvedValue([
+      { ...line(NO_ANSWER_RETURNED_REASON), id: 'old', createdAt: new Date(at.getTime() - 3_600_000) },
+      { ...line(NO_ANSWER_RETURNED_REASON, PLAN_MARKED), id: 'new' },
+    ]);
+    const lines = await orderTimeline(db as never, 'o1');
+    expect(lines.map((l) => l.detail)).toEqual([OLD_WORD, PLAN_WORD]);
+  });
+
+  it('a supervisor’s return of her pile is read as the supervisor’s whatever else the metadata says (the mark is for the «NO_ANSWER_RETURNED» line only)', async () => {
+    const event = await said('MANAGER_RETURNED', JSON.stringify({ pulledBack: true, from: 'sara', by: { id: 'sara', name: 'سارة' }, rule: 'plan' }));
+    expect(event.detail).toBe('أرجعها سارة للطابور — ما حدا وصل لزبونها');
   });
 
   it('her date that sent the order back', async () => {
@@ -98,10 +123,10 @@ describe('on the timeline', () => {
     expect(event.detail).toBe('تحرير تلقائي — مرّت 30 دقيقة عمل وما انسجّلت عليه أي محاولة، ورجع للطابور');
   });
 
-  it.each([[undefined], [{ planOn: true }]])('no English code ever reaches the page, and the three are told apart (%o)', async (opts) => {
+  it.each([[undefined], [PLAN_MARKED]])('no English code ever reaches the page, and the three are told apart (metadata %o)', async (metadata) => {
     const seen = new Set<string>();
     for (const reason of [NO_ANSWER_RETURNED_REASON, DATE_RETURNED_REASON, IDLE_RETURNED_REASON]) {
-      const { detail } = await said(reason, undefined, opts);
+      const { detail } = await said(reason, metadata);
       expect(detail, reason).not.toMatch(/[A-Z_]{6,}/);
       seen.add(String(detail));
     }

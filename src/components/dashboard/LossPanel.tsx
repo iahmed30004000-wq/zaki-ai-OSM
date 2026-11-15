@@ -28,7 +28,8 @@ import { RiAlertLine, RiLoader4Line, RiPhoneLine, RiTruckLine } from '@remixicon
  * expensive half spent on failures the cheap half exists to catch.
  *
  * «أُغلق بلا رد» IS DRAWN AS ONE ROW (the planner 15/11, answer 8): the two stored codes of the no-answer close are summed into it and listed under it, indented, with their own
- * labels and counts (`lossDisplayLines`). The payload this panel receives is untouched — two codes, as ever; a company with only one of them sees today's row.
+ * labels and counts (`lossDisplayLines`). The payload this panel receives is untouched — two codes, as ever. With the plan OFF a company with only one of them sees today's row; with the
+ * plan ON (`cadenceOn`, the planner 15/11 22:30, ruling 27) the merged row and its one detail line show even for a single code.
  */
 
 const FAULT_TINT: Record<Fault, string> = {
@@ -39,8 +40,8 @@ const FAULT_TINT: Record<Fault, string> = {
   UNKNOWN: 'bg-[var(--sys-surface)] text-[var(--sys-muted)] border-[var(--sys-border)]',
 };
 
-// `moneyWithheld`: the server zeroed every money figure for a reader without «عرض المالية».
-type Loaded = LossReport & { scanned: number; total: number; truncated: boolean; moneyWithheld?: boolean };
+// `moneyWithheld`: the server zeroed every money figure for a reader without «عرض المالية». `cadenceOn`: present (true) only with «جدول المحاولات» on — it changes how «أُغلق بلا رد» is DRAWN, never the data.
+type Loaded = LossReport & { scanned: number; total: number; truncated: boolean; moneyWithheld?: boolean; cadenceOn?: boolean };
 
 export function LossPanel({ period }: { period: string }) {
   const [data, setData] = useState<Loaded | null>(null);
@@ -125,6 +126,7 @@ export function LossPanel({ period }: { period: string }) {
               note="لا شيء أُنفق — الطلب لم يُشحن. العددُ والنسبةُ فقط."
               half={data.before}
               withMoney={false}
+              cadenceOn={data.cadenceOn === true}
             />
             <Half
               icon={<RiTruckLine className="w-4 h-4 text-[var(--sys-destructive)]" aria-hidden />}
@@ -136,6 +138,7 @@ export function LossPanel({ period }: { period: string }) {
                   : 'أجرةُ الذهاب + أجرةُ الإرجاع + البضاعةُ إن رجعت تالفة.'
               }
               half={data.after}
+              cadenceOn={data.cadenceOn === true}
             />
 
             {data.truncated && (
@@ -186,12 +189,14 @@ function Half({
   note,
   half,
   withMoney,
+  cadenceOn = false,
 }: {
   icon: React.ReactNode;
   title: string;
   note: string;
   half: LossReport['before'];
   withMoney: boolean;
+  cadenceOn?: boolean;
 }) {
   if (half.count === 0) return null;
   return (
@@ -211,8 +216,8 @@ function Half({
       </header>
 
       <ul className="rounded-lg border border-[var(--sys-border)] divide-y divide-[var(--sys-border)]">
-        {/* «أُغلق بلا رد» is ONE row with the two stored codes under it (`lossDisplayLines`) — a display only: the payload above still holds two. */}
-        {lossDisplayLines(half).map((l) => (
+        {/* «أُغلق بلا رد» is ONE row with the stored codes under it (`lossDisplayLines`) — a display only: the payload above still holds two. With the plan on it is one row even for ONE code. */}
+        {lossDisplayLines(half, { cadenceOn }).map((l) => (
           // A plain line is the very `li` it always was (the cells are its direct children); only the merged row carries the two codes under it, on a line of their own.
           <li key={`${l.field}:${l.reason}`} className="flex flex-wrap items-center gap-2 px-3 py-2">
             <LossCells line={l} withMoney={withMoney} />
