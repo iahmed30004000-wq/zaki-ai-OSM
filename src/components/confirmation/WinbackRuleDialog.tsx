@@ -14,6 +14,7 @@ import {
   WINBACK_BOUNDS,
   WINBACK_REASONS,
   validateWinbackRule,
+  winbackLabel,
   type WinbackRule,
 } from '@/lib/winback';
 
@@ -120,7 +121,7 @@ export function WinbackRuleDialog({
   const box = (reason: string) => (
     <label key={reason} className="flex min-h-11 items-center gap-2 text-sm text-[var(--sys-foreground)] md:min-h-0">
       <input type="checkbox" checked={reasons.includes(reason)} onChange={() => toggle(reason)} />
-      {REJECTION_REASON_AR[reason] ?? reason}
+      {winbackLabel(reason)}
     </label>
   );
 

@@ -100,6 +100,13 @@ export const winbackCodes = (reasons: readonly string[]): string[] => [
   ...Object.keys(WINBACK_RIDERS).filter((code) => reasons.includes(WINBACK_RIDERS[code])),
 ];
 
+/**
+ * The words of the RULE's tick and sentence: the host reads without a number, because it stands for three AND five.
+ * Rows and filters still say their own code's words (`REJECTION_REASON_AR`). The only wording the switch-off screen sees change.
+ */
+export const WINBACK_LABEL_AR: Readonly<Record<string, string>> = { [NO_ANSWER_CLOSE.three.reason]: 'أُغلق تلقائياً بعد محاولات بلا ردّ' };
+export const winbackLabel = (code: string): string => WINBACK_LABEL_AR[code] ?? REJECTION_REASON_AR[code] ?? code;
+
 /** And why each of the others is left alone — in the reader's language, on the screen. */
 export const NOT_WINBACK_AR: Record<string, string> = {
   CUSTOMER_DOES_NOT_WANT_PRODUCT: 'رفضٌ صريح — الخصم على شيءٍ لا يريده ليس عرضاً',
@@ -248,7 +255,8 @@ export function validateWinbackRule(input: unknown): WinbackRuleInput {
   if (new Set(o.reasons).size !== o.reasons.length) return refuse('REASONS', 'سببٌ مكرَّر');
   const bad = o.reasons.find((r) => typeof r !== 'string' || !SELECTABLE_WINBACK_REASONS.includes(r));
   if (bad !== undefined) {
-    const label = typeof bad === 'string' ? (REJECTION_REASON_AR[bad] ?? bad) : String(bad);
+    // A body that lists the five-attempt code by hand lands here too (it rides on its host, it is never stored): the editor never sends it.
+    const label = typeof bad === 'string' ? winbackLabel(bad) : String(bad);
     return refuse('REASONS', `«${label}» لا يمكن الاتصال لأجله بأيّ إعداد`);
   }
   if (o.afterShipping !== undefined && typeof o.afterShipping !== 'boolean') {
@@ -290,7 +298,7 @@ export function validateWinbackRule(input: unknown): WinbackRuleInput {
  * screen printed before 28/10, word for word — the switch puts back what it takes.
  */
 export function ruleSentence(rule: WinbackRule): string {
-  const reasons = rule.reasons.map((r) => REJECTION_REASON_AR[r] ?? r).join('، ');
+  const reasons = rule.reasons.map(winbackLabel).join('، ');
   const pct = Math.round(rule.maxDiscountShare * 10_000) / 100;
   if (rule.afterShipping !== true) {
     return `ملغى · لم يُشحن · لم يُعرض عليه من قبل · السبب: ${reasons} · بعد ${rule.coolingDays} يوماً من الإلغاء · من طلباتِ آخر ${rule.lookbackDays} يوماً · خصمٌ حتى ${pct}٪`;

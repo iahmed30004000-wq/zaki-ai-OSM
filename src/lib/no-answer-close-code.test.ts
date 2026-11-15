@@ -9,7 +9,7 @@ import {
 } from './confirmation-workflow';
 import { faultOf } from './loss-analysis';
 import { CADENCE_LIMIT } from './no-answer-cadence';
-import { DEFAULT_WINBACK_RULE, winbackCodes } from './winback';
+import { DEFAULT_WINBACK_RULE, winbackCodes, winbackLabel } from './winback';
 
 /**
  * THE PLAN'S CLOSE HAS ITS OWN NAME («جدول المحاولات», step B, ruling 6).
@@ -62,5 +62,17 @@ describe('the five-attempt close code', () => {
 
   it('is winback-able through its host: the default rule reads both codes', () => {
     expect(winbackCodes(DEFAULT_WINBACK_RULE.reasons)).toEqual(expect.arrayContaining([THREE, FIVE]));
+  });
+
+  /**
+   * The rule's tick stands for BOTH codes, so its word carries no number (ruling 6, decision Q2).
+   * A row still says its own code's words — each stored code is told apart wherever one row is read.
+   */
+  it('and the rule\'s tick has no number in it, while a row keeps its own code\'s words', () => {
+    expect(winbackLabel(THREE)).toBe('أُغلق تلقائياً بعد محاولات بلا ردّ');
+    expect(winbackLabel(THREE)).not.toMatch(/ثلاث|خمس|3|5/);
+    expect(winbackLabel(FIVE)).toBe(REJECTION_REASON_AR[FIVE]);
+    expect(winbackLabel('PRICE_TOO_HIGH')).toBe(REJECTION_REASON_AR.PRICE_TOO_HIGH);
+    expect(winbackLabel('NOT_A_CODE')).toBe('NOT_A_CODE');
   });
 });

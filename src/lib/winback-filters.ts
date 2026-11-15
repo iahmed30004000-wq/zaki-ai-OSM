@@ -3,7 +3,7 @@ import { REJECTION_REASONS } from './confirmation-workflow';
 import { orderSearchOr } from './order-filters';
 import { typed } from './text-search';
 import { receiptCameBackWhere } from './written-off';
-import { LOST_STATUSES, NEVER_WINBACK_REASONS, type WinbackRule } from './winback';
+import { LOST_STATUSES, NEVER_WINBACK_REASONS, winbackCodes, type WinbackRule } from './winback';
 
 /**
  * WHAT A SUPERVISOR ASKS OF THE LOST ORDERS, WRITTEN AS THE QUESTION THE DATABASE ANSWERS.
@@ -137,7 +137,8 @@ const candidate = (rule: WinbackRule): Where => ({
   shippedAt: null,
   replacedBy: null,
   replacesOrderId: null,
-  rejectionReason: { in: [...rule.reasons], not: null },
+  // The rule's reasons AND every stored code riding on one of them (the plan's five-attempt close) — the same question the verdict asks.
+  rejectionReason: { in: winbackCodes(rule.reasons), not: null },
   // It HAS a closing date: at least one loss was logged. No row, no date, no call.
   statusLogs: { some: lostLog() },
 });

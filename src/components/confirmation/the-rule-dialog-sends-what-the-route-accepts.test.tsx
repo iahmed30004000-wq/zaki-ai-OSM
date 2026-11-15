@@ -91,7 +91,7 @@ describe('opening it', () => {
     expect(box(COOLING).value).toBe('14');
     expect(box(LOOKBACK).value).toBe('120');
     expect(box(PERCENT).value).toBe('25');
-    for (const on of ['السعر مرتفع', 'وجدها أرخص عند غيرنا', 'غيّر رأيه', 'أُغلق بعد ثلاث محاولات بلا ردّ']) {
+    for (const on of ['السعر مرتفع', 'وجدها أرخص عند غيرنا', 'غيّر رأيه', 'أُغلق تلقائياً بعد محاولات بلا ردّ']) {
       expect(reason(on).checked, on).toBe(true);
     }
     for (const off of ['لا يريد المنتج', 'خارج نطاق التغطية', 'سبب آخر']) {
@@ -142,7 +142,7 @@ describe('what it offers, and what it will not', () => {
       'السعر مرتفع',
       'وجدها أرخص عند غيرنا',
       'غيّر رأيه',
-      'أُغلق بعد ثلاث محاولات بلا ردّ',
+      'أُغلق تلقائياً بعد محاولات بلا ردّ',
       'لا يريد المنتج',
       'خارج نطاق التغطية',
       'سبب آخر',
@@ -280,7 +280,7 @@ describe('what it refuses before it sends', () => {
 
   it('— no reason ticked: «اختر سبباً واحداً على الأقلّ»', async () => {
     open();
-    for (const ticked of ['السعر مرتفع', 'وجدها أرخص عند غيرنا', 'غيّر رأيه', 'أُغلق بعد ثلاث محاولات بلا ردّ']) fireEvent.click(reason(ticked));
+    for (const ticked of ['السعر مرتفع', 'وجدها أرخص عند غيرنا', 'غيّر رأيه', 'أُغلق تلقائياً بعد محاولات بلا ردّ']) fireEvent.click(reason(ticked));
     save();
     expect(refusal()).toBe('اختر سبباً واحداً على الأقلّ');
     await none();
