@@ -155,8 +155,8 @@ describe('every other reason still needs the call', () => {
     expect(db.order.updateMany).not.toHaveBeenCalled();
   });
 
-  it('the two the system owns are no way round it: MODERATOR_DATA_ERROR and NO_ANSWER_3_ATTEMPTS ⇒ 409', async () => {
-    for (const r of ['MODERATOR_DATA_ERROR', 'NO_ANSWER_3_ATTEMPTS']) {
+  it('the three the system owns are no way round it: MODERATOR_DATA_ERROR, NO_ANSWER_3_ATTEMPTS and NO_ANSWER_5_ATTEMPTS ⇒ 409', async () => {
+    for (const r of ['MODERATOR_DATA_ERROR', 'NO_ANSWER_3_ATTEMPTS', 'NO_ANSWER_5_ATTEMPTS']) {
       const res = await reject(r);
       expect(res.status, r).toBe(409);
       expect(res.body.code, r).toBe('CONTACT_FIRST');

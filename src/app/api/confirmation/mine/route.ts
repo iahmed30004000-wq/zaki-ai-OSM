@@ -7,7 +7,7 @@ import { customerRiskMany } from '@/lib/customer-risk';
 import { mayReadInsights } from '@/lib/insights-key';
 import { CLAIM_CAPS, POSTPONE_LEAD_DAYS, returnsModeOn } from '@/lib/confirmation-queue';
 import { deriveCoreState, type StateSource } from '@/lib/order-state';
-import { NO_ANSWER_LIMIT , NO_ANSWER_RESULTS } from '@/lib/confirmation-workflow';
+import { NO_ANSWER_CLOSE_NOTES, NO_ANSWER_CLOSE_REASONS, NO_ANSWER_LIMIT, NO_ANSWER_RESULTS } from '@/lib/confirmation-workflow';
 import { firstActionTimes } from '@/lib/response-clock';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { endOfLocalDay, localDayKey, startOfLocalDay } from '@/lib/local-day';
@@ -253,9 +253,10 @@ export async function GET(request: Request) {
       : {};
 
     /*
-     * ── AND WHAT THE THIRD NO-ANSWER LEFT BEHIND ──
+     * ── AND WHAT THE LAST NO-ANSWER LEFT BEHIND ──
      *
-     * The close writes `CANCELLED` + `NO_ANSWER_3_ATTEMPTS` and leaves the
+     * The close writes `CANCELLED` + one of `NO_ANSWER_CLOSE_REASONS` (three, or
+     * five under the plan) with the matching log note, and leaves the
      * order claimed by her, so it would otherwise vanish from every list
      * on this screen — she rings, the card disappears, and nothing says it
      * closed. Today's are shown, read-only, at the bottom of «لا يرد».
@@ -267,9 +268,10 @@ export async function GET(request: Request) {
     const closedScope = {
       ...scope,
       confirmationStatus: 'CANCELLED',
-      rejectionReason: 'NO_ANSWER_3_ATTEMPTS',
+      // BOTH the code and the log note, both writings: matching only the code still hides the plan's close (its note is `…_5_…`).
+      rejectionReason: { in: [...NO_ANSWER_CLOSE_REASONS] },
       statusLogs: {
-        some: { note: 'AUTO_CLOSE_NO_ANSWER_3_ATTEMPTS', createdAt: { gte: startOfLocalDay(localDayKey(now))! } },
+        some: { note: { in: [...NO_ANSWER_CLOSE_NOTES] }, createdAt: { gte: startOfLocalDay(localDayKey(now))! } },
       },
     };
 

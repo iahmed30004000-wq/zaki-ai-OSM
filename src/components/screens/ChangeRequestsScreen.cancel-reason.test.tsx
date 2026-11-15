@@ -109,6 +109,7 @@ describe('an old cancellation with no stored reason', () => {
     expect(values).toContain('CUSTOMER_CHANGED_MIND');
     expect(values).toContain('OTHER');
     expect(values).not.toContain('NO_ANSWER_3_ATTEMPTS');
+    expect(values).not.toContain('NO_ANSWER_5_ATTEMPTS');
     expect(values).not.toContain('MODERATOR_DATA_ERROR');
   });
 

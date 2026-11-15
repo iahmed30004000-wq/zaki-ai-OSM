@@ -196,6 +196,9 @@ export const NO_ANSWER_CLOSE = {
   three: { reason: 'NO_ANSWER_3_ATTEMPTS', note: 'AUTO_CLOSE_NO_ANSWER_3_ATTEMPTS' },
   five: { reason: 'NO_ANSWER_5_ATTEMPTS', note: 'AUTO_CLOSE_NO_ANSWER_5_ATTEMPTS' },
 } as const;
+/** Both ways in: a reader of «closed because nobody answered» matches these two codes and these two notes, never one literal. */
+export const NO_ANSWER_CLOSE_REASONS = [NO_ANSWER_CLOSE.three.reason, NO_ANSWER_CLOSE.five.reason] as const;
+export const NO_ANSWER_CLOSE_NOTES = [NO_ANSWER_CLOSE.three.note, NO_ANSWER_CLOSE.five.note] as const;
 export type RejectionReason = (typeof REJECTION_REASONS)[number];
 
 /** Follow-up reasons */

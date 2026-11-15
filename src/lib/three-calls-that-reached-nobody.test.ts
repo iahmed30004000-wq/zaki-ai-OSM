@@ -199,14 +199,23 @@ describe('«طلباتي» in three tabs', () => {
     expect(rule, 'an open order past the limit must stay in «بانتظار»').toContain("return noAnswerCount > 0 ? 'noAnswer' : 'work';");
   });
 
-  it('and the third’s closure is found by its log entry, not by updatedAt', () => {
+  it('and the last no-answer’s closure is found by its log entry, not by updatedAt — whichever rule closed it', () => {
     /*
      * `updatedAt` moves with any later write, so a note added tomorrow
      * would make a Tuesday closure look like it happened today.
+     *
+     * The close is the rule of three's (`NO_ANSWER_3_ATTEMPTS`) or the plan's (`NO_ANSWER_5_ATTEMPTS`), each with its own log note: the card asks
+     * for BOTH codes and BOTH notes through the vocabulary's lists, never one literal — a card that named only the old pair would lose the plan's
+     * close the minute she presses.
      */
     const src = route();
-    expect(src).toContain('AUTO_CLOSE_NO_ANSWER_3_ATTEMPTS');
-    expect(src).toContain("rejectionReason: 'NO_ANSWER_3_ATTEMPTS'");
+    expect(src).toMatch(/note: \{ in: \[\.\.\.NO_ANSWER_CLOSE_NOTES\] \}/);
+    expect(src).toMatch(/rejectionReason: \{ in: \[\.\.\.NO_ANSWER_CLOSE_REASONS\] \}/);
+    expect(src, 'a literal code or note left in the card').not.toMatch(/NO_ANSWER_[35]_ATTEMPTS/);
+    expect(src).toContain('statusLogs');
+    const workflow = stripComments(repoFile('src/lib/confirmation-workflow.ts'));
+    expect(workflow).toMatch(/NO_ANSWER_CLOSE_NOTES = \[NO_ANSWER_CLOSE\.three\.note, NO_ANSWER_CLOSE\.five\.note\]/);
+    expect(workflow).toMatch(/NO_ANSWER_CLOSE_REASONS = \[NO_ANSWER_CLOSE\.three\.reason, NO_ANSWER_CLOSE\.five\.reason\]/);
   });
 
   it('and «أكّدتها» is a day, a search and a page — all three on the server', () => {

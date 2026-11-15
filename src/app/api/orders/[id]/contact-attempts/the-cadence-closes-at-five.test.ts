@@ -9,7 +9,7 @@ import { Prisma } from '@prisma/client';
  *
  *  1. A «لا يرد» / «مشغول» / «مسكّر» is an attempt. #1 counts at once and its line carries the plan's due (+30 min) on `nextFollowUpAt`; the order goes back to the queue (the holder's
  *     COUNTED press releases). A press BEFORE its due is kept and told, never counted, writes no due and releases nothing; a press exactly AT the due counts.
- *  2. The fifth COUNTED press, on the second local day, closes the order in the same transaction through the one door (`endOrder`, CONTACT_AUTO_CLOSE, NO_ANSWER_3_ATTEMPTS, the real N = 5).
+ *  2. The fifth COUNTED press, on the second local day, closes the order in the same transaction through the one door (`endOrder`, CONTACT_AUTO_CLOSE, NO_ANSWER_5_ATTEMPTS, the real N = 5).
  *     Three and four counted close nothing. Five presses crammed into one day cannot close.
  *  3. The line is written ONCE with its due on it and with the instant the plan used; the table is never updated; the plan is read through the transaction, after the proof guard and before
  *     the write; a proof refusal reaches none of it.
@@ -234,9 +234,10 @@ describe('ON — the close at the fifth counted press', () => {
       door: 'CONTACT_AUTO_CLOSE',
       kind: 'CANCEL',
       endAs: 'CANCELLED',
-      reason: 'NO_ANSWER_3_ATTEMPTS',
+      // The plan's own code and note («خمس») — not the rule of three's, which only the switch-off rule and the rounds still write.
+      reason: 'NO_ANSWER_5_ATTEMPTS',
       rejectionNote: 'إغلاق تلقائي بعد 5 محاولات بلا رد',
-      logNote: 'AUTO_CLOSE_NO_ANSWER_3_ATTEMPTS',
+      logNote: 'AUTO_CLOSE_NO_ANSWER_5_ATTEMPTS',
     });
     expect(endOrder.mock.calls[0][0].tx).toBe(db);
     expect(announce).toHaveBeenCalledTimes(1);
@@ -427,7 +428,12 @@ describe('OFF — the door is today’s, key for key', () => {
       await pressAt(ms(T0, i * 2 * MIN));
     }
     expect(endOrder).toHaveBeenCalledTimes(1);
-    expect(endOrder.mock.calls[0][0]).toMatchObject({ reason: 'NO_ANSWER_3_ATTEMPTS', rejectionNote: 'إغلاق تلقائي بعد 3 محاولات بلا رد' });
+    // The switch off keeps the rule of three's own pair, byte for byte: the plan's code is never written without the plan.
+    expect(endOrder.mock.calls[0][0]).toMatchObject({
+      reason: 'NO_ANSWER_3_ATTEMPTS',
+      rejectionNote: 'إغلاق تلقائي بعد 3 محاولات بلا رد',
+      logNote: 'AUTO_CLOSE_NO_ANSWER_3_ATTEMPTS',
+    });
   });
 
   it('with the proof OFF too, the switch is not even asked', async () => {

@@ -4,7 +4,7 @@ import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { ORDER_ACCESS_STATUS, assertOrderAccess, assertOrderReadable } from '@/lib/rbac';
 import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
-import { CONTACT_METHODS, CONTACT_RESULTS, NO_ANSWER_RESULTS } from '@/lib/confirmation-workflow';
+import { CONTACT_METHODS, CONTACT_RESULTS, NO_ANSWER_CLOSE, NO_ANSWER_RESULTS } from '@/lib/confirmation-workflow';
 import { logAudit } from '@/lib/audit';
 import { NO_ANSWER_LIMIT } from '@/lib/confirmation-workflow';
 import { endOrder } from '@/lib/order-cancel';
@@ -301,6 +301,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         !terminal &&
         neverShipped
       ) {
+        // Under the plan the close is the plan's own code («خمس»); every other way into this branch (switch off, the rounds) is the rule of three, byte for byte as ever.
+        const closeAs = cad ? NO_ANSWER_CLOSE.five : NO_ANSWER_CLOSE.three;
         const closed = await endOrder({
           orderId: id,
           companyId,
@@ -309,10 +311,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           door: 'CONTACT_AUTO_CLOSE',
           kind: 'CANCEL',
           endAs: 'CANCELLED',
-          reason: 'NO_ANSWER_3_ATTEMPTS',
+          reason: closeAs.reason,
           rejectionNote: `إغلاق تلقائي بعد ${noAnswers} محاولات بلا رد`,
           data: { followUpStatus: order.nextFollowUpAt ? 'CANCELLED' : order.followUpStatus },
-          logNote: 'AUTO_CLOSE_NO_ANSWER_3_ATTEMPTS',
+          logNote: closeAs.note,
           noteBody: `أُغلق الطلب تلقائياً بعد ${noAnswers} محاولات اتصال بلا رد.`,
           tx,
         });

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   NO_ANSWER_CLOSE,
+  NO_ANSWER_CLOSE_NOTES,
+  NO_ANSWER_CLOSE_REASONS,
   NO_ANSWER_LIMIT,
   PICKABLE_REJECTION_REASONS,
   REJECTION_REASONS,
@@ -46,6 +48,12 @@ describe('the five-attempt close code', () => {
   it('writes a status-log note that is AUTO_CLOSE_ + its own reason — the desk card reads both', () => {
     expect(NO_ANSWER_CLOSE.three.note).toBe(`AUTO_CLOSE_${THREE}`);
     expect(NO_ANSWER_CLOSE.five.note).toBe(`AUTO_CLOSE_${FIVE}`);
+  });
+
+  it('is listed beside the old one, for every reader of «closed because nobody answered»', () => {
+    expect([...NO_ANSWER_CLOSE_REASONS]).toEqual([THREE, FIVE]);
+    expect([...NO_ANSWER_CLOSE_NOTES]).toEqual([NO_ANSWER_CLOSE.three.note, NO_ANSWER_CLOSE.five.note]);
+    for (const r of NO_ANSWER_CLOSE_REASONS) expect(SYSTEM_ONLY_REJECTION_REASONS, r).toContain(r);
   });
 
   it('says «خمس» and never «ثلاث» — and the old one the reverse', () => {

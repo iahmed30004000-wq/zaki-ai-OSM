@@ -19,8 +19,11 @@ const ENABLED_AT = new Date('2026-11-01T00:00:00.000Z');
 const MIN = 60_000;
 const iso = (s: string) => new Date(s);
 
-const { db, cad, rsw, proof, attempts } = vi.hoisted(() => {
+const { db, cad, rsw, proof, attempts, closedWheres } = vi.hoisted(() => {
   const cad = { on: true };
+  /** The `where` of every «أُغلقت اليوم» query the route made — what the mock filters by, and what the tests read back. */
+  type ClosedWhere = { confirmationStatus: string; rejectionReason: unknown; statusLogs: { some: { note: unknown; createdAt: { gte: Date } } } };
+  const closedWheres: ClosedWhere[] = [];
   const rsw = { value: { enabled: false, enabledAt: null } as { enabled: boolean; enabledAt: Date | null } };
   const proof = { on: false };
   const attempts: Array<{ orderId: string; createdAt: Date; result: string; employeeId: string; attemptNumber: number }> = [];
@@ -39,10 +42,25 @@ const { db, cad, rsw, proof, attempts } = vi.hoisted(() => {
     addOns: [],
     _count: { contactAttempts: attemptCount, notes: 0 },
   });
+  // What today's closed-card query can meet: the plan's close (x1), the rule of three's close (x3), and two decoys that each match only HALF of the question.
+  const closed = [
+    { card: row('x1', 5), reason: 'NO_ANSWER_5_ATTEMPTS', note: 'AUTO_CLOSE_NO_ANSWER_5_ATTEMPTS' },
+    { card: row('x3', 3), reason: 'NO_ANSWER_3_ATTEMPTS', note: 'AUTO_CLOSE_NO_ANSWER_3_ATTEMPTS' },
+    { card: row('x4', 4), reason: 'PRICE_TOO_HIGH', note: 'AUTO_CLOSE_NO_ANSWER_5_ATTEMPTS' },
+    { card: row('x5', 4), reason: 'NO_ANSWER_5_ATTEMPTS', note: 'A_PERSON_WROTE_THIS' },
+  ];
+  const listOf = (v: unknown): string[] => (typeof v === 'string' ? [v] : ((v as { in?: string[] }).in ?? []));
   const db = {
     order: {
       findMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
-        if (where.rejectionReason) return [{ ...row('x1', 5), confirmationStatus: 'CANCELLED' }];
+        if (where.rejectionReason) {
+          const closedWhere = where as unknown as ClosedWhere;
+          closedWheres.push(closedWhere);
+          // A real filter, not a truthy check: a one-code or one-note `where` shows up as a missing card.
+          return closed
+            .filter((r) => closedWhere.confirmationStatus === 'CANCELLED' && listOf(closedWhere.rejectionReason).includes(r.reason) && listOf(closedWhere.statusLogs.some.note).includes(r.note))
+            .map((r) => ({ ...r.card, confirmationStatus: 'CANCELLED' }));
+        }
         if (!('OR' in where)) return [];
         return [row('nw', 0), row('wt', 1), row('dn', 1), row('c5', 5), row('f4d', 4), row('f4w', 4), row('old', 2)];
       }),
@@ -55,7 +73,7 @@ const { db, cad, rsw, proof, attempts } = vi.hoisted(() => {
     company: { findUnique: vi.fn(async () => ({ settings: '{}' })) },
     callHelperDevice: { findFirst: vi.fn(async () => null) },
   };
-  return { db, cad, rsw, proof, attempts };
+  return { db, cad, rsw, proof, attempts, closedWheres };
 });
 
 vi.mock('@/lib/db', () => ({ db }));
@@ -111,6 +129,7 @@ beforeEach(() => {
   proof.on = false;
   rsw.value = { enabled: false, enabledAt: null };
   attempts.length = 0;
+  closedWheres.length = 0;
   // wt: #1 ten minutes ago → #2 due in 20 minutes (13:20 Amman).
   plan('wt', ['2026-11-15T09:50:00.000Z']);
   // dn: #1 forty minutes ago → #2 was due ten minutes ago.
@@ -141,8 +160,31 @@ describe('ON — the numbers', () => {
 
   it('the closed-today card reads the counted five too', async () => {
     const d = await desk();
-    expect(d.closedToday).toHaveLength(1);
-    expect(d.closedToday[0].noAnswerCount).toBe(5);
+    expect(d.closedToday.find((r) => r.id === 'x1')?.noAnswerCount).toBe(5);
+  });
+
+  /**
+   * THE PLAN'S CLOSE MUST NOT VANISH FROM THE DESK THE MINUTE SHE PRESSES.
+   *
+   * The close writes `CANCELLED` + `NO_ANSWER_5_ATTEMPTS` + the note `AUTO_CLOSE_NO_ANSWER_5_ATTEMPTS`, and leaves the order claimed by her. A card query that names the old
+   * code alone, or the old note alone, hides it (the note is `…_5_…`). The mock filters for real, so both halves are needed to see it — and the rule of three's close still shows.
+   */
+  it('the closed-today card finds BOTH closes — the plan’s (five) and the rule of three’s — and neither decoy', async () => {
+    const d = await desk();
+    expect(d.closedToday.map((r) => r.id).sort()).toEqual(['x1', 'x3']);
+    expect(closedWheres).toHaveLength(1);
+    const where = closedWheres[0];
+    expect(where.confirmationStatus).toBe('CANCELLED');
+    const inOf = (v: unknown) => (v as { in: string[] }).in;
+    expect([...inOf(where.rejectionReason)].sort()).toEqual(['NO_ANSWER_3_ATTEMPTS', 'NO_ANSWER_5_ATTEMPTS']);
+    expect([...inOf(where.statusLogs.some.note)].sort()).toEqual(['AUTO_CLOSE_NO_ANSWER_3_ATTEMPTS', 'AUTO_CLOSE_NO_ANSWER_5_ATTEMPTS']);
+    expect(where.statusLogs.some.createdAt.gte).toBeInstanceOf(Date);
+  });
+
+  it('with the plan off the same two closes still show — the card does not know which rule wrote the code', async () => {
+    cad.on = false;
+    const d = await desk();
+    expect(d.closedToday.map((r) => r.id).sort()).toEqual(['x1', 'x3']);
   });
 
   it('the proof shares the read: with the proof on there is still ONE read of the attempts', async () => {

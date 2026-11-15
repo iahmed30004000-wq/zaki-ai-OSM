@@ -5,7 +5,7 @@ import { requireContext } from '@/lib/geo-context';
 import { ORDER_ACCESS_STATUS, assertOrderAccess } from '@/lib/rbac';
 import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
 import { AlreadyBlocked, blockPhone } from '@/lib/blacklist';
-import { CONFIRMATION_STATUSES, CONFIRMATION_STATUS_AR, FOLLOW_UP_REASONS, REJECTION_REASONS, isValidTransition, type ConfirmationStatus } from '@/lib/confirmation-workflow';
+import { CONFIRMATION_STATUSES, CONFIRMATION_STATUS_AR, FOLLOW_UP_REASONS, NO_ANSWER_CLOSE, NO_ANSWER_CLOSE_REASONS, REJECTION_REASONS, isValidTransition, type ConfirmationStatus } from '@/lib/confirmation-workflow';
 import { logAudit } from '@/lib/audit';
 import { apiError } from '@/lib/api-error';
 import { can, authorize } from '@/lib/authorization';
@@ -29,10 +29,13 @@ import {
 } from '@/lib/confirmed-twin';
 
 /**
- * With «جدول المحاولات» on, `NO_ANSWER_3_ATTEMPTS` is a reason only the system writes (the contact door closes at the fifth COUNTED attempt over two days, in its own transaction):
+ * With «جدول المحاولات» on, the two no-answer close codes (`NO_ANSWER_CLOSE_REASONS`) are reasons only the system writes (the contact door closes at the fifth COUNTED attempt over two days, in its own transaction):
  * nobody can meet that rule by hand. Arabic in both keys, through an identifier — this door is a fixed door of `arabic-refusals.test.ts`.
  */
 const NO_ANSWER_BY_HAND_AR = `هالسبب النظام وحدو بيكتبو — بيسكّر الطلب لحالو بعد ${CADENCE_LIMIT} محاولات «لا يرد» محسوبة على يومين. اختر سبباً تانياً من القائمة.`;
+
+/** The answer to a reason that is not on the list — one sentence, so the plan's code with the switch off can be answered with it byte for byte. */
+const PICK_A_REASON_AR = 'اختر سبب الرفض من القائمة';
 
 /**
  * POST /api/orders/[id]/confirmation — controlled confirmation workflow action.
@@ -235,11 +238,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         // drops the same reservation, so with the override (orders.unlock) it
         // could free the units of a parcel already labelled or on a trolley.
         if (!rejectionReason || !(REJECTION_REASONS as readonly string[]).includes(rejectionReason)) {
-          return NextResponse.json({ error: 'اختر سبب الرفض من القائمة' }, { status: 400 });
+          return NextResponse.json({ error: PICK_A_REASON_AR }, { status: 400 });
         }
-        // The switch is asked ONLY for this action and this reason: nothing else on this door reads it. Off, or unreadable: accepted exactly as it always was.
-        if (rejectionReason === 'NO_ANSWER_3_ATTEMPTS' && (await cadenceSince(db, companyId))) {
-          return NextResponse.json({ error: NO_ANSWER_BY_HAND_AR, errorAr: NO_ANSWER_BY_HAND_AR, code: 'SYSTEM_ONLY_REASON' }, { status: 409 });
+        // The switch is asked ONLY for this action and these two reasons: nothing else on this door reads it. Off, or unreadable: the old code is accepted exactly as it always was.
+        if ((NO_ANSWER_CLOSE_REASONS as readonly string[]).includes(rejectionReason)) {
+          if (await cadenceSince(db, companyId)) {
+            return NextResponse.json({ error: NO_ANSWER_BY_HAND_AR, errorAr: NO_ANSWER_BY_HAND_AR, code: 'SYSTEM_ONLY_REASON' }, { status: 409 });
+          }
+          // «خمس محاولات» belongs to the plan and did not exist before it: with the plan off a hand that sends it gets the answer any unknown value always got.
+          if (rejectionReason === NO_ANSWER_CLOSE.five.reason) {
+            return NextResponse.json({ error: PICK_A_REASON_AR }, { status: 400 });
+          }
         }
         if (rejectionReason === 'OTHER' && (!note || note.trim().length < 5)) {
           return NextResponse.json({ error: 'سبب الرفض «أخرى» يحتاج ملاحظة — خمسة أحرف على الأقل' }, { status: 400 });

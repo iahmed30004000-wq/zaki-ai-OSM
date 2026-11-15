@@ -4,12 +4,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * ═══════════════════════════════════════════════════════════════════════
  * A HAND CANNOT WRITE THE SYSTEM'S REASON (Confirmation Center v2, step B — decision D8; BACKLOG RV2370).
  *
- * With «جدول المحاولات» on, `NO_ANSWER_3_ATTEMPTS` is the reason the contact door writes when the fifth COUNTED «لا يرد» lands on the second day. Nobody can meet that rule by hand —
- * so a `reject` with it answers 409 `SYSTEM_ONLY_REASON`, with a sentence in Arabic that says what to do, and writes NOTHING (no update, no transaction, no version bump).
+ * With «جدول المحاولات» on, `NO_ANSWER_5_ATTEMPTS` is the reason the contact door writes when the fifth COUNTED «لا يرد» lands on the second day (its older twin `NO_ANSWER_3_ATTEMPTS` is the
+ * switch-off rule's and the rounds'). Nobody can meet that rule by hand — so a `reject` with EITHER answers 409 `SYSTEM_ONLY_REASON`, with a sentence in Arabic that says what to do,
+ * and writes NOTHING (no update, no transaction, no version bump).
  *
  *  · every other reason keeps its answer; an unknown reason is still 400; an order nobody has rung still answers CONTACT_FIRST first;
- *  · OFF (the switch off, or unreadable): the body is accepted exactly as before;
- *  · the switch is read ZERO times for anything but this action with this reason (`a-status-no-answer-needs-its-line-first.test.ts` counts reads on the other actions).
+ *  · OFF (the switch off, or unreadable): the old code is accepted exactly as before; the plan's code did not exist before the plan, so a hand that sends it gets the 400 any unknown value always got
+ *    (the very same `{ error }` — no `errorAr`, nothing written);
+ *  · the switch is read ZERO times for anything but this action with one of these two reasons (`a-status-no-answer-needs-its-line-first.test.ts` counts reads on the other actions).
  *
  * The door under test is the real one; the harness of `a-closing-that-needs-no-call.test.ts`.
  * ═══════════════════════════════════════════════════════════════════════
@@ -94,8 +96,8 @@ beforeEach(() => {
 });
 
 describe('ON — the system’s reason is refused to a hand', () => {
-  it('409 SYSTEM_ONLY_REASON, the sentence says what to do and names the five, and NOTHING is written', async () => {
-    const res = await reject('NO_ANSWER_3_ATTEMPTS');
+  it.each(['NO_ANSWER_3_ATTEMPTS', 'NO_ANSWER_5_ATTEMPTS'])('%s: 409 SYSTEM_ONLY_REASON, the sentence says what to do and names the five, and NOTHING is written', async (reason) => {
+    const res = await reject(reason);
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('SYSTEM_ONLY_REASON');
     expect(res.body.errorAr).toBe(res.body.error);
@@ -118,11 +120,12 @@ describe('ON — the system’s reason is refused to a hand', () => {
     expect(none.status).toBe(400);
   });
 
-  it('an order nobody has rung answers CONTACT_FIRST before this refusal', async () => {
+  it.each(['NO_ANSWER_3_ATTEMPTS', 'NO_ANSWER_5_ATTEMPTS'])('an order nobody has rung answers CONTACT_FIRST before this refusal (%s)', async (reason) => {
     db.orderContactAttempt.count.mockResolvedValue(0);
-    const res = await reject('NO_ANSWER_3_ATTEMPTS');
+    const res = await reject(reason);
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('CONTACT_FIRST');
+    expect(cad.reads, 'CONTACT_FIRST answers before the switch is read').toBe(0);
   });
 });
 
@@ -134,15 +137,37 @@ describe('OFF — accepted exactly as before (RV2370 stays as it was)', () => {
     expect(db.order.updateMany).toHaveBeenCalledTimes(1);
     expect(db.order.updateMany.mock.calls[0][0].data).toMatchObject({ confirmationStatus: 'REJECTED', rejectionReason: 'NO_ANSWER_3_ATTEMPTS' });
   });
+
+  /**
+   * THE PLAN'S CODE DID NOT EXIST BEFORE THE PLAN. With the switch off a hand that sends it is answered as an unknown value always was —
+   * the very same 400 sentence of the picker, `{ error }` alone — and nothing is written.
+   */
+  it('the switch off: the plan’s code is the 400 an unknown value always got — byte for byte, nothing written', async () => {
+    cad.on = false;
+    const five = await reject('NO_ANSWER_5_ATTEMPTS');
+    const unknown = await reject('NOT_A_REASON');
+    expect(five.status).toBe(400);
+    expect(five.body).toEqual({ error: 'اختر سبب الرفض من القائمة' });
+    expect(five.body).toEqual(unknown.body);
+    expect(five.body).not.toHaveProperty('errorAr');
+    expect(five.body).not.toHaveProperty('code');
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+    expect(db.$transaction).not.toHaveBeenCalled();
+    expect(db.orderStatusLog.create).not.toHaveBeenCalled();
+  });
 });
 
-describe('the switch is read only for this action with this reason', () => {
+describe('the switch is read only for this action with one of these two reasons', () => {
   it('zero reads for any other reject, a plain contact result, start and the other reason', async () => {
     await reject('PRICE_TOO_HIGH');
+    await reject('NOT_A_REASON');
     await send({ action: 'start' });
     await send({ action: 'contact_result', result: 'ANSWERED' });
     expect(cad.reads).toBe(0);
-    await reject('NO_ANSWER_3_ATTEMPTS');
+  });
+
+  it.each(['NO_ANSWER_3_ATTEMPTS', 'NO_ANSWER_5_ATTEMPTS'])('exactly one read for %s', async (reason) => {
+    await reject(reason);
     expect(cad.reads).toBe(1);
   });
 });
