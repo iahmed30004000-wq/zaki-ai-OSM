@@ -18,6 +18,8 @@ import { DESK_NOT_FOUND, DESK_WATCH_REFUSAL, mayWatchDesks, watchedAgent } from 
 import type { BusinessCalendar } from '@/lib/business-calendar';
 import { countedRounds, roundsOn, workClock, type AttemptFact, type WorkClock } from '@/lib/no-answer-rounds';
 import { roundsSwitch } from '@/lib/no-answer-rounds-switch';
+import { callProofOn } from '@/lib/call-proof-switch';
+import { callProofState } from '@/lib/call-proof';
 import {
   CAUGHT_UP_SENTENCE,
   WORK_FIRST_BUTTON,
@@ -365,6 +367,13 @@ export async function GET(request: Request) {
     const clock = rounds ? workClock(cal) : null;
     const shownIds = [...inConfirmation, ...closedToday].map((o) => o.id);
     const attempts = rounds && clock ? await attemptsByOrder(shownIds) : null;
+    /*
+     * «إثبات المكالمات» (step A of Confirmation Center v2) — only on her OWN desk and only with the company switch on: for each order she holds, what her «لا يرد» is
+     * waiting for (`callProof`: NO_OPENED · WAIT until `unlocksAtMs` · READY), told by the very function the doors ask (`call-proof.ts`), so the card never decides
+     * the rule. ONE read for the whole desk (the rounds' attempts are reused when they were read). Off, or on a colleague's desk: no key, no query.
+     */
+    const proofOn = !viewing && (await callProofOn(db, companyId));
+    const proofAttempts = proofOn ? (attempts ?? (await attemptsByOrder(inConfirmation.map((o) => o.id)))) : null;
     const noAnswer = attempts && clock ? roundCounts(attempts, clock) : await noAnswerCounts(shownIds);
 
     /*
@@ -437,6 +446,7 @@ export async function GET(request: Request) {
       return {
         ...row,
         ...helperLink(o),
+        ...(proofAttempts ? { callProof: callProofState({ attempts: proofAttempts.get(o.id) ?? [], employeeId: user.id, claimedAt: o.claimedAt, now }) } : {}),
         // «الشغل أول»: a call is owed on it right now, why — and, for one that is waiting, when it falls due.
         dueNow: verdict.due,
         dueReason: verdict.reason,
@@ -466,6 +476,8 @@ export async function GET(request: Request) {
       noAnswerLimit: NO_ANSWER_LIMIT,
       // «نظام الجولات» is on: the counter is «جولة n من 3». Absent when it is off.
       ...(rounds ? { rounds: true } : {}),
+      // «إثبات المكالمات» is on: every held card carries `callProof`, and its «لا يرد» / «مشغول» / «مسكّر» obey it. Absent when it is off.
+      ...(proofAttempts ? { callProofOn: true } : {}),
       // The server's own clock, so a wrong clock on her machine cannot make
       // an order look answered or overdue.
       serverNow: new Date().toISOString(),

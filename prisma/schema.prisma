@@ -1169,6 +1169,8 @@ model Order {
   @@map("orders")
 }
 
+/// LEGACY — the live attempt log is `OrderContactAttempt`. Nothing on a screen writes this table (its only door, POST /api/orders/[id]/call-logs, is kept for the API),
+/// and reports, scores and the desk's watching all read `OrderContactAttempt`. Never fill it, never read it for new work (the planner's ruling, 15/11/2026).
 model CallLog {
   id               String    @id @default(uuid())
   companyId        String
@@ -1570,6 +1572,11 @@ model OrderContactAttempt {
   result         String // ANSWERED, NO_ANSWER, BUSY, WRONG_NUMBER, CALLBACK_REQUESTED, CONFIRMED, REJECTED, OTHER
   note           String?
   nextFollowUpAt DateTime?
+  /// «كم ثانية» — a RECORD, never a rule (step A of Confirmation Center v2). Written only with «إثبات المكالمات» on: for a no-answer-class line it is the SERVER's
+  /// measure of the ring window, from the «اتصال» press to this line; for an answered or call-back line it is the phone's figure (the call helper's talk seconds, else the
+  /// time the screen was away). NULL on every older row and on every line that is not timed (OPENED, MESSAGE_SENT, the entry-door ANSWERED line, the landing chat);
+  /// NULL means «not measured», never zero. The 30-second rule reads only the OPENED row's createdAt, never this column.
+  durationSeconds Int?
   createdAt      DateTime  @default(now())
 
   order    Order @relation(fields: [orderId], references: [id], onDelete: Cascade)

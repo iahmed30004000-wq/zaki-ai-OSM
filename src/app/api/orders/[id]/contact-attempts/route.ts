@@ -14,6 +14,11 @@ import { mustHoldToWork, NOT_HELD_MESSAGE, returnToThePool, returnsModeOn } from
 import { NO_ANSWER_RETURNED_REASON } from '@/lib/no-answer-returns';
 import { countedRounds, roundsClose, roundsOn, workClock } from '@/lib/no-answer-rounds';
 import { roundsSwitch } from '@/lib/no-answer-rounds-switch';
+import { callProofOn } from '@/lib/call-proof-switch';
+import { assertCallProven, answerCallProofRefusal } from '@/lib/call-proof-guard';
+import { callProofState } from '@/lib/call-proof';
+import { CALL_PROOF_WORDS } from '@/lib/call-proof-words';
+import { MAX_TALK_S } from '@/lib/call-helper/core';
 
 /**
  * GET  /api/orders/[id]/contact-attempts — chronological attempt history
@@ -38,6 +43,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     });
 
     const last = attempts.length ? attempts[attempts.length - 1] : null;
+    /*
+     * «إثبات المكالمات» — with the switch on, the answer also says what the VIEWER's «لا يرد» is waiting for on this order (`callProof`), computed by the same function
+     * the door asks, so the order window never decides the rule: it ticks `unlocksAtMs` against `serverNow`. With it off the answer has no such key.
+     */
+    const proof = (await callProofOn(db, companyId))
+      ? { callProof: { on: true, serverNow: Date.now(), ...callProofState({ attempts, employeeId: user.id, claimedAt: access.order.claimedAt ?? null, now: new Date() }) } }
+      : {};
     return NextResponse.json({
       attempts,
       summary: {
@@ -47,6 +59,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         lastResult: last?.result ?? null,
         nextFollowUpAt: last?.nextFollowUpAt ?? null,
       },
+      ...proof,
     });
   } catch (error: any) {
     return apiErrorResponse(error);
@@ -116,8 +129,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     const body = await req.json();
-    const { contactMethod, result, note, nextFollowUpAt } = body as {
+    const { contactMethod, result, note, nextFollowUpAt, durationSeconds } = body as {
       contactMethod?: string; result?: string; note?: string; nextFollowUpAt?: string;
+      /** «كم ثانية» — read only with «إثبات المكالمات» on, and only for a result that is not a «didn't answer» (the server measures those itself). */
+      durationSeconds?: unknown;
     };
 
     // ── Server-side validation (never trust frontend) ──
@@ -146,13 +161,40 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // «الطلب يرجع للطابور فوراً» — on only with the rounds on as well (their counting is what closes), cached, and OFF on any failure.
     const returnsOn = await returnsModeOn(db, companyId, rounds);
 
+    /*
+     * «إثبات المكالمات» (step A of Confirmation Center v2) — the owner's switch, read once (cached) before the transaction; OFF on any failure, and OFF is the rule
+     * above and below exactly as it is today: the guard is never asked, `durationSeconds` is neither read nor validated nor written.
+     *
+     * With it ON, a «didn't answer» (`NO_ANSWER_RESULTS`) is recorded only after a logged «اتصال» press of hers that is at least thirty seconds old (`call-proof.ts`),
+     * asked INSIDE the transaction below, as its first statement: a refusal writes nothing — no line, no close, no release. For any other result a typed
+     * `durationSeconds` is stored when it is a whole number of seconds (an answered call's talk time, as the phone measured it).
+     */
+    const proofOn = await callProofOn(db, companyId);
+    const guardedClass = (NO_ANSWER_RESULTS as readonly string[]).includes(result!);
+    let enteredDuration: number | null = null;
+    if (proofOn && !guardedClass && durationSeconds !== undefined && durationSeconds !== null && durationSeconds !== '') {
+      if (typeof durationSeconds !== 'number' || !Number.isInteger(durationSeconds) || durationSeconds < 0 || durationSeconds > MAX_TALK_S) {
+        return NextResponse.json({ error: CALL_PROOF_WORDS.invalidDuration, errorAr: CALL_PROOF_WORDS.invalidDuration, code: 'INVALID_DURATION' }, { status: 400 });
+      }
+      enteredDuration = durationSeconds;
+    }
+
     // ── The 1/2/3 no-answer rule ──
     // The third no-answer closes the order under its OWN reason, in the same
     // transaction as the attempt, and releases the reservation. It is not a
     // customer rejection and must never be reported as one.
     const { attempt, autoClosed, noAnswerCount, announce, returned } = await db.$transaction(async (tx) => {
+      // The proof comes BEFORE the first write of this transaction (a refusal is a sentinel answered in the `catch`).
+      let measured: number | null = null;
+      if (proofOn) {
+        measured = (
+          await assertCallProven(tx, { companyId, orderId: id, employeeId: user.id, claimedAt: order.claimedAt ?? null, result: result!, door: 'ATTEMPT' })
+        ).durationSeconds;
+      }
       const created = await tx.orderContactAttempt.create({
         data: {
+          // With the switch off the data object carries no new key at all.
+          ...(proofOn ? { durationSeconds: guardedClass ? measured : enteredDuration } : {}),
           companyId,            // from session — never client
           orderId: id,
           employeeId: user.id,  // server-derived — forged employeeId impossible
@@ -278,7 +320,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     await logAudit({
       companyId, userId: user.id, action: 'CONTACT_ATTEMPT_RECORDED',
       entity: 'Order', entityId: id,
-      newData: { attemptNumber, contactMethod, result, nextFollowUpAt: fu.date },
+      newData: { attemptNumber, contactMethod, result, nextFollowUpAt: fu.date, ...(proofOn ? { durationSeconds: attempt.durationSeconds ?? null } : {}) },
     });
 
     return NextResponse.json({
@@ -291,6 +333,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       ...(returned ? { returnedToQueue: true } : {}),
     });
   } catch (error: any) {
+    // A «لا يرد» the proof refused: a sentinel thrown inside the transaction (nothing was written), answered as a 409 she can act on.
+    const refused = await answerCallProofRefusal(error);
+    if (refused) return refused;
     return apiErrorResponse(error);
   }
 }
