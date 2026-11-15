@@ -60,8 +60,8 @@ export function enabledAtOf(now) {
 /**
  * The orders. `pool: true` = nobody holds it (the pull's pool); `heldBy` = in that agent's hand. `lines` are the contact attempts, oldest
  * first: `at` = minutes AGO the line was written, `due` = minutes from now its stored due falls (negative = already passed), `null` = no due.
- * `expect` is what the PLANNER's rules say about the order, in a word — printed beside the pull order so a reader can compare;
- * the harness asserts nothing.
+ * `expect` is what the PLANNER's rules say about the order, in a word — printed beside the pull order so a reader can compare.
+ * What the pull is ASSERTED to hand out (`pull-order.mjs --assert`, the CI step) is `EXPECTED_HAND_OUT`, at the end of this file.
  */
 export function buildScenario(now) {
   const ago = (m) => new Date(now.getTime() - m * MIN);
@@ -132,4 +132,34 @@ export function buildScenario(now) {
   ];
 
   return [...on, ...off];
+}
+
+/**
+ * WHAT EACH DESK IS HANDED, IN ORDER — written by hand from the planner's rules and the times above, NOT copied from a run:
+ *   NEW first, the oldest created first (SY-NEW-1 at -300 min, SY-NEW-2 at -240) · then the customer's promise whose date arrived ·
+ *   then the RETRIES by their due (A -150, then the tie B / C at -90 where the older order B goes first, then E at -60) ·
+ *   then «the rest» oldest created (the legacy line from before the switch). Not handed: SY-RETRY-D and JO-RETRY-WAIT (their due is in
+ *   about two hours), SY-PROMISE-WAITING (six hours), and anything in an agent's hand.
+ * The OFF company has the switch off — today's order: new, then the rest oldest first — and no time of day changes any of these lists
+ * (the dues are stored instants, and the legacy mode asks no working-hours question).
+ * If a ruling changes the pull order, THIS list changes with it, in the same pull request, and the reviewer reads it as the new rule.
+ */
+export const EXPECTED_HAND_OUT = {
+  [USERS.agent1On.email]: ['SY-NEW-1', 'SY-NEW-2', 'SY-PROMISE-DUE', 'SY-RETRY-A', 'SY-RETRY-B', 'SY-RETRY-C', 'SY-RETRY-E', 'SY-LEGACY'],
+  [USERS.agent2On.email]: ['JO-NEW-1', 'JO-RETRY-READY'],
+  [USERS.agentOff.email]: ['OFF-NEW-1', 'OFF-NO-ANSWER'],
+};
+
+/** The real door's first answer to a desk AS SEEDED (her hand holds an order with no attempt), and its last answer once the pool is empty. */
+export const EXPECTED_REFUSALS = { atSeed: 'UNTOUCHED_ORDER', whenEmpty: 'QUEUE_EMPTY' };
+
+/** The differences between two lists of order keys, one sentence each; an empty array means they are the same list in the same order. */
+export function diffHandOut(actual, expected) {
+  if (!Array.isArray(expected)) return ['no expected list is written for this desk'];
+  const out = [];
+  const n = Math.max(actual.length, expected.length);
+  for (let i = 0; i < n; i++) {
+    if (actual[i] !== expected[i]) out.push(`#${i + 1}: expected ${expected[i] ?? '(nothing)'} · got ${actual[i] ?? '(nothing)'}`);
+  }
+  return out;
 }

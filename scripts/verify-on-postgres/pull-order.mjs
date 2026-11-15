@@ -1,7 +1,9 @@
 /**
  * THE PULL-ORDER HARNESS — asks the repo's REAL pull code, on the REAL Prisma client against the scratch PostgreSQL, in which order the
- * seeded orders are handed out. It asserts NOTHING: it prints, and the person who runs it on the merged code compares with the planner's
- * answers (13: the promise whose time arrived, then retries by their due, then the rest by oldest created).
+ * seeded orders are handed out. By default it asserts NOTHING: it prints, and the person who runs it on the merged code compares with the
+ * planner's answers (13: the promise whose time arrived, then retries by their due, then the rest by oldest created). With `--assert` (the
+ * CI step, `.github/workflows/verify-on-postgres.yml`) it COMPARES what it prints with `EXPECTED_HAND_OUT` of `scenario.mjs` — a list written
+ * by hand from the planner's rules — and exits 3 on any difference.
  *
  * DEFINITION OF DONE:
  *   1. Runs only against the scratch database (`scratchUrl` + `assertScratchUrl`, the process's DATABASE_URL is set from it before the repo's
@@ -13,21 +15,36 @@
  *      printed in full with its duration, and the id it returns.
  *   5. Part 3 — the REAL `pullNextOrder` (own transaction, the hand limit, the work-first gate, the pace): called until it refuses; what it
  *      handed out and the refusal are printed; then the orders it touched are put back and its history rows deleted.
- *   6. Exit code 0 when it ran to the end, 2 when a database/Prisma error stopped it (the error and the SQL are printed — that is a finding).
+ *   6. Exit code 0 when it ran to the end, 2 when a database/Prisma error stopped it (the error and the SQL are printed — that is a finding),
+ *      3 when `--assert` was given and a hand-out order (Part 1, and Part 3b through the real door) or a refusal code (Part 3a, the empty pool) differs
+ *      from `scenario.mjs`. Without `--assert` nothing is compared and the exit code is what it always was.
  *
- *   node scripts/verify-on-postgres/pull-order.mjs [--sql] [--no-real-pulls]
+ *   node scripts/verify-on-postgres/pull-order.mjs [--sql] [--no-real-pulls] [--assert]
  *     --sql             print every statement of Part 1 as well
  *     --no-real-pulls   skip Part 3
+ *     --assert          compare with EXPECTED_HAND_OUT / EXPECTED_REFUSALS and exit 3 on a mismatch
  */
 import * as prismaPackage from '@prisma/client';
 import { argv, assertScratchUrl, relaunchUnderTsx, scratchUrl } from './lib.mjs';
-import { COMPANY_OFF, COMPANY_ON, USERS, buildScenario } from './scenario.mjs';
+import { COMPANY_OFF, COMPANY_ON, EXPECTED_HAND_OUT, EXPECTED_REFUSALS, USERS, buildScenario, diffHandOut } from './scenario.mjs';
 
 // The repo's TypeScript is imported below, so this file must run under the tsx command; if it was started with plain `node`, it starts itself again that way.
 relaunchUnderTsx(import.meta.url);
 
 const PrismaClient = prismaPackage.PrismaClient ?? prismaPackage.default.PrismaClient;
-const args = argv({ sql: 'flag', 'no-real-pulls': 'flag' });
+const args = argv({ sql: 'flag', 'no-real-pulls': 'flag', assert: 'flag' });
+
+/** What `--assert` found wrong, one sentence each; printed at the end and the reason for exit code 3. */
+const mismatches = [];
+function check(what, problems) {
+  if (!args.assert) return;
+  if (problems.length === 0) console.log(`ASSERT OK    ${what}`);
+  else {
+    console.log(`ASSERT FAIL  ${what}`);
+    for (const p of problems) console.log(`             ${p}`);
+    mismatches.push(`${what}: ${problems.join(' | ')}`);
+  }
+}
 
 // The gate, then the environment the repo's db.ts will read when it loads.
 const url = scratchUrl();
@@ -58,7 +75,7 @@ async function deskOf(companyName, email, countryCode) {
   const country = await probe.country.findFirst({ where: { companyId: company.id, code: countryCode } });
   const store = await probe.store.findFirst({ where: { companyId: company.id, countryId: country.id } });
   const cal = { workHoursStart: country.workHoursStart, workHoursEnd: country.workHoursEnd, weekendDays: country.weekendDays, timezone: country.timezone };
-  return { company, user: { id: user.id, role: user.role }, cal, scope: { companyId: company.id, storeId: store.id }, label: `${companyName.split(' —')[0]} / ${countryCode} / ${email}` };
+  return { company, email, user: { id: user.id, role: user.role }, cal, scope: { companyId: company.id, storeId: store.id }, label: `${companyName.split(' —')[0]} / ${countryCode} / ${email}` };
 }
 
 async function namesOf(ids) {
@@ -91,6 +108,7 @@ async function handOutOrder(desk, now) {
     if (!(e instanceof Rollback)) throw e;
   }
   const names = await namesOf(picks);
+  check(`1 · hand-out order — ${desk.label}`, diffHandOut(picks.map((id) => names.get(id)), EXPECTED_HAND_OUT[desk.email]));
   const expect = new Map(buildScenario(now).map((o) => [o.key, o.expect]));
   const rows = picks.map((id, i) => ({ '#': i + 1, order: names.get(id), expect: expect.get(names.get(id)) ?? '' }));
   if (rows.length) console.table(rows);
@@ -139,10 +157,12 @@ async function realPulls(desk) {
   const startedAt = new Date(Date.now() - 1000);
   const pulls = async (label, finishEach) => {
     const results = [];
+    const outcomes = []; // what `--assert` reads: the order's key, or the refusal's code — the table above keeps its own columns
     for (let i = 0; i < 14; i++) {
       const r = await queue.pullNextOrder(desk.scope, desk.user, desk.cal, new Date());
       const name = r.orderId ? (await namesOf([r.orderId])).get(r.orderId) : null;
       results.push({ '#': i + 1, ok: r.ok, order: name ?? '', refusal: r.refusal ? `${r.refusal.code}: ${r.refusal.message}` : '', released: r.released ?? 0 });
+      outcomes.push({ ok: r.ok, order: name, code: r.refusal?.code ?? null });
       if (!r.ok) break;
       if (finishEach) {
         await probe.order.update({ where: { id: r.orderId }, data: { claimedById: null, currentOwnerId: null, confirmationStatus: 'CONFIRMED', status: 'CONFIRMED', confirmedAt: new Date() } });
@@ -150,9 +170,11 @@ async function realPulls(desk) {
     }
     line(`\n${label}`);
     console.table(results);
+    return outcomes;
   };
   try {
-    await pulls('3a · كما هي بالـseed', false);
+    const seeded = await pulls('3a · كما هي بالـseed', false);
+    check(`3a · the door's answer at seed — ${desk.label}`, seeded.length === 1 && !seeded[0].ok && seeded[0].code === EXPECTED_REFUSALS.atSeed ? [] : [`expected one refusal ${EXPECTED_REFUSALS.atSeed} · got ${seeded.map((o) => (o.ok ? o.order : o.code)).join(', ')}`]);
     const untouched = await probe.order.findMany({
       where: { ...desk.scope, claimedById: desk.user.id, confirmationStatus: { in: ['NEW', 'IN_PROGRESS', 'NO_ANSWER'] }, contactAttempts: { none: {} } },
       select: { id: true },
@@ -162,7 +184,11 @@ async function realPulls(desk) {
         data: { companyId: desk.company.id, orderId: o.id, employeeId: desk.user.id, employeeRole: desk.user.role, attemptNumber: 1, contactMethod: 'PHONE', result: 'OTHER', note: KIT_TOUCH },
       });
     }
-    await pulls(`3b · بعد ما لمست ${untouched.length} طلب بإيدها، وكل طلب بتسحبو بتخلّصو`, true);
+    const drained = await pulls(`3b · بعد ما لمست ${untouched.length} طلب بإيدها، وكل طلب بتسحبو بتخلّصو`, true);
+    const handed = drained.filter((o) => o.ok).map((o) => o.order);
+    const last = drained[drained.length - 1];
+    check(`3b · the real door's hand-out order — ${desk.label}`, diffHandOut(handed, EXPECTED_HAND_OUT[desk.email]));
+    check(`3b · the real door's last answer — ${desk.label}`, last && !last.ok && last.code === EXPECTED_REFUSALS.whenEmpty ? [] : [`expected ${EXPECTED_REFUSALS.whenEmpty} · got ${last ? (last.ok ? last.order : last.code) : '(nothing)'}`]);
   } finally {
     // Put everything back: the orders as they were, and the rows the pulls (and any release inside them) wrote.
     for (const o of touched) {
@@ -190,7 +216,12 @@ try {
   for (const desk of desks) await handOutOrder(desk, now);
   for (const desk of desks) await retryQuery(desk, now);
   if (!args['no-real-pulls']) for (const desk of desks) await realPulls(desk);
-  line('\nخلص. pull-order ما بيفحص شي بحدّ ذاتو: قارن الجداول فوق بجواب المخطط 13.');
+  if (!args.assert) line('\nخلص. pull-order ما بيفحص شي بحدّ ذاتو (بدون --assert): قارن الجداول فوق بجواب المخطط 13.');
+  else if (mismatches.length === 0) line(`\nخلص. --assert: كل المقارنات تطابقت مع scenario.mjs.`);
+  else {
+    line(`\nخلص. --assert: ${mismatches.length} مقارنة فشلت:`);
+    for (const m of mismatches) line(`  - ${m}`);
+  }
 } catch (e) {
   failed = true;
   console.error('\n[pull-order] وقف بخطأ — هاد بحدّ ذاتو نتيجة فحص على PostgreSQL حقيقي:\n');
@@ -201,4 +232,4 @@ try {
   }
 }
 await Promise.allSettled([probe.$disconnect(), db.$disconnect()]);
-process.exit(failed ? 2 : 0);
+process.exit(failed ? 2 : mismatches.length > 0 ? 3 : 0);

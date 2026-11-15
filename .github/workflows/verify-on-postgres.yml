@@ -1,0 +1,101 @@
+# THE REAL-POSTGRESQL CHECK, AS A PERMANENT GUARD (planner 15/11, ruling 30).
+#
+# Everything `ci.yml` runs reads a database that is a double kept in memory.
+# A query the double cannot express — the nested select that ranks the
+# retries, the order the pull hands orders out in — has never been asked of
+# PostgreSQL by that job. The verification kit (`scripts/verify-on-postgres/`)
+# asks it, and until now somebody had to remember to run it by hand.
+#
+# This is a SEPARATE workflow, on purpose: `ci.yml` is not touched, so the
+# gate every pull request already passes does not get slower or redder
+# because of a container. This one runs beside it.
+#
+# What it does is what the owner does at his desk, in the same order:
+#
+#   start-db   a throwaway postgres:16-alpine on 127.0.0.1:54329
+#   migrate    every migration, `migrate deploy` only
+#   seed       the scenario (two companies, two countries, the retries)
+#   pull-order --assert: what the REAL pull code hands each desk, in order,
+#              compared with the list `scenario.mjs` holds. A difference
+#              exits 3 and this job goes red.
+#
+# NOT here, and still by hand: the screenshots and `check-app` (they need a
+# browser and the app running). `scale-retries` asserts nothing, so it is
+# left out too: a step that cannot fail is not a guard.
+#
+# The kit's own gate is untouched and holds here exactly as on a laptop: it
+# talks only to localhost and only to a database whose name starts with
+# `scratch_`. It never reads DATABASE_URL, and none is set below.
+#
+# NO PASSWORD IS WRITTEN IN THIS FILE. The container's password is made by
+# the kit at run time and never printed. The seeded accounts' password is
+# made by the first step below, masked, and handed on through GITHUB_ENV —
+# which also stops `seed.mjs` from printing one into a log this repository's
+# visitors can read.
+name: Verify on PostgreSQL
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Read-only, like ci.yml. Nothing here comments, labels, pushes, releases or
+# deploys.
+permissions:
+  contents: read
+
+# A new push to the same pull request makes the previous run pointless.
+concurrency:
+  group: verify-on-postgres-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    # Measured locally: the migrations take a few minutes. Past this it is
+    # hung, not slow.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # The kit downloads nothing by itself (start-db refuses to pull). The
+      # image comes from here, once, by its fixed tag.
+      - name: Pull the PostgreSQL image
+        run: docker pull postgres:16-alpine
+
+      # One throwaway password for the seeded accounts, generated here, masked
+      # BEFORE it is written anywhere, and kept in the job's environment only.
+      - name: Make the accounts' password (masked)
+        run: |
+          pw="$(node -e "console.log(require('node:crypto').randomBytes(18).toString('base64url'))")"
+          echo "::add-mask::${pw}"
+          echo "KIT_PASSWORD=${pw}" >> "$GITHUB_ENV"
+
+      - name: Start the throwaway database
+        run: node scripts/verify-on-postgres/start-db.mjs
+
+      - name: Migrate
+        run: node scripts/verify-on-postgres/migrate.mjs
+
+      - name: Seed the scenario
+        run: node scripts/verify-on-postgres/seed.mjs
+
+      # The check itself. Exit 3 = the hand-out order differs from the list
+      # in scripts/verify-on-postgres/scenario.mjs; exit 2 = PostgreSQL or
+      # Prisma refused something — both are findings.
+      - name: Pull order (asserted)
+        run: node scripts/verify-on-postgres/pull-order.mjs --assert
+
+      # Always: a runner is thrown away, but a run that is cancelled or fails
+      # halfway should not be the reason nobody checks that the container
+      # goes. stop-db removes exactly the kit's container and its volume.
+      - name: Stop the throwaway database
+        if: always()
+        run: node scripts/verify-on-postgres/stop-db.mjs
