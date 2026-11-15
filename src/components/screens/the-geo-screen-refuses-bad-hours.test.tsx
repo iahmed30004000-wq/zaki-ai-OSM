@@ -116,7 +116,7 @@ describe('the working-hours fields', () => {
     edit(end, '22:00');
     await waitFor(() => expect(patches()).toHaveLength(1));
     expect(patches()[0]).toMatchObject({ url: '/api/geo/countries/c1', body: { workHoursEnd: '22:00' } });
-    expect(Object.keys(patches()[0].body)).toEqual(['workHoursEnd']);
+    expect(Object.keys(patches()[0].body ?? {})).toEqual(['workHoursEnd']);
     expect(end.value).toBe('22:00');
     expect(start.value).toBe('09:00');
     expect(screen.queryByText(WORK_HOURS_ORDER_MESSAGE)).toBeNull();
