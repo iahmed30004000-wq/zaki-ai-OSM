@@ -9,6 +9,7 @@ import {
   CADENCE_MORNING,
   CADENCE_START,
   CLOSED_WITHOUT_COUNT_WORDS,
+  cadenceCalOf,
   cadenceCardWords,
   cadenceCloses,
   cadenceDesk,
@@ -70,6 +71,21 @@ function upToFourth(c: CadenceCal, t4: Date) {
   const t3 = ms(t4, -48 * 3_600_000);
   return chain(c, [ms(t3, -150 * 60_000), ms(t3, -120 * 60_000), t3, t4]);
 }
+
+describe('cadenceCalOf: the one builder of the plan’s world', () => {
+  it('copies the floor, the timezone and the rest days — and nothing else of the country (never its work hours: #4’s clock is the planner’s fixed 10:00)', () => {
+    const country = { timezone: 'Asia/Amman', weekendDays: [5, 6], workHoursStart: '09:00', workHoursEnd: '17:00', code: 'JO' };
+    const built = cadenceCalOf(SINCE, country);
+    expect(built).toEqual({ since: SINCE, timeZone: 'Asia/Amman', restDays: [5, 6] });
+    expect(Object.keys(built).sort()).toEqual(['restDays', 'since', 'timeZone']);
+  });
+
+  it('a country without rest days (null, undefined, or a mock that lacks the field) → no rest days key value; an empty list stays empty', () => {
+    expect(cadenceCalOf(SINCE, { timezone: AMMAN }).restDays).toBeUndefined();
+    expect(cadenceCalOf(SINCE, { timezone: AMMAN, weekendDays: null }).restDays).toBeUndefined();
+    expect(cadenceCalOf(SINCE, { timezone: AMMAN, weekendDays: [] }).restDays).toEqual([]);
+  });
+});
 
 describe('the constants', () => {
   it('five attempts over two days, 30 minutes and 2 hours, 9–12 and 18–22 — and the switch-off limit is still 3', () => {

@@ -19,7 +19,7 @@ import type { BusinessCalendar } from '@/lib/business-calendar';
 import { countedRounds, roundsOn, workClock, type AttemptFact, type WorkClock } from '@/lib/no-answer-rounds';
 import { roundsSwitch } from '@/lib/no-answer-rounds-switch';
 import { cadenceSince } from '@/lib/no-answer-cadence-switch';
-import { CADENCE_LIMIT, cadenceCardWords, cadenceDesk, cadenceVerdict, closedCardWords } from '@/lib/no-answer-cadence';
+import { CADENCE_LIMIT, cadenceCalOf, cadenceCardWords, cadenceDesk, cadenceVerdict, closedCardWords } from '@/lib/no-answer-cadence';
 import { callProofOn } from '@/lib/call-proof-switch';
 import { callProofState } from '@/lib/call-proof';
 import {
@@ -347,7 +347,7 @@ export async function GET(request: Request) {
     // «جدول المحاولات» (step B) — the same switch as the proof, read for the DESK whoever's it is (a colleague's desk shows the same limit and the same numbers); null = off, and then every
     // line below is today's. With it on the returns mode comes with it, so the banner stays quiet, exactly as with the legacy mode.
     const cadenceAt = await cadenceSince(db, companyId);
-    const cadenceCal = cadenceAt ? { since: cadenceAt, timeZone: country.timezone } : null;
+    const cadenceCal = cadenceAt ? cadenceCalOf(cadenceAt, country) : null;
     const returnsMode = !!cadenceAt || (rounds && (await returnsModeOn(db, companyId, roundsSw)));
     // «واتساب بعد لا يرد» from the company's number for this country (`after-no-answer.ts`) — only on her own desk, the one with the sheet,
     // and only for whoever holds `whatsapp.send`: the send door asks it, and a button that answers 403 is not offered.

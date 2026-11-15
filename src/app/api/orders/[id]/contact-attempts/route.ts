@@ -19,7 +19,7 @@ import { assertCallProven, answerCallProofRefusal } from '@/lib/call-proof-guard
 import { callProofState } from '@/lib/call-proof';
 import { CALL_PROOF_WORDS } from '@/lib/call-proof-words';
 import { cadenceSince } from '@/lib/no-answer-cadence-switch';
-import { CADENCE_LIMIT, cadencePress, cadencePressWords } from '@/lib/no-answer-cadence';
+import { CADENCE_LIMIT, cadenceCalOf, cadencePress, cadencePressWords } from '@/lib/no-answer-cadence';
 import { MAX_TALK_S } from '@/lib/call-helper/core';
 
 /**
@@ -178,7 +178,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
      * went on — the floor of every count — or null; `cal` is what the pure plan needs of the world. Null, and every line below is today's, key for key.
      */
     const cadenceAt = proofOn ? await cadenceSince(db, companyId) : null;
-    const cal = cadenceAt ? { since: cadenceAt, timeZone: country.timezone } : null;
+    const cal = cadenceAt ? cadenceCalOf(cadenceAt, country) : null;
     let enteredDuration: number | null = null;
     if (proofOn && !guardedClass && durationSeconds !== undefined && durationSeconds !== null && durationSeconds !== '') {
       if (typeof durationSeconds !== 'number' || !Number.isInteger(durationSeconds) || durationSeconds < 0 || durationSeconds > MAX_TALK_S) {

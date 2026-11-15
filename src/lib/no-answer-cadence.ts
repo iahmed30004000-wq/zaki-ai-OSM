@@ -45,10 +45,20 @@ export const CADENCE_MORNING = { from: 9, to: 12 } as const;
 /** The fifth attempt: from the first `from`:00 after the fourth (the window's end is wording). */
 export const CADENCE_EVENING = { from: 18, to: 22 } as const;
 
-/** What the plan needs of the world: the floor (the switch's `enabledAt`) and the Country's timezone. */
+/** What the plan needs of the world: the floor (the switch's `enabledAt`), the Country's timezone and the Country's rest days. */
 export interface CadenceCal {
   since: Date;
   timeZone: string;
+  /** Country `weekendDays` (0 = Sunday … 6) — the local days no #4 / #5 due lands on. Absent or empty → none skipped. */
+  restDays?: readonly number[];
+}
+
+/**
+ * THE ONE BUILDER of the plan's world — the door and the desk both call it, so they can never disagree about the calendar. Only the Country's timezone and rest days are read:
+ * #4's clock is the planner's fixed 10:00, never the country's `workHoursStart` (it must not silently become 09:00 because a row still says so).
+ */
+export function cadenceCalOf(since: Date, country: { timezone: string; weekendDays?: readonly number[] | null }): CadenceCal {
+  return { since, timeZone: country.timezone, restDays: country.weekendDays ?? undefined };
 }
 
 /** Where an order stands in the plan: the COUNTED attempts, how many different local days they fall on, and when the next one counts (null before the first and after the fifth). */
