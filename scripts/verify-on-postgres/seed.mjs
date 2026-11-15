@@ -113,7 +113,8 @@ async function main() {
   const users = {};
   for (const [key, u] of Object.entries(USERS)) {
     const user = await prisma.user.create({
-      data: { companyId: companies[u.company].id, email: u.email, name: u.name, passwordHash, role: u.role, status: 'ACTIVE' },
+      // `tourDoneAt`: the first-run tour («هذه القائمة…») is dismissed for these accounts, or it covers the top of every screenshot.
+      data: { companyId: companies[u.company].id, email: u.email, name: u.name, passwordHash, role: u.role, status: 'ACTIVE', tourDoneAt: now },
     });
     users[key] = user;
     for (const code of u.countries) {
