@@ -26,7 +26,8 @@ import { ROUND_GAP_BUSINESS_MINUTES, roundsOn, type RoundsSwitch, type WorkClock
  *
  *   THE POOL, in the order a pull takes it (`pickNextCandidate`; «الأولوية دائما للطلبات الجديدة» stays):
  *     1 · held for her (a returning customer, a twin)    2 · NEW — nobody has rung — oldest first
- *     3 · a promise whose date arrived, nearest first     4 · a returned order whose ready-time arrived, oldest first
+ *     3 · a promise whose date arrived, nearest first     4 · a returned order whose ready-time arrived — with the cadence on: the
+ *         retry with the OLDEST due first (ties: the older order), then the rest oldest first; otherwise oldest first
  *     and a bucket nobody pulls from: «بينتظر وقتو» — a date not yet arrived, or a «لا يرد» not yet three working hours old.
  *
  * ── READY, WITH NO NEW COLUMN ──
@@ -118,6 +119,55 @@ export function cadenceReadyWhere(mode: { now: Date; cadence: { since: Date } })
       none: { result: { in: [...NO_ANSWER_RESULTS] }, createdAt: { gt: mode.cadence.since }, nextFollowUpAt: { gt: mode.now } },
     },
   };
+}
+
+/**
+ * THE LINES THAT RANK A RETRY (the planner's ruling 2: «الإعادات اللي حان موعدها بتترتّب بالموعد»). The same set `cadenceReadyWhere` holds an order by — a «لا يرد»-class line, logged
+ * after the floor, carrying a due — so the lines that make an order wait are the lines that say when it was due. `not: null`, never `gt`: the due of a READY order has passed.
+ */
+export function cadenceDueLineWhere(since: Date) {
+  return { result: { in: [...NO_ANSWER_RESULTS] }, createdAt: { gt: since }, nextFollowUpAt: { not: null } };
+}
+
+export interface RetryLine {
+  result: string;
+  createdAt: Date | string;
+  nextFollowUpAt?: Date | string | null;
+}
+export interface RetryRow {
+  id: string;
+  createdAt: Date | string;
+  contactAttempts: readonly RetryLine[];
+}
+
+/**
+ * An order's retry due, in ms: the LATEST due on the lines above — the due the last COUNTED press wrote (dues grow with every counted press; an early press and the fifth write none).
+ * Null when no line qualifies. The predicate is applied again here on purpose: a test double that ignores `select` hands over every line, and on Prisma it is a no-op.
+ *
+ * ⚠️ «The latest due» equals «the due of the last counted line» only while dues grow with every counted press (`dueAfter`, `no-answer-cadence.ts`). If a rule ever lets a later
+ * counted press carry an EARLIER due, this must become «the due of the latest counted line by `attemptNumber`».
+ */
+export function retryDueOf(lines: readonly RetryLine[], since: Date): number | null {
+  let latest: number | null = null;
+  for (const l of lines) {
+    if (!(NO_ANSWER_RESULTS as readonly string[]).includes(l.result) || l.nextFollowUpAt == null) continue;
+    if (!(new Date(l.createdAt).getTime() > since.getTime())) continue;
+    const due = new Date(l.nextFollowUpAt).getTime();
+    if (!Number.isNaN(due) && (latest === null || due > latest)) latest = due;
+  }
+  return latest;
+}
+
+/** The id the pull gives first among the retries: the oldest due; equal due → the older order → the smaller id. Null when no row carries a due. */
+export function firstRetryByDue(rows: readonly RetryRow[], since: Date): string | null {
+  let best: { id: string; due: number; born: number } | null = null;
+  for (const r of rows) {
+    const due = retryDueOf(r.contactAttempts, since);
+    if (due === null) continue;
+    const born = new Date(r.createdAt).getTime();
+    if (best === null || due < best.due || (due === best.due && (born < best.born || (born === best.born && r.id < best.id)))) best = { id: r.id, due, born };
+  }
+  return best ? best.id : null;
 }
 
 /** The «لا يرد» clause of «ready»: the plan's due when the cadence is on, the three working hours otherwise. */
