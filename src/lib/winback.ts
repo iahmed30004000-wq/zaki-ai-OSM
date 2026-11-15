@@ -1,4 +1,4 @@
-import { REJECTION_REASONS, REJECTION_REASON_AR } from './confirmation-workflow';
+import { NO_ANSWER_CLOSE, REJECTION_REASONS, REJECTION_REASON_AR } from './confirmation-workflow';
 import { DELIVERY_FAILURE_REASON_LABELS, RETURN_REASON_LABELS } from './shipping-workflow';
 
 /**
@@ -87,6 +87,18 @@ export const SELECTABLE_WINBACK_REASONS: readonly string[] = [...WINBACK_REASONS
  * into ringing somebody who already has the parcel is not a rule worth having.
  */
 export const NEVER_WINBACK_REASONS = ['DUPLICATE_ORDER', 'WRONG_NUMBER', 'FAKE_ORDER', 'MODERATOR_DATA_ERROR'] as const;
+
+/**
+ * ONE REASON, TWO STORED CODES. «Closed because nobody answered» is one winback reason whether the rule that closed it said three or five: the rule's tick (and every rule
+ * already saved, which names only the old code) stands for both. A code listed here rides on the code it maps to — asked of the rule, never stored in it.
+ */
+export const WINBACK_RIDERS: Readonly<Record<string, string>> = { [NO_ANSWER_CLOSE.five.reason]: NO_ANSWER_CLOSE.three.reason };
+
+/** The stored codes a rule's reasons stand for: what it lists, plus every code riding on one it lists. The verdict and the database filter both ask THIS. */
+export const winbackCodes = (reasons: readonly string[]): string[] => [
+  ...reasons,
+  ...Object.keys(WINBACK_RIDERS).filter((code) => reasons.includes(WINBACK_RIDERS[code])),
+];
 
 /** And why each of the others is left alone — in the reader's language, on the screen. */
 export const NOT_WINBACK_AR: Record<string, string> = {
@@ -457,7 +469,7 @@ export function winbackVerdict(order: WinbackSource, now: Date, rule: WinbackRul
   // A return is not gated by the rule's reasons — the courier's feed records none, so gating it would show
   // nothing — but a return whose order was once marked a duplicate, a wrong number, a fake or an entry error
   // has nobody to ring after it came back either.
-  if (back ? neverCalled : !reason || neverCalled || !rule.reasons.includes(reason)) {
+  if (back ? neverCalled : !reason || neverCalled || !winbackCodes(rule.reasons).includes(reason)) {
     return {
       eligible: false,
       code: 'REASON_NOT_WINBACK',

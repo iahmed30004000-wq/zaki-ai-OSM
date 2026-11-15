@@ -66,6 +66,9 @@ export const REJECTION_REASONS = [
   // Its own distinct reason: the third no-answer closes the order by rule,
   // so it is never mixed with a customer's refusal in any report.
   'NO_ANSWER_3_ATTEMPTS',
+  // The same fact under the five-attempt plan («جدول المحاولات»): the fifth COUNTED «لا يرد» over two local days. Its own code, so nobody
+  // reads «three» for five. A reader of «closed because nobody answered» asks `NO_ANSWER_CLOSE` (below), never one of the two literals.
+  'NO_ANSWER_5_ATTEMPTS',
   // Voiding an entry issue wrote FAKE_ORDER, and an entry issue is a
   // MODERATOR'S MISTAKE — a wrong number typed, a product mis-picked. Calling
   // it a fake order accuses a customer of something they did not do, and
@@ -89,13 +92,13 @@ export const HUMAN_ONLY_REJECTION_REASONS = ['OTHER'] as const;
 /**
  * REASONS ONLY THE SYSTEM EVER WRITES.
  *
- * Neither is a choice anybody makes: the first is what three unanswered calls
- * come to, the second is what voiding an entry issue means. They are real
- * stored values that every report must be able to read — and offering them in
- * the picker would invite an agent to close an order as «our own mistake»
- * because it is the shortest way out of a hard call.
+ * None is a choice anybody makes: two are what unanswered calls come to (three,
+ * or five under the plan), the third is what voiding an entry issue means. They
+ * are real stored values that every report must be able to read — and offering
+ * them in the picker would invite an agent to close an order as «our own
+ * mistake» because it is the shortest way out of a hard call.
  */
-export const SYSTEM_ONLY_REJECTION_REASONS = ['NO_ANSWER_3_ATTEMPTS', 'MODERATOR_DATA_ERROR'] as const;
+export const SYSTEM_ONLY_REJECTION_REASONS = ['NO_ANSWER_3_ATTEMPTS', 'NO_ANSWER_5_ATTEMPTS', 'MODERATOR_DATA_ERROR'] as const;
 
 /** What a person may choose — the whole list, less what the system owns. */
 export const PICKABLE_REJECTION_REASONS = REJECTION_REASONS.filter(
@@ -117,7 +120,7 @@ export const PICKABLE_REJECTION_REASONS = REJECTION_REASONS.filter(
  *     nobody can pick — a caller of the API could close any held order with it and no attempt.
  *   · `OTHER`, and every reason that is the customer's own word (price, changed mind, does not want it, found it
  *     cheaper) stay locked: they need the conversation.
- *   · `NO_ANSWER_3_ATTEMPTS` is the system's, and it follows three attempts by definition.
+ *   · `NO_ANSWER_3_ATTEMPTS` / `NO_ANSWER_5_ATTEMPTS` are the system's (three / five attempts), and each follows its attempts by definition.
  */
 export const NO_CONVERSATION_REJECTION_REASONS = [
   'DUPLICATE_ORDER', 'WRONG_NUMBER', 'OUT_OF_SERVICE_AREA',
@@ -181,12 +184,18 @@ export const REJECTION_REASON_AR: Record<string, string> = {
   OUT_OF_SERVICE_AREA: 'خارج نطاق التغطية',
   FOUND_CHEAPER_ELSEWHERE: 'وجدها أرخص عند غيرنا',
   NO_ANSWER_3_ATTEMPTS: 'أُغلق بعد ثلاث محاولات بلا ردّ',
+  NO_ANSWER_5_ATTEMPTS: 'أُغلق بعد خمس محاولات بلا ردّ',
   MODERATOR_DATA_ERROR: 'خطأ إدخال من المُعدِّل',
   OTHER: 'سبب آخر',
 };
 
 /** No-answer attempts before the order closes itself (contract: 1/2/3). */
 export const NO_ANSWER_LIMIT = 3;
+/** HOW THE NO-ANSWER RULE CLOSES AN ORDER — per rule: the code it stores and the status-log note it writes. `three` = today's rule (switch off, rounds); `five` = the plan. */
+export const NO_ANSWER_CLOSE = {
+  three: { reason: 'NO_ANSWER_3_ATTEMPTS', note: 'AUTO_CLOSE_NO_ANSWER_3_ATTEMPTS' },
+  five: { reason: 'NO_ANSWER_5_ATTEMPTS', note: 'AUTO_CLOSE_NO_ANSWER_5_ATTEMPTS' },
+} as const;
 export type RejectionReason = (typeof REJECTION_REASONS)[number];
 
 /** Follow-up reasons */

@@ -10,10 +10,12 @@ import {
   WINBACK_LOOKBACK_DAYS,
   WINBACK_MAX_DISCOUNT_SHARE,
   WINBACK_REASONS,
+  WINBACK_RIDERS,
   maxWinbackDiscount,
   parseWinbackRule,
   ruleSentence,
   validateWinbackRule,
+  winbackCodes,
   winbackVerdict,
   type WinbackRule,
   type WinbackSource,
@@ -105,13 +107,56 @@ describe('the defaults are the old constants', () => {
 
 describe('every rejection reason is classified exactly once', () => {
   it('— the four it was built for, the three the owner may choose, the four nobody may: the whole catalogue, with no overlap', () => {
-    const all = [...WINBACK_REASONS, ...OPTIONAL_WINBACK_REASONS, ...NEVER_WINBACK_REASONS];
+    // The plan's five-attempt close is a fourth KIND: it rides on its host («ثلاث») and is never stored in a rule.
+    const all = [...WINBACK_REASONS, ...OPTIONAL_WINBACK_REASONS, ...NEVER_WINBACK_REASONS, ...Object.keys(WINBACK_RIDERS)];
     expect([...all].sort()).toEqual([...REJECTION_REASONS].sort());
     expect(new Set(all).size).toBe(all.length);
     expect(SELECTABLE_WINBACK_REASONS).toHaveLength(7);
     for (const r of NEVER_WINBACK_REASONS) expect(SELECTABLE_WINBACK_REASONS, r).not.toContain(r);
     // A reason added to the workflow tomorrow fails here until somebody decides which kind it is.
     for (const r of REJECTION_REASONS) expect(REJECTION_REASON_AR[r], r).toBeTruthy();
+  });
+});
+
+/**
+ * «CLOSED BECAUSE NOBODY ANSWERED» IS ONE WINBACK REASON, WRITTEN UNDER TWO CODES.
+ *
+ * The plan closes under `NO_ANSWER_5_ATTEMPTS`; the switch-off rule and the rounds close under
+ * `NO_ANSWER_3_ATTEMPTS`. A rule saved before the plan existed lists only the old code, and
+ * `parseWinbackRule` returns the STORED list — so adding the new code to the editable vocabulary
+ * would drop every plan-closed order from «ملغاة سابقاً» for a shop that ever pressed «احفظ القاعدة».
+ * The new code rides on its host instead: asked of the rule, never stored in it.
+ */
+describe('a code that rides on a winback reason', () => {
+  const THREE = 'NO_ANSWER_3_ATTEMPTS';
+  const FIVE = 'NO_ANSWER_5_ATTEMPTS';
+
+  it('rides on the old code, and is never itself selectable or stored', () => {
+    expect(WINBACK_RIDERS).toEqual({ [FIVE]: THREE });
+    expect(SELECTABLE_WINBACK_REASONS).not.toContain(FIVE);
+    expect(parseWinbackRule({ reasons: [THREE, FIVE] }).reasons).toEqual([THREE]);
+  });
+
+  it('winbackCodes: the rider is added iff its host is listed — once, after what the rule lists', () => {
+    expect(winbackCodes([THREE])).toEqual([THREE, FIVE]);
+    expect(winbackCodes(['PRICE_TOO_HIGH', THREE])).toEqual(['PRICE_TOO_HIGH', THREE, FIVE]);
+    expect(winbackCodes(['PRICE_TOO_HIGH'])).toEqual(['PRICE_TOO_HIGH']);
+    expect(winbackCodes([])).toEqual([]);
+    const codes = winbackCodes(DEFAULT_WINBACK_RULE.reasons);
+    expect(new Set(codes).size).toBe(codes.length);
+    expect(codes).toEqual(expect.arrayContaining([THREE, FIVE]));
+  });
+
+  it('the verdict reads both writings: default rule, and a rule SAVED with only the old code', () => {
+    for (const r of [DEFAULT_WINBACK_RULE, rule({ reasons: [THREE] }), rule({ reasons: ['PRICE_TOO_HIGH', THREE] })]) {
+      expect(code(verdict({ rejectionReason: THREE }, r)), `old under ${r.reasons}`).toBe('ELIGIBLE');
+      expect(code(verdict({ rejectionReason: FIVE }, r)), `five under ${r.reasons}`).toBe('ELIGIBLE');
+    }
+  });
+
+  it('and a rule WITHOUT the host skips both writings, with the same sentence', () => {
+    const without = rule({ reasons: ['PRICE_TOO_HIGH', 'CUSTOMER_CHANGED_MIND'] });
+    for (const reason of [THREE, FIVE]) expect(code(verdict({ rejectionReason: reason }, without)), reason).toBe('REASON_NOT_WINBACK');
   });
 });
 

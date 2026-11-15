@@ -80,6 +80,8 @@ const BEFORE_FAULT: Record<string, Fault> = {
   // Three calls, no answer. Nothing about the customer is known to be
   // wrong — we simply never got them on the line.
   NO_ANSWER_3_ATTEMPTS: 'OUR_REACH',
+  // Five counted «لا يرد» over two days («جدول المحاولات»): the same defect, a longer chase.
+  NO_ANSWER_5_ATTEMPTS: 'OUR_REACH',
   FAKE_ORDER: 'OUTSIDE',
   OUT_OF_SERVICE_AREA: 'OUTSIDE',
   OTHER: 'UNKNOWN',
