@@ -240,7 +240,11 @@ export function Sidebar({
           shows on the rail too, where the label does not: a
           number is the only thing a folded menu can say.
         */}
-        {(byRoute[route.path] || (route.path === CARTS_PATH && newCarts)) ? (
+        {/* «السلات المهجورة» counts its NEW carts the same way; a
+            zero on either side is no badge. */}
+        {(byRoute[route.path] ? (
+          byRoute[route.path]
+        ) : route.path === CARTS_PATH ? newCarts : 0) ? (
           <span
             /* One badge, not two. A tinted chip carrying the
                accent as its text reads on the row you stand on
