@@ -10,7 +10,7 @@
  *   2. Creates: two companies (the switch ON with `enabledAt` three days back / OFF), two countries for the ON company (Syria-like: Asia/Damascus,
  *      `weekendDays` [], 10:00-22:00; Jordan-like: Asia/Amman, [5,6], 09:00-17:00) and one Syria-like for the OFF one, a store per country,
  *      regions, a courier with fees, one product per store, an admin and confirmation agents, and the scenario orders with their «لا يرد» lines.
- *   3. Re-runnable: it first removes the kit's own companies (name starts with `KIT `) and their users, then writes again with fresh times.
+ *   3. Re-runnable: it first empties the scratch database (all tables but `_prisma_migrations` and the system roles) and writes again with fresh times.
  *   4. The password of the test accounts is `KIT_PASSWORD` if the caller chose one, else generated here, and PRINTED ONCE on the console.
  *      It is written to no file.
  *   Offers are not created (`an-offer-price-has-one-door.test.ts` names every script that writes one, and this is not meant to be one).
@@ -30,31 +30,39 @@ const url = scratchUrl();
 assertScratchUrl(url);
 const prisma = new PrismaClient({ datasourceUrl: url, log: ['error'] });
 
-const KIT_PREFIX = 'KIT ';
 const now = new Date();
 
+/**
+ * Starts the scratch database clean: every table is emptied EXCEPT `_prisma_migrations` and the system roles the migrations write (`roles` with no
+ * company, with their `role_permissions` and `role_permission_defaults`) — the permission engine needs those, and nothing else is seeded by a migration.
+ *
+ * One TRUNCATE of every table at once, not a walk of DELETEs: after the app has run, a login leaves audit rows (the audit trail is append-only at the
+ * database — a row trigger refuses UPDATE and DELETE, and deleting a user would SET NULL on them), attendance marks and sessions, and each new table
+ * is another RESTRICT edge. A statement-level TRUNCATE fires no row trigger and needs no order. This is the throwaway database (gated above).
+ */
 async function reset() {
-  const companies = await prisma.company.findMany({ where: { name: { startsWith: KIT_PREFIX } }, select: { id: true } });
-  if (companies.length === 0) return 0;
-  const companyIds = companies.map((c) => c.id);
-  // Children of the orders cascade; the RESTRICT edges (an order → its store/country/region/customer, an item → its product, a log → its user)
-  // need the explicit order below.
-  await prisma.order.deleteMany({ where: { companyId: { in: companyIds } } });
-  await prisma.customer.deleteMany({ where: { companyId: { in: companyIds } } });
-  await prisma.product.deleteMany({ where: { companyId: { in: companyIds } } });
-  await prisma.deliveryFee.deleteMany({ where: { companyId: { in: companyIds } } });
-  await prisma.deliveryProvider.deleteMany({ where: { companyId: { in: companyIds } } });
-  await prisma.store.deleteMany({ where: { companyId: { in: companyIds } } });
-  await prisma.region.deleteMany({ where: { country: { companyId: { in: companyIds } } } });
-  await prisma.country.deleteMany({ where: { companyId: { in: companyIds } } });
-  await prisma.user.deleteMany({ where: { companyId: { in: companyIds } } });
-  await prisma.company.deleteMany({ where: { id: { in: companyIds } } });
-  return companies.length;
+  const tables = (await prisma.$queryRaw`SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> '_prisma_migrations' ORDER BY tablename`).map((r) => r.tablename);
+  const before = await prisma.role.count({ where: { companyId: null } });
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRawUnsafe('CREATE TEMP TABLE _kit_roles ON COMMIT DROP AS SELECT * FROM roles WHERE "companyId" IS NULL');
+      await tx.$executeRawUnsafe('CREATE TEMP TABLE _kit_role_permissions ON COMMIT DROP AS SELECT * FROM role_permissions WHERE "roleId" IN (SELECT id FROM _kit_roles)');
+      await tx.$executeRawUnsafe('CREATE TEMP TABLE _kit_role_defaults ON COMMIT DROP AS SELECT * FROM role_permission_defaults WHERE "roleId" IN (SELECT id FROM _kit_roles)');
+      await tx.$executeRawUnsafe(`TRUNCATE TABLE ${tables.map((t) => `"${t}"`).join(', ')}`);
+      await tx.$executeRawUnsafe('INSERT INTO roles SELECT * FROM _kit_roles');
+      await tx.$executeRawUnsafe('INSERT INTO role_permissions SELECT * FROM _kit_role_permissions');
+      await tx.$executeRawUnsafe('INSERT INTO role_permission_defaults SELECT * FROM _kit_role_defaults');
+    },
+    { timeout: 60_000, maxWait: 30_000 }
+  );
+  const after = await prisma.role.count({ where: { companyId: null } });
+  if (after !== before) throw new Error(`system roles changed during the reset: ${before} → ${after}`);
+  return tables.length;
 }
 
 async function main() {
-  const removed = await reset();
-  if (removed) console.log(`[seed] انحذف ${removed} شركة KIT قديمة وكل ما تحتها.`);
+  const wiped = await reset();
+  console.log(`[seed] القاعدة التجريبية انمسحت (${wiped} جدول؛ ما عدا migrations والأدوار النظامية) وبتنكتب من جديد.`);
 
   const generated = !process.env.KIT_PASSWORD;
   const password = process.env.KIT_PASSWORD || randomBytes(12).toString('base64url');
