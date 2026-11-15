@@ -10,10 +10,11 @@ import { useCan } from '@/hooks/useCan';
  * «إثبات المكالمات وجدول المحاولات (تجريبي)» — THE OWNER'S SWITCH FOR PROVABLE CALL ATTEMPTS (`call-proof-switch.ts`, step A of Confirmation Center v2).
  *
  * Off, nothing changes: «لا يرد» can be pressed at any time. On, «لا يرد» (and «مشغول» and «مسكّر») opens only after the agent pressed «اتصال» on that order and
- * thirty seconds went by; the server refuses it otherwise and the button says why. Later (step B) the same switch brings the five-attempt close and the two-day schedule.
+ * thirty seconds went by; the server refuses it otherwise and the button says why. And (step B) the same switch brings the five-attempt plan over two days — and with it the returns mode
+ * («الطلب يرجع للطابور فوراً»: the hand limit, the idle release), which the owner cannot see from the switch's name, so the sentence says it.
  * Seen by whoever opens the settings; turned by whoever holds `settings.manage` — the server asks it again.
  *
- * Plain Arabic, three short lines.
+ * Plain Arabic, five short lines. The numbers in it are held to the constants by `the-call-proof-card-says-what-the-switch-changes.test.tsx`.
  */
 interface CallProofView {
   enabled: boolean;
@@ -70,7 +71,11 @@ export function CallProofCard() {
             <br />
             كل مكالمة بتنسجّل بمدتها (من ضغطة «اتصال» لحد تسجيل النتيجة)، وكل رفض بينكتب بسجل المراجعة. هاد إثبات إنو في ضغطة ووقت مرّ، مش إثبات إنو صارت مكالمة.
             <br />
-            الطلب اللي بإيد موظفة بدون ضغطة «اتصال» لحظة التشغيل بيقفل عندها «لا يرد» لحد ما تضغط «اتصال» — شغّله برّا الدوام. لاحقاً نفس المفتاح بيشغّل 5 محاولات على يومين. مطفي = الشغل زي ما هو.
+            الطلب اللي بإيد موظفة بدون ضغطة «اتصال» لحظة التشغيل بيقفل عندها «لا يرد» لحد ما تضغط «اتصال» — شغّله برّا الدوام.
+            <br />
+            ونفس المفتاح بيشغّل جدول المحاولات: «لا يرد» بتصير 5 محاولات على يومين — الأولى هلّق، التانية بعد نص ساعة، التالتة بعد ساعتين، الرابعة تاني يوم بين 9 و12، والخامسة بين 6 و10 مسا. بعد كل محاولة محسوبة بيرجع الطلب للطابور وبيجهز بموعدو، والضغطة قبل موعدها بتنسجّل بس ما بتنحسب. المحاولة الخامسة (على يومين) بتسكّر الطلب لحالو وبيروح لقائمة «ملغاة سابقاً». اللي انسجّل قبل التشغيل ما بينحسب.
+            <br />
+            وبيشغّل معو «الطلب يرجع للطابور فوراً»: الموظفة ما بتمسك أكتر من 5 طلبات، والطلب اللي ما انسجّلت عليه حركة 30 دقيقة دوام بيرجع للطابور لحاله، وأول ما تشغّلو بيرجّع الطلبات المتروكة تدريجياً. ما في واتساب تلقائي. مطفي = الشغل زي ما هو.
           </>
         }
       />
