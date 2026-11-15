@@ -1,5 +1,6 @@
 import { zonedParts, zonedTimeToInstant } from './business-calendar';
 import { NO_ANSWER_RESULTS } from './confirmation-workflow';
+import { parseHhMm } from './employee-shift';
 import type { AttemptFact } from './no-answer-rounds';
 import { verdictFromCount, type DueVerdict } from './work-first';
 
@@ -12,17 +13,27 @@ import { verdictFromCount, type DueVerdict } from './work-first';
  *
  * ── THE PLAN (the owner's text and the planner's rulings of 15/11; wall clock in the COUNTRY's timezone) ──
  *
- *   #1  now                                  → #2 is due 30 minutes later (elapsed time: it crosses midnight)
- *   #2  from its due on                      → #3 is due 2 hours later (elapsed time, so a DST jump inside the two hours does not move it)
- *   #3  from its due on                      → #4 is due at 10:00 local on the first WORKING day, and not before 8 HOURS (elapsed; exactly 8 counts) after #3
+ *   #1  now                                  → #2 is due 30 minutes later (elapsed time), brought INSIDE WORK TIME (below)
+ *   #2  from its due on                      → #3 is due 2 hours later (elapsed time, so a DST jump inside the two hours does not move it), brought inside work time the same way
+ *   #3  from its due on                      → #4 is due at the Country's workHoursStart on the first WORKING day, and not before 8 HOURS (elapsed; exactly 8 counts) after #3
  *   #4  from its due on                      → #5 is due at the first 18:00 local STRICTLY after #4 on a working day, and not before 3 HOURS (elapsed) after #4
  *   #5  → with attempts on two local days or more, the fifth COUNTED press closes the order (the door does that, `endOrder`; here it is `cadenceCloses`).
  *
- * REST DAYS are the Country's `weekendDays` (0 = Sunday … 6), read through `cadenceCalOf`; an empty list skips nothing. They move the two day-anchored dues only (#4's day, #5's day):
- * never the 30-minute and 2-hour gaps, which are elapsed time from a real press. #4's clock is the planner's 10:00 — a constant, NOT the Country's `workHoursStart` — and #5's is 18:00.
- * The 8 h floor makes #4 land on the next local day for a #3 pressed after 02:00 (a #3 at 02:00:00.000 waits 8 h, 02:00:00.001 waits 32 h): the literal «at least 8 hours», not a bug.
+ * WORK TIME (the planner's ruling 12 of 15/11 — «no work after 22:00») is a working day (not one of the Country's rest days) AND a local clock in [workHoursStart, workHoursEnd): the end is
+ * EXCLUSIVE, a raw due exactly at the start is inside. The raw due of #2 and #3 (the previous COUNTED press + 30 min / + 2 h, elapsed) that falls outside it becomes the FIRST COMING
+ * workHoursStart on a working day at or after it: before the start on a working day → that day's start; at or after the end, or on a rest day → the next working day's start.
+ * `cadenceWorkWindow` is the ONE place that reads the two hours, with its fallbacks (10:00 and 22:00).
  *
- * FIVE ATTEMPTS OVER TWO LOCAL DAYS stays true on a 25-hour DST day through a guard: #4 never lands on the local day of #1 (the next working-day start strictly after it is taken instead).
+ * REST DAYS are the Country's `weekendDays` (0 = Sunday … 6), read through `cadenceCalOf`; an empty list skips nothing. They move every day-anchored due — #2 and #3 through «work time», #4 and
+ * #5 through their own day — but never the elapsed gaps themselves: a due that lands inside work time is exactly press + 30 min / + 2 h.
+ * #4's clock is the Country's `workHoursStart` (ruling 1; 10:00 when the row has none) and #5's is 18:00. #5 is NOT moved into the window (ruling 3, literal: max(first 18:00 after #4 on a working
+ * day, #4 + 3 h)), so a country whose work ends before 18:00 gets a #5 outside its hours — a question for the planner, not something decided here.
+ * The 8 h floor still makes #4 land on the next local day for a #3 that was PRESSED after 02:00 (the due of #3 is inside work time, but a press may come at any hour): a #3 at 02:00:00.000
+ * waits 8 h for a 10:00 start, 02:00:00.001 waits 32 h — the literal «at least 8 hours», not a bug.
+ *
+ * FIVE ATTEMPTS OVER TWO LOCAL DAYS holds on a 25-hour DST day through a guard: #4 never lands on the local day of #1 (the next working-day start strictly after it is taken instead). With #2 and #3
+ * inside work time #4 is always on a later day than #1 by construction (#3 is not before the start of work, so #3 + 8 h is after that day's start), so the guard cannot fire through the steps any
+ * more; it stays — the planner confirmed it (ruling 4 of 15/11) — as defence in depth for a state that did not come from them.
  *
  * A due that was missed stays pullable (overdue) and never turns into an attempt by itself. The desk REPLAYS the stored lines with the CURRENT settings while the pool reads the due
  * STORED on the line, so changing the Country's rest days while the key is on can make the two disagree for orders in flight, until their next press.
@@ -49,25 +60,50 @@ export const CADENCE_MIN_DAYS = 2;
 export const CADENCE_GAPS_MS = { afterFirst: 1_800_000, afterSecond: 7_200_000 } as const;
 /** Minimum ELAPSED time before the 4th / 5th may count: 8 h after #3 (planner 15/11, ruling 4), 3 h after #4 (ruling 3). */
 export const CADENCE_FLOORS_MS = { beforeFourth: 28_800_000, beforeFifth: 10_800_000 } as const;
-/** #4's clock: the planner's 10:00 — a constant, never the Country's `workHoursStart`. */
+/** The start of work when the Country's `workHoursStart` is missing or unreadable (the planner's 10:00; Syria's live row becomes 10:00-22:00). #4 is due at the start. */
 export const CADENCE_WORKDAY_START = '10:00';
+/** The end of work (exclusive) when the Country's `workHoursEnd` is missing or unreadable: «no work after 22:00» (planner, ruling 12 of 15/11). */
+export const CADENCE_WORKDAY_END = '22:00';
 /** #5's anchor: 18:00 local, on a working day. */
 export const CADENCE_EVENING_FROM = '18:00';
 
-/** What the plan needs of the world: the floor (the switch's `enabledAt`), the Country's timezone and the Country's rest days. */
+/** What the plan needs of the world: the floor (the switch's `enabledAt`), the Country's timezone, rest days and work hours. */
 export interface CadenceCal {
   since: Date;
   timeZone: string;
-  /** Country `weekendDays` (0 = Sunday … 6) — the local days no #4 / #5 due lands on. Absent or empty → none skipped. */
+  /** Country `weekendDays` (0 = Sunday … 6) — the local days that are not work days. Absent or empty → none skipped. */
   restDays?: readonly number[];
+  /** Country `workHoursStart` / `workHoursEnd` («HH:mm», local) — read through `cadenceWorkWindow`, which falls back to 10:00 / 22:00. Absent → the fallbacks. */
+  workHoursStart?: string | null;
+  workHoursEnd?: string | null;
 }
 
 /**
- * THE ONE BUILDER of the plan's world — the door and the desk both call it, so they can never disagree about the calendar. Only the Country's timezone and rest days are read:
- * #4's clock is `CADENCE_WORKDAY_START` (the planner's fixed 10:00), never the country's `workHoursStart` (it must not silently become 09:00 because a row still says so).
+ * THE WORK WINDOW of a local day — the ONE place the Country's two hours are read. Each value goes through the existing `parseHhMm` (`employee-shift.ts`); one that is missing or
+ * unreadable falls back to its own constant (10:00 / 22:00). Then, if the end is not AFTER the start — an overnight shift («22:00-06:00»), equal hours, or garbage on one side — BOTH ends fall back
+ * to the constants: a window that wraps midnight has no meaning for a plan that is due «inside work time», and half of one would be worse than none.
  */
-export function cadenceCalOf(since: Date, country: { timezone: string; weekendDays?: readonly number[] | null }): CadenceCal {
-  return { since, timeZone: country.timezone, restDays: country.weekendDays ?? undefined };
+export function cadenceWorkWindow(start: unknown, end: unknown): { start: string; end: string } {
+  const from = parseHhMm(start) ?? CADENCE_WORKDAY_START;
+  const to = parseHhMm(end) ?? CADENCE_WORKDAY_END;
+  return to > from ? { start: from, end: to } : { start: CADENCE_WORKDAY_START, end: CADENCE_WORKDAY_END };
+}
+
+/**
+ * THE ONE BUILDER of the plan's world — the door and the desk both call it, so they can never disagree about the calendar. The Country's timezone, rest days and work hours are read, as they
+ * are (the window's fallbacks live in `cadenceWorkWindow`, so a hand-built calendar gets them too): #4 is due at the start of work, #2 and #3 inside it.
+ */
+export function cadenceCalOf(
+  since: Date,
+  country: { timezone: string; weekendDays?: readonly number[] | null; workHoursStart?: string | null; workHoursEnd?: string | null }
+): CadenceCal {
+  return {
+    since,
+    timeZone: country.timezone,
+    restDays: country.weekendDays ?? undefined,
+    workHoursStart: country.workHoursStart ?? undefined,
+    workHoursEnd: country.workHoursEnd ?? undefined,
+  };
 }
 
 /** Where an order stands in the plan: the COUNTED attempts, how many different local days they fall on, and when the next one counts (null before the first and after the fifth). */
@@ -89,7 +125,7 @@ function dayKey(at: Date, timeZone: string): string {
 
 const DAY_MS = 86_400_000;
 
-/** A wall clock «HH:mm» of the plan's own constants, as the two numbers `zonedTimeToInstant` takes. */
+/** A wall clock «HH:mm» that already went through `parseHhMm` (the window's, or the plan's own constants), as the two numbers `zonedTimeToInstant` takes. */
 const clockOf = (hhmm: string): { hour: number; minute: number } => ({ hour: Number(hhmm.slice(0, 2)), minute: Number(hhmm.slice(3)) });
 
 /** The rest days as a set: whatever is not a weekday number is ignored; no days, or all seven (nowhere to skip to), skip nothing. */
@@ -116,20 +152,37 @@ function firstClockOnWorkday(from: Date, clock: { hour: number; minute: number }
 }
 
 /**
+ * Is this instant WORK TIME: a local day that is not a rest day, at a local clock in [start, end) — the end exclusive, the start inclusive. The clock is read to the minute, and both edges are
+ * whole minutes, so 09:59:59.999 is before the start and 21:59:59.999 is still inside an end of 22:00.
+ */
+function insideWorkTime(at: Date, window: { start: string; end: string }, rest: ReadonlySet<number>, timeZone: string): boolean {
+  const p = zonedParts(at, timeZone);
+  if (rest.has(p.weekday)) return false;
+  const minutes = p.hour * 60 + p.minute;
+  const from = clockOf(window.start);
+  const to = clockOf(window.end);
+  return minutes >= from.hour * 60 + from.minute && minutes < to.hour * 60 + to.minute;
+}
+
+/**
  * From when the NEXT attempt counts. `times` are the COUNTED attempts INCLUDING the one being decided (1…4 of them); the last is the one the due follows.
  * An invalid IANA zone throws RangeError from Intl, exactly as `workClock` does for the rounds: the door lets its transaction fail rather than guess.
  */
 function dueAfter(times: readonly Date[], cal: CadenceCal): Date {
   const counted = times.length;
   const at = times[counted - 1];
-  if (counted === 1) return new Date(at.getTime() + CADENCE_GAPS_MS.afterFirst);
-  if (counted === 2) return new Date(at.getTime() + CADENCE_GAPS_MS.afterSecond);
   const rest = restSet(cal.restDays);
+  const window = cadenceWorkWindow(cal.workHoursStart, cal.workHoursEnd);
+  const start = clockOf(window.start);
+  if (counted <= 2) {
+    // #2 and #3: the elapsed gap from the last counted press, brought INSIDE work time — a due already inside it is exactly press + gap, otherwise the first coming start of work.
+    const raw = new Date(at.getTime() + (counted === 1 ? CADENCE_GAPS_MS.afterFirst : CADENCE_GAPS_MS.afterSecond));
+    return insideWorkTime(raw, window, rest, cal.timeZone) ? raw : firstClockOnWorkday(raw, start, rest, false, cal.timeZone);
+  }
   if (counted === 3) {
-    // 10:00 local on the first working day at least 8 hours (elapsed) after #3 — `>=`: exactly 8 hours counts.
-    const start = clockOf(CADENCE_WORKDAY_START);
+    // The Country's start of work on the first working day at least 8 hours (elapsed) after #3 — `>=`: exactly 8 hours counts.
     const due = firstClockOnWorkday(new Date(at.getTime() + CADENCE_FLOORS_MS.beforeFourth), start, rest, false, cal.timeZone);
-    // The first-day guard: five attempts over two local days must stay true on a 25-hour DST day, so #4 is never on #1's local day (only a lengthened day can ever do that).
+    // The first-day guard: five attempts over two local days must stay true on a 25-hour DST day, so #4 is never on #1's local day (defence in depth now: see the header — #2 and #3 inside work time already put #4 a day on).
     return dayKey(due, cal.timeZone) === dayKey(times[0], cal.timeZone) ? firstClockOnWorkday(due, start, rest, true, cal.timeZone) : due;
   }
   // counted 4: the first 18:00 local STRICTLY after #4 on a working day, but never less than 3 hours (elapsed) after it.

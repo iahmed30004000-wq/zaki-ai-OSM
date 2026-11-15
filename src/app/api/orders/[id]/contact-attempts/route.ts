@@ -175,7 +175,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const guardedClass = (NO_ANSWER_RESULTS as readonly string[]).includes(result!);
     /*
      * «جدول المحاولات» (step B) — the SAME switch as the proof above (one switch: proof off means cadence off, and then it is not even asked). `cadenceAt` is the moment the switch
-     * went on — the floor of every count — or null; `cal` is what the pure plan needs of the world. Null, and every line below is today's, key for key.
+     * went on — the floor of every count — or null; `cal` is what the pure plan needs of the world (the country's timezone, rest days and work hours — the SAME builder the desk uses). Null, and every line below is today's, key for key.
      */
     const cadenceAt = proofOn ? await cadenceSince(db, companyId) : null;
     const cal = cadenceAt ? cadenceCalOf(cadenceAt, country) : null;

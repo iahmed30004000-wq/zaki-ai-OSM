@@ -15,8 +15,11 @@ import { Prisma } from '@prisma/client';
  *     the write; a proof refusal reaches none of it.
  *  4. Lines at or before the switch's `enabledAt` never count; a call that reached somebody does not reset the plan; BUSY and UNREACHABLE count; any other result is recorded as before.
  *  5. The answer says the limit is 5 and carries `cadence { attempt, of, counted, dueAt, words }` for a no-answer-class line; the audit row logs what was STORED.
- *  6. The Country's rest days (`weekendDays`) move #4 and #5: with Friday and Saturday off a Thursday #3 stores a due of SUNDAY 10:00, a press before it is early, and the stored due is the very one
- *     the pure plan computes for the same lines (`cadenceCalOf`, the builder the desk shares). #4's clock is the fixed 10:00 whatever the country's `workHoursStart` says.
+ *  6. The Country's rest days (`weekendDays`) move #4 and #5: with Friday and Saturday off a Thursday #3 stores a due of SUNDAY at the start of work, a press before it is early, and the stored due is the very one
+ *     the pure plan computes for the same lines (`cadenceCalOf`, the builder the desk shares). #4's clock is the Country's own `workHoursStart` (09:00 and 10:00 are both tried).
+ *  7. WORK TIME (planner, ruling 12): #2 and #3 are due inside [workHoursStart, workHoursEnd) on a working day. A press that makes the raw due (+30 min / +2 h) fall outside it stores the next start of
+ *     work on the line and says so («بكرة الساعة 09:00», «الأحد الساعة 09:00» across a rest weekend); a press at that stored due counts and one millisecond before is early; and the due the door
+ *     stored equals the replay of the written lines under `cadenceCalOf` — the desk's own builder, fed the same country.
  *
  * With the switch OFF the door is today's, key for key: `count()`, never the plan's read, the five answer keys, limit 3, the third no-answer closes.
  *
@@ -86,8 +89,8 @@ async function pressAt(when: Date, result = 'NO_ANSWER', extra: Record<string, u
   return { res, body: await res.json() };
 }
 
-/** The five attempts of the plan, each on time: #1 Sunday 13:00, #2 13:30, #3 15:30, #4 Monday 10:00 (the planner's fixed clock, whatever the country's 09:00 says), #5 18:00 that day (Amman). */
-const PLAN = [T0, ms(T0, 30 * MIN), ms(T0, 150 * MIN), new Date('2026-11-16T07:00:00.000Z'), new Date('2026-11-16T15:00:00.000Z')];
+/** The five attempts of the plan, each on time: #1 Sunday 13:00, #2 13:30, #3 15:30 (all inside the country's 09:00-17:00), #4 Monday 09:00 (the country's own start of work), #5 18:00 that day (Amman). */
+const PLAN = [T0, ms(T0, 30 * MIN), ms(T0, 150 * MIN), new Date('2026-11-16T06:00:00.000Z'), new Date('2026-11-16T15:00:00.000Z')];
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -287,13 +290,77 @@ describe('ON — the close at the fifth counted press', () => {
     expect(body.autoClosed).toBe(false);
   });
 
-  it('23:59 and then 00:29 next day: two local days, the plan reads them as the pure module does', async () => {
-    const late = new Date('2026-11-15T20:59:00.000Z'); // 23:59 Amman
+  it('23:59 and then the next morning: #2 is NOT due at 00:29 (no work then) but at the next start of work, 09:00 — a press at 00:29 is early, one at 09:00 counts: two local days', async () => {
+    const late = new Date('2026-11-15T20:59:00.000Z'); // 23:59 Amman, Sunday
+    const monday9 = new Date('2026-11-16T06:00:00.000Z'); // Monday 09:00 Amman
     const { body: first } = await pressAt(late);
-    expect(first.cadence.dueAt).toBe(ms(late, 30 * MIN).toISOString());
-    expect(first.cadence.words).toBe('انحسبت المحاولة 1 من 5 — رجع الطلب للطابور، والمحاولة الجاية بكرة الساعة 00:29.');
-    const { body: second } = await pressAt(ms(late, 30 * MIN));
-    expect(second.cadence).toMatchObject({ attempt: 2, counted: true });
+    expect(first.cadence.dueAt).toBe(monday9.toISOString());
+    expect(first.cadence.words).toBe('انحسبت المحاولة 1 من 5 — رجع الطلب للطابور، والمحاولة الجاية بكرة الساعة 09:00.');
+    expect(db.orderContactAttempt.create.mock.calls[0][0].data.nextFollowUpAt).toEqual(monday9);
+    const { body: early } = await pressAt(ms(late, 30 * MIN));
+    expect(early.cadence).toMatchObject({ attempt: 1, counted: false, dueAt: monday9.toISOString() });
+    // (the millisecond boundary is the pure plan's: the proof guard wants a fresh «اتصال» before every press, so no press can land a millisecond after another here)
+    const { body: second } = await pressAt(monday9);
+    expect(second.cadence).toMatchObject({ attempt: 2, counted: true, dueAt: '2026-11-16T08:00:00.000Z' }); // #3: 09:00 + 2 h = 11:00, inside
+  });
+});
+
+describe('ON — #2 and #3 are due inside work time (the country here works 09:00-17:00, Friday and Saturday off)', () => {
+  const country = { workHoursStart: '09:00', workHoursEnd: '17:00', weekendDays: [5, 6], timezone: 'Asia/Amman' };
+  /** The stored due of the n-th line the door wrote, and the replay of the written lines under the desk's own builder — they must be the same instant. */
+  const storedDue = (n: number) => db.orderContactAttempt.create.mock.calls[n][0].data.nextFollowUpAt as Date | null;
+  const replay = () => cadenceState(rows.filter((r) => ['NO_ANSWER', 'BUSY', 'UNREACHABLE'].includes(r.result)), cadenceCalOf(cad.value.enabledAt!, country)).dueAt;
+
+  it('#1 at 16:30 (raw 17:00 is exactly the end): the line stores the next working day’s 09:00, the answer says «بكرة الساعة 09:00» — and the replay of the written line agrees', async () => {
+    const at = new Date('2026-11-15T13:30:00.000Z'); // Sunday 16:30 Amman
+    const { body } = await pressAt(at);
+    expect(storedDue(0)).toEqual(new Date('2026-11-16T06:00:00.000Z'));
+    expect(body.cadence).toMatchObject({ attempt: 1, counted: true, dueAt: '2026-11-16T06:00:00.000Z' });
+    expect(body.cadence.words).toBe('انحسبت المحاولة 1 من 5 — رجع الطلب للطابور، والمحاولة الجاية بكرة الساعة 09:00.');
+    expect(replay()).toEqual(storedDue(0));
+  });
+
+  it('#1 at 16:29:59.999 (raw one millisecond before the end) stores exactly +30 minutes', async () => {
+    const at = new Date('2026-11-15T13:29:59.999Z');
+    await pressAt(at);
+    expect(storedDue(0)).toEqual(ms(at, 30 * MIN));
+    expect(replay()).toEqual(storedDue(0));
+  });
+
+  it('#2 pressed late at 15:10 (raw 17:10): #3 is due Monday 09:00 — the line stores it, the answer says it, and an early press (17:00) is not counted', async () => {
+    await pressAt(T0); // Sunday 13:00
+    const second = await pressAt(new Date('2026-11-15T12:10:00.000Z')); // 15:10
+    expect(second.body.cadence).toMatchObject({ attempt: 2, counted: true, dueAt: '2026-11-16T06:00:00.000Z' });
+    expect(second.body.cadence.words).toBe('انحسبت المحاولة 2 من 5 — رجع الطلب للطابور، والمحاولة الجاية بكرة الساعة 09:00.');
+    expect(storedDue(1)).toEqual(new Date('2026-11-16T06:00:00.000Z'));
+    expect(replay()).toEqual(storedDue(1));
+    const early = await pressAt(new Date('2026-11-15T14:00:00.000Z')); // 17:00
+    expect(early.body.cadence).toMatchObject({ attempt: 2, counted: false });
+  });
+
+  it('a Thursday-evening #1 (16:50): #2 is due SUNDAY 09:00 across the weekend — stored, spoken with the weekday, and the replay agrees', async () => {
+    order.current = { ...order.current, claimedAt: new Date('2026-11-19T09:00:00.000Z') };
+    const { body } = await pressAt(new Date('2026-11-19T13:50:00.000Z')); // Thursday 16:50 Amman → raw 17:20
+    expect(storedDue(0)).toEqual(new Date('2026-11-22T06:00:00.000Z'));
+    expect(body.cadence.words).toBe('انحسبت المحاولة 1 من 5 — رجع الطلب للطابور، والمحاولة الجاية الأحد الساعة 09:00.');
+    expect(replay()).toEqual(storedDue(0));
+    const friday = await pressAt(new Date('2026-11-20T07:00:00.000Z')); // Friday 10:00: a rest day, before the due
+    expect(friday.body.cadence).toMatchObject({ attempt: 1, counted: false, dueAt: '2026-11-22T06:00:00.000Z' });
+    expect((await pressAt(new Date('2026-11-22T06:00:00.000Z'))).body.cadence).toMatchObject({ attempt: 2, counted: true });
+  });
+
+  it('a press ON a rest day, inside the hours (Friday 10:00): the raw due is not work time, so #2 is due SUNDAY 09:00 — stored, spoken, and the very instant the desk replays', async () => {
+    order.current = { ...order.current, claimedAt: new Date('2026-11-20T05:00:00.000Z') };
+    const { body } = await pressAt(new Date('2026-11-20T07:00:00.000Z')); // Friday 10:00 Amman
+    expect(storedDue(0)).toEqual(new Date('2026-11-22T06:00:00.000Z'));
+    expect(body.cadence.words).toBe('انحسبت المحاولة 1 من 5 — رجع الطلب للطابور، والمحاولة الجاية الأحد الساعة 09:00.');
+    expect(replay()).toEqual(storedDue(0));
+  });
+
+  it('a row with no work hours (a mock that lacks them) is read as 10:00-22:00: #1 at 21:50 stores the next 10:00, not 22:20', async () => {
+    requireContext.mockResolvedValue({ user: { id: 'u1', name: 'Agent', role: 'CONFIRMATION_AGENT', status: 'ACTIVE' }, companyId: 'c1', storeId: 's1', country: { weekendDays: [], timezone: 'Asia/Amman' } });
+    await pressAt(new Date('2026-11-15T18:50:00.000Z')); // Sunday 21:50 Amman
+    expect(storedDue(0)).toEqual(new Date('2026-11-16T07:00:00.000Z')); // Monday 10:00 Amman
   });
 });
 
@@ -334,13 +401,14 @@ describe('ON — the Country’s rest days move #4 and #5 (Jordan’s live week:
     expect(db.orderContactAttempt.create.mock.calls[4][0].data.nextFollowUpAt).toEqual(new Date('2026-11-22T15:00:00.000Z'));
   });
 
-  it('a country row that still says 09:00 does not bring the nine back: #4 is Monday 10:00', async () => {
+  it('#4’s clock is the COUNTRY’S start of work: a row that says 09:00 gives Monday 09:00, the 10:00 row of the Thursday case above gave Sunday 10:00', async () => {
     requireContext.mockResolvedValue({ user: { id: 'u1', name: 'Agent', role: 'CONFIRMATION_AGENT', status: 'ACTIVE' }, companyId: 'c1', storeId: 's1', country: { ...country, workHoursStart: '09:00' } });
     order.current = { ...order.current, claimedAt: new Date(T0.getTime() - 3_600_000) };
     await pressAt(T0);
     await pressAt(ms(T0, 30 * MIN));
     const third = await pressAt(ms(T0, 150 * MIN));
-    expect(third.body.cadence.dueAt).toBe('2026-11-16T07:00:00.000Z'); // Monday 10:00 Amman
+    expect(third.body.cadence.dueAt).toBe('2026-11-16T06:00:00.000Z'); // Monday 09:00 Amman
+    expect(third.body.cadence.words).toBe('انحسبت المحاولة 3 من 5 — رجع الطلب للطابور، والمحاولة الجاية بكرة الساعة 09:00.');
   });
 });
 

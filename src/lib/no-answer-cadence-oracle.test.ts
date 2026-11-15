@@ -3,37 +3,86 @@ import { cadencePress, type CadenceCal } from './no-answer-cadence';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * THE PLAN, WRITTEN A SECOND TIME THE OTHER WAY ROUND.
+ * DEFINITION OF DONE — THE PLAN, WRITTEN A SECOND TIME THE OTHER WAY ROUND (step B of Confirmation Center v2)
  *
- * `no-answer-cadence.ts` places the due instants with `zonedParts` / `zonedTimeToInstant` (arithmetic on the local calendar). This oracle NEVER calls them, nor `dueAfter`, nor
- * `cadenceStep`. It owns a formatter and WALKS: every supported zone's offset is a multiple of 15 minutes, so a grid of quarter-hours placed in UTC is a grid of quarter-hours
- * of the local clock too, and
+ * What must agree, to the millisecond, between `no-answer-cadence.ts` and this file: for every press — whether it counts, the due it stores, the counted attempts, the local days they fall on
+ * and whether the order closes — across the DST-transition zones, every boundary of the work window, and every rule set a country can bring: Syria's row (10:00-22:00, no rest day), Jordan's
+ * (09:00-17:00, Friday and Saturday off), Friday only, six rest days of seven, all seven (= none), a row with no hours, garbage hours, an overnight shift and one half-missing.
+ * Edge cases: a due exactly at the start / exactly at the end / one millisecond either side; #1 at 21:50 (#2 waits for the next start); a Thursday-evening chain across Friday and Saturday;
+ * the 8-hour boundary (#3 exactly 8 h before a start counts, a millisecond later waits a day); the 3-hour floor; the first-day guard; the floor (`enabledAt`); random seeded worlds.
+ * Blockers: a mismatch anywhere. The oracle must NOT call `zonedParts`, `zonedTimeToInstant`, `dueAfter`, `cadenceStep` or the module's window reader — it imports `cadencePress` and the type only.
+ * ═══════════════════════════════════════════════════════════════════════
  *
- *   #1 → +30 min and #2 → +2 h are millisecond additions;
- *   #3 → walk forward from the instant 8 h (elapsed) later: the first quarter-hour that is at or after it (exactly 8 h counts), reads 10:00 on the local clock, falls on a day that is
+ * `no-answer-cadence.ts` places the due instants with `zonedParts` / `zonedTimeToInstant` (arithmetic on the local calendar). This oracle owns a formatter and WALKS: every supported zone's
+ * offset is a multiple of 15 minutes, so a grid of quarter-hours placed in UTC is a grid of quarter-hours of the local clock too, and (the window's edges being quarter-hours)
+ *
+ *   #1 → raw = +30 min and #2 → raw = +2 h are millisecond additions; the raw is INSIDE work time when the quarter-hour that contains it reads a clock in [start, end) on a day that is not a rest
+ *        day (the end exclusive), and then it is the due; otherwise the due is the first quarter-hour at or after it that reads `start` on a day that is not a rest day;
+ *   #3 → walk forward from the instant 8 h (elapsed) later: the first quarter-hour that is at or after it (exactly 8 h counts), reads `start` on the local clock, falls on a day that is
  *        not a rest day (the formatter's own weekday) and is not the local DATE of the first attempt (the independent form of the first-day guard);
  *   #4 → walk from the first quarter-hour strictly after the fourth attempt until the local clock reads 18:00 on a day that is not a rest day; never earlier than the fourth + 3 h;
- *   counting, the early rule, the floor, the days set and the close are its own loop.
+ *   counting, the early rule, the floor, the days set and the close are its own loop; the work window is read by the oracle's OWN reader of «HH:mm» with its own fallbacks.
  *
  * Two ways of reaching the same instants must agree on every zone, every anchor (each zone's 2026 transition weekend INCLUDING its 25-hour day, an ordinary week, a month end, a year
- * end, a leap day), every boundary (00:00:00.000 · 00:00:00.001 · 09:59:59.999 · 10:00 · 14:59:59.999 · 15:00 · 17:59:59.999 · 18:00:00.000 · 23:29:59.999 · 23:30 · 23:59:59.999 — each one is
- * placed or the test fails, apart from a wall time a DST gap removed; the three at 23:29–23:30 put the third attempt on the 8-hour cliff at 02:00) and every press (due − 1 ms, at the
- * due, + 1 ms, + 3 h), under four weeks — no rest day, Friday, Friday + Saturday, Sunday — or one of them is wrong. Each mismatch prints the zone, the seed and the sequence.
+ * end, a leap day), every boundary of the window of the rule set at hand, and every press (due − 1 ms, at the due, + 1 ms, + 3 h, and the clocks that put the NEXT due on an edge), or one of
+ * them is wrong. Each mismatch prints the zone, the seed and the sequence.
  * ═══════════════════════════════════════════════════════════════════════
  */
 
 const QUARTER = 15 * 60_000;
 const HOUR = 3_600_000;
 const NO_ANSWER_LIKE = ['NO_ANSWER', 'BUSY', 'UNREACHABLE'];
-/** #4's clock and #5's anchor, spelled again here on purpose (the oracle imports no constant of the module). */
-const START = '10:00';
+/** The fallback window and #5's anchor, spelled again here on purpose (the oracle imports no constant of the module). */
+const FALLBACK = { start: '10:00', end: '22:00' };
 const EVENING = '18:00';
 /** A walk of sixteen days of quarter-hours: far more than any due needs (the longest wait is a week of rest days). */
 const MAX_WALK = 16 * 96;
 
-/** The week a country keeps: the local weekdays (0 = Sunday) no #4 / #5 due lands on. */
-interface Rules { rest: number[] }
-const RULESETS: Rules[] = [{ rest: [] }, { rest: [5] }, { rest: [5, 6] }, { rest: [0] }];
+/** What a country brings: its rest days and what its row SAYS about work hours — raw, so that a missing or garbage value reaches the module as it would in production. */
+interface Rules {
+  name: string;
+  /** The local weekdays (0 = Sunday) that are not work days. All seven means «nowhere to skip to»: nothing is skipped. */
+  rest: number[];
+  rowStart?: string | null;
+  rowEnd?: string | null;
+}
+const RULESETS: Rules[] = [
+  { name: 'Syria-style: no rest day, 10:00-22:00', rest: [], rowStart: '10:00', rowEnd: '22:00' },
+  { name: 'Jordan-style: Friday and Saturday off, 09:00-17:00', rest: [5, 6], rowStart: '09:00', rowEnd: '17:00' },
+  { name: 'Friday only, 10:00-22:00', rest: [5], rowStart: '10:00', rowEnd: '22:00' },
+  { name: 'all but Saturday off, 10:00-22:00', rest: [0, 1, 2, 3, 4, 5], rowStart: '10:00', rowEnd: '22:00' },
+  { name: 'a late shift 12:30-20:15, Sunday off', rest: [0], rowStart: '12:30', rowEnd: '20:15' },
+  { name: 'no hours on the row (fallback 10:00-22:00), Friday off', rest: [5], rowStart: undefined, rowEnd: undefined },
+  { name: 'garbage hours (fallback 10:00-22:00)', rest: [], rowStart: 'garbage', rowEnd: '25:61' },
+  { name: 'an overnight shift 22:00-06:00 (fallback 10:00-22:00 for both ends), Saturday off', rest: [6], rowStart: '22:00', rowEnd: '06:00' },
+  { name: 'the end missing (start 09:00 kept, end falls back to 22:00)', rest: [], rowStart: '09:00', rowEnd: null },
+  { name: 'all seven days marked rest (nothing is skipped), 10:00-22:00', rest: [0, 1, 2, 3, 4, 5, 6], rowStart: '10:00', rowEnd: '22:00' },
+];
+const SYRIA = RULESETS[0];
+/** The rule sets that are about the READING of the hours, not about zones: they run on three zones only. */
+const READING_SETS = new Set([RULESETS[5], RULESETS[6], RULESETS[7], RULESETS[8], RULESETS[9]]);
+
+/** The oracle's own reader of «HH:mm»: the zero-padded clock, or null. */
+function readClock(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(v.trim());
+  if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) return null;
+  return `${m[1].padStart(2, '0')}:${m[2]}`;
+}
+/** The window the country's row means: each side falls back on its own, and an end that is not after the start sends both to the fallback. */
+function windowOf(rules: Rules): { start: string; end: string } {
+  const start = readClock(rules.rowStart) ?? FALLBACK.start;
+  const end = readClock(rules.rowEnd) ?? FALLBACK.end;
+  return end > start ? { start, end } : { ...FALLBACK };
+}
+/** The rest days that count: all seven (nowhere to skip to) skip nothing. */
+const restOf = (rules: Rules): number[] => (new Set(rules.rest).size >= 7 ? [] : rules.rest);
+/** A clock «HH:mm» moved by whole minutes round the day — arithmetic on the clock face, no calendar. */
+function shiftClock(clock: string, minutes: number): string {
+  const [h, m] = clock.split(':').map(Number);
+  const t = (((h * 60 + m + minutes) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+}
 
 const formatters = new Map<string, Intl.DateTimeFormat>();
 const clockCache = new Map<string, { date: string; hhmm: string; wd: number }>();
@@ -78,10 +127,21 @@ function instantOf(tz: string, date: string, hhmm: string): number | null {
 
 /** The oracle's due after the attempts `times` (the COUNTED ones, the last at `times[times.length - 1]`). */
 function dueOracle(times: number[], tz: string, rules: Rules): number {
+  const win = windowOf(rules);
+  const rest = restOf(rules);
   const counted = times.length;
   const at = times[counted - 1];
-  if (counted === 1) return at + 30 * 60_000;
-  if (counted === 2) return at + 2 * HOUR;
+  if (counted <= 2) {
+    const raw = at + (counted === 1 ? 30 * 60_000 : 2 * HOUR);
+    const here = localOf(raw, tz); // the quarter-hour that contains the raw: the window's edges are quarter-hours, so it classifies the raw exactly
+    if (!rest.includes(here.wd) && here.hhmm >= win.start && here.hhmm < win.end) return raw;
+    let q = Math.ceil(raw / QUARTER) * QUARTER; // the first quarter-hour at or after the raw
+    for (let n = 0; n < MAX_WALK; n++, q += QUARTER) {
+      const l = localOf(q, tz);
+      if (l.hhmm === win.start && !rest.includes(l.wd)) return q;
+    }
+    throw new Error(`oracle: no start of work within sixteen days (${tz})`);
+  }
   if (counted === 3) {
     const floor = at + 8 * HOUR; // ELAPSED hours: «>=» below is the «exactly 8 h counts» rule
     const firstDate = localOf(times[0], tz).date;
@@ -90,14 +150,14 @@ function dueOracle(times: number[], tz: string, rules: Rules): number {
       if (q < floor) continue;
       const l = localOf(q, tz);
       // the last clause is the independent first-day guard: #4 is never on the local date of #1
-      if (l.hhmm === START && !rules.rest.includes(l.wd) && l.date !== firstDate) return q;
+      if (l.hhmm === win.start && !rest.includes(l.wd) && l.date !== firstDate) return q;
     }
     throw new Error(`oracle: no #4 within sixteen days (${tz})`);
   }
   let q = Math.floor(at / QUARTER) * QUARTER + QUARTER; // the first quarter-hour STRICTLY after `at`
   for (let n = 0; n < MAX_WALK; n++, q += QUARTER) {
     const l = localOf(q, tz);
-    if (l.hhmm === EVENING && !rules.rest.includes(l.wd)) return Math.max(q, at + 3 * HOUR);
+    if (l.hhmm === EVENING && !rest.includes(l.wd)) return Math.max(q, at + 3 * HOUR);
   }
   throw new Error(`oracle: no #5 within sixteen days (${tz})`);
 }
@@ -132,9 +192,9 @@ function verdictOf(lines: Line[], since: number, tz: string, rules: Rules): Verd
   };
 }
 
-/** What the real module says about the same last line. */
+/** What the real module says about the same last line — handed the country's row exactly as it says it (raw hours, missing or garbage included). */
 function moduleVerdict(lines: Line[], since: number, tz: string, rules: Rules): Verdict {
-  const cal: CadenceCal = { since: new Date(since), timeZone: tz, restDays: rules.rest };
+  const cal: CadenceCal = { since: new Date(since), timeZone: tz, restDays: rules.rest, workHoursStart: rules.rowStart, workHoursEnd: rules.rowEnd };
   const stored = lines.slice(0, -1).map((l, i) => ({ createdAt: new Date(l.at), result: l.result, attemptNumber: i + 1 }));
   const last = lines[lines.length - 1];
   const r = cadencePress(stored, { at: new Date(last.at), result: last.result }, cal);
@@ -151,7 +211,7 @@ function moduleVerdict(lines: Line[], since: number, tz: string, rules: Rules): 
 const ZONES: Array<{ tz: string; anchors: string[] }> = [
   { tz: 'Asia/Amman', anchors: ['2026-03-27', '2026-11-15', '2026-11-30', '2026-12-31', '2028-02-29'] },
   { tz: 'Asia/Damascus', anchors: ['2026-03-27', '2026-10-30', '2026-12-31'] },
-  // 2026-10-25 (Berlin), 2026-11-01 (New York) and 2026-04-05 (Auckland, Chatham, Lord Howe) are the days the clocks go BACK: without them the first-day guard is never reached.
+  // 2026-10-25 (Berlin), 2026-11-01 (New York) and 2026-04-05 (Auckland, Chatham, Lord Howe) are the days the clocks go BACK: the window's clocks are read across a 25-hour day there.
   { tz: 'Europe/Berlin', anchors: ['2026-03-28', '2026-10-24', '2026-10-25', '2026-11-30', '2026-12-31'] },
   { tz: 'America/New_York', anchors: ['2026-03-07', '2026-10-31', '2026-11-01', '2026-12-31'] },
   { tz: 'Asia/Beirut', anchors: ['2026-03-28', '2026-03-29', '2026-10-24', '2026-10-25'] },
@@ -160,60 +220,105 @@ const ZONES: Array<{ tz: string; anchors: string[] }> = [
   { tz: 'Pacific/Chatham', anchors: ['2026-04-04', '2026-04-05', '2026-09-26'] },
   { tz: 'Asia/Kathmandu', anchors: ['2026-11-30', '2026-12-31'] },
 ];
-const FIRST_PRESSES: Array<[string, number]> = [
-  ['00:00', 0],
-  ['00:00', 1],
-  ['09:59', 59_999],
-  ['10:00', 0],
-  ['17:59', 59_999],
-  ['18:00', 0],
-  ['23:29', 59_999], // the third attempt then lands at 01:59:59.999 …
-  ['23:30', 0], // … 02:00:00.000 …
-  ['23:30', 1], // … 02:00:00.001: either side of the 8-hour cliff
-  ['23:59', 59_999],
-];
 /** Wednesday to Sunday in every zone: the days a Friday / Saturday / Sunday rest set bites on. */
 const REST_ANCHORS = ['2026-11-18', '2026-11-19', '2026-11-20', '2026-11-21', '2026-11-22'];
-const REST_FIRST_PRESSES: Array<[string, number]> = [
-  ['00:00', 0],
-  ['09:59', 59_999],
-  ['10:00', 0],
-  ['23:30', 1],
-  ['23:59', 59_999],
+/** A few days a clock-change falls on, for the rule sets whose grid is not the full one. */
+const DST_CELLS: Array<{ tz: string; anchor: string }> = [
+  { tz: 'Europe/Berlin', anchor: '2026-03-28' },
+  { tz: 'Europe/Berlin', anchor: '2026-10-25' },
+  { tz: 'America/New_York', anchor: '2026-03-07' },
+  { tz: 'America/New_York', anchor: '2026-11-01' },
+  { tz: 'Pacific/Auckland', anchor: '2026-04-05' },
+  { tz: 'Asia/Beirut', anchor: '2026-03-28' },
 ];
+const THREE_ZONES = ['Asia/Amman', 'Europe/Berlin', 'America/New_York'];
+
+/** The days a wall clock does not exist for a stretch of the small hours (spring-forward) — the only place a boundary may legitimately be unplaceable. */
+const GAP_DAYS = ['Asia/Beirut 2026-03-29', 'Europe/Berlin 2026-03-29', 'America/New_York 2026-03-08', 'Pacific/Auckland 2026-09-27', 'Pacific/Chatham 2026-09-27', 'Australia/Lord_Howe 2026-10-04'];
+/** A skipped boundary is acceptable only inside the small hours of a spring-forward day: anywhere else it is a hole in the grid. */
+const isKnownGap = (entry: string): boolean => {
+  const [tz, date, clock] = entry.split(' ');
+  return GAP_DAYS.includes(`${tz} ${date}`) && clock < '04:00';
+};
+
+/** The cells a rule set is run on: the full grid (every zone × its anchors) for Syria's, the week of rest days in every zone and a few clock-change days for the others — three zones for the reading-only sets. */
+function cellsFor(rules: Rules): Array<{ tz: string; anchor: string }> {
+  if (rules === SYRIA) return ZONES.flatMap(({ tz, anchors }) => anchors.map((anchor) => ({ tz, anchor })));
+  const zones = READING_SETS.has(rules) ? ZONES.filter(({ tz }) => THREE_ZONES.includes(tz)) : ZONES;
+  const week = zones.flatMap(({ tz }) => REST_ANCHORS.map((anchor) => ({ tz, anchor })));
+  return READING_SETS.has(rules) ? week : [...week, ...DST_CELLS];
+}
+
+/** The first presses of a cell: the clocks that put #2's raw due exactly on the window's edges (±1 ms), the edges themselves, the day's ends, and 21:50. */
+function firstPresses(rules: Rules): Array<[string, number]> {
+  const win = windowOf(rules);
+  const out: Array<[string, number]> = [['00:00', 0], ['00:00', 1], ['21:50', 0], ['23:59', 59_999], ['17:59', 59_999], ['18:00', 0], [shiftClock(win.start, -1), 59_999], [win.start, 0]];
+  for (const edge of [win.start, win.end]) {
+    const c = shiftClock(edge, -30); // a first press here makes #2's raw due the edge itself
+    out.push([shiftClock(c, -1), 59_999], [c, 0], [c, 1]);
+  }
+  const seen = new Set<string>();
+  return out.filter(([c, extra]) => !seen.has(`${c}|${extra}`) && seen.add(`${c}|${extra}`));
+}
 
 const SINCE_FAR = Date.UTC(2020, 0, 1);
 
 describe('the oracle itself is sane', () => {
-  it('knows the plan on a plain day in Amman (UTC+3), with no rest day', () => {
-    const none: Rules = { rest: [] };
-    const t1 = Date.UTC(2026, 10, 15, 10, 0); // Sunday 13:00 local
+  // Amman is UTC+3 all year: a local clock is the UTC hour minus three.
+  const amman = (d: number, h: number, mi = 0, s = 0, ms = 0) => Date.UTC(2026, 10, d, h - 3, mi, s, ms);
+  const AMMAN = 'Asia/Amman';
+
+  it('knows the plan on a plain day with Syria’s hours: inside work time a due is the raw press + gap, to the millisecond', () => {
+    const t1 = amman(15, 13, 0); // Sunday 13:00
     const t2 = t1 + 30 * 60_000;
-    const t3 = Date.UTC(2026, 10, 15, 12, 30); // 15:30 local
-    expect(dueOracle([t1], 'Asia/Amman', none)).toBe(t1 + 30 * 60_000);
-    expect(dueOracle([t1, t2], 'Asia/Amman', none)).toBe(t2 + 2 * HOUR);
-    expect(new Date(dueOracle([t1, t2, t3], 'Asia/Amman', none)).toISOString()).toBe('2026-11-16T07:00:00.000Z');
-    const t4 = Date.UTC(2026, 10, 16, 7, 0);
-    expect(new Date(dueOracle([t1, t2, t3, t4], 'Asia/Amman', none)).toISOString()).toBe('2026-11-16T15:00:00.000Z');
-    expect(new Date(dueOracle([t1, t2, t3, Date.UTC(2026, 10, 16, 15, 0)], 'Asia/Amman', none)).toISOString()).toBe('2026-11-17T15:00:00.000Z');
+    expect(dueOracle([t1], AMMAN, SYRIA)).toBe(t1 + 30 * 60_000);
+    expect(dueOracle([t1, t2], AMMAN, SYRIA)).toBe(t2 + 2 * HOUR);
+    expect(dueOracle([amman(15, 11, 7, 12, 345)], AMMAN, SYRIA)).toBe(amman(15, 11, 37, 12, 345));
   });
 
-  it('knows the 8-hour cliff, the 3-hour floor, a rest weekend and the first-day guard', () => {
-    const none: Rules = { rest: [] };
-    const amman = (d: number, h: number, mi = 0) => Date.UTC(2026, 10, d, h - 3, mi); // Amman is UTC+3 all year
+  it('knows the window: #1 at 21:50 waits for the next start; the end is exclusive, the start inclusive', () => {
+    expect(new Date(dueOracle([amman(15, 21, 50)], AMMAN, SYRIA)).toISOString()).toBe('2026-11-16T07:00:00.000Z'); // Monday 10:00
+    expect(dueOracle([amman(15, 21, 29, 59, 999)], AMMAN, SYRIA)).toBe(amman(15, 21, 59, 59, 999)); // a millisecond before the end: inside
+    expect(dueOracle([amman(15, 21, 30)], AMMAN, SYRIA)).toBe(amman(16, 10)); // raw == the end: outside
+    expect(dueOracle([amman(15, 9, 30)], AMMAN, SYRIA)).toBe(amman(15, 10)); // raw == the start: inside, the raw itself
+    expect(dueOracle([amman(15, 9, 29, 59, 999)], AMMAN, SYRIA)).toBe(amman(15, 10)); // a millisecond before the start: that day's start
+    expect(dueOracle([amman(15, 3)], AMMAN, SYRIA)).toBe(amman(15, 10));
+    const t1 = amman(14, 8);
+    expect(dueOracle([t1, amman(15, 8, 0)], AMMAN, SYRIA)).toBe(amman(15, 10)); // #2 at 08:00 → raw 10:00 is the start
+    expect(dueOracle([t1, amman(15, 20, 0)], AMMAN, SYRIA)).toBe(amman(16, 10)); // #2 at 20:00 → raw 22:00 is the end
+  });
+
+  it('reads the row its own way: each side falls back alone, a bad pair sends both to 10:00-22:00', () => {
+    expect(windowOf({ name: '', rest: [], rowStart: '09:00', rowEnd: '17:00' })).toEqual({ start: '09:00', end: '17:00' });
+    expect(windowOf({ name: '', rest: [], rowStart: undefined, rowEnd: '17:00' })).toEqual({ start: '10:00', end: '17:00' });
+    expect(windowOf({ name: '', rest: [], rowStart: '09:00', rowEnd: null })).toEqual({ start: '09:00', end: '22:00' });
+    expect(windowOf({ name: '', rest: [], rowStart: '22:00', rowEnd: '06:00' })).toEqual({ start: '10:00', end: '22:00' });
+    expect(windowOf({ name: '', rest: [], rowStart: 'x', rowEnd: 'y' })).toEqual({ start: '10:00', end: '22:00' });
+    expect(restOf({ name: '', rest: [0, 1, 2, 3, 4, 5, 6] })).toEqual([]);
+    expect(restOf({ name: '', rest: [5, 6] })).toEqual([5, 6]);
+  });
+
+  it('knows the 8-hour cliff, the 3-hour floor and the rest weekend (Friday and Saturday off, Jordan’s hours)', () => {
+    const none: Rules = { name: 'none', rest: [], rowStart: '10:00', rowEnd: '22:00' };
     const upTo3 = (t3: number) => [t3 - 150 * 60_000, t3 - 120 * 60_000, t3];
     // 02:00:00.000 → exactly 8 h to 10:00 counts; one millisecond later waits for tomorrow's 10:00
-    expect(dueOracle(upTo3(amman(3, 2)), 'Asia/Amman', none)).toBe(amman(3, 10));
-    expect(dueOracle(upTo3(amman(3, 2) + 1), 'Asia/Amman', none)).toBe(amman(4, 10));
+    expect(dueOracle(upTo3(amman(3, 2)), AMMAN, none)).toBe(amman(3, 10));
+    expect(dueOracle(upTo3(amman(3, 2) + 1), AMMAN, none)).toBe(amman(4, 10));
     // 15:00:00.000 → the 3 h floor equals the anchor; one millisecond later the floor binds
     const t1 = amman(2, 9);
     const four = (t4: number) => [t1, t1 + 30 * 60_000, t1 + 150 * 60_000, t4];
-    expect(dueOracle(four(amman(10, 15)), 'Asia/Amman', none)).toBe(amman(10, 18));
-    expect(dueOracle(four(amman(10, 15) + 1), 'Asia/Amman', none)).toBe(amman(10, 18) + 1);
+    expect(dueOracle(four(amman(10, 15)), AMMAN, none)).toBe(amman(10, 18));
+    expect(dueOracle(four(amman(10, 15) + 1), AMMAN, none)).toBe(amman(10, 18) + 1);
     // Thursday 19/11 14:00 with Friday and Saturday off → Sunday 22/11 10:00; Thursday 19:00 → Sunday 18:00
-    expect(dueOracle(upTo3(amman(19, 14)), 'Asia/Amman', { rest: [5, 6] })).toBe(amman(22, 10));
-    expect(dueOracle([amman(17, 10), amman(17, 10, 30), amman(17, 12, 30), amman(19, 19)], 'Asia/Amman', { rest: [5, 6] })).toBe(amman(22, 18));
-    // Berlin, 25/10/2026 (the clocks go back at 03:00 CEST): 00:00 → 00:30 → 02:30 CEST is 10:00 CET on the SAME date at 8 h, so #4 waits for the 26th
+    const fridaySaturday: Rules = { name: 'fs', rest: [5, 6], rowStart: '10:00', rowEnd: '22:00' };
+    expect(dueOracle(upTo3(amman(19, 14)), AMMAN, fridaySaturday)).toBe(amman(22, 10));
+    expect(dueOracle([amman(17, 10), amman(17, 10, 30), amman(17, 12, 30), amman(19, 19)], AMMAN, fridaySaturday)).toBe(amman(22, 18));
+    // a Thursday-evening first press: #2 skips the weekend, and #3 (raw 22:30) waits for Sunday too
+    expect(dueOracle([amman(19, 21, 55)], AMMAN, fridaySaturday)).toBe(amman(22, 10));
+    expect(dueOracle([amman(19, 20), amman(19, 20, 30)], AMMAN, fridaySaturday)).toBe(amman(22, 10));
+    // Jordan's own hours: 16:30 → raw 17:00 is the end → Sunday 09:00 across the weekend
+    expect(dueOracle([amman(19, 16, 30)], AMMAN, RULESETS[1])).toBe(amman(22, 9));
+    // Berlin, 25/10/2026 (the clocks go back at 03:00 CEST): 8 h after 02:30 CEST is 09:30 CET, so #4 would be 10:00 CET the SAME date: the first-day guard sends it to the 26th
     const BER = 'Europe/Berlin';
     const b1 = Date.UTC(2026, 9, 24, 22, 0);
     expect(new Date(dueOracle([b1, b1 + 30 * 60_000, b1 + 150 * 60_000], BER, none)).toISOString()).toBe('2026-10-26T09:00:00.000Z');
@@ -222,6 +327,12 @@ describe('the oracle itself is sane', () => {
 
 /** One cell of the boundary grid: every first press × the on-time path and its side branches, for each zone × anchor given. */
 function gridRun(cells: Array<{ tz: string; anchor: string }>, presses: Array<[string, number]>, rules: Rules, failures: string[], skipped: string[]): number {
+  const win = windowOf(rules);
+  /** A press `minutes` before `clock` — one millisecond before the clock, exactly at it, one millisecond after. */
+  const around = (clock: string, minutes: number): Array<[string, number]> => {
+    const c = shiftClock(clock, -minutes);
+    return [[shiftClock(c, -1), 59_999], [c, 0], [c, 1]];
+  };
   let compared = 0;
   for (const { tz, anchor } of cells) {
     for (const [hhmm, extra] of presses) {
@@ -243,20 +354,23 @@ function gridRun(cells: Array<{ tz: string; anchor: string }>, presses: Array<[s
         check(path);
         const due = stateNow.nextDue;
         if (due === null) break;
+        const counted = stateNow.countedTimes.length;
         const dueDate = localOf(due, tz).date;
         const [dy, dm, dd] = dueDate.split('-').map(Number);
         const nextDay = new Date(Date.UTC(dy, dm - 1, dd + 1)).toISOString().slice(0, 10);
         const boundaries: number[] = [due - 1, due, due + 1, due + 3 * HOUR];
-        for (const [date, clock, add] of [
-          [dueDate, '14:59', 59_999], // the 3-hour floor's cliff: 15:00 + 3 h = 18:00
-          [dueDate, '15:00', 0],
-          [dueDate, '15:00', 1],
-          [dueDate, '17:59', 59_999],
-          [dueDate, '18:00', 0],
+        const clocks: Array<[string, string, number]> = [
           [dueDate, '23:59', 59_999],
           [nextDay, '00:00', 0],
           [nextDay, '00:01', 0],
-        ] as const) {
+        ];
+        // The press that puts the NEXT due on an edge: after #1 the next press is #2 (its raw due is +2 h), after #2 it is #3 (its 8 h floor lands on a start), after #3 it is #4 (the 3 h floor and the 18:00)
+        if (counted === 1) for (const edge of [win.start, win.end]) for (const [c, x] of around(edge, 120)) for (const date of [dueDate, nextDay]) clocks.push([date, c, x]);
+        if (counted === 2) for (const [c, x] of around(win.start, 480)) for (const date of [dueDate, nextDay]) clocks.push([date, c, x]);
+        if (counted === 3) {
+          for (const [c, x] of [['14:59', 59_999], ['15:00', 0], ['15:00', 1], ['17:59', 59_999], ['18:00', 0]] as Array<[string, number]>) clocks.push([dueDate, c, x]);
+        }
+        for (const [date, clock, add] of clocks) {
           const at = instantOf(tz, date, clock);
           if (at === null) skipped.push(`${tz} ${date} ${clock}`);
           else boundaries.push(at + add);
@@ -272,28 +386,23 @@ function gridRun(cells: Array<{ tz: string; anchor: string }>, presses: Array<[s
 }
 
 describe('the module and the oracle agree', () => {
-  // The only wall times that do not exist here: midnight of Beirut's 2026-03-29 (the clock jumps 00:00 → 01:00). Anything else skipped is a hole in the grid.
-  const GAP_WHITELIST = ['Asia/Beirut 2026-03-29 00:00', 'Asia/Beirut 2026-03-29 00:01'];
-
-  it('on the boundary grid: every zone × anchor × first press, along the on-time path and its side branches, with no rest day', () => {
+  it('on the boundary grid of Syria’s hours: every zone × anchor (clock-change days included) × first press, along the on-time path and its side branches', () => {
     const failures: string[] = [];
     // Every boundary that could not be placed — it must be a wall time that does not exist (a DST gap), never a silent hole in the grid.
     const skipped: string[] = [];
-    const cells = ZONES.flatMap(({ tz, anchors }) => anchors.map((anchor) => ({ tz, anchor })));
-    const compared = gridRun(cells, FIRST_PRESSES, RULESETS[0], failures, skipped);
+    const compared = gridRun(cellsFor(SYRIA), firstPresses(SYRIA), SYRIA, failures, skipped);
     expect(failures.slice(0, 3)).toEqual([]);
-    expect(skipped.filter((s) => !GAP_WHITELIST.includes(s))).toEqual([]);
-    expect(compared).toBeGreaterThan(8_000);
+    expect(skipped.filter((s) => !isKnownGap(s))).toEqual([]);
+    expect(compared).toBeGreaterThan(20_000);
   }, 300_000);
 
-  it.each(RULESETS.slice(1))('on the boundary grid with rest days %j: Wednesday to Sunday in every zone × five first presses, along the on-time path and its side branches', (rules) => {
+  it.each(RULESETS.slice(1))('on the boundary grid of the rule set «$name»: Wednesday to Sunday in the zones, along the on-time path and its side branches', (rules) => {
     const failures: string[] = [];
     const skipped: string[] = [];
-    const cells = ZONES.flatMap(({ tz }) => REST_ANCHORS.map((anchor) => ({ tz, anchor })));
-    const compared = gridRun(cells, REST_FIRST_PRESSES, rules, failures, skipped);
+    const compared = gridRun(cellsFor(rules), firstPresses(rules), rules, failures, skipped);
     expect(failures.slice(0, 3)).toEqual([]);
-    expect(skipped.filter((s) => !GAP_WHITELIST.includes(s))).toEqual([]);
-    expect(compared).toBeGreaterThan(10_000);
+    expect(skipped.filter((s) => !isKnownGap(s))).toEqual([]);
+    expect(compared).toBeGreaterThan(READING_SETS.has(rules) ? 10_000 : 30_000);
   }, 300_000);
 
   it('on the floor: a line at enabledAt never counts, one millisecond after does, four older lines are invisible', () => {
@@ -317,6 +426,8 @@ describe('the module and the oracle agree', () => {
       for (let run = 0; run < 60; run++) {
         const rnd = mulberry32(seed * 1_000_003 + run * 7919 + tz.length);
         const rules = RULESETS[Math.floor(rnd() * RULESETS.length)];
+        const win = windowOf(rules);
+        const rest = restOf(rules);
         const anchor = anchors[Math.floor(rnd() * anchors.length)];
         const [y, m, d] = anchor.split('-').map(Number);
         let at = Date.UTC(y, m - 1, d, Math.floor(rnd() * 24), Math.floor(rnd() * 60), Math.floor(rnd() * 60), Math.floor(rnd() * 1000)) - 6 * 3_600_000;
@@ -333,22 +444,31 @@ describe('the module and the oracle agree', () => {
           const times = want.countedTimes;
           if (want.nextDue !== null && times.length > 0) expect(want.nextDue).toBeGreaterThan(times[times.length - 1]);
           if (times.length >= 5) expect(want.days).toBeGreaterThanOrEqual(2);
+          if ((times.length === 1 || times.length === 2) && want.nextDue !== null) {
+            const raw = times[times.length - 1] + (times.length === 1 ? 30 * 60_000 : 2 * HOUR);
+            const due = localOf(want.nextDue, tz);
+            expect(want.nextDue).toBeGreaterThanOrEqual(raw); // never earlier than the elapsed gap
+            expect(rest).not.toContain(due.wd); // a working day
+            expect(due.hhmm >= win.start && due.hhmm < win.end).toBe(true); // inside work time, the end exclusive
+            if (want.nextDue !== raw) expect(due.hhmm).toBe(win.start); // moved: it is exactly a start of work
+            expect(want.nextDue).toBeLessThan(raw + 24 * (rest.length + 2) * HOUR);
+          }
           if (times.length === 3 && want.nextDue !== null) {
             const [t1, t3] = [times[0], times[2]];
             const due = localOf(want.nextDue, tz);
             expect(want.nextDue).toBeGreaterThanOrEqual(t3 + 8 * HOUR); // at least 8 elapsed hours
-            expect(due.hhmm).toBe(START);
-            expect(rules.rest).not.toContain(due.wd);
+            expect(due.hhmm).toBe(win.start);
+            expect(rest).not.toContain(due.wd);
             expect(due.date).not.toBe(localOf(t1, tz).date); // never on the first attempt's local date
-            expect(want.nextDue).toBeLessThan(t3 + (8 + 24 * (2 + rules.rest.length)) * HOUR);
+            expect(want.nextDue).toBeLessThan(t3 + (8 + 24 * (2 + rest.length)) * HOUR);
           }
           if (times.length === 4 && want.nextDue !== null) {
             const t4 = times[3];
             const due = localOf(want.nextDue, tz);
             expect(want.nextDue).toBeGreaterThanOrEqual(t4 + 3 * HOUR); // at least 3 elapsed hours
             expect(due.hhmm >= EVENING && due.hhmm < '22:00').toBe(true); // an evening clock (21:00 at the latest, 22:00 as the DST margin)
-            expect(rules.rest).not.toContain(due.wd);
-            expect(want.nextDue).toBeLessThan(t4 + (26 + 24 * rules.rest.length) * HOUR);
+            expect(rest).not.toContain(due.wd);
+            expect(want.nextDue).toBeLessThan(t4 + (26 + 24 * rest.length) * HOUR);
           }
           // the next press lands early, on time, or late: a few minutes to a day and a half later
           const due = want.nextDue;

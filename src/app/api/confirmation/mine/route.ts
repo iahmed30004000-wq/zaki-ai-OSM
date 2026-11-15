@@ -345,7 +345,8 @@ export async function GET(request: Request) {
     // draws neither when it is absent. Everything else on the desk — the cards, their words, the tabs — is what it was.
     //
     // «جدول المحاولات» (step B) — the same switch as the proof, read for the DESK whoever's it is (a colleague's desk shows the same limit and the same numbers); null = off, and then every
-    // line below is today's. With it on the returns mode comes with it, so the banner stays quiet, exactly as with the legacy mode.
+    // line below is today's. With it on the returns mode comes with it, so the banner stays quiet, exactly as with the legacy mode. The plan's calendar is `cadenceCalOf(country)` — the door's own
+    // builder (the country's timezone, rest days AND work hours), so the desk replays the stored lines with the very rule the door wrote their dues under.
     const cadenceAt = await cadenceSince(db, companyId);
     const cadenceCal = cadenceAt ? cadenceCalOf(cadenceAt, country) : null;
     const returnsMode = !!cadenceAt || (rounds && (await returnsModeOn(db, companyId, roundsSw)));
