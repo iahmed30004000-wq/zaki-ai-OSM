@@ -18,6 +18,7 @@ import { notify } from './notify';
 import { flagRecentTwins } from './recent-twin-order';
 import { queueConversions } from './conversions/emit';
 import {
+  ARRIVED_WITHOUT_REGION_ACTION,
   buildPublicOrderSchema,
   mapZodFieldErrors,
   ORDER_VALIDATION_ERROR_BODY,
@@ -269,6 +270,14 @@ export interface SellingSurface {
    * beyond the four, exactly as before.
    */
   checkout?: CheckoutRules | null;
+  /**
+   * THE CITY MAY BE LEFT BLANK — set by the standalone landing door ONLY (`v1/landing-door.ts`; the owner, 15/11).
+   *
+   * The order is then taken with no region and a history line telling the team to pick it on the confirmation call.
+   * A city that is written must still be the country's (`buildPublicOrderSchema`). Every other door leaves this out
+   * and keeps refusing a blank city.
+   */
+  cityOptional?: boolean;
 }
 
 export type IntakeResult =
@@ -327,6 +336,7 @@ async function takeOrder(
   const parsed = buildPublicOrderSchema({
     countryCode: store.country.code,
     regions: regions.map((r) => r.name),
+    cityOptional: surface.cityOptional === true,
   }).safeParse(raw);
   if (!parsed.success) {
     // Safe Arabic field errors only — no Zod internals leak to the visitor.
@@ -364,8 +374,10 @@ async function takeOrder(
 
   // The chosen city is a real region of this country, so the order carries
   // its id — that is what the delivery-fee table is keyed on. Same matcher
-  // every other intake path uses.
+  // every other intake path uses. A blank city (only where the door allows
+  // one, `cityOptional`) matches nothing: the order is taken with no region.
   const region = matchRegion(regions, v.city);
+  const noCity = v.city === '';
 
   // ─── What was ordered, resolved on the server ───
   // The offers belong to the PRODUCT: one bundle, one price, wherever it is
@@ -706,6 +718,23 @@ async function takeOrder(
         }),
       },
     });
+
+    /*
+     * NO CITY, SAID ON THE ORDER ITSELF (the owner, 15/11). The confirmation card already draws the governorate
+     * field for an order with no region and the door refuses a «yes» without one; this line says WHY it is missing,
+     * so nobody reads it as a lost field. Inside the transaction: it is part of what this order is.
+     */
+    if (noCity) {
+      await tx.orderActivity.create({
+        data: {
+          companyId,
+          orderId: created.id,
+          userId: null,
+          action: ARRIVED_WITHOUT_REGION_ACTION,
+          metadata: JSON.stringify({ source: surface.source }),
+        },
+      });
+    }
 
     if (surface.landingPage) {
       await tx.landingPage.update({

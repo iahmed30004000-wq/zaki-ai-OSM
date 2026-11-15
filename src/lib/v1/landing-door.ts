@@ -233,7 +233,10 @@ export async function deliveryQuote(params: {
     select: { id: true, name: true },
   });
   const region = matchRegion(regions, city);
-  if (regions.length > 0 && !region) return CITY_REFUSED;
+  // A blank city is not a wrong one (the owner, 15/11: a page may ask for «العنوان» only). It has no region, so no
+  // fee row: `feeKnown` is false, exactly as for a region the table has no row for. A city that IS written and is
+  // not this country's is still refused.
+  if (city.trim() !== '' && regions.length > 0 && !region) return CITY_REFUSED;
 
   const included = await priceIncludesDeliveryFor(
     p.store.id,
@@ -305,7 +308,8 @@ export const landingOrderSchema = z.object({
   phone: z.string().max(60),
   alt_phone: z.string().max(60).optional().nullable(),
   address: z.string().max(500),
-  city: z.string().max(120),
+  // Blank or absent: a page that asks for «العنوان» only. The order is taken with no region (`cityOptional` below).
+  city: z.string().max(120).optional().nullable(),
   notes: z.string().max(1000).optional().nullable(),
   campaign: z.string().max(40).optional().nullable(),
   deviceClass: z.enum(['mobile', 'tablet', 'desktop']).optional().nullable(),
@@ -328,6 +332,8 @@ export async function takeLandingOrder(companyId: string, order: LandingOrderInp
     source: LANDING_PAGE_SOURCE,
     dedupeScope: `lpx:${order.landingPageId}`,
     deviceClass: order.deviceClass ?? null,
+    // This door only (the owner, 15/11): a blank city is taken, with no region, for the team to pick on the call.
+    cityOptional: true,
     notice: {
       title: 'طلب جديد من صفحة هبوط',
       message: (n) => `طلب جديد #${n} من صفحات الهبوط — ${productRow.name}.`,
@@ -339,7 +345,7 @@ export async function takeLandingOrder(companyId: string, order: LandingOrderInp
     phone: order.phone,
     alt_phone: order.alt_phone ?? '',
     address: order.address,
-    city: order.city,
+    city: order.city ?? '',
     notes: order.notes ?? '',
     offerId: order.offerId,
     website: '',
@@ -349,7 +355,7 @@ export async function takeLandingOrder(companyId: string, order: LandingOrderInp
   // After the commit, and unable to fail what is already saved.
   await markLandingChannel(companyId, String(result.body.orderNumber));
   const upgrade = await upgradeOffered(companyId, productRow.id, store.country.minorUnit, String(result.body.orderNumber));
-  const figures = await deliveryQuote({ companyId, productRow, offerId: order.offerId, city: order.city }).catch(() => null);
+  const figures = await deliveryQuote({ companyId, productRow, offerId: order.offerId, city: order.city ?? '' }).catch(() => null);
   const delivery =
     figures && figures.ok
       ? {

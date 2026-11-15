@@ -9,6 +9,7 @@ import { SWAP_ACTION } from './superseded';
 import { TWIN_ACTION } from './recent-twin-order';
 import { TWIN_CONFIRM_ACK_ACTION } from './confirmed-twin';
 import { TWIN_HELD_ACTION } from './twins-follow-the-pull';
+import { ARRIVED_WITHOUT_REGION_ACTION } from './landing-order-schema';
 import { DUE_RELEASE_REASON, REPULL_RELEASE_REASON, ROUND_RELEASE_REASON } from './no-answer-rounds';
 import { DATE_RETURNED_REASON, IDLE_RETURNED_REASON, NO_ANSWER_RETURNED_REASON } from './no-answer-returns';
 import { CUSTOMER_CALLED_BACK_REASON, TAKEN_ON_THE_LINE_REASON } from './customer-on-the-line';
@@ -162,6 +163,8 @@ const ISSUE_REASON_AR: Record<string, string> = {
 const ACTIVITY_AR: Record<string, string> = {
   ORDER_CREATED: 'إنشاء الطلب',
   LANDING_OFFER_SWAPPED: 'الزبون بدّل العرض بعد الطلب',
+  // A Zaki page that asks for «العنوان» only (the owner, 15/11): taken with no region, picked on the confirmation call.
+  [ARRIVED_WITHOUT_REGION_ACTION]: 'الطلب وصل من صفحة الهبوط بدون مدينة — حدّد المنطقة وقت التأكيد',
   // The landing confirmation chat's decisions (`v1/landing-chat.ts`, `CHAT_ACTION`), each in the assistant's name.
   LANDING_CHAT_CONFIRMED: 'مساعد الطلبات الآلي (صفحة الهبوط): الزبون أكّد الطلب',
   LANDING_CHAT_CANCELLED: 'مساعد الطلبات الآلي (صفحة الهبوط): الزبون تراجع عن الطلب',
