@@ -1,6 +1,7 @@
 import { zonedParts, zonedTimeToInstant } from './business-calendar';
 import { NO_ANSWER_RESULTS } from './confirmation-workflow';
 import type { AttemptFact } from './no-answer-rounds';
+import { verdictFromCount, type DueVerdict } from './work-first';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -171,4 +172,53 @@ export function cadencePressWords(a: { counted: boolean; closed: boolean; releas
   }
   if (a.dueAt) return `سجّلنا الضغطة بس ما انحسبت محاولة — لسا بدري. المحاولة ${next} من ${CADENCE_LIMIT} بتنحسب ${cadenceWhen(next, a.dueAt, a.now, a.timeZone)}.`;
   return a.attempt >= CADENCE_LIMIT ? 'اكتملت المحاولات الخمس — الضغطة انسجّلت بس ما انحسبت.' : 'انسجّلت الضغطة بس ما انحسبت محاولة.';
+}
+
+// ───────────────────────────── the desk («طلباتي») ─────────────────────────────
+
+/**
+ * WHERE ONE HELD ORDER STANDS, for her desk, on the SERVER's clock. `counted` is the number the card shows (and the close counts); `due` is «a call is owed now» (the due arrived —
+ * a due exactly NOW is due, the mirror of the pool's `gt`); `waiting` is «counted, due still ahead»; `closesOnNext` is «a press made now would close it» — the very step the door runs.
+ * A fact at the moment of the read: the desk has no timer.
+ */
+export function cadenceDesk(
+  facts: readonly AttemptFact[],
+  cal: CadenceCal,
+  now: Date
+): { counted: number; dueAt: Date | null; due: boolean; waiting: boolean; closesOnNext: boolean } {
+  const s = cadenceState(facts, cal);
+  const counted = s.counted.length;
+  const ahead = counted >= 1 && s.dueAt !== null;
+  return {
+    counted,
+    dueAt: s.dueAt,
+    due: ahead && s.dueAt!.getTime() <= now.getTime(),
+    waiting: ahead && s.dueAt!.getTime() > now.getTime(),
+    closesOnNext: cadenceCloses(cadenceStep(s, now, cal).next),
+  };
+}
+
+/**
+ * The «الشغل أول» verdict of one held order under the plan, in the shape `deskTab` / `summariseDue` / `dueNow` already read (so `work-first.ts` is not edited): no counted attempt yet
+ * → by the order's own attempt count (a NEW order is due NEW; an order with only «اتصال» lines, or only lines from before the switch, is not due and lands by its count); the due arrived →
+ * «ROUND»; the due ahead → waiting; a plan complete and still open (five counted, a close that did not go through) → not due and not waiting, so it stays in «بانتظار» by its count.
+ * The order's own dates are NOT read — parity with the rounds-off desk (`verdictFromCount`); the holder's own date releases the order anyway.
+ */
+export function cadenceVerdict(desk: Pick<ReturnType<typeof cadenceDesk>, 'counted' | 'due' | 'waiting' | 'dueAt'>, attemptCount: number): DueVerdict {
+  if (desk.counted === 0) return verdictFromCount(attemptCount);
+  if (desk.due) return { due: true, reason: 'ROUND', waiting: false, dueAt: null };
+  if (desk.waiting) return { due: false, reason: null, waiting: true, dueAt: desk.dueAt };
+  return { due: false, reason: null, waiting: false, dueAt: null };
+}
+
+/**
+ * THE LINE A HELD CARD PRINTS, written here so the screen decides nothing: «لا يرد راجع — محاولة 3 من 5» when the due arrived, «محاولة 2 من 5 — جاهز الساعة 17:30» while it waits.
+ * Null for an order with no counted attempt (a NEW order keeps «جديد — سحبتيه هلّق») and for a complete plan: the caller falls back to `dueLabel`, which has nothing to say for those.
+ */
+export function cadenceCardWords(desk: Pick<ReturnType<typeof cadenceDesk>, 'counted' | 'due' | 'waiting' | 'dueAt'>, now: Date, timeZone: string): string | null {
+  if (desk.counted < 1 || desk.counted >= CADENCE_LIMIT) return null;
+  const next = desk.counted + 1;
+  if (desk.due) return `لا يرد راجع — محاولة ${next} من ${CADENCE_LIMIT}`;
+  if (desk.waiting && desk.dueAt) return `محاولة ${next} من ${CADENCE_LIMIT} — جاهز ${cadenceWhen(next, desk.dueAt, now, timeZone)}`;
+  return null;
 }

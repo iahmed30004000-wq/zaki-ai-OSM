@@ -8,11 +8,14 @@ import {
   CADENCE_MIN_DAYS,
   CADENCE_MORNING,
   CADENCE_START,
+  cadenceCardWords,
   cadenceCloses,
+  cadenceDesk,
   cadencePress,
   cadencePressWords,
   cadenceState,
   cadenceStep,
+  cadenceVerdict,
   cadenceWhen,
   type CadenceCal,
   type CadenceState,
@@ -432,5 +435,80 @@ describe('the words', () => {
       expect(s).not.toMatch(/[A-Za-z]/);
       expect(s).not.toContain('جولة');
     }
+  });
+});
+
+describe('cadenceDesk: where a held order stands, on the server’s clock', () => {
+  const row = (createdAt: Date, attemptNumber: number, result = 'NO_ANSWER') => ({ createdAt, result, attemptNumber });
+  const t = amman(3, 11);
+  const one = [row(t, 1)];
+  const four = [t, ms(t, 1_800_000), ms(t, 1_800_000 + 7_200_000), amman(4, 9)].map((d, i) => row(d, i + 1));
+  const five = [...four, row(amman(4, 18), 5)];
+
+  it('a due exactly NOW is due; one millisecond before it is waiting (and a press then would not count)', () => {
+    const due = ms(t, 1_800_000);
+    expect(cadenceDesk(one, cal(), due)).toMatchObject({ counted: 1, due: true, waiting: false, closesOnNext: false });
+    expect(cadenceDesk(one, cal(), ms(due, -1))).toMatchObject({ counted: 1, due: false, waiting: true, closesOnNext: false });
+    expect(cadenceDesk(one, cal(), ms(due, -1)).dueAt).toEqual(due);
+  });
+
+  it('no counted attempt (none at all, or only lines from before the switch) is neither due nor waiting, and closes nothing', () => {
+    expect(cadenceDesk([], cal(), t)).toMatchObject({ counted: 0, dueAt: null, due: false, waiting: false, closesOnNext: false });
+    const old = [row(ms(SINCE, -3_600_000), 1), row(ms(SINCE, -1_800_000), 2)];
+    expect(cadenceDesk(old, cal(), t)).toMatchObject({ counted: 0, due: false, waiting: false, closesOnNext: false });
+  });
+
+  it('closesOnNext: four counted with the due reached → true; with the due ahead → false; five counted and still open → true (a press asks again)', () => {
+    const dueFour = amman(4, 18);
+    expect(cadenceDesk(four, cal(), dueFour).closesOnNext).toBe(true);
+    expect(cadenceDesk(four, cal(), ms(dueFour, -1)).closesOnNext).toBe(false);
+    expect(cadenceDesk(four, cal(), amman(4, 12)).closesOnNext).toBe(false);
+    expect(cadenceDesk(five, cal(), amman(5, 10))).toMatchObject({ counted: 5, dueAt: null, due: false, waiting: false, closesOnNext: true });
+  });
+
+  it('three counted never closes on the next press (the fifth is two attempts away)', () => {
+    const three = four.slice(0, 3);
+    expect(cadenceDesk(three, cal(), amman(4, 12)).closesOnNext).toBe(false);
+  });
+});
+
+describe('cadenceVerdict: the shape deskTab already reads', () => {
+  const t = amman(3, 11);
+  const base = { counted: 1, due: false, waiting: false, dueAt: null as Date | null };
+
+  it('no counted attempt → by the order’s own attempt count: a NEW order is due NEW; anything rung but invisible is not due', () => {
+    expect(cadenceVerdict({ ...base, counted: 0 }, 0)).toEqual({ due: true, reason: 'NEW', waiting: false, dueAt: null });
+    expect(cadenceVerdict({ ...base, counted: 0 }, 2)).toEqual({ due: false, reason: null, waiting: false, dueAt: null });
+  });
+
+  it('the due arrived → ROUND, due; the due ahead → waiting with its dueAt; five counted and open → not due, not waiting', () => {
+    expect(cadenceVerdict({ ...base, due: true, dueAt: t }, 1)).toEqual({ due: true, reason: 'ROUND', waiting: false, dueAt: null });
+    expect(cadenceVerdict({ ...base, waiting: true, dueAt: ms(t, 60_000) }, 1)).toEqual({ due: false, reason: null, waiting: true, dueAt: ms(t, 60_000) });
+    expect(cadenceVerdict({ counted: 5, due: false, waiting: false, dueAt: null }, 5)).toEqual({ due: false, reason: null, waiting: false, dueAt: null });
+  });
+});
+
+describe('cadenceCardWords: the line a held card prints', () => {
+  const t = amman(3, 11);
+
+  it('due: «لا يرد راجع — محاولة n من 5»; waiting: «محاولة n من 5 — جاهز …» (today, tomorrow, the two windows)', () => {
+    expect(cadenceCardWords({ counted: 2, due: true, waiting: false, dueAt: t }, t, AMMAN)).toBe('لا يرد راجع — محاولة 3 من 5');
+    expect(cadenceCardWords({ counted: 1, due: false, waiting: true, dueAt: amman(3, 17, 30) }, t, AMMAN)).toBe('محاولة 2 من 5 — جاهز الساعة 17:30');
+    expect(cadenceCardWords({ counted: 1, due: false, waiting: true, dueAt: amman(4, 0, 20) }, amman(3, 23, 50), AMMAN)).toBe('محاولة 2 من 5 — جاهز بكرة الساعة 00:20');
+    expect(cadenceCardWords({ counted: 3, due: false, waiting: true, dueAt: amman(4, 9) }, amman(3, 12), AMMAN)).toBe('محاولة 4 من 5 — جاهز بكرة بين 9 و12');
+    expect(cadenceCardWords({ counted: 4, due: false, waiting: true, dueAt: amman(3, 18) }, t, AMMAN)).toBe('محاولة 5 من 5 — جاهز بين 6 و10 مساءً');
+  });
+
+  it('null for no counted attempt (a NEW order keeps its own words) and for a complete plan', () => {
+    expect(cadenceCardWords({ counted: 0, due: false, waiting: false, dueAt: null }, t, AMMAN)).toBeNull();
+    expect(cadenceCardWords({ counted: 5, due: false, waiting: false, dueAt: null }, t, AMMAN)).toBeNull();
+  });
+
+  it('Western digits, never «جولة», and a window changes with its constant’s numbers', () => {
+    const s = cadenceCardWords({ counted: 3, due: false, waiting: true, dueAt: amman(4, 9) }, amman(3, 12), AMMAN)!;
+    expect(s).not.toMatch(/[٠-٩A-Za-z]/);
+    expect(s).not.toContain('جولة');
+    expect(s).toContain(`${CADENCE_MORNING.from} و${CADENCE_MORNING.to}`);
+    expect(cadenceCardWords({ counted: 4, due: false, waiting: true, dueAt: amman(3, 18) }, t, AMMAN)).toContain(`${CADENCE_EVENING.from - 12} و${CADENCE_EVENING.to - 12}`);
   });
 });

@@ -126,6 +126,8 @@ interface OrderRow {
   orderNumber: string;
   /** «مساعد الاتصال»: the signed link «اتصل» opens when her phone is paired (`/api/confirmation/mine`). Absent = `tel:`. */
   callHelperLink?: string;
+  /** «جدول المحاولات» is on: a press made NOW would close this order — a fact of the server's clock. Absent = the count decides, as it always did. */
+  closesOnNext?: boolean;
   merchantRef: string | null;
   confirmationStatus: string;
   state: string;
@@ -210,6 +212,8 @@ interface MineResponse {
   noAnswerLimit: number;
   /** «نظام الجولات» is on: the counter is a round («جولة n من 3»). */
   rounds?: boolean;
+  /** «جدول المحاولات» is on: the limit is 5 and the cards carry the server's words («محاولة 2 من 5 — جاهز الساعة 17:30»). */
+  cadenceOn?: boolean;
   /** «الشغل أول»: how many calls she owes right now, the oldest of them, and the banner's sentence — the banner and the pull button. */
   due?: { count: number; first: { id: string; orderNumber: string } | null; sentence?: string | null; button?: string | null };
   /** The country's calling code («963») — WhatsApp needs the number in full. */
@@ -771,7 +775,7 @@ export function ConfirmationMineScreen() {
    */
   /** One line in the contact log — the card's buttons and the call sheet send it through here, with `attemptBody`. */
   const postAttempt = async (order: { id: string; orderNumber: string }, body: string) => {
-    const res = await apiJson<{ autoClosed: boolean; noAnswerCount: number }>(
+    const res = await apiJson<{ autoClosed: boolean; noAnswerCount: number; cadence?: { words?: string } }>(
       `/api/orders/${order.id}/contact-attempts`,
       {
         method: 'POST',
@@ -782,7 +786,7 @@ export function ConfirmationMineScreen() {
     setNotice(
       res.autoClosed
         ? `أُغلق الطلب ${order.orderNumber} تلقائياً بعد ${res.noAnswerCount} محاولات بلا رد.`
-        : null
+        : (res.cadence?.words ?? null)
     );
     return res;
   };
@@ -1233,7 +1237,7 @@ export function ConfirmationMineScreen() {
   const tabNotes = {
     work: 'اللي لازم ترني عليه هلّق',
     // With «نظام الجولات» off nothing falls due by the clock: the old sentence is the true one.
-    noAnswer: `${data.rounds ? 'ما ردّ — بيصير جاهز بوقتو' : 'محاولة أو محاولتين — التالية تُغلق'}${data.closedToday.length > 0 ? ` · و${data.closedToday.length} أُغلقت اليوم` : ''}`,
+    noAnswer: `${data.rounds || data.cadenceOn ? 'ما ردّ — بيصير جاهز بوقتو' : 'محاولة أو محاولتين — التالية تُغلق'}${data.closedToday.length > 0 ? ` · و${data.closedToday.length} أُغلقت اليوم` : ''}`,
     done: confirmed.q ? `بحث «${confirmed.q}»` : 'يوم واحد في كلّ مرّة',
     postponed: 'ما أجّلتَه لموعد — تعمل على ما حلّ موعده',
   };
@@ -2228,7 +2232,7 @@ export function ConfirmationMineScreen() {
           customerName={callOrder.customer.fullName}
           awayMs={call.awayMs}
           reading={helperReading}
-          closesOnNext={(workable(callOrder.id) ?? callOrder).noAnswerCount + 1 >= data.noAnswerLimit}
+          closesOnNext={(workable(callOrder.id) ?? callOrder).closesOnNext ?? ((workable(callOrder.id) ?? callOrder).noAnswerCount + 1 >= data.noAnswerLimit)}
           confirmLock={sheetConfirmLock(workable(callOrder.id) ?? callOrder, contactFirstText)}
           proofOn={proofOn}
           orderId={callOrder.id}
