@@ -9,6 +9,10 @@ import { quoteLandingOrder } from '@/lib/v1/landing-door';
  * What the customer will pay, before they press «اطلب». A GET because it
  * writes nothing, and a city is not a customer's detail. A refusal is the
  * Arabic the visitor reads, in the shape the order door answers with.
+ *
+ * A blank `city` is asked too (the owner, 15/11: a page may ask for «العنوان» only): the goods are priced and the
+ * fee is `feeKnown: false`, as for a region the fee table has no row for. A city that is written and is not the
+ * country's is still refused.
  */
 export async function GET(req: Request) {
   const requestId = requestIdOf(req);
@@ -17,8 +21,8 @@ export async function GET(req: Request) {
     const { searchParams: params } = new URL(req.url);
     const productId = params.get('productId') ?? '';
     const city = params.get('city') ?? '';
-    if (!productId || !city) {
-      throw new V1Fault(422, V1_CODE.VALIDATION_FAILED, 'productId and city are required', { fields: ['productId', 'city'] });
+    if (!productId) {
+      throw new V1Fault(422, V1_CODE.VALIDATION_FAILED, 'productId is required', { fields: ['productId'] });
     }
     const result = await quoteLandingOrder(caller.companyId, {
       productId: productId.slice(0, 64),

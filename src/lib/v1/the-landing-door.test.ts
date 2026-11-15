@@ -178,6 +178,23 @@ describe('the fee a visitor is shown', () => {
     expect(res.status).toBe(400);
     expect((await res.json()).fieldErrors.city).toMatch(/المدينة/);
   });
+
+  // The owner, 15/11: a page may ask for «العنوان» only. This used to be a 422 («productId and city are required»);
+  // a blank city now prices the goods and says the fee is unknown, like a region with no fee row.
+  it('with no city, prices the goods and says it does not know the fee', async () => {
+    for (const q of ['productId=p1&offerId=o1&city=', 'productId=p1&offerId=o1']) {
+      const res = await getQuote(quoteReq(q));
+      expect(res.status, q).toBe(200);
+      expect(await res.json()).toMatchObject({ net: 22, deliveryFee: 0, cod: 22, feeKnown: false, region: null });
+    }
+    expect(h.db.deliveryFee.findMany).not.toHaveBeenCalled();
+  });
+
+  it('with no city and an offer that includes delivery, the fee is known: none', async () => {
+    h.activeOffersFor.mockResolvedValue([offer({ deliveryIncluded: true })]);
+    const q = await (await getQuote(quoteReq('productId=p1&offerId=o1&city='))).json();
+    expect(q).toMatchObject({ deliveryFee: 0, cod: 22, deliveryIncluded: true, feeKnown: true });
+  });
 });
 
 describe('an order through the door', () => {
@@ -200,6 +217,20 @@ describe('an order through the door', () => {
     expect(body.total).toBe(22);
     expect(body).toMatchObject({ cod: 24.5, deliveryFee: 2.5, feeKnown: true });
     expect(h.db.order.updateMany.mock.calls[0][0].data).toEqual({ channelId: 'ch1' });
+  });
+
+  // The owner, 15/11: this door, and only this one, takes an order with no city (`cityOptional`); the engine then
+  // writes it with no region (held in `a-landing-order-may-come-without-a-city.test.ts`).
+  it('takes an order with no city: the engine is told it may be blank, and the fee is said to be unknown', async () => {
+    for (const sent of [{ ...ORDER, city: '' }, { ...ORDER, city: null }, (({ city: _c, ...rest }) => rest)(ORDER)]) {
+      h.createPublicOrder.mockClear();
+      const res = await postOrder(orderReq(sent));
+      expect(res.status, JSON.stringify(sent)).toBe(201);
+      const [surface, raw] = h.createPublicOrder.mock.calls[0];
+      expect(surface.cityOptional).toBe(true);
+      expect(raw.city).toBe('');
+      expect(await res.json()).toMatchObject({ cod: 22, deliveryFee: 0, feeKnown: false });
+    }
   });
 
   it('refuses a paused store or a retired product before anything is written', async () => {
