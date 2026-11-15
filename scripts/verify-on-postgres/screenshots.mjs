@@ -119,7 +119,8 @@ async function connect(wsUrl) {
     if (msg.id && pending.has(msg.id)) {
       const { ok, no } = pending.get(msg.id);
       pending.delete(msg.id);
-      msg.error ? no(new Error(`${msg.error.message}`)) : ok(msg.result);
+      if (msg.error) no(new Error(`${msg.error.message}`));
+      else ok(msg.result);
     } else if (msg.method) {
       for (const l of listeners) l(msg);
     }
