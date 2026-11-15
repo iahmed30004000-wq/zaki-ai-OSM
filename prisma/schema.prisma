@@ -72,6 +72,8 @@ model Company {
   callHelperReadings    CallHelperReading[]
   idempotencyRecords    IdempotencyRecord[]
   partners              Partner[]
+  abandonedCarts        AbandonedCart[]
+  abandonedCartEvents   AbandonedCartActivity[]
 
   @@map("companies")
 }
@@ -373,6 +375,8 @@ model User {
   customerBlockReleases         CustomerBlock[]         @relation("CustomerBlockReleasedBy")
   reviewsAdded                  ProductReview[]         @relation("ReviewAuthor")
   reviewsHidden                 ProductReview[]         @relation("ReviewHider")
+  abandonedCartsAssigned        AbandonedCart[]         @relation("AbandonedCartAssignee")
+  abandonedCartEvents           AbandonedCartActivity[]
 
   @@index([companyId])
   @@index([role])
@@ -465,6 +469,7 @@ model Product {
   /// The fixed cost, when an admin has set one. A row of its OWN table and not a column here, on purpose: every read of a product
   /// takes the whole row, and a cost on it would ride out in whatever answer returns the row — including the ones a customer sees.
   fixedCost          ProductFixedCost?
+  abandonedCarts     AbandonedCart[]
 
   @@unique([companyId, storeId, sku])
   @@index([companyId, storeId])
@@ -1133,6 +1138,8 @@ model Order {
   /// (`product_reviews_order_key`, named on ProductReview), so the schema
   /// says «many» and the database says «one». `oneRatingPerOrder` reads it.
   reviews               ProductReview[]
+  /// The abandoned carts this order came out of (`AbandonedCart.orderId`) — read on the cart, never on the order.
+  abandonedCarts        AbandonedCart[]
 
   @@unique([companyId, orderNumber])
   @@unique([companyId, merchantRef])
@@ -2114,6 +2121,7 @@ model Region {
   country      Country       @relation(fields: [countryId], references: [id], onDelete: Restrict)
   orders       Order[]
   deliveryFees DeliveryFee[]
+  abandonedCarts AbandonedCart[]
 
   @@unique([countryId, name])
   @@map("regions")
@@ -4070,4 +4078,90 @@ model UserSession {
 
   @@index([userId, revokedAt])
   @@map("user_sessions")
+}
+
+/// «السلات المهجورة» — A VISITOR WHO LEFT A NAME AND A PHONE ON A LANDING PAGE AND NO ORDER (contract oms-lp.v1 §9).
+///
+/// Zaki pages decides what a cart is (a valid phone and no order within fifteen minutes) and sends it through the landing
+/// door (`POST /api/v1/landing/abandoned-carts`); this table only receives it and holds the team's work on it. Upserted per
+/// company on `externalId` — the same lead sent again updates its row, never a second one — and an update never moves the
+/// status back to NEW once somebody has worked it.
+///
+/// No money lives here. A cart becomes an order only through the ordinary order door (`POST /api/orders`), and `orderId`
+/// is the link written afterwards.
+///
+/// status: NEW · CONTACTED · NO_ANSWER · CALLBACK · NOT_INTERESTED · INVALID · CONVERTED (the team made the order) ·
+/// RECOVERED (the customer ordered by himself, told by Zaki pages). The words and the rules are `src/lib/abandoned-carts.ts`.
+model AbandonedCart {
+  id              String    @id @default(uuid())
+  companyId       String
+  /// Zaki pages' own id for the lead. Unique per company: two companies may send the same one.
+  externalId      String
+  source          String    @default("LANDING_PAGE")
+  landingPageId   String?
+  landingPageName String?
+  landingPageUrl  String?
+  /// The product, when it is one of this company's; an unknown id keeps the cart and leaves this empty.
+  productId       String?
+  productName     String?
+  customerName    String?
+  /// As the visitor typed it (or as Zaki pages sent it).
+  phone           String
+  /// The national digits, for the search and for «له طلب» (`cartPhoneKey`).
+  phoneNormalized String
+  city            String?
+  /// The city matched to a region of the cart's country, when the match is unambiguous (`matchRegion`).
+  regionId        String?
+  /// ISO country code («JO»): sent by Zaki pages, else the product's store's.
+  country         String?
+  firstSeenAt     DateTime
+  lastSeenAt      DateTime
+  status          String    @default("NEW")
+  orderId         String?
+  assignedToId    String?
+  nextFollowUpAt  DateTime?
+  /// Calls that went unanswered — «ما رد» adds one.
+  attempts        Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  company    Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  product    Product?                @relation(fields: [productId], references: [id], onDelete: SetNull)
+  region     Region?                 @relation(fields: [regionId], references: [id], onDelete: SetNull)
+  order      Order?                  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  assignedTo User?                   @relation("AbandonedCartAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  activities AbandonedCartActivity[]
+
+  @@unique([companyId, externalId])
+  @@index([companyId, status, lastSeenAt])
+  @@index([companyId, lastSeenAt])
+  @@index([companyId, phoneNormalized])
+  @@index([companyId, assignedToId])
+  @@index([productId])
+  @@map("abandoned_carts")
+}
+
+/// A cart's history and notes, one line each: the door's arrivals and updates, a status changed, «ما رد», a note, a
+/// follow-up date, an assignment, the conversion. `userId` null = the landing door (Zaki pages), never a person.
+model AbandonedCartActivity {
+  id         String   @id @default(uuid())
+  companyId  String
+  cartId     String
+  userId     String?
+  /// RECEIVED · UPDATED · RECOVERED · STATUS_CHANGED · NO_ANSWER · NOTE · FOLLOW_UP · ASSIGNED · CONVERTED
+  action     String
+  fromStatus String?
+  toStatus   String?
+  note       String?
+  /// JSON: what changed (an order number, a date, an assignee's id) — never a customer's details.
+  metadata   String?
+  createdAt  DateTime @default(now())
+
+  company Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  cart    AbandonedCart @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  user    User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([cartId, createdAt])
+  @@index([companyId])
+  @@map("abandoned_cart_activities")
 }

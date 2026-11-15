@@ -432,6 +432,9 @@ const REACHED_BUT_UNSEEN: Record<string, string> = {
   '/api/v1/landing/orders/[orderNumber]/address': 'محادثةُ تأكيد الطلب تبدّل المحافظة والعنوان ما دام الطلب قابلًا للتعديل — المستدعي في مستودعٍ آخر',
   '/api/v1/landing/orders/[orderNumber]/offer': 'محادثةُ تأكيد الطلب تبدّل العرض بعرضٍ آخر من الكتالوج بسعره — المستدعي في مستودعٍ آخر',
   '/api/v1/landing/orders/[orderNumber]/follow-up': 'محادثةُ تأكيد الطلب تطلب اتصالًا أو موظفًا مع ملاحظة للمكتب — المستدعي في مستودعٍ آخر',
+  // The abandoned carts Zaki pages sends (contract oms-lp.v1 §9, 15/11) — two doors, both called by its cart sender (src/server/carts.ts).
+  '/api/v1/landing/abandoned-carts': 'صفحاتُ الهبوط ترسل السلة المهجورة بعد ربع ساعة هدوء، وتعيد إرسالها إن عدّل الزائر بياناته — المستدعي في مستودعٍ آخر',
+  '/api/v1/landing/abandoned-carts/[externalId]/recovered': 'صفحاتُ الهبوط تقول إن صاحب السلة طلب بنفسه بعد إرسالها — المستدعي في مستودعٍ آخر',
   '/api/call-helper/pair':
     'تطبيقُ «مساعد الاتصال» على أندرويد (apps/call-helper-android → PairActivity.kt) يبادل رمزَ الربطِ بتوكن — المستدعي برنامج Kotlin لا يقرؤه هذا المسح',
 };

@@ -3,7 +3,7 @@ import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * THE FIFTEEN JOBS, PINNED BY NAME, INTERVAL, CLOCK TIME AND ORDER.
+ * THE SIXTEEN JOBS, PINNED BY NAME, INTERVAL, CLOCK TIME AND ORDER.
  *
  * `definitions.ts` was one file of 991 lines and is now one file per job. A
  * split that quietly dropped a job from the list, or retimed one, would run
@@ -37,6 +37,8 @@ const PINNED: Array<[string, number, string | undefined]> = [
   ['escalate-change-requests', 60, undefined],
   ['pull-ad-spend', 86_400, '06:00'],
   ['reserve-returning-customers', 120, undefined],
+  // Appended 15/11: «السلات المهجورة» — the finished carts go after the company's retention days (default 60).
+  ['prune-abandoned-carts', 86_400, '04:00'],
 ];
 
 describe('the jobs table', () => {

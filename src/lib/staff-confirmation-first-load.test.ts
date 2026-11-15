@@ -112,8 +112,13 @@ describe('what an agent downloads before «طلباتي» draws', () => {
    * (`useLiveRefresh`, the bell, «شغلك اليوم») — costs +0.3 KB: 411.2 KB, 28 files (CI «Payload budget», run 43444353216, #281). Same
    * reading as before: the order window, the create window, the assistant and the «مؤجّلة» tab are still absent from the chunks, and this
    * guard still exists for the 35 KB they weighed, not for a third of a kilobyte.
+   *
+   * MOVED 2026-11-15, 412 → 413, MEASURED AGAIN. «السلات المهجورة» (contract oms-lp.v1 §9) is a new line of the SHELL every staff
+   * screen pays: its registry entry, its guide text, its glyph, and the menu badge's poll (`useNewCartsCount`) — 412.06 KB, measured
+   * locally with `npm run build` then this file under REQUIRE_BUILD=1 (feat/abandoned-carts). The carts screens, their order form and
+   * the modals are not in these chunks; the guard still exists for the 35 KB the modals weighed, not for a twentieth of a kilobyte.
    */
-  const CEILING_KB = 412;
+  const CEILING_KB = 413;
 
   it(`keeps /confirmation/mine at or under ${CEILING_KB} KB of JS, gzipped`, () => {
     if (!measurable()) return noBuild();

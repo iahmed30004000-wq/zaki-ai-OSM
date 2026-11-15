@@ -92,8 +92,9 @@ const LIT = 'bg-[var(--sys-primary)]';
 
 describe('the menu is fifteen lines', () => {
   it('— fifty-two screens in the registry, fifteen lines in the menu', () => {
-    expect(ALL_ROUTES).toHaveLength(52);
-    expect(lines(NAV), 'عدد أسطر القائمة').toBe(15);
+    // 15/11: «السلات المهجورة» joined the loose main group beside «الطلبات» (contract oms-lp.v1 §9) — one more screen, one more line.
+    expect(ALL_ROUTES).toHaveLength(53);
+    expect(lines(NAV), 'عدد أسطر القائمة').toBe(16);
   });
 
   it('and every group says how it is drawn — none is left to fold as a heading', () => {
@@ -124,7 +125,7 @@ describe('the sidebar', () => {
   it('draws one line per hub and one per loose screen — fifteen, with no heading to fold', () => {
     const { container } = render(<Sidebar groups={NAV} />);
     const links = menuLinks(container);
-    expect(links).toHaveLength(15);
+    expect(links).toHaveLength(16);
     // No heading that folds: the buttons of an accordion carry `aria-expanded`.
     expect(container.querySelectorAll('aside nav [aria-expanded]')).toHaveLength(0);
     const text = links.map((a) => a.textContent);
@@ -245,7 +246,7 @@ describe('the phone’s «المزيد»', () => {
     const sheet = openSheet(NAV);
     const text = linksOf(sheet).map((a) => a.textContent);
     // Fifteen lines in the menu, less «الطلبات», which the bar already holds on this page.
-    expect(text).toHaveLength(14);
+    expect(text).toHaveLength(15);
     for (const hub of ['مركز التأكيد', 'الشحن', 'المخزون', 'المال', 'الرقابة', 'النمو والذكاء', 'المحادثات', 'الإعدادات', 'الإدارة']) {
       expect(text, hub).toContain(hub);
     }

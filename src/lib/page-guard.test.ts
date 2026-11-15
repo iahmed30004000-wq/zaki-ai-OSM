@@ -76,6 +76,8 @@ describe('every contract route has a page', () => {
     const extras = pages.filter((p) => !contract.has(p));
     // Only detail screens of a listed route may exist beside it.
     expect(extras.sort()).toEqual([
+      // One abandoned cart (15/11): its data, history and order — behind the list's own door.
+      '/abandoned-carts/[id]',
       '/admin/users/[id]',
       // An order's address: a door to the panel the list already opens.
       '/orders/[id]',

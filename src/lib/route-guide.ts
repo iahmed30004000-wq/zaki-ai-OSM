@@ -61,6 +61,7 @@ export const GUIDED_PATHS: readonly string[] = [
   // الرئيسية
   '/dashboard',
   '/orders',
+  '/abandoned-carts',
   '/customers',
   '/products',
   // مركز التأكيد

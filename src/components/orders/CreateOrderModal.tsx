@@ -32,9 +32,26 @@ interface CreateOrderModalProps {
    * reservation and the status log.
    */
   onSuccess: (order?: { id: string; orderNumber?: string }) => void;
+  /**
+   * WHAT THE FORM OPENS WITH — «حوّل لطلب» on an abandoned cart (contract oms-lp.v1 §9).
+   *
+   * Only the starting values of the same inputs: the name, the phone, the governorate (the cart's matched region, else a
+   * region of the same name), the product's line at its own default offer, and an internal note. Everything stays
+   * editable, and the order is sent by the same `handleSubmit` to the same door — nothing about creating it changes.
+   */
+  prefill?: CreateOrderPrefill;
 }
 
-export function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateOrderModalProps) {
+export interface CreateOrderPrefill {
+  customerName?: string | null;
+  customerPhone?: string | null;
+  regionId?: string | null;
+  city?: string | null;
+  productId?: string | null;
+  internalNotes?: string | null;
+}
+
+export function CreateOrderModal({ isOpen, onClose, onSuccess, prefill }: CreateOrderModalProps) {
   const { t, locale, isRtl, currentUser } = useApp();
   const ar = locale === 'ar';
   const toast = useToast();
@@ -104,8 +121,8 @@ export function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateOrderModa
       setLoading(false);
       setConfirmNow(false);
       setIncludesDelivery(true);
-      setCustomerName('');
-      setCustomerPhone('');
+      setCustomerName(prefill?.customerName ?? '');
+      setCustomerPhone(prefill?.customerPhone ?? '');
       setCustomerAltPhone('');
       setCustomerAddress('');
       setRegionId('');
@@ -113,7 +130,7 @@ export function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateOrderModa
       setChannelId('');
       setModeratorId('');
       setCustomerNotes('');
-      setInternalNotes('');
+      setInternalNotes(prefill?.internalNotes ?? '');
       setExistingCustomerAlert(null);
       loadFormData();
     }
@@ -140,10 +157,21 @@ export function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateOrderModa
   useEffect(() => {
     if (!isOpen || products.length === 0 || !currency) return;
     const minorUnit = currency.minorUnit;
+    // A prefilled product opens its own line (at its own default offer); one this store does not sell falls back as before.
+    const first = (prefill?.productId && products.find((p) => p.id === prefill.productId)) || products[0];
     setLines((current) =>
-      current.length === 1 && !current[0].productId ? [newLine(products[0], minorUnit)] : current
+      current.length === 1 && !current[0].productId ? [newLine(first, minorUnit)] : current
     );
-  }, [isOpen, products, currency]);
+  }, [isOpen, products, currency, prefill?.productId]);
+
+  /** The prefilled governorate, once the country's list has arrived — and only while nobody has picked one. */
+  useEffect(() => {
+    if (!isOpen || regions.length === 0 || (!prefill?.regionId && !prefill?.city)) return;
+    const byId = prefill.regionId ? regions.find((r) => r.id === prefill.regionId) : undefined;
+    const byName = prefill.city ? regions.find((r) => r.name.trim() === prefill.city?.trim()) : undefined;
+    const found = byId ?? byName;
+    if (found) setRegionId((current) => current || found.id);
+  }, [isOpen, regions, prefill?.regionId, prefill?.city]);
 
   const loadFormData = async () => {
     try {

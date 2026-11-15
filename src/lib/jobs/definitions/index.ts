@@ -14,8 +14,10 @@ import { proposePenaltiesJob } from './propose-penalties';
 import { escalateChangeRequests } from './escalate-change-requests';
 import { pullAdSpend } from './pull-ad-spend';
 import { reserveReturning } from './reserve-returning-customers';
+import { pruneAbandonedCarts } from './prune-abandoned-carts';
 
 export {
+  pruneAbandonedCarts,
   releaseClaims,
   accrueCommission,
   POLL_BATCH,
@@ -65,6 +67,8 @@ export const JOBS: JobDefinition[] = [
   pullAdSpend,
   // Appended, never inserted: the order of this list is the contract with the run log.
   reserveReturning,
+  // «السلات المهجورة» (contract oms-lp.v1 §9): a finished cart is deleted after the company's retention days.
+  pruneAbandonedCarts,
 ];
 
 export function jobByName(name: string): JobDefinition | undefined {
