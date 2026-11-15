@@ -133,7 +133,9 @@ const CLAIM_REASON_AR: Record<string, string> = {
   // does not say who (`managerReturnWords` below names the person when it does).
   [MANAGER_RETURNED_REASON]: 'أرجعها مشرف للطابور — ما حدا وصل لزبونها',
   // «الطلب يرجع للطابور فوراً» (no-answer-returns.ts): the order left her hand with her press — the system wrote the line, not she.
-  [NO_ANSWER_RETURNED_REASON]: 'رجع للطابور فوراً بعد «لا يرد» — بيجهز بعد 3 ساعات دوام',
+  // No number, like the round label above (RV1413): the same reason is written by the three-hour mode AND by the plan («جدول المحاولات»),
+  // and a row must not tell its reader a rule that was not its own.
+  [NO_ANSWER_RETURNED_REASON]: 'رجع للطابور فوراً بعد «لا يرد» — بيجهز لما يحين موعد محاولته الجاية',
   [DATE_RETURNED_REASON]: 'رجع للطابور بعد ما انحدد موعد — بيجهز بالموعد',
   [IDLE_RETURNED_REASON]: 'تحرير تلقائي — مرّت 30 دقيقة عمل وما انسجّلت عليه أي محاولة، ورجع للطابور',
   LOCK_EXPIRED: 'انتهت مدة القفل',

@@ -53,7 +53,18 @@ describe('on the timeline', () => {
   it('her «لا يرد» that sent the order back: the system is the actor, and the reason says when it is ready', async () => {
     const event = await said(NO_ANSWER_RETURNED_REASON);
     expect(event).toMatchObject({ title: 'تحرير الطلب', actorName: 'النظام', actorId: null });
-    expect(event.detail).toBe('رجع للطابور فوراً بعد «لا يرد» — بيجهز بعد 3 ساعات دوام');
+    expect(event.detail).toBe('رجع للطابور فوراً بعد «لا يرد» — بيجهز لما يحين موعد محاولته الجاية');
+  });
+
+  /**
+   * NO NUMBER IN IT (the planner's ruling 6, RV1413). The same reason is written by the three-hour mode AND by «جدول المحاولات», and the timeline
+   * cannot tell which rule wrote a row: a «3 ساعات دوام» on a plan row (whose next attempt is thirty minutes or two hours away) would be a rule that
+   * was not its own. A stored row from before keeps reading true.
+   */
+  it('and it names no hours, no count — whichever rule wrote the row', async () => {
+    const { detail } = await said(NO_ANSWER_RETURNED_REASON);
+    expect(detail).not.toMatch(/3 ساعات/);
+    expect(detail).not.toMatch(/ساعات|ثلاث|خمس|\d/);
   });
 
   it('her date that sent the order back', async () => {
