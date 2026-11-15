@@ -29,6 +29,7 @@
 | المجموعة | أمثلة |
 |---|---|
 | الطلب | `order-state.ts` (آلة الحالات) · `order-stages.ts` · `order-cancel.ts` · `order-closing.ts` · `order-seal.ts` · `order-parser.ts` · `order-tracking.ts` · `change-request-*.ts` (طلبات التعديل) · `edit-confirmed-window.ts` (نافذة الماسكة: تعديل/تأجيل/إلغاء المؤكَّد قبل الدفعة، مفتاح `orders.edit_confirmed`) · `confirmation-workflow.ts` · `confirmed-twin.ts` (حارس «توأم مؤكَّد» عند «تأكيد») · `twin-refusal.ts` · `shipping-workflow.ts` |
+| مركز التأكيد v2 («لا يرد») | `call-proof*.ts` (إثبات الضغطة: قاعدة · حارس · كلام · مفتاح) · `no-answer-cadence.ts` (جدول المحاولات الخمس: قاعدة صرفة للموعد والعدّ والإغلاق والكلام) · `no-answer-cadence-switch.ts` (قارئ المفتاح، مغلق عند أي فشل) · `no-answer-rounds*.ts` و`no-answer-returns*.ts` (النظامان القديمان) · `confirmation-queue.ts` (السحب والتحرير). قاعدة: السحب بيقرا الموعد اللي كتبو الباب على سطر المحاولة (`nextFollowUpAt`)، وما بيحسبو من جديد |
 | المنتج والعروض | `product-*.ts` · `offers.ts` · `offer-*.ts` · `line-price.ts` · `post-order-offer.ts` · `reservation.ts` · `stock-*.ts` |
 | صفحات الهبوط | `landing-*.ts` · `page-templates.ts` — **مسار المتجر والهبوط له وكيله، ما بنلمسه** |
 | المتجر | `store-*.ts` · `storefront*.ts` · `system-themes.ts` — نفس القاعدة |
