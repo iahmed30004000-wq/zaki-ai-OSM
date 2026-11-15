@@ -35,7 +35,7 @@ describe('navigation contract', () => {
     ]);
   });
 
-  it('lists 52 unique routes', () => {
+  it('lists 53 unique routes', () => {
     // 52 until /ops/labels was folded into the shipping batches screen:
     // printing, the sizes and the courier CSV all live where the batch is.
     // 59 with the store section's seven screens, all live. 60 with
@@ -84,8 +84,11 @@ describe('navigation contract', () => {
     // (`/settings/links`): the same errand — read the status, test, reconnect — seen once,
     // at set-up. Each card is drawn only for the key that owns it; both old addresses
     // redirect permanently.
-    expect(paths).toHaveLength(52);
-    expect(new Set(paths).size).toBe(52);
+    //
+    // 53 with `/abandoned-carts` (15/11): the carts Zaki pages sends (contract oms-lp.v1 §9), a loose line beside
+    // the orders on the same key (`orders.view`).
+    expect(paths).toHaveLength(53);
+    expect(new Set(paths).size).toBe(53);
   });
 
   it('the store section is its own group, and reads as one', () => {

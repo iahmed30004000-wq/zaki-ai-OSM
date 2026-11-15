@@ -179,6 +179,8 @@ const ID_SCOPED: Record<string, Excuse> = {
   'app/api/orders/[id]/route.ts': { reason: 'مقيَّد بـ orderId واحد — إضافاتُ طلبٍ بعينه وسطورُه (بوابة السعر وقلم التجهيز وفحص الاختصار)', sites: 6 },
   'app/api/orders/import/migrate/route.ts': { reason: 'مقيَّد بأرقام طلباتٍ مُسمّاة من الملف — هل الرقم محجوز لطلبٍ آخر', sites: 1 },
   'app/api/whatsapp/conversations/[id]/route.ts': { reason: 'مقيَّد بـ customerId واحد — محادثةٌ بعينها', sites: 1 },
+  // new (15/11, السلات المهجورة): «له طلب» — the orders of the customers whose phones are on the carts shown (`customerId: { in }`), to mark a cart whose visitor already ordered. A read of named persons, not a store figure.
+  'lib/abandoned-carts.ts': { reason: 'مقيَّد بـ customerId: { in } — طلباتُ أصحابِ أرقامِ السلات المعروضة («له طلب»)', sites: 1 },
   'lib/commission-metrics.ts': { reason: 'مقيَّد بـ orderId: { in } ومستخدمٍ واحد', sites: 1 },
   // The send and its plan (`dispatchPlan`, the orders left to send): both read the orders of ONE batch, which was found in this store first.
   'lib/couriers/dispatch.ts': { reason: 'مقيَّد بـ shippingBatchId واحد', sites: 2 },

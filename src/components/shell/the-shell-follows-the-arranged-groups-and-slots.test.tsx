@@ -190,11 +190,11 @@ describe('what the layout hands the shell', () => {
 // ───────────────────────── the sidebar, on a desk and as a phone's drawer ─────────────────────────
 
 describe('the drawer follows the groups', () => {
-  it('— unarranged, the lines are in the registry’s order: fifteen of them', async () => {
+  it('— unarranged, the lines are in the registry’s order: sixteen of them', async () => {
     const { container } = render(await layoutProps());
-    expect(drawerLines(container)).toHaveLength(15);
-    // main's four screens, then the hubs in order — the first hub is «مركز التأكيد», the last the profile’s «الإدارة»
-    expect(drawerLines(container).slice(0, 5)).toEqual(['لوحة التحكم', 'الطلبات', 'العملاء', 'المنتجات', 'مركز التأكيد']);
+    expect(drawerLines(container)).toHaveLength(16);
+    // main's five screens («السلات المهجورة» beside the orders since 15/11), then the hubs in order — the first hub is «مركز التأكيد», the last the profile’s «الإدارة»
+    expect(drawerLines(container).slice(0, 6)).toEqual(['لوحة التحكم', 'الطلبات', 'السلات المهجورة', 'العملاء', 'المنتجات', 'مركز التأكيد']);
     expect(drawerLines(container).slice(-3)).toEqual(['صفحات الهبوط', 'الإعدادات', 'الإدارة']);
   });
 
@@ -203,11 +203,11 @@ describe('the drawer follows the groups', () => {
     const { container } = render(await layoutProps());
     const lines = drawerLines(container);
     expect(lines.slice(0, 2)).toEqual(['الشحن', 'الإدارة']);
-    expect(lines.slice(2, 6)).toEqual(['لوحة التحكم', 'الطلبات', 'العملاء', 'المنتجات']);
-    expect(lines.slice(6, 8)).toEqual(['المتجر', 'صفحات الهبوط']);
+    expect(lines.slice(2, 7)).toEqual(['لوحة التحكم', 'الطلبات', 'السلات المهجورة', 'العملاء', 'المنتجات']);
+    expect(lines.slice(7, 9)).toEqual(['المتجر', 'صفحات الهبوط']);
     // the rest, in the registry’s order
-    expect(lines.slice(8)).toEqual(['مركز التأكيد', 'المخزون', 'المال', 'الرقابة', 'النمو والذكاء', 'المحادثات', 'الإعدادات']);
-    expect(lines).toHaveLength(15);
+    expect(lines.slice(9)).toEqual(['مركز التأكيد', 'المخزون', 'المال', 'الرقابة', 'النمو والذكاء', 'المحادثات', 'الإعدادات']);
+    expect(lines).toHaveLength(16);
   });
 
   it('and the lines inside a group still follow their own order — the two arrangements do not meet', async () => {

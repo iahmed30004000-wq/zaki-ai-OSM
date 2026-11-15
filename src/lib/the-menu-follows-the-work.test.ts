@@ -203,8 +203,9 @@ describe('two entries, one root, and nobody guessing which is which', () => {
 describe('nothing was moved that a link, a bookmark or a saved layout points at', () => {
   it('— every one of the 51 screens is still there, once, at its own address — and the front door is the 52nd', () => {
     const paths = ALL_ROUTES.map((r) => r.path);
-    expect(paths).toHaveLength(52);
-    expect(new Set(paths).size).toBe(52);
+    // 15/11: «السلات المهجورة» joined the loose main group beside «الطلبات» (contract oms-lp.v1 §9) — one more screen, one more line.
+    expect(paths).toHaveLength(53);
+    expect(new Set(paths).size).toBe(53);
     // The settings stand behind ONE menu line now; not one of them moved.
     for (const path of ['/settings/geo', '/settings/couriers', '/settings/tracking', '/apps/store', '/admin/jobs']) {
       expect(paths, path).toContain(path);

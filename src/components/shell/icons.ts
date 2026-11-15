@@ -21,7 +21,7 @@ import {
   RiRadarFill, RiRadarLine, RiRepeatFill, RiRepeatLine,
   RiRobot2Fill, RiRobot2Line, RiSendPlaneFill, RiSendPlaneLine,
   RiSettings3Fill, RiSettings3Line, RiShieldCheckFill, RiShieldCheckLine,
-  RiShoppingCartFill, RiShoppingCartLine, RiStackFill, RiStackLine,
+  RiShoppingCartFill, RiShoppingCartLine, RiShoppingBasket2Fill, RiShoppingBasket2Line, RiStackFill, RiStackLine,
   RiStore2Fill, RiStore2Line, RiTimerFill, RiTimerLine,
   RiTruckFill, RiTruckLine, RiUserSettingsFill, RiUserSettingsLine,
   RiWallet3Fill, RiWallet3Line,
@@ -91,6 +91,8 @@ export const ICONS: Record<string, Pair> = {
   Settings: pair(RiSettings3Line, RiSettings3Fill),
   ShieldCheck: pair(RiShieldCheckLine, RiShieldCheckFill),
   ShoppingCart: pair(RiShoppingCartLine, RiShoppingCartFill),
+  // «السلات المهجورة»: a basket, so it is not read as a second «الطلبات» one line below it.
+  CartAbandoned: pair(RiShoppingBasket2Line, RiShoppingBasket2Fill),
   Store: pair(RiStore2Line, RiStore2Fill),
   Tag: pair(RiPriceTag3Line, RiPriceTag3Fill),
   Timer: pair(RiTimerLine, RiTimerFill),
