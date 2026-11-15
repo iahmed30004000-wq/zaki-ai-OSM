@@ -400,17 +400,23 @@ export async function GET(request: Request) {
      * case there is, an order nobody has tried to reach, is told from the count the row already carries.
      */
     const dueCtx = attempts && clock ? dueContext({ now, cal, rounds: roundsSw, clock }) : null;
-    const verdictOf = new Map<string, DueVerdict>(
-      inConfirmation.map((o) => [
-        o.id,
-        desks
-          ? cadenceVerdict(desks.get(o.id)!, o._count?.contactAttempts ?? 1)
-          : attempts && dueCtx
-          ? dueVerdict(
+    // The rounds' verdict of one held order — the very question the rounds-only desk asks. Null with the rounds off (no clock, no context): then the plan decides alone, as before.
+    const roundsVerdictOf =
+      attempts && dueCtx
+        ? (o: (typeof inConfirmation)[number]) =>
+            dueVerdict(
               { claimedAt: o.claimedAt, claimedById: deskOf, postponedUntil: o.postponedUntil, nextFollowUpAt: o.nextFollowUpAt },
               attempts.get(o.id) ?? [],
               dueCtx
             )
+        : null;
+    const verdictOf = new Map<string, DueVerdict>(
+      inConfirmation.map((o) => [
+        o.id,
+        desks
+          ? cadenceVerdict(desks.get(o.id)!, o._count?.contactAttempts ?? 1, roundsVerdictOf ? roundsVerdictOf(o) : null)
+          : roundsVerdictOf
+          ? roundsVerdictOf(o)
           : verdictFromCount(o._count?.contactAttempts ?? 1),
       ])
     );
@@ -470,7 +476,7 @@ export async function GET(request: Request) {
         dueAt: verdict.dueAt ? verdict.dueAt.toISOString() : null,
         // …and the line the card prints about it, on the store's clock (null when it has nothing to say).
         dueWords:
-          (desks ? cadenceCardWords(desks.get(o.id)!, now, country.timezone) : null) ??
+          (desks && verdict.reason !== 'PROMISE' ? cadenceCardWords(desks.get(o.id)!, now, country.timezone) : null) ??
           dueLabel(verdict, { rounds: row.noAnswerCount, limit: NO_ANSWER_LIMIT, now, timeZone: country.timezone }),
         // Under the plan: «a press made now would close it» is a fact of the server's clock, so the call sheet warns only when it is true.
         ...(desks ? { closesOnNext: desks.get(o.id)!.closesOnNext } : {}),

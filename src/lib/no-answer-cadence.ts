@@ -202,9 +202,17 @@ export function cadenceDesk(
  * The «الشغل أول» verdict of one held order under the plan, in the shape `deskTab` / `summariseDue` / `dueNow` already read (so `work-first.ts` is not edited): no counted attempt yet
  * → by the order's own attempt count (a NEW order is due NEW; an order with only «اتصال» lines, or only lines from before the switch, is not due and lands by its count); the due arrived →
  * «ROUND»; the due ahead → waiting; a plan complete and still open (five counted, a close that did not go through) → not due and not waiting, so it stays in «بانتظار» by its count.
- * The order's own dates are NOT read — parity with the rounds-off desk (`verdictFromCount`); the holder's own date releases the order anyway.
+ * The order's own dates are NOT read — parity with the rounds-off desk (`verdictFromCount`); the holder's own date releases the order anyway. One exception, and only when handed over:
+ * the rounds' PROMISE («الزبون طلب نكلمو هلّق», RV2392) comes first — the customer named the time.
  */
-export function cadenceVerdict(desk: Pick<ReturnType<typeof cadenceDesk>, 'counted' | 'due' | 'waiting' | 'dueAt'>, attemptCount: number): DueVerdict {
+export function cadenceVerdict(
+  desk: Pick<ReturnType<typeof cadenceDesk>, 'counted' | 'due' | 'waiting' | 'dueAt'>,
+  attemptCount: number,
+  rounds: DueVerdict | null = null
+): DueVerdict {
+  // `rounds` is the rounds' own answer for this order, handed over only when «نظام الجولات» is on too. ONE word of it is taken — PROMISE (a date arrived, nothing logged since) — and it
+  // outranks the plan: the customer asked for this call. ROUND / NEW / waiting from the rounds are never used (the plan speaks, and never says «جولة»).
+  if (rounds?.reason === 'PROMISE') return rounds;
   if (desk.counted === 0) return verdictFromCount(attemptCount);
   if (desk.due) return { due: true, reason: 'ROUND', waiting: false, dueAt: null };
   if (desk.waiting) return { due: false, reason: null, waiting: true, dueAt: desk.dueAt };
