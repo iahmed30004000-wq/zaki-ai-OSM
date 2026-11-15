@@ -5,7 +5,7 @@ import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Money } from '@/components/ui/Money';
 import { apiJson } from '@/lib/api-client';
-import { FAULT_AR, type Fault, type LossReport } from '@/lib/loss-analysis';
+import { FAULT_AR, lossDisplayLines, type Fault, type LossLine, type LossReport } from '@/lib/loss-analysis';
 import { RiAlertLine, RiLoader4Line, RiPhoneLine, RiTruckLine } from '@remixicon/react';
 
 /**
@@ -26,6 +26,9 @@ import { RiAlertLine, RiLoader4Line, RiPhoneLine, RiTruckLine } from '@remixicon
  *
  * And one line at the end that neither half can give alone: what the
  * expensive half spent on failures the cheap half exists to catch.
+ *
+ * «أُغلق بلا رد» IS DRAWN AS ONE ROW (the planner 15/11, answer 8): the two stored codes of the no-answer close are summed into it and listed under it, indented, with their own
+ * labels and counts (`lossDisplayLines`). The payload this panel receives is untouched — two codes, as ever; a company with only one of them sees today's row.
  */
 
 const FAULT_TINT: Record<Fault, string> = {
@@ -147,6 +150,36 @@ export function LossPanel({ period }: { period: string }) {
   );
 }
 
+/**
+ * THE CELLS OF ONE LINE — the reason, whose defect it is, how many, and where money is shown what it cost: a fragment, so they are the `li`'s own children, as they always were.
+ * A detail line (one of the two codes under «أُغلق بلا رد») is the same cells, quieter, without the fault tag its row above already carries.
+ */
+function LossCells({ line: l, withMoney, detail = false }: { line: LossLine; withMoney: boolean; detail?: boolean }) {
+  return (
+    <>
+      <span
+        className={`${detail ? 'text-xs text-[var(--sys-muted-foreground)]' : 'text-sm text-[var(--sys-heading)]'} min-w-0 flex-1 truncate`}
+        title={l.label}
+      >
+        {l.label}
+      </span>
+      {!detail && (
+        <span className={`shrink-0 text-xs px-2 py-0.5 rounded-md border ${FAULT_TINT[l.fault]}`}>
+          {FAULT_AR[l.fault]}
+        </span>
+      )}
+      <span className="tabular-nums shrink-0 text-xs text-[var(--sys-muted-foreground)]">
+        {l.count} · {l.share}%
+      </span>
+      {withMoney && (
+        <span className={`tabular-nums shrink-0 ${detail ? 'text-xs' : 'text-sm font-semibold'} text-[var(--sys-destructive)] w-20 text-end`}>
+          {l.money > 0 ? <Money value={l.money} tone="lost" /> : '—'}
+        </span>
+      )}
+    </>
+  );
+}
+
 function Half({
   icon,
   title,
@@ -178,21 +211,19 @@ function Half({
       </header>
 
       <ul className="rounded-lg border border-[var(--sys-border)] divide-y divide-[var(--sys-border)]">
-        {half.lines.map((l) => (
+        {/* «أُغلق بلا رد» is ONE row with the two stored codes under it (`lossDisplayLines`) — a display only: the payload above still holds two. */}
+        {lossDisplayLines(half).map((l) => (
+          // A plain line is the very `li` it always was (the cells are its direct children); only the merged row carries the two codes under it, on a line of their own.
           <li key={`${l.field}:${l.reason}`} className="flex flex-wrap items-center gap-2 px-3 py-2">
-            <span className="text-sm text-[var(--sys-heading)] min-w-0 flex-1 truncate" title={l.label}>
-              {l.label}
-            </span>
-            <span className={`shrink-0 text-xs px-2 py-0.5 rounded-md border ${FAULT_TINT[l.fault]}`}>
-              {FAULT_AR[l.fault]}
-            </span>
-            <span className="tabular-nums shrink-0 text-xs text-[var(--sys-muted-foreground)]">
-              {l.count} · {l.share}%
-            </span>
-            {withMoney && (
-              <span className="tabular-nums shrink-0 text-sm font-semibold text-[var(--sys-destructive)] w-20 text-end">
-                {l.money > 0 ? <Money value={l.money} tone="lost" /> : '—'}
-              </span>
+            <LossCells line={l} withMoney={withMoney} />
+            {l.detail && (
+              <ul className="basis-full space-y-1 ps-5" aria-label={`تفصيل «${l.label}»`}>
+                {l.detail.map((d) => (
+                  <li key={`${d.field}:${d.reason}`} className="flex flex-wrap items-center gap-2">
+                    <LossCells line={d} withMoney={withMoney} detail />
+                  </li>
+                ))}
+              </ul>
             )}
           </li>
         ))}
