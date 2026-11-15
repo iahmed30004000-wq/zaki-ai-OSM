@@ -113,7 +113,7 @@ describe('at the landing door (cityOptional), a blank city is taken', () => {
 
   it('the history line reads in Arabic on the order’s timeline', async () => {
     const src = (await import('node:fs')).readFileSync(new URL('./order-timeline.ts', import.meta.url), 'utf8');
-    expect(src).toContain("[ARRIVED_WITHOUT_REGION_ACTION]: 'الطلب وصل من صفحة الهبوط بدون مدينة — حدّد المنطقة وقت التأكيد'");
+    expect(src).toContain("[ARRIVED_WITHOUT_REGION_ACTION]: 'الطلب وصل من صفحة الهبوط بدون مدينة — حدّد المحافظة وقت التأكيد'");
   });
 
   it('a city that is written still finds its region, and no extra line is written', async () => {

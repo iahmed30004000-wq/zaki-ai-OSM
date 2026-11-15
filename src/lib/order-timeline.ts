@@ -164,7 +164,7 @@ const ACTIVITY_AR: Record<string, string> = {
   ORDER_CREATED: 'إنشاء الطلب',
   LANDING_OFFER_SWAPPED: 'الزبون بدّل العرض بعد الطلب',
   // A Zaki page that asks for «العنوان» only (the owner, 15/11): taken with no region, picked on the confirmation call.
-  [ARRIVED_WITHOUT_REGION_ACTION]: 'الطلب وصل من صفحة الهبوط بدون مدينة — حدّد المنطقة وقت التأكيد',
+  [ARRIVED_WITHOUT_REGION_ACTION]: 'الطلب وصل من صفحة الهبوط بدون مدينة — حدّد المحافظة وقت التأكيد',
   // The landing confirmation chat's decisions (`v1/landing-chat.ts`, `CHAT_ACTION`), each in the assistant's name.
   LANDING_CHAT_CONFIRMED: 'مساعد الطلبات الآلي (صفحة الهبوط): الزبون أكّد الطلب',
   LANDING_CHAT_CANCELLED: 'مساعد الطلبات الآلي (صفحة الهبوط): الزبون تراجع عن الطلب',
