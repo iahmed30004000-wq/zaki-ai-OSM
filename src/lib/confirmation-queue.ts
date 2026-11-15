@@ -1043,6 +1043,34 @@ export async function returnedByHerOwnPress(
 }
 
 /**
+ * THE ORDER SHE LET GO A MOMENT AGO, FOR A DOOR THAT ACTS ON IT (the company-WhatsApp template; the owner's ruling 7).
+ * `returnedByHerOwnPress` only says her counted press released the order. A door that SENDS something must also be sure nobody has taken it since, and that it is still at the desk:
+ * returns the order's four fields, or null. Asked only when the door would refuse (not held / not visible); OFF — `returnsModeOn` false — null before any other read.
+ */
+export async function orderReleasedByHerOwnPress(
+  client: Tx,
+  args: { companyId: string; storeId: string; orderId: string; userId: string; now?: Date }
+): Promise<{ id: string; orderNumber: string; customerId: string; countryId: string | null } | null> {
+  if (!(await returnsModeOn(client, args.companyId))) return null;
+  if (!(await returnedByHerOwnPress(client, args))) return null;
+  return client.order.findFirst({
+    where: {
+      id: args.orderId,
+      companyId: args.companyId,
+      storeId: args.storeId,
+      claimedById: null, // nobody pulled it since
+      confirmationStatus: { in: OPEN_CONFIRMATION }, // still at the desk, not closed
+      // the very guard `returnToThePool` wrote with: never a parcel that entered the shipment
+      shippingStatus: 'NOT_READY',
+      shippingBatchId: null,
+      trackingNumber: null,
+      labelPrintedAt: null,
+    },
+    select: { id: true, orderNumber: true, customerId: true, countryId: true },
+  });
+}
+
+/**
  * HELD, AND NOTHING HAPPENED: the claim is `idleBusinessMinutes` working minutes old and no attempt of any kind — a call, a message, a
  * press of «اتصل» — was logged in them. Never shipped. Asked of the database in full: every row it returns qualifies.
  */
