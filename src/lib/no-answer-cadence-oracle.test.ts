@@ -15,7 +15,7 @@ import { cadencePress, type CadenceCal } from './no-answer-cadence';
  *   counting, the early rule, the floor, the days set and the close are its own loop.
  *
  * Two ways of reaching the same instants must agree on every zone, every anchor (each zone's 2026 transition weekend, an ordinary week, a month end, a year end, a leap day),
- * every boundary (00:00:00.000 · 00:00:00.001 · 08:59:59.999 · 09:00 · 17:59:59.999 · 18:00:00.000 · 23:59:59.999) and every press (due − 1 ms, at the due, + 1 ms, + 3 h) — or one of
+ * every boundary (00:00:00.000 · 00:00:00.001 · 08:59:59.999 · 09:00 · 17:59:59.999 · 18:00:00.000 · 23:59:59.999 — each one is placed or the test fails, apart from a wall time a DST gap removed) and every press (due − 1 ms, at the due, + 1 ms, + 3 h) — or one of
  * them is wrong. Each mismatch prints the zone, the seed and the sequence.
  * ═══════════════════════════════════════════════════════════════════════
  */
@@ -45,6 +45,12 @@ function localOf(ms: number, tz: string): { date: string; hhmm: string } {
 
 /** The instant the local clock first reads `date` `hhmm` — found by walking, never by arithmetic. Null when that wall time does not exist (a DST gap). */
 function instantOf(tz: string, date: string, hhmm: string): number | null {
+  // The grid is quarter-hours, so a minute that is not one (08:59, 17:59, 23:59, 00:01) is the quarter below it plus the remainder — still found by walking, never by arithmetic on the calendar.
+  const [hh, mm] = hhmm.split(':').map(Number);
+  if (mm % 15 !== 0) {
+    const base = instantOf(tz, date, `${String(hh).padStart(2, '0')}:${String(mm - (mm % 15)).padStart(2, '0')}`);
+    return base === null ? null : base + (mm % 15) * 60_000;
+  }
   const [y, m, d] = date.split('-').map(Number);
   const start = Math.floor((Date.UTC(y, m - 1, d) - 15 * 3_600_000) / QUARTER) * QUARTER;
   for (let q = start; q <= start + 52 * 3_600_000; q += QUARTER) {
@@ -152,12 +158,17 @@ describe('the oracle itself is sane', () => {
 describe('the module and the oracle agree', () => {
   it('on the boundary grid: every zone × anchor × first press, along the on-time path and its side branches', () => {
     const failures: string[] = [];
+    // Every boundary that could not be placed — it must be a wall time that does not exist (a DST gap), never a silent hole in the grid.
+    const skipped: string[] = [];
     let compared = 0;
     for (const { tz, anchors } of ZONES) {
       for (const anchor of anchors) {
         for (const [hhmm, extra] of FIRST_PRESSES) {
           const base = instantOf(tz, anchor, hhmm);
-          if (base === null) continue; // that wall time does not exist (a DST gap)
+          if (base === null) {
+            skipped.push(`${tz} ${anchor} ${hhmm}`);
+            continue;
+          }
           const t1 = base + extra;
           const path: Line[] = [{ at: t1, result: 'NO_ANSWER' }];
           for (let step = 0; step < 6; step++) {
@@ -183,7 +194,8 @@ describe('the module and the oracle agree', () => {
               [nextDay, '00:01', 0],
             ] as const) {
               const at = instantOf(tz, date, clock);
-              if (at !== null) boundaries.push(at + add);
+              if (at === null) skipped.push(`${tz} ${date} ${clock}`);
+              else boundaries.push(at + add);
             }
             for (const at of boundaries) check([...path, { at, result: 'NO_ANSWER' }]);
             // …and the line before the floor and at it, on the same state
@@ -194,7 +206,9 @@ describe('the module and the oracle agree', () => {
       }
     }
     expect(failures.slice(0, 3)).toEqual([]);
-    expect(compared).toBeGreaterThan(3_000);
+    // The only wall times that do not exist here: midnight of Beirut's 2026-03-29 (the clock jumps 00:00 → 01:00). Anything else skipped is a hole in the grid.
+    expect(skipped.filter((s) => !['Asia/Beirut 2026-03-29 00:00', 'Asia/Beirut 2026-03-29 00:01'].includes(s))).toEqual([]);
+    expect(compared).toBeGreaterThan(8_000);
   }, 120_000);
 
   it('on the floor: a line at enabledAt never counts, one millisecond after does, four older lines are invisible', () => {
