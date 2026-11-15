@@ -76,12 +76,14 @@ interface Extra {
   canEditRule: boolean;
   /** The offer's own box. Absent from an older server: the door itself still asks. */
   canOffer: boolean;
+  /** «جدول المحاولات» is on (the server sends it only then): the rule's «no answer» tick and sentence read number-free. Absent = the older words. */
+  planOn: boolean;
 }
 
 /** Module-level, so the hook's loader keeps one identity — see `usePagedList`. */
 const read = (body: unknown): PagedRead<Row, Extra> => {
-  const b = body as { rows: Row[]; pagination: Paging; facts: WinbackFacts; rule: WinbackRule; canEditRule: boolean; canOffer?: boolean };
-  return { rows: b.rows, pagination: b.pagination, extra: { facts: b.facts, rule: b.rule, canEditRule: b.canEditRule, canOffer: b.canOffer !== false } };
+  const b = body as { rows: Row[]; pagination: Paging; facts: WinbackFacts; rule: WinbackRule; canEditRule: boolean; canOffer?: boolean; cadenceOn?: boolean };
+  return { rows: b.rows, pagination: b.pagination, extra: { facts: b.facts, rule: b.rule, canEditRule: b.canEditRule, canOffer: b.canOffer !== false, planOn: b.cadenceOn === true } };
 };
 
 const reasonAr = (code: string | null) => (code ? (REJECTION_REASON_AR[code] ?? code) : 'بلا سبب');
@@ -172,7 +174,7 @@ export function WinbackScreen({ embedded = false }: { embedded?: boolean } = {})
     );
   }
 
-  const { facts, rule, canEditRule, canOffer } = extra;
+  const { facts, rule, canEditRule, canOffer, planOn } = extra;
   const filters: ToolbarFilter[] = [
     {
       key: 'view',
@@ -242,7 +244,7 @@ export function WinbackScreen({ embedded = false }: { embedded?: boolean } = {})
       <section className="flex flex-wrap items-start gap-3 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-3">
         <div className="min-w-0 flex-1">
           <h2 className="text-xs font-semibold text-[var(--sys-heading)]">القاعدة</h2>
-          <p className="mt-1 text-xs leading-6 text-[var(--sys-muted-foreground)]">{ruleSentence(rule)}</p>
+          <p className="mt-1 text-xs leading-6 text-[var(--sys-muted-foreground)]">{ruleSentence(rule, { planOn })}</p>
         </div>
         {canEditRule && (
           <button
@@ -258,6 +260,7 @@ export function WinbackScreen({ embedded = false }: { embedded?: boolean } = {})
       {canEditRule && (
         <WinbackRuleDialog
           rule={rule}
+          planOn={planOn}
           isOpen={editing}
           onClose={() => setEditing(false)}
           onSaved={async () => {

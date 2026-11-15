@@ -33,6 +33,7 @@ vi.mock('@/lib/order-ref', () => ({ orderRefFields: vi.fn() }));
 vi.mock('@/lib/pii-alert', () => ({ noteCustomersHandedOut: (...a: unknown[]) => noteCustomersHandedOut(...a) }));
 
 import { GET } from './route';
+import { forgetCallProofSwitch } from '@/lib/call-proof-switch';
 
 const DAY = 86_400_000;
 const user = { id: 'u-sup', name: 'مشرفة', role: 'CONFIRMATION_SUPERVISOR', status: 'ACTIVE' };
@@ -375,5 +376,59 @@ describe('the closing date and the tally', () => {
     const call = noteCustomersHandedOut.mock.calls[0][0];
     expect(call.rows).toHaveLength(2);
     expect(call).toMatchObject({ companyId: 'c1', storeId: 's1', where: 'استعادة العملاء' });
+  });
+});
+
+/**
+ * THE PLAN'S SWITCH RIDES BESIDE THE RULE (the planner 15/11, answer 6).
+ *
+ * The screen words the rule's «no answer» tick by «جدول المحاولات»: the list's payload carries `cadenceOn: true` — and ONLY while the switch is plainly on. With it off (nothing stored,
+ * stored off, unreadable) the payload has exactly the keys it always had, so a screen that reads nothing new reads nothing new. One cached read for it, and the rule's own read is unchanged.
+ */
+describe('the plan’s switch beside the rule', () => {
+  const PLAN_ON = { enabled: true, enabledAt: '2026-11-01T00:00:00.000Z' };
+  const KEYS_BEFORE = ['applied', 'canEditRule', 'canOffer', 'facts', 'pagination', 'rule', 'rows'];
+  const store = (settings: unknown) => db.company.findUnique.mockResolvedValue({ settings: JSON.stringify(settings) });
+
+  beforeEach(() => forgetCallProofSwitch());
+
+  it('the plan ON: `cadenceOn: true` rides along, and nothing else about the payload moves', async () => {
+    store({ callProofAndCadence: PLAN_ON });
+    const body = await (await get()).json();
+    expect(body.cadenceOn).toBe(true);
+    expect(Object.keys(body).sort()).toEqual([...KEYS_BEFORE, 'cadenceOn'].sort());
+    // The rule is the stored/default one — the switch decides a word on the screen, never the rule.
+    expect(body.rule.reasons).toContain('NO_ANSWER_3_ATTEMPTS');
+  });
+
+  it.each([
+    ['nothing stored', {}],
+    ['stored off', { callProofAndCadence: { enabled: false, enabledAt: null } }],
+    ['on with no date', { callProofAndCadence: { enabled: true } }],
+    ['on with a date that is not one', { callProofAndCadence: { enabled: true, enabledAt: 'later' } }],
+  ])('the plan OFF (%s): no `cadenceOn` key at all — the payload has the keys it always had', async (_why, settings) => {
+    store(settings);
+    const body = await (await get()).json();
+    expect('cadenceOn' in body).toBe(false);
+    expect(Object.keys(body).sort()).toEqual([...KEYS_BEFORE].sort());
+  });
+
+  it('a settings document that cannot be parsed is OFF too — and the list still answers 200', async () => {
+    db.company.findUnique.mockResolvedValue({ settings: '{broken' });
+    const res = await get();
+    expect(res.status).toBe(200);
+    expect('cadenceOn' in (await res.json())).toBe(false);
+  });
+
+  it('the query it asks of the orders is the same with the plan on and off', async () => {
+    // Every date in the question moves with the clock (the look-back, the cooling cut); everything else must be equal.
+    const shape = () => JSON.stringify(asked()).replace(/"\d{4}-\d\d-\d\dT[\d:.]+Z"/g, '"DATE"');
+    store({});
+    await get();
+    const off = shape();
+    forgetCallProofSwitch();
+    store({ callProofAndCadence: PLAN_ON });
+    await get();
+    expect(shape()).toBe(off);
   });
 });

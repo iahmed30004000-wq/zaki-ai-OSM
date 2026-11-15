@@ -101,11 +101,18 @@ export const winbackCodes = (reasons: readonly string[]): string[] => [
 ];
 
 /**
- * The words of the RULE's tick and sentence: the host reads without a number, because it stands for three AND five.
- * Rows and filters still say their own code's words (`REJECTION_REASON_AR`). The only wording the switch-off screen sees change.
+ * The words of the RULE's tick and sentence UNDER THE PLAN: the host reads without a number, because with «جدول المحاولات» on it stands for three AND five.
+ * Rows and filters always say their own code's words (`REJECTION_REASON_AR`).
  */
 export const WINBACK_LABEL_AR: Readonly<Record<string, string>> = { [NO_ANSWER_CLOSE.three.reason]: 'أُغلق تلقائياً بعد محاولات بلا ردّ' };
-export const winbackLabel = (code: string): string => WINBACK_LABEL_AR[code] ?? REJECTION_REASON_AR[code] ?? code;
+
+/**
+ * A reason as the rule's tick and sentence say it. THE SWITCH DECIDES (the planner 15/11, answer 6): with it OFF (the default — nothing handed) the label is
+ * `REJECTION_REASON_AR`'s own, «أُغلق بعد ثلاث محاولات بلا ردّ», byte for byte as before the plan; `planOn: true` swaps in the number-free one above. An options object, not a
+ * second positional: `.map(winbackLabel)` would hand it the index.
+ */
+export const winbackLabel = (code: string, opts: { planOn?: boolean } = {}): string =>
+  (opts.planOn === true ? WINBACK_LABEL_AR[code] : undefined) ?? REJECTION_REASON_AR[code] ?? code;
 
 /** And why each of the others is left alone — in the reader's language, on the screen. */
 export const NOT_WINBACK_AR: Record<string, string> = {
@@ -296,9 +303,12 @@ export function validateWinbackRule(input: unknown): WinbackRuleInput {
  * Both kinds while the switch is on, and the reasons said to be the before-shipping
  * kind's, because that is the only kind they gate. Off, the sentence is the one the
  * screen printed before 28/10, word for word — the switch puts back what it takes.
+ *
+ * `opts.planOn` is «جدول المحاولات» being on — a second, unrelated switch: left out (or false) the sentence is exactly what it was before the plan, «أُغلق بعد ثلاث محاولات
+ * بلا ردّ» included; on, the no-answer close reads number-free (`winbackLabel`). The caller reads the switch the normal way (`cadenceSince`).
  */
-export function ruleSentence(rule: WinbackRule): string {
-  const reasons = rule.reasons.map(winbackLabel).join('، ');
+export function ruleSentence(rule: WinbackRule, opts: { planOn?: boolean } = {}): string {
+  const reasons = rule.reasons.map((r) => winbackLabel(r, opts)).join('، ');
   const pct = Math.round(rule.maxDiscountShare * 10_000) / 100;
   if (rule.afterShipping !== true) {
     return `ملغى · لم يُشحن · لم يُعرض عليه من قبل · السبب: ${reasons} · بعد ${rule.coolingDays} يوماً من الإلغاء · من طلباتِ آخر ${rule.lookbackDays} يوماً · خصمٌ حتى ${pct}٪`;

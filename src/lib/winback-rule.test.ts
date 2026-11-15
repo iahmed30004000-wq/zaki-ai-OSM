@@ -16,6 +16,7 @@ import {
   ruleSentence,
   validateWinbackRule,
   winbackCodes,
+  winbackLabel,
   winbackVerdict,
   type WinbackRule,
   type WinbackSource,
@@ -453,7 +454,7 @@ describe('the rule in a sentence', () => {
   it('— the defaults read as both kinds, and say which kind the reasons are for', () => {
     const s = ruleSentence(DEFAULT_WINBACK_RULE);
     expect(s).toBe(
-      'ملغى قبل الشحن أو مرتجع بعده · لم يُعرض عليه من قبل · سبب الإلغاء قبل الشحن: السعر مرتفع، وجدها أرخص عند غيرنا، غيّر رأيه، أُغلق تلقائياً بعد محاولات بلا ردّ · بعد 14 يوماً من الإلغاء أو استلام المرتجع · من طلباتِ آخر 120 يوماً · خصمٌ حتى 25٪'
+      'ملغى قبل الشحن أو مرتجع بعده · لم يُعرض عليه من قبل · سبب الإلغاء قبل الشحن: السعر مرتفع، وجدها أرخص عند غيرنا، غيّر رأيه، أُغلق بعد ثلاث محاولات بلا ردّ · بعد 14 يوماً من الإلغاء أو استلام المرتجع · من طلباتِ آخر 120 يوماً · خصمٌ حتى 25٪'
     );
     expect(s).not.toContain('لم يُشحن');
   });
@@ -461,12 +462,49 @@ describe('the rule in a sentence', () => {
   it('and with the switch off it is the sentence the screen was built on, exactly', () => {
     const s = ruleSentence(rule({ afterShipping: false }));
     expect(s).toBe(
-      'ملغى · لم يُشحن · لم يُعرض عليه من قبل · السبب: السعر مرتفع، وجدها أرخص عند غيرنا، غيّر رأيه، أُغلق تلقائياً بعد محاولات بلا ردّ · بعد 14 يوماً من الإلغاء · من طلباتِ آخر 120 يوماً · خصمٌ حتى 25٪'
+      'ملغى · لم يُشحن · لم يُعرض عليه من قبل · السبب: السعر مرتفع، وجدها أرخص عند غيرنا، غيّر رأيه، أُغلق بعد ثلاث محاولات بلا ردّ · بعد 14 يوماً من الإلغاء · من طلباتِ آخر 120 يوماً · خصمٌ حتى 25٪'
     );
-    for (const part of ['ملغى', 'لم يُشحن', 'لم يُعرض عليه من قبل', 'السعر مرتفع', 'وجدها أرخص عند غيرنا', 'غيّر رأيه', 'أُغلق تلقائياً بعد محاولات بلا ردّ', 'بعد 14 يوماً', 'آخر 120 يوماً', 'حتى 25٪']) {
+    for (const part of ['ملغى', 'لم يُشحن', 'لم يُعرض عليه من قبل', 'السعر مرتفع', 'وجدها أرخص عند غيرنا', 'غيّر رأيه', 'أُغلق بعد ثلاث محاولات بلا ردّ', 'بعد 14 يوماً', 'آخر 120 يوماً', 'حتى 25٪']) {
       expect(s, part).toContain(part);
     }
     expect(s).not.toContain('مرتجع');
+  });
+
+  /**
+   * THE SWITCH DECIDES THE WORD (the planner 15/11, answer 6). With «جدول المحاولات» OFF the sentence is exactly what it was before the plan — «أُغلق بعد ثلاث محاولات
+   * بلا ردّ», pinned above, byte for byte — and ON it reads «أُغلق تلقائياً بعد محاولات بلا ردّ» (the host stands for three AND five). Nothing else in the sentence moves.
+   */
+  it('the plan ON: only the no-answer close changes — number-free, in both kinds of sentence', () => {
+    for (const afterShipping of [true, false]) {
+      const off = ruleSentence(rule({ afterShipping }));
+      const on = ruleSentence(rule({ afterShipping }), { planOn: true });
+      expect(on, `afterShipping=${afterShipping}`).toBe(off.replace('أُغلق بعد ثلاث محاولات بلا ردّ', 'أُغلق تلقائياً بعد محاولات بلا ردّ'));
+      expect(on).toContain('أُغلق تلقائياً بعد محاولات بلا ردّ');
+      expect(on).not.toMatch(/ثلاث|خمس/);
+      expect(off).toContain('أُغلق بعد ثلاث محاولات بلا ردّ');
+    }
+  });
+
+  it('the flag is a plain true or nothing: false, {} and a non-true value are the older sentence', () => {
+    const old = ruleSentence(DEFAULT_WINBACK_RULE);
+    expect(ruleSentence(DEFAULT_WINBACK_RULE, { planOn: false })).toBe(old);
+    expect(ruleSentence(DEFAULT_WINBACK_RULE, {})).toBe(old);
+    expect(ruleSentence(DEFAULT_WINBACK_RULE, { planOn: 'yes' as never })).toBe(old);
+  });
+
+  it('a rule that does not list the no-answer close reads the same in both worlds', () => {
+    const without = rule({ reasons: ['PRICE_TOO_HIGH', 'CUSTOMER_CHANGED_MIND'] });
+    expect(ruleSentence(without, { planOn: true })).toBe(ruleSentence(without));
+  });
+
+  it('the tick’s own label: the older words by default, the number-free ones with the plan, every other reason untouched', () => {
+    expect(winbackLabel('NO_ANSWER_3_ATTEMPTS')).toBe('أُغلق بعد ثلاث محاولات بلا ردّ');
+    expect(winbackLabel('NO_ANSWER_3_ATTEMPTS', { planOn: true })).toBe('أُغلق تلقائياً بعد محاولات بلا ردّ');
+    for (const reason of [...WINBACK_REASONS, ...OPTIONAL_WINBACK_REASONS].filter((r) => r !== 'NO_ANSWER_3_ATTEMPTS')) {
+      expect(winbackLabel(reason, { planOn: true }), reason).toBe(winbackLabel(reason));
+    }
+    // `.map(winbackLabel)` hands the index as the second argument: it must never read as the flag.
+    expect(['NO_ANSWER_3_ATTEMPTS', 'NO_ANSWER_3_ATTEMPTS'].map(winbackLabel)).toEqual(['أُغلق بعد ثلاث محاولات بلا ردّ', 'أُغلق بعد ثلاث محاولات بلا ردّ']);
   });
 
   it('and it follows what the owner set — it can never say fourteen while the list says ten', () => {

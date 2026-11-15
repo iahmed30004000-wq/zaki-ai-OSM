@@ -41,11 +41,14 @@ import {
  */
 export function WinbackRuleDialog({
   rule,
+  planOn = false,
   isOpen,
   onClose,
   onSaved,
 }: {
   rule: WinbackRule;
+  /** «جدول المحاولات» is on (the list's own payload says so): the «no answer» tick reads number-free. Left out = the older words. The body it sends never changes with it. */
+  planOn?: boolean;
   isOpen: boolean;
   onClose: () => void;
   onSaved: (rule: WinbackRule) => void | Promise<void>;
@@ -121,7 +124,7 @@ export function WinbackRuleDialog({
   const box = (reason: string) => (
     <label key={reason} className="flex min-h-11 items-center gap-2 text-sm text-[var(--sys-foreground)] md:min-h-0">
       <input type="checkbox" checked={reasons.includes(reason)} onChange={() => toggle(reason)} />
-      {winbackLabel(reason)}
+      {winbackLabel(reason, { planOn })}
     </label>
   );
 

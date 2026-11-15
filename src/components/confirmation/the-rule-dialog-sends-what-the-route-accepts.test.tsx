@@ -91,7 +91,7 @@ describe('opening it', () => {
     expect(box(COOLING).value).toBe('14');
     expect(box(LOOKBACK).value).toBe('120');
     expect(box(PERCENT).value).toBe('25');
-    for (const on of ['السعر مرتفع', 'وجدها أرخص عند غيرنا', 'غيّر رأيه', 'أُغلق تلقائياً بعد محاولات بلا ردّ']) {
+    for (const on of ['السعر مرتفع', 'وجدها أرخص عند غيرنا', 'غيّر رأيه', 'أُغلق بعد ثلاث محاولات بلا ردّ']) {
       expect(reason(on).checked, on).toBe(true);
     }
     for (const off of ['لا يريد المنتج', 'خارج نطاق التغطية', 'سبب آخر']) {
@@ -142,7 +142,7 @@ describe('what it offers, and what it will not', () => {
       'السعر مرتفع',
       'وجدها أرخص عند غيرنا',
       'غيّر رأيه',
-      'أُغلق تلقائياً بعد محاولات بلا ردّ',
+      'أُغلق بعد ثلاث محاولات بلا ردّ',
       'لا يريد المنتج',
       'خارج نطاق التغطية',
       'سبب آخر',
@@ -174,6 +174,56 @@ describe('what it offers, and what it will not', () => {
   it('and the three at his own risk are introduced as his responsibility', () => {
     open();
     expect(screen.getByText(/على مسؤوليتك/)).toBeTruthy();
+  });
+});
+
+/**
+ * THE PLAN'S SWITCH WORDS THE TICK — AND NOTHING THE FORM SENDS (the planner 15/11, answer 6).
+ *
+ * With «جدول المحاولات» OFF (no `planOn`, as every test above renders it) the tick is «أُغلق بعد ثلاث محاولات بلا ردّ», byte for byte as before the plan. With it ON the screen hands
+ * `planOn` and the same tick reads «أُغلق تلقائياً بعد محاولات بلا ردّ» (it stands for three AND five). The editor must never send the five-attempt code by itself: the body is the same
+ * in both worlds and carries the old code only.
+ */
+describe('the plan on — the tick’s words, and not what is sent', () => {
+  const NUMBERED = 'أُغلق بعد ثلاث محاولات بلا ردّ';
+  const NUMBER_FREE = 'أُغلق تلقائياً بعد محاولات بلا ردّ';
+  const groupNames = () => within(screen.getByRole('group')).getAllByRole('checkbox').map((c) => c.closest('label')?.textContent);
+
+  it('reads the number-free tick — the same box in the same place, ticked as stored', () => {
+    render(<WinbackRuleDialog rule={STORED} planOn isOpen onClose={onClose} onSaved={onSaved} />);
+    expect(groupNames()).toEqual(['السعر مرتفع', 'وجدها أرخص عند غيرنا', 'غيّر رأيه', NUMBER_FREE, 'لا يريد المنتج', 'خارج نطاق التغطية', 'سبب آخر']);
+    expect(reason(NUMBER_FREE).checked).toBe(true);
+    expect(screen.queryByRole('checkbox', { name: NUMBERED })).toBeNull();
+  });
+
+  it('and with planOn spelled false (or left out) it is the numbered tick', () => {
+    render(<WinbackRuleDialog rule={STORED} planOn={false} isOpen onClose={onClose} onSaved={onSaved} />);
+    expect(reason(NUMBERED).checked).toBe(true);
+    expect(screen.queryByRole('checkbox', { name: NUMBER_FREE })).toBeNull();
+  });
+
+  it('never offers a box for the five-attempt code, in either world — it rides on its host', () => {
+    for (const planOn of [false, true]) {
+      render(<WinbackRuleDialog rule={STORED} planOn={planOn} isOpen onClose={onClose} onSaved={onSaved} />);
+      expect(screen.queryByRole('checkbox', { name: 'أُغلق بعد خمس محاولات بلا ردّ' })).toBeNull();
+      expect(groupNames()).toHaveLength(7);
+      cleanup();
+    }
+  });
+
+  it('sends the very same body with the plan on and off: the old code, never NO_ANSWER_5_ATTEMPTS', async () => {
+    const bodies: unknown[] = [];
+    for (const planOn of [false, true]) {
+      api.mockClear();
+      render(<WinbackRuleDialog rule={STORED} planOn={planOn} isOpen onClose={onClose} onSaved={onSaved} />);
+      save();
+      await waitFor(() => expect(api).toHaveBeenCalledTimes(1));
+      bodies.push(sent());
+      cleanup();
+    }
+    expect(bodies[1]).toEqual(bodies[0]);
+    expect(JSON.stringify(bodies[1])).not.toContain('NO_ANSWER_5_ATTEMPTS');
+    expect((bodies[1] as { reasons: string[] }).reasons).toContain('NO_ANSWER_3_ATTEMPTS');
   });
 });
 
@@ -280,7 +330,7 @@ describe('what it refuses before it sends', () => {
 
   it('— no reason ticked: «اختر سبباً واحداً على الأقلّ»', async () => {
     open();
-    for (const ticked of ['السعر مرتفع', 'وجدها أرخص عند غيرنا', 'غيّر رأيه', 'أُغلق تلقائياً بعد محاولات بلا ردّ']) fireEvent.click(reason(ticked));
+    for (const ticked of ['السعر مرتفع', 'وجدها أرخص عند غيرنا', 'غيّر رأيه', 'أُغلق بعد ثلاث محاولات بلا ردّ']) fireEvent.click(reason(ticked));
     save();
     expect(refusal()).toBe('اختر سبباً واحداً على الأقلّ');
     await none();

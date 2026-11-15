@@ -12,6 +12,7 @@ import {
   maxWinbackDiscount, LOST_STATUSES, returnedAfterShipping, returnLabel, winbackVerdict, type WinbackSource,
 } from '@/lib/winback';
 import { winbackRule } from '@/lib/winback-rule';
+import { cadenceSince } from '@/lib/no-answer-cadence-switch';
 import { baseWhere, winbackFilters } from '@/lib/winback-filters';
 import { readWinbackPage, winbackFacts } from '@/lib/winback-list';
 import { readLimit, readPage } from '@/lib/numeric-input';
@@ -85,7 +86,8 @@ export async function GET(req: Request) {
 
     const now = new Date();
     const params = new URL(req.url).searchParams;
-    const rule = await winbackRule(companyId);
+    // The plan's switch rides beside the rule (one cached read, off on any failure): the screen words the rule's «no answer» tick by it (the planner 15/11, answer 6).
+    const [rule, planSince] = await Promise.all([winbackRule(companyId), cadenceSince(db, companyId)]);
 
     const parsed = winbackFilters(params, { now, rule });
     if (!parsed.ok) return NextResponse.json({ error: parsed.error, errorAr: parsed.errorAr }, { status: 400 });
@@ -196,6 +198,8 @@ export async function GET(req: Request) {
       pagination: { total: page.total, page: page.page, limit: page.limit, totalPages: page.totalPages },
       facts,
       rule,
+      // Present ONLY with the plan on, so the switch-off payload keeps the keys it always had: the screen reads `cadenceOn === true` and nothing else.
+      ...(planSince ? { cadenceOn: true } : {}),
       // The screen offers «عدّل القاعدة» to somebody who can change it; the route that changes it asks again.
       canEditRule: can(user, 'offers.rules'),
       // And «اعرضه من جديد» is the offer's own box (PR-7): seeing the list is not enough to press it.

@@ -73,14 +73,21 @@ describe('the five-attempt close code', () => {
   });
 
   /**
-   * The rule's tick stands for BOTH codes, so its word carries no number (ruling 6, decision Q2).
-   * A row still says its own code's words — each stored code is told apart wherever one row is read.
+   * With the plan ON the rule's tick stands for BOTH codes, so its word carries no number (ruling 6, decision Q2; the planner 15/11, answer 6: only with the switch on —
+   * OFF the tick says the older «ثلاث» exactly, pinned in winback-rule.test.ts). A row still says its own code's words — each stored code is told apart wherever one row is read.
    */
-  it('and the rule\'s tick has no number in it, while a row keeps its own code\'s words', () => {
-    expect(winbackLabel(THREE)).toBe('أُغلق تلقائياً بعد محاولات بلا ردّ');
-    expect(winbackLabel(THREE)).not.toMatch(/ثلاث|خمس|3|5/);
+  it('and, with the plan on, the rule\'s tick has no number in it, while a row keeps its own code\'s words', () => {
+    const on = { planOn: true };
+    expect(winbackLabel(THREE, on)).toBe('أُغلق تلقائياً بعد محاولات بلا ردّ');
+    expect(winbackLabel(THREE, on)).not.toMatch(/ثلاث|خمس|3|5/);
+    expect(winbackLabel(FIVE, on)).toBe(REJECTION_REASON_AR[FIVE]);
+    expect(winbackLabel('PRICE_TOO_HIGH', on)).toBe(REJECTION_REASON_AR.PRICE_TOO_HIGH);
+    expect(winbackLabel('NOT_A_CODE', on)).toBe('NOT_A_CODE');
+  });
+
+  it('and with it OFF (nothing handed) every code says its own words — the tick of the old rule is the old words', () => {
+    expect(winbackLabel(THREE)).toBe(REJECTION_REASON_AR[THREE]);
     expect(winbackLabel(FIVE)).toBe(REJECTION_REASON_AR[FIVE]);
-    expect(winbackLabel('PRICE_TOO_HIGH')).toBe(REJECTION_REASON_AR.PRICE_TOO_HIGH);
     expect(winbackLabel('NOT_A_CODE')).toBe('NOT_A_CODE');
   });
 });
