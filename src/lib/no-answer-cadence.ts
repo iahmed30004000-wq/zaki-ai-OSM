@@ -230,3 +230,13 @@ export function cadenceCardWords(desk: Pick<ReturnType<typeof cadenceDesk>, 'cou
   if (desk.waiting && desk.dueAt) return `محاولة ${next} من ${CADENCE_LIMIT} — جاهز ${cadenceWhen(next, desk.dueAt, now, timeZone)}`;
   return null;
 }
+
+/**
+ * THE CLOSED-TODAY CARD'S WORDS WHEN ITS COUNT IS NOT THE CLOSE'S (RV2391, the planner's ruling 9). The card prints «ما ردّ N مرّات» / «أُغلق بعد N محاولات» only when the count reached
+ * the limit the desk reads under — otherwise the order was closed by the OTHER mode on the day the switch flipped (a legacy 3-rule close read under the plan counts 0 of 5) and a number would lie.
+ * Null = print the numbers as always; a string = print this instead (server-written, no number). Here and not in `no-answer-tone.ts`: the screen is barred from importing this file, so the sentence cannot leak into its bundle.
+ */
+export const CLOSED_WITHOUT_COUNT_WORDS = 'بعد عدّة محاولات بلا رد';
+export function closedCardWords(count: number, limit: number): string | null {
+  return count >= limit ? null : CLOSED_WITHOUT_COUNT_WORDS;
+}

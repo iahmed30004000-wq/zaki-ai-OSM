@@ -19,7 +19,7 @@ import type { BusinessCalendar } from '@/lib/business-calendar';
 import { countedRounds, roundsOn, workClock, type AttemptFact, type WorkClock } from '@/lib/no-answer-rounds';
 import { roundsSwitch } from '@/lib/no-answer-rounds-switch';
 import { cadenceSince } from '@/lib/no-answer-cadence-switch';
-import { CADENCE_LIMIT, cadenceCardWords, cadenceDesk, cadenceVerdict } from '@/lib/no-answer-cadence';
+import { CADENCE_LIMIT, cadenceCardWords, cadenceDesk, cadenceVerdict, closedCardWords } from '@/lib/no-answer-cadence';
 import { callProofOn } from '@/lib/call-proof-switch';
 import { callProofState } from '@/lib/call-proof';
 import {
@@ -537,7 +537,12 @@ export async function GET(request: Request) {
        */
       noAnswer: held.filter((o) => tabOf(o) === 'noAnswer'),
       /** Closed by the third no-answer today — read-only, so it is not a surprise tomorrow. */
-      closedToday: closedToday.map(decorate),
+      closedToday: closedToday.map((o) => {
+        const row = decorate(o);
+        // RV2391 — under the plan only: a count below the limit means another mode closed it today, and the card must not print a number it cannot stand behind. Off, the rows are today's, key for key.
+        const words = desks ? closedCardWords(row.noAnswerCount, CADENCE_LIMIT) : null;
+        return words ? { ...row, closedWords: words } : row;
+      }),
       /** «أكّدتها» — a day, a search, a page, and the size of what is behind them. */
       confirmed: {
         day,

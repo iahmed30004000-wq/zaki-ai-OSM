@@ -128,6 +128,8 @@ interface OrderRow {
   callHelperLink?: string;
   /** «جدول المحاولات» is on: a press made NOW would close this order — a fact of the server's clock. Absent = the count decides, as it always did. */
   closesOnNext?: boolean;
+  /** RV2391: the server's number-free sentence for a closed card whose count is not the close's. Absent = print the count as always. */
+  closedWords?: string;
   merchantRef: string | null;
   confirmationStatus: string;
   state: string;
@@ -1774,7 +1776,7 @@ export function ConfirmationMineScreen() {
                   )}
                   {closed && (
                     <span className="text-xs font-medium text-[var(--sys-destructive)]">
-                      أُغلق اليوم تلقائيّاً — {noAnswerWords(order.noAnswerCount)}
+                      أُغلق اليوم تلقائيّاً — {order.closedWords ?? noAnswerWords(order.noAnswerCount)}
                     </span>
                   )}
                   <CustomerHistoryButton
@@ -1870,7 +1872,7 @@ export function ConfirmationMineScreen() {
                 */}
                 {closed ? (
                   <p className="text-xs leading-relaxed text-[var(--sys-destructive)] pt-1 border-t border-[var(--sys-destructive-border)]">
-                    للقراءة فقط — أُغلق بعد {data.noAnswerLimit} محاولات بلا رد. إعادةُ فتحِه من مركز التأكيد، بيد مَن يملك ذلك.
+                    للقراءة فقط — أُغلق {order.closedWords ?? `بعد ${order.noAnswerCount} محاولات بلا رد`}. إعادةُ فتحِه من مركز التأكيد، بيد مَن يملك ذلك.
                   </p>
                 ) : readOnly ? (
                   /* A colleague's desk: not one button of hers — no call, no result, no confirm, no postpone, no cancel. */

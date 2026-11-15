@@ -8,6 +8,7 @@ import {
   CADENCE_MIN_DAYS,
   CADENCE_MORNING,
   CADENCE_START,
+  CLOSED_WITHOUT_COUNT_WORDS,
   cadenceCardWords,
   cadenceCloses,
   cadenceDesk,
@@ -17,6 +18,7 @@ import {
   cadenceStep,
   cadenceVerdict,
   cadenceWhen,
+  closedCardWords,
   type CadenceCal,
   type CadenceState,
 } from './no-answer-cadence';
@@ -536,6 +538,25 @@ describe('cadenceVerdict: the rounds’ PROMISE comes first when it is handed ov
   it('`null` and an omitted third argument are what the function always was', () => {
     expect(cadenceVerdict({ ...base, counted: 0 }, 0, null)).toEqual(cadenceVerdict({ ...base, counted: 0 }, 0));
     expect(cadenceVerdict({ ...base, due: true, dueAt: t }, 1, null)).toEqual({ due: true, reason: 'ROUND', waiting: false, dueAt: null });
+  });
+});
+
+describe('closedCardWords: the closed-today card prints a number only when it reached the limit (RV2391)', () => {
+  it('below the limit → the number-free sentence; at the limit or past it → null (print the numbers as always)', () => {
+    expect(closedCardWords(0, CADENCE_LIMIT)).toBe(CLOSED_WITHOUT_COUNT_WORDS);
+    expect(closedCardWords(4, CADENCE_LIMIT)).toBe(CLOSED_WITHOUT_COUNT_WORDS);
+    expect(closedCardWords(5, CADENCE_LIMIT)).toBeNull();
+    expect(closedCardWords(6, CADENCE_LIMIT)).toBeNull();
+    // The same rule under the legacy limit: the limit is the caller's, never a literal 5.
+    expect(closedCardWords(0, NO_ANSWER_LIMIT)).toBe(CLOSED_WITHOUT_COUNT_WORDS);
+    expect(closedCardWords(NO_ANSWER_LIMIT, NO_ANSWER_LIMIT)).toBeNull();
+  });
+
+  it('the sentence says no number, no «جولة», no Eastern or Latin digit, and reads «بعد …» so both places it is printed in stay true', () => {
+    expect(CLOSED_WITHOUT_COUNT_WORDS).not.toMatch(/[0-9٠-٩]/);
+    expect(CLOSED_WITHOUT_COUNT_WORDS).not.toContain('ثلاث');
+    expect(CLOSED_WITHOUT_COUNT_WORDS).not.toContain('جولة');
+    expect(CLOSED_WITHOUT_COUNT_WORDS.startsWith('بعد ')).toBe(true);
   });
 });
 
