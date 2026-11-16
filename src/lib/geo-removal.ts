@@ -102,6 +102,8 @@ export const STORE_TABLES: readonly StoreTable[] = [
   { model: 'adAccount', label: 'الحسابات الإعلانية', how: 'blocks' },
   // The team leader's end-of-day reports (step H2): a record, never deleted — a store that has them is not empty.
   { model: 'confirmationEodReport', label: 'تقارير نهاية اليوم', how: 'blocks' },
+  // The leads the pages system sent (step E1): a record of people who left their details — never deleted with a store.
+  { model: 'lead', label: 'ليدز الصفحات', how: 'blocks' },
   { model: 'trackingPixel', label: 'بكسلات التتبّع', how: 'blocks' },
   { model: 'telegramSource', label: 'مصادر تلجرام', how: 'blocks' },
   // «أسماء المنتجات» of the Telegram door (10/11): switched off, never deleted — a store that has them is not empty.

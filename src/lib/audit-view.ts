@@ -72,6 +72,7 @@ const ACTION_AR: Record<string, string> = {
   INTAKE_FILTER_SWITCHED: 'تشغيل أو إيقاف «فلتر الاستقبال»',
   QUEUE_PRIORITY_SWITCHED: 'تشغيل أو إيقاف «أولوية الطابور»',
   EOD_REPORT_SUBMITTED: 'إرسال تقرير نهاية اليوم',
+  LEADS_V2_SWITCHED: 'تشغيل أو إيقاف «ليدز الصفحات»',
   WINBACK_V2_SWITCHED: 'تشغيل أو إيقاف «الاسترجاع اليومي»',
   WINBACK_ASSIGNED: 'تحديد مين بيتصل بطلب للاسترجاع',
   WINBACK_CALLED: 'تسجيل نتيجة اتصال استرجاع',

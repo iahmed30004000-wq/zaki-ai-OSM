@@ -380,6 +380,7 @@ const NAV_SOURCE = readFileSync(join(ROOT, 'src/lib/route-registry.ts'), 'utf8')
  * a blind method can do is name what it is blind to.
  */
 const REACHED_BUT_UNSEEN: Record<string, string> = {
+  '/api/webhooks/pages/leads': 'يستدعيه نظامُ الصفحات (pages.zakiai.io) من خارج المستودع بطلبٍ موقَّعٍ بـPAGES_WEBHOOK_SECRET — لا ملفَّ مصدرٍ هنا يسمّيه (الخطوة E1)',
   '/api/health': 'يستدعيه مراقبُ التشغيل وHEALTHCHECK في Dockerfile — لا ملفَّ مصدرٍ يسمّيه',
   '/api/health/live': 'HEALTHCHECK في Dockerfile يسأله: هل العمليةُ حيّة؟ بلا قاعدةٍ ولا عامل',
   '/api/health/worker': 'نفسُ الباب: نبضُ العاملِ يُقرأ من خارج المستودع لا من داخله',

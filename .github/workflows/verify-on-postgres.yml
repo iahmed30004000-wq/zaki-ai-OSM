@@ -30,6 +30,8 @@
 #              (step H2), in an isolated store, rolled back.
 #   winback-daily --assert: the daily winback list's real reads and the scorecard's
 #              winback credit (step F1), in an isolated store, rolled back.
+#   leads-intake --assert: the pages system's lead intake on real tables (step E1):
+#              the 24-hour flag, idempotence, the unique key, in a rolled-back transaction.
 #
 # NOT here, and still by hand: the screenshots and `check-app` (they need a
 # browser and the app running). `scale-retries` asserts nothing, so it is
@@ -135,6 +137,11 @@ jobs:
       # credit to the author of the offer, in an isolated store. Everything it writes is rolled back. Exit 3 = a case differs.
       - name: Daily winback (asserted)
         run: node scripts/verify-on-postgres/winback-daily.mjs --assert
+
+      # The pages system's leads (step E1): the lead kept once on the unique key of the new table, flagged when the same number ordered the same product in the last 24 hours (and not
+      # when the order is older, another product or refused), in an isolated store. Everything it writes is rolled back. Exit 3 = a case differs.
+      - name: Leads intake (asserted)
+        run: node scripts/verify-on-postgres/leads-intake.mjs --assert
 
       # Always: a runner is thrown away, but a run that is cancelled or fails
       # halfway should not be the reason nobody checks that the container

@@ -4195,3 +4195,34 @@ model ConfirmationEodReport {
   @@index([companyId, day])
   @@map("confirmation_eod_reports")
 }
+
+/// A LEAD FROM THE PAGES SYSTEM (Confirmation Center v2, step E1) — somebody who left his details on a page of pages.zakiai.io and has not ordered (yet).
+///
+/// Written only by the signed webhook (`/api/webhooks/pages/leads`), idempotent on the pages system's own id (`externalId`): the same lead sent twice is one row. `recentOrderId` is a FLAG, never a
+/// refusal: the number matched an order of the same person for the same product in the 24 hours before (the intake filter's own window) — the row is kept, the desk is told.
+/// Plain columns, no relations: a record of what arrived, not part of any other table's life. The ad's utm pair is kept as sent.
+model Lead {
+  id            String   @id @default(uuid())
+  companyId     String
+  storeId       String
+  /// The pages system's own id for this lead.
+  externalId    String
+  fullName      String
+  phone         String
+  /// The canonical key of the number (`phone-rules`), so every spelling of it finds the same person.
+  phoneKey      String
+  city          String?
+  productId     String
+  pageUrl       String?
+  utmCampaign   String?
+  utmContent    String?
+  /// NEW until somebody works it (the lane that works it is a later step).
+  status        String   @default("NEW")
+  recentOrderId String?
+  receivedAt    DateTime @default(now())
+
+  @@unique([companyId, externalId])
+  @@index([companyId, storeId, status, receivedAt])
+  @@index([companyId, phoneKey])
+  @@map("leads")
+}
