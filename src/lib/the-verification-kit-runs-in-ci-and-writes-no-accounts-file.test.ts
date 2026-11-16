@@ -84,10 +84,13 @@ describe('ruling 32 — the kit writes no accounts file', () => {
 
   it('no other script imports a file-system module (run-app only LOOKS for a real node_modules)', () => {
     for (const [f, src] of scripts) {
-      if (['migrate.mjs', 'screenshots.mjs', 'run-app.mjs'].includes(f)) continue;
+      // team-leader-role.mjs READS one migration file of the repo (to run it in a rolled-back transaction): `readFileSync` and nothing that writes (checked just below).
+      if (['migrate.mjs', 'screenshots.mjs', 'run-app.mjs', 'team-leader-role.mjs'].includes(f)) continue;
       expect(src, `${f} touches the file system`).not.toMatch(/node:fs|from 'fs'/);
     }
     expect(source('run-app.mjs')).toMatch(/import \{ existsSync, lstatSync \} from 'node:fs'/);
+    expect(source('team-leader-role.mjs')).toMatch(/import \{ readFileSync \} from 'node:fs'/);
+    expect(source('team-leader-role.mjs')).not.toMatch(/writeFile|appendFile|createWriteStream|mkdir|unlink|rmSync|rename/);
   });
 });
 
@@ -188,10 +191,11 @@ describe('ruling 30 — the kit runs in CI on a PostgreSQL container, as a perma
     const { job } = loadWorkflow();
     const calls = job.steps.flatMap((s) => [...runOf(s).matchAll(/node (scripts\/verify-on-postgres\/([\w-]+\.mjs))([^\n]*)/g)].map((m) => ({ file: m[2], rest: m[3] })));
     for (const c of calls) expect(existsSync(join(KIT, c.file)), `the workflow calls ${c.file}, which does not exist`).toBe(true);
-    expect(calls.map((c) => c.file)).toEqual(['start-db.mjs', 'migrate.mjs', 'seed.mjs', 'pull-order.mjs', 'intake-filter.mjs', 'queue-priority.mjs', 'scorecard.mjs', 'stop-db.mjs']);
+    expect(calls.map((c) => c.file)).toEqual(['start-db.mjs', 'migrate.mjs', 'seed.mjs', 'pull-order.mjs', 'intake-filter.mjs', 'queue-priority.mjs', 'scorecard.mjs', 'team-leader-role.mjs', 'stop-db.mjs']);
     expect(calls.find((c) => c.file === 'intake-filter.mjs')?.rest).toMatch(/--assert/);
     expect(calls.find((c) => c.file === 'queue-priority.mjs')?.rest).toMatch(/--assert/);
     expect(calls.find((c) => c.file === 'scorecard.mjs')?.rest).toMatch(/--assert/);
+    expect(calls.find((c) => c.file === 'team-leader-role.mjs')?.rest).toMatch(/--assert/);
     expect(calls.find((c) => c.file === 'pull-order.mjs')?.rest).toMatch(/--assert/);
     for (const left of ['screenshots.mjs', 'check-app.mjs', 'run-app.mjs', 'scale-retries.mjs']) expect(calls.map((c) => c.file)).not.toContain(left);
   });
