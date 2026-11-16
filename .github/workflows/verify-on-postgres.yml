@@ -26,6 +26,8 @@
 #              real reads (step G1), in an isolated store, rolled back.
 #   team-leader-role --assert: the team-leader migration run as it stands in the
 #              repo (step H1), in a rolled-back transaction.
+#   eod-report --assert: the end-of-day report's real reads and its new table
+#              (step H2), in an isolated store, rolled back.
 #
 # NOT here, and still by hand: the screenshots and `check-app` (they need a
 # browser and the app running). `scale-retries` asserts nothing, so it is
@@ -121,6 +123,11 @@ jobs:
       # exactly the supervisor's minus two keys plus team.monitor, in both tables, idempotent, and no other role touched. Exit 3 = a case differs.
       - name: Team leader role (asserted)
         run: node scripts/verify-on-postgres/team-leader-role.mjs --assert
+
+      # The team leader's end-of-day report (step H2): the system's numbers (unique claims, the last decision, reasons, winback, held over 48 h), the sample of rejected orders and the
+      # one-report-per-day key of the new table, in an isolated store. Everything it writes is rolled back. Exit 3 = a case differs.
+      - name: End-of-day report (asserted)
+        run: node scripts/verify-on-postgres/eod-report.mjs --assert
 
       # Always: a runner is thrown away, but a run that is cancelled or fails
       # halfway should not be the reason nobody checks that the container

@@ -4172,3 +4172,26 @@ model AbandonedCartActivity {
   @@index([companyId])
   @@map("abandoned_cart_activities")
 }
+
+/// THE TEAM LEADER'S END-OF-DAY REPORT (Confirmation Center v2, step H2).
+///
+/// One row per (store, local day, person): what she SAID the team did that day (`payload`) and what the SYSTEM counted at the moment she sent it (`system`), frozen together so
+/// the owner's audit compares the two as she saw them. Written once and never edited or deleted — a second submission for the same day is refused (the unique key), so a
+/// report cannot be tuned after the fact. The only reader besides her own screen is the owner's audit door.
+///
+/// Plain columns, no relations: the row is a record, not a part of any other table's life — nothing cascades into it or out of it.
+model ConfirmationEodReport {
+  id          String   @id @default(uuid())
+  companyId   String
+  storeId     String
+  /// The store's local day, YYYY-MM-DD.
+  day         String
+  userId      String
+  payload     Json
+  system      Json
+  submittedAt DateTime @default(now())
+
+  @@unique([companyId, storeId, day, userId])
+  @@index([companyId, day])
+  @@map("confirmation_eod_reports")
+}

@@ -12,6 +12,7 @@ import { LandingAnalyticsTab } from '@/components/performance/LandingAnalyticsTa
 import { userCan } from '@/lib/can';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { ScoreBoard } from '@/components/performance/ScoreBoard';
+import { EodReportForm } from '@/components/performance/EodReportForm';
 import { NoAnswerWatch } from '@/components/performance/NoAnswerWatch';
 import { findRoute, routeLabel } from '@/lib/route-registry';
 import { RiAlertLine, RiCopperCoinLine, RiEBike2Line, RiInboxUnarchiveLine, RiTrophyLine, RiTruckLine } from '@remixicon/react';
@@ -36,7 +37,7 @@ function lastThirtyDays() {
   return { from: iso(from), to: iso(to) };
 }
 
-type Tab = 'team' | 'landing' | 'scores' | 'noanswer';
+type Tab = 'team' | 'landing' | 'scores' | 'noanswer' | 'eod';
 
 /**
  * HOW LONG THE BOARD WAITS FOR A REPORT — a minute, not the fifteen seconds every other call gets (the owner, 13/11: «لوحة الأداء بتضل
@@ -106,6 +107,7 @@ export function PerformanceScreen() {
     if (canLanding && asked === 'landing') setTab('landing');
     if (canScores && asked === 'scores') setTab('scores');
     if (canScores && asked === 'noanswer') setTab('noanswer');
+    if (canScores && asked === 'eod') setTab('eod');
   }, [canLanding, canScores]);
   const pickTab = (next: Tab) => {
     setTab(next);
@@ -352,6 +354,8 @@ export function PerformanceScreen() {
               ...(canScores ? [['scores', 'سكور الموظفين'] as [Tab, string]] : []),
               // The same people as the team table (`team.monitor`): what each agent holds now, and when customers pick up.
               ...(canScores ? [['noanswer', 'لا رد والطلبات المحجوزة'] as [Tab, string]] : []),
+              // The team leader's end-of-day report (step H2): the same key as the team table, `team.monitor`.
+              ...(canScores ? [['eod', 'تقرير نهاية اليوم'] as [Tab, string]] : []),
               ...(canLanding ? [['landing', 'تحليلات صفحات الهبوط'] as [Tab, string]] : []),
             ] as [Tab, string][]).map(([key, label]) => (
               <button
@@ -370,7 +374,9 @@ export function PerformanceScreen() {
           </div>
         )}
 
-        {tab === 'noanswer' && canScores ? (
+        {tab === 'eod' && canScores ? (
+          <EodReportForm />
+        ) : tab === 'noanswer' && canScores ? (
           // Read only, and its own dates: the board is «now», and the answer-rate report under it defaults to fourteen days.
           <NoAnswerWatch />
         ) : tab === 'scores' && canScores ? (

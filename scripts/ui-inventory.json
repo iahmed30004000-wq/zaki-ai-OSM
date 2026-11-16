@@ -719,6 +719,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/performance/EodReportForm.tsx": {
+    "buttons": 2,
+    "inputs": 3,
+    "columns": 0,
+    "cards": 1,
+    "modals": 0,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/performance/HeldFlowPanel.tsx": {
     "buttons": 1,
     "inputs": 0,
@@ -1757,6 +1767,16 @@
     "modals": 0,
     "icons": 4,
     "links": 0,
+    "tabs": 0
+  },
+  "src/components/screens/TeamLeaderAudit.tsx": {
+    "buttons": 0,
+    "inputs": 2,
+    "columns": 5,
+    "cards": 1,
+    "modals": 0,
+    "icons": 0,
+    "links": 1,
     "tabs": 0
   },
   "src/components/screens/TelegramAliasesDialog.tsx": {

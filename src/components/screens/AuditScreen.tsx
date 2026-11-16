@@ -14,6 +14,7 @@ import { DateRange, type Range } from '@/components/ui/DateRange';
 import { ListToolbar, withChosen, type ToolbarFilter } from '@/components/ui/ListToolbar';
 import { usePagedList, type PagedRead, type Paging } from '@/hooks/usePagedList';
 import { useMayOpen } from '@/hooks/useMayOpen';
+import { TeamLeaderAudit } from './TeamLeaderAudit';
 import { describeAction, entityHref, entityLabel, summariseChange } from '@/lib/audit-view';
 
 /**
@@ -208,6 +209,9 @@ export function AuditScreen() {
         loading={list.loading}
         onPage={list.goTo}
       />
+
+      {/* The owner's window on the team leader (step H2): its door answers 403 to everyone else, and then nothing is drawn — not even the title. */}
+      <TeamLeaderAudit />
     </div>
   );
 }

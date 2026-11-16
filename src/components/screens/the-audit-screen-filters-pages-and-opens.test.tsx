@@ -57,7 +57,8 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-const urls = () => api.mock.calls.map((c) => String(c[0]));
+// The team leader's window (step H2) is its own door under the same screen: the log's questions are counted without it.
+const urls = () => api.mock.calls.map((c) => String(c[0])).filter((u) => !u.startsWith('/api/audit/team-leader'));
 
 describe('the rows', () => {
   it('say the action and the record in Arabic, and the automatic ones are named', async () => {
