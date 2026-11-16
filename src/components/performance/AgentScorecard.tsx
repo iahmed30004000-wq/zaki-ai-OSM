@@ -83,7 +83,7 @@ export function AgentScorecard() {
         </span>
       ),
     },
-    { key: 'winback', label: 'استرجاع', hideOnPhone: true, render: () => <span title={rules.winback}>—</span> },
+    { key: 'winback', label: 'استرجاع', hideOnPhone: true, render: (r: ScoreRow) => <Rate r={r.winback} /> },
   ];
 
   return (

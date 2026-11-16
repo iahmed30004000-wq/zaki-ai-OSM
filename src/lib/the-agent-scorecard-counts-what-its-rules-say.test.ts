@@ -22,7 +22,7 @@ const at = (iso: string) => new Date(iso);
 const names = new Map([['u1', 'سارة'], ['u2', 'هدى']]);
 
 const base = (over: Partial<ScoreInputs> = {}): ScoreInputs => ({
-  now: NOW, grain: 'day', calendar: CAL, names, claims: [], releases: [], decisions: [], attempts: [], upsold: new Set(), confirmations: [], ...over,
+  now: NOW, grain: 'day', calendar: CAL, names, claims: [], releases: [], decisions: [], attempts: [], upsold: new Set(), confirmations: [], winbackOffers: [], ...over,
 });
 const one = (over: Partial<ScoreInputs>, user = 'u1') => tallyScorecard(base(over)).find((r) => r.userId === user)!;
 
@@ -192,8 +192,16 @@ describe('order of the rows, and the words', () => {
     expect(SCORECARD_RULES.delivery).toContain(String(DELIVERY_MATURITY_DAYS));
   });
 
-  it('the winback is not measured yet and says which step brings it', () => {
-    expect(one({ claims: [{ userId: 'u1', orderId: 'o1', at: at('2026-11-10T08:00:00Z') }] }).winback).toBeNull();
-    expect(SCORECARD_RULES.winback).toContain('الخطوة F');
+  it('the winback credits whoever made the offer: offers are the base, the ones whose new order is confirmed are the part; none is a dash', () => {
+    const offers = [
+      { userId: 'u1', at: at('2026-11-10T08:00:00Z'), confirmed: true },
+      { userId: 'u1', at: at('2026-11-10T09:00:00Z'), confirmed: false },
+      { userId: 'u1', at: at('2026-11-10T10:00:00Z'), confirmed: false },
+      { userId: 'u2', at: at('2026-11-10T10:00:00Z'), confirmed: true },
+    ];
+    expect(one({ winbackOffers: offers }).winback).toEqual({ of: 1, base: 3, rate: 33 });
+    expect(one({ winbackOffers: offers }, 'u2').winback).toEqual({ of: 1, base: 1, rate: 100 });
+    expect(one({ claims: [{ userId: 'u1', orderId: 'o1', at: at('2026-11-10T08:00:00Z') }] }).winback).toEqual({ of: 0, base: 0, rate: null });
+    expect(SCORECARD_RULES.winback).toContain('للي قدّمت العرض');
   });
 });

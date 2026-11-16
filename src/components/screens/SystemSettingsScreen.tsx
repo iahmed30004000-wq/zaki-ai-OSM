@@ -14,6 +14,7 @@ import { CallProofCard } from '@/components/settings/CallProofCard';
 import { IntakeFilterCard } from '@/components/settings/IntakeFilterCard';
 import { QueuePriorityCard } from '@/components/settings/QueuePriorityCard';
 import { AgentCommissionCard } from '@/components/settings/AgentCommissionCard';
+import { WinbackV2Card } from '@/components/settings/WinbackV2Card';
 import { PartnersCard } from '@/components/settings/PartnersCard';
 import { RiBuildingLine, RiCheckLine, RiLoader4Line } from '@remixicon/react';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -163,6 +164,7 @@ export function SystemSettingsScreen() {
       <IntakeFilterCard />
       <QueuePriorityCard />
       <AgentCommissionCard />
+      <WinbackV2Card />
 
       {/* «الشركاء والنسب» — each partner's share of the net profit. Drawn only for who holds `finance.partners` (the owner's to tick). */}
       <PartnersCard />
