@@ -71,6 +71,7 @@ const ACTION_AR: Record<string, string> = {
   CALL_PROOF_SWITCHED: 'تشغيل أو إيقاف «إثبات المكالمات وجدول المحاولات»',
   INTAKE_FILTER_SWITCHED: 'تشغيل أو إيقاف «فلتر الاستقبال»',
   QUEUE_PRIORITY_SWITCHED: 'تشغيل أو إيقاف «أولوية الطابور»',
+  AGENT_COMMISSION_CHANGED: 'تعديل «حاسبة عمولة الموظفات (تقدير)»',
   CALL_PROOF_REFUSED: 'رفض تسجيل «لا يرد» لأنه ما في ضغطة «اتصال» مسجّلة (أو ما مرّت 30 ثانية)',
   WALLET_TRANSFER: 'تحويل بين محافظ', WALLET_MOVEMENT_RECORDED: 'تسجيل حركة محفظة', WALLET_MOVEMENT_REVERSED: 'عكس حركة محفظة',
   // «القيد العكسي على تحويل» (`PATCH /api/finance/transfers/:id`, and the reversal of one leg from the wallet): both legs, one reason.

@@ -5,7 +5,7 @@ import { DELIVERY_MATURITY_DAYS, SCORECARD_RULES, bucketOf, medianOf, tallyScore
  * ═════════════════════════════════════════════════════════════════
  * DEFINITION OF DONE — THE AGENT SCORECARD COUNTS WHAT ITS RULES SAY (step G1)
  *
- *  1. One row per agent per day (or per week, the week starting Monday), by the STORE's clock — not the server's.
+ *  1. One row per agent per day (or per week, the week starting Saturday, as the commission module's week does), by the STORE's clock — not the server's.
  *  2. Claims and confirmations are UNIQUE ORDERS: the same order claimed twice in a day is one; a confirmation later reversed by a rejection the same day is a rejection.
  *  3. The confirmation rate is confirmed ÷ (confirmed + rejected); every rate carries its base and a zero base is `rate: null` (shown «—»), never 0.
  *  4. The median time to the first attempt is in business minutes from the claim to her first line on that order; an order she never logged on is not in it.
@@ -150,10 +150,11 @@ describe('the buckets follow the store\'s clock', () => {
     expect(bucketOf(at('2026-11-10T23:30:00Z'), 'day', 'Asia/Damascus')).toBe('2026-11-11');
   });
 
-  it('the week starts on Monday', () => {
-    expect(bucketOf(at('2026-11-16T10:00:00Z'), 'week', 'UTC')).toBe('2026-11-16'); // a Monday
-    expect(bucketOf(at('2026-11-22T10:00:00Z'), 'week', 'UTC')).toBe('2026-11-16'); // the Sunday after
-    expect(bucketOf(at('2026-11-23T00:30:00Z'), 'week', 'UTC')).toBe('2026-11-23');
+  it('the week starts on Saturday, as the commission week does', () => {
+    expect(bucketOf(at('2026-11-14T10:00:00Z'), 'week', 'UTC')).toBe('2026-11-14'); // a Saturday
+    expect(bucketOf(at('2026-11-16T10:00:00Z'), 'week', 'UTC')).toBe('2026-11-14'); // the Monday after
+    expect(bucketOf(at('2026-11-20T23:30:00Z'), 'week', 'UTC')).toBe('2026-11-14'); // the Friday: last day of the week
+    expect(bucketOf(at('2026-11-21T00:30:00Z'), 'week', 'UTC')).toBe('2026-11-21');
   });
 
   it('the week grain sums a week into one row per agent', () => {
@@ -162,7 +163,7 @@ describe('the buckets follow the store\'s clock', () => {
       { userId: 'u1', orderId: 'o2', at: at('2026-11-18T08:00:00Z') },
       { userId: 'u1', orderId: 'o3', at: at('2026-11-23T08:00:00Z') },
     ];
-    expect(tallyScorecard(base({ grain: 'week', claims })).map((r) => [r.bucket, r.claims])).toEqual([['2026-11-23', 1], ['2026-11-16', 2]]);
+    expect(tallyScorecard(base({ grain: 'week', claims })).map((r) => [r.bucket, r.claims])).toEqual([['2026-11-21', 1], ['2026-11-14', 2]]);
   });
 });
 

@@ -38,7 +38,7 @@ export interface Ratio {
 }
 
 export interface ScoreRow {
-  /** The local day (grain day) or the Monday of the local week (grain week), YYYY-MM-DD. */
+  /** The local day (grain day) or the Saturday of the local week (grain week), YYYY-MM-DD. */
   bucket: string;
   userId: string;
   name: string;
@@ -77,14 +77,14 @@ export function medianOf(values: readonly number[]): number | null {
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }
 
-/** The bucket a moment falls in: its local day, or the Monday of its local week. */
+/** The bucket a moment falls in: its local day, or the Saturday of its local week. */
 export function bucketOf(at: Date, grain: Grain, timeZone: string): string {
   const p = zonedParts(at, timeZone);
   const pad = (n: number) => String(n).padStart(2, '0');
   const day = `${p.year}-${pad(p.month)}-${pad(p.day)}`;
   if (grain === 'day') return day;
   const anchor = new Date(Date.UTC(p.year, p.month - 1, p.day));
-  const back = (anchor.getUTCDay() + 6) % 7; // Monday = 0
+  const back = (anchor.getUTCDay() + 1) % 7; // Saturday = 0 — the commission module's own week (`currentSpan('WEEKLY')`): one calendar, not two
   anchor.setUTCDate(anchor.getUTCDate() - back);
   return anchor.toISOString().slice(0, 10);
 }

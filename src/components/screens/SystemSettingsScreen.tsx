@@ -13,6 +13,7 @@ import { PerLineSettlementCard } from '@/components/settings/PerLineSettlementCa
 import { CallProofCard } from '@/components/settings/CallProofCard';
 import { IntakeFilterCard } from '@/components/settings/IntakeFilterCard';
 import { QueuePriorityCard } from '@/components/settings/QueuePriorityCard';
+import { AgentCommissionCard } from '@/components/settings/AgentCommissionCard';
 import { PartnersCard } from '@/components/settings/PartnersCard';
 import { RiBuildingLine, RiCheckLine, RiLoader4Line } from '@remixicon/react';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -161,6 +162,7 @@ export function SystemSettingsScreen() {
       <CallProofCard />
       <IntakeFilterCard />
       <QueuePriorityCard />
+      <AgentCommissionCard />
 
       {/* «الشركاء والنسب» — each partner's share of the net profit. Drawn only for who holds `finance.partners` (the owner's to tick). */}
       <PartnersCard />
