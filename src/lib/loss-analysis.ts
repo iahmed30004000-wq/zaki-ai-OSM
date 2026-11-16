@@ -332,6 +332,12 @@ export const NO_ANSWER_MERGED_KEY = '__NO_ANSWER_CLOSED__';
 export const NO_ANSWER_MERGED_AR = 'أُغلق بلا رد';
 const NO_ANSWER_LOSS_CODES: readonly string[] = [NO_ANSWER_CLOSE.three.reason, NO_ANSWER_CLOSE.five.reason];
 
+/** The key-on words of the two detail lines: the rule, not a count of attempts (ruling 40). */
+const NO_ANSWER_DETAIL_AR: Readonly<Record<string, string>> = {
+  [NO_ANSWER_CLOSE.three.reason]: 'بالقاعدة القديمة',
+  [NO_ANSWER_CLOSE.five.reason]: 'بجدول المحاولات',
+};
+
 /** A line as the screen draws it: a plain line, or the merged row with the lines it stands for. */
 export type LossDisplayLine = LossLine & { detail?: LossLine[] };
 
@@ -343,6 +349,8 @@ export function lossDisplayLines(half: Pick<LossHalf, 'count' | 'lines'>, opts: 
   // Off: both codes or nothing (today). On: one is enough — but never none.
   if (detail.length < (opts.cadenceOn === true ? 1 : NO_ANSWER_LOSS_CODES.length)) return half.lines;
 
+  // THE KEY ON (the planner 16/11, ruling 40): the detail lines carry NO number («ثلاث» / «خمس») — they say which rule closed the order. Off: the lines keep their stored words, byte for byte.
+  const shown = opts.cadenceOn === true ? detail.map((l) => ({ ...l, label: NO_ANSWER_DETAIL_AR[l.reason ?? ''] ?? l.label })) : detail;
   const count = detail.reduce((s, l) => s + l.count, 0);
   const merged: LossDisplayLine = {
     field: 'rejectionReason',
@@ -354,7 +362,7 @@ export function lossDisplayLines(half: Pick<LossHalf, 'count' | 'lines'>, opts: 
     count,
     money: round2(detail.reduce((s, l) => s + l.money, 0)),
     share: half.count ? round2((count / half.count) * 100) : 0,
-    detail,
+    detail: shown,
   };
   // Where the report ranks it by what it costs: the merged row stands wherever its SUM puts it (a tie keeps the place of its first line), the rest keep their order.
   const lines: LossDisplayLine[] = [];

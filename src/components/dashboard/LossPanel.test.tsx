@@ -192,7 +192,7 @@ describe('the no-answer close, with the plan’s key on', () => {
     expect(merged.textContent).toContain('7 · 70%');
     const nested = merged.querySelector(':scope > ul')!;
     expect(nested.getAttribute('aria-label')).toBe('تفصيل «أُغلق بلا رد»');
-    expect([...nested.querySelectorAll(':scope > li')].map((li) => li.textContent)).toEqual([expect.stringMatching(/^أُغلق بعد ثلاث محاولات بلا ردّ7 · 70%$/)]);
+    expect([...nested.querySelectorAll(':scope > li')].map((li) => li.textContent)).toEqual([expect.stringMatching(/^بالقاعدة القديمة7 · 70%$/)]); // ruling 40 (16/11): the key-on detail names the rule, no number
     // The code is not also drawn on its own at the top level.
     expect([...rejectionHalf(container).querySelectorAll(':scope > ul > li')].filter((li) => li !== merged).some((li) => /ثلاث محاولات/.test(li.textContent ?? ''))).toBe(false);
   });
@@ -202,7 +202,7 @@ describe('the no-answer close, with the plan’s key on', () => {
     const { container } = render(<LossPanel period="all" />);
     await waitFor(() => expect(screen.getByText('أُغلق بلا رد')).toBeTruthy());
     expect(container.querySelectorAll('ul ul > li')).toHaveLength(1);
-    expect(container.querySelector('ul ul > li')?.textContent).toMatch(/^أُغلق بعد خمس محاولات بلا ردّ2 · 100%$/);
+    expect(container.querySelector('ul ul > li')?.textContent).toMatch(/^بجدول المحاولات2 · 100%$/);
   });
 
   it('the flag false or absent: today’s single row, nothing merged, nothing nested (the OFF pin, through the screen)', async () => {
@@ -216,7 +216,7 @@ describe('the no-answer close, with the plan’s key on', () => {
     }
   });
 
-  it('both codes with the key on: the same merged row as with it off', async () => {
+  it('both codes with the key on: the same merged row as with it off — the detail words aside (number-free with the key on, ruling 40)', async () => {
     const rows = [
       { field: 'rejectionReason' as const, reason: 'NO_ANSWER_3_ATTEMPTS', count: 6, money: 0 },
       { field: 'rejectionReason' as const, reason: 'NO_ANSWER_5_ATTEMPTS', count: 4, money: 0 },
@@ -229,6 +229,8 @@ describe('the no-answer close, with the plan’s key on', () => {
       html.push(container.innerHTML);
       unmount();
     }
-    expect(html[1]).toBe(html[0]);
+    const words = (s: string) => s.replaceAll('بالقاعدة القديمة', 'أُغلق بعد ثلاث محاولات بلا ردّ').replaceAll('بجدول المحاولات', 'أُغلق بعد خمس محاولات بلا ردّ');
+    expect(words(html[1])).toBe(html[0]);
+    expect(html[1]).not.toMatch(/ثلاث|خمس/);
   });
 });

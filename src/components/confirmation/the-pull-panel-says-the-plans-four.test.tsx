@@ -37,7 +37,7 @@ const BASE: QueueResponse = {
   waiting: 422,
   waitingNew: 5,
   waitingReturned: 417,
-  waitingPlan: planWords(FOUR),
+  waitingPlan: planWords(FOUR, 30),
   waitingOnADate: 67,
   owned: { total: 0, withoutAttempt: 0 },
   caps: { withoutAttempt: 40, total: 5 },
@@ -101,7 +101,7 @@ describe('the plan is on: the server’s four, in the pull’s order', () => {
   });
 
   it('a part with nothing in it is not drawn — but the first is, as «جديد» always was', async () => {
-    pool.waitingPlan = planWords({ fresh: 0, promise: 0, retry: 3, rest: 0 });
+    pool.waitingPlan = planWords({ fresh: 0, promise: 0, retry: 3, rest: 0 }, 30);
     pool.waiting = 3;
     render(<Harness />);
     await screen.findByText('3', { selector: 'p.text-4xl' });
@@ -115,7 +115,7 @@ describe('the plan is on: the server’s four, in the pull’s order', () => {
 
   it('NEGATIVE: an empty pool draws no boxes, plan or not', async () => {
     pool.waiting = 0;
-    pool.waitingPlan = planWords({ fresh: 0, promise: 0, retry: 0, rest: 0 });
+    pool.waitingPlan = planWords({ fresh: 0, promise: 0, retry: 0, rest: 0 }, 30);
     render(<Harness />);
     await screen.findByText('0', { selector: 'p.text-4xl' });
     expect(group()).toBeNull();

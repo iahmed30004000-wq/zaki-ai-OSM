@@ -116,7 +116,7 @@ export async function GET() {
             waiting: pool.fresh + pool.promise + pool.retry + pool.rest,
             waitingNew: pool.fresh,
             waitingReturned: pool.promise + pool.retry + pool.rest,
-            waitingPlan: planWords(pool),
+            waitingPlan: planWords(pool, RETURNS_MODE.idleBusinessMinutes),
           }
         : {
             waiting: pool.fresh + pool.returned + pool.due,

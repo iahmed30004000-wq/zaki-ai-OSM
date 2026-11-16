@@ -22,10 +22,16 @@ export interface PlanWords {
   rule: string;
 }
 
-export const PLAN_RULE =
-  'طلب الزبون الراجع اللي تابع إلك بيجيك أول، وبعده الجديد اللي ما حدا اتصل فيه، وبعده الوعد اللي وصل موعده، وبعده الإعادة اللي حان موعدها، وبعده الباقي الأقدم. أي طلب بلا محاولة اتصال بيرجع للطابور بعد 90 دقيقة عمل.';
+/**
+ * The sentence under the card. The idle number is NOT written here (the planner 16/11, ruling 36): the caller passes the setting itself
+ * (`RETURNS_MODE.idleBusinessMinutes` — today 30, so «30 دقيقة دوام»), so the screen can never say a figure the release does not use.
+ * Only this plan-on sentence is changed; with the key off the screen keeps its old sentence word for word (a live screen, unchanged).
+ */
+export function planRule(idleBusinessMinutes: number): string {
+  return `طلب الزبون الراجع اللي تابع إلك بيجيك أول، وبعده الجديد اللي ما حدا اتصل فيه، وبعده الوعد اللي وصل موعده، وبعده الإعادة اللي حان موعدها، وبعده الباقي الأقدم. أي طلب بلا محاولة اتصال بيرجع للطابور بعد ${idleBusinessMinutes} دقيقة دوام.`;
+}
 
-export function planWords(parts: WaitingByPlan): PlanWords {
+export function planWords(parts: WaitingByPlan, idleBusinessMinutes: number): PlanWords {
   return {
     parts: [
       { label: 'جديد', hint: 'ما حدا اتصل فيه', value: parts.fresh },
@@ -33,6 +39,6 @@ export function planWords(parts: WaitingByPlan): PlanWords {
       { label: 'إعادة حان موعدها', hint: 'حان وقت المحاولة التانية', value: parts.retry },
       { label: 'الباقي', hint: 'الأقدم أول', value: parts.rest },
     ],
-    rule: PLAN_RULE,
+    rule: planRule(idleBusinessMinutes),
   };
 }

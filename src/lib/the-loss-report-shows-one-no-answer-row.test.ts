@@ -139,8 +139,9 @@ describe('ruling 27 — with the key ON one code is enough; with it OFF nothing 
     expect(shown.map((l) => l.reason)).toEqual([NO_ANSWER_MERGED_KEY, 'PRICE_TOO_HIGH']);
     const merged = shown[0];
     expect(merged).toMatchObject({ field: 'rejectionReason', label: NO_ANSWER_MERGED_AR, fault: 'OUR_REACH', known: true, count: 7, money: 0, share: 70 });
-    expect(merged.detail).toEqual([half.lines.find((l) => l.reason === THREE)]);
-    expect(merged.detail![0].label).toBe('أُغلق بعد ثلاث محاولات بلا ردّ');
+    // Ruling 40 (16/11): the detail line is that code's own line (same counts) but says the RULE, not a number of attempts.
+    expect(merged.detail).toEqual([{ ...half.lines.find((l) => l.reason === THREE)!, label: 'بالقاعدة القديمة' }]);
+    expect(merged.detail![0].label).not.toMatch(/ثلاث|خمس/);
     expect(shown.some((l) => l.reason === THREE)).toBe(false);
   });
 
@@ -149,14 +150,19 @@ describe('ruling 27 — with the key ON one code is enough; with it OFF nothing 
     const shown = lossDisplayLines(half, ON);
     expect(shown).toHaveLength(1);
     expect(shown[0]).toMatchObject({ reason: NO_ANSWER_MERGED_KEY, label: 'أُغلق بلا رد', count: 5, share: 100 });
-    expect(shown[0].detail!.map((d) => [d.reason, d.label, d.count])).toEqual([[FIVE, 'أُغلق بعد خمس محاولات بلا ردّ', 5]]);
+    expect(shown[0].detail!.map((d) => [d.reason, d.label, d.count])).toEqual([[FIVE, 'بجدول المحاولات', 5]]);
   });
 
-  it('key ON, BOTH codes: exactly the merged row the key-off world draws (same objects in value, same order, same detail)', () => {
+  it('key ON, BOTH codes: the same merged row and order as the key-off world — only the two detail WORDS differ (number-free, ruling 40); off is byte for byte', () => {
     const half = before([rej(THREE, 6), rej(FIVE, 4), rej('PRICE_TOO_HIGH', 10)]);
-    expect(lossDisplayLines(half, ON)).toEqual(lossDisplayLines(half));
-    expect(lossDisplayLines(half, ON)).toEqual(lossDisplayLines(half, OFF));
-    expect(lossDisplayLines(half, ON).find((l) => l.reason === NO_ANSWER_MERGED_KEY)!.detail!.map((d) => d.reason)).toEqual([THREE, FIVE]);
+    const on = lossDisplayLines(half, ON);
+    const off = lossDisplayLines(half);
+    expect(lossDisplayLines(half, OFF)).toEqual(off);
+    const strip = (rows: ReturnType<typeof lossDisplayLines>) => rows.map((l) => ({ ...l, detail: l.detail?.map((d) => ({ ...d, label: '' })) }));
+    expect(strip(on)).toEqual(strip(off));
+    expect(on.find((l) => l.reason === NO_ANSWER_MERGED_KEY)!.detail!.map((d) => [d.reason, d.label])).toEqual([[THREE, 'بالقاعدة القديمة'], [FIVE, 'بجدول المحاولات']]);
+    // Off keeps the stored words, numbers and all.
+    expect(off.find((l) => l.reason === NO_ANSWER_MERGED_KEY)!.detail!.map((d) => d.label)).toEqual(['أُغلق بعد ثلاث محاولات بلا ردّ', 'أُغلق بعد خمس محاولات بلا ردّ']);
   });
 
   it('key ON, a one-code row ranks by its own sum and the counts still add up to the half’s total', () => {

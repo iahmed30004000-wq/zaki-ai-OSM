@@ -43,7 +43,10 @@ vi.mock('@/lib/confirmation-queue', async (orig) => ({
 }));
 
 import { GET } from './route';
-import { planWords, PLAN_RULE } from '@/lib/pull-plan-words';
+import { planWords, planRule } from '@/lib/pull-plan-words';
+import { RETURNS_MODE } from '@/lib/confirmation-queue';
+
+const PLAN_RULE = planRule(RETURNS_MODE.idleBusinessMinutes);
 
 const COUNTRY = { workHoursStart: '09:00', workHoursEnd: '17:00', weekendDays: [5, 6], timezone: 'Asia/Amman' };
 const SINCE = new Date('2026-11-10T08:00:00.000Z');
@@ -89,12 +92,17 @@ describe('ON — the plan’s counter, in the server’s words', () => {
     expect(body.waitingPlan.parts.map((p: { label: string }) => p.label)).toEqual(['جديد', 'وعد وصل', 'إعادة حان موعدها', 'الباقي']);
     expect(body.waitingPlan.parts.map((p: { value: number }) => p.value)).toEqual([5, 4, 100, 316]);
     expect(body.waitingPlan.rule).toBe(PLAN_RULE);
-    expect(body.waitingPlan).toEqual(planWords({ fresh: 5, promise: 4, retry: 100, rest: 316 }));
+    expect(body.waitingPlan).toEqual(planWords({ fresh: 5, promise: 4, retry: 100, rest: 316 }, RETURNS_MODE.idleBusinessMinutes));
     // The sentence names the same four, in the same order, and no longer the two-day lead of the old order.
     const order = ['الجديد', 'الوعد', 'الإعادة', 'الباقي'].map((w) => PLAN_RULE.indexOf(w));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(PLAN_RULE).not.toContain('المؤجّل');
+    // Ruling 36 (16/11): the idle figure is the setting's own, not a number written in the sentence — today «30 دقيقة دوام», never «90».
+    expect(PLAN_RULE).toContain(`${RETURNS_MODE.idleBusinessMinutes} دقيقة دوام`);
+    expect(RETURNS_MODE.idleBusinessMinutes).toBe(30);
+    expect(PLAN_RULE).not.toContain('90');
+    expect(planRule(45)).toContain('45 دقيقة دوام');
   });
 
   it.each([
