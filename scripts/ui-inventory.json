@@ -1776,7 +1776,7 @@
     "cards": 1,
     "modals": 0,
     "icons": 0,
-    "links": 1,
+    "links": 0,
     "tabs": 0
   },
   "src/components/screens/TelegramAliasesDialog.tsx": {

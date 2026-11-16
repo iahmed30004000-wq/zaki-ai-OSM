@@ -1,14 +1,14 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import Link from 'next/link';
+import { OrderRef } from '@/components/orders/OrderRef';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Rows } from '@/components/ui/Rows';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 import { apiJson } from '@/lib/api-client';
 import { arStamp } from '@/lib/format';
 import { describeAction } from '@/lib/audit-view';
-import { EOD_METRICS, EOD_METRIC_AR, type EodMetric } from '@/lib/eod-metrics';
+import { EOD_METRICS, EOD_METRIC_AR, localIsoDay, type EodMetric } from '@/lib/eod-metrics';
 import type { SampleRow, Variance } from '@/lib/eod-report';
 
 /**
@@ -35,7 +35,7 @@ interface Answer {
 type Comparison = NonNullable<Answer['report']>['comparison'][number];
 
 const valid = (x: unknown): x is Answer => !!x && typeof x === 'object' && Array.isArray((x as Answer).actions) && Array.isArray((x as Answer).sample) && typeof (x as Answer).day === 'string';
-const today = () => new Date().toLocaleDateString('en-CA');
+const today = () => localIsoDay(new Date());
 
 function Cell({ v }: { v: Variance }) {
   return (
@@ -72,7 +72,7 @@ export function TeamLeaderAudit() {
         action={
           <div className="flex items-center gap-2">
             {data && data.leaders.length > 1 && (
-              <select aria-label="قائد الفريق" className="h-8 rounded-md border border-[var(--sys-border)] bg-[var(--sys-card)] px-2 text-xs" value={data.leader?.id ?? ''} onChange={(e) => setLeaderId(e.target.value)}>
+              <select aria-label="قائد الفريق" className="h-11 md:h-8 rounded-md border border-[var(--sys-border-strong)] bg-[var(--sys-card)] px-2 text-xs" value={data.leader?.id ?? ''} onChange={(e) => setLeaderId(e.target.value)}>
                 {data.leaders.map((l) => (
                   <option key={l.id} value={l.id}>
                     {l.name ?? '—'}
@@ -80,7 +80,7 @@ export function TeamLeaderAudit() {
                 ))}
               </select>
             )}
-            <input aria-label="اليوم" type="date" className="h-8 rounded-md border border-[var(--sys-border)] bg-[var(--sys-card)] px-2 text-xs" value={day} onChange={(e) => e.target.value && setDay(e.target.value)} />
+            <input aria-label="اليوم" type="date" className="h-11 md:h-8 rounded-md border border-[var(--sys-border-strong)] bg-[var(--sys-card)] px-2 text-xs" value={day} onChange={(e) => e.target.value && setDay(e.target.value)} />
           </div>
         }
       />
@@ -136,7 +136,7 @@ export function TeamLeaderAudit() {
                 keyOf={(r: SampleRow) => r.orderId}
                 empty="ما في طلبات مرفوضة بهاليوم."
                 columns={[
-                  { key: 'n', label: 'الطلب', primary: true, render: (r: SampleRow) => <Link href={`/orders/${r.orderId}`} className="tabular-nums font-semibold text-[var(--sys-primary)] hover:underline">{r.orderNumber}</Link> },
+                  { key: 'n', label: 'الطلب', primary: true, render: (r: SampleRow) => <OrderRef id={r.orderId} number={r.orderNumber} /> },
                   { key: 'reason', label: 'السبب', render: (r: SampleRow) => r.reasonAr },
                   { key: 'agent', label: 'الموظفة', render: (r: SampleRow) => r.agent },
                   { key: 'phone', label: 'الرقم', render: (r: SampleRow) => (r.phoneValid ? 'صالح' : 'مشكوك') },

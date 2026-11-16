@@ -16,3 +16,9 @@ export const EOD_METRIC_AR: Record<EodMetric, string> = {
 
 /** The longest «biggest problem» or «tip» she may write. */
 export const MAX_TEXT = 500;
+
+/** A date as YYYY-MM-DD in the browser's own local day — what a date box and the report's «yesterday» speak (the SERVER still decides which day a report may be for, by the store's clock). */
+export function localIsoDay(at: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
+}

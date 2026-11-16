@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 import { apiJson } from '@/lib/api-client';
 import { useToast } from '@/components/ui/Toast';
-import { EOD_METRICS, EOD_METRIC_AR, MAX_TEXT, type EodMetric } from '@/lib/eod-metrics';
+import { EOD_METRICS, EOD_METRIC_AR, MAX_TEXT, localIsoDay, type EodMetric } from '@/lib/eod-metrics';
 import type { AgentNumbers } from '@/lib/eod-report';
 
 /**
@@ -39,7 +39,7 @@ export function EodReportForm() {
   const load = useCallback(async (w: 'today' | 'yesterday') => {
     setData(null);
     try {
-      const day = w === 'today' ? '' : `?day=${new Date(Date.now() - 86_400_000).toLocaleDateString('en-CA')}`;
+      const day = w === 'today' ? '' : `?day=${localIsoDay(new Date(Date.now() - 86_400_000))}`;
       const a = await apiJson<unknown>(`/api/confirmation/eod-report${day}`);
       if (!valid(a)) return setData('none');
       setData(a);
@@ -69,7 +69,7 @@ export function EodReportForm() {
     }
   };
 
-  const box = 'h-8 w-20 rounded-md border border-[var(--sys-border)] bg-[var(--sys-card)] px-2 text-xs tabular-nums';
+  const box = 'h-8 w-20 rounded-md border border-[var(--sys-border-strong)] bg-[var(--sys-card)] px-2 text-xs tabular-nums';
 
   return (
     <Card>
@@ -96,14 +96,14 @@ export function EodReportForm() {
         ) : (
           <>
             {data.submitted && (
-              <p className="rounded-md border border-[var(--sys-border)] bg-[var(--sys-surface)] p-2.5 text-xs text-[var(--sys-foreground)]">
+              <p className="rounded-md border border-[var(--sys-border-strong)] bg-[var(--sys-surface)] p-2.5 text-xs text-[var(--sys-foreground)]">
                 أرسلتي تقرير {data.day} وما بيتعدّل. اللي أرسلتيه تحت.
               </p>
             )}
             {data.system.map((s) => {
               const sent = data.submitted?.payload.agents.find((a) => a.userId === s.userId);
               return (
-                <section key={s.userId} className="space-y-2 rounded-lg border border-[var(--sys-border)] p-3">
+                <section key={s.userId} className="space-y-2 rounded-lg border border-[var(--sys-border-strong)] p-3">
                   <h4 className="text-sm font-bold text-[var(--sys-foreground)]">{s.name}</h4>
                   <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
                     {EOD_METRICS.map((m) => (
@@ -136,11 +136,11 @@ export function EodReportForm() {
               <>
                 <label className="block space-y-1 text-xs text-[var(--sys-muted-foreground)]">
                   أكبر مشكلة اليوم
-                  <textarea className="w-full rounded-md border border-[var(--sys-border)] bg-[var(--sys-card)] p-2 text-xs" rows={2} maxLength={MAX_TEXT} value={problem} disabled={busy || !data.mayReport} onChange={(e) => setProblem(e.target.value)} />
+                  <textarea className="w-full rounded-md border border-[var(--sys-border-strong)] bg-[var(--sys-card)] p-2 text-xs" rows={2} maxLength={MAX_TEXT} value={problem} disabled={busy || !data.mayReport} onChange={(e) => setProblem(e.target.value)} />
                 </label>
                 <label className="block space-y-1 text-xs text-[var(--sys-muted-foreground)]">
                   نصيحة لبكرا
-                  <textarea className="w-full rounded-md border border-[var(--sys-border)] bg-[var(--sys-card)] p-2 text-xs" rows={2} maxLength={MAX_TEXT} value={tip} disabled={busy || !data.mayReport} onChange={(e) => setTip(e.target.value)} />
+                  <textarea className="w-full rounded-md border border-[var(--sys-border-strong)] bg-[var(--sys-card)] p-2 text-xs" rows={2} maxLength={MAX_TEXT} value={tip} disabled={busy || !data.mayReport} onChange={(e) => setTip(e.target.value)} />
                 </label>
                 <button type="button" className="rounded-md bg-[var(--sys-primary)] px-3 py-1.5 text-xs font-bold text-[var(--sys-primary-foreground)] disabled:opacity-50" disabled={busy || !data.mayReport} onClick={() => void send()}>
                   إرسال التقرير (مرة وحدة)

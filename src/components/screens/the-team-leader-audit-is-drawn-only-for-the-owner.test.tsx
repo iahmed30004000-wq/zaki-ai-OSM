@@ -9,7 +9,7 @@ import React from 'react';
  */
 const { api } = vi.hoisted(() => ({ api: vi.fn() }));
 vi.mock('@/lib/api-client', () => ({ apiJson: (...a: unknown[]) => api(...a) }));
-vi.mock('next/link', () => ({ default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => <a href={href} {...rest}>{children}</a> }));
+vi.mock('@/components/orders/OrderRef', () => ({ OrderRef: ({ id, number }: { id: string; number: string }) => <a href={`/orders/${id}`}>{number}</a> }));
 
 import { TeamLeaderAudit } from './TeamLeaderAudit';
 
