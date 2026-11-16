@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Rows } from '@/components/ui/Rows';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 import { OrderRef } from '@/components/orders/OrderRef';
 import { apiJson } from '@/lib/api-client';
+import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { useToast } from '@/components/ui/Toast';
 import { CALL_RESULTS, CALL_RESULT_AR, DAILY_KIND_AR, type CallResult } from '@/lib/winback-daily-words';
 import type { DailyItem } from '@/lib/winback-daily';
@@ -44,9 +45,8 @@ export function WinbackDaily() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  // loads on mount and again whenever she comes back to the screen: the list is a day's work and must not go stale under an open tab
+  useLiveRefresh(load);
 
   if (data === 'none') return null;
 
