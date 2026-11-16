@@ -7,6 +7,7 @@ import { NOT_MENTIONED_ACTIVITY_AR } from './not-mentioned';
 import { EXCHANGE_APPLIED_ACTION } from './settlement-difference';
 import { SWAP_ACTION } from './superseded';
 import { TWIN_ACTION } from './recent-twin-order';
+import { INTAKE_DUPLICATE_ACTION, INTAKE_SUSPECT_ACTION } from './intake-flags';
 import { TWIN_CONFIRM_ACK_ACTION } from './confirmed-twin';
 import { TWIN_HELD_ACTION } from './twins-follow-the-pull';
 import { ARRIVED_WITHOUT_REGION_ACTION } from './landing-order-schema';
@@ -215,6 +216,9 @@ const ACTIVITY_AR: Record<string, string> = {
   [SWAP_ACTION]: 'تبديل طرد عند الشركة',
   // «طلب مشابه»: the same customer asked for the same product minutes before — a flag for the caller, nothing refused.
   [TWIN_ACTION]: 'تنبيه: نفس العميل طلب نفس المنتج قبل دقائق',
+  // «فلتر الاستقبال» (step C1): written after the order arrived, by nobody — a note for the caller, nothing refused.
+  [INTAKE_DUPLICATE_ACTION]: 'تنبيه عند الاستقبال: نفس الزبون طلب نفس المنتج خلال 24 ساعة',
+  [INTAKE_SUSPECT_ACTION]: 'تنبيه عند الاستقبال: رقم الزبون ما بيطابق شكل أرقام البلد',
   // «طلب تاني فعلاً»: she confirmed past the refusal «الزبون عنده طلب مؤكَّد بنفس المنتج» — in her name, with the numbers she was shown.
   [TWIN_CONFIRM_ACK_ACTION]: 'أُكِّد الطلب مع العلم بوجود طلب مؤكَّد لنفس الزبون بنفس المنتج',
   // «زبون واحد، موظفة وحدة»: she pulled another order of the same customer, so this one waits for her (twins-follow-the-pull.ts).

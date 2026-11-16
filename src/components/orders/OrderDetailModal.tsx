@@ -14,6 +14,7 @@ import { DeliveryIncludedBox, mayTellDelivery } from '@/components/orders/Delive
 import { ConfirmationActions } from '@/components/orders/ConfirmationActions';
 import { ShapeRiskPanel } from '@/components/orders/ShapeRiskPanel';
 import { DuplicateSuspectNotice } from '@/components/orders/DuplicateSuspectNotice';
+import { IntakeNotice } from '@/components/orders/IntakeNotice';
 import { STAGE_AR, STAGE_STATE_AR, type StageState } from '@/lib/order-closing';
 import { ChangeRequestDialog, type ChangeRequestValue } from '@/components/screens/confirmation/ActionDialogs';
 import { raiseChangeRequest } from '@/components/orders/raiseChangeRequest';
@@ -461,6 +462,7 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
               moment before the call ends. See orders/ShapeRiskPanel.
             */}
             {mayRecordCalls && order?.id && <DuplicateSuspectNotice orderId={order.id} />}
+            {mayRecordCalls && order?.id && <IntakeNotice orderId={order.id} />}
             {mayRecordCalls && order?.id && userCan(currentUser, 'insights.view') && <ShapeRiskPanel orderId={order.id} />}
 
             {mayRecordCalls && pullNotice && (

@@ -6,6 +6,7 @@ import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { pullNextOrder } from '@/lib/confirmation-queue';
 import { reserveReturningCustomers } from '@/lib/reserve-returning-customers';
+import { sweepIntake } from '@/lib/intake-filter';
 import { db } from '@/lib/db';
 
 /**
@@ -38,6 +39,9 @@ export async function POST() {
     // A returning customer's order that has just arrived is held for the agent who worked him last BEFORE the pick — best-effort:
     // if the hold cannot be written the order is simply the shared queue's, as it was before holds existed.
     await reserveReturningCustomers({ companyId, storeId }).catch(() => 0);
+
+    // «فلتر الاستقبال» (step C1): flag a repeat or an oddly-shaped number on what has just arrived — the same best-effort, the same place; off for a company that did not turn it on.
+    await sweepIntake({ companyId, storeId, countryCode: country.code }).catch(() => 0);
 
     const result = await pullNextOrder(
       { companyId, storeId },

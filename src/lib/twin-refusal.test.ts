@@ -173,7 +173,9 @@ describe('the guard’s own file', () => {
   it('is read from a transaction by the door and from nowhere else in the product', () => {
     const files = everyProductionFile(join(process.cwd(), 'src')).filter((f) => f !== 'src/lib/confirmed-twin.ts');
     const importers = files.filter((f) => /from '(?:@\/lib|\.)\/confirmed-twin'/.test(code(f))).sort();
-    expect(importers).toEqual(['src/app/api/orders/[id]/confirmation/route.ts', 'src/lib/order-timeline.ts']);
+    // `intake-filter.ts` (step C1) reads ONLY the pure «same product» clause (`sameProductWhere`), so that «a repeat» means one thing in the
+    // twin guard and in the intake flag; it neither calls the guard nor writes through it.
+    expect(importers).toEqual(['src/app/api/orders/[id]/confirmation/route.ts', 'src/lib/intake-filter.ts', 'src/lib/order-timeline.ts']);
   });
 });
 
