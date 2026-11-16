@@ -28,7 +28,7 @@ function Rate({ r }: { r: Ratio }) {
   return (
     <span className="tabular-nums">
       <span className="font-bold">{rateText(r)}</span>
-      {r.base > 0 && <span className="block text-[10px] text-[var(--sys-muted-foreground)]">{beside(r)}</span>}
+      {r.base > 0 && <span className="block text-xs text-[var(--sys-muted-foreground)]">{beside(r)}</span>}
     </span>
   );
 }
@@ -79,7 +79,7 @@ export function AgentScorecard() {
       render: (r: ScoreRow) => (
         <span className="tabular-nums">
           <span className="font-bold">{rateText(r.delivery)}</span>
-          {r.delivery.base > 0 && <span className="block text-[10px] text-[var(--sys-muted-foreground)]">{`${r.delivery.delivered} مسلَّم و${r.delivery.returned} مرتجع`}</span>}
+          {r.delivery.base > 0 && <span className="block text-xs text-[var(--sys-muted-foreground)]">{`${r.delivery.delivered} مسلَّم و${r.delivery.returned} مرتجع`}</span>}
         </span>
       ),
     },
