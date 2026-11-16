@@ -8,6 +8,7 @@ import { Rows } from '@/components/ui/Rows';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 import { apiFetch, saidBy } from '@/lib/api-client';
 import type { AgentRow, AnswerRateReport, NoAnswerBoard, RateRow } from '@/lib/no-answer-watch';
+import type { MeasureRow } from '@/lib/no-answer-measure';
 import { HeldFlowPanel } from './HeldFlowPanel';
 
 /**
@@ -157,6 +158,9 @@ export function NoAnswerWatch() {
         </CardContent>
       </Card>
 
+      {/* قياس «ما ردّ» (step G1): its own part, over the same dates; a failure or an odd answer draws nothing and never touches the parts above. */}
+      <MeasurePart range={range} />
+
       {report && (
         <Card>
           <CardHeader
@@ -173,6 +177,80 @@ export function NoAnswerWatch() {
         </Card>
       )}
     </div>
+  );
+}
+
+interface MeasureAnswer {
+  measure: { rows: MeasureRow[]; rule: string; thresholds: number[] };
+}
+
+const validMeasure = (x: unknown): x is MeasureAnswer => {
+  const m = (x as MeasureAnswer | null)?.measure;
+  return !!m && Array.isArray(m.rows) && typeof m.rule === 'string' && Array.isArray(m.thresholds);
+};
+
+/** The percentage of the lines that rang for less than `seconds`, beside its counts; a zero base is a dash. */
+const underText = (r: MeasureRow, seconds: number) => {
+  const u = r.under.find((x) => x.seconds === seconds);
+  return !u || u.rate === null ? '—' : `${u.rate}% (${u.count} من ${r.withPress})`;
+};
+
+function MeasurePart({ range }: { range: { from: string; to: string } }) {
+  const [answer, setAnswer] = useState<MeasureAnswer | null | 'none'>(null);
+
+  useEffect(() => {
+    let live = true;
+    setAnswer(null);
+    const dates = range.from && range.to ? `&startDate=${range.from}&endDate=${range.to}` : '';
+    void ask<unknown>(`part=measure${dates}`).then((r) => {
+      if (live) setAnswer(r.ok && validMeasure(r.data) ? r.data : 'none');
+    });
+    return () => {
+      live = false;
+    };
+  }, [range]);
+
+  if (answer === 'none') return null;
+  const thresholds = answer?.measure.thresholds ?? [];
+
+  return (
+    <Card>
+      <CardHeader
+        title="قياس «ما ردّ» لكل موظفة"
+        subtitle="كل «لا يرد» بنربطو بضغطة «اتصل» إلها قبلو، ونقيس كم ثانية رنّت. النسبة جنب أرقامها، وبدون ضغطة اتصال بتنعدّ لحالها."
+      />
+      <CardContent className="p-0">
+        {answer === null ? (
+          <div className="p-4" aria-busy>
+            <SkeletonRows rows={4} />
+          </div>
+        ) : (
+          <>
+            <Rows
+              rows={answer.measure.rows}
+              keyOf={(r: MeasureRow) => `${r.day}|${r.userId}`}
+              empty="لا ضغطات اتصال بهالمدة."
+              columns={[
+                { key: 'day', label: 'اليوم', primary: true, render: (r: MeasureRow) => <span className="tabular-nums">{r.day}</span> },
+                { key: 'name', label: 'الموظفة', primary: true, render: (r: MeasureRow) => r.name },
+                { key: 'opened', label: 'ضغطات اتصل', render: (r: MeasureRow) => <span className="tabular-nums">{r.opened}</span> },
+                { key: 'na', label: 'لا يرد', render: (r: MeasureRow) => <span className="tabular-nums">{r.noAnswer}</span> },
+                { key: 'wo', label: 'بلا ضغطة اتصال', hideOnPhone: true, render: (r: MeasureRow) => <span className="tabular-nums">{r.withoutPress}</span> },
+                ...thresholds.map((seconds) => ({
+                  key: `u${seconds}`,
+                  label: seconds === 60 ? 'أقل من دقيقة' : seconds === 120 ? 'أقل من دقيقتين' : `أقل من ${seconds} ثانية`,
+                  render: (r: MeasureRow) => <span className="tabular-nums">{underText(r, seconds)}</span>,
+                })),
+              ]}
+            />
+            <details className="border-t border-[var(--sys-border)] px-4 py-3 text-xs text-[var(--sys-muted-foreground)]">
+              <summary className="cursor-pointer font-bold text-[var(--sys-foreground)]">قاعدة الاحتساب</summary>
+              <p className="mt-2">{answer.measure.rule}</p>
+            </details>
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
