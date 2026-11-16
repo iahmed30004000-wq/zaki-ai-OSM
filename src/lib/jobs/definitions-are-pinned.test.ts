@@ -39,6 +39,8 @@ const PINNED: Array<[string, number, string | undefined]> = [
   ['reserve-returning-customers', 120, undefined],
   // Appended 15/11: «السلات المهجورة» — the finished carts go after the company's retention days (default 60).
   ['prune-abandoned-carts', 86_400, '04:00'],
+  // Appended 16/11: «فلتر الاستقبال» (Confirmation Center v2, step C1) — flags a repeat and an oddly-shaped number; not 60 s (the heartbeat watches those).
+  ['intake-filter', 120, undefined],
 ];
 
 describe('the jobs table', () => {

@@ -15,8 +15,10 @@ import { escalateChangeRequests } from './escalate-change-requests';
 import { pullAdSpend } from './pull-ad-spend';
 import { reserveReturning } from './reserve-returning-customers';
 import { pruneAbandonedCarts } from './prune-abandoned-carts';
+import { intakeFilter } from './intake-filter';
 
 export {
+  intakeFilter,
   pruneAbandonedCarts,
   releaseClaims,
   accrueCommission,
@@ -69,6 +71,8 @@ export const JOBS: JobDefinition[] = [
   reserveReturning,
   // «السلات المهجورة» (contract oms-lp.v1 §9): a finished cart is deleted after the company's retention days.
   pruneAbandonedCarts,
+  // «فلتر الاستقبال» (Confirmation Center v2, step C1): a flag on a repeated or oddly-shaped new order. Behind its own company switch.
+  intakeFilter,
 ];
 
 export function jobByName(name: string): JobDefinition | undefined {
