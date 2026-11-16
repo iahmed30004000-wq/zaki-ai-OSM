@@ -18,6 +18,8 @@
 #   pull-order --assert: what the REAL pull code hands each desk, in order,
 #              compared with the list `scenario.mjs` holds. A difference
 #              exits 3 and this job goes red.
+#   intake-filter --assert: the intake filter's real queries (step C1), in a
+#              transaction that is rolled back.
 #
 # NOT here, and still by hand: the screenshots and `check-app` (they need a
 # browser and the app running). `scale-retries` asserts nothing, so it is
@@ -92,6 +94,12 @@ jobs:
       # Prisma refused something — both are findings.
       - name: Pull order (asserted)
         run: node scripts/verify-on-postgres/pull-order.mjs --assert
+
+      # Step C1: the intake filter's real queries on real PostgreSQL (the repeat, the
+      # bare dial code, the refused first order, the window, the odd number).
+      # Everything it writes is rolled back. Exit 3 = a case differs.
+      - name: Intake filter (asserted)
+        run: node scripts/verify-on-postgres/intake-filter.mjs --assert
 
       # Always: a runner is thrown away, but a run that is cancelled or fails
       # halfway should not be the reason nobody checks that the container
