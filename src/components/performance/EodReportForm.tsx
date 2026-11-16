@@ -105,7 +105,7 @@ export function EodReportForm() {
               return (
                 <section key={s.userId} className="space-y-2 rounded-lg border border-[var(--sys-border-strong)] p-3">
                   <h4 className="text-sm font-bold text-[var(--sys-foreground)]">{s.name}</h4>
-                  <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+                  <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
                     {EOD_METRICS.map((m) => (
                       <label key={m} className="space-y-1 text-xs text-[var(--sys-muted-foreground)]">
                         <span className="block">{EOD_METRIC_AR[m]}</span>
