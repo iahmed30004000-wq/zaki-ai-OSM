@@ -17,7 +17,9 @@ export type UserRole =
   | 'SETTLEMENT_OFFICER'
   // Contract roles (Stage 2). Grants live only in the DB system templates.
   | 'WAREHOUSE'
-  | 'CONFIRMATION_SUPERVISOR';
+  | 'CONFIRMATION_SUPERVISOR'
+  // Confirmation Center v2, step H: the supervisor minus orders.change_price and campaigns.manage, plus team.monitor. Grants live only in the DB system template.
+  | 'TEAM_LEADER';
 
 export type UserStatus = 'PENDING' | 'ACTIVE' | 'SUSPENDED' | 'DISABLED';
 
@@ -257,6 +259,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
   // Grants come from the DB system role templates (migration stage2_store_scope_roles).
   WAREHOUSE: [],
   CONFIRMATION_SUPERVISOR: [],
+  // The DB template TEAM_LEADER (migration team_leader_role) — empty here like the supervisor's: a person without the stored role has no doors by fallback.
+  TEAM_LEADER: [],
 
   PENDING_USER: [],
 };
@@ -268,6 +272,7 @@ export const ASSIGNABLE_ROLES: UserRole[] = [
   'CONFIRMATION_AGENT',
   'FOLLOW_UP_AGENT',
   'CONFIRMATION_SUPERVISOR',
+  'TEAM_LEADER',
   'SETTLEMENT_OFFICER',
   'ACCOUNTANT',
   'DELIVERY_MANAGER',
@@ -292,6 +297,7 @@ export const ROLE_LABELS: Record<UserRole, { ar: string; en: string }> = {
   DELIVERY_MANAGER: { ar: 'مدير التوصيل', en: 'Delivery Manager' },
   WAREHOUSE: { ar: 'المستودع', en: 'Warehouse' },
   CONFIRMATION_SUPERVISOR: { ar: 'مشرف التأكيد', en: 'Confirmation Supervisor' },
+  TEAM_LEADER: { ar: 'قائد الفريق', en: 'Team Leader' },
   PENDING_USER: { ar: 'حساب معلق', en: 'Pending User' },
 };
 

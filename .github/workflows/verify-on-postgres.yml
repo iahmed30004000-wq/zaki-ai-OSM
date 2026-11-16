@@ -24,6 +24,8 @@
 #              (step D1), in an isolated store inside a rolled-back transaction.
 #   scorecard --assert: the agent scorecard's and the no-answer measurement's
 #              real reads (step G1), in an isolated store, rolled back.
+#   team-leader-role --assert: the team-leader migration run as it stands in the
+#              repo (step H1), in a rolled-back transaction.
 #
 # NOT here, and still by hand: the screenshots and `check-app` (they need a
 # browser and the app running). `scale-retries` asserts nothing, so it is
@@ -114,6 +116,11 @@ jobs:
       # Everything it writes is rolled back. Exit 3 = a figure differs.
       - name: Scorecard (asserted)
         run: node scripts/verify-on-postgres/scorecard.mjs --assert
+
+      # The team-leader role (step H1): its migration and its rollback, run as they stand in the repo, inside a transaction that is rolled back: the grants must be
+      # exactly the supervisor's minus two keys plus team.monitor, in both tables, idempotent, and no other role touched. Exit 3 = a case differs.
+      - name: Team leader role (asserted)
+        run: node scripts/verify-on-postgres/team-leader-role.mjs --assert
 
       # Always: a runner is thrown away, but a run that is cancelled or fails
       # halfway should not be the reason nobody checks that the container
