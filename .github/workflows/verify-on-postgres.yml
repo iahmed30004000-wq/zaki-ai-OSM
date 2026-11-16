@@ -20,6 +20,8 @@
 #              exits 3 and this job goes red.
 #   intake-filter --assert: the intake filter's real queries (step C1), in a
 #              transaction that is rolled back.
+#   queue-priority --assert: the share's three counts and the v2 pull order
+#              (step D1), in an isolated store inside a rolled-back transaction.
 #
 # NOT here, and still by hand: the screenshots and `check-app` (they need a
 # browser and the app running). `scale-retries` asserts nothing, so it is
@@ -100,6 +102,11 @@ jobs:
       # Everything it writes is rolled back. Exit 3 = a case differs.
       - name: Intake filter (asserted)
         run: node scripts/verify-on-postgres/intake-filter.mjs --assert
+
+      # Queue priority v2 (step D1): the three counts of the backlog share on real tables and the pick order a plan deals (fresh, aged, the backlog's turn,
+      # the two modes, the key off), in an isolated store. Everything it writes is rolled back. Exit 3 = a case differs.
+      - name: Queue priority (asserted)
+        run: node scripts/verify-on-postgres/queue-priority.mjs --assert
 
       # Always: a runner is thrown away, but a run that is cancelled or fails
       # halfway should not be the reason nobody checks that the container

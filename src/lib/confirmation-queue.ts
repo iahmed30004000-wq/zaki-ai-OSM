@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { db } from './db';
-import { businessMinutesBetween, type BusinessCalendar } from './business-calendar';
+import { businessMinutesBetween, zonedParts, type BusinessCalendar } from './business-calendar';
 import { rejectionNeedsConversation } from './confirmation-workflow';
 import { notHeldForOthersWhere, reservedForOthersWhere, reservedForWhere } from './order-reservation';
 import { holdTwinsForPuller, lockCustomerForPull } from './twins-follow-the-pull';
@@ -20,7 +20,7 @@ import {
   NO_ANSWER_RETURNED_REASON,
   cadenceDueLineWhere,
   firstPromiseByDate,
-  firstRetryByDue,
+  firstRetryWithDue,
   handLimitMessage,
   noAnswerReadyWhere,
   returnsMode,
@@ -31,6 +31,9 @@ import {
 } from './no-answer-returns';
 import { automaticReleaseMetadata, releaseNotice } from './auto-release';
 import { promiseArrived, workFirstGate, type WorkFirstRefusal } from './work-first';
+import { queuePrioritySwitch } from './queue-priority-switch';
+import { freshSince, isAged, queueModeAt, wantsBacklog, type PullLane, type QueueMode } from './queue-priority';
+import { readBacklogShare, recentPullLanes } from './queue-priority-share';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -1653,6 +1656,17 @@ export async function pickMostOverdueRetry(
   forUserId: string | undefined,
   returns: ReturnsMode
 ): Promise<string | null> {
+  return (await pickRetryWithDue(tx, scope, now, forUserId, returns))?.id ?? null;
+}
+
+/** 4a with its due: the same read and the same rank as `pickMostOverdueRetry` (which is this, id only), for the aging rule of step D, which asks how long the retry has waited. */
+export async function pickRetryWithDue(
+  tx: Tx,
+  scope: QueueScope,
+  now: Date,
+  forUserId: string | undefined,
+  returns: ReturnsMode
+): Promise<{ id: string; due: number } | null> {
   const since = returns.cadence?.since;
   if (!since) return null;
   const lines = cadenceDueLineWhere(since);
@@ -1663,7 +1677,71 @@ export async function pickMostOverdueRetry(
     select: { id: true, createdAt: true, contactAttempts: { where: lines, select: { result: true, createdAt: true, nextFollowUpAt: true } } },
   });
   warnScan('retry', rows.length);
-  return firstRetryByDue(rows, since);
+  return firstRetryWithDue(rows, since);
+}
+
+/**
+ * WHAT QUEUE PRIORITY v2 DECIDED FOR THIS PULL (step D1, `queue-priority.ts`): the time-of-day mode, and — in the ordinary mode — whether it is the backlog's turn for this agent.
+ * Null where the owner's key is off or anything it needs could not be read: then the pull is the old one.
+ */
+export interface PriorityPlan {
+  mode: QueueMode;
+  backlogTurn: boolean;
+}
+
+/** Read the plan before the pull's transaction (cached reads). Any failure is «no plan»: the old pull. */
+export async function priorityPlanFor(client: Tx, scope: QueueScope, userId: string, cal: BusinessCalendar, now: Date): Promise<PriorityPlan | null> {
+  try {
+    if (!(await queuePrioritySwitch(client, scope.companyId, now.getTime())).enabled) return null;
+    const local = zonedParts(now, cal.timezone);
+    const mode = queueModeAt(local.hour * 60 + local.minute);
+    if (mode !== 'NORMAL') return { mode, backlogTurn: false };
+    const [reading, recent] = await Promise.all([readBacklogShare(client, scope, now, OPEN_CONFIRMATION), recentPullLanes(client, userId)]);
+    return { mode, backlogTurn: wantsBacklog(reading.result.share, recent) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * THE v2 PICK, ordinary mode only (the two named modes are the plain base order, which the code after it already is): the customer's promise · a FRESH new order (under
+ * `QUEUE_PRIORITY.freshMinutes`) · a retry that has waited past `agingHours` · then the agent's lane — the backlog's turn takes the retry with the oldest due, then a postponed
+ * order due, and falls back to a new order when none is due; every other turn takes the oldest new order. Null = «nothing for me»: the old order below decides.
+ * Reads only the predicates the counters read, so the pile it draws from is the pile `waitingCount` shows.
+ */
+async function pickByPriority(
+  tx: Tx,
+  scope: QueueScope,
+  now: Date,
+  forUserId: string | undefined,
+  returns: ReturnsMode | undefined,
+  plan: PriorityPlan
+): Promise<string | null> {
+  if (plan.mode !== 'NORMAL') return null;
+  const neverRung = { ...(returns ? readyToPullWhere(scope, forUserId, now, returns) : readyToPullWhere(scope, forUserId, now)), contactAttempts: { none: {} } };
+  const oldestNew = async (extra: object = {}) =>
+    (await tx.order.findFirst({ where: { ...neverRung, ...extra }, orderBy: { createdAt: 'asc' }, select: { id: true } }))?.id ?? null;
+
+  if (returns?.cadence) {
+    const promised = await pickPromiseArrived(tx, scope, now, forUserId, returns);
+    if (promised) return promised;
+  }
+  const fresh = await oldestNew({ createdAt: { gt: freshSince(now) } });
+  if (fresh) return fresh;
+
+  const retry = returns?.cadence ? await pickRetryWithDue(tx, scope, now, forUserId, returns) : null;
+  if (retry && isAged(retry.due, now)) return retry.id;
+
+  if (plan.backlogTurn) {
+    if (retry) return retry.id;
+    const postponed = await tx.order.findFirst({
+      where: returns ? duePostponedWhere(scope, now, returns) : duePostponedWhere(scope, now),
+      orderBy: [{ postponedUntil: 'asc' }, { nextFollowUpAt: 'asc' }],
+      select: { id: true },
+    });
+    if (postponed) return postponed.id;
+  }
+  return oldestNew();
 }
 
 /**
@@ -1691,13 +1769,20 @@ export async function pickNextCandidate(
   now = new Date(),
   forUserId?: string,
   /** The caller already asked `pickHeldForHer` and found none (the pull does, to know whether the cap grows). */
-  opts: { heldForHerAsked?: boolean; returns?: ReturnsMode | null } = {}
+  opts: { heldForHerAsked?: boolean; returns?: ReturnsMode | null; priority?: PriorityPlan | null } = {}
 ) {
   const returns = opts.returns ?? undefined;
   // THE ORDER HELD FOR HER COMES FIRST: the customer is a returning one and she is the person he spoke to.
   if (forUserId && !opts.heldForHerAsked) {
     const mine = await pickHeldForHer(tx, scope, forUserId, now);
     if (mine) return mine;
+  }
+
+  // QUEUE PRIORITY v2 (step D1) — only with the owner's key on (`opts.priority` is null otherwise, and then none of this runs). It answers an order or nothing; nothing falls
+  // through to the order below, which is also what the two time-of-day modes are.
+  if (opts.priority) {
+    const dealt = await pickByPriority(tx, scope, now, forUserId, returns, opts.priority);
+    if (dealt) return dealt;
   }
 
   // A NEW ORDER BEFORE ANY OTHER: nobody has rung the customer yet. A due postponed order waits behind it.
@@ -1757,6 +1842,11 @@ export async function pickNextCandidate(
  */
 export const PULL_TRANSACTION_OPTIONS = { maxWait: 3_000, timeout: 10_000 } as const;
 
+/** The lane an order was dealt from: one that has been rung before is the backlog's, one nobody has rung is new. */
+async function laneOfOrder(tx: Tx, orderId: string): Promise<PullLane> {
+  return (await tx.orderContactAttempt.count({ where: { orderId } })) > 0 ? 'BACKLOG' : 'NEW';
+}
+
 export interface PullResult {
   ok: boolean;
   orderId?: string;
@@ -1785,6 +1875,8 @@ export async function pullNextOrder(
   const returns = await readReturnsMode(db, scope.companyId, { now, calendar: () => cal, rounds });
   // The hand limit the mode hands to every cap question below; left out, each one asks the cap of 500 and says today's words.
   const hand = returns ? RETURNS_MODE.handLimit : undefined;
+  // QUEUE PRIORITY v2 (step D1): decided before the transaction, from cached reads; null (the key off, or a read failed) = the old order, query for query.
+  const priority = await priorityPlanFor(db, scope, user.id, cal, now);
   return db.$transaction(async (tx) => {
     const released = await releaseStaleClaims(tx, scope, cal, now, { rounds, roundsLimit: PULL_ROUNDS_RELEASE_LIMIT, returns });
 
@@ -1805,7 +1897,7 @@ export async function pullNextOrder(
 
     for (let attempt = 0; attempt < 5; attempt++) {
       const hers = await pickHeldForHer(tx, scope, user.id, now);
-      const candidate = hers ?? (atCap ? null : await pickNextCandidate(tx, scope, now, user.id, { heldForHerAsked: true, returns }));
+      const candidate = hers ?? (atCap ? null : await pickNextCandidate(tx, scope, now, user.id, { heldForHerAsked: true, returns, priority }));
       if (!candidate) {
         // At the cap and nothing held for her is left to take (a hold let go between the count and here): the cap's sentence.
         if (atCap) return { ok: false, released, refusal: capRefusal(counts, false, hand)! };
@@ -1853,7 +1945,8 @@ export async function pullNextOrder(
           userId: user.id,
           action: 'CLAIMED',
           reason: PULL_NEXT_REASON,
-          metadata: JSON.stringify({ role: user.role }),
+          // Under v2 the line also says which lane the pull was dealt from (`queue-priority.ts`), so the next pull of hers keeps the ratio; off, the line is what it always was.
+          metadata: JSON.stringify(priority ? { role: user.role, lane: await laneOfOrder(tx, candidate) } : { role: user.role }),
         },
       });
       await tx.orderStatusLog.create({

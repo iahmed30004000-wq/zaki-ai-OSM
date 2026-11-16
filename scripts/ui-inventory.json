@@ -2159,6 +2159,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/settings/QueuePriorityCard.tsx": {
+    "buttons": 0,
+    "inputs": 1,
+    "columns": 0,
+    "cards": 1,
+    "modals": 0,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/settings/StoreBrandField.tsx": {
     "buttons": 2,
     "inputs": 1,

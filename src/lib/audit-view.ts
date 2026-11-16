@@ -70,6 +70,7 @@ const ACTION_AR: Record<string, string> = {
   // «إثبات المكالمات وجدول المحاولات» (`/api/settings/call-proof`, step A of Confirmation Center v2): the owner's switch; and a «لا يرد» the server refused for want of a logged «اتصال» press.
   CALL_PROOF_SWITCHED: 'تشغيل أو إيقاف «إثبات المكالمات وجدول المحاولات»',
   INTAKE_FILTER_SWITCHED: 'تشغيل أو إيقاف «فلتر الاستقبال»',
+  QUEUE_PRIORITY_SWITCHED: 'تشغيل أو إيقاف «أولوية الطابور»',
   CALL_PROOF_REFUSED: 'رفض تسجيل «لا يرد» لأنه ما في ضغطة «اتصال» مسجّلة (أو ما مرّت 30 ثانية)',
   WALLET_TRANSFER: 'تحويل بين محافظ', WALLET_MOVEMENT_RECORDED: 'تسجيل حركة محفظة', WALLET_MOVEMENT_REVERSED: 'عكس حركة محفظة',
   // «القيد العكسي على تحويل» (`PATCH /api/finance/transfers/:id`, and the reversal of one leg from the wallet): both legs, one reason.

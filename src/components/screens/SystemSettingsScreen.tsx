@@ -12,6 +12,7 @@ import { NoAnswerReturnsCard } from '@/components/settings/NoAnswerReturnsCard';
 import { PerLineSettlementCard } from '@/components/settings/PerLineSettlementCard';
 import { CallProofCard } from '@/components/settings/CallProofCard';
 import { IntakeFilterCard } from '@/components/settings/IntakeFilterCard';
+import { QueuePriorityCard } from '@/components/settings/QueuePriorityCard';
 import { PartnersCard } from '@/components/settings/PartnersCard';
 import { RiBuildingLine, RiCheckLine, RiLoader4Line } from '@remixicon/react';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -159,6 +160,7 @@ export function SystemSettingsScreen() {
       {/* «إثبات المكالمات وجدول المحاولات (تجريبي)» — «لا يرد» opens only after a logged «اتصال» press thirty seconds old; later the five-attempt close and the two-day schedule. Off by default. */}
       <CallProofCard />
       <IntakeFilterCard />
+      <QueuePriorityCard />
 
       {/* «الشركاء والنسب» — each partner's share of the net profit. Drawn only for who holds `finance.partners` (the owner's to tick). */}
       <PartnersCard />
