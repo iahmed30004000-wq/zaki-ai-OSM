@@ -709,6 +709,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/performance/CommissionPreview.tsx": {
+    "buttons": 0,
+    "inputs": 0,
+    "columns": 5,
+    "cards": 1,
+    "modals": 0,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/performance/HeldFlowPanel.tsx": {
     "buttons": 1,
     "inputs": 0,
@@ -2017,6 +2027,16 @@
     "modals": 0,
     "icons": 12,
     "links": 3,
+    "tabs": 0
+  },
+  "src/components/settings/AgentCommissionCard.tsx": {
+    "buttons": 3,
+    "inputs": 6,
+    "columns": 0,
+    "cards": 1,
+    "modals": 0,
+    "icons": 0,
+    "links": 0,
     "tabs": 0
   },
   "src/components/settings/CallProofCard.tsx": {

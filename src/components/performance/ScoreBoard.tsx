@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { AgentScorecard } from './AgentScorecard';
+import { CommissionPreview } from './CommissionPreview';
 import type { ScoreResult } from '@/lib/performance-score';
 import { RiLoader4Line } from '@remixicon/react';
 
@@ -192,6 +193,8 @@ export function ScoreBoard() {
 
       {/* the per-day agent scorecard (step G1): its own door and its own failure — it draws nothing if it cannot be read */}
       <AgentScorecard />
+      {/* the month's commission ESTIMATE (step G2): the payroll's key, and nothing is drawn for anyone without it */}
+      <CommissionPreview />
 
       {data.roles.length === 0 && (
         <p className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-6 text-center text-sm text-[var(--sys-muted-foreground)]">
