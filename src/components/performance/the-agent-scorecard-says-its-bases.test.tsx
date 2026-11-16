@@ -16,7 +16,7 @@ const ratio = (of: number, base: number) => ({ of, base, rate: base > 0 ? Math.r
 const row = (over: Record<string, unknown> = {}) => ({
   bucket: '2026-11-10', userId: 'u1', name: 'سارة', claims: 6, confirmed: 3, rejected: 1, confirmationRate: ratio(3, 4),
   medianFirstAttemptMinutes: 2.5, firstAttempts: 5, quickNoAnswer: ratio(1, 6), attempts: 9, upsell: ratio(0, 0),
-  delivery: { ...ratio(3, 4), delivered: 3, returned: 1 }, winback: null, ...over,
+  delivery: { ...ratio(3, 4), delivered: 3, returned: 1 }, winback: ratio(1, 3), ...over,
 });
 const answer = (rows: unknown[]) => ({ grain: 'day', deliveryMaturityDays: 7, rows, rules: { claims: 'قاعدة السحب', winback: 'بيتفعّل مع الخطوة F' } });
 
@@ -38,11 +38,12 @@ describe('the scorecard', () => {
     expect(text).toContain('3 مسلَّم و1 مرتجع');
     expect(text).toContain('2.5 د');
     expect(text).not.toContain('0%');
-    expect(text).toContain('—'); // the upsell with no confirmed base, and the winback not yet measured
+    expect(text).toContain('1 من 3'); // the winback: one of three offers became a confirmed order
+    expect(text).toContain('—'); // the upsell with no confirmed base
   });
 
   it('a row with no decisions and no deliveries shows dashes, never zeros as rates', async () => {
-    api.mockResolvedValue(answer([row({ confirmed: 0, rejected: 0, confirmationRate: ratio(0, 0), quickNoAnswer: ratio(0, 0), delivery: { ...ratio(0, 0), delivered: 0, returned: 0 }, medianFirstAttemptMinutes: null })]));
+    api.mockResolvedValue(answer([row({ confirmed: 0, rejected: 0, confirmationRate: ratio(0, 0), quickNoAnswer: ratio(0, 0), delivery: { ...ratio(0, 0), delivered: 0, returned: 0 }, winback: ratio(0, 0), medianFirstAttemptMinutes: null })]));
     const { container } = render(<AgentScorecard />);
     await screen.findAllByText('سارة');
     expect(container.textContent).not.toMatch(/\d+%/);

@@ -17,7 +17,7 @@ type Client = Prisma.TransactionClient | typeof db;
  *
  * Never a ranking: rows are by day, then by name. Agents and counts only — no customer field is read.
  *
- * `winback` is not measured yet (the planner's step F credits the reactivating agent and is what gives the figure its definition): the field is there, null, and the card says so.
+ * `winback` (step F1) credits the REACTIVATING agent: of the winback offers she made that day (the existing `WINBACK_OFFERED` line, whose author is the person who pressed the offer), how many became a CONFIRMED order by the time of the reading. A read of the audit line and of the new order — nothing here writes money, an order or a commission.
  * ═══════════════════════════════════════════════════════════════════════
  */
 
@@ -52,7 +52,8 @@ export interface ScoreRow {
   attempts: number;
   upsell: Ratio;
   delivery: Ratio & { delivered: number; returned: number };
-  winback: null;
+  /** Offers she made (the base) and how many of their new orders are confirmed by now (the part). */
+  winback: Ratio;
 }
 
 export const SCORECARD_RULES: Record<string, string> = {
@@ -64,7 +65,7 @@ export const SCORECARD_RULES: Record<string, string> = {
   attempts: 'عدد سطور المحاولة اللي سجّلتها فعلاً (اتصال أو نتيجة)؛ ضغطة «اتصل» ورسالة الواتساب ما بينعدّوا.',
   upsell: 'من الطلبات المختلفة اللي أكّدتها: كم واحد أضافت عليه بنفسها منتج بعد الاستقبال. بدون تأكيدات = «—».',
   delivery: `المسلَّمة ÷ (المسلَّمة + المرتجعة) من الطلبات اللي أكّدتها وصار عليها ${DELIVERY_MATURITY_DAYS} أيام أو أكتر؛ اللي لسا بالطريق ما بتنحسب بأي طرف. بدون مسلَّم ومرتجع = «—».`,
-  winback: 'بيتفعّل مع الخطوة F (استرجاع الطلبات): الموظفة اللي بتفعّل الطلب هي اللي بيننسبلها.',
+  winback: 'من عروض الاسترجاع اللي قدّمتها هاليوم (العرض بينحسب للي ضغطت عليه): كم واحد صار طلب مؤكَّد لحد وقت القراءة. بدون عروض = «—». التأكيد بينحسب للي قدّمت العرض مش للي أكّد الطلب الجديد.',
 };
 
 const ratio = (of: number, base: number): Ratio => ({ of, base, rate: base > 0 ? Math.round((of / base) * 100) : null });
@@ -100,6 +101,8 @@ export interface ScoreInputs {
   attempts: readonly { userId: string; orderId: string; result: string; at: Date }[];
   upsold: ReadonlySet<string>;
   confirmations: readonly { userId: string; orderId: string; at: Date; shippingStatus: string }[];
+  /** The winback offers she made, and whether the order each one made is confirmed by now. */
+  winbackOffers: readonly { userId: string; at: Date; confirmed: boolean }[];
 }
 
 interface Cell {
@@ -110,6 +113,8 @@ interface Cell {
   attempts: number;
   delivered: number;
   returned: number;
+  offered: number;
+  reactivated: number;
 }
 
 /** The pure tally: the rows for every (bucket, agent) that did anything. */
@@ -121,7 +126,7 @@ export function tallyScorecard(i: ScoreInputs): ScoreRow[] {
     const key = `${bucket}|${userId}`;
     let hit = cells.get(key);
     if (!hit) {
-      hit = { bucket, userId, cell: { claims: new Set(), quick: new Set(), decided: new Map(), firstAttemptMinutes: [], attempts: 0, delivered: 0, returned: 0 } };
+      hit = { bucket, userId, cell: { claims: new Set(), quick: new Set(), decided: new Map(), firstAttemptMinutes: [], attempts: 0, delivered: 0, returned: 0, offered: 0, reactivated: 0 } };
       cells.set(key, hit);
     }
     return hit.cell;
@@ -166,6 +171,12 @@ export function tallyScorecard(i: ScoreInputs): ScoreRow[] {
     else if ((RETURNED_SHIPPING as readonly string[]).includes(c.shippingStatus)) cell.returned += 1;
   }
 
+  for (const o of i.winbackOffers) {
+    const cell = cellOf(o.at, o.userId);
+    cell.offered += 1;
+    if (o.confirmed) cell.reactivated += 1;
+  }
+
   const rows: ScoreRow[] = [];
   for (const { bucket, userId, cell } of cells.values()) {
     const decided = [...cell.decided.entries()];
@@ -186,7 +197,7 @@ export function tallyScorecard(i: ScoreInputs): ScoreRow[] {
       attempts: cell.attempts,
       upsell: ratio(upsoldCount, confirmedIds.length),
       delivery: { ...ratio(cell.delivered, cell.delivered + cell.returned), delivered: cell.delivered, returned: cell.returned },
-      winback: null,
+      winback: ratio(cell.reactivated, cell.offered),
     });
   }
   // by bucket (newest first), then by name — never by a score
@@ -207,7 +218,7 @@ export async function readScorecard(client: Client, scope: ScorecardScope, now: 
   const inWindow = { gte: scope.start, lt: scope.end };
   const orderScope = { companyId: scope.companyId, storeId: scope.storeId };
 
-  const [claimRows, releaseRows, decisionRows, confirmedOrders] = await Promise.all([
+  const [claimRows, releaseRows, decisionRows, confirmedOrders, offerRows] = await Promise.all([
     client.orderClaimHistory.findMany({
       where: { companyId: scope.companyId, action: 'CLAIMED', createdAt: inWindow, order: { storeId: scope.storeId } },
       select: { userId: true, orderId: true, createdAt: true },
@@ -228,11 +239,28 @@ export async function readScorecard(client: Client, scope: ScorecardScope, now: 
       select: { id: true, confirmedById: true, confirmedAt: true, shippingStatus: true },
       take: 50_000,
     }),
+    client.auditLog.findMany({
+      where: { companyId: scope.companyId, action: 'WINBACK_OFFERED', userId: { not: null }, createdAt: inWindow },
+      select: { userId: true, newData: true, createdAt: true },
+      take: 20_000,
+    }),
   ]);
+  const offeredIds = offerRows.map((o) => {
+    try {
+      return (JSON.parse(o.newData ?? '{}') as { newOrderId?: string }).newOrderId ?? null;
+    } catch {
+      return null;
+    }
+  });
+  const reactivated = new Set(
+    offeredIds.some(Boolean)
+      ? (await client.order.findMany({ where: { id: { in: offeredIds.filter((x): x is string => !!x) }, storeId: scope.storeId, confirmationStatus: 'CONFIRMED' }, select: { id: true } })).map((o) => o.id)
+      : []
+  );
 
   const claimedOrderIds = [...new Set(claimRows.map((c) => c.orderId))];
   const confirmedDecisionIds = [...new Set(decisionRows.filter((d) => d.newValue === 'CONFIRMED').map((d) => d.orderId))];
-  const userIds = [...new Set([...claimRows.map((c) => c.userId), ...decisionRows.map((d) => d.changedById), ...confirmedOrders.map((o) => o.confirmedById!)])];
+  const userIds = [...new Set([...claimRows.map((c) => c.userId), ...decisionRows.map((d) => d.changedById), ...confirmedOrders.map((o) => o.confirmedById!), ...offerRows.map((o) => o.userId!)])];
 
   const [attemptRows, upsoldLines, users] = await Promise.all([
     claimedOrderIds.length || userIds.length
@@ -262,6 +290,7 @@ export async function readScorecard(client: Client, scope: ScorecardScope, now: 
     attempts: attemptRows.map((a) => ({ userId: a.employeeId, orderId: a.orderId, result: a.result, at: a.createdAt })),
     upsold: new Set(upsoldLines.map((l) => `${l.addedById}|${l.orderId}`)),
     confirmations: confirmedOrders.map((o) => ({ userId: o.confirmedById!, orderId: o.id, at: o.confirmedAt!, shippingStatus: o.shippingStatus })),
+    winbackOffers: offerRows.map((o, k) => ({ userId: o.userId!, at: o.createdAt, confirmed: !!offeredIds[k] && reactivated.has(offeredIds[k]!) })),
   });
   return { rows, rules: SCORECARD_RULES };
 }

@@ -8,6 +8,7 @@ import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
 import { ConfirmationPostponedScreen } from '@/components/screens/ConfirmationPostponedScreen';
 import { WinbackScreen } from '@/components/screens/WinbackScreen';
+import { WinbackDaily } from '@/components/screens/WinbackDaily';
 
 /**
  * /confirmation/follow-up — «المتابعة»: THE ORDERS TO CALL AGAIN LATER, IN TWO KINDS.
@@ -50,7 +51,15 @@ export function ConfirmationFollowUpScreen() {
     <div className="max-w-5xl space-y-4">
       <ScreenTitle />
       <Tabs tabs={tabs} value={tab} onChange={(k) => setTab(k as Tab)} />
-      {tab === 'postponed' ? <ConfirmationPostponedScreen embedded /> : <WinbackScreen embedded />}
+      {tab === 'postponed' ? (
+        <ConfirmationPostponedScreen embedded />
+      ) : (
+        <>
+          {/* the daily list of step F1: its own door, drawn only when the owner turned it on — and then nothing below it changes */}
+          <WinbackDaily />
+          <WinbackScreen embedded />
+        </>
+      )}
     </div>
   );
 }

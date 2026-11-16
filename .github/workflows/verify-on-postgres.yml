@@ -28,6 +28,8 @@
 #              repo (step H1), in a rolled-back transaction.
 #   eod-report --assert: the end-of-day report's real reads and its new table
 #              (step H2), in an isolated store, rolled back.
+#   winback-daily --assert: the daily winback list's real reads and the scorecard's
+#              winback credit (step F1), in an isolated store, rolled back.
 #
 # NOT here, and still by hand: the screenshots and `check-app` (they need a
 # browser and the app running). `scale-retries` asserts nothing, so it is
@@ -128,6 +130,11 @@ jobs:
       # one-report-per-day key of the new table, in an isolated store. Everything it writes is rolled back. Exit 3 = a case differs.
       - name: End-of-day report (asserted)
         run: node scripts/verify-on-postgres/eod-report.mjs --assert
+
+      # The daily winback list (step F1): lost orders 24-72 h old for the spec reasons with no offer yet, the missed postponed dates, the folded assignment and call, and the scorecard's
+      # credit to the author of the offer, in an isolated store. Everything it writes is rolled back. Exit 3 = a case differs.
+      - name: Daily winback (asserted)
+        run: node scripts/verify-on-postgres/winback-daily.mjs --assert
 
       # Always: a runner is thrown away, but a run that is cancelled or fails
       # halfway should not be the reason nobody checks that the container
