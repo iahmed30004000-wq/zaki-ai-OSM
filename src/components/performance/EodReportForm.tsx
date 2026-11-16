@@ -142,7 +142,7 @@ export function EodReportForm() {
                   نصيحة لبكرا
                   <textarea className="w-full rounded-md border border-[var(--sys-border)] bg-[var(--sys-card)] p-2 text-xs" rows={2} maxLength={MAX_TEXT} value={tip} disabled={busy || !data.mayReport} onChange={(e) => setTip(e.target.value)} />
                 </label>
-                <button type="button" className="rounded-md bg-[var(--sys-primary)] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50" disabled={busy || !data.mayReport} onClick={() => void send()}>
+                <button type="button" className="rounded-md bg-[var(--sys-primary)] px-3 py-1.5 text-xs font-bold text-[var(--sys-primary-foreground)] disabled:opacity-50" disabled={busy || !data.mayReport} onClick={() => void send()}>
                   إرسال التقرير (مرة وحدة)
                 </button>
               </>
