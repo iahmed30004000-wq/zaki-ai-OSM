@@ -119,7 +119,7 @@ export function AgentCommissionCard() {
         </div>
 
         {canManage ? (
-          <button type="button" className="rounded-md bg-[var(--sys-primary)] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50" disabled={!dirty || busy} onClick={() => void save()}>
+          <button type="button" className="rounded-md bg-[var(--sys-primary)] px-3 py-1.5 text-xs font-bold text-[var(--sys-primary-foreground)] disabled:opacity-50" disabled={!dirty || busy} onClick={() => void save()}>
             حفظ
           </button>
         ) : (
