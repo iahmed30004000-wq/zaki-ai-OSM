@@ -25,6 +25,9 @@ import { DEFAULT_FLOW_WINDOW, FLOW_WINDOWS, flowWindowKey } from '@/lib/held-flo
  * sat, and how smoothly they move. It answers `{ flow }` and nothing else — the
  * board and the report are not read for it, and it ignores the dates.
  *
+ * `?part=measure` is the measurement report of step G1 (`no-answer-measure.ts`): per agent per day, the «اتصل» presses, the «لا يرد» lines and what share of them came
+ * under 30 seconds / 1 minute / 2 minutes after her press — with its «قاعدة الاحتساب». It answers `{ measure, window }` and nothing else, over the same dates as the report.
+ *
  * The key is the team table's, `team.monitor`, and the refusal is the team
  * table's own words — the same people see both, and nobody else is asked
  * anything before the refusal. Agents and counts only: no customer field.
@@ -67,6 +70,15 @@ export async function GET(req: Request) {
       // Loaded only here: the board and the report never pay for the ledger's imports, and a test of them never loads the database.
       const { heldFlow } = await import('@/lib/held-flow-read');
       return NextResponse.json({ flow: await heldFlow({ companyId, storeId, calendar, windowKey, now }) });
+    }
+
+    // `?part=measure`: the measurement report of step G1, its own question over the report's dates — after the key, loaded only here like the flow.
+    if (searchParams.get('part') === 'measure') {
+      const [{ readMeasure }, { db }] = await Promise.all([import('@/lib/no-answer-measure'), import('@/lib/db')]);
+      return NextResponse.json({
+        measure: await readMeasure(db, { companyId, storeId, start, end, timezone: country.timezone }),
+        window: { start: start.toISOString(), end: end.toISOString(), timezone: country.timezone },
+      });
     }
 
     // `?part=board` / `?part=report`: the screen asks for the board once and for the report on every date change, so
