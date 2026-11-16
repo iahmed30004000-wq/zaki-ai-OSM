@@ -609,6 +609,7 @@ function deadLibExports(): string[] {
  * work is not allowed to touch.
  */
 const PLANNED_BUT_UNUSED: Record<string, string> = {
+  'src/lib/no-answer-returns.ts:firstRetryByDue': 'مواصفة ترتيب الإعادات التي تثبّتها فحوص no-answer-retry-order؛ الإنتاج يقرأ نفس الترتيب عبر firstRetryWithDue (الخطوة D1) — تبقى الدالة المرجع',
   'src/lib/confirmation-workflow.ts:HUMAN_ONLY_REJECTION_REASONS': 'قاعدة «السيرفر ما يختار سبباً عن إنسان» لا يفرضها كود بعد — RV132',
   'src/lib/product-grade.ts:REFUSED_BANDS': 'سجلّ القرارات المرفوضة مخطّط له — RV132',
   'src/lib/countdown.ts:EXAMPLE_BADGE': 'محرّر صفحات الهبوط يقرؤه لاحقاً — RV132 ومسار الهبوط لوكيله',

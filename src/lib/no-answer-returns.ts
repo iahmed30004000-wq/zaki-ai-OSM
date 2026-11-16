@@ -213,8 +213,8 @@ export function retryDueOf(lines: readonly RetryLine[], since: Date): number | n
   return latest;
 }
 
-/** The id the pull gives first among the retries: the oldest due; equal due → the older order → the smaller id. Null when no row carries a due. */
-export function firstRetryByDue(rows: readonly RetryRow[], since: Date): string | null {
+/** The retry the pull gives first among the rows — the oldest due; equal due → the older order → the smaller id — WITH its due (the aging rule of step D asks how long it has waited). Null when no row carries a due. */
+export function firstRetryWithDue(rows: readonly RetryRow[], since: Date): { id: string; due: number } | null {
   let best: { id: string; due: number; born: number } | null = null;
   for (const r of rows) {
     const due = retryDueOf(r.contactAttempts, since);
@@ -222,7 +222,12 @@ export function firstRetryByDue(rows: readonly RetryRow[], since: Date): string 
     const born = new Date(r.createdAt).getTime();
     if (best === null || due < best.due || (due === best.due && (born < best.born || (born === best.born && r.id < best.id)))) best = { id: r.id, due, born };
   }
-  return best ? best.id : null;
+  return best ? { id: best.id, due: best.due } : null;
+}
+
+/** The id the pull gives first among the retries: the oldest due; equal due → the older order → the smaller id. Null when no row carries a due. */
+export function firstRetryByDue(rows: readonly RetryRow[], since: Date): string | null {
+  return firstRetryWithDue(rows, since)?.id ?? null;
 }
 
 /** One order as the promise ranking reads it: its dates and its NEWEST line (or all of them — `promiseArrived` asks the same question of either). */
