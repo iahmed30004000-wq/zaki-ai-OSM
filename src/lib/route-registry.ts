@@ -140,6 +140,8 @@ export const NAV: NavGroup[] = [
     routes: [
       r('/dashboard', 'لوحة التحكم', 'LayoutDashboard', ['dashboard.view']),
       r('/orders', 'الطلبات', 'ShoppingCart', ['orders.view']),
+      // Beside the orders, on the same key: whoever sees the orders sees the carts (contract oms-lp.v1 §9, 15/11).
+      r('/abandoned-carts', 'السلات المهجورة', 'CartAbandoned', ['orders.view']),
       r('/customers', 'العملاء', 'Users', ['customers.view', 'customers.view_basic']),
       r('/products', 'المنتجات', 'Package', ['products.view']),
     ],

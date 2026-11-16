@@ -89,8 +89,11 @@ describe('the door was found at all — a sweep over nothing proves nothing', ()
     // media buyer — `the-media-buyers-door.test.ts` holds what it answers.
     expect(ROUTES).toEqual([
       'src/app/api/v1/customers/lookup/route.ts',
-      // The standalone landing system's seven — `the-landing-door.test.ts` — and its confirmation chat's six
-      // (contract §8, `the-landing-chat.test.ts`).
+      // The standalone landing system's seven — `the-landing-door.test.ts` — its confirmation chat's six
+      // (contract §8, `the-landing-chat.test.ts`), and its abandoned carts' two (contract §9,
+      // `the-abandoned-carts-door.test.ts`): the cart's upsert and its «recovered», both on the landing key's `orders.create`.
+      'src/app/api/v1/landing/abandoned-carts/[externalId]/recovered/route.ts',
+      'src/app/api/v1/landing/abandoned-carts/route.ts',
       'src/app/api/v1/landing/geo/[country]/route.ts',
       'src/app/api/v1/landing/health/route.ts',
       'src/app/api/v1/landing/orders/[orderNumber]/address/route.ts',

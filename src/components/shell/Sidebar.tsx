@@ -12,8 +12,10 @@ import { iconFor } from './icons';
 import { RiArrowDownSLine, RiDraggable, RiListSettingsLine, RiSideBarLine, RiTreeLine } from '@remixicon/react';
 import { RAIL_EVENT, railed as storedRail, setRailed } from '@/lib/sidebar-rail';
 import { ThemeDecor } from './ThemeDecor';
+import { useNewCartsCount } from '@/hooks/useNewCartsCount';
 
 const OPEN_GROUPS_KEY = 'osm.sidebar.open';
+const CARTS_PATH = '/abandoned-carts';
 const PINNED_KEY = 'osm.sidebar.pinned';
 
 /**
@@ -54,6 +56,12 @@ export function Sidebar({
    * so the answer needs the whole set. See src/lib/active-route.ts.
    */
   const drawnPaths = useMemo(() => groups.flatMap((g) => g.routes.map((r) => r.path)), [groups]);
+
+  /*
+   * «السلات المهجورة» counts its NEW carts, not notifications: a cart is work waiting, and nothing announces it. Asked only
+   * when this person's menu has the line (`useNewCartsCount`).
+   */
+  const newCarts = useNewCartsCount(drawnPaths.includes(CARTS_PATH));
 
   /** The group the current page lives in — always open, never collapsible shut. */
   const activeGroup = useMemo(
@@ -232,18 +240,23 @@ export function Sidebar({
           shows on the rail too, where the label does not: a
           number is the only thing a folded menu can say.
         */}
-        {byRoute[route.path] ? (
+        {/* «السلات المهجورة» counts its NEW carts the same way; a
+            zero on either side is no badge. */}
+        {(byRoute[route.path] ? (
+          byRoute[route.path]
+        ) : route.path === CARTS_PATH ? newCarts : 0) ? (
           <span
             /* One badge, not two. A tinted chip carrying the
                accent as its text reads on the row you stand on
                and on the rows you do not — and the pair is
                already guarded for contrast. Painting a wash of
                `primary-foreground` for the active row would
-               have been a second style to keep legible. */
+               have been a second style to keep legible.
+               «السلات المهجورة» wears the same chip for its NEW carts. */
             className="min-w-5 rounded-full bg-[var(--sys-primary-soft)] px-1.5 py-0.5 text-center text-xs font-bold tabular-nums text-[var(--sys-primary)]"
-            aria-label={`${byRoute[route.path]} إشعار غير مقروء`}
+            aria-label={byRoute[route.path] ? `${byRoute[route.path]} إشعار غير مقروء` : `${newCarts} سلة جديدة`}
           >
-            {byRoute[route.path]}
+            {byRoute[route.path] || newCarts}
           </span>
         ) : null}
       </Link>

@@ -28,7 +28,20 @@ import { MAX_CART_LINES, MAX_LINE_QUANTITY } from './cart';
 export interface OrderLocale {
   countryCode: string | null;
   regions: string[];
+  /**
+   * A BLANK CITY IS AN ANSWER — at the standalone landing door only (the owner, 15/11).
+   *
+   * A Zaki page may hide the city list and ask for «العنوان» alone. The owner chose to take that order with no
+   * region and have the team pick it on the confirmation call (the confirmation door already refuses a «yes» without
+   * one, `REGION_REQUIRED`). So with this set, an empty or missing city passes; a city that IS written must still be
+   * one of the country's, in the same words as before — a typo is still refused, never quietly dropped. Absent on
+   * every other door, which keeps asking for the city exactly as it did.
+   */
+  cityOptional?: boolean;
 }
+
+/** The history row an order with no city carries. The timeline names it in Arabic (`order-timeline.ts`). */
+export const ARRIVED_WITHOUT_REGION_ACTION = 'ARRIVED_WITHOUT_REGION';
 
 /** Matches a submitted city against the country's regions, ignoring case and spacing. */
 export function isKnownRegion(regions: string[], value: string): boolean {
@@ -38,6 +51,16 @@ export function isKnownRegion(regions: string[], value: string): boolean {
 
 export function buildPublicOrderSchema(locale: OrderLocale) {
   const hasRegions = locale.regions.length > 0;
+
+  const city = z
+    .string({ message: 'يرجى اختيار المدينة.' })
+    .trim()
+    .min(2, 'يرجى اختيار المدينة.')
+    .max(60, 'يرجى اختيار المدينة.')
+    .refine(
+      (v) => !hasRegions || isKnownRegion(locale.regions, v),
+      'يرجى اختيار المدينة من القائمة.'
+    );
 
   return z.object({
     full_name: z
@@ -56,15 +79,20 @@ export function buildPublicOrderSchema(locale: OrderLocale) {
       .trim()
       .min(5, 'يرجى إدخال العنوان بشكل أوضح.')
       .max(200, 'العنوان طويل جدًا.'),
-    city: z
-      .string({ message: 'يرجى اختيار المدينة.' })
-      .trim()
-      .min(2, 'يرجى اختيار المدينة.')
-      .max(60, 'يرجى اختيار المدينة.')
-      .refine(
-        (v) => !hasRegions || isKnownRegion(locale.regions, v),
-        'يرجى اختيار المدينة من القائمة.'
-      ),
+    // Blank (missing, null, or only spaces) is '' when the door allows it; anything written goes through `city` whole.
+    city: locale.cityOptional
+      ? z.preprocess(
+          (v) => (v === undefined || v === null ? '' : typeof v === 'string' ? v.trim() : v),
+          z.string({ message: 'يرجى اختيار المدينة.' }).superRefine((v, ctx) => {
+            if (v === '') return;
+            // The same rule and the same words as every other door, so a typo reads exactly as it did.
+            const checked = city.safeParse(v);
+            if (!checked.success) {
+              ctx.addIssue({ code: 'custom', message: checked.error.issues[0]?.message ?? 'يرجى اختيار المدينة.' });
+            }
+          })
+        )
+      : city,
     // Optional: pages WITHOUT offers fall back to the base product price.
     // When present it must reference a real offer (ownership checked in the route).
     offerId: z.string().trim().max(64, 'يرجى اختيار أحد العروض.').optional().default(''),
